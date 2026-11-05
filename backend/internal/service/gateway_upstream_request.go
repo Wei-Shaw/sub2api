@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
@@ -18,7 +19,37 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+// anthropicMessagesForeignOAuthReason 标记账号凭据与 Anthropic Messages 协议不匹配。
+const anthropicMessagesForeignOAuthReason = GatewayFailureReason("anthropic_messages_foreign_oauth")
+
+// anthropicMessagesCredentialAllowed 判断账号凭据能否经 Anthropic Messages 协议
+// 出站。OAuth / setup-token 只对签发它的供应商有效（ChatGPT token 只认
+// chatgpt.com），送错协议既泄露凭据，上游 401 还会被误记到账号头上；
+// API Key 不受限：其上游可能同时兼容多种协议格式。
+func anthropicMessagesCredentialAllowed(account *Account) bool {
+	if !account.IsOAuth() {
+		return true
+	}
+	spec, ok := domain.LookupPlatform(account.Platform)
+	return ok && spec.Gateway == domain.PlatformGatewayAnthropic
+}
+
+// checkAnthropicMessagesCredential 在发出任何上游请求前拦截不匹配的凭据。返回的
+// failover 错误只让 handler 换下一个账号：没有上游响应，也就不触发任何账号处罚。
+func checkAnthropicMessagesCredential(account *Account) error {
+	if anthropicMessagesCredentialAllowed(account) {
+		return nil
+	}
+	return &UpstreamFailoverError{
+		StatusCode: http.StatusBadGateway,
+		Reason:     anthropicMessagesForeignOAuthReason,
+	}
+}
+
 func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string, reqStream bool, mimicClaudeCode bool) (*http.Request, []byte, error) {
+	if err := checkAnthropicMessagesCredential(account); err != nil {
+		return nil, nil, err
+	}
 	body = stripDeferredToolCacheControl(body)
 	if account.Platform == PlatformAnthropic && account.Type == AccountTypeServiceAccount {
 		req, err := s.buildUpstreamRequestAnthropicVertex(ctx, c, account, body, token, modelID, reqStream)
@@ -27,8 +58,9 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 
 	// 确定目标URL
 	targetURL := claudeAPIURL
+	baseURL := ""
 	if account.Type == AccountTypeAPIKey {
-		baseURL := account.GetBaseURL()
+		baseURL = getAnthropicGatewayBaseURL(account)
 		if baseURL != "" {
 			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 			if err != nil {
@@ -124,9 +156,9 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	}
 
 	// Ollama Cloud DeepSeek 出站 max_tokens clamp：判定与上方 targetURL 的
-	// base 取值同源（GetBaseURL），仅实际上游为 ollama.com 且映射后出站模型
+	// base 取值同源，仅实际上游为 ollama.com 且映射后出站模型
 	// 为 DeepSeek 系时压到 cap，详见 helper 注释。
-	body = clampOllamaCloudAnthropicMessagesMaxTokens(account, account.GetBaseURL(), body)
+	body = clampOllamaCloudAnthropicMessagesMaxTokens(account, baseURL, body)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))
 	if err != nil {
@@ -139,7 +171,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	} else {
 		// Ollama Cloud Anthropic 兼容端点按实际 base_url 强制 Bearer（同上方
 		// targetURL 的 base 取值），其余保持 extra/default 行为。
-		setAnthropicAPIKeyAuthHeader(req.Header, account, token, account.GetBaseURL())
+		setAnthropicAPIKeyAuthHeader(req.Header, account, token, baseURL)
 	}
 
 	// 白名单透传 headers
@@ -223,6 +255,16 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	}
 
 	return req, body, nil
+}
+
+func getAnthropicGatewayBaseURL(account *Account) string {
+	if account == nil {
+		return ""
+	}
+	if baseURL := account.GetAnthropicProtocolBaseURL(); baseURL != "" {
+		return baseURL
+	}
+	return account.GetBaseURL()
 }
 
 // vertexSupportedBetaTokens 是 Vertex AI 的 Anthropic 端点接受的 anthropic-beta
@@ -419,11 +461,13 @@ func defaultAPIKeyBetaHeader(body []byte) string {
 
 // The legacy streaming beta is incompatible with the stable computer and
 // browser toolsets. The per-tool eager_input_streaming field remains available.
+// Applies to Sonnet 5.5 and Haiku 5.5, which share the computer_toolset_20260801
+// / browser_toolset_20260801 toolsets (Haiku 5.5 migration guide).
 func filterSonnet55ToolsetBeta(header string, body []byte, modelID string) string {
 	if at := strings.IndexByte(modelID, '@'); at >= 0 {
 		modelID = modelID[:at] // Vertex's dated model ID
 	}
-	if !claude.IsSonnet55(modelID) {
+	if !claude.IsSonnet55(modelID) && !claude.IsHaiku55(modelID) {
 		return header
 	}
 	for _, tool := range gjson.GetBytes(body, "tools").Array() {
@@ -545,14 +589,20 @@ func (s *GatewayService) computeFinalAnthropicBeta(
 
 	if tokenType == "oauth" {
 		if mimicClaudeCode {
-			// Keep the default beta set, with a narrow opt-in for legacy structured
-			// output requests. Unknown client betas remain excluded and policy drops
-			// still take precedence over this compatibility token.
-			incomingBeta := ""
-			if containsBetaToken(clientBeta, claude.BetaStructuredOutputs) {
-				incomingBeta = claude.BetaStructuredOutputs
+			// Preserve explicitly requested compatibility tokens so the forwarded
+			// body and headers agree. Unknown betas remain excluded; policy drops
+			// still take precedence. Missing companion tokens are not inferred.
+			var incomingBetas []string
+			for _, token := range []string{
+				claude.BetaStructuredOutputs,
+				claude.BetaMidConversationToolChanges,
+				claude.BetaInlineTools,
+			} {
+				if containsBetaToken(clientBeta, token) {
+					incomingBetas = append(incomingBetas, token)
+				}
 			}
-			return mergeAnthropicBetaDropping(claude.FullClaudeCodeMimicryBetas(), incomingBeta, effectiveDropSet), true
+			return mergeAnthropicBetaDropping(claude.FullClaudeCodeMimicryBetas(), strings.Join(incomingBetas, ","), effectiveDropSet), true
 		}
 		// 真 Claude Code 客户端透传路径
 		return stripBetaTokensWithSet(s.getBetaHeader(modelID, clientBeta), effectiveDropSet), true

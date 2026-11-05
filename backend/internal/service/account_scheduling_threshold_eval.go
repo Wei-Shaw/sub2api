@@ -58,7 +58,7 @@ func EvaluateAccountSchedulingThreshold(account *Account, thresholds map[string]
 		winner = pickLatestResetSchedulingCandidate(anthropicThresholdCandidates(account), threshold, now)
 	case PlatformGrok:
 		winner = pickLatestResetSchedulingCandidate(grokThresholdCandidates(account), threshold, now)
-	case PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo:
+	case PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo, PlatformCommandCode:
 		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, decision.Platform), threshold, now)
 	default:
 		return decision
@@ -353,23 +353,31 @@ func grokThresholdCandidates(account *Account) []*accountSchedulingThresholdCand
 	}
 }
 
-// cnProviderThresholdCandidates 读取国产供应商 Coding Plan 账号的 5h / weekly 滚动窗口
-// 用量快照（由 CNProviderQuotaService 写入 account.Extra，键形如
-// <provider>_5h_used_percent / <provider>_weekly_reset_at）。payg 账号无此快照，
+// cnProviderThresholdCandidates 读取国产供应商 Coding Plan、OpenCode Go 与 Command Code
+// 账号的 5h / weekly（及月度）窗口用量快照（由 CNProviderQuotaService 写入 account.Extra，
+// 键形如 <provider>_5h_used_percent / <provider>_weekly_reset_at）。payg 账号无此快照，
 // 候选为空 → 不触发阈值停调（余额型走余额检测）。与 openai 的快照驱动停调一致：
 // 仅当用量超阈值且窗口尚未重置时才停调。
 func cnProviderThresholdCandidates(account *Account, provider string) []*accountSchedulingThresholdCandidate {
 	if account == nil || len(account.Extra) == 0 {
 		return nil
 	}
+	if provider == PlatformCommandCode && !commandCodeWindowsBinding(account.Extra) {
+		return nil
+	}
 	candidates := []*accountSchedulingThresholdCandidate{
 		cnThresholdCandidate(account.Extra, provider, "5h"),
 		cnThresholdCandidate(account.Extra, provider, "weekly"),
 	}
-	if provider == PlatformOpenCodeGo {
+	if cnQuotaHasMonthlyWindow(provider) {
 		candidates = append(candidates, cnThresholdCandidate(account.Extra, provider, "monthly"))
 	}
 	return candidates
+}
+
+// cnQuotaHasMonthlyWindow 报告供应商的额度快照是否含月度窗口（OpenCode Go、Command Code）。
+func cnQuotaHasMonthlyWindow(provider string) bool {
+	return provider == PlatformOpenCodeGo || provider == PlatformCommandCode
 }
 
 func cnThresholdCandidate(extra map[string]any, provider, window string) *accountSchedulingThresholdCandidate {

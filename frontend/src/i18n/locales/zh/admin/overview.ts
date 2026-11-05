@@ -1007,6 +1007,12 @@ export default {
         privacySetOnlyEnabled: '已启用 — Privacy 未设置的账号将被排除',
         disabled: '未启用'
       },
+      i18nField: {
+        default: '默认',
+        add: '新增 {language} 版',
+        edit: '编辑 {language} 版',
+        placeholder: '{language} 版，留空则显示默认内容'
+      },
       enterGroupName: '请输入分组名称',
       optionalDescription: '可选描述',
       platformHint: '选择此分组关联的平台',
@@ -1069,6 +1075,7 @@ export default {
         description: '配置图片生成能力和图片基础单价，留空则使用默认价格',
         allowImageGeneration: '允许当前分组生图',
         allowBatchImageGeneration: '允许当前分组批量生图',
+        perImageBilling: '按张计费',
         independentMultiplier: '生图倍率独立',
         imageMultiplier: '生图独立倍率',
         batchDiscountMultiplier: '批量生图折扣倍率',

@@ -2,6 +2,7 @@ package service
 
 import (
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -179,6 +180,8 @@ func TestStripOpenAIResponsesInputNamespaces(t *testing.T) {
 
 func TestStripOpenAIResponsesInputNamespacesLeavesOtherShapesByteExact(t *testing.T) {
 	tests := [][]byte{
+		[]byte(`{"input":[],"tools":[{"type":"namespace"}]}`),
+		[]byte(`{"input":[null,42,"namespace",{"content":{"namespace":"nested"}}]}`),
 		[]byte(`{"input":"text","namespace":"top-level"}`),
 		[]byte(`{"input":{"namespace":"single-object"}}`),
 		[]byte(`{"input":[{"content":{"namespace":"nested-only"}}],"tools":[{"namespace":"keep"}]}`),
@@ -189,6 +192,42 @@ func TestStripOpenAIResponsesInputNamespacesLeavesOtherShapesByteExact(t *testin
 			require.NoError(t, err)
 			require.Equal(t, body, stripped)
 		}
+	}
+}
+
+func TestStripOpenAIResponsesInputNamespacesPreservesUnchangedSpans(t *testing.T) {
+	for _, input := range []string{
+		`[ {"namespace":"drop","type":"message"} ]`,
+		`[ null, 9007199254740993, {"namespace":"drop","type":"message"} ]`,
+		`[ {"namespace":"drop","type":"message"}, "tail", {"content":{"namespace":"nested"}} ]`,
+		`[ {"namespace":"drop","type":"message"}, {"type":"function_call","namespace":"keep"}, {"namespace":"drop","type":"message"} ]`,
+	} {
+		t.Run(input, func(t *testing.T) {
+			body := []byte(" \n{\"prefix\":9007199254740993,\"input\":" + input + ",\"tail\":true} \n")
+			original := append([]byte(nil), body...)
+			out, err := stripOpenAIResponsesInputNamespaces(body, true)
+			require.NoError(t, err)
+			require.True(t, gjson.ValidBytes(out))
+			require.Equal(t, strings.ReplaceAll(string(body), `"namespace":"drop",`, ""), string(out))
+			require.Equal(t, original, body, "must not mutate the input body")
+		})
+	}
+}
+
+func TestStripOpenAIResponsesInputNamespacesNullAndKeptPrefix(t *testing.T) {
+	for _, keep := range []bool{false, true} {
+		body := []byte(`{"input":[null,42,"keep",{"type":"function_call","namespace":"files"},{"type":"message","namespace":null,"content":"keep"}]}`)
+		out, err := stripOpenAIResponsesInputNamespaces(body, keep)
+		require.NoError(t, err)
+		require.True(t, gjson.ValidBytes(out))
+		require.Equal(t, 5, len(gjson.GetBytes(out, "input").Array()))
+		for index := 0; index < 3; index++ {
+			path := "input." + strconv.Itoa(index)
+			require.Equal(t, gjson.GetBytes(body, path).Raw, gjson.GetBytes(out, path).Raw)
+		}
+		require.Equal(t, keep, gjson.GetBytes(out, "input.3.namespace").Exists())
+		require.False(t, gjson.GetBytes(out, "input.4.namespace").Exists())
+		require.Equal(t, "keep", gjson.GetBytes(out, "input.4.content").String())
 	}
 }
 

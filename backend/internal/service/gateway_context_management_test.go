@@ -371,6 +371,25 @@ func TestNormalizeClaudeOAuthRequestBody_HaikuShortModelStillNormalizesToDatedID
 	require.Equal(t, "claude-haiku-4-5-20251001", gjson.GetBytes(out, "model").String())
 }
 
+// issue #7919：采样锁定的模型上 temperature+top_p 共存即 400，
+// 只传 top_p 时不得再补 temperature，否则网关自己制造 400。
+func TestNormalizeClaudeOAuthRequestBody_SkipsTemperatureTopUpWithTopPOnLockedModels(t *testing.T) {
+	for _, model := range []string{"claude-haiku-5-5", "claude-sonnet-5-5"} {
+		body := []byte(`{"model":"` + model + `","top_p":0.99,"messages":[]}`)
+		out, _ := normalizeClaudeOAuthRequestBody(body, model, claudeOAuthNormalizeOptions{})
+		require.False(t, gjson.GetBytes(out, "temperature").Exists(),
+			"model %s with top_p must not gain temperature", model)
+		require.Equal(t, 0.99, gjson.GetBytes(out, "top_p").Float())
+	}
+}
+
+func TestNormalizeClaudeOAuthRequestBody_StillTopsUpTemperatureWithoutTopP(t *testing.T) {
+	body := []byte(`{"model":"claude-haiku-5-5","messages":[]}`)
+	out, _ := normalizeClaudeOAuthRequestBody(body, "claude-haiku-5-5", claudeOAuthNormalizeOptions{})
+	require.Equal(t, int64(1), gjson.GetBytes(out, "temperature").Int(),
+		"无 top_p 时 temperature:1 补齐保持不变")
+}
+
 func TestApplyClaudeCodeOAuthMimicryToBody_HaikuRewritesSystem(t *testing.T) {
 	account := &Account{ID: 405, Platform: PlatformAnthropic, Type: AccountTypeOAuth}
 	body := []byte(`{"model":"claude-haiku-4-5","system":"Pi project instructions","messages":[{"role":"user","content":"hello"}]}`)

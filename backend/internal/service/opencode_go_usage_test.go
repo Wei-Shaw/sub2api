@@ -320,7 +320,7 @@ func TestOpenCodeGoUsageRefresh401Unauthorized(t *testing.T) {
 	require.True(t, openCodeGoUsageAutoRefreshEnabled(account))
 }
 
-func TestOpenCodeGoUsageRefresh403SubscriptionRequired(t *testing.T) {
+func TestOpenCodeGoUsageRefresh403Forbidden(t *testing.T) {
 	account := openCodeGoUsageAccount(7)
 	repo := &openCodeGoUsageTestRepo{accounts: map[int64]*Account{7: account}}
 	stub := &openCodeGoUsageHTTPStub{status: http.StatusForbidden}
@@ -330,7 +330,7 @@ func TestOpenCodeGoUsageRefresh403SubscriptionRequired(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, OpenCodeGoUsageStatusFailed, state.Snapshot.Status)
 	require.Equal(t, http.StatusForbidden, state.Snapshot.HTTPStatus)
-	require.Equal(t, "OpenCode Go subscription required (403)", state.Snapshot.LastError)
+	require.Equal(t, "forbidden", state.Snapshot.LastError)
 	require.Equal(t, 1, state.Snapshot.FailureCount)
 }
 
@@ -403,9 +403,37 @@ func TestNextOpenCodeGoUsageDelayBackoff(t *testing.T) {
 	delay = nextOpenCodeGoUsageDelay(15, 0, 2*time.Hour)
 	require.GreaterOrEqual(t, delay, 2*time.Hour)
 
+	// a hint beyond the 24h ceiling is clamped, never adopted verbatim
+	delay = nextOpenCodeGoUsageDelay(15, 0, 48*time.Hour)
+	require.GreaterOrEqual(t, delay, 23*time.Hour+55*time.Minute)
+	require.LessOrEqual(t, delay, 24*time.Hour+5*time.Minute)
+
 	// floor of one minute
 	delay = nextOpenCodeGoUsageDelay(5, 0, 0)
 	require.GreaterOrEqual(t, delay, time.Minute)
+}
+
+func TestOpenCodeGoUsageRefreshClampsHugeRetryAfter(t *testing.T) {
+	now := time.Now().UTC()
+	account := openCodeGoUsageAccount(7)
+	repo := &openCodeGoUsageTestRepo{accounts: map[int64]*Account{7: account}}
+	stub := &openCodeGoUsageHTTPStub{
+		status: http.StatusTooManyRequests,
+		header: http.Header{"Retry-After": []string{"99999999"}},
+	}
+	svc := newOpenCodeGoUsageTestService(t, repo, stub, &upstreamBillingProbeSettingRepo{})
+	svc.now = func() time.Time { return now }
+
+	state, err := svc.Refresh(context.Background(), 7)
+	require.NoError(t, err)
+	require.Equal(t, OpenCodeGoUsageStatusFailed, state.Snapshot.Status)
+	require.Equal(t, http.StatusTooManyRequests, state.Snapshot.HTTPStatus)
+	require.Equal(t, "http_error", state.Snapshot.LastError)
+
+	maxExpected := now.Add(24*time.Hour + 5*time.Minute)
+	minExpected := now.Add(23*time.Hour + 55*time.Minute)
+	require.True(t, state.Snapshot.NextRefreshAt.Before(maxExpected.Add(time.Second)))
+	require.True(t, state.Snapshot.NextRefreshAt.After(minExpected.Add(-time.Second)))
 }
 
 func TestOpenCodeGoUsageManualRefreshThrottle(t *testing.T) {

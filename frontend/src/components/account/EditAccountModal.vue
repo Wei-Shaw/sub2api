@@ -53,10 +53,10 @@
             @select="editBaseUrl = $event"
           />
           <CnBaseUrlPresets
-            v-if="isCNApiKeyAccount && account.platform !== 'opencode_go'"
+            v-if="isCNApiKeyAccount && isCNProviderPlatform(account.platform)"
             class="mt-2"
             :platform="cnPresetPlatform"
-            :mode="editAccountMode"
+            :mode="cnPresetMode"
             :protocol="editApiProtocol"
             :current-url="editBaseUrl"
             @select="onCnPresetSelect"
@@ -72,7 +72,7 @@
               <input v-model="editAdaptiveBaseUrls[item.value]" type="text" class="input" />
             </div>
           </div>
-          <p v-if="!cnSupportsNativeResponses(account.platform)" class="input-hint">
+          <p v-if="!cnSupportsNativeResponses(account.platform, currentOpenCodeOrCNMode())" class="input-hint">
             {{ t('admin.accounts.cnProviders.apiProtocol.responsesFallbackDesc') }}
           </p>
         </div>
@@ -128,8 +128,28 @@
             </button>
           </div>
         </div>
+        <!-- Account Mode Selection (providers using the generic form) -->
+        <div v-if="isGenericMultiProtocolAccount && genericAccountModes.length > 1" data-testid="edit-generic-account-mode">
+          <label class="input-label">{{ t('admin.accounts.cnProviders.accountMode.title') }}</label>
+          <div class="mt-2 flex flex-wrap gap-2">
+            <button
+              v-for="mode in genericAccountModes"
+              :key="mode"
+              type="button"
+              :class="[
+                'rounded-lg border-2 px-3 py-1.5 text-xs transition-all',
+                editAccountMode === mode
+                  ? 'border-primary-500 bg-primary-50 font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300'
+                  : 'border-gray-200 text-gray-700 hover:border-gray-400 dark:border-dark-600 dark:text-gray-300 dark:hover:border-gray-600'
+              ]"
+              @click="editAccountMode = mode"
+            >
+              {{ providerModeLabel(mode, t) }}
+            </button>
+          </div>
+        </div>
         <!-- Account Mode Selection (CN providers) -->
-        <div v-if="isCNApiKeyAccount && account.platform !== 'opencode_go'">
+        <div v-if="isCNApiKeyAccount && isCNProviderPlatform(account.platform)">
           <label class="input-label">{{ t('admin.accounts.cnProviders.accountMode.title') }}</label>
           <div class="mt-2 flex flex-wrap gap-2">
             <button
@@ -171,9 +191,10 @@
           <p class="input-hint">{{ t(`admin.accounts.cnProviders.apiProtocol.${cnProtocolDescKey}Desc`) }}</p>
         </div>
         <OpenCodeGoProtocolRulesEditor
-          v-if="account.platform === 'opencode_go' && editApiProtocol === 'adaptive'"
+          v-if="isCNApiKeyAccount && providerRoutesByModel(account.platform) && editApiProtocol === 'adaptive'"
           v-model:rows="editOpenCodeGoProtocolRules"
-          :plan="editOpenCodeAccountMode"
+          :platform="account.platform"
+          :plan="currentOpenCodeOrCNMode()"
         />
         <!-- Zhipu 团队版 Coding Plan：组织/项目 ID（可选，填写后用量查询走团队版端点） -->
         <div v-if="account.platform === 'zhipu' && editAccountMode === 'coding'">
@@ -218,7 +239,7 @@
               account.platform === 'openai'
                 ? 'sk-proj-...'
                 : account.platform === 'gemini'
-                  ? 'AIza...'
+                  ? 'AQ.Ab...'
                   : account.platform === 'antigravity'
                     ? 'sk-...'
                     : account.platform === 'grok'
@@ -230,7 +251,11 @@
         </div>
 
         <!-- Model Restriction Section (不适用于 Antigravity) -->
-        <div v-if="account.platform !== 'antigravity'" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div
+          v-if="account.platform !== 'antigravity'"
+          class="border-t border-gray-200 pt-4 dark:border-dark-600"
+          :data-testid="account.platform === 'grok' ? 'grok-model-settings' : undefined"
+        >
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
           <div
@@ -244,18 +269,32 @@
 
           <template v-else>
             <!-- Mode Toggle -->
-            <div class="mb-4 flex gap-2">
+            <div
+              :data-testid="account.platform === 'grok' ? 'grok-model-mode-tabs' : undefined"
+              :class="account.platform === 'grok'
+                ? 'mb-4 flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-dark-900'
+                : 'mb-4 flex gap-2'"
+            >
               <button
                 type="button"
                 @click="modelRestrictionMode = 'whitelist'"
-                :class="[
-                  'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-                  modelRestrictionMode === 'whitelist'
-                    ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
-                ]"
+                :aria-pressed="account.platform === 'grok' ? modelRestrictionMode === 'whitelist' : undefined"
+                :class="account.platform === 'grok'
+                  ? [
+                      'rounded-lg px-3 py-2 text-sm',
+                      modelRestrictionMode === 'whitelist'
+                        ? 'bg-white text-cyan-700 shadow-sm dark:bg-dark-800 dark:text-cyan-300'
+                        : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100'
+                    ]
+                  : [
+                      'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                      modelRestrictionMode === 'whitelist'
+                        ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                    ]"
               >
                 <svg
+                  v-if="account.platform !== 'grok'"
                   class="mr-1.5 inline h-4 w-4"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -273,14 +312,23 @@
               <button
                 type="button"
                 @click="modelRestrictionMode = 'mapping'"
-                :class="[
-                  'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-                  modelRestrictionMode === 'mapping'
-                    ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
-                ]"
+                :aria-pressed="account.platform === 'grok' ? modelRestrictionMode === 'mapping' : undefined"
+                :class="account.platform === 'grok'
+                  ? [
+                      'rounded-lg px-3 py-2 text-sm',
+                      modelRestrictionMode === 'mapping'
+                        ? 'bg-white text-purple-700 shadow-sm dark:bg-dark-800 dark:text-purple-300'
+                        : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100'
+                    ]
+                  : [
+                      'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                      modelRestrictionMode === 'mapping'
+                        ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                        : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                    ]"
               >
                 <svg
+                  v-if="account.platform !== 'grok'"
                   class="mr-1.5 inline h-4 w-4"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -297,9 +345,31 @@
               </button>
             </div>
 
+            <GrokModelDiagnosticsPanel
+              v-if="account.platform === 'grok'"
+              :key="'grok-diagnostics-' + account.id"
+              :diagnostics="grokDiagnostics"
+              :loading="diagnosticsLoading"
+              :dirty="grokDiagnosticsDirty"
+              :refresh-failed="diagnosticsRefreshFailed"
+              :can-sync="Boolean(account.id)"
+              :syncing="isGrokCatalogSyncing"
+              @sync="requestGrokCatalogSync"
+            />
+
+            <ModelWhitelistSelector
+              ref="grokApiKeyWhitelistRef"
+              v-show="modelRestrictionMode === 'whitelist'"
+              v-model="allowedModels"
+              :model-mappings="modelMappings"
+              :platform="account?.platform || 'anthropic'"
+              :account-id="account?.id"
+              :show-sync-button="account.platform !== 'grok' || !account.id"
+              @upstream-sync-finished="refreshGrokDiagnostics"
+            />
+
             <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
-              <ModelWhitelistSelector v-model="allowedModels" :model-mappings="modelMappings" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
                 <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -309,10 +379,11 @@
             </div>
 
             <!-- Mapping Mode -->
-            <div v-else>
-              <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
-                <p class="text-xs text-purple-700 dark:text-purple-400">
+            <div v-else :data-testid="account.platform === 'grok' ? 'grok-model-mapping-editor' : undefined">
+              <div :class="account.platform === 'grok' ? 'mb-3' : 'mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20'">
+                <p :class="account.platform === 'grok' ? 'text-xs text-gray-500 dark:text-dark-400' : 'text-xs text-purple-700 dark:text-purple-400'">
                   <svg
+                    v-if="account.platform !== 'grok'"
                     class="mr-1 inline h-4 w-4"
                     fill="none"
                     viewBox="0 0 24 24"
@@ -329,20 +400,41 @@
                 </p>
               </div>
 
+              <div
+                v-if="account.platform === 'grok'"
+                class="mb-1.5 grid grid-cols-[minmax(0,1fr)_1rem_minmax(0,1.2fr)_2rem] gap-1.5 text-xs text-gray-500 dark:text-dark-400 sm:gap-2"
+              >
+                <span>{{ t('admin.accounts.grokModelDiagnostics.requestColumn') }}</span>
+                <span></span>
+                <span>{{ t('admin.accounts.grokModelDiagnostics.targetColumn') }}</span>
+              </div>
+
             <!-- Model Mapping List -->
             <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
               <div
                 v-for="(mapping, index) in modelMappings"
                 :key="getModelMappingKey(mapping)"
-                class="flex items-center gap-2"
+                :data-testid="account.platform === 'grok' ? 'grok-model-mapping-row' : undefined"
+                :class="account.platform === 'grok'
+                  ? 'grid grid-cols-[minmax(0,1fr)_1rem_minmax(0,1.2fr)_2rem] items-center gap-1.5 sm:gap-2'
+                  : 'flex items-center gap-2'"
               >
                 <input
                   v-model="mapping.from"
                   type="text"
-                  class="input flex-1"
+                  :aria-label="account.platform === 'grok' ? t('admin.accounts.grokModelDiagnostics.mappingFromAria', { index: index + 1 }) : undefined"
+                  :class="account.platform === 'grok' ? 'input min-w-0 w-full font-mono text-xs' : 'input flex-1'"
                   :placeholder="t('admin.accounts.requestModel')"
                 />
+                <Icon
+                  v-if="account.platform === 'grok'"
+                  name="arrowRight"
+                  size="sm"
+                  aria-hidden="true"
+                  class="w-4 shrink-0 text-gray-400"
+                />
                 <svg
+                  v-else
                   class="h-4 w-4 flex-shrink-0 text-gray-400"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -358,15 +450,20 @@
                 <input
                   v-model="mapping.to"
                   type="text"
-                  class="input flex-1"
+                  :aria-label="account.platform === 'grok' ? t('admin.accounts.grokModelDiagnostics.mappingTargetAria', { index: index + 1 }) : undefined"
+                  :class="account.platform === 'grok' ? 'input min-w-0 w-full font-mono text-xs' : 'input flex-1'"
                   :placeholder="t('admin.accounts.actualModel')"
                 />
                 <button
                   type="button"
                   @click="removeModelMapping(index)"
-                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                  :aria-label="account.platform === 'grok' ? t('admin.accounts.grokModelDiagnostics.removeMappingAria', { index: index + 1 }) : undefined"
+                  :class="account.platform === 'grok'
+                    ? 'rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-gray-400 dark:hover:bg-dark-700'
+                    : 'rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20'"
                 >
-                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <Icon v-if="account.platform === 'grok'" name="trash" size="sm" aria-hidden="true" />
+                  <svg v-else class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
@@ -381,7 +478,10 @@
             <button
               type="button"
               @click="addModelMapping"
-              class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300"
+              :data-testid="account.platform === 'grok' ? 'grok-model-mapping-add' : undefined"
+              :class="account.platform === 'grok'
+                ? 'mb-3 inline-flex items-center gap-1 py-2 text-xs text-primary-700 dark:text-primary-300'
+                : 'mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300'"
             >
               <svg
                 class="mr-1 inline h-4 w-4"
@@ -475,6 +575,48 @@
             />
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.poolModeRetryStatusCodesHint', { default: DEFAULT_POOL_MODE_RETRY_STATUS_CODES.join(', ') }) }}
+            </p>
+          </div>
+        </div>
+
+        <!-- Gemini 显式缓存上游开关：仅自定义地址的 Gemini API Key 账号 -->
+        <div
+          v-if="account.platform === 'gemini' && !isOfficialGeminiBaseUrl(editBaseUrl)"
+          class="border-t border-gray-200 pt-4 dark:border-dark-600"
+          data-testid="explicit-cache-upstream-section"
+        >
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.explicitCacheUpstream') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.explicitCacheUpstreamHint') }}
+              </p>
+            </div>
+            <Toggle
+              v-model="explicitCacheUpstreamEnabled"
+              data-testid="explicit-cache-upstream-toggle"
+              :aria-label="t('admin.accounts.explicitCacheUpstream')"
+            />
+          </div>
+          <div v-if="explicitCacheUpstreamEnabled" class="mt-3 rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
+            <p class="text-xs text-blue-700 dark:text-blue-400">
+              <Icon name="exclamationCircle" size="sm" class="mr-1 inline" :stroke-width="2" />
+              {{ t('admin.accounts.explicitCacheUpstreamInfo') }}
+            </p>
+          </div>
+          <div v-if="explicitCacheUpstreamEnabled" class="mt-3">
+            <label class="input-label">{{ t('admin.accounts.explicitCacheUpstreamMaxTTL') }}</label>
+            <input
+              v-model="explicitCacheUpstreamMaxTTL"
+              data-testid="explicit-cache-upstream-max-ttl"
+              type="number"
+              min="1"
+              step="1"
+              class="input"
+              placeholder="86400"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.explicitCacheUpstreamMaxTTLHint') }}
             </p>
           </div>
         </div>
@@ -736,6 +878,7 @@
       <div
         v-if="(account.platform === 'openai' || account.platform === 'grok') && account.type === 'oauth'"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        :data-testid="account.platform === 'grok' ? 'grok-model-settings' : undefined"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
@@ -750,36 +893,79 @@
 
         <template v-else>
           <!-- Mode Toggle -->
-          <div class="mb-4 flex gap-2">
+          <div
+            :data-testid="account.platform === 'grok' ? 'grok-model-mode-tabs' : undefined"
+            :class="account.platform === 'grok'
+              ? 'mb-4 flex gap-1 rounded-xl bg-gray-100 p-1 dark:bg-dark-900'
+              : 'mb-4 flex gap-2'"
+          >
             <button
               type="button"
               @click="modelRestrictionMode = 'whitelist'"
-              :class="[
-                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-                modelRestrictionMode === 'whitelist'
-                  ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
-              ]"
+              :aria-pressed="account.platform === 'grok' ? modelRestrictionMode === 'whitelist' : undefined"
+              :class="account.platform === 'grok'
+                ? [
+                    'rounded-lg px-3 py-2 text-sm',
+                    modelRestrictionMode === 'whitelist'
+                      ? 'bg-white text-cyan-700 shadow-sm dark:bg-dark-800 dark:text-cyan-300'
+                      : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100'
+                  ]
+                : [
+                    'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                    modelRestrictionMode === 'whitelist'
+                      ? 'bg-primary-100 text-primary-700 dark:bg-primary-900/30 dark:text-primary-400'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                  ]"
             >
               {{ t('admin.accounts.modelWhitelist') }}
             </button>
             <button
               type="button"
               @click="modelRestrictionMode = 'mapping'"
-              :class="[
-                'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
-                modelRestrictionMode === 'mapping'
-                  ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
-              ]"
+              :aria-pressed="account.platform === 'grok' ? modelRestrictionMode === 'mapping' : undefined"
+              :class="account.platform === 'grok'
+                ? [
+                    'rounded-lg px-3 py-2 text-sm',
+                    modelRestrictionMode === 'mapping'
+                      ? 'bg-white text-purple-700 shadow-sm dark:bg-dark-800 dark:text-purple-300'
+                      : 'text-gray-600 hover:text-gray-900 dark:text-gray-300 dark:hover:text-gray-100'
+                  ]
+                : [
+                    'flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-all',
+                    modelRestrictionMode === 'mapping'
+                      ? 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-600 dark:text-gray-400 dark:hover:bg-dark-500'
+                  ]"
             >
               {{ t('admin.accounts.modelMapping') }}
             </button>
           </div>
 
+          <GrokModelDiagnosticsPanel
+            v-if="account.platform === 'grok'"
+            :key="'grok-diagnostics-' + account.id"
+            :diagnostics="grokDiagnostics"
+            :loading="diagnosticsLoading"
+            :dirty="grokDiagnosticsDirty"
+            :refresh-failed="diagnosticsRefreshFailed"
+            :can-sync="Boolean(account.id)"
+            :syncing="isGrokCatalogSyncing"
+            @sync="requestGrokCatalogSync"
+          />
+
+          <ModelWhitelistSelector
+            ref="grokOAuthWhitelistRef"
+            v-show="modelRestrictionMode === 'whitelist'"
+            v-model="allowedModels"
+            :model-mappings="modelMappings"
+            :platform="account?.platform || 'anthropic'"
+            :account-id="account?.id"
+            :show-sync-button="account.platform !== 'grok' || !account.id"
+            @upstream-sync-finished="refreshGrokDiagnostics"
+          />
+
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :model-mappings="modelMappings" :platform="account?.platform || 'anthropic'" :account-id="account?.id" />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0 && modelMappings.length === 0">{{
@@ -789,26 +975,47 @@
           </div>
 
           <!-- Mapping Mode -->
-          <div v-else>
-            <div class="mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20">
-              <p class="text-xs text-purple-700 dark:text-purple-400">
+          <div v-else :data-testid="account.platform === 'grok' ? 'grok-model-mapping-editor' : undefined">
+            <div :class="account.platform === 'grok' ? 'mb-3' : 'mb-3 rounded-lg bg-purple-50 p-3 dark:bg-purple-900/20'">
+              <p :class="account.platform === 'grok' ? 'text-xs text-gray-500 dark:text-dark-400' : 'text-xs text-purple-700 dark:text-purple-400'">
                 {{ t('admin.accounts.mapRequestModels') }}
               </p>
+            </div>
+
+            <div
+              v-if="account.platform === 'grok'"
+              class="mb-1.5 grid grid-cols-[minmax(0,1fr)_1rem_minmax(0,1.2fr)_2rem] gap-1.5 text-xs text-gray-500 dark:text-dark-400 sm:gap-2"
+            >
+              <span>{{ t('admin.accounts.grokModelDiagnostics.requestColumn') }}</span>
+              <span></span>
+              <span>{{ t('admin.accounts.grokModelDiagnostics.targetColumn') }}</span>
             </div>
 
             <div v-if="modelMappings.length > 0" class="mb-3 space-y-2">
               <div
                 v-for="(mapping, index) in modelMappings"
                 :key="'oauth-' + getModelMappingKey(mapping)"
-                class="flex items-center gap-2"
+                :data-testid="account.platform === 'grok' ? 'grok-model-mapping-row' : undefined"
+                :class="account.platform === 'grok'
+                  ? 'grid grid-cols-[minmax(0,1fr)_1rem_minmax(0,1.2fr)_2rem] items-center gap-1.5 sm:gap-2'
+                  : 'flex items-center gap-2'"
               >
                 <input
                   v-model="mapping.from"
                   type="text"
-                  class="input flex-1"
+                  :aria-label="account.platform === 'grok' ? t('admin.accounts.grokModelDiagnostics.mappingFromAria', { index: index + 1 }) : undefined"
+                  :class="account.platform === 'grok' ? 'input min-w-0 w-full font-mono text-xs' : 'input flex-1'"
                   :placeholder="t('admin.accounts.requestModel')"
                 />
+                <Icon
+                  v-if="account.platform === 'grok'"
+                  name="arrowRight"
+                  size="sm"
+                  aria-hidden="true"
+                  class="w-4 shrink-0 text-gray-400"
+                />
                 <svg
+                  v-else
                   class="h-4 w-4 flex-shrink-0 text-gray-400"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -824,15 +1031,20 @@
                 <input
                   v-model="mapping.to"
                   type="text"
-                  class="input flex-1"
+                  :aria-label="account.platform === 'grok' ? t('admin.accounts.grokModelDiagnostics.mappingTargetAria', { index: index + 1 }) : undefined"
+                  :class="account.platform === 'grok' ? 'input min-w-0 w-full font-mono text-xs' : 'input flex-1'"
                   :placeholder="t('admin.accounts.actualModel')"
                 />
                 <button
                   type="button"
                   @click="removeModelMapping(index)"
-                  class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
+                  :aria-label="account.platform === 'grok' ? t('admin.accounts.grokModelDiagnostics.removeMappingAria', { index: index + 1 }) : undefined"
+                  :class="account.platform === 'grok'
+                    ? 'rounded-lg p-1.5 text-gray-500 hover:bg-gray-100 focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-gray-400 dark:hover:bg-dark-700'
+                    : 'rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20'"
                 >
-                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <Icon v-if="account.platform === 'grok'" name="trash" size="sm" aria-hidden="true" />
+                  <svg v-else class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
@@ -847,7 +1059,10 @@
             <button
               type="button"
               @click="addModelMapping"
-              class="mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300"
+              :data-testid="account.platform === 'grok' ? 'grok-model-mapping-add' : undefined"
+              :class="account.platform === 'grok'
+                ? 'mb-3 inline-flex items-center gap-1 py-2 text-xs text-primary-700 dark:text-primary-300'
+                : 'mb-3 w-full rounded-lg border-2 border-dashed border-gray-300 px-4 py-2 text-gray-600 transition-colors hover:border-gray-400 hover:text-gray-700 dark:border-dark-500 dark:text-gray-400 dark:hover:border-dark-400 dark:hover:text-gray-300'"
             >
               + {{ t('admin.accounts.addMapping') }}
             </button>
@@ -894,8 +1109,30 @@
 
       <!-- Vertex Service Account -->
       <div v-if="(account.platform === 'gemini' || account.platform === 'anthropic') && account.type === 'service_account'" class="space-y-4">
+        <div v-if="isVertexAPIKeyMode">
+          <label class="input-label">API Key</label>
+          <input
+            v-model="editVertexApiKey"
+            type="password"
+            class="input font-mono"
+            data-testid="edit-vertex-api-key-input"
+            :placeholder="t('admin.accounts.leaveEmptyToKeep')"
+          />
+          <p class="input-hint">{{ t('admin.accounts.vertexApiKeyHint') }}</p>
+        </div>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
+          <div v-if="isVertexAPIKeyMode">
+            <label class="input-label">Project ID</label>
+            <input
+              v-model="editVertexProjectId"
+              type="text"
+              class="input font-mono"
+              data-testid="edit-vertex-api-key-project-id-input"
+              :placeholder="t('admin.accounts.vertexApiKeyProjectIdPlaceholder')"
+            />
+            <p class="input-hint">{{ t('admin.accounts.vertexApiKeyProjectIdHint') }}</p>
+          </div>
+          <div v-else>
             <label class="input-label">Project ID</label>
             <input
               v-model="editVertexProjectId"
@@ -906,7 +1143,7 @@
             />
             <p class="input-hint">{{ t('admin.accounts.vertexSaJsonEditHint') }}</p>
           </div>
-          <div>
+          <div v-if="!isVertexAPIKeyMode || editVertexProjectId.trim()">
             <label class="input-label">Location</label>
             <select
               v-model="editVertexLocation"
@@ -1537,6 +1774,44 @@
                   />
                 </div>
                 <div class="sm:col-span-2">
+                  <label class="input-label">{{ t('admin.accounts.tempUnschedulable.scope') }}</label>
+                  <div
+                    class="grid grid-cols-1 gap-2 sm:grid-cols-2"
+                    role="radiogroup"
+                    :aria-label="t('admin.accounts.tempUnschedulable.scope')"
+                  >
+                    <button
+                      v-for="option in tempUnschedScopeOptions"
+                      :key="option.value"
+                      type="button"
+                      role="radio"
+                      :aria-checked="rule.scope === option.value"
+                      :data-testid="`temp-unsched-scope-${option.value}`"
+                      @click="rule.scope = option.value"
+                      :class="[
+                        'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+                        rule.scope === option.value
+                          ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                          : 'border-gray-200 hover:border-gray-400 dark:border-dark-600 dark:hover:border-gray-600'
+                      ]"
+                    >
+                      <span
+                        :class="[
+                          'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2',
+                          rule.scope === option.value ? 'border-primary-500' : 'border-gray-300 dark:border-dark-500'
+                        ]"
+                      >
+                        <span v-if="rule.scope === option.value" class="h-1.5 w-1.5 rounded-full bg-primary-500" />
+                      </span>
+                      <span>
+                        <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ option.label }}</span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400">{{ option.description }}</span>
+                      </span>
+                    </button>
+                  </div>
+                  <p class="input-hint">{{ t('admin.accounts.tempUnschedulable.scopeHint') }}</p>
+                </div>
+                <div class="sm:col-span-2">
                   <label class="input-label">{{ t('admin.accounts.tempUnschedulable.keywords') }}</label>
                   <input
                     v-model="rule.keywords"
@@ -1968,6 +2243,14 @@
         </button>
       </div>
 
+      <!-- OpenAI images: size tier routing -->
+      <div
+        v-if="account?.platform === 'openai'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <OpenAIImageSizeTiersField v-model="openAIImageSizeTiers" />
+      </div>
+
       <div
         v-if="account?.type === 'apikey'"
         class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -2125,9 +2408,9 @@
         </div>
       </div>
 
-      <!-- Anthropic API Key: Web Search Emulation (hidden when global disabled) -->
+      <!-- Anthropic / OpenAI API Key: Web Search Emulation (hidden when global disabled) -->
       <div
-        v-if="account?.platform === 'anthropic' && account?.type === 'apikey' && webSearchGlobalEnabled"
+        v-if="(account?.platform === 'anthropic' || account?.platform === 'openai') && account?.type === 'apikey' && webSearchGlobalEnabled"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <div class="flex items-center justify-between">
@@ -2196,9 +2479,9 @@
           @update:quotaNotifyTotalThresholdType="quotaNotifyState.total.thresholdType = $event"
         />
       </div>
-      <!-- 配额控制 (非 Anthropic apikey/bedrock) -->
+      <!-- 配额控制 (非 Anthropic apikey/bedrock，以及 Vertex service_account) -->
       <div
-        v-else-if="account?.type === 'apikey' || account?.type === 'bedrock'"
+        v-else-if="supportsAccountQuota(account?.type)"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
       >
         <div class="mb-3">
@@ -3104,7 +3387,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, nextTick, onMounted } from 'vue'
+import { ref, reactive, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 
@@ -3122,23 +3405,38 @@ import type {
   OllamaCloudUsageState,
   GrokMediaEligibilityMode,
   GrokMediaEligibilityState,
+  GrokModelDiagnostics,
   OpenCodeGoUsageState,
-  OpenCodeGoUsageWindow
+  OpenCodeGoUsageWindow,
+  TempUnschedulableScope
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
+import OpenAIImageSizeTiersField from '@/components/account/OpenAIImageSizeTiersField.vue'
+import {
+  OPENAI_IMAGE_SIZE_TIERS,
+  applyOpenAIImageSizeTiersToExtra,
+  readOpenAIImageSizeTiers,
+  type OpenAIImageSizeTier
+} from '@/components/account/openaiImageSizeTiers'
 import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import GrokModelDiagnosticsPanel from '@/components/account/GrokModelDiagnosticsPanel.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
+import {
+  applyExplicitCacheUpstreamCredentials,
+  isOfficialGeminiBaseUrl,
+  normalizeExplicitCacheUpstreamMaxTTL
+} from '@/utils/geminiExplicitCache'
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
@@ -3151,7 +3449,14 @@ import {
   buildPlanTypeOptions,
   cloneOpenCodeGoProtocolRules,
   defaultOpenCodeProtocolRules,
+  defaultProviderProtocolRules,
+  isMultiProtocolApiKeyPlatform,
   parseOpenCodeGoProtocolRules,
+  providerAccountModes,
+  providerModeLabel,
+  providerNativeProtocols,
+  providerRoutesByModel,
+  resolveProviderAccountMode,
   readPlanType,
   resolveOpenCodeAccountMode,
   isCustomGrokBaseUrl,
@@ -3180,6 +3485,7 @@ import {
 } from '@/utils/format'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
+import { supportsAccountQuota } from '@/utils/accountQuota'
 import { getAccountExpiryTimestamp } from '@/components/account/accountExpiry'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
@@ -3346,6 +3652,8 @@ interface TempUnschedRuleForm {
   keywords: string
   duration_minutes: number | null
   description: string
+  // 作用范围：account 暂停整个账号，model 只冷却本次请求的模型。
+  scope: TempUnschedulableScope
 }
 
 // State
@@ -3356,11 +3664,18 @@ const editApiKey = ref('')
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
 // account_mode 决定额度/余额监控路径，api_protocol 决定转发端点与格式；
 // 二者均可修正（早期创建的账号可能存错默认值），切换时重置 base_url 预置。
+// 覆盖全部多协议 API Key 供应商（国产厂商、OpenCode 与走通用表单的供应商）。
 const isCNApiKeyAccount = computed(
-  () =>
-    props.account?.type === 'apikey' &&
-    (isCNProviderPlatform(props.account.platform) || props.account.platform === 'opencode_go')
+  () => props.account?.type === 'apikey' && isMultiProtocolApiKeyPlatform(props.account.platform)
 )
+// 前端没有专属界面、走通用表单的多协议供应商：模式 / 协议 / 默认端点来自 profile。
+const isGenericMultiProtocolAccount = computed(
+  () =>
+    isCNApiKeyAccount.value &&
+    !isCNProviderPlatform(props.account?.platform ?? '') &&
+    props.account?.platform !== 'opencode_go'
+)
+const genericAccountModes = computed(() => providerAccountModes(props.account?.platform ?? ''))
 // CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
 // `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
 const cnPresetPlatform = computed<CnProviderPlatform>(() => {
@@ -3370,15 +3685,18 @@ const cnPresetPlatform = computed<CnProviderPlatform>(() => {
   }
   return 'kimi'
 })
-const adaptivePresetPlatform = computed<CnProviderPlatform | 'opencode_go'>(() => {
-  if (props.account?.platform === 'opencode_go') return 'opencode_go'
+const adaptivePresetPlatform = computed<string>(() => {
+  if (isCNApiKeyAccount.value) return props.account!.platform
   return cnPresetPlatform.value
 })
 const editApiProtocol = ref<CnApiProtocol>('adaptive')
 const editOpenCodeGoProtocolRules = ref<OpenCodeGoProtocolRule[]>(cloneOpenCodeGoProtocolRules())
-const editAccountMode = ref<CnAccountMode>('payg')
+// 多协议供应商（国产厂商与走通用表单的供应商）的接入模式；OpenCode 用 editOpenCodeAccountMode。
+const editAccountMode = ref<string>('payg')
 const editOpenCodeAccountMode = ref<OpenCodeAccountMode>('go')
-function currentOpenCodeOrCNMode(): CnAccountMode | OpenCodeAccountMode {
+// 国产厂商的接入模式只有 payg / coding。
+const cnPresetMode = computed<CnAccountMode>(() => (editAccountMode.value === 'coding' ? 'coding' : 'payg'))
+function currentOpenCodeOrCNMode(): string {
   return props.account?.platform === 'opencode_go' ? editOpenCodeAccountMode.value : editAccountMode.value
 }
 // 智谱团队版 Coding Plan：组织/项目 ID，写入 credentials 供额度探测切换团队端点
@@ -3406,25 +3724,22 @@ const cnAccountModeOptions = computed<Array<{ value: CnAccountMode; labelKey: 'p
     ]
   }
 )
-const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: string }>>(() => {
-  const opts: Array<{ value: CnApiProtocol; labelKey: string }> = [
-    { value: 'adaptive', labelKey: 'adaptive' },
-    { value: 'chat_completions', labelKey: 'chatCompletions' },
-    { value: 'anthropic', labelKey: 'anthropic' }
-  ]
-  if (cnSupportsNativeResponses(props.account?.platform ?? '')) {
-    opts.push({ value: 'responses', labelKey: 'responses' })
-  }
-  return opts
-})
-const editAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol; labelKey: string }>>(() => {
-  const opts: Array<{ value: CnNativeApiProtocol; labelKey: string }> = [
-    { value: 'chat_completions', labelKey: 'chatCompletions' },
-    { value: 'anthropic', labelKey: 'anthropic' }
-  ]
-  if (cnSupportsNativeResponses(props.account?.platform ?? '')) opts.push({ value: 'responses', labelKey: 'responses' })
-  return opts
-})
+const NATIVE_PROTOCOL_LABEL_KEYS: Record<CnNativeApiProtocol, string> = {
+  chat_completions: 'chatCompletions',
+  anthropic: 'anthropic',
+  responses: 'responses'
+}
+// 当前供应商与接入模式提供原生端点的协议（profile 中有默认基址的协议）。
+const editAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol; labelKey: string }>>(() =>
+  providerNativeProtocols(props.account?.platform ?? '', currentOpenCodeOrCNMode()).map(value => ({
+    value,
+    labelKey: NATIVE_PROTOCOL_LABEL_KEYS[value]
+  }))
+)
+const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: string }>>(() => [
+  { value: 'adaptive', labelKey: 'adaptive' },
+  ...editAdaptiveProtocolOptions.value
+])
 watch(editApiProtocol, (protocol, previousProtocol) => {
   if (!isCNApiKeyAccount.value || syncingForm.value) return
   if (protocol === 'adaptive') {
@@ -3448,11 +3763,19 @@ watch(editApiProtocol, (protocol, previousProtocol) => {
 watch(editAccountMode, (mode, previousMode) => {
   if (!isCNApiKeyAccount.value || syncingForm.value) return
   if (props.account?.platform === 'opencode_go') return
-  // deepseek 无 coding 套餐：防御性回退（UI 已隐藏该选项）。
-  const effectiveMode = props.account!.platform === 'deepseek' && mode === 'coding' ? 'payg' : mode
+  // 供应商没有的接入模式（如 deepseek 无 coding 套餐）防御性回退默认模式（UI 已隐藏该选项）。
+  const effectiveMode = resolveProviderAccountMode(props.account!.platform, mode)
   if (effectiveMode !== mode) {
     editAccountMode.value = effectiveMode
     return
+  }
+  if (providerRoutesByModel(props.account!.platform)) {
+    const previousRules = JSON.stringify(defaultProviderProtocolRules(props.account!.platform, previousMode))
+    if (JSON.stringify(editOpenCodeGoProtocolRules.value) === previousRules) {
+      editOpenCodeGoProtocolRules.value = cloneOpenCodeGoProtocolRules(
+        defaultProviderProtocolRules(props.account!.platform, mode)
+      )
+    }
   }
   if (editApiProtocol.value === 'adaptive') {
     const previousDefaults = defaultCNAdaptiveBaseUrls(adaptivePresetPlatform.value, previousMode)
@@ -3505,6 +3828,12 @@ const editBedrockApiKeyValue = ref('')
 const editVertexProjectId = ref('')
 const editVertexClientEmail = ref('')
 const editVertexLocation = ref('us-central1')
+const editVertexApiKey = ref('')
+const isVertexAPIKeyMode = computed(() =>
+  props.account?.platform === 'gemini' &&
+  props.account?.type === 'service_account' &&
+  (props.account?.credentials as Record<string, unknown>)?.auth_mode === 'apikey'
+)
 const isBedrockAPIKeyMode = computed(() =>
   props.account?.type === 'bedrock' &&
   (props.account?.credentials as Record<string, unknown>)?.auth_mode === 'apikey'
@@ -3518,6 +3847,8 @@ const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
 const GROK_CLIENT_TOOL_CACHE_EXTRA_KEY = 'grok_client_tool_cache_enabled'
 const poolModeEnabled = ref(false)
+const explicitCacheUpstreamEnabled = ref(false)
+const explicitCacheUpstreamMaxTTL = ref<string | number>('')
 const poolModeRetryCount = ref(DEFAULT_POOL_MODE_RETRY_COUNT)
 const poolModeRetryStatusCodesInput = ref('')
 
@@ -3565,6 +3896,152 @@ const headerOverrideCapable = computed(
 // Grok OAuth 自定义上游地址（仅转发端点；OAuth 授权/令牌刷新不受影响）
 const grokOAuthCustomBaseUrlEnabled = ref(false)
 const grokOAuthBaseUrl = ref('')
+const grokDiagnostics = ref<GrokModelDiagnostics | null>(null)
+const diagnosticsLoading = ref(false)
+const diagnosticsRefreshFailed = ref(false)
+const grokDiagnosticsSyncing = ref(false)
+let diagnosticsGeneration = 0
+let grokDiagnosticsSyncVersion = 0
+const GROK_API_KEY_DEFAULT_BASE_URL = 'https://api.x.ai/v1'
+
+function normalizedGrokMapping(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object') return {}
+  const mapping: Record<string, string> = {}
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof raw !== 'string') continue
+    const from = key.trim()
+    const to = raw.trim()
+    if (!from || !to) continue
+    mapping[from] = to
+  }
+  return mapping
+}
+
+function sameGrokMapping(left: Record<string, string>, right: Record<string, string>): boolean {
+  const leftKeys = Object.keys(left).sort()
+  const rightKeys = Object.keys(right).sort()
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key, index) => key === rightKeys[index] && left[key] === right[key])
+}
+
+const grokDiagnosticsDirty = computed(() => {
+  if (props.account?.platform !== 'grok') return false
+  const credentials = (props.account.credentials as Record<string, unknown> | undefined) || {}
+  if (!sameGrokMapping(normalizedGrokMapping(credentials.model_mapping), normalizedGrokMapping(buildModelRestrictionMapping()))) {
+    return true
+  }
+
+  const savedBase = typeof credentials.base_url === 'string' ? credentials.base_url.trim() : ''
+  if (props.account.type === 'oauth') {
+    const savedCustom = isCustomGrokBaseUrl(savedBase)
+    if (grokOAuthCustomBaseUrlEnabled.value !== savedCustom) return true
+    return grokOAuthCustomBaseUrlEnabled.value && grokOAuthBaseUrl.value.trim() !== savedBase
+  }
+  if (props.account.type === 'apikey') {
+    const savedEffective = savedBase || GROK_API_KEY_DEFAULT_BASE_URL
+    const current = editBaseUrl.value.trim() || GROK_API_KEY_DEFAULT_BASE_URL
+    return current !== savedEffective
+  }
+  return false
+})
+
+const resetGrokDiagnostics = () => {
+  diagnosticsGeneration += 1
+  grokDiagnosticsSyncVersion += 1
+  grokDiagnostics.value = null
+  diagnosticsLoading.value = false
+  diagnosticsRefreshFailed.value = false
+  grokDiagnosticsSyncing.value = false
+}
+
+const refreshGrokDiagnostics = async () => {
+  const id = props.account?.id
+  if (!props.show || props.account?.platform !== 'grok' || !id) return
+  const generation = ++diagnosticsGeneration
+  diagnosticsLoading.value = true
+  diagnosticsRefreshFailed.value = false
+  try {
+    const fresh = await adminAPI.accounts.getById(id)
+    if (generation !== diagnosticsGeneration || !props.show || props.account?.id !== id) return
+    grokDiagnostics.value = fresh.grok_model_diagnostics ?? null
+  } catch {
+    if (generation === diagnosticsGeneration) diagnosticsRefreshFailed.value = true
+  } finally {
+    if (generation === diagnosticsGeneration) diagnosticsLoading.value = false
+  }
+}
+
+const syncGrokDiagnostics = async () => {
+  const id = props.account?.id
+  if (!props.show || props.account?.platform !== 'grok' || !id || grokDiagnosticsSyncing.value) return
+  const syncVersion = grokDiagnosticsSyncVersion
+  grokDiagnosticsSyncing.value = true
+  try {
+    const result = await adminAPI.accounts.syncUpstreamModels(id)
+    if (syncVersion !== grokDiagnosticsSyncVersion || !props.show || props.account?.id !== id) return
+    const warnings = result.warnings ?? []
+    if (result.discovery_source === 'configured_fallback') {
+      appStore.showWarning(t('admin.accounts.grokModelDiagnostics.configuredFallback'))
+    }
+    const hasIncompleteMetadata = warnings.some((warning) => warning.code === 'upstream_model_metadata_incomplete')
+    const hasPartialMetadata = warnings.some((warning) => warning.code === 'upstream_model_metadata_partial')
+    if (hasIncompleteMetadata) {
+      appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataIncomplete'))
+    } else if (hasPartialMetadata) {
+      appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataPartial'))
+    }
+  } catch (error) {
+    if (syncVersion !== grokDiagnosticsSyncVersion || !props.show || props.account?.id !== id) return
+    const message = extractApiErrorMessage(error, t('admin.accounts.syncUpstreamModelsFailed'))
+    appStore.showError(t('admin.accounts.syncUpstreamModelsError', { message }))
+  } finally {
+    if (syncVersion === grokDiagnosticsSyncVersion && props.show && props.account?.id === id) {
+      grokDiagnosticsSyncing.value = false
+      await refreshGrokDiagnostics()
+    }
+  }
+}
+
+const grokApiKeyWhitelistRef = ref<InstanceType<typeof ModelWhitelistSelector> | null>(null)
+const grokOAuthWhitelistRef = ref<InstanceType<typeof ModelWhitelistSelector> | null>(null)
+const activeGrokWhitelist = computed(() => props.account?.type === 'oauth'
+  ? grokOAuthWhitelistRef.value : grokApiKeyWhitelistRef.value)
+const isGrokCatalogSyncing = computed(() => grokDiagnosticsSyncing.value
+  || Boolean(activeGrokWhitelist.value?.isSyncingUpstream))
+const requestGrokCatalogSync = async () => {
+  if (!props.show || props.account?.platform !== 'grok' || !props.account.id
+      || diagnosticsLoading.value || isGrokCatalogSyncing.value) return
+  const mode = modelRestrictionMode.value
+  const selector = activeGrokWhitelist.value
+  if (mode === 'whitelist') {
+    if (!selector) return
+    await selector.syncUpstreamModels()
+    return
+  }
+  await syncGrokDiagnostics()
+}
+
+watch(
+  [() => props.show, () => props.account?.id, () => props.account?.platform],
+  ([show, id, platform], previous) => {
+    const wasShow = previous?.[0]
+    const previousId = previous?.[1]
+    if (!show || platform !== 'grok' || !id) {
+      resetGrokDiagnostics()
+      return
+    }
+    if (!wasShow || id !== previousId) {
+      resetGrokDiagnostics()
+      void refreshGrokDiagnostics()
+    }
+  },
+  { immediate: true }
+)
+
+onBeforeUnmount(() => {
+  resetGrokDiagnostics()
+})
+
 // Grok Free OAuth accounts use client-tool prompt caching by default. Keep an
 // explicit false in the account extra as the opt-out signal.
 const grokClientToolCacheEnabled = ref(true)
@@ -3692,6 +4169,7 @@ const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
 // Images 非流式响应缺 b64_json 时由网关下载 url 回填（仅 OpenAI API Key）。
 const openAIImagesUrlToB64JsonEnabled = ref(false)
+const openAIImageSizeTiers = ref<OpenAIImageSizeTier[]>([...OPENAI_IMAGE_SIZE_TIERS])
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
@@ -3956,6 +4434,19 @@ const openAICompactStatusKey = computed(() => {
 
 // Computed: current preset mappings based on platform
 const presetMappings = computed(() => getPresetMappingsByPlatform(props.account?.platform || 'anthropic'))
+const tempUnschedScopeOptions = computed<Array<{ value: TempUnschedulableScope; label: string; description: string }>>(() => [
+  {
+    value: 'model',
+    label: t('admin.accounts.tempUnschedulable.scopeModel'),
+    description: t('admin.accounts.tempUnschedulable.scopeModelDesc')
+  },
+  {
+    value: 'account',
+    label: t('admin.accounts.tempUnschedulable.scopeAccount'),
+    description: t('admin.accounts.tempUnschedulable.scopeAccountDesc')
+  }
+])
+
 const tempUnschedPresets = computed(() => [
   {
     label: t('admin.accounts.tempUnschedulable.presets.overloadLabel'),
@@ -3963,7 +4454,8 @@ const tempUnschedPresets = computed(() => [
       error_code: 529,
       keywords: 'overloaded, too many',
       duration_minutes: 60,
-      description: t('admin.accounts.tempUnschedulable.presets.overloadDesc')
+      description: t('admin.accounts.tempUnschedulable.presets.overloadDesc'),
+      scope: 'model' as const
     }
   },
   {
@@ -3972,7 +4464,8 @@ const tempUnschedPresets = computed(() => [
       error_code: 429,
       keywords: 'rate limit, too many requests',
       duration_minutes: 10,
-      description: t('admin.accounts.tempUnschedulable.presets.rateLimitDesc')
+      description: t('admin.accounts.tempUnschedulable.presets.rateLimitDesc'),
+      scope: 'model' as const
     }
   },
   {
@@ -3981,7 +4474,8 @@ const tempUnschedPresets = computed(() => [
       error_code: 503,
       keywords: 'unavailable, maintenance',
       duration_minutes: 30,
-      description: t('admin.accounts.tempUnschedulable.presets.unavailableDesc')
+      description: t('admin.accounts.tempUnschedulable.presets.unavailableDesc'),
+      scope: 'model' as const
     }
   }
 ])
@@ -3994,12 +4488,7 @@ const defaultBaseUrl = computed(() => {
   if (props.account?.platform === 'typesafe') return 'https://api.typesafe.ai'
   // CN 供应商：按当前模式/协议回落到官方预设（清空输入框提交时使用），
   // 不能落到 anthropic 默认值（会被当 CC base 拼出错误端点）。
-  if (
-    props.account?.platform === 'kimi' ||
-    props.account?.platform === 'zhipu' ||
-    props.account?.platform === 'deepseek' ||
-    props.account?.platform === 'opencode_go'
-  ) {
+  if (props.account && isMultiProtocolApiKeyPlatform(props.account.platform)) {
     return defaultCNBaseUrl(props.account.platform, currentOpenCodeOrCNMode(), editApiProtocol.value)
   }
   return 'https://api.anthropic.com'
@@ -4141,6 +4630,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   editVertexProjectId.value = ''
   editVertexClientEmail.value = ''
   editVertexLocation.value = 'us-central1'
+  editVertexApiKey.value = ''
   antigravityProjectId.value =
     newAccount.platform === 'antigravity' &&
     newAccount.type === 'oauth' &&
@@ -4156,6 +4646,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 	allowOverages.value = extra?.allow_overages === true
 	upstreamRequestIdHeader.value = readUpstreamRequestIdHeader(extra)
 	openAIImagesUrlToB64JsonEnabled.value = extra?.images_url_to_b64_json === true
+	openAIImageSizeTiers.value = readOpenAIImageSizeTiers(extra)
 	autoPause5hThreshold.value = typeof extra?.auto_pause_5h_threshold === 'number' ? extra.auto_pause_5h_threshold * 100 : null
 	autoPause7dThreshold.value = typeof extra?.auto_pause_7d_threshold === 'number' ? extra.auto_pause_7d_threshold * 100 : null
 	autoPause5hDisabled.value = extra?.auto_pause_5h_disabled === true
@@ -4252,6 +4743,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     anthropicAPIKeyAuthScheme.value = extra?.anthropic_apikey_auth_scheme === 'authorization_bearer'
       ? 'authorization_bearer'
       : 'x_api_key'
+  }
+  if ((newAccount.platform === 'anthropic' || newAccount.platform === 'openai') && newAccount.type === 'apikey') {
     // 三态：string "default"/"enabled"/"disabled"，向后兼容旧 bool
     const wsVal = extra?.web_search_emulation
     if (wsVal === 'enabled' || wsVal === 'disabled') {
@@ -4263,8 +4756,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     }
   }
 
-  // Load quota limit for apikey/bedrock accounts (bedrock quota is also loaded in its own branch above)
-  if (newAccount.type === 'apikey' || newAccount.type === 'bedrock') {
+  // Load quota limit for apikey/bedrock/service_account accounts (bedrock quota is also loaded in its own branch above)
+  if (supportsAccountQuota(newAccount.type)) {
     const quotaVal = extra?.quota_limit as number | undefined
     editQuotaLimit.value = (quotaVal && quotaVal > 0) ? quotaVal : null
     const dailyVal = extra?.quota_daily_limit as number | undefined
@@ -4375,11 +4868,13 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     const credentials = newAccount.credentials as Record<string, unknown>
     // 国产供应商：读取 account_mode 与 api_protocol 作为可编辑初始值
     // （编辑弹窗允许修正两者，用于修复早期存错默认值的账号）。
-    if (isCNProviderPlatform(newAccount.platform) || newAccount.platform === 'opencode_go') {
+    if (isMultiProtocolApiKeyPlatform(newAccount.platform)) {
       if (newAccount.platform === 'opencode_go') {
         editOpenCodeAccountMode.value = resolveOpenCodeAccountMode(credentials.account_mode)
-      } else {
+      } else if (isCNProviderPlatform(newAccount.platform)) {
         editAccountMode.value = credentials.account_mode === 'coding' ? 'coding' : 'payg'
+      } else {
+        editAccountMode.value = resolveProviderAccountMode(newAccount.platform, credentials.account_mode)
       }
       const storedProtocol = credentials.api_protocol
       editApiProtocol.value =
@@ -4389,7 +4884,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         storedProtocol === 'responses'
           ? storedProtocol
           : 'chat_completions'
-      if (!cnSupportsNativeResponses(newAccount.platform) && editApiProtocol.value === 'responses') {
+      if (!cnSupportsNativeResponses(newAccount.platform, currentOpenCodeOrCNMode()) && editApiProtocol.value === 'responses') {
         editApiProtocol.value = 'chat_completions'
       }
       const adaptiveDefaults = defaultCNAdaptiveBaseUrls(newAccount.platform, currentOpenCodeOrCNMode())
@@ -4428,10 +4923,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
         editZhipuOrganization.value = typeof credentials.zhipu_organization === 'string' ? credentials.zhipu_organization : ''
         editZhipuProject.value = typeof credentials.zhipu_project === 'string' ? credentials.zhipu_project : ''
       }
-      if (newAccount.platform === 'opencode_go') {
+      if (providerRoutesByModel(newAccount.platform)) {
         editOpenCodeGoProtocolRules.value =
           parseOpenCodeGoProtocolRules(credentials.protocol_rules) ??
-          cloneOpenCodeGoProtocolRules(defaultOpenCodeProtocolRules(editOpenCodeAccountMode.value))
+          cloneOpenCodeGoProtocolRules(defaultProviderProtocolRules(newAccount.platform, currentOpenCodeOrCNMode()))
       }
     }
     const platformDefaultUrl =
@@ -4443,10 +4938,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
             ? 'https://api.x.ai/v1'
             : newAccount.platform === 'typesafe'
               ? 'https://api.typesafe.ai'
-            : newAccount.platform === 'kimi' ||
-                newAccount.platform === 'zhipu' ||
-                newAccount.platform === 'deepseek' ||
-                newAccount.platform === 'opencode_go'
+            : isMultiProtocolApiKeyPlatform(newAccount.platform)
               ? defaultCNBaseUrl(newAccount.platform, currentOpenCodeOrCNMode(), editApiProtocol.value)
               : 'https://api.anthropic.com'
     editBaseUrl.value = isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive'
@@ -4462,6 +4954,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       Number(credentials.pool_mode_retry_count ?? DEFAULT_POOL_MODE_RETRY_COUNT)
     )
     poolModeRetryStatusCodesInput.value = formatPoolModeRetryStatusCodes(credentials.pool_mode_retry_status_codes)
+
+    explicitCacheUpstreamEnabled.value = credentials.explicit_cache_upstream === true
+    explicitCacheUpstreamMaxTTL.value =
+      normalizeExplicitCacheUpstreamMaxTTL(credentials.explicit_cache_upstream_max_ttl_seconds) ?? ''
 
     // Load custom error codes
     customErrorCodesEnabled.value = credentials.custom_error_codes_enabled === true
@@ -4510,6 +5006,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     editVertexProjectId.value = (credentials.project_id as string) || ''
     editVertexClientEmail.value = (credentials.client_email as string) || ''
     editVertexLocation.value = (credentials.location as string) || (credentials.vertex_location as string) || 'us-central1'
+    editVertexApiKey.value = ''
 
     // Load model mappings for service_account
     loadModelRestrictionFromMapping(credentials.model_mapping as Record<string, unknown> | undefined)
@@ -4536,6 +5033,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     poolModeEnabled.value = false
     poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
     poolModeRetryStatusCodesInput.value = ''
+    explicitCacheUpstreamEnabled.value = false
+    explicitCacheUpstreamMaxTTL.value = ''
     customErrorCodesEnabled.value = false
     selectedErrorCodes.value = []
   }
@@ -4649,7 +5148,7 @@ const syncAntigravityUpstreamModels = async () => {
       appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataPartial'))
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : t('admin.accounts.syncUpstreamModelsFailed')
+    const message = extractApiErrorMessage(error, t('admin.accounts.syncUpstreamModelsFailed'))
     appStore.showError(t('admin.accounts.syncUpstreamModelsError', { message }))
   } finally {
     isSyncingAntigravityUpstream.value = false
@@ -4718,7 +5217,8 @@ const addTempUnschedRule = (preset?: TempUnschedRuleForm) => {
     error_code: null,
     keywords: '',
     duration_minutes: 30,
-    description: ''
+    description: '',
+    scope: 'model'
   })
 }
 
@@ -4741,6 +5241,7 @@ const buildTempUnschedRules = (rules: TempUnschedRuleForm[]) => {
     keywords: string[]
     duration_minutes: number
     description: string
+    scope: TempUnschedulableScope
   }> = []
 
   for (const rule of rules) {
@@ -4760,7 +5261,8 @@ const buildTempUnschedRules = (rules: TempUnschedRuleForm[]) => {
       error_code: Math.trunc(errorCode),
       keywords,
       duration_minutes: Math.trunc(duration),
-      description: rule.description.trim()
+      description: rule.description.trim(),
+      scope: rule.scope
     })
   }
 
@@ -4858,11 +5360,13 @@ function loadTempUnschedRules(credentials?: Record<string, unknown>) {
 
   tempUnschedRules.value = rawRules.map((rule) => {
     const entry = rule as Record<string, unknown>
+    const errorCode = toPositiveNumber(entry.error_code)
     return {
-      error_code: toPositiveNumber(entry.error_code),
+      error_code: errorCode,
       keywords: formatTempUnschedKeywords(entry.keywords),
       duration_minutes: toPositiveNumber(entry.duration_minutes),
-      description: typeof entry.description === 'string' ? entry.description : ''
+      description: typeof entry.description === 'string' ? entry.description : '',
+      scope: resolveTempUnschedScope(entry.scope, errorCode)
     }
   })
 }
@@ -4959,6 +5463,16 @@ function formatTempUnschedKeywords(value: unknown) {
     return value
   }
   return ''
+}
+
+// 未设置 scope 的规则由后端按「401 账号级、其余模型级」处理，这里按同一规则回显，
+// 保证打开再保存不改变规则行为。
+function resolveTempUnschedScope(value: unknown, errorCode: number | null): TempUnschedulableScope {
+  const scope = typeof value === 'string' ? value.trim().toLowerCase() : ''
+  if (scope === 'account' || scope === 'model') {
+    return scope
+  }
+  return errorCode === 401 ? 'account' : 'model'
 }
 
 const splitTempUnschedKeywords = (value: string) => {
@@ -5193,7 +5707,7 @@ const handleSubmit = async () => {
         } else {
           delete newCredentials.api_base_urls
         }
-        if (props.account.platform === 'opencode_go') {
+        if (providerRoutesByModel(props.account.platform)) {
           applyOpenCodeGoProtocolRules(newCredentials, editOpenCodeGoProtocolRules.value, 'edit')
         }
         // 智谱团队版 Coding Plan：组织/项目 ID 写入凭据（非空才写，清空即移除回落个人版路径）
@@ -5262,6 +5776,12 @@ const handleSubmit = async () => {
         delete newCredentials.pool_mode_retry_status_codes
       }
 
+      applyExplicitCacheUpstreamCredentials(
+        newCredentials,
+        props.account.platform === 'gemini' && !isOfficialGeminiBaseUrl(editBaseUrl.value) && explicitCacheUpstreamEnabled.value,
+        explicitCacheUpstreamMaxTTL.value
+      )
+
       // Add custom error codes if enabled
       if (customErrorCodesEnabled.value) {
         newCredentials.custom_error_codes_enabled = true
@@ -5313,35 +5833,61 @@ const handleSubmit = async () => {
     } else if ((props.account.platform === 'gemini' || props.account.platform === 'anthropic') && props.account.type === 'service_account') {
       const currentCredentials = (props.account.credentials as Record<string, unknown>) || {}
       const newCredentials: Record<string, unknown> = { ...currentCredentials }
-
-      if (!editVertexProjectId.value.trim()) {
-        appStore.showError(t('admin.accounts.vertexSaJsonMissingProjectId'))
-        return
-      }
-      if (!editVertexClientEmail.value.trim()) {
-        appStore.showError(t('admin.accounts.vertexSaJsonMissingClientEmail'))
-        return
-      }
-      if (!editVertexLocation.value.trim()) {
-        appStore.showError(t('admin.accounts.vertexLocationRequired'))
-        return
-      }
-
-      // SA JSON 已脱敏不再随 credentials 返回，存在性优先读 credentials_status。
-      // 若后端尚未升级（无 credentials_status），回退读旧结构 service_account_json / service_account。
       const credentialsStatus = props.account.credentials_status
-      const hasExistingServiceAccountJson = credentialsStatus
-        ? Boolean(
-            credentialsStatus.has_service_account_json || credentialsStatus.has_service_account
-          )
-        : Boolean(currentCredentials.service_account_json || currentCredentials.service_account)
-      if (!hasExistingServiceAccountJson) {
-        appStore.showError(t('admin.accounts.vertexSaJsonRequired'))
-        return
+
+      if (isVertexAPIKeyMode.value) {
+        // API Key 已脱敏不再随 credentials 返回，存在性读 credentials_status；留空表示保留原 Key。
+        const newApiKey = editVertexApiKey.value.trim()
+        const hasExistingApiKey = credentialsStatus
+          ? Boolean(credentialsStatus.has_api_key)
+          : Boolean(currentCredentials.api_key)
+        if (!newApiKey && !hasExistingApiKey) {
+          appStore.showError(t('admin.accounts.vertexApiKeyRequired'))
+          return
+        }
+        const projectId = editVertexProjectId.value.trim()
+        if (projectId && !editVertexLocation.value.trim()) {
+          appStore.showError(t('admin.accounts.vertexLocationRequired'))
+          return
+        }
+        if (newApiKey) {
+          newCredentials.api_key = newApiKey
+        }
+        if (projectId) {
+          newCredentials.project_id = projectId
+        } else {
+          delete newCredentials.project_id
+        }
+        newCredentials.location = editVertexLocation.value.trim() || 'global'
+      } else {
+        if (!editVertexProjectId.value.trim()) {
+          appStore.showError(t('admin.accounts.vertexSaJsonMissingProjectId'))
+          return
+        }
+        if (!editVertexClientEmail.value.trim()) {
+          appStore.showError(t('admin.accounts.vertexSaJsonMissingClientEmail'))
+          return
+        }
+        if (!editVertexLocation.value.trim()) {
+          appStore.showError(t('admin.accounts.vertexLocationRequired'))
+          return
+        }
+
+        // SA JSON 已脱敏不再随 credentials 返回，存在性优先读 credentials_status。
+        // 若后端尚未升级（无 credentials_status），回退读旧结构 service_account_json / service_account。
+        const hasExistingServiceAccountJson = credentialsStatus
+          ? Boolean(
+              credentialsStatus.has_service_account_json || credentialsStatus.has_service_account
+            )
+          : Boolean(currentCredentials.service_account_json || currentCredentials.service_account)
+        if (!hasExistingServiceAccountJson) {
+          appStore.showError(t('admin.accounts.vertexSaJsonRequired'))
+          return
+        }
+        newCredentials.project_id = editVertexProjectId.value.trim()
+        newCredentials.client_email = editVertexClientEmail.value.trim()
+        newCredentials.location = editVertexLocation.value.trim()
       }
-      newCredentials.project_id = editVertexProjectId.value.trim()
-      newCredentials.client_email = editVertexClientEmail.value.trim()
-      newCredentials.location = editVertexLocation.value.trim()
       newCredentials.tier_id = 'vertex'
 
       // Add model mapping if configured
@@ -5707,7 +6253,13 @@ const handleSubmit = async () => {
         } else {
           delete newExtra.images_url_to_b64_json
         }
+        if (webSearchEmulationMode.value === 'default') {
+          delete newExtra.web_search_emulation
+        } else {
+          newExtra.web_search_emulation = webSearchEmulationMode.value
+        }
 		}
+		applyOpenAIImageSizeTiersToExtra(newExtra, openAIImageSizeTiers.value)
 		if (autoPause5hThreshold.value != null && autoPause5hThreshold.value > 0) {
 			newExtra.auto_pause_5h_threshold = autoPause5hThreshold.value / 100
 		} else {
@@ -5783,8 +6335,8 @@ const handleSubmit = async () => {
       updatePayload.extra = newExtra
     }
 
-    // For apikey/bedrock accounts, handle quota_limit in extra
-    if (props.account.type === 'apikey' || props.account.type === 'bedrock') {
+    // For apikey/bedrock/service_account accounts, handle quota_limit in extra
+    if (supportsAccountQuota(props.account.type)) {
       const currentExtra = (updatePayload.extra as Record<string, unknown>) ||
         (props.account.extra as Record<string, unknown>) || {}
       const newExtra: Record<string, unknown> = { ...currentExtra }

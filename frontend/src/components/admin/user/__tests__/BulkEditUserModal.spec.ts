@@ -59,6 +59,27 @@ describe('BulkEditUserModal', () => {
     vi.restoreAllMocks()
   })
 
+  it.each([
+    [{ message: 'Selected users are no longer available' }, 'Selected users are no longer available'],
+    [{ response: { data: { message: 'Legacy message' } } }, 'Legacy message'],
+    [{ response: { data: { detail: 'Legacy detail' } } }, 'Legacy detail'],
+    [{}, 'admin.users.bulkLimits.failed'],
+  ])('shows API error details and allows retry after failure', async (error, expected) => {
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    batchUpdateLimits.mockRejectedValueOnce(error)
+    const wrapper = mountModal()
+    await wrapper.get('[data-test="enable-concurrency"]').trigger('click')
+    await wrapper.get('[data-test="concurrency-input"]').setValue('5')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+
+    expect(showError).toHaveBeenCalledWith(expected)
+    expect(wrapper.emitted('close')).toBeUndefined()
+    expect(wrapper.emitted('success')).toBeUndefined()
+    expect(wrapper.get('[data-test="submit"]').attributes('disabled')).toBeUndefined()
+    wrapper.unmount()
+  })
+
   it('disables submission until at least one enabled field has a value', async () => {
     const wrapper = mountModal()
 

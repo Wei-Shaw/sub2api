@@ -522,10 +522,12 @@ func (s *AccountService) TestCredentials(ctx context.Context, id int64) error {
 	case PlatformTypeSafe:
 		// TypeSafe credentials are API keys; inference failures drive health and cooldown state.
 		return nil
-	case PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo:
-		// 国产 OpenAI 兼容供应商与 OpenCode：凭证为 API Key，实际可用性经余额/额度探测与转发路径验证。
-		return nil
 	default:
+		if IsMultiProtocolAPIKeyProvider(account.Platform) {
+			// 多协议 API Key 供应商（国产厂商与聚合平台）：凭证为 API Key，实际可用性
+			// 经余额/额度探测与转发路径验证。
+			return nil
+		}
 		return fmt.Errorf("unsupported platform: %s", account.Platform)
 	}
 }

@@ -108,17 +108,6 @@ func geminiThinkingLevelFromClaudeThinking(thinking *antigravity.ThinkingConfig)
 	}
 }
 
-// accountRawModelMappingHasKey 判断 key 是否由用户写在账号 credentials.model_mapping 里
-// （而不是 resolveModelMapping 运行时补进来的默认透传条目）。
-func accountRawModelMappingHasKey(account *Account, key string) bool {
-	if account == nil || account.Credentials == nil {
-		return false
-	}
-	raw, _ := account.Credentials["model_mapping"].(map[string]any)
-	_, ok := raw[key]
-	return ok
-}
-
 // resolveGeminiThinkingVariant 为裸 Gemini 模型名挑选账号映射表里存在的思考深度变体。
 // 返回 (映射后的上游模型名, 是否命中)。未命中时调用方应回退到常规 getMappedModel 流程。
 func resolveGeminiThinkingVariant(account *Account, requestedModel string, body []byte) (string, bool) {
@@ -140,16 +129,16 @@ func resolveGeminiThinkingVariantForLevel(account *Account, requestedModel strin
 	if len(mapping) == 0 {
 		return "", false
 	}
-	// 裸名本身已有"真正的"映射 → 尊重现有配置，不做推导。判定分两层：
-	//   1. 映射目标不是自己（如 gemini-3.8-flash → gemini-3.8-flash-tiered）：用户明确指定了目标；
-	//   2. 映射目标是自己（原样透传）：仅当这条是用户亲手写进 credentials.model_mapping 的才尊重。
-	//      resolveModelMapping 会给每个 Antigravity 账号自动补 gemini-3.x-flash 裸名自映射
-	//      （ensureAntigravityDefaultPassthroughs），而上游目录里并没有裸名模型，那条自映射
-	//      正是导致 404 的来源，不能算作用户意图。
-	if mapped, matched := resolveRequestedModelInMapping(mapping, model); matched {
-		if strings.TrimSpace(mapped) != model || accountRawModelMappingHasKey(account, model) {
-			return "", false
-		}
+	// 裸名本身若已映射到其他具体模型（如 gemini-3.8-flash → gemini-3.8-flash-tiered、
+	// gemini-3.1-pro → gemini-pro-agent），尊重显式别名配置。
+	// 若裸名映射目标是自己（如前端从 DefaultAntigravityModelMapping 拉取并持久化的
+	// gemini-3.8-flash → gemini-3.8-flash，或 ensureAntigravityDefaultPassthroughs 注入的条目），
+	// 当映射表中存在该模型的精确思考变体（-high/-medium/-low/-tiered）时继续解析变体，
+	// 避免把上游不存在的裸名直接发出导致 404；而对已在映射表中的真实裸模型（如 gemini-2.5-flash），
+	// 仅查找精确变体键以避免被通配符误匹配。
+	mapped, modelMatched := resolveRequestedModelInMapping(mapping, model)
+	if modelMatched && strings.TrimSpace(mapped) != model {
+		return "", false
 	}
 
 	if preferred == "" {
@@ -163,8 +152,17 @@ func resolveGeminiThinkingVariantForLevel(account *Account, requestedModel strin
 	}
 	for _, level := range order {
 		candidate := model + "-" + level
-		if mapped, matched := resolveRequestedModelInMapping(mapping, candidate); matched && strings.TrimSpace(mapped) != "" {
-			return mapped, true
+		var (
+			variantMapped  string
+			variantMatched bool
+		)
+		if modelMatched {
+			variantMapped, variantMatched = mapping[candidate]
+		} else {
+			variantMapped, variantMatched = resolveRequestedModelInMapping(mapping, candidate)
+		}
+		if variantMatched && strings.TrimSpace(variantMapped) != "" {
+			return variantMapped, true
 		}
 	}
 	return "", false

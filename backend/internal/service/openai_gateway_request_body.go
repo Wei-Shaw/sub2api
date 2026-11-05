@@ -11,6 +11,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
@@ -53,11 +54,11 @@ func buildOpenAIResponsesURL(base string) string {
 }
 
 // buildOpenAIResponsesURLForPlatform 组装 Responses 端点（平台感知）。
-// DeepSeek 官方 Responses 端点为 /responses（无 /v1 前缀，适配 Codex）；
-// 其余平台维持 /v1/responses。
+// 供应商 profile 声明了 ResponsesPath 时按其拼接（如 DeepSeek 为无 /v1 前缀的
+// /responses）；其余平台维持 /v1/responses。
 func buildOpenAIResponsesURLForPlatform(platform string, base string) string {
-	if platform == PlatformDeepseek {
-		return buildOpenAIEndpointURL(base, "/responses")
+	if profile := LookupProviderProfile(platform); profile != nil && profile.ResponsesPath != "" {
+		return buildOpenAIEndpointURL(base, profile.ResponsesPath)
 	}
 	return buildOpenAIResponsesURL(base)
 }
@@ -132,9 +133,8 @@ func deleteOpenAIResponsesNoneReasoningEffortFromObject(account *Account, body m
 // 强制 store=false 并清除 previous_response_id（DeepSeek / Kimi 官方
 // Responses 均不支持服务端状态存储，携带这些字段会被拒绝）。
 //
-// DeepSeek 另需把 Codex/OpenAI 的 input_image.image_url 写成线上 serde
-// 要求的 url 字段；openai 平台但 base_url 指向 api.deepseek.com 的映射
-// 账号同样走这条出站改写（Codex 贴图会 422 missing field url）。
+// DeepSeek 另需把兼容格式的图片输入归一化为官方 image_url 字段；openai
+// 平台但 base_url 指向 api.deepseek.com 的映射账号同样走这条出站改写。
 // 非 CN / 非 DeepSeek 上游原样返回。
 func normalizeDeepSeekResponsesRequestBody(account *Account, body []byte) []byte {
 	if account == nil {
@@ -193,10 +193,9 @@ func shouldAliasDeepSeekResponsesInputImages(account *Account) bool {
 	return targetsDeepSeekAPIHost(account)
 }
 
-// aliasDeepSeekResponsesInputImages 把图片 part 改写成 DeepSeek 能反序列化
-// 的形状：type=input_image，同时带字符串字段 image_url 与 url。
-// 文档与部分 400 提 image_url；线上 serde 要求 url。只发其中一个都会踩坑。
-// 仅有 file_id、没有可用 URL 的 part 原样保留。
+// aliasDeepSeekResponsesInputImages 把图片 part 改写成 DeepSeek 官方形状：
+// type=input_image，同时只保留字符串字段 image_url。仅有 file_id、没有可用
+// URL 的 part 原样保留。
 func aliasDeepSeekResponsesInputImages(input any) (any, bool) {
 	items, ok := asDeepSeekResponsesSlice(input)
 	if !ok {
@@ -278,18 +277,18 @@ func aliasDeepSeekResponsesImagePart(part map[string]any) bool {
 		part["image_url"] = imageURL
 		changed = true
 	}
-	if current, ok := part["url"].(string); !ok || strings.TrimSpace(current) != imageURL {
-		part["url"] = imageURL
+	if _, exists := part["url"]; exists {
+		delete(part, "url")
 		changed = true
 	}
 	return changed
 }
 
 func extractDeepSeekResponsesImageURL(part map[string]any) string {
-	if imageURL := deepSeekResponsesURLValue(part["url"]); imageURL != "" {
+	if imageURL := deepSeekResponsesURLValue(part["image_url"]); imageURL != "" {
 		return imageURL
 	}
-	if imageURL := deepSeekResponsesURLValue(part["image_url"]); imageURL != "" {
+	if imageURL := deepSeekResponsesURLValue(part["url"]); imageURL != "" {
 		return imageURL
 	}
 	if imageURL := deepSeekResponsesURLValue(part["image"]); imageURL != "" {
@@ -1430,6 +1429,23 @@ func normalizeOpenAIResponseFormatSchemasBody(body []byte) ([]byte, bool, error)
 }
 
 func normalizeOpenAIResponsesWebSocketCompatibilityBody(body []byte, account *Account, responsesLite bool) ([]byte, bool, error) {
+	return normalizeOpenAIResponsesCompatibilityBodyWithOptions(body, account, openAIResponsesCompatibilityOptions{ResponsesLite: responsesLite})
+}
+
+func normalizeOpenAIResponsesWebSocketCompatibilityBodyWithConfig(cfg *config.Config, body []byte, account *Account, responsesLite bool) ([]byte, bool, error) {
+	return normalizeOpenAIResponsesCompatibilityBodyWithOptions(body, account, openAIResponsesCompatibilityOptions{Config: cfg, ResponsesLite: responsesLite})
+}
+
+type openAIResponsesCompatibilityOptions struct {
+	Config        *config.Config
+	ResponsesLite bool
+	// Compact marks the /responses/compact wire shape, which is left as-is
+	// by request-shape compatibility rewrites such as web_search history.
+	Compact bool
+}
+
+func normalizeOpenAIResponsesCompatibilityBodyWithOptions(body []byte, account *Account, opts openAIResponsesCompatibilityOptions) ([]byte, bool, error) {
+	responsesLite := opts.ResponsesLite
 	if account == nil || !account.IsOpenAI() {
 		return body, false, nil
 	}
@@ -1437,7 +1453,7 @@ func normalizeOpenAIResponsesWebSocketCompatibilityBody(body []byte, account *Ac
 	changed := false
 	if account.IsOpenAIOAuthLike() {
 		var err error
-		normalized, changed, err = normalizeOpenAIResponsesLegacyIngress(body)
+		normalized, changed, err = normalizeOpenAIResponsesLegacyIngressWithConfig(opts.Config, body)
 		if err != nil {
 			return body, false, err
 		}
@@ -1493,6 +1509,14 @@ func normalizeOpenAIResponsesWebSocketCompatibilityBody(body []byte, account *Ac
 			}
 			normalized = next
 			changed = true
+		}
+		if !opts.Compact {
+			webSearchBody, webSearchChanged, err := ensureOpenAIOAuthWebSearchToolForHistoryBody(normalized, responsesLite)
+			if err != nil {
+				return body, false, fmt.Errorf("normalize websocket body: %w", err)
+			}
+			normalized = webSearchBody
+			changed = changed || webSearchChanged
 		}
 	}
 	needsOrphanCleanup := account != nil && account.IsOpenAIOAuthLike() &&
@@ -1665,24 +1689,6 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 	}
 
 	return normalized, changed, nil
-}
-
-func detectOpenAIPassthroughInstructionsRejectReason(reqModel string, body []byte) string {
-	if !isOpenAICodexModel(reqModel) {
-		return ""
-	}
-
-	instructions := gjson.GetBytes(body, "instructions")
-	if !instructions.Exists() {
-		return ""
-	}
-	if instructions.Type != gjson.String {
-		return "instructions_not_string"
-	}
-	if strings.TrimSpace(instructions.String()) == "" {
-		return "instructions_empty"
-	}
-	return ""
 }
 
 func isOpenAICodexModel(model string) bool {

@@ -180,6 +180,10 @@ func (s *modelsListAccountRepoStub) ListSchedulableByGroupID(ctx context.Context
 	return out, nil
 }
 
+func (s *modelsListAccountRepoStub) ListModelAvailabilityCandidates(ctx context.Context, groupID *int64, _ []string, _ bool) ([]Account, error) {
+	return s.ListSchedulableByGroupID(ctx, *groupID)
+}
+
 func (s *modelsListAccountRepoStub) ListSchedulable(ctx context.Context) ([]Account, error) {
 	s.listAllCalls.Add(1)
 	if s.err != nil {

@@ -415,7 +415,8 @@ describe('UseKeyModal', () => {
     expect(configToml).not.toContain('image_generation')
     expect(configToml).not.toContain('supports_websockets')
     expect(configToml).not.toContain('responses_websockets_v2')
-    expect(configToml).toContain('[features]\ngoals = true')
+    const features = configToml?.split('[features]\n')[1]?.split('\n[')[0]
+    expect(features).toContain('goals = true')
     expect(configToml).not.toContain('model_reasoning_effort = "xhigh"')
     expect(codeBlocks).toContain('{\n  "OPENAI_API_KEY": "sk-test"\n}')
     expect(wrapper.text()).toContain('auth.json')
@@ -557,7 +558,9 @@ describe('UseKeyModal', () => {
     expect(configToml).not.toContain('env_key')
     expect(configToml).not.toContain('image_generation')
     expect(configToml).toContain('supports_websockets = true')
-    expect(configToml).toContain('[features]\nresponses_websockets_v2 = true\ngoals = true')
+    const features = configToml?.split('[features]\n')[1]?.split('\n[')[0]
+    expect(features).toContain('responses_websockets_v2 = true')
+    expect(features).toContain('goals = true')
     expect(codeBlocks).toContain('{\n  "OPENAI_API_KEY": "sk-test"\n}')
     expect(wrapper.text()).toContain('auth.json')
   })
@@ -605,7 +608,9 @@ describe('UseKeyModal', () => {
     expect(configToml).not.toContain('env_key')
     expect(configToml).not.toContain('image_generation')
     expect(configToml).toContain('supports_websockets = true')
-    expect(configToml).toContain('[features]\nresponses_websockets_v2 = true\ngoals = true')
+    const features = configToml?.split('[features]\n')[1]?.split('\n[')[0]
+    expect(features).toContain('responses_websockets_v2 = true')
+    expect(features).toContain('goals = true')
     expect(codeBlocks).not.toContain('{\n  "OPENAI_API_KEY": "sk-test"\n}')
     expect(wrapper.text()).not.toContain('auth.json')
   })
@@ -717,6 +722,12 @@ describe('UseKeyModal', () => {
     }
     expect(models['gpt-5.6'].name).toBe('GPT-5.6 (Sol)')
     expect(models['gpt-6.1-sol'].variants).not.toHaveProperty('none')
+    expect(models['gpt-6.1-terra']).toEqual({
+      name: 'GPT-6.1 Terra',
+      limit: { context: 1050000, output: 128000 },
+      options: { store: false },
+      variants: { none: {}, low: {}, medium: {}, high: {}, xhigh: {}, max: {} }
+    })
     expect(models['gpt-6-sol'].variants).toHaveProperty('none')
     expect(models['gpt-6-luna'].limit).toEqual({ context: 1050000, output: 128000 })
     expect(models['gpt-6']).toEqual({

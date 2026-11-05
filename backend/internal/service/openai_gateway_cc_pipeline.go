@@ -39,6 +39,7 @@ func (s *OpenAIGatewayService) newUpstreamSSEScanner(r io.Reader) *bufio.Scanner
 		maxLineSize = s.cfg.Gateway.MaxLineSize
 	}
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
+	scanner.Split(newBoundedSSESplit(s.cfg, maxLineSize, nil))
 	return scanner
 }
 
@@ -67,13 +68,26 @@ func (s *OpenAIGatewayService) newStreamHeaderWriter(c *gin.Context, upstream ht
 // （下游 handleXxxErrorResponse 需要再次读取），返回原始错误体与脱敏后的
 // 上游错误消息。
 func (s *OpenAIGatewayService) readOpenAIUpstreamError(resp *http.Response) ([]byte, string) {
-	respBody := s.readUpstreamErrorBody(resp)
+	respBody, upstreamMsg, _ := s.readOpenAIUpstreamErrorWithCompleteness(resp)
+	return respBody, upstreamMsg
+}
+
+func (s *OpenAIGatewayService) readOpenAIUpstreamErrorWithCompleteness(resp *http.Response) ([]byte, string, bool) {
+	limit := openAIUpstreamErrorBodyReadLimitForConfig(nil)
+	if s != nil {
+		limit = openAIUpstreamErrorBodyReadLimitForConfig(s.cfg)
+	}
+	respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, limit+1))
+	complete := readErr == nil && int64(len(respBody)) <= limit
+	if int64(len(respBody)) > limit {
+		respBody = respBody[:limit]
+	}
 	_ = resp.Body.Close()
 	resp.Body = io.NopCloser(bytes.NewReader(respBody))
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
-	return respBody, upstreamMsg
+	return respBody, upstreamMsg, complete
 }
 
 // failoverOpenAIUpstreamHTTPError 对 >=400 的上游响应做 failover 判定：命中时
