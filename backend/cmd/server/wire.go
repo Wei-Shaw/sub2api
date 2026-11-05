@@ -7,6 +7,7 @@ import (
 	"context"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -30,6 +31,11 @@ type Application struct {
 	PluginManager *service.PluginManager
 	Cleanup       func()
 }
+
+// cleanupParallelBudget 是应用层 Stop 阶段的总等待上限。
+// 与优雅停机等待在途请求的超时（默认 25s）一起，使 shutdown 等待 25s + cleanup 20s < terminationGracePeriod 60s，
+// 保证进程在 kubelet 宽限期内确定性退出。
+const cleanupParallelBudget = 20 * time.Second
 
 func initializeApplication(buildInfo handler.BuildInfo) (*Application, error) {
 	wire.Build(
@@ -430,13 +436,25 @@ func provideCleanup(
 			}},
 		}
 
-		runParallel := func(steps []cleanupStep) {
-			var wg sync.WaitGroup
+		// runParallel 并发执行应用层 Stop，最多等待 cleanupParallelBudget。
+		// 超时后不取消各 Stop（保持其既有语义，该等的仍等），只是不再等待，
+		// 返回未按期完成的步骤名，以便继续关闭 Redis/Ent，让进程确定性退出。
+		runParallel := func(steps []cleanupStep) []string {
+			var (
+				wg   sync.WaitGroup
+				mu   sync.Mutex
+				done = make(map[string]struct{}, len(steps))
+			)
 			for i := range steps {
 				step := steps[i]
 				wg.Add(1)
 				go func() {
 					defer wg.Done()
+					defer func() {
+						mu.Lock()
+						done[step.name] = struct{}{}
+						mu.Unlock()
+					}()
 					if err := step.fn(); err != nil {
 						log.Printf("[Cleanup] %s failed: %v", step.name, err)
 						return
@@ -444,7 +462,29 @@ func provideCleanup(
 					log.Printf("[Cleanup] %s succeeded", step.name)
 				}()
 			}
-			wg.Wait()
+
+			finished := make(chan struct{})
+			go func() {
+				wg.Wait()
+				close(finished)
+			}()
+
+			timer := time.NewTimer(cleanupParallelBudget)
+			defer timer.Stop()
+			select {
+			case <-finished:
+				return nil
+			case <-timer.C:
+				mu.Lock()
+				defer mu.Unlock()
+				pending := make([]string, 0, len(steps))
+				for _, step := range steps {
+					if _, ok := done[step.name]; !ok {
+						pending = append(pending, step.name)
+					}
+				}
+				return pending
+			}
 		}
 
 		runSequential := func(steps []cleanupStep) {
@@ -458,7 +498,9 @@ func provideCleanup(
 			}
 		}
 
-		runParallel(parallelSteps)
+		if pending := runParallel(parallelSteps); len(pending) > 0 {
+			log.Printf("[Cleanup] Warning: %d application cleanup steps still running after %s: %s", len(pending), cleanupParallelBudget, strings.Join(pending, ", "))
+		}
 		runSequential(infraSteps)
 
 		// Check if context timed out
