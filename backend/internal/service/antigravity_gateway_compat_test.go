@@ -1398,7 +1398,7 @@ func TestAntigravityCompatRecoversAfterHeartbeat(t *testing.T) {
 			notify := &antigravityCompatNotifyingWriter{ResponseWriter: c.Writer, wrote: make(chan struct{}, 1)}
 			c.Writer = notify
 			reader, pw := io.Pipe()
-			defer reader.Close()
+			defer func() { _ = reader.Close() }()
 			go func() {
 				<-notify.wrote
 				_, _ = io.WriteString(pw, `data: {"response":{"candidates":[{"finishReason":"MALFORMED_FUNCTION_CALL"}]}}`+"\n\n")
@@ -1527,7 +1527,7 @@ func TestAntigravityCompatCancellationStopsScanner(t *testing.T) {
 	ctx, cancel := context.WithCancel(c.Request.Context())
 	c.Request = c.Request.WithContext(ctx)
 	r, w := io.Pipe()
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 	cancel()
 	result, err := svc.handleAntigravityCompatStream(c, &http.Response{StatusCode: 200, Body: r}, time.Now(),
 		"gemini-3.1-pro", newAntigravityChatStreamAdapter("gemini-3.1-pro", false), "test")
