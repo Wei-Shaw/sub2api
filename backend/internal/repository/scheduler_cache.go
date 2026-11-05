@@ -1317,6 +1317,8 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		// 走网关报 no available accounts"。
 		"openai_passthrough",
 		"openai_oauth_passthrough",
+		// 生图尺寸档位在候选过滤阶段按本投影判定，裁掉后受限账号会接到不允许的档位。
+		service.AccountExtraOpenAIImageSizeTiers,
 		// ollama_cloud 空 mapping 的出站白名单必须进投影：候选过滤的
 		// Account.IsModelSupported 以它为白名单（无清单即 deny-all）。
 		// 裁掉它，白名单账号会在选号阶段被整体误判为 model_not_supported，
