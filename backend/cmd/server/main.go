@@ -184,11 +184,17 @@ func runMainServer() {
 
 	log.Println("Shutting down server...")
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	// 优雅停机等待在途请求的超时可配置：等待在途请求（含长流）自然结束，
+	// 超时后强制关闭连接，避免进程退出时把尚未完成的响应硬切断。
+	drainTimeout := time.Duration(cfg.Server.ShutdownDrainTimeout) * time.Second
+	ctx, cancel := context.WithTimeout(context.Background(), drainTimeout)
 	defer cancel()
 
 	if err := app.Server.Shutdown(ctx); err != nil {
-		log.Printf("Server forced to shutdown: %v", err)
+		log.Printf("Server drain timed out after %s: %v; forcing close", drainTimeout, err)
+		if closeErr := app.Server.Close(); closeErr != nil {
+			log.Printf("Server forced close failed: %v", closeErr)
+		}
 	}
 
 	log.Println("Server exited")
