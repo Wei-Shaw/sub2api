@@ -154,10 +154,22 @@ describe('useModelWhitelist', () => {
   it('gemini 模型列表包含原生生图模型', () => {
     const models = getModelsByPlatform('gemini')
 
-    expect(models).toContain('gemini-2.5-flash-image')
     expect(models).toContain('gemini-3.1-flash-image')
-    expect(models.indexOf('gemini-3.1-flash-image')).toBeLessThan(models.indexOf('gemini-2.0-flash'))
-    expect(models.indexOf('gemini-2.5-flash-image')).toBeLessThan(models.indexOf('gemini-2.5-flash'))
+    expect(models).toContain('gemini-3-pro-image')
+    expect(models.indexOf('gemini-3.1-flash-image')).toBeLessThan(models.indexOf('gemini-3-flash'))
+    expect(models.indexOf('gemini-3-pro-image')).toBeLessThan(models.indexOf('gemini-3.5-flash'))
+  })
+
+  it('gemini 模型列表不含已停用的 2.x 模型与 Antigravity 档位别名', () => {
+    const models = getModelsByPlatform('gemini')
+
+    for (const model of ['gemini-2.0-flash', 'gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.5-flash-image', 'gemini-3-pro-preview']) {
+      expect(models).not.toContain(model)
+    }
+    for (const model of ['gemini-3.1-pro', 'gemini-3.1-pro-high', 'gemini-3.1-pro-low']) {
+      expect(models).not.toContain(model)
+    }
+    expect(models).toContain('gemini-3.8-flash')
   })
 
   it('antigravity 模型列表会把新的 Gemini 图片模型排在前面', () => {

@@ -54,6 +54,12 @@ func (p *PanelRateLimiter) Global() gin.HandlerFunc {
 	return p.userScoped("global", func(s service.PanelRateLimitSettings) int { return s.UserRPM })
 }
 
+// MCPTransport bounds protocol requests, including discovery, separately from
+// the global budget charged by each dispatched management operation.
+func (p *PanelRateLimiter) MCPTransport() gin.HandlerFunc {
+	return p.userScoped("mcp", func(s service.PanelRateLimitSettings) int { return s.UserRPM })
+}
+
 // Heavy 重查询接口的按用户限流（严格档，覆盖 usage/dashboard 等聚合统计端点）。
 // 与 Global 叠加计数：一次重查询同时消耗两档额度。
 func (p *PanelRateLimiter) Heavy() gin.HandlerFunc {

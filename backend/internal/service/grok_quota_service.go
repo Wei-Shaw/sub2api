@@ -244,6 +244,12 @@ func (s *GrokQuotaService) probeUsage(ctx context.Context, accountID int64) (*Gr
 // ProbeBilling only calls the xAI billing endpoints. Account usage refreshes
 // use this method so opening the account list never consumes model quota.
 func (s *GrokQuotaService) ProbeBilling(ctx context.Context, accountID int64) (*GrokQuotaProbeResult, error) {
+	// 每个调用者在加入共享查询前独立验权，不能继承任务发起者的范围。
+	if s != nil {
+		if err := scopedAccountIDAccess(ctx, s.accountRepo, accountID, "accounts.usage.read", false); err != nil {
+			return nil, err
+		}
+	}
 	return s.runProbeFlight(ctx, "billing:"+strconv.FormatInt(accountID, 10), func(sharedCtx context.Context) (*GrokQuotaProbeResult, error) {
 		return s.probeBilling(sharedCtx, accountID)
 	})
@@ -353,7 +359,7 @@ func (s *GrokQuotaService) runProbeFlight(
 		return nil, infraerrors.New(http.StatusInternalServerError, "GROK_QUOTA_NOT_CONFIGURED", "grok quota service is not configured")
 	}
 	resultCh := s.probeFlight.DoChan(key, func() (any, error) {
-		sharedCtx, cancel := context.WithTimeout(context.Background(), grokQuotaUpstreamTimeout+5*time.Second)
+		sharedCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), grokQuotaUpstreamTimeout+5*time.Second)
 		defer cancel()
 		return probe(sharedCtx)
 	})
@@ -543,6 +549,9 @@ func (s *GrokQuotaService) loadGrokOAuthAccount(ctx context.Context, accountID i
 	}
 	if account == nil {
 		return nil, infraerrors.New(http.StatusNotFound, "GROK_QUOTA_ACCOUNT_NOT_FOUND", "account not found")
+	}
+	if err := scopedAccountAccess(ctx, s.accountRepo, account, "accounts.usage.read", false); err != nil {
+		return nil, err
 	}
 	if account.Platform != PlatformGrok {
 		return nil, infraerrors.New(http.StatusBadRequest, "GROK_QUOTA_INVALID_PLATFORM", "account is not a Grok account")

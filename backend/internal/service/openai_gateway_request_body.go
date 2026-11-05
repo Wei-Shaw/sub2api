@@ -1691,24 +1691,6 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 	return normalized, changed, nil
 }
 
-func detectOpenAIPassthroughInstructionsRejectReason(reqModel string, body []byte) string {
-	if !isOpenAICodexModel(reqModel) {
-		return ""
-	}
-
-	instructions := gjson.GetBytes(body, "instructions")
-	if !instructions.Exists() {
-		return ""
-	}
-	if instructions.Type != gjson.String {
-		return "instructions_not_string"
-	}
-	if strings.TrimSpace(instructions.String()) == "" {
-		return "instructions_empty"
-	}
-	return ""
-}
-
 func isOpenAICodexModel(model string) bool {
 	return strings.Contains(strings.ToLower(strings.TrimSpace(model)), "codex")
 }
