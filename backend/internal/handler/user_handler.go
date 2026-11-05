@@ -75,6 +75,10 @@ type ChangePasswordRequest struct {
 	NewPassword string `json:"new_password" binding:"required,min=6"`
 }
 
+type UpdateNotificationEmailLocaleRequest struct {
+	Locale string `json:"locale" binding:"required,oneof=en zh"`
+}
+
 // UpdateProfileRequest represents the update profile request payload
 type UpdateProfileRequest struct {
 	Username               *string  `json:"username"`
@@ -192,6 +196,53 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 	}
 
 	response.Success(c, profileResp)
+}
+
+// UpdateNotificationEmailLocale persists an explicit language choice for the
+// current user's notification emails.
+// PUT /api/v1/user/notification-email-locale
+func (h *UserHandler) UpdateNotificationEmailLocale(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	var req UpdateNotificationEmailLocaleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := h.userService.SaveNotificationEmailLocale(c.Request.Context(), subject.UserID, req.Locale); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{"locale": req.Locale})
+}
+
+// InitializeNotificationEmailLocale initializes the current user's
+// notification email locale without replacing an existing preference.
+// PUT /api/v1/user/notification-email-locale/initialize
+func (h *UserHandler) InitializeNotificationEmailLocale(c *gin.Context) {
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		response.Unauthorized(c, "User not authenticated")
+		return
+	}
+
+	var req UpdateNotificationEmailLocaleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	initialized, err := h.userService.InitializeNotificationEmailLocale(c.Request.Context(), subject.UserID, req.Locale)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, gin.H{"initialized": initialized})
 }
 
 // GetAffiliate returns the current user's affiliate details.
