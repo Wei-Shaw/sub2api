@@ -669,6 +669,11 @@ func (s *CRSSyncService) SyncFromCRS(ctx context.Context, input SyncFromCRSInput
 				result.Items = append(result.Items, item)
 				continue
 			}
+			wsModeDefault := ""
+			if s.cfg != nil {
+				wsModeDefault = s.cfg.Gateway.OpenAIWS.OAuthResponsesWebsocketsV2ModeDefault
+			}
+			extra = normalizeOpenAIOAuthResponsesWebsocketsV2Default(wsModeDefault, PlatformOpenAI, AccountTypeOAuth, extra)
 			account := &Account{
 				Name:        defaultName(src.Name, src.ID),
 				Platform:    PlatformOpenAI,
