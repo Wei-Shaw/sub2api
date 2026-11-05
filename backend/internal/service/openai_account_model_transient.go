@@ -22,8 +22,10 @@ const (
 	openAIModelTransientStreakTTL     = 30 * time.Minute
 	openAIModelTransientShortCooldown = 10 * time.Second
 	openAIModelTransientLongCooldown  = 45 * time.Second
+	openAIModelTransientCircuitTTL    = 10 * time.Minute
 	openAIModelTransientDefaultMax    = 4096
 	openAIModelTransientMaxModelBytes = 512
+	openAIModelTransientMaxRequestIDs = 64
 )
 
 type openAIAccountModelKey struct {
@@ -32,22 +34,41 @@ type openAIAccountModelKey struct {
 }
 
 type openAIAccountModelTransientEntry struct {
-	failureStreak int
-	lastFailure   time.Time
-	blockUntil    time.Time
-	lastTouched   time.Time
+	failureStreak         int
+	lastFailure           time.Time
+	blockUntil            time.Time
+	lastTouched           time.Time
+	requestIDs            map[string]struct{}
+	durableStreak         int
+	persisting            bool
+	persisted             bool
+	persistenceUntil      time.Time
+	persistenceGeneration uint64
+	mutationGeneration    uint64
 }
 
 type openAIAccountModelTransientDecision struct {
-	FailureStreak int
-	Cooldown      time.Duration
-	BlockUntil    time.Time
+	FailureStreak         int
+	Cooldown              time.Duration
+	BlockUntil            time.Time
+	Counted               bool
+	OpenCircuit           bool
+	PersistenceGeneration uint64
+}
+
+type openAIAccountModelTransientKeyLock struct {
+	mu   sync.Mutex
+	refs int
 }
 
 type openAIAccountModelTransientState struct {
-	mu         sync.Mutex
-	entries    map[openAIAccountModelKey]openAIAccountModelTransientEntry
-	maxEntries int
+	mu                        sync.Mutex
+	entries                   map[openAIAccountModelKey]openAIAccountModelTransientEntry
+	keyLocks                  map[openAIAccountModelKey]*openAIAccountModelTransientKeyLock
+	persistenceLocks          map[openAIAccountModelKey]*openAIAccountModelTransientKeyLock
+	maxEntries                int
+	nextPersistenceGeneration uint64
+	nextMutationGeneration    uint64
 }
 
 func newOpenAIAccountModelTransientState(maxEntries int) *openAIAccountModelTransientState {
@@ -55,8 +76,63 @@ func newOpenAIAccountModelTransientState(maxEntries int) *openAIAccountModelTran
 		maxEntries = openAIModelTransientDefaultMax
 	}
 	return &openAIAccountModelTransientState{
-		entries:    make(map[openAIAccountModelKey]openAIAccountModelTransientEntry),
-		maxEntries: maxEntries,
+		entries:          make(map[openAIAccountModelKey]openAIAccountModelTransientEntry),
+		keyLocks:         make(map[openAIAccountModelKey]*openAIAccountModelTransientKeyLock),
+		persistenceLocks: make(map[openAIAccountModelKey]*openAIAccountModelTransientKeyLock),
+		maxEntries:       maxEntries,
+	}
+}
+
+func (s *openAIAccountModelTransientState) lockKey(key openAIAccountModelKey) func() {
+	s.mu.Lock()
+	if s.keyLocks == nil {
+		s.keyLocks = make(map[openAIAccountModelKey]*openAIAccountModelTransientKeyLock)
+	}
+	keyLock := s.keyLocks[key]
+	if keyLock == nil {
+		keyLock = &openAIAccountModelTransientKeyLock{}
+		s.keyLocks[key] = keyLock
+	}
+	keyLock.refs++
+	s.mu.Unlock()
+
+	keyLock.mu.Lock()
+	return func() {
+		keyLock.mu.Unlock()
+		s.mu.Lock()
+		keyLock.refs--
+		if keyLock.refs == 0 {
+			delete(s.keyLocks, key)
+		}
+		if s.maxEntries > 0 && len(s.entries) > s.maxEntries {
+			s.evictOldestLocked()
+		}
+		s.mu.Unlock()
+	}
+}
+
+func (s *openAIAccountModelTransientState) lockPersistenceKey(key openAIAccountModelKey) func() {
+	s.mu.Lock()
+	if s.persistenceLocks == nil {
+		s.persistenceLocks = make(map[openAIAccountModelKey]*openAIAccountModelTransientKeyLock)
+	}
+	keyLock := s.persistenceLocks[key]
+	if keyLock == nil {
+		keyLock = &openAIAccountModelTransientKeyLock{}
+		s.persistenceLocks[key] = keyLock
+	}
+	keyLock.refs++
+	s.mu.Unlock()
+
+	keyLock.mu.Lock()
+	return func() {
+		keyLock.mu.Unlock()
+		s.mu.Lock()
+		keyLock.refs--
+		if keyLock.refs == 0 {
+			delete(s.persistenceLocks, key)
+		}
+		s.mu.Unlock()
 	}
 }
 
@@ -76,7 +152,7 @@ func openAIAccountModelTransientKey(accountID int64, model string) (openAIAccoun
 	return openAIAccountModelKey{AccountID: accountID, Model: model}, true
 }
 
-func (s *openAIAccountModelTransientState) recordFailure(accountID int64, model string, now time.Time) openAIAccountModelTransientDecision {
+func (s *openAIAccountModelTransientState) recordFailure(accountID int64, model string, now time.Time, requestID ...string) openAIAccountModelTransientDecision {
 	key, ok := openAIAccountModelTransientKey(accountID, model)
 	if s == nil || !ok {
 		return openAIAccountModelTransientDecision{}
@@ -85,6 +161,8 @@ func (s *openAIAccountModelTransientState) recordFailure(accountID int64, model 
 		now = time.Now()
 	}
 
+	unlockKey := s.lockKey(key)
+	defer unlockKey()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.entries == nil {
@@ -98,13 +176,52 @@ func (s *openAIAccountModelTransientState) recordFailure(accountID int64, model 
 	if !exists {
 		s.evictOldestLocked()
 	}
-	// The streak is cleared by recordSuccess. Only drop it here when the entry
-	// is stale beyond the TTL, or when the clock moved backwards.
-	if !exists || entry.lastFailure.IsZero() || now.Sub(entry.lastFailure) > openAIModelTransientStreakTTL || now.Before(entry.lastFailure) {
+	if !exists || entry.lastFailure.IsZero() || now.Sub(entry.lastFailure) > openAIModelTransientStreakTTL || now.Before(entry.lastFailure) ||
+		(entry.persisted && !entry.persistenceUntil.IsZero() && !now.Before(entry.persistenceUntil)) {
 		entry.failureStreak = 0
 		entry.blockUntil = time.Time{}
+		entry.requestIDs = nil
+		entry.durableStreak = 0
+		entry.persisting = false
+		entry.persisted = false
+		entry.persistenceUntil = time.Time{}
+		entry.persistenceGeneration = 0
+	}
+	currentRequestID := ""
+	openCircuit := false
+	if len(requestID) > 0 {
+		currentRequestID = strings.TrimSpace(requestID[0])
+	}
+	if currentRequestID != "" {
+		if _, duplicate := entry.requestIDs[currentRequestID]; duplicate {
+			return openAIAccountModelTransientDecision{
+				FailureStreak: entry.failureStreak,
+				BlockUntil:    entry.blockUntil,
+			}
+		}
+		if entry.requestIDs == nil {
+			entry.requestIDs = make(map[string]struct{})
+		}
+		if len(entry.requestIDs) >= openAIModelTransientMaxRequestIDs {
+			for oldestID := range entry.requestIDs {
+				delete(entry.requestIDs, oldestID)
+				break
+			}
+		}
+		entry.requestIDs[currentRequestID] = struct{}{}
+		if !entry.persisted && !entry.persisting {
+			entry.durableStreak++
+			if entry.durableStreak >= 3 {
+				s.nextPersistenceGeneration++
+				entry.persisting = true
+				entry.persistenceGeneration = s.nextPersistenceGeneration
+				openCircuit = true
+			}
+		}
 	}
 	entry.failureStreak++
+	s.nextMutationGeneration++
+	entry.mutationGeneration = s.nextMutationGeneration
 	entry.lastFailure = now
 	entry.lastTouched = now
 
@@ -122,20 +239,104 @@ func (s *openAIAccountModelTransientState) recordFailure(accountID int64, model 
 	}
 	s.entries[key] = entry
 	return openAIAccountModelTransientDecision{
-		FailureStreak: entry.failureStreak,
-		Cooldown:      cooldown,
-		BlockUntil:    entry.blockUntil,
+		FailureStreak:         entry.failureStreak,
+		Cooldown:              cooldown,
+		BlockUntil:            entry.blockUntil,
+		Counted:               true,
+		OpenCircuit:           openCircuit,
+		PersistenceGeneration: entry.persistenceGeneration,
 	}
 }
 
-func (s *openAIAccountModelTransientState) recordSuccess(accountID int64, model string) {
+func (s *openAIAccountModelTransientState) mutationGeneration(accountID int64, model string) uint64 {
 	key, ok := openAIAccountModelTransientKey(accountID, model)
 	if s == nil || !ok {
-		return
+		return 0
+	}
+	unlockKey := s.lockKey(key)
+	defer unlockKey()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.entries[key].mutationGeneration
+}
+
+func (s *openAIAccountModelTransientState) mutationGenerations(accountID int64) map[string]uint64 {
+	if s == nil || accountID <= 0 {
+		return nil
 	}
 	s.mu.Lock()
+	defer s.mu.Unlock()
+	result := make(map[string]uint64)
+	for key, entry := range s.entries {
+		if key.AccountID == accountID {
+			result[key.Model] = entry.mutationGeneration
+		}
+	}
+	return result
+}
+
+func (s *openAIAccountModelTransientState) clearCircuitIfGeneration(
+	accountID int64,
+	model string,
+	observedGeneration uint64,
+	clear func() (bool, error),
+) (bool, error) {
+	key, ok := openAIAccountModelTransientKey(accountID, model)
+	if s == nil || !ok {
+		return clear()
+	}
+	unlockKey := s.lockKey(key)
+	defer unlockKey()
+	s.mu.Lock()
+	if entry, exists := s.entries[key]; exists && entry.mutationGeneration != observedGeneration {
+		s.mu.Unlock()
+		return false, nil
+	}
+	s.mu.Unlock()
+	cleared, err := clear()
+	if err == nil && cleared {
+		s.mu.Lock()
+		delete(s.entries, key)
+		s.mu.Unlock()
+	}
+	return cleared, err
+}
+
+func (s *openAIAccountModelTransientState) finishCircuitPersistence(accountID int64, model string, generation uint64, persisted bool, persistenceUntil ...time.Time) bool {
+	key, ok := openAIAccountModelTransientKey(accountID, model)
+	if s == nil || !ok {
+		return false
+	}
+	unlockKey := s.lockKey(key)
+	defer unlockKey()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	entry, exists := s.entries[key]
+	if !exists || !entry.persisting || entry.persistenceGeneration != generation {
+		return false
+	}
+	entry.persisting = false
+	entry.persisted = persisted
+	entry.persistenceUntil = time.Time{}
+	if persisted && len(persistenceUntil) > 0 {
+		entry.persistenceUntil = persistenceUntil[0]
+	}
+	s.entries[key] = entry
+	return true
+}
+
+func (s *openAIAccountModelTransientState) recordSuccess(accountID int64, model string) (uint64, bool) {
+	key, ok := openAIAccountModelTransientKey(accountID, model)
+	if s == nil || !ok {
+		return 0, false
+	}
+	unlockKey := s.lockKey(key)
+	defer unlockKey()
+	s.mu.Lock()
+	entry := s.entries[key]
 	delete(s.entries, key)
 	s.mu.Unlock()
+	return entry.persistenceGeneration, entry.persisted
 }
 
 func (s *openAIAccountModelTransientState) isBlocked(accountID int64, model string, now time.Time) bool {
@@ -147,6 +348,8 @@ func (s *openAIAccountModelTransientState) isBlocked(accountID int64, model stri
 		now = time.Now()
 	}
 
+	unlockKey := s.lockKey(key)
+	defer unlockKey()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	entry, exists := s.entries[key]
@@ -179,6 +382,9 @@ func (s *openAIAccountModelTransientState) evictOldestLocked() {
 	var oldestTime time.Time
 	found := false
 	for key, entry := range s.entries {
+		if keyLock := s.keyLocks[key]; keyLock != nil && keyLock.refs > 0 {
+			continue
+		}
 		if !found || entry.lastTouched.Before(oldestTime) {
 			oldestKey = key
 			oldestTime = entry.lastTouched
