@@ -784,11 +784,12 @@ type ForwardedClientIPSettings struct {
 }
 
 type SecurityConfig struct {
-	URLAllowlist    URLAllowlistConfig   `mapstructure:"url_allowlist"`
-	ResponseHeaders ResponseHeaderConfig `mapstructure:"response_headers"`
-	CSP             CSPConfig            `mapstructure:"csp"`
-	ProxyFallback   ProxyFallbackConfig  `mapstructure:"proxy_fallback"`
-	ProxyProbe      ProxyProbeConfig     `mapstructure:"proxy_probe"`
+	URLAllowlist    URLAllowlistConfig    `mapstructure:"url_allowlist"`
+	ResponseHeaders ResponseHeaderConfig  `mapstructure:"response_headers"`
+	CSP             CSPConfig             `mapstructure:"csp"`
+	ProxyFallback   ProxyFallbackConfig   `mapstructure:"proxy_fallback"`
+	ProxyProbe      ProxyProbeConfig      `mapstructure:"proxy_probe"`
+	LoginFailureBan LoginFailureBanConfig `mapstructure:"login_failure_ban"`
 	// TrustForwardedIPForAPIKeyACL enables legacy raw forwarded-header takeover.
 	// When disabled, server.trusted_proxies is authoritative for all client-IP consumers.
 	TrustForwardedIPForAPIKeyACL  bool                                       `mapstructure:"trust_forwarded_ip_for_api_key_acl"`
@@ -883,6 +884,20 @@ type URLAllowlistConfig struct {
 	AllowPrivateHosts bool     `mapstructure:"allow_private_hosts"`
 	// 关闭 URL 白名单校验时，是否允许 http URL（默认只允许 https）
 	AllowInsecureHTTP bool `mapstructure:"allow_insecure_http"`
+}
+
+// LoginFailureBanConfig 登录失败自动封禁配置。
+// 开启后按客户端 IP 统计窗口期内的登录失败次数（响应 >= 400），
+// 达到阈值即临时封禁该 IP 的登录请求。
+type LoginFailureBanConfig struct {
+	Enabled        bool          `mapstructure:"enabled"`
+	Threshold      int           `mapstructure:"threshold"`
+	Window         time.Duration `mapstructure:"window"`
+	BanDuration    time.Duration `mapstructure:"ban_duration"`
+	IPv6PrefixBits int           `mapstructure:"ipv6_prefix_bits"`
+	// ExemptIPs 豁免的客户端地址（支持精确 IP 与 CIDR），命中后不参与
+	// 失败计数也不受封禁影响。内网/回环地址默认已豁免。
+	ExemptIPs []string `mapstructure:"exempt_ips"`
 }
 
 type ResponseHeaderConfig struct {
@@ -2184,6 +2199,16 @@ func setDefaults() {
 	viper.SetDefault("security.proxy_probe.insecure_skip_verify", false)
 	viper.SetDefault("security.trust_forwarded_ip_for_api_key_acl", true)
 
+	// Security - 登录失败自动封禁（默认关闭；开启后按客户端 IP 统计
+	// 窗口期内的登录失败次数，达到阈值即临时封禁。阈值取 10 次/10 分钟：
+	// 容忍正常用户忘记密码后的多次尝试，仅拦截持续爆破）
+	viper.SetDefault("security.login_failure_ban.enabled", false)
+	viper.SetDefault("security.login_failure_ban.threshold", 10)
+	viper.SetDefault("security.login_failure_ban.window", 10*time.Minute)
+	viper.SetDefault("security.login_failure_ban.ban_duration", time.Hour)
+	viper.SetDefault("security.login_failure_ban.ipv6_prefix_bits", 64)
+	viper.SetDefault("security.login_failure_ban.exempt_ips", []string{})
+
 	// Security - disable direct fallback on proxy error
 	viper.SetDefault("security.proxy_fallback.allow_direct_on_error", false)
 
@@ -2742,6 +2767,12 @@ func setEnvReachableDefaults() {
 	// called without arguments.
 	_ = viper.BindEnv("server.trusted_proxies", "SERVER_TRUSTED_PROXIES")
 	_ = viper.BindEnv("security.forwarded_client_ip_headers", "SECURITY_FORWARDED_CLIENT_IP_HEADERS")
+	_ = viper.BindEnv("security.login_failure_ban.enabled", "SECURITY_LOGIN_FAILURE_BAN_ENABLED")
+	_ = viper.BindEnv("security.login_failure_ban.threshold", "SECURITY_LOGIN_FAILURE_BAN_THRESHOLD")
+	_ = viper.BindEnv("security.login_failure_ban.window", "SECURITY_LOGIN_FAILURE_BAN_WINDOW")
+	_ = viper.BindEnv("security.login_failure_ban.ban_duration", "SECURITY_LOGIN_FAILURE_BAN_BAN_DURATION")
+	_ = viper.BindEnv("security.login_failure_ban.ipv6_prefix_bits", "SECURITY_LOGIN_FAILURE_BAN_IPV6_PREFIX_BITS")
+	_ = viper.BindEnv("security.login_failure_ban.exempt_ips", "SECURITY_LOGIN_FAILURE_BAN_EXEMPT_IPS")
 
 	// Third-party login providers. These carry client secrets and are exactly
 	// the settings an operator expects to inject via the environment, but every
