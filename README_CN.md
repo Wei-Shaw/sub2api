@@ -180,6 +180,11 @@
 <td>感谢 <a href="https://soleapi.com/r/sub2api">SoleAPI</a> 对本项目的支持！SoleAPI 是面向开发者与企业的 AI 模型网关：一个 API Key 即可调用 Claude、GPT、Gemini 等 30+ 主流模型。原生兼容 OpenAI 与 Anthropic 协议，Claude Code、Codex、Cursor 及现有 SDK 只需修改 Base URL 即可接入。请求按延迟与上游健康度实时路由，毫秒级自动切换至备用通道，服务可用性达 99.99%，并提供 7×24 小时技术支持。所有调用统一账单结算，每次请求的 token 与费用明细随时可查。通过本项目的<a href="https://soleapi.com/r/sub2api">推荐链接</a>注册即可获得免费试用额度，邀请好友充值还可持续获得返现！</td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://api.muteki.site/register?aff=Sub2"><img src="assets/partners/logos/marucode.jpg" alt="MaruCode" width="150"></a></td>
+<td><a href="https://api.muteki.site/register?aff=Sub2">MaruCode</a> ——偶尔做做慈善的小破站 API，站内 🍟每周星期四 会做 限时倍率活动 ，目前已运营半年有余，大群3K人，主打稳定、欢迎高校、企业等合作，感谢🙇，目前已经营半年有余，自营号池，不搞充值营销套路，主要提供 Codex（GPT 6.2 Astra）、Claude Code(Claude Opus 5.5)、GPT Image 2.6 等主流模型，支持 WebSocket 协议，明码标价(Codex 0.3x, CC 1.7x)，透明汇率(1:1)</td>
+</tr>
+
 </table>
 
 </details>
