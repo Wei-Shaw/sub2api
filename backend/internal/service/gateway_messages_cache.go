@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/tidwall/gjson"
@@ -106,6 +107,34 @@ func (s *GatewayService) isRewriteMessageCacheControlEnabled(ctx context.Context
 	return false
 }
 
+// applyResponsesAnthropicCacheBreakpoints 给 Responses→Anthropic 的转换产物补上
+// 会随对话一起前进的 cache_control 断点。
+//
+// 背景：Codex 等 Responses 客户端本身不携带 cache_control，而 Anthropic 只在请求
+// 里存在断点时才会读写缓存。这条链路此前只在 OAuth mimicry 分支打断点，APIKey 的
+// Anthropic 兼容上游因此只剩上游中转自己打在 tools 上的固定断点：首轮写入一次固定
+// 前缀（例如 Codex 的工具定义），之后每轮只有 cache_read，新增长的内容永远不写
+// 缓存，表现为“缓存写只出现一次”。
+//
+// 做法与 Parrot 一致：先清掉转换产物里的 message 断点，再在最后一条 message 与
+// 倒数第二条 user message 上重新打断点。调用方随后仍需执行
+// enforceCacheControlLimit，把总断点数限制在 4 个以内。
+//
+// 只对 Claude 系列模型注入：DeepSeek / Kimi 等 Anthropic 兼容端点有的会忽略缓存
+// 字段、有的会拒绝 cache_control.ttl，不能拿它们的请求去冒险。
+func applyResponsesAnthropicCacheBreakpoints(body []byte, model string) []byte {
+	if !isClaudeFamilyModelName(model) {
+		return body
+	}
+	body = stripMessageCacheControl(body)
+	return addMessageCacheBreakpoints(body)
+}
+
+// isClaudeFamilyModelName 判断上游模型名是否属于 Claude 家族。
+func isClaudeFamilyModelName(model string) bool {
+	return strings.Contains(strings.ToLower(strings.TrimSpace(model)), "claude")
+}
+
 // injectCacheControlOnLastContentBlock 把 cache_control 断点打在 messages[idx]
 // 的最后一个 content block 上。若 content 是 string，先升级成单块 text 数组
 // （对齐 Parrot _inject_cache_on_msg 的行为）。
@@ -133,7 +162,10 @@ func injectCacheControlOnLastContentBlock(body []byte, idx int, msg *gjson.Resul
 	if len(contentArr) == 0 {
 		return body
 	}
-	lastBlockIdx := len(contentArr) - 1
+	lastBlockIdx := lastCacheableContentBlockIndex(contentArr)
+	if lastBlockIdx < 0 {
+		return body
+	}
 	lastBlock := contentArr[lastBlockIdx]
 
 	if cc := lastBlock.Get("cache_control"); cc.Exists() && cc.Get("ttl").String() != "" {
@@ -153,6 +185,22 @@ func injectCacheControlOnLastContentBlock(body []byte, idx int, msg *gjson.Resul
 		body = next
 	}
 	return body
+}
+
+// lastCacheableContentBlockIndex 返回可承载 cache_control 的最后一个 content block
+// 下标。thinking / redacted_thinking 不允许带 cache_control（上游会直接 400，
+// enforceCacheControlLimit 也会把它当非法断点清掉），因此需要向前回退。
+// 整条 content 都不适合打点时返回 -1。
+func lastCacheableContentBlockIndex(blocks []gjson.Result) int {
+	for i := len(blocks) - 1; i >= 0; i-- {
+		switch blocks[i].Get("type").String() {
+		case "thinking", "redacted_thinking":
+			continue
+		default:
+			return i
+		}
+	}
+	return -1
 }
 
 // mustJSONString 把一个 Go string 序列化为合法 JSON string（含引号），
