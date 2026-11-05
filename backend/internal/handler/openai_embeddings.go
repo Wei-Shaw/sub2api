@@ -18,8 +18,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// Embeddings handles the OpenAI-compatible Embeddings API.
-// POST /v1/embeddings
+// Embeddings handles ordinary and structured multimodal embeddings.
+// POST /v1/embeddings or /v1/embeddings/multimodal (including native aliases).
 func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	streamStarted := false
 	requestStart := time.Now()
@@ -133,7 +133,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	}
 	routingStart := time.Now()
 
-	// 分组利润控制：embeddings 文本入口请求级装门并固定 pricingAt。
+	// 分组利润控制：embeddings 入口请求级装门并固定 pricingAt。
 	embPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
 	c.Request = c.Request.WithContext(embPricingCtx)
 
@@ -213,6 +213,9 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 					accountReleaseFunc()
 				}
 			}()
+			if GetInboundEndpoint(c) == EndpointMultimodalEmbeddings {
+				return h.gatewayService.ForwardMultimodalEmbeddings(c.Request.Context(), c, account, forwardBody, "")
+			}
 			return h.gatewayService.ForwardEmbeddings(c.Request.Context(), c, account, forwardBody, "")
 		}()
 

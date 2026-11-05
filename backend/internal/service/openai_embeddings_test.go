@@ -15,7 +15,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-func TestBuildOpenAIEmbeddingsURL(t *testing.T) {
+func TestBuildOpenAIEndpointURL_Embeddings(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -32,7 +32,7 @@ func TestBuildOpenAIEmbeddingsURL(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			require.Equal(t, tt.want, buildOpenAIEmbeddingsURL(tt.base))
+			require.Equal(t, tt.want, buildOpenAIEndpointURL(tt.base, "/v1/embeddings"))
 		})
 	}
 }

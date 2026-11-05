@@ -74,6 +74,19 @@ func RegisterGatewayRoutes(
 	isOpenAIOnlyEndpointGatewayPlatform := func(c *gin.Context) bool {
 		return getGroupPlatform(c) == service.PlatformOpenAI
 	}
+	embeddingsHandler := func(c *gin.Context) {
+		if !isOpenAIOnlyEndpointGatewayPlatform(c) {
+			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": gin.H{
+					"type":    "not_found_error",
+					"message": "Embeddings API is not supported for this platform",
+				},
+			})
+			return
+		}
+		h.OpenAIGateway.Embeddings(c)
+	}
 	imagesHandler := func(c *gin.Context) {
 		switch getGroupPlatform(c) {
 		case service.PlatformOpenAI:
@@ -238,19 +251,8 @@ func RegisterGatewayRoutes(
 			}
 			h.Gateway.ChatCompletions(c)
 		})
-		gateway.POST("/embeddings", textBodyLimit, func(c *gin.Context) {
-			if !isOpenAIOnlyEndpointGatewayPlatform(c) {
-				service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-				c.JSON(http.StatusNotFound, gin.H{
-					"error": gin.H{
-						"type":    "not_found_error",
-						"message": "Embeddings API is not supported for this platform",
-					},
-				})
-				return
-			}
-			h.OpenAIGateway.Embeddings(c)
-		})
+		gateway.POST("/embeddings", textBodyLimit, embeddingsHandler)
+		gateway.POST("/embeddings/multimodal", embeddingsHandler)
 		gateway.POST("/images/generations", imagesHandler)
 		gateway.POST("/images/edits", imagesHandler)
 		gateway.POST("/images/generations/async", h.AsyncImage.Submit)
@@ -406,19 +408,10 @@ func RegisterGatewayRoutes(
 		}
 		h.Gateway.ChatCompletions(c)
 	})
-	rootRoute(http.MethodPost, "/embeddings", textBodyLimit, func(c *gin.Context) {
-		if !isOpenAIOnlyEndpointGatewayPlatform(c) {
-			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-			c.JSON(http.StatusNotFound, gin.H{
-				"error": gin.H{
-					"type":    "not_found_error",
-					"message": "Embeddings API is not supported for this platform",
-				},
-			})
-			return
-		}
-		h.OpenAIGateway.Embeddings(c)
-	})
+	rootRoute(http.MethodPost, "/embeddings", textBodyLimit, embeddingsHandler)
+	for _, prefix := range []string{"", "/api/v3", "/v3"} {
+		rootRoute(http.MethodPost, prefix+"/embeddings/multimodal", bodyLimit, embeddingsHandler)
+	}
 	rootRoute(http.MethodPost, "/images/generations", bodyLimit, imagesHandler)
 	rootRoute(http.MethodPost, "/images/edits", bodyLimit, imagesHandler)
 	rootRoute(http.MethodPost, "/images/generations/async", bodyLimit, h.AsyncImage.Submit)
