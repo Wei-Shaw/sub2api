@@ -797,10 +797,10 @@ func ProvideOpsIngressRejectAggregator(opsRepo OpsRepository, opsService *OpsSer
 }
 
 // ProvideSettingService wires SettingService with group reader and proxy repo.
-func ProvideSettingService(scopedKeys ScopedAdminKeyRepository, settingRepo SettingRepository, groupRepo GroupRepository, proxyRepo ProxyRepository, cfg *config.Config, redisClient *redis.Client) *SettingService {
+func ProvideSettingService(scopedKeys ScopedAdminKeyRepository, settingRepo SettingRepository, groupRepo GroupRepository, proxyRepo ProxyRepository, cfg *config.Config, trafficCompressionCache TrafficCompressionCache) *SettingService {
 	svc := NewSettingService(settingRepo, cfg)
 	svc.scopedAdminKeyRepo = scopedKeys
-	svc.trafficCompression.redis = redisClient
+	svc.trafficCompression.shared = trafficCompressionCache
 	reqcompress.ConfigureLevelProvider(svc)
 	svc.SetDefaultSubscriptionGroupReader(groupRepo)
 	svc.SetProxyRepository(proxyRepo)

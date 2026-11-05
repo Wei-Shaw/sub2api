@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"strconv"
 	"sync"
 	"testing"
@@ -9,8 +10,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/compresslevel"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
-	"github.com/alicebob/miniredis/v2"
-	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/require"
 )
 
@@ -20,12 +19,16 @@ type trafficCompressionRepoStub struct {
 	values           map[string]string
 	getMultipleCalls int
 	setMultipleCalls int
+	getMultipleErr   error
 }
 
 func (r *trafficCompressionRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.getMultipleCalls++
+	if r.getMultipleErr != nil {
+		return nil, r.getMultipleErr
+	}
 	out := make(map[string]string, len(keys))
 	for _, key := range keys {
 		if value, ok := r.values[key]; ok {
@@ -75,23 +78,44 @@ func (r *trafficCompressionRepoStub) calls() (int, int) {
 	return r.getMultipleCalls, r.setMultipleCalls
 }
 
-func newTrafficCompressionCacheTest(t *testing.T) (*miniredis.Miniredis, *redis.Client, *trafficCompressionRepoStub, *SettingService) {
-	t.Helper()
-	server := miniredis.RunT(t)
-	client := redis.NewClient(&redis.Options{Addr: server.Addr(), MaxRetries: -1})
-	t.Cleanup(func() { require.NoError(t, client.Close()) })
+type trafficCompressionCacheStub struct {
+	levels   *compresslevel.Settings
+	getErr   error
+	setErr   error
+	getCalls int
+	setCalls int
+}
+
+func (c *trafficCompressionCacheStub) Get(context.Context) (*compresslevel.Settings, error) {
+	c.getCalls++
+	return c.levels, c.getErr
+}
+
+func (c *trafficCompressionCacheStub) Set(_ context.Context, levels compresslevel.Settings) error {
+	c.setCalls++
+	if c.setErr != nil {
+		return c.setErr
+	}
+	c.levels = &levels
+	return nil
+}
+
+func newTrafficCompressionCacheTest() (*trafficCompressionCacheStub, *trafficCompressionRepoStub, *SettingService) {
+	cache := &trafficCompressionCacheStub{}
 	repo := &trafficCompressionRepoStub{values: make(map[string]string)}
 	svc := NewSettingService(repo, nil)
-	svc.trafficCompression.redis = client
-	return server, client, repo, svc
+	svc.trafficCompression.shared = cache
+	return cache, repo, svc
 }
 
 func expireTrafficCompressionLocalCache(svc *SettingService) {
-	svc.trafficCompression.cache.Load().expiresAt = time.Now().Add(-time.Second)
+	cached := *svc.trafficCompression.cache.Load()
+	cached.expiresAt = time.Now().Add(-time.Second)
+	svc.trafficCompression.cache.Store(&cached)
 }
 
 func TestTrafficCompressionLevelsCacheTTLAndFallback(t *testing.T) {
-	server, client, repo, svc := newTrafficCompressionCacheTest(t)
+	cache, repo, svc := newTrafficCompressionCacheTest()
 	ctx := context.Background()
 	initial := compresslevel.Settings{Brotli: 7, Zstd: 9, Gzip: 4, Deflate: 2}
 	repo.setLevels(initial)
@@ -99,35 +123,29 @@ func TestTrafficCompressionLevelsCacheTTLAndFallback(t *testing.T) {
 	require.Equal(t, initial, svc.GetTrafficCompressionLevels(ctx))
 	reads, _ := repo.calls()
 	require.Equal(t, 1, reads)
-	ttl := server.TTL(trafficCompressionRedisKey)
-	require.Greater(t, ttl, 4*time.Minute)
-	require.LessOrEqual(t, ttl, trafficCompressionRedisTTL)
+	require.Equal(t, initial, *cache.levels)
+	ttl := time.Until(svc.trafficCompression.cache.Load().expiresAt)
+	require.Greater(t, ttl, 29*time.Second)
+	require.LessOrEqual(t, ttl, trafficCompressionLocalTTL)
 
 	updated := compresslevel.Settings{Brotli: 8, Zstd: 10, Gzip: 5, Deflate: 3}
 	repo.setLevels(updated)
 	require.Equal(t, initial, svc.GetTrafficCompressionLevels(ctx), "local TTL must avoid another backend read")
+	require.Equal(t, 1, cache.getCalls)
 	expireTrafficCompressionLocalCache(svc)
-	require.Equal(t, initial, svc.GetTrafficCompressionLevels(ctx), "Redis hit must avoid a DB read")
+	require.Equal(t, initial, svc.GetTrafficCompressionLevels(ctx), "shared cache hit must avoid a DB read")
 	reads, _ = repo.calls()
 	require.Equal(t, 1, reads)
 
-	require.NoError(t, client.Del(ctx, trafficCompressionRedisKey).Err())
+	cache.levels = nil
 	expireTrafficCompressionLocalCache(svc)
-	require.Equal(t, updated, svc.GetTrafficCompressionLevels(ctx), "Redis miss must fall back to DB")
+	require.Equal(t, updated, svc.GetTrafficCompressionLevels(ctx), "shared cache miss must fall back to DB")
 	reads, _ = repo.calls()
 	require.Equal(t, 2, reads)
-
-	third := compresslevel.Settings{Brotli: 9, Zstd: 11, Gzip: 6, Deflate: 4}
-	repo.setLevels(third)
-	server.FastForward(trafficCompressionRedisTTL + time.Second)
-	expireTrafficCompressionLocalCache(svc)
-	require.Equal(t, third, svc.GetTrafficCompressionLevels(ctx), "expired Redis entry must be reloaded from DB")
-	reads, _ = repo.calls()
-	require.Equal(t, 3, reads)
 }
 
-func TestTrafficCompressionLevelsWriteThroughRedis(t *testing.T) {
-	server, _, repo, writer := newTrafficCompressionCacheTest(t)
+func TestTrafficCompressionLevelsWriteThroughSharedCache(t *testing.T) {
+	cache, repo, writer := newTrafficCompressionCacheTest()
 	levels := compresslevel.Settings{Brotli: 10, Zstd: 12, Gzip: 7, Deflate: 5}
 	writer.refreshTrafficCompressionLevels(context.Background(), &SystemSettings{
 		CompressionBrotliLevel:  levels.Brotli,
@@ -135,17 +153,53 @@ func TestTrafficCompressionLevelsWriteThroughRedis(t *testing.T) {
 		CompressionGzipLevel:    levels.Gzip,
 		CompressionDeflateLevel: levels.Deflate,
 	})
-	require.Greater(t, server.TTL(trafficCompressionRedisKey), 4*time.Minute)
+	require.Equal(t, levels, *cache.levels)
+	require.Equal(t, 1, cache.setCalls)
 
 	reader := NewSettingService(repo, nil)
-	reader.trafficCompression.redis = writer.trafficCompression.redis
+	reader.trafficCompression.shared = cache
 	require.Equal(t, levels, reader.GetTrafficCompressionLevels(context.Background()))
 	reads, _ := repo.calls()
-	require.Zero(t, reads, "a second instance must load the write-through Redis value without DB access")
+	require.Zero(t, reads, "a second instance must load the write-through cache value without DB access")
+}
+
+func TestTrafficCompressionLevelsSharedCacheFailureFallsBackToDB(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		levels *compresslevel.Settings
+		err    error
+	}{
+		{name: "unavailable", err: errors.New("cache unavailable")},
+		{name: "invalid levels", levels: &compresslevel.Settings{Brotli: 12}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cache, repo, svc := newTrafficCompressionCacheTest()
+			cache.levels, cache.getErr = tc.levels, tc.err
+			cache.setErr = errors.New("cache write failed")
+			levels := compresslevel.Settings{Brotli: 7, Zstd: 9, Gzip: 4, Deflate: 2}
+			repo.setLevels(levels)
+			require.Equal(t, levels, svc.GetTrafficCompressionLevels(context.Background()))
+			reads, _ := repo.calls()
+			require.Equal(t, 1, reads)
+			require.Equal(t, 1, cache.setCalls)
+		})
+	}
+}
+
+func TestTrafficCompressionLevelsDBFailureUsesPreviousSnapshot(t *testing.T) {
+	cache, repo, svc := newTrafficCompressionCacheTest()
+	levels := compresslevel.Settings{Brotli: 7, Zstd: 9, Gzip: 4, Deflate: 2}
+	repo.setLevels(levels)
+	require.Equal(t, levels, svc.GetTrafficCompressionLevels(context.Background()))
+	cache.levels = nil
+	repo.getMultipleErr = errors.New("database unavailable")
+	expireTrafficCompressionLocalCache(svc)
+	require.Equal(t, levels, svc.GetTrafficCompressionLevels(context.Background()))
+	require.LessOrEqual(t, time.Until(svc.trafficCompression.cache.Load().expiresAt), trafficCompressionErrorTTL)
 }
 
 func TestTrafficCompressionLevelsPersistenceAndValidation(t *testing.T) {
-	_, _, repo, svc := newTrafficCompressionCacheTest(t)
+	_, repo, svc := newTrafficCompressionCacheTest()
 	ctx := context.Background()
 	levels := compresslevel.Settings{Brotli: 11, Zstd: 19, Gzip: 9, Deflate: 0}
 	settings := &SystemSettings{

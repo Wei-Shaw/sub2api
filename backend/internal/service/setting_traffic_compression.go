@@ -2,8 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"log/slog"
 	"strconv"
 	"strings"
@@ -11,13 +9,10 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/compresslevel"
-	"github.com/redis/go-redis/v9"
 	"golang.org/x/sync/singleflight"
 )
 
 const (
-	trafficCompressionRedisKey     = "settings:traffic_compression_levels"
-	trafficCompressionRedisTTL     = 5 * time.Minute
 	trafficCompressionLocalTTL     = 30 * time.Second
 	trafficCompressionErrorTTL     = 5 * time.Second
 	trafficCompressionLoadTimeout  = 5 * time.Second
@@ -29,10 +24,17 @@ type cachedTrafficCompressionLevels struct {
 	expiresAt time.Time
 }
 
+// TrafficCompressionCache stores the shared compression settings snapshot.
+// Get returns nil without an error when no snapshot is cached.
+type TrafficCompressionCache interface {
+	Get(ctx context.Context) (*compresslevel.Settings, error)
+	Set(ctx context.Context, levels compresslevel.Settings) error
+}
+
 type trafficCompressionRuntime struct {
-	redis *redis.Client
-	cache atomic.Pointer[cachedTrafficCompressionLevels]
-	sf    singleflight.Group
+	shared TrafficCompressionCache
+	cache  atomic.Pointer[cachedTrafficCompressionLevels]
+	sf     singleflight.Group
 }
 
 var trafficCompressionSettingKeys = []string{
@@ -117,22 +119,17 @@ func (s *SettingService) GetTrafficCompressionLevels(ctx context.Context) compre
 		loadCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), trafficCompressionLoadTimeout)
 		defer cancel()
 
-		if client := s.trafficCompression.redis; client != nil {
-			raw, err := client.Get(loadCtx, trafficCompressionRedisKey).Result()
+		if cache := s.trafficCompression.shared; cache != nil {
+			levels, err := cache.Get(loadCtx)
 			switch {
-			case err == nil:
-				var levels compresslevel.Settings
-				if unmarshalErr := json.Unmarshal([]byte(raw), &levels); unmarshalErr != nil {
-					slog.Warn("invalid cached traffic compression levels", "error", unmarshalErr)
-				} else if validateErr := levels.Validate(); validateErr != nil {
+			case err != nil:
+				slog.Warn("failed to read cached traffic compression levels", "error", err)
+			case levels != nil:
+				if validateErr := levels.Validate(); validateErr != nil {
 					slog.Warn("out-of-range cached traffic compression levels", "error", validateErr)
 				} else {
-					return s.cacheTrafficCompressionLevels(levels, trafficCompressionLocalTTL), nil
+					return s.cacheTrafficCompressionLevels(*levels, trafficCompressionLocalTTL), nil
 				}
-			case errors.Is(err, redis.Nil):
-				// Cache miss: load the persistent settings below.
-			default:
-				slog.Warn("failed to read traffic compression levels from Redis", "error", err)
 			}
 		}
 
@@ -149,7 +146,7 @@ func (s *SettingService) GetTrafficCompressionLevels(ctx context.Context) compre
 			return s.cacheTrafficCompressionLevels(levels, trafficCompressionErrorTTL), nil
 		}
 		levels := parseTrafficCompressionLevels(values)
-		s.storeTrafficCompressionLevelsRedis(loadCtx, levels)
+		s.storeTrafficCompressionLevelsShared(loadCtx, levels)
 		return s.cacheTrafficCompressionLevels(levels, trafficCompressionLocalTTL), nil
 	})
 	if levels, ok := result.(compresslevel.Settings); ok {
@@ -166,18 +163,13 @@ func (s *SettingService) cacheTrafficCompressionLevels(levels compresslevel.Sett
 	return levels
 }
 
-func (s *SettingService) storeTrafficCompressionLevelsRedis(ctx context.Context, levels compresslevel.Settings) {
-	client := s.trafficCompression.redis
-	if client == nil {
+func (s *SettingService) storeTrafficCompressionLevelsShared(ctx context.Context, levels compresslevel.Settings) {
+	cache := s.trafficCompression.shared
+	if cache == nil {
 		return
 	}
-	payload, err := json.Marshal(levels)
-	if err != nil {
-		slog.Warn("failed to encode traffic compression levels", "error", err)
-		return
-	}
-	if err := client.Set(ctx, trafficCompressionRedisKey, payload, trafficCompressionRedisTTL).Err(); err != nil {
-		slog.Warn("failed to cache traffic compression levels in Redis", "error", err)
+	if err := cache.Set(ctx, levels); err != nil {
+		slog.Warn("failed to cache traffic compression levels", "error", err)
 	}
 }
 
@@ -193,5 +185,5 @@ func (s *SettingService) refreshTrafficCompressionLevels(ctx context.Context, se
 	}
 	writeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), trafficCompressionLoadTimeout)
 	defer cancel()
-	s.storeTrafficCompressionLevelsRedis(writeCtx, levels)
+	s.storeTrafficCompressionLevelsShared(writeCtx, levels)
 }

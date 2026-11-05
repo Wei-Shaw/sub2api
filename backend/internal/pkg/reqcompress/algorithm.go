@@ -44,7 +44,13 @@ func sharedZstdEncoder(level int) zstdEncoderFactory {
 			zstd.WithEncoderLevel(encoderLevel),
 		)
 	})))
-	return factory.(zstdEncoderFactory)
+	encoderFactory, ok := factory.(zstdEncoderFactory)
+	if !ok {
+		return func() (*zstd.Encoder, error) {
+			return nil, fmt.Errorf("unexpected zstd encoder factory %T", factory)
+		}
+	}
+	return encoderFactory
 }
 
 // encodeBody compresses body with the default levels.
