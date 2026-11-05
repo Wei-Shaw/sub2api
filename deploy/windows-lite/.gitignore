@@ -1,0 +1,11 @@
+# Local runtime artifacts for windows-lite pack
+runtime/
+**/local.secrets.env
+**/*.pid
+**/*.log
+**/__pycache__/
+**/bin/
+**/obj/
+*.exe
+*.zip
+*.part
