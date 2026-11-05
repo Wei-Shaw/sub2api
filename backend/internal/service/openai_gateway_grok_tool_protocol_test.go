@@ -429,7 +429,7 @@ func TestGrokResponsesClientToolStreamBodyFlushesFrameBeforeEOF(t *testing.T) {
 	sourceReader, sourceWriter := io.Pipe()
 	body := newGrokResponsesClientToolStreamBody(sourceReader, apicompat.ResponsesClientToolMapping{
 		CustomTools: map[string]bool{"apply_patch": true},
-	}, defaultMaxLineSize)
+	}, defaultMaxLineSize, nil)
 	defer func() { _ = body.Close() }()
 	defer func() { _ = sourceWriter.Close() }()
 

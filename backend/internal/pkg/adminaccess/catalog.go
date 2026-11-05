@@ -1,6 +1,9 @@
 package adminaccess
 
-import "slices"
+import (
+	"slices"
+	"strings"
+)
 
 type Permission struct {
 	ID       string `json:"id"`
@@ -17,6 +20,18 @@ type permissionDefinition struct {
 // 接口按方法和 Gin 完整路径精确登记；新增接口不会继承同目录权限。
 // 全站权限与账户规则独立，选中分组绝不会隐式授予全站操作。
 var definitions = []permissionDefinition{
+	{Permission{"accounts.identity.read", "读取账户邮箱、套餐及创建时间（不含令牌）", "账户", "account"}, []string{"GET /accounts/:id"}},
+	{Permission{"accounts.usage.read", "读取及主动刷新授权账户额度与快照", "账户", "account"}, []string{"GET /accounts/:id/usage", "POST /accounts/usage/batch"}},
+	{Permission{"accounts.stats.read", "读取账户用量与费用统计", "账户", "account"}, []string{"GET /accounts/:id/today-stats", "POST /accounts/today-stats/batch", "GET /accounts/:id/stats"}},
+	{Permission{"openai.quota.read", "查询 OpenAI 上游额度与重置次数", "OpenAI", "account"}, []string{"GET /openai/accounts/:id/quota", "POST /openai/accounts/:id/quota/refresh"}},
+	{Permission{"openai.quota.reset", "消耗 OpenAI 重置次数恢复额度", "OpenAI", "account"}, []string{"POST /openai/accounts/:id/reset-quota"}},
+	{Permission{"openai.referrals.read", "查询 OpenAI 邀请资格与次数", "OpenAI", "account"}, []string{"POST /openai/accounts/:id/referrals/refresh"}},
+	{Permission{"openai.referrals.invite", "发送 OpenAI 邀请邮件", "OpenAI", "account"}, []string{"POST /openai/accounts/:id/referrals/invite"}},
+	{Permission{"accounts.options.write", "写入 OpenAI OAuth 身份与连接选项", "账户", "account"}, []string{"POST /accounts"}},
+	{Permission{"accounts.rate.write", "设置账户计费倍率", "账户", "account"}, []string{"POST /accounts", "PUT /accounts/:id"}},
+	{Permission{"groups.list.read", "读取所选分组基本信息（名称、平台、状态）", "分组", "group"}, []string{"GET /groups", "GET /groups/all", "GET /groups/:id"}},
+	{Permission{"groups.capacity.read", "读取所选分组容量（整个分组，不按账户类型过滤）", "分组", "group"}, []string{"GET /groups/capacity-summary"}},
+	{Permission{"openai.tokens.refresh", "刷新调用方提供的 OpenAI 令牌（返回令牌，可使用所选代理）", "OAuth", "global"}, []string{"POST /openai/refresh-token"}},
 	{Permission{"accounts.read", "查看账户（脱敏）", "账户", "account"}, []string{"GET /accounts", "GET /accounts/:id", "GET /accounts/:id/models"}},
 	{Permission{"accounts.create", "创建账户", "账户", "account"}, []string{"POST /accounts", "POST /accounts/import/codex-session"}},
 	{Permission{"accounts.update", "编辑名称与备注", "账户", "account"}, []string{"PUT /accounts/:id"}},
@@ -77,6 +92,9 @@ func PermissionCatalog() []Permission {
 
 // RouteAllowed 只检查动作准入；账户资源及字段必须再由专用处理器检查。
 func RouteAllowed(policy Policy, method, path string) bool {
+	if policy.FullAccess {
+		return strings.HasPrefix(path, "/api/v1/admin/") && !strings.HasPrefix(path, "/api/v1/admin/settings/admin-api-key")
+	}
 	target := method + " " + path
 	for _, definition := range definitions {
 		matched := false
