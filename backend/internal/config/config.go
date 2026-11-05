@@ -960,6 +960,9 @@ func normalizeProxyProbeURLs(targets []ProbeURLConfig) ([]ProbeURLConfig, error)
 
 type BillingConfig struct {
 	CircuitBreaker CircuitBreakerConfig `mapstructure:"circuit_breaker"`
+	// ZeroOutputFree 启用后，普通模型请求在上游报告没有输出 token 时不扣费，
+	// 但仍保留完整的用量记录。图片、视频、语音和搜索等媒体/附加计费请求不受影响。
+	ZeroOutputFree bool `mapstructure:"zero_output_free"`
 	// MinimumBalanceReserve is the conservative preflight floor for balance billing.
 	// Requests in balance mode are rejected when the cached balance is below this
 	// amount, even if it is still positive. Set to 0 to keep the legacy balance > 0 gate.
@@ -2192,6 +2195,7 @@ func setDefaults() {
 	viper.SetDefault("billing.circuit_breaker.failure_threshold", 5)
 	viper.SetDefault("billing.circuit_breaker.reset_timeout_seconds", 30)
 	viper.SetDefault("billing.circuit_breaker.half_open_requests", 3)
+	viper.SetDefault("billing.zero_output_free", false)
 	viper.SetDefault("billing.minimum_balance_reserve", 0.000001)
 	viper.SetDefault("billing.user_platform_quota_cache_ttl_seconds", 86400)
 	viper.SetDefault("billing.user_platform_quota_sentinel_ttl_seconds", 3600)
