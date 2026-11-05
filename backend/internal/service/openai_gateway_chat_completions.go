@@ -414,6 +414,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		return s.handleChatCompletionsErrorResponse(resp, c, account, billingModel)
 	}
 
+	setOpenAIResponseServiceTier(c, extractOpenAIServiceTierFromBody(responsesBody))
 	// 9. Handle normal response
 	var result *OpenAIForwardResult
 	var handleErr error
@@ -745,6 +746,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	// accumulated delta events so the client receives the full content.
 	acc.SupplementResponseOutput(finalResponse)
 
+	finalResponse.ServiceTier = codexClientResponseServiceTier(account, openAIResponseServiceTier(c), finalResponse.ServiceTier)
 	chatResp := apicompat.ResponsesToChatCompletions(finalResponse, originalModel)
 
 	if s.responseHeaderFilter != nil {
@@ -919,6 +921,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			return false
 		}
 		observer.ObserveOpenAI([]byte(payload), event.Type)
+		if event.Response != nil {
+			event.Response.ServiceTier = codexClientResponseServiceTier(account, openAIResponseServiceTier(c), event.Response.ServiceTier)
+		}
 		refusalDetector.ObservePayload([]byte(payload))
 		s.parseSSEUsageBytesWithType([]byte(payload), event.Type, &usage)
 
@@ -1014,6 +1019,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		chunks := apicompat.ResponsesEventToChatChunks(&event, state)
 		if !clientDisconnected {
 			for _, chunk := range chunks {
+				chunk.ServiceTier = codexClientResponseServiceTier(account, openAIResponseServiceTier(c), chunk.ServiceTier)
 				refusalDetector.ObserveChatChunk(chunk)
 				sse, err := apicompat.ChatChunkToSSE(chunk)
 				if err != nil {
@@ -1071,6 +1077,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		}
 		if finalChunks := apicompat.FinalizeResponsesChatStream(state); len(finalChunks) > 0 && !clientDisconnected {
 			for _, chunk := range finalChunks {
+				chunk.ServiceTier = codexClientResponseServiceTier(account, openAIResponseServiceTier(c), chunk.ServiceTier)
 				refusalDetector.ObserveChatChunk(chunk)
 				sse, err := apicompat.ChatChunkToSSE(chunk)
 				if err != nil {
