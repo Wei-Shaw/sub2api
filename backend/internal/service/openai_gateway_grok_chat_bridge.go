@@ -543,6 +543,7 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 
 	responsesReq, err := chatCompletionsToResponses(s.cfg, &chatReq)
 	if err != nil {
+		writeChatInputAudioValidationError(c, err)
 		return nil, fmt.Errorf("convert grok chat completions to responses: %w", err)
 	}
 	responsesReq.Model = upstreamModel

@@ -17,7 +17,7 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 	isOpus55 := claude.IsOpus55(req.Model)
 	isSonnet55 := claude.IsSonnet55(req.Model)
 	isHaiku55 := claude.IsHaiku55(req.Model)
-	system, messages, err := convertResponsesInputToAnthropic(req.Instructions, req.Input, isOpus55 || isSonnet55 || isHaiku55)
+	system, messages, err := convertResponsesInputToAnthropic(req.Instructions, req.Input, isOpus55 || isSonnet55 || isHaiku55, req.chatInputAudio)
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +179,7 @@ func mapResponsesEffortToAnthropic(effort string) string {
 // convertResponsesInputToAnthropic extracts system prompt and messages from
 // a Responses API instructions + input array. Returns the system as raw JSON
 // (for Anthropic's polymorphic system field) and a list of Anthropic messages.
-func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMessage, preserveThinking bool) (json.RawMessage, []AnthropicMessage, error) {
+func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMessage, preserveThinking bool, audioInputs ...map[int]map[int]string) (json.RawMessage, []AnthropicMessage, error) {
 	var systemParts []string
 	if strings.TrimSpace(instructions) != "" {
 		systemParts = append(systemParts, strings.TrimSpace(instructions))
@@ -203,7 +203,11 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 
 	var messages []AnthropicMessage
 
-	for _, item := range items {
+	for itemIndex, item := range items {
+		var audioParts map[int]string
+		if len(audioInputs) > 0 {
+			audioParts = audioInputs[0][itemIndex]
+		}
 		switch {
 		case item.Role == "system" || item.Role == "developer":
 			text := extractTextFromContent(item.Content)
@@ -266,7 +270,7 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 			}
 
 		case item.Role == "user":
-			content, err := convertResponsesUserToAnthropicContent(item.Content)
+			content, err := convertResponsesUserToAnthropicContent(item.Content, audioParts)
 			if err != nil {
 				return nil, nil, err
 			}
@@ -542,7 +546,7 @@ func anthropicContentIsOnlyBlankText(content json.RawMessage) bool {
 	return true
 }
 
-func convertResponsesUserToAnthropicContent(raw json.RawMessage) (json.RawMessage, error) {
+func convertResponsesUserToAnthropicContent(raw json.RawMessage, audioParts ...map[int]string) (json.RawMessage, error) {
 	if len(raw) == 0 {
 		return json.Marshal("") // empty string content
 	}
@@ -561,7 +565,7 @@ func convertResponsesUserToAnthropicContent(raw json.RawMessage) (json.RawMessag
 	}
 
 	var blocks []AnthropicContentBlock
-	for _, p := range parts {
+	for partIndex, p := range parts {
 		switch p.Type {
 		case "input_text", "text":
 			if p.Text != "" {
@@ -581,8 +585,12 @@ func convertResponsesUserToAnthropicContent(raw json.RawMessage) (json.RawMessag
 		case "input_file":
 			src := dataURIToAnthropicFileSource(p.FileData)
 			if src != nil {
+				blockType := "document"
+				if len(audioParts) > 0 && audioParts[0][partIndex] != "" && audioParts[0][partIndex] == p.FileData {
+					blockType = "image"
+				}
 				blocks = append(blocks, AnthropicContentBlock{
-					Type:   "document",
+					Type:   blockType,
 					Source: src,
 				})
 			}
