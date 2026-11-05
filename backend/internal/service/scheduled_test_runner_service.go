@@ -2,15 +2,27 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"sync"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/google/uuid"
 	"github.com/robfig/cron/v3"
 )
 
 const scheduledTestDefaultMaxWorkers = 10
+
+const (
+	// scheduledTestRunnerLeaderLockKey gates the per-minute scan so only one
+	// instance executes due plans; peers skip the cycle instead of firing the
+	// same upstream tests N times.
+	scheduledTestRunnerLeaderLockKey = "scheduled_test:runner:leader"
+	// scheduledTestRunnerLeaderLockTTL must exceed the worst-case runtime of one
+	// scan so the lock cannot expire mid-run. It matches the run context timeout.
+	scheduledTestRunnerLeaderLockTTL = 5 * time.Minute
+)
 
 // ScheduledTestRunnerService periodically scans due test plans and executes them.
 type ScheduledTestRunnerService struct {
@@ -23,6 +35,10 @@ type ScheduledTestRunnerService struct {
 	cron      *cron.Cron
 	startOnce sync.Once
 	stopOnce  sync.Once
+
+	lockCache  LeaderLockCache
+	db         *sql.DB
+	instanceID string
 }
 
 // NewScheduledTestRunnerService creates a new runner.
@@ -39,7 +55,18 @@ func NewScheduledTestRunnerService(
 		accountTestSvc: accountTestSvc,
 		rateLimitSvc:   rateLimitSvc,
 		cfg:            cfg,
+		instanceID:     uuid.NewString(),
 	}
+}
+
+// SetLeaderLock wires the cross-instance guard. Leaving it unset keeps the
+// previous single-instance behaviour.
+func (s *ScheduledTestRunnerService) SetLeaderLock(lockCache LeaderLockCache, db *sql.DB) {
+	if s == nil {
+		return
+	}
+	s.lockCache = lockCache
+	s.db = db
 }
 
 // Start begins the cron ticker (every minute).
@@ -88,8 +115,23 @@ func (s *ScheduledTestRunnerService) runScheduled() {
 	// Delay 10s so execution lands at ~:10 of each minute instead of :00.
 	time.Sleep(10 * time.Second)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), scheduledTestRunnerLeaderLockTTL)
 	defer cancel()
+
+	s.runDueOnce(ctx)
+}
+
+// runDueOnce holds the body of one scan, split out from runScheduled so the
+// cron's fixed 10s offset and timeout do not have to be paid in unit tests.
+func (s *ScheduledTestRunnerService) runDueOnce(ctx context.Context) {
+	// Multi-instance guard: every instance runs this cron, and ListDue is not a
+	// claim, so without gating each due plan would be executed once per instance
+	// — N× upstream test calls against the same accounts.
+	release, ok := tryAcquireSingletonLeaderLock(ctx, s.lockCache, s.db, scheduledTestRunnerLeaderLockKey, s.instanceID, scheduledTestRunnerLeaderLockTTL)
+	if !ok {
+		return
+	}
+	defer release()
 
 	now := time.Now()
 	plans, err := s.planRepo.ListDue(ctx, now)
