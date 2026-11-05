@@ -32,6 +32,10 @@ func hasOpenAIResponsesClientToolMapping(mapping apicompat.ResponsesClientToolMa
 }
 
 func adaptOpenAIResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesClientToolMapping, error) {
+	return adaptOpenAIResponsesClientToolsWithInheritedMapping(body, nil)
+}
+
+func adaptOpenAIResponsesClientToolsWithInheritedMapping(body []byte, inherited *apicompat.ResponsesClientToolMapping) ([]byte, apicompat.ResponsesClientToolMapping, error) {
 	if !needsOpenAIResponsesClientToolAdaptation(body) {
 		return body, apicompat.ResponsesClientToolMapping{}, nil
 	}
@@ -49,7 +53,14 @@ func adaptOpenAIResponsesClientTools(body []byte) ([]byte, apicompat.ResponsesCl
 		}
 		return body, apicompat.ResponsesClientToolMapping{}, fmt.Errorf("decode OpenAI Responses client tools trailing data: %w", err)
 	}
-	mapping, changed, err := apicompat.AdaptResponsesClientTools(requestBody)
+	var mapping apicompat.ResponsesClientToolMapping
+	var changed bool
+	var err error
+	if inherited != nil {
+		mapping, changed, err = apicompat.AdaptResponsesClientToolsWithInheritedMapping(requestBody, *inherited)
+	} else {
+		mapping, changed, err = apicompat.AdaptResponsesClientTools(requestBody)
+	}
 	if err != nil || !changed {
 		return body, mapping, err
 	}
