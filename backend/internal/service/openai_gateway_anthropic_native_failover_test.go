@@ -234,17 +234,17 @@ func TestNativeAnthropicConversion_EmptyOrPingOnlyEOFIsTruncated(t *testing.T) {
 					if errors.As(err, &failoverErr) {
 						t.Fatalf("clean EOF is not a transport failure eligible for replay: %+v", failoverErr)
 					}
-				code, _, ok := OpenAIUpstreamStreamReadErrorDetails(err)
-				if !ok || code != OpenAIUpstreamStreamTruncatedCode {
-					t.Fatalf("expected typed truncated-stream error, got code=%q ok=%v err=%v", code, ok, err)
-				}
-				if strings.Contains(rec.Body.String(), "[DONE]") || strings.Contains(rec.Body.String(), "response.completed") {
-					t.Fatalf("truncated stream must not synthesize success: %q", rec.Body.String())
-				}
-				if strings.Contains(rec.Body.String(), "response.failed") || strings.Contains(rec.Body.String(), "stream_incomplete") {
-					return // these are Responses-specific terminal failure frames
-				}
-			})
+					code, _, ok := OpenAIUpstreamStreamReadErrorDetails(err)
+					if !ok || code != OpenAIUpstreamStreamTruncatedCode {
+						t.Fatalf("expected typed truncated-stream error, got code=%q ok=%v err=%v", code, ok, err)
+					}
+					if strings.Contains(rec.Body.String(), "[DONE]") || strings.Contains(rec.Body.String(), "response.completed") {
+						t.Fatalf("truncated stream must not synthesize success: %q", rec.Body.String())
+					}
+					if strings.Contains(rec.Body.String(), "response.failed") || strings.Contains(rec.Body.String(), "stream_incomplete") {
+						return // these are Responses-specific terminal failure frames
+					}
+				})
 			}
 		})
 	}
@@ -287,8 +287,16 @@ func TestNativeAnthropicConversion_TerminalThenIdleRemainsSuccess(t *testing.T) 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			pr, pw := io.Pipe()
-			defer pr.Close()
-			defer pw.Close()
+			defer func() {
+				if err := pr.Close(); err != nil {
+					t.Errorf("close pipe reader: %v", err)
+				}
+			}()
+			defer func() {
+				if err := pw.Close(); err != nil {
+					t.Errorf("close pipe writer: %v", err)
+				}
+			}()
 			go func() { _, _ = io.WriteString(pw, miniAnthropicSSEStream()) }()
 
 			c, rec := newNativeAnthropicFailoverTestContext(t)
