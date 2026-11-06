@@ -57,10 +57,68 @@ describe('useAuthStore', () => {
     localStorage.clear()
     vi.useFakeTimers()
     vi.clearAllMocks()
+    mockGetCurrentUser.mockResolvedValue({ data: fakeUser })
   })
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  describe('guarded OAuth publication', () => {
+    it('rejects a callback from before a later login without changing its tokens or pending state', async () => {
+      const store = useAuthStore()
+      const version = store.authSessionVersion ?? 0
+      mockLogin.mockResolvedValue(fakeAuthResponse)
+      await store.login({ email: 'test@example.com', password: '123456' })
+      store.setPendingAuthSession({ token: 'new-pending', token_field: 'pending_oauth_token', provider: 'oidc' })
+      const saved = { ...localStorage }
+      await expect(store.setToken('old-callback-token', {
+        refreshToken: 'old-refresh', expiresIn: 3600, expectedSessionVersion: version
+      })).rejects.toMatchObject({ code: 'AUTH_SESSION_CHANGED' })
+      expect(store.token).toBe(fakeAuthResponse.access_token)
+      expect({ ...localStorage }).toEqual(saved)
+      expect(store.pendingAuthSession?.provider).toBe('oidc')
+      expect(mockGetCurrentUser).not.toHaveBeenCalled()
+    })
+
+    it('a logout while already logged out invalidates an earlier callback', async () => {
+      const store = useAuthStore()
+      const version = store.authSessionVersion ?? 0
+      mockLogout.mockResolvedValue(undefined)
+      await store.logout()
+      await expect(store.setToken('old', { expectedSessionVersion: version })).rejects.toMatchObject({ code: 'AUTH_SESSION_CHANGED' })
+      expect(store.token).toBeNull()
+      expect(localStorage.getItem('auth_token')).toBeNull()
+    })
+
+    it('publishes the complete OAuth token context for an unchanged session', async () => {
+      const store = useAuthStore()
+      mockGetCurrentUser.mockResolvedValue({ data: fakeUser })
+      await store.setToken('oauth-token', {
+        refreshToken: 'oauth-refresh', expiresIn: 3600, expectedSessionVersion: store.authSessionVersion
+      })
+      expect(store.token).toBe('oauth-token')
+      expect(localStorage.getItem('refresh_token')).toBe('oauth-refresh')
+      expect(Number(localStorage.getItem('token_expires_at'))).toBe(Date.now() + 3600000)
+      expect(store.user).toEqual(fakeUser)
+    })
+
+    it.each([true, false])('ignores a stale current-user result after another login, rejection=%s', async reject => {
+      const store = useAuthStore()
+      let finish!: (v: any) => void
+      let fail!: (v: any) => void
+      mockGetCurrentUser.mockImplementationOnce(() => new Promise((resolve, reject) => { finish = resolve; fail = reject }))
+      const result = store.setToken('old', { refreshToken: 'old-refresh', expectedSessionVersion: store.authSessionVersion }).catch(e => e)
+      mockLogin.mockResolvedValue(fakeAuthResponse)
+      await store.login({ email: 'test@example.com', password: '123456' })
+      store.setPendingAuthSession({ token: 'new-pending', token_field: 'pending_oauth_token', provider: 'oidc' })
+      if (reject) fail({ status: 401 }); else finish({ data: fakeAdminUser })
+      expect(await result).toMatchObject({ code: 'AUTH_SESSION_CHANGED' })
+      expect(store.token).toBe(fakeAuthResponse.access_token)
+      expect(store.user).toEqual(fakeUser)
+      expect(store.pendingAuthSession?.provider).toBe('oidc')
+      expect(localStorage.getItem('refresh_token')).toBe(fakeAuthResponse.refresh_token)
+    })
   })
 
   // --- login ---
