@@ -1172,6 +1172,11 @@ export default {
 	    days: '天',
 	    expiryHint: '进入到期前时间范围即使用卡，用量为 0 也触发。服务运行时每分钟检查，不保证精确时刻执行。请输入整数，范围为 1 分钟至 365 天；此条件默认关闭。',
 	    expiryInvalid: '到期提前量须为正整数，范围为 1 分钟至 365 天。',
+	    expiryPreviewAt: '预计到期触发时间：',
+	    expiryPreviewDue: '已进入到期触发范围，保存后将在下次检查时尝试使用。',
+	    expiryPreviewExpiresAt: '重置卡到期：',
+	    expiryPreviewUnavailable: '暂无完整的可用重置卡到期信息，请先在账号列表查询额度后重新打开。',
+	    expiryPreviewHint: '按本地时区 {timezone} 预览，仅表示到期条件；5h/7d 用量条件可能更早触发。',
 	    expiryTrigger: '即将到期'
 	  },
       // Quota control (Anthropic OAuth/SetupToken only)

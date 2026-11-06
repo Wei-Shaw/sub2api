@@ -1858,6 +1858,92 @@ describe('EditAccountModal OpenAI 自动使用重置卡', () => {
     checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
   })
 
+  afterEach(() => vi.useRealTimers())
+
+  it('按最早未过期卡预览，并随分钟、小时和天的草稿实时更新', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-06T00:00:00Z'))
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = {
+      auto_reset_credit_enabled: true,
+      auto_reset_credit_expiry_enabled: true,
+      auto_reset_credit_expiry_minutes: 1000,
+      codex_reset_credit_snapshot: {
+        available_count: 2,
+        credits: [
+          { expires_at: '2026-11-09T12:00:00Z' },
+          { expires_at: '2026-11-05T12:00:00Z' },
+          { expires_at: '2026-11-07T12:00:00Z' }
+        ]
+      }
+    }
+    const wrapper = mountModal(account)
+    const triggerTime = () => wrapper.get('[data-testid="auto-reset-credit-trigger-at"]').attributes('datetime')
+    expect(triggerTime()).toBe('2026-11-06T19:20:00.000Z')
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-value"]').setValue('2')
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-unit"]').setValue('60')
+    expect(triggerTime()).toBe('2026-11-07T10:00:00.000Z')
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-value"]').setValue('1')
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-unit"]').setValue('1440')
+    expect(triggerTime()).toBe('2026-11-06T12:00:00.000Z')
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-value"]').setValue('0')
+    expect(wrapper.get('[data-testid="auto-reset-credit-expiry-preview"]').text()).toContain('autoResetCredit.expiryInvalid')
+    expect(wrapper.find('[data-testid="auto-reset-credit-trigger-at"]').exists()).toBe(false)
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    await wrapper.get('[data-testid="auto-reset-credit-expiry-enabled"]').setValue(false)
+    expect(wrapper.find('[data-testid="auto-reset-credit-expiry-preview"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it.each([
+    undefined,
+    { available_count: 0, credits: [{ expires_at: '2026-11-07T12:00:00Z' }] },
+    { available_count: 1, credits: [] },
+    { available_count: 1, credits: [{ expires_at: 'invalid' }] },
+    { available_count: 1, credits: [{ expires_at: '2026-11-07' }] },
+    { available_count: 1, credits: [{ expires_at: '2026-11-07T12:00:00' }] },
+    { available_count: 1, credits: [{ expires_at: '2027-02-30T12:00:00Z' }] },
+    { available_count: 1, credits: [{}] },
+    { available_count: 1, credits: [{ expires_at: '2026-11-06T00:00:00Z' }] }
+  ])('缺失、无可用或无效卡信息时不编造触发时间：%j', (snapshot) => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-06T00:00:00Z'))
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = {
+      auto_reset_credit_enabled: true,
+      auto_reset_credit_expiry_enabled: true,
+      codex_reset_credit_snapshot: snapshot
+    }
+    const wrapper = mountModal(account)
+    expect(wrapper.get('[data-testid="auto-reset-credit-expiry-preview"]').text()).toContain('autoResetCredit.expiryPreviewUnavailable')
+    expect(wrapper.find('[data-testid="auto-reset-credit-trigger-at"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('到达触发时间后提示下次检查，过期后移除时间，并在关闭弹窗后停止时钟', async () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-11-06T00:00:00Z'))
+    const account = buildOpenAIOAuthParentAccount()
+    account.extra = {
+      auto_reset_credit_enabled: true,
+      auto_reset_credit_expiry_enabled: true,
+      auto_reset_credit_expiry_minutes: 1,
+      codex_reset_credit_snapshot: {
+        available_count: 1, credits: [{ expires_at: '2026-11-06T00:02:00Z' }]
+      }
+    }
+    const wrapper = mountModal(account)
+    expect(wrapper.get('[data-testid="auto-reset-credit-trigger-at"]').attributes('datetime')).toBe('2026-11-06T00:01:00.000Z')
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(wrapper.get('[data-testid="auto-reset-credit-expiry-preview"]').text()).toContain('autoResetCredit.expiryPreviewDue')
+    expect(wrapper.find('[data-testid="auto-reset-credit-trigger-at"]').exists()).toBe(false)
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(wrapper.get('[data-testid="auto-reset-credit-expiry-preview"]').text()).toContain('autoResetCredit.expiryPreviewUnavailable')
+    await wrapper.setProps({ show: false })
+    expect(vi.getTimerCount()).toBe(0)
+    wrapper.unmount()
+  })
+
   it('仅对 OpenAI OAuth 母账号显示，默认关闭且阈值为 100/100', () => {
     const parent = mountModal(buildOpenAIOAuthParentAccount())
     expect(parent.find('[data-testid="auto-reset-credit-settings"]').exists()).toBe(true)

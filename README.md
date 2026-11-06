@@ -193,7 +193,7 @@ Sub2API is an AI API gateway platform designed to distribute and manage API quot
 ## Features
 
 - **Multi-Account Management** - Support multiple upstream account types (OAuth, API Key)
-  - OpenAI OAuth automatic reset credits have independent 5h, 7d, and expiry triggers in the account editor. To trigger on 7d usage only, enable 7d and disable 5h. Expiry accepts a lead time in minutes, hours, or days and consumes a credit even with zero usage. Checks run every minute while the service is running; existing accounts retain both usage triggers and expiry stays off by default. Disabling a reset trigger does not disable quota-based scheduling pauses.
+  - OpenAI OAuth automatic reset credits have independent 5h, 7d, and expiry triggers in the account editor. To trigger on 7d usage only, enable 7d and disable 5h. Expiry accepts a lead time in minutes, hours, or days and consumes a credit even with zero usage. The editor previews the earliest credit's expiry-trigger time in your local time zone, or indicates that the trigger is already due; missing or invalid credit details require a quota query in the account list. Usage thresholds may trigger earlier. Checks run every minute while the service is running; existing accounts retain both usage triggers and expiry stays off by default. Disabling a reset trigger does not disable quota-based scheduling pauses.
 - **API Key Distribution** - Generate and manage API Keys for users
 - **Precise Billing** - Token-level usage tracking and cost calculation
 - **Smart Scheduling** - Intelligent account selection with sticky sessions

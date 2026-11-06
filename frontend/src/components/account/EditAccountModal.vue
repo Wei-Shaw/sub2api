@@ -2920,6 +2920,29 @@
             </div>
           </div>
           <p class="input-hint">{{ t('admin.accounts.autoResetCredit.expiryHint') }}</p>
+          <div
+            v-if="autoResetCreditEnabled && autoResetCreditExpiryEnabled"
+            class="mt-2 space-y-1 rounded-lg bg-gray-50 p-3 text-sm dark:bg-dark-800"
+            aria-live="polite"
+            data-testid="auto-reset-credit-expiry-preview"
+          >
+            <p v-if="!validAutoResetExpiry()" class="input-hint">{{ t('admin.accounts.autoResetCredit.expiryInvalid') }}</p>
+            <template v-else-if="autoResetCreditExpiryPreview">
+              <p v-if="autoResetCreditExpiryPreview.triggerAt.getTime() <= autoResetCreditPreviewNow" class="font-medium">
+                {{ t('admin.accounts.autoResetCredit.expiryPreviewDue') }}
+              </p>
+              <p v-else class="font-medium">
+                {{ t('admin.accounts.autoResetCredit.expiryPreviewAt') }}
+                <time :datetime="autoResetCreditExpiryPreview.triggerAt.toISOString()" data-testid="auto-reset-credit-trigger-at">{{ formatDateTimeToMinute(autoResetCreditExpiryPreview.triggerAt) }}</time>
+              </p>
+              <p class="input-hint">
+                {{ t('admin.accounts.autoResetCredit.expiryPreviewExpiresAt') }}
+                <time :datetime="autoResetCreditExpiryPreview.expiresAt.toISOString()">{{ formatDateTimeToMinute(autoResetCreditExpiryPreview.expiresAt) }}</time>
+              </p>
+              <p class="input-hint">{{ t('admin.accounts.autoResetCredit.expiryPreviewHint', { timezone: getBrowserTimeZone() }) }}</p>
+            </template>
+            <p v-else class="input-hint">{{ t('admin.accounts.autoResetCredit.expiryPreviewUnavailable') }}</p>
+          </div>
         </div>
       </div>
 
@@ -3433,6 +3456,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useIntervalFn } from '@vueuse/core'
 import { useAppStore } from '@/stores/app'
 
 import { adminAPI } from '@/api/admin'
@@ -3516,6 +3540,7 @@ import {
 } from '@/components/account/credentialsBuilder'
 import {
   formatDateTime,
+  formatDateTimeToMinute,
   formatDateTimeLocalInput,
   getBrowserTimeZone,
   parseDateTimeLocalInput
@@ -4142,6 +4167,36 @@ const validAutoResetThreshold = (value: number) => Number.isFinite(value) && val
 const validAutoResetExpiry = () => Number.isInteger(autoResetCreditExpiryValue.value) &&
   [1, 60, 1440].includes(autoResetCreditExpiryUnit.value) &&
   autoResetCreditExpiryMinutes.value >= 1 && autoResetCreditExpiryMinutes.value <= 525600
+const autoResetCreditPreviewNow = ref(Date.now())
+const { pause: pauseAutoResetPreview, resume: resumeAutoResetPreview } = useIntervalFn(
+  () => { autoResetCreditPreviewNow.value = Date.now() }, 60_000, { immediate: false }
+)
+watch(() => props.show && autoResetCreditEnabled.value && autoResetCreditExpiryEnabled.value, (visible) => {
+  autoResetCreditPreviewNow.value = Date.now()
+  if (visible) resumeAutoResetPreview()
+  else pauseAutoResetPreview()
+}, { immediate: true })
+const autoResetCreditExpiryPreview = computed(() => {
+  if (!validAutoResetExpiry()) return null
+  const snapshot = props.account?.extra?.codex_reset_credit_snapshot
+  const available = snapshot?.available_count
+  if (available == null || !Number.isInteger(available) || available <= 0 ||
+    !Array.isArray(snapshot?.credits) || snapshot.credits.length < available) return null
+  let earliest = Infinity
+  for (const credit of snapshot.credits) {
+    const raw = credit?.expires_at
+    // Incomplete card details cannot predict the backend's safe consumption decision.
+    if (typeof raw !== 'string' || !/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(raw)) return null
+    const expiresAt = Date.parse(raw)
+    if (!Number.isFinite(expiresAt) || new Date(raw.slice(0, 10)).toISOString().slice(0, 10) !== raw.slice(0, 10)) return null
+    if (expiresAt > autoResetCreditPreviewNow.value) earliest = Math.min(earliest, expiresAt)
+  }
+  if (!Number.isFinite(earliest)) return null
+  return {
+    expiresAt: new Date(earliest),
+    triggerAt: new Date(earliest - autoResetCreditExpiryMinutes.value * 60_000)
+  }
+})
 const upstreamBillingAutoProbeEnabled = ref(false)
 const upstreamBillingRateSyncEnabled = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling

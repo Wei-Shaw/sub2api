@@ -1070,6 +1070,11 @@ export default {
 	    days: 'Days',
 	    expiryHint: 'Consumes a credit within the expiry lead time, even with zero usage. Checked every minute while the service is running; not an exact-time guarantee. Enter a whole number from 1 minute to 365 days. This trigger is off by default.',
 	    expiryInvalid: 'Enter a positive whole-number lead time from 1 minute to 365 days.',
+	    expiryPreviewAt: 'Expected expiry trigger:',
+	    expiryPreviewDue: 'The expiry trigger is already due. After saving, the next check will attempt to use a credit.',
+	    expiryPreviewExpiresAt: 'Credit expires:',
+	    expiryPreviewUnavailable: 'Complete expiry details are unavailable. Query quota in the account list, then reopen this editor.',
+	    expiryPreviewHint: 'Preview uses your local time zone ({timezone}) and only the expiry condition. The 5h/7d usage conditions may trigger earlier.',
 	    expiryTrigger: 'Expiring soon'
 	  },
       // Quota control (Anthropic OAuth/SetupToken only)
