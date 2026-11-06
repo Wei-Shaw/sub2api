@@ -115,3 +115,36 @@ func TestScopedAdminKeyMissingDependenciesFailClosed(t *testing.T) {
 	require.NotPanics(t, func() { r.ServeHTTP(w, req) })
 	require.Equal(t, 401, w.Code)
 }
+
+func TestAdminFullAccessKeepsIdentityAndJWTBoundary(t *testing.T) {
+	repo := &adminAuthKeyRepo{}
+	settings := service.NewSettingService(nil, nil)
+	settings.SetScopedAdminKeyRepository(repo)
+	key, _, err := settings.CreateScopedAdminKey(context.Background(), service.ScopedAdminKeyInput{Name: "兼容", Enabled: true, ConfirmFullAccess: true, Policy: adminaccess.Policy{FullAccess: true}}, 9)
+	require.NoError(t, err)
+	users := service.NewUserService(&stubUserRepo{getByID: func(context.Context, int64) (*service.User, error) {
+		return &service.User{ID: 9, Role: service.RoleAdmin, Status: service.StatusActive}, nil
+	}}, nil, nil, nil)
+	r := gin.New()
+	r.Use(gin.HandlerFunc(NewAdminAuthMiddleware(nil, users, settings, nil)))
+	r.GET("/api/v1/admin/future", func(c *gin.Context) {
+		require.NotNil(t, adminaccess.FromContext(c.Request.Context()))
+		require.Nil(t, adminaccess.RestrictedFromContext(c.Request.Context()))
+		require.Equal(t, service.AuditAuthMethodAdminAPIKey, c.GetString("auth_method"))
+		c.Status(204)
+	})
+	r.POST("/api/v1/admin/settings/admin-api-keys", func(c *gin.Context) { t.Fatal("全权key不能管理密钥") })
+	r.GET("/api/v1/admin/interactive", func(c *gin.Context) {
+		require.False(t, enforceStepUp(c, nil, nil, nil))
+	})
+	for _, tc := range []struct {
+		method, path string
+		status       int
+	}{{"GET", "/api/v1/admin/future", 204}, {"POST", "/api/v1/admin/settings/admin-api-keys", 403}, {"GET", "/api/v1/admin/interactive", 403}} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(tc.method, tc.path, nil)
+		req.Header.Set("x-api-key", key)
+		r.ServeHTTP(w, req)
+		require.Equal(t, tc.status, w.Code, w.Body.String())
+	}
+}

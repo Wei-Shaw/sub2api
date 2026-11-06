@@ -182,12 +182,14 @@ type ResponsesEventToAnthropicState struct {
 	MessageStartSent bool
 	MessageStopSent  bool
 
-	ContentBlockIndex   int
-	ContentBlockOpen    bool
-	CurrentBlockType    string // "text" | "thinking" | "tool_use"
-	CurrentToolName     string
-	CurrentToolArgs     string
-	CurrentToolHadDelta bool
+	ContentBlockIndex         int
+	ContentBlockOpen          bool
+	CurrentBlockType          string // "text" | "thinking" | "tool_use"
+	CurrentToolName           string
+	CurrentToolArgs           string
+	CurrentToolHadDelta       bool
+	currentToolArgsBuffer     *strings.Builder
+	currentToolArgsValidation *streamStringBytes
 	// PendingThinkingSignature is filled from reasoning.encrypted_content and
 	// emitted as signature_delta before the thinking block is closed.
 	PendingThinkingSignature string
@@ -361,6 +363,8 @@ func resToAnthHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesE
 		state.CurrentBlockType = "tool_use"
 		state.CurrentToolName = evt.Item.Name
 		state.CurrentToolArgs = ""
+		state.currentToolArgsBuffer = nil
+		state.currentToolArgsValidation = nil
 		state.CurrentToolHadDelta = false
 		state.HasToolCall = true
 
@@ -501,8 +505,9 @@ func resToAnthHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEve
 	}
 
 	if state.CurrentBlockType == "tool_use" && state.CurrentToolName == "Read" {
-		state.CurrentToolArgs += evt.Delta
-		if state.CurrentToolHadDelta || !json.Valid([]byte(state.CurrentToolArgs)) {
+		previousArgs := state.CurrentToolArgs
+		state.CurrentToolArgs = appendStreamString(&state.currentToolArgsBuffer, state.CurrentToolArgs, evt.Delta)
+		if state.CurrentToolHadDelta || !json.Valid(appendStreamStringBytes(&state.currentToolArgsValidation, previousArgs, state.CurrentToolArgs, evt.Delta)) {
 			return nil
 		}
 
@@ -805,6 +810,8 @@ func closeCurrentBlock(state *ResponsesEventToAnthropicState) []AnthropicStreamE
 	state.ContentBlockIndex++
 	state.CurrentToolName = ""
 	state.CurrentToolArgs = ""
+	state.currentToolArgsBuffer = nil
+	state.currentToolArgsValidation = nil
 	state.CurrentToolHadDelta = false
 	events = append(events, AnthropicStreamEvent{
 		Type:  "content_block_stop",

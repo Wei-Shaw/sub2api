@@ -21,6 +21,7 @@
       <p class="text-sm text-gray-500">{{ item.description || t('adminAccessKeys.noDescription') }} · {{ t('adminAccessKeys.expires', { value: item.expires_at || t('adminAccessKeys.never') }) }}</p>
       <p class="text-sm text-gray-500">{{ t('adminAccessKeys.lastUsed', { value: item.last_used_at || t('adminAccessKeys.neverUsed') }) }} {{ item.last_used_ip }}</p>
       <div class="space-y-1 text-sm text-gray-500" :aria-label="t('adminAccessKeys.summaryLabel')">
+        <p v-if="item.policy.full_access" class="font-semibold text-red-600">{{ t('adminAccessKeys.fullAccessLabel') }}</p>
         <p>{{ t('adminAccessKeys.summary', { globals: item.policy.global_permissions.length, rules: item.policy.rules.length }) }}</p>
         <p v-for="(rule, index) in item.policy.rules" :key="index">{{ t('adminAccessKeys.ruleLine', { index: index + 1, summary: ruleSummary(rule) }) }}</p>
       </div>
@@ -41,6 +42,12 @@
       <label class="block">{{ t('adminAccessKeys.expiration') }}<input v-model="expiration" type="datetime-local" class="input mt-1" /></label>
       <label class="block">{{ t('adminAccessKeys.allowedIps') }}<textarea v-model="ips" class="input mt-1" placeholder="192.0.2.1&#10;2001:db8::/32" /></label>
       <label class="flex gap-2"><input v-model="draft.enabled" type="checkbox" />{{ t('adminAccessKeys.enabled') }}</label>
+      <div class="space-y-2 rounded-lg border border-red-300 p-3">
+        <label class="flex gap-2"><input data-test="full-access" type="checkbox" :checked="draft.policy.full_access || fullAccessPrompt" :disabled="busy" @change="changeFullAccess" />{{ t('adminAccessKeys.fullAccessLabel') }}</label>
+        <p class="text-sm text-red-700 dark:text-red-300">{{ t('adminAccessKeys.fullAccessWarning') }}</p>
+        <p v-if="draft.policy.full_access" class="text-sm">{{ t('adminAccessKeys.rulesSuspended') }}</p>
+      </div>
+      <fieldset :disabled="busy || !!draft.policy.full_access" class="space-y-4">
       <fieldset v-for="(rule, index) in draft.policy.rules" :key="index" class="space-y-3 rounded-lg border border-gray-200 p-3 dark:border-dark-700">
         <legend>{{ t('adminAccessKeys.ruleLegend', { index: index + 1 }) }}</legend>
         <label class="flex gap-2"><input v-model="rule.all_groups" type="checkbox" />{{ t('adminAccessKeys.allGroups') }}</label>
@@ -48,11 +55,11 @@
         <label class="flex gap-2"><input v-model="rule.include_ungrouped" type="checkbox" />{{ t('adminAccessKeys.includeUngrouped') }}</label>
         <div>{{ t('adminAccessKeys.accountTypes') }}<div class="flex flex-wrap gap-4"><label v-for="type in accountTypes" :key="type" class="flex gap-2"><input v-model="rule.account_types" type="checkbox" :value="type" />{{ type }}</label></div></div>
         <label class="block">{{ t('adminAccessKeys.platforms') }}<select v-model="rule.platforms" multiple class="input mt-1"><option v-for="platform in CONCRETE_PLATFORM_OPTIONS" :key="platform.value" :value="platform.value">{{ platform.label }}</option></select></label>
-        <div>{{ t('adminAccessKeys.accountOperations') }}<div class="grid gap-2 sm:grid-cols-2"><label v-for="permission in accountPermissions" :key="permission.id" class="flex gap-2"><input v-model="rule.permissions" type="checkbox" :value="permission.id" />{{ permission.label }} <span class="text-xs text-gray-500">{{ permission.id }}</span></label></div></div>
+        <div>{{ t('adminAccessKeys.accountOperations') }}<div class="grid gap-2 sm:grid-cols-2"><label v-for="permission in accountPermissions" :key="permission.id" class="flex gap-2"><input v-model="rule.permissions" type="checkbox" :value="permission.id" />{{ permissionLabel(permission) }} <span class="text-xs text-gray-500">{{ permission.id }}</span></label></div></div>
         <div v-if="groupPermissions.length" class="space-y-2 rounded border border-amber-300 p-3">
           <p>{{ t('adminAccessKeys.groupOperations') }}</p>
           <p class="text-sm text-amber-700 dark:text-amber-300">{{ t('adminAccessKeys.modelAllowlistHint') }}</p>
-          <div class="grid gap-2 sm:grid-cols-2"><label v-for="permission in groupPermissions" :key="permission.id" class="flex gap-2"><input v-model="rule.permissions" type="checkbox" :value="permission.id" />{{ permission.label }} <span class="text-xs text-gray-500">{{ permission.id }}</span></label></div>
+          <div class="grid gap-2 sm:grid-cols-2"><label v-for="permission in groupPermissions" :key="permission.id" class="flex gap-2"><input v-model="rule.permissions" type="checkbox" :value="permission.id" />{{ permissionLabel(permission) }} <span class="text-xs text-gray-500">{{ permission.id }}</span></label></div>
         </div>
         <button type="button" class="btn btn-secondary btn-sm" @click="draft.policy.rules.splice(index, 1)">{{ t('adminAccessKeys.removeRule') }}</button>
       </fieldset>
@@ -61,26 +68,38 @@
         <legend>{{ t('adminAccessKeys.globalPermissions') }}</legend>
         <fieldset v-for="category in globalCategories" :key="category.name" class="space-y-2 rounded border border-gray-200 p-3 dark:border-dark-700">
           <legend class="text-sm font-medium">{{ category.name }}</legend>
-          <label v-for="permission in category.permissions" :key="permission.id" class="flex gap-2"><input v-model="draft.policy.global_permissions" type="checkbox" :value="permission.id" />{{ permission.label }} <span class="text-xs text-gray-500">{{ permission.id }}</span></label>
+          <label v-for="permission in category.permissions" :key="permission.id" class="flex gap-2"><input v-model="draft.policy.global_permissions" type="checkbox" :value="permission.id" />{{ permissionLabel(permission) }} <span class="text-xs text-gray-500">{{ permission.id }}</span></label>
         </fieldset>
       </fieldset>
-      <div class="flex gap-2"><button type="button" data-test="save" class="btn btn-primary" :disabled="busy" @click="save">{{ busy ? t('adminAccessKeys.processing') : t('adminAccessKeys.save') }}</button><button type="button" class="btn btn-secondary" :disabled="busy" @click="draft = null">{{ t('adminAccessKeys.cancel') }}</button></div>
+      </fieldset>
+      <div class="flex gap-2"><button type="button" data-test="save" class="btn btn-primary" :disabled="busy || fullAccessPrompt" @click="save">{{ busy ? t('adminAccessKeys.processing') : t('adminAccessKeys.save') }}</button><button type="button" class="btn btn-secondary" :disabled="busy" @click="draft = null">{{ t('adminAccessKeys.cancel') }}</button></div>
     </div>
+    <BaseDialog :show="fullAccessPrompt" :title="t('adminAccessKeys.fullAccessConfirmTitle')" width="normal" @close="cancelFullAccess">
+      <p class="text-red-700 dark:text-red-300">{{ t('adminAccessKeys.fullAccessWarning') }}</p>
+      <label class="mt-4 block">{{ t('adminAccessKeys.fullAccessPhraseHint', { phrase: t('adminAccessKeys.fullAccessPhrase') }) }}<input v-model="fullAccessPhrase" data-test="full-access-phrase" class="input mt-1" autocomplete="off" /></label>
+      <template #footer>
+        <button type="button" data-test="full-access-cancel" class="btn btn-secondary" @click="cancelFullAccess">{{ t('adminAccessKeys.cancel') }}</button>
+        <button type="button" data-test="full-access-confirm" class="btn btn-danger" :disabled="fullAccessPhrase !== t('adminAccessKeys.fullAccessPhrase')" @click="confirmFullAccess">{{ t('adminAccessKeys.fullAccessConfirmTitle') }}</button>
+      </template>
+    </BaseDialog>
     <TotpStepUpDialog :controller="stepUp" />
   </section>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import * as api from '@/api/admin/adminAccessKeys'
 import type { AccessRule, AdminKey, AdminKeyInput, Permission } from '@/api/admin/adminAccessKeys'
 import { getAllIncludingInactive } from '@/api/admin/groups'
 import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import TotpStepUpDialog from '@/components/auth/TotpStepUpDialog.vue'
+import { useAdminAccessKeyPermissions } from '@/composables/useAdminAccessKeyPermissions'
 import { isStepUpCancelled, useStepUp } from '@/composables/useStepUp'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const { permissionLabel, permissionCategory } = useAdminAccessKeyPermissions()
 const stepUp = useStepUp()
 const items = ref<AdminKey[]>([])
 const permissions = ref<Permission[]>([])
@@ -96,13 +115,22 @@ const editingID = ref('')
 const expiration = ref('')
 const initialExpiration = ref('')
 const ips = ref('')
+const fullAccessPrompt = ref(false)
+const fullAccessPhrase = ref('')
+const fullAccessConfirmed = ref(false)
+// 切换语言后重新阅读当前语言的风险说明，不能复用尚未保存的扩权确认。
+watch(locale, () => {
+  if (fullAccessConfirmed.value && draft.value) draft.value.policy.full_access = false
+  fullAccessConfirmed.value = false
+  cancelFullAccess()
+})
 const accountTypes = ['oauth', 'setup-token', 'apikey', 'upstream', 'bedrock', 'service_account']
 const accountPermissions = computed(() => permissions.value.filter(p => p.scope === 'account'))
 const groupPermissions = computed(() => permissions.value.filter(p => p.scope === 'group'))
 const globalCategories = computed(() => {
   const categories = new Map<string, Permission[]>()
   for (const permission of permissions.value.filter(p => p.scope === 'global')) {
-    const name = permission.category || t('adminAccessKeys.other')
+    const name = permissionCategory(permission)
     categories.set(name, [...(categories.get(name) || []), permission])
   }
   return Array.from(categories, ([name, permissions]) => ({ name, permissions }))
@@ -110,6 +138,7 @@ const globalCategories = computed(() => {
 // Go 的空切片可能序列化为 null；统一为空数组且不增加任何授权。
 function normalizeItem(item: AdminKey): AdminKey {
   return { ...item, allowed_ips: item.allowed_ips ?? [], policy: {
+    full_access: item.policy?.full_access ?? false,
     global_permissions: item.policy?.global_permissions ?? [],
     rules: (item.policy?.rules ?? []).map(rule => ({ ...rule,
       permissions: rule.permissions ?? [], group_ids: rule.group_ids ?? [],
@@ -118,10 +147,10 @@ function normalizeItem(item: AdminKey): AdminKey {
   } }
 }
 function ruleSummary(rule: AccessRule): string {
-  const selectedGroups = rule.all_groups ? t('adminAccessKeys.allGroupsSummary') : rule.group_ids.map(id => groups.value.find(group => group.id === id)?.name || t('adminAccessKeys.groupFallback', { id })).join('、') || t('adminAccessKeys.noGroups')
+  const selectedGroups = rule.all_groups ? t('adminAccessKeys.allGroupsSummary') : rule.group_ids.map(id => groups.value.find(group => group.id === id)?.name || t('adminAccessKeys.groupFallback', { id })).join(t('adminAccessKeys.listSeparator')) || t('adminAccessKeys.noGroups')
   const groupLabel = selectedGroups + (rule.include_ungrouped ? t('adminAccessKeys.ungroupedSummary') : '')
-  const types = rule.account_types.join('、') || t('adminAccessKeys.noAccountTypes')
-  const platforms = rule.platforms.join('、') || t('adminAccessKeys.anyPlatform')
+  const types = rule.account_types.join(t('adminAccessKeys.listSeparator')) || t('adminAccessKeys.noAccountTypes')
+  const platforms = rule.platforms.join(t('adminAccessKeys.listSeparator')) || t('adminAccessKeys.anyPlatform')
   return t('adminAccessKeys.ruleSummary', { groups: groupLabel, types, platforms, count: rule.permissions.length })
 }
 function emptyRule(): AccessRule { return { permissions: [], group_ids: [], all_groups: false, include_ungrouped: false, account_types: [], platforms: [] } }
@@ -139,6 +168,8 @@ async function load() {
 }
 function edit(item?: AdminKey) {
   error.value = ''; notice.value = ''; secret.value = ''
+  cancelFullAccess()
+  fullAccessConfirmed.value = false
   editingID.value = item?.id || ''
   draft.value = item ? JSON.parse(JSON.stringify({ name: item.name, description: item.description, enabled: item.enabled, expires_at: item.expires_at, allowed_ips: item.allowed_ips, policy: item.policy })) : { name: '', description: '', enabled: true, expires_at: null, allowed_ips: [], policy: { rules: [emptyRule()], global_permissions: [] } }
   const date = item?.expires_at ? new Date(item.expires_at) : null
@@ -146,17 +177,38 @@ function edit(item?: AdminKey) {
   initialExpiration.value = expiration.value
   ips.value = item?.allowed_ips.join('\n') || ''
 }
+function changeFullAccess(event: Event) {
+  if (!draft.value || busy.value) return
+  if ((event.target as HTMLInputElement).checked) {
+    fullAccessPhrase.value = ''
+    fullAccessPrompt.value = true
+  } else {
+    draft.value.policy.full_access = false
+    fullAccessConfirmed.value = false
+  }
+}
+function cancelFullAccess() {
+  fullAccessPrompt.value = false
+  fullAccessPhrase.value = ''
+}
+function confirmFullAccess() {
+  if (!draft.value || fullAccessPhrase.value !== t('adminAccessKeys.fullAccessPhrase')) return
+  draft.value.policy.full_access = true
+  fullAccessConfirmed.value = true
+  cancelFullAccess()
+}
 async function mutate(action: () => Promise<void>) {
   busy.value = true; error.value = ''; notice.value = ''; secret.value = ''
   try { await stepUp.run(action) } catch (e) { report(e) } finally { busy.value = false }
 }
 function replace(item: AdminKey) { items.value = [normalizeItem(item), ...items.value.filter(key => key.id !== item.id)] }
 async function save() {
-  if (!draft.value) return
+  if (!draft.value || busy.value || fullAccessPrompt.value) return
   if (!draft.value.name.trim()) { error.value = t('adminAccessKeys.nameRequired'); return }
   const date = expiration.value ? new Date(expiration.value) : null
   if (date && !Number.isFinite(date.getTime())) { error.value = t('adminAccessKeys.expirationInvalid'); return }
   const input: AdminKeyInput = JSON.parse(JSON.stringify(draft.value))
+  input.confirm_full_access = !!input.policy.full_access && fullAccessConfirmed.value
   input.name = input.name.trim()
   // 未修改日期时保留服务端原值，避免丢失秒数、微秒或时区精度。
   if (expiration.value !== initialExpiration.value) input.expires_at = date?.toISOString() || null
