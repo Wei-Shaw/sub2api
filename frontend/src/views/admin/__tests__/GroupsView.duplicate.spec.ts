@@ -5,10 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AdminGroup } from '@/types'
 import GroupsView from '@/views/admin/GroupsView.vue'
 import { adminAPI } from '@/api/admin'
+import Select from '@/components/common/Select.vue'
+import { grokImageExpressionModel, grokImageExpressionPreset } from '@/components/admin/group/imagePriceExpressions'
 
 const {
   listGroups,
   duplicateGroup,
+  createGroup,
   updateGroup,
   getModelAllowlistCandidates,
   getUsageSummary,
@@ -19,6 +22,7 @@ const {
 } = vi.hoisted(() => ({
   listGroups: vi.fn(),
   duplicateGroup: vi.fn(),
+  createGroup: vi.fn(),
   updateGroup: vi.fn(),
   getModelAllowlistCandidates: vi.fn(),
   getUsageSummary: vi.fn(),
@@ -40,7 +44,7 @@ vi.mock('@/api/admin', () => ({
       getCapacitySummary,
       getLiveCapability,
       getAll: vi.fn(),
-      create: vi.fn(),
+      create: createGroup,
       update: updateGroup,
       delete: vi.fn(),
       updateSortOrder: vi.fn()
@@ -183,6 +187,7 @@ describe('GroupsView duplicate action', () => {
     for (const fn of [
       listGroups,
       duplicateGroup,
+      createGroup,
       updateGroup,
       getModelAllowlistCandidates,
       getUsageSummary,
@@ -207,6 +212,7 @@ describe('GroupsView duplicate action', () => {
       name: 'Primary (Copy)',
       status: 'inactive'
     })
+    createGroup.mockResolvedValue(sourceGroup)
     getModelAllowlistCandidates.mockResolvedValue([])
     getUsageSummary.mockResolvedValue([])
     getCapacitySummary.mockResolvedValue([])
@@ -381,6 +387,86 @@ describe('GroupsView duplicate action', () => {
     expect(updateGroup).toHaveBeenCalledWith(42, expect.objectContaining({
       model_pricing: [expect.objectContaining({ reasoning_effort_multipliers: null })],
     }))
+    wrapper.unmount()
+  })
+
+  it('creates a Grok group with the example expression as a map, without multiplying its total', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'admin.groups.createGroup')!.trigger('click')
+    await wrapper.get('input[placeholder="admin.groups.enterGroupName"]').setValue('Image group')
+    const platform = wrapper.findAllComponents(Select).find(component => component.attributes('data-tour') === 'group-form-platform')!
+    platform.vm.$emit('update:modelValue', 'grok')
+    await flushPromises()
+
+    await wrapper.get('[data-testid="image-expression-preset"]').trigger('click')
+    expect(wrapper.text()).toContain('admin.groups.imageExpressions.legacyPreview')
+    await wrapper.get('#create-group-form').trigger('submit')
+    await flushPromises()
+    expect(createGroup).toHaveBeenCalledWith(expect.objectContaining({
+      image_price_expressions: { [grokImageExpressionModel]: grokImageExpressionPreset }
+    }))
+    wrapper.unmount()
+  })
+
+  it('preserves unknown case-sensitive expression models when editing an unrelated group field', async () => {
+    const expressions = { 'Future-Image': 'fixed(0.3)', 'future-image': 'fixed(0.4)' }
+    const group = { ...sourceGroup, image_price_expressions: expressions }
+    listGroups.mockResolvedValue({ items: [group], total: 1, page: 1, page_size: 20, pages: 1 })
+    updateGroup.mockResolvedValue(group)
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'common.edit')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('input[data-tour="edit-group-form-name"]').setValue('Updated group')
+    await wrapper.get('#edit-group-form').trigger('submit')
+    await flushPromises()
+    expect(updateGroup).toHaveBeenCalledWith(42, expect.objectContaining({
+      name: 'Updated group', image_price_expressions: expressions
+    }))
+    wrapper.unmount()
+  })
+
+  it('blocks invalid expression rows and sends an explicit empty map after all rules are removed', async () => {
+    const group = { ...sourceGroup, image_price_expressions: { custom: 'fixed(0.3)' } }
+    listGroups.mockResolvedValue({ items: [group], total: 1, page: 1, page_size: 20, pages: 1 })
+    updateGroup.mockResolvedValue(group)
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'common.edit')!.trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-testid="image-expression-add"]').trigger('click')
+    await wrapper.findAll('[data-testid="image-expression-model"]')[1].setValue('custom')
+    await wrapper.get('#edit-group-form').trigger('submit')
+    expect(updateGroup).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenLastCalledWith('admin.groups.imageExpressions.incompleteRow')
+    await wrapper.findAll('[data-testid="image-expression-source"]')[1].setValue('fixed(0.4)')
+    await wrapper.get('#edit-group-form').trigger('submit')
+    expect(updateGroup).not.toHaveBeenCalled()
+    expect(showError).toHaveBeenLastCalledWith('admin.groups.imageExpressions.duplicateModel')
+
+    await wrapper.findAll('[data-testid="image-expression-remove"]')[1].trigger('click')
+    await wrapper.get('[data-testid="image-expression-remove"]').trigger('click')
+    await wrapper.get('#edit-group-form').trigger('submit')
+    await flushPromises()
+    expect(updateGroup).toHaveBeenCalledWith(42, expect.objectContaining({ image_price_expressions: {} }))
+    wrapper.unmount()
+  })
+
+  it('does not send expression billing settings when saving in simple mode', async () => {
+    authState.isSimpleMode = true
+    const group = { ...sourceGroup, image_price_expressions: { custom: 'fixed(0.3)' } }
+    listGroups.mockResolvedValue({ items: [group], total: 1, page: 1, page_size: 20, pages: 1 })
+    updateGroup.mockResolvedValue(group)
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'common.edit')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('#edit-group-form').trigger('submit')
+    await flushPromises()
+    expect(updateGroup).toHaveBeenCalledTimes(1)
+    expect(updateGroup.mock.calls[0][1]).not.toHaveProperty('image_price_expressions')
     wrapper.unmount()
   })
 

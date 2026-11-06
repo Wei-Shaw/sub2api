@@ -604,6 +604,7 @@ export interface Group {
   image_price_1k: number | null
   image_price_2k: number | null
   image_price_4k: number | null
+  image_price_expressions?: Record<string, string>
   video_rate_independent: boolean
   video_rate_multiplier: number
   video_price_480p: number | null
@@ -830,6 +831,7 @@ export interface CreateGroupRequest {
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
+  image_price_expressions?: Record<string, string>
   video_rate_independent?: boolean
   video_rate_multiplier?: number
   video_price_480p?: number | null
@@ -898,6 +900,7 @@ export interface UpdateGroupRequest {
   image_price_1k?: number | null
   image_price_2k?: number | null
   image_price_4k?: number | null
+  image_price_expressions?: Record<string, string>
   video_rate_independent?: boolean
   video_rate_multiplier?: number
   video_price_480p?: number | null

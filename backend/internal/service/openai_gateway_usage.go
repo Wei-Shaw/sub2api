@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/imagepricing"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
@@ -211,6 +212,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	pricingAt := openAIUsagePricingAt(input)
 	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, baseMultiplier, pricingAt)
 	videoMultiplier := resolveVideoRateMultiplier(apiKey, baseMultiplier)
+	if result.ImagePricingSnapshot != nil {
+		imageMultiplier = result.ImagePricingSnapshot.multiplier
+	}
 
 	var cost *CostBreakdown
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
@@ -463,6 +467,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		billingMode := string(BillingModeToken)
 		usageLog.BillingMode = &billingMode
 	}
+	if result.ImagePricingSnapshot != nil && result.ImageCount >= 0 && result.ImageCount <= imagepricing.MaxImageCount {
+		usageLog.BillingTier = optionalTrimmedStringPtr(result.ImagePricingSnapshot.prices[result.ImageCount].Tier)
+	}
 	// 添加 UserAgent
 	if input.UserAgent != "" {
 		usageLog.UserAgent = &input.UserAgent
@@ -590,6 +597,9 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	modelLongContextExempt bool,
 	pricingAt time.Time,
 ) (*CostBreakdown, error) {
+	if result != nil && result.ImagePricingSnapshot != nil {
+		return result.ImagePricingSnapshot.Cost(result.ImageCount)
+	}
 	billingModel := firstUsageBillingModel(billingModels)
 	if result != nil && result.WebSearchCalls > 0 {
 		// Codex alpha/search 网页搜索按次计费：上游不返回 usage/token 字段，单价只取
@@ -927,7 +937,7 @@ func groupMediaPricingLooksIncomplete(group *Group) bool {
 		return false
 	}
 	// Any first-class pricing field present means the projection is not a blank shell.
-	if len(group.VideoModelPrices) > 0 {
+	if len(group.VideoModelPrices) > 0 || len(group.ImagePriceExpressions) > 0 {
 		return false
 	}
 	if len(group.ModelPricing) > 0 || group.LongContextPricingEnabled {

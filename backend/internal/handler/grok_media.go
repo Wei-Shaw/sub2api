@@ -116,6 +116,16 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		}
 	}
 	requestModel := requestInfo.Model
+	if service.HasImagePriceExpression(apiKey.Group, clientRequestedModel(c, requestModel)) && !service.ImageExpressionEndpointSupported(c.Request.URL.Path, c.GetHeader("Content-Type")) {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", service.ImageExpressionUnsupportedMessage)
+		return
+	}
+	imagePricing, pricingErr := h.gatewayService.PrepareImagePricing(c.Request.Context(), apiKey, clientRequestedModel(c, requestModel), body, true)
+	if pricingErr != nil {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", pricingErr.Error())
+		return
+	}
+	c.Request = c.Request.WithContext(service.WithImagePricingSnapshot(c.Request.Context(), imagePricing))
 	routingModel := service.NormalizeGrokMediaModelForEndpoint(endpoint, requestModel, requestInfo.HasInputImage())
 	if endpoint.IsGenerationRequest() && strings.TrimSpace(requestModel) == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
@@ -177,7 +187,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	}
 
 	// 余额模式在途预留（与计费同口径估算；计费任务扣减余额缓存后才释放）。
-	inflightDone, inflightErr := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, grokMediaInflightEstimate(endpoint, routingModel, requestInfo, body))
+	inflightEstimate := grokMediaInflightEstimate(endpoint, routingModel, requestInfo, body)
+	inflightEstimate.ImagePricingSnapshot = imagePricing
+	inflightDone, inflightErr := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, inflightEstimate)
 	if inflightErr != nil {
 		status, code, message, retryAfter := billingErrorDetails(inflightErr)
 		if retryAfter > 0 {
@@ -394,6 +406,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			return h.gatewayService.ForwardGrokMedia(requestCtx, c, account, endpoint, requestID, body, contentType)
 		}()
 
+		if result != nil {
+			result.ImagePricingSnapshot = imagePricing
+		}
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
 		responseLatencyMs := forwardDurationMs

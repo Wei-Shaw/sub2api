@@ -504,6 +504,12 @@ func (_c *GroupCreate) SetNillableVideoPrice1080p(v *float64) *GroupCreate {
 	return _c
 }
 
+// SetImagePriceExpressions sets the "image_price_expressions" field.
+func (_c *GroupCreate) SetImagePriceExpressions(v map[string]string) *GroupCreate {
+	_c.mutation.SetImagePriceExpressions(v)
+	return _c
+}
+
 // SetVideoModelPrices sets the "video_model_prices" field.
 func (_c *GroupCreate) SetVideoModelPrices(v map[string]map[string]float64) *GroupCreate {
 	_c.mutation.SetVideoModelPrices(v)
@@ -1619,6 +1625,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldVideoPrice1080p, field.TypeFloat64, value)
 		_node.VideoPrice1080p = &value
 	}
+	if value, ok := _c.mutation.ImagePriceExpressions(); ok {
+		_spec.SetField(group.FieldImagePriceExpressions, field.TypeJSON, value)
+		_node.ImagePriceExpressions = value
+	}
 	if value, ok := _c.mutation.VideoModelPrices(); ok {
 		_spec.SetField(group.FieldVideoModelPrices, field.TypeJSON, value)
 		_node.VideoModelPrices = value
@@ -2462,6 +2472,24 @@ func (u *GroupUpsert) AddVideoPrice1080p(v float64) *GroupUpsert {
 // ClearVideoPrice1080p clears the value of the "video_price_1080p" field.
 func (u *GroupUpsert) ClearVideoPrice1080p() *GroupUpsert {
 	u.SetNull(group.FieldVideoPrice1080p)
+	return u
+}
+
+// SetImagePriceExpressions sets the "image_price_expressions" field.
+func (u *GroupUpsert) SetImagePriceExpressions(v map[string]string) *GroupUpsert {
+	u.Set(group.FieldImagePriceExpressions, v)
+	return u
+}
+
+// UpdateImagePriceExpressions sets the "image_price_expressions" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImagePriceExpressions() *GroupUpsert {
+	u.SetExcluded(group.FieldImagePriceExpressions)
+	return u
+}
+
+// ClearImagePriceExpressions clears the value of the "image_price_expressions" field.
+func (u *GroupUpsert) ClearImagePriceExpressions() *GroupUpsert {
+	u.SetNull(group.FieldImagePriceExpressions)
 	return u
 }
 
@@ -3683,6 +3711,27 @@ func (u *GroupUpsertOne) UpdateVideoPrice1080p() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearVideoPrice1080p() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearVideoPrice1080p()
+	})
+}
+
+// SetImagePriceExpressions sets the "image_price_expressions" field.
+func (u *GroupUpsertOne) SetImagePriceExpressions(v map[string]string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImagePriceExpressions(v)
+	})
+}
+
+// UpdateImagePriceExpressions sets the "image_price_expressions" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImagePriceExpressions() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImagePriceExpressions()
+	})
+}
+
+// ClearImagePriceExpressions clears the value of the "image_price_expressions" field.
+func (u *GroupUpsertOne) ClearImagePriceExpressions() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearImagePriceExpressions()
 	})
 }
 
@@ -5157,6 +5206,27 @@ func (u *GroupUpsertBulk) UpdateVideoPrice1080p() *GroupUpsertBulk {
 func (u *GroupUpsertBulk) ClearVideoPrice1080p() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearVideoPrice1080p()
+	})
+}
+
+// SetImagePriceExpressions sets the "image_price_expressions" field.
+func (u *GroupUpsertBulk) SetImagePriceExpressions(v map[string]string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImagePriceExpressions(v)
+	})
+}
+
+// UpdateImagePriceExpressions sets the "image_price_expressions" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImagePriceExpressions() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImagePriceExpressions()
+	})
+}
+
+// ClearImagePriceExpressions clears the value of the "image_price_expressions" field.
+func (u *GroupUpsertBulk) ClearImagePriceExpressions() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.ClearImagePriceExpressions()
 	})
 }
 

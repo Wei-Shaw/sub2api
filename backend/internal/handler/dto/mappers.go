@@ -2,6 +2,7 @@
 package dto
 
 import (
+	"maps"
 	"strconv"
 	"strings"
 	"time"
@@ -212,6 +213,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		VideoPrice720P:                  g.VideoPrice720P,
 		VideoPrice1080P:                 g.VideoPrice1080P,
 		VideoModelPrices:                g.VideoModelPrices,
+		ImagePriceExpressions:           maps.Clone(g.ImagePriceExpressions),
 		WebSearchPricePerCall:           g.WebSearchPricePerCall,
 		SearchPricePer1k:                g.SearchPricePer1k,
 		AudioRealtimePricePerMin:        g.AudioRealtimePricePerMin,

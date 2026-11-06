@@ -3,6 +3,7 @@ module github.com/Wei-Shaw/sub2api
 go 1.27.3
 
 require (
+	github.com/expr-lang/expr v1.17.8
 	entgo.io/ent v0.14.5
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/alibabacloud-go/captcha-20230305 v1.1.3

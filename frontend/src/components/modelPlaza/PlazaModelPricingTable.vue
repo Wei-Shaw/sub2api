@@ -93,7 +93,7 @@
                 {{ billingModeLabel(m) }}
               </span>
               <span
-                v-if="m.long_context_basis === 'marginal'"
+                v-if="!m.image_pricing_expression && m.long_context_basis === 'marginal'"
                 class="rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-dark-700/70 dark:text-dark-300"
                 :title="t('modelPlaza.table.tierHintMarginal')"
               >
@@ -112,7 +112,14 @@
           </td>
 
           <!-- token 计费:输入 / 输出 / 缓存(写/读),有阶梯时每档一行;档位标签只放输入列,其余列按行对齐 -->
-          <template v-if="billingMode(m) === BILLING_MODE_TOKEN">
+          <td v-if="m.image_pricing_expression" colspan="3" class="pz-cell px-3 py-2.5 align-middle" data-testid="image-expression-pricing">
+            <p class="text-xs text-gray-700 dark:text-gray-300">{{ t('modelPlaza.table.imageExpressionHint') }}</p>
+            <details class="mt-2 text-xs">
+              <summary class="cursor-pointer text-primary-600 dark:text-primary-400">{{ t('modelPlaza.table.imageExpressionDetails') }}</summary>
+              <pre class="mt-2 max-w-xl whitespace-pre-wrap break-words rounded bg-gray-100 p-2 font-mono dark:bg-dark-700">{{ m.image_pricing_expression }}</pre>
+            </details>
+          </td>
+          <template v-else-if="billingMode(m) === BILLING_MODE_TOKEN">
             <td class="pz-cell px-3 py-2.5 align-middle font-mono font-semibold text-gray-900 dark:text-gray-50">
               <template v-if="tokenIntervals(m).length">
                 <div
@@ -321,7 +328,7 @@ import type { PlazaModel, PlazaTimePricingPeriod } from '@/api/modelPlaza'
 import type { UserPricingInterval } from '@/api/channels'
 
 function reasoningEffortMultipliers(model: PlazaModel): [string, number][] {
-  const multipliers = model.pricing?.reasoning_effort_multipliers
+  const multipliers = model.image_pricing_expression ? undefined : model.pricing?.reasoning_effort_multipliers
   return REASONING_EFFORT_LEVELS.flatMap(effort => {
     const multiplier = multipliers?.[effort]
     return typeof multiplier === 'number' && Number.isFinite(multiplier) && multiplier > 0
@@ -386,10 +393,12 @@ const hasCustomRate = computed(
 )
 
 function billingMode(m: PlazaModel): BillingMode {
+  if (m.image_pricing_expression) return BILLING_MODE_IMAGE
   return (m.pricing?.billing_mode || BILLING_MODE_TOKEN) as BillingMode
 }
 
 function billingModeLabel(m: PlazaModel): string {
+  if (m.image_pricing_expression) return t('modelPlaza.table.imageExpression')
   return billingMode(m) === BILLING_MODE_IMAGE
     ? t('modelPlaza.table.perImage')
     : t('modelPlaza.table.perRequest')
@@ -474,6 +483,7 @@ function hasOfficialCache(o: NonNullable<PlazaModel['official_pricing']>): boole
 
 /** 分时倍率时段(后端只给出倍率 ≠ 1 的时段,已升序)。 */
 function timePeriods(m: PlazaModel): PlazaTimePricingPeriod[] {
+  if (m.image_pricing_expression) return []
   return m.time_pricing?.periods ?? []
 }
 

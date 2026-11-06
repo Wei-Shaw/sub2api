@@ -700,6 +700,10 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		return nil, err
 	}
 
+	if err := validateImagePricingForwardBody(ctx, body); err != nil {
+		return nil, err
+	}
+
 	var bodyReader io.Reader
 	if endpoint.RequiresRequestBody() {
 		bodyReader = bytes.NewReader(body)

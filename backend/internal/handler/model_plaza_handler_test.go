@@ -160,6 +160,22 @@ func TestToModelPlazaOfficialPricing_NilPassthrough(t *testing.T) {
 	require.Nil(t, toModelPlazaOfficialPricing(nil))
 }
 
+func TestModelPlazaExpressionDTO(t *testing.T) {
+	g := service.PlazaGroup{Models: []service.PlazaModel{{Name: "image-alias", ImagePricingExpression: `fixed(0.04) * image_count`}}}
+	raw, err := json.Marshal(toModelPlazaGroupDTO(&g, nil))
+	require.NoError(t, err)
+	var decoded struct {
+		Models []struct {
+			Expression string `json:"image_pricing_expression"`
+			Pricing    any    `json:"pricing"`
+		} `json:"models"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &decoded))
+	require.Len(t, decoded.Models, 1)
+	require.Equal(t, `fixed(0.04) * image_count`, decoded.Models[0].Expression)
+	require.Nil(t, decoded.Models[0].Pricing)
+}
+
 func TestToModelPlazaGroupDTO_LongContextTiersAndBasis(t *testing.T) {
 	maxTokens := 272000
 	g := service.PlazaGroup{

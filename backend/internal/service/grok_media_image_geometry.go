@@ -86,6 +86,8 @@ func grokImagineImageResolution(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "1k":
 		return "1k"
+	case "1.5k":
+		return "1.5k"
 	case "2k":
 		return "2k"
 	default:

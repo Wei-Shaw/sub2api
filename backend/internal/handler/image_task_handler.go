@@ -99,6 +99,19 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
+	model := service.ExtractGrokMediaModel(c.GetHeader("Content-Type"), body)
+	if platform == service.PlatformOpenAI {
+		parsed, err := (&service.OpenAIGatewayService{}).ParseOpenAIImagesRequest(c, body)
+		if err != nil {
+			imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return
+		}
+		model = parsed.Model
+	}
+	if service.HasImagePriceExpression(apiKey.Group, clientRequestedModel(c, model)) {
+		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", service.ImageExpressionUnsupportedMessage)
+		return
+	}
 	if !h.checkSecurityAuditBeforeSubmit(c, apiKey, platform, body) {
 		return
 	}

@@ -120,6 +120,10 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			"This group is restricted to Claude Code clients (/v1/messages only)")
 		return
 	}
+	if service.HasImagePriceExpression(apiKey.Group, clientRequestedModel(c, reqModel)) {
+		h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", service.ImageExpressionUnsupportedMessage)
+		return
+	}
 	if geminiImageGenerationRejected(c, apiKey, nil, reqModel, channelMapping.MappedModel) {
 		h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", service.ImageGenerationPermissionMessage())
 		return

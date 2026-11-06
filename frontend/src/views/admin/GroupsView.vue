@@ -990,7 +990,9 @@
           </p>
           <div class="mt-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
             <div class="mb-1 font-medium">
-              {{ t(imagePricingI18nKey(createForm.platform, "finalPricePreview")) }}
+              {{ t(hasImagePriceExpressionRows(createForm.image_price_expressions)
+                ? "admin.groups.imageExpressions.legacyPreview"
+                : imagePricingI18nKey(createForm.platform, "finalPricePreview")) }}
             </div>
             <div class="grid grid-cols-3 gap-2">
               <div
@@ -1001,6 +1003,10 @@
               </div>
             </div>
           </div>
+          <ImagePriceExpressionsField
+            v-if="supportsImagePriceExpressions(createForm.platform)"
+            v-model="createForm.image_price_expressions"
+          />
           <div v-if="createForm.platform === 'gemini' && createForm.allow_image_generation" class="mt-4 border-t border-dashed border-gray-200 pt-4 dark:border-dark-700">
             <label
               class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300"
@@ -2644,7 +2650,9 @@
           </p>
           <div class="mt-2 rounded-lg bg-gray-50 p-3 text-xs text-gray-700 dark:bg-gray-800 dark:text-gray-300">
             <div class="mb-1 font-medium">
-              {{ t(imagePricingI18nKey(editForm.platform, "finalPricePreview")) }}
+              {{ t(hasImagePriceExpressionRows(editForm.image_price_expressions)
+                ? "admin.groups.imageExpressions.legacyPreview"
+                : imagePricingI18nKey(editForm.platform, "finalPricePreview")) }}
             </div>
             <div class="grid grid-cols-3 gap-2">
               <div
@@ -2655,6 +2663,10 @@
               </div>
             </div>
           </div>
+          <ImagePriceExpressionsField
+            v-if="supportsImagePriceExpressions(editForm.platform)"
+            v-model="editForm.image_price_expressions"
+          />
           <div v-if="editForm.platform === 'gemini' && editForm.allow_image_generation" class="mt-4 border-t border-dashed border-gray-200 pt-4 dark:border-dark-700">
             <label
               class="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300"
@@ -4329,6 +4341,15 @@ import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import { platformLabel } from "@/utils/platformColors";
 import Icon from "@/components/icons/Icon.vue";
 import GroupI18nField from "@/components/admin/group/GroupI18nField.vue";
+import ImagePriceExpressionsField from "@/components/admin/group/ImagePriceExpressionsField.vue";
+import {
+  hasImagePriceExpressionRows,
+  imagePriceExpressionsToRows,
+  serializeImagePriceExpressions,
+  supportsImagePriceExpressions,
+  validateImagePriceExpressionRows,
+  type ImagePriceExpressionRow,
+} from "@/components/admin/group/imagePriceExpressions";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
@@ -4995,6 +5016,7 @@ const createForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  image_price_expressions: [] as ImagePriceExpressionRow[],
   // 视频生成计费配置（仅 Grok 平台）
   video_rate_independent: false,
   video_rate_multiplier: 1,
@@ -5362,6 +5384,7 @@ const editForm = reactive({
   image_price_1k: null as number | null,
   image_price_2k: null as number | null,
   image_price_4k: null as number | null,
+  image_price_expressions: [] as ImagePriceExpressionRow[],
   // 视频生成计费配置（仅 Grok 平台）
   video_rate_independent: false,
   video_rate_multiplier: 1,
@@ -5833,6 +5856,7 @@ const closeCreateModal = () => {
   createForm.image_price_1k = null;
   createForm.image_price_2k = null;
   createForm.image_price_4k = null;
+  createForm.image_price_expressions = [];
   createForm.video_rate_independent = false;
   createForm.video_rate_multiplier = 1;
   createForm.video_price_480p = null;
@@ -5927,6 +5951,15 @@ const validateGroupReasoningMultipliers = (pricing: PricingFormEntry[]): boolean
   return true;
 };
 
+const validateImageExpressionForm = (rows: ImagePriceExpressionRow[]): boolean => {
+  const error = validateImagePriceExpressionRows(rows);
+  if (error) {
+    appStore.showError(t(`admin.groups.imageExpressions.${error}`));
+    return false;
+  }
+  return true;
+};
+
 const handleCreateGroup = async () => {
   if (!createForm.name.trim()) {
     appStore.showError(t("admin.groups.nameRequired"));
@@ -5943,6 +5976,7 @@ const handleCreateGroup = async () => {
     return;
   }
   if (!validateGroupReasoningMultipliers(createForm.model_pricing)) return;
+  if (!authStore.isSimpleMode && !validateImageExpressionForm(createForm.image_price_expressions)) return;
   // 模型白名单：开启且没有任何条目时阻止提交，与后端 400 对齐。
   if (
     createModelAllowlistState.enabled &&
@@ -5963,6 +5997,7 @@ const handleCreateGroup = async () => {
     // 构建请求数据，包含模型路由配置
     const requestData = {
       ...createGroupForm,
+      image_price_expressions: serializeImagePriceExpressions(createForm.image_price_expressions),
       force_openai_fast: normalizeGroupOpenAIFast(
         createForm.platform,
         createForm.force_openai_fast,
@@ -6130,6 +6165,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.image_price_1k = group.image_price_1k;
   editForm.image_price_2k = group.image_price_2k;
   editForm.image_price_4k = group.image_price_4k;
+  editForm.image_price_expressions = imagePriceExpressionsToRows(group.image_price_expressions);
   editForm.video_rate_independent = group.video_rate_independent ?? false;
   editForm.video_rate_multiplier = group.video_rate_multiplier ?? 1;
   editForm.video_price_480p = group.video_price_480p;
@@ -6249,6 +6285,7 @@ const closeEditModal = () => {
   editForm.video_price_720p = null;
   editForm.video_price_1080p = null;
   editForm.video_model_prices = createVideoModelPricesForm();
+  editForm.image_price_expressions = [];
   editForm.long_context_pricing_enabled = true;
   editForm.force_openai_fast = false;
   editForm.free_openai_fast = false;
@@ -6283,6 +6320,7 @@ const handleUpdateGroup = async () => {
     return;
   }
   if (!validateGroupReasoningMultipliers(editForm.model_pricing)) return;
+  if (!authStore.isSimpleMode && !validateImageExpressionForm(editForm.image_price_expressions)) return;
   // 模型白名单：开启且没有任何条目时阻止提交，与后端 400 对齐。
   if (
     editModelAllowlistState.enabled &&
@@ -6307,6 +6345,7 @@ const handleUpdateGroup = async () => {
     // 转换 fallback_group_id: null -> 0 (后端使用 0 表示清除)
     const payload = {
       ...editForm,
+      image_price_expressions: serializeImagePriceExpressions(editForm.image_price_expressions),
       force_openai_fast: normalizeGroupOpenAIFast(
         editForm.platform,
         editForm.force_openai_fast,
