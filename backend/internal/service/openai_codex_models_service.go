@@ -767,7 +767,12 @@ func deepSeekCodexDisplayName(modelID string) string {
 }
 
 func isDeepSeekCodexModel(modelID string) bool {
-	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelID)), "deepseek-")
+	// Provider-qualified IDs such as "deepseek/deepseek-v4-pro" must resolve to
+	// the same capability descriptor as the bare upstream model. DetectModelPlatform
+	// already routes these IDs to PlatformDeepseek, so this keeps the catalog and
+	// the router in agreement.
+	normalized := strings.ToLower(codexProviderQualifiedModelID(modelID))
+	return strings.HasPrefix(normalized, "deepseek-")
 }
 
 func isGrokCodexModel(modelID string) bool {
