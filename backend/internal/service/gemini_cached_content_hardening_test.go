@@ -295,6 +295,55 @@ func TestGeminiForwardNative_BoundCacheUpstreamGatewayErrorsSkipAccountPenalty(t
 	}
 }
 
+func TestGeminiForwardNative_BoundCacheUpstreamGatewayErrorsRetryablePerPoolModeCodes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tt := range []struct {
+		status    int
+		retryable bool
+	}{
+		{status: http.StatusTooManyRequests, retryable: true},
+		{status: http.StatusServiceUnavailable, retryable: false},
+	} {
+		t.Run(http.StatusText(tt.status), func(t *testing.T) {
+			body := fmt.Sprintf(`{"error":{"code":%d,"message":"Resource exhausted. Please try again later.","status":"RESOURCE_EXHAUSTED"}}`, tt.status)
+			svc, httpStub, _ := newGeminiCachedContentTestService(tt.status, body)
+			repo := &geminiBoundCacheRateLimitRepo{}
+			svc.accountRepo = repo
+			svc.rateLimitService = NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+			account := &Account{ID: 712, Platform: PlatformGemini, Type: AccountTypeAPIKey, Credentials: map[string]any{
+				"api_key": "k", "base_url": "https://gw.example.com", "explicit_cache_upstream": true,
+				"pool_mode": true, "pool_mode_retry_count": float64(2), "pool_mode_retry_status_codes": []any{float64(429)},
+			}}
+			c, _ := newGeminiNativeTestContext(t)
+
+			_, err := svc.ForwardNative(WithGeminiCachedContentBound(context.Background()), c, account,
+				"gemini-3.8-flash", "generateContent", false, []byte(geminiCachedContentRequestBody))
+
+			var failoverErr *UpstreamFailoverError
+			require.True(t, errors.As(err, &failoverErr))
+			require.True(t, failoverErr.BoundUpstreamPassthrough, "重试用尽后仍由 handler 原样回写")
+			require.Equal(t, tt.retryable, failoverErr.RetryableOnSameAccount, "按池模式重试状态码决定同账号重试")
+			require.Equal(t, tt.retryable, failoverErr.RequestScopedTransient, "重试用尽不临时封禁本账号")
+			require.Equal(t, 1, httpStub.calls, "同账号重试由 handler 执行")
+			require.Zero(t, repo.rateLimitedCalls)
+			require.Zero(t, repo.tempCalls)
+			require.Zero(t, repo.setErrCalls)
+
+			raw, ok := c.Get(OpsUpstreamErrorsKey)
+			if !tt.retryable {
+				require.False(t, ok, "不可重试时不登记上游事件，由耗尽处理写 ops")
+				return
+			}
+			require.True(t, ok)
+			events, ok := raw.([]*OpsUpstreamErrorEvent)
+			require.True(t, ok)
+			require.Len(t, events, 1, "每次尝试登记一个上游事件，重试成功时 ops 记为恢复")
+			require.Equal(t, tt.status, events[0].UpstreamStatusCode)
+			require.Equal(t, "retry", events[0].Kind, "同账号重试不计入换号次数")
+		})
+	}
+}
+
 type fixedChargeCacheStub struct {
 	billingCacheWorkerStub
 	balance float64
