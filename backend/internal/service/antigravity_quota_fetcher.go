@@ -56,8 +56,12 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 		return nil, fmt.Errorf("create antigravity client failed: %w", err)
 	}
 
+	// 配额必须与实际转发使用同一端点，避免读取到另一环境的过期用量。
+	baseURL := resolveAntigravityForwardBaseURL(account)
+
 	// 调用 API 获取配额
-	modelsResp, modelsRaw, err := client.FetchAvailableModels(ctx, accessToken, projectID, resolveModelsListReadLimit(f.cfg))
+	bodyLimit := resolveModelsListReadLimit(f.cfg)
+	modelsResp, modelsRaw, err := client.FetchAvailableModelsFromURL(ctx, baseURL, accessToken, projectID, bodyLimit)
 	if err != nil {
 		// 403 Forbidden: 不报错，返回 is_forbidden 标记
 		var forbiddenErr *antigravity.ForbiddenError
@@ -80,11 +84,18 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 		return nil, err
 	}
 
+	// 调用 retrieveUserQuotaSummary 获取 5h / Weekly 共享配额桶（非关键路径，失败不影响主流程）
+	quotaSummaryResp, _, summaryErr := client.RetrieveUserQuotaSummaryFromURL(ctx, baseURL, accessToken, projectID, bodyLimit)
+	if summaryErr != nil {
+		slog.Warn("failed to fetch antigravity user quota summary", "error", summaryErr)
+	}
+
 	// 调用 LoadCodeAssist 获取订阅等级和 AI Credits 余额（非关键路径，失败不影响主流程）
 	tierRaw, tierNormalized, loadResp := f.fetchSubscriptionTier(ctx, client, accessToken)
 
 	// 转换为 UsageInfo
 	usageInfo := f.buildUsageInfo(modelsResp, tierRaw, tierNormalized, loadResp)
+	f.applyQuotaSummary(usageInfo, quotaSummaryResp)
 
 	return &QuotaResult{
 		UsageInfo: usageInfo,
@@ -175,7 +186,17 @@ func (f *AntigravityQuotaFetcher) buildUsageInfo(modelsResp *antigravity.FetchAv
 	}
 
 	// 同时设置 FiveHour 用于兼容展示（取主要模型）
-	priorityModels := []string{"claude-sonnet-4-20250514", "claude-sonnet-4", "gemini-2.5-pro"}
+	priorityModels := []string{
+		"claude-sonnet-5-5-high",
+		"claude-opus-5-5-high",
+		"claude-sonnet-4-6",
+		"claude-opus-4-6",
+		"claude-sonnet-4-20250514",
+		"claude-sonnet-4",
+		"gemini-4-argon-high",
+		"gemini-3.1-pro-high",
+		"gemini-2.5-pro",
+	}
 	for _, modelName := range priorityModels {
 		if modelInfo, ok := modelsResp.Models[modelName]; ok && modelInfo.QuotaInfo != nil {
 			utilization := (1.0 - modelInfo.QuotaInfo.RemainingFraction) * 100
@@ -204,6 +225,77 @@ func (f *AntigravityQuotaFetcher) buildUsageInfo(modelsResp *antigravity.FetchAv
 	}
 
 	return info
+}
+
+// applyQuotaSummary 将 retrieveUserQuotaSummary 的共享配额桶（gemini-5h、gemini-weekly、
+// 3p-5h、3p-weekly）合并到 UsageInfo。当某个窗口因周限额已耗尽而被标记为 disabled: true
+// 时跳过该桶，避免把上游填充的 remainingFraction: 1 误展示为 0% 已用。
+func (f *AntigravityQuotaFetcher) applyQuotaSummary(info *UsageInfo, summary *antigravity.RetrieveUserQuotaSummaryResponse) {
+	if info == nil || summary == nil {
+		return
+	}
+	if info.AntigravityQuota == nil {
+		info.AntigravityQuota = make(map[string]*AntigravityModelQuota)
+	}
+
+	allBuckets := make([]antigravity.QuotaSummaryBucket, 0, len(summary.Buckets)+4)
+	allBuckets = append(allBuckets, summary.Buckets...)
+	for _, g := range summary.Groups {
+		allBuckets = append(allBuckets, g.Buckets...)
+	}
+
+	bucketByID := make(map[string]antigravity.QuotaSummaryBucket, len(allBuckets))
+	for _, b := range allBuckets {
+		id := strings.TrimSpace(b.BucketID)
+		if id == "" || b.Disabled {
+			continue
+		}
+		remaining := b.RemainingFraction
+		if remaining < 0 {
+			remaining = 0
+		} else if remaining > 1 {
+			remaining = 1
+		}
+		utilization := int((1.0 - remaining) * 100)
+		info.AntigravityQuota[id] = &AntigravityModelQuota{
+			Utilization: utilization,
+			ResetTime:   b.ResetTime,
+		}
+		bucketByID[id] = b
+	}
+
+	// 优先用活跃的 5h / weekly 共享桶更新 FiveHour 和 SevenDay。
+	for _, id := range []string{"3p-5h", "gemini-5h"} {
+		if b, ok := bucketByID[id]; ok {
+			info.FiveHour = quotaSummaryBucketToProgress(b)
+			break
+		}
+	}
+	for _, id := range []string{"3p-weekly", "gemini-weekly"} {
+		if b, ok := bucketByID[id]; ok {
+			info.SevenDay = quotaSummaryBucketToProgress(b)
+			break
+		}
+	}
+}
+
+func quotaSummaryBucketToProgress(b antigravity.QuotaSummaryBucket) *UsageProgress {
+	remaining := b.RemainingFraction
+	if remaining < 0 {
+		remaining = 0
+	} else if remaining > 1 {
+		remaining = 1
+	}
+	progress := &UsageProgress{
+		Utilization: (1.0 - remaining) * 100,
+	}
+	if b.ResetTime != "" {
+		if resetTime, err := time.Parse(time.RFC3339, b.ResetTime); err == nil {
+			progress.ResetsAt = &resetTime
+			progress.RemainingSeconds = int(time.Until(resetTime).Seconds())
+		}
+	}
+	return progress
 }
 
 // GetProxyURL 获取账户的代理 URL
