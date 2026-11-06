@@ -20,6 +20,16 @@ import (
 	"go.uber.org/zap"
 )
 
+func restoreGatewayResponseHeaders(c *gin.Context, headers http.Header) {
+	dst := c.Writer.Header()
+	for key := range dst {
+		delete(dst, key)
+	}
+	for key, values := range headers {
+		dst[key] = append([]string(nil), values...)
+	}
+}
+
 // anthropicCompatDisconnectDrainInterval 是 gateway.stream_data_interval_timeout
 // 未启用时，客户端断开后继续读取上游的读间隔上限，与该配置项的默认值一致。
 var anthropicCompatDisconnectDrainInterval = 180 * time.Second
@@ -218,11 +228,13 @@ func (st *anthropicCompatStream) failure() *anthropicCompatStreamFailure {
 // 由调用方转为 UpstreamFailoverError；尚未向客户端写出内容时不写终止错误，由
 // handler 换号重试。其余失败写出终止错误，并带上已观测到的 usage；未观测到任何
 // usage 时结果为 nil。
-func finishAnthropicCompatStreamFailure(c *gin.Context, writerSizeBeforeStream int, failure *anthropicCompatStreamFailure, result *ForwardResult, writeFailure func()) (*ForwardResult, error) {
+func finishAnthropicCompatStreamFailure(c *gin.Context, writerSizeBeforeStream int, originalHeaders http.Header, failure *anthropicCompatStreamFailure, result *ForwardResult, writeFailure func()) (*ForwardResult, error) {
 	var sseErr *sseStreamErrorEventError
 	if errors.As(failure.err, &sseErr) {
 		if c.Writer.Size() != writerSizeBeforeStream {
 			writeFailure()
+		} else {
+			restoreGatewayResponseHeaders(c, originalHeaders)
 		}
 		return nil, failure.err
 	}

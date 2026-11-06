@@ -178,6 +178,144 @@ func TestNativeAnthropicStreaming_ReadErrorAfterSemanticOutputDoesNotFailover(t 
 	}
 }
 
+func TestNativeAnthropicConversion_EmptyOrPingOnlyEOFIsTruncated(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name string
+		run  func(*OpenAIGatewayService, *http.Response, *gin.Context) (*OpenAIForwardResult, error)
+	}{
+		{
+			name: "chat_completions_buffered",
+			run: func(s *OpenAIGatewayService, resp *http.Response, c *gin.Context) (*OpenAIForwardResult, error) {
+				return s.handleCCBufferedFromNativeAnthropic(resp, c, "glm-4.7", "glm-4.7", "glm-4.7", nil, time.Now())
+			},
+		},
+		{
+			name: "chat_completions_streaming",
+			run: func(s *OpenAIGatewayService, resp *http.Response, c *gin.Context) (*OpenAIForwardResult, error) {
+				return s.handleCCStreamingFromNativeAnthropic(resp, c, "glm-4.7", "glm-4.7", "glm-4.7", nil, time.Now())
+			},
+		},
+		{
+			name: "responses_buffered",
+			run: func(s *OpenAIGatewayService, resp *http.Response, c *gin.Context) (*OpenAIForwardResult, error) {
+				return s.handleResponsesBufferedFromNativeAnthropic(resp, c, "glm-4.7", "glm-4.7", "glm-4.7", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+			},
+		},
+		{
+			name: "responses_streaming",
+			run: func(s *OpenAIGatewayService, resp *http.Response, c *gin.Context) (*OpenAIForwardResult, error) {
+				return s.handleResponsesStreamingFromNativeAnthropic(resp, c, "glm-4.7", "glm-4.7", "glm-4.7", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+			},
+		},
+	}
+	fixtures := map[string]string{
+		"empty":     "",
+		"ping_only": "event: ping\ndata: {\"type\":\"ping\"}\n\n",
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			for fixture, payload := range fixtures {
+				t.Run(fixture, func(t *testing.T) {
+					c, rec := newNativeAnthropicFailoverTestContext(t)
+					resp := &http.Response{
+						StatusCode: http.StatusOK,
+						Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+						Body:       &streamReadCloser{payload: []byte(payload), err: io.EOF},
+					}
+
+					_, err := tc.run(newNativeAnthropicHangTestService(0), resp, c)
+					if err == nil {
+						t.Fatal("empty or ping-only clean EOF must not be reported as success")
+					}
+					var failoverErr *UpstreamFailoverError
+					if errors.As(err, &failoverErr) {
+						t.Fatalf("clean EOF is not a transport failure eligible for replay: %+v", failoverErr)
+					}
+				code, _, ok := OpenAIUpstreamStreamReadErrorDetails(err)
+				if !ok || code != OpenAIUpstreamStreamTruncatedCode {
+					t.Fatalf("expected typed truncated-stream error, got code=%q ok=%v err=%v", code, ok, err)
+				}
+				if strings.Contains(rec.Body.String(), "[DONE]") || strings.Contains(rec.Body.String(), "response.completed") {
+					t.Fatalf("truncated stream must not synthesize success: %q", rec.Body.String())
+				}
+				if strings.Contains(rec.Body.String(), "response.failed") || strings.Contains(rec.Body.String(), "stream_incomplete") {
+					return // these are Responses-specific terminal failure frames
+				}
+			})
+			}
+		})
+	}
+}
+
+func TestNativeAnthropicConversion_TerminalThenIdleRemainsSuccess(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name   string
+		stream bool
+		run    func(*OpenAIGatewayService, *http.Response, *gin.Context) (*OpenAIForwardResult, error)
+	}{
+		{
+			name: "chat_completions_buffered",
+			run: func(s *OpenAIGatewayService, resp *http.Response, c *gin.Context) (*OpenAIForwardResult, error) {
+				return s.handleCCBufferedFromNativeAnthropic(resp, c, "glm-4.7", "glm-4.7", "glm-4.7", nil, time.Now())
+			},
+		},
+		{
+			name: "chat_completions_streaming", stream: true,
+			run: func(s *OpenAIGatewayService, resp *http.Response, c *gin.Context) (*OpenAIForwardResult, error) {
+				return s.handleCCStreamingFromNativeAnthropic(resp, c, "glm-4.7", "glm-4.7", "glm-4.7", nil, time.Now())
+			},
+		},
+		{
+			name: "responses_buffered",
+			run: func(s *OpenAIGatewayService, resp *http.Response, c *gin.Context) (*OpenAIForwardResult, error) {
+				return s.handleResponsesBufferedFromNativeAnthropic(resp, c, "glm-4.7", "glm-4.7", "glm-4.7", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+			},
+		},
+		{
+			name: "responses_streaming", stream: true,
+			run: func(s *OpenAIGatewayService, resp *http.Response, c *gin.Context) (*OpenAIForwardResult, error) {
+				return s.handleResponsesStreamingFromNativeAnthropic(resp, c, "glm-4.7", "glm-4.7", "glm-4.7", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+			},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			pr, pw := io.Pipe()
+			defer pr.Close()
+			defer pw.Close()
+			go func() { _, _ = io.WriteString(pw, miniAnthropicSSEStream()) }()
+
+			c, rec := newNativeAnthropicFailoverTestContext(t)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       pr,
+			}
+			result, err := tc.run(newNativeAnthropicHangTestService(1), resp, c)
+			if err != nil {
+				t.Fatalf("terminal event must take precedence over subsequent idle timeout: result=%+v err=%v", result, err)
+			}
+			if result == nil {
+				t.Fatal("completed stream must preserve its usage result")
+			}
+			if tc.stream {
+				switch {
+				case strings.Contains(tc.name, "chat_completions") && !strings.Contains(rec.Body.String(), "[DONE]"):
+					t.Fatalf("completed Chat Completions stream lacks [DONE]: %q", rec.Body.String())
+				case strings.Contains(tc.name, "responses") && !strings.Contains(rec.Body.String(), "response.completed"):
+					t.Fatalf("completed Responses stream lacks response.completed: %q", rec.Body.String())
+				}
+			}
+		})
+	}
+}
+
 func TestNativeAnthropicConversion_CleanEOFWithoutTerminalIsNotSuccessOrFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

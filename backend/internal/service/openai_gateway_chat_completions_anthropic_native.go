@@ -199,6 +199,10 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 		line, rerr := pump.next()
 		if rerr != nil {
 			if errors.Is(rerr, errAnthropicNativeStreamIdle) {
+				if streamStatus.sawTerminal {
+					streamStatus.readErr = rerr
+					break
+				}
 				return onIdle()
 			}
 			logReadErr(rerr)
@@ -217,6 +221,10 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 		dataLine, rerr := pump.next()
 		if rerr != nil {
 			if errors.Is(rerr, errAnthropicNativeStreamIdle) {
+				if streamStatus.sawTerminal {
+					streamStatus.readErr = rerr
+					break
+				}
 				return onIdle()
 			}
 			logReadErr(rerr)
@@ -271,7 +279,7 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 		}
 	}
 
-	if failure := streamStatus.failure(); failure != nil {
+	if failure := nativeAnthropicStreamFailure(streamStatus); failure != nil {
 		_ = resp.Body.Close()
 		writeChatCompletionsError(c, http.StatusBadGateway, "server_error", failure.message)
 		return &OpenAIForwardResult{
@@ -499,6 +507,10 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 		line, rerr := pump.next()
 		if rerr != nil {
 			if errors.Is(rerr, errAnthropicNativeStreamIdle) {
+				if streamStatus.sawTerminal {
+					streamStatus.readErr = rerr
+					break
+				}
 				return onIdle()
 			}
 			logReadErr(rerr)
@@ -515,6 +527,10 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 		dataLine, rerr := pump.next()
 		if rerr != nil {
 			if errors.Is(rerr, errAnthropicNativeStreamIdle) {
+				if streamStatus.sawTerminal {
+					streamStatus.readErr = rerr
+					break
+				}
 				return onIdle()
 			}
 			logReadErr(rerr)
@@ -548,7 +564,7 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 		}
 	}
 
-	if failure := streamStatus.failure(); failure != nil {
+	if failure := nativeAnthropicStreamFailure(streamStatus); failure != nil {
 		_ = resp.Body.Close()
 		if !clientDisconnected {
 			writeStreamHeaders()

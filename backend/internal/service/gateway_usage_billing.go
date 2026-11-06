@@ -382,8 +382,8 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 		// The billing dedup key prevents a second charge, but a replay must still
 		// revisit customer notification delivery when its earlier Telegram send
 		// was marked failed_retryable by the idempotency coordinator.
-		if deps.balanceNotifyService != nil {
-			deps.balanceNotifyService.RetryCustomerTelegramBalanceNotification(context.Background(), p.User, requestID)
+		if !p.SimpleModeKeyRateLimitOnly && !p.IsSubscriptionBill && p.Cost != nil && p.Cost.ActualCost > 0 && deps.balanceNotifyService != nil {
+			deps.balanceNotifyService.submitCustomerTelegramRetry(p.User, requestID)
 		}
 		deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
 		return false, nil

@@ -186,10 +186,12 @@ func TestDuplicateUsageBillingRetriesFailedCustomerTelegramDelivery(t *testing.T
 	defer server.Close()
 
 	repo := &telegramIdempotencyRepositoryStub{}
+	// Exercise replay after it is eligible; the active-backoff no-op is covered
+	// separately in TestIdempotencyExecuteExistingSkipsRetryDuringBackoff.
 	coordinator := NewIdempotencyCoordinator(repo, IdempotencyConfig{
 		DefaultTTL:           time.Hour,
 		ProcessingTimeout:    time.Minute,
-		FailedRetryBackoff:   5 * time.Second,
+		FailedRetryBackoff:   0,
 		MaxStoredResponseLen: 1024,
 	})
 	telegram := NewTelegramNotifyService(settings)
@@ -600,6 +602,44 @@ func TestIdempotencyExecuteExistingRetriesOnlyPersistedFailure(t *testing.T) {
 	}
 	if deliveries != 2 {
 		t.Fatalf("missing retryable record triggered delivery; count=%d", deliveries)
+	}
+}
+
+func TestIdempotencyExecuteExistingSkipsRetryDuringBackoff(t *testing.T) {
+	repo := &telegramIdempotencyRepositoryStub{}
+	coordinator := NewIdempotencyCoordinator(repo, IdempotencyConfig{
+		DefaultTTL:           time.Hour,
+		ProcessingTimeout:    time.Minute,
+		FailedRetryBackoff:   time.Minute,
+		MaxStoredResponseLen: 1024,
+	})
+	opts := IdempotencyExecuteOptions{
+		Scope:          "telegram_customer_balance_notification",
+		ActorScope:     "user:42",
+		Method:         "POST",
+		Route:          "telegram/customer/balance-low",
+		IdempotencyKey: "customer-event-locked",
+		Payload:        map[string]any{"chat_id": "customer-chat", "event_id": "locked-event"},
+		RequireKey:     true,
+	}
+	deliveries := 0
+	if _, err := coordinator.Execute(context.Background(), opts, func(context.Context) (any, error) {
+		deliveries++
+		return nil, errors.New("temporary Telegram failure")
+	}); err == nil {
+		t.Fatal("first delivery unexpectedly succeeded")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	if _, err := coordinator.ExecuteExisting(ctx, opts, func(context.Context) (any, error) {
+		deliveries++
+		return nil, nil
+	}); err != nil {
+		t.Fatalf("retry during active backoff should be skipped without blocking: %v", err)
+	}
+	if deliveries != 1 {
+		t.Fatalf("deliveries during active backoff = %d, want only the failed initial attempt", deliveries)
 	}
 }
 

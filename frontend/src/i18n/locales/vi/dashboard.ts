@@ -368,6 +368,7 @@ usage: {
   estimatedTime: 'Thời gian ước tính còn lại: {time}',
   cancelExport: 'Hủy xuất',
   exportCancelled: 'Đã hủy xuất dữ liệu',
+  exportRateLimited: 'Quá nhiều yêu cầu, quá trình xuất dữ liệu sẽ tiếp tục sau {seconds} giây',
   exporting: 'Đang xuất...',
   preparingExport: 'Đang chuẩn bị xuất dữ liệu...',
   model: 'Mô hình',

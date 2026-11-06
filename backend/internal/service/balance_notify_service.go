@@ -39,14 +39,15 @@ type AccountQuotaReader interface {
 
 // BalanceNotifyService handles balance and quota threshold notifications.
 type BalanceNotifyService struct {
-	emailService             *EmailService
-	settingRepo              SettingRepository
-	accountRepo              AccountQuotaReader
-	notificationEmailService *NotificationEmailService
-	usageNotifications       *usageNotificationWorker
-	telegramNotifySvc        *TelegramNotifyService
-	userAttributeSvc         *UserAttributeService
-	idempotencySvc           *IdempotencyCoordinator
+	emailService                  *EmailService
+	settingRepo                   SettingRepository
+	accountRepo                   AccountQuotaReader
+	notificationEmailService      *NotificationEmailService
+	usageNotifications            *usageNotificationWorker
+	customerTelegramNotifications *usageNotificationWorker
+	telegramNotifySvc             *TelegramNotifyService
+	userAttributeSvc              *UserAttributeService
+	idempotencySvc                *IdempotencyCoordinator
 }
 
 const customerTelegramChatIDAttributeKey = "telegram_chat_id"
@@ -54,10 +55,11 @@ const customerTelegramChatIDAttributeKey = "telegram_chat_id"
 // NewBalanceNotifyService creates a new BalanceNotifyService.
 func NewBalanceNotifyService(emailService *EmailService, settingRepo SettingRepository, accountRepo AccountQuotaReader) *BalanceNotifyService {
 	return &BalanceNotifyService{
-		emailService:       emailService,
-		settingRepo:        settingRepo,
-		accountRepo:        accountRepo,
-		usageNotifications: newUsageNotificationWorker(),
+		emailService:                  emailService,
+		settingRepo:                   settingRepo,
+		accountRepo:                   accountRepo,
+		usageNotifications:            newUsageNotificationWorker(),
+		customerTelegramNotifications: newUsageNotificationWorker(),
 	}
 }
 
@@ -181,6 +183,9 @@ func crossedDownward(oldV, newV, threshold float64) bool {
 // dispatchBalanceLowNotifications sends email within the bounded notification task
 // and dispatches customer Telegram alerts separately.
 func (s *BalanceNotifyService) dispatchBalanceLowNotifications(ctx context.Context, user *User, newBalance, threshold float64, rechargeURL, eventID string) {
+	// Customer settings, recipient lookup and delivery have their own bounded
+	// pool and deadline, never the upstream balance/quota notification budget.
+	s.submitCustomerTelegramBalanceNotification(user, newBalance, threshold, eventID)
 	siteName := s.getSiteName(ctx)
 	recipients := s.collectBalanceNotifyRecipients(user)
 	slog.Info("CheckBalanceAfterDeduction: sending notification",
@@ -188,8 +193,6 @@ func (s *BalanceNotifyService) dispatchBalanceLowNotifications(ctx context.Conte
 	if s.emailService != nil || s.notificationEmailService != nil {
 		s.sendBalanceLowEmails(ctx, recipients, user.ID, user.Username, user.Email, newBalance, threshold, siteName, rechargeURL)
 	}
-
-	s.dispatchCustomerTelegramBalanceNotification(ctx, user, newBalance, threshold, eventID, false)
 }
 
 func (s *BalanceNotifyService) RetryCustomerTelegramBalanceNotification(ctx context.Context, user *User, eventID string) {
@@ -224,15 +227,16 @@ func (s *BalanceNotifyService) dispatchCustomerTelegramBalanceNotification(ctx c
 
 	key := customerBalanceNotificationIdempotencyKey(user.ID, eventID, balance, threshold)
 	opts := IdempotencyExecuteOptions{
-		Scope:            "telegram_customer_balance_notification",
-		ActorScope:       fmt.Sprintf("user:%d", user.ID),
-		Method:           "POST",
-		Route:            "telegram/customer/balance-low",
-		IdempotencyKey:   key,
-		Payload:          map[string]any{"chat_id": chatID, "event_id": eventID},
-		TTL:              24 * time.Hour,
-		RequireKey:       true,
-		ExecutionTimeout: 35 * time.Second,
+		Scope:                "telegram_customer_balance_notification",
+		ActorScope:           fmt.Sprintf("user:%d", user.ID),
+		Method:               "POST",
+		Route:                "telegram/customer/balance-low",
+		IdempotencyKey:       key,
+		Payload:              map[string]any{"chat_id": chatID, "event_id": eventID},
+		TTL:                  24 * time.Hour,
+		RequireKey:           true,
+		ExecutionTimeout:     35 * time.Second,
+		PreserveCancellation: true,
 	}
 	deliver := func(deliveryCtx context.Context) (any, error) {
 		if err := s.telegramNotifySvc.NotifyBalanceLow(deliveryCtx, chatID, user.Email, balance, threshold); err != nil {
@@ -241,17 +245,14 @@ func (s *BalanceNotifyService) dispatchCustomerTelegramBalanceNotification(ctx c
 		return nil, nil
 	}
 
-	go func() {
-		var err error
-		if retryExisting {
-			_, err = s.idempotencySvc.ExecuteExisting(context.Background(), opts, deliver)
-		} else {
-			_, err = s.idempotencySvc.Execute(context.Background(), opts, deliver)
-		}
-		if err != nil {
-			slog.Warn("customer telegram balance notification dedupe/delivery failed", "user_id", user.ID, "error", err)
-		}
-	}()
+	if retryExisting {
+		_, err = s.idempotencySvc.ExecuteExisting(ctx, opts, deliver)
+	} else {
+		_, err = s.idempotencySvc.Execute(ctx, opts, deliver)
+	}
+	if err != nil {
+		slog.Warn("customer telegram balance notification dedupe/delivery failed", "user_id", user.ID, "error", err)
+	}
 }
 
 // quotaDim describes one quota dimension for notification checking.

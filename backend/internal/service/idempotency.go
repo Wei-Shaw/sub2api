@@ -87,9 +87,14 @@ type IdempotencyExecuteOptions struct {
 	Payload        any
 	TTL            time.Duration
 	RequireKey     bool
-	// ExecutionTimeout opts into bounded execution independent of client cancellation,
-	// with lease renewal and a separate short window to persist the final result.
+	// ExecutionTimeout opts into bounded execution (detached unless
+	// PreserveCancellation is set), lease renewal and a separate short window
+	// to persist the final result.
 	ExecutionTimeout time.Duration
+	// PreserveCancellation opts notification jobs into their worker's cancellation
+	// and deadline. Accepted mutations remain detached by default. Final result
+	// persistence still uses an independent, bounded context.
+	PreserveCancellation bool
 }
 
 type IdempotencyExecuteResult struct {
@@ -206,8 +211,11 @@ func (c *IdempotencyCoordinator) Execute(
 	execute func(context.Context) (any, error),
 ) (*IdempotencyExecuteResult, error) {
 	if opts.ExecutionTimeout > 0 {
+		if !opts.PreserveCancellation {
+			ctx = context.WithoutCancel(ctx)
+		}
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(context.WithoutCancel(ctx), opts.ExecutionTimeout)
+		ctx, cancel = context.WithTimeout(ctx, opts.ExecutionTimeout)
 		defer cancel()
 	}
 	if execute == nil {
@@ -412,7 +420,7 @@ func (c *IdempotencyCoordinator) Execute(
 
 	data, execErr := execute(ctx)
 	persistCtx := ctx
-	if opts.ExecutionTimeout > 0 {
+	if opts.ExecutionTimeout > 0 || opts.PreserveCancellation {
 		// The execution deadline can expire after some items have completed.
 		// Store those outcomes even then, using a fresh but bounded context.
 		var cancel context.CancelFunc
@@ -484,14 +492,11 @@ func (c *IdempotencyCoordinator) ExecuteExisting(
 	if record == nil || record.Status != IdempotencyStatusFailedRetryable {
 		return nil, nil
 	}
+	// Duplicate processing is best-effort: do not occupy a notification worker
+	// until a retryable record's backoff expires. A later duplicate can retry
+	// after the lease naturally becomes eligible.
 	if record.LockedUntil != nil && record.LockedUntil.After(time.Now()) {
-		timer := time.NewTimer(time.Until(*record.LockedUntil))
-		defer timer.Stop()
-		select {
-		case <-timer.C:
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
+		return nil, nil
 	}
 	return c.Execute(ctx, opts, execute)
 }

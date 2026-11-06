@@ -17,6 +17,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -611,11 +612,12 @@ func TestForwardAsCompatStreaming_UpstreamErrorEventFailsOver(t *testing.T) {
 					path = "/v1/responses"
 				}
 				c.Request = httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
-				resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(tc.stream))}
+				resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Retry-After": {"120"}, "X-Upstream-Only": {"private"}}, Body: io.NopCloser(strings.NewReader(tc.stream))}
 				svc := &GatewayService{
-					cfg:              rawChatCompletionsTestConfig(),
-					httpUpstream:     &anthropicHTTPUpstreamRecorder{resp: resp},
-					rateLimitService: &RateLimitService{accountRepo: &errorPolicyRepoStub{}, cfg: &config.Config{}},
+					cfg:                  rawChatCompletionsTestConfig(),
+					httpUpstream:         &anthropicHTTPUpstreamRecorder{resp: resp},
+					rateLimitService:     &RateLimitService{accountRepo: &errorPolicyRepoStub{}, cfg: &config.Config{}},
+					responseHeaderFilter: responseheaders.CompileHeaderFilter(config.ResponseHeaderConfig{Enabled: true, AdditionalAllowed: []string{"X-Upstream-Only"}}),
 				}
 				account := &Account{ID: 1, Platform: PlatformAnthropic, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "sk-test"}}
 
@@ -630,6 +632,15 @@ func TestForwardAsCompatStreaming_UpstreamErrorEventFailsOver(t *testing.T) {
 				var failoverErr *UpstreamFailoverError
 				require.ErrorAs(t, err, &failoverErr)
 				require.Equal(t, tc.wantStatus, failoverErr.StatusCode)
+				require.Equal(t, "120", failoverErr.ResponseHeaders.Get("Retry-After"))
+				if tc.name == "before_output" {
+					require.Empty(t, c.Writer.Header().Get("Retry-After"), "failed attempt must not contaminate the next attempt")
+					require.Empty(t, c.Writer.Header().Get("X-Upstream-Only"), "failed attempt headers must be rolled back")
+					require.False(t, c.Writer.Written())
+				} else {
+					require.Equal(t, "120", rec.Result().Header.Get("Retry-After"), "filter must exercise the upstream header")
+					require.Equal(t, "private", rec.Result().Header.Get("X-Upstream-Only"))
+				}
 				require.Nil(t, result)
 			})
 		}

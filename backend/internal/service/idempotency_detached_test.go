@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -30,6 +32,70 @@ func (r *detachedIdempotencyRepo) ExtendProcessingLock(ctx context.Context, id i
 		r.renewals.Add(1)
 	}
 	return ok, err
+}
+
+func TestIdempotencyCoordinator_PreserveWorkerCancellation(t *testing.T) {
+	for _, bounded := range []bool{false, true} {
+		for _, deadline := range []bool{false, true} {
+			t.Run(fmt.Sprintf("bounded=%v/deadline=%v", bounded, deadline), func(t *testing.T) {
+				repo := &notificationPersistenceRepo{newInMemoryIdempotencyRepo()}
+				coordinator := NewIdempotencyCoordinator(repo, DefaultIdempotencyConfig())
+				ctx, cancel := context.WithCancel(context.Background())
+				if deadline {
+					cancel()
+					ctx, cancel = context.WithTimeout(context.Background(), 10*time.Millisecond)
+				}
+				defer cancel()
+				opts := IdempotencyExecuteOptions{
+					Scope: "notification", IdempotencyKey: "cancel", PreserveCancellation: true,
+				}
+				if bounded {
+					opts.ExecutionTimeout = time.Second
+				}
+				_, err := coordinator.Execute(ctx, opts, func(execCtx context.Context) (any, error) {
+					if !deadline {
+						cancel()
+					}
+					select {
+					case <-execCtx.Done():
+						return nil, execCtx.Err()
+					case <-time.After(100 * time.Millisecond):
+						return nil, errors.New("worker cancellation was detached")
+					}
+				})
+				if deadline {
+					require.ErrorIs(t, err, context.DeadlineExceeded)
+				} else {
+					require.ErrorIs(t, err, context.Canceled)
+				}
+				record, err := repo.GetByScopeAndKeyHash(context.Background(), opts.Scope, HashIdempotencyKey(opts.IdempotencyKey))
+				require.NoError(t, err)
+				require.NotNil(t, record)
+				require.Equal(t, IdempotencyStatusFailedRetryable, record.Status)
+			})
+		}
+	}
+}
+
+func TestIdempotencyCoordinator_PreserveCancellationPersistsCompletedWork(t *testing.T) {
+	repo := &detachedIdempotencyRepo{inMemoryIdempotencyRepo: newInMemoryIdempotencyRepo()}
+	coordinator := NewIdempotencyCoordinator(repo, DefaultIdempotencyConfig())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	opts := IdempotencyExecuteOptions{Scope: "notification", IdempotencyKey: "completed", PreserveCancellation: true}
+	_, err := coordinator.Execute(ctx, opts, func(execCtx context.Context) (any, error) {
+		cancel()
+		require.ErrorIs(t, execCtx.Err(), context.Canceled)
+		return "already delivered", nil
+	})
+	require.NoError(t, err)
+	require.True(t, repo.savedWithBound)
+	replay, err := coordinator.Execute(context.Background(), opts, func(context.Context) (any, error) {
+		t.Fatal("completed notification must not execute twice")
+		return nil, nil
+	})
+	require.NoError(t, err)
+	require.True(t, replay.Replayed)
 }
 
 func TestIdempotencyCoordinator_DetachedExecutionPersistsAfterCancellation(t *testing.T) {

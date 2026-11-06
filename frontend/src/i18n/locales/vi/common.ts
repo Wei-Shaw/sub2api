@@ -369,6 +369,7 @@ auth: {
   },
   errors: {
     USER_NOT_ACTIVE: 'Tài khoản đã bị vô hiệu hóa.',
+    EMAIL_BLOCKED: 'Địa chỉ email này không được phép sử dụng. Vui lòng dùng địa chỉ khác.',
   },
   emailSuffixAllowedMore: 'và {count} mục khác',
   }

@@ -94,10 +94,36 @@ func (s *BalanceNotifyService) submitUsageNotifications(eventID string, p *postU
 	})
 }
 
+func (s *BalanceNotifyService) submitCustomerTelegramBalanceNotification(user *User, balance, threshold float64, eventID string) {
+	if s == nil || s.customerTelegramNotifications == nil || user == nil {
+		return
+	}
+	s.customerTelegramNotifications.submit(func(ctx context.Context) {
+		s.dispatchCustomerTelegramBalanceNotification(ctx, user, balance, threshold, eventID, false)
+	})
+}
+
+// Retry only an existing customer notification, without blocking billing or
+// consuming the upstream balance/quota notification pool.
+func (s *BalanceNotifyService) submitCustomerTelegramRetry(user *User, eventID string) {
+	if s == nil || s.customerTelegramNotifications == nil || user == nil {
+		return
+	}
+	s.customerTelegramNotifications.submit(func(ctx context.Context) {
+		s.RetryCustomerTelegramBalanceNotification(ctx, user, eventID)
+	})
+}
+
 // Stop cancels notification work and waits for the bounded workers to exit.
 // Billing persistence belongs to usage tasks and is never dropped here.
 func (s *BalanceNotifyService) Stop() {
 	if s != nil {
+		// Cancel both lanes before waiting for either. Durable notification result
+		// persistence has its own bounded context even after worker cancellation.
+		if s.customerTelegramNotifications != nil {
+			s.customerTelegramNotifications.cancel()
+		}
 		s.usageNotifications.stop()
+		s.customerTelegramNotifications.stop()
 	}
 }

@@ -2,6 +2,11 @@
 
 Record durable architecture/product decisions here.
 
+## 2026-11-06
+- Compatibility Anthropic SSE pre-output failover must restore the original downstream response-header snapshot before retrying, including in-band SSE errors and transport failures. Retain upstream headers only in failover metadata so exhausted handlers can selectively copy validated `Retry-After`; never leak failed-attempt headers into a later successful attempt.
+- Customer Telegram balance notifications use a separate bounded worker lane so they cannot starve quota/billing notification work. Cancellation is opt-in for this worker path; other accepted idempotent mutations remain detached, with bounded final-result persistence.
+- Duplicate usage billing may retry only an existing eligible failed customer notification; active backoff is a fast no-op. Native Anthropic conversion treats empty/ping-only EOF as truncation and preserves a terminal event as success if a later idle/read error follows.
+
 ## 2026-08-23
 - API-key relay compatibility: preserve normal OpenAI parallel-tool behavior on first attempt. If an upstream relay returns the exact Responses Lite `unsupported_value` rejection for `parallel_tool_calls=true`, use the existing bounded rejected-field retry to resend with `false`; do not globally serialize every API-key request and do not retry near-match errors. This covers relays that apply the private Lite contract downstream of sub2api's inbound-header normalizer.
 - Security policy: accept persistent DLG bearer semantics for this compatibility fix. A valid DLG code may be replayed until its `user_devices` binding or owner is deactivated/revoked; expiry, one-time consume, replay prevention, and post-login rotation are explicitly deferred and are not release blockers for this scoped change.

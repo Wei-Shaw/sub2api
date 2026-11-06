@@ -203,7 +203,9 @@ func (s *GatewayService) ForwardAsResponses(
 		var sseErr *sseStreamErrorEventError
 		switch {
 		case errors.As(handleErr, &sseErr):
-			return nil, s.sseStreamErrorEventFailover(ctx, c, account, resp, sseErr.RawData, mappedModel, c.Writer.Size() != writerSizeBeforeStream)
+			failover := s.sseStreamErrorEventFailover(ctx, c, account, resp, sseErr.RawData, mappedModel, c.Writer.Size() != writerSizeBeforeStream)
+			failover.ResponseHeaders = resp.Header.Clone()
+			return nil, failover
 		case errors.Is(handleErr, errAnthropicNativeStreamIdle) && s.rateLimitService != nil:
 			s.rateLimitService.HandleStreamTimeout(ctx, account, originalModel)
 		}
@@ -559,6 +561,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	clientToolMapping apicompat.ResponsesClientToolMapping,
 ) (*ForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
+	originalHeaders := c.Writer.Header().Clone()
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -662,10 +665,11 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			if stream.readErr != nil && !errors.Is(stream.readErr, errAnthropicNativeStreamIdle) &&
 				c.Writer.Size() == writerSizeBeforeStream {
 				if failoverErr, ok := newAnthropicUpstreamReadFailoverError(c.Request.Context(), c, resp, stream.readErr); ok {
+					restoreGatewayResponseHeaders(c, originalHeaders)
 					return nil, failoverErr
 				}
 			}
-			return finishAnthropicCompatStreamFailure(c, writerSizeBeforeStream, failure, resultWithUsage(), func() {
+			return finishAnthropicCompatStreamFailure(c, writerSizeBeforeStream, originalHeaders, failure, resultWithUsage(), func() {
 				writeAnthropicCompatResponsesStreamFailure(c, state, clientToolRestorer, failure)
 			})
 		}

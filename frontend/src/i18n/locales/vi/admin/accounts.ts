@@ -509,6 +509,10 @@ export default mergeLocaleMessages(
       responsesModeForceResponses: 'Buộc dùng Responses',
       responsesModeForceChatCompletions: 'Buộc dùng Chat Completions',
       responsesModeTextDisabledHint: 'Không áp dụng khi endpoint Responses / Chat Completions chưa được bật.',
+      imageSizeTiers: 'Các mức kích thước ảnh',
+      imageSizeTiersDesc:
+        'Giới hạn các mức kích thước ảnh mà tài khoản này phục vụ theo mức tính phí: cạnh dài nhất ≤1024 là 1K, ≤2048 là 2K, lớn hơn là 4K (2560x1440 thuộc mức 4K). Yêu cầu có kích thước cụ thể chỉ được điều phối đến tài khoản cho phép mức đó; yêu cầu không chỉ định kích thước hoặc dùng auto sẽ ưu tiên tài khoản không giới hạn mức kích thước, sau đó đến tài khoản cho phép 4K, 2K rồi 1K theo thứ tự này. Chọn tất cả các mức nghĩa là không giới hạn. Áp dụng cho Images API và công cụ tạo ảnh của Responses.',
+      imageSizeTiersAtLeastOne: 'Giữ lại ít nhất một mức',
       endpointCapabilities: 'Khả năng endpoint',
       endpointCapabilitiesDesc:
         'Dùng cho routing tài khoản. Endpoint text theo cài đặt hỗ trợ Responses API ở trên và hiển thị là Responses, Chat Completions hoặc chế độ tự động; Embeddings điều khiển riêng /v1/embeddings.',
