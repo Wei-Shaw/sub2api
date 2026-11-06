@@ -12,7 +12,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -270,6 +269,7 @@ func TestHandle403_OtherCNProviderWithKimiConcurrencyMessageUsesNormalPolicy(t *
 	require.True(t, shouldDisable)
 	require.Equal(t, 1, repo.setErrorCalls, "non-Kimi CN provider must retain the normal permanent-error policy")
 	require.Equal(t, 0, repo.tempCalls)
+	require.Zero(t, repo.rateLimitedCalls)
 	require.Empty(t, counter.counts, "normal CN 403 policy must consume the counter result")
 	require.Equal(t, []string{"auth_error"}, blocker.reasons, "the Kimi-specific runtime block must not apply")
 }
@@ -290,16 +290,16 @@ func TestHandle403_CNProviderConcurrencyLimitAlwaysUsesTemporaryCooldown(t *test
 
 	require.True(t, shouldDisable, "the request must still fail over to another account")
 	require.Equal(t, 0, repo.setErrorCalls)
-	require.Equal(t, 1, repo.tempCalls)
-	require.Contains(t, repo.lastTempReason, cnConcurrencyLimitReasonPrefix)
+	require.Equal(t, 0, repo.tempCalls)
+	require.Equal(t, 1, repo.rateLimitedCalls)
 	require.Equal(t, []int64{openAI403DisableThreshold}, counter.counts, "transient concurrency 403 must bypass the permanent-error counter")
 	require.Len(t, blocker.accounts, 1)
-	require.Equal(t, cnConcurrencyLimitReasonPrefix, blocker.reasons[0])
+	require.Equal(t, "429_fallback", blocker.reasons[0])
 	require.True(t, blocker.until[0].After(time.Now()))
 }
 
 func TestHandle403_KimiConcurrencyLimitRepositoryFailureKeepsRuntimeBlock(t *testing.T) {
-	repo := &rateLimitAccountRepoStub{tempErr: errors.New("repository unavailable")}
+	repo := &kimiConcurrencyRateLimitFailureRepo{}
 	counter := &openAI403CounterCacheStub{counts: []int64{openAI403DisableThreshold}}
 	blocker := &runtimeBlockRecorder{}
 	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
@@ -313,12 +313,13 @@ func TestHandle403_KimiConcurrencyLimitRepositoryFailureKeepsRuntimeBlock(t *tes
 	)
 
 	require.True(t, shouldDisable, "the current request must fail over even when persistence fails")
-	require.Equal(t, 1, repo.tempCalls, "the temporary cooldown should still be persisted when possible")
+	require.Equal(t, 1, repo.rateLimitedCalls, "the rate limit cooldown should still be persisted when possible")
+	require.Zero(t, repo.tempCalls)
 	require.Equal(t, 0, repo.setErrorCalls, "persistence failure must not fall back to permanent account error")
 	require.Equal(t, []int64{openAI403DisableThreshold}, counter.counts, "persistence failure must not enter the permanent-error counter path")
 	require.Len(t, blocker.accounts, 1, "the in-memory runtime block must survive repository failure")
 	require.Same(t, account, blocker.accounts[0])
-	require.Equal(t, cnConcurrencyLimitReasonPrefix, blocker.reasons[0])
+	require.Equal(t, "429_fallback", blocker.reasons[0])
 	require.True(t, blocker.until[0].After(time.Now()))
 }
 
@@ -337,4 +338,5 @@ func TestHandle403_CNProviderNearMatchRetainsNormalPermanentErrorPolicy(t *testi
 	require.True(t, shouldDisable)
 	require.Equal(t, 1, repo.setErrorCalls, "non-exact 403 must retain existing permission/auth protection")
 	require.Equal(t, 0, repo.tempCalls)
+	require.Zero(t, repo.rateLimitedCalls)
 }
