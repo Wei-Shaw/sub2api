@@ -188,6 +188,7 @@
 </template>
 
 <script setup lang="ts">
+import { upstreamQuotaAPI } from '@/api/upstreamQuota'
 import { computed, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -693,6 +694,8 @@ const ChevronDownIcon = {
 // Public-settings flags go through the registry in utils/featureFlags.ts,
 // which handles the opt-in vs opt-out fallback when settings haven't loaded
 // yet. Admin-only flags (not in public settings) stay inline below.
+const quotaSharingEnabled = ref(false)
+const flagUpstreamQuota = () => quotaSharingEnabled.value
 const flagChannelMonitor = makeSidebarFlag(FeatureFlags.channelMonitor)
 const flagPayment = makeSidebarFlag(FeatureFlags.payment)
 const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
@@ -732,6 +735,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
+    { path: '/upstream-quota', label: t('upstreamQuota.title'), icon: ChartIcon, featureFlag: flagUpstreamQuota },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
     { path: '/purchase', label: purchaseNavLabel.value, icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
@@ -961,6 +965,7 @@ watch(
 )
 
 onMounted(() => {
+  void upstreamQuotaAPI.config().then(config => { quotaSharingEnabled.value = config.enabled }).catch(() => { quotaSharingEnabled.value = false })
   void refreshBatchImageAccess()
   if (isAdmin.value) {
     adminSettingsStore.fetch()
