@@ -53,9 +53,12 @@ export default {
     policy: {
       title: 'Audit policy', description: 'Configure group scope, nine input-risk categories, workers, and queue bounds.', scope: 'Scope', allGroups: 'All groups', selectedGroups: 'Selected groups',
       searchGroups: 'Search groups', noGroups: 'No matching groups', missingGroups: 'Configured IDs for groups that no longer exist', selectedCount: '{count} groups selected',
+      modelFilter: 'Model scope', modelFilterHint: 'Use the client-requested model name to decide whether Prompt Audit runs.', modelFilterAll: 'All models', modelFilterAllDesc: 'Requests for every model enter Prompt Audit.',
+      modelFilterInclude: 'Only specified models', modelFilterIncludeDesc: 'Only models in the list enter Prompt Audit.', modelFilterExclude: 'Exclude specified models', modelFilterExcludeDesc: 'Models in the list skip Prompt Audit; all others are audited.',
+      modelFilterModels: 'Model list', modelFilterModelCount: '{count} models configured',
       scanners: 'Qwen3Guard input-risk categories', workerCount: 'Worker count', queueCapacity: 'Persistent queue capacity', strategy: 'Node strategy', strategyHint: 'Try nodes in configuration order and fail over when allowed.',
     },
-    saveBar: { enabled: 'Enable prompt audit', blocking: 'Synchronous blocking', blockingLatestTurnOnly: 'Only latest input and prior output', storePass: 'Store safe events', dirty: 'Unsaved changes', synced: 'Configuration synced' },
+    saveBar: { enabled: 'Enable prompt audit', blocking: 'Synchronous blocking', blockingLatestTurnOnly: 'Only latest input and prior output', continueOnGuardFailure: 'Continue request when Guard times out or fails', storePass: 'Store safe events', dirty: 'Unsaved changes', synced: 'Configuration synced' },
     blockingConfirm: {
       title: 'Enable synchronous blocking?',
       message: 'Applicable requests wait for Guard before account selection, billing, or upstream access. Block, unavailable Guard, and invalid responses all prevent upstream access.',
