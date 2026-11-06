@@ -461,6 +461,7 @@ func TestSchedulerMetadataPayload_KeepsOpenAIAutoResetCreditFields(t *testing.T)
 			service.OpenAIAutoResetCreditEnabledExtraKey:     true,
 			service.OpenAIAutoResetCredit5hThresholdExtraKey: 0.95,
 			service.OpenAIAutoResetCredit7dThresholdExtraKey: 0.98,
+			service.OpenAIAutoResetCredit5hDisabledExtraKey:  true,
 			service.OpenAIAutoResetCreditStateExtraKey: map[string]any{
 				"status":          service.OpenAIAutoResetStatusAvailable,
 				"available_count": 3,
@@ -479,6 +480,7 @@ func TestSchedulerMetadataPayload_KeepsOpenAIAutoResetCreditFields(t *testing.T)
 	require.True(t, config.Enabled)
 	require.Equal(t, 0.95, config.Threshold5h)
 	require.Equal(t, 0.98, config.Threshold7d)
+	require.True(t, config.Disabled5h)
 
 	state, ok := cached.Extra[service.OpenAIAutoResetCreditStateExtraKey].(map[string]any)
 	require.True(t, ok, "卡状态必须进入调度投影")
