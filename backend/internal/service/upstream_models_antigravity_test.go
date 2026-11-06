@@ -224,7 +224,7 @@ func TestSyncUpstreamModelCatalogAntigravityBudgetReasoningLevels(t *testing.T) 
 	}
 }
 
-func TestConfiguredUpstreamModelsForCapabilitySyncSkipsInjectedAntigravityPassthroughs(t *testing.T) {
+func TestConfiguredUpstreamModelsForCapabilitySyncUsesExplicitAntigravityMapping(t *testing.T) {
 	account := &Account{
 		Platform: PlatformAntigravity,
 		Credentials: map[string]any{"model_mapping": map[string]any{
@@ -233,8 +233,8 @@ func TestConfiguredUpstreamModelsForCapabilitySyncSkipsInjectedAntigravityPassth
 			"custom-alias":          "gemini-3.6-flash-low",
 		}},
 	}
-	// 运行时补齐的默认透传仍可调用（存量账号兼容）。
-	require.True(t, account.IsModelSupported("gemini-3.7-flash-medium"))
+	// 未配置的模型不能因默认目录更新而获得调用权限。
+	require.False(t, account.IsModelSupported("gemini-3.7-flash-medium"))
 
 	got := configuredUpstreamModelsForCapabilitySync(account)
 	require.ElementsMatch(t, []string{"gemini-3.8-flash-high", "gemini-3.8-flash-tiered", "gemini-3.6-flash-low"}, got)

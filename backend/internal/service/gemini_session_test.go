@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
@@ -345,7 +346,7 @@ func TestGenerateGeminiDigestSessionKey(t *testing.T) {
 			name:       "normal 16 char hash with uuid",
 			prefixHash: "abcdefgh12345678",
 			uuid:       "550e8400-e29b-41d4-a716-446655440000",
-			want:       "gemini:digest:abcdefgh:550e8400",
+			want:       "gemini:digest:abcdefgh12345678:550e8400-e29b-41d4-a716-446655440000",
 		},
 		{
 			name:       "exactly 8 chars prefix and uuid",
@@ -369,7 +370,7 @@ func TestGenerateGeminiDigestSessionKey(t *testing.T) {
 			name:       "normal prefix with short uuid",
 			prefixHash: "abcdefgh12345678",
 			uuid:       "short",
-			want:       "gemini:digest:abcdefgh:short",
+			want:       "gemini:digest:abcdefgh12345678:short",
 		},
 	}
 
@@ -404,4 +405,74 @@ func TestGenerateGeminiDigestSessionKey(t *testing.T) {
 			t.Errorf("Different UUIDs should produce different session keys: %s vs %s", result1, result2)
 		}
 	})
+}
+
+func TestBuildGeminiStickyAnchorKey_StableAcrossMultiTurn(t *testing.T) {
+	prefixHash := "abcdefgh12345678"
+	turn1 := &antigravity.GeminiRequest{
+		SystemInstruction: &antigravity.GeminiContent{
+			Parts: []antigravity.GeminiPart{{Text: "You are a helpful coding assistant."}},
+		},
+		Contents: []antigravity.GeminiContent{
+			{Role: "user", Parts: []antigravity.GeminiPart{{Text: "Fix the cache bug"}}},
+		},
+	}
+	turn2 := &antigravity.GeminiRequest{
+		SystemInstruction: &antigravity.GeminiContent{
+			Parts: []antigravity.GeminiPart{{Text: "You are a helpful coding assistant."}},
+		},
+		Contents: []antigravity.GeminiContent{
+			{Role: "user", Parts: []antigravity.GeminiPart{{Text: "Fix the cache bug"}}},
+			{Role: "model", Parts: []antigravity.GeminiPart{{Text: "Here is the analysis"}}},
+			{Role: "user", Parts: []antigravity.GeminiPart{{Text: "Now apply the patch"}}},
+		},
+	}
+
+	key1 := BuildGeminiStickyAnchorKey(prefixHash, turn1)
+	key2 := BuildGeminiStickyAnchorKey(prefixHash, turn2)
+	if key1 == "" || key1 != key2 {
+		t.Fatalf("expected identical non-empty anchor keys across turns, got %q vs %q", key1, key2)
+	}
+	uuid1 := DeriveGeminiAnchorSessionUUID(key1)
+	uuid2 := DeriveGeminiAnchorSessionUUID(key2)
+	if uuid1 == "" || uuid1 != uuid2 {
+		t.Fatalf("expected identical derived UUIDs, got %q vs %q", uuid1, uuid2)
+	}
+}
+
+func TestEnsureGeminiRequestSessionIDBytes(t *testing.T) {
+	turn1 := []byte(`{"contents":[{"role":"user","parts":[{"text":"first prompt"}]}]}`)
+	turn2 := []byte(`{"contents":[{"role":"user","parts":[{"text":"first prompt"}]},{"role":"model","parts":[{"text":"reply"}]},{"role":"user","parts":[{"text":"second prompt"}]}]}`)
+
+	out1 := EnsureGeminiRequestSessionIDBytes(turn1)
+	out2 := EnsureGeminiRequestSessionIDBytes(turn2)
+
+	var p1, p2 map[string]any
+	if err := json.Unmarshal(out1, &p1); err != nil {
+		t.Fatalf("unmarshal out1: %v", err)
+	}
+	if err := json.Unmarshal(out2, &p2); err != nil {
+		t.Fatalf("unmarshal out2: %v", err)
+	}
+	sid1, _ := p1["sessionId"].(string)
+	sid2, _ := p2["sessionId"].(string)
+	if sid1 == "" || sid1[0] != '-' {
+		t.Fatalf("expected negative numeric sessionId, got %q", sid1)
+	}
+	if sid1 != sid2 {
+		t.Fatalf("expected multi-turn requests with same first user message to share sessionId, got %q vs %q", sid1, sid2)
+	}
+
+	withExplicit := []byte(`{"sessionId":"-999","contents":[{"role":"user","parts":[{"text":"first prompt"}]}]}`)
+	outExplicit := EnsureGeminiRequestSessionIDBytes(withExplicit)
+	if string(outExplicit) != string(withExplicit) {
+		t.Fatalf("expected existing sessionId to be preserved, got %s", string(outExplicit))
+	}
+
+	withSnakeExplicit := []byte(`{"session_id":"-888","contents":[{"role":"user","parts":[{"text":"first prompt"}]}]}`)
+	outSnake := EnsureGeminiRequestSessionIDBytes(withSnakeExplicit)
+	var snake map[string]any
+	if err := json.Unmarshal(outSnake, &snake); err != nil || snake["sessionId"] != "-888" || snake["session_id"] != "-888" {
+		t.Fatalf("expected session_id value to reach canonical upstream sessionId, got %s", string(outSnake))
+	}
 }

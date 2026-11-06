@@ -132,7 +132,7 @@ func resolveGeminiThinkingVariantForLevel(account *Account, requestedModel strin
 	// 裸名本身若已映射到其他具体模型（如 gemini-3.8-flash → gemini-3.8-flash-tiered、
 	// gemini-3.1-pro → gemini-pro-agent），尊重显式别名配置。
 	// 若裸名映射目标是自己（如前端从 DefaultAntigravityModelMapping 拉取并持久化的
-	// gemini-3.8-flash → gemini-3.8-flash，或 ensureAntigravityDefaultPassthroughs 注入的条目），
+	// gemini-3.8-flash → gemini-3.8-flash），
 	// 当映射表中存在该模型的精确思考变体（-high/-medium/-low/-tiered）时继续解析变体，
 	// 避免把上游不存在的裸名直接发出导致 404；而对已在映射表中的真实裸模型（如 gemini-2.5-flash），
 	// 仅查找精确变体键以避免被通配符误匹配。
