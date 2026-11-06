@@ -93,10 +93,7 @@ func (s *RateLimitService) handleCNProviderConcurrencyLimit403(
 	ctx context.Context,
 	account *Account,
 ) {
-	until := time.Now().Add(time.Duration(openAI403CooldownMinutesDefault) * time.Minute)
-	s.setCNProviderTempUnschedulable(ctx, account, until,
-		cnConcurrencyLimitReasonPrefix, cnConcurrencyLimitReasonPrefix+": "+kimiConcurrentRequestLimitMessage,
-		"cn_provider_concurrency_limited")
+	s.apply429FallbackRateLimit(ctx, account, cnConcurrencyLimitReasonPrefix)
 }
 
 // cnBalanceLowReason 构造余额不足临时停调的 reason（带稳定前缀）。

@@ -18,12 +18,12 @@ import (
 )
 
 func scopedAdminGroupModelsDTO(g *service.Group) gin.H {
-	return gin.H{"id": g.ID, "name": g.Name, "platform": g.Platform, "model_allowlist": g.ModelAllowlist}
+	return gin.H{"id": g.ID, "name": g.Name, "platform": g.Platform, "status": g.Status, "model_allowlist": g.ModelAllowlist}
 }
 
 // ScopedAdminKeyGroupModels 接管分组模型接口，禁止复用可修改费率等字段的完整处理器。
 func (h *GroupHandler) ScopedAdminKeyGroupModels(c *gin.Context) {
-	p := adminaccess.FromContext(c.Request.Context())
+	p := adminaccess.RestrictedFromContext(c.Request.Context())
 	if p == nil {
 		return
 	}
@@ -72,7 +72,8 @@ func (h *GroupHandler) ScopedAdminKeyGroupModels(c *gin.Context) {
 	if c.Request.Method == http.MethodPut {
 		permission = "groups.models.write"
 	}
-	allowed := p.Policy.AllowsGroupConfig(permission, g.ID, g.Platform) || (c.Request.Method == http.MethodGet && fullRead)
+	basicRead := c.Request.Method == http.MethodGet && path == base && p.Policy.AllowsGroupConfig("groups.list.read", g.ID, g.Platform)
+	allowed := basicRead || p.Policy.AllowsGroupConfig(permission, g.ID, g.Platform) || (c.Request.Method == http.MethodGet && fullRead)
 	if !allowed {
 		response.Error(c, 404, "分组不存在")
 		return
@@ -89,7 +90,7 @@ func (h *GroupHandler) ScopedAdminKeyGroupModels(c *gin.Context) {
 		if fullRead {
 			response.Success(c, dto.GroupFromServiceAdmin(g))
 		} else {
-			response.Success(c, scopedAdminGroupModelsDTO(g))
+			response.Success(c, scopedAdminGroupReadDTO(g, p.Policy))
 		}
 		return
 	}
@@ -157,11 +158,19 @@ func (h *GroupHandler) scopedAdminListGroupModels(c *gin.Context) {
 	}
 	out := make([]gin.H, 0, len(groups))
 	for i := range groups {
-		out = append(out, scopedAdminGroupModelsDTO(&groups[i]))
+		out = append(out, scopedAdminGroupReadDTO(&groups[i], adminaccess.FromContext(c.Request.Context()).Policy))
 	}
 	if all {
 		response.Success(c, out)
 	} else {
 		response.Paginated(c, out, total, page, size)
 	}
+}
+
+// 基本分组读取不能隐式获得模型配置。
+func scopedAdminGroupReadDTO(g *service.Group, policy adminaccess.Policy) gin.H {
+	if policy.AllowsGroupConfig("groups.models.read", g.ID, g.Platform) {
+		return scopedAdminGroupModelsDTO(g)
+	}
+	return gin.H{"id": g.ID, "name": g.Name, "platform": g.Platform, "status": g.Status}
 }
