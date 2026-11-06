@@ -206,7 +206,11 @@ func startPassthroughLifecycleServerWithHooks(
 		if hooksFactory != nil {
 			hooks = hooksFactory(ginCtx)
 		}
-		serverErr <- svc.ProxyResponsesWebSocketFromClient(controlCtx, ginCtx, conn, account, "sk-test", firstMessage, hooks)
+		token := "sk-test"
+		if account.IsOpenAIOAuth() {
+			token = account.GetOpenAIAccessToken()
+		}
+		serverErr <- svc.ProxyResponsesWebSocketFromClient(controlCtx, ginCtx, conn, account, token, firstMessage, hooks)
 	}))
 	return server, serverErr
 }
