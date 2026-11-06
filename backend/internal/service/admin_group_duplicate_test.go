@@ -145,6 +145,7 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 		ImagePrice1K:                 groupDuplicateTestPointer(0.01),
 		ImagePrice2K:                 groupDuplicateTestPointer(0.02),
 		ImagePrice4K:                 groupDuplicateTestPointer(0.04),
+		ImagePriceExpressions:        map[string]string{"grok-imagine-image-2.0": "0.04"},
 		BatchImageDiscountMultiplier: 0.4,
 		BatchImageHoldMultiplier:     0.7,
 		VideoRateIndependent:         true,
@@ -211,6 +212,7 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 	require.Equal(t, source.DefaultValidityDays, duplicate.DefaultValidityDays)
 	require.Equal(t, source.ImagePrice4K, duplicate.ImagePrice4K)
 	require.Equal(t, source.VideoModelPrices, duplicate.VideoModelPrices)
+	require.Equal(t, source.ImagePriceExpressions, duplicate.ImagePriceExpressions)
 	require.Equal(t, source.WebSearchPricePerCall, duplicate.WebSearchPricePerCall)
 	require.Equal(t, source.FallbackGroupID, duplicate.FallbackGroupID)
 	require.Equal(t, source.ModelRouting, duplicate.ModelRouting)
@@ -233,6 +235,7 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 
 	duplicate.ModelRouting["gpt-*"][0] = 999
 	duplicate.VideoModelPrices[VideoPriceFamilyGrokImagineVideo15][VideoBillingResolution720P] = 999
+	duplicate.ImagePriceExpressions["grok-imagine-image-2.0"] = "0.99"
 	duplicate.SupportedModelScopes[0] = "changed"
 	duplicate.MessagesDispatchModelConfig.ExactModelMappings["claude-special"] = "changed"
 	duplicate.ModelAllowlist.Models[0] = "changed"
@@ -240,6 +243,7 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 	*duplicate.DailyLimitUSD = 999
 	require.Equal(t, int64(13), source.ModelRouting["gpt-*"][0])
 	require.Equal(t, 0.14, source.VideoModelPrices[VideoPriceFamilyGrokImagineVideo15][VideoBillingResolution720P])
+	require.Equal(t, "0.04", source.ImagePriceExpressions["grok-imagine-image-2.0"])
 	require.Equal(t, "claude", source.SupportedModelScopes[0])
 	require.Equal(t, "gpt-special", source.MessagesDispatchModelConfig.ExactModelMappings["claude-special"])
 	require.Equal(t, "gpt-5.4", source.ModelAllowlist.Models[0])

@@ -121,6 +121,39 @@ func (s *GroupRepoSuite) TestCreate() {
 	s.Require().Equal("test-create", got.Name)
 }
 
+func (s *GroupRepoSuite) TestImagePriceExpressionsPersistAndClear() {
+	group := &service.Group{
+		Name: "image-expressions", Platform: service.PlatformGrok, RateMultiplier: 1,
+		Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, group))
+	loaded, err := s.repo.GetByID(s.ctx, group.ID)
+	s.Require().NoError(err)
+	s.Empty(loaded.ImagePriceExpressions, "existing pricing must remain the default")
+
+	group.ImagePriceExpressions = map[string]string{"grok-imagine-image-2.0": "0.04", "Grok-Imagine-Image-2.0": "0.06"}
+	s.Require().NoError(s.repo.Update(s.ctx, group))
+	loaded, err = s.repo.GetByID(s.ctx, group.ID)
+	s.Require().NoError(err)
+	s.Equal(group.ImagePriceExpressions, loaded.ImagePriceExpressions)
+
+	group.ImagePriceExpressions = map[string]string{}
+	s.Require().NoError(s.repo.Update(s.ctx, group))
+	loaded, err = s.repo.GetByID(s.ctx, group.ID)
+	s.Require().NoError(err)
+	s.Empty(loaded.ImagePriceExpressions, "explicit empty object must remove configured rules")
+
+	created := &service.Group{
+		Name: "image-expressions-create", Platform: service.PlatformGrok, RateMultiplier: 1,
+		Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard,
+		ImagePriceExpressions: map[string]string{"grok-imagine-image-2.0": "0.08"},
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, created))
+	loaded, err = s.repo.GetByID(s.ctx, created.ID)
+	s.Require().NoError(err)
+	s.Equal(created.ImagePriceExpressions, loaded.ImagePriceExpressions)
+}
+
 func (s *GroupRepoSuite) TestCreateFromSourcePreservesPriorityAndFiltersIneligibleAccounts() {
 	source := &service.Group{
 		Name:             "duplicate-source",

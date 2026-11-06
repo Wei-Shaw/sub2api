@@ -1090,6 +1090,24 @@ export default {
         finalPricePreview: 'Final per-image price preview',
         notConfigured: 'Not configured'
       },
+      imageExpressions: {
+        title: 'Image pricing expressions by model',
+        description: 'Match the client-requested model ID exactly (case-sensitive, before model mapping). Matching expressions replace legacy image pricing. Models without a rule keep their existing pricing; remove every rule to clear the overrides.',
+        totalHint: 'The expression returns TOTAL USD for the request before multipliers. For a per-image rate, explicitly multiply by image_count (the actual returned image count). The effective image/group multiplier applies once afterward; the per-image billing checkbox does not multiply an expression again.',
+        scopeHint: 'Currently supported on synchronous image HTTP routes in Grok, OpenAI and composite groups. Batch, asynchronous and other image-generation routes are not covered; matching unsupported requests are rejected.',
+        parametersHint: 'Available scalar request parameters: param("model"), param("resolution"), param("quality"), param("aspect_ratio"), param("n"). Missing parameters are nil. Use tier("name", fixed(USD)), arithmetic and conditional expressions.',
+        model: 'Exact client-requested model ID',
+        expression: 'Expression (total USD before multiplier)',
+        add: 'Add model rule',
+        remove: 'Remove rule',
+        grokPreset: 'Add Grok image 2.0 example',
+        grokPresetHint: 'Example: 1k low/medium $0.04/$0.06; 1.5k $0.05/$0.07; 2k $0.06/$0.08 per image. Missing resolution uses 1k; missing/auto quality uses low. Unknown resolutions use an explicit $0.08 fallback, which is not a verified official price for those specifications. Review upstream pricing and accepted values before use.',
+        validationHint: 'The server validates syntax when saving; the browser does not execute expressions. This preview does not quote expression-priced requests.',
+        legacyPreview: 'Default per-image preview for models without an expression',
+        incompleteRow: 'Fill both the model ID and expression, or remove the incomplete rule.',
+        duplicateModel: 'Each exact model ID can have only one expression. Remove or rename the duplicate rule.',
+        modelWhitespace: 'Model IDs cannot start or end with whitespace.'
+      },
       videoPricing: {
         title: 'Video Generation Pricing',
         description:

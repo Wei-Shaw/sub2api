@@ -61,6 +61,9 @@ type Group struct {
 	// (groups.video_model_prices JSONB). Shape: family → resolution → USD/s.
 	// When set for a model, overrides VideoPrice* for that model only.
 	VideoModelPrices map[string]map[string]float64
+	// ImagePriceExpressions maps exact, case-sensitive client request models to
+	// optional image total-cost expressions. Unmatched models retain legacy pricing.
+	ImagePriceExpressions map[string]string
 	// Codex alpha/search 网页搜索单次价格（USD/次，仅 openai 平台使用）；
 	// nil 表示使用默认价 defaultWebSearchPricePerCall（官方 $10/1000 次）。
 	WebSearchPricePerCall *float64

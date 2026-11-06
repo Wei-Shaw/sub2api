@@ -77,8 +77,21 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		return
 	}
 	requestModel := parsed.Model
+	if service.HasImagePriceExpression(apiKey.Group, clientRequestedModel(c, requestModel)) {
+		parsed.RequiredCapability = service.OpenAIImagesCapabilityAPIKey
+	}
 	ensureCompositeTargetPlatform(c, apiKey, requestModel)
 	clientRequestModel := clientRequestedModel(c, requestModel)
+	if service.HasImagePriceExpression(apiKey.Group, clientRequestModel) && !service.ImageExpressionEndpointSupported(c.Request.URL.Path, c.GetHeader("Content-Type")) {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", service.ImageExpressionUnsupportedMessage)
+		return
+	}
+	imagePricing, pricingErr := h.gatewayService.PrepareImagePricing(c.Request.Context(), apiKey, clientRequestModel, body, false)
+	if pricingErr != nil {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", pricingErr.Error())
+		return
+	}
+	c.Request = c.Request.WithContext(service.WithImagePricingSnapshot(c.Request.Context(), imagePricing))
 	routingModel := requestModel
 	if resolvedModel, ok := service.ResolvedUpstreamModelFromContext(c.Request.Context()); ok {
 		routingModel = resolvedModel
@@ -147,7 +160,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 	}
 
 	// 余额模式在途预留（与计费同口径估算；计费任务扣减余额缓存后才释放）。
-	inflightDone, inflightErr := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, service.InflightEstimateRequest{Model: routingModel, BodyBytes: len(body), Kind: service.InflightEstimateImage, Units: parsed.N})
+	inflightDone, inflightErr := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, service.InflightEstimateRequest{Model: routingModel, BodyBytes: len(body), Kind: service.InflightEstimateImage, Units: parsed.N, ImagePricingSnapshot: imagePricing})
 	if inflightErr != nil {
 		status, code, message, retryAfter := billingErrorDetails(inflightErr)
 		if retryAfter > 0 {
@@ -270,6 +283,9 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 			}()
 			return h.gatewayService.ForwardImages(requestCtx, c, account, body, parsed, channelMapping.MappedModel)
 		}()
+		if result != nil {
+			result.ImagePricingSnapshot = imagePricing
+		}
 		forwardDurationMs := time.Since(forwardStart).Milliseconds()
 		upstreamLatencyMs, _ := getContextInt64(c, service.OpsUpstreamLatencyMsKey)
 		responseLatencyMs := forwardDurationMs

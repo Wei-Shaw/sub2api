@@ -231,6 +231,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	if rejectSystemOneOnlyPlatform(c, apiKey, h.errorResponse) {
 		return
 	}
+	if service.HasImagePriceExpression(apiKey.Group, clientRequestedModel(c, reqModel)) {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", service.ImageExpressionUnsupportedMessage)
+		return
+	}
 	if geminiImageGenerationRejected(c, apiKey, nil, reqModel, channelMapping.MappedModel) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", service.ImageGenerationPermissionMessage())
 		return

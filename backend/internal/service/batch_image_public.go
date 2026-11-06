@@ -1010,6 +1010,9 @@ func (s *BatchImagePublicService) resolvePricingSnapshot(ctx context.Context, ow
 		if err != nil || group == nil {
 			return nil, ErrBatchImageSettlementPricingMissing
 		}
+		if HasImagePriceExpression(group, req.Model) {
+			return nil, fmt.Errorf("%s", ImageExpressionUnsupportedMessage)
+		}
 		if !group.AllowBatchImageGeneration {
 			return nil, ErrBatchImageGroupDisabled
 		}

@@ -1087,6 +1087,24 @@ export default {
         finalPricePreview: '最终单张价格预览',
         notConfigured: '未配置'
       },
+      imageExpressions: {
+        title: '按模型配置图片计费表达式',
+        description: '按客户端请求的模型 ID 精确匹配（区分大小写，在模型映射前匹配）。命中后替代原有图片计费；未命中模型继续使用原计费方式。删除全部规则即可清空覆盖配置。',
+        totalHint: '表达式返回本次请求应用倍率前的美元总额。按张定价时必须显式乘以 image_count（实际返回张数）；之后仅应用一次有效生图/分组倍率，“按张计费”开关不会再给表达式乘一次张数。',
+        scopeHint: '当前支持 Grok、OpenAI、复合分组的同步图片 HTTP 路由。批量、异步及其他生图路由不在支持范围内；匹配到表达式的不支持请求会被拒绝。',
+        parametersHint: '可用请求标量参数：param("model")、param("resolution")、param("quality")、param("aspect_ratio")、param("n")。参数缺省值为 nil。可使用 tier("名称", fixed(美元金额))、算术与条件表达式。',
+        model: '客户端请求的精确模型 ID',
+        expression: '表达式（倍率前美元总额）',
+        add: '添加模型规则',
+        remove: '删除规则',
+        grokPreset: '添加 Grok image 2.0 示例',
+        grokPresetHint: '示例单张价：1k low/medium 为 $0.04/$0.06；1.5k 为 $0.05/$0.07；2k 为 $0.06/$0.08。分辨率缺省按 1k，质量缺省/auto 按 low。未知分辨率显式兜底 $0.08，该价格不是这些未知规格的已核实官价；使用前请核对上游价格与接受的参数值。',
+        validationHint: '保存时由服务端校验语法，浏览器不执行表达式。默认价格预览不代表表达式计费请求的报价。',
+        legacyPreview: '未配置表达式模型的默认单张价格预览',
+        incompleteRow: '请同时填写模型 ID 和表达式，或删除未填完整的规则。',
+        duplicateModel: '同一个精确模型 ID 只能配置一条表达式，请删除重复规则或修改模型 ID。',
+        modelWhitespace: '模型 ID 的开头和结尾不能包含空白字符。'
+      },
       videoPricing: {
         title: '视频生成计费',
         description:

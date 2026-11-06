@@ -158,6 +158,10 @@ func (Group) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}),
+		field.JSON("image_price_expressions", map[string]string{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
+			Comment("按客户端请求模型精确匹配的图片总价表达式；未配置时沿用现有计费"),
 		field.JSON("video_model_prices", map[string]map[string]float64{}).
 			Optional().
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).

@@ -369,10 +369,11 @@ const (
 
 // InflightEstimateRequest 单请求估算输入。
 type InflightEstimateRequest struct {
-	Model     string
-	BodyBytes int
-	MaxTokens int
-	Kind      InflightEstimateKind
+	ImagePricingSnapshot *ImagePricingSnapshot
+	Model                string
+	BodyBytes            int
+	MaxTokens            int
+	Kind                 InflightEstimateKind
 	// Units 按次/按张数量（<=0 视为 1）。
 	Units int
 	// SearchCalls 叠加的搜索次数（按分组 search_price_per_1k 计）。
@@ -636,6 +637,9 @@ func (d inflightEstimateDeps) estimateOne(ctx context.Context, apiKey *APIKey, m
 
 // estimate 返回保守的单请求费用（USD，已乘倍率）；无法定价返回 (0,false)。
 func (d inflightEstimateDeps) estimate(ctx context.Context, apiKey *APIKey, req InflightEstimateRequest) (float64, bool) {
+	if req.ImagePricingSnapshot != nil {
+		return req.ImagePricingSnapshot.reservationCost(), true
+	}
 	if apiKey == nil || apiKey.User == nil {
 		return 0, false
 	}

@@ -58,6 +58,34 @@ function mountTable(
 }
 
 describe('PlazaModelPricingTable', () => {
+  it('discloses image expression totals without presenting a static price or token multiplier', () => {
+    const expression = 'tier("standard", fixed(0.08)) * image_count'
+    const model = tokenModel({
+      name: 'dynamic-image', platform: 'grok', pricing: null, official_pricing: null,
+      image_pricing_expression: expression
+    })
+    const wrapper = mountTable([model], 0.5, 0.25, { imageRateIndependent: true, imageRateMultiplier: 1.2 })
+    const price = wrapper.get('[data-testid="image-expression-pricing"]')
+    expect(price.text()).toContain('modelPlaza.table.imageExpressionHint')
+    expect(price.get('pre').text()).toBe(expression)
+    expect(wrapper.text()).not.toContain('modelPlaza.table.perImage')
+    expect(wrapper.findAll('tbody td').at(-1)!.text()).toBe('1.2x')
+  })
+
+  it('gives expression pricing precedence over stale static prices and time pricing rows', () => {
+    const model = tokenModel({
+      image_pricing_expression: 'fixed(0.08)', official_pricing: null,
+      time_pricing: { timezone: 'UTC', periods: [{ start_time: '00:00', end_time: '08:00', multiplier: 0.5 }] }
+    })
+    model.pricing!.per_request_price = 0.02
+    const wrapper = mountTable([model], 0.5)
+    expect(wrapper.findAll('tbody tr')).toHaveLength(1)
+    expect(wrapper.find('[data-testid="image-expression-pricing"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('$0.01')
+    expect(wrapper.text()).not.toContain('$1.50')
+    expect(wrapper.findAll('tbody td').at(-1)!.text()).toBe('0.5x')
+  })
+
   it.each([
     { enabled: true, multiplier: 1, userRate: 0.05, expected: 1 },
     { enabled: true, multiplier: 0.5, userRate: null, expected: 0.5 },

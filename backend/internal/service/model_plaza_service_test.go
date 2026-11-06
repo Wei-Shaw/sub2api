@@ -57,6 +57,21 @@ func TestListPlazaGroups_GroupCentricAggregation(t *testing.T) {
 	require.Equal(t, "claude-sonnet", out[0].Models[1].Name)
 }
 
+func TestListPlazaGroups_ExpressionReplacesStaticPricing(t *testing.T) {
+	ch := plazaPricedChannel(1, "images", []int64{10}, PlatformGrok, "grok-imagine-image-2.0", "other-model")
+	expression := `fixed(0.04) * image_count`
+	groups := []Group{{ID: 10, Platform: PlatformGrok, ImagePrice1K: testPtrFloat64(.20), ImagePriceExpressions: map[string]string{"grok-imagine-image-2.0": expression}}}
+	out, err := newPlazaService([]Channel{ch}, groups, nil).ListGroups(context.Background())
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.Len(t, out[0].Models, 2)
+	require.Equal(t, expression, out[0].Models[0].ImagePricingExpression)
+	require.Nil(t, out[0].Models[0].Pricing, "a request-dependent total must not be displayed as a static tier price")
+	require.NotNil(t, out[0].Models[1].Pricing, "unmatched models retain existing pricing")
+	require.Empty(t, out[0].Models[1].ImagePricingExpression)
+	require.NotNil(t, ch.ModelPricing[0].InputPrice, "shared channel configuration must not be mutated")
+}
+
 func TestListPlazaGroups_Fable51HasNoImplicitReasoningMultiplier(t *testing.T) {
 	ch := plazaPricedChannel(1, "ch", []int64{10}, "anthropic", "claude-fable-5-1")
 	svc := newPlazaService([]Channel{ch}, []Group{{ID: 10, Platform: "anthropic"}}, nil)

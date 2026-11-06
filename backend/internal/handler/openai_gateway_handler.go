@@ -555,6 +555,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 使用 IsExplicitImageGenerationIntent 排除被动 image_gen namespace 声明。
 	// Codex 在所有请求中被动声明 image_gen namespace，宽泛检测会导致禁了生图的
 	// 分组中所有 Codex 请求被 403（#4447），并误占生图并发槽位。
+	if service.HasImagePriceExpression(apiKey.Group, clientRequestedModel(c, reqModel)) {
+		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", service.ImageExpressionUnsupportedMessage)
+		return
+	}
 	imageIntent := service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, body)
 	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
 		h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
@@ -2171,8 +2175,40 @@ type openAIWSTurnAPIKeyLookup interface {
 // 快照。只保留当前与上一个 turn：下一 turn 的 BeforeTurn 先于上一 turn 的
 // AfterTurn 执行时，上一 turn 仍取到自己的快照。
 type openAIWSTurnBillingAPIKeys struct {
-	mu   sync.Mutex
-	keys map[int]*service.APIKey
+	mu     sync.Mutex
+	keys   map[int]*service.APIKey
+	models map[int]string
+}
+
+func (k *openAIWSTurnBillingAPIKeys) setModel(turn int, model string) {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	if k.models == nil {
+		k.models = make(map[int]string, 2)
+	}
+	for previous := range k.models {
+		if previous < turn-1 {
+			delete(k.models, previous)
+		}
+	}
+	k.models[turn] = model
+}
+
+func (k *openAIWSTurnBillingAPIKeys) rejectImageExpression(turn int, conn *service.APIKey, fallbackModel string) error {
+	k.mu.Lock()
+	defer k.mu.Unlock()
+	key := k.keys[turn]
+	if key == nil {
+		key = conn
+	}
+	model := k.models[turn]
+	if model == "" {
+		model = fallbackModel
+	}
+	if key != nil && service.HasImagePriceExpression(key.Group, model) {
+		return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, service.ImageExpressionUnsupportedMessage, nil)
+	}
+	return nil
 }
 
 // begin 在 BeforeTurn 重装利润门前调用：后续 turn 重取计费分组并按 turn 记下，
@@ -2603,6 +2639,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		return
 	}
 
+	if service.HasImagePriceExpression(apiKey.Group, clientRequestedModel(c, reqModel)) {
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.ImageExpressionUnsupportedMessage)
+		return
+	}
 	imageIntent := service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, firstMessage)
 	if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.ImageGenerationPermissionMessage())
@@ -3018,6 +3058,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if model == "" {
 					model = reqModel
 				}
+				if service.HasImagePriceExpression(apiKey.Group, model) {
+					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, service.ImageExpressionUnsupportedMessage, nil)
+				}
+				turnBillingAPIKeys.setModel(turn, model)
 				// 分组级模型白名单：后续 turn 同样校验客户端模型（省略 model 时
 				// 沿用会话实际生效模型，含 session.update 轮换后的模型），不通过
 				// 则关闭整条连接，与推理强度 deny 一致。实际生效模型始终参与校验；
@@ -3040,6 +3084,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if model == "" {
 					model = reqModel
 				}
+				turnBillingAPIKeys.setModel(turn, model)
 				setOpsRequestContext(c, model, true)
 				routeModel := model
 				if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
@@ -3070,6 +3115,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 当前账号，越线即要求客户端重连重选（连接绑定单一上游账号，
 				// 无法中途换号）。本 turn 的准入与计费共用同一 pricingAt。
 				turnBillingCtx := turnBillingAPIKeys.begin(ctx, h.apiKeyService, turn, apiKey)
+				if err := turnBillingAPIKeys.rejectImageExpression(turn, apiKey, reqModel); err != nil {
+					return err
+				}
 				turnCtx, turnAt := h.gatewayService.WithOpenAITurnPricingContext(turnBillingCtx, apiKey.GroupID)
 				if _, vetoed, reason := h.gatewayService.ProfitControlVetoLatest(turnCtx, account); vetoed {
 					reqLog.Info("openai.websocket_turn_profit_vetoed",

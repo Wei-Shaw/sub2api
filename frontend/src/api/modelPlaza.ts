@@ -48,6 +48,8 @@ export interface PlazaModel {
   platform: string
   /** 实收口径的展示定价：档位可提供绝对单价或相对基础价倍率；均为标准时段价。 */
   pricing: UserSupportedModelPricing | null
+  /** 动态图片计费：表达式结果为本次请求倍率前美元总额。存在时不展示静态报价。 */
+  image_pricing_expression?: string
   official_pricing: PlazaOfficialPricing | null
   /** 仅多档模型返回。 */
   long_context_basis?: PlazaLongContextBasis

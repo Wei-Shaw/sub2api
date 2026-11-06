@@ -227,6 +227,7 @@ func TestAdminServiceSimpleModeNormalizesAllUnsupportedCreateFieldsDirectly(t *t
 		AllowMessagesDispatch: true, AllowLive: true, ForceOpenAIFast: true, RequireOAuthOnly: true,
 		RPMLimit: 99, MaxReasoningEffort: "high", ProfitControlEnabled: true, ProfitMinMargin: &one,
 		CopyAccountsFromGroupIDs: []int64{2},
+		ImagePriceExpressions:    map[string]string{"grok-imagine-image-2.0": "invalid +"},
 	}
 	repo := &groupRepoStubForAdmin{}
 	svc := &adminServiceImpl{cfg: &config.Config{RunMode: config.RunModeSimple}, groupRepo: repo}
@@ -243,6 +244,7 @@ func TestAdminServiceSimpleModeNormalizesAllUnsupportedCreateFieldsDirectly(t *t
 	require.False(t, created.IsExclusive)
 	require.Nil(t, created.FallbackGroupID)
 	require.Empty(t, created.ModelPricing)
+	require.Nil(t, created.ImagePriceExpressions)
 	require.Zero(t, created.RPMLimit)
 }
 
@@ -265,8 +267,10 @@ func TestAdminServiceSimpleModeNormalizesAllUnsupportedUpdateFieldsDirectly(t *t
 		AllowMessagesDispatch: &truth, AllowLive: &truth, ForceOpenAIFast: &truth, RequireOAuthOnly: &truth,
 		RPMLimit: new(int), MaxReasoningEffort: ptrString("high"), ProfitControlEnabled: &truth,
 		ProfitMinMargin: &one, CopyAccountsFromGroupIDs: []int64{2},
+		ImagePriceExpressions: map[string]string{"grok-imagine-image-2.0": "invalid +"},
 	}
 	existing := &Group{ID: 1, Name: "old", Description: "old description", Platform: PlatformAnthropic, Status: StatusActive, RateMultiplier: 3, RPMLimit: 8, FallbackGroupID: &fallbackID}
+	existing.ImagePriceExpressions = map[string]string{"grok-imagine-image-2.0": "0.04"}
 	repo := &groupRepoStubForAdmin{getByID: existing}
 	svc := &adminServiceImpl{cfg: &config.Config{RunMode: config.RunModeSimple}, groupRepo: repo}
 
@@ -280,6 +284,7 @@ func TestAdminServiceSimpleModeNormalizesAllUnsupportedUpdateFieldsDirectly(t *t
 	require.Equal(t, 3.0, updated.RateMultiplier)
 	require.Equal(t, 8, updated.RPMLimit)
 	require.Equal(t, &fallbackID, updated.FallbackGroupID)
+	require.Equal(t, "0.04", updated.ImagePriceExpressions["grok-imagine-image-2.0"])
 }
 
 func TestAdminServiceSimpleModeListUsesRepositoryFilteredTotal(t *testing.T) {
@@ -514,6 +519,83 @@ func TestAdminService_CreateGroup_WithImagePricing(t *testing.T) {
 	require.InDelta(t, 0.10, *repo.created.ImagePrice1K, 0.0001)
 	require.InDelta(t, 0.15, *repo.created.ImagePrice2K, 0.0001)
 	require.InDelta(t, 0.30, *repo.created.ImagePrice4K, 0.0001)
+}
+
+func TestAdminService_CreateGroup_ImagePriceExpressions(t *testing.T) {
+	expressions := map[string]string{
+		"grok-imagine-image-2.0": "0.04",
+		"Grok-Imagine-Image-2.0": "0.06",
+	}
+	repo := &groupRepoStubForAdmin{}
+	svc := &adminServiceImpl{groupRepo: repo}
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name: "image-expressions", Platform: PlatformGrok, RateMultiplier: 1,
+		ImagePriceExpressions: expressions,
+	})
+	require.NoError(t, err)
+	require.Equal(t, expressions, group.ImagePriceExpressions, "request model keys must preserve case")
+	require.Equal(t, expressions, repo.created.ImagePriceExpressions)
+	expressions["grok-imagine-image-2.0"] = "0.99"
+	require.Equal(t, "0.04", group.ImagePriceExpressions["grok-imagine-image-2.0"], "stored rules must not alias the request")
+}
+
+func TestAdminService_ImagePriceExpressionsRejectInvalidBeforeWrite(t *testing.T) {
+	for _, update := range []bool{false, true} {
+		t.Run(map[bool]string{false: "create", true: "update"}[update], func(t *testing.T) {
+			existing := &Group{ID: 1, Name: "original", Platform: PlatformGrok, Status: StatusActive,
+				ImagePriceExpressions: map[string]string{"grok-imagine-image-2.0": "0.04"}}
+			repo := &groupRepoStubForAdmin{getByID: existing}
+			invalidator := &authCacheInvalidatorStub{}
+			svc := &adminServiceImpl{groupRepo: repo, authCacheInvalidator: invalidator}
+			invalid := map[string]string{"grok-imagine-image-2.0": "1 +"}
+			var err error
+			if update {
+				_, err = svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{Name: "changed", ImagePriceExpressions: invalid})
+			} else {
+				_, err = svc.CreateGroup(context.Background(), &CreateGroupInput{
+					Name: "new", Platform: PlatformGrok, RateMultiplier: 1, ImagePriceExpressions: invalid,
+				})
+			}
+			require.Error(t, err)
+			require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+			require.Equal(t, "INVALID_IMAGE_PRICE_EXPRESSIONS", infraerrors.Reason(err))
+			require.Nil(t, repo.created)
+			require.Nil(t, repo.updated)
+			require.Empty(t, invalidator.groupIDs)
+			require.Equal(t, "original", existing.Name)
+			require.Equal(t, "0.04", existing.ImagePriceExpressions["grok-imagine-image-2.0"])
+		})
+	}
+}
+
+func TestAdminService_UpdateGroup_ImagePriceExpressionsTriState(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		input map[string]string
+		want  map[string]string
+	}{
+		{name: "omitted preserves", want: map[string]string{"grok-imagine-image-2.0": "0.04"}},
+		{name: "empty clears", input: map[string]string{}, want: map[string]string{}},
+		{name: "provided replaces", input: map[string]string{"another-model": "0.08"}, want: map[string]string{"another-model": "0.08"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &groupRepoStubForAdmin{getByID: &Group{
+				ID: 1, Name: "existing", Platform: PlatformGrok, Status: StatusActive,
+				ImagePriceExpressions: map[string]string{"grok-imagine-image-2.0": "0.04"},
+			}}
+			invalidator := &authCacheInvalidatorStub{}
+			svc := &adminServiceImpl{groupRepo: repo, authCacheInvalidator: invalidator}
+			group, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{ImagePriceExpressions: tc.input})
+			require.NoError(t, err)
+			require.Equal(t, tc.want, group.ImagePriceExpressions)
+			require.Equal(t, tc.want, repo.updated.ImagePriceExpressions)
+			require.Equal(t, []int64{1}, invalidator.groupIDs)
+			if tc.input != nil {
+				tc.input["mutated-after-save"] = "0.01"
+				require.NotContains(t, group.ImagePriceExpressions, "mutated-after-save")
+			}
+		})
+	}
 }
 
 func TestAdminService_CreateGroup_WithVideoPricing(t *testing.T) {

@@ -612,6 +612,9 @@ func (s *OpenAIGatewayService) ForwardImages(
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
 	}
+	if imagePricingSnapshotFromContext(ctx) != nil && account.Type != AccountTypeAPIKey {
+		return nil, fmt.Errorf("image price expressions do not support OAuth image protocol conversion")
+	}
 	switch account.Type {
 	case AccountTypeAPIKey:
 		return s.forwardOpenAIImagesAPIKey(ctx, c, account, body, parsed, channelMappedModel)
@@ -653,6 +656,9 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	)
 	forwardBody, forwardContentType, err := rewriteOpenAIImagesModel(body, parsed.ContentType, upstreamModel)
 	if err != nil {
+		return nil, err
+	}
+	if err := validateImagePricingForwardBody(ctx, forwardBody); err != nil {
 		return nil, err
 	}
 	// 生图是长耗时、上游侧已产生实际成本的操作：客户端中途断开不应连带取消上游请求。
