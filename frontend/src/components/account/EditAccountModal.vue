@@ -271,7 +271,6 @@
             <ModelRestrictionEditor
               v-model:allowed-models="allowedModels"
               v-model:model-mappings="modelMappings"
-              :mode="modelRestrictionMode"
               :key="account.id"
             >
             <template #mode>
@@ -904,7 +903,6 @@
           <ModelRestrictionEditor
             v-model:allowed-models="allowedModels"
             v-model:model-mappings="modelMappings"
-            :mode="modelRestrictionMode"
             :key="account.id"
           >
           <template #mode>
@@ -1193,7 +1191,6 @@
           <ModelRestrictionEditor
             v-model:allowed-models="allowedModels"
             v-model:model-mappings="modelMappings"
-            :mode="modelRestrictionMode"
             :key="account.id"
           >
           <template #mode>
@@ -1450,7 +1447,6 @@
           <ModelRestrictionEditor
             v-model:allowed-models="allowedModels"
             v-model:model-mappings="modelMappings"
-            :mode="modelRestrictionMode"
             :key="account.id"
           >
           <template #mode>

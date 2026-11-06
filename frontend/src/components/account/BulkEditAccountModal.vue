@@ -269,7 +269,6 @@
             <ModelRestrictionEditor
               v-model:allowed-models="allowedModels"
               v-model:model-mappings="modelMappings"
-              :mode="modelRestrictionMode"
               :disabled="!enableModelRestriction"
             >
             <template #mode>

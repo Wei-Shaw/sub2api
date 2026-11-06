@@ -1,6 +1,6 @@
 <template>
   <fieldset :disabled="disabled" class="min-w-0">
-    <fieldset :disabled="jsonMode && dirty" class="min-w-0" :class="{ 'opacity-60': jsonMode && dirty }">
+    <fieldset v-show="!jsonMode" :disabled="jsonMode" class="min-w-0">
       <slot name="mode" />
     </fieldset>
     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -24,7 +24,7 @@
 
     <div v-if="jsonMode" class="space-y-3">
       <p :id="`${editorId}-hint`" class="text-xs text-gray-500 dark:text-gray-400">
-        {{ t(isWhitelist ? 'admin.accounts.modelJson.whitelistHint' : 'admin.accounts.modelJson.mappingHint') }}
+        {{ t('admin.accounts.modelJson.combinedHint') }}
       </p>
       <textarea
         :id="editorId"
@@ -34,13 +34,16 @@
         class="input w-full resize-y font-mono text-sm"
         spellcheck="false"
         autocapitalize="off"
-        :aria-label="t(isWhitelist ? 'admin.accounts.modelJson.whitelistLabel' : 'admin.accounts.modelJson.mappingLabel')"
+        :aria-label="t('admin.accounts.modelJson.combinedLabel')"
         :aria-describedby="`${editorId}-hint ${editorId}-status`"
         :aria-invalid="Boolean(validation.error)"
         :placeholder="example"
       />
       <p :id="`${editorId}-status`" class="break-words text-xs" :class="validation.error ? 'text-red-600 dark:text-red-400' : 'text-gray-500 dark:text-gray-400'" aria-live="polite">
-        {{ validation.error || t('admin.accounts.modelJson.summary', { count: validation.entries.length }) }}
+        {{ validation.error || t('admin.accounts.modelJson.summary', {
+          whitelist: validation.entries.filter(entry => entry.from === entry.to).length,
+          mappings: validation.entries.filter(entry => entry.from !== entry.to).length
+        }) }}
       </p>
       <p v-if="dirty" class="text-xs text-amber-700 dark:text-amber-400">
         {{ t('admin.accounts.modelJson.pending') }}
@@ -79,7 +82,6 @@ import { isValidWildcardPattern, type ModelMappingEntry } from '@/composables/us
 import { useAppStore } from '@/stores/app'
 
 const props = withDefaults(defineProps<{
-  mode: 'whitelist' | 'mapping'
   allowedModels: string[]
   modelMappings: ModelMappingEntry[]
   disabled?: boolean
@@ -99,10 +101,7 @@ const jsonMode = ref(false)
 const draft = ref('')
 const baseline = ref('')
 const dirty = computed(() => draft.value !== baseline.value)
-const isWhitelist = computed(() => props.mode === 'whitelist')
-const example = computed(() => isWhitelist.value
-  ? '[\n  "gpt-5.4",\n  "claude-sonnet-4-6"\n]'
-  : '{\n  "my-model": "gpt-5.4",\n  "claude-*": "claude-sonnet-4-6"\n}')
+const example = '{\n  "gpt-5.4": "gpt-5.4",\n  "claude-sonnet-4-6": "claude-sonnet-4-6",\n  "my-model": "gpt-5.4",\n  "claude-*": "claude-sonnet-4-6"\n}'
 
 const viewButtonClass = (active: boolean) => [
   'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
@@ -116,7 +115,6 @@ function normalizeEntries(entries: ModelMappingEntry[]): ModelMappingEntry[] {
     const from = entry.from.trim()
     const to = entry.to.trim()
     if (!from || !to) throw new Error(t('admin.accounts.modelJson.emptyName'))
-    if (isWhitelist.value && from.includes('*')) throw new Error(t('admin.accounts.modelJson.whitelistWildcard'))
     if (!isValidWildcardPattern(from)) throw new Error(t('admin.accounts.wildcardOnlyAtEnd'))
     if (to.includes('*')) throw new Error(t('admin.accounts.modelJson.targetWildcard'))
     const previous = normalized.get(from)
@@ -129,15 +127,19 @@ function normalizeEntries(entries: ModelMappingEntry[]): ModelMappingEntry[] {
 }
 
 function serialize(entries: ModelMappingEntry[]) {
-  return JSON.stringify(isWhitelist.value
-    ? entries.map(entry => entry.from)
-    : Object.fromEntries(entries.map(entry => [entry.from, entry.to])), null, 2)
+  return JSON.stringify(Object.fromEntries(entries.map(entry => [entry.from, entry.to])), null, 2)
 }
 
 function currentEntries() {
-  return normalizeEntries(isWhitelist.value
-    ? props.allowedModels.map(model => ({ from: model, to: model }))
-    : props.modelMappings)
+  const entries = new Map<string, string>()
+  for (const entry of normalizeEntries(props.allowedModels.map(model => ({ from: model, to: model })))) {
+    entries.set(entry.from, entry.to)
+  }
+  // Match the saved configuration: an explicit mapping takes precedence over a whitelist entry.
+  for (const entry of normalizeEntries(props.modelMappings)) {
+    entries.set(entry.from, entry.to)
+  }
+  return Array.from(entries, ([from, to]) => ({ from, to }))
 }
 
 const validation = computed(() => {
@@ -149,8 +151,9 @@ const validation = computed(() => {
       throw new Error(t('admin.accounts.modelJson.invalidSyntax'))
     }
     let entries: ModelMappingEntry[]
-    if (isWhitelist.value) {
-      if (!Array.isArray(value) || value.some(model => typeof model !== 'string')) {
+    if (Array.isArray(value)) {
+      // Continue accepting model arrays copied from the earlier whitelist editor.
+      if (value.some(model => typeof model !== 'string')) {
         throw new Error(t('admin.accounts.modelJson.expectedArray'))
       }
       entries = value.map((model: string) => ({ from: model, to: model }))
@@ -217,17 +220,14 @@ async function applyJson(merge: boolean) {
       for (const entry of currentEntries()) entries.set(entry.from, entry.to)
     }
     for (const entry of validation.value.entries) entries.set(entry.from, entry.to)
-    if (isWhitelist.value) {
-      for (const model of entries.keys()) {
-        const conflict = props.modelMappings.find(mapping => mapping.from.trim() === model && mapping.to.trim() && mapping.to.trim() !== model)
-        if (conflict) {
-          throw new Error(t('admin.accounts.modelMappingConflict', { from: conflict.from, to: conflict.to }))
-        }
-      }
-      emit('update:allowedModels', Array.from(entries.keys()))
-    } else {
-      emit('update:modelMappings', Array.from(entries, ([from, to]) => ({ from, to })))
+    const allowedModels: string[] = []
+    const modelMappings: ModelMappingEntry[] = []
+    for (const [from, to] of entries) {
+      if (from === to) allowedModels.push(from)
+      else modelMappings.push({ from, to })
     }
+    emit('update:allowedModels', allowedModels)
+    emit('update:modelMappings', modelMappings)
     await nextTick()
     resetDraft()
     appStore.showSuccess(t('admin.accounts.modelJson.applied'))
@@ -243,7 +243,7 @@ watch([draft, baseline, jsonMode, () => props.disabled, () => validation.value.e
     : '')
 }, { flush: 'post' })
 
-watch(() => [props.mode, props.allowedModels, props.modelMappings], () => {
+watch(() => [props.allowedModels, props.modelMappings], () => {
   if (jsonMode.value && !dirty.value) resetDraft()
 }, { deep: true })
 </script>

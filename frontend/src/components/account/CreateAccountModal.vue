@@ -1606,7 +1606,6 @@
             <ModelRestrictionEditor
               v-model:allowed-models="allowedModels"
               v-model:model-mappings="modelMappings"
-              :mode="modelRestrictionMode"
               :key="form.platform"
             >
             <template #mode>
@@ -2171,7 +2170,6 @@
           <ModelRestrictionEditor
             v-model:allowed-models="allowedModels"
             v-model:model-mappings="modelMappings"
-            :mode="modelRestrictionMode"
             :key="form.platform"
           >
           <template #mode>
@@ -2522,7 +2520,6 @@
           <ModelRestrictionEditor
             v-model:allowed-models="allowedModels"
             v-model:model-mappings="modelMappings"
-            :mode="modelRestrictionMode"
             :key="form.platform"
           >
           <template #mode>
@@ -4633,7 +4630,7 @@ const syncPreviewCredentials = computed(() => {
     ? adaptiveBaseUrls.value.chat_completions.trim() || apiKeyBaseUrl.value.trim()
     : apiKeyBaseUrl.value.trim()
   const modelMapping = buildModelMappingObject(
-    modelRestrictionMode.value,
+    'combined',
     allowedModels.value,
     modelMappings.value
   )
@@ -5307,11 +5304,12 @@ const handleSelectGeminiOAuthType = (oauthType: 'code_assist' | 'google_one' | '
   geminiOAuthType.value = oauthType
 }
 
-// Auto-fill related models when switching to whitelist mode or changing platform
+// Switching editor tabs must preserve models imported from the combined JSON.
+// Keep the existing platform-change defaults; manual refill stays in the selector.
 watch(
-  [modelRestrictionMode, () => form.platform],
-  ([newMode]) => {
-    if (newMode === 'whitelist') {
+  () => form.platform,
+  () => {
+    if (modelRestrictionMode.value === 'whitelist') {
       allowedModels.value = [...getModelsByPlatform(form.platform)]
     }
   }
@@ -6023,7 +6021,7 @@ const handleSubmit = async () => {
 
     // Model mapping
     const modelMapping = buildModelMappingObject(
-      modelRestrictionMode.value, allowedModels.value, modelMappings.value
+      'combined', allowedModels.value, modelMappings.value
     )
     if (modelMapping) {
       credentials.model_mapping = modelMapping
@@ -6191,7 +6189,7 @@ const handleSubmit = async () => {
 
   // Add model mapping if configured（OpenAI 开启自动透传时不应用）
   if (!isOpenAIModelRestrictionDisabled.value) {
-    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+    const modelMapping = buildModelMappingObject('combined', allowedModels.value, modelMappings.value)
     if (modelMapping) {
       credentials.model_mapping = modelMapping
     }
@@ -6358,7 +6356,7 @@ const createAccountAndFinish = async (
     if (!credentials.base_url) {
       credentials.base_url = apiKeyBaseUrl.value.trim() || 'https://api.x.ai/v1'
     }
-    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+    const modelMapping = buildModelMappingObject('combined', allowedModels.value, modelMappings.value)
     if (modelMapping) {
       credentials.model_mapping = modelMapping
     } else {
@@ -6424,7 +6422,7 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
         const extra = grokOAuth.buildExtraInfo(tokenInfo)
         const accountName = refreshTokens.length > 1 ? `${form.name || tokenInfo.email || 'Grok OAuth Account'} #${i + 1}` : (form.name || tokenInfo.email || 'Grok OAuth Account')
 
-        const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+        const modelMapping = buildModelMappingObject('combined', allowedModels.value, modelMappings.value)
         if (modelMapping) {
           credentials.model_mapping = modelMapping
         }
@@ -6491,7 +6489,7 @@ const handleGrokImportSSO = async (ssoInput: string) => {
 
   const credentials: Record<string, unknown> = {}
   applyGrokOAuthUpstreamConfig(credentials)
-  const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+  const modelMapping = buildModelMappingObject('combined', allowedModels.value, modelMappings.value)
   if (modelMapping) {
     credentials.model_mapping = modelMapping
   }
@@ -6598,7 +6596,7 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
             : form.name || tokenInfo.email || 'Grok OAuth Account'
 
         const modelMapping = buildModelMappingObject(
-          modelRestrictionMode.value,
+          'combined',
           allowedModels.value,
           modelMappings.value
         )
@@ -6690,7 +6688,7 @@ const handleOpenAIExchange = async (authCode: string) => {
 
     // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
     if (shouldCreateOpenAI && !isOpenAIModelRestrictionDisabled.value) {
-      const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+      const modelMapping = buildModelMappingObject('combined', allowedModels.value, modelMappings.value)
       if (modelMapping) {
         credentials.model_mapping = modelMapping
       }
@@ -6744,7 +6742,7 @@ const OPENAI_MOBILE_RT_CLIENT_ID = 'app_LlGpXReQgckcGGUo2JrYvtJK'
 const buildOpenAICodexImportCredentialExtras = (): Record<string, unknown> | null => {
   const credentials: Record<string, unknown> = {}
   if (!isOpenAIModelRestrictionDisabled.value) {
-    const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+    const modelMapping = buildModelMappingObject('combined', allowedModels.value, modelMappings.value)
     if (modelMapping) {
       credentials.model_mapping = modelMapping
     }
@@ -6972,7 +6970,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
 
         // Add model mapping for OpenAI OAuth accounts（透传模式下不应用）
         if (shouldCreateOpenAI && !isOpenAIModelRestrictionDisabled.value) {
-          const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+          const modelMapping = buildModelMappingObject('combined', allowedModels.value, modelMappings.value)
           if (modelMapping) {
             credentials.model_mapping = modelMapping
           }
