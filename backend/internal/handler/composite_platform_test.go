@@ -297,7 +297,7 @@ func TestCompositeCNReasoningEffortPolicies(testContext *testing.T) {
 			bindOpenAIReasoningEffortPolicyForMessagesRequest(ginContext, apiKey, ceilingBody)
 			got, _, err = service.ApplyOpenAIReasoningEffortPolicyFromContext(ginContext.Request.Context(), ceilingBody)
 			require.NoError(testContext, err)
-			require.Equal(testContext, "low", gjson.GetBytes(got, "output_config.effort").String())
+			require.Equal(testContext, "minimal", gjson.GetBytes(got, "output_config.effort").String())
 			fresh, _ := gin.CreateTestContext(httptest.NewRecorder())
 			fresh.Request = httptest.NewRequest("POST", "/v1/messages", nil)
 			fresh.Request = fresh.Request.WithContext(service.WithResolvedTargetPlatform(fresh.Request.Context(), platform))

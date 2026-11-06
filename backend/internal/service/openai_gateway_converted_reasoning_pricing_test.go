@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -64,6 +65,79 @@ func TestOpenAINativeAnthropicReasoningPricingUsesForwardedEffort(t *testing.T) 
 					require.Equal(t, tc.wantEffort, gjson.GetBytes(upstream.lastBody, "output_config.effort").String())
 					require.Equal(t, tc.wantEffort, optionalStringValue(result.ReasoningEffort))
 					assertConvertedReasoningPrice(t, result, tc.wantCost)
+				})
+			}
+		}
+	}
+}
+
+func TestCNNativeAnthropicFinalReasoningCeiling(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, endpoint := range []string{"responses", "chat/completions"} {
+		for _, stream := range []bool{false, true} {
+			for _, test := range []struct {
+				name       string
+				effort     string
+				ceiling    string
+				overLimit  string
+				mappings   []ReasoningEffortMapping
+				wantEffort string
+				wantDenied bool
+			}{
+				{name: "conversion capped", effort: "xhigh", ceiling: "xhigh", wantEffort: "xhigh"},
+				{name: "conversion denied", effort: "xhigh", ceiling: "xhigh", overLimit: "deny", wantDenied: true},
+				{name: "high ceiling", effort: "high", ceiling: "high", wantEffort: "high"},
+				{name: "max allowed", effort: "xhigh", ceiling: "max", wantEffort: "max"},
+				{name: "no ceiling", effort: "xhigh", wantEffort: "max"},
+				{name: "omitted effort", ceiling: "low"},
+				{name: "one hop", effort: "low", ceiling: "max", mappings: []ReasoningEffortMapping{{From: "low", To: "high"}, {From: "high", To: "deny"}}, wantEffort: "high"},
+			} {
+				t.Run(fmt.Sprintf("%s/stream=%t/%s", endpoint, stream, test.name), func(t *testing.T) {
+					request := map[string]any{"model": "k3", "stream": stream}
+					if endpoint == "responses" {
+						request["input"] = "hello"
+						request["reasoning"] = map[string]string{"effort": test.effort}
+					} else {
+						request["messages"] = []map[string]string{{"role": "user", "content": "hello"}}
+						request["reasoning_effort"] = test.effort
+					}
+					body, err := json.Marshal(request)
+					require.NoError(t, err)
+					body, _, err = ApplyReasoningEffortPolicy(body, test.ceiling, test.mappings, test.overLimit)
+					require.NoError(t, err)
+					ctx := WithOpenAIReasoningEffortPolicy(context.Background(), test.ceiling, []ReasoningEffortMapping{{From: "high", To: "deny"}, {From: "max", To: "low"}}, test.overLimit)
+					for retry := 0; retry < 2; retry++ {
+						upstream := &httpUpstreamRecorder{resp: nativeAnthropicStreamResponse()}
+						svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+						recorder := httptest.NewRecorder()
+						c, _ := gin.CreateTestContext(recorder)
+						c.Request = httptest.NewRequest(http.MethodPost, "/v1/"+endpoint, strings.NewReader(string(body))).WithContext(ctx)
+						c.Request.Header.Set("Content-Type", "application/json")
+						account := nativeAnthropicTestAccount()
+						account.Platform = PlatformKimi
+						var result *OpenAIForwardResult
+						if endpoint == "responses" {
+							result, err = svc.Forward(ctx, c, account, body)
+						} else {
+							result, err = svc.ForwardAsChatCompletions(ctx, c, account, body, "", "")
+						}
+						if test.wantDenied {
+							require.True(t, IsReasoningEffortPolicyDenied(err), "error: %v", err)
+							require.Nil(t, result)
+							require.Empty(t, upstream.requests)
+							require.Equal(t, http.StatusForbidden, c.Writer.Status())
+							errorField := "error.type"
+							if endpoint == "responses" {
+								errorField = "error.code"
+							}
+							require.Equal(t, "permission_error", gjson.GetBytes(recorder.Body.Bytes(), errorField).String())
+							continue
+						}
+						require.NoError(t, err)
+						require.Equal(t, "/anthropic/v1/messages", upstream.lastReq.URL.Path)
+						require.Equal(t, test.wantEffort, gjson.GetBytes(upstream.lastBody, "output_config.effort").String())
+						require.Equal(t, test.wantEffort, optionalStringValue(result.ReasoningEffort))
+					}
 				})
 			}
 		}

@@ -53,6 +53,7 @@ type openAIReasoningEffortPolicy struct {
 	maxEffort string
 	overLimit string
 	mappings  []ReasoningEffortMapping
+	model     string
 }
 
 // ReasoningEffortOverLimitError is returned when a group policy is set to deny
@@ -434,6 +435,13 @@ func RequestedReasoningEffortFromContext(ctx context.Context) *string {
 // concrete OpenAI-compatible target platform has been resolved. The policy is copied so
 // retries and asynchronous forwarding cannot observe later slice mutations.
 func WithOpenAIReasoningEffortPolicy(ctx context.Context, maxEffort string, mappings []ReasoningEffortMapping, overLimit string) context.Context {
+	model, _ := RequestedPublicModelFromContext(ctx)
+	return WithOpenAIReasoningEffortPolicyForModel(ctx, maxEffort, mappings, overLimit, model)
+}
+
+// WithOpenAIReasoningEffortPolicyForModel binds the original client model for
+// mapping selection even when routing or channel mapping rewrites the body.
+func WithOpenAIReasoningEffortPolicyForModel(ctx context.Context, maxEffort string, mappings []ReasoningEffortMapping, overLimit, model string) context.Context {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -441,6 +449,7 @@ func WithOpenAIReasoningEffortPolicy(ctx context.Context, maxEffort string, mapp
 		maxEffort: maxEffort,
 		overLimit: overLimit,
 		mappings:  append([]ReasoningEffortMapping(nil), mappings...),
+		model:     strings.TrimSpace(model),
 	}
 	return context.WithValue(ctx, openAIReasoningEffortPolicyContextKey{}, policy)
 }
@@ -455,30 +464,72 @@ func ApplyOpenAIReasoningEffortPolicyFromContext(ctx context.Context, body []byt
 	if !ok {
 		return body, false, nil
 	}
-	return ApplyOpenAIReasoningEffortPolicy(body, policy.maxEffort, policy.mappings, policy.overLimit)
+	model := policy.model
+	if model == "" {
+		model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
+	}
+	return applyReasoningEffortPolicyForModel(body, policy.maxEffort, policy.mappings, policy.overLimit, model, RequestedReasoningEffortFromContext(ctx))
 }
 
-func applyFinalOpenAIReasoningEffortCeiling(ctx context.Context, body []byte, upstreamModel string) ([]byte, bool, error) {
-	if ctx == nil {
+func applyFinalOpenAIReasoningEffortCeiling(ctx context.Context, account *Account, body []byte, upstreamModel string) ([]byte, bool, error) {
+	if ctx == nil || account == nil || !IsCNProvider(account.Platform) {
 		return body, false, nil
 	}
 	policy, bound := ctx.Value(openAIReasoningEffortPolicyContextKey{}).(openAIReasoningEffortPolicy)
 	if !bound || (policy.maxEffort == "" && len(policy.mappings) == 0) {
 		return body, false, nil
 	}
-	capped, changed, err := ApplyOpenAIReasoningEffortPolicy(body, policy.maxEffort, nil, policy.overLimit)
-	if err != nil {
-		return body, false, err
-	}
 	glmModel := strings.HasPrefix(strings.ToLower(strings.TrimSpace(upstreamModel)), "glm-")
-	for _, path := range []string{"reasoning.effort", "reasoning_effort"} {
-		effort := gjson.GetBytes(capped, path).String()
-		if glmModel && effort != "" && effort != "high" && effort != "max" && (!isGLM53Model(upstreamModel) || effort != "low") {
-			return body, false, fmt.Errorf("%s does not support capped reasoning effort %q: %w", upstreamModel, effort,
-				&ReasoningEffortOverLimitError{Requested: gjson.GetBytes(body, path).String(), Max: NormalizeMaxReasoningEffort(policy.maxEffort)})
+	requested := RequestedReasoningEffortFromContext(ctx)
+	if !glmModel {
+		return applyReasoningEffortPolicyForModel(body, policy.maxEffort, nil, policy.overLimit, upstreamModel, requested)
+	}
+	maxRank, hasMax := reasoningEffortRank(policy.maxEffort)
+	tiers := []string{"high", "max"}
+	if isGLM53Model(upstreamModel) {
+		tiers = []string{"low", "high", "max"}
+	}
+	result, changed := body, false
+	for _, path := range []string{"reasoning.effort", "reasoning_effort", "output_config.effort"} {
+		field := gjson.GetBytes(body, path)
+		effort := strings.ToLower(strings.TrimSpace(field.String()))
+		if field.Type != gjson.String || effort == "" || effort == "none" || effort == "minimal" {
+			continue
+		}
+		rank, recognized := reasoningEffortRank(effort)
+		original := field.String()
+		if requested != nil {
+			original = *requested
+		}
+		policyErr := &ReasoningEffortOverLimitError{Requested: original, Max: NormalizeMaxReasoningEffort(policy.maxEffort)}
+		if hasMax && rank > maxRank {
+			if NormalizeMaxReasoningEffortOverLimit(policy.overLimit) == ReasoningEffortOverLimitDeny {
+				return body, false, policyErr
+			}
+			rank = maxRank
+		}
+		target := ""
+		for _, tier := range tiers {
+			if tierRank, _ := reasoningEffortRank(tier); recognized && tierRank <= rank {
+				target = tier
+			}
+		}
+		if target == "" {
+			ceiling := effort
+			if hasMax {
+				ceiling = NormalizeMaxReasoningEffort(policy.maxEffort)
+			}
+			return body, false, fmt.Errorf("%s has no supported native reasoning tier at or below %q: %w", upstreamModel, ceiling, policyErr)
+		}
+		if target != field.String() {
+			updated, err := sjson.SetBytes(result, path, target)
+			if err != nil {
+				return body, false, err
+			}
+			result, changed = updated, true
 		}
 	}
-	return capped, changed, nil
+	return result, changed, nil
 }
 
 // applyMessagesConvertedReasoningEffortPolicy validates the final outbound effort.
@@ -507,15 +558,12 @@ func applyMessagesConvertedReasoningEffortPolicy(ctx context.Context, account *A
 					updated, changed = normalized, true
 				}
 			}
-			capped, cappedChanged, capErr := applyFinalOpenAIReasoningEffortCeiling(ctx, updated, upstreamModel)
+			capped, cappedChanged, capErr := applyFinalOpenAIReasoningEffortCeiling(ctx, account, updated, upstreamModel)
 			if capErr != nil {
 				return body, false, capErr
 			}
 			updated, changed = capped, changed || cappedChanged
 		}
-	}
-	if err := validateGPT61SolCompatRequest(updated, upstreamModel); err != nil {
-		return body, false, err
 	}
 	return updated, changed, nil
 }
@@ -562,6 +610,10 @@ func sanitizeGroupReasoningEffortPolicy(group *Group) {
 // so upstream defaults stay in control. It understands both OpenAI and
 // Anthropic request field shapes.
 func ApplyReasoningEffortPolicy(body []byte, maxEffort string, mappings []ReasoningEffortMapping, overLimit string) ([]byte, bool, error) {
+	return applyReasoningEffortPolicyForModel(body, maxEffort, mappings, overLimit, strings.TrimSpace(gjson.GetBytes(body, "model").String()), nil)
+}
+
+func applyReasoningEffortPolicyForModel(body []byte, maxEffort string, mappings []ReasoningEffortMapping, overLimit, requestModel string, requested *string) ([]byte, bool, error) {
 	maxRank, hasMax := reasoningEffortRank(maxEffort)
 	if len(body) == 0 || (!hasMax && len(mappings) == 0) {
 		return body, false, nil
@@ -569,7 +621,6 @@ func ApplyReasoningEffortPolicy(body []byte, maxEffort string, mappings []Reason
 	deny := hasMax && NormalizeMaxReasoningEffortOverLimit(overLimit) == ReasoningEffortOverLimitDeny
 	canonicalMax := NormalizeMaxReasoningEffort(maxEffort)
 
-	requestModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	result := body
 	changed := false
 	for _, path := range []string{"reasoning.effort", "reasoning_effort", "output_config.effort"} {
@@ -594,7 +645,11 @@ func ApplyReasoningEffortPolicy(body []byte, maxEffort string, mappings []Reason
 			effective = NormalizeMaxReasoningEffort(effective)
 			if hasMax && currentRank > maxRank {
 				if deny {
-					return body, false, &ReasoningEffortOverLimitError{Requested: effective, Max: canonicalMax}
+					inbound := original
+					if requested != nil {
+						inbound = *requested
+					}
+					return body, false, &ReasoningEffortOverLimitError{Requested: inbound, Max: canonicalMax}
 				}
 				effective = canonicalMax
 			}

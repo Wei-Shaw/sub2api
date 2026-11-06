@@ -97,7 +97,7 @@ func TestForwardAsAnthropic_ConvertedPolicyFinalModelCapabilities(t *testing.T) 
 			{name: "mapped GPT61 valid", platform: PlatformKimi, model: "gpt-6.1-sol", effort: "high", to: "low", wantEffort: "low"},
 			{name: "other final model allows none", platform: PlatformKimi, model: "gpt-5.5", effort: "high", to: "none", wantEffort: "none"},
 			{name: "GLM53 low cap", platform: PlatformZhipu, model: "glm-5.3", effort: "high", maxEffort: "low", wantEffort: "low"},
-			{name: "GLM53 medium cap rejected", platform: PlatformZhipu, model: "glm-5.3", effort: "high", maxEffort: "medium", wantStatus: http.StatusForbidden},
+			{name: "GLM53 medium cap selects low", platform: PlatformZhipu, model: "glm-5.3", effort: "high", maxEffort: "medium", wantEffort: "low"},
 			{name: "GLM older low cap rejected", platform: PlatformZhipu, model: "glm-4.7", effort: "high", maxEffort: "low", wantStatus: http.StatusForbidden},
 			{name: "GLM deny before native normalization", platform: PlatformZhipu, model: "glm-4.7", effort: "low", to: ReasoningEffortMappingDeny, wantStatus: http.StatusForbidden},
 			{name: "GLM native max", platform: PlatformZhipu, model: "glm-5.3", effort: "high", to: "xhigh", wantEffort: "max"},
@@ -209,11 +209,36 @@ func TestForwardAsAnthropic_CNResponsesContinuationReasoningPolicyOnce(t *testin
 	}
 }
 
-func forwardConvertedMessagesPolicy(t *testing.T, ctx context.Context, platform, protocol, model, effort string, stream bool) (*OpenAIForwardResult, *httpUpstreamRecorder, *httptest.ResponseRecorder) {
+func TestCNGLMMessagesDisabledThinkingCeiling(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, protocol := range []string{APIProtocolChatCompletions, APIProtocolResponses} {
+		for _, model := range []string{"glm-4.6", "glm-5.3"} {
+			for _, stream := range []bool{false, true} {
+				for _, ceiling := range []string{"", "high"} {
+					t.Run(fmt.Sprintf("%s/%s/stream=%v/ceiling=%s", protocol, model, stream, ceiling), func(t *testing.T) {
+						ctx := WithOpenAIReasoningEffortPolicy(context.Background(), ceiling, []ReasoningEffortMapping{{From: "high", To: "high"}}, "")
+						platform := PlatformZhipu
+						if protocol == APIProtocolResponses {
+							platform = PlatformKimi
+						}
+						result, upstream, recorder := forwardConvertedMessagesPolicy(t, ctx, platform, protocol, model, "high", stream, "disabled")
+						require.Equal(t, http.StatusOK, recorder.Code)
+						assertConvertedMessagesPolicyForward(t, result, upstream, protocol, model, "none")
+					})
+				}
+			}
+		}
+	}
+}
+
+func forwardConvertedMessagesPolicy(t *testing.T, ctx context.Context, platform, protocol, model, effort string, stream bool, thinking ...string) (*OpenAIForwardResult, *httpUpstreamRecorder, *httptest.ResponseRecorder) {
 	t.Helper()
 	effortJSON := ""
 	if effort != "" {
 		effortJSON = fmt.Sprintf(`,"output_config":{"effort":%q}`, effort)
+	}
+	if len(thinking) > 0 {
+		effortJSON += fmt.Sprintf(`,"thinking":{"type":%q}`, thinking[0])
 	}
 	body := []byte(fmt.Sprintf(`{"model":"public-alias","max_tokens":32,"messages":[{"role":"user","content":"hi"}],"stream":%v%s}`, stream, effortJSON))
 	account := rawChatCompletionsTestAccount()

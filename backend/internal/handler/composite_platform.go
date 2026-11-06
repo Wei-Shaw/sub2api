@@ -139,18 +139,18 @@ func applyOpenAIReasoningEffortPolicyForRequest(c *gin.Context, apiKey *service.
 	if !ok {
 		return body, false, nil
 	}
+	if c != nil && c.Request != nil {
+		model := clientRequestedModel(c, gjson.GetBytes(body, "model").String())
+		ctx := service.WithOpenAIReasoningEffortPolicyForModel(c.Request.Context(), maxEffort, mappings, overLimit, model)
+		updated, changed, err := service.ApplyOpenAIReasoningEffortPolicyFromContext(ctx, body)
+		c.Request = c.Request.WithContext(service.WithOpenAIReasoningEffortPolicyForModel(ctx, maxEffort, nil, overLimit, model))
+		return updated, changed, err
+	}
 	return service.ApplyOpenAIReasoningEffortPolicy(body, maxEffort, mappings, overLimit)
 }
 
 func applyOpenAIChatCompletionsReasoningEffortPolicyForRequest(c *gin.Context, apiKey *service.APIKey, body []byte) ([]byte, bool, error) {
-	updated, changed, err := applyOpenAIReasoningEffortPolicyForRequest(c, apiKey, body)
-	if err != nil || c == nil || c.Request == nil {
-		return updated, changed, err
-	}
-	if maxEffort, _, overLimit, ok := openAIReasoningEffortPolicyForRequest(c, apiKey); ok {
-		c.Request = c.Request.WithContext(service.WithOpenAIReasoningEffortPolicy(c.Request.Context(), maxEffort, nil, overLimit))
-	}
-	return updated, changed, nil
+	return applyOpenAIReasoningEffortPolicyForRequest(c, apiKey, body)
 }
 
 func respondOpenAIReasoningEffortPolicyError(c *gin.Context, err error, write func(*gin.Context, int, string, string)) {
@@ -186,7 +186,8 @@ func bindOpenAIReasoningEffortPolicyForMessagesRequest(c *gin.Context, apiKey *s
 		return
 	}
 	if service.IsCNProvider(effectiveAPIKeyPlatform(c, apiKey)) {
-		maxEffort, mappings = anthropicCompatibleReasoningEffortPolicy(maxEffort, mappings)
+		_, mappings = anthropicCompatibleReasoningEffortPolicy(maxEffort, mappings)
 	}
-	c.Request = c.Request.WithContext(service.WithOpenAIReasoningEffortPolicy(c.Request.Context(), maxEffort, mappings, overLimit))
+	model := clientRequestedModel(c, gjson.GetBytes(body, "model").String())
+	c.Request = c.Request.WithContext(service.WithOpenAIReasoningEffortPolicyForModel(c.Request.Context(), maxEffort, mappings, overLimit, model))
 }
