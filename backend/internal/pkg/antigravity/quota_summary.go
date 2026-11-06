@@ -36,7 +36,7 @@ func (c *Client) FetchQuotaSummary(ctx context.Context, token, project string) (
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("quota summary HTTP %d", resp.StatusCode)
 	}

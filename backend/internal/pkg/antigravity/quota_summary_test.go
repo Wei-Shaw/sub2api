@@ -16,12 +16,18 @@ func TestFetchQuotaSummaryAccountIsolation(t *testing.T) {
 			t.Error("invalid quota request")
 		}
 		var body FetchAvailableModelsRequest
-		json.NewDecoder(r.Body).Decode(&body)
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Errorf("decode quota request: %v", err)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
 		if body.Project != "account-project" {
 			t.Error("wrong project")
 		}
 		if r.Header.Get("Authorization") == "Bearer account-a" {
-			w.Write([]byte(`{"groups":[{"displayName":"Gemini","buckets":[{"bucketId":"gemini-weekly","window":"weekly","remainingFraction":0.7}]}]}`))
+			if _, err := w.Write([]byte(`{"groups":[{"displayName":"Gemini","buckets":[{"bucketId":"gemini-weekly","window":"weekly","remainingFraction":0.7}]}]}`)); err != nil {
+				t.Errorf("write quota response: %v", err)
+			}
 		} else {
 			w.WriteHeader(429)
 		}
