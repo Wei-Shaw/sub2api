@@ -98,12 +98,12 @@ func TestBuildUsageInfo_BasicModels(t *testing.T) {
 
 	sonnetQuota := info.AntigravityQuota["claude-sonnet-4-20250514"]
 	require.NotNil(t, sonnetQuota)
-	require.Equal(t, 25, sonnetQuota.Utilization) // (1 - 0.75) * 100 = 25
+	require.Equal(t, 25.0, sonnetQuota.Utilization) // (1 - 0.75) * 100 = 25
 	require.Equal(t, "2026-03-08T12:00:00Z", sonnetQuota.ResetTime)
 
 	geminiQuota := info.AntigravityQuota["gemini-2.5-pro"]
 	require.NotNil(t, geminiQuota)
-	require.Equal(t, 50, geminiQuota.Utilization) // (1 - 0.50) * 100 = 50
+	require.Equal(t, 50.0, geminiQuota.Utilization) // (1 - 0.50) * 100 = 50
 	require.Equal(t, "2026-03-08T15:00:00Z", geminiQuota.ResetTime)
 
 	// AntigravityQuotaDetails
@@ -183,7 +183,7 @@ func TestBuildUsageInfo_EmptyModels(t *testing.T) {
 	require.Empty(t, info.AntigravityQuota)
 	require.NotNil(t, info.AntigravityQuotaDetails)
 	require.Empty(t, info.AntigravityQuotaDetails)
-	require.Nil(t, info.FiveHour, "FiveHour should be nil when no priority model exists")
+	require.Nil(t, info.FiveHour, "Model quotas do not identify a five-hour window")
 }
 
 func TestBuildUsageInfo_ModelWithNilQuotaInfo(t *testing.T) {
@@ -205,130 +205,6 @@ func TestBuildUsageInfo_ModelWithNilQuotaInfo(t *testing.T) {
 	require.Empty(t, info.AntigravityQuotaDetails, "models with nil QuotaInfo should be skipped from details too")
 }
 
-func TestBuildUsageInfo_FiveHourPriorityOrder(t *testing.T) {
-	fetcher := &AntigravityQuotaFetcher{}
-
-	// priorityModels = ["claude-sonnet-4-20250514", "claude-sonnet-4", "gemini-2.5-pro"]
-	// When the first priority model exists, it should be used for FiveHour
-	modelsResp := &antigravity.FetchAvailableModelsResponse{
-		Models: map[string]antigravity.ModelInfo{
-			"gemini-2.5-pro": {
-				QuotaInfo: &antigravity.ModelQuotaInfo{
-					RemainingFraction: 0.40,
-					ResetTime:         "2026-03-08T18:00:00Z",
-				},
-			},
-			"claude-sonnet-4-20250514": {
-				QuotaInfo: &antigravity.ModelQuotaInfo{
-					RemainingFraction: 0.80,
-					ResetTime:         "2026-03-08T12:00:00Z",
-				},
-			},
-		},
-	}
-
-	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
-
-	require.NotNil(t, info.FiveHour, "FiveHour should be set when a priority model exists")
-	// claude-sonnet-4-20250514 is first in priority list, so it should be used
-	expectedUtilization := (1.0 - 0.80) * 100 // 20
-	require.InDelta(t, expectedUtilization, info.FiveHour.Utilization, 0.01)
-	require.NotNil(t, info.FiveHour.ResetsAt, "ResetsAt should be parsed from ResetTime")
-}
-
-func TestBuildUsageInfo_FiveHourFallbackToClaude4(t *testing.T) {
-	fetcher := &AntigravityQuotaFetcher{}
-
-	// Only claude-sonnet-4 exists (second in priority list), not claude-sonnet-4-20250514
-	modelsResp := &antigravity.FetchAvailableModelsResponse{
-		Models: map[string]antigravity.ModelInfo{
-			"claude-sonnet-4": {
-				QuotaInfo: &antigravity.ModelQuotaInfo{
-					RemainingFraction: 0.60,
-					ResetTime:         "2026-03-08T14:00:00Z",
-				},
-			},
-			"gemini-2.5-pro": {
-				QuotaInfo: &antigravity.ModelQuotaInfo{
-					RemainingFraction: 0.30,
-				},
-			},
-		},
-	}
-
-	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
-
-	require.NotNil(t, info.FiveHour)
-	expectedUtilization := (1.0 - 0.60) * 100 // 40
-	require.InDelta(t, expectedUtilization, info.FiveHour.Utilization, 0.01)
-}
-
-func TestBuildUsageInfo_FiveHourFallbackToGemini(t *testing.T) {
-	fetcher := &AntigravityQuotaFetcher{}
-
-	// Only gemini-2.5-pro exists (third in priority list)
-	modelsResp := &antigravity.FetchAvailableModelsResponse{
-		Models: map[string]antigravity.ModelInfo{
-			"gemini-2.5-pro": {
-				QuotaInfo: &antigravity.ModelQuotaInfo{
-					RemainingFraction: 0.30,
-				},
-			},
-			"other-model": {
-				QuotaInfo: &antigravity.ModelQuotaInfo{
-					RemainingFraction: 0.90,
-				},
-			},
-		},
-	}
-
-	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
-
-	require.NotNil(t, info.FiveHour)
-	expectedUtilization := (1.0 - 0.30) * 100 // 70
-	require.InDelta(t, expectedUtilization, info.FiveHour.Utilization, 0.01)
-}
-
-func TestBuildUsageInfo_FiveHourNoPriorityModel(t *testing.T) {
-	fetcher := &AntigravityQuotaFetcher{}
-
-	// None of the priority models exist
-	modelsResp := &antigravity.FetchAvailableModelsResponse{
-		Models: map[string]antigravity.ModelInfo{
-			"some-other-model": {
-				QuotaInfo: &antigravity.ModelQuotaInfo{
-					RemainingFraction: 0.50,
-				},
-			},
-		},
-	}
-
-	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
-
-	require.Nil(t, info.FiveHour, "FiveHour should be nil when no priority model exists")
-}
-
-func TestBuildUsageInfo_FiveHourWithEmptyResetTime(t *testing.T) {
-	fetcher := &AntigravityQuotaFetcher{}
-
-	modelsResp := &antigravity.FetchAvailableModelsResponse{
-		Models: map[string]antigravity.ModelInfo{
-			"claude-sonnet-4-20250514": {
-				QuotaInfo: &antigravity.ModelQuotaInfo{
-					RemainingFraction: 0.50,
-					ResetTime:         "", // empty reset time
-				},
-			},
-		},
-	}
-
-	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
-
-	require.NotNil(t, info.FiveHour)
-	require.Nil(t, info.FiveHour.ResetsAt, "ResetsAt should be nil when ResetTime is empty")
-	require.Equal(t, 0, info.FiveHour.RemainingSeconds)
-}
-
 func TestBuildUsageInfo_FullUtilization(t *testing.T) {
 	fetcher := &AntigravityQuotaFetcher{}
 
@@ -347,7 +223,7 @@ func TestBuildUsageInfo_FullUtilization(t *testing.T) {
 
 	quota := info.AntigravityQuota["claude-sonnet-4-20250514"]
 	require.NotNil(t, quota)
-	require.Equal(t, 100, quota.Utilization)
+	require.Equal(t, 100.0, quota.Utilization)
 }
 
 func TestBuildUsageInfo_ZeroUtilization(t *testing.T) {
@@ -366,7 +242,7 @@ func TestBuildUsageInfo_ZeroUtilization(t *testing.T) {
 	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
 	quota := info.AntigravityQuota["claude-sonnet-4-20250514"]
 	require.NotNil(t, quota)
-	require.Equal(t, 0, quota.Utilization)
+	require.Equal(t, 0.0, quota.Utilization)
 }
 
 func TestBuildUsageInfo_AICredits(t *testing.T) {
@@ -422,7 +298,7 @@ func TestFetchQuotaUsesConfiguredModelsListBodyLimit(t *testing.T) {
 			"project_id":   "project",
 		},
 	}, "")
-	require.ErrorContains(t, err, "响应超过 8 字节")
+	require.ErrorContains(t, err, "quota summary response exceeds limit")
 }
 
 func TestFetchQuota_ForbiddenReturnsIsForbidden(t *testing.T) {
@@ -439,119 +315,4 @@ func TestFetchQuota_ForbiddenReturnsIsForbidden(t *testing.T) {
 	require.Equal(t, 403, target.StatusCode)
 	require.Equal(t, "Access denied", target.Body)
 	require.Contains(t, forbiddenErr.Error(), "403")
-}
-
-// ---------------------------------------------------------------------------
-// classifyForbiddenType
-// ---------------------------------------------------------------------------
-
-func TestClassifyForbiddenType(t *testing.T) {
-	tests := []struct {
-		name     string
-		body     string
-		expected string
-	}{
-		{
-			name:     "VALIDATION_REQUIRED keyword",
-			body:     `{"error":{"message":"VALIDATION_REQUIRED"}}`,
-			expected: "validation",
-		},
-		{
-			name:     "verify your account",
-			body:     `Please verify your account to continue`,
-			expected: "validation",
-		},
-		{
-			name:     "contains validation_url field",
-			body:     `{"error":{"details":[{"metadata":{"validation_url":"https://..."}}]}}`,
-			expected: "validation",
-		},
-		{
-			name:     "terms of service violation",
-			body:     `Your account has been suspended for Terms of Service violation`,
-			expected: "violation",
-		},
-		{
-			name:     "violation keyword",
-			body:     `Account suspended due to policy violation`,
-			expected: "violation",
-		},
-		{
-			name:     "generic 403",
-			body:     `Access denied`,
-			expected: "forbidden",
-		},
-		{
-			name:     "empty body",
-			body:     "",
-			expected: "forbidden",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := classifyForbiddenType(tt.body)
-			require.Equal(t, tt.expected, got)
-		})
-	}
-}
-
-// ---------------------------------------------------------------------------
-// extractValidationURL
-// ---------------------------------------------------------------------------
-
-func TestExtractValidationURL(t *testing.T) {
-	tests := []struct {
-		name     string
-		body     string
-		expected string
-	}{
-		{
-			name:     "structured validation_url",
-			body:     `{"error":{"details":[{"metadata":{"validation_url":"https://accounts.google.com/verify?token=abc"}}]}}`,
-			expected: "https://accounts.google.com/verify?token=abc",
-		},
-		{
-			name:     "structured appeal_url",
-			body:     `{"error":{"details":[{"metadata":{"appeal_url":"https://support.google.com/appeal/123"}}]}}`,
-			expected: "https://support.google.com/appeal/123",
-		},
-		{
-			name:     "validation_url takes priority over appeal_url",
-			body:     `{"error":{"details":[{"metadata":{"validation_url":"https://v.com","appeal_url":"https://a.com"}}]}}`,
-			expected: "https://v.com",
-		},
-		{
-			name:     "fallback regex with verify keyword",
-			body:     `Please verify your account at https://accounts.google.com/verify`,
-			expected: "https://accounts.google.com/verify",
-		},
-		{
-			name:     "no URL in generic forbidden",
-			body:     `Access denied`,
-			expected: "",
-		},
-		{
-			name:     "empty body",
-			body:     "",
-			expected: "",
-		},
-		{
-			name:     "URL present but no validation keywords",
-			body:     `Error at https://example.com/something`,
-			expected: "",
-		},
-		{
-			name:     "unicode escaped ampersand",
-			body:     `validation required: https://accounts.google.com/verify?a=1\u0026b=2`,
-			expected: "https://accounts.google.com/verify?a=1&b=2",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := extractValidationURL(tt.body)
-			require.Equal(t, tt.expected, got)
-		})
-	}
 }

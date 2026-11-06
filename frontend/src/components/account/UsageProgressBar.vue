@@ -49,7 +49,7 @@
       </div>
 
       <!-- Percentage -->
-      <span :class="['w-[32px] shrink-0 text-right text-[10px] font-medium', textClass]">
+      <span :class="[precise ? 'w-[42px]' : 'w-[32px]', 'shrink-0 text-right text-[10px] font-medium tabular-nums', textClass]">
         {{ displayPercent }}
       </span>
 
@@ -67,6 +67,7 @@ import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import type { WindowStats } from '@/types'
 import { formatCompactNumber } from '@/utils/format'
+import { formatQuotaPercent } from '@/utils/quotaPercent'
 
 const props = withDefaults(
   defineProps<{
@@ -78,6 +79,8 @@ const props = withDefaults(
     estimatedTotalCost?: number | null
     showNowWhenIdle?: boolean
     remainingCapacity?: boolean
+    /** Show small nonzero values without rounding them to 0% or 100%. */
+    precise?: boolean
     /** fixed: 定宽居中徽章（账号页纵向对齐）；auto: 限宽截断左对齐（监控页组合标签） */
     labelWidth?: 'fixed' | 'auto'
   }>(),
@@ -178,6 +181,7 @@ const barWidth = computed(() => {
 
 // Display percentage (cap at 999% for readability)
 const displayPercent = computed(() => {
+  if (props.precise) return formatQuotaPercent(props.utilization)
   const percent = Math.round(
     props.remainingCapacity
       ? Math.min(Math.max(props.utilization, 0), 100)

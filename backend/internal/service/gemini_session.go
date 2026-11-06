@@ -3,12 +3,15 @@ package service
 import (
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"strconv"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/cespare/xxhash/v2"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // shortHash 使用 XXHash64 + Base36 生成短 hash（16 字符）
@@ -96,17 +99,144 @@ func FormatGeminiSessionValue(uuid string, accountID int64) string {
 // geminiDigestSessionKeyPrefix Gemini 摘要 fallback 会话 key 前缀
 const geminiDigestSessionKeyPrefix = "gemini:digest:"
 
+// geminiAnchorSessionKeyPrefix Gemini 对话首轮锚点粘性会话 key 前缀（持久化于 Redis）
+const geminiAnchorSessionKeyPrefix = "gemini:anchor:"
+
 // GenerateGeminiDigestSessionKey 生成 Gemini 摘要 fallback 的 sessionKey
-// 组合 prefixHash 前 8 位 + uuid 前 8 位，确保不同会话产生不同的 sessionKey
+// 保留完整分区与会话标识，避免截短后不同 API Key / 会话碰撞。
 // 用于在 SelectAccountWithLoadAwareness 中保持粘性会话
 func GenerateGeminiDigestSessionKey(prefixHash, uuid string) string {
-	prefix := prefixHash
-	if len(prefixHash) >= 8 {
-		prefix = prefixHash[:8]
+	return geminiDigestSessionKeyPrefix + prefixHash + ":" + uuid
+}
+
+// BuildGeminiStickyAnchorKey 基于 prefixHash + systemInstruction + 首条 user 消息生成稳定锚点 sessionKey。
+// 成立条件：当客户端未改写/压缩首轮历史（systemInstruction 与首条 user 消息保持不变）且 prefixHash 输入维度一致时，
+// 同一多轮对话生成的锚点 key 保持稳定，可在进程内 DigestSessionStore 过期（>5m）或重启后从 Redis 恢复粘性账号。
+func BuildGeminiStickyAnchorKey(prefixHash string, req *antigravity.GeminiRequest) string {
+	if req == nil || len(req.Contents) == 0 {
+		return ""
 	}
-	uuidPart := uuid
-	if len(uuid) >= 8 {
-		uuidPart = uuid[:8]
+
+	var anchorParts []string
+	if req.SystemInstruction != nil && len(req.SystemInstruction.Parts) > 0 {
+		if sysData, err := json.Marshal(req.SystemInstruction.Parts); err == nil {
+			anchorParts = append(anchorParts, "s:"+shortHash(sysData))
+		}
 	}
-	return geminiDigestSessionKeyPrefix + prefix + ":" + uuidPart
+
+	firstUserFound := false
+	for _, c := range req.Contents {
+		role := strings.ToLower(strings.TrimSpace(c.Role))
+		if (role == "" || role == "user") && len(c.Parts) > 0 {
+			if userData, err := json.Marshal(c.Parts); err == nil {
+				anchorParts = append(anchorParts, "u:"+shortHash(userData))
+				firstUserFound = true
+				break
+			}
+		}
+	}
+	if !firstUserFound {
+		return ""
+	}
+
+	anchorDigest := shortHash([]byte(strings.Join(anchorParts, "|")))
+	return geminiAnchorSessionKeyPrefix + prefixHash + ":" + anchorDigest
+}
+
+// DeriveGeminiAnchorSessionUUID 从锚点 key 派生稳定的短 UUID，供恢复 DigestSessionKey 使用。
+func DeriveGeminiAnchorSessionUUID(anchorKey string) string {
+	if anchorKey == "" {
+		return ""
+	}
+	h := sha256.Sum256([]byte(anchorKey))
+	return base64.RawURLEncoding.EncodeToString(h[:12])
+}
+
+// EnsureGeminiRequestSessionIDBytes 确保发往 Antigravity v1internal 的 Gemini 请求携带稳定的 sessionId。
+// 有网关隔离标识时，使用经过 API Key、账号和分组隔离的会话值。
+// 没有隔离上下文的兼容调用保留 sessionId，或把 session_id 补入 sessionId。
+// 通过 sjson.SetBytes 修改字段，不重排其余 JSON 字段。
+func EnsureGeminiRequestSessionIDBytes(body []byte, identity ...string) []byte {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return body
+	}
+	var seedText string
+	if len(identity) > 0 {
+		seedText = identity[0]
+	}
+	if seedText != "" {
+		body = removeAmbiguousGeminiSessionFields(body)
+	}
+	if seedText == "" {
+		if strings.TrimSpace(gjson.GetBytes(body, "sessionId").String()) != "" {
+			return body
+		}
+		if alias := gjson.GetBytes(body, "session_id"); alias.Type == gjson.String && strings.TrimSpace(alias.String()) != "" {
+			updated, err := sjson.SetBytes(body, "sessionId", alias.String())
+			if err == nil {
+				return updated
+			}
+			return body
+		}
+		seedText = extractGeminiSessionSeedTextBytes(body)
+	}
+	if seedText == "" {
+		return body
+	}
+
+	h := sha256.Sum256([]byte(seedText))
+	n := int64(binary.BigEndian.Uint64(h[:8])) & 0x7FFFFFFFFFFFFFFF
+	updated, err := sjson.SetBytes(body, "sessionId", "-"+strconv.FormatInt(n, 10))
+	if err != nil {
+		return body
+	}
+	if len(identity) > 0 && identity[0] != "" {
+		// Protobuf accepts both spellings. Do not leave a caller-controlled
+		// alias alongside the isolated canonical field.
+		if canonical, err := sjson.DeleteBytes(updated, "session_id"); err == nil {
+			return canonical
+		}
+	}
+	return updated
+}
+
+func extractGeminiSessionSeedTextBytes(body []byte) string {
+	contents := gjson.GetBytes(body, "contents")
+	if contents.IsArray() {
+		var seed string
+		contents.ForEach(func(_, content gjson.Result) bool {
+			role := strings.ToLower(strings.TrimSpace(content.Get("role").String()))
+			if role != "" && role != "user" {
+				return true
+			}
+			parts := content.Get("parts")
+			if !parts.IsArray() {
+				return true
+			}
+			parts.ForEach(func(_, part gjson.Result) bool {
+				if text := strings.TrimSpace(part.Get("text").String()); text != "" {
+					seed = text
+					return false
+				}
+				return true
+			})
+			if seed != "" {
+				return false
+			}
+			if raw := strings.TrimSpace(parts.Raw); raw != "" && raw != "[]" {
+				seed = raw
+				return false
+			}
+			return true
+		})
+		if seed != "" {
+			return seed
+		}
+	}
+	if sysInst := gjson.GetBytes(body, "systemInstruction"); sysInst.Exists() {
+		if raw := strings.TrimSpace(sysInst.Raw); raw != "" && raw != "null" && raw != "{}" {
+			return raw
+		}
+	}
+	return ""
 }

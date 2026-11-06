@@ -15,6 +15,18 @@ FRONTEND_CRITICAL_VITEST := \
 	src/components/account/__tests__/EditAccountModal.spec.ts \
 	src/components/account/__tests__/credentialsBuilder.spec.ts \
 	src/components/account/__tests__/OpenCodeGoProtocolRulesEditor.spec.ts \
+	src/components/account/__tests__/AccountUsageCell.spec.ts \
+	src/components/account/__tests__/AccountUsageCell.antigravity.spec.ts \
+	src/components/account/__tests__/AccountUsageCell.antigravityModels.spec.ts \
+	src/components/account/__tests__/AccountUsageCell.openaiSnapshots.spec.ts \
+	src/components/account/__tests__/AccountUsageCell.openaiRefresh.spec.ts \
+	src/components/account/__tests__/AccountUsageCell.grokBilling.spec.ts \
+	src/components/account/__tests__/AccountUsageCell.grokFree.spec.ts \
+	src/components/account/__tests__/AccountUsageCell.gemini.spec.ts \
+	src/components/account/__tests__/AccountUsageCell.anthropic.spec.ts \
+	src/components/account/__tests__/AntigravityQuotaPanel.spec.ts \
+	src/components/account/__tests__/UsageProgressBar.spec.ts \
+	src/components/common/__tests__/PlatformTypeBadge.antigravity.spec.ts \
 	src/components/keys/__tests__/BulkEditKeysModal.spec.ts \
 	src/components/admin/user/__tests__/UserPlatformQuotaModal.spec.ts \
 	src/views/user/__tests__/KeysView.spec.ts \

@@ -9,6 +9,10 @@ import (
 // digestSessionTTL 摘要会话默认 TTL
 const digestSessionTTL = 5 * time.Minute
 
+// Oversized digest chains use the independent fixed-size Redis anchor instead.
+// The shared sessionMemoryCache also bounds entry count and retained bytes.
+const maxDigestSessionKeyBytes = 8192
+
 // sessionEntry flat cache 条目
 type sessionEntry struct {
 	uuid      string
@@ -42,7 +46,7 @@ func (s *DigestSessionStore) Close() { s.cache.Close() }
 
 // Save 保存摘要会话。oldDigestChain 为 Find 返回的 matchedChain，用于删旧 key。
 func (s *DigestSessionStore) Save(groupID int64, prefixHash, digestChain, uuid string, accountID int64, oldDigestChain string) {
-	if digestChain == "" {
+	if digestChain == "" || len(prefixHash)+len(digestChain)+22 > maxDigestSessionKeyBytes {
 		return
 	}
 	ns := buildNS(groupID, prefixHash)
@@ -58,7 +62,7 @@ func (s *DigestSessionStore) Save(groupID int64, prefixHash, digestChain, uuid s
 
 // Find 查找摘要会话，在消息边界上返回最长匹配及对应 matchedChain。
 func (s *DigestSessionStore) Find(groupID int64, prefixHash, digestChain string) (uuid string, accountID int64, matchedChain string, found bool) {
-	if digestChain == "" {
+	if digestChain == "" || len(prefixHash)+len(digestChain)+22 > maxDigestSessionKeyBytes {
 		return "", 0, "", false
 	}
 	ns := buildNS(groupID, prefixHash)

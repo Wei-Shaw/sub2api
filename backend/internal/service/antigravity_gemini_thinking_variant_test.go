@@ -77,8 +77,8 @@ func TestResolveGeminiThinkingVariant(t *testing.T) {
 		{"only -high exists: low request degrades to high", map[string]string{
 			"gemini-3.5-flash-high": "gemini-3.5-flash-high",
 		}, "gemini-3.5-flash", budget("1000"), "gemini-3.5-flash-high", true},
-		// gemini-3.6/3.7/3.8-flash 的四个变体会被 resolveModelMapping 自动补齐（存量显式映射账号的兼容透传）。
-		{"injected default variants are usable", catalog, "gemini-3.6-flash", budget("1000"), "gemini-3.6-flash-low", true},
+		// 只从管理员允许的变体中选择，不能补入未配置的 low。
+		{"only configured variants are usable", catalog, "gemini-3.6-flash", budget("1000"), "gemini-3.6-flash-high", true},
 		{"already suffixed: untouched", catalog, "gemini-3.8-flash-low", budget("-1"), "", false},
 		{"bare name explicitly mapped: untouched", catalog, "gemini-2.5-flash", budget("-1"), "", false},
 		{"no variants in mapping: untouched", catalog, "gemini-9.9-flash", budget("-1"), "", false},
@@ -90,11 +90,11 @@ func TestResolveGeminiThinkingVariant(t *testing.T) {
 		{"variant value is itself a mapping target", map[string]string{
 			"gemini-3.8-flash-high": "gemini-3.8-flash-tiered",
 		}, "gemini-3.8-flash", budget("-1"), "gemini-3.8-flash-tiered", true},
-		// 前端持久化的默认目录含裸名自映射；-low 由默认透传补齐，按预算命中。
+		// 裸名自映射也只能选择显式配置的变体。
 		{"persisted default bare identity passthrough still resolves when variants exist", map[string]string{
 			"gemini-3.8-flash":      "gemini-3.8-flash",
 			"gemini-3.8-flash-high": "gemini-3.8-flash-high",
-		}, "gemini-3.8-flash", budget("1000"), "gemini-3.8-flash-low", true},
+		}, "gemini-3.8-flash", budget("1000"), "gemini-3.8-flash-high", true},
 		{"bare identity passthrough resolves a configured variant outside the default passthroughs", map[string]string{
 			"gemini-3.5-flash":      "gemini-3.5-flash",
 			"gemini-3.5-flash-high": "gemini-3.5-flash-high",

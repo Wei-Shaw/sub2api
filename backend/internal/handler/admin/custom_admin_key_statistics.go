@@ -184,6 +184,9 @@ func scopedUsageDTO(u *service.UsageInfo, p adminaccess.Policy, a *service.Accou
 		"gemini_flash_minute":       window(u.GeminiFlashMinute),
 		"thirty_day":                window(u.ThirtyDay),
 		"antigravity_quota":         u.AntigravityQuota,
+		"antigravity_quota_source":  u.AntigravityQuotaSource,
+		"antigravity_quota_error":   u.AntigravityQuotaError,
+		"antigravity_quota_stale":   u.AntigravityQuotaStale,
 		"antigravity_quota_details": u.AntigravityQuotaDetails,
 		"ai_credits":                u.AICredits,
 		"grok_request_quota":        u.GrokRequestQuota,
@@ -199,6 +202,14 @@ func scopedUsageDTO(u *service.UsageInfo, p adminaccess.Policy, a *service.Accou
 	if p.AllowsAccount("accounts.identity.read", scopedAccountResource(a)) {
 		out["subscription_tier"] = u.SubscriptionTier
 		out["subscription_tier_raw"] = u.SubscriptionTierRaw
+		out["antigravity_quota_groups"] = u.AntigravityQuotaGroups
+	} else {
+		groups := make([]service.AntigravityQuotaGroup, len(u.AntigravityQuotaGroups))
+		for i, group := range u.AntigravityQuotaGroups {
+			groups[i] = group
+			groups[i].Description = ""
+		}
+		out["antigravity_quota_groups"] = groups
 	}
 
 	if u.GrokBilling != nil {

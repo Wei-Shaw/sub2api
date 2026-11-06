@@ -13,6 +13,17 @@ vi.mock('vue-i18n', async () => {
 })
 
 describe('UsageProgressBar', () => {
+  it.each([
+    [0, '0%'], [0.00411, '<0.1%'], [0.327146, '0.3%'],
+    [75.855896, '75.9%'], [99.999, '>99.9%'], [100, '100%']
+  ])('preserves small quota balances with precise display: %s', (utilization, expected) => {
+    const wrapper = mount(UsageProgressBar, {
+      props: { label: '5h', utilization, precise: true, color: 'indigo' }
+    })
+    expect(wrapper.text()).toContain(expected)
+    wrapper.unmount()
+  })
+
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-03-17T00:00:00Z'))

@@ -82,6 +82,30 @@ func TestScopedAdminUsageProjectionKeepsPlatformQuotaAndHidesCosts(t *testing.T)
 	require.NotNil(t, u.FiveHour.WindowStats, "裁剪不能更改共享缓存")
 }
 
+func TestScopedAdminUsageProjectionKeepsAntigravityPools(t *testing.T) {
+	a := &service.Account{ID: 1, Platform: "antigravity", Type: "oauth", GroupIDs: []int64{1}}
+	usage := &service.UsageInfo{
+		AntigravityQuotaSource: "summary", AntigravityQuotaStale: true,
+		AntigravityQuotaError: "quota_summary_unavailable",
+		AntigravityQuotaGroups: []service.AntigravityQuotaGroup{{
+			Name: "Gemini 4 Argon", Description: "IDENTITY_SECRET",
+			Buckets: []service.AntigravityQuotaBucket{{ID: "argon", Window: "weekly"}},
+		}},
+		SevenDay: &service.UsageProgress{WindowStats: &service.WindowStats{Cost: 123}},
+	}
+	out := scopedUsageDTO(usage, statisticsPolicy("accounts.usage.read"), a)
+	groups := out["antigravity_quota_groups"].([]service.AntigravityQuotaGroup)
+	require.Len(t, groups, 1)
+	require.Equal(t, "Gemini 4 Argon", groups[0].Name)
+	require.Equal(t, "weekly", groups[0].Buckets[0].Window)
+	require.Empty(t, groups[0].Description)
+	require.Equal(t, "summary", out["antigravity_quota_source"])
+	require.Equal(t, true, out["antigravity_quota_stale"])
+	require.Nil(t, out["seven_day"].(*service.UsageProgress).WindowStats)
+	require.Equal(t, "IDENTITY_SECRET", usage.AntigravityQuotaGroups[0].Description)
+	require.NotNil(t, usage.SevenDay.WindowStats)
+}
+
 func TestScopedAdminOpenAIQuotaActionsAndIdentity(t *testing.T) {
 	for _, tc := range []struct {
 		action, path, method string

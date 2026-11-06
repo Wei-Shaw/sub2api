@@ -3,7 +3,6 @@ package service
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"log"
@@ -145,6 +144,12 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 	}
 
 	injectedBody = ensureGeminiFunctionCallThoughtSignatures(injectedBody)
+	if forwardOpts.sessionHash != "" {
+		identity := fmt.Sprintf("%d:%d:%s", forwardOpts.groupID, account.ID, forwardOpts.sessionHash)
+		injectedBody = EnsureGeminiRequestSessionIDBytes(injectedBody, identity)
+	} else {
+		injectedBody = EnsureGeminiRequestSessionIDBytes(injectedBody)
+	}
 
 	// 包装请求
 	wrappedBody, err := s.wrapV1InternalRequest(projectID, mappedModel, injectedBody)
@@ -207,7 +212,12 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 		if s.settingService != nil && s.settingService.IsModelFallbackEnabled(ctx) &&
 			isModelNotFoundError(resp.StatusCode, respBody) {
 			fallbackModel := s.settingService.GetFallbackModel(ctx, PlatformAntigravity)
+			// A global fallback must satisfy this account's model allowlist too.
+			fallbackModel = s.getMappedModelForThinkingLevel(account, fallbackModel, geminiThinkingLevelFromBody(body))
 			if fallbackModel != "" && fallbackModel != mappedModel {
+				if geminiImageGenerationDenied(c, body, originalModel, fallbackModel) {
+					return nil, s.writeGoogleError(c, http.StatusBadRequest, ImageGenerationPermissionMessage())
+				}
 				logger.LegacyPrintf("service.antigravity_gateway", "[Antigravity] Model not found (%s), retrying with fallback model %s (account: %s)", mappedModel, fallbackModel, account.Name)
 
 				fallbackWrapped, err := s.wrapV1InternalRequest(projectID, fallbackModel, injectedBody)
@@ -234,8 +244,7 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 			signatureCheckBody = unwrapped
 		}
 		if resp.StatusCode == http.StatusBadRequest &&
-			s.settingService != nil &&
-			s.settingService.IsSignatureRectifierEnabled(ctx) &&
+			(s.settingService == nil || s.settingService.IsSignatureRectifierEnabled(ctx)) &&
 			isSignatureRelatedError(signatureCheckBody) &&
 			bytes.Contains(injectedBody, []byte(`"thoughtSignature"`)) {
 			upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractAntigravityErrorMessage(signatureCheckBody)))
@@ -452,7 +461,7 @@ handleSuccess:
 
 	// 判断是否为图片生成模型
 	imageCount := 0
-	if isImageGenerationModel(mappedModel) {
+	if isImageGenerationModel(forwardedModel) {
 		// Gemini 图片生成 API 每次请求只生成一张图片（API 限制）
 		imageCount = 1
 	}
@@ -475,108 +484,4 @@ handleSuccess:
 		ImageSize:                     imageSize,
 		ImageInputSize:                imageInputSize,
 	}, nil
-}
-
-// cleanGeminiRequest 清理 Gemini 请求体中的 Schema
-func cleanGeminiRequest(body []byte) ([]byte, error) {
-	var payload map[string]any
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, err
-	}
-
-	modified := false
-
-	// 1. 清理 Tools
-	if tools, ok := payload["tools"].([]any); ok && len(tools) > 0 {
-		for _, t := range tools {
-			toolMap, ok := t.(map[string]any)
-			if !ok {
-				continue
-			}
-
-			// function_declarations (snake_case) or functionDeclarations (camelCase)
-			var funcs []any
-			if f, ok := toolMap["functionDeclarations"].([]any); ok {
-				funcs = f
-			} else if f, ok := toolMap["function_declarations"].([]any); ok {
-				funcs = f
-			}
-
-			if len(funcs) == 0 {
-				continue
-			}
-
-			for _, f := range funcs {
-				funcMap, ok := f.(map[string]any)
-				if !ok {
-					continue
-				}
-
-				if params, ok := funcMap["parameters"].(map[string]any); ok {
-					antigravity.DeepCleanUndefined(params)
-					cleaned := antigravity.CleanJSONSchema(params)
-					funcMap["parameters"] = cleaned
-					modified = true
-				}
-			}
-		}
-	}
-
-	if !modified {
-		return body, nil
-	}
-
-	return json.Marshal(payload)
-}
-
-// filterEmptyPartsFromGeminiRequest 过滤掉 parts 为空的消息
-// Gemini API 不接受空 parts，需要在请求前过滤
-func filterEmptyPartsFromGeminiRequest(body []byte) ([]byte, error) {
-	var payload map[string]any
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, err
-	}
-
-	contents, ok := payload["contents"].([]any)
-	if !ok || len(contents) == 0 {
-		return body, nil
-	}
-
-	filtered := make([]any, 0, len(contents))
-	modified := false
-
-	for _, c := range contents {
-		contentMap, ok := c.(map[string]any)
-		if !ok {
-			filtered = append(filtered, c)
-			continue
-		}
-
-		parts, hasParts := contentMap["parts"]
-		if !hasParts {
-			filtered = append(filtered, c)
-			continue
-		}
-
-		partsSlice, ok := parts.([]any)
-		if !ok {
-			filtered = append(filtered, c)
-			continue
-		}
-
-		// 跳过 parts 为空数组的消息
-		if len(partsSlice) == 0 {
-			modified = true
-			continue
-		}
-
-		filtered = append(filtered, c)
-	}
-
-	if !modified {
-		return body, nil
-	}
-
-	payload["contents"] = filtered
-	return json.Marshal(payload)
 }
