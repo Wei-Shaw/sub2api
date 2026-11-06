@@ -580,7 +580,7 @@ type ChatCompletionsToAnthropicStreamState struct {
 	toolAnnounced     map[int]bool
 	toolName          map[int]string
 	pendingToolCallID map[int]string
-	pendingToolArgs   map[int]string
+	pendingToolArgs   map[int]*strings.Builder
 
 	// Reasoning (DeepSeek-style): reasoning_content streamed before content.
 	// No separate reasoning block index — it uses ContentBlockIndex like the
@@ -609,7 +609,7 @@ func NewChatCompletionsToAnthropicStreamState(model string) *ChatCompletionsToAn
 		toolAnnounced:     make(map[int]bool),
 		toolName:          make(map[int]string),
 		pendingToolCallID: make(map[int]string),
-		pendingToolArgs:   make(map[int]string),
+		pendingToolArgs:   make(map[int]*strings.Builder),
 	}
 }
 
@@ -846,7 +846,12 @@ func handleCCAnthropicToolCall(state *ChatCompletionsToAnthropicStreamState, too
 				},
 			})
 		} else {
-			state.pendingToolArgs[idx] += toolCall.Function.Arguments
+			buffer := state.pendingToolArgs[idx]
+			if buffer == nil {
+				buffer = &strings.Builder{}
+				state.pendingToolArgs[idx] = buffer
+			}
+			_, _ = buffer.WriteString(toolCall.Function.Arguments)
 		}
 	}
 
@@ -877,7 +882,8 @@ func announceCCAnthropicToolBlock(state *ChatCompletionsToAnthropicStreamState, 
 			Input: json.RawMessage("{}"),
 		},
 	}}
-	if pending := state.pendingToolArgs[idx]; pending != "" {
+	if buffer := state.pendingToolArgs[idx]; buffer != nil && buffer.Len() > 0 {
+		pending := buffer.String()
 		delete(state.pendingToolArgs, idx)
 		state.CurrentToolHadDelta = true
 		events = append(events, AnthropicStreamEvent{

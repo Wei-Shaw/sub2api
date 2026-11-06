@@ -34,11 +34,11 @@
 <details open>
 <summary>クリックで折りたたむ</summary>
 
-<p align="center"><a href="https://wandapi.ai/r/sub2api"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/banners/wandapi-en-dark.svg"><img src="assets/partners/banners/wandapi-en.svg" alt="WandAPI" width="100%"></picture></a></p>
+<p align="center"><a href="https://wandapi.com/go/sub2api"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/banners/wandapi-en-dark.svg"><img src="assets/partners/banners/wandapi-en.svg" alt="WandAPI" width="100%"></picture></a></p>
 
-**[WandAPI](https://wandapi.ai/r/sub2api)** — 本プロジェクトのコアコントリビューターが手がける、エンタープライズグレードで安定した AI モデル API ゲートウェイ。1 つの API キーで Claude、GPT、Gemini などの主要モデルを利用でき、OpenAI と Anthropic のプロトコルにネイティブ対応しているため、Claude Code、Codex や既存の SDK も Base URL を変更するだけで接続できます。レイテンシと上流の稼働状況に応じたリアルタイムルーティングとミリ秒単位の自動フェイルオーバーでリクエストを途切れさせず、99.99% のサービス可用性を実現します。従量課金で、リクエストごとの token 数と費用の内訳を確認できます。
+**[WandAPI](https://wandapi.com/go/sub2api)** — 本プロジェクトのコアコントリビューターが手がける、エンタープライズグレードで安定した AI モデル API ゲートウェイ。1 つの API キーで Claude、GPT、Gemini などの主要モデルを利用でき、OpenAI と Anthropic のプロトコルにネイティブ対応しているため、Claude Code、Codex や既存の SDK も Base URL を変更するだけで接続できます。レイテンシと上流の稼働状況に応じたリアルタイムルーティングとミリ秒単位の自動フェイルオーバーでリクエストを途切れさせず、99.99% のサービス可用性を実現します。従量課金で、リクエストごとの token 数と費用の内訳を確認できます。
 
-**無料トライアルクレジット**：[専用リンク](https://wandapi.ai/r/sub2api)から登録すると、無料トライアルクレジットを受け取れます。
+**無料トライアルクレジット**：[専用リンク](https://wandapi.com/go/sub2api)から登録すると、無料トライアルクレジットを受け取れます。
 
 ---
 
@@ -65,8 +65,8 @@
 </tr>
 
 <tr>
-<td width="180"><a href="https://api.aigocode.dev/invite/SUB2API"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></a></td>
-<td>AIGoCode のご支援に感謝します！AIGoCode は Claude Code、Codex、最新の Gemini モデルを統合したオールインワンプラットフォームで、安定的かつ効率的でコストパフォーマンスに優れた AI コーディングサービスを提供します。柔軟なサブスクリプションプラン、アカウント停止リスクゼロ、VPN 不要の直接アクセス、超高速レスポンスが特長です。AIGoCode は sub2api ユーザー向けに特別特典を用意しています：<a href="https://api.aigocode.dev/invite/SUB2API">こちらのリンク</a>から登録すると、初回チャージ時に 10% のボーナスクレジットを追加プレゼント！</td>
+<td width="180"><a href="https://api.aigocode.dev/invite/SUB2API"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/logos/aigocode-dark.png"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></picture></a></td>
+<td>AIGoCode のご支援に感謝します！トークン従量課金だけではない、サブスクリプション型の AI コーディングプラットフォームです。1 つのアカウント・月額プランで Claude Code、Codex、Gemini を使い放題。中国本土から直接接続でき、レスポンスも高速です。<a href="https://api.aigocode.dev/invite/SUB2API">こちらのリンク</a>から購読すると、10% の追加クレジットをプレゼント！</td>
 </tr>
 
 <tr>
@@ -137,11 +137,6 @@
 <tr>
 <td width="180"><a href="https://www.swiftproxy.net/?ref=sub2api"><img src="assets/partners/logos/swiftprox.png" alt="Swiftproxy" width="150"></a></td>
 <td>Swiftproxy は開発者向けの高性能プロキシソリューションで、安定して信頼できるレジデンシャルおよび静的レジデンシャルプロキシサービスを提供します。9,000 万以上のクリーンな住宅 IP を保有し、グローバルカバレッジ、柔軟なローテーション、精密なジオターゲティングにより、Web スクレイピング、AI オートメーション、ブラウザ自動化、SEO モニタリング、マルチアカウント管理などのプロジェクトがアクセス制限を克服し、ワークフロー効率を向上させます。HTTP(S) および SOCKS5 プロトコルに対応し、Playwright、Selenium、Puppeteer などの主要な自動化ツールと統合可能。動的プロキシトラフィックは使い切るまで期限切れなし、無料テストも利用可能 — <a href="https://www.swiftproxy.net/?ref=sub2api">今すぐ無料テストを開始</a>！</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://go.apimart.ai/gh-sub2api"><img src="assets/partners/logos/apimart.jpg" alt="APIMart" width="150"></a></td>
-<td>APIMart のご支援に感謝します！<a href="https://go.apimart.ai/gh-sub2api">APIMart</a> は AI 画像・動画生成に特化した低価格 API プラットフォームです。GPT-Image-2 は 1 枚 $0.006 から、1 ドルで 160 枚以上の画像を生成できます。画像と動画の両方に対応する非同期 API を 1 つで利用でき、タスクを送信して ID を取得し、ポーリングまたはコールバックで結果を取得できます。数万枚規模のバッチ処理でもタイムアウトせず、モデルを変更してもコードの変更は不要です。月額料金なしの従量課金制で、<a href="https://go.apimart.ai/gh-sub2api">こちらの登録リンク</a>からすぐに利用を開始できます。</td>
 </tr>
 
 <tr>

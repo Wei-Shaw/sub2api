@@ -178,7 +178,7 @@ func TestNotifyAccountQuotaSkipsAccountWithoutLimit(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			settings := &settingGetValueCounter{}
-			notifyAccountQuota(&postUsageBillingParams{
+			notifyAccountQuota(context.Background(), &postUsageBillingParams{
 				Cost:                  &CostBreakdown{TotalCost: 2},
 				Account:               tt.account,
 				AccountRateMultiplier: 1,
@@ -193,7 +193,7 @@ func TestNotifyAccountQuotaSkipsAccountWithoutLimit(t *testing.T) {
 // 账号已删除时计数被跳过、无递增后状态，不应回退到快照做阈值判定。
 func TestNotifyAccountQuotaSkipsWhenQuotaIncrementSkipped(t *testing.T) {
 	settings := &settingGetValueCounter{}
-	notifyAccountQuota(&postUsageBillingParams{
+	notifyAccountQuota(context.Background(), &postUsageBillingParams{
 		Cost:                  &CostBreakdown{TotalCost: 2},
 		Account:               &Account{ID: 9, Platform: PlatformGemini, Type: AccountTypeServiceAccount, Extra: map[string]any{"quota_limit": 100.0}},
 		AccountRateMultiplier: 1,

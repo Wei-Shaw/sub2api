@@ -714,7 +714,7 @@ func (s *BillingCacheService) QueueUpdateAPIKeyRateLimitUsage(apiKeyID int64, co
 // 把 TOCTOU 超支窗口限制在并发 in-flight 请求数量内（而非随时间无限累积）。
 // 写延迟通常 < 1ms（本地 Redis），换取 quota 视图实时性的取舍合理。
 //
-// Redis 写失败用 ALERT 级 log；DB 持久化由 caller 单独 goroutine 兜底（gateway_service.go）。
+// Redis 写失败用 ALERT 级 log；DB 持久化由计费 worker 内同步执行或批量 flusher 处理。
 func (s *BillingCacheService) IncrementUserPlatformQuotaUsage(userID int64, platform string, cost float64) {
 	if s.cache == nil {
 		return
