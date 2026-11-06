@@ -1603,6 +1603,13 @@
           </div>
 
           <template v-else>
+            <ModelRestrictionEditor
+              v-model:allowed-models="allowedModels"
+              v-model:model-mappings="modelMappings"
+              :mode="modelRestrictionMode"
+              :key="form.platform"
+            >
+            <template #mode>
             <!-- Mode Toggle -->
             <div class="mb-4 flex gap-2">
               <button
@@ -1656,6 +1663,7 @@
                 {{ t('admin.accounts.modelMapping') }}
               </button>
             </div>
+            </template>
 
             <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
@@ -1778,6 +1786,7 @@
                 </button>
               </div>
             </div>
+            </ModelRestrictionEditor>
           </template>
         </div>
 
@@ -2159,6 +2168,13 @@
         <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
+          <ModelRestrictionEditor
+            v-model:allowed-models="allowedModels"
+            v-model:model-mappings="modelMappings"
+            :mode="modelRestrictionMode"
+            :key="form.platform"
+          >
+          <template #mode>
           <!-- Mode Toggle -->
           <div class="mb-4 flex gap-2">
             <button
@@ -2186,6 +2202,7 @@
               {{ t('admin.accounts.modelMapping') }}
             </button>
           </div>
+          </template>
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
@@ -2228,6 +2245,7 @@
               </button>
             </div>
           </div>
+          </ModelRestrictionEditor>
         </div>
 
         <!-- Pool Mode Section for Bedrock -->
@@ -2501,6 +2519,13 @@
         </div>
 
         <template v-else>
+          <ModelRestrictionEditor
+            v-model:allowed-models="allowedModels"
+            v-model:model-mappings="modelMappings"
+            :mode="modelRestrictionMode"
+            :key="form.platform"
+          >
+          <template #mode>
           <!-- Mode Toggle -->
           <div class="mb-4 flex gap-2">
             <button
@@ -2528,6 +2553,7 @@
               {{ t('admin.accounts.modelMapping') }}
             </button>
           </div>
+          </template>
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
@@ -2623,6 +2649,7 @@
               </button>
             </div>
           </div>
+          </ModelRestrictionEditor>
         </template>
       </div>
 
@@ -4160,6 +4187,7 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import ModelRestrictionEditor from '@/components/account/ModelRestrictionEditor.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'

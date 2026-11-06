@@ -266,6 +266,13 @@
           </div>
 
           <template v-else>
+            <ModelRestrictionEditor
+              v-model:allowed-models="allowedModels"
+              v-model:model-mappings="modelMappings"
+              :mode="modelRestrictionMode"
+              :disabled="!enableModelRestriction"
+            >
+            <template #mode>
             <!-- Mode Toggle -->
             <div class="mb-4 flex gap-2">
               <button
@@ -319,6 +326,7 @@
                 {{ t('admin.accounts.modelMapping') }}
               </button>
             </div>
+            </template>
 
             <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
@@ -459,6 +467,7 @@
                 </button>
               </div>
             </div>
+            </ModelRestrictionEditor>
           </template>
         </div>
       </div>
@@ -1493,6 +1502,7 @@ import Select from '@/components/common/Select.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import ModelRestrictionEditor from '@/components/account/ModelRestrictionEditor.vue'
 import Icon from '@/components/icons/Icon.vue'
 import {
   buildModelMappingObject as buildModelMappingPayload,
