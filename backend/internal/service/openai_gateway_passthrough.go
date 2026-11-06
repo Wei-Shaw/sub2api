@@ -1325,14 +1325,37 @@ func logOpenAICapacityFailoverSuppressed(
 // 客户端内置的退避重试。
 const openAICapacityShedRetryableClientCode = "server_error"
 
+// openAICapacityShedRetryDelayFieldNames 是容量降载事件转发给客户端前需要剥离的
+// 重试延时字段。OpenAI 上游在容量降载事件中常附带 error.headers.retry-after /
+// retry-after-ms（例如 326s），客户端（如 Codex CLI）一旦解析到这些字段就会用上游
+// 给出的数分钟等待覆盖客户端内置的毫秒级指数退避，导致客户端长时间挂起在
+// Reconnecting 状态。rate_limit_exceeded 不经过本函数，其配额重置时间不受影响。
+var openAICapacityShedRetryDelayFieldNames = []string{
+	"retry_after",
+	"retry_after_ms",
+	"resets_at",
+	"resets_in_seconds",
+}
+
+func isOpenAICapacityShedRetryAfterHeaderKey(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(key)) {
+	case "retry-after", "retry-after-ms", "retry_after", "retry_after_ms":
+		return true
+	default:
+		return false
+	}
+}
+
 // sanitizeOpenAICapacityShedErrorCodeForClient 把即将写给下游客户端的
-// error / response.failed 事件中的容量降载错误码改写为客户端可重试的错误码。
+// error / response.failed 事件中的容量降载错误码改写为客户端可重试的错误码，
+// 并剥离上游附带的 retry-after 重试延时字段。
 // 走到转发这一步说明网关侧 failover 已不可用（流中途）或已用尽；保留原始降载码
-// 只会让客户端就地终止会话。错误消息原样保留；监控与账号状态判定都基于改写前
+// 只会让客户端就地终止会话，而保留数分钟级的 retry-after 则会让客户端跳过内置的
+// 毫秒级退避、长时间卡在重连倒计时。错误消息原样保留；监控与账号状态判定都基于改写前
 // 的原始 payload，不受影响。rate_limit 等其他错误码一律不动（客户端依赖
 // rate_limit_exceeded 原码解析重试延时）。
 func sanitizeOpenAICapacityShedErrorCodeForClient(payload []byte) ([]byte, bool) {
-	if len(payload) == 0 || !gjson.ValidBytes(payload) || !isOpenAIUpstreamCapacityShedEvent(payload) {
+	if len(payload) == 0 || !bytes.Contains(payload, []byte(`"error"`)) || !gjson.ValidBytes(payload) || !isOpenAIUpstreamCapacityShedEvent(payload) {
 		return payload, false
 	}
 	updated := payload
@@ -1343,15 +1366,61 @@ func sanitizeOpenAICapacityShedErrorCodeForClient(payload []byte) ([]byte, bool)
 			continue
 		}
 		code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(updated, path).String()))
-		if code != "" && code != "server_is_overloaded" && code != "slow_down" {
+		if code != "" && code != "server_is_overloaded" && code != "slow_down" && code != openAICapacityShedRetryableClientCode {
 			continue
 		}
-		next, err := sjson.SetBytes(updated, path, openAICapacityShedRetryableClientCode)
-		if err != nil {
-			return payload, false
+		if code != openAICapacityShedRetryableClientCode {
+			next, err := sjson.SetBytes(updated, path, openAICapacityShedRetryableClientCode)
+			if err != nil {
+				return payload, false
+			}
+			updated = next
+			changed = true
 		}
-		updated = next
-		changed = true
+		headersPath := parent + ".headers"
+		if headersResult := gjson.GetBytes(updated, headersPath); headersResult.IsObject() {
+			var removeKeys []string
+			remainingKeys := 0
+			headersResult.ForEach(func(k, _ gjson.Result) bool {
+				key := k.String()
+				if isOpenAICapacityShedRetryAfterHeaderKey(key) {
+					removeKeys = append(removeKeys, key)
+				} else {
+					remainingKeys++
+				}
+				return true
+			})
+			if len(removeKeys) > 0 {
+				if remainingKeys == 0 {
+					next, err := sjson.DeleteBytes(updated, headersPath)
+					if err != nil {
+						return payload, false
+					}
+					updated = next
+				} else {
+					for _, key := range removeKeys {
+						next, err := sjson.DeleteBytes(updated, headersPath+"."+key)
+						if err != nil {
+							return payload, false
+						}
+						updated = next
+					}
+				}
+				changed = true
+			}
+		}
+		for _, field := range openAICapacityShedRetryDelayFieldNames {
+			fieldPath := parent + "." + field
+			if !gjson.GetBytes(updated, fieldPath).Exists() {
+				continue
+			}
+			next, err := sjson.DeleteBytes(updated, fieldPath)
+			if err != nil {
+				return payload, false
+			}
+			updated = next
+			changed = true
+		}
 	}
 	return updated, changed
 }

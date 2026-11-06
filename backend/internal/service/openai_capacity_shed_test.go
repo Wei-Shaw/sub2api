@@ -511,10 +511,11 @@ func TestOpenAIStreamProcessingFailureAfterOutputIsRecorded(t *testing.T) {
 // 依赖其原码解析重试延时）必须原样保留。
 func TestSanitizeOpenAICapacityShedErrorCodeForClient(t *testing.T) {
 	cases := []struct {
-		name        string
-		payload     string
-		wantChanged bool
-		wantContain string
+		name           string
+		payload        string
+		wantChanged    bool
+		wantContain    string
+		wantNotContain []string
 	}{
 		{
 			name:        "failed事件嵌套code改写",
@@ -541,10 +542,25 @@ func TestSanitizeOpenAICapacityShedErrorCodeForClient(t *testing.T) {
 			wantContain: `"code":"server_error"`,
 		},
 		{
-			name:        "rate_limit不改写",
-			payload:     `{"type":"response.failed","response":{"error":{"code":"rate_limit_exceeded","message":"try again in 3s"}}}`,
-			wantChanged: false,
-			wantContain: `"code":"rate_limit_exceeded"`,
+			name:           "剥离error帧headers中的retry-after并清理空headers",
+			payload:        `{"type":"error","error":{"code":"server_is_overloaded","headers":{"retry-after":"326","retry-after-ms":"326000"},"message":"Our servers are currently overloaded. Please try again later.","type":"service_unavailable_error"},"sequence_number":3}`,
+			wantChanged:    true,
+			wantContain:    `"code":"server_error"`,
+			wantNotContain: []string{`"retry-after"`, `"retry-after-ms"`, `"headers"`},
+		},
+		{
+			name:           "上游中转已改写为server_error时仍剥离retry-after与直接重试延时字段",
+			payload:        `{"type":"error","error":{"code":"server_error","headers":{"retry-after":"326","retry-after-ms":"326000","x-request-id":"req_123"},"retry_after":326,"resets_in_seconds":326,"message":"Our servers are currently overloaded. Please try again later.","type":"service_unavailable_error"},"sequence_number":3}`,
+			wantChanged:    true,
+			wantContain:    `"x-request-id":"req_123"`,
+			wantNotContain: []string{`"retry-after"`, `"retry-after-ms"`, `"retry_after"`, `"resets_in_seconds"`},
+		},
+		{
+			name:           "rate_limit保留原码与retry-after",
+			payload:        `{"type":"response.failed","response":{"error":{"code":"rate_limit_exceeded","headers":{"retry-after":"30"},"resets_in_seconds":30,"message":"try again in 30s"}}}`,
+			wantChanged:    false,
+			wantContain:    `"retry-after":"30"`,
+			wantNotContain: nil,
 		},
 		{
 			name:        "普通server_error不改写",
@@ -567,6 +583,9 @@ func TestSanitizeOpenAICapacityShedErrorCodeForClient(t *testing.T) {
 			if changed {
 				require.NotContains(t, string(out), "server_is_overloaded")
 				require.NotContains(t, string(out), "slow_down")
+			}
+			for _, forbidden := range tc.wantNotContain {
+				require.NotContains(t, string(out), forbidden)
 			}
 		})
 	}
