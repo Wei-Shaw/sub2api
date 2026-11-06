@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -658,25 +659,37 @@ func TestAnthropicCacheOnlyBufferedSSEUsage(t *testing.T) {
 					case "responses":
 						var result *ForwardResult
 						result, err = (&GatewayService{}).handleResponsesBufferedStreamingResponse(response, ctx, "claude-sonnet-4", "claude-sonnet-4", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
-						require.NoError(t, err)
+						require.NotNil(t, result)
 						aggregate = result.Usage.CacheCreationInputTokens
 					case "chat":
 						var result *ForwardResult
 						result, err = (&GatewayService{}).handleCCBufferedFromAnthropic(response, ctx, "claude-sonnet-4", "claude-sonnet-4", nil, time.Now())
-						require.NoError(t, err)
+						require.NotNil(t, result)
 						aggregate = result.Usage.CacheCreationInputTokens
 					case "native responses":
 						var result *OpenAIForwardResult
 						result, err = (&OpenAIGatewayService{}).handleResponsesBufferedFromNativeAnthropic(response, ctx, "claude-sonnet-4", "claude-sonnet-4", "claude-sonnet-4", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
-						require.NoError(t, err)
+						require.NotNil(t, result)
 						aggregate = result.Usage.CacheCreationInputTokens
 					case "native chat":
 						var result *OpenAIForwardResult
 						result, err = (&OpenAIGatewayService{}).handleCCBufferedFromNativeAnthropic(response, ctx, "claude-sonnet-4", "claude-sonnet-4", "claude-sonnet-4", nil, time.Now())
-						require.NoError(t, err)
+						require.NotNil(t, result)
 						aggregate = result.Usage.CacheCreationInputTokens
 					}
 					require.Equal(t, test.wantAggregate, aggregate)
+					// Incomplete streams retain collected usage but must not report success.
+					if terminal == "eof" {
+						require.EqualError(t, err, "stream usage incomplete: missing terminal event")
+						require.Equal(t, http.StatusBadGateway, recorder.Code)
+						errorField := "code"
+						if strings.HasSuffix(adapter, "chat") {
+							errorField = "type"
+						}
+						require.JSONEq(t, fmt.Sprintf(`{"error":{%q:"server_error","message":"upstream stream ended without a terminal event"}}`, errorField), recorder.Body.String())
+						return
+					}
+					require.NoError(t, err)
 					require.Equal(t, http.StatusOK, recorder.Code)
 					require.True(t, json.Valid(recorder.Body.Bytes()))
 					inputPath := "usage.input_tokens"
