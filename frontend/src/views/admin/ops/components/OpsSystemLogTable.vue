@@ -125,12 +125,36 @@ const getExtraString = (extra: Record<string, any> | undefined, key: string) => 
   return ''
 }
 
+const reqcompressDetailKeys = [
+  'algorithm',
+  'content_encoding',
+  'status',
+  'host',
+  'upstream_request_id',
+  'original_bytes',
+  'compressed_bytes',
+  'sent_bytes',
+  'ratio_percent',
+  'remaining_candidates',
+  'last_status',
+  'reason',
+] as const
+
 const formatSystemLogDetail = (row: OpsSystemLog) => {
   const parts: string[] = []
   const msg = String(row.message || '').trim()
   if (msg) parts.push(msg)
 
   const extra = row.extra || {}
+  if (msg.startsWith('reqcompress ')) {
+    const compressionParts: string[] = []
+    for (const key of reqcompressDetailKeys) {
+      const value = getExtraString(extra, key)
+      if (value) compressionParts.push(`${key}=${value}`)
+    }
+    if (compressionParts.length > 0) parts.push(compressionParts.join(' '))
+  }
+
   const statusCode = getExtraString(extra, 'status_code')
   const latencyMs = getExtraString(extra, 'latency_ms')
   const method = getExtraString(extra, 'method')

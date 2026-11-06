@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -35,6 +36,14 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	lastFailureReason string,
 	agentTaskRecoveryTried *bool,
 ) (*OpenAIForwardResult, error) {
+	// This HTTP request may fall back to HTTP after a WebSocket attempt.
+	// Its full upstream traffic is no longer an HTTP-entity measurement, even
+	// when that later attempt succeeds; preserve only the HTTP downstream.
+	collector := traffic.FromContext(ctx)
+	if collector == nil && c != nil && c.Request != nil {
+		collector = traffic.FromContext(c.Request.Context())
+	}
+	collector.ExcludeUpstream()
 	if s == nil || account == nil {
 		return nil, wrapOpenAIWSFallback("invalid_state", errors.New("service or account is nil"))
 	}

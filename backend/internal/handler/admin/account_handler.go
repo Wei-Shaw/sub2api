@@ -135,6 +135,7 @@ type CreateAccountRequest struct {
 	GroupIDs                []int64        `json:"group_ids"`
 	ExpiresAt               *int64         `json:"expires_at"`
 	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
+	CompressRequestEnabled  *bool          `json:"compress_request_enabled"`
 	ProbeEnabled            *bool          `json:"upstream_billing_probe_enabled"`
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
 }
@@ -156,6 +157,7 @@ type UpdateAccountRequest struct {
 	GroupIDs                *[]int64       `json:"group_ids"`
 	ExpiresAt               *int64         `json:"expires_at"`
 	AutoPauseOnExpired      *bool          `json:"auto_pause_on_expired"`
+	CompressRequestEnabled  *bool          `json:"compress_request_enabled"`
 	ProbeEnabled            *bool          `json:"upstream_billing_probe_enabled"`
 	RateSyncEnabled         *bool          `json:"upstream_billing_rate_sync_enabled"`
 	ConfirmMixedChannelRisk *bool          `json:"confirm_mixed_channel_risk"` // 用户确认混合渠道风险
@@ -1047,22 +1049,23 @@ func (h *AccountHandler) Create(c *gin.Context) {
 
 	result, err := executeAdminIdempotent(c, "admin.accounts.create", req, service.DefaultWriteIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		account, execErr := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
-			Name:                  req.Name,
-			Notes:                 req.Notes,
-			Platform:              req.Platform,
-			Type:                  req.Type,
-			Credentials:           req.Credentials,
-			Extra:                 req.Extra,
-			ProxyID:               req.ProxyID,
-			Concurrency:           req.Concurrency,
-			Priority:              req.Priority,
-			RateMultiplier:        req.RateMultiplier,
-			LoadFactor:            req.LoadFactor,
-			GroupIDs:              req.GroupIDs,
-			ExpiresAt:             req.ExpiresAt,
-			AutoPauseOnExpired:    req.AutoPauseOnExpired,
-			ProbeEnabled:          req.ProbeEnabled,
-			SkipMixedChannelCheck: skipCheck,
+			Name:                   req.Name,
+			Notes:                  req.Notes,
+			Platform:               req.Platform,
+			Type:                   req.Type,
+			Credentials:            req.Credentials,
+			Extra:                  req.Extra,
+			ProxyID:                req.ProxyID,
+			Concurrency:            req.Concurrency,
+			Priority:               req.Priority,
+			RateMultiplier:         req.RateMultiplier,
+			LoadFactor:             req.LoadFactor,
+			GroupIDs:               req.GroupIDs,
+			ExpiresAt:              req.ExpiresAt,
+			AutoPauseOnExpired:     req.AutoPauseOnExpired,
+			CompressRequestEnabled: req.CompressRequestEnabled,
+			ProbeEnabled:           req.ProbeEnabled,
+			SkipMixedChannelCheck:  skipCheck,
 		})
 		if execErr != nil {
 			return nil, execErr
@@ -1179,23 +1182,24 @@ func (h *AccountHandler) Update(c *gin.Context) {
 	skipCheck := req.ConfirmMixedChannelRisk != nil && *req.ConfirmMixedChannelRisk
 
 	account, err := h.adminService.UpdateAccount(c.Request.Context(), accountID, &service.UpdateAccountInput{
-		Name:                  req.Name,
-		Notes:                 req.Notes,
-		Type:                  req.Type,
-		Credentials:           req.Credentials,
-		Extra:                 req.Extra,
-		ProxyID:               req.ProxyID,
-		Concurrency:           req.Concurrency, // 指针类型，nil 表示未提供
-		Priority:              req.Priority,    // 指针类型，nil 表示未提供
-		RateMultiplier:        req.RateMultiplier,
-		LoadFactor:            req.LoadFactor,
-		Status:                req.Status,
-		GroupIDs:              req.GroupIDs,
-		ExpiresAt:             req.ExpiresAt,
-		AutoPauseOnExpired:    req.AutoPauseOnExpired,
-		ProbeEnabled:          req.ProbeEnabled,
-		RateSyncEnabled:       req.RateSyncEnabled,
-		SkipMixedChannelCheck: skipCheck,
+		Name:                   req.Name,
+		Notes:                  req.Notes,
+		Type:                   req.Type,
+		Credentials:            req.Credentials,
+		Extra:                  req.Extra,
+		ProxyID:                req.ProxyID,
+		Concurrency:            req.Concurrency, // 指针类型，nil 表示未提供
+		Priority:               req.Priority,    // 指针类型，nil 表示未提供
+		RateMultiplier:         req.RateMultiplier,
+		LoadFactor:             req.LoadFactor,
+		Status:                 req.Status,
+		GroupIDs:               req.GroupIDs,
+		ExpiresAt:              req.ExpiresAt,
+		AutoPauseOnExpired:     req.AutoPauseOnExpired,
+		CompressRequestEnabled: req.CompressRequestEnabled,
+		ProbeEnabled:           req.ProbeEnabled,
+		RateSyncEnabled:        req.RateSyncEnabled,
+		SkipMixedChannelCheck:  skipCheck,
 	})
 	if err != nil {
 		// 检查是否为混合渠道错误
@@ -2138,20 +2142,21 @@ func (h *AccountHandler) BatchCreate(c *gin.Context) {
 			skipCheck := item.ConfirmMixedChannelRisk != nil && *item.ConfirmMixedChannelRisk
 
 			account, err := h.adminService.CreateAccount(ctx, &service.CreateAccountInput{
-				Name:                  item.Name,
-				Notes:                 item.Notes,
-				Platform:              item.Platform,
-				Type:                  item.Type,
-				Credentials:           item.Credentials,
-				Extra:                 item.Extra,
-				ProxyID:               item.ProxyID,
-				Concurrency:           item.Concurrency,
-				Priority:              item.Priority,
-				RateMultiplier:        item.RateMultiplier,
-				GroupIDs:              item.GroupIDs,
-				ExpiresAt:             item.ExpiresAt,
-				AutoPauseOnExpired:    item.AutoPauseOnExpired,
-				SkipMixedChannelCheck: skipCheck,
+				Name:                   item.Name,
+				Notes:                  item.Notes,
+				Platform:               item.Platform,
+				Type:                   item.Type,
+				Credentials:            item.Credentials,
+				Extra:                  item.Extra,
+				ProxyID:                item.ProxyID,
+				Concurrency:            item.Concurrency,
+				Priority:               item.Priority,
+				RateMultiplier:         item.RateMultiplier,
+				GroupIDs:               item.GroupIDs,
+				ExpiresAt:              item.ExpiresAt,
+				AutoPauseOnExpired:     item.AutoPauseOnExpired,
+				CompressRequestEnabled: item.CompressRequestEnabled,
+				SkipMixedChannelCheck:  skipCheck,
 			})
 			if err != nil {
 				failed++

@@ -656,6 +656,12 @@ export interface SystemSettings {
   codex_cli_only_engine_fingerprint_signals: string;
   web_search_emulation_enabled?: boolean;
 
+  // 流量压缩等级（Brotli 0-11、Zstd 1-19、Gzip 0-9、Deflate 0-9）
+  compression_brotli_level: number;
+  compression_zstd_level: number;
+  compression_gzip_level: number;
+  compression_deflate_level: number;
+
   // Payment configuration
   payment_enabled: boolean;
   risk_control_enabled: boolean;
@@ -980,6 +986,11 @@ export interface UpdateSettingsRequest {
   codex_cli_only_whitelist?: string;
   codex_cli_only_allow_app_server_clients?: boolean;
   codex_cli_only_engine_fingerprint_signals?: string;
+  // 流量压缩等级（Brotli 0-11、Zstd 1-19、Gzip 0-9、Deflate 0-9）
+  compression_brotli_level?: number;
+  compression_zstd_level?: number;
+  compression_gzip_level?: number;
+  compression_deflate_level?: number;
   // Payment configuration
   payment_enabled?: boolean;
   risk_control_enabled?: boolean;

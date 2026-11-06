@@ -598,6 +598,20 @@ export default {
         claudeCodeVersionAutoSync: 'Auto-sync Claude Code version',
         claudeCodeVersionAutoSyncHint: 'Fetches the latest Claude Code client version from the official release channel every hour, so you never need to upgrade this service just to keep the version current. When disabled, fetching stops but the previously synced version remains available. The manual version above always takes priority.',
         claudeCodeVersionSyncedValue: 'Currently synced: {version}',
+        trafficCompression: {
+          title: "Traffic Compression",
+          description:
+            "Compression levels for request and response bodies forwarded by the gateway. Brotli and Deflate apply to both upstream (request) and downstream (response) bodies; Zstd applies to upstream only; Gzip applies to downstream only. Higher levels usually compress more, but cost more CPU and add latency.",
+          brotliLevel: "Brotli level",
+          brotliLevelHint: "Range 0–11, default 5. Shared by upstream and downstream.",
+          zstdLevel: "Zstd level",
+          zstdLevelHint: "Range 1–19, default 3. Upstream only; mapped to four actual encoder modes: 1–2, 3–5, 6–9, and 10–19.",
+          gzipLevel: "Gzip level",
+          gzipLevelHint: "Range 0–9, default 6. Downstream only.",
+          deflateLevel: "Deflate level",
+          deflateLevelHint: "Range 0–9, default 6. Shared by upstream and downstream.",
+          levelRangeError: "{label} must be an integer from {min} to {max}.",
+        },
         codexHardeningTitle: "Codex Settings",
         codexClientRestrictionTitle: "Codex client restriction",
         codexHardeningDesc:

@@ -51,6 +51,7 @@ func TestOpsOutputTPSOverviewFailurePolicy(t *testing.T) {
 				}
 				mock.ExpectQuery("SELECT|WITH").WillReturnRows(sqlmock.NewRows(columns).AddRow(values...))
 			}
+			mock.ExpectQuery("WITH traffic_base AS").WillReturnRows(sqlmock.NewRows([]string{"traffic"}).AddRow(`{"request_count":0}`))
 			mock.ExpectQuery(`percentile_cont\(0.05\)`).WillReturnError(tc.err)
 			start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 			overview, err := repo.GetDashboardOverview(context.Background(), &service.OpsDashboardFilter{StartTime: start, EndTime: start.Add(time.Hour), QueryMode: service.OpsQueryModeRaw})

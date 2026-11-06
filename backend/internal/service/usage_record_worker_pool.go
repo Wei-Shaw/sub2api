@@ -193,6 +193,45 @@ func (p *UsageRecordWorkerPool) Submit(task UsageRecordTask) UsageRecordSubmitMo
 	return UsageRecordSubmitModeDropped
 }
 
+// SubmitMandatory reuses the bounded queue without its configurable drop/sample
+// policy. It is for persistence after billing has already happened: rejecting
+// that work would leave an unlogged charge. Full/stopped/nil pools instead apply
+// synchronous backpressure, with the same timeout and panic boundary as workers.
+func (p *UsageRecordWorkerPool) SubmitMandatory(task UsageRecordTask) UsageRecordSubmitMode {
+	if task == nil {
+		return UsageRecordSubmitModeDropped
+	}
+	if p != nil && p.pool != nil && !p.pool.Stopped() {
+		if _, ok := p.pool.TrySubmit(func() { p.execute(task) }); ok {
+			return UsageRecordSubmitModeEnqueued
+		}
+	}
+	if p != nil {
+		p.syncFallback.Add(1)
+	}
+	p.execute(task)
+	return UsageRecordSubmitModeSync
+}
+
+type usageRecordWorkerPoolContextKey struct{}
+
+// WithUsageRecordWorkerPool carries only the request's persistence dispatcher,
+// not its cancellation or gin.Context, into a detached billing task.
+func WithUsageRecordWorkerPool(ctx context.Context, pool *UsageRecordWorkerPool) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, usageRecordWorkerPoolContextKey{}, pool)
+}
+
+func UsageRecordWorkerPoolFromContext(ctx context.Context) *UsageRecordWorkerPool {
+	if ctx == nil {
+		return nil
+	}
+	pool, _ := ctx.Value(usageRecordWorkerPoolContextKey{}).(*UsageRecordWorkerPool)
+	return pool
+}
+
 // Stats 返回当前池状态与计数器。
 func (p *UsageRecordWorkerPool) Stats() UsageRecordWorkerPoolStats {
 	if p == nil || p.pool == nil {
@@ -325,7 +364,11 @@ func (p *UsageRecordWorkerPool) shouldSyncFallback() bool {
 }
 
 func (p *UsageRecordWorkerPool) execute(task UsageRecordTask) {
-	ctx, cancel := context.WithTimeout(context.Background(), p.taskTimeout)
+	timeout := time.Duration(defaultUsageRecordTaskTimeoutSeconds) * time.Second
+	if p != nil && p.taskTimeout > 0 {
+		timeout = p.taskTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
 	defer func() {

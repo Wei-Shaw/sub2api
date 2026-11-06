@@ -1013,6 +1013,9 @@ export default {
       },
       autoPauseOnExpired: 'Auto Pause On Expired',
       autoPauseOnExpiredDesc: 'When enabled, the account will auto pause scheduling after it expires',
+      compressRequest: 'Compress Request Body',
+      compressRequestDesc:
+        "When enabled, sub2api probes br -> zstd -> deflate on this account's first request by sending a compressed body with Content-Encoding, then shares the first accepted coding across instances and restarts. A rejected coding or a switch toggle triggers a fresh probe. Reduces upload traffic and bandwidth usage; when off, requests are forwarded unchanged.",
 	  autoPause5hThreshold: '5h Usage Threshold (%)',
 	  autoPause7dThreshold: '7d Usage Threshold (%)',
 	  autoPauseThresholdHint: 'Leave empty or set 0 to use the global default threshold (configured in Ops settings); set a value to override the global default. Reaching the threshold only skips the account during scheduling and does not modify schedulable.',

@@ -621,7 +621,10 @@ func (s *GatewayService) billingDeps() *billingDeps {
 	}
 }
 
-func writeUsageLogBestEffort(ctx context.Context, repo UsageLogRepository, usageLog *UsageLog, logKey string) {
+// writeUsageLogBestEffortNow preserves the existing queue and synchronous
+// fallback policy. Its detached timeout starts when persistence actually runs,
+// not while a response compressor is still waiting to write its trailer.
+func writeUsageLogBestEffortNow(ctx context.Context, repo UsageLogRepository, usageLog *UsageLog, logKey string) {
 	if repo == nil || usageLog == nil {
 		return
 	}

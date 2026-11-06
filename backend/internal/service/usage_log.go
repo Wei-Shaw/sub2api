@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 )
 
 const (
@@ -207,6 +209,11 @@ type UsageLog struct {
 	VideoCount           int
 	VideoResolution      *string
 	VideoDurationSeconds *int
+
+	// Traffic contains observed HTTP entity-body bytes only. Nil (including
+	// historical rows) is unknown, not a measured zero. API handlers must use
+	// the role-specific DTO; upstream traffic is administrator-only.
+	Traffic *traffic.Usage
 
 	CreatedAt time.Time
 

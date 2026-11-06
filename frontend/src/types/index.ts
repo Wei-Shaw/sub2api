@@ -949,6 +949,7 @@ export type KnownAccountPlatform = 'anthropic' | 'openai' | 'gemini' | 'antigrav
  */
 export type AccountPlatform = KnownAccountPlatform | (string & {})
 export type AccountType = 'oauth' | 'setup-token' | 'apikey' | 'upstream' | 'bedrock' | 'service_account'
+export type RequestCompressionAlgorithm = 'br' | 'zstd' | 'deflate'
 export type OAuthAddMethod = 'oauth' | 'setup-token'
 export type ProxyProtocol = 'http' | 'https' | 'socks5' | 'socks5h'
 
@@ -1324,6 +1325,10 @@ export interface Account {
   last_used_at: string | null
   expires_at: number | null
   auto_pause_on_expired: boolean
+  // 开启后，该账号的出站请求体会按协商结果压缩（br/zstd/deflate）
+  compress_request_enabled: boolean
+  // 当前共享协商已钉住的算法；未协商或当前为 identity 时不返回。
+  compress_request_algorithm?: RequestCompressionAlgorithm
   created_at: string
   updated_at: string
   proxy?: Proxy
@@ -1600,6 +1605,7 @@ export interface CreateAccountRequest {
   group_ids?: number[]
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  compress_request_enabled?: boolean
   upstream_billing_probe_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
 }
@@ -1620,6 +1626,7 @@ export interface UpdateAccountRequest {
   group_ids?: number[]
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  compress_request_enabled?: boolean
   upstream_billing_probe_enabled?: boolean
   upstream_billing_rate_sync_enabled?: boolean
   confirm_mixed_channel_risk?: boolean
@@ -1715,6 +1722,7 @@ export interface AdminDataAccount {
   rate_multiplier?: number | null
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+  compress_request_enabled?: boolean
 }
 
 export interface AdminDataImportError {
@@ -1803,6 +1811,27 @@ export type UsageRequestType = 'unknown' | 'sync' | 'stream' | 'ws_v2' | 'cyber'
 export type ImageSizeSource = 'output' | 'input' | 'default' | 'legacy'
 export type ImageSizeBreakdown = Record<string, number>
 
+/** Measured HTTP entity-body bytes; null is unknown, zero is a measured empty body. */
+export interface TrafficMeasurement {
+  original_bytes: number | null
+  actual_bytes: number | null
+  compressed: boolean
+}
+
+export interface TrafficLink {
+  request?: TrafficMeasurement | null
+  response?: TrafficMeasurement | null
+}
+
+/** User-facing usage DTOs never expose the gateway-to-provider link. */
+export interface UserUsageTraffic {
+  downstream?: TrafficLink | null
+}
+
+export interface UsageTraffic extends UserUsageTraffic {
+  upstream?: TrafficLink | null
+}
+
 export interface UsageLog {
   id: number
   user_id: number
@@ -1841,6 +1870,7 @@ export interface UsageLog {
   native_compaction_v2: boolean
   duration_ms: number | null
   first_token_ms: number | null
+  traffic?: UserUsageTraffic | null
 
   // 图片生成字段
   image_count: number
@@ -1878,6 +1908,7 @@ export interface UsageLogAccountSummary {
 }
 
 export interface AdminUsageLog extends UsageLog {
+  traffic?: UsageTraffic | null
   upstream_model?: string | null
   upstream_reasoning_effort?: string | null
   upstream_response_model?: string | null

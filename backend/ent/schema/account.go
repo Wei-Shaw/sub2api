@@ -95,6 +95,13 @@ func (Account) Fields() []ent.Field {
 			Optional().Nillable().
 			Comment("Original proxy id replaced by expiry-fallback; for manual revert. NULL = not in fallback."),
 
+		// compress_request_enabled: 是否压缩出站请求体
+		// 仅持久化开关；可用的 Content-Encoding 由网关在运行时按
+		// br -> zstd -> deflate 协商，协商结果只保存在进程内存中。
+		field.Bool("compress_request_enabled").
+			Default(false).
+			Comment("Compress outbound request bodies with a runtime-negotiated Content-Encoding."),
+
 		// concurrency: 账户最大并发请求数
 		// 用于限制同一时间对该账户发起的请求数量
 		field.Int("concurrency").

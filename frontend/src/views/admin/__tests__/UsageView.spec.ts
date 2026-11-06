@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import { defineComponent, ref } from 'vue'
 
 import UsageView from '../UsageView.vue'
+import UsageTable from '@/components/admin/usage/UsageTable.vue'
 
 const { list, exportList, getStats, getSnapshotV2, getById, getModelStats, listErrorLogs, routeQuery, aoaToSheet, sheetAddAoa, saveAs, xlsxWrite } = vi.hoisted(() => {
   vi.stubGlobal('localStorage', {
@@ -477,6 +478,16 @@ describe('admin UsageView request ID column visibility', () => {
 
   afterEach(() => {
     vi.useRealTimers()
+  })
+
+  it('shows the unsortable traffic column by default between cost and latency', async () => {
+    const wrapper = mountRouteFilteredUsageView()
+    await wrapper.vm.$nextTick()
+    const columns = wrapper.findComponent(UsageTable).props('columns')
+    const keys = columns.map((column: { key: string }) => column.key)
+    expect(columns).toContainEqual({ key: 'traffic', label: 'usage.traffic.title', sortable: false })
+    expect(keys.slice(keys.indexOf('cost'), keys.indexOf('cost') + 3)).toEqual(['cost', 'traffic', 'latency'])
+    wrapper.unmount()
   })
 
   it('keeps request ID hidden by default and allows enabling it from column settings', async () => {

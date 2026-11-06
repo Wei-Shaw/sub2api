@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
@@ -234,8 +235,11 @@ type Account struct {
 	LastUsedAt              *time.Time                     `json:"last_used_at"`
 	ExpiresAt               *int64                         `json:"expires_at"`
 	AutoPauseOnExpired      bool                           `json:"auto_pause_on_expired"`
+	CompressRequestEnabled  bool                           `json:"compress_request_enabled"`
 	CreatedAt               time.Time                      `json:"created_at"`
 	UpdatedAt               time.Time                      `json:"updated_at"`
+
+	CompressRequestAlgorithm string `json:"compress_request_algorithm,omitempty"`
 
 	Schedulable bool `json:"schedulable"`
 
@@ -363,8 +367,11 @@ type AccountListItem struct {
 	LastUsedAt              *time.Time `json:"last_used_at"`
 	ExpiresAt               *int64     `json:"expires_at"`
 	AutoPauseOnExpired      bool       `json:"auto_pause_on_expired"`
+	CompressRequestEnabled  bool       `json:"compress_request_enabled"`
 	CreatedAt               time.Time  `json:"created_at"`
 	UpdatedAt               time.Time  `json:"updated_at"`
+
+	CompressRequestAlgorithm string `json:"compress_request_algorithm,omitempty"`
 
 	Schedulable bool `json:"schedulable"`
 
@@ -593,6 +600,12 @@ type BatchUpdateRedeemCodesRequest struct {
 	Fields BatchUpdateRedeemCodeFields `json:"fields" binding:"required"`
 }
 
+// UserUsageTraffic deliberately has no upstream member. The public DTO cannot
+// accidentally serialize administrator-only upstream observations.
+type UserUsageTraffic struct {
+	Downstream *traffic.Link `json:"downstream"`
+}
+
 // UsageLog 是普通用户接口使用的 usage log DTO（不包含管理员字段）。
 type UsageLog struct {
 	ID        int64  `json:"id"`
@@ -669,6 +682,9 @@ type UsageLog struct {
 	// BillingMode 计费模式：token/image
 	BillingMode *string `json:"billing_mode,omitempty"`
 
+	// Traffic is null when the downstream body was not observed.
+	Traffic *UserUsageTraffic `json:"traffic"`
+
 	CreatedAt time.Time `json:"created_at"`
 
 	User         *User             `json:"user,omitempty"`
@@ -680,6 +696,9 @@ type UsageLog struct {
 // AdminUsageLog 是管理员接口使用的 usage log DTO（包含管理员字段）。
 type AdminUsageLog struct {
 	UsageLog
+
+	// This explicitly shadows the embedded user-safe traffic field for admins.
+	Traffic *traffic.Usage `json:"traffic"`
 
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Omitted when no mapping was applied (requested model was used as-is).

@@ -38,6 +38,8 @@ const (
 	FieldProxyID = "proxy_id"
 	// FieldProxyFallbackOriginID holds the string denoting the proxy_fallback_origin_id field in the database.
 	FieldProxyFallbackOriginID = "proxy_fallback_origin_id"
+	// FieldCompressRequestEnabled holds the string denoting the compress_request_enabled field in the database.
+	FieldCompressRequestEnabled = "compress_request_enabled"
 	// FieldConcurrency holds the string denoting the concurrency field in the database.
 	FieldConcurrency = "concurrency"
 	// FieldLoadFactor holds the string denoting the load_factor field in the database.
@@ -142,6 +144,7 @@ var Columns = []string{
 	FieldExtra,
 	FieldProxyID,
 	FieldProxyFallbackOriginID,
+	FieldCompressRequestEnabled,
 	FieldConcurrency,
 	FieldLoadFactor,
 	FieldPriority,
@@ -204,6 +207,8 @@ var (
 	DefaultCredentials func() map[string]interface{}
 	// DefaultExtra holds the default value on creation for the "extra" field.
 	DefaultExtra func() map[string]interface{}
+	// DefaultCompressRequestEnabled holds the default value on creation for the "compress_request_enabled" field.
+	DefaultCompressRequestEnabled bool
 	// DefaultConcurrency holds the default value on creation for the "concurrency" field.
 	DefaultConcurrency int
 	// DefaultPriority holds the default value on creation for the "priority" field.
@@ -299,6 +304,11 @@ func ByProxyID(opts ...sql.OrderTermOption) OrderOption {
 // ByProxyFallbackOriginID orders the results by the proxy_fallback_origin_id field.
 func ByProxyFallbackOriginID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldProxyFallbackOriginID, opts...).ToFunc()
+}
+
+// ByCompressRequestEnabled orders the results by the compress_request_enabled field.
+func ByCompressRequestEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCompressRequestEnabled, opts...).ToFunc()
 }
 
 // ByConcurrency orders the results by the concurrency field.

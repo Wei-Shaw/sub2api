@@ -1919,7 +1919,41 @@
       </div>
 
       <div v-if="!isSparkShadow">
-        <div class="mb-1 flex items-center gap-2">
+        <div
+          v-if="account?.type !== 'bedrock'"
+          class="border-t border-gray-200 pt-4 dark:border-dark-600"
+          data-testid="compress-request-section"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.compressRequest') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.compressRequestDesc') }}
+              </p>
+            </div>
+            <button
+              type="button"
+              role="switch"
+              data-testid="compress-request-toggle"
+              :aria-checked="form.compress_request_enabled"
+              :aria-label="t('admin.accounts.compressRequest')"
+              @click="form.compress_request_enabled = !form.compress_request_enabled"
+              :class="[
+                'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+                form.compress_request_enabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+              ]"
+            >
+              <span
+                :class="[
+                  'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                  form.compress_request_enabled ? 'translate-x-5' : 'translate-x-0'
+                ]"
+              />
+            </button>
+          </div>
+        </div>
+
+        <div class="mb-1 mt-4 flex items-center gap-2">
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
           <ProxyAdBanner />
         </div>
@@ -4505,6 +4539,7 @@ const form = reactive({
   name: '',
   notes: '',
   proxy_id: null as number | null,
+  compress_request_enabled: false,
   concurrency: 1,
   load_factor: null as number | null,
   priority: 1,
@@ -4613,6 +4648,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   form.name = newAccount.name
   form.notes = newAccount.notes || ''
   form.proxy_id = newAccount.proxy_id
+  form.compress_request_enabled = newAccount.compress_request_enabled === true
   form.concurrency = newAccount.concurrency
   form.load_factor = newAccount.load_factor ?? null
   form.priority = newAccount.priority

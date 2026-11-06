@@ -53,6 +53,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 )
 
 const (
@@ -2296,6 +2297,7 @@ type AccountMutation struct {
 	extra                       *map[string]interface{}
 	proxy_fallback_origin_id    *int64
 	addproxy_fallback_origin_id *int64
+	compress_request_enabled    *bool
 	concurrency                 *int
 	addconcurrency              *int
 	load_factor                 *int
@@ -2903,6 +2905,42 @@ func (m *AccountMutation) ResetProxyFallbackOriginID() {
 	m.proxy_fallback_origin_id = nil
 	m.addproxy_fallback_origin_id = nil
 	delete(m.clearedFields, account.FieldProxyFallbackOriginID)
+}
+
+// SetCompressRequestEnabled sets the "compress_request_enabled" field.
+func (m *AccountMutation) SetCompressRequestEnabled(b bool) {
+	m.compress_request_enabled = &b
+}
+
+// CompressRequestEnabled returns the value of the "compress_request_enabled" field in the mutation.
+func (m *AccountMutation) CompressRequestEnabled() (r bool, exists bool) {
+	v := m.compress_request_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldCompressRequestEnabled returns the old "compress_request_enabled" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldCompressRequestEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldCompressRequestEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldCompressRequestEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldCompressRequestEnabled: %w", err)
+	}
+	return oldValue.CompressRequestEnabled, nil
+}
+
+// ResetCompressRequestEnabled resets all changes to the "compress_request_enabled" field.
+func (m *AccountMutation) ResetCompressRequestEnabled() {
+	m.compress_request_enabled = nil
 }
 
 // SetConcurrency sets the "concurrency" field.
@@ -4138,7 +4176,7 @@ func (m *AccountMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountMutation) Fields() []string {
-	fields := make([]string, 0, 31)
+	fields := make([]string, 0, 32)
 	if m.created_at != nil {
 		fields = append(fields, account.FieldCreatedAt)
 	}
@@ -4171,6 +4209,9 @@ func (m *AccountMutation) Fields() []string {
 	}
 	if m.proxy_fallback_origin_id != nil {
 		fields = append(fields, account.FieldProxyFallbackOriginID)
+	}
+	if m.compress_request_enabled != nil {
+		fields = append(fields, account.FieldCompressRequestEnabled)
 	}
 	if m.concurrency != nil {
 		fields = append(fields, account.FieldConcurrency)
@@ -4262,6 +4303,8 @@ func (m *AccountMutation) Field(name string) (ent.Value, bool) {
 		return m.ProxyID()
 	case account.FieldProxyFallbackOriginID:
 		return m.ProxyFallbackOriginID()
+	case account.FieldCompressRequestEnabled:
+		return m.CompressRequestEnabled()
 	case account.FieldConcurrency:
 		return m.Concurrency()
 	case account.FieldLoadFactor:
@@ -4333,6 +4376,8 @@ func (m *AccountMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldProxyID(ctx)
 	case account.FieldProxyFallbackOriginID:
 		return m.OldProxyFallbackOriginID(ctx)
+	case account.FieldCompressRequestEnabled:
+		return m.OldCompressRequestEnabled(ctx)
 	case account.FieldConcurrency:
 		return m.OldConcurrency(ctx)
 	case account.FieldLoadFactor:
@@ -4458,6 +4503,13 @@ func (m *AccountMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetProxyFallbackOriginID(v)
+		return nil
+	case account.FieldCompressRequestEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetCompressRequestEnabled(v)
 		return nil
 	case account.FieldConcurrency:
 		v, ok := value.(int)
@@ -4848,6 +4900,9 @@ func (m *AccountMutation) ResetField(name string) error {
 		return nil
 	case account.FieldProxyFallbackOriginID:
 		m.ResetProxyFallbackOriginID()
+		return nil
+	case account.FieldCompressRequestEnabled:
+		m.ResetCompressRequestEnabled()
 		return nil
 	case account.FieldConcurrency:
 		m.ResetConcurrency()
@@ -44787,6 +44842,7 @@ type UsageLogMutation struct {
 	video_duration_seconds       *int
 	addvideo_duration_seconds    *int
 	cache_ttl_overridden         *bool
+	traffic                      **traffic.Usage
 	created_at                   *time.Time
 	clearedFields                map[string]struct{}
 	user                         *int64
@@ -47269,6 +47325,55 @@ func (m *UsageLogMutation) ResetCacheTTLOverridden() {
 	m.cache_ttl_overridden = nil
 }
 
+// SetTraffic sets the "traffic" field.
+func (m *UsageLogMutation) SetTraffic(t *traffic.Usage) {
+	m.traffic = &t
+}
+
+// Traffic returns the value of the "traffic" field in the mutation.
+func (m *UsageLogMutation) Traffic() (r *traffic.Usage, exists bool) {
+	v := m.traffic
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTraffic returns the old "traffic" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldTraffic(ctx context.Context) (v *traffic.Usage, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTraffic is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTraffic requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTraffic: %w", err)
+	}
+	return oldValue.Traffic, nil
+}
+
+// ClearTraffic clears the value of the "traffic" field.
+func (m *UsageLogMutation) ClearTraffic() {
+	m.traffic = nil
+	m.clearedFields[usagelog.FieldTraffic] = struct{}{}
+}
+
+// TrafficCleared returns if the "traffic" field was cleared in this mutation.
+func (m *UsageLogMutation) TrafficCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldTraffic]
+	return ok
+}
+
+// ResetTraffic resets all changes to the "traffic" field.
+func (m *UsageLogMutation) ResetTraffic() {
+	m.traffic = nil
+	delete(m.clearedFields, usagelog.FieldTraffic)
+}
+
 // SetCreatedAt sets the "created_at" field.
 func (m *UsageLogMutation) SetCreatedAt(t time.Time) {
 	m.created_at = &t
@@ -47474,7 +47579,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 47)
+	fields := make([]string, 0, 48)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -47613,6 +47718,9 @@ func (m *UsageLogMutation) Fields() []string {
 	if m.cache_ttl_overridden != nil {
 		fields = append(fields, usagelog.FieldCacheTTLOverridden)
 	}
+	if m.traffic != nil {
+		fields = append(fields, usagelog.FieldTraffic)
+	}
 	if m.created_at != nil {
 		fields = append(fields, usagelog.FieldCreatedAt)
 	}
@@ -47716,6 +47824,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.VideoDurationSeconds()
 	case usagelog.FieldCacheTTLOverridden:
 		return m.CacheTTLOverridden()
+	case usagelog.FieldTraffic:
+		return m.Traffic()
 	case usagelog.FieldCreatedAt:
 		return m.CreatedAt()
 	}
@@ -47819,6 +47929,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldVideoDurationSeconds(ctx)
 	case usagelog.FieldCacheTTLOverridden:
 		return m.OldCacheTTLOverridden(ctx)
+	case usagelog.FieldTraffic:
+		return m.OldTraffic(ctx)
 	case usagelog.FieldCreatedAt:
 		return m.OldCreatedAt(ctx)
 	}
@@ -48151,6 +48263,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetCacheTTLOverridden(v)
+		return nil
+	case usagelog.FieldTraffic:
+		v, ok := value.(*traffic.Usage)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTraffic(v)
 		return nil
 	case usagelog.FieldCreatedAt:
 		v, ok := value.(time.Time)
@@ -48510,6 +48629,9 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldVideoDurationSeconds) {
 		fields = append(fields, usagelog.FieldVideoDurationSeconds)
 	}
+	if m.FieldCleared(usagelog.FieldTraffic) {
+		fields = append(fields, usagelog.FieldTraffic)
+	}
 	return fields
 }
 
@@ -48589,6 +48711,9 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldVideoDurationSeconds:
 		m.ClearVideoDurationSeconds()
+		return nil
+	case usagelog.FieldTraffic:
+		m.ClearTraffic()
 		return nil
 	}
 	return fmt.Errorf("unknown UsageLog nullable field %s", name)
@@ -48735,6 +48860,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldCacheTTLOverridden:
 		m.ResetCacheTTLOverridden()
+		return nil
+	case usagelog.FieldTraffic:
+		m.ResetTraffic()
 		return nil
 	case usagelog.FieldCreatedAt:
 		m.ResetCreatedAt()

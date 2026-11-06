@@ -33,7 +33,7 @@ func TestLogRequestBodyReadFailureClassifiesWithoutPayload(t *testing.T) {
 }
 
 func TestRequestBodyReadErrorKind(t *testing.T) {
-	require.Equal(t, "unsupported_content_encoding", requestBodyReadErrorKind(errors.New(`decode Content-Encoding "br": unsupported Content-Encoding`)))
+	require.Equal(t, "unsupported_content_encoding", requestBodyReadErrorKind(errors.New(`decode Content-Encoding "compress": unsupported Content-Encoding`)))
 	require.Equal(t, "truncated_body", requestBodyReadErrorKind(io.ErrUnexpectedEOF))
 	require.Equal(t, "max_bytes", requestBodyReadErrorKind(&http.MaxBytesError{Limit: 10}))
 	require.Equal(t, "other", requestContentEncodingCategory("private-payload-marker"))

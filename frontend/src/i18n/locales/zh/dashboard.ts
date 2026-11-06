@@ -338,6 +338,18 @@ export default {
   usage: {
     title: '使用记录',
     description: '查看和分析您的 API 使用历史',
+    traffic: {
+      title: '流量消耗',
+      upstream: '上游',
+      downstream: '下游',
+      request: '请求',
+      response: '响应',
+      clientUpload: '客户端上行消耗',
+      clientDownload: '客户端下行消耗',
+      original: '原始',
+      compressionRate: '压缩率',
+      bodyOnlyHint: '实际 HTTP 消息体字节，不含 HTTP 头及 TCP/TLS 开销。压缩率 =（1 − 实际 / 原始）× 100%，负值表示压缩后变大；未知或未记录数据显示为 —。',
+    },
     costDetails: '费用明细',
     tokenDetails: 'Token 明细',
     cacheTtlOverriddenHint: '缓存 TTL Override 已启用',

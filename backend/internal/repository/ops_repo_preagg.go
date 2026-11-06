@@ -104,11 +104,34 @@ error_agg AS (
   )
   HAVING GROUPING(group_id) = 1 OR group_id IS NOT NULL
 ),
+traffic_base AS (
+  SELECT
+    date_trunc('hour', te.created_at AT TIME ZONE 'UTC') AT TIME ZONE 'UTC' AS bucket_start,
+    COALESCE(NULLIF(te.platform, ''), 'unknown') AS platform,
+    te.group_id,
+    ` + opsTrafficExtractSQL("te") + `
+  FROM ops_traffic_events te
+  WHERE te.created_at >= $1 AND te.created_at < $2
+),
+traffic_agg AS (
+  SELECT
+    bucket_start,
+    CASE WHEN GROUPING(platform) = 1 THEN NULL ELSE platform END AS platform,
+    CASE WHEN GROUPING(group_id) = 1 THEN NULL ELSE group_id END AS group_id,
+    ` + opsTrafficAggregateSQL() + ` AS traffic
+  FROM traffic_base
+  GROUP BY GROUPING SETS (
+    (bucket_start),
+    (bucket_start, platform),
+    (bucket_start, platform, group_id)
+  )
+  HAVING GROUPING(group_id) = 1 OR group_id IS NOT NULL
+),
 combined AS (
   SELECT
-    COALESCE(u.bucket_start, e.bucket_start) AS bucket_start,
-    COALESCE(u.platform, e.platform) AS platform,
-    COALESCE(u.group_id, e.group_id) AS group_id,
+    COALESCE(u.bucket_start, e.bucket_start, t.bucket_start) AS bucket_start,
+    COALESCE(u.platform, e.platform, t.platform) AS platform,
+    COALESCE(u.group_id, e.group_id, t.group_id) AS group_id,
 
     COALESCE(u.success_count, 0) AS success_count,
     COALESCE(u.ttft_sample_count, 0) AS ttft_sample_count,
@@ -120,6 +143,8 @@ combined AS (
     COALESCE(e.upstream_529_count, 0) AS upstream_529_count,
 
     COALESCE(u.token_consumed, 0) AS token_consumed,
+    -- A bucket without ledger events is observed empty, not a legacy NULL bucket.
+    COALESCE(t.traffic, '{"request_count":0}'::jsonb) AS traffic,
 
     u.duration_p50_ms,
     u.duration_p90_ms,
@@ -139,6 +164,10 @@ combined AS (
     ON u.bucket_start = e.bucket_start
    AND COALESCE(u.platform, '') = COALESCE(e.platform, '')
    AND COALESCE(u.group_id, 0) = COALESCE(e.group_id, 0)
+  FULL OUTER JOIN traffic_agg t
+    ON COALESCE(u.bucket_start, e.bucket_start) = t.bucket_start
+   AND COALESCE(u.platform, e.platform, '') = COALESCE(t.platform, '')
+   AND COALESCE(u.group_id, e.group_id, 0) = COALESCE(t.group_id, 0)
 )
 INSERT INTO ops_metrics_hourly (
   bucket_start,
@@ -165,6 +194,7 @@ INSERT INTO ops_metrics_hourly (
   ttft_p99_ms,
   ttft_avg_ms,
   ttft_max_ms,
+  traffic,
   computed_at
 )
 SELECT
@@ -192,6 +222,7 @@ SELECT
   ttft_p99_ms::int,
   ttft_avg_ms,
   ttft_max_ms::int,
+  traffic,
   NOW()
 FROM combined
 WHERE bucket_start IS NOT NULL
@@ -220,6 +251,7 @@ ON CONFLICT (bucket_start, COALESCE(platform, ''), COALESCE(group_id, 0)) DO UPD
   ttft_p99_ms = EXCLUDED.ttft_p99_ms,
   ttft_avg_ms = EXCLUDED.ttft_avg_ms,
   ttft_max_ms = EXCLUDED.ttft_max_ms,
+  traffic = EXCLUDED.traffic,
 
   computed_at = NOW()
 `

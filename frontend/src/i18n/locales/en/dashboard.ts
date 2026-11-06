@@ -333,6 +333,18 @@ export default {
   usage: {
     title: 'Usage Records',
     description: 'View and analyze your API usage history',
+    traffic: {
+      title: 'Traffic usage',
+      upstream: 'Upstream',
+      downstream: 'Downstream',
+      request: 'Request',
+      response: 'Response',
+      clientUpload: 'Client upload',
+      clientDownload: 'Client download',
+      original: 'Original',
+      compressionRate: 'Compression rate',
+      bodyOnlyHint: 'Actual HTTP body bytes, excluding HTTP headers and TCP/TLS overhead. Compression rate = (1 − actual / original) × 100%; negative values indicate expansion. Unknown or unrecorded values are shown as —.',
+    },
     costDetails: 'Cost Breakdown',
     tokenDetails: 'Token Breakdown',
     cacheTtlOverriddenHint: 'Cache TTL Override enabled',

@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/usagelog"
 	"github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/traffic"
 )
 
 // UsageLogUpdate is the builder for updating UsageLog entities.
@@ -947,6 +948,18 @@ func (_u *UsageLogUpdate) SetNillableCacheTTLOverridden(v *bool) *UsageLogUpdate
 	return _u
 }
 
+// SetTraffic sets the "traffic" field.
+func (_u *UsageLogUpdate) SetTraffic(v *traffic.Usage) *UsageLogUpdate {
+	_u.mutation.SetTraffic(v)
+	return _u
+}
+
+// ClearTraffic clears the value of the "traffic" field.
+func (_u *UsageLogUpdate) ClearTraffic() *UsageLogUpdate {
+	_u.mutation.ClearTraffic()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *UsageLogUpdate) SetUser(v *User) *UsageLogUpdate {
 	return _u.SetUserID(v.ID)
@@ -1380,6 +1393,12 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Traffic(); ok {
+		_spec.SetField(usagelog.FieldTraffic, field.TypeJSON, value)
+	}
+	if _u.mutation.TrafficCleared() {
+		_spec.ClearField(usagelog.FieldTraffic, field.TypeJSON)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{
@@ -2461,6 +2480,18 @@ func (_u *UsageLogUpdateOne) SetNillableCacheTTLOverridden(v *bool) *UsageLogUpd
 	return _u
 }
 
+// SetTraffic sets the "traffic" field.
+func (_u *UsageLogUpdateOne) SetTraffic(v *traffic.Usage) *UsageLogUpdateOne {
+	_u.mutation.SetTraffic(v)
+	return _u
+}
+
+// ClearTraffic clears the value of the "traffic" field.
+func (_u *UsageLogUpdateOne) ClearTraffic() *UsageLogUpdateOne {
+	_u.mutation.ClearTraffic()
+	return _u
+}
+
 // SetUser sets the "user" edge to the User entity.
 func (_u *UsageLogUpdateOne) SetUser(v *User) *UsageLogUpdateOne {
 	return _u.SetUserID(v.ID)
@@ -2924,6 +2955,12 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if value, ok := _u.mutation.CacheTTLOverridden(); ok {
 		_spec.SetField(usagelog.FieldCacheTTLOverridden, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.Traffic(); ok {
+		_spec.SetField(usagelog.FieldTraffic, field.TypeJSON, value)
+	}
+	if _u.mutation.TrafficCleared() {
+		_spec.ClearField(usagelog.FieldTraffic, field.TypeJSON)
 	}
 	if _u.mutation.UserCleared() {
 		edge := &sqlgraph.EdgeSpec{

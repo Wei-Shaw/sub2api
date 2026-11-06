@@ -100,7 +100,7 @@ func TestAccountReadableSnapshot_DenylistTripwire(t *testing.T) {
 		"Proxy": {}, "ProxyID": {}, "ProxyFallbackOriginID": {}, "ProxyFallbackOriginName": {},
 		"Concurrency": {}, "Priority": {}, "RateMultiplier": {}, "LoadFactor": {},
 		"Status": {}, "ErrorMessage": {}, "LastUsedAt": {}, "ExpiresAt": {},
-		"AutoPauseOnExpired": {}, "CreatedAt": {}, "UpdatedAt": {}, "Schedulable": {},
+		"AutoPauseOnExpired": {}, "CompressRequestEnabled": {}, "CreatedAt": {}, "UpdatedAt": {}, "Schedulable": {},
 		"RateLimitedAt": {}, "RateLimitResetAt": {}, "OverloadUntil": {},
 		"TempUnschedulableUntil": {}, "TempUnschedulableReason": {},
 		"SessionWindowStart": {}, "SessionWindowEnd": {}, "SessionWindowStatus": {},

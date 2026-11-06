@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/reqcompress"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 	"github.com/tidwall/gjson"
@@ -967,6 +968,17 @@ func decodeCachedAccount(val any) (*service.Account, error) {
 	if err := json.Unmarshal(payload, &account); err != nil {
 		return nil, err
 	}
+	// Cached reads are the gateway's hot path, so this is also the main place
+	// the compression registry learns whether an account is opted in. The cached
+	// updated_at prevents a lagging payload from undoing a newer admin edit.
+	// A payload written before the switch existed carries no value here, and that
+	// absence must stay "unknown": reading it as "off" would drop an account's
+	// negotiated coding on every cache read and re-probe the upstream forever.
+	if account.CompressRequestEnabled != nil {
+		reqcompress.SyncAccount(account.ID, *account.CompressRequestEnabled, account.UpdatedAt)
+	} else {
+		reqcompress.SyncAccountUnknown(account.ID, account.UpdatedAt)
+	}
 	return &account, nil
 }
 
@@ -1168,6 +1180,8 @@ func buildSchedulerMetadataAccount(account service.Account) service.Account {
 		LastUsedAt:              account.LastUsedAt,
 		ExpiresAt:               account.ExpiresAt,
 		AutoPauseOnExpired:      account.AutoPauseOnExpired,
+		CompressRequestEnabled:  account.CompressRequestEnabled,
+		UpdatedAt:               account.UpdatedAt,
 		Schedulable:             account.Schedulable,
 		RateLimitedAt:           account.RateLimitedAt,
 		RateLimitResetAt:        account.RateLimitResetAt,
