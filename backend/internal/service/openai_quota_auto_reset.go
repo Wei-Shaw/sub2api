@@ -266,13 +266,14 @@ func (s *OpenAIQuotaAutoResetService) tryAcquireScanLock(ctx context.Context) (f
 }
 
 type openAIAutoResetAssessment struct {
-	triggerWindow string
-	resetReached  bool
-	pauseReached  bool
-	utilization5h float64
-	utilization7d float64
-	threshold5h   float64
-	threshold7d   float64
+	triggerWindow   string
+	resetReached    bool
+	pauseReached    bool
+	expiringReached bool
+	utilization5h   float64
+	utilization7d   float64
+	threshold5h     float64
+	threshold7d     float64
 }
 
 func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accountID int64) error {
@@ -515,27 +516,36 @@ func decodeOpenAIAutoResetConsumeResult(value any) openAIAutoResetConsumeResult 
 func (s *OpenAIQuotaAutoResetService) assessExtra(account *Account, config OpenAIAutoResetCreditConfig, now time.Time) openAIAutoResetAssessment {
 	utilization5h, _ := resolveOpenAIQuotaUtilization(account.Extra, "5h", now)
 	utilization7d, _ := resolveOpenAIQuotaUtilization(account.Extra, "7d", now)
-	return s.buildAssessment(account, config, utilization5h, utilization7d)
+	expiringReached := false
+	if config.ExpiringEnabled {
+		expiringReached, _ = findExpiringCreditFromSnapshot(account.Extra, config.ExpiringHours, now)
+	}
+	return s.buildAssessment(account, config, utilization5h, utilization7d, expiringReached)
 }
 
 func (s *OpenAIQuotaAutoResetService) assessUsage(usage *OpenAIQuotaUsage, account *Account, config OpenAIAutoResetCreditConfig, now time.Time) openAIAutoResetAssessment {
 	updates := buildOpenAIAutoResetUsageUpdates(usage, now)
 	utilization5h := readOpenAIQuotaUsedPercent(updates, "5h") / 100
 	utilization7d := readOpenAIQuotaUsedPercent(updates, "7d") / 100
-	return s.buildAssessment(account, config, utilization5h, utilization7d)
+	expiringReached := false
+	if config.ExpiringEnabled {
+		expiringReached, _ = findExpiringCreditFromUsage(usage, config.ExpiringHours, now)
+	}
+	return s.buildAssessment(account, config, utilization5h, utilization7d, expiringReached)
 }
 
-func (s *OpenAIQuotaAutoResetService) buildAssessment(account *Account, config OpenAIAutoResetCreditConfig, utilization5h, utilization7d float64) openAIAutoResetAssessment {
+func (s *OpenAIQuotaAutoResetService) buildAssessment(account *Account, config OpenAIAutoResetCreditConfig, utilization5h, utilization7d float64, expiringReached bool) openAIAutoResetAssessment {
 	assessment := openAIAutoResetAssessment{
-		utilization5h: utilization5h,
-		utilization7d: utilization7d,
-		threshold5h:   config.Threshold5h,
-		threshold7d:   config.Threshold7d,
+		utilization5h:   utilization5h,
+		utilization7d:   utilization7d,
+		threshold5h:     config.Threshold5h,
+		threshold7d:     config.Threshold7d,
+		expiringReached: expiringReached,
 	}
 	reset5h := utilization5h >= config.Threshold5h
 	reset7d := utilization7d >= config.Threshold7d
-	assessment.resetReached = reset5h || reset7d
-	assessment.triggerWindow = joinOpenAIAutoResetWindows(reset5h, reset7d)
+	assessment.resetReached = reset5h || reset7d || expiringReached
+	assessment.triggerWindow = joinOpenAIAutoResetWindows(reset5h, reset7d, expiringReached)
 
 	pause5h, pause7d := resolveOpenAIQuotaAutoPauseThresholds(context.Background(), account)
 	if s.settings != nil {
@@ -548,22 +558,94 @@ func (s *OpenAIQuotaAutoResetService) buildAssessment(account *Account, config O
 	pauseReached7d := !resolveAccountExtraBool(account.Extra, "auto_pause_7d_disabled") && pause7d > 0 && utilization7d >= pause7d
 	assessment.pauseReached = pauseReached5h || pauseReached7d || assessment.resetReached
 	if assessment.triggerWindow == "" {
-		assessment.triggerWindow = joinOpenAIAutoResetWindows(pauseReached5h, pauseReached7d)
+		assessment.triggerWindow = joinOpenAIAutoResetWindows(pauseReached5h, pauseReached7d, false)
 	}
 	return assessment
 }
 
-func joinOpenAIAutoResetWindows(fiveHour, sevenDay bool) string {
-	switch {
-	case fiveHour && sevenDay:
-		return "5h+7d"
-	case fiveHour:
-		return "5h"
-	case sevenDay:
-		return "7d"
-	default:
-		return ""
+func joinOpenAIAutoResetWindows(fiveHour, sevenDay, expiring bool) string {
+	parts := make([]string, 0, 3)
+	if fiveHour {
+		parts = append(parts, "5h")
 	}
+	if sevenDay {
+		parts = append(parts, "7d")
+	}
+	if expiring {
+		parts = append(parts, "expiring")
+	}
+	return strings.Join(parts, "+")
+}
+
+func findExpiringCreditFromSnapshot(extra map[string]any, expiringHours int, now time.Time) (bool, string) {
+	if len(extra) == 0 || expiringHours <= 0 {
+		return false, ""
+	}
+	raw, ok := extra[openaiQuotaResetCreditsKey]
+	if !ok || raw == nil {
+		return false, ""
+	}
+	var credits OpenAIRateLimitResetCredits
+	switch v := raw.(type) {
+	case *OpenAIRateLimitResetCredits:
+		if v != nil {
+			credits = *v
+		}
+	case OpenAIRateLimitResetCredits:
+		credits = v
+	default:
+		data, err := json.Marshal(raw)
+		if err != nil {
+			return false, ""
+		}
+		if err := json.Unmarshal(data, &credits); err != nil {
+			return false, ""
+		}
+	}
+	return checkCreditsExpiring(credits.Credits, credits.AvailableCount, expiringHours, now)
+}
+
+func findExpiringCreditFromUsage(usage *OpenAIQuotaUsage, expiringHours int, now time.Time) (bool, string) {
+	if usage == nil || usage.RateLimitResetCredits == nil {
+		return false, ""
+	}
+	return checkCreditsExpiring(
+		usage.RateLimitResetCredits.Credits,
+		usage.RateLimitResetCredits.AvailableCount,
+		expiringHours,
+		now,
+	)
+}
+
+func checkCreditsExpiring(credits []OpenAIRateLimitResetCreditDetail, availableCount int, expiringHours int, now time.Time) (bool, string) {
+	if availableCount <= 0 || len(credits) == 0 || expiringHours <= 0 {
+		return false, ""
+	}
+	expiringWindow := time.Duration(expiringHours) * time.Hour
+	earliestExpiry := time.Time{}
+	found := false
+
+	for _, credit := range credits {
+		expiresAtStr := strings.TrimSpace(credit.ExpiresAt)
+		if expiresAtStr == "" {
+			continue
+		}
+		expiry, err := time.Parse(time.RFC3339, expiresAtStr)
+		if err != nil {
+			continue
+		}
+		remaining := expiry.Sub(now)
+		if remaining > 0 && remaining <= expiringWindow {
+			if !found || expiry.Before(earliestExpiry) {
+				earliestExpiry = expiry
+				found = true
+			}
+		}
+	}
+	if found {
+		return true, earliestExpiry.UTC().Format(time.RFC3339)
+	}
+	return false, ""
 }
 
 func buildOpenAIAutoResetUsageUpdates(usage *OpenAIQuotaUsage, now time.Time) map[string]any {

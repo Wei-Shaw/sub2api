@@ -43,13 +43,7 @@ func (s *GeminiMessagesCompatService) ForwardAsChatCompletions(
 	includeUsage := ccReq.StreamOptions != nil && ccReq.StreamOptions.IncludeUsage
 
 	// 历史推理内容不回传给 Gemini：Gemini 的思考连续性由 thoughtSignature 承载。
-	for i := range ccReq.Messages {
-		ccReq.Messages[i].ReasoningContent = ""
-		ccReq.Messages[i].Reasoning = ""
-		if ccReq.Messages[i].Role == "assistant" {
-			ccReq.Messages[i].Content = dropChatReasoningContentParts(ccReq.Messages[i].Content)
-		}
-	}
+	stripChatHistoryReasoning(&ccReq)
 
 	responsesReq, err := chatCompletionsToResponses(s.cfg, &ccReq)
 	if err != nil {

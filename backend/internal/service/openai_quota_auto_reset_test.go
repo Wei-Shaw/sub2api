@@ -29,6 +29,8 @@ func TestNormalizeOpenAIAutoResetCreditExtra(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, 1.0, extra[OpenAIAutoResetCredit5hThresholdExtraKey])
 		require.Equal(t, 1.0, extra[OpenAIAutoResetCredit7dThresholdExtraKey])
+		require.Equal(t, true, extra[OpenAIAutoResetCreditExpiringEnabledExtraKey])
+		require.Equal(t, 1, extra[OpenAIAutoResetCreditExpiringHoursExtraKey])
 		require.NotContains(t, extra, OpenAIAutoResetCreditStateExtraKey)
 	})
 
@@ -36,6 +38,18 @@ func TestNormalizeOpenAIAutoResetCreditExtra(t *testing.T) {
 		_, err := normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{
 			OpenAIAutoResetCreditEnabledExtraKey:     true,
 			OpenAIAutoResetCredit5hThresholdExtraKey: 0.0009,
+		})
+		require.Error(t, err)
+
+		_, err = normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{
+			OpenAIAutoResetCreditEnabledExtraKey:       true,
+			OpenAIAutoResetCreditExpiringHoursExtraKey: 0,
+		})
+		require.Error(t, err)
+
+		_, err = normalizeOpenAIAutoResetCreditExtra(PlatformOpenAI, AccountTypeOAuth, false, map[string]any{
+			OpenAIAutoResetCreditEnabledExtraKey:       true,
+			OpenAIAutoResetCreditExpiringHoursExtraKey: 169,
 		})
 		require.Error(t, err)
 
@@ -164,20 +178,29 @@ func TestOpenAIQuotaAutoResetService_AssessesIndependentWindows(t *testing.T) {
 		"auto_pause_5h_disabled": true,
 		"auto_pause_7d_disabled": true,
 	}}
-	config := OpenAIAutoResetCreditConfig{Enabled: true, Threshold5h: 0.8, Threshold7d: 0.9}
+	config := OpenAIAutoResetCreditConfig{
+		Enabled:         true,
+		Threshold5h:     0.8,
+		Threshold7d:     0.9,
+		ExpiringEnabled: true,
+		ExpiringHours:   24,
+	}
 	tests := []struct {
 		name       string
 		fiveHour   float64
 		sevenDay   float64
+		expiring   bool
 		wantWindow string
 	}{
-		{name: "5h", fiveHour: 0.8, sevenDay: 0.2, wantWindow: "5h"},
-		{name: "7d", fiveHour: 0.2, sevenDay: 0.9, wantWindow: "7d"},
-		{name: "同时触发", fiveHour: 0.95, sevenDay: 0.95, wantWindow: "5h+7d"},
+		{name: "5h", fiveHour: 0.8, sevenDay: 0.2, expiring: false, wantWindow: "5h"},
+		{name: "7d", fiveHour: 0.2, sevenDay: 0.9, expiring: false, wantWindow: "7d"},
+		{name: "同时触发", fiveHour: 0.95, sevenDay: 0.95, expiring: false, wantWindow: "5h+7d"},
+		{name: "快到期单独触发", fiveHour: 0.2, sevenDay: 0.2, expiring: true, wantWindow: "expiring"},
+		{name: "5h与快到期同时触发", fiveHour: 0.85, sevenDay: 0.2, expiring: true, wantWindow: "5h+expiring"},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			assessment := service.buildAssessment(account, config, test.fiveHour, test.sevenDay)
+			assessment := service.buildAssessment(account, config, test.fiveHour, test.sevenDay, test.expiring)
 			require.True(t, assessment.resetReached)
 			require.Equal(t, test.wantWindow, assessment.triggerWindow)
 		})
@@ -474,4 +497,83 @@ func TestOpenAIQuotaAutoResetService_QueryFailureBacksOffBeforeRetry(t *testing.
 	require.NoError(t, service.evaluateAccount(context.Background(), 501))
 	require.Equal(t, int32(2), quota.queryCalls.Load(), "重试间隔过后应恢复查询")
 	require.Equal(t, OpenAIAutoResetStatusNoCredit, repo.stateForTest().Status)
+}
+
+func TestOpenAIQuotaAutoResetService_ExpiringCreditTriggersReset(t *testing.T) {
+	now := time.Now().UTC()
+	// 重置卡将在 6 小时后到期，设置 expiring_hours 为 12 小时，此时应当自动触发重置
+	expiringAt := now.Add(6 * time.Hour).Format(time.RFC3339)
+	laterExpiringAt := now.Add(48 * time.Hour).Format(time.RFC3339)
+
+	account := &Account{
+		ID: 601, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+		Status: StatusActive, Schedulable: true,
+		Extra: map[string]any{
+			OpenAIAutoResetCreditEnabledExtraKey:         true,
+			OpenAIAutoResetCredit5hThresholdExtraKey:     1.0,
+			OpenAIAutoResetCredit7dThresholdExtraKey:     1.0,
+			OpenAIAutoResetCreditExpiringEnabledExtraKey: true,
+			OpenAIAutoResetCreditExpiringHoursExtraKey:   12,
+			// 用量都很低（未达阈值）
+			"codex_5h_used_percent":  10.0,
+			"codex_7d_used_percent":  10.0,
+			"codex_usage_updated_at": now.Format(time.RFC3339),
+			"codex_reset_credit_snapshot": &OpenAIRateLimitResetCredits{
+				AvailableCount: 2,
+				Credits: []OpenAIRateLimitResetCreditDetail{
+					{ExpiresAt: laterExpiringAt},
+					{ExpiresAt: expiringAt},
+				},
+			},
+		},
+	}
+	repo := &autoResetTestAccountRepo{account: account}
+	quota := &autoResetTestQuota{
+		usage: &OpenAIQuotaUsage{
+			FetchedAt: now.Unix(),
+			RateLimit: &OpenAIRateLimit{
+				PrimaryWindow:   &OpenAIRateLimitWindow{UsedPercent: 10, LimitWindowSeconds: 5 * 3600, ResetAfterSeconds: 3600, ResetAt: now.Add(time.Hour).Unix()},
+				SecondaryWindow: &OpenAIRateLimitWindow{UsedPercent: 10, LimitWindowSeconds: 7 * 86400, ResetAfterSeconds: 86400, ResetAt: now.Add(24 * time.Hour).Unix()},
+			},
+			RateLimitResetCredits: &OpenAIRateLimitResetCredits{
+				AvailableCount: 2,
+				Credits: []OpenAIRateLimitResetCreditDetail{
+					{ExpiresAt: laterExpiringAt},
+					{ExpiresAt: expiringAt},
+				},
+			},
+			autoResetCandidates: []openAIAutoResetCreditCandidate{
+				{ID: "credit-later", ExpiresAt: laterExpiringAt},
+				{ID: "credit-expiring-first", ExpiresAt: expiringAt},
+			},
+		},
+	}
+	idempotencyConfig := DefaultIdempotencyConfig()
+	idempotencyConfig.ObserveOnly = false
+	service := NewOpenAIQuotaAutoResetService(
+		repo,
+		quota,
+		autoResetTestRecoverer{},
+		NewIdempotencyCoordinator(newInMemoryIdempotencyRepo(), idempotencyConfig),
+		nil, nil, nil,
+	)
+
+	err := service.evaluateAccount(context.Background(), account.ID)
+	require.NoError(t, err)
+
+	// 验证触发了重置
+	require.Equal(t, int32(1), quota.resetCalls.Load(), "快到期卡片应触发重置调用")
+	quota.mu.Lock()
+	args := append([][2]string(nil), quota.resetArgs...)
+	quota.mu.Unlock()
+	require.Len(t, args, 1)
+	require.Equal(t, "credit-expiring-first", args[0][0], "应优先使用最早到期的重置卡")
+
+	// 验证最终账号状态
+	repo.mu.Lock()
+	state := openAIAutoResetStateFromExtra(repo.account.Extra)
+	repo.mu.Unlock()
+	require.NotNil(t, state)
+	require.Equal(t, OpenAIAutoResetStatusSuccess, state.Status)
+	require.Contains(t, state.TriggerWindow, "expiring", "TriggerWindow 应标明 expiring 来源")
 }

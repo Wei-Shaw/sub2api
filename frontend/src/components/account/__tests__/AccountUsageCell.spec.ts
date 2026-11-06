@@ -484,6 +484,110 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('25')
   })
 
+  async function mountAntigravityQuotaCell(
+    quota: Record<string, { utilization: number; reset_time?: string }>
+  ) {
+    getUsage.mockResolvedValue({ antigravity_quota: quota })
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 1100,
+          platform: 'antigravity',
+          type: 'oauth',
+          extra: {}
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'color'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ resetsAt }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+    await flushPromises()
+    return wrapper
+  }
+
+  it('Antigravity 共享配额桶渲染 Gemini / Claude 各 5h + 7d', async () => {
+    const wrapper = await mountAntigravityQuotaCell({
+      'gemini-5h': { utilization: 40, reset_time: '2026-03-01T10:00:00Z' },
+      'gemini-weekly': { utilization: 15, reset_time: '2026-03-05T10:00:00Z' },
+      '3p-5h': { utilization: 60, reset_time: '2026-03-01T11:00:00Z' },
+      '3p-weekly': { utilization: 100, reset_time: '2026-03-06T10:00:00Z' },
+      // 模型级配额同时存在时也不应回退到模型族视图
+      'gemini-3-pro-high': { utilization: 99, reset_time: '2026-03-01T09:00:00Z' }
+    })
+
+    const text = wrapper.text()
+    expect(text).toContain('admin.accounts.usageWindow.geminiQuotaGroup')
+    expect(text).toContain('5h|40|2026-03-01T10:00:00Z')
+    expect(text).toContain('7d|15|2026-03-05T10:00:00Z')
+    expect(text).toContain('admin.accounts.usageWindow.claude')
+    expect(text).toContain('5h|60|2026-03-01T11:00:00Z')
+    expect(text).toContain('7d|100|2026-03-06T10:00:00Z')
+    // 回退视图的旧模型族标签不应出现
+    expect(text).not.toContain('admin.accounts.usageWindow.gemini3Pro')
+    expect(text).not.toContain('admin.accounts.usageWindow.gemini3Flash')
+    expect(wrapper.find('[data-test="antigravity-quota-group-gemini"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="antigravity-quota-group-claude"]').exists()).toBe(true)
+  })
+
+  it('Antigravity 周配额耗尽时该组只渲染 7d 条', async () => {
+    const wrapper = await mountAntigravityQuotaCell({
+      '3p-weekly': { utilization: 100, reset_time: '2026-03-06T10:00:00Z' }
+    })
+
+    const text = wrapper.text()
+    expect(text).toContain('7d|100|2026-03-06T10:00:00Z')
+    expect(text).not.toContain('5h|')
+    expect(wrapper.find('[data-test="antigravity-quota-group-claude"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="antigravity-quota-group-gemini"]').exists()).toBe(false)
+  })
+
+  it('Antigravity 未识别的配额桶不会新增分组', async () => {
+    const wrapper = await mountAntigravityQuotaCell({
+      'foo-weekly': { utilization: 50, reset_time: '2026-03-06T10:00:00Z' },
+      'gemini-3-pro-high': { utilization: 30, reset_time: '2026-03-02T10:00:00Z' }
+    })
+
+    expect(wrapper.find('[data-test="antigravity-quota-group-foo"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="antigravity-quota-group-gemini"]').exists()).toBe(false)
+    // 无活跃摘要桶 -> 回退视图；未知桶 key 不参与模型族聚合
+    expect(wrapper.text()).toContain('admin.accounts.usageWindow.gemini3Pro|30|2026-03-02T10:00:00Z')
+  })
+
+  it('Antigravity 回退视图按模型族前缀动态聚合新模型', async () => {
+    const wrapper = await mountAntigravityQuotaCell({
+      'gemini-4-argon-high': { utilization: 30, reset_time: '2026-03-02T10:00:00Z' },
+      'gemini-3.8-flash-high': { utilization: 55, reset_time: '2026-03-03T10:00:00Z' },
+      'claude-opus-5-5': { utilization: 70, reset_time: '2026-03-04T10:00:00Z' }
+    })
+
+    const text = wrapper.text()
+    expect(text).toContain('admin.accounts.usageWindow.gemini3Pro|30|2026-03-02T10:00:00Z')
+    expect(text).toContain('admin.accounts.usageWindow.gemini3Flash|55|2026-03-03T10:00:00Z')
+    expect(text).toContain('admin.accounts.usageWindow.claude|70|2026-03-04T10:00:00Z')
+    expect(text).not.toContain('admin.accounts.usageWindow.gemini3Image')
+  })
+
+  it('Antigravity OAuth 展示主动查询按钮并可点击触发查询', async () => {
+    const wrapper = await mountAntigravityQuotaCell({
+      'gemini-5h': { utilization: 40, reset_time: '2026-03-01T10:00:00Z' }
+    })
+
+    const btn = wrapper.find('[data-test="antigravity-active-query-btn-1100"]')
+    expect(btn.exists()).toBe(true)
+    expect(btn.text()).toContain('admin.accounts.usageWindow.activeQuery')
+
+    await btn.trigger('click')
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenCalledWith(1100, 'active', true)
+  })
+
 
   it('OpenAI OAuth 快照已过期时首屏会重新请求 usage', async () => {
     getUsage.mockResolvedValue({

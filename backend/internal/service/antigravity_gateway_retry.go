@@ -46,28 +46,48 @@ type antigravityRetryLoopResult struct {
 	resp *http.Response
 }
 
-// resolveAntigravityForwardBaseURL 解析转发用 base URL。
-//
-// 显式环境变量优先。未配置时，LoadCodeAssist 返回 paidTier 的付费账号使用
-// daily 端点，其他账号继续使用生产端点，避免免费账号的 OAuth token 出现 401。
-//
-// 历史上这里改用 ForwardBaseURLs()（把 daily/sandbox 排到首位）并默认取首个地址，
-// 导致网关把带生产 OAuth token 的请求发到 daily-cloudcode-pa.sandbox.googleapis.com，
-// 上游拒绝 → 账号被 401「Invalid bearer token」/502 打入临时不可调度且无法恢复
-// （见 #3611 / #2962）。后台「测试连接」用的是生产端点，所以「测试成功但网关 401」。
+// resolveAntigravityForwardBaseURL 解析首选转发用 base URL。
 func resolveAntigravityForwardBaseURL(account *Account) string {
-	baseURLs := antigravity.BaseURLs
-	if len(baseURLs) == 0 {
+	urls := resolveAntigravityForwardBaseURLs(account)
+	if len(urls) == 0 {
 		return ""
 	}
+	return urls[0]
+}
+
+// resolveAntigravityForwardBaseURLs 解析按容灾优先级排序的转发用 base URLs 列表。
+//
+// 策略规则：
+// 1. 显式环境变量 GATEWAY_ANTIGRAVITY_FORWARD_BASE_URL (daily/prod) 优先级最高，调整首选端点。
+// 2. 未设置环境变量时：
+//   - 付费账号（包含 Google One AI Pro/Ultra，plan_type 经 IsPaidPlanType 判定）：
+//     优先 daily 端点以享受完整模型配额与权益，并以 prod 作为容灾兜底端点 [daily, prod]。
+//   - 免费账号：
+//     优先 prod 端点避免 OAuth token 产生 401 认证失效，并以 daily 作为容灾备用端点 [prod, daily]。
+func resolveAntigravityForwardBaseURLs(account *Account) []string {
+	baseURLs := antigravity.BaseURLs
+	if len(baseURLs) == 0 {
+		return nil
+	}
+	if len(baseURLs) == 1 {
+		return append([]string(nil), baseURLs...)
+	}
+
+	prodURL := baseURLs[0]
+	dailyURL := baseURLs[1]
+
 	mode := strings.ToLower(strings.TrimSpace(os.Getenv(antigravityForwardBaseURLEnv)))
-	if (mode == "daily" || mode == "sandbox") && len(baseURLs) > 1 {
-		return baseURLs[1]
+	if mode == "daily" || mode == "sandbox" {
+		return []string{dailyURL, prodURL}
 	}
-	if mode == "" && accountHasAntigravityPaidTier(account) && len(baseURLs) > 1 {
-		return baseURLs[1]
+	if mode == "prod" {
+		return []string{prodURL}
 	}
-	return baseURLs[0]
+
+	if accountHasAntigravityPaidTier(account) {
+		return []string{dailyURL, prodURL}
+	}
+	return []string{prodURL}
 }
 
 func accountHasAntigravityPaidTier(account *Account) bool {
@@ -499,11 +519,10 @@ func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopP
 		}
 	}
 
-	baseURL := resolveAntigravityForwardBaseURL(p.account)
-	if baseURL == "" {
+	availableURLs := resolveAntigravityForwardBaseURLs(p.account)
+	if len(availableURLs) == 0 {
 		return nil, errors.New("no antigravity forward base url configured")
 	}
-	availableURLs := []string{baseURL}
 
 	var resp *http.Response
 	var usedBaseURL string
@@ -687,6 +706,12 @@ urlFallbackLoop:
 				// INTERNAL 500 渐进惩罚：3 次重试全部命中特定 500 时递增计数器并惩罚
 				if allAttemptsInternal500 && isAntigravityInternalServerError(resp.StatusCode, respBody) {
 					s.handleInternal500RetryExhausted(p.ctx, p.prefix, p.account)
+				}
+
+				// 404 未找到模型错误：在多端点场景下（如 daily 与 prod 目录差异，#8129），回退到下一个候选端点重试
+				if resp.StatusCode == http.StatusNotFound && urlIdx < len(availableURLs)-1 {
+					logger.LegacyPrintf("service.antigravity_gateway", "%s URL fallback (404 not found): %s -> %s", p.prefix, baseURL, availableURLs[urlIdx+1])
+					continue urlFallbackLoop
 				}
 
 				// 其他 4xx 错误或重试用尽，直接返回

@@ -21,6 +21,17 @@ func TestBuildUserAgentUsesHubClientFamily(t *testing.T) {
 	}
 }
 
+func TestBuildOfficialHubUserAgent(t *testing.T) {
+	if OfficialHubChangelist != "986210228" {
+		t.Fatalf("expected changelist 986210228, got %q", OfficialHubChangelist)
+	}
+	got := BuildOfficialHubUserAgent("2.23.0", "darwin", "arm64")
+	want := "antigravity/hub/2.23.0 (aidev_client; os_type=darwin; arch=arm64; cl=986210228)"
+	if got != want {
+		t.Fatalf("expected official hub user-agent %q, got %q", want, got)
+	}
+}
+
 func TestBuildUserAgentValidatesCustomVersion(t *testing.T) {
 	previous := defaultUserAgentVersion
 	defaultUserAgentVersion = "2.23.0"
