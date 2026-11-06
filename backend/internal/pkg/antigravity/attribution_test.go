@@ -27,6 +27,22 @@ func TestTransformClaudeToGemini_AttributionSystemText(t *testing.T) {
 		{"different field", "x-anthropic-billing-header-extra: keep", "x-anthropic-billing-header-extra: keep"},
 		{"quoted within instructions", "Explain this metadata: " + attribution, "Explain this metadata: " + attribution},
 		{"later line", "Example:\n" + attribution, "Example:\n" + attribution},
+		{"Codex GPT 5", "You are Codex, based on GPT-5. Keep GPT-5 model ids.", "You are an AI agent. Keep GPT-5 model ids."},
+		{"Codex GPT 5.6", "You are Codex, a coding agent based on GPT-5.6.\nKeep indentation.", "You are an AI agent.\nKeep indentation."},
+		{"Codex GPT 6", "You are Codex, based on GPT-6.", "You are an AI agent."},
+		{"Codex GPT 6 agent", "You are Codex, an agent based on GPT-6. Rest.", "You are an AI agent. Rest."},
+		{"CLI comma", "You are GPT-5.6 running in the Codex CLI, a terminal-based coding assistant.", "You are an AI agent, a terminal-based coding assistant."},
+		{"Codex model suffix", "You are Codex, based on GPT-5.6-Codex. Rest.", "You are an AI agent. Rest."},
+		{"CLI GPT 5.6", "You are GPT-5.6 running in the Codex CLI. Rest.", "You are an AI agent. Rest."},
+		{"CLI GPT 6", " \nYou are GPT-6 running in the Codex CLI\nRest.", "You are an AI agent.\nRest."},
+		{"Claude CLI", "You are Claude Code, Anthropic's official CLI for Claude. Rest.", "You are an AI agent. Rest."},
+		{"Claude SDK", "You are a Claude agent, built on Anthropic's Claude Agent SDK. Rest.", "You are an AI agent. Rest."},
+		{"attribution before GPT", attribution + "\r\nYou are Codex, based on GPT-6. Rest.", "You are an AI agent. Rest."},
+		{"quoted GPT", `"You are Codex, based on GPT-6."`, `"You are Codex, based on GPT-6."`},
+		{"later GPT", "Example:\nYou are GPT-6 running in the Codex CLI.", "Example:\nYou are GPT-6 running in the Codex CLI."},
+		{"vendor mentions", "Use OpenAI GPT-5.6 and Anthropic Claude; preserve gpt-6.", "Use OpenAI GPT-5.6 and Anthropic Claude; preserve gpt-6."},
+		{"not identity", "You are Codex, do not claim to be based on GPT-6.", "You are Codex, do not claim to be based on GPT-6."},
+		{"model token boundary", "You are Codex, based on GPT-6example.", "You are Codex, based on GPT-6example."},
 	}
 	for _, tt := range tests {
 		for _, arrayForm := range []bool{false, true} {
@@ -39,12 +55,13 @@ func TestTransformClaudeToGemini_AttributionSystemText(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				systemJSON, err := json.Marshal(system)
 				require.NoError(t, err)
-				userJSON, err := json.Marshal(attribution)
+				userText := strings.TrimSpace(tt.text)
+				userJSON, err := json.Marshal(userText)
 				require.NoError(t, err)
 				input := &ClaudeRequest{
 					Model: "gemini-3.8-flash-high", System: systemJSON,
 					Messages: []ClaudeMessage{{Role: "user", Content: userJSON}},
-					Tools: []ClaudeTool{{Name: "example", Description: attribution,
+					Tools: []ClaudeTool{{Name: "example", Description: tt.text,
 						InputSchema: map[string]any{"type": "object", "properties": map[string]any{"query": map[string]any{"type": "string"}}}}},
 				}
 				before, err := json.Marshal(input)
@@ -68,8 +85,8 @@ func TestTransformClaudeToGemini_AttributionSystemText(t *testing.T) {
 				}
 				require.Equal(t, want, texts)
 				// The same literal text in user content and tool descriptions is not metadata.
-				require.Equal(t, attribution, got.Request.Contents[0].Parts[0].Text)
-				require.Equal(t, attribution, got.Request.Tools[0].FunctionDeclarations[0].Description)
+				require.Equal(t, userText, got.Request.Contents[0].Parts[0].Text)
+				require.Equal(t, tt.text, got.Request.Tools[0].FunctionDeclarations[0].Description)
 				after, err := json.Marshal(input)
 				require.NoError(t, err)
 				require.JSONEq(t, string(before), string(after), "do not mutate the incoming request")
@@ -124,7 +141,7 @@ func TestNeutralizeClaudeIdentity(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, neutralizeClaudeIdentity(tt.text))
+			require.Equal(t, tt.want, NeutralizeSystemIdentity(tt.text))
 		})
 	}
 }
@@ -135,7 +152,7 @@ func TestAttributionAndIdentityTogether(t *testing.T) {
 	attribution := "x-anthropic-billing-header: cc_version=2.1.278.0a9; cc_entrypoint=claude-vscode;"
 	identity := "You are a Claude agent, built on Anthropic's Claude Agent SDK."
 	require.Equal(t, "", stripClaudeAttribution(attribution))
-	require.Equal(t, "You are an AI agent.", neutralizeClaudeIdentity(identity))
+	require.Equal(t, "You are an AI agent.", NeutralizeSystemIdentity(identity))
 }
 
 // End-to-end through the transformer: the attribution block and the identity

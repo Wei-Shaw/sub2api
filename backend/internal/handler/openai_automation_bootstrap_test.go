@@ -207,3 +207,30 @@ Read the reference index and report changes. Preserve A &amp; B and &lt;tags&gt;
 		require.Equal(t, guarded, unchanged)
 	}
 }
+
+// The byte precheck must stay a necessary condition: an escaped type or tool
+// name is still a candidate, and a body without either is returned untouched
+// without the token scan and decode.
+func TestNormalizeCodexBootstrapPrecheck(t *testing.T) {
+	output := codexAutomationBootstrap("wiki-maintenance", "never", automationBootstrapPrompt)
+	escaped := []byte(strings.Replace(string(codexAutomationBootstrapBody(t, output, "")), `"automation_update"`, `"\u0061utomation_update"`, 1))
+	got, changed := normalizeCodexAutomationBootstrap(escaped)
+	require.True(t, changed)
+	require.Equal(t, output, gjson.GetBytes(got, "input.0.content.0.text").String())
+
+	plain := []byte(`{"model":"gpt-5","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"` + strings.Repeat("x", 4096) + `"}]},{"type":"function_call_output","call_id":"call_1","output":"ok"}]}`)
+	for name, normalize := range map[string]func([]byte) ([]byte, bool){
+		"automation": normalizeCodexAutomationBootstrap,
+		"delegation": normalizeCodexDelegationBootstrap,
+	} {
+		t.Run(name, func(t *testing.T) {
+			allocs := testing.AllocsPerRun(10, func() {
+				got, changed := normalize(plain)
+				if changed || &got[0] != &plain[0] {
+					t.Fatal("non-candidate body must be returned unchanged")
+				}
+			})
+			require.Zero(t, allocs)
+		})
+	}
+}

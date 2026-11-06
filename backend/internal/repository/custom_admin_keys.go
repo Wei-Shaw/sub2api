@@ -88,7 +88,19 @@ func (r *scopedAdminKeyRepository) UpdateScopedAdminKey(ctx context.Context, k *
 	if e != nil {
 		return e
 	}
-	return scopedAdminKeyResult(r.db.ExecContext(ctx, `UPDATE scoped_admin_api_keys SET name=$2,description=$3,enabled=$4,expires_at=$5,allowed_ips=$6,policy=$7,updated_at=$8 WHERE id=$1 AND revoked_at IS NULL`, k.ID, k.Name, k.Description, k.Enabled, k.ExpiresAt, string(ips), string(policy), k.UpdatedAt))
+	// 只允许更新刚读取的版本，避免并发收权后旧请求恢复全权模式。
+	result, err := r.db.ExecContext(ctx, `UPDATE scoped_admin_api_keys SET name=$2,description=$3,enabled=$4,expires_at=$5,allowed_ips=$6,policy=$7,updated_at=$8 WHERE id=$1 AND revoked_at IS NULL AND updated_at=$9`, k.ID, k.Name, k.Description, k.Enabled, k.ExpiresAt, string(ips), string(policy), k.UpdatedAt, k.ExpectedUpdatedAt)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected == 0 {
+		return service.ErrScopedAdminKeyConflict
+	}
+	return nil
 }
 func (r *scopedAdminKeyRepository) TouchScopedAdminKey(ctx context.Context, id, expectedHash string, expectedUpdatedAt time.Time, ip string, now time.Time) error {
 	return scopedAdminKeyResult(r.db.ExecContext(ctx, `UPDATE scoped_admin_api_keys SET last_used_at=$5,last_used_ip=$4 WHERE id=$1 AND key_hash=$2 AND updated_at=$3 AND revoked_at IS NULL AND enabled=true AND (expires_at IS NULL OR expires_at>$5)`, id, expectedHash, expectedUpdatedAt, ip, now))
