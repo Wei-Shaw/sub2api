@@ -139,8 +139,7 @@ func classifyRequestBodyReadError(req *http.Request, err error) string {
 	}
 	// Check timeouts first: on HTTP/1 a read deadline also cancels the request
 	// context, which would otherwise look like a client disconnect.
-	var netErr net.Error
-	if errors.Is(err, os.ErrDeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
+	if IsRequestBodyReadTimeout(err) {
 		return RequestBodyReadErrorTimeout
 	}
 	if requestBodyClientGone(req, err, lower) {
@@ -151,10 +150,18 @@ func classifyRequestBodyReadError(req *http.Request, err error) string {
 	if errors.Is(err, io.ErrUnexpectedEOF) || strings.Contains(lower, "request declared a content-length") {
 		return RequestBodyReadErrorTruncated
 	}
+	var netErr net.Error
 	if errors.As(err, &netErr) {
 		return RequestBodyReadErrorTransport
 	}
 	return RequestBodyReadErrorIO
+}
+
+// IsRequestBodyReadTimeout reports whether a body read failed because a read
+// deadline expired (for example WithBodyReadTimeout's per-read deadline).
+func IsRequestBodyReadTimeout(err error) bool {
+	var netErr net.Error
+	return errors.Is(err, os.ErrDeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout())
 }
 
 func requestBodyClientGone(req *http.Request, err error, lowerErr string) bool {

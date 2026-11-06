@@ -51,6 +51,18 @@ func TestRequestBodyReadFailureKeepsBodyLimitMessageWithoutLogging(t *testing.T)
 	require.Empty(t, logs.All())
 }
 
+// cancelOnReadErr models net/http on HTTP/1: a failed body read cancels the
+// request context before the error reaches the handler.
+type cancelOnReadErr struct {
+	err    error
+	cancel context.CancelFunc
+}
+
+func (r cancelOnReadErr) Read([]byte) (int, error) {
+	r.cancel()
+	return 0, r.err
+}
+
 // The Anthropic /v1/messages handler reads the full body before it knows the
 // model or account. A failed read must report why instead of a generic 400.
 func TestGatewayMessagesClassifiesRequestBodyReadFailures(t *testing.T) {
@@ -64,22 +76,27 @@ func TestGatewayMessagesClassifiesRequestBodyReadFailures(t *testing.T) {
 		wantStatus  int
 		wantMessage string
 	}{
-		{"idle timeout", deadlineErr, false, http.StatusRequestTimeout, "Timed out reading request body"},
-		{"client disconnect", io.ErrUnexpectedEOF, true, 499, "Client closed the connection before the request body was received"},
+		{"h2 read timeout", deadlineErr, false, http.StatusRequestTimeout, "Timed out reading request body"},
+		// net/http cancels the request context when an HTTP/1 read deadline
+		// fires; this is still a timeout, not a client that went away.
+		{"http1 read timeout", deadlineErr, true, http.StatusRequestTimeout, "Timed out reading request body"},
+		// A client that went away gets no body, matching the failover path.
+		{"client disconnect", io.ErrUnexpectedEOF, true, 499, ""},
 		{"truncated body", io.ErrUnexpectedEOF, false, http.StatusBadRequest, "Failed to read request body"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			rec := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(rec)
-			body := io.MultiReader(strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[`), iotest.ErrReader(tc.readErr))
-			req := httptest.NewRequest(http.MethodPost, "/v1/messages", body)
-			req.ContentLength = 1 << 20
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			failing := iotest.ErrReader(tc.readErr)
 			if tc.cancelCtx {
-				ctx, cancel := context.WithCancel(req.Context())
-				cancel()
-				req = req.WithContext(ctx)
+				failing = cancelOnReadErr{err: tc.readErr, cancel: cancel}
 			}
+			body := io.MultiReader(strings.NewReader(`{"model":"claude-sonnet-4-5","messages":[`), failing)
+			req := httptest.NewRequest(http.MethodPost, "/v1/messages", body).WithContext(ctx)
+			req.ContentLength = 1 << 20
 			c.Request = req
 			groupID := int64(1)
 			c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 1, UserID: 1, GroupID: &groupID})
@@ -87,7 +104,11 @@ func TestGatewayMessagesClassifiesRequestBodyReadFailures(t *testing.T) {
 
 			(&GatewayHandler{}).Messages(c)
 
-			require.Equal(t, tc.wantStatus, rec.Code)
+			require.Equal(t, tc.wantStatus, c.Writer.Status())
+			if tc.wantMessage == "" {
+				require.Empty(t, rec.Body.String())
+				return
+			}
 			var resp struct {
 				Type  string `json:"type"`
 				Error struct {

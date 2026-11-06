@@ -739,17 +739,16 @@ type PricingConfig struct {
 type ServerConfig struct {
 	Host                     string    `mapstructure:"host"`
 	Port                     int       `mapstructure:"port"`
-	Mode                     string    `mapstructure:"mode"`                      // debug/release
-	EnableServerTiming       bool      `mapstructure:"enable_server_timing"`      // Admin UI Server-Timing response header
-	FrontendURL              string    `mapstructure:"frontend_url"`              // 前端基础 URL，用于生成邮件中的外部链接
-	ReadHeaderTimeout        int       `mapstructure:"read_header_timeout"`       // 读取请求头超时（秒）
-	MaxHeaderBytes           int       `mapstructure:"max_header_bytes"`          // 请求头最大字节数（HTTP/2 映射为 header-list 上限）
-	IdleTimeout              int       `mapstructure:"idle_timeout"`              // 空闲连接超时（秒）
-	TrustedProxies           []string  `mapstructure:"trusted_proxies"`           // 可信代理列表（CIDR/IP）
-	TrustedProxiesConfigured bool      `mapstructure:"-" json:"-" yaml:"-"`       // 是否显式配置了可信代理列表
-	MaxRequestBodySize       int64     `mapstructure:"max_request_body_size"`     // 全局最大请求体限制
-	RequestBodyIdleTimeout   int       `mapstructure:"request_body_idle_timeout"` // 请求体无数据到达的超时（秒），不限总上传时长；0 关闭
-	H2C                      H2CConfig `mapstructure:"h2c"`                       // HTTP/2 Cleartext 配置
+	Mode                     string    `mapstructure:"mode"`                  // debug/release
+	EnableServerTiming       bool      `mapstructure:"enable_server_timing"`  // Admin UI Server-Timing response header
+	FrontendURL              string    `mapstructure:"frontend_url"`          // 前端基础 URL，用于生成邮件中的外部链接
+	ReadHeaderTimeout        int       `mapstructure:"read_header_timeout"`   // 读取请求头超时（秒）
+	MaxHeaderBytes           int       `mapstructure:"max_header_bytes"`      // 请求头最大字节数（HTTP/2 映射为 header-list 上限）
+	IdleTimeout              int       `mapstructure:"idle_timeout"`          // 空闲连接超时（秒）
+	TrustedProxies           []string  `mapstructure:"trusted_proxies"`       // 可信代理列表（CIDR/IP）
+	TrustedProxiesConfigured bool      `mapstructure:"-" json:"-" yaml:"-"`   // 是否显式配置了可信代理列表
+	MaxRequestBodySize       int64     `mapstructure:"max_request_body_size"` // 全局最大请求体限制
+	H2C                      H2CConfig `mapstructure:"h2c"`                   // HTTP/2 Cleartext 配置
 }
 
 // H2CConfig HTTP/2 Cleartext 配置
@@ -1039,7 +1038,8 @@ type GatewayConfig struct {
 	ResponseHeaderTimeout int `mapstructure:"response_header_timeout"`
 	// OpenAIResponseHeaderTimeout: OpenAI/Codex 上游等待响应头的超时时间（秒），0表示无超时
 	// OpenAI/Codex 请求可能在上游排队较久；默认不使用通用响应头超时截断。
-	OpenAIResponseHeaderTimeout int `mapstructure:"openai_response_header_timeout"`
+	OpenAIResponseHeaderTimeout         int  `mapstructure:"openai_response_header_timeout"`
+	DisableOpenAITransportErrorCooldown bool `mapstructure:"disable_openai_transport_error_cooldown"`
 	// GrokResponseHeaderTimeout bounds the pre-first-byte wait for xAI/Grok.
 	// A zero value uses the provider-safe default instead of the generic gateway timeout.
 	GrokResponseHeaderTimeout int `mapstructure:"grok_response_header_timeout"`
@@ -1050,6 +1050,12 @@ type GatewayConfig struct {
 	OpenAIHighEffortFirstOutputTimeoutSeconds int `mapstructure:"openai_high_effort_first_output_timeout_seconds"`
 	// 请求体最大字节数，用于网关请求体大小限制
 	MaxBodySize int64 `mapstructure:"max_body_size"`
+	// RequestBodyMemoryBudgetBytes bounds buffered ingress allocations per instance; 0 disables it.
+	RequestBodyMemoryBudgetBytes int64 `mapstructure:"request_body_memory_budget_bytes"`
+	// RequestBodyReadTimeoutSeconds bounds each socket read during upload; 0 disables it.
+	RequestBodyReadTimeoutSeconds int `mapstructure:"request_body_read_timeout_seconds"`
+	// DownstreamWriteTimeoutSeconds bounds each HTTP write/flush, not the lifetime of a stream.
+	DownstreamWriteTimeoutSeconds int `mapstructure:"downstream_write_timeout_seconds"`
 	// TextMaxBodySize limits endpoints that cannot carry inline image/video payloads.
 	TextMaxBodySize int64 `mapstructure:"text_max_body_size"`
 	// 非流式上游响应体读取上限（字节），用于防止无界读取导致内存放大
@@ -1144,7 +1150,10 @@ type GatewayConfig struct {
 	// ImageNonstreamKeepaliveInterval: 图片非流式 JSON keepalive 间隔（秒），0表示禁用
 	ImageNonstreamKeepaliveInterval int `mapstructure:"image_nonstream_keepalive_interval"`
 	// MaxLineSize: 上游 SSE 单行最大字节数（0使用默认值）
-	MaxLineSize int `mapstructure:"max_line_size"`
+	MaxLineSize      int   `mapstructure:"max_line_size"`
+	SSEQueueMaxBytes int64 `mapstructure:"sse_queue_max_bytes"`
+	SSEEventMaxBytes int64 `mapstructure:"sse_event_max_bytes"`
+	SSEEventMaxLines int   `mapstructure:"sse_event_max_lines"`
 
 	// 是否记录上游错误响应体摘要（避免输出请求内容）
 	LogUpstreamErrorBody bool `mapstructure:"log_upstream_error_body"`
@@ -2106,7 +2115,6 @@ func setDefaults() {
 	viper.SetDefault("server.max_header_bytes", 64*1024)
 	viper.SetDefault("server.idle_timeout", 120) // 120秒空闲超时
 	viper.SetDefault("server.max_request_body_size", int64(256*1024*1024))
-	viper.SetDefault("server.request_body_idle_timeout", 60) // 60秒内无请求体数据到达则失败
 	// H2C 默认配置
 	viper.SetDefault("server.h2c.enabled", false)
 	viper.SetDefault("server.h2c.max_concurrent_streams", uint32(50))      // 50 个并发流
@@ -2481,6 +2489,7 @@ func setDefaults() {
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
 	viper.SetDefault("gateway.openai_response_header_timeout", 0)
+	viper.SetDefault("gateway.disable_openai_transport_error_cooldown", false)
 	viper.SetDefault("gateway.grok_response_header_timeout", 120)
 	viper.SetDefault("gateway.openai_first_output_timeout_seconds", 0)
 	viper.SetDefault("gateway.openai_high_effort_first_output_timeout_seconds", 0)
@@ -2586,6 +2595,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.antigravity_fallback_cooldown_minutes", 1)
 	viper.SetDefault("gateway.antigravity_extra_retries", 10)
 	viper.SetDefault("gateway.max_body_size", int64(256*1024*1024))
+	viper.SetDefault("gateway.request_body_memory_budget_bytes", int64(1024*1024*1024))
+	viper.SetDefault("gateway.request_body_read_timeout_seconds", 120)
+	viper.SetDefault("gateway.downstream_write_timeout_seconds", 120)
 	viper.SetDefault("gateway.text_max_body_size", int64(32*1024*1024))
 	viper.SetDefault("gateway.upstream_response_read_max_bytes", DefaultUpstreamResponseReadMaxBytes)
 	viper.SetDefault("gateway.models_list_read_max_bytes", DefaultModelsListReadMaxBytes)
@@ -2607,6 +2619,9 @@ func setDefaults() {
 	viper.SetDefault("gateway.image_stream_keepalive_interval", 10)
 	viper.SetDefault("gateway.image_nonstream_keepalive_interval", 0)
 	viper.SetDefault("gateway.max_line_size", 500*1024*1024)
+	viper.SetDefault("gateway.sse_queue_max_bytes", int64(8*1024*1024))
+	viper.SetDefault("gateway.sse_event_max_bytes", int64(0))
+	viper.SetDefault("gateway.sse_event_max_lines", 4096)
 	viper.SetDefault("gateway.scheduling.sticky_session_max_waiting", 3)
 	viper.SetDefault("gateway.scheduling.sticky_session_wait_timeout", 120*time.Second)
 	viper.SetDefault("gateway.scheduling.fallback_wait_timeout", 30*time.Second)
@@ -2802,9 +2817,6 @@ func (c *Config) Validate() error {
 	}
 	if c.Server.MaxRequestBodySize < 0 {
 		return fmt.Errorf("server.max_request_body_size must be non-negative")
-	}
-	if c.Server.RequestBodyIdleTimeout < 0 || c.Server.RequestBodyIdleTimeout > 3600 {
-		return fmt.Errorf("server.request_body_idle_timeout must be between 0 and 3600 seconds")
 	}
 	if c.Server.H2C.Enabled {
 		if c.Server.H2C.MaxConcurrentStreams == 0 {
@@ -3412,6 +3424,18 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.MaxBodySize <= 0 {
 		return fmt.Errorf("gateway.max_body_size must be positive")
+	}
+	if c.Gateway.RequestBodyMemoryBudgetBytes < 0 {
+		return fmt.Errorf("gateway.request_body_memory_budget_bytes must be non-negative")
+	}
+	if c.Gateway.RequestBodyReadTimeoutSeconds < 0 || c.Gateway.RequestBodyReadTimeoutSeconds > 3600 {
+		return fmt.Errorf("gateway.request_body_read_timeout_seconds must be between 0 and 3600")
+	}
+	if c.Gateway.DownstreamWriteTimeoutSeconds < 0 || c.Gateway.DownstreamWriteTimeoutSeconds > 3600 {
+		return fmt.Errorf("gateway.downstream_write_timeout_seconds must be between 0 and 3600")
+	}
+	if c.Gateway.SSEQueueMaxBytes < 0 || c.Gateway.SSEEventMaxBytes < 0 || c.Gateway.SSEEventMaxLines < 0 {
+		return fmt.Errorf("gateway.sse_queue_max_bytes, sse_event_max_bytes and sse_event_max_lines must be non-negative")
 	}
 	if c.Gateway.TextMaxBodySize <= 0 || c.Gateway.TextMaxBodySize > c.Gateway.MaxBodySize {
 		return fmt.Errorf("gateway.text_max_body_size must be positive and no greater than gateway.max_body_size")

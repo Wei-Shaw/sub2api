@@ -13,8 +13,12 @@ import (
 func AbortWithRequestBodyReadFailure(c *gin.Context, component string, err error) {
 	failure := httputil.DescribeRequestBodyReadFailure(c.Request, err)
 	if failure.Kind != httputil.RequestBodyReadErrorMaxBytes {
-		fields := append([]zap.Field{zap.String("component", component)}, failure.LogFields()...)
-		logger.FromContext(c.Request.Context()).Warn("read request body failed", fields...)
+		logRequestBodyReadFailure(c, component, failure)
 	}
 	c.AbortWithStatusJSON(failure.Status, gin.H{"error": gin.H{"type": "invalid_request_error", "message": failure.Message}})
+}
+
+func logRequestBodyReadFailure(c *gin.Context, component string, failure httputil.RequestBodyReadFailure) {
+	fields := append([]zap.Field{zap.String("component", component)}, failure.LogFields()...)
+	logger.FromContext(c.Request.Context()).Warn("read request body failed", fields...)
 }

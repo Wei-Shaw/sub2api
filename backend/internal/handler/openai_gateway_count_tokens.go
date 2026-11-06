@@ -42,6 +42,9 @@ func (h *OpenAIGatewayHandler) ResponsesInputTokens(c *gin.Context) {
 
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
+		if handleRequestBodyReadError(c, reqLog, err) {
+			return
+		}
 		status, message := requestBodyReadFailure(reqLog, c.Request, err)
 		h.errorResponse(c, status, "invalid_request_error", message)
 		return
@@ -132,7 +135,11 @@ func (h *OpenAIGatewayHandler) ResponsesInputTokens(c *gin.Context) {
 func (h *OpenAIGatewayHandler) GrokCountTokens(c *gin.Context) {
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
-		status, message := requestBodyReadFailure(requestLogger(c, "handler.openai_gateway.grok_count_tokens"), c.Request, err)
+		bodyLog := requestLogger(c, "handler.openai_gateway.grok_count_tokens")
+		if handleRequestBodyReadError(c, bodyLog, err) {
+			return
+		}
+		status, message := requestBodyReadFailure(bodyLog, c.Request, err)
 		h.anthropicErrorResponse(c, status, "invalid_request_error", message)
 		return
 	}
@@ -199,6 +206,9 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 
 	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
+		if handleRequestBodyReadError(c, reqLog, err) {
+			return
+		}
 		status, message := requestBodyReadFailure(reqLog, c.Request, err)
 		h.anthropicErrorResponse(c, status, "invalid_request_error", message)
 		return

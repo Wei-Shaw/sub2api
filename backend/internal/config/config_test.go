@@ -139,12 +139,17 @@ func TestLoadHTTPIngressSafetyDefaults(t *testing.T) {
 	cfg, err := Load()
 	require.NoError(t, err)
 	require.Equal(t, 10, cfg.Server.ReadHeaderTimeout)
-	require.Equal(t, 60, cfg.Server.RequestBodyIdleTimeout)
 	require.Equal(t, 64*1024, cfg.Server.MaxHeaderBytes)
 	require.Empty(t, cfg.Server.TrustedProxies)
 	require.False(t, cfg.Server.TrustedProxiesConfigured)
 	require.True(t, cfg.TrustForwardedIPForAPIKeyACL())
 	require.Equal(t, int64(32*1024*1024), cfg.Gateway.TextMaxBodySize)
+	require.Equal(t, int64(1<<30), cfg.Gateway.RequestBodyMemoryBudgetBytes)
+	require.Equal(t, 120, cfg.Gateway.RequestBodyReadTimeoutSeconds)
+	require.Equal(t, 120, cfg.Gateway.DownstreamWriteTimeoutSeconds)
+	require.Equal(t, 500<<20, cfg.Gateway.MaxLineSize)
+	require.Equal(t, int64(8<<20), cfg.Gateway.SSEQueueMaxBytes)
+	require.Equal(t, 4096, cfg.Gateway.SSEEventMaxLines)
 	require.True(t, cfg.APIKeyAuth.InvalidAbuse.Enabled)
 	require.Equal(t, 120, cfg.APIKeyAuth.InvalidAbuse.Threshold)
 	require.Equal(t, 16384, cfg.APIKeyAuth.InvalidAbuse.Capacity)
@@ -1636,6 +1641,16 @@ func TestValidateConfigErrors(t *testing.T) {
 		wantErr string
 	}{
 		{
+			name:    "negative ingress memory budget",
+			mutate:  func(c *Config) { c.Gateway.RequestBodyMemoryBudgetBytes = -1 },
+			wantErr: "gateway.request_body_memory_budget_bytes",
+		},
+		{
+			name:    "negative upload timeout",
+			mutate:  func(c *Config) { c.Gateway.RequestBodyReadTimeoutSeconds = -1 },
+			wantErr: "gateway.request_body_read_timeout_seconds",
+		},
+		{
 			name:    "server read header timeout",
 			mutate:  func(c *Config) { c.Server.ReadHeaderTimeout = 0 },
 			wantErr: "server.read_header_timeout",
@@ -1644,16 +1659,6 @@ func TestValidateConfigErrors(t *testing.T) {
 			name:    "server max header bytes too small",
 			mutate:  func(c *Config) { c.Server.MaxHeaderBytes = 4096 },
 			wantErr: "server.max_header_bytes",
-		},
-		{
-			name:    "server request body idle timeout negative",
-			mutate:  func(c *Config) { c.Server.RequestBodyIdleTimeout = -1 },
-			wantErr: "server.request_body_idle_timeout",
-		},
-		{
-			name:    "server request body idle timeout too large",
-			mutate:  func(c *Config) { c.Server.RequestBodyIdleTimeout = 3601 },
-			wantErr: "server.request_body_idle_timeout",
 		},
 		{
 			name:    "server max request body size",
