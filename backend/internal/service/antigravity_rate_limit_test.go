@@ -1322,3 +1322,45 @@ func TestNormalizeAntigravityModelName(t *testing.T) {
 		})
 	}
 }
+
+// TestHandleUpstreamError_404_EntityNotFound_SetsModelCooldown 账号对模型无权益时返回
+// 404 "Requested entity was not found."，应对 (账号, 最终模型) 设置冷却，避免反复调度到该账号。
+func TestHandleUpstreamError_404_EntityNotFound_SetsModelCooldown(t *testing.T) {
+	repo := &stubAntigravityAccountRepo{}
+	svc := &AntigravityGatewayService{accountRepo: repo}
+	account := &Account{ID: 317, Name: "acc-no-claude", Platform: PlatformAntigravity}
+
+	body := []byte(`{"error":{"code":404,"message":"Requested entity was not found.","status":"NOT_FOUND"}}`)
+	before := time.Now()
+	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusNotFound, http.Header{}, body, "claude-opus-4-6", 0, "", false)
+
+	require.Nil(t, result)
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, "claude-opus-4-6-thinking", repo.modelRateLimitCalls[0].modelKey)
+	require.WithinDuration(t, before.Add(antigravityEntityNotFoundCooldown), repo.modelRateLimitCalls[0].resetAt, 5*time.Second)
+}
+
+// TestHandleUpstreamError_404_Other_NoCooldown 其他 404 不应触发模型冷却。
+func TestHandleUpstreamError_404_Other_NoCooldown(t *testing.T) {
+	repo := &stubAntigravityAccountRepo{}
+	svc := &AntigravityGatewayService{accountRepo: repo}
+	account := &Account{ID: 1, Name: "acc-1", Platform: PlatformAntigravity}
+
+	body := []byte(`{"error":{"code":404,"message":"Method not found.","status":"NOT_FOUND"}}`)
+	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusNotFound, http.Header{}, body, "claude-opus-4-6", 0, "", false)
+
+	require.Nil(t, result)
+	require.Empty(t, repo.modelRateLimitCalls)
+}
+
+func TestShouldFailoverAntigravityResponse_EntityNotFound(t *testing.T) {
+	svc := &AntigravityGatewayService{}
+	entity := []byte(`{"error":{"code":404,"message":"Requested entity was not found.","status":"NOT_FOUND"}}`)
+	other := []byte(`{"error":{"code":404,"message":"Method not found."}}`)
+
+	require.True(t, svc.shouldFailoverAntigravityResponse(http.StatusNotFound, entity))
+	require.False(t, svc.shouldFailoverAntigravityResponse(http.StatusNotFound, other))
+	require.False(t, svc.shouldFailoverAntigravityResponse(http.StatusNotFound, nil))
+	require.False(t, svc.shouldFailoverAntigravityResponse(http.StatusBadRequest, entity))
+	require.True(t, svc.shouldFailoverAntigravityResponse(http.StatusServiceUnavailable, nil))
+}
