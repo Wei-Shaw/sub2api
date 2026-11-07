@@ -42,6 +42,33 @@ func EffortLevelsForModel(model string) []string {
 	return nil
 }
 
+// adaptiveOnlyThinkingFamilies lists models that reject manual extended
+// thinking (thinking.type=enabled with budget_tokens) and expect adaptive
+// thinking steered by output_config.effort.
+var adaptiveOnlyThinkingFamilies = []string{
+	"claude-mythos-5",
+	"claude-fable-5",
+	"claude-sonnet-5",
+	"claude-opus-4-8",
+	"claude-opus-4-7",
+	"claude-opus-5",
+	"claude-haiku-5-5",
+}
+
+// RequiresAdaptiveThinking reports whether a Claude model rejects
+// thinking.type=enabled with budget_tokens. Families match by ID prefix, so
+// claude-sonnet-5 also covers claude-sonnet-5-5 and claude-fable-5 covers
+// claude-fable-5-1.
+func RequiresAdaptiveThinking(model string) bool {
+	id := normalizeEffortModelID(model)
+	for _, family := range adaptiveOnlyThinkingFamilies {
+		if id == family || strings.HasPrefix(id, family+"-") {
+			return true
+		}
+	}
+	return false
+}
+
 // IsOpus55 identifies the fixed Opus 5.5 ID after provider/local suffix normalization.
 func IsOpus55(model string) bool {
 	return normalizeEffortModelID(model) == "claude-opus-5-5"

@@ -134,11 +134,16 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 	if req.Reasoning != nil && req.Reasoning.Effort != "" {
 		effort := mapResponsesEffortToAnthropic(req.Reasoning.Effort)
 		out.OutputConfig = &AnthropicOutputConfig{Effort: effort}
-		// Enable thinking for non-low efforts
+		// Enable thinking for non-low efforts. Adaptive-only models reject
+		// budget_tokens; output_config.effort already carries the depth.
 		if effort != "low" {
-			out.Thinking = &AnthropicThinking{
-				Type:         "enabled",
-				BudgetTokens: defaultThinkingBudget(effort),
+			if claude.RequiresAdaptiveThinking(req.Model) {
+				out.Thinking = &AnthropicThinking{Type: "adaptive"}
+			} else {
+				out.Thinking = &AnthropicThinking{
+					Type:         "enabled",
+					BudgetTokens: defaultThinkingBudget(effort),
+				}
 			}
 		}
 	}
