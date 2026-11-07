@@ -1414,6 +1414,57 @@ func modelIDsForTest(models []gatewayModelItemForTest) []string {
 	return ids
 }
 
+func TestGatewayModels_GeminiMappingDeletionKeepsBothCatalogsEmpty(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const groupID int64 = 94
+	for _, allowlist := range []bool{false, true} {
+		mapping := map[string]any{
+			"gemini-3.8-flash": "gemini-3.8-flash-high",
+			"claude-custom":    "claude-sonnet-4-6",
+		}
+		h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{groupID: {{
+				ID: 25, Platform: service.PlatformAntigravity,
+				Extra:       map[string]any{"mixed_scheduling": true},
+				Credentials: map[string]any{"model_mapping": mapping},
+			}}},
+		})
+		group := &service.Group{ID: groupID, Platform: service.PlatformGemini,
+			ModelAllowlist: service.GroupModelAllowlist{Enabled: allowlist, Models: []string{"gemini-*"}},
+		}
+		for _, deleted := range []bool{false, true} {
+			want := []string{"gemini-3.8-flash"}
+			if deleted {
+				delete(mapping, "gemini-3.8-flash")
+				h.gatewayService.InvalidateAvailableModelsCache(&group.ID, service.PlatformGemini)
+				want = []string{}
+			}
+			for _, codex := range []bool{false, true} {
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+				c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{Group: group})
+				ids := []string{}
+				if codex {
+					h.CodexModels(c)
+					var got codexModelsResponseForTest
+					require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+					for _, model := range got.Models {
+						ids = append(ids, model.Slug)
+					}
+				} else {
+					h.Models(c)
+					var got gatewayModelsResponseForTest
+					require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+					ids = append(ids, modelIDsForTest(got.Data)...)
+				}
+				require.Equal(t, http.StatusOK, rec.Code)
+				require.Equal(t, want, ids, "allowlist=%t deleted=%t codex=%t", allowlist, deleted, codex)
+			}
+		}
+	}
+}
+
 func TestGatewayModels_AntigravityExplicitMappingAppearsInBothCatalogs(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	const groupID int64 = 93
@@ -1458,8 +1509,8 @@ func TestGatewayModels_AntigravityExplicitMappingAppearsInBothCatalogs(t *testin
 					ids = modelIDsForTest(got.Data)
 				}
 				require.Equal(t, http.StatusOK, rec.Code)
-				// 显式条目必须同时出现在两种目录；默认透传补齐的条目不锁定。
-				require.Subset(t, ids, want, "codex=%t", codex)
+				// 显式目录不能被运行时兼容透传补齐，已删除的默认模型也不能重新出现。
+				require.ElementsMatch(t, want, ids, "codex=%t", codex)
 				if platform == service.PlatformGemini {
 					require.NotContains(t, ids, "claude-opus-4-6-thinking", "codex=%t", codex)
 				}

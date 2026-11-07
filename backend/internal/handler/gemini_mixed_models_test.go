@@ -20,19 +20,29 @@ func TestGeminiNativeModelsUsesAccountMappings(t *testing.T) {
 		name                     string
 		forced, mixed, allowlist bool
 		status                   int
+		claudeOnly               bool
 	}{
-		{"mixed", false, true, false, 200},
-		{"mixed allowlist", false, true, true, 200},
-		{"disabled mixed", false, false, false, 503},
-		{"forced without mixed opt-in", true, false, false, 200},
-		{"forced allowlist", true, false, true, 200},
+		{"mixed", false, true, false, 200, false},
+		{"mixed allowlist", false, true, true, 200, false},
+		{"disabled mixed", false, false, false, 503, false},
+		{"forced without mixed opt-in", true, false, false, 200, false},
+		{"forced allowlist", true, false, true, 200, false},
+		{"mixed filtered empty", false, true, false, 200, true},
+		{"mixed filtered empty allowlist", false, true, true, 200, true},
+		{"forced filtered empty", true, false, false, 200, true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			groupID := int64(45)
+			mapping := map[string]any{"gemini-synced-custom": "gemini-3.8-flash-high", "claude-custom": "claude-sonnet-4-6"}
+			want := []string{"models/gemini-synced-custom"}
+			if tt.claudeOnly {
+				delete(mapping, "gemini-synced-custom")
+				want = []string{}
+			}
 			repo := &geminiAllowlistAccountRepoStub{gatewayModelsAccountRepoStub: gatewayModelsAccountRepoStub{byGroup: map[int64][]service.Account{
 				groupID: {{ID: 1, Platform: service.PlatformAntigravity,
 					Extra:       map[string]any{"mixed_scheduling": tt.mixed},
-					Credentials: map[string]any{"model_mapping": map[string]any{"gemini-synced-custom": "gemini-3.8-flash-high", "claude-custom": "claude-sonnet-4-6"}}}},
+					Credentials: map[string]any{"model_mapping": mapping}}},
 			}}}
 			h := &GatewayHandler{geminiCompatService: service.NewGeminiMessagesCompatService(repo, nil, nil, nil, nil, nil, nil, nil, nil)}
 			rec := httptest.NewRecorder()
@@ -56,12 +66,7 @@ func TestGeminiNativeModelsUsesAccountMappings(t *testing.T) {
 				names = append(names, model.Name)
 				require.Contains(t, model.SupportedGenerationMethods, "generateContent")
 			}
-			require.Contains(t, names, "models/gemini-synced-custom")
-			require.NotContains(t, names, "models/claude-custom")
-			require.NotContains(t, names, "models/gemini-2.0-flash")
-			if tt.allowlist {
-				require.Equal(t, []string{"models/gemini-synced-custom"}, names)
-			}
+			require.Equal(t, want, names)
 		})
 	}
 }
