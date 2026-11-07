@@ -397,13 +397,13 @@ type UpdateSettingsRequest struct {
 // UpdateSettings 更新系统设置
 // PUT /api/v1/admin/settings
 // ensureActorTotpForStepUp 校验当前操作者具备开启 step-up 门控的条件：
-// 必须是真人管理员会话（admin API key 无法完成 TOTP step-up，拒绝）且本人已启用 TOTP。
+// 必须是真人管理员会话（admin API key、MCP OAuth 等机器凭证无法完成 TOTP step-up，拒绝）且本人已启用 TOTP。
 // 校验失败时写入错误响应并返回 false。
 func (h *SettingHandler) ensureActorTotpForStepUp(c *gin.Context) bool {
-	if c.GetString("auth_method") == service.AuditAuthMethodAdminAPIKey {
+	if reason, machine := middleware.MachineCredentialReason(c); machine {
 		response.ErrorWithDetails(c, http.StatusForbidden,
-			"Admin API key cannot enable step-up verification; use an admin session with TOTP enabled",
-			"STEP_UP_ADMIN_API_KEY_FORBIDDEN", nil)
+			"Machine credentials cannot enable step-up verification; use an admin session with TOTP enabled",
+			reason, nil)
 		return false
 	}
 	subject, ok := middleware.GetAuthSubjectFromContext(c)
