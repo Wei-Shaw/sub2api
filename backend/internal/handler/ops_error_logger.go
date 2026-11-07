@@ -406,7 +406,8 @@ func estimateOpsErrorLogJobBytes(entry *service.OpsInsertErrorLogInput) int64 {
 		len(entry.RequestedModel) + len(entry.UpstreamModel) + len(entry.UserAgent) +
 		len(entry.ErrorPhase) + len(entry.ErrorType) + len(entry.Severity) +
 		len(entry.ErrorMessage) + len(entry.ErrorBody) + len(entry.ErrorSource) +
-		len(entry.ErrorOwner) + len(entry.APIKeyPrefix)
+		len(entry.ErrorOwner) + len(entry.APIKeyPrefix) +
+		len(entry.ReasoningEffort) + len(entry.ServiceTier)
 	if entry.UpstreamErrorMessage != nil {
 		size += len(*entry.UpstreamErrorMessage)
 	}
@@ -1249,6 +1250,7 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 
 			CreatedAt: time.Now(),
 		}
+		applyOpsRequestParameters(c, entry)
 		applyOpsLatencyFieldsFromContext(c, entry)
 		applyOpsUpstreamFieldsFromContext(c, entry)
 		if parsed.StreamFailure {
@@ -1399,6 +1401,7 @@ func logOpsRecoveredUpstream(c *gin.Context, ops *service.OpsService, finalStatu
 	if clientIP := strings.TrimSpace(ip.GetClientIP(c)); clientIP != "" {
 		entry.ClientIP = &clientIP
 	}
+	applyOpsRequestParameters(c, entry)
 	applyOpsLatencyFieldsFromContext(c, entry)
 	enqueueOpsErrorLog(ops, entry)
 }
@@ -1563,9 +1566,14 @@ func logOpsStreamErrorValue(c *gin.Context, ops *service.OpsService, wireStatus 
 
 		CreatedAt: time.Now(),
 	}
+	applyOpsRequestParameters(c, entry)
 	applyOpsLatencyFieldsFromContext(c, entry)
 	if !streamErr.RequestScoped {
 		applyOpsUpstreamFieldsFromContext(c, entry)
+	}
+	if streamErr.Turn > 0 {
+		entry.ReasoningEffort = streamErr.ReasoningEffort
+		entry.ServiceTier = streamErr.ServiceTier
 	}
 	if streamErr.Turn > 0 && !streamErr.RequestScoped {
 		applyOpsStreamErrorSnapshot(entry, streamErr)
@@ -1666,6 +1674,10 @@ func isCountTokensRequest(c *gin.Context) bool {
 
 func isTokenCountRequestPath(path string) bool {
 	return strings.Contains(path, "/count_tokens") || strings.Contains(path, "/responses/input_tokens")
+}
+
+func applyOpsRequestParameters(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
+	entry.ReasoningEffort, entry.ServiceTier = service.OpsRequestParameters(c)
 }
 
 func applyOpsLatencyFieldsFromContext(c *gin.Context, entry *service.OpsInsertErrorLogInput) {
