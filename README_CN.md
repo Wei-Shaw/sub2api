@@ -185,6 +185,11 @@
 <td><a href="https://api.muteki.site/register?aff=Sub2">MaruCode</a> ——偶尔做做慈善的小破站 API，站内 🍟每周星期四 会做 限时倍率活动 ，目前已运营半年有余，大群3K人，主打稳定、欢迎高校、企业等合作，感谢🙇，目前已经营半年有余，自营号池，不搞充值营销套路，主要提供 Codex（GPT 6.2 Astra）、Claude Code(Claude Opus 5.5)、GPT Image 2.6 等主流模型，支持 WebSocket 协议，明码标价(Codex 0.3x, CC 1.7x)，透明汇率(1:1)</td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://massivetokens.com/signup?ref=SUB2API"><img src="assets/partners/logos/massivetokens.jpg" alt="Massive Tokens" width="150"></a></td>
+<td><a href="https://massivetokens.com/signup?ref=SUB2API">Massive Tokens</a> 以批发价向企业和大用量开发者提供 Claude API。提供标准的 Anthropic Messages API，Claude Code、Sub2API、LiteLLM、One API 无需改代码即可接入。使用邀请码 SUB2API 注册，每次调用立减 5%。</td>
+</tr>
+
 </table>
 
 </details>
