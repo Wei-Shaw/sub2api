@@ -64,7 +64,8 @@ function injectPublicSettings(backendUrl: string): Plugin {
           if (response.ok) {
             const data = await response.json()
             if (data.code === 0 && data.data) {
-              const script = `<script>window.__APP_CONFIG__=${JSON.stringify(data.data)};</script>`
+              const configJSON = JSON.stringify(data.data).replace(/</g, '\\u003c')
+              const script = `<script>window.__APP_CONFIG__=${configJSON};</script>`
               return injectBranding(html, data.data).replace('</head>', `${script}\n</head>`)
             }
           }

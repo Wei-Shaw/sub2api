@@ -53,6 +53,29 @@ func TestUpdateSettingsFullPayloadStillClearsSentEmptyFields(t *testing.T) {
 		"an explicitly sent empty value is a deliberate clear, not an omission")
 }
 
+func TestUpdateSettingsCustomHeadScript(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+	source := `<script src="https://example.com/a.js"></script><script>window.custom = true;</script>`
+	rec := doUpdateSettings(t, h, map[string]any{"custom_head_script": source}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, source, repo.values[service.SettingKeyCustomHeadScript])
+	require.Contains(t, rec.Body.String(), `"custom_head_script":`)
+
+	rec = doUpdateSettings(t, h, map[string]any{"site_name": "Example"}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, source, repo.values[service.SettingKeyCustomHeadScript])
+
+	for _, invalidSource := range []string{"<script>unclosed", "<script"} {
+		rec = doUpdateSettings(t, h, map[string]any{"custom_head_script": invalidSource}, nil)
+		require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+		require.Equal(t, source, repo.values[service.SettingKeyCustomHeadScript])
+	}
+
+	rec = doUpdateSettings(t, h, map[string]any{"custom_head_script": ""}, nil)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Empty(t, repo.values[service.SettingKeyCustomHeadScript])
+}
+
 // smtp_from_email is the one request field whose JSON name differs from its
 // setting key; the alias keeps it from being treated as always-omitted.
 func TestUpdateSettingsSMTPFromAliasIsWritable(t *testing.T) {
