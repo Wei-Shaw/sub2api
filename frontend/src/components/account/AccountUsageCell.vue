@@ -199,6 +199,105 @@
       </div>
     </template>
 
+    <!-- Zhipu GLM Coding Plan accounts: 5h/weekly windows via unified usage API.
+         eligible 的 Ollama Cloud / OpenCode Go 嵌入式用量窗口优先，走多协议分支。 -->
+    <template v-else-if="isZhipuCodingAccount && !hasEmbeddedUsageCell">
+      <div v-if="usageInfo?.five_hour || usageInfo?.seven_day" class="space-y-1">
+        <div
+          v-if="usageInfo.error"
+          class="text-xs text-amber-600 dark:text-amber-400 truncate max-w-[200px]"
+          :title="usageInfo.error"
+        >
+          {{ usageInfo.error }}
+        </div>
+        <UsageProgressBar
+          v-if="usageInfo?.five_hour"
+          label="5h"
+          :utilization="usageInfo.five_hour.utilization"
+          :resets-at="usageInfo.five_hour.resets_at"
+          :window-stats="usageInfo.five_hour.window_stats"
+          :show-now-when-idle="true"
+          color="indigo"
+        />
+        <UsageProgressBar
+          v-if="usageInfo?.seven_day"
+          label="7d"
+          :utilization="usageInfo.seven_day.utilization"
+          :resets-at="usageInfo.seven_day.resets_at"
+          :window-stats="usageInfo.seven_day.window_stats"
+          :show-now-when-idle="true"
+          color="emerald"
+        />
+        <button
+          type="button"
+          class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="activeQueryLoading"
+          @click="loadActiveUsage"
+        >
+          <svg
+            class="h-2.5 w-2.5"
+            :class="{ 'animate-spin': activeQueryLoading }"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+          {{ t('admin.accounts.usageWindow.activeQuery') }}
+        </button>
+      </div>
+      <div v-else-if="loading" class="space-y-1.5">
+        <div class="flex items-center gap-1">
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+        <div class="flex items-center gap-1">
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-1.5 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700"></div>
+          <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+        </div>
+      </div>
+      <div v-else class="space-y-1">
+        <!-- 探测失败且尚无快照：透出错误便于定位（中转域名/凭据失效等） -->
+        <div
+          v-if="usageInfo?.error"
+          class="text-xs text-amber-600 dark:text-amber-400 truncate max-w-[200px]"
+          :title="usageInfo.error"
+        >
+          {{ usageInfo.error }}
+        </div>
+        <div v-else class="text-xs text-gray-400">-</div>
+        <button
+          type="button"
+          class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/30 transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+          :disabled="activeQueryLoading"
+          @click="loadActiveUsage"
+        >
+          <svg
+            class="h-2.5 w-2.5"
+            :class="{ 'animate-spin': activeQueryLoading }"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+            />
+          </svg>
+          {{ t('admin.accounts.usageWindow.activeQuery') }}
+        </button>
+      </div>
+    </template>
+
     <!-- Antigravity OAuth accounts: fetch usage from API -->
     <template v-else-if="account.platform === 'antigravity' && account.type === 'oauth'">
       <!-- 账户类型徽章 -->
@@ -786,6 +885,21 @@ const isGeminiThirdPartyApiKey = computed(() => {
   return !isOfficialGeminiBaseUrl(creds?.base_url)
 })
 
+// GLM Coding Plan 账号：接入统一 usage 管线（5h + weekly 窗口 + 本地窗口统计），
+// 数据由后端 zhipu_* 快照与 CN 配额探测提供；payg 模式仍走 CN 分支的占位展示。
+const isZhipuCodingAccount = computed(() => {
+  if (props.account.platform !== 'zhipu') return false
+  const mode = (props.account.credentials as Record<string, unknown> | undefined)?.account_mode
+  return mode === 'coding'
+})
+
+// 挂载在 CN 平台下的 Ollama Cloud / OpenCode Go 账号（后端下发 eligible）：
+// 嵌入式用量窗口独占展示，zhipu 统一 usage 分支不得截获（与多协议分支内
+// 的优先级一致，避免同源双份展示/探测）。
+const hasEmbeddedUsageCell = computed(() => {
+  return !!props.account.ollama_cloud_usage?.eligible || !!props.account.opencode_go_usage?.eligible
+})
+
 const isGeminiVertex = computed(() => {
   return props.account.platform === 'gemini' && props.account.type === 'service_account'
 })
@@ -818,6 +932,9 @@ const shouldFetchUsage = computed(() => {
   }
   if (props.account.platform === 'openai') {
     return props.account.type === 'oauth'
+  }
+  if (props.account.platform === 'zhipu') {
+    return isZhipuCodingAccount.value && !hasEmbeddedUsageCell.value
   }
   return false
 })
