@@ -82,18 +82,25 @@ func classifyCommandCodeUsageError(body []byte) commandCodeUsageErrorKind {
 	}
 }
 
-// commandCodeResetAt 解析文案中的 "Resets in 2h 41m" / "resets in 3 days"；无法解析
-// 或超过 maxWait 时返回 nil。
+// commandCodeResetAt 解析文案中的 "Resets in 2h 41m" / "resets in 3 days" 相对时长；
+// 新格式为绝对时刻 "resets at <RFC3339>"，窗口的实时声明优先于快照兜底。
+// 无法解析或超过 maxWait 时返回 nil（调用方回落快照）。
 func commandCodeResetAt(body []byte, now time.Time, maxWait time.Duration) *time.Time {
 	after := parseOpenCodeGoUsageLimitResetDuration(extractUpstreamErrorMessage(body))
 	if after <= 0 {
 		after = parseOpenCodeGoUsageLimitResetDuration(string(body))
 	}
-	if after <= 0 || after > maxWait {
-		return nil
+	if after > 0 {
+		if after > maxWait {
+			return nil
+		}
+		until := now.Add(after)
+		return &until
 	}
-	until := now.Add(after)
-	return &until
+	if until, _ := parseBodyResetAt(body, now); until != nil && until.Before(now.Add(maxWait)) {
+		return until
+	}
+	return nil
 }
 
 // handleCommandCodeUsageError 处理已识别的 Command Code 用量超限；handled=false 时由
