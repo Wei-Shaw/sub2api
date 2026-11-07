@@ -476,6 +476,19 @@ func TestLoadOpenAIFirstOutputTimeoutsFromEnv(t *testing.T) {
 	require.Equal(t, 240, cfg.Gateway.OpenAIHighEffortFirstOutputTimeoutSeconds)
 }
 
+func TestLoadMaxCapacityShedAttempts(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Zero(t, cfg.Gateway.MaxCapacityShedAttempts)
+
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_MAX_CAPACITY_SHED_ATTEMPTS", "6")
+	cfg, err = Load()
+	require.NoError(t, err)
+	require.Equal(t, 6, cfg.Gateway.MaxCapacityShedAttempts)
+}
+
 func TestValidateOpenAIFirstOutputTimeoutMinimum(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	cfg, err := Load()
@@ -2754,4 +2767,17 @@ func TestLoadSimpleModeAutoCreateDefaultGroups(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLoadMaxCapacityShedSameAccountRetries(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Zero(t, cfg.Gateway.MaxCapacityShedSameAccountRetries)
+
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_MAX_CAPACITY_SHED_SAME_ACCOUNT_RETRIES", "1")
+	cfg, err = Load()
+	require.NoError(t, err)
+	require.Equal(t, 1, cfg.Gateway.MaxCapacityShedSameAccountRetries)
 }

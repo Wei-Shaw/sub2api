@@ -51,6 +51,22 @@ const (
 	maxProfitVetoAttempts = 10
 )
 
+// capacityShedAttemptsExhausted 累计本次请求的上游容量降载失败次数，达到 limit 时返回 true。
+// limit 来自 gateway.max_capacity_shed_attempts；<= 0（默认）表示不限，保持原有行为。
+//
+// 容量降载是请求级信号：同号重试和换号都不改变被降载的因素。不设上限时，
+// 单个请求会按 (1+同号重试次数)×(1+max_account_switches) 把整池账号逐个打一遍
+// （OAuth 账号默认 4×11=44 次），而客户端收到 503 后自身还会退避重试，放大成倍叠加。
+// 设了上限后，达到上限即把 503 交还客户端，由客户端退避后再试。
+// 非容量降载错误不计数，也不受影响。
+func capacityShedAttemptsExhausted(failoverErr *service.UpstreamFailoverError, attempts *int, limit int) bool {
+	if limit <= 0 || attempts == nil || !failoverErr.IsOpenAICapacityShed() {
+		return false
+	}
+	*attempts++
+	return *attempts >= limit
+}
+
 // profitVetoExhaustedMessage 是利润否决次数耗尽时返回给客户端的文案。
 // 语义上等同于「无可用账号」：候选账号都不满足分组的利润约束。
 const profitVetoExhaustedMessage = "No available accounts: all candidates rejected by group profit control"

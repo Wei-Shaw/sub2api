@@ -1166,12 +1166,19 @@ type GatewayConfig struct {
 	// 是否允许对部分 400 错误触发 failover（默认关闭以避免改变语义）
 	FailoverOn400 bool `mapstructure:"failover_on_400"`
 
+	// 上游容量降载（overloaded）时同号重试次数上限（与账号 pool_mode_retry_count 取小，用完即换号）；
+	// <= 0（默认）表示沿用账号自身设置
+	MaxCapacityShedSameAccountRetries int `mapstructure:"max_capacity_shed_same_account_retries"`
+
 	// 账户切换最大次数（遇到上游错误时切换到其他账户的次数上限）
 	MaxAccountSwitches int `mapstructure:"max_account_switches"`
 	// Gemini 账户切换最大次数（Gemini 平台单独配置，因 API 限制更严格）
 	MaxAccountSwitchesGemini int `mapstructure:"max_account_switches_gemini"`
 	// Gemini 同账号重试次数（429/5xx 等可重试错误在换号前对同一账号的重发次数，不含首次请求）
 	MaxSameAccountRetriesGemini int `mapstructure:"max_same_account_retries_gemini"`
+	// 单次请求内上游容量降载（overloaded）失败的总尝试上限（跨同号重试与换号累计），
+	// 达到后把 503 交还客户端退避重试；<= 0（默认）表示不限
+	MaxCapacityShedAttempts int `mapstructure:"max_capacity_shed_attempts"`
 
 	// Antigravity 429 fallback 限流时间（分钟），解析重置时间失败时使用
 	AntigravityFallbackCooldownMinutes int `mapstructure:"antigravity_fallback_cooldown_minutes"`
@@ -2497,9 +2504,11 @@ func setDefaults() {
 	viper.SetDefault("gateway.log_upstream_error_body_max_bytes", 2048)
 	viper.SetDefault("gateway.inject_beta_for_apikey", false)
 	viper.SetDefault("gateway.failover_on_400", false)
+	viper.SetDefault("gateway.max_capacity_shed_same_account_retries", 0)
 	viper.SetDefault("gateway.max_account_switches", 10)
 	viper.SetDefault("gateway.max_account_switches_gemini", 3)
 	viper.SetDefault("gateway.max_same_account_retries_gemini", 4)
+	viper.SetDefault("gateway.max_capacity_shed_attempts", 0)
 	viper.SetDefault("gateway.force_codex_cli", false)
 	viper.SetDefault("gateway.disable_codex_identity_enforcement", false)
 	viper.SetDefault("gateway.disable_codex_originator_normalization", false)
