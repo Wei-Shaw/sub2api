@@ -80,6 +80,18 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	}
 	// Pre-filter: strip empty text blocks (including nested in tool_result) to prevent upstream 400.
 	input.Body = StripEmptyTextBlocks(input.Body)
+	// Pre-filter: remove historical thinking blocks whose signature is missing or
+	// empty. Anthropic-strict upstreams validate the signature on every replayed
+	// assistant turn, so one truncated stream (client persisted a thinking block
+	// but never received signature_delta) poisons the whole conversation: every
+	// later turn is rejected with 500 `signature` is required in `thinking` block.
+	// The normal forward path already applies this (gateway_forward.go); the
+	// passthrough branch was missing it. Gating lives inside FilterThinkingBlocks:
+	// anthropic-strict strips invalid blocks, passback-required (DeepSeek/Kimi/GLM)
+	// and unknown upstreams get the body back untouched.
+	// Pre-filter rather than post-400 repair: this branch returns 500 here, and it
+	// deliberately refuses body-rewriting retries.
+	input.Body = FilterThinkingBlocks(input.Body, input.RequestModel)
 	// Pre-filter: strip web-search history blocks the upstream cannot accept
 	// (emulation-synthesized ones always; genuine ones additionally for
 	// passback-required third-party upstreams such as GLM/Kimi/DeepSeek,
