@@ -181,6 +181,9 @@ func (s *modelsListAccountRepoStub) ListSchedulableByGroupID(ctx context.Context
 }
 
 func (s *modelsListAccountRepoStub) ListModelAvailabilityCandidates(ctx context.Context, groupID *int64, _ []string, _ bool) ([]Account, error) {
+	if groupID == nil {
+		return s.ListSchedulable(ctx)
+	}
 	return s.ListSchedulableByGroupID(ctx, *groupID)
 }
 
