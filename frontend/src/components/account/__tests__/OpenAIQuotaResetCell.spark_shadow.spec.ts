@@ -433,6 +433,16 @@ describe('OpenAIQuotaResetCell — 外审 F6:影子禁用重置', () => {
 })
 
 describe('OpenAIQuotaResetCell 自动用卡运行态', () => {
+  it('到期触发显示本地化原因', () => {
+    const account = makeAccount({ extra: {
+      auto_reset_credit_enabled: true,
+      codex_auto_reset_credit_state: { status: 'success', trigger_window: 'expiry', available_count: 0 }
+    } })
+    const wrapper = mount(OpenAIQuotaResetCell, { props: { account } })
+    expect(wrapper.get('[data-testid="auto-reset-credit-state"]').text()).toContain('admin.accounts.autoResetCredit.expiryTrigger')
+    wrapper.unmount()
+  })
+
   it.each([
     ['checking', 'checking'],
     ['available', 'available'],
