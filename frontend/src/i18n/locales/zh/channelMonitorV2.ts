@@ -112,8 +112,15 @@ export default {
       ignoredSummary: '已忽略 {ignored} 类 · 计入错误率 {counted} 类',
       healthTitle: '健康阈值',
       healthHint: '控制用户端色块和整体评分。默认阈值较宽松，避免少量错误或低缓存率立即显示异常。',
+      minimumSampleByRangeHint: '可按视图分别设置每个色块的最少请求数；留空沿用统一最小样本数。',
       fields: {
         minimumSample: '最小样本数',
+        minimumSampleByRange: {
+          '90m': '90分钟 · 每5分钟最少请求数',
+          '24h': '24小时 · 每1小时最少请求数',
+          '7d': '7天 · 每12小时最少请求数',
+          '30d': '30天 · 每1天最少请求数',
+        },
         warningError: '错误率关注 %',
         criticalError: '错误率异常 %',
         targetTtft: 'TTFT 目标 ms',
