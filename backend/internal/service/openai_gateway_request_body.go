@@ -1084,12 +1084,14 @@ func newOpenAIRequestView(body []byte) openAIRequestView {
 
 	view := openAIRequestView{body: body}
 	var seen uint8
-	// parseRawJSONView reads body without copying; view keeps body alive for extracted strings.
+	// parseRawJSONView reads body without copying, so extracted strings would
+	// alias body. Each field is cloned: callers keep fields such as Model for the
+	// whole request, and an alias would pin a body that has since been rewritten.
 	parseRawJSONView(body).ForEach(func(key, value gjson.Result) bool {
 		switch key.Str {
 		case "model":
 			if seen&modelField == 0 {
-				view.Model = strings.TrimSpace(value.String())
+				view.Model = strings.Clone(strings.TrimSpace(value.String()))
 				seen |= modelField
 			}
 		case "stream":
@@ -1099,22 +1101,22 @@ func newOpenAIRequestView(body []byte) openAIRequestView {
 			}
 		case "prompt_cache_key":
 			if seen&promptCacheKeyField == 0 {
-				view.PromptCacheKey = strings.TrimSpace(value.String())
+				view.PromptCacheKey = strings.Clone(strings.TrimSpace(value.String()))
 				seen |= promptCacheKeyField
 			}
 		case "previous_response_id":
 			if seen&previousResponseIDField == 0 {
-				view.PreviousResponseID = strings.TrimSpace(value.String())
+				view.PreviousResponseID = strings.Clone(strings.TrimSpace(value.String()))
 				seen |= previousResponseIDField
 			}
 		case "service_tier":
 			if seen&serviceTierField == 0 {
-				view.ServiceTier = strings.TrimSpace(value.String())
+				view.ServiceTier = strings.Clone(strings.TrimSpace(value.String()))
 				seen |= serviceTierField
 			}
 		case "reasoning":
 			if seen&reasoningField == 0 {
-				view.ReasoningEffort = strings.TrimSpace(value.Get("effort").String())
+				view.ReasoningEffort = strings.Clone(strings.TrimSpace(value.Get("effort").String()))
 				seen |= reasoningField
 			}
 		}
