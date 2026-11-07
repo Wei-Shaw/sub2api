@@ -10,6 +10,7 @@ import {
   normalizeRechargeBonusMode,
   normalizeRechargeBonusTiers,
   quoteRechargeBonus,
+  resolveBalanceRechargeMultiplier,
   sanitizeRechargeBonusTiersForSubmit,
 } from '../rechargeBonus'
 
@@ -20,6 +21,29 @@ const tiers = [
 ]
 
 describe('rechargeBonus helpers', () => {
+  it('uses parity for USD and the configured multiplier for other currencies', () => {
+    expect(resolveBalanceRechargeMultiplier(0.14, 'USD')).toBe(1)
+    expect(resolveBalanceRechargeMultiplier(2, ' usd ')).toBe(1)
+    expect(resolveBalanceRechargeMultiplier(0.14, 'CNY')).toBe(0.14)
+    expect(resolveBalanceRechargeMultiplier(0.6, 'NZD')).toBe(0.6)
+    for (const multiplier of [undefined, 0, -1, NaN, Infinity]) {
+      expect(resolveBalanceRechargeMultiplier(multiplier, 'CNY')).toBe(1)
+    }
+  })
+
+  it('quotes USD at parity without disabling bonuses or discounts', () => {
+    expect(quoteRechargeBonus([], 100, { multiplier: 0.14, currency: 'USD' })).toMatchObject({
+      payBase: 100, base: 100, credited: 100, bonus: 0,
+    })
+    expect(quoteRechargeBonus(tiers, 100, { multiplier: 0.14, currency: 'USD' })).toMatchObject({
+      payBase: 100, base: 100, credited: 120, bonus: 20,
+    })
+    expect(quoteRechargeBonus(tiers, 100, { multiplier: 0.14, currency: 'USD', mode: 'discount' })).toMatchObject({
+      payBase: 80, base: 100, credited: 100, bonus: 20,
+    })
+    expect(quoteRechargeBonus([], 100, { multiplier: 0.14, currency: 'CNY' }).credited).toBe(14)
+  })
+
   it('normalizes settings payload: drops invalid, dedupes, sorts ascending', () => {
     expect(
       normalizeRechargeBonusTiers([

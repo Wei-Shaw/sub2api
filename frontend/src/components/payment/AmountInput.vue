@@ -127,6 +127,7 @@ function currencyDigits(): number {
 function quoteFor(amt: number) {
   return quoteRechargeBonus(props.bonusTiers, amt, {
     multiplier: props.multiplier,
+    currency: props.currency,
     mode: props.bonusMode,
     currencyDigits: currencyDigits(),
   })

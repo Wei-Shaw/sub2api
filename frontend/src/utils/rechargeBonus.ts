@@ -146,9 +146,15 @@ export function calculateRechargeBonus(baseCredited: number, percent: number): n
 
 export interface RechargeBonusQuoteOptions {
   multiplier?: number
+  currency?: string
   mode?: RechargeBonusMode
   /** 支付币种小数位，折扣模式实付基数按此精度四舍五入 */
   currencyDigits?: number
+}
+
+export function resolveBalanceRechargeMultiplier(multiplier: unknown, currency?: string): number {
+  if (currency?.trim().toUpperCase() === 'USD') return 1
+  return typeof multiplier === 'number' && Number.isFinite(multiplier) && multiplier > 0 ? multiplier : 1
 }
 
 // 充值页报价：阈值按支付金额比较；赠金模式按到账基数加赠送，折扣模式按百分比减实付。
@@ -161,7 +167,7 @@ export function quoteRechargeBonus(
   const opts: RechargeBonusQuoteOptions = typeof options === 'number' ? { multiplier: options } : options
   const mode = opts.mode ?? 'bonus'
   const amount = Number.isFinite(paymentAmount) && paymentAmount > 0 ? paymentAmount : 0
-  const rate = typeof opts.multiplier === 'number' && Number.isFinite(opts.multiplier) && opts.multiplier > 0 ? opts.multiplier : 1
+  const rate = resolveBalanceRechargeMultiplier(opts.multiplier, opts.currency)
   const digits = typeof opts.currencyDigits === 'number' && Number.isInteger(opts.currencyDigits) && opts.currencyDigits >= 0 ? opts.currencyDigits : 2
   const base = roundRechargeAmount(amount * rate)
   const quote: RechargeBonusQuote = { mode, percent: 0, payBase: amount, base, bonus: 0, credited: base, tier: null }

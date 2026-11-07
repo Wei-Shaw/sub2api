@@ -256,6 +256,18 @@ func TestValidateRechargeBonusTiersForMode(t *testing.T) {
 func TestQuoteRechargeBonus(t *testing.T) {
 	tiers := []RechargeBonusTier{{MinAmount: 100, BonusPercent: 20}, {MinAmount: 500, BonusPercent: 50}}
 
+	t.Run("USD ignores global multiplier while preserving recharge incentives", func(t *testing.T) {
+		cfg := &PaymentConfig{BalanceRechargeMultiplier: 0.14}
+		require.Equal(t, rechargeBonusQuote{PayBase: 100, Credited: 100}, quoteRechargeBonus(cfg, 100, "USD"))
+		require.Equal(t, rechargeBonusQuote{PayBase: 100, Credited: 14}, quoteRechargeBonus(cfg, 100, "CNY"))
+		require.Equal(t, rechargeBonusQuote{PayBase: 100, Credited: 14}, quoteRechargeBonus(cfg, 100, "NZD"))
+		cfg.RechargeBonusTiers = tiers
+		cfg.RechargeBonusMode = RechargeBonusModeBonus
+		require.Equal(t, rechargeBonusQuote{PayBase: 100, Credited: 120, Bonus: 20, Percent: 20}, quoteRechargeBonus(cfg, 100, "USD"))
+		cfg.RechargeBonusMode = RechargeBonusModeDiscount
+		require.Equal(t, rechargeBonusQuote{PayBase: 80, Credited: 100, Bonus: 20, Percent: 20}, quoteRechargeBonus(cfg, 100, "USD"))
+	})
+
 	t.Run("bonus mode keeps pay base and inflates credit", func(t *testing.T) {
 		cfg := &PaymentConfig{BalanceRechargeMultiplier: 1, RechargeBonusTiers: tiers, RechargeBonusMode: RechargeBonusModeBonus}
 		q := quoteRechargeBonus(cfg, 100, "USD")
