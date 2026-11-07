@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 )
 
 // FetchOpenAIModelsList discovers a single account's raw public model catalog.
@@ -161,17 +162,63 @@ func standardOpenAIModelsBody(body []byte, fromManifest bool) ([]byte, error) {
 	}{Object: "list", Data: models})
 }
 
-// projectAccountModelsBody projects upstream entries to public names before
-// checking their routing eligibility. Applying account mappings to source IDs
-// would interpret upstream names as aliases and can retain retired targets or
-// discard metadata needed by a valid replacement alias.
+// projectAccountModelsBody projects chat mappings and exposes the separately
+// enabled Free web image compatibility entries only in the standard API list.
 func projectAccountModelsBody(body []byte, account *Account, group *Group, codex bool) ([]byte, error) {
+	// Retirement applies to resolved public aliases, never raw upstream IDs.
 	projected, err := projectAccountModelAliases(body, account, group, codex)
 	if err != nil {
 		return nil, err
 	}
-	filtered, _, err := filterRetiredOpenAIPublicModelsBody(projected, []Account{*account}, codex)
-	return filtered, err
+	projected, _, err = filterRetiredOpenAIPublicModelsBody(projected, []Account{*account}, codex)
+	if err != nil || codex || !isFreeChatGPTWebImageAccount(account) {
+		return projected, err
+	}
+	envelope, entries, err := modelCatalogEntries(projected, "data")
+	if err != nil {
+		return nil, err
+	}
+	// Rebuild media entries from the local compatibility catalog, rather than
+	// borrowing text metadata through a legacy image-to-text mapping.
+	models := make([]json.RawMessage, 0, len(entries))
+	imageEntries := make([]openai.Model, 0)
+	seen := make(map[string]bool, len(entries))
+	for _, raw := range entries {
+		var entry struct {
+			ID string `json:"id"`
+		}
+		if json.Unmarshal(raw, &entry) != nil {
+			continue
+		}
+		if _, image := chatGPTWebImageModelID(account, entry.ID); image {
+			imageEntries = append(imageEntries, openai.Model{ID: entry.ID, Object: "model", Type: "model", OwnedBy: "openai", DisplayName: openaiCodexDisplayName(entry.ID)})
+			continue
+		}
+		models = append(models, raw)
+		seen[entry.ID] = true
+	}
+	if GroupAllowsImageGeneration(group) {
+		for _, model := range FilterOpenAIAccountTestModels(account, imageEntries) {
+			if _, image := chatGPTWebImageModelID(account, model.ID); !image || seen[model.ID] {
+				continue
+			}
+			if group.ModelAllowlistEnabled() && len(group.ModelAllowlist.FilterForListing([]string{model.ID})) == 0 {
+				continue
+			}
+			model.Object = "model"
+			raw, marshalErr := json.Marshal(model)
+			if marshalErr != nil {
+				return nil, marshalErr
+			}
+			models = append(models, raw)
+			seen[model.ID] = true
+		}
+	}
+	envelope["data"], err = json.Marshal(models)
+	if err != nil {
+		return nil, err
+	}
+	return json.Marshal(envelope)
 }
 
 // projectAccountModelAliases retains the source entry's metadata, never changes

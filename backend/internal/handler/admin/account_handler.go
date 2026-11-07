@@ -1267,9 +1267,10 @@ func (h *AccountHandler) Delete(c *gin.Context) {
 
 // TestAccountRequest represents the request body for testing an account
 type TestAccountRequest struct {
-	ModelID string `json:"model_id"`
-	Prompt  string `json:"prompt"`
-	Mode    string `json:"mode"`
+	OperationID string `json:"operation_id"`
+	ModelID     string `json:"model_id"`
+	Prompt      string `json:"prompt"`
+	Mode        string `json:"mode"`
 	// Optional media for Grok (and future) real generation tests.
 	// ImageDataURL / AudioDataURL are data:<mime>;base64,... payloads.
 	ImageDataURL string `json:"image_data_url"`
@@ -1304,6 +1305,8 @@ func (h *AccountHandler) Test(c *gin.Context) {
 	_ = c.ShouldBindJSON(&req)
 
 	opts := service.AccountTestOptions{
+		ActorScope:   adminActorScope(c),
+		OperationID:  req.OperationID,
 		ImageDataURL: req.ImageDataURL,
 		AudioDataURL: req.AudioDataURL,
 	}
@@ -1314,7 +1317,7 @@ func (h *AccountHandler) Test(c *gin.Context) {
 		return
 	}
 
-	if h.rateLimitService != nil {
+	if h.rateLimitService != nil && service.AccountTestAllowsRecovery(c) {
 		if _, err := h.rateLimitService.RecoverAccountAfterSuccessfulTest(c.Request.Context(), accountID); err != nil {
 			_ = c.Error(err)
 		}
@@ -2825,19 +2828,19 @@ func (h *AccountHandler) respondAvailableModels(c *gin.Context, account *service
 		// retain the legacy local catalog below so the test dialog remains usable.
 		if h.accountTestService != nil {
 			if models, fetchErr := h.accountTestService.FetchOpenAIAccountModels(c.Request.Context(), account); fetchErr == nil {
-				response.Success(c, models)
+				response.Success(c, service.FilterOpenAIAccountTestModels(account, models))
 				return
 			}
 		}
 		// OpenAI 自动透传会绕过常规模型改写，测试/模型列表也应回落到默认模型集。
 		if account.IsOpenAIPassthroughEnabled() {
-			response.Success(c, openai.DefaultModels)
+			response.Success(c, service.FilterOpenAIAccountTestModels(account, openai.DefaultModels))
 			return
 		}
 
 		mapping := account.GetModelMapping()
 		if len(mapping) == 0 {
-			response.Success(c, openai.DefaultModels)
+			response.Success(c, service.FilterOpenAIAccountTestModels(account, openai.DefaultModels))
 			return
 		}
 
@@ -2861,7 +2864,7 @@ func (h *AccountHandler) respondAvailableModels(c *gin.Context, account *service
 				})
 			}
 		}
-		response.Success(c, models)
+		response.Success(c, service.FilterOpenAIAccountTestModels(account, models))
 		return
 	}
 

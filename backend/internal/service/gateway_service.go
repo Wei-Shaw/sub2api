@@ -1489,6 +1489,11 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 
 	if platform == PlatformOpenAI {
 		models = supplementUnmappedOpenAIModels(accounts, models)
+	}
+	// Add independently enabled web images before retirement can make a
+	// chat-only configured catalog empty and return it as authoritative.
+	models = supplementChatGPTWebImageModels(accounts, models)
+	if platform == PlatformOpenAI {
 		models = filterRetiredOpenAIModelIDs(accounts, models)
 		// nil means "use defaults" to listing callers; an empty filtered catalog
 		// must remain authoritative instead of resurrecting retired defaults.
