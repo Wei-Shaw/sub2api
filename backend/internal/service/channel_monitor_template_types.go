@@ -58,7 +58,7 @@ var (
 		"CHANNEL_MONITOR_TEMPLATE_INVALID_PROVIDER", "template provider must be one of openai/anthropic/gemini/grok",
 	)
 	ErrChannelMonitorTemplateInvalidAPIMode = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_TEMPLATE_INVALID_API_MODE", "template api_mode must be chat_completions or responses; responses is only supported for openai",
+		"CHANNEL_MONITOR_TEMPLATE_INVALID_API_MODE", "template api_mode must be chat_completions or responses; responses is only supported for openai/grok",
 	)
 	ErrChannelMonitorTemplateMissingName = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_TEMPLATE_MISSING_NAME", "template name is required",
