@@ -20,7 +20,8 @@ const (
 )
 
 type openAIChatSilentRefusalDetector struct {
-	enabled         bool
+	enabled         bool // silent-refusal classification remains size-gated
+	bufferOutput    bool // pre-content buffering protects failover for every stream
 	sawContent      bool
 	sawToolCall     bool
 	sawFunctionCall bool
@@ -33,7 +34,8 @@ type openAIChatSilentRefusalDetector struct {
 
 func newOpenAIChatSilentRefusalDetector(requestBodyLen int) *openAIChatSilentRefusalDetector {
 	return &openAIChatSilentRefusalDetector{
-		enabled: requestBodyLen >= openAISilentRefusalMinRequestBodyBytes,
+		enabled:      requestBodyLen >= openAISilentRefusalMinRequestBodyBytes,
+		bufferOutput: true,
 	}
 }
 
@@ -42,7 +44,7 @@ func (d *openAIChatSilentRefusalDetector) Enabled() bool {
 }
 
 func (d *openAIChatSilentRefusalDetector) ObserveSSELine(line string) {
-	if d == nil || !d.enabled {
+	if d == nil || !d.bufferOutput {
 		return
 	}
 	if eventType, ok := extractOpenAISSEEventLine(line); ok {
@@ -55,7 +57,7 @@ func (d *openAIChatSilentRefusalDetector) ObserveSSELine(line string) {
 }
 
 func (d *openAIChatSilentRefusalDetector) ObservePayload(payload []byte) {
-	if d == nil || !d.enabled {
+	if d == nil || !d.bufferOutput {
 		return
 	}
 	payload = bytes.TrimSpace(payload)
@@ -84,7 +86,7 @@ func (d *openAIChatSilentRefusalDetector) ObservePayload(payload []byte) {
 }
 
 func (d *openAIChatSilentRefusalDetector) ObserveChatChunk(chunk apicompat.ChatCompletionsChunk) {
-	if d == nil || !d.enabled {
+	if d == nil || !d.bufferOutput {
 		return
 	}
 	if chunk.Usage != nil {
@@ -108,7 +110,7 @@ func (d *openAIChatSilentRefusalDetector) ObserveChatChunk(chunk apicompat.ChatC
 }
 
 func (d *openAIChatSilentRefusalDetector) ShouldReleaseClientOutput() bool {
-	if d == nil || !d.enabled {
+	if d == nil || !d.bufferOutput {
 		return true
 	}
 	if d.sawContent || d.sawToolCall || d.sawFunctionCall || d.sawUsage || d.sawError || d.sawReasoning {
