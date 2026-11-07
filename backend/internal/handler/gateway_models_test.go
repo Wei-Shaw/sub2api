@@ -60,6 +60,8 @@ type gatewayModelItemForTest struct {
 	Created                 int64                                 `json:"created"`
 	OwnedBy                 string                                `json:"owned_by"`
 	CreatedAt               string                                `json:"created_at"`
+	ContextWindow           int64                                 `json:"context_window"`
+	MaxContextWindow        int64                                 `json:"max_context_window"`
 	SupportsReasoningEffort bool                                  `json:"supportsReasoningEffort"`
 	ReasoningEffort         string                                `json:"reasoningEffort"`
 	ReasoningEfforts        []gatewayReasoningEffortOptionForTest `json:"reasoningEfforts"`
@@ -1889,4 +1891,49 @@ func TestGatewayModels_CompositeCodexRouteLookupErrorKeepsFallback(t *testing.T)
 			}
 		})
 	}
+}
+
+func TestGatewayModels_OpenAIListMirrorsCodexContextWindows(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const groupID int64 = 71
+	const alias = "team-coder"
+	accounts := []service.Account{
+		{
+			ID: 9, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+			Credentials: map[string]any{"model_mapping": map[string]any{
+				"gpt-6.1-sol": "gpt-6.1-sol",
+				"gpt-5.6-sol": "gpt-5.6-sol",
+				alias:         "gpt-6.1-sol",
+			}},
+		},
+	}
+	h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{
+		byGroup: map[int64][]service.Account{groupID: accounts},
+	})
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+		Group: &service.Group{ID: groupID, Platform: service.PlatformOpenAI},
+	})
+	h.Models(c)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var got gatewayModelsResponseForTest
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+	byID := make(map[string]gatewayModelItemForTest, len(got.Data))
+	for _, model := range got.Data {
+		byID[model.ID] = model
+	}
+
+	// Values must mirror the Codex models manifest: the raised GPT-6.1 Sol
+	// default (500k) plus its official max window, family defaults for 5.6,
+	// and the generic fallback for aliases the descriptor does not know.
+	require.EqualValues(t, 500000, byID["gpt-6.1-sol"].ContextWindow)
+	require.EqualValues(t, 872000, byID["gpt-6.1-sol"].MaxContextWindow)
+	require.EqualValues(t, 272000, byID["gpt-5.6-sol"].ContextWindow)
+	require.EqualValues(t, 872000, byID["gpt-5.6-sol"].MaxContextWindow)
+	require.EqualValues(t, 272000, byID[alias].ContextWindow)
+	require.EqualValues(t, 272000, byID[alias].MaxContextWindow)
 }

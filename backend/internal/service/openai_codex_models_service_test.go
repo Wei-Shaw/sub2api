@@ -3881,3 +3881,24 @@ func TestGPT61SolAPIKeyCatalogContextWindow(t *testing.T) {
 		})
 	}
 }
+
+func TestCodexModelContextWindow(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		modelID     string
+		wantContext int64
+		wantMax     int64
+	}{
+		{"gpt-6.1-sol uses raised default with official max", "gpt-6.1-sol", 500_000, 872_000},
+		{"gpt-6.1-sol provider prefix still matches", "openai/gpt-6.1-sol", 500_000, 872_000},
+		{"gpt-5.6-sol family default", "gpt-5.6-sol", 272_000, 872_000},
+		{"unknown model falls back to generic window", "team-coder", 272_000, 272_000},
+		{"empty model falls back to generic window", "", 272_000, 272_000},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			contextWindow, maxContextWindow := CodexModelContextWindow(tc.modelID)
+			require.EqualValues(t, tc.wantContext, contextWindow)
+			require.EqualValues(t, tc.wantMax, maxContextWindow)
+		})
+	}
+}
