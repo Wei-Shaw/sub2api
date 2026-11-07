@@ -128,7 +128,7 @@ func (u *kimiQuotaTestUpstream) Do(req *http.Request, proxyURL string, accountID
 	u.request = req
 	return &http.Response{
 		StatusCode: http.StatusOK,
-		Body:       io.NopCloser(strings.NewReader(`{"limits":[{"detail":{"limit":100,"remaining":75}}],"usage":{"limit":1000,"remaining":800}}`)),
+		Body:       io.NopCloser(strings.NewReader(`{"usages":{"limit_5h":{"used_ratio":0.25},"limit_7d":{"used_ratio":0.2},"limit_month_total":{"used_ratio":0.6,"reset_time":"2026-09-01T00:00:00Z"}}}`)),
 	}, nil
 }
 
@@ -152,10 +152,15 @@ func TestCNProviderQuotaService_KimiOfficialHosts(t *testing.T) {
 				require.True(t, result.CredentialValid)
 				require.True(t, result.Persisted)
 				require.Equal(t, PlatformKimi, result.Provider)
-				require.Len(t, result.Tiers, 2)
+				require.Len(t, result.Tiers, 3)
 				require.Equal(t, float64(25), result.Tiers[0].UsedPercent)
 				require.Equal(t, float64(20), result.Tiers[1].UsedPercent)
+				require.Equal(t, "monthly", result.Tiers[2].Window)
+				require.Equal(t, float64(60), result.Tiers[2].UsedPercent)
+				require.Equal(t, "2026-09-01T00:00:00Z", result.Tiers[2].ResetAt)
 				require.Equal(t, float64(25), repo.updates["kimi_5h_used_percent"])
+				require.Equal(t, float64(60), repo.updates["kimi_monthly_used_percent"])
+				require.Equal(t, "2026-09-01T00:00:00Z", repo.updates["kimi_monthly_reset_at"])
 				require.Equal(t, 1, upstream.calls)
 				require.Equal(t, http.MethodGet, upstream.request.Method)
 				require.Equal(t, "https://"+host+"/coding/v1/usages", upstream.request.URL.String())
