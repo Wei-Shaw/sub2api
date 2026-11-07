@@ -888,6 +888,8 @@ export default {
         field_cid: '支付渠道 ID',
         field_cidAlipay: '支付宝渠道 ID',
         field_cidWxpay: '微信渠道 ID',
+        field_refundSuccessCode: '退款成功码',
+        field_refundSuccessCodeHint: '按当前网关的退款接口文档选择成功码。默认 1（如 ZPAY），仅在网关文档规定时选择 0。此设置只影响退款，下单和查单仍要求成功码为 1。',
         easypayCustomMethods: '易支付自定义支付方式',
         easypayCustomMethodsHint: '添加当前易支付服务商额外支持的支付方式。支付方式会记录到 Sub2API 订单中，上游 type 会作为易支付 type 参数提交。',
         addCustomMethod: '添加方式',
