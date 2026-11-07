@@ -176,20 +176,14 @@ const barWidth = computed(() => {
   return `${Math.min(Math.max(props.utilization, 0), 100)}%`
 })
 
-// Display percentage (cap at 999% for readability). Keep one decimal below 1%
-// so genuine low-usage quota windows (Antigravity Pro weekly buckets often
-// report 0.01%~0.1%) don't collapse to a misleading "0%".
+// Display percentage (cap at 999% for readability)
 const displayPercent = computed(() => {
-  const raw = props.remainingCapacity
-    ? Math.min(Math.max(props.utilization, 0), 100)
-    : props.utilization
-  const percent = Math.round(raw)
-  if (percent > 999) return '>999%'
-  if (percent === 0 && raw > 0) {
-    const oneDecimal = (Math.round(raw * 10) / 10).toFixed(1)
-    return oneDecimal === '0.0' ? '<0.1%' : `${oneDecimal}%`
-  }
-  return `${percent}%`
+  const percent = Math.round(
+    props.remainingCapacity
+      ? Math.min(Math.max(props.utilization, 0), 100)
+      : props.utilization
+  )
+  return percent > 999 ? '>999%' : `${percent}%`
 })
 
 const shouldShowResetTime = computed(() => {
