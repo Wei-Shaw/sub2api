@@ -1504,6 +1504,9 @@ func clearOAuthLogoutCookies(c *gin.Context) {
 	clearOAuthPendingSessionCookie(c, secureCookie)
 	clearOAuthPendingBrowserCookie(c, secureCookie)
 	clearOAuthBindAccessTokenCookie(c, secureCookie)
+	for _, name := range []string{"state", "redirect", "intent", "bind_user"} {
+		setFeishuCookie(c, name, "", -1)
+	}
 
 	clearCookie(c, linuxDoOAuthStateCookieName, secureCookie)
 	clearCookie(c, linuxDoOAuthVerifierCookie, secureCookie)

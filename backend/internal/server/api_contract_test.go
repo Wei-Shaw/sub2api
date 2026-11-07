@@ -114,6 +114,14 @@ func TestAPIContracts(t *testing.T) {
 							"can_bind": true,
 							"can_unbind": false,
 							"bind_start_path": "/api/v1/auth/oauth/dingtalk/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
+						},
+						"feishu": {
+							"provider": "feishu",
+							"bound": false,
+							"bound_count": 0,
+							"can_bind": true,
+							"can_unbind": false,
+							"bind_start_path": "/api/v1/auth/oauth/feishu/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
 						}
 					},
 					"identity_bindings": {
@@ -160,6 +168,14 @@ func TestAPIContracts(t *testing.T) {
 							"can_bind": true,
 							"can_unbind": false,
 							"bind_start_path": "/api/v1/auth/oauth/dingtalk/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
+						},
+						"feishu": {
+							"provider": "feishu",
+							"bound": false,
+							"bound_count": 0,
+							"can_bind": true,
+							"can_unbind": false,
+							"bind_start_path": "/api/v1/auth/oauth/feishu/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
 						}
 					},
 					"auth_bindings": {
@@ -206,6 +222,14 @@ func TestAPIContracts(t *testing.T) {
 							"can_bind": true,
 							"can_unbind": false,
 							"bind_start_path": "/api/v1/auth/oauth/dingtalk/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
+						},
+						"feishu": {
+							"provider": "feishu",
+							"bound": false,
+							"bound_count": 0,
+							"can_bind": true,
+							"can_unbind": false,
+							"bind_start_path": "/api/v1/auth/oauth/feishu/bind/start?intent=bind_current_user&redirect=%2Fsettings%2Fprofile"
 						}
 					},
 					"run_mode": "standard"

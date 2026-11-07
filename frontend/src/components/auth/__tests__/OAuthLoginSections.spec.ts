@@ -60,4 +60,13 @@ describe('OAuth login sections', () => {
       }
     })
   })
+
+  it('starts native Feishu authorization rather than the generic OIDC provider', async () => {
+    const wrapper = mount(OidcOAuthSection, { props: { provider: 'feishu', providerName: 'Feishu' } })
+    await wrapper.get('button').trigger('click')
+    expect(wrapper.emitted('start')?.[0]?.[0]).toEqual({
+      provider: 'feishu',
+      params: { redirect: '/billing?plan=pro' }
+    })
+  })
 })

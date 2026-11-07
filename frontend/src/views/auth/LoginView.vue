@@ -173,6 +173,14 @@
             :show-divider="false"
             @start="handleOAuthStart"
           />
+          <OidcOAuthSection
+            v-if="feishuOAuthEnabled"
+            :disabled="authActionDisabled"
+            provider="feishu"
+            provider-name="Feishu"
+            :show-divider="false"
+            @start="handleOAuthStart"
+          />
           <DingTalkOAuthSection
             v-if="dingtalkOAuthEnabled"
             :disabled="authActionDisabled"
@@ -281,6 +289,7 @@ const aliyunCaptchaSceneId = ref<string>('')
 const aliyunCaptchaPrefix = ref<string>('')
 const aliyunCaptchaRegion = ref<string>('cn')
 const linuxdoOAuthEnabled = ref<boolean>(false)
+const feishuOAuthEnabled = ref<boolean>(false)
 const dingtalkOAuthEnabled = ref<boolean>(false)
 const wechatOAuthEnabled = ref<boolean>(false)
 const backendModeEnabled = ref<boolean>(false)
@@ -356,7 +365,7 @@ const showOAuthLogin = computed(
   () =>
     !backendModeEnabled.value &&
     (linuxdoOAuthEnabled.value ||
-      dingtalkOAuthEnabled.value ||
+      dingtalkOAuthEnabled.value || feishuOAuthEnabled.value ||
       wechatOAuthEnabled.value ||
       oidcOAuthEnabled.value ||
       githubOAuthEnabled.value ||
@@ -393,6 +402,7 @@ onMounted(async () => {
     aliyunCaptchaPrefix.value = settings.aliyun_captcha_prefix || ''
     aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
     linuxdoOAuthEnabled.value = settings.linuxdo_oauth_enabled
+    feishuOAuthEnabled.value = settings.feishu_oauth_enabled ?? false
     dingtalkOAuthEnabled.value = settings.dingtalk_oauth_enabled ?? false
     wechatOAuthEnabled.value = isWeChatWebOAuthEnabled(settings)
     backendModeEnabled.value = settings.backend_mode_enabled
