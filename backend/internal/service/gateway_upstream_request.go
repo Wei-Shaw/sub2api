@@ -50,23 +50,31 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	if err := checkAnthropicMessagesCredential(account); err != nil {
 		return nil, nil, err
 	}
+	if err := s.enforceOllamaCloudRequestPricingPreflight(ctx, c, account, body, modelID); err != nil {
+		return nil, nil, err
+	}
 	body = stripDeferredToolCacheControl(body)
 	if account.Platform == PlatformAnthropic && account.Type == AccountTypeServiceAccount {
 		req, err := s.buildUpstreamRequestAnthropicVertex(ctx, c, account, body, token, modelID, reqStream)
 		return req, body, err
 	}
 
-	// 确定目标URL
+	// 确定目标URL。Anthropic 上游 base 协议化（仅 APIKey 账号有自定义 base 语义）：
+	// CN/多协议账号（api_protocol=anthropic/adaptive）用 GetAnthropicProtocolBaseURL
+	// 拼 {base}/v1/messages，不带 ?beta=true（第三方端点不接受该参数，与 OpenAI 族
+	// nativeAnthropicTargetURL 对齐）；classic anthropic 账号保持
+	// GetBaseURL()+"/v1/messages?beta=true" 现状。认证 / max_tokens clamp 与本次
+	// 实际选用的 base 同源（getAnthropicGatewayBaseURL）。
 	targetURL := claudeAPIURL
 	baseURL := ""
 	if account.Type == AccountTypeAPIKey {
 		baseURL = getAnthropicGatewayBaseURL(account)
-		if baseURL != "" {
-			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
-			if err != nil {
-				return nil, nil, err
-			}
-			targetURL = buildAnthropicMessagesURL(validatedURL)
+		protocolTargetURL, err := s.anthropicUpstreamTargetURL(account, "/v1/messages")
+		if err != nil {
+			return nil, nil, err
+		}
+		if protocolTargetURL != "" {
+			targetURL = protocolTargetURL
 		}
 	} else if account.IsCustomBaseURLEnabled() {
 		customURL := account.GetCustomBaseURL()
@@ -254,6 +262,12 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
 	}
 
+	// 发送前记录本次实际出站端点与最终映射模型：Do 之后即使 404/500 等失败
+	// 没有 ForwardResult，错误日志也能报告真实上游路径（含错误拼接，如
+	// /v1/v1/messages），而不是按入站路径推导的值。仅记录 URL path，不含
+	// query（?beta=true）/userinfo/凭证。
+	SetOpsUpstreamRequestTarget(c, req, modelID)
+
 	return req, body, nil
 }
 
@@ -388,6 +402,9 @@ func (s *GatewayService) buildUpstreamRequestAnthropicVertex(
 		"model":      modelID,
 		"stream":     strconv.FormatBool(reqStream),
 	})
+
+	// 与直连路径一致：发送前记录实际出站端点与最终模型，失败也保留。
+	SetOpsUpstreamRequestTarget(c, req, modelID)
 
 	return req, nil
 }
@@ -1027,4 +1044,36 @@ func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
 		return "", fmt.Errorf("invalid base_url: %w", err)
 	}
 	return normalized, nil
+}
+
+// anthropicUpstreamTargetURL 组装 Anthropic 上游端点（path 以 "/" 开头，如
+// "/v1/messages"、"/v1/messages/count_tokens"）。CN/多协议账号（
+// GetAnthropicProtocolBaseURL 非空）经 anthropicProtocolEndpointURL 拼接（与 OpenAI 族
+// nativeAnthropicTargetURL 同一规则，ollama / 按模型分流平台版本感知）、不附加
+// ?beta=true（第三方端点不接受该参数）；
+// classic anthropic 账号的 messages 端点经 buildAnthropicMessagesURL 拼接：Cloudflare
+// 账号 REST 端点（api.cloudflare.com/client/v4/accounts/<id>/ai）拒绝 ?beta=true 时
+// 自动省略，其余 classic 端点保持 {base}{path}?beta=true 现状。返回空串表示无自定义
+// base（走官方默认 claudeAPIURL / claudeAPICountTokensURL），由调用方保持默认。
+func (s *GatewayService) anthropicUpstreamTargetURL(account *Account, path string) (string, error) {
+	protocolBase := strings.TrimSpace(account.GetAnthropicProtocolBaseURL())
+	if protocolBase != "" {
+		validatedURL, err := s.validateUpstreamBaseURL(protocolBase)
+		if err != nil {
+			return "", err
+		}
+		return anthropicProtocolEndpointURL(account, validatedURL, path), nil
+	}
+	baseURL := account.GetBaseURL()
+	if baseURL == "" {
+		return "", nil
+	}
+	validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return "", err
+	}
+	if path == "/v1/messages" {
+		return buildAnthropicMessagesURL(validatedURL), nil
+	}
+	return validatedURL + path + "?beta=true", nil
 }

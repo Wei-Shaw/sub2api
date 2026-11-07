@@ -47,6 +47,7 @@ const (
 	PlatformMiniMax     = domain.PlatformMiniMax
 	PlatformOpenCodeGo  = domain.PlatformOpenCodeGo
 	PlatformTypeSafe    = domain.PlatformTypeSafe
+	PlatformOllamaCloud = domain.PlatformOllamaCloud
 )
 
 // AllPlatforms 返回所有支持的平台列表（平台清单，按展示顺序）。

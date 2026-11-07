@@ -112,6 +112,27 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		}
 	}
 
+	// Antigravity 账户不支持 count_tokens，返回 404 让客户端 fallback 到本地估算。
+	// Gemini 账户同理，且本链按 Anthropic 上游拼地址，绝不能携带其凭据发出请求。
+	// 返回 nil 避免 handler 层记录为错误，也不设置 ops 上游错误上下文。
+	if account.Platform == PlatformAntigravity || account.Platform == PlatformGemini {
+		s.countTokensError(c, http.StatusNotFound, "not_found_error", "count_tokens endpoint is not supported for this platform")
+		return nil
+	}
+
+	// 多协议 API Key 供应商（国产厂商、聚合平台、Ollama Cloud）的 Anthropic 兼容层均未
+	// 提供 /v1/messages/count_tokens：与 OpenAI 族链 ForwardCountTokensAsAnthropic 同口径
+	// 本地估算，不发上游（跨族账号池会把这类账号交给本链，转发只会常态 404）。
+	if account.IsMultiProtocolAPIKey() {
+		estimated, err := estimateAnthropicCountTokensLocally(body)
+		if err != nil {
+			s.countTokensError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
+			return fmt.Errorf("count_tokens: estimate input tokens locally: %w", err)
+		}
+		c.JSON(http.StatusOK, gin.H{"input_tokens": estimated})
+		return nil
+	}
+
 	// 应用模型映射：
 	// - APIKey 账号：使用账号级别的显式映射（如果配置），否则透传原始模型名
 	// - OAuth/SetupToken 账号：使用 Anthropic 标准映射（短ID → 长ID）
@@ -398,14 +419,19 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	token string,
 ) (*http.Request, error) {
 	body = stripDeferredToolCacheControl(body)
+	// 与 buildUpstreamRequestAnthropicAPIKeyPassthrough 同源的 base 协议化：
+	// CN/多协议账号按协议 base 拼 /v1/messages/count_tokens（无 ?beta=true）；
+	// classic anthropic 保持 GetBaseURL()+"/v1/messages/count_tokens?beta=true"。
 	targetURL := claudeAPICountTokensURL
 	baseURL := getAnthropicGatewayBaseURL(account)
-	if baseURL != "" {
-		validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+	if account.Type == AccountTypeAPIKey {
+		protocolTargetURL, err := s.anthropicUpstreamTargetURL(account, "/v1/messages/count_tokens")
 		if err != nil {
 			return nil, err
 		}
-		targetURL = validatedURL + "/v1/messages/count_tokens?beta=true"
+		if protocolTargetURL != "" {
+			targetURL = protocolTargetURL
+		}
 	}
 	body = sanitizeCountTokensRequestBody(body)
 
@@ -465,17 +491,20 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 // buildCountTokensRequest 构建 count_tokens 上游请求
 func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string, mimicClaudeCode bool) (*http.Request, []byte, error) {
 	body = stripDeferredToolCacheControl(body)
-	// 确定目标 URL
+	// 确定目标 URL。base 协议化与 buildUpstreamRequest 同源：CN/多协议账号
+	//（api_protocol=anthropic/adaptive）按 {base}/v1/messages/count_tokens 拼、
+	// 不带 ?beta=true；classic anthropic 保持 GetBaseURL()+...?beta=true。认证与
+	// 本次实际选用的 base 同源（getAnthropicGatewayBaseURL）。
 	targetURL := claudeAPICountTokensURL
 	baseURL := ""
 	if account.Type == AccountTypeAPIKey {
 		baseURL = getAnthropicGatewayBaseURL(account)
-		if baseURL != "" {
-			validatedURL, err := s.validateUpstreamBaseURL(baseURL)
-			if err != nil {
-				return nil, nil, err
-			}
-			targetURL = validatedURL + "/v1/messages/count_tokens?beta=true"
+		protocolTargetURL, err := s.anthropicUpstreamTargetURL(account, "/v1/messages/count_tokens")
+		if err != nil {
+			return nil, nil, err
+		}
+		if protocolTargetURL != "" {
+			targetURL = protocolTargetURL
 		}
 	} else if account.IsCustomBaseURLEnabled() {
 		customURL := account.GetCustomBaseURL()

@@ -138,7 +138,22 @@ func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, mod
 			if _, detectable := DetectModelPlatform(model); !detectable {
 				return decision, fmt.Errorf("resolve account model ownership: %w", err)
 			}
+		} else if len(normalizeCompositeCandidatePlatforms(ownership.CandidatePlatforms)) > 1 {
+			// 稳定候选池：同一公开模型由多个平台同时提供。Matched=true 且
+			// TargetPlatform 为空，不回退 generic/detector，也不在此猜单平台；
+			// 选择期由统一 OpenAI 兼容 selector 按既有 priority/load/sticky 决定。
+			return CompositeRouteDecision{
+				Matched:               true,
+				Source:                CompositeRouteSourceAccountPool,
+				GroupID:               groupID,
+				PublicModel:           model,
+				CandidatePlatforms:    normalizeCompositeCandidatePlatforms(ownership.CandidatePlatforms),
+				Endpoint:              endpoint,
+				RequiredClaimStrength: ownership.RequiredClaimStrength,
+			}, nil
 		} else if ownership.Ambiguous {
+			// 旧形态保护：Ambiguous=true 但未携带候选集合（老 mock / 异常输入）
+			// 仍明确失败，不伪造 pool，也不让 detector 猜单平台。
 			decision.Reason = CompositeRouteReasonAmbiguous
 			// 未解析的请求由下游 handler 按模型名前缀兜底选平台；只有兜底落在
 			// OpenAI 网关族时，OpenAI 网关 OAuth 声明方才会被误送进 Anthropic 管线。
@@ -153,13 +168,14 @@ func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, mod
 				return decision, nil
 			}
 			return CompositeRouteDecision{
-				Matched:        true,
-				Source:         CompositeRouteSourceAccount,
-				GroupID:        groupID,
-				PublicModel:    model,
-				TargetPlatform: platform,
-				UpstreamModel:  model,
-				Endpoint:       endpoint,
+				Matched:               true,
+				Source:                CompositeRouteSourceAccount,
+				GroupID:               groupID,
+				PublicModel:           model,
+				TargetPlatform:        platform,
+				UpstreamModel:         model,
+				Endpoint:              endpoint,
+				RequiredClaimStrength: ownership.RequiredClaimStrength,
 			}, nil
 		}
 	}

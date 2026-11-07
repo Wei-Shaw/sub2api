@@ -16,6 +16,7 @@ export type Provider =
   | 'deepseek'
   | 'minimax'
   | 'opencode_go'
+  | 'ollama_cloud'
 export type MonitorStatus = 'operational' | 'degraded' | 'failed' | 'error'
 export type BodyOverrideMode = 'off' | 'merge' | 'replace'
 export type APIMode = 'chat_completions' | 'responses'

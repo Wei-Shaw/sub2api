@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -15,17 +16,29 @@ const (
 	ollamaCloudBaseURLRegexSQL       = `^[hH][tT][tT][pP][sS]://([wW][wW][wW]\.)?[oO][lL][lL][aA][mM][aA]\.[cC][oO][mM](:443)?(/v1)?$`
 	ollamaCloudBaseURLMatchSQLPrefix = "btrim("
 	ollamaCloudBaseURLMatchSQLSuffix = ") ~ '" + ollamaCloudBaseURLRegexSQL + "'"
-	// ollamaCloudUsagePlatformsSQL 是 service.isOllamaCloudUsagePlatform 的 SQL
-	// 镜像：Ollama Cloud key 允许挂在 openai/anthropic 与国产 OpenAI 兼容平台
-	// 下复用。所有平台白名单 SQL 只允许引用本常量，不得各处重写字面量，防止漂移。
-	ollamaCloudUsagePlatformsSQL = "'openai', 'anthropic', 'kimi', 'zhipu', 'deepseek', 'minimax'"
-	ollamaCloudUsageEligibleSQL  = `
+)
+
+// ollamaCloudUsagePlatformsSQL 是 service.OllamaCloudUsagePlatforms（权威平台
+// 白名单，含 platform=ollama_cloud 本体与 legacy 宿主平台）派生的 SQL IN
+// 字面量。派生自同一列表，两侧结构上不可能漂移；原先的手工镜像注释随之作废。
+// 所有平台白名单 SQL 只允许引用本变量，不得各处重写字面量。
+var ollamaCloudUsagePlatformsSQL = ollamaCloudPlatformsSQLLiteral(service.OllamaCloudUsagePlatforms)
+
+var ollamaCloudUsageEligibleSQL = `
 	platform IN (` + ollamaCloudUsagePlatformsSQL + `)
 	AND type = 'apikey'
 	AND ` + ollamaCloudBaseURLMatchSQLPrefix + `credentials ->> 'base_url'` + ollamaCloudBaseURLMatchSQLSuffix + `
 	AND jsonb_typeof(credentials -> 'api_key') = 'string'
 `
-)
+
+// ollamaCloudPlatformsSQLLiteral 把平台列表渲染为 SQL IN 字面量（'a', 'b'）。
+func ollamaCloudPlatformsSQLLiteral(platforms []string) string {
+	quoted := make([]string, len(platforms))
+	for i, platform := range platforms {
+		quoted[i] = "'" + platform + "'"
+	}
+	return strings.Join(quoted, ", ")
+}
 
 func ollamaCloudBaseURLMatchesSQL(expression string) string {
 	return ollamaCloudBaseURLMatchSQLPrefix + expression + ollamaCloudBaseURLMatchSQLSuffix
