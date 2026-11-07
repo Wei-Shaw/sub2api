@@ -13,6 +13,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
 	"github.com/Wei-Shaw/sub2api/ent/group"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // CompositeModelRouteCreate is the builder for creating a CompositeModelRoute entity.
@@ -116,6 +117,12 @@ func (_c *CompositeModelRouteCreate) SetNillableUpstreamModel(v *string) *Compos
 	if v != nil {
 		_c.SetUpstreamModel(*v)
 	}
+	return _c
+}
+
+// SetFallbackTargets sets the "fallback_targets" field.
+func (_c *CompositeModelRouteCreate) SetFallbackTargets(v []domain.CompositeFallbackTarget) *CompositeModelRouteCreate {
+	_c.mutation.SetFallbackTargets(v)
 	return _c
 }
 
@@ -243,6 +250,10 @@ func (_c *CompositeModelRouteCreate) defaults() error {
 		v := compositemodelroute.DefaultUpstreamModel
 		_c.mutation.SetUpstreamModel(v)
 	}
+	if _, ok := _c.mutation.FallbackTargets(); !ok {
+		v := compositemodelroute.DefaultFallbackTargets
+		_c.mutation.SetFallbackTargets(v)
+	}
 	if _, ok := _c.mutation.Endpoint(); !ok {
 		v := compositemodelroute.DefaultEndpoint
 		_c.mutation.SetEndpoint(v)
@@ -300,6 +311,9 @@ func (_c *CompositeModelRouteCreate) check() error {
 		if err := compositemodelroute.UpstreamModelValidator(v); err != nil {
 			return &ValidationError{Name: "upstream_model", err: fmt.Errorf(`ent: validator failed for field "CompositeModelRoute.upstream_model": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.FallbackTargets(); !ok {
+		return &ValidationError{Name: "fallback_targets", err: errors.New(`ent: missing required field "CompositeModelRoute.fallback_targets"`)}
 	}
 	if _, ok := _c.mutation.Endpoint(); !ok {
 		return &ValidationError{Name: "endpoint", err: errors.New(`ent: missing required field "CompositeModelRoute.endpoint"`)}
@@ -372,6 +386,10 @@ func (_c *CompositeModelRouteCreate) createSpec() (*CompositeModelRoute, *sqlgra
 	if value, ok := _c.mutation.UpstreamModel(); ok {
 		_spec.SetField(compositemodelroute.FieldUpstreamModel, field.TypeString, value)
 		_node.UpstreamModel = value
+	}
+	if value, ok := _c.mutation.FallbackTargets(); ok {
+		_spec.SetField(compositemodelroute.FieldFallbackTargets, field.TypeJSON, value)
+		_node.FallbackTargets = value
 	}
 	if value, ok := _c.mutation.Endpoint(); ok {
 		_spec.SetField(compositemodelroute.FieldEndpoint, field.TypeString, value)
@@ -545,6 +563,18 @@ func (u *CompositeModelRouteUpsert) SetUpstreamModel(v string) *CompositeModelRo
 // UpdateUpstreamModel sets the "upstream_model" field to the value that was provided on create.
 func (u *CompositeModelRouteUpsert) UpdateUpstreamModel() *CompositeModelRouteUpsert {
 	u.SetExcluded(compositemodelroute.FieldUpstreamModel)
+	return u
+}
+
+// SetFallbackTargets sets the "fallback_targets" field.
+func (u *CompositeModelRouteUpsert) SetFallbackTargets(v []domain.CompositeFallbackTarget) *CompositeModelRouteUpsert {
+	u.Set(compositemodelroute.FieldFallbackTargets, v)
+	return u
+}
+
+// UpdateFallbackTargets sets the "fallback_targets" field to the value that was provided on create.
+func (u *CompositeModelRouteUpsert) UpdateFallbackTargets() *CompositeModelRouteUpsert {
+	u.SetExcluded(compositemodelroute.FieldFallbackTargets)
 	return u
 }
 
@@ -755,6 +785,20 @@ func (u *CompositeModelRouteUpsertOne) SetUpstreamModel(v string) *CompositeMode
 func (u *CompositeModelRouteUpsertOne) UpdateUpstreamModel() *CompositeModelRouteUpsertOne {
 	return u.Update(func(s *CompositeModelRouteUpsert) {
 		s.UpdateUpstreamModel()
+	})
+}
+
+// SetFallbackTargets sets the "fallback_targets" field.
+func (u *CompositeModelRouteUpsertOne) SetFallbackTargets(v []domain.CompositeFallbackTarget) *CompositeModelRouteUpsertOne {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.SetFallbackTargets(v)
+	})
+}
+
+// UpdateFallbackTargets sets the "fallback_targets" field to the value that was provided on create.
+func (u *CompositeModelRouteUpsertOne) UpdateFallbackTargets() *CompositeModelRouteUpsertOne {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.UpdateFallbackTargets()
 	})
 }
 
@@ -1141,6 +1185,20 @@ func (u *CompositeModelRouteUpsertBulk) SetUpstreamModel(v string) *CompositeMod
 func (u *CompositeModelRouteUpsertBulk) UpdateUpstreamModel() *CompositeModelRouteUpsertBulk {
 	return u.Update(func(s *CompositeModelRouteUpsert) {
 		s.UpdateUpstreamModel()
+	})
+}
+
+// SetFallbackTargets sets the "fallback_targets" field.
+func (u *CompositeModelRouteUpsertBulk) SetFallbackTargets(v []domain.CompositeFallbackTarget) *CompositeModelRouteUpsertBulk {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.SetFallbackTargets(v)
+	})
+}
+
+// UpdateFallbackTargets sets the "fallback_targets" field to the value that was provided on create.
+func (u *CompositeModelRouteUpsertBulk) UpdateFallbackTargets() *CompositeModelRouteUpsertBulk {
+	return u.Update(func(s *CompositeModelRouteUpsert) {
+		s.UpdateFallbackTargets()
 	})
 }
 

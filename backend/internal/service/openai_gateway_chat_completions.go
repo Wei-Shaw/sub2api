@@ -414,6 +414,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		return s.handleChatCompletionsErrorResponse(resp, c, account, billingModel)
 	}
 
+	originalModel = compositeFallbackResponseModel(ctx, originalModel)
 	// 9. Handle normal response
 	var result *OpenAIForwardResult
 	var handleErr error

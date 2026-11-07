@@ -261,19 +261,26 @@ func compositeRouteFromInput(groupID int64, input CompositeRouteInput) (*Composi
 	if !isConcreteRequestPlatform(input.TargetPlatform) {
 		return nil, fmt.Errorf("target_platform must be a concrete provider")
 	}
+	if err := validateCompositeFallback(input); err != nil {
+		return nil, infraerrors.New(http.StatusBadRequest, "INVALID_COMPOSITE_FALLBACK", err.Error())
+	}
+	if input.FallbackTargets == nil {
+		input.FallbackTargets = []CompositeFallbackTarget{}
+	}
 	if input.Priority == 0 {
 		input.Priority = 100
 	}
 	return &CompositeModelRoute{
-		GroupID:        groupID,
-		PublicModel:    input.PublicModel,
-		MatchType:      input.MatchType,
-		TargetPlatform: input.TargetPlatform,
-		UpstreamModel:  input.UpstreamModel,
-		Endpoint:       input.Endpoint,
-		Priority:       input.Priority,
-		Enabled:        input.Enabled,
-		Notes:          input.Notes,
+		GroupID:         groupID,
+		PublicModel:     input.PublicModel,
+		MatchType:       input.MatchType,
+		TargetPlatform:  input.TargetPlatform,
+		UpstreamModel:   input.UpstreamModel,
+		FallbackTargets: input.FallbackTargets,
+		Endpoint:        input.Endpoint,
+		Priority:        input.Priority,
+		Enabled:         input.Enabled,
+		Notes:           input.Notes,
 	}, nil
 }
 

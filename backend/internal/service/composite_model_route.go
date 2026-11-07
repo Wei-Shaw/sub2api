@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
@@ -46,21 +47,23 @@ var (
 	ErrCompositeRouteExists   = infraerrors.Conflict("COMPOSITE_ROUTE_EXISTS", "composite route already exists")
 )
 
-// CompositeModelRoute maps one public model identifier in a composite group to
-// the concrete provider/model that should handle the request.
+type CompositeFallbackTarget = domain.CompositeFallbackTarget
+
+// CompositeModelRoute maps a public model to an ordered, explicit provider route.
 type CompositeModelRoute struct {
-	ID             int64     `json:"id"`
-	GroupID        int64     `json:"group_id"`
-	PublicModel    string    `json:"public_model"`
-	MatchType      string    `json:"match_type"`
-	TargetPlatform string    `json:"target_platform"`
-	UpstreamModel  string    `json:"upstream_model"`
-	Endpoint       string    `json:"endpoint"`
-	Priority       int       `json:"priority"`
-	Enabled        bool      `json:"enabled"`
-	Notes          string    `json:"notes"`
-	CreatedAt      time.Time `json:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at"`
+	ID              int64                     `json:"id"`
+	GroupID         int64                     `json:"group_id"`
+	PublicModel     string                    `json:"public_model"`
+	MatchType       string                    `json:"match_type"`
+	TargetPlatform  string                    `json:"target_platform"`
+	UpstreamModel   string                    `json:"upstream_model"`
+	FallbackTargets []CompositeFallbackTarget `json:"fallback_targets"`
+	Endpoint        string                    `json:"endpoint"`
+	Priority        int                       `json:"priority"`
+	Enabled         bool                      `json:"enabled"`
+	Notes           string                    `json:"notes"`
+	CreatedAt       time.Time                 `json:"created_at"`
+	UpdatedAt       time.Time                 `json:"updated_at"`
 }
 
 type CompositeRoutePreviewRequest struct {
@@ -69,26 +72,28 @@ type CompositeRoutePreviewRequest struct {
 }
 
 type CompositeRouteDecision struct {
-	Matched        bool                 `json:"matched"`
-	Source         string               `json:"source"`
-	GroupID        int64                `json:"group_id"`
-	PublicModel    string               `json:"public_model"`
-	TargetPlatform string               `json:"target_platform"`
-	UpstreamModel  string               `json:"upstream_model"`
-	Endpoint       string               `json:"endpoint"`
-	Route          *CompositeModelRoute `json:"route,omitempty"`
-	Reason         string               `json:"reason,omitempty"`
+	Matched         bool                      `json:"matched"`
+	Source          string                    `json:"source"`
+	GroupID         int64                     `json:"group_id"`
+	PublicModel     string                    `json:"public_model"`
+	TargetPlatform  string                    `json:"target_platform"`
+	UpstreamModel   string                    `json:"upstream_model"`
+	FallbackTargets []CompositeFallbackTarget `json:"fallback_targets"`
+	Endpoint        string                    `json:"endpoint"`
+	Route           *CompositeModelRoute      `json:"route,omitempty"`
+	Reason          string                    `json:"reason,omitempty"`
 }
 
 type CompositeRouteInput struct {
-	PublicModel    string
-	MatchType      string
-	TargetPlatform string
-	UpstreamModel  string
-	Endpoint       string
-	Priority       int
-	Enabled        bool
-	Notes          string
+	PublicModel     string
+	MatchType       string
+	TargetPlatform  string
+	UpstreamModel   string
+	FallbackTargets []CompositeFallbackTarget
+	Endpoint        string
+	Priority        int
+	Enabled         bool
+	Notes           string
 }
 
 type CompositeModelRouteRepository interface {

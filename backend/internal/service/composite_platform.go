@@ -36,6 +36,8 @@ func WithCompositeRouteDecision(ctx context.Context, decision CompositeRouteDeci
 	if ctx == nil || !decision.Matched {
 		return ctx
 	}
+	decision.FallbackTargets = append([]CompositeFallbackTarget(nil), decision.FallbackTargets...)
+	ctx = context.WithValue(ctx, compositeFallbackContextKey{}, decision)
 	ctx = WithResolvedTargetPlatform(ctx, decision.TargetPlatform)
 	if model := strings.TrimSpace(decision.UpstreamModel); model != "" {
 		ctx = context.WithValue(ctx, ctxkey.ResolvedUpstreamModel, model)
