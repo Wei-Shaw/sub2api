@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import en from '../locales/en'
 import zh from '../locales/zh'
+import zhHK from '../locales/zh-HK'
 
 type LocaleValue = Record<string, unknown>
 
@@ -63,11 +64,17 @@ function missingKeys(usedKeys: string[], availableKeys: Set<string>): string[] {
 describe('locale key completeness', () => {
   const enKeys = new Set(flattenLeafKeys(en))
   const zhKeys = new Set(flattenLeafKeys(zh))
+  const zhHKKeys = new Set(flattenLeafKeys(zhHK))
   const usedKeys = [...new Set(sourceKeys())].sort()
 
   it('keeps English and Chinese locale schemas identical', () => {
     expect([...enKeys].filter((key) => !zhKeys.has(key)).sort()).toEqual([])
     expect([...zhKeys].filter((key) => !enKeys.has(key)).sort()).toEqual([])
+  })
+
+  it('keeps Hong Kong Traditional Chinese keys aligned with Simplified Chinese', () => {
+    expect([...zhKeys].filter((key) => !zhHKKeys.has(key)).sort()).toEqual([])
+    expect([...zhHKKeys].filter((key) => !zhKeys.has(key)).sort()).toEqual([])
   })
 
   it('contains a non-empty message for every locale leaf', () => {

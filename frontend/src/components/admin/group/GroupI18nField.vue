@@ -115,15 +115,16 @@ const options = computed(() => [
       props.i18n[locale.code]?.[props.field]
         ? 'admin.groups.i18nField.edit'
         : 'admin.groups.i18nField.add',
-      { language: locale.name }
+      { language: `${locale.flag} ${locale.name}` }
     ),
     active: activeLocale.value === locale.code
   }))
 ])
 
-const activeLocaleName = computed(
-  () => availableLocales.find((locale) => locale.code === activeLocale.value)?.name ?? ''
-)
+const activeLocaleName = computed(() => {
+  const locale = availableLocales.find((item) => item.code === activeLocale.value)
+  return locale ? `${locale.flag} ${locale.name}` : ''
+})
 
 const activeLabel = computed(
   () => activeLocaleName.value || t('admin.groups.i18nField.default')
