@@ -9,12 +9,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"path"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	coderws "github.com/coder/websocket"
 	"github.com/google/uuid"
@@ -30,6 +32,7 @@ const (
 	liveObserverPollInterval      = 250 * time.Millisecond
 	liveObserverStoreRetryLimit   = 5
 	liveUpstreamBodyLimit         = 2 << 20
+	codexOAuthLiveSidebandBaseURL = "wss://api.openai.com/v1/live"
 )
 
 // liveObserverStoreRetryInterval 是 var 以便测试缩短 store 报错的重试等待。
@@ -44,6 +47,36 @@ type liveFrameConn interface {
 	ReadFrame(ctx context.Context) (coderws.MessageType, []byte, error)
 	WriteFrame(ctx context.Context, msgType coderws.MessageType, payload []byte) error
 	Close() error
+}
+
+var _ liveFrameConn = (*coderOpenAIWSClientConn)(nil)
+
+type liveUpstreamAuth struct {
+	mode                  string
+	attestation           string
+	attestationCiphertext string
+	sessionID             string
+}
+
+func (s *OpenAIGatewayService) prepareLiveUpstreamAuth(ctx context.Context) (*liveUpstreamAuth, error) {
+	var liveConfig config.GatewayLiveConfig
+	if s != nil && s.cfg != nil {
+		liveConfig = s.cfg.Gateway.Live
+	}
+	mode, err := liveConfig.EffectiveUpstreamAuthMode()
+	if err != nil {
+		return nil, err
+	}
+	auth := &liveUpstreamAuth{mode: mode}
+	if mode == config.LiveUpstreamAuthModeCodexOAuth {
+		auth.sessionID = uuid.NewString()
+		return auth, nil
+	}
+	auth.attestation, auth.attestationCiphertext, err = s.prepareLiveAttestation(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return auth, nil
 }
 
 func liveSidebandReadError(err error) error {
@@ -138,7 +171,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 	if err != nil {
 		return nil, err
 	}
-	attestation, attestationCiphertext, err := s.prepareLiveAttestation(ctx)
+	auth, err := s.prepareLiveUpstreamAuth(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +228,7 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			return nil, ErrLiveConcurrencyFull
 		}
 
-		created, createErr := s.createUpstreamLiveCall(ctx, account, request, attestation)
+		created, createErr := s.createUpstreamLiveCall(ctx, account, request, auth)
 		selection.ReleaseFunc()
 		if createErr != nil {
 			s.releaseLiveLease(account.ID, identity.UserID, identity.APIKeyID, leaseID)
@@ -228,10 +261,13 @@ func (s *OpenAIGatewayService) CreateLiveCall(
 			UserAgent:             identity.UserAgent,
 			IPAddress:             identity.IPAddress,
 			InboundEndpoint:       identity.InboundEndpoint,
-			AttestationCiphertext: attestationCiphertext,
+			UpstreamAuthMode:      auth.mode,
+			UpstreamSessionID:     auth.sessionID,
+			AttestationCiphertext: auth.attestationCiphertext,
 		}
 		mappingTTL := s.liveMaxSessionDuration() + 5*time.Minute
 		if saveErr := store.SaveLiveCall(ctx, record, mappingTTL); saveErr != nil {
+			logLiveCreateStageFailure(ctx, account.ID, "save_mapping", saveErr)
 			s.releaseLiveLease(account.ID, identity.UserID, identity.APIKeyID, leaseID)
 			return nil, fmt.Errorf("save live call mapping: %w", saveErr)
 		}
@@ -262,8 +298,11 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 	ctx context.Context,
 	account *Account,
 	request *LiveCallRequest,
-	attestation string,
+	auth *liveUpstreamAuth,
 ) (*LiveCallCreated, error) {
+	if account == nil || !account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityLive) {
+		return nil, ErrLiveUnavailable
+	}
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
 		logLiveCreateStageFailure(ctx, account.ID, "access_token", err)
@@ -277,11 +316,13 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 		Session: request.Session,
 	})
 	if err != nil {
+		logLiveCreateStageFailure(ctx, account.ID, "request_encode", err)
 		return nil, err
 	}
 	reqCtx := WithHTTPUpstreamRedirectsDisabled(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileOpenAI))
 	upstreamReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, chatGPTLiveCallsURL, bytes.NewReader(body))
 	if err != nil {
+		logLiveCreateStageFailure(ctx, account.ID, "request_create", err)
 		return nil, err
 	}
 	authHeaders, err := s.buildOpenAIAuthenticationHeaders(ctx, account, token)
@@ -301,8 +342,10 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 	}
 	upstreamReq.Header.Set("Content-Type", "application/json")
 	upstreamReq.Header.Set("Accept", "application/sdp")
-	upstreamReq.Header.Set(liveAttestationHeader, attestation)
-	applyLiveUpstreamIdentityHeaders(upstreamReq.Header)
+	if err := applyLiveUpstreamAuthHeaders(upstreamReq.Header, auth); err != nil {
+		logLiveCreateStageFailure(ctx, account.ID, "live_auth_headers", err)
+		return nil, err
+	}
 
 	resp, err := s.doOpenAIUpstream(upstreamReq, resolveAccountProxyURL(account), account)
 	if err != nil {
@@ -312,10 +355,13 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 	defer func() { _ = resp.Body.Close() }()
 	responseBody, readErr := io.ReadAll(io.LimitReader(resp.Body, liveUpstreamBodyLimit+1))
 	if readErr != nil {
+		logLiveCreateResponseFailure(ctx, account.ID, "response_read", readErr, resp, responseBody)
 		return nil, readErr
 	}
 	if len(responseBody) > liveUpstreamBodyLimit {
-		return nil, errors.New("live upstream response is too large")
+		err := errors.New("live upstream response is too large")
+		logLiveCreateResponseFailure(ctx, account.ID, "response_size", err, resp, responseBody)
+		return nil, err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		logLiveUpstreamFailure(ctx, account.ID, resp.StatusCode, resp.Header, responseBody)
@@ -325,8 +371,13 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 			ResponseHeaders: resp.Header.Clone(),
 		}
 	}
+	if err := validateLiveSDPResponse(resp.Header, responseBody); err != nil {
+		logLiveCreateResponseFailure(ctx, account.ID, "response_sdp", err, resp, responseBody)
+		return nil, err
+	}
 	callID, err := liveCallIDFromLocation(resp.Header.Get("Location"))
 	if err != nil {
+		logLiveCreateResponseFailure(ctx, account.ID, "response_location", err, resp, responseBody)
 		return nil, err
 	}
 	return &LiveCallCreated{
@@ -336,12 +387,64 @@ func (s *OpenAIGatewayService) createUpstreamLiveCall(
 	}, nil
 }
 
+func validateLiveSDPResponse(headers http.Header, body []byte) error {
+	mediaType, _, err := mime.ParseMediaType(headers.Get("Content-Type"))
+	// The native Codex endpoint can return a valid SDP answer as text/plain
+	// (including on HTTP 201). Content type alone never establishes validity.
+	if err != nil || (mediaType != "application/sdp" && mediaType != "text/plain") {
+		return errors.New("live upstream response has an unsupported SDP content type")
+	}
+	lines := strings.Split(string(body), "\n")
+	if len(lines) < 2 || strings.TrimSuffix(lines[0], "\r") != "v=0" {
+		return errors.New("live upstream response is not an SDP answer")
+	}
+	// Check the SDP envelope without changing the opaque answer. In particular,
+	// a successful HTML/error response must never be exposed as a created call.
+	required := map[byte]bool{'o': false, 's': false, 't': false, 'm': false}
+	for _, line := range lines[1:] {
+		line = strings.TrimSuffix(line, "\r")
+		if line == "" {
+			continue
+		}
+		if len(line) < 3 || line[1] != '=' {
+			return errors.New("live upstream response contains an invalid SDP line")
+		}
+		if _, ok := required[line[0]]; ok {
+			required[line[0]] = true
+		}
+	}
+	for _, present := range required {
+		if !present {
+			return errors.New("live upstream response is missing required SDP fields")
+		}
+	}
+	return nil
+}
+
 func logLiveCreateStageFailure(ctx context.Context, accountID int64, stage string, err error) {
 	logger.FromContext(ctx).Warn(
 		"OpenAI Live 创建阶段失败",
 		zap.Int64("account_id", accountID),
 		zap.String("stage", stage),
 		zap.String("error_type", fmt.Sprintf("%T", err)),
+	)
+}
+
+// Report only structural response facts. Never log SDP, Location values, call
+// identifiers, or authentication headers when diagnosing a malformed success.
+func logLiveCreateResponseFailure(ctx context.Context, accountID int64, stage string, err error, resp *http.Response, body []byte) {
+	mediaType, _, mediaErr := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	logger.FromContext(ctx).Warn(
+		"OpenAI Live 上游成功响应无法使用",
+		zap.Int64("account_id", accountID),
+		zap.String("stage", stage),
+		zap.String("error_type", fmt.Sprintf("%T", err)),
+		zap.Int("upstream_status_code", resp.StatusCode),
+		zap.String("upstream_media_type", truncateOpenAIWSLogValue(mediaType, 80)),
+		zap.Bool("upstream_media_type_valid", mediaErr == nil),
+		zap.Int("response_bytes", len(body)),
+		zap.Bool("location_present", strings.TrimSpace(resp.Header.Get("Location")) != ""),
+		zap.Bool("sdp_envelope_valid", validateLiveSDPResponse(resp.Header, body) == nil),
 	)
 }
 
@@ -413,11 +516,47 @@ func applyLiveUpstreamIdentityHeaders(headers http.Header) {
 	headers.Del("OpenAI-Beta")
 }
 
+func applyLiveUpstreamAuthHeaders(headers http.Header, auth *liveUpstreamAuth) error {
+	if auth == nil {
+		return errors.New("live upstream authentication is missing")
+	}
+	mode, err := (config.GatewayLiveConfig{UpstreamAuthMode: auth.mode}).EffectiveUpstreamAuthMode()
+	if err != nil {
+		return err
+	}
+	applyLiveUpstreamIdentityHeaders(headers)
+	switch mode {
+	case config.LiveUpstreamAuthModeDeviceCheck:
+		if strings.TrimSpace(auth.attestation) == "" {
+			return &LiveAttestationUnavailableError{Reason: "the Live call has no DeviceCheck attestation"}
+		}
+		headers.Set(liveAttestationHeader, auth.attestation)
+	case config.LiveUpstreamAuthModeCodexOAuth:
+		if _, err := uuid.Parse(auth.sessionID); err != nil {
+			return errors.New("live OAuth call has no valid upstream session identity")
+		}
+		// Match the native Codex OAuth flow. This mode neither generates a
+		// desktop proof nor forwards a proof from a different authentication flow.
+		headers.Del(liveAttestationHeader)
+		headers.Set("Session-ID", auth.sessionID)
+		headers.Set("Thread-ID", auth.sessionID)
+		headers.Set("X-Session-ID", auth.sessionID)
+	}
+	return nil
+}
+
 func (s *OpenAIGatewayService) liveSidebandHeaders(
 	ctx context.Context,
 	account *Account,
 	record *LiveCallRecord,
 ) (http.Header, error) {
+	if record == nil {
+		return nil, ErrLiveCallNotFound
+	}
+	mode, err := (config.GatewayLiveConfig{UpstreamAuthMode: record.UpstreamAuthMode}).EffectiveUpstreamAuthMode()
+	if err != nil {
+		return nil, err
+	}
 	token, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
 		return nil, err
@@ -429,38 +568,116 @@ func (s *OpenAIGatewayService) liveSidebandHeaders(
 	if err := resolveAndSetOpenAIChatGPTAccountHeaders(ctx, s.accountRepo, headers, account); err != nil {
 		return nil, err
 	}
-	attestation, err := s.decryptLiveAttestation(record)
-	if err != nil {
+	auth := &liveUpstreamAuth{mode: mode, sessionID: record.UpstreamSessionID}
+	if mode == config.LiveUpstreamAuthModeDeviceCheck {
+		auth.attestation, err = s.decryptLiveAttestation(record)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := applyLiveUpstreamAuthHeaders(headers, auth); err != nil {
 		return nil, err
 	}
-	headers.Set(liveAttestationHeader, attestation)
-	applyLiveUpstreamIdentityHeaders(headers)
 	return headers, nil
 }
 
+func liveSidebandTarget(record *LiveCallRecord) (string, error) {
+	if record == nil {
+		return "", ErrLiveCallNotFound
+	}
+	mode, err := (config.GatewayLiveConfig{UpstreamAuthMode: record.UpstreamAuthMode}).EffectiveUpstreamAuthMode()
+	if err != nil {
+		return "", err
+	}
+	baseURL := chatGPTLiveSidebandBaseURL
+	if mode == config.LiveUpstreamAuthModeCodexOAuth {
+		// Native Codex uses its API-provider WebSocket endpoint for the sideband,
+		// while still authenticating with the same ChatGPT subscription OAuth token.
+		// The desktop DeviceCheck flow keeps its original ChatGPT endpoint.
+		baseURL = codexOAuthLiveSidebandBaseURL
+	}
+	return strings.TrimRight(baseURL, "/") + "/" + url.PathEscape(record.CallID), nil
+}
+
 func (s *OpenAIGatewayService) dialLiveSideband(ctx context.Context, record *LiveCallRecord) (liveFrameConn, error) {
+	target, err := liveSidebandTarget(record)
+	if err != nil {
+		logLiveSidebandFailure(ctx, record, "route_selection", 0, err)
+		return nil, err
+	}
 	account, err := s.accountRepo.GetByID(ctx, record.AccountID)
 	if err != nil {
+		logLiveSidebandFailure(ctx, record, "account_lookup", 0, err)
 		return nil, err
 	}
 	if account == nil || !account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityLive) {
+		logLiveSidebandFailure(ctx, record, "account_capability", 0, ErrLiveUnavailable)
 		return nil, ErrLiveUnavailable
 	}
 	headers, err := s.liveSidebandHeaders(ctx, account, record)
 	if err != nil {
+		logLiveSidebandFailure(ctx, record, "authentication_headers", 0, err)
 		return nil, err
 	}
-	target := strings.TrimRight(chatGPTLiveSidebandBaseURL, "/") + "/" + url.PathEscape(record.CallID)
 	conn, status, _, err := s.getOpenAIWSPassthroughDialer().Dial(ctx, target, headers, resolveAccountProxyURL(account))
 	if err != nil {
+		mode, _ := (config.GatewayLiveConfig{UpstreamAuthMode: record.UpstreamAuthMode}).EffectiveUpstreamAuthMode()
+		if mode == config.LiveUpstreamAuthModeCodexOAuth && (status == http.StatusNotFound || status == http.StatusGone) {
+			// The native sideband endpoint removes the call after it ends. Treat
+			// that response as termination, not a reason to hold its lease and
+			// retry for the remainder of the maximum session duration.
+			closedErr := fmt.Errorf("%w: upstream sideband returned HTTP %d", ErrLiveCallNotFound, status)
+			logLiveSidebandFailure(ctx, record, "upstream_dial", status, closedErr)
+			return nil, closedErr
+		}
+		logLiveSidebandFailure(ctx, record, "upstream_dial", status, err)
 		return nil, fmt.Errorf("dial live sideband (status %d): %w", status, err)
 	}
 	raw, ok := conn.(liveFrameConn)
 	if !ok {
 		_ = conn.Close()
-		return nil, errors.New("live sideband transport does not support raw frames")
+		err := errors.New("live sideband transport does not support raw frames")
+		logLiveSidebandFailure(ctx, record, "raw_frame_transport", status, err)
+		return nil, err
 	}
 	return raw, nil
+}
+
+// WebSocket error strings can contain URLs, call IDs, close reasons, or response
+// bodies. Add only bounded classifications to the existing request logger.
+func logLiveSidebandFailure(ctx context.Context, record *LiveCallRecord, stage string, status int, err error) {
+	var accountID int64
+	mode := "unknown"
+	sessionPresent := false
+	if record != nil {
+		accountID = record.AccountID
+		if normalized, modeErr := (config.GatewayLiveConfig{UpstreamAuthMode: record.UpstreamAuthMode}).EffectiveUpstreamAuthMode(); modeErr == nil {
+			mode = normalized
+		}
+		sessionPresent = record.UpstreamSessionID != ""
+	}
+	closeStatus := coderws.CloseStatus(err)
+	log := logger.FromContext(ctx).Warn
+	expiredCall := record != nil && !record.ExpiresAt.IsZero() && !time.Now().Before(record.ExpiresAt)
+	normalExpiry := (stage == "proxy_end" || stage == "observer_end") && expiredCall && errors.Is(err, context.DeadlineExceeded)
+	if errors.Is(err, context.Canceled) || errors.Is(err, ErrLiveCallNotFound) || errors.Is(err, ErrLiveControllerChanged) ||
+		closeStatus == coderws.StatusNormalClosure || closeStatus == coderws.StatusGoingAway || normalExpiry {
+		log = logger.FromContext(ctx).Debug
+	}
+	log(
+		"OpenAI Live Sideband 阶段结束",
+		zap.Int64("account_id", accountID),
+		zap.String("upstream_auth_mode", mode),
+		zap.Bool("upstream_session_present", sessionPresent),
+		zap.String("stage", stage),
+		zap.Int("upstream_status_code", status),
+		zap.String("error_type", fmt.Sprintf("%T", err)),
+		zap.Int("websocket_close_status", int(closeStatus)),
+		zap.Bool("context_canceled", errors.Is(err, context.Canceled)),
+		zap.Bool("deadline_exceeded", errors.Is(err, context.DeadlineExceeded)),
+		zap.Bool("call_ended", errors.Is(err, ErrLiveCallNotFound)),
+		zap.Bool("controller_changed", errors.Is(err, ErrLiveControllerChanged)),
+	)
 }
 
 func (s *OpenAIGatewayService) GetLiveCallForIdentity(
@@ -504,9 +721,11 @@ func (s *OpenAIGatewayService) ProxyLiveSideband(
 	owner := uuid.NewString()
 	claimed, err := store.ClaimLiveController(ctx, record.CallHash, LiveControllerProxy, owner)
 	if err != nil {
+		logLiveSidebandFailure(ctx, record, "proxy_controller_claim", 0, err)
 		return err
 	}
 	if !claimed {
+		logLiveSidebandFailure(ctx, record, "proxy_controller_claim", 0, ErrLiveControllerChanged)
 		return ErrLiveControllerChanged
 	}
 
@@ -515,7 +734,11 @@ func (s *OpenAIGatewayService) ProxyLiveSideband(
 	upstream, err := s.dialLiveSideband(ctx, record)
 	if err != nil {
 		_, _ = store.ReleaseLiveController(context.Background(), record.CallHash, owner)
-		go s.observeLiveCall(record)
+		if errors.Is(err, ErrLiveCallNotFound) {
+			s.finalizeLiveCall(record)
+		} else {
+			go s.observeLiveCall(record)
+		}
 		return err
 	}
 	defer func() { _ = upstream.Close() }()
@@ -528,10 +751,12 @@ func (s *OpenAIGatewayService) ProxyLiveSideband(
 		for {
 			messageType, payload, readErr := downstream.Read(proxyCtx)
 			if readErr != nil {
+				logLiveSidebandFailure(proxyCtx, record, "proxy_downstream_read", 0, readErr)
 				errCh <- readErr
 				return
 			}
 			if writeErr := upstream.WriteFrame(proxyCtx, messageType, payload); writeErr != nil {
+				logLiveSidebandFailure(proxyCtx, record, "proxy_upstream_write", 0, writeErr)
 				errCh <- writeErr
 				return
 			}
@@ -541,10 +766,12 @@ func (s *OpenAIGatewayService) ProxyLiveSideband(
 		for {
 			messageType, payload, readErr := upstream.ReadFrame(proxyCtx)
 			if readErr != nil {
+				logLiveSidebandFailure(proxyCtx, record, "proxy_upstream_read", 0, readErr)
 				errCh <- liveSidebandReadError(readErr)
 				return
 			}
 			if writeErr := downstream.Write(proxyCtx, messageType, payload); writeErr != nil {
+				logLiveSidebandFailure(proxyCtx, record, "proxy_downstream_write", 0, writeErr)
 				errCh <- writeErr
 				return
 			}
@@ -559,6 +786,7 @@ func (s *OpenAIGatewayService) ProxyLiveSideband(
 	}()
 
 	runErr := s.runLiveController(proxyCtx, record, upstream, errCh)
+	logLiveSidebandFailure(ctx, record, "proxy_end", 0, runErr)
 	cancel()
 	_, _ = store.ReleaseLiveController(context.Background(), record.CallHash, owner)
 	if liveSessionEnded(runErr) || !time.Now().Before(record.ExpiresAt) {
@@ -659,12 +887,17 @@ func (s *OpenAIGatewayService) observeLiveCall(record *LiveCallRecord) {
 		}
 		upstream, dialErr := s.dialLiveSideband(context.Background(), record)
 		if dialErr != nil {
+			if errors.Is(dialErr, ErrLiveCallNotFound) {
+				s.finalizeLiveCall(record)
+				return
+			}
 			if !s.waitForLiveObserverRetry(record) {
 				return
 			}
 			continue
 		}
 		runErr := s.runLiveObserverConnection(record, upstream)
+		logLiveSidebandFailure(context.Background(), record, "observer_end", 0, runErr)
 		_ = upstream.Close()
 		if errors.Is(runErr, ErrLiveControllerChanged) {
 			return

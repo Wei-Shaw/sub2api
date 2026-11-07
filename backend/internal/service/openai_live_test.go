@@ -11,14 +11,21 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	coderws "github.com/coder/websocket"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zaptest/observer"
 )
 
+const liveTestSDPAnswer = "v=0\r\no=- 1 1 IN IP4 127.0.0.1\r\ns=-\r\nt=0 0\r\nm=audio 9 UDP/TLS/RTP/SAVPF 111\r\n"
+
 type liveHTTPUpstreamStub struct {
-	request *http.Request
-	body    []byte
+	request  *http.Request
+	body     []byte
+	response *http.Response
 }
 
 type liveAttestationStub struct {
@@ -46,12 +53,16 @@ func (s *liveHTTPUpstreamStub) Do(
 		return nil, err
 	}
 	s.body = body
+	if s.response != nil {
+		return s.response, nil
+	}
 	return &http.Response{
 		StatusCode: http.StatusOK,
 		Header: http.Header{
-			"Location": {"/backend-api/codex/call_test"},
+			"Location":     {"/backend-api/codex/call_test"},
+			"Content-Type": {"application/sdp"},
 		},
-		Body: io.NopCloser(strings.NewReader("v=0\r\n")),
+		Body: io.NopCloser(strings.NewReader(liveTestSDPAnswer)),
 	}, nil
 }
 
@@ -119,10 +130,10 @@ func TestCreateUpstreamLiveCallPreservesSession(t *testing.T) {
 	created, err := service.createUpstreamLiveCall(context.Background(), account, &LiveCallRequest{
 		SDP:     "v=offer\r\n",
 		Session: session,
-	}, `{"v":1,"s":0,"t":"v1.test"}`)
+	}, &liveUpstreamAuth{mode: config.LiveUpstreamAuthModeDeviceCheck, attestation: `{"v":1,"s":0,"t":"v1.test"}`})
 	require.NoError(t, err)
 	require.Equal(t, "call_test", created.CallID)
-	require.Equal(t, []byte("v=0\r\n"), created.SDP)
+	require.Equal(t, []byte(liveTestSDPAnswer), created.SDP)
 
 	var forwarded struct {
 		SDP     string          `json:"sdp"`
@@ -140,6 +151,207 @@ func TestCreateUpstreamLiveCallPreservesSession(t *testing.T) {
 	require.Empty(t, upstream.request.Header.Get("OpenAI-Beta"))
 	require.Equal(t, HTTPUpstreamProfileOpenAI, HTTPUpstreamProfileFromContext(upstream.request.Context()))
 	require.True(t, HTTPUpstreamRedirectsDisabled(upstream.request.Context()))
+}
+
+func liveOAuthTestAccount() *Account {
+	return &Account{
+		ID:       7,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token":       "test-access-token",
+			"chatgpt_account_id": "acct_test",
+		},
+	}
+}
+
+func TestCodexOAuthLiveCreateAndSidebandShareIdentity(t *testing.T) {
+	upstream := &liveHTTPUpstreamStub{}
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Gateway: config.GatewayConfig{
+			Live: config.GatewayLiveConfig{UpstreamAuthMode: config.LiveUpstreamAuthModeCodexOAuth},
+		}},
+		httpUpstream: upstream,
+		// No DeviceCheck provider or cipher is available on this instance.
+		liveAttestation: liveAttestationStub{err: errors.New("DeviceCheck is unavailable")},
+	}
+	auth, err := svc.prepareLiveUpstreamAuth(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, config.LiveUpstreamAuthModeCodexOAuth, auth.mode)
+	_, err = uuid.Parse(auth.sessionID)
+	require.NoError(t, err)
+	require.Empty(t, auth.attestation)
+	require.Empty(t, auth.attestationCiphertext)
+
+	account := liveOAuthTestAccount()
+	session := json.RawMessage(`{"model":"gpt-live-1-codex","delegation":{"type":"client"},"custom":{"keep":true}}`)
+	_, err = svc.createUpstreamLiveCall(context.Background(), account, &LiveCallRequest{
+		SDP: "v=offer\r\n", Session: session,
+	}, auth)
+	require.NoError(t, err)
+	require.Equal(t, chatGPTLiveCallsURL, upstream.request.URL.String())
+	require.NotContains(t, upstream.request.Header, http.CanonicalHeaderKey(liveAttestationHeader))
+	require.Equal(t, "Bearer test-access-token", upstream.request.Header.Get("Authorization"))
+	require.Equal(t, "quicksilver=v2", upstream.request.Header.Get("OpenAI-Alpha"))
+	var forwarded LiveCallRequest
+	require.NoError(t, json.Unmarshal(upstream.body, &forwarded))
+	require.JSONEq(t, string(session), string(forwarded.Session))
+
+	// A global setting change must not change authentication for an existing call.
+	svc.cfg.Gateway.Live.UpstreamAuthMode = config.LiveUpstreamAuthModeDeviceCheck
+	record := &LiveCallRecord{UpstreamAuthMode: auth.mode, UpstreamSessionID: auth.sessionID}
+	for range 2 {
+		headers, err := svc.liveSidebandHeaders(context.Background(), account, record)
+		require.NoError(t, err)
+		require.NotContains(t, headers, http.CanonicalHeaderKey(liveAttestationHeader))
+		for _, name := range []string{"Session-ID", "Thread-ID", "X-Session-ID"} {
+			require.Equal(t, auth.sessionID, upstream.request.Header.Get(name))
+			require.Equal(t, auth.sessionID, headers.Get(name))
+		}
+	}
+}
+
+func TestLiveAuthenticationDefaultsAndInvalidModesFailClosed(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	_, err := svc.prepareLiveUpstreamAuth(context.Background())
+	var attestationErr *LiveAttestationUnavailableError
+	require.ErrorAs(t, err, &attestationErr)
+
+	svc.cfg = &config.Config{Gateway: config.GatewayConfig{
+		Live: config.GatewayLiveConfig{UpstreamAuthMode: "unsupported-mode"},
+	}}
+	_, err = svc.prepareLiveUpstreamAuth(context.Background())
+	require.ErrorContains(t, err, "upstream_auth_mode")
+
+	svc.cfg.Gateway.Live.UpstreamAuthMode = config.LiveUpstreamAuthModeCodexOAuth
+	// Old records keep requiring DeviceCheck even after opting in globally.
+	_, err = svc.liveSidebandHeaders(context.Background(), liveOAuthTestAccount(), &LiveCallRecord{})
+	require.ErrorAs(t, err, &attestationErr)
+	_, err = svc.liveSidebandHeaders(context.Background(), nil, &LiveCallRecord{UpstreamAuthMode: "unsupported-mode"})
+	require.ErrorContains(t, err, "upstream_auth_mode")
+	_, err = svc.liveSidebandHeaders(context.Background(), liveOAuthTestAccount(), &LiveCallRecord{
+		UpstreamAuthMode: config.LiveUpstreamAuthModeCodexOAuth,
+	})
+	require.ErrorContains(t, err, "session identity")
+}
+
+func TestCreateUpstreamLiveCallRejectsNonSDPSuccess(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		contentType string
+		body        string
+		location    string
+	}{
+		{name: "HTML SPA", contentType: "text/html", body: "<!doctype html><html></html>", location: "/backend-api/codex/call_test"},
+		{name: "HTML labeled SDP", contentType: "application/sdp", body: "<!doctype html><html></html>", location: "/backend-api/codex/call_test"},
+		{name: "HTML labeled plain text", contentType: "text/plain; charset=utf-8", body: "<!doctype html><html></html>", location: "/backend-api/codex/call_test"},
+		{name: "JSON labeled plain text", contentType: "text/plain", body: `{"error":"upstream failed"}`, location: "/backend-api/codex/call_test"},
+		{name: "incomplete SDP", contentType: "application/sdp", body: "v=0\r\n", location: "/backend-api/codex/call_test"},
+		{name: "missing location", contentType: "application/sdp", body: liveTestSDPAnswer},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream := &liveHTTPUpstreamStub{response: &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"Content-Type": {tc.contentType},
+					"Location":     {tc.location},
+				},
+				Body: io.NopCloser(strings.NewReader(tc.body)),
+			}}
+			svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+			created, err := svc.createUpstreamLiveCall(context.Background(), liveOAuthTestAccount(), &LiveCallRequest{
+				SDP: "v=offer\r\n", Session: json.RawMessage(`{"model":"gpt-live-1-codex"}`),
+			}, &liveUpstreamAuth{mode: config.LiveUpstreamAuthModeCodexOAuth, sessionID: uuid.NewString()})
+			require.Error(t, err)
+			require.Nil(t, created)
+		})
+	}
+}
+
+func TestCreateUpstreamLiveCallAcceptsSDPWithNativeContentTypes(t *testing.T) {
+	for _, contentType := range []string{"application/sdp", "text/plain", "text/plain; charset=utf-8"} {
+		t.Run(contentType, func(t *testing.T) {
+			upstream := &liveHTTPUpstreamStub{response: &http.Response{
+				StatusCode: http.StatusCreated,
+				Header: http.Header{
+					"Content-Type": {contentType},
+					"Location":     {"/backend-api/codex/realtime/calls/call_test"},
+				},
+				Body: io.NopCloser(strings.NewReader(liveTestSDPAnswer)),
+			}}
+			svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+			created, err := svc.createUpstreamLiveCall(context.Background(), liveOAuthTestAccount(), &LiveCallRequest{
+				SDP: "v=offer\r\n", Session: json.RawMessage(`{"model":"gpt-live-1-codex"}`),
+			}, &liveUpstreamAuth{mode: config.LiveUpstreamAuthModeCodexOAuth, sessionID: uuid.NewString()})
+			require.NoError(t, err)
+			require.Equal(t, "call_test", created.CallID)
+			require.Equal(t, liveTestSDPAnswer, string(created.SDP))
+		})
+	}
+}
+
+func TestLiveDiagnosticLogsOmitSensitiveValues(t *testing.T) {
+	core, logs := observer.New(zap.WarnLevel)
+	ctx := logger.IntoContext(context.Background(), zap.New(core))
+	record := &LiveCallRecord{
+		AccountID:         7,
+		CallID:            "private-call-id",
+		UpstreamAuthMode:  "private-invalid-mode",
+		UpstreamSessionID: "private-session-id",
+	}
+	logLiveSidebandFailure(ctx, record, "upstream_dial", http.StatusForbidden, coderws.CloseError{
+		Code: coderws.StatusPolicyViolation, Reason: "private-token in websocket close reason",
+	})
+	logLiveCreateResponseFailure(ctx, record.AccountID, "response_location", errors.New("private-token"), &http.Response{
+		StatusCode: http.StatusCreated,
+		Header: http.Header{
+			"Content-Type":  {"text/plain; charset=utf-8"},
+			"Location":      {"https://chatgpt.com/private-call-id?token=private-token"},
+			"Authorization": {"Bearer private-token"},
+		},
+	}, []byte("v=0\r\na=private-sdp-value\r\n"))
+	entries := logs.All()
+	require.Len(t, entries, 2)
+	require.Equal(t, int64(http.StatusForbidden), entries[0].ContextMap()["upstream_status_code"])
+	require.Equal(t, int64(coderws.StatusPolicyViolation), entries[0].ContextMap()["websocket_close_status"])
+	require.Equal(t, "unknown", entries[0].ContextMap()["upstream_auth_mode"])
+	require.Equal(t, "text/plain", entries[1].ContextMap()["upstream_media_type"])
+	for _, entry := range entries {
+		encoded, err := json.Marshal(entry.ContextMap())
+		require.NoError(t, err)
+		require.NotContains(t, string(encoded), "private-")
+	}
+}
+
+func TestLiveExpectedSidebandEndLogsAtDebug(t *testing.T) {
+	core, logs := observer.New(zap.DebugLevel)
+	ctx := logger.IntoContext(context.Background(), zap.New(core))
+	for _, err := range []error{
+		context.Canceled,
+		ErrLiveCallNotFound,
+		ErrLiveControllerChanged,
+		coderws.CloseError{Code: coderws.StatusNormalClosure},
+		coderws.CloseError{Code: coderws.StatusGoingAway},
+	} {
+		logLiveSidebandFailure(ctx, &LiveCallRecord{}, "proxy_end", 0, err)
+	}
+	logLiveSidebandFailure(ctx, &LiveCallRecord{ExpiresAt: time.Now().Add(-time.Second)}, "proxy_end", 0, context.DeadlineExceeded)
+	require.Len(t, logs.All(), 6)
+	for _, entry := range logs.All() {
+		require.Equal(t, zap.DebugLevel, entry.Level)
+	}
+}
+
+func TestCreateUpstreamLiveCallRejectsAPIKeyAccounts(t *testing.T) {
+	upstream := &liveHTTPUpstreamStub{}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	account := liveOAuthTestAccount()
+	account.Type = AccountTypeAPIKey
+	_, err := svc.createUpstreamLiveCall(context.Background(), account, &LiveCallRequest{
+		SDP: "v=offer\r\n", Session: json.RawMessage(`{"model":"gpt-live-1-codex"}`),
+	}, &liveUpstreamAuth{mode: config.LiveUpstreamAuthModeCodexOAuth, sessionID: uuid.NewString()})
+	require.ErrorIs(t, err, ErrLiveUnavailable)
+	require.Nil(t, upstream.request)
 }
 
 func TestLiveAttestationCipherRoundTripAndRejectsOtherInstanceKey(t *testing.T) {

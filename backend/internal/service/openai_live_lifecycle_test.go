@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	coderws "github.com/coder/websocket"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/require"
 )
 
@@ -101,6 +102,20 @@ func (d *liveTestDialer) Dial(
 type liveTestAccountRepo struct {
 	AccountRepository
 	account *Account
+}
+
+type liveHTTPFailureDialer struct {
+	status    int
+	calls     int
+	afterDial func()
+}
+
+func (d *liveHTTPFailureDialer) Dial(context.Context, string, http.Header, string) (openAIWSClientConn, int, http.Header, error) {
+	d.calls++
+	if d.afterDial != nil {
+		d.afterDial()
+	}
+	return nil, d.status, nil, errors.New("synthetic upstream handshake failure")
 }
 
 func (r *liveTestAccountRepo) GetByID(context.Context, int64) (*Account, error) {
@@ -428,6 +443,177 @@ func TestProxyLiveSidebandForwardsTextAndBinary(t *testing.T) {
 	require.Equal(t, `{"v":1,"s":0,"t":"v1.sideband"}`, dialer.headers.Get(liveAttestationHeader))
 	upstream.reads <- liveTestFrame{err: coderws.CloseError{Code: coderws.StatusNormalClosure}}
 	require.ErrorIs(t, <-proxyResult, ErrLiveCallNotFound)
+}
+
+func TestDialLiveSidebandUsesPinnedCodexOAuthMode(t *testing.T) {
+	account := liveOAuthTestAccount()
+	upstream := newLiveTestFrameConn()
+	dialer := &liveTestDialer{conn: upstream}
+	svc := &OpenAIGatewayService{
+		cfg: &config.Config{Gateway: config.GatewayConfig{
+			Live: config.GatewayLiveConfig{UpstreamAuthMode: config.LiveUpstreamAuthModeDeviceCheck},
+		}},
+		accountRepo:               &liveTestAccountRepo{account: account},
+		openaiWSPassthroughDialer: dialer,
+	}
+	record := &LiveCallRecord{
+		CallID:            "call_oauth",
+		AccountID:         account.ID,
+		UpstreamAuthMode:  config.LiveUpstreamAuthModeCodexOAuth,
+		UpstreamSessionID: uuid.NewString(),
+	}
+	// Both the observer and client takeover use this same dial path.
+	conn, err := svc.dialLiveSideband(context.Background(), record)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = conn.Close() })
+	require.Equal(t, "wss://api.openai.com/v1/live/call_oauth", dialer.url)
+	require.Equal(t, "Bearer test-access-token", dialer.headers.Get("Authorization"))
+	require.Equal(t, "acct_test", dialer.headers.Get("Chatgpt-Account-Id"))
+	require.NotContains(t, dialer.headers, http.CanonicalHeaderKey(liveAttestationHeader))
+	for _, name := range []string{"Session-ID", "Thread-ID", "X-Session-ID"} {
+		require.Equal(t, record.UpstreamSessionID, dialer.headers.Get(name))
+	}
+}
+
+func TestLiveSidebandTargetUsesRecordedMode(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		mode string
+		want string
+	}{
+		{"legacy record", "", "wss://chatgpt.com/backend-api/codex/call_test"},
+		{"desktop DeviceCheck", config.LiveUpstreamAuthModeDeviceCheck, "wss://chatgpt.com/backend-api/codex/call_test"},
+		{"native OAuth", config.LiveUpstreamAuthModeCodexOAuth, "wss://api.openai.com/v1/live/call_test"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			target, err := liveSidebandTarget(&LiveCallRecord{CallID: "call_test", UpstreamAuthMode: tc.mode})
+			require.NoError(t, err)
+			require.Equal(t, tc.want, target)
+		})
+	}
+}
+
+func TestDialLiveSidebandRejectsUnknownModeBeforeAccountLookup(t *testing.T) {
+	// Deliberately omit the account repository: rejecting an unknown stored mode
+	// must happen before loading credentials or opening an upstream connection.
+	svc := &OpenAIGatewayService{}
+	conn, err := svc.dialLiveSideband(context.Background(), &LiveCallRecord{
+		CallID: "call_test", UpstreamAuthMode: "unsupported-mode",
+	})
+	require.ErrorContains(t, err, "upstream_auth_mode")
+	require.Nil(t, conn)
+	_, err = liveSidebandTarget(nil)
+	require.ErrorIs(t, err, ErrLiveCallNotFound)
+}
+
+func TestNativeLiveSidebandMissingCallFinalizesOnce(t *testing.T) {
+	for _, status := range []int{http.StatusNotFound, http.StatusGone} {
+		t.Run(fmt.Sprintf("HTTP_%d", status), func(t *testing.T) {
+			account := liveOAuthTestAccount()
+			record := &LiveCallRecord{
+				CallID: "call_ended", CallHash: hashLiveCallID("call_ended"), AccountID: account.ID,
+				APIKeyID: 22, UserID: 33, LeaseID: "lease-closed-call", Model: "gpt-live-1-codex",
+				CreatedAt: time.Now(), ExpiresAt: time.Now().Add(time.Hour), Controller: LiveControllerPending,
+				UpstreamAuthMode: config.LiveUpstreamAuthModeCodexOAuth, UpstreamSessionID: uuid.NewString(),
+			}
+			store := &liveTestStore{}
+			require.NoError(t, store.SaveLiveCall(context.Background(), record, time.Hour))
+			dialer := &liveHTTPFailureDialer{status: status}
+			concurrency := &liveTestConcurrencyCache{}
+			usage := &liveTestUsageRepo{}
+			svc := &OpenAIGatewayService{
+				accountRepo: &liveTestAccountRepo{account: account}, cache: store,
+				openaiWSPassthroughDialer: dialer, concurrencyService: NewConcurrencyService(concurrency), usageLogRepo: usage,
+			}
+			// Bound a regressed observer loop without waiting for a one-hour call.
+			done := make(chan struct{})
+			go func() { svc.observeLiveCall(record); close(done) }()
+			select {
+			case <-done:
+			case <-time.After(time.Second):
+				store.mu.Lock()
+				store.record.ExpiresAt = time.Now()
+				store.mu.Unlock()
+				<-done
+				t.Fatal("ended upstream call was retried instead of finalized immediately")
+			}
+			// A second observer and repeated finalization must not release or bill twice.
+			svc.observeLiveCall(record)
+			svc.finalizeLiveCall(record)
+			require.Equal(t, 1, dialer.calls)
+			loaded, err := store.GetLiveCall(context.Background(), record.CallHash)
+			require.NoError(t, err)
+			require.Equal(t, LiveControllerClosed, loaded.Controller)
+			require.Equal(t, 1, concurrency.releases)
+			require.Len(t, usage.logs, 1)
+			require.Equal(t, record.CallHash, usage.logs[0].RequestID)
+		})
+	}
+}
+
+func TestNativeLiveSidebandHTTPErrorClassification(t *testing.T) {
+	for _, tc := range []struct {
+		mode   string
+		status int
+		ended  bool
+	}{
+		{config.LiveUpstreamAuthModeCodexOAuth, http.StatusNotFound, true},
+		{config.LiveUpstreamAuthModeCodexOAuth, http.StatusGone, true},
+		{config.LiveUpstreamAuthModeCodexOAuth, http.StatusUnauthorized, false},
+		{config.LiveUpstreamAuthModeCodexOAuth, http.StatusForbidden, false},
+		{config.LiveUpstreamAuthModeCodexOAuth, http.StatusTooManyRequests, false},
+		{config.LiveUpstreamAuthModeCodexOAuth, http.StatusInternalServerError, false},
+		{config.LiveUpstreamAuthModeCodexOAuth, http.StatusServiceUnavailable, false},
+		{config.LiveUpstreamAuthModeDeviceCheck, http.StatusNotFound, false},
+		{config.LiveUpstreamAuthModeDeviceCheck, http.StatusGone, false},
+	} {
+		t.Run(fmt.Sprintf("%s_HTTP_%d", tc.mode, tc.status), func(t *testing.T) {
+			account := liveOAuthTestAccount()
+			cipher := newLiveAttestationCipher(&config.Config{JWT: config.JWTConfig{Secret: "test-live-secret"}})
+			record := &LiveCallRecord{CallID: "call_test", AccountID: account.ID, UpstreamAuthMode: tc.mode, UpstreamSessionID: uuid.NewString()}
+			var err error
+			record.AttestationCiphertext, err = cipher.Encrypt(`{"v":1,"s":0,"t":"test-device-proof"}`)
+			require.NoError(t, err)
+			dialer := &liveHTTPFailureDialer{status: tc.status}
+			svc := &OpenAIGatewayService{accountRepo: &liveTestAccountRepo{account: account}, openaiWSPassthroughDialer: dialer, liveAttestationCipher: cipher}
+			conn, err := svc.dialLiveSideband(context.Background(), record)
+			require.Error(t, err)
+			require.Nil(t, conn)
+			require.Equal(t, tc.ended, errors.Is(err, ErrLiveCallNotFound))
+			require.Equal(t, 1, dialer.calls)
+		})
+	}
+}
+
+func TestNativeLiveObserverKeepsAuthenticationErrorsRetryable(t *testing.T) {
+	account := liveOAuthTestAccount()
+	record := &LiveCallRecord{
+		CallID: "call_auth_error", CallHash: hashLiveCallID("call_auth_error"), AccountID: account.ID,
+		ExpiresAt: time.Now().Add(time.Hour), Controller: LiveControllerPending,
+		UpstreamAuthMode: config.LiveUpstreamAuthModeCodexOAuth, UpstreamSessionID: uuid.NewString(),
+	}
+	store := &liveTestStore{}
+	require.NoError(t, store.SaveLiveCall(context.Background(), record, time.Hour))
+	dialer := &liveHTTPFailureDialer{status: http.StatusForbidden, afterDial: func() {
+		// A client takes ownership during the retry interval, ending this observer
+		// without closing a still-existing call because of a credential failure.
+		store.mu.Lock()
+		store.record.Controller = LiveControllerProxy
+		store.mu.Unlock()
+	}}
+	concurrency := &liveTestConcurrencyCache{}
+	usage := &liveTestUsageRepo{}
+	svc := &OpenAIGatewayService{
+		accountRepo: &liveTestAccountRepo{account: account}, cache: store,
+		openaiWSPassthroughDialer: dialer, concurrencyService: NewConcurrencyService(concurrency), usageLogRepo: usage,
+	}
+	svc.observeLiveCall(record)
+	loaded, err := store.GetLiveCall(context.Background(), record.CallHash)
+	require.NoError(t, err)
+	require.Equal(t, LiveControllerProxy, loaded.Controller)
+	require.Equal(t, 0, concurrency.releases)
+	require.Empty(t, usage.logs)
+	require.Equal(t, 1, dialer.calls)
 }
 
 // TestLiveSessionEndedTreatsLeaseLossAsTerminal 锁定：租约续租失败（ErrLiveUnavailable）
