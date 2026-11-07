@@ -14,10 +14,23 @@ import (
 	"golang.org/x/sync/singleflight"
 )
 
-// WebSearchEmulationConfig holds the global web search emulation configuration.
+// WebSearchEmulationConfig holds the global web search configuration.
+//
+// ManagedAccountID 非空时，纯 web_search 请求优先由该账号的原生 Anthropic
+// 端点执行（例如 DeepSeek 官方 key），不再依赖用户分组里的模型账号，也不需要
+// 用户侧单独配置搜索端点或密钥。未设置时沿用既有的分组账号 / 模拟 provider 行为。
 type WebSearchEmulationConfig struct {
-	Enabled   bool                      `json:"enabled"`
-	Providers []WebSearchProviderConfig `json:"providers"`
+	Enabled          bool                      `json:"enabled"`
+	ManagedAccountID *int64                    `json:"managed_account_id,omitempty"`
+	Providers        []WebSearchProviderConfig `json:"providers"`
+}
+
+// ManagedAccount 返回托管搜索账号 ID；未配置或非正数时返回 0。
+func (c *WebSearchEmulationConfig) ManagedAccount() int64 {
+	if c == nil || c.ManagedAccountID == nil || *c.ManagedAccountID <= 0 {
+		return 0
+	}
+	return *c.ManagedAccountID
 }
 
 // WebSearchProviderConfig describes a single search provider (Brave or Tavily).
@@ -47,6 +60,9 @@ func validateWebSearchConfig(cfg *WebSearchEmulationConfig) error {
 	}
 	if len(cfg.Providers) > maxWebSearchProviders {
 		return fmt.Errorf("too many providers (max %d)", maxWebSearchProviders)
+	}
+	if cfg.ManagedAccountID != nil && *cfg.ManagedAccountID < 0 {
+		return fmt.Errorf("managed_account_id must be a positive account id or null")
 	}
 	seen := make(map[string]bool, len(cfg.Providers))
 	for i, p := range cfg.Providers {
@@ -214,7 +230,7 @@ func (s *SettingService) IsWebSearchEmulationEnabled(ctx context.Context) bool {
 	if err != nil {
 		return false
 	}
-	return cfg.Enabled && len(cfg.Providers) > 0
+	return cfg.Enabled && (cfg.ManagedAccount() > 0 || len(cfg.Providers) > 0)
 }
 
 // SetWebSearchManagerBuilder injects a callback that creates and wires a websearch.Manager.
