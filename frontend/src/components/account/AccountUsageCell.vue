@@ -201,6 +201,11 @@
 
     <!-- Antigravity OAuth accounts: fetch usage from API -->
     <template v-else-if="account.platform === 'antigravity' && account.type === 'oauth'">
+      <div v-if="todayStats" class="mb-1 text-[10px] text-gray-500 dark:text-gray-400">
+        {{ formatKeyRequests }} req · {{ formatKeyTokens }} ·
+        <span :title="t('usage.accountBilled')">A ${{ formatKeyCost }}</span>
+        <span v-if="todayStats.user_cost != null" :title="t('usage.userBilled')"> · U ${{ formatKeyUserCost }}</span>
+      </div>
       <!-- 账户类型徽章 -->
       <div v-if="antigravityTierLabel" class="mb-1 flex items-center gap-1">
         <span
