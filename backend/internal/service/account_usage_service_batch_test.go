@@ -190,6 +190,38 @@ func TestAccountUsageService_GetUsageBatch_BestEffortByAccount(t *testing.T) {
 	}
 }
 
+func TestAccountUsageService_GetUsageForAccount_SetupTokenBackfillsPassiveSevenDay(t *testing.T) {
+	t.Parallel()
+
+	resetAt := time.Now().Add(33 * time.Hour).Unix()
+	account := &Account{
+		ID:       7101,
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeSetupToken,
+		Extra: map[string]any{
+			"passive_usage_7d_utilization":    0.99,
+			"passive_usage_7d_reset":          float64(resetAt),
+			"passive_usage_7d_oi_utilization": 0.4,
+			"passive_usage_7d_oi_reset":       float64(resetAt),
+		},
+	}
+	svc := &AccountUsageService{
+		usageLogRepo: &usageBatchLogRepoStub{},
+		cache:        NewUsageCache(),
+	}
+
+	usage, err := svc.GetUsageForAccount(context.Background(), account)
+	if err != nil {
+		t.Fatalf("GetUsageForAccount() error = %v", err)
+	}
+	if usage.SevenDay == nil || usage.SevenDay.Utilization != 99 || usage.SevenDay.ResetsAt == nil || usage.SevenDay.ResetsAt.Unix() != resetAt {
+		t.Fatalf("expected passive 7d window, got %#v", usage.SevenDay)
+	}
+	if usage.SevenDayFable == nil || usage.SevenDayFable.Utilization != 40 {
+		t.Fatalf("expected passive 7d fable window, got %#v", usage.SevenDayFable)
+	}
+}
+
 // Model ClearError's persisted effect so this regression catches both the write
 // and mutations of the account returned by the repository.
 type usageErrorAccountRepo struct {
