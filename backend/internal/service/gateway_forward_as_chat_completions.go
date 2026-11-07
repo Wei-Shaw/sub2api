@@ -59,7 +59,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		if normalized != originalModel {
 			mappedModel = normalized
 		}
-	} else if mappedModel == originalModel && account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey {
+	} else if mappedModel == originalModel && account.Platform == PlatformAnthropic && account.Type != AccountTypeAPIKey && !account.IsBedrock() {
 		normalized := claude.NormalizeModelID(originalModel)
 		if normalized != originalModel {
 			mappedModel = normalized
@@ -109,6 +109,23 @@ func (s *GatewayService) ForwardAsChatCompletions(
 
 	// 7. Enforce cache_control block limit
 	anthropicBody = enforceCacheControlLimit(anthropicBody)
+
+	// Bedrock accounts go through the Bedrock runtime instead of the Anthropic API.
+	// Bill the effort the same way as the main path below: from the converted body.
+	if account.IsBedrock() {
+		reasoningEffort := NormalizeClaudeOutputEffort(gjson.GetBytes(anthropicBody, "output_config.effort").String())
+		reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, anthropicBody, mappedModel)
+		resp, bedrockModel, err := s.forwardCompatBedrockAnthropicStream(ctx, c, account, anthropicBody, mappedModel, reqStream, writeGatewayCCError)
+		if err != nil {
+			return nil, err
+		}
+		defer func() { _ = resp.Body.Close() }()
+
+		if clientStream {
+			return s.handleCCStreamingFromAnthropic(resp, c, originalModel, bedrockModel, reasoningEffort, startTime)
+		}
+		return s.handleCCBufferedFromAnthropic(resp, c, originalModel, bedrockModel, reasoningEffort, startTime)
+	}
 
 	// 8. Get access token
 	token, tokenType, err := s.GetAccessToken(ctx, account)

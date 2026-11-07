@@ -222,7 +222,9 @@ export default {
       usernamePlaceholder: '默认用户留空',
       passwordPlaceholder: '密码',
       enableTls: '启用 TLS',
-      enableTlsHint: '连接 Redis 时使用 TLS（公共 CA 证书）'
+      enableTlsHint: '连接 Redis 时使用 TLS',
+      tlsSkipVerify: '跳过证书校验',
+      tlsSkipVerifyHint: '自签名 Redis TLS 默认开启'
     },
     admin: {
       title: '管理员账户',

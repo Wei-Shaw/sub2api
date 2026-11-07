@@ -133,6 +133,13 @@
     @apply dark:hover:bg-[#62d9ad];
   }
 
+  .btn-creem {
+    @apply bg-[#18181B] text-white shadow-md shadow-gray-900/20;
+    @apply hover:bg-[#27272A] hover:shadow-lg hover:shadow-gray-900/25;
+    @apply dark:bg-white dark:text-gray-950 dark:shadow-white/10;
+    @apply dark:hover:bg-gray-200;
+  }
+
   .btn-alipay {
     @apply bg-[#00AEEF] text-white shadow-md shadow-[#00AEEF]/25;
     @apply hover:bg-[#009dd6] hover:shadow-lg hover:shadow-[#00AEEF]/30;

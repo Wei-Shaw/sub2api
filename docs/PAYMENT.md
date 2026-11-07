@@ -25,6 +25,7 @@ Sub2API has a built-in payment system that enables user self-service top-up with
 | **Alipay (Direct)** | Desktop QR code, mobile Alipay redirect | Direct integration with Alipay Open Platform, returning desktop QR codes and mobile WAP/app launch links |
 | **WeChat Pay (Direct)** | Native QR, H5, MP/JSAPI Pay | Direct integration with WeChat Pay APIv3 with environment-aware routing |
 | **Stripe** | Card, Alipay, WeChat Pay, Link, etc. | International payments, multi-currency support |
+| **Creem** | Card, Google Pay, Apple Pay, Alipay, etc. (decided by the Creem checkout) | Merchant of Record that handles sales tax/VAT; redirects to the Creem hosted checkout, USD / EUR |
 
 > Alipay/WeChat Pay direct and EasyPay can both exist as backend provider instances, but the frontend always exposes only two visible buttons: `Alipay` and `WeChat Pay`. Admins choose exactly one source for each visible method: direct or EasyPay. Direct channels connect to payment APIs directly with lower fees; EasyPay aggregates through third-party platforms with easier setup.
 
@@ -154,6 +155,32 @@ International payment platform supporting multiple payment methods and currencie
 | **Publishable Key** | Stripe publishable key (`pk_live_...` or `pk_test_...`) | Yes |
 | **Webhook Secret** | Stripe Webhook signing secret (`whsec_...`) | Yes |
 
+### Creem
+
+Merchant of Record platform that collects sales tax / VAT on your behalf. Top-up amounts are not fixed, so create one one-time product in the Creem dashboard; each order overrides its unit price with `custom_price`, and the user is redirected to the Creem hosted checkout.
+
+| Parameter | Description | Required |
+|-----------|-------------|----------|
+| **API Key** | Creem API key (`creem_test_...` for test mode) | Yes |
+| **Webhook Secret** | Creem webhook signing secret | Yes |
+| **Creem Product ID** | ID of a one-time product (`prod_...`) | Yes |
+| **Currency** | `USD` or `EUR`, defaults to `USD`; must match the product currency | No |
+| **API Base URL** | Optional: test keys use `https://test-api.creem.io`, live keys use `https://api.creem.io` | No |
+
+Product requirements (orders fail with a specific error if they are not met):
+
+- Billing type **One-time**, status active
+- Tax mode **Inclusive**. With exclusive tax the buyer pays more than the order amount, the amount check at fulfillment fails, and the order is not credited automatically
+- Currency matches the Currency setting above
+
+Other limits:
+
+- Single order amount between 1.00 and 999,999.99 (Creem's `custom_price` range)
+- **Only full refunds are supported**; partial refunds are rejected. Creem refunds are asynchronous: the system re-checks for a few seconds and usually settles immediately; if not, the order shows as refund pending and the admin "query refund" action on the order completes it
+- Creem has no API to cancel a checkout link. If a user pays with the original link more than 5 minutes (the grace period) after the order expired, the payment is **automatically refunded in full** instead of credited, and the order audit log records `LATE_PAYMENT_REFUNDED` (`LATE_PAYMENT_REFUND_FAILED` on failure; the webhook then returns 5xx so Creem retries). Payments arriving within the grace period are credited as usual
+- If the buyer applies a discount code, the amount paid is below the order amount and the order is not credited automatically; an admin needs to review it
+- When the site is accessed by IP (e.g. `http://127.0.0.1:8080`), Creem rejects that return URL, so the user stays on Creem's completion page after paying; the order is still credited by the webhook
+
 ---
 
 ## Provider Instance Management
@@ -195,6 +222,7 @@ When adding a provider, the system auto-generates callback URLs from your site d
 | **Alipay (Direct)** | `https://your-domain.com/api/v1/payment/webhook/alipay` |
 | **WeChat Pay (Direct)** | `https://your-domain.com/api/v1/payment/webhook/wxpay` |
 | **Stripe** | `https://your-domain.com/api/v1/payment/webhook/stripe` |
+| **Creem** | `https://your-domain.com/api/v1/payment/webhook/creem` |
 
 > Replace `your-domain.com` with your actual domain. For EasyPay / Alipay / WeChat Pay, the callback URL is auto-filled when adding the provider — no manual configuration needed.
 
@@ -205,6 +233,16 @@ When adding a provider, the system auto-generates callback URLs from your site d
 3. Add an endpoint with the callback URL
 4. Subscribe to events: `payment_intent.succeeded`, `payment_intent.payment_failed`
 5. Copy the generated Webhook Secret (`whsec_...`) to your provider configuration
+
+### Creem Webhook Setup
+
+1. Log in to the [Creem Dashboard](https://www.creem.io/dashboard)
+2. Go to **Developers → Webhooks**
+3. Add an endpoint with the callback URL
+4. Subscribe at least to `checkout.completed`
+5. Paste the generated signing secret into the provider's Webhook Secret
+
+> Both the Standard Webhooks signature (`webhook-id` / `webhook-timestamp` / `webhook-signature`) and the legacy `creem-signature` header are supported.
 
 ### Important Notes
 
