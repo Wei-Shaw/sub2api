@@ -1,0 +1,130 @@
+//go:build unit
+
+package service
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
+)
+
+func TestResponsesSolToolsCapabilityFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tools := range []struct{ name, fields string }{
+		{"function", `"input":"hello","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]`},
+		{"custom", `"input":"hello","tools":[{"type":"custom","name":"exec"}]`},
+		{"namespace", `"input":"hello","tools":[{"type":"namespace","name":"shell","tools":[{"type":"function","name":"pwd","parameters":{"type":"object"}}]}]`},
+		{"additional", `"input":[{"type":"additional_tools","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]},{"role":"user","content":"hello"}]`},
+		{"native", `"input":"hello","tools":[{"type":"computer_use_preview","display_width":1024,"display_height":768,"environment":"browser"}]`},
+	} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/stream=%t", tools.name, stream), func(t *testing.T) {
+				body := fmt.Sprintf(`{"model":"public-alias","stream":%t,%s}`, stream, tools.fields)
+				c, rec := newSolToolsFallbackContext(body)
+				account := forceChatResponsesFallbackAccount()
+				account.Credentials["model_mapping"] = map[string]any{"public-alias": "gpt-6.1-sol"}
+				upstream := &httpUpstreamRecorder{}
+				svc := &OpenAIGatewayService{
+					cfg: rawChatCompletionsTestConfig(), accountRepo: &accountRepoStub{}, httpUpstream: upstream,
+				}
+
+				result, err := svc.forwardResponsesViaRawChatCompletions(context.Background(), c, account, []byte(body), time.Now())
+
+				require.Nil(t, result)
+				var failover *UpstreamFailoverError
+				require.ErrorAs(t, err, &failover)
+				require.True(t, failover.ShouldRetryNextAccount())
+				require.False(t, failover.RetryableOnSameAccount)
+				require.False(t, failover.ShouldReportAccountScheduleFailure())
+				_, _, healthFailure := classifyOpenAIAPIKeyHealthFailure(failover)
+				require.False(t, healthFailure)
+				require.False(t, c.Writer.Written(), "another account must still be able to answer")
+				require.Empty(t, rec.Body.String())
+				require.Empty(t, upstream.requests, "the incompatible account must never be called")
+				require.Equal(t, "gpt-6.1-sol", account.Credentials["model_mapping"].(map[string]any)["public-alias"])
+			})
+		}
+	}
+}
+
+func TestResponsesInvalidReasoningDoesNotFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct{ model, effort string }{
+		{"gpt-6.1-sol", "none"},
+		{"gpt-6.1-terra", "minimal"},
+	} {
+		t.Run(tc.model, func(t *testing.T) {
+			body := fmt.Sprintf(`{"model":"public-alias","input":"hello","reasoning":{"effort":%q},"tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]}`, tc.effort)
+			c, rec := newSolToolsFallbackContext(body)
+			account := forceChatResponsesFallbackAccount()
+			account.Credentials["model_mapping"] = map[string]any{"public-alias": tc.model}
+			upstream := &httpUpstreamRecorder{}
+			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), accountRepo: &accountRepoStub{}, httpUpstream: upstream}
+
+			_, err := svc.forwardResponsesViaRawChatCompletions(context.Background(), c, account, []byte(body), time.Now())
+
+			var failover *UpstreamFailoverError
+			require.ErrorContains(t, err, tc.model+" does not support reasoning effort")
+			require.False(t, errors.As(err, &failover))
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+			require.Empty(t, upstream.requests)
+		})
+	}
+}
+
+func TestResponsesTerraToolsCapabilityFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := "{\"model\":\"public-alias\",\"input\":\"hello\",\"tools\":[{\"type\":\"function\",\"name\":\"lookup\",\"parameters\":{\"type\":\"object\"}}]}"
+	c, rec := newSolToolsFallbackContext(body)
+	account := forceChatResponsesFallbackAccount()
+	account.Credentials["model_mapping"] = map[string]any{"public-alias": "gpt-6.1-terra"}
+	upstream := &httpUpstreamRecorder{}
+	svc := &OpenAIGatewayService{
+		cfg: rawChatCompletionsTestConfig(), accountRepo: &accountRepoStub{}, httpUpstream: upstream,
+	}
+
+	_, err := svc.forwardResponsesViaRawChatCompletions(context.Background(), c, account, []byte(body), time.Now())
+
+	var failover *UpstreamFailoverError
+	require.ErrorAs(t, err, &failover)
+	require.Equal(t, OpenAIResponsesToolsUnsupportedReason, failover.Reason)
+	require.True(t, failover.ShouldRetryNextAccount())
+	require.False(t, failover.ShouldReportAccountScheduleFailure())
+	require.Contains(t, failover.ClientMessage, "gpt-6.1-terra")
+	require.False(t, c.Writer.Written())
+	require.Empty(t, rec.Body.String())
+	require.Empty(t, upstream.requests)
+}
+
+func TestResponsesSolToolsWithoutSelectorStillReturns400(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := `{"model":"gpt-6.1-sol","input":"hello","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}]}`
+	c, rec := newSolToolsFallbackContext(body)
+	upstream := &httpUpstreamRecorder{}
+	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+
+	result, err := svc.forwardResponsesViaRawChatCompletions(context.Background(), c, forceChatResponsesFallbackAccount(), []byte(body), time.Now())
+
+	var failover *UpstreamFailoverError
+	require.Nil(t, result)
+	require.Error(t, err)
+	require.False(t, errors.As(err, &failover))
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Contains(t, rec.Body.String(), "gpt-6.1-sol requires Responses for tool calls")
+	require.Empty(t, upstream.requests)
+}
+
+func newSolToolsFallbackContext(body string) (*gin.Context, *httptest.ResponseRecorder) {
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(body))
+	return c, rec
+}
