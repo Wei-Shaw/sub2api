@@ -462,7 +462,7 @@ export default {
         title: '临时不可调度',
         statusTitle: '临时不可调度状态',
         hint: '当错误码与关键词同时匹配时，按规则的作用范围在指定时间内暂停整个账号，或只冷却对应模型。',
-        notice: '规则按顺序匹配，需同时满足错误码与关键词。',
+        notice: '规则按顺序匹配，需同时满足错误码与关键词。持续时间设为 0 时忽略匹配错误，不暂停账号或冷却模型；请求仍返回错误。',
         addRule: '添加规则',
         ruleOrder: '规则序号',
         multipleErrorTrigger: '{minutes} 分钟内累计 {count} 次匹配错误，达到触发阈值（{threshold}）。',
