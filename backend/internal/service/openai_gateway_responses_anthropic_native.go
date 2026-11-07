@@ -42,6 +42,9 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
+	if RequestedReasoningEffortFromContext(ctx) == nil {
+		ctx = WithRequestedReasoningEffort(ctx, explicitRequestedReasoningEffortFromBody(body))
+	}
 
 	// 1. Lower Codex client-side tools to function tools understood by Anthropic.
 	adaptedBody, clientToolMapping, err := adaptResponsesClientToolsForAnthropic(body)
@@ -100,6 +103,14 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 	anthropicBody = StripEmptyTextBlocks(anthropicBody)
 	anthropicBody = FilterWebSearchHistoryBlocks(anthropicBody, upstreamModel)
 	anthropicBody = enforceCacheControlLimit(anthropicBody)
+	if IsCNProvider(account.Platform) {
+		anthropicBody, _, err = applyFinalOpenAIReasoningEffortCeiling(ctx, account, anthropicBody, upstreamModel)
+		if err != nil {
+			MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalPolicyDenied)
+			writeResponsesError(c, http.StatusForbidden, "permission_error", err.Error())
+			return nil, err
+		}
+	}
 
 	apiKey := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
 	if apiKey == "" {

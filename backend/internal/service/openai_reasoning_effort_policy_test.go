@@ -7,6 +7,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 func TestCanonicalRequestedReasoningEffort(t *testing.T) {
@@ -35,6 +36,63 @@ func TestRequestedReasoningEffortContext(t *testing.T) {
 	got := RequestedReasoningEffortFromContext(ctx)
 	require.NotNil(t, got)
 	require.Equal(t, "max", *got)
+}
+
+func TestFinalCNGLMReasoningCeiling(t *testing.T) {
+	for _, test := range []struct {
+		name, model, effort, ceiling, action, want string
+		denied                                     bool
+	}{
+		{name: "53 medium selects low", model: "glm-5.3", effort: "high", ceiling: "medium", want: "low"},
+		{name: "53 xhigh selects high", model: "glm-5.3", effort: "max", ceiling: "xhigh", want: "high"},
+		{name: "older xhigh selects high", model: "glm-4.6", effort: "max", ceiling: "xhigh", want: "high"},
+		{name: "older medium has no tier", model: "glm-4.6", effort: "high", ceiling: "medium", denied: true},
+		{name: "53 minimal has no tier", model: "glm-5.3", effort: "low", ceiling: "minimal", denied: true},
+		{name: "deny does not downgrade", model: "glm-5.3", effort: "high", ceiling: "medium", action: "deny", denied: true},
+		{name: "none is not a tier", model: "glm-4.6", effort: "none", ceiling: "low", action: "deny", want: "none"},
+		{name: "minimal is not a tier", model: "glm-4.6", effort: "minimal", ceiling: "low", want: "minimal"},
+		{name: "mapping only none", model: "glm-4.6", effort: "none", want: "none"},
+		{name: "unknown tier cannot bypass ceiling", model: "glm-4.6", effort: "unknown", ceiling: "medium", denied: true},
+	} {
+		for _, path := range []string{"reasoning.effort", "reasoning_effort", "output_config.effort"} {
+			t.Run(test.name+"/"+path, func(t *testing.T) {
+				body, err := sjson.SetBytes([]byte(`{}`), path, test.effort)
+				require.NoError(t, err)
+				ctx := WithRequestedReasoningEffort(context.Background(), "medium")
+				ctx = WithOpenAIReasoningEffortPolicy(ctx, test.ceiling, []ReasoningEffortMapping{{From: "high", To: "deny"}}, test.action)
+				got, changed, err := applyFinalOpenAIReasoningEffortCeiling(ctx, &Account{Platform: PlatformZhipu}, body, test.model)
+				if test.denied {
+					var denied *ReasoningEffortOverLimitError
+					require.ErrorAs(t, err, &denied)
+					require.Equal(t, "medium", denied.Requested)
+					require.Equal(t, test.ceiling, denied.Max)
+					require.False(t, changed)
+					require.Equal(t, body, got)
+					if test.action != "deny" {
+						require.ErrorContains(t, err, "no supported native reasoning tier")
+					}
+					return
+				}
+				require.NoError(t, err)
+				require.Equal(t, test.want, gjson.GetBytes(got, path).String())
+				require.Equal(t, test.want != test.effort, changed)
+			})
+		}
+	}
+}
+
+func TestReasoningPolicyDenyPreservesInboundEffort(t *testing.T) {
+	body := []byte(`{"model":"routed-model","output_config":{"effort":"low"}}`)
+	mappings := []ReasoningEffortMapping{{From: "low", To: "max", MatchType: "exact", Model: "client-model"}}
+	ctx := WithRequestedReasoningEffort(context.Background(), "minimal")
+	ctx = WithOpenAIReasoningEffortPolicyForModel(ctx, "high", mappings, "deny", "client-model")
+	_, _, err := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, body)
+	var denied *ReasoningEffortOverLimitError
+	require.ErrorAs(t, err, &denied)
+	require.Equal(t, "minimal", denied.Requested)
+	_, _, err = ApplyReasoningEffortPolicy(body, "high", []ReasoningEffortMapping{{From: "low", To: "max"}}, "deny")
+	require.ErrorAs(t, err, &denied)
+	require.Equal(t, "low", denied.Requested)
 }
 
 func TestNormalizeMaxReasoningEffort(t *testing.T) {
