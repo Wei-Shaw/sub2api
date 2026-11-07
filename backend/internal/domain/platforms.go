@@ -48,6 +48,10 @@ var platformList = []PlatformSpec{
 	{ID: PlatformTypeSafe, DisplayName: "TypeSafe / Jev", Gateway: PlatformGatewayAnthropic, LiteLLMProvider: "typesafe"},
 	{ID: PlatformCommandCode, DisplayName: "Command Code", Gateway: PlatformGatewayOpenAI},
 	{ID: PlatformCline, DisplayName: "Cline", Gateway: PlatformGatewayOpenAI},
+	// Ollama Cloud: one API key serves an OpenAI-compatible endpoint (/v1) and an
+	// Anthropic-compatible endpoint ({base}/v1/messages); the endpoints are
+	// registered in provider_profile.go.
+	{ID: PlatformOllama, DisplayName: "Ollama", Gateway: PlatformGatewayOpenAI},
 }
 
 var platformIndex = func() map[string]int {
