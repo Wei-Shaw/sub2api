@@ -282,6 +282,7 @@ import {
   parseCodexCatalogModels,
   selectCodexConfigReasoningEffort
 } from '@/utils/codexCatalogConfig'
+import { selectCodexCatalogModel as pickCodexCatalogModel } from '@/utils/flagshipModel'
 
 interface Props {
   show: boolean
@@ -708,8 +709,7 @@ const codexCatalogModelSlugs = computed(() =>
 )
 
 function selectCodexCatalogModel(preferredModel: string): string {
-  if (codexCatalogModelSlugs.value.includes(preferredModel)) return preferredModel
-  return codexCatalogModelSlugs.value[0] || preferredModel
+  return pickCodexCatalogModel(codexCatalogModelSlugs.value, preferredModel)
 }
 
 function codexReasoningEffortTomlLine(modelSlug: string): string {
