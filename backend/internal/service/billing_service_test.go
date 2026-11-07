@@ -1508,6 +1508,35 @@ func TestNormalizeCacheCreationBreakdown_BillingSafetyInvariant(t *testing.T) {
 	}
 }
 
+func TestComputeCacheCreationCost_MissingDetailUses5mFallback(t *testing.T) {
+	svc := &BillingService{}
+	pricing := &ModelPricing{SupportsCacheBreakdown: true, CacheCreation5mPrice: 0.002, CacheCreation1hPrice: 0.004}
+	for _, test := range []struct {
+		name     string
+		tokens   UsageTokens
+		wantCost float64
+	}{
+		{"5m start then aggregate only delta", UsageTokens{CacheCreationTokens: 11000, CacheCreation5mTokens: 3000}, 22},
+		{"1h detail does not imply 1h remainder", UsageTokens{CacheCreationTokens: 11000, CacheCreation1hTokens: 3000}, 28},
+		{"mixed detail does not imply proportional remainder", UsageTokens{CacheCreationTokens: 11000, CacheCreation5mTokens: 1000, CacheCreation1hTokens: 2000}, 26},
+		{"zero details", UsageTokens{CacheCreationTokens: 11000}, 22},
+		{"negative detail", UsageTokens{CacheCreationTokens: 11000, CacheCreation5mTokens: -1, CacheCreation1hTokens: 3000}, 28},
+		{"ratio cap retained", UsageTokens{CacheCreationTokens: 100, CacheCreation5mTokens: 50, CacheCreation1hTokens: 200}, 0.36},
+		{"synthetic already normalized detail only", UsageTokens{CacheCreation5mTokens: 20, CacheCreation1hTokens: 30}, 0.16},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			before := test.tokens
+			for _, multiplier := range []float64{1, 2} {
+				require.InDelta(t, test.wantCost*multiplier, svc.computeCacheCreationCost(pricing, test.tokens, 0, multiplier), 1e-12)
+			}
+			require.Equal(t, before, test.tokens)
+			standard := *pricing
+			standard.SupportsCacheBreakdown = false
+			require.InDelta(t, float64(test.tokens.CacheCreationTokens)*0.003, svc.computeCacheCreationCost(&standard, test.tokens, 0.003, 1), 1e-12)
+		})
+	}
+}
+
 func TestComputeCacheCreationCost_PreservesZeroDetailFallback(t *testing.T) {
 	svc := &BillingService{}
 	pricing := &ModelPricing{
