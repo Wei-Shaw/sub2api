@@ -830,6 +830,46 @@ func TestResolveAccountStatsCost_HitsCustomRule(t *testing.T) {
 	require.InDelta(t, 2.0, *result, 1e-12)
 }
 
+// composite 分组缓存登记的平台是 "composite"，规则条目却按具体平台配置。
+// 请求必须按 ctx 中的目标平台匹配，否则规则被跳过、账号成本退回模型定价文件。
+func TestResolveAccountStatsCost_CompositeUsesResolvedTargetPlatform(t *testing.T) {
+	channel := &Channel{
+		ID:     1,
+		Status: StatusActive,
+		AccountStatsPricingRules: []AccountStatsPricingRule{
+			{
+				AccountIDs: []int64{1},
+				Pricing: []ChannelModelPricing{
+					{
+						ID:         100,
+						Platform:   PlatformOpenAI,
+						Models:     []string{"gpt-5.6-sol"},
+						InputPrice: testPtrFloat64(0.01),
+					},
+					{
+						ID:         101,
+						Platform:   PlatformAnthropic,
+						Models:     []string{"gpt-5.6-sol"},
+						InputPrice: testPtrFloat64(0.5),
+					},
+				},
+			},
+		},
+	}
+	cs := newTestChannelServiceForStats(t, channel, 10, PlatformComposite)
+	ctx := WithResolvedTargetPlatform(context.Background(), PlatformOpenAI)
+
+	result := resolveAccountStatsCost(
+		ctx,
+		cs, nil,
+		1, 10, "gpt-5.6-sol",
+		UsageTokens{InputTokens: 100}, 1, 999.0, "", time.Time{}, true,
+	)
+	require.NotNil(t, result)
+	// openai 条目命中：100*0.01 = 1.0（composite 平台不匹配任何条目时为 nil）
+	require.InDelta(t, 1.0, *result, 1e-12)
+}
+
 func TestResolveAccountStatsCost_ApplyPricingToAccountStats_UsesTotalCost(t *testing.T) {
 	channel := &Channel{
 		ID:                         1,
