@@ -220,6 +220,31 @@ func (s *OpenAICodexUsageSnapshot) Normalize() *NormalizedCodexLimits {
 	return result
 }
 
+// normalizeCanonical 在 Normalize 的基础上，丢弃窗口长度落在 (6h, 1d] 的分类结果，
+// 供账号级 codex_5h_* / codex_7d_* 规范字段的写入与读取使用。
+// 生图响应只带一个 1440 分钟（图片 24h 额度）窗口，按 Normalize 的 ">360 即 7d"
+// 规则会被当成周窗口，覆盖真实周额度并触发整号 7d 自动暂停（#8117）。
+// 429 冷却仍使用 Normalize：那里只需要已耗尽窗口自身的 reset 时间。
+func (s *OpenAICodexUsageSnapshot) normalizeCanonical() *NormalizedCodexLimits {
+	result := s.Normalize()
+	if result == nil {
+		return nil
+	}
+	if isNonCanonicalCodexWindow(result.Window5hMinutes) {
+		result.Used5hPercent, result.Reset5hSeconds, result.Window5hMinutes = nil, nil, nil
+	}
+	if isNonCanonicalCodexWindow(result.Window7dMinutes) {
+		result.Used7dPercent, result.Reset7dSeconds, result.Window7dMinutes = nil, nil, nil
+	}
+	return result
+}
+
+// isNonCanonicalCodexWindow 判断已知窗口长度既不是 5h（<=360 分钟）也不是周级（>1 天）窗口。
+// 窗口长度未知时沿用 Normalize 的推断，保持历史数据兼容。
+func isNonCanonicalCodexWindow(windowMinutes *int) bool {
+	return windowMinutes != nil && *windowMinutes > 360 && *windowMinutes <= 1440
+}
+
 // OpenAIUsage represents OpenAI API response usage
 type OpenAIUsage struct {
 	InputTokens              int `json:"input_tokens"`
