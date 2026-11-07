@@ -22,6 +22,7 @@ func TestValidateWebSearchConfig_Valid(t *testing.T) {
 		Providers: []WebSearchProviderConfig{
 			{Type: "brave", QuotaLimit: int64Ptr(1000)},
 			{Type: "tavily", QuotaLimit: int64Ptr(500)},
+			{Type: "outcrawl", QuotaLimit: int64Ptr(1000)},
 		},
 	}
 	require.NoError(t, validateWebSearchConfig(cfg))
