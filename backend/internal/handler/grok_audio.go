@@ -336,6 +336,7 @@ func (h *OpenAIGatewayHandler) recordGrokVoiceUsage(
 	clientIP := ip.GetClientIP(c)
 	sessionID := service.ExtractClientSessionID(c)
 	requestPayloadHash := service.HashUsageRequestPayload(body)
+	userPrompt := service.ExtractUserPrompt(body, "openai_audio")
 	if requestPayloadHash == "" {
 		requestPayloadHash = service.HashUsageRequestPayload([]byte(endpoint))
 	}
@@ -351,6 +352,7 @@ func (h *OpenAIGatewayHandler) recordGrokVoiceUsage(
 	h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
 			Result:             result,
+			UserPrompt:         userPrompt,
 			APIKey:             apiKey,
 			User:               apiKey.User,
 			Account:            account,
