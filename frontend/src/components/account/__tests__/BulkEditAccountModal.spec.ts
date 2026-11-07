@@ -167,6 +167,41 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
+  it('删除映射后切回白名单，来源模型仍以身份项提交', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-model-restriction-enabled').setValue(true)
+    const mappingTab = wrapper.findAll('button').find((btn) => btn.text().includes('admin.accounts.modelMapping'))
+    expect(mappingTab).toBeTruthy()
+    await mappingTab!.trigger('click')
+    const addButton = wrapper.findAll('button').find((btn) => btn.text().includes('admin.accounts.addMapping'))
+    expect(addButton).toBeTruthy()
+    await addButton!.trigger('click')
+    await wrapper.get('input[placeholder="admin.accounts.requestModel"]').setValue('gpt-5.6-sol')
+    await wrapper.get('input[placeholder="admin.accounts.actualModel"]').setValue('gpt-6.1-sol')
+
+    const deleteButton = wrapper.findAll('button').find((btn) =>
+      btn.element.parentElement?.querySelector('input[placeholder="admin.accounts.requestModel"]')
+    )
+    expect(deleteButton).toBeTruthy()
+    await deleteButton!.trigger('click')
+
+    const whitelistTab = wrapper.findAll('button').find((btn) => btn.text().includes('admin.accounts.modelWhitelist'))
+    expect(whitelistTab).toBeTruthy()
+    await whitelistTab!.trigger('click')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: {
+        model_mapping: { 'gpt-5.6-sol': 'gpt-5.6-sol' }
+      }
+    })
+  })
+
   it('全部目标为 Grok OAuth 时，官方主机 base_url 作为手动端点切换正常提交', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['grok'],
