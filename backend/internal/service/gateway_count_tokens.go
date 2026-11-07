@@ -38,6 +38,8 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 			}
 		} else if account.Type == AccountTypeAPIKey {
 			validationModel = account.GetMappedModel(validationModel)
+		} else if account.IsAnthropicOAuthOrSetupToken() {
+			validationModel = claude.NormalizeModelID(account.GetMappedModel(validationModel))
 		}
 	}
 	if account != nil && account.Platform == PlatformAnthropic {
@@ -75,6 +77,17 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return nil
 	}
 	reqModel := parsed.Model
+
+	// Keep validation, mimicry defaults and the wire model on the same target.
+	// Resolve account mappings before short-ID normalization, and only once.
+	if account.IsAnthropicOAuthOrSetupToken() && reqModel != validationModel {
+		if err := replaceBody(s.replaceModelInBody(body, validationModel)); err != nil {
+			return err
+		}
+		logger.LegacyPrintf("service.gateway", "CountTokens OAuth model mapping applied: %s -> %s (account: %s)", reqModel, validationModel, account.Name)
+		reqModel = validationModel
+		parsed.Model = validationModel
+	}
 
 	// Pre-filter: strip empty text blocks to prevent upstream 400.
 	if err := replaceBody(StripEmptyTextBlocks(body)); err != nil {
