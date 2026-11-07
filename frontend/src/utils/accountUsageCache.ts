@@ -8,6 +8,7 @@ export function supportsBatchUsage(account: Pick<AccountListItem, 'platform' | '
   return ['antigravity', 'openai', 'grok'].includes(account.platform) && account.type === 'oauth'
 }
 
+export const ACCOUNT_USAGE_BATCH_SIZE = 50
 export const ACCOUNT_USAGE_TTL = 5 * 60 * 1000
 interface Entry { data: AccountUsageInfo | null; error: string | null; receivedAt: number }
 interface BatchResult { usage: Record<string, AccountUsageInfo>; errors: Record<string, string> }
@@ -26,12 +27,13 @@ export function createAccountUsageCache(
   let entries: Record<string, Entry> = {}
   let key = ''
   const pending = new Map<number, { promise: Promise<void>; resolve: () => void; force: boolean; started: boolean }>()
-  let scheduled = false
+  let queue = { scheduled: false, running: false }
 
   function hydrate() {
     const nextKey = `sub2api:account-usage:v2:${scope()}`
     if (key === nextKey) return
     key = nextKey
+    queue = { scheduled: false, running: false }
     for (const task of pending.values()) task.resolve()
     pending.clear()
     entries = {}; usage.value = {}; errors.value = {}; loading.value = {}
@@ -54,33 +56,40 @@ export function createAccountUsageCache(
     } catch { /* Storage failure must not cause a second upstream query. */ }
   }
 
-  async function flush() {
-    scheduled = false
-    const batch = [...pending.entries()].filter(([, task]) => !task.started)
-    if (!batch.length) return
-    const scopeKey = key
-    for (const [, task] of batch) task.started = true
-    let result: BatchResult
+  async function flush(currentQueue: typeof queue) {
+    if (currentQueue !== queue || currentQueue.running) return
+    currentQueue.scheduled = false
+    currentQueue.running = true
     try {
-      result = await fetchBatch(batch.map(([id]) => id), batch.some(([, task]) => task.force))
-    } catch {
-      result = { usage: {}, errors: Object.fromEntries(batch.map(([id]) => [id, ACCOUNT_USAGE_LOAD_ERROR])) }
-    }
-    if (key === scopeKey) {
-      for (const [id, task] of batch) {
-        // A login scope may change away and back while an older request is in flight.
-        if (pending.get(id) !== task) continue
-        const entry = { data: result.usage[id] ?? null, error: result.errors[id] ?? null, receivedAt: Date.now() }
-        entries[id] = entry
-        usage.value[id] = entry.data
-        errors.value[id] = entry.error
-        loading.value[id] = false
+      // One bounded batch at a time: the backend itself limits provider concurrency.
+      while (currentQueue === queue) {
+        const batch = [...pending.entries()].filter(([, task]) => !task.started).slice(0, ACCOUNT_USAGE_BATCH_SIZE)
+        if (!batch.length) break
+        for (const [, task] of batch) task.started = true
+        let result: BatchResult
+        try {
+          result = await fetchBatch(batch.map(([id]) => id), batch.some(([, task]) => task.force))
+        } catch {
+          result = { usage: {}, errors: Object.fromEntries(batch.map(([id]) => [id, ACCOUNT_USAGE_LOAD_ERROR])) }
+        }
+        if (currentQueue === queue) {
+          for (const [id, task] of batch) {
+            if (pending.get(id) !== task) continue
+            const entry = { data: result.usage[id] ?? null, error: result.errors[id] ?? null, receivedAt: Date.now() }
+            entries[id] = entry
+            usage.value[id] = entry.data
+            errors.value[id] = entry.error
+            loading.value[id] = false
+          }
+          persist()
+        }
+        for (const [id, task] of batch) {
+          if (pending.get(id) === task) pending.delete(id)
+          task.resolve()
+        }
       }
-      persist()
-    }
-    for (const [id, task] of batch) {
-      if (pending.get(id) === task) pending.delete(id)
-      task.resolve()
+    } finally {
+      currentQueue.running = false
     }
   }
 
@@ -98,9 +107,10 @@ export function createAccountUsageCache(
       const promise = new Promise<void>(done => { resolve = done })
       pending.set(id, { promise, resolve, force, started: false })
       loading.value[id] = true
-      if (!scheduled) {
-        scheduled = true
-        queueMicrotask(() => { void flush() })
+      if (!queue.scheduled && !queue.running) {
+        const currentQueue = queue
+        currentQueue.scheduled = true
+        queueMicrotask(() => { void flush(currentQueue) })
       }
       tasks.push(promise)
     }

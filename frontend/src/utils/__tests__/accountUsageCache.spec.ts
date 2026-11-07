@@ -3,7 +3,7 @@ import quotaZh from '@/i18n/locales/zh/admin/quota'
 i18n.global.setLocaleMessage('zh', { admin: { quota: quotaZh } })
 i18n.global.locale.value = 'zh'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { createAccountUsageCache, ACCOUNT_USAGE_TTL, ACCOUNT_USAGE_LOAD_ERROR, supportsBatchUsage } from '../accountUsageCache'
+import { createAccountUsageCache, ACCOUNT_USAGE_TTL, ACCOUNT_USAGE_LOAD_ERROR, ACCOUNT_USAGE_BATCH_SIZE, supportsBatchUsage } from '../accountUsageCache'
 import { quotaCountdown } from '../quotaCountdown'
 import type { AccountUsageInfo } from '@/types'
 
@@ -38,7 +38,7 @@ describe('shared persisted account usage', () => {
     expect(cache.loading.value[1]).toBe(false)
   })
 
-  it('loads new accounts while another batch is in flight without fetching overlaps twice', async () => {
+  it('queues new accounts behind an in-flight batch without fetching overlaps twice', async () => {
     let finish!: (value: ReturnType<typeof result>) => void
     const fetch = vi.fn()
       .mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
@@ -46,10 +46,54 @@ describe('shared persisted account usage', () => {
     const cache = createAccountUsageCache(fetch, storage())
     const first = cache.load([1]); await Promise.resolve()
     const second = cache.load([1, 2]); await Promise.resolve()
-    expect(fetch.mock.calls.map(call => call[0])).toEqual([[1], [2]])
+    expect(fetch.mock.calls.map(call => call[0])).toEqual([[1]])
     finish(result([1])); await Promise.all([first, second])
+    expect(fetch.mock.calls.map(call => call[0])).toEqual([[1], [2]])
     expect(cache.usage.value[1]?.five_hour?.utilization).toBe(0.8)
     expect(cache.usage.value[2]?.five_hour?.utilization).toBe(0.2)
+  })
+
+  it('loads 1000 accounts in bounded serial batches and isolates a failed batch', async () => {
+    let active = 0, maxActive = 0, attempt = 0
+    const fetch = vi.fn(async (ids: number[]) => {
+      active++; maxActive = Math.max(maxActive, active)
+      const fail = attempt++ === 1
+      await Promise.resolve()
+      active--
+      if (fail) throw new Error('mock timeout')
+      return result(ids)
+    })
+    const cache = createAccountUsageCache(fetch, storage())
+    const ids = Array.from({ length: 1000 }, (_, i) => i + 1)
+    await Promise.all([cache.load(ids), cache.load([10, 50, 999])])
+    expect(maxActive).toBe(1)
+    expect(fetch.mock.calls).toHaveLength(1000 / ACCOUNT_USAGE_BATCH_SIZE)
+    expect(fetch.mock.calls.every(([batch]) => batch.length <= ACCOUNT_USAGE_BATCH_SIZE)).toBe(true)
+    expect(fetch.mock.calls.flatMap(([batch]) => batch)).toEqual(ids)
+    expect(cache.errors.value[51]).toBe(ACCOUNT_USAGE_LOAD_ERROR)
+    expect(cache.usage.value[1]).not.toBeNull()
+    expect(cache.usage.value[1000]).not.toBeNull()
+    expect(Object.values(cache.loading.value).every(value => !value)).toBe(true)
+    await cache.load([51], true)
+    expect(cache.errors.value[51]).toBeNull()
+    expect(cache.usage.value[51]).not.toBeNull()
+  })
+
+  it('discards undispatched batches when the signed-in admin changes', async () => {
+    let user = 'first'
+    let finish!: (value: ReturnType<typeof result>) => void
+    const fetch = vi.fn().mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+      .mockImplementation(async (ids: number[]) => result(ids, 0.2))
+    const cache = createAccountUsageCache(fetch, storage(), () => user)
+    const old = cache.load(Array.from({ length: 101 }, (_, i) => i + 1))
+    await Promise.resolve()
+    user = 'second'
+    await cache.load([1])
+    finish(result(Array.from({ length: 50 }, (_, i) => i + 1)))
+    await old; await Promise.resolve()
+    expect(fetch.mock.calls.map(([ids]) => ids.length)).toEqual([50, 1])
+    expect(cache.usage.value[1]?.five_hour?.utilization).toBe(0.2)
+    expect(cache.usage.value[51]).toBeUndefined()
   })
 
   it('survives a page reload for five minutes without extending the deadline', async () => {

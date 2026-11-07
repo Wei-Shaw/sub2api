@@ -67,6 +67,8 @@ describe('quota matrix', () => {
 // Overview uses the same account data; all requests are replaced with local fixtures.
 import { flushPromises } from '@vue/test-utils'
 import AccountQuotaOverview from '@/components/admin/account/AccountQuotaOverview.vue'
+import Pagination from '@/components/common/Pagination.vue'
+import * as accountsAPI from '@/api/admin/accounts'
 vi.mock('@/api/admin/accounts', () => ({
   list: vi.fn(async () => ({
     total: 1,
@@ -83,10 +85,10 @@ vi.mock('@/api/admin/accounts', () => ({
   }))
 }))
 let overviewPools = pools
+let overviewAccountCount = 1
 vi.mock('@/composables/useAccountUsage', () => ({
   useAccountUsage: () => ({
-    usage: ref({
-      1: {
+    usage: ref(Object.fromEntries(Array.from({ length: overviewAccountCount }, (_, index) => [index + 1, {
         antigravity_quota_groups: overviewPools.map((pool) => ({
           key: pool.id,
           name: pool.name,
@@ -96,8 +98,7 @@ vi.mock('@/composables/useAccountUsage', () => ({
         })),
         updated_at: '2026-10-29T00:00:00Z',
         subscription_tier: 'PRO'
-      }
-    }),
+      }]))),
     errors: ref({}),
     loading: ref({}),
     load: vi.fn(async () => {})
@@ -121,6 +122,43 @@ it('transposes overview totals while retaining model/window aggregation', async 
   expect(matrix[8].textContent).toContain('78.9%')
   expect(matrix[4].textContent).toContain('0.97 / 1.00')
   wrapper.unmount()
+})
+
+it('paginates 1000 account details while retaining the full-account totals', async () => {
+  overviewAccountCount = 1000
+  const originalList = vi.mocked(accountsAPI.list).getMockImplementation()!
+  vi.mocked(accountsAPI.list).mockImplementation(async (page = 1, size = 20) => ({
+    total: 1000, page, page_size: size, pages: Math.ceil(1000 / size),
+    items: Array.from({ length: Math.min(size, 1000 - (page - 1) * size) }, (_, index) => ({
+      id: (page - 1) * size + index + 1, name: `Fixture ${(page - 1) * size + index + 1}`,
+      platform: 'antigravity', type: 'oauth', status: 'active', schedulable: true
+    }))
+  }) as Awaited<ReturnType<typeof accountsAPI.list>>)
+  const wrapper = mount(AccountQuotaOverview, {
+    props: { show: false },
+    global: { stubs: { BaseDialog: { template: '<div><slot /></div>' } } }
+  })
+  try {
+    await wrapper.setProps({ show: true }); await flushPromises()
+    expect(wrapper.findAll('[data-quota-account]')).toHaveLength(25)
+    expect(wrapper.find('[data-quota-account="25"]').exists()).toBe(true)
+    expect(wrapper.find('[data-quota-account="26"]').exists()).toBe(false)
+    const totals = wrapper.find('.card').text()
+    expect(totals).toContain('966.00 / 1000.00')
+    wrapper.getComponent(Pagination).vm.$emit('update:page', 40)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-quota-account="976"]').exists()).toBe(true)
+    expect(wrapper.find('[data-quota-account="1000"]').exists()).toBe(true)
+    expect(wrapper.find('.card').text()).toBe(totals)
+    await wrapper.find('select').setValue('1000')
+    expect(wrapper.findAll('[data-quota-account]')).toHaveLength(1)
+    await wrapper.find('select').setValue('all')
+    expect(wrapper.getComponent(Pagination).props('page')).toBe(1)
+  } finally {
+    wrapper.unmount()
+    overviewAccountCount = 1
+    vi.mocked(accountsAPI.list).mockImplementation(originalList)
+  }
 })
 
 it('renders only reported periods and omits absent reset columns', () => {

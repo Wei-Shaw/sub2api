@@ -83,12 +83,20 @@
           <p class="mt-2 text-[10px] text-gray-400">{{ t('admin.quota.capacityHint') }}</p>
         </div>
       </div>
+      <Pagination
+        v-if="selected === 'all' && accounts.length > detailPageSize"
+        v-model:page="detailPage"
+        :total="accounts.length"
+        :page-size="detailPageSize"
+        :show-page-size-selector="false"
+      />
       <div
         class="overflow-hidden rounded-xl border border-gray-200 divide-y divide-gray-100 dark:border-dark-700 dark:divide-dark-700"
       >
         <div
           v-for="group in visibleAccounts"
           :key="group.accountId"
+          :data-quota-account="group.accountId"
           class="grid gap-3 px-4 py-3 md:grid-cols-[minmax(180px,0.7fr)_minmax(0,1.6fr)] md:items-center md:gap-6"
         >
           <div class="min-w-0 text-left">
@@ -150,6 +158,7 @@ import { useAccountUsage } from '@/composables/useAccountUsage'
 import { supportsBatchUsage } from '@/utils/accountUsageCache'
 import { quotaCountdown } from '@/utils/quotaCountdown'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import Pagination from '@/components/common/Pagination.vue'
 import QuotaPoolTable from '@/components/account/QuotaPoolTable.vue'
 import QuotaMeter from '@/components/account/QuotaMeter.vue'
 import * as api from '@/api/admin/accounts'
@@ -171,6 +180,8 @@ const sourceLabel = (source: string) =>
 const props = defineProps<{ show: boolean }>()
 defineEmits<{ close: [] }>()
 const accounts = ref<AccountListItem[]>([])
+const detailPageSize = 25
+const detailPage = ref(1)
 const { usage, errors, loading: usageLoading, load: loadSharedUsage } = useAccountUsage()
 const selected = ref('all'),
   listLoading = ref(false),
@@ -213,11 +224,23 @@ const totalSections = computed(() => {
       ).map((w) => w.id)
     }))
 })
+// Index once per snapshot instead of scanning every pool for every account.
+const poolsByAccount = computed(() => {
+  const index = new Map<number, typeof rows.value>()
+  for (const row of rows.value) {
+    const group = index.get(row.accountId)
+    if (group) group.push(row)
+    else index.set(row.accountId, [row])
+  }
+  return index
+})
+const detailAccounts = computed(() => selected.value === 'all'
+  ? accounts.value.slice((detailPage.value - 1) * detailPageSize, detailPage.value * detailPageSize)
+  : accounts.value.filter((account) => String(account.id) === selected.value))
+watch([selected, () => accounts.value.length], () => { detailPage.value = 1 })
 const visibleAccounts = computed(() =>
-  accounts.value
-    .filter((account) => selected.value === 'all' || String(account.id) === selected.value)
-    .map((account) => {
-      const pools = rows.value.filter((row) => row.accountId === account.id)
+  detailAccounts.value.map((account) => {
+      const pools = poolsByAccount.value.get(account.id) ?? []
       const extra = account.extra as Record<string, unknown> | undefined
       const email = String(
         extra?.email_address ||
