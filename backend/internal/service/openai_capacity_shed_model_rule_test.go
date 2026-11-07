@@ -202,3 +202,16 @@ func TestOpenAICapacityShedModelRule_ErrorFieldsOnly(t *testing.T) {
 		})
 	}
 }
+
+func TestOpenAICapacityShedModelRule_OtherPlatformKeepsDefault(t *testing.T) {
+	repo := &modelNotFoundAccountRepoStub{}
+	svc := &OpenAIGatewayService{rateLimitService: &RateLimitService{accountRepo: repo}}
+	account := openAICapacityShedModelRuleAccount(AccountTypeOAuth)
+	account.Platform = PlatformGrok
+	payload := []byte(`{"type":"error","error":{"code":"server_is_overloaded","message":"overloaded"}}`)
+	failover := svc.newOpenAIStreamFailoverErrorWithModel(nil, account, false, "", payload, "overloaded", "grok-4")
+	require.Empty(t, repo.modelRateLimitCalls)
+	require.Zero(t, repo.tempCalls)
+	require.True(t, failover.RetryableOnSameAccount)
+	require.True(t, failover.RequestScopedTransient)
+}
