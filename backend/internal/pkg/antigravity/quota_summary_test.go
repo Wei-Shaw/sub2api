@@ -92,9 +92,9 @@ func TestClient_RetrieveUserQuotaSummary_403RetriesPlainUserAgent(t *testing.T) 
 	}))
 	defer server.Close()
 
-	previous := BaseURLs
-	BaseURLs = []string{server.URL}
-	t.Cleanup(func() { BaseURLs = previous })
+	previous := quotaSummaryBaseURLs
+	quotaSummaryBaseURLs = []string{server.URL}
+	t.Cleanup(func() { quotaSummaryBaseURLs = previous })
 
 	client := mustNewClient(t, "")
 	summary, err := client.RetrieveUserQuotaSummary(context.Background(), "tok", "proj")
@@ -121,9 +121,9 @@ func TestClient_RetrieveUserQuotaSummary_403BothUserAgentsFails(t *testing.T) {
 	}))
 	defer server.Close()
 
-	previous := BaseURLs
-	BaseURLs = []string{server.URL}
-	t.Cleanup(func() { BaseURLs = previous })
+	previous := quotaSummaryBaseURLs
+	quotaSummaryBaseURLs = []string{server.URL}
+	t.Cleanup(func() { quotaSummaryBaseURLs = previous })
 
 	client := mustNewClient(t, "")
 	if _, err := client.RetrieveUserQuotaSummary(context.Background(), "tok", "proj"); err == nil {
@@ -143,9 +143,9 @@ func TestClient_RetrieveUserQuotaSummary_Non403NoUserAgentRetry(t *testing.T) {
 	}))
 	defer server.Close()
 
-	previous := BaseURLs
-	BaseURLs = []string{server.URL}
-	t.Cleanup(func() { BaseURLs = previous })
+	previous := quotaSummaryBaseURLs
+	quotaSummaryBaseURLs = []string{server.URL}
+	t.Cleanup(func() { quotaSummaryBaseURLs = previous })
 
 	client := mustNewClient(t, "")
 	if _, err := client.RetrieveUserQuotaSummary(context.Background(), "tok", "proj"); err == nil {

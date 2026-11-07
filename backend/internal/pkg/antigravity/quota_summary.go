@@ -16,14 +16,23 @@ import (
 const quotaSummaryBodyLimit = 1 << 20
 
 // The summary endpoint gates on the User-Agent format while fetchAvailableModels
-// does not: "antigravity/hub/2.23.0 windows/amd64" is answered with 403
-// PERMISSION_DENIED ("Verify your account to continue."), while the plain
-// product format "antigravity/1.15.7 ..." is accepted. Measured on
-// 2026-11-07: versions up to and including 1.15.7 pass, 1.15.8 and anything
-// 2.x are rejected, on both prod and daily endpoints, for every account tried.
-// So when the configured hub UA gets a 403 we retry once with the plain
-// product format before giving up.
-var quotaSummaryFallbackUserAgent = "antigravity/1.15.7"
+// does not: sub2api's default "antigravity/hub/2.23.0 windows/amd64" is answered
+// with 403 PERMISSION_DENIED ("Verify your account to continue."). Measured on
+// 2026-11-07: the official Antigravity Hub fingerprint used by the native client
+// and third-party managers (e.g. Antigravity-Manager),
+// "antigravity/hub/{ver} (aidev_client; os_type=windows; arch=amd64; cl={cl})",
+// is accepted on both prod and daily endpoints — the gate checks the
+// "aidev_client" token and the cl field, which sub2api's short format lacks.
+// The plain product format "antigravity/1.15.7" is also accepted but returns a
+// partial response: only the "Claude and GPT models" group, dropping
+// "Gemini Models" and "Gemini 4 Argon" (the same partial-group trap reported in
+// CLIProxyAPI Management Center issue #499). So the fallback must use the full
+// official hub fingerprint, not the plain product format.
+var quotaSummaryFallbackUserAgent = "antigravity/hub/2.28.0 (aidev_client; os_type=windows; arch=amd64; cl=1008300195)"
+
+// quotaSummaryBaseURLs is the endpoint order for the quota summary: daily first
+// (fresh fractions for every group), prod as fallback. Tests may override it.
+var quotaSummaryBaseURLs = []string{antigravityDailyBaseURL, antigravityProdBaseURL}
 
 // QuotaSummaryBucket is one quota window of a group, e.g. "gemini-5h" or "gemini-weekly".
 // An untouched bucket carries no description; a used one does (e.g. "You have used
@@ -81,15 +90,22 @@ func (c *Client) RetrieveUserQuotaSummary(ctx context.Context, accessToken, proj
 }
 
 func (c *Client) retrieveUserQuotaSummaryWithUserAgent(ctx context.Context, accessToken, projectID, userAgent string) (*QuotaSummaryResponse, error) {
+	// Measured 2026-11-07: the prod endpoint (cloudcode-pa.googleapis.com) answers
+	// the summary with 200 but STALE fractions for the Gemini and Argon groups
+	// (e.g. gemini-argon-wtu-weekly 0.0039% used vs 12.56% actual), while the
+	// daily endpoint returns fresh values matching the official Antigravity client.
+	// Antigravity-Manager likewise puts daily first for quota queries. So the
+	// summary must prefer daily, unlike fetchAvailableModels which stays on prod.
+	endpoints := quotaSummaryBaseURLs
 	var lastErr error
-	for urlIdx, baseURL := range BaseURLs {
+	for urlIdx, baseURL := range endpoints {
 		summary, status, err := c.retrieveUserQuotaSummary(ctx, baseURL, accessToken, projectID, userAgent)
 		if err == nil {
 			DefaultURLAvailability.MarkSuccess(baseURL)
 			return summary, nil
 		}
 		lastErr = err
-		if urlIdx < len(BaseURLs)-1 && shouldFallbackToNextURL(nil, status) {
+		if urlIdx < len(endpoints)-1 && shouldFallbackToNextURL(nil, status) {
 			continue
 		}
 		return nil, err
