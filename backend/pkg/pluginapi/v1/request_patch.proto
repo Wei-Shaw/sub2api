@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package sub2api.plugin.v1;
+
+option go_package = "github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1;pluginv1";
+
+import "plugin.proto";
+
+// RequestPatch 是叠加在现有进程契约上的可选请求补丁服务。
+service RequestPatch {
+  rpc PatchRequest(RequestPatchRequest) returns (RequestPatchResponse);
+}
+
+message RequestPatchRequest {
+  // 宿主只提供脱敏的请求元数据，不包含认证头或代理凭据。
+  ForwardRequestStart request = 1;
+  // 已由宿主构造的最终 JSON 请求体，尚未发送到上游。
+  bytes body_json = 2;
+}
+
+message RequestPatchResponse {
+  // 为空时沿用原正文；非空时必须是受限大小的 JSON 对象。
+  bytes body_json = 1;
+  map<string, HeaderValues> set_headers = 2;
+  repeated string remove_headers = 3;
+}

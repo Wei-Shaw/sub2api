@@ -596,6 +596,10 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 
 	// 账号级请求头覆写：测试请求与真实转发保持一致的最终头
 	account.ApplyHeaderOverrides(req.Header)
+	req, payloadBytes, err = s.pluginManager.PatchAnthropicOAuthRequest(ctx, req, payloadBytes, account)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("请求补丁处理未完成: %s", err.Error()))
+	}
 
 	// Get proxy URL
 	proxyURL := ""
