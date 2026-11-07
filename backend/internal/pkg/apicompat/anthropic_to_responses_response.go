@@ -54,7 +54,7 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 		switch block.Type {
 		case "thinking", "redacted_thinking":
 			if (claude.IsOpus55(resp.Model) || claude.IsSonnet55(resp.Model) || claude.IsHaiku55(resp.Model)) && (block.Signature != "" || block.Data != "") {
-				item := ResponsesOutput{Type: "reasoning", ID: generateItemID(), EncryptedContent: encodeAnthropicThinking(block)}
+				item := ResponsesOutput{Type: "reasoning", ID: generateReasoningItemID(), EncryptedContent: encodeAnthropicThinking(block)}
 				if block.Thinking != "" {
 					item.Summary = []ResponsesSummary{{Type: "summary_text", Text: block.Thinking}}
 				}
@@ -64,7 +64,7 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 			if block.Thinking != "" {
 				outputs = append(outputs, ResponsesOutput{
 					Type: "reasoning",
-					ID:   generateItemID(),
+					ID:   generateReasoningItemID(),
 					Summary: []ResponsesSummary{{
 						Type: "summary_text",
 						Text: block.Thinking,
@@ -332,7 +332,7 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 		// 会稳定产生 text → thinking 这个顺序。
 		events = append(events, closeCurrentResponsesItem(state)...)
 
-		state.CurrentItemID = generateItemID()
+		state.CurrentItemID = generateReasoningItemID()
 		state.CurrentItemType = "reasoning"
 		state.CurrentThinking = *evt.ContentBlock
 		state.CurrentSummary = evt.ContentBlock.Thinking
@@ -760,7 +760,15 @@ func generateResponsesID() string {
 }
 
 func generateItemID() string {
+	return generateItemIDWithPrefix("item")
+}
+
+func generateReasoningItemID() string {
+	return generateItemIDWithPrefix("rs")
+}
+
+func generateItemIDWithPrefix(prefix string) string {
 	b := make([]byte, 12)
 	_, _ = rand.Read(b)
-	return "item_" + hex.EncodeToString(b)
+	return prefix + "_" + hex.EncodeToString(b)
 }
