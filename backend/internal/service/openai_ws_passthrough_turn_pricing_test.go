@@ -2,7 +2,9 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -280,4 +282,77 @@ func testPassthroughIngressFreezesSubsequentTurnBeforeRequestPolicy(t *testing.T
 	case <-time.After(3 * time.Second):
 		t.Fatal("passthrough ingress did not exit")
 	}
+}
+
+func TestOpenAIWSIngressOAuthDefaultEchoMatchesCurrentTurnBilling(t *testing.T) {
+	for _, mode := range []string{OpenAIWSIngressModePassthrough, OpenAIWSIngressModeCtxPool} {
+		t.Run(mode, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			ctx, cancel := context.WithCancelCause(context.Background())
+			defer cancel(context.Canceled)
+			upstream := newStagedPassthroughConn()
+			cfg := passthroughLifecycleConfig()
+			cfg.Gateway.OpenAIWS.OAuthEnabled = true
+			account := passthroughLifecycleAccount()
+			account.Type = AccountTypeOAuth
+			account.Credentials = map[string]any{"access_token": "fixture-token", "chatgpt_account_id": "fixture-account"}
+			account.Extra = map[string]any{"openai_oauth_responses_websockets_v2_mode": mode}
+			results := make(chan *OpenAIForwardResult, 3)
+			hooks := &OpenAIWSIngressHooks{AfterTurn: func(_ int, result *OpenAIForwardResult, err error) {
+				if err == nil {
+					results <- result
+				}
+			}}
+			svc := newPassthroughLifecycleService(cfg, upstream)
+			svc.openaiWSPool = newOpenAIWSConnPool(cfg)
+			svc.openaiWSPool.setClientDialerForTest(&stagedPassthroughDialer{conn: &serviceTierRecordingWSConn{upstream}})
+			server, _ := startPassthroughHookRecordingServer(t, ctx, svc, account, hooks)
+			defer server.Close()
+			client := dialPassthroughLifecycleClientWithPayload(t, server, `{"type":"response.create","model":"gpt-5.1","service_tier":"priority"}`)
+			defer client.CloseNow()
+			for i, want := range []string{"priority", "default", "ultrafast"} {
+				if i > 0 {
+					payload := `{"type":"response.create","model":"gpt-5.1"}`
+					if want == "ultrafast" {
+						payload = `{"type":"response.create","model":"gpt-5.1","service_tier":"ultrafast"}`
+					}
+					writeCtx, stop := context.WithTimeout(ctx, time.Second)
+					err := client.Write(writeCtx, coderws.MessageText, []byte(payload))
+					stop()
+					require.NoError(t, err)
+				}
+				sent := requirePassthroughUpstreamWrite(t, upstream, time.Second)
+				if want == "default" {
+					require.False(t, gjson.GetBytes(sent, "service_tier").Exists())
+				} else {
+					require.Equal(t, want, gjson.GetBytes(sent, "service_tier").String())
+				}
+				upstream.Send(fmt.Sprintf(`{"type":"response.completed","response":{"id":"resp_tier_%d","model":"gpt-5.1","status":"completed","service_tier":"default","usage":{"input_tokens":1,"output_tokens":1}}}`, i))
+				frame, err := readPassthroughLifecycleFrame(t, client, 3*time.Second)
+				require.NoError(t, err)
+				require.Equal(t, want, gjson.GetBytes(frame, "response.service_tier").String())
+				select {
+				case result := <-results:
+					require.Equal(t, "default", result.UpstreamResponseServiceTier)
+					expected := want
+					if want == "default" {
+						expected = ""
+					}
+					require.Equal(t, expected, ApplyOpenAIServiceTierBillingResolution(account, result).Billing)
+				case <-time.After(3 * time.Second):
+					t.Fatal("missing turn usage result")
+				}
+			}
+		})
+	}
+}
+
+type serviceTierRecordingWSConn struct{ *stagedPassthroughConn }
+
+func (c *serviceTierRecordingWSConn) WriteJSON(ctx context.Context, value any) error {
+	payload, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	return c.WriteFrame(ctx, coderws.MessageText, payload)
 }
