@@ -41,18 +41,23 @@ type QuotaSummaryResponse struct {
 	Description string              `json:"description,omitempty"`
 }
 
-// RetrieveUserQuotaSummary reads the account's per-group 5-hour and weekly quota windows,
-// falling back across BaseURLs like FetchAvailableModels.
+// RetrieveUserQuotaSummary reads the account's per-group 5-hour and weekly quota windows from
+// the endpoint generation uses (daily first, see ForwardBaseURLs), falling back to the others.
+//
+// The prod endpoint can report a different, stale window: on 2026-11-06 Google reset two Ultra
+// accounts' Gemini quota, and prod kept returning the old weekly figure (45.8%) with the 5-hour
+// window never starting, while daily and the Antigravity app showed the real 5.9% / 7.5%.
 func (c *Client) RetrieveUserQuotaSummary(ctx context.Context, accessToken, projectID string) (*QuotaSummaryResponse, error) {
+	urls := ForwardBaseURLs()
 	var lastErr error
-	for urlIdx, baseURL := range BaseURLs {
+	for urlIdx, baseURL := range urls {
 		summary, status, err := c.retrieveUserQuotaSummary(ctx, baseURL, accessToken, projectID)
 		if err == nil {
 			DefaultURLAvailability.MarkSuccess(baseURL)
 			return summary, nil
 		}
 		lastErr = err
-		if urlIdx < len(BaseURLs)-1 && shouldFallbackToNextURL(nil, status) {
+		if urlIdx < len(urls)-1 && shouldFallbackToNextURL(nil, status) {
 			continue
 		}
 		return nil, err
