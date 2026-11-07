@@ -17,6 +17,11 @@ const (
 	// no transport error, so without this classification a truncated generation is
 	// indistinguishable from a successful one.
 	OpenAIUpstreamStreamTruncatedCode = "upstream_stream_truncated"
+
+	// openAIRetryGuidance is OpenAI's own wording for a transient mid-stream
+	// failure. Clients that classify errors by message (not code) recognize it
+	// and retry, as they do for a direct OpenAI stream drop.
+	openAIRetryGuidance = " You can retry your request."
 )
 
 // ErrOpenAIUpstreamStreamTruncated marks an upstream SSE stream that ended at
@@ -71,7 +76,7 @@ func OpenAIUpstreamStreamReadErrorDetails(err error) (code, message string, ok b
 func classifyOpenAIUpstreamStreamReadError(err error) (code, message string) {
 	if err != nil {
 		if errors.Is(err, ErrOpenAIUpstreamStreamTruncated) {
-			return OpenAIUpstreamStreamTruncatedCode, "Upstream response stream ended before completion"
+			return OpenAIUpstreamStreamTruncatedCode, "Upstream response stream ended before completion." + openAIRetryGuidance
 		}
 		lower := strings.ToLower(err.Error())
 		// net/http's HTTP/2 stream error is unexported. Its stable text contains
@@ -79,8 +84,8 @@ func classifyOpenAIUpstreamStreamReadError(err error) (code, message string) {
 		// never pass the original text to the client.
 		if strings.Contains(lower, "stream error: stream id ") ||
 			(strings.Contains(lower, "http2:") && strings.Contains(lower, "stream")) {
-			return OpenAIUpstreamHTTP2StreamErrorCode, "Upstream HTTP/2 stream failed"
+			return OpenAIUpstreamHTTP2StreamErrorCode, "Upstream HTTP/2 stream failed." + openAIRetryGuidance
 		}
 	}
-	return OpenAIUpstreamStreamReadErrorCode, "Upstream response stream was interrupted"
+	return OpenAIUpstreamStreamReadErrorCode, "Upstream response stream was interrupted." + openAIRetryGuidance
 }
