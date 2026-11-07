@@ -164,3 +164,41 @@ func TestOpenAICapacityShedModelRule_WriteFailureDoesNotBlockAccount(t *testing.
 	require.Zero(t, repo.tempCalls)
 	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
 }
+
+func TestOpenAICapacityShedModelRule_ErrorFieldsOnly(t *testing.T) {
+	for _, tt := range []struct {
+		name, payload, keyword string
+		matched                bool
+	}{
+		{"output_is_not_an_error", `{"type":"response.failed","response":{"output":[{"text":"overloaded"}],"error":{"code":"slow_down","message":"try again"}}}`, "", false},
+		{"metadata_is_not_an_error", `{"type":"error","metadata":{"prompt":"overloaded"},"error":{"code":"slow_down","message":"try again"}}`, "", false},
+		{"model_is_not_an_error", `{"type":"response.failed","response":{"model":"overloaded-model","error":{"code":"slow_down","message":"try again"}}}`, "", false},
+		{"flat_metadata_is_not_an_error", `{"type":"error","message":"Our servers are currently overloaded. Please try again later.","metadata":{"prompt":"cooldown-marker"}}`, "cooldown-marker", false},
+		{"root_error_code_matches", `{"type":"error","error":{"code":"server_is_overloaded","message":"try again"},"metadata":{"prompt":"private-output-marker"}}`, "", true},
+		{"nested_error_code_matches", `{"type":"response.failed","response":{"output":[{"text":"private-output-marker"}],"error":{"code":"server_is_overloaded"}}}`, "", true},
+		{"flat_error_message_matches", `{"type":"error","message":"Our servers are currently overloaded. Please try again later.","metadata":{"prompt":"private-output-marker"}}`, "", true},
+		{"error_message_matches", `{"type":"response.failed","response":{"error":{"code":"slow_down","message":"overloaded"}}}`, "", true},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &modelNotFoundAccountRepoStub{}
+			svc := &OpenAIGatewayService{rateLimitService: &RateLimitService{accountRepo: repo}}
+			account := openAICapacityShedModelRuleAccount(AccountTypeOAuth)
+			if tt.keyword != "" {
+				rule := account.Credentials["temp_unschedulable_rules"].([]any)[0].(map[string]any)
+				rule["keywords"] = []any{tt.keyword}
+			}
+			payload := []byte(tt.payload)
+			failover := svc.newOpenAIStreamFailoverErrorWithModel(nil, account, false, "", payload,
+				extractOpenAISSEErrorMessage(payload), "gpt-6.1-sol")
+			require.Equal(t, !tt.matched, failover.RetryableOnSameAccount)
+			require.True(t, failover.RequestScopedTransient)
+			if tt.matched {
+				require.Len(t, repo.modelRateLimitCalls, 1)
+				require.NotContains(t, repo.modelRateLimitCalls[0].reason, "private-output-marker")
+			} else {
+				require.Empty(t, repo.modelRateLimitCalls)
+			}
+			require.Zero(t, repo.tempCalls)
+		})
+	}
+}
