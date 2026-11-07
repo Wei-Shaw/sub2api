@@ -9,6 +9,7 @@ import "time"
 // client_ip / user_agent / group_name / request_type / stream 均为该用户
 // 自己请求的属性，经产品决策（2026-07-03）开放，
 // 与用量明细已向用户展示自身 ip_address/user_agent/分组/类型 的口径对齐；
+// reasoning_effort / service_tier 仅包含用户显式提交的参数，不含上游改写值。
 // error_body 仅在详情接口（GetUserErrorRequestDetail）按归属校验后返回。
 type UserErrorRequest struct {
 	ID              int64     `json:"id"`
@@ -26,6 +27,8 @@ type UserErrorRequest struct {
 	RequestType     *int16    `json:"request_type,omitempty"`
 	Stream          bool      `json:"stream"`
 	UserAgent       string    `json:"user_agent,omitempty"`
+	ReasoningEffort string    `json:"reasoning_effort,omitempty"`
+	ServiceTier     string    `json:"service_tier,omitempty"`
 }
 
 // UserErrorRequestList 是用户错误请求分页结果。
@@ -118,6 +121,8 @@ func ToUserErrorRequest(e *OpsErrorLog) *UserErrorRequest {
 		RequestType:     e.RequestType,
 		Stream:          e.Stream,
 		UserAgent:       e.UserAgent,
+		ReasoningEffort: e.ReasoningEffort,
+		ServiceTier:     e.ServiceTier,
 	}
 }
 

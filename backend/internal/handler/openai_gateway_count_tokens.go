@@ -49,6 +49,8 @@ func (h *OpenAIGatewayHandler) ResponsesInputTokens(c *gin.Context) {
 		h.errorResponse(c, status, "invalid_request_error", message)
 		return
 	}
+	service.SetOpsRequestParameters(c, body)
+
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
@@ -143,6 +145,8 @@ func (h *OpenAIGatewayHandler) GrokCountTokens(c *gin.Context) {
 		h.anthropicErrorResponse(c, status, "invalid_request_error", message)
 		return
 	}
+	service.SetOpsRequestParameters(c, body)
+
 	if len(body) == 0 {
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return
@@ -213,6 +217,8 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 		h.anthropicErrorResponse(c, status, "invalid_request_error", message)
 		return
 	}
+	service.SetOpsRequestParameters(c, body)
+
 	if len(body) == 0 {
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return

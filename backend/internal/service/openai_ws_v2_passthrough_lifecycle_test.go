@@ -211,6 +211,56 @@ func startPassthroughLifecycleServerWithHooks(
 	return server, serverErr
 }
 
+func TestPassthroughLifecycle_RequestParametersBeforeLaterTurnEffortPolicy(t *testing.T) {
+	for _, action := range []string{ReasoningEffortOverLimitDowngrade, ReasoningEffortOverLimitDeny} {
+		t.Run(action, func(t *testing.T) {
+			controlCtx, cancelControl := context.WithCancelCause(context.Background())
+			defer cancelControl(context.Canceled)
+			upstream := newStagedPassthroughConn()
+			svc := newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream)
+			contexts := make(chan *gin.Context, 1)
+			server, serverErr := startPassthroughLifecycleServerWithHooks(t, controlCtx, svc, passthroughLifecycleAccount(), func(c *gin.Context) *OpenAIWSIngressHooks {
+				contexts <- c
+				return &OpenAIWSIngressHooks{MaxReasoningEffort: "low", MaxReasoningEffortOverLimit: action}
+			})
+			defer server.Close()
+			client := dialPassthroughLifecycleClient(t, server)
+			defer func() { _ = client.CloseNow() }()
+			c := <-contexts
+			requirePassthroughUpstreamWrite(t, upstream, time.Second)
+			upstream.Send(`{"type":"response.completed","response":{"id":"resp_parameters_1","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`)
+			_, err := readPassthroughLifecycleFrame(t, client, time.Second)
+			require.NoError(t, err)
+			writeCtx, cancelWrite := context.WithTimeout(context.Background(), time.Second)
+			err = client.Write(writeCtx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","reasoning":{"effort":"high"},"service_tier":"priority"}`))
+			cancelWrite()
+			require.NoError(t, err)
+			if action == ReasoningEffortOverLimitDowngrade {
+				forwarded := requirePassthroughUpstreamWrite(t, upstream, time.Second)
+				require.Equal(t, "low", gjson.GetBytes(forwarded, "reasoning.effort").String())
+			} else {
+				_, err := readPassthroughLifecycleFrame(t, client, 3*time.Second)
+				require.Error(t, err)
+				select {
+				case err := <-serverErr:
+					require.Error(t, err)
+				case <-time.After(3 * time.Second):
+					t.Fatal("denied request did not finish")
+				}
+				select {
+				case <-upstream.writes:
+					t.Fatal("denied request reached upstream")
+				default:
+				}
+			}
+			effort, tier := OpsRequestParameters(c)
+			require.Equal(t, "high", effort)
+			require.Equal(t, "priority", tier)
+			cancelControl(context.Canceled)
+		})
+	}
+}
+
 func TestPassthroughLifecycle_LaterTurnPreOutputRateLimitRequestsReconnect(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	controlCtx, cancelControl := context.WithCancelCause(context.Background())

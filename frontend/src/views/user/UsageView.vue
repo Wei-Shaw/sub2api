@@ -780,6 +780,8 @@ const ERR_HIDDEN_COLUMNS_KEY = 'user-usage-error-hidden-columns'
 const errAllColumns = computed<Column[]>(() => [
   { key: 'key_name', label: t('usage.errors.keyName') },
   { key: 'model', label: t('usage.errors.model') },
+  { key: 'reasoning_effort', label: t('usage.reasoningEffort') },
+  { key: 'service_tier', label: 'service_tier' },
   { key: 'endpoint', label: t('usage.errors.endpoint') },
   { key: 'client_ip', label: 'IP' },
   { key: 'group', label: t('admin.usage.group') },

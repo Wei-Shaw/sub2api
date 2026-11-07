@@ -55,6 +55,8 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
+	service.SetOpsRequestParameters(c, body)
+
 	if len(body) == 0 {
 		h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return

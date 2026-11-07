@@ -901,6 +901,8 @@ export interface OpsSystemLogSinkHealth {
 }
 
 export interface OpsErrorLog {
+  reasoning_effort?: string
+  service_tier?: string
   id: number
   created_at: string
 

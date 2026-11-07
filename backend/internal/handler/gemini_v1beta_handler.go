@@ -381,6 +381,8 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		googleErrorWithType(c, status, "invalid_request_error", "", message)
 		return
 	}
+	service.SetOpsRequestParameters(c, body)
+
 	if len(body) == 0 {
 		googleError(c, http.StatusBadRequest, "Request body is empty")
 		return

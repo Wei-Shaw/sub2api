@@ -57,6 +57,9 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 		h.errorResponse(c, status, "invalid_request_error", message)
 		return
 	}
+	if !isMultipartImagesContentType(c.GetHeader("Content-Type")) {
+		service.SetOpsRequestParameters(c, body)
+	}
 	if len(body) == 0 {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return
