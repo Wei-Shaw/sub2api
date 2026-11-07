@@ -207,7 +207,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
 				message := cls.Message
-				if !cls.ModelNotFound {
+				if !cls.ModelNotFound && !cls.InsufficientBalance {
 					message = "No available accounts: " + err.Error()
 				}
 				h.chatCompletionsErrorResponse(c, cls.Status, cls.ErrType, message)
