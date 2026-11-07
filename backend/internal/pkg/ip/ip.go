@@ -250,6 +250,15 @@ func CompileIPRules(patterns []string) *CompiledIPRules {
 	return compiled
 }
 
+// MatchesIPRules 判断客户端地址是否命中预编译的 IP/CIDR 规则集合
+// （命中任一精确 IP 或 CIDR 即返回 true；空集合/非法地址返回 false）。
+func MatchesIPRules(clientIP string, rules *CompiledIPRules) bool {
+	if rules == nil || rules.PatternCount == 0 {
+		return false
+	}
+	return matchesCompiledRules(net.ParseIP(normalizeIP(clientIP)), rules)
+}
+
 func matchesCompiledRules(parsedIP net.IP, rules *CompiledIPRules) bool {
 	if parsedIP == nil || rules == nil {
 		return false

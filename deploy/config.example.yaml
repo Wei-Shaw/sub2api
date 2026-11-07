@@ -185,6 +185,37 @@ security:
     # Allow http:// URLs when allowlist is disabled (default: true; set to false to require https)
     # 白名单禁用时是否允许 http:// URL（默认: true，设为 false 则仅允许 https）
     allow_insecure_http: true
+  login_failure_ban:
+    # Login failure auto-ban: client IPs whose login failures (4xx/5xx, excluding
+    # 429 throttling) reach the threshold within the window are temporarily banned
+    # from login endpoints. Disabled by default. Public IPs only — loopback and
+    # private addresses are always exempt. Fail-open on Redis errors.
+    # 登录失败自动封禁：窗口期内登录失败次数达到阈值的客户端 IP 将被临时拒绝
+    # 登录（失败指 4xx/5xx，不含 429 节流）。默认关闭。仅对公网 IP 生效，回环/
+    # 内网地址始终豁免；Redis 故障时放行，不影响登录可用性。
+    # Environment / 环境变量: SECURITY_LOGIN_FAILURE_BAN_ENABLED=true
+    enabled: false
+    # Failures within the window that trigger a ban.
+    # 触发封禁的窗口内失败次数（留出余量，避免误伤忘记密码的正常用户）。
+    # Environment / 环境变量: SECURITY_LOGIN_FAILURE_BAN_THRESHOLD=10
+    threshold: 10
+    # Counting window.
+    # 失败计数统计窗口。
+    # Environment / 环境变量: SECURITY_LOGIN_FAILURE_BAN_WINDOW=10m
+    window: 10m
+    # Ban duration, renewed on each subsequent failure; expires automatically.
+    # 封禁时长，持续失败会自动续期，停止攻击后自动过期解除。
+    # Environment / 环境变量: SECURITY_LOGIN_FAILURE_BAN_BAN_DURATION=1h
+    ban_duration: 1h
+    # Merge IPv6 addresses into prefixes of this length before counting
+    # (0 disables merging).
+    # IPv6 地址归并到该前缀长度的网段后再计数/封禁（0 表示不归并）。
+    # Environment / 环境变量: SECURITY_LOGIN_FAILURE_BAN_IPV6_PREFIX_BITS=64
+    ipv6_prefix_bits: 64
+    # Exempt client addresses (exact IP or CIDR); never counted, never banned.
+    # 豁免的客户端地址（精确 IP 或 CIDR），不参与失败计数也不受封禁影响。
+    # Environment / 环境变量: SECURITY_LOGIN_FAILURE_BAN_EXEMPT_IPS=203.0.113.10,198.51.100.0/24
+    exempt_ips: []
   response_headers:
     # Enable configurable response header filtering (default: true)
     # 启用可配置的响应头过滤（默认启用，过滤上游敏感响应头）

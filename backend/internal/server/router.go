@@ -8,6 +8,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	"github.com/Wei-Shaw/sub2api/internal/middleware"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/server/routes"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -123,8 +124,18 @@ func registerRoutes(
 	// 防止高频刷管理面接口打爆数据库（阈值可在系统设置中调整）。
 	panelRateLimiter := middleware2.NewPanelRateLimiter(redisClient, settingService)
 
+	// 登录失败自动封禁：窗口期内失败达阈值的客户端 IP 临时拒绝登录
+	loginBanGuard := middleware.NewLoginFailureBanGuard(redisClient, middleware.LoginBanOptions{
+		Enabled:        cfg.Security.LoginFailureBan.Enabled,
+		Threshold:      cfg.Security.LoginFailureBan.Threshold,
+		Window:         cfg.Security.LoginFailureBan.Window,
+		BanDuration:    cfg.Security.LoginFailureBan.BanDuration,
+		IPv6PrefixBits: cfg.Security.LoginFailureBan.IPv6PrefixBits,
+		ExemptIPs:      cfg.Security.LoginFailureBan.ExemptIPs,
+	})
+
 	// 注册各模块路由
-	routes.RegisterAuthRoutes(v1, h, jwtAuth, auditLog, redisClient, settingService, panelRateLimiter)
+	routes.RegisterAuthRoutes(v1, h, jwtAuth, auditLog, redisClient, settingService, panelRateLimiter, loginBanGuard)
 	routes.RegisterUserRoutes(v1, h, jwtAuth, auditLog, settingService, panelRateLimiter)
 	routes.RegisterModelPlazaRoutes(v1, h, optionalJWTAuth, settingService, panelRateLimiter)
 	routes.RegisterAdminRoutes(v1, h, adminAuth, auditLog, stepUpAuth, settingService, panelRateLimiter)
