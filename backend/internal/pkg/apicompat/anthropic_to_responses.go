@@ -50,8 +50,6 @@ func AnthropicToResponsesWithMinOutputTokens(req *AnthropicRequest, minOutputTok
 
 	storeFalse := false
 	out.Store = &storeFalse
-	parallelToolCalls := true
-	out.ParallelToolCalls = &parallelToolCalls
 	out.Text = &ResponsesText{Verbosity: "medium"}
 
 	if req.MaxTokens > 0 {
@@ -87,7 +85,31 @@ func AnthropicToResponsesWithMinOutputTokens(req *AnthropicRequest, minOutputTok
 		out.ToolChoice = tc
 	}
 
+	parallelToolCalls := true
+	if len(out.Tools) > 0 {
+		parallelToolCalls = anthropicParallelToolCalls(req.ToolChoice)
+	}
+	out.ParallelToolCalls = &parallelToolCalls
+
 	return out, nil
+}
+
+// anthropicParallelToolCalls preserves the default unless a supported choice
+// explicitly disables parallel tools. Tool-choice validation stays with callers.
+func anthropicParallelToolCalls(raw json.RawMessage) bool {
+	var choice struct {
+		Type                   string `json:"type"`
+		DisableParallelToolUse bool   `json:"disable_parallel_tool_use"`
+	}
+	if err := json.Unmarshal(raw, &choice); err != nil {
+		return true
+	}
+	switch choice.Type {
+	case "auto", "any", "tool":
+		return !choice.DisableParallelToolUse
+	default:
+		return true
+	}
 }
 
 // convertAnthropicToolChoiceToResponses maps Anthropic tool_choice to Responses format.
