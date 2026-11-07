@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -18,6 +19,14 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestMain(m *testing.M) {
+	origBackoff := antigravityCompatRetryBackoff
+	antigravityCompatRetryBackoff = func() time.Duration { return 0 }
+	code := m.Run()
+	antigravityCompatRetryBackoff = origBackoff
+	os.Exit(code)
+}
 
 type antigravityCompatTokenCache struct {
 	token string
@@ -787,6 +796,105 @@ func TestAntigravityCompatEmptyStreamTriggersFailover(t *testing.T) {
 	}
 }
 
+func TestAntigravityCompatEmptyTerminalFinishReasonFails(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	frames := []struct {
+		name string
+		body string
+	}{
+		{
+			name: "empty STOP",
+			body: `data: {"response":{"candidates":[{"content":{"role":"model","parts":[{"text":""}]},"finishReason":"STOP"}]}}` + "\n\n",
+		},
+	}
+	runners := []struct {
+		name string
+		run  func(*AntigravityGatewayService, *gin.Context, *http.Response) (*antigravityStreamResult, error)
+	}{
+		{
+			name: "chat completions",
+			run: func(svc *AntigravityGatewayService, c *gin.Context, resp *http.Response) (*antigravityStreamResult, error) {
+				return svc.handleChatCompletionsStreamingFromAntigravity(c, resp, time.Now(), "gemini-3.1-pro-high", true)
+			},
+		},
+		{
+			name: "responses",
+			run: func(svc *AntigravityGatewayService, c *gin.Context, resp *http.Response) (*antigravityStreamResult, error) {
+				return svc.handleResponsesStreamingFromAntigravity(c, resp, time.Now(), "gemini-3.1-pro-high")
+			},
+		},
+	}
+
+	for _, frame := range frames {
+		for _, runner := range runners {
+			t.Run(frame.name+"/"+runner.name, func(t *testing.T) {
+				svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+				c, recorder := newAntigravityCompatContext(http.MethodPost, "/", nil)
+				resp := &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+					Body:       io.NopCloser(strings.NewReader(frame.body)),
+				}
+
+				result, err := runner.run(svc, c, resp)
+
+				require.Error(t, err)
+				require.Nil(t, result)
+				var failoverErr *UpstreamFailoverError
+				require.ErrorAs(t, err, &failoverErr)
+				body := recorder.Body.String()
+				require.Empty(t, body)
+			})
+		}
+	}
+}
+
+func TestAntigravityCompatMalformedFunctionCallStillFailovers(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+	c, recorder := newAntigravityCompatContext(http.MethodPost, "/", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(
+			`data: {"response":{"candidates":[{"content":{"role":"model","parts":[{"thoughtSignature":"sig"}]},"finishReason":"MALFORMED_FUNCTION_CALL"}]}}` + "\n\n",
+		)),
+	}
+
+	result, err := svc.handleChatCompletionsStreamingFromAntigravity(c, resp, time.Now(), "gemini-3.1-pro-high", true)
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.True(t, failoverErr.RequestScopedTransient)
+	require.Equal(t, NextAccountStop, failoverErr.NextAccountAction)
+	require.False(t, failoverErr.ShouldRetryNextAccount())
+	require.NotContains(t, recorder.Body.String(), `"finish_reason":"stop"`)
+}
+
+func TestAntigravityCompatContentFilterFinishReasonStillFailovers(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+	c, recorder := newAntigravityCompatContext(http.MethodPost, "/", nil)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body: io.NopCloser(strings.NewReader(
+			`data: {"response":{"candidates":[{"content":{},"finishReason":"SAFETY"}]}}` + "\n\n",
+		)),
+	}
+
+	result, err := svc.handleChatCompletionsStreamingFromAntigravity(c, resp, time.Now(), "gemini-3.1-pro-high", true)
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.Empty(t, recorder.Body.String())
+}
+
 func TestAntigravityCompatUsageOnlyStreamTriggersFailover(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -1105,8 +1213,10 @@ func TestAntigravityCompatHandlerPreContentKeepalive(t *testing.T) {
 			require.Equal(t, ": ping\n\n", recorder.Body.String())
 			require.NoError(t, pipeWriter.Close())
 			require.Error(t, <-done)
-			require.Contains(t, recorder.Body.String(), tt.want)
-			require.True(t, IsResponseCommitted(c))
+			if tt.want != "" {
+				require.Contains(t, recorder.Body.String(), tt.want)
+				require.Greater(t, strings.Index(recorder.Body.String(), tt.want), strings.Index(recorder.Body.String(), ": ping"))
+			}
 		})
 	}
 }
@@ -1132,7 +1242,6 @@ func TestAntigravityCompatHandlerRepeatsPreContentKeepalive(t *testing.T) {
 	require.Error(t, <-done)
 	require.GreaterOrEqual(t, strings.Count(recorder.Body.String(), ": ping\n\n"), 3)
 	require.Contains(t, recorder.Body.String(), "event: error")
-	require.True(t, IsResponseCommitted(c))
 }
 
 func TestAntigravityCompatHandlerPreContentDeadlineWithCommentOnlyStream(t *testing.T) {
@@ -1251,8 +1360,186 @@ func TestAntigravityCompatEmptyAfterKeepaliveReportsStreamError(t *testing.T) {
 			var failoverErr *UpstreamFailoverError
 			require.NotErrorAs(t, err, &failoverErr)
 			require.NotNil(t, result)
-			require.True(t, IsResponseCommitted(c))
+			require.Contains(t, recorder.Body.String(), ": ping\n\n")
 			require.Contains(t, recorder.Body.String(), tt.want)
+			require.Contains(t, recorder.Body.String(), "empty_stream")
 		})
 	}
+}
+
+func TestAntigravityCompatMalformedFunctionCallRetriesSameAccount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+	c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", nil)
+	body := `data: {"response":{"responseId":"resp_malformed","candidates":[{"content":{"role":"model","parts":[{"thoughtSignature":"sig"}]},"finishReason":"MALFORMED_FUNCTION_CALL"}]}}` + "\n\n"
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+
+	result, err := svc.handleChatCompletionsStreamingFromAntigravity(
+		c,
+		resp,
+		time.Now(),
+		"gemini-3.8-flash-tiered",
+		true,
+	)
+
+	require.Nil(t, result)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.True(t, failoverErr.RetryableOnSameAccount)
+	require.True(t, failoverErr.RequestScopedTransient)
+	require.Equal(t, NextAccountStop, failoverErr.NextAccountAction)
+	require.False(t, failoverErr.ShouldRetryNextAccount())
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.Empty(t, recorder.Body.String())
+	require.Empty(t, recorder.Header().Get("Content-Type"))
+}
+
+func TestAntigravityCompatRecoversAfterHeartbeat(t *testing.T) {
+	for _, responses := range []bool{false, true} {
+		t.Run(fmt.Sprintf("responses=%v", responses), func(t *testing.T) {
+			svc := newAntigravityCompatService(config.GatewayConfig{}, nil)
+			c, recorder := newAntigravityCompatContext(http.MethodPost, "/", nil)
+			notify := &antigravityCompatNotifyingWriter{ResponseWriter: c.Writer, wrote: make(chan struct{}, 1)}
+			c.Writer = notify
+			reader, pw := io.Pipe()
+			defer func() { _ = reader.Close() }()
+			go func() {
+				<-notify.wrote
+				_, _ = io.WriteString(pw, `data: {"response":{"candidates":[{"finishReason":"MALFORMED_FUNCTION_CALL"}]}}`+"\n\n")
+				_ = pw.Close()
+			}()
+			adapter := antigravityCompatStreamAdapter(newAntigravityChatStreamAdapter("gemini-3.8-flash-medium", true))
+			if responses {
+				adapter = newAntigravityResponsesStreamAdapter("gemini-3.8-flash-medium")
+			}
+			calls := 0
+			result, err := svc.handleAntigravityCompatStreamWithKeepaliveInterval(c,
+				&http.Response{StatusCode: 200, Body: reader}, time.Now(), "gemini-3.8-flash-medium",
+				adapter, "test", time.Millisecond, time.Second,
+				func() (*http.Response, error) { calls++; return antigravityCompatSuccessResponse(), nil })
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, 1, calls)
+			require.Contains(t, recorder.Body.String(), ": ping")
+			require.Contains(t, recorder.Body.String(), `"ok"`)
+			require.NotContains(t, recorder.Body.String(), "empty_stream")
+		})
+	}
+}
+
+func TestAntigravityCompatRecoveryIsBounded(t *testing.T) {
+	svc := newAntigravityCompatService(config.GatewayConfig{}, nil)
+	c, recorder := newAntigravityCompatContext(http.MethodPost, "/", nil)
+	empty := func() *http.Response {
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(
+			`data: {"response":{"candidates":[{"finishReason":"STOP"}]}}` + "\n\n"))}
+	}
+	calls := 0
+	_, err := svc.handleAntigravityCompatStreamWithKeepaliveInterval(c, empty(), time.Now(), "gemini-3.8-flash-medium",
+		newAntigravityChatStreamAdapter("gemini-3.8-flash-medium", true), "test", time.Hour, time.Minute,
+		func() (*http.Response, error) { calls++; return empty(), nil })
+	require.Error(t, err)
+	require.Equal(t, antigravityCompatMaxStreamAttempts-1, calls)
+	require.Equal(t, 502, recorder.Code)
+	require.Contains(t, recorder.Body.String(), "empty_stream")
+	require.NotContains(t, recorder.Body.String(), `"finish_reason":"stop"`)
+}
+
+func TestAntigravityCompatRecoveryExhaustedAfterHeartbeat(t *testing.T) {
+	svc := newAntigravityCompatService(config.GatewayConfig{}, nil)
+	c, recorder := newAntigravityCompatContext(http.MethodPost, "/", nil)
+	_, _ = c.Writer.Write([]byte(": ping\n\n"))
+	empty := func() *http.Response {
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("data: [DONE]\n\n"))}
+	}
+	calls := 0
+	_, err := svc.handleAntigravityCompatStreamWithKeepaliveInterval(c, empty(), time.Now(), "gemini-3.1-pro",
+		newAntigravityResponsesStreamAdapter("gemini-3.1-pro"), "test", time.Hour, time.Minute,
+		func() (*http.Response, error) { calls++; return empty(), nil })
+	require.Error(t, err)
+	require.Equal(t, antigravityCompatMaxStreamAttempts-1, calls)
+	require.Contains(t, recorder.Body.String(), "event: error")
+	require.NotContains(t, recorder.Body.String(), "response.completed")
+}
+
+func TestAntigravityCompatRecoveryTransportFailure(t *testing.T) {
+	svc := newAntigravityCompatService(config.GatewayConfig{}, nil)
+	c, recorder := newAntigravityCompatContext(http.MethodPost, "/", nil)
+	_, err := svc.handleAntigravityCompatStream(c,
+		&http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("data: [DONE]\n\n"))}, time.Now(),
+		"gemini-3.1-pro", newAntigravityChatStreamAdapter("gemini-3.1-pro", false), "test",
+		func() (*http.Response, error) { return nil, io.ErrUnexpectedEOF })
+	require.Error(t, err)
+	require.Equal(t, 502, recorder.Code)
+}
+
+func TestAntigravityCompatThinkingIsBufferedUntilUsableOutput(t *testing.T) {
+	c, recorder := newAntigravityCompatContext(http.MethodPost, "/", nil)
+	session := newAntigravityCompatStreamSession("gemini-3.1-pro", time.Now(),
+		newAntigravityChatStreamAdapter("gemini-3.1-pro", false), newAntigravityClientWriter(c.Writer, c.Writer, "test"))
+	session.consumeClaudeData("content_block_delta", `{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"thinking"}}`)
+	require.False(t, session.hasMeaningfulData())
+	require.Empty(t, recorder.Body.String())
+}
+
+func TestAntigravityCompatRecoveryThroughForward(t *testing.T) {
+	for _, protocol := range []string{"chat", "responses"} {
+		t.Run(protocol, func(t *testing.T) {
+			empty := &http.Response{StatusCode: 200, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(
+				`data: {"response":{"candidates":[{"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":999}}}` + "\n\n"))}
+			calls := 0
+			upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{empty, antigravityCompatSuccessResponse()},
+				onCall: func(_ *http.Request, _ *queuedHTTPUpstreamStub) { calls++ }}
+			svc := newAntigravityCompatService(config.GatewayConfig{}, upstream)
+			c, recorder := newAntigravityCompatContext(http.MethodPost, "/", nil)
+			var result *ForwardResult
+			var err error
+			if protocol == "chat" {
+				result, err = svc.ForwardAsChatCompletions(c.Request.Context(), c, newAntigravityCompatAccount(AccountTypeOAuth),
+					[]byte(`{"model":"gemini-3.1-pro-high","stream":true,"messages":[{"role":"user","content":"ok"}]}`), nil)
+			} else {
+				result, err = svc.ForwardAsResponses(c.Request.Context(), c, newAntigravityCompatAccount(AccountTypeOAuth),
+					[]byte(`{"model":"gemini-3.1-pro-high","stream":true,"input":"ok"}`), nil)
+			}
+			require.NoError(t, err)
+			require.Equal(t, 2, calls)
+			require.Equal(t, 8, result.Usage.InputTokens)
+			require.Contains(t, recorder.Body.String(), `"ok"`)
+		})
+	}
+}
+
+func TestAntigravityCompatRecoveryDoesNotReplayContentOrFilters(t *testing.T) {
+	for _, body := range []string{
+		`data: {"response":{"candidates":[{"content":{"parts":[{"text":"partial"}]},"finishReason":"MALFORMED_FUNCTION_CALL"}]}}` + "\n\n",
+		`data: {"response":{"candidates":[{"finishReason":"SAFETY"}]}}` + "\n\n",
+	} {
+		svc := newAntigravityCompatService(config.GatewayConfig{}, nil)
+		c, _ := newAntigravityCompatContext(http.MethodPost, "/", nil)
+		calls := 0
+		_, _ = svc.handleAntigravityCompatStreamWithKeepaliveInterval(c,
+			&http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}, time.Now(), "gemini-3.1-pro",
+			newAntigravityChatStreamAdapter("gemini-3.1-pro", false), "test", time.Hour, time.Minute,
+			func() (*http.Response, error) { calls++; return antigravityCompatSuccessResponse(), nil })
+		require.Zero(t, calls)
+	}
+}
+
+func TestAntigravityCompatCancellationStopsScanner(t *testing.T) {
+	svc := newAntigravityCompatService(config.GatewayConfig{}, nil)
+	c, recorder := newAntigravityCompatContext(http.MethodPost, "/", nil)
+	ctx, cancel := context.WithCancel(c.Request.Context())
+	c.Request = c.Request.WithContext(ctx)
+	r, w := io.Pipe()
+	defer func() { _ = w.Close() }()
+	cancel()
+	result, err := svc.handleAntigravityCompatStream(c, &http.Response{StatusCode: 200, Body: r}, time.Now(),
+		"gemini-3.1-pro", newAntigravityChatStreamAdapter("gemini-3.1-pro", false), "test")
+	require.NoError(t, err)
+	require.True(t, result.clientDisconnect)
+	require.Empty(t, recorder.Body.String())
 }

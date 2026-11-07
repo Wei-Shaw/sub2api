@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -442,7 +443,41 @@ func (s *AntigravityGatewayService) consumeAntigravityCompatResponse(
 	if requestID != "" {
 		c.Header("x-request-id", requestID)
 	}
-	streamResult, err := s.consumeAntigravityCompatSuccess(c, call, resp)
+	var streamResult *antigravityStreamResult
+	var err error
+	if call.request.clientStream {
+		adapter := antigravityCompatStreamAdapter(newAntigravityResponsesStreamAdapter(call.request.originalModel))
+		if call.request.protocol == antigravityCompatChatCompletions {
+			adapter = newAntigravityChatStreamAdapter(call.request.originalModel, call.request.includeUsage)
+		}
+		retry := func() (*http.Response, error) {
+			// All attempts share the first-content deadline and client cancellation.
+			retryCtx, cancel := context.WithDeadline(ctx, call.request.startTime.Add(antigravityCompatPreContentMaxWait))
+			// The returned body must retain its context until it is consumed.
+			// One HTTP attempt per recovery: do not nest the transport's retry
+			// loop inside the stream retry budget or mutate account scheduling.
+			req, retryErr := antigravity.NewAPIRequestWithURL(retryCtx,
+				resolveAntigravityForwardBaseURL(account), "streamGenerateContent", call.accessToken, call.geminiBody)
+			if retryErr != nil {
+				cancel()
+				return nil, retryErr
+			}
+			next, retryErr := s.httpUpstream.Do(req, call.proxyURL, account.ID, account.Concurrency)
+			if retryErr != nil || next == nil {
+				if next != nil {
+					_ = next.Body.Close()
+				}
+				cancel()
+				return nil, fmt.Errorf("compatibility stream retry failed: %v", retryErr)
+			}
+			next.Body = &antigravityRetryBody{ReadCloser: next.Body, cancel: cancel}
+			return next, nil
+		}
+		streamResult, err = s.handleAntigravityCompatStream(c, resp, call.request.startTime,
+			call.request.originalModel, adapter, call.prefix, retry)
+	} else {
+		streamResult, err = s.consumeAntigravityCompatSuccess(c, call, resp)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -464,6 +499,16 @@ func (s *AntigravityGatewayService) consumeAntigravityCompatResponse(
 		ReasoningEffort:               call.request.reasoningEffort,
 		ClientDisconnect:              streamResult.clientDisconnect,
 	}, nil
+}
+
+type antigravityRetryBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (b *antigravityRetryBody) Close() error {
+	b.cancel()
+	return b.ReadCloser.Close()
 }
 
 func (s *AntigravityGatewayService) consumeAntigravityCompatSuccess(

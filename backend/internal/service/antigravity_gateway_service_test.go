@@ -1990,6 +1990,50 @@ func BenchmarkUnwrapV1Internal_New_Large(b *testing.B) {
 	}
 }
 
+func TestWrapV1InternalRequest_AppendsContinuationAfterModelTurn(t *testing.T) {
+	svc := &AntigravityGatewayService{}
+	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"q"}]},{"role":"model","parts":[{"text":""}]}]}`)
+
+	wrapped, err := svc.wrapV1InternalRequest("project-1", "gemini-3.8-flash-low", body)
+	require.NoError(t, err)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(wrapped, &got))
+	request, ok := got["request"].(map[string]any)
+	require.True(t, ok)
+	contents, ok := request["contents"].([]any)
+	require.True(t, ok)
+	require.Len(t, contents, 3)
+	last, ok := contents[2].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "user", last["role"])
+	parts, ok := last["parts"].([]any)
+	require.True(t, ok)
+	require.NotEmpty(t, parts)
+	part, ok := parts[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "[Continue]", part["text"])
+}
+
+func TestWrapV1InternalRequest_LeavesUserEndingUntouched(t *testing.T) {
+	svc := &AntigravityGatewayService{}
+	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"q"}]}]}`)
+
+	wrapped, err := svc.wrapV1InternalRequest("project-1", "gemini-3.8-flash-low", body)
+	require.NoError(t, err)
+
+	var got map[string]any
+	require.NoError(t, json.Unmarshal(wrapped, &got))
+	request, ok := got["request"].(map[string]any)
+	require.True(t, ok)
+	contents, ok := request["contents"].([]any)
+	require.True(t, ok)
+	require.Len(t, contents, 1)
+	first, ok := contents[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "user", first["role"])
+}
+
 // generateLargeUnwrapJSON 生成指定最小大小的包含 response 包装的 JSON
 func generateLargeUnwrapJSON(minSize int) []byte {
 	parts := make([]map[string]string, 0)
