@@ -292,7 +292,7 @@ type ErrorPolicyResult int
 
 const (
 	ErrorPolicyNone            ErrorPolicyResult = iota // 未命中任何策略，继续默认逻辑
-	ErrorPolicySkipped                                  // 自定义错误码开启但未命中，跳过处理
+	ErrorPolicySkipped                                  // 自定义错误码未命中、池模式或零时长规则，跳过状态处理
 	ErrorPolicyMatched                                  // 自定义错误码命中，应停止调度
 	ErrorPolicyTempUnscheduled                          // 临时不可调度规则命中
 )
@@ -306,6 +306,9 @@ func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Accoun
 			return ErrorPolicyMatched
 		}
 		slog.Info("account_error_code_skipped", "account_id", account.ID, "status_code", statusCode)
+		return ErrorPolicySkipped
+	}
+	if shouldIgnoreTempUnschedulableError(account, statusCode, responseBody) {
 		return ErrorPolicySkipped
 	}
 	if account.IsPoolMode() {
@@ -336,6 +339,9 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	// 同请求内与 fastpath 调用点的重复触发由方法内去重吸收。
 	s.maybeHandleOpenAITeamLinkedError(ctx, account, statusCode, responseBody)
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
+	if shouldIgnoreTempUnschedulableError(account, statusCode, responseBody) {
+		return false
+	}
 
 	// 池模式默认不标记本地账号状态；但管理员显式配置的临时不可调度规则优先。
 	// 401 只在非凭据级且命中显式模型级规则时由规则处理，其余保留池模式现有的认证处理。
@@ -2754,6 +2760,17 @@ func matchTempUnschedulableRules(account *Account, statusCode int, responseBody 
 	return matches
 }
 
+// shouldIgnoreTempUnschedulableError honors the first matching rule. A zero
+// duration skips all scheduling state changes, while custom error codes retain
+// their existing precedence over temporary-unschedulable rules.
+func shouldIgnoreTempUnschedulableError(account *Account, statusCode int, responseBody []byte) bool {
+	if account == nil || account.IsCustomErrorCodesEnabled() {
+		return false
+	}
+	matches := matchTempUnschedulableRules(account, statusCode, responseBody)
+	return len(matches) > 0 && matches[0].rule.DurationMinutes == 0
+}
+
 func (s *RateLimitService) tryTempUnschedulable(ctx context.Context, account *Account, statusCode int, responseBody []byte, requestedModel ...string) bool {
 	if account == nil {
 		return false
@@ -2762,7 +2779,7 @@ func (s *RateLimitService) tryTempUnschedulable(ctx context.Context, account *Ac
 		return false
 	}
 	matches := matchTempUnschedulableRules(account, statusCode, responseBody)
-	if len(matches) == 0 {
+	if len(matches) == 0 || matches[0].rule.DurationMinutes == 0 {
 		return false
 	}
 	modelKey := tempUnschedulableModel(ctx, requestedModel)
@@ -2786,6 +2803,9 @@ func (s *RateLimitService) tryTempUnschedulable(ctx context.Context, account *Ac
 		}
 	}
 	for _, match := range matches {
+		if match.rule.DurationMinutes == 0 {
+			return false
+		}
 		if s.triggerTempUnschedulable(ctx, account, match.rule, match.ruleIndex, statusCode, match.matchedKeyword, responseBody, modelKey) {
 			return true
 		}

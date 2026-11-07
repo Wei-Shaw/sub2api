@@ -1677,6 +1677,7 @@
           </div>
           <button
             type="button"
+            data-testid="temp-unsched-toggle"
             @click="tempUnschedEnabled = !tempUnschedEnabled"
             :class="[
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
@@ -1768,7 +1769,8 @@
                   <input
                     v-model.number="rule.duration_minutes"
                     type="number"
-                    min="1"
+                    min="0"
+                    data-testid="temp-unsched-duration"
                     class="input"
                     :placeholder="t('admin.accounts.tempUnschedulable.durationPlaceholder')"
                   />
@@ -5251,7 +5253,7 @@ const buildTempUnschedRules = (rules: TempUnschedRuleForm[]) => {
     if (!Number.isFinite(errorCode) || errorCode < 100 || errorCode > 599) {
       continue
     }
-    if (!Number.isFinite(duration) || duration <= 0) {
+    if (typeof rule.duration_minutes !== 'number' || !Number.isInteger(duration) || duration < 0) {
       continue
     }
     if (keywords.length === 0) {
@@ -5364,7 +5366,7 @@ function loadTempUnschedRules(credentials?: Record<string, unknown>) {
     return {
       error_code: errorCode,
       keywords: formatTempUnschedKeywords(entry.keywords),
-      duration_minutes: toPositiveNumber(entry.duration_minutes),
+      duration_minutes: toTempUnschedDuration(entry.duration_minutes),
       description: typeof entry.description === 'string' ? entry.description : '',
       scope: resolveTempUnschedScope(entry.scope, errorCode)
     }
@@ -5480,6 +5482,13 @@ const splitTempUnschedKeywords = (value: string) => {
     .split(/[,;]/)
     .map((item) => item.trim())
     .filter((item) => item.length > 0)
+}
+
+function toTempUnschedDuration(value: unknown) {
+  if (typeof value !== 'number' && typeof value !== 'string') return null
+  if (typeof value === 'string' && value.trim() === '') return null
+  const num = Number(value)
+  return Number.isInteger(num) && num >= 0 ? num : null
 }
 
 function toPositiveNumber(value: unknown) {

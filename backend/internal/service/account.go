@@ -141,7 +141,7 @@ const (
 type TempUnschedulableRule struct {
 	ErrorCode       int      `json:"error_code"`
 	Keywords        []string `json:"keywords"`
-	DurationMinutes int      `json:"duration_minutes"`
+	DurationMinutes int      `json:"duration_minutes"` // 0 ignores matching errors without changing scheduling state.
 	Description     string   `json:"description"`
 	// Scope 决定命中后的隔离粒度：account 暂停整个账号，model 只冷却本次请求的模型。
 	// 为空时模型已知且非 401 走模型级，否则账号级。
@@ -474,15 +474,20 @@ func (a *Account) GetTempUnschedulableRules() []TempUnschedulableRule {
 			continue
 		}
 
+		errorCode, validCode := parseTempUnschedInt(entry["error_code"])
+		duration, validDuration := parseTempUnschedInt(entry["duration_minutes"])
+		if !validCode || !validDuration {
+			continue
+		}
 		rule := TempUnschedulableRule{
-			ErrorCode:       parseTempUnschedInt(entry["error_code"]),
+			ErrorCode:       errorCode,
 			Keywords:        parseTempUnschedStrings(entry["keywords"]),
-			DurationMinutes: parseTempUnschedInt(entry["duration_minutes"]),
+			DurationMinutes: duration,
 			Description:     parseTempUnschedString(entry["description"]),
 			Scope:           normalizeTempUnschedScope(entry["scope"]),
 		}
 
-		if rule.ErrorCode <= 0 || rule.DurationMinutes <= 0 || len(rule.Keywords) == 0 {
+		if rule.ErrorCode <= 0 || rule.DurationMinutes < 0 || len(rule.Keywords) == 0 {
 			continue
 		}
 
@@ -553,24 +558,25 @@ func normalizeAccountNotes(value *string) *string {
 	return &trimmed
 }
 
-func parseTempUnschedInt(value any) int {
+func parseTempUnschedInt(value any) (int, bool) {
 	switch v := value.(type) {
 	case int:
-		return v
+		return v, true
 	case int64:
-		return int(v)
+		return int(v), true
 	case float64:
-		return int(v)
+		i := int(v)
+		return i, float64(i) == v
 	case json.Number:
 		if i, err := v.Int64(); err == nil {
-			return int(i)
+			return int(i), true
 		}
 	case string:
 		if i, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
-			return i
+			return i, true
 		}
 	}
-	return 0
+	return 0, false
 }
 
 const (
