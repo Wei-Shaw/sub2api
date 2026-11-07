@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/tidwall/gjson"
 )
 
 // Gemini 原生请求（/v1beta/models/{model}:generateContent 等）经 Antigravity 账号转发时，
@@ -106,6 +107,47 @@ func geminiThinkingLevelFromClaudeThinking(thinking *antigravity.ThinkingConfig)
 	default:
 		return "high"
 	}
+}
+
+// geminiThinkingLevelFromReasoningEffort uses the same variant scale for
+// OpenAI reasoning effort and Anthropic output_config.effort.
+func geminiThinkingLevelFromReasoningEffort(effort *string) (string, bool) {
+	if effort == nil {
+		return "", false
+	}
+	switch strings.ToLower(strings.TrimSpace(*effort)) {
+	case "none", "minimal", "low":
+		return "low", true
+	case "medium":
+		return "medium", true
+	case "high", "xhigh", "max":
+		return "high", true
+	default:
+		return "", false
+	}
+}
+
+// Read the original client body: protocol conversion can synthesize a budget
+// (or omit thinking for low), neither of which is an explicit client budget.
+// Keep disabled/budget semantics, then honor effort before defaulting to high.
+func geminiThinkingLevelFromClaudeRequest(body []byte, reasoningEffort *string) string {
+	typ := gjson.GetBytes(body, "thinking.type").String()
+	if strings.EqualFold(strings.TrimSpace(typ), "disabled") {
+		return "low"
+	}
+	if budget := gjson.GetBytes(body, "thinking.budget_tokens"); budget.Exists() {
+		return geminiThinkingLevelFromClaudeThinking(&antigravity.ThinkingConfig{
+			Type: typ, BudgetTokens: int(budget.Int()),
+		})
+	}
+	effort := gjson.GetBytes(body, "output_config.effort").String()
+	if level, ok := geminiThinkingLevelFromReasoningEffort(&effort); ok {
+		return level
+	}
+	if level, ok := geminiThinkingLevelFromReasoningEffort(reasoningEffort); ok {
+		return level
+	}
+	return "high"
 }
 
 // resolveGeminiThinkingVariant 为裸 Gemini 模型名挑选账号映射表里存在的思考深度变体。
