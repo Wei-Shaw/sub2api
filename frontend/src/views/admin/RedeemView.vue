@@ -4,7 +4,7 @@
       <template #filters>
         <div class="flex flex-wrap items-center gap-3">
           <!-- Left: Search + Filters -->
-          <div class="flex-1 sm:max-w-64">
+          <div class="w-full sm:w-auto sm:max-w-64 sm:flex-1">
             <input
               v-model="searchQuery"
               type="text"
@@ -16,13 +16,13 @@
           <Select
             v-model="filters.type"
             :options="filterTypeOptions"
-            class="w-36"
+            class="w-[calc(50%-0.375rem)] sm:w-36"
             @change="loadCodes"
           />
           <Select
             v-model="filters.status"
             :options="filterStatusOptions"
-            class="w-36"
+            class="w-[calc(50%-0.375rem)] sm:w-36"
             @change="loadCodes"
           />
 
