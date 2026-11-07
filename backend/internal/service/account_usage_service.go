@@ -155,6 +155,21 @@ type UsageProgress struct {
 	LimitRequests    int64        `json:"limit_requests,omitempty"`
 }
 
+// AntigravityQuotaGroup is a group of Antigravity models that share their quota windows.
+type AntigravityQuotaGroup struct {
+	Key         string                    `json:"key"` // bucket prefix, e.g. "gemini" or "3p"
+	Name        string                    `json:"name"`
+	Description string                    `json:"description,omitempty"`
+	Windows     []*AntigravityQuotaWindow `json:"windows"`
+}
+
+// AntigravityQuotaWindow is one window ("5h" or "weekly") of an Antigravity quota group.
+type AntigravityQuotaWindow struct {
+	Window      string     `json:"window"`
+	Utilization float64    `json:"utilization"` // used percentage, 0-100
+	ResetsAt    *time.Time `json:"resets_at"`
+}
+
 // AntigravityModelQuota Antigravity 单个模型的配额信息
 type AntigravityModelQuota struct {
 	Utilization int    `json:"utilization"` // 使用率 0-100
@@ -197,6 +212,9 @@ type UsageInfo struct {
 
 	// Antigravity 多模型配额
 	AntigravityQuota map[string]*AntigravityModelQuota `json:"antigravity_quota,omitempty"`
+	// Antigravity per-group 5-hour and weekly windows (retrieveUserQuotaSummary). Within a group
+	// every model shares both windows; fetchAvailableModels cannot tell the two apart.
+	AntigravityQuotaGroups []*AntigravityQuotaGroup `json:"antigravity_quota_groups,omitempty"`
 
 	// Grok / xAI 被动额度快照
 	GrokRequestQuota       *xai.QuotaWindow `json:"grok_request_quota,omitempty"`
