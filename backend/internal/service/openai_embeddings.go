@@ -24,6 +24,29 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 	body []byte,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
+	return s.forwardEmbeddings(ctx, c, account, body, defaultMappedModel, "/v1/embeddings")
+}
+
+// ForwardMultimodalEmbeddings preserves the upstream's structured multimodal
+// input and native response while sharing ordinary embeddings accounting.
+func (s *OpenAIGatewayService) ForwardMultimodalEmbeddings(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	defaultMappedModel string,
+) (*OpenAIForwardResult, error) {
+	return s.forwardEmbeddings(ctx, c, account, body, defaultMappedModel, "/v1/embeddings/multimodal")
+}
+
+func (s *OpenAIGatewayService) forwardEmbeddings(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	defaultMappedModel string,
+	endpoint string,
+) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
 
 	originalModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
@@ -61,7 +84,7 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 	if err != nil {
 		return nil, fmt.Errorf("invalid base_url: %w", err)
 	}
-	targetURL := buildOpenAIEmbeddingsURL(validatedURL)
+	targetURL := buildOpenAIEndpointURL(validatedURL, endpoint)
 
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	upstreamReq, err := http.NewRequestWithContext(upstreamCtx, http.MethodPost, targetURL, bytes.NewReader(upstreamBody))
@@ -245,8 +268,4 @@ func firstPositiveGJSONInt(values ...gjson.Result) int {
 		}
 	}
 	return 0
-}
-
-func buildOpenAIEmbeddingsURL(base string) string {
-	return buildOpenAIEndpointURL(base, "/v1/embeddings")
 }

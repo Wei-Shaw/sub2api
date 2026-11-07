@@ -54,6 +54,24 @@ func TestSnapshotRedactsCanariesAndPreservesHashOfScanText(t *testing.T) {
 	require.Empty(t, snapshot.Redacted().ScanText)
 }
 
+func TestExtractPromptSnapshotMultimodalEmbeddings(t *testing.T) {
+	request := Request{Protocol: "openai_embeddings", Body: []byte(`{
+		"model":"doubao-embedding-vision-251215",
+		"instructions":"Find related content",
+		"input":[
+			{"type":"image_url","image_url":{"url":"data:image/png;base64,aW1hZ2U="}},
+			{"type":"image_url","image_url":{"url":"https://example.com/private-image.png"}},
+			{"type":"text","text":"A blue sky above the sea"}
+		]
+	}`)}
+	snapshot, err := ExtractPromptSnapshot(request)
+	require.NoError(t, err)
+	require.Contains(t, snapshot.ScanText, "Find related content")
+	require.Contains(t, snapshot.ScanText, "A blue sky above the sea")
+	require.NotContains(t, snapshot.ScanText, "aW1hZ2U=")
+	require.NotContains(t, snapshot.ScanText, "private-image.png")
+}
+
 func TestSnapshotFullPromptKeepsUnredactedText(t *testing.T) {
 	body := `{"messages":[{"role":"user","content":"PROMPT_CANARY_ABC123 email@example.com sk-secretvalue123"}]}`
 	snapshot, err := ExtractPromptSnapshot(Request{Protocol: "openai_chat_completions", Body: []byte(body)})
