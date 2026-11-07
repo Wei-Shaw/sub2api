@@ -1170,6 +1170,9 @@ pricing:
 # 计费配置
 # =============================================================================
 billing:
+  # 输出 token 为 0 时免除该条普通模型请求的客户费用，但保留用量记录。
+  # 图片、视频、语音和搜索等媒体/附加计费请求不受影响。
+  zero_output_free: false
   circuit_breaker:
     # Enable circuit breaker for billing service
     # 启用计费服务熔断器

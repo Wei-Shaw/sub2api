@@ -327,6 +327,15 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 			cost.ActualCost = standardCost.ActualCost
 		}
 	}
+	// 仅对普通模型请求应用“零输出免费”策略；媒体和附加计费请求保留原有价格。
+	cost = zeroOutputFreeCost(
+		s.cfg,
+		cost,
+		result.Usage.OutputTokens,
+		result.Usage.ImageOutputTokens,
+		result.ImageCount > 0 || result.VideoCount > 0 || result.AudioUsage != nil ||
+			result.WebSearchCalls > 0 || result.SearchCount > 0,
+	)
 
 	// Determine billing type
 	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
