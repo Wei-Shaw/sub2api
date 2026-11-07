@@ -1,7 +1,7 @@
 <template>
   <div class="space-y-4">
     <!-- Quick Amount Buttons -->
-    <div>
+    <div v-if="filteredAmounts.length > 0">
       <label class="mb-4 block text-base font-semibold text-gray-900 dark:text-white">
         {{ t('payment.quickAmounts') }}
         <span class="ml-1 text-xs font-normal text-gray-400 dark:text-gray-500">· {{ t('payment.paymentAmount') }}</span>
