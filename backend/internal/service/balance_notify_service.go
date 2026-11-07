@@ -277,7 +277,7 @@ func (s *BalanceNotifyService) CheckAccountBalanceLow(ctx context.Context, accou
 				slog.Error("panic in account balance low notification", "recover", r)
 			}
 		}()
-		s.sendAccountBalanceLowEmails(emails, account.ID, account.Name, account.Platform, balance, currencyLabel, threshold, siteName)
+		s.sendAccountBalanceLowEmails(context.Background(), emails, account.ID, account.Name, account.Platform, balance, currencyLabel, threshold, siteName)
 	}()
 }
 
@@ -516,6 +516,7 @@ func (s *BalanceNotifyService) sendQuotaAlertEmails(parent context.Context, admi
 
 // sendAccountBalanceLowEmails sends upstream/account balance-low alerts to admin emails.
 func (s *BalanceNotifyService) sendAccountBalanceLowEmails(
+	parent context.Context,
 	adminEmails []string,
 	accountID int64,
 	accountName, platform string,
@@ -527,7 +528,10 @@ func (s *BalanceNotifyService) sendAccountBalanceLowEmails(
 	if s.notificationEmailService != nil {
 		fallbackRecipients := make([]string, 0, len(adminEmails))
 		for _, to := range adminEmails {
-			ctx, cancel := context.WithTimeout(context.Background(), emailSendTimeout)
+			if parent.Err() != nil {
+				return
+			}
+			ctx, cancel := context.WithTimeout(parent, emailSendTimeout)
 			err := s.notificationEmailService.Send(ctx, NotificationEmailSendInput{
 				Event:          NotificationEmailEventAccountBalanceLow,
 				RecipientEmail: to,
@@ -562,7 +566,7 @@ func (s *BalanceNotifyService) sendAccountBalanceLowEmails(
 
 	subject := fmt.Sprintf("[%s] 账号余额不足 / Account Balance Low - %s", sanitizeEmailHeader(siteName), sanitizeEmailHeader(accountName))
 	body := s.buildAccountBalanceLowEmailBody(accountID, html.EscapeString(accountName), html.EscapeString(platform), balance, html.EscapeString(currency), threshold, html.EscapeString(siteName))
-	s.sendEmails(adminEmails, subject, body, "account", accountName, "balance", balance)
+	s.sendEmails(parent, adminEmails, subject, body, "account", accountName, "balance", balance)
 }
 
 // sanitizeEmailHeader removes CR/LF characters to prevent SMTP header injection.
