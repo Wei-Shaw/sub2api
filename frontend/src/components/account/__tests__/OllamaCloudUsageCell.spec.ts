@@ -140,4 +140,30 @@ describe('OllamaCloudUsageCell', () => {
 
     expect(wrapper.find('[data-testid="ollama-cloud-usage-query"]').exists()).toBe(false)
   })
+  it('retains successful values after a failed query and accepts only newer same-id snapshots', async () => {
+    const fresh = usageState()
+    fresh.snapshot!.data!.five_hour!.used_percent = 43
+    refreshOllamaCloudUsage.mockResolvedValueOnce(fresh)
+    const wrapper = mount(OllamaCloudUsageCell, { props: { account: account() } })
+    await wrapper.get('[data-testid="ollama-cloud-usage-query"]').trigger('click')
+    await flushPromises()
+    const stale = usageState()
+    stale.snapshot!.fetched_at = '2026-07-21T12:00:00Z'
+    stale.snapshot!.data!.five_hour!.used_percent = 1
+    await wrapper.setProps({ account: account(stale) })
+    expect(wrapper.findAllComponents(UsageProgressBar)[0].props('utilization')).toBe(43)
+    const newer = usageState()
+    newer.snapshot!.fetched_at = '2026-07-23T12:00:00Z'
+    newer.snapshot!.data!.five_hour!.used_percent = 77
+    await wrapper.setProps({ account: account(newer) })
+    expect(wrapper.findAllComponents(UsageProgressBar)[0].props('utilization')).toBe(77)
+    refreshOllamaCloudUsage.mockResolvedValueOnce({ ...newer, snapshot: { ...newer.snapshot, status: 'failed', last_error: 'upstream failed' } })
+    await wrapper.get('[data-testid="ollama-cloud-usage-query"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.findAllComponents(UsageProgressBar)[0].props('utilization')).toBe(77)
+    expect(wrapper.text()).toContain('showingLastData')
+    expect(wrapper.emitted('updated')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
 })

@@ -62,7 +62,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { adminAPI } from '@/api/admin'
+import { useAccountQuotaRefresh, quotaSnapshotTime } from '@/utils/accountQuotaRefresh'
 import type { CNProviderQuotaProbeResult } from '@/api/admin/cnProviders'
 import type { Account } from '@/types'
 import { cnQuotaCellVisible } from './credentialsBuilder'
@@ -76,6 +76,7 @@ const { t } = useI18n()
 
 const visible = computed(() => cnQuotaCellVisible(props.account))
 
+const quotaQuery = useAccountQuotaRefresh(() => props.account)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const data = ref<CNProviderQuotaProbeResult | null>(null)
@@ -115,7 +116,7 @@ const snapshotData = computed<CNProviderQuotaProbeResult | null>(() => {
   if (usedMonthly != null) {
     tiers.push({ window: 'monthly', used_percent: usedMonthly, reset_at: readExtraString(`${platform}_monthly_reset_at`) || undefined })
   }
-  return { success: true, tiers } as CNProviderQuotaProbeResult
+  return { success: true, tiers, fetched_at: quotaSnapshotTime(readExtraString(`${platform}_usage_updated_at`)) / 1000 } as CNProviderQuotaProbeResult
 })
 
 // 快照是否过期（无更新时间或超过 staleness 窗口）→ 挂载时需要自动探测。
@@ -129,7 +130,7 @@ const snapshotIsStale = computed(() => {
 // 挂载时：先用持久化快照渲染；快照缺失或过期再自动探测一次（失败显示错误，
 // 避免静默失败导致单元格空白无提示）。
 onMounted(() => {
-  if (!visible.value) return
+  if (!visible.value || quotaQuery.state.value) return
   data.value = snapshotData.value
   if (!snapshotIsStale.value) return
   // 模块级去抖：列表页每行一个实例，翻页/筛选/刷新会重复挂载；同一账号
@@ -139,21 +140,6 @@ onMounted(() => {
   lastAutoProbeAt.set(props.account.id, Date.now())
   handleProbe()
 })
-
-const extractErrorMessage = (e: unknown): string => {
-  const err = e as {
-    message?: string
-    reason?: string
-    response?: { data?: { message?: string; error?: string } }
-  }
-  return (
-    err?.message ||
-    err?.reason ||
-    err?.response?.data?.message ||
-    err?.response?.data?.error ||
-    t('common.error')
-  )
-}
 
 const truncatedError = computed(() => {
   if (!error.value) return ''
@@ -167,27 +153,29 @@ const windowLabel = (window: string) => {
 }
 
 const handleProbe = async () => {
-  if (loading.value) return
-  loading.value = true
-  error.value = null
-  try {
-    const result = await adminAPI.cnProviders.queryQuota(props.account.id)
-    // 失败时保留已渲染的快照条形图（仅显示错误行），成功才覆盖。
-    if (result.success) {
-      data.value = result
-    } else {
-      error.value = result.error || t('common.error')
-    }
-  } catch (e) {
-    error.value = extractErrorMessage(e)
-  } finally {
-    loading.value = false
-  }
+  await quotaQuery.refresh()
 }
+watch(quotaQuery.state, (state) => {
+  if (!state) return
+  loading.value = state.loading
+  error.value = state.error
+    ? `${t('admin.accounts.usageWindow.showingLastData')}: ${state.error}`
+    : null
+}, { deep: true, immediate: true })
+watch(() => quotaQuery.state.value?.data?.quota, (next) => {
+  if (next) data.value = next
+}, { immediate: true })
+
+watch(snapshotData, (next) => {
+  if (!next || quotaQuery.state.value?.loading) return
+  const sampledAt = quotaSnapshotTime(data.value?.fetched_at) || quotaQuery.state.value?.succeededAt || 0
+  if (!quotaQuery.state.value?.data || quotaSnapshotTime(next.fetched_at) > sampledAt) data.value = next
+}, { deep: true, immediate: true })
 
 watch(
   () => props.account.id,
   () => {
+    if (quotaQuery.state.value) return
     data.value = null
     error.value = null
     loading.value = false

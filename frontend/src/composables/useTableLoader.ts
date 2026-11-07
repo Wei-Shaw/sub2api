@@ -56,10 +56,12 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
         { signal: currentController.signal }
       )
 
+      if (currentController.signal.aborted || abortController !== currentController) return
       items.value = response.items || []
       pagination.total = response.total || 0
       pagination.pages = response.pages || 0
     } catch (error) {
+      if (currentController.signal.aborted || abortController !== currentController) return
       if (!isAbortError(error)) {
         console.error('Table load error:', error)
         throw error
@@ -92,9 +94,13 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
     load()
   }
 
-  onUnmounted(() => {
+  const cancelPending = () => {
     abortController?.abort()
-  })
+    abortController = null
+    loading.value = false
+  }
+
+  onUnmounted(cancelPending)
 
   return {
     items,
@@ -104,6 +110,7 @@ export function useTableLoader<T, P extends Record<string, any>>(options: TableL
     load,
     reload,
     debouncedReload,
+    cancelPending,
     handlePageChange,
     handlePageSizeChange
   }

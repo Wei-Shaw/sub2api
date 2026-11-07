@@ -42,7 +42,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { adminAPI } from '@/api/admin'
+import { useAccountQuotaRefresh } from '@/utils/accountQuotaRefresh'
 import type { GrokQuotaProbeResult } from '@/api/admin/grok'
 import type { Account } from '@/types'
 
@@ -60,24 +60,10 @@ const emit = defineEmits<{ probed: [result: GrokQuotaProbeResult] }>()
 const { t } = useI18n()
 
 const visible = computed(() => props.account.platform === 'grok' && props.account.type === 'oauth')
+const quotaQuery = useAccountQuotaRefresh(() => props.account)
 const loading = ref(false)
 const error = ref<string | null>(null)
 const data = ref<GrokQuotaProbeResult | null>(null)
-
-const extractErrorMessage = (e: unknown): string => {
-  const err = e as {
-    message?: string
-    reason?: string
-    response?: { data?: { message?: string; error?: string } }
-  }
-  return (
-    err?.message ||
-    err?.reason ||
-    err?.response?.data?.message ||
-    err?.response?.data?.error ||
-    t('common.error')
-  )
-}
 
 const summary = computed(() => {
   if (props.compact || !data.value) return ''
@@ -97,23 +83,24 @@ const truncatedError = computed(() => {
 })
 
 const handleProbe = async () => {
-  if (loading.value) return
-  loading.value = true
-  error.value = null
-  try {
-    data.value = await adminAPI.grok.queryQuota(props.account.id)
-    error.value = data.value.probe_error || null
-    emit('probed', data.value)
-  } catch (e) {
-    error.value = extractErrorMessage(e)
-  } finally {
-    loading.value = false
-  }
+  await quotaQuery.refresh()
 }
+watch(quotaQuery.state, (state) => {
+  if (!state) return
+  loading.value = state.loading
+  error.value = state.error
+    ? `${t('admin.accounts.usageWindow.showingLastData')}: ${state.error}`
+    : null
+  if (state.data?.grok) data.value = state.data.grok
+}, { deep: true, immediate: true })
+watch(() => quotaQuery.state.value?.data?.grok, (result) => {
+  if (result) emit('probed', result)
+}, { immediate: true })
 
 watch(
   () => props.account.id,
   () => {
+    if (quotaQuery.state.value) return
     data.value = null
     error.value = null
     loading.value = false

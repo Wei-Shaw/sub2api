@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -96,7 +98,19 @@ func (s *claudeUsageService) FetchUsageWithOptions(ctx context.Context, opts *se
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		msg := fmt.Sprintf("API returned status %d: %s", resp.StatusCode, string(body))
-		return nil, infraerrors.New(http.StatusInternalServerError, "UPSTREAM_ERROR", msg)
+		upstreamErr := infraerrors.New(http.StatusInternalServerError, "UPSTREAM_ERROR", msg)
+		// Preserve the upstream cooldown for both normal and forced usage reads.
+		rawRetryAfter := strings.TrimSpace(resp.Header.Get("Retry-After"))
+		seconds, parseErr := strconv.Atoi(rawRetryAfter)
+		if parseErr != nil {
+			if until, err := http.ParseTime(rawRetryAfter); err == nil {
+				seconds = int((time.Until(until) + time.Second - 1) / time.Second)
+			}
+		}
+		if seconds > 0 {
+			upstreamErr = upstreamErr.WithMetadata(map[string]string{"retry_after": strconv.Itoa(seconds)})
+		}
+		return nil, upstreamErr
 	}
 
 	var usageResp service.ClaudeUsageResponse
