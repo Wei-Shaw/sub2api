@@ -5962,6 +5962,7 @@
                         :options="[
                           { value: 'brave', label: 'Brave Search' },
                           { value: 'tavily', label: 'Tavily' },
+                          { value: 'deepseek', label: 'DeepSeek' },
                         ]"
                         class="w-36"
                         @click.stop
