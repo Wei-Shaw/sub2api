@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
@@ -33,6 +34,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	clearOpenAIResponsesClientToolMapping(c)
 	clearOpenAIResponsesNamespaceNames(c)
 	setCodexToolNameReverse(c, nil)
+	rememberOpenAIResponsesClientInstructions(c, body)
 	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
 		return nil, err
 	}
@@ -290,16 +292,45 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	bodyModified := false
 	clientPromptCacheKey := promptCacheKey
 	var reqBody map[string]any
-	ensureReqBody := func() (map[string]any, error) {
-		if requestView.HasPatches() {
-			patchedBody, patchErr := requestView.ApplyPatches()
-			if patchErr != nil {
-				return nil, patchErr
-			}
+	// Each patched body supersedes the previous one, so this attempt holds only
+	// the live output's budget, returned when Forward ends rather than retained
+	// across failover attempts until the handler returns.
+	releasePatchedBodyMemory := func() {}
+	defer func() { releasePatchedBodyMemory() }()
+	flushPatches := func() error {
+		if !requestView.HasPatches() {
+			return nil
+		}
+		patchCtx, releasePatch := httputil.WithRequestBodyMemoryScope(ctx)
+		patchedBody, patchErr := requestView.ApplyPatches(patchCtx)
+		if patchErr == nil {
+			releasePatchedBodyMemory()
+			releasePatchedBodyMemory = releasePatch
 			body = patchedBody
 			requestView = newOpenAIRequestView(body)
 			reqBody = nil
 			bodyModified = false
+			return nil
+		}
+		releasePatch()
+		if errors.Is(patchErr, httputil.ErrRequestBodyMemoryBudget) {
+			return patchErr
+		}
+		// Raw edits cannot express this patch set. Replay it on the decoded
+		// body so the map-based fallback still applies every edit.
+		if reqBody == nil {
+			decoded, decodeErr := requestView.Decode(c)
+			if decodeErr != nil {
+				return decodeErr
+			}
+			reqBody = decoded
+		}
+		requestView.MovePatchesTo(reqBody)
+		return nil
+	}
+	ensureReqBody := func() (map[string]any, error) {
+		if err := flushPatches(); err != nil {
+			return nil, err
 		}
 		if reqBody != nil {
 			return reqBody, nil
@@ -705,13 +736,8 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	if bodyModified {
-		if requestView.HasPatches() {
-			if patchedBody, patchErr := requestView.ApplyPatches(); patchErr == nil {
-				body = patchedBody
-				requestView = newOpenAIRequestView(body)
-				reqBody = nil
-				bodyModified = false
-			}
+		if err := flushPatches(); err != nil {
+			return nil, err
 		}
 		if bodyModified {
 			decoded, decodeErr := ensureReqBody()
@@ -1042,6 +1068,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 				upstreamCtx, releaseUpstreamCtx, startTime.Add(firstOutputTimeout),
 			)
 		}
+		syncOpenAIResponsesInstructionsEcho(c, body)
 		upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, body, token, reqStream, promptCacheKey, isCodexCLI)
 		if headerGuard == nil {
 			releaseUpstreamCtx()
@@ -1207,7 +1234,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
 				maxLineSize = s.cfg.Gateway.MaxLineSize
 			}
-			resp.Body = newResponsesClientToolStreamBody(resp.Body, mapping, maxLineSize)
+			resp.Body = newResponsesClientToolStreamBody(resp.Body, mapping, maxLineSize, s.cfg)
 		}
 
 		serviceTier := extractOpenAIServiceTierFromBody(body)

@@ -18,6 +18,7 @@ type Rule struct {
 }
 
 type Policy struct {
+	FullAccess        bool     `json:"full_access,omitempty"`
 	Rules             []Rule   `json:"rules"`
 	GlobalPermissions []string `json:"global_permissions"`
 }
@@ -45,6 +46,16 @@ func WithPrincipal(ctx context.Context, principal *Principal) context.Context {
 func FromContext(ctx context.Context) *Principal {
 	principal, _ := ctx.Value(principalContextKey{}).(*Principal)
 	return principal
+}
+
+// RestrictedFromContext 只返回需要资源限制和响应裁剪的密钥。
+// 全权密钥仍保留原 Principal，供审计、限流和幂等隔离使用。
+func RestrictedFromContext(ctx context.Context) *Principal {
+	principal := FromContext(ctx)
+	if principal != nil && !principal.Policy.FullAccess {
+		return principal
+	}
+	return nil
 }
 
 // Matches 保持分组、类型和平台在同一规则中匹配，不拆开合并授权条件。
