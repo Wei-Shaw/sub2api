@@ -953,3 +953,41 @@ func TestSelectAccountWithLoadAwareness_StickyReadReuse(t *testing.T) {
 		require.Equal(t, int64(1), cache.getCalls.Load())
 	})
 }
+
+func TestGetAvailableModels_RetirementPreservesCacheContract(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		account   Account
+		wantNil   bool
+		wantEmpty bool
+	}{
+		{name: "subscription defaults", account: Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth}},
+		{name: "all configured models retired", account: Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth,
+			Credentials: map[string]any{"model_mapping": map[string]any{"gpt-5.5": "gpt-5.5"}}}, wantEmpty: true},
+		{name: "API key default sentinel", account: Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, wantNil: true, wantEmpty: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			groupID := int64(9)
+			repo := &modelsListAccountRepoStub{byGroup: map[int64][]Account{groupID: {tc.account}}}
+			svc := &GatewayService{accountRepo: repo, modelsListCache: gocache.New(time.Minute, time.Minute), modelsListCacheTTL: time.Minute}
+			first := svc.GetAvailableModels(context.Background(), &groupID, PlatformOpenAI)
+			require.Equal(t, tc.wantNil, first == nil, "nil requests defaults; empty explicitly excludes all models")
+			require.Equal(t, tc.wantEmpty, len(first) == 0)
+			require.NotContains(t, first, "gpt-5.5")
+			want := append([]string{}, first...)
+			if len(first) > 0 {
+				first[0] = "caller-mutated-model"
+			}
+			second := svc.GetAvailableModels(context.Background(), &groupID, PlatformOpenAI)
+			require.Equal(t, tc.wantNil, second == nil, "cache hits must preserve the listing sentinel")
+			require.Equal(t, want, append([]string{}, second...), "callers cannot mutate the cache")
+			require.Equal(t, int64(1), repo.listByGroupCalls.Load(), "filtered catalogs must use the existing short cache")
+
+			repo.byGroup[groupID] = []Account{{ID: 2, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+				Credentials: map[string]any{"model_mapping": map[string]any{"fresh-model": "fresh-model"}}}}
+			svc.InvalidateAvailableModelsCache(&groupID, PlatformOpenAI)
+			require.Equal(t, []string{"fresh-model"}, svc.GetAvailableModels(context.Background(), &groupID, PlatformOpenAI))
+			require.Equal(t, int64(2), repo.listByGroupCalls.Load(), "existing invalidation must refresh every catalog shape")
+		})
+	}
+}

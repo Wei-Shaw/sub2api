@@ -217,8 +217,9 @@ func anthropicStreamEventIsTerminal(eventName, data string) bool {
 	return gjson.Get(trimmed, "type").String() == "message_stop"
 }
 
+// Preserve nil (use defaults) versus a non-nil empty catalog (no models).
 func cloneStringSlice(src []string) []string {
-	if len(src) == 0 {
+	if src == nil {
 		return nil
 	}
 	dst := make([]string, len(src))
@@ -1465,35 +1466,25 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		}
 	}
 
-	// If no account has model_mapping, return nil (use default)
-	if !hasAnyMapping && platform == PlatformOpenAI {
-		models := filterRetiredOpenAIModelIDs(accounts, openai.DefaultModelIDs())
-		if len(models) != len(openai.DefaultModels) {
-			return models
-		}
-	}
+	var models []string
 	if !hasAnyMapping {
-		if s.modelsListCache != nil {
-			s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
-			modelsListCacheStoreTotal.Add(1)
+		// nil preserves the existing default-list contract. A subscription's
+		// filtered defaults are authoritative and use the same cache below.
+		if platform == PlatformOpenAI {
+			filtered := filterRetiredOpenAIModelIDs(accounts, openai.DefaultModelIDs())
+			if len(filtered) != len(openai.DefaultModels) {
+				models = filtered
+			}
 		}
-		return nil
-	}
-
-	// Convert to slice
-	models := make([]string, 0, len(modelSet))
-	for model := range modelSet {
-		models = append(models, model)
-	}
-	sort.Strings(models)
-
-	if platform == PlatformOpenAI {
-		models = supplementUnmappedOpenAIModels(accounts, models)
-		models = filterRetiredOpenAIModelIDs(accounts, models)
-		// nil means "use defaults" to listing callers; an empty filtered catalog
-		// must remain authoritative instead of resurrecting retired defaults.
-		if len(models) == 0 {
-			return models
+	} else {
+		models = make([]string, 0, len(modelSet))
+		for model := range modelSet {
+			models = append(models, model)
+		}
+		sort.Strings(models)
+		if platform == PlatformOpenAI {
+			models = supplementUnmappedOpenAIModels(accounts, models)
+			models = filterRetiredOpenAIModelIDs(accounts, models)
 		}
 	}
 
