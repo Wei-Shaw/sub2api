@@ -1,0 +1,6 @@
+simulation: opencode-capacity-retry
+routing: path
+mocks:
+  - name: OpenCode upstream
+    routeKey: opencode
+    path: postman/mocks/opencode-capacity-retry/config.yaml
