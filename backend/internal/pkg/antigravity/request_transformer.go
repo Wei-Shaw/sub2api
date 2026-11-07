@@ -504,6 +504,7 @@ func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDu
 		return nil, false, fmt.Errorf("parse content blocks: %w", err)
 	}
 
+	var lastThinkingSignature string
 	for _, block := range blocks {
 		switch block.Type {
 		case "text":
@@ -521,6 +522,7 @@ func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDu
 			// - Gemini 模型（allowDummyThought=true）：优先透传真实 signature，缺失时使用 dummy signature
 			if block.Signature != "" && (allowDummyThought || block.Signature != DummyThoughtSignature) {
 				part.ThoughtSignature = block.Signature
+				lastThinkingSignature = block.Signature
 			} else if !allowDummyThought {
 				// Claude 模型需要有效 signature；在缺失时降级为普通文本，并在上层禁用 thinking mode。
 				if strings.TrimSpace(block.Thinking) != "" {
@@ -562,6 +564,9 @@ func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDu
 			// - Gemini 模型（allowDummyThought=true）：优先透传真实 signature，缺失时使用 dummy signature
 			if block.Signature != "" && (allowDummyThought || block.Signature != DummyThoughtSignature) {
 				part.ThoughtSignature = block.Signature
+			} else if lastThinkingSignature != "" {
+				part.ThoughtSignature = lastThinkingSignature
+				lastThinkingSignature = ""
 			} else if allowDummyThought {
 				part.ThoughtSignature = DummyThoughtSignature
 			}
