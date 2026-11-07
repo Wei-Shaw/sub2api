@@ -59,6 +59,37 @@ func TestHandleOpenAITransientError_TransientStatusesUseModelScope(t *testing.T)
 	}
 }
 
+func TestHandleOpenAITransientError_OAuthUsesModelScope(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	svc.rateLimitService = NewRateLimitService(transientCooldownAccountRepo{}, nil, &config.Config{}, nil, nil)
+	account := &Account{ID: 5110, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+
+	firstShouldDisable := svc.handleOpenAIAccountUpstreamError(context.Background(), account, http.StatusBadGateway, http.Header{}, []byte(`{"error":{"code":"server_error","message":"An error occurred while processing your request"}}`), "codex-auto-review")
+	secondShouldDisable := svc.handleOpenAIAccountUpstreamError(context.Background(), account, http.StatusBadGateway, http.Header{}, []byte(`{"error":{"code":"server_error","message":"An error occurred while processing your request"}}`), "codex-auto-review")
+
+	require.False(t, firstShouldDisable)
+	require.False(t, secondShouldDisable)
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.True(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "codex-auto-review"))
+	require.False(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "gpt-6.1-sol"))
+}
+
+func TestHandleOpenAIStreamTerminalCapacityShedKeepsOAuthModelCooldown(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	svc.rateLimitService = NewRateLimitService(transientCooldownAccountRepo{}, nil, &config.Config{}, nil, nil)
+	account := &Account{ID: 5112, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	payload := []byte(`{"type":"response.failed","response":{"error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}}`)
+
+	for range 2 {
+		status, disabled := svc.handleOpenAIStreamTerminalAccountSideEffects(nil, account, payload, "Our servers are currently overloaded. Please try again later.", nil, "gpt-6.1-sol")
+		require.Equal(t, http.StatusServiceUnavailable, status)
+		require.False(t, disabled)
+	}
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.True(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "gpt-6.1-sol"))
+	require.False(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "codex-auto-review"))
+}
+
 func TestHandleOpenAITransientError_529RemainsOverloadOnly(t *testing.T) {
 	require.False(t, shouldCooldownOpenAITransientUpstreamError(529, []byte(`{"error":{"message":"overloaded"}}`)))
 }
@@ -115,4 +146,22 @@ func TestHandleOpenAITransientError_HardDisableStillBlocksWholeAccount(t *testin
 	require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.5"))
 	require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.6-sol"))
 	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+}
+
+func TestOpenAIModelTransientBlockBypass_SkipsOnlyModelCooldown(t *testing.T) {
+	svc := &OpenAIGatewayService{}
+	account := &Account{ID: 5107, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	now := time.Now()
+	svc.recordOpenAIAccountModelTransientFailure(account, "gpt-5.5", now)
+	svc.recordOpenAIAccountModelTransientFailure(account, "gpt-5.5", now)
+
+	bypassCtx := WithOpenAIModelTransientBlockBypass(context.Background())
+	require.True(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.5"))
+	require.False(t, svc.isOpenAIAccountRequestRuntimeBlockedWithContext(bypassCtx, account, "gpt-5.5"))
+
+	// Account-level persisted cooldown remains enforced by the bypass.
+	until := now.Add(time.Minute)
+	account.RateLimitResetAt = &until
+	svc.BlockAccountScheduling(account, until, "rate_limited")
+	require.True(t, svc.isOpenAIAccountRequestRuntimeBlockedWithContext(bypassCtx, account, "gpt-5.5"))
 }
