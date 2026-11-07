@@ -3,6 +3,7 @@
 package service
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"context"
 	"net/http"
 	"testing"
@@ -223,7 +224,7 @@ func TestAdminServiceSimpleModeNormalizesAllUnsupportedCreateFieldsDirectly(t *t
 		ImageRateIndependent: true, ImageRateMultiplier: &one, VideoRateIndependent: true, VideoRateMultiplier: &one,
 		ImagePrice1K: &one, VideoPrice720P: &one, WebSearchPricePerCall: &one, SearchPricePer1k: &one,
 		AudioRealtimePricePerMin: &one, ClaudeCodeOnly: true, FallbackGroupID: &fallbackID,
-		ModelRouting: map[string][]int64{"claude": {1}}, ModelRoutingEnabled: true,
+		ModelRouting: domain.LegacyModelRouting(map[string][]int64{"claude": {1}}), ModelRoutingEnabled: true,
 		AllowMessagesDispatch: true, AllowLive: true, ForceOpenAIFast: true, RequireOAuthOnly: true,
 		RPMLimit: 99, MaxReasoningEffort: "high", ProfitControlEnabled: true, ProfitMinMargin: &one,
 		CopyAccountsFromGroupIDs: []int64{2},
@@ -261,7 +262,7 @@ func TestAdminServiceSimpleModeNormalizesAllUnsupportedUpdateFieldsDirectly(t *t
 		ImageRateMultiplier: &one, VideoRateIndependent: &truth, VideoRateMultiplier: &one,
 		ImagePrice1K: &one, VideoPrice720P: &one, WebSearchPricePerCall: &one, SearchPricePer1k: &one,
 		AudioRealtimePricePerMin: &one, ClaudeCodeOnly: &truth, FallbackGroupID: &fallbackID,
-		ModelRouting: map[string][]int64{"claude": {1}}, ModelRoutingEnabled: &truth,
+		ModelRouting: domain.LegacyModelRouting(map[string][]int64{"claude": {1}}), ModelRoutingEnabled: &truth,
 		AllowMessagesDispatch: &truth, AllowLive: &truth, ForceOpenAIFast: &truth, RequireOAuthOnly: &truth,
 		RPMLimit: new(int), MaxReasoningEffort: ptrString("high"), ProfitControlEnabled: &truth,
 		ProfitMinMargin: &one, CopyAccountsFromGroupIDs: []int64{2},

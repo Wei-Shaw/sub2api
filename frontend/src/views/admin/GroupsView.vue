@@ -1910,8 +1910,11 @@
           </p>
         </div>
 
-        <!-- 模型路由配置（仅 anthropic 平台） -->
-        <div v-if="createForm.platform === 'anthropic'" class="border-t pt-4">
+        <!-- 模型路由配置（anthropic / openai；与后端 modelRoutingAppliesToTargetPlatform 一致） -->
+        <div
+          v-if="['anthropic', 'openai'].includes(createForm.platform)"
+          class="border-t pt-4"
+        >
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.modelRouting.title") }}
@@ -1984,29 +1987,63 @@
                   </div>
                   <div>
                     <label class="input-label text-xs">{{
+                      t("admin.groups.modelRouting.maxConcurrency")
+                    }}</label>
+                    <input
+                      v-model.number="rule.max_concurrency"
+                      type="number"
+                      min="0"
+                      class="input text-sm"
+                    />
+                    <p class="text-xs text-gray-400 mt-1">
+                      {{ t("admin.groups.modelRouting.maxConcurrencyHint") }}
+                    </p>
+                  </div>
+                  <div>
+                    <label class="input-label text-xs">{{
                       t("admin.groups.modelRouting.accounts")
                     }}</label>
-                    <!-- 已选账号标签 -->
                     <div
                       v-if="rule.accounts.length > 0"
-                      class="flex flex-wrap gap-1.5 mb-2"
+                      class="space-y-2 mb-2"
                     >
-                      <span
+                      <div
                         v-for="account in rule.accounts"
                         :key="account.id"
-                        class="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2.5 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                        class="flex flex-wrap items-center gap-2 rounded-md bg-gray-50 px-2 py-1.5 dark:bg-dark-700/50"
                       >
-                        {{ account.name }}
+                        <span
+                          class="text-xs font-medium text-primary-700 dark:text-primary-300"
+                          >{{ account.name }}
+                          <span class="text-gray-400">#{{ account.id }}</span>
+                        </span>
+                        <label class="flex items-center gap-1 text-xs text-gray-500">
+                          {{ t("admin.groups.modelRouting.accountPriority") }}
+                          <input
+                            v-model.number="account.priority"
+                            type="number"
+                            min="0"
+                            class="input w-16 text-xs py-0.5"
+                          />
+                        </label>
+                        <label class="flex items-center gap-1 text-xs text-gray-500">
+                          {{ t("admin.groups.modelRouting.accountConcurrency") }}
+                          <input
+                            v-model.number="account.concurrency"
+                            type="number"
+                            min="0"
+                            class="input w-16 text-xs py-0.5"
+                          />
+                        </label>
                         <button
                           type="button"
                           @click="removeSelectedAccount(rule, account.id)"
-                          class="ml-0.5 text-primary-500 hover:text-primary-700 dark:hover:text-primary-200"
+                          class="ml-auto text-primary-500 hover:text-primary-700 dark:hover:text-primary-200"
                         >
                           <Icon name="x" size="xs" />
                         </button>
-                      </span>
+                      </div>
                     </div>
-                    <!-- 账号搜索输入框 -->
                     <div class="relative account-search-container">
                       <input
                         v-model="
@@ -2022,7 +2059,6 @@
                         @input="searchAccountsByRule(rule)"
                         @focus="onAccountSearchFocus(rule)"
                       />
-                      <!-- 搜索结果下拉框 -->
                       <div
                         v-if="
                           showAccountDropdown[getCreateRuleSearchKey(rule)] &&
@@ -3573,8 +3609,11 @@
           </p>
         </div>
 
-        <!-- 模型路由配置（仅 anthropic 平台） -->
-        <div v-if="editForm.platform === 'anthropic'" class="border-t pt-4">
+        <!-- 模型路由配置（anthropic / openai；与后端 modelRoutingAppliesToTargetPlatform 一致） -->
+        <div
+          v-if="['anthropic', 'openai'].includes(editForm.platform)"
+          class="border-t pt-4"
+        >
           <div class="mb-1.5 flex items-center gap-1">
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.modelRouting.title") }}
@@ -3647,29 +3686,63 @@
                   </div>
                   <div>
                     <label class="input-label text-xs">{{
+                      t("admin.groups.modelRouting.maxConcurrency")
+                    }}</label>
+                    <input
+                      v-model.number="rule.max_concurrency"
+                      type="number"
+                      min="0"
+                      class="input text-sm"
+                    />
+                    <p class="text-xs text-gray-400 mt-1">
+                      {{ t("admin.groups.modelRouting.maxConcurrencyHint") }}
+                    </p>
+                  </div>
+                  <div>
+                    <label class="input-label text-xs">{{
                       t("admin.groups.modelRouting.accounts")
                     }}</label>
-                    <!-- 已选账号标签 -->
                     <div
                       v-if="rule.accounts.length > 0"
-                      class="flex flex-wrap gap-1.5 mb-2"
+                      class="space-y-2 mb-2"
                     >
-                      <span
+                      <div
                         v-for="account in rule.accounts"
                         :key="account.id"
-                        class="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2.5 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300"
+                        class="flex flex-wrap items-center gap-2 rounded-md bg-gray-50 px-2 py-1.5 dark:bg-dark-700/50"
                       >
-                        {{ account.name }}
+                        <span
+                          class="text-xs font-medium text-primary-700 dark:text-primary-300"
+                          >{{ account.name }}
+                          <span class="text-gray-400">#{{ account.id }}</span>
+                        </span>
+                        <label class="flex items-center gap-1 text-xs text-gray-500">
+                          {{ t("admin.groups.modelRouting.accountPriority") }}
+                          <input
+                            v-model.number="account.priority"
+                            type="number"
+                            min="0"
+                            class="input w-16 text-xs py-0.5"
+                          />
+                        </label>
+                        <label class="flex items-center gap-1 text-xs text-gray-500">
+                          {{ t("admin.groups.modelRouting.accountConcurrency") }}
+                          <input
+                            v-model.number="account.concurrency"
+                            type="number"
+                            min="0"
+                            class="input w-16 text-xs py-0.5"
+                          />
+                        </label>
                         <button
                           type="button"
                           @click="removeSelectedAccount(rule, account.id, true)"
-                          class="ml-0.5 text-primary-500 hover:text-primary-700 dark:hover:text-primary-200"
+                          class="ml-auto text-primary-500 hover:text-primary-700 dark:hover:text-primary-200"
                         >
                           <Icon name="x" size="xs" />
                         </button>
-                      </span>
+                      </div>
                     </div>
-                    <!-- 账号搜索输入框 -->
                     <div class="relative account-search-container">
                       <input
                         v-model="
@@ -3685,7 +3758,6 @@
                         @input="searchAccountsByRule(rule, true)"
                         @focus="onAccountSearchFocus(rule, true)"
                       />
-                      <!-- 搜索结果下拉框 -->
                       <div
                         v-if="
                           showAccountDropdown[getEditRuleSearchKey(rule)] &&
@@ -5050,11 +5122,16 @@ const createForm = reactive({
 interface SimpleAccount {
   id: number;
   name: string;
+  priority: number;
+  concurrency: number;
 }
+
+const DEFAULT_MODEL_ROUTING_PRIORITY = 50;
 
 // 模型路由规则类型
 interface ModelRoutingRule {
   pattern: string;
+  max_concurrency: number;
   accounts: SimpleAccount[]; // 选中的账号对象数组
 }
 
@@ -5113,19 +5190,33 @@ const clearAllAccountSearchState = () => {
   showAccountDropdown.value = {};
 };
 
+const resolveModelRoutingAccountPlatform = (key: string) => {
+  // create-/edit- 前缀由 getRuleSearchKey 生成；按当前表单平台过滤账号
+  if (key.startsWith("edit-")) {
+    return editForm.platform || "anthropic";
+  }
+  return createForm.platform || "anthropic";
+};
+
 const accountSearchRunner = useKeyedDebouncedSearch<SimpleAccount[]>({
   delay: 300,
-  search: async (keyword, { signal }) => {
+  search: async (keyword, { signal, key }) => {
+    const platform = resolveModelRoutingAccountPlatform(key);
     const res = await adminAPI.accounts.list(
       1,
       20,
       {
         search: keyword,
-        platform: "anthropic",
+        platform,
       },
       { signal },
     );
-    return res.items.map((account) => ({ id: account.id, name: account.name }));
+    return res.items.map((account) => ({
+      id: account.id,
+      name: account.name,
+      priority: DEFAULT_MODEL_ROUTING_PRIORITY,
+      concurrency: 0,
+    }));
   },
   onSuccess: (key, result) => {
     accountSearchResults.value[key] = result;
@@ -5135,7 +5226,7 @@ const accountSearchRunner = useKeyedDebouncedSearch<SimpleAccount[]>({
   },
 });
 
-// 搜索账号（仅限 anthropic 平台）
+// 搜索账号（按当前分组平台：anthropic / openai）
 const searchAccounts = (key: string) => {
   accountSearchRunner.trigger(key, accountSearchKeyword.value[key] || "");
 };
@@ -5157,7 +5248,12 @@ const selectAccount = (
 
   // 检查是否已选择
   if (!rule.accounts.some((a) => a.id === account.id)) {
-    rule.accounts.push(account);
+    rule.accounts.push({
+      id: account.id,
+      name: account.name,
+      priority: account.priority ?? DEFAULT_MODEL_ROUTING_PRIORITY,
+      concurrency: account.concurrency ?? 0,
+    });
   }
 
   // 清空搜索
@@ -5212,7 +5308,11 @@ const onAccountSearchFocus = (
 
 // 添加创建表单的路由规则
 const addCreateRoutingRule = () => {
-  createModelRoutingRules.value.push({ pattern: "", accounts: [] });
+  createModelRoutingRules.value.push({
+    pattern: "",
+    max_concurrency: 0,
+    accounts: [],
+  });
 };
 
 // 删除创建表单的路由规则
@@ -5228,7 +5328,11 @@ const removeCreateRoutingRule = (rule: ModelRoutingRule) => {
 
 // 添加编辑表单的路由规则
 const addEditRoutingRule = () => {
-  editModelRoutingRules.value.push({ pattern: "", accounts: [] });
+  editModelRoutingRules.value.push({
+    pattern: "",
+    max_concurrency: 0,
+    accounts: [],
+  });
 };
 
 // 删除编辑表单的路由规则
@@ -5289,21 +5393,62 @@ const moveEditModelAllowlistItem = (fromIndex: number, toIndex: number) => {
   moveModelAllowlistItem(editModelAllowlistState, fromIndex, toIndex);
 };
 
-// 将 UI 格式的路由规则转换为 API 格式
+type ModelRoutingApiRule =
+  | number[]
+  | {
+      max_concurrency?: number;
+      accounts?: Array<{
+        id?: number;
+        priority?: number;
+        concurrency?: number;
+      }>;
+    };
+
+// 将 UI 格式的路由规则转换为 API 格式（结构化对象）
 const convertRoutingRulesToApiFormat = (
   rules: ModelRoutingRule[],
-): Record<string, number[]> | null => {
-  const result: Record<string, number[]> = {};
+): Record<
+  string,
+  {
+    max_concurrency: number;
+    accounts: Array<{ id: number; priority: number; concurrency: number }>;
+  }
+> | null => {
+  const result: Record<
+    string,
+    {
+      max_concurrency: number;
+      accounts: Array<{ id: number; priority: number; concurrency: number }>;
+    }
+  > = {};
   let hasValidRules = false;
 
   for (const rule of rules) {
     const pattern = rule.pattern.trim();
     if (!pattern) continue;
 
-    const accountIds = rule.accounts.map((a) => a.id).filter((id) => id > 0);
+    const accounts = rule.accounts
+      .filter((a) => a.id > 0)
+      .map((a) => ({
+        id: a.id,
+        priority:
+          typeof a.priority === "number" && a.priority >= 0
+            ? a.priority
+            : DEFAULT_MODEL_ROUTING_PRIORITY,
+        concurrency:
+          typeof a.concurrency === "number" && a.concurrency >= 0
+            ? a.concurrency
+            : 0,
+      }));
 
-    if (accountIds.length > 0) {
-      result[pattern] = accountIds;
+    if (accounts.length > 0) {
+      result[pattern] = {
+        max_concurrency:
+          typeof rule.max_concurrency === "number" && rule.max_concurrency >= 0
+            ? rule.max_concurrency
+            : 0,
+        accounts,
+      };
       hasValidRules = true;
     }
   }
@@ -5311,26 +5456,72 @@ const convertRoutingRulesToApiFormat = (
   return hasValidRules ? result : null;
 };
 
-// 将 API 格式的路由规则转换为 UI 格式（需要加载账号名称）
+const normalizeApiRoutingRule = (
+  value: ModelRoutingApiRule,
+): { max_concurrency: number; accountRefs: Array<{ id: number; priority: number; concurrency: number }> } => {
+  if (Array.isArray(value)) {
+    return {
+      max_concurrency: 0,
+      accountRefs: value
+        .filter((id) => typeof id === "number" && id > 0)
+        .map((id) => ({
+          id,
+          priority: DEFAULT_MODEL_ROUTING_PRIORITY,
+          concurrency: 0,
+        })),
+    };
+  }
+  const refs = Array.isArray(value?.accounts) ? value.accounts : [];
+  return {
+    max_concurrency:
+      typeof value?.max_concurrency === "number" && value.max_concurrency >= 0
+        ? value.max_concurrency
+        : 0,
+    accountRefs: refs
+      .filter((a) => typeof a?.id === "number" && (a.id as number) > 0)
+      .map((a) => ({
+        id: a.id as number,
+        priority:
+          typeof a.priority === "number" && a.priority >= 0
+            ? a.priority
+            : DEFAULT_MODEL_ROUTING_PRIORITY,
+        concurrency:
+          typeof a.concurrency === "number" && a.concurrency >= 0
+            ? a.concurrency
+            : 0,
+      })),
+  };
+};
+
+// 将 API 格式的路由规则转换为 UI 格式（需要加载账号名称；兼容旧 []int64）
 const convertApiFormatToRoutingRules = async (
-  apiFormat: Record<string, number[]> | null,
+  apiFormat: Record<string, ModelRoutingApiRule> | null,
 ): Promise<ModelRoutingRule[]> => {
   if (!apiFormat) return [];
 
   const rules: ModelRoutingRule[] = [];
-  for (const [pattern, accountIds] of Object.entries(apiFormat)) {
-    // 加载账号信息
+  for (const [pattern, raw] of Object.entries(apiFormat)) {
+    const { max_concurrency, accountRefs } = normalizeApiRoutingRule(raw);
     const accounts: SimpleAccount[] = [];
-    for (const id of accountIds) {
+    for (const ref of accountRefs) {
       try {
-        const account = await adminAPI.accounts.getById(id);
-        accounts.push({ id: account.id, name: account.name });
+        const account = await adminAPI.accounts.getById(ref.id);
+        accounts.push({
+          id: account.id,
+          name: account.name,
+          priority: ref.priority,
+          concurrency: ref.concurrency,
+        });
       } catch {
-        // 如果账号不存在，仍然显示 ID
-        accounts.push({ id, name: `#${id}` });
+        accounts.push({
+          id: ref.id,
+          name: `#${ref.id}`,
+          priority: ref.priority,
+          concurrency: ref.concurrency,
+        });
       }
     }
-    rules.push({ pattern, accounts });
+    rules.push({ pattern, max_concurrency, accounts });
   }
   return rules;
 };

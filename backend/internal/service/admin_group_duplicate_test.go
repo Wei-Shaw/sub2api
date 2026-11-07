@@ -3,6 +3,7 @@
 package service
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"context"
 	"errors"
 	"strings"
@@ -159,7 +160,7 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 		ClaudeCodeOnly:                  true,
 		FallbackGroupID:                 groupDuplicateTestPointer(int64(7)),
 		FallbackGroupIDOnInvalidRequest: groupDuplicateTestPointer(int64(8)),
-		ModelRouting:                    map[string][]int64{"gpt-*": {13, 17}},
+		ModelRouting:                    domain.LegacyModelRouting(map[string][]int64{"gpt-*": {13, 17}}),
 		ModelRoutingEnabled:             true,
 		MCPXMLInject:                    true,
 		SupportedModelScopes:            []string{"claude", "gemini_text"},
@@ -231,14 +232,16 @@ func TestDuplicateGroupCopiesConfigurationDeeplyAndResetsRuntimeState(t *testing
 		{AccountID: 17, GroupID: duplicate.ID, Priority: 8},
 	}, repo.createdBindings[duplicate.ID])
 
-	duplicate.ModelRouting["gpt-*"][0] = 999
+	dupRouting := duplicate.ModelRouting["gpt-*"]
+	dupRouting.Accounts[0].ID = 999
+	duplicate.ModelRouting["gpt-*"] = dupRouting
 	duplicate.VideoModelPrices[VideoPriceFamilyGrokImagineVideo15][VideoBillingResolution720P] = 999
 	duplicate.SupportedModelScopes[0] = "changed"
 	duplicate.MessagesDispatchModelConfig.ExactModelMappings["claude-special"] = "changed"
 	duplicate.ModelAllowlist.Models[0] = "changed"
 	duplicate.ReasoningEffortMappings[0].To = "changed"
 	*duplicate.DailyLimitUSD = 999
-	require.Equal(t, int64(13), source.ModelRouting["gpt-*"][0])
+	require.Equal(t, int64(13), source.ModelRouting["gpt-*"].Accounts[0].ID)
 	require.Equal(t, 0.14, source.VideoModelPrices[VideoPriceFamilyGrokImagineVideo15][VideoBillingResolution720P])
 	require.Equal(t, "claude", source.SupportedModelScopes[0])
 	require.Equal(t, "gpt-special", source.MessagesDispatchModelConfig.ExactModelMappings["claude-special"])

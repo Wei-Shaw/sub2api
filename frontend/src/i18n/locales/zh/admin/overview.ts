@@ -948,7 +948,7 @@ export default {
         accountsLabel: '指定账号',
         accountsPlaceholder: '选择账号（留空则不限制）',
         priorityLabel: '优先级',
-        priorityHint: '数值越小优先级越高，用于账号调度',
+        priorityHint: '数值越小优先级越高；仅账号自身 priority 参与选号，分组绑定优先级不参与',
         statusLabel: '状态'
       },
       exclusiveObj: {
@@ -1290,7 +1290,7 @@ export default {
       modelRouting: {
         title: '模型路由配置',
         tooltip:
-          '配置特定模型请求优先路由到指定账号。支持通配符匹配，如 claude-opus-* 匹配所有 opus 模型。',
+          '配置特定模型请求优先路由到指定账号。支持通配符匹配，如 claude-opus-* 匹配所有 opus 模型。可设置规则合计并发与每账号优先级/并发；打满后回落同分组其它账号。',
         enabled: '已启用',
         disabled: '已禁用',
         disabledHint: '启用后，配置的路由规则才会生效',
@@ -1298,6 +1298,8 @@ export default {
         modelPattern: '模型模式',
         modelPatternPlaceholder: 'claude-opus-*',
         modelPatternHint: '支持 * 通配符，如 claude-opus-* 匹配所有 opus 模型',
+        maxConcurrency: '优先池合计并发',
+        maxConcurrencyHint: '0 表示不限制规则合计并发（仍受账号全局并发约束）',
         accounts: '优先账号',
         selectAccounts: '选择账号',
         noAccounts: '此分组暂无账号',
@@ -1306,7 +1308,11 @@ export default {
         noRules: '暂无路由规则',
         noRulesHint: '添加路由规则以将特定模型请求优先路由到指定账号',
         searchAccountPlaceholder: '搜索账号...',
-        accountsHint: '选择此模型模式优先使用的账号'
+        accountsHint: '选择此模型模式优先使用的账号；数值越小优先级越高',
+        accountPriority: '优先级',
+        accountConcurrency: '并发',
+        accountPriorityHint: '数值越小优先级越高',
+        accountConcurrencyHint: '0 表示不额外限制该账号在本规则下的并发'
       },
       claudeMaxSimulation: {
         title: 'Claude Max 用量模拟',

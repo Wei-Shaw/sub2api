@@ -264,23 +264,20 @@ func resolvedChannelTimeMultiplier(resolved *ResolvedPricing, at time.Time) floa
 // sources can price the requested model.
 var ErrModelPricingUnavailable = errors.New("pricing not found")
 
-// ---- DeepSeek 官方低谷价（$/token）----
-// 2026-09-10 官方公告：DeepSeek-V4.1-Flash（新名 deepseek-flash）大幅降价，
-// Flash 低谷价降为 $0.15/$0.60/$0.003 per MTok（输入缓存未命中/输出/缓存命中）；
-// 官方后续确认 2026-09-14 后继续提供 deepseek-v4-pro，计费方式保持不变。
-// Source: https://api-docs.deepseek.com/updates/
-//
-//	https://api-docs.deepseek.com/quick_start/pricing
-//
-// 高峰价 = 2× 低谷价；高峰时段 01:00–04:00 与 06:00–10:00 UTC（仅工作日），
-// 北京时间周六/周日全天低谷。时段判定见 deepseekPeakMultiplierAt。
+// ---- DeepSeek 官方空闲时段价（元/token，国内站口径）----
+// 与 https://api-docs.deepseek.com/zh-cn/quick_start/pricing 一致：
+// Flash 空闲：缓存命中 ¥0.02 / 未命中 ¥1 / 输出 ¥4（每百万 tokens）；
+// Pro 空闲：缓存命中 ¥0.15 / 未命中 ¥4.5 / 输出 ¥13.5。
+// 高峰价 = 2× 空闲价；高峰时段 01:00–04:00 与 06:00–10:00 UTC（仅工作日），
+// 北京时间周六/周日全天空闲。时段判定见 deepseekPeakMultiplierAt。
+// 本部署按人民币记账（与 Moonshot/Kimi 覆盖价同一币种），不再使用 USD 折算。
 const (
-	deepseekFlashOffPeakInputPrice  = 1.5e-7  // $0.15 per MTok (cache miss)
-	deepseekFlashOffPeakOutputPrice = 6.0e-7  // $0.60 per MTok
-	deepseekFlashOffPeakCacheRead   = 3e-9    // $0.003 per MTok (cache hit)
-	deepseekProOffPeakInputPrice    = 6.6e-7  // $0.66 per MTok (cache miss)
-	deepseekProOffPeakOutputPrice   = 1.98e-6 // $1.98 per MTok
-	deepseekProOffPeakCacheRead     = 2.2e-8  // $0.022 per MTok (cache hit)
+	deepseekFlashOffPeakInputPrice  = 1e-6   // ¥1 per MTok (cache miss)
+	deepseekFlashOffPeakOutputPrice = 4e-6   // ¥4 per MTok
+	deepseekFlashOffPeakCacheRead   = 2e-8   // ¥0.02 per MTok (cache hit)
+	deepseekProOffPeakInputPrice    = 4.5e-6 // ¥4.5 per MTok (cache miss)
+	deepseekProOffPeakOutputPrice   = 1.35e-5 // ¥13.5 per MTok
+	deepseekProOffPeakCacheRead     = 1.5e-7 // ¥0.15 per MTok (cache hit)
 )
 
 // isDeepSeekModel 判断模型名是否为 DeepSeek 模型（大小写不敏感）。
@@ -715,15 +712,15 @@ func (s *BillingService) initFallbackPricing() {
 	// 以下均为官方低谷价；高峰价 = 2× 低谷价（高峰时段 01:00–04:00
 	// 与 06:00–10:00 UTC，仅工作日；北京时间周六/周日全天低谷），见 deepseekPeakMultiplierAt。
 	s.fallbackPrices["deepseek-v4-pro"] = &ModelPricing{
-		InputPricePerToken:     deepseekProOffPeakInputPrice,  // $0.66 per MTok (cache miss, off-peak)
-		OutputPricePerToken:    deepseekProOffPeakOutputPrice, // $1.98 per MTok
-		CacheReadPricePerToken: deepseekProOffPeakCacheRead,   // $0.022 per MTok (cache hit)
+		InputPricePerToken:     deepseekProOffPeakInputPrice,  // ¥4.5 per MTok (cache miss, idle)
+		OutputPricePerToken:    deepseekProOffPeakOutputPrice, // ¥13.5 per MTok
+		CacheReadPricePerToken: deepseekProOffPeakCacheRead,   // ¥0.15 per MTok (cache hit)
 		SupportsCacheBreakdown: false,
 	}
 	s.fallbackPrices["deepseek-v4-flash"] = &ModelPricing{
-		InputPricePerToken:     deepseekFlashOffPeakInputPrice,  // $0.15 per MTok (cache miss, off-peak)
-		OutputPricePerToken:    deepseekFlashOffPeakOutputPrice, // $0.60 per MTok
-		CacheReadPricePerToken: deepseekFlashOffPeakCacheRead,   // $0.003 per MTok (cache hit)
+		InputPricePerToken:     deepseekFlashOffPeakInputPrice,  // ¥1 per MTok (cache miss, idle)
+		OutputPricePerToken:    deepseekFlashOffPeakOutputPrice, // ¥4 per MTok
+		CacheReadPricePerToken: deepseekFlashOffPeakCacheRead,   // ¥0.02 per MTok (cache hit)
 		SupportsCacheBreakdown: false,
 	}
 	s.fallbackPrices["deepseek-v4-flash-vision-exp"] = &ModelPricing{
@@ -739,46 +736,51 @@ func (s *BillingService) initFallbackPricing() {
 		OutputPricePerToken: 0,
 	}
 
-	// ---- 智谱 GLM（Z.AI）----
-	// Source: https://docs.z.ai/guides/overview/pricing (USD per 1M tokens)
-	// 注意：CacheReadPricePerToken 即"缓存命中"价格，CacheCreationPricePerToken 留空（智谱未公开写入价，按 0 处理）。
-	// GLM-4.6 与 GLM-4.5 在 z.ai 国际版上定价一致；GLM-4.5 国内按 ¥0.8/¥2，汇率换算后约 $0.112/$0.28，与国际版 $0.6/$2.2 不同，本分支采用国际版 USD 口径与现有 Claude/GPT 一致。
-	// GLM-5.3 / GLM-5.2 与 GLM-5.1 在 z.ai 上同价。
-	// GLM-5.3-Flash 列表价 $0.15/$0.50（2026-09-09 前五折促销，此处按列表价，与其它模型口径一致）。
+	// ---- 智谱 GLM（bigmodel.cn 国内站，元/百万 tokens）----
+	// Source: https://docs.bigmodel.cn/cn/guide/start/pricing
+	// CacheReadPricePerToken = 缓存命中；缓存存储限时免费，CacheCreation 留 0。
+	// GLM-5 / GLM-5-Turbo / GLM-5.1 的 ≥32K 高档由目录 long_context_* 字段处理；
+	// 此处 fallback 仅覆盖基础档（[0,32K)）。
 	s.fallbackPrices["glm-5.3-flash"] = &ModelPricing{
-		InputPricePerToken:     0.15e-6, // $0.15 per MTok
-		OutputPricePerToken:    0.5e-6,  // $0.50 per MTok
-		CacheReadPricePerToken: 0.03e-6,
+		InputPricePerToken:     0.8e-6,  // ¥0.8 per MTok
+		OutputPricePerToken:    2.8e-6,  // ¥2.8 per MTok
+		CacheReadPricePerToken: 0.23e-6, // ¥0.23 per MTok
+		SupportsCacheBreakdown: false,
+	}
+	s.fallbackPrices["glm-5.3-flashx"] = &ModelPricing{
+		InputPricePerToken:     2e-6,    // ¥2 per MTok
+		OutputPricePerToken:    7e-6,    // ¥7 per MTok
+		CacheReadPricePerToken: 0.57e-6, // ¥0.57 per MTok
 		SupportsCacheBreakdown: false,
 	}
 	s.fallbackPrices["glm-5.3"] = &ModelPricing{
-		InputPricePerToken:     1.4e-6, // $1.40 per MTok
-		OutputPricePerToken:    4.4e-6, // $4.40 per MTok
-		CacheReadPricePerToken: 0.26e-6,
+		InputPricePerToken:     8e-6, // ¥8 per MTok
+		OutputPricePerToken:    2.8e-5, // ¥28 per MTok
+		CacheReadPricePerToken: 2e-6, // ¥2 per MTok
 		SupportsCacheBreakdown: false,
 	}
 	s.fallbackPrices["glm-5.2"] = &ModelPricing{
-		InputPricePerToken:     1.4e-6, // $1.40 per MTok
-		OutputPricePerToken:    4.4e-6, // $4.40 per MTok
-		CacheReadPricePerToken: 0.26e-6,
+		InputPricePerToken:     8e-6, // ¥8 per MTok
+		OutputPricePerToken:    2.8e-5, // ¥28 per MTok
+		CacheReadPricePerToken: 2e-6, // ¥2 per MTok
 		SupportsCacheBreakdown: false,
 	}
 	s.fallbackPrices["glm-5.1"] = &ModelPricing{
-		InputPricePerToken:     1.4e-6, // $1.40 per MTok
-		OutputPricePerToken:    4.4e-6, // $4.40 per MTok
-		CacheReadPricePerToken: 0.26e-6,
+		InputPricePerToken:     6e-6,   // ¥6 per MTok [0,32K)
+		OutputPricePerToken:    2.4e-5, // ¥24 per MTok
+		CacheReadPricePerToken: 1.3e-6, // ¥1.3 per MTok
 		SupportsCacheBreakdown: false,
 	}
 	s.fallbackPrices["glm-5"] = &ModelPricing{
-		InputPricePerToken:     1e-6, // $1.00 per MTok
-		OutputPricePerToken:    3.2e-6,
-		CacheReadPricePerToken: 0.2e-6,
+		InputPricePerToken:     4e-6,   // ¥4 per MTok [0,32K)
+		OutputPricePerToken:    1.8e-5, // ¥18 per MTok
+		CacheReadPricePerToken: 1e-6,   // ¥1 per MTok
 		SupportsCacheBreakdown: false,
 	}
 	s.fallbackPrices["glm-5-turbo"] = &ModelPricing{
-		InputPricePerToken:     1.2e-6,
-		OutputPricePerToken:    4e-6,
-		CacheReadPricePerToken: 0.24e-6,
+		InputPricePerToken:     5e-6,   // ¥5 per MTok [0,32K)
+		OutputPricePerToken:    2.2e-5, // ¥22 per MTok
+		CacheReadPricePerToken: 1.2e-6, // ¥1.2 per MTok
 		SupportsCacheBreakdown: false,
 	}
 	s.fallbackPrices["glm-4.7"] = &ModelPricing{
@@ -1157,7 +1159,11 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	// 智谱 GLM（z.ai 公开 SKU：glm-5.3 / glm-5.3-flash / glm-5.2 / glm-5.1 / glm-5 / glm-5-turbo / glm-4.7 / glm-4.6 / glm-4.5 等）
 	// 匹配顺序：先判别最高 tier，再依次降级。
 	// 注意：带小数点的型号必须排在裸 "glm-5" 之前，否则会被 strings.Contains 抢走；
-	// glm-5.3-flash 必须排在 glm-5.3 之前（前者包含后者子串）。
+	// glm-5.3-flashx 必须排在 glm-5.3-flash 之前（前者包含后者子串）；
+	// glm-5.3-flash 必须排在 glm-5.3 之前。
+	if strings.Contains(modelLower, "glm-5.3-flashx") || strings.Contains(modelLower, "glm-5.3flashx") {
+		return s.fallbackPrices["glm-5.3-flashx"]
+	}
 	if strings.Contains(modelLower, "glm-5.3-flash") || strings.Contains(modelLower, "glm-5.3flash") {
 		return s.fallbackPrices["glm-5.3-flash"]
 	}
