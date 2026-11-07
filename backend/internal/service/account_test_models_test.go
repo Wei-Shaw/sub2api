@@ -115,6 +115,71 @@ func TestFetchOpenAIAccountModelsPreservesEmptyCatalog(t *testing.T) {
 	require.Empty(t, models, "an empty upstream catalog must not become a static model list")
 }
 
+func TestFetchOpenAIAccountModelsIncludesConfiguredNames(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		body    string
+		mapping map[string]any
+		want    []string
+	}{
+		{
+			name: "all eleven configured names missing from discovery",
+			body: `{"data":[{"id":"deepseek-v4-pro-260425"}]}`,
+			mapping: map[string]any{
+				"auto": "auto", "deepseek-v4-pro": "deepseek-v4-pro", "deepseek-v4-flash": "deepseek-v4-flash",
+				"deepseek-v4.1-flash": "deepseek-v4.1-flash", "doubao-seed-2.0-mini": "doubao-seed-2.0-mini",
+				"doubao-seed-2.1-lite": "doubao-seed-2.1-lite", "glm-5.3": "glm-5.3", "glm-5.3-flash": "glm-5.3-flash",
+				"kimi-k2.7-code": "kimi-k2.7-code", "kimi-k3": "kimi-k3", "minimax-m3": "minimax-m3",
+			},
+			want: []string{"auto", "deepseek-v4-pro", "deepseek-v4-flash", "deepseek-v4.1-flash", "doubao-seed-2.0-mini",
+				"doubao-seed-2.1-lite", "glm-5.3", "glm-5.3-flash", "kimi-k2.7-code", "kimi-k3", "minimax-m3"},
+		},
+		{
+			name:    "partial overlap and aliases sharing a target",
+			body:    `{"data":[{"id":"live","display_name":"Live Model","owned_by":"provider"},{"id":"unconfigured"},{"id":"live"}]}`,
+			mapping: map[string]any{"live": "live", "fast": "live", "another": "live", "missing": "absent"},
+			want:    []string{"live", "fast", "another", "missing"},
+		},
+		{
+			name:    "empty upstream preserves explicit configuration",
+			body:    `{"data":[]}`,
+			mapping: map[string]any{"auto": "auto", "fast": "missing", "other": "missing", "": "missing", " ": "missing"},
+			want:    []string{"auto", "fast", "other"},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var calls atomic.Int32
+			gateway := newCodexModelsAPIKeyTestService(&codexModelsHTTPUpstreamStub{do: func(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+				calls.Add(1)
+				return ordinaryModelsUpstreamResponse(tc.body), nil
+			}})
+			svc := &AccountTestService{openaiGatewayService: gateway}
+			account := newCodexModelsAPIKeyTestAccount("https://models.example/v1")
+			account.Credentials["model_mapping"] = tc.mapping
+			ctx := context.Background()
+			before, err := gateway.FetchOpenAIModelsList(ctx, account)
+			require.NoError(t, err)
+			models, err := svc.FetchOpenAIAccountModels(ctx, account)
+			require.NoError(t, err)
+			require.ElementsMatch(t, tc.want, pickerModelIDs(models))
+			for _, model := range models {
+				require.Equal(t, "model", model.Type)
+				require.NotEmpty(t, model.DisplayName)
+				if model.ID == "live" {
+					require.Equal(t, "Live Model", model.DisplayName)
+					require.Equal(t, "provider", model.OwnedBy)
+				} else {
+					require.Equal(t, model.ID, model.DisplayName)
+				}
+			}
+			after, err := gateway.FetchOpenAIModelsList(ctx, account)
+			require.NoError(t, err)
+			require.Equal(t, before.Body, after.Body, "picker must not change the shared catalog")
+			require.EqualValues(t, 1, calls.Load(), "configuration must reuse the raw discovery cache")
+		})
+	}
+}
+
 func TestFetchOpenAIAccountModelsOAuthLabelsLocalImageModelsLikeUpstream(t *testing.T) {
 	newCodexModelsOAuthCacheServer(t, `{"models":[{"slug":"gpt-5.6-sol"}]}`)
 	svc := &AccountTestService{openaiGatewayService: &OpenAIGatewayService{}}
@@ -199,12 +264,8 @@ func TestFetchOpenAIAccountModelsOAuthImageNamesMappedToText(t *testing.T) {
 
 				models, err := svc.FetchOpenAIAccountModels(context.Background(), account)
 				require.NoError(t, err)
-				if target == "text-target-missing" {
-					require.Empty(t, models, "a missing text target must not be synthesized as an image choice")
-					return
-				}
 				require.Equal(t, []string{publicID}, pickerModelIDs(models))
-				require.Equal(t, publicID, models[0].DisplayName, "a real text target uses the projected alias label")
+				require.Equal(t, publicID, models[0].DisplayName, "configured aliases remain testable even when the target is missing")
 			})
 		}
 	}
