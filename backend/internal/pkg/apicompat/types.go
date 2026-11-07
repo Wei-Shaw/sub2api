@@ -166,12 +166,24 @@ type AnthropicPromptTokensDetails struct {
 	CachedTokens int `json:"cached_tokens,omitempty"`
 }
 
+// AnthropicCacheCreationBreakdown mirrors the nested usage.cache_creation object
+// Anthropic returns alongside cache_creation_input_tokens. The aggregate alone
+// cannot be billed correctly: 1h cache writes cost more than 5m ones, so a
+// converter that drops this object forces the billing layer to fall back to the
+// 5m price for every cache write.
+type AnthropicCacheCreationBreakdown struct {
+	Ephemeral5mInputTokens int `json:"ephemeral_5m_input_tokens"`
+	Ephemeral1hInputTokens int `json:"ephemeral_1h_input_tokens"`
+}
+
 // AnthropicUsage holds token counts in Anthropic format.
 type AnthropicUsage struct {
 	InputTokens              int `json:"input_tokens"`
 	OutputTokens             int `json:"output_tokens"`
 	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	// CacheCreation carries the 5m/1h split for the aggregate above.
+	CacheCreation *AnthropicCacheCreationBreakdown `json:"cache_creation,omitempty"`
 	// Anthropic-compatible providers can also expose their native OpenAI-style
 	// total/cache fields. Preserve them so callers can normalize provider totals
 	// into Anthropic's mutually-exclusive billing buckets.
