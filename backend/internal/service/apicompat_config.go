@@ -16,10 +16,6 @@ func chatCompletionsToResponses(cfg *config.Config, req *apicompat.ChatCompletio
 	return apicompat.ChatCompletionsToResponsesWithMinOutputTokens(req, configuredMinOutputTokens(cfg))
 }
 
-func anthropicToResponses(cfg *config.Config, req *apicompat.AnthropicRequest) (*apicompat.ResponsesRequest, error) {
-	return apicompat.AnthropicToResponsesWithMinOutputTokens(req, configuredMinOutputTokens(cfg))
-}
-
 func settingServiceConfig(settingService *SettingService) *config.Config {
 	if settingService == nil {
 		return nil

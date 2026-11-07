@@ -445,6 +445,25 @@ func WithOpenAIReasoningEffortPolicy(ctx context.Context, maxEffort string, mapp
 	return context.WithValue(ctx, openAIReasoningEffortPolicyContextKey{}, policy)
 }
 
+// WithOpenAIReasoningEffortPolicyForMessages preserves ordinary bridge defaults,
+// but retains ceilings and none mappings for explicitly disabled thinking.
+func WithOpenAIReasoningEffortPolicyForMessages(ctx context.Context, body []byte, maxEffort string, mappings []ReasoningEffortMapping, overLimit string) context.Context {
+	effort := gjson.GetBytes(body, "output_config.effort")
+	if effort.Type != gjson.String || strings.TrimSpace(effort.String()) == "" {
+		if gjson.GetBytes(body, "thinking.type").String() != "disabled" {
+			maxEffort = ""
+		}
+		noneMappings := make([]ReasoningEffortMapping, 0, len(mappings))
+		for _, mapping := range mappings {
+			if normalizeReasoningEffortMappingSource(mapping.From) == "none" {
+				noneMappings = append(noneMappings, mapping)
+			}
+		}
+		mappings = noneMappings
+	}
+	return WithOpenAIReasoningEffortPolicy(ctx, maxEffort, mappings, overLimit)
+}
+
 // ApplyOpenAIReasoningEffortPolicyFromContext applies a policy previously bound
 // to the request. An unbound request is returned byte-for-byte unchanged.
 func ApplyOpenAIReasoningEffortPolicyFromContext(ctx context.Context, body []byte) ([]byte, bool, error) {
@@ -456,6 +475,43 @@ func ApplyOpenAIReasoningEffortPolicyFromContext(ctx context.Context, body []byt
 		return body, false, nil
 	}
 	return ApplyOpenAIReasoningEffortPolicy(body, policy.maxEffort, policy.mappings, policy.overLimit)
+}
+
+func applyOpenAIReasoningEffortPolicyForGLMFromContext(ctx context.Context, body []byte, model string) ([]byte, bool, error) {
+	if ctx == nil || !strings.HasPrefix(strings.ToLower(strings.TrimSpace(model)), "glm-") {
+		return ApplyOpenAIReasoningEffortPolicyFromContext(ctx, body)
+	}
+	policy, ok := ctx.Value(openAIReasoningEffortPolicyContextKey{}).(openAIReasoningEffortPolicy)
+	if !ok {
+		return body, false, nil
+	}
+	mapped, changed, err := ApplyOpenAIReasoningEffortPolicy(body, "", policy.mappings, policy.overLimit)
+	if err != nil {
+		return body, false, err
+	}
+	normalized, normalizationChanged := NormalizeGLMOpenAIReasoningEffort(mapped, model)
+	maxEffort, overLimit := policy.maxEffort, policy.overLimit
+	if maxRank, hasMax := reasoningEffortRank(maxEffort); hasMax {
+		legalCeiling := ""
+		for _, effort := range []string{"low", "high", "max"} {
+			if effort == "low" && !isGLM53Model(model) {
+				continue
+			}
+			if rank, _ := reasoningEffortRank(effort); rank <= maxRank {
+				legalCeiling = effort
+			}
+		}
+		if legalCeiling == "" {
+			overLimit = ReasoningEffortOverLimitDeny
+		} else if NormalizeMaxReasoningEffortOverLimit(overLimit) != ReasoningEffortOverLimitDeny {
+			maxEffort = legalCeiling
+		}
+	}
+	capped, ceilingChanged, err := ApplyOpenAIReasoningEffortPolicy(normalized, maxEffort, nil, overLimit)
+	if err != nil {
+		return body, false, err
+	}
+	return capped, changed || normalizationChanged || ceilingChanged, nil
 }
 
 func mapReasoningEffort(raw string, mappings []ReasoningEffortMapping, requestModel string) (string, bool) {

@@ -81,7 +81,7 @@ func TestOpenAIMessagesGLMReasoningPricingUsesForwardedEffort(t *testing.T) {
 		}{
 			{"medium", "", "high", 2},
 			{"xhigh", "", "max", 3},
-			{"xhigh", "medium", "medium", 1.5},
+			{"xhigh", "high", "high", 2},
 		} {
 			t.Run(fmt.Sprintf("stream=%t/effort=%s/policy=%s", stream, tc.effort, tc.maxPolicy), func(t *testing.T) {
 				body := []byte(fmt.Sprintf(`{"model":"glm-5.2","stream":%t,"max_tokens":32,"output_config":{"effort":%q},"messages":[{"role":"user","content":"hello"}]}`, stream, tc.effort))
