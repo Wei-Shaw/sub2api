@@ -653,6 +653,43 @@ func TestUsageLogRepositoryGetStatsWithFiltersRequestedModelSource(t *testing.T)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestUsageLogRepositoryGetStatsWithFiltersUserAgents(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+	start, end := time.Now().Add(-time.Hour), time.Now()
+	requestType := int16(service.RequestTypeSync)
+	billingType := int8(0)
+	mismatch := true
+	filters := usagestats.UsageLogFilters{
+		IncludeUserAgents: true, UserID: 1, APIKeyID: 2, AccountID: 3, GroupID: 4,
+		Model: "gpt-5", ModelFilterSource: usagestats.ModelSourceRequested,
+		RequestType: &requestType, BillingType: &billingType, UpstreamModelMismatch: &mismatch,
+		StartTime: &start, EndTime: &end,
+	}
+	rows := sqlmock.NewRows([]string{
+		"inbound_grouped", "upstream_grouped", "inbound_endpoint", "upstream_endpoint",
+		"requests", "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens",
+		"cost", "actual_cost", "account_cost", "avg_duration_ms", "ua_grouped", "user_agent",
+	}).AddRow(1, 1, nil, nil, 3, 6, 9, 0, 0, 1.5, 1.2, 1.5, 10, 1, nil).
+		AddRow(0, 1, "/v1/responses", nil, 3, 6, 9, 0, 0, 1.5, 1.2, 1.5, 10, 1, nil).
+		AddRow(1, 0, nil, "/v1/responses", 3, 6, 9, 0, 0, 1.5, 1.2, 1.5, 10, 1, nil).
+		AddRow(0, 0, "/v1/responses", "/v1/responses", 3, 6, 9, 0, 0, 1.5, 1.2, 1.5, 10, 1, nil).
+		AddRow(1, 1, nil, nil, 2, 4, 6, 0, 0, 1, 0.8, 1, 10, 0, "codex-tui/1.0").
+		AddRow(1, 1, nil, nil, 1, 2, 3, 0, 0, 0.5, 0.4, 0.5, 10, 0, "")
+	mock.ExpectQuery(`(?s)COALESCE\(user_agent, ''\) AS user_agent.*FROM usage_logs.*user_id = \$1.*api_key_id = \$2.*account_id = \$3.*group_id = \$4.*requested_model.*request_type.*billing_type.*upstream_model_mismatch.*created_at >=.*created_at <.*GROUPING\(user_agent\).*GROUP BY GROUPING SETS.*\(user_agent\)`).
+		WithArgs(int64(1), int64(2), int64(3), int64(4), "gpt-5", requestType, int16(billingType), start, end).
+		WillReturnRows(rows)
+	stats, err := repo.GetStatsWithFilters(context.Background(), filters)
+	require.NoError(t, err)
+	require.Equal(t, int64(3), stats.TotalRequests)
+	require.Equal(t, stats.TotalRequests, stats.UserAgents[0].Requests+stats.UserAgents[1].Requests)
+	require.Equal(t, int64(15), stats.TotalTokens)
+	require.Equal(t, int64(3), stats.Endpoints[0].Requests)
+	require.Equal(t, int64(3), stats.UpstreamEndpoints[0].Requests)
+	require.Equal(t, int64(3), stats.EndpointPaths[0].Requests)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestUsageLogRepositoryGetStatsWithFiltersRequestTypePriority(t *testing.T) {
 	db, mock := newSQLMock(t)
 	repo := &usageLogRepository{sql: db}

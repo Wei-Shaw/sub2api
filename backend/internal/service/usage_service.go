@@ -459,5 +459,8 @@ func (s *UsageService) GetStatsWithFilters(ctx context.Context, filters usagesta
 	if err != nil {
 		return nil, fmt.Errorf("get usage stats with filters: %w", err)
 	}
+	for i := range stats.UserAgents {
+		stats.UserAgents[i].Client, stats.UserAgents[i].Version = classifyUsageUserAgent(stats.UserAgents[i].UserAgent)
+	}
 	return stats, nil
 }
