@@ -616,6 +616,16 @@ func TestAPIKeyService_GetByKeyAllowsMaximumLength(t *testing.T) {
 	require.Equal(t, int32(1), repoCalls.Load())
 }
 
+func TestAPIKeyService_GetByKeyRejectsNonUTF8BeforeLookup(t *testing.T) {
+	repo := &authRepoStub{getByKeyForAuth: func(context.Context, string) (*APIKey, error) {
+		t.Fatal("non-UTF-8 credential reached repository")
+		return nil, nil
+	}}
+	svc := NewAPIKeyService(repo, nil, nil, nil, nil, nil, &config.Config{})
+	_, err := svc.GetByKey(context.Background(), "sk-\xff\xfe")
+	require.ErrorIs(t, err, ErrAPIKeyNotFound)
+}
+
 func TestAPIKeyService_AuthLookupBulkheadRejectsExcessMisses(t *testing.T) {
 	entered := make(chan struct{})
 	release := make(chan struct{})

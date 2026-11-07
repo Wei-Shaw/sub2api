@@ -10,27 +10,80 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-type openAICyberTranscriptBlockKeys struct {
-	lookupKeys          []string
-	preLatestUserKey    string
-	lookupKeysTruncated bool
+// CyberSessionTranscriptBlock is a cumulative history-prefix key together with
+// the number of history items it covers. Recording the length lets lookups
+// recompute exactly that prefix, so long or padded continuations stay exact.
+type CyberSessionTranscriptBlock struct {
+	Key    string
+	Length int
 }
 
-// Bound the Redis lookup work for a single request while retaining the most
-// recent transcript prefixes, where a continuation is most likely to match.
-const maxOpenAICyberTranscriptLookupKeys = 256
-
-// deriveOpenAICyberTranscriptBlockKeys returns cumulative semantic-history
-// hashes plus the context key immediately before the latest user turn. The
-// context key requires model-generated history so shared first-turn templates
+// CyberSessionTranscriptBlocks returns the exact full-history block followed
+// by an optional rewrite-tolerant block ending before the latest user turn.
+// The latter requires model-generated history so shared first-turn templates
 // cannot block unrelated conversations.
-func deriveOpenAICyberTranscriptBlockKeys(apiKeyID int64, body []byte) openAICyberTranscriptBlockKeys {
+func CyberSessionTranscriptBlocks(apiKeyID int64, body []byte) []CyberSessionTranscriptBlock {
+	var full, preLatestUser CyberSessionTranscriptBlock
+	// This is an entropy heuristic, not provenance proof: authenticated
+	// server-side history would be required to distinguish fixed few-shot
+	// assistant items perfectly.
+	hasModelGeneratedItem := false
+	walkOpenAICyberTranscript(apiKeyID, body, func(item gjson.Result, length int, prefixKey func() string) bool {
+		if openAICyberTranscriptItemStartsUserTurn(item) && hasModelGeneratedItem && full.Length > 0 {
+			preLatestUser = full
+		}
+		full = CyberSessionTranscriptBlock{Key: prefixKey(), Length: length}
+		if openAICyberTranscriptItemIsModelGenerated(item) {
+			hasModelGeneratedItem = true
+		}
+		return true
+	})
+	if full.Length == 0 {
+		return nil
+	}
+	blocks := []CyberSessionTranscriptBlock{full}
+	if preLatestUser.Length > 0 {
+		blocks = append(blocks, preLatestUser)
+	}
+	return blocks
+}
+
+// cyberSessionTranscriptKeysAt recomputes the transcript prefix keys at the
+// recorded block lengths, in ascending length order. Lengths beyond the
+// request history cannot match and are skipped.
+func cyberSessionTranscriptKeysAt(apiKeyID int64, body []byte, lengths []int) []string {
+	wanted := make(map[int]struct{}, len(lengths))
+	maxLength := 0
+	for _, length := range lengths {
+		if length > 0 {
+			wanted[length] = struct{}{}
+			maxLength = max(maxLength, length)
+		}
+	}
+	if len(wanted) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(wanted))
+	walkOpenAICyberTranscript(apiKeyID, body, func(_ gjson.Result, length int, prefixKey func() string) bool {
+		if _, ok := wanted[length]; ok {
+			keys = append(keys, prefixKey())
+		}
+		return length < maxLength
+	})
+	return keys
+}
+
+// walkOpenAICyberTranscript hashes model-visible history cumulatively and calls
+// visit after each item with the 1-based prefix length. prefixKey returns the
+// key of the prefix ending at that item and is only valid during the call.
+// Returning false from visit stops the walk.
+func walkOpenAICyberTranscript(apiKeyID int64, body []byte, visit func(item gjson.Result, length int, prefixKey func() string) bool) {
 	if len(body) == 0 {
-		return openAICyberTranscriptBlockKeys{}
+		return
 	}
 	root := openAIRequestPayloadView(body)
 	if !root.Exists() || !root.IsObject() {
-		return openAICyberTranscriptBlockKeys{}
+		return
 	}
 
 	h := sha256.New()
@@ -53,74 +106,40 @@ func deriveOpenAICyberTranscriptBlockKeys(apiKeyID int64, body []byte) openAICyb
 		_, _ = h.Write([]byte(canonical))
 	}
 
-	appendSequence := func(sequence gjson.Result) openAICyberTranscriptBlockKeys {
-		if !sequence.Exists() || !sequence.IsArray() {
-			return openAICyberTranscriptBlockKeys{}
+	prefixKey := func() string { return hex.EncodeToString(h.Sum(nil)) }
+	length := 0
+	feed := func(_, item gjson.Result) bool {
+		canonical := item.Raw
+		switch item.Type {
+		case gjson.String:
+			encoded, _ := json.Marshal(item.String())
+			canonical = string(encoded)
+		case gjson.JSON:
+			canonical = normalizeCompatSeedJSON(json.RawMessage(item.Raw))
 		}
-		result := openAICyberTranscriptBlockKeys{
-			lookupKeys: make([]string, 0, maxOpenAICyberTranscriptLookupKeys),
-		}
-		nextLookupKey := 0
-		lookupKeysRotated := false
-		lastLookupKey := ""
-		// This is an entropy heuristic, not provenance proof: authenticated
-		// server-side history would be required to distinguish fixed few-shot
-		// assistant items perfectly.
-		hasModelGeneratedItem := false
-		sequence.ForEach(func(_, item gjson.Result) bool {
-			canonical := item.Raw
-			switch item.Type {
-			case gjson.String:
-				encoded, _ := json.Marshal(item.String())
-				canonical = string(encoded)
-			case gjson.JSON:
-				canonical = normalizeCompatSeedJSON(json.RawMessage(item.Raw))
-			}
-			if strings.TrimSpace(canonical) == "" {
-				return true
-			}
-			if openAICyberTranscriptItemStartsUserTurn(item) && hasModelGeneratedItem && lastLookupKey != "" {
-				result.preLatestUserKey = lastLookupKey
-			}
-			_, _ = h.Write([]byte("|item="))
-			_, _ = h.Write([]byte(canonical))
-			lastLookupKey = hex.EncodeToString(h.Sum(nil))
-			if len(result.lookupKeys) < maxOpenAICyberTranscriptLookupKeys {
-				result.lookupKeys = append(result.lookupKeys, lastLookupKey)
-			} else {
-				result.lookupKeys[nextLookupKey] = lastLookupKey
-				nextLookupKey = (nextLookupKey + 1) % maxOpenAICyberTranscriptLookupKeys
-				lookupKeysRotated = true
-				result.lookupKeysTruncated = true
-			}
-			if openAICyberTranscriptItemIsModelGenerated(item) {
-				hasModelGeneratedItem = true
-			}
+		if strings.TrimSpace(canonical) == "" {
 			return true
-		})
-		if lookupKeysRotated {
-			ordered := make([]string, 0, len(result.lookupKeys))
-			ordered = append(ordered, result.lookupKeys[nextLookupKey:]...)
-			ordered = append(ordered, result.lookupKeys[:nextLookupKey]...)
-			result.lookupKeys = ordered
 		}
-		return result
+		_, _ = h.Write([]byte("|item="))
+		_, _ = h.Write([]byte(canonical))
+		length++
+		return visit(item, length, prefixKey)
 	}
 
 	if messages := root.Get("messages"); messages.Exists() {
-		return appendSequence(messages)
+		if messages.IsArray() {
+			messages.ForEach(feed)
+		}
+		return
 	}
 	input := root.Get("input")
 	if input.IsArray() {
-		return appendSequence(input)
+		input.ForEach(feed)
+		return
 	}
 	if input.Type == gjson.String && strings.TrimSpace(input.String()) != "" {
-		encoded, _ := json.Marshal(input.String())
-		_, _ = h.Write([]byte("|item="))
-		_, _ = h.Write(encoded)
-		return openAICyberTranscriptBlockKeys{lookupKeys: []string{hex.EncodeToString(h.Sum(nil))}}
+		feed(gjson.Result{}, input)
 	}
-	return openAICyberTranscriptBlockKeys{}
 }
 
 func openAICyberTranscriptItemStartsUserTurn(item gjson.Result) bool {

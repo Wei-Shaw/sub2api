@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"time"
 )
 
@@ -77,6 +79,15 @@ func (s *GroupCapacityService) GetAllGroupCapacity(ctx context.Context) ([]Group
 }
 
 func (s *GroupCapacityService) listActiveGroupIDs(ctx context.Context) ([]int64, error) {
+	if adminaccess.RestrictedFromContext(ctx) != nil {
+		if repo, ok := s.groupRepo.(interface {
+			ListScopedAdminCapacityGroupIDs(context.Context) ([]int64, error)
+		}); ok {
+			return repo.ListScopedAdminCapacityGroupIDs(ctx)
+		}
+		return nil, infraerrors.ServiceUnavailable("SCOPED_GROUP_CAPACITY_UNAVAILABLE", "受限分组容量服务不可用")
+	}
+
 	if lister, ok := s.groupRepo.(groupCapacityActiveGroupIDLister); ok {
 		return lister.ListActiveIDs(ctx)
 	}
