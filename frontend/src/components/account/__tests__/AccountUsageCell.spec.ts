@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import AccountUsageCell from '../AccountUsageCell.vue'
+import QuotaPoolTable from '../QuotaPoolTable.vue'
 import type { Account } from '@/types'
 
 const { getUsage } = vi.hoisted(() => ({
@@ -128,6 +129,33 @@ describe('AccountUsageCell', () => {
         dispatchEvent: vi.fn(),
       }))
     })
+  })
+
+  it('keeps batch-managed mobile quota loading deferred until visible', async () => {
+    let visible!: (entries: { isIntersecting: boolean }[]) => void
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: typeof visible) { visible = callback }
+      observe() {}
+      disconnect() {}
+    })
+    vi.mocked(window.matchMedia).mockReturnValue({
+      matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn()
+    } as unknown as MediaQueryList)
+    const requestBatchedUsage = vi.fn()
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: 99001 }), requestBatchedUsage }
+    })
+    try {
+      await flushPromises()
+      expect(requestBatchedUsage).not.toHaveBeenCalled()
+      visible([{ isIntersecting: true }])
+      await flushPromises()
+      expect(requestBatchedUsage).toHaveBeenCalledTimes(1)
+      expect(getUsage).not.toHaveBeenCalled()
+    } finally {
+      wrapper.unmount()
+      vi.unstubAllGlobals()
+    }
   })
 
   it('renders eligible Ollama Cloud state and forwards query updates', async () => {
@@ -407,7 +435,7 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('-')
   })
 
-  it('Antigravity 图片用量会聚合新旧 image 模型', async () => {
+  it('Antigravity 缺少完整摘要时保留明确标注的模型快照，不显示周期矩阵', async () => {
     getUsage.mockResolvedValue({
       antigravity_quota: {
         'gemini-2.5-flash-image': {
@@ -447,11 +475,37 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(wrapper.text()).toContain('admin.accounts.usageWindow.gemini3Image|70|2026-03-01T09:00:00Z')
+    const snapshot = wrapper.get('[data-test="quota-model-snapshot"]')
+    expect(snapshot.text()).toContain('admin.quota.modelSnapshot')
+    expect(snapshot.find('[title]').attributes('title')).toBe('admin.quota.modelSnapshotHint')
+    expect(snapshot.get('.usage-bar').text()).toBe('admin.accounts.usageWindow.gemini3Image|70|2026-03-01T09:00:00Z')
+    expect(wrapper.findComponent(QuotaPoolTable).exists()).toBe(false)
+    expect(wrapper.find('[data-test="quota-summary-unavailable"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it.each([false, true])('Antigravity distinguishes absent model data from true zero usage, zero=%s', async (zero) => {
+    getUsage.mockResolvedValue({
+      antigravity_quota: zero ? { 'gemini-3-flash': { utilization: 0 } } : {}
+    })
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: 1004, extra: {} }) },
+      global: { stubs: {
+        UsageProgressBar: { props: ['label', 'utilization'], template: '<div class="usage-bar">{{ utilization }}</div>' },
+        AccountQuotaInfo: true
+      } }
+    })
+    await flushPromises()
+    expect(wrapper.find('[data-test="quota-model-snapshot"]').exists()).toBe(zero)
+    expect(wrapper.find('[data-test="quota-summary-unavailable"]').exists()).toBe(!zero)
+    if (zero) expect(wrapper.get('.usage-bar').text()).toBe('0')
+    expect(wrapper.findComponent(QuotaPoolTable).exists()).toBe(false)
+    wrapper.unmount()
   })
 
   it('Antigravity shows the 5-hour and weekly window of each quota group when the summary is present', async () => {
     getUsage.mockResolvedValue({
+      ai_credits: [{ credit_type: 'GOOGLE_ONE_AI', amount: 25 }],
       antigravity_quota: {
         'gemini-3-flash': { utilization: 99, reset_time: '2026-11-11T15:52:48Z' }
       },
@@ -497,17 +551,32 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    const bars = wrapper.findAll('.usage-bar').map((bar) => bar.text())
-    expect(bars).toEqual([
-      'admin.accounts.usageWindow.antigravityGemini5h|60|2026-11-04T20:52:48Z',
-      'admin.accounts.usageWindow.antigravityGeminiWeekly|25|2026-11-11T15:52:48Z',
-      'admin.accounts.usageWindow.antigravityOther5h|0|',
-      'admin.accounts.usageWindow.antigravityOtherWeekly|10|2026-11-11T15:52:48Z',
-      // Pro plans' separate Argon quota is its own row, not a second Claude/GPT week.
-      'admin.accounts.usageWindow.antigravityArgonWeekly|20|2026-11-11T17:11:15Z'
+    const matrix = wrapper.getComponent(QuotaPoolTable)
+    expect(matrix.props('pools')).toEqual([
+      { id: 'gemini', name: 'Gemini', windows: [
+        { id: '5h', remaining: 0.4, resets_at: '2026-11-04T20:52:48Z' },
+        { id: 'weekly', remaining: 0.75, resets_at: '2026-11-11T15:52:48Z' }
+      ] },
+      { id: '3p', name: 'Claude / GPT', windows: [
+        { id: '5h', remaining: 1 },
+        { id: 'weekly', remaining: 0.9, resets_at: '2026-11-11T15:52:48Z' }
+      ] },
+      { id: 'gemini-argon-wtu', name: 'Gemini 4 Argon', windows: [
+        { id: 'weekly', remaining: 0.8, resets_at: '2026-11-11T17:11:15Z' }
+      ] }
     ])
+    expect(matrix.text()).toContain('40.0%')
+    expect(matrix.text()).toContain('75.0%')
+    expect(matrix.text()).toContain('Gemini 4 Argon')
+    expect(matrix.text()).toContain('80.0%')
+    expect(wrapper.text()).toContain('admin.accounts.aiCreditsBalance')
+    expect(wrapper.text()).toContain('25')
+    expect(wrapper.findAll('.usage-bar')).toHaveLength(0)
+    expect(wrapper.find('[data-test="quota-model-snapshot"]').exists()).toBe(false)
+    expect(getUsage).toHaveBeenCalledTimes(1)
     // The per-model figure (one tighter window per model) is not shown next to the real windows.
     expect(wrapper.text()).not.toContain('gemini3Flash')
+    wrapper.unmount()
   })
 
   it('Antigravity 会显示 AI Credits 余额信息', async () => {
@@ -1835,8 +1904,9 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    const bars = wrapper.findAll('usage-progress-bar-stub')
-    expect(bars.map((bar) => bar.attributes('label'))).toEqual(['1d', 'total'])
+    const rows = wrapper.findAll('.quota-grid').slice(1)
+    expect(rows.map(row => row.find('span').text())).toEqual(['1d', 'admin.quota.windows.total'])
+    expect(wrapper.findAll('.quota-meter').map(meter => meter.text())).toEqual(['75.0%', '75.3%'])
     expect(getUsage).not.toHaveBeenCalled()
   })
 
@@ -1883,8 +1953,7 @@ describe('AccountUsageCell', () => {
     expect(text).toContain('123 req')
     expect(text).toContain('A $1.79')
     expect(text).toContain('U $0.00')
-    const bars = wrapper.findAll('usage-progress-bar-stub')
-    expect(bars.map((bar) => bar.attributes('label'))).toEqual(['1d'])
+    expect(wrapper.find('.quota-pools').text()).toContain('1d75.0%')
     expect(text).not.toContain('admin.accounts.gemini.quotaPolicy.title')
     expect(text).not.toContain('admin.accounts.gemini.quotaPolicy.simulatedNote')
     expect(text).not.toContain('admin.accounts.gemini.rateLimit.unlimited')
@@ -1980,8 +2049,10 @@ describe('AccountUsageCell', () => {
 
     expect(wrapper.text()).toContain('5h|41')
     expect(wrapper.text()).toContain('7d|56')
-    expect(wrapper.text()).toContain('7d S|30')
-    expect(wrapper.text()).toContain('7d F|100')
+    expect(wrapper.text()).toContain('Sonnet')
+    expect(wrapper.text()).toContain('70.0%')
+    expect(wrapper.text()).toContain('Fable')
+    expect(wrapper.findAll('.quota-meter').some(meter=>meter.text()==='0.0%')).toBe(true)
   })
 
   it('Anthropic OAuth 无 Fable 数据时不渲染 7d F 进度条', async () => {
@@ -2026,4 +2097,23 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('7d S')
     expect(wrapper.text()).not.toContain('7d F')
   })
+})
+
+describe('adaptive quota integration', () => {
+ it.each([
+  ['openai', {seven_day:{utilization:20}}, 'GPT / Codex', '7d', '80.0%'],
+  ['anthropic', {seven_day_sonnet:{utilization:60}}, 'Sonnet', '7d', '40.0%'],
+  ['gemini', {gemini_pro_daily:{utilization:30}}, 'Pro', '1d', '70.0%']
+ ])('renders actual %s windows without inventing 5h', async (platform, data, name, period, percent) => {
+  getUsage.mockResolvedValue(data)
+  const wrapper=mount(AccountUsageCell,{props:{account:makeAccount({id:98765,platform,type:'oauth',credentials:{oauth_type:'google_one'}})},global:{stubs:{ClaudeResetCreditsCell:true}}})
+  await flushPromises()
+  const matrix=wrapper.find('.quota-pools')
+  expect(matrix.exists()).toBe(true)
+  expect(matrix.text()).toContain(name)
+  expect(matrix.text()).toContain(period)
+  expect(matrix.text()).toContain(percent)
+  expect(matrix.text()).not.toContain('5h')
+  wrapper.unmount()
+ })
 })

@@ -31,7 +31,7 @@
 
       <!-- Error state -->
       <div v-else-if="error" class="text-xs text-red-500">
-        {{ error }}
+        {{ usageError }}
       </div>
 
       <!-- Usage data -->
@@ -40,8 +40,9 @@
         <div v-if="usageInfo.error" class="text-xs text-amber-600 dark:text-amber-400 truncate max-w-[200px]" :title="usageInfo.error">
           {{ usageInfo.error }}
         </div>
+        <QuotaPoolTable :pools="adaptedQuotaPools" :updated-at="usageInfo.updated_at" />
         <!-- 5h Window -->
-        <UsageProgressBar
+        <UsageProgressBar :stats-only="true"
           v-if="usageInfo.five_hour"
           label="5h"
           :utilization="usageInfo.five_hour.utilization"
@@ -51,7 +52,7 @@
         />
 
         <!-- 7d Window (OAuth only) -->
-        <UsageProgressBar
+        <UsageProgressBar :stats-only="true"
           v-if="usageInfo.seven_day"
           label="7d"
           :utilization="usageInfo.seven_day.utilization"
@@ -59,23 +60,6 @@
           color="emerald"
         />
 
-        <!-- 7d Sonnet Window (OAuth only) -->
-        <UsageProgressBar
-          v-if="usageInfo.seven_day_sonnet"
-          label="7d S"
-          :utilization="usageInfo.seven_day_sonnet.utilization"
-          :resets-at="usageInfo.seven_day_sonnet.resets_at"
-          color="purple"
-        />
-
-        <!-- 7d Fable Window (7d_oi) -->
-        <UsageProgressBar
-          v-if="usageInfo.seven_day_fable"
-          label="7d F"
-          :utilization="usageInfo.seven_day_fable.utilization"
-          :resets-at="usageInfo.seven_day_fable.resets_at"
-          color="amber"
-        />
 
       </div>
 
@@ -125,7 +109,8 @@
     <!-- OpenAI OAuth accounts: single source from /usage API -->
     <template v-else-if="account.platform === 'openai' && account.type === 'oauth'">
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
-        <UsageProgressBar
+        <QuotaPoolTable :pools="adaptedQuotaPools" :updated-at="usageInfo?.updated_at" />
+        <UsageProgressBar :stats-only="true"
           v-if="usageInfo?.five_hour"
           label="5h"
           :utilization="usageInfo.five_hour.utilization"
@@ -134,7 +119,7 @@
           :show-now-when-idle="true"
           color="indigo"
         />
-        <UsageProgressBar
+        <UsageProgressBar :stats-only="true"
           v-if="usageInfo?.seven_day"
           label="7d"
           :utilization="usageInfo.seven_day.utilization"
@@ -291,28 +276,21 @@
 
       <!-- Error state -->
       <div v-else-if="error" class="text-xs text-red-500">
-        {{ error }}
+        {{ usageError }}
       </div>
 
-      <!-- Real 5-hour and weekly windows per quota group (retrieveUserQuotaSummary) -->
-      <div v-else-if="antigravityQuotaGroupBars.length > 0" class="space-y-1">
-        <UsageProgressBar
-          v-for="bar in antigravityQuotaGroupBars"
-          :key="bar.key"
-          :label="bar.label"
-          :title="bar.title"
-          :utilization="bar.utilization"
-          :resets-at="bar.resetsAt"
-          :color="bar.color"
-        />
-
+      <!-- Reuse the upstream quota groups for both the matrix and overview. -->
+      <div v-else-if="adaptedQuotaPools.length" class="space-y-1">
+        <QuotaPoolTable :pools="adaptedQuotaPools" :updated-at="usageInfo?.updated_at" />
         <div v-if="aiCreditsDisplay" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
           💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
         </div>
       </div>
-
-      <!-- Usage data from API -->
-      <div v-else-if="hasAntigravityQuotaFromAPI" class="space-y-1">
+      <!-- Model snapshots remain a display-only fallback, never period totals. -->
+      <div v-else-if="hasAntigravityQuotaFromAPI" class="space-y-1" data-test="quota-model-snapshot">
+        <div class="text-[10px] text-gray-500 dark:text-gray-400" :title="t('admin.quota.modelSnapshotHint')">
+          {{ t('admin.quota.modelSnapshot') }}
+        </div>
         <!-- Gemini 3 Pro -->
         <UsageProgressBar
           v-if="antigravity3ProUsageFromAPI !== null"
@@ -353,10 +331,12 @@
           💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
         </div>
       </div>
-      <div v-else-if="aiCreditsDisplay" class="text-[10px] text-gray-500 dark:text-gray-400">
-        💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
+      <div v-else class="space-y-1">
+        <span class="text-xs text-gray-400" data-test="quota-summary-unavailable">--</span>
+        <div v-if="aiCreditsDisplay" class="text-[10px] text-gray-500 dark:text-gray-400">
+          💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
+        </div>
       </div>
-      <div v-else class="text-xs text-gray-400">-</div>
     </template>
 
     <!-- Grok OAuth accounts: passive xAI quota headers + local Sub2API usage -->
@@ -369,7 +349,7 @@
         </div>
       </div>
       <div v-else-if="error" class="text-xs text-red-500">
-        {{ error }}
+        {{ usageError }}
       </div>
       <div v-else-if="needsReauth" class="space-y-1">
         <span class="inline-block rounded px-1.5 py-0.5 text-[10px] font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
@@ -382,9 +362,10 @@
         </span>
       </div>
       <div v-else-if="usageInfo" class="space-y-1">
-        <!-- Free: only rolling 24h soft-gate bar. Paid: 7d + 30d + prepaid money. -->
+        <QuotaPoolTable :pools="adaptedQuotaPools" :updated-at="usageInfo.updated_at" />
+        <!-- Free: local 24h soft gate. Paid: billing windows and prepaid money. -->
         <template v-if="grokIsFree">
-          <UsageProgressBar
+          <UsageProgressBar :stats-only="true"
             v-if="grokFreeTokenBar"
             label="24h"
             :title="t('admin.accounts.usageWindow.grokFreeQuota24hHint', { limit: formatCompactNumber(grokFreeTokenBar.limit) })"
@@ -398,7 +379,7 @@
           </div>
         </template>
         <template v-else>
-          <UsageProgressBar
+          <UsageProgressBar :stats-only="true"
             v-if="grokWeeklyBillingBar"
             label="7d"
             :utilization="grokWeeklyBillingBar.utilization"
@@ -407,7 +388,7 @@
             :show-now-when-idle="true"
             color="indigo"
           />
-          <UsageProgressBar
+          <UsageProgressBar :stats-only="true"
             v-if="grokMonthlyBillingBar"
             label="30d"
             :utilization="grokMonthlyBillingBar.utilization"
@@ -572,28 +553,7 @@
           <div class="h-3 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
         </div>
         <!-- Vertex 设置了配额上限：显示配额进度条 -->
-        <template v-if="isGeminiVertex">
-          <UsageProgressBar
-            v-if="quotaDailyBar"
-            label="1d"
-            :utilization="quotaDailyBar.utilization"
-            :resets-at="quotaDailyBar.resetsAt"
-            color="indigo"
-          />
-          <UsageProgressBar
-            v-if="quotaWeeklyBar"
-            label="7d"
-            :utilization="quotaWeeklyBar.utilization"
-            :resets-at="quotaWeeklyBar.resetsAt"
-            color="emerald"
-          />
-          <UsageProgressBar
-            v-if="quotaTotalBar"
-            label="total"
-            :utilization="quotaTotalBar.utilization"
-            color="purple"
-          />
-        </template>
+        <QuotaPoolTable v-if="isGeminiVertex && localQuotaPools.length" :pools="localQuotaPools" />
         <div v-if="loading" class="space-y-1">
           <div class="flex items-center gap-1">
             <div class="h-3 w-[32px] animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
@@ -602,11 +562,13 @@
           </div>
         </div>
         <div v-else-if="error" class="text-xs text-red-500">
-          {{ error }}
+          {{ usageError }}
         </div>
         <!-- Gemini: show daily usage bars when available -->
         <div v-else-if="geminiUsageAvailable" class="space-y-1">
+          <QuotaPoolTable :pools="adaptedQuotaPools" :updated-at="usageInfo?.updated_at" />
           <UsageProgressBar
+            :stats-only="true"
             v-for="bar in geminiUsageBars"
             :key="bar.key"
             :label="bar.label"
@@ -684,27 +646,7 @@
         <div class="h-3 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
       </div>
 
-      <!-- API Key accounts with quota limits: show progress bars -->
-      <UsageProgressBar
-        v-if="quotaDailyBar"
-        label="1d"
-        :utilization="quotaDailyBar.utilization"
-        :resets-at="quotaDailyBar.resetsAt"
-        color="indigo"
-      />
-      <UsageProgressBar
-        v-if="quotaWeeklyBar"
-        label="7d"
-        :utilization="quotaWeeklyBar.utilization"
-        :resets-at="quotaWeeklyBar.resetsAt"
-        color="emerald"
-      />
-      <UsageProgressBar
-        v-if="quotaTotalBar"
-        label="total"
-        :utilization="quotaTotalBar.utilization"
-        color="purple"
-      />
+      <QuotaPoolTable v-if="localQuotaPools.length" :pools="localQuotaPools" />
 
       <!-- No data at all -->
       <div
@@ -721,10 +663,13 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import QuotaPoolTable from './QuotaPoolTable.vue'
+import { usagePools, configuredQuotaPools, grokQuotaView } from '@/utils/quotaPools'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber } from '@/utils/format'
 import { isOfficialGeminiBaseUrl } from '@/utils/geminiExplicitCache'
 import { supportsAccountQuota } from '@/utils/accountQuota'
+import { ACCOUNT_USAGE_LOAD_ERROR } from '@/utils/accountUsageCache'
 import UsageProgressBar from './UsageProgressBar.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
 import ClaudeResetCreditsCell from './ClaudeResetCreditsCell.vue'
@@ -862,9 +807,11 @@ const geminiUsageAvailable = computed(() => {
   )
 })
 
+const adaptedQuotaPools = computed(() => usagePools(props.account.platform, usageInfo.value ?? undefined))
+
 const hasOpenAIUsageFallback = computed(() => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
-  return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
+  return adaptedQuotaPools.value.length > 0
 })
 
 const openAISevenDayEstimatedTotalCost = computed(() => {
@@ -901,42 +848,6 @@ interface AntigravityUsageResult {
   utilization: number
   resetTime: string | null
 }
-
-// ===== Antigravity quota groups (usageInfo.antigravity_quota_groups) =====
-// The summary reports each group's real 5-hour and weekly window. When present it replaces the
-// per-model bars below, which show only whichever window is tighter for each model.
-const antigravityQuotaGroupBars = computed(() => {
-  const groups = usageInfo.value?.antigravity_quota_groups
-  if (!groups || groups.length === 0) return []
-  const bars: Array<{
-    key: string
-    label: string
-    title: string
-    utilization: number
-    resetsAt: string | null
-    color: 'indigo' | 'emerald' | 'purple' | 'amber'
-  }> = []
-  for (const group of groups) {
-    // 'gemini' = Gemini models, 'gemini-argon-wtu' = the separate Argon quota of Pro plans,
-    // '3p' (or anything else) = Antigravity's Claude and GPT models.
-    const family = group.key === 'gemini' ? 'Gemini' : group.key.startsWith('gemini-argon') ? 'Argon' : 'Other'
-    for (const window of group.windows || []) {
-      const weekly = window.window === 'weekly'
-      const labelKey = `admin.accounts.usageWindow.antigravity${family}${weekly ? 'Weekly' : '5h'}`
-      const color: 'indigo' | 'emerald' | 'purple' | 'amber' =
-        family === 'Gemini' ? (weekly ? 'indigo' : 'emerald') : family === 'Argon' ? 'indigo' : weekly ? 'purple' : 'amber'
-      bars.push({
-        key: `${group.key}-${window.window}`,
-        label: t(labelKey),
-        title: group.name,
-        utilization: Math.round(window.utilization ?? 0),
-        resetsAt: window.resets_at ?? null,
-        color
-      })
-    }
-  }
-  return bars
-})
 
 // ===== Antigravity quota from API (usageInfo.antigravity_quota) =====
 
@@ -1263,55 +1174,10 @@ const geminiUsageBars = computed(() => {
   return bars
 })
 
-interface GrokQuotaBarInfo {
-  utilization: number
-  resetsAt: string | null
-  windowStats?: WindowStats | null
-}
-
 const grokBilling = computed(() => usageInfo.value?.grok_billing || null)
-const grokLocalUsage7d = computed(() => (
-  usageInfo.value?.grok_local_usage_7d || usageInfo.value?.seven_day?.window_stats || null
-))
-const grokLocalUsageMonthly = computed(() => (
-  usageInfo.value?.grok_local_usage_monthly || usageInfo.value?.thirty_day?.window_stats || null
-))
-const grokWeeklyBillingBar = computed((): GrokQuotaBarInfo | null => {
-  const billing = grokBilling.value
-  if (billing?.period_type?.toLowerCase() !== 'weekly' || billing.usage_percent == null) {
-    return null
-  }
-  return {
-    utilization: Math.min(100, Math.max(0, billing.usage_percent)),
-    resetsAt: billing.period_end || null,
-    windowStats: grokLocalUsage7d.value
-  }
-})
-// Monthly used/limit % from billing probe (used_percent or derived from cents).
-const grokMonthlyBillingBar = computed((): GrokQuotaBarInfo | null => {
-  const billing = grokBilling.value
-  if (!billing) return null
-  let utilization: number | null = null
-  if (billing.used_percent != null && Number.isFinite(billing.used_percent)) {
-    utilization = billing.used_percent
-  } else if (
-    billing.monthly_limit_cents != null &&
-    billing.monthly_limit_cents > 0 &&
-    billing.used_cents != null
-  ) {
-    utilization = (billing.used_cents / billing.monthly_limit_cents) * 100
-  }
-  if (utilization == null) return null
-  // Avoid duplicating the weekly bar when period_type is weekly-only without monthly.
-  if (billing.period_type?.toLowerCase() === 'weekly' && billing.monthly_limit_cents == null) {
-    return null
-  }
-  return {
-    utilization: Math.min(100, Math.max(0, utilization)),
-    resetsAt: billing.billing_period_end || billing.period_end || null,
-    windowStats: grokLocalUsageMonthly.value
-  }
-})
+const grokView = computed(() => grokQuotaView(usageInfo.value ?? undefined))
+const grokWeeklyBillingBar = computed(() => grokView.value.weekly)
+const grokMonthlyBillingBar = computed(() => grokView.value.monthly)
 const formatGrokMoney = (value?: number | null) => {
   if (value == null || Number.isNaN(value)) return '0'
   if (value >= 1000) return formatCompactNumber(value)
@@ -1348,40 +1214,12 @@ const grokPrepaidMoneyLine = computed(() => {
     limit: showUsedLimit ? formatGrokMoney(limitRaw) : null
   }
 })
-const grokPlanLabelIsFree = (value: string) => value.includes('free') || value.includes('basic')
-const grokPlanLabelIsPaid = (value: string) => {
-  return value !== '' && !grokPlanLabelIsFree(value) && !value.includes('unknown')
-}
-const grokIsFree = computed(() => {
-  if (props.account.platform !== 'grok' || props.account.type !== 'oauth') return false
-  const billing = grokBilling.value
-  const plan = (billing?.plan || '').trim().toLowerCase()
-  const tier = (usageInfo.value?.subscription_tier || '').trim().toLowerCase()
-  const entitlement = (usageInfo.value?.grok_entitlement_status || '').toLowerCase()
-  if (grokPlanLabelIsFree(tier)) return true
-  if (grokPlanLabelIsPaid(tier)) return false
-  if (
-    billing?.usage_percent != null ||
-    billing?.used_percent != null ||
-    (billing?.monthly_limit_cents != null && billing.monthly_limit_cents > 0)
-  ) return false
-  if (grokPlanLabelIsPaid(plan)) return false
-  if (
-    grokPlanLabelIsFree(plan) ||
-    grokPlanLabelIsFree(entitlement)
-  ) return true
-  return billing != null
-})
+const grokIsFree = computed(() => grokView.value.isFree)
 const grokFreeQuotaUsage = computed(() => usageInfo.value?.grok_local_usage_24h || null)
-const grokFreeTokenBar = computed(() => {
-  if (!grokIsFree.value || !grokFreeQuotaUsage.value) return null
-  const limit = usageInfo.value?.grok_free_token_limit
-  if (typeof limit !== 'number' || limit <= 0) return null
-  const used = Math.max(0, grokFreeQuotaUsage.value.tokens || 0)
-  return { utilization: Math.min(100, (used / limit) * 100), limit }
-})
+const grokFreeTokenBar = computed(() => grokView.value.freeBar)
 const grokQuotaUnknown = computed(() => {
   if (props.account.platform !== 'grok') return false
+  if (adaptedQuotaPools.value.length) return false
   if (grokIsFree.value) {
     return !grokFreeTokenBar.value
   }
@@ -1494,8 +1332,14 @@ const isAnthropicOAuthOrSetupToken = computed(() => {
 
 const requestParentBatchUsage = (options?: { force?: boolean }) => {
   if (!isBatchManaged.value || !shouldFetchUsage.value) return
+  if (!options?.force && shouldLazyLoadOnMobile.value && !hasEnteredViewport.value) {
+    pendingAutoLoad.value = true
+    return
+  }
   props.requestBatchedUsage?.(props.account, options)
 }
+
+const usageError = computed(() => error.value === ACCOUNT_USAGE_LOAD_ERROR ? t('admin.quota.retry') : error.value)
 
 const syncManagedUsageState = () => {
   if (!isBatchManaged.value) return
@@ -1610,70 +1454,8 @@ const handleGrokProbed = async () => {
   await loadUsage({ source: 'active', bypassCache: true })
 }
 
-// ===== API Key quota progress bars =====
-
-interface QuotaBarInfo {
-  utilization: number
-  resetsAt: string | null
-}
-
-const makeQuotaBar = (
-  used: number,
-  limit: number,
-  startKey?: string
-): QuotaBarInfo => {
-  const utilization = limit > 0 ? (used / limit) * 100 : 0
-  let resetsAt: string | null = null
-  if (startKey) {
-    const extra = props.account.extra as Record<string, unknown> | undefined
-    const isDaily = startKey.includes('daily')
-    const mode = isDaily
-      ? (extra?.quota_daily_reset_mode as string) || 'rolling'
-      : (extra?.quota_weekly_reset_mode as string) || 'rolling'
-
-    if (mode === 'fixed') {
-      // Use pre-computed next reset time for fixed mode
-      const resetAtKey = isDaily ? 'quota_daily_reset_at' : 'quota_weekly_reset_at'
-      resetsAt = (extra?.[resetAtKey] as string) || null
-    } else {
-      // Rolling mode: compute from start + period
-      const startStr = extra?.[startKey] as string | undefined
-      if (startStr) {
-        const startDate = new Date(startStr)
-        const periodMs = isDaily ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000
-        resetsAt = new Date(startDate.getTime() + periodMs).toISOString()
-      }
-    }
-  }
-  return { utilization, resetsAt }
-}
-
-const hasApiKeyQuota = computed(() => {
-  if (!supportsAccountQuota(props.account.type)) return false
-  return (
-    (props.account.quota_daily_limit ?? 0) > 0 ||
-    (props.account.quota_weekly_limit ?? 0) > 0 ||
-    (props.account.quota_limit ?? 0) > 0
-  )
-})
-
-const quotaDailyBar = computed((): QuotaBarInfo | null => {
-  const limit = props.account.quota_daily_limit ?? 0
-  if (limit <= 0) return null
-  return makeQuotaBar(props.account.quota_daily_used ?? 0, limit, 'quota_daily_start')
-})
-
-const quotaWeeklyBar = computed((): QuotaBarInfo | null => {
-  const limit = props.account.quota_weekly_limit ?? 0
-  if (limit <= 0) return null
-  return makeQuotaBar(props.account.quota_weekly_used ?? 0, limit, 'quota_weekly_start')
-})
-
-const quotaTotalBar = computed((): QuotaBarInfo | null => {
-  const limit = props.account.quota_limit ?? 0
-  if (limit <= 0) return null
-  return makeQuotaBar(props.account.quota_used ?? 0, limit)
-})
+const localQuotaPools = computed(() => supportsAccountQuota(props.account.type) ? configuredQuotaPools(props.account) : [])
+const hasApiKeyQuota = computed(() => localQuotaPools.value.length > 0)
 
 const handleQuotaResetAccountUpdated = (account: Account) => {
   emit('account-updated', account)
