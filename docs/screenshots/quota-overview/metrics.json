@@ -263,5 +263,112 @@
         "reloadQuotaRequests": 0
       }
     ]
+  },
+  "narrowed-functional": {
+    "browser": "157.0.4341.42",
+    "simulatedLatencyMs": {
+      "list": 25,
+      "usage": 50
+    },
+    "cases": [
+      {
+        "label": "pr-desktop",
+        "count": 6,
+        "mobile": false,
+        "openMs": 232,
+        "domNodes": 356,
+        "rows": 6,
+        "initialErrors": 0,
+        "remainingErrors": 0,
+        "reloadQuotaRequests": 0
+      },
+      {
+        "label": "pr-mobile",
+        "count": 6,
+        "mobile": true,
+        "openMs": 324,
+        "domNodes": 366,
+        "rows": 6,
+        "initialErrors": 0,
+        "remainingErrors": 0,
+        "reloadQuotaRequests": 0
+      },
+      {
+        "label": "desktop-100",
+        "count": 100,
+        "mobile": false,
+        "openMs": 341,
+        "domNodes": 1327,
+        "rows": 25,
+        "initialErrors": 0,
+        "remainingErrors": 0,
+        "reloadQuotaRequests": 0
+      },
+      {
+        "label": "desktop-500",
+        "count": 500,
+        "mobile": false,
+        "openMs": 1471,
+        "domNodes": 1728,
+        "rows": 25,
+        "initialErrors": 0,
+        "remainingErrors": 0,
+        "reloadQuotaRequests": 0
+      },
+      {
+        "label": "desktop-1000",
+        "count": 1000,
+        "mobile": false,
+        "openMs": 1968,
+        "domNodes": 2228,
+        "rows": 25,
+        "initialErrors": 0,
+        "remainingErrors": 0,
+        "reloadQuotaRequests": 0
+      },
+      {
+        "label": "mobile-1000",
+        "count": 1000,
+        "mobile": true,
+        "openMs": 1952,
+        "domNodes": 2257,
+        "rows": 25,
+        "initialErrors": 0,
+        "remainingErrors": 0,
+        "reloadQuotaRequests": 0
+      },
+      {
+        "label": "partial-failure-100",
+        "count": 100,
+        "mobile": false,
+        "openMs": 381,
+        "domNodes": 1253,
+        "rows": 25,
+        "initialErrors": 2,
+        "remainingErrors": 0,
+        "reloadQuotaRequests": 0
+      }
+    ]
+  },
+  "narrowed-mixed": {
+    "browser": "157.0.4341.42",
+    "simulatedLatencyMs": {
+      "list": 25,
+      "usage": 50
+    },
+    "cases": [
+      {
+        "label": "mixed-desktop",
+        "count": 9,
+        "mobile": false,
+        "openMs": 229,
+        "domNodes": 649,
+        "rows": 9,
+        "initialErrors": 0,
+        "mixedAssertionsPassed": true,
+        "remainingErrors": 0,
+        "reloadQuotaRequests": 0
+      }
+    ]
   }
 }

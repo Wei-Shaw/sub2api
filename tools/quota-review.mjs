@@ -14,8 +14,8 @@ const clock = Date.now()
 const resets = [2, 72, 5, 120, 96].map(hours => new Date(clock + hours * 3600000).toISOString())
 const user = { id: 1, email: 'review@example.test', username: 'Review', role: 'admin', status: 'active', balance: 0, concurrency: 10 }
 function account(id) {
-  return { id, name: `Demo ${String(id).padStart(4, '0')}`, platform: 'antigravity', type: 'oauth',
-    status: 'active', schedulable: true, concurrency: 1, priority: 1, rate_multiplier: 1,
+  return { id, name: `Demo ${String(id).padStart(4, '0')}`, platform: args.mode === 'mixed' && id === 3 ? 'openai' : args.mode === 'mixed' && id === 4 ? 'anthropic' : 'antigravity', type: 'oauth',
+    status: 'active', schedulable: !(args.mode === 'mixed' && id === 7), concurrency: 1, priority: 1, rate_multiplier: 1,
     credentials: { email: `demo-${id}@example.test` }, extra: { email: `demo-${id}@example.test` },
     groups: [], group_ids: [], created_at: new Date(clock).toISOString(), updated_at: new Date(clock).toISOString(),
     proxy_id: null, error_message: null, expires_at: null, last_used_at: null,
@@ -24,7 +24,7 @@ function account(id) {
 }
 function usage(id, revision = 0) {
   const used = (id * 7 + revision * 10) % 90
-  return { updated_at: new Date(clock).toISOString(), source: 'active', subscription_tier: 'PRO',
+  const value = { updated_at: new Date(clock).toISOString(), source: 'active', subscription_tier: 'PRO',
     antigravity_quota_groups: [
       { key: 'gemini', name: 'Gemini Models', windows: [
         { window: '5h', utilization: used, resets_at: resets[0] },
@@ -36,6 +36,17 @@ function usage(id, revision = 0) {
         { window: 'weekly', utilization: 20, resets_at: resets[4] }] }
     ], antigravity_quota: { 'gemini-3-flash': { utilization: used, reset_time: resets[0] } },
     ai_credits: [{ credit_type: 'GOOGLE_ONE_AI', amount: 25, minimum_balance: 5 }] }
+  if (args.mode === 'mixed') {
+    if (id === 2) value.subscription_tier = 'ULTRA'
+    if (id === 3 || id === 4) return {
+      updated_at: value.updated_at, source: 'active', subscription_tier: id === 3 ? 'PRO' : 'MAX',
+      five_hour: { utilization: 25, resets_at: resets[0] }, seven_day: { utilization: 60, resets_at: resets[1] }
+    }
+    if (id === 5) delete value.antigravity_quota_groups
+    if (id === 6) value.updated_at = new Date(clock - 3600000).toISOString()
+    if (id === 8 || id === 9) delete value.subscription_tier
+  }
+  return value
 }
 async function server(root) {
   root = path.resolve(root)
@@ -134,6 +145,32 @@ async function scenario(origin, count, label, mobile = false, fault = false, ove
     result.openRequests = requests.slice(reqStart)
     result.initialQuotaRequests = requests.filter(r => r.endpoint.endsWith('/usage/batch')).map(r => ({ ids: r.ids, force: r.force }))
     result.summaryText = await dialog.locator('.card').allTextContents()
+    if (args.mode === 'mixed') {
+      const cards = dialog.locator('.card')
+      const pro = cards.filter({ hasText: 'antigravity · PRO' })
+      assert.equal(await pro.count(), 1)
+      // Account 6 is stale; 5 is model-only; 7 is not schedulable.
+      assert.equal(await pro.getByText('1 / 2 个账号已计入', { exact: true }).count(), 5)
+      assert.ok((await pro.textContent()).includes('0.93 / 1.00'))
+      assert.equal(await cards.filter({ hasText: 'antigravity · ULTRA' }).count(), 1)
+      assert.equal(await cards.filter({ hasText: 'openai · PRO' }).count(), 1)
+      assert.equal(await cards.filter({ hasText: 'anthropic · MAX' }).count(), 1)
+      assert.equal(await dialog.locator('[data-quota-account="5"]').locator('.quota-meter').count(), 0)
+      const unknown = cards.filter({ hasText: 'antigravity · 未确认套餐' })
+      assert.equal(await unknown.count(), 1)
+      assert.equal(await unknown.getByText('1 / 1 个账号已计入', { exact: true }).count(), 10)
+      result.mixedAssertionsPassed = true
+      await dialog.getByRole('button', { name: 'Close modal' }).click()
+      await dialog.waitFor({ state: 'hidden' })
+      const snapshot = page.locator('[data-test="quota-model-snapshot"]')
+      await snapshot.waitFor()
+      assert.ok((await snapshot.textContent()).includes('模型额度快照 · 已用比例'))
+      assert.equal(await snapshot.locator('.quota-pools').count(), 0)
+      await snapshot.screenshot({ path: path.join(out, 'model-snapshot-fallback.png'), animations: 'disabled' })
+      await open.click()
+      await dialog.getByRole('button', { name: '刷新', exact: true }).waitFor()
+      await page.waitForTimeout(300)
+    }
     if (args.verify === 'true') {
       assert.equal(errors.length, 0, 'browser runtime errors')
       assert.equal(unexpected.length, 0, 'unmocked API endpoint')
@@ -208,6 +245,7 @@ try {
     for (const count of [100, 500, 1000]) await scenario(s.origin, count, `desktop-${count}`)
     await scenario(s.origin, 1000, 'mobile-1000', true)
   }
+  else if (args.mode === 'mixed') await scenario(s.origin, 9, 'mixed-desktop', false, false, true, true)
   else if (args.mode === 'slow') await scenario(s.origin, 1000, 'slow-1000')
   else if (args.mode === 'shots') {
     await scenario(s.origin, 6, 'pr-desktop', false, false, true, true)

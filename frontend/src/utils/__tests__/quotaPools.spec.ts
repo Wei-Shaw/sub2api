@@ -87,6 +87,37 @@ describe('shared quota pools', () => {
     ]
     expect(aggregatePools(rows, now)).toHaveLength(2)
   })
+  it('aggregates a mixed fleet without blending plans, model snapshots or invalid capacity', () => {
+    const rows = [
+      ...accountPools(account(1), usage(0.8), now),
+      ...accountPools(account(2), { ...usage(0.5), subscription_tier: 'ULTRA' }, now),
+      ...accountPools({ ...account(3), platform: 'openai' }, {
+        ...usage(), five_hour: { utilization: 25 }
+      } as AccountUsageInfo, now),
+      ...accountPools({ ...account(4), platform: 'anthropic' }, {
+        ...usage(), subscription_tier: 'MAX', seven_day: { utilization: 60 }
+      } as AccountUsageInfo, now),
+      ...accountPools(account(5), {
+        ...usage(), antigravity_quota_groups: undefined,
+        antigravity_quota: { 'gemini-3-flash': { utilization: 0 } }
+      }, now),
+      ...accountPools(account(6), { ...usage(), updated_at: '2026-09-28T10:00:00Z' }, now),
+      ...accountPools({ ...account(7), schedulable: false }, usage(), now),
+      ...accountPools(account(8), { ...usage(0.2), subscription_tier: undefined }, now),
+      ...accountPools(account(9), { ...usage(0.9), subscription_tier: undefined }, now)
+    ]
+    const totals = aggregatePools(rows, now)
+    expect(totals).toHaveLength(6)
+    const windowFor = (platform: string, tier: string) => totals.find(
+      (pool) => pool.platform === platform && pool.tier === tier
+    )!.windows[0]
+    expect(windowFor('antigravity', 'PRO')).toMatchObject({ total: 0.8, known: 1, accounts: 2 })
+    expect(windowFor('antigravity', 'ULTRA')).toMatchObject({ total: 0.5, known: 1 })
+    expect(windowFor('openai', 'PRO')).toMatchObject({ total: 0.75, known: 1 })
+    expect(windowFor('anthropic', 'MAX')).toMatchObject({ total: 0.4, known: 1 })
+    expect(totals.filter((pool) => pool.tier === 'unknown').map((pool) => pool.windows[0].known)).toEqual([1, 1])
+    expect(rows.some((row) => row.accountId === 5)).toBe(false)
+  })
 })
 
 const report = (value: object) => value as AccountUsageInfo

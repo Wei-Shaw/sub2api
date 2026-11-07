@@ -1,4 +1,6 @@
 export default {
+  modelSnapshot: 'Model quota snapshot · used percentage',
+  modelSnapshotHint: 'Grouped quotas are unavailable. These model snapshots do not distinguish 5-hour and weekly windows and are excluded from period totals.',
   title: 'Quota overview',
   allAccounts: 'All accounts · Shared pools',
   loading: 'Loading…',

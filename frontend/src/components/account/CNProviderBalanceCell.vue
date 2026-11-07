@@ -2,7 +2,13 @@
   <div v-if="visible" class="space-y-1">
     <!-- Balance value row: static display (snapshot or probe result) -->
     <div class="flex flex-wrap items-center gap-1.5">
-      <QuotaPoolTable data-test="cn-provider-balance-value" :pools="balancePools" />
+      <span
+        data-test="cn-provider-balance-value"
+        :class="['text-[10px] font-medium leading-4', platformTextClass(account.platform)]"
+        :title="t('admin.accounts.cnProviders.balanceProbeTooltip')"
+      >
+        {{ balanceLabel }}
+      </span>
 
       <!-- Low balance badge (reactive 402/429 marker or probe-detected) -->
       <span
@@ -56,8 +62,7 @@ import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { CNProviderBalanceEntry, CNProviderBalanceResult } from '@/api/admin/cnProviders'
 import type { Account } from '@/types'
-import QuotaPoolTable from './QuotaPoolTable.vue'
-import { balanceQuotaPools } from '@/utils/quotaPools'
+import { platformTextClass } from '@/utils/platformColors'
 import { cnBalanceCellVisible } from './credentialsBuilder'
 
 const props = defineProps<{
@@ -110,7 +115,19 @@ const currentEntries = computed<CNProviderBalanceEntry[]>(() => {
   return []
 })
 
-const balancePools = computed(() => balanceQuotaPools(currentEntries.value))
+const formatEntry = (entry: CNProviderBalanceEntry): string => {
+  const fixed = entry.balance >= 100 ? entry.balance.toFixed(0) : entry.balance.toFixed(2)
+  return `${entry.currency || '¥'} ${fixed}`
+}
+
+const balanceLabel = computed(() => {
+  if (currentEntries.value.length === 0) {
+    // 修复:此前误引 admin.accounts.grokBalance(实际嵌套在 usageWindow 下),
+    // 未命中时渲染原始 key。CN 供应商使用自己的占位键。
+    return t('admin.accounts.cnProviders.balance')
+  }
+  return currentEntries.value.map(formatEntry).join(' · ')
+})
 
 const extractErrorMessage = (e: unknown): string => {
   const err = e as {

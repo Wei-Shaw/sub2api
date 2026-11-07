@@ -2,9 +2,21 @@
   <div
     v-if="visible"
     data-test="cn-provider-quota"
-    class="min-w-0 space-y-1"
+    class="min-w-[220px] space-y-1"
   >
-    <QuotaPoolTable :pools="pools" />
+    <!-- Tier rows: 5h + weekly utilization bars (snapshot renders on mount).
+         复用账号页 UsageProgressBar：同阈值配色、同倒计时格式。 -->
+    <div v-if="data?.success && data.tiers?.length" class="space-y-1">
+      <UsageProgressBar
+        v-for="tier in data.tiers"
+        :key="tier.window"
+        data-test="cn-provider-quota-tier"
+        :label="windowLabel(tier.window)"
+        :color="tier.window === 'weekly' ? 'emerald' : 'indigo'"
+        :utilization="tier.used_percent"
+        :resets-at="tier.reset_at"
+      />
+    </div>
 
     <!-- Explicit refresh action (aligned with the OpenAI "Query" / Grok "Probe"
          buttons): a verb label tells users this chip is clickable. The previous
@@ -54,9 +66,7 @@ import { adminAPI } from '@/api/admin'
 import type { CNProviderQuotaProbeResult } from '@/api/admin/cnProviders'
 import type { Account } from '@/types'
 import { cnQuotaCellVisible } from './credentialsBuilder'
-import QuotaPoolTable from './QuotaPoolTable.vue'
-import { tierQuotaPools } from '@/utils/quotaPools'
-import { platformLabel } from '@/utils/platformColors'
+import UsageProgressBar from './UsageProgressBar.vue'
 
 const props = defineProps<{
   account: Account
@@ -69,7 +79,6 @@ const visible = computed(() => cnQuotaCellVisible(props.account))
 const loading = ref(false)
 const error = ref<string | null>(null)
 const data = ref<CNProviderQuotaProbeResult | null>(null)
-const pools = computed(() => tierQuotaPools(platformLabel(props.account.platform), data.value?.tiers ?? []))
 
 // 后端周期任务/手动探测写入的 extra 快照键（<provider>_ 前缀，与后端
 // cnQuotaExtraUpdates 对齐）。页面加载即有数据，无需等待探测。
@@ -150,6 +159,12 @@ const truncatedError = computed(() => {
   if (!error.value) return ''
   return error.value.length > 80 ? `${error.value.slice(0, 80)}...` : error.value
 })
+
+const windowLabel = (window: string) => {
+  if (window === 'weekly') return t('admin.accounts.cnProviders.windowWeekly')
+  if (window === 'monthly') return t('admin.accounts.cnProviders.windowMonthly')
+  return t('admin.accounts.cnProviders.window5h')
+}
 
 const handleProbe = async () => {
   if (loading.value) return

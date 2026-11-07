@@ -2,6 +2,8 @@
 
 2026-11-07，PR #8425。界面对照基线为 upstream/main `6b4b37db43443b5e88e424fe3c69602cc3810dfb`；性能修复前基线为本 PR 的 `5faf7ad5af76ed39fd1e7c232374c8dd194ce8ec`。
 
+本轮收缩保留矩阵、跨账号总览、共享缓存及分批/分页；国产供应商余额与额度、Ollama Cloud、OpenCode Go、无限额度标签的列表组件恢复为主线原样，AI Credits 与 Grok 预付余额恢复为普通文字。下方 PR 截图已按收缩后的版本重新生成。
+
 ## 界面对比
 
 以下均为生产构建的浏览器原始截图，使用相同的 6 个模拟账号。上游界面显示已用比例，矩阵显示剩余比例，因此同一额度的 7% 已用对应 93% 剩余。
@@ -21,13 +23,17 @@
 
 ![1000 账号总览](screenshots/quota-overview/pr-large-overview.png)
 
+分组摘要缺失时，账号列表保留原有模型级额度回退，并明确标注其为已用比例；这些数据不推断五小时/周额度，也不计入总览周期汇总。分组摘要存在时优先显示矩阵。
+
+![模型额度快照回退](screenshots/quota-overview/model-snapshot-fallback.png)
+
 ## 环境与方法
 
 - macOS，Playwright 1.62.1，Edge 157.0.4341.42；桌面视口 1440×1000，手机视口 390×844，未开启 CPU 限速。
 - 独立浏览器上下文；静态服务只绑定 `127.0.0.1`。所有 API 均由脚本模拟，所有非本地请求均被拦截并中止，包括页面自带支付 SDK 的加载请求。没有连接实际部署、账号或提供商。
 - 数据集：100 / 500 / 1000 个 Antigravity PRO 账号，3 个模型组、5 个额度窗口；列表接口延迟 25 ms，额度批量接口延迟 50 ms。
 - 从点击总览前计时，等待完整采集结束并额外等待 100 ms；DOM 数统计弹窗内所有元素。长任务统计浏览器报告的 ≥50 ms 主线程任务，另采样 2.2 秒空闲帧间隔。
-- 以下为本机单次采样，衡量前端渲染与模拟请求调度；真实提供商响应时间取决于上游。修复后性能采样单独运行，未与完整测试套件并行。
+- 下表保留分批/分页修复提交 `3d1b264b4` 的本机单次性能采样，衡量前端渲染与模拟请求调度；真实提供商响应时间取决于上游。该性能采样单独运行，未与完整测试套件并行。本轮收缩另外重跑了完整浏览器功能验证。
 
 ## 发现与修复
 
@@ -59,7 +65,8 @@
 - 关闭重开总览、刷新浏览器均复用缓存，新增额度请求为 0；手动刷新明确携带 `force=true`，完整更新每个账号一次。
 - 100 账号中模拟 10% 读取失败，错误可见；手动刷新恢复。单元测试另覆盖整批异常后继续加载、重试恢复和登录用户切换。
 - 浏览器运行时错误及未模拟 API 数均为 0。
-- 完整前端测试：387 个文件、3151 项通过；类型检查、ESLint、生产构建通过。
+- 收缩后额外验证 9 个混合账号：Antigravity PRO/ULTRA、OpenAI PRO、Anthropic MAX、模型快照回退、过期数据、不可调度账号及两个未知套餐账号。渠道/套餐分别汇总；模型快照和失效数据不贡献容量；未知套餐账号独立计数。
+- 完整前端测试：387 个文件、3154 项通过；类型检查、ESLint、生产构建通过。
 
 ## 复现
 
@@ -77,6 +84,7 @@ export PLAYWRIGHT_MODULE="$review_dir/browser/node_modules/playwright/index.mjs"
 node tools/quota-review.mjs --after="$review_dir/pr-dist" --out="$review_dir/full" --verify=true
 node tools/quota-review.mjs --after="$review_dir/pr-dist" --out="$review_dir/perf" --mode=perf --verify=true
 node tools/quota-review.mjs --after="$review_dir/pr-dist" --out="$review_dir/slow" --mode=slow --verify=true
+node tools/quota-review.mjs --after="$review_dir/pr-dist" --out="$review_dir/mixed" --mode=mixed --verify=true
 ```
 
 可设置 `BROWSER_EXECUTABLE` 使用本机已安装的 Chromium 系浏览器，本次使用 Edge。手机测试使用窄视口布局。

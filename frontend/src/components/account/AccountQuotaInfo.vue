@@ -9,7 +9,9 @@
 
     <!-- Usage status: unlimited flow or rate limit -->
     <div class="text-xs text-gray-400 dark:text-gray-500">
-      <QuotaMeter v-if="!isRateLimited" :value="null" :text="t('admin.accounts.gemini.rateLimit.unlimited')" />
+      <span v-if="!isRateLimited">
+        {{ t('admin.accounts.gemini.rateLimit.unlimited') }}
+      </span>
       <span
         v-else
         :class="[
@@ -26,7 +28,6 @@
 </template>
 
 <script setup lang="ts">
-import QuotaMeter from './QuotaMeter.vue'
 import { computed, ref, watch, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Account, GeminiCredentials } from '@/types'

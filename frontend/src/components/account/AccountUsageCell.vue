@@ -283,13 +283,58 @@
       <div v-else-if="adaptedQuotaPools.length" class="space-y-1">
         <QuotaPoolTable :pools="adaptedQuotaPools" :updated-at="usageInfo?.updated_at" />
         <div v-if="aiCreditsDisplay" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
-          {{ t('admin.accounts.aiCreditsBalance') }}: <QuotaMeter :value="null" :text="aiCreditsDisplay" />
+          💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
+        </div>
+      </div>
+      <!-- Model snapshots remain a display-only fallback, never period totals. -->
+      <div v-else-if="hasAntigravityQuotaFromAPI" class="space-y-1" data-test="quota-model-snapshot">
+        <div class="text-[10px] text-gray-500 dark:text-gray-400" :title="t('admin.quota.modelSnapshotHint')">
+          {{ t('admin.quota.modelSnapshot') }}
+        </div>
+        <!-- Gemini 3 Pro -->
+        <UsageProgressBar
+          v-if="antigravity3ProUsageFromAPI !== null"
+          :label="t('admin.accounts.usageWindow.gemini3Pro')"
+          :utilization="antigravity3ProUsageFromAPI.utilization"
+          :resets-at="antigravity3ProUsageFromAPI.resetTime"
+          color="indigo"
+        />
+
+        <!-- Gemini 3 Flash -->
+        <UsageProgressBar
+          v-if="antigravity3FlashUsageFromAPI !== null"
+          :label="t('admin.accounts.usageWindow.gemini3Flash')"
+          :utilization="antigravity3FlashUsageFromAPI.utilization"
+          :resets-at="antigravity3FlashUsageFromAPI.resetTime"
+          color="emerald"
+        />
+
+        <!-- Gemini 3 Image -->
+        <UsageProgressBar
+          v-if="antigravity3ImageUsageFromAPI !== null"
+          :label="t('admin.accounts.usageWindow.gemini3Image')"
+          :utilization="antigravity3ImageUsageFromAPI.utilization"
+          :resets-at="antigravity3ImageUsageFromAPI.resetTime"
+          color="purple"
+        />
+
+        <!-- Claude -->
+        <UsageProgressBar
+          v-if="antigravityClaudeUsageFromAPI !== null"
+          :label="t('admin.accounts.usageWindow.claude')"
+          :utilization="antigravityClaudeUsageFromAPI.utilization"
+          :resets-at="antigravityClaudeUsageFromAPI.resetTime"
+          color="amber"
+        />
+
+        <div v-if="aiCreditsDisplay" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+          💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
         </div>
       </div>
       <div v-else class="space-y-1">
         <span class="text-xs text-gray-400" data-test="quota-summary-unavailable">--</span>
         <div v-if="aiCreditsDisplay" class="text-[10px] text-gray-500 dark:text-gray-400">
-          {{ t('admin.accounts.aiCreditsBalance') }}: <QuotaMeter :value="null" :text="aiCreditsDisplay" />
+          💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
         </div>
       </div>
     </template>
@@ -361,7 +406,7 @@
               class="rounded bg-emerald-50 px-1 py-0.5 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
               :title="t('admin.accounts.usageWindow.grokPrepaid')"
             >
-              {{ t('admin.accounts.usageWindow.grokPrepaid') }} <QuotaMeter :value="null" :text="'$' + grokPrepaidMoneyLine.prepaid" />
+              {{ t('admin.accounts.usageWindow.grokPrepaid') }} ${{ grokPrepaidMoneyLine.prepaid }}
             </span>
             <span
               v-if="grokPrepaidMoneyLine.showUsedLimit"
@@ -619,7 +664,6 @@ import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
 import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
 import QuotaPoolTable from './QuotaPoolTable.vue'
-import QuotaMeter from './QuotaMeter.vue'
 import { usagePools, configuredQuotaPools, grokQuotaView } from '@/utils/quotaPools'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber } from '@/utils/format'
@@ -798,6 +842,79 @@ const shouldAutoLoadUsageOnMount = computed(() => {
 const shouldLazyLoadOnMobile = computed(() => {
   return shouldFetchUsage.value && !isDesktopViewport.value
 })
+
+// Antigravity quota types (用于 API 返回的数据)
+interface AntigravityUsageResult {
+  utilization: number
+  resetTime: string | null
+}
+
+// ===== Antigravity quota from API (usageInfo.antigravity_quota) =====
+
+// 检查是否有从 API 获取的配额数据
+const hasAntigravityQuotaFromAPI = computed(() => {
+  return usageInfo.value?.antigravity_quota && Object.keys(usageInfo.value.antigravity_quota).length > 0
+})
+
+// 从 API 配额数据中获取使用率（多模型取最高使用率）
+const getAntigravityUsageFromAPI = (
+  modelNames: string[]
+): AntigravityUsageResult | null => {
+  const quota = usageInfo.value?.antigravity_quota
+  if (!quota) return null
+
+  let maxUtilization = 0
+  let earliestReset: string | null = null
+
+  for (const model of modelNames) {
+    const modelQuota = quota[model]
+    if (!modelQuota) continue
+
+    if (modelQuota.utilization > maxUtilization) {
+      maxUtilization = modelQuota.utilization
+    }
+    if (modelQuota.reset_time) {
+      if (!earliestReset || modelQuota.reset_time < earliestReset) {
+        earliestReset = modelQuota.reset_time
+      }
+    }
+  }
+
+  // 如果没有找到任何匹配的模型
+  if (maxUtilization === 0 && earliestReset === null) {
+    const hasAnyData = modelNames.some((m) => quota[m])
+    if (!hasAnyData) return null
+  }
+
+  return {
+    utilization: maxUtilization,
+    resetTime: earliestReset
+  }
+}
+
+// Gemini 3 Pro from API
+const antigravity3ProUsageFromAPI = computed(() =>
+  getAntigravityUsageFromAPI(['gemini-3-pro-low', 'gemini-3-pro-high', 'gemini-3-pro-preview'])
+)
+
+// Gemini 3 Flash from API
+const antigravity3FlashUsageFromAPI = computed(() => getAntigravityUsageFromAPI(['gemini-3-flash']))
+
+// Gemini Image from API
+const antigravity3ImageUsageFromAPI = computed(() =>
+  getAntigravityUsageFromAPI(['gemini-2.5-flash-image', 'gemini-3.1-flash-image', 'gemini-3-pro-image'])
+)
+
+// Claude from API (all Claude model variants)
+const antigravityClaudeUsageFromAPI = computed(() =>
+  getAntigravityUsageFromAPI([
+    'claude-fable-5-1',
+    'claude-fable-5',
+    'claude-sonnet-4-5', 'claude-opus-4-5-thinking',
+    'claude-sonnet-4-6', 'claude-opus-4-6', 'claude-opus-4-6-thinking',
+    'claude-opus-4-7', 'claude-opus-4-8',
+  ])
+)
 
 const aiCreditsDisplay = computed(() => {
   const credits = usageInfo.value?.ai_credits

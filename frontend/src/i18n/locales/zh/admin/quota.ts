@@ -1,4 +1,6 @@
 export default {
+  modelSnapshot: '模型额度快照 · 已用比例',
+  modelSnapshotHint: '分组额度暂不可用。以下为模型快照，不区分五小时或每周窗口，不计入周期额度汇总。',
   title: '额度总览',
   allAccounts: '全部账号 · 共享池汇总',
   loading: '读取中…',

@@ -435,7 +435,7 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).not.toContain('-')
   })
 
-  it('Antigravity 缺少完整摘要时显示占位符，不回退模型用量', async () => {
+  it('Antigravity 缺少完整摘要时保留明确标注的模型快照，不显示周期矩阵', async () => {
     getUsage.mockResolvedValue({
       antigravity_quota: {
         'gemini-2.5-flash-image': {
@@ -475,8 +475,32 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    expect(wrapper.get('[data-test="quota-summary-unavailable"]').text()).toBe('--')
-    expect(wrapper.text()).not.toContain('admin.accounts.usageWindow.gemini3Image')
+    const snapshot = wrapper.get('[data-test="quota-model-snapshot"]')
+    expect(snapshot.text()).toContain('admin.quota.modelSnapshot')
+    expect(snapshot.find('[title]').attributes('title')).toBe('admin.quota.modelSnapshotHint')
+    expect(snapshot.get('.usage-bar').text()).toBe('admin.accounts.usageWindow.gemini3Image|70|2026-03-01T09:00:00Z')
+    expect(wrapper.findComponent(QuotaPoolTable).exists()).toBe(false)
+    expect(wrapper.find('[data-test="quota-summary-unavailable"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it.each([false, true])('Antigravity distinguishes absent model data from true zero usage, zero=%s', async (zero) => {
+    getUsage.mockResolvedValue({
+      antigravity_quota: zero ? { 'gemini-3-flash': { utilization: 0 } } : {}
+    })
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: 1004, extra: {} }) },
+      global: { stubs: {
+        UsageProgressBar: { props: ['label', 'utilization'], template: '<div class="usage-bar">{{ utilization }}</div>' },
+        AccountQuotaInfo: true
+      } }
+    })
+    await flushPromises()
+    expect(wrapper.find('[data-test="quota-model-snapshot"]').exists()).toBe(zero)
+    expect(wrapper.find('[data-test="quota-summary-unavailable"]').exists()).toBe(!zero)
+    if (zero) expect(wrapper.get('.usage-bar').text()).toBe('0')
+    expect(wrapper.findComponent(QuotaPoolTable).exists()).toBe(false)
+    wrapper.unmount()
   })
 
   it('Antigravity shows the 5-hour and weekly window of each quota group when the summary is present', async () => {
@@ -548,6 +572,7 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('admin.accounts.aiCreditsBalance')
     expect(wrapper.text()).toContain('25')
     expect(wrapper.findAll('.usage-bar')).toHaveLength(0)
+    expect(wrapper.find('[data-test="quota-model-snapshot"]').exists()).toBe(false)
     expect(getUsage).toHaveBeenCalledTimes(1)
     // The per-model figure (one tighter window per model) is not shown next to the real windows.
     expect(wrapper.text()).not.toContain('gemini3Flash')
