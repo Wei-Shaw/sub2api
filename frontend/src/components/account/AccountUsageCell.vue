@@ -318,6 +318,7 @@
           v-if="antigravity3ProUsageFromAPI !== null"
           :label="t('admin.accounts.usageWindow.gemini3Pro')"
           :utilization="antigravity3ProUsageFromAPI.utilization"
+          precise-percent
           :resets-at="antigravity3ProUsageFromAPI.resetTime"
           color="indigo"
         />
@@ -327,6 +328,7 @@
           v-if="antigravity3FlashUsageFromAPI !== null"
           :label="t('admin.accounts.usageWindow.gemini3Flash')"
           :utilization="antigravity3FlashUsageFromAPI.utilization"
+          precise-percent
           :resets-at="antigravity3FlashUsageFromAPI.resetTime"
           color="emerald"
         />
@@ -336,6 +338,7 @@
           v-if="antigravity3ImageUsageFromAPI !== null"
           :label="t('admin.accounts.usageWindow.gemini3Image')"
           :utilization="antigravity3ImageUsageFromAPI.utilization"
+          precise-percent
           :resets-at="antigravity3ImageUsageFromAPI.resetTime"
           color="purple"
         />
@@ -345,6 +348,7 @@
           v-if="antigravityClaudeUsageFromAPI !== null"
           :label="t('admin.accounts.usageWindow.claude')"
           :utilization="antigravityClaudeUsageFromAPI.utilization"
+          precise-percent
           :resets-at="antigravityClaudeUsageFromAPI.resetTime"
           color="amber"
         />

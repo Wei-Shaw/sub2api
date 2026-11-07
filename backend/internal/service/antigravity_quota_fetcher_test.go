@@ -98,12 +98,12 @@ func TestBuildUsageInfo_BasicModels(t *testing.T) {
 
 	sonnetQuota := info.AntigravityQuota["claude-sonnet-4-20250514"]
 	require.NotNil(t, sonnetQuota)
-	require.Equal(t, 25, sonnetQuota.Utilization) // (1 - 0.75) * 100 = 25
+	require.Equal(t, 25.0, sonnetQuota.Utilization) // (1 - 0.75) * 100 = 25
 	require.Equal(t, "2026-03-08T12:00:00Z", sonnetQuota.ResetTime)
 
 	geminiQuota := info.AntigravityQuota["gemini-2.5-pro"]
 	require.NotNil(t, geminiQuota)
-	require.Equal(t, 50, geminiQuota.Utilization) // (1 - 0.50) * 100 = 50
+	require.Equal(t, 50.0, geminiQuota.Utilization) // (1 - 0.50) * 100 = 50
 	require.Equal(t, "2026-03-08T15:00:00Z", geminiQuota.ResetTime)
 
 	// AntigravityQuotaDetails
@@ -347,7 +347,7 @@ func TestBuildUsageInfo_FullUtilization(t *testing.T) {
 
 	quota := info.AntigravityQuota["claude-sonnet-4-20250514"]
 	require.NotNil(t, quota)
-	require.Equal(t, 100, quota.Utilization)
+	require.Equal(t, 100.0, quota.Utilization)
 }
 
 func TestBuildUsageInfo_ZeroUtilization(t *testing.T) {
@@ -366,7 +366,31 @@ func TestBuildUsageInfo_ZeroUtilization(t *testing.T) {
 	info := fetcher.buildUsageInfo(modelsResp, "", "", nil)
 	quota := info.AntigravityQuota["claude-sonnet-4-20250514"]
 	require.NotNil(t, quota)
-	require.Equal(t, 0, quota.Utilization)
+	require.Equal(t, 0.0, quota.Utilization)
+}
+
+func TestBuildUsageInfo_PreservesQuotaPrecision(t *testing.T) {
+	for _, tt := range []struct {
+		name      string
+		remaining float64
+		used      float64
+	}{
+		{name: "below one percent", remaining: 0.99978864, used: 0.021136},
+		{name: "fractional percent", remaining: 0.98016745, used: 1.983255},
+		{name: "below display precision", remaining: 0.99999999, used: 0.000001},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			fetcher := &AntigravityQuotaFetcher{}
+			info := fetcher.buildUsageInfo(&antigravity.FetchAvailableModelsResponse{
+				Models: map[string]antigravity.ModelInfo{
+					"claude-sonnet-4-20250514": {QuotaInfo: &antigravity.ModelQuotaInfo{RemainingFraction: tt.remaining}},
+				},
+			}, "", "", nil)
+			quota := info.AntigravityQuota["claude-sonnet-4-20250514"]
+			require.NotNil(t, quota)
+			require.InDelta(t, tt.used, quota.Utilization, 0.00000001)
+		})
+	}
 }
 
 func TestBuildUsageInfo_AICredits(t *testing.T) {
