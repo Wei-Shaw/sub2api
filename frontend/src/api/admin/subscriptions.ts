@@ -187,6 +187,57 @@ export async function resetQuota(
   return data
 }
 
+export interface ResetAllQuotaWindows {
+  daily: boolean
+  weekly: boolean
+  monthly: boolean
+}
+
+export interface ResetAllQuotaBatchResult {
+  processed: number
+  remaining: number
+  success_count: number
+  failed_count: number
+  failures: { subscription_id: number; error: string }[]
+}
+
+/**
+ * 全站一键重置：只读预估（按已勾选窗口口径统计将受影响的订阅数）
+ * GET /admin/subscriptions/reset-all-quota/preview
+ */
+export async function resetAllQuotaPreview(windows: ResetAllQuotaWindows): Promise<number> {
+  const { data } = await apiClient.get<{ matched: number }>('/admin/subscriptions/reset-all-quota/preview', {
+    params: windows,
+  })
+  return data?.matched ?? 0
+}
+
+/**
+ * 全站一键重置：按范围处理一批（服务端按口径取，≤100 条），调用方循环直到 remaining=0
+ * POST /admin/subscriptions/reset-all-quota
+ */
+export async function resetAllQuota(
+  windows: ResetAllQuotaWindows & { limit?: number }
+): Promise<ResetAllQuotaBatchResult> {
+  const { data } = await apiClient.post<ResetAllQuotaBatchResult>('/admin/subscriptions/reset-all-quota', windows)
+  return data
+}
+
+/**
+ * 全站一键重置：重试失败项（显式 ID 集合）
+ * POST /admin/subscriptions/reset-all-quota/retry
+ */
+export async function resetAllQuotaRetry(
+  subscriptionIds: number[],
+  windows: ResetAllQuotaWindows
+): Promise<ResetAllQuotaBatchResult> {
+  const { data } = await apiClient.post<ResetAllQuotaBatchResult>('/admin/subscriptions/reset-all-quota/retry', {
+    subscription_ids: subscriptionIds,
+    ...windows,
+  })
+  return data
+}
+
 /**
  * List subscriptions by group
  * @param groupId - Group ID
@@ -240,6 +291,9 @@ export const subscriptionsAPI = {
   revoke,
   restore,
   resetQuota,
+  resetAllQuotaPreview,
+  resetAllQuota,
+  resetAllQuotaRetry,
   listByGroup,
   listByUser
 }
