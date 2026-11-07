@@ -8,8 +8,8 @@ const { setLocale } = vi.hoisted(() => ({ setLocale: vi.fn() }))
 vi.mock('@/i18n', () => ({
   setLocale,
   availableLocales: [
-    { code: 'en', name: 'English', flag: '🇺🇸' },
-    { code: 'zh', name: '中文', flag: '🇨🇳' }
+    { code: 'en', name: 'English' },
+    { code: 'zh', name: '中文' }
   ]
 }))
 
