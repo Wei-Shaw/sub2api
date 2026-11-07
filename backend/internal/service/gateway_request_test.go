@@ -714,6 +714,60 @@ func TestFilterSignatureSensitiveBlocksForRetry_DowngradesTools(t *testing.T) {
 	require.Contains(t, content1["text"], "tool_result")
 }
 
+func TestFilterSignatureSensitiveBlocksForRetry_KeepsToolResultMediaBlocks(t *testing.T) {
+	input := []byte(`{
+		"thinking":{"type":"enabled","budget_tokens":1024},
+		"messages":[
+			{"role":"assistant","content":[
+				{"type":"tool_use","id":"t1","name":"Read","input":{"path":"a.jpg"}},
+				{"type":"tool_use","id":"t2","name":"Read","input":{"path":"b.pdf"}}
+			]},
+			{"role":"user","content":[
+				{"type":"tool_result","tool_use_id":"t1","content":[
+					{"type":"text","text":"image a"},
+					{"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":"QUFBQQ=="}}
+				]},
+				{"type":"tool_result","tool_use_id":"t2","content":[
+					{"type":"document","source":{"type":"base64","media_type":"application/pdf","data":"QkJCQg=="}}
+				]}
+			]}
+		]
+	}`)
+
+	out := FilterSignatureSensitiveBlocksForRetry(input, "claude-sonnet-4-5")
+
+	content := gjson.GetBytes(out, "messages.1.content").Array()
+	require.Len(t, content, 4)
+
+	require.Equal(t, "text", content[0].Get("type").String())
+	require.Contains(t, content[0].Get("text").String(), "tool_use_id=t1")
+	require.Contains(t, content[0].Get("text").String(), "image a")
+	require.NotContains(t, content[0].Get("text").String(), "QUFBQQ==")
+	require.Equal(t, "image", content[1].Get("type").String())
+	require.Equal(t, "QUFBQQ==", content[1].Get("source.data").String())
+
+	require.Equal(t, "text", content[2].Get("type").String())
+	require.Equal(t, "(tool_result) tool_use_id=t2", content[2].Get("text").String())
+	require.Equal(t, "document", content[3].Get("type").String())
+	require.Equal(t, "QkJCQg==", content[3].Get("source.data").String())
+}
+
+func TestSplitToolResultMediaBlocks(t *testing.T) {
+	rest, media := splitToolResultMediaBlocks("plain text")
+	require.Equal(t, "plain text", rest)
+	require.Empty(t, media)
+
+	textOnly := []any{map[string]any{"type": "text", "text": "ok"}}
+	rest, media = splitToolResultMediaBlocks(textOnly)
+	require.Equal(t, textOnly, rest)
+	require.Empty(t, media)
+
+	image := map[string]any{"type": "image"}
+	rest, media = splitToolResultMediaBlocks([]any{image})
+	require.Nil(t, rest)
+	require.Equal(t, []any{image}, media)
+}
+
 // ============ Group 6b: context_management.edits 清理测试 ============
 
 // removeThinkingDependentContextStrategies — 边界用例
