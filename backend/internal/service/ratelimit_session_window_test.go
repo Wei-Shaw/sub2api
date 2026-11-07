@@ -2,9 +2,11 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -403,28 +405,302 @@ func TestUpdateSessionWindow_SamplesFable7dOiHeaders(t *testing.T) {
 	}
 }
 
-func TestUpdateSessionWindow_ClearsFable7dOiOnWindowReset(t *testing.T) {
-	// 5h 窗口重置时应连同清除 7d_oi 被动采样数据，与 7d 行为一致。
-	resetUnix := time.Now().Add(3 * time.Hour).Unix()
+func TestUpdateSessionWindow_PreservesUnexpiredWeeklyUsage(t *testing.T) {
+	now := time.Now()
+	weeklyReset := now.Add(48 * time.Hour).Unix()
+	fableReset := now.Add(72 * time.Hour).Unix()
+	expiredReset := now.Add(-time.Hour).Unix()
 
-	repo := &sessionWindowMockRepo{}
-	svc := newRateLimitServiceForTest(repo)
+	for _, tc := range []struct {
+		name          string
+		weeklyReset   any
+		fableReset    any
+		weeklyHeader  bool
+		fableHeader   bool
+		uninitialized bool
+		wantWeekly    any
+		wantFable     any
+	}{
+		{"preserve both", float64(weeklyReset), float64(fableReset), false, false, false, 0.4, 0.6},
+		{"initialize 5h", weeklyReset, fableReset, false, false, true, 0.4, 0.6},
+		{"replace shared only", weeklyReset, fableReset, true, false, false, 0.45, 0.6},
+		{"replace Fable only", weeklyReset, fableReset, false, true, false, 0.4, 0.65},
+		{"shared expired", expiredReset, fableReset, false, false, false, nil, 0.6},
+		{"Fable expired", weeklyReset, expiredReset, false, false, false, 0.4, nil},
+		{"both expired", expiredReset, expiredReset, false, false, false, nil, nil},
+		{"missing reset", nil, fableReset, false, false, false, nil, 0.6},
+		{"invalid reset", weeklyReset, "invalid", false, false, false, 0.4, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			extra := map[string]any{
+				"session_window_utilization":      0.9,
+				"passive_usage_7d_utilization":    0.4,
+				"passive_usage_7d_reset":          tc.weeklyReset,
+				"passive_usage_7d_oi_utilization": 0.6,
+				"passive_usage_7d_oi_reset":       tc.fableReset,
+			}
+			oldEnd := now.Add(-time.Hour)
+			account := &Account{ID: 91, SessionWindowEnd: &oldEnd, Extra: extra}
+			if tc.uninitialized {
+				account.SessionWindowEnd = nil
+			}
+			repo := &sessionWindowMockRepo{}
+			svc := newRateLimitServiceForTest(repo)
+			headers := http.Header{}
+			headers.Set("anthropic-ratelimit-unified-5h-status", "allowed")
+			headers.Set("anthropic-ratelimit-unified-5h-reset", fmt.Sprintf("%d", now.Add(3*time.Hour).Unix()))
+			if tc.weeklyHeader {
+				headers.Set("anthropic-ratelimit-unified-7d-utilization", "0.45")
+				headers.Set("anthropic-ratelimit-unified-7d-reset", fmt.Sprintf("%d", weeklyReset))
+			}
+			if tc.fableHeader {
+				headers.Set("anthropic-ratelimit-unified-7d_oi-utilization", "0.65")
+				headers.Set("anthropic-ratelimit-unified-7d_oi-reset", fmt.Sprintf("%d", fableReset))
+			}
 
-	account := &Account{ID: 91} // no existing window → needInitWindow=true
-	headers := http.Header{}
-	headers.Set("anthropic-ratelimit-unified-5h-status", "allowed")
-	headers.Set("anthropic-ratelimit-unified-5h-reset", fmt.Sprintf("%d", resetUnix))
+			svc.UpdateSessionWindow(context.Background(), account, headers)
 
-	svc.UpdateSessionWindow(context.Background(), account, headers)
-
-	if len(repo.updateExtraCalls) != 1 {
-		t.Fatalf("expected 1 UpdateExtra (clear) call, got %d", len(repo.updateExtraCalls))
+			// Apply the same shallow merge used by AccountRepository.UpdateExtra.
+			for _, call := range repo.updateExtraCalls {
+				for key, value := range call.Updates {
+					extra[key] = value
+				}
+			}
+			if extra["session_window_utilization"] != nil {
+				t.Errorf("old 5h usage survived window reset: %v", extra["session_window_utilization"])
+			}
+			wantWeeklyReset, wantFableReset := tc.weeklyReset, tc.fableReset
+			if tc.wantWeekly == nil {
+				wantWeeklyReset = nil
+			} else if tc.weeklyHeader {
+				wantWeeklyReset = weeklyReset
+			}
+			if tc.wantFable == nil {
+				wantFableReset = nil
+			} else if tc.fableHeader {
+				wantFableReset = fableReset
+			}
+			for key, want := range map[string]any{
+				"passive_usage_7d_utilization":    tc.wantWeekly,
+				"passive_usage_7d_reset":          wantWeeklyReset,
+				"passive_usage_7d_oi_utilization": tc.wantFable,
+				"passive_usage_7d_oi_reset":       wantFableReset,
+			} {
+				if got := extra[key]; got != want {
+					t.Errorf("%s = %v, want %v", key, got, want)
+				}
+			}
+		})
 	}
-	clearUpdates := repo.updateExtraCalls[0].Updates
-	for _, key := range []string{"passive_usage_7d_oi_utilization", "passive_usage_7d_oi_reset"} {
-		if val, present := clearUpdates[key]; !present || val != nil {
-			t.Errorf("expected %s cleared to nil on window reset, got present=%v val=%v", key, present, val)
+}
+
+func TestUpdateSessionWindow_ReloadedAccountKeepsAbsoluteResets(t *testing.T) {
+	for _, expired := range []bool{false, true} {
+		t.Run(fmt.Sprintf("Fable expired while stopped=%t", expired), func(t *testing.T) {
+			now := time.Now()
+			oldEnd := now.Add(-time.Hour).In(time.FixedZone("UTC+8", 8*60*60))
+			weeklyReset := now.Add(48 * time.Hour).Unix()
+			fableReset := now.Add(72 * time.Hour).Unix()
+			if expired {
+				fableReset = now.Add(-time.Hour).Unix()
+			}
+			stored := &Account{ID: 92, SessionWindowEnd: &oldEnd, Extra: map[string]any{
+				"passive_usage_7d_utilization":    0.4,
+				"passive_usage_7d_reset":          weeklyReset,
+				"passive_usage_7d_oi_utilization": 0.6,
+				"passive_usage_7d_oi_reset":       fableReset,
+			}}
+			data, err := json.Marshal(stored)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var reloaded Account
+			if err := json.Unmarshal(data, &reloaded); err != nil {
+				t.Fatal(err)
+			}
+			repo := &sessionWindowMockRepo{}
+			svc := newRateLimitServiceForTest(repo)
+			resetUnix := now.Add(3 * time.Hour).Unix()
+			headers := http.Header{}
+			headers.Set("anthropic-ratelimit-unified-5h-status", "allowed")
+			headers.Set("anthropic-ratelimit-unified-5h-reset", fmt.Sprintf("%d", resetUnix))
+			svc.UpdateSessionWindow(context.Background(), &reloaded, headers)
+			for _, call := range repo.updateExtraCalls {
+				for key, value := range call.Updates {
+					reloaded.Extra[key] = value
+				}
+			}
+			if reloaded.Extra["passive_usage_7d_reset"] != float64(weeklyReset) || reloaded.Extra["passive_usage_7d_utilization"] != 0.4 {
+				t.Fatal("reloading the account changed the unexpired shared weekly window")
+			}
+			if expired {
+				if reloaded.Extra["passive_usage_7d_oi_reset"] != nil || reloaded.Extra["passive_usage_7d_oi_utilization"] != nil {
+					t.Fatal("Fable window expired during downtime was retained")
+				}
+			} else if reloaded.Extra["passive_usage_7d_oi_reset"] != float64(fableReset) || reloaded.Extra["passive_usage_7d_oi_utilization"] != 0.6 {
+				t.Fatal("reloading the account changed the unexpired Fable window")
+			}
+			if len(repo.sessionWindowCalls) != 1 || repo.sessionWindowCalls[0].End == nil || repo.sessionWindowCalls[0].End.Unix() != resetUnix {
+				t.Fatal("5h reset must come from the response header, not process startup time")
+			}
+		})
+	}
+}
+
+// mergeSessionWindowWrites applies the recorded writes the way the repository
+// does (shallow merge of Extra) so the next response sees the stored state.
+func mergeSessionWindowWrites(account *Account, repo *sessionWindowMockRepo) {
+	if account.Extra == nil {
+		account.Extra = map[string]any{}
+	}
+	for _, call := range repo.updateExtraCalls {
+		for key, value := range call.Updates {
+			account.Extra[key] = value
 		}
+	}
+	for _, call := range repo.sessionWindowCalls {
+		if call.End != nil {
+			account.SessionWindowStart = call.Start
+			account.SessionWindowEnd = call.End
+		}
+	}
+	repo.updateExtraCalls = nil
+	repo.sessionWindowCalls = nil
+}
+
+func TestUpdateSessionWindow_ClearsRetainedWeeklyUsageWhenItExpiresInsideActiveWindow(t *testing.T) {
+	for _, window := range []struct{ name, utilizationKey, resetKey string }{
+		{"shared", "passive_usage_7d_utilization", "passive_usage_7d_reset"},
+		{"Fable", "passive_usage_7d_oi_utilization", "passive_usage_7d_oi_reset"},
+	} {
+		t.Run(window.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				now := time.Now()
+				oldEnd := now.Add(-time.Hour)
+				account := &Account{ID: 93, SessionWindowEnd: &oldEnd, Extra: map[string]any{
+					window.utilizationKey: 0.8,
+					window.resetKey:       now.Add(time.Hour).Unix(),
+				}}
+				repo := &sessionWindowMockRepo{}
+				svc := newRateLimitServiceForTest(repo)
+				headers := http.Header{}
+				headers.Set("anthropic-ratelimit-unified-5h-status", "allowed")
+				headers.Set("anthropic-ratelimit-unified-5h-reset", fmt.Sprintf("%d", now.Add(3*time.Hour).Unix()))
+
+				// The 5h rollover keeps the weekly window that is still valid.
+				svc.UpdateSessionWindow(context.Background(), account, headers)
+				mergeSessionWindowWrites(account, repo)
+				if account.Extra[window.utilizationKey] != 0.8 {
+					t.Fatalf("unexpired weekly usage was cleared on rollover: %v", account.Extra[window.utilizationKey])
+				}
+
+				// The weekly window ends while the new 5h window is still active.
+				time.Sleep(90 * time.Minute)
+				svc.UpdateSessionWindow(context.Background(), account, headers)
+				mergeSessionWindowWrites(account, repo)
+				if account.Extra[window.utilizationKey] != nil || account.Extra[window.resetKey] != nil {
+					t.Fatalf("expired weekly usage survived inside the active 5h window: utilization=%v reset=%v",
+						account.Extra[window.utilizationKey], account.Extra[window.resetKey])
+				}
+
+				// Nothing is left to clear, so later responses must not write again.
+				svc.UpdateSessionWindow(context.Background(), account, headers)
+				if len(repo.updateExtraCalls) != 0 {
+					t.Fatalf("already cleared weekly usage was rewritten: %d writes", len(repo.updateExtraCalls))
+				}
+			})
+		})
+	}
+}
+
+func TestUpdateSessionWindow_ExpiredWeeklyUsageInsideActiveWindow(t *testing.T) {
+	now := time.Now()
+	activeEnd := time.Unix(now.Add(3*time.Hour).Unix(), 0)
+	future := float64(now.Add(48 * time.Hour).Unix())
+	past := float64(now.Add(-time.Hour).Unix())
+
+	for _, tc := range []struct {
+		name        string
+		extra       map[string]any
+		weeklyHdr   bool
+		wantShared  any
+		wantFable   any
+		wantWrites  int // -1 skips the write-count check
+		wantSharedR any // expected shared reset when a fresh header replaced it; nil otherwise
+	}{
+		{
+			name:       "unexpired windows are kept",
+			extra:      map[string]any{"passive_usage_7d_utilization": 0.4, "passive_usage_7d_reset": future, "passive_usage_7d_oi_utilization": 0.6, "passive_usage_7d_oi_reset": future},
+			wantShared: 0.4, wantFable: 0.6, wantWrites: 0,
+		},
+		{
+			name:       "expired shared window is cleared alone",
+			extra:      map[string]any{"passive_usage_7d_utilization": 0.4, "passive_usage_7d_reset": past, "passive_usage_7d_oi_utilization": 0.6, "passive_usage_7d_oi_reset": future},
+			wantShared: nil, wantFable: 0.6, wantWrites: 1,
+		},
+		{
+			name:       "expired Fable window is cleared alone",
+			extra:      map[string]any{"passive_usage_7d_utilization": 0.4, "passive_usage_7d_reset": future, "passive_usage_7d_oi_utilization": 0.6, "passive_usage_7d_oi_reset": past},
+			wantShared: 0.4, wantFable: nil, wantWrites: 1,
+		},
+		{
+			name:       "both expired windows are cleared in one write",
+			extra:      map[string]any{"passive_usage_7d_utilization": 0.4, "passive_usage_7d_reset": past, "passive_usage_7d_oi_utilization": 0.6, "passive_usage_7d_oi_reset": past},
+			wantShared: nil, wantFable: nil, wantWrites: 1,
+		},
+		{
+			name:       "nothing stored means no write",
+			extra:      nil,
+			wantShared: nil, wantFable: nil, wantWrites: 0,
+		},
+		{
+			// Only a window that provably ended is cleared mid-window; usage without a
+			// reset time is left to the 5h rollover rule.
+			name:       "usage without a reset time is not cleared mid-window",
+			extra:      map[string]any{"passive_usage_7d_utilization": 0.4},
+			wantShared: 0.4, wantFable: nil, wantWrites: 0,
+		},
+		{
+			name:       "fresh response headers replace the expired window",
+			extra:      map[string]any{"passive_usage_7d_utilization": 0.4, "passive_usage_7d_reset": past},
+			weeklyHdr:  true,
+			wantShared: 0.5, wantFable: nil, wantWrites: -1, wantSharedR: int64(future),
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			account := &Account{ID: 94, SessionWindowEnd: &activeEnd, Extra: tc.extra}
+			repo := &sessionWindowMockRepo{}
+			svc := newRateLimitServiceForTest(repo)
+			headers := http.Header{}
+			headers.Set("anthropic-ratelimit-unified-5h-status", "allowed")
+			headers.Set("anthropic-ratelimit-unified-5h-reset", fmt.Sprintf("%d", activeEnd.Unix()))
+			if tc.weeklyHdr {
+				headers.Set("anthropic-ratelimit-unified-7d-utilization", "0.5")
+				headers.Set("anthropic-ratelimit-unified-7d-reset", fmt.Sprintf("%d", int64(future)))
+			}
+
+			svc.UpdateSessionWindow(context.Background(), account, headers)
+
+			if tc.wantWrites >= 0 && len(repo.updateExtraCalls) != tc.wantWrites {
+				t.Fatalf("UpdateExtra calls = %d, want %d", len(repo.updateExtraCalls), tc.wantWrites)
+			}
+			mergeSessionWindowWrites(account, repo)
+			if got := account.Extra["passive_usage_7d_utilization"]; got != tc.wantShared {
+				t.Errorf("shared weekly utilization = %v, want %v", got, tc.wantShared)
+			}
+			if got := account.Extra["passive_usage_7d_oi_utilization"]; got != tc.wantFable {
+				t.Errorf("Fable weekly utilization = %v, want %v", got, tc.wantFable)
+			}
+			if tc.wantShared == nil && account.Extra["passive_usage_7d_reset"] != nil {
+				t.Errorf("shared reset survived with its utilization cleared: %v", account.Extra["passive_usage_7d_reset"])
+			}
+			if tc.wantFable == nil && account.Extra["passive_usage_7d_oi_reset"] != nil {
+				t.Errorf("Fable reset survived with its utilization cleared: %v", account.Extra["passive_usage_7d_oi_reset"])
+			}
+			if tc.wantSharedR != nil && account.Extra["passive_usage_7d_reset"] != tc.wantSharedR {
+				t.Errorf("shared reset = %v, want %v", account.Extra["passive_usage_7d_reset"], tc.wantSharedR)
+			}
+		})
 	}
 }
 
