@@ -47,6 +47,9 @@ type easyPayCustomMethod struct {
 	Type         string `json:"type"`
 	UpstreamType string `json:"upstreamType"`
 	DisplayName  string `json:"displayName"`
+	// Icon is an optional user-facing icon URL (or data URI) shown on the
+	// payment-method button. Empty falls back to the built-in default icon.
+	Icon string `json:"icon"`
 }
 
 // NewEasyPay creates a new EasyPay provider.
@@ -285,6 +288,7 @@ func (e *EasyPay) customMethods() []easyPayCustomMethod {
 		method.Type = strings.TrimSpace(method.Type)
 		method.UpstreamType = strings.TrimSpace(method.UpstreamType)
 		method.DisplayName = strings.TrimSpace(method.DisplayName)
+		method.Icon = strings.TrimSpace(method.Icon)
 		if method.Type == "" || method.UpstreamType == "" {
 			continue
 		}

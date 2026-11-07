@@ -88,7 +88,7 @@
           <div
             v-for="(method, index) in easyPayCustomMethods"
             :key="index"
-            class="grid grid-cols-[1fr_1fr_1fr_auto] items-end gap-2"
+            class="grid grid-cols-[1fr_1fr_1fr_1fr_auto] items-end gap-2"
           >
             <div>
               <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.customMethodType') }}</label>
@@ -101,6 +101,10 @@
             <div>
               <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.customMethodDisplayName') }}</label>
               <input v-model="method.displayName" type="text" class="input mt-0.5" :placeholder="t('admin.settings.payment.customMethodDisplayNamePlaceholder')" />
+            </div>
+            <div>
+              <label class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.payment.customMethodIcon') }}</label>
+              <input v-model="method.icon" type="text" class="input mt-0.5" :placeholder="t('admin.settings.payment.customMethodIconPlaceholder')" />
             </div>
             <button
               type="button"
@@ -572,8 +576,9 @@ function normalizedEasyPayCustomMethods(): EasyPayCustomMethod[] {
       type: normalizeEasyPayCustomMethodCode(method.type),
       upstreamType: normalizeEasyPayCustomMethodCode(method.upstreamType),
       displayName: method.displayName.trim(),
+      icon: method.icon.trim(),
     }))
-    .filter(method => method.type || method.upstreamType || method.displayName)
+    .filter(method => method.type || method.upstreamType || method.displayName || method.icon)
 }
 
 function normalizeEasyPayCustomMethodCode(value: string): string {
@@ -581,7 +586,7 @@ function normalizeEasyPayCustomMethodCode(value: string): string {
 }
 
 function addEasyPayCustomMethod() {
-  easyPayCustomMethods.push({ type: '', upstreamType: '', displayName: '' })
+  easyPayCustomMethods.push({ type: '', upstreamType: '', displayName: '', icon: '' })
 }
 
 function removeEasyPayCustomMethod(index: number) {
