@@ -2693,6 +2693,7 @@ type BatchTodayStatsRequest struct {
 type BatchUsageRequest struct {
 	AccountIDs []int64 `json:"account_ids" binding:"required"`
 	Force      bool    `json:"force"`
+	Source     string  `json:"source" binding:"omitempty,oneof=passive active"`
 }
 
 // GetBatchTodayStats 批量获取多个账号的今日统计。
@@ -2759,7 +2760,7 @@ func (h *AccountHandler) GetBatchUsage(c *gin.Context) {
 		return
 	}
 
-	usageByAccount, errorsByAccount, err := h.accountUsageService.GetUsageBatch(c.Request.Context(), accountIDs, req.Force)
+	usageByAccount, errorsByAccount, err := h.accountUsageService.GetUsageBatch(c.Request.Context(), accountIDs, req.Force, req.Source)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

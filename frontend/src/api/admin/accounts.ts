@@ -391,10 +391,11 @@ export interface BatchAccountUsageResponse {
   errors: Record<string, string>
 }
 
-export async function getBatchUsage(accountIds: number[], force?: boolean): Promise<BatchAccountUsageResponse> {
+export async function getBatchUsage(accountIds: number[], force?: boolean, source?: 'active'): Promise<BatchAccountUsageResponse> {
   const { data } = await apiClient.post<BatchAccountUsageResponse>('/admin/accounts/usage/batch', {
     account_ids: accountIds,
-    force: force === true
+    force: force === true,
+    ...(source ? { source } : {})
   })
   return data
 }
