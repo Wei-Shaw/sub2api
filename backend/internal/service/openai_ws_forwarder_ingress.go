@@ -1337,6 +1337,15 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	defer releaseSessionLease()
 
 	turn := 1
+	defer func() {
+		var failoverErr *UpstreamFailoverError
+		if turn > 1 && errors.As(returnErr, &failoverErr) {
+			// Native ingress does not retain a complete conversation for account
+			// migration. A nil current-turn payload makes the handler close the
+			// client connection instead of replaying its original first message.
+			returnErr = newOpenAIWSCurrentTurnFailoverError(returnErr, nil)
+		}
+	}()
 	rejectedFieldRetryState = newOpenAIResponsesRejectedFieldRetryState(currentPayload)
 	turnRetry := 0
 	turnPrevRecoveryTried := false
