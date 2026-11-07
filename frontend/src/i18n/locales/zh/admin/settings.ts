@@ -1137,6 +1137,8 @@ export default {
         thinkingSignatureHint: '当上游返回 thinking block 签名校验错误时，自动去除签名并重试',
         thinkingBudget: 'Thinking Budget 整流',
         thinkingBudgetHint: '当上游返回 budget_tokens 约束错误（≥1024）时，自动将 budget 设为 32000 并重试',
+        maxTokens: 'Max Tokens 整流',
+        maxTokensHint: '当上游返回 max_tokens 超出模型输出上限或非流式上限的错误时，自动将 max_tokens 调整为允许的最大值并重试（必要时同步调低 budget_tokens）',
         apikeySignature: 'API Key 签名整流',
         apikeySignatureHint:
           '当 API Key 账号的上游返回签名相关错误时，自动去除签名并重试（内置规则始终生效）',

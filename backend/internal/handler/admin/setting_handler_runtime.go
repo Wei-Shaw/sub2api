@@ -298,6 +298,7 @@ func (h *SettingHandler) GetRectifierSettings(c *gin.Context) {
 		Enabled:                  settings.Enabled,
 		ThinkingSignatureEnabled: settings.ThinkingSignatureEnabled,
 		ThinkingBudgetEnabled:    settings.ThinkingBudgetEnabled,
+		MaxTokensEnabled:         settings.MaxTokensEnabled,
 		APIKeySignatureEnabled:   settings.APIKeySignatureEnabled,
 		APIKeySignaturePatterns:  patterns,
 	})
@@ -308,6 +309,7 @@ type UpdateRectifierSettingsRequest struct {
 	Enabled                  bool     `json:"enabled"`
 	ThinkingSignatureEnabled bool     `json:"thinking_signature_enabled"`
 	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`
+	MaxTokensEnabled         *bool    `json:"max_tokens_enabled"`
 	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`
 	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`
 }
@@ -341,10 +343,24 @@ func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 		cleanedPatterns = append(cleanedPatterns, p)
 	}
 
+	// 未携带 max_tokens_enabled 的旧客户端保持已保存的值
+	var maxTokensEnabled bool
+	if req.MaxTokensEnabled != nil {
+		maxTokensEnabled = *req.MaxTokensEnabled
+	} else {
+		current, err := h.settingService.GetRectifierSettings(c.Request.Context())
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
+		}
+		maxTokensEnabled = current.MaxTokensEnabled
+	}
+
 	settings := &service.RectifierSettings{
 		Enabled:                  req.Enabled,
 		ThinkingSignatureEnabled: req.ThinkingSignatureEnabled,
 		ThinkingBudgetEnabled:    req.ThinkingBudgetEnabled,
+		MaxTokensEnabled:         maxTokensEnabled,
 		APIKeySignatureEnabled:   req.APIKeySignatureEnabled,
 		APIKeySignaturePatterns:  cleanedPatterns,
 	}
@@ -369,6 +385,7 @@ func (h *SettingHandler) UpdateRectifierSettings(c *gin.Context) {
 		Enabled:                  updatedSettings.Enabled,
 		ThinkingSignatureEnabled: updatedSettings.ThinkingSignatureEnabled,
 		ThinkingBudgetEnabled:    updatedSettings.ThinkingBudgetEnabled,
+		MaxTokensEnabled:         updatedSettings.MaxTokensEnabled,
 		APIKeySignatureEnabled:   updatedSettings.APIKeySignatureEnabled,
 		APIKeySignaturePatterns:  updatedPatterns,
 	})
