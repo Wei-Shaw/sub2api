@@ -36,6 +36,8 @@ func (CompositeModelRoute) Mixin() []ent.Mixin {
 func (CompositeModelRoute) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int64("group_id"),
+		field.Int64("target_group_id").Optional().Nillable(),
+		field.Int64("target_account_id").Optional().Nillable(),
 		field.String("public_model").
 			MaxLen(200).
 			NotEmpty().

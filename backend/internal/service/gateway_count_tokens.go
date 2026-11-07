@@ -30,6 +30,18 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return nil
 	}
 
+	// Keep native count_tokens consistent with messages without rewriting replay history.
+	if account != nil && account.Platform == PlatformAnthropic && !account.IsBedrock() {
+		if body, changed := dropClearlyForeignAnthropicThinking(parsed.Body.Bytes()); changed {
+			cleaned, err := parsed.CloneForBody(body)
+			if err != nil {
+				return fmt.Errorf("remove incompatible reasoning: %w", err)
+			}
+			cleaned.OnUpstreamAccepted = parsed.OnUpstreamAccepted
+			parsed = cleaned
+		}
+	}
+
 	validationModel := parsed.Model
 	if account != nil {
 		if account.IsBedrock() {

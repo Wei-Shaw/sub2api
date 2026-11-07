@@ -369,13 +369,16 @@ func TestPatchGrokResponsesBodyDropsNestedUnsupportedFields(t *testing.T) {
 	require.False(t, gjson.GetBytes(patched, "metadata").Exists())
 }
 
-func TestStripAnthropicThinkingSignaturesPreservesLargeIntegers(t *testing.T) {
-	body := []byte(`{"messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"work","signature":"opaque"}]}],"metadata":{"large_id":9007199254740993}}`)
+func TestGrokReasoningRetryPreservesLargeIntegers(t *testing.T) {
+	body := []byte(`{"input":[{"type":"reasoning","encrypted_content":"opaque","summary":[]},{"type":"function_call","call_id":"call_large","name":"lookup","arguments":"{\"large_id\":9007199254740993}"}],"metadata":{"large_id":9007199254740993}}`)
 
-	patched, changed := stripAnthropicThinkingSignatures(body)
+	patched, changed, err := SanitizeOpenAICrossModeFailoverReasoning(body)
 
+	require.NoError(t, err)
 	require.True(t, changed)
-	require.False(t, gjson.GetBytes(patched, "messages.0.content.0.signature").Exists())
+	require.Equal(t, "function_call", gjson.GetBytes(patched, "input.0.type").String())
+	require.Equal(t, "call_large", gjson.GetBytes(patched, "input.0.call_id").String())
+	require.Equal(t, `{"large_id":9007199254740993}`, gjson.GetBytes(patched, "input.0.arguments").String())
 	require.Equal(t, "9007199254740993", gjson.GetBytes(patched, "metadata.large_id").Raw)
 }
 

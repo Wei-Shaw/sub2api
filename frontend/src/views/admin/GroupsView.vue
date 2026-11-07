@@ -4008,6 +4008,9 @@
                         <PlatformIcon :platform="route.target_platform" size="xs" />
                         <span>{{ formatCompositePlatform(route.target_platform) }}</span>
                       </div>
+                      <div class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {{ formatCompositeDestination(route) }}
+                      </div>
                       <div class="mt-1 break-all text-xs text-gray-500 dark:text-gray-400">
                         {{ route.upstream_model || route.public_model }}
                       </div>
@@ -4108,8 +4111,9 @@
                   t("admin.groups.compositeRoutes.targetPlatform")
                 }}</label>
                 <Select
-                  v-model="compositeRouteForm.target_platform"
+                  :model-value="compositeRouteForm.target_platform"
                   :options="compositeRoutePlatformOptions"
+                  @update:model-value="changeCompositeRoutePlatform($event as ConcreteGroupPlatform)"
                 />
               </div>
               <div>
@@ -4125,6 +4129,17 @@
                 />
               </div>
             </div>
+
+            <CompositeRouteDestinationField
+              v-if="showCompositeRoutesModal && compositeRoutesGroup"
+              ref="compositeDestinationRef"
+              v-model="compositeRouteForm.destination"
+              :platform="compositeRouteForm.target_platform"
+              :source-group-id="compositeRoutesGroup.id"
+            />
+            <p class="text-xs text-gray-500 dark:text-gray-400">
+              {{ t("admin.groups.compositeRoutes.modelRoutingHint") }}
+            </p>
 
             <div>
               <label class="input-label">{{
@@ -4244,6 +4259,7 @@
                       )
                     }}
                   </div>
+                  <div>{{ formatCompositeDestination(compositePreviewDecision) }}</div>
                   <div class="break-all">
                     {{ t("admin.groups.compositeRoutes.upstreamModel") }}:
                     {{ compositePreviewDecision.upstream_model }}
@@ -4334,6 +4350,13 @@ import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesMo
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
 import CodexManifestAccountsField from "@/components/admin/group/CodexManifestAccountsField.vue";
+import CompositeRouteDestinationField from "@/components/admin/group/CompositeRouteDestinationField.vue";
+import {
+  compositeRouteDestination,
+  compositeDestinationInput,
+  compositeDestinationLabelKey,
+  validCompositeDestination,
+} from "./groupsCompositeRoutes";
 import PricingEntryCard from "@/components/admin/channel/PricingEntryCard.vue";
 import type { PricingFormEntry } from "@/components/admin/channel/types";
 import {
@@ -4880,6 +4903,7 @@ type CompositeRouteFormState = {
   public_model: string;
   match_type: CompositeRouteMatchType;
   target_platform: ConcreteGroupPlatform;
+  destination: ReturnType<typeof compositeRouteDestination>;
   upstream_model: string;
   endpoint: CompositeRouteEndpoint;
   priority: number;
@@ -4897,10 +4921,12 @@ const compositePreviewModel = ref("");
 const compositePreviewEndpoint = ref<CompositeRouteEndpoint>("any");
 const compositePreviewLoading = ref(false);
 const compositePreviewDecision = ref<CompositeRouteDecision | null>(null);
+const compositeDestinationRef = ref<{ validate: () => boolean } | null>(null);
 const compositeRouteForm = reactive<CompositeRouteFormState>({
   public_model: "",
   match_type: "exact",
   target_platform: "openai",
+  destination: compositeRouteDestination(),
   upstream_model: "",
   endpoint: "any",
   priority: 100,
@@ -6522,11 +6548,28 @@ const compositeRouteSourceLabel = (source: string) => {
   return source || "—";
 };
 
+const formatCompositeDestination = (route: Pick<CompositeModelRouteInput, "target_group_id" | "target_account_id">) =>
+  t(compositeDestinationLabelKey(route), {
+    id: route.target_group_id ?? route.target_account_id ?? "",
+  });
+
+const changeCompositeRoutePlatform = (platform: ConcreteGroupPlatform) => {
+  if (platform === compositeRouteForm.target_platform) return;
+  compositeRouteForm.target_platform = platform;
+  // Changing providers must not keep a pin from the previous provider.
+  compositeRouteForm.destination = {
+    ...compositeRouteForm.destination,
+    target_group_id: null,
+    target_account_id: null,
+  };
+};
+
 const resetCompositeRouteForm = () => {
   compositeRouteEditingId.value = null;
   compositeRouteForm.public_model = "";
   compositeRouteForm.match_type = "exact";
   compositeRouteForm.target_platform = "openai";
+  compositeRouteForm.destination = compositeRouteDestination();
   compositeRouteForm.upstream_model = "";
   compositeRouteForm.endpoint = "any";
   compositeRouteForm.priority = 100;
@@ -6538,6 +6581,7 @@ const toCompositeRouteInput = (): CompositeModelRouteInput => ({
   public_model: compositeRouteForm.public_model.trim(),
   match_type: compositeRouteForm.match_type,
   target_platform: compositeRouteForm.target_platform,
+  ...compositeDestinationInput(compositeRouteForm.destination),
   upstream_model: compositeRouteForm.upstream_model.trim(),
   endpoint: compositeRouteForm.endpoint,
   priority: Number(compositeRouteForm.priority) || 100,
@@ -6591,6 +6635,7 @@ const editCompositeRoute = (route: CompositeModelRoute) => {
   compositeRouteForm.public_model = route.public_model;
   compositeRouteForm.match_type = route.match_type;
   compositeRouteForm.target_platform = route.target_platform;
+  compositeRouteForm.destination = compositeRouteDestination(route);
   compositeRouteForm.upstream_model = route.upstream_model;
   compositeRouteForm.endpoint = route.endpoint;
   compositeRouteForm.priority = route.priority || 100;
@@ -6602,6 +6647,11 @@ const saveCompositeRoute = async () => {
   if (!compositeRoutesGroup.value) return;
   if (!compositeRouteForm.public_model.trim()) {
     appStore.showError(t("admin.groups.compositeRoutes.publicModelRequired"));
+    return;
+  }
+  if (!validCompositeDestination(compositeRouteForm.destination, compositeRoutesGroup.value.id)) {
+    compositeDestinationRef.value?.validate();
+    appStore.showError(t("admin.groups.compositeRoutes.destinationRequired"));
     return;
   }
   compositeRouteSaving.value = true;

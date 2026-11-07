@@ -480,3 +480,42 @@ func TestCompositeRouteResolverExplicitRoutesCoverBucketTwoProviders(t *testing.
 		})
 	}
 }
+
+func TestCompositeRouteDestinationInvalidReferencesFailClosed(t *testing.T) {
+	source := int64(7)
+	zero := int64(0)
+	target := int64(20)
+	pin := int64(31)
+	for _, tc := range []struct {
+		name           string
+		group, account *int64
+	}{
+		{"zero group", &zero, nil}, {"zero account", nil, &zero}, {"self", &source, nil}, {"dual refs", &target, &pin},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resolver := NewCompositeRouteResolver(compositeRouteRepoStub{routes: []CompositeModelRoute{{ID: 1, GroupID: 7, PublicModel: "gpt-5", TargetPlatform: PlatformOpenAI, TargetGroupID: tc.group, TargetAccountID: tc.account, Enabled: true}}})
+			decision, err := resolver.Resolve(context.Background(), 7, "gpt-5", CompositeRouteEndpointAny)
+			require.Error(t, err)
+			require.False(t, decision.Matched, "invalid stored destination must not fall through to detector/legacy pool")
+		})
+	}
+}
+
+func TestCompositeRouteDestinationDecisionOwnsPointers(t *testing.T) {
+	pin := int64(31)
+	resolver := NewCompositeRouteResolver(compositeRouteRepoStub{routes: []CompositeModelRoute{{ID: 1, GroupID: 7, PublicModel: "alias", TargetPlatform: PlatformOpenAI, TargetAccountID: &pin, Enabled: true}}})
+	decision, err := resolver.Resolve(context.Background(), 7, "alias", CompositeRouteEndpointAny)
+	require.NoError(t, err)
+	require.True(t, decision.Matched)
+	ctx := WithCompositeRouteDecision(context.Background(), decision)
+	*decision.TargetAccountID = 100
+	*decision.Route.TargetAccountID = 200
+	require.Equal(t, int64(31), pin)
+	scope, ok := CompositeRouteScopeFromContext(ctx)
+	require.True(t, ok)
+	require.Equal(t, int64(31), scope.TargetAccountID)
+	require.True(t, CompositeRouteSourceGroupMatches(ctx, func() *int64 { v := int64(7); return &v }()))
+	foreign := int64(8)
+	require.False(t, CompositeRouteSourceGroupMatches(ctx, &foreign))
+	require.False(t, CompositeRouteSourceGroupMatches(ctx, nil))
+}

@@ -115,6 +115,12 @@ func (s *GeminiMessagesCompatService) SelectAccountForModel(ctx context.Context,
 }
 
 func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx context.Context, groupID *int64, sessionHash string, requestedModel string, excludedIDs map[int64]struct{}) (*Account, error) {
+	if !CompositeRouteSourceGroupMatches(ctx, groupID) {
+		return nil, ErrNoAvailableAccounts
+	}
+	if err := ValidateCompositeRouteScope(ctx, s.groupRepo, s.accountRepo); err != nil {
+		return nil, err
+	}
 	// 1. 确定目标平台和调度模式
 	// Determine target platform and scheduling mode
 	platform, useMixedScheduling, hasForcePlatform, err := s.resolvePlatformAndSchedulingMode(ctx, groupID)
@@ -122,11 +128,14 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 		return nil, err
 	}
 
-	cacheKey := "gemini:" + sessionHash
+	cacheKey := CompositeRouteStickyKey(ctx, "gemini:"+sessionHash)
 
 	// 2. 尝试粘性会话命中
 	// Try sticky session hit
 	if account := s.tryStickySessionHit(ctx, groupID, sessionHash, cacheKey, requestedModel, excludedIDs, platform, useMixedScheduling); account != nil {
+		if HasCompositeRouteDestination(ctx) {
+			return s.hydrateSelectedAccount(ctx, account)
+		}
 		return account, nil
 	}
 
@@ -137,7 +146,7 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 		return nil, fmt.Errorf("query accounts failed: %w", err)
 	}
 	// 强制平台模式下，分组中找不到账户时回退查询全部
-	if len(accounts) == 0 && groupID != nil && hasForcePlatform {
+	if len(accounts) == 0 && groupID != nil && hasForcePlatform && !HasCompositeRouteDestination(ctx) {
 		accounts, err = s.listSchedulableAccountsOnce(ctx, nil, platform, hasForcePlatform)
 		if err != nil {
 			return nil, fmt.Errorf("query accounts failed: %w", err)
@@ -170,6 +179,12 @@ func (s *GeminiMessagesCompatService) SelectAccountForModelWithExclusions(ctx co
 // resolvePlatformAndSchedulingMode resolves target platform and scheduling mode.
 // Returns: platform name, whether to use mixed scheduling, whether force platform, error.
 func (s *GeminiMessagesCompatService) resolvePlatformAndSchedulingMode(ctx context.Context, groupID *int64) (platform string, useMixedScheduling bool, hasForcePlatform bool, err error) {
+	if HasCompositeRouteDestination(ctx) {
+		if target, ok := ResolvedTargetPlatformFromContext(ctx); ok {
+			return target, false, true, nil
+		}
+		return "", false, false, errors.New("composite route destination has no target platform")
+	}
 	// 优先检查 context 中的强制平台（/antigravity 路由）
 	forcePlatform, hasForcePlatform := ctx.Value(ctxkey.ForcePlatform).(string)
 	if hasForcePlatform && forcePlatform != "" {
@@ -266,6 +281,9 @@ func (s *GeminiMessagesCompatService) isAccountUsableForRequestWithPrecheck(
 	useMixedScheduling bool,
 	precheckResult map[int64]bool,
 ) bool {
+	if !CompositeRouteAccountAllowed(ctx, account) {
+		return false
+	}
 	// 检查模型调度能力
 	// Check model scheduling capability
 	if !account.IsSchedulableForModelWithContext(ctx, requestedModel) {
@@ -434,6 +452,9 @@ func (s *GeminiMessagesCompatService) GetAntigravityGatewayService() *Antigravit
 }
 
 func (s *GeminiMessagesCompatService) getSchedulableAccount(ctx context.Context, accountID int64) (*Account, error) {
+	if HasCompositeRouteDestination(ctx) {
+		return s.accountRepo.GetByID(ctx, accountID)
+	}
 	if s.schedulerSnapshot != nil {
 		return s.schedulerSnapshot.GetAccount(ctx, accountID)
 	}
@@ -441,6 +462,22 @@ func (s *GeminiMessagesCompatService) getSchedulableAccount(ctx context.Context,
 }
 
 func (s *GeminiMessagesCompatService) hydrateSelectedAccount(ctx context.Context, account *Account) (*Account, error) {
+	if HasCompositeRouteDestination(ctx) {
+		if account == nil {
+			return nil, errors.New("selected gemini account is nil")
+		}
+		if err := ValidateCompositeRouteScope(ctx, s.groupRepo, s.accountRepo); err != nil {
+			return nil, err
+		}
+		fresh, err := s.accountRepo.GetByID(ctx, account.ID)
+		if err != nil {
+			return nil, err
+		}
+		if fresh == nil || !CompositeRouteAccountAllowed(ctx, fresh) || !fresh.IsSchedulable() {
+			return nil, errors.New("selected gemini account is no longer available in composite route destination")
+		}
+		return fresh, nil
+	}
 	if account == nil || s.schedulerSnapshot == nil {
 		return account, nil
 	}
@@ -455,6 +492,9 @@ func (s *GeminiMessagesCompatService) hydrateSelectedAccount(ctx context.Context
 }
 
 func (s *GeminiMessagesCompatService) listSchedulableAccountsOnce(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, error) {
+	if accounts, handled, err := ListCompositeRouteScopedAccounts(ctx, s.groupRepo, s.accountRepo, platform); handled {
+		return accounts, err
+	}
 	if s.schedulerSnapshot != nil {
 		accounts, _, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 		return accounts, err

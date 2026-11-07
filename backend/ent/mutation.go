@@ -19707,27 +19707,31 @@ func (m *ChannelMonitorRequestTemplateMutation) ResetEdge(name string) error {
 // CompositeModelRouteMutation represents an operation that mutates the CompositeModelRoute nodes in the graph.
 type CompositeModelRouteMutation struct {
 	config
-	op              Op
-	typ             string
-	id              *int64
-	created_at      *time.Time
-	updated_at      *time.Time
-	deleted_at      *time.Time
-	public_model    *string
-	match_type      *string
-	target_platform *string
-	upstream_model  *string
-	endpoint        *string
-	priority        *int
-	addpriority     *int
-	enabled         *bool
-	notes           *string
-	clearedFields   map[string]struct{}
-	group           *int64
-	clearedgroup    bool
-	done            bool
-	oldValue        func(context.Context) (*CompositeModelRoute, error)
-	predicates      []predicate.CompositeModelRoute
+	op                   Op
+	typ                  string
+	id                   *int64
+	created_at           *time.Time
+	updated_at           *time.Time
+	deleted_at           *time.Time
+	target_group_id      *int64
+	addtarget_group_id   *int64
+	target_account_id    *int64
+	addtarget_account_id *int64
+	public_model         *string
+	match_type           *string
+	target_platform      *string
+	upstream_model       *string
+	endpoint             *string
+	priority             *int
+	addpriority          *int
+	enabled              *bool
+	notes                *string
+	clearedFields        map[string]struct{}
+	group                *int64
+	clearedgroup         bool
+	done                 bool
+	oldValue             func(context.Context) (*CompositeModelRoute, error)
+	predicates           []predicate.CompositeModelRoute
 }
 
 var _ ent.Mutation = (*CompositeModelRouteMutation)(nil)
@@ -19983,6 +19987,146 @@ func (m *CompositeModelRouteMutation) OldGroupID(ctx context.Context) (v int64, 
 // ResetGroupID resets all changes to the "group_id" field.
 func (m *CompositeModelRouteMutation) ResetGroupID() {
 	m.group = nil
+}
+
+// SetTargetGroupID sets the "target_group_id" field.
+func (m *CompositeModelRouteMutation) SetTargetGroupID(i int64) {
+	m.target_group_id = &i
+	m.addtarget_group_id = nil
+}
+
+// TargetGroupID returns the value of the "target_group_id" field in the mutation.
+func (m *CompositeModelRouteMutation) TargetGroupID() (r int64, exists bool) {
+	v := m.target_group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTargetGroupID returns the old "target_group_id" field's value of the CompositeModelRoute entity.
+// If the CompositeModelRoute object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeModelRouteMutation) OldTargetGroupID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTargetGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTargetGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTargetGroupID: %w", err)
+	}
+	return oldValue.TargetGroupID, nil
+}
+
+// AddTargetGroupID adds i to the "target_group_id" field.
+func (m *CompositeModelRouteMutation) AddTargetGroupID(i int64) {
+	if m.addtarget_group_id != nil {
+		*m.addtarget_group_id += i
+	} else {
+		m.addtarget_group_id = &i
+	}
+}
+
+// AddedTargetGroupID returns the value that was added to the "target_group_id" field in this mutation.
+func (m *CompositeModelRouteMutation) AddedTargetGroupID() (r int64, exists bool) {
+	v := m.addtarget_group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearTargetGroupID clears the value of the "target_group_id" field.
+func (m *CompositeModelRouteMutation) ClearTargetGroupID() {
+	m.target_group_id = nil
+	m.addtarget_group_id = nil
+	m.clearedFields[compositemodelroute.FieldTargetGroupID] = struct{}{}
+}
+
+// TargetGroupIDCleared returns if the "target_group_id" field was cleared in this mutation.
+func (m *CompositeModelRouteMutation) TargetGroupIDCleared() bool {
+	_, ok := m.clearedFields[compositemodelroute.FieldTargetGroupID]
+	return ok
+}
+
+// ResetTargetGroupID resets all changes to the "target_group_id" field.
+func (m *CompositeModelRouteMutation) ResetTargetGroupID() {
+	m.target_group_id = nil
+	m.addtarget_group_id = nil
+	delete(m.clearedFields, compositemodelroute.FieldTargetGroupID)
+}
+
+// SetTargetAccountID sets the "target_account_id" field.
+func (m *CompositeModelRouteMutation) SetTargetAccountID(i int64) {
+	m.target_account_id = &i
+	m.addtarget_account_id = nil
+}
+
+// TargetAccountID returns the value of the "target_account_id" field in the mutation.
+func (m *CompositeModelRouteMutation) TargetAccountID() (r int64, exists bool) {
+	v := m.target_account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldTargetAccountID returns the old "target_account_id" field's value of the CompositeModelRoute entity.
+// If the CompositeModelRoute object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeModelRouteMutation) OldTargetAccountID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldTargetAccountID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldTargetAccountID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldTargetAccountID: %w", err)
+	}
+	return oldValue.TargetAccountID, nil
+}
+
+// AddTargetAccountID adds i to the "target_account_id" field.
+func (m *CompositeModelRouteMutation) AddTargetAccountID(i int64) {
+	if m.addtarget_account_id != nil {
+		*m.addtarget_account_id += i
+	} else {
+		m.addtarget_account_id = &i
+	}
+}
+
+// AddedTargetAccountID returns the value that was added to the "target_account_id" field in this mutation.
+func (m *CompositeModelRouteMutation) AddedTargetAccountID() (r int64, exists bool) {
+	v := m.addtarget_account_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearTargetAccountID clears the value of the "target_account_id" field.
+func (m *CompositeModelRouteMutation) ClearTargetAccountID() {
+	m.target_account_id = nil
+	m.addtarget_account_id = nil
+	m.clearedFields[compositemodelroute.FieldTargetAccountID] = struct{}{}
+}
+
+// TargetAccountIDCleared returns if the "target_account_id" field was cleared in this mutation.
+func (m *CompositeModelRouteMutation) TargetAccountIDCleared() bool {
+	_, ok := m.clearedFields[compositemodelroute.FieldTargetAccountID]
+	return ok
+}
+
+// ResetTargetAccountID resets all changes to the "target_account_id" field.
+func (m *CompositeModelRouteMutation) ResetTargetAccountID() {
+	m.target_account_id = nil
+	m.addtarget_account_id = nil
+	delete(m.clearedFields, compositemodelroute.FieldTargetAccountID)
 }
 
 // SetPublicModel sets the "public_model" field.
@@ -20367,7 +20511,7 @@ func (m *CompositeModelRouteMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CompositeModelRouteMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 14)
 	if m.created_at != nil {
 		fields = append(fields, compositemodelroute.FieldCreatedAt)
 	}
@@ -20379,6 +20523,12 @@ func (m *CompositeModelRouteMutation) Fields() []string {
 	}
 	if m.group != nil {
 		fields = append(fields, compositemodelroute.FieldGroupID)
+	}
+	if m.target_group_id != nil {
+		fields = append(fields, compositemodelroute.FieldTargetGroupID)
+	}
+	if m.target_account_id != nil {
+		fields = append(fields, compositemodelroute.FieldTargetAccountID)
 	}
 	if m.public_model != nil {
 		fields = append(fields, compositemodelroute.FieldPublicModel)
@@ -20420,6 +20570,10 @@ func (m *CompositeModelRouteMutation) Field(name string) (ent.Value, bool) {
 		return m.DeletedAt()
 	case compositemodelroute.FieldGroupID:
 		return m.GroupID()
+	case compositemodelroute.FieldTargetGroupID:
+		return m.TargetGroupID()
+	case compositemodelroute.FieldTargetAccountID:
+		return m.TargetAccountID()
 	case compositemodelroute.FieldPublicModel:
 		return m.PublicModel()
 	case compositemodelroute.FieldMatchType:
@@ -20453,6 +20607,10 @@ func (m *CompositeModelRouteMutation) OldField(ctx context.Context, name string)
 		return m.OldDeletedAt(ctx)
 	case compositemodelroute.FieldGroupID:
 		return m.OldGroupID(ctx)
+	case compositemodelroute.FieldTargetGroupID:
+		return m.OldTargetGroupID(ctx)
+	case compositemodelroute.FieldTargetAccountID:
+		return m.OldTargetAccountID(ctx)
 	case compositemodelroute.FieldPublicModel:
 		return m.OldPublicModel(ctx)
 	case compositemodelroute.FieldMatchType:
@@ -20505,6 +20663,20 @@ func (m *CompositeModelRouteMutation) SetField(name string, value ent.Value) err
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetGroupID(v)
+		return nil
+	case compositemodelroute.FieldTargetGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTargetGroupID(v)
+		return nil
+	case compositemodelroute.FieldTargetAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetTargetAccountID(v)
 		return nil
 	case compositemodelroute.FieldPublicModel:
 		v, ok := value.(string)
@@ -20570,6 +20742,12 @@ func (m *CompositeModelRouteMutation) SetField(name string, value ent.Value) err
 // this mutation.
 func (m *CompositeModelRouteMutation) AddedFields() []string {
 	var fields []string
+	if m.addtarget_group_id != nil {
+		fields = append(fields, compositemodelroute.FieldTargetGroupID)
+	}
+	if m.addtarget_account_id != nil {
+		fields = append(fields, compositemodelroute.FieldTargetAccountID)
+	}
 	if m.addpriority != nil {
 		fields = append(fields, compositemodelroute.FieldPriority)
 	}
@@ -20581,6 +20759,10 @@ func (m *CompositeModelRouteMutation) AddedFields() []string {
 // was not set, or was not defined in the schema.
 func (m *CompositeModelRouteMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
+	case compositemodelroute.FieldTargetGroupID:
+		return m.AddedTargetGroupID()
+	case compositemodelroute.FieldTargetAccountID:
+		return m.AddedTargetAccountID()
 	case compositemodelroute.FieldPriority:
 		return m.AddedPriority()
 	}
@@ -20592,6 +20774,20 @@ func (m *CompositeModelRouteMutation) AddedField(name string) (ent.Value, bool) 
 // type.
 func (m *CompositeModelRouteMutation) AddField(name string, value ent.Value) error {
 	switch name {
+	case compositemodelroute.FieldTargetGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTargetGroupID(v)
+		return nil
+	case compositemodelroute.FieldTargetAccountID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddTargetAccountID(v)
+		return nil
 	case compositemodelroute.FieldPriority:
 		v, ok := value.(int)
 		if !ok {
@@ -20609,6 +20805,12 @@ func (m *CompositeModelRouteMutation) ClearedFields() []string {
 	var fields []string
 	if m.FieldCleared(compositemodelroute.FieldDeletedAt) {
 		fields = append(fields, compositemodelroute.FieldDeletedAt)
+	}
+	if m.FieldCleared(compositemodelroute.FieldTargetGroupID) {
+		fields = append(fields, compositemodelroute.FieldTargetGroupID)
+	}
+	if m.FieldCleared(compositemodelroute.FieldTargetAccountID) {
+		fields = append(fields, compositemodelroute.FieldTargetAccountID)
 	}
 	if m.FieldCleared(compositemodelroute.FieldNotes) {
 		fields = append(fields, compositemodelroute.FieldNotes)
@@ -20629,6 +20831,12 @@ func (m *CompositeModelRouteMutation) ClearField(name string) error {
 	switch name {
 	case compositemodelroute.FieldDeletedAt:
 		m.ClearDeletedAt()
+		return nil
+	case compositemodelroute.FieldTargetGroupID:
+		m.ClearTargetGroupID()
+		return nil
+	case compositemodelroute.FieldTargetAccountID:
+		m.ClearTargetAccountID()
 		return nil
 	case compositemodelroute.FieldNotes:
 		m.ClearNotes()
@@ -20652,6 +20860,12 @@ func (m *CompositeModelRouteMutation) ResetField(name string) error {
 		return nil
 	case compositemodelroute.FieldGroupID:
 		m.ResetGroupID()
+		return nil
+	case compositemodelroute.FieldTargetGroupID:
+		m.ResetTargetGroupID()
+		return nil
+	case compositemodelroute.FieldTargetAccountID:
+		m.ResetTargetAccountID()
 		return nil
 	case compositemodelroute.FieldPublicModel:
 		m.ResetPublicModel()

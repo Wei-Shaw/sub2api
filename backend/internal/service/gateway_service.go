@@ -966,6 +966,7 @@ func (s *GatewayService) GenerateSessionHash(parsed *ParsedRequest) string {
 
 // BindStickySession sets session -> account binding with standard TTL.
 func (s *GatewayService) BindStickySession(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
+	sessionHash = CompositeRouteStickyKey(ctx, sessionHash)
 	if sessionHash == "" || accountID <= 0 || s.cache == nil {
 		return nil
 	}
@@ -990,6 +991,7 @@ func (s *GatewayService) bindGatewayStickySessionDuringSelection(ctx context.Con
 // account remains bound and automatically becomes eligible again if its
 // account rate recovers.
 func (s *GatewayService) BindStickySessionAfterProfitAdmission(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
+	sessionHash = CompositeRouteStickyKey(ctx, sessionHash)
 	if sessionHash == "" || accountID <= 0 || s.cache == nil {
 		return nil
 	}
@@ -1011,6 +1013,7 @@ func (s *GatewayService) BindStickySessionAfterProfitAdmission(ctx context.Conte
 // GetCachedSessionAccountID retrieves the account ID bound to a sticky session.
 // Returns 0 if no binding exists or on error.
 func (s *GatewayService) GetCachedSessionAccountID(ctx context.Context, groupID *int64, sessionHash string) (int64, error) {
+	sessionHash = CompositeRouteStickyKey(ctx, sessionHash)
 	if sessionHash == "" || s.cache == nil {
 		return 0, nil
 	}

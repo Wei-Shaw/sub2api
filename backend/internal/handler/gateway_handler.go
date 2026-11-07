@@ -319,6 +319,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	if platform == service.PlatformGemini && sessionHash != "" {
 		sessionKey = "gemini:" + sessionHash
 	}
+	sessionKey = service.CompositeRouteStickyKey(c.Request.Context(), sessionKey)
 
 	// 查询粘性会话绑定的账号 ID
 	var sessionBoundAccountID int64
@@ -639,7 +640,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	currentAPIKey := apiKey
 	currentSubscription := subscription
 	var fallbackGroupID *int64
-	if apiKey.Group != nil {
+	if apiKey.Group != nil && !service.HasCompositeRouteDestination(c.Request.Context()) {
 		fallbackGroupID = apiKey.Group.FallbackGroupIDOnInvalidRequest
 	}
 	fallbackUsed := false
