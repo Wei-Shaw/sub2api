@@ -25,7 +25,7 @@ vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
     ...actual,
-    useI18n: () => ({
+    useI18n: () => ({ locale: { value: 'en-US' },
       t: (key: string) => key,
     }),
   }
@@ -535,4 +535,23 @@ describe('PaymentResultView', () => {
     expect(wrapper.text()).toContain('payment.methods.alipay')
     expect(wrapper.text()).not.toContain('payment.methods.alipay_direct')
   })
+  it.each([
+    { snapshot: { name: 'Monthly', currency: 'USD' }, expected: '$100.00' },
+    { snapshot: null, expected: '100.00 (payment.orders.currencyNotRecorded)' },
+  ])('separates subscription price from CNY payment, including legacy orders: $snapshot', async ({ snapshot, expected }) => {
+    routeState.query = { resume_token: 'subscription-receipt' }
+    resolveOrderPublicByResumeToken.mockResolvedValue({ data: {
+      ...orderFactory('COMPLETED'), order_type: 'subscription', amount: 100,
+      pay_amount: 672.98, currency: 'CNY', fee_rate: 0,
+      subscription_plan_snapshot: snapshot, subscription_days: 30,
+    } })
+    const wrapper = mount(PaymentResultView, { global: { stubs: { OrderStatusBadge: true } } })
+    await flushPromises()
+    expect(wrapper.get('[data-amount="planPrice"]').text()).toContain(expected)
+    expect(wrapper.get('[data-amount="payAmount"]').text()).toContain(formatPaymentAmount(672.98, 'CNY'))
+    expect(wrapper.find('[data-amount="creditedAmount"]').exists()).toBe(false)
+    expect(wrapper.find('[data-amount="baseAmount"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('¥100.00')
+  })
+
 })

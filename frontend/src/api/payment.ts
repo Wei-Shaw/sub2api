@@ -15,6 +15,9 @@ import type {
 } from '@/types/payment'
 import type { BasePaginationResponse } from '@/types'
 
+/** Full order data requires a signed resume token; anonymous verification stays minimal. */
+export type PublicOrderResult = Omit<PaymentOrder, 'user_id' | 'provider_instance_id'>
+
 export interface PublicOrderVerifyResult {
   out_trade_no: string
   status: string
@@ -76,7 +79,7 @@ export const paymentAPI = {
 
   /** Resolve an order from a signed resume token without auth */
   resolveOrderPublicByResumeToken(resumeToken: string) {
-    return apiClient.post<PublicOrderVerifyResult>('/payment/public/orders/resolve', { resume_token: resumeToken })
+    return apiClient.post<PublicOrderResult>('/payment/public/orders/resolve', { resume_token: resumeToken })
   },
 
   /** Request a refund for a completed order */

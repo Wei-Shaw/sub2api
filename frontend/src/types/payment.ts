@@ -117,6 +117,8 @@ export interface PaymentOrder {
   refund_requested_by?: number
   refund_request_reason?: string
   plan_id?: number
+  subscription_plan_snapshot?: { name: string; currency: string } | null
+  subscription_days?: number | null
   provider_instance_id?: string
 }
 
