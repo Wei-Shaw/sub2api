@@ -314,11 +314,21 @@ export default {
         antigravity: 'Antigravity',
         grok: 'Grok',
         kimi: 'Kimi',
+        qwen: 'Qwen / Bailian',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
         minimax: 'MiniMax',
         opencode_go: 'OpenCode',
         typesafe: 'TypeSafe / Jev',
+      },
+      qwenModes: {
+        tokenCn: "Token Plan — 中国",
+        tokenSg: "Token Plan — 新加坡",
+        codingCn: "Coding Plan — 中国",
+        codingSg: "Coding Plan — 新加坡",
+        paygCn: "按量计费 — 中国",
+        paygSg: "按量计费 — 新加坡",
+        hint: "请使用所选套餐和地域对应的 API Key。工作空间专属地址或其他地域可编辑请求地址。Token Plan 和 Coding Plan 仅限支持的交互式编程工具，请查看阿里云相关条款。",
       },
       cnProviders: {
         accountMode: {

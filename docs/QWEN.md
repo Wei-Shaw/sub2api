@@ -1,0 +1,7 @@
+# Qwen and Alibaba Cloud Model Studio
+
+Create an API key account for Qwen / Bailian, choose the plan and region that match your Alibaba Cloud API key, and select an OpenAI Chat Completions or Anthropic endpoint. Adaptive mode uses the matching native endpoint for each incoming request; Responses requests are translated to Chat Completions. The account's model whitelist and mappings determine which model IDs can be used.
+
+Token Plan and Coding Plan each have their own keys and endpoints, which differ from pay-as-you-go keys. Presets cover Beijing and Singapore. Pay-as-you-go presets use the shared DashScope domains; Alibaba recommends workspace-specific domains for production. Edit the protocol base URLs to use those domains, other supported regions, or a compatible custom endpoint. Match the API key to the plan and region. Configure the instance's upstream URL allowlist if enabled.
+
+Alibaba restricts Token Plan and Coding Plan to supported interactive coding tools and OpenClaw-type agents; application backends and automated API tests are not supported. Review the current [plan documentation](https://www.alibabacloud.com/help/en/model-studio/more-tools) before use. Qwen account connection tests send API requests and may therefore be unsuitable for these plans. This integration does not query Alibaba plan balances or subscription usage windows; configure local quotas and pricing separately.
