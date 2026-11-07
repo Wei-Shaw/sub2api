@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"sync/atomic"
+	"unsafe"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 )
@@ -177,6 +178,14 @@ func (r *boundedSSELineReader) ReadLine() ([]byte, error) {
 		}
 		return line, err
 	}
+}
+
+// ReadLineString is ReadLine for callers that keep the line as a string.
+// ReadLine returns a fresh allocation that nothing else retains, so the line is
+// handed over without a second copy.
+func (r *boundedSSELineReader) ReadLineString() (string, error) {
+	line, err := r.ReadLine()
+	return unsafe.String(unsafe.SliceData(line), len(line)), err
 }
 
 func (s *AntigravityGatewayService) antigravitySSEConfig() *config.Config {

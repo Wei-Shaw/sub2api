@@ -239,6 +239,12 @@ gateway:
   # OpenAI/Codex upstream response header timeout (seconds, 0=disabled)
   # OpenAI/Codex 等待上游响应头超时时间（秒，0=禁用本地响应头超时）
   openai_response_header_timeout: 0
+  # Opt out of the fixed 10-minute account cooldown for persistent OpenAI transport failures (DNS/proxy/network).
+  # Env: GATEWAY_DISABLE_OPENAI_TRANSPORT_ERROR_COOLDOWN=true; default false retains protection.
+  # Errors/Ops and bounded request failover remain; HTTP 401/403/429, quota/model limits,
+  # stream timeouts and token-refresh cooldowns are unchanged. Existing cooldowns and admin pauses are not cleared.
+  # With shared egress still broken, later requests retry it: this does not repair DNS/proxies or guarantee faster models.
+  disable_openai_transport_error_cooldown: false
   # Grok text Responses first-byte timeout (seconds, 0=disabled; default 120)
   # Grok 文本 Responses 首字节超时时间（秒，0=禁用；默认 120）
   grok_response_header_timeout: 120

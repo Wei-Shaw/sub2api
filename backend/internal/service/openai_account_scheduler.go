@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -1434,12 +1435,6 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		accounts = modelFiltered
 	}
 
-	// require_privacy_set: 获取分组配置。GetByID 会聚合账号计数，选号不能走它。
-	var schedGroup *Group
-	if req.GroupID != nil && s.service.schedulerSnapshot != nil {
-		schedGroup, _ = s.service.schedulerSnapshot.GetGroupByIDLite(ctx, *req.GroupID)
-	}
-
 	filterStats := openAISelectionFilterStats{pool: len(accounts)}
 	filtered := make([]*Account, 0, len(accounts))
 	loadReq := make([]AccountWithConcurrency, 0, len(accounts))
@@ -1466,7 +1461,8 @@ func (s *defaultOpenAIAccountScheduler) selectByLoadBalance(
 		// require_privacy_set is a group-scoped eligibility gate. Do not mutate the
 		// shared account: another group may intentionally allow accounts whose
 		// upstream privacy setting has not been confirmed.
-		if schedGroup != nil && schedGroup.RequirePrivacySet && !account.IsPrivacySet() {
+		// Select already resolved the group requirement into req.
+		if req.RequirePrivacySet && !account.IsPrivacySet() {
 			filterStats.exclude("privacy_not_set")
 			continue
 		}
@@ -2256,7 +2252,14 @@ func (s *OpenAIGatewayService) openAIGroupRequiresPrivacySet(ctx context.Context
 }
 
 func (s *OpenAIGatewayService) loadOpenAIGroupRequiresPrivacySet(ctx context.Context, groupID *int64) bool {
-	if s == nil || groupID == nil || s.schedulerSnapshot == nil {
+	if s == nil || groupID == nil {
+		return false
+	}
+	// 直连请求的被调度分组即认证分组，复用 auth 快照；composite 等 ID 不一致时回源。
+	if ctxGroup, ok := ctx.Value(ctxkey.Group).(*Group); ok && IsGroupContextValid(ctxGroup) && ctxGroup.ID == *groupID {
+		return ctxGroup.RequirePrivacySet
+	}
+	if s.schedulerSnapshot == nil {
 		return false
 	}
 	// GetByID 会聚合账号计数；隐私开关只在分组行上。
