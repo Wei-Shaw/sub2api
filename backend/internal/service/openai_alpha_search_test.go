@@ -586,6 +586,59 @@ func TestForwardAlphaSearchAPIKeyEndpointNotFoundFailsOver(t *testing.T) {
 	require.Empty(t, recorder.Body.String())
 }
 
+// new-api 系中转对未实现的端点回 5xx/400 并在消息里写明不支持，而非 404。
+// 这仍是端点级响应：必须换号，且不能触发账号处罚——尤其是启用了自定义
+// 错误码的账号，否则一次搜索请求就会把对话正常的账号永久置为 error；
+// 池模式也不应在同一账号上反复重试一个不存在的端点。
+func TestForwardAlphaSearchAPIKeyUnsupportedEndpointMessageFailsOverWithoutPenalty(t *testing.T) {
+	for _, statusCode := range []int{http.StatusInternalServerError, http.StatusBadGateway, http.StatusBadRequest} {
+		t.Run(strconv.Itoa(statusCode), func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			body := []byte(`{"id":"search-session","model":"gpt-5.6-sol","commands":{"search_query":[{"q":"news"}]}}`)
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/alpha/search", bytes.NewReader(body))
+
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: statusCode,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"channel does not support /v1/alpha/search (request id: 2026101908573101)","type":"new_api_error"}}`)),
+			}}
+			repo := &alphaSearchAccountStateRepo{}
+			cfg := &config.Config{}
+			service := &OpenAIGatewayService{
+				cfg:              cfg,
+				httpUpstream:     upstream,
+				accountRepo:      repo,
+				rateLimitService: NewRateLimitService(repo, nil, cfg, nil, nil),
+			}
+			account := &Account{
+				ID:       10,
+				Platform: PlatformOpenAI,
+				Type:     AccountTypeAPIKey,
+				Credentials: map[string]any{
+					"api_key":                    "sk-test",
+					"base_url":                   "https://relay.example",
+					"pool_mode":                  true,
+					"custom_error_codes_enabled": true,
+					"custom_error_codes":         []any{float64(400), float64(500), float64(502)},
+				},
+			}
+
+			result, err := service.ForwardAlphaSearch(context.Background(), c, account, body)
+
+			require.Nil(t, result)
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.Equal(t, statusCode, failoverErr.StatusCode)
+			require.False(t, failoverErr.RetryableOnSameAccount)
+			require.Zero(t, repo.setErrorCalls)
+			require.Empty(t, repo.lastError)
+			require.False(t, c.Writer.Written())
+		})
+	}
+}
+
 // OAuth 账号的 chatgpt.com 端点固定存在，404 保持原有透传行为不变。
 func TestForwardAlphaSearchOAuthNotFoundPassesThrough(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -650,9 +703,37 @@ func TestIsOpenAIAlphaSearchEndpointUnsupported(t *testing.T) {
 	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 	oauth := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
 
-	require.True(t, isOpenAIAlphaSearchEndpointUnsupported(apiKey, http.StatusNotFound))
-	require.True(t, isOpenAIAlphaSearchEndpointUnsupported(apiKey, http.StatusMethodNotAllowed))
-	require.False(t, isOpenAIAlphaSearchEndpointUnsupported(apiKey, http.StatusBadRequest))
-	require.False(t, isOpenAIAlphaSearchEndpointUnsupported(oauth, http.StatusNotFound))
-	require.False(t, isOpenAIAlphaSearchEndpointUnsupported(nil, http.StatusNotFound))
+	require.True(t, isOpenAIAlphaSearchEndpointUnsupported(apiKey, http.StatusNotFound, ""))
+	require.True(t, isOpenAIAlphaSearchEndpointUnsupported(apiKey, http.StatusMethodNotAllowed, ""))
+	require.False(t, isOpenAIAlphaSearchEndpointUnsupported(apiKey, http.StatusBadRequest, ""))
+	require.False(t, isOpenAIAlphaSearchEndpointUnsupported(oauth, http.StatusNotFound, ""))
+	require.False(t, isOpenAIAlphaSearchEndpointUnsupported(nil, http.StatusNotFound, ""))
+
+	unsupported := "channel does not support /v1/alpha/search (request id: abc)"
+	require.True(t, isOpenAIAlphaSearchEndpointUnsupported(apiKey, http.StatusInternalServerError, unsupported))
+	require.True(t, isOpenAIAlphaSearchEndpointUnsupported(apiKey, http.StatusBadRequest, "Unsupported endpoint: /v1/alpha/search"))
+	require.False(t, isOpenAIAlphaSearchEndpointUnsupported(oauth, http.StatusInternalServerError, unsupported))
+	// 普通 5xx 或未点名 alpha/search 的「不支持」仍按原有故障处理。
+	require.False(t, isOpenAIAlphaSearchEndpointUnsupported(apiKey, http.StatusInternalServerError, "upstream error: do request failed"))
+	require.False(t, isOpenAIAlphaSearchEndpointUnsupported(apiKey, http.StatusBadRequest, "model gpt-x is not supported"))
+}
+
+func TestSupportsOpenAIEndpointCapability_AlphaSearchCanBeDisabled(t *testing.T) {
+	disabled := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"api_key":                      "sk-test",
+		"openai_alpha_search_disabled": true,
+	}}
+	require.False(t, disabled.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityAlphaSearch))
+	require.True(t, disabled.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
+
+	// 即使 openai_capabilities 显式包含 chat_completions（隐式授予 alpha_search），关闭标记仍优先。
+	disabled.Credentials["openai_capabilities"] = []any{"chat_completions"}
+	require.False(t, disabled.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityAlphaSearch))
+	require.True(t, disabled.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityChatCompletions))
+
+	enabled := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"api_key":                      "sk-test",
+		"openai_alpha_search_disabled": false,
+	}}
+	require.True(t, enabled.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityAlphaSearch))
 }

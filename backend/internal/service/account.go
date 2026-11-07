@@ -112,6 +112,12 @@ const (
 
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
 
+// openAIAlphaSearchDisabledCredentialKey 让管理员把已知不提供 /v1/alpha/search
+// 的 API key 上游（如只实现 /v1/responses 的中转）移出独立搜索调度，同时保留
+// chat_completions 能力。不能复用 openai_capabilities：alpha_search 由
+// chat_completions 隐式授予，且账号编辑表单保存时会重写该字段。
+const openAIAlphaSearchDisabledCredentialKey = "openai_alpha_search_disabled"
+
 // GrokMediaEligibleExtraKey is an optional per-account override stored in
 // accounts.extra. true forces media routing on, false disables it, and an
 // absent/null value uses provider observations.
@@ -1967,6 +1973,9 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		// {base_url}/v1/alpha/search（见 openAIAlphaSearchURL），两类账号
 		// 都可承接独立搜索请求。上游不支持该端点时由转发层 failover 兜底。
 		if a.Type != AccountTypeOAuth && a.Type != AccountTypeAPIKey {
+			return false
+		}
+		if disabled, ok := a.Credentials[openAIAlphaSearchDisabledCredentialKey].(bool); ok && disabled {
 			return false
 		}
 	case OpenAIEndpointCapabilityEmbeddings:
