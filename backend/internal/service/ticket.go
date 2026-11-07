@@ -80,11 +80,33 @@ type TicketRepository interface {
 }
 
 type TicketService struct {
-	repo TicketRepository
+	repo                     TicketRepository
+	userRepo                 UserRepository
+	settingRepo              SettingRepository
+	notificationEmailService *NotificationEmailService
 }
 
 func NewTicketService(repo TicketRepository) *TicketService {
 	return &TicketService{repo: repo}
+}
+
+// ProvideTicketService wires ticket support with optional email notifications.
+func ProvideTicketService(
+	repo TicketRepository,
+	userRepo UserRepository,
+	settingRepo SettingRepository,
+	notificationEmailService *NotificationEmailService,
+) *TicketService {
+	return &TicketService{
+		repo:                     repo,
+		userRepo:                 userRepo,
+		settingRepo:              settingRepo,
+		notificationEmailService: notificationEmailService,
+	}
+}
+
+func (s *TicketService) SetNotificationEmailService(notificationEmailService *NotificationEmailService) {
+	s.notificationEmailService = notificationEmailService
 }
 
 func (s *TicketService) Create(ctx context.Context, userID int64, input *CreateTicketInput) (*Ticket, error) {
@@ -105,6 +127,12 @@ func (s *TicketService) Create(ctx context.Context, userID int64, input *CreateT
 		ticket.Messages = messages
 		ticket.MessageCount = len(messages)
 	}
+	// Enrich identity fields for email notifications (Create repo path does not join users).
+	if full, getErr := s.repo.GetByID(ctx, ticket.ID); getErr == nil && full != nil {
+		ticket.UserEmail = full.UserEmail
+		ticket.UserName = full.UserName
+	}
+	s.notifyTicketCreated(ticket, content)
 	return ticket, nil
 }
 
@@ -146,9 +174,11 @@ func (s *TicketService) ReplyAsUser(ctx context.Context, userID, ticketID int64,
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.repo.AddMessage(ctx, ticketID, userID, false, content, TicketStatusWaitingAdmin, TicketReplierUser); err != nil {
+	msg, err := s.repo.AddMessage(ctx, ticketID, userID, false, content, TicketStatusWaitingAdmin, TicketReplierUser)
+	if err != nil {
 		return nil, err
 	}
+	s.notifyTicketReplied(ticket, msg, false)
 	return s.getWithMessages(ctx, ticketID)
 }
 
@@ -164,9 +194,11 @@ func (s *TicketService) ReplyAsAdmin(ctx context.Context, adminUserID, ticketID 
 	if err != nil {
 		return nil, err
 	}
-	if _, err := s.repo.AddMessage(ctx, ticketID, adminUserID, true, content, TicketStatusAnswered, TicketReplierAdmin); err != nil {
+	msg, err := s.repo.AddMessage(ctx, ticketID, adminUserID, true, content, TicketStatusAnswered, TicketReplierAdmin)
+	if err != nil {
 		return nil, err
 	}
+	s.notifyTicketReplied(ticket, msg, true)
 	return s.getWithMessages(ctx, ticketID)
 }
 
@@ -185,6 +217,7 @@ func (s *TicketService) CloseAsUser(ctx context.Context, userID, ticketID int64)
 	if err := s.repo.UpdateStatus(ctx, ticketID, TicketStatusClosed, &now); err != nil {
 		return nil, err
 	}
+	s.notifyTicketClosed(ticket, false)
 	return s.getWithMessages(ctx, ticketID)
 }
 
@@ -200,6 +233,7 @@ func (s *TicketService) CloseAsAdmin(ctx context.Context, ticketID int64) (*Tick
 	if err := s.repo.UpdateStatus(ctx, ticketID, TicketStatusClosed, &now); err != nil {
 		return nil, err
 	}
+	s.notifyTicketClosed(ticket, true)
 	return s.getWithMessages(ctx, ticketID)
 }
 

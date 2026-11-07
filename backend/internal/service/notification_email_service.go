@@ -34,6 +34,9 @@ const (
 	NotificationEmailEventCyberPolicyNotice           = "content_moderation.cyber_policy_notice"
 	NotificationEmailEventOpsAlert                    = "ops.alert"
 	NotificationEmailEventOpsScheduledReport          = "ops.scheduled_report"
+	NotificationEmailEventTicketCreated               = "ticket.created"
+	NotificationEmailEventTicketReplied               = "ticket.replied"
+	NotificationEmailEventTicketClosed                = "ticket.closed"
 
 	notificationEmailTemplateKeyPrefix    = "notification_email_template:"
 	notificationEmailPreferenceKeyPrefix  = "notification_email_preference:"
@@ -942,6 +945,15 @@ func notificationEmailSampleVariables(locale string) map[string]string {
 			"report_start_time":   "2026-07-18T01:00:26Z",
 			"report_end_time":     "2026-07-19T01:00:26Z",
 			"report_html":         "<h2>日报</h2><p>请求量：2,374</p>",
+			"ticket_id":           "42",
+			"ticket_subject":      "无法调用模型",
+			"ticket_content":      "调用 gpt-4o 时一直返回 429，请协助排查。",
+			"ticket_url":          "https://example.com/admin/tickets",
+			"user_email":          "user@example.com",
+			"user_name":           "张三",
+			"replier_role":        "管理员",
+			"replier_name":        "客服小王",
+			"closed_by":           "管理员",
 		}
 		addNotificationEmailOpsSummarySampleVariables(variables)
 		return variables
@@ -990,6 +1002,15 @@ func notificationEmailSampleVariables(locale string) map[string]string {
 		"report_start_time":   "2026-07-18T01:00:26Z",
 		"report_end_time":     "2026-07-19T01:00:26Z",
 		"report_html":         "<h2>Daily summary</h2><p>Requests: 2,374</p>",
+		"ticket_id":           "42",
+		"ticket_subject":      "Unable to call model",
+		"ticket_content":      "Calling gpt-4o keeps returning 429. Please help investigate.",
+		"ticket_url":          "https://example.com/admin/tickets",
+		"user_email":          "user@example.com",
+		"user_name":           "Alex",
+		"replier_role":        "admin",
+		"replier_name":        "Support Agent",
+		"closed_by":           "admin",
 	}
 	addNotificationEmailOpsSummarySampleVariables(variables)
 	return variables
@@ -1036,6 +1057,9 @@ var notificationEmailEventOrder = []string{
 	NotificationEmailEventCyberPolicyNotice,
 	NotificationEmailEventOpsAlert,
 	NotificationEmailEventOpsScheduledReport,
+	NotificationEmailEventTicketCreated,
+	NotificationEmailEventTicketReplied,
+	NotificationEmailEventTicketClosed,
 }
 
 var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
@@ -1162,6 +1186,33 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 			),
 			append(append([]string{}, notificationEmailOpsSummaryPlaceholders...), "report_detail_display", "report_html")...,
 		),
+	},
+	NotificationEmailEventTicketCreated: {
+		Event:       NotificationEmailEventTicketCreated,
+		Label:       "Support ticket created",
+		Description: "Sent to active admin users when a user creates a new support ticket.",
+		Category:    "support",
+		Optional:    false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
+			"ticket_id", "ticket_subject", "ticket_content", "ticket_url", "user_email", "user_name"),
+	},
+	NotificationEmailEventTicketReplied: {
+		Event:       NotificationEmailEventTicketReplied,
+		Label:       "Support ticket replied",
+		Description: "Sent to the other party when a support ticket receives a new reply.",
+		Category:    "support",
+		Optional:    false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
+			"ticket_id", "ticket_subject", "ticket_content", "ticket_url", "user_email", "user_name", "replier_role", "replier_name"),
+	},
+	NotificationEmailEventTicketClosed: {
+		Event:       NotificationEmailEventTicketClosed,
+		Label:       "Support ticket closed",
+		Description: "Sent to the other party when a support ticket is closed.",
+		Category:    "support",
+		Optional:    false,
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
+			"ticket_id", "ticket_subject", "ticket_url", "user_email", "user_name", "closed_by"),
 	},
 }
 
@@ -1469,6 +1520,68 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 		notificationEmailLocaleChinese: {
 			Subject: "[运维报表] {{report_name}}",
 			HTML:    notificationEmailOpsScheduledReportTemplate(notificationEmailLocaleChinese),
+		},
+	},
+	NotificationEmailEventTicketCreated: {
+		notificationEmailDefaultLocale: {
+			Subject: "[{{site_name}}] New support ticket #{{ticket_id}}: {{ticket_subject}}",
+			HTML: notificationEmailCard("#2563eb", "New support ticket", `
+<p>Hello {{recipient_name}},</p>
+<p>A new support ticket has been created.</p>
+<p><strong>Ticket</strong>: #{{ticket_id}} — {{ticket_subject}}</p>
+<p><strong>User</strong>: {{user_name}} ({{user_email}})</p>
+<p><strong>Content</strong>:</p>
+<div style="white-space: pre-wrap; background: #f4f4f5; border-radius: 8px; padding: 12px 14px;">{{ticket_content}}</div>
+<p><a class="button" href="{{ticket_url}}">View ticket</a></p>`),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[{{site_name}}] 新工单 #{{ticket_id}}：{{ticket_subject}}",
+			HTML: notificationEmailCardZH("#2563eb", "新工单通知", `
+<p>{{recipient_name}}，您好：</p>
+<p>用户提交了一张新的支持工单。</p>
+<p><strong>工单</strong>：#{{ticket_id}} — {{ticket_subject}}</p>
+<p><strong>用户</strong>：{{user_name}}（{{user_email}}）</p>
+<p><strong>内容</strong>：</p>
+<div style="white-space: pre-wrap; background: #f4f4f5; border-radius: 8px; padding: 12px 14px;">{{ticket_content}}</div>
+<p><a class="button" href="{{ticket_url}}">查看工单</a></p>`),
+		},
+	},
+	NotificationEmailEventTicketReplied: {
+		notificationEmailDefaultLocale: {
+			Subject: "[{{site_name}}] Ticket #{{ticket_id}} has a new reply",
+			HTML: notificationEmailCard("#0d9488", "Support ticket reply", `
+<p>Hello {{recipient_name}},</p>
+<p>Ticket <strong>#{{ticket_id}} — {{ticket_subject}}</strong> has a new reply from <strong>{{replier_name}}</strong> ({{replier_role}}).</p>
+<p><strong>Reply</strong>:</p>
+<div style="white-space: pre-wrap; background: #f4f4f5; border-radius: 8px; padding: 12px 14px;">{{ticket_content}}</div>
+<p><a class="button" href="{{ticket_url}}">View ticket</a></p>`),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[{{site_name}}] 工单 #{{ticket_id}} 有新回复",
+			HTML: notificationEmailCardZH("#0d9488", "工单回复通知", `
+<p>{{recipient_name}}，您好：</p>
+<p>工单 <strong>#{{ticket_id}} — {{ticket_subject}}</strong> 收到来自 <strong>{{replier_name}}</strong>（{{replier_role}}）的新回复。</p>
+<p><strong>回复内容</strong>：</p>
+<div style="white-space: pre-wrap; background: #f4f4f5; border-radius: 8px; padding: 12px 14px;">{{ticket_content}}</div>
+<p><a class="button" href="{{ticket_url}}">查看工单</a></p>`),
+		},
+	},
+	NotificationEmailEventTicketClosed: {
+		notificationEmailDefaultLocale: {
+			Subject: "[{{site_name}}] Ticket #{{ticket_id}} has been closed",
+			HTML: notificationEmailCard("#64748b", "Support ticket closed", `
+<p>Hello {{recipient_name}},</p>
+<p>Ticket <strong>#{{ticket_id}} — {{ticket_subject}}</strong> has been closed by <strong>{{closed_by}}</strong>.</p>
+<p><strong>User</strong>: {{user_name}} ({{user_email}})</p>
+<p><a class="button" href="{{ticket_url}}">View ticket</a></p>`),
+		},
+		notificationEmailLocaleChinese: {
+			Subject: "[{{site_name}}] 工单 #{{ticket_id}} 已关闭",
+			HTML: notificationEmailCardZH("#64748b", "工单关闭通知", `
+<p>{{recipient_name}}，您好：</p>
+<p>工单 <strong>#{{ticket_id}} — {{ticket_subject}}</strong> 已被 <strong>{{closed_by}}</strong> 关闭。</p>
+<p><strong>用户</strong>：{{user_name}}（{{user_email}}）</p>
+<p><a class="button" href="{{ticket_url}}">查看工单</a></p>`),
 		},
 	},
 }

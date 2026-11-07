@@ -400,6 +400,21 @@ const eventDisplayMeta: Record<string, EventDisplayMeta> = {
     timing: "运维日报、周报、错误摘要或账号健康报表到达配置的发送时间时发送；日报和周报的完整指标均可在模板中编辑。",
     categoryLabel: "运维",
   },
+  "ticket.created": {
+    label: "工单创建通知",
+    timing: "用户新建支持工单后发送给所有启用中的管理员。",
+    categoryLabel: "工单",
+  },
+  "ticket.replied": {
+    label: "工单回复通知",
+    timing: "工单有新回复时发送给对方：管理员回复通知用户，用户回复通知管理员。",
+    categoryLabel: "工单",
+  },
+  "ticket.closed": {
+    label: "工单关闭通知",
+    timing: "工单关闭时发送给对方：管理员关闭通知用户，用户关闭通知管理员。",
+    categoryLabel: "工单",
+  },
 };
 
 const eventDisplayMetaEn: Record<string, EventDisplayMeta> = {
@@ -462,6 +477,21 @@ const eventDisplayMetaEn: Record<string, EventDisplayMeta> = {
     label: "Ops Scheduled Report",
     timing: "Sent when a configured daily, weekly, error digest, or account health report reaches its scheduled send time. Every daily and weekly summary metric is editable in this template.",
     categoryLabel: "Ops",
+  },
+  "ticket.created": {
+    label: "Support Ticket Created",
+    timing: "Sent to all active admin users after a user creates a support ticket.",
+    categoryLabel: "Support",
+  },
+  "ticket.replied": {
+    label: "Support Ticket Replied",
+    timing: "Sent to the other party when a ticket receives a reply: admin replies notify the user, user replies notify admins.",
+    categoryLabel: "Support",
+  },
+  "ticket.closed": {
+    label: "Support Ticket Closed",
+    timing: "Sent to the other party when a ticket is closed: admin closes notify the user, user closes notify admins.",
+    categoryLabel: "Support",
   },
 };
 
