@@ -47,6 +47,7 @@ vi.mock('@/api/auth', async () => {
     getPublicSettings: (...args: unknown[]) => getPublicSettingsMock(...args),
     startOAuthLogin: (...args: unknown[]) => startOAuthLoginMock(...args),
     isTotp2FARequired: () => false,
+    isEmailCodeLoginRequired: () => false,
     isWeChatWebOAuthEnabled: () => false
   }
 })

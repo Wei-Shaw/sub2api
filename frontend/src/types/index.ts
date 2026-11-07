@@ -2510,6 +2510,19 @@ export interface TotpLoginResponse {
   requires_2fa: boolean
   temp_token?: string
   user_email_masked?: string
+  /** Admin with TOTP may alternatively complete login with an emailed code */
+  email_code_available?: boolean
+}
+
+export interface EmailCodeLoginResponse {
+  requires_email_code: boolean
+  temp_token?: string
+  user_email_masked?: string
+}
+
+export interface EmailCodeLoginRequest {
+  temp_token: string
+  code: string
 }
 
 export interface TotpLogin2FARequest {

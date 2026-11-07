@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 // Mock authAPI
 const mockLogin = vi.fn()
 const mockLogin2FA = vi.fn()
+const mockLoginEmailCode = vi.fn()
 const mockLogout = vi.fn()
 const mockGetCurrentUser = vi.fn()
 const mockRegister = vi.fn()
@@ -14,12 +15,14 @@ vi.mock('@/api', () => ({
   authAPI: {
     login: (...args: any[]) => mockLogin(...args),
     login2FA: (...args: any[]) => mockLogin2FA(...args),
+    loginEmailCode: (...args: any[]) => mockLoginEmailCode(...args),
     logout: (...args: any[]) => mockLogout(...args),
     getCurrentUser: (...args: any[]) => mockGetCurrentUser(...args),
     register: (...args: any[]) => mockRegister(...args),
     refreshToken: (...args: any[]) => mockRefreshToken(...args),
   },
   isTotp2FARequired: (response: any) => response?.requires_2fa === true,
+  isEmailCodeLoginRequired: (response: any) => response?.requires_email_code === true,
 }))
 
 const fakeUser = {
@@ -100,6 +103,40 @@ describe('useAuthStore', () => {
       const result = await store.login({ email: 'test@example.com', password: '123456' })
 
       expect(result).toEqual(twoFAResponse)
+      expect(store.token).toBeNull()
+      expect(store.isAuthenticated).toBe(false)
+    })
+
+    it('returns the response without auth state when an email code is required', async () => {
+      const emailCodeResponse = { requires_email_code: true, temp_token: 'temp-email' }
+      mockLogin.mockResolvedValue(emailCodeResponse)
+      const store = useAuthStore()
+
+      const result = await store.login({ email: 'admin@example.com', password: '123456' })
+
+      expect(result).toEqual(emailCodeResponse)
+      expect(store.token).toBeNull()
+      expect(store.isAuthenticated).toBe(false)
+    })
+  })
+
+  describe('loginEmailCode', () => {
+    it('sets auth state after the email code is verified', async () => {
+      mockLoginEmailCode.mockResolvedValue(fakeAuthResponse)
+      const store = useAuthStore()
+
+      const user = await store.loginEmailCode('temp-email', '654321')
+
+      expect(store.token).toBe('test-token-123')
+      expect(user).toEqual(fakeUser)
+      expect(mockLoginEmailCode).toHaveBeenCalledWith({ temp_token: 'temp-email', code: '654321' })
+    })
+
+    it('clears state and rethrows when verification fails', async () => {
+      mockLoginEmailCode.mockRejectedValue(new Error('Invalid code'))
+      const store = useAuthStore()
+
+      await expect(store.loginEmailCode('temp-email', '000000')).rejects.toThrow('Invalid code')
       expect(store.token).toBeNull()
       expect(store.isAuthenticated).toBe(false)
     })

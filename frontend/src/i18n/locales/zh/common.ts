@@ -257,6 +257,17 @@ export default {
     emailSuffixNotAllowedWithAllowed: '该邮箱域名不被允许。可用域名：{suffixes}',
     emailSuffixAllowedMore: '等 {count} 项',
     loginSuccess: '登录成功！欢迎回来。',
+    emailCodeLogin: {
+      title: '邮箱验证',
+      hint: '管理员登录需要邮箱验证码，验证码已发送至',
+      resend: '重新发送',
+      resendIn: '{seconds} 秒后可重发',
+      resent: '验证码已重新发送',
+      failed: '验证失败，请重试',
+      sent: '验证码已发送至邮箱',
+      useEmail: '改用邮箱验证码',
+      useTotp: '改用双因素认证（TOTP）'
+    },
     accountCreatedSuccess: '账户创建成功！欢迎使用 {siteName}。',
     reloginRequired: '会话已过期，请重新登录。',
     turnstileExpired: '验证已过期，请重试',

@@ -351,6 +351,44 @@ func (s *AuthService) SendVerifyCode(ctx context.Context, email string, locale .
 	return s.emailService.SendVerifyCode(ctx, email, siteName, firstEmailLocale(locale))
 }
 
+// RequiresAdminLoginEmailCode reports whether an admin password login must be
+// completed with an emailed verification code. It requires the
+// admin_login_email_code_enabled setting; when SMTP is not configured the
+// check is skipped so admins are never locked out.
+func (s *AuthService) RequiresAdminLoginEmailCode(ctx context.Context, user *User) bool {
+	if user == nil || !user.IsAdmin() || s.settingService == nil || s.emailService == nil {
+		return false
+	}
+	if !s.settingService.IsAdminLoginEmailCodeEnabled(ctx) {
+		return false
+	}
+	if _, err := s.emailService.GetSMTPConfig(ctx); err != nil {
+		logger.LegacyPrintf("service.auth", "[Auth] Admin login email code skipped: SMTP not configured (%v)", err)
+		return false
+	}
+	return true
+}
+
+// SendAdminLoginEmailCode sends an admin login verification code.
+func (s *AuthService) SendAdminLoginEmailCode(ctx context.Context, email string, locale ...string) error {
+	if s.emailService == nil {
+		return ErrEmailNotConfigured
+	}
+	siteName := "Sub2API"
+	if s.settingService != nil {
+		siteName = s.settingService.GetSiteName(ctx)
+	}
+	return s.emailService.SendAdminLoginVerifyCode(ctx, email, siteName, firstEmailLocale(locale))
+}
+
+// VerifyAdminLoginEmailCode verifies an admin login verification code.
+func (s *AuthService) VerifyAdminLoginEmailCode(ctx context.Context, email, code string) error {
+	if s.emailService == nil {
+		return ErrEmailNotConfigured
+	}
+	return s.emailService.VerifyAdminLoginCode(ctx, email, code)
+}
+
 // SendVerifyCodeAsync 异步发送邮箱验证码并返回倒计时
 func (s *AuthService) SendVerifyCodeAsync(ctx context.Context, email string, locale ...string) (*SendVerifyCodeResult, error) {
 	logger.LegacyPrintf("service.auth", "[Auth] SendVerifyCodeAsync called for email: %s", email)

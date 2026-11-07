@@ -5,7 +5,13 @@
 
 import { defineStore } from 'pinia'
 import { ref, computed, readonly } from 'vue'
-import { authAPI, isTotp2FARequired, passkeyAPI, type LoginResponse } from '@/api'
+import {
+  authAPI,
+  isTotp2FARequired,
+  isEmailCodeLoginRequired,
+  passkeyAPI,
+  type LoginResponse
+} from '@/api'
 import type {
   User,
   LoginRequest,
@@ -247,8 +253,8 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await authAPI.login(credentials)
 
-      // If 2FA is required, return the response without setting auth state
-      if (isTotp2FARequired(response)) {
+      // If 2FA / email code is required, return the response without setting auth state
+      if (isTotp2FARequired(response) || isEmailCodeLoginRequired(response)) {
         return response
       }
 
@@ -273,6 +279,20 @@ export const useAuthStore = defineStore('auth', () => {
   async function login2FA(tempToken: string, totpCode: string): Promise<User> {
     try {
       const response = await authAPI.login2FA({ temp_token: tempToken, totp_code: totpCode })
+      setAuthFromResponse(response)
+      return user.value!
+    } catch (error) {
+      clearAuth({ preservePendingAuthSession: pendingAuthSession.value !== null })
+      throw error
+    }
+  }
+
+  /**
+   * Complete admin login with the emailed verification code
+   */
+  async function loginEmailCode(tempToken: string, code: string): Promise<User> {
+    try {
+      const response = await authAPI.loginEmailCode({ temp_token: tempToken, code })
       setAuthFromResponse(response)
       return user.value!
     } catch (error) {
@@ -505,6 +525,7 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     loginWithPasskey,
     login2FA,
+    loginEmailCode,
     register,
     setToken,
     logout,

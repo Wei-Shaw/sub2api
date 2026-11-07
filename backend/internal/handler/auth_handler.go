@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"sync"
@@ -261,8 +262,29 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	totpRequired := h.totpService != nil && h.settingSvc.IsTotpEnabled(c.Request.Context()) && user.TotpEnabled
+	emailCodeRequired := h.totpService != nil && h.authService.RequiresAdminLoginEmailCode(c.Request.Context(), user)
+
+	// Admin with TOTP enabled: either TOTP or an emailed code completes the
+	// login. The email is only sent once the admin switches to that method.
+	if totpRequired && emailCodeRequired {
+		tempToken, err := h.totpService.CreateEmailCodeLoginSession(c.Request.Context(), user.ID, user.Email, true)
+		if err != nil {
+			response.InternalError(c, "Failed to create 2FA session")
+			return
+		}
+
+		response.Success(c, TotpLoginResponse{
+			Requires2FA:        true,
+			TempToken:          tempToken,
+			UserEmailMasked:    service.MaskEmail(user.Email),
+			EmailCodeAvailable: true,
+		})
+		return
+	}
+
 	// Check if TOTP 2FA is enabled for this user
-	if h.totpService != nil && h.settingSvc.IsTotpEnabled(c.Request.Context()) && user.TotpEnabled {
+	if totpRequired {
 		// Create a temporary login session for 2FA
 		tempToken, err := h.totpService.CreateLoginSession(c.Request.Context(), user.ID, user.Email)
 		if err != nil {
@@ -278,9 +300,130 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
+	// Admin without TOTP: the login must be completed with an emailed code
+	if emailCodeRequired {
+		tempToken, err := h.totpService.CreateEmailCodeLoginSession(c.Request.Context(), user.ID, user.Email, false)
+		if err != nil {
+			response.InternalError(c, "Failed to create login session")
+			return
+		}
+		// A code sent within the cooldown window is still valid, so a repeated
+		// password submit simply reuses it.
+		if err := h.authService.SendAdminLoginEmailCode(c.Request.Context(), user.Email, c.GetHeader("Accept-Language")); err != nil && !errors.Is(err, service.ErrVerifyCodeTooFrequent) {
+			_ = h.totpService.DeleteLoginSession(c.Request.Context(), tempToken)
+			response.ErrorFrom(c, err)
+			return
+		}
+
+		response.Success(c, EmailCodeLoginResponse{
+			RequiresEmailCode: true,
+			TempToken:         tempToken,
+			UserEmailMasked:   service.MaskEmail(user.Email),
+		})
+		return
+	}
+
 	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
 
 	h.respondWithTokenPair(c, user)
+}
+
+// EmailCodeLoginResponse represents the response when an emailed login code is required
+type EmailCodeLoginResponse struct {
+	RequiresEmailCode bool   `json:"requires_email_code"`
+	TempToken         string `json:"temp_token,omitempty"`
+	UserEmailMasked   string `json:"user_email_masked,omitempty"`
+}
+
+// LoginEmailCodeRequest represents the email-code login completion request
+type LoginEmailCodeRequest struct {
+	TempToken string `json:"temp_token" binding:"required"`
+	Code      string `json:"code" binding:"required,len=6"`
+}
+
+// LoginEmailCodeResendRequest represents the request to (re)send the login email code
+type LoginEmailCodeResendRequest struct {
+	TempToken string `json:"temp_token" binding:"required"`
+}
+
+// getEmailCodeLoginSession loads a login session that may be completed with an
+// emailed code. Plain TOTP sessions are rejected.
+func (h *AuthHandler) getEmailCodeLoginSession(c *gin.Context, tempToken string) (*service.TotpLoginSession, bool) {
+	if h.totpService == nil {
+		response.BadRequest(c, "Invalid or expired login session")
+		return nil, false
+	}
+	session, err := h.totpService.GetLoginSession(c.Request.Context(), tempToken)
+	if err != nil || session == nil || !session.EmailCode {
+		response.BadRequest(c, "Invalid or expired login session")
+		return nil, false
+	}
+	return session, true
+}
+
+// LoginEmailCode completes an admin login with the emailed verification code
+// POST /api/v1/auth/login/email-code
+func (h *AuthHandler) LoginEmailCode(c *gin.Context) {
+	var req LoginEmailCodeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	session, ok := h.getEmailCodeLoginSession(c, req.TempToken)
+	if !ok {
+		return
+	}
+
+	if err := h.authService.VerifyAdminLoginEmailCode(c.Request.Context(), session.Email, req.Code); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	user, err := h.userService.GetByID(c.Request.Context(), session.UserID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if err := ensureLoginUserActive(user); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	if err := h.ensureBackendModeAllowsUser(c.Request.Context(), user); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	_ = h.totpService.DeleteLoginSession(c.Request.Context(), req.TempToken)
+
+	h.authService.RecordSuccessfulLogin(c.Request.Context(), user.ID)
+
+	h.respondWithTokenPair(c, user)
+}
+
+// LoginEmailCodeResend (re)sends the admin login verification code
+// POST /api/v1/auth/login/email-code/resend
+func (h *AuthHandler) LoginEmailCodeResend(c *gin.Context) {
+	var req LoginEmailCodeResendRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+
+	session, ok := h.getEmailCodeLoginSession(c, req.TempToken)
+	if !ok {
+		return
+	}
+
+	if err := h.authService.SendAdminLoginEmailCode(c.Request.Context(), session.Email, c.GetHeader("Accept-Language")); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	response.Success(c, SendVerifyCodeResponse{
+		Message:   "Verification code sent successfully",
+		Countdown: 60,
+	})
 }
 
 // TotpLoginResponse represents the response when 2FA is required
@@ -288,6 +431,9 @@ type TotpLoginResponse struct {
 	Requires2FA     bool   `json:"requires_2fa"`
 	TempToken       string `json:"temp_token,omitempty"`
 	UserEmailMasked string `json:"user_email_masked,omitempty"`
+	// EmailCodeAvailable indicates the login may alternatively be completed with
+	// an emailed code (request it via /auth/login/email-code/resend).
+	EmailCodeAvailable bool `json:"email_code_available,omitempty"`
 }
 
 // Login2FARequest represents the 2FA login request
@@ -319,6 +465,12 @@ func (h *AuthHandler) Login2FA(c *gin.Context) {
 		slog.Debug("login_2fa_session_invalid",
 			"temp_token_prefix", tokenPrefix,
 			"error", err)
+		response.BadRequest(c, "Invalid or expired 2FA session")
+		return
+	}
+
+	// Email-code-only sessions cannot be completed with TOTP
+	if session.EmailCode && !session.AllowTotp {
 		response.BadRequest(c, "Invalid or expired 2FA session")
 		return
 	}

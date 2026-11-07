@@ -324,10 +324,29 @@ func (s *EmailService) GenerateVerifyCode() (string, error) {
 	return string(code), nil
 }
 
+// adminLoginVerifyCodeKeyPrefix namespaces admin login codes so they can never
+// be used as (or overwritten by) registration / binding verification codes.
+const adminLoginVerifyCodeKeyPrefix = "admin_login:"
+
 // SendVerifyCode 发送验证码邮件
 func (s *EmailService) SendVerifyCode(ctx context.Context, email, siteName string, locale ...string) error {
+	return s.sendVerifyCode(ctx, email, email, siteName, locale...)
+}
+
+// SendAdminLoginVerifyCode sends an admin login verification code. The code is
+// stored under a separate cache key from registration codes.
+func (s *EmailService) SendAdminLoginVerifyCode(ctx context.Context, email, siteName string, locale ...string) error {
+	return s.sendVerifyCode(ctx, adminLoginVerifyCodeKeyPrefix+email, email, siteName, locale...)
+}
+
+// VerifyAdminLoginCode verifies an admin login verification code.
+func (s *EmailService) VerifyAdminLoginCode(ctx context.Context, email, code string) error {
+	return s.VerifyCode(ctx, adminLoginVerifyCodeKeyPrefix+email, code)
+}
+
+func (s *EmailService) sendVerifyCode(ctx context.Context, cacheKey, email, siteName string, locale ...string) error {
 	// 检查是否在冷却期内
-	existing, err := s.cache.GetVerificationCode(ctx, email)
+	existing, err := s.cache.GetVerificationCode(ctx, cacheKey)
 	if err == nil && existing != nil {
 		if time.Since(existing.CreatedAt) < verifyCodeCooldown {
 			return ErrVerifyCodeTooFrequent
@@ -347,7 +366,7 @@ func (s *EmailService) SendVerifyCode(ctx context.Context, email, siteName strin
 		CreatedAt: time.Now(),
 		ExpiresAt: time.Now().Add(verifyCodeTTL),
 	}
-	if err := s.cache.SetVerificationCode(ctx, email, data, verifyCodeTTL); err != nil {
+	if err := s.cache.SetVerificationCode(ctx, cacheKey, data, verifyCodeTTL); err != nil {
 		return fmt.Errorf("save verify code: %w", err)
 	}
 

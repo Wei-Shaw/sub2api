@@ -228,6 +228,8 @@ export default {
         stepUpEnableRequiresTotp: '开启敏感操作二次验证前，请先在个人资料中为当前账号启用 2FA (TOTP)。',
         sessionBinding: '会话 IP/UA 绑定',
         sessionBindingHint: '将登录会话与客户端 IP 和 User-Agent 绑定，任一变化即强制该会话失效并需重新登录（提升被盗凭证的利用门槛）。',
+        adminLoginEmailCode: '管理员密码登录邮箱验证码',
+        adminLoginEmailCodeHint: '开启后，管理员使用密码登录时还需输入发送到其邮箱的验证码；已绑定双因素认证 (TOTP) 的管理员可任选 TOTP 或邮箱验证码。需要已配置 SMTP；未配置 SMTP 时跳过该校验，避免管理员无法登录。',
         auditRetention: '操作日志保留天数',
         auditRetentionHint: '超过该天数的操作日志将被自动清理；填 0 表示永久保留（仅支持手动清空）。'
       },

@@ -2516,6 +2516,7 @@ type oauthPendingFlowTestHandlerOptions struct {
 	invitationEnabled  bool
 	emailVerifyEnabled bool
 	emailCache         service.EmailCache
+	emailSettingValues map[string]string
 	settingValues      map[string]string
 	promoRepo          service.PromoCodeRepository
 	defaultSubAssigner service.DefaultSubscriptionAssigner
@@ -2616,10 +2617,14 @@ CREATE TABLE IF NOT EXISTS user_affiliates (
 	}
 	var emailService *service.EmailService
 	if options.emailCache != nil {
+		emailSettingValues := map[string]string{
+			service.SettingKeyEmailVerifyEnabled: boolSettingValue(options.emailVerifyEnabled),
+		}
+		for key, value := range options.emailSettingValues {
+			emailSettingValues[key] = value
+		}
 		emailService = service.NewEmailService(&oauthPendingFlowSettingRepoStub{
-			values: map[string]string{
-				service.SettingKeyEmailVerifyEnabled: boolSettingValue(options.emailVerifyEnabled),
-			},
+			values: emailSettingValues,
 		}, options.emailCache)
 	}
 	authSvc := service.NewAuthService(

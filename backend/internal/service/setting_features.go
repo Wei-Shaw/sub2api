@@ -250,6 +250,16 @@ func (s *SettingService) IsSessionBindingEnabled(ctx context.Context) bool {
 	return value == "true"
 }
 
+// IsAdminLoginEmailCodeEnabled reports whether admin password login must be
+// completed with an emailed verification code (default off).
+func (s *SettingService) IsAdminLoginEmailCodeEnabled(ctx context.Context) bool {
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyAdminLoginEmailCodeEnabled)
+	if err != nil {
+		return false
+	}
+	return value == "true"
+}
+
 // IsStepUpEnabled 检查敏感操作 step-up 2FA 门控是否启用（默认关闭）。
 // 开启时账号/代理导出、备份创建/下载、S3 配置修改、提升管理员等操作
 // 要求当前会话在有效期内完成过 TOTP step-up 验证。

@@ -126,6 +126,7 @@ var auditSensitiveReads = map[string]string{
 var auditActionOverrides = map[string]string{
 	"POST /api/v1/auth/login":                                 service.AuditActionLogin,
 	"POST /api/v1/auth/login/2fa":                             service.AuditActionLogin2FA,
+	"POST /api/v1/auth/login/email-code":                      service.AuditActionLoginEmailCode,
 	"POST /api/v1/auth/passkey/login/finish":                  service.AuditActionLogin,
 	"POST /api/v1/auth/register":                              service.AuditActionRegister,
 	"POST /api/v1/auth/refresh":                               service.AuditActionTokenRefresh,

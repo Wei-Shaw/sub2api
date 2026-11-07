@@ -187,6 +187,18 @@ func TestBackendModeAuthGuard(t *testing.T) {
 			wantStatus: http.StatusOK,
 		},
 		{
+			name:       "enabled_allows_login_email_code",
+			enabled:    "true",
+			path:       "/api/v1/auth/login/email-code",
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "enabled_allows_login_email_code_resend",
+			enabled:    "true",
+			path:       "/api/v1/auth/login/email-code/resend",
+			wantStatus: http.StatusOK,
+		},
+		{
 			name:       "enabled_allows_logout",
 			enabled:    "true",
 			path:       "/api/v1/auth/logout",
