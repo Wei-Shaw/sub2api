@@ -540,50 +540,72 @@
   .sidebar {
     @apply fixed inset-y-0 left-0 z-40;
     @apply w-64 bg-white dark:bg-dark-900;
-    @apply border-r border-gray-200 dark:border-dark-800;
+    @apply border-r border-gray-200/80 dark:border-dark-800;
     @apply flex flex-col;
     @apply transition-transform duration-300;
     transition-property: width, transform;
   }
 
   .sidebar-header {
-    @apply h-16 px-6;
-    @apply flex items-center gap-3;
-    @apply border-b border-gray-100 dark:border-dark-800;
+    @apply h-14 px-5;
+    @apply flex items-center gap-2.5;
     transition:
       padding 0.2s ease,
       gap 0.2s ease;
   }
 
   .sidebar-nav {
-    @apply flex-1 overflow-y-auto px-3 py-4;
+    @apply flex-1 overflow-y-auto px-3 pb-4 pt-2;
   }
 
   .sidebar-link {
-    @apply flex items-center gap-3 rounded-xl py-2.5;
+    @apply relative flex h-9 items-center gap-3 rounded-lg;
     @apply overflow-hidden;
     @apply text-sm font-medium;
     @apply text-gray-600 dark:text-dark-300;
-    @apply transition-all duration-200;
-    @apply hover:bg-gray-100 dark:hover:bg-dark-800;
+    @apply transition-colors duration-150;
+    @apply hover:bg-gray-100/80 dark:hover:bg-dark-800;
     @apply hover:text-gray-900 dark:hover:text-white;
-    padding-left: 1.0625rem;
-    padding-right: 0.875rem;
+    padding-left: 0.6875rem;
+    padding-right: 0.6875rem;
+  }
+
+  .sidebar-link > svg,
+  .sidebar-link > .sidebar-svg-icon {
+    @apply text-gray-400 transition-colors duration-150 dark:text-dark-400;
+  }
+
+  .sidebar-link:hover > svg,
+  .sidebar-link:hover > .sidebar-svg-icon {
+    @apply text-gray-600 dark:text-dark-200;
   }
 
   .sidebar-link-active {
-    @apply bg-primary-50 dark:bg-primary-900/20;
+    @apply bg-primary-50 dark:bg-primary-500/10;
+    @apply text-primary-700 dark:text-primary-300;
+    @apply hover:bg-primary-50 dark:hover:bg-primary-500/10;
+    @apply hover:text-primary-700 dark:hover:text-primary-300;
+  }
+
+  .sidebar-link-active > svg,
+  .sidebar-link-active > .sidebar-svg-icon,
+  .sidebar-link-active:hover > svg,
+  .sidebar-link-active:hover > .sidebar-svg-icon {
     @apply text-primary-600 dark:text-primary-400;
-    @apply hover:bg-primary-100 dark:hover:bg-primary-900/30;
+  }
+
+  .sidebar-link-active::before {
+    content: '';
+    @apply absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-primary-500;
   }
 
   .sidebar-section {
-    @apply mb-6;
+    @apply mb-4;
   }
 
   .sidebar-section-title {
-    @apply mb-2 px-3;
-    @apply text-xs font-semibold uppercase tracking-wider;
+    @apply mb-1 mt-2 px-3;
+    @apply text-[11px] font-medium tracking-wide;
     @apply text-gray-400 dark:text-dark-500;
   }
 
