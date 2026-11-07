@@ -423,7 +423,7 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 					// 负缓存命中：返回缓存的错误，避免重试风暴
 					return nil, cache.err
 				}
-				if cache.response != nil && age < apiCacheTTL {
+				if !forceProbe && cache.response != nil && age < apiCacheTTL {
 					apiResp = cache.response
 				}
 			}
@@ -449,7 +449,7 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 						if cache.err != nil && age < apiErrorCacheTTL {
 							return nil, cache.err
 						}
-						if cache.response != nil && age < apiCacheTTL {
+						if !forceProbe && cache.response != nil && age < apiCacheTTL {
 							return cache.response, nil
 						}
 					}
@@ -533,9 +533,10 @@ func (s *AccountUsageService) GetUsageForAccount(ctx context.Context, account *A
 }
 
 // GetUsageBatch 批量获取账号使用量。
-// Anthropic OAuth/SetupToken 统一走 passive 链路，其他账号复用现有主动查询逻辑。
+// Anthropic defaults to passive; source=active opts OAuth into cached upstream reads.
+// Setup Token and synthetic UI accounts remain passive.
 // 单个账号失败不会中断整批请求，错误会按账号返回。
-func (s *AccountUsageService) GetUsageBatch(ctx context.Context, accountIDs []int64, force bool) (map[int64]*UsageInfo, map[int64]string, error) {
+func (s *AccountUsageService) GetUsageBatch(ctx context.Context, accountIDs []int64, force bool, source string) (map[int64]*UsageInfo, map[int64]string, error) {
 	if adminaccess.RestrictedFromContext(ctx) != nil {
 		if len(accountIDs) > 100 {
 			return nil, nil, fmt.Errorf("账户数量超过限制")
@@ -600,7 +601,7 @@ func (s *AccountUsageService) GetUsageBatch(ctx context.Context, accountIDs []in
 		g.Go(func() error {
 			var usage *UsageInfo
 			var usageErr error
-			if supportsAnthropicPassiveUsage(account) {
+			if supportsAnthropicPassiveUsage(account) && (source != "active" || account.Type == AccountTypeSetupToken) {
 				usage, usageErr = s.getPassiveUsageForAccount(gctx, account)
 			} else {
 				usage, usageErr = s.getUsageForAccount(gctx, account, force)

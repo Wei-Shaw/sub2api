@@ -113,7 +113,7 @@ func TestScopedAdminBatchRejectsWholeRequestBeforeData(t *testing.T) {
 				ctx := scopedStatisticsServiceContext(action)
 				var err error
 				if action == "accounts.usage.read" {
-					_, _, err = svc.GetUsageBatch(ctx, []int64{1, id}, true)
+					_, _, err = svc.GetUsageBatch(ctx, []int64{1, id}, true, "")
 				} else {
 					_, err = svc.GetTodayStatsBatch(ctx, []int64{1, id})
 				}

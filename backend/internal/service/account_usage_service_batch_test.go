@@ -2,7 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -172,7 +175,7 @@ func TestAccountUsageService_GetUsageBatch_BestEffortByAccount(t *testing.T) {
 		cache:        NewUsageCache(),
 	}
 
-	usageByAccount, errorsByAccount, err := svc.GetUsageBatch(context.Background(), []int64{7001, 7002, 7003, 7002}, false)
+	usageByAccount, errorsByAccount, err := svc.GetUsageBatch(context.Background(), []int64{7001, 7002, 7003, 7002}, false, "")
 	if err != nil {
 		t.Fatalf("GetUsageBatch() error = %v", err)
 	}
@@ -246,7 +249,7 @@ func TestAccountUsageService_OpenAIQueriesPreserveRefreshError(t *testing.T) {
 						t.Fatalf("GetUsage: usage=%v err=%v", usage, err)
 					}
 				case "usage_batch", "forced_usage_batch":
-					usage, failures, err := svc.GetUsageBatch(ctx, []int64{account.ID}, query == "forced_usage_batch")
+					usage, failures, err := svc.GetUsageBatch(ctx, []int64{account.ID}, query == "forced_usage_batch", "")
 					if err != nil || len(failures) != 0 || usage[account.ID] == nil {
 						t.Fatalf("GetUsageBatch: usage=%v failures=%v err=%v", usage, failures, err)
 					}
@@ -268,5 +271,107 @@ func TestAccountUsageService_OpenAIQueriesPreserveRefreshError(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+type autoRefreshUsageFetcher struct {
+	ClaudeUsageFetcher
+	calls    atomic.Int32
+	response *ClaudeUsageResponse
+	err      error
+}
+
+func (f *autoRefreshUsageFetcher) FetchUsageWithOptions(context.Context, *ClaudeUsageFetchOptions) (*ClaudeUsageResponse, error) {
+	f.calls.Add(1)
+	return f.response, f.err
+}
+
+// Active batches use the same upstream cache as the Query button, rather than
+// returning the persisted header sample forever. Automatic polling must also
+// retain negative caching so an upstream outage cannot create a retry storm.
+func TestAccountUsageService_GetUsageBatch_ActiveSource(t *testing.T) {
+	t.Parallel()
+	for _, cachedError := range []bool{false, true} {
+		t.Run(fmt.Sprintf("cached_error_%v", cachedError), func(t *testing.T) {
+			account := Account{ID: 8701, Platform: PlatformAnthropic, Type: AccountTypeOAuth,
+				Extra:       map[string]any{"passive_usage_7d_utilization": 0.12},
+				Credentials: map[string]any{"access_token": "test-token"}}
+			repo := &accountUsageCodexProbeRepo{stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}}}
+			svc := &AccountUsageService{accountRepo: repo, usageLogRepo: &usageBatchLogRepoStub{}, cache: NewUsageCache()}
+			upstream := &ClaudeUsageResponse{}
+			upstream.SevenDay.Utilization = 43
+			upstream.SevenDay.ResetsAt = time.Now().Add(24 * time.Hour).UTC().Format(time.RFC3339)
+			fetcher := &autoRefreshUsageFetcher{response: upstream}
+			if cachedError {
+				fetcher.response = nil
+				fetcher.err = errors.New("upstream usage unavailable")
+			}
+			svc.usageFetcher = fetcher
+			for _, source := range []string{"", "passive", "active", "active"} {
+				usage, failures, err := svc.GetUsageBatch(t.Context(), []int64{account.ID}, false, source)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if source == "active" && cachedError {
+					if !strings.Contains(failures[account.ID], "upstream usage unavailable") {
+						t.Fatalf("missing negative-cache error: %v", failures)
+					}
+					continue
+				}
+				if len(failures) != 0 {
+					t.Fatalf("unexpected failures: %v", failures)
+				}
+				want := 12.0
+				if source == "active" {
+					want = 43
+				}
+				if usage[account.ID] == nil || usage[account.ID].SevenDay == nil || usage[account.ID].SevenDay.Utilization != want {
+					t.Fatalf("source %q: expected %.0f, got %#v", source, want, usage[account.ID])
+				}
+			}
+			if fetcher.calls.Load() != 1 {
+				t.Fatalf("expected one cached upstream read, got %d", fetcher.calls.Load())
+			}
+		})
+	}
+}
+
+func TestAccountUsageService_ManualRefreshBypassesSuccessfulClaudeCache(t *testing.T) {
+	account := Account{ID: 8702, Platform: PlatformAnthropic, Type: AccountTypeOAuth,
+		Credentials: map[string]any{"access_token": "test-token"}, Extra: map[string]any{}}
+	repo := &accountUsageCodexProbeRepo{stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}}}
+	cache := NewUsageCache()
+	old := &ClaudeUsageResponse{}
+	old.FiveHour.Utilization = 21
+	fresh := &ClaudeUsageResponse{}
+	fresh.FiveHour.Utilization = 44
+	fetcher := &autoRefreshUsageFetcher{response: fresh}
+	svc := &AccountUsageService{accountRepo: repo, usageLogRepo: &usageBatchLogRepoStub{}, cache: cache, usageFetcher: fetcher}
+	cache.apiCache.Store(account.ID, &apiUsageCache{response: old, timestamp: time.Now()})
+	for _, step := range []struct {
+		force bool
+		want  float64
+		calls int32
+	}{{false, 21, 0}, {true, 44, 1}, {false, 44, 1}} {
+		usage, failures, err := svc.GetUsageBatch(t.Context(), []int64{account.ID}, step.force, "active")
+		if err != nil || len(failures) != 0 {
+			t.Fatalf("refresh failed: %v %v", err, failures)
+		}
+		if usage[account.ID].FiveHour.Utilization != step.want || fetcher.calls.Load() != step.calls {
+			t.Fatalf("force=%v got %.0f with %d calls; want %.0f with %d", step.force, usage[account.ID].FiveHour.Utilization, fetcher.calls.Load(), step.want, step.calls)
+		}
+	}
+}
+
+func TestAccountUsageService_ManualRefreshPreservesClaudeErrorBackoff(t *testing.T) {
+	account := Account{ID: 8703, Platform: PlatformAnthropic, Type: AccountTypeOAuth, Credentials: map[string]any{"access_token": "test-token"}}
+	repo := &accountUsageCodexProbeRepo{stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}}}
+	cache := NewUsageCache()
+	cache.apiCache.Store(account.ID, &apiUsageCache{err: errors.New("upstream rate limited"), timestamp: time.Now()})
+	fetcher := &autoRefreshUsageFetcher{}
+	svc := &AccountUsageService{accountRepo: repo, usageLogRepo: &usageBatchLogRepoStub{}, cache: cache, usageFetcher: fetcher}
+	_, failures, err := svc.GetUsageBatch(t.Context(), []int64{account.ID}, true, "active")
+	if err != nil || !strings.Contains(failures[account.ID], "rate limited") || fetcher.calls.Load() != 0 {
+		t.Fatalf("error backoff bypassed: %v %v", err, failures)
 	}
 }
