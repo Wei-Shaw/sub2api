@@ -136,6 +136,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 				logger.LegacyPrintf("service.gateway", "Passthrough model mapping: %s -> %s (account: %s)", parsed.Model, mappedModel, account.Name)
 				passthroughModel = mappedModel
 			}
+			if rewritten, applied := NormalizeAdaptiveOnlyThinking(passthroughBody, passthroughModel); applied {
+				passthroughBody = rewritten
+				logger.LegacyPrintf("service.gateway", "Passthrough account %d: rewrote thinking.type for %s from enabled to adaptive", account.ID, passthroughModel)
+			}
 		}
 		return s.forwardAnthropicAPIKeyPassthroughWithInput(ctx, c, account, anthropicPassthroughForwardInput{
 			Body:          passthroughBody,
@@ -371,6 +375,16 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// 要求历史 thinking block 原样回传，过滤反而制造 400。reqModel 此时已是映射后的模型 ID。
 	if err := replaceBody(FilterThinkingBlocks(body, reqModel)); err != nil {
 		return nil, err
+	}
+	// Adaptive-only Claude models (Fable 5, Opus 4.7+, Sonnet 5+) reject the
+	// legacy thinking.type="enabled" form. Some clients only special-case older
+	// model IDs (e.g. MiMo-Code issue #1765) and keep sending enabled, so rewrite
+	// it before forwarding. Legacy models stay byte-identical.
+	if rewritten, applied := NormalizeAdaptiveOnlyThinking(body, reqModel); applied {
+		if err := replaceBody(rewritten); err != nil {
+			return nil, err
+		}
+		logger.LegacyPrintf("service.gateway", "Account %d: rewrote thinking.type for %s from enabled to adaptive (adaptive-only model)", account.ID, reqModel)
 	}
 	// Chinese LLM thinking.type 协议差异补正（如 MiniMax 只接受 adaptive；Anthropic-SDK
 	// 客户端默认发 enabled）。仅对 passback-required 上游生效（claude-* 不会进来）。
