@@ -292,8 +292,7 @@ func TestEnforceCodexIdentityHeadersIsIdempotent(t *testing.T) {
 	require.Equal(t, openai.CodexDefaultOriginator, h.Get("originator"))
 }
 
-// 缺少 originator 时必须保持 no-op：compat 桥接等非 ChatGPT 内部接口路径会显式删除
-// originator，不应被补回身份头。
+// 缺少 originator 时必须保持 no-op，避免为非 ChatGPT 内部接口请求注入 Codex 身份。
 func TestEnforceCodexIdentityHeaders_NoOriginatorIsNoop(t *testing.T) {
 	h := make(http.Header)
 	h.Set("user-agent", "third-party-client/1.0.0")

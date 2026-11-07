@@ -219,8 +219,8 @@ func enforceCodexIdentityHeaders(h http.Header) {
 // 强制统一被 gateway.disable_codex_identity_enforcement 关闭时，退回「按最终 User-Agent 配对
 // originator + version 门槛校正」的收口语义，供上游策略变动时回滚。
 //
-// 仅对携带 originator 的请求生效：compat 桥接等非 ChatGPT 内部接口路径会显式删除 originator，
-// 不应被补回。需要从缺失身份头恢复的调用方应先调用 ensureCodexIdentityHeaders。
+// 仅对携带 originator 的请求生效，避免为非 ChatGPT 内部接口请求注入 Codex 身份。
+// ChatGPT 调用方应在收口前设置 originator；合成探测请求可先调用 ensureCodexIdentityHeaders。
 // 必须在所有 User-Agent 改写之后调用。
 func enforceCodexIdentityHeadersWithUA(h http.Header, overrideUA string) {
 	if h == nil || h.Get("originator") == "" {
