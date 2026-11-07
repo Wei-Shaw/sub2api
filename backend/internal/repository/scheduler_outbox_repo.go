@@ -6,8 +6,10 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -235,4 +237,197 @@ func schedulerOutboxEventSupportsDedup(eventType string) bool {
 	default:
 		return false
 	}
+}
+
+// decodeSchedulerOutboxRows turns a result set of the queue projection into events.
+func decodeSchedulerOutboxRows(rows *sql.Rows) ([]service.SchedulerOutboxEvent, error) {
+	events := make([]service.SchedulerOutboxEvent, 0, 64)
+	for rows.Next() {
+		var (
+			payloadRaw []byte
+			accountID  sql.NullInt64
+			groupID    sql.NullInt64
+			event      service.SchedulerOutboxEvent
+		)
+		if err := rows.Scan(&event.ID, &event.EventType, &accountID, &groupID, &payloadRaw, &event.CreatedAt); err != nil {
+			return nil, err
+		}
+		if accountID.Valid {
+			v := accountID.Int64
+			event.AccountID = &v
+		}
+		if groupID.Valid {
+			v := groupID.Int64
+			event.GroupID = &v
+		}
+		if len(payloadRaw) > 0 {
+			var payload map[string]any
+			if err := json.Unmarshal(payloadRaw, &payload); err != nil {
+				return nil, err
+			}
+			event.Payload = payload
+		}
+		events = append(events, event)
+	}
+	return events, rows.Err()
+}
+
+// Claim takes the head of the queue and records ownership on the rows.
+//
+// Two properties matter and neither existed before:
+//   - the read has no `id > watermark` predicate, so a row that becomes visible
+//     after the watermark already moved past it is still consumed;
+//   - ownership lives in claimed_at/claimed_by, so the claim stays effective for
+//     the whole handling phase (a statement-level FOR UPDATE would release its
+//     locks as soon as this query returned), and an abandoned claim is
+//     reclaimed by another consumer once the lease expires.
+//
+// FOR UPDATE SKIP LOCKED still guards the instant two consumers run this
+// statement at the same time.
+func (r *schedulerOutboxRepository) Claim(ctx context.Context, workerID string, limit int, lease time.Duration) ([]service.SchedulerOutboxEvent, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("nil scheduler outbox database")
+	}
+	if workerID == "" {
+		return nil, errors.New("empty scheduler outbox worker id")
+	}
+	if limit <= 0 {
+		limit = 100
+	}
+	leaseSeconds := int64(lease / time.Second)
+	if leaseSeconds < 1 {
+		leaseSeconds = 300
+	}
+	rows, err := r.db.QueryContext(ctx, `
+		WITH busy AS (
+			-- Accounts whose events are currently owned by another consumer. Their
+			-- later events must wait: claiming them in parallel lets a second consumer
+			-- finish event N+1 before event N and reorders one account's changes.
+			-- Rows claimed by this worker are excluded, because this worker handles
+			-- its own claims strictly in id order.
+			SELECT DISTINCT account_id
+			FROM scheduler_outbox
+			WHERE account_id IS NOT NULL
+			  AND claimed_by IS NOT NULL
+			  AND claimed_by <> $1
+			  AND claimed_at IS NOT NULL
+			  AND claimed_at >= NOW() - ($3 * INTERVAL '1 second')
+		), candidates AS (
+			SELECT id
+			FROM scheduler_outbox
+			WHERE (available_at IS NULL OR available_at <= NOW())
+			  AND (claimed_at IS NULL OR claimed_at < NOW() - ($3 * INTERVAL '1 second'))
+			  AND (account_id IS NULL OR account_id NOT IN (SELECT account_id FROM busy))
+			ORDER BY id ASC
+			LIMIT $2
+			FOR UPDATE SKIP LOCKED
+		), taken AS (
+			UPDATE scheduler_outbox AS o
+			SET claimed_at = NOW(), claimed_by = $1
+			FROM candidates AS c
+			WHERE o.id = c.id
+			RETURNING o.id, o.event_type, o.account_id, o.group_id, o.payload, o.created_at
+		), released AS (
+			UPDATE scheduler_outbox AS o
+			SET dedup_key = NULL
+			FROM taken AS t
+			WHERE o.id = t.id
+			  AND o.dedup_key IS NOT NULL
+			RETURNING o.id
+		)
+		SELECT t.id, t.event_type, t.account_id, t.group_id, t.payload, t.created_at
+		FROM taken AS t
+		CROSS JOIN (SELECT COUNT(*) FROM released) AS release_barrier
+		ORDER BY t.id ASC
+	`, workerID, limit, leaseSeconds)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+	return decodeSchedulerOutboxRows(rows)
+}
+
+// DeleteClaimed acknowledges a single event, and only for the consumer that
+// still owns it. Deleting by `id <= watermark` (the previous behaviour) could
+// destroy rows that were never claimed.
+func (r *schedulerOutboxRepository) DeleteClaimed(ctx context.Context, id int64, workerID string) error {
+	result, err := r.db.ExecContext(ctx, `
+		DELETE FROM scheduler_outbox
+		WHERE id = $1 AND claimed_by = $2
+	`, id, workerID)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return fmt.Errorf("scheduler outbox claim %d is no longer owned by %s", id, workerID)
+	}
+	return nil
+}
+
+// RetryClaimed releases one event back to the queue with a not-before time.
+func (r *schedulerOutboxRepository) RetryClaimed(ctx context.Context, id int64, workerID string, availableAt time.Time, lastError string) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE scheduler_outbox
+		SET claimed_at = NULL, claimed_by = NULL, available_at = $3
+		WHERE id = $1 AND claimed_by = $2
+	`, id, workerID, availableAt)
+	if err != nil {
+		return err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if affected != 1 {
+		return fmt.Errorf("scheduler outbox claim %d is no longer owned by %s", id, workerID)
+	}
+	return nil
+}
+
+// ReleaseClaimed hands a whole tail of an in-flight batch back to the queue at
+// once, so ordering is preserved without waiting for the lease to expire.
+func (r *schedulerOutboxRepository) ReleaseClaimed(ctx context.Context, ids []int64, availableAt time.Time) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	placeholders := make([]string, 0, len(ids))
+	args := make([]any, 0, len(ids)+1)
+	for _, id := range ids {
+		placeholders = append(placeholders, fmt.Sprintf("$%d", len(args)+1))
+		args = append(args, id)
+	}
+	args = append(args, availableAt)
+	query := fmt.Sprintf(
+		"UPDATE scheduler_outbox SET claimed_at = NULL, claimed_by = NULL, available_at = $%d WHERE id IN (%s)",
+		len(args), strings.Join(placeholders, ","),
+	)
+	if _, err := r.db.ExecContext(ctx, query, args...); err != nil {
+		return err
+	}
+	return nil
+}
+
+// PendingStats reports the real backlog. Before this, the backlog was derived
+// as `max(id) - watermark`, which reported "no backlog" for exactly the rows
+// the watermark had jumped over.
+func (r *schedulerOutboxRepository) PendingStats(ctx context.Context) (service.SchedulerOutboxPendingStats, error) {
+	var (
+		stats  service.SchedulerOutboxPendingStats
+		oldest sql.NullTime
+	)
+	err := r.db.QueryRowContext(ctx, `
+		SELECT COUNT(*), MIN(created_at) FROM scheduler_outbox
+	`).Scan(&stats.Pending, &oldest)
+	if err != nil {
+		return stats, err
+	}
+	if oldest.Valid {
+		value := oldest.Time
+		stats.OldestCreatedAt = &value
+	}
+	return stats, nil
 }

@@ -6,8 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -32,6 +34,11 @@ const (
 	outboxRebuildRetryBaseDelay           = 5 * time.Second
 	outboxRebuildRetryMaxDelay            = 5 * time.Minute
 	outboxMaxIDErrorLogSampleInterval     = time.Minute
+	// outboxClaimLease must outlive the slowest single event handler so a
+	// claim is not stolen while it is still being handled.
+	outboxClaimLease          = 5 * time.Minute
+	outboxClaimBatch          = 200
+	outboxClaimRetryBaseDelay = time.Second
 )
 
 // batchSeenKey tracks completed per-platform rebuilds and group lifecycle work
@@ -138,6 +145,7 @@ type SchedulerSnapshotService struct {
 	outboxRebuildRetryReason     string
 	outboxLagWarningActive       bool
 	outboxMaxIDErrorLastLoggedAt time.Time
+	outboxWorkerID               string
 
 	fullRebuildRunMu     sync.Mutex
 	fullRebuildStateMu   sync.Mutex
@@ -158,14 +166,25 @@ func NewSchedulerSnapshotService(
 		maxQPS = cfg.Gateway.Scheduling.DbFallbackMaxQPS
 	}
 	return &SchedulerSnapshotService{
-		cache:         cache,
-		outboxRepo:    outboxRepo,
-		accountRepo:   accountRepo,
-		groupRepo:     groupRepo,
-		cfg:           cfg,
-		stopCh:        make(chan struct{}),
-		fallbackLimit: newFallbackLimiter(maxQPS),
+		cache:          cache,
+		outboxRepo:     outboxRepo,
+		accountRepo:    accountRepo,
+		groupRepo:      groupRepo,
+		cfg:            cfg,
+		stopCh:         make(chan struct{}),
+		outboxWorkerID: newSchedulerOutboxWorkerID(),
+		fallbackLimit:  newFallbackLimiter(maxQPS),
 	}
+}
+
+// newSchedulerOutboxWorkerID identifies this process as a queue consumer so an
+// ack can be rejected when the row has been re-claimed by somebody else.
+func newSchedulerOutboxWorkerID() string {
+	host, err := os.Hostname()
+	if err != nil || strings.TrimSpace(host) == "" {
+		host = "unknown-host"
+	}
+	return fmt.Sprintf("%s-%d-%d", host, os.Getpid(), time.Now().UnixNano())
 }
 
 func (s *SchedulerSnapshotService) Start() {
@@ -378,6 +397,11 @@ func (s *SchedulerSnapshotService) pollOutbox() {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
+
+	if q, ok := s.outboxRepo.(SchedulerOutboxQueue); ok {
+		s.pollOutboxQueued(ctx, q)
+		return
+	}
 
 	watermark, err := s.cache.GetOutboxWatermark(ctx)
 	if err != nil {
@@ -1289,7 +1313,25 @@ func (s *SchedulerSnapshotService) checkOutboxLag(ctx context.Context, watermark
 		return
 	}
 	now := time.Now()
-	oldestCreatedAt, ok, err := s.outboxRepo.FirstCreatedAtAfter(ctx, watermark)
+	var (
+		oldestCreatedAt time.Time
+		ok              bool
+		err             error
+		queueBacklog    = -1
+	)
+	if q, isQueue := s.outboxRepo.(SchedulerOutboxQueue); isQueue {
+		stats, statsErr := q.PendingStats(ctx)
+		if statsErr != nil {
+			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox pending stats read failed: %v", statsErr)
+			return
+		}
+		queueBacklog = int(stats.Pending)
+		if stats.OldestCreatedAt != nil {
+			oldestCreatedAt, ok = *stats.OldestCreatedAt, true
+		}
+	} else {
+		oldestCreatedAt, ok, err = s.outboxRepo.FirstCreatedAtAfter(ctx, watermark)
+	}
 	if err != nil {
 		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox pending event read failed: %v", err)
 		return
@@ -1310,7 +1352,9 @@ func (s *SchedulerSnapshotService) checkOutboxLag(ctx context.Context, watermark
 	backlogThreshold := s.cfg.Gateway.Scheduling.OutboxBacklogRebuildRows
 	backlogKnown := true
 	var backlog int64
-	if backlogThreshold > 0 {
+	if backlogThreshold > 0 && queueBacklog >= 0 {
+		backlog = int64(queueBacklog)
+	} else if backlogThreshold > 0 {
 		maxID, maxErr := s.outboxRepo.MaxID(ctx)
 		if maxErr != nil {
 			backlogKnown = false
@@ -1732,4 +1776,84 @@ func (l *fallbackLimiter) Allow() bool {
 	}
 	l.count++
 	return true
+}
+
+// pollOutboxQueued consumes the scheduler outbox through durable claims.
+//
+// Ordering: events are handled in id order and the batch stops at the first
+// failure, exactly like the legacy path. The difference is that the failed
+// event and the un-handled tail go back to the queue with an available_at
+// instead of being skipped by a watermark that already moved past them.
+//
+// Acknowledgement is per event and ownership-checked: losing the claim (lease
+// expired, another consumer took over) is reported but not fatal, because the
+// handlers are updates and replay is idempotent.
+func (s *SchedulerSnapshotService) pollOutboxQueued(ctx context.Context, q SchedulerOutboxQueue) {
+	events, err := q.Claim(ctx, s.outboxWorkerID, outboxClaimBatch, outboxClaimLease)
+	if err != nil {
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox claim failed: %v", err)
+		return
+	}
+	if len(events) == 0 {
+		// The claim itself proves the queue is empty.
+		s.clearOutboxDegradedEpisode()
+		return
+	}
+
+	seen := make(map[batchSeenKey]struct{})
+	var lastAcked int64
+	for i, event := range events {
+		eventCtx, cancel := context.WithTimeout(context.Background(), outboxEventTimeout)
+		handleErr := s.handleOutboxEvent(eventCtx, event, seen)
+		cancel()
+		if handleErr != nil {
+			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox handle failed: id=%d type=%s err=%v", event.ID, event.EventType, handleErr)
+			s.releaseOutboxTail(ctx, q, events, i, handleErr)
+			return
+		}
+		ackCtx, ackCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ackErr := q.DeleteClaimed(ackCtx, event.ID, s.outboxWorkerID)
+		ackCancel()
+		if ackErr != nil {
+			// Someone else owns the row now. The event was applied; replay is safe.
+			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox ack lost: id=%d err=%v", event.ID, ackErr)
+		}
+		lastAcked = event.ID
+	}
+
+	if lastAcked > 0 && s.cache != nil {
+		// Metric only: a failed write must never stall consumption again.
+		wmCtx, wmCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if wmErr := s.cache.SetOutboxWatermark(wmCtx, lastAcked); wmErr != nil {
+			logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox watermark write failed (metric only): %v", wmErr)
+		}
+		wmCancel()
+	}
+
+	lagCtx, lagCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	s.checkOutboxLag(lagCtx, lastAcked)
+	lagCancel()
+}
+
+// releaseOutboxTail returns the failed event (with backoff) and the untouched
+// remainder of the batch to the queue so nothing waits for the lease.
+func (s *SchedulerSnapshotService) releaseOutboxTail(ctx context.Context, q SchedulerOutboxQueue, events []SchedulerOutboxEvent, failed int, cause error) {
+	backoff := outboxClaimRetryBaseDelay
+	releaseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	event := events[failed]
+	if err := q.RetryClaimed(releaseCtx, event.ID, s.outboxWorkerID, time.Now().Add(backoff), cause.Error()); err != nil {
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox retry release failed: id=%d err=%v", event.ID, err)
+	}
+	if failed+1 >= len(events) {
+		return
+	}
+	rest := make([]int64, 0, len(events)-failed-1)
+	for _, pending := range events[failed+1:] {
+		rest = append(rest, pending.ID)
+	}
+	if err := q.ReleaseClaimed(releaseCtx, rest, time.Now()); err != nil {
+		logger.LegacyPrintf("service.scheduler_snapshot", "[Scheduler] outbox batch release failed: %v", err)
+	}
 }
