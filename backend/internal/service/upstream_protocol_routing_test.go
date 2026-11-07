@@ -74,7 +74,7 @@ func TestResolveUpstreamProtocol(t *testing.T) {
 		{"opencode go gpt", openCode(AccountModeGo, nil), anthropic, "gpt-5.6-luna", responses},
 		{"opencode go minimax", openCode(AccountModeGo, nil), responses, "minimax-m3", anthropic},
 		{"opencode go glm falls back to cc", openCode(AccountModeGo, nil), anthropic, "glm-5.3", cc},
-		{"opencode go claude has no rule", openCode(AccountModeGo, nil), anthropic, "claude-sonnet-4", cc},
+		{"opencode go claude uses messages", openCode(AccountModeGo, nil), cc, "claude-sonnet-4", anthropic},
 		{"opencode zen claude", openCode(AccountModeZen, nil), cc, "claude-sonnet-4", anthropic},
 		{"opencode account rules override defaults", openCode(AccountModeGo, map[string]any{
 			"protocol_rules": []any{map[string]any{"pattern": "glm-*", "protocol": anthropic}},
