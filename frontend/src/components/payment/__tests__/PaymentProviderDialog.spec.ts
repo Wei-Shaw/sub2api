@@ -21,6 +21,8 @@ const messages: Record<string, string> = {
   'admin.settings.payment.stripeWebhookHint': 'Configure Stripe webhook.',
   'admin.settings.payment.stripeWebhookApiVersionHint': 'Use Stripe API version {version}.',
   'admin.settings.payment.airwallexWebhookHint': 'Select payment_intent.succeeded and use the latest stable API version.',
+  'admin.settings.payment.confirmNotifyEnabled': 'Enabled (recommended)',
+  'admin.settings.payment.confirmNotifyDisabled': 'Disabled (gateway has no order query)',
 }
 
 vi.mock('vue-i18n', () => ({
@@ -84,6 +86,7 @@ function mountDialog(options: { editing?: ProviderInstance | null } = {}) {
           template: '<div><slot /><slot name="footer" /></div>',
         },
         Select: {
+          name: 'Select',
           props: ['modelValue', 'options', 'disabled'],
           template: '<div />',
         },
@@ -275,5 +278,52 @@ describe('PaymentProviderDialog payment guide', () => {
     await wrapper.find('form').trigger('submit.prevent')
 
     expect(wrapper.emitted('save')).toBeUndefined()
+  })
+})
+
+describe('PaymentProviderDialog EasyPay upstream confirmation', () => {
+  function easyPayProvider(config: Record<string, string>): ProviderInstance {
+    return providerFactory({
+      provider_key: 'easypay', name: 'EasyPay',
+      config: { pid: 'pid-1', apiBase: 'https://pay.example.com', ...config },
+      supported_types: ['alipay'], payment_mode: 'qrcode',
+    })
+  }
+
+  async function saveConfig(provider: ProviderInstance) {
+    const wrapper = mountDialog({ editing: provider })
+    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
+    await nextTick()
+    await wrapper.find('form').trigger('submit')
+    const payload = wrapper.emitted('save')?.[0]?.[0] as { config: Record<string, string> }
+    return { wrapper, payload }
+  }
+
+  it('defaults existing instances to enabled confirmation', async () => {
+    const { wrapper, payload } = await saveConfig(easyPayProvider({}))
+    expect(payload.config.confirmNotify).toBe('enabled')
+    wrapper.unmount()
+  })
+
+  it('keeps confirmation disabled for gateways without an order query', async () => {
+    const { wrapper, payload } = await saveConfig(easyPayProvider({ confirmNotify: 'disabled' }))
+    expect(payload.config.confirmNotify).toBe('disabled')
+    wrapper.unmount()
+  })
+
+  it('translates the confirmation select options', async () => {
+    const provider = easyPayProvider({})
+    const wrapper = mountDialog({ editing: provider })
+    ;(wrapper.vm as unknown as { loadProvider: (provider: ProviderInstance) => void }).loadProvider(provider)
+    await nextTick()
+    const select = wrapper
+      .findAllComponents({ name: 'Select' })
+      .find(c => (c.props('options') as { value: string }[] | undefined)?.some(o => o.value === 'disabled'))
+    expect(select).toBeTruthy()
+    expect((select!.props('options') as { label: string }[]).map(o => o.label)).toEqual([
+      'Enabled (recommended)',
+      'Disabled (gateway has no order query)',
+    ])
+    wrapper.unmount()
   })
 })

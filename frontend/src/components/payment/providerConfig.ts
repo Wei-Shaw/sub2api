@@ -44,6 +44,12 @@ export const PROVIDER_SUPPORTED_TYPES: Record<string, string[]> = {
   airwallex: ['airwallex'],
 }
 
+/** Whether EasyPay notifications are confirmed against api.php?act=order before crediting. */
+export const EASYPAY_CONFIRM_NOTIFY_OPTIONS: TypeOption[] = [
+  { value: 'enabled', label: '', labelKey: 'admin.settings.payment.confirmNotifyEnabled' },
+  { value: 'disabled', label: '', labelKey: 'admin.settings.payment.confirmNotifyDisabled' },
+]
+
 /** Available payment modes for EasyPay providers. */
 export const EASYPAY_PAYMENT_MODES = ['qrcode', 'popup'] as const
 
@@ -131,6 +137,7 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
     { key: 'apiBase', label: '', sensitive: false },
     { key: 'cidAlipay', label: '', sensitive: false, optional: true },
     { key: 'cidWxpay', label: '', sensitive: false, optional: true },
+    { key: 'confirmNotify', label: '', sensitive: false, optional: true, defaultValue: 'enabled', hintKey: 'admin.settings.payment.field_confirmNotifyHint', options: EASYPAY_CONFIRM_NOTIFY_OPTIONS },
   ],
   alipay: [
     { key: 'appId', label: 'App ID', sensitive: false },

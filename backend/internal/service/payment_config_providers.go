@@ -190,6 +190,9 @@ func (s *PaymentConfigService) CreateProviderInstance(ctx context.Context, req C
 		if err := validateEasyPayCustomMethods(req.Config, typesStr); err != nil {
 			return nil, err
 		}
+		if err := validateEasyPayConfirmNotify(req.Config); err != nil {
+			return nil, err
+		}
 	}
 	if err := s.validateVisibleMethodEnablementConflicts(ctx, 0, req.ProviderKey, typesStr, req.Enabled); err != nil {
 		return nil, err
@@ -281,6 +284,17 @@ func validateEasyPayCustomMethods(config map[string]string, supportedTypes strin
 	return nil
 }
 
+// validateEasyPayConfirmNotify accepts an empty value (confirmation enabled,
+// the default), "enabled", or "disabled".
+func validateEasyPayConfirmNotify(config map[string]string) error {
+	switch strings.ToLower(strings.TrimSpace(config["confirmNotify"])) {
+	case "", "enabled", "disabled":
+		return nil
+	default:
+		return infraerrors.BadRequest("VALIDATION_ERROR", "confirmNotify must be enabled or disabled")
+	}
+}
+
 func easyPayCustomMethodTypeConflictsWithBuiltin(methodType string) bool {
 	return strings.HasPrefix(methodType, payment.TypeAlipay) || strings.HasPrefix(methodType, payment.TypeWxpay)
 }
@@ -356,6 +370,9 @@ func (s *PaymentConfigService) UpdateProviderInstance(ctx context.Context, id in
 	}
 	if current.ProviderKey == payment.TypeEasyPay {
 		if err := validateEasyPayCustomMethods(configToValidate, nextSupportedTypes); err != nil {
+			return nil, err
+		}
+		if err := validateEasyPayConfirmNotify(configToValidate); err != nil {
 			return nil, err
 		}
 	}
