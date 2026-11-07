@@ -153,6 +153,8 @@ func nativeAnthropicMessagesURL(account *Account, validatedBaseURL string) strin
 // 开头），OpenAI 族原生 Anthropic 链与 generic 链共用。版本感知拼接：base 已带 /v1 时
 // 不再追加，避免拼出 /v1/v1/messages（按模型分流平台的 Chat Completions base 带 /v1；
 // Ollama Cloud 的 anthropic 默认 base 不带，自定义可能带）；其余供应商朴素拼接。
+// 端点从不附加 ?beta=true：第三方端点不接受该参数，Cloudflare 账号 REST 端点还会直接
+// 拒绝（其 messages 端点的判定见 buildAnthropicMessagesURL，两处语义保持一致）。
 func anthropicProtocolEndpointURL(account *Account, validatedBaseURL, endpoint string) string {
 	if account.routesByModel() || account.IsOllamaCloud() {
 		return buildOpenAIEndpointURL(validatedBaseURL, endpoint)

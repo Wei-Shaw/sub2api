@@ -177,6 +177,16 @@ Please read the following carefully before using this project:
 <td>Thanks to <a href="https://soleapi.com/r/sub2api">SoleAPI</a> for supporting this project! SoleAPI is an AI model gateway for developers and enterprises: one API key gives you access to 30+ leading models including Claude, GPT and Gemini. It is natively compatible with the OpenAI and Anthropic protocols, so Claude Code, Codex, Cursor and your existing SDKs work by simply changing the Base URL. Requests are routed in real time by latency and upstream health, with millisecond-level automatic failover to backup channels, 99.99% service availability and 24/7 technical support. Every call lands on a single bill with per-request token and cost breakdowns you can inspect at any time. Sign up through this project's <a href="https://soleapi.com/r/sub2api">referral link</a> to receive free trial credits, and earn ongoing cashback by inviting friends who top up!</td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://api.muteki.site/register?aff=Sub2"><img src="assets/partners/logos/marucode.jpg" alt="MaruCode" width="150"></a></td>
+<td><a href="https://api.muteki.site/register?aff=Sub2">MaruCode</a> — a small, no-frills API site that does a bit of charity now and then. 🍟 Every Thursday it runs limited-time rate-multiplier events. In operation for over half a year, with a 3K-member main group, focused on stability and welcoming collaboration with universities, enterprises, and more — thank you 🙇. It runs a self-operated account pool with no top-up marketing gimmicks, mainly offering mainstream models such as Codex (GPT 6.2 Astra), Claude Code (Claude Opus 5.5), and GPT Image 2.6, with WebSocket protocol support, clearly published pricing (Codex 0.3x, CC 1.7x), and a transparent exchange rate (1:1).</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://massivetokens.com/signup?ref=SUB2API"><img src="assets/partners/logos/massivetokens.jpg" alt="Massive Tokens" width="150"></a></td>
+<td><a href="https://massivetokens.com/signup?ref=SUB2API">Massive Tokens</a> supplies Claude API access at wholesale per-token prices to businesses and high-volume developers. It serves the standard Anthropic Messages API, so it works with Claude Code, Sub2API, LiteLLM and One API without code changes. Sign up with code SUB2API for 5% off every call.</td>
+</tr>
+
 </table>
 
 </details>

@@ -1051,7 +1051,9 @@ func (s *GatewayService) validateUpstreamBaseURL(raw string) (string, error) {
 // GetAnthropicProtocolBaseURL 非空）经 anthropicProtocolEndpointURL 拼接（与 OpenAI 族
 // nativeAnthropicTargetURL 同一规则，ollama / 按模型分流平台版本感知）、不附加
 // ?beta=true（第三方端点不接受该参数）；
-// classic anthropic 账号保持 {base}{path}?beta=true 现状。返回空串表示无自定义
+// classic anthropic 账号的 messages 端点经 buildAnthropicMessagesURL 拼接：Cloudflare
+// 账号 REST 端点（api.cloudflare.com/client/v4/accounts/<id>/ai）拒绝 ?beta=true 时
+// 自动省略，其余 classic 端点保持 {base}{path}?beta=true 现状。返回空串表示无自定义
 // base（走官方默认 claudeAPIURL / claudeAPICountTokensURL），由调用方保持默认。
 func (s *GatewayService) anthropicUpstreamTargetURL(account *Account, path string) (string, error) {
 	protocolBase := strings.TrimSpace(account.GetAnthropicProtocolBaseURL())
@@ -1069,6 +1071,9 @@ func (s *GatewayService) anthropicUpstreamTargetURL(account *Account, path strin
 	validatedURL, err := s.validateUpstreamBaseURL(baseURL)
 	if err != nil {
 		return "", err
+	}
+	if path == "/v1/messages" {
+		return buildAnthropicMessagesURL(validatedURL), nil
 	}
 	return validatedURL + path + "?beta=true", nil
 }
