@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"net/http"
 	"net/http/httptest"
 	"testing"
 
@@ -88,6 +89,34 @@ func TestValidate_MessagesPath_FullValid(t *testing.T) {
 
 	result := v.Validate(req, validClaudeCodeBody())
 	require.True(t, result, "完整有效请求应通过")
+}
+
+func TestValidate_MessagesPath_CompleteBetaHeaderPresence(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		beta http.Header
+		want bool
+	}{
+		{"missing", nil, false},
+		{"empty values", http.Header{"Anthropic-Beta": {"", ""}}, false},
+		{"second line", http.Header{"Anthropic-Beta": {"", "context-1m-2025-08-07"}}, true},
+		{"lowercase", http.Header{"anthropic-beta": {"context-1m-2025-08-07"}}, true},
+		{"case variant", http.Header{"Anthropic-Beta": {""}, "aNtHrOpIc-BeTa": {"", "context-1m-2025-08-07"}}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+			req.Header.Set("User-Agent", "claude-cli/2.1.280")
+			req.Header.Set("X-App", "claude-code")
+			req.Header.Set("anthropic-version", "2023-06-01")
+			for key, values := range tc.beta {
+				req.Header[key] = values
+			}
+			before := req.Header.Clone()
+			require.Equal(t, tc.want, newTestValidator().Validate(req, validClaudeCodeBody()))
+			require.Equal(t, tc.want, anthropicBetaHeader(req.Header) != "", "classification and forwarding must agree on beta presence")
+			require.Equal(t, before, req.Header)
+		})
+	}
 }
 
 func TestValidate_MessagesPath_MissingHeaders(t *testing.T) {

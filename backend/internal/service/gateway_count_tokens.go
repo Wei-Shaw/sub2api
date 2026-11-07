@@ -47,6 +47,19 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		}
 	}
 
+	if account != nil && account.Platform == PlatformAnthropic && !account.IsBedrock() {
+		// Match Messages on the original client model, not the mapped target.
+		policy := s.requestBetaPolicy(ctx, c, account, parsed.Model, parsed.Body.Bytes())
+		if policy.blockErr != nil {
+			s.countTokensError(c, http.StatusBadRequest, "invalid_request_error", policy.blockErr.Message)
+			return policy.blockErr
+		}
+		// Vertex keeps its later provider-model policy decision independent.
+		if account.Type != AccountTypeServiceAccount {
+			ctx = withBetaPolicy(ctx, account, policy)
+		}
+	}
+
 	if account != nil && account.IsAnthropicAPIKeyPassthroughEnabled() {
 		passthroughBody := parsed.Body.Bytes()
 		passthroughModel := parsed.Model
@@ -152,7 +165,12 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 	// 构建上游请求
 	upstreamReq, wireBody, err := s.buildCountTokensRequest(ctx, c, account, body, token, tokenType, reqModel, shouldMimicClaudeCode)
 	if err != nil {
-		s.countTokensError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
+		var blocked *BetaBlockedError
+		if errors.As(err, &blocked) {
+			s.countTokensError(c, http.StatusBadRequest, "invalid_request_error", blocked.Message)
+		} else {
+			s.countTokensError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
+		}
 		return err
 	}
 	// 先记录首发 wire body；如果后面进入 400 retry，retry 会基于未签名的逻辑 body 重新构建。
@@ -284,7 +302,12 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 
 	upstreamReq, err := s.buildCountTokensRequestAnthropicAPIKeyPassthrough(ctx, c, account, body, token)
 	if err != nil {
-		s.countTokensError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
+		var blocked *BetaBlockedError
+		if errors.As(err, &blocked) {
+			s.countTokensError(c, http.StatusBadRequest, "invalid_request_error", blocked.Message)
+		} else {
+			s.countTokensError(c, http.StatusInternalServerError, "api_error", "Failed to build request")
+		}
 		return err
 	}
 
@@ -397,6 +420,11 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	body []byte,
 	token string,
 ) (*http.Request, error) {
+	policy := s.requestBetaPolicy(ctx, c, account, gjson.GetBytes(body, "model").String(), body)
+	body, err := policy.applyBody(body)
+	if err != nil {
+		return nil, err
+	}
 	body = stripDeferredToolCacheControl(body)
 	targetURL := claudeAPICountTokensURL
 	baseURL := getAnthropicGatewayBaseURL(account)
@@ -412,12 +440,13 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	// 同 buildUpstreamRequestAnthropicAPIKeyPassthrough：能力维度 sanitize。
 	clientBeta := ""
 	if c != nil && c.Request != nil {
-		clientBeta = getHeaderRaw(c.Request.Header, "anthropic-beta")
+		clientBeta = anthropicBetaHeader(c.Request.Header)
 	}
 	// 账号覆写了 anthropic-beta 时，覆写值即最终上游值：净化以覆写值为准
 	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
 		clientBeta = beta
 	}
+	clientBeta = stripBetaTokensWithSet(clientBeta, policy.filterSet)
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
 		body = sanitized
 	}
@@ -457,6 +486,10 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 
 	// 账号级请求头覆写（最终生效，覆盖上面所有来源的同名头）
 	account.ApplyHeaderOverrides(req.Header)
+	deleteHeaderAllForms(req.Header, "anthropic-beta")
+	if clientBeta != "" {
+		setHeaderRaw(req.Header, "anthropic-beta", clientBeta)
+	}
 	filterSonnet55ToolsetBetaHeader(req.Header, body, gjson.GetBytes(body, "model").String())
 
 	return req, nil
@@ -464,6 +497,11 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 
 // buildCountTokensRequest 构建 count_tokens 上游请求
 func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, tokenType, modelID string, mimicClaudeCode bool) (*http.Request, []byte, error) {
+	policy := s.requestBetaPolicy(ctx, c, account, modelID, body)
+	body, err := policy.applyBody(body)
+	if err != nil {
+		return nil, nil, err
+	}
 	body = stripDeferredToolCacheControl(body)
 	// 确定目标 URL
 	targetURL := claudeAPICountTokensURL
@@ -530,7 +568,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 
 	// === 计算最终 anthropic-beta header（先于 body sanitize 与 CCH 签名）===
 	// 顺序约束同 buildUpstreamRequest。
-	ctEffectiveDropSet := mergeDropSets(s.getBetaPolicyFilterSet(ctx, c, account, modelID))
+	ctEffectiveDropSet := mergeDropSets(policy.filterSet)
 	finalBetaHeader, finalBetaShouldSet := s.computeFinalCountTokensAnthropicBeta(
 		tokenType, mimicClaudeCode, modelID, clientHeaders, body, ctEffectiveDropSet,
 	)
@@ -539,6 +577,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
 		finalBetaHeader, finalBetaShouldSet = beta, true
 	}
+	finalBetaHeader = policy.filterFastHeader(finalBetaHeader)
 	finalBetaHeader = filterSonnet55ToolsetBeta(finalBetaHeader, body, modelID)
 
 	// 能力维度 body sanitize：与最终 anthropic-beta header 对称
@@ -611,6 +650,7 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 
 	// 账号级请求头覆写（仅 anthropic/openai api_key 账号启用时生效；OAuth 路径 no-op）
 	account.ApplyHeaderOverrides(req.Header)
+	policy.filterFastRequestHeader(req.Header)
 	filterSonnet55ToolsetBetaHeader(req.Header, body, modelID)
 
 	if c != nil && tokenType == "oauth" {
