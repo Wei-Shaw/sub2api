@@ -4,7 +4,7 @@ import { buildCodexApiKeyAuthConfig } from '@/utils/codexAuthConfig'
 export const OPENAI_CC_SWITCH_CODEX_MODEL = 'gpt-6.1-sol'
 export const GROK_CC_SWITCH_MODEL = 'grok-4.5'
 
-export type CcSwitchClientType = 'claude' | 'gemini'
+export type CcSwitchClientType = 'claude' | 'codex' | 'gemini'
 
 export interface CcSwitchImportConfig {
   app: string
@@ -65,6 +65,24 @@ export function resolveCcSwitchImportConfig(
       return {
         app: clientType === 'gemini' ? 'gemini' : 'claude',
         endpoint: `${baseUrl.replace(/\/+$/, '')}/antigravity`
+      }
+    case 'composite':
+      if (clientType === 'codex') {
+        return {
+          app: 'codex',
+          endpoint: withoutTrailingSlashes(baseUrl),
+          model: OPENAI_CC_SWITCH_CODEX_MODEL
+        }
+      }
+      if (clientType === 'gemini') {
+        return {
+          app: 'gemini',
+          endpoint: baseUrl
+        }
+      }
+      return {
+        app: 'claude',
+        endpoint: baseUrl
       }
     case 'openai':
       return {
