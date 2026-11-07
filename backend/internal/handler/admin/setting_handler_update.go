@@ -153,6 +153,8 @@ type UpdateSettingsRequest struct {
 	GoogleOAuthFrontendRedirectURL string `json:"google_oauth_frontend_redirect_url"`
 
 	// OEM设置
+	SiteTheme                   string                `json:"site_theme"`
+	CustomCSS                   string                `json:"custom_css"`
 	SiteName                    string                `json:"site_name"`
 	SiteLogo                    string                `json:"site_logo"`
 	SiteSubtitle                string                `json:"site_subtitle"`
@@ -499,6 +501,18 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	var req UpdateSettingsRequest
 	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if _, sent := sentFields["site_theme"]; sent {
+		switch req.SiteTheme {
+		case "teal", "blue", "violet", "rose", "green":
+		default:
+			response.BadRequest(c, "Invalid site theme")
+			return
+		}
+	}
+	if len(req.CustomCSS) > 65536 {
+		response.BadRequest(c, "Custom CSS exceeds 65536 bytes")
 		return
 	}
 	auditReq := settingsAuditRequest(req)
@@ -1640,6 +1654,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		GoogleOAuthClientSecret:                req.GoogleOAuthClientSecret,
 		GoogleOAuthRedirectURL:                 req.GoogleOAuthRedirectURL,
 		GoogleOAuthFrontendRedirectURL:         req.GoogleOAuthFrontendRedirectURL,
+		SiteTheme:                              req.SiteTheme,
+		CustomCSS:                              req.CustomCSS,
 		SiteName:                               req.SiteName,
 		SiteLogo:                               req.SiteLogo,
 		SiteSubtitle:                           req.SiteSubtitle,
@@ -2304,6 +2320,8 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		GoogleOAuthClientSecretConfigured:                      updatedSettings.GoogleOAuthClientSecretConfigured,
 		GoogleOAuthRedirectURL:                                 updatedSettings.GoogleOAuthRedirectURL,
 		GoogleOAuthFrontendRedirectURL:                         updatedSettings.GoogleOAuthFrontendRedirectURL,
+		SiteTheme:                                              updatedSettings.SiteTheme,
+		CustomCSS:                                              updatedSettings.CustomCSS,
 		SiteName:                                               updatedSettings.SiteName,
 		SiteLogo:                                               updatedSettings.SiteLogo,
 		SiteSubtitle:                                           updatedSettings.SiteSubtitle,

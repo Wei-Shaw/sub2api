@@ -1,3 +1,73 @@
+:root {
+  --primary-50: 240 253 250;
+  --primary-100: 204 251 241;
+  --primary-200: 153 246 228;
+  --primary-300: 94 234 212;
+  --primary-400: 45 212 191;
+  --primary-500: 20 184 166;
+  --primary-600: 13 148 136;
+  --primary-700: 15 118 110;
+  --primary-800: 17 94 89;
+  --primary-900: 19 78 74;
+  --primary-950: 4 47 46;
+}
+
+:root[data-site-theme="blue"] {
+  --primary-50: 239 246 255;
+  --primary-100: 219 234 254;
+  --primary-200: 191 219 254;
+  --primary-300: 147 197 253;
+  --primary-400: 96 165 250;
+  --primary-500: 59 130 246;
+  --primary-600: 37 99 235;
+  --primary-700: 29 78 216;
+  --primary-800: 30 64 175;
+  --primary-900: 30 58 138;
+  --primary-950: 23 37 84;
+}
+
+:root[data-site-theme="violet"] {
+  --primary-50: 245 243 255;
+  --primary-100: 237 233 254;
+  --primary-200: 221 214 254;
+  --primary-300: 196 181 253;
+  --primary-400: 167 139 250;
+  --primary-500: 139 92 246;
+  --primary-600: 124 58 237;
+  --primary-700: 109 40 217;
+  --primary-800: 91 33 182;
+  --primary-900: 76 29 149;
+  --primary-950: 46 16 101;
+}
+
+:root[data-site-theme="rose"] {
+  --primary-50: 255 241 242;
+  --primary-100: 255 228 230;
+  --primary-200: 254 205 211;
+  --primary-300: 253 164 175;
+  --primary-400: 251 113 133;
+  --primary-500: 244 63 94;
+  --primary-600: 225 29 72;
+  --primary-700: 190 18 60;
+  --primary-800: 159 18 57;
+  --primary-900: 136 19 55;
+  --primary-950: 76 5 25;
+}
+
+:root[data-site-theme="green"] {
+  --primary-50: 240 253 244;
+  --primary-100: 220 252 231;
+  --primary-200: 187 247 208;
+  --primary-300: 134 239 172;
+  --primary-400: 74 222 128;
+  --primary-500: 34 197 94;
+  --primary-600: 22 163 74;
+  --primary-700: 21 128 61;
+  --primary-800: 22 101 52;
+  --primary-900: 20 83 45;
+  --primary-950: 5 46 22;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
