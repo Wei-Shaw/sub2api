@@ -1059,6 +1059,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				if errors.As(err, &failoverErr) {
 					// 流式内容已写入客户端，无法撤销，禁止 failover 以防止流拼接腐化
 					if c.Writer.Size() != writerSizeBeforeForward {
+						h.recordExhaustedFailoverPartialUsage(failoverErr, func(r *service.ForwardResult) {
+							submitForwardUsage(r)
+						}, reqLog)
 						h.handleFailoverExhausted(c, failoverErr, account.Platform, true)
 						return
 					}
@@ -1070,6 +1073,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						delete(sessionSlotAccounts, account.ID)
 						continue
 					case FailoverExhausted:
+						// 重试全部耗尽：若各次尝试中上游已计量 usage，按账号开关补记，
+						// 否则该账号的上游成本在账单上完全不可见。
+						h.recordExhaustedFailoverPartialUsage(fs.LastFailoverErr, func(r *service.ForwardResult) {
+							submitForwardUsage(r)
+						}, reqLog)
 						h.handleFailoverExhausted(c, fs.LastFailoverErr, account.Platform, streamStarted)
 						return
 					case FailoverCanceled:
@@ -1916,6 +1924,31 @@ func (h *GatewayHandler) calculateSubscriptionRemaining(group *service.Group, su
 func (h *GatewayHandler) handleConcurrencyError(c *gin.Context, err error, slotType string, streamStarted bool) {
 	status, errType, code, message := concurrencyErrorResponse(err, slotType)
 	h.handleStreamingAwareErrorWithCode(c, status, errType, code, message, streamStarted)
+}
+
+// recordExhaustedFailoverPartialUsage 在 failover 重试全部耗尽时，补记本次请求中
+// 上游已计量的 usage（记录在 UpstreamFailoverError.PartialResult 上）。
+//
+// 为什么不总是记：PartialResult 只在账号开启 accounts.extra.record_failed_stream_usage
+// 时才被填充。重试成功的请求仍需按成功结果计费一次，故 partial 数据不会参与成功路径；
+// 只有"所有尝试都失败"这一情形才会走到这里，此时上游已按 token 计费但没有成功结果可记。
+func (h *GatewayHandler) recordExhaustedFailoverPartialUsage(
+	failoverErr *service.UpstreamFailoverError,
+	submit func(*service.ForwardResult),
+	reqLog *zap.Logger,
+) {
+	if failoverErr == nil || failoverErr.PartialResult == nil {
+		return
+	}
+	submit(failoverErr.PartialResult)
+	if reqLog != nil {
+		reqLog.Warn("gateway.failed_stream_usage_recorded",
+			zap.Int("input_tokens", failoverErr.PartialResult.Usage.InputTokens),
+			zap.Int("output_tokens", failoverErr.PartialResult.Usage.OutputTokens),
+			zap.Int("cache_read_tokens", failoverErr.PartialResult.Usage.CacheReadInputTokens),
+			zap.Int("cache_creation_tokens", failoverErr.PartialResult.Usage.CacheCreationInputTokens),
+		)
+	}
 }
 
 func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError, platform string, streamStarted bool) {

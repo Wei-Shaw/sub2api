@@ -712,6 +712,10 @@ type UpstreamFailoverError struct {
 	NextAccountAction        NextAccountAction
 	ClientStatusCode         int
 	ClientMessage            string
+	// PartialResult 携带本次尝试中上游已计量的 usage（仅流式中断场景可能非空）。
+	// 重试成功时该字段必须被丢弃，避免与成功结果重复计费；仅在重试全部耗尽、
+	// 且账号开启 ShouldRecordFailedStreamUsage 时用于补记上游成本。
+	PartialResult *ForwardResult
 }
 
 func (e *UpstreamFailoverError) Error() string {
