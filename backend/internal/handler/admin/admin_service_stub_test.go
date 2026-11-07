@@ -841,3 +841,10 @@ func (s *stubAdminService) CreateShadow(ctx context.Context, parentID int64, opt
 
 // Ensure stub implements interface.
 var _ service.AdminService = (*stubAdminService)(nil)
+
+func (s *stubAdminService) PreviewAccountRenames(context.Context, *service.BulkAccountRenameInput) (*service.BulkAccountRenamePreview, error) {
+	return nil, service.ErrAccountRenameInvalid
+}
+func (s *stubAdminService) ApplyAccountRenames(context.Context, []service.AccountRenameItem) (*service.BulkAccountRenameResult, error) {
+	return nil, service.ErrAccountRenameInvalid
+}

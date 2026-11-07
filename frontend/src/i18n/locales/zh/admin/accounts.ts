@@ -1,5 +1,25 @@
 export default {
     accounts: {
+      bulkRename: {
+        title: '批量命名',
+        hint: '按账号 ID 升序编号，仅修改显示名称，邮箱和凭据保持不变。',
+        selection: '为选中的 {count} 个账号命名（最多 1,000 个）。',
+        prefix: '名称前缀',
+        suffix: '名称后缀',
+        start: '起始编号',
+        padding: '最少编号位数',
+        continue: '接续已有最大编号',
+        continueHint: '查找所有相同前后缀的账号并续号，不填补历史编号空缺。',
+        preview: '预览名称',
+        apply: '应用名称',
+        oldName: '当前名称',
+        newName: '新名称',
+        failed: '无法修改账号名称，请检查错误并重新预览。',
+        success: '已为 {count} 个账号命名。',
+        limit: '请选择 1 至 1,000 个账号。',
+        previewHint: '确认名称预览后再应用，修改规则后需重新预览。',
+      },
+
       title: '账号管理',
       description: '管理 AI 平台账号和 Cookie',
       createAccount: '添加账号',
