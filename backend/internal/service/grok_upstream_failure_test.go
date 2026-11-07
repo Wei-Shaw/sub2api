@@ -181,6 +181,31 @@ func TestShouldFailoverGrokUpstreamError_CompatibilityBody(t *testing.T) {
 	require.True(t, svc.shouldFailoverGrokUpstreamError(http.StatusUnprocessableEntity, body))
 }
 
+func TestClassifyGrokUpstreamFailure_UnrecognizedForbiddenDoesNotQuarantine(t *testing.T) {
+	bodies := [][]byte{
+		nil,
+		[]byte(""),
+		[]byte(" "),
+		[]byte("<html>403 Forbidden</html>"),
+		[]byte(`{"error":{"message":"upstream returned an unknown response"}}`),
+		[]byte(`{"code":"permission-denied","error":"Access to the chat endpoint is denied"}`),
+	}
+	for _, body := range bodies {
+		d := classifyGrokUpstreamFailure(http.StatusForbidden, body, "grok-4.6")
+		require.Equal(t, GrokFailureCompatibility, d.Class, string(body))
+		require.False(t, d.ShouldFailover, string(body))
+		require.False(t, d.ShouldCooldown, string(body))
+		require.True(t, isGrokUnrecognizedForbidden(http.StatusForbidden, body), string(body))
+	}
+}
+
+func TestClassifyGrokUpstreamFailure_RecognizedForbiddenStillIdentifiesAccount(t *testing.T) {
+	body := []byte(`{"error":{"code":"account_suspended","message":"account suspended"}}`)
+	require.False(t, isGrokUnrecognizedForbidden(http.StatusForbidden, body))
+	d := classifyGrokUpstreamFailure(http.StatusForbidden, body, "grok-4.6")
+	require.NotEqual(t, GrokFailureCompatibility, d.Class)
+}
+
 func TestShouldFailoverGrokUpstreamError_ContentPolicyStillNoFailover(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	body := []byte(`{"error":{"code":"new_sensitive","message":"text is sensitive"}}`)
