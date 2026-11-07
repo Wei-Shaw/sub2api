@@ -521,7 +521,8 @@ export default {
         selectingAll: 'Selecting all results...',
         selectAllFailed: 'Failed to load all accounts. The previous selection was kept.',
         clear: 'Clear selection',
-        edit: 'Bulk Edit',
+        edit: 'Edit {count} Selected Accounts',
+        editFiltered: 'Edit All Filtered Results ({count})',
         delete: 'Bulk Delete',
         confirmDelete: 'Delete the selected {count} account(s)? This action cannot be undone.',
         deleteSuccess: 'Deleted {count} account(s)',
@@ -538,6 +539,8 @@ export default {
         title: 'Bulk Edit Accounts',
         selectionInfo:
           '{count} account(s) selected. Only checked or filled fields will be updated; others stay unchanged.',
+        filteredInfo:
+          'Updates all accounts matching the current filters across all pages. Preview: {count} account(s); the actual scope is determined by matches at submission time. Only checked or filled fields will be updated; others stay unchanged.',
         baseUrlPlaceholder: 'https://api.anthropic.com or https://api.openai.com',
         baseUrlNotice: 'Applies to API Key accounts and the forwarding endpoint of Grok OAuth accounts; leave empty to keep existing value',
         submit: 'Update Accounts',
