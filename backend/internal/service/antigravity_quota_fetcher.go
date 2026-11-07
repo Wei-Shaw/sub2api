@@ -215,51 +215,9 @@ func (f *AntigravityQuotaFetcher) buildUsageInfo(modelsResp *antigravity.FetchAv
 	return info
 }
 
-// antigravityQuotaWindowMins maps a bucket window to its duration in minutes.
-var antigravityQuotaWindowMins = map[string]int{
-	"5h":     5 * 60,
-	"weekly": 7 * 24 * 60,
-}
-
-// untouchedResetTolerance bounds how far a reset time may sit from "requested
-// at plus the full window" and still count as a rolling placeholder.
-const untouchedResetTolerance = 60 * time.Second
-
-// summaryBucketResetTime returns the reset time a window should display.
-//
-// For a bucket nobody has drawn from, Antigravity answers with a rolling
-// placeholder: resetTime equal to the request time plus the full window, and
-// no description. Rendering it shows "100% left, resets in 4h 59m" beside a
-// full bucket, and every probe moves the countdown back to a full window. A
-// measured reset (a used bucket) is anchored, not request-time based, and the
-// payload carries a description, so those never match the placeholder shape.
-// Drop the reset only when all three signals of an untouched bucket line up.
-func summaryBucketResetTime(bucket antigravity.QuotaSummaryBucket, requestedAt time.Time) *time.Time {
-	if bucket.ResetTime == "" {
-		return nil
-	}
-	resetAt, err := time.Parse(time.RFC3339, bucket.ResetTime)
-	if err != nil {
-		return nil
-	}
-	if bucket.RemainingFraction == 1 && bucket.Description == "" {
-		if windowMins, ok := antigravityQuotaWindowMins[bucket.Window]; ok {
-			placeholder := requestedAt.Add(time.Duration(windowMins) * time.Minute)
-			if resetAt.Sub(placeholder) <= untouchedResetTolerance && placeholder.Sub(resetAt) <= untouchedResetTolerance {
-				return nil
-			}
-		}
-	}
-	return &resetAt
-}
-
 // buildAntigravityQuotaGroups turns a quota summary into display groups, each with its
 // windows ordered 5h then weekly. Returns nil when there is nothing to show.
 func buildAntigravityQuotaGroups(summary *antigravity.QuotaSummaryResponse) []*AntigravityQuotaGroup {
-	return buildAntigravityQuotaGroupsAt(summary, time.Now())
-}
-
-func buildAntigravityQuotaGroupsAt(summary *antigravity.QuotaSummaryResponse, requestedAt time.Time) []*AntigravityQuotaGroup {
 	if summary == nil {
 		return nil
 	}
@@ -281,7 +239,11 @@ func buildAntigravityQuotaGroupsAt(summary *antigravity.QuotaSummaryResponse, re
 				used = 0
 			}
 			window := &AntigravityQuotaWindow{Window: bucket.Window, Utilization: used}
-			window.ResetsAt = summaryBucketResetTime(bucket, requestedAt)
+			if bucket.ResetTime != "" {
+				if resetAt, err := time.Parse(time.RFC3339, bucket.ResetTime); err == nil {
+					window.ResetsAt = &resetAt
+				}
+			}
 			out.Windows = append(out.Windows, window)
 		}
 		sort.SliceStable(out.Windows, func(i, j int) bool {
