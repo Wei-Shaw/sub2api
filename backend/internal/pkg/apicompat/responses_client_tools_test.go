@@ -608,23 +608,26 @@ func TestRestoreResponsesClientToolPayload_RestoresClientAndNamespaceCalls(t *te
 	require.JSONEq(t, `{"id":"resp","output":[{"type":"custom_tool_call","id":"i1","call_id":"c1","name":"exec","input":"dir"},{"type":"tool_search_call","id":"i2","call_id":"s1","execution":"client","arguments":{"query":"git"}},{"type":"function_call","id":"i3","call_id":"n1","name":"send","namespace":"team","arguments":"{}"}]}`, string(restored))
 }
 
-func TestResponsesClientToolStreamRestorer_CustomToolBuffersWrapperAndSequences(t *testing.T) {
+func TestResponsesClientToolStreamRestorer_CustomToolStreamsUnwrappedInputAndSequences(t *testing.T) {
 	restorer := NewResponsesClientToolStreamRestorer(ResponsesClientToolMapping{CustomTools: map[string]bool{"exec": true}})
 	added := restorer.Restore(ResponsesStreamEvent{Type: "response.output_item.added", SequenceNumber: 7, OutputIndex: 0, Item: &ResponsesOutput{Type: "function_call", ID: "i1", CallID: "c1", Name: "exec", Status: "in_progress"}})
 	require.Len(t, added, 1)
 	require.Equal(t, 7, added[0].SequenceNumber)
 	require.Equal(t, "custom_tool_call", added[0].Item.Type)
-	require.Empty(t, restorer.Restore(ResponsesStreamEvent{Type: "response.function_call_arguments.delta", SequenceNumber: 8, ItemID: "i1", Delta: `{"input":"di`}))
+	delta := restorer.Restore(ResponsesStreamEvent{Type: "response.function_call_arguments.delta", SequenceNumber: 8, ItemID: "i1", Delta: `{"input":"di`})
+	require.Len(t, delta, 1)
+	require.Equal(t, "di", delta[0].Delta)
+	require.Equal(t, 8, delta[0].SequenceNumber)
 	done := restorer.Restore(ResponsesStreamEvent{Type: "response.function_call_arguments.done", SequenceNumber: 9, ItemID: "i1", CallID: "c1", Name: "exec", Arguments: `{"input":"dir"}`})
 	require.Len(t, done, 2)
-	require.Equal(t, 8, done[0].SequenceNumber)
+	require.Equal(t, 9, done[0].SequenceNumber)
 	require.Equal(t, "response.custom_tool_call_input.delta", done[0].Type)
-	require.Equal(t, "dir", done[0].Delta)
-	require.Equal(t, 9, done[1].SequenceNumber)
+	require.Equal(t, "r", done[0].Delta)
+	require.Equal(t, 10, done[1].SequenceNumber)
 	require.Equal(t, "response.custom_tool_call_input.done", done[1].Type)
 	require.Equal(t, "dir", done[1].Input)
 	closed := restorer.Restore(ResponsesStreamEvent{Type: "response.output_item.done", SequenceNumber: 10, OutputIndex: 0, Item: &ResponsesOutput{Type: "function_call", ID: "i1", CallID: "c1", Name: "exec", Arguments: `{"input":"dir"}`, Status: "completed"}})
-	require.Equal(t, 10, closed[0].SequenceNumber)
+	require.Equal(t, 11, closed[0].SequenceNumber)
 	require.Equal(t, "custom_tool_call", closed[0].Item.Type)
 	require.Equal(t, "dir", closed[0].Item.Input)
 }
@@ -683,10 +686,12 @@ func TestResponsesClientToolStreamRestorer_RawEventsPreserveUnknownFieldsAndOutp
 
 	restorer.Restore(ResponsesStreamEvent{Type: "response.output_item.added", SequenceNumber: 5, OutputIndex: 9, Item: &ResponsesOutput{Type: "function_call", ID: "item", CallID: "call", Name: "exec"}})
 	// Some upstreams omit every tool identity field on later argument chunks.
-	require.Empty(t, restorer.Restore(ResponsesStreamEvent{Type: "response.function_call_arguments.delta", SequenceNumber: 6, OutputIndex: 9, Delta: `{"input":"pwd"}`}))
+	delta := restorer.Restore(ResponsesStreamEvent{Type: "response.function_call_arguments.delta", SequenceNumber: 6, OutputIndex: 9, Delta: `{"input":"pwd"}`})
+	require.Len(t, delta, 1)
+	require.Equal(t, "pwd", delta[0].Delta)
 	done := restorer.Restore(ResponsesStreamEvent{Type: "response.function_call_arguments.done", SequenceNumber: 7, OutputIndex: 9})
-	require.Len(t, done, 2)
-	require.Equal(t, "pwd", done[1].Input)
+	require.Len(t, done, 1)
+	require.Equal(t, "pwd", done[0].Input)
 }
 
 func TestResponsesClientToolStreamRestorer_RestoresAllTerminalEvents(t *testing.T) {
