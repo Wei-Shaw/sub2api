@@ -639,7 +639,7 @@ func (s *HTTPUpstreamSuite) TestLongStreamProfileUsesSharedHTTP2KeepAlive() {
 	s.cfg.Gateway = config.GatewayConfig{
 		ResponseHeaderTimeout: 600,
 		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{
-			Enabled: false,
+			Enabled: true,
 		},
 	}
 	svc := s.newService()
@@ -651,6 +651,20 @@ func (s *HTTPUpstreamSuite) TestLongStreamProfileUsesSharedHTTP2KeepAlive() {
 	require.True(s.T(), transport.ForceAttemptHTTP2, "long-stream profile must enable HTTP/2 independently of OpenAI settings")
 	require.True(s.T(), transport.Protocols.HTTP2(), "long-stream profile must install HTTP/2 PING health checks")
 	require.Equal(s.T(), upstreamProtocolModeLongStreamH2, entry.protocolMode)
+}
+
+func (s *HTTPUpstreamSuite) TestLongStreamProfileRespectsOpenAIHTTP2Disabled() {
+	s.cfg.Gateway = config.GatewayConfig{
+		OpenAIHTTP2: config.GatewayOpenAIHTTP2Config{Enabled: false},
+	}
+	svc := s.newService()
+	entry, err := svc.getClientEntry("", 1, 1, service.HTTPUpstreamProfileLongStream, false, false)
+	require.NoError(s.T(), err)
+	transport, ok := entry.client.Transport.(*http.Transport)
+	require.True(s.T(), ok, "expected *http.Transport")
+	require.False(s.T(), transport.ForceAttemptHTTP2, "disabling OpenAI HTTP/2 must also disable the long-stream profile")
+	require.NotNil(s.T(), transport.TLSNextProto, "HTTP/1 mode must disable automatic H2 negotiation")
+	require.Equal(s.T(), upstreamProtocolModeOpenAIH1, entry.protocolMode)
 }
 
 func (s *HTTPUpstreamSuite) TestOpenAIProfileCustomHeaderTimeout() {
