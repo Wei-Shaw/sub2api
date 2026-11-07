@@ -134,6 +134,7 @@ func TestDependencyModuleClassification(t *testing.T) {
 		"https://storage.googleapis.com/bucket/object":        "google",
 		"https://bucket.s3.amazonaws.com/object":              "s3",
 		"https://api.stripe.com/v1/refunds":                   "payment",
+		"https://test-api.creem.io/v1/checkouts":              "payment",
 		"https://dependency.example.test/path":                "http",
 	}
 	for rawURL, want := range tests {

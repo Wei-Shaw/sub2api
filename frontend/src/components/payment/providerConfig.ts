@@ -42,13 +42,14 @@ export const PROVIDER_SUPPORTED_TYPES: Record<string, string[]> = {
   wxpay: ['wxpay'],
   stripe: ['card', 'alipay', 'wxpay', 'link'],
   airwallex: ['airwallex'],
+  creem: ['creem'],
 }
 
 /** Available payment modes for EasyPay providers. */
 export const EASYPAY_PAYMENT_MODES = ['qrcode', 'popup'] as const
 
 /** Fixed display order for user-facing payment methods */
-export const METHOD_ORDER = ['alipay', 'alipay_direct', 'wxpay', 'wxpay_direct', 'stripe', 'airwallex'] as const
+export const METHOD_ORDER = ['alipay', 'alipay_direct', 'wxpay', 'wxpay_direct', 'stripe', 'airwallex', 'creem'] as const
 
 export function isBuiltInAlipayMethod(type: string): boolean {
   return type === 'alipay' || type === 'alipay_direct'
@@ -81,6 +82,12 @@ export const PAYMENT_CURRENCY_OPTIONS: TypeOption[] = [
   { value: 'NZD', label: 'NZD' },
 ]
 
+/** Creem 商品只支持 USD 和 EUR。 */
+export const CREEM_CURRENCY_OPTIONS: TypeOption[] = [
+  { value: 'USD', label: 'USD' },
+  { value: 'EUR', label: 'EUR' },
+]
+
 // 与后端当前集成的 stripe-go v85.0.0 的 stripe.APIVersion 保持一致。
 export const STRIPE_SDK_API_VERSION = '2026-03-25.dahlia'
 
@@ -110,6 +117,7 @@ export const WEBHOOK_PATHS: Record<string, string> = {
   wxpay: '/api/v1/payment/webhook/wxpay',
   stripe: '/api/v1/payment/webhook/stripe',
   airwallex: '/api/v1/payment/webhook/airwallex',
+  creem: '/api/v1/payment/webhook/creem',
 }
 
 export const RETURN_PATH = '/payment/result'
@@ -121,6 +129,7 @@ export const PROVIDER_CALLBACK_PATHS: Record<string, CallbackPaths> = {
   wxpay: { notifyUrl: WEBHOOK_PATHS.wxpay },
   // stripe: 不需要回调 URL 配置，Webhook 单独配置。
   // airwallex: 不需要回调 URL 配置，Webhook 在空中云汇后台配置。
+  // creem: 不需要回调 URL 配置，Webhook 在 Creem 后台配置。
 }
 
 /** Per-provider config fields (excludes notifyUrl/returnUrl which are handled separately). */
@@ -160,6 +169,13 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
     { key: 'countryCode', label: '', sensitive: false, defaultValue: 'CN' },
     { key: 'currency', label: '', sensitive: false, defaultValue: 'CNY', hintKey: 'admin.settings.payment.field_paymentCurrencyHint', options: PAYMENT_CURRENCY_OPTIONS },
     { key: 'accountId', label: '', sensitive: false, optional: true, clearable: true, hintKey: 'admin.settings.payment.field_accountIdHint' },
+  ],
+  creem: [
+    { key: 'apiKey', label: '', sensitive: true },
+    { key: 'webhookSecret', label: '', sensitive: true },
+    { key: 'productId', label: '', sensitive: false, hintKey: 'admin.settings.payment.field_creemProductIdHint' },
+    { key: 'currency', label: '', sensitive: false, defaultValue: 'USD', hintKey: 'admin.settings.payment.field_creemCurrencyHint', options: CREEM_CURRENCY_OPTIONS },
+    { key: 'apiBase', label: '', sensitive: false, optional: true, clearable: true, hintKey: 'admin.settings.payment.field_creemApiBaseHint' },
   ],
 }
 

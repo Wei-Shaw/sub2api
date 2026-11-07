@@ -21,6 +21,7 @@ const (
 	TypeLink         PaymentType = "link"
 	TypeEasyPay      PaymentType = "easypay"
 	TypeAirwallex    PaymentType = "airwallex"
+	TypeCreem        PaymentType = "creem"
 )
 
 // Order status constants shared across payment and service layers.
@@ -89,6 +90,8 @@ func GetBasePaymentType(t string) string {
 		return TypeEasyPay
 	case t == TypeAirwallex:
 		return TypeAirwallex
+	case t == TypeCreem:
+		return TypeCreem
 	case t == TypeStripe || t == TypeCard || t == TypeLink:
 		return TypeStripe
 	case len(t) >= len(TypeAlipay) && t[:len(TypeAlipay)] == TypeAlipay:
@@ -254,6 +257,13 @@ type CancelableProvider interface {
 	Provider
 	// CancelPayment cancels/expires a pending payment on the upstream platform.
 	CancelPayment(ctx context.Context, tradeNo string) error
+}
+
+// LatePaymentRefunder is implemented by providers whose checkout links cannot be
+// cancelled when an order expires (e.g. Creem). A payment that arrives after the
+// expiry grace period is refunded automatically instead of being left uncredited.
+type LatePaymentRefunder interface {
+	RefundsLatePayments() bool
 }
 
 // MerchantIdentityProvider exposes the current non-sensitive merchant identity
