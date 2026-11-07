@@ -51,8 +51,18 @@ export function quotaPoolGroups<T>(pools: readonly T[], columns = 2): T[][] {
 }
 // Normalize existing provider responses at the UI boundary. No additional requests.
 export function usagePools(platform: string, usage?: AccountUsageInfo): QuotaPool[] {
-  if (usage?.quota_pools?.length) return usage.quota_pools
   if (!usage) return []
+  if (platform === 'antigravity') {
+    // #8522 owns collection and caching. Preserve group keys (including Argon)
+    // and reported windows rather than querying or inferring them from models.
+    return (usage.antigravity_quota_groups ?? []).map((group) => ({
+      id: group.key,
+      name: group.key === 'gemini' ? 'Gemini' : group.key === '3p' ? 'Claude / GPT' : group.name || group.key,
+      windows: (group.windows ?? []).map((window) =>
+        quotaWindow(window.window, window.utilization, window.resets_at)
+      )
+    })).filter((pool) => pool.windows.length > 0)
+  }
 
   const window = (id: string, value: AccountUsageInfo['five_hour'] | undefined): PoolWindow[] => {
     if (!value) return []

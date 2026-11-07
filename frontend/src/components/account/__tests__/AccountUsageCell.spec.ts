@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import AccountUsageCell from '../AccountUsageCell.vue'
+import QuotaPoolTable from '../QuotaPoolTable.vue'
 import type { Account } from '@/types'
 
 const { getUsage } = vi.hoisted(() => ({
@@ -476,6 +477,81 @@ describe('AccountUsageCell', () => {
 
     expect(wrapper.get('[data-test="quota-summary-unavailable"]').text()).toBe('--')
     expect(wrapper.text()).not.toContain('admin.accounts.usageWindow.gemini3Image')
+  })
+
+  it('Antigravity shows the 5-hour and weekly window of each quota group when the summary is present', async () => {
+    getUsage.mockResolvedValue({
+      ai_credits: [{ credit_type: 'GOOGLE_ONE_AI', amount: 25 }],
+      antigravity_quota: {
+        'gemini-3-flash': { utilization: 99, reset_time: '2026-11-11T15:52:48Z' }
+      },
+      antigravity_quota_groups: [
+        {
+          key: 'gemini',
+          name: 'Gemini Models',
+          windows: [
+            { window: '5h', utilization: 60, resets_at: '2026-11-04T20:52:48Z' },
+            { window: 'weekly', utilization: 25, resets_at: '2026-11-11T15:52:48Z' }
+          ]
+        },
+        {
+          key: '3p',
+          name: 'Claude and GPT models',
+          windows: [
+            { window: '5h', utilization: 0, resets_at: null },
+            { window: 'weekly', utilization: 10, resets_at: '2026-11-11T15:52:48Z' }
+          ]
+        },
+        {
+          key: 'gemini-argon-wtu',
+          name: 'Gemini 4 Argon',
+          windows: [{ window: 'weekly', utilization: 20, resets_at: '2026-11-11T17:11:15Z' }]
+        }
+      ]
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 1003, platform: 'antigravity', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'color'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ resetsAt }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const matrix = wrapper.getComponent(QuotaPoolTable)
+    expect(matrix.props('pools')).toEqual([
+      { id: 'gemini', name: 'Gemini', windows: [
+        { id: '5h', remaining: 0.4, resets_at: '2026-11-04T20:52:48Z' },
+        { id: 'weekly', remaining: 0.75, resets_at: '2026-11-11T15:52:48Z' }
+      ] },
+      { id: '3p', name: 'Claude / GPT', windows: [
+        { id: '5h', remaining: 1 },
+        { id: 'weekly', remaining: 0.9, resets_at: '2026-11-11T15:52:48Z' }
+      ] },
+      { id: 'gemini-argon-wtu', name: 'Gemini 4 Argon', windows: [
+        { id: 'weekly', remaining: 0.8, resets_at: '2026-11-11T17:11:15Z' }
+      ] }
+    ])
+    expect(matrix.text()).toContain('40.0%')
+    expect(matrix.text()).toContain('75.0%')
+    expect(matrix.text()).toContain('Gemini 4 Argon')
+    expect(matrix.text()).toContain('80.0%')
+    expect(wrapper.text()).toContain('admin.accounts.aiCreditsBalance')
+    expect(wrapper.text()).toContain('25')
+    expect(wrapper.findAll('.usage-bar')).toHaveLength(0)
+    expect(getUsage).toHaveBeenCalledTimes(1)
+    // The per-model figure (one tighter window per model) is not shown next to the real windows.
+    expect(wrapper.text()).not.toContain('gemini3Flash')
+    wrapper.unmount()
   })
 
   it('Antigravity 会显示 AI Credits 余额信息', async () => {

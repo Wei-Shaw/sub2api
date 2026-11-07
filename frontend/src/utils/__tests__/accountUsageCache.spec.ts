@@ -7,7 +7,7 @@ import { createAccountUsageCache, ACCOUNT_USAGE_TTL, ACCOUNT_USAGE_LOAD_ERROR, s
 import { quotaCountdown } from '../quotaCountdown'
 import type { AccountUsageInfo } from '@/types'
 
-const usage = (value = 0.8) => ({ updated_at: new Date().toISOString(), quota_pools: [{ id: 'gemini', name: 'Gemini', windows: [{ id: '5h', remaining: value }] }] }) as AccountUsageInfo
+const usage = (value = 0.8) => ({ updated_at: new Date().toISOString(), five_hour: { utilization: value } }) as AccountUsageInfo
 const result = (ids: number[], value = 0.8) => ({ usage: Object.fromEntries(ids.map(id => [id, usage(value)])), errors: {} })
 const storage = () => {
   const map = new Map<string, string>()
@@ -48,8 +48,8 @@ describe('shared persisted account usage', () => {
     const second = cache.load([1, 2]); await Promise.resolve()
     expect(fetch.mock.calls.map(call => call[0])).toEqual([[1], [2]])
     finish(result([1])); await Promise.all([first, second])
-    expect(cache.usage.value[1]?.quota_pools?.[0].windows[0].remaining).toBe(0.8)
-    expect(cache.usage.value[2]?.quota_pools?.[0].windows[0].remaining).toBe(0.2)
+    expect(cache.usage.value[1]?.five_hour?.utilization).toBe(0.8)
+    expect(cache.usage.value[2]?.five_hour?.utilization).toBe(0.2)
   })
 
   it('survives a page reload for five minutes without extending the deadline', async () => {
@@ -99,7 +99,7 @@ describe('shared persisted account usage', () => {
     await cache.load([1], true)
     expect(fetch.mock.calls[1]).toEqual([[1], true])
     expect(list.value[1]).toBe(overview.value[1])
-    expect(overview.value[1]?.quota_pools?.[0].windows[0].remaining).toBe(0.4)
+    expect(overview.value[1]?.five_hour?.utilization).toBe(0.4)
     await createAccountUsageCache(fetch, disk).load([1])
     expect(fetch).toHaveBeenCalledTimes(2)
   })
@@ -126,7 +126,7 @@ describe('shared persisted account usage', () => {
     user = 'second'
     await cache.load([1])
     finish(result([1], 0.9)); await old; await Promise.resolve()
-    expect(cache.usage.value[1]?.quota_pools?.[0].windows[0].remaining).toBe(0.2)
+    expect(cache.usage.value[1]?.five_hour?.utilization).toBe(0.2)
   })
 
   it('does not accept an earlier request after switching away and back to the same admin', async () => {
@@ -145,7 +145,7 @@ describe('shared persisted account usage', () => {
     expect(cache.usage.value[1]).toBeUndefined()
     expect(cache.loading.value[1]).toBe(true)
     finishNew(result([1], 0.2)); await current
-    expect(cache.usage.value[1]?.quota_pools?.[0].windows[0].remaining).toBe(0.2)
+    expect(cache.usage.value[1]?.five_hour?.utilization).toBe(0.2)
   })
 
   it('does not refresh the TTL merely because a cell emits the cached data', async () => {

@@ -27,16 +27,16 @@ const account = (id = 1) =>
   }) as AccountListItem
 const usage = (remaining = 0.8) =>
   ({
-    source: 'antigravity-oauth',
+    source: 'active',
     updated_at: new Date(now).toISOString(),
     subscription_tier: 'PRO',
-    quota_pools: [
+    antigravity_quota_groups: [
       {
-        id: 'gemini',
+        key: 'gemini',
         name: 'Gemini',
         windows: [
-          { id: '5h', remaining, resets_at: '2026-09-28T14:00:00Z' },
-          { id: 'weekly', remaining: 0.6 }
+          { window: '5h', utilization: (1 - remaining) * 100, resets_at: '2026-09-28T14:00:00Z' },
+          { window: 'weekly', utilization: 40 }
         ]
       }
     ]
@@ -65,7 +65,7 @@ describe('shared quota pools', () => {
   it('does not infer weekly capacity from model percentages', () => {
     const u = {
       ...usage(),
-      quota_pools: undefined,
+      antigravity_quota_groups: undefined,
       antigravity_quota: { 'gemini-3-flash': { utilization: 0, reset_time: '' } }
     }
     expect(accountPools(account(), u, now)).toEqual([])
@@ -91,9 +91,47 @@ describe('shared quota pools', () => {
 
 const report = (value: object) => value as AccountUsageInfo
 describe('adaptive quota adapters', () => {
-  it('uses authoritative pools on any platform without guessing model names', () => {
-    const data = usage()
-    expect(usagePools('new-provider', data)).toBe(data.quota_pools)
+  it('keeps Argon weekly capacity separate from Gemini and third-party pools across accounts', () => {
+    const data = report({ ...usage(), antigravity_quota_groups: [
+      { key: 'gemini', name: 'Gemini Models', windows: [
+        { window: '5h', utilization: 25, resets_at: '2026-09-28T14:00:00Z' },
+        { window: 'weekly', utilization: 75, resets_at: '2026-10-01T00:00:00Z' }
+      ] },
+      { key: '3p', name: 'Claude and GPT models', windows: [
+        { window: 'weekly', utilization: 100 }
+      ] },
+      { key: 'gemini-argon-wtu', name: 'Gemini 4 Argon', windows: [
+        { window: 'weekly', utilization: 12.5, resets_at: '2026-10-02T00:00:00Z' }
+      ] }
+    ] })
+    const totals = aggregatePools([
+      ...accountPools(account(1), data, now),
+      ...accountPools(account(2), data, now)
+    ], now)
+    expect(totals.map((pool) => pool.name)).toEqual(['Gemini', 'Claude / GPT', 'Gemini 4 Argon'])
+    expect(totals[0].windows.map((window) => window.total)).toEqual([1.5, 0.5])
+    expect(totals[1].windows).toEqual([{ id: 'weekly', total: 0, known: 2, accounts: 2 }])
+    expect(totals[2].windows).toEqual([{
+      id: 'weekly', total: 1.75, known: 2, accounts: 2, nextReset: '2026-10-02T00:00:00Z'
+    }])
+  })
+  it('preserves unknown windows and missing percentages without copying model snapshots', () => {
+    const pools = usagePools('antigravity', report({
+      antigravity_quota_groups: [
+        { key: 'future', name: 'New group', windows: [{ window: 'monthly' }] },
+        { key: 'empty', name: 'Empty group', windows: [] }
+      ],
+      antigravity_quota: { 'some-model': { utilization: 10 } }
+    }))
+    expect(pools).toEqual([{
+      id: 'future', name: 'New group', windows: [{ id: 'monthly', remaining: null }]
+    }])
+  })
+  it('uses upstream Antigravity groups only for the matching platform', () => {
+    expect(usagePools('antigravity', usage())[0]).toMatchObject({
+      id: 'gemini', windows: [{ id: '5h', remaining: 0.8 }, { id: 'weekly', remaining: 0.6 }]
+    })
+    expect(usagePools('new-provider', usage())).toEqual([])
   })
   it('Codex can have only weekly or monthly limits; no invented 5h window', () => {
     const pools = usagePools(

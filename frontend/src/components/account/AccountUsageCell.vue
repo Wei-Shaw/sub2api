@@ -279,12 +279,13 @@
         {{ usageError }}
       </div>
 
-      <!-- Usage data from API -->
-      <QuotaPoolTable
-        v-else-if="usageInfo?.quota_pools?.length"
-        :pools="usageInfo.quota_pools"
-        :updated-at="usageInfo.updated_at"
-      />
+      <!-- Reuse the upstream quota groups for both the matrix and overview. -->
+      <div v-else-if="adaptedQuotaPools.length" class="space-y-1">
+        <QuotaPoolTable :pools="adaptedQuotaPools" :updated-at="usageInfo?.updated_at" />
+        <div v-if="aiCreditsDisplay" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.aiCreditsBalance') }}: <QuotaMeter :value="null" :text="aiCreditsDisplay" />
+        </div>
+      </div>
       <div v-else class="space-y-1">
         <span class="text-xs text-gray-400" data-test="quota-summary-unavailable">--</span>
         <div v-if="aiCreditsDisplay" class="text-[10px] text-gray-500 dark:text-gray-400">

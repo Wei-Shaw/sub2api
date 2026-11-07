@@ -29,7 +29,7 @@ export function createAccountUsageCache(
   let scheduled = false
 
   function hydrate() {
-    const nextKey = `sub2api:account-usage:v1:${scope()}`
+    const nextKey = `sub2api:account-usage:v2:${scope()}`
     if (key === nextKey) return
     key = nextKey
     for (const task of pending.values()) task.resolve()

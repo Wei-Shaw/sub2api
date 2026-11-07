@@ -87,7 +87,13 @@ vi.mock('@/composables/useAccountUsage', () => ({
   useAccountUsage: () => ({
     usage: ref({
       1: {
-        quota_pools: overviewPools,
+        antigravity_quota_groups: overviewPools.map((pool) => ({
+          key: pool.id,
+          name: pool.name,
+          windows: pool.windows.map((window) => ({
+            window: window.id, utilization: (1 - window.remaining) * 100, resets_at: window.resets_at
+          }))
+        })),
         updated_at: '2026-10-29T00:00:00Z',
         subscription_tier: 'PRO'
       }
