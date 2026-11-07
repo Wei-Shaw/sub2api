@@ -22,7 +22,7 @@ const accountTestSuppressCompletionContextKey = "account_test_suppress_completio
 // Chat Completions plus Anthropic; DeepSeek and Kimi additionally use their
 // native Responses endpoints. Endpoints the provider profile does not offer are
 // skipped.
-func (s *AccountTestService) testCNProviderAdaptiveConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+func (s *AccountTestService) testCNProviderAdaptiveConnection(c *gin.Context, account *Account, modelID string, prompt string, plainAPIKey bool) error {
 	requestedModelID := strings.TrimSpace(modelID)
 	if requestedModelID == "" {
 		requestedModelID = account.providerDefaultTestModel()
@@ -46,7 +46,7 @@ func (s *AccountTestService) testCNProviderAdaptiveConnection(c *gin.Context, ac
 	}
 
 	if account.providerSupportsProtocol(APIProtocolAnthropic) {
-		if err := s.testCNProviderAdaptiveAnthropicConnection(c, account, testModelID, authToken); err != nil {
+		if err := s.testCNProviderAdaptiveAnthropicConnection(c, account, testModelID, authToken, plainAPIKey); err != nil {
 			return err
 		}
 	}
@@ -62,7 +62,7 @@ func (s *AccountTestService) testCNProviderAdaptiveConnection(c *gin.Context, ac
 	return nil
 }
 
-func (s *AccountTestService) testCNProviderAdaptiveAnthropicConnection(c *gin.Context, account *Account, testModelID string, authToken string) error {
+func (s *AccountTestService) testCNProviderAdaptiveAnthropicConnection(c *gin.Context, account *Account, testModelID string, authToken string, plainAPIKey bool) error {
 	ctx := c.Request.Context()
 	baseURL, err := s.validateUpstreamBaseURL(account.GetCNProtocolBaseURL(APIProtocolAnthropic))
 	if err != nil {
@@ -70,7 +70,12 @@ func (s *AccountTestService) testCNProviderAdaptiveAnthropicConnection(c *gin.Co
 	}
 	apiURL := strings.TrimRight(baseURL, "/") + "/v1/messages"
 
-	payload, err := createTestPayload(testModelID)
+	var payload map[string]any
+	if plainAPIKey {
+		payload, err = createPlainTestPayload(testModelID)
+	} else {
+		payload, err = createTestPayload(testModelID)
+	}
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create adaptive Anthropic test payload")
 	}
@@ -84,10 +89,15 @@ func (s *AccountTestService) testCNProviderAdaptiveAnthropicConnection(c *gin.Co
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("anthropic-version", "2023-06-01")
-	for key, value := range claude.DefaultHeaders() {
-		req.Header.Set(key, value)
+	if plainAPIKey {
+		// 朴素模式：不带 Claude Code 伪装头与 anthropic-beta。
+		req.Header.Set("User-Agent", "sub2api-connectivity-test/1.0")
+	} else {
+		for key, value := range claude.DefaultHeaders() {
+			req.Header.Set(key, value)
+		}
+		req.Header.Set("anthropic-beta", claude.APIKeyBetaHeader)
 	}
-	req.Header.Set("anthropic-beta", claude.APIKeyBetaHeader)
 	// Ollama Cloud Anthropic 兼容端点按 adaptive 实际选用的 Anthropic
 	// base_url 强制 Bearer，其余保持 extra/default 行为。
 	setAnthropicAPIKeyAuthHeader(req.Header, account, authToken, account.GetCNProtocolBaseURL(APIProtocolAnthropic))
@@ -226,8 +236,10 @@ func (s *AccountTestService) doCNProviderAdaptiveRequest(req *http.Request, acco
 // instead of the provider's own Anthropic-compatible endpoint. The probe uses
 // GetAnthropicProtocolBaseURL (same resolution as real /v1/messages forwarding,
 // including per-platform defaults) and the shared API-key auth header.
-func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, account *Account, modelID string) error {
+func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, account *Account, modelID string, plainAPIKey bool) error {
 	ctx := c.Request.Context()
+
+	plainRequest := plainAPIKey && account.Type == AccountTypeAPIKey
 
 	testModelID := strings.TrimSpace(modelID)
 	if testModelID == "" {
@@ -255,7 +267,12 @@ func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, a
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	payload, err := createTestPayload(testModelID)
+	var payload map[string]any
+	if plainRequest {
+		payload, err = createPlainTestPayload(testModelID)
+	} else {
+		payload, err = createTestPayload(testModelID)
+	}
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create Anthropic test payload")
 	}
@@ -270,8 +287,13 @@ func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, a
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("anthropic-version", "2023-06-01")
-	for key, value := range claude.DefaultHeaders() {
-		req.Header.Set(key, value)
+	if plainRequest {
+		// 朴素模式：不带 Claude Code 伪装头。
+		req.Header.Set("User-Agent", "sub2api-connectivity-test/1.0")
+	} else {
+		for key, value := range claude.DefaultHeaders() {
+			req.Header.Set(key, value)
+		}
 	}
 	// Ollama Cloud Anthropic 兼容端点按实际 base_url 强制 Bearer，其余保持
 	// extra/default 行为。
