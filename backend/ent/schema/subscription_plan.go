@@ -59,6 +59,13 @@ func (SubscriptionPlan) Fields() []ent.Field {
 			Default(""),
 		field.Bool("for_sale").
 			Default(true),
+		// 每人限购：开关与次数分开存。
+		// 开关关掉时次数不参与判定（前端也把输入框收起来），
+		// 这样后端不用去猜 0 到底是「不限购」还是「限 0 次」。
+		field.Bool("purchase_limit_enabled").
+			Default(false),
+		field.Int("purchase_limit_count").
+			Default(0),
 		field.Int("sort_order").
 			Default(0),
 		field.Time("created_at").

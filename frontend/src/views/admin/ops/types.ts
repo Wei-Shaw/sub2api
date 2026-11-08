@@ -12,6 +12,7 @@ export type {
   MetricType,
   Operator,
   EmailNotificationConfig,
+  FeishuNotificationConfig,
   OpsDistributedLockSettings,
   OpsAlertRuntimeSettings,
   OpsMetricThresholds,

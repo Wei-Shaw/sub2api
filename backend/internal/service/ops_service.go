@@ -63,6 +63,10 @@ type OpsService struct {
 	authCacheInvalidationWorker *AuthCacheInvalidationWorker
 	apiKeyService               *APIKeyService
 
+	// feishuNotifier 把刚落库的请求错误推送到飞书群（见 ops_feishu_notify.go）。
+	// 走内存合并 + 限速，网络请求不在错误日志写入路径上做。
+	feishuNotifier *opsFeishuNotifier
+
 	// cleanupReloader 由 wire 在 OpsCleanupService 构造完成后通过 SetCleanupReloader 注入。
 	// 解耦避免 OpsService -> OpsCleanupService 的硬依赖（cleanup 也读 settings，会循环）。
 	cleanupReloader CleanupReloader
@@ -138,6 +142,7 @@ func NewOpsService(
 		antigravityGatewayService: antigravityGatewayService,
 		systemLogSink:             systemLogSink,
 	}
+	svc.feishuNotifier = newOpsFeishuNotifier(svc.GetFeishuNotificationConfig)
 	svc.initRuntimeSettings(context.Background())
 	svc.applyRuntimeLogConfigOnStartup(context.Background())
 	return svc
@@ -422,6 +427,7 @@ func (s *OpsService) RecordError(ctx context.Context, entry *OpsInsertErrorLogIn
 		log.Printf("[Ops] RecordError failed: %v", err)
 		return err
 	}
+	s.notifyFeishuErrors(ctx, []*OpsInsertErrorLogInput{prepared})
 	return nil
 }
 
@@ -447,14 +453,17 @@ func (s *OpsService) RecordErrorBatch(ctx context.Context, entries []*OpsInsertE
 		_, err := s.opsRepo.InsertErrorLog(ctx, prepared[0])
 		if err != nil {
 			log.Printf("[Ops] RecordErrorBatch single insert failed: %v", err)
+			return err
 		}
-		return err
+		s.notifyFeishuErrors(ctx, prepared)
+		return nil
 	}
 
 	if _, err := s.opsRepo.BatchInsertErrorLogs(ctx, prepared); err != nil {
 		log.Printf("[Ops] RecordErrorBatch failed: %v", err)
 		return err
 	}
+	s.notifyFeishuErrors(ctx, prepared)
 	return nil
 }
 

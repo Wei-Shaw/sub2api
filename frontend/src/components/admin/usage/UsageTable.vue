@@ -361,9 +361,11 @@
               <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.usage.supplierId') }}:</span>
               <span class="ml-1 tabular-nums">{{ row.upstream_supplier_id ?? '-' }}</span>
             </div>
+            <!-- 商家名只留数字：上游回的是「Supplier ID 514」这种带前缀的名称，
+                 主人 2026-11-06 要求只显示后面的编号，前面那串文字不要。 -->
             <div class="break-all text-gray-700 dark:text-gray-300">
               <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.usage.supplierName') }}:</span>
-              <span class="ml-1">{{ row.upstream_supplier_name?.trim() || '-' }}</span>
+              <span class="ml-1 tabular-nums">{{ supplierLabel(row.upstream_supplier_name, row.upstream_supplier_id) }}</span>
             </div>
             <div class="break-all text-gray-700 dark:text-gray-300">
               <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.usage.upstreamChannel') }}:</span>
@@ -732,6 +734,25 @@ import {
   textInputTokens,
   hasImageInputCost,
 } from '@/utils/imageUsage'
+
+/**
+ * 上游商家名只取编号显示。
+ *
+ * 上游（A6）回的商家名形如「Supplier ID 514」「Current Supplier ID 514」，
+ * 前面的文字对我们没有信息量，主人 2026-11-06 要求只显示后面的数字。
+ * 名称里确实没有数字时退回原样（总比显示「-」丢掉信息强），全空才显示「-」。
+ */
+function supplierLabel(name?: string | null, supplierId?: number | null): string {
+  const raw = (name ?? '').trim()
+  if (raw) {
+    const trailing = raw.match(/(\d+)\s*$/)
+    if (trailing) return trailing[1]
+    const anywhere = raw.match(/(\d+)/)
+    if (anywhere) return anywhere[1]
+    return raw
+  }
+  return supplierId != null ? String(supplierId) : '-'
+}
 
 /** Compute the account-billed cost for display: (account_stats_cost ?? total_cost) * rate_multiplier */
 function accountBilled(row: { total_cost?: number | null; account_stats_cost?: number | null; account_rate_multiplier?: number | null }): number {

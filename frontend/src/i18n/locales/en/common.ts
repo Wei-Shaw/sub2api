@@ -161,6 +161,36 @@ export default {
     }
   },
 
+  // First-run guide (2026-11-05): auto-opens once, reopenable from the header.
+  quickStart: {
+    entry: 'Get started',
+    title: 'Get started in 3 minutes',
+    subtitle: 'Follow these four steps to use this platform from codex, CC Switch and other clients.',
+    copy: 'Copy',
+    copied: 'Copied',
+    later: "Don't show again today",
+    gotIt: 'Close',
+    moreHint: 'Full instructions:',
+    step1: {
+      title: 'Create an API key',
+      desc: 'Open the API Keys page, create one, and copy the sk- key — you will paste it into your client.',
+      link: 'Create one',
+    },
+    step2: {
+      title: 'Install Node.js',
+      desc: 'The LTS build is fine. After installing, run the command below — a version number means it works.',
+      link: 'Download Node.js',
+    },
+    step3: {
+      title: 'Install the Codex CLI',
+      desc: 'Open a terminal (PowerShell on Windows) and run the command below to install the official codex CLI.',
+    },
+    step4: {
+      title: 'Fill in the endpoint and key',
+      desc: 'Use the endpoint below together with the key from step 1. CC Switch users can click "Import to CC Switch" on the API Keys page instead.',
+    },
+  },
+
   // Navigation
   nav: {
     dashboard: 'Dashboard',
@@ -210,7 +240,7 @@ export default {
     channelPricing: 'Channel Pricing',
     channelMonitor: 'Channel Monitor',
     intelligenceCheck: 'Intelligence Check',
-    aiImage: 'AI Image',
+    aiImage: 'Photo Studio',
     channelStatus: 'Channel Status',
     riskControl: 'Risk Control',
     securityAudit: 'Security Audit',

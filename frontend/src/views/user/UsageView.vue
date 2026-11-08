@@ -1,7 +1,14 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
-      <UsageStatsCards :stats="usageStats" :show-account-cost="false" :strike-standard-cost="true" />
+      <!-- show-cost-profit=false：普通用户不看「总成本 / 总盈利」（2026-11-06 主人要求），
+           那两张卡是我们的经营数据。 -->
+      <UsageStatsCards
+        :stats="usageStats"
+        :show-account-cost="false"
+        :strike-standard-cost="true"
+        :show-cost-profit="false"
+      />
 
       <div class="space-y-4">
         <div class="card p-4">

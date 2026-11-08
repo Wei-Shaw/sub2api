@@ -126,6 +126,10 @@ type upstreamBlockInputDTO struct {
 	ChannelID int `json:"channel_id"`
 	// Model 模型名（scope=channel_model 时必填）。
 	Model string `json:"model"`
+	// Reason 拉黑理由。2026-11-04 起上游 A6 把它改成必填项
+	// （不带就回 user_supplier_block_reason_required 400），
+	// 所以这里允许前端传，留空时由服务端补默认理由。
+	Reason string `json:"reason"`
 }
 
 // BlockUpstream 在上游 A6 侧拉黑「整个商户」或「某渠道的某模型」。
@@ -160,6 +164,8 @@ func (h *UpstreamCostSettingsHandler) BlockUpstream(c *gin.Context) {
 	}
 
 	scope := strings.TrimSpace(input.Scope)
+	// 上游把 reason 变成必填之后，前端不传也不能让按钮坏掉：统一在这里兜底。
+	reason := strings.TrimSpace(input.Reason)
 	var err error
 	switch scope {
 	case "supplier":
@@ -168,8 +174,8 @@ func (h *UpstreamCostSettingsHandler) BlockUpstream(c *gin.Context) {
 			return
 		}
 		logger.LegacyPrintf("handler.admin.upstream_block",
-			"[UpstreamBlock] 请求拉黑整个商户: supplier_id=%d", input.SupplierID)
-		err = client.BlockSupplier(c.Request.Context(), input.SupplierID)
+			"[UpstreamBlock] 请求拉黑整个商户: supplier_id=%d reason=%q", input.SupplierID, reason)
+		err = client.BlockSupplier(c.Request.Context(), input.SupplierID, reason)
 	case "channel_model":
 		model := strings.TrimSpace(input.Model)
 		if input.ChannelID <= 0 || model == "" {
@@ -177,8 +183,8 @@ func (h *UpstreamCostSettingsHandler) BlockUpstream(c *gin.Context) {
 			return
 		}
 		logger.LegacyPrintf("handler.admin.upstream_block",
-			"[UpstreamBlock] 请求拉黑渠道模型: channel_id=%d model=%s", input.ChannelID, model)
-		err = client.DisableChannelModel(c.Request.Context(), input.ChannelID, model)
+			"[UpstreamBlock] 请求拉黑渠道模型: channel_id=%d model=%s reason=%q", input.ChannelID, model, reason)
+		err = client.DisableChannelModel(c.Request.Context(), input.ChannelID, model, reason)
 	default:
 		response.BadRequest(c, "UPSTREAM_BLOCK_BAD_REQUEST: scope 必须是 supplier 或 channel_model")
 		return

@@ -56,6 +56,72 @@ func (h *OpsHandler) UpdateEmailNotificationConfig(c *gin.Context) {
 	response.Success(c, updated)
 }
 
+// GetFeishuNotificationConfig returns the Feishu group notification config (DB-backed).
+// GET /api/v1/admin/ops/feishu-notification/config
+func (h *OpsHandler) GetFeishuNotificationConfig(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	cfg, err := h.opsService.GetFeishuNotificationConfig(c.Request.Context())
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "Failed to get feishu notification config")
+		return
+	}
+	response.Success(c, cfg)
+}
+
+// UpdateFeishuNotificationConfig updates the Feishu group notification config (DB-backed).
+// PUT /api/v1/admin/ops/feishu-notification/config
+func (h *OpsHandler) UpdateFeishuNotificationConfig(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	var req service.OpsFeishuNotificationConfigUpdateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.BadRequest(c, "Invalid request body")
+		return
+	}
+
+	updated, err := h.opsService.UpdateFeishuNotificationConfig(c.Request.Context(), &req)
+	if err != nil {
+		// 这里绝大多数失败是参数校验（地址为空/格式不对/数值越界），按 400 返回。
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	response.Success(c, updated)
+}
+
+// TestFeishuNotification sends a test message through the saved webhook.
+// POST /api/v1/admin/ops/feishu-notification/test
+func (h *OpsHandler) TestFeishuNotification(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	if err := h.opsService.RequireMonitoringEnabled(c.Request.Context()); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
+	if err := h.opsService.SendFeishuTestNotification(c.Request.Context()); err != nil {
+		response.Error(c, http.StatusBadRequest, err.Error())
+		return
+	}
+	response.Success(c, gin.H{"sent": true})
+}
+
 // GetAlertRuntimeSettings returns Ops alert evaluator runtime settings (DB-backed).
 // GET /api/v1/admin/ops/runtime/alert
 func (h *OpsHandler) GetAlertRuntimeSettings(c *gin.Context) {

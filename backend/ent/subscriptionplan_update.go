@@ -216,6 +216,41 @@ func (_u *SubscriptionPlanUpdate) SetNillableForSale(v *bool) *SubscriptionPlanU
 	return _u
 }
 
+// SetPurchaseLimitEnabled sets the "purchase_limit_enabled" field.
+func (_u *SubscriptionPlanUpdate) SetPurchaseLimitEnabled(v bool) *SubscriptionPlanUpdate {
+	_u.mutation.SetPurchaseLimitEnabled(v)
+	return _u
+}
+
+// SetNillablePurchaseLimitEnabled sets the "purchase_limit_enabled" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdate) SetNillablePurchaseLimitEnabled(v *bool) *SubscriptionPlanUpdate {
+	if v != nil {
+		_u.SetPurchaseLimitEnabled(*v)
+	}
+	return _u
+}
+
+// SetPurchaseLimitCount sets the "purchase_limit_count" field.
+func (_u *SubscriptionPlanUpdate) SetPurchaseLimitCount(v int) *SubscriptionPlanUpdate {
+	_u.mutation.ResetPurchaseLimitCount()
+	_u.mutation.SetPurchaseLimitCount(v)
+	return _u
+}
+
+// SetNillablePurchaseLimitCount sets the "purchase_limit_count" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdate) SetNillablePurchaseLimitCount(v *int) *SubscriptionPlanUpdate {
+	if v != nil {
+		_u.SetPurchaseLimitCount(*v)
+	}
+	return _u
+}
+
+// AddPurchaseLimitCount adds value to the "purchase_limit_count" field.
+func (_u *SubscriptionPlanUpdate) AddPurchaseLimitCount(v int) *SubscriptionPlanUpdate {
+	_u.mutation.AddPurchaseLimitCount(v)
+	return _u
+}
+
 // SetSortOrder sets the "sort_order" field.
 func (_u *SubscriptionPlanUpdate) SetSortOrder(v int) *SubscriptionPlanUpdate {
 	_u.mutation.ResetSortOrder()
@@ -368,6 +403,15 @@ func (_u *SubscriptionPlanUpdate) sqlSave(ctx context.Context) (_node int, err e
 	}
 	if value, ok := _u.mutation.ForSale(); ok {
 		_spec.SetField(subscriptionplan.FieldForSale, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.PurchaseLimitEnabled(); ok {
+		_spec.SetField(subscriptionplan.FieldPurchaseLimitEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.PurchaseLimitCount(); ok {
+		_spec.SetField(subscriptionplan.FieldPurchaseLimitCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPurchaseLimitCount(); ok {
+		_spec.AddField(subscriptionplan.FieldPurchaseLimitCount, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.SortOrder(); ok {
 		_spec.SetField(subscriptionplan.FieldSortOrder, field.TypeInt, value)
@@ -586,6 +630,41 @@ func (_u *SubscriptionPlanUpdateOne) SetNillableForSale(v *bool) *SubscriptionPl
 	return _u
 }
 
+// SetPurchaseLimitEnabled sets the "purchase_limit_enabled" field.
+func (_u *SubscriptionPlanUpdateOne) SetPurchaseLimitEnabled(v bool) *SubscriptionPlanUpdateOne {
+	_u.mutation.SetPurchaseLimitEnabled(v)
+	return _u
+}
+
+// SetNillablePurchaseLimitEnabled sets the "purchase_limit_enabled" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdateOne) SetNillablePurchaseLimitEnabled(v *bool) *SubscriptionPlanUpdateOne {
+	if v != nil {
+		_u.SetPurchaseLimitEnabled(*v)
+	}
+	return _u
+}
+
+// SetPurchaseLimitCount sets the "purchase_limit_count" field.
+func (_u *SubscriptionPlanUpdateOne) SetPurchaseLimitCount(v int) *SubscriptionPlanUpdateOne {
+	_u.mutation.ResetPurchaseLimitCount()
+	_u.mutation.SetPurchaseLimitCount(v)
+	return _u
+}
+
+// SetNillablePurchaseLimitCount sets the "purchase_limit_count" field if the given value is not nil.
+func (_u *SubscriptionPlanUpdateOne) SetNillablePurchaseLimitCount(v *int) *SubscriptionPlanUpdateOne {
+	if v != nil {
+		_u.SetPurchaseLimitCount(*v)
+	}
+	return _u
+}
+
+// AddPurchaseLimitCount adds value to the "purchase_limit_count" field.
+func (_u *SubscriptionPlanUpdateOne) AddPurchaseLimitCount(v int) *SubscriptionPlanUpdateOne {
+	_u.mutation.AddPurchaseLimitCount(v)
+	return _u
+}
+
 // SetSortOrder sets the "sort_order" field.
 func (_u *SubscriptionPlanUpdateOne) SetSortOrder(v int) *SubscriptionPlanUpdateOne {
 	_u.mutation.ResetSortOrder()
@@ -768,6 +847,15 @@ func (_u *SubscriptionPlanUpdateOne) sqlSave(ctx context.Context) (_node *Subscr
 	}
 	if value, ok := _u.mutation.ForSale(); ok {
 		_spec.SetField(subscriptionplan.FieldForSale, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.PurchaseLimitEnabled(); ok {
+		_spec.SetField(subscriptionplan.FieldPurchaseLimitEnabled, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.PurchaseLimitCount(); ok {
+		_spec.SetField(subscriptionplan.FieldPurchaseLimitCount, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedPurchaseLimitCount(); ok {
+		_spec.AddField(subscriptionplan.FieldPurchaseLimitCount, field.TypeInt, value)
 	}
 	if value, ok := _u.mutation.SortOrder(); ok {
 		_spec.SetField(subscriptionplan.FieldSortOrder, field.TypeInt, value)

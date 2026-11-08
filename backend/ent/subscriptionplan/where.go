@@ -109,6 +109,16 @@ func ForSale(v bool) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldEQ(FieldForSale, v))
 }
 
+// PurchaseLimitEnabled applies equality check predicate on the "purchase_limit_enabled" field. It's identical to PurchaseLimitEnabledEQ.
+func PurchaseLimitEnabled(v bool) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldEQ(FieldPurchaseLimitEnabled, v))
+}
+
+// PurchaseLimitCount applies equality check predicate on the "purchase_limit_count" field. It's identical to PurchaseLimitCountEQ.
+func PurchaseLimitCount(v int) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldEQ(FieldPurchaseLimitCount, v))
+}
+
 // SortOrder applies equality check predicate on the "sort_order" field. It's identical to SortOrderEQ.
 func SortOrder(v int) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldEQ(FieldSortOrder, v))
@@ -692,6 +702,56 @@ func ForSaleEQ(v bool) predicate.SubscriptionPlan {
 // ForSaleNEQ applies the NEQ predicate on the "for_sale" field.
 func ForSaleNEQ(v bool) predicate.SubscriptionPlan {
 	return predicate.SubscriptionPlan(sql.FieldNEQ(FieldForSale, v))
+}
+
+// PurchaseLimitEnabledEQ applies the EQ predicate on the "purchase_limit_enabled" field.
+func PurchaseLimitEnabledEQ(v bool) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldEQ(FieldPurchaseLimitEnabled, v))
+}
+
+// PurchaseLimitEnabledNEQ applies the NEQ predicate on the "purchase_limit_enabled" field.
+func PurchaseLimitEnabledNEQ(v bool) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldNEQ(FieldPurchaseLimitEnabled, v))
+}
+
+// PurchaseLimitCountEQ applies the EQ predicate on the "purchase_limit_count" field.
+func PurchaseLimitCountEQ(v int) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldEQ(FieldPurchaseLimitCount, v))
+}
+
+// PurchaseLimitCountNEQ applies the NEQ predicate on the "purchase_limit_count" field.
+func PurchaseLimitCountNEQ(v int) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldNEQ(FieldPurchaseLimitCount, v))
+}
+
+// PurchaseLimitCountIn applies the In predicate on the "purchase_limit_count" field.
+func PurchaseLimitCountIn(vs ...int) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldIn(FieldPurchaseLimitCount, vs...))
+}
+
+// PurchaseLimitCountNotIn applies the NotIn predicate on the "purchase_limit_count" field.
+func PurchaseLimitCountNotIn(vs ...int) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldNotIn(FieldPurchaseLimitCount, vs...))
+}
+
+// PurchaseLimitCountGT applies the GT predicate on the "purchase_limit_count" field.
+func PurchaseLimitCountGT(v int) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldGT(FieldPurchaseLimitCount, v))
+}
+
+// PurchaseLimitCountGTE applies the GTE predicate on the "purchase_limit_count" field.
+func PurchaseLimitCountGTE(v int) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldGTE(FieldPurchaseLimitCount, v))
+}
+
+// PurchaseLimitCountLT applies the LT predicate on the "purchase_limit_count" field.
+func PurchaseLimitCountLT(v int) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldLT(FieldPurchaseLimitCount, v))
+}
+
+// PurchaseLimitCountLTE applies the LTE predicate on the "purchase_limit_count" field.
+func PurchaseLimitCountLTE(v int) predicate.SubscriptionPlan {
+	return predicate.SubscriptionPlan(sql.FieldLTE(FieldPurchaseLimitCount, v))
 }
 
 // SortOrderEQ applies the EQ predicate on the "sort_order" field.

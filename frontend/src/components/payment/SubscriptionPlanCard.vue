@@ -90,15 +90,43 @@
         </div>
       </div>
 
+      <!-- 每人限购提示（2026-11-06 主人要求）：
+           限购开着就写明「限购 N 次 / 已买 M 次」，达到上限时按钮置灰且不再触发选择。 -->
+      <p
+        v-if="plan.purchase_limit_enabled && (plan.purchase_limit_count || 0) > 0"
+        class="mb-2 text-xs"
+        :class="plan.purchase_limit_reached ? 'text-red-500' : 'text-gray-500 dark:text-gray-400'"
+        data-testid="plan-purchase-limit"
+      >
+        <template v-if="plan.purchase_limit_reached">
+          {{ t('payment.admin.purchaseLimitReached') }}
+          （{{ t('payment.limitPerUser', { count: plan.purchase_limit_count }) }}）
+        </template>
+        <template v-else>
+          {{ t('payment.limitPerUser', { count: plan.purchase_limit_count }) }}
+          <span v-if="(plan.purchased_count || 0) > 0">
+            · {{ t('payment.admin.purchasedTimes', { count: plan.purchased_count }) }}
+          </span>
+        </template>
+      </p>
+
       <div class="flex-1" />
 
       <!-- Subscribe Button -->
       <button
         type="button"
-        :class="['w-full rounded-xl py-2.5 text-sm font-semibold transition-all active:scale-[0.98]', btnClass]"
-        @click="emit('select', plan)"
+        :disabled="plan.purchase_limit_reached === true"
+        :class="[
+          'w-full rounded-xl py-2.5 text-sm font-semibold transition-all active:scale-[0.98]',
+          plan.purchase_limit_reached === true
+            ? 'cursor-not-allowed bg-gray-200 text-gray-400 dark:bg-dark-700 dark:text-dark-400'
+            : btnClass
+        ]"
+        @click="plan.purchase_limit_reached === true ? undefined : emit('select', plan)"
       >
-        {{ isRenewal ? t('payment.renewNow') : t('payment.subscribeNow') }}
+        {{ plan.purchase_limit_reached === true
+          ? t('payment.admin.purchaseLimitReached')
+          : (isRenewal ? t('payment.renewNow') : t('payment.subscribeNow')) }}
       </button>
     </div>
   </div>

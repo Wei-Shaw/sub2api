@@ -982,7 +982,7 @@ func a6HasMorePage(total, page, pageSize, itemCount int) bool {
 //
 // ⚠️ 有副作用：调用方应先取该行的上游商户 ID，并把「影响面」（该商户名下的
 // 固定绑定）提示给操作者 —— 被拉黑商户名下的 pin 不会自动改绑。
-func (c *A6Client) BlockSupplier(ctx context.Context, supplierID int) error {
+func (c *A6Client) BlockSupplier(ctx context.Context, supplierID int, reason string) error {
 	if supplierID <= 0 {
 		return ErrReconciliationA6RequestFailed.WithCause(errors.New("supplier id must be positive"))
 	}
@@ -990,13 +990,22 @@ func (c *A6Client) BlockSupplier(ctx context.Context, supplierID int) error {
 	if err := c.validate(cfg); err != nil {
 		return err
 	}
-	return c.postJSON(ctx, cfg, fmt.Sprintf("/api/marketplace/suppliers/%d/block", supplierID), nil)
+	// 2026-11-04 实测：上游把 reason 改成了必填项，不带就回
+	// user_supplier_block_reason_required（400），拉黑直接失败。
+	// 空理由用默认值兜底，避免调用方漏传又把按钮弄坏一次。
+	resolved := a6BlockReasonOrDefault(reason)
+	params := url.Values{}
+	params.Set("reason", resolved)
+	// 双写：A6 只认请求体里的 reason，query 上的那份额外满足旧部署。
+	return c.postJSONWithBody(ctx, cfg,
+		fmt.Sprintf("/api/marketplace/suppliers/%d/block", supplierID),
+		params, map[string]string{"reason": resolved})
 }
 
 // DisableChannelModel 拉黑【某渠道的某个模型】，不影响该渠道的其它模型。
 //
 // 对应 A6：POST /api/marketplace/channels/{id}/disable?model={模型名}
-func (c *A6Client) DisableChannelModel(ctx context.Context, channelID int, model string) error {
+func (c *A6Client) DisableChannelModel(ctx context.Context, channelID int, model string, reason string) error {
 	if channelID <= 0 {
 		return ErrReconciliationA6RequestFailed.WithCause(errors.New("channel id must be positive"))
 	}
@@ -1008,9 +1017,30 @@ func (c *A6Client) DisableChannelModel(ctx context.Context, channelID int, model
 	if err := c.validate(cfg); err != nil {
 		return err
 	}
+	resolved := a6BlockReasonOrDefault(reason)
 	params := url.Values{}
 	params.Set("model", model)
-	return c.postJSON(ctx, cfg, fmt.Sprintf("/api/marketplace/channels/%d/disable", channelID), params)
+	params.Set("reason", resolved)
+	// 同 BlockSupplier：reason 只从请求体里读，query 上那份留给旧部署。
+	// model 也一并放进 body：上游若按 body 取参，只挂在 query 上会被当成没传。
+	return c.postJSONWithBody(ctx, cfg,
+		fmt.Sprintf("/api/marketplace/channels/%d/disable", channelID),
+		params, map[string]string{"model": model, "reason": resolved})
+}
+
+// A6BlockReasonDefault 是拉黑时使用的默认理由。
+//
+// 上游把 reason 改成必填之后，「不说理由就不许拉黑」。这里给一个符合真实
+// 场景的默认值，管理员不填也能拉成功，而不是被 400 挡在门口。
+const A6BlockReasonDefault = "成功率偏低"
+
+// a6BlockReasonOrDefault 归一化拉黑理由：去空白，空则回默认值。
+func a6BlockReasonOrDefault(reason string) string {
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		return A6BlockReasonDefault
+	}
+	return reason
 }
 
 // A6BlockList 是上游当前黑名单的一份快照。
@@ -1049,15 +1079,56 @@ func (c *A6Client) ListBlocks(ctx context.Context) (A6BlockList, error) {
 	if err := c.validate(cfg); err != nil {
 		return out, err
 	}
-	envelope, err := c.getJSONWithRetry(ctx, cfg, "/api/marketplace/my-blocks", nil)
-	if err != nil {
-		return out, err
+	// A6 的黑名单接口是**分页**的，默认一页只给 10 条（2026-11-04 实测）。
+	// 不翻页就会出现「明明拉了几百条、页面永远显示 10 条」的假象，
+	// 所以这里按页拉，直到某一页没有新增为止。
+	const a6BlockPageSize = 200
+	const a6BlockMaxPages = 50
+	var envelope map[string]any
+	var data map[string]any
+	for page := 1; page <= a6BlockMaxPages; page++ {
+		params := url.Values{}
+		params.Set("page", strconv.Itoa(page))
+		params.Set("page_size", strconv.Itoa(a6BlockPageSize))
+		pageEnvelope, pageErr := c.getJSONWithRetry(ctx, cfg, "/api/marketplace/my-blocks", params)
+		if pageErr != nil {
+			if page == 1 {
+				return out, pageErr
+			}
+			break
+		}
+		if err := a6CheckSuccess(pageEnvelope); err != nil {
+			if page == 1 {
+				return out, err
+			}
+			break
+		}
+		envelope = pageEnvelope
+		data, _ = envelope["data"].(map[string]any)
+		before := len(out.SupplierIDs) + len(out.ChannelModelKeys)
+		a6CollectBlocks(data, &out)
+		// 这一页什么都没新增：说明要么到底了，要么上游忽略了 page 参数。
+		// 两种情况都该停，否则会白转 50 圈。
+		if len(out.SupplierIDs)+len(out.ChannelModelKeys) == before {
+			logger.LegacyPrintf(a6LogComponent,
+				"my_blocks_page_stop: page=%d suppliers=%d channels=%d",
+				page, len(out.SupplierIDs), len(out.ChannelModelKeys))
+			break
+		}
 	}
-	if err := a6CheckSuccess(envelope); err != nil {
-		return out, err
-	}
-	data, _ := envelope["data"].(map[string]any)
 
+	return out, nil
+}
+
+// a6CollectBlocks 把一页黑名单结果并进 out。
+//
+// 字段名要兼容两种写法：上游前面返回的是 channel_id + model，
+// 2026-11-04 实测返回的是 id + model_name。只认一种就会解析出 0 条，
+// 于是「明明拉黑了、页面却显示没拉黑」。
+func a6CollectBlocks(data map[string]any, out *A6BlockList) {
+	if data == nil || out == nil {
+		return
+	}
 	for _, raw := range a6AnySlice(data["suppliers"]) {
 		item, ok := raw.(map[string]any)
 		if !ok {
@@ -1073,12 +1144,17 @@ func (c *A6Client) ListBlocks(ctx context.Context) (A6BlockList, error) {
 			continue
 		}
 		chID := a6OptionalInt(item, "channel_id")
+		if chID == nil {
+			chID = a6OptionalInt(item, "id")
+		}
 		model := a6OptionalString(item, "model")
+		if model == "" {
+			model = a6OptionalString(item, "model_name")
+		}
 		if chID != nil && *chID > 0 && model != "" {
 			out.ChannelModelKeys[A6ChannelModelKey(*chID, model)] = struct{}{}
 		}
 	}
-	return out, nil
 }
 
 // a6AnySlice 把可能是 nil / 非数组的值安全地取成切片。
@@ -1096,13 +1172,39 @@ func a6AnySlice(v any) []any {
 // 刻意**不重试**：拉黑是有副作用的写操作，若第一次其实已经成功、只是响应丢失，
 // 重试就会重复调用；而且管理员正盯着页面等结果，失败直接回报比悄悄重试更可控。
 func (c *A6Client) postJSON(ctx context.Context, cfg ReconciliationA6Config, path string, params url.Values) error {
+	return c.postJSONWithBody(ctx, cfg, path, params, nil)
+}
+
+// postJSONWithBody 发一次带 JSON 请求体的 POST。
+//
+// 为什么拉黑必须走这个而不是 query：2026-11-04 实测发现 A6 把 reason 加成了
+// 必填，且**只从请求体里读**——挂在 URL 上照样回 user_supplier_block_reason_required。
+// 双写（query + body）是故意的：便宜且能让上游两种读法都满足。
+func (c *A6Client) postJSONWithBody(
+	ctx context.Context,
+	cfg ReconciliationA6Config,
+	path string,
+	params url.Values,
+	body any,
+) error {
 	requestURL := cfg.BaseURL + path
 	if len(params) > 0 {
 		requestURL += "?" + params.Encode()
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, nil)
+	var payload io.Reader
+	if body != nil {
+		raw, err := json.Marshal(body)
+		if err != nil {
+			return ErrReconciliationA6RequestFailed.WithCause(err)
+		}
+		payload = bytes.NewReader(raw)
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, payload)
 	if err != nil {
 		return ErrReconciliationA6RequestFailed.WithCause(err)
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
 	}
 	req.Header.Set("Authorization", "Bearer "+cfg.AccessToken)
 	req.Header.Set("New-API-User", cfg.UserID)

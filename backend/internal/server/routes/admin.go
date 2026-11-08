@@ -214,6 +214,11 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		ops.GET("/email-notification/config", h.Admin.Ops.GetEmailNotificationConfig)
 		ops.PUT("/email-notification/config", h.Admin.Ops.UpdateEmailNotificationConfig)
 
+		// Feishu (飞书) group notification config (DB-backed)
+		ops.GET("/feishu-notification/config", h.Admin.Ops.GetFeishuNotificationConfig)
+		ops.PUT("/feishu-notification/config", h.Admin.Ops.UpdateFeishuNotificationConfig)
+		ops.POST("/feishu-notification/test", h.Admin.Ops.TestFeishuNotification)
+
 		// Runtime settings (DB-backed)
 		runtime := ops.Group("/runtime")
 		{

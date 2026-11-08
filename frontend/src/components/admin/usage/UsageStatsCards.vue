@@ -80,8 +80,9 @@
       </div>
     </div>
     <!-- 总成本：紧跟「总消费」之后。总消费是收进来的钱，总成本是付给上游的钱，
-         并排才看得出赚不赚；被 token/耗时卡片隔开的话就得来回找了。 -->
-    <div class="card p-4 flex items-center gap-3">
+         并排才看得出赚不赚；被 token/耗时卡片隔开的话就得来回找了。
+         v-if：只给管理员看（2026-11-06 主人要求）。 -->
+    <div v-if="showCostProfit" class="card p-4 flex items-center gap-3">
       <div class="rounded-lg bg-sky-100 p-2 dark:bg-sky-900/30 text-sky-600">
         <Icon name="dollar" size="md" />
       </div>
@@ -100,8 +101,9 @@
         </p>
       </div>
     </div>
-    <!-- 总盈利 = 总消费 − 总成本。正绿负红，与明细行的盈亏列同一套语义。 -->
-    <div class="card p-4 flex items-center gap-3">
+    <!-- 总盈利 = 总消费 − 总成本。正绿负红，与明细行的盈亏列同一套语义。
+         v-if：同「总成本」，只给管理员看。 -->
+    <div v-if="showCostProfit" class="card p-4 flex items-center gap-3">
       <div
         class="rounded-lg p-2"
         :class="totalProfit >= 0 ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600' : 'bg-red-100 dark:bg-red-900/30 text-red-600'"
@@ -144,9 +146,18 @@ const props = withDefaults(defineProps<{
   stats: (AdminUsageStatsResponse | UsageStatsResponse) | null
   showAccountCost?: boolean
   strikeStandardCost?: boolean
+  /**
+   * 是否显示「总成本」「总盈利」两张卡。
+   *
+   * 2026-11-06 主人要求：这两张卡是**经营数据**（我们付给上游多少钱、赚了多少），
+   * 只给管理员看。普通用户的使用记录页也复用了这个组件，所以必须显式关掉，
+   * 否则用户能直接看到我们的成本结构。
+   */
+  showCostProfit?: boolean
 }>(), {
   showAccountCost: true,
   strikeStandardCost: false,
+  showCostProfit: true,
 })
 
 const { t } = useI18n()
@@ -157,6 +168,7 @@ const totalAccountCost = computed(() => {
 })
 const showAccountCost = computed(() => props.showAccountCost)
 const strikeStandardCost = computed(() => props.strikeStandardCost)
+const showCostProfit = computed(() => props.showCostProfit)
 
 const formatDuration = (ms: number) =>
   ms < 1000 ? `${ms.toFixed(0)}ms` : `${(ms / 1000).toFixed(2)}s`

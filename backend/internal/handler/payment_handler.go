@@ -71,6 +71,9 @@ func (h *PaymentHandler) GetPlans(c *gin.Context) {
 		ProductName        string   `json:"product_name"`
 		ForSale            bool     `json:"for_sale"`
 		SortOrder          int      `json:"sort_order"`
+		// 每人限购（2026-11-06 主人要求）
+		PurchaseLimitEnabled bool `json:"purchase_limit_enabled"`
+		PurchaseLimitCount   int  `json:"purchase_limit_count"`
 	}
 	groupInfo := h.configService.GetGroupInfoMap(c.Request.Context(), plans)
 	result := make([]planWithPlatform, 0, len(plans))
@@ -85,6 +88,8 @@ func (h *PaymentHandler) GetPlans(c *gin.Context) {
 			Currency:     p.Currency,
 			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: p.Features,
 			ProductName: p.ProductName, ForSale: p.ForSale, SortOrder: p.SortOrder,
+			PurchaseLimitEnabled: p.PurchaseLimitEnabled,
+			PurchaseLimitCount:   p.PurchaseLimitCount,
 		})
 	}
 	response.Success(c, result)
@@ -121,9 +126,28 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 	// Fetch plans with group info
 	plans, _ := h.configService.ListPlansForSale(ctx)
 	groupInfo := h.configService.GetGroupInfoMap(ctx, plans)
+
+	// 每人限购：把当前用户已买次数一次查出来（一条聚合 SQL），
+	// 前端据此把「限购」的套餐按钮标成已购买，不用每个套餐单独问一次。
+	limitPlanIDs := make([]int64, 0, len(plans))
+	for _, p := range plans {
+		if p.PurchaseLimitEnabled && p.PurchaseLimitCount > 0 {
+			limitPlanIDs = append(limitPlanIDs, int64(p.ID))
+		}
+	}
+	purchased := map[int64]int{}
+	if len(limitPlanIDs) > 0 {
+		if subject, ok := middleware2.GetAuthSubjectFromContext(c); ok && subject.UserID > 0 {
+			if counts, countErr := h.paymentService.CountUserPaidPlanOrders(ctx, subject.UserID, limitPlanIDs); countErr == nil {
+				purchased = counts
+			}
+		}
+	}
+
 	planList := make([]checkoutPlan, 0, len(plans))
 	for _, p := range plans {
 		gi := groupInfo[p.GroupID]
+		bought := purchased[int64(p.ID)]
 		planList = append(planList, checkoutPlan{
 			ID: int64(p.ID), GroupID: p.GroupID,
 			GroupPlatform: gi.Platform, GroupName: gi.Name,
@@ -136,7 +160,11 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 			Name:        p.Name, Description: p.Description, Price: p.Price, OriginalPrice: p.OriginalPrice,
 			Currency:     p.Currency,
 			ValidityDays: p.ValidityDays, ValidityUnit: p.ValidityUnit, Features: parseFeatures(p.Features),
-			ProductName: p.ProductName,
+			ProductName:          p.ProductName,
+			PurchaseLimitEnabled: p.PurchaseLimitEnabled,
+			PurchaseLimitCount:   p.PurchaseLimitCount,
+			PurchasedCount:       bought,
+			PurchaseLimitReached: p.PurchaseLimitEnabled && p.PurchaseLimitCount > 0 && bought >= p.PurchaseLimitCount,
 		})
 	}
 
@@ -196,6 +224,13 @@ type checkoutPlan struct {
 	ValidityUnit       string   `json:"validity_unit"`
 	Features           []string `json:"features"`
 	ProductName        string   `json:"product_name"`
+	// 每人限购（2026-11-06 主人要求）：供前端在按钮上体现「已购买 / 限购 N 次」。
+	PurchaseLimitEnabled bool `json:"purchase_limit_enabled"`
+	PurchaseLimitCount   int  `json:"purchase_limit_count"`
+	// PurchasedCount 是**当前登录用户**已为该套餐成功支付的订单数。
+	// PurchaseLimitReached 由后端算好，前端不用自己比大小，免得口径不一致。
+	PurchasedCount       int  `json:"purchased_count"`
+	PurchaseLimitReached bool `json:"purchase_limit_reached"`
 }
 
 // parseFeatures splits a newline-separated features string into a string slice.

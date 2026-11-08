@@ -183,3 +183,18 @@ backend/.tmp-sub2api-*
 
 # 本地 worktree 工作区（.worktrees/ 下是分支检出，不入库）
 .worktrees/
+
+# 主人控制台（仅本地，不提交）
+/OWNER.md
+/PROGRESS.md
+/客户筛选标准.md
+/拉黑记录.md
+/安全加固建议.md
+/temp/
+
+# harness 三件套（本地控制台，不提交）
+# 注：AGENTS.md 已被上面第 130 行忽略，这里不重复
+/feature_list.json
+/init.ps1
+/init.sh
+/会话归档/

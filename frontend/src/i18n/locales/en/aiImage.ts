@@ -1,7 +1,8 @@
 export default {
   aiImage: {
-    title: 'AI Image',
+    title: 'Product Photo Studio',
     subtitle: 'Paste a key created on this platform, then enter a prompt to generate or edit images.',
+    backHome: 'Back to Console',
 
     modules: {
       title: 'Modules',

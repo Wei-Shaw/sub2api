@@ -1,7 +1,8 @@
 export default {
   aiImage: {
-    title: 'AI生图',
+    title: '电商改图',
     subtitle: '填入平台创建的密钥，输入提示词即可生成或改图。',
+    backHome: '返回控制台',
 
     modules: {
       title: '功能模块',
@@ -37,7 +38,7 @@ export default {
       invalid: '密钥无效或已停用，请检查后重试。',
       notImageModel: '这个密钥不是生图模型',
       notImageModelHint:
-        '该密钥所属分组（{group}）没有开启生图能力，无法用于 AI 生图。请到「API 密钥」换一个属于生图分组的密钥，或联系管理员为分组开启生图。',
+        '该密钥所属分组（{group}）没有开启生图能力，无法用于电商改图。请到「API 密钥」换一个属于生图分组的密钥，或联系管理员为分组开启生图。',
       notOwned:
         '这个密钥不属于当前账号，无法在页面内校验。请使用当前账号在本平台创建的密钥。',
       empty: '请先填入密钥。',

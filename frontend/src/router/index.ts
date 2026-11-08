@@ -542,7 +542,7 @@ const routes: RouteRecordRaw[] = [
     component: () => import('@/views/user/AIImageView.vue'),
     meta: {
       requiresAuth: true,
-      title: 'AI Image',
+      title: 'Photo Studio',
       titleKey: 'nav.aiImage'
     }
   },

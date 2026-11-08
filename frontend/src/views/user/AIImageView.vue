@@ -1,14 +1,34 @@
 <template>
-  <AppLayout>
-    <!-- 铺满可用宽度：不设 max-w。
-         这个页面是「左边看参数、中间看图」的重活页面，主图越大越好核对。
-         所以除了左侧导航和顶部浏览器那两条，中间全部给它用。 -->
-    <div class="flex w-full flex-col gap-4">
-      <!-- 页头 -->
-      <div class="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 class="text-xl font-semibold text-gray-900 dark:text-white">{{ t('aiImage.title') }}</h1>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('aiImage.subtitle') }}</p>
+  <!-- 2026-11-04（主人要求）：本页是「工具型页面」，进页后不要平台侧边栏，
+       整屏交给画布；顶部保留一条极简返回条，否则用户出不去。 -->
+  <AppLayout :show-sidebar="false" :show-header="false">
+    <div class="min-h-screen bg-gradient-to-br from-primary-50/70 via-gray-50 to-cyan-50/60 dark:from-dark-950 dark:via-dark-950 dark:to-dark-900">
+      <!-- 极简顶部条：返回 + 标题 + 密钥状态 -->
+      <div
+        class="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-3 border-b border-primary-100/80 bg-white/85 px-4 py-2.5 shadow-[0_1px_0_0_rgba(20,184,166,0.08)] backdrop-blur dark:border-dark-700 dark:bg-dark-900/90"
+      >
+        <!-- 顶部一条细渐变，给整页定个色，避免灰白一片 -->
+        <span
+          class="pointer-events-none absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-primary-400 via-cyan-400 to-sky-300"
+        ></span>
+        <div class="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm shrink-0"
+            data-testid="back-to-home"
+            @click="router.push('/dashboard')"
+          >
+            <Icon name="chevronLeft" size="sm" class="mr-1" />
+            {{ t('aiImage.backHome') }}
+          </button>
+          <span
+            class="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-gradient-to-br from-primary-500 to-cyan-400 text-white shadow-sm"
+          >
+            <Icon name="sparkles" size="sm" />
+          </span>
+          <h1 class="truncate text-base font-semibold text-gray-900 dark:text-white">
+            {{ t('aiImage.title') }}
+          </h1>
         </div>
         <div class="flex items-center gap-2">
           <span
@@ -18,11 +38,6 @@
             <Icon name="checkCircle" size="sm" />
             {{ keyGroupName ? t('aiImage.key.valid', { group: keyGroupName }) : t('aiImage.key.validNoGroup') }}
           </span>
-          <!-- 这个按钮只是展开/收起密钥面板，不负责保存。
-               两点必须成立，否则用户会以为「点了没反应」：
-               1. 文案不能和面板里的「保存密钥」重复；
-               2. 密钥可用之后仍然要能打开面板，否则永远换不了密钥。
-          -->
           <button type="button" class="btn btn-secondary btn-sm" @click="showKeyPanel = !showKeyPanel">
             <Icon name="key" size="sm" class="mr-1.5" />
             {{ keyState === 'valid' ? t('aiImage.key.change') : t('aiImage.key.configure') }}
@@ -30,13 +45,150 @@
         </div>
       </div>
 
+    <div class="flex w-full flex-col gap-4 p-4 md:p-6">
+      <!-- 副标题：主标题与密钥状态都已挪到顶部条，这里只留一句说明 -->
+      <p class="text-sm text-gray-500 dark:text-gray-400">{{ t('aiImage.subtitle') }}</p>
+
+      <!-- 2026-11-04：改成「左参数 / 右结果」两栏。
+           参考 A6 的电商改图页：左边一列窄参数（上传、模型、比例、市场、数量、商品信息、生成），
+           右边一大块结果画布。窄屏仍然是上下堆叠，不影响手机端。
+           只调 DOM 摆放，不动任何功能逻辑与 data-testid。 -->
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-start">
+        <!-- 最左：功能栏。主人要求「左侧的每个功能以按钮的形式，与对应平台一致」。 -->
+        <aside class="w-full shrink-0 lg:w-[186px]">
+          <!-- ============ 功能模块（左侧功能栏，A6 风格竖排按钮）============
+               主人反馈：这些按钮原来埋在提示词卡片的下半部分，根本注意不到。
+               所以统一提到页面最上面一排，点哪个就在下面展开哪个模块的内容，
+               提示词输入框顺位向下排。
+
+               分两档：主要功能是「单张图片放入去生图」和「爆款复刻」——
+               这两个是日常真在用的；其余四个是偶尔才用到的辅助，归到次要里，
+               免得一上来一堆按钮分不清主次。
+          -->
+          <div
+            class="flex flex-col gap-1.5 rounded-2xl border border-primary-100/80 bg-white p-3 shadow-sm shadow-primary-100/40 dark:border-dark-700 dark:bg-dark-800 dark:shadow-none"
+            data-testid="module-bar"
+          >
+
+            <!-- 主要功能：改成顶部竖向胶囊列表（对齐 A6 的「多视角白底商品图 / 服装套图 / 白底图」那一列）。
+                 只换外观，data-testid 与 togglePanel 逻辑保持原样，测试与行为都不变。 -->
+            <div class="flex flex-col gap-1.5" data-testid="primary-modules">
+              <span class="flex items-center gap-1.5 px-1 text-xs font-semibold tracking-wide text-primary-600 dark:text-primary-400">
+                <span class="h-1.5 w-1.5 rounded-full bg-primary-500"></span>
+                {{ t('aiImage.modules.primary') }}
+              </span>
+              <button
+                type="button"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors"
+                :class="
+                  isPanelOpen('single')
+                    ? 'bg-primary-50 text-primary-700 shadow-sm ring-1 ring-primary-200/80 dark:bg-primary-900/30 dark:text-primary-300 dark:ring-primary-700/50'
+                    : 'text-gray-700 hover:bg-gray-100 dark:text-dark-200 dark:hover:bg-dark-700'
+                "
+                data-testid="toggle-single-panel"
+                @click="togglePanel('single')"
+              >
+                <Icon name="sparkles" size="sm" class="shrink-0" />
+                {{ t('aiImage.single.title') }}
+              </button>
+              <button
+                type="button"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors"
+                :class="
+                  isPanelOpen('hot')
+                    ? 'bg-primary-50 text-primary-700 shadow-sm ring-1 ring-primary-200/80 dark:bg-primary-900/30 dark:text-primary-300 dark:ring-primary-700/50'
+                    : 'text-gray-700 hover:bg-gray-100 dark:text-dark-200 dark:hover:bg-dark-700'
+                "
+                data-testid="toggle-hot-panel"
+                @click="togglePanel('hot')"
+              >
+                <Icon name="sparkles" size="sm" class="shrink-0" />
+                {{ t('aiImage.hot.title') }}
+              </button>
+              <button
+                type="button"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors"
+                :class="
+                  isPanelOpen('script')
+                    ? 'bg-primary-50 text-primary-700 shadow-sm ring-1 ring-primary-200/80 dark:bg-primary-900/30 dark:text-primary-300 dark:ring-primary-700/50'
+                    : 'text-gray-700 hover:bg-gray-100 dark:text-dark-200 dark:hover:bg-dark-700'
+                "
+                data-testid="toggle-script-panel"
+                @click="togglePanel('script')"
+              >
+                <Icon name="document" size="sm" class="shrink-0" />
+                {{ t('aiImage.script.title') }}
+              </button>
+            </div>
+
+            <!-- 次要功能：与主要功能同款竖向胶囊，放在下方、颜色更淡 -->
+            <div class="mt-3 flex flex-col gap-1.5 border-t border-gray-100 pt-3 dark:border-dark-700" data-testid="secondary-modules">
+              <span class="flex items-center gap-1.5 px-1 text-xs font-medium tracking-wide text-gray-500 dark:text-gray-400">
+                <span class="h-1.5 w-1.5 rounded-full bg-gray-300 dark:bg-dark-500"></span>
+                {{ t('aiImage.modules.secondary') }}
+              </span>
+              <button
+                type="button"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors"
+                :class="
+                  isPanelOpen('template')
+                    ? 'bg-primary-50 text-primary-700 shadow-sm ring-1 ring-primary-200/80 dark:bg-primary-900/30 dark:text-primary-300 dark:ring-primary-700/50'
+                    : 'text-gray-600 hover:bg-gray-100 dark:text-dark-300 dark:hover:bg-dark-700'
+                "
+                data-testid="toggle-template-panel"
+                @click="togglePanel('template')"
+              >
+                <Icon name="edit" size="sm" class="shrink-0" />
+                {{ t('aiImage.template.title') }}
+              </button>
+              <button
+                type="button"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors"
+                :class="
+                  isPanelOpen('composite')
+                    ? 'bg-primary-50 text-primary-700 shadow-sm ring-1 ring-primary-200/80 dark:bg-primary-900/30 dark:text-primary-300 dark:ring-primary-700/50'
+                    : 'text-gray-600 hover:bg-gray-100 dark:text-dark-300 dark:hover:bg-dark-700'
+                "
+                data-testid="toggle-composite-panel"
+                @click="togglePanel('composite')"
+              >
+                <Icon name="grid" size="sm" class="shrink-0" />
+                {{ t('aiImage.composite.title') }}
+              </button>
+              <button
+                type="button"
+                class="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors"
+                :class="
+                  isPanelOpen('watermark')
+                    ? 'bg-primary-50 text-primary-700 shadow-sm ring-1 ring-primary-200/80 dark:bg-primary-900/30 dark:text-primary-300 dark:ring-primary-700/50'
+                    : 'text-gray-600 hover:bg-gray-100 dark:text-dark-300 dark:hover:bg-dark-700'
+                "
+                data-testid="toggle-enhance-panel"
+                @click="togglePanel('watermark')"
+              >
+                <Icon name="shield" size="sm" class="shrink-0" />
+                {{ t('aiImage.watermark.title') }}
+              </button>
+            </div>
+          </div>
+        </aside>
+        <!-- 中间：参数列。
+             2026-11-05（主人要求）：什么功能都没打开、密钥也填好的时候，这一列是空的，
+             所以整列收起，把宽度让给右边的结果区（结果区会自动往左占满）。 -->
+        <div
+          v-if="showParamsColumn"
+          class="flex w-full flex-col gap-4"
+          :class="widePanelActive ? 'lg:min-w-0 lg:flex-1 lg:max-w-[900px]' : 'lg:w-[420px] lg:shrink-0'"
+        >
       <!-- 密钥面板 -->
       <div
         v-if="showKeyPanel || keyState !== 'valid'"
-        class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800"
+        class="rounded-2xl border border-primary-100/80 bg-white p-4 shadow-sm shadow-primary-100/40 dark:border-dark-700 dark:bg-dark-800 dark:shadow-none"
       >
         <div class="mb-2 flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-          <Icon name="key" size="sm" />
+          <span class="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-300">
+            <Icon name="key" size="sm" />
+          </span>
           {{ t('aiImage.key.sectionTitle') }}
         </div>
         <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -95,7 +247,9 @@
         -->
         <div class="mt-4 border-t border-gray-100 pt-4 dark:border-dark-700">
           <div class="mb-2 flex flex-wrap items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-            <Icon name="sparkles" size="sm" />
+            <span class="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-sky-50 text-sky-600 dark:bg-sky-900/30 dark:text-sky-300">
+              <Icon name="sparkles" size="sm" />
+            </span>
             {{ t('aiImage.visionKey.sectionTitle') }}
             <span
               v-if="visionKeySource === 'dedicated'"
@@ -172,101 +326,6 @@
         </div>
       </div>
 
-      <!-- ============ 功能模块 ============
-           主人反馈：这些按钮原来埋在提示词卡片的下半部分，根本注意不到。
-           所以统一提到页面最上面一排，点哪个就在下面展开哪个模块的内容，
-           提示词输入框顺位向下排。
-
-           分两档：主要功能是「单张图片放入去生图」和「爆款复刻」——
-           这两个是日常真在用的；其余四个是偶尔才用到的辅助，归到次要里，
-           免得一上来一堆按钮分不清主次。
-      -->
-      <div
-        class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800"
-        data-testid="module-bar"
-      >
-        <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('aiImage.modules.title') }}</h2>
-          <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('aiImage.modules.hint') }}</span>
-        </div>
-
-        <!-- 主要功能 -->
-        <div class="flex flex-wrap items-center gap-2" data-testid="primary-modules">
-          <span class="text-xs font-semibold text-primary-600 dark:text-primary-400">
-            {{ t('aiImage.modules.primary') }}
-          </span>
-          <button
-            type="button"
-            class="btn btn-secondary btn-sm"
-            data-testid="toggle-single-panel"
-            :class="isPanelOpen('single') ? 'ring-2 ring-primary-400' : ''"
-            @click="togglePanel('single')"
-          >
-            <Icon name="sparkles" size="sm" class="mr-1.5" />
-            {{ t('aiImage.single.title') }}
-          </button>
-          <button
-            type="button"
-            class="btn btn-secondary btn-sm"
-            data-testid="toggle-hot-panel"
-            :class="isPanelOpen('hot') ? 'ring-2 ring-primary-400' : ''"
-            @click="togglePanel('hot')"
-          >
-            <Icon name="sparkles" size="sm" class="mr-1.5" />
-            {{ t('aiImage.hot.title') }}
-          </button>
-          <button
-            type="button"
-            class="btn btn-secondary btn-sm"
-            data-testid="toggle-script-panel"
-            :class="isPanelOpen('script') ? 'ring-2 ring-primary-400' : ''"
-            @click="togglePanel('script')"
-          >
-            <Icon name="document" size="sm" class="mr-1.5" />
-            {{ t('aiImage.script.title') }}
-          </button>
-        </div>
-
-        <!-- 次要功能 -->
-        <div
-          class="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3 dark:border-dark-700"
-          data-testid="secondary-modules"
-        >
-          <span class="text-xs font-medium text-gray-500 dark:text-gray-400">
-            {{ t('aiImage.modules.secondary') }}
-          </span>
-          <button
-            type="button"
-            class="btn btn-secondary btn-sm"
-            data-testid="toggle-template-panel"
-            :class="isPanelOpen('template') ? 'ring-2 ring-primary-400' : ''"
-            @click="togglePanel('template')"
-          >
-            <Icon name="edit" size="sm" class="mr-1.5" />
-            {{ t('aiImage.template.title') }}
-          </button>
-          <button
-            type="button"
-            class="btn btn-secondary btn-sm"
-            data-testid="toggle-composite-panel"
-            :class="isPanelOpen('composite') ? 'ring-2 ring-primary-400' : ''"
-            @click="togglePanel('composite')"
-          >
-            <Icon name="grid" size="sm" class="mr-1.5" />
-            {{ t('aiImage.composite.title') }}
-          </button>
-          <button
-            type="button"
-            class="btn btn-secondary btn-sm"
-            data-testid="toggle-enhance-panel"
-            :class="isPanelOpen('watermark') ? 'ring-2 ring-primary-400' : ''"
-            @click="togglePanel('watermark')"
-          >
-            <Icon name="shield" size="sm" class="mr-1.5" />
-            {{ t('aiImage.watermark.title') }}
-          </button>
-        </div>
-      </div>
 
       <!-- 爆款复刻：拆同行版式 → 套到自己的商品上。
            自带产品信息输入，不依赖「套图」面板：
@@ -672,7 +731,8 @@
           {{ t('aiImage.watermark.enable') }}
         </label>
 
-        <div class="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+        <!-- 宽栏展示时 3 列会把控件拉得很散（位置下拉横跨半屏），所以最多两列。 -->
+        <div class="mt-2 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">
           <div class="flex items-center gap-2">
             <label class="w-16 flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">{{ t('aiImage.watermark.text') }}</label>
             <input
@@ -772,7 +832,9 @@
           />
         </div>
 
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <!-- 同样：这一列只有 420px，排 3 列时每个输入框只剩 ~110px，
+             商品名/尺寸这类长文本会被截断，所以统一一列。 -->
+        <div class="grid grid-cols-1 gap-3">
           <div class="flex flex-col gap-1">
             <label class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('aiImage.script.product') }}</label>
             <input v-model="scriptForm.product" class="input text-sm" :placeholder="t('aiImage.script.productPlaceholder')" />
@@ -953,9 +1015,10 @@
           <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('aiImage.single.title') }}</h2>
           <span class="text-xs text-gray-400 dark:text-gray-500">{{ t('aiImage.single.hint') }}</span>
         </div>
-        <div class="flex flex-col gap-3 lg:flex-row lg:items-start">
+        <!-- 2026-11-04（主人要求）：提示词放最上面整行，模型/尺寸/张数/商品编号顺位向下排。 -->
+        <div class="flex flex-col gap-3">
           <!-- 提示词输入框 -->
-          <div class="flex min-w-0 flex-1 flex-col gap-1">
+          <div class="flex min-w-0 flex-col gap-1">
             <label class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('aiImage.prompt.label') }}</label>
             <textarea
               v-model="prompt"
@@ -968,8 +1031,11 @@
             ></textarea>
           </div>
 
-          <!-- 参数与生成按钮 -->
-          <div class="flex flex-shrink-0 flex-col gap-2 lg:w-56">
+          <!-- 参数：排在提示词下方。**始终一列**——
+               这一列的容器本身就只有 380px，排两列时每个下拉只剩 ~160px，
+               模型名（gpt-image-2.5-sunburst）、尺寸（1200×1600）会被截断成「gpt-imag…」，
+               商品编号的占位文字也显示不全。一列让每个控件吃满栏宽。 -->
+          <div class="grid grid-cols-1 gap-2">
             <div class="flex items-center gap-2">
               <label class="w-12 flex-shrink-0 text-xs text-gray-500 dark:text-gray-400">{{ t('aiImage.options.model') }}</label>
               <!-- 固定下拉：平台给生图分组配的就是这三个，手打容易打错，
@@ -1095,14 +1161,22 @@
            否则同一个动作会有两个按钮，用户不知道该点哪个。 -->
 
 
-      <!-- 中间：结果区 -->
-      <!-- 中间：结果区（汇总所有功能做出来的图） -->
+        </div>
+        <!-- 右侧：结果画布（汇总所有功能做出来的图）。
+             2026-11-05（主人要求）：「提示词模板」「水印」这两个功能不产图，
+             开着它们的时候不显示结果区，页面只留参数，免得右边一片空白误导用户。 -->
+        <div v-if="showResultsColumn" class="flex min-w-0 flex-1 flex-col gap-4">
       <div
-        class="rounded-xl border border-gray-200 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-800"
+        class="rounded-2xl border border-cyan-100/80 bg-white p-4 shadow-sm shadow-cyan-100/40 dark:border-dark-700 dark:bg-dark-800 dark:shadow-none"
         data-testid="all-results"
       >
         <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('aiImage.result.sectionTitle') }}</h2>
+          <h2 class="flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-white">
+            <span class="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-cyan-50 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-300">
+              <Icon name="grid" size="sm" />
+            </span>
+            {{ t('aiImage.result.sectionTitle') }}
+          </h2>
           <div class="flex flex-wrap items-center gap-2">
             <!-- 状态筛选挪到这里：它筛的是这张汇总表，不是某一个功能的结果。
                  以前它长在「单张生图」那张卡片里，而单张生图现在是可以收起的，
@@ -1153,6 +1227,9 @@
           @remove="removeRecord"
         />
       </div>
+        </div>
+      </div>
+    </div>
     </div>
   </AppLayout>
 </template>
@@ -1160,6 +1237,10 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
+
+// 顶部条的「返回首页」用；工具型页面没有侧边栏，必须有出口。
+const router = useRouter()
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AIImageResultGrid from '@/components/aiImage/AIImageResultGrid.vue'
@@ -1267,6 +1348,13 @@ const keyGroupName = ref('')
 const keyChecking = ref(false)
 const showKeyPanel = ref(false)
 
+// 2026-11-04（主人要求）：密钥填好之后，密钥面板自动收起，
+// 只留顶部条上的「可用」状态；要换密钥再点「更换密钥」把它展开。
+// 这样中间那列不会长期被两张大卡占着，参数区能往上提。
+watch(keyState, (next) => {
+  if (next === 'valid') showKeyPanel.value = false
+})
+
 /**
  * 视觉模型密钥。
  *
@@ -1360,6 +1448,26 @@ const watermarkActive = computed(() => shouldApplyWatermark(watermark.value))
 const PANEL_IDS = ['single', 'hot', 'script', 'template', 'composite', 'watermark'] as const
 type PanelId = (typeof PANEL_IDS)[number]
 const activePanel = ref<PanelId | null>(null)
+
+// 2026-11-05（主人要求）：
+//   showParamsColumn  —— 中间参数列什么时候才需要占位：
+//                        密钥还没填（要露出密钥面板），或者用户打开了某个功能。
+//                        两个都不成立时整列收起，把宽度让给右边的结果区。
+//   showResultsColumn —— 右边结果区什么时候显示：
+//                        「提示词模板」「水印」这两个功能不产图，开着它们时右侧要给它们自己的内容用，
+//                        所以这时不显示「生图结果」。
+//   widePanelActive   —— 上面这两个功能激活时，参数列从 380px 窄栏改成**占满右侧**，
+//                        把它们自己的内容完整铺开（主人 2026-11-05 要求）。
+const NON_IMAGE_PANELS: PanelId[] = ['template', 'watermark']
+const showParamsColumn = computed(() => {
+  return showKeyPanel.value || keyState.value !== 'valid' || activePanel.value !== null
+})
+const showResultsColumn = computed(() => {
+  return activePanel.value === null || !NON_IMAGE_PANELS.includes(activePanel.value)
+})
+const widePanelActive = computed(() => {
+  return activePanel.value !== null && NON_IMAGE_PANELS.includes(activePanel.value)
+})
 
 /** 点功能按钮：展开它；已经展开的就收起。保证同时最多只有一个。 */
 function togglePanel(id: PanelId) {

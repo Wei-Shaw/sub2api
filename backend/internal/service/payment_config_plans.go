@@ -144,7 +144,9 @@ func (s *PaymentConfigService) CreatePlan(ctx context.Context, req CreatePlanReq
 		SetGroupID(req.GroupID).SetName(req.Name).SetDescription(req.Description).
 		SetPrice(req.Price).SetCurrency(currency).SetValidityDays(req.ValidityDays).SetValidityUnit(req.ValidityUnit).
 		SetFeatures(req.Features).SetProductName(req.ProductName).
-		SetForSale(req.ForSale).SetSortOrder(req.SortOrder)
+		SetForSale(req.ForSale).SetSortOrder(req.SortOrder).
+		SetPurchaseLimitEnabled(req.PurchaseLimitEnabled).
+		SetPurchaseLimitCount(req.PurchaseLimitCount)
 	if req.OriginalPrice != nil {
 		b.SetOriginalPrice(*req.OriginalPrice)
 	}
@@ -198,6 +200,12 @@ func (s *PaymentConfigService) UpdatePlan(ctx context.Context, id int64, req Upd
 	}
 	if req.SortOrder != nil {
 		u.SetSortOrder(*req.SortOrder)
+	}
+	if req.PurchaseLimitEnabled != nil {
+		u.SetPurchaseLimitEnabled(*req.PurchaseLimitEnabled)
+	}
+	if req.PurchaseLimitCount != nil {
+		u.SetPurchaseLimitCount(*req.PurchaseLimitCount)
 	}
 	return u.Save(ctx)
 }

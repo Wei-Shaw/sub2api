@@ -751,6 +751,20 @@ export interface EmailNotificationConfig {
   }
 }
 
+// 飞书群机器人通知：网站出现请求错误时把消息发到运营群。
+export interface FeishuNotificationConfig {
+  enabled: boolean
+  webhook_url: string
+  // P1（5xx/429）> P2（4xx）> P3（其余）；空字符串 = 不过滤
+  min_severity: 'P1' | 'P2' | 'P3' | ''
+  // 每小时最多推送条数，0 = 不限制
+  rate_limit_per_hour: number
+  // 相同错误的合并窗口（秒），0 = 每条都发
+  batching_window_seconds: number
+}
+
+export type FeishuNotificationConfigUpdate = Partial<FeishuNotificationConfig>
+
 export interface OpsMetricThresholds {
   sla_percent_min?: number | null                 // SLA低于此值变红
   ttft_p99_ms_max?: number | null                 // TTFT P99高于此值变红
@@ -1254,6 +1268,25 @@ export async function updateEmailNotificationConfig(config: EmailNotificationCon
   return data
 }
 
+// Feishu (飞书) group notification config
+export async function getFeishuNotificationConfig(): Promise<FeishuNotificationConfig> {
+  const { data } = await apiClient.get<FeishuNotificationConfig>('/admin/ops/feishu-notification/config')
+  return data
+}
+
+export async function updateFeishuNotificationConfig(
+  config: FeishuNotificationConfigUpdate
+): Promise<FeishuNotificationConfig> {
+  const { data } = await apiClient.put<FeishuNotificationConfig>('/admin/ops/feishu-notification/config', config)
+  return data
+}
+
+// 用已保存的 Webhook 发一条测试消息（保存前请先 PUT 一次配置）
+export async function testFeishuNotification(): Promise<{ sent: boolean }> {
+  const { data } = await apiClient.post<{ sent: boolean }>('/admin/ops/feishu-notification/test')
+  return data
+}
+
 // Runtime settings (DB-backed)
 export async function getAlertRuntimeSettings(): Promise<OpsAlertRuntimeSettings> {
   const { data } = await apiClient.get<OpsAlertRuntimeSettings>('/admin/ops/runtime/alert')
@@ -1356,6 +1389,9 @@ export const opsAPI = {
   createAlertSilence,
   getEmailNotificationConfig,
   updateEmailNotificationConfig,
+  getFeishuNotificationConfig,
+  updateFeishuNotificationConfig,
+  testFeishuNotification,
   getAlertRuntimeSettings,
   updateAlertRuntimeSettings,
   getRuntimeLogConfig,

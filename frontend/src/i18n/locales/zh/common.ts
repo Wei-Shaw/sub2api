@@ -161,6 +161,36 @@ export default {
     }
   },
 
+  // 新手引导（2026-11-05）：第一次登录弹一次，也可以从右上角的问号重新打开。
+  quickStart: {
+    entry: '新手引导',
+    title: '3 分钟上手辰数',
+    subtitle: '按下面四步走一遍，就能在 codex、CC Switch 等客户端里用上本平台的模型。',
+    copy: '复制',
+    copied: '已复制',
+    later: '今日不再提示',
+    gotIt: '关闭',
+    moreHint: '更详细的图文说明见',
+    step1: {
+      title: '创建一个 API 密钥',
+      desc: '到「API 密钥」页新建一把，复制那串 sk- 开头的密钥，等下要填进客户端。',
+      link: '去创建',
+    },
+    step2: {
+      title: '安装 Node.js',
+      desc: '装 LTS 版本即可。装完在命令行执行下面这条，能打印出版本号就说明装好了。',
+      link: '下载 Node.js',
+    },
+    step3: {
+      title: '安装 Codex 命令行',
+      desc: '打开终端（Windows 用 PowerShell）执行下面这条命令，安装官方 codex CLI。',
+    },
+    step4: {
+      title: '把接口地址和密钥填进客户端',
+      desc: '接口地址就是下面这个；密钥用第 1 步复制的那串。CC Switch 用户可以在「API 密钥」页点「导入到 CC Switch」一键完成。',
+    },
+  },
+
   // Navigation
   nav: {
     dashboard: '仪表盘',
@@ -210,7 +240,7 @@ export default {
     channelPricing: '渠道定价',
     channelMonitor: '渠道监控',
     intelligenceCheck: '智力检测',
-    aiImage: 'AI生图',
+    aiImage: '电商改图',
     channelStatus: '渠道状态',
     riskControl: '风控中心',
     securityAudit: '安全审计',

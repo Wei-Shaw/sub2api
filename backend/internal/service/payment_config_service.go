@@ -175,6 +175,9 @@ type CreatePlanRequest struct {
 	ProductName   string   `json:"product_name"`
 	ForSale       bool     `json:"for_sale"`
 	SortOrder     int      `json:"sort_order"`
+	// 每人限购：开关 + 次数（2026-11-06 主人要求）
+	PurchaseLimitEnabled bool `json:"purchase_limit_enabled"`
+	PurchaseLimitCount   int  `json:"purchase_limit_count"`
 }
 
 type UpdatePlanRequest struct {
@@ -190,6 +193,9 @@ type UpdatePlanRequest struct {
 	ProductName   *string  `json:"product_name"`
 	ForSale       *bool    `json:"for_sale"`
 	SortOrder     *int     `json:"sort_order"`
+	// 每人限购：nil = 本次不修改（2026-11-06 主人要求）
+	PurchaseLimitEnabled *bool `json:"purchase_limit_enabled"`
+	PurchaseLimitCount   *int  `json:"purchase_limit_count"`
 }
 
 // PaymentConfigService manages payment configuration and CRUD for

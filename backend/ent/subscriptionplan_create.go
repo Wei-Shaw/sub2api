@@ -152,6 +152,34 @@ func (_c *SubscriptionPlanCreate) SetNillableForSale(v *bool) *SubscriptionPlanC
 	return _c
 }
 
+// SetPurchaseLimitEnabled sets the "purchase_limit_enabled" field.
+func (_c *SubscriptionPlanCreate) SetPurchaseLimitEnabled(v bool) *SubscriptionPlanCreate {
+	_c.mutation.SetPurchaseLimitEnabled(v)
+	return _c
+}
+
+// SetNillablePurchaseLimitEnabled sets the "purchase_limit_enabled" field if the given value is not nil.
+func (_c *SubscriptionPlanCreate) SetNillablePurchaseLimitEnabled(v *bool) *SubscriptionPlanCreate {
+	if v != nil {
+		_c.SetPurchaseLimitEnabled(*v)
+	}
+	return _c
+}
+
+// SetPurchaseLimitCount sets the "purchase_limit_count" field.
+func (_c *SubscriptionPlanCreate) SetPurchaseLimitCount(v int) *SubscriptionPlanCreate {
+	_c.mutation.SetPurchaseLimitCount(v)
+	return _c
+}
+
+// SetNillablePurchaseLimitCount sets the "purchase_limit_count" field if the given value is not nil.
+func (_c *SubscriptionPlanCreate) SetNillablePurchaseLimitCount(v *int) *SubscriptionPlanCreate {
+	if v != nil {
+		_c.SetPurchaseLimitCount(*v)
+	}
+	return _c
+}
+
 // SetSortOrder sets the "sort_order" field.
 func (_c *SubscriptionPlanCreate) SetSortOrder(v int) *SubscriptionPlanCreate {
 	_c.mutation.SetSortOrder(v)
@@ -257,6 +285,14 @@ func (_c *SubscriptionPlanCreate) defaults() {
 		v := subscriptionplan.DefaultForSale
 		_c.mutation.SetForSale(v)
 	}
+	if _, ok := _c.mutation.PurchaseLimitEnabled(); !ok {
+		v := subscriptionplan.DefaultPurchaseLimitEnabled
+		_c.mutation.SetPurchaseLimitEnabled(v)
+	}
+	if _, ok := _c.mutation.PurchaseLimitCount(); !ok {
+		v := subscriptionplan.DefaultPurchaseLimitCount
+		_c.mutation.SetPurchaseLimitCount(v)
+	}
 	if _, ok := _c.mutation.SortOrder(); !ok {
 		v := subscriptionplan.DefaultSortOrder
 		_c.mutation.SetSortOrder(v)
@@ -322,6 +358,12 @@ func (_c *SubscriptionPlanCreate) check() error {
 	}
 	if _, ok := _c.mutation.ForSale(); !ok {
 		return &ValidationError{Name: "for_sale", err: errors.New(`ent: missing required field "SubscriptionPlan.for_sale"`)}
+	}
+	if _, ok := _c.mutation.PurchaseLimitEnabled(); !ok {
+		return &ValidationError{Name: "purchase_limit_enabled", err: errors.New(`ent: missing required field "SubscriptionPlan.purchase_limit_enabled"`)}
+	}
+	if _, ok := _c.mutation.PurchaseLimitCount(); !ok {
+		return &ValidationError{Name: "purchase_limit_count", err: errors.New(`ent: missing required field "SubscriptionPlan.purchase_limit_count"`)}
 	}
 	if _, ok := _c.mutation.SortOrder(); !ok {
 		return &ValidationError{Name: "sort_order", err: errors.New(`ent: missing required field "SubscriptionPlan.sort_order"`)}
@@ -402,6 +444,14 @@ func (_c *SubscriptionPlanCreate) createSpec() (*SubscriptionPlan, *sqlgraph.Cre
 	if value, ok := _c.mutation.ForSale(); ok {
 		_spec.SetField(subscriptionplan.FieldForSale, field.TypeBool, value)
 		_node.ForSale = value
+	}
+	if value, ok := _c.mutation.PurchaseLimitEnabled(); ok {
+		_spec.SetField(subscriptionplan.FieldPurchaseLimitEnabled, field.TypeBool, value)
+		_node.PurchaseLimitEnabled = value
+	}
+	if value, ok := _c.mutation.PurchaseLimitCount(); ok {
+		_spec.SetField(subscriptionplan.FieldPurchaseLimitCount, field.TypeInt, value)
+		_node.PurchaseLimitCount = value
 	}
 	if value, ok := _c.mutation.SortOrder(); ok {
 		_spec.SetField(subscriptionplan.FieldSortOrder, field.TypeInt, value)
@@ -626,6 +676,36 @@ func (u *SubscriptionPlanUpsert) SetForSale(v bool) *SubscriptionPlanUpsert {
 // UpdateForSale sets the "for_sale" field to the value that was provided on create.
 func (u *SubscriptionPlanUpsert) UpdateForSale() *SubscriptionPlanUpsert {
 	u.SetExcluded(subscriptionplan.FieldForSale)
+	return u
+}
+
+// SetPurchaseLimitEnabled sets the "purchase_limit_enabled" field.
+func (u *SubscriptionPlanUpsert) SetPurchaseLimitEnabled(v bool) *SubscriptionPlanUpsert {
+	u.Set(subscriptionplan.FieldPurchaseLimitEnabled, v)
+	return u
+}
+
+// UpdatePurchaseLimitEnabled sets the "purchase_limit_enabled" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsert) UpdatePurchaseLimitEnabled() *SubscriptionPlanUpsert {
+	u.SetExcluded(subscriptionplan.FieldPurchaseLimitEnabled)
+	return u
+}
+
+// SetPurchaseLimitCount sets the "purchase_limit_count" field.
+func (u *SubscriptionPlanUpsert) SetPurchaseLimitCount(v int) *SubscriptionPlanUpsert {
+	u.Set(subscriptionplan.FieldPurchaseLimitCount, v)
+	return u
+}
+
+// UpdatePurchaseLimitCount sets the "purchase_limit_count" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsert) UpdatePurchaseLimitCount() *SubscriptionPlanUpsert {
+	u.SetExcluded(subscriptionplan.FieldPurchaseLimitCount)
+	return u
+}
+
+// AddPurchaseLimitCount adds v to the "purchase_limit_count" field.
+func (u *SubscriptionPlanUpsert) AddPurchaseLimitCount(v int) *SubscriptionPlanUpsert {
+	u.Add(subscriptionplan.FieldPurchaseLimitCount, v)
 	return u
 }
 
@@ -890,6 +970,41 @@ func (u *SubscriptionPlanUpsertOne) SetForSale(v bool) *SubscriptionPlanUpsertOn
 func (u *SubscriptionPlanUpsertOne) UpdateForSale() *SubscriptionPlanUpsertOne {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.UpdateForSale()
+	})
+}
+
+// SetPurchaseLimitEnabled sets the "purchase_limit_enabled" field.
+func (u *SubscriptionPlanUpsertOne) SetPurchaseLimitEnabled(v bool) *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetPurchaseLimitEnabled(v)
+	})
+}
+
+// UpdatePurchaseLimitEnabled sets the "purchase_limit_enabled" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertOne) UpdatePurchaseLimitEnabled() *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdatePurchaseLimitEnabled()
+	})
+}
+
+// SetPurchaseLimitCount sets the "purchase_limit_count" field.
+func (u *SubscriptionPlanUpsertOne) SetPurchaseLimitCount(v int) *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetPurchaseLimitCount(v)
+	})
+}
+
+// AddPurchaseLimitCount adds v to the "purchase_limit_count" field.
+func (u *SubscriptionPlanUpsertOne) AddPurchaseLimitCount(v int) *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.AddPurchaseLimitCount(v)
+	})
+}
+
+// UpdatePurchaseLimitCount sets the "purchase_limit_count" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertOne) UpdatePurchaseLimitCount() *SubscriptionPlanUpsertOne {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdatePurchaseLimitCount()
 	})
 }
 
@@ -1325,6 +1440,41 @@ func (u *SubscriptionPlanUpsertBulk) SetForSale(v bool) *SubscriptionPlanUpsertB
 func (u *SubscriptionPlanUpsertBulk) UpdateForSale() *SubscriptionPlanUpsertBulk {
 	return u.Update(func(s *SubscriptionPlanUpsert) {
 		s.UpdateForSale()
+	})
+}
+
+// SetPurchaseLimitEnabled sets the "purchase_limit_enabled" field.
+func (u *SubscriptionPlanUpsertBulk) SetPurchaseLimitEnabled(v bool) *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetPurchaseLimitEnabled(v)
+	})
+}
+
+// UpdatePurchaseLimitEnabled sets the "purchase_limit_enabled" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertBulk) UpdatePurchaseLimitEnabled() *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdatePurchaseLimitEnabled()
+	})
+}
+
+// SetPurchaseLimitCount sets the "purchase_limit_count" field.
+func (u *SubscriptionPlanUpsertBulk) SetPurchaseLimitCount(v int) *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.SetPurchaseLimitCount(v)
+	})
+}
+
+// AddPurchaseLimitCount adds v to the "purchase_limit_count" field.
+func (u *SubscriptionPlanUpsertBulk) AddPurchaseLimitCount(v int) *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.AddPurchaseLimitCount(v)
+	})
+}
+
+// UpdatePurchaseLimitCount sets the "purchase_limit_count" field to the value that was provided on create.
+func (u *SubscriptionPlanUpsertBulk) UpdatePurchaseLimitCount() *SubscriptionPlanUpsertBulk {
+	return u.Update(func(s *SubscriptionPlanUpsert) {
+		s.UpdatePurchaseLimitCount()
 	})
 }
 
