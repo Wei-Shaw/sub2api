@@ -324,12 +324,14 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	pendingLines := make([]string, 0, 8)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
 	var terminal openAIRawStreamTerminalState
+	var streamFailure *ccStreamUpstreamError
+	hasModelOutput := false
 
 	writeLine := func(line string) {
 		if clientDisconnected {
 			return
 		}
-		if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
+		if !clientOutputStarted && (!hasModelOutput || !refusalDetector.ShouldReleaseClientOutput()) {
 			pendingLines = append(pendingLines, line)
 			return
 		}
@@ -362,6 +364,11 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		refusalDetector.ObserveSSELine(line)
 		if payload, ok := extractOpenAISSEDataLine(line); ok {
 			trimmedPayload := strings.TrimSpace(payload)
+			if failure := parseCCStreamUpstreamError(trimmedPayload); failure != nil {
+				streamFailure = failure
+				break
+			}
+			hasModelOutput = hasModelOutput || ccPayloadHasModelOutput(trimmedPayload)
 			terminal.ObserveDataLine(trimmedPayload)
 			if trimmedPayload != "[DONE]" {
 				observer.ObserveOpenAI([]byte(payload), strings.TrimSpace(gjson.Get(payload, "type").String()))
@@ -369,7 +376,7 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 				if u := extractCCStreamUsage(payload); u != nil {
 					usage = *u
 				}
-				if firstTokenMs == nil && !usageOnlyChunk {
+				if firstTokenMs == nil && !usageOnlyChunk && hasModelOutput {
 					elapsed := int(time.Since(startTime).Milliseconds())
 					firstTokenMs = &elapsed
 				}
@@ -410,6 +417,15 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		}
 	}
 
+	if streamFailure != nil {
+		if !clientOutputStarted {
+			return nil, s.newOpenAIStreamFailoverErrorWithModel(c, account, false, requestID, streamFailure.Payload, streamFailure.Message, upstreamModel, resp.Header)
+		}
+		s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", streamFailure.Payload, streamFailure.Message)
+		_, _ = fmt.Fprintf(c.Writer, "data: %s\n\ndata: [DONE]\n\n", streamFailure.Payload)
+		c.Writer.Flush()
+		return resultWithUsage(), newOpenAIUpstreamStreamReadError(streamFailure)
+	}
 	scanErr := scanner.Err()
 	if scanErr != nil && !errors.Is(scanErr, context.Canceled) && !errors.Is(scanErr, context.DeadlineExceeded) {
 		logger.L().Warn("openai chat_completions raw: stream read error",
@@ -453,6 +469,9 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	if scanErr == nil && !clientDisconnected && !clientOutputStarted {
 		if refusalDetector.IsSilentRefusal() {
 			return nil, newOpenAISilentRefusalFailoverError(c, account, requestID)
+		}
+		if !hasModelOutput && usage.InputTokens == 0 && usage.OutputTokens == 0 {
+			return nil, newOpenAIRawStreamTruncatedFailoverError(c, account, requestID, ErrOpenAIUpstreamStreamTruncated)
 		}
 		if len(pendingLines) > 0 {
 			writeStreamHeaders()

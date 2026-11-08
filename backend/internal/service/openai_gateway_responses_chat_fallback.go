@@ -136,7 +136,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	}
 
 	if clientStream {
-		return s.streamChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
+		return s.streamChatCompletionsAsResponses(c, resp, account, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 	}
 	return s.bufferChatCompletionsAsResponses(c, resp, originalModel, customTools, functionTools, toolSearch, namespaceTools, billingModel, upstreamModel, reasoningEffort, serviceTier, startTime)
 }
@@ -186,6 +186,7 @@ func (s *OpenAIGatewayService) bufferChatCompletionsAsResponses(
 func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	c *gin.Context,
 	resp *http.Response,
+	account *Account,
 	originalModel string,
 	customTools map[string]bool,
 	functionTools map[string]bool,
@@ -206,6 +207,8 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	state.ToolSearchDeclared = toolSearch
 	state.NamespaceTools = namespaceTools
 	clientDisconnected := false
+	hasModelOutput := false
+	var pendingEvents []apicompat.ResponsesStreamEvent
 
 	writeEvents := func(events []apicompat.ResponsesStreamEvent) {
 		if clientDisconnected || len(events) == 0 {
@@ -236,10 +239,37 @@ func (s *OpenAIGatewayService) streamChatCompletionsAsResponses(
 	scan := s.scanCCStream(c, resp, "openai responses chat fallback", requestID, startTime, func(chunk *apicompat.ChatCompletionsChunk) {
 		events := apicompat.ChatCompletionsChunkToResponsesEvents(chunk, state)
 		s.cacheReasoningItemsFromEvents(events)
+		if !hasModelOutput {
+			pendingEvents = append(pendingEvents, events...)
+			if !chatChunkStartsResponsesOutput(chunk) {
+				return
+			}
+			hasModelOutput = true
+			writeEvents(pendingEvents)
+			pendingEvents = nil
+			return
+		}
 		writeEvents(events)
 	})
 
+	if scan.Err == nil && !hasModelOutput {
+		scan.Err = &ccStreamUpstreamError{Payload: []byte(`{"error":{"code":"EMPTY_RESPONSE","message":"Upstream completed without any model output"}}`), Message: "Upstream completed without any model output"}
+	}
 	if scan.Err != nil {
+		var failure *ccStreamUpstreamError
+		if errors.As(scan.Err, &failure) {
+			if !hasModelOutput && !c.Writer.Written() {
+				return nil, s.newOpenAIStreamFailoverErrorWithModel(c, account, false, requestID, failure.Payload, failure.Message, upstreamModel, resp.Header)
+			}
+			s.recordOpenAIStreamUpstreamError(c, account, false, requestID, "http_error", failure.Payload, failure.Message)
+			source, _ := sjson.SetBytes(failure.Payload, "sequence_number", state.SequenceNumber)
+			failedEvent := buildOpenAIResponseFailedSSE(state.ResponseID, originalModel, state.Created, source, failure.Message)
+			if !clientDisconnected {
+				writeStreamHeaders()
+				_, _ = fmt.Fprint(c.Writer, failedEvent)
+				c.Writer.Flush()
+			}
+		}
 		return &OpenAIForwardResult{
 			RequestID:                   requestID,
 			UpstreamHeaders:             resp.Header,
@@ -309,7 +339,7 @@ func chatChunkStartsResponsesOutput(chunk *apicompat.ChatCompletionsChunk) bool 
 		return false
 	}
 	for _, choice := range chunk.Choices {
-		if choice.Delta.Content != nil || choice.Delta.ReasoningContent != nil || len(choice.Delta.ToolCalls) > 0 {
+		if (choice.Delta.Content != nil && *choice.Delta.Content != "") || (choice.Delta.ReasoningContent != nil && *choice.Delta.ReasoningContent != "") || len(choice.Delta.ToolCalls) > 0 {
 			return true
 		}
 	}
