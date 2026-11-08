@@ -934,4 +934,3 @@ func TestPassthroughLifecycle_CapacityShedSanitizesErrorCodeAndStripsRetryAfter(
 	require.False(t, gjson.GetBytes(failedFrame, "response.error.headers").Exists())
 	require.NotContains(t, string(failedFrame), "retry-after")
 }
-
