@@ -537,6 +537,9 @@ export default {
       supplierId: 'Supplier ID',
       supplierName: 'Supplier',
       upstreamChannel: 'A6 Channel',
+      // Column between "Account" and "Model": how expensive the channel this
+      // request actually used is (A6 realtime ratio, per channel+model).
+      channelMultiplier: 'Channel Ratio',
       upstreamTargetChannel: 'Target Channel',
       // Action column: dispose of a bad upstream supplier/channel right from here.
       // The two scopes differ (whole supplier vs one channel's one model), so the

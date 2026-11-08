@@ -648,6 +648,9 @@ const allColumns = computed(() => [
   { key: 'user', label: t('admin.usage.user'), sortable: false },
   { key: 'api_key', label: t('usage.apiKeyFilter'), sortable: false },
   { key: 'account', label: t('admin.usage.account'), sortable: false },
+  // 「渠道倍率」必须夹在「账户」和「模型」之间（2026-11-08 主人指定）：
+  // 左边是这条请求用了哪个账号，右边是请求什么模型，中间补上「实际走的那家渠道多贵」。
+  { key: 'upstream_channel_multiplier', label: t('admin.usage.channelMultiplier'), sortable: false },
   { key: 'model', label: t('usage.model'), sortable: true },
   { key: 'reasoning_effort', label: t('usage.reasoningEffort'), sortable: false },
   { key: 'endpoint', label: t('usage.endpoint'), sortable: false },

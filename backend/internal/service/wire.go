@@ -883,6 +883,8 @@ var ProviderSet = wire.NewSet(
 	ProvideReconciliationA6Settings,
 	// 上游成本取数：按上游请求 ID 反查 A6 账单，把真实扣费写回使用记录。
 	ProvideUpstreamCostCollector,
+	// A6 渠道实时倍率：使用记录页那一列「渠道倍率」靠它按渠道 ID 现查（带缓存）。
+	NewA6ChannelRatioService,
 	ProvideProviderPricingService,
 	// 盈亏口径：内部人员的收入不计入盈亏（余额由管理员手工调整、并非真实收款），
 	// 但其上游成本照算。名单由 UsageProfitExclusionService 持有并带 30 秒缓存。

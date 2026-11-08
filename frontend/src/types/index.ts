@@ -2011,6 +2011,15 @@ export interface AdminUsageLog extends UsageLog {
   /** 上游（A6）目标渠道 ID。null 含义同上。 */
   upstream_target_channel_id?: number | null
 
+  /**
+   * 该请求实际走的那家 A6 渠道的**实时倍率**（realtime_ratio_usd，按渠道+模型）。
+   *
+   * 2026-11-08 主人要求：使用记录里要能直接看到「这条请求走了多少倍率的渠道」。
+   * 值不来自本地账单，是后端拿 upstream_channel_id 去 A6 公开接口现查的；
+   * null/undefined = 还没查到或上游没给，页面显示「—」。
+   */
+  upstream_channel_multiplier?: number | null
+
   // 账号计费倍率（仅管理员可见）
   account_rate_multiplier?: number | null
   // 自定义定价规则计算的账号统计费用（nil 时使用 total_cost * multiplier）

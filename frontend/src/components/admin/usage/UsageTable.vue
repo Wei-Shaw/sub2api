@@ -52,6 +52,22 @@
           <span class="text-sm text-gray-900 dark:text-white">{{ row.account?.name || '-' }}</span>
         </template>
 
+        <!-- 渠道倍率：这条请求实际走的那家 A6 渠道的实时倍率（realtime_ratio_usd）。
+             主人 2026-11-08 要求：**只显示数字**，不要后面那个 × / x ——
+             列头已经写明是「倍率」，再挂个 × 只是噪音。
+             取不到时显示「—」而不是 0：0 的含义是「零倍率渠道」，
+             与「还没查到」正好相反。 -->
+        <template #cell-upstream_channel_multiplier="{ row }">
+          <span
+            v-if="row.upstream_channel_multiplier != null"
+            class="text-xs tabular-nums text-gray-700 dark:text-gray-300"
+            data-testid="channel-multiplier"
+          >
+            {{ formatMultiplier(row.upstream_channel_multiplier) }}
+          </span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500" title="—">—</span>
+        </template>
+
         <template #cell-model="{ row }">
           <div class="space-y-0.5 text-xs">
             <div v-if="row.model_mapping_chain && row.model_mapping_chain.includes('→')" class="space-y-0.5">

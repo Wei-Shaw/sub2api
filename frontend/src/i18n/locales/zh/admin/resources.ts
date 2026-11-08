@@ -534,6 +534,9 @@ export default {
       supplierId: '商家 ID',
       supplierName: '商家名',
       upstreamChannel: 'A6 渠道',
+      // 使用记录里夹在「账户」和「模型」之间的一列：这条请求实际走的渠道多贵
+      // （A6 的实时倍率，按渠道+模型给出）。只显示数字，不带 ×。
+      channelMultiplier: '渠道倍率',
       upstreamTargetChannel: '目标渠道',
       // 操作列：把「这家商户/这个渠道这个模型有问题」直接在上游处置掉。
       // 两个动作的作用域完全不同（一个是整商户、一个是单渠道单模型），

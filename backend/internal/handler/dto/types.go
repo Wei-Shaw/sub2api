@@ -730,6 +730,13 @@ type AdminUsageLog struct {
 	UpstreamChannelID *int `json:"upstream_channel_id,omitempty"`
 	// UpstreamTargetChannelID 是上游目标渠道 ID；nil = 尚未对账到。
 	UpstreamTargetChannelID *int `json:"upstream_target_channel_id,omitempty"`
+	// UpstreamChannelMultiplier 是该请求实际走的那家 A6 渠道的**实时倍率**
+	// （A6 的 realtime_ratio_usd，按渠道 + 模型给出的）。
+	//
+	// 2026-11-08 主人要求：使用记录里要能直接看到「这条请求走了多少倍率的渠道」，
+	// 用来判断某次调用是不是买贵了。值不在账单里，是拿 upstream_channel_id
+	// 去 A6 公开市场接口现查的（带缓存）；nil = 还没查到或上游没给，页面显示「—」。
+	UpstreamChannelMultiplier *float64 `json:"upstream_channel_multiplier,omitempty"`
 	// BillingTier 计费层级标签（per_request/image 模式）
 	BillingTier *string `json:"billing_tier,omitempty"`
 

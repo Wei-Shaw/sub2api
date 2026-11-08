@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -25,6 +26,9 @@ type UsageHandler struct {
 	apiKeyService  *service.APIKeyService
 	adminService   service.AdminService
 	cleanupService *service.UsageCleanupService
+	// channelRatios 用于给使用记录补上「A6 渠道实时倍率」一列（2026-11-08）。
+	// 可以为 nil（测试或未配置 A6 的场景），取不到时页面显示「—」。
+	channelRatios *service.A6ChannelRatioService
 }
 
 // NewUsageHandler creates a new admin usage handler
@@ -33,12 +37,57 @@ func NewUsageHandler(
 	apiKeyService *service.APIKeyService,
 	adminService service.AdminService,
 	cleanupService *service.UsageCleanupService,
+	channelRatios *service.A6ChannelRatioService,
 ) *UsageHandler {
 	return &UsageHandler{
 		usageService:   usageService,
 		apiKeyService:  apiKeyService,
 		adminService:   adminService,
 		cleanupService: cleanupService,
+		channelRatios:  channelRatios,
+	}
+}
+
+// enrichChannelMultipliers 给这一页记录补上 A6 渠道实时倍率。
+//
+// 每页只对「不同渠道」各查一次（服务内部还有 10 分钟缓存），
+// 取不到的记录保持 nil —— 页面按「—」显示，不能拿 0 顶替
+// （0 的含义是「零倍率渠道」，与「还不知道」正好相反）。
+func (h *UsageHandler) enrichChannelMultipliers(ctx context.Context, rows []dto.AdminUsageLog) {
+	if h.channelRatios == nil || len(rows) == 0 {
+		return
+	}
+	keys := make([]service.A6ChannelRatioKey, 0, len(rows))
+	seen := make(map[service.A6ChannelRatioKey]struct{}, len(rows))
+	for i := range rows {
+		if rows[i].UpstreamChannelID == nil || *rows[i].UpstreamChannelID <= 0 {
+			continue
+		}
+		model := strings.TrimSpace(rows[i].Model)
+		if model == "" {
+			continue
+		}
+		k := service.A6ChannelRatioKey{ChannelID: *rows[i].UpstreamChannelID, Model: model}
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		keys = append(keys, k)
+	}
+	if len(keys) == 0 {
+		return
+	}
+	ratios := h.channelRatios.Resolve(ctx, keys)
+	for i := range rows {
+		if rows[i].UpstreamChannelID == nil {
+			continue
+		}
+		v, ok := ratios[fmt.Sprintf("%d|%s", *rows[i].UpstreamChannelID, strings.TrimSpace(rows[i].Model))]
+		if !ok {
+			continue
+		}
+		multiplier := v
+		rows[i].UpstreamChannelMultiplier = &multiplier
 	}
 }
 
@@ -226,7 +275,13 @@ func (h *UsageHandler) List(c *gin.Context) {
 		return
 	}
 
-	response.Paginated(c, adminUsageLogResponses(c, records), result.Total, page, pageSize)
+	// 「渠道倍率」列：值不在本地，是拿 upstream_channel_id 去 A6 公开接口现查的。
+	// 只给完整管理员补（受限视图那一支是 gin.H，不含这些上游字段）。
+	responses := adminUsageLogResponses(c, records)
+	if rows, ok := responses.([]dto.AdminUsageLog); ok {
+		h.enrichChannelMultipliers(c.Request.Context(), rows)
+	}
+	response.Paginated(c, responses, result.Total, page, pageSize)
 }
 
 // Stats handles getting usage statistics with filters
