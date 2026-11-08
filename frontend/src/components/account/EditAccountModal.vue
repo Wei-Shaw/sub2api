@@ -4302,7 +4302,8 @@ const codexImageToolBadgeClass = computed(() => {
 const openAICompactModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.compactModeAuto') },
   { value: 'force_on', label: t('admin.accounts.openai.compactModeForceOn') },
-  { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') }
+  { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') },
+  { value: 'sub2api', label: t('admin.accounts.openai.compactModeSub2API') }
 ])
 // OpenAI 订阅档位手动覆盖选项(清空 + Plus/Pro/Free;别名/自定义值友好显示且保留 canonical)
 const planTypeOptions = computed(() =>
@@ -4424,6 +4425,7 @@ const openAICompactStatusKey = computed(() => {
   const mode = typeof extra?.openai_compact_mode === 'string' ? extra.openai_compact_mode : 'auto'
   if (mode === 'force_on') return 'admin.accounts.openai.compactSupported'
   if (mode === 'force_off') return 'admin.accounts.openai.compactUnsupported'
+  if (mode === 'sub2api') return 'admin.accounts.openai.compactLocal'
   if (typeof extra?.openai_compact_supported === 'boolean') {
     return extra.openai_compact_supported
       ? 'admin.accounts.openai.compactSupported'

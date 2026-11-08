@@ -742,6 +742,8 @@ export default {
         compactModeAuto: 'Auto',
         compactModeForceOn: 'Force On',
         compactModeForceOff: 'Force Off',
+        compactModeSub2API: 'Compact via sub2api',
+        compactLocal: 'Compacted by sub2api',
         compactModelMapping: 'Compact-only model mapping',
         compactModelMappingDesc:
           'Only applies to /responses/compact. Use this when the upstream compact endpoint requires a special compact model.',
