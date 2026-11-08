@@ -753,7 +753,7 @@ OAuth / Setup Token 的 1.5、2、2.5 和 2.6 图片请求使用 Codex 原生 Im
 
 原生端点保留 JSON / multipart 编辑的 `markup`（图片 URL 或上传文件）、GIF 帧参数及 SVG author 参数；`response_format=url` 使用上游实际输出格式的 MIME。GIF / SVG 可用性和参数生效情况由上游账号权限及端点决定，转发支持不代表上游一定输出该格式。若编辑端点对流式请求返回完整 JSON，网关会转换为完成事件并保留 usage。
 
-`output_format` / `output_compression` 透传不保证上游按指定格式输出。Codex 原生端点可能以 4xx 拒绝某种格式，也可能返回 HTTP 200、`output_format: "png"` 和 PNG 内容，即使请求的是 `jpeg` 或 `svg`。客户端保存或交付图片前，应将返回的 `output_format`（包括图片项中的该字段，如有）与请求比较，并核验实际图片格式；文件扩展名和 MIME 应匹配实际输出。
+`output_format` / `output_compression` 透传不保证上游按指定格式输出。Codex 原生端点可能以 4xx 拒绝某种格式，也可能返回 HTTP 200、`output_format: "png"` 和 PNG 内容，即使请求的是 `jpeg` 或 `svg`；`gpt-image-2.5-flare` 的 JPEG 请求也已报告出现相同情况。客户端保存或交付图片前，应将返回的 `output_format`（包括图片项中的该字段，如有）与请求比较，并核验实际图片格式；文件扩展名和 MIME 应匹配实际输出。
 
 上游已返回图片的成功响应仍保留其状态、内容和 usage。格式不匹配不代表没有产生用量或费用；自动重试可能再次生成并计费。
 
