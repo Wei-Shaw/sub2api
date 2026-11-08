@@ -115,7 +115,10 @@ func liftCodexAdditionalTools(root map[string]any) ([]any, bool) {
 		}
 		changed = true
 	}
-	if changed {
+	// 只在还有其它 item 时才移除 additional_tools：Codex 的首包有时只带
+	// additional_tools（~1.4KB），全部移除会让 input 变成空数组，上游
+	// /responses 直接 400 "Input items array must not be empty"。
+	if changed && len(kept) > 0 {
 		root["input"] = kept
 	}
 	return lifted, changed

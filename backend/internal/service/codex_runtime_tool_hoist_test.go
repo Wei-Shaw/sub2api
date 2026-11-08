@@ -198,3 +198,15 @@ func TestOpenAIWSHTTPBridgeEnabled(t *testing.T) {
 	require.True(t, (&Account{Platform: PlatformOpenAI, Extra: map[string]any{"openai_ws_http_bridge": true}}).IsOpenAIWSHTTPBridgeEnabled())
 	require.False(t, (&Account{Platform: PlatformAnthropic, Extra: map[string]any{"openai_ws_http_bridge": true}}).IsOpenAIWSHTTPBridgeEnabled())
 }
+
+// TestHoistCodexRuntimeToolsKeepsInputNonEmpty 覆盖 Codex 首包只带
+// additional_tools 的场景：移除后 input 不能变成空数组，否则上游 400
+// "Input items array must not be empty"。
+func TestHoistCodexRuntimeToolsKeepsInputNonEmpty(t *testing.T) {
+	body := []byte(`{"input":[{"type":"additional_tools","tools":[{"type":"custom","name":"exec"}]}]}`)
+	out, changed, err := hoistCodexRuntimeTools(body)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Len(t, gjson.GetBytes(out, "input").Array(), 1, "input 不能被清空")
+	require.Len(t, gjson.GetBytes(out, "tools").Array(), 1, "工具仍要提升到顶层")
+}
