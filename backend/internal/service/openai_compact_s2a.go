@@ -85,7 +85,8 @@ func (s *OpenAIGatewayService) forwardOpenAICompactViaSub2API(
 		return nil, fmt.Errorf("empty input for compact request")
 	}
 
-	upstreamModel := normalizeOpenAIModelForUpstream(account, requestedModel)
+	billingModel := resolveOpenAIForwardModel(account, requestedModel, "")
+	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	ccBody, err := json.Marshal(map[string]any{
 		"model":  upstreamModel,
 		"stream": false,
@@ -137,7 +138,7 @@ func (s *OpenAIGatewayService) forwardOpenAICompactViaSub2API(
 		ResponseID:    responseID,
 		Usage:         usage,
 		Model:         requestedModel,
-		BillingModel:  requestedModel,
+		BillingModel:  billingModel,
 		UpstreamModel: upstreamModel,
 		Stream:        stream,
 		Duration:      time.Since(startTime),
