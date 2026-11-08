@@ -210,3 +210,75 @@ func TestHoistCodexRuntimeToolsKeepsInputNonEmpty(t *testing.T) {
 	require.Len(t, gjson.GetBytes(out, "input").Array(), 1, "input 不能被清空")
 	require.Len(t, gjson.GetBytes(out, "tools").Array(), 1, "工具仍要提升到顶层")
 }
+
+// 同名 namespace 出现在顶层 tools 与 input[].additional_tools 时，必须按子工具
+// 合并而不是整体丢弃（review 反馈：增量下发的常见形态）。
+func TestHoistMergesSameNamespaceAcrossSources(t *testing.T) {
+	body := []byte(`{
+	  "model":"compat-model","stream":false,
+	  "tools":[{"type":"namespace","name":"functions","tools":[{"type":"function","name":"read","parameters":{"type":"object"}}]}],
+	  "input":[
+	    {"type":"additional_tools","role":"developer","tools":[{"type":"namespace","name":"functions","tools":[{"type":"function","name":"write","parameters":{"type":"object"}}]}]},
+	    {"type":"message","role":"user","content":"hi"}
+	  ]
+	}`)
+	out, changed, err := hoistCodexRuntimeTools(body)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, []string{"read", "write"}, namespaceChildren(t, out, "functions"))
+}
+
+// 多个 additional_tools item 声明同一个 namespace 时同样要合并。
+func TestHoistMergesNamespaceAcrossAdditionalToolsItems(t *testing.T) {
+	body := []byte(`{
+	  "input":[
+	    {"type":"additional_tools","tools":[{"type":"namespace","name":"functions","tools":[{"type":"function","name":"read"}]}]},
+	    {"type":"message","role":"user","content":"hi"},
+	    {"type":"additional_tools","tools":[{"type":"namespace","name":"functions","tools":[{"type":"function","name":"write"}]}]}
+	  ]
+	}`)
+	out, changed, err := hoistCodexRuntimeTools(body)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, []string{"read", "write"}, namespaceChildren(t, out, "functions"))
+}
+
+// 后声明的同名 namespace 里的 custom 工具（如 exec）也必须被提升到顶层，
+// 否则本 PR 想修的场景在这类形状下依然丢工具。
+func TestHoistLiftsCustomFromMergedNamespace(t *testing.T) {
+	body := []byte(`{
+	  "tools":[{"type":"namespace","name":"functions","tools":[{"type":"function","name":"read"}]}],
+	  "input":[
+	    {"type":"additional_tools","tools":[{"type":"namespace","name":"functions","tools":[{"type":"custom","name":"exec"}]}]},
+	    {"type":"message","role":"user","content":"hi"}
+	  ]
+	}`)
+	out, changed, err := hoistCodexRuntimeTools(body)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, []string{"read"}, namespaceChildren(t, out, "functions"))
+	require.True(t, hasTopLevelTool(out, "custom", "exec"), "exec 必须提升到顶层")
+}
+
+func hasTopLevelTool(body []byte, typ, name string) bool {
+	for _, tool := range gjson.GetBytes(body, "tools").Array() {
+		if tool.Get("type").String() == typ && tool.Get("name").String() == name {
+			return true
+		}
+	}
+	return false
+}
+
+func namespaceChildren(t *testing.T, body []byte, ns string) []string {
+	t.Helper()
+	var names []string
+	for _, tool := range gjson.GetBytes(body, "tools").Array() {
+		if tool.Get("name").String() != ns || tool.Get("type").String() != "namespace" {
+			continue
+		}
+		for _, child := range tool.Get("tools").Array() {
+			names = append(names, child.Get("name").String())
+		}
+	}
+	return names
+}

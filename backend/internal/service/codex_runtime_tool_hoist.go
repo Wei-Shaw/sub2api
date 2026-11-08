@@ -124,32 +124,82 @@ func liftCodexAdditionalTools(root map[string]any) ([]any, bool) {
 	return lifted, changed
 }
 
-// appendDedupeTools 按 (type, name) 去重追加，保留先出现的声明。
-// 历史里重复出现的 additional_tools 不应产生重复工具声明。
+// appendDedupeTools 按 (type, name) 去重追加；同名 namespace 不整体丢弃，而是
+// 按子工具身份合并——顶层 tools 与 input[].additional_tools 各自声明同一个
+// namespace 是 Codex 增量下发的常见形态，整体去重会把后声明的子工具一起丢掉。
 func appendDedupeTools(tools, extra []any) []any {
 	if len(extra) == 0 {
 		return tools
 	}
-	seen := make(map[string]bool, len(tools)+len(extra))
-	for _, raw := range tools {
+	out := tools
+	index := make(map[string]int, len(tools)+len(extra))
+	for i, raw := range out {
 		if key, ok := toolDeclKey(raw); ok {
-			seen[key] = true
+			index[key] = i
 		}
 	}
-	out := tools
 	for _, raw := range extra {
 		key, ok := toolDeclKey(raw)
 		if !ok {
 			out = append(out, raw)
 			continue
 		}
-		if seen[key] {
+		if at, seen := index[key]; seen {
+			if merged, mergedOK := mergeNamespaceChildren(out[at], raw); mergedOK {
+				out[at] = merged
+			}
 			continue
 		}
-		seen[key] = true
+		index[key] = len(out)
 		out = append(out, raw)
 	}
 	return out
+}
+
+// mergeNamespaceChildren 合并同名 namespace 的子工具（按 (type, name) 去重），
+// 保留两侧新增的声明。非 namespace 或没有新增子工具时返回 false，调用方按原逻辑
+// 保留先出现的声明。
+func mergeNamespaceChildren(dst, src any) (any, bool) {
+	d, ok := dst.(map[string]any)
+	if !ok || strings.TrimSpace(stringValue(d["type"])) != "namespace" {
+		return nil, false
+	}
+	s, ok := src.(map[string]any)
+	if !ok || strings.TrimSpace(stringValue(s["type"])) != "namespace" {
+		return nil, false
+	}
+	srcChildren, _ := s["tools"].([]any)
+	if len(srcChildren) == 0 {
+		return nil, false
+	}
+	dstChildren, _ := d["tools"].([]any)
+	seen := make(map[string]bool, len(dstChildren)+len(srcChildren))
+	for _, raw := range dstChildren {
+		if key, ok := toolDeclKey(raw); ok {
+			seen[key] = true
+		}
+	}
+	merged := append([]any(nil), dstChildren...)
+	added := false
+	for _, raw := range srcChildren {
+		if key, ok := toolDeclKey(raw); ok {
+			if seen[key] {
+				continue
+			}
+			seen[key] = true
+		}
+		merged = append(merged, raw)
+		added = true
+	}
+	if !added {
+		return nil, false
+	}
+	out := make(map[string]any, len(d)+1)
+	for key, value := range d {
+		out[key] = value
+	}
+	out["tools"] = merged
+	return out, true
 }
 
 func toolDeclKey(raw any) (string, bool) {
