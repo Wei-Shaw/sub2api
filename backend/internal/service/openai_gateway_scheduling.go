@@ -444,12 +444,18 @@ func openAICompatibleAccountEligibilityFailureReasonBeforeProfit(ctx context.Con
 		return "model_not_supported"
 	}
 	if !account.SupportsOpenAIEndpointCapability(requiredCapability) {
+		// 「由 sub2api 压缩」在网关内完成压缩，不向上游发压缩请求，因此不要求
+		// 上游具备 Responses 能力（DeepSeek 这类只走 CC 回退的账号也可压缩）。
+		if requireCompact && requiredCapability == OpenAIEndpointCapabilityResponses && account.UsesSub2APICompact() {
+			goto compactCapabilityAllowed
+		}
 		if account.IsGrok() && requiredCapability == OpenAIEndpointCapabilityGrokMediaGeneration {
 			_, reason := account.GrokMediaGenerationEligibility()
 			slog.Debug("grok_media_account_ineligible", "account_id", account.ID, "reason", reason)
 		}
 		return "capability_mismatch"
 	}
+compactCapabilityAllowed:
 	if requireCompact && openAICompactSupportTier(account) == 0 {
 		return "compact_unsupported"
 	}

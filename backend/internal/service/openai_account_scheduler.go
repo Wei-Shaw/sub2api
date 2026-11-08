@@ -1819,7 +1819,10 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 		return false, "channel_upstream_restricted"
 	}
 	if !accountSupportsOpenAICapabilities(account, req.RequiredCapability, req.RequiredImageCapability) {
-		return false, "capability_mismatch"
+		// 同上：sub2api 自压模式不依赖上游 Responses 能力。
+		if !(req.RequireCompact && req.RequiredCapability == OpenAIEndpointCapabilityResponses && account.UsesSub2APICompact()) {
+			return false, "capability_mismatch"
+		}
 	}
 	if vetoed, reason := openAIImageSizeVetoReason(ctx, account); vetoed {
 		return false, reason
