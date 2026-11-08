@@ -31,6 +31,15 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	body []byte,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
+	// Codex 0.166 把运行时工具放进 input[].additional_tools 并把 custom 工具嵌在
+	// namespace 里；namespace 摊平只处理 function 子工具，custom 会被静默丢弃，
+	// 模型于是把工具调用写成 DSML 文本。按账号开关先提升到顶层，再走既有的
+	// custom → function 降级 + 回程还原通道。
+	if account != nil && account.CodexNamespaceToolsEnabled() {
+		if hoisted, changed, hoistErr := hoistCodexRuntimeTools(body); hoistErr == nil && changed {
+			body = hoisted
+		}
+	}
 	var responsesReq apicompat.ResponsesRequest
 	if err := json.Unmarshal(body, &responsesReq); err != nil {
 		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
