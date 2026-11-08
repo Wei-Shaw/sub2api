@@ -110,6 +110,17 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			body = liteBody
 		}
 	}
+	// 「由 sub2api 压缩」：压缩请求完全在本地完成，不发给上游；普通请求则把自家
+	// 产出的压缩 item 还原成消息，让上游看到的是明文摘要。
+	if account.UsesSub2APICompact() {
+		if IsOpenAICompactRequest(c, body) {
+			return s.forwardOpenAICompactViaSub2API(ctx, c, account, body, startTime)
+		}
+		if rehydrated, changed := rehydrateS2ACompactionItems(body); changed {
+			body = rehydrated
+		}
+	}
+
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
 	// 仅允许 WS 入站请求走 WS 上游，避免出现 HTTP -> WS 协议混用。
 	wsDecision = resolveOpenAIWSDecisionByClientTransport(wsDecision, GetOpenAIClientTransport(c))
