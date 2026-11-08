@@ -54,9 +54,15 @@ type GeminiFunctionCall struct {
 
 // GeminiFunctionResponse Gemini 函数响应
 type GeminiFunctionResponse struct {
-	Name     string         `json:"name"`
-	Response map[string]any `json:"response"`
-	ID       string         `json:"id,omitempty"`
+	Parts    []GeminiFunctionResponsePart `json:"parts,omitempty"`
+	Name     string                       `json:"name"`
+	Response map[string]any               `json:"response"`
+	ID       string                       `json:"id,omitempty"`
+}
+
+// GeminiFunctionResponsePart contains inline tool media, not message text.
+type GeminiFunctionResponsePart struct {
+	InlineData *GeminiInlineData `json:"inlineData,omitempty"`
 }
 
 // GeminiGenerationConfig Gemini 生成配置
@@ -86,7 +92,11 @@ type GeminiThinkingConfig struct {
 type GeminiToolDeclaration struct {
 	FunctionDeclarations []GeminiFunctionDecl `json:"functionDeclarations,omitempty"`
 	GoogleSearch         *GeminiGoogleSearch  `json:"googleSearch,omitempty"`
+	CodeExecution        *GeminiCodeExecution `json:"codeExecution,omitempty"`
 }
+
+// GeminiCodeExecution enables Gemini's built-in code execution tool.
+type GeminiCodeExecution struct{}
 
 // GeminiFunctionDecl Gemini 函数声明
 type GeminiFunctionDecl struct {
@@ -112,7 +122,8 @@ type GeminiImageSearch struct {
 
 // GeminiToolConfig Gemini 工具配置
 type GeminiToolConfig struct {
-	FunctionCallingConfig *GeminiFunctionCallingConfig `json:"functionCallingConfig,omitempty"`
+	FunctionCallingConfig            *GeminiFunctionCallingConfig `json:"functionCallingConfig,omitempty"`
+	IncludeServerSideToolInvocations *bool                        `json:"includeServerSideToolInvocations,omitempty"`
 }
 
 // GeminiFunctionCallingConfig 函数调用配置

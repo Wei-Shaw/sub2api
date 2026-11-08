@@ -3,6 +3,7 @@ package apicompat
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -26,16 +27,15 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 	for _, item := range resp.Output {
 		switch item.Type {
 		case "reasoning":
-			summaryText := ""
-			for _, s := range item.Summary {
-				if s.Type == "summary_text" && s.Text != "" {
-					summaryText += s.Text
-				}
-			}
-			if summaryText != "" {
+			reasoningText := responsesReasoningText(item)
+			// Always surface encrypted_content as thinking.signature so Claude
+			// Code / multi-turn clients can send it back. Signature-only
+			// thinking blocks are valid when the model omits a visible summary.
+			if reasoningText != "" || strings.TrimSpace(item.EncryptedContent) != "" {
 				blocks = append(blocks, AnthropicContentBlock{
-					Type:     "thinking",
-					Thinking: summaryText,
+					Type:      "thinking",
+					Thinking:  reasoningText,
+					Signature: item.EncryptedContent,
 				})
 			}
 		case "message":
@@ -81,7 +81,7 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 	}
 	out.Content = blocks
 
-	out.StopReason = responsesStatusToAnthropicStopReason(resp.Status, resp.IncompleteDetails, blocks)
+	out.StopReason = AnthropicStopReasonPtr(responsesStatusToAnthropicStopReason(resp.Status, resp.IncompleteDetails, blocks))
 
 	if resp.Usage != nil {
 		out.Usage = anthropicUsageFromResponsesUsage(resp.Usage)
@@ -100,15 +100,16 @@ func anthropicUsageFromResponsesUsage(usage *ResponsesUsage) AnthropicUsage {
 		cachedTokens = usage.InputTokensDetails.CachedTokens
 	}
 
-	inputTokens := usage.InputTokens - cachedTokens
+	inputTokens := usage.InputTokens - cachedTokens - usage.CacheCreationInputTokens
 	if inputTokens < 0 {
 		inputTokens = 0
 	}
 
 	return AnthropicUsage{
-		InputTokens:          inputTokens,
-		OutputTokens:         usage.OutputTokens,
-		CacheReadInputTokens: cachedTokens,
+		InputTokens:              inputTokens,
+		OutputTokens:             usage.OutputTokens,
+		CacheReadInputTokens:     cachedTokens,
+		CacheCreationInputTokens: usage.CacheCreationInputTokens,
 	}
 }
 
@@ -164,26 +165,45 @@ func sanitizeAnthropicToolUseInput(name string, raw string) json.RawMessage {
 // Streaming: ResponsesStreamEvent → []AnthropicStreamEvent (stateful converter)
 // ---------------------------------------------------------------------------
 
+// responsesTextPart identifies one output_text part of a streamed response.
+type responsesTextPart struct {
+	OutputIndex  int
+	ContentIndex int
+}
+
 // ResponsesEventToAnthropicState tracks state for converting a sequence of
 // Responses SSE events directly into Anthropic SSE events.
 type ResponsesEventToAnthropicState struct {
 	MessageStartSent bool
 	MessageStopSent  bool
 
-	ContentBlockIndex   int
-	ContentBlockOpen    bool
-	CurrentBlockType    string // "text" | "thinking" | "tool_use"
-	CurrentToolName     string
-	CurrentToolArgs     string
-	CurrentToolHadDelta bool
-	HasToolCall         bool
+	ContentBlockIndex         int
+	ContentBlockOpen          bool
+	CurrentBlockType          string // "text" | "thinking" | "tool_use"
+	CurrentToolName           string
+	CurrentToolArgs           string
+	CurrentToolHadDelta       bool
+	currentToolArgsBuffer     *strings.Builder
+	currentToolArgsValidation *streamStringBytes
+	// PendingThinkingSignature is filled from reasoning.encrypted_content and
+	// emitted as signature_delta before the thinking block is closed.
+	PendingThinkingSignature string
+	HasToolCall              bool
 
 	// OutputIndexToBlockIdx maps Responses output_index → Anthropic content block index.
 	OutputIndexToBlockIdx map[int]int
 
-	InputTokens          int
-	OutputTokens         int
-	CacheReadInputTokens int
+	// textByPart records the text already delivered for each output_text part
+	// so that a done payload can be reconciled against it. It outlives the
+	// content block; closeCurrentBlock must not reset it.
+	textByPart map[responsesTextPart]*strings.Builder
+	// textDelivered records whether any assistant text reached the client.
+	textDelivered bool
+
+	InputTokens              int
+	OutputTokens             int
+	CacheReadInputTokens     int
+	CacheCreationInputTokens int
 
 	ResponseID string
 	Model      string
@@ -194,6 +214,7 @@ type ResponsesEventToAnthropicState struct {
 func NewResponsesEventToAnthropicState() *ResponsesEventToAnthropicState {
 	return &ResponsesEventToAnthropicState{
 		OutputIndexToBlockIdx: make(map[int]int),
+		textByPart:            make(map[responsesTextPart]*strings.Builder),
 		Created:               time.Now().Unix(),
 	}
 }
@@ -212,7 +233,7 @@ func ResponsesEventToAnthropicEvents(
 	case "response.output_text.delta":
 		return resToAnthHandleTextDelta(evt, state)
 	case "response.output_text.done":
-		return resToAnthHandleBlockDone(state)
+		return resToAnthHandleTextDone(evt, state)
 	case "response.function_call_arguments.delta",
 		// custom/freeform 工具的输入增量与 function_call 参数增量同形。
 		"response.custom_tool_call_input.delta":
@@ -226,7 +247,10 @@ func ResponsesEventToAnthropicEvents(
 		"response.reasoning_text.delta":
 		return resToAnthHandleReasoningDelta(evt, state)
 	case "response.reasoning_summary_text.done":
-		return resToAnthHandleBlockDone(state)
+		// Keep the thinking block open until response.output_item.done.
+		// Grok/Codex attach encrypted_content on the finished reasoning item;
+		// closing early would drop signature_delta and break multi-turn cache.
+		return nil
 	// response.done 是 Realtime/WS 与项目透传路径使用的终止别名；
 	// 普通 Responses HTTP SSE 的公开终止事件仍以 response.completed 为主。
 	case "response.completed", "response.done", "response.incomplete", "response.failed":
@@ -258,9 +282,10 @@ func FinalizeResponsesAnthropicStream(state *ResponsesEventToAnthropicState) []A
 				StopReason: stopReason,
 			},
 			Usage: &AnthropicUsage{
-				InputTokens:          state.InputTokens,
-				OutputTokens:         state.OutputTokens,
-				CacheReadInputTokens: state.CacheReadInputTokens,
+				InputTokens:              state.InputTokens,
+				OutputTokens:             state.OutputTokens,
+				CacheReadInputTokens:     state.CacheReadInputTokens,
+				CacheCreationInputTokens: state.CacheCreationInputTokens,
 			},
 		},
 		AnthropicStreamEvent{Type: "message_stop"},
@@ -294,14 +319,19 @@ func resToAnthHandleCreated(evt *ResponsesStreamEvent, state *ResponsesEventToAn
 	}
 	state.MessageStartSent = true
 
+	// Official Anthropic message_start uses stop_reason: null and usage with
+	// input_tokens when known. We leave StopReason nil (JSON null) and usage
+	// zeros until response.completed; never emit stop_reason:"" which breaks
+	// strict clients' turn-finalization / session usage accounting.
 	return []AnthropicStreamEvent{{
 		Type: "message_start",
 		Message: &AnthropicResponse{
-			ID:      state.ResponseID,
-			Type:    "message",
-			Role:    "assistant",
-			Content: []AnthropicContentBlock{},
-			Model:   state.Model,
+			ID:         state.ResponseID,
+			Type:       "message",
+			Role:       "assistant",
+			Content:    []AnthropicContentBlock{},
+			Model:      state.Model,
+			StopReason: nil,
 			Usage: AnthropicUsage{
 				InputTokens:  0,
 				OutputTokens: 0,
@@ -328,6 +358,8 @@ func resToAnthHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesE
 		state.CurrentBlockType = "tool_use"
 		state.CurrentToolName = evt.Item.Name
 		state.CurrentToolArgs = ""
+		state.currentToolArgsBuffer = nil
+		state.currentToolArgsValidation = nil
 		state.CurrentToolHadDelta = false
 		state.HasToolCall = true
 
@@ -351,6 +383,7 @@ func resToAnthHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesE
 		state.OutputIndexToBlockIdx[evt.OutputIndex] = idx
 		state.ContentBlockOpen = true
 		state.CurrentBlockType = "thinking"
+		state.PendingThinkingSignature = strings.TrimSpace(evt.Item.EncryptedContent)
 
 		events = append(events, AnthropicStreamEvent{
 			Type:  "content_block_start",
@@ -370,7 +403,18 @@ func resToAnthHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesE
 }
 
 func resToAnthHandleTextDelta(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
-	if evt.Delta == "" {
+	return resToAnthEmitText(evt.Delta, resToAnthTextPartOf(evt), state)
+}
+
+func resToAnthTextPartOf(evt *ResponsesStreamEvent) responsesTextPart {
+	return responsesTextPart{OutputIndex: evt.OutputIndex, ContentIndex: evt.ContentIndex}
+}
+
+// resToAnthEmitText opens a text block when needed, emits text, and records it
+// against its part so that a later payload for the same part is reconciled
+// against what the client already received.
+func resToAnthEmitText(text string, part responsesTextPart, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
+	if text == "" {
 		return nil
 	}
 
@@ -393,16 +437,61 @@ func resToAnthHandleTextDelta(evt *ResponsesStreamEvent, state *ResponsesEventTo
 		})
 	}
 
+	delivered, ok := state.textByPart[part]
+	if !ok {
+		delivered = &strings.Builder{}
+		state.textByPart[part] = delivered
+	}
+	_, _ = delivered.WriteString(text)
+	state.textDelivered = true
+
 	idx := state.ContentBlockIndex
 	events = append(events, AnthropicStreamEvent{
 		Type:  "content_block_delta",
 		Index: &idx,
 		Delta: &AnthropicDelta{
 			Type: "text_delta",
-			Text: evt.Delta,
+			Text: text,
 		},
 	})
 	return events
+}
+
+// resToAnthRecoverText emits the tail of a finished text payload that never
+// reached the client. Streamed text cannot be recalled, so a payload that does
+// not extend what was already delivered is left alone.
+func resToAnthRecoverText(text string, part responsesTextPart, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
+	builder, known := state.textByPart[part]
+	if !known && state.textDelivered {
+		// The payload is indexed differently from every delta seen so far, so
+		// which part it finishes cannot be established. Recovering it could
+		// repeat an answer the client already has, which is worse than leaving
+		// a partially delivered one alone.
+		return nil
+	}
+
+	var delivered string
+	if known {
+		delivered = builder.String()
+	}
+	if text == delivered || !strings.HasPrefix(text, delivered) {
+		return nil
+	}
+	return resToAnthEmitText(text[len(delivered):], part, state)
+}
+
+// resToAnthHandleTextDone recovers text that upstream carried only on the done
+// event before closing the block, which some streams use instead of sending
+// output_text.delta at all.
+func resToAnthHandleTextDone(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
+	if state.MessageStopSent {
+		// The message is already terminated; a late payload cannot be delivered
+		// without emitting a content block after message_stop.
+		return resToAnthHandleBlockDone(state)
+	}
+
+	events := resToAnthRecoverText(evt.Text, resToAnthTextPartOf(evt), state)
+	return append(events, resToAnthHandleBlockDone(state)...)
 }
 
 func resToAnthHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
@@ -411,9 +500,28 @@ func resToAnthHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEve
 	}
 
 	if state.CurrentBlockType == "tool_use" && state.CurrentToolName == "Read" {
-		state.CurrentToolArgs += evt.Delta
-		return nil
+		previousArgs := state.CurrentToolArgs
+		state.CurrentToolArgs = appendStreamString(&state.currentToolArgsBuffer, state.CurrentToolArgs, evt.Delta)
+		if state.CurrentToolHadDelta || !json.Valid(appendStreamStringBytes(&state.currentToolArgsValidation, previousArgs, state.CurrentToolArgs, evt.Delta)) {
+			return nil
+		}
+
+		blockIdx, ok := state.OutputIndexToBlockIdx[evt.OutputIndex]
+		if !ok {
+			return nil
+		}
+		state.CurrentToolHadDelta = true
+		sanitized := sanitizeAnthropicToolUseInput(state.CurrentToolName, state.CurrentToolArgs)
+		return []AnthropicStreamEvent{{
+			Type:  "content_block_delta",
+			Index: &blockIdx,
+			Delta: &AnthropicDelta{
+				Type:        "input_json_delta",
+				PartialJSON: string(sanitized),
+			},
+		}}
 	}
+
 	if state.CurrentBlockType == "tool_use" {
 		state.CurrentToolHadDelta = true
 	}
@@ -434,6 +542,9 @@ func resToAnthHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEve
 }
 
 func resToAnthHandleFuncArgsDone(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
+	if !state.ContentBlockOpen {
+		return nil
+	}
 	if state.CurrentBlockType != "tool_use" {
 		return resToAnthHandleBlockDone(state)
 	}
@@ -453,10 +564,20 @@ func resToAnthHandleFuncArgsDone(evt *ResponsesStreamEvent, state *ResponsesEven
 		raw = string(sanitized)
 	}
 
-	idx := state.ContentBlockIndex
+	// 从事件的 OutputIndex 解析正确的 block index，与 resToAnthHandleFuncArgsDelta 对齐
+	blockIdx, ok := state.OutputIndexToBlockIdx[evt.OutputIndex]
+	if !ok {
+		blockIdx = state.ContentBlockIndex
+	}
+
+	// 如果 block 已关闭（ContentBlockIndex 已越过它），说明 arguments 已通过 delta 流式发完，不再补发
+	if !state.ContentBlockOpen || blockIdx != state.ContentBlockIndex {
+		return nil
+	}
+
 	events := []AnthropicStreamEvent{{
 		Type:  "content_block_delta",
-		Index: &idx,
+		Index: &blockIdx,
 		Delta: &AnthropicDelta{
 			Type:        "input_json_delta",
 			PartialJSON: raw,
@@ -501,6 +622,13 @@ func resToAnthHandleOutputItemDone(evt *ResponsesStreamEvent, state *ResponsesEv
 	// Handle web_search_call → synthesize server_tool_use + web_search_tool_result blocks.
 	if evt.Item.Type == "web_search_call" && evt.Item.Status == "completed" {
 		return resToAnthHandleWebSearchDone(evt, state)
+	}
+
+	// Capture encrypted_content on reasoning item done (often only present here).
+	if evt.Item.Type == "reasoning" {
+		if sig := strings.TrimSpace(evt.Item.EncryptedContent); sig != "" {
+			state.PendingThinkingSignature = sig
+		}
 	}
 
 	if state.ContentBlockOpen {
@@ -564,6 +692,38 @@ func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEve
 	return events
 }
 
+// resToAnthRecoverTerminalText emits assistant text that only ever appeared in
+// the terminal response payload, which some streams populate without sending
+// any output_text event.
+//
+// It only runs when no text at all reached the client. Streamed events and the
+// terminal output array carry no guaranteed common identity, so reconciling
+// them part by part risks repeating an answer the client already has, which is
+// worse than leaving a partially streamed response as it is.
+func resToAnthRecoverTerminalText(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
+	if state.textDelivered || evt.Response == nil {
+		return nil
+	}
+
+	var events []AnthropicStreamEvent
+	for outputIndex, item := range evt.Response.Output {
+		if item.Type != "message" {
+			continue
+		}
+		for contentIndex, content := range item.Content {
+			if content.Type != "output_text" {
+				continue
+			}
+			part := responsesTextPart{OutputIndex: outputIndex, ContentIndex: contentIndex}
+			events = append(events, resToAnthEmitText(content.Text, part, state)...)
+		}
+	}
+	if len(events) > 0 {
+		events = append(events, closeCurrentBlock(state)...)
+	}
+	return events
+}
+
 func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
 	if state.MessageStopSent {
 		return nil
@@ -571,6 +731,7 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 
 	var events []AnthropicStreamEvent
 	events = append(events, closeCurrentBlock(state)...)
+	events = append(events, resToAnthRecoverTerminalText(evt, state)...)
 
 	stopReason := "end_turn"
 	if evt.Usage != nil {
@@ -578,6 +739,7 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 		state.InputTokens = usage.InputTokens
 		state.OutputTokens = usage.OutputTokens
 		state.CacheReadInputTokens = usage.CacheReadInputTokens
+		state.CacheCreationInputTokens = usage.CacheCreationInputTokens
 	}
 	if evt.Response != nil {
 		if evt.Response.Usage != nil {
@@ -585,6 +747,7 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 			state.InputTokens = usage.InputTokens
 			state.OutputTokens = usage.OutputTokens
 			state.CacheReadInputTokens = usage.CacheReadInputTokens
+			state.CacheCreationInputTokens = usage.CacheCreationInputTokens
 		}
 		switch evt.Response.Status {
 		case "incomplete":
@@ -605,9 +768,10 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 				StopReason: stopReason,
 			},
 			Usage: &AnthropicUsage{
-				InputTokens:          state.InputTokens,
-				OutputTokens:         state.OutputTokens,
-				CacheReadInputTokens: state.CacheReadInputTokens,
+				InputTokens:              state.InputTokens,
+				OutputTokens:             state.OutputTokens,
+				CacheReadInputTokens:     state.CacheReadInputTokens,
+				CacheCreationInputTokens: state.CacheCreationInputTokens,
 			},
 		},
 		AnthropicStreamEvent{Type: "message_stop"},
@@ -621,13 +785,32 @@ func closeCurrentBlock(state *ResponsesEventToAnthropicState) []AnthropicStreamE
 		return nil
 	}
 	idx := state.ContentBlockIndex
+	var events []AnthropicStreamEvent
+	// Emit signature_delta before stop so Claude clients retain encrypted
+	// reasoning for the next turn (required for Grok multi-turn cache).
+	if state.CurrentBlockType == "thinking" {
+		if sig := strings.TrimSpace(state.PendingThinkingSignature); sig != "" {
+			events = append(events, AnthropicStreamEvent{
+				Type:  "content_block_delta",
+				Index: &idx,
+				Delta: &AnthropicDelta{
+					Type:      "signature_delta",
+					Signature: sig,
+				},
+			})
+		}
+		state.PendingThinkingSignature = ""
+	}
 	state.ContentBlockOpen = false
 	state.ContentBlockIndex++
 	state.CurrentToolName = ""
 	state.CurrentToolArgs = ""
+	state.currentToolArgsBuffer = nil
+	state.currentToolArgsValidation = nil
 	state.CurrentToolHadDelta = false
-	return []AnthropicStreamEvent{{
+	events = append(events, AnthropicStreamEvent{
 		Type:  "content_block_stop",
 		Index: &idx,
-	}}
+	})
+	return events
 }

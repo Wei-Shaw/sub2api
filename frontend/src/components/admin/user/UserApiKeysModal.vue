@@ -32,6 +32,10 @@
                   :platform="key.group.platform"
                   :subscription-type="key.group.subscription_type"
                   :rate-multiplier="key.group.rate_multiplier"
+                  :peak-rate-enabled="key.group.peak_rate_enabled"
+                  :peak-start="key.group.peak_start"
+                  :peak-end="key.group.peak_end"
+                  :peak-rate-multiplier="key.group.peak_rate_multiplier"
                 />
                 <span v-else class="text-gray-400 italic">{{ t('admin.users.none') }}</span>
                 <svg v-if="updatingKeyIds.has(key.id)" class="h-3 w-3 animate-spin text-primary-500" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
@@ -88,6 +92,10 @@
             :platform="group.platform"
             :subscription-type="group.subscription_type"
             :rate-multiplier="group.rate_multiplier"
+            :peak-rate-enabled="group.peak_rate_enabled"
+            :peak-start="group.peak_start"
+            :peak-end="group.peak_end"
+            :peak-rate-multiplier="group.peak_rate_multiplier"
             :description="group.description"
             :selected="selectedKeyForGroup?.group_id === group.id"
           />
@@ -116,6 +124,7 @@ const appStore = useAppStore()
 const apiKeys = ref<ApiKey[]>([])
 const allGroups = ref<AdminGroup[]>([])
 const loading = ref(false)
+let requestVersion = 0
 const updatingKeyIds = ref(new Set<number>())
 const groupSelectorKeyId = ref<number | null>(null)
 const dropdownPosition = ref<{ top: number; left: number } | null>(null)
@@ -136,26 +145,29 @@ const setGroupButtonRef = (keyId: number, el: Element | ComponentPublicInstance 
   }
 }
 
-watch(() => props.show, (v) => {
-  if (v && props.user) {
+watch(() => [props.show, props.user?.id] as const, ([show], _, onCleanup) => {
+  onCleanup(() => { requestVersion++ })
+  closeGroupSelector()
+  if (show && props.user) {
     load()
     loadGroups()
-  } else {
-    closeGroupSelector()
   }
 })
 
 const load = async () => {
   if (!props.user) return
+  const version = ++requestVersion
+  apiKeys.value = []
   loading.value = true
   groupButtonRefs.value.clear()
   try {
     const res = await adminAPI.users.getUserApiKeys(props.user.id)
-    apiKeys.value = res.items || []
+    if (version === requestVersion) apiKeys.value = res.items || []
   } catch (error) {
+    if (version !== requestVersion) return
     console.error('Failed to load API keys:', error)
   } finally {
-    loading.value = false
+    if (version === requestVersion) loading.value = false
   }
 }
 

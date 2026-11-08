@@ -11,6 +11,59 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
+func TestShouldUseAlipayMobilePrecreate(t *testing.T) {
+	t.Parallel()
+
+	enabled := &PaymentConfig{AlipayMobilePrecreateDeepLink: true}
+	officialAlipay := &payment.InstanceSelection{ProviderKey: payment.TypeAlipay}
+
+	tests := []struct {
+		name string
+		req  CreateOrderRequest
+		cfg  *PaymentConfig
+		sel  *payment.InstanceSelection
+		want bool
+	}{
+		{name: "mobile official alipay with switch", req: CreateOrderRequest{IsMobile: true}, cfg: enabled, sel: officialAlipay, want: true},
+		{name: "desktop remains unchanged", req: CreateOrderRequest{IsMobile: false}, cfg: enabled, sel: officialAlipay, want: false},
+		{name: "switch disabled keeps wap", req: CreateOrderRequest{IsMobile: true}, cfg: &PaymentConfig{}, sel: officialAlipay, want: false},
+		{name: "other provider remains unchanged", req: CreateOrderRequest{IsMobile: true}, cfg: enabled, sel: &payment.InstanceSelection{ProviderKey: payment.TypeEasyPay}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := shouldUseAlipayMobilePrecreate(tt.req, tt.cfg, tt.sel); got != tt.want {
+				t.Fatalf("shouldUseAlipayMobilePrecreate() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsOfficialAlipayProviderInstance(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		instance *dbent.PaymentProviderInstance
+		want     bool
+	}{
+		{name: "nil instance", instance: nil, want: false},
+		{name: "official alipay", instance: &dbent.PaymentProviderInstance{ProviderKey: payment.TypeAlipay}, want: true},
+		{name: "normalized official alipay", instance: &dbent.PaymentProviderInstance{ProviderKey: " ALIPAY "}, want: true},
+		{name: "easypay alipay route", instance: &dbent.PaymentProviderInstance{ProviderKey: payment.TypeEasyPay}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := isOfficialAlipayProviderInstance(tt.instance); got != tt.want {
+				t.Fatalf("isOfficialAlipayProviderInstance() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestBuildCreateOrderResponseDefaultsToOrderCreated(t *testing.T) {
 	t.Parallel()
 
@@ -91,6 +144,41 @@ func TestBuildCreateOrderResponseCopiesJSAPIPayload(t *testing.T) {
 	}
 }
 
+func TestSanitizeCreatePaymentResponseDetailsRemovesNULBytes(t *testing.T) {
+	t.Parallel()
+
+	resp := &payment.CreatePaymentResponse{
+		TradeNo:      "trade\x00-no",
+		PayURL:       "https://pay.example.com/\x00checkout",
+		QRCode:       "wxp://payment-token\x00",
+		ClientSecret: "secret\x00unchanged",
+	}
+
+	sanitizeCreatePaymentResponseDetails(resp)
+
+	if strings.ContainsRune(resp.TradeNo, 0) {
+		t.Fatalf("trade_no still contains NUL: %q", resp.TradeNo)
+	}
+	if strings.ContainsRune(resp.PayURL, 0) {
+		t.Fatalf("pay_url still contains NUL: %q", resp.PayURL)
+	}
+	if strings.ContainsRune(resp.QRCode, 0) {
+		t.Fatalf("qr_code still contains NUL: %q", resp.QRCode)
+	}
+	if resp.TradeNo != "trade-no" {
+		t.Fatalf("trade_no = %q, want trade-no", resp.TradeNo)
+	}
+	if resp.PayURL != "https://pay.example.com/checkout" {
+		t.Fatalf("pay_url = %q, want sanitized URL", resp.PayURL)
+	}
+	if resp.QRCode != "wxp://payment-token" {
+		t.Fatalf("qr_code = %q, want sanitized QR code", resp.QRCode)
+	}
+	if resp.ClientSecret != "secret\x00unchanged" {
+		t.Fatalf("client_secret = %q, should not be touched by payment detail sanitization", resp.ClientSecret)
+	}
+}
+
 func TestValidateSelectedCreateOrderAmountCurrencyRejectsFractionalZeroDecimal(t *testing.T) {
 	t.Parallel()
 
@@ -126,27 +214,66 @@ func TestCalculateCreateOrderPayAmountUsesCurrencyPrecision(t *testing.T) {
 	}
 }
 
-func TestCalculateCreateOrderPayAmountForSubscriptionKeepsDirectPrice(t *testing.T) {
+func TestCalculateCreateOrderPayAmountForSubscriptionConvertsCNYPriceWhenRateConfigured(t *testing.T) {
 	t.Parallel()
 
-	amountStr, amount, err := calculateCreateOrderPayAmount(5, 0, "CNY")
+	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(9.99, 0, "CNY", payment.OrderTypeSubscription, 7.15)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if amountStr != "5.00" || amount != 5 {
-		t.Fatalf("subscription CNY pay amount = (%q, %v), want (5.00, 5)", amountStr, amount)
+	if amountStr != "71.43" || amount != 71.43 {
+		t.Fatalf("subscription CNY pay amount = (%q, %v), want (71.43, 71.43)", amountStr, amount)
 	}
 }
 
-func TestCalculateCreateOrderPayAmountForSubscriptionAppliesFeeToDirectPrice(t *testing.T) {
+func TestCalculateCreateOrderPayAmountForSubscriptionAppliesFeeAfterCNYConversion(t *testing.T) {
 	t.Parallel()
 
-	amountStr, amount, err := calculateCreateOrderPayAmount(5, 2.5, "CNY")
+	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(9.99, 2.5, "CNY", payment.OrderTypeSubscription, 7.15)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if amountStr != "5.13" || amount != 5.13 {
-		t.Fatalf("subscription CNY pay amount with fee = (%q, %v), want (5.13, 5.13)", amountStr, amount)
+	if amountStr != "73.22" || amount != 73.22 {
+		t.Fatalf("subscription CNY pay amount with fee = (%q, %v), want (73.22, 73.22)", amountStr, amount)
+	}
+}
+
+func TestCalculateCreateOrderPayAmountForSubscriptionKeepsNonCNYPrice(t *testing.T) {
+	t.Parallel()
+
+	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(9.99, 0, "USD", payment.OrderTypeSubscription, 7.15)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if amountStr != "9.99" || amount != 9.99 {
+		t.Fatalf("subscription USD pay amount = (%q, %v), want (9.99, 9.99)", amountStr, amount)
+	}
+}
+
+// 换算是 opt-in：未配置汇率（rate=0）时，CNY 订阅保持 price 直付的存量行为。
+// 该测试锁住存量部署升级后行为不变的兼容承诺。
+func TestCalculateCreateOrderPayAmountForSubscriptionKeepsDirectPriceWhenRateDisabled(t *testing.T) {
+	t.Parallel()
+
+	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(9.99, 0, "CNY", payment.OrderTypeSubscription, 0)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if amountStr != "9.99" || amount != 9.99 {
+		t.Fatalf("subscription CNY pay amount without rate = (%q, %v), want (9.99, 9.99)", amountStr, amount)
+	}
+}
+
+// 汇率只作用于订阅订单，余额充值订单不受影响。
+func TestCalculateCreateOrderPayAmountForBalanceIgnoresSubscriptionRate(t *testing.T) {
+	t.Parallel()
+
+	amountStr, amount, err := calculateCreateOrderPayAmountForOrderType(50, 0, "CNY", payment.OrderTypeBalance, 7.15)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if amountStr != "50.00" || amount != 50 {
+		t.Fatalf("balance CNY pay amount = (%q, %v), want (50.00, 50)", amountStr, amount)
 	}
 }
 

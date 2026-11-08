@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"time"
 
@@ -12,6 +13,10 @@ const (
 	modelRateLimitsKey                 = "model_rate_limits"
 	antigravityGeminiModelRateLimitKey = "antigravity:gemini"
 	openAIImageGenerationRateLimitKey  = "openai:image_generation"
+	openAICodexSparkRateLimitReason    = "openai_codex_spark_rate_limit"
+	// anthropicFableRateLimitKey 是 Anthropic 7d_oi（Fable 专属 7d 窗口）限流的
+	// 家族级 scope：命中后所有 Fable 变体（含 [1m] 等后缀）都不再调度到该账号。
+	anthropicFableRateLimitKey = "claude-fable-5"
 )
 
 // isRateLimitActiveForKey 检查指定 key 的限流是否生效
@@ -75,15 +80,28 @@ func (a *Account) modelRateLimitKeysForRequest(ctx context.Context, requestedMod
 	keys := []string{modelKey}
 	switch a.Platform {
 	case PlatformAntigravity:
-		if isAntigravityGeminiModel(modelKey) && modelKey != antigravityGeminiModelRateLimitKey {
+		if isAntigravityGeminiModel(modelKey) && !isAntigravityGeminiImageModel(modelKey) && modelKey != antigravityGeminiModelRateLimitKey {
 			keys = append(keys, antigravityGeminiModelRateLimitKey)
 		}
 	case PlatformOpenAI:
 		if openAIImageGenerationRateLimitApplies(ctx, requestedModel, modelKey) && modelKey != openAIImageGenerationRateLimitKey {
 			keys = append(keys, openAIImageGenerationRateLimitKey)
 		}
+	case PlatformAnthropic:
+		if isAnthropicFableModel(modelKey) && modelKey != anthropicFableRateLimitKey {
+			keys = append(keys, anthropicFableRateLimitKey)
+		}
+	case PlatformCline:
+		if walletKey := clineWalletRateLimitKey(modelKey); walletKey != "" {
+			keys = append(keys, walletKey)
+		}
 	}
 	return keys
+}
+
+// isAnthropicFableModel 判断是否为 Fable 模型家族（claude-fable-5、claude-fable-5[1m] 等变体）
+func isAnthropicFableModel(model string) bool {
+	return strings.Contains(strings.ToLower(model), "fable")
 }
 
 func openAIImageGenerationRateLimitApplies(ctx context.Context, requestedModel, modelKey string) bool {
@@ -105,6 +123,23 @@ func OpenAIImageGenerationIntentFromContext(ctx context.Context) bool {
 		return false
 	}
 	enabled, ok := ctx.Value(ctxkey.OpenAIImageGenerationIntent).(bool)
+	return ok && enabled
+}
+
+// WithOpenAIImagesEndpoint 标记请求从 /v1/images/* 专用生图端点入站。
+func WithOpenAIImagesEndpoint(ctx context.Context) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, ctxkey.OpenAIImagesEndpoint, true)
+}
+
+// OpenAIImagesEndpointFromContext 报告请求是否来自 /v1/images/*。
+func OpenAIImagesEndpointFromContext(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	enabled, ok := ctx.Value(ctxkey.OpenAIImagesEndpoint).(bool)
 	return ok && enabled
 }
 
@@ -130,10 +165,15 @@ func antigravityModelRateLimitKeys(model string) []string {
 		return nil
 	}
 	keys := []string{model}
-	if isAntigravityGeminiModel(model) && model != antigravityGeminiModelRateLimitKey {
+	if isAntigravityGeminiModel(model) && !isAntigravityGeminiImageModel(model) && model != antigravityGeminiModelRateLimitKey {
 		keys = append(keys, antigravityGeminiModelRateLimitKey)
 	}
 	return keys
+}
+
+func isAntigravityGeminiImageModel(model string) bool {
+	normalized := normalizeAntigravityModelName(model)
+	return strings.HasPrefix(normalized, "gemini-") && strings.Contains(normalized, "-image")
 }
 
 func (a *Account) modelRateLimitResetAt(scope string) *time.Time {
@@ -157,4 +197,41 @@ func (a *Account) modelRateLimitResetAt(scope string) *time.Time {
 		return nil
 	}
 	return &resetAt
+}
+
+// modelRateLimitReason 返回指定 scope 冷却记录中的原因；没有记录时为空。
+func (a *Account) modelRateLimitReason(scope string) string {
+	if a == nil || a.Extra == nil {
+		return ""
+	}
+	rawLimits, _ := a.Extra[modelRateLimitsKey].(map[string]any)
+	rawLimit, _ := rawLimits[scope].(map[string]any)
+	reason, _ := rawLimit["reason"].(string)
+	return reason
+}
+
+// setAccountModelRateLimitSnapshot 把模型级限流写进本账号对象的 Extra 快照。
+// 写时复制：Extra 与其中的 model_rate_limits 可能与调度快照母本及其它副本共享，
+// 这里只读取旧 map，写入新复制的 map 后替换 account.Extra，不修改任何已有 map。
+func setAccountModelRateLimitSnapshot(account *Account, scope string, resetAt time.Time, reason string, now time.Time) {
+	if account == nil || strings.TrimSpace(scope) == "" {
+		return
+	}
+	payload := map[string]any{
+		"rate_limited_at":     now.UTC().Format(time.RFC3339),
+		"rate_limit_reset_at": resetAt.UTC().Format(time.RFC3339),
+	}
+	if reason = strings.TrimSpace(reason); reason != "" {
+		payload["reason"] = reason
+	}
+
+	oldLimits, _ := account.Extra[modelRateLimitsKey].(map[string]any)
+	limits := make(map[string]any, len(oldLimits)+1)
+	maps.Copy(limits, oldLimits)
+	limits[scope] = payload
+
+	extra := make(map[string]any, len(account.Extra)+1)
+	maps.Copy(extra, account.Extra)
+	extra[modelRateLimitsKey] = limits
+	account.Extra = extra
 }

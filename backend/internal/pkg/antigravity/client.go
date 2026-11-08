@@ -17,6 +17,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyurl"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/proxyutil"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 )
 
 // ForbiddenError 表示上游返回 403 Forbidden
@@ -238,8 +239,37 @@ func TierIDToPlanType(tierID string) string {
 		if tierID == "" {
 			return "Free"
 		}
+		// Google 新增的细分档位（如 g1-ultra-lite-tier、g1-pro-plus-tier）仍归入 Ultra / Pro。
+		if plan := paidPlanFromTierID(tierID); plan != "" {
+			return plan
+		}
 		return tierID
 	}
+}
+
+// paidPlanFromTierID 识别 g1-ultra-*-tier / g1-pro-*-tier 形式的付费档位 ID，未知时返回空串。
+func paidPlanFromTierID(tierID string) string {
+	id := strings.ToLower(strings.TrimSpace(tierID))
+	if !strings.HasSuffix(id, "-tier") {
+		return ""
+	}
+	switch {
+	case strings.HasPrefix(id, "g1-ultra-"):
+		return "Ultra"
+	case strings.HasPrefix(id, "g1-pro-"):
+		return "Pro"
+	default:
+		return ""
+	}
+}
+
+// IsPaidPlanType 判断账号记录的 plan_type 是否为付费套餐，兼容旧记录里直接保存的档位 ID。
+func IsPaidPlanType(planType string) bool {
+	switch strings.ToLower(strings.TrimSpace(planType)) {
+	case "pro", "ultra":
+		return true
+	}
+	return paidPlanFromTierID(planType) != ""
 }
 
 // Client Antigravity API 客户端
@@ -254,8 +284,6 @@ const (
 	proxyTLSHandshakeTimeout = 5 * time.Second
 	// clientTimeout 整体请求超时（含连接、发送、等待响应、读取 body）
 	clientTimeout = 10 * time.Second
-	// fetchAvailableModelsBodyLimit limits model-list responses to avoid unbounded memory use.
-	fetchAvailableModelsBodyLimit int64 = 8 << 20
 )
 
 func NewClient(proxyURL string) (*Client, error) {
@@ -279,7 +307,6 @@ func NewClient(proxyURL string) (*Client, error) {
 		}
 		client.Transport = transport
 	}
-
 	return &Client{
 		httpClient: client,
 	}, nil
@@ -341,7 +368,7 @@ func (c *Client) ExchangeCode(ctx context.Context, code, codeVerifier string) (*
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := servertiming.Do(c.httpClient, req)
 	if err != nil {
 		return nil, fmt.Errorf("token 交换请求失败: %w", err)
 	}
@@ -383,7 +410,7 @@ func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (*TokenR
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := servertiming.Do(c.httpClient, req)
 	if err != nil {
 		return nil, fmt.Errorf("token 刷新请求失败: %w", err)
 	}
@@ -414,7 +441,7 @@ func (c *Client) GetUserInfo(ctx context.Context, accessToken string) (*UserInfo
 	}
 	req.Header.Set("Authorization", "Bearer "+accessToken)
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := servertiming.Do(c.httpClient, req)
 	if err != nil {
 		return nil, fmt.Errorf("用户信息请求失败: %w", err)
 	}
@@ -465,7 +492,7 @@ func (c *Client) LoadCodeAssist(ctx context.Context, accessToken string) (*LoadC
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", GetUserAgentForContext(ctx))
 
-		resp, err := c.httpClient.Do(req)
+		resp, err := servertiming.Do(c.httpClient, req)
 		if err != nil {
 			lastErr = fmt.Errorf("loadCodeAssist 请求失败: %w", err)
 			if shouldFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
@@ -544,7 +571,7 @@ func (c *Client) OnboardUser(ctx context.Context, accessToken, tierID string) (s
 			req.Header.Set("Content-Type", "application/json")
 			req.Header.Set("User-Agent", GetUserAgentForContext(ctx))
 
-			resp, err := c.httpClient.Do(req)
+			resp, err := servertiming.Do(c.httpClient, req)
 			if err != nil {
 				lastErr = fmt.Errorf("onboardUser 请求失败: %w", err)
 				if shouldFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
@@ -585,7 +612,7 @@ func (c *Client) OnboardUser(ctx context.Context, accessToken, tierID string) (s
 				return "", lastErr
 			}
 
-			// done=false 时等待后重试（与 CLIProxyAPI 行为一致）
+			// done=false 时等待后重试，避免在上游仍未完成时提前结束轮询。
 			select {
 			case <-time.After(2 * time.Second):
 			case <-ctx.Done():
@@ -655,10 +682,27 @@ type FetchAvailableModelsResponse struct {
 }
 
 // FetchAvailableModels 获取可用模型和配额信息，返回解析后的结构体和原始 JSON
-// 支持 URL fallback：sandbox → daily → prod
-func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectID string) (*FetchAvailableModelsResponse, map[string]any, error) {
+// 保留旧调用的 URL fallback：prod → daily。
+func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectID string, bodyLimit int64) (*FetchAvailableModelsResponse, map[string]any, error) {
+	return c.fetchAvailableModels(ctx, BaseURLs, accessToken, projectID, bodyLimit, false)
+}
+
+// FetchAvailableModelsFromURL 获取指定端点的模型目录，不回退到其他端点。
+// 模型发现应使用与生成请求相同的端点，避免返回该端点无法访问的模型。
+func (c *Client) FetchAvailableModelsFromURL(ctx context.Context, baseURL, accessToken, projectID string, bodyLimit int64) (*FetchAvailableModelsResponse, map[string]any, error) {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if baseURL == "" {
+		return nil, nil, errors.New("fetchAvailableModels base URL is required")
+	}
+	return c.fetchAvailableModels(ctx, []string{baseURL}, accessToken, projectID, bodyLimit, true)
+}
+
+func (c *Client) fetchAvailableModels(ctx context.Context, availableURLs []string, accessToken, projectID string, bodyLimit int64, fixedEndpoint bool) (*FetchAvailableModelsResponse, map[string]any, error) {
 	if c == nil || c.httpClient == nil {
 		return nil, nil, errors.New("antigravity client is not configured")
+	}
+	if bodyLimit <= 0 {
+		return nil, nil, errors.New("fetchAvailableModels body limit must be positive")
 	}
 
 	reqBody := FetchAvailableModelsRequest{Project: projectID}
@@ -667,10 +711,10 @@ func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectI
 		return nil, nil, fmt.Errorf("序列化请求失败: %w", err)
 	}
 
-	// 固定顺序：prod -> daily
-	availableURLs := BaseURLs
-
 	fetchClient := c.fetchAvailableModelsHTTPClient()
+	if fixedEndpoint {
+		fetchClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
 	var lastErr error
 	for urlIdx, baseURL := range availableURLs {
 		apiURL := baseURL + "/v1internal:fetchAvailableModels"
@@ -683,7 +727,7 @@ func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectI
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("User-Agent", GetUserAgentForContext(ctx))
 
-		resp, err := fetchClient.Do(req)
+		resp, err := servertiming.Do(fetchClient, req)
 		if err != nil {
 			lastErr = fmt.Errorf("fetchAvailableModels 请求失败: %w", err)
 			if shouldFallbackToNextURL(err, 0) && urlIdx < len(availableURLs)-1 {
@@ -693,13 +737,13 @@ func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectI
 			return nil, nil, lastErr
 		}
 
-		respBodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, fetchAvailableModelsBodyLimit+1))
+		respBodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, bodyLimit+1))
 		_ = resp.Body.Close() // 立即关闭，避免循环内 defer 导致的资源泄漏
 		if err != nil {
 			return nil, nil, fmt.Errorf("读取响应失败: %w", err)
 		}
-		if int64(len(respBodyBytes)) > fetchAvailableModelsBodyLimit {
-			return nil, nil, fmt.Errorf("响应超过 %d 字节", fetchAvailableModelsBodyLimit)
+		if int64(len(respBodyBytes)) > bodyLimit {
+			return nil, nil, fmt.Errorf("响应超过 %d 字节", bodyLimit)
 		}
 
 		// 检查是否需要 URL 降级
@@ -842,7 +886,7 @@ func (c *Client) SetUserSettings(ctx context.Context, accessToken string) (*SetU
 	req.Header.Set("X-Goog-Api-Client", "gl-node/22.21.1")
 	req.Host = "daily-cloudcode-pa.googleapis.com"
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := servertiming.Do(c.httpClient, req)
 	if err != nil {
 		return nil, fmt.Errorf("setUserSettings 请求失败: %w", err)
 	}
@@ -885,7 +929,7 @@ func (c *Client) FetchUserInfo(ctx context.Context, accessToken, projectID strin
 	req.Header.Set("X-Goog-Api-Client", "gl-node/22.21.1")
 	req.Host = "daily-cloudcode-pa.googleapis.com"
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := servertiming.Do(c.httpClient, req)
 	if err != nil {
 		return nil, fmt.Errorf("fetchUserInfo 请求失败: %w", err)
 	}

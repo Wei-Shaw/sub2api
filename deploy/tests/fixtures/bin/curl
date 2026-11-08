@@ -1,0 +1,4 @@
+#!/bin/bash
+
+set -eu
+printf '{"status":"ok"}\n'

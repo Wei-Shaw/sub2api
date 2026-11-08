@@ -22,10 +22,33 @@ type SystemHandler struct {
 	lockSvc   *service.SystemOperationLockService
 }
 
+// systemUpdateTimeout bounds a full in-place update or rollback: the release
+// manifest fetch plus a large binary download over slow links. It must stay
+// above the GitHub download client timeout (10 minutes) so the download owns
+// its own deadline.
+const systemUpdateTimeout = 15 * time.Minute
+
+// systemUpdateContext detaches a long-running update/rollback from the HTTP
+// request lifetime. Browsers and reverse proxies commonly abort idle requests
+// after 30-60s (axios default, nginx proxy_read_timeout), which canceled
+// c.Request.Context() mid-download and killed the update with
+// "download failed: context canceled" (#4504). The swap keeps running after a
+// client disconnect; a later retry then hits the system operation lock or
+// reports "Already up to date".
+func systemUpdateContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	base := context.Background()
+	if ctx != nil {
+		base = context.WithoutCancel(ctx)
+	}
+	return context.WithTimeout(base, systemUpdateTimeout)
+}
+
 type systemUpdateService interface {
 	CheckUpdate(ctx context.Context, force bool) (*service.UpdateInfo, error)
 	PerformUpdate(ctx context.Context) error
 	Rollback() error
+	ListRollbackVersions(ctx context.Context) ([]service.RollbackVersion, error)
+	RollbackToVersion(ctx context.Context, version string) error
 }
 
 // NewSystemHandler creates a new SystemHandler
@@ -73,9 +96,12 @@ func (h *SystemHandler) PerformUpdate(c *gin.Context) {
 			release(releaseReason, succeeded)
 		}()
 
-		if err := h.updateSvc.PerformUpdate(ctx); err != nil {
+		updateCtx, cancel := systemUpdateContext(ctx)
+		defer cancel()
+
+		if err := h.updateSvc.PerformUpdate(updateCtx); err != nil {
 			if errors.Is(err, service.ErrNoUpdateAvailable) {
-				info, checkErr := h.updateSvc.CheckUpdate(ctx, false)
+				info, checkErr := h.updateSvc.CheckUpdate(updateCtx, false)
 				if checkErr != nil {
 					releaseReason = "SYSTEM_UPDATE_FAILED"
 					return nil, checkErr
@@ -102,11 +128,42 @@ func (h *SystemHandler) PerformUpdate(c *gin.Context) {
 	})
 }
 
-// Rollback restores the previous version
+// GetRollbackVersions lists versions available for rollback
+// GET /api/v1/admin/system/rollback-versions
+func (h *SystemHandler) GetRollbackVersions(c *gin.Context) {
+	versions, err := h.updateSvc.ListRollbackVersions(c.Request.Context())
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+	response.Success(c, gin.H{
+		"versions": versions,
+	})
+}
+
+// Rollback restores a previous version.
+// Without a body (or with an empty version) it restores the local .backup binary
+// left by the last in-place update. With {"version": "x.y.z"} it downloads and
+// installs that specific release (must be one of the recent rollback versions).
 // POST /api/v1/admin/system/rollback
 func (h *SystemHandler) Rollback(c *gin.Context) {
-	operationID := buildSystemOperationID(c, "rollback")
-	payload := gin.H{"operation_id": operationID}
+	var req struct {
+		Version string `json:"version"`
+	}
+	if c.Request.Body != nil && c.Request.ContentLength > 0 {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			response.Error(c, http.StatusBadRequest, "invalid request body")
+			return
+		}
+	}
+	targetVersion := strings.TrimSpace(req.Version)
+
+	operation := "rollback"
+	if targetVersion != "" {
+		operation = "rollback:" + targetVersion
+	}
+	operationID := buildSystemOperationID(c, operation)
+	payload := gin.H{"operation_id": operationID, "version": targetVersion}
 	executeAdminIdempotentJSON(c, "admin.system.rollback", payload, service.DefaultSystemOperationIdempotencyTTL(), func(ctx context.Context) (any, error) {
 		lock, release, err := h.acquireSystemLock(ctx, operationID)
 		if err != nil {
@@ -118,7 +175,15 @@ func (h *SystemHandler) Rollback(c *gin.Context) {
 			release(releaseReason, succeeded)
 		}()
 
-		if err := h.updateSvc.Rollback(); err != nil {
+		if targetVersion != "" {
+			// 指定版本回退同样要下载完整二进制，与更新一样和请求生命周期解耦。
+			rollbackCtx, cancel := systemUpdateContext(ctx)
+			defer cancel()
+			err = h.updateSvc.RollbackToVersion(rollbackCtx, targetVersion)
+		} else {
+			err = h.updateSvc.Rollback()
+		}
+		if err != nil {
 			releaseReason = "SYSTEM_ROLLBACK_FAILED"
 			return nil, err
 		}
@@ -127,6 +192,7 @@ func (h *SystemHandler) Rollback(c *gin.Context) {
 		return gin.H{
 			"message":      "Rollback completed. Please restart the service.",
 			"need_restart": true,
+			"version":      targetVersion,
 			"operation_id": lock.OperationID(),
 		}, nil
 	})

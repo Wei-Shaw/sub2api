@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -27,6 +28,62 @@ func TestBuildVertexGeminiURLUsesGlobalEndpointHost(t *testing.T) {
 	got, err := buildVertexGeminiURL("my-project", "global", "gemini-3-flash-preview", "streamGenerateContent", true)
 	require.NoError(t, err)
 	require.Equal(t, "https://aiplatform.googleapis.com/v1/projects/my-project/locations/global/publishers/google/models/gemini-3-flash-preview:streamGenerateContent?alt=sse", got)
+}
+
+func TestIsVertexAPIKey(t *testing.T) {
+	apiKeyCreds := map[string]any{"auth_mode": "apikey", "api_key": "k"}
+	require.True(t, (&Account{Platform: PlatformGemini, Type: AccountTypeServiceAccount, Credentials: apiKeyCreds}).IsVertexAPIKey())
+	require.False(t, (&Account{Platform: PlatformGemini, Type: AccountTypeServiceAccount, Credentials: map[string]any{"service_account_json": "{}"}}).IsVertexAPIKey())
+	require.False(t, (&Account{Platform: PlatformAnthropic, Type: AccountTypeServiceAccount, Credentials: apiKeyCreds}).IsVertexAPIKey())
+	require.False(t, (&Account{Platform: PlatformGemini, Type: AccountTypeAPIKey, Credentials: apiKeyCreds}).IsVertexAPIKey())
+}
+
+func TestBuildVertexGeminiAccountURL(t *testing.T) {
+	cases := []struct {
+		name        string
+		credentials map[string]any
+		want        string
+	}{
+		{
+			name:        "api key without project uses express global endpoint",
+			credentials: map[string]any{"auth_mode": "apikey", "api_key": "k", "location": "us-central1"},
+			want:        "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-3-flash-preview:streamGenerateContent?alt=sse",
+		},
+		{
+			name:        "api key with project uses project endpoint",
+			credentials: map[string]any{"auth_mode": "apikey", "api_key": "k", "project_id": "my-project", "location": "us-central1"},
+			want:        "https://us-central1-aiplatform.googleapis.com/v1/projects/my-project/locations/us-central1/publishers/google/models/gemini-3-flash-preview:streamGenerateContent?alt=sse",
+		},
+		{
+			name:        "service account uses project endpoint",
+			credentials: map[string]any{"project_id": "sa-project", "location": "global"},
+			want:        "https://aiplatform.googleapis.com/v1/projects/sa-project/locations/global/publishers/google/models/gemini-3-flash-preview:streamGenerateContent?alt=sse",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			account := &Account{Platform: PlatformGemini, Type: AccountTypeServiceAccount, Credentials: tc.credentials}
+			got, err := buildVertexGeminiAccountURL(account, "gemini-3-flash-preview", "streamGenerateContent", true)
+			require.NoError(t, err)
+			require.Equal(t, tc.want, got)
+		})
+	}
+
+	account := &Account{Platform: PlatformGemini, Type: AccountTypeServiceAccount, Credentials: map[string]any{"auth_mode": "apikey", "api_key": "k"}}
+	_, err := buildVertexGeminiAccountURL(account, "gemini-3-flash-preview", "rawPredict", false)
+	require.ErrorContains(t, err, "unsupported vertex gemini action")
+}
+
+func TestSetVertexGeminiAuthUsesAPIKeyHeader(t *testing.T) {
+	account := &Account{Platform: PlatformGemini, Type: AccountTypeServiceAccount, Credentials: map[string]any{"auth_mode": "apikey", "api_key": " vertex-key "}}
+	req := httptest.NewRequest(http.MethodPost, "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-3-flash-preview:generateContent", nil)
+
+	require.NoError(t, setVertexGeminiAuth(context.Background(), req, account, nil))
+	require.Equal(t, "vertex-key", req.Header.Get("x-goog-api-key"))
+	require.Empty(t, req.Header.Get("Authorization"))
+
+	account.Credentials["api_key"] = ""
+	require.ErrorContains(t, setVertexGeminiAuth(context.Background(), req, account, nil), "vertex api_key not configured")
 }
 
 func TestBuildVertexAnthropicURL(t *testing.T) {
@@ -99,6 +156,24 @@ func TestVertexServiceAccountProxyURL(t *testing.T) {
 	require.Equal(t, "http://proxy.example.com:8080", vertexServiceAccountProxyURL(account))
 	require.Empty(t, vertexServiceAccountProxyURL(&Account{Proxy: account.Proxy}))
 	require.Empty(t, vertexServiceAccountProxyURL(&Account{ProxyID: &proxyID}))
+}
+
+func TestVertexServiceAccountHTTPClientRecordsDependency(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+
+	client, err := newVertexServiceAccountHTTPClient("")
+	require.NoError(t, err)
+	collector := servertiming.New(time.Now())
+	ctx := servertiming.WithCollector(context.Background(), collector)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, server.URL, nil)
+	require.NoError(t, err)
+	response, err := client.Do(request)
+	require.NoError(t, err)
+	require.NoError(t, response.Body.Close())
+	require.Contains(t, collector.HeaderValue(time.Now(), "bypass"), "dep_http;dur=")
 }
 
 func TestExchangeVertexServiceAccountTokenUsesProxy(t *testing.T) {

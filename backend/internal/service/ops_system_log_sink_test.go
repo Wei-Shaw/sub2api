@@ -32,18 +32,27 @@ func TestOpsSystemLogSink_ShouldIndex(t *testing.T) {
 			want:  true,
 		},
 		{
-			name:  "access component",
+			name:  "access component disabled by default",
 			event: &logger.LogEvent{Level: "info", Component: "http.access"},
-			want:  true,
+			want:  false,
 		},
 		{
-			name: "access component from fields (real zap path)",
+			name: "rejected access excluded from database sink",
+			event: &logger.LogEvent{
+				Level:     "info",
+				Component: "http.access",
+				Fields:    map[string]any{logger.OpsSystemLogSkipField: true},
+			},
+			want: false,
+		},
+		{
+			name: "access component from fields disabled by default",
 			event: &logger.LogEvent{
 				Level:     "info",
 				Component: "",
 				Fields:    map[string]any{"component": "http.access"},
 			},
-			want: true,
+			want: false,
 		},
 		{
 			name:  "audit component",
@@ -70,6 +79,28 @@ func TestOpsSystemLogSink_ShouldIndex(t *testing.T) {
 		if got := sink.shouldIndex(tc.event); got != tc.want {
 			t.Fatalf("%s: shouldIndex()=%v, want %v", tc.name, got, tc.want)
 		}
+	}
+}
+
+func TestOpsSystemLogSink_ShouldIndexAccessLogsOnlyWhenEnabled(t *testing.T) {
+	sink := &OpsSystemLogSink{}
+	sink.SetPersistAccessLogs(true)
+
+	if !sink.shouldIndex(&logger.LogEvent{Level: "info", Component: "http.access"}) {
+		t.Fatal("access log should be indexed after explicit opt-in")
+	}
+	if !sink.shouldIndex(&logger.LogEvent{
+		Level:  "info",
+		Fields: map[string]any{"component": "http.access"},
+	}) {
+		t.Fatal("field-based access log should be indexed after explicit opt-in")
+	}
+	if sink.shouldIndex(&logger.LogEvent{
+		Level:     "info",
+		Component: "http.access",
+		Fields:    map[string]any{logger.OpsSystemLogSkipField: true},
+	}) {
+		t.Fatal("explicit skip marker must override access-log persistence")
 	}
 }
 
@@ -140,6 +171,7 @@ func TestOpsSystemLogSink_StartStopAndFlushSuccess(t *testing.T) {
 	}
 
 	sink := NewOpsSystemLogSink(repo)
+	sink.host = "api-node-1"
 	sink.batchSize = 1
 	sink.flushInterval = 10 * time.Millisecond
 	sink.Start()
@@ -172,6 +204,9 @@ func TestOpsSystemLogSink_StartStopAndFlushSuccess(t *testing.T) {
 		t.Fatalf("captured len = %d, want 1", len(captured))
 	}
 	item := captured[0]
+	if item.Host != "api-node-1" {
+		t.Fatalf("host = %q, want api-node-1", item.Host)
+	}
 	if item.RequestID != "req-1" || item.ClientRequestID != "creq-1" {
 		t.Fatalf("unexpected request ids: %+v", item)
 	}
@@ -322,5 +357,22 @@ func TestOpsSystemLogSink_HelperFunctions(t *testing.T) {
 		} else if got != nil {
 			t.Fatalf("asInt64Ptr(%v) should be nil, got %d", tc.in, *got)
 		}
+	}
+}
+
+func TestNormalizeSystemLogHost(t *testing.T) {
+	if got := normalizeSystemLogHost(" api-node-1 ", nil); got != "api-node-1" {
+		t.Fatalf("trimmed host = %q, want api-node-1", got)
+	}
+	if got := normalizeSystemLogHost("", nil); got != "unknown" {
+		t.Fatalf("empty host = %q, want unknown", got)
+	}
+	if got := normalizeSystemLogHost("api-node-1", errors.New("hostname unavailable")); got != "unknown" {
+		t.Fatalf("errored host = %q, want unknown", got)
+	}
+	longHost := strings.Repeat("节", maxSystemLogHostLength+1)
+	got := normalizeSystemLogHost(longHost, nil)
+	if runeCount := len([]rune(got)); runeCount != maxSystemLogHostLength {
+		t.Fatalf("truncated host rune count = %d, want %d", runeCount, maxSystemLogHostLength)
 	}
 }

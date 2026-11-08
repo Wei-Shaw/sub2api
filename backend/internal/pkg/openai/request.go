@@ -3,6 +3,8 @@ package openai
 import (
 	"regexp"
 	"strings"
+
+	"golang.org/x/net/http/httpguts"
 )
 
 // CodexCLIUserAgentPrefixes matches Codex CLI User-Agent patterns
@@ -47,7 +49,7 @@ const codexOfficialClientFamilyPrefix = "codex "
 // 或在 bump context/codex 时同步补入本集合。
 var codexOfficialClientOriginators = map[string]bool{
 	"codex_cli_rs":          true, // CLI 默认 DEFAULT_ORIGINATOR
-	"codex-tui":             true, // 交互式 TUI（连字符，真实流量占比最高）
+	CodexTUIOriginator:      true, // 交互式 TUI（连字符，真实流量占比最高）
 	"codex_vscode":          true, // VSCode/Cursor 扩展
 	"codex_vscode_copilot":  true, // 扩展 GitHub Copilot 集成模式
 	"codex_app":             true, // 历史保留
@@ -55,17 +57,6 @@ var codexOfficialClientOriginators = map[string]bool{
 	"codex_atlas":           true, // is_first_party_chat_originator
 	"codex_exec":            true, // codex exec 非交互
 	"codex_sdk_ts":          true, // TypeScript SDK
-}
-
-// IsBrowserUserAgent 判断 User-Agent 是否来自浏览器（Chrome/Firefox/Safari/Edge/Opera 等）。
-// 所有现代浏览器的 UA 均以 "Mozilla/" 作为前缀，CLI 工具（codex/claude/curl/postman/python-requests 等）不会。
-// 该判定用于避免 Cloudflare 对浏览器型 UA 在 OpenAI 上游接口上触发 JS 质询。
-func IsBrowserUserAgent(userAgent string) bool {
-	ua := strings.TrimSpace(userAgent)
-	if ua == "" {
-		return false
-	}
-	return strings.HasPrefix(strings.ToLower(ua), "mozilla/")
 }
 
 // IsCodexCLIRequest checks if the User-Agent indicates a Codex CLI request
@@ -127,7 +118,9 @@ func isCodexOfficialClientRequest(userAgent string, strict bool) bool {
 // `(name; version)` 括号组——该组由 codex-rs engine 写入，保留真实 clientInfo.name。
 // 故从尾部提取 name 可以恢复被 override 的真实客户端标识（例如 cccc → codex-tui）。
 //
-// input 应为已归一化（小写 + 去首尾空格）的 UA。
+// input 应为去首尾空格的 UA；本函数本身大小写无关，大小写由调用方按需处理
+// （isCodexOfficialClientRequest 传入已小写化的 UA 做匹配；PairCodexClientIdentity
+// 传入原始大小写以保留 originator 的真实大小写）。
 // 若无法解析则返回空字符串。
 func codexUATrailerName(ua string) string {
 	last := strings.LastIndex(ua, "(")
@@ -193,6 +186,188 @@ func matchCodexClientHeaderStrictPrefixes(value string, prefixes []string) bool 
 		}
 	}
 	return false
+}
+
+// PairCodexClientIdentity 由最终出站 User-Agent 推导与其配套的 originator，必要时归一化
+// UA 首段，保证两者一致。上游 /backend-api/codex 会校验 originator 与 UA 首段（首个 '/'
+// 之前的 client 名）是否配套，错配（如 originator=codex_cli_rs + UA=codex-tui/...）一律
+// 404（issue #3901，2026-07 实测）。
+//
+// 推导优先级：
+//  1. UA 首段是官方 originator（精确集合或 `Codex ` 家族前缀）→ 直接配对，UA 原样保留；
+//  2. UA 尾部括号组 `(name; version)` 的 name 是官方 originator——CODEX_INTERNAL_ORIGINATOR_OVERRIDE
+//     只改 UA 前缀不改尾部（如 cccc/0.142.0 ... (codex-tui; 0.142.0)）→ 用尾部 name 重写
+//     UA 首段后配对，保留真实版本/OS/终端指纹；
+//  3. 均不命中 → ok=false，调用方应整体回退为默认官方身份。
+func PairCodexClientIdentity(userAgent string) (originator string, pairedUA string, ok bool) {
+	// Validate before trimming so control bytes cannot become a valid identity.
+	if !validCodexUserAgentValue(userAgent) {
+		return "", "", false
+	}
+	ua := strings.TrimSpace(userAgent)
+	slash := strings.IndexByte(ua, '/')
+	if slash <= 0 {
+		return "", "", false
+	}
+	if leading := strings.TrimSpace(ua[:slash]); isSaneCodexOriginator(leading) && IsCodexOfficialClientOriginator(leading) {
+		leading = canonicalizeCodexOriginator(leading)
+		return leading, leading + ua[slash:], true
+	}
+	// 传原始大小写 UA 提取 trailer，保留 `Codex ` 家族身份的真实大小写；含 '/' 的
+	// trailer 会破坏重写后 UA 首段与 originator 的一致性，直接拒绝。
+	if trailer := codexUATrailerName(ua); trailer != "" && !strings.ContainsRune(trailer, '/') &&
+		isSaneCodexOriginator(trailer) && IsCodexOfficialClientOriginator(trailer) {
+		trailer = canonicalizeCodexOriginator(trailer)
+		return trailer, trailer + ua[slash:], true
+	}
+	return "", "", false
+}
+
+func validCodexUserAgentValue(value string) bool {
+	if !httpguts.ValidHeaderFieldValue(value) {
+		return false
+	}
+	// httpguts follows the legacy field-value grammar and permits obs-fold.
+	// User-Agent is not an obs-folded header; reject CR/LF before forwarding.
+	return !strings.ContainsAny(value, "\r\n")
+}
+
+// codexOriginatorMaxLen 官方 clientInfo.name 均为短 ASCII 标识，远低于此上限。
+const codexOriginatorMaxLen = 64
+
+// isSaneCodexOriginator 拒绝超长或含不可打印/非 ASCII 字节的候选 originator，
+// 避免 `Codex ` 家族宽前缀把客户端可控的任意字节当作官方身份逐字转发给上游。
+func isSaneCodexOriginator(name string) bool {
+	if name == "" || len(name) > codexOriginatorMaxLen {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		if c := name[i]; c < 0x20 || c > 0x7e {
+			return false
+		}
+	}
+	return true
+}
+
+// canonicalizeCodexOriginator 把精确集合的官方 originator 大小写变体归一为规范小写形态
+// （如 CODEX_CLI_RS → codex_cli_rs）；`Codex ` 家族不在精确集合中，保留原大小写
+// （其规范形态本就是混合大小写，上游按大小写敏感 starts_with("Codex ") 判定）。
+func canonicalizeCodexOriginator(name string) string {
+	if lower := normalizeCodexClientHeader(name); codexOfficialClientOriginators[lower] {
+		return lower
+	}
+	return name
+}
+
+// CodexCLIOriginator 是 codex-rs 客户端的默认 originator。
+const CodexCLIOriginator = "codex_cli_rs"
+
+// CodexTUIOriginator 是交互式 Codex TUI 使用的 originator。
+const CodexTUIOriginator = "codex-tui"
+
+// CodexDefaultOriginator 是网关默认发送的 Codex originator。
+// 历史 TUI 身份曾触发上游的身份风控分层，因此默认使用 CLI 身份；TUI 仍保留在官方身份集合中，
+// 供入站识别和兼容归一化。
+const CodexDefaultOriginator = CodexCLIOriginator
+
+// NormalizeCodexClientIdentityToCLI 将已配对的 TUI 身份归一为 CLI 身份。
+// sub2api 历史默认 UA 使用 codex-tui；上游仓库的 #5198 记录了该身份会收到
+// server_is_overloaded，而相同请求改用 codex_cli_rs 可以成功。归一化必须同时改写
+// originator 和 User-Agent 首段，避免触发 #3901 的身份配对校验。
+//
+// 版本、操作系统、架构和终端指纹保持不变；尾部 `(name; version)` 客户端标识组
+// 属于 TUI 身份时移除，因为真实 CLI UA 不携带该组。
+func NormalizeCodexClientIdentityToCLI(originator, userAgent string) (string, string, bool) {
+	if !strings.EqualFold(strings.TrimSpace(originator), CodexTUIOriginator) {
+		return originator, userAgent, false
+	}
+
+	ua := strings.TrimSpace(userAgent)
+	slash := strings.IndexByte(ua, '/')
+	if slash <= 0 {
+		return CodexCLIOriginator, ua, true
+	}
+
+	rest := ua[slash:]
+	if trailer := codexUATrailerName(ua); trailer != "" && IsCodexOfficialClientOriginator(trailer) {
+		if open := strings.LastIndex(rest, "("); open > 0 {
+			rest = strings.TrimRight(rest[:open], " ")
+		}
+	}
+	return CodexCLIOriginator, CodexCLIOriginator + rest, true
+}
+
+// CodexUserAgentVersion 提取 Codex UA 的完整版本段，即 `{client}/{version} (...` 中的 version。
+// 与 ParseCodexEngineVersion 的区别：后者只取三段数字用于引擎版本比较（会丢掉 -alpha.4
+// 之类的预发布后缀），本函数保留原样，因为出站 version 头必须与 UA 版本段逐字一致。
+// 取不到（非 Codex 形态 UA）时返回空串。
+func CodexUserAgentVersion(userAgent string) string {
+	ua := strings.TrimSpace(userAgent)
+	slash := strings.IndexByte(ua, '/')
+	if slash <= 0 {
+		return ""
+	}
+	rest := ua[slash+1:]
+	if space := strings.IndexByte(rest, ' '); space >= 0 {
+		rest = rest[:space]
+	}
+	return strings.TrimSpace(rest)
+}
+
+// SetCodexUserAgentVersion 用 version 重建 Codex 形态 UA 中的版本声明，其余部分
+// （客户端名、OS / 架构 / 终端指纹）原样保留；UA 不是 `{client}/{version}` 形态时返回空串，
+// 由调用方决定整体回退。
+//
+// 尾部官方客户端标识组 `(name; version)` 与首段是同一个版本声明的两个出口
+// （CODEX_INTERNAL_ORIGINATOR_OVERRIDE 场景，如 `cccc/0.142.0 ... (codex-tui; 0.142.0)`），
+// 必须一并更新，否则会拼出首段声明新版本、尾部仍是旧版本的自相矛盾身份。
+// 仅在括号组确为官方客户端标识时才改写，避免误伤 OS 组（如 `(Ubuntu 22.4.0; x86_64)`）。
+func SetCodexUserAgentVersion(userAgent, version string) string {
+	ua := strings.TrimSpace(userAgent)
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return ""
+	}
+	slash := strings.IndexByte(ua, '/')
+	if slash <= 0 {
+		return ""
+	}
+	client := strings.TrimSpace(ua[:slash])
+	if client == "" {
+		return ""
+	}
+	rest := ua[slash+1:]
+	tail := ""
+	if space := strings.IndexByte(rest, ' '); space >= 0 {
+		tail = rest[space:]
+	} else if strings.TrimSpace(rest) == "" {
+		// `client/` 没有版本段，不是可重建的 Codex 形态。
+		return ""
+	}
+	return rewriteCodexUATrailerVersion(client+"/"+version+tail, version)
+}
+
+// rewriteCodexUATrailerVersion 把尾部官方客户端标识组 `(name; version)` 的版本改成 version。
+// 括号组缺少 `;` 分隔的版本、或 name 不是官方 originator 时原样返回。
+func rewriteCodexUATrailerVersion(ua, version string) string {
+	open := strings.LastIndex(ua, "(")
+	if open < 0 {
+		return ua
+	}
+	closeIdx := strings.Index(ua[open+1:], ")")
+	if closeIdx < 0 {
+		return ua
+	}
+	inner := ua[open+1 : open+1+closeIdx]
+	semi := strings.Index(inner, ";")
+	if semi < 0 {
+		return ua
+	}
+	name := strings.TrimSpace(inner[:semi])
+	if name == "" || !IsCodexOfficialClientOriginator(name) {
+		return ua
+	}
+	return ua[:open+1] + name + "; " + version + ua[open+1+closeIdx:]
 }
 
 // codexEngineVersionPattern 提取版本段开头的三段数字 X.Y.Z（忽略 -alpha 等后缀）。

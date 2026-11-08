@@ -16,6 +16,15 @@ func normalizeBalanceRechargeMultiplier(multiplier float64) float64 {
 	return multiplier
 }
 
+// normalizeSubscriptionUSDToCNYRate 将非法值归一为 0（换算关闭）。
+// 与余额倍率不同，0 是合法状态：表示订阅保持 price 直付的存量行为。
+func normalizeSubscriptionUSDToCNYRate(rate float64) float64 {
+	if math.IsNaN(rate) || math.IsInf(rate, 0) || rate < 0 {
+		return 0
+	}
+	return rate
+}
+
 func calculateCreditedBalance(paymentAmount, multiplier float64) float64 {
 	return decimal.NewFromFloat(paymentAmount).
 		Mul(decimal.NewFromFloat(normalizeBalanceRechargeMultiplier(multiplier))).

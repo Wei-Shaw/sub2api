@@ -202,6 +202,21 @@ func (_c *ProxyCreate) AddAccounts(v ...*Account) *ProxyCreate {
 	return _c.AddAccountIDs(ids...)
 }
 
+// AddPrimaryProxyIDs adds the "primary_proxies" edge to the Proxy entity by IDs.
+func (_c *ProxyCreate) AddPrimaryProxyIDs(ids ...int64) *ProxyCreate {
+	_c.mutation.AddPrimaryProxyIDs(ids...)
+	return _c
+}
+
+// AddPrimaryProxies adds the "primary_proxies" edges to the Proxy entity.
+func (_c *ProxyCreate) AddPrimaryProxies(v ...*Proxy) *ProxyCreate {
+	ids := make([]int64, len(v))
+	for i := range v {
+		ids[i] = v[i].ID
+	}
+	return _c.AddPrimaryProxyIDs(ids...)
+}
+
 // SetBackupProxy sets the "backup_proxy" edge to the Proxy entity.
 func (_c *ProxyCreate) SetBackupProxy(v *Proxy) *ProxyCreate {
 	return _c.SetBackupProxyID(v.ID)
@@ -432,13 +447,29 @@ func (_c *ProxyCreate) createSpec() (*Proxy, *sqlgraph.CreateSpec) {
 		}
 		_spec.Edges = append(_spec.Edges, edge)
 	}
+	if nodes := _c.mutation.PrimaryProxiesIDs(); len(nodes) > 0 {
+		edge := &sqlgraph.EdgeSpec{
+			Rel:     sqlgraph.O2M,
+			Inverse: true,
+			Table:   proxy.PrimaryProxiesTable,
+			Columns: []string{proxy.PrimaryProxiesColumn},
+			Bidi:    false,
+			Target: &sqlgraph.EdgeTarget{
+				IDSpec: sqlgraph.NewFieldSpec(proxy.FieldID, field.TypeInt64),
+			},
+		}
+		for _, k := range nodes {
+			edge.Target.Nodes = append(edge.Target.Nodes, k)
+		}
+		_spec.Edges = append(_spec.Edges, edge)
+	}
 	if nodes := _c.mutation.BackupProxyIDs(); len(nodes) > 0 {
 		edge := &sqlgraph.EdgeSpec{
-			Rel:     sqlgraph.O2O,
+			Rel:     sqlgraph.M2O,
 			Inverse: false,
 			Table:   proxy.BackupProxyTable,
 			Columns: []string{proxy.BackupProxyColumn},
-			Bidi:    true,
+			Bidi:    false,
 			Target: &sqlgraph.EdgeTarget{
 				IDSpec: sqlgraph.NewFieldSpec(proxy.FieldID, field.TypeInt64),
 			},

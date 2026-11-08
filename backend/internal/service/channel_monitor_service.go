@@ -2,12 +2,16 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -21,6 +25,7 @@ type ChannelMonitorRepository interface {
 	Update(ctx context.Context, m *ChannelMonitor) error
 	Delete(ctx context.Context, id int64) error
 	List(ctx context.Context, params ChannelMonitorListParams) ([]*ChannelMonitor, int64, error)
+	FindByDuplicateOperationID(ctx context.Context, operationID string) (*ChannelMonitor, error)
 
 	// 调度器辅助
 	ListEnabled(ctx context.Context) ([]*ChannelMonitor, error)
@@ -57,18 +62,55 @@ type ChannelMonitorRepository interface {
 	UpdateAggregationWatermark(ctx context.Context, date time.Time) error
 }
 
+// channelMonitorRuntimeReader is the optional settings view used to gate V1
+// active probes by channel_monitor_enabled + channel_monitor_mode.
+type channelMonitorRuntimeReader interface {
+	GetChannelMonitorRuntime(ctx context.Context) ChannelMonitorRuntime
+}
+
 // ChannelMonitorService 渠道监控管理服务。
 type ChannelMonitorService struct {
 	repo      ChannelMonitorRepository
 	encryptor SecretEncryptor
+	// settings is optional; when nil, RunCheck fails closed for active probes
+	// (mode defaults to v2 / retired) so tests without settings never hit upstream.
+	settings channelMonitorRuntimeReader
 	// scheduler 由 wire 通过 SetScheduler 注入；CRUD 后调用对应钩子即时同步任务。
 	// 测试或未注入场景下保持 nil，所有钩子调用变为 no-op。
 	scheduler MonitorScheduler
+	// quotaFetcher 由 wire 通过 SetQuotaFetcher 注入（accountUsage/CN 服务在本服务
+	// 之后构造，构造参数注入会破坏既有依赖顺序）。nil 时 fail-closed：
+	// 配额模式的检测产出「未配置」错误快照，Create/Update 关联账号直接报错。
+	quotaFetcher *ChannelMonitorQuotaFetcher
 }
+
+const maxChannelMonitorNameRunes = 100
+
+// ChannelMonitorDuplicateOperationIDMetadataKey is stored in the existing
+// extra_headers JSON column to avoid a schema migration. The colon makes it an
+// invalid HTTP header name, and repository adapters remove it before exposing
+// ExtraHeaders to the service layer.
+const ChannelMonitorDuplicateOperationIDMetadataKey = "sub2api:duplicate_operation_id"
 
 // NewChannelMonitorService 创建渠道监控服务实例。
 func NewChannelMonitorService(repo ChannelMonitorRepository, encryptor SecretEncryptor) *ChannelMonitorService {
 	return &ChannelMonitorService{repo: repo, encryptor: encryptor}
+}
+
+// SetRuntimeReader injects the settings reader used to gate active probes.
+// Optional: when unset, active probes are treated as mode=v2 (retired).
+func (s *ChannelMonitorService) SetRuntimeReader(r channelMonitorRuntimeReader) {
+	if s == nil {
+		return
+	}
+	s.settings = r
+}
+
+func (s *ChannelMonitorService) probeRuntime(ctx context.Context) ChannelMonitorRuntime {
+	if s == nil || s.settings == nil {
+		return ChannelMonitorRuntime{Enabled: true, Mode: ChannelMonitorModeV2}
+	}
+	return s.settings.GetChannelMonitorRuntime(ctx)
 }
 
 // ---------- CRUD ----------
@@ -113,6 +155,10 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 	if err := validateExtraHeaders(p.ExtraHeaders); err != nil {
 		return nil, err
 	}
+	if err := s.validateLinkedAccount(ctx, p.Provider, p.AccountID); err != nil {
+		return nil, err
+	}
+	checkMode := defaultCheckMode(p.CheckMode)
 	encrypted, err := s.encryptor.Encrypt(p.APIKey)
 	if err != nil {
 		return nil, fmt.Errorf("encrypt api key: %w", err)
@@ -123,7 +169,7 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		APIMode:          defaultAPIMode(p.APIMode),
 		Endpoint:         normalizeEndpoint(p.Endpoint),
 		APIKey:           encrypted, // 注意：传入 repository 时该字段为密文
-		PrimaryModel:     strings.TrimSpace(p.PrimaryModel),
+		PrimaryModel:     normalizeMonitorPrimaryModel(p.Provider, checkMode, p.PrimaryModel),
 		ExtraModels:      normalizeModels(p.ExtraModels),
 		GroupName:        strings.TrimSpace(p.GroupName),
 		Enabled:          p.Enabled,
@@ -134,6 +180,8 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		ExtraHeaders:     emptyHeadersIfNil(p.ExtraHeaders),
 		BodyOverrideMode: defaultBodyMode(p.BodyOverrideMode),
 		BodyOverride:     p.BodyOverride,
+		CheckMode:        checkMode,
+		AccountID:        cloneInt64Pointer(p.AccountID),
 	}
 	if err := s.repo.Create(ctx, m); err != nil {
 		return nil, fmt.Errorf("create channel monitor: %w", err)
@@ -147,9 +195,186 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 	return m, nil
 }
 
+// Duplicate creates an independent, disabled copy of an existing monitor.
+// The API key stays server-side: it is decrypted only long enough to encrypt a
+// fresh ciphertext for the new row. Runtime state and history are not copied.
+func (s *ChannelMonitorService) Duplicate(
+	ctx context.Context,
+	id, createdBy int64,
+	actorScope, operationKey string,
+) (*ChannelMonitor, error) {
+	operationID := duplicateChannelMonitorOperationID(id, actorScope, operationKey)
+	existing, err := s.RecoverDuplicate(ctx, id, actorScope, operationKey)
+	if err != nil {
+		return nil, err
+	}
+	if existing != nil {
+		return existing, nil
+	}
+
+	source, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	plainAPIKey, err := s.decryptAPIKeyForDuplicate(source)
+	if err != nil {
+		return nil, err
+	}
+	encryptedAPIKey, err := s.encryptor.Encrypt(plainAPIKey)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt duplicate channel monitor api key: %w", err)
+	}
+	bodyOverride, err := cloneChannelMonitorJSONMap(source.BodyOverride)
+	if err != nil {
+		return nil, fmt.Errorf("clone duplicate channel monitor body override: %w", err)
+	}
+
+	duplicate := &ChannelMonitor{
+		Name:                 duplicateChannelMonitorName(source.Name),
+		Provider:             source.Provider,
+		APIMode:              source.APIMode,
+		Endpoint:             source.Endpoint,
+		APIKey:               encryptedAPIKey,
+		PrimaryModel:         source.PrimaryModel,
+		ExtraModels:          append([]string{}, source.ExtraModels...),
+		GroupName:            source.GroupName,
+		Enabled:              false,
+		IntervalSeconds:      source.IntervalSeconds,
+		JitterSeconds:        source.JitterSeconds,
+		CreatedBy:            createdBy,
+		TemplateID:           cloneInt64Pointer(source.TemplateID),
+		ExtraHeaders:         cloneChannelMonitorHeaders(source.ExtraHeaders),
+		BodyOverrideMode:     source.BodyOverrideMode,
+		BodyOverride:         bodyOverride,
+		CheckMode:            defaultCheckMode(source.CheckMode),
+		AccountID:            cloneInt64Pointer(source.AccountID),
+		DuplicateOperationID: operationID,
+	}
+	if err := s.repo.Create(ctx, duplicate); err != nil {
+		return nil, fmt.Errorf("duplicate channel monitor: %w", err)
+	}
+
+	// Match Create/Update response semantics: repository receives ciphertext,
+	// while handlers receive plaintext only so they can return the masked form.
+	duplicate.APIKey = plainAPIKey
+	return duplicate, nil
+}
+
+// RecoverDuplicate performs a read-only lookup for a duplicate that was
+// already committed for the same actor, source monitor, and idempotency key.
+// It deliberately never repeats the create side effect.
+func (s *ChannelMonitorService) RecoverDuplicate(
+	ctx context.Context,
+	id int64,
+	actorScope, operationKey string,
+) (*ChannelMonitor, error) {
+	operationID := duplicateChannelMonitorOperationID(id, actorScope, operationKey)
+	if operationID == "" {
+		return nil, nil
+	}
+	monitor, err := s.repo.FindByDuplicateOperationID(ctx, operationID)
+	if err != nil {
+		return nil, fmt.Errorf("find duplicate channel monitor operation: %w", err)
+	}
+	if monitor == nil {
+		return nil, nil
+	}
+	s.decryptInPlace(monitor)
+	return monitor, nil
+}
+
+func duplicateChannelMonitorOperationID(sourceID int64, actorScope, operationKey string) string {
+	operationKey = strings.TrimSpace(operationKey)
+	if operationKey == "" {
+		return ""
+	}
+	actorScope = strings.TrimSpace(actorScope)
+	if actorScope == "" {
+		actorScope = "admin:0"
+	}
+	payload := "admin.channel_monitors.duplicate\x00" + actorScope + "\x00" + strconv.FormatInt(sourceID, 10) + "\x00" + operationKey
+	digest := sha256.Sum256([]byte(payload))
+	return fmt.Sprintf("%x", digest)
+}
+
+func (s *ChannelMonitorService) decryptAPIKeyForDuplicate(source *ChannelMonitor) (string, error) {
+	if source == nil || strings.TrimSpace(source.APIKey) == "" {
+		return "", ErrChannelMonitorAPIKeyDecryptFailed
+	}
+	plain, err := s.encryptor.Decrypt(source.APIKey)
+	if err != nil {
+		slog.Warn("channel_monitor: decrypt api key for duplicate failed",
+			"monitor_id", source.ID, "error", err)
+		return "", ErrChannelMonitorAPIKeyDecryptFailed
+	}
+	// quota 模式明文为空串是合法状态（api_key_encrypted 存的是加密空串）：
+	// 重加密空串即可。若在此报错，克隆出的配额监控会被 runner 当作
+	// 解密失败而 Unschedule，静默停摆。
+	if strings.TrimSpace(plain) == "" {
+		if monitorCheckModeUsesQuota(defaultCheckMode(source.CheckMode)) {
+			return "", nil
+		}
+		slog.Warn("channel_monitor: decrypted api key for duplicate is empty",
+			"monitor_id", source.ID)
+		return "", ErrChannelMonitorAPIKeyDecryptFailed
+	}
+	return plain, nil
+}
+
+func duplicateChannelMonitorName(sourceName string) string {
+	const suffix = " (Copy)"
+	nameRunes := []rune(strings.TrimSpace(sourceName))
+	maxBaseRunes := maxChannelMonitorNameRunes - len([]rune(suffix))
+	if len(nameRunes) > maxBaseRunes {
+		nameRunes = nameRunes[:maxBaseRunes]
+	}
+	return string(nameRunes) + suffix
+}
+
+func cloneInt64Pointer(value *int64) *int64 {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func cloneChannelMonitorHeaders(source map[string]string) map[string]string {
+	if source == nil {
+		return map[string]string{}
+	}
+	cloned := make(map[string]string, len(source))
+	for key, value := range source {
+		cloned[key] = value
+	}
+	return cloned
+}
+
+func cloneChannelMonitorJSONMap(source map[string]any) (map[string]any, error) {
+	if source == nil {
+		return nil, nil
+	}
+	payload, err := json.Marshal(source)
+	if err != nil {
+		return nil, err
+	}
+	cloned := make(map[string]any, len(source))
+	if err := json.Unmarshal(payload, &cloned); err != nil {
+		return nil, err
+	}
+	return cloned, nil
+}
+
 // validateCreateParams 把 Create 入参的所有校验聚拢为一个函数，避免 Create 主体超过 30 行。
+// 按 check_mode 分支：probe 沿用 endpoint+api_key 必填；quota 只需关联账号；
+// quota_probe 两者皆需。
 func validateCreateParams(p ChannelMonitorCreateParams) error {
 	if err := validateProvider(p.Provider); err != nil {
+		return err
+	}
+	checkMode := defaultCheckMode(p.CheckMode)
+	if err := validateCheckMode(p.Provider, checkMode); err != nil {
 		return err
 	}
 	if err := validateAPIMode(p.Provider, p.APIMode); err != nil {
@@ -161,16 +386,44 @@ func validateCreateParams(p ChannelMonitorCreateParams) error {
 	if err := validateJitter(p.JitterSeconds, p.IntervalSeconds); err != nil {
 		return err
 	}
-	if err := validateEndpoint(p.Endpoint); err != nil {
-		return err
+	usesQuota := monitorCheckModeUsesQuota(checkMode)
+	// probe 分支（含 quota_probe 的探活部分）仍需 endpoint + api_key；
+	// quota 模式 endpoint/api_key 留空，避免要求用户填无意义的占位值。
+	if checkMode != MonitorCheckModeQuota {
+		if err := validateEndpoint(p.Endpoint); err != nil {
+			return err
+		}
+		if strings.TrimSpace(p.APIKey) == "" {
+			return ErrChannelMonitorMissingAPIKey
+		}
 	}
-	if strings.TrimSpace(p.APIKey) == "" {
-		return ErrChannelMonitorMissingAPIKey
+	if usesQuota && (p.AccountID == nil || *p.AccountID <= 0) {
+		return ErrChannelMonitorAccountRequired
 	}
-	if strings.TrimSpace(p.PrimaryModel) == "" {
+	if normalizeMonitorPrimaryModel(p.Provider, checkMode, p.PrimaryModel) == "" {
 		return ErrChannelMonitorMissingPrimaryModel
 	}
 	return nil
+}
+
+// validateLinkedAccount 校验关联账号存在、平台与监控 provider 一致、且能充当
+// 配额数据源（能力拦截，见 monitorAccountQuotaCapability）。
+// fetcher 未注入时 fail-closed（拒绝创建配额监控，而不是创建后静默坏）。
+func (s *ChannelMonitorService) validateLinkedAccount(ctx context.Context, provider string, accountID *int64) error {
+	if accountID == nil || *accountID <= 0 {
+		return nil
+	}
+	if s.quotaFetcher == nil {
+		return ErrChannelMonitorAccountRequired
+	}
+	account, err := s.quotaFetcher.LoadAccount(ctx, *accountID)
+	if err != nil || account == nil {
+		return ErrChannelMonitorAccountRequired
+	}
+	if account.Platform != provider {
+		return ErrChannelMonitorProviderIncompatible
+	}
+	return monitorAccountQuotaCapability(account)
 }
 
 // Update 更新监控。APIKey 字段：nil 或空字符串 = 不修改；非空 = 加密后覆盖。
@@ -186,6 +439,14 @@ func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelM
 	newPlainAPIKey, apiKeyUpdated, err := s.applyAPIKeyUpdate(existing, p.APIKey)
 	if err != nil {
 		return nil, err
+	}
+	if err := s.validateProbeAPIKey(existing, newPlainAPIKey); err != nil {
+		return nil, err
+	}
+	if p.Provider != nil || p.CheckMode != nil || p.AccountID != nil {
+		if err := s.revalidateLinkedAccount(ctx, existing); err != nil {
+			return nil, err
+		}
 	}
 
 	if err := s.repo.Update(ctx, existing); err != nil {
@@ -204,6 +465,85 @@ func (s *ChannelMonitorService) Update(ctx context.Context, id int64, p ChannelM
 		s.scheduler.Schedule(existing)
 	}
 	return existing, nil
+}
+
+// validateMonitorModeFields 校验 check_mode 与其它字段的组合约束
+// （在 provider/check_mode/account_id/endpoint 全部应用后调用）：
+//   - quota / quota_probe 必须关联账号
+//   - probe / quota_probe 必须持有 endpoint（探活目标）
+func validateMonitorModeFields(m *ChannelMonitor) error {
+	checkMode := defaultCheckMode(m.CheckMode)
+	if monitorCheckModeUsesQuota(checkMode) && m.AccountID == nil {
+		return ErrChannelMonitorAccountRequired
+	}
+	if checkMode != MonitorCheckModeQuota && strings.TrimSpace(m.Endpoint) == "" {
+		return ErrChannelMonitorInvalidEndpoint
+	}
+	return nil
+}
+
+// validateProbeAPIKey 探活模式（probe / quota_probe）必须持有可用明文 key：
+// 存量密文解密为空串（quota 监控切回探活但未重填 key）时拒绝。
+// 密文损坏的情况交给既有 APIKeyDecryptFailed 链路（Get/RunCheck 会显式报错）。
+func (s *ChannelMonitorService) validateProbeAPIKey(m *ChannelMonitor, newPlainKey string) error {
+	if defaultCheckMode(m.CheckMode) == MonitorCheckModeQuota {
+		return nil
+	}
+	if strings.TrimSpace(newPlainKey) != "" {
+		return nil
+	}
+	if strings.TrimSpace(m.APIKey) == "" {
+		return ErrChannelMonitorMissingAPIKey
+	}
+	plain, err := s.encryptor.Decrypt(m.APIKey)
+	if err != nil {
+		return nil
+	}
+	if strings.TrimSpace(plain) == "" {
+		return ErrChannelMonitorMissingAPIKey
+	}
+	return nil
+}
+
+// revalidateLinkedAccount 在 provider/check_mode/account_id 任一变化后复核关联账号：
+//   - 账号已被删除或平台失配：probe 模式自动解绑（静默修复），
+//     quota 模式显式报错（配额监控必须有可用数据源）
+func (s *ChannelMonitorService) revalidateLinkedAccount(ctx context.Context, m *ChannelMonitor) error {
+	usesQuota := monitorCheckModeUsesQuota(defaultCheckMode(m.CheckMode))
+	if m.AccountID == nil {
+		if usesQuota {
+			return ErrChannelMonitorAccountRequired
+		}
+		return nil
+	}
+	if s.quotaFetcher == nil {
+		return ErrChannelMonitorAccountRequired
+	}
+	account, err := s.quotaFetcher.LoadAccount(ctx, *m.AccountID)
+	if err != nil || account == nil {
+		if usesQuota {
+			return ErrChannelMonitorAccountRequired
+		}
+		m.AccountID = nil
+		return nil
+	}
+	if account.Platform != m.Provider {
+		if usesQuota {
+			return ErrChannelMonitorProviderIncompatible
+		}
+		m.AccountID = nil
+		return nil
+	}
+	// 能力失配（如 deepseek coding / zhipu payg / API-Key 型海外账号）：
+	// quota 模式显式报错（有该类存量监控时编辑会被拦，出路是换账号或切 probe），
+	// probe 模式账号无用途，静默解绑。
+	if err := monitorAccountQuotaCapability(account); err != nil {
+		if usesQuota {
+			return err
+		}
+		m.AccountID = nil
+	}
+	return nil
 }
 
 // applyAPIKeyUpdate 处理 Update 中的 APIKey 字段：
@@ -257,17 +597,74 @@ func (s *ChannelMonitorService) ListHistory(ctx context.Context, id int64, model
 
 // RunCheck 同步触发对一个监控的检测：并发跑 primary + extra 模型，
 // 写历史记录并更新 last_checked_at。返回每个模型的检测结果。
+// 仅当 channel_monitor_enabled=true 且 channel_monitor_mode=v1 时真正探测；
+// mode=v2 时返回 ErrChannelMonitorActiveProbesRetired，不产生上游流量。
+//
+// 按 check_mode 分派：probe（默认，现状探活）/ quota（仅查关联账号配额，
+// 零 LLM 成本）/ quota_probe（探活 + 配额快照挂主模型行）。
 func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*CheckResult, error) {
+	rt := s.probeRuntime(ctx)
+	if !rt.Enabled {
+		return nil, ErrChannelMonitorDisabled
+	}
+	if !rt.ActiveProbesAllowed() {
+		return nil, ErrChannelMonitorActiveProbesRetired
+	}
 	m, err := s.Get(ctx, id) // 已解密 APIKey
 	if err != nil {
 		return nil, err
 	}
-	if m.APIKeyDecryptFailed {
+	checkMode := defaultCheckMode(m.CheckMode)
+	if checkMode != MonitorCheckModeQuota && m.APIKeyDecryptFailed {
 		return nil, ErrChannelMonitorAPIKeyDecryptFailed
 	}
-	results := s.runChecksConcurrent(ctx, m)
+
+	var results []*CheckResult
+	switch checkMode {
+	case MonitorCheckModeQuota:
+		results = s.runQuotaOnlyCheck(ctx, m)
+	case MonitorCheckModeQuotaProbe:
+		results = s.runChecksConcurrent(ctx, m)
+		attachQuotaSnapshot(results, s.fetchQuotaSnapshot(ctx, m))
+	default:
+		results = s.runChecksConcurrent(ctx, m)
+	}
 	s.persistCheckResults(ctx, m, results)
 	return results, nil
+}
+
+// runQuotaOnlyCheck quota 模式：一次配额抓取 → 单条 CheckResult
+// （Model=PrimaryModel，默认 "quota"；无 ping/latency，状态由快照推导）。
+func (s *ChannelMonitorService) runQuotaOnlyCheck(ctx context.Context, m *ChannelMonitor) []*CheckResult {
+	snapshot := s.fetchQuotaSnapshot(ctx, m)
+	res := deriveQuotaCheckResult(snapshot, m.PrimaryModel, time.Now())
+	res.Quota = snapshot
+	return []*CheckResult{res}
+}
+
+// fetchQuotaSnapshot 抓取关联账号配额。未关联账号 / fetcher 未注入时返回
+// 显式错误快照（不返回 error，保证检测周期与历史时间线连续）。
+func (s *ChannelMonitorService) fetchQuotaSnapshot(ctx context.Context, m *ChannelMonitor) *domain.MonitorQuotaSnapshot {
+	if m.AccountID == nil {
+		return quotaErrorSnapshot("usage", "linked account not found", time.Now())
+	}
+	if s.quotaFetcher == nil {
+		return quotaErrorSnapshot("usage", "quota fetcher is not configured", time.Now())
+	}
+	return s.quotaFetcher.Fetch(ctx, *m.AccountID)
+}
+
+// attachQuotaSnapshot quota_probe：把配额快照挂到主模型行（results[0]）。
+// 配额失败不改变探活状态，仅在探活 message 为空时附注失败原因。
+func attachQuotaSnapshot(results []*CheckResult, snapshot *domain.MonitorQuotaSnapshot) {
+	if len(results) == 0 || snapshot == nil {
+		return
+	}
+	primary := results[0]
+	primary.Quota = snapshot
+	if !snapshot.Success && strings.TrimSpace(primary.Message) == "" {
+		primary.Message = truncateMessage("quota fetch failed: " + snapshot.Error)
+	}
 }
 
 // persistCheckResults 写入本次检测的历史记录并更新 last_checked_at。
@@ -283,6 +680,7 @@ func (s *ChannelMonitorService) persistCheckResults(ctx context.Context, m *Chan
 			PingLatencyMs: r.PingLatencyMs,
 			Message:       r.Message,
 			CheckedAt:     r.CheckedAt,
+			Quota:         r.Quota,
 		})
 	}
 	if err := s.repo.InsertHistoryBatch(ctx, rows); err != nil {
@@ -335,6 +733,14 @@ func (s *ChannelMonitorService) runChecksConcurrent(ctx context.Context, m *Chan
 // 通过 setter 注入避免 service ↔ runner 的依赖环。
 func (s *ChannelMonitorService) SetScheduler(sched MonitorScheduler) {
 	s.scheduler = sched
+}
+
+// SetQuotaFetcher 由 wire 注入配额抓取器（账号侧用量服务聚合）。
+func (s *ChannelMonitorService) SetQuotaFetcher(fetcher *ChannelMonitorQuotaFetcher) {
+	if s == nil {
+		return
+	}
+	s.quotaFetcher = fetcher
 }
 
 // ListEnabledMonitors 返回所有 enabled=true 的监控（解密后），供 runner 启动时建立任务表。
@@ -486,17 +892,50 @@ func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) 
 		if err := validateProvider(*p.Provider); err != nil {
 			return err
 		}
+		providerChanged = existing.Provider != *p.Provider
 		existing.Provider = *p.Provider
-		providerChanged = true
+	}
+	if p.CheckMode != nil {
+		existing.CheckMode = defaultCheckMode(*p.CheckMode)
+	}
+	// provider 与 check_mode 任一变化后统一复核组合矩阵：provider-only 更新
+	// （如把 probe 监控的 provider 改成 antigravity）也不得落库非法组合，否则
+	// 运行期恒 error。条件限定避免把存量非法行的 name/enabled-only 更新也判死
+	// （否则连改名/停用都无法操作）。
+	if p.Provider != nil || p.CheckMode != nil {
+		if err := validateCheckMode(existing.Provider, defaultCheckMode(existing.CheckMode)); err != nil {
+			return err
+		}
+	}
+	if p.AccountID != nil {
+		if *p.AccountID > 0 {
+			id := *p.AccountID
+			existing.AccountID = &id
+		} else {
+			existing.AccountID = nil // 0 = 清空关联
+		}
 	}
 	if p.Endpoint != nil {
-		if err := validateEndpoint(*p.Endpoint); err != nil {
-			return err
+		// quota 模式允许清空 endpoint（校验由 validateMonitorModeFields 兜底）。
+		if strings.TrimSpace(*p.Endpoint) != "" {
+			if err := validateEndpoint(*p.Endpoint); err != nil {
+				return err
+			}
 		}
 		existing.Endpoint = normalizeEndpoint(*p.Endpoint)
 	}
+	// 模式与字段的组合校验（provider/check_mode/account_id/endpoint 全部应用后）。
+	if err := validateMonitorModeFields(existing); err != nil {
+		return err
+	}
 	if p.PrimaryModel != nil {
-		existing.PrimaryModel = strings.TrimSpace(*p.PrimaryModel)
+		primaryModel := normalizeMonitorPrimaryModel(existing.Provider, defaultCheckMode(existing.CheckMode), *p.PrimaryModel)
+		if primaryModel == "" {
+			return ErrChannelMonitorMissingPrimaryModel
+		}
+		existing.PrimaryModel = primaryModel
+	} else if providerChanged && existing.Provider == MonitorProviderGrok {
+		existing.PrimaryModel = MonitorDefaultGrokModel
 	}
 	if p.ExtraModels != nil {
 		existing.ExtraModels = normalizeModels(*p.ExtraModels)

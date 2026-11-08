@@ -63,6 +63,14 @@ export interface OpsDashboardOverview {
     avg: number
   }
 
+  output_tps?: {
+    p5: number | null
+    p10: number | null
+    p50: number | null
+    avg: number | null
+    sample_count: number
+  } | null
+
   duration: OpsPercentiles
   ttft: OpsPercentiles
 }
@@ -107,7 +115,7 @@ export interface OpsThroughputTrendResponse {
 
 export type OpsRequestKind = 'success' | 'error'
 export type OpsRequestDetailsKind = OpsRequestKind | 'all'
-export type OpsRequestDetailsSort = 'created_at_desc' | 'duration_desc'
+export type OpsRequestDetailsSort = 'created_at_desc' | 'duration_desc' | 'ttft_desc'
 
 export interface OpsRequestDetail {
   kind: OpsRequestKind
@@ -117,6 +125,7 @@ export interface OpsRequestDetail {
   platform?: string
   model?: string
   duration_ms?: number | null
+  first_token_ms?: number | null
   status_code?: number | null
 
   error_id?: number | null
@@ -814,12 +823,14 @@ export interface OpsAggregationSettings {
 
 export interface OpsRuntimeLogConfig {
   level: 'debug' | 'info' | 'warn' | 'error'
+  persist_access_logs: boolean
   enable_sampling: boolean
   sampling_initial: number
   sampling_thereafter: number
   caller: boolean
   stacktrace_level: 'none' | 'error' | 'fatal'
   retention_days: number
+  request_retention_days: number
   source?: string
   updated_at?: string
   updated_by_user_id?: number
@@ -828,6 +839,7 @@ export interface OpsRuntimeLogConfig {
 export interface OpsSystemLog {
   id: number
   created_at: string
+  host: string
   level: string
   component: string
   message: string
@@ -849,6 +861,7 @@ export interface OpsSystemLogQuery {
   time_range?: '5m' | '30m' | '1h' | '6h' | '24h' | '7d' | '30d'
   start_time?: string
   end_time?: string
+  host?: string
   level?: string
   component?: string
   request_id?: string
@@ -864,6 +877,7 @@ export interface OpsSystemLogQuery {
 export interface OpsSystemLogCleanupRequest {
   start_time?: string
   end_time?: string
+  host?: string
   level?: string
   component?: string
   request_id?: string
@@ -930,11 +944,12 @@ export interface OpsErrorLog {
   requested_model?: string
   upstream_model?: string
   request_type?: number | null
+  user_agent?: string
+
 }
 
 export interface OpsErrorDetail extends OpsErrorLog {
   error_body: string
-  user_agent: string
 
   // Upstream context (optional; enriched by gateway services)
   upstream_status_code?: number | null
@@ -949,12 +964,6 @@ export interface OpsErrorDetail extends OpsErrorLog {
   time_to_first_token_ms?: number | null
 
   is_business_limited: boolean
-
-  // Deleted key owner info (INVALID_API_KEY attribution)
-  attempted_key_prefix?: string | null
-  deleted_key_owner_user_id?: number | null
-  deleted_key_owner_email?: string | null
-  deleted_key_name?: string | null
 
   // Bound (non-deleted) key prefix, snapshotted at error time
   api_key_prefix?: string | null
@@ -1098,6 +1107,8 @@ export type OpsErrorListQueryParams = {
   model?: string
 
   phase?: string
+  // 分类(用户侧粗分类码,如 auth/rate_limit/upstream),后端反查为 phase/type ANY 条件
+  category?: string
   error_owner?: string
   error_source?: string
   resolved?: string
@@ -1106,6 +1117,10 @@ export type OpsErrorListQueryParams = {
   q?: string
   status_codes?: string
   status_codes_other?: string
+
+  // 服务端排序,列白名单见后端 opsErrorLogsOrderBy(created_at/model/status_code)
+  sort_by?: string
+  sort_order?: 'asc' | 'desc'
 }
 
 // Legacy unified endpoints

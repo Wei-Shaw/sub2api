@@ -15,6 +15,19 @@ export interface BackupScheduleConfig {
   cron_expr: string
   retain_days: number
   retain_count: number
+  monthly_archive?: BackupMonthlyArchiveConfig
+}
+
+export interface BackupMonthlyArchiveConfig {
+  enabled: boolean
+  days: number[]
+  include_month_end: boolean
+  retain_count: number // 0 = permanent
+}
+
+export interface BackupMonthlyArchive {
+  dates: string[]
+  retain_count: number
 }
 
 export interface BackupRecord {
@@ -23,6 +36,7 @@ export interface BackupRecord {
   backup_type: string
   file_name: string
   s3_key: string
+  parts?: BackupPart[]
   size_bytes: number
   triggered_by: string
   error_message?: string
@@ -31,8 +45,28 @@ export interface BackupRecord {
   expires_at?: string
   progress?: string
   restore_status?: string
+  restore_started_at?: string
   restore_error?: string
   restored_at?: string
+  monthly_archive?: BackupMonthlyArchive
+}
+
+export interface BackupPart {
+  index: number
+  s3_key: string
+  size_bytes: number
+  sha256?: string
+}
+
+export interface BackupDownloadPart {
+  index: number
+  size_bytes: number
+  url: string
+}
+
+export interface BackupDownloadResponse {
+  url?: string
+  parts?: BackupDownloadPart[]
 }
 
 export interface CreateBackupRequest {
@@ -57,6 +91,52 @@ export async function updateS3Config(config: BackupS3Config): Promise<BackupS3Co
 
 export async function testS3Connection(config: BackupS3Config): Promise<TestS3Response> {
   const { data } = await apiClient.post<TestS3Response>('/admin/backups/s3-config/test', config)
+  return data
+}
+
+// Async image object storage
+//
+// Shares the S3 client with backups, so `reuse_backup_s3` borrows the endpoint and
+// credentials configured above and only keeps its own bucket/prefix.
+export interface ImageStorageConfig {
+  enabled: boolean
+  reuse_backup_s3: boolean
+  bucket: string
+  prefix: string
+  public_base_url: string
+  presign_expiry_hours: number
+  max_download_bytes: number
+  endpoint: string
+  region: string
+  access_key_id: string
+  secret_access_key?: string
+  force_path_style: boolean
+}
+
+export interface ImageStorageConfigResponse {
+  config: ImageStorageConfig
+  secret_configured: boolean
+}
+
+export async function getImageStorageConfig(): Promise<ImageStorageConfigResponse> {
+  const { data } = await apiClient.get<ImageStorageConfigResponse>('/admin/backups/image-storage')
+  return data
+}
+
+export async function updateImageStorageConfig(
+  config: ImageStorageConfig,
+): Promise<ImageStorageConfig> {
+  const { data } = await apiClient.put<ImageStorageConfig>('/admin/backups/image-storage', config)
+  return data
+}
+
+export async function testImageStorageConnection(
+  config: ImageStorageConfig,
+): Promise<TestS3Response> {
+  const { data } = await apiClient.post<TestS3Response>(
+    '/admin/backups/image-storage/test',
+    config,
+  )
   return data
 }
 
@@ -87,12 +167,12 @@ export async function getBackup(id: string): Promise<BackupRecord> {
   return data
 }
 
-export async function deleteBackup(id: string): Promise<void> {
-  await apiClient.delete(`/admin/backups/${id}`)
+export async function deleteBackup(id: string, deleteArchived = false): Promise<void> {
+  await apiClient.delete(`/admin/backups/${id}`, deleteArchived ? { params: { delete_archived: true } } : undefined)
 }
 
-export async function getDownloadURL(id: string): Promise<{ url: string }> {
-  const { data } = await apiClient.get<{ url: string }>(`/admin/backups/${id}/download-url`)
+export async function getDownloadURL(id: string): Promise<BackupDownloadResponse> {
+  const { data } = await apiClient.get<BackupDownloadResponse>(`/admin/backups/${id}/download-url`)
   return data
 }
 
@@ -106,6 +186,9 @@ export const backupAPI = {
   getS3Config,
   updateS3Config,
   testS3Connection,
+  getImageStorageConfig,
+  updateImageStorageConfig,
+  testImageStorageConnection,
   getSchedule,
   updateSchedule,
   createBackup,

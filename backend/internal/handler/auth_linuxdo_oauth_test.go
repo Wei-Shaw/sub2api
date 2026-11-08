@@ -282,7 +282,7 @@ func TestLinuxDoOAuthBindStartAcceptsAccessTokenCookie(t *testing.T) {
 		Save(context.Background())
 	require.NoError(t, err)
 
-	token, err := handler.authService.GenerateToken(&service.User{
+	token, err := handler.authService.GenerateToken(context.Background(), &service.User{
 		ID:           user.ID,
 		Email:        user.Email,
 		Username:     user.Username,

@@ -26,7 +26,7 @@ type stubJWTUserRepo struct {
 func (r *stubJWTUserRepo) GetByID(_ context.Context, id int64) (*service.User, error) {
 	u, ok := r.users[id]
 	if !ok {
-		return nil, errors.New("user not found")
+		return nil, service.ErrUserNotFound
 	}
 	return u, nil
 }
@@ -62,7 +62,7 @@ func newJWTTestEnv(users map[int64]*service.User) (*gin.Engine, *service.AuthSer
 	userRepo := &stubJWTUserRepo{users: users}
 	authSvc := service.NewAuthService(nil, userRepo, nil, nil, cfg, nil, nil, nil, nil, nil, nil, nil, nil)
 	userSvc := service.NewUserService(userRepo, nil, nil, nil)
-	mw := NewJWTAuthMiddleware(authSvc, userSvc)
+	mw := NewJWTAuthMiddleware(authSvc, userSvc, nil, nil)
 
 	r := gin.New()
 	r.Use(gin.HandlerFunc(mw))
@@ -88,7 +88,7 @@ func TestJWTAuth_ValidToken(t *testing.T) {
 	}
 	router, authSvc := newJWTTestEnv(map[int64]*service.User{1: user})
 
-	token, err := authSvc.GenerateToken(user)
+	token, err := authSvc.GenerateToken(context.Background(), user)
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()
@@ -115,7 +115,7 @@ func TestJWTAuth_ValidToken_LowercaseBearer(t *testing.T) {
 	}
 	router, authSvc := newJWTTestEnv(map[int64]*service.User{1: user})
 
-	token, err := authSvc.GenerateToken(user)
+	token, err := authSvc.GenerateToken(context.Background(), user)
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()
@@ -148,12 +148,12 @@ func TestJWTAuth_ValidToken_TouchesLastActive(t *testing.T) {
 	toucher := &recordingActivityToucher{}
 
 	r := gin.New()
-	r.Use(jwtAuth(authSvc, userSvc, toucher))
+	r.Use(jwtAuth(authSvc, userSvc, toucher, nil, nil))
 	r.GET("/protected", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
 
-	token, err := authSvc.GenerateToken(user)
+	token, err := authSvc.GenerateToken(context.Background(), user)
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()
@@ -232,6 +232,67 @@ func TestJWTAuth_TamperedToken(t *testing.T) {
 	require.Equal(t, "INVALID_TOKEN", body.Code)
 }
 
+func TestJWTAuth_UserLookupErrors(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{JWT: config.JWTConfig{Secret: "test-secret", ExpireHour: 1}}
+	authSvc := service.NewAuthService(nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, nil, nil, nil)
+	token, err := authSvc.GenerateToken(context.Background(), &service.User{ID: 1, Role: service.RoleAdmin})
+	require.NoError(t, err)
+
+	for _, tc := range []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{"missing user", service.ErrUserNotFound, http.StatusUnauthorized, "USER_NOT_FOUND"},
+		{"database timeout", context.DeadlineExceeded, http.StatusInternalServerError, "INTERNAL_ERROR"},
+		{"database failure", errors.New("database unavailable"), http.StatusInternalServerError, "INTERNAL_ERROR"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			userRepo := &stubUserRepo{getByID: func(context.Context, int64) (*service.User, error) {
+				return nil, tc.err
+			}}
+			userSvc := service.NewUserService(userRepo, nil, nil, nil)
+			for _, route := range []struct {
+				name      string
+				handler   gin.HandlerFunc
+				websocket bool
+			}{
+				{"user", gin.HandlerFunc(NewJWTAuthMiddleware(authSvc, userSvc, nil, nil)), false},
+				{"admin", gin.HandlerFunc(NewAdminAuthMiddleware(authSvc, userSvc, nil, nil)), false},
+				{"admin websocket", gin.HandlerFunc(NewAdminAuthMiddleware(authSvc, userSvc, nil, nil)), true},
+			} {
+				t.Run(route.name, func(t *testing.T) {
+					called := false
+					router := gin.New()
+					router.Use(route.handler)
+					router.GET("/protected", func(c *gin.Context) {
+						called = true
+						c.Status(http.StatusOK)
+					})
+					req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+					if route.websocket {
+						req.Header.Set("Upgrade", "websocket")
+						req.Header.Set("Connection", "Upgrade")
+						req.Header.Set("Sec-WebSocket-Protocol", "sub2api-admin, jwt."+token)
+					} else {
+						req.Header.Set("Authorization", "Bearer "+token)
+					}
+					w := httptest.NewRecorder()
+					router.ServeHTTP(w, req)
+
+					require.Equal(t, tc.status, w.Code)
+					var body ErrorResponse
+					require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+					require.Equal(t, tc.code, body.Code)
+					require.False(t, called)
+				})
+			}
+		})
+	}
+}
+
 func TestJWTAuth_UserNotFound(t *testing.T) {
 	// 使用 user ID=1 的 token，但 repo 中没有该用户
 	fakeUser := &service.User{
@@ -244,7 +305,7 @@ func TestJWTAuth_UserNotFound(t *testing.T) {
 	// 创建环境时不注入此用户，这样 GetByID 会失败
 	router, authSvc := newJWTTestEnv(map[int64]*service.User{})
 
-	token, err := authSvc.GenerateToken(fakeUser)
+	token, err := authSvc.GenerateToken(context.Background(), fakeUser)
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()
@@ -268,7 +329,7 @@ func TestJWTAuth_UserInactive(t *testing.T) {
 	}
 	router, authSvc := newJWTTestEnv(map[int64]*service.User{1: user})
 
-	token, err := authSvc.GenerateToken(user)
+	token, err := authSvc.GenerateToken(context.Background(), user)
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()
@@ -300,7 +361,7 @@ func TestJWTAuth_TokenVersionMismatch(t *testing.T) {
 	}
 	router, authSvc := newJWTTestEnv(map[int64]*service.User{1: userInDB})
 
-	token, err := authSvc.GenerateToken(userForToken)
+	token, err := authSvc.GenerateToken(context.Background(), userForToken)
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()

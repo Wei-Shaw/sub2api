@@ -49,6 +49,12 @@
                 <p v-if="subscription.group?.description" class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">
                   {{ subscription.group.description }}
                 </p>
+                <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-gray-400 dark:text-gray-500">
+                  <span>{{ t('payment.planCard.rate') }}: ×{{ subscription.group?.rate_multiplier ?? 1 }}</span>
+                  <span v-if="subscriptionHasPeakRate(subscription)" class="text-amber-700 dark:text-amber-300">
+                    {{ t('payment.planCard.peakRate') }}: {{ subscriptionPeakRateLabel(subscription) }}
+                  </span>
+                </div>
               </div>
             </div>
             <div class="flex items-center gap-2">
@@ -250,9 +256,15 @@ import subscriptionsAPI from '@/api/subscriptions'
 import type { UserSubscription } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { formatDateOnly } from '@/utils/format'
+import { formatDateTimeToMinute } from '@/utils/format'
+import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel } from '@/utils/peak-rate'
 import { platformBorderClass, platformBadgeClass, platformButtonClass, platformLabel } from '@/utils/platformColors'
-import { getRemainingDurationParts, isOneTimeDailyQuota, type RemainingDurationParts } from '@/utils/subscriptionQuota'
+import {
+  getExpirationDateRelation,
+  getRemainingDurationParts,
+  isOneTimeDailyQuota,
+  type RemainingDurationParts
+} from '@/utils/subscriptionQuota'
 
 function platformAccentDotClass(p: string): string {
   switch (p) {
@@ -270,6 +282,14 @@ const appStore = useAppStore()
 
 const subscriptions = ref<UserSubscription[]>([])
 const loading = ref(true)
+
+function subscriptionHasPeakRate(subscription: UserSubscription): boolean {
+  return hasPeakRate(subscription.group)
+}
+
+function subscriptionPeakRateLabel(subscription: UserSubscription): string {
+  return formatPeakRateWindow(subscription.group, serverTimezoneLabel(appStore.cachedPublicSettings?.server_utc_offset))
+}
 
 async function loadSubscriptions() {
   try {
@@ -302,17 +322,20 @@ function formatExpirationDate(expiresAt: string): string {
   const expires = new Date(expiresAt)
   const diff = expires.getTime() - now.getTime()
   const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
+  const relation = getExpirationDateRelation(expires, now)
 
-  if (days < 0) {
+  if (relation === null) return ''
+
+  if (relation === 'expired') {
     return t('userSubscriptions.status.expired')
   }
 
-  const dateStr = formatDateOnly(expires)
+  const dateStr = formatDateTimeToMinute(expires)
 
-  if (days === 0) {
+  if (relation === 'today') {
     return `${dateStr} (${t('common.today')})`
   }
-  if (days === 1) {
+  if (relation === 'tomorrow') {
     return `${dateStr} (${t('common.tomorrow')})`
   }
 
@@ -325,7 +348,7 @@ function getExpirationClass(expiresAt: string): string {
   const diff = expires.getTime() - now.getTime()
   const days = Math.ceil(diff / (1000 * 60 * 60 * 24))
 
-  if (days <= 0) return 'text-red-600 dark:text-red-400 font-medium'
+  if (diff <= 0) return 'text-red-600 dark:text-red-400 font-medium'
   if (days <= 3) return 'text-red-600 dark:text-red-400'
   if (days <= 7) return 'text-orange-600 dark:text-orange-400'
   return 'text-gray-700 dark:text-gray-300'

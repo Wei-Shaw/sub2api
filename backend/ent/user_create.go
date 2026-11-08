@@ -116,6 +116,20 @@ func (_c *UserCreate) SetNillableBalance(v *float64) *UserCreate {
 	return _c
 }
 
+// SetFrozenBalance sets the "frozen_balance" field.
+func (_c *UserCreate) SetFrozenBalance(v float64) *UserCreate {
+	_c.mutation.SetFrozenBalance(v)
+	return _c
+}
+
+// SetNillableFrozenBalance sets the "frozen_balance" field if the given value is not nil.
+func (_c *UserCreate) SetNillableFrozenBalance(v *float64) *UserCreate {
+	if v != nil {
+		_c.SetFrozenBalance(*v)
+	}
+	return _c
+}
+
 // SetConcurrency sets the "concurrency" field.
 func (_c *UserCreate) SetConcurrency(v int) *UserCreate {
 	_c.mutation.SetConcurrency(v)
@@ -252,6 +266,20 @@ func (_c *UserCreate) SetLastActiveAt(v time.Time) *UserCreate {
 func (_c *UserCreate) SetNillableLastActiveAt(v *time.Time) *UserCreate {
 	if v != nil {
 		_c.SetLastActiveAt(*v)
+	}
+	return _c
+}
+
+// SetRestrictPublicGroups sets the "restrict_public_groups" field.
+func (_c *UserCreate) SetRestrictPublicGroups(v bool) *UserCreate {
+	_c.mutation.SetRestrictPublicGroups(v)
+	return _c
+}
+
+// SetNillableRestrictPublicGroups sets the "restrict_public_groups" field if the given value is not nil.
+func (_c *UserCreate) SetNillableRestrictPublicGroups(v *bool) *UserCreate {
+	if v != nil {
+		_c.SetRestrictPublicGroups(*v)
 	}
 	return _c
 }
@@ -594,6 +622,10 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultBalance
 		_c.mutation.SetBalance(v)
 	}
+	if _, ok := _c.mutation.FrozenBalance(); !ok {
+		v := user.DefaultFrozenBalance
+		_c.mutation.SetFrozenBalance(v)
+	}
 	if _, ok := _c.mutation.Concurrency(); !ok {
 		v := user.DefaultConcurrency
 		_c.mutation.SetConcurrency(v)
@@ -617,6 +649,10 @@ func (_c *UserCreate) defaults() error {
 	if _, ok := _c.mutation.SignupSource(); !ok {
 		v := user.DefaultSignupSource
 		_c.mutation.SetSignupSource(v)
+	}
+	if _, ok := _c.mutation.RestrictPublicGroups(); !ok {
+		v := user.DefaultRestrictPublicGroups
+		_c.mutation.SetRestrictPublicGroups(v)
 	}
 	if _, ok := _c.mutation.BalanceNotifyEnabled(); !ok {
 		v := user.DefaultBalanceNotifyEnabled
@@ -676,6 +712,9 @@ func (_c *UserCreate) check() error {
 	if _, ok := _c.mutation.Balance(); !ok {
 		return &ValidationError{Name: "balance", err: errors.New(`ent: missing required field "User.balance"`)}
 	}
+	if _, ok := _c.mutation.FrozenBalance(); !ok {
+		return &ValidationError{Name: "frozen_balance", err: errors.New(`ent: missing required field "User.frozen_balance"`)}
+	}
 	if _, ok := _c.mutation.Concurrency(); !ok {
 		return &ValidationError{Name: "concurrency", err: errors.New(`ent: missing required field "User.concurrency"`)}
 	}
@@ -708,6 +747,9 @@ func (_c *UserCreate) check() error {
 		if err := user.SignupSourceValidator(v); err != nil {
 			return &ValidationError{Name: "signup_source", err: fmt.Errorf(`ent: validator failed for field "User.signup_source": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.RestrictPublicGroups(); !ok {
+		return &ValidationError{Name: "restrict_public_groups", err: errors.New(`ent: missing required field "User.restrict_public_groups"`)}
 	}
 	if _, ok := _c.mutation.BalanceNotifyEnabled(); !ok {
 		return &ValidationError{Name: "balance_notify_enabled", err: errors.New(`ent: missing required field "User.balance_notify_enabled"`)}
@@ -779,6 +821,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 		_spec.SetField(user.FieldBalance, field.TypeFloat64, value)
 		_node.Balance = value
 	}
+	if value, ok := _c.mutation.FrozenBalance(); ok {
+		_spec.SetField(user.FieldFrozenBalance, field.TypeFloat64, value)
+		_node.FrozenBalance = value
+	}
 	if value, ok := _c.mutation.Concurrency(); ok {
 		_spec.SetField(user.FieldConcurrency, field.TypeInt, value)
 		_node.Concurrency = value
@@ -818,6 +864,10 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.LastActiveAt(); ok {
 		_spec.SetField(user.FieldLastActiveAt, field.TypeTime, value)
 		_node.LastActiveAt = &value
+	}
+	if value, ok := _c.mutation.RestrictPublicGroups(); ok {
+		_spec.SetField(user.FieldRestrictPublicGroups, field.TypeBool, value)
+		_node.RestrictPublicGroups = value
 	}
 	if value, ok := _c.mutation.BalanceNotifyEnabled(); ok {
 		_spec.SetField(user.FieldBalanceNotifyEnabled, field.TypeBool, value)
@@ -1191,6 +1241,24 @@ func (u *UserUpsert) AddBalance(v float64) *UserUpsert {
 	return u
 }
 
+// SetFrozenBalance sets the "frozen_balance" field.
+func (u *UserUpsert) SetFrozenBalance(v float64) *UserUpsert {
+	u.Set(user.FieldFrozenBalance, v)
+	return u
+}
+
+// UpdateFrozenBalance sets the "frozen_balance" field to the value that was provided on create.
+func (u *UserUpsert) UpdateFrozenBalance() *UserUpsert {
+	u.SetExcluded(user.FieldFrozenBalance)
+	return u
+}
+
+// AddFrozenBalance adds v to the "frozen_balance" field.
+func (u *UserUpsert) AddFrozenBalance(v float64) *UserUpsert {
+	u.Add(user.FieldFrozenBalance, v)
+	return u
+}
+
 // SetConcurrency sets the "concurrency" field.
 func (u *UserUpsert) SetConcurrency(v int) *UserUpsert {
 	u.Set(user.FieldConcurrency, v)
@@ -1338,6 +1406,18 @@ func (u *UserUpsert) UpdateLastActiveAt() *UserUpsert {
 // ClearLastActiveAt clears the value of the "last_active_at" field.
 func (u *UserUpsert) ClearLastActiveAt() *UserUpsert {
 	u.SetNull(user.FieldLastActiveAt)
+	return u
+}
+
+// SetRestrictPublicGroups sets the "restrict_public_groups" field.
+func (u *UserUpsert) SetRestrictPublicGroups(v bool) *UserUpsert {
+	u.Set(user.FieldRestrictPublicGroups, v)
+	return u
+}
+
+// UpdateRestrictPublicGroups sets the "restrict_public_groups" field to the value that was provided on create.
+func (u *UserUpsert) UpdateRestrictPublicGroups() *UserUpsert {
+	u.SetExcluded(user.FieldRestrictPublicGroups)
 	return u
 }
 
@@ -1580,6 +1660,27 @@ func (u *UserUpsertOne) UpdateBalance() *UserUpsertOne {
 	})
 }
 
+// SetFrozenBalance sets the "frozen_balance" field.
+func (u *UserUpsertOne) SetFrozenBalance(v float64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetFrozenBalance(v)
+	})
+}
+
+// AddFrozenBalance adds v to the "frozen_balance" field.
+func (u *UserUpsertOne) AddFrozenBalance(v float64) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.AddFrozenBalance(v)
+	})
+}
+
+// UpdateFrozenBalance sets the "frozen_balance" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateFrozenBalance() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateFrozenBalance()
+	})
+}
+
 // SetConcurrency sets the "concurrency" field.
 func (u *UserUpsertOne) SetConcurrency(v int) *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
@@ -1752,6 +1853,20 @@ func (u *UserUpsertOne) UpdateLastActiveAt() *UserUpsertOne {
 func (u *UserUpsertOne) ClearLastActiveAt() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.ClearLastActiveAt()
+	})
+}
+
+// SetRestrictPublicGroups sets the "restrict_public_groups" field.
+func (u *UserUpsertOne) SetRestrictPublicGroups(v bool) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRestrictPublicGroups(v)
+	})
+}
+
+// UpdateRestrictPublicGroups sets the "restrict_public_groups" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateRestrictPublicGroups() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRestrictPublicGroups()
 	})
 }
 
@@ -2176,6 +2291,27 @@ func (u *UserUpsertBulk) UpdateBalance() *UserUpsertBulk {
 	})
 }
 
+// SetFrozenBalance sets the "frozen_balance" field.
+func (u *UserUpsertBulk) SetFrozenBalance(v float64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetFrozenBalance(v)
+	})
+}
+
+// AddFrozenBalance adds v to the "frozen_balance" field.
+func (u *UserUpsertBulk) AddFrozenBalance(v float64) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.AddFrozenBalance(v)
+	})
+}
+
+// UpdateFrozenBalance sets the "frozen_balance" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateFrozenBalance() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateFrozenBalance()
+	})
+}
+
 // SetConcurrency sets the "concurrency" field.
 func (u *UserUpsertBulk) SetConcurrency(v int) *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
@@ -2348,6 +2484,20 @@ func (u *UserUpsertBulk) UpdateLastActiveAt() *UserUpsertBulk {
 func (u *UserUpsertBulk) ClearLastActiveAt() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.ClearLastActiveAt()
+	})
+}
+
+// SetRestrictPublicGroups sets the "restrict_public_groups" field.
+func (u *UserUpsertBulk) SetRestrictPublicGroups(v bool) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetRestrictPublicGroups(v)
+	})
+}
+
+// UpdateRestrictPublicGroups sets the "restrict_public_groups" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateRestrictPublicGroups() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateRestrictPublicGroups()
 	})
 }
 

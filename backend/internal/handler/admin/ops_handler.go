@@ -73,6 +73,13 @@ func NewOpsHandler(opsService *service.OpsService) *OpsHandler {
 }
 
 // GetErrorLogs lists ops error logs.
+// applyOpsErrorSortParams reads sort_by/sort_order query params into the filter.
+// Column whitelist and order normalization live in the repository; unknown
+// values degrade to the default (created_at DESC), mirroring the usage list.
+func applyOpsErrorSortParams(c *gin.Context, filter *service.OpsErrorLogFilter) {
+	filter.SetSort(c.Query("sort_by"), c.Query("sort_order"))
+}
+
 // GET /api/v1/admin/ops/errors
 func (h *OpsHandler) GetErrorLogs(c *gin.Context) {
 	if h.opsService == nil {
@@ -114,10 +121,17 @@ func (h *OpsHandler) GetErrorLogs(c *gin.Context) {
 	// buildOpsErrorLogsWhere 以 COALESCE(requested_model, model) 比对。
 	filter.Model = strings.TrimSpace(c.Query("model"))
 
-	// Force request errors: client-visible status >= 400.
-	// buildOpsErrorLogsWhere already applies this for non-upstream phase.
-	if strings.EqualFold(strings.TrimSpace(filter.Phase), "upstream") {
-		filter.Phase = ""
+	// 请求错误语义:client-visible status>=400 守卫恒生效（未设
+	// IncludeRecoveredUpstream 时 phase=upstream 不再绕过守卫），故
+	// phase=upstream 作为普通过滤条件保留——此前这里清空该值，导致
+	// 错误类型下拉选「上游」等于不过滤。
+
+	// 分类(用户侧粗分类码)→ phase/type ANY 条件,与用户端 /usage/errors 同一映射;
+	// 未知分类返回空切片 = 不过滤。与 phase 参数可同时设置(AND 语义)。
+	if cat := strings.TrimSpace(c.Query("category")); cat != "" {
+		phases, types := service.CategoryToFilter(cat)
+		filter.ErrorPhasesAny = phases
+		filter.ErrorTypesAny = types
 	}
 
 	if platform := strings.TrimSpace(c.Query("platform")); platform != "" {
@@ -187,6 +201,8 @@ func (h *OpsHandler) GetErrorLogs(c *gin.Context) {
 		filter.StatusCodes = out
 	}
 
+	applyOpsErrorSortParams(c, filter)
+
 	result, err := h.opsService.GetErrorLogs(c.Request.Context(), filter)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -234,10 +250,17 @@ func (h *OpsHandler) ListRequestErrors(c *gin.Context) {
 	// buildOpsErrorLogsWhere 以 COALESCE(requested_model, model) 比对。
 	filter.Model = strings.TrimSpace(c.Query("model"))
 
-	// Force request errors: client-visible status >= 400.
-	// buildOpsErrorLogsWhere already applies this for non-upstream phase.
-	if strings.EqualFold(strings.TrimSpace(filter.Phase), "upstream") {
-		filter.Phase = ""
+	// 请求错误语义:client-visible status>=400 守卫恒生效（未设
+	// IncludeRecoveredUpstream 时 phase=upstream 不再绕过守卫），故
+	// phase=upstream 作为普通过滤条件保留——此前这里清空该值，导致
+	// 错误类型下拉选「上游」等于不过滤。
+
+	// 分类(用户侧粗分类码)→ phase/type ANY 条件,与用户端 /usage/errors 同一映射;
+	// 未知分类返回空切片 = 不过滤。与 phase 参数可同时设置(AND 语义)。
+	if cat := strings.TrimSpace(c.Query("category")); cat != "" {
+		phases, types := service.CategoryToFilter(cat)
+		filter.ErrorPhasesAny = phases
+		filter.ErrorTypesAny = types
 	}
 
 	if platform := strings.TrimSpace(c.Query("platform")); platform != "" {
@@ -290,6 +313,8 @@ func (h *OpsHandler) ListRequestErrors(c *gin.Context) {
 		}
 		filter.StatusCodes = out
 	}
+
+	applyOpsErrorSortParams(c, filter)
 
 	result, err := h.opsService.GetErrorLogs(c.Request.Context(), filter)
 	if err != nil {
@@ -361,7 +386,9 @@ func (h *OpsHandler) ListRequestErrorUpstreamErrors(c *gin.Context) {
 		filter.EndTime = &endTime
 	}
 	filter.View = "all"
-	filter.Phase = "upstream"
+	filter.ErrorPhasesAny = []string{"upstream", "account_auth"}
+	// Provider-health list includes recovered inference and credential rows.
+	filter.IncludeRecoveredUpstream = true
 	filter.Owner = "provider"
 	filter.Source = strings.TrimSpace(c.Query("error_source"))
 	filter.Query = strings.TrimSpace(c.Query("q"))
@@ -376,6 +403,8 @@ func (h *OpsHandler) ListRequestErrorUpstreamErrors(c *gin.Context) {
 	} else {
 		filter.ClientRequestID = clientRequestID
 	}
+
+	applyOpsErrorSortParams(c, filter)
 
 	result, err := h.opsService.GetErrorLogs(c.Request.Context(), filter)
 	if err != nil {
@@ -441,7 +470,9 @@ func (h *OpsHandler) ListUpstreamErrors(c *gin.Context) {
 	}
 
 	filter.View = parseOpsViewParam(c)
-	filter.Phase = "upstream"
+	filter.ErrorPhasesAny = []string{"upstream", "account_auth"}
+	// Provider-health list includes recovered inference and credential rows.
+	filter.IncludeRecoveredUpstream = true
 	filter.Owner = "provider"
 	filter.Source = strings.TrimSpace(c.Query("error_source"))
 	filter.Query = strings.TrimSpace(c.Query("q"))
@@ -496,6 +527,8 @@ func (h *OpsHandler) ListUpstreamErrors(c *gin.Context) {
 		}
 		filter.StatusCodes = out
 	}
+
+	applyOpsErrorSortParams(c, filter)
 
 	result, err := h.opsService.GetErrorLogs(c.Request.Context(), filter)
 	if err != nil {

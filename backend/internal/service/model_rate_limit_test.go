@@ -255,6 +255,31 @@ func TestIsModelRateLimited_OpenAIImageGenerationIntentBlocksTextModelImageTool(
 	require.True(t, account.isModelRateLimitedWithContext(WithOpenAIImageGenerationIntent(context.Background()), "gpt-5.4"))
 }
 
+func TestIsModelRateLimited_AntigravityImageDoesNotInheritGeminiFamilyLimit(t *testing.T) {
+	future := time.Now().Add(10 * time.Minute).Format(time.RFC3339)
+	account := &Account{
+		Platform: PlatformAntigravity,
+		Extra: map[string]any{
+			modelRateLimitsKey: map[string]any{
+				antigravityGeminiModelRateLimitKey: map[string]any{
+					"rate_limit_reset_at": future,
+				},
+			},
+		},
+	}
+
+	for _, model := range []string{"gemini-3.1-flash-image", "gemini-3.1-flash-image-preview", "gemini-3-pro-image"} {
+		require.False(t, account.isModelRateLimitedWithContext(context.Background(), model), model)
+	}
+	require.True(t, account.isModelRateLimitedWithContext(context.Background(), "gemini-3-flash"))
+	rawLimits, ok := account.Extra[modelRateLimitsKey].(map[string]any)
+	require.True(t, ok)
+	rawLimits["gemini-3.1-flash-image"] = map[string]any{
+		"rate_limit_reset_at": future,
+	}
+	require.True(t, account.isModelRateLimitedWithContext(context.Background(), "gemini-3-pro-image-preview"))
+}
+
 func TestIsModelRateLimited_Antigravity_ThinkingAffectsModelKey(t *testing.T) {
 	now := time.Now()
 	future := now.Add(10 * time.Minute).Format(time.RFC3339)
@@ -498,4 +523,48 @@ func TestGetRateLimitRemainingTime(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestIsModelRateLimited_AnthropicFableFamilyKey(t *testing.T) {
+	now := time.Now()
+	future := now.Add(48 * time.Hour).Format(time.RFC3339)
+
+	account := &Account{
+		Platform: PlatformAnthropic,
+		Extra: map[string]any{
+			modelRateLimitsKey: map[string]any{
+				anthropicFableRateLimitKey: map[string]any{
+					"rate_limit_reset_at": future,
+				},
+			},
+		},
+	}
+
+	tests := []struct {
+		requestedModel string
+		expected       bool
+	}{
+		{"claude-fable-5", true},
+		{"claude-fable-5[1m]", true},      // 家族 key 覆盖变体
+		{"Claude-Fable-5-20260601", true}, // 大小写不敏感
+		{"claude-sonnet-4-6", false},      // 其他模型不受影响
+		{"claude-opus-4-8", false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.requestedModel, func(t *testing.T) {
+			got := account.isModelRateLimitedWithContext(context.Background(), tc.requestedModel)
+			require.Equal(t, tc.expected, got)
+			remaining := account.GetModelRateLimitRemainingTimeWithContext(context.Background(), tc.requestedModel)
+			require.Equal(t, tc.expected, remaining > 0)
+		})
+	}
+}
+
+func TestIsAnthropicFableModel(t *testing.T) {
+	require.True(t, isAnthropicFableModel("claude-fable-5"))
+	require.True(t, isAnthropicFableModel("claude-fable-5[1m]"))
+	require.True(t, isAnthropicFableModel("Claude-Fable-5"))
+	require.False(t, isAnthropicFableModel("claude-sonnet-4-6"))
+	require.False(t, isAnthropicFableModel(""))
 }

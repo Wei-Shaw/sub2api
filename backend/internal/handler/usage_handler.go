@@ -126,6 +126,16 @@ func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) 
 		stream = &val
 	}
 
+	var nativeCompactionV2 *bool
+	if raw := strings.TrimSpace(c.Query("native_compaction_v2")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			response.BadRequest(c, "Invalid native_compaction_v2 value, use true or false")
+			return nil, false
+		}
+		nativeCompactionV2 = &value
+	}
+
 	var billingType *int8
 	if billingTypeStr := strings.TrimSpace(c.Query("billing_type")); billingTypeStr != "" {
 		val, err := strconv.ParseInt(billingTypeStr, 10, 8)
@@ -138,7 +148,7 @@ func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) 
 	}
 
 	billingMode := strings.TrimSpace(c.Query("billing_mode"))
-	if billingMode != "" && !service.BillingMode(billingMode).IsValid() {
+	if billingMode != "" && !service.BillingMode(billingMode).IsValidUsageFilter() {
 		response.BadRequest(c, "Invalid billing_mode")
 		return nil, false
 	}
@@ -195,17 +205,18 @@ func (h *UsageHandler) parseUserUsageFilters(c *gin.Context, requireRange bool) 
 
 	return &userUsageFilters{
 		Filters: usagestats.UsageLogFilters{
-			UserID:            subject.UserID,
-			APIKeyID:          apiKeyID,
-			GroupID:           groupID,
-			Model:             strings.TrimSpace(c.Query("model")),
-			ModelFilterSource: usagestats.ModelSourceRequested,
-			RequestType:       requestType,
-			Stream:            stream,
-			BillingType:       billingType,
-			BillingMode:       billingMode,
-			StartTime:         startPtr,
-			EndTime:           endPtr,
+			UserID:             subject.UserID,
+			APIKeyID:           apiKeyID,
+			GroupID:            groupID,
+			Model:              strings.TrimSpace(c.Query("model")),
+			ModelFilterSource:  usagestats.ModelSourceRequested,
+			RequestType:        requestType,
+			Stream:             stream,
+			NativeCompactionV2: nativeCompactionV2,
+			BillingType:        billingType,
+			BillingMode:        billingMode,
+			StartTime:          startPtr,
+			EndTime:            endPtr,
 		},
 		StartTime: derefTime(startPtr),
 		EndTime:   derefTime(endPtr),
@@ -243,7 +254,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 
 	out := make([]dto.UsageLog, 0, len(records))
 	for i := range records {
-		out = append(out, *dto.UsageLogFromService(&records[i]))
+		out = append(out, *dto.UsageLogFromService(&records[i]).Localized(c.GetHeader("Accept-Language")))
 	}
 	response.Paginated(c, out, result.Total, page, pageSize)
 }
@@ -322,6 +333,9 @@ func (h *UsageHandler) ListErrors(c *gin.Context) {
 		filter.ErrorTypesAny = types
 	}
 
+	// 排序对齐用量明细:列白名单与方向归一在 repo 层,非法值回退 created_at DESC。
+	filter.SetSort(c.Query("sort_by"), c.Query("sort_order"))
+
 	result, err := h.opsService.ListUserErrorRequests(c.Request.Context(), subject.UserID, filter)
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -386,7 +400,7 @@ func (h *UsageHandler) GetByID(c *gin.Context) {
 		return
 	}
 
-	response.Success(c, dto.UsageLogFromService(record))
+	response.Success(c, dto.UsageLogFromService(record).Localized(c.GetHeader("Accept-Language")))
 }
 
 // Stats handles getting usage statistics

@@ -146,7 +146,7 @@ const options = computed(() => ({
           <div class="flex flex-wrap justify-center gap-3">
             <div v-for="item in categories" :key="item.label" class="flex items-center gap-1.5 text-xs">
               <span class="h-2 w-2 rounded-full" :style="{ backgroundColor: item.color }"></span>
-              <span class="text-gray-500 dark:text-gray-400">{{ item.count }}</span>
+              <span class="text-gray-500 dark:text-gray-400">{{ item.label }} {{ item.count }}</span>
             </div>
           </div>
         </div>

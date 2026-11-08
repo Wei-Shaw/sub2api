@@ -89,6 +89,7 @@ func marshalSystemLogCleanupConditions(filter *OpsSystemLogCleanupFilter) string
 		return "{}"
 	}
 	payload := map[string]any{
+		"host":              strings.TrimSpace(filter.Host),
 		"level":             strings.TrimSpace(filter.Level),
 		"component":         strings.TrimSpace(filter.Component),
 		"request_id":        strings.TrimSpace(filter.RequestID),

@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"database/sql"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -17,8 +18,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/repository"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
-	_ "github.com/lib/pq"
+	"github.com/lib/pq"
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
 
@@ -28,6 +30,9 @@ const (
 	InstallLockFile            = ".installed"
 	defaultUserConcurrency     = 5
 	simpleModeAdminConcurrency = 30
+	defaultMigrationTimeout    = 60 * time.Second
+	postgresBootstrapDatabase  = "postgres"
+	databasePingTimeout        = 5 * time.Second
 )
 
 func setupDefaultAdminConcurrency() int {
@@ -73,12 +78,13 @@ func GetInstallLockPath() string {
 
 // SetupConfig holds the setup configuration
 type SetupConfig struct {
-	Database DatabaseConfig `json:"database" yaml:"database"`
-	Redis    RedisConfig    `json:"redis" yaml:"redis"`
-	Admin    AdminConfig    `json:"admin" yaml:"-"` // Not stored in config file
-	Server   ServerConfig   `json:"server" yaml:"server"`
-	JWT      JWTConfig      `json:"jwt" yaml:"jwt"`
-	Timezone string         `json:"timezone" yaml:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	Database                DatabaseConfig `json:"database" yaml:"database"`
+	Redis                   RedisConfig    `json:"redis" yaml:"redis"`
+	Admin                   AdminConfig    `json:"admin" yaml:"-"` // Not stored in config file
+	Server                  ServerConfig   `json:"server" yaml:"server"`
+	JWT                     JWTConfig      `json:"jwt" yaml:"jwt"`
+	Timezone                string         `json:"timezone" yaml:"timezone"` // e.g. "Asia/Shanghai", "UTC"
+	MigrationTimeoutSeconds int            `json:"migration_timeout_seconds" yaml:"migration_timeout_seconds,omitempty"`
 }
 
 type DatabaseConfig struct {
@@ -93,6 +99,7 @@ type DatabaseConfig struct {
 type RedisConfig struct {
 	Host      string `json:"host" yaml:"host"`
 	Port      int    `json:"port" yaml:"port"`
+	Username  string `json:"username" yaml:"username"`
 	Password  string `json:"password" yaml:"password"`
 	DB        int    `json:"db" yaml:"db"`
 	EnableTLS bool   `json:"enable_tls" yaml:"enable_tls"`
@@ -144,9 +151,23 @@ func decideAdminBootstrap(totalUsers, adminUsers int64) adminBootstrapDecision {
 	}
 }
 
+func skipSetupEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("SKIP_SETUP"))) {
+	case "true", "1", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
 // NeedsSetup checks if the system needs initial setup
 // Uses multiple checks to prevent attackers from forcing re-setup by deleting config
 func NeedsSetup() bool {
+	if skipSetupEnabled() {
+		logger.L().Debug("setup.needs_setup_bypassed", zap.String("reason", "skip_setup_enabled"))
+		return false
+	}
+
 	// Check 1: Config file must not exist
 	if _, err := os.Stat(GetConfigFilePath()); !os.IsNotExist(err) {
 		return false // Config exists, no setup needed
@@ -167,39 +188,63 @@ func buildPostgresDSN(cfg *DatabaseConfig, dbName string) string {
 	)
 }
 
-func buildDatabaseConnectionDSNs(cfg *DatabaseConfig) (bootstrapDSN, targetDSN string) {
-	return buildPostgresDSN(cfg, "postgres"), buildPostgresDSN(cfg, cfg.DBName)
+func isDatabaseNotFoundError(err error) bool {
+	var pqErr *pq.Error
+	return errors.As(err, &pqErr) && pqErr.Code == "3D000"
 }
+
+func openAndPingPostgresDatabase(cfg *DatabaseConfig, dbName string) (*sql.DB, error) {
+	db, err := sql.Open("postgres", buildPostgresDSN(cfg, dbName))
+	if err != nil {
+		return nil, err
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), databasePingTimeout)
+	err = db.PingContext(ctx)
+	cancel()
+	if err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+
+	return db, nil
+}
+
+type postgresDatabaseOpener func(*DatabaseConfig, string) (*sql.DB, error)
 
 // TestDatabaseConnection tests the database connection and creates database if not exists
 func TestDatabaseConnection(cfg *DatabaseConfig) error {
-	// First, connect to the default 'postgres' database to check/create target database.
-	// Connecting to cfg.DBName here fails when the target database has not been
-	// created yet, so the bootstrap connection must use PostgreSQL's maintenance DB.
-	defaultDSN, targetDSN := buildDatabaseConnectionDSNs(cfg)
+	return testDatabaseConnection(cfg, openAndPingPostgresDatabase)
+}
 
-	db, err := sql.Open("postgres", defaultDSN)
-	if err != nil {
-		return fmt.Errorf("failed to connect to PostgreSQL: %w", err)
+func testDatabaseConnection(cfg *DatabaseConfig, openDatabase postgresDatabaseOpener) error {
+	// Prefer the configured database so existing installations remain
+	// independent of any server-specific maintenance database.
+	targetDB, err := openDatabase(cfg, cfg.DBName)
+	if err == nil {
+		if closeErr := targetDB.Close(); closeErr != nil {
+			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", closeErr)
+		}
+		return nil
+	}
+	if !isDatabaseNotFoundError(err) {
+		return fmt.Errorf("ping target database failed: %w", err)
 	}
 
+	// Preserve the existing postgres bootstrap path only when the target is missing.
+	db, err := openDatabase(cfg, postgresBootstrapDatabase)
+	if err != nil {
+		return fmt.Errorf("target database '%s' does not exist; failed to connect to bootstrap database '%s': %w", cfg.DBName, postgresBootstrapDatabase, err)
+	}
 	defer func() {
-		if db == nil {
-			return
-		}
 		if err := db.Close(); err != nil {
-			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
+			logger.LegacyPrintf("setup", "failed to close %s connection: %v", postgresBootstrapDatabase, err)
 		}
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), databasePingTimeout)
 	defer cancel()
 
-	if err := db.PingContext(ctx); err != nil {
-		return fmt.Errorf("ping failed: %w", err)
-	}
-
-	// Check if target database exists
 	var exists bool
 	row := db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM pg_database WHERE datname = $1)", cfg.DBName)
 	if err := row.Scan(&exists); err != nil {
@@ -218,29 +263,16 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 		logger.LegacyPrintf("setup", "Database '%s' created successfully", cfg.DBName)
 	}
 
-	// Now connect to the target database to verify
-	if err := db.Close(); err != nil {
-		logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
-	}
-	db = nil
-
-	targetDB, err := sql.Open("postgres", targetDSN)
+	// Now connect to the target database to verify.
+	targetDB, err = openDatabase(cfg, cfg.DBName)
 	if err != nil {
 		return fmt.Errorf("failed to connect to database '%s': %w", cfg.DBName, err)
 	}
-
 	defer func() {
 		if err := targetDB.Close(); err != nil {
 			logger.LegacyPrintf("setup", "failed to close postgres connection: %v", err)
 		}
 	}()
-
-	ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel2()
-
-	if err := targetDB.PingContext(ctx2); err != nil {
-		return fmt.Errorf("ping target database failed: %w", err)
-	}
 
 	return nil
 }
@@ -249,6 +281,7 @@ func TestDatabaseConnection(cfg *DatabaseConfig) error {
 func TestRedisConnection(cfg *RedisConfig) error {
 	opts := &redis.Options{
 		Addr:     fmt.Sprintf("%s:%d", cfg.Host, cfg.Port),
+		Username: cfg.Username,
 		Password: cfg.Password,
 		DB:       cfg.DB,
 	}
@@ -350,9 +383,16 @@ func initializeDatabase(cfg *SetupConfig) error {
 		}
 	}()
 
-	migrationCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	migrationCtx, cancel := context.WithTimeout(context.Background(), cfg.migrationTimeout())
 	defer cancel()
 	return repository.ApplyMigrations(migrationCtx, db)
+}
+
+func (cfg *SetupConfig) migrationTimeout() time.Duration {
+	if cfg != nil && cfg.MigrationTimeoutSeconds > 0 {
+		return time.Duration(cfg.MigrationTimeoutSeconds) * time.Second
+	}
+	return defaultMigrationTimeout
 }
 
 func createAdminUser(cfg *SetupConfig) (bool, string, error) {
@@ -377,6 +417,10 @@ func createAdminUser(cfg *SetupConfig) (bool, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	return bootstrapAdminUser(ctx, db, cfg)
+}
+
+func bootstrapAdminUser(ctx context.Context, db *sql.DB, cfg *SetupConfig) (bool, string, error) {
 	var totalUsers int64
 	if err := db.QueryRowContext(ctx, "SELECT COUNT(1) FROM users").Scan(&totalUsers); err != nil {
 		return false, "", err
@@ -390,12 +434,14 @@ func createAdminUser(cfg *SetupConfig) (bool, string, error) {
 		return false, decision.reason, nil
 	}
 
-	if strings.TrimSpace(cfg.Admin.Password) == "" {
-		password, genErr := generateSecret(16)
-		if genErr != nil {
-			return false, "", fmt.Errorf("failed to generate admin password: %w", genErr)
-		}
-		cfg.Admin.Password = password
+	emailGenerated, passwordGenerated, err := prepareAdminCredentials(&cfg.Admin)
+	if err != nil {
+		return false, "", err
+	}
+	if emailGenerated {
+		fmt.Printf("Generated admin email (login username): %s\n", cfg.Admin.Email)
+	}
+	if passwordGenerated {
 		fmt.Printf("Generated admin password (one-time): %s\n", cfg.Admin.Password)
 		fmt.Println("IMPORTANT: Save this password! It will not be shown again.")
 	}
@@ -433,6 +479,47 @@ func createAdminUser(cfg *SetupConfig) (bool, string, error) {
 	return true, decision.reason, nil
 }
 
+// prepareAdminCredentials fills in missing admin credentials with random values
+// and rejects invalid user-supplied emails and weak passwords. It only runs
+// when an admin is actually about to be created, so existing deployments are
+// never affected. A random email keeps fresh installs off the well-known
+// default username that brute-force scanners target (issue #7850).
+func prepareAdminCredentials(admin *AdminConfig) (emailGenerated, passwordGenerated bool, err error) {
+	admin.Email = strings.TrimSpace(admin.Email)
+	if admin.Email == "" {
+		email, genErr := generateAdminEmail()
+		if genErr != nil {
+			return false, false, genErr
+		}
+		admin.Email = email
+		emailGenerated = true
+	} else if !validateEmail(admin.Email) {
+		return false, false, fmt.Errorf("invalid admin email: %q is not a valid login email", admin.Email)
+	}
+
+	if strings.TrimSpace(admin.Password) == "" {
+		password, genErr := generateSecret(16)
+		if genErr != nil {
+			return false, false, fmt.Errorf("failed to generate admin password: %w", genErr)
+		}
+		admin.Password = password
+		passwordGenerated = true
+	} else if validateErr := validatePassword(admin.Password); validateErr != nil {
+		return false, false, fmt.Errorf("invalid admin password: %w", validateErr)
+	}
+
+	return emailGenerated, passwordGenerated, nil
+}
+
+// generateAdminEmail returns a random, non-guessable admin login email.
+func generateAdminEmail() (string, error) {
+	suffix, err := generateSecret(6)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate admin email: %w", err)
+	}
+	return fmt.Sprintf("admin-%s@sub2api.local", suffix), nil
+}
+
 func writeConfigFile(cfg *SetupConfig) error {
 	// Ensure timezone has a default value
 	tz := cfg.Timezone
@@ -455,10 +542,6 @@ func writeConfigFile(cfg *SetupConfig) error {
 			APIKeyPrefix    string  `yaml:"api_key_prefix"`
 			RateMultiplier  float64 `yaml:"rate_multiplier"`
 		} `yaml:"default"`
-		RateLimit struct {
-			RequestsPerMinute int `yaml:"requests_per_minute"`
-			BurstSize         int `yaml:"burst_size"`
-		} `yaml:"rate_limit"`
 		Timezone string `yaml:"timezone"`
 	}{
 		Server:   cfg.Server,
@@ -481,13 +564,6 @@ func writeConfigFile(cfg *SetupConfig) error {
 			UserBalance:     0,
 			APIKeyPrefix:    "sk-",
 			RateMultiplier:  1.0,
-		},
-		RateLimit: struct {
-			RequestsPerMinute int `yaml:"requests_per_minute"`
-			BurstSize         int `yaml:"burst_size"`
-		}{
-			RequestsPerMinute: 60,
-			BurstSize:         10,
 		},
 		Timezone: tz,
 	}
@@ -561,12 +637,13 @@ func AutoSetupFromEnv() error {
 		Redis: RedisConfig{
 			Host:      getEnvOrDefault("REDIS_HOST", "localhost"),
 			Port:      getEnvIntOrDefault("REDIS_PORT", 6379),
+			Username:  getEnvOrDefault("REDIS_USERNAME", ""),
 			Password:  getEnvOrDefault("REDIS_PASSWORD", ""),
 			DB:        getEnvIntOrDefault("REDIS_DB", 0),
 			EnableTLS: getEnvOrDefault("REDIS_ENABLE_TLS", "false") == "true",
 		},
 		Admin: AdminConfig{
-			Email:    getEnvOrDefault("ADMIN_EMAIL", "admin@sub2api.local"),
+			Email:    getEnvOrDefault("ADMIN_EMAIL", ""),
 			Password: getEnvOrDefault("ADMIN_PASSWORD", ""),
 		},
 		Server: ServerConfig{
@@ -578,7 +655,8 @@ func AutoSetupFromEnv() error {
 			Secret:     getEnvOrDefault("JWT_SECRET", ""),
 			ExpireHour: getEnvIntOrDefault("JWT_EXPIRE_HOUR", 24),
 		},
-		Timezone: tz,
+		Timezone:                tz,
+		MigrationTimeoutSeconds: getEnvIntOrDefault("SETUP_MIGRATION_TIMEOUT_SECONDS", 0),
 	}
 
 	// Generate JWT secret if not provided

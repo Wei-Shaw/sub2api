@@ -49,6 +49,9 @@ func (User) Fields() []ent.Field {
 		field.Float("balance").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
 			Default(0),
+		field.Float("frozen_balance").
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,8)"}).
+			Default(0),
 		field.Int("concurrency").
 			Default(5),
 		field.String("status").
@@ -92,6 +95,11 @@ func (User) Fields() []ent.Field {
 			Optional().
 			Nillable().
 			SchemaType(map[string]string{dialect.Postgres: "timestamptz"}),
+
+		// 公开分组访问限制：为 false 时用户可绑定任意非专属分组（默认行为），
+		// 为 true 时仅可绑定 user_allowed_groups 中列出的公开分组。
+		field.Bool("restrict_public_groups").
+			Default(false),
 
 		// 余额不足通知
 		field.Bool("balance_notify_enabled").

@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -10,8 +11,12 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
+
+	entsql "entgo.io/ent/dialect/sql"
+	"entgo.io/ent/dialect/sql/sqljson"
 )
 
 // channelMonitorRepository 实现 service.ChannelMonitorRepository。
@@ -47,10 +52,14 @@ func (r *channelMonitorRepository) Create(ctx context.Context, m *service.Channe
 		SetIntervalSeconds(m.IntervalSeconds).
 		SetJitterSeconds(m.JitterSeconds).
 		SetCreatedBy(m.CreatedBy).
-		SetExtraHeaders(emptyHeadersIfNilRepo(m.ExtraHeaders)).
-		SetBodyOverrideMode(defaultBodyModeRepo(m.BodyOverrideMode))
+		SetExtraHeaders(channelMonitorHeadersForPersistence(m)).
+		SetBodyOverrideMode(defaultBodyModeRepo(m.BodyOverrideMode)).
+		SetCheckMode(defaultCheckModeRepo(m.CheckMode))
 	if m.TemplateID != nil {
 		builder = builder.SetTemplateID(*m.TemplateID)
+	}
+	if m.AccountID != nil {
+		builder = builder.SetAccountID(*m.AccountID)
 	}
 	if m.BodyOverride != nil {
 		builder = builder.SetBodyOverride(m.BodyOverride)
@@ -64,6 +73,30 @@ func (r *channelMonitorRepository) Create(ctx context.Context, m *service.Channe
 	m.CreatedAt = created.CreatedAt
 	m.UpdatedAt = created.UpdatedAt
 	return nil
+}
+
+func (r *channelMonitorRepository) FindByDuplicateOperationID(ctx context.Context, operationID string) (*service.ChannelMonitor, error) {
+	if strings.TrimSpace(operationID) == "" {
+		return nil, nil
+	}
+	client := clientFromContext(ctx, r.client)
+	row, err := client.ChannelMonitor.Query().
+		Where(func(selector *entsql.Selector) {
+			selector.Where(sqljson.ValueEQ(
+				channelmonitor.FieldExtraHeaders,
+				operationID,
+				sqljson.Path(service.ChannelMonitorDuplicateOperationIDMetadataKey),
+			))
+		}).
+		Order(dbent.Asc(channelmonitor.FieldID)).
+		First(ctx)
+	if dbent.IsNotFound(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find channel monitor duplicate operation: %w", err)
+	}
+	return entToServiceMonitor(row), nil
 }
 
 func (r *channelMonitorRepository) GetByID(ctx context.Context, id int64) (*service.ChannelMonitor, error) {
@@ -90,12 +123,18 @@ func (r *channelMonitorRepository) Update(ctx context.Context, m *service.Channe
 		SetEnabled(m.Enabled).
 		SetIntervalSeconds(m.IntervalSeconds).
 		SetJitterSeconds(m.JitterSeconds).
-		SetExtraHeaders(emptyHeadersIfNilRepo(m.ExtraHeaders)).
-		SetBodyOverrideMode(defaultBodyModeRepo(m.BodyOverrideMode))
+		SetExtraHeaders(channelMonitorHeadersForPersistence(m)).
+		SetBodyOverrideMode(defaultBodyModeRepo(m.BodyOverrideMode)).
+		SetCheckMode(defaultCheckModeRepo(m.CheckMode))
 	if m.TemplateID != nil {
 		updater = updater.SetTemplateID(*m.TemplateID)
 	} else {
 		updater = updater.ClearTemplateID()
+	}
+	if m.AccountID != nil {
+		updater = updater.SetAccountID(*m.AccountID)
+	} else {
+		updater = updater.ClearAccountID()
 	}
 	if m.BodyOverride != nil {
 		updater = updater.SetBodyOverride(m.BodyOverride)
@@ -210,6 +249,9 @@ func (r *channelMonitorRepository) InsertHistoryBatch(ctx context.Context, rows 
 		if row.PingLatencyMs != nil {
 			c = c.SetPingLatencyMs(*row.PingLatencyMs)
 		}
+		if row.Quota != nil {
+			c = c.SetQuota(row.Quota)
+		}
 		bulk = append(bulk, c)
 	}
 	if _, err := client.ChannelMonitorHistory.CreateBulk(bulk...).Save(ctx); err != nil {
@@ -249,6 +291,7 @@ func (r *channelMonitorRepository) ListHistory(ctx context.Context, monitorID in
 			PingLatencyMs: row.PingLatencyMs,
 			Message:       row.Message,
 			CheckedAt:     row.CheckedAt,
+			Quota:         row.Quota,
 		}
 		out = append(out, entry)
 	}
@@ -295,6 +338,20 @@ func assignNullInt(dst **int, n sql.NullInt64) {
 	}
 	v := int(n.Int64)
 	*dst = &v
+}
+
+// scanMonitorQuota 把裸 SQL 读出的 JSONB quota 列解包为配额快照。
+// NULL（探活模式旧行）返回 nil；解析失败也返回 nil 并由调用方日志感知，
+// 不阻断列表渲染（与聚合层"失败仅日志"的原则一致）。
+func scanMonitorQuota(data []byte) *domain.MonitorQuotaSnapshot {
+	if len(data) == 0 {
+		return nil
+	}
+	snapshot := &domain.MonitorQuotaSnapshot{}
+	if err := json.Unmarshal(data, snapshot); err != nil {
+		return nil
+	}
+	return snapshot
 }
 
 // ComputeAvailability 计算指定窗口内每个模型的可用率与平均延迟。
@@ -369,7 +426,7 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 	}
 	const q = `
 		SELECT DISTINCT ON (monitor_id, model)
-		    monitor_id, model, status, latency_ms, ping_latency_ms, checked_at
+		    monitor_id, model, status, latency_ms, ping_latency_ms, checked_at, quota
 		FROM channel_monitor_histories
 		WHERE monitor_id = ANY($1)
 		ORDER BY monitor_id, model, checked_at DESC
@@ -384,11 +441,13 @@ func (r *channelMonitorRepository) ListLatestForMonitorIDs(ctx context.Context, 
 		var monitorID int64
 		l := &service.ChannelMonitorLatest{}
 		var latency, ping sql.NullInt64
-		if err := rows.Scan(&monitorID, &l.Model, &l.Status, &latency, &ping, &l.CheckedAt); err != nil {
+		var quota []byte
+		if err := rows.Scan(&monitorID, &l.Model, &l.Status, &latency, &ping, &l.CheckedAt, &quota); err != nil {
 			return nil, fmt.Errorf("scan latest batch row: %w", err)
 		}
 		assignNullInt(&l.LatencyMs, latency)
 		assignNullInt(&l.PingLatencyMs, ping)
+		l.Quota = scanMonitorQuota(quota)
 		out[monitorID] = append(out[monitorID], l)
 	}
 	if err := rows.Err(); err != nil {
@@ -704,36 +763,61 @@ func entToServiceMonitor(row *dbent.ChannelMonitor) *service.ChannelMonitor {
 	if extras == nil {
 		extras = []string{}
 	}
-	headers := row.ExtraHeaders
-	if headers == nil {
-		headers = map[string]string{}
+	headers := make(map[string]string, len(row.ExtraHeaders))
+	for key, value := range row.ExtraHeaders {
+		headers[key] = value
 	}
+	duplicateOperationID := headers[service.ChannelMonitorDuplicateOperationIDMetadataKey]
+	delete(headers, service.ChannelMonitorDuplicateOperationIDMetadataKey)
 	out := &service.ChannelMonitor{
-		ID:               row.ID,
-		Name:             row.Name,
-		Provider:         string(row.Provider),
-		APIMode:          defaultAPIModeRepo(row.APIMode),
-		Endpoint:         row.Endpoint,
-		APIKey:           row.APIKeyEncrypted, // 仍为密文，service 层负责解密
-		PrimaryModel:     row.PrimaryModel,
-		ExtraModels:      extras,
-		GroupName:        row.GroupName,
-		Enabled:          row.Enabled,
-		IntervalSeconds:  row.IntervalSeconds,
-		JitterSeconds:    row.JitterSeconds,
-		LastCheckedAt:    row.LastCheckedAt,
-		CreatedBy:        row.CreatedBy,
-		CreatedAt:        row.CreatedAt,
-		UpdatedAt:        row.UpdatedAt,
-		ExtraHeaders:     headers,
-		BodyOverrideMode: row.BodyOverrideMode,
-		BodyOverride:     row.BodyOverride,
+		ID:                   row.ID,
+		Name:                 row.Name,
+		Provider:             string(row.Provider),
+		APIMode:              defaultAPIModeRepo(row.APIMode),
+		Endpoint:             row.Endpoint,
+		APIKey:               row.APIKeyEncrypted, // 仍为密文，service 层负责解密
+		PrimaryModel:         row.PrimaryModel,
+		ExtraModels:          extras,
+		GroupName:            row.GroupName,
+		Enabled:              row.Enabled,
+		IntervalSeconds:      row.IntervalSeconds,
+		JitterSeconds:        row.JitterSeconds,
+		LastCheckedAt:        row.LastCheckedAt,
+		CreatedBy:            row.CreatedBy,
+		CreatedAt:            row.CreatedAt,
+		UpdatedAt:            row.UpdatedAt,
+		ExtraHeaders:         headers,
+		BodyOverrideMode:     row.BodyOverrideMode,
+		BodyOverride:         row.BodyOverride,
+		CheckMode:            defaultCheckModeRepo(row.CheckMode),
+		DuplicateOperationID: duplicateOperationID,
 	}
 	if row.TemplateID != nil {
 		id := *row.TemplateID
 		out.TemplateID = &id
 	}
+	if row.AccountID != nil {
+		id := *row.AccountID
+		out.AccountID = &id
+	}
 	return out
+}
+
+func channelMonitorHeadersForPersistence(m *service.ChannelMonitor) map[string]string {
+	if m == nil {
+		return map[string]string{}
+	}
+	headers := make(map[string]string, len(m.ExtraHeaders)+1)
+	for key, value := range m.ExtraHeaders {
+		if key == service.ChannelMonitorDuplicateOperationIDMetadataKey {
+			continue
+		}
+		headers[key] = value
+	}
+	if operationID := strings.TrimSpace(m.DuplicateOperationID); operationID != "" {
+		headers[service.ChannelMonitorDuplicateOperationIDMetadataKey] = operationID
+	}
+	return headers
 }
 
 // emptyHeadersIfNilRepo 与 service.emptyHeadersIfNil 功能一致，
@@ -758,6 +842,14 @@ func defaultAPIModeRepo(apiMode string) string {
 		return "chat_completions"
 	}
 	return apiMode
+}
+
+// defaultCheckModeRepo 空串归一为 probe（存量行有列默认值，这里兜底防御）。
+func defaultCheckModeRepo(checkMode string) string {
+	if checkMode == "" {
+		return "probe"
+	}
+	return checkMode
 }
 
 func emptySliceIfNil(in []string) []string {

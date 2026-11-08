@@ -11,17 +11,19 @@ import (
 var usageStatsCache = newSnapshotCache(30 * time.Second)
 
 type usageStatsCacheKeyData struct {
-	StartTime   string `json:"start_time"`
-	EndTime     string `json:"end_time"`
-	UserID      int64  `json:"user_id"`
-	APIKeyID    int64  `json:"api_key_id"`
-	AccountID   int64  `json:"account_id"`
-	GroupID     int64  `json:"group_id"`
-	Model       string `json:"model"`
-	BillingMode string `json:"billing_mode"`
-	RequestType *int16 `json:"request_type"`
-	Stream      *bool  `json:"stream"`
-	BillingType *int8  `json:"billing_type"`
+	StartTime             string `json:"start_time"`
+	EndTime               string `json:"end_time"`
+	UserID                int64  `json:"user_id"`
+	APIKeyID              int64  `json:"api_key_id"`
+	AccountID             int64  `json:"account_id"`
+	GroupID               int64  `json:"group_id"`
+	Model                 string `json:"model"`
+	BillingMode           string `json:"billing_mode"`
+	RequestType           *int16 `json:"request_type"`
+	Stream                *bool  `json:"stream"`
+	NativeCompactionV2    *bool  `json:"native_compaction_v2"`
+	BillingType           *int8  `json:"billing_type"`
+	UpstreamModelMismatch *bool  `json:"upstream_model_mismatch"`
 }
 
 func usageStatsCacheKey(filters usagestats.UsageLogFilters) string {
@@ -34,17 +36,19 @@ func usageStatsCacheKey(filters usagestats.UsageLogFilters) string {
 		end = filters.EndTime.UTC().Format(time.RFC3339)
 	}
 	return mustMarshalDashboardCacheKey(usageStatsCacheKeyData{
-		StartTime:   start,
-		EndTime:     end,
-		UserID:      filters.UserID,
-		APIKeyID:    filters.APIKeyID,
-		AccountID:   filters.AccountID,
-		GroupID:     filters.GroupID,
-		Model:       filters.Model,
-		BillingMode: filters.BillingMode,
-		RequestType: filters.RequestType,
-		Stream:      filters.Stream,
-		BillingType: filters.BillingType,
+		StartTime:             start,
+		EndTime:               end,
+		UserID:                filters.UserID,
+		APIKeyID:              filters.APIKeyID,
+		AccountID:             filters.AccountID,
+		GroupID:               filters.GroupID,
+		Model:                 filters.Model,
+		BillingMode:           filters.BillingMode,
+		RequestType:           filters.RequestType,
+		Stream:                filters.Stream,
+		NativeCompactionV2:    filters.NativeCompactionV2,
+		BillingType:           filters.BillingType,
+		UpstreamModelMismatch: filters.UpstreamModelMismatch,
 	})
 }
 

@@ -15,6 +15,7 @@ import (
 type opsSystemLogCleanupRequest struct {
 	StartTime string `json:"start_time"`
 	EndTime   string `json:"end_time"`
+	Host      string `json:"host"`
 
 	Level           string `json:"level"`
 	Component       string `json:"component"`
@@ -56,6 +57,7 @@ func (h *OpsHandler) ListSystemLogs(c *gin.Context) {
 		PageSize:        pageSize,
 		StartTime:       &start,
 		EndTime:         &end,
+		Host:            strings.TrimSpace(c.Query("host")),
 		Level:           strings.TrimSpace(c.Query("level")),
 		Component:       strings.TrimSpace(c.Query("component")),
 		RequestID:       strings.TrimSpace(c.Query("request_id")),
@@ -153,6 +155,7 @@ func (h *OpsHandler) CleanupSystemLogs(c *gin.Context) {
 	filter := &service.OpsSystemLogCleanupFilter{
 		StartTime:       start,
 		EndTime:         end,
+		Host:            strings.TrimSpace(req.Host),
 		Level:           strings.TrimSpace(req.Level),
 		Component:       strings.TrimSpace(req.Component),
 		RequestID:       strings.TrimSpace(req.RequestID),

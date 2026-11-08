@@ -1,12 +1,18 @@
 package service
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/gin-gonic/gin"
 )
+
+// CodexOfficialClientsOnlyMessage 是 codex_cli_only 拒绝时面向客户端的通用兜底文案。
+// 仅当拒绝原因不是「可解析版本但越界」（VersionTooLow/VersionTooHigh）时使用：
+// 未命中官方/黑名单/缺指纹/版本无法识别都沿用这句（避免向伪装客户端泄露门控细节）。
+const CodexOfficialClientsOnlyMessage = "This account only allows Codex official clients"
 
 const (
 	// CodexClientRestrictionReasonDisabled 表示账号未开启 codex_cli_only。
@@ -51,6 +57,13 @@ type CodexClientRestrictionDetectionResult struct {
 	Enabled bool
 	Matched bool
 	Reason  string
+	// DetectedVersion 是从官方 UA 解析出的 Codex 引擎版本；仅在版本门拒绝
+	// (VersionTooLow / VersionTooHigh) 时填充，供面向客户端的差异化文案使用。
+	DetectedVersion string
+	// MinCodexVersion 是触发 VersionTooLow 时的最低要求版本（来自策略快照）。
+	MinCodexVersion string
+	// MaxCodexVersion 是触发 VersionTooHigh 时的最高允许版本（来自策略快照）。
+	MaxCodexVersion string
 }
 
 // CodexClientRestrictionDetector 定义 codex_cli_only 统一检测入口。
@@ -127,10 +140,22 @@ func (d *OpenAICodexClientRestrictionDetector) Detect(c *gin.Context, account *A
 			return CodexClientRestrictionDetectionResult{Enabled: true, Matched: false, Reason: CodexClientRestrictionReasonVersionUndetectable}
 		}
 		if policy.MinCodexVersion != "" && CompareVersions(ver, policy.MinCodexVersion) < 0 {
-			return CodexClientRestrictionDetectionResult{Enabled: true, Matched: false, Reason: CodexClientRestrictionReasonVersionTooLow}
+			return CodexClientRestrictionDetectionResult{
+				Enabled:         true,
+				Matched:         false,
+				Reason:          CodexClientRestrictionReasonVersionTooLow,
+				DetectedVersion: ver,
+				MinCodexVersion: policy.MinCodexVersion,
+			}
 		}
 		if policy.MaxCodexVersion != "" && CompareVersions(ver, policy.MaxCodexVersion) > 0 {
-			return CodexClientRestrictionDetectionResult{Enabled: true, Matched: false, Reason: CodexClientRestrictionReasonVersionTooHigh}
+			return CodexClientRestrictionDetectionResult{
+				Enabled:         true,
+				Matched:         false,
+				Reason:          CodexClientRestrictionReasonVersionTooHigh,
+				DetectedVersion: ver,
+				MaxCodexVersion: policy.MaxCodexVersion,
+			}
 		}
 	}
 
@@ -144,4 +169,23 @@ func (d *OpenAICodexClientRestrictionDetector) Detect(c *gin.Context, account *A
 	}
 
 	return CodexClientRestrictionDetectionResult{Enabled: true, Matched: true, Reason: reason}
+}
+
+// CodexClientRestrictionMessage 把检测结果映射为面向客户端的 403 文案。
+// 仅版本越界（VersionTooLow/VersionTooHigh）给出带实际版本号与边界的差异化提示——
+// 这类请求其实已被识别为官方 Codex（命中官方 UA/originator），再回「只允许官方客户端」会误导；
+// 其余拒绝原因统一沿用通用兜底句，不暴露门控细节。
+func CodexClientRestrictionMessage(r CodexClientRestrictionDetectionResult) string {
+	switch r.Reason {
+	case CodexClientRestrictionReasonVersionTooLow:
+		return fmt.Sprintf(
+			"Your Codex version (%s) is below the minimum required version (%s). Please update Codex.",
+			r.DetectedVersion, r.MinCodexVersion)
+	case CodexClientRestrictionReasonVersionTooHigh:
+		return fmt.Sprintf(
+			"Your Codex version (%s) exceeds the maximum allowed version (%s). Please downgrade Codex to %s or lower.",
+			r.DetectedVersion, r.MaxCodexVersion, r.MaxCodexVersion)
+	default:
+		return CodexOfficialClientsOnlyMessage
+	}
 }

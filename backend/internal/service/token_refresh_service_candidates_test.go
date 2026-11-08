@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -14,62 +15,87 @@ import (
 
 type tokenRefreshCandidateRepo struct {
 	AccountRepository
+	mu                    sync.Mutex
 	accounts              []Account
 	updatedCredentialIDs  []int64
 	setErrorCalls         int
 	setTempUnschedCalls   int
+	clearTempCalls        int
 	lastTempUnschedReason string
 	listActiveCalls       int
 }
 
 func (r *tokenRefreshCandidateRepo) ListActive(context.Context) ([]Account, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.listActiveCalls++
 	return r.accounts, nil
 }
 
-func (r *tokenRefreshCandidateRepo) ListOAuthRefreshCandidates(context.Context) ([]Account, error) {
+func (r *tokenRefreshCandidateRepo) ListOAuthRefreshCandidatePage(_ context.Context, options OAuthRefreshPageOptions) (*OAuthRefreshCandidatePage, error) {
 	candidates := make([]Account, 0, len(r.accounts))
 	now := time.Now()
 	for _, account := range r.accounts {
+		if account.ID <= options.AfterID {
+			continue
+		}
 		refreshToken, _ := account.Credentials["refresh_token"].(string)
 		inRetryCooldown := account.TempUnschedulableUntil != nil &&
 			account.TempUnschedulableUntil.After(now) &&
 			strings.HasPrefix(account.TempUnschedulableReason, "token refresh retry exhausted:")
-		if account.Status != StatusActive ||
+		platformAllowed := false
+		for _, platform := range options.Platforms {
+			if account.Platform == platform {
+				platformAllowed = true
+				break
+			}
+		}
+		if options.ActiveOnly && account.Status != StatusActive ||
 			account.Type != AccountTypeOAuth ||
-			!isOAuthRefreshPlatform(account.Platform) ||
-			strings.TrimSpace(refreshToken) == "" ||
-			inRetryCooldown {
+			!platformAllowed ||
+			options.RequireRefreshToken && strings.TrimSpace(refreshToken) == "" ||
+			options.ExcludeRetryCooldown && inRetryCooldown {
 			continue
 		}
 		candidates = append(candidates, account)
+		if len(candidates) == options.Limit {
+			break
+		}
 	}
-	return candidates, nil
+	page := &OAuthRefreshCandidatePage{Accounts: candidates, HasMore: len(candidates) == options.Limit}
+	if len(candidates) > 0 {
+		page.NextAfterID = candidates[len(candidates)-1].ID
+	}
+	return page, nil
 }
 
 func (r *tokenRefreshCandidateRepo) UpdateCredentials(_ context.Context, id int64, _ map[string]any) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.updatedCredentialIDs = append(r.updatedCredentialIDs, id)
 	return nil
 }
 
 func (r *tokenRefreshCandidateRepo) SetError(context.Context, int64, string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.setErrorCalls++
 	return nil
 }
 
 func (r *tokenRefreshCandidateRepo) SetTempUnschedulable(_ context.Context, _ int64, _ time.Time, reason string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	r.setTempUnschedCalls++
 	r.lastTempUnschedReason = reason
 	return nil
 }
 
-func isOAuthRefreshPlatform(platform string) bool {
-	switch platform {
-	case PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity:
-		return true
-	default:
-		return false
-	}
+func (r *tokenRefreshCandidateRepo) ClearTempUnschedulable(context.Context, int64) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.clearTempCalls++
+	return nil
 }
 
 type tokenRefreshTestRefresher struct {
@@ -96,6 +122,7 @@ func TestTokenRefreshService_ProcessRefreshUsesOAuthRefreshCandidates(t *testing
 				Platform:    PlatformOpenAI,
 				Type:        AccountTypeOAuth,
 				Status:      StatusActive,
+				Schedulable: true,
 				Credentials: map[string]any{"refresh_token": "refresh-token"},
 			},
 			{
@@ -103,6 +130,7 @@ func TestTokenRefreshService_ProcessRefreshUsesOAuthRefreshCandidates(t *testing
 				Platform:    PlatformOpenAI,
 				Type:        AccountTypeOAuth,
 				Status:      StatusActive,
+				Schedulable: true,
 				Credentials: map[string]any{},
 			},
 			{
@@ -117,6 +145,7 @@ func TestTokenRefreshService_ProcessRefreshUsesOAuthRefreshCandidates(t *testing
 				Platform:                PlatformAntigravity,
 				Type:                    AccountTypeOAuth,
 				Status:                  StatusActive,
+				Schedulable:             true,
 				Credentials:             map[string]any{"refresh_token": "refresh-token"},
 				TempUnschedulableUntil:  &future,
 				TempUnschedulableReason: "token refresh retry exhausted: network timeout",
@@ -126,13 +155,38 @@ func TestTokenRefreshService_ProcessRefreshUsesOAuthRefreshCandidates(t *testing
 				Platform:    "other",
 				Type:        AccountTypeOAuth,
 				Status:      StatusActive,
+				Schedulable: true,
 				Credentials: map[string]any{"refresh_token": "refresh-token"},
+			},
+			{
+				ID:                      6,
+				Platform:                PlatformAntigravity,
+				Type:                    AccountTypeOAuth,
+				Status:                  StatusActive,
+				Schedulable:             true,
+				Credentials:             map[string]any{"refresh_token": "refresh-token"},
+				Extra:                   map[string]any{"privacy_mode": AntigravityPrivacySet},
+				TempUnschedulableUntil:  &future,
+				TempUnschedulableReason: "OAuth 401: unauthorized",
+			},
+			{
+				ID:          7,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeOAuth,
+				Status:      StatusActive,
+				Schedulable: false,
+				Credentials: map[string]any{"refresh_token": "paused-account-token"},
 			},
 		},
 	}
 	svc := &TokenRefreshService{
-		accountRepo:   repo,
-		refreshers:    []TokenRefresher{&tokenRefreshTestRefresher{}},
+		accountRepo:    repo,
+		candidatePager: repo,
+		registrations: []tokenRefreshRegistration{
+			{platform: PlatformOpenAI, refresher: &tokenRefreshTestRefresher{}},
+			{platform: PlatformGemini, refresher: &tokenRefreshTestRefresher{}},
+			{platform: PlatformAntigravity, refresher: &tokenRefreshTestRefresher{}},
+		},
 		refreshPolicy: DefaultBackgroundRefreshPolicy(),
 		cfg:           &config.TokenRefreshConfig{RefreshBeforeExpiryHours: 1, MaxRetries: 1},
 	}
@@ -140,7 +194,10 @@ func TestTokenRefreshService_ProcessRefreshUsesOAuthRefreshCandidates(t *testing
 	svc.processRefresh()
 
 	require.Zero(t, repo.listActiveCalls, "TokenRefreshService should not use the broad active-account query")
-	require.Equal(t, []int64{1}, repo.updatedCredentialIDs)
+	// Account 7 is paused (schedulable=false) but active: it must still be
+	// refreshed so its stored access_token does not silently expire.
+	require.ElementsMatch(t, []int64{1, 6, 7}, repo.updatedCredentialIDs)
+	require.Equal(t, 1, repo.clearTempCalls, "successful refresh should clear the OAuth 401 temp-unschedulable state")
 }
 
 func TestTokenRefreshService_RefreshFailureDoesNotCallPrivacy(t *testing.T) {

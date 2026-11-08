@@ -6,16 +6,25 @@ import (
 )
 
 func buildOpenAIEndpointURL(base string, endpoint string) string {
-	normalized := strings.TrimRight(strings.TrimSpace(base), "/")
+	normalized := strings.TrimSpace(base)
 	endpoint = "/" + strings.TrimLeft(strings.TrimSpace(endpoint), "/")
 	relative := strings.TrimPrefix(endpoint, "/v1")
-	if strings.HasSuffix(normalized, endpoint) || strings.HasSuffix(normalized, relative) {
-		return normalized
+	parsed, err := url.Parse(normalized)
+	if err != nil {
+		return strings.TrimRight(normalized, "/") + endpoint
 	}
-	if openAIBaseURLHasVersionSuffix(normalized) {
-		return normalized + relative
+	path := strings.TrimRight(parsed.Path, "/")
+	if !strings.HasSuffix(path, endpoint) && !strings.HasSuffix(path, relative) {
+		if openAIBaseURLHasVersionSuffix(path) {
+			path += relative
+		} else {
+			path += endpoint
+		}
 	}
-	return normalized + endpoint
+	parsed.Path = path
+	parsed.RawPath = ""
+	parsed.Fragment = ""
+	return parsed.String()
 }
 
 func buildOpenAIResponsesInputTokensURL(base string) string {

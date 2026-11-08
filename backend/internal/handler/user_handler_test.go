@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -26,6 +27,9 @@ type userHandlerRepoStub struct {
 }
 
 func (s *userHandlerRepoStub) Create(context.Context, *service.User) error { return nil }
+func (s *userHandlerRepoStub) CreateWithEmailAliasGuard(context.Context, *service.User) error {
+	return nil
+}
 func (s *userHandlerRepoStub) GetByID(context.Context, int64) (*service.User, error) {
 	cloned := *s.user
 	return &cloned, nil
@@ -38,7 +42,7 @@ func (s *userHandlerRepoStub) GetFirstAdmin(context.Context) (*service.User, err
 	cloned := *s.user
 	return &cloned, nil
 }
-func (s *userHandlerRepoStub) Update(_ context.Context, user *service.User) error {
+func (s *userHandlerRepoStub) Update(_ context.Context, user *service.User, _ service.UserUpdateFields) error {
 	cloned := *user
 	s.user = &cloned
 	return nil
@@ -90,10 +94,24 @@ func (s *userHandlerRepoStub) UpdateConcurrency(context.Context, int64, int) err
 func (s *userHandlerRepoStub) BatchSetConcurrency(context.Context, []int64, int) (int, error) {
 	return 0, nil
 }
+
+func (s *userHandlerRepoStub) AdjustBalance(ctx context.Context, id int64, delta float64) (service.BalanceChange, error) {
+	panic("unexpected AdjustBalance call")
+}
+
+func (s *userHandlerRepoStub) SetBalance(ctx context.Context, id int64, value float64) (service.BalanceChange, error) {
+	panic("unexpected SetBalance call")
+}
 func (s *userHandlerRepoStub) BatchAddConcurrency(context.Context, []int64, int) (int, error) {
 	return 0, nil
 }
+func (s *userHandlerRepoStub) BatchUpdateLimits(context.Context, []int64, *int, *int) (int, error) {
+	return 0, nil
+}
 func (s *userHandlerRepoStub) ExistsByEmail(context.Context, string) (bool, error) { return false, nil }
+func (s *userHandlerRepoStub) ExistsByEmailAlias(context.Context, string) (bool, error) {
+	return false, nil
+}
 func (s *userHandlerRepoStub) RemoveGroupFromAllowedGroups(context.Context, int64) (int64, error) {
 	return 0, nil
 }
@@ -647,7 +665,11 @@ func TestUserHandlerUnbindIdentityRevokesAllUserSessionsWhenAuthServiceConfigure
 
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, []int64{23}, refreshTokenCache.revokedUserIDs)
-	require.Equal(t, int64(5), repo.user.TokenVersion)
+	// 撤销依赖的是 refresh session 清理，而不是 token_version：users 表没有这一列
+	// （见 resolvedTokenVersion，实际值由 email+password_hash 指纹推导），
+	// 所以此前"自增 TokenVersion 再整行写回"不持久化任何东西，
+	// 却会用旧快照覆盖并发写入的列。这里断言用户行未被改写。
+	require.Equal(t, int64(4), repo.user.TokenVersion)
 }
 
 func TestUserHandlerUnbindIdentityDoesNotRevokeSessionsWhenNothingWasUnbound(t *testing.T) {
@@ -789,4 +811,20 @@ func TestUserHandlerStartIdentityBindingReturnsAuthorizeURL(t *testing.T) {
 	require.Contains(t, resp.Data.AuthorizeURL, "/api/v1/auth/oauth/wechat/bind/start")
 	require.Contains(t, resp.Data.AuthorizeURL, "intent=bind_current_user")
 	require.Contains(t, resp.Data.AuthorizeURL, "redirect=%2Fsettings%2Fprofile")
+}
+
+func (s *userHandlerEmailCacheStub) IncrVerificationCodeAttempts(context.Context, string) (int, error) {
+	if s.data == nil {
+		return 0, errors.New("verification code not found")
+	}
+	s.data.Attempts++
+	return s.data.Attempts, nil
+}
+
+func (s *userHandlerEmailCacheStub) IncrNotifyVerifyCodeAttempts(context.Context, string) (int, error) {
+	return 0, errors.New("notify verification code not found")
+}
+
+func (s *userHandlerEmailCacheStub) ConsumePasswordResetToken(context.Context, string, string) (bool, error) {
+	return false, nil
 }

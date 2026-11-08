@@ -61,6 +61,14 @@ func AntigravityProviderRefreshPolicy() ProviderRefreshPolicy {
 	}
 }
 
+func GrokProviderRefreshPolicy() ProviderRefreshPolicy {
+	return ProviderRefreshPolicy{
+		OnRefreshError: ProviderRefreshErrorReturn,
+		OnLockHeld:     ProviderLockHeldWaitForCache,
+		FailureTTL:     0,
+	}
+}
+
 // BackgroundSkipAction 定义后台刷新服务在“未实际刷新”场景的计数方式。
 type BackgroundSkipAction int
 

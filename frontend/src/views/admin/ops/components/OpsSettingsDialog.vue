@@ -21,6 +21,7 @@ const emit = defineEmits<{
 }>()
 
 const loading = ref(false)
+const settingsLoaded = ref(false)
 const saving = ref(false)
 
 // 运行时设置
@@ -39,6 +40,7 @@ const metricThresholds = ref<OpsMetricThresholds>({
 
 // 加载所有配置
 async function loadAllSettings() {
+  settingsLoaded.value = false
   loading.value = true
   try {
     const [runtime, email, advanced, thresholds] = await Promise.all([
@@ -63,6 +65,7 @@ async function loadAllSettings() {
           upstream_error_rate_percent_max: thresholds.upstream_error_rate_percent_max ?? 5
         }
     }
+    settingsLoaded.value = true
   } catch (err: any) {
     console.error('[OpsSettingsDialog] Failed to load settings', err)
     appStore.showError(err?.response?.data?.detail || t('admin.ops.settings.loadFailed'))
@@ -197,6 +200,7 @@ const validation = computed(() => {
 
 // 保存所有配置
 async function saveAllSettings() {
+  if (loading.value || !settingsLoaded.value || saving.value) return
   if (!validation.value.valid) {
     appStore.showError(validation.value.errors[0])
     return
@@ -574,16 +578,6 @@ async function saveAllSettings() {
 
             <div class="flex items-center justify-between">
               <div>
-                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.ops.settings.ignoreInvalidApiKeyErrors') }}</label>
-                <p class="mt-1 text-xs text-gray-500">
-                  {{ t('admin.ops.settings.ignoreInvalidApiKeyErrorsHint') }}
-                </p>
-              </div>
-              <Toggle v-model="advancedSettings.ignore_invalid_api_key_errors" />
-            </div>
-
-            <div class="flex items-center justify-between">
-              <div>
                 <label class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('admin.ops.settings.ignoreInsufficientBalanceErrors') }}</label>
                 <p class="mt-1 text-xs text-gray-500">
                   {{ t('admin.ops.settings.ignoreInsufficientBalanceErrorsHint') }}
@@ -651,7 +645,7 @@ async function saveAllSettings() {
     <template #footer>
       <div class="flex justify-end gap-2">
         <button class="btn btn-secondary" @click="emit('close')">{{ t('common.cancel') }}</button>
-        <button class="btn btn-primary" :disabled="saving || !validation.valid" @click="saveAllSettings">
+        <button class="btn btn-primary" :disabled="loading || !settingsLoaded || saving || !validation.valid" @click="saveAllSettings">
           {{ saving ? t('common.saving') : t('common.save') }}
         </button>
       </div>

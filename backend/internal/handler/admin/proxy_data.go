@@ -172,16 +172,18 @@ func (h *ProxyHandler) ImportData(c *gin.Context) {
 				updateInput := &service.UpdateProxyInput{
 					Status:         normalizedStatus,
 					ExpiresAt:      existingExpiresAt,
+					ClearExpiresAt: existingExpiresAt == nil,
 					FallbackMode:   existingFallbackMode,
 					BackupProxyID:  existingBackupProxyID,
-					ExpiryWarnDays: item.ExpiryWarnDays,
+					ClearBackupID:  existingBackupProxyID == nil,
+					ExpiryWarnDays: &item.ExpiryWarnDays,
 					// 保留已存在代理的网络配置字段
 					Name:     existing.Name,
 					Protocol: existing.Protocol,
 					Host:     existing.Host,
 					Port:     existing.Port,
-					Username: existing.Username,
-					Password: existing.Password,
+					Username: &existing.Username,
+					Password: &existing.Password,
 				}
 				if _, err := h.adminService.UpdateProxy(ctx, existing.ID, updateInput); err != nil {
 					result.Errors = append(result.Errors, DataImportError{
@@ -255,15 +257,17 @@ func (h *ProxyHandler) ImportData(c *gin.Context) {
 			if _, err := h.adminService.UpdateProxy(ctx, created.ID, &service.UpdateProxyInput{
 				Status:         normalizedStatus,
 				ExpiresAt:      expiresAt,
+				ClearExpiresAt: expiresAt == nil,
 				FallbackMode:   fallbackMode,
 				BackupProxyID:  backupProxyID,
-				ExpiryWarnDays: item.ExpiryWarnDays,
+				ClearBackupID:  backupProxyID == nil,
+				ExpiryWarnDays: &item.ExpiryWarnDays,
 				Name:           created.Name,
 				Protocol:       created.Protocol,
 				Host:           created.Host,
 				Port:           created.Port,
-				Username:       created.Username,
-				Password:       created.Password,
+				Username:       &created.Username,
+				Password:       &created.Password,
 			}); err != nil {
 				result.Errors = append(result.Errors, DataImportError{
 					Kind:     "proxy",

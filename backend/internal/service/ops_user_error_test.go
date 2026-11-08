@@ -17,6 +17,7 @@ func TestMapUserErrorCategory(t *testing.T) {
 		{"request", "subscription_error", "quota"},
 		{"request", "invalid_request_error", "invalid_request"},
 		{"routing", "api_error", "service_unavailable"},
+		{"account_auth", "upstream_error", "upstream"},
 		{"upstream", "upstream_error", "upstream"},
 		{"network", "api_error", "upstream"},
 		{"internal", "api_error", "internal"},
@@ -43,7 +44,7 @@ func TestCategoryToFilter(t *testing.T) {
 		t.Fatalf("service_unavailable => phases=%v types=%v", phases, types)
 	}
 	phases, types = CategoryToFilter("upstream")
-	if len(phases) != 2 || phases[0] != "upstream" || phases[1] != "network" || len(types) != 0 {
+	if len(phases) != 3 || phases[0] != "account_auth" || phases[1] != "upstream" || phases[2] != "network" || len(types) != 0 {
 		t.Fatalf("upstream => phases=%v types=%v", phases, types)
 	}
 	phases, types = CategoryToFilter("internal")
@@ -122,9 +123,11 @@ func TestToUserErrorRequestDetail_WhitelistAndRedacts(t *testing.T) {
 			UserEmail:        "secret@example.com",
 			ClientIP:         func() *string { s := "1.2.3.4"; return &s }(),
 			UpstreamEndpoint: "https://api.openai.com/v1/chat/completions",
+			UserAgent:        "codex_cli_rs/0.125.0",
+			GroupName:        "grp-a",
+			Stream:           true,
 		},
 		ErrorBody:          `{"error":{"message":"upstream failed","type":"server_error"}}`,
-		UserAgent:          "Mozilla/5.0 secret-agent",
 		UpstreamStatusCode: &upstreamStatus,
 	}
 
@@ -147,13 +150,27 @@ func TestToUserErrorRequestDetail_WhitelistAndRedacts(t *testing.T) {
 		t.Errorf("UpstreamStatusCode mismatch")
 	}
 
+	// client_ip / user_agent / group_name / stream 经产品决策开放（与用量明细口径对齐）
+	if out.ClientIP != "1.2.3.4" {
+		t.Errorf("want client_ip=1.2.3.4, got %q", out.ClientIP)
+	}
+	if out.UserAgent != "codex_cli_rs/0.125.0" {
+		t.Errorf("want user_agent=codex_cli_rs/0.125.0, got %q", out.UserAgent)
+	}
+	if out.GroupName != "grp-a" {
+		t.Errorf("want group_name=grp-a, got %q", out.GroupName)
+	}
+	if !out.Stream {
+		t.Errorf("want stream=true")
+	}
+
 	// 序列化后不含敏感字段
 	b, err := json.Marshal(out)
 	if err != nil {
 		t.Fatalf("json.Marshal failed: %v", err)
 	}
 	raw := string(b)
-	for _, forbidden := range []string{"user_email", "client_ip", "upstream_endpoint", "user_agent"} {
+	for _, forbidden := range []string{"user_email", "upstream_endpoint"} {
 		if strings.Contains(raw, forbidden) {
 			t.Errorf("sensitive field %q leaked in JSON output: %s", forbidden, raw)
 		}

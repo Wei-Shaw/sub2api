@@ -2,6 +2,7 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +18,26 @@ type responseEnvelope struct {
 	Code    int             `json:"code"`
 	Message string          `json:"message"`
 	Data    json.RawMessage `json:"data"`
+}
+
+type opsSystemLogCaptureRepo struct {
+	service.OpsRepository
+	listFilter    *service.OpsSystemLogFilter
+	cleanupFilter *service.OpsSystemLogCleanupFilter
+}
+
+func (r *opsSystemLogCaptureRepo) ListSystemLogs(_ context.Context, filter *service.OpsSystemLogFilter) (*service.OpsSystemLogList, error) {
+	r.listFilter = filter
+	return &service.OpsSystemLogList{Logs: []*service.OpsSystemLog{}, Page: filter.Page, PageSize: filter.PageSize}, nil
+}
+
+func (r *opsSystemLogCaptureRepo) DeleteSystemLogs(_ context.Context, filter *service.OpsSystemLogCleanupFilter) (int64, error) {
+	r.cleanupFilter = filter
+	return 1, nil
+}
+
+func (r *opsSystemLogCaptureRepo) InsertSystemLogCleanupAudit(_ context.Context, _ *service.OpsSystemLogCleanupAudit) error {
+	return nil
 }
 
 func newOpsSystemLogTestRouter(handler *OpsHandler, withUser bool) *gin.Engine {
@@ -121,6 +142,23 @@ func TestOpsSystemLogHandler_ListSuccess(t *testing.T) {
 	}
 }
 
+func TestOpsSystemLogHandler_ListAcceptsHost(t *testing.T) {
+	repo := &opsSystemLogCaptureRepo{}
+	svc := service.NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewOpsHandler(svc)
+	r := newOpsSystemLogTestRouter(h, false)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/logs?host=api-node-1", nil)
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d, want 200", w.Code)
+	}
+	if repo.listFilter == nil || repo.listFilter.Host != "api-node-1" {
+		t.Fatalf("host filter = %+v, want api-node-1", repo.listFilter)
+	}
+}
+
 func TestOpsSystemLogHandler_CleanupUnauthorized(t *testing.T) {
 	svc := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
 	h := NewOpsHandler(svc)
@@ -202,6 +240,24 @@ func TestOpsSystemLogHandler_CleanupAcceptsAPIKeyID(t *testing.T) {
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status=%d, want 503", w.Code)
+	}
+}
+
+func TestOpsSystemLogHandler_CleanupAcceptsHost(t *testing.T) {
+	repo := &opsSystemLogCaptureRepo{}
+	svc := service.NewOpsService(repo, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	h := NewOpsHandler(svc)
+	r := newOpsSystemLogTestRouter(h, true)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/logs/cleanup", bytes.NewBufferString(`{"host":"api-node-1"}`))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status=%d, want 200", w.Code)
+	}
+	if repo.cleanupFilter == nil || repo.cleanupFilter.Host != "api-node-1" {
+		t.Fatalf("host filter = %+v, want api-node-1", repo.cleanupFilter)
 	}
 }
 

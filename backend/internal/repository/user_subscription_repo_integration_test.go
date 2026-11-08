@@ -157,6 +157,41 @@ func (s *UserSubscriptionRepoSuite) TestDelete() {
 	s.Require().Error(err, "expected error after delete")
 }
 
+func (s *UserSubscriptionRepoSuite) TestGetByIDIncludeDeleted_PreservesPersistedStatus() {
+	user := s.mustCreateUser("include-deleted@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-include-deleted")
+	sub := s.mustCreateSubscription(user.ID, group.ID, func(c *dbent.UserSubscriptionCreate) {
+		c.SetStatus(service.SubscriptionStatusActive)
+	})
+
+	s.Require().NoError(s.repo.Delete(s.ctx, sub.ID), "Delete")
+
+	got, err := s.repo.GetByIDIncludeDeleted(s.ctx, sub.ID)
+	s.Require().NoError(err, "GetByIDIncludeDeleted")
+	s.Require().Equal(service.SubscriptionStatusActive, got.Status)
+	s.Require().NotNil(got.DeletedAt)
+	s.Require().NotNil(got.User)
+	s.Require().NotNil(got.Group)
+}
+
+func (s *UserSubscriptionRepoSuite) TestRestore() {
+	user := s.mustCreateUser("restore@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-restore")
+	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
+
+	s.Require().NoError(s.repo.Delete(s.ctx, sub.ID), "Delete")
+
+	restored, err := s.repo.Restore(s.ctx, sub.ID, service.SubscriptionStatusExpired)
+	s.Require().NoError(err, "Restore")
+	s.Require().Equal(service.SubscriptionStatusExpired, restored.Status)
+	s.Require().Nil(restored.DeletedAt)
+
+	got, err := s.repo.GetByID(s.ctx, sub.ID)
+	s.Require().NoError(err, "GetByID after restore")
+	s.Require().Nil(got.DeletedAt)
+	s.Require().Equal(service.SubscriptionStatusExpired, got.Status)
+}
+
 func (s *UserSubscriptionRepoSuite) TestDelete_Idempotent() {
 	s.Require().NoError(s.repo.Delete(s.ctx, 42424242), "Delete should be idempotent")
 }
@@ -416,8 +451,9 @@ func (s *UserSubscriptionRepoSuite) TestActivateWindows() {
 	group := s.mustCreateGroup("g-activate")
 	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
 
+	dailyStart := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
 	activateAt := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
-	err := s.repo.ActivateWindows(s.ctx, sub.ID, activateAt)
+	err := s.repo.ActivateWindows(s.ctx, sub.ID, dailyStart, activateAt)
 	s.Require().NoError(err, "ActivateWindows")
 
 	got, err := s.repo.GetByID(s.ctx, sub.ID)
@@ -425,7 +461,29 @@ func (s *UserSubscriptionRepoSuite) TestActivateWindows() {
 	s.Require().NotNil(got.DailyWindowStart)
 	s.Require().NotNil(got.WeeklyWindowStart)
 	s.Require().NotNil(got.MonthlyWindowStart)
-	s.Require().WithinDuration(activateAt, *got.DailyWindowStart, time.Microsecond)
+	s.Require().WithinDuration(dailyStart, *got.DailyWindowStart, time.Microsecond)
+	s.Require().WithinDuration(activateAt, *got.WeeklyWindowStart, time.Microsecond)
+	s.Require().WithinDuration(activateAt, *got.MonthlyWindowStart, time.Microsecond)
+}
+
+func (s *UserSubscriptionRepoSuite) TestActivateWindows_StaleActivationPreservesExistingWindows() {
+	user := s.mustCreateUser("activate-cas@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-activate-cas")
+	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
+	activatedAt := time.Date(2025, 1, 1, 12, 0, 0, 0, time.UTC)
+	manualResetAt := activatedAt.Add(2 * time.Hour)
+	manualDailyStart := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+
+	s.Require().NoError(s.repo.ActivateWindows(s.ctx, sub.ID, activatedAt, activatedAt))
+	s.Require().NoError(s.repo.ResetUsageWindows(s.ctx, sub.ID, true, true, true, manualDailyStart, manualResetAt))
+	// Simulate a concurrent request carrying the original unactivated snapshot.
+	s.Require().NoError(s.repo.ActivateWindows(s.ctx, sub.ID, activatedAt.Add(time.Hour), activatedAt.Add(time.Hour)))
+
+	got, err := s.repo.GetByID(s.ctx, sub.ID)
+	s.Require().NoError(err)
+	s.Require().WithinDuration(manualDailyStart, *got.DailyWindowStart, time.Microsecond)
+	s.Require().WithinDuration(manualResetAt, *got.WeeklyWindowStart, time.Microsecond)
+	s.Require().WithinDuration(manualResetAt, *got.MonthlyWindowStart, time.Microsecond)
 }
 
 func (s *UserSubscriptionRepoSuite) TestResetDailyUsage() {
@@ -437,7 +495,7 @@ func (s *UserSubscriptionRepoSuite) TestResetDailyUsage() {
 	})
 
 	resetAt := time.Date(2025, 1, 2, 0, 0, 0, 0, time.UTC)
-	err := s.repo.ResetDailyUsage(s.ctx, sub.ID, resetAt)
+	err := s.repo.ResetDailyUsage(s.ctx, sub.ID, sub.DailyWindowStart, resetAt)
 	s.Require().NoError(err, "ResetDailyUsage")
 
 	got, err := s.repo.GetByID(s.ctx, sub.ID)
@@ -446,6 +504,47 @@ func (s *UserSubscriptionRepoSuite) TestResetDailyUsage() {
 	s.Require().InDelta(20.0, got.WeeklyUsageUSD, 1e-6)
 	s.Require().NotNil(got.DailyWindowStart)
 	s.Require().WithinDuration(resetAt, *got.DailyWindowStart, time.Microsecond)
+}
+
+func (s *UserSubscriptionRepoSuite) TestResetDailyUsage_StaleResetDoesNotClearNewWindowUsage() {
+	user := s.mustCreateUser("resetd-cas@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-resetd-cas")
+	oldWindowStart := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	sub := s.mustCreateSubscription(user.ID, group.ID, func(c *dbent.UserSubscriptionCreate) {
+		c.SetDailyWindowStart(oldWindowStart)
+		c.SetDailyUsageUsd(10)
+	})
+
+	newWindowStart := oldWindowStart.Add(24 * time.Hour)
+	s.Require().NoError(s.repo.ResetDailyUsage(s.ctx, sub.ID, &oldWindowStart, newWindowStart))
+	s.Require().NoError(s.repo.IncrementUsage(s.ctx, sub.ID, 3))
+	// Simulate a second request carrying the stale old-window snapshot.
+	s.Require().NoError(s.repo.ResetDailyUsage(s.ctx, sub.ID, &oldWindowStart, newWindowStart))
+
+	got, err := s.repo.GetByID(s.ctx, sub.ID)
+	s.Require().NoError(err)
+	s.Require().InDelta(3, got.DailyUsageUSD, 1e-6)
+	s.Require().WithinDuration(newWindowStart, *got.DailyWindowStart, time.Microsecond)
+}
+
+func (s *UserSubscriptionRepoSuite) TestResetUsageWindows_ClearsUsageAfterAutomaticWindowAdvance() {
+	user := s.mustCreateUser("admin-reset-current@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-admin-reset-current")
+	oldWindowStart := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
+	sub := s.mustCreateSubscription(user.ID, group.ID, func(c *dbent.UserSubscriptionCreate) {
+		c.SetDailyWindowStart(oldWindowStart)
+		c.SetDailyUsageUsd(10)
+	})
+
+	newWindowStart := oldWindowStart.Add(24 * time.Hour)
+	s.Require().NoError(s.repo.ResetDailyUsage(s.ctx, sub.ID, &oldWindowStart, newWindowStart))
+	s.Require().NoError(s.repo.IncrementUsage(s.ctx, sub.ID, 3))
+	s.Require().NoError(s.repo.ResetUsageWindows(s.ctx, sub.ID, true, false, false, newWindowStart, newWindowStart))
+
+	got, err := s.repo.GetByID(s.ctx, sub.ID)
+	s.Require().NoError(err)
+	s.Require().InDelta(0, got.DailyUsageUSD, 1e-6)
+	s.Require().WithinDuration(newWindowStart, *got.DailyWindowStart, time.Microsecond)
 }
 
 func (s *UserSubscriptionRepoSuite) TestResetWeeklyUsage() {
@@ -457,7 +556,7 @@ func (s *UserSubscriptionRepoSuite) TestResetWeeklyUsage() {
 	})
 
 	resetAt := time.Date(2025, 1, 6, 0, 0, 0, 0, time.UTC)
-	err := s.repo.ResetWeeklyUsage(s.ctx, sub.ID, resetAt)
+	err := s.repo.ResetWeeklyUsage(s.ctx, sub.ID, sub.WeeklyWindowStart, resetAt)
 	s.Require().NoError(err, "ResetWeeklyUsage")
 
 	got, err := s.repo.GetByID(s.ctx, sub.ID)
@@ -476,7 +575,7 @@ func (s *UserSubscriptionRepoSuite) TestResetMonthlyUsage() {
 	})
 
 	resetAt := time.Date(2025, 2, 1, 0, 0, 0, 0, time.UTC)
-	err := s.repo.ResetMonthlyUsage(s.ctx, sub.ID, resetAt)
+	err := s.repo.ResetMonthlyUsage(s.ctx, sub.ID, sub.MonthlyWindowStart, resetAt)
 	s.Require().NoError(err, "ResetMonthlyUsage")
 
 	got, err := s.repo.GetByID(s.ctx, sub.ID)
@@ -587,6 +686,22 @@ func (s *UserSubscriptionRepoSuite) TestExistsByUserIDAndGroupID() {
 	s.Require().False(notExists)
 }
 
+func (s *UserSubscriptionRepoSuite) TestExistsActiveByUserIDAndGroupID_IgnoresSoftDeletedRows() {
+	user := s.mustCreateUser("exists-active@test.com", service.RoleUser)
+	group := s.mustCreateGroup("g-exists-active")
+	sub := s.mustCreateSubscription(user.ID, group.ID, nil)
+
+	exists, err := s.repo.ExistsActiveByUserIDAndGroupID(s.ctx, user.ID, group.ID)
+	s.Require().NoError(err, "ExistsActiveByUserIDAndGroupID")
+	s.Require().True(exists)
+
+	s.Require().NoError(s.repo.Delete(s.ctx, sub.ID), "Delete")
+
+	exists, err = s.repo.ExistsActiveByUserIDAndGroupID(s.ctx, user.ID, group.ID)
+	s.Require().NoError(err, "ExistsActiveByUserIDAndGroupID after delete")
+	s.Require().False(exists)
+}
+
 // --- CountByGroupID / CountActiveByGroupID ---
 
 func (s *UserSubscriptionRepoSuite) TestCountByGroupID() {
@@ -659,7 +774,7 @@ func (s *UserSubscriptionRepoSuite) TestActiveExpiredBoundaries_UsageAndReset_Ba
 	s.Require().Equal(active.ID, got.ID, "expected active subscription")
 
 	activateAt := time.Now().Add(-25 * time.Hour)
-	s.Require().NoError(s.repo.ActivateWindows(s.ctx, active.ID, activateAt), "ActivateWindows")
+	s.Require().NoError(s.repo.ActivateWindows(s.ctx, active.ID, activateAt, activateAt), "ActivateWindows")
 	s.Require().NoError(s.repo.IncrementUsage(s.ctx, active.ID, 1.25), "IncrementUsage")
 
 	after, err := s.repo.GetByID(s.ctx, active.ID)
@@ -672,7 +787,7 @@ func (s *UserSubscriptionRepoSuite) TestActiveExpiredBoundaries_UsageAndReset_Ba
 	s.Require().NotNil(after.MonthlyWindowStart, "expected MonthlyWindowStart activated")
 
 	resetAt := time.Now().Truncate(time.Microsecond) // truncate to microsecond for DB precision
-	s.Require().NoError(s.repo.ResetDailyUsage(s.ctx, active.ID, resetAt), "ResetDailyUsage")
+	s.Require().NoError(s.repo.ResetDailyUsage(s.ctx, active.ID, after.DailyWindowStart, resetAt), "ResetDailyUsage")
 	afterReset, err := s.repo.GetByID(s.ctx, active.ID)
 	s.Require().NoError(err, "GetByID after reset")
 	s.Require().InDelta(0.0, afterReset.DailyUsageUSD, 1e-6)

@@ -112,6 +112,26 @@ func TestRequestLogger_KeepIncomingRequestID(t *testing.T) {
 	}
 }
 
+func TestRequestLoggerBoundsIncomingRequestID(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(RequestLogger())
+	r.GET("/t", func(c *gin.Context) {
+		reqID, _ := c.Request.Context().Value(ctxkey.RequestID).(string)
+		if len(reqID) != 36 {
+			t.Fatalf("request_id length=%d", len(reqID))
+		}
+		c.Status(http.StatusOK)
+	})
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/t", nil)
+	req.Header.Set(requestIDHeader, strings.Repeat("r", 1024))
+	r.ServeHTTP(w, req)
+	if got := len(w.Header().Get(requestIDHeader)); got != 36 {
+		t.Fatalf("response request_id length=%d", got)
+	}
+}
+
 func TestLogger_AccessLogIncludesCoreFields(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	sink := initMiddlewareTestLogger(t)
@@ -180,11 +200,43 @@ func TestLogger_AccessLogIncludesCoreFields(t *testing.T) {
 	}
 }
 
-func TestLogger_AccessLogUsesForwardedClientIP(t *testing.T) {
+func TestLogger_IngressRejectRemainsInStandardAccessLog(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	sink := initMiddlewareTestLogger(t)
+	r := gin.New()
+	r.Use(Logger())
+	r.GET("/v1/messages", func(c *gin.Context) {
+		MarkIngressRejected(c, IngressRejectInvalidAPIKey)
+		c.Status(http.StatusUnauthorized)
+	})
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/v1/messages", nil)
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status=%d", w.Code)
+	}
+	events := sink.list()
+	if len(events) != 1 {
+		t.Fatalf("events=%d, want 1", len(events))
+	}
+	if got := events[0].Fields["ingress_reject_reason"]; got != string(IngressRejectInvalidAPIKey) {
+		t.Fatalf("ingress_reject_reason=%v", got)
+	}
+	if got, _ := events[0].Fields[logger.OpsSystemLogSkipField].(bool); !got {
+		t.Fatalf("%s must be true", logger.OpsSystemLogSkipField)
+	}
+}
+
+func TestLogger_AccessLogUsesForwardedClientIPFromTrustedProxy(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	sink := initMiddlewareTestLogger(t)
 
 	r := gin.New()
+	if err := r.SetTrustedProxies([]string{"104.23.251.120"}); err != nil {
+		t.Fatalf("set trusted proxies: %v", err)
+	}
 	r.Use(Logger())
 	r.GET("/api/test", func(c *gin.Context) {
 		c.Status(http.StatusOK)
@@ -193,7 +245,7 @@ func TestLogger_AccessLogUsesForwardedClientIP(t *testing.T) {
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/api/test", nil)
 	req.RemoteAddr = "104.23.251.120:443"
-	req.Header.Set("CF-Connecting-IP", "203.0.113.42")
+	req.Header.Set("X-Forwarded-For", "203.0.113.42")
 	r.ServeHTTP(w, req)
 	if w.Code != http.StatusOK {
 		t.Fatalf("status=%d", w.Code)
