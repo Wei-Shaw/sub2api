@@ -119,6 +119,9 @@ func TestWebSocketCompatibilityNormalizesTriggerAfterPairedOutputCleanup(t *test
 }
 
 func TestNormalizeCompactionTriggerInputOrder_PrecheckKeepsContract(t *testing.T) {
+	if runAllocationTestInSubprocess(t) {
+		return
+	}
 	plain := []byte(`{"model":"gpt-5","input":[{"type":"message","role":"user","content":"` + strings.Repeat("x", 4096) + `"}]}`)
 	allocs := testing.AllocsPerRun(10, func() {
 		got, changed, err := NormalizeCompactionTriggerInputOrder(plain)
