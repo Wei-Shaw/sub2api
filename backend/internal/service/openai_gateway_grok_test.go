@@ -2041,6 +2041,71 @@ func TestForwardGrokResponsesStreamingDefaultsEmptyModelTo45AndSnapshots(t *test
 	require.NotNil(t, repo.updates[52][grokQuotaSnapshotExtraKey])
 }
 
+func TestForwardGrokResponsesAgentMessage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, stream := range []bool{false, true} {
+		for _, payload := range []struct {
+			name    string
+			content string
+			text    string
+		}{
+			{"text", `[{"type":"input_text","text":"What is 19 plus 23?"}]`, "What is 19 plus 23?"},
+			{"plaintext payload", `[{"type":"input_text","text":"Payload:\n"},{"type":"encrypted_content","encrypted_content":"What is 19 plus 23?"}]`, "Payload:\nWhat is 19 plus 23?"},
+		} {
+			t.Run(fmt.Sprintf("stream=%t/%s", stream, payload.name), func(t *testing.T) {
+				body := []byte(fmt.Sprintf(`{"model":"grok-4.7","stream":%t,"input":[
+					{"type":"message","role":"user","content":"history"},
+					{"type":"agent_message","id":"amsg_repro","author":"/root","recipient":"/root/child","content":%s},
+					{"type":"message","role":"assistant","content":"ready"}
+				]}`, stream, payload.content))
+				recorder := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(recorder)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+				account := &Account{
+					ID: 53, Platform: PlatformGrok, Type: AccountTypeAPIKey,
+					Credentials: map[string]any{"api_key": "xai-test-key", "base_url": "https://api.x.ai/v1"},
+				}
+				response := `{"id":"resp_agent","object":"response","model":"grok-4.7","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"42"}]}],"usage":{"input_tokens":5,"output_tokens":1}}`
+				upstreamBody := response
+				contentType := "application/json"
+				if stream {
+					contentType = "text/event-stream"
+					upstreamBody = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"42\"}\n\ndata: {\"type\":\"response.completed\",\"response\":" + response + "}\n\n"
+				}
+				upstream := &httpUpstreamRecorder{resp: &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{contentType}},
+					Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+				}}
+				svc := &OpenAIGatewayService{httpUpstream: upstream}
+				result, err := svc.forwardGrokResponses(context.Background(), c, account, body, "grok-4.7", stream, time.Now())
+				require.NoError(t, err)
+				require.Equal(t, "https://api.x.ai/v1/responses", upstream.lastReq.URL.String())
+				require.Equal(t, stream, gjson.GetBytes(upstream.lastBody, "stream").Bool())
+				expected, err := json.Marshal([]map[string]any{
+					{"type": "message", "role": "user", "content": "history"},
+					{"type": "message", "role": "user", "content": payload.text},
+					{"type": "message", "role": "assistant", "content": "ready"},
+				})
+				require.NoError(t, err)
+				require.JSONEq(t, string(expected), gjson.GetBytes(upstream.lastBody, "input").Raw)
+				require.Equal(t, stream, result.Stream)
+				require.Equal(t, "resp_agent", result.ResponseID)
+				require.Equal(t, 5, result.Usage.InputTokens)
+				require.Equal(t, 1, result.Usage.OutputTokens)
+				require.Equal(t, http.StatusOK, recorder.Code)
+				require.Contains(t, recorder.Header().Get("Content-Type"), contentType)
+				if stream {
+					require.Contains(t, recorder.Body.String(), `"delta":"42"`)
+					require.Contains(t, recorder.Body.String(), `"type":"response.completed"`)
+				} else {
+					require.Equal(t, "42", gjson.GetBytes(recorder.Body.Bytes(), "output.0.content.0.text").String())
+				}
+			})
+		}
+	}
+}
+
 func TestForwardGrokResponsesAPIKeyUsesXAIResponses(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

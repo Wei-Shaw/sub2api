@@ -102,3 +102,18 @@ func TestContentModerationRepositoryCountFlaggedByUserSince_ExcludesCyberPolicyW
 	require.Equal(t, 3, count)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestContentModerationRepositoryCountFlaggedByUserSince_ExcludesCyberLogOnly(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	defer func() { _ = db.Close() }()
+	repo := NewContentModerationRepository(db)
+	since := time.Now().Add(-time.Hour)
+	mock.ExpectQuery(regexp.QuoteMeta("AND mode <> 'cyber_log_only'\n  AND mode <> 'risk_control_log_only'")).
+		WithArgs(int64(12), since, false).
+		WillReturnRows(sqlmock.NewRows([]string{"count"}).AddRow(0))
+	count, err := repo.CountFlaggedByUserSince(context.Background(), 12, since, false)
+	require.NoError(t, err)
+	require.Zero(t, count)
+	require.NoError(t, mock.ExpectationsWereMet())
+}

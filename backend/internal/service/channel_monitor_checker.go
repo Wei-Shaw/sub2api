@@ -415,7 +415,10 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	// 记下真正要打的协议路径（/v1/chat/completions 等）：使用记录页的「上游」列
 	// 展示的是**路径**，与网关那侧 upstream_endpoint 的口径一致；填 base URL 会让
 	// 那一列显示成域名，管理员看不出这次探针验的是哪条协议。
-	path := adapter.buildPath(model)
+	//
+	// 合并上游后，路径计算改用上游新增的 monitorRequestPath（它替我们处理了
+	// provider / endpoint / adapter 的差异），但「把路径写进 Endpoint」这一点保留。
+	path := monitorRequestPath(provider, endpoint, adapter, model)
 	full := joinURL(endpoint, path)
 
 	// 只有请求体自己声明了 stream=true 才走流式。探针默认 body 恒为 stream=false，
@@ -931,6 +934,37 @@ func monitorStreamContent(kind int, data string) (string, bool) {
 	return "", false
 }
 
+// monitorRequestPath 返回探测请求路径。智谱按 endpoint 区分：
+//   - 已带 /paas/v4（含 Coding Plan 的 /api/coding/paas/v4）：只追加 /chat/completions
+//   - 官方域名根地址：/api/paas/v4/chat/completions
+//   - 中转站 / 本站网关：只暴露 OpenAI 兼容的 /v1/chat/completions，与 Kimi / DeepSeek 一致
+func monitorRequestPath(provider, endpoint string, adapter providerAdapter, model string) string {
+	if provider != MonitorProviderZhipu {
+		return adapter.buildPath(model)
+	}
+	u, err := url.Parse(strings.TrimSpace(endpoint))
+	if err != nil {
+		return providerOpenAIPath
+	}
+	if strings.Contains(u.EscapedPath(), "/paas/v4") {
+		return "/chat/completions"
+	}
+	if isZhipuOfficialHost(u) {
+		return adapter.buildPath(model)
+	}
+	return providerOpenAIPath
+}
+
+func isZhipuOfficialHost(u *url.URL) bool {
+	host := strings.ToLower(u.Hostname())
+	for _, official := range []string{"bigmodel.cn", "z.ai"} {
+		if host == official || strings.HasSuffix(host, "."+official) {
+			return true
+		}
+	}
+	return false
+}
+
 // joinURL 保留 base 的上游路径前缀，并避免重复追加已有的 API 路径前缀。
 // 使用 EscapedPath 匹配完整路径段，避免把 hostname 或编码斜杠当作路径。
 func joinURL(base, path string) string {
@@ -980,6 +1014,8 @@ var monitorAPIKeyPatterns = []struct {
 	{regexp.MustCompile(`xai-[A-Za-z0-9_-]{6,}`), "xai-***REDACTED***"},
 	// Gemini / Google API Key：固定前缀 + 35 位
 	{regexp.MustCompile(`AIza[A-Za-z0-9_-]{35}`), "AIza***REDACTED***"},
+	// Gemini auth key：AQ.Ab 前缀 + 48 位，长度放宽以覆盖格式变体
+	{regexp.MustCompile(`AQ\.Ab[A-Za-z0-9_-]{40,}`), "AQ.***REDACTED***"},
 	// JWT 三段式（Bearer 后常出现）：eyJxxx.eyJxxx.signature
 	{regexp.MustCompile(`eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`), "eyJ***REDACTED.JWT***"},
 }
@@ -998,6 +1034,8 @@ const monitorUTF8Replacement = "\uFFFD"
 // 第 1 条必须放在最前面：后面的脱敏与截断都按字节操作，只有先保证文本合法，
 // 后续步骤才不会再次切出半个字符。
 //
+// 注意：与 gemini_messages_compat_service.go 的 sanitizeUpstreamErrorMessage 关注点类似但参数集更广，
+// 监控模块独立维护，避免互相耦合。
 // 注意：与 gemini_messages_compat_service.go 的 sanitizeUpstreamErrorMessage 关注点类似但参数集更广，
 // 监控模块独立维护，避免互相耦合。
 func sanitizeErrorMessage(msg string) string {

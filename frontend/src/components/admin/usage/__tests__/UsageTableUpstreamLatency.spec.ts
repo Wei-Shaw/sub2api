@@ -81,9 +81,13 @@ describe('使用记录「上游延迟」列', () => {
   })
 
   it('只有首字取到、总耗时未取到时，逐项降级而不是整列消失', () => {
+    // 只渲染「上游延迟」这一列（UPSTREAM_ONLY）。
+    // 2026-11-08 合并上游后，「延迟」列新增了「输出 TPS」小行，取不到时显示「—」；
+    // 若把「延迟」列一起渲染，那个「—」会被这条断言误伤 —— 它根本不是本列的输出。
+    // 这条测试要验证的是「本列」的逐项降级，所以必须把范围收窄到本列。
     const wrapper = mount(UsageTable as never, mountOptions(
       [{ ...baseRow, upstream_first_token_ms: 1500, upstream_duration_ms: null }],
-      LATENCY_COLUMNS,
+      [{ key: 'upstream_latency', label: '上游延迟' }],
     ) as never)
 
     const text = wrapper.text()

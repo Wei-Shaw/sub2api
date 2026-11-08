@@ -34,11 +34,12 @@ func (u *clientCancelUpstream) Do(req *http.Request, _ string, _ int64, _ int) (
 }
 
 type geminiClientCancelFixture struct {
-	handler  *GatewayHandler
-	group    *service.Group
-	apiKey   *service.APIKey
-	upstream *clientCancelUpstream
-	ctx      context.Context
+	handler        *GatewayHandler
+	group          *service.Group
+	apiKey         *service.APIKey
+	upstream       *clientCancelUpstream
+	schedulerCache *bucketRecordingSchedulerCache
+	ctx            context.Context
 }
 
 func newGeminiClientCancelFixture(t *testing.T) *geminiClientCancelFixture {
@@ -57,7 +58,8 @@ func newGeminiClientCancelFixture(t *testing.T) *geminiClientCancelFixture {
 		Priority:      1,
 		AccountGroups: []service.AccountGroup{{AccountID: accountID, GroupID: groupID}},
 	}
-	h, cleanup := newTestGatewayHandler(t, group, []*service.Account{account})
+	schedulerCache := &bucketRecordingSchedulerCache{fakeSchedulerCache: &fakeSchedulerCache{accounts: []*service.Account{account}}}
+	h, cleanup := newTestGatewayHandlerWithSchedulerCache(t, group, schedulerCache)
 	t.Cleanup(cleanup)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -69,7 +71,7 @@ func newGeminiClientCancelFixture(t *testing.T) *geminiClientCancelFixture {
 		ID: 9202, UserID: 9203, GroupID: &groupID, Group: group, Status: service.StatusActive,
 		User: &service.User{ID: 9203, Concurrency: 10, Balance: 100},
 	}
-	return &geminiClientCancelFixture{handler: h, group: group, apiKey: apiKey, upstream: upstream, ctx: ctx}
+	return &geminiClientCancelFixture{handler: h, group: group, apiKey: apiKey, upstream: upstream, schedulerCache: schedulerCache, ctx: ctx}
 }
 
 // serve 经 ops 错误日志中间件执行请求，返回响应与 ops 队列中的条目数。

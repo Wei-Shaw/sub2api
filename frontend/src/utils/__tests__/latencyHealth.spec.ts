@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-
 import {
   durationOverheadSeverity,
   durationSeverity,
   firstTokenOverheadSeverity,
   firstTokenSeverity,
+  formatUsageOutputRate,
   upstreamOverheadMs,
 } from '../latencyHealth'
 
@@ -27,6 +27,44 @@ describe('latencyHealth', () => {
     expect(durationSeverity(180_000)).toBe('slow')
     expect(durationSeverity(299_999)).toBe('slow')
     expect(durationSeverity(300_000)).toBe('critical')
+  })
+})
+
+describe('formatUsageOutputRate', () => {
+  const row = {
+    output_tokens: 1000,
+    duration_ms: 20_000,
+    image_count: 0,
+    image_output_tokens: 0,
+    billing_mode: 'token',
+  }
+
+  it.each(['sync', 'stream', 'ws_v2', 'cyber', undefined] as const)(
+    'uses total duration for %s requests', (request_type) => {
+      expect(formatUsageOutputRate({ ...row, request_type })).toBe('50.0 tok/s')
+    }
+  )
+
+  it('rounds to one decimal place', () => {
+    expect(formatUsageOutputRate({ ...row, output_tokens: 101, duration_ms: 3000 })).toBe('33.7 tok/s')
+  })
+
+  it.each([null, 0, -1, NaN, Infinity])('does not invent a rate for duration %s', (duration_ms) => {
+    expect(formatUsageOutputRate({ ...row, duration_ms })).toBe('—')
+  })
+
+  it.each([0, -1, NaN, Infinity])('does not invent a rate for output %s', (output_tokens) => {
+    expect(formatUsageOutputRate({ ...row, output_tokens })).toBe('—')
+  })
+
+  it.each([
+    { image_count: 1 },
+    { image_output_tokens: 100 },
+    { billing_mode: 'image' },
+    { request_type: 'live' as const },
+    { request_type: 'unknown' as const },
+  ])('omits non-text or unknown request rates: %j', (fields) => {
+    expect(formatUsageOutputRate({ ...row, ...fields })).toBe('—')
   })
 })
 

@@ -1,0 +1,952 @@
+{
+  "meta": {
+    "generatedAt": "2026-10-23 22:17:25",
+    "sources": [
+      "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "https://blog.csdn.net/lingyaoJUN/article/details/141305839",
+      "https://blog.csdn.net/lingyaoJUN/article/details/141305884",
+      "https://blog.csdn.net/lingyaoJUN/article/details/141305932",
+      "https://blog.csdn.net/lingyaoJUN/article/details/141306301",
+      "https://blog.csdn.net/weisili2012/article/details/136614208",
+      "https://blog.csdn.net/qFAFAF/article/details/150466387",
+      "https://blog.csdn.net/lingyaoJUN/article/details/141306591",
+      "https://blog.csdn.net/lingyaoJUN/article/details/141306388"
+    ],
+    "skipped": [
+      {
+        "name": "影刀工程师认证考试_初级_IT速成课程_1",
+        "url": "https://blog.csdn.net/lingyaoJUN/article/details/141305839",
+        "reason": "正文为截图，需人工查看"
+      },
+      {
+        "name": "影刀工程师认证考试_初级_IT速成课程_2",
+        "url": "https://blog.csdn.net/lingyaoJUN/article/details/141305884",
+        "reason": "正文为截图，需人工查看"
+      },
+      {
+        "name": "影刀工程师认证考试_初级_IT速成课程_3",
+        "url": "https://blog.csdn.net/lingyaoJUN/article/details/141305932",
+        "reason": "正文为截图，需人工查看"
+      },
+      {
+        "name": "影刀工程师认证考试_初级_多选_4",
+        "url": "https://blog.csdn.net/lingyaoJUN/article/details/141306301",
+        "reason": "正文为截图，需人工查看"
+      }
+    ],
+    "warning": "自动抓取内容，答案一律待核对，请勿直接背"
+  },
+  "questions": [
+    {
+      "type": "单选",
+      "stem": "已知有一个Excel表如下图(左)所示，使用 删除重复行指令 并如下图(右)所示配置，运行完成后还剩多少行?",
+      "options": [
+        "1行",
+        "4行",
+        "12行"
+      ],
+      "id": "X001",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "如下图，关于【IF 条件】说法错误的是?",
+      "options": [
+        "运行结果为”干饭干饭!!\"",
+        "“以对象2开头“要求:对象1的开头内容需要跟对象2完全一致",
+        "若要条件判断为真，对象2可以更改为“一起”",
+        "运行后无打印内容"
+      ],
+      "id": "X002",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "如图，以下说法错误是?",
+      "options": [
+        "影刀可以实现Excel自动化与网页自动化交互",
+        "账号输入框中填写的是表格第A列的单元格内容",
+        "密码输入框中填写的是表格第A列的单元格内容",
+        "循环总次数为5次"
+      ],
+      "id": "X003",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "流程如下图，运行结果说法正确的是?",
+      "options": [
+        "【打印日志】打印出的内容为“15”",
+        "【打印日志】报错",
+        "【打印日志】打印出的内容为“5*3”",
+        "【打印日志】打印出的内容为“555”"
+      ],
+      "id": "X004",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "关于循环，以下说法错误的是?",
+      "options": [
+        "对于批量处理的工作可以在自动化流程中加入循环",
+        "循环就是重复地做一件事情",
+        "任何工作都可以循环地去做",
+        "实时监控的流程中需要使用循环"
+      ],
+      "id": "X005",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "关于【循环相似元素(web)】，以下说法错误的是?",
+      "options": [
+        "【循环相似元素(web)】的操作目标可以是相似元素组，也可以是单个元素对象",
+        "【循环相似元素(web)】在网页自动化中十分重要",
+        "【循环相似元素(web)】可以依次获取图片相似元素的图片链接",
+        "【循环相似元素(web)】可以获取任何元素的文本内容"
+      ],
+      "id": "X006",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "关于【对话框】，以下说法错误的是?",
+      "options": [
+        "对话框可以实现人机的交互",
+        "可以通过对话框设置流程中需要用到的文本等各类数据",
+        "对话框输入的内容可以在Fx中进行选择并使用",
+        "【自定义对话框】指令设计界面上只能放置一种类型的对话框"
+      ],
+      "id": "X007",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "关于“操作方式”，以下说法错误的是?",
+      "options": [
+        "“操作方式”是指令对目标元素执行的操作类型",
+        "【填写输入框(web)】指令中“操作方式“可以直接更换",
+        "简单的操作类型也能组合出复杂的操作",
+        "“操作方式”是指令三大要素之一"
+      ],
+      "id": "X008",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "流程如下图，运行结果为?",
+      "options": [
+        "1+2",
+        "12",
+        "3",
+        "报错"
+      ],
+      "id": "X009",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "如图，运行结果为?",
+      "options": [
+        "3",
+        "10+3",
+        "报错"
+      ],
+      "id": "X010",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "如下图，关于列表类型变量，以下说法错误的是?",
+      "options": [
+        "列表类型变量值中的列表项类型必须为同一类型的数据",
+        "该变量中的列表项数为10",
+        "列表的本质可以理解为是可存储多个数据的容器",
+        "city_list[1]的值为“宁波”"
+      ],
+      "id": "X011",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "如下图，关于该自动化流程的说法错误的是?",
+      "options": [
+        "每条指令执行一个动作",
+        "该流程由三条指令按逻辑规则堆叠而成",
+        "三条指令的位置任意排序不会影响应用的功能",
+        "指令需要配置对应的内容才能正确使用"
+      ],
+      "id": "X012",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "表格如图1，运行结果为?",
+      "options": [
+        "1",
+        "1.0",
+        "[17",
+        "[1.0]"
+      ],
+      "id": "X013",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "流程如下图，以下说法错误的是?",
+      "options": [
+        "\"name“变量是字符串类型",
+        "【填写输入框(web)】指令会在输入框中填写“影刀学院”",
+        "【填写输入框(web)】指令会在输入框中填写“name”",
+        "如果填写的内容需要更换，可以在【设置变量】指令中修改变量值"
+      ],
+      "id": "X014",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "以下关于【应用的分享与发版】，说法错误的是?",
+      "options": [
+        "应用分享之前必须先发版",
+        "应用的分享可以通过链接分享给个人",
+        "发版之后应用无法再进行编辑",
+        "应用有发版和编辑中两种状态"
+      ],
+      "id": "X015",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "流程如下图，运行结果为?",
+      "options": [],
+      "note": "原题选项为截图，需回原文查看（抓取只拿到题干）",
+      "id": "X016",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "获取“百度网页”的网页对象，以下命名最优的是?",
+      "options": [
+        "web_page1",
+        "百度",
+        "百度web_page",
+        "web_page"
+      ],
+      "id": "X017",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "现流程中需设置两个变量指代【姓名】和【年龄】，以下命名最优的是?",
+      "options": [
+        "\"姓名_list\"\"variable_age\"",
+        "\"variable1\" \"variable2\"",
+        "\"name\" \"age\"",
+        "\"变量1\"\"变量2\""
+      ],
+      "id": "X018",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "运行下图两条指令，在运行日志中应该打印出的城市名为?",
+      "options": [
+        "宁波",
+        "绍兴",
+        "湖州",
+        "金华"
+      ],
+      "id": "X019",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "流程如下图，运行结果为?",
+      "options": [
+        "刀",
+        "影",
+        "手",
+        "在"
+      ],
+      "id": "X020",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "如图是简单的购物逻辑，以下说法错误的是?",
+      "options": [
+        "一件商品功能不符，价格不合适，对应的情况是“买不起”",
+        "该流程存在三种情况",
+        "一件商品功能不符，价格合适，对应的情况是“不要!!\"",
+        "购买一件商品需要经过2次条件判断"
+      ],
+      "id": "X021",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "流程如下图，关于二分支，以下说法错误的是?",
+      "options": [
+        "流程运行中先判断【IF条件】，根据判断结果决定是否进入【Else】的分支",
+        "流程中有两种方案",
+        "如果条件修改为“1不等于1”，运行结果不变",
+        "运行结果为“对对对”"
+      ],
+      "id": "X022",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "影刀中变量值的两种模式，以下说法错误的是?",
+      "options": [
+        "文本模式(未点亮模式)下，不可以输入阿拉伯数字或者符号",
+        "表达式模式(点亮模式)下，在变量值中输入数字，该变量可进行加减乘除等运算",
+        "表达式模式(点亮模式)下，若要输入文本，需在文本外加上单引号(英)或双引号(英)",
+        "文本模式(未点亮模式)下，默认数据为字符串类型，即一段文本"
+      ],
+      "id": "X023",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "单选",
+      "stem": "关于【循环Excel内容】指令，以下说法错误的是?",
+      "options": [
+        "需要选择“循环方式“并配置",
+        "行号-1指Excel表格可见内容的最后一行",
+        "循环项为当前循环到的表格内容",
+        "行号0指Excel表格可见内容的第一行"
+      ],
+      "id": "X024",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "影刀支持以下哪些Excel操作?",
+      "options": [
+        "打开指定表格文件",
+        "文件另存为",
+        "可视化操作Excel表格",
+        "关闭指定表格"
+      ],
+      "id": "Y001",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "流程如下图，关于多条件判断，以下说法正确的是?",
+      "options": [
+        "多条件判断也有单分支、二分支、多分支",
+        "运行结果为“hi”",
+        "运行结果为“hello”",
+        "多条件中的条件配置以及条件之间的关系是根据待判断的情况决定的"
+      ],
+      "id": "Y002",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "如下图，以下说法正确的是?",
+      "options": [
+        "【IF 条件】判断结果为假",
+        "运行结果为“啥都没有”",
+        "如图右侧部分，在变量值中键盘输入几个空格，运行结果不变",
+        "如图左侧部分，【打印日志】指令是判断结果为真时，对应执行的内容"
+      ],
+      "id": "Y003",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "流程如下图，以下说法正确的是?",
+      "options": [
+        "流程先判断变量”age”是否大于18，如果判断结果为假，则运行日志为空",
+        "流程中运行结果为\"就是你了!\"",
+        "流程中条件判断只有一种对应方案",
+        "'age等于19“且“特长为游泳”符合该条件的判断"
+      ],
+      "id": "Y004",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "以下关于【影刀】的说法，正确的是?",
+      "options": [
+        "影刀是一个软件机器人开发平台",
+        "影刀是一款自主研发产品，集设计、开发、运行、调度为一体",
+        "影刀在搭建软件机器人的过程中采用的是拖拽式的流程设计",
+        "影刀旨在打造打造一款功能强大的、极致简单的桌面级产品"
+      ],
+      "id": "Y005",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "影刀支持以下哪些网页自动化中的操作方式?",
+      "options": [
+        "设置复选框",
+        "处理上传对话框",
+        "鼠标悬停在元素上",
+        "等待元素"
+      ],
+      "id": "Y006",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "如下图，关于条件判断以下说法正确的是?",
+      "options": [
+        "【F 条件】判断结果为假",
+        "【打印日志】指令是判断结果为真时，对应执行的内容",
+        "冲冲冲",
+        "无打印内容"
+      ],
+      "id": "Y007",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "流程如下图，以下说法正确的是?",
+      "options": [
+        "第一条打印内容为[1,2,3]",
+        "第二条打印内容为[2,3,4,5]",
+        "第二条打印报错",
+        "列表项的开始位置为0"
+      ],
+      "id": "Y008",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "关于条件嵌套，以下说法正确的是?",
+      "options": [
+        "条件嵌套从最外层的条件开始判断",
+        "条件嵌套可以嵌套很多层",
+        "每层嵌套都有一条【End lf】指令",
+        "只有单分支之间才可以互相嵌套"
+      ],
+      "id": "Y009",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "相似元素组如下图1红色框内的商品名称，流程如图2，以下说法正确的是?",
+      "options": [
+        "该流程执行【打印日志】指令的次数为10次",
+        "流程的执行结果为“0““2““4““8““9'",
+        "流程的执行结果为“1““3““5”“9““10”",
+        "循环项是当前循环到的商品名称"
+      ],
+      "id": "Y010",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "如图，以下说法正确的是?",
+      "options": [
+        "“自定义文件名”需包含后缀名",
+        "可一次下载多个文件",
+        "文件路径保存为字符串变量",
+        "【下载文件】需捕获目标元素“下载”按钮"
+      ],
+      "id": "Y011",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "流程如下图，以下说法正确的是?",
+      "options": [
+        "每次循环填写的内容是列表类型",
+        "每次循环填写的内容是字符串类型",
+        "每次循环会在输入框中填写当前商品名称并点击查询",
+        "loop_excel表示当前行内容"
+      ],
+      "id": "Y012",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "关于文件的下载，以下说法正确的是?",
+      "options": [
+        "【下载文件】与【处理下载对话框】的区别在于是否点击“下载”按钮",
+        "下载前需设置浏览器可自定义选择下载位置",
+        "下载文件时可选择是否等待文件下载完成再执行下一流程"
+      ],
+      "id": "Y013",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "关于条件判断，以下说法正确的是?",
+      "options": [
+        "流程中不同的条件判断之间可以根据需求进行嵌套",
+        "使用哪个类型的条件判断取决于流程搭建时的需求",
+        "任何条件判断都可以是单分支、二分支或多分支",
+        "条件判断的分支数量取决于条件判断的类型"
+      ],
+      "id": "Y014",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "关于【写入内容至Excel工作表】，以下说法正确的是?",
+      "options": [
+        "写入范围有三种方式",
+        "支持指定Sheet页，默认当前激活的Sheet页",
+        "需先选择对应的Excel对象",
+        "在”高级”设置中可以指定列格式设置为文本"
+      ],
+      "id": "Y015",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "以下自动化场景中需要用到循环的是?",
+      "options": [
+        "依次搜索多个关键词",
+        "等待10秒",
+        "处理多页订单",
+        "批量处理多个订单"
+      ],
+      "id": "Y016",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "如图设置【循环Excel内容】指令循环方式为“循环行”，以下说法正确的是?",
+      "options": [
+        "循环项内容为列表类型数据",
+        "循环项内容为表格中的一行内容",
+        "行号-1指Excel表格可见内容的最后一行",
+        "起始行号和结束行号可以按需自定义填写"
+      ],
+      "id": "Y017",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "关于多分支，以下说法正确的是?",
+      "options": [
+        "流程中只要有条件判断，就一定有【End lf】指令",
+        "流程中可以同时存在“单分支““二分支“和“多分支”条件判断",
+        "流程中可以存在多个“多分支“条件判断",
+        "流程中只要有多分支，就一定有【Elself】指令"
+      ],
+      "id": "Y018",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "关于【写入内容至Excel工作表】的“区域“写入，以下说法正确的是?",
+      "options": [
+        "写入数据为一维列表时，内容写入至起始一行",
+        "写入数据可以是字符串、数字、一维列表、二维列表",
+        "写入数据为一维列表时，内容写入至起始一列",
+        "写入内容为二维列表时，每个列表项即为一行内容"
+      ],
+      "id": "Y019",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "关于【获取元素信息(web)】指令的构成，以下说法正确的是?",
+      "options": [
+        "指令的操作类型是获取信息",
+        "获取到的信息存储在字符串变量中",
+        "指令的操作背景是目标元素所在的网页",
+        "获取的信息可以根据需求更改"
+      ],
+      "id": "Y020",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "关于【循环相似元素(web)】，以下说法正确的是?",
+      "options": [
+        "【循环相似元素(web)】的循环项位置是从0开始",
+        "【循环相似元素(web)】的循环项位置是从1开始",
+        "【循环相似元素(web)】的操作目标必须是相似元素组，不能是单个元素对象",
+        "【循环相似元素(web)】的循环项是相似元素组中的每个相似元素"
+      ],
+      "id": "Y021",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "流程如图1，运行后在自定义对话框中输入“影刀学院”并确定，以下说法正确的是?",
+      "options": [
+        "保存的变量可以在Fx中进行调用",
+        "第二条【打印日志】打印出的内容为“确定",
+        "第一条【打印日志】打印出的内容为“影刀学院”",
+        "对话框输入的内容保存成为对应的变量"
+      ],
+      "id": "Y022",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "多选",
+      "stem": "流程如下图，以下说法正确的是?loop_excel表示当前行内容",
+      "options": [
+        "每次循环会在输入框中填写当前商品名称并点击查询",
+        "每次循环填写的内容是列表类型",
+        "每次循环填写的内容是字符串类型",
+        "25."
+      ],
+      "id": "Y023",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "操作题",
+      "stem": "【题型A】\n1.打开影刀商城 — 订单管理页面 https://shop.yingdao.com/list/table-list （账号：admin ，密码：58T2$!hm）\n2.新建一个列表并命名为“订单_list”\n3.新建一个列表并命名为“日期_list”\n4.要求使用“无限循环+判断下一页按钮”的方法翻页至最后，当下一页按钮元素不可点击时退出循环\n使用【循环相似元素(web)】指令，对“状态”为完成，商品名称为“短袖T恤”的订单做“确认发货”并确认的操作\n5.在循环过程中获取对应发货订单的订单编号存入列表“订单_list”，日期存入列表“日期_list”\n6.打印输出列表“订单_list”的第三项数据以及列表“日期_list”的最后一项数据",
+      "options": [],
+      "id": "Z001",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "操作题",
+      "stem": "【题型B】\n1.使用Excel创建一个工作表，并在Sheet1中第一列依次写入内容“连衣裙，短袖T恤，篮球鞋”\n2.打开影刀商城—— 订单管理页面 https://shop.yingdao.com/list/table-list （账号：admin ，密码：58T2$!hm）\n3.使用 【循环Excel内容】指令，循环Sheet1中第一列的内容（以下均为循环中的内容）:\n4.使用 【填写输入框】指令，在“商品名称”输入框中依次填写当前循环到的内容并点击“查询”\n5.使用 【批量数据抓取】指令，抓取所有页上的“商品名称”“金额”“状态”三列数据\n6.使用 【添加Sheet页】指令，在最后添加一个Sheet页\n7.使用 【写入内容至Excel工作表】指令，选择合适的方式将抓取的数据写入新添加的Sheet页中\n8.使用 【写入内容至Excel工作表】指令，在Sheet1中第二列对应行的单元格内写入“搜索完毕”\n9.关闭网页",
+      "options": [],
+      "id": "Z002",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "操作题",
+      "stem": "【题型C】\n1. 打开影刀商城 — 订单管理页面 https://shop.yingdao.com/list/table-list （账号：admin ，密码：58T2$!hm）\n2. 查询商品名称为“短袖T恤”的订单信息\n3. 要求使用【获取相似元素列表(web)】指令，获取页码信息并打印\n4. 新建一个列表并命名为“订单_list”\n5. 循环翻页至最后一页，同时每次循环执行以下操作：\n- 使用【循环相似元素(web)】指令，对“状态”为完成的订单做“确认发货”并确认的操作\n- 获取发货成功的订单编号存入列表“订单_list”（使用【列表插入一项】指令）\n6. 打印输出“订单_list”列表",
+      "options": [],
+      "id": "Z003",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "操作题",
+      "stem": "【题型D】\n1. 手动下载 待查询表格.xlsx 表格至本地\n2. 启动“待查询订单.xlsx”表格\n3. 打开影刀商城——订单管理页面 https://shop.yingdao.com/list/table-list （账号：admin ，密码：58T2$!hm）\n4. 循环查询“Sheet1”中的所有订单编号：\n搜索当前循环到的订单号\n使用【获取相似元素列表(web)】获取该订单的全部信息\n根据查询结果中的“商品名称”写入信息至对应Sheet页\n在“Sheet1”中记录查询状态为“完成”\n5. 关闭网页，保存并关闭Excel表格",
+      "options": [],
+      "id": "Z004",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "操作题",
+      "stem": "【题型E】\n1. 手动下载 待查询表格.xlsx\n2. 打开“待查询订单.xlsx”表格\n3. 打开影刀商城——订单管理页面 https://shop.yingdao.com/list/table-list （账号：admin ，密码：58T2$!hm）\n4. 循环查询“Sheet1”中的所有订单编号：\n搜索当前循环到的订单号\n判断查询结果中“状态”是否为“完成”，若是则做“确认发货”并确认的操作\n在Sheet1当前循环行B列写入“已发货”或“未发货”\n5. 关闭网页，保存并关闭Excel表格",
+      "options": [],
+      "id": "Z005",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "操作题",
+      "stem": "【题型F】\n1.打开影刀商城——登录页面 https://shop.yingdao.com/list/table-list PlaygroundPlayground\n2.输入账号：admin1，密码：admin1 并登录\n3.进入“订单管理”页面\n4.使用【批量数据抓取】指令获取所有订单及其信息\n5.新建Excel表格至本地桌面，将抓取到的信息写入至表格\n6.循环Excel表格中的每一行订单信息，将“状态”为“取消”的订单信息执行删除整行操作（Tip：倒序删除）\n7.保存并关闭表格\n8.退出影刀商城登录状态，关闭网页",
+      "options": [],
+      "id": "Z006",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/Ttwumian/article/details/161413518",
+      "sourceName": "影刀初中高认证试题（Ttwumian）"
+    },
+    {
+      "type": "操作题",
+      "stem": "【题型C】\n打开影刀商城——订单管理页面影刀商城\n查询商品名称为“短袖T恤”的订单信息\n要求使用【获取相似元素组(web)】指令，获取页码信息并打印\n新建一个列表并命名为“订单_list”\n循环翻页至最后一页，同时每次循环执行以下操作：\n使用【循环相似元素(web)】指令，对“状态”为完成的订单做“确认发货”并确认的操作\n获取发货成功的订单编号存入列表“订单_list”\n打印输出“订单_list”列表\n关闭网页",
+      "options": [],
+      "id": "Z007",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/weisili2012/article/details/136614208",
+      "sourceName": "影刀初级考试操作题2（题型C）"
+    },
+    {
+      "type": "操作题",
+      "stem": "使用 Excel 创建一个工作表，并在 Sheet1 第一列依次写入内容“连衣裙，短袖T恤，篮球鞋”\n打开影刀商城——订单管理页面 https://shop.yingdao.com/list/table-list （账号：admin ，密码：58T2$!hm）\n使用 【循环Excel内容】指令，循环Sheet1中第一列的内容（以下均为循环中的内容）:\n使用 【填写输入框】指令，在“商品名称”输入框中依次填写当前循环到的内容并点击“查询”\n使用 【批量数据抓取】指令，抓取所有页上的“商品名称”“金额”“状态”三列数据\n使用 【添加Sheet页】指令，在最后添加一个Sheet页\n使用 【写入内容至Excel工作表】指令，选择合适的方式将抓取的数据写入新添加的Sheet页中\n使用 【写入内容至Excel工作表】指令，在Sheet1中第二列对应行的单元格内写入“搜索完毕”\n保存并关闭表格",
+      "options": [],
+      "id": "Z008",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/qFAFAF/article/details/150466387",
+      "sourceName": "影刀初级B级考试大题1"
+    },
+    {
+      "type": "操作题",
+      "stem": "下载待查询表格.xlsx表格至本地（手动操作）\n启动“待查询订单.xlsx”表格\n打开影刀商城——订单管理页面 影刀商城\n循环查询“Sheet1”中的所有订单编号：\n搜索当前循环到的订单号\n使用【获取相似元素列表(web)】获取该订单的全部信息\n根据查询结果中的“商品名称”写入信息至对应Sheet页\n在“Sheet1”中记录查询状态为“完成”\n关闭网页，保存并关闭Excel表格",
+      "options": [],
+      "id": "Z009",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/lingyaoJUN/article/details/141306591",
+      "sourceName": "影刀工程师认证考试_操作题_题型D"
+    },
+    {
+      "type": "操作题",
+      "stem": "【题型E】\n下载待查询表格.xlsx表格至本地（手动操作）\n启动“待查询订单.xlsx”表格\n打开影刀商城——订单管理页面 影刀商城\n循环查询“Sheet1”中的所有订单编号：\n搜索当前循环到的订单号\n判断查询结果中“状态”是否为“完成”，若是则做“确认发货”并确认的操作\n在Sheet1当前循环行B列写入“已发货”或“未发货”\n关闭网页",
+      "options": [],
+      "id": "Z010",
+      "topic": "",
+      "answer": "",
+      "confidence": "待核对",
+      "note": "自动抓取，答案需人工核对",
+      "source": "https://blog.csdn.net/lingyaoJUN/article/details/141306388",
+      "sourceName": "影刀工程师认证考试_操作题_题型E"
+    }
+  ]
+}

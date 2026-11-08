@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 // --- mock: 只记录临时不可调度写入，其余方法不应被调用 ---
@@ -108,6 +110,33 @@ func TestOpenAIHTTPCapacityShedIsRequestScopedForOAuthAccounts(t *testing.T) {
 	require.Zero(t, repo.tempUnschedCalls)
 }
 
+func TestOpenAICapacityShedHonorsRetryAfter(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		headers http.Header
+		body    string
+		want    time.Duration
+	}{
+		{name: "http seconds", headers: http.Header{"Retry-After": []string{"6"}}, want: 6 * time.Second},
+		{name: "http milliseconds", headers: http.Header{"Retry-After-Ms": []string{"6000"}}, want: 6 * time.Second},
+		{name: "body seconds", body: `{"error":{"headers":{"retry-after":"7"},"message":"Our servers are currently overloaded. Please try again later."}}`, want: 7 * time.Second},
+		{name: "body milliseconds", body: `{"response":{"error":{"headers":{"retry-after-ms":"7000"},"message":"Our servers are currently overloaded. Please try again later."}}}`, want: 7 * time.Second},
+		{name: "bounded", headers: http.Header{"Retry-After": []string{"60"}}, want: openAIRequestScopedRetryMaxDelay},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			failoverErr := newOpenAIUpstreamFailoverError(
+				http.StatusServiceUnavailable,
+				test.headers,
+				[]byte(test.body),
+				"Our servers are currently overloaded. Please try again later.",
+				false,
+			)
+			require.True(t, failoverErr.RequestScopedTransient)
+			require.Equal(t, test.want, failoverErr.SameAccountRetryDelay)
+		})
+	}
+}
+
 // 上游降载的真实序列是「event: error → event: response.failed」。error 帧不算
 // 客户端输出：若把它当首输出 flush，clientOutputStarted 被固化，随后的 failed
 // 事件就进不了 pre-output failover 分支，只能把致命错误原样转发给客户端。
@@ -124,6 +153,8 @@ func TestOpenAIStreamErrorFrameDoesNotStartClientOutput(t *testing.T) {
 		{`{"type":"error","error":{"type":"invalid_request_error","code":"content_policy_violation","message":"blocked"}}`, "error", true},
 		{`{"type":"response.failed","response":{"error":{"code":"server_is_overloaded"}}}`, "response.failed", false},
 		{`{"type":"response.created","response":{"id":"resp_1"}}`, "response.created", false},
+		{`{"type":"response.queued","response":{"id":"resp_1","status":"queued"}}`, "response.queued", false},
+		{`{"type":"response.metadata","response_id":"resp_1","metadata":{"openai_chatgpt_moderation_metadata":{"prompt":{}}}}`, "response.metadata", false},
 		{`{"type":"response.in_progress","response":{"id":"resp_1"}}`, "response.in_progress", false},
 		{`{"type":"keepalive"}`, "keepalive", false},
 		{`{"type":"unknown_event"}`, "unknown_event", true},
@@ -146,6 +177,12 @@ func TestOpenAIStreamMetadataAndKeepaliveBeforeOverloadFailOver(t *testing.T) {
 	stream := strings.Join([]string{
 		"event: response.created",
 		`data: {"type":"response.created","response":{"id":"resp_1","metadata":{"padding":"` + largeMetadata + `"}}}`,
+		"",
+		"event: response.queued",
+		`data: {"type":"response.queued","response":{"id":"resp_1","status":"queued"}}`,
+		"",
+		"event: response.metadata",
+		`data: {"type":"response.metadata","response_id":"resp_1","metadata":{"openai_chatgpt_moderation_metadata":{"prompt":{}}}}`,
 		"",
 		"event: response.output_item.added",
 		`data: {"type":"response.output_item.added","item":{"type":"reasoning","summary":[]}}`,
@@ -207,6 +244,69 @@ func TestOpenAIStreamMetadataAndKeepaliveBeforeOverloadFailOver(t *testing.T) {
 			require.False(t, c.Writer.Written())
 			require.Empty(t, rec.Body.String())
 		})
+	}
+}
+
+func TestOpenAIStreamEmptyContentBeforeFailureCanFailOver(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, payload := range []string{
+		`{"type":"response.output_text.delta","delta":""}`,
+		`{"type":"response.reasoning_summary_text.delta","delta":""}`,
+		`{"type":"response.reasoning_text.delta","delta":""}`,
+		`{"type":"response.function_call_arguments.delta","delta":""}`,
+		`{"type":"response.custom_tool_call_input.delta","delta":""}`,
+		`{"type":"response.output_text.done","text":""}`,
+		`{"type":"response.reasoning_summary_text.done","text":""}`,
+		`{"type":"response.reasoning_text.done","text":""}`,
+		`{"type":"response.refusal.delta","delta":""}`,
+		`{"type":"response.refusal.done","refusal":""}`,
+		`{"type":"response.content_part.done","part":{"type":"output_text","text":""}}`,
+		`{"type":"response.reasoning_summary_part.done","part":{"type":"summary_text","text":""}}`,
+	} {
+		for _, passthrough := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/passthrough=%t", payload, passthrough), func(t *testing.T) {
+				svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+				resp := &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{},
+					Body: io.NopCloser(strings.NewReader("data: " + payload + "\n\n" +
+						`data: {"type":"response.failed","response":{"status":"failed","error":{"code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later."}}}` + "\n\n")),
+				}
+				account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+				var err error
+				if passthrough {
+					_, err = svc.handleStreamingResponsePassthrough(c.Request.Context(), resp, c, account, time.Now(), "model", "model")
+				} else {
+					_, err = svc.handleStreamingResponse(c.Request.Context(), resp, c, account, time.Now(), "model", "model")
+				}
+				var failoverErr *UpstreamFailoverError
+				require.ErrorAs(t, err, &failoverErr)
+				require.True(t, failoverErr.RequestScopedTransient)
+				require.Empty(t, rec.Body.String())
+			})
+		}
+	}
+}
+
+func TestOpenAIStreamReplayBoundaryPreservesContentAndToolCompletion(t *testing.T) {
+	for _, payload := range []string{
+		`{"type":"response.output_text.delta","delta":" "}`,
+		`{"type":"response.function_call_arguments.delta","delta":"{}"}`,
+		`{"type":"response.custom_tool_call_input.delta","delta":"run"}`,
+		`{"type":"response.function_call_arguments.done","arguments":""}`,
+		`{"type":"response.custom_tool_call_input.done","input":""}`,
+		`{"type":"response.output_item.done","item":{"type":"function_call","arguments":""}}`,
+		`{"type":"response.output_item.done","item":{"type":"reasoning","encrypted_content":"ciphertext"}}`,
+		`{"type":"response.output_text.delta","delta":null}`,
+		`{"type":"response.output_text.delta"}`,
+		`{"type":"response.output_text.delta","delta":{}}`,
+		`{"type":"response.new_kind.delta","delta":""}`,
+	} {
+		eventType := gjson.Get(payload, "type").String()
+		require.True(t, openAIStreamDataStartsClientOutput(payload, eventType), payload)
 	}
 }
 

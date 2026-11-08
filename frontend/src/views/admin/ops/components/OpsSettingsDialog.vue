@@ -21,6 +21,7 @@ const emit = defineEmits<{
 }>()
 
 const loading = ref(false)
+const settingsLoaded = ref(false)
 const saving = ref(false)
 
 // 运行时设置
@@ -41,14 +42,28 @@ const metricThresholds = ref<OpsMetricThresholds>({
 
 // 加载所有配置
 async function loadAllSettings() {
+  settingsLoaded.value = false
   loading.value = true
   try {
+    // 飞书配置单独兜底（2026-11-08 合并上游后修）：
+    // 它属于后加的可选模块，接口不存在或报错时**不能拖垮整个设置弹窗**——
+    // 否则四个核心配置都取回来了，界面却因为飞书这一个请求失败而整块不可用
+    // （表现就是保存按钮一直是禁用态）。失败时按 null 处理，界面隐藏飞书区块。
+    // 飞书配置是后加的可选模块：接口不存在（老后端 / 未接飞书的部署）或调用失败，
+    // 都必须降级成「没有飞书配置」，不能把整个设置弹窗的加载带崩 ——
+    // 崩了会连 settingsLoaded 都置不上，表现是保存按钮永远灰着。
+    const feishuPromise = typeof opsAPI.getFeishuNotificationConfig === 'function'
+      ? opsAPI.getFeishuNotificationConfig().catch((err: unknown) => {
+          console.warn('[OpsSettingsDialog] feishu config unavailable, skipping', err)
+          return null
+        })
+      : Promise.resolve(null)
     const [runtime, email, advanced, thresholds, feishu] = await Promise.all([
       opsAPI.getAlertRuntimeSettings(),
       opsAPI.getEmailNotificationConfig(),
       opsAPI.getAdvancedSettings(),
       opsAPI.getMetricThresholds(),
-      opsAPI.getFeishuNotificationConfig()
+      feishuPromise
     ])
     runtimeSettings.value = runtime
     emailConfig.value = email
@@ -67,6 +82,7 @@ async function loadAllSettings() {
           upstream_error_rate_percent_max: thresholds.upstream_error_rate_percent_max ?? 5
         }
     }
+    settingsLoaded.value = true
   } catch (err: any) {
     console.error('[OpsSettingsDialog] Failed to load settings', err)
     appStore.showError(err?.response?.data?.detail || t('admin.ops.settings.loadFailed'))
@@ -249,6 +265,7 @@ const validation = computed(() => {
 
 // 保存所有配置
 async function saveAllSettings() {
+  if (loading.value || !settingsLoaded.value || saving.value) return
   if (!validation.value.valid) {
     appStore.showError(validation.value.errors[0])
     return
@@ -743,7 +760,7 @@ async function saveAllSettings() {
     <template #footer>
       <div class="flex justify-end gap-2">
         <button class="btn btn-secondary" @click="emit('close')">{{ t('common.cancel') }}</button>
-        <button class="btn btn-primary" :disabled="saving || !validation.valid" @click="saveAllSettings">
+        <button class="btn btn-primary" :disabled="loading || !settingsLoaded || saving || !validation.valid" @click="saveAllSettings">
           {{ saving ? t('common.saving') : t('common.save') }}
         </button>
       </div>

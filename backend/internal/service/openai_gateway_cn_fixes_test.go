@@ -11,9 +11,11 @@ package service
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -71,7 +73,7 @@ func TestCalculateOpenAIRecordUsageCost_EmptyCandidatesIsPricingUnavailable(t *t
 
 	_, err := svc.calculateOpenAIRecordUsageCost(
 		context.Background(), nil, apiKey, nil,
-		1.0, 1.0, 1.0, 1.0, UsageTokens{InputTokens: 100}, "", nil, time.Time{},
+		1.0, 1.0, 1.0, 1.0, UsageTokens{InputTokens: 100}, "", nil, false, time.Time{},
 	)
 	require.Error(t, err)
 	require.True(t, isUsagePricingUnavailableError(err),
@@ -107,6 +109,83 @@ func TestResponsesStreamingFromNativeAnthropic_ClientDisconnectDrainsUsage(t *te
 	require.Equal(t, 10, res.Usage.InputTokens, "input_tokens 应来自 message_start")
 	require.Equal(t, 5, res.Usage.OutputTokens,
 		"output_tokens 必须来自排水读到的末尾 message_delta（断开即弃时会是 1）")
+}
+
+func TestResponsesStreamingFromNativeAnthropic_NormalizesTerminalUsage(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name              string
+		startUsage        string
+		deltaUsage        string
+		repeatDelta       bool
+		wantInput         int
+		wantOutput        int
+		wantCached        int
+		wantCacheCreation int
+	}{
+		{name: "full cache", startUsage: `"input_tokens":1200,"prompt_tokens":1200`, deltaUsage: `"input_tokens":0,"output_tokens":30,"prompt_tokens":1200,"cache_read_input_tokens":1200`, wantOutput: 30, wantCached: 1200},
+		{name: "partial cache", startUsage: `"input_tokens":1200,"prompt_tokens":1200`, deltaUsage: `"input_tokens":0,"output_tokens":30,"prompt_tokens":1200,"cache_read_input_tokens":800`, wantInput: 400, wantOutput: 30, wantCached: 800},
+		{name: "cache creation", startUsage: `"input_tokens":1200,"prompt_tokens":1200`, deltaUsage: `"input_tokens":0,"output_tokens":30,"prompt_tokens":1200,"cache_creation_input_tokens":800`, wantInput: 400, wantOutput: 30, wantCacheCreation: 800},
+		{name: "repeated cumulative cache bucket", startUsage: `"input_tokens":1200,"prompt_tokens":1200`, deltaUsage: `"input_tokens":0,"output_tokens":30,"prompt_tokens":1200,"cache_read_input_tokens":800`, repeatDelta: true, wantInput: 400, wantOutput: 30, wantCached: 800},
+	}
+
+	for _, tt := range tests {
+		for _, terminal := range []string{"message_stop", "eof"} {
+			t.Run(tt.name+"/"+terminal, func(t *testing.T) {
+				lines := []string{
+					`event: message_start`,
+					`data: {"type":"message_start","message":{"id":"msg_usage","type":"message","role":"assistant","content":[],"model":"k3","stop_reason":"","usage":{` + tt.startUsage + `}}}`,
+					``,
+					`event: message_delta`,
+					`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{` + tt.deltaUsage + `}}`,
+					``,
+				}
+				if tt.repeatDelta {
+					lines = append(lines, `event: message_delta`, `data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{`+tt.deltaUsage+`}}`, ``)
+				}
+				if terminal == "message_stop" {
+					lines = append(lines, `event: message_stop`, `data: {"type":"message_stop"}`, ``)
+				}
+
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+				resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(strings.Join(lines, "\n")))}
+
+				result, err := (&OpenAIGatewayService{}).handleResponsesStreamingFromNativeAnthropic(
+					resp, c, "k3", "k3", "k3", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+				require.NoError(t, err)
+				require.Equal(t, tt.wantInput+tt.wantCached+tt.wantCacheCreation, result.Usage.InputTokens)
+				require.Equal(t, tt.wantOutput, result.Usage.OutputTokens)
+				require.Equal(t, tt.wantCached, result.Usage.CacheReadInputTokens)
+				require.Equal(t, tt.wantCacheCreation, result.Usage.CacheCreationInputTokens)
+
+				var completed apicompat.ResponsesStreamEvent
+				for _, line := range strings.Split(rec.Body.String(), "\n") {
+					if !strings.HasPrefix(line, "data: ") {
+						continue
+					}
+					var event apicompat.ResponsesStreamEvent
+					require.NoError(t, json.Unmarshal([]byte(strings.TrimPrefix(line, "data: ")), &event))
+					if event.Type == "response.completed" {
+						completed = event
+					}
+				}
+				require.NotNil(t, completed.Response)
+				require.NotNil(t, completed.Response.Usage)
+				require.Equal(t, tt.wantInput+tt.wantCached+tt.wantCacheCreation, completed.Response.Usage.InputTokens)
+				require.Equal(t, tt.wantOutput, completed.Response.Usage.OutputTokens)
+				require.Equal(t, completed.Response.Usage.InputTokens+tt.wantOutput, completed.Response.Usage.TotalTokens)
+				require.Equal(t, tt.wantCacheCreation, completed.Response.Usage.CacheCreationInputTokens)
+				if tt.wantCached == 0 {
+					require.Nil(t, completed.Response.Usage.InputTokensDetails)
+				} else {
+					require.Equal(t, tt.wantCached, completed.Response.Usage.InputTokensDetails.CachedTokens)
+				}
+			})
+		}
+	}
 }
 
 func TestHandle403_CNProviderHTMLBodySkipsAccountPenalty(t *testing.T) {
@@ -190,6 +269,7 @@ func TestHandle403_OtherCNProviderWithKimiConcurrencyMessageUsesNormalPolicy(t *
 	require.True(t, shouldDisable)
 	require.Equal(t, 1, repo.setErrorCalls, "non-Kimi CN provider must retain the normal permanent-error policy")
 	require.Equal(t, 0, repo.tempCalls)
+	require.Zero(t, repo.rateLimitedCalls)
 	require.Empty(t, counter.counts, "normal CN 403 policy must consume the counter result")
 	require.Equal(t, []string{"auth_error"}, blocker.reasons, "the Kimi-specific runtime block must not apply")
 }
@@ -210,16 +290,16 @@ func TestHandle403_CNProviderConcurrencyLimitAlwaysUsesTemporaryCooldown(t *test
 
 	require.True(t, shouldDisable, "the request must still fail over to another account")
 	require.Equal(t, 0, repo.setErrorCalls)
-	require.Equal(t, 1, repo.tempCalls)
-	require.Contains(t, repo.lastTempReason, cnConcurrencyLimitReasonPrefix)
+	require.Equal(t, 0, repo.tempCalls)
+	require.Equal(t, 1, repo.rateLimitedCalls)
 	require.Equal(t, []int64{openAI403DisableThreshold}, counter.counts, "transient concurrency 403 must bypass the permanent-error counter")
 	require.Len(t, blocker.accounts, 1)
-	require.Equal(t, cnConcurrencyLimitReasonPrefix, blocker.reasons[0])
+	require.Equal(t, "429_fallback", blocker.reasons[0])
 	require.True(t, blocker.until[0].After(time.Now()))
 }
 
 func TestHandle403_KimiConcurrencyLimitRepositoryFailureKeepsRuntimeBlock(t *testing.T) {
-	repo := &rateLimitAccountRepoStub{tempErr: errors.New("repository unavailable")}
+	repo := &kimiConcurrencyRateLimitFailureRepo{}
 	counter := &openAI403CounterCacheStub{counts: []int64{openAI403DisableThreshold}}
 	blocker := &runtimeBlockRecorder{}
 	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
@@ -233,12 +313,13 @@ func TestHandle403_KimiConcurrencyLimitRepositoryFailureKeepsRuntimeBlock(t *tes
 	)
 
 	require.True(t, shouldDisable, "the current request must fail over even when persistence fails")
-	require.Equal(t, 1, repo.tempCalls, "the temporary cooldown should still be persisted when possible")
+	require.Equal(t, 1, repo.rateLimitedCalls, "the rate limit cooldown should still be persisted when possible")
+	require.Zero(t, repo.tempCalls)
 	require.Equal(t, 0, repo.setErrorCalls, "persistence failure must not fall back to permanent account error")
 	require.Equal(t, []int64{openAI403DisableThreshold}, counter.counts, "persistence failure must not enter the permanent-error counter path")
 	require.Len(t, blocker.accounts, 1, "the in-memory runtime block must survive repository failure")
 	require.Same(t, account, blocker.accounts[0])
-	require.Equal(t, cnConcurrencyLimitReasonPrefix, blocker.reasons[0])
+	require.Equal(t, "429_fallback", blocker.reasons[0])
 	require.True(t, blocker.until[0].After(time.Now()))
 }
 
@@ -257,4 +338,5 @@ func TestHandle403_CNProviderNearMatchRetainsNormalPermanentErrorPolicy(t *testi
 	require.True(t, shouldDisable)
 	require.Equal(t, 1, repo.setErrorCalls, "non-exact 403 must retain existing permission/auth protection")
 	require.Equal(t, 0, repo.tempCalls)
+	require.Zero(t, repo.rateLimitedCalls)
 }

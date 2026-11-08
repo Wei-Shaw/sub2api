@@ -134,7 +134,10 @@ func (s *httpUpstreamService) doUpstreamRequestWithOptionalCompression(
 	client *http.Client, req *http.Request, accountID int64,
 ) (*http.Response, error) {
 	compression := s.prepareUpstreamBodyCompression(req, accountID)
-	resp, err := doUpstreamRequest(client, req)
+	// drain 超时沿用上游新增的参数化签名（2026-11-08 同步）：
+	// 之前 doUpstreamRequest 不带超时参数，合并上游后它变成可变参数，
+	// 不传就等于丢掉了「上游不响应时多久放弃」的保护。
+	resp, err := doUpstreamRequest(client, req, s.upstreamDrainTimeout())
 	if err != nil || resp == nil || compression == nil {
 		return resp, err
 	}
@@ -161,5 +164,5 @@ func (s *httpUpstreamService) doUpstreamRequestWithOptionalCompression(
 		"retry_bytes", compression.origLen,
 	)
 
-	return doUpstreamRequest(client, retryReq)
+	return doUpstreamRequest(client, retryReq, s.upstreamDrainTimeout())
 }

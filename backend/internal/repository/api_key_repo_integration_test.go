@@ -464,6 +464,10 @@ func (s *APIKeyRepoSuite) TestIncrementQuotaUsed_Basic() {
 	newQuota, err = s.repo.IncrementQuotaUsed(s.ctx, key.ID, 2.5)
 	s.Require().NoError(err, "IncrementQuotaUsed second")
 	s.Require().Equal(4.0, newQuota, "第二次递增后应为 4.0")
+
+	data, err := s.repo.GetRateLimitData(s.ctx, key.ID)
+	s.Require().NoError(err, "GetRateLimitData")
+	s.Require().Equal(4.0, data.QuotaUsed, "用量读取带回总额度已用量")
 }
 
 func (s *APIKeyRepoSuite) TestIncrementQuotaUsed_NotFound() {
