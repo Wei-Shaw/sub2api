@@ -470,6 +470,11 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		}
 		stageCodexFingerprintIDs(c, fpIDs)
 	}
+	// 「由 sub2api 压缩」同样要覆盖 WS 入口：Codex 在 WS 上发的压缩请求不经过
+	// Forward，必须在桥接层就地生成 compaction item 并写回事件。
+	if account.UsesSub2APICompact() && HasCompactionTriggerInInput(body) {
+		return s.proxyOpenAIWSCompactViaSub2API(ctx, c, account, body, originalModel, writeClientMessage)
+	}
 	grokIntentSourceBody := append([]byte(nil), body...)
 	_, grokExplicitToolsField := openAIWSHTTPBridgeRawField(grokIntentSourceBody, "tools")
 	grokExplicitToolIntent := account.Platform == PlatformGrok && hasGrokResponsesToolIntent(grokIntentSourceBody)

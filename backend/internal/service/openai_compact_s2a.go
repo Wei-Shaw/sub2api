@@ -79,16 +79,59 @@ func (s *OpenAIGatewayService) forwardOpenAICompactViaSub2API(
 	}
 	stream := gjson.GetBytes(body, "stream").Bool()
 
+	res, err := s.compactS2AProduceSummary(ctx, c, account, body)
+	if err != nil {
+		return nil, err
+	}
+
+	item := compactS2ABuildItem(res.Summary, res.UpstreamModel)
+	responseID := "resp_" + item.ID
+	if stream {
+		compactS2AWriteStream(c, requestedModel, responseID, item)
+	} else {
+		compactS2AWriteJSON(c, requestedModel, responseID, item, res.Usage)
+	}
+
+	return &OpenAIForwardResult{
+		RequestID:     responseID,
+		ResponseID:    responseID,
+		Usage:         res.Usage,
+		Model:         requestedModel,
+		BillingModel:  res.BillingModel,
+		UpstreamModel: res.UpstreamModel,
+		Stream:        stream,
+		Duration:      time.Since(startTime),
+	}, nil
+}
+
+// compactS2ASummaryResult 是一次本地压缩的产出。
+type compactS2ASummaryResult struct {
+	Summary       string
+	UpstreamModel string
+	BillingModel  string
+	Usage         OpenAIUsage
+}
+
+// compactS2AProduceSummary 用账号自己的上游做一次普通摘要调用。
+func (s *OpenAIGatewayService) compactS2AProduceSummary(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+) (compactS2ASummaryResult, error) {
+	var out compactS2ASummaryResult
+	requestedModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
+
 	history := compactS2AFlattenInput(gjson.GetBytes(body, "input"))
 	if strings.TrimSpace(history) == "" {
 		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", "input is empty")
-		return nil, fmt.Errorf("empty input for compact request")
+		return out, fmt.Errorf("empty input for compact request")
 	}
 
-	billingModel := resolveOpenAIForwardModel(account, requestedModel, "")
-	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
+	out.BillingModel = resolveOpenAIForwardModel(account, requestedModel, "")
+	out.UpstreamModel = normalizeOpenAIModelForUpstream(account, out.BillingModel)
 	ccBody, err := json.Marshal(map[string]any{
-		"model":  upstreamModel,
+		"model":  out.UpstreamModel,
 		"stream": false,
 		"messages": []any{
 			map[string]any{"role": "system", "content": compactS2ASystemPrompt},
@@ -97,51 +140,97 @@ func (s *OpenAIGatewayService) forwardOpenAICompactViaSub2API(
 	})
 	if err != nil {
 		writeOpenAIResponsesFallbackError(c, http.StatusInternalServerError, "api_error", "Failed to build compact request")
-		return nil, fmt.Errorf("marshal s2a compact request: %w", err)
+		return out, fmt.Errorf("marshal s2a compact request: %w", err)
 	}
 
 	apiKey, targetURL, err := s.resolveCCFallbackTarget(account)
 	if err != nil {
 		writeOpenAIResponsesFallbackError(c, http.StatusBadGateway, "api_error", err.Error())
-		return nil, err
+		return out, err
 	}
 	resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, ccBody, false, apiKey, account.GetOpenAIUserAgent(), "")
 	if err != nil {
 		writeOpenAIResponsesFallbackError(c, http.StatusBadGateway, "api_error", "Failed to reach upstream")
-		return nil, err
+		return out, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode >= 400 {
-		return s.handleErrorResponse(ctx, resp, c, account, ccBody, requestedModel)
+		_, err := s.handleErrorResponse(ctx, resp, c, account, ccBody, requestedModel)
+		return out, err
 	}
 
 	ccResp, usage, err := s.readCCUpstreamJSONResponse(c, resp, writeOpenAIResponsesFallbackError)
 	if err != nil {
-		return nil, err
+		return out, err
 	}
-	summary := compactS2AResponseText(ccResp)
-	if strings.TrimSpace(summary) == "" {
+	out.Usage = usage
+	out.Summary = compactS2AResponseText(ccResp)
+	if strings.TrimSpace(out.Summary) == "" {
 		writeOpenAIResponsesFallbackError(c, http.StatusBadGateway, "api_error", "upstream returned an empty compaction summary")
-		return nil, fmt.Errorf("empty compaction summary from upstream")
+		return out, fmt.Errorf("empty compaction summary from upstream")
+	}
+	return out, nil
+}
+
+// proxyOpenAIWSCompactViaSub2API 处理走 WebSocket 入口的压缩请求：Codex 在 WS
+// 上直接发带 compaction_trigger 的 response.create，不经过 Forward，因此需要在
+// 桥接层就地完成压缩并把事件按 Responses 事件形状写回客户端。
+func (s *OpenAIGatewayService) proxyOpenAIWSCompactViaSub2API(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	originalModel string,
+	writeClientMessage func([]byte) error,
+) (*OpenAIForwardResult, error) {
+	model := strings.TrimSpace(originalModel)
+	if model == "" {
+		model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	}
 
-	item := compactS2ABuildItem(summary, upstreamModel)
+	res, err := s.compactS2AProduceSummary(ctx, c, account, body)
+	if err != nil {
+		return nil, err
+	}
+	item := compactS2ABuildItem(res.Summary, res.UpstreamModel)
 	responseID := "resp_" + item.ID
-	if stream {
-		compactS2AWriteStream(c, requestedModel, responseID, item)
-	} else {
-		compactS2AWriteJSON(c, requestedModel, responseID, item, usage)
+	createdAt := time.Now().Unix()
+
+	emit := func(payload map[string]any) error {
+		raw, marshalErr := json.Marshal(payload)
+		if marshalErr != nil {
+			return marshalErr
+		}
+		return writeClientMessage(raw)
+	}
+	response := func(status string, output []any) map[string]any {
+		return map[string]any{
+			"id": responseID, "object": "response", "created_at": createdAt,
+			"status": status, "model": model, "output": output,
+		}
+	}
+
+	if err := emit(map[string]any{"type": "response.created", "response": response("in_progress", []any{})}); err != nil {
+		return nil, err
+	}
+	if err := emit(map[string]any{"type": "response.output_item.added", "output_index": 0, "item": item.marshal()}); err != nil {
+		return nil, err
+	}
+	if err := emit(map[string]any{"type": "response.output_item.done", "output_index": 0, "item": item.marshal()}); err != nil {
+		return nil, err
+	}
+	if err := emit(map[string]any{"type": "response.completed", "response": response("completed", []any{item.marshal()})}); err != nil {
+		return nil, err
 	}
 
 	return &OpenAIForwardResult{
 		RequestID:     responseID,
 		ResponseID:    responseID,
-		Usage:         usage,
-		Model:         requestedModel,
-		BillingModel:  billingModel,
-		UpstreamModel: upstreamModel,
-		Stream:        stream,
-		Duration:      time.Since(startTime),
+		Usage:         res.Usage,
+		Model:         model,
+		BillingModel:  res.BillingModel,
+		UpstreamModel: res.UpstreamModel,
+		Stream:        true,
 	}, nil
 }
 
