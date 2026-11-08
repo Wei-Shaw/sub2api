@@ -1308,6 +1308,12 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"responses_websockets_v2_enabled",
 		"openai_ws_enabled",
 		"openai_ws_force_http",
+		// 本投影同时承载候选过滤：openAICompactSupportTier 与 WS 入口/工具提升开关
+		// 都从这里读 extra。裁掉它们会让压缩请求在选号阶段被判成 compact 不支持
+		// （503 no available account），或让 WS 桥/工具提升开关在缓存重建后静默失效。
+		"openai_compact_mode",
+		"codex_namespace_tools",
+		"openai_ws_http_bridge",
 		"openai_responses_mode",
 		"openai_responses_supported",
 		// 透传开关必须进投影：候选过滤(ListSchedulableAccounts)读的是本投影，
