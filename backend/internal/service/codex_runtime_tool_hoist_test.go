@@ -190,3 +190,11 @@ func TestHoistedCodexToolsAdaptForWSFunctionUpstream(t *testing.T) {
 	}
 	require.True(t, found, "exec 必须以 function 工具形式出现在上游请求里")
 }
+
+func TestOpenAIWSHTTPBridgeEnabled(t *testing.T) {
+	require.False(t, (*Account)(nil).IsOpenAIWSHTTPBridgeEnabled())
+	require.False(t, (&Account{Platform: PlatformOpenAI}).IsOpenAIWSHTTPBridgeEnabled())
+	require.False(t, (&Account{Platform: PlatformOpenAI, Extra: map[string]any{"openai_ws_http_bridge": false}}).IsOpenAIWSHTTPBridgeEnabled())
+	require.True(t, (&Account{Platform: PlatformOpenAI, Extra: map[string]any{"openai_ws_http_bridge": true}}).IsOpenAIWSHTTPBridgeEnabled())
+	require.False(t, (&Account{Platform: PlatformAnthropic, Extra: map[string]any{"openai_ws_http_bridge": true}}).IsOpenAIWSHTTPBridgeEnabled())
+}

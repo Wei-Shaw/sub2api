@@ -2357,6 +2357,21 @@ func (a *Account) IsOpenAIWSForceHTTPEnabled() bool {
 	return ok && enabled
 }
 
+// IsOpenAIWSHTTPBridgeEnabled 返回账号级「WS 入口 + HTTP 上游」开关。
+// 字段：accounts.extra.openai_ws_http_bridge，缺省 false。
+//
+// 用于上游没有 WebSocket 端点的兼容供应商（DeepSeek /v1/responses 对 WS 升级
+// 返回 405）：客户端仍按 WS 接入，sub2api 在入口把帧桥接成一次 HTTP 响应请求
+// 打到上游，上游保持 HTTP。既有的按 payload 大小自动桥接只在首包超过阈值时
+// 触发，小首包场景够不到。
+func (a *Account) IsOpenAIWSHTTPBridgeEnabled() bool {
+	if a == nil || !a.IsOpenAI() || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra["openai_ws_http_bridge"].(bool)
+	return ok && enabled
+}
+
 // IsOpenAIResponsesFlattenNamespacesEnabled 返回账号级"摊平 Codex namespace 工具"开关。
 // 字段：accounts.extra.openai_responses_flatten_namespaces，缺省 false（原样保留）。
 //
