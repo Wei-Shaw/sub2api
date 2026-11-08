@@ -110,7 +110,7 @@ func (s *dashboardUsageRepoCapture) GetUserSpendingRanking(
 
 func newDashboardRequestTypeTestRouter(repo *dashboardUsageRepoCapture) *gin.Engine {
 	gin.SetMode(gin.TestMode)
-	dashboardSvc := service.NewDashboardService(repo, nil, nil, nil)
+	dashboardSvc := service.NewDashboardService(repo, nil, nil, nil, nil)
 	handler := NewDashboardHandler(dashboardSvc, nil)
 	router := gin.New()
 	router.GET("/admin/dashboard/trend", handler.GetUsageTrend)

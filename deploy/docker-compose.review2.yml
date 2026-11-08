@@ -1,0 +1,22 @@
+services:
+  sub2api:
+    image: sub2api-v028-chenshuapi-review:local
+    container_name: sub2api-v028-review2
+    # !override 替换 base 文件（docker-compose.local.yml）里的 0.0.0.0:8080 映射，
+    # 避免该审查环境把主端口暴露到局域网。只保留本机回环 8083。
+    ports: !override
+      - "127.0.0.1:8083:8080"
+    volumes:
+      - ./review2-data:/app/data:Z
+
+  postgres:
+    container_name: sub2api-v028-review2-postgres
+    volumes:
+      - ./review2-postgres_data:/var/lib/postgresql/data:Z
+    ports: []
+
+  redis:
+    container_name: sub2api-v028-review2-redis
+    volumes:
+      - ./review2-redis_data:/data:Z
+    ports: []

@@ -111,11 +111,17 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
 		ChannelMonitorShowQuota:              settings.ChannelMonitorShowQuota,
 		ChannelMonitorHideUserRanking:        settings.ChannelMonitorHideUserRanking,
+		// 智力检测功能总开关：用户侧作品墙的入口（菜单 / 路由）据此显示。
+		// 这一行曾经缺失：Go 的 struct literal 漏字段不会编译报错，只会静默取零值 false，
+		// 于是 /settings/public 永远返回 false，前端 feature flag 恒判假，
+		// 用户端入口被永久隐藏且与系统设置里的真实开关完全脱节。
+		IntelligenceCheckEnabled: settings.IntelligenceCheckEnabled,
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 		SubscriptionEnabled:      settings.SubscriptionEnabled,
 
 		ModelPlazaEnabled:       settings.ModelPlazaEnabled,
+		ModelPlazaProEnabled:    settings.ModelPlazaProEnabled,
 		ModelPlazaRequireAuth:   settings.ModelPlazaRequireAuth,
 		PluginManagementEnabled: settings.PluginManagementEnabled,
 

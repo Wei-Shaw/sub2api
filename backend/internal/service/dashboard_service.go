@@ -51,9 +51,16 @@ type DashboardService struct {
 	aggInterval    time.Duration
 	aggLookback    time.Duration
 	aggUsageDays   int
+	// profitExclusion 提供「收入不计入盈亏」的用户名单。
+	//
+	// 它必须挂在这一层，而不是只挂在 UsageService 上：使用记录页的趋势图走的是
+	// `/admin/dashboard/snapshot-v2`，那条路从这里直连 usage_logs，根本不经过
+	// UsageService。只改 UsageService 的后果是——汇总卡片排除掉了、趋势图没排除，
+	// 同一页上两块数字互相矛盾，而且都不报错。允许为 nil（既有测试与简化构造场景）。
+	profitExclusion ProfitExclusionProvider
 }
 
-func NewDashboardService(usageRepo UsageLogRepository, aggRepo DashboardAggregationRepository, cache DashboardStatsCache, cfg *config.Config) *DashboardService {
+func NewDashboardService(usageRepo UsageLogRepository, aggRepo DashboardAggregationRepository, cache DashboardStatsCache, profitExclusion ProfitExclusionProvider, cfg *config.Config) *DashboardService {
 	freshTTL := defaultDashboardStatsFreshTTL
 	cacheTTL := defaultDashboardStatsCacheTTL
 	refreshTimeout := defaultDashboardStatsRefreshTimeout
@@ -99,6 +106,8 @@ func NewDashboardService(usageRepo UsageLogRepository, aggRepo DashboardAggregat
 		aggInterval:    aggInterval,
 		aggLookback:    aggLookback,
 		aggUsageDays:   aggUsageDays,
+
+		profitExclusion: profitExclusion,
 	}
 }
 
@@ -133,6 +142,10 @@ func (s *DashboardService) GetUsageTrendWithFilters(ctx context.Context, startTi
 }
 
 func (s *DashboardService) GetUsageTrendWithUsageFilters(ctx context.Context, startTime, endTime time.Time, granularity string, filters usagestats.UsageLogFilters) ([]usagestats.TrendDataPoint, error) {
+	filters, err := s.withProfitExclusion(ctx, filters)
+	if err != nil {
+		return nil, err
+	}
 	type usageTrendWithFiltersRepo interface {
 		GetUsageTrendWithUsageFilters(context.Context, time.Time, time.Time, string, usagestats.UsageLogFilters) ([]usagestats.TrendDataPoint, error)
 	}
@@ -143,7 +156,57 @@ func (s *DashboardService) GetUsageTrendWithUsageFilters(ctx context.Context, st
 		}
 		return trend, nil
 	}
+	// 回退分支走的是不带 filters 的旧签名，**承载不了排除名单**。
+	// 真实仓库实现了上面那个方法，所以这里平时走不到；但一旦有人把 usageRepo 换成
+	// 只实现旧接口的替身，继续算下去就会给出「没排除任何人」的偏高利润，而且不报错。
+	// 宁可让这一次查询失败，也不要发一个悄悄偏高的经营数字。
+	if len(filters.ProfitExcludedUserIDs) > 0 {
+		return nil, fmt.Errorf("get usage trend with filters: %w", ErrUsageProfitExclusionUnsupported)
+	}
 	return s.GetUsageTrendWithFilters(ctx, startTime, endTime, granularity, filters.UserID, filters.APIKeyID, filters.AccountID, filters.GroupID, filters.Model, filters.RequestType, filters.Stream, filters.BillingType)
+}
+
+// ProfitExcludedUserIDs 返回「收入不计入盈亏」的用户名单。
+//
+// 单独暴露出来，是因为**缓存键需要它**：handler 层要先把名单算进缓存键，才能保证
+// 管理员改完名单立刻看到新数字，而不是等 30 秒 TTL 过期（那会被当成功能失效）。
+// 名单本身在 UsageProfitExclusionService 里有 30 秒缓存，这里调用不会打库。
+//
+// provider 缺席时返回空名单（不是错误）：那表示这份部署还没有这个能力，
+// 统计口径与改动前一致，属于合法状态。
+func (s *DashboardService) ProfitExcludedUserIDs(ctx context.Context) ([]int64, error) {
+	if s.profitExclusion == nil {
+		return nil, nil
+	}
+	ids, err := s.profitExclusion.ExcludedUserIDs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("load profit exclusion list: %w", err)
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	return ids, nil
+}
+
+// withProfitExclusion 把「收入不计入盈亏」的用户名单并进 filters。
+//
+// 名单为空（或调用方已经填好）时原样返回，查询路径与改动前完全一致。
+// 读名单失败直接上抛：降级成「不排除」只会让利润偏高，界面上看不出任何异常。
+func (s *DashboardService) withProfitExclusion(ctx context.Context, filters usagestats.UsageLogFilters) (usagestats.UsageLogFilters, error) {
+	// 调用方（如 handler 的缓存层）可能已经填过——它填的时候还顺手把名单算进了
+	// 缓存键，所以这里是同一份值，不必再取一次。真填过就直接用。
+	if len(filters.ProfitExcludedUserIDs) > 0 {
+		return filters, nil
+	}
+	ids, err := s.ProfitExcludedUserIDs(ctx)
+	if err != nil {
+		return filters, err
+	}
+	if len(ids) == 0 {
+		return filters, nil
+	}
+	filters.ProfitExcludedUserIDs = ids
+	return filters, nil
 }
 
 func (s *DashboardService) GetModelStatsWithFilters(ctx context.Context, startTime, endTime time.Time, userID, apiKeyID, accountID, groupID int64, requestType *int16, stream *bool, billingType *int8) ([]usagestats.ModelStat, error) {

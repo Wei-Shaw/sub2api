@@ -1,0 +1,33 @@
+services:
+  companion:
+    image: sub2api-companion:20260823-billing-reconcile-v10
+    container_name: sub2api-companion
+    restart: unless-stopped
+    env_file:
+      - ./.env.production
+    volumes:
+      - ./data:/data
+      - ./config:/app/config:ro
+      - ../../caddy_logs:/var/log/caddy:ro
+    ports:
+      - "127.0.0.1:8090:8090"
+    networks:
+      - sub2api-network
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8090/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+networks:
+  sub2api-network:
+    external: true
+    name: sub2api_sub2api-network

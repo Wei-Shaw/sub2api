@@ -31,6 +31,9 @@ type dashboardTrendCacheKey struct {
 	NativeCompactionV2    *bool  `json:"native_compaction_v2"`
 	BillingType           *int8  `json:"billing_type"`
 	UpstreamModelMismatch *bool  `json:"upstream_model_mismatch"`
+	// ProfitExcludedUserIDs 参与缓存键，理由见 getUsageTrendCached 里的注释：
+	// 不把它算进键，「改完名单看到的还是旧数字」会伪装成功能失效。
+	ProfitExcludedUserIDs []int64 `json:"profit_excluded_user_ids"`
 }
 
 type dashboardModelGroupCacheKey struct {
@@ -92,6 +95,16 @@ func (h *DashboardHandler) getUsageTrendCached(
 	billingType *int8,
 	upstreamModelMismatch *bool,
 ) ([]usagestats.TrendDataPoint, bool, error) {
+	// 排除名单必须先取到，因为它要进缓存键。
+	//
+	// 若只把它塞进下面的 filters 而不进缓存键，就会出现这样一幕：管理员把某人
+	// 加进名单、刷新页面，看到的还是旧数字——因为 30 秒内的缓存条目是按「不含名单」
+	// 的键存下的。要等 TTL 过期才对，而界面上没有任何提示，看起来就像功能没生效。
+	// 名单本身在 service 层有 30 秒缓存，这里取一次不会打库。
+	excludedUserIDs, err := h.dashboardService.ProfitExcludedUserIDs(ctx)
+	if err != nil {
+		return nil, false, err
+	}
 	key := mustMarshalDashboardCacheKey(dashboardTrendCacheKey{
 		StartTime:             startTime.UTC().Format(time.RFC3339),
 		EndTime:               endTime.UTC().Format(time.RFC3339),
@@ -106,12 +119,14 @@ func (h *DashboardHandler) getUsageTrendCached(
 		NativeCompactionV2:    nativeCompactionV2,
 		BillingType:           billingType,
 		UpstreamModelMismatch: upstreamModelMismatch,
+		ProfitExcludedUserIDs: excludedUserIDs,
 	})
 	entry, hit, err := dashboardTrendCache.GetOrLoad(key, func() (any, error) {
 		return h.dashboardService.GetUsageTrendWithUsageFilters(ctx, startTime, endTime, granularity, usagestats.UsageLogFilters{
 			UserID: userID, APIKeyID: apiKeyID, AccountID: accountID, GroupID: groupID,
 			Model: model, RequestType: requestType, Stream: stream, NativeCompactionV2: nativeCompactionV2, BillingType: billingType,
 			UpstreamModelMismatch: upstreamModelMismatch,
+			ProfitExcludedUserIDs: excludedUserIDs,
 		})
 	})
 	if err != nil {

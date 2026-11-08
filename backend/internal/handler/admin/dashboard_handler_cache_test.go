@@ -74,7 +74,7 @@ func TestDashboardHandler_GetUsageTrend_UsesCache(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	repo := &dashboardUsageRepoCacheProbe{}
-	dashboardSvc := service.NewDashboardService(repo, nil, nil, nil)
+	dashboardSvc := service.NewDashboardService(repo, nil, nil, nil, nil)
 	handler := NewDashboardHandler(dashboardSvc, nil)
 	router := gin.New()
 	router.GET("/admin/dashboard/trend", handler.GetUsageTrend)
@@ -99,7 +99,7 @@ func TestDashboardHandler_GetUserUsageTrend_UsesCache(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	repo := &dashboardUsageRepoCacheProbe{}
-	dashboardSvc := service.NewDashboardService(repo, nil, nil, nil)
+	dashboardSvc := service.NewDashboardService(repo, nil, nil, nil, nil)
 	handler := NewDashboardHandler(dashboardSvc, nil)
 	router := gin.New()
 	router.GET("/admin/dashboard/users-trend", handler.GetUserUsageTrend)

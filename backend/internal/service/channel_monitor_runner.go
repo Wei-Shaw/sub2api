@@ -2,14 +2,28 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"log/slog"
 	"math/rand/v2"
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/alitto/pond/v2"
+	"github.com/google/uuid"
 )
+
+// channelMonitorProbeLockKeyPrefix 是多实例选主键前缀：同一条监控同一时刻
+// 只允许一个实例真正发探针。探针会真花钱、真写使用记录，重复执行就是重复消费
+// （2026-10-09 演练容器残留事故：两个实例各探一遍，记录翻倍）。
+const channelMonitorProbeLockKeyPrefix = "channel:monitor:probe:"
+
+// channelMonitorProbeLockTTL 是选主锁的崩溃兜底 TTL：必须大于单次探针最坏耗时
+// （runOne 的 ctx 超时 = monitorRequestTimeout + monitorPingTimeout + buffer），
+// 正常路径探针一结束就释放，不靠 TTL 续期。
+const channelMonitorProbeLockTTL = 3 * time.Minute
 
 // MonitorScheduler 调度器接口，供 ChannelMonitorService 在 CRUD 时回调，
 // 用 setter 注入避免 service ↔ runner 的 wire 依赖环。
@@ -63,6 +77,16 @@ type ChannelMonitorRunner struct {
 	// 防止单次检测耗时 > interval 时同一 monitor 被并发执行。
 	inFlight   map[int64]struct{}
 	inFlightMu sync.Mutex
+
+	// activeWorkers 当前在跑的探测数。pool 容量固定为允许的最大并发，
+	// 真正的并发上限由 activeWorkers 与运行时配置共同把关，使后台改并发可即时生效。
+	activeWorkers atomic.Int64
+
+	// 多实例选主（由 wire 通过 SetLeaderLock 注入）。三者缺席时
+	// tryAcquireSingletonLeaderLock 会退化为「不设闸门」，单实例/单测照常跑。
+	lockCache  LeaderLockCache
+	lockDB     *sql.DB
+	instanceID string
 }
 
 // scheduledMonitor 单个监控的运行时上下文。
@@ -104,12 +128,23 @@ func newChannelMonitorRunner(svc monitorRunnerSvc, settingService *SettingServic
 	return &ChannelMonitorRunner{
 		svc:            svc,
 		settingService: settingService,
-		pool:           pond.NewPool(monitorWorkerConcurrency),
+		pool:           pond.NewPool(ChannelMonitorWorkerConcurrencyMax),
 		parentCtx:      ctx,
 		parentCancel:   cancel,
 		tasks:          make(map[int64]*scheduledMonitor),
 		inFlight:       make(map[int64]struct{}),
+		instanceID:     uuid.NewString(),
 	}
+}
+
+// SetLeaderLock 注入多实例选主依赖（与智力检测、上游成本采集同一套机制）。
+// 走 setter 注入的理由与其它服务一致：lockCache/db 在 wire 图中较晚就绪。
+func (r *ChannelMonitorRunner) SetLeaderLock(lockCache LeaderLockCache, db *sql.DB) {
+	if r == nil {
+		return
+	}
+	r.lockCache = lockCache
+	r.lockDB = db
 }
 
 // Start 加载所有 enabled monitor 并为每个建立独立定时任务。
@@ -255,27 +290,75 @@ func (r *ChannelMonitorRunner) runScheduled(ctx context.Context, task *scheduled
 }
 
 // fire 提交一次检测到 worker 池。功能开关关闭时跳过本次（不取消任务，
-// 重新启用时立即恢复）；池满或重复在飞时也跳过。
+// 重新启用时立即恢复）；超过当前并发上限或重复在飞时也跳过。
+//
+// 【可调优】并发上限不再取自固定常量：每次 fire 都重读 ChannelMonitorRuntime，
+// 因此管理员在后台把并发从 5 改到 10 后，无需重启进程，下一次触发即按新值执行。
 func (r *ChannelMonitorRunner) fire(ctx context.Context, task *scheduledMonitor) {
+	tuning := DefaultChannelMonitorTuning()
 	if r.settingService != nil {
 		rt := r.settingService.GetChannelMonitorRuntime(ctx)
 		if !rt.ActiveProbesAllowed() {
 			return
 		}
+		// 把本次生效的超时/保活参数推给 checker，供其按需重建 http client。
+		tuning = ChannelMonitorTuning{
+			WorkerConcurrency:            rt.WorkerConcurrency,
+			ResponseHeaderTimeoutSeconds: int(rt.ResponseHeaderTimeout / time.Second),
+			IdleConnTimeoutSeconds:       int(rt.IdleConnTimeout / time.Second),
+			MaxIdleConnsPerHost:          rt.MaxIdleConnsPerHost,
+			RequestTimeoutSeconds:        int(rt.RequestTimeout / time.Second),
+		}
 	}
+	tuning = NormalizeChannelMonitorTuning(tuning)
+	ApplyMonitorTuning(tuning)
+
+	// 并发闸门：pool 容量固定为允许的最大值，实际并发由这里按当前配置把关。
+	// 超限时直接跳过本轮（而非排队等待）——调度器每 interval 会再次触发，
+	// 排队只会让"上次检测时间"失真。
+	if !r.tryAcquireWorkerSlot(tuning.WorkerConcurrency) {
+		slog.Debug("channel_monitor: worker concurrency reached, skip this round",
+			"monitor_id", task.id, "name", task.name, "limit", tuning.WorkerConcurrency)
+		return
+	}
+
 	if !r.tryAcquireInFlight(task.id) {
+		r.releaseWorkerSlot()
 		slog.Debug("channel_monitor: skip already in-flight",
 			"monitor_id", task.id, "name", task.name)
 		return
 	}
 	if _, ok := r.pool.TrySubmit(func() {
+		defer r.releaseWorkerSlot()
 		r.runOne(task.id, task.name)
 	}); !ok {
-		// 池满：丢弃本次检测，但必须释放已占用的 inFlight 槽，否则该 monitor 会被永久卡住。
+		// 池满：丢弃本次检测，但必须释放已占用的槽，否则该 monitor 会被永久卡住。
+		r.releaseWorkerSlot()
 		r.releaseInFlight(task.id)
 		slog.Warn("channel_monitor: worker pool full, skip submission",
 			"monitor_id", task.id, "name", task.name)
 	}
+}
+
+// tryAcquireWorkerSlot 在不超过 limit 的前提下占用一个并发槽。
+func (r *ChannelMonitorRunner) tryAcquireWorkerSlot(limit int) bool {
+	if limit < 1 {
+		limit = ChannelMonitorWorkerConcurrencyDefault
+	}
+	for {
+		cur := r.activeWorkers.Load()
+		if int(cur) >= limit {
+			return false
+		}
+		if r.activeWorkers.CompareAndSwap(cur, cur+1) {
+			return true
+		}
+	}
+}
+
+// releaseWorkerSlot 释放并发槽。
+func (r *ChannelMonitorRunner) releaseWorkerSlot() {
+	r.activeWorkers.Add(-1)
 }
 
 // tryAcquireInFlight 原子地占用 monitor 的 in-flight 槽。
@@ -311,6 +394,17 @@ func (r *ChannelMonitorRunner) runOne(id int64, name string) {
 				"monitor_id", id, "name", name, "panic", rec)
 		}
 	}()
+
+	// 多实例选主：同一条监控同一时刻只允许一个实例真正发探针。
+	// 探针会真花钱、真写使用记录，两个实例各探一遍就是重复消费。
+	release, acquired := tryAcquireSingletonLeaderLock(ctx, r.lockCache, r.lockDB,
+		channelMonitorProbeLockKeyPrefix+strconv.FormatInt(id, 10), r.instanceID, channelMonitorProbeLockTTL)
+	if !acquired {
+		slog.Debug("channel_monitor: probe lock held by another instance, skip",
+			"monitor_id", id, "name", name)
+		return
+	}
+	defer release()
 
 	if _, err := r.svc.RunCheck(ctx, id); err != nil {
 		if errors.Is(err, ErrChannelMonitorAPIKeyDecryptFailed) {

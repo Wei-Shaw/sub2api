@@ -307,6 +307,7 @@ export default {
     createOrder: 'Confirm Payment',
     methods: {
       easypay: 'EasyPay',
+      hupijiao: 'Hupijiao',
       alipay: 'Alipay',
       wxpay: 'WeChat Pay',
       stripe: 'Stripe',
@@ -465,6 +466,8 @@ export default {
       qrFailed: 'Failed to get WeChat Pay QR code',
     },
     subscribeNow: 'Subscribe Now',
+    // Per-user purchase limit (owner request, 2026-11-06)
+    limitPerUser: 'Limit {count} per user',
     renewNow: 'Renew',
     selectPlan: 'Select Plan',
     planFeatures: 'Features',
@@ -577,6 +580,12 @@ export default {
       forSale: 'For Sale',
       onSale: 'On Sale',
       offSale: 'Off Sale',
+      // Per-user purchase limit (owner request, 2026-11-06)
+      purchaseLimitEnabled: 'Limit per user',
+      purchaseLimitCount: 'Purchase limit',
+      purchaseLimitHint: 'How many times one account may buy this plan (counts paid, non-refunded orders)',
+      purchaseLimitReached: 'Purchase limit reached',
+      purchasedTimes: 'Purchased {count} time(s)',
       group: 'Group',
       groupId: 'Group ID',
       features: 'Features',

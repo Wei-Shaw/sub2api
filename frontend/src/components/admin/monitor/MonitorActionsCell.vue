@@ -28,6 +28,18 @@
       <span class="text-xs">{{ t('common.edit') }}</span>
     </button>
     <button
+      data-testid="monitor-clear-data"
+      :title="clearTitle"
+      :disabled="clearing"
+      @click="$emit('clear', row)"
+      class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-amber-50 hover:text-amber-600 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-amber-900/20 dark:hover:text-amber-400"
+    >
+      <Icon name="xCircle" size="sm" />
+      <span class="text-xs">
+        {{ clearing ? t('admin.channelMonitor.clearing') : t('admin.channelMonitor.clearData') }}
+      </span>
+    </button>
+    <button
       @click="$emit('delete', row)"
       class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
     >
@@ -47,12 +59,15 @@ const props = defineProps<{
   row: ChannelMonitor
   running: boolean
   duplicating: boolean
+  /** 该行正在执行「清除数据」时为 true，用于禁用按钮并切换文案。可选，避免既有调用点被打破。 */
+  clearing?: boolean
 }>()
 
 defineEmits<{
   (e: 'run', row: ChannelMonitor): void
   (e: 'duplicate', row: ChannelMonitor): void
   (e: 'edit', row: ChannelMonitor): void
+  (e: 'clear', row: ChannelMonitor): void
   (e: 'delete', row: ChannelMonitor): void
 }>()
 
@@ -62,4 +77,7 @@ const duplicateTitle = computed(() => {
   if (props.duplicating) return t('admin.channelMonitor.duplicating')
   return t('admin.channelMonitor.duplicate')
 })
+const clearTitle = computed(() =>
+  props.clearing ? t('admin.channelMonitor.clearing') : t('admin.channelMonitor.clearDataHint'),
+)
 </script>

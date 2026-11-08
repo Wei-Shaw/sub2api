@@ -90,6 +90,17 @@ type TrendDataPoint struct {
 	TotalTokens         int64   `json:"total_tokens"`
 	Cost                float64 `json:"cost"`        // 标准计费
 	ActualCost          float64 `json:"actual_cost"` // 实际扣除
+	// UpstreamCost 是本时段内**已取到**的上游真实扣费合计（原币，A6 为美元）。
+	//
+	// 与 ActualCost 同币种，可直接相减得毛利；本站不做任何汇率换算。
+	// 尚未反查回来的记录不计入（NULL 不参与 SUM），所以它是「已知成本」，
+	// 与 ActualCost 相减得到的是**偏乐观**的毛利上界。
+	UpstreamCost float64 `json:"upstream_cost"`
+	// Profit 是毛利 = ActualCost - UpstreamCost，由后端算好。
+	//
+	// 不在前端相减：同一个数字要出现在顶部卡片、趋势图、明细行三处，
+	// 各算各的迟早漂移成三个不一样的数，那是最难查的一类问题。
+	Profit float64 `json:"profit"`
 }
 
 // ModelStat represents usage statistics for a single model
@@ -283,28 +294,65 @@ type UsageLogFilters struct {
 	BillingType           *int8
 	BillingMode           string
 	UpstreamModelMismatch *bool
-	StartTime             *time.Time
-	EndTime               *time.Time
+	// UpstreamReconciled 按「上游成本是否已反查回来」筛选。
+	//
+	// true  = 已对账（upstream_cost_fetched_at 非空）
+	// false = 未对账（尚未反查到成本）
+	//
+	// ⚠️ false 额外要求 upstream_request_id 非空：没有上游请求 ID 的历史行
+	// （对账能力上线之前的数据，可达数十万条）**本来就无法对账**，
+	// 把它们算进「未对账」只会淹没真正待办的那几条。
+	UpstreamReconciled *bool
+	StartTime          *time.Time
+	EndTime            *time.Time
 	// ExactTotal requests exact COUNT(*) for pagination. Default false for fast large-table paging.
 	ExactTotal bool
+	// ProfitExcludedUserIDs 是「不计入盈亏」的用户名单（内部人员）。
+	//
+	// 语义刻意只作用于**收入**（actual_cost），不作用于**成本**（upstream_cost_original）：
+	// 内部人员的余额由管理员手工调整、并没有真实付款，所以他们的「收入」是假的；
+	// 但他们消耗掉的上游额度是真金白银花出去的，成本必须照实计入。因此这里做的是
+	// 「收入打折、成本照算」，而不是把这些人整行排除——后者会把真实成本一起抹掉，
+	// 让毛利虚高。毛利由 actual_cost - upstream_cost 后端算好，本字段只管收入那一侧。
+	//
+	// 放在结构体末尾是为了不破坏任何按位置初始化的既有字面量。
+	ProfitExcludedUserIDs []int64
 }
 
 // UsageStats represents usage statistics
 type UsageStats struct {
-	TotalRequests            int64          `json:"total_requests"`
-	TotalInputTokens         int64          `json:"total_input_tokens"`
-	TotalOutputTokens        int64          `json:"total_output_tokens"`
-	TotalCacheTokens         int64          `json:"total_cache_tokens"`
-	TotalCacheCreationTokens int64          `json:"total_cache_creation_tokens"`
-	TotalCacheReadTokens     int64          `json:"total_cache_read_tokens"`
-	TotalTokens              int64          `json:"total_tokens"`
-	TotalCost                float64        `json:"total_cost"`
-	TotalActualCost          float64        `json:"total_actual_cost"`
-	TotalAccountCost         *float64       `json:"total_account_cost,omitempty"`
-	AverageDurationMs        float64        `json:"average_duration_ms"`
-	Endpoints                []EndpointStat `json:"endpoints,omitempty"`
-	UpstreamEndpoints        []EndpointStat `json:"upstream_endpoints,omitempty"`
-	EndpointPaths            []EndpointStat `json:"endpoint_paths,omitempty"`
+	TotalRequests            int64    `json:"total_requests"`
+	TotalInputTokens         int64    `json:"total_input_tokens"`
+	TotalOutputTokens        int64    `json:"total_output_tokens"`
+	TotalCacheTokens         int64    `json:"total_cache_tokens"`
+	TotalCacheCreationTokens int64    `json:"total_cache_creation_tokens"`
+	TotalCacheReadTokens     int64    `json:"total_cache_read_tokens"`
+	TotalTokens              int64    `json:"total_tokens"`
+	TotalCost                float64  `json:"total_cost"`
+	TotalActualCost          float64  `json:"total_actual_cost"`
+	TotalAccountCost         *float64 `json:"total_account_cost,omitempty"`
+	// TotalUpstreamCost 是所选范围内**已取到**的上游真实扣费合计（原币，A6 为美元）。
+	//
+	// 注意它是「已知成本」而不是「全部成本」：还没反查回来的记录不计入（NULL 不参与
+	// SUM），因此它只会小于等于真实成本。与 TotalActualCost 相减得到的毛利是**偏乐观**
+	// 的上界——真正的口径由同结构里的 UpstreamCostMissing 提示。
+	//
+	// json:"-" 是有意为之：这个结构体同时被**用户侧**的 /usage/stats 复用，
+	// 而成本与毛利是经营数据，绝不能跟着普通用户的接口一起发出去。
+	// 管理端由 handler 层的 adminUsageStatsResponse 显式带上这几个字段。
+	TotalUpstreamCost float64 `json:"-"`
+	// UpstreamCostMissing 是所选范围内「有上游请求 ID 但尚未取到成本」的记录数。
+	UpstreamCostMissing int64 `json:"-"`
+	// TotalProfit 是毛利 = 实收 - 已知成本。两个金额同为上游计价的原始币种，
+	// 不做任何汇率换算，因此这里是可直接比较的差额。
+	//
+	// 由后端算好而不是让前端相减：同一个数字要在卡片、图表、明细行三处出现，
+	// 各算各的迟早会出现「三处不一致」这种最难查的问题。
+	TotalProfit       float64        `json:"-"`
+	AverageDurationMs float64        `json:"average_duration_ms"`
+	Endpoints         []EndpointStat `json:"endpoints,omitempty"`
+	UpstreamEndpoints []EndpointStat `json:"upstream_endpoints,omitempty"`
+	EndpointPaths     []EndpointStat `json:"endpoint_paths,omitempty"`
 }
 
 // PlatformUsage 表示某用户/某 API key 在单个"有效平台"维度的用量明细。

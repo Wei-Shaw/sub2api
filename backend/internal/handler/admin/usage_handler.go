@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -25,6 +26,9 @@ type UsageHandler struct {
 	apiKeyService  *service.APIKeyService
 	adminService   service.AdminService
 	cleanupService *service.UsageCleanupService
+	// channelRatios 用于给使用记录补上「A6 渠道实时倍率」一列（2026-11-08）。
+	// 可以为 nil（测试或未配置 A6 的场景），取不到时页面显示「—」。
+	channelRatios *service.A6ChannelRatioService
 }
 
 // NewUsageHandler creates a new admin usage handler
@@ -33,12 +37,57 @@ func NewUsageHandler(
 	apiKeyService *service.APIKeyService,
 	adminService service.AdminService,
 	cleanupService *service.UsageCleanupService,
+	channelRatios *service.A6ChannelRatioService,
 ) *UsageHandler {
 	return &UsageHandler{
 		usageService:   usageService,
 		apiKeyService:  apiKeyService,
 		adminService:   adminService,
 		cleanupService: cleanupService,
+		channelRatios:  channelRatios,
+	}
+}
+
+// enrichChannelMultipliers 给这一页记录补上 A6 渠道实时倍率。
+//
+// 每页只对「不同渠道」各查一次（服务内部还有 10 分钟缓存），
+// 取不到的记录保持 nil —— 页面按「—」显示，不能拿 0 顶替
+// （0 的含义是「零倍率渠道」，与「还不知道」正好相反）。
+func (h *UsageHandler) enrichChannelMultipliers(ctx context.Context, rows []dto.AdminUsageLog) {
+	if h.channelRatios == nil || len(rows) == 0 {
+		return
+	}
+	keys := make([]service.A6ChannelRatioKey, 0, len(rows))
+	seen := make(map[service.A6ChannelRatioKey]struct{}, len(rows))
+	for i := range rows {
+		if rows[i].UpstreamChannelID == nil || *rows[i].UpstreamChannelID <= 0 {
+			continue
+		}
+		model := strings.TrimSpace(rows[i].Model)
+		if model == "" {
+			continue
+		}
+		k := service.A6ChannelRatioKey{ChannelID: *rows[i].UpstreamChannelID, Model: model}
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		keys = append(keys, k)
+	}
+	if len(keys) == 0 {
+		return
+	}
+	ratios := h.channelRatios.Resolve(ctx, keys)
+	for i := range rows {
+		if rows[i].UpstreamChannelID == nil {
+			continue
+		}
+		v, ok := ratios[fmt.Sprintf("%d|%s", *rows[i].UpstreamChannelID, strings.TrimSpace(rows[i].Model))]
+		if !ok {
+			continue
+		}
+		multiplier := v
+		rows[i].UpstreamChannelMultiplier = &multiplier
 	}
 }
 
@@ -159,6 +208,18 @@ func (h *UsageHandler) List(c *gin.Context) {
 		upstreamModelMismatch = &value
 	}
 
+	// 对账状态筛选（true=已对账 / false=未对账）。
+	// 语义见 usagestats.UsageLogQuery.UpstreamReconciled。
+	var upstreamReconciled *bool
+	if raw := strings.TrimSpace(c.Query("upstream_reconciled")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			response.BadRequest(c, "Invalid upstream_reconciled value, use true or false")
+			return
+		}
+		upstreamReconciled = &value
+	}
+
 	// Parse date range
 	var startTime, endTime *time.Time
 	userTZ := c.Query("timezone") // Get user's timezone from request
@@ -202,6 +263,7 @@ func (h *UsageHandler) List(c *gin.Context) {
 		BillingType:           billingType,
 		BillingMode:           billingMode,
 		UpstreamModelMismatch: upstreamModelMismatch,
+		UpstreamReconciled:    upstreamReconciled,
 		StartTime:             startTime,
 		EndTime:               endTime,
 		ExactTotal:            exactTotal,
@@ -213,7 +275,13 @@ func (h *UsageHandler) List(c *gin.Context) {
 		return
 	}
 
-	response.Paginated(c, adminUsageLogResponses(c, records), result.Total, page, pageSize)
+	// 「渠道倍率」列：值不在本地，是拿 upstream_channel_id 去 A6 公开接口现查的。
+	// 只给完整管理员补（受限视图那一支是 gin.H，不含这些上游字段）。
+	responses := adminUsageLogResponses(c, records)
+	if rows, ok := responses.([]dto.AdminUsageLog); ok {
+		h.enrichChannelMultipliers(c.Request.Context(), rows)
+	}
+	response.Paginated(c, responses, result.Total, page, pageSize)
 }
 
 // Stats handles getting usage statistics with filters
@@ -306,6 +374,18 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 		upstreamModelMismatch = &value
 	}
 
+	// 对账状态筛选（true=已对账 / false=未对账）。
+	// 语义见 usagestats.UsageLogQuery.UpstreamReconciled。
+	var upstreamReconciled *bool
+	if raw := strings.TrimSpace(c.Query("upstream_reconciled")); raw != "" {
+		value, err := strconv.ParseBool(raw)
+		if err != nil {
+			response.BadRequest(c, "Invalid upstream_reconciled value, use true or false")
+			return
+		}
+		upstreamReconciled = &value
+	}
+
 	// Parse date range
 	userTZ := c.Query("timezone")
 	now := timezone.NowInUserLocation(userTZ)
@@ -357,6 +437,7 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 		BillingType:           billingType,
 		BillingMode:           billingMode,
 		UpstreamModelMismatch: upstreamModelMismatch,
+		UpstreamReconciled:    upstreamReconciled,
 		StartTime:             &startTime,
 		EndTime:               &endTime,
 	}
@@ -381,7 +462,39 @@ func (h *UsageHandler) Stats(c *gin.Context) {
 		c.Header("X-Usage-Stats-Cache", cacheStatusValue(hit))
 	}
 
-	response.Success(c, stats)
+	response.Success(c, newAdminUsageStatsResponse(stats))
+}
+
+// adminUsageStatsResponse 是 /admin/usage/stats 的响应体。
+//
+// 为什么不直接把 usagestats.UsageStats 发出去：那个结构体同时被**用户侧**的
+// /usage/stats 复用，而成本与毛利是经营数据，不能出现在普通用户的接口里。
+// 因此在共享结构体上把这些字段标成 json:"-"（内部计算照旧、绝不自动序列化），
+// 只在这里显式补进管理端响应。
+//
+// 这不是理论风险：改动前它确实从用户接口一起漏了出去，是接口契约测试
+// （TestAPIContracts）比对完整响应体时才把它逼出来的——只靠肉眼看 handler
+// 是发现不了的，因为那段代码只写了一句 response.Success(c, stats)。
+type adminUsageStatsResponse struct {
+	*usagestats.UsageStats
+	// TotalUpstreamCost 上游真实扣费合计（原币，A6 为美元），只含已反查到的。
+	TotalUpstreamCost float64 `json:"total_upstream_cost"`
+	// UpstreamCostMissing 尚未反查到成本的记录数；>0 时毛利是偏乐观的下界。
+	UpstreamCostMissing int64 `json:"upstream_cost_missing"`
+	// TotalProfit 毛利 = 实收 − 已知成本。
+	TotalProfit float64 `json:"total_profit"`
+}
+
+func newAdminUsageStatsResponse(stats *usagestats.UsageStats) *adminUsageStatsResponse {
+	if stats == nil {
+		return nil
+	}
+	return &adminUsageStatsResponse{
+		UsageStats:          stats,
+		TotalUpstreamCost:   stats.TotalUpstreamCost,
+		UpstreamCostMissing: stats.UpstreamCostMissing,
+		TotalProfit:         stats.TotalProfit,
+	}
 }
 
 // SearchUsers handles searching users by email keyword

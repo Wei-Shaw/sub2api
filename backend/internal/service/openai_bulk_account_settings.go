@@ -135,6 +135,10 @@ func normalizeBulkOpenAIResponsesMode(raw any) (any, bool, error) {
 	case openai_compat.ResponsesSupportModeForceResponses,
 		openai_compat.ResponsesSupportModeForceChatCompletions:
 		return mode, true, nil
+	case openai_compat.ResponsesSupportModePassthrough:
+		// 直通模式不是"强制某一个方向"：两个方向都按入站协议走各自原生端点，
+		// 因此不计入 forcedResponsesMode。
+		return mode, false, nil
 	default:
 		return nil, false, invalidBulkOpenAIResponsesMode()
 	}
@@ -143,7 +147,7 @@ func normalizeBulkOpenAIResponsesMode(raw any) (any, bool, error) {
 func invalidBulkOpenAIResponsesMode() error {
 	return infraerrors.BadRequest(
 		"OPENAI_RESPONSES_MODE_INVALID",
-		"openai_responses_mode must be auto, force_responses, force_chat_completions, or null",
+		"openai_responses_mode must be auto, force_responses, force_chat_completions, passthrough, or null",
 	)
 }
 

@@ -70,7 +70,7 @@ func (s *AccountTestService) testCNProviderAdaptiveAnthropicConnection(c *gin.Co
 	}
 	apiURL := strings.TrimRight(baseURL, "/") + "/v1/messages"
 
-	payload, err := createTestPayload(testModelID)
+	payload, err := createClaudeTestPayloadForIntelligenceCheck(c, testModelID)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create adaptive Anthropic test payload")
 	}
@@ -100,6 +100,8 @@ func (s *AccountTestService) testCNProviderAdaptiveAnthropicConnection(c *gin.Co
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Adaptive Anthropic endpoint request failed: %s", err.Error()))
 	}
 	defer func() { _ = resp.Body.Close() }()
+	captureIntelligenceCheckUpstreamRequestID(c, account, resp.Header)
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		errMsg := fmt.Sprintf("Adaptive Anthropic endpoint returned %d: %s", resp.StatusCode, string(body))
@@ -140,6 +142,7 @@ func (s *AccountTestService) processCNProviderAdaptiveAnthropicStream(c *gin.Con
 		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
 			continue
 		}
+		markIntelligenceCheckUsage(c, data)
 		switch eventType, _ := data["type"].(string); eventType {
 		case "content_block_delta":
 			if delta, ok := data["delta"].(map[string]any); ok {
@@ -169,7 +172,7 @@ func (s *AccountTestService) testCNProviderAdaptiveResponsesConnection(c *gin.Co
 	}
 	apiURL := buildOpenAIResponsesURLForPlatform(account.Platform, baseURL)
 
-	payload := createOpenAITestPayload(testModelID, false)
+	payload := createOpenAIResponsesPayloadForIntelligenceCheck(c, testModelID, false)
 	// DeepSeek / Kimi native Responses endpoints are stateless and do not need
 	// the OpenAI probe's synthetic instructions.
 	delete(payload, "instructions")
@@ -195,6 +198,8 @@ func (s *AccountTestService) testCNProviderAdaptiveResponsesConnection(c *gin.Co
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Adaptive Responses endpoint request failed: %s", err.Error()))
 	}
 	defer func() { _ = resp.Body.Close() }()
+	captureIntelligenceCheckUpstreamRequestID(c, account, resp.Header)
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		errMsg := fmt.Sprintf("Adaptive Responses endpoint returned %d: %s", resp.StatusCode, string(body))
@@ -255,7 +260,7 @@ func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, a
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	payload, err := createTestPayload(testModelID)
+	payload, err := createClaudeTestPayloadForIntelligenceCheck(c, testModelID)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create Anthropic test payload")
 	}
@@ -285,6 +290,8 @@ func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, a
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Anthropic endpoint request failed: %s", err.Error()))
 	}
 	defer func() { _ = resp.Body.Close() }()
+	captureIntelligenceCheckUpstreamRequestID(c, account, resp.Header)
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		errMsg := fmt.Sprintf("Anthropic endpoint returned %d: %s", resp.StatusCode, string(body))

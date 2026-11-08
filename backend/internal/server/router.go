@@ -113,8 +113,8 @@ func registerRoutes(
 	cfg *config.Config,
 	redisClient *redis.Client,
 ) {
-	// 通用路由（健康检查、状态等）
-	routes.RegisterCommonRoutes(r)
+	// 通用路由（健康检查、状态、对外公开的价格接口等）
+	routes.RegisterCommonRoutes(r, h)
 
 	// API v1
 	v1 := r.Group("/api/v1")

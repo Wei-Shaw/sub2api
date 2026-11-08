@@ -44,7 +44,21 @@ func expectBackupMigrationUnlock(mock sqlmock.Sqlmock) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 }
 
+// requirePgDumpShell 在系统没有 sh 时跳过用例。
+//
+// 这几个用例用 `sh -c` 假冒 pg_dump（借它产出 stdout 与任意退出码），
+// 被测的锁逻辑本身与平台无关，但 Windows 默认不带 sh。
+// 这里按「实际能力」而非「操作系统」判定：只要 PATH 里有 sh
+// （例如装了 Git Bash 并把它加进 PATH），用例照常运行，不损失覆盖率。
+func requirePgDumpShell(t *testing.T) {
+	t.Helper()
+	if _, err := exec.LookPath("sh"); err != nil {
+		t.Skip("这些用例需要 sh 来假冒 pg_dump；Windows 默认没有 sh，装上 Git Bash 并加入 PATH 即可运行")
+	}
+}
+
 func TestPgDumperHoldsMigrationLockThroughReaderClose(t *testing.T) {
+	requirePgDumpShell(t)
 	var mock sqlmock.Sqlmock
 	commandCreated := false
 	dumper, createdMock := newTestPgDumper(t, func(ctx context.Context, name string, args ...string) *exec.Cmd {
@@ -100,6 +114,7 @@ func TestPgDumperReleasesMigrationLockWhenProcessStartFails(t *testing.T) {
 }
 
 func TestPgDumperReleasesMigrationLockWhenProcessFails(t *testing.T) {
+	requirePgDumpShell(t)
 	dumper, mock := newTestPgDumper(t, func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
 		return exec.CommandContext(ctx, "sh", "-c", "printf partial-backup; exit 7")
 	})
@@ -116,6 +131,7 @@ func TestPgDumperReleasesMigrationLockWhenProcessFails(t *testing.T) {
 }
 
 func TestPgDumperReportsUnlockFailureAndDiscardsConnection(t *testing.T) {
+	requirePgDumpShell(t)
 	dumper, mock := newTestPgDumper(t, func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
 		return exec.CommandContext(ctx, "sh", "-c", "printf backup-data")
 	})

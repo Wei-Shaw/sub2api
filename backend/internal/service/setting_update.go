@@ -420,6 +420,50 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyChannelMonitorShowQuota] = strconv.FormatBool(settings.ChannelMonitorShowQuota)
 	updates[SettingKeyChannelMonitorHideUserRanking] = strconv.FormatBool(settings.ChannelMonitorHideUserRanking)
 
+	// 智力检测（鹈鹕测试）全局配置：越界值一律回退默认，
+	// 否则一个 0 间隔会写进库里并让跑测连续触发。
+	updates[SettingKeyIntelligenceCheckEnabled] = strconv.FormatBool(settings.IntelligenceCheckEnabled)
+	updates[SettingKeyIntelligenceCheckIntervalMinutes] = strconv.Itoa(clampIntelligenceCheckSetting(
+		settings.IntelligenceCheckIntervalMinutes, IntelligenceCheckDefaultIntervalMinutes,
+		IntelligenceCheckMinIntervalMinutes, IntelligenceCheckMaxIntervalMinutes,
+	))
+	updates[SettingKeyIntelligenceCheckModelID] = strings.TrimSpace(settings.IntelligenceCheckModelID)
+	updates[SettingKeyIntelligenceCheckReasoningEffort] = strings.TrimSpace(settings.IntelligenceCheckReasoningEffort)
+	updates[SettingKeyIntelligenceCheckMaxConcurrency] = strconv.Itoa(clampIntelligenceCheckSetting(
+		settings.IntelligenceCheckMaxConcurrency, IntelligenceCheckDefaultMaxConcurrency,
+		IntelligenceCheckMinMaxConcurrency, IntelligenceCheckMaxMaxConcurrency,
+	))
+	updates[SettingKeyIntelligenceCheckRunRetryCount] = strconv.Itoa(clampIntelligenceCheckSetting(
+		settings.IntelligenceCheckRunRetryCount, IntelligenceCheckDefaultRunRetryCount,
+		0, IntelligenceCheckMaxRunRetryCount,
+	))
+	updates[SettingKeyIntelligenceCheckRunRetryIntervalSecs] = strconv.Itoa(clampIntelligenceCheckSetting(
+		settings.IntelligenceCheckRunRetryIntervalSeconds, IntelligenceCheckDefaultRunRetryIntervalSec,
+		IntelligenceCheckMinRunRetryIntervalSec, IntelligenceCheckMaxRunRetryIntervalSec,
+	))
+	updates[SettingKeyIntelligenceCheckAccountRetryCount] = strconv.Itoa(clampIntelligenceCheckSetting(
+		settings.IntelligenceCheckAccountRetryCount, IntelligenceCheckDefaultAccountRetryCount,
+		0, IntelligenceCheckMaxAccountRetryCount,
+	))
+	updates[SettingKeyIntelligenceCheckAccountRetryMinutes] = strconv.Itoa(clampIntelligenceCheckSetting(
+		settings.IntelligenceCheckAccountRetryIntervalMinutes, IntelligenceCheckDefaultAccountRetryIntervalMin,
+		IntelligenceCheckMinAccountRetryIntervalMin, IntelligenceCheckMaxAccountRetryIntervalMin,
+	))
+	updates[SettingKeyIntelligenceCheckTimeoutSeconds] = strconv.Itoa(clampIntelligenceCheckSetting(
+		settings.IntelligenceCheckTimeoutSeconds, IntelligenceCheckDefaultTimeoutSeconds,
+		IntelligenceCheckMinTimeoutSeconds, IntelligenceCheckMaxTimeoutSeconds,
+	))
+	updates[SettingKeyIntelligenceCheckMaxTokens] = strconv.Itoa(clampIntelligenceCheckSetting(
+		settings.IntelligenceCheckMaxTokens, IntelligenceCheckDefaultMaxTokens,
+		IntelligenceCheckMinMaxTokens, IntelligenceCheckMaxMaxTokens,
+	))
+	updates[SettingKeyIntelligenceCheckMaxRunsPerAccount] = strconv.Itoa(clampIntelligenceCheckSetting(
+		settings.IntelligenceCheckMaxRunsPerAccount, IntelligenceCheckDefaultMaxRunsPerAccount,
+		IntelligenceCheckMinMaxRunsPerAccount, IntelligenceCheckMaxMaxRunsPerAccount,
+	))
+	updates[SettingKeyIntelligenceCheckStatusSyncEnabled] = strconv.FormatBool(settings.IntelligenceCheckStatusSyncEnabled)
+	updates[SettingKeyIntelligenceCheckStreamEnabled] = strconv.FormatBool(settings.IntelligenceCheckStreamEnabled)
+
 	// Grok model mapping policy
 	if v := strings.TrimSpace(settings.GrokDefaultTextModel); v != "" {
 		updates[SettingKeyGrokDefaultTextModel] = v
@@ -437,6 +481,7 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 
 	// Model plaza feature switches + description
 	updates[SettingKeyModelPlazaEnabled] = strconv.FormatBool(settings.ModelPlazaEnabled)
+	updates[SettingKeyModelPlazaProEnabled] = strconv.FormatBool(settings.ModelPlazaProEnabled)
 	updates[SettingKeyModelPlazaRequireAuth] = strconv.FormatBool(settings.ModelPlazaRequireAuth)
 	updates[SettingKeyModelPlazaDescription] = settings.ModelPlazaDescription
 	updates[SettingKeyPluginManagementEnabled] = strconv.FormatBool(settings.PluginManagementEnabled)

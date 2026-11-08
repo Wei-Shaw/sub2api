@@ -5,6 +5,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"regexp"
@@ -14,13 +15,33 @@ import (
 	"time"
 )
 
-// swapMonitorHTTPClient 临时替换 monitorHTTPClient 为不带 SSRF 校验的普通 client，
+// swapMonitorHTTPClient 临时替换共享 client 为不带 SSRF 校验的普通 client，
 // 让 httptest (127.0.0.1) 能连通。测试结束后恢复。
+//
+// client 现在按参数指纹懒重建，所以替换缓存的同时要把指纹一起钉住，
+// 否则下一次 monitorClientFor() 会因为指纹不匹配而把测试 client 重建掉。
 func swapMonitorHTTPClient(t *testing.T) {
 	t.Helper()
-	orig := monitorHTTPClient
-	monitorHTTPClient = &http.Client{Timeout: 5 * time.Second}
-	t.Cleanup(func() { monitorHTTPClient = orig })
+	monitorClientMu.Lock()
+	origCache, origPing, origFP := monitorClientCache, monitorPingCache, monitorClientFingerprint
+	testClient := &http.Client{Timeout: 5 * time.Second}
+	monitorClientCache, monitorPingCache = testClient, testClient
+	monitorClientFingerprint = currentMonitorFingerprintForTest()
+	monitorClientMu.Unlock()
+	t.Cleanup(func() {
+		monitorClientMu.Lock()
+		monitorClientCache, monitorPingCache, monitorClientFingerprint = origCache, origPing, origFP
+		monitorClientMu.Unlock()
+	})
+}
+
+// currentMonitorFingerprintForTest 复刻 monitorClientFor 内部的指纹算法，
+// 使测试替换的 client 不会被立即重建。
+func currentMonitorFingerprintForTest() string {
+	t := currentMonitorTuning()
+	return fmt.Sprintf("%d|%d|%d|%d",
+		t.RequestTimeoutSeconds, t.ResponseHeaderTimeoutSeconds,
+		t.IdleConnTimeoutSeconds, t.MaxIdleConnsPerHost)
 }
 
 // captureHandler 把每次收到的请求 body 和 headers 存起来，测试断言用。

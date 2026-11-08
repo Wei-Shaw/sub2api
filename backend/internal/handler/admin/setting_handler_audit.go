@@ -582,6 +582,48 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.ChannelMonitorDefaultIntervalSeconds != after.ChannelMonitorDefaultIntervalSeconds {
 		changed = append(changed, "channel_monitor_default_interval_seconds")
 	}
+	if before.IntelligenceCheckEnabled != after.IntelligenceCheckEnabled {
+		changed = append(changed, "intelligence_check_enabled")
+	}
+	if before.IntelligenceCheckIntervalMinutes != after.IntelligenceCheckIntervalMinutes {
+		changed = append(changed, "intelligence_check_interval_minutes")
+	}
+	if before.IntelligenceCheckModelID != after.IntelligenceCheckModelID {
+		changed = append(changed, "intelligence_check_model_id")
+	}
+	if before.IntelligenceCheckReasoningEffort != after.IntelligenceCheckReasoningEffort {
+		changed = append(changed, "intelligence_check_reasoning_effort")
+	}
+	if before.IntelligenceCheckMaxConcurrency != after.IntelligenceCheckMaxConcurrency {
+		changed = append(changed, "intelligence_check_max_concurrency")
+	}
+	if before.IntelligenceCheckRunRetryCount != after.IntelligenceCheckRunRetryCount {
+		changed = append(changed, "intelligence_check_run_retry_count")
+	}
+	if before.IntelligenceCheckRunRetryIntervalSeconds != after.IntelligenceCheckRunRetryIntervalSeconds {
+		changed = append(changed, "intelligence_check_run_retry_interval_seconds")
+	}
+	if before.IntelligenceCheckAccountRetryCount != after.IntelligenceCheckAccountRetryCount {
+		changed = append(changed, "intelligence_check_account_retry_count")
+	}
+	if before.IntelligenceCheckAccountRetryIntervalMinutes != after.IntelligenceCheckAccountRetryIntervalMinutes {
+		changed = append(changed, "intelligence_check_account_retry_interval_minutes")
+	}
+	if before.IntelligenceCheckTimeoutSeconds != after.IntelligenceCheckTimeoutSeconds {
+		changed = append(changed, "intelligence_check_timeout_seconds")
+	}
+	if before.IntelligenceCheckMaxTokens != after.IntelligenceCheckMaxTokens {
+		changed = append(changed, "intelligence_check_max_tokens")
+	}
+	if before.IntelligenceCheckMaxRunsPerAccount != after.IntelligenceCheckMaxRunsPerAccount {
+		changed = append(changed, "intelligence_check_max_runs_per_account")
+	}
+	if before.IntelligenceCheckStatusSyncEnabled != after.IntelligenceCheckStatusSyncEnabled {
+		changed = append(changed, "intelligence_check_status_sync_enabled")
+	}
+	if before.IntelligenceCheckStreamEnabled != after.IntelligenceCheckStreamEnabled {
+		changed = append(changed, "intelligence_check_stream_enabled")
+	}
 	if before.AvailableChannelsEnabled != after.AvailableChannelsEnabled {
 		changed = append(changed, "available_channels_enabled")
 	}
@@ -590,6 +632,9 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.ModelPlazaEnabled != after.ModelPlazaEnabled {
 		changed = append(changed, "model_plaza_enabled")
+	}
+	if before.ModelPlazaProEnabled != after.ModelPlazaProEnabled {
+		changed = append(changed, "model_plaza_pro_enabled")
 	}
 	if before.ModelPlazaRequireAuth != after.ModelPlazaRequireAuth {
 		changed = append(changed, "model_plaza_require_auth")

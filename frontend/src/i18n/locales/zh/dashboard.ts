@@ -716,6 +716,75 @@ export default {
     }
   },
 
+  // Model Plaza Pro（模型广场 / 渠道状态 V2 / 可用渠道 融合页）
+  modelPlazaPro: {
+    title: '模型广场 Pro',
+    description:
+      '模型广场、渠道状态与可用渠道三合一：一个渠道监控一张卡，卡内是该分组的健康脉冲走势与全部模型的定价明细。',
+    refresh: '刷新',
+    timeRange: '时间范围',
+    availability: '可用率',
+    availabilityHint: '区间内真实用户请求的成功率（分母 = 用户请求数）',
+    availabilityProbe: '探测成功率',
+    availabilityProbeHint:
+      '区间内主动探测的成功率（分母 = 探测次数，与用户请求无关）。当前渠道监控运行在 V1 主动探测模式，该数字不能与被动模式下的请求成功率比较。',
+    availabilityProbeRangeHint:
+      '此处的时间档位只作用于「探测成功率」的统计；下方脉冲色块始终显示最近 300 次探测，与所选档位无关。',
+    noData: '暂无数据',
+    noMonitor: '无监控数据',
+    loadFailed: '模型广场 Pro 加载失败',
+    monitorLoadFailed:
+      '健康脉冲需要「渠道监控」开关开启且监控模式为 V2，当前不可用；模型卡片与定价浏览不受影响。',
+    plazaLoadFailed: '模型广场接口加载失败，分组名与定价暂时不可用；健康脉冲不受影响。',
+    retry: '重试',
+    disabledTitle: '模型广场 Pro 未启用',
+    disabled: '管理员尚未在「系统设置 → 功能开关」中开启模型广场 Pro。',
+    plazaGateTitle: '依赖的「模型广场」开关未开启',
+    plazaGate:
+      '本页的分组、模型与定价来自官方模型广场接口，该接口在「系统设置 → 功能开关 → 模型广场」关闭时不可用。注意：模型广场 Pro 本身是开启的。请开启「模型广场」开关，或回功能开关页重新勾选一次「模型广场 Pro」，会自动联动开启它依赖的数据源。',
+    empty: '暂无可展示的渠道监控',
+    emptyFiltered: '当前筛选条件下没有匹配的渠道监控',
+    ranges: {
+      '30m-1m': '近 30 分钟',
+      '1h-1m': '近 1 小时',
+      '12h-5m': '近 12 小时',
+      '24h-5m': '近 24 小时',
+      '7d-1h': '近 7 天',
+      '30d-12h': '近 30 天'
+    },
+    filters: {
+      platform: '平台',
+      allPlatforms: '全部平台',
+      group: '分组',
+      allGroups: '全部分组',
+      clear: '重置'
+    },
+    legend: {
+      aria: '可用率图例',
+      healthy: '健康',
+      warning: '波动',
+      critical: '异常'
+    },
+    badge: {
+      exclusive: '专属',
+      subscription: '订阅'
+    },
+    group: {
+      models: '{count} 个模型'
+    },
+    pulse: {
+      aria: '{model} 的健康脉冲',
+      groupAria: '{group} 的健康脉冲',
+      checkedAt: '{time} 探测',
+      pointCount: '近 {count} 次探测'
+    },
+    pricing: {
+      show: '查看模型定价',
+      showAll: '查看全部 {count} 个模型的定价',
+      hide: '收起模型定价'
+    }
+  },
+
   affiliate: {
     title: '邀请返利',
     description: '邀请新用户注册，并将返利额度转入账户余额',

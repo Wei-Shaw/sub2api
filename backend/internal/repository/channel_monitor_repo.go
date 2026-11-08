@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
+	"github.com/Wei-Shaw/sub2api/ent/channelmonitordailyrollup"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -48,6 +50,7 @@ func (r *channelMonitorRepository) Create(ctx context.Context, m *service.Channe
 		SetPrimaryModel(m.PrimaryModel).
 		SetExtraModels(emptySliceIfNil(m.ExtraModels)).
 		SetGroupName(m.GroupName).
+		SetSortOrder(m.SortOrder).
 		SetEnabled(m.Enabled).
 		SetIntervalSeconds(m.IntervalSeconds).
 		SetJitterSeconds(m.JitterSeconds).
@@ -60,6 +63,9 @@ func (r *channelMonitorRepository) Create(ctx context.Context, m *service.Channe
 	}
 	if m.AccountID != nil {
 		builder = builder.SetAccountID(*m.AccountID)
+	}
+	if m.GroupID != nil {
+		builder = builder.SetGroupID(*m.GroupID)
 	}
 	if m.BodyOverride != nil {
 		builder = builder.SetBodyOverride(m.BodyOverride)
@@ -120,6 +126,7 @@ func (r *channelMonitorRepository) Update(ctx context.Context, m *service.Channe
 		SetPrimaryModel(m.PrimaryModel).
 		SetExtraModels(emptySliceIfNil(m.ExtraModels)).
 		SetGroupName(m.GroupName).
+		SetSortOrder(m.SortOrder).
 		SetEnabled(m.Enabled).
 		SetIntervalSeconds(m.IntervalSeconds).
 		SetJitterSeconds(m.JitterSeconds).
@@ -135,6 +142,12 @@ func (r *channelMonitorRepository) Update(ctx context.Context, m *service.Channe
 		updater = updater.SetAccountID(*m.AccountID)
 	} else {
 		updater = updater.ClearAccountID()
+	}
+	// 与 AccountID 同构：repo 层 nil 即清空，「不更新」由 service 层提前拦住。
+	if m.GroupID != nil {
+		updater = updater.SetGroupID(*m.GroupID)
+	} else {
+		updater = updater.ClearGroupID()
 	}
 	if m.BodyOverride != nil {
 		updater = updater.SetBodyOverride(m.BodyOverride)
@@ -189,7 +202,7 @@ func (r *channelMonitorRepository) List(ctx context.Context, params service.Chan
 	}
 
 	rows, err := q.
-		Order(dbent.Desc(channelmonitor.FieldID)).
+		Order(dbent.Asc(channelmonitor.FieldSortOrder), dbent.Asc(channelmonitor.FieldID)).
 		Offset((page - 1) * pageSize).
 		Limit(pageSize).
 		All(ctx)
@@ -230,6 +243,42 @@ func (r *channelMonitorRepository) MarkChecked(ctx context.Context, id int64, ch
 	return nil
 }
 
+// monitorUTF8Replacement 是替换非法 UTF-8 字节用的替换字符（U+FFFD）。
+const monitorUTF8Replacement = "\uFFFD"
+
+// textColumnSafe 保证送进 PostgreSQL text 列的字节一定合法。
+//
+// 上游返回的错误文本可能含被截断或被污染的字节，而 PostgreSQL 会**拒收整批** INSERT；
+// service 层已在文本构造处清洗，这里是写库边界的最后一道防线 —— 任何调用方都不该
+// 因为一行脏文本而让整批探测点静默消失。
+func textColumnSafe(s string) string {
+	if utf8.ValidString(s) {
+		return s
+	}
+	return strings.ToValidUTF8(s, monitorUTF8Replacement)
+}
+
+// buildHistoryCreate 组装单行历史 INSERT。
+// status 是包内常量枚举，不做清洗：取值非法时应当如实报错，而不是被悄悄改成别的值。
+func buildHistoryCreate(client *dbent.Client, row *service.ChannelMonitorHistoryRow) *dbent.ChannelMonitorHistoryCreate {
+	c := client.ChannelMonitorHistory.Create().
+		SetMonitorID(row.MonitorID).
+		SetModel(textColumnSafe(row.Model)).
+		SetStatus(channelmonitorhistory.Status(row.Status)).
+		SetMessage(textColumnSafe(row.Message)).
+		SetCheckedAt(row.CheckedAt)
+	if row.LatencyMs != nil {
+		c = c.SetLatencyMs(*row.LatencyMs)
+	}
+	if row.PingLatencyMs != nil {
+		c = c.SetPingLatencyMs(*row.PingLatencyMs)
+	}
+	if row.Quota != nil {
+		c = c.SetQuota(row.Quota)
+	}
+	return c
+}
+
 func (r *channelMonitorRepository) InsertHistoryBatch(ctx context.Context, rows []*service.ChannelMonitorHistoryRow) error {
 	if len(rows) == 0 {
 		return nil
@@ -237,33 +286,65 @@ func (r *channelMonitorRepository) InsertHistoryBatch(ctx context.Context, rows 
 	client := clientFromContext(ctx, r.client)
 	bulk := make([]*dbent.ChannelMonitorHistoryCreate, 0, len(rows))
 	for _, row := range rows {
-		c := client.ChannelMonitorHistory.Create().
-			SetMonitorID(row.MonitorID).
-			SetModel(row.Model).
-			SetStatus(channelmonitorhistory.Status(row.Status)).
-			SetMessage(row.Message).
-			SetCheckedAt(row.CheckedAt)
-		if row.LatencyMs != nil {
-			c = c.SetLatencyMs(*row.LatencyMs)
-		}
-		if row.PingLatencyMs != nil {
-			c = c.SetPingLatencyMs(*row.PingLatencyMs)
-		}
-		if row.Quota != nil {
-			c = c.SetQuota(row.Quota)
-		}
-		bulk = append(bulk, c)
+		bulk = append(bulk, buildHistoryCreate(client, row))
 	}
 	if _, err := client.ChannelMonitorHistory.CreateBulk(bulk...).Save(ctx); err != nil {
-		return fmt.Errorf("insert history bulk: %w", err)
+		// 整批失败时降级为逐行写入：单行毒数据不该让同一批里其余健康的探测点一起陪葬。
+		return insertHistoryRowByRow(ctx, client, rows, err)
 	}
 	return nil
+}
+
+// insertHistoryRowByRow 逐行重试，把所有失败行汇总成一个错误返回。
+// 全部成功时返回 nil —— 数据已完整落库，调用方无需感知批量路径曾经失败。
+func insertHistoryRowByRow(
+	ctx context.Context,
+	client *dbent.Client,
+	rows []*service.ChannelMonitorHistoryRow,
+	batchErr error,
+) error {
+	var failed []string
+	for _, row := range rows {
+		if _, err := buildHistoryCreate(client, row).Save(ctx); err != nil {
+			failed = append(failed, fmt.Sprintf("model=%q: %v", row.Model, err))
+		}
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	return fmt.Errorf("insert history bulk failed (%v); row-by-row fallback dropped %d/%d rows: %s",
+		batchErr, len(failed), len(rows), strings.Join(failed, "; "))
 }
 
 // DeleteHistoryBefore 物理删 checked_at < before 的明细，分批 channelMonitorPruneBatchSize 行一批，
 // 避免单事务删除过多引起锁/WAL 压力。借助 (checked_at) 索引定位小批 id，再按 id 删。
 func (r *channelMonitorRepository) DeleteHistoryBefore(ctx context.Context, before time.Time) (int64, error) {
 	return deleteChannelMonitorBatched(ctx, r.db, channelMonitorPruneHistorySQL, before)
+}
+
+// DeleteHistoryByMonitor 物理删某个监控的全部探测明细，返回删除行数。
+// 供管理端"清除数据"使用：单个监控的历史量受保留策略约束，用一次 DELETE 即可，
+// 不需要像 DeleteHistoryBefore 那样按 id 分批（分批是为了跨全部监控清理大表）。
+func (r *channelMonitorRepository) DeleteHistoryByMonitor(ctx context.Context, monitorID int64) (int64, error) {
+	deleted, err := r.client.ChannelMonitorHistory.Delete().
+		Where(channelmonitorhistory.MonitorIDEQ(monitorID)).
+		Exec(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("delete histories of monitor %d: %w", monitorID, err)
+	}
+	return int64(deleted), nil
+}
+
+// DeleteRollupsByMonitor 物理删某个监控的全部每日聚合，返回删除行数。
+// 与 DeleteHistoryByMonitor 配对：明细和聚合一起清，该渠道的可用率/延迟才会真正归零。
+func (r *channelMonitorRepository) DeleteRollupsByMonitor(ctx context.Context, monitorID int64) (int64, error) {
+	deleted, err := r.client.ChannelMonitorDailyRollup.Delete().
+		Where(channelmonitordailyrollup.MonitorIDEQ(monitorID)).
+		Exec(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("delete rollups of monitor %d: %w", monitorID, err)
+	}
+	return int64(deleted), nil
 }
 
 // ListHistory 按 checked_at 倒序返回某个监控的最近 N 条历史记录。
@@ -779,6 +860,7 @@ func entToServiceMonitor(row *dbent.ChannelMonitor) *service.ChannelMonitor {
 		PrimaryModel:         row.PrimaryModel,
 		ExtraModels:          extras,
 		GroupName:            row.GroupName,
+		SortOrder:            row.SortOrder,
 		Enabled:              row.Enabled,
 		IntervalSeconds:      row.IntervalSeconds,
 		JitterSeconds:        row.JitterSeconds,
@@ -799,6 +881,10 @@ func entToServiceMonitor(row *dbent.ChannelMonitor) *service.ChannelMonitor {
 	if row.AccountID != nil {
 		id := *row.AccountID
 		out.AccountID = &id
+	}
+	if row.GroupID != nil {
+		id := *row.GroupID
+		out.GroupID = &id
 	}
 	return out
 }

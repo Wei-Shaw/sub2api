@@ -35,6 +35,10 @@ const (
 	FieldProductName = "product_name"
 	// FieldForSale holds the string denoting the for_sale field in the database.
 	FieldForSale = "for_sale"
+	// FieldPurchaseLimitEnabled holds the string denoting the purchase_limit_enabled field in the database.
+	FieldPurchaseLimitEnabled = "purchase_limit_enabled"
+	// FieldPurchaseLimitCount holds the string denoting the purchase_limit_count field in the database.
+	FieldPurchaseLimitCount = "purchase_limit_count"
 	// FieldSortOrder holds the string denoting the sort_order field in the database.
 	FieldSortOrder = "sort_order"
 	// FieldCreatedAt holds the string denoting the created_at field in the database.
@@ -59,6 +63,8 @@ var Columns = []string{
 	FieldFeatures,
 	FieldProductName,
 	FieldForSale,
+	FieldPurchaseLimitEnabled,
+	FieldPurchaseLimitCount,
 	FieldSortOrder,
 	FieldCreatedAt,
 	FieldUpdatedAt,
@@ -97,6 +103,10 @@ var (
 	ProductNameValidator func(string) error
 	// DefaultForSale holds the default value on creation for the "for_sale" field.
 	DefaultForSale bool
+	// DefaultPurchaseLimitEnabled holds the default value on creation for the "purchase_limit_enabled" field.
+	DefaultPurchaseLimitEnabled bool
+	// DefaultPurchaseLimitCount holds the default value on creation for the "purchase_limit_count" field.
+	DefaultPurchaseLimitCount int
 	// DefaultSortOrder holds the default value on creation for the "sort_order" field.
 	DefaultSortOrder int
 	// DefaultCreatedAt holds the default value on creation for the "created_at" field.
@@ -168,6 +178,16 @@ func ByProductName(opts ...sql.OrderTermOption) OrderOption {
 // ByForSale orders the results by the for_sale field.
 func ByForSale(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldForSale, opts...).ToFunc()
+}
+
+// ByPurchaseLimitEnabled orders the results by the purchase_limit_enabled field.
+func ByPurchaseLimitEnabled(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPurchaseLimitEnabled, opts...).ToFunc()
+}
+
+// ByPurchaseLimitCount orders the results by the purchase_limit_count field.
+func ByPurchaseLimitCount(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPurchaseLimitCount, opts...).ToFunc()
 }
 
 // BySortOrder orders the results by the sort_order field.

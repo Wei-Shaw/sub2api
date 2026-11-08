@@ -55,21 +55,56 @@ type UsageStats struct {
 }
 
 // UsageService 使用统计服务
+// ProfitExclusionProvider 提供「不计入盈亏的用户名单」。
+//
+// 抽成接口是为了让 UsageService 的测试不必构造真实的存储；生产注入
+// *UsageProfitExclusionService。返回的切片只读，调用方不得修改。
+type ProfitExclusionProvider interface {
+	ExcludedUserIDs(ctx context.Context) ([]int64, error)
+}
+
 type UsageService struct {
 	usageRepo            UsageLogRepository
 	userRepo             UserRepository
 	entClient            *dbent.Client
 	authCacheInvalidator APIKeyAuthCacheInvalidator
+	// profitExclusion 可以为 nil：nil 时视为「没有排除任何人」，让直接构造
+	// UsageService 的既有测试与调用方无需改动即可继续运行。
+	profitExclusion ProfitExclusionProvider
 }
 
 // NewUsageService 创建使用统计服务实例
-func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entClient *dbent.Client, authCacheInvalidator APIKeyAuthCacheInvalidator) *UsageService {
+func NewUsageService(usageRepo UsageLogRepository, userRepo UserRepository, entClient *dbent.Client, authCacheInvalidator APIKeyAuthCacheInvalidator, profitExclusion ProfitExclusionProvider) *UsageService {
 	return &UsageService{
 		usageRepo:            usageRepo,
 		userRepo:             userRepo,
 		entClient:            entClient,
 		authCacheInvalidator: authCacheInvalidator,
+		profitExclusion:      profitExclusion,
 	}
+}
+
+// withProfitExclusion 把当前生效的盈亏排除名单填进 filters 的收入侧。
+//
+// 只填收入侧：名单里的用户（内部人员）其收入不计入盈亏，但其上游成本照算，
+// 由查询层用 FILTER 实现。名单为空或 provider 缺席时原样返回，不产生任何
+// 额外查询。
+//
+// 读名单失败时把错误往上抛，而不是降级成「不排除」：降级会让毛利偏高，
+// 且界面上完全看不出差别——这类静默偏高的经营数字比一次报错危险得多。
+func (s *UsageService) withProfitExclusion(ctx context.Context, filters usagestats.UsageLogFilters) (usagestats.UsageLogFilters, error) {
+	if s == nil || s.profitExclusion == nil {
+		return filters, nil
+	}
+	ids, err := s.profitExclusion.ExcludedUserIDs(ctx)
+	if err != nil {
+		return filters, fmt.Errorf("resolve profit excluded users: %w", err)
+	}
+	if len(ids) == 0 {
+		return filters, nil
+	}
+	filters.ProfitExcludedUserIDs = ids
+	return filters, nil
 }
 
 // Create 创建使用日志
@@ -318,6 +353,10 @@ func (s *UsageService) GetUserUsageTrendByUserID(ctx context.Context, userID int
 
 // GetUsageTrendWithFilters returns trend data using the shared usage filter shape.
 func (s *UsageService) GetUsageTrendWithFilters(ctx context.Context, startTime, endTime time.Time, granularity string, filters usagestats.UsageLogFilters) ([]usagestats.TrendDataPoint, error) {
+	filters, err := s.withProfitExclusion(ctx, filters)
+	if err != nil {
+		return nil, err
+	}
 	type usageTrendWithFiltersRepo interface {
 		GetUsageTrendWithUsageFilters(ctx context.Context, startTime, endTime time.Time, granularity string, filters usagestats.UsageLogFilters) ([]usagestats.TrendDataPoint, error)
 	}
@@ -455,6 +494,10 @@ func (s *UsageService) GetGlobalStats(ctx context.Context, startTime, endTime ti
 
 // GetStatsWithFilters returns usage stats with optional filters.
 func (s *UsageService) GetStatsWithFilters(ctx context.Context, filters usagestats.UsageLogFilters) (*usagestats.UsageStats, error) {
+	filters, err := s.withProfitExclusion(ctx, filters)
+	if err != nil {
+		return nil, err
+	}
 	stats, err := s.usageRepo.GetStatsWithFilters(ctx, filters)
 	if err != nil {
 		return nil, fmt.Errorf("get usage stats with filters: %w", err)

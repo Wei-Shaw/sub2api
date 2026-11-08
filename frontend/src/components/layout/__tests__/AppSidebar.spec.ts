@@ -81,6 +81,72 @@ describe('AppSidebar subscription feature flag', () => {
   })
 })
 
+describe('AppSidebar AI image entry', () => {
+  // buildSelfNavItems 同时供给用户端主菜单与管理端「我的账户」分组，
+  // 所以只在这里声明一次就能让两端落在同一个相对位置。
+  const selfNavBlock = componentSource.match(
+    /function buildSelfNavItems\([\s\S]*?\n\}/,
+  )?.[0]
+
+  it('declares the entry inside the shared self-nav builder', () => {
+    expect(selfNavBlock).toBeDefined()
+    expect(selfNavBlock).toMatch(/path: '\/ai-image'[^\n]*label: t\('nav\.aiImage'\)/)
+  })
+
+  it('places it directly below 智力检测 and directly above 我的订阅', () => {
+    expect(selfNavBlock).toBeDefined()
+    const block = selfNavBlock as string
+    const intelligenceIndex = block.indexOf("path: '/intelligence-check'")
+    const aiImageIndex = block.indexOf("path: '/ai-image'")
+    const subscriptionsIndex = block.indexOf("path: '/subscriptions'")
+
+    expect(intelligenceIndex).toBeGreaterThan(-1)
+    expect(aiImageIndex).toBeGreaterThan(-1)
+    expect(subscriptionsIndex).toBeGreaterThan(-1)
+    expect(aiImageIndex).toBeGreaterThan(intelligenceIndex)
+    expect(aiImageIndex).toBeLessThan(subscriptionsIndex)
+  })
+
+  it('is rendered by both the user nav and the admin personal nav', () => {
+    expect(componentSource).toContain('finalizeNav(buildSelfNavItems(true))')
+    expect(componentSource).toContain('finalizeNav(buildSelfNavItems(false))')
+  })
+})
+
+describe('AppSidebar 的 AI生图 入口（2026-10-22 起对普通用户开放）', () => {
+  // 主人 2026-10-22 明确要求「把AI生图这个模块变为普通用户也可以使用」。
+  // 所以在它「先只给管理员」的时期过去之后，这两处限制必须都没了。
+  it('AI生图 入口不再标 adminOnly（普通用户也看得到）', () => {
+    const entry = componentSource.match(/path: '\/ai-image'[^\n]*/)?.[0]
+    expect(entry).toBeDefined()
+    expect(entry).not.toContain('adminOnly')
+  })
+
+  it('adminOnly 机制本身还留着（别的模块以后要用）', () => {
+    const finalizeBlock = componentSource.match(/function finalizeNav\([\s\S]*?\n\}/)?.[0]
+    expect(finalizeBlock).toBeDefined()
+    expect(finalizeBlock).toContain('authStore.isAdmin')
+    expect(finalizeBlock).toMatch(/adminOnly/)
+    expect(componentSource).toMatch(/adminOnly\?: boolean/)
+  })
+})
+
+describe('AI image route（2026-10-22 起不再要求管理员）', () => {
+  const routerSource = readFileSync(
+    resolve(dirname(fileURLToPath(import.meta.url)), '../../../router/index.ts'),
+    'utf8',
+  )
+
+  it('/ai-image 不再要求管理员，但仍然要求登录', () => {
+    const routeBlock = routerSource.match(/path: '\/ai-image',[\s\S]*?\n {2}\},/)?.[0]
+    expect(routeBlock).toBeDefined()
+    // 关键：去掉了管理员限制
+    expect(routeBlock).not.toContain('requiresAdmin')
+    // 但登录还是必须的（不然未登录也能进）
+    expect(routeBlock).toContain('requiresAuth: true')
+  })
+})
+
 describe('AppSidebar MCP entry', () => {
   it('uses the MCP logo and shows the entry only when the deployment enables MCP', () => {
     expect(componentSource).toContain("render: () => h(Icon, { name: 'mcp' })")

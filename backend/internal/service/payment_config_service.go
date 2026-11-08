@@ -185,6 +185,9 @@ type CreatePlanRequest struct {
 	ProductName   string   `json:"product_name"`
 	ForSale       bool     `json:"for_sale"`
 	SortOrder     int      `json:"sort_order"`
+	// 每人限购：开关 + 次数（2026-11-06 主人要求）
+	PurchaseLimitEnabled bool `json:"purchase_limit_enabled"`
+	PurchaseLimitCount   int  `json:"purchase_limit_count"`
 }
 
 type UpdatePlanRequest struct {
@@ -200,6 +203,9 @@ type UpdatePlanRequest struct {
 	ProductName   *string  `json:"product_name"`
 	ForSale       *bool    `json:"for_sale"`
 	SortOrder     *int     `json:"sort_order"`
+	// 每人限购：nil = 本次不修改（2026-11-06 主人要求）
+	PurchaseLimitEnabled *bool `json:"purchase_limit_enabled"`
+	PurchaseLimitCount   *int  `json:"purchase_limit_count"`
 }
 
 // PaymentConfigService manages payment configuration and CRUD for
@@ -545,7 +551,7 @@ func pcParseInt(s string, defaultVal int) int {
 }
 
 func buildVisibleMethodSourceAvailability(instances []*dbent.PaymentProviderInstance) map[string]bool {
-	available := make(map[string]bool, 4)
+	available := make(map[string]bool, 6)
 	for _, inst := range instances {
 		switch inst.ProviderKey {
 		case payment.TypeAlipay:
@@ -563,6 +569,15 @@ func buildVisibleMethodSourceAvailability(instances []*dbent.PaymentProviderInst
 					available[VisibleMethodSourceEasyPayAlipay] = true
 				case payment.TypeWxpay:
 					available[VisibleMethodSourceEasyPayWechat] = true
+				}
+			}
+		case payment.TypeHupijiao:
+			for _, supportedType := range splitTypes(inst.SupportedTypes) {
+				switch NormalizeVisibleMethod(supportedType) {
+				case payment.TypeAlipay:
+					available[VisibleMethodSourceHupijiaoAlipay] = true
+				case payment.TypeWxpay:
+					available[VisibleMethodSourceHupijiaoWechat] = true
 				}
 			}
 		}

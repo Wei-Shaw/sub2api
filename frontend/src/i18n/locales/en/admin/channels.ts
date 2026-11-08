@@ -548,6 +548,15 @@ export default {
       deleteSuccess: 'Monitor deleted',
       loadError: 'Failed to load monitors',
       deleteConfirm: 'Are you sure you want to delete monitor "{name}"? This action cannot be undone.',
+      clearData: 'Clear Data',
+      clearing: 'Clearing',
+      clearDataHint:
+        'Erase all monitoring data of this channel (probe history + daily rollups). Its 7-day availability, latency and success rate reset to zero; the monitor config itself is kept.',
+      clearDataConfirm:
+        'Clear all monitoring data of "{name}"? Every probe record and daily rollup of this channel will be deleted, so its availability, latency and success rate reset to zero. This cannot be undone. The monitor itself (endpoint / key / interval / enabled) is not modified — the next probe starts collecting fresh data.',
+      clearDataConfirmButton: 'Clear',
+      clearDataSuccess: 'Cleared: {history} probe records and {rollups} daily rollups removed',
+      clearDataFailed: 'Failed to clear channel data',
       nameRequired: 'Please enter a monitor name',
       primaryModelRequired: 'Please enter a primary model',
       linkedAccountRequired: 'Please select a linked account',
@@ -556,6 +565,7 @@ export default {
         provider: 'Provider',
         primaryModel: 'Primary Model',
         availability7d: '7d Availability',
+        sortOrder: 'Display Order',
         latency: 'Latency (ms)',
         enabled: 'Enabled',
         actions: 'Actions'
@@ -563,6 +573,8 @@ export default {
       form: {
         name: 'Name',
         namePlaceholder: 'Enter monitor name',
+        sortOrder: 'Display Order',
+        sortOrderHint: 'Smaller numbers appear first; default is 1000',
         provider: 'Platform',
         checkMode: 'Check Mode',
         checkModeProbe: 'Probe',
@@ -596,8 +608,13 @@ export default {
         primaryModelPlaceholder: 'gpt-4o-mini',
         extraModels: 'Extra Models',
         extraModelsPlaceholder: 'Press Enter to add extra model',
-        groupName: 'Group Name',
-        groupNamePlaceholder: 'Optional, used to group rows in user view',
+        groupName: 'Group Label (display only)',
+        groupNamePlaceholder: 'Optional, used to group rows in user view; does not affect binding',
+        groupNameHint: 'Display-only label: it no longer affects group resolution — the binding below/above is authoritative.',
+        groupBind: 'Bound Group',
+        groupBindPlaceholder: 'Pick an existing model plaza group',
+        groupBindHint: 'Model Plaza Pro cards read models and pricing from the group selected here. Leave it empty and the card still renders, just without models or pricing.',
+        groupBindNone: 'No group bound',
         intervalSeconds: 'Interval (seconds)',
         intervalSecondsHint: 'Range: 15 - 3600 seconds',
         jitterSeconds: 'Random Jitter (± seconds)',
@@ -668,7 +685,26 @@ export default {
           description: 'Description',
           descriptionPlaceholder: 'Optional: what this template is for, capture date, etc.'
         }
-      }
+      },
+      tuning: {
+        title: 'Probe tuning',
+        subtitle: 'Concurrency, timeouts and connection keep-alive — applies within ~60s, no restart needed',
+        unsaved: 'Unsaved',
+        range: 'Range',
+        saveSuccess: 'Saved. Applied on the next probe cycle (within ~60s).',
+        effectiveHint: 'Note: connection keep-alive must be clearly longer than the probe interval, otherwise every probe rebuilds connections and upstream cold-start latency gets recorded as a channel fault. Excessively high concurrency makes the upstream rate-limit, mixing queueing delay into the measured quality — keep it at or below 10.',
+        highConcurrencyWarning: 'Concurrency is above 10: the upstream may start rate-limiting, so measured latency now includes queueing we caused ourselves and no longer reflects true channel quality.',
+        workerConcurrency: 'Probe concurrency',
+        workerConcurrencyHint: 'Number of probes running at once. Higher shortens a full round; too high triggers upstream rate limiting.',
+        responseHeaderTimeout: 'Response header timeout',
+        responseHeaderTimeoutHint: 'Upper bound for waiting on upstream response headers; exceeding it marks the probe as failed (red).',
+        idleConnTimeout: 'Idle connection keep-alive',
+        idleConnTimeoutHint: 'How long idle connections are kept. Must be clearly longer than the probe interval or every round rebuilds them.',
+        maxIdleConnsPerHost: 'Idle conns per host',
+        maxIdleConnsPerHostHint: 'Idle connections kept per upstream host. The default is small and makes probes reconnect constantly.',
+        requestTimeout: 'Total request timeout',
+        requestTimeoutHint: 'Total time limit for a single probe, including reading the response body.',
+      },
     },
 
     // Subscriptions

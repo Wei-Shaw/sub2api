@@ -32,6 +32,10 @@ type ChannelMonitorRepository interface {
 	MarkChecked(ctx context.Context, id int64, checkedAt time.Time) error
 	InsertHistoryBatch(ctx context.Context, rows []*ChannelMonitorHistoryRow) error
 	DeleteHistoryBefore(ctx context.Context, before time.Time) (int64, error)
+	// DeleteHistoryByMonitor / DeleteRollupsByMonitor 清空**单个**监控的全部数据，
+	// 供管理端"清除数据"使用（DeleteHistoryBefore / DeleteRollupsBefore 是按时间清全量）。
+	DeleteHistoryByMonitor(ctx context.Context, monitorID int64) (int64, error)
+	DeleteRollupsByMonitor(ctx context.Context, monitorID int64) (int64, error)
 
 	// 历史记录
 	ListHistory(ctx context.Context, monitorID int64, model string, limit int) ([]*ChannelMonitorHistoryEntry, error)
@@ -82,6 +86,13 @@ type ChannelMonitorService struct {
 	// 之后构造，构造参数注入会破坏既有依赖顺序）。nil 时 fail-closed：
 	// 配额模式的检测产出「未配置」错误快照，Create/Update 关联账号直接报错。
 	quotaFetcher *ChannelMonitorQuotaFetcher
+	// usageRecorder 由 wire 通过 SetUsageRecorder 注入：给「直连上游」的探针补记
+	// 使用记录（见 channel_monitor_usage.go）。nil 时全部变成空操作，探针照常跑。
+	usageRecorder *ChannelMonitorUsageRecorder
+	// errorRecorder 由 wire 通过 SetErrorRecorder 注入：把探针的**失败**补记进
+	// ops_error_logs，使失败能在「错误请求」页被看到（见 channel_monitor_error_log.go）。
+	// nil 时全部变成空操作，探针照常跑。
+	errorRecorder *ChannelMonitorErrorRecorder
 }
 
 const maxChannelMonitorNameRunes = 100
@@ -172,6 +183,7 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		PrimaryModel:     normalizeMonitorPrimaryModel(p.Provider, checkMode, p.PrimaryModel),
 		ExtraModels:      normalizeModels(p.ExtraModels),
 		GroupName:        strings.TrimSpace(p.GroupName),
+		SortOrder:        normalizeSortOrder(p.SortOrder),
 		Enabled:          p.Enabled,
 		IntervalSeconds:  p.IntervalSeconds,
 		JitterSeconds:    p.JitterSeconds,
@@ -182,6 +194,7 @@ func (s *ChannelMonitorService) Create(ctx context.Context, p ChannelMonitorCrea
 		BodyOverride:     p.BodyOverride,
 		CheckMode:        checkMode,
 		AccountID:        cloneInt64Pointer(p.AccountID),
+		GroupID:          normalizeMonitorGroupID(p.GroupID),
 	}
 	if err := s.repo.Create(ctx, m); err != nil {
 		return nil, fmt.Errorf("create channel monitor: %w", err)
@@ -249,6 +262,7 @@ func (s *ChannelMonitorService) Duplicate(
 		BodyOverride:         bodyOverride,
 		CheckMode:            defaultCheckMode(source.CheckMode),
 		AccountID:            cloneInt64Pointer(source.AccountID),
+		GroupID:              cloneInt64Pointer(source.GroupID),
 		DuplicateOperationID: operationID,
 	}
 	if err := s.repo.Create(ctx, duplicate); err != nil {
@@ -338,6 +352,22 @@ func cloneInt64Pointer(value *int64) *int64 {
 	}
 	cloned := *value
 	return &cloned
+}
+
+// normalizeMonitorGroupID 把「未提供」与「<= 0」统一收敛成 nil（= 不绑定分组），
+// 只有 > 0 才视为有效绑定。与 ChannelMonitorUpdateParams.GroupID 的三态约定一致：
+// nil = 不更新（由调用方提前拦截）、> 0 = 绑定、<= 0 = 清空。
+//
+// 这里不做「分组是否存在」的校验：存在性由数据库外键保证
+// （见 migration 249），而「分组是否已软删除」由读取侧过滤
+// （deleted_at IS NULL AND status = 'active'），两层兜底比在 service 层
+// 再引一个分组仓储更轻——后者会牵动 wire 装配，扩大改动面。
+func normalizeMonitorGroupID(groupID *int64) *int64 {
+	if groupID == nil || *groupID <= 0 {
+		return nil
+	}
+	id := *groupID
+	return &id
 }
 
 func cloneChannelMonitorHeaders(source map[string]string) map[string]string {
@@ -574,6 +604,30 @@ func (s *ChannelMonitorService) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// ClearData 清空某个监控的全部监控数据（探测明细 + 每日聚合），返回各表实际删除行数。
+//
+// 语义是"把这个渠道重置回刚建好的状态"：7 天可用率、延迟、成功率、近 N 次明细都会归零。
+// 只删数据、不动监控自身的配置（endpoint / api_key / interval / enabled 全部保留），
+// 所以调度器无需变更，下一次探测会照常写入新数据。
+func (s *ChannelMonitorService) ClearData(ctx context.Context, id int64) (*ChannelMonitorClearResult, error) {
+	if _, err := s.repo.GetByID(ctx, id); err != nil {
+		return nil, err
+	}
+	// 先聚合后明细：两者是派生关系，这个顺序保证任何中断点上都不会出现
+	// "聚合已被清掉、明细还在"之外的中间态，且两次都是幂等的，重试安全。
+	rollups, err := s.repo.DeleteRollupsByMonitor(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("clear channel monitor rollups: %w", err)
+	}
+	history, err := s.repo.DeleteHistoryByMonitor(ctx, id)
+	if err != nil {
+		return nil, fmt.Errorf("clear channel monitor history: %w", err)
+	}
+	slog.Info("channel_monitor: cleared data",
+		"monitor_id", id, "deleted_history", history, "deleted_rollups", rollups)
+	return &ChannelMonitorClearResult{DeletedHistory: history, DeletedRollups: rollups}, nil
+}
+
 // ListHistory 列出某个监控最近的检测历史。
 // model 为空表示返回所有模型；limit <= 0 时使用默认值，超过上限会被截断。
 func (s *ChannelMonitorService) ListHistory(ctx context.Context, id int64, model string, limit int) ([]*ChannelMonitorHistoryEntry, error) {
@@ -619,17 +673,25 @@ func (s *ChannelMonitorService) RunCheck(ctx context.Context, id int64) ([]*Chec
 		return nil, ErrChannelMonitorAPIKeyDecryptFailed
 	}
 
+	// 直连上游的探针要补记使用记录：先解析归属（本地探针会在这里被判掉，
+	// 免得网关刚记过又被记一遍），再把请求头名透给 checker 去抓上游请求 ID。
+	probeUsage := s.usageRecorder.prepareProbeUsage(ctx, m)
+
 	var results []*CheckResult
 	switch checkMode {
 	case MonitorCheckModeQuota:
 		results = s.runQuotaOnlyCheck(ctx, m)
 	case MonitorCheckModeQuotaProbe:
-		results = s.runChecksConcurrent(ctx, m)
+		results = s.runChecksConcurrent(ctx, m, probeUsage)
 		attachQuotaSnapshot(results, s.fetchQuotaSnapshot(ctx, m))
 	default:
-		results = s.runChecksConcurrent(ctx, m)
+		results = s.runChecksConcurrent(ctx, m, probeUsage)
 	}
 	s.persistCheckResults(ctx, m, results)
+	// 记账是 best-effort：写失败只记日志，绝不影响探针结果与历史。
+	s.usageRecorder.record(ctx, m, results, probeUsage)
+	// 失败也要在「错误请求」页可见，同样是 best-effort。
+	s.errorRecorder.record(ctx, m, results)
 	return results, nil
 }
 
@@ -695,7 +757,7 @@ func (s *ChannelMonitorService) persistCheckResults(ctx context.Context, m *Chan
 
 // runChecksConcurrent 对 primary + extra 模型并发执行检测。
 // errgroup 仅用于等待，不传播错误（每个 model 失败都已打包进 CheckResult）。
-func (s *ChannelMonitorService) runChecksConcurrent(ctx context.Context, m *ChannelMonitor) []*CheckResult {
+func (s *ChannelMonitorService) runChecksConcurrent(ctx context.Context, m *ChannelMonitor, probeUsage *monitorProbeUsage) []*CheckResult {
 	models := append([]string{m.PrimaryModel}, m.ExtraModels...)
 	results := make([]*CheckResult, len(models))
 
@@ -708,6 +770,9 @@ func (s *ChannelMonitorService) runChecksConcurrent(ctx context.Context, m *Chan
 		ExtraHeaders:     m.ExtraHeaders,
 		BodyOverrideMode: m.BodyOverrideMode,
 		BodyOverride:     m.BodyOverride,
+	}
+	if probeUsage != nil {
+		opts.UpstreamRequestIDHeader = probeUsage.requestIDHeader
 	}
 
 	var eg errgroup.Group
@@ -741,6 +806,27 @@ func (s *ChannelMonitorService) SetQuotaFetcher(fetcher *ChannelMonitorQuotaFetc
 		return
 	}
 	s.quotaFetcher = fetcher
+}
+
+// SetUsageRecorder 由 wire 注入「直连上游探针」的记账器。
+// 走 setter 注入的理由与 quotaFetcher 相同：UsageLog/User/APIKey/Account 仓储
+// 都在本服务之后才进入 wire 图，构造参数注入会打乱既有依赖顺序。
+func (s *ChannelMonitorService) SetUsageRecorder(recorder *ChannelMonitorUsageRecorder) {
+	if s == nil {
+		return
+	}
+	s.usageRecorder = recorder
+}
+
+// SetErrorRecorder 由 wire 注入「探针失败写错误日志」的记录器。
+//
+// 走 setter 注入的理由与 usageRecorder 相同：OpsService 虽然在 wire 图中更早构造，
+// 但把 runner 的全部依赖一次注入，比让本服务多一个构造参数更容易看清装配关系。
+func (s *ChannelMonitorService) SetErrorRecorder(recorder *ChannelMonitorErrorRecorder) {
+	if s == nil {
+		return
+	}
+	s.errorRecorder = recorder
 }
 
 // ListEnabledMonitors 返回所有 enabled=true 的监控（解密后），供 runner 启动时建立任务表。
@@ -915,6 +1001,10 @@ func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) 
 			existing.AccountID = nil // 0 = 清空关联
 		}
 	}
+	// 与 AccountID 同构的三态：nil = 不更新；> 0 = 绑定；<= 0 = 清空绑定。
+	if p.GroupID != nil {
+		existing.GroupID = normalizeMonitorGroupID(p.GroupID)
+	}
 	if p.Endpoint != nil {
 		// quota 模式允许清空 endpoint（校验由 validateMonitorModeFields 兜底）。
 		if strings.TrimSpace(*p.Endpoint) != "" {
@@ -942,6 +1032,9 @@ func applyMonitorUpdate(existing *ChannelMonitor, p ChannelMonitorUpdateParams) 
 	}
 	if p.GroupName != nil {
 		existing.GroupName = strings.TrimSpace(*p.GroupName)
+	}
+	if p.SortOrder != nil {
+		existing.SortOrder = normalizeSortOrder(*p.SortOrder)
 	}
 	if p.Enabled != nil {
 		existing.Enabled = *p.Enabled

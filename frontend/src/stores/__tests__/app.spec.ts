@@ -54,6 +54,7 @@ function createPublicSettings(overrides: Partial<PublicSettings> = {}): PublicSe
     balance_low_notify_threshold: 0,
     channel_monitor_enabled: true,
     channel_monitor_default_interval_seconds: 60,
+    intelligence_check_enabled: false,
     available_channels_enabled: false,
     subscription_enabled: true,
     payment_balance_disabled: false,

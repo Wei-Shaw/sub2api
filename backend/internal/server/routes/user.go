@@ -146,7 +146,18 @@ func RegisterUserRoutes(
 		monitors := authenticated.Group("/channel-monitors")
 		{
 			monitors.GET("", h.ChannelMonitor.List)
+			monitors.GET("/matrix", h.ChannelMonitorV1Matrix.Matrix) // 静态路径须在 /:id/status 之前（gin 静态优先于参数）
 			monitors.GET("/:id/status", h.ChannelMonitor.GetStatus)
+		}
+
+		// 智力检测（用户只读脱敏）：作品墙对登录用户开放，
+		// 只返回展示序号与作品，不含账号名 / 上游标识 / 模型名。
+		// 总开关关闭时整组 404/403，避免功能下线后接口仍被直接调用。
+		intelligenceCheck := authenticated.Group("/intelligence-check")
+		intelligenceCheck.Use(intelligenceCheckEnabledGuard(settingService))
+		{
+			intelligenceCheck.GET("/runs", h.IntelligenceCheck.ListPublicRuns)
+			intelligenceCheck.GET("/runs/:id/artifact", h.IntelligenceCheck.GetPublicArtifact)
 		}
 
 		// V2 passive views require feature on + mode=v2.

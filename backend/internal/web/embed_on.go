@@ -189,14 +189,21 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 	rendered := s.injectSettings(settingsJSON)
 	s.cache.Set(rendered, settingsJSON)
 
-	// Replace nonce placeholder with actual nonce before serving
-	content := replaceNoncePlaceholder(rendered, nonce)
-
 	cached = s.cache.Get()
 	if cached != nil {
+		// TTL 到期后会重新走这条重建路径。若重建出的设置与客户端手上那份完全一致
+		// （ETag 相同），仍然回 304 —— 否则每次到期都要白传一份完整 HTML。
+		if match := c.GetHeader("If-None-Match"); match == cached.ETag {
+			c.Status(http.StatusNotModified)
+			c.Abort()
+			return
+		}
 		c.Header("ETag", cached.ETag)
 	}
 	c.Header("Cache-Control", "no-cache")
+
+	// Replace nonce placeholder with actual nonce before serving
+	content := replaceNoncePlaceholder(rendered, nonce)
 	c.Data(http.StatusOK, "text/html; charset=utf-8", content)
 	c.Abort()
 }

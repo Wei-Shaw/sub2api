@@ -252,3 +252,10 @@ func defaultAPIMode(apiMode string) string {
 	}
 	return strings.TrimSpace(apiMode)
 }
+
+func normalizeSortOrder(v int) int {
+	if v <= 0 {
+		return monitorDefaultSortOrder
+	}
+	return v
+}

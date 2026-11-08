@@ -64,6 +64,44 @@
         <textarea v-model="planFeaturesText" rows="3" class="input" :placeholder="t('payment.admin.featuresPlaceholder')"></textarea>
         <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('payment.admin.featuresHint') }}</p>
       </div>
+      <!-- 每人限购（2026-11-06 主人要求）：
+           开关决定「要不要限」；关掉时次数输入框整块不显示（不是置灰），
+           避免管理员填了个数字却因为开关没开而误以为生效了。 -->
+      <div class="rounded-lg border border-gray-200 p-3 dark:border-dark-700">
+        <div class="flex items-center gap-3">
+          <label class="text-sm text-gray-700 dark:text-gray-300">
+            {{ t('payment.admin.purchaseLimitEnabled') }}
+          </label>
+          <button
+            type="button"
+            data-testid="plan-purchase-limit-toggle"
+            :class="[
+              'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+              planForm.purchase_limit_enabled ? 'bg-primary-500' : 'bg-gray-300 dark:bg-dark-600'
+            ]"
+            @click="planForm.purchase_limit_enabled = !planForm.purchase_limit_enabled"
+          >
+            <span :class="[
+              'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+              planForm.purchase_limit_enabled ? 'translate-x-5' : 'translate-x-0'
+            ]" />
+          </button>
+        </div>
+        <div v-if="planForm.purchase_limit_enabled" class="mt-3">
+          <label class="input-label">{{ t('payment.admin.purchaseLimitCount') }}</label>
+          <input
+            v-model.number="planForm.purchase_limit_count"
+            type="number"
+            min="1"
+            step="1"
+            class="input"
+            data-testid="plan-purchase-limit-count"
+          />
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('payment.admin.purchaseLimitHint') }}
+          </p>
+        </div>
+      </div>
       <div class="flex items-center gap-3">
         <label class="text-sm text-gray-700 dark:text-gray-300">{{ t('payment.admin.forSale') }}</label>
         <button
@@ -122,7 +160,13 @@ const { t } = useI18n()
 const appStore = useAppStore()
 
 const saving = ref(false)
-const planForm = reactive({ name: '', group_id: null as number | null, description: '', price: 0, original_price: 0, currency: '', validity_days: 30, validity_unit: 'days', sort_order: 0, for_sale: true })
+const planForm = reactive({
+  name: '', group_id: null as number | null, description: '', price: 0, original_price: 0,
+  currency: '', validity_days: 30, validity_unit: 'days', sort_order: 0, for_sale: true,
+  // 每人限购（2026-11-06 主人要求）
+  purchase_limit_enabled: false,
+  purchase_limit_count: 1,
+})
 const planFeaturesText = ref('')
 
 const validityUnitOptions = computed(() => [
@@ -175,10 +219,25 @@ const subscriptionCnyPreview = computed(() => {
 watch(() => props.show, (visible) => {
   if (!visible) return
   if (props.plan) {
-    Object.assign(planForm, { name: props.plan.name, group_id: props.plan.group_id, description: props.plan.description, price: props.plan.price, original_price: props.plan.original_price || 0, currency: props.plan.currency || '', validity_days: props.plan.validity_days, validity_unit: props.plan.validity_unit || 'days', sort_order: props.plan.sort_order || 0, for_sale: props.plan.for_sale })
+    Object.assign(planForm, {
+      name: props.plan.name, group_id: props.plan.group_id, description: props.plan.description,
+      price: props.plan.price, original_price: props.plan.original_price || 0,
+      currency: props.plan.currency || '', validity_days: props.plan.validity_days,
+      validity_unit: props.plan.validity_unit || 'days', sort_order: props.plan.sort_order || 0,
+      for_sale: props.plan.for_sale,
+      // 限购：老数据没有这两个字段时按「不限购」处理，次数默认 1
+      purchase_limit_enabled: props.plan.purchase_limit_enabled === true,
+      purchase_limit_count: props.plan.purchase_limit_count && props.plan.purchase_limit_count > 0
+        ? props.plan.purchase_limit_count
+        : 1,
+    })
     planFeaturesText.value = (props.plan.features || []).join('\n')
   } else {
-    Object.assign(planForm, { name: '', group_id: null, description: '', price: 0, original_price: 0, currency: '', validity_days: 30, validity_unit: 'days', sort_order: 0, for_sale: true })
+    Object.assign(planForm, {
+      name: '', group_id: null, description: '', price: 0, original_price: 0, currency: '',
+      validity_days: 30, validity_unit: 'days', sort_order: 0, for_sale: true,
+      purchase_limit_enabled: false, purchase_limit_count: 1,
+    })
     planFeaturesText.value = ''
   }
 })
@@ -198,6 +257,11 @@ function buildPlanPayload() {
     sort_order: planForm.sort_order,
     for_sale: planForm.for_sale,
     features,
+    // 限购：开关关掉时把次数归 0，避免库里留下一个"看着有限、其实没开"的数字
+    purchase_limit_enabled: planForm.purchase_limit_enabled,
+    purchase_limit_count: planForm.purchase_limit_enabled
+      ? Math.max(1, Number(planForm.purchase_limit_count) || 1)
+      : 0,
   }
 }
 

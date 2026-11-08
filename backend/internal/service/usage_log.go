@@ -190,6 +190,57 @@ type UsageLog struct {
 	// extra.upstream_request_id_header 指定的头；账户未指定头名、WS 轮次
 	// 与上游没有该头的路径为 nil。
 	UpstreamRequestID *string
+	// UpstreamCostOriginal 是这笔调用在上游（A6）账单里的**真实扣费**，原币金额。
+	//
+	// 与同一行的 TotalCost / ActualCost 是两个口径：后者是按本站价目表算出来的
+	// 「应收」，决定用户被扣多少余额；这个是上游向我们收的「实付」，是成本。
+	// 两者之差就是这笔调用的毛利。
+	//
+	// **不做任何汇率换算**：本站记账本就是美元口径，上游 A6 账单也是美元，两边
+	// 同币种直接相减才是可比的。曾经存过一列换算后的人民币，反而让页面变成
+	// 「一列美元一列人民币」，要心算汇率才能比较，因此已删除。
+	//
+	// 由后台取数任务拿 UpstreamRequestID 去上游反查后回填，因此：
+	//   - nil  = 还没取到（上游账单尚未落库 / 重试次数已用尽），**不代表成本为 0**；
+	//   - 有值 = 已取到，金额即上游账单原文，此后不再变动。
+	UpstreamCostOriginal *float64
+	// UpstreamCostCurrency 是 UpstreamCostOriginal 的币种（A6 为 USD）。
+	// 仅用于显示货币符号，不参与任何计算；未取到成本时为空串。
+	UpstreamCostCurrency string
+
+	// UpstreamFirstTokenMs / UpstreamDurationMs 是**上游自报**的首字耗时与总耗时（毫秒）。
+	//
+	// 与同一行的 FirstTokenMs / DurationMs 是两个口径，不能混用：
+	//   FirstTokenMs / DurationMs            = 本站观测，从网关接手请求算起，
+	//                                          含中转开销 + 网络往返 + 上游全部处理时间；
+	//   UpstreamFirstTokenMs / DurationMs    = 上游账单口径，只覆盖上游内部那一段。
+	// 两者相减就是「中转开销」，这是判断「是不是我们的中转把请求拖慢了」的唯一依据。
+	//
+	// 与 UpstreamCostOriginal 共享同一套回填生命周期（由后台取数任务用
+	// UpstreamRequestID 反查上游账单后写入），因此：
+	//   - nil  = 尚未对账到（账单未落库 / 重试耗尽 / 该账号不支持），**不代表耗时 0**；
+	//   - 有值 = 上游账单原文，此后不再变动。
+	//
+	// ⚠️ 精度：UpstreamFirstTokenMs 为毫秒精度；UpstreamDurationMs 由上游**整秒**值
+	// 换算而来，有效精度只有秒级，不可用于毫秒级比较。
+	UpstreamFirstTokenMs *int
+	// UpstreamDurationMs 见 UpstreamFirstTokenMs。
+	UpstreamDurationMs *int
+	// UpstreamSupplierID 上游（A6）商户 ID，取自账单 marketplace_supplier_id。
+	//
+	// 为什么单独存商户：2026-10-10 的漏计费事件里，按**模型**聚合会得出
+	// 「gpt-5.5 / gpt-6-astra 有问题」的错误结论（它们只是恰好被路由到了坏商户），
+	// 按**商户**聚合才立刻干净 —— 18 个商户里只有 4 个丢，其余 14 个一笔不丢。
+	// 商户是能被拉黑/切换的最小单元，归因必须落到这一级。
+	//
+	// 与 UpstreamCostOriginal 同生命周期：nil = 尚未对账到，非 0。
+	UpstreamSupplierID *int
+	// UpstreamSupplierName 上游商户名，冗余存一份便于页面直接显示。
+	UpstreamSupplierName *string
+	// UpstreamChannelID 上游实际计费渠道 ID（账单 channel）。
+	UpstreamChannelID *int
+	// UpstreamTargetChannelID 上游目标渠道 ID（账单 marketplace_target_channel_id）。
+	UpstreamTargetChannelID *int
 
 	// Cache TTL Override 标记（管理员强制替换了缓存 TTL 计费）
 	CacheTTLOverridden bool

@@ -317,6 +317,13 @@ export default {
       // Error Detail Modal
       errorDetail: {
         title: 'Error Detail',
+        // Upstream supplier: answers "which supplier caused this failure" and
+        // lets the operator block that whole supplier right here.
+        upstreamSupplier: 'Upstream Supplier',
+        upstreamSupplierUnknown: 'Unknown (request never reached upstream, or the upstream log window has passed)',
+        blockSupplier: 'Block supplier',
+        blockSupplierConfirm: 'Block the entire supplier {name} (ID {id})? All of its channels will leave routing, and its pinned bindings will NOT be rebind automatically.',
+        blockSupplierOk: 'Supplier blocked',
         titleWithId: 'Error #{id}',
         noErrorSelected: 'No error selected.',
         backToList: 'Back to List',
@@ -705,6 +712,24 @@ export default {
         emailPlaceholder: 'Enter email address',
         recipientsHint: 'If empty, the system will use the first admin email as default recipient',
         minSeverity: 'Minimum Severity',
+        feishuConfig: 'Feishu Group Notification',
+        feishuHint: 'Push request errors to a Feishu group bot. Only P1 (5xx / 429) is sent by default.',
+        enableFeishu: 'Enable Feishu notification',
+        feishuWebhook: 'Webhook URL',
+        feishuWebhookPlaceholder: 'https://open.feishu.cn/open-apis/bot/v2/hook/...',
+        feishuWebhookHint: 'Copy it from the Feishu group: Settings → Group Bots → Add Bot → Custom Bot. Treat it as a credential; never publish it.',
+        feishuMinSeverity: 'Minimum severity',
+        feishuSeverityAll: 'All severities (including 4xx)',
+        feishuSeverityP1: 'P1 (5xx / 429, platform failure)',
+        feishuSeverityP2: 'P2 (4xx request errors)',
+        feishuSeverityP3: 'P3 (everything else)',
+        feishuRateLimit: 'Max messages per hour',
+        feishuRateLimitHint: '0 = unlimited. Acts as a safety valve so an error storm cannot flood the group.',
+        feishuBatchingWindow: 'Duplicate merge window (seconds)',
+        feishuBatchingWindowHint: 'Identical errors inside the window are merged into one message with a count; 0 = send every error.',
+        feishuTest: 'Save and send test',
+        feishuTestSent: 'Test message sent — check the Feishu group',
+        feishuTestFailed: 'Failed to send the test message',
         reportConfig: 'Report Configuration',
         enableReport: 'Enable Reports',
         reportRecipients: 'Report Recipient Emails',
@@ -766,7 +791,9 @@ export default {
           ttftP99MaxRange: 'TTFT P99 maximum must be a number ≥ 0',
           requestErrorRateMaxRange: 'Request error rate maximum must be between 0 and 100',
           upstreamErrorRateMaxRange: 'Upstream error rate maximum must be between 0 and 100',
-          openaiQuotaAutoPauseRange: 'OpenAI quota auto-pause threshold must be between 0 and 100'
+          openaiQuotaAutoPauseRange: 'OpenAI quota auto-pause threshold must be between 0 and 100',
+          feishuWebhookRequired: 'Feishu notification is enabled but the webhook URL is empty',
+          feishuWebhookInvalid: 'The Feishu webhook URL must start with http:// or https://'
         }
       },
       concurrency: {

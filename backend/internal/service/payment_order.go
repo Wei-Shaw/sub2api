@@ -156,7 +156,78 @@ func (s *PaymentService) validateSubOrder(ctx context.Context, req CreateOrderRe
 	if !group.IsSubscriptionType() {
 		return nil, infraerrors.BadRequest("GROUP_TYPE_MISMATCH", "group is not a subscription type")
 	}
+	if err := s.checkPlanPurchaseLimit(ctx, req.UserID, plan); err != nil {
+		return nil, err
+	}
 	return plan, nil
+}
+
+// planPaidOrderStatuses 是「这一单已经付过钱、且没有退掉」的状态集合，
+// 与 payment_stats.go 里统计收入用的口径一致。限购计数必须用同一套，
+// 否则会出现「统计说卖了 1 单、限购说不算」这种对不上的情况。
+var planPaidOrderStatuses = []string{OrderStatusCompleted, OrderStatusPaid, OrderStatusRecharging}
+
+// CountUserPaidPlanOrders 统计「某个用户为这些套餐各成功支付过几次」。
+//
+// 供前端在套餐卡片上标注「已购买 / 限购 N 次」，也供下单前的校验复用同一口径。
+func (s *PaymentService) CountUserPaidPlanOrders(ctx context.Context, userID int64, planIDs []int64) (map[int64]int, error) {
+	out := make(map[int64]int, len(planIDs))
+	if userID <= 0 || len(planIDs) == 0 {
+		return out, nil
+	}
+	// 字段名必须与 ent 聚合结果的键一致（Count() → json:"count"），
+	// 与 load_balancer.go 里 Sum(...) → json:"sum" 是同一套约定。
+	type row struct {
+		PlanID int64 `json:"plan_id"`
+		Count  int   `json:"count"`
+	}
+	var rows []row
+	err := s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.UserIDEQ(userID),
+			paymentorder.PlanIDIn(planIDs...),
+			paymentorder.StatusIn(planPaidOrderStatuses...),
+		).
+		GroupBy(paymentorder.FieldPlanID).
+		Aggregate(dbent.Count()).
+		Scan(ctx, &rows)
+	if err != nil {
+		// 聚合扫描失败不该拦住用户看套餐：返回空表，前端只是不显示「已购买」标记。
+		return out, fmt.Errorf("count paid plan orders: %w", err)
+	}
+	for _, r := range rows {
+		out[r.PlanID] = r.Count
+	}
+	return out, nil
+}
+
+// checkPlanPurchaseLimit 校验「每人限购」。
+//
+// 2026-11-06 主人要求：引流档（9.9 元）必须每人只能买一次，其余档位不限购。
+// 计数口径是 payment_orders(user_id, plan_id) 里已支付且未退款的订单数 ——
+// 不能用 user_subscriptions 计数，因为那张表上没有 plan_id（一个分组可能挂多个套餐），
+// 而且它按 (user_id, group_id) 只保留一条有效记录，续期会覆盖，数不出「买过几次」。
+func (s *PaymentService) checkPlanPurchaseLimit(ctx context.Context, userID int64, plan *dbent.SubscriptionPlan) error {
+	if plan == nil || !plan.PurchaseLimitEnabled || plan.PurchaseLimitCount <= 0 {
+		return nil
+	}
+	paid, err := s.entClient.PaymentOrder.Query().
+		Where(
+			paymentorder.UserIDEQ(userID),
+			paymentorder.PlanIDEQ(plan.ID),
+			paymentorder.StatusIn(planPaidOrderStatuses...),
+		).
+		Count(ctx)
+	if err != nil {
+		return fmt.Errorf("count plan orders: %w", err)
+	}
+	if paid >= plan.PurchaseLimitCount {
+		return infraerrors.Conflict(
+			"PURCHASE_LIMIT_REACHED",
+			fmt.Sprintf("该套餐每人限购 %d 次，你已购买 %d 次", plan.PurchaseLimitCount, paid),
+		)
+	}
+	return nil
 }
 
 func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderRequest, user *User, plan *dbent.SubscriptionPlan, cfg *PaymentConfig, orderAmount, limitAmount, feeRate, payAmount, bonusAmount float64, sel *payment.InstanceSelection) (*dbent.PaymentOrder, error) {
@@ -306,6 +377,12 @@ func buildPaymentOrderProviderSnapshot(sel *payment.InstanceSelection, req Creat
 		if merchantID := strings.TrimSpace(sel.Config["pid"]); merchantID != "" {
 			snapshot["merchant_id"] = merchantID
 		}
+	}
+	if providerKey == payment.TypeHupijiao {
+		if appID := strings.TrimSpace(sel.Config["appid"]); appID != "" {
+			snapshot["merchant_app_id"] = appID
+		}
+		snapshot["currency"] = payment.DefaultPaymentCurrency
 	}
 	if providerKey == payment.TypeStripe {
 		snapshot["currency"] = paymentProviderConfigCurrency(providerKey, sel.Config)

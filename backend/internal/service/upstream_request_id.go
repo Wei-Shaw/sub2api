@@ -46,9 +46,19 @@ func usageUpstreamRequestIDPtr(account *Account, h http.Header, wsMode bool) *st
 	if wsMode {
 		return nil
 	}
-	id := UpstreamRequestIDFromHeaders(account, h)
+	id := truncateUsageUpstreamRequestID(UpstreamRequestIDFromHeaders(account, h))
 	if id == "" {
 		return nil
+	}
+	return &id
+}
+
+// truncateUsageUpstreamRequestID 把任意来源的上游请求标识规整到 usage_logs 的列宽。
+// 渠道监控直连探针也用它：超长头不能让整条用量行写不进去。
+func truncateUsageUpstreamRequestID(id string) string {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return ""
 	}
 	if len(id) > maxUsageUpstreamRequestIDLen {
 		id = id[:maxUsageUpstreamRequestIDLen]
@@ -56,10 +66,7 @@ func usageUpstreamRequestIDPtr(account *Account, h http.Header, wsMode bool) *st
 			id = id[:len(id)-1]
 		}
 	}
-	if id == "" {
-		return nil
-	}
-	return &id
+	return strings.TrimSpace(id)
 }
 
 // ValidateUpstreamRequestIDHeaderExtra 校验并规范化 extra 中的上游请求标识头名：

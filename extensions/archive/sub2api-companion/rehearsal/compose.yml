@@ -1,0 +1,163 @@
+name: sub2api-companion-rehearsal
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: sub2api
+      POSTGRES_PASSWORD: ${REHEARSAL_DB_PASSWORD:-rehearsal-only-db}
+      POSTGRES_DB: sub2api
+      PGDATA: /var/lib/postgresql/data
+      TZ: Asia/Shanghai
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks: [sub2api-network]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sub2api -d sub2api"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  redis:
+    image: redis:8-alpine
+    command: redis-server --save 60 1 --appendonly yes --appendfsync everysec
+    environment:
+      TZ: Asia/Shanghai
+    volumes:
+      - redis_data:/data
+    networks: [sub2api-network]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  sub2api:
+    image: weishaw/sub2api:0.1.168
+    ulimits:
+      nofile:
+        soft: 100000
+        hard: 100000
+    environment:
+      AUTO_SETUP: "true"
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8080
+      SERVER_MODE: release
+      RUN_MODE: standard
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: sub2api
+      DATABASE_PASSWORD: ${REHEARSAL_DB_PASSWORD:-rehearsal-only-db}
+      DATABASE_DBNAME: sub2api
+      DATABASE_SSLMODE: disable
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      ADMIN_EMAIL: rehearsal@sub2api.local
+      ADMIN_PASSWORD: ${REHEARSAL_SUB2API_ADMIN_PASSWORD:-rehearsal-only-admin}
+      JWT_SECRET: ${REHEARSAL_JWT_SECRET:-rehearsal-only-jwt-secret-change-before-production}
+      TOTP_ENCRYPTION_KEY: ${REHEARSAL_TOTP_KEY:-0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef}
+      TZ: Asia/Shanghai
+    volumes:
+      - sub2api_data:/app/data
+    ports:
+      - "127.0.0.1:18081:8080"
+    networks: [sub2api-network]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  companion:
+    build:
+      context: ..
+      dockerfile: rehearsal/companion-image/Dockerfile
+    image: sub2api-companion-rehearsal:local
+    environment:
+      LISTEN_ADDR: :8090
+      DATA_DIR: /data
+      PRICING_FILE: /app/config/pricing.json
+      CADDY_LOG_PATH: /var/log/caddy/sub2api-access.log
+      SOURCE_DATABASE_URL: postgres://sub2api:${REHEARSAL_DB_PASSWORD:-rehearsal-only-db}@postgres:5432/sub2api?sslmode=disable&options=-c%20default_transaction_read_only%3Don
+      ADMIN_USER: ${REHEARSAL_COMPANION_ADMIN_USER:-rehearsal}
+      ADMIN_PASSWORD: ${REHEARSAL_COMPANION_ADMIN_PASSWORD:-rehearsal-only-companion}
+      SYNC_INTERVAL: 2s
+      SUB2API_UNIT_TO_CNY_RATE: "1"
+      A6_BASE_URL: ${A6_BASE_URL:-https://a6api.com}
+      A6_USER_ID: ${A6_USER_ID:-}
+      A6_ACCESS_TOKEN: ${A6_ACCESS_TOKEN:-}
+      A6_TOKEN_ACCOUNT_MAP: ${A6_TOKEN_ACCOUNT_MAP:-}
+      A6_USD_TO_CNY_RATE: ${A6_USD_TO_CNY_RATE:-}
+      FX_PRIMARY_URL: ${FX_PRIMARY_URL:-https://api.coinbase.com/v2/exchange-rates?currency=USD}
+      FX_FALLBACK_URL: ${FX_FALLBACK_URL:-https://open.er-api.com/v6/latest/USD}
+      FX_REFRESH_INTERVAL: ${FX_REFRESH_INTERVAL:-1h}
+      FX_HTTP_TIMEOUT: ${FX_HTTP_TIMEOUT:-15s}
+      FX_MAX_STALENESS: ${FX_MAX_STALENESS:-6h}
+      A6_BOOTSTRAP_LOOKBACK: ${A6_BOOTSTRAP_LOOKBACK:-24h}
+      A6_SYNC_INTERVAL: ${A6_SYNC_INTERVAL:-5m}
+      A6_HTTP_TIMEOUT: ${A6_HTTP_TIMEOUT:-90s}
+      A6_PAGE_SIZE: ${A6_PAGE_SIZE:-100}
+      A6_MAX_PAGES: ${A6_MAX_PAGES:-50}
+      A6_BACKFILL_CHUNK: ${A6_BACKFILL_CHUNK:-24h}
+      A6_BACKFILL_PAGE_DELAY: ${A6_BACKFILL_PAGE_DELAY:-200ms}
+      SUBARX_ACCOUNT_MULTIPLIERS: ${SUBARX_ACCOUNT_MULTIPLIERS:-13:0.1,14:0.2}
+      SUBARX_BASE_URL: ${SUBARX_BASE_URL:-https://www.subarx.com}
+      SUBARX_ACCOUNT_API_KEYS: ${SUBARX_ACCOUNT_API_KEYS:-}
+      SUBARX_SYNC_INTERVAL: ${SUBARX_SYNC_INTERVAL:-5m}
+      SUBARX_HTTP_TIMEOUT: ${SUBARX_HTTP_TIMEOUT:-30s}
+      SUBARX_LOOKBACK_DAYS: ${SUBARX_LOOKBACK_DAYS:-90}
+      SUBARX_TIMEZONE: ${SUBARX_TIMEZONE:-Asia/Shanghai}
+      TZ: Asia/Shanghai
+    volumes:
+      - companion_data:/data
+      - ./caddy_logs:/var/log/caddy:ro
+    networks: [sub2api-network]
+    depends_on:
+      sub2api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8090/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+  caddy:
+    build:
+      context: ./caddy-image
+    image: sub2api-rehearsal-caddy:local
+    ports:
+      - "127.0.0.1:18080:80"
+    volumes:
+      - ./caddy_logs:/var/log/caddy
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [sub2api-network]
+    depends_on:
+      sub2api:
+        condition: service_healthy
+      companion:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+
+networks:
+  sub2api-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  redis_data:
+  sub2api_data:
+  companion_data:
+  caddy_data:
+  caddy_config:

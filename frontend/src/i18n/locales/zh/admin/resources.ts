@@ -519,6 +519,86 @@ export default {
       group: '分组',
       requestId: '请求ID',
       upstreamRequestId: '上游ID',
+      // 表头就叫「成本」：这一列是上游向我们收的钱，页面上没有第二个「成本」，
+      // 加「上游」前缀只会让表头变长、还容易让人以为是另一种口径。
+      upstreamCost: '成本',
+      // 与「延迟」列并排：左边是本站观测（含中转开销），右边是上游自报。
+      // 表头点明「上游」，因为这一列的数值与左列口径不同，不比左列小也属正常。
+      upstreamLatency: '上游延迟',
+      // 只叫「差值」：紧挨着「延迟 / 上游延迟」，且每格数值都自带 ms 单位，
+      // 表头再写「延迟差值(ms)」属于重复占用列宽。
+      upstreamOverhead: '差值',
+      // 上游归属：商家 ID / 商家名 / A6 渠道 / 目标渠道 四个值同列堆叠。
+      // 表头点明「上游」，与左邻的「上游延迟」保持同一口径前缀。
+      upstreamSupplier: '上游商家',
+      supplierId: '商家 ID',
+      supplierName: '商家名',
+      upstreamChannel: 'A6 渠道',
+      // 使用记录里夹在「账户」和「模型」之间的一列：这条请求实际走的渠道多贵
+      // （A6 的实时倍率，按渠道+模型给出）。只显示数字，不带 ×。
+      channelMultiplier: '渠道倍率',
+      upstreamTargetChannel: '目标渠道',
+      // 操作列：把「这家商户/这个渠道这个模型有问题」直接在上游处置掉。
+      // 两个动作的作用域完全不同（一个是整商户、一个是单渠道单模型），
+      // 因此按钮文案必须把范围写清楚，不能只写「拉黑」。
+      upstreamAction: '操作',
+      // 对账状态筛选：主人用来自己核对「还有哪些没反查到上游成本」。
+      upstreamReconciled: '对账状态',
+      allReconciled: '全部',
+      reconciledOnly: '已对账',
+      unreconciledOnly: '未对账',
+      blockSupplier: '拉黑商户',
+      blockChannel: '拉黑渠道',
+      blockSupplierHint: '拉黑该商户：其名下所有渠道都会退出路由',
+      blockConfirmSupplier: '确定要拉黑商户 {name}（ID {id}）吗？该商户名下所有渠道都会退出路由，且它名下的固定绑定不会自动改绑，需要你另行处理。',
+      blockConfirmChannelModel: '确定要拉黑渠道 {channel} 的模型 {model} 吗？该渠道的其它模型不受影响。',
+      blockOk: '拉黑成功',
+      alreadyBlocked: '已拉黑',
+      blockNoSupplier: '这一行还没有上游商户信息（尚未对账到），无法拉黑',
+      profit: '盈亏',
+      profitMargin: '利润率',
+      totalUpstreamCost: '总成本',
+      totalProfit: '总盈利',
+      // 成本是「边查边补」的：还没反查回来的记录不进合计，所以这个提示必须显眼，
+      // 否则主人会拿一个偏小的成本当成真实成本，把毛利算高。
+      pendingCostCount: '另有 {count} 条成本待反查',
+      costFullyFetched: '成本已全部反查',
+      // 经营趋势图：三条金额线 + 一根记录数柱，序号与图例顺序一致。
+      businessTrend: '经营趋势',
+      metric: {
+        amount: '金额',
+        calls: '调用量',
+      },
+      seriesRevenue: '下游收入',
+      seriesUpstreamCost: '上游实扣',
+      seriesProfit: '已对账毛利',
+      seriesRequests: '记录总数',
+      upstreamCostSettings: {
+        title: '上游 A6 账单配置',
+        intro: '使用记录里的「成本」列，是后台拿每条请求的上游请求 ID 去 A6 账单查询后填上的。这里的地址与密钥就是那次查询用的凭据；不配置的话成本会一直是空的。',
+        configured: '凭据已配置（{mask}），成本取数任务运行中。',
+        notConfigured: '尚未配置凭据，成本取数任务不会发起任何查询，「成本」列会一直为空。',
+        baseUrl: 'A6 站点地址',
+        baseUrlHint: '形如 https://a6.example.com，必须带 http:// 或 https://。',
+        userId: 'A6 用户标识',
+        accessToken: '访问令牌',
+        accessTokenPlaceholder: '留空表示不修改现有令牌',
+        accessTokenHint: '出于安全考虑，令牌不会回显。留空保存 = 保持原令牌不变；要清除请勾选下面的选项。',
+        clearToken: '清除已保存的令牌（回落到配置文件里的值）',
+        saved: '已保存，新的取数任务会立刻用上这份凭据。',
+        overridden: '已覆盖',
+      },
+      profitExclusion: {
+        title: '不计入盈亏的人员名单',
+        intro: '内部人员也在用本站，但他们的余额是管理员手工调整的、并没有真实付款，所以他们的「收入」是假的。把他们加进这份名单后，他们的收入不再计入盈亏统计，但他们消耗的上游成本仍然照算——这样算出来的才是真实经营毛利。',
+        active: '当前有 {count} 位用户的收入不计入盈亏，但其上游成本仍正常计入。',
+        inactive: '当前没有排除任何人，统计口径与默认一致。',
+        membersLabel: '名单成员',
+        membersHint: '按邮箱搜索后点击即可加入；点成员右侧的 × 可移出。改完记得点保存。',
+        costStillCounted: '注意：名单只影响「收入」，不影响「成本」——这些人的调用成本依旧计入统计。',
+        saved: '已保存，统计口径立即生效（最长 30 秒内全站同步）。',
+        unsaved: '有未保存的改动',
+      },
       requestIdCopied: '请求ID已复制',
       upstreamRequestIdCopied: '上游ID已复制',
       allModels: '全部模型',

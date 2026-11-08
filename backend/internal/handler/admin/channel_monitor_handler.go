@@ -29,11 +29,107 @@ const (
 // ChannelMonitorHandler 渠道监控管理后台 handler。
 type ChannelMonitorHandler struct {
 	monitorService *service.ChannelMonitorService
+	// settingService 用于读写 V1 主动探测的调优参数（并发/超时/连接保活）。
+	settingService *service.SettingService
 }
 
 // NewChannelMonitorHandler 创建 handler。
-func NewChannelMonitorHandler(monitorService *service.ChannelMonitorService) *ChannelMonitorHandler {
-	return &ChannelMonitorHandler{monitorService: monitorService}
+func NewChannelMonitorHandler(monitorService *service.ChannelMonitorService, settingService *service.SettingService) *ChannelMonitorHandler {
+	return &ChannelMonitorHandler{monitorService: monitorService, settingService: settingService}
+}
+
+// --- 探测调优（V1 主动探测）---
+
+// channelMonitorTuningRequest 探测调优的可写字段。全部可选：
+// 未传或传 0 表示"沿用默认值"，越界值会被夹到合法范围。
+type channelMonitorTuningRequest struct {
+	WorkerConcurrency            *int `json:"worker_concurrency"`
+	ResponseHeaderTimeoutSeconds *int `json:"response_header_timeout_seconds"`
+	IdleConnTimeoutSeconds       *int `json:"idle_conn_timeout_seconds"`
+	MaxIdleConnsPerHost          *int `json:"max_idle_conns_per_host"`
+	RequestTimeoutSeconds        *int `json:"request_timeout_seconds"`
+}
+
+type channelMonitorTuningResponse struct {
+	service.ChannelMonitorTuning
+	// Limits 回传各项允许范围，前端据此渲染输入框约束，避免前后端约束漂移。
+	Limits map[string][2]int `json:"limits"`
+	// EffectiveImmediatelySeconds 提示改完多久生效（runner 每次触发时重读配置）。
+	EffectiveImmediatelySeconds int `json:"effective_immediately_seconds"`
+}
+
+func channelMonitorTuningLimits() map[string][2]int {
+	return map[string][2]int{
+		"worker_concurrency":              {service.ChannelMonitorWorkerConcurrencyMin, service.ChannelMonitorWorkerConcurrencyMax},
+		"response_header_timeout_seconds": {service.ChannelMonitorResponseHeaderTimeoutMin, service.ChannelMonitorResponseHeaderTimeoutMax},
+		"idle_conn_timeout_seconds":       {service.ChannelMonitorIdleConnTimeoutMin, service.ChannelMonitorIdleConnTimeoutMax},
+		"max_idle_conns_per_host":         {service.ChannelMonitorMaxIdleConnsPerHostMin, service.ChannelMonitorMaxIdleConnsPerHostMax},
+		"request_timeout_seconds":         {service.ChannelMonitorRequestTimeoutMin, service.ChannelMonitorRequestTimeoutMax},
+	}
+}
+
+// GetTuning 返回当前生效的探测调优参数。
+func (h *ChannelMonitorHandler) GetTuning(c *gin.Context) {
+	if h.settingService == nil {
+		response.Success(c, channelMonitorTuningResponse{
+			ChannelMonitorTuning: service.DefaultChannelMonitorTuning(),
+			Limits:               channelMonitorTuningLimits(),
+		})
+		return
+	}
+	response.Success(c, channelMonitorTuningResponse{
+		ChannelMonitorTuning:        h.settingService.GetChannelMonitorTuning(c.Request.Context()),
+		Limits:                      channelMonitorTuningLimits(),
+		EffectiveImmediatelySeconds: 60,
+	})
+}
+
+// UpdateTuning 校验并保存探测调优参数；越界值自动夹到范围边界后返回最终值。
+func (h *ChannelMonitorHandler) UpdateTuning(c *gin.Context) {
+	if h.settingService == nil {
+		response.ErrorFrom(c, infraerrors.InternalServer("SETTING_UNAVAILABLE", "setting service is unavailable"))
+		return
+	}
+	var req channelMonitorTuningRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorFrom(c, infraerrors.BadRequest("INVALID_TUNING_PAYLOAD", "invalid request body: "+err.Error()))
+		return
+	}
+
+	cur := h.settingService.GetChannelMonitorTuning(c.Request.Context())
+	next := cur
+	if req.WorkerConcurrency != nil {
+		next.WorkerConcurrency = *req.WorkerConcurrency
+	}
+	if req.ResponseHeaderTimeoutSeconds != nil {
+		next.ResponseHeaderTimeoutSeconds = *req.ResponseHeaderTimeoutSeconds
+	}
+	if req.IdleConnTimeoutSeconds != nil {
+		next.IdleConnTimeoutSeconds = *req.IdleConnTimeoutSeconds
+	}
+	if req.MaxIdleConnsPerHost != nil {
+		next.MaxIdleConnsPerHost = *req.MaxIdleConnsPerHost
+	}
+	if req.RequestTimeoutSeconds != nil {
+		next.RequestTimeoutSeconds = *req.RequestTimeoutSeconds
+	}
+
+	saved, err := h.settingService.SetChannelMonitorTuning(c.Request.Context(), next)
+	if err != nil {
+		response.ErrorFrom(c, infraerrors.InternalServer("TUNING_SAVE_FAILED", err.Error()))
+		return
+	}
+	slog.Info("channel_monitor: tuning updated by admin",
+		"worker_concurrency", saved.WorkerConcurrency,
+		"response_header_timeout_s", saved.ResponseHeaderTimeoutSeconds,
+		"idle_conn_timeout_s", saved.IdleConnTimeoutSeconds,
+		"max_idle_conns_per_host", saved.MaxIdleConnsPerHost,
+		"request_timeout_s", saved.RequestTimeoutSeconds)
+	response.Success(c, channelMonitorTuningResponse{
+		ChannelMonitorTuning:        saved,
+		Limits:                      channelMonitorTuningLimits(),
+		EffectiveImmediatelySeconds: 60,
+	})
 }
 
 // --- Request / Response ---
@@ -60,6 +156,9 @@ type channelMonitorCreateRequest struct {
 	CheckMode string `json:"check_mode" binding:"omitempty,oneof=probe quota quota_probe"`
 	// AccountID: 配额模式关联的账号 ID。
 	AccountID *int64 `json:"account_id"`
+	// GroupID: 绑定的模型广场分组（唯一权威来源，取代早期的名字猜测）。
+	// > 0 绑定；nil / <= 0 不绑定（卡片照常显示，只是没有模型与定价）。
+	GroupID *int64 `json:"group_id"`
 }
 
 type channelMonitorUpdateRequest struct {
@@ -83,6 +182,8 @@ type channelMonitorUpdateRequest struct {
 	// CheckMode/AccountID：nil = 不更新；AccountID 指向 0 = 清空关联。
 	CheckMode *string `json:"check_mode" binding:"omitempty,oneof=probe quota quota_probe"`
 	AccountID *int64  `json:"account_id"`
+	// GroupID：nil = 不更新；> 0 = 绑定到该分组；<= 0 = 清空绑定。
+	GroupID *int64 `json:"group_id"`
 }
 
 type channelMonitorResponse struct {
@@ -115,8 +216,11 @@ type channelMonitorResponse struct {
 
 	// 配额模式：check_mode + 关联账号 + 主模型最近配额快照
 	// （LatestQuota 由 List handler 批量聚合后填充；管理端不受 channel_monitor_show_quota 影响）。
-	CheckMode   string                       `json:"check_mode"`
-	AccountID   *int64                       `json:"account_id"`
+	CheckMode string `json:"check_mode"`
+	AccountID *int64 `json:"account_id"`
+	// GroupID: 绑定的模型广场分组；nil = 未绑定。
+	// 前端据此在表单里回显选中项；解析侧只认它，不再猜名字。
+	GroupID     *int64                       `json:"group_id"`
 	LatestQuota *domain.MonitorQuotaSnapshot `json:"latest_quota,omitempty"`
 }
 
@@ -184,6 +288,7 @@ func channelMonitorToResponse(m *service.ChannelMonitor) *channelMonitorResponse
 		BodyOverride:        m.BodyOverride,
 		CheckMode:           m.CheckMode,
 		AccountID:           m.AccountID,
+		GroupID:             m.GroupID,
 		// PrimaryStatus / PrimaryLatencyMs / Availability7d / LatestQuota
 		// 由 List handler 在批量聚合后填充。
 	}
@@ -354,6 +459,7 @@ func (h *ChannelMonitorHandler) Create(c *gin.Context) {
 		BodyOverride:     req.BodyOverride,
 		CheckMode:        req.CheckMode,
 		AccountID:        req.AccountID,
+		GroupID:          req.GroupID,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -450,6 +556,7 @@ func (h *ChannelMonitorHandler) Update(c *gin.Context) {
 		BodyOverride:     req.BodyOverride,
 		CheckMode:        req.CheckMode,
 		AccountID:        req.AccountID,
+		GroupID:          req.GroupID,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -508,6 +615,26 @@ func (h *ChannelMonitorHandler) History(c *gin.Context) {
 		out = append(out, historyEntryToResponse(e))
 	}
 	response.Success(c, gin.H{"items": out})
+}
+
+// ClearHistory DELETE /api/v1/admin/channel-monitors/:id/history
+// 清空该监控的全部监控数据（探测明细 + 每日聚合），返回各表删除行数。
+// 只清数据，不动监控配置本身（endpoint / api_key / interval / enabled 全部保留），
+// 清完下一次探测会照常写入，等于把该渠道的可用率与延迟统计重置。
+func (h *ChannelMonitorHandler) ClearHistory(c *gin.Context) {
+	id, ok := ParseChannelMonitorID(c)
+	if !ok {
+		return
+	}
+	result, err := h.monitorService.ClearData(c.Request.Context(), id)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, gin.H{
+		"deleted_history": result.DeletedHistory,
+		"deleted_rollups": result.DeletedRollups,
+	})
 }
 
 // parseHistoryLimit 解析 history 接口的 limit query。

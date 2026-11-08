@@ -1631,8 +1631,19 @@ func (a *Account) IsAnthropicProtocol() bool {
 // GetAnthropicProtocolBaseURL 返回 Anthropic 协议账号的上游 base_url
 // （上游路径为 {base}/v1/messages）。优先取凭证 base_url，缺失时按
 // 供应商 × 接入模式返回默认端点。非 Anthropic 协议账号返回空串。
+//
+// 例外：直通模式（passthrough）账号即使不是 Anthropic 协议，也返回其
+// OpenAI 协议 base_url——因为该模式下上游同时提供 /v1/messages 与
+// chat/responses 原生端点，且两者同源（同一个 base_url）。例如 A6 的
+// https://api.a6api.com 既是 chat/responses 的 base，也是 /v1/messages 的 base。
 func (a *Account) GetAnthropicProtocolBaseURL() string {
-	if a == nil || (!a.IsAnthropicProtocol() && !a.IsAdaptiveAPIProtocol()) {
+	if a == nil {
+		return ""
+	}
+	if openai_compat.ResponsesPassthroughMode(a.Extra) {
+		return strings.TrimSpace(a.GetOpenAIBaseURL())
+	}
+	if !a.IsAnthropicProtocol() && !a.IsAdaptiveAPIProtocol() {
 		return ""
 	}
 	if a.IsAdaptiveAPIProtocol() {

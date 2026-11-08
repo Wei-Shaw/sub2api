@@ -19,7 +19,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, upstream_response_model, upstream_model_mismatch, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, image_input_tokens, image_input_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, image_input_size, image_output_size, image_size_source, image_size_breakdown, video_count, video_resolution, video_duration_seconds, service_tier, reasoning_effort, requested_reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, long_context_billing_applied, channel_id, model_mapping_chain, billing_tier, billing_mode, account_stats_cost, upstream_request_id, session_id, native_compaction_v2, created_at"
+const usageLogSelectColumns = "id, user_id, api_key_id, account_id, request_id, model, requested_model, upstream_model, upstream_response_model, upstream_model_mismatch, group_id, subscription_id, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens, cache_creation_5m_tokens, cache_creation_1h_tokens, image_output_tokens, image_output_cost, image_input_tokens, image_input_cost, input_cost, output_cost, cache_creation_cost, cache_read_cost, total_cost, actual_cost, rate_multiplier, account_rate_multiplier, billing_type, request_type, stream, openai_ws_mode, duration_ms, first_token_ms, user_agent, ip_address, image_count, image_size, image_input_size, image_output_size, image_size_source, image_size_breakdown, video_count, video_resolution, video_duration_seconds, service_tier, reasoning_effort, requested_reasoning_effort, inbound_endpoint, upstream_endpoint, cache_ttl_overridden, long_context_billing_applied, channel_id, model_mapping_chain, billing_tier, billing_mode, account_stats_cost, upstream_request_id, session_id, native_compaction_v2, created_at, upstream_cost_original, upstream_cost_currency, upstream_first_token_ms, upstream_duration_ms, upstream_supplier_id, upstream_supplier_name, upstream_channel_id, upstream_target_channel_id"
 
 func (r *usageLogRepository) GetByID(ctx context.Context, id int64) (log *service.UsageLog, err error) {
 	query := "SELECT " + usageLogSelectColumns + " FROM usage_logs WHERE id = $1"
@@ -130,6 +130,18 @@ func (r *usageLogRepository) ListWithFilters(ctx context.Context, params paginat
 	conditions, args = appendUsageLogBillingModeWhereCondition(conditions, args, filters.BillingMode)
 	if filters.UpstreamModelMismatch != nil {
 		conditions = append(conditions, upstreamModelMismatchCondition("upstream_model_mismatch", *filters.UpstreamModelMismatch))
+	}
+	// 「对账状态」筛选。未对账一侧必须带上 upstream_request_id <> ''：
+	// 没有上游请求 ID 的历史行天生无法对账（对账能力上线前的数据），
+	// 混进来会让管理员看到几十万条"未对账"，真正要处理的几条反而被淹没。
+	if filters.UpstreamReconciled != nil {
+		if *filters.UpstreamReconciled {
+			conditions = append(conditions, "upstream_cost_fetched_at IS NOT NULL")
+		} else {
+			conditions = append(conditions,
+				"upstream_cost_fetched_at IS NULL",
+				"COALESCE(upstream_request_id, '') <> ''")
+		}
 	}
 	if filters.StartTime != nil {
 		conditions = append(conditions, fmt.Sprintf("created_at >= $%d", len(args)+1))
@@ -503,6 +515,20 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		sessionID                 sql.NullString
 		nativeCompactionV2        bool
 		createdAt                 time.Time
+		// 上游真实成本。与同一行里的 total_cost / actual_cost 是两个口径：
+		// 后者是按本站价目表算出来的「应收」，这个是上游账单里的「实付」。
+		upstreamCostOriginal sql.NullFloat64
+		upstreamCostCurrency sql.NullString
+		// 上游自报的首字耗时与总耗时（毫秒）。与本站的 first_token_ms /
+		// duration_ms 是两个口径：本站值含中转开销，这里只覆盖上游内部那一段，
+		// 两者相减才是管理员要看的「中转开销」。为空即「尚未对账到」，不是 0。
+		upstreamFirstTokenMs sql.NullInt64
+		upstreamDurationMs   sql.NullInt64
+		// 上游商户 / 渠道归属，同样「NULL = 尚未对账到」而非 0。
+		upstreamSupplierID      sql.NullInt64
+		upstreamSupplierName    sql.NullString
+		upstreamChannelID       sql.NullInt64
+		upstreamTargetChannelID sql.NullInt64
 	)
 
 	if err := scanner.Scan(
@@ -569,6 +595,14 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 		&sessionID,
 		&nativeCompactionV2,
 		&createdAt,
+		&upstreamCostOriginal,
+		&upstreamCostCurrency,
+		&upstreamFirstTokenMs,
+		&upstreamDurationMs,
+		&upstreamSupplierID,
+		&upstreamSupplierName,
+		&upstreamChannelID,
+		&upstreamTargetChannelID,
 	); err != nil {
 		return nil, err
 	}
@@ -704,6 +738,47 @@ func scanUsageLog(scanner interface{ Scan(...any) error }) (*service.UsageLog, e
 	}
 	if upstreamRequestID.Valid {
 		log.UpstreamRequestID = &upstreamRequestID.String
+	}
+	// 上游真实成本：为空表示还没取到（或该账号没配上游 ID 头名），
+	// 与「取到 0 元」是两回事，因此保留 nil 而不是填 0。
+	//
+	// 金额一律是上游账单里的**原币值**（A6 为美元），不做换算——本页的「费用」
+	// 也是美元，两者同币种相减才是可比的毛利。
+	if upstreamCostOriginal.Valid {
+		log.UpstreamCostOriginal = &upstreamCostOriginal.Float64
+	}
+	if upstreamCostCurrency.Valid {
+		log.UpstreamCostCurrency = upstreamCostCurrency.String
+	}
+	// 上游自报的延迟：同样以 nil 表示「尚未对账到」。
+	//
+	// 这里刻意不把 NULL 折成 0 —— 页面上「0ms」会被读成「上游瞬间返回」，
+	// 而实际含义是「不知道」，两者的排障结论完全相反。
+	if upstreamFirstTokenMs.Valid {
+		value := int(upstreamFirstTokenMs.Int64)
+		log.UpstreamFirstTokenMs = &value
+	}
+	if upstreamDurationMs.Valid {
+		value := int(upstreamDurationMs.Int64)
+		log.UpstreamDurationMs = &value
+	}
+	// 商户 / 渠道同理：NULL 折成 0 会把「不知道是哪家」显示成「第 0 家」，
+	// 而这两个字段正是用来定位责任方的，折 0 比留空危害更大。
+	if upstreamSupplierID.Valid {
+		value := int(upstreamSupplierID.Int64)
+		log.UpstreamSupplierID = &value
+	}
+	if upstreamSupplierName.Valid && strings.TrimSpace(upstreamSupplierName.String) != "" {
+		value := strings.TrimSpace(upstreamSupplierName.String)
+		log.UpstreamSupplierName = &value
+	}
+	if upstreamChannelID.Valid {
+		value := int(upstreamChannelID.Int64)
+		log.UpstreamChannelID = &value
+	}
+	if upstreamTargetChannelID.Valid {
+		value := int(upstreamTargetChannelID.Int64)
+		log.UpstreamTargetChannelID = &value
 	}
 
 	return log, nil

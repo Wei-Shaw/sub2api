@@ -43,6 +43,12 @@ func (h *PaymentWebhookHandler) EasyPayNotify(c *gin.Context) {
 	h.handleNotify(c, payment.TypeEasyPay)
 }
 
+// HupijiaoNotify handles Hupijiao payment notifications.
+// POST /api/v1/payment/webhook/hupijiao
+func (h *PaymentWebhookHandler) HupijiaoNotify(c *gin.Context) {
+	h.handleNotify(c, payment.TypeHupijiao)
+}
+
 // AlipayNotify handles Alipay payment notifications.
 // POST /api/v1/payment/webhook/alipay
 func (h *PaymentWebhookHandler) AlipayNotify(c *gin.Context) {
@@ -156,6 +162,11 @@ func (h *PaymentWebhookHandler) handleNotify(c *gin.Context, providerKey string)
 // This allows looking up the correct provider instance before verification.
 func extractOutTradeNo(rawBody, providerKey string) string {
 	switch providerKey {
+	case payment.TypeHupijiao:
+		values, err := url.ParseQuery(rawBody)
+		if err == nil {
+			return values.Get("trade_order_id")
+		}
 	case payment.TypeEasyPay, payment.TypeAlipay:
 		values, err := url.ParseQuery(rawBody)
 		if err == nil {

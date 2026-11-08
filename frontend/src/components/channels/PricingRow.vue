@@ -19,7 +19,9 @@ const props = withDefaults(
   { value: null }
 )
 
-const display = computed(() =>
-  props.value == null ? '-' : `${formatScaled(props.value, props.scale)} ${props.unit}`
-)
+const display = computed(() => {
+  if (props.value == null) return '-'
+  const separator = props.unit.startsWith('元') ? '' : ' '
+  return `${formatScaled(props.value, props.scale)}${separator}${props.unit}`
+})
 </script>

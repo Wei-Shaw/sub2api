@@ -276,6 +276,20 @@ const routes: RouteRecordRaw[] = [
       descriptionKey: 'availableChannels.description'
     }
   },
+  // 模型广场 Pro：模型广场 / 渠道状态 V2 / 可用渠道 三合一融合页。
+  // 由 model_plaza_pro_enabled 开关控制入口（侧边栏），路由本身只要求登录。
+  {
+    path: '/model-plaza-pro',
+    name: 'ModelPlazaPro',
+    component: () => import('@/views/user/ModelPlazaProView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Model Plaza Pro',
+      titleKey: 'nav.modelPlazaPro',
+      descriptionKey: 'modelPlazaPro.description'
+    }
+  },
   {
     path: '/settings/mcp',
     name: 'MCP',
@@ -511,6 +525,48 @@ const routes: RouteRecordRaw[] = [
       title: 'Channel Monitor',
       titleKey: 'admin.channelMonitor.title',
       descriptionKey: 'admin.channelMonitor.description'
+    }
+  },
+  {
+    path: '/admin/intelligence-check',
+    name: 'AdminIntelligenceCheck',
+    component: () => import('@/views/admin/IntelligenceCheckView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Intelligence Check',
+      titleKey: 'admin.intelligenceCheck.title',
+      descriptionKey: 'admin.intelligenceCheck.description'
+    }
+  },
+  {
+    // 智力检测作品墙：普通登录用户可见（后端接口已脱敏），复用同一页面组件。
+    path: '/intelligence-check',
+    name: 'IntelligenceCheck',
+    component: () => import('@/views/admin/IntelligenceCheckView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Intelligence Check',
+      titleKey: 'admin.intelligenceCheck.title',
+      descriptionKey: 'admin.intelligenceCheck.description'
+    }
+  },
+  {
+    // AI生图：**2026-10-22 起对普通用户开放**（主人要求）。
+    // 原来这里有 requiresAdmin，是为了让管理员先真机验一遍再放量；
+    // 现在验证通过，放开给所有登录用户。
+    //
+    // 注意：普通用户能不能真的生成，取决于**他自己的密钥落在哪个分组**——
+    // 只有「生图」分组（allow_image_generation = true）的 Key 才调得通，
+    // 否则页面里的密钥校验会直接提示「这个密钥不是生图模型」。
+    path: '/ai-image',
+    name: 'AIImage',
+    component: () => import('@/views/user/AIImageView.vue'),
+    meta: {
+      requiresAuth: true,
+      title: 'Photo Studio',
+      titleKey: 'nav.aiImage'
     }
   },
   {

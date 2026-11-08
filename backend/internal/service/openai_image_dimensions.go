@@ -2,6 +2,7 @@ package service
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/base64"
 	"encoding/binary"
 	"fmt"
@@ -10,6 +11,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"strconv"
 	"strings"
 )
 
@@ -42,6 +44,37 @@ func detectOpenAIImageResultSize(encoded string) string {
 		return fmt.Sprintf("%dx%d", cfg.Width, cfg.Height)
 	}
 	return ""
+}
+
+// detectOpenAIImageBytesSize 从已解码的图片字节里读取真实像素尺寸（"WxH"）。
+//
+// 与 detectOpenAIImageResultSize 的区别：这里接收的是原始字节，而不是 base64 文本，
+// 用于上游以 url（而非 b64_json）返回图片、或网关已经持有图片字节的场景。
+// 无法识别时返回空串，调用方据此保持原行为。
+func detectOpenAIImageBytesSize(data []byte) string {
+	if len(data) == 0 {
+		return ""
+	}
+	if width, height, ok := detectOpenAIWebPDimensions(data); ok {
+		return fmt.Sprintf("%dx%d", width, height)
+	}
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
+	if err != nil || cfg.Width <= 0 || cfg.Height <= 0 {
+		return ""
+	}
+	return fmt.Sprintf("%dx%d", cfg.Width, cfg.Height)
+}
+
+// isResolvedImageSize 报告 size 是否已经是可用的具体像素尺寸（"WxH"，两边均为正整数）。
+// 空串、auto、以及上游回显的其它占位值都视为"未解析"，需要继续探测真实交付尺寸。
+func isResolvedImageSize(size string) bool {
+	parts := strings.Split(strings.ToLower(strings.TrimSpace(size)), "x")
+	if len(parts) != 2 {
+		return false
+	}
+	width, errWidth := strconv.Atoi(strings.TrimSpace(parts[0]))
+	height, errHeight := strconv.Atoi(strings.TrimSpace(parts[1]))
+	return errWidth == nil && errHeight == nil && width > 0 && height > 0
 }
 
 func detectOpenAIWebPDimensions(header []byte) (int, int, bool) {

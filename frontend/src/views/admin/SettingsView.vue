@@ -7342,6 +7342,33 @@
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
             <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t('admin.settings.features.modelPlazaPro.title') }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t('admin.settings.features.modelPlazaPro.description') }}
+            </p>
+          </div>
+          <div class="space-y-5 p-6">
+            <div class="flex items-center justify-between">
+              <div>
+                <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  {{ t('admin.settings.features.modelPlazaPro.enabled') }}
+                </label>
+                <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                  {{ t('admin.settings.features.modelPlazaPro.enabledHint') }}
+                </p>
+              </div>
+              <Toggle
+                :model-value="form.model_plaza_pro_enabled"
+                @update:model-value="onModelPlazaProToggle"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
               {{ t('admin.settings.features.siteBillingMode.title') }}
             </h2>
             <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -8864,6 +8891,323 @@
           <BackupSettings />
         </div>
 
+        <!-- Tab: 智力检测（鹈鹕测试） -->
+        <!-- 上游 A6 账单配置：成本列的取数凭据。放系统设置里，因为它是「配一次就不动」
+           的基础设施；放在使用记录页反而会被当成日常操作。 -->
+      <div v-show="activeTab === 'upstreamCost'" class="space-y-6">
+        <UpstreamCostSettingsPanel />
+        <!-- 盈亏排除名单：内部人员收入不计入盈亏、成本照算。
+             与上面那张卡分开，是因为「保存凭据失败」和「保存名单失败」
+             要各自独立，不能互相牵连。 -->
+        <ProfitExclusionPanel />
+      </div>
+
+      <div v-show="activeTab === 'intelligenceCheck'" class="space-y-6">
+          <!-- 跑测策略 -->
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.intelligenceCheck.title") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.intelligenceCheck.description") }}
+              </p>
+            </div>
+            <div class="space-y-4 p-6">
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.intelligenceCheck.enabled") }}
+                  </p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.intelligenceCheck.enabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.intelligence_check_enabled" />
+              </div>
+
+              <div
+                v-if="
+                  form.intelligence_check_enabled &&
+                  !String(form.intelligence_check_model_id || '').trim()
+                "
+                class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-900/20 dark:text-amber-200"
+              >
+                {{ t("admin.settings.intelligenceCheck.modelRequiredWarning") }}
+              </div>
+
+              <div>
+                <label class="input-label">
+                  {{ t("admin.settings.intelligenceCheck.modelId") }}
+                </label>
+                <input
+                  v-model="form.intelligence_check_model_id"
+                  type="text"
+                  class="input"
+                  :placeholder="
+                    t('admin.settings.intelligenceCheck.modelIdPlaceholder')
+                  "
+                />
+                <p class="mt-1 text-xs text-gray-400">
+                  {{ t("admin.settings.intelligenceCheck.modelIdHint") }}
+                </p>
+              </div>
+
+              <div>
+                <label class="input-label">
+                  {{ t("admin.settings.intelligenceCheck.reasoningEffort") }}
+                </label>
+                <input
+                  v-model="form.intelligence_check_reasoning_effort"
+                  type="text"
+                  class="input"
+                  :placeholder="
+                    t(
+                      'admin.settings.intelligenceCheck.reasoningEffortPlaceholder'
+                    )
+                  "
+                />
+                <p class="mt-1 text-xs text-gray-400">
+                  {{ t("admin.settings.intelligenceCheck.reasoningEffortHint") }}
+                </p>
+              </div>
+
+              <div class="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label class="input-label">
+                    {{ t("admin.settings.intelligenceCheck.intervalMinutes") }}
+                  </label>
+                  <input
+                    v-model.number="form.intelligence_check_interval_minutes"
+                    type="number"
+                    min="5"
+                    max="10080"
+                    class="input"
+                  />
+                  <p class="mt-1 text-xs text-gray-400">
+                    {{ t("admin.settings.intelligenceCheck.intervalMinutesHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{ t("admin.settings.intelligenceCheck.maxConcurrency") }}
+                  </label>
+                  <input
+                    v-model.number="form.intelligence_check_max_concurrency"
+                    type="number"
+                    min="1"
+                    max="32"
+                    class="input"
+                  />
+                  <p class="mt-1 text-xs text-gray-400">
+                    {{ t("admin.settings.intelligenceCheck.maxConcurrencyHint") }}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 重试与账号自动恢复 -->
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.intelligenceCheck.retryTitle") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.intelligenceCheck.retryDescription") }}
+              </p>
+            </div>
+            <div class="space-y-4 p-6">
+              <div class="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label class="input-label">
+                    {{ t("admin.settings.intelligenceCheck.runRetryCount") }}
+                  </label>
+                  <input
+                    v-model.number="form.intelligence_check_run_retry_count"
+                    type="number"
+                    min="0"
+                    max="10"
+                    class="input"
+                  />
+                  <p class="mt-1 text-xs text-gray-400">
+                    {{ t("admin.settings.intelligenceCheck.runRetryCountHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{
+                      t(
+                        "admin.settings.intelligenceCheck.runRetryIntervalSeconds"
+                      )
+                    }}
+                  </label>
+                  <input
+                    v-model.number="
+                      form.intelligence_check_run_retry_interval_seconds
+                    "
+                    type="number"
+                    min="1"
+                    max="3600"
+                    class="input"
+                  />
+                  <p class="mt-1 text-xs text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.intelligenceCheck.runRetryIntervalSecondsHint"
+                      )
+                    }}
+                  </p>
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{ t("admin.settings.intelligenceCheck.accountRetryCount") }}
+                  </label>
+                  <input
+                    v-model.number="form.intelligence_check_account_retry_count"
+                    type="number"
+                    min="0"
+                    max="20"
+                    class="input"
+                  />
+                  <p class="mt-1 text-xs text-gray-400">
+                    {{ t("admin.settings.intelligenceCheck.accountRetryCountHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{
+                      t(
+                        "admin.settings.intelligenceCheck.accountRetryIntervalMinutes"
+                      )
+                    }}
+                  </label>
+                  <input
+                    v-model.number="
+                      form.intelligence_check_account_retry_interval_minutes
+                    "
+                    type="number"
+                    min="1"
+                    max="1440"
+                    class="input"
+                  />
+                  <p class="mt-1 text-xs text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.intelligenceCheck.accountRetryIntervalMinutesHint"
+                      )
+                    }}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 评审结论联动账号状态 -->
+          <div class="card">
+            <div class="p-6">
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">
+                    {{
+                      t(
+                        "admin.settings.intelligenceCheck.statusSyncEnabled"
+                      )
+                    }}
+                  </p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{
+                      t(
+                        "admin.settings.intelligenceCheck.statusSyncEnabledHint"
+                      )
+                    }}
+                  </p>
+                </div>
+                <Toggle v-model="form.intelligence_check_status_sync_enabled" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 跑测流式开关 -->
+          <div class="card">
+            <div class="p-6">
+              <div class="flex items-start justify-between gap-4">
+                <div class="min-w-0">
+                  <p class="text-sm font-medium text-gray-900 dark:text-white">
+                    {{ t("admin.settings.intelligenceCheck.streamEnabled") }}
+                  </p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.intelligenceCheck.streamEnabledHint") }}
+                  </p>
+                </div>
+                <Toggle v-model="form.intelligence_check_stream_enabled" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 单次运行上限 -->
+          <div class="card">
+            <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+                {{ t("admin.settings.intelligenceCheck.limitsTitle") }}
+              </h2>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                {{ t("admin.settings.intelligenceCheck.limitsDescription") }}
+              </p>
+            </div>
+            <div class="space-y-4 p-6">
+              <div class="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <label class="input-label">
+                    {{ t("admin.settings.intelligenceCheck.timeoutSeconds") }}
+                  </label>
+                  <input
+                    v-model.number="form.intelligence_check_timeout_seconds"
+                    type="number"
+                    min="30"
+                    max="3600"
+                    class="input"
+                  />
+                  <p class="mt-1 text-xs text-gray-400">
+                    {{ t("admin.settings.intelligenceCheck.timeoutSecondsHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{ t("admin.settings.intelligenceCheck.maxTokens") }}
+                  </label>
+                  <input
+                    v-model.number="form.intelligence_check_max_tokens"
+                    type="number"
+                    min="4096"
+                    max="128000"
+                    class="input"
+                  />
+                  <p class="mt-1 text-xs text-gray-400">
+                    {{ t("admin.settings.intelligenceCheck.maxTokensHint") }}
+                  </p>
+                </div>
+                <div>
+                  <label class="input-label">
+                    {{ t("admin.settings.intelligenceCheck.maxRunsPerAccount") }}
+                  </label>
+                  <input
+                    v-model.number="form.intelligence_check_max_runs_per_account"
+                    type="number"
+                    min="1"
+                    max="500"
+                    class="input"
+                  />
+                  <p class="mt-1 text-xs text-gray-400">
+                    {{ t("admin.settings.intelligenceCheck.maxRunsPerAccountHint") }}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- /Tab: 智力检测 -->
+
         <!-- Save Button -->
         <div v-show="activeTab !== 'backup'" class="flex justify-end">
           <button
@@ -9005,6 +9349,8 @@ import {
 } from "@/utils/rechargeBonus";
 import RegistrationEmailBlacklistEditor from "@/components/admin/settings/RegistrationEmailBlacklistEditor.vue";
 import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
+import UpstreamCostSettingsPanel from "@/components/admin/usage/UpstreamCostSettingsPanel.vue";
+import ProfitExclusionPanel from "@/components/admin/usage/ProfitExclusionPanel.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import {
   useStepUp,
@@ -9064,7 +9410,9 @@ type SettingsTab =
   | "gateway"
   | "payment"
   | "email"
-  | "backup";
+  | "backup"
+  | "intelligenceCheck"
+  | "upstreamCost";
 const activeTab = ref<SettingsTab>("general");
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
@@ -9076,6 +9424,8 @@ const settingsTabs = [
   { key: "payment" as SettingsTab, icon: "creditCard" as const },
   { key: "email" as SettingsTab, icon: "mail" as const },
   { key: "backup" as SettingsTab, icon: "database" as const },
+  { key: "intelligenceCheck" as SettingsTab, icon: "beaker" as const },
+  { key: "upstreamCost" as SettingsTab, icon: "cog" as const },
 ];
 
 const settingsTabKeyboardActions = {
@@ -9686,6 +10036,11 @@ type SettingsForm = Omit<
   channel_monitor_hide_throughput: boolean;
   channel_monitor_show_quota: boolean;
   channel_monitor_hide_user_ranking: boolean;
+  model_plaza_pro_enabled: boolean;
+  /** 智力检测：评审结论联动账号状态。表单必须绑定具体 boolean，不能是可选。 */
+  intelligence_check_status_sync_enabled: boolean;
+  /** 智力检测：跑测是否以流式发起。默认开启流式（详见设置项说明）。 */
+  intelligence_check_stream_enabled: boolean;
   smtp_password: string;
   turnstile_secret_key: string;
   tencent_captcha_app_secret_key: string;
@@ -10020,6 +10375,22 @@ const form = reactive<SettingsForm>({
   channel_monitor_hide_throughput: false,
   channel_monitor_show_quota: false,
   channel_monitor_hide_user_ranking: false,
+  // 智力检测（鹈鹕测试）全局配置。默认值必须与后端 setting_parse.go 的 defaults 一致，
+  // 否则老库升级后前端会显示一套值、后端实际用另一套。
+  intelligence_check_enabled: false,
+  intelligence_check_interval_minutes: 720,
+  intelligence_check_model_id: "",
+  intelligence_check_reasoning_effort: "",
+  intelligence_check_max_concurrency: 2,
+  intelligence_check_run_retry_count: 2,
+  intelligence_check_run_retry_interval_seconds: 30,
+  intelligence_check_account_retry_count: 3,
+  intelligence_check_account_retry_interval_minutes: 10,
+  intelligence_check_timeout_seconds: 180,
+  intelligence_check_max_tokens: 32000,
+  intelligence_check_max_runs_per_account: 20,
+  intelligence_check_status_sync_enabled: false,
+  intelligence_check_stream_enabled: true,
   // Available Channels feature switch
   available_channels_enabled: false,
   // Subscription feature switch (user sidebar "My Subscriptions" entry)
@@ -10028,6 +10399,8 @@ const form = reactive<SettingsForm>({
   model_plaza_enabled: false,
   model_plaza_require_auth: false,
   model_plaza_description: '',
+  // Model Plaza Pro（模型广场 / 渠道状态 V2 / 可用渠道 融合页）开关，默认关闭
+  model_plaza_pro_enabled: false,
   // Plugin management menu visibility; plugin runtime is unaffected.
   plugin_management_enabled: false,
   // Affiliate (邀请返利) feature switch
@@ -11056,6 +11429,64 @@ async function loadSettings() {
     form.channel_monitor_hide_user_ranking = Boolean(
       settings.channel_monitor_hide_user_ranking
     );
+    // 智力检测：重试次数允许为 0（表示不重试），所以这里不能用 `|| 默认值` 兜底，
+    // 否则后端配好的「不重试」会被前端悄悄改回默认次数。
+    const readIntelligenceCheckInt = (
+      value: unknown,
+      fallback: number
+    ): number => {
+      const parsed = Number(value);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    };
+    form.intelligence_check_enabled = Boolean(settings.intelligence_check_enabled);
+    form.intelligence_check_interval_minutes = readIntelligenceCheckInt(
+      settings.intelligence_check_interval_minutes,
+      720
+    );
+    form.intelligence_check_model_id = settings.intelligence_check_model_id || "";
+    form.intelligence_check_reasoning_effort =
+      settings.intelligence_check_reasoning_effort || "";
+    form.intelligence_check_max_concurrency = readIntelligenceCheckInt(
+      settings.intelligence_check_max_concurrency,
+      2
+    );
+    form.intelligence_check_run_retry_count = readIntelligenceCheckInt(
+      settings.intelligence_check_run_retry_count,
+      2
+    );
+    form.intelligence_check_run_retry_interval_seconds = readIntelligenceCheckInt(
+      settings.intelligence_check_run_retry_interval_seconds,
+      30
+    );
+    form.intelligence_check_account_retry_count = readIntelligenceCheckInt(
+      settings.intelligence_check_account_retry_count,
+      3
+    );
+    form.intelligence_check_account_retry_interval_minutes =
+      readIntelligenceCheckInt(
+        settings.intelligence_check_account_retry_interval_minutes,
+        10
+      );
+    form.intelligence_check_timeout_seconds = readIntelligenceCheckInt(
+      settings.intelligence_check_timeout_seconds,
+      180
+    );
+    form.intelligence_check_max_tokens = readIntelligenceCheckInt(
+      settings.intelligence_check_max_tokens,
+      32000
+    );
+    form.intelligence_check_max_runs_per_account = readIntelligenceCheckInt(
+      settings.intelligence_check_max_runs_per_account,
+      20
+    );
+    form.intelligence_check_status_sync_enabled = Boolean(
+      settings.intelligence_check_status_sync_enabled
+    );
+    // 后端缺这个键时按「开启流式」兜底，与设置项默认值保持一致。
+    form.intelligence_check_stream_enabled =
+      settings.intelligence_check_stream_enabled === undefined
+        ? true
+        : Boolean(settings.intelligence_check_stream_enabled);
     form.login_agreement_updated_at =
       settings.login_agreement_updated_at || "2026-03-31";
     form.login_agreement_documents =
@@ -11280,6 +11711,43 @@ const siteBillingMode = computed<SiteBillingMode>({
 const siteBillingModeHint = computed(() =>
   t(`admin.settings.features.siteBillingMode.hints.${SITE_BILLING_MODE_I18N_KEYS[siteBillingMode.value]}`),
 );
+
+/**
+ * 开启「模型广场 Pro」时联动开启它依赖的数据源开关。
+ *
+ * 为什么需要联动：Pro 页的两块数据都来自官方功能，各自有独立门禁 ——
+ *   · 卡片与定价 ← 官方 `/api/v1/model-plaza`，受 `model_plaza_enabled` 门禁（关闭时 404）；
+ *   · 健康脉冲   ← V2 监控接口，受 `channel_monitor_enabled` + `channel_monitor_mode=v2` 门禁（否则 403）。
+ * 只开 Pro 而不开这两项，页面会是空的（且旧文案会误报成「Pro 未启用」）。
+ *
+ * 联动只改**表单值**、不落库：管理员点「保存设置」之前能看见这几个开关被一起拨亮，
+ * 也可以随时改回来。关闭 Pro 时**不动**依赖，保证回退到官方三页时它们仍然可用。
+ */
+function onModelPlazaProToggle(value: boolean) {
+  form.model_plaza_pro_enabled = value;
+  if (!value) return;
+  const features = "admin.settings.features";
+  const linked: string[] = [];
+  if (!form.model_plaza_enabled) {
+    form.model_plaza_enabled = true;
+    linked.push(t(`${features}.modelPlaza.title`));
+  }
+  if (!form.channel_monitor_enabled) {
+    form.channel_monitor_enabled = true;
+    linked.push(t(`${features}.channelMonitor.title`));
+  }
+  if (form.channel_monitor_mode !== "v2") {
+    form.channel_monitor_mode = "v2";
+    linked.push(t(`${features}.modelPlazaPro.monitorModeV2`));
+  }
+  if (linked.length) {
+    appStore.showSuccess(
+      t(`${features}.modelPlazaPro.autoLinked`, {
+        items: linked.join(t(`${features}.modelPlazaPro.listSeparator`)),
+      }),
+    );
+  }
+}
 
 async function saveSettings() {
   saving.value = true;
@@ -11755,6 +12223,43 @@ async function saveSettings() {
       channel_monitor_hide_throughput: Boolean(form.channel_monitor_hide_throughput),
       channel_monitor_show_quota: Boolean(form.channel_monitor_show_quota),
       channel_monitor_hide_user_ranking: Boolean(form.channel_monitor_hide_user_ranking),
+      // 智力检测（鹈鹕测试）全局配置
+      intelligence_check_enabled: Boolean(form.intelligence_check_enabled),
+      intelligence_check_interval_minutes:
+        Number(form.intelligence_check_interval_minutes) || 720,
+      intelligence_check_model_id: (form.intelligence_check_model_id || "").trim(),
+      intelligence_check_reasoning_effort: (
+        form.intelligence_check_reasoning_effort || ""
+      ).trim(),
+      intelligence_check_max_concurrency:
+        Number(form.intelligence_check_max_concurrency) || 2,
+      // 0 是合法值（不重试），所以走 isFinite 判定而不是 `||`。
+      intelligence_check_run_retry_count: Number.isFinite(
+        Number(form.intelligence_check_run_retry_count)
+      )
+        ? Number(form.intelligence_check_run_retry_count)
+        : 2,
+      intelligence_check_run_retry_interval_seconds:
+        Number(form.intelligence_check_run_retry_interval_seconds) || 30,
+      intelligence_check_account_retry_count: Number.isFinite(
+        Number(form.intelligence_check_account_retry_count)
+      )
+        ? Number(form.intelligence_check_account_retry_count)
+        : 3,
+      intelligence_check_account_retry_interval_minutes:
+        Number(form.intelligence_check_account_retry_interval_minutes) || 10,
+      intelligence_check_timeout_seconds:
+        Number(form.intelligence_check_timeout_seconds) || 180,
+      intelligence_check_max_tokens:
+        Number(form.intelligence_check_max_tokens) || 32000,
+      intelligence_check_max_runs_per_account:
+        Number(form.intelligence_check_max_runs_per_account) || 20,
+      intelligence_check_status_sync_enabled: Boolean(
+        form.intelligence_check_status_sync_enabled
+      ),
+      intelligence_check_stream_enabled: Boolean(
+        form.intelligence_check_stream_enabled
+      ),
       // Available Channels feature switch
       available_channels_enabled: form.available_channels_enabled,
       // Subscription feature switch
@@ -11763,6 +12268,7 @@ async function saveSettings() {
       model_plaza_enabled: form.model_plaza_enabled,
       model_plaza_require_auth: form.model_plaza_require_auth,
       model_plaza_description: form.model_plaza_description,
+      model_plaza_pro_enabled: form.model_plaza_pro_enabled,
       plugin_management_enabled: form.plugin_management_enabled,
       // Affiliate (邀请返利) feature switch
       affiliate_enabled: form.affiliate_enabled,
@@ -12528,6 +13034,7 @@ async function saveBetaPolicySettings() {
 
 const allPaymentTypes = computed(() => [
   { value: "easypay", label: t("payment.methods.easypay") },
+  { value: "hupijiao", label: t("payment.methods.hupijiao") },
   { value: "alipay", label: t("payment.methods.alipay") },
   { value: "wxpay", label: t("payment.methods.wxpay") },
   { value: "stripe", label: t("payment.methods.stripe") },
@@ -12585,6 +13092,7 @@ const providerDialogRef = ref<InstanceType<
 
 const providerKeyOptions = computed(() => [
   { value: "easypay", label: t("admin.settings.payment.providerEasypay") },
+  { value: "hupijiao", label: t("admin.settings.payment.providerHupijiao") },
   { value: "alipay", label: t("admin.settings.payment.providerAlipay") },
   { value: "wxpay", label: t("admin.settings.payment.providerWxpay") },
   { value: "stripe", label: t("admin.settings.payment.providerStripe") },
@@ -12671,6 +13179,8 @@ function getProviderVisibleMethods(
       });
     }
   } else if (provider.provider_key === "easypay") {
+    supportedTypes.forEach(addMethod);
+  } else if (provider.provider_key === "hupijiao") {
     supportedTypes.forEach(addMethod);
   }
 

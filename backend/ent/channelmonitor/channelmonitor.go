@@ -27,6 +27,8 @@ const (
 	FieldCheckMode = "check_mode"
 	// FieldAccountID holds the string denoting the account_id field in the database.
 	FieldAccountID = "account_id"
+	// FieldGroupID holds the string denoting the group_id field in the database.
+	FieldGroupID = "group_id"
 	// FieldAPIMode holds the string denoting the api_mode field in the database.
 	FieldAPIMode = "api_mode"
 	// FieldEndpoint holds the string denoting the endpoint field in the database.
@@ -39,6 +41,8 @@ const (
 	FieldExtraModels = "extra_models"
 	// FieldGroupName holds the string denoting the group_name field in the database.
 	FieldGroupName = "group_name"
+	// FieldSortOrder holds the string denoting the sort_order field in the database.
+	FieldSortOrder = "sort_order"
 	// FieldEnabled holds the string denoting the enabled field in the database.
 	FieldEnabled = "enabled"
 	// FieldIntervalSeconds holds the string denoting the interval_seconds field in the database.
@@ -97,12 +101,14 @@ var Columns = []string{
 	FieldProvider,
 	FieldCheckMode,
 	FieldAccountID,
+	FieldGroupID,
 	FieldAPIMode,
 	FieldEndpoint,
 	FieldAPIKeyEncrypted,
 	FieldPrimaryModel,
 	FieldExtraModels,
 	FieldGroupName,
+	FieldSortOrder,
 	FieldEnabled,
 	FieldIntervalSeconds,
 	FieldJitterSeconds,
@@ -153,6 +159,8 @@ var (
 	DefaultGroupName string
 	// GroupNameValidator is a validator for the "group_name" field. It is called by the builders before save.
 	GroupNameValidator func(string) error
+	// DefaultSortOrder holds the default value on creation for the "sort_order" field.
+	DefaultSortOrder int
 	// DefaultEnabled holds the default value on creation for the "enabled" field.
 	DefaultEnabled bool
 	// IntervalSecondsValidator is a validator for the "interval_seconds" field. It is called by the builders before save.
@@ -238,6 +246,11 @@ func ByAccountID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAccountID, opts...).ToFunc()
 }
 
+// ByGroupID orders the results by the group_id field.
+func ByGroupID(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldGroupID, opts...).ToFunc()
+}
+
 // ByAPIMode orders the results by the api_mode field.
 func ByAPIMode(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAPIMode, opts...).ToFunc()
@@ -261,6 +274,11 @@ func ByPrimaryModel(opts ...sql.OrderTermOption) OrderOption {
 // ByGroupName orders the results by the group_name field.
 func ByGroupName(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldGroupName, opts...).ToFunc()
+}
+
+// BySortOrder orders the results by the sort_order field.
+func BySortOrder(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSortOrder, opts...).ToFunc()
 }
 
 // ByEnabled orders the results by the enabled field.

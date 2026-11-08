@@ -114,6 +114,12 @@ export const FeatureFlags = {
     mode: 'opt-in',
     label: 'Model Plaza',
   }),
+  /** 融合页（模型广场 + 渠道状态 V2 + 可用渠道）；开启后收敛旧入口。 */
+  modelPlazaPro: defineFlag({
+    key: 'model_plaza_pro_enabled',
+    mode: 'opt-in',
+    label: 'Model Plaza Pro',
+  }),
   pluginManagement: defineFlag({
     key: 'plugin_management_enabled',
     mode: 'opt-in',
@@ -133,6 +139,12 @@ export const FeatureFlags = {
     key: 'affiliate_enabled',
     mode: 'opt-in',
     label: 'Affiliate',
+  }),
+  /** 智力检测作品墙：opt-in，未配置时保持隐藏，由管理员在系统设置里开启。 */
+  intelligenceCheck: defineFlag({
+    key: 'intelligence_check_enabled',
+    mode: 'opt-in',
+    label: 'Intelligence Check',
   }),
   // Read-only: enabled by the deployment's MCP_PUBLIC_URL, not an admin toggle.
   mcp: defineFlag({

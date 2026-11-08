@@ -89,10 +89,10 @@ func TestCallProvider_BasePath(t *testing.T) {
 		{"zhipu relay version", MonitorProviderZhipu, "", "/relay/v1", "/relay/v1/chat/completions"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			_, _, status, err := callProvider(context.Background(), tc.provider,
+			call, err := callProvider(context.Background(), tc.provider,
 				server.URL+tc.basePath, "test-key", "test-model", "hello", &CheckOptions{APIMode: tc.apiMode})
 			require.NoError(t, err)
-			require.Equal(t, http.StatusOK, status)
+			require.Equal(t, http.StatusOK, call.Status)
 			require.Equal(t, tc.wantPath, <-requests)
 		})
 	}

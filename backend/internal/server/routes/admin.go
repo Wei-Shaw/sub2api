@@ -114,6 +114,9 @@ func RegisterAdminRoutes(
 		// 定时测试计划
 		registerScheduledTestRoutes(admin, h)
 
+		// 智力检测（鹈鹕测试）
+		registerIntelligenceCheckRoutes(admin, h)
+
 		// 渠道管理
 		registerChannelRoutes(admin, h)
 
@@ -212,6 +215,11 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// Email notification config (DB-backed)
 		ops.GET("/email-notification/config", h.Admin.Ops.GetEmailNotificationConfig)
 		ops.PUT("/email-notification/config", h.Admin.Ops.UpdateEmailNotificationConfig)
+
+		// Feishu (飞书) group notification config (DB-backed)
+		ops.GET("/feishu-notification/config", h.Admin.Ops.GetFeishuNotificationConfig)
+		ops.PUT("/feishu-notification/config", h.Admin.Ops.UpdateFeishuNotificationConfig)
+		ops.POST("/feishu-notification/test", h.Admin.Ops.TestFeishuNotification)
 
 		// Runtime settings (DB-backed)
 		runtime := ops.Group("/runtime")
@@ -719,6 +727,23 @@ func registerUsageRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		usage.GET("/cleanup-tasks", h.Admin.Usage.ListCleanupTasks)
 		usage.POST("/cleanup-tasks", h.Admin.Usage.CreateCleanupTask)
 		usage.POST("/cleanup-tasks/:id/cancel", h.Admin.Usage.CancelCleanupTask)
+		// 上游 A6 凭据：后台取数任务靠它按请求 ID 反查真实成本。
+		// 路径挂在 usage 下而不是系统设置下，是因为它只服务于「使用记录」
+		// 页面上那一列成本——成本是空的时候，人来这里找原因。
+		usage.GET("/upstream-cost/settings", h.Admin.UpstreamCostSettings.Settings)
+		usage.PUT("/upstream-cost/settings", h.Admin.UpstreamCostSettings.UpdateSettings)
+		// 上游拉黑：把「这家商户/这个渠道这个模型有问题」直接在页面上处置掉。
+		// 与上面那份凭据同源（复用同一套系统访问令牌），因此放在同一个 handler 上——
+		// 它本来就是"与上游 A6 打交道"的那一处。
+		// ⚠️ 写操作：拉黑整个商户会让该商户名下所有渠道退出路由。
+		usage.POST("/upstream-block", h.Admin.UpstreamCostSettings.BlockUpstream)
+		// 读上游当前黑名单，供页面把已拉黑的按钮置灰。只读、无副作用。
+		usage.GET("/upstream-blocks", h.Admin.UpstreamCostSettings.UpstreamBlocks)
+		// 盈亏排除名单：内部人员的收入不计入盈亏，但其上游成本照算。
+		// 面板上它和上面那份凭据挨着放，但接口分开——凭据保存失败不该让
+		// 名单也跟着不生效。
+		usage.GET("/profit-exclusion", h.Admin.UsageProfitExclusion.Settings)
+		usage.PUT("/profit-exclusion", h.Admin.UsageProfitExclusion.UpdateSettings)
 	}
 }
 
@@ -744,6 +769,18 @@ func registerScheduledTestRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	}
 	// Nested under accounts
 	admin.GET("/accounts/:id/scheduled-test-plans", h.Admin.ScheduledTest.ListByAccount)
+}
+
+func registerIntelligenceCheckRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	runs := admin.Group("/intelligence-check/runs")
+	{
+		runs.GET("", h.Admin.IntelligenceCheck.ListRuns)
+		runs.POST("", h.Admin.IntelligenceCheck.CreateRun)
+		runs.GET("/:id", h.Admin.IntelligenceCheck.GetRun)
+		runs.GET("/:id/artifact", h.Admin.IntelligenceCheck.GetArtifact)
+		// 人工评审走 PATCH：只改 verdict / 评审人 / 评审时间，不重跑跑测。
+		runs.PATCH("/:id/review", h.Admin.IntelligenceCheck.ReviewRun)
+	}
 }
 
 func registerErrorPassthroughRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
@@ -805,12 +842,18 @@ func registerChannelMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers, s
 	{
 		monitors.GET("", h.Admin.ChannelMonitor.List)
 		monitors.POST("", h.Admin.ChannelMonitor.Create)
+		// 探测调优（V1 主动探测的并发/超时/连接保活）。注册在 /:id 之前：
+		// gin 静态路径优先于参数路径，不会被 :id 吃掉。
+		monitors.GET("/tuning", h.Admin.ChannelMonitor.GetTuning)
+		monitors.PUT("/tuning", h.Admin.ChannelMonitor.UpdateTuning)
 		monitors.GET("/:id", h.Admin.ChannelMonitor.Get)
 		monitors.POST("/:id/duplicate", h.Admin.ChannelMonitor.Duplicate)
 		monitors.PUT("/:id", h.Admin.ChannelMonitor.Update)
 		monitors.DELETE("/:id", h.Admin.ChannelMonitor.Delete)
 		monitors.POST("/:id/run", h.Admin.ChannelMonitor.Run)
 		monitors.GET("/:id/history", h.Admin.ChannelMonitor.History)
+		// 清空单个监控的全部监控数据（探测明细 + 每日聚合），监控配置本身保持不变。
+		monitors.DELETE("/:id/history", h.Admin.ChannelMonitor.ClearHistory)
 	}
 
 	templates := admin.Group("/channel-monitor-templates")
@@ -881,6 +924,21 @@ func channelMonitorAdminFeatureGuard(settingService *service.SettingService) gin
 			return
 		}
 		response.ErrorFrom(c, service.ErrChannelMonitorDisabled)
+		c.Abort()
+	}
+}
+
+// intelligenceCheckEnabledGuard 要求智力检测总开关已开启。
+// 与管理员侧不同：这里只在功能真正对外开放时才放行，避免功能下线后接口仍能被直接调用。
+func intelligenceCheckEnabledGuard(settingService *service.SettingService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if settingService != nil {
+			if settings, err := settingService.GetIntelligenceCheckGlobalSettings(c.Request.Context()); err == nil && settings.Enabled {
+				c.Next()
+				return
+			}
+		}
+		response.ErrorFrom(c, service.ErrIntelligenceCheckDisabled)
 		c.Abort()
 	}
 }

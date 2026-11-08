@@ -1053,6 +1053,9 @@ func (s *OpenAIGatewayService) handleOpenAIImagesNonStreamingResponse(
 		return OpenAIUsage{}, 0, nil, err
 	}
 	body = s.backfillOpenAIImagesB64JSON(ctx, account, parsed, body)
+	// 补齐真实交付尺寸：上游以 url 返回图片且不回显 size 时，image_output_size 会为空、
+	// 计费档位只能回落到请求尺寸。写回 data[i].size 同时修好客户端可见性与计费档位。
+	body = s.resolveOpenAIImagesResultSizes(ctx, account, body)
 	responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := "application/json"
 	if s.cfg != nil && !s.cfg.Security.ResponseHeaders.Enabled {

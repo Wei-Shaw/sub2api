@@ -522,6 +522,84 @@ export default {
       group: 'Group',
       requestId: 'Request ID',
       upstreamRequestId: 'Upstream ID',
+      upstreamCost: 'Cost',
+      // Sits next to the "Latency" column: left is our own observation (including
+      // relay overhead), right is what the upstream bills. The header says
+      // "Upstream" because the two columns use different scopes and are not
+      // directly comparable in size.
+      upstreamLatency: 'Upstream Latency',
+      // Just "Diff": the two columns to the left already say what is being subtracted,
+      // and every cell carries its own `ms` suffix.
+      upstreamOverhead: 'Diff',
+      // Upstream attribution: supplier id / name / A6 channel / target channel,
+      // stacked in one column to keep the table from growing too wide.
+      upstreamSupplier: 'Upstream Supplier',
+      supplierId: 'Supplier ID',
+      supplierName: 'Supplier',
+      upstreamChannel: 'A6 Channel',
+      // Column between "Account" and "Model": how expensive the channel this
+      // request actually used is (A6 realtime ratio, per channel+model).
+      channelMultiplier: 'Channel Ratio',
+      upstreamTargetChannel: 'Target Channel',
+      // Action column: dispose of a bad upstream supplier/channel right from here.
+      // The two scopes differ (whole supplier vs one channel's one model), so the
+      // labels must spell the scope out rather than just saying "Block".
+      upstreamAction: 'Action',
+      // Reconciliation-status filter: lets the admin see which rows still lack
+      // an upstream cost lookup.
+      upstreamReconciled: 'Reconciliation',
+      allReconciled: 'All',
+      reconciledOnly: 'Reconciled',
+      unreconciledOnly: 'Unreconciled',
+      blockSupplier: 'Block supplier',
+      blockChannel: 'Block channel',
+      blockSupplierHint: 'Block this supplier: all of its channels leave routing',
+      blockConfirmSupplier: 'Block the entire supplier {name} (ID {id})? All of its channels will leave routing, and its pinned bindings will NOT be rebind automatically.',
+      blockConfirmChannelModel: 'Block model {model} on channel {channel}? Other models on that channel are unaffected.',
+      blockOk: 'Blocked',
+      alreadyBlocked: 'Blocked',
+      blockNoSupplier: 'This row has no upstream supplier yet (not reconciled), so it cannot be blocked',
+      profit: 'Profit',
+      profitMargin: 'Margin',
+      totalUpstreamCost: 'Total Cost',
+      totalProfit: 'Total Profit',
+      pendingCostCount: '{count} cost(s) pending lookup',
+      costFullyFetched: 'All costs resolved',
+      businessTrend: 'Business Trend',
+      metric: {
+        amount: 'Amount',
+        calls: 'Calls',
+      },
+      seriesRevenue: 'Revenue',
+      seriesUpstreamCost: 'Upstream Cost',
+      seriesProfit: 'Reconciled Profit',
+      seriesRequests: 'Requests',
+      upstreamCostSettings: {
+        title: 'Upstream A6 Billing Config',
+        intro: 'The "Cost" column is filled by a background task that looks each upstream request ID up in the A6 bill. These are the credentials for that lookup; without them the column stays empty.',
+        configured: 'Credentials configured ({mask}); the cost collector is running.',
+        notConfigured: 'No credentials yet — the collector will not query anything and the "Cost" column stays empty.',
+        baseUrl: 'A6 Base URL',
+        baseUrlHint: 'For example https://a6.example.com — the http:// or https:// prefix is required.',
+        userId: 'A6 User ID',
+        accessToken: 'Access Token',
+        accessTokenPlaceholder: 'Leave blank to keep the current token',
+        accessTokenHint: 'The token is never echoed back. Saving with it blank keeps the existing token; tick the box below to clear it.',
+        clearToken: 'Clear the saved token (fall back to the config file value)',
+        saved: 'Saved — the next collector round picks up these credentials immediately.',
+        overridden: 'overridden',
+      },
+      profitExclusion: {
+        title: 'Users excluded from profit',
+        intro: 'Internal staff also use this service, but their balances are topped up by hand and were never actually paid for — so their "revenue" is not real. Add them here and their revenue stops counting toward profit, while the upstream cost they consume keeps counting. That is what makes the reported margin match reality.',
+        active: '{count} user(s) currently have their revenue excluded from profit; their upstream cost is still counted.',
+        inactive: 'Nobody is excluded right now — figures use the default scope.',
+        membersLabel: 'Members',
+        membersHint: 'Search by email, then click a result to add it. Click the × on a member to remove it. Remember to save.',
+        costStillCounted: 'Note: this list only affects revenue, never cost — the upstream spend of these users is still counted.',
+        saved: 'Saved. The new scope applies immediately (within 30 seconds at most).',
+        unsaved: 'Unsaved changes',
+      },
       requestIdCopied: 'Request ID copied',
       upstreamRequestIdCopied: 'Upstream ID copied',
       allModels: 'All Models',

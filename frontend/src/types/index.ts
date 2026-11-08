@@ -267,6 +267,8 @@ export interface PublicSettings {
   account_quota_notify_enabled: boolean
   balance_low_notify_threshold: number
   channel_monitor_enabled: boolean
+  /** 智力检测作品墙是否对登录用户开放（公开设置只暴露这一个布尔值）。 */
+  intelligence_check_enabled: boolean
   /** Exclusive mode: v1 active probes or v2 passive aggregation. Default v2. */
   channel_monitor_mode?: 'v1' | 'v2'
   channel_monitor_default_interval_seconds: number
@@ -283,6 +285,8 @@ export interface PublicSettings {
   payment_balance_disabled: boolean
   model_plaza_enabled: boolean
   model_plaza_require_auth: boolean
+  /** 模型广场 Pro（模型广场 / 渠道状态 V2 / 可用渠道 融合页）开关。默认关闭。 */
+  model_plaza_pro_enabled?: boolean
   plugin_management_enabled: boolean
   service_quota_enabled: boolean
   affiliate_enabled: boolean
@@ -1174,6 +1178,60 @@ export interface OllamaCloudUsageSnapshot {
   last_error?: string
 }
 
+// 智力检测（鹈鹕测试）的一次跑测记录，对应后端 intelligence_check_runs 一行。
+export interface IntelligenceCheckRun {
+  id: number
+  account_id: number
+  batch_id: string
+  /** manual = 手动触发，schedule = 定时任务触发。 */
+  trigger_source: string
+  model_id: string
+  upstream_model: string
+  reasoning_effort: string
+  prompt_variant: string
+  status: string
+  verdict: string
+  has_html: boolean
+  html_bytes: number
+  latency_ms: number
+  attempt: number
+  error_code: string
+  error_message: string
+  started_at: string
+  finished_at: string | null
+  created_at: string
+}
+
+// 跑测记录列表查询参数。
+export interface IntelligenceCheckListParams {
+  page?: number
+  page_size?: number
+  account_id?: number
+  status?: string
+  verdict?: string
+  model_id?: string
+}
+
+// 手动触发一次跑测的请求体。
+export interface CreateIntelligenceCheckRunRequest {
+  account_id: number
+  model_id?: string
+  reasoning_effort?: string
+  prompt_variant?: string
+}
+
+// 智力检测（鹈鹕测试）的账号级配置，对应 accounts.extra 上的四个键。
+export interface IntelligenceCheckAccountConfig {
+  // 该账号是否参与智力检测。
+  enabled: boolean
+  // 跑测间隔覆盖（分钟）；null 表示跟随全局设置。
+  intervalMinutes: number | null
+  // 跑测模型覆盖；空串表示跟随全局设置。
+  modelId: string
+  // 思考强度覆盖（low / medium / high / xhigh / max 等）；空串表示跟随全局设置。
+  reasoningEffort: string
+}
+
 export interface OllamaCloudUsageState {
   account_id: number
   eligible: boolean
@@ -1283,6 +1341,10 @@ export interface Account {
     upstream_billing_probe_enabled?: boolean
     upstream_billing_rate_sync_enabled?: boolean
     upstream_billing_probe?: UpstreamBillingProbeSnapshot
+    // 智力检测（鹈鹕测试）的账号级配置，随账号表单一起保存。
+    intelligence_check_enabled?: boolean
+    intelligence_check_interval_minutes?: number
+    intelligence_check_model_id?: string
     codex_reset_credit_snapshot?: {
       available_count?: number
       credits?: { expires_at?: string }[]
@@ -1584,7 +1646,7 @@ export interface CodexUsageSnapshot {
 }
 
 export type OpenAICompactMode = 'auto' | 'force_on' | 'force_off'
-export type OpenAIResponsesMode = 'auto' | 'force_responses' | 'force_chat_completions'
+export type OpenAIResponsesMode = 'auto' | 'force_responses' | 'force_chat_completions' | 'passthrough'
 export type OpenAIEndpointCapability = 'chat_completions' | 'embeddings' | 'seedance'
 
 export interface OpenAICompactState {
@@ -1897,8 +1959,66 @@ export interface AdminUsageLog extends UsageLog {
   upstream_reasoning_effort?: string | null
   upstream_response_model?: string | null
   upstream_model_mismatch?: boolean | null
+  /**
+   * 对账状态：true=已对账（已反查到上游成本）；false=未对账。
+   *
+   * 注意后端对 false 额外要求存在上游请求 ID —— 对账能力上线前的历史行天生
+   * 无账可对，把它们算进「未对账」会让这一项变成几十万条噪声。
+   */
+  upstream_reconciled?: boolean | null
   model_mapping_chain?: string | null
   upstream_request_id?: string | null
+  /**
+   * 上游真实成本（已换算为人民币），仅管理员可见。
+   *
+   * 与同一行的 total_cost / actual_cost 是两个口径：后者是本站向用户收的（收入），
+   * 这个是上游向我们收的（成本）。为 null / undefined 表示**尚未取到**，
+   * 不要当成 0 —— 页面必须把「没取到」显示成「—」。
+   */
+  upstream_cost?: number | null
+  /** 上游成本的币种（A6 为 USD），仅用于挑货币符号，不参与计算。 */
+  upstream_cost_currency?: string
+  /**
+   * 上游账单自报的首字耗时（毫秒），仅管理员可见。
+   *
+   * 与同一行的 first_token_ms 是两个口径：后者是本站观测（含中转开销），
+   * 这个只覆盖上游内部那一段，两者之差才是「中转开销」。
+   *
+   * 与 upstream_cost 共享同一套回填生命周期：为 null / undefined 表示
+   * **尚未对账到**（上游账单还没落库、反查重试已用尽），页面必须显示「—」
+   * 而不是 0 —— 显示 0 会被读成「上游瞬间返回」，与「还不知道」正好相反。
+   */
+  upstream_first_token_ms?: number | null
+  /**
+   * 上游账单自报的总耗时（毫秒），仅管理员可见。
+   *
+   * ⚠️ 上游只回整数秒，本值由秒 ×1000 而来，**有效精度只有秒级**，
+   * 不能拿去和本站 duration_ms 做毫秒级比较。null 含义同上。
+   */
+  upstream_duration_ms?: number | null
+  /**
+   * 上游（A6）商户 ID，仅管理员可见。
+   *
+   * 为什么单列存商户：2026-10-10 的漏计费事件里，按**模型**聚合会误判成
+   * 「某几个模型的特性」，按**商户**聚合才立刻定位到 4 个坏商户 ——
+   * 商户是能被拉黑/切换的最小单元。null = 尚未对账到，不是 0。
+   */
+  upstream_supplier_id?: number | null
+  /** 上游（A6）商户名（冗余自上游账单，便于直接显示）。 */
+  upstream_supplier_name?: string | null
+  /** 上游（A6）实际计费渠道 ID。null 含义同上。 */
+  upstream_channel_id?: number | null
+  /** 上游（A6）目标渠道 ID。null 含义同上。 */
+  upstream_target_channel_id?: number | null
+
+  /**
+   * 该请求实际走的那家 A6 渠道的**实时倍率**（realtime_ratio_usd，按渠道+模型）。
+   *
+   * 2026-11-08 主人要求：使用记录里要能直接看到「这条请求走了多少倍率的渠道」。
+   * 值不来自本地账单，是后端拿 upstream_channel_id 去 A6 公开接口现查的；
+   * null/undefined = 还没查到或上游没给，页面显示「—」。
+   */
+  upstream_channel_multiplier?: number | null
 
   // 账号计费倍率（仅管理员可见）
   account_rate_multiplier?: number | null
@@ -2049,6 +2169,12 @@ export interface UsageStatsResponse {
   total_tokens: number
   total_cost: number // 标准计费
   total_actual_cost: number // 实际扣除
+  /** 上游真实扣费合计（原币，A6 为美元），只含已反查到的。 */
+  total_upstream_cost?: number
+  /** 尚未反查到成本的记录数。 */
+  upstream_cost_missing?: number
+  /** 毛利 = total_actual_cost − total_upstream_cost，由后端算好。 */
+  total_profit?: number
   average_duration_ms: number
   models?: Record<string, number>
   endpoints?: EndpointStat[]
@@ -2068,6 +2194,10 @@ export interface TrendDataPoint {
   total_tokens: number
   cost: number // 标准计费
   actual_cost: number // 实际扣除
+  /** 上游真实扣费合计（原币，A6 为美元），只含已反查到的；不做汇率换算。 */
+  upstream_cost: number
+  /** 毛利 = actual_cost − upstream_cost，由后端算好。 */
+  profit: number
 }
 
 export interface ModelStat {

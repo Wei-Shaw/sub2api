@@ -75,6 +75,7 @@ export interface ChannelMonitor {
   primary_model: string
   extra_models: string[]
   group_name: string
+  sort_order: number
   enabled: boolean
   interval_seconds: number
   /** 每次调度在 interval 基础上 ± [0, jitter] 的随机偏移（秒），0 = 固定间隔 */
@@ -100,6 +101,16 @@ export interface ChannelMonitor {
   check_mode: CheckMode
   /** 配额模式关联的账号 ID；探活模式为 null */
   account_id: number | null
+  /**
+   * 绑定的模型广场分组 ID（**唯一权威来源**）；null = 未绑定。
+   *
+   * 模型广场 Pro 的卡片靠它 join 出模型与定价明细。未绑定（或绑定的分组已被
+   * 删除/停用）时卡片照常渲染，只是没有模型与定价 —— 不会整行消失。
+   *
+   * 它取代了早期的三级降级猜测（account_id → group_name 同名 → 监控名同名）：
+   * 那套猜测在同名分组存在时会稳定认领到已软删的那条，使卡片显示「0 个模型」。
+   */
+  group_id: number | null
   /** 主模型最近一次配额快照（配额模式；无历史时为 null） */
   latest_quota?: MonitorQuotaSnapshot | null
 }
@@ -143,6 +154,15 @@ export interface CreateParams {
   primary_model: string
   extra_models?: string[]
   group_name?: string
+  /**
+   * 绑定的模型广场分组 ID（模型广场 Pro 卡片的分组归属只认它）。
+   *
+   * update 语义：>0 = 换绑，0 = 解绑，null/undefined = 不动（与 account_id 同构）。
+   * create 语义：>0 = 绑定；null/undefined/0 一律按「不绑定」处理 ——
+   * 后端会把 <=0 归一成未绑定，所以这里**不会**像 account_id 那样触发外键违约。
+   */
+  group_id?: number | null
+  sort_order?: number
   enabled?: boolean
   interval_seconds: number
   jitter_seconds?: number
@@ -194,6 +214,12 @@ export interface HistoryResponse {
   items: HistoryItem[]
 }
 
+/** 「清除数据」返回的各表实际删除行数。 */
+export interface ClearHistoryResponse {
+  deleted_history: number
+  deleted_rollups: number
+}
+
 /**
  * List channel monitors with pagination and filters
  */
@@ -213,6 +239,36 @@ export async function list(
  */
 export async function get(id: number): Promise<ChannelMonitor> {
   const { data } = await apiClient.get<ChannelMonitor>(`/admin/channel-monitors/${id}`)
+  return data
+}
+
+/**
+ * V1 主动探测的调优参数（并发/超时/连接保活）。
+ * 改动后由 runner 在下一次触发时重读，约 60 秒内生效，无需重启服务。
+ */
+export interface MonitorTuning {
+  worker_concurrency: number
+  response_header_timeout_seconds: number
+  idle_conn_timeout_seconds: number
+  max_idle_conns_per_host: number
+  request_timeout_seconds: number
+}
+
+export interface MonitorTuningResponse extends MonitorTuning {
+  /** 各项允许范围 [min, max]，由后端下发以保证前后端约束一致。 */
+  limits?: Record<string, [number, number]>
+  effective_immediately_seconds?: number
+}
+
+/** 读取当前生效的探测调优参数。 */
+export async function getTuning(): Promise<MonitorTuningResponse> {
+  const { data } = await apiClient.get<MonitorTuningResponse>('/admin/channel-monitors/tuning')
+  return data
+}
+
+/** 保存探测调优参数；越界值会被后端夹到合法范围，返回值是最终生效值。 */
+export async function updateTuning(params: Partial<MonitorTuning>): Promise<MonitorTuningResponse> {
+  const { data } = await apiClient.put<MonitorTuningResponse>('/admin/channel-monitors/tuning', params)
   return data
 }
 
@@ -345,6 +401,18 @@ export async function listHistory(
   return data
 }
 
+/**
+ * Clear all collected monitoring data for a monitor (probe history + daily rollups).
+ * The monitor's own config (endpoint / api_key / interval / enabled) is untouched, so the
+ * next probe cycle starts writing fresh data — availability and latency go back to zero.
+ */
+export async function clearHistory(id: number): Promise<ClearHistoryResponse> {
+  const { data } = await apiClient.delete<ClearHistoryResponse>(
+    `/admin/channel-monitors/${id}/history`
+  )
+  return data
+}
+
 export const channelMonitorAPI = {
   list,
   get,
@@ -354,6 +422,7 @@ export const channelMonitorAPI = {
   del,
   runNow,
   listHistory,
+  clearHistory,
 }
 
 export default channelMonitorAPI

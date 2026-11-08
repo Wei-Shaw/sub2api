@@ -390,6 +390,22 @@ const (
 	SettingKeyCustomMenuItems             = "custom_menu_items"             // 自定义菜单项（JSON 数组）
 	SettingKeyCustomEndpoints             = "custom_endpoints"              // 自定义端点列表（JSON 数组）
 
+	// 智力检测（鹈鹕测试）全局配置
+	SettingKeyIntelligenceCheckEnabled              = "intelligence_check_enabled"                    // 功能总开关（关闭后不再定时跑测）
+	SettingKeyIntelligenceCheckIntervalMinutes      = "intelligence_check_interval_minutes"           // 全局跑测间隔（分钟）
+	SettingKeyIntelligenceCheckModelID              = "intelligence_check_model_id"                   // 全局跑测模型（留空则跳过跑测）
+	SettingKeyIntelligenceCheckReasoningEffort      = "intelligence_check_reasoning_effort"           // 全局思考强度（留空走上游默认）
+	SettingKeyIntelligenceCheckMaxConcurrency       = "intelligence_check_max_concurrency"            // 定时跑测并发上限
+	SettingKeyIntelligenceCheckRunRetryCount        = "intelligence_check_run_retry_count"            // 单次跑测失败后的重试次数
+	SettingKeyIntelligenceCheckRunRetryIntervalSecs = "intelligence_check_run_retry_interval_seconds" // 单次跑测重试间隔（秒）
+	SettingKeyIntelligenceCheckAccountRetryCount    = "intelligence_check_account_retry_count"        // 账号连续失败后的自动恢复尝试次数
+	SettingKeyIntelligenceCheckAccountRetryMinutes  = "intelligence_check_account_retry_interval_minutes"
+	SettingKeyIntelligenceCheckTimeoutSeconds       = "intelligence_check_timeout_seconds"      // 单次跑测超时（秒）
+	SettingKeyIntelligenceCheckMaxTokens            = "intelligence_check_max_tokens"           // 单次跑测最大输出 token
+	SettingKeyIntelligenceCheckMaxRunsPerAccount    = "intelligence_check_max_runs_per_account" // 每账号保留的跑测记录条数
+	SettingKeyIntelligenceCheckStatusSyncEnabled    = "intelligence_check_status_sync_enabled"  // 评审结论是否联动账号状态
+	SettingKeyIntelligenceCheckStreamEnabled        = "intelligence_check_stream_enabled"       // 跑测是否以流式发起（默认流式）
+
 	// 默认配置
 	SettingKeyDefaultConcurrency   = "default_concurrency"    // 新用户默认并发量
 	SettingKeyDefaultBalance       = "default_balance"        // 新用户默认余额
@@ -467,6 +483,10 @@ const (
 	// SettingKeyOpsEmailNotificationConfig stores JSON config for ops email notifications.
 	SettingKeyOpsEmailNotificationConfig = "ops_email_notification_config"
 
+	// SettingKeyOpsFeishuNotificationConfig stores JSON config for the Feishu group
+	// webhook that receives request-error notifications.
+	SettingKeyOpsFeishuNotificationConfig = "ops_feishu_notification_config"
+
 	// SettingKeyOpsAlertRuntimeSettings stores JSON config for ops alert evaluator runtime settings.
 	SettingKeyOpsAlertRuntimeSettings = "ops_alert_runtime_settings"
 
@@ -498,6 +518,51 @@ const (
 	// SettingKeyChannelMonitorDefaultIntervalSeconds controls the default interval (seconds)
 	// pre-filled when creating a new channel monitor from the admin UI. Range: [15, 3600].
 	SettingKeyChannelMonitorDefaultIntervalSeconds = "channel_monitor_default_interval_seconds"
+
+	// ---- V1 主动探测调优（可在管理员端「渠道监控 → 探测调优」里热改，60 秒内生效）----
+
+	// SettingKeyChannelMonitorWorkerConcurrency 调度器并发执行的探测数上限。
+	// 提高可缩短一轮探测的墙钟时间，但过高会让上游限流、把排队的延迟误记成
+	// 渠道质量下降（实测该上游在并发 20 左右开始出现 p95 劣化）。Range: [1, 50]。
+	SettingKeyChannelMonitorWorkerConcurrency = "channel_monitor_worker_concurrency"
+
+	// SettingKeyChannelMonitorResponseHeaderTimeoutSeconds 等待上游响应头的超时。
+	// 超过该值判定为 error（红）。默认 30 秒。Range: [5, 300]。
+	SettingKeyChannelMonitorResponseHeaderTimeoutSeconds = "channel_monitor_response_header_timeout_seconds"
+
+	// SettingKeyChannelMonitorIdleConnTimeoutSeconds HTTP 连接池空闲连接保活时长。
+	// 必须明显大于探测间隔，否则每轮都重建连接、把上游冷启动延迟记成渠道故障。
+	// 默认 1800 秒（30 分钟）。Range: [30, 7200]。
+	SettingKeyChannelMonitorIdleConnTimeoutSeconds = "channel_monitor_idle_conn_timeout_seconds"
+
+	// SettingKeyChannelMonitorMaxIdleConnsPerHost 每个上游主机保留的空闲连接数。
+	// Go 的 http.Transport 默认只有 2；而 100 个渠道往往指向同一个 host，
+	// 默认值会让绝大部分探测都新建连接。默认 16。Range: [1, 200]。
+	SettingKeyChannelMonitorMaxIdleConnsPerHost = "channel_monitor_max_idle_conns_per_host"
+
+	// SettingKeyChannelMonitorRequestTimeoutSeconds 单次探测的总超时（含读取响应体）。
+	// 默认 45 秒。Range: [10, 600]。
+	SettingKeyChannelMonitorRequestTimeoutSeconds = "channel_monitor_request_timeout_seconds"
+
+	// 探测调优参数的取值范围（handler 校验与 normalize 共用）。
+	ChannelMonitorWorkerConcurrencyMin     = 1
+	ChannelMonitorWorkerConcurrencyMax     = 50
+	ChannelMonitorWorkerConcurrencyDefault = 5
+	ChannelMonitorResponseHeaderTimeoutMin = 5
+	ChannelMonitorResponseHeaderTimeoutMax = 300
+	// ChannelMonitorResponseHeaderTimeoutDefault 与历史硬编码值保持一致，避免升级后行为漂移。
+	ChannelMonitorResponseHeaderTimeoutDefault = 30
+	ChannelMonitorIdleConnTimeoutMin           = 30
+	ChannelMonitorIdleConnTimeoutMax           = 7200
+	// ChannelMonitorIdleConnTimeoutDefault 由 30 秒提高到 1800 秒：60 秒探测间隔下，
+	// 30 秒保活会让连接在两次探测之间全部过期，逼出上游冷启动。
+	ChannelMonitorIdleConnTimeoutDefault     = 1800
+	ChannelMonitorMaxIdleConnsPerHostMin     = 1
+	ChannelMonitorMaxIdleConnsPerHostMax     = 200
+	ChannelMonitorMaxIdleConnsPerHostDefault = 16
+	ChannelMonitorRequestTimeoutMin          = 10
+	ChannelMonitorRequestTimeoutMax          = 600
+	ChannelMonitorRequestTimeoutDefault      = 45
 
 	// SettingKeyChannelMonitorHideThroughput hides RPM/TPM (and similar absolute
 	// throughput rates) from non-admin user-facing monitor APIs and UI, so users
@@ -547,6 +612,11 @@ const (
 	// (public group/model pricing showcase). When false: the plaza endpoint returns 404
 	// and the header entry is hidden. Defaults to false (opt-in feature).
 	SettingKeyModelPlazaEnabled = "model_plaza_enabled"
+
+	// SettingKeyModelPlazaProEnabled is a DB-backed soft switch for the "Model Plaza Pro"
+	// experience layered on the Model Plaza page. Defaults to false (opt-in feature),
+	// mirroring SettingKeyModelPlazaEnabled.
+	SettingKeyModelPlazaProEnabled = "model_plaza_pro_enabled"
 
 	// SettingKeyModelPlazaRequireAuth controls whether the Model Plaza page requires a
 	// logged-in user. When false the page is public and anonymous visitors see only

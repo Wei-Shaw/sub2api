@@ -1,0 +1,20 @@
+services:
+  sub2api:
+    image: sub2api-v028-chenshuapi-review:local
+    container_name: sub2api-v028-review
+    ports:
+      - "127.0.0.1:8082:8080"
+    volumes:
+      - ./review-data:/app/data:Z
+
+  postgres:
+    container_name: sub2api-v028-review-postgres
+    volumes:
+      - ./review-postgres_data:/var/lib/postgresql/data:Z
+    ports: []
+
+  redis:
+    container_name: sub2api-v028-review-redis
+    volumes:
+      - ./review-redis_data:/data:Z
+    ports: []

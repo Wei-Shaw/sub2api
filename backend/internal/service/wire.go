@@ -672,6 +672,20 @@ func ProvideScheduledTestRunnerService(
 	return svc
 }
 
+// ProvideIntelligenceCheckService creates IntelligenceCheckService.
+// accountRepo 与 settingSvc 只为人工评审的账号状态联动服务（见 ReviewRun）。
+func ProvideIntelligenceCheckService(
+	accountTestSvc *AccountTestService,
+	runRepo IntelligenceCheckRunRepository,
+	accountRepo AccountRepository,
+	settingSvc *SettingService,
+	usageLogRepo UsageLogRepository,
+	userRepo UserRepository,
+	apiKeyRepo APIKeyRepository,
+) *IntelligenceCheckService {
+	return NewIntelligenceCheckService(accountTestSvc, runRepo, accountRepo, settingSvc, usageLogRepo, userRepo, apiKeyRepo)
+}
+
 // ProvideOpsScheduledReportService creates and starts OpsScheduledReportService.
 func ProvideOpsScheduledReportService(
 	opsService *OpsService,
@@ -861,6 +875,21 @@ func ProvideAPIKeyService(
 
 // ProviderSet is the Wire provider set for all services
 var ProviderSet = wire.NewSet(
+	// A6 上游连接：客户端 + 「配置默认值 + 面板覆盖」的生效凭据。
+	// 「经营对账」模块已删除，这几个 provider 之所以保留，是因为上游成本取数
+	// 每次反查账单前都要用生效凭据设置客户端（详见 reconciliation_a6_wire.go）。
+	NewA6Client,
+	ProvideReconciliationA6Config,
+	ProvideReconciliationA6Settings,
+	// 上游成本取数：按上游请求 ID 反查 A6 账单，把真实扣费写回使用记录。
+	ProvideUpstreamCostCollector,
+	// A6 渠道实时倍率：使用记录页那一列「渠道倍率」靠它按渠道 ID 现查（带缓存）。
+	NewA6ChannelRatioService,
+	ProvideProviderPricingService,
+	// 盈亏口径：内部人员的收入不计入盈亏（余额由管理员手工调整、并非真实收款），
+	// 但其上游成本照算。名单由 UsageProfitExclusionService 持有并带 30 秒缓存。
+	NewUsageProfitExclusionService,
+	wire.Bind(new(ProfitExclusionProvider), new(*UsageProfitExclusionService)),
 	// Core services
 	ProvideAuthService,
 	NewPasskeyService,
@@ -975,6 +1004,8 @@ var ProviderSet = wire.NewSet(
 	ProvideIdempotencyCleanupService,
 	ProvideScheduledTestService,
 	ProvideScheduledTestRunnerService,
+	ProvideIntelligenceCheckService,
+	ProvideIntelligenceCheckRunnerService,
 	NewGroupCapacityService,
 	NewChannelService,
 	wire.Bind(new(ChannelCacheInvalidator), new(*ChannelService)),
@@ -989,7 +1020,12 @@ var ProviderSet = wire.NewSet(
 	ProvideChannelMonitorService,
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorQuotaFetcher,
+	ProvideChannelMonitorUsageRecorder,
 	ProvideChannelMonitorV2Service,
+	ProvideChannelMonitorV1MatrixService,
+	// V1 矩阵只读视图既要读启用监控清单、又不该引入新的写路径，
+	// 因此把既有的 *ChannelMonitorService 显式绑定到只读接口上。
+	wire.Bind(new(ChannelMonitorV1EnabledMonitorReader), new(*ChannelMonitorService)),
 	ProvideChannelMonitorV2Aggregator,
 	NewChannelMonitorRequestTemplateService,
 	ProvideUserPlatformQuotaUsageFlusher,
@@ -1053,6 +1089,10 @@ func ProvideChannelMonitorRunner(
 	svc *ChannelMonitorService,
 	settingService *SettingService,
 	quotaFetcher *ChannelMonitorQuotaFetcher,
+	usageRecorder *ChannelMonitorUsageRecorder,
+	opsService *OpsService,
+	lockCache LeaderLockCache,
+	db *sql.DB,
 ) *ChannelMonitorRunner {
 	r := NewChannelMonitorRunner(svc, settingService)
 	if svc != nil {
@@ -1061,9 +1101,27 @@ func ProvideChannelMonitorRunner(
 		svc.SetRuntimeReader(settingService)
 		svc.SetScheduler(r)
 		svc.SetQuotaFetcher(quotaFetcher)
+		svc.SetUsageRecorder(usageRecorder)
+		// 探针失败要能在「错误请求」页看到，因此也需要 ops 错误日志写入能力。
+		// 注意顺序：A6 客户端在 wire 图中晚于本 provider 构造，所以「反查是哪家
+		// 上游商户打回的」不在这里做——这里只存上游请求 ID，由对账循环随后回填。
+		svc.SetErrorRecorder(NewChannelMonitorErrorRecorder(opsService))
 	}
+	// 多实例选主：探针会真花钱、真写使用记录，必须保证同一时刻只有一个实例在探。
+	r.SetLeaderLock(lockCache, db)
 	r.Start()
 	return r
+}
+
+// ProvideChannelMonitorUsageRecorder 创建「直连上游探针」的记账器。
+// 依赖四个既有仓储；其中 user/apiKey/account 用于解析记账归属与归属账号。
+func ProvideChannelMonitorUsageRecorder(
+	usageLogRepo UsageLogRepository,
+	userRepo UserRepository,
+	apiKeyRepo APIKeyRepository,
+	accountRepo AccountRepository,
+) *ChannelMonitorUsageRecorder {
+	return NewChannelMonitorUsageRecorder(usageLogRepo, userRepo, apiKeyRepo, accountRepo)
 }
 
 // ProvideChannelMonitorV2Service wires settings for user-facing privacy flags
@@ -1072,6 +1130,16 @@ func ProvideChannelMonitorV2Service(repo ChannelMonitorV2Repository, settingServ
 	svc := NewChannelMonitorV2Service(repo)
 	svc.SetRuntimeReader(settingService)
 	return svc
+}
+
+// ProvideChannelMonitorV1MatrixService 创建 V1 主动探测的矩阵服务（模型广场 Pro 只读视图）。
+// monitors 复用既有的 *ChannelMonitorService.ListEnabledMonitors，未新增任何查询入口。
+// 仓库实现是 repository.NewChannelMonitorV1MatrixRepository（原生 SQL，只读四张既有表）。
+func ProvideChannelMonitorV1MatrixService(
+	monitors ChannelMonitorV1EnabledMonitorReader,
+	repo ChannelMonitorV1MatrixRepository,
+) *ChannelMonitorV1MatrixService {
+	return NewChannelMonitorV1MatrixService(monitors, repo)
 }
 
 // ProvideChannelMonitorV2Aggregator starts the passive minute-rollup worker.

@@ -39,6 +39,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/promocode"
 	"github.com/Wei-Shaw/sub2api/ent/promocodeusage"
 	"github.com/Wei-Shaw/sub2api/ent/proxy"
+	"github.com/Wei-Shaw/sub2api/ent/reconciliationsyncstate"
 	"github.com/Wei-Shaw/sub2api/ent/redeemcode"
 	"github.com/Wei-Shaw/sub2api/ent/securitysecret"
 	"github.com/Wei-Shaw/sub2api/ent/setting"
@@ -90,6 +91,7 @@ const (
 	TypePromoCode                     = "PromoCode"
 	TypePromoCodeUsage                = "PromoCodeUsage"
 	TypeProxy                         = "Proxy"
+	TypeReconciliationSyncState       = "ReconciliationSyncState"
 	TypeRedeemCode                    = "RedeemCode"
 	TypeSecuritySecret                = "SecuritySecret"
 	TypeSetting                       = "Setting"
@@ -14611,6 +14613,8 @@ type ChannelMonitorMutation struct {
 	check_mode              *string
 	account_id              *int64
 	addaccount_id           *int64
+	group_id                *int64
+	addgroup_id             *int64
 	api_mode                *string
 	endpoint                *string
 	api_key_encrypted       *string
@@ -14618,6 +14622,8 @@ type ChannelMonitorMutation struct {
 	extra_models            *[]string
 	appendextra_models      []string
 	group_name              *string
+	sort_order              *int
+	addsort_order           *int
 	enabled                 *bool
 	interval_seconds        *int
 	addinterval_seconds     *int
@@ -14991,6 +14997,76 @@ func (m *ChannelMonitorMutation) ResetAccountID() {
 	delete(m.clearedFields, channelmonitor.FieldAccountID)
 }
 
+// SetGroupID sets the "group_id" field.
+func (m *ChannelMonitorMutation) SetGroupID(i int64) {
+	m.group_id = &i
+	m.addgroup_id = nil
+}
+
+// GroupID returns the value of the "group_id" field in the mutation.
+func (m *ChannelMonitorMutation) GroupID() (r int64, exists bool) {
+	v := m.group_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldGroupID returns the old "group_id" field's value of the ChannelMonitor entity.
+// If the ChannelMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorMutation) OldGroupID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldGroupID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldGroupID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldGroupID: %w", err)
+	}
+	return oldValue.GroupID, nil
+}
+
+// AddGroupID adds i to the "group_id" field.
+func (m *ChannelMonitorMutation) AddGroupID(i int64) {
+	if m.addgroup_id != nil {
+		*m.addgroup_id += i
+	} else {
+		m.addgroup_id = &i
+	}
+}
+
+// AddedGroupID returns the value that was added to the "group_id" field in this mutation.
+func (m *ChannelMonitorMutation) AddedGroupID() (r int64, exists bool) {
+	v := m.addgroup_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearGroupID clears the value of the "group_id" field.
+func (m *ChannelMonitorMutation) ClearGroupID() {
+	m.group_id = nil
+	m.addgroup_id = nil
+	m.clearedFields[channelmonitor.FieldGroupID] = struct{}{}
+}
+
+// GroupIDCleared returns if the "group_id" field was cleared in this mutation.
+func (m *ChannelMonitorMutation) GroupIDCleared() bool {
+	_, ok := m.clearedFields[channelmonitor.FieldGroupID]
+	return ok
+}
+
+// ResetGroupID resets all changes to the "group_id" field.
+func (m *ChannelMonitorMutation) ResetGroupID() {
+	m.group_id = nil
+	m.addgroup_id = nil
+	delete(m.clearedFields, channelmonitor.FieldGroupID)
+}
+
 // SetAPIMode sets the "api_mode" field.
 func (m *ChannelMonitorMutation) SetAPIMode(s string) {
 	m.api_mode = &s
@@ -15233,6 +15309,62 @@ func (m *ChannelMonitorMutation) GroupNameCleared() bool {
 func (m *ChannelMonitorMutation) ResetGroupName() {
 	m.group_name = nil
 	delete(m.clearedFields, channelmonitor.FieldGroupName)
+}
+
+// SetSortOrder sets the "sort_order" field.
+func (m *ChannelMonitorMutation) SetSortOrder(i int) {
+	m.sort_order = &i
+	m.addsort_order = nil
+}
+
+// SortOrder returns the value of the "sort_order" field in the mutation.
+func (m *ChannelMonitorMutation) SortOrder() (r int, exists bool) {
+	v := m.sort_order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSortOrder returns the old "sort_order" field's value of the ChannelMonitor entity.
+// If the ChannelMonitor object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ChannelMonitorMutation) OldSortOrder(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSortOrder is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSortOrder requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSortOrder: %w", err)
+	}
+	return oldValue.SortOrder, nil
+}
+
+// AddSortOrder adds i to the "sort_order" field.
+func (m *ChannelMonitorMutation) AddSortOrder(i int) {
+	if m.addsort_order != nil {
+		*m.addsort_order += i
+	} else {
+		m.addsort_order = &i
+	}
+}
+
+// AddedSortOrder returns the value that was added to the "sort_order" field in this mutation.
+func (m *ChannelMonitorMutation) AddedSortOrder() (r int, exists bool) {
+	v := m.addsort_order
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetSortOrder resets all changes to the "sort_order" field.
+func (m *ChannelMonitorMutation) ResetSortOrder() {
+	m.sort_order = nil
+	m.addsort_order = nil
 }
 
 // SetEnabled sets the "enabled" field.
@@ -15840,7 +15972,7 @@ func (m *ChannelMonitorMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *ChannelMonitorMutation) Fields() []string {
-	fields := make([]string, 0, 21)
+	fields := make([]string, 0, 23)
 	if m.created_at != nil {
 		fields = append(fields, channelmonitor.FieldCreatedAt)
 	}
@@ -15859,6 +15991,9 @@ func (m *ChannelMonitorMutation) Fields() []string {
 	if m.account_id != nil {
 		fields = append(fields, channelmonitor.FieldAccountID)
 	}
+	if m.group_id != nil {
+		fields = append(fields, channelmonitor.FieldGroupID)
+	}
 	if m.api_mode != nil {
 		fields = append(fields, channelmonitor.FieldAPIMode)
 	}
@@ -15876,6 +16011,9 @@ func (m *ChannelMonitorMutation) Fields() []string {
 	}
 	if m.group_name != nil {
 		fields = append(fields, channelmonitor.FieldGroupName)
+	}
+	if m.sort_order != nil {
+		fields = append(fields, channelmonitor.FieldSortOrder)
 	}
 	if m.enabled != nil {
 		fields = append(fields, channelmonitor.FieldEnabled)
@@ -15924,6 +16062,8 @@ func (m *ChannelMonitorMutation) Field(name string) (ent.Value, bool) {
 		return m.CheckMode()
 	case channelmonitor.FieldAccountID:
 		return m.AccountID()
+	case channelmonitor.FieldGroupID:
+		return m.GroupID()
 	case channelmonitor.FieldAPIMode:
 		return m.APIMode()
 	case channelmonitor.FieldEndpoint:
@@ -15936,6 +16076,8 @@ func (m *ChannelMonitorMutation) Field(name string) (ent.Value, bool) {
 		return m.ExtraModels()
 	case channelmonitor.FieldGroupName:
 		return m.GroupName()
+	case channelmonitor.FieldSortOrder:
+		return m.SortOrder()
 	case channelmonitor.FieldEnabled:
 		return m.Enabled()
 	case channelmonitor.FieldIntervalSeconds:
@@ -15975,6 +16117,8 @@ func (m *ChannelMonitorMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldCheckMode(ctx)
 	case channelmonitor.FieldAccountID:
 		return m.OldAccountID(ctx)
+	case channelmonitor.FieldGroupID:
+		return m.OldGroupID(ctx)
 	case channelmonitor.FieldAPIMode:
 		return m.OldAPIMode(ctx)
 	case channelmonitor.FieldEndpoint:
@@ -15987,6 +16131,8 @@ func (m *ChannelMonitorMutation) OldField(ctx context.Context, name string) (ent
 		return m.OldExtraModels(ctx)
 	case channelmonitor.FieldGroupName:
 		return m.OldGroupName(ctx)
+	case channelmonitor.FieldSortOrder:
+		return m.OldSortOrder(ctx)
 	case channelmonitor.FieldEnabled:
 		return m.OldEnabled(ctx)
 	case channelmonitor.FieldIntervalSeconds:
@@ -16056,6 +16202,13 @@ func (m *ChannelMonitorMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetAccountID(v)
 		return nil
+	case channelmonitor.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetGroupID(v)
+		return nil
 	case channelmonitor.FieldAPIMode:
 		v, ok := value.(string)
 		if !ok {
@@ -16097,6 +16250,13 @@ func (m *ChannelMonitorMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetGroupName(v)
+		return nil
+	case channelmonitor.FieldSortOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSortOrder(v)
 		return nil
 	case channelmonitor.FieldEnabled:
 		v, ok := value.(bool)
@@ -16172,6 +16332,12 @@ func (m *ChannelMonitorMutation) AddedFields() []string {
 	if m.addaccount_id != nil {
 		fields = append(fields, channelmonitor.FieldAccountID)
 	}
+	if m.addgroup_id != nil {
+		fields = append(fields, channelmonitor.FieldGroupID)
+	}
+	if m.addsort_order != nil {
+		fields = append(fields, channelmonitor.FieldSortOrder)
+	}
 	if m.addinterval_seconds != nil {
 		fields = append(fields, channelmonitor.FieldIntervalSeconds)
 	}
@@ -16191,6 +16357,10 @@ func (m *ChannelMonitorMutation) AddedField(name string) (ent.Value, bool) {
 	switch name {
 	case channelmonitor.FieldAccountID:
 		return m.AddedAccountID()
+	case channelmonitor.FieldGroupID:
+		return m.AddedGroupID()
+	case channelmonitor.FieldSortOrder:
+		return m.AddedSortOrder()
 	case channelmonitor.FieldIntervalSeconds:
 		return m.AddedIntervalSeconds()
 	case channelmonitor.FieldJitterSeconds:
@@ -16212,6 +16382,20 @@ func (m *ChannelMonitorMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddAccountID(v)
+		return nil
+	case channelmonitor.FieldGroupID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddGroupID(v)
+		return nil
+	case channelmonitor.FieldSortOrder:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddSortOrder(v)
 		return nil
 	case channelmonitor.FieldIntervalSeconds:
 		v, ok := value.(int)
@@ -16245,6 +16429,9 @@ func (m *ChannelMonitorMutation) ClearedFields() []string {
 	if m.FieldCleared(channelmonitor.FieldAccountID) {
 		fields = append(fields, channelmonitor.FieldAccountID)
 	}
+	if m.FieldCleared(channelmonitor.FieldGroupID) {
+		fields = append(fields, channelmonitor.FieldGroupID)
+	}
 	if m.FieldCleared(channelmonitor.FieldGroupName) {
 		fields = append(fields, channelmonitor.FieldGroupName)
 	}
@@ -16273,6 +16460,9 @@ func (m *ChannelMonitorMutation) ClearField(name string) error {
 	switch name {
 	case channelmonitor.FieldAccountID:
 		m.ClearAccountID()
+		return nil
+	case channelmonitor.FieldGroupID:
+		m.ClearGroupID()
 		return nil
 	case channelmonitor.FieldGroupName:
 		m.ClearGroupName()
@@ -16312,6 +16502,9 @@ func (m *ChannelMonitorMutation) ResetField(name string) error {
 	case channelmonitor.FieldAccountID:
 		m.ResetAccountID()
 		return nil
+	case channelmonitor.FieldGroupID:
+		m.ResetGroupID()
+		return nil
 	case channelmonitor.FieldAPIMode:
 		m.ResetAPIMode()
 		return nil
@@ -16329,6 +16522,9 @@ func (m *ChannelMonitorMutation) ResetField(name string) error {
 		return nil
 	case channelmonitor.FieldGroupName:
 		m.ResetGroupName()
+		return nil
+	case channelmonitor.FieldSortOrder:
+		m.ResetSortOrder()
 		return nil
 	case channelmonitor.FieldEnabled:
 		m.ResetEnabled()
@@ -38975,6 +39171,440 @@ func (m *ProxyMutation) ResetEdge(name string) error {
 	return fmt.Errorf("unknown Proxy edge %s", name)
 }
 
+// ReconciliationSyncStateMutation represents an operation that mutates the ReconciliationSyncState nodes in the graph.
+type ReconciliationSyncStateMutation struct {
+	config
+	op            Op
+	typ           string
+	id            *int64
+	key           *string
+	value         *string
+	updated_at    *time.Time
+	clearedFields map[string]struct{}
+	done          bool
+	oldValue      func(context.Context) (*ReconciliationSyncState, error)
+	predicates    []predicate.ReconciliationSyncState
+}
+
+var _ ent.Mutation = (*ReconciliationSyncStateMutation)(nil)
+
+// reconciliationsyncstateOption allows management of the mutation configuration using functional options.
+type reconciliationsyncstateOption func(*ReconciliationSyncStateMutation)
+
+// newReconciliationSyncStateMutation creates new mutation for the ReconciliationSyncState entity.
+func newReconciliationSyncStateMutation(c config, op Op, opts ...reconciliationsyncstateOption) *ReconciliationSyncStateMutation {
+	m := &ReconciliationSyncStateMutation{
+		config:        c,
+		op:            op,
+		typ:           TypeReconciliationSyncState,
+		clearedFields: make(map[string]struct{}),
+	}
+	for _, opt := range opts {
+		opt(m)
+	}
+	return m
+}
+
+// withReconciliationSyncStateID sets the ID field of the mutation.
+func withReconciliationSyncStateID(id int64) reconciliationsyncstateOption {
+	return func(m *ReconciliationSyncStateMutation) {
+		var (
+			err   error
+			once  sync.Once
+			value *ReconciliationSyncState
+		)
+		m.oldValue = func(ctx context.Context) (*ReconciliationSyncState, error) {
+			once.Do(func() {
+				if m.done {
+					err = errors.New("querying old values post mutation is not allowed")
+				} else {
+					value, err = m.Client().ReconciliationSyncState.Get(ctx, id)
+				}
+			})
+			return value, err
+		}
+		m.id = &id
+	}
+}
+
+// withReconciliationSyncState sets the old ReconciliationSyncState of the mutation.
+func withReconciliationSyncState(node *ReconciliationSyncState) reconciliationsyncstateOption {
+	return func(m *ReconciliationSyncStateMutation) {
+		m.oldValue = func(context.Context) (*ReconciliationSyncState, error) {
+			return node, nil
+		}
+		m.id = &node.ID
+	}
+}
+
+// Client returns a new `ent.Client` from the mutation. If the mutation was
+// executed in a transaction (ent.Tx), a transactional client is returned.
+func (m ReconciliationSyncStateMutation) Client() *Client {
+	client := &Client{config: m.config}
+	client.init()
+	return client
+}
+
+// Tx returns an `ent.Tx` for mutations that were executed in transactions;
+// it returns an error otherwise.
+func (m ReconciliationSyncStateMutation) Tx() (*Tx, error) {
+	if _, ok := m.driver.(*txDriver); !ok {
+		return nil, errors.New("ent: mutation is not running in a transaction")
+	}
+	tx := &Tx{config: m.config}
+	tx.init()
+	return tx, nil
+}
+
+// ID returns the ID value in the mutation. Note that the ID is only available
+// if it was provided to the builder or after it was returned from the database.
+func (m *ReconciliationSyncStateMutation) ID() (id int64, exists bool) {
+	if m.id == nil {
+		return
+	}
+	return *m.id, true
+}
+
+// IDs queries the database and returns the entity ids that match the mutation's predicate.
+// That means, if the mutation is applied within a transaction with an isolation level such
+// as sql.LevelSerializable, the returned ids match the ids of the rows that will be updated
+// or updated by the mutation.
+func (m *ReconciliationSyncStateMutation) IDs(ctx context.Context) ([]int64, error) {
+	switch {
+	case m.op.Is(OpUpdateOne | OpDeleteOne):
+		id, exists := m.ID()
+		if exists {
+			return []int64{id}, nil
+		}
+		fallthrough
+	case m.op.Is(OpUpdate | OpDelete):
+		return m.Client().ReconciliationSyncState.Query().Where(m.predicates...).IDs(ctx)
+	default:
+		return nil, fmt.Errorf("IDs is not allowed on %s operations", m.op)
+	}
+}
+
+// SetKey sets the "key" field.
+func (m *ReconciliationSyncStateMutation) SetKey(s string) {
+	m.key = &s
+}
+
+// Key returns the value of the "key" field in the mutation.
+func (m *ReconciliationSyncStateMutation) Key() (r string, exists bool) {
+	v := m.key
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldKey returns the old "key" field's value of the ReconciliationSyncState entity.
+// If the ReconciliationSyncState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReconciliationSyncStateMutation) OldKey(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldKey is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldKey requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldKey: %w", err)
+	}
+	return oldValue.Key, nil
+}
+
+// ResetKey resets all changes to the "key" field.
+func (m *ReconciliationSyncStateMutation) ResetKey() {
+	m.key = nil
+}
+
+// SetValue sets the "value" field.
+func (m *ReconciliationSyncStateMutation) SetValue(s string) {
+	m.value = &s
+}
+
+// Value returns the value of the "value" field in the mutation.
+func (m *ReconciliationSyncStateMutation) Value() (r string, exists bool) {
+	v := m.value
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldValue returns the old "value" field's value of the ReconciliationSyncState entity.
+// If the ReconciliationSyncState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReconciliationSyncStateMutation) OldValue(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldValue is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldValue requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldValue: %w", err)
+	}
+	return oldValue.Value, nil
+}
+
+// ResetValue resets all changes to the "value" field.
+func (m *ReconciliationSyncStateMutation) ResetValue() {
+	m.value = nil
+}
+
+// SetUpdatedAt sets the "updated_at" field.
+func (m *ReconciliationSyncStateMutation) SetUpdatedAt(t time.Time) {
+	m.updated_at = &t
+}
+
+// UpdatedAt returns the value of the "updated_at" field in the mutation.
+func (m *ReconciliationSyncStateMutation) UpdatedAt() (r time.Time, exists bool) {
+	v := m.updated_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldUpdatedAt returns the old "updated_at" field's value of the ReconciliationSyncState entity.
+// If the ReconciliationSyncState object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *ReconciliationSyncStateMutation) OldUpdatedAt(ctx context.Context) (v time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldUpdatedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldUpdatedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldUpdatedAt: %w", err)
+	}
+	return oldValue.UpdatedAt, nil
+}
+
+// ResetUpdatedAt resets all changes to the "updated_at" field.
+func (m *ReconciliationSyncStateMutation) ResetUpdatedAt() {
+	m.updated_at = nil
+}
+
+// Where appends a list predicates to the ReconciliationSyncStateMutation builder.
+func (m *ReconciliationSyncStateMutation) Where(ps ...predicate.ReconciliationSyncState) {
+	m.predicates = append(m.predicates, ps...)
+}
+
+// WhereP appends storage-level predicates to the ReconciliationSyncStateMutation builder. Using this method,
+// users can use type-assertion to append predicates that do not depend on any generated package.
+func (m *ReconciliationSyncStateMutation) WhereP(ps ...func(*sql.Selector)) {
+	p := make([]predicate.ReconciliationSyncState, len(ps))
+	for i := range ps {
+		p[i] = ps[i]
+	}
+	m.Where(p...)
+}
+
+// Op returns the operation name.
+func (m *ReconciliationSyncStateMutation) Op() Op {
+	return m.op
+}
+
+// SetOp allows setting the mutation operation.
+func (m *ReconciliationSyncStateMutation) SetOp(op Op) {
+	m.op = op
+}
+
+// Type returns the node type of this mutation (ReconciliationSyncState).
+func (m *ReconciliationSyncStateMutation) Type() string {
+	return m.typ
+}
+
+// Fields returns all fields that were changed during this mutation. Note that in
+// order to get all numeric fields that were incremented/decremented, call
+// AddedFields().
+func (m *ReconciliationSyncStateMutation) Fields() []string {
+	fields := make([]string, 0, 3)
+	if m.key != nil {
+		fields = append(fields, reconciliationsyncstate.FieldKey)
+	}
+	if m.value != nil {
+		fields = append(fields, reconciliationsyncstate.FieldValue)
+	}
+	if m.updated_at != nil {
+		fields = append(fields, reconciliationsyncstate.FieldUpdatedAt)
+	}
+	return fields
+}
+
+// Field returns the value of a field with the given name. The second boolean
+// return value indicates that this field was not set, or was not defined in the
+// schema.
+func (m *ReconciliationSyncStateMutation) Field(name string) (ent.Value, bool) {
+	switch name {
+	case reconciliationsyncstate.FieldKey:
+		return m.Key()
+	case reconciliationsyncstate.FieldValue:
+		return m.Value()
+	case reconciliationsyncstate.FieldUpdatedAt:
+		return m.UpdatedAt()
+	}
+	return nil, false
+}
+
+// OldField returns the old value of the field from the database. An error is
+// returned if the mutation operation is not UpdateOne, or the query to the
+// database failed.
+func (m *ReconciliationSyncStateMutation) OldField(ctx context.Context, name string) (ent.Value, error) {
+	switch name {
+	case reconciliationsyncstate.FieldKey:
+		return m.OldKey(ctx)
+	case reconciliationsyncstate.FieldValue:
+		return m.OldValue(ctx)
+	case reconciliationsyncstate.FieldUpdatedAt:
+		return m.OldUpdatedAt(ctx)
+	}
+	return nil, fmt.Errorf("unknown ReconciliationSyncState field %s", name)
+}
+
+// SetField sets the value of a field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ReconciliationSyncStateMutation) SetField(name string, value ent.Value) error {
+	switch name {
+	case reconciliationsyncstate.FieldKey:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetKey(v)
+		return nil
+	case reconciliationsyncstate.FieldValue:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetValue(v)
+		return nil
+	case reconciliationsyncstate.FieldUpdatedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetUpdatedAt(v)
+		return nil
+	}
+	return fmt.Errorf("unknown ReconciliationSyncState field %s", name)
+}
+
+// AddedFields returns all numeric fields that were incremented/decremented during
+// this mutation.
+func (m *ReconciliationSyncStateMutation) AddedFields() []string {
+	return nil
+}
+
+// AddedField returns the numeric value that was incremented/decremented on a field
+// with the given name. The second boolean return value indicates that this field
+// was not set, or was not defined in the schema.
+func (m *ReconciliationSyncStateMutation) AddedField(name string) (ent.Value, bool) {
+	return nil, false
+}
+
+// AddField adds the value to the field with the given name. It returns an error if
+// the field is not defined in the schema, or if the type mismatched the field
+// type.
+func (m *ReconciliationSyncStateMutation) AddField(name string, value ent.Value) error {
+	switch name {
+	}
+	return fmt.Errorf("unknown ReconciliationSyncState numeric field %s", name)
+}
+
+// ClearedFields returns all nullable fields that were cleared during this
+// mutation.
+func (m *ReconciliationSyncStateMutation) ClearedFields() []string {
+	return nil
+}
+
+// FieldCleared returns a boolean indicating if a field with the given name was
+// cleared in this mutation.
+func (m *ReconciliationSyncStateMutation) FieldCleared(name string) bool {
+	_, ok := m.clearedFields[name]
+	return ok
+}
+
+// ClearField clears the value of the field with the given name. It returns an
+// error if the field is not defined in the schema.
+func (m *ReconciliationSyncStateMutation) ClearField(name string) error {
+	return fmt.Errorf("unknown ReconciliationSyncState nullable field %s", name)
+}
+
+// ResetField resets all changes in the mutation for the field with the given name.
+// It returns an error if the field is not defined in the schema.
+func (m *ReconciliationSyncStateMutation) ResetField(name string) error {
+	switch name {
+	case reconciliationsyncstate.FieldKey:
+		m.ResetKey()
+		return nil
+	case reconciliationsyncstate.FieldValue:
+		m.ResetValue()
+		return nil
+	case reconciliationsyncstate.FieldUpdatedAt:
+		m.ResetUpdatedAt()
+		return nil
+	}
+	return fmt.Errorf("unknown ReconciliationSyncState field %s", name)
+}
+
+// AddedEdges returns all edge names that were set/added in this mutation.
+func (m *ReconciliationSyncStateMutation) AddedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// AddedIDs returns all IDs (to other nodes) that were added for the given edge
+// name in this mutation.
+func (m *ReconciliationSyncStateMutation) AddedIDs(name string) []ent.Value {
+	return nil
+}
+
+// RemovedEdges returns all edge names that were removed in this mutation.
+func (m *ReconciliationSyncStateMutation) RemovedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// RemovedIDs returns all IDs (to other nodes) that were removed for the edge with
+// the given name in this mutation.
+func (m *ReconciliationSyncStateMutation) RemovedIDs(name string) []ent.Value {
+	return nil
+}
+
+// ClearedEdges returns all edge names that were cleared in this mutation.
+func (m *ReconciliationSyncStateMutation) ClearedEdges() []string {
+	edges := make([]string, 0, 0)
+	return edges
+}
+
+// EdgeCleared returns a boolean which indicates if the edge with the given name
+// was cleared in this mutation.
+func (m *ReconciliationSyncStateMutation) EdgeCleared(name string) bool {
+	return false
+}
+
+// ClearEdge clears the value of the edge with the given name. It returns an error
+// if that edge is not defined in the schema.
+func (m *ReconciliationSyncStateMutation) ClearEdge(name string) error {
+	return fmt.Errorf("unknown ReconciliationSyncState unique edge %s", name)
+}
+
+// ResetEdge resets all changes to the edge with the given name in this mutation.
+// It returns an error if the edge is not defined in the schema.
+func (m *ReconciliationSyncStateMutation) ResetEdge(name string) error {
+	return fmt.Errorf("unknown ReconciliationSyncState edge %s", name)
+}
+
 // RedeemCodeMutation represents an operation that mutates the RedeemCode nodes in the graph.
 type RedeemCodeMutation struct {
 	config
@@ -41046,32 +41676,35 @@ func (m *SettingMutation) ResetEdge(name string) error {
 // SubscriptionPlanMutation represents an operation that mutates the SubscriptionPlan nodes in the graph.
 type SubscriptionPlanMutation struct {
 	config
-	op                Op
-	typ               string
-	id                *int64
-	group_id          *int64
-	addgroup_id       *int64
-	name              *string
-	description       *string
-	price             *float64
-	addprice          *float64
-	original_price    *float64
-	addoriginal_price *float64
-	currency          *string
-	validity_days     *int
-	addvalidity_days  *int
-	validity_unit     *string
-	features          *string
-	product_name      *string
-	for_sale          *bool
-	sort_order        *int
-	addsort_order     *int
-	created_at        *time.Time
-	updated_at        *time.Time
-	clearedFields     map[string]struct{}
-	done              bool
-	oldValue          func(context.Context) (*SubscriptionPlan, error)
-	predicates        []predicate.SubscriptionPlan
+	op                      Op
+	typ                     string
+	id                      *int64
+	group_id                *int64
+	addgroup_id             *int64
+	name                    *string
+	description             *string
+	price                   *float64
+	addprice                *float64
+	original_price          *float64
+	addoriginal_price       *float64
+	currency                *string
+	validity_days           *int
+	addvalidity_days        *int
+	validity_unit           *string
+	features                *string
+	product_name            *string
+	for_sale                *bool
+	purchase_limit_enabled  *bool
+	purchase_limit_count    *int
+	addpurchase_limit_count *int
+	sort_order              *int
+	addsort_order           *int
+	created_at              *time.Time
+	updated_at              *time.Time
+	clearedFields           map[string]struct{}
+	done                    bool
+	oldValue                func(context.Context) (*SubscriptionPlan, error)
+	predicates              []predicate.SubscriptionPlan
 }
 
 var _ ent.Mutation = (*SubscriptionPlanMutation)(nil)
@@ -41662,6 +42295,98 @@ func (m *SubscriptionPlanMutation) ResetForSale() {
 	m.for_sale = nil
 }
 
+// SetPurchaseLimitEnabled sets the "purchase_limit_enabled" field.
+func (m *SubscriptionPlanMutation) SetPurchaseLimitEnabled(b bool) {
+	m.purchase_limit_enabled = &b
+}
+
+// PurchaseLimitEnabled returns the value of the "purchase_limit_enabled" field in the mutation.
+func (m *SubscriptionPlanMutation) PurchaseLimitEnabled() (r bool, exists bool) {
+	v := m.purchase_limit_enabled
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPurchaseLimitEnabled returns the old "purchase_limit_enabled" field's value of the SubscriptionPlan entity.
+// If the SubscriptionPlan object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionPlanMutation) OldPurchaseLimitEnabled(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPurchaseLimitEnabled is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPurchaseLimitEnabled requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPurchaseLimitEnabled: %w", err)
+	}
+	return oldValue.PurchaseLimitEnabled, nil
+}
+
+// ResetPurchaseLimitEnabled resets all changes to the "purchase_limit_enabled" field.
+func (m *SubscriptionPlanMutation) ResetPurchaseLimitEnabled() {
+	m.purchase_limit_enabled = nil
+}
+
+// SetPurchaseLimitCount sets the "purchase_limit_count" field.
+func (m *SubscriptionPlanMutation) SetPurchaseLimitCount(i int) {
+	m.purchase_limit_count = &i
+	m.addpurchase_limit_count = nil
+}
+
+// PurchaseLimitCount returns the value of the "purchase_limit_count" field in the mutation.
+func (m *SubscriptionPlanMutation) PurchaseLimitCount() (r int, exists bool) {
+	v := m.purchase_limit_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPurchaseLimitCount returns the old "purchase_limit_count" field's value of the SubscriptionPlan entity.
+// If the SubscriptionPlan object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *SubscriptionPlanMutation) OldPurchaseLimitCount(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPurchaseLimitCount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPurchaseLimitCount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPurchaseLimitCount: %w", err)
+	}
+	return oldValue.PurchaseLimitCount, nil
+}
+
+// AddPurchaseLimitCount adds i to the "purchase_limit_count" field.
+func (m *SubscriptionPlanMutation) AddPurchaseLimitCount(i int) {
+	if m.addpurchase_limit_count != nil {
+		*m.addpurchase_limit_count += i
+	} else {
+		m.addpurchase_limit_count = &i
+	}
+}
+
+// AddedPurchaseLimitCount returns the value that was added to the "purchase_limit_count" field in this mutation.
+func (m *SubscriptionPlanMutation) AddedPurchaseLimitCount() (r int, exists bool) {
+	v := m.addpurchase_limit_count
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetPurchaseLimitCount resets all changes to the "purchase_limit_count" field.
+func (m *SubscriptionPlanMutation) ResetPurchaseLimitCount() {
+	m.purchase_limit_count = nil
+	m.addpurchase_limit_count = nil
+}
+
 // SetSortOrder sets the "sort_order" field.
 func (m *SubscriptionPlanMutation) SetSortOrder(i int) {
 	m.sort_order = &i
@@ -41824,7 +42549,7 @@ func (m *SubscriptionPlanMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *SubscriptionPlanMutation) Fields() []string {
-	fields := make([]string, 0, 14)
+	fields := make([]string, 0, 16)
 	if m.group_id != nil {
 		fields = append(fields, subscriptionplan.FieldGroupID)
 	}
@@ -41857,6 +42582,12 @@ func (m *SubscriptionPlanMutation) Fields() []string {
 	}
 	if m.for_sale != nil {
 		fields = append(fields, subscriptionplan.FieldForSale)
+	}
+	if m.purchase_limit_enabled != nil {
+		fields = append(fields, subscriptionplan.FieldPurchaseLimitEnabled)
+	}
+	if m.purchase_limit_count != nil {
+		fields = append(fields, subscriptionplan.FieldPurchaseLimitCount)
 	}
 	if m.sort_order != nil {
 		fields = append(fields, subscriptionplan.FieldSortOrder)
@@ -41897,6 +42628,10 @@ func (m *SubscriptionPlanMutation) Field(name string) (ent.Value, bool) {
 		return m.ProductName()
 	case subscriptionplan.FieldForSale:
 		return m.ForSale()
+	case subscriptionplan.FieldPurchaseLimitEnabled:
+		return m.PurchaseLimitEnabled()
+	case subscriptionplan.FieldPurchaseLimitCount:
+		return m.PurchaseLimitCount()
 	case subscriptionplan.FieldSortOrder:
 		return m.SortOrder()
 	case subscriptionplan.FieldCreatedAt:
@@ -41934,6 +42669,10 @@ func (m *SubscriptionPlanMutation) OldField(ctx context.Context, name string) (e
 		return m.OldProductName(ctx)
 	case subscriptionplan.FieldForSale:
 		return m.OldForSale(ctx)
+	case subscriptionplan.FieldPurchaseLimitEnabled:
+		return m.OldPurchaseLimitEnabled(ctx)
+	case subscriptionplan.FieldPurchaseLimitCount:
+		return m.OldPurchaseLimitCount(ctx)
 	case subscriptionplan.FieldSortOrder:
 		return m.OldSortOrder(ctx)
 	case subscriptionplan.FieldCreatedAt:
@@ -42026,6 +42765,20 @@ func (m *SubscriptionPlanMutation) SetField(name string, value ent.Value) error 
 		}
 		m.SetForSale(v)
 		return nil
+	case subscriptionplan.FieldPurchaseLimitEnabled:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPurchaseLimitEnabled(v)
+		return nil
+	case subscriptionplan.FieldPurchaseLimitCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPurchaseLimitCount(v)
+		return nil
 	case subscriptionplan.FieldSortOrder:
 		v, ok := value.(int)
 		if !ok {
@@ -42067,6 +42820,9 @@ func (m *SubscriptionPlanMutation) AddedFields() []string {
 	if m.addvalidity_days != nil {
 		fields = append(fields, subscriptionplan.FieldValidityDays)
 	}
+	if m.addpurchase_limit_count != nil {
+		fields = append(fields, subscriptionplan.FieldPurchaseLimitCount)
+	}
 	if m.addsort_order != nil {
 		fields = append(fields, subscriptionplan.FieldSortOrder)
 	}
@@ -42086,6 +42842,8 @@ func (m *SubscriptionPlanMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedOriginalPrice()
 	case subscriptionplan.FieldValidityDays:
 		return m.AddedValidityDays()
+	case subscriptionplan.FieldPurchaseLimitCount:
+		return m.AddedPurchaseLimitCount()
 	case subscriptionplan.FieldSortOrder:
 		return m.AddedSortOrder()
 	}
@@ -42124,6 +42882,13 @@ func (m *SubscriptionPlanMutation) AddField(name string, value ent.Value) error 
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddValidityDays(v)
+		return nil
+	case subscriptionplan.FieldPurchaseLimitCount:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPurchaseLimitCount(v)
 		return nil
 	case subscriptionplan.FieldSortOrder:
 		v, ok := value.(int)
@@ -42200,6 +42965,12 @@ func (m *SubscriptionPlanMutation) ResetField(name string) error {
 		return nil
 	case subscriptionplan.FieldForSale:
 		m.ResetForSale()
+		return nil
+	case subscriptionplan.FieldPurchaseLimitEnabled:
+		m.ResetPurchaseLimitEnabled()
+		return nil
+	case subscriptionplan.FieldPurchaseLimitCount:
+		m.ResetPurchaseLimitCount()
 		return nil
 	case subscriptionplan.FieldSortOrder:
 		m.ResetSortOrder()

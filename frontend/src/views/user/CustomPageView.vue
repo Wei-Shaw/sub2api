@@ -315,7 +315,7 @@ async function fetchAndRenderMarkdown(slug: string) {
     const html = marked.parse(raw) as string
     const sanitized = DOMPurify.sanitize(html, {
       ADD_TAGS: ['iframe'],
-      ADD_ATTR: ['allowfullscreen', 'frameborder', 'src'],
+      ADD_ATTR: ['allowfullscreen', 'frameborder', 'src', 'target', 'rel'],
     })
 
     // Inject IDs into headings and build TOC

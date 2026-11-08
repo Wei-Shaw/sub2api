@@ -317,6 +317,22 @@ type SystemSettings struct {
 	ChannelMonitorShowQuota              bool   `json:"channel_monitor_show_quota"`
 	ChannelMonitorHideUserRanking        bool   `json:"channel_monitor_hide_user_ranking"`
 
+	// 智力检测（鹈鹕测试）全局配置
+	IntelligenceCheckEnabled                     bool   `json:"intelligence_check_enabled"`
+	IntelligenceCheckIntervalMinutes             int    `json:"intelligence_check_interval_minutes"`
+	IntelligenceCheckModelID                     string `json:"intelligence_check_model_id"`
+	IntelligenceCheckReasoningEffort             string `json:"intelligence_check_reasoning_effort"`
+	IntelligenceCheckMaxConcurrency              int    `json:"intelligence_check_max_concurrency"`
+	IntelligenceCheckRunRetryCount               int    `json:"intelligence_check_run_retry_count"`
+	IntelligenceCheckRunRetryIntervalSeconds     int    `json:"intelligence_check_run_retry_interval_seconds"`
+	IntelligenceCheckAccountRetryCount           int    `json:"intelligence_check_account_retry_count"`
+	IntelligenceCheckAccountRetryIntervalMinutes int    `json:"intelligence_check_account_retry_interval_minutes"`
+	IntelligenceCheckTimeoutSeconds              int    `json:"intelligence_check_timeout_seconds"`
+	IntelligenceCheckMaxTokens                   int    `json:"intelligence_check_max_tokens"`
+	IntelligenceCheckMaxRunsPerAccount           int    `json:"intelligence_check_max_runs_per_account"`
+	IntelligenceCheckStatusSyncEnabled           bool   `json:"intelligence_check_status_sync_enabled"`
+	IntelligenceCheckStreamEnabled               bool   `json:"intelligence_check_stream_enabled"`
+
 	// Grok model mapping policy (admin settings; empty account mapping falls back to these).
 	GrokDefaultTextModel           string `json:"grok_default_text_model"`
 	GrokCrossClientModelMapEnabled bool   `json:"grok_cross_client_model_map_enabled"`
@@ -331,6 +347,7 @@ type SystemSettings struct {
 
 	// Model Plaza feature (public group/model pricing showcase)
 	ModelPlazaEnabled       bool   `json:"model_plaza_enabled"`
+	ModelPlazaProEnabled    bool   `json:"model_plaza_pro_enabled"`
 	ModelPlazaRequireAuth   bool   `json:"model_plaza_require_auth"`
 	ModelPlazaDescription   string `json:"model_plaza_description"`
 	PluginManagementEnabled bool   `json:"plugin_management_enabled"`
@@ -437,12 +454,14 @@ type PublicSettings struct {
 	ChannelMonitorHideThroughput         bool   `json:"channel_monitor_hide_throughput"`
 	ChannelMonitorShowQuota              bool   `json:"channel_monitor_show_quota"`
 	ChannelMonitorHideUserRanking        bool   `json:"channel_monitor_hide_user_ranking"`
+	IntelligenceCheckEnabled             bool   `json:"intelligence_check_enabled"`
 
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
 	SubscriptionEnabled bool `json:"subscription_enabled"`
 
 	ModelPlazaEnabled       bool `json:"model_plaza_enabled"`
+	ModelPlazaProEnabled    bool `json:"model_plaza_pro_enabled"`
 	ModelPlazaRequireAuth   bool `json:"model_plaza_require_auth"`
 	PluginManagementEnabled bool `json:"plugin_management_enabled"`
 

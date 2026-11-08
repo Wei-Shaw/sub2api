@@ -172,7 +172,7 @@ func TestDashboardService_CacheHitFresh(t *testing.T) {
 			Enabled: true,
 		},
 	}
-	svc := NewDashboardService(repo, aggRepo, cache, cfg)
+	svc := NewDashboardService(repo, aggRepo, cache, nil, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 	require.NoError(t, err)
@@ -201,7 +201,7 @@ func TestDashboardService_CacheMiss_StoresCache(t *testing.T) {
 			Enabled: true,
 		},
 	}
-	svc := NewDashboardService(repo, aggRepo, cache, cfg)
+	svc := NewDashboardService(repo, aggRepo, cache, nil, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 	require.NoError(t, err)
@@ -233,7 +233,7 @@ func TestDashboardService_CacheDisabled_SkipsCache(t *testing.T) {
 			Enabled: true,
 		},
 	}
-	svc := NewDashboardService(repo, aggRepo, cache, cfg)
+	svc := NewDashboardService(repo, aggRepo, cache, nil, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 	require.NoError(t, err)
@@ -273,7 +273,7 @@ func TestDashboardService_CacheHitStale_TriggersAsyncRefresh(t *testing.T) {
 			Enabled: true,
 		},
 	}
-	svc := NewDashboardService(repo, aggRepo, cache, cfg)
+	svc := NewDashboardService(repo, aggRepo, cache, nil, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 	require.NoError(t, err)
@@ -304,7 +304,7 @@ func TestDashboardService_CacheParseError_EvictsAndRefetches(t *testing.T) {
 			Enabled: true,
 		},
 	}
-	svc := NewDashboardService(repo, aggRepo, cache, cfg)
+	svc := NewDashboardService(repo, aggRepo, cache, nil, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 	require.NoError(t, err)
@@ -327,7 +327,7 @@ func TestDashboardService_CacheParseError_RepoFailure(t *testing.T) {
 			Enabled: true,
 		},
 	}
-	svc := NewDashboardService(repo, aggRepo, cache, cfg)
+	svc := NewDashboardService(repo, aggRepo, cache, nil, cfg)
 
 	_, err := svc.GetDashboardStats(context.Background())
 	require.Error(t, err)
@@ -339,7 +339,7 @@ func TestDashboardService_StatsUpdatedAtEpochWhenMissing(t *testing.T) {
 	repo := &usageRepoStub{stats: stats}
 	aggRepo := &dashboardAggregationRepoStub{watermark: time.Unix(0, 0).UTC()}
 	cfg := &config.Config{Dashboard: config.DashboardCacheConfig{Enabled: false}}
-	svc := NewDashboardService(repo, aggRepo, nil, cfg)
+	svc := NewDashboardService(repo, aggRepo, nil, nil, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 	require.NoError(t, err)
@@ -360,7 +360,7 @@ func TestDashboardService_StatsStaleFalseWhenFresh(t *testing.T) {
 			LookbackSeconds: 120,
 		},
 	}
-	svc := NewDashboardService(repo, aggRepo, nil, cfg)
+	svc := NewDashboardService(repo, aggRepo, nil, nil, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 	require.NoError(t, err)
@@ -383,7 +383,7 @@ func TestDashboardService_AggDisabled_UsesUsageLogsFallback(t *testing.T) {
 			},
 		},
 	}
-	svc := NewDashboardService(repo, nil, nil, cfg)
+	svc := NewDashboardService(repo, nil, nil, nil, cfg)
 
 	got, err := svc.GetDashboardStats(context.Background())
 	require.NoError(t, err)

@@ -440,6 +440,27 @@ func (s *ChannelMonitorV2Service) UpdateConfig(ctx context.Context, cfg ChannelM
 	return s.repo.UpdateConfig(ctx, cfg, expectedVersion)
 }
 
+// channelMonitorV2DenseRangeTokens is the explicit allow-list of "dense"
+// <window>-<bucket> tokens accepted in addition to the coarse ranges handled by
+// the ParseFilter switch. An explicit map — rather than generic string parsing —
+// keeps unsupported or nonsensical combinations ("9999d-1s", "30m-7s") rejected
+// with ErrChannelMonitorV2InvalidRange instead of silently accepted.
+//
+// Every bucket listed here is already serviceable by the repository: 1m resolves
+// to the date_bin path over the *_1m fact tables, while 5m/1h/12h are members of
+// the fixed rollup bucket set. No new tables or migrations are required.
+var channelMonitorV2DenseRangeTokens = map[string]struct {
+	window time.Duration
+	bucket time.Duration
+}{
+	"30m-1m":  {window: 30 * time.Minute, bucket: time.Minute},
+	"1h-1m":   {window: time.Hour, bucket: time.Minute},
+	"12h-5m":  {window: 12 * time.Hour, bucket: 5 * time.Minute},
+	"24h-5m":  {window: 24 * time.Hour, bucket: 5 * time.Minute},
+	"7d-1h":   {window: 7 * 24 * time.Hour, bucket: time.Hour},
+	"30d-12h": {window: 30 * 24 * time.Hour, bucket: 12 * time.Hour},
+}
+
 func (s *ChannelMonitorV2Service) ParseFilter(rangeValue string, platforms, models []string, groupIDs []int64) (ChannelMonitorV2Filter, error) {
 	now := s.now().UTC()
 	var window, bucket time.Duration
@@ -453,7 +474,14 @@ func (s *ChannelMonitorV2Service) ParseFilter(rangeValue string, platforms, mode
 	case "30d":
 		window, bucket = 30*24*time.Hour, 24*time.Hour
 	default:
-		return ChannelMonitorV2Filter{}, fmt.Errorf("%w: %s", ErrChannelMonitorV2InvalidRange, rangeValue)
+		// Dense tokens fall through to the same start/end computation and bucket
+		// alignment below; an unknown token keeps the original range error.
+		token := strings.TrimSpace(rangeValue)
+		dense, ok := channelMonitorV2DenseRangeTokens[token]
+		if !ok {
+			return ChannelMonitorV2Filter{}, fmt.Errorf("%w: %s", ErrChannelMonitorV2InvalidRange, rangeValue)
+		}
+		rangeValue, window, bucket = token, dense.window, dense.bucket
 	}
 	start, end := now.Add(-window), now
 	if bucket > time.Minute {

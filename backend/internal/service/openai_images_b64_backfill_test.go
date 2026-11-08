@@ -375,7 +375,15 @@ func TestOpenAIGatewayServiceForwardImages_APIKeyLeavesURLOnlyResponseWhenDisabl
 	require.NotNil(t, result)
 	require.Equal(t, 1, result.ImageCount)
 
-	require.Len(t, upstream.requests, 1)
+	// 开关关闭时依然不回填 b64_json、不下载图片；但尺寸探测会额外发起一次只读头部的
+	// GET（见 openai_images_actual_sizes.go），因此出站请求是 2 次而不是 1 次。
+	require.Len(t, upstream.requests, 2)
+	require.Equal(t, http.MethodPost, upstream.requests[0].Method)
+	require.Equal(t, http.MethodGet, upstream.requests[1].Method)
+	require.Equal(t, "https://cdn.example.com/cat.png", upstream.requests[1].URL.String())
+
 	require.Equal(t, http.StatusOK, rec.Code)
+	// 探测响应不是可解码的图片，尺寸保持未知，响应逐字节不变（url-only 仍是 url-only）。
 	require.Equal(t, upstreamBody, rec.Body.String())
+	require.False(t, gjson.Get(rec.Body.String(), "data.0.b64_json").Exists())
 }

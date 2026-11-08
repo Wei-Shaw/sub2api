@@ -74,6 +74,18 @@ type OpsErrorLog struct {
 	// 关联 api_key 名称（LEFT JOIN api_keys 取得；软删只覆盖 key 列，name 保留，故已删 key 仍有原名）。
 	APIKeyName    string `json:"api_key_name,omitempty"`
 	APIKeyDeleted bool   `json:"api_key_deleted,omitempty"`
+
+	// UpstreamSupplierID 打回这次请求的上游商户 ID（如 A6 的 marketplace_supplier_id）。
+	//
+	// 用来回答「这次失败是哪家上游商户造成的」，进而支持在页面上直接拉黑整个商户。
+	// 只有「请求确实到达了上游并被拒绝」时才可能有值：网络层失败拿不到，
+	// 且上游对失败类日志只保留很短一段（实测约 405 条），超出窗口也补不回来 —— 此时为空是正常的。
+	//
+	// 放在基结构而不是 Detail 上：列表与详情都要用它（列表里就要能直接点「拉黑商户」），
+	// 而 OpsErrorLogDetail 内嵌本结构，加在这里两处同时生效。
+	UpstreamSupplierID *int `json:"upstream_supplier_id,omitempty"`
+	// UpstreamSupplierName 上游商户名，冗余存储供页面直接显示。
+	UpstreamSupplierName string `json:"upstream_supplier_name,omitempty"`
 }
 
 type OpsErrorLogDetail struct {

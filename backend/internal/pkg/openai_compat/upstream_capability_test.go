@@ -52,6 +52,11 @@ func TestShouldUseResponsesAPI(t *testing.T) {
 		// 手动覆盖：覆盖自动探测结果
 		{"force responses overrides unsupported probe", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceResponses), ExtraKeyResponsesSupported: false}, true},
 		{"force chat completions overrides supported probe", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceChatCompletions), ExtraKeyResponsesSupported: true}, false},
+
+		// 直通模式：chat 入站必须保持原生 CC，与探测结果无关
+		{"passthrough keeps chat native when probe says unsupported", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModePassthrough), ExtraKeyResponsesSupported: false}, false},
+		{"passthrough keeps chat native when probe says supported", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModePassthrough), ExtraKeyResponsesSupported: true}, false},
+		{"passthrough keeps chat native when unprobed", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModePassthrough)}, false},
 	}
 
 	for _, tc := range tests {
@@ -74,6 +79,7 @@ func TestNormalizeResponsesSupportMode(t *testing.T) {
 		{"auto", "auto", ResponsesSupportModeAuto},
 		{"force responses", "force_responses", ResponsesSupportModeForceResponses},
 		{"force chat completions", "force_chat_completions", ResponsesSupportModeForceChatCompletions},
+		{"passthrough", "passthrough", ResponsesSupportModePassthrough},
 		{"invalid", "enabled", ResponsesSupportModeAuto},
 	}
 
@@ -82,6 +88,35 @@ func TestNormalizeResponsesSupportMode(t *testing.T) {
 			got := NormalizeResponsesSupportMode(tc.mode)
 			if got != tc.want {
 				t.Errorf("NormalizeResponsesSupportMode(%q) = %q, want %q", tc.mode, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResponsesPassthroughMode(t *testing.T) {
+	tests := []struct {
+		name  string
+		extra map[string]any
+		want  bool
+	}{
+		{"nil extra", nil, false},
+		{"empty extra", map[string]any{}, false},
+		{"auto is not passthrough", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeAuto)}, false},
+		{"force responses is not passthrough", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceResponses)}, false},
+		{"force chat completions is not passthrough", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModeForceChatCompletions)}, false},
+		{"invalid mode is not passthrough", map[string]any{ExtraKeyResponsesMode: "bogus"}, false},
+		{"wrong type is not passthrough", map[string]any{ExtraKeyResponsesMode: true}, false},
+		{"passthrough", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModePassthrough)}, true},
+		// 探测标记不影响直通判定
+		{"passthrough ignores unsupported probe", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModePassthrough), ExtraKeyResponsesSupported: false}, true},
+		{"passthrough ignores supported probe", map[string]any{ExtraKeyResponsesMode: string(ResponsesSupportModePassthrough), ExtraKeyResponsesSupported: true}, true},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := ResponsesPassthroughMode(tc.extra)
+			if got != tc.want {
+				t.Errorf("ResponsesPassthroughMode(%v) = %v, want %v", tc.extra, got, tc.want)
 			}
 		})
 	}

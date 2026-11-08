@@ -19,7 +19,7 @@ export type OrderStatus =
   | 'REFUNDED'
   | 'REFUND_FAILED'
 
-export type PaymentType = 'alipay' | 'wxpay' | 'alipay_direct' | 'wxpay_direct' | 'stripe' | 'easypay' | 'airwallex'
+export type PaymentType = 'alipay' | 'wxpay' | 'alipay_direct' | 'wxpay_direct' | 'stripe' | 'easypay' | 'hupijiao' | 'airwallex'
 
 export type OrderType = 'balance' | 'subscription'
 
@@ -148,6 +148,14 @@ export interface SubscriptionPlan {
   features: string[]
   for_sale: boolean
   sort_order: number
+  /** 每人限购：开关（2026-11-06 主人要求） */
+  purchase_limit_enabled?: boolean
+  /** 每人限购次数；开关关掉时不参与判定 */
+  purchase_limit_count?: number
+  /** 当前登录用户已为该套餐成功支付的订单数（仅结算页返回） */
+  purchased_count?: number
+  /** 是否已达限购上限（后端算好，前端不自己比大小） */
+  purchase_limit_reached?: boolean
 }
 
 export interface PaymentChannel {

@@ -80,6 +80,11 @@ func AccountID(v int64) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldEQ(FieldAccountID, v))
 }
 
+// GroupID applies equality check predicate on the "group_id" field. It's identical to GroupIDEQ.
+func GroupID(v int64) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldGroupID, v))
+}
+
 // APIMode applies equality check predicate on the "api_mode" field. It's identical to APIModeEQ.
 func APIMode(v string) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldEQ(FieldAPIMode, v))
@@ -103,6 +108,11 @@ func PrimaryModel(v string) predicate.ChannelMonitor {
 // GroupName applies equality check predicate on the "group_name" field. It's identical to GroupNameEQ.
 func GroupName(v string) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldEQ(FieldGroupName, v))
+}
+
+// SortOrder applies equality check predicate on the "sort_order" field. It's identical to SortOrderEQ.
+func SortOrder(v int) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldSortOrder, v))
 }
 
 // Enabled applies equality check predicate on the "enabled" field. It's identical to EnabledEQ.
@@ -418,6 +428,56 @@ func AccountIDIsNil() predicate.ChannelMonitor {
 // AccountIDNotNil applies the NotNil predicate on the "account_id" field.
 func AccountIDNotNil() predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldNotNull(FieldAccountID))
+}
+
+// GroupIDEQ applies the EQ predicate on the "group_id" field.
+func GroupIDEQ(v int64) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldGroupID, v))
+}
+
+// GroupIDNEQ applies the NEQ predicate on the "group_id" field.
+func GroupIDNEQ(v int64) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNEQ(FieldGroupID, v))
+}
+
+// GroupIDIn applies the In predicate on the "group_id" field.
+func GroupIDIn(vs ...int64) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldIn(FieldGroupID, vs...))
+}
+
+// GroupIDNotIn applies the NotIn predicate on the "group_id" field.
+func GroupIDNotIn(vs ...int64) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNotIn(FieldGroupID, vs...))
+}
+
+// GroupIDGT applies the GT predicate on the "group_id" field.
+func GroupIDGT(v int64) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldGT(FieldGroupID, v))
+}
+
+// GroupIDGTE applies the GTE predicate on the "group_id" field.
+func GroupIDGTE(v int64) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldGTE(FieldGroupID, v))
+}
+
+// GroupIDLT applies the LT predicate on the "group_id" field.
+func GroupIDLT(v int64) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldLT(FieldGroupID, v))
+}
+
+// GroupIDLTE applies the LTE predicate on the "group_id" field.
+func GroupIDLTE(v int64) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldLTE(FieldGroupID, v))
+}
+
+// GroupIDIsNil applies the IsNil predicate on the "group_id" field.
+func GroupIDIsNil() predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldIsNull(FieldGroupID))
+}
+
+// GroupIDNotNil applies the NotNil predicate on the "group_id" field.
+func GroupIDNotNil() predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNotNull(FieldGroupID))
 }
 
 // APIModeEQ applies the EQ predicate on the "api_mode" field.
@@ -753,6 +813,46 @@ func GroupNameEqualFold(v string) predicate.ChannelMonitor {
 // GroupNameContainsFold applies the ContainsFold predicate on the "group_name" field.
 func GroupNameContainsFold(v string) predicate.ChannelMonitor {
 	return predicate.ChannelMonitor(sql.FieldContainsFold(FieldGroupName, v))
+}
+
+// SortOrderEQ applies the EQ predicate on the "sort_order" field.
+func SortOrderEQ(v int) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldEQ(FieldSortOrder, v))
+}
+
+// SortOrderNEQ applies the NEQ predicate on the "sort_order" field.
+func SortOrderNEQ(v int) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNEQ(FieldSortOrder, v))
+}
+
+// SortOrderIn applies the In predicate on the "sort_order" field.
+func SortOrderIn(vs ...int) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldIn(FieldSortOrder, vs...))
+}
+
+// SortOrderNotIn applies the NotIn predicate on the "sort_order" field.
+func SortOrderNotIn(vs ...int) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldNotIn(FieldSortOrder, vs...))
+}
+
+// SortOrderGT applies the GT predicate on the "sort_order" field.
+func SortOrderGT(v int) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldGT(FieldSortOrder, v))
+}
+
+// SortOrderGTE applies the GTE predicate on the "sort_order" field.
+func SortOrderGTE(v int) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldGTE(FieldSortOrder, v))
+}
+
+// SortOrderLT applies the LT predicate on the "sort_order" field.
+func SortOrderLT(v int) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldLT(FieldSortOrder, v))
+}
+
+// SortOrderLTE applies the LTE predicate on the "sort_order" field.
+func SortOrderLTE(v int) predicate.ChannelMonitor {
+	return predicate.ChannelMonitor(sql.FieldLTE(FieldSortOrder, v))
 }
 
 // EnabledEQ applies the EQ predicate on the "enabled" field.

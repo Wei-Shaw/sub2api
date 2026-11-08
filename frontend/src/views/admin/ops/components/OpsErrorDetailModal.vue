@@ -102,6 +102,33 @@
           </div>
         </div>
 
+        <!-- 上游商户：回答「这次失败是哪家上游商户造成的」，并能直接拉黑整个商户。
+             只有当请求真的到达了上游并被拒绝时才有值：网络层失败（连接被重置/超时）
+             上游根本没收到，取不到商户；上游对失败日志也只保留很短一段，超期补不回来。
+             这两种情况都显示为「未知」，是正常的，不代表这里坏了。 -->
+        <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
+          <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.upstreamSupplier') }}</div>
+          <div class="mt-1 flex flex-wrap items-center gap-2">
+            <span v-if="detail.upstream_supplier_id != null" class="text-sm font-medium text-gray-900 dark:text-white">
+              {{ detail.upstream_supplier_name || '—' }}
+              <span class="ml-1 font-mono text-xs text-gray-400">#{{ detail.upstream_supplier_id }}</span>
+            </span>
+            <span v-else class="text-sm text-gray-400 dark:text-gray-500">
+              {{ t('admin.ops.errorDetail.upstreamSupplierUnknown') }}
+            </span>
+            <button
+              v-if="detail.upstream_supplier_id != null"
+              type="button"
+              data-testid="block-supplier"
+              class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900 dark:text-red-200 dark:hover:bg-red-800"
+              :disabled="blocking"
+              @click="blockSupplier"
+            >
+              {{ t('admin.ops.errorDetail.blockSupplier') }}
+            </button>
+          </div>
+        </div>
+
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
           <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.requestType') }}</div>
           <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
@@ -231,6 +258,7 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useAppStore } from '@/stores'
 import { opsAPI, type OpsErrorDetail } from '@/api/admin/ops'
+import { blockUpstream } from '@/api/admin/usage'
 import { formatDateTime } from '@/utils/format'
 import { resolveUpstreamPayload } from '../utils/errorDetailResponse'
 
@@ -254,6 +282,26 @@ const appStore = useAppStore()
 
 const loading = ref(false)
 const detail = ref<OpsErrorDetail | null>(null)
+
+// 拉黑整个上游商户。用 window.confirm 二次确认并写明不可逆影响面：
+// 该商户名下所有渠道都会退出路由，且其名下固定绑定不会自动改绑。
+const blocking = ref(false)
+const blockSupplier = async () => {
+  const id = detail.value?.upstream_supplier_id
+  if (id == null || blocking.value) return
+  const name = (detail.value?.upstream_supplier_name || '').trim() || `#${id}`
+  if (!window.confirm(t('admin.ops.errorDetail.blockSupplierConfirm', { name, id }))) return
+  blocking.value = true
+  try {
+    await blockUpstream({ scope: 'supplier', supplier_id: id })
+    appStore.showSuccess(t('admin.ops.errorDetail.blockSupplierOk'))
+  } catch (err: any) {
+    // 把后端带回的上游原话原样透出：令牌失效/无权限的原因只在那里。
+    appStore.showError(err?.message || String(err))
+  } finally {
+    blocking.value = false
+  }
+}
 
 const showUpstreamList = computed(() => props.errorType === 'request')
 

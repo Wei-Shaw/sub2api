@@ -1,5 +1,5 @@
 <template>
-  <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+  <div class="grid grid-cols-2 gap-4 lg:grid-cols-3 xl:grid-cols-6">
     <div class="card p-4 flex items-center gap-3">
       <div class="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30 text-blue-600">
         <Icon name="document" size="md" />
@@ -79,6 +79,53 @@
         </p>
       </div>
     </div>
+    <!-- 总成本：紧跟「总消费」之后。总消费是收进来的钱，总成本是付给上游的钱，
+         并排才看得出赚不赚；被 token/耗时卡片隔开的话就得来回找了。
+         v-if：只给管理员看（2026-11-06 主人要求）。 -->
+    <div v-if="showCostProfit" class="card p-4 flex items-center gap-3">
+      <div class="rounded-lg bg-sky-100 p-2 dark:bg-sky-900/30 text-sky-600">
+        <Icon name="dollar" size="md" />
+      </div>
+      <div class="min-w-0 flex-1">
+        <p class="text-xs font-medium text-gray-500">{{ t('admin.usage.totalUpstreamCost') }}</p>
+        <p class="text-xl font-bold text-sky-600 dark:text-sky-400">
+          ${{ (stats?.total_upstream_cost || 0).toFixed(4) }}
+        </p>
+        <!-- 「已知成本」而不是「全部成本」：还在反查中的记录不计入 SUM。
+             不把这点写出来，主人会拿一个偏小的成本当成真实成本。 -->
+        <p class="text-xs text-gray-400">
+          <template v-if="missingCostCount > 0">
+            <span class="text-amber-500">{{ t('admin.usage.pendingCostCount', { count: missingCostCount }) }}</span>
+          </template>
+          <template v-else>{{ t('admin.usage.costFullyFetched') }}</template>
+        </p>
+      </div>
+    </div>
+    <!-- 总盈利 = 总消费 − 总成本。正绿负红，与明细行的盈亏列同一套语义。
+         v-if：同「总成本」，只给管理员看。 -->
+    <div v-if="showCostProfit" class="card p-4 flex items-center gap-3">
+      <div
+        class="rounded-lg p-2"
+        :class="totalProfit >= 0 ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600' : 'bg-red-100 dark:bg-red-900/30 text-red-600'"
+      >
+        <Icon name="dollar" size="md" />
+      </div>
+      <div class="min-w-0 flex-1">
+        <p class="text-xs font-medium text-gray-500">{{ t('admin.usage.totalProfit') }}</p>
+        <p
+          class="text-xl font-bold tabular-nums"
+          :class="totalProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'"
+        >
+          {{ formatSignedUSD(totalProfit) }}
+        </p>
+        <p class="text-xs text-gray-400">
+          <template v-if="totalProfitMargin != null">
+            {{ t('admin.usage.profitMargin') }} {{ formatSignedPercent(totalProfitMargin) }}
+          </template>
+          <template v-else>—</template>
+        </p>
+      </div>
+    </div>
     <div class="card p-4 flex items-center gap-3">
       <div class="rounded-lg bg-purple-100 p-2 dark:bg-purple-900/30 text-purple-600">
         <Icon name="clock" size="md" />
@@ -99,9 +146,18 @@ const props = withDefaults(defineProps<{
   stats: (AdminUsageStatsResponse | UsageStatsResponse) | null
   showAccountCost?: boolean
   strikeStandardCost?: boolean
+  /**
+   * 是否显示「总成本」「总盈利」两张卡。
+   *
+   * 2026-11-06 主人要求：这两张卡是**经营数据**（我们付给上游多少钱、赚了多少），
+   * 只给管理员看。普通用户的使用记录页也复用了这个组件，所以必须显式关掉，
+   * 否则用户能直接看到我们的成本结构。
+   */
+  showCostProfit?: boolean
 }>(), {
   showAccountCost: true,
   strikeStandardCost: false,
+  showCostProfit: true,
 })
 
 const { t } = useI18n()
@@ -112,6 +168,7 @@ const totalAccountCost = computed(() => {
 })
 const showAccountCost = computed(() => props.showAccountCost)
 const strikeStandardCost = computed(() => props.strikeStandardCost)
+const showCostProfit = computed(() => props.showCostProfit)
 
 const formatDuration = (ms: number) =>
   ms < 1000 ? `${ms.toFixed(0)}ms` : `${(ms / 1000).toFixed(2)}s`
@@ -125,4 +182,37 @@ const formatTokens = (value: number) => {
 
 const cacheLabel = () => t('usage.cacheTotal')
 const cacheDetailLabel = () => t('usage.cacheBreakdown')
+
+/** 尚未取到成本的记录数。>0 时卡片上要挂提示：此时毛利是偏乐观的下界。 */
+const missingCostCount = computed(() => {
+  const stats = props.stats as (AdminUsageStatsResponse & { upstream_cost_missing?: number }) | null
+  return stats?.upstream_cost_missing ?? 0
+})
+
+/**
+ * 总盈利优先用后端算好的 total_profit；后端没给（老版本接口）时才前端兜底相减。
+ *
+ * 不直接在前端算是有原因的：同一个数字要出现在顶部卡片、趋势图、明细行三处，
+ * 各算各的迟早漂移成三个不一样的数，那是最难查的一类问题。
+ */
+const totalProfit = computed(() => {
+  const stats = props.stats as (AdminUsageStatsResponse & { total_profit?: number }) | null
+  if (stats?.total_profit != null) return stats.total_profit
+  return (stats?.total_actual_cost || 0) - (stats?.total_upstream_cost || 0)
+})
+
+/** 总利润率；收入为 0 时无意义，返回 null 让调用方显示「—」。 */
+const totalProfitMargin = computed(() => {
+  const revenue = (props.stats as AdminUsageStatsResponse | null)?.total_actual_cost || 0
+  if (revenue === 0) return null
+  return (totalProfit.value / revenue) * 100
+})
+
+function formatSignedUSD(value: number): string {
+  return `${value < 0 ? '-' : '+'}$${Math.abs(value).toFixed(4)}`
+}
+
+function formatSignedPercent(value: number): string {
+  return `${value < 0 ? '-' : '+'}${Math.abs(value).toFixed(2)}%`
+}
 </script>

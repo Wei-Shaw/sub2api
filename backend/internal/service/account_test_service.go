@@ -560,7 +560,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	c.Writer.Flush()
 
 	// Create Claude Code style payload (same for all account types)
-	payload, err := createTestPayload(testModelID)
+	payload, err := createClaudeTestPayloadForIntelligenceCheck(c, testModelID)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create test payload")
 	}
@@ -608,6 +608,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
 	defer func() { _ = resp.Body.Close() }()
+	captureIntelligenceCheckUpstreamRequestID(c, account, resp.Header)
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -638,7 +639,7 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	payload, err := createTestPayload(testModelID)
+	payload, err := createClaudeTestPayloadForIntelligenceCheck(c, testModelID)
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create test payload")
 	}
@@ -890,7 +891,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 	if isOAuth {
 		upstreamTestModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
 	}
-	payload := createOpenAITestPayload(upstreamTestModelID, isOAuth)
+	payload := createOpenAIResponsesPayloadForIntelligenceCheck(c, upstreamTestModelID, isOAuth)
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event once. A task-invalid Agent Identity response may
@@ -956,6 +957,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
 	defer func() { _ = resp.Body.Close() }()
+	captureIntelligenceCheckUpstreamRequestIDForAccounts(c, resp.Header, account, credentialAccount)
 
 	if isOAuth && s.accountRepo != nil {
 		if updates, err := extractOpenAICodexProbeUpdates(resp); err == nil && len(updates) > 0 {
@@ -986,8 +988,140 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		return s.sendErrorAndEnd(c, fmt.Sprintf("API returned %d: %s", resp.StatusCode, string(body)))
 	}
 
-	// Process SSE stream
-	return s.processOpenAIStream(c, resp.Body)
+	// 响应形态决定解析路径：智力检测以非流式（stream=false）发起，上游返回整体 JSON；
+	// 官方连通性测试仍以流式发起，返回 SSE。这里先 Peek（不消费数据）判形态再分流，
+	// 因此流式路径的输入与改动前完全一致。
+	reader := bufio.NewReader(resp.Body)
+	if isNonStreamOpenAIResponse(resp, reader) {
+		return s.processOpenAINonStream(c, reader)
+	}
+	return s.processOpenAIStream(c, reader)
+}
+
+// nonStreamPeekBytes 是判形态时最多预览的字节数。
+// 整体 JSON 一定以 { 开头，SSE 则以 data:/event:/: 开头，两者在最前面就已分叉；
+// 留一小段余量以容忍响应前的空行或 BOM。
+const nonStreamPeekBytes = 16
+
+// isNonStreamOpenAIResponse 判断响应体是「整体 JSON」而不是「SSE 流」。
+//
+// 判据优先级：
+//  1. Content-Type 明确是 text/event-stream → 一定走流式（最可靠，优先采信）；
+//  2. 否则看首个非空白字节：{ 说明是整体 JSON，其余（data:、event:、冒号注释等）按流式处理。
+//
+// 默认落在流式，是为了让官方路径在任何不确定情形下都保持既有行为。
+func isNonStreamOpenAIResponse(resp *http.Response, reader *bufio.Reader) bool {
+	if resp != nil {
+		contentType := strings.ToLower(resp.Header.Get("Content-Type"))
+		if strings.Contains(contentType, "text/event-stream") {
+			return false
+		}
+	}
+	if reader == nil {
+		return false
+	}
+	head, err := reader.Peek(nonStreamPeekBytes)
+	if len(head) == 0 && err != nil {
+		// 连一个字节都读不到：交给流式路径按原有方式报错，保持错误文案不变。
+		return false
+	}
+	for _, b := range head {
+		switch b {
+		case ' ', '\t', '\r', '\n':
+			continue
+		case '{':
+			return true
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+// processOpenAINonStream 解析非流式的 Responses 响应（整体 JSON）。
+//
+// 与 processOpenAIStream 互斥：那条路处理 SSE 增量，这条路处理一次性完整响应。
+// 产出的事件类型与流式路径保持一致（content + test_complete），
+// 这样上层 parseIntelligenceCheckSSEOutput 无需区分两种形态。
+func (s *AccountTestService) processOpenAINonStream(c *gin.Context, body io.Reader) error {
+	raw, err := io.ReadAll(body)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Response read error: %s", err.Error()))
+	}
+	trimmed := strings.TrimSpace(string(raw))
+	if trimmed == "" {
+		return s.sendErrorAndEnd(c, "Empty response body")
+	}
+
+	var data map[string]any
+	if err := json.Unmarshal([]byte(trimmed), &data); err != nil {
+		return s.sendErrorAndEnd(c, "Invalid Responses API response: expected JSON data")
+	}
+	markIntelligenceCheckUsage(c, data)
+
+	// 顶层 error 优先：错误响应也可能带 200，不能只看状态码。
+	if errData, ok := data["error"].(map[string]any); ok {
+		errorMsg := "OpenAI response failed"
+		if msg, ok := errData["message"].(string); ok && msg != "" {
+			errorMsg = msg
+		}
+		return s.sendErrorAndEnd(c, errorMsg)
+	}
+
+	// response.failed 形态的兜底：状态为 failed 时把嵌套错误提出来。
+	if status, _ := data["status"].(string); strings.EqualFold(status, "failed") {
+		errorMsg := "OpenAI response failed"
+		if errData, ok := data["error"].(map[string]any); ok {
+			if msg, ok := errData["message"].(string); ok && msg != "" {
+				errorMsg = msg
+			}
+		}
+		return s.sendErrorAndEnd(c, errorMsg)
+	}
+
+	if text := collectOpenAIResponsesOutputText(data); text != "" {
+		s.sendEvent(c, TestEvent{Type: "content", Text: text})
+	}
+	s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+	return nil
+}
+
+// collectOpenAIResponsesOutputText 按 Responses API 规范从 output 里取出正文文本。
+// 只认 message 项里的 output_text / text 片段，其余（reasoning、tool_call 等）一律忽略，
+// 保证作品正文不被思考内容污染。
+func collectOpenAIResponsesOutputText(data map[string]any) string {
+	output, ok := data["output"].([]any)
+	if !ok {
+		return ""
+	}
+	var builder strings.Builder
+	for _, item := range output {
+		itemMap, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		if itemType, _ := itemMap["type"].(string); itemType != "message" {
+			continue
+		}
+		content, ok := itemMap["content"].([]any)
+		if !ok {
+			continue
+		}
+		for _, part := range content {
+			partMap, ok := part.(map[string]any)
+			if !ok {
+				continue
+			}
+			partType, _ := partMap["type"].(string)
+			if partType != "output_text" && partType != "text" {
+				continue
+			}
+			if text, ok := partMap["text"].(string); ok {
+				_, _ = builder.WriteString(text)
+			}
+		}
+	}
+	return builder.String()
 }
 
 // testGrokAccountConnection routes Grok admin connectivity tests by explicit mode first,
@@ -1273,6 +1407,7 @@ func (s *AccountTestService) testGrokResponsesConnection(c *gin.Context, ctx con
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Grok Responses API request failed: %s", err.Error()))
 	}
 	defer func() { _ = resp.Body.Close() }()
+	captureIntelligenceCheckUpstreamRequestID(c, account, resp.Header)
 
 	s.observeGrokTestResponse(withGrokTeamRateLimitModel(ctx, testModelID), account, resp)
 
@@ -2132,7 +2267,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	payload := createOpenAIChatCompletionsTestPayload(testModelID, prompt)
+	payload := createOpenAIChatPayloadForIntelligenceCheck(c, testModelID, prompt)
 	payloadBytes, _ := json.Marshal(payload)
 
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
@@ -2164,6 +2299,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Chat Completions API (/v1/chat/completions) request failed: %s", err.Error()))
 	}
 	defer func() { _ = resp.Body.Close() }()
+	captureIntelligenceCheckUpstreamRequestID(c, account, resp.Header)
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -2453,6 +2589,7 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Request failed: %s", err.Error()))
 	}
 	defer func() { _ = resp.Body.Close() }()
+	captureIntelligenceCheckUpstreamRequestID(c, account, resp.Header)
 
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
@@ -2729,6 +2866,7 @@ func (s *AccountTestService) processGeminiStream(c *gin.Context, body io.Reader)
 		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
 			continue
 		}
+		markIntelligenceCheckUsage(c, data)
 
 		// Support two Gemini response formats:
 		// - AI Studio: {"candidates": [...]}
@@ -2857,6 +2995,7 @@ func (s *AccountTestService) processClaudeStream(c *gin.Context, body io.Reader)
 		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
 			continue
 		}
+		markIntelligenceCheckUsage(c, data)
 
 		eventType, _ := data["type"].(string)
 
@@ -2922,6 +3061,7 @@ func (s *AccountTestService) processOpenAIChatCompletionsStream(c *gin.Context, 
 		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
 			return s.sendErrorAndEnd(c, "Invalid Chat Completions response from /v1/chat/completions: expected JSON data")
 		}
+		markIntelligenceCheckUsage(c, data)
 		seenJSON = true
 
 		if errData, ok := data["error"].(map[string]any); ok {
@@ -2994,6 +3134,7 @@ func (s *AccountTestService) processOpenAIStream(c *gin.Context, body io.Reader)
 		if err := json.Unmarshal([]byte(jsonStr), &data); err != nil {
 			continue
 		}
+		markIntelligenceCheckUsage(c, data)
 
 		eventType, _ := data["type"].(string)
 
@@ -3288,6 +3429,10 @@ func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
 				return
 			}
 		}
+	}
+	// 智力检测跑测在首个内容事件上量「首字」；官方测试路径没装捕获器，恒为空操作。
+	if event.Type == "content" {
+		markIntelligenceCheckFirstContent(c)
 	}
 	eventJSON, _ := json.Marshal(event)
 	if _, err := fmt.Fprintf(c.Writer, "data: %s\n\n", eventJSON); err != nil {

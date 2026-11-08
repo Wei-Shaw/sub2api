@@ -2275,6 +2275,8 @@
         @updated="handleOllamaCloudUsageUpdated"
       />
 
+      <IntelligenceCheckSettings v-model="intelligenceCheckConfig" />
+
       <section
         v-if="account?.opencode_go_usage?.eligible"
         class="space-y-4 border-t border-gray-200 pt-4 dark:border-dark-600"
@@ -3408,7 +3410,8 @@ import type {
   GrokModelDiagnostics,
   OpenCodeGoUsageState,
   OpenCodeGoUsageWindow,
-  TempUnschedulableScope
+  IntelligenceCheckAccountConfig,
+  TempUnschedulableScope,
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -3440,6 +3443,7 @@ import {
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
+import IntelligenceCheckSettings from '@/components/account/IntelligenceCheckSettings.vue'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -4097,12 +4101,35 @@ const autoResetCredit5hThreshold = ref(100)
 const autoResetCredit7dThreshold = ref(100)
 const upstreamBillingAutoProbeEnabled = ref(false)
 const upstreamBillingRateSyncEnabled = ref(false)
+// 智力检测（鹈鹕测试）的账号级配置；随账号表单一起写进 extra。
+const intelligenceCheckConfig = ref<IntelligenceCheckAccountConfig>({
+  enabled: false,
+  intervalMinutes: null,
+  modelId: '',
+  reasoningEffort: '',
+})
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 // 上游ID：直接上游声明请求标识的响应头名，留空不记录。
 const upstreamRequestIdHeader = ref('')
 const readUpstreamRequestIdHeader = (extra: unknown): string => {
   const value = (extra as Record<string, unknown> | undefined)?.upstream_request_id_header
   return typeof value === 'string' ? value : ''
+}
+
+// 账号级智力检测配置的读取：缺省、空值、类型不符一律回退成「跟随全局设置」。
+const readIntelligenceCheckConfig = (extra: unknown): IntelligenceCheckAccountConfig => {
+  const source = (extra ?? {}) as Record<string, unknown>
+  const interval = source.intelligence_check_interval_minutes
+  const model = source.intelligence_check_model_id
+  const effort = source.intelligence_check_reasoning_effort
+  return {
+    enabled: source.intelligence_check_enabled === true,
+    intervalMinutes: typeof interval === 'number' && Number.isFinite(interval) && interval > 0
+      ? Math.trunc(interval)
+      : null,
+    modelId: typeof model === 'string' ? model : '',
+    reasoningEffort: typeof effort === 'string' ? effort : '',
+  }
 }
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
 const antigravityProjectId = ref('')
@@ -4311,7 +4338,8 @@ const planTypeOptions = computed(() =>
 const openAIResponsesModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.responsesModeAuto') },
   { value: 'force_responses', label: t('admin.accounts.openai.responsesModeForceResponses') },
-  { value: 'force_chat_completions', label: t('admin.accounts.openai.responsesModeForceChatCompletions') }
+  { value: 'force_chat_completions', label: t('admin.accounts.openai.responsesModeForceChatCompletions') },
+  { value: 'passthrough', label: t('admin.accounts.openai.responsesModePassthrough') }
 ])
 const openAITextEndpointCapabilityLabel = computed(() => {
   if (openAIResponsesMode.value === 'force_responses') {
@@ -4319,6 +4347,9 @@ const openAITextEndpointCapabilityLabel = computed(() => {
   }
   if (openAIResponsesMode.value === 'force_chat_completions') {
     return t('admin.accounts.openai.capabilityChatCompletions')
+  }
+  if (openAIResponsesMode.value === 'passthrough') {
+    return t('admin.accounts.openai.capabilityTextPassthrough')
   }
   const extra = props.account?.extra as Record<string, unknown> | undefined
   if (extra?.openai_responses_supported === true) {
@@ -4394,7 +4425,7 @@ const applyOpenAIEndpointCapabilities = (credentials: Record<string, unknown>) =
   credentials.openai_capabilities = capabilities
 }
 const normalizeOpenAIResponsesMode = (mode: unknown): OpenAIResponsesMode => {
-  if (mode === 'force_responses' || mode === 'force_chat_completions') {
+  if (mode === 'force_responses' || mode === 'force_chat_completions' || mode === 'passthrough') {
     return mode
   }
   return 'auto'
@@ -4408,6 +4439,9 @@ const openAIResponsesStatusKey = computed(() => {
   }
   if (openAIResponsesMode.value === 'force_chat_completions') {
     return 'admin.accounts.openai.responsesStatusForcedChatCompletions'
+  }
+  if (openAIResponsesMode.value === 'passthrough') {
+    return 'admin.accounts.openai.responsesStatusPassthrough'
   }
   const extra = props.account?.extra as Record<string, unknown> | undefined
   if (extra?.openai_responses_supported === true) {
@@ -4659,6 +4693,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 	upstreamBillingAutoProbeEnabled.value = extra?.upstream_billing_probe_enabled === true
   upstreamBillingRateSyncEnabled.value =
     upstreamBillingAutoProbeEnabled.value && extra?.upstream_billing_rate_sync_enabled === true
+  intelligenceCheckConfig.value = readIntelligenceCheckConfig(extra)
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
@@ -6407,6 +6442,31 @@ const handleSubmit = async () => {
       }
       updatePayload.extra = newExtra
     }
+
+    // 智力检测（鹈鹕测试）：账号级配置随账号表单一起提交；未填写的覆盖项删掉对应键，
+    // 语义就是「跟随全局设置」。这里放在所有账号类型分支之后，作为统一收口点。
+    const intelligenceCheckBaseExtra = (updatePayload.extra as Record<string, unknown>) ||
+      (props.account.extra as Record<string, unknown>) || {}
+    const mergedIntelligenceCheckExtra: Record<string, unknown> = { ...intelligenceCheckBaseExtra }
+    mergedIntelligenceCheckExtra.intelligence_check_enabled = intelligenceCheckConfig.value.enabled
+    if (intelligenceCheckConfig.value.intervalMinutes != null && intelligenceCheckConfig.value.intervalMinutes > 0) {
+      mergedIntelligenceCheckExtra.intelligence_check_interval_minutes = intelligenceCheckConfig.value.intervalMinutes
+    } else {
+      delete mergedIntelligenceCheckExtra.intelligence_check_interval_minutes
+    }
+    const intelligenceCheckModelId = intelligenceCheckConfig.value.modelId.trim()
+    if (intelligenceCheckModelId) {
+      mergedIntelligenceCheckExtra.intelligence_check_model_id = intelligenceCheckModelId
+    } else {
+      delete mergedIntelligenceCheckExtra.intelligence_check_model_id
+    }
+    const intelligenceCheckReasoningEffort = intelligenceCheckConfig.value.reasoningEffort.trim()
+    if (intelligenceCheckReasoningEffort) {
+      mergedIntelligenceCheckExtra.intelligence_check_reasoning_effort = intelligenceCheckReasoningEffort
+    } else {
+      delete mergedIntelligenceCheckExtra.intelligence_check_reasoning_effort
+    }
+    updatePayload.extra = mergedIntelligenceCheckExtra
 
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {
       await submitUpdateAccount(accountID, updatePayload)

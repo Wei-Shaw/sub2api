@@ -132,8 +132,10 @@ export type PaymentVisibleMethodSource =
   | ""
   | "official_alipay"
   | "easypay_alipay"
+  | "hupijiao_alipay"
   | "official_wxpay"
-  | "easypay_wxpay";
+  | "easypay_wxpay"
+  | "hupijiao_wxpay";
 export type WeChatConnectMode = "open" | "mp" | "mobile";
 
 export interface PaymentVisibleMethodSourceOption {
@@ -175,6 +177,11 @@ const PAYMENT_VISIBLE_METHOD_SOURCE_OPTIONS: Record<
       labelZh: "易支付支付宝",
       labelEn: "EasyPay Alipay",
     },
+    {
+      value: "hupijiao_alipay",
+      labelZh: "虎皮椒支付宝",
+      labelEn: "Hupijiao Alipay",
+    },
   ],
   wxpay: [
     { value: "", labelZh: "未配置", labelEn: "Not configured" },
@@ -187,6 +194,11 @@ const PAYMENT_VISIBLE_METHOD_SOURCE_OPTIONS: Record<
       value: "easypay_wxpay",
       labelZh: "易支付微信",
       labelEn: "EasyPay WeChat Pay",
+    },
+    {
+      value: "hupijiao_wxpay",
+      labelZh: "虎皮椒微信支付",
+      labelEn: "Hupijiao WeChat Pay",
     },
   ],
 };
@@ -201,6 +213,8 @@ const PAYMENT_VISIBLE_METHOD_SOURCE_ALIASES: Record<
     official: "official_alipay",
     easypay_alipay: "easypay_alipay",
     easypay: "easypay_alipay",
+    hupijiao_alipay: "hupijiao_alipay",
+    hupijiao: "hupijiao_alipay",
   },
   wxpay: {
     official_wxpay: "official_wxpay",
@@ -210,6 +224,8 @@ const PAYMENT_VISIBLE_METHOD_SOURCE_ALIASES: Record<
     official: "official_wxpay",
     easypay_wxpay: "easypay_wxpay",
     easypay: "easypay_wxpay",
+    hupijiao_wxpay: "hupijiao_wxpay",
+    hupijiao: "hupijiao_wxpay",
   },
 };
 const WECHAT_CONNECT_MODE_OPTIONS: WeChatConnectModeOption[] = [
@@ -739,6 +755,23 @@ export interface SystemSettings {
   channel_monitor_show_quota?: boolean;
   channel_monitor_hide_user_ranking?: boolean;
 
+  // 智力检测（鹈鹕测试）全局配置
+  intelligence_check_enabled: boolean;
+  intelligence_check_interval_minutes: number;
+  intelligence_check_model_id: string;
+  intelligence_check_reasoning_effort: string;
+  intelligence_check_max_concurrency: number;
+  intelligence_check_run_retry_count: number;
+  intelligence_check_run_retry_interval_seconds: number;
+  intelligence_check_account_retry_count: number;
+  intelligence_check_account_retry_interval_minutes: number;
+  intelligence_check_timeout_seconds: number;
+  intelligence_check_max_tokens: number;
+  intelligence_check_max_runs_per_account: number;
+  intelligence_check_status_sync_enabled: boolean;
+  /** 跑测是否以流式发起。后端键缺失时按 true 兜底。 */
+  intelligence_check_stream_enabled: boolean;
+
   // Available Channels feature switch
   available_channels_enabled: boolean;
 
@@ -749,6 +782,8 @@ export interface SystemSettings {
   model_plaza_enabled: boolean;
   model_plaza_require_auth: boolean;
   model_plaza_description: string;
+  // Model Plaza Pro（模型广场 / 渠道状态 V2 / 可用渠道 融合页）开关，默认关闭
+  model_plaza_pro_enabled?: boolean;
   plugin_management_enabled: boolean;
 
   // Affiliate (邀请返利) feature switch
@@ -1051,6 +1086,22 @@ export interface UpdateSettingsRequest {
   channel_monitor_show_quota?: boolean;
   channel_monitor_hide_user_ranking?: boolean;
 
+  // 智力检测（鹈鹕测试）全局配置
+  intelligence_check_enabled?: boolean;
+  intelligence_check_interval_minutes?: number;
+  intelligence_check_model_id?: string;
+  intelligence_check_reasoning_effort?: string;
+  intelligence_check_max_concurrency?: number;
+  intelligence_check_run_retry_count?: number;
+  intelligence_check_run_retry_interval_seconds?: number;
+  intelligence_check_account_retry_count?: number;
+  intelligence_check_account_retry_interval_minutes?: number;
+  intelligence_check_timeout_seconds?: number;
+  intelligence_check_max_tokens?: number;
+  intelligence_check_max_runs_per_account?: number;
+  intelligence_check_status_sync_enabled?: boolean;
+  intelligence_check_stream_enabled?: boolean;
+
   // Available Channels feature switch
   available_channels_enabled?: boolean;
 
@@ -1061,6 +1112,8 @@ export interface UpdateSettingsRequest {
   model_plaza_enabled?: boolean;
   model_plaza_require_auth?: boolean;
   model_plaza_description?: string;
+  // Model Plaza Pro（融合页）开关
+  model_plaza_pro_enabled?: boolean;
   plugin_management_enabled?: boolean;
 
   // Affiliate (邀请返利) feature switch

@@ -63,6 +63,12 @@
           />
           <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
         </div>
+        <!-- 经营趋势独占一整行：它要在一张图里对齐「收入 / 成本 / 毛利 / 记录数」四条
+             曲线，挤在半栏宽度里横轴刻度会重叠到读不出时间。放在 token 趋势下方，
+             顺序是「先看用量、再看赚不赚」。 -->
+        <div class="mt-6">
+          <BusinessTrendChart :trend-data="trendData" :loading="chartsLoading" />
+        </div>
       </div>
       <!-- 明细区：tab 栏 + 筛选 + 内容收进同一张卡片，消除割裂感 -->
       <div class="card">
@@ -204,6 +210,7 @@ import { listErrorLogs } from '@/api/admin/ops'
 import type { OpsErrorLog } from '@/api/admin/ops'
 import ModelDistributionChart from '@/components/charts/ModelDistributionChart.vue'; import GroupDistributionChart from '@/components/charts/GroupDistributionChart.vue'; import TokenUsageTrend from '@/components/charts/TokenUsageTrend.vue'
 import EndpointDistributionChart from '@/components/charts/EndpointDistributionChart.vue'
+import BusinessTrendChart from '@/components/charts/BusinessTrendChart.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { AdminUsageLog, TrendDataPoint, ModelStat, GroupStat, EndpointStat, AdminUser } from '@/types'; import type { AdminUsageStatsResponse, AdminUsageQueryParams } from '@/api/admin/usage'
 
@@ -641,6 +648,9 @@ const allColumns = computed(() => [
   { key: 'user', label: t('admin.usage.user'), sortable: false },
   { key: 'api_key', label: t('usage.apiKeyFilter'), sortable: false },
   { key: 'account', label: t('admin.usage.account'), sortable: false },
+  // 「渠道倍率」必须夹在「账户」和「模型」之间（2026-11-08 主人指定）：
+  // 左边是这条请求用了哪个账号，右边是请求什么模型，中间补上「实际走的那家渠道多贵」。
+  { key: 'upstream_channel_multiplier', label: t('admin.usage.channelMultiplier'), sortable: false },
   { key: 'model', label: t('usage.model'), sortable: true },
   { key: 'reasoning_effort', label: t('usage.reasoningEffort'), sortable: false },
   { key: 'endpoint', label: t('usage.endpoint'), sortable: false },
@@ -649,7 +659,26 @@ const allColumns = computed(() => [
   { key: 'billing_mode', label: t('admin.usage.billingMode'), sortable: false },
   { key: 'tokens', label: t('usage.tokens'), sortable: false },
   { key: 'cost', label: t('usage.cost'), sortable: false },
+  // 「成本 / 盈亏 / 利润率」三列必须紧挨着「费用」并排：费用是本站向用户收的钱
+  // （收入），成本是上游向我们收的钱，后两列是二者的派生结果。拆开放到表格两头，
+  // 就只能来回横跳着看了。
+  { key: 'upstream_cost', label: t('admin.usage.upstreamCost'), sortable: false },
+  { key: 'profit', label: t('admin.usage.profit'), sortable: false },
+  { key: 'profit_margin', label: t('admin.usage.profitMargin'), sortable: false },
   { key: 'latency', label: t('usage.latency'), sortable: false },
+  // 「上游延迟」必须紧挨着「延迟」：左列是本站观测（含中转开销），右列是上游自报，
+  // 两者相减才是「中转开销」。拆开放到表格两头就失去了对照的意义。
+  { key: 'upstream_latency', label: t('admin.usage.upstreamLatency'), sortable: false },
+  // 「差值」紧跟上游延迟：三列合起来是「本站 / 上游 / 中转多花了多少毫秒」一条完整读数。
+  // 靠右对齐：这一列全是数字，位数从 2 位到 5 位不等，左对齐会让个位/十位参差不齐，
+  // 纵向扫视时反而看不出量级差异。
+  { key: 'upstream_overhead', label: t('admin.usage.upstreamOverhead'), sortable: false, class: 'text-right' },
+  // 上游商家归属：4 个值同属「这条请求最终由哪家商户的哪个渠道服务」，
+  // 合成一列堆叠展示（与左侧「端点」列同样的形态），拆成 4 列会把表格撑得过宽。
+  { key: 'upstream_supplier', label: t('admin.usage.upstreamSupplier'), sortable: false },
+  // 操作列固定放在最后一列（时间之后）：它是"看懂了再动手"的收尾动作，
+  // 夹在数据列中间会打断阅读。
+  { key: 'upstream_action', label: t('admin.usage.upstreamAction'), sortable: false },
   { key: 'created_at', label: t('usage.time'), sortable: true },
   { key: 'request_id', label: t('admin.usage.requestId'), sortable: false },
   { key: 'upstream_request_id', label: t('admin.usage.upstreamRequestId'), sortable: false },

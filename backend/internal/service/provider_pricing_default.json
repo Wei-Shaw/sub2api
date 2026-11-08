@@ -1,0 +1,75 @@
+{
+  "schema_version": "1.0",
+  "currency": "CNY",
+  "price_unit": "per_1m_tokens",
+  "site_name": "辰数 AI",
+  "site_domain": "chenshuapi.com",
+  "models": [
+    {
+      "model_name": "gpt-5.4-mini",
+      "group_name": "codex-超低价混池-0.06x",
+      "input_price": 0.045,
+      "output_price": 0.27,
+      "cache_input_price": 0.0045,
+      "cache_create_price": null,
+      "cache_create_price_1h": null,
+      "enabled": true,
+      "note": "可用模型：gpt-5.4-mini、gpt-5.4、gpt-5.5、gpt-5.6-sol、gpt-5.6-luna、gpt-5.6-terra"
+    },
+    {
+      "model_name": "gpt-5.4",
+      "group_name": "codex-超低价混池-0.06x",
+      "input_price": 0.15,
+      "output_price": 0.9,
+      "cache_input_price": 0.015,
+      "cache_create_price": null,
+      "cache_create_price_1h": null,
+      "enabled": true,
+      "note": "可用模型：gpt-5.4-mini、gpt-5.4、gpt-5.5、gpt-5.6-sol、gpt-5.6-luna、gpt-5.6-terra"
+    },
+    {
+      "model_name": "gpt-5.5",
+      "group_name": "codex-超低价混池-0.06x",
+      "input_price": 0.3,
+      "output_price": 1.8,
+      "cache_input_price": 0.03,
+      "cache_create_price": null,
+      "cache_create_price_1h": null,
+      "enabled": true,
+      "note": "可用模型：gpt-5.4-mini、gpt-5.4、gpt-5.5、gpt-5.6-sol、gpt-5.6-luna、gpt-5.6-terra"
+    },
+    {
+      "model_name": "gpt-5.6-sol",
+      "group_name": "codex-超低价混池-0.06x",
+      "input_price": 0.3,
+      "output_price": 1.8,
+      "cache_input_price": 0.03,
+      "cache_create_price": 0.375,
+      "cache_create_price_1h": null,
+      "enabled": true,
+      "note": "可用模型：gpt-5.4-mini、gpt-5.4、gpt-5.5、gpt-5.6-sol、gpt-5.6-luna、gpt-5.6-terra"
+    },
+    {
+      "model_name": "gpt-5.6-luna",
+      "group_name": "codex-超低价混池-0.06x",
+      "input_price": 0.06,
+      "output_price": 0.36,
+      "cache_input_price": 0.006,
+      "cache_create_price": 0.075,
+      "cache_create_price_1h": null,
+      "enabled": true,
+      "note": "可用模型：gpt-5.4-mini、gpt-5.4、gpt-5.5、gpt-5.6-sol、gpt-5.6-luna、gpt-5.6-terra"
+    },
+    {
+      "model_name": "gpt-5.6-terra",
+      "group_name": "codex-超低价混池-0.06x",
+      "input_price": 0.15,
+      "output_price": 0.9,
+      "cache_input_price": 0.015,
+      "cache_create_price": 0.1875,
+      "cache_create_price_1h": null,
+      "enabled": true,
+      "note": "可用模型：gpt-5.4-mini、gpt-5.4、gpt-5.5、gpt-5.6-sol、gpt-5.6-luna、gpt-5.6-terra"
+    }
+  ]
+}

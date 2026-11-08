@@ -6,7 +6,7 @@ import { opsAPI } from '@/api/admin/ops'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
-import type { OpsAlertRuntimeSettings, EmailNotificationConfig, AlertSeverity, OpsAdvancedSettings, OpsMetricThresholds } from '../types'
+import type { OpsAlertRuntimeSettings, EmailNotificationConfig, FeishuNotificationConfig, AlertSeverity, OpsAdvancedSettings, OpsMetricThresholds } from '../types'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -28,6 +28,8 @@ const saving = ref(false)
 const runtimeSettings = ref<OpsAlertRuntimeSettings | null>(null)
 // 邮件通知配置
 const emailConfig = ref<EmailNotificationConfig | null>(null)
+// 飞书群通知配置
+const feishuConfig = ref<FeishuNotificationConfig | null>(null)
 // 高级设置
 const advancedSettings = ref<OpsAdvancedSettings | null>(null)
 // 指标阈值配置
@@ -43,15 +45,30 @@ async function loadAllSettings() {
   settingsLoaded.value = false
   loading.value = true
   try {
-    const [runtime, email, advanced, thresholds] = await Promise.all([
+    // 飞书配置单独兜底（2026-11-08 合并上游后修）：
+    // 它属于后加的可选模块，接口不存在或报错时**不能拖垮整个设置弹窗**——
+    // 否则四个核心配置都取回来了，界面却因为飞书这一个请求失败而整块不可用
+    // （表现就是保存按钮一直是禁用态）。失败时按 null 处理，界面隐藏飞书区块。
+    // 飞书配置是后加的可选模块：接口不存在（老后端 / 未接飞书的部署）或调用失败，
+    // 都必须降级成「没有飞书配置」，不能把整个设置弹窗的加载带崩 ——
+    // 崩了会连 settingsLoaded 都置不上，表现是保存按钮永远灰着。
+    const feishuPromise = typeof opsAPI.getFeishuNotificationConfig === 'function'
+      ? opsAPI.getFeishuNotificationConfig().catch((err: unknown) => {
+          console.warn('[OpsSettingsDialog] feishu config unavailable, skipping', err)
+          return null
+        })
+      : Promise.resolve(null)
+    const [runtime, email, advanced, thresholds, feishu] = await Promise.all([
       opsAPI.getAlertRuntimeSettings(),
       opsAPI.getEmailNotificationConfig(),
       opsAPI.getAdvancedSettings(),
-      opsAPI.getMetricThresholds()
+      opsAPI.getMetricThresholds(),
+      feishuPromise
     ])
     runtimeSettings.value = runtime
     emailConfig.value = email
     advancedSettings.value = advanced
+    feishuConfig.value = feishu
     // 兼容旧 payload：后端未返回该字段时补默认值，保证表单可绑定
     if (advancedSettings.value && !advancedSettings.value.openai_account_quota_auto_pause) {
       advancedSettings.value.openai_account_quota_auto_pause = { default_threshold_5h: 0, default_threshold_7d: 0 }
@@ -92,6 +109,43 @@ const severityOptions: Array<{ value: AlertSeverity | ''; label: string }> = [
   { value: 'warning', label: t('common.warning') },
   { value: 'info', label: t('common.info') }
 ]
+
+// 飞书告警级别（P1 最严重）；空值表示不过滤
+const feishuSeverityOptions: Array<{ value: 'P1' | 'P2' | 'P3' | ''; label: string }> = [
+  { value: 'P1', label: t('admin.ops.settings.feishuSeverityP1') },
+  { value: 'P2', label: t('admin.ops.settings.feishuSeverityP2') },
+  { value: 'P3', label: t('admin.ops.settings.feishuSeverityP3') },
+  { value: '', label: t('admin.ops.settings.feishuSeverityAll') }
+]
+
+const feishuTesting = ref(false)
+
+// 「保存并发送测试」：先把当前 Webhook 存下来，再让后端用它发一条测试消息，
+// 避免出现「界面上填了新地址，测试却打到旧地址」的错觉。
+async function saveAndTestFeishu() {
+  if (!feishuConfig.value) return
+  const url = feishuConfig.value.webhook_url.trim()
+  if (!url) {
+    appStore.showError(t('admin.ops.settings.validation.feishuWebhookRequired'))
+    return
+  }
+  if (!/^https?:\/\//.test(url)) {
+    appStore.showError(t('admin.ops.settings.validation.feishuWebhookInvalid'))
+    return
+  }
+
+  feishuTesting.value = true
+  try {
+    await opsAPI.updateFeishuNotificationConfig({ ...feishuConfig.value, webhook_url: url })
+    await opsAPI.testFeishuNotification()
+    appStore.showSuccess(t('admin.ops.settings.feishuTestSent'))
+  } catch (err: any) {
+    console.error('[OpsSettingsDialog] Failed to send Feishu test message', err)
+    appStore.showError(err?.response?.data?.message || err?.response?.data?.detail || t('admin.ops.settings.feishuTestFailed'))
+  } finally {
+    feishuTesting.value = false
+  }
+}
 
 // 验证邮箱
 function isValidEmailAddress(email: string): boolean {
@@ -162,6 +216,17 @@ const validation = computed(() => {
 
   // 邮件配置: 启用但无收件人时不阻断保存, 保存时会自动禁用
 
+  // 飞书通知: 启用必须填地址, 地址必须是 http(s)
+  if (feishuConfig.value) {
+    const feishuUrl = feishuConfig.value.webhook_url.trim()
+    if (feishuConfig.value.enabled && !feishuUrl) {
+      errors.push(t('admin.ops.settings.validation.feishuWebhookRequired'))
+    }
+    if (feishuUrl && !/^https?:\/\//.test(feishuUrl)) {
+      errors.push(t('admin.ops.settings.validation.feishuWebhookInvalid'))
+    }
+  }
+
   // 验证高级设置
   if (advancedSettings.value) {
     const { error_log_retention_days, minute_metrics_retention_days, hourly_metrics_retention_days } = advancedSettings.value.data_retention
@@ -220,6 +285,9 @@ async function saveAllSettings() {
     await Promise.all([
       runtimeSettings.value ? opsAPI.updateAlertRuntimeSettings(runtimeSettings.value) : Promise.resolve(),
       emailConfig.value ? opsAPI.updateEmailNotificationConfig(emailConfig.value) : Promise.resolve(),
+      feishuConfig.value
+        ? opsAPI.updateFeishuNotificationConfig({ ...feishuConfig.value, webhook_url: feishuConfig.value.webhook_url.trim() })
+        : Promise.resolve(),
       advancedSettings.value ? opsAPI.updateAdvancedSettings(advancedSettings.value) : Promise.resolve(),
       opsAPI.updateMetricThresholds(metricThresholds.value)
     ])
@@ -241,7 +309,7 @@ async function saveAllSettings() {
       {{ t('common.loading') }}
     </div>
 
-    <div v-else-if="runtimeSettings && emailConfig && advancedSettings" class="space-y-6">
+    <div v-else-if="runtimeSettings && emailConfig && advancedSettings && feishuConfig" class="space-y-6">
       <!-- 验证错误 -->
       <div v-if="!validation.valid" class="rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800 dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-200">
         <div class="font-bold">{{ t('admin.ops.settings.validation.title') }}</div>
@@ -370,6 +438,53 @@ async function saveAllSettings() {
             <div v-if="emailConfig.report.weekly_summary_enabled">
               <input v-model="emailConfig.report.weekly_summary_schedule" type="text" class="input" placeholder="0 9 * * 1" />
             </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 飞书群通知 -->
+      <div class="rounded-2xl bg-gray-50 p-4 dark:bg-dark-700/50">
+        <h4 class="mb-1 text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.ops.settings.feishuConfig') }}</h4>
+        <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.settings.feishuHint') }}</p>
+
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <label class="font-medium text-gray-900 dark:text-white">{{ t('admin.ops.settings.enableFeishu') }}</label>
+            <Toggle v-model="feishuConfig.enabled" />
+          </div>
+
+          <div>
+            <label class="input-label">{{ t('admin.ops.settings.feishuWebhook') }}</label>
+            <input
+              v-model="feishuConfig.webhook_url"
+              type="text"
+              class="input"
+              :placeholder="t('admin.ops.settings.feishuWebhookPlaceholder')"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.settings.feishuWebhookHint') }}</p>
+          </div>
+
+          <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div>
+              <label class="input-label">{{ t('admin.ops.settings.feishuMinSeverity') }}</label>
+              <Select v-model="feishuConfig.min_severity" :options="feishuSeverityOptions" />
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.ops.settings.feishuRateLimit') }}</label>
+              <input v-model.number="feishuConfig.rate_limit_per_hour" type="number" min="0" class="input" />
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.settings.feishuRateLimitHint') }}</p>
+            </div>
+            <div>
+              <label class="input-label">{{ t('admin.ops.settings.feishuBatchingWindow') }}</label>
+              <input v-model.number="feishuConfig.batching_window_seconds" type="number" min="0" class="input" />
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.ops.settings.feishuBatchingWindowHint') }}</p>
+            </div>
+          </div>
+
+          <div>
+            <button class="btn btn-secondary" type="button" :disabled="feishuTesting" @click="saveAndTestFeishu">
+              {{ feishuTesting ? t('common.loading') : t('admin.ops.settings.feishuTest') }}
+            </button>
           </div>
         </div>
       </div>

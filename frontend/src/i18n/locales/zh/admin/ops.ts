@@ -317,6 +317,12 @@ export default {
       // Error Detail Modal
       errorDetail: {
         title: '错误详情',
+        // 上游商户：回答「这次失败是哪家上游商户造成的」，并能直接拉黑整个商户。
+        upstreamSupplier: '上游商户',
+        upstreamSupplierUnknown: '未知（请求未到达上游，或已超出上游日志保留窗口）',
+        blockSupplier: '拉黑商户',
+        blockSupplierConfirm: '确定要拉黑商户 {name}（ID {id}）吗？该商户名下所有渠道都会退出路由，且它名下的固定绑定不会自动改绑，需要你另行处理。',
+        blockSupplierOk: '已拉黑该商户',
         titleWithId: '错误 #{id}',
         noErrorSelected: '未选择错误。',
         backToList: '返回列表',
@@ -705,6 +711,24 @@ export default {
         emailPlaceholder: '输入邮箱地址',
         recipientsHint: '若为空，系统将使用第一个管理员邮箱作为默认收件人',
         minSeverity: '最低级别',
+        feishuConfig: '飞书群通知',
+        feishuHint: '网站出现请求错误时，把消息推到飞书群机器人；默认只推 P1（5xx / 429）。',
+        enableFeishu: '启用飞书通知',
+        feishuWebhook: 'Webhook 地址',
+        feishuWebhookPlaceholder: 'https://open.feishu.cn/open-apis/bot/v2/hook/...',
+        feishuWebhookHint: '在飞书群里「设置 → 群机器人 → 添加机器人 → 自定义机器人」中复制。它是凭据，不要发到公开网站。',
+        feishuMinSeverity: '最低级别',
+        feishuSeverityAll: '全部级别（含 4xx）',
+        feishuSeverityP1: 'P1（5xx / 429，平台故障）',
+        feishuSeverityP2: 'P2（4xx 请求错误）',
+        feishuSeverityP3: 'P3（其余）',
+        feishuRateLimit: '每小时最多推送条数',
+        feishuRateLimitHint: '0 = 不限制。异常放大时靠它兜底，避免把群刷爆。',
+        feishuBatchingWindow: '相同错误合并窗口（秒）',
+        feishuBatchingWindowHint: '窗口内同一种错误只发一条，消息里带累计次数；0 = 每条都发。',
+        feishuTest: '保存并发送测试',
+        feishuTestSent: '测试消息已发送，请到飞书群里确认',
+        feishuTestFailed: '测试消息发送失败',
         reportConfig: '评估报告配置',
         enableReport: '开启评估报告',
         reportRecipients: '评估报告接收邮箱',
@@ -767,7 +791,9 @@ export default {
           ttftP99MaxRange: 'TTFT P99最大值必须大于等于0',
           requestErrorRateMaxRange: '请求错误率最大值必须在0-100之间',
           upstreamErrorRateMaxRange: '上游错误率最大值必须在0-100之间',
-          openaiQuotaAutoPauseRange: 'OpenAI 配额自动暂停阈值必须在 0-100 之间'
+          openaiQuotaAutoPauseRange: 'OpenAI 配额自动暂停阈值必须在 0-100 之间',
+          feishuWebhookRequired: '已启用飞书通知，但没填 Webhook 地址',
+          feishuWebhookInvalid: '飞书 Webhook 地址必须以 http:// 或 https:// 开头'
         }
       },
       concurrency: {

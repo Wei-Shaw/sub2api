@@ -698,6 +698,45 @@ type AdminUsageLog struct {
 	ModelMappingChain *string `json:"model_mapping_chain,omitempty"`
 	// UpstreamRequestID 是直接上游声明的请求标识，仅管理端可见。
 	UpstreamRequestID *string `json:"upstream_request_id,omitempty"`
+	// UpstreamCost 是这笔调用在上游账单里的真实扣费（原币，A6 为美元），仅管理端可见。
+	//
+	// 用指针而不是数值 + 零值：nil 表示「还没取到」，与前端的「—」对应；
+	// 若用 0 表示，页面就会把「没取到」和「上游真的没扣钱」显示成同一个样子。
+	//
+	// 字段名就取 upstream_cost（对应表头「成本」），刻意不带 cny/original 之类后缀：
+	// 本站与上游同为美元口径，不存在第二个币种，后缀只会让人以为还有别的版本。
+	UpstreamCost *float64 `json:"upstream_cost,omitempty"`
+	// UpstreamCostCurrency 是 UpstreamCost 的币种（A6 为 USD），仅用于显示货币符号。
+	UpstreamCostCurrency string `json:"upstream_cost_currency,omitempty"`
+	// UpstreamFirstTokenMs 是上游自报的首字耗时（毫秒），仅管理端可见。
+	//
+	// 与同一行的 first_token_ms 是两个口径：后者是本站观测（含中转开销），
+	// 这个只覆盖上游内部那一段，两者之差才是中转开销。
+	//
+	// 同样用指针：nil = 尚未对账到（前端显示「—」），与「上游真的 0ms」不同。
+	UpstreamFirstTokenMs *int `json:"upstream_first_token_ms,omitempty"`
+	// UpstreamDurationMs 是上游自报的总耗时（毫秒），仅管理端可见。
+	//
+	// ⚠️ 上游只回整数秒，本值由秒 ×1000 而来，有效精度为秒级；nil = 尚未对账到。
+	UpstreamDurationMs *int `json:"upstream_duration_ms,omitempty"`
+	// UpstreamSupplierID 是上游（A6）商户 ID，仅管理端可见。
+	//
+	// 用途是「归因到可执行单元」：2026-10-10 的漏计费事件里，按模型聚合会误判为
+	// 「某几个模型的特性」，按商户聚合才立刻定位到 4 个坏商户。nil = 尚未对账到。
+	UpstreamSupplierID *int `json:"upstream_supplier_id,omitempty"`
+	// UpstreamSupplierName 是上游商户名，供页面直接显示（冗余自上游账单）。
+	UpstreamSupplierName *string `json:"upstream_supplier_name,omitempty"`
+	// UpstreamChannelID 是上游实际计费渠道 ID；nil = 尚未对账到。
+	UpstreamChannelID *int `json:"upstream_channel_id,omitempty"`
+	// UpstreamTargetChannelID 是上游目标渠道 ID；nil = 尚未对账到。
+	UpstreamTargetChannelID *int `json:"upstream_target_channel_id,omitempty"`
+	// UpstreamChannelMultiplier 是该请求实际走的那家 A6 渠道的**实时倍率**
+	// （A6 的 realtime_ratio_usd，按渠道 + 模型给出的）。
+	//
+	// 2026-11-08 主人要求：使用记录里要能直接看到「这条请求走了多少倍率的渠道」，
+	// 用来判断某次调用是不是买贵了。值不在账单里，是拿 upstream_channel_id
+	// 去 A6 公开市场接口现查的（带缓存）；nil = 还没查到或上游没给，页面显示「—」。
+	UpstreamChannelMultiplier *float64 `json:"upstream_channel_multiplier,omitempty"`
 	// BillingTier 计费层级标签（per_request/image 模式）
 	BillingTier *string `json:"billing_tier,omitempty"`
 

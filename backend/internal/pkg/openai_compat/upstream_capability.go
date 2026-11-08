@@ -47,11 +47,20 @@ const (
 
 	// ResponsesSupportModeForceChatCompletions 强制使用 /v1/chat/completions。
 	ResponsesSupportModeForceChatCompletions ResponsesSupportMode = "force_chat_completions"
+
+	// ResponsesSupportModePassthrough 表示上游同时提供 /v1/responses 与
+	// /v1/chat/completions，按"入站协议直通"路由：两种入站各走各自的原生端点，
+	// 任一方向都不做协议转换。
+	//
+	// 与 Force* 模式的区别：Force* 是"账号级二选一"，必然有一个方向要转换；
+	// Passthrough 是"逐请求按入站协议选择"，两个方向都是直通，代价是要求上游
+	// 两个端点都可用。
+	ResponsesSupportModePassthrough ResponsesSupportMode = "passthrough"
 )
 
 // ExtraKeyResponsesMode 是 accounts.extra JSON 中存储手动覆盖模式的键名。
 // 值类型为 string：auto=跟随探测，force_responses=强制 Responses，
-// force_chat_completions=强制 Chat Completions。
+// force_chat_completions=强制 Chat Completions，passthrough=按入站协议直通。
 const ExtraKeyResponsesMode = "openai_responses_mode"
 
 // ExtraKeyResponsesSupported 是 accounts.extra JSON 中存储自动探测结果的键名。
@@ -66,9 +75,30 @@ func NormalizeResponsesSupportMode(mode string) ResponsesSupportMode {
 		return ResponsesSupportModeForceResponses
 	case ResponsesSupportModeForceChatCompletions:
 		return ResponsesSupportModeForceChatCompletions
+	case ResponsesSupportModePassthrough:
+		return ResponsesSupportModePassthrough
 	default:
 		return ResponsesSupportModeAuto
 	}
+}
+
+// ResponsesPassthroughMode 报告账号是否启用"按入站协议直通"。
+//
+// 启用后两个方向都不转换：
+//   - /v1/responses 入站 → 上游原生 /v1/responses（不走 responses→CC 回退）
+//   - /v1/chat/completions 入站 → 上游原生 /v1/chat/completions（不走 CC→Responses）
+//
+// 调用方必须同时在上游"两个端点都可用"时才应开启；否则缺失的那一侧会直接
+// 拿到上游 404/405。
+func ResponsesPassthroughMode(extra map[string]any) bool {
+	if extra == nil {
+		return false
+	}
+	mode, ok := extra[ExtraKeyResponsesMode].(string)
+	if !ok {
+		return false
+	}
+	return NormalizeResponsesSupportMode(mode) == ResponsesSupportModePassthrough
 }
 
 // ResolveResponsesSupport 从账号的 extra map 中读取手动覆盖模式与探测标记。
@@ -110,6 +140,12 @@ func ResolveResponsesSupport(extra map[string]any) AccountResponsesSupport {
 //
 // 仅当账号已探测且确认不支持时返回 false，此时调用方应走 CC 直转路径
 // （详见 internal/service/openai_gateway_chat_completions_raw.go）。
+//
+// 直通模式（passthrough）恒返回 false：该模式下 chat 入站要的正是原生
+// /v1/chat/completions，不做 CC→Responses 转换。
 func ShouldUseResponsesAPI(extra map[string]any) bool {
+	if ResponsesPassthroughMode(extra) {
+		return false
+	}
 	return ResolveResponsesSupport(extra) != ResponsesSupportNo
 }

@@ -886,6 +886,20 @@ func TestAPIContracts(t *testing.T) {
 						"fallback_model_openai": "gpt-4o",
 						"enable_identity_patch": true,
 						"identity_patch_prompt": "",
+						"intelligence_check_enabled": false,
+						"intelligence_check_interval_minutes": 720,
+						"intelligence_check_model_id": "",
+						"intelligence_check_reasoning_effort": "",
+						"intelligence_check_max_concurrency": 2,
+						"intelligence_check_run_retry_count": 2,
+						"intelligence_check_run_retry_interval_seconds": 30,
+						"intelligence_check_account_retry_count": 3,
+						"intelligence_check_account_retry_interval_minutes": 10,
+						"intelligence_check_timeout_seconds": 180,
+						"intelligence_check_max_tokens": 32000,
+						"intelligence_check_max_runs_per_account": 20,
+						"intelligence_check_status_sync_enabled": false,
+						"intelligence_check_stream_enabled": true,
 						"invitation_code_enabled": false,
 						"home_content": "",
 					"hide_ccs_import_button": false,
@@ -1004,6 +1018,7 @@ func TestAPIContracts(t *testing.T) {
 					"available_channels_enabled": false,
 					"subscription_enabled": true,
 					"model_plaza_enabled": false,
+					"model_plaza_pro_enabled": false,
 					"model_plaza_require_auth": false,
 					"model_plaza_description": "",
 					"plugin_management_enabled": false,
@@ -1080,6 +1095,20 @@ func TestAPIContracts(t *testing.T) {
 					"promo_code_enabled": true,
 					"password_reset_enabled": false,
 					"frontend_url": "",
+						"intelligence_check_enabled": false,
+						"intelligence_check_interval_minutes": 720,
+						"intelligence_check_model_id": "",
+						"intelligence_check_reasoning_effort": "",
+						"intelligence_check_max_concurrency": 2,
+						"intelligence_check_run_retry_count": 2,
+						"intelligence_check_run_retry_interval_seconds": 30,
+						"intelligence_check_account_retry_count": 3,
+						"intelligence_check_account_retry_interval_minutes": 10,
+						"intelligence_check_timeout_seconds": 180,
+						"intelligence_check_max_tokens": 32000,
+						"intelligence_check_max_runs_per_account": 20,
+						"intelligence_check_status_sync_enabled": false,
+						"intelligence_check_stream_enabled": true,
 						"invitation_code_enabled": false,
 						"totp_enabled": false,
 						"totp_encryption_key_configured": false,
@@ -1326,6 +1355,7 @@ func TestAPIContracts(t *testing.T) {
 					"available_channels_enabled": false,
 					"subscription_enabled": true,
 					"model_plaza_enabled": false,
+					"model_plaza_pro_enabled": false,
 					"model_plaza_require_auth": false,
 					"model_plaza_description": "",
 					"plugin_management_enabled": false,
@@ -1484,7 +1514,7 @@ func newContractDeps(t *testing.T) *contractDeps {
 	apiKeyService := service.NewAPIKeyService(apiKeyRepo, userRepo, groupRepo, userSubRepo, nil, apiKeyCache, cfg)
 
 	usageRepo := newStubUsageLogRepo()
-	usageService := service.NewUsageService(usageRepo, userRepo, nil, nil)
+	usageService := service.NewUsageService(usageRepo, userRepo, nil, nil, nil)
 
 	subscriptionService := service.NewSubscriptionService(groupRepo, userSubRepo, nil, nil, cfg)
 	subscriptionHandler := handler.NewSubscriptionHandler(subscriptionService)

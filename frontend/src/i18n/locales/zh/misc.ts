@@ -331,6 +331,7 @@ export default {
     createOrder: '确认支付',
     methods: {
       easypay: '易支付',
+      hupijiao: '虎皮椒',
       alipay: '支付宝',
       wxpay: '微信支付',
       stripe: 'Stripe',
@@ -489,6 +490,8 @@ export default {
       qrFailed: '未能获取微信支付二维码',
     },
     subscribeNow: '立即开通',
+    // 每人限购（2026-11-06 主人要求）
+    limitPerUser: '每人限购 {count} 次',
     renewNow: '续费',
     selectPlan: '选择套餐',
     planFeatures: '功能特性',
@@ -601,6 +604,12 @@ export default {
       forSale: '上架状态',
       onSale: '上架',
       offSale: '下架',
+      // 每人限购（2026-11-06 主人要求）
+      purchaseLimitEnabled: '每人限购',
+      purchaseLimitCount: '限购次数',
+      purchaseLimitHint: '同一个账号最多只能购买这个套餐几次（按已支付且未退款的订单计数）',
+      purchaseLimitReached: '已达限购次数',
+      purchasedTimes: '已购买 {count} 次',
       group: '分组',
       groupId: '分组 ID',
       features: '功能特性',

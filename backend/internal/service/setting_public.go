@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
@@ -234,9 +235,11 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorHideThroughput,
 		SettingKeyChannelMonitorShowQuota,
 		SettingKeyChannelMonitorHideUserRanking,
+		SettingKeyIntelligenceCheckEnabled,
 		SettingKeyAvailableChannelsEnabled,
 		SettingKeySubscriptionEnabled,
 		SettingKeyModelPlazaEnabled,
+		SettingKeyModelPlazaProEnabled,
 		SettingKeyModelPlazaRequireAuth,
 		SettingKeyPluginManagementEnabled,
 		SettingKeyAffiliateEnabled,
@@ -358,6 +361,9 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		BalanceLowNotifyThreshold:           balanceLowNotifyThreshold,
 		BalanceLowNotifyRechargeURL:         settings[SettingKeyBalanceLowNotifyRechargeURL],
 
+		// 智力检测只公开「是否启用」：用户侧作品墙据此决定入口是否出现，
+		// 间隔、模型、重试等参数属于管理员信息，不进公开设置。
+		IntelligenceCheckEnabled:             isTrueSettingValue(settings[SettingKeyIntelligenceCheckEnabled]),
 		ChannelMonitorEnabled:                !isFalseSettingValue(settings[SettingKeyChannelMonitorEnabled]),
 		ChannelMonitorMode:                   normalizeChannelMonitorMode(settings[SettingKeyChannelMonitorMode]),
 		ChannelMonitorDefaultIntervalSeconds: parseChannelMonitorInterval(settings[SettingKeyChannelMonitorDefaultIntervalSeconds]),
@@ -370,6 +376,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SubscriptionEnabled: !isFalseSettingValue(settings[SettingKeySubscriptionEnabled]),
 
 		ModelPlazaEnabled:       settings[SettingKeyModelPlazaEnabled] == "true",
+		ModelPlazaProEnabled:    settings[SettingKeyModelPlazaProEnabled] == "true",
 		ModelPlazaRequireAuth:   settings[SettingKeyModelPlazaRequireAuth] == "true",
 		PluginManagementEnabled: settings[SettingKeyPluginManagementEnabled] == "true",
 
@@ -441,6 +448,120 @@ type ChannelMonitorRuntime struct {
 	// HideUserRanking: when true, user-facing V2 views hide the user ranking tab
 	// and the /users payload. Parsed fail-open (only literal "true" hides it).
 	HideUserRanking bool
+
+	// ---- V1 主动探测调优（管理员端可热改；每次 fire 重读，无需重启）----
+
+	// WorkerConcurrency 同时在跑的探测数上限。
+	WorkerConcurrency int
+	// ResponseHeaderTimeout 等待上游响应头的超时；超过即判 error。
+	ResponseHeaderTimeout time.Duration
+	// IdleConnTimeout 连接池空闲连接保活时长。
+	IdleConnTimeout time.Duration
+	// MaxIdleConnsPerHost 每个上游主机保留的空闲连接数。
+	MaxIdleConnsPerHost int
+	// RequestTimeout 单次探测的总超时（含读取响应体）。
+	RequestTimeout time.Duration
+}
+
+// ChannelMonitorTuning 是探测调优参数的可写快照，供管理员端读写。
+type ChannelMonitorTuning struct {
+	WorkerConcurrency            int `json:"worker_concurrency"`
+	ResponseHeaderTimeoutSeconds int `json:"response_header_timeout_seconds"`
+	IdleConnTimeoutSeconds       int `json:"idle_conn_timeout_seconds"`
+	MaxIdleConnsPerHost          int `json:"max_idle_conns_per_host"`
+	RequestTimeoutSeconds        int `json:"request_timeout_seconds"`
+}
+
+// DefaultChannelMonitorTuning 返回出厂默认值。
+func DefaultChannelMonitorTuning() ChannelMonitorTuning {
+	return ChannelMonitorTuning{
+		WorkerConcurrency:            ChannelMonitorWorkerConcurrencyDefault,
+		ResponseHeaderTimeoutSeconds: ChannelMonitorResponseHeaderTimeoutDefault,
+		IdleConnTimeoutSeconds:       ChannelMonitorIdleConnTimeoutDefault,
+		MaxIdleConnsPerHost:          ChannelMonitorMaxIdleConnsPerHostDefault,
+		RequestTimeoutSeconds:        ChannelMonitorRequestTimeoutDefault,
+	}
+}
+
+// NormalizeChannelMonitorTuning 把越界值夹回允许范围；零值取默认。
+func NormalizeChannelMonitorTuning(t ChannelMonitorTuning) ChannelMonitorTuning {
+	d := DefaultChannelMonitorTuning()
+	t.WorkerConcurrency = clampInt(t.WorkerConcurrency, ChannelMonitorWorkerConcurrencyMin, ChannelMonitorWorkerConcurrencyMax, d.WorkerConcurrency)
+	t.ResponseHeaderTimeoutSeconds = clampInt(t.ResponseHeaderTimeoutSeconds, ChannelMonitorResponseHeaderTimeoutMin, ChannelMonitorResponseHeaderTimeoutMax, d.ResponseHeaderTimeoutSeconds)
+	t.IdleConnTimeoutSeconds = clampInt(t.IdleConnTimeoutSeconds, ChannelMonitorIdleConnTimeoutMin, ChannelMonitorIdleConnTimeoutMax, d.IdleConnTimeoutSeconds)
+	t.MaxIdleConnsPerHost = clampInt(t.MaxIdleConnsPerHost, ChannelMonitorMaxIdleConnsPerHostMin, ChannelMonitorMaxIdleConnsPerHostMax, d.MaxIdleConnsPerHost)
+	t.RequestTimeoutSeconds = clampInt(t.RequestTimeoutSeconds, ChannelMonitorRequestTimeoutMin, ChannelMonitorRequestTimeoutMax, d.RequestTimeoutSeconds)
+	return t
+}
+
+// clampInt 把 v 夹到 [min,max]；v<=0 视为未设置，返回 def（并同样夹一次）。
+func clampInt(v, min, max, def int) int {
+	if v <= 0 {
+		v = def
+	}
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
+}
+
+// GetChannelMonitorTuning 读取探测调优参数；缺失或损坏时回退默认值。
+func (s *SettingService) GetChannelMonitorTuning(ctx context.Context) ChannelMonitorTuning {
+	d := DefaultChannelMonitorTuning()
+	if s == nil || s.settingRepo == nil {
+		return d
+	}
+	vals, err := s.settingRepo.GetMultiple(ctx, []string{
+		SettingKeyChannelMonitorWorkerConcurrency,
+		SettingKeyChannelMonitorResponseHeaderTimeoutSeconds,
+		SettingKeyChannelMonitorIdleConnTimeoutSeconds,
+		SettingKeyChannelMonitorMaxIdleConnsPerHost,
+		SettingKeyChannelMonitorRequestTimeoutSeconds,
+	})
+	if err != nil {
+		return d
+	}
+	return NormalizeChannelMonitorTuning(ChannelMonitorTuning{
+		WorkerConcurrency:            parsePositiveInt(vals[SettingKeyChannelMonitorWorkerConcurrency], d.WorkerConcurrency),
+		ResponseHeaderTimeoutSeconds: parsePositiveInt(vals[SettingKeyChannelMonitorResponseHeaderTimeoutSeconds], d.ResponseHeaderTimeoutSeconds),
+		IdleConnTimeoutSeconds:       parsePositiveInt(vals[SettingKeyChannelMonitorIdleConnTimeoutSeconds], d.IdleConnTimeoutSeconds),
+		MaxIdleConnsPerHost:          parsePositiveInt(vals[SettingKeyChannelMonitorMaxIdleConnsPerHost], d.MaxIdleConnsPerHost),
+		RequestTimeoutSeconds:        parsePositiveInt(vals[SettingKeyChannelMonitorRequestTimeoutSeconds], d.RequestTimeoutSeconds),
+	})
+}
+
+// SetChannelMonitorTuning 校验并持久化探测调优参数。
+func (s *SettingService) SetChannelMonitorTuning(ctx context.Context, t ChannelMonitorTuning) (ChannelMonitorTuning, error) {
+	if s == nil || s.settingRepo == nil {
+		return t, fmt.Errorf("setting repository is unavailable")
+	}
+	out := NormalizeChannelMonitorTuning(t)
+	if err := s.settingRepo.SetMultiple(ctx, map[string]string{
+		SettingKeyChannelMonitorWorkerConcurrency:            strconv.Itoa(out.WorkerConcurrency),
+		SettingKeyChannelMonitorResponseHeaderTimeoutSeconds: strconv.Itoa(out.ResponseHeaderTimeoutSeconds),
+		SettingKeyChannelMonitorIdleConnTimeoutSeconds:       strconv.Itoa(out.IdleConnTimeoutSeconds),
+		SettingKeyChannelMonitorMaxIdleConnsPerHost:          strconv.Itoa(out.MaxIdleConnsPerHost),
+		SettingKeyChannelMonitorRequestTimeoutSeconds:        strconv.Itoa(out.RequestTimeoutSeconds),
+	}); err != nil {
+		return out, fmt.Errorf("persist channel monitor tuning: %w", err)
+	}
+	return out, nil
+}
+
+// parsePositiveInt 解析正整数；空串/非法/非正数回退 def。
+func parsePositiveInt(raw string, def int) int {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return def
+	}
+	v, err := strconv.Atoi(raw)
+	if err != nil || v <= 0 {
+		return def
+	}
+	return v
 }
 
 // ActiveProbesAllowed reports whether V1 active provider probes may run.
@@ -471,16 +592,30 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 		SettingKeyChannelMonitorHideThroughput,
 		SettingKeyChannelMonitorShowQuota,
 		SettingKeyChannelMonitorHideUserRanking,
+		SettingKeyChannelMonitorWorkerConcurrency,
+		SettingKeyChannelMonitorResponseHeaderTimeoutSeconds,
+		SettingKeyChannelMonitorIdleConnTimeoutSeconds,
+		SettingKeyChannelMonitorMaxIdleConnsPerHost,
+		SettingKeyChannelMonitorRequestTimeoutSeconds,
 	})
 	if err != nil {
-		return ChannelMonitorRuntime{
+		fallback := ChannelMonitorRuntime{
 			Enabled:                true,
 			Mode:                   defaultChannelMonitorMode,
 			DefaultIntervalSeconds: channelMonitorIntervalFallback,
 			HideThroughput:         true,
 		}
+		applyTuningToRuntime(&fallback, DefaultChannelMonitorTuning())
+		return fallback
 	}
-	return ChannelMonitorRuntime{
+	tuning := NormalizeChannelMonitorTuning(ChannelMonitorTuning{
+		WorkerConcurrency:            parsePositiveInt(vals[SettingKeyChannelMonitorWorkerConcurrency], ChannelMonitorWorkerConcurrencyDefault),
+		ResponseHeaderTimeoutSeconds: parsePositiveInt(vals[SettingKeyChannelMonitorResponseHeaderTimeoutSeconds], ChannelMonitorResponseHeaderTimeoutDefault),
+		IdleConnTimeoutSeconds:       parsePositiveInt(vals[SettingKeyChannelMonitorIdleConnTimeoutSeconds], ChannelMonitorIdleConnTimeoutDefault),
+		MaxIdleConnsPerHost:          parsePositiveInt(vals[SettingKeyChannelMonitorMaxIdleConnsPerHost], ChannelMonitorMaxIdleConnsPerHostDefault),
+		RequestTimeoutSeconds:        parsePositiveInt(vals[SettingKeyChannelMonitorRequestTimeoutSeconds], ChannelMonitorRequestTimeoutDefault),
+	})
+	out := ChannelMonitorRuntime{
 		Enabled:                !isFalseSettingValue(vals[SettingKeyChannelMonitorEnabled]),
 		Mode:                   normalizeChannelMonitorMode(vals[SettingKeyChannelMonitorMode]),
 		DefaultIntervalSeconds: parseChannelMonitorInterval(vals[SettingKeyChannelMonitorDefaultIntervalSeconds]),
@@ -488,6 +623,18 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 		ShowQuota:              vals[SettingKeyChannelMonitorShowQuota] == "true",
 		HideUserRanking:        isTrueSettingValue(vals[SettingKeyChannelMonitorHideUserRanking]),
 	}
+	applyTuningToRuntime(&out, tuning)
+	return out
+}
+
+// applyTuningToRuntime 把可写快照转成 runtime 的强类型字段，
+// 单独抽出来是为了在 fail-open 分支里也能一并用默认值填充。
+func applyTuningToRuntime(rt *ChannelMonitorRuntime, t ChannelMonitorTuning) {
+	rt.WorkerConcurrency = t.WorkerConcurrency
+	rt.ResponseHeaderTimeout = time.Duration(t.ResponseHeaderTimeoutSeconds) * time.Second
+	rt.IdleConnTimeout = time.Duration(t.IdleConnTimeoutSeconds) * time.Second
+	rt.MaxIdleConnsPerHost = t.MaxIdleConnsPerHost
+	rt.RequestTimeout = time.Duration(t.RequestTimeoutSeconds) * time.Second
 }
 
 // AvailableChannelsRuntime is the lightweight view of the available-channels feature
@@ -626,6 +773,7 @@ type PublicSettingsInjectionPayload struct {
 	// frontend/src/utils/featureFlags.ts. Missing a field here is the bug
 	// that hid the "可用渠道" menu on page refresh.
 	ChannelMonitorEnabled                bool   `json:"channel_monitor_enabled"`
+	IntelligenceCheckEnabled             bool   `json:"intelligence_check_enabled"`
 	ChannelMonitorMode                   string `json:"channel_monitor_mode"`
 	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
 	// ChannelMonitorHideThroughput is public so the user UI can hide RPM/TPM
@@ -640,6 +788,7 @@ type PublicSettingsInjectionPayload struct {
 	AvailableChannelsEnabled      bool `json:"available_channels_enabled"`
 	SubscriptionEnabled           bool `json:"subscription_enabled"`
 	ModelPlazaEnabled             bool `json:"model_plaza_enabled"`
+	ModelPlazaProEnabled          bool `json:"model_plaza_pro_enabled"`
 	ModelPlazaRequireAuth         bool `json:"model_plaza_require_auth"`
 	PluginManagementEnabled       bool `json:"plugin_management_enabled"`
 	AffiliateEnabled              bool `json:"affiliate_enabled"`
@@ -717,6 +866,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		BalanceLowNotifyRechargeURL:         settings.BalanceLowNotifyRechargeURL,
 
 		ChannelMonitorEnabled:                settings.ChannelMonitorEnabled,
+		IntelligenceCheckEnabled:             settings.IntelligenceCheckEnabled,
 		ChannelMonitorMode:                   settings.ChannelMonitorMode,
 		ChannelMonitorDefaultIntervalSeconds: settings.ChannelMonitorDefaultIntervalSeconds,
 		ChannelMonitorHideThroughput:         settings.ChannelMonitorHideThroughput,
@@ -725,6 +875,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 		SubscriptionEnabled:                  settings.SubscriptionEnabled,
 		ModelPlazaEnabled:                    settings.ModelPlazaEnabled,
+		ModelPlazaProEnabled:                 settings.ModelPlazaProEnabled,
 		ModelPlazaRequireAuth:                settings.ModelPlazaRequireAuth,
 		PluginManagementEnabled:              settings.PluginManagementEnabled,
 		AffiliateEnabled:                     settings.AffiliateEnabled,

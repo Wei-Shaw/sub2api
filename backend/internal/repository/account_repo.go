@@ -62,6 +62,9 @@ var schedulerNeutralExtraKeyPrefixes = []string{
 	"upstream_billing_probe",
 	"upstream_billing_rate_sync",
 	"ollama_cloud_usage",
+	// 智力检测的账号级配置只影响跑测调度，不影响正常转发选路，
+	// 不加入这份白名单会让每次编辑账号都触发一次无谓的调度重算。
+	"intelligence_check",
 }
 
 var schedulerNeutralExtraKeys = map[string]struct{}{

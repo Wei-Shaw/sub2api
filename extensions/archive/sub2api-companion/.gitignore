@@ -1,0 +1,21 @@
+# 本地运行时产物与部署垃圾：只提交源码与配置模板
+data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# 本地构建产物与镜像导出包（只匹配本目录下的产物，不能写成裸 companion，
+# 否则会连 cmd/companion/ 源码目录一起排除）
+/companion
+/companion-linux-*
+*.tar
+*.tar.gz
+*.tgz
+stage-*/
+.deploy/
+
+# 演练环境的备份与访问日志（体积大、含运行数据）
+rehearsal/backups/
+rehearsal/caddy_logs/

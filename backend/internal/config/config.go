@@ -109,6 +109,7 @@ type Config struct {
 	BatchImage              BatchImageConfig              `mapstructure:"batch_image"`
 	ImageStorage            ImageStorageConfig            `mapstructure:"image_storage"`
 	Plugins                 PluginConfig                  `mapstructure:"plugins"`
+	Reconciliation          ReconciliationConfig          `mapstructure:"reconciliation"`
 
 	// Enforce only API-key spending windows in simple mode.
 	SimpleModeKeyRateLimitEnabled bool `mapstructure:"simple_mode_key_rate_limit_enabled" yaml:"simple_mode_key_rate_limit_enabled"`
@@ -730,6 +731,10 @@ type PricingConfig struct {
 	FallbackFile string `mapstructure:"fallback_file"`
 	// 覆盖补丁文件路径（可选）：条目按字段浅合并覆盖目录/回退数据，优先级最高
 	OverrideFile string `mapstructure:"override_file"`
+	// 对外公开的模型价格文件路径（公开接口 GET /api/provider/pricing 的可选覆盖数据源），
+	// 相对进程工作目录。留空则只用编译进二进制的内置价格数据；
+	// 配了路径但读不到或格式非法时同样回落到内置数据（只记日志，不对外报错）。
+	ProviderPricingFile string `mapstructure:"provider_pricing_file"`
 	// 更新间隔（小时）
 	UpdateIntervalHours int `mapstructure:"update_interval_hours"`
 	// 哈希校验间隔（分钟）
@@ -1112,6 +1117,11 @@ type GatewayConfig struct {
 	OpenAIProxyStreamCircuit GatewayOpenAIProxyStreamCircuitConfig `mapstructure:"openai_proxy_stream_circuit"`
 	// ImageConcurrency: 图片生成独立并发限制配置（默认关闭）
 	ImageConcurrency ImageConcurrencyConfig `mapstructure:"image_concurrency"`
+	// UpstreamRequestCompression: 出站请求体 gzip 压缩（默认关闭）。
+	// 用于级联中转场景：上游（如聚合站）接收请求体的吞吐往往远低于带宽，
+	// 体型大的上下文（十几万 token 的 tools + 历史）会在"把请求体送进上游"这一段
+	// 稳定吃掉数秒。压缩后字节数通常降到 1/8~1/10，可成比例削减这段耗时。
+	UpstreamRequestCompression GatewayUpstreamRequestCompressionConfig `mapstructure:"upstream_request_compression"`
 
 	// HTTP 上游连接池配置（性能优化：支持高并发场景调优）
 	// MaxIdleConns: 所有主机的最大空闲连接总数
@@ -1247,6 +1257,27 @@ type GatewayCNProvidersConfig struct {
 type GatewayLiveConfig struct {
 	// MaxSessionDurationSeconds 是 Live 会话的硬上限。
 	MaxSessionDurationSeconds int `mapstructure:"max_session_duration_seconds"`
+}
+
+// GatewayUpstreamRequestCompressionConfig 出站请求体 gzip 压缩配置。
+//
+// 背景：在中转站作为上游的链路里，上游"读入请求体"的吞吐常常只有几百 KB/s，
+// 而一次 Agent 请求的上下文可达十几万 token（数百 KB ~ 1MB）。此时
+// "把请求体传进上游"会稳定占用数秒，且与首字延迟几乎等长。
+// 该配置让网关在出站前把请求体 gzip 压缩，并在上游以 400/415 拒绝时
+// 自动回退为未压缩请求重试一次，因此默认关闭也绝对安全。
+//
+// 建议只对"已确认接受 gzip 请求体"的中转账号开启（用 AccountIDs 精确限定），
+// 不要对官方 OpenAI / Anthropic 等端点开启。
+type GatewayUpstreamRequestCompressionConfig struct {
+	// Enabled: 是否启用出站请求体压缩（默认 false）
+	Enabled bool `mapstructure:"enabled"`
+	// MinBytes: 小于该字节数的请求体不压缩（默认 65536）。
+	// 压缩本身有 CPU 与头部开销，小请求压了反而亏。
+	MinBytes int64 `mapstructure:"min_bytes"`
+	// AccountIDs: 生效的账号 ID 白名单。留空表示对所有账号生效；
+	// 只要非空，就只有列表内的账号会被压缩——推荐用它精确限定中转账号。
+	AccountIDs []int64 `mapstructure:"account_ids"`
 }
 
 // GatewayOpenAIHTTP2Config OpenAI HTTP 上游协议配置。
@@ -2099,11 +2130,75 @@ func configureConfigSource(setConfigFile, addConfigPath func(string)) {
 	addConfigPath("/etc/sub2api")
 }
 
+// ReconciliationConfig 是「经营对账」内置能力的配置。
+//
+// 对账能力已内置进本进程，因此不再有 companion 的服务地址与 HTTP Basic 凭据：
+// 那些配置项随独立容器一起退场了。
+type ReconciliationConfig struct {
+	// Enabled 是否启用对账采集与上游账单同步。
+	Enabled bool `mapstructure:"enabled"`
+	// FxUSDCNYRate 美元转人民币的换算数字；填 1 表示不做换算。
+	//
+	// 这是「记账口径」而不是「实时牌价」：每条记录在写入时把它冻结下来，
+	// 之后改动这个数字只影响新记录，历史金额不会被重算。
+	FxUSDCNYRate float64 `mapstructure:"fx_usd_cny_rate"`
+	// A6BaseURL 上游 A6 站点基址。
+	A6BaseURL string `mapstructure:"a6_base_url"`
+	// A6AccessToken 上游 A6 系统访问令牌，只允许通过环境变量注入，不要写进配置文件。
+	A6AccessToken string `mapstructure:"a6_access_token"`
+	// A6UserID 上游 A6 用户标识。
+	A6UserID string `mapstructure:"a6_user_id"`
+	// A6LookbackHours 单轮同步回看的窗口长度。
+	A6LookbackHours int `mapstructure:"a6_lookback_hours"`
+	// TimeoutSeconds 单次访问上游的超时时间。
+	TimeoutSeconds int `mapstructure:"timeout_seconds"`
+	// UsageIntervalSeconds 下游用量采集的间隔。
+	UsageIntervalSeconds int `mapstructure:"usage_interval_seconds"`
+	// A6SyncIntervalSeconds 上游账单同步的间隔。
+	A6SyncIntervalSeconds int `mapstructure:"a6_sync_interval_seconds"`
+	// RealtimeMatchEnabled 是否启用「实时匹配」：一旦发现有新的下游扣费记录，
+	// 就立刻拉一小段上游账单并匹配，而不是干等下一个整点周期。
+	//
+	// 打开它意味着打上游接口的频率从「固定每 A6SyncIntervalSeconds 一次」
+	// 变成「有流量就拉一次」，上游若有限流会被打疼，所以必须配合下面两个
+	// 参数一起理解：延迟负责让上游账单先落库，最小间隔负责给上游限流兜底。
+	RealtimeMatchEnabled bool `mapstructure:"realtime_match_enabled"`
+	// RealtimeMatchDelaySeconds 发现新扣费记录后延迟多久才去拉上游账单。
+	//
+	// 不能是 0：上游账单通常晚于本站调用落库，立即去拉多半什么也拉不到，
+	// 白白消耗一次上游配额。留几十秒让上游先结算完，一次拉取就能覆盖。
+	RealtimeMatchDelaySeconds int `mapstructure:"realtime_match_delay_seconds"`
+	// RealtimeMatchMinIntervalSeconds 两次实时匹配之间的最小间隔。
+	//
+	// 这是防止「上游被自家流量打爆」的闸门：流量再密，实时匹配也不会比这个
+	// 间隔更频繁。定时同步那条线保持不变，继续做兜底。
+	RealtimeMatchMinIntervalSeconds int `mapstructure:"realtime_match_min_interval_seconds"`
+	// RealtimeMatchWindowSeconds 实时匹配回看的窗口长度。
+	//
+	// 只回看很短的一段：触发它的是刚刚产生的调用，拉全天窗口没有任何意义。
+	RealtimeMatchWindowSeconds int `mapstructure:"realtime_match_window_seconds"`
+}
+
 func setDefaults() {
 	viper.SetDefault("run_mode", RunModeStandard)
 	viper.SetDefault("gateway.min_output_tokens", 128)
 	viper.SetDefault("simple_mode.auto_create_default_groups", true)
 	viper.SetDefault("simple_mode_key_rate_limit_enabled", false)
+
+	// Reconciliation（经营对账，内置在主进程里）
+	viper.SetDefault("reconciliation.enabled", true)
+	viper.SetDefault("reconciliation.fx_usd_cny_rate", 6.71)
+	viper.SetDefault("reconciliation.a6_base_url", "")
+	viper.SetDefault("reconciliation.a6_access_token", "")
+	viper.SetDefault("reconciliation.a6_user_id", "")
+	viper.SetDefault("reconciliation.a6_lookback_hours", 24)
+	viper.SetDefault("reconciliation.timeout_seconds", 90)
+	viper.SetDefault("reconciliation.usage_interval_seconds", 30)
+	viper.SetDefault("reconciliation.a6_sync_interval_seconds", 300)
+	viper.SetDefault("reconciliation.realtime_match_enabled", true)
+	viper.SetDefault("reconciliation.realtime_match_delay_seconds", 30)
+	viper.SetDefault("reconciliation.realtime_match_min_interval_seconds", 60)
+	viper.SetDefault("reconciliation.realtime_match_window_seconds", 900)
 
 	// Server
 	viper.SetDefault("server.host", "0.0.0.0")
@@ -2417,6 +2512,8 @@ func setDefaults() {
 	viper.SetDefault("pricing.override_file", "")
 	viper.SetDefault("pricing.update_interval_hours", 24)
 	viper.SetDefault("pricing.hash_check_interval_minutes", 10)
+	// 对外公开的模型价格文件（公开接口 GET /api/provider/pricing 的数据源）
+	viper.SetDefault("pricing.provider_pricing_file", "")
 
 	// 本地进程插件。插件必须由管理员手动上传，项目默认不携带任何插件能力。
 	viper.SetDefault("plugins.data_dir", "")
@@ -2570,6 +2667,10 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_http2.fallback_error_threshold", 2)
 	viper.SetDefault("gateway.openai_http2.fallback_window_seconds", 60)
 	viper.SetDefault("gateway.openai_http2.fallback_ttl_seconds", 600)
+	// 出站请求体压缩：默认关闭；阈值 64KB（小请求压缩不划算）
+	viper.SetDefault("gateway.upstream_request_compression.enabled", false)
+	viper.SetDefault("gateway.upstream_request_compression.min_bytes", int64(64*1024))
+	viper.SetDefault("gateway.upstream_request_compression.account_ids", []int64{})
 	viper.SetDefault("gateway.openai_proxy_stream_circuit.disabled", false)
 	viper.SetDefault("gateway.openai_proxy_stream_circuit.failure_threshold", 2)
 	viper.SetDefault("gateway.openai_proxy_stream_circuit.window_seconds", 60)

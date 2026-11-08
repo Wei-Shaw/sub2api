@@ -48,6 +48,10 @@ func enabledVisibleMethodsForProvider(providerKey, supportedTypes string) []stri
 		for _, supportedType := range splitTypes(supportedTypes) {
 			addMethod(supportedType)
 		}
+	case payment.TypeHupijiao:
+		for _, supportedType := range splitTypes(supportedTypes) {
+			addMethod(supportedType)
+		}
 	}
 
 	methods := make([]string, 0, len(methodSet))

@@ -38,6 +38,34 @@ type OpsEmailNotificationConfigUpdateRequest struct {
 	Report *OpsEmailReportConfig `json:"report"`
 }
 
+// OpsFeishuNotificationConfig 是「平台记录到请求错误 → 推送到飞书群机器人」的配置。
+//
+// 与邮件通知的区别：邮件是给管理员收件箱发告警，飞书是往运营群里发一条消息，
+// 目的是「网站上有人报错，群里立刻能看到」，所以这里额外多了签名去重与合并窗口。
+type OpsFeishuNotificationConfig struct {
+	Enabled bool `json:"enabled"`
+	// WebhookURL 是飞书群机器人地址（https://open.feishu.cn/open-apis/bot/v2/hook/...）。
+	// 它是凭据，只存在 settings 表里，不写进代码仓库。
+	WebhookURL string `json:"webhook_url"`
+	// MinSeverity 只推不低于该级别的错误：P1（5xx/429）> P2（4xx）> P3（其余）。
+	// 空字符串表示不过滤。
+	MinSeverity string `json:"min_severity"`
+	// RateLimitPerHour 每小时最多推送多少条，0 表示不限。
+	RateLimitPerHour int `json:"rate_limit_per_hour"`
+	// BatchingWindowSeconds 相同错误的合并窗口：窗口内重复的同一种错误只发一条，
+	// 并在消息里带上累计次数。0 表示不合并、每条都发。
+	BatchingWindowSeconds int `json:"batching_window_seconds"`
+}
+
+// OpsFeishuNotificationConfigUpdateRequest 允许局部更新。
+type OpsFeishuNotificationConfigUpdateRequest struct {
+	Enabled               *bool   `json:"enabled"`
+	WebhookURL            *string `json:"webhook_url"`
+	MinSeverity           *string `json:"min_severity"`
+	RateLimitPerHour      *int    `json:"rate_limit_per_hour"`
+	BatchingWindowSeconds *int    `json:"batching_window_seconds"`
+}
+
 type OpsDistributedLockSettings struct {
 	Enabled    bool   `json:"enabled"`
 	Key        string `json:"key"`

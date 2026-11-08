@@ -519,7 +519,7 @@ func TestUsageLogRepositoryUsageAggregatesFilterNativeCompactionV2(t *testing.T)
 			WillReturnRows(sqlmock.NewRows([]string{
 				"inbound_grouped", "upstream_grouped", "inbound_endpoint", "upstream_endpoint",
 				"requests", "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens",
-				"cost", "actual_cost", "account_cost", "avg_duration_ms",
+				"cost", "actual_cost", "account_cost", "upstream_cost", "upstream_cost_missing", "avg_duration_ms",
 			}))
 
 		_, err := repo.GetStatsWithFilters(context.Background(), filters)
@@ -638,12 +638,14 @@ func TestUsageLogRepositoryGetStatsWithFiltersRequestedModelSource(t *testing.T)
 			"cost",
 			"actual_cost",
 			"account_cost",
+			"upstream_cost",
+			"upstream_cost_missing",
 			"avg_duration_ms",
 		}).
-			AddRow(1, 1, nil, nil, int64(1), int64(2), int64(3), int64(1), int64(3), 1.2, 1.0, 1.2, 20.0).
-			AddRow(0, 1, "/v1/responses", nil, int64(1), int64(2), int64(3), int64(1), int64(3), 1.2, 1.0, 1.2, 20.0).
-			AddRow(1, 0, nil, "/v1/responses", int64(1), int64(2), int64(3), int64(1), int64(3), 1.2, 1.0, 1.2, 20.0).
-			AddRow(0, 0, "/v1/responses", "/v1/responses", int64(1), int64(2), int64(3), int64(1), int64(3), 1.2, 1.0, 1.2, 20.0))
+			AddRow(1, 1, nil, nil, int64(1), int64(2), int64(3), int64(1), int64(3), 1.2, 1.0, 1.2, 0.8, int64(0), 20.0).
+			AddRow(0, 1, "/v1/responses", nil, int64(1), int64(2), int64(3), int64(1), int64(3), 1.2, 1.0, 1.2, 0.8, int64(0), 20.0).
+			AddRow(1, 0, nil, "/v1/responses", int64(1), int64(2), int64(3), int64(1), int64(3), 1.2, 1.0, 1.2, 0.8, int64(0), 20.0).
+			AddRow(0, 0, "/v1/responses", "/v1/responses", int64(1), int64(2), int64(3), int64(1), int64(3), 1.2, 1.0, 1.2, 0.8, int64(0), 20.0))
 
 	stats, err := repo.GetStatsWithFilters(context.Background(), filters)
 	require.NoError(t, err)
@@ -679,8 +681,10 @@ func TestUsageLogRepositoryGetStatsWithFiltersRequestTypePriority(t *testing.T) 
 			"cost",
 			"actual_cost",
 			"account_cost",
+			"upstream_cost",
+			"upstream_cost_missing",
 			"avg_duration_ms",
-		}).AddRow(1, 1, nil, nil, int64(1), int64(2), int64(3), int64(1), int64(3), 1.2, 1.0, 1.2, 20.0))
+		}).AddRow(1, 1, nil, nil, int64(1), int64(2), int64(3), int64(1), int64(3), 1.2, 1.0, 1.2, 0.8, int64(0), 20.0))
 
 	stats, err := repo.GetStatsWithFilters(context.Background(), filters)
 	require.NoError(t, err)
@@ -688,6 +692,12 @@ func TestUsageLogRepositoryGetStatsWithFiltersRequestTypePriority(t *testing.T) 
 	require.Equal(t, int64(9), stats.TotalTokens)
 	require.NotNil(t, stats.TotalAccountCost, "TotalAccountCost should always be returned")
 	require.Equal(t, 1.2, *stats.TotalAccountCost)
+	// 毛利必须由后端算好：同一个数字要在顶部卡片、趋势图、明细行三处显示，
+	// 各算各的迟早出现「三处不一致」。这里用「实收 1.0 − 成本 0.8」钉住口径。
+	require.Equal(t, 0.8, stats.TotalUpstreamCost)
+	require.InDelta(t, 0.2, stats.TotalProfit, 1e-9)
+	// 未取到成本的条数要单独回来，页面才能把毛利标注成偏乐观的下界。
+	require.Equal(t, int64(0), stats.UpstreamCostMissing)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
@@ -805,8 +815,8 @@ func TestUsageLogRepositoryGetStatsWithFiltersAlwaysReturnsAccountCost(t *testin
 		WillReturnRows(sqlmock.NewRows([]string{
 			"inbound_grouped", "upstream_grouped", "inbound_endpoint", "upstream_endpoint",
 			"requests", "input_tokens", "output_tokens", "cache_creation_tokens", "cache_read_tokens",
-			"cost", "actual_cost", "account_cost", "avg_duration_ms",
-		}).AddRow(1, 1, nil, nil, int64(50), int64(1000), int64(2000), int64(60), int64(40), 15.0, 12.5, 11.0, 100.0))
+			"cost", "actual_cost", "account_cost", "upstream_cost", "upstream_cost_missing", "avg_duration_ms",
+		}).AddRow(1, 1, nil, nil, int64(50), int64(1000), int64(2000), int64(60), int64(40), 15.0, 12.5, 11.0, 7.5, int64(3), 100.0))
 
 	stats, err := repo.GetStatsWithFilters(context.Background(), filters)
 	require.NoError(t, err)
@@ -961,6 +971,14 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},
 			false, // native_compaction_v2
 			now,
+			sql.NullFloat64{}, // upstream_cost_original
+			sql.NullString{},  // upstream_cost_currency
+			sql.NullInt64{},   // upstream_first_token_ms
+			sql.NullInt64{},   // upstream_duration_ms
+			sql.NullInt64{},   // upstream_supplier_id
+			sql.NullString{},  // upstream_supplier_name
+			sql.NullInt64{},   // upstream_channel_id
+			sql.NullInt64{},   // upstream_target_channel_id
 		}})
 		require.NoError(t, err)
 		require.Equal(t, 2, log.ImageCount)
@@ -1041,6 +1059,14 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // session_id
 			false,             // native_compaction_v2
 			now,
+			sql.NullFloat64{}, // upstream_cost_original
+			sql.NullString{},  // upstream_cost_currency
+			sql.NullInt64{},   // upstream_first_token_ms
+			sql.NullInt64{},   // upstream_duration_ms
+			sql.NullInt64{},   // upstream_supplier_id
+			sql.NullString{},  // upstream_supplier_name
+			sql.NullInt64{},   // upstream_channel_id
+			sql.NullInt64{},   // upstream_target_channel_id
 		}})
 		require.NoError(t, err)
 		require.NotNil(t, log.ServiceTier)
@@ -1104,6 +1130,14 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // session_id
 			true,              // native_compaction_v2
 			now,
+			sql.NullFloat64{}, // upstream_cost_original
+			sql.NullString{},  // upstream_cost_currency
+			sql.NullInt64{},   // upstream_first_token_ms
+			sql.NullInt64{},   // upstream_duration_ms
+			sql.NullInt64{},   // upstream_supplier_id
+			sql.NullString{},  // upstream_supplier_name
+			sql.NullInt64{},   // upstream_channel_id
+			sql.NullInt64{},   // upstream_target_channel_id
 		}})
 		require.NoError(t, err)
 		require.NotNil(t, log.ServiceTier)
@@ -1168,6 +1202,14 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullString{},  // session_id
 			false,             // native_compaction_v2
 			now,
+			sql.NullFloat64{}, // upstream_cost_original
+			sql.NullString{},  // upstream_cost_currency
+			sql.NullInt64{},   // upstream_first_token_ms
+			sql.NullInt64{},   // upstream_duration_ms
+			sql.NullInt64{},   // upstream_supplier_id
+			sql.NullString{},  // upstream_supplier_name
+			sql.NullInt64{},   // upstream_channel_id
+			sql.NullInt64{},   // upstream_target_channel_id
 		}})
 		require.NoError(t, err)
 		require.NotNil(t, log.ServiceTier)

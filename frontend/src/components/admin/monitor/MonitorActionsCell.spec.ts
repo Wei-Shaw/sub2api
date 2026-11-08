@@ -77,3 +77,51 @@ describe('MonitorActionsCell duplicate action', () => {
     expect(button.attributes('title')).toBe('admin.channelMonitor.duplicateKeyUnavailable')
   })
 })
+
+describe('MonitorActionsCell clear-data action', () => {
+  it('emits the selected monitor when clear data is clicked', async () => {
+    const row = makeMonitor()
+    const wrapper = mount(MonitorActionsCell, {
+      props: { row, running: false, duplicating: false },
+    })
+
+    await wrapper.get('[data-testid="monitor-clear-data"]').trigger('click')
+
+    expect(wrapper.emitted('clear')).toEqual([[row]])
+  })
+
+  it('disables the action while this row is being cleared', () => {
+    const wrapper = mount(MonitorActionsCell, {
+      props: { row: makeMonitor(), running: false, duplicating: false, clearing: true },
+    })
+    const button = wrapper.get('[data-testid="monitor-clear-data"]')
+
+    expect(button.attributes('disabled')).toBeDefined()
+    expect(button.attributes('title')).toBe('admin.channelMonitor.clearing')
+    expect(button.text()).toContain('admin.channelMonitor.clearing')
+  })
+
+  it('stays enabled and shows the hint when no clearing flag is passed', () => {
+    const wrapper = mount(MonitorActionsCell, {
+      props: { row: makeMonitor(), running: false, duplicating: false },
+    })
+    const button = wrapper.get('[data-testid="monitor-clear-data"]')
+
+    expect(button.attributes('disabled')).toBeUndefined()
+    expect(button.attributes('title')).toBe('admin.channelMonitor.clearDataHint')
+  })
+
+  it('stays enabled when the API key cannot be decrypted', () => {
+    // 清除数据只删探测结果、不解密 Key，所以 Key 坏掉的渠道恰恰是最需要清数据的那种，
+    // 不能跟着「复制」一起被禁用。
+    const wrapper = mount(MonitorActionsCell, {
+      props: {
+        row: makeMonitor({ api_key_decrypt_failed: true }),
+        running: false,
+        duplicating: false,
+      },
+    })
+
+    expect(wrapper.get('[data-testid="monitor-clear-data"]').attributes('disabled')).toBeUndefined()
+  })
+})

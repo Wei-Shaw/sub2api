@@ -38,6 +38,7 @@ export interface CallbackPaths {
 /** Maps provider key → available payment types. */
 export const PROVIDER_SUPPORTED_TYPES: Record<string, string[]> = {
   easypay: ['alipay', 'wxpay'],
+  hupijiao: ['alipay', 'wxpay'],
   alipay: ['alipay'],
   wxpay: ['wxpay'],
   stripe: ['card', 'alipay', 'wxpay', 'link'],
@@ -106,6 +107,7 @@ export function getPaymentPopupFeatures(): string {
 /** Webhook paths for each provider (relative to origin). */
 export const WEBHOOK_PATHS: Record<string, string> = {
   easypay: '/api/v1/payment/webhook/easypay',
+  hupijiao: '/api/v1/payment/webhook/hupijiao',
   alipay: '/api/v1/payment/webhook/alipay',
   wxpay: '/api/v1/payment/webhook/wxpay',
   stripe: '/api/v1/payment/webhook/stripe',
@@ -117,6 +119,7 @@ export const RETURN_PATH = '/payment/result'
 /** Fixed callback paths per provider — displayed as read-only after base URL. */
 export const PROVIDER_CALLBACK_PATHS: Record<string, CallbackPaths> = {
   easypay: { notifyUrl: WEBHOOK_PATHS.easypay, returnUrl: RETURN_PATH },
+  hupijiao: { notifyUrl: WEBHOOK_PATHS.hupijiao, returnUrl: RETURN_PATH },
   alipay: { notifyUrl: WEBHOOK_PATHS.alipay, returnUrl: RETURN_PATH },
   wxpay: { notifyUrl: WEBHOOK_PATHS.wxpay },
   // stripe: 不需要回调 URL 配置，Webhook 单独配置。
@@ -131,6 +134,11 @@ export const PROVIDER_CONFIG_FIELDS: Record<string, ConfigFieldDef[]> = {
     { key: 'apiBase', label: '', sensitive: false },
     { key: 'cidAlipay', label: '', sensitive: false, optional: true },
     { key: 'cidWxpay', label: '', sensitive: false, optional: true },
+  ],
+  hupijiao: [
+    { key: 'appid', label: 'App ID', sensitive: false },
+    { key: 'appsecret', label: 'App Secret', sensitive: true },
+    { key: 'apiBase', label: '', sensitive: false, defaultValue: 'https://api.xunhupay.com' },
   ],
   alipay: [
     { key: 'appId', label: 'App ID', sensitive: false },

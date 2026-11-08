@@ -148,9 +148,32 @@
         />
       </div>
 
+      <!-- 绑定分组：模型广场 Pro 卡片的分组归属**只认这里选的值**。
+           以前是靠名字猜（账号 → 分组名同名 → 监控名同名），同名分组存在时会认错，
+           导致卡片显示「0 个模型」。现在改成显式选择，选谁就是谁。 -->
+      <div>
+        <label class="input-label">{{ t('admin.channelMonitor.form.groupBind') }}</label>
+        <div data-testid="monitor-group-bind">
+          <Select
+            v-model="groupSelectValue"
+            :options="groupOptions"
+            :placeholder="t('admin.channelMonitor.form.groupBindPlaceholder')"
+            :loading="groupsLoading"
+          />
+        </div>
+        <p class="mt-1 text-xs text-gray-400">{{ t('admin.channelMonitor.form.groupBindHint') }}</p>
+      </div>
+
       <div>
         <label class="input-label">{{ t('admin.channelMonitor.form.groupName') }}</label>
         <input v-model="form.group_name" type="text" class="input" :placeholder="t('admin.channelMonitor.form.groupNamePlaceholder')" />
+        <p class="mt-1 text-xs text-gray-400">{{ t('admin.channelMonitor.form.groupNameHint') }}</p>
+      </div>
+
+      <div>
+        <label class="input-label">{{ t('admin.channelMonitor.form.sortOrder') }}</label>
+        <input v-model.number="form.sort_order" type="number" min="1" class="input" />
+        <p class="mt-1 text-xs text-gray-400">{{ t('admin.channelMonitor.form.sortOrderHint') }}</p>
       </div>
 
       <div>
@@ -250,7 +273,7 @@ import type {
   UpdateParams,
 } from '@/api/admin/channelMonitor'
 import type { ChannelMonitorTemplate } from '@/api/admin/channelMonitorTemplate'
-import type { ApiKey } from '@/types'
+import type { ApiKey, AdminGroup } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import Select from '@/components/common/Select.vue'
@@ -329,6 +352,9 @@ interface MonitorForm {
   primary_model: string
   extra_models: string[]
   group_name: string
+  /** 绑定的模型广场分组 ID；null = 未绑定（卡片照常显示，只是没有模型与定价） */
+  group_id: number | null
+  sort_order: number
   interval_seconds: number
   jitter_seconds: number
   enabled: boolean
@@ -350,6 +376,8 @@ const form = reactive<MonitorForm>({
   primary_model: '',
   extra_models: [],
   group_name: '',
+  group_id: null,
+  sort_order: 1000,
   interval_seconds: systemDefaultInterval.value,
   jitter_seconds: 0,
   enabled: true,
@@ -420,6 +448,50 @@ const templateSelectValue = computed<string>({
       form.body_override = tpl.body_override ? { ...tpl.body_override } : null
       suppressFormWatchers = false
     }
+  },
+})
+
+// ---- 绑定分组：模型广场 Pro 卡片分组归属的**唯一**来源 ----
+//
+// 历史包袱：加这个字段之前，「监控 → 广场分组」只能靠三级降级猜
+// （account_id → account_groups ＞ group_name 同名 ＞ 监控名同名）。
+// 两级同名匹配遇到「删掉旧分组、又建了同名新分组」时会稳定认领到已软删的那条，
+// 使模型广场 Pro 的卡片显示「0 个模型」。现在改为显式选择：选谁就是谁。
+//
+// 只列活跃分组（/admin/groups/all 的默认口径）——已停用/已删除的分组不该再被绑上，
+// 这正好与后端读取侧的 `deleted_at IS NULL AND status = 'active'` 判定对齐。
+const groupsCache = ref<AdminGroup[]>([])
+const groupsLoading = ref(false)
+
+async function loadGroups() {
+  if (groupsCache.value.length > 0) return
+  groupsLoading.value = true
+  try {
+    groupsCache.value = await adminAPI.groups.getAll()
+  } catch (err: unknown) {
+    // 分组拉取失败不阻塞监控表单：用户仍可保存监控，只是本次不能改绑定。
+    console.warn('load groups failed', err)
+  } finally {
+    groupsLoading.value = false
+  }
+}
+
+const groupOptions = computed(() => [
+  { value: '', label: t('admin.channelMonitor.form.groupBindNone') },
+  ...groupsCache.value.map((g) => ({ value: String(g.id), label: g.name })),
+])
+
+// Select 组件只接受 string，需要与 number | null 互转（与 template 下拉同构）。
+const groupSelectValue = computed<string>({
+  get: () => (form.group_id == null ? '' : String(form.group_id)),
+  set: (raw: string) => {
+    if (raw === '') {
+      form.group_id = null
+      return
+    }
+    const id = Number(raw)
+    if (!Number.isFinite(id) || id <= 0) return
+    form.group_id = id
   },
 })
 
@@ -737,6 +809,8 @@ function resetForm() {
   form.primary_model = ''
   form.extra_models = []
   form.group_name = ''
+  form.group_id = null
+  form.sort_order = 1000
   form.interval_seconds = systemDefaultInterval.value
   form.jitter_seconds = 0
   form.enabled = true
@@ -759,6 +833,8 @@ function loadFromMonitor(m: ChannelMonitor) {
   form.primary_model = m.primary_model
   form.extra_models = [...(m.extra_models || [])]
   form.group_name = m.group_name || ''
+  form.group_id = m.group_id ?? null
+  form.sort_order = m.sort_order || 1000
   form.interval_seconds = m.interval_seconds || systemDefaultInterval.value
   form.jitter_seconds = m.jitter_seconds || 0
   form.enabled = m.enabled
@@ -776,6 +852,7 @@ watch(
   ([show, m]) => {
     if (!show) return
     void loadTemplates()
+    void loadGroups()
     if (m) loadFromMonitor(m)
     else resetForm()
   },
@@ -827,6 +904,12 @@ function buildPayload(): CreateParams {
     primary_model: usesProbePart.value ? form.primary_model.trim() : 'quota',
     extra_models: usesProbePart.value ? form.extra_models : [],
     group_name: form.group_name.trim(),
+    // 绑定分组：一条规则同时满足两条路径 ——
+    //   create：0 会被后端归一成「未绑定」，不会像 account_id 那样触发外键违约；
+    //   update：0 = 显式解绑，非 0 = 换绑。
+    // 所以这里不需要像 account_id 那样在 handleSubmit 里额外判分支。
+    group_id: form.group_id ?? 0,
+    sort_order: form.sort_order,
     enabled: form.enabled,
     interval_seconds: form.interval_seconds,
     jitter_seconds: form.jitter_seconds || 0,

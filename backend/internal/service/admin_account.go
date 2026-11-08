@@ -424,6 +424,11 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, OpenCodeGoUsageAutoRefreshExtraKey)
 	delete(accountExtra, OpenCodeGoUsageSnapshotExtraKey)
 	accountExtra = prepareCodexFingerprintExtraForCreate(input.Platform, input.Type, accountExtra)
+	normalizedCheckExtra, normalizeCheckErr := NormalizeIntelligenceCheckExtra(accountExtra)
+	if normalizeCheckErr != nil {
+		return nil, normalizeCheckErr
+	}
+	accountExtra = normalizedCheckExtra
 	account := &Account{
 		Name:        input.Name,
 		Notes:       normalizeAccountNotes(input.Notes),
@@ -715,6 +720,10 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			}
 		}
 		normalizedExtra = prepareCodexFingerprintExtraForUpdate(account, normalizedExtra)
+		normalizedExtra, normalizeCheckErr := NormalizeIntelligenceCheckExtra(normalizedExtra)
+		if normalizeCheckErr != nil {
+			return nil, normalizeCheckErr
+		}
 		account.Extra = normalizedExtra
 		if account.Platform == PlatformAntigravity && wasOveragesEnabled && !account.IsOveragesEnabled() {
 			delete(account.Extra, "antigravity_credits_overages") // 清理旧版 overages 运行态

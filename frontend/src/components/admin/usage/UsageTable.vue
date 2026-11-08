@@ -52,6 +52,22 @@
           <span class="text-sm text-gray-900 dark:text-white">{{ row.account?.name || '-' }}</span>
         </template>
 
+        <!-- 渠道倍率：这条请求实际走的那家 A6 渠道的实时倍率（realtime_ratio_usd）。
+             主人 2026-11-08 要求：**只显示数字**，不要后面那个 × / x ——
+             列头已经写明是「倍率」，再挂个 × 只是噪音。
+             取不到时显示「—」而不是 0：0 的含义是「零倍率渠道」，
+             与「还没查到」正好相反。 -->
+        <template #cell-upstream_channel_multiplier="{ row }">
+          <span
+            v-if="row.upstream_channel_multiplier != null"
+            class="text-xs tabular-nums text-gray-700 dark:text-gray-300"
+            data-testid="channel-multiplier"
+          >
+            {{ formatMultiplier(row.upstream_channel_multiplier) }}
+          </span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500" title="—">—</span>
+        </template>
+
         <template #cell-model="{ row }">
           <div class="space-y-0.5 text-xs">
             <div v-if="row.model_mapping_chain && row.model_mapping_chain.includes('→')" class="space-y-0.5">
@@ -108,7 +124,7 @@
           <div class="max-w-[320px] space-y-1 text-xs">
             <div class="break-all text-gray-700 dark:text-gray-300">
               <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('usage.inbound') }}:</span>
-              <span class="ml-1">{{ row.inbound_endpoint?.trim() || '-' }}</span>
+              <span class="ml-1">{{ inboundEndpointLabel(row.inbound_endpoint) }}</span>
             </div>
             <div v-if="showUpstreamEndpoint" class="break-all text-gray-700 dark:text-gray-300">
               <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('usage.upstream') }}:</span>
@@ -232,6 +248,38 @@
           </div>
         </template>
 
+        <!-- 上游真实成本：与左侧「费用」是两个口径——费用是本站向用户收的（收入），
+             这里是上游向我们收的（成本）。两者同为美元原值，**不做任何汇率换算**，
+             所以可以直接相减得毛利（见右侧「盈亏」列）。
+             取不到时显示「—」而不是 0：「还没查到」和「上游真的没扣钱」必须区分开，
+             否则会把未取数误读成零成本，进而把毛利算高。 -->
+        <template #cell-upstream_cost="{ row }">
+          <div v-if="row.upstream_cost != null" class="text-sm">
+            <span class="font-medium text-blue-600 dark:text-blue-400">
+              {{ currencySymbol(row.upstream_cost_currency) }}{{ row.upstream_cost.toFixed(6) }}
+            </span>
+          </div>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500" title="—">—</span>
+        </template>
+
+        <!-- 盈亏：收入 − 成本。正为盈利（绿 +），负为亏损（红 −）。
+             成本未知时显示「—」而不是把成本当 0 算出一个虚高的盈利——
+             这正是最容易误导经营判断的地方。 -->
+        <template #cell-profit="{ row }">
+          <div v-if="rowProfit(row) != null" class="text-sm font-medium tabular-nums" :class="profitClass(rowProfit(row)!)">
+            {{ formatSignedUSD(rowProfit(row)!) }}
+          </div>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500" title="—">—</span>
+        </template>
+
+        <!-- 利润率：盈亏 ÷ 收入。收入为 0 时无意义，同样显示「—」而不是 0% 或无穷。 -->
+        <template #cell-profit_margin="{ row }">
+          <div v-if="rowProfitMargin(row) != null" class="text-sm font-medium tabular-nums" :class="profitClass(rowProfit(row)!)">
+            {{ formatSignedPercent(rowProfitMargin(row)!) }}
+          </div>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500" title="—">—</span>
+        </template>
+
         <!-- 合并首字/总耗时的健康度列：左侧色条上端随首字档、下端随总耗时档，中段(40%-60%)短渐变过渡，便于纵向扫视整体健康状况 -->
         <template #cell-latency="{ row }">
           <div class="flex items-stretch gap-2">
@@ -251,6 +299,136 @@
               <span class="text-gray-400 dark:text-gray-500" :title="t('usage.outputTpsHint')">{{ t('usage.outputTps') }}</span>
               <span data-testid="output-tps" class="font-medium tabular-nums text-gray-700 dark:text-gray-300">{{ formatUsageOutputRate(row) }}</span>
             </div>
+          </div>
+        </template>
+
+        <!-- 上游延迟：与左侧「延迟」并排对照。左列是本站观测（含中转开销 + 网络往返
+             + 上游全部处理时间），右列是上游账单自报，只覆盖上游内部那一段；两者相减
+             就是「中转开销」，这是判断「是不是我们的中转把请求拖慢了」的唯一依据。
+
+             刻意不做健康度着色：右侧是上游口径，用左侧那套阈值上色会暗示两列可直接
+             横向比大小，而它们的含义本就不同。
+
+             空值一律显示「—」而不是 0：上游账单要等落库后才会被反查回来（实测
+             P50≈13s、P99≈599s），刚发出的请求这列本来就是空的；若显示 0 会被读成
+             「上游瞬间返回」，与「还不知道」的排障结论完全相反。 -->
+        <template #cell-upstream_latency="{ row }">
+          <div v-if="row.upstream_first_token_ms != null || row.upstream_duration_ms != null" class="flex items-stretch gap-2">
+            <span
+              class="w-1 shrink-0 rounded-full"
+              :class="row.upstream_first_token_ms != null
+                ? ['bg-gradient-to-b from-40% to-60%', LATENCY_BAR_FROM_CLASSES[firstTokenSeverity(row.upstream_first_token_ms)], LATENCY_BAR_TO_CLASSES[durationSeverity(row.upstream_duration_ms ?? 0)]]
+                : LATENCY_BAR_CLASSES[durationSeverity(row.upstream_duration_ms ?? 0)]"
+              aria-hidden="true"
+            ></span>
+            <div class="grid grid-cols-[max-content_max-content] items-baseline gap-x-2 gap-y-0.5 text-xs">
+              <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyFirstToken') }}</span>
+              <span v-if="row.upstream_first_token_ms != null" class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[firstTokenSeverity(row.upstream_first_token_ms)]">{{ formatDuration(row.upstream_first_token_ms) }}</span>
+              <span v-else class="text-gray-400 dark:text-gray-500">-</span>
+              <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyDuration') }}</span>
+              <span v-if="row.upstream_duration_ms != null" class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[durationSeverity(row.upstream_duration_ms ?? 0)]">{{ formatDuration(row.upstream_duration_ms) }}</span>
+              <span v-else class="text-gray-400 dark:text-gray-500">-</span>
+            </div>
+          </div>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500" title="—">—</span>
+        </template>
+
+        <!-- 中转开销：本站延迟 − 上游延迟，单位毫秒。
+             上格是首字差值、下格是总耗时差值，与左侧两列的上下顺序一一对应，
+             因此不再重复写「首字 / 总耗时」文字——那既占列宽又无信息量。
+
+             用差值而不是百分比：上游值一旦很小，比值会爆炸成几百个百分点，
+             反而看不出绝对量；排障要回答的是「中转吃掉了多少毫秒」。
+
+             任一侧没取到就显示「—」：0 的含义是「完全没有中转开销」，
+             与「还不知道」正好相反，不能互相顶替。 -->
+        <template #cell-upstream_overhead="{ row }">
+          <div v-if="overheadFirst(row) != null || overheadDuration(row) != null" class="grid justify-items-end gap-y-0.5 text-xs">
+            <span
+              v-if="overheadFirst(row) != null"
+              class="font-medium tabular-nums"
+              :class="LATENCY_TEXT_CLASSES[firstTokenOverheadSeverity(overheadFirst(row)!)]"
+            >
+              {{ formatOverheadMs(overheadFirst(row)!) }}
+            </span>
+            <span v-else class="text-gray-400 dark:text-gray-500">-</span>
+            <span
+              v-if="overheadDuration(row) != null"
+              class="font-medium tabular-nums"
+              :class="LATENCY_TEXT_CLASSES[durationOverheadSeverity(overheadDuration(row)!)]"
+            >
+              {{ formatOverheadMs(overheadDuration(row)!) }}
+            </span>
+            <span v-else class="text-gray-400 dark:text-gray-500">-</span>
+          </div>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500" title="—">—</span>
+        </template>
+
+        <!-- 上游商家归属：这一笔最终由「哪家商户的哪个渠道」服务。
+             四个值同属一件事，堆叠展示（与左侧「端点」列同形态）；拆成 4 列会把表格撑得过宽。
+
+             空值一律「—」：这些值来自上游账单，是**延迟对账**回来的
+             （实测 P50≈13s、P99≈599s），刚发出的请求本来就是空的。
+             折成 0 会被读成「第 0 号商户」，与「还不知道是哪家」正好相反 ——
+             而这一列的全部意义就是定位责任方，误导的代价比留空大得多。 -->
+        <template #cell-upstream_supplier="{ row }">
+          <div
+            v-if="row.upstream_supplier_id != null || row.upstream_supplier_name || row.upstream_channel_id != null || row.upstream_target_channel_id != null"
+            class="max-w-[220px] space-y-0.5 text-xs"
+          >
+            <div class="break-all text-gray-700 dark:text-gray-300">
+              <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.usage.supplierId') }}:</span>
+              <span class="ml-1 tabular-nums">{{ row.upstream_supplier_id ?? '-' }}</span>
+            </div>
+            <!-- 商家名只留数字：上游回的是「Supplier ID 514」这种带前缀的名称，
+                 主人 2026-11-06 要求只显示后面的编号，前面那串文字不要。 -->
+            <div class="break-all text-gray-700 dark:text-gray-300">
+              <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.usage.supplierName') }}:</span>
+              <span class="ml-1 tabular-nums">{{ supplierLabel(row.upstream_supplier_name, row.upstream_supplier_id) }}</span>
+            </div>
+            <div class="break-all text-gray-700 dark:text-gray-300">
+              <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.usage.upstreamChannel') }}:</span>
+              <span class="ml-1 tabular-nums">{{ row.upstream_channel_id ?? '-' }}</span>
+            </div>
+            <div class="break-all text-gray-700 dark:text-gray-300">
+              <span class="font-medium text-gray-500 dark:text-gray-400">{{ t('admin.usage.upstreamTargetChannel') }}:</span>
+              <span class="ml-1 tabular-nums">{{ row.upstream_target_channel_id ?? '-' }}</span>
+            </div>
+          </div>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500" title="—">—</span>
+        </template>
+
+        <!-- 操作列：把这一行的上游商户/渠道直接在上游处置掉。
+             两个动作的**作用域完全不同**（整商户 vs 单渠道），所以分成两个标签按钮、
+             且确认框里把范围与影响面写清楚 —— 拉黑商户不可轻易撤销，
+             而且该商户名下的固定绑定不会自动改绑。
+
+             样式刻意复用左侧「分组」列的小标签（同 rounded/px-2/py-0.5/text-xs/font-medium），
+             让整行在视觉上维持一致；只用颜色区分动作的破坏性：
+             拉黑商户是红灯级动作（红），拉黑渠道范围小一档（琥珀）。
+
+             没有上游商户信息（尚未对账到）时禁用：那种情况下这一行还不知道该拉黑谁。 -->
+        <template #cell-upstream_action="{ row }">
+          <div class="flex flex-col items-start gap-1">
+            <button
+              type="button"
+              data-testid="block-supplier"
+              class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 bg-red-100 text-red-800 hover:bg-red-200 dark:bg-red-900 dark:text-red-200 dark:hover:bg-red-800"
+              :disabled="row.upstream_supplier_id == null || blocking || isSupplierBlocked(row)"
+              :title="row.upstream_supplier_id == null ? t('admin.usage.blockNoSupplier') : t('admin.usage.blockSupplierHint')"
+              @click="blockRow(row, 'supplier')"
+            >
+              {{ isSupplierBlocked(row) ? t('admin.usage.alreadyBlocked') : t('admin.usage.blockSupplier') }}
+            </button>
+            <button
+              type="button"
+              data-testid="block-channel"
+              class="inline-flex items-center rounded px-2 py-0.5 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 bg-amber-100 text-amber-800 hover:bg-amber-200 dark:bg-amber-900 dark:text-amber-200 dark:hover:bg-amber-800"
+              :disabled="row.upstream_channel_id == null || blocking || isChannelBlocked(row)"
+              @click="blockRow(row, 'channel_model')"
+            >
+              {{ isChannelBlocked(row) ? t('admin.usage.alreadyBlocked') : t('admin.usage.blockChannel') }}
+            </button>
           </div>
         </template>
 
@@ -535,7 +713,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { formatDateTime, formatReasoningEffort, reasoningEffortValuesEqual } from '@/utils/format'
@@ -548,8 +726,11 @@ import {
   LATENCY_BAR_FROM_CLASSES,
   LATENCY_BAR_TO_CLASSES,
   LATENCY_TEXT_CLASSES,
+  durationOverheadSeverity,
   durationSeverity,
+  firstTokenOverheadSeverity,
   firstTokenSeverity,
+  upstreamOverheadMs,
   formatUsageOutputRate,
 } from '@/utils/latencyHealth'
 import {
@@ -574,6 +755,25 @@ import {
   hasImageInputCost,
 } from '@/utils/imageUsage'
 
+/**
+ * 上游商家名只取编号显示。
+ *
+ * 上游（A6）回的商家名形如「Supplier ID 514」「Current Supplier ID 514」，
+ * 前面的文字对我们没有信息量，主人 2026-11-06 要求只显示后面的数字。
+ * 名称里确实没有数字时退回原样（总比显示「-」丢掉信息强），全空才显示「-」。
+ */
+function supplierLabel(name?: string | null, supplierId?: number | null): string {
+  const raw = (name ?? '').trim()
+  if (raw) {
+    const trailing = raw.match(/(\d+)\s*$/)
+    if (trailing) return trailing[1]
+    const anywhere = raw.match(/(\d+)/)
+    if (anywhere) return anywhere[1]
+    return raw
+  }
+  return supplierId != null ? String(supplierId) : '-'
+}
+
 /** Compute the account-billed cost for display: (account_stats_cost ?? total_cost) * rate_multiplier */
 function accountBilled(row: { total_cost?: number | null; account_stats_cost?: number | null; account_rate_multiplier?: number | null }): number {
   const base = row.account_stats_cost != null ? row.account_stats_cost : (row.total_cost ?? 0)
@@ -581,8 +781,53 @@ function accountBilled(row: { total_cost?: number | null; account_stats_cost?: n
   return Number.isNaN(result) ? 0 : result
 }
 
+/** 成本币种 → 货币符号。**未知币种直接显示代码**，不要猜成 $ —— 猜错等于报了个假数字。 */
+const CURRENCY_SYMBOLS: Record<string, string> = { USD: '$', CNY: '¥', EUR: '€' }
+
+function currencySymbol(currency?: string | null): string {
+  if (!currency) return '$'
+  return CURRENCY_SYMBOLS[currency.toUpperCase()] ?? `${currency.toUpperCase()} `
+}
+
+/**
+ * 单行毛利 = 收入 − 成本。成本未知（还没反查到）时返回 null。
+ *
+ * 关键：**绝不能把未知成本当 0**。那会算出一个虚高的盈利，比不显示更危险——
+ * 页面上一列绿字「+$0.0250」看不出它是真赚了还是只是还没查到成本。
+ */
+function rowProfit(row: Pick<AdminUsageLog, 'actual_cost' | 'upstream_cost'>): number | null {
+  if (row.upstream_cost == null) return null
+  return (row.actual_cost ?? 0) - row.upstream_cost
+}
+
+/** 利润率 = 毛利 ÷ 收入 × 100。收入为 0 时无意义，返回 null 而不是 0% 或 ±∞。 */
+function rowProfitMargin(row: Pick<AdminUsageLog, 'actual_cost' | 'upstream_cost'>): number | null {
+  const profit = rowProfit(row)
+  if (profit == null) return null
+  const revenue = row.actual_cost ?? 0
+  if (revenue === 0) return null
+  return (profit / revenue) * 100
+}
+
+/** 盈利绿、亏损红、持平中性；未知成本走不到这里（上游已判 null）。 */
+function profitClass(profit: number): string {
+  if (profit > 0) return 'text-green-600 dark:text-green-400'
+  if (profit < 0) return 'text-red-600 dark:text-red-400'
+  return 'text-gray-600 dark:text-gray-400'
+}
+
+/** 显式带符号，避免「一片绿字分不清正负」：+$0.000015 / -$0.000001。 */
+function formatSignedUSD(value: number): string {
+  return `${value < 0 ? '-' : '+'}$${Math.abs(value).toFixed(6)}`
+}
+
+function formatSignedPercent(value: number): string {
+  return `${value < 0 ? '-' : '+'}${Math.abs(value).toFixed(2)}%`
+}
+
 
 import DataTable from '@/components/common/DataTable.vue'
+import { blockUpstream, fetchUpstreamBlocks } from '@/api/admin/usage'
 import EmptyState from '@/components/common/EmptyState.vue'
 import IpGeoCell from '@/components/common/IpGeoCell.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -736,6 +981,118 @@ const formatDuration = (ms: number | null | undefined): string => {
   const totalSec = Math.round(ms / 1000)
   if (totalSec < 3600) return `${Math.floor(totalSec / 60)}m ${totalSec % 60}s`
   return `${Math.floor(totalSec / 3600)}h ${Math.floor((totalSec % 3600) / 60)}m`
+}
+
+// 中转开销：本站延迟减去上游延迟（毫秒）。
+//
+// 拆成两个具名函数而不是在模板里现算，是为了让 v-if 与取值用同一个入口，
+// 避免两处判断条件写歪（例如 v-if 用首字、显示却用总耗时）。
+const overheadFirst = (
+  row: Pick<AdminUsageLog, 'first_token_ms' | 'upstream_first_token_ms'>,
+): number | null => upstreamOverheadMs(row.first_token_ms, row.upstream_first_token_ms)
+
+const overheadDuration = (
+  row: Pick<AdminUsageLog, 'duration_ms' | 'upstream_duration_ms'>,
+): number | null => upstreamOverheadMs(row.duration_ms, row.upstream_duration_ms)
+
+// 毫秒差值：正数显式带「+」，单位 `ms`（小写）跟在每个数值后面，如 `+724ms`。
+// 单位不放表头：上下两格位数常不同，单位跟着数字走才不会"离得太远"。
+const formatOverheadMs = (ms: number): string => `${ms > 0 ? '+' : ''}${ms}ms`
+
+// 上游拉黑：把这一行对应的「整个商户」或「该渠道该模型」在上游 A6 侧处置掉。
+//
+// 用 window.confirm 而不是自建弹窗：这是低频、高危、需要"看清范围再点"的动作，
+// 原生确认框足以表达，也省掉一个只为它存在的弹窗组件。
+//
+// 只用一个 blocking 标记而不是按行记：同一时刻只允许一个处置在飞，
+// 避免管理员连点几下把同一商户重复拉黑（上游接口不做去重）。
+const blocking = ref(false)
+
+// 上游当前黑名单快照，用来把已拉黑的按钮置灰。
+//
+// 每次挂载现问上游、不在本地存：黑名单的权威在上游，本地存一份会在管理员
+// 直接去上游后台拉黑/恢复时与上游漂移——而"以为已经拉黑了"比"显示未拉黑"更危险。
+// 读取失败不报错（后端已回空集合）：置灰只是辅助，不该影响列表可用性。
+const blockedSupplierIDs = ref<Set<number>>(new Set())
+const blockedChannelModelKeys = ref<Set<string>>(new Set())
+
+const loadUpstreamBlocks = async () => {
+  try {
+    const res = await fetchUpstreamBlocks()
+    blockedSupplierIDs.value = new Set(res.supplier_ids || [])
+    blockedChannelModelKeys.value = new Set(res.channel_model_keys || [])
+  } catch {
+    // 拉不到就都不置灰：按钮仍可点击，真拉黑了上游会拒绝并回显原因。
+  }
+}
+
+onMounted(loadUpstreamBlocks)
+
+// 该行的商户是否已被拉黑。
+const isSupplierBlocked = (row: AdminUsageLog): boolean =>
+  row.upstream_supplier_id != null && blockedSupplierIDs.value.has(row.upstream_supplier_id)
+
+// 该行的「渠道+模型」是否已被拉黑。
+//
+// 商户被拉黑时其名下所有渠道也等同被拉黑，所以先看商户级——
+// 否则会出现"商户已拉黑、但渠道按钮还亮着"的错觉。
+const isChannelBlocked = (row: AdminUsageLog): boolean => {
+  if (isSupplierBlocked(row)) return true
+  if (row.upstream_channel_id == null) return false
+  return blockedChannelModelKeys.value.has(`${row.upstream_channel_id}|${(row.model || '').trim()}`)
+}
+
+const blockRow = async (row: AdminUsageLog, scope: 'supplier' | 'channel_model') => {
+  if (blocking.value) return
+
+  let payload: Parameters<typeof blockUpstream>[0]
+  if (scope === 'supplier') {
+    const id = row.upstream_supplier_id
+    // 尚未对账到的行没有商户 ID，不知道该拉黑谁 —— 按钮虽已禁用，这里再挡一次。
+    if (id == null) {
+      appStore.showError(t('admin.usage.blockNoSupplier'))
+      return
+    }
+    const name = (row.upstream_supplier_name || '').trim() || `#${id}`
+    if (!window.confirm(t('admin.usage.blockConfirmSupplier', { name, id }))) return
+    payload = { scope: 'supplier', supplier_id: id }
+  } else {
+    const channelID = row.upstream_channel_id
+    if (channelID == null) return
+    const model = (row.model || '').trim()
+    if (!model) return
+    if (!window.confirm(t('admin.usage.blockConfirmChannelModel', { channel: channelID, model }))) return
+    payload = { scope: 'channel_model', channel_id: channelID, model }
+  }
+
+  blocking.value = true
+  try {
+    await blockUpstream(payload)
+    appStore.showSuccess(t('admin.usage.blockOk'))
+    // 拉黑成功后立刻回读上游黑名单：同一页里其它行可能属于同一个商户/渠道，
+    // 它们也该马上变成「已拉黑」，否则管理员会以为只影响了一行。
+    await loadUpstreamBlocks()
+  } catch (err: any) {
+    // 把后端带回的上游原话原样透出：令牌失效/无权限的原因只在那里，
+    // 换成笼统的「操作失败」会让管理员只能靠猜。
+    appStore.showError(err?.message || String(err))
+  } finally {
+    blocking.value = false
+  }
+}
+
+// 内部探针的入站标记是「伪路径」，是给后端过滤用的（usage_logs.inbound_endpoint），
+// 直接摊在表里没人看得懂。这里只做**显示层**翻译，不改数据本身 ——
+// 原始值仍可通过导出的 Excel 看到，也仍是筛选条件。
+const INBOUND_ENDPOINT_LABELS: Record<string, string> = {
+  'internal://channel-monitor': '渠道监控探针',
+  'internal://intelligence-check': '智力检测探针',
+}
+
+const inboundEndpointLabel = (raw: string | null | undefined): string => {
+  const value = (raw ?? '').trim()
+  if (!value) return '-'
+  return INBOUND_ENDPOINT_LABELS[value] ?? value
 }
 
 // Cost tooltip functions

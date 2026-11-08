@@ -1,0 +1,61 @@
+services:
+  companion:
+    build:
+      context: .
+    image: sub2api-companion:local
+    container_name: sub2api-companion
+    restart: unless-stopped
+    environment:
+      LISTEN_ADDR: :8090
+      DATA_DIR: /data
+      PRICING_FILE: /app/config/pricing.json
+      CADDY_LOG_PATH: /var/log/caddy/sub2api-access.log
+      SOURCE_DATABASE_URL: ${COMPANION_SOURCE_DATABASE_URL:-}
+      ADMIN_USER: ${COMPANION_ADMIN_USER:-admin}
+      ADMIN_PASSWORD: ${COMPANION_ADMIN_PASSWORD:?COMPANION_ADMIN_PASSWORD is required}
+      SYNC_INTERVAL: ${COMPANION_SYNC_INTERVAL:-30s}
+      SUB2API_UNIT_TO_CNY_RATE: ${COMPANION_SUB2API_UNIT_TO_CNY_RATE:-1}
+      A6_BASE_URL: ${A6_BASE_URL:-https://a6api.com}
+      A6_USER_ID: ${A6_USER_ID:-}
+      A6_ACCESS_TOKEN: ${A6_ACCESS_TOKEN:-}
+      A6_TOKEN_ACCOUNT_MAP: ${A6_TOKEN_ACCOUNT_MAP:-}
+      A6_USD_TO_CNY_RATE: ${A6_USD_TO_CNY_RATE:-}
+      FX_PRIMARY_URL: ${FX_PRIMARY_URL:-https://api.coinbase.com/v2/exchange-rates?currency=USD}
+      FX_FALLBACK_URL: ${FX_FALLBACK_URL:-https://open.er-api.com/v6/latest/USD}
+      FX_REFRESH_INTERVAL: ${FX_REFRESH_INTERVAL:-1h}
+      FX_HTTP_TIMEOUT: ${FX_HTTP_TIMEOUT:-15s}
+      FX_MAX_STALENESS: ${FX_MAX_STALENESS:-6h}
+      A6_BOOTSTRAP_LOOKBACK: ${A6_BOOTSTRAP_LOOKBACK:-24h}
+      A6_SYNC_INTERVAL: ${A6_SYNC_INTERVAL:-5m}
+      A6_HTTP_TIMEOUT: ${A6_HTTP_TIMEOUT:-90s}
+      A6_PAGE_SIZE: ${A6_PAGE_SIZE:-100}
+      A6_MAX_PAGES: ${A6_MAX_PAGES:-50}
+      A6_BACKFILL_CHUNK: ${A6_BACKFILL_CHUNK:-24h}
+      A6_BACKFILL_PAGE_DELAY: ${A6_BACKFILL_PAGE_DELAY:-200ms}
+      SUBARX_ACCOUNT_MULTIPLIERS: ${SUBARX_ACCOUNT_MULTIPLIERS:-13:0.1,14:0.2}
+      SUBARX_BASE_URL: ${SUBARX_BASE_URL:-https://www.subarx.com}
+      SUBARX_ACCOUNT_API_KEYS: ${SUBARX_ACCOUNT_API_KEYS:-}
+      SUBARX_SYNC_INTERVAL: ${SUBARX_SYNC_INTERVAL:-5m}
+      SUBARX_HTTP_TIMEOUT: ${SUBARX_HTTP_TIMEOUT:-30s}
+      SUBARX_LOOKBACK_DAYS: ${SUBARX_LOOKBACK_DAYS:-90}
+      SUBARX_TIMEZONE: ${SUBARX_TIMEZONE:-Asia/Shanghai}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - ./data:/data
+      - ./config:/app/config:ro
+      - ../../caddy_logs:/var/log/caddy:ro
+    ports:
+      - "127.0.0.1:${COMPANION_PORT:-8090}:8090"
+    networks:
+      - sub2api-network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-T", "5", "-O", "/dev/null", "http://localhost:8090/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+networks:
+  sub2api-network:
+    external: true
+    name: ${SUB2API_DOCKER_NETWORK:-sub2api_sub2api-network}

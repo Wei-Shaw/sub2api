@@ -342,6 +342,22 @@ type UpdateSettingsRequest struct {
 	ChannelMonitorShowQuota              *bool   `json:"channel_monitor_show_quota"`
 	ChannelMonitorHideUserRanking        *bool   `json:"channel_monitor_hide_user_ranking"`
 
+	// 智力检测（鹈鹕测试）全局配置；nil 表示本次不修改
+	IntelligenceCheckEnabled                     *bool   `json:"intelligence_check_enabled"`
+	IntelligenceCheckIntervalMinutes             *int    `json:"intelligence_check_interval_minutes"`
+	IntelligenceCheckModelID                     *string `json:"intelligence_check_model_id"`
+	IntelligenceCheckReasoningEffort             *string `json:"intelligence_check_reasoning_effort"`
+	IntelligenceCheckMaxConcurrency              *int    `json:"intelligence_check_max_concurrency"`
+	IntelligenceCheckRunRetryCount               *int    `json:"intelligence_check_run_retry_count"`
+	IntelligenceCheckRunRetryIntervalSeconds     *int    `json:"intelligence_check_run_retry_interval_seconds"`
+	IntelligenceCheckAccountRetryCount           *int    `json:"intelligence_check_account_retry_count"`
+	IntelligenceCheckAccountRetryIntervalMinutes *int    `json:"intelligence_check_account_retry_interval_minutes"`
+	IntelligenceCheckTimeoutSeconds              *int    `json:"intelligence_check_timeout_seconds"`
+	IntelligenceCheckMaxTokens                   *int    `json:"intelligence_check_max_tokens"`
+	IntelligenceCheckMaxRunsPerAccount           *int    `json:"intelligence_check_max_runs_per_account"`
+	IntelligenceCheckStatusSyncEnabled           *bool   `json:"intelligence_check_status_sync_enabled"`
+	IntelligenceCheckStreamEnabled               *bool   `json:"intelligence_check_stream_enabled"`
+
 	// Grok model mapping policy
 	GrokDefaultTextModel           *string `json:"grok_default_text_model"`
 	GrokCrossClientModelMapEnabled *bool   `json:"grok_cross_client_model_map_enabled"`
@@ -355,6 +371,7 @@ type UpdateSettingsRequest struct {
 
 	// Model Plaza feature switches + description
 	ModelPlazaEnabled     *bool   `json:"model_plaza_enabled"`
+	ModelPlazaProEnabled  *bool   `json:"model_plaza_pro_enabled"`
 	ModelPlazaRequireAuth *bool   `json:"model_plaza_require_auth"`
 	ModelPlazaDescription *string `json:"model_plaza_description"`
 
@@ -1954,6 +1971,90 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.ChannelMonitorHideUserRanking
 		}(),
+		IntelligenceCheckEnabled: func() bool {
+			if req.IntelligenceCheckEnabled != nil {
+				return *req.IntelligenceCheckEnabled
+			}
+			return previousSettings.IntelligenceCheckEnabled
+		}(),
+		IntelligenceCheckIntervalMinutes: func() int {
+			if req.IntelligenceCheckIntervalMinutes != nil {
+				return *req.IntelligenceCheckIntervalMinutes
+			}
+			return previousSettings.IntelligenceCheckIntervalMinutes
+		}(),
+		IntelligenceCheckModelID: func() string {
+			if req.IntelligenceCheckModelID != nil {
+				return *req.IntelligenceCheckModelID
+			}
+			return previousSettings.IntelligenceCheckModelID
+		}(),
+		IntelligenceCheckReasoningEffort: func() string {
+			if req.IntelligenceCheckReasoningEffort != nil {
+				return *req.IntelligenceCheckReasoningEffort
+			}
+			return previousSettings.IntelligenceCheckReasoningEffort
+		}(),
+		IntelligenceCheckMaxConcurrency: func() int {
+			if req.IntelligenceCheckMaxConcurrency != nil {
+				return *req.IntelligenceCheckMaxConcurrency
+			}
+			return previousSettings.IntelligenceCheckMaxConcurrency
+		}(),
+		IntelligenceCheckRunRetryCount: func() int {
+			if req.IntelligenceCheckRunRetryCount != nil {
+				return *req.IntelligenceCheckRunRetryCount
+			}
+			return previousSettings.IntelligenceCheckRunRetryCount
+		}(),
+		IntelligenceCheckRunRetryIntervalSeconds: func() int {
+			if req.IntelligenceCheckRunRetryIntervalSeconds != nil {
+				return *req.IntelligenceCheckRunRetryIntervalSeconds
+			}
+			return previousSettings.IntelligenceCheckRunRetryIntervalSeconds
+		}(),
+		IntelligenceCheckAccountRetryCount: func() int {
+			if req.IntelligenceCheckAccountRetryCount != nil {
+				return *req.IntelligenceCheckAccountRetryCount
+			}
+			return previousSettings.IntelligenceCheckAccountRetryCount
+		}(),
+		IntelligenceCheckAccountRetryIntervalMinutes: func() int {
+			if req.IntelligenceCheckAccountRetryIntervalMinutes != nil {
+				return *req.IntelligenceCheckAccountRetryIntervalMinutes
+			}
+			return previousSettings.IntelligenceCheckAccountRetryIntervalMinutes
+		}(),
+		IntelligenceCheckTimeoutSeconds: func() int {
+			if req.IntelligenceCheckTimeoutSeconds != nil {
+				return *req.IntelligenceCheckTimeoutSeconds
+			}
+			return previousSettings.IntelligenceCheckTimeoutSeconds
+		}(),
+		IntelligenceCheckMaxTokens: func() int {
+			if req.IntelligenceCheckMaxTokens != nil {
+				return *req.IntelligenceCheckMaxTokens
+			}
+			return previousSettings.IntelligenceCheckMaxTokens
+		}(),
+		IntelligenceCheckMaxRunsPerAccount: func() int {
+			if req.IntelligenceCheckMaxRunsPerAccount != nil {
+				return *req.IntelligenceCheckMaxRunsPerAccount
+			}
+			return previousSettings.IntelligenceCheckMaxRunsPerAccount
+		}(),
+		IntelligenceCheckStatusSyncEnabled: func() bool {
+			if req.IntelligenceCheckStatusSyncEnabled != nil {
+				return *req.IntelligenceCheckStatusSyncEnabled
+			}
+			return previousSettings.IntelligenceCheckStatusSyncEnabled
+		}(),
+		IntelligenceCheckStreamEnabled: func() bool {
+			if req.IntelligenceCheckStreamEnabled != nil {
+				return *req.IntelligenceCheckStreamEnabled
+			}
+			return previousSettings.IntelligenceCheckStreamEnabled
+		}(),
 		GrokDefaultTextModel: func() string {
 			if req.GrokDefaultTextModel != nil {
 				return *req.GrokDefaultTextModel
@@ -1989,6 +2090,12 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return *req.ModelPlazaEnabled
 			}
 			return previousSettings.ModelPlazaEnabled
+		}(),
+		ModelPlazaProEnabled: func() bool {
+			if req.ModelPlazaProEnabled != nil {
+				return *req.ModelPlazaProEnabled
+			}
+			return previousSettings.ModelPlazaProEnabled
 		}(),
 		ModelPlazaRequireAuth: func() bool {
 			if req.ModelPlazaRequireAuth != nil {
@@ -2430,12 +2537,26 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentAlipayForceQRCode:                               updatedPaymentCfg.AlipayForceQRCode,
 		PaymentAlipayMobilePrecreateDeepLink:                   updatedPaymentCfg.AlipayMobilePrecreateDeepLink,
 
-		ChannelMonitorEnabled:                updatedSettings.ChannelMonitorEnabled,
-		ChannelMonitorMode:                   updatedSettings.ChannelMonitorMode,
-		ChannelMonitorDefaultIntervalSeconds: updatedSettings.ChannelMonitorDefaultIntervalSeconds,
-		ChannelMonitorHideThroughput:         updatedSettings.ChannelMonitorHideThroughput,
-		ChannelMonitorShowQuota:              updatedSettings.ChannelMonitorShowQuota,
-		ChannelMonitorHideUserRanking:        updatedSettings.ChannelMonitorHideUserRanking,
+		ChannelMonitorEnabled:                        updatedSettings.ChannelMonitorEnabled,
+		ChannelMonitorMode:                           updatedSettings.ChannelMonitorMode,
+		ChannelMonitorDefaultIntervalSeconds:         updatedSettings.ChannelMonitorDefaultIntervalSeconds,
+		ChannelMonitorHideThroughput:                 updatedSettings.ChannelMonitorHideThroughput,
+		ChannelMonitorShowQuota:                      updatedSettings.ChannelMonitorShowQuota,
+		ChannelMonitorHideUserRanking:                updatedSettings.ChannelMonitorHideUserRanking,
+		IntelligenceCheckEnabled:                     updatedSettings.IntelligenceCheckEnabled,
+		IntelligenceCheckIntervalMinutes:             updatedSettings.IntelligenceCheckIntervalMinutes,
+		IntelligenceCheckModelID:                     updatedSettings.IntelligenceCheckModelID,
+		IntelligenceCheckReasoningEffort:             updatedSettings.IntelligenceCheckReasoningEffort,
+		IntelligenceCheckMaxConcurrency:              updatedSettings.IntelligenceCheckMaxConcurrency,
+		IntelligenceCheckRunRetryCount:               updatedSettings.IntelligenceCheckRunRetryCount,
+		IntelligenceCheckRunRetryIntervalSeconds:     updatedSettings.IntelligenceCheckRunRetryIntervalSeconds,
+		IntelligenceCheckAccountRetryCount:           updatedSettings.IntelligenceCheckAccountRetryCount,
+		IntelligenceCheckAccountRetryIntervalMinutes: updatedSettings.IntelligenceCheckAccountRetryIntervalMinutes,
+		IntelligenceCheckTimeoutSeconds:              updatedSettings.IntelligenceCheckTimeoutSeconds,
+		IntelligenceCheckMaxTokens:                   updatedSettings.IntelligenceCheckMaxTokens,
+		IntelligenceCheckMaxRunsPerAccount:           updatedSettings.IntelligenceCheckMaxRunsPerAccount,
+		IntelligenceCheckStatusSyncEnabled:           updatedSettings.IntelligenceCheckStatusSyncEnabled,
+		IntelligenceCheckStreamEnabled:               updatedSettings.IntelligenceCheckStreamEnabled,
 
 		GrokDefaultTextModel:           updatedSettings.GrokDefaultTextModel,
 		GrokCrossClientModelMapEnabled: updatedSettings.GrokCrossClientModelMapEnabled,
@@ -2445,6 +2566,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SubscriptionEnabled:      updatedSettings.SubscriptionEnabled,
 
 		ModelPlazaEnabled:       updatedSettings.ModelPlazaEnabled,
+		ModelPlazaProEnabled:    updatedSettings.ModelPlazaProEnabled,
 		ModelPlazaRequireAuth:   updatedSettings.ModelPlazaRequireAuth,
 		ModelPlazaDescription:   updatedSettings.ModelPlazaDescription,
 		PluginManagementEnabled: updatedSettings.PluginManagementEnabled,

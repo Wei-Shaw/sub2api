@@ -1,0 +1,26 @@
+:80 {
+	log {
+		output file /var/log/caddy/sub2api-access.log {
+			mode 0644
+		}
+		format json
+	}
+
+	handle /__rehearsal/mapping {
+		header X-Client-Request-Id client-rehearsal-1
+		header X-Request-Id upstream-rehearsal-1
+		respond 204
+	}
+
+	handle /api/provider/pricing {
+		reverse_proxy companion:8090
+	}
+
+	handle /ops/* {
+		reverse_proxy companion:8090
+	}
+
+	handle {
+		reverse_proxy sub2api:8080
+	}
+}

@@ -26,13 +26,28 @@
         <!-- Announcement Bell -->
         <AnnouncementBell v-if="user" />
 
-        <!-- Docs Link -->
+        <!-- 新手引导：把「装什么、填什么」摆在最显眼处。
+             2026-11-05（主人要求）：原来只有角落里一个灰字「文档」，用户找不到，
+             所以这里加一个常驻的问号按钮，点开就是四步上手卡片。 -->
+        <button
+          v-if="user"
+          type="button"
+          class="flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white"
+          :title="t('quickStart.title')"
+          data-testid="quickstart-entry"
+          @click="showQuickStart = true"
+        >
+          <Icon name="questionCircle" size="sm" />
+          <span class="hidden sm:inline">{{ t('quickStart.entry') }}</span>
+        </button>
+
+        <!-- Docs Link：2026-11-05 改成主色实心按钮，原来那点灰字太不显眼 -->
         <a
           v-if="docUrl"
           :href="docUrl"
           target="_blank"
           rel="noopener noreferrer"
-          class="hidden items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-gray-600 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-dark-400 dark:hover:bg-dark-800 dark:hover:text-white sm:flex"
+          class="hidden items-center gap-1.5 rounded-lg bg-primary-50 px-3 py-1.5 text-sm font-semibold text-primary-700 transition-colors hover:bg-primary-100 dark:bg-primary-900/30 dark:text-primary-300 dark:hover:bg-primary-900/50 sm:flex"
         >
           <Icon name="book" size="sm" />
           <span class="hidden sm:inline">{{ t('nav.docs') }}</span>
@@ -40,7 +55,7 @@
 
         <!-- Model Plaza Entry (icon only below sm) -->
         <router-link
-          v-if="user && modelPlazaEnabled"
+          v-if="user && modelPlazaEnabled && !modelPlazaProEnabled"
           :to="{ path: '/model-plaza', query: { embedded: '1' } }"
           :title="t('nav.modelPlaza')"
           :aria-label="t('nav.modelPlaza')"
@@ -248,6 +263,9 @@
         </div>
       </div>
     </div>
+
+    <!-- 新手引导弹窗：首次登录自动弹一次，之后从上面的问号按钮打开 -->
+    <QuickStartGuide :show="showQuickStart" @close="closeQuickStart" @snooze="snoozeQuickStart" />
   </header>
 </template>
 
@@ -260,6 +278,7 @@ import { useAdminSettingsStore } from '@/stores/adminSettings'
 import LocaleSwitcher from '@/components/common/LocaleSwitcher.vue'
 import SubscriptionProgressMini from '@/components/common/SubscriptionProgressMini.vue'
 import AnnouncementBell from '@/components/common/AnnouncementBell.vue'
+import QuickStartGuide from '@/components/onboarding/QuickStartGuide.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
@@ -280,6 +299,9 @@ const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
 const docUrl = computed(() => sanitizeUrl(appStore.docUrl))
 const modelPlazaEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.modelPlaza))
+// 模型广场 Pro（融合页）开启时收敛旧入口：顶栏不再单独放「模型广场」，
+// 统一从侧边栏的 Pro 页进入（Pro 页已内含分组/模型/定价 + 健康脉冲）。
+const modelPlazaProEnabled = computed(() => isFeatureFlagEnabled(FeatureFlags.modelPlazaPro))
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
 const availableBalance = computed(() => Number(user.value?.balance || 0))
 const frozenBalance = computed(() => Number(user.value?.frozen_balance || 0))
@@ -293,6 +315,58 @@ const balanceFrozenLabel = computed(() => `${balanceFrozenText.value} ${formatHe
 const showOnboardingButton = computed(() => {
   return !authStore.isSimpleMode && user.value?.role === 'admin'
 })
+
+// ---- 新手引导（3 分钟上手） ----
+//
+// 两个键分开记，因为两个按钮的含义不同（主人 2026-11-05 指定）：
+//   seen   ：点「关闭」→ 看过了，以后不再自动弹（右上角问号仍可随时打开）
+//   snooze ：点「今日不再提示」→ 只压今天，明天再进来还会弹一次
+const showQuickStart = ref(false)
+const QUICK_START_SEEN_PREFIX = 'sub2api_quick_start_seen_'
+const QUICK_START_SNOOZE_PREFIX = 'sub2api_quick_start_snooze_'
+
+function quickStartUserKey(prefix: string): string {
+  const id = user.value?.id ?? 'guest'
+  return prefix + id
+}
+
+/** 本地日期（YYYY-MM-DD）。不用 toISOString，那个是 UTC，跨时区会差一天。 */
+function todayLocalDate(): string {
+  const now = new Date()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return now.getFullYear() + '-' + m + '-' + d
+}
+
+function openQuickStartIfFirstVisit(): void {
+  if (!user.value) return
+  try {
+    if (window.localStorage.getItem(quickStartUserKey(QUICK_START_SEEN_PREFIX)) === 'true') return
+    if (window.localStorage.getItem(quickStartUserKey(QUICK_START_SNOOZE_PREFIX)) === todayLocalDate()) return
+    showQuickStart.value = true
+  } catch {
+    // 隐私模式下 localStorage 不可用：不自动弹，用户仍可从问号按钮打开
+  }
+}
+
+function closeQuickStart(): void {
+  showQuickStart.value = false
+  // 关闭 = 看过，不再自动打扰；想再看就点右上角问号
+  try {
+    window.localStorage.setItem(quickStartUserKey(QUICK_START_SEEN_PREFIX), 'true')
+  } catch {
+    // 写不进去也不影响使用
+  }
+}
+
+function snoozeQuickStart(): void {
+  showQuickStart.value = false
+  try {
+    window.localStorage.setItem(quickStartUserKey(QUICK_START_SNOOZE_PREFIX), todayLocalDate())
+  } catch {
+    // 同上
+  }
+}
 
 const userInitials = computed(() => {
   if (!user.value) return ''
@@ -386,6 +460,9 @@ function handleClickOutside(event: MouseEvent) {
 
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  // 等用户信息到位再判断「是不是第一次来」，否则 user 还是空的会直接跳过。
+  // 延迟一拍是为了不跟首屏其它请求抢时间，肉眼几乎无感。
+  window.setTimeout(openQuickStartIfFirstVisit, 800)
 })
 
 onBeforeUnmount(() => {

@@ -626,12 +626,14 @@ var (
 		{Name: "provider", Type: field.TypeEnum, Enums: []string{"openai", "anthropic", "gemini", "grok", "antigravity", "kimi", "zhipu", "deepseek", "minimax", "opencode_go"}},
 		{Name: "check_mode", Type: field.TypeString, Size: 32, Default: "probe"},
 		{Name: "account_id", Type: field.TypeInt64, Nullable: true},
+		{Name: "group_id", Type: field.TypeInt64, Nullable: true},
 		{Name: "api_mode", Type: field.TypeString, Size: 32, Default: "chat_completions"},
 		{Name: "endpoint", Type: field.TypeString, Size: 500},
 		{Name: "api_key_encrypted", Type: field.TypeString},
 		{Name: "primary_model", Type: field.TypeString, Size: 200},
 		{Name: "extra_models", Type: field.TypeJSON},
 		{Name: "group_name", Type: field.TypeString, Nullable: true, Size: 100, Default: ""},
+		{Name: "sort_order", Type: field.TypeInt, Default: 1000},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
 		{Name: "interval_seconds", Type: field.TypeInt},
 		{Name: "jitter_seconds", Type: field.TypeInt, Default: 0},
@@ -650,7 +652,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "channel_monitors_channel_monitor_request_templates_request_template",
-				Columns:    []*schema.Column{ChannelMonitorsColumns[21]},
+				Columns:    []*schema.Column{ChannelMonitorsColumns[23]},
 				RefColumns: []*schema.Column{ChannelMonitorRequestTemplatesColumns[0]},
 				OnDelete:   schema.SetNull,
 			},
@@ -659,7 +661,12 @@ var (
 			{
 				Name:    "channelmonitor_enabled_last_checked_at",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[13], ChannelMonitorsColumns[16]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[15], ChannelMonitorsColumns[18]},
+			},
+			{
+				Name:    "channelmonitor_sort_order",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorsColumns[14]},
 			},
 			{
 				Name:    "channelmonitor_provider",
@@ -669,22 +676,27 @@ var (
 			{
 				Name:    "channelmonitor_provider_api_mode",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[4], ChannelMonitorsColumns[7]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[4], ChannelMonitorsColumns[8]},
 			},
 			{
 				Name:    "channelmonitor_group_name",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[12]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[13]},
 			},
 			{
 				Name:    "channelmonitor_template_id",
 				Unique:  false,
-				Columns: []*schema.Column{ChannelMonitorsColumns[21]},
+				Columns: []*schema.Column{ChannelMonitorsColumns[23]},
 			},
 			{
 				Name:    "channelmonitor_account_id",
 				Unique:  false,
 				Columns: []*schema.Column{ChannelMonitorsColumns[6]},
+			},
+			{
+				Name:    "channelmonitor_group_id",
+				Unique:  false,
+				Columns: []*schema.Column{ChannelMonitorsColumns[7]},
 			},
 		},
 	}
@@ -1454,6 +1466,19 @@ var (
 			},
 		},
 	}
+	// ReconciliationSyncStateColumns holds the columns for the "reconciliation_sync_state" table.
+	ReconciliationSyncStateColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt64, Increment: true},
+		{Name: "key", Type: field.TypeString, Unique: true, Size: 100},
+		{Name: "value", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
+		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
+	}
+	// ReconciliationSyncStateTable holds the schema information for the "reconciliation_sync_state" table.
+	ReconciliationSyncStateTable = &schema.Table{
+		Name:       "reconciliation_sync_state",
+		Columns:    ReconciliationSyncStateColumns,
+		PrimaryKey: []*schema.Column{ReconciliationSyncStateColumns[0]},
+	}
 	// RedeemCodesColumns holds the columns for the "redeem_codes" table.
 	RedeemCodesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt64, Increment: true},
@@ -1552,6 +1577,8 @@ var (
 		{Name: "features", Type: field.TypeString, Default: "", SchemaType: map[string]string{"postgres": "text"}},
 		{Name: "product_name", Type: field.TypeString, Size: 100, Default: ""},
 		{Name: "for_sale", Type: field.TypeBool, Default: true},
+		{Name: "purchase_limit_enabled", Type: field.TypeBool, Default: false},
+		{Name: "purchase_limit_count", Type: field.TypeInt, Default: 0},
 		{Name: "sort_order", Type: field.TypeInt, Default: 0},
 		{Name: "created_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
 		{Name: "updated_at", Type: field.TypeTime, SchemaType: map[string]string{"postgres": "timestamptz"}},
@@ -2117,6 +2144,7 @@ var (
 		PromoCodesTable,
 		PromoCodeUsagesTable,
 		ProxiesTable,
+		ReconciliationSyncStateTable,
 		RedeemCodesTable,
 		SecuritySecretsTable,
 		SettingsTable,
@@ -2232,6 +2260,9 @@ func init() {
 	ProxiesTable.ForeignKeys[0].RefTable = ProxiesTable
 	ProxiesTable.Annotation = &entsql.Annotation{
 		Table: "proxies",
+	}
+	ReconciliationSyncStateTable.Annotation = &entsql.Annotation{
+		Table: "reconciliation_sync_state",
 	}
 	RedeemCodesTable.ForeignKeys[0].RefTable = GroupsTable
 	RedeemCodesTable.ForeignKeys[1].RefTable = UsersTable

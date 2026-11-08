@@ -164,6 +164,27 @@ func TestShouldForwardOpenAIResponsesViaRawChatCompletions_OpenCodeGoIgnoresProb
 	require.Equal(t, APIProtocolAnthropic, account.resolveModelRoutedProtocol("qwen3.8-flash"))
 }
 
+// 直通模式的不变量：shouldForwardOpenAIResponsesViaRawChatCompletions 被 chat 与
+// responses 两种入站共用，true 一律表示"走原生 CC"。因此直通模式下它必须返回 true，
+// 否则 chat 入站会被反向推进 CC→Responses 转换分支（2026-10-10 线上回归防护）。
+func TestShouldForwardOpenAIResponsesViaRawChatCompletions_PassthroughKeepsChatNative(t *testing.T) {
+	t.Parallel()
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra: map[string]any{
+			"openai_responses_mode":      "passthrough",
+			"openai_responses_supported": false,
+		},
+	}
+	// chat 入站：必须继续走原生 CC 直转。
+	require.True(t, shouldForwardOpenAIResponsesViaRawChatCompletions(account))
+
+	// 探测标记即使为 true，直通模式也必须保持 chat 原生（直通与探测结果无关）。
+	account.Extra["openai_responses_supported"] = true
+	require.True(t, shouldForwardOpenAIResponsesViaRawChatCompletions(account))
+}
+
 func TestStampOpenAIResponsesUpstreamEndpoint(t *testing.T) {
 	t.Parallel()
 	result := &OpenAIForwardResult{}

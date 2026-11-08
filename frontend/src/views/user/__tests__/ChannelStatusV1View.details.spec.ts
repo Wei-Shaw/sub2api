@@ -34,7 +34,12 @@ function mountView() {
         <button class="refresh" @click="$emit('refresh')">Refresh</button>
       </div>` },
       MonitorCardGrid: false,
-      MonitorCard: { props: ['availabilityValue'], template: '<output>{{ availabilityValue }}</output>' }
+      MonitorCard: { props: ['availabilityValue'], template: '<output>{{ availabilityValue }}</output>' },
+      // 辰数 fork 的网格有两种模式：默认是紧凑列表（MonitorRow），可切回卡片（MonitorCard）。
+      // 上游的测试只 stub 了 MonitorCard，于是默认的列表模式渲染出真实 MonitorRow，
+      // 断言里的 <output> 自然找不到。两个都 stub 成同款 output，测试关注的是
+      // 「自动刷新会不会带上详情缓存」，与用哪种行无关。
+      MonitorRow: { props: ['availabilityValue'], template: '<output>{{ availabilityValue }}</output>' }
     } }
   })
 }

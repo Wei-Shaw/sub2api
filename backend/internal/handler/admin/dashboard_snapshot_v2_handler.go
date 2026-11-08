@@ -69,6 +69,12 @@ type dashboardSnapshotV2CacheKey struct {
 	IncludeGroups         bool   `json:"include_groups"`
 	IncludeUsersTrend     bool   `json:"include_users_trend"`
 	UsersTrendLimit       int    `json:"users_trend_limit"`
+	// ProfitExcludedUserIDs 参与缓存键。
+	//
+	// 这份缓存把**整份快照**存 30 秒。不把排除名单算进键，就会出现：管理员把某人
+	// 加进名单、刷新页面，看到的还是旧数字，而且不报错——因为命中的是「名单为空」时
+	// 存下的那一份。要等 TTL 过期才对，界面上看不出任何原因，只会被当成功能没生效。
+	ProfitExcludedUserIDs []int64 `json:"profit_excluded_user_ids"`
 }
 
 func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
@@ -96,6 +102,14 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 		return
 	}
 
+	// 排除名单要在建缓存键之前拿到：它既决定这份快照算的是谁的钱，也是缓存键的
+	// 一部分。读失败就整体失败（宁可不给数字，也不给一个悄悄偏高的利润）。
+	excludedUserIDs, err := h.dashboardService.ProfitExcludedUserIDs(c.Request.Context())
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+
 	keyRaw, _ := json.Marshal(dashboardSnapshotV2CacheKey{
 		StartTime:             startTime.UTC().Format(time.RFC3339),
 		EndTime:               endTime.UTC().Format(time.RFC3339),
@@ -116,6 +130,7 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 		IncludeGroups:         includeGroups,
 		IncludeUsersTrend:     includeUsersTrend,
 		UsersTrendLimit:       usersTrendLimit,
+		ProfitExcludedUserIDs: excludedUserIDs,
 	})
 	cacheKey := string(keyRaw)
 

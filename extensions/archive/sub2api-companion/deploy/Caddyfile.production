@@ -1,0 +1,59 @@
+xzgc.asia, www.xzgc.asia, api.xzgc.asia, chenshuapi.com, www.chenshuapi.com, api.chenshuapi.com, chenshuapi.top, api.chenshuapi.top {
+    encode zstd gzip
+
+    handle /api/provider/pricing {
+        reverse_proxy sub2api-companion:8090
+    }
+
+    handle_path /ops/aliyun-image/* {
+        reverse_proxy aliyun-image-adapter:8093
+    }
+
+    handle /ops/* {
+        reverse_proxy sub2api-companion:8090
+    }
+
+    @aliyun_image_adapter {
+        host api.xzgc.asia api.chenshuapi.com api.chenshuapi.top
+        path /aliyun-image-adapter/*
+    }
+
+    handle @aliyun_image_adapter {
+        uri strip_prefix /aliyun-image-adapter
+        reverse_proxy aliyun-image-adapter:8092 {
+            transport http {
+                response_header_timeout 310s
+            }
+        }
+    }
+
+    handle {
+        reverse_proxy sub2api:8080 {
+            health_uri /health
+            health_interval 30s
+            health_timeout 10s
+            header_up X-Real-IP {remote_host}
+            header_up X-Forwarded-For {remote_host}
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Forwarded-Host {host}
+            transport http {
+                keepalive 120s
+                keepalive_idle_conns 128
+            }
+        }
+    }
+
+    request_body {
+        max_size 100MB
+    }
+
+    log {
+        output file /var/log/caddy/sub2api-access.log {
+            mode 0644
+            roll_size 20mb
+            roll_keep 5
+            roll_keep_for 168h
+        }
+        format json
+    }
+}

@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -63,9 +64,26 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		return nil, err
 	}
 
-	// 上游协议统一由 resolveUpstreamProtocol 判定（按模型分流时带上游模型目录）。Anthropic 分流必须先于
-	// ShouldUseResponsesAPI：Anthropic 协议账号经 probe 落标
-	// openai_responses_supported=false，否则会命中 CC 直转。
+	// ── 直通模式（我们的功能，合并上游时保留）──────────────────────────────
+	// 入口分流（国产供应商 Anthropic 协议 / 自适应协议 / 显式直通模式）：上游为
+	// 供应商原生 Anthropic 端点时，/v1/messages 请求零转换直通（仅模型名映射 +
+	// 少量 body 清洗），完整保留 thinking / tool_use / cache 语义，适配 Claude Code
+	// 等原生客户端。
+	//
+	// 必须先于 ShouldUseResponsesAPI 分流：Anthropic 协议账号经 probe 落标
+	// openai_responses_supported=false，会先命中下方的 CC 直转分支。
+	//
+	// 与上游新增的 resolveUpstreamProtocolFor 共存：这个分支是显式 opt-in
+	// （passthrough / 原生 Anthropic 协议），优先级高于按模型分流。
+	// OpenCode Go 不走这里——它有自己的按模型分流规则，交给上游新逻辑处理。
+	if !account.IsOpenCodeGo() &&
+		(account.IsAnthropicProtocol() || account.IsAdaptiveAPIProtocol() ||
+			openai_compat.ResponsesPassthroughMode(account.Extra)) {
+		return s.forwardAnthropicViaNativeAnthropicEndpoint(ctx, c, account, body, defaultMappedModel)
+	}
+
+	// ── 上游新增（v0.2.x）：协议统一由 resolveUpstreamProtocolFor 判定 ──────
+	// Anthropic 分流必须先于 ShouldUseResponsesAPI，否则会命中 CC 直转。
 	routingModel := upstreamRoutingModel(account, body, defaultMappedModel)
 	if account.IsOpenCodeGo() && IsOpenCodeUnsupportedModel(routingModel) {
 		return nil, writeOpenCodeUnsupportedModelError(c, true, routingModel)

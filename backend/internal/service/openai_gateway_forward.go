@@ -179,8 +179,24 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		originalModel = reqModel
 	}
 
-	// 上游协议统一由 resolveUpstreamProtocol 判定（按模型分流时带上游模型目录）。OpenAI API Key 账号只会落到
-	// Responses / Chat Completions，上面的归一化对两条路径都生效。
+	// ── 直通模式（我们的功能，合并上游时保留）────────────────────────────
+	// 上游同时提供 /v1/responses 与 /v1/chat/completions 时，responses 入站直接打
+	// 上游原生 /v1/responses，不做 responses→CC 回退转换（该转换是 O(请求体体积) 的：
+	// 解析 + 工具解析 + reasoning 回写 + 序列化都在首字窗口内，大请求实测占首字 1s+）。
+	//
+	// 与上游新增的协议判定共存：**先判直通模式**，命中即返回；没命中再交给
+	// resolveUpstreamProtocolFor。覆盖点必须留在调用处，不能塞进
+	// shouldForwardOpenAIResponsesViaRawChatCompletions 内部——那个 helper 在 chat
+	// 入站里含义相同（true = 走原生 CC），在 helper 里返回 false 会把 chat 入站
+	// 反向推进 CC→Responses 分支。
+	if !openai_compat.ResponsesPassthroughMode(account.Extra) &&
+		shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
+		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body, startTime)
+	}
+
+	// ── 上游新增（v0.2.x）：协议统一由 resolveUpstreamProtocolFor 判定 ────────
+	// 按模型分流时带上游模型目录；OpenAI API Key 账号只会落到 Responses /
+	// Chat Completions，上面的归一化对两条路径都生效。
 	routingModel := upstreamRoutingModel(account, body, "")
 	if account.IsOpenCodeGo() && IsOpenCodeUnsupportedModel(routingModel) {
 		return nil, writeOpenCodeUnsupportedModelError(c, false, routingModel)
@@ -189,7 +205,6 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	case APIProtocolAnthropic:
 		// Responses 客户端 × Anthropic 上游：转成 Anthropic 请求走原生端点。不能落到
 		// raw-CC 分支——其 URL 构造会把 anthropic base 当 CC base 用。
-		// 账号映射未命中时以去除首尾空白的请求模型兜底，计费名与上游模型名一致。
 		return s.forwardResponsesViaNativeAnthropic(ctx, c, account, body, reqModel)
 	case APIProtocolChatCompletions:
 		return s.forwardResponsesViaRawChatCompletions(ctx, c, account, body, startTime)
@@ -1393,6 +1408,9 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 			return false
 		}
 	}
+	// 直通模式（passthrough）不在本 helper 内覆盖：该 helper 被两种入站共用，
+	// true 一律表示"走原生 CC"。直通模式下 responses 入站的覆盖点在调用方
+	// （见 forwardAsResponses 内的 !ResponsesPassthroughMode 判定）。
 	return !openai_compat.ShouldUseResponsesAPI(account.Extra)
 }
 

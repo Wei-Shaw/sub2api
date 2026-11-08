@@ -150,6 +150,14 @@
           <Select v-model="filters.upstream_model_mismatch" :options="upstreamModelMismatchOptions" @change="emitChange" />
         </div>
 
+        <!-- 对账状态：让管理员自己核对「哪些还没反查到上游成本」。
+             「未对账」一侧在后端额外要求存在上游请求 ID —— 对账能力上线前的历史行
+             天生无账可对，混进来会让这一项显示成几十万条、真正待办的几条反而被淹没。 -->
+        <div v-if="mode === 'usage'" class="w-full sm:w-auto sm:min-w-[180px]">
+          <label class="input-label">{{ t('admin.usage.upstreamReconciled') }}</label>
+          <Select v-model="filters.upstream_reconciled" :options="upstreamReconciledOptions" @change="emitChange" />
+        </div>
+
         <!-- Error Phase Filter (errors only) -->
         <div v-if="mode === 'errors'" class="w-full sm:w-auto sm:min-w-[180px]">
           <label class="input-label">{{ t('admin.ops.errorLog.type') }}</label>
@@ -327,6 +335,12 @@ const upstreamModelMismatchOptions = ref<SelectOption[]>([
   { value: null, label: t('admin.usage.allUpstreamModelAudit') },
   { value: true, label: t('admin.usage.upstreamModelMismatchOnly') },
   { value: false, label: t('admin.usage.upstreamModelMatchedOnly') }
+])
+
+const upstreamReconciledOptions = ref<SelectOption[]>([
+  { value: null, label: t('admin.usage.allReconciled') },
+  { value: true, label: t('admin.usage.reconciledOnly') },
+  { value: false, label: t('admin.usage.unreconciledOnly') }
 ])
 
 const emitChange = () => emit('change')

@@ -712,6 +712,76 @@ export default {
     }
   },
 
+  // Model Plaza Pro (fused Model Plaza / Channel Status V2 / Available Channels page)
+  modelPlazaPro: {
+    title: 'Model Plaza Pro',
+    description:
+      'Model Plaza, Channel Status and Available Channels in one place: one card per channel monitor, each with its group health pulse and pricing for all of its models.',
+    refresh: 'Refresh',
+    timeRange: 'Time range',
+    availability: 'Availability',
+    availabilityHint: 'Share of real user requests that succeeded in this window (denominator = user requests)',
+    availabilityProbe: 'Probe success',
+    availabilityProbeHint:
+      'Share of active probes that succeeded in this window (denominator = probe attempts, independent of user traffic). Channel monitoring is currently running in V1 active-probe mode, so this number is not comparable with the passive request success rate.',
+    availabilityProbeRangeHint:
+      'The time range only affects the probe success rate; the pulse bars below always show the latest 300 probes, regardless of the selected range.',
+    noData: 'No data',
+    noMonitor: 'No monitor data',
+    loadFailed: 'Failed to load Model Plaza Pro',
+    monitorLoadFailed:
+      'Health pulses require the Channel Monitor toggle to be on with monitor mode V2; they are unavailable right now, but model cards and pricing still work.',
+    plazaLoadFailed:
+      'The Model Plaza API failed to load, so group names and pricing are temporarily unavailable; health pulses are unaffected.',
+    retry: 'Retry',
+    disabledTitle: 'Model Plaza Pro is disabled',
+    disabled: 'An administrator has not enabled Model Plaza Pro in Settings → Feature toggles.',
+    plazaGateTitle: 'The required "Model Plaza" toggle is off',
+    plazaGate:
+      'Groups, models and pricing on this page come from the official Model Plaza API, which is unavailable while Settings → Feature toggles → Model Plaza is off. Note that Model Plaza Pro itself is enabled — turn on the Model Plaza toggle, or re-toggle Model Plaza Pro on the feature toggles page to auto-enable its dependencies.',
+    empty: 'No channel monitors to display',
+    emptyFiltered: 'No channel monitors match the current filters',
+    ranges: {
+      '30m-1m': 'Last 30 minutes',
+      '1h-1m': 'Last 1 hour',
+      '12h-5m': 'Last 12 hours',
+      '24h-5m': 'Last 24 hours',
+      '7d-1h': 'Last 7 days',
+      '30d-12h': 'Last 30 days'
+    },
+    filters: {
+      platform: 'Platform',
+      allPlatforms: 'All platforms',
+      group: 'Group',
+      allGroups: 'All groups',
+      clear: 'Reset'
+    },
+    legend: {
+      aria: 'Availability legend',
+      healthy: 'Healthy',
+      warning: 'Fluctuating',
+      critical: 'Degraded'
+    },
+    badge: {
+      exclusive: 'Exclusive',
+      subscription: 'Subscription'
+    },
+    group: {
+      models: '{count} models'
+    },
+    pulse: {
+      aria: 'Health pulse for {model}',
+      groupAria: 'Health pulse for {group}',
+      checkedAt: 'Probe at {time}',
+      pointCount: 'Last {count} probes'
+    },
+    pricing: {
+      show: 'View model pricing',
+      showAll: 'View pricing for all {count} models',
+      hide: 'Hide model pricing'
+    }
+  },
+
   affiliate: {
     title: 'Affiliate Rebates',
     description: 'Invite new users and convert your rebate quota into account balance',
