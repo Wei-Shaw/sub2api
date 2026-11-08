@@ -1712,7 +1712,8 @@ func (s *BillingService) computeTokenBreakdown(
 			cacheCreationPrice = pricing.CacheCreationPricePerTokenPriority
 		}
 		if pricing.CacheCreation12hPricePerToken != nil {
-			ratio := 1.0
+			// Free short writes and free ordinary input have no usable catalog ratio.
+			ratio := configuredServiceTierMultiplier(serviceTier, pricing)
 			if pricing.CacheCreationPricePerToken > 0 {
 				ratio = cacheCreationPrice / pricing.CacheCreationPricePerToken
 			} else if pricing.InputPricePerToken > 0 {

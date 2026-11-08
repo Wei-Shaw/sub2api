@@ -173,7 +173,7 @@ func TestOpenAICacheWriteTTLPrices(t *testing.T) {
 	})
 	t.Run("explicit free 30m with fast 12h", func(t *testing.T) {
 		p := *base
-		applyChannelTokenPriceOverrides(&p, &ChannelModelPricing{CacheWritePrice: float64Ptr(0), CacheWrite12hPrice: float64Ptr(2e-6)})
+		applyChannelTokenPriceOverrides(&p, &ChannelModelPricing{InputPrice: float64Ptr(0), CacheWritePrice: float64Ptr(0), CacheWrite12hPrice: float64Ptr(2e-6)})
 		cost := service.computeTokenBreakdown(&p, tokens, 1, "fast", false)
 		require.InDelta(t, 2390*4e-6, cost.CacheCreationCost, 1e-12)
 	})
