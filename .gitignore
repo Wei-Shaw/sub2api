@@ -219,3 +219,6 @@ backend/.tmp-sub2api-*
 !docs/admin-api-keys.md
 !docs/mcp.md
 
+
+# 与项目无关的外部目录（2026-11-08 误提交后移除，避免再次混入）
+yingdao-exam/
