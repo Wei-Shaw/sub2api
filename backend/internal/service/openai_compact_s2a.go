@@ -249,10 +249,10 @@ func compactS2AFlattenInput(input gjson.Result) string {
 			role := strings.TrimSpace(item.Get("role").String())
 			text := compactS2AMessageText(item.Get("content"))
 			if text != "" {
-				b.WriteString(strings.ToUpper(role))
-				b.WriteString(": ")
-				b.WriteString(text)
-				b.WriteString("\n\n")
+				_, _ = b.WriteString(strings.ToUpper(role))
+				_, _ = b.WriteString(": ")
+				_, _ = b.WriteString(text)
+				_, _ = b.WriteString("\n\n")
 			}
 		case "function_call", "custom_tool_call":
 			name := item.Get("name").String()
@@ -260,12 +260,12 @@ func compactS2AFlattenInput(input gjson.Result) string {
 			if payload == "" {
 				payload = item.Get("input").String()
 			}
-			b.WriteString("[tool call] " + name + "(" + payload + ")\n\n")
+			_, _ = b.WriteString("[tool call] " + name + "(" + payload + ")\n\n")
 		case "function_call_output", "custom_tool_call_output":
-			b.WriteString("[tool result] " + item.Get("output").String() + "\n\n")
+			_, _ = b.WriteString("[tool result] " + item.Get("output").String() + "\n\n")
 		case "compaction", "compaction_summary":
 			if summary, ok := compactS2ADecodeItem(item); ok {
-				b.WriteString("[earlier compacted context]\n" + summary + "\n\n")
+				_, _ = b.WriteString("[earlier compacted context]\n" + summary + "\n\n")
 			}
 		}
 		return true
@@ -315,7 +315,7 @@ func compactS2AResponseText(resp *apicompat.ChatCompletionsResponse) string {
 	if err := json.Unmarshal(raw, &parts); err == nil {
 		var b strings.Builder
 		for _, part := range parts {
-			b.WriteString(part.Text)
+			_, _ = b.WriteString(part.Text)
 		}
 		return strings.TrimSpace(b.String())
 	}
