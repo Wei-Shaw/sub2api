@@ -351,7 +351,7 @@ func (s *OpenAIGatewayService) handleResponsesStreamingFromNativeAnthropic(
 
 	state := apicompat.NewAnthropicEventToResponsesState()
 	state.Model = originalModel
-	state.PreserveThinkingSignatures = isClaude55SignedThinkingModel(upstreamModel)
+	state.PreserveThinkingSignatures = isClaude55SignedThinkingModel(upstreamModel) || apicompat.IsSignedThinkingModel(upstreamModel) || apicompat.IsSignedThinkingModel(originalModel)
 	clientToolRestorer := apicompat.NewResponsesClientToolStreamRestorer(clientToolMapping)
 
 	var usage ClaudeUsage

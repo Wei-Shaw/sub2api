@@ -18,6 +18,14 @@ import (
 
 const anthropicThinkingEnvelopePrefix = "anthropic-thinking-v1:"
 
+// IsSignedThinkingModel returns true for models whose reasoning/thinking
+// signatures must be preserved across protocol conversions (Claude 5.5, Gemini 3+, etc.).
+func IsSignedThinkingModel(model string) bool {
+	m := strings.ToLower(strings.TrimSpace(model))
+	return claude.IsOpus55(m) || claude.IsSonnet55(m) || claude.IsHaiku55(m) ||
+		strings.HasPrefix(m, "gemini-") || strings.HasPrefix(m, "claude-")
+}
+
 func encodeAnthropicThinking(block AnthropicContentBlock) string {
 	// Only fields belonging to the signed thinking block are retained.
 	payload, _ := json.Marshal(struct {
@@ -53,7 +61,7 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 	for _, block := range resp.Content {
 		switch block.Type {
 		case "thinking", "redacted_thinking":
-			if (claude.IsOpus55(resp.Model) || claude.IsSonnet55(resp.Model) || claude.IsHaiku55(resp.Model)) && (block.Signature != "" || block.Data != "") {
+			if (IsSignedThinkingModel(resp.Model) || block.Signature != "" || block.Data != "") && (block.Signature != "" || block.Data != "") {
 				item := ResponsesOutput{Type: "reasoning", ID: generateItemID(), EncryptedContent: encodeAnthropicThinking(block)}
 				if block.Thinking != "" {
 					item.Summary = []ResponsesSummary{{Type: "summary_text", Text: block.Thinking}}
@@ -83,6 +91,22 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 				})
 			}
 		case "tool_use":
+			if block.Signature != "" {
+				hasPrevSig := len(outputs) > 0 &&
+					outputs[len(outputs)-1].Type == "reasoning" &&
+					outputs[len(outputs)-1].EncryptedContent != ""
+				if !hasPrevSig {
+					outputs = append(outputs, ResponsesOutput{
+						Type:   "reasoning",
+						ID:     generateItemID(),
+						Status: "completed",
+						EncryptedContent: encodeAnthropicThinking(AnthropicContentBlock{
+							Type:      "thinking",
+							Signature: block.Signature,
+						}),
+					})
+				}
+			}
 			args := "{}"
 			if len(block.Input) > 0 {
 				args = string(block.Input)
@@ -289,7 +313,7 @@ func ResponsesEventToSSE(evt ResponsesStreamEvent) (string, error) {
 func anthToResHandleMessageStart(evt *AnthropicStreamEvent, state *AnthropicEventToResponsesState) []ResponsesStreamEvent {
 	if evt.Message != nil {
 		state.ResponseID = evt.Message.ID
-		state.PreserveThinkingSignatures = state.PreserveThinkingSignatures || claude.IsOpus55(evt.Message.Model) || claude.IsSonnet55(evt.Message.Model) || claude.IsHaiku55(evt.Message.Model)
+		state.PreserveThinkingSignatures = state.PreserveThinkingSignatures || IsSignedThinkingModel(evt.Message.Model) || IsSignedThinkingModel(state.Model)
 		if state.Model == "" {
 			state.Model = evt.Message.Model
 		}
@@ -392,6 +416,31 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 		// Close previous item if any
 		events = append(events, closeCurrentResponsesItem(state)...)
 
+		// If the tool_use carries a signature (e.g. Gemini FunctionCall with thoughtSignature)
+		// and no reasoning item with a signature was emitted for this turn, emit a reasoning item.
+		if evt.ContentBlock.Signature != "" {
+			hasPrevSig := len(state.Outputs) > 0 &&
+				state.Outputs[len(state.Outputs)-1].Type == "reasoning" &&
+				state.Outputs[len(state.Outputs)-1].EncryptedContent != ""
+			if !hasPrevSig {
+				state.CurrentItemID = generateItemID()
+				state.CurrentItemType = "reasoning"
+				state.CurrentThinking = AnthropicContentBlock{
+					Type:      "thinking",
+					Signature: evt.ContentBlock.Signature,
+				}
+				state.PreserveThinkingSignatures = true
+				events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
+					OutputIndex: state.OutputIndex,
+					Item: &ResponsesOutput{
+						Type: "reasoning",
+						ID:   state.CurrentItemID,
+					},
+				}))
+				events = append(events, closeCurrentResponsesItem(state)...)
+			}
+		}
+
 		state.CurrentItemID = generateItemID()
 		state.CurrentItemType = "function_call"
 		state.CurrentCallID = toResponsesCallID(evt.ContentBlock.ID)
@@ -466,9 +515,8 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 
 	case "signature_delta":
 		// Keep signatures in the opaque bridge envelope, never in visible text.
-		if state.PreserveThinkingSignatures {
-			state.CurrentThinking.Signature = appendStreamString(&state.currentSignatureBuffer, state.CurrentThinking.Signature, evt.Delta.Signature)
-		}
+		state.PreserveThinkingSignatures = true
+		state.CurrentThinking.Signature = appendStreamString(&state.currentSignatureBuffer, state.CurrentThinking.Signature, evt.Delta.Signature)
 		return nil
 	}
 
