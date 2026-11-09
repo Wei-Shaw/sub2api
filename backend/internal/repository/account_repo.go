@@ -3749,10 +3749,10 @@ func itoa(v int) string {
 }
 
 // FindByExtraField 根据 extra 字段中的键值对查找账号。
-// 使用 PostgreSQL JSONB @> 操作符进行高效查询（需要 GIN 索引支持）。
+// 使用 PostgreSQL JSONB 路径相等比较，不依赖通用 accounts.extra GIN 索引。
 //
 // FindByExtraField finds accounts by key-value pairs in the extra field.
-// Uses PostgreSQL JSONB @> operator for efficient queries (requires GIN index).
+// It uses PostgreSQL JSONB path equality rather than a generic containment query.
 func (r *accountRepository) FindByExtraField(ctx context.Context, key string, value any) ([]service.Account, error) {
 	accounts, err := r.client.Account.Query().
 		Where(
