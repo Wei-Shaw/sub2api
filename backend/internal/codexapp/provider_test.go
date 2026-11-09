@@ -6,8 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -68,6 +70,25 @@ func TestProviderRunTurnReturnsRPCError(t *testing.T) {
 	}
 }
 
+func TestProviderRunTurnUsesExistingThread(t *testing.T) {
+	t.Parallel()
+
+	provider := startTestProvider(t, "success", "")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	result, err := provider.RunTurn(ctx, TurnRequest{
+		ThreadID: "thr-existing",
+		Input:    []InputItem{{Type: "text", Text: "continue"}},
+	}, nil)
+	if err != nil {
+		t.Fatalf("RunTurn() error = %v", err)
+	}
+	if result.ThreadID != "thr-existing" || result.Status != "completed" {
+		t.Fatalf("RunTurn() result = %#v", result)
+	}
+}
+
 func TestProviderCancellationInterruptsTurn(t *testing.T) {
 	t.Parallel()
 
@@ -98,23 +119,155 @@ func TestProviderCancellationInterruptsTurn(t *testing.T) {
 	waitForFile(t, filepath.Join(markerDir, "turn-interrupted"))
 }
 
+func TestProviderSinkErrorInterruptsTurn(t *testing.T) {
+	t.Parallel()
+
+	markerDir := t.TempDir()
+	provider := startTestProvider(t, "success", markerDir)
+	wantErr := errors.New("client write failed")
+
+	_, err := provider.RunTurn(context.Background(), TurnRequest{
+		Model: "gpt-6-sol",
+		Input: []InputItem{{Type: "text", Text: "hello"}},
+	}, func(Event) error { return wantErr })
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("RunTurn() error = %v, want %v", err, wantErr)
+	}
+	waitForFile(t, filepath.Join(markerDir, "turn-interrupted"))
+}
+
+func TestProviderMalformedMessageFailsTurn(t *testing.T) {
+	t.Parallel()
+
+	provider := startTestProvider(t, "malformed", "")
+	_, err := provider.RunTurn(context.Background(), TurnRequest{
+		Model: "gpt-6-sol",
+		Input: []InputItem{{Type: "text", Text: "hello"}},
+	}, nil)
+	if err == nil || !contains(err.Error(), "decode codex app-server message") {
+		t.Fatalf("RunTurn() error = %v, want malformed message error", err)
+	}
+}
+
+func TestStartValidatesConfigAndInitialization(t *testing.T) {
+	t.Parallel()
+
+	if _, err := Start(context.Background(), Config{}); err == nil || !contains(err.Error(), "command is required") {
+		t.Fatalf("Start(empty) error = %v", err)
+	}
+	if _, err := Start(context.Background(), Config{Command: []string{"unused"}}); err == nil || !contains(err.Error(), "clientInfo.name is required") {
+		t.Fatalf("Start(no clientInfo) error = %v", err)
+	}
+
+	_, err := Start(context.Background(), testConfig("init-error", ""))
+	var rpcErr *RPCError
+	if !errors.As(err, &rpcErr) || rpcErr.Method != "initialize" || rpcErr.Code != -32001 {
+		t.Fatalf("Start(init-error) error = %#v", err)
+	}
+
+	timeoutConfig := testConfig("init-timeout", "")
+	timeoutConfig.StartTimeout = 30 * time.Millisecond
+	_, err = Start(context.Background(), timeoutConfig)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Start(init-timeout) error = %v, want deadline exceeded", err)
+	}
+}
+
+func TestProviderValidationAndRPCErrorText(t *testing.T) {
+	t.Parallel()
+
+	var nilProvider *Provider
+	if err := nilProvider.Close(context.Background()); err != nil {
+		t.Fatalf("nil Close() error = %v", err)
+	}
+	if _, err := nilProvider.RunTurn(context.Background(), TurnRequest{}, nil); err == nil {
+		t.Fatal("nil RunTurn() error = nil")
+	}
+
+	provider := startTestProvider(t, "success", "")
+	if _, err := provider.RunTurn(context.Background(), TurnRequest{}, nil); err == nil || !contains(err.Error(), "input is required") {
+		t.Fatalf("RunTurn(empty input) error = %v", err)
+	}
+
+	rpcErr := &RPCError{Method: "turn/start", Code: -32000, Message: "rejected"}
+	if got := rpcErr.Error(); got != "codex app-server turn/start failed (-32000): rejected" {
+		t.Fatalf("RPCError.Error() = %q", got)
+	}
+	var nilRPCError *RPCError
+	if got := nilRPCError.Error(); got != "codex app-server RPC error" {
+		t.Fatalf("nil RPCError.Error() = %q", got)
+	}
+}
+
+func TestDecodeTurnEventIgnoresUnrelatedNotifications(t *testing.T) {
+	t.Parallel()
+
+	if event, matched, err := decodeTurnEvent(rpcNotification{Method: "thread/started"}, "thr", "turn"); err != nil || matched || event != (Event{}) {
+		t.Fatalf("unknown event = %#v, matched=%v, err=%v", event, matched, err)
+	}
+	params, err := json.Marshal(map[string]any{"threadId": "other", "turnId": "turn", "delta": "ignored"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, matched, err := decodeTurnEvent(rpcNotification{Method: EventAgentMessageDelta, Params: params}, "thr", "turn"); err != nil || matched {
+		t.Fatalf("mismatched delta matched=%v err=%v", matched, err)
+	}
+}
+
+func TestDecodeTurnEventRejectsMalformedPayloads(t *testing.T) {
+	t.Parallel()
+
+	for _, method := range []string{EventAgentMessageDelta, EventTurnCompleted} {
+		_, _, err := decodeTurnEvent(rpcNotification{Method: method, Params: json.RawMessage(`{`)}, "thr", "turn")
+		if err == nil || !contains(err.Error(), "decode "+method+" notification") {
+			t.Fatalf("decodeTurnEvent(%s) error = %v", method, err)
+		}
+	}
+
+	params, err := json.Marshal(map[string]any{
+		"threadId": "other",
+		"turn":     map[string]any{"id": "turn", "status": "completed"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, matched, err := decodeTurnEvent(rpcNotification{Method: EventTurnCompleted, Params: params}, "thr", "turn"); err != nil || matched {
+		t.Fatalf("mismatched completed matched=%v err=%v", matched, err)
+	}
+}
+
+func TestProviderCloseHonorsContextAndTimeoutDefaults(t *testing.T) {
+	t.Parallel()
+
+	provider := startTestProvider(t, "hang-close", "")
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	if err := provider.Close(ctx); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Close() error = %v, want deadline exceeded", err)
+	}
+
+	if got := interruptTimeout(Config{}); got != defaultInterruptTimeout {
+		t.Fatalf("interruptTimeout(default) = %s", got)
+	}
+	if got := interruptTimeout(Config{InterruptTimeout: time.Second}); got != time.Second {
+		t.Fatalf("interruptTimeout(custom) = %s", got)
+	}
+
+	if err := (*process)(nil).terminalError(); !errors.Is(err, io.EOF) {
+		t.Fatalf("nil process terminalError() = %v", err)
+	}
+	client := &rpcClient{err: io.EOF}
+	waitErr := errors.New("exit status 9")
+	proc := &process{rpc: client, waitErr: waitErr}
+	if err := proc.terminalError(); err == nil || !contains(err.Error(), "exit status 9") {
+		t.Fatalf("process terminalError() = %v", err)
+	}
+}
+
 func startTestProvider(t *testing.T, scenario, markerDir string) *Provider {
 	t.Helper()
 
-	provider, err := Start(context.Background(), Config{
-		Command: []string{os.Args[0], "-test.run=TestCodexAppServerHelperProcess", "--"},
-		Env: append(os.Environ(),
-			"GO_WANT_CODEX_APP_SERVER_HELPER=1",
-			"CODEX_APP_SERVER_SCENARIO="+scenario,
-			"CODEX_APP_SERVER_MARKER_DIR="+markerDir,
-		),
-		ClientInfo: ClientInfo{
-			Name:    "sub2api_codex_provider",
-			Title:   "Sub2API Codex Provider",
-			Version: "test",
-		},
-		StartTimeout: 2 * time.Second,
-	})
+	provider, err := Start(context.Background(), testConfig(scenario, markerDir))
 	if err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
@@ -128,6 +281,24 @@ func startTestProvider(t *testing.T, scenario, markerDir string) *Provider {
 	return provider
 }
 
+func testConfig(scenario, markerDir string) Config {
+	return Config{
+		Command: []string{os.Args[0], "-test.run=TestCodexAppServerHelperProcess", "--"},
+		Env: append(os.Environ(),
+			"GO_WANT_CODEX_APP_SERVER_HELPER=1",
+			"CODEX_APP_SERVER_SCENARIO="+scenario,
+			"CODEX_APP_SERVER_MARKER_DIR="+markerDir,
+			"GORACE=atexit_sleep_ms=0",
+		),
+		ClientInfo: ClientInfo{
+			Name:    "sub2api_codex_provider",
+			Title:   "Sub2API Codex Provider",
+			Version: "test",
+		},
+		StartTimeout: 2 * time.Second,
+	}
+}
+
 func waitForFile(t *testing.T, path string) {
 	t.Helper()
 
@@ -139,6 +310,10 @@ func waitForFile(t *testing.T, path string) {
 		time.Sleep(10 * time.Millisecond)
 	}
 	t.Fatalf("timed out waiting for %s", path)
+}
+
+func contains(value, fragment string) bool {
+	return strings.Contains(value, fragment)
 }
 
 func TestCodexAppServerHelperProcess(t *testing.T) {
@@ -169,6 +344,13 @@ func TestCodexAppServerHelperProcess(t *testing.T) {
 			if err := json.Unmarshal(request.Params, &params); err != nil || params.ClientInfo.Name != "sub2api_codex_provider" {
 				os.Exit(3)
 			}
+			if scenario == "init-timeout" {
+				continue
+			}
+			if scenario == "init-error" {
+				writeHelperResponse(encoder, request.ID, nil, map[string]any{"code": -32001, "message": "initialize rejected"})
+				continue
+			}
 			writeHelperResponse(encoder, request.ID, map[string]any{"userAgent": "fake-codex-e2e"}, nil)
 		case "initialized":
 			// Notification: no response.
@@ -177,6 +359,15 @@ func TestCodexAppServerHelperProcess(t *testing.T) {
 				"thread": map[string]any{"id": "thr-e2e"},
 			}, nil)
 		case "turn/start":
+			var params struct {
+				ThreadID string `json:"threadId"`
+			}
+			if err := json.Unmarshal(request.Params, &params); err != nil {
+				os.Exit(5)
+			}
+			if params.ThreadID == "" {
+				params.ThreadID = "thr-e2e"
+			}
 			if scenario == "turn-error" {
 				writeHelperResponse(encoder, request.ID, nil, map[string]any{"code": -32000, "message": "turn rejected"})
 				continue
@@ -184,18 +375,22 @@ func TestCodexAppServerHelperProcess(t *testing.T) {
 			writeHelperResponse(encoder, request.ID, map[string]any{
 				"turn": map[string]any{"id": "turn-e2e", "status": "inProgress"},
 			}, nil)
+			if scenario == "malformed" {
+				_, _ = fmt.Fprintln(os.Stdout, "{not-json")
+				continue
+			}
 			if scenario == "cancel" {
 				writeMarker(markerDir, "turn-started")
 				continue
 			}
 			_ = encoder.Encode(map[string]any{
 				"method": "item/agentMessage/delta",
-				"params": map[string]any{"threadId": "thr-e2e", "turnId": "turn-e2e", "delta": "hello"},
+				"params": map[string]any{"threadId": params.ThreadID, "turnId": "turn-e2e", "delta": "hello"},
 			})
 			_ = encoder.Encode(map[string]any{
 				"method": "turn/completed",
 				"params": map[string]any{
-					"threadId": "thr-e2e",
+					"threadId": params.ThreadID,
 					"turn":     map[string]any{"id": "turn-e2e", "status": "completed"},
 				},
 			})
@@ -206,6 +401,11 @@ func TestCodexAppServerHelperProcess(t *testing.T) {
 			writeHelperResponse(encoder, request.ID, nil, map[string]any{
 				"code": -32601, "message": fmt.Sprintf("unsupported method %s", request.Method),
 			})
+		}
+	}
+	if scenario == "hang-close" {
+		for {
+			time.Sleep(time.Second)
 		}
 	}
 	os.Exit(0)
