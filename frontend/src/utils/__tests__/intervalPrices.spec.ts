@@ -7,6 +7,7 @@ const interval = { min_tokens: 272000, max_tokens: null, input_price: null, outp
 describe('resolveIntervalPrices', () => {
   it('inherits base prices without overrides', () => {
     expect(resolveIntervalPrices(interval, base)).toMatchObject(base)
+    expect(resolveIntervalPrices(interval, base).cache_write_12h_price).toBeNull()
   })
   it('applies cache multiplier to both durations', () => {
     expect(resolveIntervalPrices({ ...interval, cache_write_multiplier: 2 }, base)).toMatchObject({ cache_write_price: 25, cache_write_1h_price: 60 })
@@ -16,5 +17,14 @@ describe('resolveIntervalPrices', () => {
   })
   it('preserves explicit zero and separate 1h override', () => {
     expect(resolveIntervalPrices({ ...interval, cache_write_price: 0, cache_write_1h_price: 7, cache_write_multiplier: 2 }, base)).toMatchObject({ cache_write_price: 0, cache_write_1h_price: 7 })
+  })
+  it('inherits and scales the OpenAI 12h rate independently', () => {
+    const openai = { ...base, cache_write_12h_price: 25 }
+    expect(resolveIntervalPrices({ ...interval, cache_write_multiplier: 2 }, openai))
+      .toMatchObject({ cache_write_price: 25, cache_write_12h_price: 50 })
+    expect(resolveIntervalPrices({ ...interval, cache_write_12h_price: 0, cache_write_multiplier: 2 }, openai))
+      .toMatchObject({ cache_write_price: 25, cache_write_12h_price: 0 })
+    expect(resolveIntervalPrices({ ...interval, cache_write_price: 7 }, openai))
+      .toMatchObject({ cache_write_price: 7, cache_write_12h_price: 7 })
   })
 })
