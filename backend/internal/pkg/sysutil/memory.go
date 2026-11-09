@@ -49,24 +49,32 @@ func cgroupMemoryLimit(root, selfCgroupFile string) uint64 {
 		}
 	}
 	// Mount roots cover an unreadable /proc/self/cgroup.
-	limit = minPositive(limit, readCgroupLimitFile(filepath.Join(root, "memory.max")))
-	return minPositive(limit, readCgroupLimitFile(filepath.Join(root, "memory", "memory.limit_in_bytes")))
+	limit = minPositive(limit, cgroupPathMemoryLimit(root, "/", "memory.max"))
+	return minPositive(limit, cgroupPathMemoryLimit(filepath.Join(root, "memory"), "/", "memory.limit_in_bytes"))
 }
 
 // cgroupPathMemoryLimit walks from the cgroup up to the mount root. Levels not
 // visible in this mount (e.g. a host path inside a container) are skipped.
+// Reads go through os.Root, so a cgroup path from /proc/self/cgroup can never
+// resolve outside the mount.
 func cgroupPathMemoryLimit(mount, cgroupPath, limitFile string) uint64 {
+	mountRoot, err := os.OpenRoot(mount)
+	if err != nil {
+		return 0
+	}
+	defer func() { _ = mountRoot.Close() }()
 	var limit uint64
 	for dir := path.Clean("/" + cgroupPath); ; dir = path.Dir(dir) {
-		limit = minPositive(limit, readCgroupLimitFile(filepath.Join(mount, filepath.FromSlash(dir), limitFile)))
+		name := filepath.Join(filepath.FromSlash(strings.TrimPrefix(dir, "/")), limitFile)
+		limit = minPositive(limit, readCgroupLimitFile(mountRoot, name))
 		if dir == "/" {
 			return limit
 		}
 	}
 }
 
-func readCgroupLimitFile(file string) uint64 {
-	raw, err := os.ReadFile(file)
+func readCgroupLimitFile(mountRoot *os.Root, name string) uint64 {
+	raw, err := mountRoot.ReadFile(name)
 	if err != nil {
 		return 0
 	}

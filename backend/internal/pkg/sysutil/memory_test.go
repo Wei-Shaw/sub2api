@@ -78,6 +78,21 @@ func TestCgroupMemoryLimit(t *testing.T) {
 		require.Equal(t, uint64(2<<30), cgroupMemoryLimit(root, self))
 	})
 
+	t.Run("cgroup path cannot escape the mount", func(t *testing.T) {
+		parent := t.TempDir()
+		root := filepath.Join(parent, "cgroup")
+		self := filepath.Join(t.TempDir(), "cgroup")
+		writeFile(t, filepath.Join(parent, "outside", "memory.max"), "1073741824\n")
+		writeFile(t, filepath.Join(root, "memory.max"), "max\n")
+		require.NoError(t, os.Symlink(filepath.Join(parent, "outside"), filepath.Join(root, "link")))
+
+		writeFile(t, self, "0::/../outside\n")
+		require.Zero(t, cgroupMemoryLimit(root, self))
+
+		writeFile(t, self, "0::/link\n")
+		require.Zero(t, cgroupMemoryLimit(root, self))
+	})
+
 	t.Run("unavailable", func(t *testing.T) {
 		require.Zero(t, cgroupMemoryLimit(t.TempDir(), filepath.Join(t.TempDir(), "missing")))
 	})
