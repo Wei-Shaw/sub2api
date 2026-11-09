@@ -14,11 +14,12 @@ package service
 // 任一情况下模型都拿不到结构化工具声明，只能把工具调用写成上游原生的 DSML
 // 文本（<｜｜DSML｜｜ calls>），客户端收到一堆无法执行的正文。
 //
-// 这里按账号开关把 additional_tools 提升到顶层 tools，并把 namespace 里的
-// custom 子工具一并提到顶层。之后既有的「顶层 custom → function 降级 + 回程
-// 还原 custom_tool_call」通道就能接管，WS 桥与 HTTP 回退两条路都生效。
+// 这里按账号开关把 additional_tools 提升到顶层 tools，并把默认命名空间
+// "functions" 里的 custom 子工具一并提到顶层。之后既有的「顶层 custom →
+// function 降级 + 回程还原 custom_tool_call」通道就能接管。接入点：WS→HTTP
+// 桥、Chat Completions 回退、HTTP /responses 透传（OpenAI API Key 账号）。
 //
-// 开关默认关闭：未开启的账号请求体逐字节不变。
+// 开关默认关闭，且只对 OpenAI API Key 账号生效：未开启的账号请求体逐字节不变。
 
 import (
 	"bytes"
@@ -30,8 +31,11 @@ import (
 const ExtraKeyCodexNamespaceTools = "codex_namespace_tools"
 
 // CodexNamespaceToolsEnabled 报告账号是否启用 Codex 运行时工具提升。
+// 只对 OpenAI API Key 账号生效：只有它们的上游路径会把顶层 custom 工具降级为
+// function 并在回程还原；OAuth 上游原生支持 additional_tools / namespace，
+// 提升反而会改写发往官方上游的请求体。
 func (a *Account) CodexNamespaceToolsEnabled() bool {
-	if a == nil || a.Extra == nil || !a.IsOpenAI() {
+	if a == nil || a.Extra == nil || !a.IsOpenAIApiKey() {
 		return false
 	}
 	enabled, ok := a.Extra[ExtraKeyCodexNamespaceTools].(bool)
@@ -98,28 +102,38 @@ func liftCodexAdditionalTools(root map[string]any) ([]any, bool) {
 		return nil, false
 	}
 	var lifted []any
+	var additional []map[string]any
 	kept := make([]any, 0, len(input))
-	changed := false
 	for _, raw := range input {
 		item, ok := raw.(map[string]any)
-		if !ok {
-			kept = append(kept, raw)
-			continue
-		}
-		if strings.TrimSpace(stringValue(item["type"])) != "additional_tools" {
+		if !ok || strings.TrimSpace(stringValue(item["type"])) != "additional_tools" {
 			kept = append(kept, raw)
 			continue
 		}
 		if children, ok := item["tools"].([]any); ok {
 			lifted = append(lifted, children...)
 		}
-		changed = true
+		additional = append(additional, item)
 	}
-	// 只在还有其它 item 时才移除 additional_tools：Codex 的首包有时只带
-	// additional_tools（~1.4KB），全部移除会让 input 变成空数组，上游
-	// /responses 直接 400 "Input items array must not be empty"。
-	if changed && len(kept) > 0 {
+	if len(additional) == 0 {
+		return nil, false
+	}
+	if len(kept) > 0 {
 		root["input"] = kept
+		return lifted, true
+	}
+	// Codex 的首包有时只带 additional_tools（~1.4KB），全部移除会让 input 变成
+	// 空数组，上游 /responses 直接 400 "Input items array must not be empty"。
+	// 此时保留 item 但清空其 tools：工具已提升到顶层，留着会被
+	// apicompat.EffectiveResponsesTools 再合并一次，同名工具重复声明被 Chat
+	// Completions 转换拒绝。
+	changed := false
+	for _, item := range additional {
+		if children, ok := item["tools"].([]any); ok && len(children) == 0 {
+			continue
+		}
+		item["tools"] = []any{}
+		changed = true
 	}
 	return lifted, changed
 }
@@ -214,11 +228,18 @@ func toolDeclKey(raw any) (string, bool) {
 	return strings.TrimSpace(stringValue(tool["type"])) + "\x00" + name, true
 }
 
-// hoistNamespaceCustomTools 把 namespace 里的 custom 子工具提到顶层，
-// namespace 内其余子工具保持不变（交给既有的摊平逻辑处理）。
+// hoistNamespaceCustomTools 把默认命名空间 "functions" 里的 custom 子工具提到
+// 顶层，namespace 内其余子工具保持不变（交给既有的摊平逻辑处理）。
+//
+// 只处理 "functions"：降级通道回程还原出的 custom_tool_call 只带裸名，Codex 按
+// ToolName::with_default_namespace 把缺省 namespace 补成 "functions" 再查注册
+// 表（codex-rs protocol/src/tool_name.rs、core/src/tools/router.rs）。其它命名
+// 空间的 custom 工具提升后会被路由到 functions/<name>，找不到处理器或与默认命名
+// 空间的同名工具串线，因此保持原样。
 //
 // 顶层已存在同名工具时跳过该子工具：两条声明无法区分，保持原样是最安全的
-// 处理（上游会按原有路径拒绝或忽略，不会产生歧义调用）。
+// 处理（上游会按原有路径拒绝或忽略，不会产生歧义调用）。子工具全部被提走的
+// namespace 一并移除，避免向上游发送空的 namespace 声明。
 func hoistNamespaceCustomTools(tools []any) ([]any, bool) {
 	if len(tools) == 0 {
 		return tools, false
@@ -237,14 +258,18 @@ func hoistNamespaceCustomTools(tools []any) ([]any, bool) {
 	}
 
 	changed := false
-	hoisted := make([]any, 0, 4)
+	out := make([]any, 0, len(tools))
+	var hoisted []any
 	for _, raw := range tools {
 		ns, ok := raw.(map[string]any)
-		if !ok || strings.TrimSpace(stringValue(ns["type"])) != "namespace" {
+		if !ok || strings.TrimSpace(stringValue(ns["type"])) != "namespace" ||
+			strings.TrimSpace(stringValue(ns["name"])) != codexDefaultToolNamespace {
+			out = append(out, raw)
 			continue
 		}
 		children, ok := ns["tools"].([]any)
 		if !ok || len(children) == 0 {
+			out = append(out, raw)
 			continue
 		}
 		kept := make([]any, 0, len(children))
@@ -261,15 +286,30 @@ func hoistNamespaceCustomTools(tools []any) ([]any, bool) {
 			}
 			topLevel[name] = true
 			hoisted = append(hoisted, child)
-			changed = true
 		}
-		if len(kept) != len(children) {
-			ns["tools"] = kept
-			changed = true
+		if len(kept) == len(children) {
+			out = append(out, raw)
+			continue
 		}
+		changed = true
+		if len(kept) == 0 {
+			continue
+		}
+		// 复制而非原地修改：同一个 namespace 对象可能仍被 input 里的
+		// additional_tools 项引用。
+		rewritten := make(map[string]any, len(ns))
+		for key, value := range ns {
+			rewritten[key] = value
+		}
+		rewritten["tools"] = kept
+		out = append(out, rewritten)
 	}
 	if !changed {
 		return tools, false
 	}
-	return append(tools, hoisted...), true
+	return append(out, hoisted...), true
 }
+
+// codexDefaultToolNamespace 是 Codex 的默认工具命名空间（DEFAULT_FUNCTION_NAMESPACE），
+// 与无 namespace 的顶层工具等价。
+const codexDefaultToolNamespace = "functions"
