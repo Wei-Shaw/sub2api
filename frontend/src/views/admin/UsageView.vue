@@ -332,6 +332,7 @@ const applyRouteQueryFilters = () => {
   filters.value = {
     ...filters.value,
     user_id: queryUserId,
+    api_key_id: getNumericQueryValue(route.query.api_key_id),
     start_date: startDate.value,
     end_date: endDate.value
   }

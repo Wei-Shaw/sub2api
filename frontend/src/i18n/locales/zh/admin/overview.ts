@@ -50,6 +50,8 @@ export default {
       tokens: 'Token',
       cache: '缓存',
       recentUsage: '最近使用',
+      apiKeySpendingRanking: 'API 密钥消费榜',
+      usageDimension: '统计维度',
       actualSpending: '实际消费 ($)',
       viewModelDistribution: '模型分布',
       viewSpendingRanking: '用户消费榜',

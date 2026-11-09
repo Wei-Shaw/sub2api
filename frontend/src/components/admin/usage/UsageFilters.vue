@@ -508,8 +508,11 @@ watch(
     if (!apiKeyId) {
       apiKeyKeyword.value = ''
       apiKeyResults.value = []
+    } else if (!apiKeyKeyword.value) {
+      apiKeyKeyword.value = `#${apiKeyId}`
     }
-  }
+  },
+  { immediate: true }
 )
 
 watch(

@@ -100,3 +100,33 @@ func TestGetUserBreakdownStatsFiltersNativeCompactionV2(t *testing.T) {
 	require.Empty(t, rows)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestGetUserBreakdownStatsGroupBy(t *testing.T) {
+	for _, groupBy := range []string{"", "api_key", "invalid"} {
+		t.Run(groupBy, func(t *testing.T) {
+			db, mock := newSQLMock(t)
+			repo := &usageLogRepository{sql: db}
+			start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+			grouping := "GROUP BY ul.user_id, u.email"
+			if groupBy == "api_key" {
+				grouping = "GROUP BY ul.api_key_id, u.name"
+			}
+			mock.ExpectQuery(regexp.QuoteMeta(grouping)).WithArgs(start, start.Add(time.Hour), "gpt-5").
+				WillReturnRows(sqlmock.NewRows([]string{"id", "label", "requests", "input", "output", "cache", "total", "cost", "actual", "account"}).AddRow(9, "name", 1, 2, 3, 4, 9, 4, 3, 2))
+			rows, err := repo.GetUserBreakdownStats(context.Background(), start, start.Add(time.Hour), usagestats.UserBreakdownDimension{GroupBy: groupBy, Model: "gpt-5"}, 50)
+			require.NoError(t, err)
+			require.Len(t, rows, 1)
+			if groupBy == "api_key" {
+				require.Equal(t, int64(9), rows[0].APIKeyID)
+				require.Equal(t, "name", rows[0].KeyName)
+				require.Zero(t, rows[0].UserID)
+			} else {
+				require.Equal(t, int64(9), rows[0].UserID)
+				require.Equal(t, "name", rows[0].Email)
+				require.Zero(t, rows[0].APIKeyID)
+			}
+			require.Equal(t, 3.0, rows[0].ActualCost)
+			require.NoError(t, mock.ExpectationsWereMet())
+		})
+	}
+}

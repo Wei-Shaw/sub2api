@@ -27,8 +27,12 @@ type UserSpendingRankingResponse = usagestats.UserSpendingRankingResponse
 type APIKeyUsageTrendPoint = usagestats.APIKeyUsageTrendPoint
 
 // GetAPIKeyUsageTrend returns usage trend data grouped by API key and date
-func (r *usageLogRepository) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) (results []APIKeyUsageTrendPoint, err error) {
+func (r *usageLogRepository) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int, metric string) (results []APIKeyUsageTrendPoint, err error) {
 	dateFormat := safeDateFormat(granularity)
+	rankExpr := "SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens)"
+	if metric == "actual_cost" {
+		rankExpr = "SUM(actual_cost)"
+	}
 
 	query := fmt.Sprintf(`
 		WITH top_keys AS (
@@ -36,7 +40,7 @@ func (r *usageLogRepository) GetAPIKeyUsageTrend(ctx context.Context, startTime,
 			FROM usage_logs
 			WHERE created_at >= $1 AND created_at < $2
 			GROUP BY api_key_id
-			ORDER BY SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens) DESC
+			ORDER BY %s DESC, api_key_id ASC
 			LIMIT $3
 		)
 		SELECT
@@ -44,14 +48,15 @@ func (r *usageLogRepository) GetAPIKeyUsageTrend(ctx context.Context, startTime,
 			u.api_key_id,
 			COALESCE(k.name, '') as key_name,
 			COUNT(*) as requests,
-			COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens
+			COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens,
+			COALESCE(SUM(u.actual_cost), 0) as actual_cost
 		FROM usage_logs u
 		LEFT JOIN api_keys k ON u.api_key_id = k.id
 		WHERE u.api_key_id IN (SELECT api_key_id FROM top_keys)
 		  AND u.created_at >= $4 AND u.created_at < $5
 		GROUP BY date, u.api_key_id, k.name
 		ORDER BY date ASC, tokens DESC
-	`, dateFormat)
+	`, rankExpr, dateFormat)
 
 	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit, startTime, endTime)
 	if err != nil {
@@ -69,7 +74,7 @@ func (r *usageLogRepository) GetAPIKeyUsageTrend(ctx context.Context, startTime,
 	results = make([]APIKeyUsageTrendPoint, 0)
 	for rows.Next() {
 		var row APIKeyUsageTrendPoint
-		if err = rows.Scan(&row.Date, &row.APIKeyID, &row.KeyName, &row.Requests, &row.Tokens); err != nil {
+		if err = rows.Scan(&row.Date, &row.APIKeyID, &row.KeyName, &row.Requests, &row.Tokens, &row.ActualCost); err != nil {
 			return nil, err
 		}
 		results = append(results, row)
@@ -144,30 +149,36 @@ func (r *usageLogRepository) GetUserUsageTrend(ctx context.Context, startTime, e
 }
 
 // GetUserSpendingRanking returns user spending ranking aggregated within the time range.
-func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTime, endTime time.Time, limit int) (result *UserSpendingRankingResponse, err error) {
+func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTime, endTime time.Time, limit int, groupBy string) (result *UserSpendingRankingResponse, err error) {
 	if limit <= 0 {
 		limit = 12
 	}
 
-	query := `
+	identityColumn, nameColumn := "u.user_id", "us.username"
+	entityJoin := "LEFT JOIN users us ON u.user_id = us.id"
+	if groupBy == "api_key" {
+		identityColumn, nameColumn = "u.api_key_id", "k.name"
+		entityJoin = "LEFT JOIN api_keys k ON u.api_key_id = k.id LEFT JOIN users us ON k.user_id = us.id"
+	}
+	query := fmt.Sprintf(`
 		WITH user_spend AS (
 			SELECT
-				u.user_id,
+				%[1]s as entity_id,
 				COALESCE(us.email, '') as email,
-				COALESCE(us.username, '') as username,
+				COALESCE(%[2]s, '') as entity_name,
 				COALESCE(SUM(u.actual_cost), 0) as actual_cost,
 				COUNT(*) as requests,
 				COALESCE(SUM(u.input_tokens + u.output_tokens + u.cache_creation_tokens + u.cache_read_tokens), 0) as tokens
 			FROM usage_logs u
-			LEFT JOIN users us ON u.user_id = us.id
+			%[3]s
 			WHERE u.created_at >= $1 AND u.created_at < $2
-			GROUP BY u.user_id, us.email, us.username
+			GROUP BY %[1]s, us.email, %[2]s
 		),
 		ranked AS (
 			SELECT
-				user_id,
+				entity_id,
 				email,
-				username,
+				entity_name,
 				actual_cost,
 				requests,
 				tokens,
@@ -175,13 +186,13 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 				COALESCE(SUM(requests) OVER (), 0) as total_requests,
 				COALESCE(SUM(tokens) OVER (), 0) as total_tokens
 			FROM user_spend
-			ORDER BY actual_cost DESC, tokens DESC, user_id ASC
+			ORDER BY actual_cost DESC, tokens DESC, entity_id ASC
 			LIMIT $3
 		)
 		SELECT
-			user_id,
+			entity_id,
 			email,
-			username,
+			entity_name,
 			actual_cost,
 			requests,
 			tokens,
@@ -189,8 +200,8 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 			total_requests,
 			total_tokens
 		FROM ranked
-		ORDER BY actual_cost DESC, tokens DESC, user_id ASC
-	`
+		ORDER BY actual_cost DESC, tokens DESC, entity_id ASC
+	`, identityColumn, nameColumn, entityJoin)
 
 	rows, err := r.sql.QueryContext(ctx, query, startTime, endTime, limit)
 	if err != nil {
@@ -209,7 +220,11 @@ func (r *usageLogRepository) GetUserSpendingRanking(ctx context.Context, startTi
 	totalTokens := int64(0)
 	for rows.Next() {
 		var row UserSpendingRankingItem
-		if err = rows.Scan(&row.UserID, &row.Email, &row.Username, &row.ActualCost, &row.Requests, &row.Tokens, &totalActualCost, &totalRequests, &totalTokens); err != nil {
+		id, name := &row.UserID, &row.Username
+		if groupBy == "api_key" {
+			id, name = &row.APIKeyID, &row.KeyName
+		}
+		if err = rows.Scan(id, &row.Email, name, &row.ActualCost, &row.Requests, &row.Tokens, &totalActualCost, &totalRequests, &totalTokens); err != nil {
 			return nil, err
 		}
 		ranking = append(ranking, row)
@@ -619,10 +634,14 @@ func (r *usageLogRepository) getGroupStatsWithFilters(ctx context.Context, start
 
 // GetUserBreakdownStats returns per-user usage breakdown within a specific dimension.
 func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTime, endTime time.Time, dim usagestats.UserBreakdownDimension, limit int) (results []usagestats.UserBreakdownItem, err error) {
-	query := `
+	identityColumn, labelColumn, table := "ul.user_id", "u.email", "users"
+	if dim.GroupBy == "api_key" {
+		identityColumn, labelColumn, table = "ul.api_key_id", "u.name", "api_keys"
+	}
+	query := fmt.Sprintf(`
 		SELECT
-			COALESCE(ul.user_id, 0) as user_id,
-			COALESCE(u.email, '') as email,
+			COALESCE(%[1]s, 0) as entity_id,
+			COALESCE(%[2]s, '') as label,
 			COUNT(*) as requests,
 			COALESCE(SUM(ul.input_tokens), 0) as input_tokens,
 			COALESCE(SUM(ul.output_tokens), 0) as output_tokens,
@@ -632,9 +651,9 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 			COALESCE(SUM(ul.actual_cost), 0) as actual_cost,
 			COALESCE(SUM(COALESCE(ul.account_stats_cost, ul.total_cost) * COALESCE(ul.account_rate_multiplier, 1)), 0) as account_cost
 		FROM usage_logs ul
-		LEFT JOIN users u ON u.id = ul.user_id
+		LEFT JOIN %[3]s u ON u.id = %[1]s
 		WHERE ul.created_at >= $1 AND ul.created_at < $2
-	`
+	`, identityColumn, labelColumn, table)
 	args := []any{startTime, endTime}
 
 	if dim.GroupID > 0 {
@@ -683,7 +702,7 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 	case "total_tokens", "input_tokens", "output_tokens", "cache_tokens", "requests", "cost", "actual_cost":
 		orderBy = dim.SortBy
 	}
-	query += " GROUP BY ul.user_id, u.email ORDER BY " + orderBy + " DESC"
+	query += " GROUP BY " + identityColumn + ", " + labelColumn + " ORDER BY " + orderBy + " DESC"
 	if limit > 0 {
 		query += fmt.Sprintf(" LIMIT %d", limit)
 	}
@@ -702,9 +721,13 @@ func (r *usageLogRepository) GetUserBreakdownStats(ctx context.Context, startTim
 	results = make([]usagestats.UserBreakdownItem, 0)
 	for rows.Next() {
 		var row usagestats.UserBreakdownItem
+		id, label := &row.UserID, &row.Email
+		if dim.GroupBy == "api_key" {
+			id, label = &row.APIKeyID, &row.KeyName
+		}
 		if err := rows.Scan(
-			&row.UserID,
-			&row.Email,
+			id,
+			label,
 			&row.Requests,
 			&row.InputTokens,
 			&row.OutputTokens,

@@ -148,6 +148,8 @@ type UserUsageTrendPoint struct {
 
 // UserSpendingRankingItem represents a user spending ranking row.
 type UserSpendingRankingItem struct {
+	APIKeyID   int64   `json:"api_key_id,omitempty"`
+	KeyName    string  `json:"key_name,omitempty"`
 	UserID     int64   `json:"user_id"`
 	Email      string  `json:"email"`
 	Username   string  `json:"username"`
@@ -166,6 +168,8 @@ type UserSpendingRankingResponse struct {
 
 // UserBreakdownItem represents per-user usage breakdown within a dimension (group, model, endpoint).
 type UserBreakdownItem struct {
+	APIKeyID     int64   `json:"api_key_id,omitempty"`
+	KeyName      string  `json:"key_name,omitempty"`
 	UserID       int64   `json:"user_id"`
 	Email        string  `json:"email"`
 	Requests     int64   `json:"requests"`
@@ -180,6 +184,7 @@ type UserBreakdownItem struct {
 
 // UserBreakdownDimension specifies the dimension to filter for user breakdown.
 type UserBreakdownDimension struct {
+	GroupBy      string // user (default) or api_key
 	GroupID      int64  // filter by group_id (>0 to enable)
 	Model        string // filter by model name (non-empty to enable)
 	ModelType    string // "requested", "upstream", or "mapping"
@@ -199,11 +204,12 @@ type UserBreakdownDimension struct {
 
 // APIKeyUsageTrendPoint represents API key usage trend data point
 type APIKeyUsageTrendPoint struct {
-	Date     string `json:"date"`
-	APIKeyID int64  `json:"api_key_id"`
-	KeyName  string `json:"key_name"`
-	Requests int64  `json:"requests"`
-	Tokens   int64  `json:"tokens"`
+	Date       string  `json:"date"`
+	APIKeyID   int64   `json:"api_key_id"`
+	KeyName    string  `json:"key_name"`
+	Requests   int64   `json:"requests"`
+	Tokens     int64   `json:"tokens"`
+	ActualCost float64 `json:"actual_cost"`
 }
 
 // APIKeyDailyUsagePoint represents one day of usage for a single API key.

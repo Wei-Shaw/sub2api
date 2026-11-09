@@ -463,7 +463,7 @@ func (h *DashboardHandler) GetGroupStats(c *gin.Context) {
 
 // GetAPIKeyUsageTrend handles getting API key usage trend data
 // GET /api/v1/admin/dashboard/api-keys-trend
-// Query params: start_date, end_date (YYYY-MM-DD), granularity (day/hour), limit (default 5)
+// Query params: start_date, end_date (YYYY-MM-DD), granularity (day/hour), limit (default 5), metric (tokens/actual_cost)
 func (h *DashboardHandler) GetAPIKeyUsageTrend(c *gin.Context) {
 	startTime, endTime := parseTimeRange(c)
 	granularity := c.DefaultQuery("granularity", "day")
@@ -473,7 +473,11 @@ func (h *DashboardHandler) GetAPIKeyUsageTrend(c *gin.Context) {
 		limit = 5
 	}
 
-	trend, hit, err := h.getAPIKeyUsageTrendCached(c.Request.Context(), startTime, endTime, granularity, limit)
+	metric := c.DefaultQuery("metric", "tokens")
+	if metric != "tokens" && metric != "actual_cost" {
+		metric = "tokens"
+	}
+	trend, hit, err := h.getAPIKeyUsageTrendCached(c.Request.Context(), startTime, endTime, granularity, limit, metric)
 	if err != nil {
 		response.Error(c, 500, "Failed to get API key usage trend")
 		return
@@ -541,18 +545,25 @@ func parseRankingLimit(raw string) int {
 
 // GetUserSpendingRanking handles getting user spending ranking data.
 // GET /api/v1/admin/dashboard/users-ranking
+// Optional group_by=api_key groups by key instead of user; totals retain the same scope.
 func (h *DashboardHandler) GetUserSpendingRanking(c *gin.Context) {
 	startTime, endTime := parseTimeRange(c)
 	limit := parseRankingLimit(c.DefaultQuery("limit", "12"))
+	groupBy := c.DefaultQuery("group_by", "user")
+	if groupBy != "api_key" {
+		groupBy = "user"
+	}
 
 	keyRaw, _ := json.Marshal(struct {
-		Start string `json:"start"`
-		End   string `json:"end"`
-		Limit int    `json:"limit"`
+		Start   string `json:"start"`
+		End     string `json:"end"`
+		Limit   int    `json:"limit"`
+		GroupBy string `json:"group_by"`
 	}{
-		Start: startTime.UTC().Format(time.RFC3339),
-		End:   endTime.UTC().Format(time.RFC3339),
-		Limit: limit,
+		Start:   startTime.UTC().Format(time.RFC3339),
+		End:     endTime.UTC().Format(time.RFC3339),
+		Limit:   limit,
+		GroupBy: groupBy,
 	})
 	cacheKey := string(keyRaw)
 	if cached, ok := dashboardUsersRankingCache.Get(cacheKey); ok {
@@ -561,7 +572,7 @@ func (h *DashboardHandler) GetUserSpendingRanking(c *gin.Context) {
 		return
 	}
 
-	ranking, err := h.dashboardService.GetUserSpendingRanking(c.Request.Context(), startTime, endTime, limit)
+	ranking, err := h.dashboardService.GetUserSpendingRanking(c.Request.Context(), startTime, endTime, limit, groupBy)
 	if err != nil {
 		response.Error(c, 500, "Failed to get user spending ranking")
 		return
@@ -670,11 +681,11 @@ func (h *DashboardHandler) GetBatchAPIKeysUsage(c *gin.Context) {
 
 // GetUserBreakdown handles getting per-user usage breakdown within a dimension.
 // GET /api/v1/admin/dashboard/user-breakdown
-// Query params: start_date, end_date, group_id, model, endpoint, endpoint_type, limit
+// Query params: start_date, end_date, group_id, model, endpoint, endpoint_type, limit, group_by (user/api_key)
 func (h *DashboardHandler) GetUserBreakdown(c *gin.Context) {
 	startTime, endTime := parseTimeRange(c)
 
-	dim := usagestats.UserBreakdownDimension{}
+	dim := usagestats.UserBreakdownDimension{GroupBy: c.Query("group_by")}
 	if v := c.Query("group_id"); v != "" {
 		if id, err := strconv.ParseInt(v, 10, 64); err == nil {
 			dim.GroupID = id

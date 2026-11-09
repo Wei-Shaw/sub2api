@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 	"reflect"
+	"regexp"
 	"testing"
 	"time"
 
@@ -831,7 +832,7 @@ func TestUsageLogRepositoryGetUserSpendingRanking(t *testing.T) {
 		WithArgs(start, end, 12).
 		WillReturnRows(rows)
 
-	got, err := repo.GetUserSpendingRanking(context.Background(), start, end, 12)
+	got, err := repo.GetUserSpendingRanking(context.Background(), start, end, 12, "user")
 	require.NoError(t, err)
 	require.Equal(t, &usagestats.UserSpendingRankingResponse{
 		Ranking: []usagestats.UserSpendingRankingItem{
@@ -1174,4 +1175,26 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 		require.Equal(t, "priority", *log.ServiceTier)
 	})
 
+}
+
+func TestUsageLogRepositoryGetKeySpendingRanking(t *testing.T) {
+	db, mock := newSQLMock(t)
+	repo := &usageLogRepository{sql: db}
+	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	mock.ExpectQuery(regexp.QuoteMeta("GROUP BY u.api_key_id, us.email, k.name")).
+		WithArgs(start, end, 12).
+		WillReturnRows(sqlmock.NewRows([]string{"id", "email", "name", "cost", "requests", "tokens", "total_cost", "total_requests", "total_tokens"}).
+			AddRow(9, "owner@test.com", "shared", 4, 2, 30, 10, 5, 100).
+			AddRow(10, "owner@test.com", "shared", 3, 1, 20, 10, 5, 100))
+	got, err := repo.GetUserSpendingRanking(context.Background(), start, end, 12, "api_key")
+	require.NoError(t, err)
+	require.Len(t, got.Ranking, 2)
+	require.Equal(t, int64(9), got.Ranking[0].APIKeyID)
+	require.Equal(t, int64(10), got.Ranking[1].APIKeyID)
+	require.Zero(t, got.Ranking[0].UserID)
+	require.Equal(t, "shared", got.Ranking[0].KeyName)
+	require.Equal(t, 10.0, got.TotalActualCost)
+	require.Equal(t, int64(5), got.TotalRequests)
+	require.NoError(t, mock.ExpectationsWereMet())
 }

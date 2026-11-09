@@ -10,11 +10,11 @@
       <tbody>
         <tr
           v-for="user in items"
-          :key="user.user_id"
+          :key="user.api_key_id ?? user.user_id"
           class="border-t border-gray-100/50 dark:border-dark-700/50"
         >
-          <td class="max-w-[120px] truncate py-1 pl-6 text-gray-600 dark:text-gray-300" :title="user.email">
-            {{ user.email || `User #${user.user_id}` }}
+          <td class="max-w-[120px] truncate py-1 pl-6 text-gray-600 dark:text-gray-300" :title="getLabel(user)">
+            {{ getLabel(user) }}
           </td>
           <td class="py-1 text-right text-gray-500 dark:text-gray-400">
             {{ user.requests.toLocaleString() }}
@@ -53,6 +53,10 @@ const props = withDefaults(defineProps<{
   loading: false,
   showAccountCost: true,
 })
+
+const getLabel = (item: UserBreakdownItem): string => item.api_key_id
+  ? `${item.key_name?.trim() || t('keys.apiKey')} (#${item.api_key_id})`
+  : item.email || `User #${item.user_id}`
 
 const showAccountCost = computed(() => props.showAccountCost)
 

@@ -50,6 +50,8 @@ export default {
       accountCost: 'Cost',
       noDataAvailable: 'No data available',
       recentUsage: 'Recent Usage',
+      apiKeySpendingRanking: 'API Key Spending Ranking',
+      usageDimension: 'Usage dimension',
       actualSpending: 'Actual spending ($)',
       viewModelDistribution: 'Model Distribution',
       viewSpendingRanking: 'User Spending Ranking',
