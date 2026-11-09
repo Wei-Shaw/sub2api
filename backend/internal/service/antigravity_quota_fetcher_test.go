@@ -555,3 +555,131 @@ func TestExtractValidationURL(t *testing.T) {
 		})
 	}
 }
+
+func TestFetchQuota_PaidPlanUsesDailyAndParsesNonZeroQuota(t *testing.T) {
+	// daily 返回真实有消耗的数据（5h 剩余 0.8 -> 使用率 20%，weekly 剩余 0.75 -> 使用率 25%）
+	dailySummary := `{
+		"groups": [
+			{"buckets": [
+				{"bucketId": "gemini-5h", "window": "5h", "remainingFraction": 0.8, "resetTime": "2026-11-10T12:00:00Z"},
+				{"bucketId": "gemini-weekly", "window": "weekly", "remainingFraction": 0.75, "resetTime": "2026-11-16T12:00:00Z"}
+			], "displayName": "Gemini Models"}
+		]
+	}`
+	dailyModels := `{
+		"models": {
+			"gemini-2.5-pro": {
+				"quotaInfo": {"remainingFraction": 0.8, "resetTime": "2026-11-10T12:00:00Z"}
+			}
+		}
+	}`
+
+	// prod 返回未消耗的数据（remainingFraction 全部为 1.0）
+	prodSummary := `{
+		"groups": [
+			{"buckets": [
+				{"bucketId": "gemini-5h", "window": "5h", "remainingFraction": 1.0, "resetTime": "2026-11-10T12:00:00Z"},
+				{"bucketId": "gemini-weekly", "window": "weekly", "remainingFraction": 1.0, "resetTime": "2026-11-16T12:00:00Z"}
+			], "displayName": "Gemini Models"}
+		]
+	}`
+	prodModels := `{
+		"models": {
+			"gemini-2.5-pro": {
+				"quotaInfo": {"remainingFraction": 1.0, "resetTime": "2026-11-10T12:00:00Z"}
+			}
+		}
+	}`
+
+	dailyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1internal:fetchAvailableModels":
+			_, _ = w.Write([]byte(dailyModels))
+		case "/v1internal:retrieveUserQuotaSummary":
+			_, _ = w.Write([]byte(dailySummary))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer dailyServer.Close()
+
+	prodServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/v1internal:fetchAvailableModels":
+			_, _ = w.Write([]byte(prodModels))
+		case "/v1internal:retrieveUserQuotaSummary":
+			_, _ = w.Write([]byte(prodSummary))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer prodServer.Close()
+
+	oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
+	oldAvailability := antigravity.DefaultURLAvailability
+	t.Cleanup(func() {
+		antigravity.BaseURLs = oldBaseURLs
+		antigravity.DefaultURLAvailability = oldAvailability
+	})
+	// BaseURLs[0] 为 prod，BaseURLs[1] 为 daily
+	antigravity.BaseURLs = []string{prodServer.URL, dailyServer.URL}
+	antigravity.DefaultURLAvailability = antigravity.NewURLAvailability(time.Minute)
+
+	cfg := &config.Config{}
+	fetcher := NewAntigravityQuotaFetcher(nil, cfg)
+
+	// 1. 付费账号（Pro）：应当优先使用 dailyServer，获取到 20% / 25% 的使用率
+	paidAccount := &Account{
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "paid-token",
+			"project_id":   "project-1",
+			"plan_type":    "Pro",
+		},
+	}
+	res, err := fetcher.FetchQuota(context.Background(), paidAccount, "")
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.NotNil(t, res.UsageInfo)
+
+	// 校验五小时兼容进度
+	require.NotNil(t, res.UsageInfo.FiveHour)
+	require.InDelta(t, 20.0, res.UsageInfo.FiveHour.Utilization, 0.01)
+
+	// 校验 QuotaGroups
+	require.Len(t, res.UsageInfo.AntigravityQuotaGroups, 1)
+	geminiGroup := res.UsageInfo.AntigravityQuotaGroups[0]
+	require.Equal(t, "gemini", geminiGroup.Key)
+	require.Len(t, geminiGroup.Windows, 2)
+	require.Equal(t, "5h", geminiGroup.Windows[0].Window)
+	require.InDelta(t, 20.0, geminiGroup.Windows[0].Utilization, 0.01)
+	require.Equal(t, "weekly", geminiGroup.Windows[1].Window)
+	require.InDelta(t, 25.0, geminiGroup.Windows[1].Utilization, 0.01)
+
+	// 2. 免费账号：应当使用 prodServer，获取到 0% 的使用率
+	freeAccount := &Account{
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "free-token",
+			"project_id":   "project-2",
+		},
+	}
+	resFree, err := fetcher.FetchQuota(context.Background(), freeAccount, "")
+	require.NoError(t, err)
+	require.NotNil(t, resFree)
+	require.NotNil(t, resFree.UsageInfo)
+
+	require.NotNil(t, resFree.UsageInfo.FiveHour)
+	require.InDelta(t, 0.0, resFree.UsageInfo.FiveHour.Utilization, 0.01)
+
+	require.Len(t, resFree.UsageInfo.AntigravityQuotaGroups, 1)
+	freeGeminiGroup := resFree.UsageInfo.AntigravityQuotaGroups[0]
+	require.Equal(t, "gemini", freeGeminiGroup.Key)
+	require.Len(t, freeGeminiGroup.Windows, 2)
+	require.Equal(t, "5h", freeGeminiGroup.Windows[0].Window)
+	require.InDelta(t, 0.0, freeGeminiGroup.Windows[0].Utilization, 0.01)
+	require.Equal(t, "weekly", freeGeminiGroup.Windows[1].Window)
+	require.InDelta(t, 0.0, freeGeminiGroup.Windows[1].Utilization, 0.01)
+}

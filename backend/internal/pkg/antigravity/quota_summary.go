@@ -41,23 +41,32 @@ type QuotaSummaryResponse struct {
 	Description string              `json:"description,omitempty"`
 }
 
-// RetrieveUserQuotaSummary reads the account's per-group 5-hour and weekly quota windows,
-// falling back across BaseURLs like FetchAvailableModels.
-func (c *Client) RetrieveUserQuotaSummary(ctx context.Context, accessToken, projectID string) (*QuotaSummaryResponse, error) {
+// RetrieveUserQuotaSummaryWithURLs reads the account's per-group 5-hour and weekly quota windows,
+// trying each supplied base URL in order and falling back on retryable statuses.
+func (c *Client) RetrieveUserQuotaSummaryWithURLs(ctx context.Context, baseURLs []string, accessToken, projectID string) (*QuotaSummaryResponse, error) {
+	if len(baseURLs) == 0 {
+		return nil, errors.New("retrieveUserQuotaSummary base URLs are required")
+	}
 	var lastErr error
-	for urlIdx, baseURL := range BaseURLs {
+	for urlIdx, baseURL := range baseURLs {
 		summary, status, err := c.retrieveUserQuotaSummary(ctx, baseURL, accessToken, projectID)
 		if err == nil {
 			DefaultURLAvailability.MarkSuccess(baseURL)
 			return summary, nil
 		}
 		lastErr = err
-		if urlIdx < len(BaseURLs)-1 && shouldFallbackToNextURL(nil, status) {
+		if urlIdx < len(baseURLs)-1 && shouldFallbackToNextURL(nil, status) {
 			continue
 		}
 		return nil, err
 	}
 	return nil, lastErr
+}
+
+// RetrieveUserQuotaSummary reads the account's per-group 5-hour and weekly quota windows,
+// falling back across BaseURLs like FetchAvailableModels.
+func (c *Client) RetrieveUserQuotaSummary(ctx context.Context, accessToken, projectID string) (*QuotaSummaryResponse, error) {
+	return c.RetrieveUserQuotaSummaryWithURLs(ctx, BaseURLs, accessToken, projectID)
 }
 
 // RetrieveUserQuotaSummaryFromURL reads the quota summary from one endpoint, without fallback.
