@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -22,15 +24,8 @@ func TestRequestBodyLimitTooLarge(t *testing.T) {
 	router.POST("/test", func(c *gin.Context) {
 		_, err := io.ReadAll(c.Request.Body)
 		if err != nil {
-			if maxErr, ok := extractMaxBytesError(err); ok {
-				c.JSON(http.StatusRequestEntityTooLarge, gin.H{
-					"error": buildBodyTooLargeMessage(maxErr.Limit),
-				})
-				return
-			}
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "read_failed",
-			})
+			status, message := requestBodyReadFailure(nil, c.Request, err)
+			c.JSON(status, gin.H{"error": message})
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"ok": true})
@@ -50,10 +45,15 @@ func TestHandleRequestBodyReadErrorCancellation(t *testing.T) {
 		name      string
 		cancelled bool
 		committed bool
+		readErr   error
+		handled   bool
 	}{
-		{name: "cancelled", cancelled: true},
-		{name: "cancelled_after_commit", cancelled: true, committed: true},
+		{name: "cancelled", cancelled: true, handled: true},
+		{name: "cancelled_after_commit", cancelled: true, committed: true, handled: true},
 		{name: "ordinary_read_error"},
+		// An HTTP/1 read deadline also cancels the request context; the
+		// timeout must reach requestBodyReadFailure (408).
+		{name: "read_timeout_with_cancelled_context", cancelled: true, readErr: &net.OpError{Op: "read", Net: "tcp", Err: os.ErrDeadlineExceeded}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
@@ -69,10 +69,14 @@ func TestHandleRequestBodyReadErrorCancellation(t *testing.T) {
 				require.NoError(t, err)
 			}
 			bodyBefore := recorder.Body.String()
-			require.Equal(t, tc.cancelled, handleRequestBodyReadError(c, io.ErrUnexpectedEOF))
-			require.Equal(t, tc.cancelled, c.IsAborted())
+			readErr := tc.readErr
+			if readErr == nil {
+				readErr = io.ErrUnexpectedEOF
+			}
+			require.Equal(t, tc.handled, handleRequestBodyReadError(c, nil, readErr))
+			require.Equal(t, tc.handled, c.IsAborted())
 			status := http.StatusOK
-			if tc.cancelled && !tc.committed {
+			if tc.handled && !tc.committed {
 				status = statusClientClosedRequest
 			}
 			require.Equal(t, status, c.Writer.Status())
