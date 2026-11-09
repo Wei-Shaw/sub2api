@@ -88,6 +88,61 @@ func TestEasyPayRefundNormalizesAPIBaseAndSendsOutTradeNoOnly(t *testing.T) {
 	}
 }
 
+func TestParseEasyPayRefundResponseSuccessCodes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		body    string
+		wantErr bool
+	}{
+		{name: "code 1", body: `{"code":1,"msg":"ok"}`, wantErr: false},
+		{name: "code string 1", body: `{"code":"1","msg":"ok"}`, wantErr: false},
+		{name: "code 0 refund success", body: `{"code":0,"msg":"退款成功"}`, wantErr: false},
+		{name: "code string 0 success", body: `{"code":"0","msg":"退款成功"}`, wantErr: false},
+		{name: "code 0 order missing", body: `{"code":0,"msg":"订单编号不存在！"}`, wantErr: true},
+		{name: "code -1", body: `{"code":-1,"msg":"退款失败"}`, wantErr: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			err := parseEasyPayRefundResponse(http.StatusOK, []byte(tt.body))
+			if tt.wantErr {
+				if err == nil {
+					t.Fatal("parseEasyPayRefundResponse returned nil, want error")
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("parseEasyPayRefundResponse: %v", err)
+			}
+		})
+	}
+}
+
+func TestEasyPayRefundSucceedsWithCodeZero(t *testing.T) {
+	t.Parallel()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"code":0,"msg":"退款成功"}`))
+	}))
+	defer server.Close()
+
+	provider := newTestEasyPay(t, server.URL+"/mapi.php")
+	resp, err := provider.Refund(context.Background(), payment.RefundRequest{
+		OrderID: "out-456",
+		Amount:  "1.50",
+	})
+	if err != nil {
+		t.Fatalf("Refund returned error: %v", err)
+	}
+	if resp == nil || resp.Status != payment.ProviderStatusSuccess {
+		t.Fatalf("Refund response = %+v, want success", resp)
+	}
+}
+
 func TestEasyPayRefundRetriesWithTradeNoWhenOutTradeNoNotFound(t *testing.T) {
 	t.Parallel()
 

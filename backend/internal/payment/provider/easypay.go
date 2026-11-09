@@ -597,7 +597,7 @@ func parseEasyPayRefundResponse(status int, body []byte) error {
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return fmt.Errorf("easypay refund non-JSON response (HTTP %d): %s", status, summary)
 	}
-	if !easyPayResponseCodeIsSuccess(resp.Code) {
+	if !easyPayRefundResponseCodeIsSuccess(resp.Code, resp.Msg) {
 		msg := strings.TrimSpace(resp.Msg)
 		if msg == "" {
 			msg = summary
@@ -605,6 +605,44 @@ func parseEasyPayRefundResponse(status int, body []byte) error {
 		return fmt.Errorf("easypay refund failed (HTTP %d): %s", status, msg)
 	}
 	return nil
+}
+
+// easyPayRefundResponseCodeIsSuccess interprets refund-act JSON codes. Most
+// gateways use code=1; some refund implementations use code=0 on success. Code=0
+// may still accompany business errors (e.g. order not found), so those messages
+// are rejected even when the numeric code is zero.
+func easyPayRefundResponseCodeIsSuccess(code any, msg string) bool {
+	if easyPayResponseCodeIsSuccess(code) {
+		return true
+	}
+	if !easyPayResponseCodeIsZero(code) {
+		return false
+	}
+	return !isEasyPayRefundFailureMessage(msg)
+}
+
+func easyPayResponseCodeIsZero(code any) bool {
+	switch v := code.(type) {
+	case float64:
+		return int(v) == 0
+	case string:
+		n, err := strconv.Atoi(strings.TrimSpace(v))
+		return err == nil && n == 0
+	default:
+		return false
+	}
+}
+
+func isEasyPayRefundFailureMessage(msg string) bool {
+	msg = strings.TrimSpace(msg)
+	if msg == "" {
+		return false
+	}
+	lower := strings.ToLower(msg)
+	return strings.Contains(msg, "订单编号不存在") ||
+		strings.Contains(msg, "订单不存在") ||
+		strings.Contains(lower, "order not found") ||
+		strings.Contains(lower, "not exist")
 }
 
 func easyPayResponseCodeIsSuccess(code any) bool {
