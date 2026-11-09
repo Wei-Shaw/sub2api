@@ -179,6 +179,11 @@
 <td><a href="https://soleapi.com/r/sub2api">SoleAPI</a> 様、本プロジェクトへのご支援ありがとうございます！SoleAPI は開発者と企業向けの AI モデルゲートウェイです。1 つの API キーで Claude、GPT、Gemini をはじめとする 30 以上の主要モデルを利用できます。OpenAI と Anthropic のプロトコルにネイティブ対応しているため、Claude Code、Codex、Cursor や既存の SDK も Base URL を変更するだけで動作します。リクエストはレイテンシと上流の稼働状況に応じてリアルタイムにルーティングされ、ミリ秒単位でバックアップチャネルへ自動フェイルオーバーします。サービス可用性は 99.99%、24 時間 365 日の技術サポートも提供しています。すべての呼び出しは 1 つの請求書にまとめられ、リクエストごとの token 数と費用の内訳をいつでも確認できます。本プロジェクトの<a href="https://soleapi.com/r/sub2api">紹介リンク</a>から登録すると無料トライアルクレジットを受け取れ、友人を招待してチャージしてもらうと継続的にキャッシュバックを獲得できます！</td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://massivetokens.com/signup?ref=SUB2API"><img src="assets/partners/logos/massivetokens.jpg" alt="Massive Tokens" width="150"></a></td>
+<td><a href="https://massivetokens.com/signup?ref=SUB2API">Massive Tokens</a> は、企業や大量に利用する開発者向けに、Claude API を token 単位の卸売価格で提供しています。標準の Anthropic Messages API を提供しているため、Claude Code、Sub2API、LiteLLM、One API とコードを変更せずに連携できます。招待コード SUB2API で登録すると、すべての呼び出しが 5% オフになります。</td>
+</tr>
+
 </table>
 
 </details>

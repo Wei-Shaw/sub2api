@@ -57,11 +57,7 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 				},
 			})
 		case "reasoning":
-			for _, s := range item.Summary {
-				if s.Type == "summary_text" && s.Text != "" {
-					reasoningText += s.Text
-				}
-			}
+			reasoningText += responsesReasoningText(item)
 		case "web_search_call":
 			// silently consumed — results already incorporated into text output
 		}
