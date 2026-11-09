@@ -51,6 +51,106 @@ const (
 	maxProfitVetoAttempts = 10
 )
 
+const (
+	// maxOpenAIPoolRecoveryRounds 换号把可选账号耗尽后，针对请求级瞬时故障（上游过载、
+	// 输出前的 5xx / server_error）回到已失败账号再试的最大轮数。上游过载按波次出现，
+	// 单账号或小池在一个波次内连续失败，此时换号无号可换，直接返回错误会让客户端
+	// 中断；短暂等待后重试通常即可成功。
+	maxOpenAIPoolRecoveryRounds = 3
+	// openAIPoolRecoveryBaseDelay 恢复轮的基础等待，按轮次线性递增；上游给出
+	// retry-after 时优先使用，两者都受 maxRequestScopedRetryDelay 封顶。
+	openAIPoolRecoveryBaseDelay = 2 * time.Second
+)
+
+// openAISelectionRecovery 是 OpenAI 选号失败时的请求级有界恢复状态。
+//
+// 两步恢复，均只在选号失败时触发，不影响正常路径：
+//  1. 首次失败时以 WithOpenAIModelTransientBlockBypass 重新选号一次：「账号+模型」
+//     瞬时冷却只是调度偏好，不能把整池候选全部挡掉而返回「无可用账号」；
+//  2. 已换号且最后一次失败属于瞬时故障时，等待后清空本请求的排除集合重试，
+//     最多 maxOpenAIPoolRecoveryRounds 轮。凭证失效、429 限额与 4xx 不在恢复范围内。
+//
+// 能走到这里说明此前的失败都已被确认可以 failover（未写出语义输出），
+// 因此重新尝试与普通换号同样安全。
+type openAISelectionRecovery struct {
+	modelCooldownBypassed bool
+	poolRounds            int
+}
+
+// next 返回 true 表示调用方应 continue 重新选号；false 表示按原有逻辑返回错误。
+func (r *openAISelectionRecovery) next(c *gin.Context, failedAccountIDs map[int64]struct{}, lastFailoverErr *service.UpstreamFailoverError, reqLog *zap.Logger) bool {
+	if r == nil || c == nil || c.Request == nil {
+		return false
+	}
+	if !r.modelCooldownBypassed {
+		r.modelCooldownBypassed = true
+		c.Request = c.Request.WithContext(service.WithOpenAIModelTransientBlockBypass(c.Request.Context()))
+		if reqLog != nil {
+			reqLog.Info("openai.account_select_retry_ignoring_model_cooldown",
+				zap.Int("excluded_account_count", len(failedAccountIDs)),
+			)
+		}
+		return true
+	}
+	if len(failedAccountIDs) == 0 || r.poolRounds >= maxOpenAIPoolRecoveryRounds || !openAIPoolRecoveryEligible(lastFailoverErr) {
+		return false
+	}
+	r.poolRounds++
+	delay := openAIPoolRecoveryDelay(lastFailoverErr, r.poolRounds)
+	if reqLog != nil {
+		reqLog.Warn("openai.pool_recovery_retry",
+			zap.Int("round", r.poolRounds),
+			zap.Int("max_rounds", maxOpenAIPoolRecoveryRounds),
+			zap.Int("excluded_account_count", len(failedAccountIDs)),
+			zap.Int("upstream_status", lastFailoverErr.StatusCode),
+			zap.Duration("retry_delay", delay),
+		)
+	}
+	select {
+	case <-c.Request.Context().Done():
+		return false
+	case <-time.After(delay):
+	}
+	for id := range failedAccountIDs {
+		delete(failedAccountIDs, id)
+	}
+	return true
+}
+
+// openAIPoolRecoveryEligible 判断最后一次 failover 错误是否值得在耗尽可选账号后回到
+// 已失败账号重试：仅限与账号无关的请求级降载，或上游 5xx 类瞬时故障。
+func openAIPoolRecoveryEligible(failoverErr *service.UpstreamFailoverError) bool {
+	if failoverErr == nil || failoverErr.IsCredentialFailure() {
+		return false
+	}
+	if failoverErr.RequestScopedTransient {
+		return true
+	}
+	switch failoverErr.StatusCode {
+	case http.StatusInternalServerError, http.StatusBadGateway, http.StatusServiceUnavailable,
+		http.StatusGatewayTimeout:
+		return true
+	}
+	return false
+}
+
+func openAIPoolRecoveryDelay(failoverErr *service.UpstreamFailoverError, round int) time.Duration {
+	delay := time.Duration(0)
+	if failoverErr != nil {
+		delay = failoverErr.SameAccountRetryDelay
+	}
+	if delay <= 0 {
+		if round < 1 {
+			round = 1
+		}
+		delay = openAIPoolRecoveryBaseDelay * time.Duration(round)
+	}
+	if delay > maxRequestScopedRetryDelay {
+		delay = maxRequestScopedRetryDelay
+	}
+	return delay
+}
+
 // profitVetoExhaustedMessage 是利润否决次数耗尽时返回给客户端的文案。
 // 语义上等同于「无可用账号」：候选账号都不满足分组的利润约束。
 const profitVetoExhaustedMessage = "No available accounts: all candidates rejected by group profit control"
