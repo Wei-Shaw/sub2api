@@ -209,7 +209,8 @@ func TestOpenAIWSHTTPBridgeEnabled(t *testing.T) {
 	require.False(t, (&Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}).IsOpenAIWSHTTPBridgeEnabled())
 	require.False(t, (&Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_ws_http_bridge": false}}).IsOpenAIWSHTTPBridgeEnabled())
 	require.True(t, (&Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Extra: map[string]any{"openai_ws_http_bridge": true}}).IsOpenAIWSHTTPBridgeEnabled())
-	require.False(t, (&Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"openai_ws_http_bridge": true}}).IsOpenAIWSHTTPBridgeEnabled())
+	// OAuth 走 HTTP 桥是既有路径（插件路由、按大小自动桥接、http_bridge 模式），开关同样生效。
+	require.True(t, (&Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth, Extra: map[string]any{"openai_ws_http_bridge": true}}).IsOpenAIWSHTTPBridgeEnabled())
 	require.False(t, (&Account{Platform: PlatformAnthropic, Extra: map[string]any{"openai_ws_http_bridge": true}}).IsOpenAIWSHTTPBridgeEnabled())
 }
 

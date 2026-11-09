@@ -2363,9 +2363,9 @@ func (a *Account) IsOpenAIWSForceHTTPEnabled() bool {
 // 用于上游没有 WebSocket 端点的兼容供应商（DeepSeek /v1/responses 对 WS 升级
 // 返回 405）：客户端仍按 WS 接入，sub2api 在入口把帧桥接成一次 HTTP 响应请求
 // 打到上游，上游保持 HTTP。既有的按 payload 大小自动桥接只在首包超过阈值时
-// 触发，小首包场景够不到。只对 OpenAI API Key 账号生效。
+// 触发，小首包场景够不到。
 func (a *Account) IsOpenAIWSHTTPBridgeEnabled() bool {
-	if a == nil || !a.IsOpenAIApiKey() || a.Extra == nil {
+	if a == nil || !a.IsOpenAI() || a.Extra == nil {
 		return false
 	}
 	enabled, ok := a.Extra["openai_ws_http_bridge"].(bool)
