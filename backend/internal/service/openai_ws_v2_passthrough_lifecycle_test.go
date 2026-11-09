@@ -902,3 +902,35 @@ func TestPassthroughLifecycle_SecondTurnTimeoutIsNotFailoverSafe(t *testing.T) {
 		t.Fatal("second turn first semantic output was left unbounded")
 	}
 }
+
+func TestPassthroughLifecycle_CapacityShedSanitizesErrorCodeAndStripsRetryAfter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	controlCtx, cancelControl := context.WithCancelCause(context.Background())
+	defer cancelControl(context.Canceled)
+	upstream := newStagedPassthroughConn()
+	upstream.Send(`{"type":"response.created","response":{"id":"resp_overload","model":"gpt-5.1"}}`)
+	upstream.Send(`{"type":"error","error":{"code":"server_is_overloaded","headers":{"retry-after":"326","retry-after-ms":"326000"},"message":"Our servers are currently overloaded. Please try again later.","type":"service_unavailable_error"},"sequence_number":3}`)
+	upstream.Send(`{"type":"response.failed","response":{"id":"resp_overload","model":"gpt-5.1","status":"failed","error":{"code":"server_is_overloaded","headers":{"retry-after":"326","retry-after-ms":"326000"},"message":"Our servers are currently overloaded. Please try again later."}},"sequence_number":4}`)
+	server, _ := startPassthroughLifecycleServer(t, controlCtx, newPassthroughLifecycleService(passthroughLifecycleConfig(), upstream), passthroughLifecycleAccount())
+	defer server.Close()
+	clientConn := dialPassthroughLifecycleClient(t, server)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	created, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "response.created", gjson.GetBytes(created, "type").String())
+
+	errFrame, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "error", gjson.GetBytes(errFrame, "type").String())
+	require.Equal(t, "server_error", gjson.GetBytes(errFrame, "error.code").String())
+	require.False(t, gjson.GetBytes(errFrame, "error.headers").Exists())
+	require.NotContains(t, string(errFrame), "retry-after")
+
+	failedFrame, err := readPassthroughLifecycleFrame(t, clientConn, 3*time.Second)
+	require.NoError(t, err)
+	require.Equal(t, "response.failed", gjson.GetBytes(failedFrame, "type").String())
+	require.Equal(t, "server_error", gjson.GetBytes(failedFrame, "response.error.code").String())
+	require.False(t, gjson.GetBytes(failedFrame, "response.error.headers").Exists())
+	require.NotContains(t, string(failedFrame), "retry-after")
+}

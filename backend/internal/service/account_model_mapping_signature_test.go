@@ -81,6 +81,9 @@ func TestModelMappingSignature_EmptyIsZero(t *testing.T) {
 }
 
 func TestModelMappingSignature_DoesNotAllocate(t *testing.T) {
+	if runAllocationTestInSubprocess(t) {
+		return
+	}
 	mapping := map[string]any{
 		"claude-sonnet": "sonnet-a",
 		"claude-opus":   "opus-a",
