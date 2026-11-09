@@ -1,6 +1,15 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
+      <div class="flex items-center justify-end gap-3">
+        <label for="dashboard-dimension" class="text-sm font-medium text-gray-700 dark:text-gray-300">
+          {{ t('admin.dashboard.usageDimension') }}
+        </label>
+        <div class="w-36">
+          <Select id="dashboard-dimension" v-model="dimension" :options="dimensionOptions"
+            :aria-label="t('admin.dashboard.usageDimension')" @change="loadDashboardStats" />
+        </div>
+      </div>
       <!-- Loading State -->
       <div v-if="loading" class="flex items-center justify-center py-12">
         <LoadingSpinner />
@@ -78,17 +87,17 @@
           <div class="card p-4">
             <div class="flex items-center gap-3">
               <div class="rounded-lg bg-emerald-100 p-2 dark:bg-emerald-900/30">
-                <Icon name="userPlus" size="md" class="text-emerald-600 dark:text-emerald-400" :stroke-width="2" />
+                <Icon :name="dimension === 'api_key' ? 'key' : 'userPlus'" size="md" class="text-emerald-600 dark:text-emerald-400" :stroke-width="2" />
               </div>
               <div>
                 <p class="text-xs font-medium text-gray-500 dark:text-gray-400">
-                  {{ t('admin.dashboard.users') }}
+                  {{ t(dimension === 'api_key' ? 'admin.dashboard.newApiKeysToday' : 'admin.dashboard.users') }}
                 </p>
                 <p class="text-xl font-bold text-emerald-600 dark:text-emerald-400">
-                  +{{ stats.today_new_users }}
+                  +{{ dimension === 'api_key' ? stats.today_new_api_keys : stats.today_new_users }}
                 </p>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
-                  {{ t('common.total') }}: {{ formatNumber(stats.total_users) }}
+                  {{ t('common.total') }}: {{ formatNumber(dimension === 'api_key' ? stats.total_api_keys : stats.total_users) }}
                 </p>
               </div>
             </div>
@@ -209,7 +218,8 @@
                   {{ formatDuration(stats.average_duration_ms) }}
                 </p>
                 <p class="text-xs text-gray-500 dark:text-gray-400">
-                  {{ stats.active_users }} {{ t('admin.dashboard.activeUsers') }}
+                  {{ dimension === 'api_key' ? (stats.today_active_api_keys ?? '—') : stats.active_users }}
+                  {{ t(dimension === 'api_key' ? 'admin.dashboard.todayActiveApiKeys' : 'admin.dashboard.activeUsers') }}
                 </p>
               </div>
             </div>
@@ -301,6 +311,7 @@
           <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
             <ModelDistributionChart
               :model-stats="modelStats"
+              :dimension="dimension"
               :enable-ranking-view="true"
               :ranking-items="rankingItems"
               :ranking-total-actual-cost="rankingTotalActualCost"
@@ -311,28 +322,28 @@
               :ranking-error="rankingError"
               :start-date="startDate"
               :end-date="endDate"
-              @ranking-click="goToUserUsage"
+              @ranking-click="goToUsage"
             />
             <TokenUsageTrend :trend-data="trendData" :loading="chartsLoading" />
           </div>
 
-          <!-- User Usage Trend (Full Width) -->
+          <!-- Usage Trend (Full Width) -->
           <div class="card p-4">
-            <div class="mb-4 flex items-center justify-between gap-3">
+            <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
               <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('admin.dashboard.recentUsage') }} (Top 12)</h3>
               <div class="flex gap-1" role="group" :aria-label="t('admin.dashboard.recentUsage')">
                 <button v-for="metric in (['tokens', 'actual_cost'] as const)" :key="metric" type="button"
-                  class="rounded px-2 py-1 text-xs" :class="userTrendMetric === metric ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-gray-300'"
-                  :aria-pressed="userTrendMetric === metric" @click="setUserTrendMetric(metric)">
+                  class="rounded px-2 py-1 text-xs" :class="trendMetric === metric ? 'bg-blue-600 text-white' : 'text-gray-600 dark:text-gray-300'"
+                  :aria-pressed="trendMetric === metric" @click="setTrendMetric(metric)">
                   {{ t(metric === 'tokens' ? 'admin.dashboard.tokens' : 'admin.dashboard.actualSpending') }}
                 </button>
               </div>
             </div>
             <div class="h-64">
-              <div v-if="userTrendLoading" class="flex h-full items-center justify-center">
+              <div v-if="entityTrendLoading" class="flex h-full items-center justify-center">
                 <LoadingSpinner size="md" />
               </div>
-              <Line v-else-if="userTrendChartData" :data="userTrendChartData" :options="lineOptions" />
+              <Line v-else-if="entityTrendChartData" :data="entityTrendChartData" :options="lineOptions" />
               <div
                 v-else
                 class="flex h-full items-center justify-center text-sm text-gray-500 dark:text-gray-400"
@@ -357,9 +368,11 @@ const { t } = useI18n()
 import { adminAPI } from '@/api/admin'
 import type {
   DashboardStats,
+  DashboardDimension,
   TrendDataPoint,
   ModelStat,
   UserUsageTrendPoint,
+  ApiKeyUsageTrendPoint,
   UserSpendingRankingItem
 } from '@/types'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -400,21 +413,28 @@ const { canUseBatchImage, refreshBatchImageAccess } = useBatchImageAccess()
 const stats = ref<DashboardStats | null>(null)
 const loading = ref(false)
 const chartsLoading = ref(false)
-const userTrendLoading = ref(false)
+const entityTrendLoading = ref(false)
 const rankingLoading = ref(false)
 const rankingError = ref(false)
 
 // Chart data
 const trendData = ref<TrendDataPoint[]>([])
 const modelStats = ref<ModelStat[]>([])
-const userTrend = ref<UserUsageTrendPoint[]>([])
-const userTrendMetric = ref<'tokens' | 'actual_cost'>('tokens')
+type UsageTrendPoint = UserUsageTrendPoint | ApiKeyUsageTrendPoint
+const entityTrend = ref<UsageTrendPoint[]>([])
+const dimension = ref<DashboardDimension>('user')
+const dimensionOptions = computed(() => [
+  { value: 'user', label: t('admin.dashboard.users') },
+  { value: 'api_key', label: t('admin.dashboard.apiKeys') }
+])
+const trendMetric = ref<'tokens' | 'actual_cost'>('tokens')
 const rankingItems = ref<UserSpendingRankingItem[]>([])
 const rankingTotalActualCost = ref(0)
 const rankingTotalRequests = ref(0)
 const rankingTotalTokens = ref(0)
 let chartLoadSeq = 0
-let usersTrendLoadSeq = 0
+let statsLoadSeq = 0
+let entityTrendLoadSeq = 0
 let rankingLoadSeq = 0
 const rankingLimit = 12
 
@@ -455,7 +475,7 @@ const chartColors = computed(() => ({
   grid: isDarkMode.value ? '#374151' : '#e5e7eb'
 }))
 
-// Line chart options (for user trend chart)
+// Line chart options
 const lineOptions = computed(() => ({
   responsive: true,
   maintainAspectRatio: false,
@@ -484,7 +504,7 @@ const lineOptions = computed(() => ({
       },
       callbacks: {
         label: (context: any) => {
-          return `${context.dataset.label}: ${formatUserTrendValue(Number(context.raw))}`
+          return `${context.dataset.label}: ${formatTrendValue(Number(context.raw))}`
         }
       }
     }
@@ -510,17 +530,20 @@ const lineOptions = computed(() => ({
         font: {
           size: 10
         },
-        callback: (value: string | number) => formatUserTrendValue(Number(value))
+        callback: (value: string | number) => formatTrendValue(Number(value))
       }
     }
   }
 }))
 
-// User trend chart data
-const userTrendChartData = computed(() => {
-  if (!userTrend.value?.length) return null
+// Usage trend chart data
+const entityTrendChartData = computed(() => {
+  if (!entityTrend.value?.length) return null
 
-  const getDisplayName = (point: UserUsageTrendPoint): string => {
+  const getDisplayName = (point: UsageTrendPoint): string => {
+    if ('api_key_id' in point) {
+      return `${point.key_name.trim() || t('keys.apiKey')} (#${point.api_key_id})`
+    }
     const username = point.username?.trim()
     if (username) {
       return username
@@ -534,17 +557,17 @@ const userTrendChartData = computed(() => {
     return t('admin.redeem.userPrefix', { id: point.user_id })
   }
 
-  // Group by user_id to avoid merging different users with the same display name
-  const userGroups = new Map<number, { name: string; data: Map<string, number> }>()
+  // Group by ID to keep entities with the same display name separate
+  const entityGroups = new Map<number, { name: string; data: Map<string, number> }>()
   const allDates = new Set<string>()
 
-  userTrend.value.forEach((point) => {
+  entityTrend.value.forEach((point) => {
     allDates.add(point.date)
-    const key = point.user_id
-    if (!userGroups.has(key)) {
-      userGroups.set(key, { name: getDisplayName(point), data: new Map() })
+    const key = 'api_key_id' in point ? point.api_key_id : point.user_id
+    if (!entityGroups.has(key)) {
+      entityGroups.set(key, { name: getDisplayName(point), data: new Map() })
     }
-    userGroups.get(key)!.data.set(point.date, userTrendMetric.value === 'tokens' ? point.tokens : point.actual_cost)
+    entityGroups.get(key)!.data.set(point.date, trendMetric.value === 'tokens' ? point.tokens : point.actual_cost)
   })
 
   const sortedDates = Array.from(allDates).sort()
@@ -563,7 +586,7 @@ const userTrendChartData = computed(() => {
     '#a855f7'
   ]
 
-  const datasets = Array.from(userGroups.values()).map((group, idx) => ({
+  const datasets = Array.from(entityGroups.values()).map((group, idx) => ({
     label: group.name,
     data: sortedDates.map((date) => group.data.get(date) || 0),
     borderColor: colors[idx % colors.length],
@@ -579,8 +602,8 @@ const userTrendChartData = computed(() => {
 })
 
 // Format helpers
-const formatUserTrendValue = (value: number): string =>
-  userTrendMetric.value === 'tokens' ? formatTokens(value) : `$${formatCost(value)}`
+const formatTrendValue = (value: number): string =>
+  trendMetric.value === 'tokens' ? formatTokens(value) : `$${formatCost(value)}`
 
 const formatTokens = (value: number | undefined): string => {
   if (value === undefined || value === null) return '0'
@@ -622,11 +645,11 @@ const formatDuration = (ms: number): string => {
   return `${Math.round(ms)}ms`
 }
 
-const goToUserUsage = (item: UserSpendingRankingItem) => {
+const goToUsage = (item: UserSpendingRankingItem) => {
   void router.push({
     path: '/admin/usage',
     query: {
-      user_id: String(item.user_id),
+      ...(item.api_key_id ? { api_key_id: String(item.api_key_id) } : { user_id: String(item.user_id) }),
       start_date: startDate.value,
       end_date: endDate.value
     }
@@ -657,6 +680,7 @@ const onDateRangeChange = (range: {
 // Load data
 const loadDashboardSnapshot = async (includeStats: boolean) => {
   const currentSeq = ++chartLoadSeq
+  const currentStatsSeq = includeStats ? ++statsLoadSeq : statsLoadSeq
   if (includeStats && !stats.value) {
     loading.value = true
   }
@@ -667,19 +691,20 @@ const loadDashboardSnapshot = async (includeStats: boolean) => {
       end_date: endDate.value,
       granularity: granularity.value,
       include_stats: includeStats,
+      ...(dimension.value === 'api_key' ? { include_api_key_activity: true } : {}),
       include_trend: true,
       include_model_stats: true,
       include_group_stats: false,
       include_users_trend: false
     })
-    if (currentSeq !== chartLoadSeq) return
-    if (includeStats && response.stats) {
+    if (includeStats && response.stats && currentStatsSeq === statsLoadSeq) {
       stats.value = response.stats
     }
+    if (currentSeq !== chartLoadSeq) return
     trendData.value = response.trend || []
     modelStats.value = response.models || []
   } catch (error) {
-    if (currentSeq !== chartLoadSeq) return
+    if (currentSeq !== chartLoadSeq && (!includeStats || currentStatsSeq !== statsLoadSeq)) return
     appStore.showError(t('admin.dashboard.failedToLoad'))
     console.error('Error loading dashboard snapshot:', error)
   } finally {
@@ -690,33 +715,36 @@ const loadDashboardSnapshot = async (includeStats: boolean) => {
   }
 }
 
-const setUserTrendMetric = (metric: 'tokens' | 'actual_cost') => {
-  if (userTrendMetric.value === metric) return
-  userTrendMetric.value = metric
-  userTrend.value = []
-  loadUsersTrend()
+const setTrendMetric = (metric: 'tokens' | 'actual_cost') => {
+  if (trendMetric.value === metric) return
+  trendMetric.value = metric
+  entityTrend.value = []
+  loadEntityTrend()
 }
 
-const loadUsersTrend = async () => {
-  const currentSeq = ++usersTrendLoadSeq
-  userTrendLoading.value = true
+const loadEntityTrend = async () => {
+  const currentSeq = ++entityTrendLoadSeq
+  entityTrendLoading.value = true
   try {
-    const response = await adminAPI.dashboard.getUserUsageTrend({
+    const getTrend = dimension.value === 'api_key'
+      ? adminAPI.dashboard.getApiKeyUsageTrend
+      : adminAPI.dashboard.getUserUsageTrend
+    const response = await getTrend({
       start_date: startDate.value,
       end_date: endDate.value,
       granularity: granularity.value,
       limit: 12,
-      metric: userTrendMetric.value
+      metric: trendMetric.value
     })
-    if (currentSeq !== usersTrendLoadSeq) return
-    userTrend.value = response.trend || []
+    if (currentSeq !== entityTrendLoadSeq) return
+    entityTrend.value = response.trend || []
   } catch (error) {
-    if (currentSeq !== usersTrendLoadSeq) return
-    console.error('Error loading users trend:', error)
-    userTrend.value = []
+    if (currentSeq !== entityTrendLoadSeq) return
+    console.error('Error loading usage trend:', error)
+    entityTrend.value = []
   } finally {
-    if (currentSeq === usersTrendLoadSeq) {
-      userTrendLoading.value = false
+    if (currentSeq === entityTrendLoadSeq) {
+      entityTrendLoading.value = false
     }
   }
 }
@@ -729,7 +757,8 @@ const loadUserSpendingRanking = async () => {
     const response = await adminAPI.dashboard.getUserSpendingRanking({
       start_date: startDate.value,
       end_date: endDate.value,
-      limit: rankingLimit
+      limit: rankingLimit,
+      ...(dimension.value === 'api_key' ? { group_by: 'api_key' as const } : {})
     })
     if (currentSeq !== rankingLoadSeq) return
     rankingItems.value = response.ranking || []
@@ -754,7 +783,7 @@ const loadUserSpendingRanking = async () => {
 const loadDashboardStats = async () => {
   await Promise.all([
     loadDashboardSnapshot(true),
-    loadUsersTrend(),
+    loadEntityTrend(),
     loadUserSpendingRanking()
   ])
 }
@@ -762,7 +791,7 @@ const loadDashboardStats = async () => {
 const loadChartData = async () => {
   await Promise.all([
     loadDashboardSnapshot(false),
-    loadUsersTrend(),
+    loadEntityTrend(),
     loadUserSpendingRanking()
   ])
 }

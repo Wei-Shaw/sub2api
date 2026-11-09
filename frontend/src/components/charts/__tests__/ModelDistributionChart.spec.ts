@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 
 import ModelDistributionChart from '../ModelDistributionChart.vue'
 
+const { getUserBreakdown } = vi.hoisted(() => ({ getUserBreakdown: vi.fn() }))
+vi.mock('@/api/admin/dashboard', () => ({ getUserBreakdown }))
+
 const messages: Record<string, string> = {
+  'admin.dashboard.apiKeySpendingRanking': 'API Key Spending Ranking',
+  'keys.apiKey': 'API Key',
   'admin.dashboard.modelDistribution': 'Model Distribution',
   'admin.dashboard.spendingRankingTitle': 'User Spending Ranking',
   'admin.dashboard.viewModelDistribution': 'Model Distribution',
@@ -198,4 +203,63 @@ describe('ModelDistributionChart', () => {
     expect(rows[3].text()).toContain('400')
     expect(rows[3].text()).toContain('$10.00')
   })
+
+  it('uses key identifiers and keeps the global remainder in key ranking mode', async () => {
+    const key = { user_id: 0, api_key_id: 7, key_name: 'shared', email: '', username: '', actual_cost: 4, requests: 2, tokens: 30 }
+    const wrapper = mount(ModelDistributionChart, { props: {
+      modelStats: [], dimension: 'api_key', enableRankingView: true, rankingItems: [key],
+      rankingTotalActualCost: 10, rankingTotalRequests: 5, rankingTotalTokens: 100
+    } })
+    await wrapper.findAll('button').find(button => button.text() === 'API Key Spending Ranking')!.trigger('click')
+    expect(wrapper.find('thead').text()).toContain('API Key')
+    const rows = wrapper.findAll('tbody tr')
+    expect(rows[0].text()).toContain('shared (#7)')
+    expect(rows[1].text()).toContain('Others')
+    expect(rows[1].text()).toContain('$6.00')
+    await rows[0].trigger('click')
+    expect(wrapper.emitted('ranking-click')![0]).toEqual([key])
+    await rows[1].trigger('click')
+    expect(wrapper.emitted('ranking-click')).toHaveLength(1)
+    await wrapper.setProps({ dimension: 'user', rankingItems: [] })
+    expect(wrapper.find('h3').text()).toBe('User Spending Ranking')
+  })
+
+  it('switches model breakdown grouping and ignores the previous dimension response', async () => {
+    let resolveUser!: (value: any) => void
+    getUserBreakdown.mockReset().mockImplementationOnce(() => new Promise(resolve => { resolveUser = resolve }))
+    const wrapper = mount(ModelDistributionChart, { props: { modelStats, startDate: '2026-01-01', endDate: '2026-01-07' } })
+    await wrapper.find('tbody tr').trigger('click')
+    expect(getUserBreakdown.mock.lastCall![0]).not.toHaveProperty('group_by')
+    await wrapper.setProps({ dimension: 'api_key' })
+    expect(wrapper.findAll('tbody tr')).toHaveLength(2)
+    getUserBreakdown.mockResolvedValueOnce({ users: [{ user_id: 0, email: '', api_key_id: 9, key_name: 'shared', requests: 2, input_tokens: 1, output_tokens: 2, cache_tokens: 3, total_tokens: 6, actual_cost: 2, cost: 3, account_cost: 1 }] })
+    await wrapper.find('tbody tr').trigger('click')
+    await flushPromises()
+    expect(getUserBreakdown).toHaveBeenLastCalledWith(expect.objectContaining({ group_by: 'api_key', model: 'model-a', start_date: '2026-01-01', end_date: '2026-01-07' }))
+    expect(wrapper.text()).toContain('shared (#9)')
+    resolveUser({ users: [] })
+    await flushPromises()
+    expect(wrapper.text()).toContain('shared (#9)')
+  })
+
+  it('invalidates loaded and pending key breakdowns when query inputs change', async () => {
+    const users = [{ user_id: 0, email: '', api_key_id: 9, key_name: 'old-period', requests: 2, total_tokens: 6, actual_cost: 2, cost: 3, account_cost: 1 }]
+    getUserBreakdown.mockReset().mockResolvedValueOnce({ users })
+    const wrapper = mount(ModelDistributionChart, { props: { modelStats, dimension: 'api_key', startDate: '2026-01-01', endDate: '2026-01-07' } })
+    await wrapper.find('tbody tr').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('old-period (#9)')
+    await wrapper.setProps({ startDate: '2026-01-02' })
+    expect(wrapper.text()).not.toContain('old-period (#9)')
+    let resolveOld!: (value: any) => void
+    getUserBreakdown.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve }))
+    await wrapper.find('tbody tr').trigger('click')
+    expect(getUserBreakdown).toHaveBeenLastCalledWith(expect.objectContaining({ start_date: '2026-01-02' }))
+    await wrapper.setProps({ endDate: '2026-01-08', source: 'upstream', filters: { group_id: 3 } })
+    resolveOld({ users })
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('old-period (#9)')
+    wrapper.unmount()
+  })
+
 })

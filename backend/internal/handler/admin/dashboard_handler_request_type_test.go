@@ -25,6 +25,8 @@ type dashboardUsageRepoCapture struct {
 	trendMismatch         *bool
 	modelMismatch         *bool
 	groupMismatch         *bool
+	rankingGroupBy        string
+	rankingCalls          int
 	rankingLimit          int
 	ranking               []usagestats.UserSpendingRankingItem
 	rankingTotal          float64
@@ -98,8 +100,11 @@ func (s *dashboardUsageRepoCapture) GetUserSpendingRanking(
 	ctx context.Context,
 	startTime, endTime time.Time,
 	limit int,
+	groupBy string,
 ) (*usagestats.UserSpendingRankingResponse, error) {
 	s.rankingLimit = limit
+	s.rankingGroupBy = groupBy
+	s.rankingCalls++
 	return &usagestats.UserSpendingRankingResponse{
 		Ranking:         s.ranking,
 		TotalActualCost: s.rankingTotal,
@@ -323,4 +328,30 @@ func TestDashboardUsersRankingLimitAndCache(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec2.Code)
 	require.Equal(t, "hit", rec2.Header().Get("X-Snapshot-Cache"))
+}
+
+func TestDashboardRankingGroupByCache(t *testing.T) {
+	previous := dashboardUsersRankingCache
+	dashboardUsersRankingCache = newSnapshotCache(time.Minute)
+	t.Cleanup(func() { dashboardUsersRankingCache = previous })
+	repo := &dashboardUsageRepoCapture{}
+	router := newDashboardRequestTypeTestRouter(repo)
+	for _, tc := range []struct {
+		query, groupBy, cache string
+		calls                 int
+	}{
+		{"", "user", "miss", 1},
+		{"&group_by=api_key", "api_key", "miss", 2},
+		{"&group_by=api_key", "api_key", "hit", 2},
+		{"&group_by=user", "api_key", "hit", 2},
+		{"&group_by=invalid", "api_key", "hit", 2},
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/admin/dashboard/users-ranking?start_date=2026-01-01&end_date=2026-01-07"+tc.query, nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, tc.cache, rec.Header().Get("X-Snapshot-Cache"))
+		require.Equal(t, tc.groupBy, repo.rankingGroupBy)
+		require.Equal(t, tc.calls, repo.rankingCalls)
+	}
 }

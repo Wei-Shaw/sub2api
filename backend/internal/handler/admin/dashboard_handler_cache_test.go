@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
@@ -18,6 +19,8 @@ type dashboardUsageRepoCacheProbe struct {
 	service.UsageLogRepository
 	trendCalls      atomic.Int32
 	usersTrendCalls atomic.Int32
+	keyTrendMetrics []string
+	keyTrendLimit   int
 }
 
 func (r *dashboardUsageRepoCacheProbe) GetUsageTrendWithFilters(
@@ -131,5 +134,102 @@ func TestDashboardHandler_GetUserUsageTrend_UsesCache(t *testing.T) {
 		require.Equal(t, http.StatusOK, rec.Code)
 		require.Equal(t, tc.cache, rec.Header().Get("X-Snapshot-Cache"))
 		require.Equal(t, tc.calls, repo.usersTrendCalls.Load())
+	}
+}
+
+func (r *dashboardUsageRepoCacheProbe) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int, metric string) ([]usagestats.APIKeyUsageTrendPoint, error) {
+	r.keyTrendMetrics = append(r.keyTrendMetrics, metric)
+	r.keyTrendLimit = limit
+	return []usagestats.APIKeyUsageTrendPoint{{APIKeyID: 7, KeyName: "demo", Tokens: 10, ActualCost: 2.5}}, nil
+}
+
+func TestDashboardHandler_GetAPIKeyUsageTrend_MetricCache(t *testing.T) {
+	t.Cleanup(resetDashboardReadCachesForTest)
+	resetDashboardReadCachesForTest()
+	gin.SetMode(gin.TestMode)
+	repo := &dashboardUsageRepoCacheProbe{}
+	handler := NewDashboardHandler(service.NewDashboardService(repo, nil, nil, nil), nil)
+	router := gin.New()
+	router.GET("/admin/dashboard/api-keys-trend", handler.GetAPIKeyUsageTrend)
+
+	for _, tc := range []struct {
+		metric, cache string
+		calls         int
+	}{
+		{"", "miss", 1},
+		{"tokens", "hit", 1},
+		{"actual_cost", "miss", 2},
+		{"actual_cost", "hit", 2},
+		{"invalid", "hit", 2},
+	} {
+		query := ""
+		if tc.metric != "" {
+			query = "&metric=" + tc.metric
+		}
+		req := httptest.NewRequest(http.MethodGet, "/admin/dashboard/api-keys-trend?start_date=2026-03-01&end_date=2026-03-07"+query, nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, tc.cache, rec.Header().Get("X-Snapshot-Cache"))
+		require.Len(t, repo.keyTrendMetrics, tc.calls)
+		require.Equal(t, 5, repo.keyTrendLimit)
+		var body struct {
+			Data struct {
+				Trend []usagestats.APIKeyUsageTrendPoint `json:"trend"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+		require.Len(t, body.Data.Trend, 1)
+		require.Equal(t, 2.5, body.Data.Trend[0].ActualCost)
+	}
+	require.Equal(t, []string{"tokens", "actual_cost"}, repo.keyTrendMetrics)
+}
+
+type dashboardKeyActivityProbe struct {
+	service.UsageLogRepository
+	calls int
+}
+
+func (r *dashboardKeyActivityProbe) GetDashboardStats(context.Context) (*usagestats.DashboardStats, error) {
+	return &usagestats.DashboardStats{TotalUsers: 1}, nil
+}
+func (r *dashboardKeyActivityProbe) GetTodayActiveAPIKeyCount(context.Context) (int64, error) {
+	r.calls++
+	return 8, nil
+}
+func TestDashboardSnapshot_KeyActivityIsOptIn(t *testing.T) {
+	t.Cleanup(resetDashboardReadCachesForTest)
+	resetDashboardReadCachesForTest()
+	gin.SetMode(gin.TestMode)
+	repo := &dashboardKeyActivityProbe{}
+	h := NewDashboardHandler(service.NewDashboardService(repo, nil, nil, nil), nil)
+	router := gin.New()
+	router.GET("/snapshot", h.GetSnapshotV2)
+	for _, tc := range []struct {
+		extra        string
+		wantCalls    int
+		wantActivity bool
+	}{
+		{"", 0, false},
+		{"&include_api_key_activity=true", 1, true},
+		{"", 1, false},
+		{"&include_api_key_activity=true", 1, true},
+	} {
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/snapshot?start_date=2026-01-01&end_date=2026-01-07&include_trend=false&include_model_stats=false"+tc.extra, nil))
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		require.Equal(t, tc.wantCalls, repo.calls)
+		var body struct {
+			Data struct {
+				Stats map[string]any `json:"stats"`
+			} `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+		require.Equal(t, float64(1), body.Data.Stats["total_users"])
+		if tc.wantActivity {
+			require.Equal(t, float64(8), body.Data.Stats["today_active_api_keys"])
+		} else {
+			require.NotContains(t, body.Data.Stats, "today_active_api_keys")
+		}
 	}
 }

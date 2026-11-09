@@ -200,6 +200,23 @@ describe('admin UsageView route filters', () => {
     vi.useRealTimers()
   })
 
+  it('applies a dashboard key link to the list, totals and charts without a user filter', async () => {
+    routeQuery.api_key_id = '9'
+    routeQuery.start_date = '2026-01-01'
+    routeQuery.end_date = '2026-01-07'
+    const wrapper = mountRouteFilteredUsageView()
+    await flushPromises()
+    vi.advanceTimersByTime(120)
+    await flushPromises()
+    const expected = expect.objectContaining({ api_key_id: 9, user_id: undefined, start_date: '2026-01-01', end_date: '2026-01-07' })
+    expect(list).toHaveBeenCalledWith(expected, expect.anything())
+    expect(getStats).toHaveBeenCalledWith(expected)
+    expect(getSnapshotV2).toHaveBeenCalledWith(expected)
+    expect(getModelStats).toHaveBeenCalledWith(expected)
+    expect(getById).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('shows the routed user while applying user_id to usage requests', async () => {
     routeQuery.user_id = '42'
     getById.mockResolvedValue({ id: 42, email: 'route-user@test.com' })

@@ -6,6 +6,7 @@
 import { apiClient } from '../client'
 import type {
   DashboardStats,
+  DashboardDimension,
   TrendDataPoint,
   ModelStat,
   GroupStat,
@@ -130,6 +131,7 @@ export interface GroupStatsResponse {
 }
 
 export interface DashboardSnapshotV2Params extends TrendParams {
+  include_api_key_activity?: boolean
   include_stats?: boolean
   include_trend?: boolean
   include_model_stats?: boolean
@@ -165,6 +167,7 @@ export async function getGroupStats(params?: GroupStatsParams): Promise<GroupSta
 }
 
 export interface UserBreakdownParams {
+  group_by?: DashboardDimension
   start_date?: string
   end_date?: string
   group_id?: number
@@ -210,6 +213,7 @@ export async function getSnapshotV2(params?: DashboardSnapshotV2Params): Promise
 
 export interface ApiKeyTrendParams extends TrendParams {
   limit?: number
+  metric?: 'tokens' | 'actual_cost'
 }
 
 export interface ApiKeyTrendResponse {
@@ -247,6 +251,7 @@ export interface UserTrendResponse {
 
 export interface UserSpendingRankingParams
   extends Pick<TrendParams, 'start_date' | 'end_date'> {
+  group_by?: DashboardDimension
   limit?: number
 }
 

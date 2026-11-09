@@ -150,7 +150,8 @@ func (r *usageLogRepository) fillDashboardEntityStats(ctx context.Context, stats
 	apiKeyStatsQuery := `
 		SELECT
 			COUNT(*) as total_api_keys,
-			COUNT(CASE WHEN status = $1 THEN 1 END) as active_api_keys
+			COUNT(CASE WHEN status = $1 THEN 1 END) as active_api_keys,
+			COUNT(CASE WHEN created_at >= $2 THEN 1 END) as today_new_api_keys
 		FROM api_keys
 		WHERE deleted_at IS NULL
 	`
@@ -158,9 +159,10 @@ func (r *usageLogRepository) fillDashboardEntityStats(ctx context.Context, stats
 		ctx,
 		r.sql,
 		apiKeyStatsQuery,
-		[]any{service.StatusActive},
+		[]any{service.StatusActive, todayUTC},
 		&stats.TotalAPIKeys,
 		&stats.ActiveAPIKeys,
+		&stats.TodayNewAPIKeys,
 	); err != nil {
 		return err
 	}
@@ -190,6 +192,17 @@ func (r *usageLogRepository) fillDashboardEntityStats(ctx context.Context, stats
 	}
 
 	return nil
+}
+
+// GetTodayActiveAPIKeyCount is requested only by the API-key dashboard view.
+// Keep this raw-log query out of the default, preaggregated user dashboard path.
+func (r *usageLogRepository) GetTodayActiveAPIKeyCount(ctx context.Context) (int64, error) {
+	today := timezone.Today()
+	var count int64
+	err := scanSingleRow(ctx, r.sql,
+		"SELECT COUNT(DISTINCT api_key_id) FROM usage_logs WHERE created_at >= $1 AND created_at < $2",
+		[]any{today, today.AddDate(0, 0, 1)}, &count)
+	return count, err
 }
 
 func (r *usageLogRepository) fillDashboardUsageStatsAggregated(ctx context.Context, stats *DashboardStats, todayUTC, now time.Time) error {

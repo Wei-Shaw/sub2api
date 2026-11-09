@@ -384,8 +384,12 @@ func parseStatsUpdatedAt(raw string) time.Time {
 	return parsed.UTC()
 }
 
-func (s *DashboardService) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int) ([]usagestats.APIKeyUsageTrendPoint, error) {
-	trend, err := s.usageRepo.GetAPIKeyUsageTrend(ctx, startTime, endTime, granularity, limit)
+func (s *DashboardService) GetTodayActiveAPIKeyCount(ctx context.Context) (int64, error) {
+	return s.usageRepo.GetTodayActiveAPIKeyCount(ctx)
+}
+
+func (s *DashboardService) GetAPIKeyUsageTrend(ctx context.Context, startTime, endTime time.Time, granularity string, limit int, metric string) ([]usagestats.APIKeyUsageTrendPoint, error) {
+	trend, err := s.usageRepo.GetAPIKeyUsageTrend(ctx, startTime, endTime, granularity, limit, metric)
 	if err != nil {
 		return nil, fmt.Errorf("get api key usage trend: %w", err)
 	}
@@ -400,8 +404,8 @@ func (s *DashboardService) GetUserUsageTrend(ctx context.Context, startTime, end
 	return trend, nil
 }
 
-func (s *DashboardService) GetUserSpendingRanking(ctx context.Context, startTime, endTime time.Time, limit int) (*usagestats.UserSpendingRankingResponse, error) {
-	ranking, err := s.usageRepo.GetUserSpendingRanking(ctx, startTime, endTime, limit)
+func (s *DashboardService) GetUserSpendingRanking(ctx context.Context, startTime, endTime time.Time, limit int, groupBy string) (*usagestats.UserSpendingRankingResponse, error) {
+	ranking, err := s.usageRepo.GetUserSpendingRanking(ctx, startTime, endTime, limit, groupBy)
 	if err != nil {
 		return nil, fmt.Errorf("get user spending ranking: %w", err)
 	}

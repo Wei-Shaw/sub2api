@@ -4,7 +4,7 @@
       <h3 class="text-sm font-semibold text-gray-900 dark:text-white">
         {{ !enableRankingView || activeView === 'model_distribution'
           ? t('admin.dashboard.modelDistribution')
-          : t('admin.dashboard.spendingRankingTitle') }}
+          : t(dimension === 'api_key' ? 'admin.dashboard.apiKeySpendingRanking' : 'admin.dashboard.spendingRankingTitle') }}
       </h3>
       <div class="flex flex-wrap items-center justify-end gap-2">
         <div
@@ -90,7 +90,7 @@
             "
             @click="activeView = 'spending_ranking'"
           >
-            {{ t('admin.dashboard.viewSpendingRanking') }}
+            {{ t(dimension === 'api_key' ? 'admin.dashboard.apiKeySpendingRanking' : 'admin.dashboard.viewSpendingRanking') }}
           </button>
         </div>
       </div>
@@ -190,7 +190,7 @@
         <table class="w-full text-xs">
           <thead>
             <tr class="text-gray-500 dark:text-gray-400">
-              <th class="pb-2 text-left">{{ t('admin.dashboard.spendingRankingUser') }}</th>
+              <th class="pb-2 text-left">{{ t(dimension === 'api_key' ? 'keys.apiKey' : 'admin.dashboard.spendingRankingUser') }}</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.spendingRankingRequests') }}</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.spendingRankingTokens') }}</th>
               <th class="pb-2 text-right">{{ t('admin.dashboard.spendingRankingSpend') }}</th>
@@ -199,7 +199,7 @@
           <tbody>
             <tr
               v-for="(item, index) in rankingDisplayItems"
-              :key="item.isOther ? 'others' : `${item.user_id}-${index}`"
+              :key="item.isOther ? 'others' : `${item.api_key_id ?? item.user_id}-${index}`"
               class="border-t border-gray-100 transition-colors dark:border-dark-700"
               :class="item.isOther
                 ? 'bg-gray-50/70 dark:bg-dark-700/20'
@@ -243,13 +243,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js'
 import { Doughnut } from 'vue-chartjs'
 import LoadingSpinner from '@/components/common/LoadingSpinner.vue'
 import UserBreakdownSubTable from './UserBreakdownSubTable.vue'
-import type { ModelStat, UserSpendingRankingItem, UserBreakdownItem } from '@/types'
+import type { ModelStat, UserSpendingRankingItem, UserBreakdownItem, DashboardDimension } from '@/types'
 import { getUserBreakdown } from '@/api/admin/dashboard'
 
 ChartJS.register(ArcElement, Tooltip, Legend)
@@ -260,6 +260,7 @@ type DistributionMetric = 'tokens' | 'actual_cost'
 type ModelSource = 'requested' | 'upstream' | 'mapping'
 type RankingDisplayItem = UserSpendingRankingItem & { isOther?: boolean }
 const props = withDefaults(defineProps<{
+  dimension?: DashboardDimension
   modelStats: ModelStat[]
   upstreamModelStats?: ModelStat[]
   mappingModelStats?: ModelStat[]
@@ -284,6 +285,7 @@ const props = withDefaults(defineProps<{
   upstreamModelStats: () => [],
   mappingModelStats: () => [],
   source: 'requested',
+  dimension: 'user',
   enableRankingView: false,
   rankingItems: () => [],
   rankingTotalActualCost: 0,
@@ -302,6 +304,13 @@ const props = withDefaults(defineProps<{
 const expandedKey = ref<string | null>(null)
 const breakdownItems = ref<UserBreakdownItem[]>([])
 const breakdownLoading = ref(false)
+let breakdownSeq = 0
+watch(() => [props.dimension, props.startDate, props.endDate, props.source, props.filters], () => {
+  ++breakdownSeq
+  expandedKey.value = null
+  breakdownItems.value = []
+  breakdownLoading.value = false
+}, { deep: true })
 
 const toggleBreakdown = async (type: string, id: string) => {
   const key = `${type}-${id}`
@@ -309,6 +318,7 @@ const toggleBreakdown = async (type: string, id: string) => {
     expandedKey.value = null
     return
   }
+  const seq = ++breakdownSeq
   expandedKey.value = key
   breakdownLoading.value = true
   breakdownItems.value = []
@@ -319,12 +329,14 @@ const toggleBreakdown = async (type: string, id: string) => {
       end_date: props.endDate,
       model: id,
       model_source: props.source,
+      ...(props.dimension === 'api_key' ? { group_by: 'api_key' as const } : {}),
     })
+    if (seq !== breakdownSeq) return
     breakdownItems.value = res.users || []
   } catch {
-    breakdownItems.value = []
+    if (seq === breakdownSeq) breakdownItems.value = []
   } finally {
-    breakdownLoading.value = false
+    if (seq === breakdownSeq) breakdownLoading.value = false
   }
 }
 
@@ -496,6 +508,7 @@ const formatNumber = (value: number): string => {
 }
 
 const getRankingUserLabel = (item: UserSpendingRankingItem): string => {
+  if (item.api_key_id) return `${item.key_name?.trim() || t('keys.apiKey')} (#${item.api_key_id})`
   if (item.username?.trim()) return item.username.trim()
   if (item.email?.trim()) return item.email.trim()
   return t('admin.redeem.userPrefix', { id: item.user_id })

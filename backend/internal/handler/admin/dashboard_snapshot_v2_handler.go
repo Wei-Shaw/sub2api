@@ -19,7 +19,8 @@ var dashboardSnapshotV2Cache = newSnapshotCache(30 * time.Second)
 
 type dashboardSnapshotV2Stats struct {
 	usagestats.DashboardStats
-	Uptime int64 `json:"uptime"`
+	Uptime             int64  `json:"uptime"`
+	TodayActiveAPIKeys *int64 `json:"today_active_api_keys,omitempty"`
 }
 
 type dashboardSnapshotV2Response struct {
@@ -63,6 +64,7 @@ type dashboardSnapshotV2CacheKey struct {
 	NativeCompactionV2    *bool  `json:"native_compaction_v2"`
 	BillingType           *int8  `json:"billing_type"`
 	UpstreamModelMismatch *bool  `json:"upstream_model_mismatch"`
+	IncludeAPIKeyActivity bool   `json:"include_api_key_activity"`
 	IncludeStats          bool   `json:"include_stats"`
 	IncludeTrend          bool   `json:"include_trend"`
 	IncludeModels         bool   `json:"include_models"`
@@ -79,6 +81,7 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 	}
 
 	includeStats := parseBoolQueryWithDefault(c.Query("include_stats"), true)
+	includeAPIKeyActivity := includeStats && parseBoolQueryWithDefault(c.Query("include_api_key_activity"), false)
 	includeTrend := parseBoolQueryWithDefault(c.Query("include_trend"), true)
 	includeModels := parseBoolQueryWithDefault(c.Query("include_model_stats"), true)
 	includeGroups := parseBoolQueryWithDefault(c.Query("include_group_stats"), false)
@@ -111,6 +114,7 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 		BillingType:           filters.BillingType,
 		UpstreamModelMismatch: filters.UpstreamModelMismatch,
 		IncludeStats:          includeStats,
+		IncludeAPIKeyActivity: includeAPIKeyActivity,
 		IncludeTrend:          includeTrend,
 		IncludeModels:         includeModels,
 		IncludeGroups:         includeGroups,
@@ -127,6 +131,7 @@ func (h *DashboardHandler) GetSnapshotV2(c *gin.Context) {
 			granularity,
 			filters,
 			includeStats,
+			includeAPIKeyActivity,
 			includeTrend,
 			includeModels,
 			includeGroups,
@@ -155,7 +160,7 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 	startTime, endTime time.Time,
 	granularity string,
 	filters *dashboardSnapshotV2Filters,
-	includeStats, includeTrend, includeModels, includeGroups, includeUsersTrend bool,
+	includeStats, includeAPIKeyActivity, includeTrend, includeModels, includeGroups, includeUsersTrend bool,
 	usersTrendLimit int,
 ) (*dashboardSnapshotV2Response, error) {
 	resp := &dashboardSnapshotV2Response{
@@ -173,6 +178,13 @@ func (h *DashboardHandler) buildSnapshotV2Response(
 		resp.Stats = &dashboardSnapshotV2Stats{
 			DashboardStats: *stats,
 			Uptime:         int64(time.Since(h.startTime).Seconds()),
+		}
+		if includeAPIKeyActivity {
+			count, err := h.dashboardService.GetTodayActiveAPIKeyCount(ctx)
+			if err != nil {
+				return nil, errors.New("failed to get active API key count")
+			}
+			resp.Stats.TodayActiveAPIKeys = &count
 		}
 	}
 
