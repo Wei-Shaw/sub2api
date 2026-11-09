@@ -16,7 +16,10 @@ import (
 const (
 	DefaultBaseURL = "https://api.typesafe.ai"
 	SystemOnePath  = "/v1/systemone"
-	JevLatestModel = "jev-latest"
+	// CommandCodeSystemOnePath is appended to a Command Code base URL that already
+	// ends in /provider/v1.
+	CommandCodeSystemOnePath = "/systemone"
+	JevLatestModel           = "jev-latest"
 )
 
 type Question struct {
@@ -48,7 +51,17 @@ type SystemOneResponse struct {
 }
 
 func NewSystemOneRequest(ctx context.Context, baseURL, key string, body []byte) (*http.Request, error) {
-	endpoint, err := url.JoinPath(strings.TrimRight(baseURL, "/"), SystemOnePath)
+	return newSystemOneRequest(ctx, baseURL, SystemOnePath, key, body)
+}
+
+// NewCommandCodeSystemOneRequest targets Command Code's System One endpoint,
+// <base>/systemone, where base is the account's Provider API base URL.
+func NewCommandCodeSystemOneRequest(ctx context.Context, baseURL, key string, body []byte) (*http.Request, error) {
+	return newSystemOneRequest(ctx, baseURL, CommandCodeSystemOnePath, key, body)
+}
+
+func newSystemOneRequest(ctx context.Context, baseURL, path, key string, body []byte) (*http.Request, error) {
+	endpoint, err := url.JoinPath(strings.TrimRight(baseURL, "/"), path)
 	if err != nil {
 		return nil, errors.New("typesafe invalid endpoint")
 	}

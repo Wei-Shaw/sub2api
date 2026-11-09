@@ -7,6 +7,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
 	"log/slog"
 	mathrand "math/rand"
 	"sort"
@@ -2666,6 +2667,12 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 	if account.IsBedrock() {
 		_, ok := ResolveBedrockModelID(account, requestedModel)
 		return ok
+	}
+	// Command Code's Jev decision models are absent from its chat model catalog,
+	// so a synced model_mapping whitelist never lists them. They only arrive on
+	// the System One endpoint, which no chat request can reach.
+	if account.IsCommandCode() && typesafe.IsCommandCodeJevModel(requestedModel) {
+		return account.Type == AccountTypeAPIKey
 	}
 	// Passthrough ignores leftover mappings unless model filtering is enabled.
 	if account.IsOpenAIPassthroughEnabled() && !account.IsOpenAIPassthroughModelFilterEnabled() {

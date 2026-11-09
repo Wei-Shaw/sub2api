@@ -144,6 +144,16 @@ func TestGetModelPricing_JevLatestInputOnlyAndChannelOverride(t *testing.T) {
 	require.Equal(t, output, pricing.OutputPricePerToken)
 }
 
+func TestGetModelPricing_CommandCodeJevMatchesJevLatest(t *testing.T) {
+	svc := newTestBillingService()
+	for _, model := range []string{"typesafe/jev", "typesafe/jev-1.14.0"} {
+		pricing, err := svc.GetModelPricing(model)
+		require.NoError(t, err, model)
+		require.InDelta(t, 0.042/1_000_000, pricing.InputPricePerToken, 1e-15, model)
+		require.Zero(t, pricing.OutputPricePerToken, model)
+	}
+}
+
 // issue #3394: fallback warn 应按模型名去重,每个模型每进程最多打一条,
 // 避免热路径每请求刷屏 ops_system_logs。
 func TestGetModelPricing_FallbackWarnLoggedOncePerModel(t *testing.T) {

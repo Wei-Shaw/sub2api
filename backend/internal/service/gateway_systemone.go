@@ -30,22 +30,65 @@ func (e *SystemOneUpstreamError) Error() string {
 	return fmt.Sprintf("typesafe upstream rejected request with status %d", e.StatusCode)
 }
 
+// SystemOneModelServedBy reports whether account serves the System One model.
+// TypeSafe's own API serves jev-latest; Command Code serves its typesafe/jev ids.
+func SystemOneModelServedBy(account *Account, model string) bool {
+	if account == nil || account.Type != AccountTypeAPIKey {
+		return false
+	}
+	switch {
+	case account.IsTypeSafe():
+		return model == typesafe.JevLatestModel
+	case account.IsCommandCode():
+		return typesafe.IsCommandCodeJevModel(model)
+	}
+	return false
+}
+
 func (s *GatewayService) ForwardSystemOne(ctx context.Context, c *gin.Context, account *Account, body []byte) (*SystemOneForwardResult, error) {
+	return s.forwardSystemOne(ctx, c, account, body, typesafe.JevLatestModel)
+}
+
+// ForwardSystemOneModel forwards a validated System One request for model to a
+// TypeSafe or Command Code account.
+func (s *GatewayService) ForwardSystemOneModel(ctx context.Context, c *gin.Context, account *Account, body []byte, model string) (*SystemOneForwardResult, error) {
+	return s.forwardSystemOne(ctx, c, account, body, model)
+}
+
+func (s *GatewayService) forwardSystemOne(ctx context.Context, c *gin.Context, account *Account, body []byte, model string) (*SystemOneForwardResult, error) {
 	started := time.Now()
-	if account == nil || !account.IsTypeSafe() || account.Type != AccountTypeAPIKey {
-		return nil, errors.New("invalid typesafe account")
+	if !SystemOneModelServedBy(account, model) {
+		return nil, errors.New("invalid system one account")
 	}
-	key := account.GetTypeSafeAPIKey()
-	if key == "" {
-		return nil, errors.New("typesafe api key is missing")
-	}
-	baseURL, err := s.validateUpstreamBaseURL(account.GetTypeSafeBaseURL())
-	if err != nil {
-		return nil, err
-	}
-	req, err := typesafe.NewSystemOneRequest(ctx, baseURL, key, body)
-	if err != nil {
-		return nil, err
+	var req *http.Request
+	if account.IsCommandCode() {
+		key := strings.TrimSpace(account.GetCredential("api_key"))
+		if key == "" {
+			return nil, errors.New("command code api key is missing")
+		}
+		baseURL, err := s.validateUpstreamBaseURL(account.GetOpenAIBaseURL())
+		if err != nil {
+			return nil, err
+		}
+		if req, err = typesafe.NewCommandCodeSystemOneRequest(ctx, baseURL, key, body); err != nil {
+			return nil, err
+		}
+		// Command Code's edge rejects unknown clients (Cloudflare 1010); use the
+		// canonical client identity the chat paths send, then any account override.
+		applyOpenCodeUpstreamUserAgent(account, req.URL.String(), req.Header)
+		account.ApplyHeaderOverrides(req.Header)
+	} else {
+		key := account.GetTypeSafeAPIKey()
+		if key == "" {
+			return nil, errors.New("typesafe api key is missing")
+		}
+		baseURL, err := s.validateUpstreamBaseURL(account.GetTypeSafeBaseURL())
+		if err != nil {
+			return nil, err
+		}
+		if req, err = typesafe.NewSystemOneRequest(ctx, baseURL, key, body); err != nil {
+			return nil, err
+		}
 	}
 	upstreamURL := req.URL.Scheme + "://" + req.URL.Host + req.URL.Path
 	proxyURL := ""
@@ -62,7 +105,7 @@ func (s *GatewayService) ForwardSystemOne(ctx context.Context, c *gin.Context, a
 	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
-		return nil, s.handleSystemOneErrorResponse(ctx, c, account, resp, upstreamURL)
+		return nil, s.handleSystemOneErrorResponse(ctx, c, account, resp, upstreamURL, model)
 	}
 
 	decoded, err := typesafe.DecodeSystemOneResponse(resp.Body)
@@ -90,7 +133,7 @@ func (s *GatewayService) ForwardSystemOne(ctx context.Context, c *gin.Context, a
 			RequestID:             resp.Header.Get("x-request-id"),
 			UpstreamHeaders:       resp.Header.Clone(),
 			Usage:                 ClaudeUsage{InputTokens: decoded.Usage.InputTokens, OutputTokens: decoded.Usage.OutputTokens},
-			Model:                 typesafe.JevLatestModel,
+			Model:                 model,
 			UpstreamResponseModel: decoded.Model,
 			Duration:              time.Since(started),
 		},
@@ -118,7 +161,7 @@ func IsSystemOneRequestErrorStatus(status int) bool {
 // goes through the account error policy (custom error codes, temporary
 // unschedulable rules, pool mode) and fails over when the status is retryable
 // or the policy took the account out of rotation.
-func (s *GatewayService) handleSystemOneErrorResponse(ctx context.Context, c *gin.Context, account *Account, resp *http.Response, upstreamURL string) error {
+func (s *GatewayService) handleSystemOneErrorResponse(ctx context.Context, c *gin.Context, account *Account, resp *http.Response, upstreamURL, model string) error {
 	respBody, _ := s.readUpstreamErrorBody(resp)
 	upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(respBody)))
 	setOpsUpstreamError(c, resp.StatusCode, upstreamMsg, "")
@@ -143,7 +186,7 @@ func (s *GatewayService) handleSystemOneErrorResponse(ctx context.Context, c *gi
 
 	shouldDisable := false
 	if s.rateLimitService != nil {
-		shouldDisable = s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, typesafe.JevLatestModel)
+		shouldDisable = s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, model)
 	}
 	if !shouldDisable && !s.shouldFailoverUpstreamError(resp.StatusCode) {
 		appendOpsUpstreamError(c, event)
