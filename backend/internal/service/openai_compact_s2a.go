@@ -79,7 +79,7 @@ func (s *OpenAIGatewayService) forwardOpenAICompactViaSub2API(
 	}
 	stream := gjson.GetBytes(body, "stream").Bool()
 
-	res, err := s.compactS2AProduceSummary(ctx, c, account, body)
+	res, err := s.compactS2AProduceSummary(ctx, c, account, body, true)
 	if err != nil {
 		return nil, err
 	}
@@ -118,13 +118,19 @@ func (s *OpenAIGatewayService) compactS2AProduceSummary(
 	c *gin.Context,
 	account *Account,
 	body []byte,
+	writeErrors bool,
 ) (compactS2ASummaryResult, error) {
 	var out compactS2ASummaryResult
+	// WS 入口不能写 HTTP 错误响应（连接已升级），只把错误返回给上层处理。
+	writeErr := compatErrorWriter(writeOpenAIResponsesFallbackError)
+	if !writeErrors {
+		writeErr = func(*gin.Context, int, string, string) {}
+	}
 	requestedModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 
 	history := compactS2AFlattenInput(gjson.GetBytes(body, "input"))
 	if strings.TrimSpace(history) == "" {
-		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", "input is empty")
+		writeErr(c, http.StatusBadRequest, "invalid_request_error", "input is empty")
 		return out, fmt.Errorf("empty input for compact request")
 	}
 
@@ -139,18 +145,18 @@ func (s *OpenAIGatewayService) compactS2AProduceSummary(
 		},
 	})
 	if err != nil {
-		writeOpenAIResponsesFallbackError(c, http.StatusInternalServerError, "api_error", "Failed to build compact request")
+		writeErr(c, http.StatusInternalServerError, "api_error", "Failed to build compact request")
 		return out, fmt.Errorf("marshal s2a compact request: %w", err)
 	}
 
 	apiKey, targetURL, err := s.resolveCCFallbackTarget(account)
 	if err != nil {
-		writeOpenAIResponsesFallbackError(c, http.StatusBadGateway, "api_error", err.Error())
+		writeErr(c, http.StatusBadGateway, "api_error", err.Error())
 		return out, err
 	}
 	resp, err := s.sendCCUpstreamRequest(ctx, c, account, targetURL, ccBody, false, apiKey, account.GetOpenAIUserAgent(), "")
 	if err != nil {
-		writeOpenAIResponsesFallbackError(c, http.StatusBadGateway, "api_error", "Failed to reach upstream")
+		writeErr(c, http.StatusBadGateway, "api_error", "Failed to reach upstream")
 		return out, err
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -159,14 +165,14 @@ func (s *OpenAIGatewayService) compactS2AProduceSummary(
 		return out, err
 	}
 
-	ccResp, usage, err := s.readCCUpstreamJSONResponse(c, resp, writeOpenAIResponsesFallbackError)
+	ccResp, usage, err := s.readCCUpstreamJSONResponse(c, resp, writeErr)
 	if err != nil {
 		return out, err
 	}
 	out.Usage = usage
 	out.Summary = compactS2AResponseText(ccResp)
 	if strings.TrimSpace(out.Summary) == "" {
-		writeOpenAIResponsesFallbackError(c, http.StatusBadGateway, "api_error", "upstream returned an empty compaction summary")
+		writeErr(c, http.StatusBadGateway, "api_error", "upstream returned an empty compaction summary")
 		return out, fmt.Errorf("empty compaction summary from upstream")
 	}
 	return out, nil
@@ -188,7 +194,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSCompactViaSub2API(
 		model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	}
 
-	res, err := s.compactS2AProduceSummary(ctx, c, account, body)
+	res, err := s.compactS2AProduceSummary(ctx, c, account, body, false)
 	if err != nil {
 		return nil, err
 	}
