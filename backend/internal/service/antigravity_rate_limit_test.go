@@ -866,6 +866,32 @@ func TestSetAntigravityModelRateLimits_ImageDoesNotWriteFamilyScope(t *testing.T
 	require.Equal(t, "gemini-3.1-flash-image-preview", repo.modelRateLimitCalls[0].modelKey)
 }
 
+func TestSetAntigravityModelRateLimits_ArgonWritesArgonFamilyScopeNotGemini(t *testing.T) {
+	repo := &stubAntigravityAccountRepo{}
+	svc := &AntigravityGatewayService{}
+	account := &Account{ID: 789, Platform: PlatformAntigravity}
+	resetAt := time.Now().Add(7 * 24 * time.Hour)
+
+	success := svc.setAntigravityModelRateLimits(
+		context.Background(),
+		repo,
+		account,
+		"gemini-4-argon-high",
+		"[test]",
+		429,
+		resetAt,
+		false,
+	)
+
+	require.True(t, success)
+	require.Len(t, repo.modelRateLimitCalls, 2)
+	require.Equal(t, "gemini-4-argon-high", repo.modelRateLimitCalls[0].modelKey)
+	require.Equal(t, antigravityArgonModelRateLimitKey, repo.modelRateLimitCalls[1].modelKey)
+	for _, call := range repo.modelRateLimitCalls {
+		require.NotEqual(t, antigravityGeminiModelRateLimitKey, call.modelKey, "argon must not pollute general gemini rate limit key")
+	}
+}
+
 func TestSetAntigravityModelRateLimits_DoesNotDoubleMapCustomChain(t *testing.T) {
 	repo := &stubAntigravityAccountRepo{}
 	svc := &AntigravityGatewayService{}

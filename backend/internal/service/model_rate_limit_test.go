@@ -226,6 +226,54 @@ func TestIsModelRateLimited(t *testing.T) {
 			requestedModel: "gpt-5.4",
 			expected:       false,
 		},
+		{
+			name: "antigravity platform - argon rate limit does not block gemini-3.8-flash",
+			account: &Account{
+				Platform: PlatformAntigravity,
+				Extra: map[string]any{
+					modelRateLimitsKey: map[string]any{
+						"gemini-4-argon-high": map[string]any{
+							"rate_limit_reset_at": future,
+						},
+						antigravityArgonModelRateLimitKey: map[string]any{
+							"rate_limit_reset_at": future,
+						},
+					},
+				},
+			},
+			requestedModel: "gemini-3.8-flash-high",
+			expected:       false,
+		},
+		{
+			name: "antigravity platform - argon family key blocks argon variants",
+			account: &Account{
+				Platform: PlatformAntigravity,
+				Extra: map[string]any{
+					modelRateLimitsKey: map[string]any{
+						antigravityArgonModelRateLimitKey: map[string]any{
+							"rate_limit_reset_at": future,
+						},
+					},
+				},
+			},
+			requestedModel: "gemini-4-argon-low",
+			expected:       true,
+		},
+		{
+			name: "antigravity platform - gemini family key does not block argon",
+			account: &Account{
+				Platform: PlatformAntigravity,
+				Extra: map[string]any{
+					modelRateLimitsKey: map[string]any{
+						antigravityGeminiModelRateLimitKey: map[string]any{
+							"rate_limit_reset_at": future,
+						},
+					},
+				},
+			},
+			requestedModel: "gemini-4-argon-high",
+			expected:       false,
+		},
 	}
 
 	for _, tt := range tests {

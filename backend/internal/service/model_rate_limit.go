@@ -12,6 +12,7 @@ import (
 const (
 	modelRateLimitsKey                 = "model_rate_limits"
 	antigravityGeminiModelRateLimitKey = "antigravity:gemini"
+	antigravityArgonModelRateLimitKey  = "antigravity:gemini-argon"
 	openAIImageGenerationRateLimitKey  = "openai:image_generation"
 	openAICodexSparkRateLimitReason    = "openai_codex_spark_rate_limit"
 	// anthropicFableRateLimitKey 是 Anthropic 7d_oi（Fable 专属 7d 窗口）限流的
@@ -80,7 +81,9 @@ func (a *Account) modelRateLimitKeysForRequest(ctx context.Context, requestedMod
 	keys := []string{modelKey}
 	switch a.Platform {
 	case PlatformAntigravity:
-		if isAntigravityGeminiModel(modelKey) && !isAntigravityGeminiImageModel(modelKey) && modelKey != antigravityGeminiModelRateLimitKey {
+		if isAntigravityArgonModel(modelKey) && modelKey != antigravityArgonModelRateLimitKey {
+			keys = append(keys, antigravityArgonModelRateLimitKey)
+		} else if isAntigravityGeminiModel(modelKey) && !isAntigravityGeminiImageModel(modelKey) && modelKey != antigravityGeminiModelRateLimitKey {
 			keys = append(keys, antigravityGeminiModelRateLimitKey)
 		}
 	case PlatformOpenAI:
@@ -159,12 +162,21 @@ func isAntigravityGeminiModel(model string) bool {
 	return strings.HasPrefix(normalizeAntigravityModelName(model), "gemini-")
 }
 
+func isAntigravityArgonModel(model string) bool {
+	normalized := normalizeAntigravityModelName(model)
+	return strings.Contains(normalized, "argon") || strings.HasPrefix(normalized, "gemini-4")
+}
+
 func antigravityModelRateLimitKeys(model string) []string {
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return nil
 	}
 	keys := []string{model}
+	if isAntigravityArgonModel(model) && model != antigravityArgonModelRateLimitKey {
+		keys = append(keys, antigravityArgonModelRateLimitKey)
+		return keys
+	}
 	if isAntigravityGeminiModel(model) && !isAntigravityGeminiImageModel(model) && model != antigravityGeminiModelRateLimitKey {
 		keys = append(keys, antigravityGeminiModelRateLimitKey)
 	}
