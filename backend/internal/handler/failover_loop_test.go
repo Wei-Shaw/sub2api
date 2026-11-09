@@ -1040,3 +1040,59 @@ func TestFailoverClientGone(t *testing.T) {
 		require.False(t, failoverClientGone(nil))
 	})
 }
+
+// ---------------------------------------------------------------------------
+// HandleFailoverError — 每个请求最多封禁一个账号
+// ---------------------------------------------------------------------------
+
+func exhaustSameAccount(fs *FailoverState, mock *mockTempUnscheduler, accountID int64, err *service.UpstreamFailoverError) FailoverAction {
+	var action FailoverAction
+	for i := 0; i <= maxSameAccountRetries; i++ {
+		action = fs.HandleFailoverError(context.Background(), mock, accountID, service.PlatformAntigravity, maxSameAccountRetries, err)
+	}
+	return action
+}
+
+func TestHandleFailoverError_TempUnscheduleAtMostOneAccountPerRequest(t *testing.T) {
+	t.Run("同一可重试错误跟随请求_只封禁第一个账号", func(t *testing.T) {
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(10, false)
+		err := newTestFailoverErr(http.StatusBadGateway, true, false)
+
+		for _, id := range []int64{2, 7, 6} {
+			require.Equal(t, FailoverContinue, exhaustSameAccount(fs, mock, id, err))
+		}
+
+		require.Len(t, mock.calls, 1, "一个坏请求不应把它经过的每个账号都封禁")
+		require.Equal(t, int64(2), mock.calls[0].accountID)
+		require.Len(t, fs.FailedAccountIDs, 3, "仍然排除失败账号并继续切换")
+		require.Equal(t, 3, fs.SwitchCount)
+	})
+
+	t.Run("请求级错误不占用封禁名额", func(t *testing.T) {
+		mock := &mockTempUnscheduler{}
+		fs := NewFailoverState(10, false)
+		scoped := &service.UpstreamFailoverError{StatusCode: http.StatusBadGateway, RetryableOnSameAccount: true, RequestScopedTransient: true}
+		plain := newTestFailoverErr(http.StatusBadGateway, true, false)
+
+		exhaustSameAccount(fs, mock, 2, scoped)
+		exhaustSameAccount(fs, mock, 7, plain)
+		exhaustSameAccount(fs, mock, 6, plain)
+
+		// 请求级错误仍交给服务层（服务层自行跳过封禁），且不消耗唯一的封禁名额。
+		require.Len(t, mock.calls, 2)
+		require.Equal(t, int64(2), mock.calls[0].accountID)
+		require.True(t, mock.calls[0].failoverErr.RequestScopedTransient)
+		require.Equal(t, int64(7), mock.calls[1].accountID)
+	})
+
+	t.Run("每个请求独立计数", func(t *testing.T) {
+		mock := &mockTempUnscheduler{}
+		err := newTestFailoverErr(http.StatusBadGateway, true, false)
+
+		exhaustSameAccount(NewFailoverState(10, false), mock, 2, err)
+		exhaustSameAccount(NewFailoverState(10, false), mock, 7, err)
+
+		require.Len(t, mock.calls, 2, "不健康的账号仍会被各自先遇到它的请求封禁")
+	})
+}

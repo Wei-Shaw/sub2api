@@ -1256,3 +1256,69 @@ func TestAntigravityCompatEmptyAfterKeepaliveReportsStreamError(t *testing.T) {
 		})
 	}
 }
+
+func TestAntigravityCompatMalformedFunctionCallIsRequestScoped(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	malformed := `data: {"response":{"candidates":[{"finishReason":"MALFORMED_FUNCTION_CALL","content":{"role":"model","parts":[{"thoughtSignature":"sig"}]}}]}}` + "\n\n"
+	tests := []struct {
+		name string
+		run  func(*AntigravityGatewayService, *gin.Context, *http.Response) (*antigravityStreamResult, error)
+	}{
+		{
+			name: "chat completions",
+			run: func(svc *AntigravityGatewayService, c *gin.Context, resp *http.Response) (*antigravityStreamResult, error) {
+				return svc.handleChatCompletionsStreamingFromAntigravity(c, resp, time.Now(), "gemini-3.8-flash", true)
+			},
+		},
+		{
+			name: "responses",
+			run: func(svc *AntigravityGatewayService, c *gin.Context, resp *http.Response) (*antigravityStreamResult, error) {
+				return svc.handleResponsesStreamingFromAntigravity(c, resp, time.Now(), "gemini-3.8-flash")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+			c, recorder := newAntigravityCompatContext(http.MethodPost, "/", nil)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(malformed)),
+			}
+
+			result, err := tt.run(svc, c, resp)
+
+			require.Nil(t, result)
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.True(t, failoverErr.RetryableOnSameAccount, "模型输出有随机性，仍允许重试")
+			require.True(t, failoverErr.RequestScopedTransient, "不得因此封禁账号")
+			require.Contains(t, string(failoverErr.ResponseBody), "malformed_function_call")
+			require.Empty(t, recorder.Body.String())
+		})
+	}
+}
+
+func TestTempUnscheduleRetryableErrorSkipsMalformedFunctionCall(t *testing.T) {
+	repo := &malformedTempUnschedRepo{}
+	svc := &GatewayService{accountRepo: repo}
+
+	svc.TempUnscheduleRetryableError(context.Background(), 6, antigravityMalformedFunctionCallFailoverError())
+	require.Empty(t, repo.ids)
+
+	svc.TempUnscheduleRetryableError(context.Background(), 6, antigravityCompatEmptyStreamError().(*UpstreamFailoverError))
+	require.Equal(t, []int64{6}, repo.ids, "普通空流仍按原逻辑封禁")
+}
+
+type malformedTempUnschedRepo struct {
+	AccountRepository
+	ids []int64
+}
+
+func (r *malformedTempUnschedRepo) SetTempUnschedulable(_ context.Context, id int64, _ time.Time, _ string) error {
+	r.ids = append(r.ids, id)
+	return nil
+}

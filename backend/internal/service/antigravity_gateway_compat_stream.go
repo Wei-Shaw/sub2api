@@ -170,10 +170,10 @@ func (s *antigravityCompatStreamSession) finish() (*antigravityStreamResult, err
 	s.consumeClaudeEvents(finalEvents)
 	if !s.hasMeaningfulData() && !s.writer.Disconnected() {
 		if s.preContentKeepaliveSent {
-			s.adapter.WriteError(s.writer, "empty_stream")
+			s.adapter.WriteError(s.writer, s.emptyStreamReason())
 			return s.result(false), errors.New("empty Antigravity compatibility stream after keepalive")
 		}
-		return nil, antigravityCompatEmptyStreamError()
+		return nil, s.emptyStreamError()
 	}
 	s.adapter.Finalize(s.writer)
 	return s.result(s.writer.Disconnected()), nil
@@ -334,7 +334,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveIn
 			writeAntigravityCompatStreamError(c, adapter, writer, "stream_timeout")
 			return session.collectResult(false), fmt.Errorf("pre-content stream timeout")
 		}
-		return nil, antigravityCompatEmptyStreamError()
+		return nil, session.emptyStreamError()
 	}
 
 	for {
@@ -392,10 +392,10 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithKeepaliveIn
 
 func handleAntigravityCompatEmptyStream(c *gin.Context, session *antigravityCompatStreamSession) (*antigravityStreamResult, error) {
 	if session.preContentKeepaliveSent {
-		writeAntigravityCompatStreamError(c, session.adapter, session.writer, "empty_stream")
+		writeAntigravityCompatStreamError(c, session.adapter, session.writer, session.emptyStreamReason())
 		return session.collectResult(false), errors.New("empty Antigravity compatibility stream after keepalive")
 	}
-	return nil, antigravityCompatEmptyStreamError()
+	return nil, session.emptyStreamError()
 }
 
 func (s *AntigravityGatewayService) startAntigravityCompatScanner(
@@ -492,7 +492,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatReadError(
 			writeAntigravityCompatStreamError(c, session.adapter, session.writer, "stream_read_error")
 			return session.collectResult(false), fmt.Errorf("stream read error: %w", err)
 		}
-		return nil, antigravityCompatEmptyStreamError()
+		return nil, session.emptyStreamError()
 	}
 	if disconnect, handled := handleStreamReadError(err, session.writer.Disconnected(), prefix); handled {
 		return session.collectResult(disconnect), nil
@@ -523,6 +523,38 @@ func antigravityCompatEmptyStreamError() error {
 		ResponseBody:           []byte(`{"error":"empty stream response from upstream"}`),
 		RetryableOnSameAccount: true,
 	}
+}
+
+// emptyStreamError builds the failover error for a stream that produced no
+// meaningful content. When the model ended with MALFORMED_FUNCTION_CALL the
+// failure belongs to the request: the same tools and history fail on every
+// account, so the error stays retryable but must not cool the account down.
+func (s *antigravityCompatStreamSession) emptyStreamError() error {
+	if s.processor == nil || !s.processor.SawMalformedFunctionCall() {
+		return antigravityCompatEmptyStreamError()
+	}
+	return antigravityMalformedFunctionCallFailoverError()
+}
+
+// antigravityMalformedFunctionCallFailoverError is the request-scoped variant
+// of the empty-stream error, shared by every Antigravity stream path.
+func antigravityMalformedFunctionCallFailoverError() *UpstreamFailoverError {
+	logger.LegacyPrintf("service.antigravity_gateway", "Antigravity stream ended with MALFORMED_FUNCTION_CALL and no content, retrying without cooling the account")
+	return &UpstreamFailoverError{
+		StatusCode:             http.StatusBadGateway,
+		ResponseBody:           []byte(`{"error":{"type":"malformed_function_call","message":"upstream model returned MALFORMED_FUNCTION_CALL"}}`),
+		RetryableOnSameAccount: true,
+		RequestScopedTransient: true,
+	}
+}
+
+// emptyStreamReason is the SSE error reason sent once keepalive bytes have
+// committed the response and failover is no longer possible.
+func (s *antigravityCompatStreamSession) emptyStreamReason() string {
+	if s.processor != nil && s.processor.SawMalformedFunctionCall() {
+		return "malformed_function_call"
+	}
+	return "empty_stream"
 }
 
 func (s *AntigravityGatewayService) handleChatCompletionsStreamingFromAntigravity(
