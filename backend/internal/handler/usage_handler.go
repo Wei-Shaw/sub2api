@@ -24,15 +24,19 @@ type userUsageFilters struct {
 }
 
 type userModelStat struct {
-	Model               string  `json:"model"`
-	Requests            int64   `json:"requests"`
-	InputTokens         int64   `json:"input_tokens"`
-	OutputTokens        int64   `json:"output_tokens"`
-	CacheCreationTokens int64   `json:"cache_creation_tokens"`
-	CacheReadTokens     int64   `json:"cache_read_tokens"`
-	TotalTokens         int64   `json:"total_tokens"`
-	Cost                float64 `json:"cost"`
-	ActualCost          float64 `json:"actual_cost"`
+	Model               string   `json:"model"`
+	Requests            int64    `json:"requests"`
+	InputTokens         int64    `json:"input_tokens"`
+	OutputTokens        int64    `json:"output_tokens"`
+	CacheCreationTokens int64    `json:"cache_creation_tokens"`
+	CacheReadTokens     int64    `json:"cache_read_tokens"`
+	TotalTokens         int64    `json:"total_tokens"`
+	AverageFirstTokenMs *float64 `json:"average_first_token_ms"`
+	AverageDurationMs   *float64 `json:"average_duration_ms"`
+	FirstTokenSamples   int64    `json:"first_token_samples"`
+	DurationSamples     int64    `json:"duration_samples"`
+	Cost                float64  `json:"cost"`
+	ActualCost          float64  `json:"actual_cost"`
 }
 
 type userGroupStat struct {
@@ -585,6 +589,10 @@ func userModelStatsFromUsageStats(stats []usagestats.ModelStat) []userModelStat 
 			CacheCreationTokens: stat.CacheCreationTokens,
 			CacheReadTokens:     stat.CacheReadTokens,
 			TotalTokens:         stat.TotalTokens,
+			AverageFirstTokenMs: stat.AverageFirstTokenMs,
+			AverageDurationMs:   stat.AverageDurationMs,
+			FirstTokenSamples:   stat.FirstTokenSamples,
+			DurationSamples:     stat.DurationSamples,
 			Cost:                stat.Cost,
 			ActualCost:          stat.ActualCost,
 		})

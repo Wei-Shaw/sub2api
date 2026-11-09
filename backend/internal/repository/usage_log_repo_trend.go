@@ -239,6 +239,10 @@ func (r *usageLogRepository) GetUserUsageTrendByUserID(ctx context.Context, user
 			COALESCE(SUM(cache_creation_tokens), 0) as cache_creation_tokens,
 			COALESCE(SUM(cache_read_tokens), 0) as cache_read_tokens,
 			COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) as total_tokens,
+			AVG(first_token_ms) as average_first_token_ms,
+			AVG(duration_ms) as average_duration_ms,
+			COUNT(first_token_ms) as first_token_samples,
+			COUNT(duration_ms) as duration_samples,
 			COALESCE(SUM(total_cost), 0) as cost,
 			COALESCE(SUM(actual_cost), 0) as actual_cost
 		FROM usage_logs
@@ -790,6 +794,10 @@ func scanModelStatsRows(rows *sql.Rows) ([]ModelStat, error) {
 			&row.CacheCreationTokens,
 			&row.CacheReadTokens,
 			&row.TotalTokens,
+			&row.AverageFirstTokenMs,
+			&row.AverageDurationMs,
+			&row.FirstTokenSamples,
+			&row.DurationSamples,
 			&row.Cost,
 			&row.ActualCost,
 			&row.AccountCost,
