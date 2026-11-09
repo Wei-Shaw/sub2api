@@ -285,6 +285,11 @@ func CreatedAt(v time.Time) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldCreatedAt, v))
 }
 
+// UserPrompt applies equality check predicate on the "user_prompt" field. It's identical to UserPromptEQ.
+func UserPrompt(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldUserPrompt, v))
+}
+
 // UserIDEQ applies the EQ predicate on the "user_id" field.
 func UserIDEQ(v int64) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldUserID, v))
@@ -2498,6 +2503,81 @@ func CreatedAtLT(v time.Time) predicate.UsageLog {
 // CreatedAtLTE applies the LTE predicate on the "created_at" field.
 func CreatedAtLTE(v time.Time) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldLTE(FieldCreatedAt, v))
+}
+
+// UserPromptEQ applies the EQ predicate on the "user_prompt" field.
+func UserPromptEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldUserPrompt, v))
+}
+
+// UserPromptNEQ applies the NEQ predicate on the "user_prompt" field.
+func UserPromptNEQ(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldUserPrompt, v))
+}
+
+// UserPromptIn applies the In predicate on the "user_prompt" field.
+func UserPromptIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldUserPrompt, vs...))
+}
+
+// UserPromptNotIn applies the NotIn predicate on the "user_prompt" field.
+func UserPromptNotIn(vs ...string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldUserPrompt, vs...))
+}
+
+// UserPromptGT applies the GT predicate on the "user_prompt" field.
+func UserPromptGT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldUserPrompt, v))
+}
+
+// UserPromptGTE applies the GTE predicate on the "user_prompt" field.
+func UserPromptGTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldUserPrompt, v))
+}
+
+// UserPromptLT applies the LT predicate on the "user_prompt" field.
+func UserPromptLT(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldUserPrompt, v))
+}
+
+// UserPromptLTE applies the LTE predicate on the "user_prompt" field.
+func UserPromptLTE(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldUserPrompt, v))
+}
+
+// UserPromptContains applies the Contains predicate on the "user_prompt" field.
+func UserPromptContains(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContains(FieldUserPrompt, v))
+}
+
+// UserPromptHasPrefix applies the HasPrefix predicate on the "user_prompt" field.
+func UserPromptHasPrefix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasPrefix(FieldUserPrompt, v))
+}
+
+// UserPromptHasSuffix applies the HasSuffix predicate on the "user_prompt" field.
+func UserPromptHasSuffix(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldHasSuffix(FieldUserPrompt, v))
+}
+
+// UserPromptIsNil applies the IsNil predicate on the "user_prompt" field.
+func UserPromptIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldUserPrompt))
+}
+
+// UserPromptNotNil applies the NotNil predicate on the "user_prompt" field.
+func UserPromptNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldUserPrompt))
+}
+
+// UserPromptEqualFold applies the EqualFold predicate on the "user_prompt" field.
+func UserPromptEqualFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEqualFold(FieldUserPrompt, v))
+}
+
+// UserPromptContainsFold applies the ContainsFold predicate on the "user_prompt" field.
+func UserPromptContainsFold(v string) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldContainsFold(FieldUserPrompt, v))
 }
 
 // HasUser applies the HasEdge predicate on the "user" edge.
