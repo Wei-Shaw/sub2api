@@ -20,4 +20,3 @@ sub2api 当前通过 Go 代码直接构造 OpenAI/Codex 上游请求。为了评
 - **后端**：新增隔离包，不修改现有 handler、service、repository 或数据库。
 - **运行时**：只有显式构造 provider 时才启动子进程；当前生产启动链不会调用它。
 - **测试**：使用当前 Go test binary 充当 fake app-server，不需要 Codex 登录、OpenAI 凭据或网络。
-

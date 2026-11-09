@@ -45,4 +45,3 @@ worker 生命周期 MUST 独立于单次调用 context。收到 context cancella
 
 - **WHEN** 在无 Codex 登录和无网络依赖的环境运行相关测试
 - **THEN** 成功、RPC 错误和取消场景 MUST 可重复完成
-

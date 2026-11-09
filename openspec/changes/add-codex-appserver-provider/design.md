@@ -42,4 +42,3 @@ worker 由 provider 生命周期管理，不绑定单次 HTTP context。turn con
 - [Scanner 默认 token 限制] → client 显式设置有界最大消息大小，超限快速失败。
 - [stderr 阻塞子进程] → 始终并发 drain stderr，默认丢弃，允许调用方注入 writer。
 - [mock 通过被误解为真实上游通过] → OpenSpec 与测试命名明确标注 hermetic/fake 边界。
-

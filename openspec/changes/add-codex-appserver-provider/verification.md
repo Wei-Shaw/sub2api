@@ -29,4 +29,3 @@
 
 - 首次 race 全量失败均发生在 helper cleanup 的 1 秒 deadline。单独复现仍固定约 1.02 秒，根因是 race helper 的默认退出等待与 cleanup deadline 相等。
 - 仅给测试 helper 增加 `GORACE=atexit_sleep_ms=0` 后，race 通过；生产关闭时限未放宽。
-

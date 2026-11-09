@@ -16,4 +16,3 @@
 - [x] 3.2 相关测试在 race detector 下通过。
 - [x] 3.3 `openspec validate add-codex-appserver-provider --strict` 与 `git diff --check` 通过。
 - [x] 3.4 记录未执行真实 Codex/OpenAI live smoke 的边界。
-
