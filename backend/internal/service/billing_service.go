@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
 	"log"
 	"maps"
 	"math"
@@ -1060,7 +1061,9 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 			ImageOutputPricePerToken: p.OutputCostPerImageToken,
 		}
 	}
-	if modelLower == "jev-latest" {
+	// Command Code serves the same Jev at the same price ($0.042 per million input
+	// tokens, output free) under typesafe/jev and pinned typesafe/jev-<version>.
+	if modelLower == "jev-latest" || typesafe.IsCommandCodeJevModel(modelLower) {
 		return s.fallbackPrices["jev-latest"]
 	}
 

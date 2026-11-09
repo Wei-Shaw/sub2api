@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -63,15 +64,27 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 		h.errorResponse(c, status, "invalid_request_error", message)
 		return
 	}
-	model, err := typesafe.ValidateSystemOneRequest(body)
+	// Command Code groups serve Jev under their own model ids (typesafe/jev...).
+	commandCodeGroup := apiKey.Group.Platform == service.PlatformCommandCode
+	var model string
+	if commandCodeGroup {
+		model, err = typesafe.ValidateSystemOneRequestAnyUpstream(body)
+		if err == nil && !typesafe.IsCommandCodeJevModel(model) {
+			err = fmt.Errorf("model must be %s or %s-<version> on Command Code", typesafe.CommandCodeJevModel, typesafe.CommandCodeJevModel)
+		}
+	} else {
+		model, err = typesafe.ValidateSystemOneRequest(body)
+	}
 	if err != nil {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return
 	}
-	ensureCompositeTargetPlatform(c, apiKey, model)
-	if apiKey.Group.Platform != service.PlatformTypeSafe &&
+	if !commandCodeGroup {
+		ensureCompositeTargetPlatform(c, apiKey, model)
+	}
+	if !commandCodeGroup && apiKey.Group.Platform != service.PlatformTypeSafe &&
 		(apiKey.Group.Platform != service.PlatformComposite || !compositeTargetPlatformAllowed(c, apiKey, model, service.PlatformTypeSafe)) {
-		h.errorResponse(c, http.StatusNotFound, "not_found_error", "System One is only available for TypeSafe and compatible Composite groups")
+		h.errorResponse(c, http.StatusNotFound, "not_found_error", "System One is only available for TypeSafe, Command Code and compatible Composite groups")
 		return
 	}
 	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolTypeSafeSystemOne, model, body); decision != nil && !decision.AllowNextStage {
@@ -197,7 +210,7 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 		service.SetOpsUpstreamModel(c, model)
 
 		forwardStart := time.Now()
-		result, forwardErr := h.gatewayService.ForwardSystemOne(c.Request.Context(), c, account, body)
+		result, forwardErr := h.gatewayService.ForwardSystemOneModel(c.Request.Context(), c, account, body, model)
 		if accountRelease != nil {
 			accountRelease()
 		}
