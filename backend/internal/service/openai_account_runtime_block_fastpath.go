@@ -122,6 +122,22 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 		return true
 	}
 
+	// Explicit billing exhaustion is durable account evidence, not a transient
+	// pool failure or a model-specific error. Apply the same permanent stop as
+	// an unavailable account before custom status/model rules can bypass it.
+	if s != nil && account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey &&
+		statusCode >= http.StatusBadRequest && isOpenAIQuotaExhaustedError(responseBody) {
+		message := "OpenAI upstream credit balance or quota exhausted"
+		if upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(responseBody))); upstreamMsg != "" {
+			message += ": " + truncateForLog([]byte(upstreamMsg), 512)
+		}
+		if s.rateLimitService != nil {
+			s.rateLimitService.handleAuthError(stateCtx, account, message)
+		}
+		s.BlockAccountScheduling(account, time.Time{}, "openai_quota_exhausted")
+		return true
+	}
+
 	if account != nil && account.Platform == PlatformOpenAI && isOpenAIContextWindowError("", responseBody) {
 		return false
 	}
