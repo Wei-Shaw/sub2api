@@ -29,9 +29,11 @@ import { resolveAffiliateReferralCode, storeOAuthAffiliateCode } from '@/utils/o
 const props = withDefaults(defineProps<{
   disabled?: boolean
   affCode?: string
+  provider?: OAuthLoginStart['provider']
   providerName?: string
   showDivider?: boolean
 }>(), {
+  provider: 'oidc',
   providerName: 'OIDC',
   showDivider: true
 })
@@ -52,6 +54,6 @@ const providerInitial = computed(() => normalizedProviderName.value.charAt(0).to
 function startLogin(): void {
   const redirectTo = (route.query.redirect as string) || '/dashboard'
   storeOAuthAffiliateCode(resolveAffiliateReferralCode(props.affCode, route.query.aff, route.query.aff_code))
-  emit('start', { provider: 'oidc', params: { redirect: redirectTo } })
+  emit('start', { provider: props.provider, params: { redirect: redirectTo } })
 }
 </script>

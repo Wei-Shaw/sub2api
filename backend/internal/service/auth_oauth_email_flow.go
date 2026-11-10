@@ -19,7 +19,7 @@ func normalizeOAuthSignupSource(signupSource string) string {
 	switch signupSource {
 	case "", "email":
 		return "email"
-	case "linuxdo", "wechat", "oidc", "github", "google", "dingtalk":
+	case "linuxdo", "wechat", "oidc", "github", "google", "dingtalk", "feishu":
 		return signupSource
 	default:
 		return "email"
