@@ -459,3 +459,122 @@ func findSetCookieValue(cookies []*http.Cookie, name string) string {
 	}
 	return ""
 }
+
+// The provider subject is the stable account key. Google lets users rename their
+// Gmail address and GitHub users can change their primary email, so the email a
+// bound identity reports can drift away from the account it signed up or bound.
+func TestEmailOAuthCallbackBoundIdentityLogsInAfterProviderEmailChange(t *testing.T) {
+	for _, provider := range []string{"google", "github"} {
+		t.Run(provider, func(t *testing.T) {
+			handler, client := newOAuthPendingFlowTestHandler(t, false)
+			ctx := context.Background()
+
+			owner := createEmailDriftUser(t, client, "before@example.com")
+			bindEmailDriftIdentity(t, client, owner.ID, provider, provider+"-subject-1", "before@example.com")
+
+			location := runEmailDriftCallback(t, handler, provider, provider+"-subject-1", "after@example.com")
+
+			require.Equal(t, owner.ID, emailDriftTokenUserID(t, handler, location))
+
+			reloaded, err := client.User.Get(ctx, owner.ID)
+			require.NoError(t, err)
+			require.Equal(t, "before@example.com", reloaded.Email)
+
+			createdCount, err := client.User.Query().Where(dbuser.EmailEQ("after@example.com")).Count(ctx)
+			require.NoError(t, err)
+			require.Zero(t, createdCount)
+
+			pendingCount, err := client.PendingAuthSession.Query().Count(ctx)
+			require.NoError(t, err)
+			require.Zero(t, pendingCount)
+
+			identity, err := client.AuthIdentity.Query().Where(
+				authidentity.ProviderTypeEQ(provider),
+				authidentity.ProviderSubjectEQ(provider+"-subject-1"),
+			).Only(ctx)
+			require.NoError(t, err)
+			require.Equal(t, owner.ID, identity.UserID)
+			require.Equal(t, "after@example.com", identity.Metadata["email"])
+		})
+	}
+}
+
+func TestEmailOAuthCallbackBoundIdentityIgnoresAccountHoldingNewEmail(t *testing.T) {
+	handler, client := newOAuthPendingFlowTestHandler(t, false)
+	ctx := context.Background()
+
+	owner := createEmailDriftUser(t, client, "before@example.com")
+	other := createEmailDriftUser(t, client, "after@example.com")
+	bindEmailDriftIdentity(t, client, owner.ID, "google", "google-subject-1", "before@example.com")
+
+	location := runEmailDriftCallback(t, handler, "google", "google-subject-1", "after@example.com")
+
+	require.Equal(t, owner.ID, emailDriftTokenUserID(t, handler, location))
+
+	otherIdentityCount, err := client.AuthIdentity.Query().Where(
+		authidentity.UserIDEQ(other.ID),
+		authidentity.ProviderTypeEQ("google"),
+	).Count(ctx)
+	require.NoError(t, err)
+	require.Zero(t, otherIdentityCount)
+}
+
+func createEmailDriftUser(t *testing.T, client *dbent.Client, email string) *dbent.User {
+	t.Helper()
+	user, err := client.User.Create().
+		SetEmail(email).
+		SetPasswordHash("hash").
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(context.Background())
+	require.NoError(t, err)
+	return user
+}
+
+func bindEmailDriftIdentity(t *testing.T, client *dbent.Client, userID int64, provider, subject, email string) {
+	t.Helper()
+	_, err := client.AuthIdentity.Create().
+		SetUserID(userID).
+		SetProviderType(provider).
+		SetProviderKey(provider).
+		SetProviderSubject(subject).
+		SetMetadata(map[string]any{"email": email, "email_verified": true}).
+		Save(context.Background())
+	require.NoError(t, err)
+}
+
+func runEmailDriftCallback(t *testing.T, handler *AuthHandler, provider, subject, email string) string {
+	t.Helper()
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/auth/oauth/"+provider+"/callback", nil)
+
+	handler.emailOAuthCallbackWithProfile(c, provider, config.EmailOAuthProviderConfig{
+		Enabled:             true,
+		ClientID:            provider + "-client",
+		ClientSecret:        provider + "-secret",
+		RedirectURL:         "https://app.example/api/v1/auth/oauth/" + provider + "/callback",
+		FrontendRedirectURL: "/auth/oauth/callback",
+	}, "/auth/oauth/callback", "/dashboard", &emailOAuthProfile{
+		Subject:       subject,
+		Email:         email,
+		EmailVerified: true,
+	})
+
+	require.Equal(t, http.StatusFound, recorder.Code)
+	return recorder.Header().Get("Location")
+}
+
+func emailDriftTokenUserID(t *testing.T, handler *AuthHandler, location string) int64 {
+	t.Helper()
+	parsed, err := url.Parse(location)
+	require.NoError(t, err)
+	fragment, err := url.ParseQuery(parsed.Fragment)
+	require.NoError(t, err)
+	require.Empty(t, fragment.Get("error"), "callback redirected with error %q", fragment.Get("error"))
+	accessToken := fragment.Get("access_token")
+	require.NotEmpty(t, accessToken)
+	claims, err := handler.authService.ValidateToken(accessToken)
+	require.NoError(t, err)
+	return claims.UserID
+}
