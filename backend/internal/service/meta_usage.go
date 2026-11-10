@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"log/slog"
 	"strings"
@@ -18,6 +19,7 @@ const (
 	metaUsageWeeklyResetKey       = "meta_usage_weekly_reset"
 	metaUsageSampledAtKey         = "meta_usage_sampled_at"
 	metaUsageTierKey              = "meta_usage_tier"
+	metaUsageSampleTimeout        = 5 * time.Second
 )
 
 func (s *OpenAIGatewayService) sampleMetaSubscriptionUsage(ctx context.Context, account *Account, usage *meta.SubscriptionUsage) {
@@ -34,6 +36,15 @@ func (s *OpenAIGatewayService) sampleMetaSubscriptionUsage(ctx context.Context, 
 	}
 }
 
+func (s *OpenAIGatewayService) sampleMetaSubscriptionUsageWithTimeout(ctx context.Context, account *Account, usage *meta.SubscriptionUsage) {
+	if usage == nil {
+		return
+	}
+	sampleCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), metaUsageSampleTimeout)
+	defer cancel()
+	s.sampleMetaSubscriptionUsage(sampleCtx, account, usage)
+}
+
 func stripMetaSubscriptionUsage(body []byte) ([]byte, *meta.SubscriptionUsage) {
 	if len(body) == 0 || !gjson.GetBytes(body, "subscription").IsObject() {
 		return body, nil
@@ -47,6 +58,48 @@ func stripMetaSubscriptionUsage(body []byte) ([]byte, *meta.SubscriptionUsage) {
 		return body, usage
 	}
 	return stripped, usage
+}
+
+func filterMetaSubscriptionUsageFromSSE(body []byte, account *Account) ([]byte, *meta.SubscriptionUsage) {
+	if account == nil || !account.IsMeta() || len(body) == 0 {
+		return body, nil
+	}
+	var snapshot *meta.SubscriptionUsage
+	frames := bytes.Split(body, []byte("\n\n"))
+	kept := make([][]byte, 0, len(frames))
+	for _, frame := range frames {
+		eventType, payload := parseSSEFrameIdentity(frame)
+		if meta.IsSubscriptionUsageEvent(eventType, payload) {
+			if usage, ok := meta.ParseSubscriptionUsage(payload); ok {
+				snapshot = usage
+			}
+			continue
+		}
+		kept = append(kept, frame)
+	}
+	if len(kept) == len(frames) {
+		return body, snapshot
+	}
+	return bytes.Join(kept, []byte("\n\n")), snapshot
+}
+
+func parseSSEFrameIdentity(frame []byte) (string, []byte) {
+	var eventType string
+	var data []byte
+	for _, line := range bytes.Split(frame, []byte("\n")) {
+		trimmed := bytes.TrimSpace(line)
+		if rest, ok := bytes.CutPrefix(trimmed, []byte("event:")); ok {
+			eventType = string(bytes.TrimSpace(rest))
+			continue
+		}
+		if rest, ok := bytes.CutPrefix(trimmed, []byte("data:")); ok {
+			if len(data) > 0 {
+				data = append(data, '\n')
+			}
+			data = append(data, bytes.TrimSpace(rest)...)
+		}
+	}
+	return eventType, data
 }
 
 func metaSubscriptionUsageExtraUpdates(usage *meta.SubscriptionUsage, now time.Time) map[string]any {

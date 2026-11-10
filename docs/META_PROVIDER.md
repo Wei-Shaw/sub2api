@@ -99,8 +99,9 @@ Meta returns resets_at (epoch seconds) on throttling:
   subscription windows in a `response.subscription_usage` event during streamed
   turns, and the gateway samples that into the account's 5h/weekly usage cells.
   A fresh account shows no usage until its first streamed turn completes. The
-  event is stripped before it could reach downstream clients, and a
-  `subscription` object on a non-stream response is stripped the same way.
+  event is stripped before it could reach downstream clients, including when a
+  non-stream request is answered with an SSE body that this gateway aggregates
+  into JSON.
   The sampled keys (`meta_usage_*`) are scheduler-neutral, so recording usage
   never touches the scheduler outbox.
 - The device flow session store is in-process with a TTL equal to the device code

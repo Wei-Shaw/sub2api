@@ -487,12 +487,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	}
 	var metaUsageSnapshot *metapkg.SubscriptionUsage
 	defer func() {
-		if account == nil || metaUsageSnapshot == nil {
-			return
-		}
-		sampleCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
-		s.sampleMetaSubscriptionUsage(sampleCtx, account, metaUsageSnapshot)
+		s.sampleMetaSubscriptionUsageWithTimeout(ctx, account, metaUsageSnapshot)
 	}()
 	processSSELine := func(line string, queueDrained bool) {
 		if streamEarlyErr != nil {
@@ -1714,9 +1709,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 	if account != nil && account.IsMeta() {
 		var metaSnapshot *metapkg.SubscriptionUsage
 		body, metaSnapshot = stripMetaSubscriptionUsage(body)
-		if metaSnapshot != nil {
-			s.sampleMetaSubscriptionUsage(context.WithoutCancel(ctx), account, metaSnapshot)
-		}
+		s.sampleMetaSubscriptionUsageWithTimeout(ctx, account, metaSnapshot)
 	}
 
 	usageValue, usageOK := extractOpenAIUsageFromJSONBytes(body)
@@ -1853,11 +1846,22 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 		restoredBody = restoreCodexToolNamesFromContext(c, restoredBody)
 		restoredBody = restoreOpenAIResponsesInstructionsEchoInResponse(c, restoredBody)
 		body = ensureOpenAIResponseObjectCreatedAt(restoredBody)
+		if account != nil && account.IsMeta() {
+			var metaSnapshot *metapkg.SubscriptionUsage
+			body, metaSnapshot = stripMetaSubscriptionUsage(body)
+			s.sampleMetaSubscriptionUsageWithTimeout(c.Request.Context(), account, metaSnapshot)
+		}
 	} else {
 		if originalModel != mappedModel {
 			bodyText = s.replaceModelInSSEBody(bodyText, mappedModel, originalModel)
 		}
 		bodyText = restoreOpenAIResponsesInstructionsEchoInSSEBody(c, bodyText)
+		if account != nil && account.IsMeta() {
+			var metaSnapshot *metapkg.SubscriptionUsage
+			body, metaSnapshot = filterMetaSubscriptionUsageFromSSE([]byte(bodyText), account)
+			bodyText = string(body)
+			s.sampleMetaSubscriptionUsageWithTimeout(c.Request.Context(), account, metaSnapshot)
+		}
 		body = []byte(bodyText)
 	}
 
