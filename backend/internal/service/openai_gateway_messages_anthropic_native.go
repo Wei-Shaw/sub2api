@@ -75,6 +75,9 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 	// 无法接受的 web-search 历史块（GLM/Kimi/DeepSeek 对 server_tool_use 400）。
 	body = StripEmptyTextBlocks(body)
 	body = FilterWebSearchHistoryBlocks(body, upstreamModel)
+	// 上游 Anthropic 兼容端点不接受 inline-tools beta 的 tool_definition
+	// 内容块（DeepSeek 等仅支持 tool_reference），剥离以通过反序列化。
+	body = FilterInlineToolDefinitionBlocks(body)
 
 	logger.LegacyPrintf("service.gateway", "[CN Anthropic 直通] account=%d(%s) platform=%s model=%s upstream=%s stream=%v",
 		account.ID, account.Name, account.Platform, originalModel, upstreamModel, clientStream)
