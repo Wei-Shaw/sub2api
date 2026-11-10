@@ -504,6 +504,7 @@ func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDu
 		return nil, false, fmt.Errorf("parse content blocks: %w", err)
 	}
 
+	var toolMediaParts []GeminiPart
 	for _, block := range blocks {
 		switch block.Type {
 		case "text":
@@ -591,13 +592,14 @@ func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDu
 				for _, part := range media {
 					response.Parts = append(response.Parts, GeminiFunctionResponsePart{InlineData: part.InlineData})
 				}
+			} else {
+				toolMediaParts = append(toolMediaParts, media...)
 			}
 			parts = append(parts, GeminiPart{FunctionResponse: response})
-			if !multimodalToolResults {
-				parts = append(parts, media...)
-			}
 		}
 	}
+
+	parts = append(parts, toolMediaParts...)
 
 	return parts, strippedThinking, nil
 }

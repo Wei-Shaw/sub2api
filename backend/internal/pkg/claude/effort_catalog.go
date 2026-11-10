@@ -57,12 +57,12 @@ func IsHaiku55(model string) bool {
 	return normalizeEffortModelID(model) == "claude-haiku-5-5"
 }
 
-// IsFable52 identifies the Fable 5.2 model after provider/suffix normalization.
+// IsFable52 identifies Fable 5.2 after provider/local suffix normalization.
 func IsFable52(model string) bool {
 	return normalizeEffortModelID(model) == "claude-fable-5-2"
 }
 
-// IsMythos52 identifies the restricted-access Mythos 5.2 model.
+// IsMythos52 identifies Mythos 5.2 after provider/local suffix normalization.
 func IsMythos52(model string) bool {
 	return normalizeEffortModelID(model) == "claude-mythos-5-2"
 }
