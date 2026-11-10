@@ -28,6 +28,28 @@ func TestChatInputAudioProviderScope(t *testing.T) {
 	}
 }
 
+func TestChatInputAudioConvertersPreserveReasoningValidation(t *testing.T) {
+	for name, convert := range map[string]func(*ChatCompletionsRequest) (*ResponsesRequest, error){
+		"responses": ChatCompletionsToResponses,
+		"gemini":    ChatCompletionsToResponsesForGemini,
+	} {
+		t.Run(name, func(t *testing.T) {
+			request := &ChatCompletionsRequest{
+				Model:           "gpt-6.1-terra",
+				ReasoningEffort: "minimal",
+				Messages:        []ChatMessage{{Role: "developer", Content: json.RawMessage(`"keep the role"`)}},
+			}
+			_, err := convert(request)
+			require.ErrorContains(t, err, "gpt-6.1-terra does not support reasoning effort")
+			request.ReasoningEffort = "none"
+			converted, err := convert(request)
+			require.NoError(t, err)
+			require.Equal(t, "none", converted.Reasoning.Effort)
+			require.JSONEq(t, `[{"type":"message","role":"developer","content":"keep the role"}]`, string(converted.Input))
+		})
+	}
+}
+
 func TestChatInputAudioCaseInsensitiveTextSibling(t *testing.T) {
 	audio := `{"type":"input_audio","input_audio":{"data":"YXVkaW8=","format":"wav"}}`
 	for _, sibling := range []string{

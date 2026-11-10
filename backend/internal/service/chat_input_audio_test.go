@@ -146,6 +146,33 @@ func TestChatInputAudioFullConversionChain(t *testing.T) {
 	}
 }
 
+func TestChatInputAudioPreservesGeminiToolResultImages(t *testing.T) {
+	body := []byte(`{"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"call_1","name":"inspect","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"call_1","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"aGVsbG8="}}]},{"type":"image","source":{"type":"base64","media_type":"audio/wav","data":"YXVkaW8="}}]}]}`)
+	for _, model := range []string{"gemini-2.5-flash", "gemini-3.1-pro-high"} {
+		t.Run(model, func(t *testing.T) {
+			converted, err := convertClaudeMessagesToGeminiGenerateContent(body, model)
+			require.NoError(t, err)
+			parts := gjson.GetBytes(converted, "contents.1.parts").Array()
+			require.GreaterOrEqual(t, len(parts), 2)
+			require.Equal(t, "inspect", parts[0].Get("functionResponse.name").String())
+			require.Equal(t, "audio/wav", parts[1].Get("inlineData.mimeType").String())
+			require.Equal(t, "YXVkaW8=", parts[1].Get("inlineData.data").String())
+			if model == "gemini-3.1-pro-high" {
+				require.Len(t, parts, 2)
+				require.Equal(t, "image/png", parts[0].Get("functionResponse.parts.0.inlineData.mimeType").String())
+				require.Equal(t, "aGVsbG8=", parts[0].Get("functionResponse.parts.0.inlineData.data").String())
+				require.Empty(t, parts[0].Get("functionResponse.response.content").String())
+			} else {
+				require.Len(t, parts, 3)
+				require.False(t, parts[0].Get("functionResponse.parts").Exists())
+				require.Equal(t, "[image attached below]", parts[0].Get("functionResponse.response.content").String())
+				require.Equal(t, "image/png", parts[2].Get("inlineData.mimeType").String())
+				require.Equal(t, "aGVsbG8=", parts[2].Get("inlineData.data").String())
+			}
+		})
+	}
+}
+
 func TestChatInputAudioInvalidOrUnsupportedReturns400(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	for _, payload := range []string{
