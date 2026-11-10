@@ -2,8 +2,26 @@ package service
 
 import (
 	"net/http"
+	"sort"
 	"strings"
 )
+
+// anthropicBetaHeader combines all beta lines, including noncanonical map keys.
+// Only this comma-list header has these semantics; getHeaderRaw stays unchanged.
+func anthropicBetaHeader(headers http.Header) string {
+	var keys []string
+	for key := range headers {
+		if strings.EqualFold(key, "anthropic-beta") {
+			keys = append(keys, key)
+		}
+	}
+	sort.Strings(keys)
+	var values []string
+	for _, key := range keys {
+		values = append(values, headers[key]...)
+	}
+	return mergeAnthropicBeta(nil, strings.Join(values, ","))
+}
 
 // headerWireCasing 定义每个白名单 header 在真实 Claude CLI 抓包中的准确大小写。
 // Accept-Encoding keeps canonical casing so net/http recognizes explicit compression negotiation.

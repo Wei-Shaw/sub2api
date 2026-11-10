@@ -196,7 +196,7 @@ func TestSanitizeAnthropicBodyForBetaTokens_MidConversationOutputConfig_Idempote
 
 // OAuth mimic 路径真实 request 联动，两 case 明确期望：
 //   - 默认：mimic 固定列表带该 beta → outgoing header 含 token，空控制 system 消息保留；
-//   - policy filter 命中（经 gin context 的 betaPolicyFilterSetKey 缓存注入该 token，
+//   - policy filter 命中（经 attempt-local context 缓存注入该 token，
 //     走真实 policy filter/dropSet 路径）→ outgoing header 无 token，空控制 system
 //     消息整条删除。
 //
@@ -219,9 +219,6 @@ func TestBuildUpstreamRequestOAuthMimic_MidConversationOutputConfig(t *testing.T
 			rec := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(rec)
 			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
-			if tc.policyFilterDrops {
-				c.Set(betaPolicyFilterSetKey, map[string]struct{}{claude.BetaMidConversationOutputConfig: {}})
-			}
 
 			account := &Account{ID: 701, Platform: PlatformAnthropic, Type: AccountTypeOAuth,
 				Credentials: map[string]any{"access_token": "oauth-tok"},
@@ -233,8 +230,12 @@ func TestBuildUpstreamRequestOAuthMimic_MidConversationOutputConfig(t *testing.T
 				`{"role":"user","content":"hello"}]}`)
 
 			svc := &GatewayService{cfg: &config.Config{}}
+			ctx := context.Background()
+			if tc.policyFilterDrops {
+				ctx = withBetaPolicy(ctx, account, betaPolicyResult{filterSet: map[string]struct{}{claude.BetaMidConversationOutputConfig: {}}})
+			}
 			req, _, err := svc.buildUpstreamRequest(
-				context.Background(), c, account, body,
+				ctx, c, account, body,
 				"oauth-tok", "oauth", "claude-opus-5", false, true, // mimicClaudeCode=true
 			)
 			require.NoError(t, err)
