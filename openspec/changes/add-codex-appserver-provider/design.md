@@ -62,3 +62,4 @@ worker 由 provider 生命周期管理，不绑定单次 HTTP context。turn con
 - [HTTP 黑盒测试被误解为真实部署验收] → 测试覆盖 handler、账号选择、usage recording 入口、pool 与官方 binary，但鉴权/账号仓库是测试夹具，上游是假 Responses，且生产 worker factory 尚未接线。
 - [worker 崩溃导致内存 thread 粘性丢失] → 不健康 worker 会被丢弃并在下次请求重建；本变更不声称跨进程恢复会话，持久化 resume 留作后续能力。
 - [跨账号 failover 静默丢失 thread 上下文] → 当前 adapter 不把 app-server worker 错误包装为可换号错误；已有会话依赖现有 sticky/previous-response 绑定留在原账号。没有可验证 resume/replay 前，不声明支持有状态会话跨账号迁移。
+- [scheduler sticky escape 或 legacy spillover 先选到其他账号] → session binding 同时记录原账号 ID；adapter 在启动目标 turn 前校验账号一致性，不一致时返回明确的 503 pinned-session 错误，禁止静默新建空白 thread。

@@ -30,14 +30,14 @@
 - `backend/scripts/test-codex-appserver-blackbox.sh`
 - 构建：固定 `golang:1.27.3-bookworm`、`node:22-bookworm-slim` digest 与 `@openai/codex@0.166.0`。
 - 运行约束：`--network none`、`--read-only`、`--cap-drop ALL`、`no-new-privileges`、非 root、无宿主 volume。
-- 结果：`TestRealAppServerAgainstFakeResponses` 通过，scheduler/pool 收口后的最终重跑耗时 5.87 秒，退出码 0。
+- 结果：`TestRealAppServerAgainstFakeResponses` 通过，session fail-closed 收口后的最终重跑耗时 5.65 秒，退出码 0。
 - 观察：官方 app-server 向 loopback `/v1/responses` 发出 POST；携带 `Bearer fake-codex-e2e-token`；body 中 model 为 `gpt-6-sol`、`stream:true`、input 非空；provider 收到 hello delta 与 completed；临时 `CODEX_HOME` 中不存在 `auth.json`。
 - 未发生：没有读取宿主 `~/.codex`/钥匙串/token，没有访问 OpenAI/ChatGPT 域名，没有真实账号请求或额度消耗。
 
 ## User HTTP black-box evidence
 
 - 同一脚本在相同断网容器中运行 `TestOpenAIResponsesViaRealAppServerUserE2E`。
-- 结果：通过，scheduler/pool 收口后的最终重跑耗时 5.24 秒，退出码 0。
+- 结果：通过，session fail-closed 收口后的最终重跑耗时 5.15 秒，退出码 0。
 - 用户输入：两次 `POST /openai/v1/responses`，`model=gpt-6-sol`、`stream=false`、相同 `prompt_cache_key=session-alpha`，文本分别要求返回 hello。
 - 用户输出：两次 HTTP 200，Responses `status=completed`，`output[0].content[0].text=hello`。
 - 进程与会话观察：worker factory 只创建 1 个官方 app-server；第二次 `TurnRequest.ThreadID` 等于第一次 `TurnResult.ThreadID`；fake upstream 收到 2 次带假 Bearer 的 Responses 请求。
@@ -50,6 +50,13 @@
 - GREEN：`TestPoolEvictsLeastRecentlyUsedIdleWorkerAtCapacity` 证明保留最近使用账号并淘汰 LRU idle 账号；`TestOpenAIAppServerSchedulingConcurrencyIsOne` 证明 app-server 账号即使配置 `Concurrency=12`、`LoadFactor=8`，scheduler 仍使用 1，direct 账号保持原值。
 - 代码边界：账号候选过滤、load/queue/error/TTFT 等评分、slot、等待与换号仍在 `openai_account_scheduler.go`；`codexapp.Pool` 只接收已选定的 account worker key。
 - 回归：`go test -tags=unit ./internal/codexapp ./internal/service -timeout=10m`、`go test -race -tags=unit ./internal/codexapp -count=1` 与 `go vet ./internal/codexapp ./internal/service` 均通过。
+
+## Stateful session fail-closed evidence
+
+- RED：相同 `prompt_cache_key` 或 `previous_response_id` 被传给另一个账号时，adapter 返回成功且 fake backend 收到新的 turn，证明存在静默丢上下文风险。
+- GREEN：`TestOpenAIGatewayForwardCodexAppServerRejectsCrossAccountSessionMove` 要求两种 continuation 都返回 `503 session_pinned_account_unavailable`，并断言 backend 总调用数保持为首次请求的 1。
+- 边界：该守卫只防止错误迁移；本变更仍未实现 thread resume、历史 replay 或跨账号无损迁移。
+- 回归：完整 `internal/service` unit（264.75 秒）、`go vet ./internal/service`、golangci-lint v2.14.0（0 issues）及两条官方 binary 黑盒均通过。
 
 ## Debugging Evidence
 

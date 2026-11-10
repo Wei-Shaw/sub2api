@@ -109,3 +109,14 @@ worker pool MUST NOT 自行选择账号或复制现有账号负载均衡。账�
 - **THEN** 请求 MUST 经账号选择和常驻 pool 到达真实官方 app-server
 - **THEN** 用户 MUST 收到 `completed` Responses 输出和 fake upstream 返回的文本
 - **THEN** 两次请求 MUST 只创建一个 app-server 进程并续接同一 thread
+
+### Requirement: 有状态会话在无迁移能力时必须保持账号绑定
+
+系统 SHALL 在 app-server session binding 中记录原账号 ID。后续相同 `prompt_cache_key` 或 `previous_response_id` 若被 scheduler 分配到不同账号，adapter MUST fail closed，返回 `503 session_pinned_account_unavailable`，且 MUST NOT 在目标账号创建新 turn。
+
+#### Scenario: 粘性账号高负载或被 block 后 scheduler 选择其他账号
+
+- **WHEN** 已存在 app-server session binding，后续请求携带相同 prompt/session 标识但选中不同账号
+- **THEN** 用户 MUST 收到明确的 session pinned 错误
+- **THEN** 目标账号 app-server worker MUST NOT 收到 turn
+- **THEN** 系统 MUST NOT 把空白新 thread 冒充原会话继续执行

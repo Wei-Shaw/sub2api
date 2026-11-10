@@ -119,6 +119,42 @@ func TestOpenAIGatewayForwardCodexAppServerStreamsResponsesEvents(t *testing.T) 
 	require.Contains(t, recorder.Body.String(), "event: response.completed")
 }
 
+func TestOpenAIGatewayForwardCodexAppServerRejectsCrossAccountSessionMove(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	backend := &fakeCodexAppServerBackend{}
+	service := &OpenAIGatewayService{}
+	service.SetCodexAppServerBackend(backend)
+	t.Cleanup(service.CloseOpenAIWSPool)
+	accountA := &Account{ID: 41, Extra: map[string]any{
+		OpenAIExecutionBackendExtraKey: OpenAIExecutionBackendAppServer,
+	}}
+	accountB := &Account{ID: 42, Extra: map[string]any{
+		OpenAIExecutionBackendExtraKey: OpenAIExecutionBackendAppServer,
+	}}
+
+	firstBody := []byte(`{"model":"gpt-test","stream":false,"prompt_cache_key":"session-alpha","input":"hello"}`)
+	firstRecorder, firstContext := codexAppServerForwardTestContext(firstBody, 7)
+	_, err := service.Forward(context.Background(), firstContext, accountA, firstBody)
+	require.NoError(t, err)
+	var firstResponse map[string]any
+	require.NoError(t, json.Unmarshal(firstRecorder.Body.Bytes(), &firstResponse))
+	responseID, _ := firstResponse["id"].(string)
+	require.NotEmpty(t, responseID)
+
+	for _, body := range [][]byte{
+		[]byte(`{"model":"gpt-test","stream":false,"prompt_cache_key":"session-alpha","input":"continue"}`),
+		[]byte(`{"model":"gpt-test","stream":false,"previous_response_id":"` + responseID + `","input":"continue"}`),
+	} {
+		recorder, c := codexAppServerForwardTestContext(body, 7)
+		_, err := service.Forward(context.Background(), c, accountB, body)
+		require.Error(t, err)
+		require.Equal(t, http.StatusServiceUnavailable, recorder.Code)
+		require.Contains(t, recorder.Body.String(), "session_pinned_account_unavailable")
+	}
+
+	require.Len(t, backend.snapshot(), 1, "a cross-account continuation must not start a new app-server turn")
+}
+
 func TestOpenAIAppServerSchedulingConcurrencyIsOne(t *testing.T) {
 	account := &Account{
 		Concurrency: 12,

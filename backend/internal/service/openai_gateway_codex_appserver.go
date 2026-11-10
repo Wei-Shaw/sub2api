@@ -19,7 +19,10 @@ const (
 	OpenAIExecutionBackendExtraKey  = "openai_execution_backend"
 	OpenAIExecutionBackendAppServer = "codex_app_server"
 	codexAppServerSessionTTL        = 24 * time.Hour
+	codexAppServerPinnedErrorCode   = "session_pinned_account_unavailable"
 )
+
+var errCodexAppServerSessionPinnedAccountUnavailable = errors.New("codex app-server session is pinned to another account")
 
 // CodexAppServerBackend is implemented by codexapp.Pool. The interface keeps
 // process lifecycle and thread affinity out of the HTTP gateway service.
@@ -78,6 +81,7 @@ type codexAppServerRequest struct {
 
 type codexAppServerSessionBinding struct {
 	SessionKey string
+	AccountID  int64
 	ExpiresAt  time.Time
 }
 
@@ -113,7 +117,17 @@ func (s *OpenAIGatewayService) forwardResponsesViaCodexAppServer(
 	responseID := "resp_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	messageID := "msg_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	apiKeyID := getAPIKeyIDFromContext(c)
-	sessionKey := s.resolveCodexAppServerSessionKey(apiKeyID, request)
+	sessionKey, pinnedAccountID := s.resolveCodexAppServerSession(apiKeyID, request)
+	if pinnedAccountID > 0 && pinnedAccountID != account.ID {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": gin.H{
+				"type":    "server_error",
+				"code":    codexAppServerPinnedErrorCode,
+				"message": "This session is pinned to a temporarily unavailable account. Retry later or start a new conversation.",
+			},
+		})
+		return nil, errCodexAppServerSessionPinnedAccountUnavailable
+	}
 	workerKey := "account:" + strconv.FormatInt(account.ID, 10)
 	startedAt := time.Now()
 	var firstTokenMs *int
@@ -166,9 +180,13 @@ func (s *OpenAIGatewayService) forwardResponsesViaCodexAppServer(
 		return nil, fmt.Errorf("codex app-server turn ended with status %q", result.Status)
 	}
 
-	s.codexAppServerSessions.Store(responseID, codexAppServerSessionBinding{
-		SessionKey: sessionKey, ExpiresAt: time.Now().Add(codexAppServerSessionTTL),
-	})
+	binding := codexAppServerSessionBinding{
+		SessionKey: sessionKey, AccountID: account.ID, ExpiresAt: time.Now().Add(codexAppServerSessionTTL),
+	}
+	s.codexAppServerSessions.Store(responseID, binding)
+	if promptCacheKey := strings.TrimSpace(request.PromptCacheKey); promptCacheKey != "" {
+		s.codexAppServerSessions.Store(codexAppServerPromptBindingKey(apiKeyID, promptCacheKey), binding)
+	}
 	response := codexAppServerResponse(responseID, messageID, request.Model, output.String(), result.Usage)
 	if request.Stream {
 		if err := startStream(); err != nil {
@@ -195,19 +213,33 @@ func (s *OpenAIGatewayService) forwardResponsesViaCodexAppServer(
 	}, nil
 }
 
-func (s *OpenAIGatewayService) resolveCodexAppServerSessionKey(apiKeyID int64, request codexAppServerRequest) string {
+func (s *OpenAIGatewayService) resolveCodexAppServerSession(apiKeyID int64, request codexAppServerRequest) (string, int64) {
 	apiPrefix := "api:" + strconv.FormatInt(apiKeyID, 10) + ":"
-	if promptCacheKey := strings.TrimSpace(request.PromptCacheKey); promptCacheKey != "" {
-		return apiPrefix + "prompt:" + promptCacheKey
-	}
 	if previousResponseID := strings.TrimSpace(request.PreviousResponseID); previousResponseID != "" {
-		if raw, ok := s.codexAppServerSessions.Load(previousResponseID); ok {
-			if binding, ok := raw.(codexAppServerSessionBinding); ok && binding.SessionKey != "" {
-				return binding.SessionKey
-			}
+		if binding, ok := s.loadCodexAppServerSessionBinding(previousResponseID); ok {
+			return binding.SessionKey, binding.AccountID
 		}
 	}
-	return apiPrefix + "response:" + uuid.NewString()
+	if promptCacheKey := strings.TrimSpace(request.PromptCacheKey); promptCacheKey != "" {
+		if binding, ok := s.loadCodexAppServerSessionBinding(codexAppServerPromptBindingKey(apiKeyID, promptCacheKey)); ok {
+			return binding.SessionKey, binding.AccountID
+		}
+		return apiPrefix + "prompt:" + promptCacheKey, 0
+	}
+	return apiPrefix + "response:" + uuid.NewString(), 0
+}
+
+func (s *OpenAIGatewayService) loadCodexAppServerSessionBinding(key string) (codexAppServerSessionBinding, bool) {
+	raw, ok := s.codexAppServerSessions.Load(key)
+	if !ok {
+		return codexAppServerSessionBinding{}, false
+	}
+	binding, ok := raw.(codexAppServerSessionBinding)
+	return binding, ok && binding.SessionKey != "" && binding.AccountID > 0
+}
+
+func codexAppServerPromptBindingKey(apiKeyID int64, promptCacheKey string) string {
+	return "codex-app-server:prompt:" + strconv.FormatInt(apiKeyID, 10) + ":" + promptCacheKey
 }
 
 func decodeCodexAppServerInput(raw json.RawMessage) ([]codexapp.InputItem, error) {

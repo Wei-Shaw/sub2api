@@ -34,3 +34,4 @@
 - [x] 5.5 增加真实 HTTP → handler → 账号选择 → pool → 官方 app-server → fake upstream 黑盒 E2E，连续两次请求验证单进程和 thread 复用。
 - [x] 5.6 复用现有 OpenAI account scheduler；将单 worker app-server 账号的调度并发/load factor 收口为 1。
 - [x] 5.7 pool 达到容量时优先 LRU 淘汰 idle worker，全 active 时才 exhausted。
+- [x] 5.8 session binding 记录原账号；无 replay/resume 时跨账号 continuation fail closed，不静默新建 thread。
