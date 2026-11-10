@@ -984,6 +984,7 @@ var ProviderSet = wire.NewSet(
 	NewAffiliateService,
 	ProvidePaymentConfigService,
 	ProvidePaymentService,
+	ProvidePaymentFXSyncService,
 	ProvidePaymentOrderExpiryService,
 	ProvideBalanceNotifyService,
 	ProvideChannelMonitorService,
@@ -1012,6 +1013,20 @@ func ProvidePaymentConfigService(entClient *dbent.Client, settingRepo SettingRep
 func ProvideBalanceNotifyService(emailService *EmailService, settingRepo SettingRepository, accountRepo AccountRepository, notificationEmailService *NotificationEmailService) *BalanceNotifyService {
 	svc := NewBalanceNotifyService(emailService, settingRepo, accountRepo)
 	svc.SetNotificationEmailService(notificationEmailService)
+	return svc
+}
+
+// ProvidePaymentFXSyncService creates and starts the periodic payment FX sync.
+// It reuses the existing settings KV for config/status and the shared leader lock
+// so only one instance performs a sync per interval.
+func ProvidePaymentFXSyncService(
+	settingRepo SettingRepository,
+	paymentConfigSvc *PaymentConfigService,
+	leaderLockCache LeaderLockCache,
+	db *sql.DB,
+) *PaymentFXSyncService {
+	svc := NewPaymentFXSyncService(settingRepo, paymentConfigSvc, leaderLockCache, db)
+	svc.Start()
 	return svc
 }
 

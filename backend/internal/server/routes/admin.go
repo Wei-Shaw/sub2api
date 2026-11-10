@@ -575,6 +575,12 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpA
 	{
 		adminSettings.GET("", h.Admin.Setting.GetSettings)
 		adminSettings.PUT("", h.Admin.Setting.UpdateSettings)
+		// 充值汇率每日自动同步
+		if h.Admin.PaymentFX != nil {
+			adminSettings.GET("/payment-fx", h.Admin.PaymentFX.GetConfig)
+			adminSettings.PUT("/payment-fx", h.Admin.PaymentFX.UpdateConfig)
+			adminSettings.POST("/payment-fx/sync", h.Admin.PaymentFX.SyncNow)
+		}
 		adminSettings.POST("/test-smtp", h.Admin.Setting.TestSMTPConnection)
 		adminSettings.POST("/send-test-email", h.Admin.Setting.SendTestEmail)
 		adminSettings.GET("/email-templates", h.Admin.Setting.ListEmailTemplates)

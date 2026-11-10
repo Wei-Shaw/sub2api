@@ -8419,6 +8419,9 @@
             v-model:notice="form.payment_recharge_bonus_notice"
           />
 
+          <!-- 充值汇率自动同步 -->
+          <PaymentFXSyncSettings v-if="form.payment_enabled" />
+
           <!-- Provider Management -->
           <PaymentProviderList
             v-if="form.payment_enabled"
@@ -8996,6 +8999,7 @@ import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import RechargeBonusTierEditor from "@/components/admin/settings/RechargeBonusTierEditor.vue";
+import PaymentFXSyncSettings from "@/components/admin/settings/PaymentFXSyncSettings.vue";
 import {
   normalizeRechargeBonusMode,
   normalizeRechargeBonusTiers,
