@@ -15,6 +15,21 @@ function mountInput(value: number | null = null) {
 }
 
 describe('recharge amount input', () => {
+  it('previews USD bonus credit at parity and updates when currency changes', async () => {
+    const wrapper = mount(AmountInput, {
+      props: {
+        modelValue: null,
+        amounts: [100],
+        multiplier: 0.14,
+        currency: 'USD',
+        bonusTiers: [{ min_amount: 100, bonus_percent: 20 }],
+      },
+    })
+    expect(wrapper.get('[data-testid="quick-amount-credited"]').text()).toContain('120')
+    await wrapper.setProps({ currency: 'CNY' })
+    expect(wrapper.get('[data-testid="quick-amount-credited"]').text()).toContain('16.8')
+  })
+
   it.each(['10abc', '10.555', '-10', '1e2'])('restores the accepted amount after rejecting %s', async (value) => {
     const wrapper = mountInput(10)
     const input = wrapper.get('input')

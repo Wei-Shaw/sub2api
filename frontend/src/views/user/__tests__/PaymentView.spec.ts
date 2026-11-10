@@ -375,6 +375,48 @@ describe('PaymentView subscription plan grid', () => {
 })
 
 describe('PaymentView recharge rate preview', () => {
+  it.each(['airwallex', 'stripe'])('uses USD parity for %s and restores the configured rate when switching to CNY', async (method) => {
+    translate.mockClear()
+    routeState.path = '/purchase'
+    routeState.query = {}
+    getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoFixture({
+      balance_recharge_multiplier: 0.14,
+      methods: {
+        [method]: { ...checkoutInfoFixture().data.methods.wxpay, currency: 'USD' },
+        wxpay: { ...checkoutInfoFixture().data.methods.wxpay, currency: 'CNY' },
+      },
+    }))
+    const wrapper = shallowMount(PaymentView, {
+      global: {
+        stubs: {
+          AppLayout: { template: '<div><slot /></div>' },
+          Teleport: true,
+          Transition: false,
+        },
+      },
+    })
+    await flushPromises()
+    wrapper.getComponent({ name: 'PaymentMethodSelector' }).vm.$emit('select', method)
+    await flushPromises()
+    translate.mockClear()
+    const amountInput = wrapper.getComponent(AmountInput)
+    amountInput.vm.$emit('update:modelValue', 100)
+    await flushPromises()
+
+    expect(amountInput.props('currency')).toBe('USD')
+    expect(amountInput.props('multiplier')).toBe(1)
+    expect(wrapper.find('[data-testid="recharge-credited-row"]').exists()).toBe(false)
+    expect(translate.mock.calls.some(([key]) => key === 'payment.rechargeRatePreview')).toBe(false)
+
+    wrapper.getComponent({ name: 'PaymentMethodSelector' }).vm.$emit('select', 'wxpay')
+    await flushPromises()
+
+    expect(amountInput.props('currency')).toBe('CNY')
+    expect(amountInput.props('multiplier')).toBe(0.14)
+    expect(wrapper.get('[data-testid="recharge-credited-row"]').text()).toContain('$14.00')
+    expect(translate).toHaveBeenCalledWith('payment.rechargeRatePreview', { currency: 'CNY', usd: '0.14' })
+  })
+
   it('uses the selected payment method currency in both locale templates', async () => {
     translate.mockClear()
     routeState.path = '/purchase'
@@ -384,7 +426,7 @@ describe('PaymentView recharge rate preview', () => {
       methods: {
         stripe: {
           ...checkoutInfoFixture().data.methods.wxpay,
-          currency: 'USD',
+          currency: 'NZD',
         },
       },
     }))
@@ -403,7 +445,7 @@ describe('PaymentView recharge rate preview', () => {
     await flushPromises()
 
     expect(translate).toHaveBeenCalledWith('payment.rechargeRatePreview', {
-      currency: 'USD',
+      currency: 'NZD',
       usd: '0.50',
     })
     expect(en.payment.rechargeRatePreview).toBe('Current rate: 1 {currency} = {usd} USD')
@@ -460,6 +502,7 @@ describe('PaymentView subscription confirmation amounts', () => {
 
     const usdWrapper = await mountSubscriptionConfirm({
       checkout: {
+        balance_recharge_multiplier: 0.14,
         subscription_usd_to_cny_rate: 7.15,
       },
       method: {
