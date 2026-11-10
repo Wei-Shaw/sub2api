@@ -85,6 +85,11 @@
 - **THEN** `prompt_audit_jobs` MUST 保存 Hash、脱敏预览、字符数、消息数、分列的用户/API Key 展示快照和可关联请求上下文
 - **THEN** 表中 MUST 不存在 raw_prompt、payload 或等价原文字段
 
+#### Scenario: 事件表不得新增原文列
+- **WHEN** 评估在事件表保存审计证据
+- **THEN** `prompt_audit_events` MUST 不存在 `raw_prompt`、`full_prompt`、`payload` 或等价原文字段
+- **THEN** schema 泄露门禁 MUST 把 `full_prompt` 列为 forbidden 列名，使再次引入时测试失败
+
 #### Scenario: 管理员查看事件详情
 - **WHEN** 管理员打开提示词审计事件详情
 - **THEN** 页面和 API MUST 只展示脱敏预览、Hash、分类、结构化风险摘要、证据摘要和技术元数据

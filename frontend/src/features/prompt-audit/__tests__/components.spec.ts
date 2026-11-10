@@ -87,7 +87,7 @@ describe('Prompt Audit components', () => {
   it('keeps identity fields separate, supports selection, and opens filter deletion from the toolbar', async () => {
     const event: PromptAuditEvent = {
       id: 1, job_id: 1, decision: 'critical', risk_level: 'critical', action: 'Block', categories: ['pii'], matched_scanners: ['pii'], scanner_scores: { pii: 1 }, scanner_evidence: { pii: 'redacted' }, scanner_backend: 'qwen3guard-openai', scanner_version: '1', guard_endpoint_id: 'guard-1', policy_id: 'priority', policy_version: 1, config_version: 1, chunk_total: 1, latency_ms: 10, issue_summaries: [], created_at: '2026-07-16T00:00:00Z',
-      snapshot: { request_id: 'req-1', user_id: 1, username: 'alice', user_email: 'alice@example.test', api_key_id: 2, api_key_name: 'alice-key', group_id: 3, group_name: 'Alpha', provider: 'openai', endpoint: '/v1/chat/completions', protocol: 'openai_chat', model: 'gpt-test', prompt_hash: 'a'.repeat(64), redacted_preview: 'redacted preview', full_prompt: 'full prompt text', prompt_length: 10, message_count: 1, stage: 'http' },
+      snapshot: { request_id: 'req-1', user_id: 1, username: 'alice', user_email: 'alice@example.test', api_key_id: 2, api_key_name: 'alice-key', group_id: 3, group_name: 'Alpha', provider: 'openai', endpoint: '/v1/chat/completions', protocol: 'openai_chat', model: 'gpt-test', prompt_hash: 'a'.repeat(64), redacted_preview: 'redacted preview', prompt_length: 10, message_count: 1, stage: 'http' },
     }
     const wrapper = mount(EventWorkspace, {
       props: { events: [event], total: 1, page: 1, pageSize: 20, filters: emptyEventFilters(), selectedIds: [], loading: false, error: '' },
@@ -221,7 +221,7 @@ describe('Prompt Audit components', () => {
         request_id: 'req-1', user_id: 1, username: 'alice', user_email: 'alice@example.test',
         api_key_id: 2, api_key_name: 'alice-key', group_id: 3, group_name: 'Alpha', provider: 'openai',
         endpoint: '/v1/chat/completions', protocol: 'openai_chat', model: 'gpt-test',
-        prompt_hash: 'a'.repeat(64), redacted_preview: 'redacted prompt body', full_prompt: 'complete unmasked prompt body', prompt_length: 20,
+        prompt_hash: 'a'.repeat(64), redacted_preview: 'redacted prompt body', prompt_length: 20,
         message_count: 1, stage: 'http',
       },
     }
@@ -237,15 +237,14 @@ describe('Prompt Audit components', () => {
     expect(riskTab).toBeTruthy()
     await riskTab!.trigger('click')
     expect(wrapper.get('[data-test="event-detail-tab-panel"]').classes()).toContain('h-[min(62vh,36rem)]')
-    expect(wrapper.get('[data-test="risk-prompt-preview"]').text()).toContain('complete unmasked prompt body')
-    expect(wrapper.get('[data-test="risk-prompt-preview"]').text()).not.toContain('redacted prompt body')
+    expect(wrapper.get('[data-test="risk-prompt-preview"]').text()).toContain('redacted prompt body')
     expect(wrapper.get('[data-test="risk-prompt-full"]').classes()).toContain('overflow-auto')
     expect(wrapper.get('[data-test="risk-guard-return"]').text()).toContain('"decision": "admin.promptAudit.decisions.critical"')
     expect(wrapper.get('[data-test="risk-guard-return"]').text()).toContain('admin.promptAudit.scanners.sexual_content_or_sexual_acts')
     expect(wrapper.get('[data-test="risk-issue"]').text()).toContain('admin.promptAudit.scanners.sexual_content_or_sexual_acts')
   })
 
-  it('falls back to the redacted preview for events stored before full prompts were kept', async () => {
+  it('shows the redacted preview and never an unredacted prompt', async () => {
     const event: PromptAuditEvent = {
       id: 2, job_id: 2, decision: 'flag', risk_level: 'medium', action: 'Warn',
       categories: ['pii'], matched_scanners: ['pii'], scanner_scores: {}, scanner_evidence: {},
@@ -256,7 +255,7 @@ describe('Prompt Audit components', () => {
         request_id: 'req-2', user_id: 1, username: 'bob', user_email: '', api_key_id: 2,
         api_key_name: 'bob-key', group_id: 3, group_name: 'Alpha', provider: 'openai',
         endpoint: '/v1/chat/completions', protocol: 'openai_chat', model: 'gpt-test',
-        prompt_hash: 'b'.repeat(64), redacted_preview: 'legacy redacted preview', full_prompt: '', prompt_length: 20,
+        prompt_hash: 'b'.repeat(64), redacted_preview: 'legacy redacted preview', prompt_length: 20,
         message_count: 1, stage: 'http',
       },
     }
