@@ -1216,12 +1216,7 @@ func TestOpenAIResponsesWebSocket_RejectsMessageIDAsPreviousResponseID(t *testin
 	cancelWrite()
 	require.NoError(t, err)
 
-	readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
-	_, _, err = clientConn.Read(readCtx)
-	cancelRead()
-	require.Error(t, err)
-	var closeErr coderws.CloseError
-	require.ErrorAs(t, err, &closeErr)
+	closeErr := readOpenAIWSRejection(t, clientConn, http.StatusBadRequest)
 	require.Equal(t, coderws.StatusPolicyViolation, closeErr.Code)
 	require.Contains(t, strings.ToLower(closeErr.Reason), "previous_response_id")
 }
@@ -1448,6 +1443,7 @@ func TestOpenAIResponsesWebSocket_ContentModerationBlocksFirstFrame(t *testing.T
 	if readErr == nil {
 		require.Contains(t, string(payload), "content_policy_violation")
 		require.Contains(t, string(payload), "内容审计测试阻断")
+		require.Equal(t, int64(http.StatusForbidden), gjson.GetBytes(payload, "status").Int(), string(payload))
 	} else {
 		var closeErr coderws.CloseError
 		require.ErrorAs(t, readErr, &closeErr)
@@ -1959,6 +1955,29 @@ type openAIResponsesWSUsageLogCase struct {
 	firstFrameCloseExpected bool
 	// secondTurnCloseExpected：第二个 turn 被拒（连接被 1008 关闭）。
 	secondTurnCloseExpected bool
+	// rejectionStatus: HTTP status of the error event sent before the close;
+	// 0 means the close must arrive without any preceding event.
+	rejectionStatus int
+}
+
+// readOpenAIWSRejection reads the optional status-bearing error event and the
+// close that ends a rejected WebSocket turn.
+func readOpenAIWSRejection(t *testing.T, conn *coderws.Conn, wantStatus int) coderws.CloseError {
+	t.Helper()
+	readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancelRead()
+	_, payload, readErr := conn.Read(readCtx)
+	if wantStatus != 0 {
+		require.NoError(t, readErr, "a rejected turn must first receive a status-bearing error event")
+		require.Equal(t, "error", gjson.GetBytes(payload, "type").String())
+		require.Equal(t, int64(wantStatus), gjson.GetBytes(payload, "status").Int(), string(payload))
+		require.NotEmpty(t, gjson.GetBytes(payload, "error.message").String())
+		_, _, readErr = conn.Read(readCtx)
+	}
+	require.Error(t, readErr, "the rejected turn must end with a close")
+	var closeErr coderws.CloseError
+	require.ErrorAs(t, readErr, &closeErr)
+	return closeErr
 }
 
 type openAIResponsesWSUsageLogResult struct {
@@ -3106,17 +3125,15 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 
 	if tc.closeReason == "" {
 		tc.closeReason = "not available for this group"
+		if tc.rejectionStatus == 0 {
+			tc.rejectionStatus = http.StatusNotFound
+		}
 	}
 	if tc.closeStatus == 0 {
 		tc.closeStatus = coderws.StatusPolicyViolation
 	}
 	if tc.firstFrameCloseExpected {
-		readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
-		_, _, readErr := clientConn.Read(readCtx)
-		cancelRead()
-		require.Error(t, readErr, "first frame should have been rejected with a close")
-		var closeErr coderws.CloseError
-		require.ErrorAs(t, readErr, &closeErr)
+		closeErr := readOpenAIWSRejection(t, clientConn, tc.rejectionStatus)
 		status := tc.closeStatus
 		if status == 0 {
 			status = coderws.StatusPolicyViolation
@@ -3155,12 +3172,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		cancelWrite()
 		require.NoError(t, err)
 		if tc.secondTurnCloseExpected {
-			readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
-			_, _, readErr := clientConn.Read(readCtx)
-			cancelRead()
-			require.Error(t, readErr, "second turn should have been rejected with a close")
-			var closeErr coderws.CloseError
-			require.ErrorAs(t, readErr, &closeErr)
+			closeErr := readOpenAIWSRejection(t, clientConn, tc.rejectionStatus)
 			status := tc.closeStatus
 			if status == 0 {
 				status = coderws.StatusPolicyViolation
@@ -3309,14 +3321,14 @@ func TestOpenAIResponsesWebSocketSimpleModeRechecksKeyWindows(t *testing.T) {
 		t.Run(mode+"/after-account-selection", func(t *testing.T) {
 			runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
 				firstPayload: `{"type":"response.create","model":"gpt-5.1"}`,
-				ingressMode:  mode, simpleModeRejectAtRead: 2, firstFrameCloseExpected: true, closeReason: "billing check failed",
+				ingressMode:  mode, simpleModeRejectAtRead: 2, firstFrameCloseExpected: true, closeReason: "billing check failed", rejectionStatus: http.StatusTooManyRequests,
 			})
 		})
 		t.Run(mode+"/followup-turn", func(t *testing.T) {
 			runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
 				firstPayload:  `{"type":"response.create","model":"gpt-5.1"}`,
 				secondPayload: `{"type":"response.create","model":"gpt-5.1"}`,
-				ingressMode:   mode, simpleModeRejectAtRead: 3, secondTurnCloseExpected: true, closeReason: "billing check failed",
+				ingressMode:   mode, simpleModeRejectAtRead: 3, secondTurnCloseExpected: true, closeReason: "billing check failed", rejectionStatus: http.StatusTooManyRequests,
 			})
 		})
 	}
