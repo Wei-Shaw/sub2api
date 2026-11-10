@@ -381,6 +381,12 @@ export default {
       alipaySaveAndScanHint: '保存二维码后，打开支付宝扫一扫，从相册选择二维码',
     },
     orders: {
+      planName: '套餐名称',
+      planPrice: '套餐价格',
+      subscriptionDays: '购买时长',
+      paymentBaseAmount: '手续费前金额',
+      currencyNotRecorded: '币种未记录',
+
       title: '我的订单',
       empty: '暂无订单',
       orderId: '订单 ID',
@@ -558,6 +564,9 @@ export default {
       refundEnabled: '允许退款',
       allowUserRefund: '允许用户退款',
       alreadyRefunded: '已退款',
+      deductSubscription: '扣回订阅时长',
+      deductSubscriptionHint: '扣回该订单记录的订阅时长',
+      noSubscriptionDeduction: '将不扣回订阅时长',
       deductBalance: '扣除余额',
       deductBalanceHint: '从用户余额中扣回充值金额',
       userBalance: '用户余额',

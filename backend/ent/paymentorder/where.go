@@ -1335,6 +1335,16 @@ func SubscriptionDaysNotNil() predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldNotNull(FieldSubscriptionDays))
 }
 
+// SubscriptionPlanSnapshotIsNil applies the IsNil predicate on the "subscription_plan_snapshot" field.
+func SubscriptionPlanSnapshotIsNil() predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIsNull(FieldSubscriptionPlanSnapshot))
+}
+
+// SubscriptionPlanSnapshotNotNil applies the NotNil predicate on the "subscription_plan_snapshot" field.
+func SubscriptionPlanSnapshotNotNil() predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotNull(FieldSubscriptionPlanSnapshot))
+}
+
 // ProviderInstanceIDEQ applies the EQ predicate on the "provider_instance_id" field.
 func ProviderInstanceIDEQ(v string) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldProviderInstanceID, v))

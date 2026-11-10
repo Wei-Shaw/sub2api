@@ -10,7 +10,7 @@ vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
     ...actual,
-    useI18n: () => ({
+    useI18n: () => ({ locale: { value: 'en-US' },
       t: (key: string) => key,
     }),
   }
@@ -44,6 +44,8 @@ function orderFactory(overrides: Partial<PaymentOrder> = {}): PaymentOrder {
     out_trade_no: 'sub2_202606250001',
     status: 'COMPLETED',
     order_type: 'subscription',
+    subscription_plan_snapshot: { name: 'Monthly', currency: 'USD' },
+    subscription_days: 30,
     created_at: '2026-06-25T10:00:00Z',
     expires_at: '2026-06-25T10:30:00Z',
     refund_amount: 25,
@@ -52,7 +54,7 @@ function orderFactory(overrides: Partial<PaymentOrder> = {}): PaymentOrder {
 }
 
 describe('admin order currency display', () => {
-  it('uses order currency for paid/base/fee amounts and USD for credited/refund amounts', () => {
+  it('uses order currency for paid/base/fee amounts and the snapshotted plan currency for price/refund amounts', () => {
     const wrapper = mount(AdminOrderDetail, {
       props: {
         show: true,
@@ -79,6 +81,7 @@ describe('admin order currency display', () => {
         show: true,
         order: orderFactory({
           currency: 'USD',
+          order_type: 'balance',
           status: 'PARTIALLY_REFUNDED',
           refund_amount: 20,
         }),

@@ -100,6 +100,8 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 		},
 	)
 	require.NoError(t, err)
+	require.Nil(t, order.SubscriptionPlanSnapshot)
+	require.Nil(t, order.SubscriptionDays)
 	require.Equal(t, strconv.FormatInt(instance.ID, 10), valueOrEmpty(order.ProviderInstanceID))
 	require.Equal(t, payment.TypeAlipay, valueOrEmpty(order.ProviderKey))
 	require.Equal(t, float64(2), order.ProviderSnapshot["schema_version"])
@@ -194,4 +196,38 @@ func valueOrEmpty(v *string) string {
 		return ""
 	}
 	return *v
+}
+
+// Plan settings are mutable; receipts must keep purchase-time data after edits
+// and deletion, including an explicitly absent display currency label.
+func TestCreateOrderInTx_PreservesPurchasedPlanSnapshot(t *testing.T) {
+	for _, currency := range []string{"USD", ""} {
+		t.Run("currency="+currency, func(t *testing.T) {
+			ctx := context.Background()
+			client := newPaymentConfigServiceTestClient(t)
+			user, err := client.User.Create().SetEmail("plan-snapshot@example.com").SetPasswordHash("hash").SetUsername("buyer").Save(ctx)
+			require.NoError(t, err)
+			plan, err := client.SubscriptionPlan.Create().SetGroupID(7).SetName("Purchased plan").SetCurrency(currency).SetPrice(100).SetValidityDays(2).SetValidityUnit("month").Save(ctx)
+			require.NoError(t, err)
+			svc := &PaymentService{entClient: client}
+			order, err := svc.createOrderInTx(ctx,
+				CreateOrderRequest{UserID: user.ID, PaymentType: payment.TypeAlipay, OrderType: payment.OrderTypeSubscription},
+				&User{ID: user.ID, Email: user.Email, Username: user.Username}, plan,
+				&PaymentConfig{MaxPendingOrders: 3, OrderTimeoutMin: 30}, 100, 100, 0, 672.98, 0, nil)
+			require.NoError(t, err)
+			_, err = client.SubscriptionPlan.UpdateOneID(plan.ID).SetName("Changed plan").SetCurrency("EUR").SetPrice(999).SetValidityDays(1).Save(ctx)
+			require.NoError(t, err)
+			require.NoError(t, client.SubscriptionPlan.DeleteOneID(plan.ID).Exec(ctx))
+			got, err := client.PaymentOrder.Get(ctx, order.ID)
+			require.NoError(t, err)
+			require.Equal(t, map[string]string{"name": "Purchased plan", "currency": currency}, got.SubscriptionPlanSnapshot)
+			require.Equal(t, 60, *got.SubscriptionDays)
+			require.Equal(t, float64(100), got.Amount)
+			require.Equal(t, 672.98, got.PayAmount)
+			// JSON snapshot is optional for historical orders and is not synthesized.
+			got, err = client.PaymentOrder.UpdateOneID(order.ID).ClearSubscriptionPlanSnapshot().Save(ctx)
+			require.NoError(t, err)
+			require.Nil(t, got.SubscriptionPlanSnapshot)
+		})
+	}
 }
