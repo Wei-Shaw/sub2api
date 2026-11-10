@@ -348,7 +348,7 @@ func (a *Alipay) Refund(ctx context.Context, req payment.RefundRequest) (*paymen
 		return nil, err
 	}
 
-	outRequestNo := fmt.Sprintf("%s%s%d", req.OrderID, alipayRefundRequestSep, time.Now().UnixNano())
+	outRequestNo := fmt.Sprintf("%s%s%s", req.OrderID, alipayRefundRequestSep, alipayRefundRequestNoSuffix(req.Amount))
 	result, err := alipayTradeRefund(ctx, client, alipay.TradeRefund{
 		OutTradeNo:   req.OrderID,
 		RefundAmount: req.Amount,
@@ -372,6 +372,18 @@ func (a *Alipay) Refund(ctx context.Context, req payment.RefundRequest) (*paymen
 		RefundID: outRequestNo,
 		Status:   refundStatus,
 	}, nil
+}
+
+// alipayRefundRequestNoSuffix 生成跨重试稳定的 out_request_no 后缀。
+// 支付宝把相同的 out_request_no 视为同一次退款请求；如果重试换号，
+// "网关已受理但返回错误"后的重试会变成第二笔真实退款。
+// 与 wxpayRefundID 一致，用金额区分同一订单的不同退款金额。
+func alipayRefundRequestNoSuffix(amount string) string {
+	normalized := strings.NewReplacer(".", "", "-", "").Replace(strings.TrimSpace(amount))
+	if normalized == "" {
+		return "0"
+	}
+	return normalized
 }
 
 // QueryRefund 通过 alipay.trade.fastpay.refund.query 查询退款终态。refund_status 为 REFUND_SUCCESS
