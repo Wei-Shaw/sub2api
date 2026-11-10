@@ -124,12 +124,16 @@ func normalizeProtocolSet(preferred string, protocols []string) []string {
 	return set
 }
 
-// DefaultOpenCodeGoProtocolRules is the built-in adaptive routing table for Go.
+// DefaultOpenCodeGoProtocolRules follows the official Go Endpoints table:
+// https://opencode.ai/v2/docs/console/go/ . First match wins; the exact free
+// MiniMax exception must precede the Anthropic MiniMax family rule.
 func DefaultOpenCodeGoProtocolRules() []ProtocolRule {
 	return []ProtocolRule{
+		{Pattern: "claude-*", Protocol: APIProtocolAnthropic},
 		{Pattern: "grok-*", Protocol: APIProtocolResponses},
 		{Pattern: "gpt-*", Protocol: APIProtocolResponses},
 		{Pattern: "muse-spark-*", Protocol: APIProtocolResponses},
+		{Pattern: "minimax-m3.1-flash-free", Protocol: APIProtocolChatCompletions},
 		{Pattern: "minimax-*", Protocol: APIProtocolAnthropic},
 		{Pattern: "qwen*", Protocol: APIProtocolAnthropic},
 	}
