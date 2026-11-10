@@ -36,6 +36,23 @@ async function submit() {
 }
 
 describe('proxy credential updates', () => {
+  it('opens the configured console directly in a safe new tab', async () => {
+    list.mockResolvedValue({ items: [{ id: 9, name: 'proxy', protocol: 'http', host: 'proxy.example', port: 8080, status: 'active', console_url: 'https://proxy.example.com/dashboard' }], total: 1, pages: 1 })
+    wrapper = mountView()
+    await flushPromises()
+    const link = wrapper.get('a[title="admin.proxies.consoleTitle"]')
+    expect(link.attributes('href')).toBe('https://proxy.example.com/dashboard')
+    expect(link.attributes('target')).toBe('_blank')
+    expect(link.attributes('rel')).toBe('noopener noreferrer')
+  })
+
+  it('clears a console URL with an explicit empty string', async () => {
+    list.mockResolvedValue({ items: [{ id: 9, name: 'proxy', protocol: 'http', host: 'proxy.example', port: 8080, status: 'active', console_url: 'https://proxy.example.com/dashboard' }], total: 1, pages: 1 })
+    await edit()
+    await wrapper.get('#edit-proxy-form input[type="url"]').setValue('')
+    expect((await submit()).console_url).toBe('')
+  })
+
   it('sends an explicit empty username when cleared', async () => {
     await edit()
     const username = wrapper.findAll<HTMLInputElement>('#edit-proxy-form input').find(input => input.element.value === 'old-user')!

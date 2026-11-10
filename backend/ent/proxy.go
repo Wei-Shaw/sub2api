@@ -35,6 +35,8 @@ type Proxy struct {
 	Username *string `json:"username,omitempty"`
 	// Password holds the value of the "password" field.
 	Password *string `json:"password,omitempty"`
+	// Optional MetaCubeXD console URL for this proxy.
+	ConsoleURL *string `json:"console_url,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
 	// Proxy expiration time (NULL means never expires).
@@ -100,7 +102,7 @@ func (*Proxy) scanValues(columns []string) ([]any, error) {
 		switch columns[i] {
 		case proxy.FieldID, proxy.FieldPort, proxy.FieldBackupProxyID, proxy.FieldExpiryWarnDays:
 			values[i] = new(sql.NullInt64)
-		case proxy.FieldName, proxy.FieldProtocol, proxy.FieldHost, proxy.FieldUsername, proxy.FieldPassword, proxy.FieldStatus, proxy.FieldFallbackMode:
+		case proxy.FieldName, proxy.FieldProtocol, proxy.FieldHost, proxy.FieldUsername, proxy.FieldPassword, proxy.FieldConsoleURL, proxy.FieldStatus, proxy.FieldFallbackMode:
 			values[i] = new(sql.NullString)
 		case proxy.FieldCreatedAt, proxy.FieldUpdatedAt, proxy.FieldDeletedAt, proxy.FieldExpiresAt:
 			values[i] = new(sql.NullTime)
@@ -181,6 +183,13 @@ func (_m *Proxy) assignValues(columns []string, values []any) error {
 			} else if value.Valid {
 				_m.Password = new(string)
 				*_m.Password = value.String
+			}
+		case proxy.FieldConsoleURL:
+			if value, ok := values[i].(*sql.NullString); !ok {
+				return fmt.Errorf("unexpected type %T for field console_url", values[i])
+			} else if value.Valid {
+				_m.ConsoleURL = new(string)
+				*_m.ConsoleURL = value.String
 			}
 		case proxy.FieldStatus:
 			if value, ok := values[i].(*sql.NullString); !ok {
@@ -295,6 +304,11 @@ func (_m *Proxy) String() string {
 	builder.WriteString(", ")
 	if v := _m.Password; v != nil {
 		builder.WriteString("password=")
+		builder.WriteString(*v)
+	}
+	builder.WriteString(", ")
+	if v := _m.ConsoleURL; v != nil {
+		builder.WriteString("console_url=")
 		builder.WriteString(*v)
 	}
 	builder.WriteString(", ")

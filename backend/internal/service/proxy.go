@@ -21,6 +21,7 @@ type Proxy struct {
 	Port           int
 	Username       string
 	Password       string
+	ConsoleURL     string
 	Status         string
 	CreatedAt      time.Time
 	UpdatedAt      time.Time

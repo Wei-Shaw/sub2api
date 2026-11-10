@@ -100,6 +100,11 @@ func Password(v string) predicate.Proxy {
 	return predicate.Proxy(sql.FieldEQ(FieldPassword, v))
 }
 
+// ConsoleURL applies equality check predicate on the "console_url" field. It's identical to ConsoleURLEQ.
+func ConsoleURL(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldConsoleURL, v))
+}
+
 // Status applies equality check predicate on the "status" field. It's identical to StatusEQ.
 func Status(v string) predicate.Proxy {
 	return predicate.Proxy(sql.FieldEQ(FieldStatus, v))
@@ -638,6 +643,81 @@ func PasswordEqualFold(v string) predicate.Proxy {
 // PasswordContainsFold applies the ContainsFold predicate on the "password" field.
 func PasswordContainsFold(v string) predicate.Proxy {
 	return predicate.Proxy(sql.FieldContainsFold(FieldPassword, v))
+}
+
+// ConsoleURLEQ applies the EQ predicate on the "console_url" field.
+func ConsoleURLEQ(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEQ(FieldConsoleURL, v))
+}
+
+// ConsoleURLNEQ applies the NEQ predicate on the "console_url" field.
+func ConsoleURLNEQ(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNEQ(FieldConsoleURL, v))
+}
+
+// ConsoleURLIn applies the In predicate on the "console_url" field.
+func ConsoleURLIn(vs ...string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldIn(FieldConsoleURL, vs...))
+}
+
+// ConsoleURLNotIn applies the NotIn predicate on the "console_url" field.
+func ConsoleURLNotIn(vs ...string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotIn(FieldConsoleURL, vs...))
+}
+
+// ConsoleURLGT applies the GT predicate on the "console_url" field.
+func ConsoleURLGT(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldGT(FieldConsoleURL, v))
+}
+
+// ConsoleURLGTE applies the GTE predicate on the "console_url" field.
+func ConsoleURLGTE(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldGTE(FieldConsoleURL, v))
+}
+
+// ConsoleURLLT applies the LT predicate on the "console_url" field.
+func ConsoleURLLT(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldLT(FieldConsoleURL, v))
+}
+
+// ConsoleURLLTE applies the LTE predicate on the "console_url" field.
+func ConsoleURLLTE(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldLTE(FieldConsoleURL, v))
+}
+
+// ConsoleURLContains applies the Contains predicate on the "console_url" field.
+func ConsoleURLContains(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldContains(FieldConsoleURL, v))
+}
+
+// ConsoleURLHasPrefix applies the HasPrefix predicate on the "console_url" field.
+func ConsoleURLHasPrefix(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldHasPrefix(FieldConsoleURL, v))
+}
+
+// ConsoleURLHasSuffix applies the HasSuffix predicate on the "console_url" field.
+func ConsoleURLHasSuffix(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldHasSuffix(FieldConsoleURL, v))
+}
+
+// ConsoleURLIsNil applies the IsNil predicate on the "console_url" field.
+func ConsoleURLIsNil() predicate.Proxy {
+	return predicate.Proxy(sql.FieldIsNull(FieldConsoleURL))
+}
+
+// ConsoleURLNotNil applies the NotNil predicate on the "console_url" field.
+func ConsoleURLNotNil() predicate.Proxy {
+	return predicate.Proxy(sql.FieldNotNull(FieldConsoleURL))
+}
+
+// ConsoleURLEqualFold applies the EqualFold predicate on the "console_url" field.
+func ConsoleURLEqualFold(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldEqualFold(FieldConsoleURL, v))
+}
+
+// ConsoleURLContainsFold applies the ContainsFold predicate on the "console_url" field.
+func ConsoleURLContainsFold(v string) predicate.Proxy {
+	return predicate.Proxy(sql.FieldContainsFold(FieldConsoleURL, v))
 }
 
 // StatusEQ applies the EQ predicate on the "status" field.
