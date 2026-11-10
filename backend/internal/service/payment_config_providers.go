@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"regexp"
 	"strconv"
 	"strings"
@@ -230,6 +231,7 @@ type easyPayCustomMethodConfig struct {
 	Type         string `json:"type"`
 	UpstreamType string `json:"upstreamType"`
 	DisplayName  string `json:"displayName"`
+	Icon         string `json:"icon"`
 }
 
 func validateEasyPayCustomMethods(config map[string]string, supportedTypes string) error {
@@ -260,6 +262,9 @@ func validateEasyPayCustomMethods(config map[string]string, supportedTypes strin
 		if easyPayCustomMethodTypeConflictsWithBuiltin(method.Type) {
 			return infraerrors.BadRequest("VALIDATION_ERROR", "customMethods type cannot start with alipay or wxpay")
 		}
+		if icon := strings.TrimSpace(method.Icon); icon != "" && !isValidEasyPayCustomMethodIcon(icon) {
+			return infraerrors.BadRequest("VALIDATION_ERROR", "customMethods icon must be an https URL or a data:image URI")
+		}
 		if _, exists := customTypes[method.Type]; exists {
 			return infraerrors.BadRequest("VALIDATION_ERROR", "duplicate customMethods type")
 		}
@@ -283,6 +288,21 @@ func validateEasyPayCustomMethods(config map[string]string, supportedTypes strin
 
 func easyPayCustomMethodTypeConflictsWithBuiltin(methodType string) bool {
 	return strings.HasPrefix(methodType, payment.TypeAlipay) || strings.HasPrefix(methodType, payment.TypeWxpay)
+}
+
+// isValidEasyPayCustomMethodIcon reports whether an optional custom-method icon
+// is safe to render in an <img src>. Only https URLs and data:image URIs are
+// allowed: this excludes schemes such as javascript: or data:text/html, and
+// plain http images, which the default CSP (img-src https: data:) would block.
+func isValidEasyPayCustomMethodIcon(icon string) bool {
+	if strings.HasPrefix(strings.ToLower(icon), "data:image/") {
+		return true
+	}
+	u, err := url.Parse(icon)
+	if err != nil {
+		return false
+	}
+	return u.Scheme == "https" && u.Host != ""
 }
 
 // UpdateProviderInstance updates a provider instance by ID (patch semantics).

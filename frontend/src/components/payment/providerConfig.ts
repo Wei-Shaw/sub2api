@@ -25,6 +25,8 @@ export interface EasyPayCustomMethod {
   type: string
   upstreamType: string
   displayName: string
+  /** Optional user-facing icon URL (or data URI). Empty uses the default icon. */
+  icon: string
 }
 
 /** Callback URL paths for a provider. */
@@ -195,6 +197,7 @@ export function parseEasyPayCustomMethods(raw: string | undefined): EasyPayCusto
         type: String(item?.type || '').trim(),
         upstreamType: String(item?.upstreamType || '').trim(),
         displayName: String(item?.displayName || '').trim(),
+        icon: String(item?.icon || '').trim(),
       }))
       .filter(item => item.type && item.upstreamType)
   } catch {
@@ -204,12 +207,17 @@ export function parseEasyPayCustomMethods(raw: string | undefined): EasyPayCusto
 
 export function serializeEasyPayCustomMethods(methods: EasyPayCustomMethod[]): string {
   const clean = methods
-    .map(method => ({
-      type: method.type.trim(),
-      upstreamType: method.upstreamType.trim(),
-      displayName: method.displayName.trim(),
-    }))
+    .map(method => {
+      const entry: EasyPayCustomMethod = {
+        type: method.type.trim(),
+        upstreamType: method.upstreamType.trim(),
+        displayName: method.displayName.trim(),
+        icon: (method.icon || '').trim(),
+      }
+      return entry
+    })
     .filter(method => method.type && method.upstreamType)
+    .map(({ icon, ...rest }) => (icon ? { ...rest, icon } : rest))
   return clean.length ? JSON.stringify(clean) : ''
 }
 

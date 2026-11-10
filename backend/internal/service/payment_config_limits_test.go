@@ -277,6 +277,28 @@ func TestGetAvailableMethodLimitsIncludesEasyPayCustomMethodDisplayName(t *testi
 	require.Equal(t, "LDC Pay", limits.DisplayName)
 }
 
+func TestGetAvailableMethodLimitsIncludesEasyPayCustomMethodIcon(t *testing.T) {
+	ctx := context.Background()
+	client := newPaymentConfigServiceTestClient(t)
+
+	_, err := client.PaymentProviderInstance.Create().
+		SetProviderKey(payment.TypeEasyPay).
+		SetName("EasyPay Custom").
+		SetConfig(`{"customMethods":"[{\"type\":\"usdt\",\"upstreamType\":\"usdt\",\"displayName\":\"USDT\",\"icon\":\"https://example.com/usdt.svg\"}]"}`).
+		SetSupportedTypes("alipay,wxpay,usdt").
+		SetEnabled(true).
+		Save(ctx)
+	require.NoError(t, err)
+
+	svc := &PaymentConfigService{entClient: client}
+	resp, err := svc.GetAvailableMethodLimits(ctx)
+	require.NoError(t, err)
+
+	limits, ok := resp.Methods["usdt"]
+	require.True(t, ok, "expected custom EasyPay method limits to be visible")
+	require.Equal(t, "https://example.com/usdt.svg", limits.Icon)
+}
+
 func TestPcComputeGlobalRange(t *testing.T) {
 	t.Parallel()
 
