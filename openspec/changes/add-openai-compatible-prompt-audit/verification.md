@@ -490,3 +490,234 @@ go test ./internal/securityaudit -run TestPromptAuditSyntheticAsyncBaseline -cou
 - 390px 窄屏：`/Users/mt/.codex/visualizations/2026/07/16/019f6a2c-ce90-7ae2-8eca-6a3a66b837f2/prompt-audit-narrow.png`
 
 截图只包含默认关闭状态、空事件/空节点和测试管理员展示名；未配置节点 token、未产生 Prompt 事件，并已目视确认没有 canary、Authorization、完整 Prompt 或内部错误。截图完成后测试库已恢复 `risk_control_enabled=false`，Prompt Audit 保持默认 off。
+
+## 16. 偏离审计与修正记录（2026-10-20）
+
+### 16.1 偏离：提示词原文进入 PostgreSQL、管理 API 与前端
+
+审计发现实现偏离了本 change 的设计约束：
+
+- `182_prompt_audit_full_prompt.sql` 向 `prompt_audit_events` 增加了 `full_prompt TEXT` 列，
+  把未脱敏的完整提示词写入 PostgreSQL。
+- 该列经 `insertEvent`（`prompt_repository.go`）写入，经 `eventDetailColumns`
+  （`prompt_event_repository.go`）读出并由 `PromptSnapshot.FullPrompt` 序列化进管理 API 响应，
+  前端 `EventDetailDialog.vue` 优先展示 `full_prompt`。
+- 中英文 i18n 键 `promptFull` / `promptFullHint` 明确描述"完整提示词已随事件入库"。
+
+违反条款：`design.md:39`、`proposal.md:43`、`specs/prompt-input-audit/spec.md:81`、
+`specs/security-audit-console/spec.md:113`。
+
+同时 `182` 引入的 `full_prompt` 不匹配原泄露门禁的 forbidden 列名单
+（`raw_prompt, raw_request, payload, token, authorization, credential, ciphertext`），
+因此 `TestPromptAuditMigrationSchemaAndLeakageGate` 静默通过，`verification.md` 第 15 节
+"39 个 text/json 列全库扫描 0 命中" 的结论在该列存在时不再成立。
+
+### 16.2 修正
+
+| 修正项 | 证据 |
+| --- | --- |
+| 删除 `prompt_audit_events.full_prompt` 列 | `251_prompt_audit_drop_full_prompt.sql`；不修改已应用的 182，保持迁移不可变；本地库已执行，`information_schema` 复查该列已不存在 |
+| 移除 `PromptSnapshot.FullPrompt` 及写入/读取路径 | `prompt_types.go`、`prompt_repository.go`（`insertEvent` 不再写该列）、`prompt_event_repository.go`（`eventDetailColumns`/`scanEvent` 不再读该列） |
+| Worker 不再从 Redis 载荷反推原文 | `prompt_worker.go` 移除 `FullPromptFromScanText` 调用，事件只保留脱敏快照 |
+| 前端只展示脱敏预览 | `features/prompt-audit/types.ts` 移除 `full_prompt`；`EventDetailDialog.vue` 的 `displayPrompt` 只读 `redacted_preview`；中英文 `promptFull`/`promptFullHint` 改写 |
+| 泄露门禁加固 | `prompt_repository_integration_test.go` 的 forbidden 名单加入 `full_prompt`，并断言 `information_schema` 中该列计数为 0 |
+| 泄露测试语义纠正 | `TestPromptAuditDatabasePersistsFullPromptOnEventsOnly` 改写为 `TestPromptAuditDatabaseAndAdminJSONNeverPersistCanaryPromptOrRawErrors`：断言 canary 原文不出现在事件行 `row_to_json`、管理 API JSON 与事件详情中 |
+
+### 16.3 偏离：两处入口的同步门禁晚于计费资格检查
+
+`grok_audio.go`（`GrokVoice`）与 `gateway_web_search.go`（`WebSearch`）的
+`checkSecurityAudit` 位于 `CheckBillingEligibility` 之后。`CheckBillingEligibility`
+内部的 `checkRPM` 会执行 `IncrementUserGroupRPM` / `IncrementUserRPM`，
+因此被 Guard 拦截的请求仍会消耗 RPM 配额，违反
+`specs/prompt-input-guard/spec.md:43` 与 `:47`（"计费检查/预扣次数 MUST 均为 0"）。
+
+原结构测试 `TestPromptAuditGatePrecedesAccountBillingAndUpstreamSideEffects`
+未覆盖这两个文件，缺陷因此未被门禁发现。
+
+修正：两处门禁上移到 `CheckBillingEligibility` 之前，并把两个文件纳入该结构测试；
+测试现覆盖 15 个入口，全部通过。
+
+### 16.4 修正后的验证
+
+- `go build ./...`：通过。
+- `go vet ./internal/handler/... ./internal/securityaudit/...`：通过。
+- `go test ./internal/handler/ -run TestPromptAuditGatePrecedesAccountBillingAndUpstreamSideEffects -count=1`：
+  15 个子用例全部 PASS（含新增的 `grok_audio.go/GrokVoice`、`gateway_web_search.go/WebSearch`）。
+- `openspec validate add-openai-compatible-prompt-audit --type change --strict --no-interactive`：
+  valid。
+- 本地 PostgreSQL 执行 `251_prompt_audit_drop_full_prompt.sql` 后，`prompt_audit_events`
+  的 `full_prompt` 列已不存在。
+
+### 16.5 对既有结论的影响
+
+- 第 15 节"泄露门禁"与"Deploy 全介质扫描"的结论对应的是 `full_prompt` 引入之前的状态；
+  本节 16.2 的修正恢复了该不变量，但**上线前必须重新执行一次全库 canary 扫描**，
+  以覆盖本次修正后新写入的事件行。
+- 最终发布签字表（第 14 节）仍全部为 TODO，结论不变：未完成运营证据前，
+  生产只能保持 off 或受控 async，不能开启 blocking。
+
+### 16.6 端到端验证记录（2026-10-20，本地容器）
+
+在本地 dev 容器（重新构建并运行含本次修正的镜像）上，用一个 OpenAI 兼容的
+Qwen3Guard 桩服务（可切换 Safe / Unsafe / 重复 Safety 行的非法响应）执行端到端验证，
+覆盖 28 项断言，全部通过。
+
+| 编号 | 场景 | 期望 | 实测 |
+| --- | --- | --- | --- |
+| T0 | 管理员登录、准备测试用户/API Key/分组 | 就绪 | 通过 |
+| T1 | 保存 Guard 节点配置 + 节点探测 | 保存成功、探测 healthy | config_version 递增、healthy (3ms) |
+| T2 | 异步模式发请求 | 任务入队并被 Worker 消费 | jobs=1 events=1 |
+| T3 | 同步模式 + Unsafe 提示词 | 403 `prompt_guard_blocked`，事件落库 | 403 / `prompt_guard_blocked` / events 1→2 |
+| T4 | Guard 节点不可达 | 503 `prompt_guard_unavailable`（fail-closed） | 503 / `prompt_guard_unavailable` |
+| T5 | Guard 返回重复 `Safety` 行 | 503 `prompt_guard_invalid_response` | 503 / `prompt_guard_invalid_response` |
+| T6 | 泄露检查 | PG 无 `full_prompt` 列；事件行/任务行/Admin API 均无 canary 原文；事件详情仍返回脱敏预览 | 全部通过；预览为 `PROMPT_AUDIT***…`，判定 `critical`/`Block`，分类 `violent,jailbreak` |
+| T7 | 门禁顺序 | 3 次被拦截请求均为 403 且不推进 RPM；放行请求推进 RPM | 被拦截 RPM 1→1 不变；放行后 RPM→3 |
+
+T7 的关键设计：分组 `rpm_limit` 临时设为 2 并失效 API Key 认证缓存，使 RPM 计数器真实生效。
+先发 3 次必被拦截的请求（均为 403 而非 429，且计数不变），再把 Guard 切到 Safe 发 2 次放行请求
+（计数推进到 3）。双向证明「门禁在计费之前」与「计费检查确实会执行」，避免因计数器从未生效
+而产生的假阳性。
+
+T6 的 Redis 短 TTL 载荷在 Worker 处理完成后为 0 个 key，符合"处理完即删除"的预期。
+
+#### 16.6.1 已知限制
+
+- 上游 Gemini 账号本身返回 404（`Resource not found`），因此 T2/T7 的"放行请求"最终状态码是 404
+  而非 2xx。该状态码来自上游，与提示词审计无关；审计链路（入队、扫描、落库、拦截）均已独立验证。
+- 本记录不构成生产 blocking 批准。第 14 节最终签字表仍全部为 TODO，真实 async 72h/10k 流量报告、
+  至少两个真实 endpoint 连续健康、业务流量误报抽检、告警接线、值班人与回滚演练仍未完成；
+  在这些运营证据补齐前，生产只能保持 off 或受控 async。
+
+### 16.7 双平台真实上游验证（2026-10-20）
+
+在本地容器上用**两个真实上游**验证提示词审计链路，不使用模拟上游响应：
+
+| 平台 | 账号类型 | 分组 | 端点 | 模型 |
+| --- | --- | --- | --- | --- |
+| Gemini | AI Studio API Key | 3 | `/v1/chat/completions`、`/v1beta/models/{model}:generateContent` | `gemini-3-flash-preview` |
+| OpenAI | Codex OAuth (plus) | 4 | `/v1/responses`、`/v1/chat/completions` | `gpt-5.6-luna` |
+
+先确认上游本身可用：Gemini 直连 `generativelanguage.googleapis.com` 与 OpenAI 直连
+`chatgpt.com/backend-api/codex/models` 均成功；两个模型在本地账号的 `model_mapping` 中存在
+（`gemini-2.0-flash` 因该 Key 无新用户权限而不可用，`gpt-6-luna` 不在账号映射内，故改用
+`gemini-3-flash-preview` / `gpt-5.6-luna`）。
+
+#### 16.7.1 双平台矩阵（24 项断言，全部通过）
+
+| 编号 | 场景 | Gemini | OpenAI |
+| --- | --- | --- | --- |
+| A | 放行模式透传到真实上游 | 200，内容 `OK` | 200，内容 `OK` |
+| B | 异步事件落库且协议/模型正确 | `openai_chat_completions` / `gemini-3-flash-preview` | `openai_responses` / `gpt-5.6-luna` |
+| C | 同步阻止 | 403 `prompt_guard_blocked` | 403 `prompt_guard_blocked` |
+| D | Guard 不可达 → fail-closed | 503 `prompt_guard_unavailable` | 503 `prompt_guard_unavailable` |
+| E | 泄露检查（9 项） | PG 无 `full_prompt` 列；事件/任务行、Admin API 列表与逐条详情均无 canary 原文与 `full_prompt` 字段 | 同左 |
+
+#### 16.7.2 原生协议验证（14 项断言，全部通过）
+
+| 编号 | 场景 | 结果 |
+| --- | --- | --- |
+| A | Gemini 原生 `/v1beta` 放行 | 200，内容 `OK` |
+| B | OpenAI `/v1/chat/completions` 放行 | 200，内容 `OK` |
+| C | 协议识别 | Gemini 原生事件 `protocol=gemini`；OpenAI cc 事件 `protocol=openai_chat_completions` |
+| D | Gemini 原生阻断的 Google 错误信封 | HTTP 403；`error.code` 为**数值 403**；`error.status=PERMISSION_DENIED`；`google.rpc.ErrorInfo.reason=prompt_guard_blocked` |
+| E | OpenAI cc 阻断 | 403 `prompt_guard_blocked`，`type=permission_error` |
+| F | 原生协议事件泄露检查 | 事件行与 Admin API 均无 canary 原文、无 `full_prompt` 字段 |
+
+#### 16.7.3 测试过程中修正的自身问题
+
+均为测试脚本缺陷，未暴露产品缺陷，但记录以避免误读历史结论：
+
+1. `expected_config_version` 硬编码为 1 → 保存被乐观锁以 409 拒绝，改为先 GET 真实版本号。
+2. `"blocking_enabled": 0`（JSON 数字）→ 字段为 `bool`，`ShouldBindJSON` 绑定失败返回
+   `prompt_audit_invalid_config_request`；改为传 `true`/`false`。
+3. RPM 计数器扫描模式只匹配 `rpm:u:` → 漏掉分组级 `rpm:ug:`，造成"计数器未推进"的假阴性。
+4. 分组 `rpm_limit` 直接改 SQL 不会失效 API Key 认证缓存 → 快照仍为 `rpm_limit=0`，需一并删除
+   `apikey:auth:*` 缓存键。
+5. 对照组请求未把 Guard 切到 Safe → 对照请求同样被 403 拦截，无法证明计数生效。
+
+#### 16.7.4 已知限制
+
+- 本节只验证提示词审计链路本身。上游账号的额度、模型权限、OAuth 有效期等仍由各自平台决定，
+  审计层不会改变上游语义。
+- 本记录同样不构成生产 blocking 批准，理由同 16.6.1。
+
+### 16.8 上游同步与冲突解决记录（2026-11-10）
+
+#### 16.8.1 上游同步过程
+
+本变更最初基于 `881f32026`（2026-09-15）开发，随后上游持续演进。同步过程与结论：
+
+| 阶段 | 上游 HEAD | 与本分支差距 | 处理 |
+| --- | --- | --- | --- |
+| 初次定位基线 | `8f8358cc6` | 112 文件差异 | 判定为错误基线（该提交含本地不存在的新文件） |
+| 精确定位基线 | `881f32026` | 29 文件差异 | 逐个候选提交取最小差异，确认真基线 |
+| 首次重建分支 | `9a62841fd`（09-28） | 0 | 分支重建完成，23 文件单点 diff |
+| 上游再次前进 | `ee58c0013`（11-09） | 617 提交 | rebase，见 16.8.2 |
+
+真基线的确定方法：遍历 `origin/main` 候选提交，对每个候选计算「工作区相对该提交」的差异文件数，取最小值。
+这比按日期猜测可靠 —— `881f32026` 与 `8f8358cc6` 仅差 8 天，但差异文件数相差 4 倍。
+
+#### 16.8.2 迁移编号重编号
+
+上游在 `881f32026` 之后已占用 `239`（`239_channel_reasoning_effort_multipliers.sql`），最大编号推进到 `250`。
+本变更的删除迁移因此由 `239_prompt_audit_drop_full_prompt.sql` 重编号为 `251_prompt_audit_drop_full_prompt.sql`，
+并同步更新集成测试与 `design.md` / `tasks.md` / `verification.md` 中的四处引用。
+迁移编号唯一性已复查：`251` 为当前最大序号。
+
+#### 16.8.3 冲突解决：门禁顺序不变量
+
+上游这 617 个提交中，5 个文件与本变更重叠：
+
+| 文件 | 上游改动 | 解决方式 |
+| --- | --- | --- |
+| `prompt_snapshot.go` | +75 行，新增 `typesafe_systemone` 协议提取器 | 自动合并（改动位于不同区段） |
+| `prompt_snapshot_test.go` | +50 行 | 自动合并 |
+| `security_audit_order_test.go` | +1 行（新增 `gemini_cached_contents_handler.go` 用例） | 自动合并，本变更新增的两条用例保留 |
+| `grok_audio.go` | +45/−6 | 手工解冲突 |
+| `gateway_web_search.go` | +12 | 手工解冲突 |
+
+两个手工冲突的根因相同：上游在 `CheckBillingEligibility` 之外新增了 `reserveInflightBalance`
+（余额在途预留），并在 billing 与门禁之间插入代码，与本变更「把门禁前移到 billing 之前」的修改重叠。
+
+**解决依据不是选择某一边，而是先确定不变量**：
+
+> 门禁必须早于**所有**计费副作用，而不只是 `CheckBillingEligibility`。
+
+`reserveInflightBalance` 同样会占用用户余额，因此它与 RPM 计数属于同一类副作用。
+约束链闭合后顺序唯一确定：
+
+```
+1. API Key 校验 / 依赖检查
+2. 读取请求体                    ← 门禁需要提示词，必须先读
+3. Prompt Guard 门禁              ← 拦截点
+4. CheckBillingEligibility        ← RPM 计数递增
+5. reserveInflightBalance         ← 余额预留
+6. 选账号 / 转发上游
+```
+
+`grok_audio.go` 的 `subscription` 声明随 `CheckBillingEligibility` 一并下移，
+确保 `reserveInflightBalance` 仍在 `subscription` 声明之后。
+
+**附带的行为变化（已在 PR 描述中说明）**：
+
+| 变化 | 上游行为 | 修正后 |
+| --- | --- | --- |
+| 被 Guard 拦截的请求 | 消耗 RPM + 占用余额预留 | 两者均不消耗 |
+| 请求体非法的请求 | 消耗 RPM | 不消耗 |
+
+第二项是 `body` 读取必须前置于门禁的连带结果：读不出请求体即不应计费。
+这超出「审计门禁」的最小范围，属于有意为之并主动披露的行为变化。
+
+#### 16.8.4 顺序验证仍为双向证明
+
+结构测试 `TestPromptAuditGatePrecedesAccountBillingAndUpstreamSideEffects` 覆盖 16 个入口
+（含上游新增的 `gemini_cached_contents_handler.go`）。静态断言只能证明顺序，
+副作用未发生由端到端双向证明：对照组放行请求推进 RPM 计数，实验组被拦截请求计数不变。
+详见 16.7.1 与 16.6 的 T7。
+
+#### 16.8.5 上游仍未修复
+
+截至 `ee58c0013`，上游 `main` 仍包含 `182_prompt_audit_full_prompt.sql` 与
+`PromptSnapshot.FullPrompt`，且没有任何删除迁移。本变更在最新上游基线上重新验证通过：
+`go build ./...`、`go test ./internal/securityaudit/... ./internal/handler/... ./internal/server/...`、
+前端 vitest（30 tests）、`vue-tsc --noEmit` 与 `openspec validate --strict` 全部通过。

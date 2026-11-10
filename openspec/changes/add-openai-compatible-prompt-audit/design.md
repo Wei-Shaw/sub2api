@@ -37,6 +37,12 @@ sub2api 当前已经存在一套完整的内容审核能力：
 - 新模块必须尽量集中在独立目录，并只通过显式接口接入现有 Handler。
 - 新功能默认关闭，不能改变升级前行为。
 - 完整提示词和 Guard 凭据不能进入数据库、日志、API、前端或错误响应。
+  - 该约束不可通过新增数据库列绕过：`prompt_audit_jobs` 与 `prompt_audit_events` 不得存在
+    `raw_prompt`、`full_prompt`、`payload` 或等价原文列；`182_prompt_audit_full_prompt.sql`
+    曾短暂引入 `full_prompt`，已由 `251_prompt_audit_drop_full_prompt.sql` 撤销。
+  - 管理员复核只依赖脱敏预览、不可逆 Hash、分类与脱敏证据。如确需原文复核，
+    必须另起隐私/审批 change（见 `verification.md` 的复核抽检约束）。
+  - schema 泄露门禁必须把 `full_prompt` 列入 forbidden 列名单，防止再次引入。
 
 ### 参与边界
 

@@ -94,7 +94,9 @@ const ACTIONS = new Set(['Allow', 'Warn', 'Block'])
 const RISK_LEVELS = new Set(['low', 'medium', 'high', 'critical'])
 
 function displayPrompt(event: PromptAuditEvent): string {
-  return event.snapshot.full_prompt || event.snapshot.redacted_preview || '—'
+  // Only the redacted preview is ever stored or returned. The unredacted
+  // prompt stays in the transient Redis payload and must not reach the console.
+  return event.snapshot.redacted_preview || '—'
 }
 
 function formatDecisionAction(decision: string, action: string): string {
