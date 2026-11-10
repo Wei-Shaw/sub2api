@@ -808,6 +808,7 @@ export default {
           invalidInterval: 'Sync interval must be between 1 and 168 hours',
           invalidMarkup: 'Markup percent must be between 0 and 100',
           loadFailed: 'Failed to load FX sync settings',
+          retry: 'Reload',
           saveFailed: 'Failed to save FX sync settings',
           syncFailed: 'FX sync failed',
           saved: 'FX sync settings saved',

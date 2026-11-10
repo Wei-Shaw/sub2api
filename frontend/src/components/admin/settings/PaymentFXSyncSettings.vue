@@ -20,7 +20,7 @@
         rows="3"
         class="input mt-1"
         :placeholder="t('admin.settings.payment.fxSync.urlsPlaceholder')"
-        :disabled="loading || saving || syncing"
+        :disabled="loading || saving || syncing || !loaded"
       ></textarea>
       <span class="mt-1 block text-xs text-gray-400">{{ t('admin.settings.payment.fxSync.urlsHint') }}</span>
     </label>
@@ -36,7 +36,7 @@
           max="168"
           step="1"
           class="input mt-1"
-          :disabled="loading || saving || syncing"
+          :disabled="loading || saving || syncing || !loaded"
         />
         <span class="mt-1 block text-xs text-gray-400">{{ t('admin.settings.payment.fxSync.intervalHoursHint') }}</span>
       </label>
@@ -50,7 +50,7 @@
           max="100"
           step="0.01"
           class="input mt-1"
-          :disabled="loading || saving || syncing"
+          :disabled="loading || saving || syncing || !loaded"
         />
         <span class="mt-1 block text-xs text-gray-400">{{ t('admin.settings.payment.fxSync.markupPercentHint') }}</span>
       </label>
@@ -65,11 +65,14 @@
     </div>
 
     <div class="flex flex-wrap gap-2">
-      <button type="button" data-test="save" class="btn btn-primary" :disabled="loading || saving || syncing" @click="save">
+      <button type="button" data-test="save" class="btn btn-primary" :disabled="loading || saving || syncing || !loaded" @click="save">
         {{ saving ? t('admin.settings.payment.fxSync.saving') : t('admin.settings.payment.fxSync.save') }}
       </button>
-      <button type="button" data-test="sync" class="btn btn-secondary" :disabled="loading || saving || syncing" @click="syncNow">
+      <button type="button" data-test="sync" class="btn btn-secondary" :disabled="loading || saving || syncing || !loaded" @click="syncNow">
         {{ syncing ? t('admin.settings.payment.fxSync.syncing') : t('admin.settings.payment.fxSync.syncNow') }}
+      </button>
+      <button v-if="!loading && !loaded" type="button" data-test="reload" class="btn btn-secondary" @click="load">
+        {{ t('admin.settings.payment.fxSync.retry') }}
       </button>
     </div>
 
@@ -110,6 +113,7 @@ const form = reactive({
 const urlsText = ref('')
 const status = ref<PaymentFXSyncConfig | null>(null)
 const loading = ref(true)
+const loaded = ref(false)
 const saving = ref(false)
 const syncing = ref(false)
 const error = ref('')
@@ -129,10 +133,12 @@ function applyConfig(cfg: PaymentFXSyncConfig) {
   form.markup_percent = cfg.markup_percent || 0
   form.update_subscription_rate = cfg.update_subscription_rate
   urlsText.value = (cfg.urls || []).join('\n')
+  loaded.value = true
 }
 
 async function load() {
   loading.value = true
+  loaded.value = false
   error.value = ''
   try {
     applyConfig(await getPaymentFXSyncConfig())

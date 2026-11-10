@@ -803,6 +803,7 @@ export default {
           invalidInterval: '同步间隔必须在 1~168 小时之间',
           invalidMarkup: '加价百分比必须在 0~100 之间',
           loadFailed: '加载 FX 同步设置失败',
+          retry: '重新加载',
           saveFailed: '保存 FX 同步设置失败',
           syncFailed: '汇率同步失败',
           saved: 'FX 同步设置已保存',

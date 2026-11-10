@@ -91,6 +91,24 @@ describe('PaymentFXSyncSettings', () => {
     expect(wrapper.get('[role="alert"]').text()).toContain('至少填写一个汇率 API 地址')
   })
 
+  it('blocks saving until the configuration is loaded and offers retry', async () => {
+    mocks.get.mockRejectedValueOnce({ message: 'load failed' })
+    const wrapper = mountSettings()
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="save"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-test="reload"]').exists()).toBe(true)
+    expect(wrapper.get('[role="alert"]').text()).toContain('load failed')
+
+    mocks.get.mockResolvedValueOnce({ ...baseConfig })
+    await wrapper.get('[data-test="reload"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="save"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.find('[data-test="reload"]').exists()).toBe(false)
+    expect((wrapper.get('[data-test="urls"]').element as HTMLTextAreaElement).value).toBe('https://example.com/rates')
+  })
+
   it('shows a sync failure and reloads the stored status', async () => {
     mocks.sync.mockRejectedValueOnce({ message: 'fx api unavailable' })
     const wrapper = mountSettings()
