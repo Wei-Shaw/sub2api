@@ -1309,7 +1309,9 @@ func TestTempUnscheduleRetryableErrorSkipsMalformedFunctionCall(t *testing.T) {
 	svc.TempUnscheduleRetryableError(context.Background(), 6, antigravityMalformedFunctionCallFailoverError())
 	require.Empty(t, repo.ids)
 
-	svc.TempUnscheduleRetryableError(context.Background(), 6, antigravityCompatEmptyStreamError().(*UpstreamFailoverError))
+	emptyErr, ok := antigravityCompatEmptyStreamError().(*UpstreamFailoverError)
+	require.True(t, ok)
+	svc.TempUnscheduleRetryableError(context.Background(), 6, emptyErr)
 	require.Equal(t, []int64{6}, repo.ids, "普通空流仍按原逻辑封禁")
 }
 
