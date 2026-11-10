@@ -373,6 +373,9 @@ export default {
         batchPartial: 'Probe partially completed: {success} succeeded, {failed} failed'
       },
       allPrivacyModes: 'All Privacy States',
+      subscriptionTierFilter: 'Subscription tier',
+      allSubscriptionTiers: 'All subscription tiers',
+      subscriptionTierUnset: 'Unidentified subscription tier',
       privacyUnset: 'Unset',
       privacyTrainingOff: 'Training data sharing disabled',
       privacyCfBlocked: 'Blocked by Cloudflare, training may still be on',

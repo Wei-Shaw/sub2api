@@ -570,6 +570,7 @@ type AccountBulkEditTarget =
         group?: string
         search?: string
         privacy_mode?: string
+        subscription_tier?: string
         sort_by?: string
         sort_order?: AccountSortOrder
       }
@@ -1113,6 +1114,7 @@ const {
     ...loadInitialAccountFilterValues(),
     type: '',
     privacy_mode: '',
+    subscription_tier: '',
     group: '',
     search: '',
     lite: '1',
@@ -1212,6 +1214,7 @@ const buildUpstreamBillingRateFilters = () => {
     group: typeof rawParams.group === 'string' ? rawParams.group : '',
     search: typeof rawParams.search === 'string' ? rawParams.search : '',
     privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
+    subscription_tier: typeof rawParams.subscription_tier === 'string' ? rawParams.subscription_tier : '',
     sort_by: sortState.sort_by,
     sort_order: sortState.sort_order
   }
@@ -1491,6 +1494,7 @@ const refreshAccountsIncrementally = async () => {
         type?: string
         status?: string
         privacy_mode?: string
+        subscription_tier?: string
         group?: string
         search?: string
         sort_by?: string
@@ -2096,6 +2100,7 @@ const buildBulkEditFilterSnapshot = () => {
     group: typeof rawParams.group === 'string' ? rawParams.group : '',
     search: typeof rawParams.search === 'string' ? rawParams.search : '',
     privacy_mode: typeof rawParams.privacy_mode === 'string' ? rawParams.privacy_mode : '',
+    subscription_tier: typeof rawParams.subscription_tier === 'string' ? rawParams.subscription_tier : '',
     sort_by: typeof rawParams.sort_by === 'string' ? rawParams.sort_by : '',
     sort_order: sortOrder
   }
@@ -2172,6 +2177,7 @@ const buildAccountQueryFilters = () => ({
   status: params.status || '',
   group: params.group || '',
   privacy_mode: params.privacy_mode || '',
+  subscription_tier: params.subscription_tier || '',
   search: params.search || '',
   sort_by: sortState.sort_by,
   sort_order: sortState.sort_order
@@ -2241,6 +2247,12 @@ const syncPaginationAfterLocalRemoval = () => {
 }
 
 const patchAccountInList = (updatedAccount: Account) => {
+  // Tier changes may also affect shadow accounts; let the server reconcile
+  // membership and totals instead of filtering only the updated row locally.
+  if (params.subscription_tier) {
+    reload()
+    return
+  }
   const index = accounts.value.findIndex(account => account.id === updatedAccount.id)
   if (index === -1) return
   const mergedAccount = mergeRuntimeFields(accounts.value[index], updatedAccount)

@@ -219,6 +219,9 @@ export default {
         batchPartial: '倍率探测部分完成：成功 {success} 个，失败 {failed} 个'
       },
       allPrivacyModes: '全部Privacy状态',
+      subscriptionTierFilter: '订阅档位',
+      allSubscriptionTiers: '全部订阅档位',
+      subscriptionTierUnset: '未识别订阅档位',
       privacyUnset: '未设置',
       privacyTrainingOff: '已关闭训练数据共享',
       privacyCfBlocked: '被 Cloudflare 拦截，训练可能仍开启',
