@@ -278,6 +278,31 @@
           }
         ]
       }
+    },
+    {
+      "id": "meta",
+      "display_name": "Meta Muse",
+      "gateway": "openai",
+      "cn_provider": false,
+      "multi_protocol": {
+        "default_mode": "payg",
+        "routing": "by_model",
+        "modes": [
+          {
+            "mode": "payg",
+            "base_urls": {
+              "chat_completions": "https://api.meta.ai/v1",
+              "responses": "https://api.meta.ai/v1"
+            },
+            "protocol_rules": [
+              {
+                "pattern": "*",
+                "protocol": "responses"
+              }
+            ]
+          }
+        ]
+      }
     }
   ],
   "composite_precedence": [
@@ -293,6 +318,7 @@
     "opencode_go",
     "typesafe",
     "command_code",
-    "cline"
+    "cline",
+    "meta"
   ]
 }

@@ -1326,6 +1326,20 @@ export default {
       },
       // OAuth flow
       oauth: {
+        meta: {
+          description:
+            '使用 Meta Muse 设备码（OAuth）登录：点击按钮后在 Meta 页面输入验证码即可，无需手动复制 token。',
+          startButton: '使用 Meta 登录',
+          apiKeyMethod: 'API Key',
+          starting: '正在发起授权...',
+          userCodeLabel: '请在 Meta 授权页面输入此验证码',
+          openVerification: '打开 Meta 授权页面',
+          checkNow: '立即检查',
+          statePending: '等待授权中...（剩余 {seconds} 秒）',
+          stateSlowDown: 'Meta 要求降低轮询频率，稍后自动重试。',
+          stateDenied: '授权已被拒绝。',
+          stateExpired: '设备码已过期，请重新发起登录。',
+        },
         title: 'Claude 账号授权',
         authMethod: '授权方式',
         manualAuth: '手动授权',

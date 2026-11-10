@@ -12,6 +12,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/meta"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/gin-gonic/gin"
@@ -1401,7 +1402,10 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	var targetURL string
 	switch account.Type {
 	case AccountTypeOAuth:
-		// OAuth accounts use ChatGPT internal API
+		if account.IsMeta() {
+			targetURL = buildOpenAIResponsesURLForPlatform(account.Platform, account.GetMetaBaseURL())
+			break
+		}
 		targetURL = chatgptCodexURL
 	case AccountTypeSetupToken:
 		if account.IsOpenAIOAuthLike() {
@@ -1429,6 +1433,10 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	}
 	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
 
+	if account.IsMeta() {
+		body = meta.EnsureMuseToolNamespace(body)
+	}
+
 	// DeepSeek / Kimi 原生 Responses 端点为无状态实现：强制 store=false、清除
 	// previous_response_id，避免携带状态字段被上游拒绝。
 	body = normalizeDeepSeekResponsesRequestBody(account, body)
@@ -1449,6 +1457,11 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		for _, value := range values {
 			req.Header.Add(key, value)
 		}
+	}
+
+	if account.IsMeta() {
+		meta.ApplyClientIdentity(req.Header, "")
+		meta.ApplyContributorMode(req.Header, gjson.GetBytes(body, "model").String())
 	}
 
 	// Set headers specific to OAuth accounts (ChatGPT internal API)

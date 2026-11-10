@@ -1510,6 +1510,9 @@ func (a *Account) GetOpenAIBaseURL() string {
 	if !a.IsOpenAI() && !a.IsMultiProtocolAPIKey() {
 		return ""
 	}
+	if a.IsMeta() {
+		return a.GetMetaBaseURL()
+	}
 	if a.IsMultiProtocolAPIKey() && a.IsAdaptiveAPIProtocol() {
 		if baseURLs, ok := a.Credentials["api_base_urls"].(map[string]any); ok {
 			if baseURL, ok := baseURLs[APIProtocolChatCompletions].(string); ok && strings.TrimSpace(baseURL) != "" {
@@ -1606,6 +1609,9 @@ func (a *Account) IsAdaptiveAPIProtocol() bool {
 func (a *Account) GetCNProtocolBaseURL(protocol string) string {
 	if a == nil || !a.IsMultiProtocolAPIKey() {
 		return ""
+	}
+	if a.IsMeta() {
+		return a.GetMetaBaseURL()
 	}
 	if a.IsAdaptiveAPIProtocol() {
 		if baseURLs, ok := a.Credentials["api_base_urls"].(map[string]any); ok {
@@ -1849,6 +1855,9 @@ func (a *Account) GetOpenAIProtocolAPIKey() string {
 		return ""
 	}
 	if a.IsMultiProtocolAPIKey() {
+		if a.IsMeta() {
+			return a.GetMetaAPIKey()
+		}
 		if a.Type != AccountTypeAPIKey {
 			return ""
 		}

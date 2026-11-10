@@ -1218,6 +1218,20 @@ export default {
       },
       // OAuth flow
       oauth: {
+        meta: {
+          description:
+            'Sign in with the Meta Muse device-code flow. Click the button, then enter the verification code on the Meta page; no token copy-paste needed.',
+          startButton: 'Login with Meta',
+          apiKeyMethod: 'API key',
+          starting: 'Starting authorization...',
+          userCodeLabel: 'Enter this code on the Meta authorization page',
+          openVerification: 'Open the Meta authorization page',
+          checkNow: 'Check now',
+          statePending: 'Waiting for authorization... ({seconds}s left)',
+          stateSlowDown: 'Meta asked us to poll less often; retrying shortly.',
+          stateDenied: 'The authorization was denied.',
+          stateExpired: 'The device code expired. Start the login again.',
+        },
         title: 'Claude Account Authorization',
         authMethod: 'Authorization Method',
         manualAuth: 'Manual Authorization',

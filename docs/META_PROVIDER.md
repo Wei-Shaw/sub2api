@@ -1,0 +1,89 @@
+# Meta Muse Code provider
+
+Meta Muse Code (api.meta.ai) is a first-class provider in this fork. It is not part of
+upstream Wei-Shaw/sub2api, so the whole feature lives in the fork keep-set
+(AGENTS.md section 2.H).
+
+## What it is
+
+| Item | Value |
+| --- | --- |
+| Platform id | meta |
+| Display name | Meta Muse |
+| Gateway | OpenAI gateway (platform_list: PlatformGatewayOpenAI) |
+| Upstream base URL | https://api.meta.ai/v1 (a minted key may return its own base_url) |
+| Native protocol | Responses only (chat.completions inbound is converted to Responses) |
+| OAuth host | https://auth.meta.com, client_id 1031625952748946 (RFC 8628 device grant) |
+| Key mint endpoint | POST https://api.meta.ai/muse-code/key with {"dca_token": "..."} |
+
+## Two ways to add an account
+
+### 1. Login with Meta (device flow, recommended)
+
+1. Admin -> Accounts -> Create -> platform **Meta Muse**.
+2. Press **Login with Meta**. The gateway requests a device code and shows a
+   one-time user code plus a verification link.
+3. Open the link, approve the login on Meta. The admin UI polls the token endpoint
+   (honouring slow_down) until Meta issues the DCA token.
+4. The gateway immediately mints the inference API key and stores the account with:
+   - api_key (the inference credential)
+   - dca_token (used only to re-mint)
+   - base_url, email, name, subscription tier fields
+
+Re-minting later: POST /api/v1/admin/meta/accounts/{id}/mint, or let the gateway mint
+automatically on the next request when the stored api_key is missing.
+
+### 2. API key
+
+Create the account with type **API key** and paste the key. No DCA token is stored and
+no device flow is involved.
+
+## Request requirements (why the identity headers exist)
+
+Meta attests the client per request. Every inference request carries the Muse Code
+client identity; dropping it makes subscription keys rejected:
+
+- User-Agent: muse-build/1.4.14 (non-interactive; <linux|macos>-<x86_64|aarch64>; build dec7d7497fecdad135ec5835a8161dbc92e55b58)
+- X-Client-Id: tbh:exec
+- X-Tbh-Session-Id / X-Meta-Ai-Gateway-Session-Id / X-Tbh-Thread-Id / X-Tbh-Root-Session-Id: one UUIDv7 per request
+- X-Tbh-Agent-Role: main
+- X-Tbh-Contributor-Mode: 1 for *-contributor model variants
+
+Tool-bearing Responses requests additionally need the canonical muse namespace
+(submit_reminder_decision, strict schema) appended to the tools array. The gateway
+appends it without touching caller tool order or indexes.
+
+Unsupported field: web_search tools must not carry search_content_types.
+
+## Models
+
+The catalog is static (mirrors the captured Muse client release):
+
+muse-spark-1.3, muse-spark-1.3-contributor, muse-spark-1.2, muse-spark-1.2-contributor,
+muse-spark-1.1, muse-wonder-1.0, muse-wonder-1.0-contributor, muse-wonder-full-1.0,
+muse-wonder-full-1.0-contributor.
+
+The *-contributor variants are special: they take the contributor-mode header.
+
+Model sync from the upstream /models endpoint is available through the normal
+"sync upstream models" action when the deployed key exposes it; the static list is the
+fallback used for group model selection.
+
+## Rate limits and quota
+
+Meta returns resets_at (epoch seconds) on throttling:
+
+- 429 with error.resets_at: the account is parked until that instant.
+- 429 whose message says "subscription quota"/"quota exhausted", or whose code is
+  rate_limit_exceeded/quota together with resets_at: same cooldown, but recorded as
+  the credential's subscription quota.
+- 404 with resets_at: parked until the reset; 404 without it gets a 5 minute cooldown.
+
+## Limitations
+
+- Chat Completions is not a native endpoint; those requests are converted and billed
+  on the Responses path.
+- No balance/quota polling endpoint: the provider exposes no usage API here, so the
+  account has no CN-style quota snapshot.
+- The device flow session store is in-process with a TTL equal to the device code
+  lifetime; a restart during login simply requires starting the login again.

@@ -286,6 +286,14 @@ func ProvideAccountTestService(
 	return service
 }
 
+func ProvideMetaOAuthService(proxyRepo ProxyRepository) *MetaOAuthService {
+	return NewMetaOAuthService(proxyRepo)
+}
+
+func ProvideMetaTokenProvider(accountRepo AccountRepository, httpUpstream HTTPUpstream) *MetaTokenProvider {
+	return NewMetaTokenProvider(accountRepo, httpUpstream)
+}
+
 func ProvideGrokQuotaService(
 	accountRepo AccountRepository,
 	proxyRepo ProxyRepository,
@@ -908,6 +916,8 @@ var ProviderSet = wire.NewSet(
 	NewGeminiMessagesCompatService,
 	ProvideAntigravityTokenProvider,
 	ProvideGrokTokenProvider,
+	ProvideMetaOAuthService,
+	ProvideMetaTokenProvider,
 	ProvideOpenAITokenProvider,
 	ProvideOpenAIQuotaService,
 	ProvideOpenAIQuotaAutoResetService,

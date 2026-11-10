@@ -71,6 +71,9 @@
     <rect x="65.5996" y="44.8008" width="9.6" height="28.8" rx="4.8" />
     <rect x="36.8008" y="44.8008" width="9.6" height="28.8" rx="4.8" />
   </svg>
+  <svg v-else-if="platform === 'meta'" :class="sizeClass" viewBox="0 0 24 24" fill="currentColor">
+    <path d="M12 10.4c1.2-2.3 2.6-3.6 4.1-3.6 2 0 3.6 2 3.6 5.2 0 3.1-1.6 5.2-3.6 5.2-1.5 0-2.9-1.3-4.1-3.6-1.2 2.3-2.6 3.6-4.1 3.6-2 0-3.6-2.1-3.6-5.2C4.3 8.8 5.9 6.8 7.9 6.8c1.5 0 2.9 1.3 4.1 3.6z" />
+  </svg>
   <!-- Composite group icon -->
   <svg v-else-if="platform === 'composite'" :class="sizeClass" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
     <circle cx="6" cy="12" r="3" />
