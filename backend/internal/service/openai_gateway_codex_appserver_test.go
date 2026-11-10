@@ -119,6 +119,22 @@ func TestOpenAIGatewayForwardCodexAppServerStreamsResponsesEvents(t *testing.T) 
 	require.Contains(t, recorder.Body.String(), "event: response.completed")
 }
 
+func TestOpenAIAppServerSchedulingConcurrencyIsOne(t *testing.T) {
+	account := &Account{
+		Concurrency: 12,
+		LoadFactor:  func() *int { value := 8; return &value }(),
+		Extra: map[string]any{
+			OpenAIExecutionBackendExtraKey: OpenAIExecutionBackendAppServer,
+		},
+	}
+	require.Equal(t, 1, openAIAccountSchedulingConcurrency(account))
+	require.Equal(t, 1, openAIAccountSchedulingLoadFactor(account))
+
+	direct := &Account{Concurrency: 12, LoadFactor: func() *int { value := 8; return &value }()}
+	require.Equal(t, 12, openAIAccountSchedulingConcurrency(direct))
+	require.Equal(t, 8, openAIAccountSchedulingLoadFactor(direct))
+}
+
 func codexAppServerForwardTestContext(body []byte, apiKeyID int64) (*httptest.ResponseRecorder, *gin.Context) {
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)

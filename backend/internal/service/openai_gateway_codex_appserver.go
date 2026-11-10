@@ -48,6 +48,26 @@ func shouldForwardViaCodexAppServer(account *Account) bool {
 	)
 }
 
+// A Provider serializes turns on one app-server worker. Until the pool has
+// per-account lanes, advertising a larger account concurrency would only move
+// the queue behind an in-process mutex and hide it from the existing scheduler.
+func openAIAccountSchedulingConcurrency(account *Account) int {
+	if shouldForwardViaCodexAppServer(account) {
+		return 1
+	}
+	if account == nil {
+		return 0
+	}
+	return account.Concurrency
+}
+
+func openAIAccountSchedulingLoadFactor(account *Account) int {
+	if shouldForwardViaCodexAppServer(account) {
+		return 1
+	}
+	return account.EffectiveLoadFactor()
+}
+
 type codexAppServerRequest struct {
 	Model              string          `json:"model"`
 	Input              json.RawMessage `json:"input"`

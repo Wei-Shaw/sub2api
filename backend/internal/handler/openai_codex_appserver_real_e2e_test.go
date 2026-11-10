@@ -155,7 +155,7 @@ func TestOpenAIResponsesViaRealAppServerUserE2E(t *testing.T) {
 	billingCache := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 	t.Cleanup(billingCache.Stop)
 	gateway := service.NewOpenAIGatewayService(
-		repo, nil, nil, nil, nil, nil, nil, cfg, nil, service.NewConcurrencyService(nil),
+		repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
 		service.NewBillingService(cfg, nil), nil, billingCache, nil, &service.DeferredService{},
 		nil, nil, nil, nil, nil, nil, nil,
 	)

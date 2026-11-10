@@ -30,6 +30,8 @@
 
 `Provider` 用互斥锁串行执行 turn。pool 按账号 key 复用一个常驻 provider，并按 session key 保存 thread ID；同一账号的并发 turn 排队，不同账号可由不同进程并行。pool 达到容量且所有 worker 忙时快速返回 exhausted，不在请求路径无界创建进程。
 
+账号选择、负载评分、并发 slot、等待队列和 failover 继续由现有 `OpenAIAccountScheduler` 负责；worker pool 不读取账号负载，也不决定换号。由于当前每账号只有一个串行 worker，app-server 账号在 scheduler 中的实际并发与 load factor 固定为 1，避免把请求隐藏排在 worker mutex 后。pool 达到 `MaxWorkers` 时先淘汰最久未使用的 idle worker；只有全是 active worker 才返回 exhausted。
+
 ### D3：取消发送 `turn/interrupt`
 
 worker 由 provider 生命周期管理，不绑定单次 HTTP context。turn context 取消时使用短超时的独立 context 调用 `turn/interrupt`，随后返回原 context 错误。
@@ -59,3 +61,4 @@ worker 由 provider 生命周期管理，不绑定单次 HTTP context。turn con
 - [容器构建时需要公网下载依赖] → build 与 run 分离；只有 build 联网，最终 test run 强制 `--network none`，且镜像/官方 Codex 版本固定。
 - [HTTP 黑盒测试被误解为真实部署验收] → 测试覆盖 handler、账号选择、usage recording 入口、pool 与官方 binary，但鉴权/账号仓库是测试夹具，上游是假 Responses，且生产 worker factory 尚未接线。
 - [worker 崩溃导致内存 thread 粘性丢失] → 不健康 worker 会被丢弃并在下次请求重建；本变更不声称跨进程恢复会话，持久化 resume 留作后续能力。
+- [跨账号 failover 静默丢失 thread 上下文] → 当前 adapter 不把 app-server worker 错误包装为可换号错误；已有会话依赖现有 sticky/previous-response 绑定留在原账号。没有可验证 resume/replay 前，不声明支持有状态会话跨账号迁移。

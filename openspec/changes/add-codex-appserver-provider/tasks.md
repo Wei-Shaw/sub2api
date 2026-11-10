@@ -32,3 +32,5 @@
 - [x] 5.3 解析 `thread/tokenUsage/updated.last` 并映射到既有 usage 结果。
 - [x] 5.4 为显式 app-server 账号增加 Responses JSON/SSE service adapter，其他账号路径不变。
 - [x] 5.5 增加真实 HTTP → handler → 账号选择 → pool → 官方 app-server → fake upstream 黑盒 E2E，连续两次请求验证单进程和 thread 复用。
+- [x] 5.6 复用现有 OpenAI account scheduler；将单 worker app-server 账号的调度并发/load factor 收口为 1。
+- [x] 5.7 pool 达到容量时优先 LRU 淘汰 idle worker，全 active 时才 exhausted。

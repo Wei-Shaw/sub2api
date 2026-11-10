@@ -1163,7 +1163,8 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		if err != nil {
 			return nil, err
 		}
-		result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
+		accountConcurrency := openAIAccountSchedulingConcurrency(account)
+		result, err := s.tryAcquireAccountSlot(ctx, account.ID, accountConcurrency)
 		if err == nil && result != nil && result.Acquired {
 			selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
 			return markStickySessionHit(selection, stickyHit), selectErr
@@ -1173,7 +1174,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			if waitingCount < cfg.StickySessionMaxWaiting {
 				selection, selectErr := s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 					AccountID:      account.ID,
-					MaxConcurrency: account.Concurrency,
+					MaxConcurrency: accountConcurrency,
 					Timeout:        cfg.StickySessionWaitTimeout,
 					MaxWaiting:     cfg.StickySessionMaxWaiting,
 				})
@@ -1182,7 +1183,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		}
 		selection, selectErr := s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 			AccountID:      account.ID,
-			MaxConcurrency: account.Concurrency,
+			MaxConcurrency: accountConcurrency,
 			Timeout:        cfg.FallbackWaitTimeout,
 			MaxWaiting:     cfg.FallbackMaxWaiting,
 		})
@@ -1233,7 +1234,8 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 					} else if !parentHealthyForShadow(account, s.parentAccountLookup(ctx)) {
 						_ = s.deleteStickySessionAccountID(ctx, groupID, sessionHash)
 					} else {
-						result, err := s.tryAcquireAccountSlot(ctx, accountID, account.Concurrency)
+						accountConcurrency := openAIAccountSchedulingConcurrency(account)
+						result, err := s.tryAcquireAccountSlot(ctx, accountID, accountConcurrency)
 						if err == nil && result != nil && result.Acquired {
 							selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
 							if selectErr != nil {
@@ -1247,7 +1249,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 						if waitingCount < cfg.StickySessionMaxWaiting {
 							selection, selectErr := s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
 								AccountID:      accountID,
-								MaxConcurrency: account.Concurrency,
+								MaxConcurrency: accountConcurrency,
 								Timeout:        cfg.StickySessionWaitTimeout,
 								MaxWaiting:     cfg.StickySessionMaxWaiting,
 							})
@@ -1319,7 +1321,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	for _, acc := range candidates {
 		accountLoads = append(accountLoads, AccountWithConcurrency{
 			ID:             acc.ID,
-			MaxConcurrency: acc.EffectiveLoadFactor(),
+			MaxConcurrency: openAIAccountSchedulingLoadFactor(acc),
 		})
 	}
 
@@ -1399,7 +1401,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
 				continue
 			}
-			result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
+			result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, openAIAccountSchedulingConcurrency(fresh))
 			if err == nil && result != nil && result.Acquired {
 				selection, selectErr := s.newAcquiredSelectionResult(ctx, fresh, result.ReleaseFunc)
 				if selectErr != nil {
@@ -1438,7 +1440,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 			if needsUpstreamCheck && s.isUpstreamModelRestrictedByChannel(ctx, *groupID, fresh, requestedModel, requireCompact) {
 				continue
 			}
-			result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, fresh.Concurrency)
+			result, err := s.tryAcquireAccountSlot(ctx, fresh.ID, openAIAccountSchedulingConcurrency(fresh))
 			if err == nil && result != nil && result.Acquired {
 				selection, selectErr := s.newAcquiredSelectionResult(ctx, fresh, result.ReleaseFunc)
 				if selectErr != nil {
@@ -1490,7 +1492,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 		}
 		return s.newSelectionResult(ctx, fresh, false, nil, &AccountWaitPlan{
 			AccountID:      fresh.ID,
-			MaxConcurrency: fresh.Concurrency,
+			MaxConcurrency: openAIAccountSchedulingConcurrency(fresh),
 			Timeout:        cfg.FallbackWaitTimeout,
 			MaxWaiting:     cfg.FallbackMaxWaiting,
 		})

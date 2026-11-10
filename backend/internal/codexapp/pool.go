@@ -130,6 +130,9 @@ func (p *Pool) acquire(ctx context.Context, key string) (*poolWorker, error) {
 		}
 	}
 	if len(p.workers) >= p.maxWorkers {
+		p.evictLeastRecentlyUsedIdleLocked()
+	}
+	if len(p.workers) >= p.maxWorkers {
 		p.mu.Unlock()
 		return nil, ErrPoolExhausted
 	}
@@ -194,12 +197,34 @@ func (p *Pool) evictIdleLocked(now time.Time) {
 			continue
 		}
 		delete(p.workers, key)
-		go func(worker Worker) {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel()
-			_ = worker.Close(ctx)
-		}(entry.worker)
+		closeWorkerAsync(entry.worker)
 	}
+}
+
+func (p *Pool) evictLeastRecentlyUsedIdleLocked() bool {
+	var oldest *poolWorker
+	for _, entry := range p.workers {
+		if entry.active != 0 || entry.worker == nil {
+			continue
+		}
+		if oldest == nil || entry.lastUsed.Before(oldest.lastUsed) {
+			oldest = entry
+		}
+	}
+	if oldest == nil {
+		return false
+	}
+	delete(p.workers, oldest.key)
+	closeWorkerAsync(oldest.worker)
+	return true
+}
+
+func closeWorkerAsync(worker Worker) {
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = worker.Close(ctx)
+	}()
 }
 
 func (p *Pool) Close(ctx context.Context) error {

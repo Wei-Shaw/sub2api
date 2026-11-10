@@ -76,6 +76,8 @@ worker 生命周期 MUST 独立于单次调用 context。收到 context cancella
 
 系统 SHALL 以账号 key 隔离 app-server worker，并在 idle TTL 内复用已初始化进程。提供 session key 时 SHALL 将成功 turn 的 thread ID 用于同 session 后续请求；没有 session key 的请求 SHALL 使用 ephemeral thread。pool MUST 有最大 worker 数量，所有容量都忙时 MUST 快速返回 exhausted。
 
+worker pool MUST NOT 自行选择账号或复制现有账号负载均衡。账号负载、slot、等待与换号 SHALL 继续由现有 OpenAI account scheduler 管理。当前单 worker 串行实现中，app-server 账号的 scheduler concurrency 和 load factor MUST 为 1。
+
 #### Scenario: 同账号同会话连续两次请求
 
 - **WHEN** 两次 turn 使用相同 worker key 和 session key
@@ -86,6 +88,16 @@ worker 生命周期 MUST 独立于单次调用 context。收到 context cancella
 
 - **WHEN** 新账号请求到达且 pool 所有容量均被活动 turn 占用
 - **THEN** 请求 MUST 收到 pool exhausted 错误，不得无界启动新进程
+
+#### Scenario: pool 已满但存在 idle worker
+
+- **WHEN** 新账号需要 worker，pool 达到上限且至少一个 worker idle
+- **THEN** pool MUST 淘汰最久未使用的 idle worker并为新账号建 worker
+
+#### Scenario: app-server 账号配置了更高并发
+
+- **WHEN** app-server 账号的持久化 `Concurrency` 或 `LoadFactor` 大于 1
+- **THEN** OpenAI scheduler MUST 仍按实际串行能力 1 计算 load 并获取 slot
 
 ### Requirement: 显式账号可走用户 HTTP app-server 路径
 

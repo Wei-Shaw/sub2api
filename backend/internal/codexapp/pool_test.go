@@ -217,6 +217,36 @@ func TestPoolEvictsIdleWorkerAndRejectsUseAfterClose(t *testing.T) {
 	require.EqualError(t, err, "codex app-server worker pool is closed")
 }
 
+func TestPoolEvictsLeastRecentlyUsedIdleWorkerAtCapacity(t *testing.T) {
+	pool := NewPool(PoolConfig{
+		MaxWorkers: 2,
+		IdleTTL:    time.Hour,
+		Factory: func(_ context.Context, _ string) (Worker, error) {
+			return &recordingWorker{}, nil
+		},
+	})
+	t.Cleanup(func() { require.NoError(t, pool.Close(context.Background())) })
+
+	run := func(workerKey string) {
+		_, err := pool.RunTurn(context.Background(), workerKey, "", TurnRequest{
+			Model: "gpt-test", Input: []InputItem{{Type: "text", Text: "hello"}},
+		}, nil)
+		require.NoError(t, err)
+	}
+	run("account:1")
+	time.Sleep(time.Millisecond)
+	run("account:2")
+	time.Sleep(time.Millisecond)
+	run("account:1") // account:2 is now the least recently used idle worker.
+	run("account:3")
+
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+	require.Contains(t, pool.workers, "account:1")
+	require.Contains(t, pool.workers, "account:3")
+	require.NotContains(t, pool.workers, "account:2")
+}
+
 func TestPoolReportsFactoryFailureAndMissingConfiguration(t *testing.T) {
 	wantErr := errors.New("start failed")
 	pool := NewPool(PoolConfig{Factory: func(context.Context, string) (Worker, error) {
