@@ -187,6 +187,19 @@ const metaModels = [
   'codellama-70b-instruct', 'codellama-34b-instruct', 'codellama-13b-instruct'
 ]
 
+const museModels = [
+  'muse-spark-1.3',
+  'muse-spark-1.3-contributor',
+  'muse-spark-1.2',
+  'muse-spark-1.2-contributor',
+  'muse-spark-1.1',
+  'muse-wonder-1.0',
+  'muse-wonder-1.0-contributor',
+  'muse-wonder-full-1.0',
+  'muse-wonder-full-1.0-contributor',
+  'muse-ember-1.0'
+]
+
 // xAI Grok
 const xaiModels = [
   'grok-4.7',
@@ -306,6 +319,7 @@ const allModelsList: string[] = Array.from(new Set([
   ...deepseekModels,
   ...mistralModels,
   ...metaModels,
+  ...museModels,
   ...xaiModels,
   ...cohereModels,
   ...yiModels,
@@ -524,7 +538,7 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'qwen': return qwenModels
     case 'deepseek': return deepseekModels
     case 'mistral': return mistralModels
-    case 'meta': return metaModels
+    case 'meta': return museModels
     case 'xai':
     case 'grok': return xaiModels
     case 'cohere': return cohereModels

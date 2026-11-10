@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	metapkg "github.com/Wei-Shaw/sub2api/internal/pkg/meta"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/stretchr/testify/require"
 )
 
@@ -93,4 +93,11 @@ func TestMetaBuildUpstreamModelsRequestFailsWithoutAPIKey(t *testing.T) {
 
 	_, err := svc.buildMetaUpstreamModelsRequest(context.Background(), account)
 	require.Error(t, err)
+}
+
+func TestMetaModelsListCandidatesUseMuseCatalog(t *testing.T) {
+	candidates := defaultModelsListCandidateIDs(PlatformMeta)
+	require.Equal(t, DefaultMetaModelIDs, candidates)
+	candidates[0] = "mutated"
+	require.Equal(t, "muse-spark-1.3", DefaultMetaModelIDs[0], "callers must not alias the shared catalog")
 }

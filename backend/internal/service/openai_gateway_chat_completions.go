@@ -365,6 +365,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	if err != nil {
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
+	s.wrapMetaCompatResponse(ctx, account, resp)
 	defer func() {
 		cancelUpstream()
 		_ = resp.Body.Close()

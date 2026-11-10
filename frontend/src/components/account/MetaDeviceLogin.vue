@@ -55,20 +55,15 @@
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
+import type { MetaDeviceAccountOptions } from '@/api/admin/meta'
 
 const props = withDefaults(defineProps<{
   proxyId?: number | null
-  name?: string
-  concurrency?: number
-  priority?: number
-  groupIds?: number[]
+  accountOptions?: MetaDeviceAccountOptions
   pollIntervalSeconds?: number
 }>(), {
   proxyId: null,
-  name: '',
-  concurrency: undefined,
-  priority: undefined,
-  groupIds: undefined,
+  accountOptions: () => ({}),
   pollIntervalSeconds: 5,
 })
 
@@ -140,11 +135,9 @@ async function poll() {
   now.value = Date.now()
   try {
     const result = await adminAPI.meta.pollDeviceFlow({
+      ...props.accountOptions,
       device_code_id: deviceCodeId.value,
-      name: props.name || undefined,
-      concurrency: props.concurrency,
-      priority: props.priority,
-      group_ids: props.groupIds,
+      name: props.accountOptions.name || undefined,
       proxy_id: props.proxyId ?? undefined,
     })
     state.value = result.state

@@ -73,7 +73,17 @@ upstream call fails:
 
 muse-spark-1.3, muse-spark-1.3-contributor, muse-spark-1.2, muse-spark-1.2-contributor,
 muse-spark-1.1, muse-wonder-1.0, muse-wonder-1.0-contributor, muse-wonder-full-1.0,
-muse-wonder-full-1.0-contributor.
+muse-wonder-full-1.0-contributor, muse-ember-1.0.
+
+The upstream list also returns non-chat ids (`muse-image-*`, `muse-voice-*`, `sam-*`);
+discovery drops them so they never land in a chat whitelist.
+
+`GET /v1/models` with a key of a meta group returns the account model mappings when the
+group's accounts have any, otherwise the static catalog above.
+
+Account create and edit offer the same model whitelist, model mapping and "sync upstream
+models" controls as OpenAI OAuth accounts. For a device-flow account the chosen mapping is
+sent with the poll request and stored when the account is created.
 
 The *-contributor variants are special: they take the contributor-mode header.
 
@@ -94,11 +104,18 @@ Meta returns resets_at (epoch seconds) on throttling:
 ## Limitations
 
 - Chat Completions is not a native endpoint; those requests are converted and billed
-  on the Responses path.
-- There is no usage-query endpoint. Usage is passive: Meta reports the current
-  subscription windows in a `response.subscription_usage` event during streamed
-  turns, and the gateway samples that into the account's 5h/weekly usage cells.
-  A fresh account shows no usage until its first streamed turn completes. The
+  on the Responses path. Meta sends `created_at` as a float, which the converter
+  cannot decode, so the gateway rewrites it to an integer for Meta responses on the
+  converted paths.
+- There is no usage-query endpoint (`/v1/usage`, `/muse-code/usage` and similar
+  return 404). Meta reports the current subscription windows in a
+  `response.subscription_usage` event during streamed turns, and the gateway samples
+  that into the account's 5h/weekly usage cells on every path (Responses, Chat
+  Completions, Anthropic Messages). The **Query** button in the usage cell sends one
+  streamed `muse-spark-1.3` request capped at 16 output tokens to read the windows
+  immediately; it costs that much quota and is only sent when an admin presses it.
+  The sampled windows also drive the per-platform scheduling threshold (Settings ->
+  Scheduling, platform `meta`). The
   event is stripped before it could reach downstream clients, including when a
   non-stream request is answered with an SSE body that this gateway aggregates
   into JSON.

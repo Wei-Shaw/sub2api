@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/meta"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -60,12 +61,37 @@ func (h *MetaOAuthHandler) StartDeviceFlow(c *gin.Context) {
 }
 
 type metaDevicePollRequest struct {
-	DeviceCodeID string  `json:"device_code_id" binding:"required"`
-	Name         string  `json:"name"`
-	Concurrency  int     `json:"concurrency"`
-	Priority     int     `json:"priority"`
-	GroupIDs     []int64 `json:"group_ids"`
-	ProxyID      *int64  `json:"proxy_id"`
+	DeviceCodeID       string         `json:"device_code_id" binding:"required"`
+	Name               string         `json:"name"`
+	Notes              *string        `json:"notes"`
+	Concurrency        int            `json:"concurrency"`
+	Priority           int            `json:"priority"`
+	GroupIDs           []int64        `json:"group_ids"`
+	ProxyID            *int64         `json:"proxy_id"`
+	RateMultiplier     *float64       `json:"rate_multiplier"`
+	LoadFactor         *int           `json:"load_factor"`
+	ExpiresAt          *int64         `json:"expires_at"`
+	AutoPauseOnExpired *bool          `json:"auto_pause_on_expired"`
+	Credentials        map[string]any `json:"credentials"`
+	Extra              map[string]any `json:"extra"`
+}
+
+var metaDeviceFlowCredentialOptions = []string{"model_mapping", "temp_unschedulable_enabled", "temp_unschedulable_rules"}
+
+func (r *metaDevicePollRequest) validate() error {
+	if r.RateMultiplier != nil && *r.RateMultiplier < 0 {
+		return infraerrors.BadRequest("INVALID_RATE_MULTIPLIER", "rate_multiplier must be >= 0")
+	}
+	sanitizeExtraBaseRPM(r.Extra)
+	return service.ValidateUpstreamRequestIDHeaderExtra(r.Extra)
+}
+
+func applyMetaDeviceFlowCredentialOptions(credentials, options map[string]any) {
+	for _, key := range metaDeviceFlowCredentialOptions {
+		if value, ok := options[key]; ok && value != nil {
+			credentials[key] = value
+		}
+	}
 }
 
 type metaDevicePollResponse struct {
@@ -79,6 +105,10 @@ func (h *MetaOAuthHandler) PollDeviceFlow(c *gin.Context) {
 	var req metaDevicePollRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := req.validate(); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 	poll, err := h.metaOAuthService.PollDeviceFlow(c.Request.Context(), req.DeviceCodeID)
@@ -125,15 +155,22 @@ func (h *MetaOAuthHandler) createDeviceFlowAccount(c *gin.Context, req metaDevic
 		name = "Meta Muse Account"
 	}
 	credentials := h.metaOAuthService.BuildDeviceFlowCredentials(poll.MintedKey, poll.DCAToken)
+	applyMetaDeviceFlowCredentialOptions(credentials, req.Credentials)
 	return h.adminService.CreateAccount(c.Request.Context(), &service.CreateAccountInput{
-		Name:        name,
-		Platform:    service.PlatformMeta,
-		Type:        service.AccountTypeOAuth,
-		Credentials: credentials,
-		ProxyID:     req.ProxyID,
-		Concurrency: req.Concurrency,
-		Priority:    req.Priority,
-		GroupIDs:    req.GroupIDs,
+		Name:               name,
+		Notes:              req.Notes,
+		Platform:           service.PlatformMeta,
+		Type:               service.AccountTypeOAuth,
+		Credentials:        credentials,
+		Extra:              req.Extra,
+		ProxyID:            req.ProxyID,
+		Concurrency:        req.Concurrency,
+		Priority:           req.Priority,
+		RateMultiplier:     req.RateMultiplier,
+		LoadFactor:         req.LoadFactor,
+		GroupIDs:           req.GroupIDs,
+		ExpiresAt:          req.ExpiresAt,
+		AutoPauseOnExpired: req.AutoPauseOnExpired,
 	})
 }
 

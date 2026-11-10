@@ -20,13 +20,23 @@ export interface MetaDeviceStartResponse {
   interval: number
 }
 
-export interface MetaDevicePollRequest {
-  device_code_id: string
+export interface MetaDeviceAccountOptions {
   name?: string
+  notes?: string
   concurrency?: number
   priority?: number
   group_ids?: number[]
   proxy_id?: number
+  rate_multiplier?: number
+  load_factor?: number
+  expires_at?: number | null
+  auto_pause_on_expired?: boolean
+  credentials?: Record<string, unknown>
+  extra?: Record<string, unknown>
+}
+
+export interface MetaDevicePollRequest extends MetaDeviceAccountOptions {
+  device_code_id: string
 }
 
 export interface MetaDevicePollResponse {

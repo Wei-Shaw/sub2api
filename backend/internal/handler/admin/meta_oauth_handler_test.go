@@ -219,3 +219,77 @@ func TestMetaOAuthHandlerPollRejectsUnknownSession(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 }
+
+func startMetaHandlerDeviceFlow(t *testing.T, router *gin.Engine) string {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/meta/oauth/device/start", strings.NewReader(`{}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	deviceCodeID := gjson.Get(rec.Body.String(), "data.device_code_id").String()
+	require.NotEmpty(t, deviceCodeID)
+	return deviceCodeID
+}
+
+func TestMetaOAuthHandlerPollCarriesCreateFormOptions(t *testing.T) {
+	doer := metaHandlerDoer()
+	doer.tokenBodies = []string{`{"access_token":"dca:handler","token_type":"Bearer","expires_in":3600}`}
+	adminService := &metaAdminServiceStub{}
+	router := newMetaHandlerTestRouter(t, doer, adminService)
+	deviceCodeID := startMetaHandlerDeviceFlow(t, router)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/meta/oauth/device/poll", strings.NewReader(`{
+		"device_code_id":"`+deviceCodeID+`",
+		"name":"Muse prod",
+		"notes":"team pool",
+		"rate_multiplier":1.5,
+		"load_factor":4,
+		"expires_at":1893456000,
+		"auto_pause_on_expired":true,
+		"credentials":{
+			"model_mapping":{"fast":"muse-spark-1.1"},
+			"temp_unschedulable_enabled":true,
+			"temp_unschedulable_rules":[{"error_code":429,"keywords":["quota"],"duration_minutes":5}],
+			"api_key":"sk-injected",
+			"dca_token":"dca:injected",
+			"base_url":"https://evil.example.com"
+		},
+		"extra":{"upstream_request_id_header":"x-request-id"}
+	}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+
+	created := adminService.created
+	require.NotNil(t, created)
+	require.Equal(t, "team pool", *created.Notes)
+	require.InDelta(t, 1.5, *created.RateMultiplier, 0.0001)
+	require.Equal(t, 4, *created.LoadFactor)
+	require.Equal(t, int64(1893456000), *created.ExpiresAt)
+	require.True(t, *created.AutoPauseOnExpired)
+	require.Equal(t, map[string]any{"fast": "muse-spark-1.1"}, created.Credentials["model_mapping"])
+	require.Equal(t, true, created.Credentials["temp_unschedulable_enabled"])
+	require.NotNil(t, created.Credentials["temp_unschedulable_rules"])
+	require.Equal(t, "sk-handler", created.Credentials["api_key"], "minted credentials win over request fields")
+	require.Equal(t, "dca:handler", created.Credentials["dca_token"])
+	require.Equal(t, "https://api.meta.ai/v1", created.Credentials["base_url"])
+	require.Equal(t, "x-request-id", created.Extra["upstream_request_id_header"])
+}
+
+func TestMetaOAuthHandlerPollRejectsNegativeRateMultiplier(t *testing.T) {
+	doer := metaHandlerDoer()
+	doer.tokenBodies = []string{`{"access_token":"dca:handler","token_type":"Bearer","expires_in":3600}`}
+	adminService := &metaAdminServiceStub{}
+	router := newMetaHandlerTestRouter(t, doer, adminService)
+	deviceCodeID := startMetaHandlerDeviceFlow(t, router)
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/meta/oauth/device/poll",
+		strings.NewReader(`{"device_code_id":"`+deviceCodeID+`","rate_multiplier":-1}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.Zero(t, adminService.createCalls)
+}

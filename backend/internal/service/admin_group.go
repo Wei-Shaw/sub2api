@@ -298,6 +298,8 @@ func defaultModelsListCandidateIDs(platform string) []string {
 		return xai.DefaultModelIDs()
 	case PlatformOpenCodeGo:
 		return DefaultOpenCodeGoModelIDs()
+	case PlatformMeta:
+		return append([]string(nil), DefaultMetaModelIDs...)
 	case PlatformTypeSafe:
 		return []string{typesafe.JevLatestModel}
 	case PlatformComposite:
@@ -358,6 +360,7 @@ func groupSupportsOAuthOnlyFilter(platform string) bool {
 		platform == PlatformAnthropic ||
 		platform == PlatformGemini ||
 		platform == PlatformGrok ||
+		platform == PlatformMeta ||
 		platform == PlatformComposite
 }
 

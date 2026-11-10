@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/meta"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
@@ -130,6 +131,17 @@ func metaUsageWindowIfSane(window *meta.SubscriptionUsageWindow, now time.Time) 
 		return nil
 	}
 	return window
+}
+
+func (s *AccountUsageService) probeMetaUsage(ctx context.Context, account *Account, force bool) (bool, error) {
+	if !force || s.metaUsageProber == nil || adminaccess.RestrictedFromContext(ctx) != nil {
+		return false, nil
+	}
+	updates, err := s.metaUsageProber.ProbeMetaSubscriptionUsage(ctx, account)
+	if len(updates) > 0 {
+		mergeAccountExtra(account, updates)
+	}
+	return err == nil, err
 }
 
 func (s *AccountUsageService) getMetaUsage(ctx context.Context, account *Account) (*UsageInfo, error) {

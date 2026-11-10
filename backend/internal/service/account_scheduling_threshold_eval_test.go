@@ -528,3 +528,50 @@ func TestEvaluateAccountSchedulingThreshold_GrokUsesOnlyHeaderQuotaWindow(t *tes
 	require.NotNil(t, decision.Until)
 	require.True(t, headerUntil.Equal(*decision.Until))
 }
+
+func TestEvaluateAccountSchedulingThreshold_MetaPausesOnSampledWindows(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 10, 6, 0, 0, 0, time.UTC)
+	weeklyReset := now.Add(4 * 24 * time.Hour)
+	account := &Account{
+		Platform: PlatformMeta,
+		Type:     AccountTypeOAuth,
+		Extra: map[string]any{
+			metaUsageWindowUtilizationKey: 0.95,
+			metaUsageWindowResetKey:       float64(now.Add(2 * time.Hour).Unix()),
+			metaUsageWeeklyUtilizationKey: 0.91,
+			metaUsageWeeklyResetKey:       float64(weeklyReset.Unix()),
+		},
+	}
+
+	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformMeta: 90}, now)
+
+	require.True(t, decision.ShouldPause)
+	require.Equal(t, PlatformMeta, decision.Platform)
+	require.Equal(t, "weekly", decision.Window)
+	require.Equal(t, PlatformMeta, decision.Scope)
+	require.InDelta(t, 91.0, decision.UsedPercent, 0.0001)
+	require.NotNil(t, decision.Until)
+	require.True(t, weeklyReset.Equal(*decision.Until))
+}
+
+func TestEvaluateAccountSchedulingThreshold_MetaKeepsSchedulingBelowThresholdOrAfterReset(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 11, 10, 6, 0, 0, 0, time.UTC)
+	below := &Account{Platform: PlatformMeta, Extra: map[string]any{
+		metaUsageWindowUtilizationKey: 0.5,
+		metaUsageWindowResetKey:       float64(now.Add(time.Hour).Unix()),
+	}}
+	require.False(t, EvaluateAccountSchedulingThreshold(below, map[string]int{PlatformMeta: 90}, now).ShouldPause)
+
+	reset := &Account{Platform: PlatformMeta, Extra: map[string]any{
+		metaUsageWindowUtilizationKey: 1.0,
+		metaUsageWindowResetKey:       float64(now.Add(-time.Minute).Unix()),
+	}}
+	require.False(t, EvaluateAccountSchedulingThreshold(reset, map[string]int{PlatformMeta: 90}, now).ShouldPause)
+
+	unsampled := &Account{Platform: PlatformMeta}
+	require.False(t, EvaluateAccountSchedulingThreshold(unsampled, map[string]int{PlatformMeta: 1}, now).ShouldPause)
+}

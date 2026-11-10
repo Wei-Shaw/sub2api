@@ -322,6 +322,7 @@ type AccountUsageService struct {
 	tlsFPProfileService     *TLSFingerprintProfileService
 	agentIdentityTaskMu     sync.Mutex
 	agentIdentityWS         agentIdentityWSConnectionInvalidator
+	metaUsageProber         metaUsageProber
 }
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -387,8 +388,15 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 	}
 
 	if account.IsMeta() {
+		probed, probeErr := s.probeMetaUsage(ctx, account, forceProbe)
 		usage, err := s.getMetaUsage(ctx, account)
-		if err == nil {
+		if err == nil && probed {
+			usage.Source = "active"
+		}
+		if err == nil && probeErr != nil {
+			usage.Error = probeErr.Error()
+		}
+		if err == nil && probeErr == nil {
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
 		return usage, err

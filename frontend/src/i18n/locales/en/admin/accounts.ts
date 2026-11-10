@@ -165,8 +165,10 @@ export default {
         noBalanceEndpoint: 'This platform has no balance query endpoint',
       },
       metaUsage: {
-        noSample: 'No usage sampled yet — Meta reports usage inside streamed responses',
+        noSample: 'No usage sampled yet — press Query, or wait for the next streamed response',
         tier: 'Subscription tier',
+        activeSampled: 'Queried',
+        queryTooltip: 'Send a minimal Muse request (16 output tokens) to read the current subscription windows',
       },
       opencodeGo: {
         accountMode: {

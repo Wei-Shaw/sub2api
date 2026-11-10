@@ -74,6 +74,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 import CreateAccountModal from '../CreateAccountModal.vue'
+import MetaDeviceLogin from '../MetaDeviceLogin.vue'
 
 const BaseDialogStub = defineComponent({
   name: 'BaseDialog',
@@ -1058,5 +1059,28 @@ describe('CreateAccountModal Vertex API key auth', () => {
     await selectButtonByText(wrapper, 'admin.accounts.vertexLabel')
     expect(wrapper.find('[data-testid="vertex-auth-mode-apikey"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="vertex-api-key-input"]').exists()).toBe(false)
+  })
+})
+
+describe('CreateAccountModal Meta Muse OAuth', () => {
+  it('offers the model whitelist before login and hands it to the device login', async () => {
+    const wrapper = mountModal()
+    await wrapper.get('[data-testid="platform-button-meta"]').trigger('click')
+
+    const selector = wrapper.findComponent(ModelWhitelistSelectorStub)
+    expect(selector.exists()).toBe(true)
+    expect(selector.props('platform')).toBe('meta')
+    await wrapper.get('[data-testid="model-whitelist-selector"]').trigger('click')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('muse prod')
+
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    const login = wrapper.findComponent(MetaDeviceLogin)
+    expect(login.exists()).toBe(true)
+    expect(login.props('accountOptions')).toMatchObject({
+      name: 'muse prod',
+      credentials: { model_mapping: { 'public-glm': 'public-glm' } }
+    })
   })
 })

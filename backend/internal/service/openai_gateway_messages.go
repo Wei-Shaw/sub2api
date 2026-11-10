@@ -464,6 +464,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 			zap.String("upstream_error_preview", truncateOpenAIWSLogValue(string(respBody), 240)),
 		)
 	}
+	s.wrapMetaCompatResponse(ctx, account, resp)
 	defer func() { _ = resp.Body.Close() }()
 
 	// 8. Handle error response with failover

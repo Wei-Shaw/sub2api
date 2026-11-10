@@ -81,13 +81,37 @@ describe('MetaUsageCell', () => {
     expect(wrapper.text()).toContain('-')
   })
 
-  it('re-reads the passive snapshot when the refresh control is used', async () => {
-    getUsage.mockResolvedValue(sampledUsage())
+  it('queries the upstream actively and renders the windows it returns', async () => {
+    getUsage
+      .mockResolvedValueOnce({
+        updated_at: null,
+        source: 'passive',
+        five_hour: { utilization: 0, resets_at: null, remaining_seconds: 0 },
+        seven_day: null,
+        seven_day_sonnet: null
+      } as unknown as AccountUsageInfo)
+      .mockResolvedValueOnce({ ...sampledUsage(), source: 'active' })
+    const wrapper = mount(MetaUsageCell, { props: { account: account() } })
+    await flushPromises()
+    expect(wrapper.findAllComponents(UsageProgressBar)).toHaveLength(0)
+
+    await wrapper.get('[data-testid="meta-usage-refresh"]').trigger('click')
+    await flushPromises()
+
+    expect(getUsage).toHaveBeenLastCalledWith(7, 'active', true)
+    expect(wrapper.findAllComponents(UsageProgressBar).map((bar) => bar.props('label'))).toEqual(['5h', '7d'])
+    expect(wrapper.text()).toContain('admin.accounts.metaUsage.activeSampled')
+  })
+
+  it('shows the upstream error when the active query fails', async () => {
+    getUsage
+      .mockResolvedValueOnce(sampledUsage())
+      .mockResolvedValueOnce({ ...sampledUsage(), error: 'meta usage probe returned 429: quota' })
     const wrapper = mount(MetaUsageCell, { props: { account: account() } })
     await flushPromises()
     await wrapper.get('[data-testid="meta-usage-refresh"]').trigger('click')
     await flushPromises()
 
-    expect(getUsage).toHaveBeenCalledTimes(2)
+    expect(wrapper.get('[data-testid="meta-usage-error"]').text()).toContain('429')
   })
 })

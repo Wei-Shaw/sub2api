@@ -253,6 +253,9 @@ func ProvideAccountUsageService(
 		tlsFPProfileService,
 	)
 	service.agentIdentityWS = openAIGatewayService
+	if openAIGatewayService != nil {
+		service.metaUsageProber = openAIGatewayService
+	}
 	return service
 }
 

@@ -15,17 +15,7 @@ const (
 
 const DefaultMetaBaseURL = meta.DefaultBaseURL
 
-var DefaultMetaModelIDs = []string{
-	"muse-spark-1.3",
-	"muse-spark-1.3-contributor",
-	"muse-spark-1.2",
-	"muse-spark-1.2-contributor",
-	"muse-spark-1.1",
-	"muse-wonder-1.0",
-	"muse-wonder-1.0-contributor",
-	"muse-wonder-full-1.0",
-	"muse-wonder-full-1.0-contributor",
-}
+var DefaultMetaModelIDs = meta.DefaultModelIDs()
 
 func DefaultMetaProtocolRules() []ProtocolRule {
 	return []ProtocolRule{{Pattern: "*", Protocol: APIProtocolResponses}}

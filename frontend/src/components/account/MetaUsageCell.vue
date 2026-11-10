@@ -24,9 +24,17 @@
       class="text-xs text-gray-400"
       :title="t('admin.accounts.metaUsage.noSample')"
     >-</div>
+    <div
+      v-if="usage?.error"
+      class="max-w-[200px] truncate text-xs text-amber-600 dark:text-amber-400"
+      :title="usage.error"
+      data-testid="meta-usage-error"
+    >
+      {{ usage.error }}
+    </div>
     <div class="flex items-center gap-1 pt-0.5">
       <span class="text-[9px] italic text-gray-400 dark:text-gray-500">
-        {{ t('admin.accounts.usageWindow.passiveSampled') }}
+        {{ usage?.source === 'active' ? t('admin.accounts.metaUsage.activeSampled') : t('admin.accounts.usageWindow.passiveSampled') }}
       </span>
       <span
         v-if="usage?.subscription_tier_raw"
@@ -38,13 +46,14 @@
       <button
         type="button"
         class="inline-flex items-center gap-0.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-blue-400 dark:hover:bg-blue-900/30"
-        :disabled="loading"
+        :disabled="loading || querying"
+        :title="t('admin.accounts.metaUsage.queryTooltip')"
         data-testid="meta-usage-refresh"
-        @click="loadUsage"
+        @click="queryUsage"
       >
         <svg
           class="h-2.5 w-2.5"
-          :class="{ 'animate-spin': loading }"
+          :class="{ 'animate-spin': querying }"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -80,6 +89,19 @@ const hasSample = computed(() =>
 )
 const usage = ref<AccountUsageInfo | undefined>(undefined)
 const loading = ref(false)
+const querying = ref(false)
+
+const queryUsage = async () => {
+  if (querying.value) return
+  querying.value = true
+  try {
+    usage.value = await adminAPI.accounts.getUsage(props.account.id, 'active', true)
+  } catch (error) {
+    console.error('Failed to query Meta usage:', error)
+  } finally {
+    querying.value = false
+  }
+}
 
 const loadUsage = async () => {
   if (loading.value) return

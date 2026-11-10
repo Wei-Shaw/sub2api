@@ -39,7 +39,18 @@ async function settle() {
 
 function mountLogin(props: Record<string, unknown> = {}, onCreated = vi.fn()) {
   const wrapper = mount(MetaDeviceLogin, {
-    props: { name: 'Muse prod', concurrency: 3, priority: 1, groupIds: [7], pollIntervalSeconds: 5, ...props },
+    props: {
+      accountOptions: {
+        name: 'Muse prod',
+        concurrency: 3,
+        priority: 1,
+        group_ids: [7],
+        rate_multiplier: 1.5,
+        credentials: { model_mapping: { fast: 'muse-spark-1.1' } }
+      },
+      pollIntervalSeconds: 5,
+      ...props
+    },
     attrs: { onCreated },
     global: { stubs: { Icon: true } }
   })
@@ -87,7 +98,9 @@ describe('MetaDeviceLogin', () => {
       name: 'Muse prod',
       concurrency: 3,
       priority: 1,
-      group_ids: [7]
+      group_ids: [7],
+      rate_multiplier: 1.5,
+      credentials: { model_mapping: { fast: 'muse-spark-1.1' } }
     }))
     expect(onCreated).toHaveBeenCalledWith({ id: 12, platform: 'meta' })
     wrapper.unmount()

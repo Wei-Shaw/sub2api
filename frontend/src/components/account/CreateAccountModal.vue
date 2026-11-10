@@ -2508,9 +2508,8 @@
         </div>
       </div>
 
-      <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
-        v-if="(form.platform === 'openai' || form.platform === 'grok') && isOAuthFlow"
+        v-if="(form.platform === 'openai' || form.platform === 'grok' || form.platform === 'meta') && isOAuthFlow"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -3797,10 +3796,7 @@
       <MetaDeviceLogin
         v-if="form.platform === 'meta'"
         :proxy-id="form.proxy_id"
-        :name="form.name"
-        :concurrency="form.concurrency"
-        :priority="form.priority"
-        :group-ids="form.group_ids"
+        :account-options="metaDeviceAccountOptions"
         @created="handleMetaAccountCreated"
       />
       <OAuthAuthorizationFlow
@@ -4168,6 +4164,7 @@ import {
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
 import { adminAPI } from '@/api/admin'
+import type { MetaDeviceAccountOptions } from '@/api/admin/meta'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
   useAccountOAuth,
@@ -4372,6 +4369,35 @@ const emit = defineEmits<{
   close: []
   created: []
 }>()
+
+const metaDeviceAccountOptions = computed<MetaDeviceAccountOptions>(() => {
+  const credentials: Record<string, unknown> = {}
+  const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+  if (modelMapping) {
+    credentials.model_mapping = modelMapping
+  }
+  if (tempUnschedEnabled.value) {
+    const rules = buildTempUnschedRules(tempUnschedRules.value)
+    if (rules.length > 0) {
+      credentials.temp_unschedulable_enabled = true
+      credentials.temp_unschedulable_rules = rules
+    }
+  }
+  const extra = withUpstreamRequestIdHeader(undefined)
+  return {
+    name: form.name,
+    notes: form.notes || undefined,
+    concurrency: form.concurrency,
+    priority: form.priority,
+    group_ids: form.group_ids,
+    rate_multiplier: form.rate_multiplier,
+    load_factor: form.load_factor ?? undefined,
+    expires_at: form.expires_at,
+    auto_pause_on_expired: autoPauseOnExpired.value,
+    ...(Object.keys(credentials).length > 0 ? { credentials } : {}),
+    ...(extra ? { extra } : {})
+  }
+})
 
 function handleMetaAccountCreated() {
   appStore.showSuccess(t('admin.accounts.accountCreated'))
@@ -6020,6 +6046,9 @@ const handleSubmit = async () => {
   if (isOAuthFlow.value) {
     if (!isGrokSSOInputMethod.value && !form.name.trim()) {
       appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+      return
+    }
+    if (form.platform === 'meta' && !applyTempUnschedConfig({})) {
       return
     }
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {

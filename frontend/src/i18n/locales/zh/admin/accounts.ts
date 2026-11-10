@@ -368,8 +368,10 @@ export default {
         noBalanceEndpoint: '该平台暂无余额查询接口',
       },
       metaUsage: {
-        noSample: '暂无用量采样 — Meta 在流式响应中上报用量',
+        noSample: '暂无用量采样 — 点击查询，或等待下一次流式响应',
         tier: '订阅等级',
+        activeSampled: '已查询',
+        queryTooltip: '发送一个极小的 Muse 请求（16 个输出 token）读取当前订阅窗口',
       },
       opencodeGo: {
         accountMode: {

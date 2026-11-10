@@ -25,6 +25,9 @@ func TestParseModelListFiltersAndDeduplicates(t *testing.T) {
 		{"id":"gpt-5","object":"model"},
 		{"id":"muse-wonder-1.0"},
 		{"id":"muse-spark-1.3"},
+		{"id":"sam-3.1"},
+		{"id":"muse-image-1.0"},
+		{"id":"muse-voice-transcribe-1.0"},
 		{"id":""}
 	]}`)
 
