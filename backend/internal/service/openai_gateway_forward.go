@@ -1403,7 +1403,11 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	switch account.Type {
 	case AccountTypeOAuth:
 		if account.IsMeta() {
-			targetURL = buildOpenAIResponsesURLForPlatform(account.Platform, account.GetMetaBaseURL())
+			validatedURL, err := s.validateUpstreamBaseURL(account.GetMetaBaseURL())
+			if err != nil {
+				return nil, err
+			}
+			targetURL = buildOpenAIResponsesURLForPlatform(account.Platform, validatedURL)
 			break
 		}
 		targetURL = chatgptCodexURL
@@ -1457,11 +1461,6 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		for _, value := range values {
 			req.Header.Add(key, value)
 		}
-	}
-
-	if account.IsMeta() {
-		meta.ApplyClientIdentity(req.Header, "")
-		meta.ApplyContributorMode(req.Header, gjson.GetBytes(body, "model").String())
 	}
 
 	// Set headers specific to OAuth accounts (ChatGPT internal API)
@@ -1535,6 +1534,12 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		req.Header.Set("user-agent", CodexCanonicalUserAgent())
 	}
 
+	if account.IsMeta() {
+		stripOpenAIClientCodexIdentityHeaders(req.Header)
+		meta.ApplyClientIdentity(req.Header, "")
+		meta.ApplyContributorMode(req.Header, gjson.GetBytes(body, "model").String())
+	}
+
 	// 账号 namespace 不改变客户端身份基数，但确保 scheduler failover 后不会把
 	// 同一组 Codex IDs 发送给另一份 OAuth 凭据。可选指纹收敛随后仍可覆盖这些值。
 	applyCodexAccountIdentityHeaders(req.Header, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
@@ -1570,6 +1575,22 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		return nil, err
 	}
 	return req, nil
+}
+
+func stripOpenAIClientCodexIdentityHeaders(h http.Header) {
+	for _, key := range []string{
+		"originator",
+		"openai-beta",
+		"session_id",
+		"conversation_id",
+		"x-codex-beta-features",
+		"x-codex-installation-id",
+		"x-codex-turn-state",
+		"x-codex-turn-metadata",
+		"x-codex-window-id",
+	} {
+		h.Del(key)
+	}
 }
 
 // codexIdentityOverrideUA 返回账号级显式配置的出站 User-Agent，供强制统一身份时作为覆写来源。

@@ -401,3 +401,38 @@ func TestMetaOAuthServiceDeviceFlowFailures(t *testing.T) {
 		require.ErrorContains(t, err, "session not found")
 	})
 }
+
+func TestMetaDeviceSessionStoreStaysBounded(t *testing.T) {
+	store := NewMetaDeviceSessionStore()
+	base := time.Now().Add(time.Minute)
+	for i := 0; i < metaDeviceSessionMaxKeep; i++ {
+		store.Set("session-"+strconv.Itoa(i), &MetaDeviceSession{
+			DeviceCode: "dev",
+			ExpiresAt:  base.Add(time.Duration(i) * time.Second),
+		})
+	}
+	require.Len(t, store.sessions, metaDeviceSessionMaxKeep)
+
+	store.Set("session-newest", &MetaDeviceSession{DeviceCode: "dev", ExpiresAt: base.Add(time.Hour)})
+	require.Len(t, store.sessions, metaDeviceSessionMaxKeep)
+
+	_, ok := store.Get("session-0")
+	require.False(t, ok)
+	newest, ok := store.Get("session-newest")
+	require.True(t, ok)
+	require.Equal(t, "dev", newest.DeviceCode)
+}
+
+func TestMetaOAuthServiceReleaseAccountCreation(t *testing.T) {
+	svc := NewMetaOAuthService(nil)
+	svc.sessions.Set("claimable", &MetaDeviceSession{
+		DeviceCode:     "dev",
+		ExpiresAt:      time.Now().Add(time.Minute),
+		Authorized:     &meta.APIKey{APIKey: "sk-claim"},
+		AccountCreated: false,
+	})
+	require.True(t, svc.ClaimAccountCreation("claimable"))
+	require.False(t, svc.ClaimAccountCreation("claimable"))
+	svc.ReleaseAccountCreation("claimable")
+	require.True(t, svc.ClaimAccountCreation("claimable"))
+}

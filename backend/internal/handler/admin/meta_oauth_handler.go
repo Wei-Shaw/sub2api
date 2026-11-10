@@ -2,6 +2,7 @@ package admin
 
 import (
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -39,7 +40,7 @@ type metaDeviceStartResponse struct {
 
 func (h *MetaOAuthHandler) StartDeviceFlow(c *gin.Context) {
 	var req metaDeviceStartRequest
-	if err := c.ShouldBindJSON(&req); err != nil && !isEOFBodyError(err) {
+	if err := c.ShouldBindJSON(&req); err != nil && !errors.Is(err, io.EOF) {
 		response.BadRequest(c, "Invalid request: "+err.Error())
 		return
 	}
@@ -100,6 +101,7 @@ func (h *MetaOAuthHandler) PollDeviceFlow(c *gin.Context) {
 	}
 	account, err := h.createDeviceFlowAccount(c, req, poll)
 	if err != nil {
+		h.metaOAuthService.ReleaseAccountCreation(req.DeviceCodeID)
 		response.ErrorFrom(c, err)
 		return
 	}
@@ -176,10 +178,3 @@ func (h *MetaOAuthHandler) RefreshAccountKey(c *gin.Context) {
 }
 
 var errMetaMintMissing = errors.New("meta: minted key is missing")
-
-func isEOFBodyError(err error) bool {
-	if err == nil {
-		return false
-	}
-	return strings.Contains(err.Error(), "EOF")
-}

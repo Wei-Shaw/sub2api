@@ -78,6 +78,10 @@ Meta returns resets_at (epoch seconds) on throttling:
   rate_limit_exceeded/quota together with resets_at: same cooldown, but recorded as
   the credential's subscription quota.
 - 404 with resets_at: parked until the reset; 404 without it gets a 5 minute cooldown.
+  That last case is deliberate: a key whose plan does not expose a model from the static
+  catalog answers 404, and the short cooldown keeps the scheduler from retrying it on
+  every turn. A client cannot trigger it, because ingress already rejects models outside
+  the group whitelist before an upstream call is made.
 
 ## Limitations
 

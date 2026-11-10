@@ -5,6 +5,7 @@ package admin
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -53,10 +54,14 @@ type metaAdminServiceStub struct {
 	service.AdminService
 	created     *service.CreateAccountInput
 	createCalls int
+	createErr   error
 }
 
 func (s *metaAdminServiceStub) CreateAccount(ctx context.Context, input *service.CreateAccountInput) (*service.Account, error) {
 	s.createCalls++
+	if s.createErr != nil {
+		return nil, s.createErr
+	}
 	s.created = input
 	return &service.Account{
 		ID:          77,
@@ -169,6 +174,41 @@ func TestMetaOAuthHandlerPollCreatesOnlyOneAccount(t *testing.T) {
 	}
 	require.NotNil(t, adminService.created)
 	require.Equal(t, 1, adminService.createCalls, "a replayed poll must not create a second account")
+}
+
+func TestMetaOAuthHandlerPollReleasesClaimWhenCreateFails(t *testing.T) {
+	doer := metaHandlerDoer()
+	doer.tokenBodies = []string{`{"access_token":"dca:handler","token_type":"Bearer","expires_in":3600}`}
+	adminService := &metaAdminServiceStub{createErr: errors.New("create failed")}
+	router := newMetaHandlerTestRouter(t, doer, adminService)
+
+	startRec := httptest.NewRecorder()
+	startReq := httptest.NewRequest(http.MethodPost, "/api/v1/admin/meta/oauth/device/start", strings.NewReader(`{}`))
+	startReq.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(startRec, startReq)
+	require.Equal(t, http.StatusOK, startRec.Code)
+	deviceCodeID := gjson.Get(startRec.Body.String(), "data.device_code_id").String()
+	require.NotEmpty(t, deviceCodeID)
+
+	failedRec := httptest.NewRecorder()
+	failedReq := httptest.NewRequest(http.MethodPost, "/api/v1/admin/meta/oauth/device/poll",
+		strings.NewReader(`{"device_code_id":"`+deviceCodeID+`"}`))
+	failedReq.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(failedRec, failedReq)
+	require.NotEqual(t, http.StatusOK, failedRec.Code)
+	require.Equal(t, 1, adminService.createCalls)
+	require.Nil(t, adminService.created)
+
+	adminService.createErr = nil
+	retryRec := httptest.NewRecorder()
+	retryReq := httptest.NewRequest(http.MethodPost, "/api/v1/admin/meta/oauth/device/poll",
+		strings.NewReader(`{"device_code_id":"`+deviceCodeID+`"}`))
+	retryReq.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(retryRec, retryReq)
+	require.Equal(t, http.StatusOK, retryRec.Code)
+	require.Contains(t, retryRec.Body.String(), `"state":"authorized"`)
+	require.NotNil(t, adminService.created)
+	require.Equal(t, 2, adminService.createCalls)
 }
 
 func TestMetaOAuthHandlerPollRejectsUnknownSession(t *testing.T) {

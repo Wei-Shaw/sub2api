@@ -65,8 +65,13 @@ func (s *MetaDeviceSessionStore) Set(id string, session *MetaDeviceSession) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if len(s.sessions) >= metaDeviceSessionMaxKeep {
+	if _, exists := s.sessions[id]; !exists && len(s.sessions) >= metaDeviceSessionMaxKeep {
 		s.pruneLocked(time.Now())
+		for len(s.sessions) >= metaDeviceSessionMaxKeep {
+			if !s.evictOldestLocked() {
+				break
+			}
+		}
 	}
 	s.sessions[id] = session
 }
@@ -103,6 +108,25 @@ func (s *MetaDeviceSessionStore) pruneLocked(now time.Time) {
 			delete(s.sessions, id)
 		}
 	}
+}
+
+func (s *MetaDeviceSessionStore) evictOldestLocked() bool {
+	oldestID := ""
+	var oldestExpiry time.Time
+	for id, session := range s.sessions {
+		expiry := time.Time{}
+		if session != nil {
+			expiry = session.ExpiresAt
+		}
+		if oldestID == "" || expiry.Before(oldestExpiry) {
+			oldestID, oldestExpiry = id, expiry
+		}
+	}
+	if oldestID == "" {
+		return false
+	}
+	delete(s.sessions, oldestID)
+	return true
 }
 
 type MetaOAuthService struct {
@@ -267,6 +291,14 @@ func (s *MetaOAuthService) ClaimAccountCreation(sessionID string) bool {
 	}
 	session.AccountCreated = true
 	return true
+}
+
+func (s *MetaOAuthService) ReleaseAccountCreation(sessionID string) {
+	session, ok := s.sessions.Get(strings.TrimSpace(sessionID))
+	if !ok || session == nil {
+		return
+	}
+	session.AccountCreated = false
 }
 
 func (s *MetaOAuthService) proxyURL(ctx context.Context, proxyID *int64) (string, error) {
