@@ -20,3 +20,8 @@ backend/migrations/*.sql text eol=lf
 
 # Dockerfile
 Dockerfile text eol=lf
+
+# Preserve the exact release tag in GitHub-generated source archives. The
+# resolver ignores the placeholder in normal checkouts and uses the expanded
+# value when a release archive is built without a .git directory.
+backend/cmd/server/VERSION_TAG export-subst
