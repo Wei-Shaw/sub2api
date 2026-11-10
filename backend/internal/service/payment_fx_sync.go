@@ -383,18 +383,18 @@ func (s *PaymentFXSyncService) fetchRateFromURL(ctx context.Context, rawURL stri
 	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
 		return 0, fmt.Errorf("invalid FX API URL")
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, parsed.String(), nil) //nolint:gosec // admin-configured FX URL; the SSRF-safe dialer only permits public hosts
 	if err != nil {
 		return 0, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", paymentFXSyncUserAgent)
 
-	resp, err := s.httpClient.Do(req)
+	resp, err := s.httpClient.Do(req) //nolint:gosec // request URL is admin-configured and validated by the SSRF-safe dialer
 	if err != nil {
 		return 0, fmt.Errorf("request failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return 0, fmt.Errorf("HTTP %d", resp.StatusCode)
 	}
