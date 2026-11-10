@@ -103,7 +103,7 @@ func (r *PostgreSQLRepository) ListEvents(ctx context.Context, filter EventFilte
 }
 
 func (r *PostgreSQLRepository) GetEvent(ctx context.Context, id int64) (*Event, error) {
-	event, err := scanEvent(r.db.QueryRowContext(ctx, `SELECT `+eventDetailColumns("e")+` FROM prompt_audit_events e WHERE e.id=$1`, id), true)
+	event, err := scanEvent(r.db.QueryRowContext(ctx, `SELECT `+eventDetailColumns("e")+` FROM prompt_audit_events e WHERE e.id=$1`, id))
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrEventNotFound
 	}
@@ -320,13 +320,14 @@ func eventColumns(alias string) string {
 		%[1]s.chunk_total,%[1]s.latency_ms,%[1]s.created_at`, alias)
 }
 
-// eventDetailColumns adds the full prompt, which can be large, so it is only
-// loaded for single-event detail reads and never for list pages.
+// eventDetailColumns is the full event projection. The event row carries only
+// redacted metadata: the unredacted prompt never leaves the transient Redis
+// payload, so there is no separate detail-only column set.
 func eventDetailColumns(alias string) string {
-	return eventColumns(alias) + fmt.Sprintf(",%[1]s.full_prompt", alias)
+	return eventColumns(alias)
 }
 
-func scanEvent(row rowScanner, withFullPrompt ...bool) (*Event, error) {
+func scanEvent(row rowScanner) (*Event, error) {
 	event := &Event{}
 	var userID, apiKeyID, groupID sql.NullInt64
 	var categories, matched, scores, evidence []byte
@@ -338,9 +339,6 @@ func scanEvent(row rowScanner, withFullPrompt ...bool) (*Event, error) {
 		&event.RiskLevel, &event.Action, &categories, &matched, &scores, &evidence, &event.ScannerBackend,
 		&event.ScannerVersion, &event.GuardEndpointID, &event.PolicyID, &event.PolicyVersion,
 		&event.ConfigVersion, &event.ChunkTotal, &event.LatencyMS, &event.CreatedAt}
-	if len(withFullPrompt) > 0 && withFullPrompt[0] {
-		dest = append(dest, &event.Snapshot.FullPrompt)
-	}
 	err := row.Scan(dest...)
 	if err != nil {
 		return nil, err
