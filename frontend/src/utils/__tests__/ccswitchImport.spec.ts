@@ -129,6 +129,40 @@ describe('ccswitchImport utils', () => {
     expect(params.has('model')).toBe(false)
     expect(params.has('config')).toBe(false)
   })
+
+  it.each([
+    {
+      clientType: 'claude' as const,
+      app: 'claude',
+      endpoint: 'https://api.example.com/',
+      expectedModel: null
+    },
+    {
+      clientType: 'codex' as const,
+      app: 'codex',
+      endpoint: 'https://api.example.com',
+      expectedModel: OPENAI_CC_SWITCH_CODEX_MODEL
+    },
+    {
+      clientType: 'gemini' as const,
+      app: 'gemini',
+      endpoint: 'https://api.example.com/',
+      expectedModel: null
+    }
+  ])('builds composite imports for $clientType client selection', ({ clientType, app, endpoint, expectedModel }) => {
+    const params = paramsFromDeeplink(
+      buildCcSwitchImportDeeplink({
+        ...baseInput,
+        baseUrl: 'https://api.example.com/',
+        platform: 'composite',
+        clientType
+      })
+    )
+
+    expect(params.get('app')).toBe(app)
+    expect(params.get('endpoint')).toBe(endpoint)
+    expect(params.get('model')).toBe(expectedModel)
+  })
 })
 
 describe('CC Switch usage script', () => {
