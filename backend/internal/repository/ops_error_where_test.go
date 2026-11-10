@@ -151,3 +151,14 @@ func TestBuildOpsErrorLogsWhere_UserOwnershipIsDirectOnly(t *testing.T) {
 		t.Fatalf("user ownership must not depend on deleted-key attribution: %s", where)
 	}
 }
+
+func TestOpsCyberSQLHelpers(t *testing.T) {
+	predicate := opsClientVisibleErrorPredicate("e.status_code", "e.error_type")
+	if predicate != "(COALESCE(e.status_code, 0) >= 400 OR e.error_type = 'cyber_policy')" {
+		t.Fatalf("unexpected client-visible error predicate: %s", predicate)
+	}
+	usagePredicate := opsSuccessfulUsagePredicate("ul.request_type")
+	if usagePredicate != "COALESCE(ul.request_type, 0) <> 4" {
+		t.Fatalf("unexpected successful-usage predicate: %s", usagePredicate)
+	}
+}

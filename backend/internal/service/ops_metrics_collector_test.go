@@ -58,3 +58,26 @@ func TestOpsMetricsCollectorQueryErrorCountsExcludesCountTokens(t *testing.T) {
 	require.NoError(t, db.Close())
 	require.NoError(t, mock.ExpectationsWereMet())
 }
+
+func TestOpsMetricsCollectorQueryUsageCountsExcludesCyberFromSuccessButKeepsTokens(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+
+	collector := &OpsMetricsCollector{db: db}
+	start := time.Date(2026, 9, 2, 10, 0, 0, 0, time.UTC)
+	end := start.Add(time.Minute)
+
+	mock.ExpectQuery(`(?s)COUNT\(\*\) FILTER \(WHERE COALESCE\(request_type, 0\) <> 4\).*SUM\(input_tokens \+ output_tokens \+ cache_creation_tokens \+ cache_read_tokens\).*FROM usage_logs`).
+		WithArgs(start, end).
+		WillReturnRows(sqlmock.NewRows([]string{"success_count", "token_consumed"}).AddRow(int64(2), int64(345)))
+
+	successCount, tokenConsumed, err := collector.queryUsageCounts(context.Background(), start, end)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), successCount)
+	require.Equal(t, int64(345), tokenConsumed)
+	require.Equal(t, "COALESCE(request_type, 0) <> 4", opsMetricsSuccessfulUsagePredicate("request_type"))
+	require.Equal(t, "(COALESCE(status_code, 0) >= 400 OR error_type = 'cyber_policy')", opsMetricsClientVisibleErrorPredicate("status_code", "error_type"))
+	require.NoError(t, mock.ExpectationsWereMet())
+	mock.ExpectClose()
+	require.NoError(t, db.Close())
+}
