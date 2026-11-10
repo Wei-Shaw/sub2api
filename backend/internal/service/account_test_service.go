@@ -464,6 +464,12 @@ func (s *AccountTestService) testModelRoutedAccountConnection(c *gin.Context, ac
 
 func (s *AccountTestService) testModelRoutedResponsesConnection(c *gin.Context, account *Account, testModelID string) error {
 	authToken := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
+	if authToken == "" && account.IsMeta() && s.openaiGatewayService != nil {
+		minted, err := s.openaiGatewayService.MetaAPIKey(c.Request.Context(), account)
+		if err == nil {
+			authToken = strings.TrimSpace(minted)
+		}
+	}
 	if authToken == "" {
 		return s.sendErrorAndEnd(c, "No API key available")
 	}

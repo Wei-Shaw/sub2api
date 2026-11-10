@@ -367,6 +367,10 @@ export default {
         balanceLow: '余额不足',
         noBalanceEndpoint: '该平台暂无余额查询接口',
       },
+      metaUsage: {
+        noSample: '暂无用量采样 — Meta 在流式响应中上报用量',
+        tier: '订阅等级',
+      },
       opencodeGo: {
         accountMode: {
           zen: 'Zen',

@@ -386,6 +386,14 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 		return s.getOpenAIUsage(ctx, account, forceProbe)
 	}
 
+	if account.IsMeta() {
+		usage, err := s.getMetaUsage(ctx, account)
+		if err == nil {
+			s.tryClearRecoverableAccountError(ctx, account)
+		}
+		return usage, err
+	}
+
 	if account.Platform == PlatformGemini {
 		usage, err := s.getGeminiUsage(ctx, account)
 		if err == nil {
@@ -638,6 +646,9 @@ func (s *AccountUsageService) GetPassiveUsage(ctx context.Context, accountID int
 func (s *AccountUsageService) getPassiveUsageForAccount(ctx context.Context, account *Account) (*UsageInfo, error) {
 	if err := scopedAccountAccess(ctx, s.accountRepo, account, "accounts.usage.read", false); err != nil {
 		return nil, err
+	}
+	if account.IsMeta() {
+		return s.getMetaUsage(ctx, account)
 	}
 	if !supportsAnthropicPassiveUsage(account) {
 		return nil, fmt.Errorf("passive usage only supported for Anthropic OAuth/SetupToken accounts")

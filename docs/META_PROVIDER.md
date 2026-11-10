@@ -57,17 +57,22 @@ Unsupported field: web_search tools must not carry search_content_types.
 
 ## Models
 
-The catalog is static (mirrors the captured Muse client release):
+The model list is discovered live from the upstream `GET /models` endpoint, so it
+follows whatever the account's key can actually serve:
+
+- The admin account test picker loads the live list for the account.
+- The normal "sync upstream models" action (account form, and the preview used
+  before creation) reads the same endpoint.
+- Only `muse-*` IDs are kept; the same key can expose unrelated surfaces.
+
+The static fallback (mirrors the captured Muse client release) is used when the
+upstream call fails:
 
 muse-spark-1.3, muse-spark-1.3-contributor, muse-spark-1.2, muse-spark-1.2-contributor,
 muse-spark-1.1, muse-wonder-1.0, muse-wonder-1.0-contributor, muse-wonder-full-1.0,
 muse-wonder-full-1.0-contributor.
 
 The *-contributor variants are special: they take the contributor-mode header.
-
-Model sync from the upstream /models endpoint is available through the normal
-"sync upstream models" action when the deployed key exposes it; the static list is the
-fallback used for group model selection.
 
 ## Rate limits and quota
 
@@ -87,8 +92,11 @@ Meta returns resets_at (epoch seconds) on throttling:
 
 - Chat Completions is not a native endpoint; those requests are converted and billed
   on the Responses path.
-- No balance/quota polling endpoint: the provider exposes no usage API here, so the
-  account has no CN-style quota snapshot.
+- There is no usage-query endpoint. Usage is passive: Meta reports the current
+  subscription windows in a `response.subscription_usage` event during streamed
+  turns, and the gateway samples that into the account's 5h/weekly usage cells.
+  A fresh account shows no usage until its first streamed turn completes. The
+  event is stripped before it could reach downstream clients.
 - The device flow session store is in-process with a TTL equal to the device code
   lifetime; a restart during login simply requires starting the login again.
 - That store holds at most 4096 pending logins. When a new login pushes past the cap,

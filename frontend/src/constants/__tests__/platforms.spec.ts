@@ -7,7 +7,8 @@ import {
   listPlatformIds,
   platformDisplayName,
   resetPlatformCatalog,
-  setPlatformCatalog
+  setPlatformCatalog,
+  supportsUpstreamModelSync
 } from '@/constants/platformCatalog'
 import { platformLabel } from '@/utils/platformColors'
 import { normalizePlatformQuotasMap, sanitizePlatformQuotasMap } from '@/api/admin/settings'
@@ -32,6 +33,12 @@ const concretePlatforms = [
 ]
 
 describe('platform option catalogs', () => {
+  it('supports upstream model sync for meta like openai', () => {
+    expect(supportsUpstreamModelSync('meta')).toBe(true)
+    expect(supportsUpstreamModelSync('openai')).toBe(true)
+    expect(supportsUpstreamModelSync('unregistered')).toBe(false)
+  })
+
   it('exposes every concrete account platform', () => {
     expect(CONCRETE_PLATFORM_OPTIONS.map((option) => option.value)).toEqual(concretePlatforms)
   })

@@ -164,6 +164,10 @@ export default {
         balanceLow: 'Insufficient balance',
         noBalanceEndpoint: 'This platform has no balance query endpoint',
       },
+      metaUsage: {
+        noSample: 'No usage sampled yet — Meta reports usage inside streamed responses',
+        tier: 'Subscription tier',
+      },
       opencodeGo: {
         accountMode: {
           zen: 'Zen',
