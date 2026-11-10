@@ -222,18 +222,18 @@ func (s *OpenAICodexUsageSnapshot) Normalize() *NormalizedCodexLimits {
 
 // OpenAIUsage represents OpenAI API response usage
 type OpenAIUsage struct {
-	InputTokens              int `json:"input_tokens"`
-	ImageInputTokens         int `json:"image_input_tokens,omitempty"`
-	ImageCacheReadTokens     int `json:"image_cache_read_tokens,omitempty"`
-	OutputTokens             int `json:"output_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
-	CacheCreation5mTokens    int `json:"cache_creation_5m_tokens,omitempty"`
-	CacheCreation1hTokens    int `json:"cache_creation_1h_tokens,omitempty"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
-	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
+	InputTokens                 int `json:"input_tokens"`
+	ImageInputTokens            int `json:"image_input_tokens,omitempty"`
+	ImageCacheReadTokens        int `json:"image_cache_read_tokens,omitempty"`
+	OutputTokens                int `json:"output_tokens"`
+	CacheCreationInputTokens    int `json:"cache_creation_input_tokens,omitempty"`
+	CacheCreation5mTokens       int `json:"cache_creation_5m_tokens,omitempty"`
+	CacheCreation1hTokens       int `json:"cache_creation_1h_tokens,omitempty"`
+	CacheCreation30mInputTokens int `json:"cache_creation_30m_input_tokens,omitempty"`
+	CacheCreation12hInputTokens int `json:"cache_creation_12h_input_tokens,omitempty"`
+	CacheReadInputTokens        int `json:"cache_read_input_tokens,omitempty"`
+	ImageOutputTokens           int `json:"image_output_tokens,omitempty"`
 
-	// An explicit aggregate zero suppresses TTL charging in the billing projection,
-	// while raw TTL details remain intact for usage logs.
 	cacheCreationInputTokensPresent bool
 }
 

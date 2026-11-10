@@ -157,15 +157,17 @@ func (usage OpenAIUsage) billingUsageTokens() UsageTokens {
 		creationTokens = max(usage.CacheCreation5mTokens, 0) + max(usage.CacheCreation1hTokens, 0)
 	}
 	tokens := UsageTokens{
-		InputTokens:           max(usage.InputTokens-usage.CacheReadInputTokens-creationTokens, 0),
-		ImageInputTokens:      max(usage.ImageInputTokens-usage.ImageCacheReadTokens, 0),
-		ImageCacheReadTokens:  usage.ImageCacheReadTokens,
-		OutputTokens:          usage.OutputTokens,
-		CacheCreationTokens:   creationTokens,
-		CacheCreation5mTokens: usage.CacheCreation5mTokens,
-		CacheCreation1hTokens: usage.CacheCreation1hTokens,
-		CacheReadTokens:       usage.CacheReadInputTokens,
-		ImageOutputTokens:     usage.ImageOutputTokens,
+		InputTokens:            max(usage.InputTokens-usage.CacheReadInputTokens-creationTokens, 0),
+		ImageInputTokens:       max(usage.ImageInputTokens-usage.ImageCacheReadTokens, 0),
+		ImageCacheReadTokens:   usage.ImageCacheReadTokens,
+		OutputTokens:           usage.OutputTokens,
+		CacheCreationTokens:    creationTokens,
+		CacheCreation5mTokens:  usage.CacheCreation5mTokens,
+		CacheCreation1hTokens:  usage.CacheCreation1hTokens,
+		CacheCreation30mTokens: usage.CacheCreation30mInputTokens,
+		CacheCreation12hTokens: usage.CacheCreation12hInputTokens,
+		CacheReadTokens:        usage.CacheReadInputTokens,
+		ImageOutputTokens:      usage.ImageOutputTokens,
 	}
 	return tokens
 }
@@ -408,6 +410,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		CacheCreationTokens:      result.Usage.CacheCreationInputTokens,
 		CacheCreation5mTokens:    result.Usage.CacheCreation5mTokens,
 		CacheCreation1hTokens:    result.Usage.CacheCreation1hTokens,
+		CacheCreation30mTokens:   result.Usage.CacheCreation30mInputTokens,
+		CacheCreation12hTokens:   result.Usage.CacheCreation12hInputTokens,
 		CacheReadTokens:          result.Usage.CacheReadInputTokens,
 		ImageInputTokens:         result.Usage.ImageInputTokens,
 		ImageOutputTokens:        result.Usage.ImageOutputTokens,
@@ -570,7 +574,7 @@ func openAILongContextBillingGate(account *Account) *bool {
 }
 
 // openAISubscriptionLongContextExempt 按实际凭据和最终发送模型判断订阅豁免。
-// GPT-6.1 Sol 的订阅请求不再收取模型长上下文附加费；API Key 仍使用 API 价卡。
+// GPT-6.1 Sol / Terra 的订阅请求不再收取模型长上下文附加费；API Key 仍使用 API 价卡。
 // 使用发送模型，避免客户别名、渠道计费模型或响应模型计费切换改变上游订阅规则。
 func openAISubscriptionLongContextExempt(account *Account, result *OpenAIForwardResult) bool {
 	if !account.IsOpenAIOAuthLike() || result == nil {
@@ -580,7 +584,7 @@ func openAISubscriptionLongContextExempt(account *Account, result *OpenAIForward
 	if model == "" {
 		model = result.Model
 	}
-	return openai.IsGPT61SolModelSpelling(model)
+	return openai.IsGPT61SolModelSpelling(model) || openai.IsGPT61TerraModelSpelling(model)
 }
 
 func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
