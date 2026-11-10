@@ -5168,6 +5168,67 @@
 
               <div
                 v-if="form.openai_advanced_scheduler_enabled"
+                class="space-y-4 border-t border-gray-100 pt-5 dark:border-dark-700"
+              >
+                <div class="flex items-center justify-between gap-4">
+                  <div>
+                    <label
+                      for="openai-weekly-expiry-priority-toggle"
+                      class="text-sm font-medium text-gray-700 dark:text-gray-300"
+                    >
+                      {{ t("admin.settings.openaiExperimentalScheduler.weeklyExpiryPriorityTitle") }}
+                    </label>
+                    <p id="openai-weekly-expiry-priority-hint" class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                      {{ t("admin.settings.openaiExperimentalScheduler.weeklyExpiryPriorityHint") }}
+                    </p>
+                  </div>
+                  <Toggle
+                    id="openai-weekly-expiry-priority-toggle"
+                    v-model="form.openai_advanced_scheduler_weekly_expiry_priority_enabled"
+                    aria-describedby="openai-weekly-expiry-priority-hint"
+                    data-testid="openai-weekly-expiry-priority-toggle"
+                  />
+                </div>
+                <div
+                  v-if="form.openai_advanced_scheduler_weekly_expiry_priority_enabled"
+                  class="grid gap-4 sm:grid-cols-2"
+                >
+                  <label class="block">
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-400">
+                      {{ t("admin.settings.openaiExperimentalScheduler.weeklyExpiryWindowHours") }}
+                    </span>
+                    <input
+                      id="openai-weekly-expiry-window-hours"
+                      v-model="form.openai_advanced_scheduler_weekly_expiry_window_hours"
+                      class="input mt-1"
+                      inputmode="decimal"
+                      aria-describedby="openai-weekly-expiry-fields-hint"
+                      :placeholder="t('admin.settings.openaiExperimentalScheduler.weeklyExpiryDefault', { value: '24' })"
+                      type="text"
+                    />
+                  </label>
+                  <label class="block">
+                    <span class="text-xs font-medium text-gray-600 dark:text-gray-400">
+                      {{ t("admin.settings.openaiExperimentalScheduler.weeklyExpiryWeight") }}
+                    </span>
+                    <input
+                      id="openai-weekly-expiry-weight"
+                      v-model="form.openai_advanced_scheduler_weekly_expiry_weight"
+                      class="input mt-1"
+                      inputmode="decimal"
+                      aria-describedby="openai-weekly-expiry-fields-hint"
+                      :placeholder="t('admin.settings.openaiExperimentalScheduler.weeklyExpiryDefault', { value: '0.3' })"
+                      type="text"
+                    />
+                  </label>
+                  <p id="openai-weekly-expiry-fields-hint" class="text-xs text-gray-500 dark:text-gray-400 sm:col-span-2">
+                    {{ t("admin.settings.openaiExperimentalScheduler.weeklyExpiryFieldsHint") }}
+                  </p>
+                </div>
+              </div>
+
+              <div
+                v-if="form.openai_advanced_scheduler_enabled"
                 class="flex flex-col items-stretch gap-3 border-t border-gray-100 pt-5 sm:flex-row sm:items-start sm:justify-between sm:gap-6 dark:border-dark-700"
               >
                 <div class="min-w-0">
@@ -9710,6 +9771,9 @@ type SettingsForm = Omit<
   openai_advanced_scheduler_enabled: boolean;
   openai_advanced_scheduler_sticky_weighted_enabled: boolean;
   openai_advanced_scheduler_subscription_priority_enabled: boolean;
+  openai_advanced_scheduler_weekly_expiry_priority_enabled: boolean;
+  openai_advanced_scheduler_weekly_expiry_window_hours: string;
+  openai_advanced_scheduler_weekly_expiry_weight: string;
   openai_advanced_scheduler_lb_top_k: string;
   openai_advanced_scheduler_weight_priority: string;
   openai_advanced_scheduler_weight_load: string;
@@ -9967,6 +10031,9 @@ const form = reactive<SettingsForm>({
   openai_advanced_scheduler_enabled: false,
   openai_advanced_scheduler_sticky_weighted_enabled: false,
   openai_advanced_scheduler_subscription_priority_enabled: false,
+  openai_advanced_scheduler_weekly_expiry_priority_enabled: false,
+  openai_advanced_scheduler_weekly_expiry_window_hours: "",
+  openai_advanced_scheduler_weekly_expiry_weight: "",
   openai_advanced_scheduler_lb_top_k: "",
   openai_advanced_scheduler_weight_priority: "",
   openai_advanced_scheduler_weight_load: "",
@@ -11713,6 +11780,12 @@ async function saveSettings() {
         form.openai_advanced_scheduler_sticky_weighted_enabled,
       openai_advanced_scheduler_subscription_priority_enabled:
         form.openai_advanced_scheduler_subscription_priority_enabled,
+      openai_advanced_scheduler_weekly_expiry_priority_enabled:
+        form.openai_advanced_scheduler_weekly_expiry_priority_enabled,
+      openai_advanced_scheduler_weekly_expiry_window_hours:
+        form.openai_advanced_scheduler_weekly_expiry_window_hours.trim(),
+      openai_advanced_scheduler_weekly_expiry_weight:
+        form.openai_advanced_scheduler_weekly_expiry_weight.trim(),
       openai_advanced_scheduler_lb_top_k:
         form.openai_advanced_scheduler_lb_top_k.trim(),
       openai_advanced_scheduler_weight_priority:

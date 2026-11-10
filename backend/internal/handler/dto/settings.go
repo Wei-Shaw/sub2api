@@ -244,6 +244,9 @@ type SystemSettings struct {
 	OpenAIAdvancedSchedulerEnabled                         bool     `json:"openai_advanced_scheduler_enabled"`
 	OpenAIAdvancedSchedulerStickyWeightedEnabled           bool     `json:"openai_advanced_scheduler_sticky_weighted_enabled"`
 	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled     bool     `json:"openai_advanced_scheduler_subscription_priority_enabled"`
+	OpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled     bool     `json:"openai_advanced_scheduler_weekly_expiry_priority_enabled"`
+	OpenAIAdvancedSchedulerWeeklyExpiryWindowHours         string   `json:"openai_advanced_scheduler_weekly_expiry_window_hours"`
+	OpenAIAdvancedSchedulerWeeklyExpiryWeight              string   `json:"openai_advanced_scheduler_weekly_expiry_weight"`
 	OpenAIAdvancedSchedulerLBTopK                          string   `json:"openai_advanced_scheduler_lb_top_k"`
 	OpenAIAdvancedSchedulerWeightPriority                  string   `json:"openai_advanced_scheduler_weight_priority"`
 	OpenAIAdvancedSchedulerWeightLoad                      string   `json:"openai_advanced_scheduler_weight_load"`

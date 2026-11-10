@@ -257,6 +257,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		openAIAdvancedSchedulerSettingKey:                            "false",
 		SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled:       "false",
 		SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled: "false",
+		SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled: "false",
+		SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWindowHours:     "",
+		SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWeight:          "",
 		SettingKeyOpenAIAdvancedSchedulerLBTopK:                      "",
 		SettingKeyOpenAIAdvancedSchedulerWeightPriority:              "",
 		SettingKeyOpenAIAdvancedSchedulerWeightLoad:                  "",
@@ -932,6 +935,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.OpenAIAdvancedSchedulerEnabled = settings[openAIAdvancedSchedulerSettingKey] == "true"
 	result.OpenAIAdvancedSchedulerStickyWeightedEnabled = settings[SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled] == "true"
 	result.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled = settings[SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled] == "true"
+	result.OpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled = settings[SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled] == "true"
+	result.OpenAIAdvancedSchedulerWeeklyExpiryWindowHours = strings.TrimSpace(settings[SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWindowHours])
+	result.OpenAIAdvancedSchedulerWeeklyExpiryWeight = strings.TrimSpace(settings[SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWeight])
 	result.OpenAIAdvancedSchedulerLBTopK = strings.TrimSpace(settings[SettingKeyOpenAIAdvancedSchedulerLBTopK])
 	result.OpenAIAdvancedSchedulerWeightPriority = strings.TrimSpace(settings[SettingKeyOpenAIAdvancedSchedulerWeightPriority])
 	result.OpenAIAdvancedSchedulerWeightLoad = strings.TrimSpace(settings[SettingKeyOpenAIAdvancedSchedulerWeightLoad])
@@ -1103,6 +1109,21 @@ func (s *SettingService) normalizeOpenAIAdvancedSchedulerOverrides(settings *Sys
 	}
 	settings.OpenAIAdvancedSchedulerLBTopK = lbTopK
 
+	windowHours := strings.TrimSpace(settings.OpenAIAdvancedSchedulerWeeklyExpiryWindowHours)
+	if windowHours != "" {
+		hours, ok := parseNonNegativeFloatOverride(windowHours)
+		if !ok || hours <= 0 {
+			return infraerrors.BadRequest("INVALID_OPENAI_WEEKLY_EXPIRY_WINDOW_HOURS", "OpenAI weekly expiry window must be a positive number of hours or empty")
+		}
+		windowHours = formatOpenAIAdvancedSchedulerFloat(hours)
+	}
+	settings.OpenAIAdvancedSchedulerWeeklyExpiryWindowHours = windowHours
+	expiryWeight, err := normalizeOptionalNonNegativeFloatString(settings.OpenAIAdvancedSchedulerWeeklyExpiryWeight)
+	if err != nil {
+		return infraerrors.BadRequest("INVALID_OPENAI_WEEKLY_EXPIRY_WEIGHT", "OpenAI weekly expiry weight must be a non-negative number or empty")
+	}
+	settings.OpenAIAdvancedSchedulerWeeklyExpiryWeight = expiryWeight
+
 	weights := []*string{
 		&settings.OpenAIAdvancedSchedulerWeightPriority,
 		&settings.OpenAIAdvancedSchedulerWeightLoad,
@@ -1141,6 +1162,9 @@ func (s *SettingService) normalizeOpenAIAdvancedSchedulerOverrides(settings *Sys
 	}
 	if !resolved.IsValid() {
 		return infraerrors.BadRequest("INVALID_OPENAI_ADVANCED_SCHEDULER_WEIGHT", "openai advanced scheduler weights must have finite non-zero base and total sums")
+	}
+	if math.IsInf(resolved.TotalWeightSum()+resolveOpenAIAdvancedSchedulerWeight(expiryWeight, defaultOpenAIWeeklyExpiryWeight), 0) {
+		return infraerrors.BadRequest("INVALID_OPENAI_WEEKLY_EXPIRY_WEIGHT", "OpenAI weekly expiry weight and other scheduler weights must have a finite sum")
 	}
 	return nil
 }
@@ -1188,11 +1212,16 @@ func normalizeOptionalNonNegativeFloatString(raw string) (string, error) {
 	if raw == "" {
 		return "", nil
 	}
-	value, err := strconv.ParseFloat(raw, 64)
-	if err != nil || value < 0 || math.IsNaN(value) || math.IsInf(value, 0) {
+	value, ok := parseNonNegativeFloatOverride(raw)
+	if !ok {
 		return "", fmt.Errorf("invalid non-negative float")
 	}
-	return strconv.FormatFloat(value, 'f', -1, 64), nil
+	return formatOpenAIAdvancedSchedulerFloat(value), nil
+}
+
+func parseNonNegativeFloatOverride(raw string) (float64, bool) {
+	value, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+	return value, err == nil && value >= 0 && !math.IsInf(value, 0)
 }
 
 func parseDefaultSubscriptions(raw string) []DefaultSubscriptionSetting {

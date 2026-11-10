@@ -40,6 +40,8 @@ const (
 	openAIQuotaHeadroomNeutralFactor           = 0.5
 	openAIQuotaHeadroomSecondaryLowRemain      = 0.10
 	openAIQuotaHeadroomSnapshotStaleAfter      = 8 * time.Hour
+	defaultOpenAIWeeklyExpiryWindowHours       = 24.0
+	defaultOpenAIWeeklyExpiryWeight            = 0.3
 	openAIUpstreamCostNeutralFactor            = 0.5
 	defaultOpenAIOAuthSchedulingRateMultiplier = 1.0
 )
@@ -50,6 +52,7 @@ type cachedOpenAIAdvancedSchedulerSetting struct {
 	enabled                        bool
 	stickyWeightedEnabled          bool
 	subscriptionPriorityEnabled    bool
+	weeklyExpiryPriority           openAIWeeklyExpiryPrioritySettings
 	lbTopKOverride                 int
 	weightOverrides                map[string]float64
 	expiresAt                      int64
@@ -61,8 +64,15 @@ type openAIAdvancedSchedulerRuntimeSettings struct {
 	enabled                        bool
 	stickyWeightedEnabled          bool
 	subscriptionPriorityEnabled    bool
+	weeklyExpiryPriority           openAIWeeklyExpiryPrioritySettings
 	lbTopKOverride                 int
 	weightOverrides                map[string]float64
+}
+
+type openAIWeeklyExpiryPrioritySettings struct {
+	enabled     bool
+	windowHours float64
+	weight      float64
 }
 
 var openAIAdvancedSchedulerSettingCache atomic.Value // *cachedOpenAIAdvancedSchedulerSetting
@@ -1014,10 +1024,6 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 				}
 			}
 		}
-		quotaHeadroomFactor := 0.0
-		if weights.QuotaHeadroom > 0 {
-			quotaHeadroomFactor = openAIQuotaHeadroomFactor(item.account, now)
-		}
 		upstreamCostFactor := openAIUpstreamCostNeutralFactor
 		if factor, ok := upstreamCostFactors[item.account.ID]; ok {
 			upstreamCostFactor = factor
@@ -1029,7 +1035,7 @@ func (s *defaultOpenAIAccountScheduler) buildOpenAIAccountLoadPlan(
 			weights.ErrorRate*errorFactor +
 			weights.TTFT*ttftFactor +
 			weights.Reset*resetFactor +
-			weights.QuotaHeadroom*quotaHeadroomFactor +
+			weights.quotaScore(item.account, now) +
 			weights.UpstreamCost*(upstreamCostFactor-openAIUpstreamCostNeutralFactor)
 		if req.StickyWeighted {
 			if req.PreviousResponseCanMove && req.StickyPreviousAccountID > 0 && item.account.ID == req.StickyPreviousAccountID {
@@ -1893,6 +1899,7 @@ func (s *OpenAIGatewayService) openAIAdvancedSchedulerRuntimeSettings(ctx contex
 				enabled:                        cached.enabled,
 				stickyWeightedEnabled:          cached.stickyWeightedEnabled,
 				subscriptionPriorityEnabled:    cached.subscriptionPriorityEnabled,
+				weeklyExpiryPriority:           cached.weeklyExpiryPriority,
 				lbTopKOverride:                 cached.lbTopKOverride,
 				weightOverrides:                cloneOpenAIAdvancedSchedulerWeightOverrides(cached.weightOverrides),
 			}
@@ -1908,6 +1915,7 @@ func (s *OpenAIGatewayService) openAIAdvancedSchedulerRuntimeSettings(ctx contex
 					enabled:                        cached.enabled,
 					stickyWeightedEnabled:          cached.stickyWeightedEnabled,
 					subscriptionPriorityEnabled:    cached.subscriptionPriorityEnabled,
+					weeklyExpiryPriority:           cached.weeklyExpiryPriority,
 					lbTopKOverride:                 cached.lbTopKOverride,
 					weightOverrides:                cloneOpenAIAdvancedSchedulerWeightOverrides(cached.weightOverrides),
 				}, nil
@@ -1919,6 +1927,7 @@ func (s *OpenAIGatewayService) openAIAdvancedSchedulerRuntimeSettings(ctx contex
 		enabled := false
 		stickyWeightedEnabled := false
 		subscriptionPriorityEnabled := false
+		var weeklyExpiryPriority openAIWeeklyExpiryPrioritySettings
 		lbTopKOverride := 0
 		weightOverrides := map[string]float64{}
 		if repo := s.openAIAdvancedSchedulerSettingRepo(); repo != nil {
@@ -1931,6 +1940,7 @@ func (s *OpenAIGatewayService) openAIAdvancedSchedulerRuntimeSettings(ctx contex
 				enabled = strings.EqualFold(strings.TrimSpace(values[openAIAdvancedSchedulerSettingKey]), "true")
 				stickyWeightedEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled]), "true")
 				subscriptionPriorityEnabled = strings.EqualFold(strings.TrimSpace(values[SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled]), "true")
+				weeklyExpiryPriority = openAIWeeklyExpiryPriorityFromValues(values)
 				lbTopKOverride = parsePositiveIntOverride(values[SettingKeyOpenAIAdvancedSchedulerLBTopK])
 				weightOverrides = parseOpenAIAdvancedSchedulerWeightOverrides(values)
 			} else {
@@ -1948,6 +1958,7 @@ func (s *OpenAIGatewayService) openAIAdvancedSchedulerRuntimeSettings(ctx contex
 				enabled = strings.EqualFold(strings.TrimSpace(fallbackValues[openAIAdvancedSchedulerSettingKey]), "true")
 				stickyWeightedEnabled = strings.EqualFold(strings.TrimSpace(fallbackValues[SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled]), "true")
 				subscriptionPriorityEnabled = strings.EqualFold(strings.TrimSpace(fallbackValues[SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled]), "true")
+				weeklyExpiryPriority = openAIWeeklyExpiryPriorityFromValues(fallbackValues)
 				lbTopKOverride = parsePositiveIntOverride(fallbackValues[SettingKeyOpenAIAdvancedSchedulerLBTopK])
 				weightOverrides = parseOpenAIAdvancedSchedulerWeightOverrides(fallbackValues)
 			}
@@ -1959,6 +1970,7 @@ func (s *OpenAIGatewayService) openAIAdvancedSchedulerRuntimeSettings(ctx contex
 			enabled:                        enabled,
 			stickyWeightedEnabled:          stickyWeightedEnabled,
 			subscriptionPriorityEnabled:    subscriptionPriorityEnabled,
+			weeklyExpiryPriority:           weeklyExpiryPriority,
 			lbTopKOverride:                 lbTopKOverride,
 			weightOverrides:                cloneOpenAIAdvancedSchedulerWeightOverrides(weightOverrides),
 			expiresAt:                      time.Now().Add(openAIAdvancedSchedulerSettingCacheTTL).UnixNano(),
@@ -1969,6 +1981,7 @@ func (s *OpenAIGatewayService) openAIAdvancedSchedulerRuntimeSettings(ctx contex
 			enabled:                        enabled,
 			stickyWeightedEnabled:          stickyWeightedEnabled,
 			subscriptionPriorityEnabled:    subscriptionPriorityEnabled,
+			weeklyExpiryPriority:           weeklyExpiryPriority,
 			lbTopKOverride:                 lbTopKOverride,
 			weightOverrides:                weightOverrides,
 		}, nil
@@ -2008,6 +2021,9 @@ func openAIAdvancedSchedulerRuntimeSettingKeys() []string {
 		openAIAdvancedSchedulerSettingKey,
 		SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled,
 		SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled,
+		SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled,
+		SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWindowHours,
+		SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWeight,
 		SettingKeyOpenAIAdvancedSchedulerLBTopK,
 	}
 	for _, spec := range openAIAdvancedSchedulerWeightOverrideSpecs() {
@@ -2051,17 +2067,34 @@ func parsePositiveIntOverride(raw string) int {
 func parseOpenAIAdvancedSchedulerWeightOverrides(values map[string]string) map[string]float64 {
 	overrides := map[string]float64{}
 	for _, spec := range openAIAdvancedSchedulerWeightOverrideSpecs() {
-		raw := strings.TrimSpace(values[spec.key])
-		if raw == "" {
-			continue
+		if value, ok := parseNonNegativeFloatOverride(values[spec.key]); ok {
+			overrides[spec.name] = value
 		}
-		value, err := strconv.ParseFloat(raw, 64)
-		if err != nil || value < 0 || math.IsNaN(value) || math.IsInf(value, 0) {
-			continue
-		}
-		overrides[spec.name] = value
 	}
 	return overrides
+}
+
+func openAIWeeklyExpiryPriorityFromValues(values map[string]string) openAIWeeklyExpiryPrioritySettings {
+	return parseOpenAIWeeklyExpiryPrioritySettings(
+		strings.EqualFold(strings.TrimSpace(values[SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled]), "true"),
+		values[SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWindowHours],
+		values[SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWeight],
+	)
+}
+
+func parseOpenAIWeeklyExpiryPrioritySettings(enabled bool, windowHours, weight string) openAIWeeklyExpiryPrioritySettings {
+	settings := openAIWeeklyExpiryPrioritySettings{
+		enabled:     enabled,
+		windowHours: defaultOpenAIWeeklyExpiryWindowHours,
+		weight:      defaultOpenAIWeeklyExpiryWeight,
+	}
+	if hours, ok := parseNonNegativeFloatOverride(windowHours); ok && hours > 0 {
+		settings.windowHours = hours
+	}
+	if bonus, ok := parseNonNegativeFloatOverride(weight); ok {
+		settings.weight = bonus
+	}
+	return settings
 }
 
 func cloneOpenAIAdvancedSchedulerWeightOverrides(in map[string]float64) map[string]float64 {
@@ -2701,8 +2734,16 @@ func (s *OpenAIGatewayService) openAIWSSchedulerWeightsForRequest(ctx context.Co
 		return weights
 	}
 	overridden := applyOpenAIAdvancedSchedulerWeightOverrides(weights, settings.weightOverrides)
-	if !overridden.configWeights().IsValid() {
-		return weights
+	configured := overridden.configWeights()
+	if !configured.IsValid() {
+		overridden = weights
+		configured = weights.configWeights()
+	}
+	if expiry := settings.weeklyExpiryPriority; expiry.enabled {
+		if math.IsInf(configured.TotalWeightSum()+expiry.weight, 0) {
+			expiry.weight = defaultOpenAIWeeklyExpiryWeight
+		}
+		overridden.weeklyExpiryPriority = expiry
 	}
 	return overridden
 }
@@ -2745,11 +2786,12 @@ type GatewayOpenAIWSSchedulerScoreWeightsView struct {
 	ErrorRate float64
 	TTFT      float64
 	// Reset 倾向「会话窗口最早重置」的账号；0 表示关闭（默认）。
-	Reset         float64
-	QuotaHeadroom float64
-	UpstreamCost  float64
-	Previous      float64
-	SessionSticky float64
+	Reset                float64
+	QuotaHeadroom        float64
+	UpstreamCost         float64
+	Previous             float64
+	SessionSticky        float64
+	weeklyExpiryPriority openAIWeeklyExpiryPrioritySettings
 }
 
 func (w GatewayOpenAIWSSchedulerScoreWeightsView) configWeights() config.GatewayOpenAIWSSchedulerScoreWeights {
@@ -2899,10 +2941,6 @@ func buildOpenAIAccountSchedulerScoreSnapshot(
 				}
 			}
 		}
-		quotaHeadroomFactor := 0.0
-		if weights.QuotaHeadroom > 0 {
-			quotaHeadroomFactor = openAIQuotaHeadroomFactor(candidate.account, now)
-		}
 		upstreamCostFactor := openAIUpstreamCostNeutralFactor
 		if factor, ok := upstreamCostFactors[candidate.account.ID]; ok {
 			upstreamCostFactor = factor
@@ -2913,7 +2951,7 @@ func buildOpenAIAccountSchedulerScoreSnapshot(
 			weights.ErrorRate*errorFactor +
 			weights.TTFT*ttftFactor +
 			weights.Reset*resetFactor +
-			weights.QuotaHeadroom*quotaHeadroomFactor +
+			weights.quotaScore(candidate.account, now) +
 			weights.UpstreamCost*(upstreamCostFactor-openAIUpstreamCostNeutralFactor)
 		score := OpenAIAccountSchedulerScoreSnapshot{
 			BaseScore:             baseScore,
@@ -3084,38 +3122,72 @@ func openAIFreshUpstreamBillingRate(account *Account, now time.Time) (float64, b
 	return upstreamBillingRateAt(snapshot.Data, now)
 }
 
-func openAIQuotaHeadroomFactor(account *Account, now time.Time) float64 {
-	if account == nil || len(account.Extra) == 0 || openAIQuotaHeadroomSnapshotStale(account.Extra, now) {
-		return openAIQuotaHeadroomNeutralFactor
+func (w GatewayOpenAIWSSchedulerScoreWeightsView) quotaScore(account *Account, now time.Time) float64 {
+	expiry := w.weeklyExpiryPriority
+	if !expiry.enabled || expiry.weight == 0 {
+		if w.QuotaHeadroom > 0 {
+			return w.QuotaHeadroom * openAIQuotaHeadroomFactor(account, now)
+		}
+		return 0
 	}
-	window5h, window7d := openAICanonicalQuotaWindows(account.Extra, now)
-	if !window7d.hasUsed || window7d.reset {
-		return openAIQuotaHeadroomNeutralFactor
+	headroom, resetAt := openAIQuotaHeadroomAndReset(account, now)
+	score := w.QuotaHeadroom * headroom
+	if !resetAt.IsZero() {
+		urgency := 1 - clamp01(resetAt.Sub(now).Hours()/expiry.windowHours)
+		score += expiry.weight * headroom * urgency
+	}
+	return score
+}
+
+func openAIQuotaHeadroomFactor(account *Account, now time.Time) float64 {
+	headroom, _ := openAIQuotaHeadroomAndReset(account, now)
+	return headroom
+}
+
+func openAIQuotaHeadroomAndReset(account *Account, now time.Time) (float64, time.Time) {
+	if account == nil || len(account.Extra) == 0 || openAIQuotaHeadroomSnapshotStale(account.Extra, now) {
+		return openAIQuotaHeadroomNeutralFactor, time.Time{}
+	}
+	window5h, window7d := openAICanonicalQuotaWindows(account.Extra)
+	if !window7d.hasUsed || window7d.resetPassed(now) {
+		return openAIQuotaHeadroomNeutralFactor, time.Time{}
 	}
 
 	factor := 1 - clamp01(window7d.usedPercent/100)
-	if window5h.hasUsed && !window5h.reset {
+	if window5h.hasUsed && !window5h.resetPassed(now) {
 		remaining := 1 - clamp01(window5h.usedPercent/100)
 		if remaining < openAIQuotaHeadroomSecondaryLowRemain {
 			factor *= openAIQuotaHeadroomNeutralFactor
 		}
 	}
-	return factor
+	return factor, window7d.resetAt
 }
 
 type openAICanonicalQuotaWindow struct {
 	usedPercent float64
 	hasUsed     bool
-	reset       bool
+	resetAt     time.Time
+	hasResetAt  bool
+}
+
+func (w openAICanonicalQuotaWindow) resetPassed(now time.Time) bool {
+	return w.hasResetAt && !now.Before(w.resetAt)
 }
 
 // 规范字段优先；历史原始字段复用写入端 Normalize 的窗口分类，不能固定把 primary 当作 7d。
-func openAICanonicalQuotaWindows(extra map[string]any, now time.Time) (window5h, window7d openAICanonicalQuotaWindow) {
+func openAICanonicalQuotaWindows(extra map[string]any) (window5h, window7d openAICanonicalQuotaWindow) {
+	window := func(used float64, key string) openAICanonicalQuotaWindow {
+		if math.IsNaN(used) || math.IsInf(used, 0) {
+			return openAICanonicalQuotaWindow{}
+		}
+		resetAt, hasResetAt := openAICodexWindowResetAt(extra, key)
+		return openAICanonicalQuotaWindow{usedPercent: used, hasUsed: true, resetAt: resetAt, hasResetAt: hasResetAt}
+	}
 	if used, ok := resolveAccountExtraNumber(extra, "codex_5h_used_percent"); ok {
-		window5h = openAICanonicalQuotaWindow{usedPercent: used, hasUsed: true, reset: openAIQuotaWindowReset(extra, "5h", now)}
+		window5h = window(used, "5h")
 	}
 	if used, ok := resolveAccountExtraNumber(extra, "codex_7d_used_percent"); ok {
-		window7d = openAICanonicalQuotaWindow{usedPercent: used, hasUsed: true, reset: openAIQuotaWindowReset(extra, "7d", now)}
+		window7d = window(used, "7d")
 	}
 	if window5h.hasUsed && window7d.hasUsed {
 		return window5h, window7d
@@ -3143,11 +3215,11 @@ func openAICanonicalQuotaWindows(extra map[string]any, now time.Time) (window5h,
 			return openAICanonicalQuotaWindow{}
 		}
 		// Normalize 保留原始字段指针，据此配对同一个窗口的用量和重置时间。
-		window := "secondary"
+		key := "secondary"
 		if used == snapshot.PrimaryUsedPercent {
-			window = "primary"
+			key = "primary"
 		}
-		return openAICanonicalQuotaWindow{usedPercent: *used, hasUsed: true, reset: openAIQuotaWindowReset(extra, window, now)}
+		return window(*used, key)
 	}
 	if !window5h.hasUsed {
 		window5h = fromRaw(normalized.Used5hPercent)

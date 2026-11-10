@@ -209,6 +209,7 @@ vi.mock("vue-i18n", async () => {
     "admin.settings.openaiExperimentalScheduler.stickyWeightedDescription": "开启后 previous_response_id 和 session_hash 粘性进入高级调度打分；关闭时仍按旧逻辑硬命中粘性账号。",
     "admin.settings.openaiExperimentalScheduler.subscriptionPriorityTitle": "订阅优先",
     "admin.settings.openaiExperimentalScheduler.subscriptionPriorityDescription": "开启后先在 ChatGPT 订阅账号池中按权值选取；订阅池拿不到席位时再回退到非订阅账号池。",
+    "admin.settings.openaiExperimentalScheduler.weeklyExpiryDefault": "默认：{value}",
     "admin.settings.openaiExperimentalScheduler.weightsTitle": "调度权值覆盖",
     "admin.settings.openaiExperimentalScheduler.weightsDescription": "留空时使用配置/环境变量值；配置未设置时使用内置默认值。页面非空设置优先。",
     "admin.settings.openaiExperimentalScheduler.defaultPlaceholder": "配置/默认：{value}",
@@ -1389,6 +1390,50 @@ describe("admin SettingsView payment visible method controls", () => {
       "默认关闭。开启后仅影响本网关在 OpenAI 账号间的实验性调度选择逻辑",
     );
     expect(wrapper.text()).not.toContain("OpenAI 高级调度器");
+    const selector = '[data-testid="openai-weekly-expiry-priority-toggle"]';
+    expect(wrapper.find(selector).exists()).toBe(false);
+    await wrapper
+      .get('[data-testid="openai-advanced-scheduler-toggle"]')
+      .setValue(true);
+    const toggle = wrapper.get<HTMLInputElement>(selector);
+    expect(toggle.element.checked).toBe(false);
+    expect(wrapper.find("#openai-weekly-expiry-window-hours").exists()).toBe(false);
+    await toggle.setValue(true);
+    expect(wrapper.get("#openai-weekly-expiry-window-hours").attributes("placeholder")).toBe("默认：24");
+    expect(wrapper.get("#openai-weekly-expiry-weight").attributes("placeholder")).toBe("默认：0.3");
+  });
+
+  it("saves weekly expiry inputs when turning the feature off", async () => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      openai_advanced_scheduler_enabled: true,
+      openai_advanced_scheduler_weekly_expiry_priority_enabled: true,
+      openai_advanced_scheduler_weekly_expiry_window_hours: "12",
+      openai_advanced_scheduler_weekly_expiry_weight: "0.8",
+    });
+    const wrapper = mountView();
+    await flushPromises();
+
+    const toggle = wrapper.get<HTMLInputElement>(
+      '[data-testid="openai-weekly-expiry-priority-toggle"]',
+    );
+    expect(toggle.element.checked).toBe(true);
+    const windowHours = wrapper.get<HTMLInputElement>("#openai-weekly-expiry-window-hours");
+    const weight = wrapper.get<HTMLInputElement>("#openai-weekly-expiry-weight");
+    expect(windowHours.element.value).toBe("12");
+    expect(weight.element.value).toBe("0.8");
+    await windowHours.setValue("6.5");
+    await weight.setValue("0");
+    await toggle.setValue(false);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openai_advanced_scheduler_weekly_expiry_priority_enabled: false,
+        openai_advanced_scheduler_weekly_expiry_window_hours: "6.5",
+        openai_advanced_scheduler_weekly_expiry_weight: "0",
+      }),
+    );
   });
 
   it("summarizes target and other-model actions, then switches to all models", async () => {

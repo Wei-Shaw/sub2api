@@ -647,6 +647,9 @@ const (
 	SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled = "openai_advanced_scheduler_sticky_weighted_enabled"
 	// SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled OpenAI 高级调度下是否优先使用订阅账号池。
 	SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled = "openai_advanced_scheduler_subscription_priority_enabled"
+	SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled = "openai_advanced_scheduler_weekly_expiry_priority_enabled"
+	SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWindowHours     = "openai_advanced_scheduler_weekly_expiry_window_hours"
+	SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWeight          = "openai_advanced_scheduler_weekly_expiry_weight"
 	SettingKeyOpenAIAdvancedSchedulerLBTopK                      = "openai_advanced_scheduler_lb_top_k"
 	SettingKeyOpenAIAdvancedSchedulerWeightPriority              = "openai_advanced_scheduler_weight_priority"
 	SettingKeyOpenAIAdvancedSchedulerWeightLoad                  = "openai_advanced_scheduler_weight_load"

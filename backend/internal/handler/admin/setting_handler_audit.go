@@ -524,6 +524,15 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled != after.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled {
 		changed = append(changed, "openai_advanced_scheduler_subscription_priority_enabled")
 	}
+	if before.OpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled != after.OpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled {
+		changed = append(changed, service.SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled)
+	}
+	if before.OpenAIAdvancedSchedulerWeeklyExpiryWindowHours != after.OpenAIAdvancedSchedulerWeeklyExpiryWindowHours {
+		changed = append(changed, service.SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWindowHours)
+	}
+	if before.OpenAIAdvancedSchedulerWeeklyExpiryWeight != after.OpenAIAdvancedSchedulerWeeklyExpiryWeight {
+		changed = append(changed, service.SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWeight)
+	}
 	if before.OpenAIAdvancedSchedulerLBTopK != after.OpenAIAdvancedSchedulerLBTopK {
 		changed = append(changed, "openai_advanced_scheduler_lb_top_k")
 	}

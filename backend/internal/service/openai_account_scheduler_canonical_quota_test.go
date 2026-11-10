@@ -6,13 +6,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
 func TestOpenAIQuotaHeadroomFactorUsesCanonicalWindows(t *testing.T) {
-	now := time.Now()
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	shortMins, longMins := 300, 10080
-	shortReset, longReset := 3600, 86400
+	shortReset, longReset := 3600, 43200
 	shortUsed, longUsed := 96.0, 25.0
 	for _, primaryIs5h := range []bool{true, false} {
 		name := "primary_is_7d"
@@ -43,7 +44,13 @@ func TestOpenAIQuotaHeadroomFactorUsesCanonicalWindows(t *testing.T) {
 						}
 					}
 					// 周余量 75%，5h 余量低于 10% 时沿用现有的减半规则。
-					require.InDelta(t, 0.375, openAIQuotaHeadroomFactor(&Account{Extra: extra}, now), 1e-9)
+					account := &Account{Extra: extra}
+					require.InDelta(t, 0.375, openAIQuotaHeadroomFactor(account, now), 1e-9)
+					// 倒计时加分使用周窗口的 12 小时，不能用 5h 窗口的 1 小时。
+					weights := GatewayOpenAIWSSchedulerScoreWeightsView{
+						weeklyExpiryPriority: parseOpenAIWeeklyExpiryPrioritySettings(true, "", ""),
+					}
+					require.InDelta(t, 0.05625, weights.quotaScore(account, now), 1e-9)
 				})
 			}
 		})
@@ -84,6 +91,91 @@ func TestOpenAIQuotaHeadroomFactorRawWindowReset(t *testing.T) {
 	require.InDelta(t, 0.75, openAIQuotaHeadroomFactor(&Account{Extra: extra}, now), 1e-9)
 	extra["codex_secondary_reset_at"] = now.Add(-time.Minute).Format(time.RFC3339)
 	require.Equal(t, openAIQuotaHeadroomNeutralFactor, openAIQuotaHeadroomFactor(&Account{Extra: extra}, now))
+}
+
+func TestOpenAIWeeklyExpiryPriorityChangesSelectionAndDisplayedScore(t *testing.T) {
+	now := time.Now()
+	account := func(id int64, used float64, resetsIn time.Duration) *Account {
+		return &Account{ID: id, Extra: map[string]any{
+			"codex_7d_used_percent":  used,
+			"codex_7d_reset_at":      now.Add(resetsIn).Format(time.RFC3339),
+			"codex_usage_updated_at": now.Format(time.RFC3339),
+		}}
+	}
+	accounts := []*Account{
+		account(1, 40, 2*time.Hour),    // Soon, with 60% available.
+		account(2, 20, 3*24*time.Hour), // Most remaining, but no imminent reset.
+		account(3, 98, 30*time.Minute), // First to reset, with very little left.
+	}
+	for _, tc := range []struct {
+		name          string
+		preferExpiry  bool
+		quotaHeadroom float64
+		windowHours   string
+		weight        string
+		winner        int64
+	}{
+		{name: "off preserves quota headroom scoring", quotaHeadroom: 0.3, winner: 2},
+		{name: "on rewards usable quota before reset", preferExpiry: true, quotaHeadroom: 0.3, winner: 1},
+		{name: "on works with zero quota headroom weight", preferExpiry: true, winner: 1},
+		{name: "shorter window leaves quota headroom decisive", preferExpiry: true, quotaHeadroom: 0.3, windowHours: "1.5", winner: 2},
+		{name: "default bonus cannot overcome a larger headroom difference", preferExpiry: true, quotaHeadroom: 1, winner: 2},
+		{name: "higher bonus weight can overcome the headroom difference", preferExpiry: true, quotaHeadroom: 1, weight: "0.6", winner: 1},
+		{name: "zero bonus weight keeps quota headroom scoring", preferExpiry: true, quotaHeadroom: 0.3, weight: "0", winner: 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			resetOpenAIAdvancedSchedulerSettingCacheForTest()
+			t.Cleanup(resetOpenAIAdvancedSchedulerSettingCacheForTest)
+			ctx := context.Background()
+			cfg := &config.Config{}
+			cfg.Gateway.OpenAIWS.LBTopK = 1
+			cfg.Gateway.OpenAIWS.SchedulerScoreWeights = config.GatewayOpenAIWSSchedulerScoreWeights{Priority: 1, QuotaHeadroom: tc.quotaHeadroom}
+			repo := &openAIAdvancedSchedulerSettingRepoStub{values: map[string]string{openAIAdvancedSchedulerSettingKey: "true"}}
+			if tc.preferExpiry {
+				repo.values[SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled] = "true"
+			}
+			repo.values[SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWindowHours] = tc.windowHours
+			repo.values[SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWeight] = tc.weight
+			rateLimit := &RateLimitService{cfg: cfg, settingService: NewSettingService(repo, cfg)}
+			scheduler := &defaultOpenAIAccountScheduler{service: &OpenAIGatewayService{cfg: cfg, rateLimitService: rateLimit}}
+			plan := scheduler.buildOpenAIAccountLoadPlan(ctx, OpenAIAccountScheduleRequest{}, accounts, nil)
+			require.NotEmpty(t, plan.selectionOrder)
+			require.Equal(t, tc.winner, plan.selectionOrder[0].account.ID)
+
+			snapshot := rateLimit.BuildOpenAIAccountSchedulerScoreSnapshot(ctx, accounts, nil)
+			for _, candidate := range accounts {
+				if candidate.ID != tc.winner {
+					require.Greater(t, snapshot[tc.winner].BaseScore, snapshot[candidate.ID].BaseScore)
+				}
+			}
+		})
+	}
+}
+
+func TestOpenAIWeeklyExpiryPriorityIgnoresUnusableCountdown(t *testing.T) {
+	now := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	extra := map[string]any{
+		"codex_7d_used_percent":  20.0,
+		"codex_usage_updated_at": now.Format(time.RFC3339),
+	}
+	account := &Account{Extra: extra}
+	weights := GatewayOpenAIWSSchedulerScoreWeightsView{
+		weeklyExpiryPriority: parseOpenAIWeeklyExpiryPrioritySettings(true, "", ""),
+	}
+	score := func() float64 {
+		return weights.quotaScore(account, now)
+	}
+	require.Zero(t, score(), "missing reset time cannot earn a bonus")
+	extra["codex_7d_reset_at"] = now.Add(24 * time.Hour).Format(time.RFC3339)
+	require.Zero(t, score(), "the bonus starts in the final 24 hours")
+	extra["codex_7d_reset_at"] = now.Add(time.Hour).Format(time.RFC3339)
+	require.Positive(t, score())
+
+	extra["codex_usage_updated_at"] = now.Add(-9 * time.Hour).Format(time.RFC3339)
+	require.Zero(t, score(), "a stale snapshot cannot earn a reset bonus")
+	extra["codex_usage_updated_at"] = now.Format(time.RFC3339)
+	extra["codex_7d_reset_at"] = now.Format(time.RFC3339)
+	require.Zero(t, score(), "expired usage is discarded at the reset boundary")
 }
 
 func TestOpenAISchedulerCanonicalResetScoresMatchSnapshot(t *testing.T) {

@@ -258,6 +258,60 @@ func TestSettingHandler_UpdateSettings_PersistsPaymentVisibleMethodsAndAdvancedS
 	require.Equal(t, true, data["openai_advanced_scheduler_subscription_priority_enabled"])
 }
 
+func TestSettingHandler_OpenAIWeeklyExpiryPriority(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	repo := &settingHandlerRepoStub{values: map[string]string{service.SettingKeyPromoCodeEnabled: "true"}}
+	svc := service.NewSettingService(repo, &config.Config{Default: config.DefaultConfig{UserConcurrency: 5}})
+	handler := NewSettingHandler(svc, nil, nil, nil, nil, nil, nil)
+	const path = "/api/v1/admin/settings"
+	router := gin.New()
+	router.GET(path, handler.GetSettings)
+	router.PUT(path, handler.UpdateSettings)
+	request := func(method, body string) *httptest.ResponseRecorder {
+		req := httptest.NewRequest(method, path, bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		return rec
+	}
+	requireExpiryPriority := func(rec *httptest.ResponseRecorder, enabled bool, windowHours, weight string) {
+		t.Helper()
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var resp response.Response
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+		data, ok := resp.Data.(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, enabled, data[service.SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled])
+		require.Equal(t, windowHours, data[service.SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWindowHours])
+		require.Equal(t, weight, data[service.SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWeight])
+	}
+
+	requireExpiryPriority(request(http.MethodGet, ""), false, "", "")
+	requireExpiryPriority(request(http.MethodPut, `{
+		"openai_advanced_scheduler_weekly_expiry_priority_enabled":true,
+		"openai_advanced_scheduler_weekly_expiry_window_hours":" 12.50 ",
+		"openai_advanced_scheduler_weekly_expiry_weight":"0.80"
+	}`), true, "12.5", "0.8")
+	requireExpiryPriority(request(http.MethodPut, `{"promo_code_enabled":false}`), true, "12.5", "0.8")
+	for _, body := range []string{
+		`{"openai_advanced_scheduler_weekly_expiry_priority_enabled":"false"}`,
+		`{"openai_advanced_scheduler_weekly_expiry_window_hours":"0"}`,
+		`{"openai_advanced_scheduler_weekly_expiry_window_hours":"NaN"}`,
+		`{"openai_advanced_scheduler_weekly_expiry_weight":"-0.1"}`,
+		`{"openai_advanced_scheduler_weekly_expiry_weight":"Inf"}`,
+	} {
+		require.Equal(t, http.StatusBadRequest, request(http.MethodPut, body).Code, body)
+	}
+	requireExpiryPriority(request(http.MethodGet, ""), true, "12.5", "0.8")
+	requireExpiryPriority(request(http.MethodPut, `{"openai_advanced_scheduler_weekly_expiry_weight":"0"}`), true, "12.5", "0")
+	requireExpiryPriority(request(http.MethodPut, `{
+		"openai_advanced_scheduler_weekly_expiry_priority_enabled":false,
+		"openai_advanced_scheduler_weekly_expiry_window_hours":"",
+		"openai_advanced_scheduler_weekly_expiry_weight":""
+	}`), false, "", "")
+	requireExpiryPriority(request(http.MethodGet, ""), false, "", "")
+}
+
 func TestSettingHandler_UpdateSettings_PreservesLegacyBlankPaymentVisibleMethodSource(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &settingHandlerRepoStub{

@@ -280,6 +280,9 @@ type UpdateSettingsRequest struct {
 	OpenAIAdvancedSchedulerEnabled                     *bool    `json:"openai_advanced_scheduler_enabled"`
 	OpenAIAdvancedSchedulerStickyWeightedEnabled       *bool    `json:"openai_advanced_scheduler_sticky_weighted_enabled"`
 	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled *bool    `json:"openai_advanced_scheduler_subscription_priority_enabled"`
+	OpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled *bool    `json:"openai_advanced_scheduler_weekly_expiry_priority_enabled"`
+	OpenAIAdvancedSchedulerWeeklyExpiryWindowHours     *string  `json:"openai_advanced_scheduler_weekly_expiry_window_hours"`
+	OpenAIAdvancedSchedulerWeeklyExpiryWeight          *string  `json:"openai_advanced_scheduler_weekly_expiry_weight"`
 	OpenAIAdvancedSchedulerLBTopK                      *string  `json:"openai_advanced_scheduler_lb_top_k"`
 	OpenAIAdvancedSchedulerWeightPriority              *string  `json:"openai_advanced_scheduler_weight_priority"`
 	OpenAIAdvancedSchedulerWeightLoad                  *string  `json:"openai_advanced_scheduler_weight_load"`
@@ -1871,17 +1874,20 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			}
 			return previousSettings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled
 		}(),
-		OpenAIAdvancedSchedulerLBTopK:                 stringSetting(req.OpenAIAdvancedSchedulerLBTopK, previousSettings.OpenAIAdvancedSchedulerLBTopK),
-		OpenAIAdvancedSchedulerWeightPriority:         stringSetting(req.OpenAIAdvancedSchedulerWeightPriority, previousSettings.OpenAIAdvancedSchedulerWeightPriority),
-		OpenAIAdvancedSchedulerWeightLoad:             stringSetting(req.OpenAIAdvancedSchedulerWeightLoad, previousSettings.OpenAIAdvancedSchedulerWeightLoad),
-		OpenAIAdvancedSchedulerWeightQueue:            stringSetting(req.OpenAIAdvancedSchedulerWeightQueue, previousSettings.OpenAIAdvancedSchedulerWeightQueue),
-		OpenAIAdvancedSchedulerWeightErrorRate:        stringSetting(req.OpenAIAdvancedSchedulerWeightErrorRate, previousSettings.OpenAIAdvancedSchedulerWeightErrorRate),
-		OpenAIAdvancedSchedulerWeightTTFT:             stringSetting(req.OpenAIAdvancedSchedulerWeightTTFT, previousSettings.OpenAIAdvancedSchedulerWeightTTFT),
-		OpenAIAdvancedSchedulerWeightReset:            stringSetting(req.OpenAIAdvancedSchedulerWeightReset, previousSettings.OpenAIAdvancedSchedulerWeightReset),
-		OpenAIAdvancedSchedulerWeightQuotaHeadroom:    stringSetting(req.OpenAIAdvancedSchedulerWeightQuotaHeadroom, previousSettings.OpenAIAdvancedSchedulerWeightQuotaHeadroom),
-		OpenAIAdvancedSchedulerWeightUpstreamCost:     stringSetting(req.OpenAIAdvancedSchedulerWeightUpstreamCost, previousSettings.OpenAIAdvancedSchedulerWeightUpstreamCost),
-		OpenAIAdvancedSchedulerWeightPreviousResponse: stringSetting(req.OpenAIAdvancedSchedulerWeightPreviousResponse, previousSettings.OpenAIAdvancedSchedulerWeightPreviousResponse),
-		OpenAIAdvancedSchedulerWeightSessionSticky:    stringSetting(req.OpenAIAdvancedSchedulerWeightSessionSticky, previousSettings.OpenAIAdvancedSchedulerWeightSessionSticky),
+		OpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled: boolValueOrDefault(req.OpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled, previousSettings.OpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled),
+		OpenAIAdvancedSchedulerWeeklyExpiryWindowHours:     stringSetting(req.OpenAIAdvancedSchedulerWeeklyExpiryWindowHours, previousSettings.OpenAIAdvancedSchedulerWeeklyExpiryWindowHours),
+		OpenAIAdvancedSchedulerWeeklyExpiryWeight:          stringSetting(req.OpenAIAdvancedSchedulerWeeklyExpiryWeight, previousSettings.OpenAIAdvancedSchedulerWeeklyExpiryWeight),
+		OpenAIAdvancedSchedulerLBTopK:                      stringSetting(req.OpenAIAdvancedSchedulerLBTopK, previousSettings.OpenAIAdvancedSchedulerLBTopK),
+		OpenAIAdvancedSchedulerWeightPriority:              stringSetting(req.OpenAIAdvancedSchedulerWeightPriority, previousSettings.OpenAIAdvancedSchedulerWeightPriority),
+		OpenAIAdvancedSchedulerWeightLoad:                  stringSetting(req.OpenAIAdvancedSchedulerWeightLoad, previousSettings.OpenAIAdvancedSchedulerWeightLoad),
+		OpenAIAdvancedSchedulerWeightQueue:                 stringSetting(req.OpenAIAdvancedSchedulerWeightQueue, previousSettings.OpenAIAdvancedSchedulerWeightQueue),
+		OpenAIAdvancedSchedulerWeightErrorRate:             stringSetting(req.OpenAIAdvancedSchedulerWeightErrorRate, previousSettings.OpenAIAdvancedSchedulerWeightErrorRate),
+		OpenAIAdvancedSchedulerWeightTTFT:                  stringSetting(req.OpenAIAdvancedSchedulerWeightTTFT, previousSettings.OpenAIAdvancedSchedulerWeightTTFT),
+		OpenAIAdvancedSchedulerWeightReset:                 stringSetting(req.OpenAIAdvancedSchedulerWeightReset, previousSettings.OpenAIAdvancedSchedulerWeightReset),
+		OpenAIAdvancedSchedulerWeightQuotaHeadroom:         stringSetting(req.OpenAIAdvancedSchedulerWeightQuotaHeadroom, previousSettings.OpenAIAdvancedSchedulerWeightQuotaHeadroom),
+		OpenAIAdvancedSchedulerWeightUpstreamCost:          stringSetting(req.OpenAIAdvancedSchedulerWeightUpstreamCost, previousSettings.OpenAIAdvancedSchedulerWeightUpstreamCost),
+		OpenAIAdvancedSchedulerWeightPreviousResponse:      stringSetting(req.OpenAIAdvancedSchedulerWeightPreviousResponse, previousSettings.OpenAIAdvancedSchedulerWeightPreviousResponse),
+		OpenAIAdvancedSchedulerWeightSessionSticky:         stringSetting(req.OpenAIAdvancedSchedulerWeightSessionSticky, previousSettings.OpenAIAdvancedSchedulerWeightSessionSticky),
 		BalanceLowNotifyEnabled: func() bool {
 			if req.BalanceLowNotifyEnabled != nil {
 				return *req.BalanceLowNotifyEnabled
@@ -2375,6 +2381,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		OpenAIAdvancedSchedulerEnabled:                         updatedSettings.OpenAIAdvancedSchedulerEnabled,
 		OpenAIAdvancedSchedulerStickyWeightedEnabled:           updatedSettings.OpenAIAdvancedSchedulerStickyWeightedEnabled,
 		OpenAIAdvancedSchedulerSubscriptionPriorityEnabled:     updatedSettings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled,
+		OpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled:     updatedSettings.OpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled,
+		OpenAIAdvancedSchedulerWeeklyExpiryWindowHours:         updatedSettings.OpenAIAdvancedSchedulerWeeklyExpiryWindowHours,
+		OpenAIAdvancedSchedulerWeeklyExpiryWeight:              updatedSettings.OpenAIAdvancedSchedulerWeeklyExpiryWeight,
 		OpenAIAdvancedSchedulerLBTopK:                          updatedSettings.OpenAIAdvancedSchedulerLBTopK,
 		OpenAIAdvancedSchedulerWeightPriority:                  updatedSettings.OpenAIAdvancedSchedulerWeightPriority,
 		OpenAIAdvancedSchedulerWeightLoad:                      updatedSettings.OpenAIAdvancedSchedulerWeightLoad,

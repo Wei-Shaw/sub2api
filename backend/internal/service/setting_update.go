@@ -514,6 +514,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[openAIAdvancedSchedulerSettingKey] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerEnabled)
 	updates[SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerStickyWeightedEnabled)
 	updates[SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled)
+	updates[SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled] = strconv.FormatBool(settings.OpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled)
+	updates[SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWindowHours] = settings.OpenAIAdvancedSchedulerWeeklyExpiryWindowHours
+	updates[SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWeight] = settings.OpenAIAdvancedSchedulerWeeklyExpiryWeight
 	updates[SettingKeyOpenAIAdvancedSchedulerLBTopK] = settings.OpenAIAdvancedSchedulerLBTopK
 	updates[SettingKeyOpenAIAdvancedSchedulerWeightPriority] = settings.OpenAIAdvancedSchedulerWeightPriority
 	updates[SettingKeyOpenAIAdvancedSchedulerWeightLoad] = settings.OpenAIAdvancedSchedulerWeightLoad
@@ -758,7 +761,12 @@ func (s *SettingService) refreshCachedSettings(settings *SystemSettings) {
 		enabled:                        settings.OpenAIAdvancedSchedulerEnabled,
 		stickyWeightedEnabled:          settings.OpenAIAdvancedSchedulerStickyWeightedEnabled,
 		subscriptionPriorityEnabled:    settings.OpenAIAdvancedSchedulerSubscriptionPriorityEnabled,
-		lbTopKOverride:                 parsePositiveIntOverride(settings.OpenAIAdvancedSchedulerLBTopK),
+		weeklyExpiryPriority: parseOpenAIWeeklyExpiryPrioritySettings(
+			settings.OpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled,
+			settings.OpenAIAdvancedSchedulerWeeklyExpiryWindowHours,
+			settings.OpenAIAdvancedSchedulerWeeklyExpiryWeight,
+		),
+		lbTopKOverride: parsePositiveIntOverride(settings.OpenAIAdvancedSchedulerLBTopK),
 		weightOverrides: parseOpenAIAdvancedSchedulerWeightOverrides(map[string]string{
 			SettingKeyOpenAIAdvancedSchedulerWeightPriority:         settings.OpenAIAdvancedSchedulerWeightPriority,
 			SettingKeyOpenAIAdvancedSchedulerWeightLoad:             settings.OpenAIAdvancedSchedulerWeightLoad,

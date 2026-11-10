@@ -414,6 +414,9 @@ func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler
 		OpenAIAdvancedSchedulerEnabled:                     true,
 		OpenAIAdvancedSchedulerStickyWeightedEnabled:       true,
 		OpenAIAdvancedSchedulerSubscriptionPriorityEnabled: true,
+		OpenAIAdvancedSchedulerWeeklyExpiryPriorityEnabled: true,
+		OpenAIAdvancedSchedulerWeeklyExpiryWindowHours:     " 36.50 ",
+		OpenAIAdvancedSchedulerWeeklyExpiryWeight:          "0.75",
 		OpenAIAdvancedSchedulerLBTopK:                      " 3 ",
 		OpenAIAdvancedSchedulerWeightPriority:              "2.50",
 		OpenAIAdvancedSchedulerWeightLoad:                  "0",
@@ -436,6 +439,11 @@ func TestSettingService_UpdateSettings_PaymentVisibleMethodsAndAdvancedScheduler
 	require.Equal(t, "true", repo.updates[openAIAdvancedSchedulerSettingKey])
 	require.Equal(t, "true", repo.updates[SettingKeyOpenAIAdvancedSchedulerStickyWeightedEnabled])
 	require.Equal(t, "true", repo.updates[SettingKeyOpenAIAdvancedSchedulerSubscriptionPriorityEnabled])
+	require.Equal(t, "36.5", repo.updates[SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWindowHours])
+	require.Equal(t, "0.75", repo.updates[SettingKeyOpenAIAdvancedSchedulerWeeklyExpiryWeight])
+	gateway := &OpenAIGatewayService{rateLimitService: &RateLimitService{settingService: svc}}
+	require.Equal(t, openAIWeeklyExpiryPrioritySettings{enabled: true, windowHours: 36.5, weight: 0.75},
+		gateway.openAIWSSchedulerWeightsForRequest(context.Background()).weeklyExpiryPriority)
 	require.Equal(t, "3", repo.updates[SettingKeyOpenAIAdvancedSchedulerLBTopK])
 	require.Equal(t, "2.5", repo.updates[SettingKeyOpenAIAdvancedSchedulerWeightPriority])
 	require.Equal(t, "0", repo.updates[SettingKeyOpenAIAdvancedSchedulerWeightLoad])
@@ -494,6 +502,14 @@ func TestSettingService_UpdateSettings_OpenAIAdvancedSchedulerWeightSums(t *test
 			weights: SystemSettings{
 				OpenAIAdvancedSchedulerWeightPriority:         maxFloat,
 				OpenAIAdvancedSchedulerWeightPreviousResponse: maxFloat,
+			},
+			wantErr: true,
+		},
+		{
+			name: "weekly expiry total sum overflow is rejected",
+			weights: SystemSettings{
+				OpenAIAdvancedSchedulerWeightPriority:     maxFloat,
+				OpenAIAdvancedSchedulerWeeklyExpiryWeight: maxFloat,
 			},
 			wantErr: true,
 		},
