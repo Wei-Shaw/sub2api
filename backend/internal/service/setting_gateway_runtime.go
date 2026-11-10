@@ -54,6 +54,7 @@ const backendModeDBTimeout = 5 * time.Second
 
 // cachedGatewayForwardingSettings 缓存网关转发行为设置（进程内缓存，60s TTL）
 type cachedGatewayForwardingSettings struct {
+	openAICodexTimezone              string
 	openAITTFTMode                   string
 	fingerprintUnification           bool
 	metadataPassthrough              bool
@@ -857,6 +858,7 @@ func (s *SettingService) IsBackendModeEnabled(ctx context.Context) bool {
 }
 
 type gatewayForwardingSettingsResult struct {
+	openAICodexTimezone                                                                   string
 	openAITTFTMode                                                                        string
 	fp, mp, cch, claudeOAuthSystemPromptInjection, cacheTTL1h, rewriteMessageCacheControl bool
 	clientDatelineNormalization                                                           bool
@@ -867,6 +869,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 	if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
 		if time.Now().UnixNano() < cached.expiresAt {
 			return gatewayForwardingSettingsResult{
+				openAICodexTimezone:              cached.openAICodexTimezone,
 				openAITTFTMode:                   cached.openAITTFTMode,
 				fp:                               cached.fingerprintUnification,
 				mp:                               cached.metadataPassthrough,
@@ -884,6 +887,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		if cached, ok := gatewayForwardingCache.Load().(*cachedGatewayForwardingSettings); ok && cached != nil {
 			if time.Now().UnixNano() < cached.expiresAt {
 				return gatewayForwardingSettingsResult{
+					openAICodexTimezone:              cached.openAICodexTimezone,
 					openAITTFTMode:                   cached.openAITTFTMode,
 					fp:                               cached.fingerprintUnification,
 					mp:                               cached.metadataPassthrough,
@@ -900,6 +904,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 		dbCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), gatewayForwardingDBTimeout)
 		defer cancel()
 		values, err := s.settingRepo.GetMultiple(dbCtx, []string{
+			SettingKeyOpenAICodexTimezone,
 			SettingKeyOpenAITTFTMode,
 			SettingKeyEnableFingerprintUnification,
 			SettingKeyEnableMetadataPassthrough,
@@ -926,6 +931,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			})
 			return gatewayForwardingSettingsResult{openAITTFTMode: OpenAITTFTModeSemantic, fp: true, claudeOAuthSystemPromptInjection: true, rewriteMessageCacheControl: s.defaultRewriteMessageCacheControl(), clientDatelineNormalization: true}, nil
 		}
+		codexTimezone, _ := NormalizeCodexTimezone(values[SettingKeyOpenAICodexTimezone])
 		ttftMode := normalizeOpenAITTFTMode(values[SettingKeyOpenAITTFTMode])
 		fp := true
 		if v, ok := values[SettingKeyEnableFingerprintUnification]; ok && v != "" {
@@ -949,6 +955,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			clientDatelineNormalization = v == "true"
 		}
 		gatewayForwardingCache.Store(&cachedGatewayForwardingSettings{
+			openAICodexTimezone:              codexTimezone,
 			openAITTFTMode:                   ttftMode,
 			fingerprintUnification:           fp,
 			metadataPassthrough:              mp,
@@ -962,6 +969,7 @@ func (s *SettingService) getGatewayForwardingSettingsCached(ctx context.Context)
 			expiresAt:                        time.Now().Add(gatewayForwardingCacheTTL).UnixNano(),
 		})
 		return gatewayForwardingSettingsResult{
+			openAICodexTimezone:              codexTimezone,
 			openAITTFTMode:                   ttftMode,
 			fp:                               fp,
 			mp:                               mp,
