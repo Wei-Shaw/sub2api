@@ -168,8 +168,8 @@ func TestMessagesRawEffortValidation(t *testing.T) {
 		{body: `{"model":"gpt-6.1-sol_low","output_config":{"effort":"low"}}`},
 		{body: `{"model":"gpt-6.1-sol","output_config":{"effort":"high"}}`},
 	} {
-		require.Equal(t, test.deny, validateGPT61SolRawEffort([]byte(test.body), "gpt-6.1-sol") != nil, test.body)
-		require.NoError(t, validateGPT61SolRawEffort([]byte(test.body), "gpt-6-sol"))
+		require.Equal(t, test.deny, validateGPT61RawEffort([]byte(test.body), "gpt-6.1-sol") != nil, test.body)
+		require.NoError(t, validateGPT61RawEffort([]byte(test.body), "gpt-6-sol"))
 	}
 }
 
@@ -185,25 +185,25 @@ func TestMessagesGLMMappedEffortPolicyHTTP(t *testing.T) {
 		status    int
 		explicit  bool
 	}{
-		{name: "mapped low normalized", target: "low", want: "high"},
+		{name: "mapped low preserved after normalization", target: "low", want: "low"},
 		{name: "unmapped none below low ceiling", ceiling: "low", overLimit: ReasoningEffortOverLimitDeny, want: "none"},
 		{name: "unmapped none below minimal ceiling", ceiling: "minimal", overLimit: ReasoningEffortOverLimitDeny, want: "none"},
 		{name: "glm53 unmapped none below low ceiling", model: "glm-5.3", ceiling: "low", overLimit: ReasoningEffortOverLimitDeny, want: "none"},
 		{name: "mapped minimal preserved", target: "minimal", want: "minimal"},
 		{name: "mapped max preserved", target: "max", want: "max"},
-		{name: "normalized effort cannot meet low ceiling", target: "low", ceiling: "low", status: 403},
+		{name: "mapped low meets low ceiling", target: "low", ceiling: "low", want: "low"},
 		{name: "mapped minimal below low ceiling", target: "minimal", ceiling: "low", want: "minimal"},
 		{name: "mapped minimal meets minimal ceiling", target: "minimal", ceiling: "minimal", want: "minimal"},
-		{name: "normalized effort cannot meet medium ceiling", target: "low", ceiling: "medium", status: 403},
-		{name: "max capped to legal high", target: "max", ceiling: "xhigh", want: "high"},
+		{name: "mapped low below medium ceiling", target: "low", ceiling: "medium", want: "low"},
+		{name: "max capped to xhigh", target: "max", ceiling: "xhigh", want: "xhigh"},
 		{name: "glm53 low preserved", model: "glm-5.3", target: "low", ceiling: "low", want: "low"},
 		{name: "glm53 minimal preserved", model: "glm-5.3", target: "minimal", want: "minimal"},
 		{name: "glm53 minimal below low ceiling", model: "glm-5.3", target: "minimal", ceiling: "low", want: "minimal"},
-		{name: "glm53 medium ceiling uses legal low", model: "glm-5.3", target: "max", ceiling: "medium", want: "low"},
+		{name: "glm53 max capped to medium", model: "glm-5.3", target: "max", ceiling: "medium", want: "medium"},
 		{name: "glm53 minimal meets minimal ceiling", model: "glm-5.3", target: "minimal", ceiling: "minimal", want: "minimal"},
-		{name: "normalized effort denied", target: "low", ceiling: "low", overLimit: ReasoningEffortOverLimitDeny, status: 403},
+		{name: "mapped effort denied", target: "high", ceiling: "low", overLimit: ReasoningEffortOverLimitDeny, status: 403},
 		{name: "mapping denied", target: "deny", status: 403},
-		{name: "mapping applied once", target: "low", ceiling: "high", want: "high", explicit: true},
+		{name: "mapping applied once", target: "low", ceiling: "high", want: "low", explicit: true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			model := test.model

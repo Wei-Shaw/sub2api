@@ -19,7 +19,9 @@ func TestGLMReasoningEffortPolicyPreservesNoneAndMinimal(t *testing.T) {
 						t.Run(model+"/"+field+"/"+effort+"/"+ceiling+"/"+overLimit, func(t *testing.T) {
 							body := []byte(fmt.Sprintf(`{"model":%q,`+field+`}`, model, effort))
 							ctx := WithOpenAIReasoningEffortPolicy(context.Background(), ceiling, nil, overLimit)
-							got, changed, err := applyOpenAIReasoningEffortPolicyForGLMFromContext(ctx, body, model)
+							normalized, normalizationChanged := NormalizeGLMOpenAIReasoningEffort(body, model)
+							require.False(t, normalizationChanged)
+							got, changed, err := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, normalized)
 							require.NoError(t, err)
 							require.False(t, changed)
 							require.Equal(t, body, got)

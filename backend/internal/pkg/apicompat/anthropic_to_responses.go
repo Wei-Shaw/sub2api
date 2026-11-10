@@ -32,7 +32,7 @@ type AnthropicToResponsesOptions struct {
 
 func AnthropicToResponsesWithOptions(req *AnthropicRequest, options AnthropicToResponsesOptions) (*ResponsesRequest, error) {
 	if !options.DeferReasoningEffortValidation {
-		if err := openai.ValidateGPT61SolReasoningEffort(req.Model, anthropicReasoningEffort(req)); err != nil {
+		if err := openai.ValidateGPT61ReasoningEffort(req.Model, anthropicReasoningEffort(req)); err != nil {
 			return nil, err
 		}
 	}
