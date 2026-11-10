@@ -58,8 +58,10 @@ type channelMonitorCreateRequest struct {
 	// CheckMode: probe（默认）/ quota / quota_probe。quota 模式 endpoint/api_key
 	// 可空（条件必填校验在 service 层按模式分支）。
 	CheckMode string `json:"check_mode" binding:"omitempty,oneof=probe quota quota_probe"`
-	// AccountID: 配额模式关联的账号 ID。
+	// AccountID / GroupID: 配额模式的数据源，二选一（service 层校验互斥）。
+	// AccountID 看单个账号；GroupID 聚合组内全部 active 账号。
 	AccountID *int64 `json:"account_id"`
+	GroupID   *int64 `json:"group_id"`
 }
 
 type channelMonitorUpdateRequest struct {
@@ -80,9 +82,11 @@ type channelMonitorUpdateRequest struct {
 	BodyOverrideMode *string            `json:"body_override_mode" binding:"omitempty,oneof=off merge replace"`
 	BodyOverride     *map[string]any    `json:"body_override"`
 
-	// CheckMode/AccountID：nil = 不更新；AccountID 指向 0 = 清空关联。
+	// CheckMode/AccountID/GroupID：nil = 不更新；指向 0 = 清空该关联。
+	// 设置其中一个会隐式清空另一个（数据源二选一）。
 	CheckMode *string `json:"check_mode" binding:"omitempty,oneof=probe quota quota_probe"`
 	AccountID *int64  `json:"account_id"`
+	GroupID   *int64  `json:"group_id"`
 }
 
 type channelMonitorResponse struct {
@@ -113,10 +117,11 @@ type channelMonitorResponse struct {
 	BodyOverrideMode string            `json:"body_override_mode"`
 	BodyOverride     map[string]any    `json:"body_override"`
 
-	// 配额模式：check_mode + 关联账号 + 主模型最近配额快照
+	// 配额模式：check_mode + 关联账号/分组 + 主模型最近配额快照
 	// （LatestQuota 由 List handler 批量聚合后填充；管理端不受 channel_monitor_show_quota 影响）。
 	CheckMode   string                       `json:"check_mode"`
 	AccountID   *int64                       `json:"account_id"`
+	GroupID     *int64                       `json:"group_id"`
 	LatestQuota *domain.MonitorQuotaSnapshot `json:"latest_quota,omitempty"`
 }
 
@@ -143,6 +148,9 @@ type channelMonitorHistoryItemResponse struct {
 
 // maskAPIKey 对 API Key 明文做脱敏：前 4 字符 + "***"，长度 ≤ 4 时只显示 "***"。
 func maskAPIKey(plain string) string {
+	if plain == "" {
+		return ""
+	}
 	if len(plain) <= monitorAPIKeyMaskPrefix {
 		return monitorAPIKeyMaskSuffix
 	}
@@ -184,6 +192,7 @@ func channelMonitorToResponse(m *service.ChannelMonitor) *channelMonitorResponse
 		BodyOverride:        m.BodyOverride,
 		CheckMode:           m.CheckMode,
 		AccountID:           m.AccountID,
+		GroupID:             m.GroupID,
 		// PrimaryStatus / PrimaryLatencyMs / Availability7d / LatestQuota
 		// 由 List handler 在批量聚合后填充。
 	}
@@ -354,6 +363,7 @@ func (h *ChannelMonitorHandler) Create(c *gin.Context) {
 		BodyOverride:     req.BodyOverride,
 		CheckMode:        req.CheckMode,
 		AccountID:        req.AccountID,
+		GroupID:          req.GroupID,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
@@ -450,6 +460,7 @@ func (h *ChannelMonitorHandler) Update(c *gin.Context) {
 		BodyOverride:     req.BodyOverride,
 		CheckMode:        req.CheckMode,
 		AccountID:        req.AccountID,
+		GroupID:          req.GroupID,
 	})
 	if err != nil {
 		response.ErrorFrom(c, err)
