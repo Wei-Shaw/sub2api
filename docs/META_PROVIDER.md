@@ -91,3 +91,7 @@ Meta returns resets_at (epoch seconds) on throttling:
   account has no CN-style quota snapshot.
 - The device flow session store is in-process with a TTL equal to the device code
   lifetime; a restart during login simply requires starting the login again.
+- That store holds at most 4096 pending logins. When a new login pushes past the cap,
+  the session expiring soonest is evicted first, so an admin login still in progress can
+  be dropped and has to be restarted. The cap is deliberate: it bounds memory if the
+  admin UI is left polling.
