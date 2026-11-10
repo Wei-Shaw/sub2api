@@ -358,3 +358,43 @@ func BenchmarkApplyToolNameRewriteToBody_LongHistory(b *testing.B) {
 		_ = applyToolNameRewriteToBody(body, rw)
 	}
 }
+
+type toolRewriteCtxStub struct {
+	rw *ToolNameRewrite
+}
+
+func (c toolRewriteCtxStub) Get(key string) (any, bool) {
+	if key == toolNameRewriteKey && c.rw != nil {
+		return c.rw, true
+	}
+	return nil, false
+}
+
+// 字符串版本和 bytes 版本的还原结果必须完全一致，流式路径才能安全替换。
+func TestReverseToolNamesStringMatchesBytes(t *testing.T) {
+	rw := &ToolNameRewrite{
+		ReverseOrdered: [][2]string{
+			{"sessions_abc", "session_abc"},
+			{"sessions_x", "sessions_x"},
+		},
+	}
+	cases := []string{
+		"plain chunk",
+		`{"name":"sessions_x"}`,
+		`{"name":"sessions_abc"}`,
+		`{"name":"sessions_abc","x":"session_y"}`,
+		`{"name":"sessions_x","y":"sessions_abc","z":"session_y"}`,
+	}
+	for _, in := range cases {
+		got := reverseToolNamesIfPresentString(toolRewriteCtxStub{rw: rw}, in)
+		want := string(reverseToolNamesIfPresent(toolRewriteCtxStub{rw: rw}, []byte(in)))
+		require.Equal(t, want, got, "input=%q", in)
+	}
+
+	// mapping 为 nil 时仍要做静态前缀还原。
+	for _, in := range []string{`sessions_a`, `session_b`, `plain`} {
+		got := reverseToolNamesIfPresentString(toolRewriteCtxStub{}, in)
+		want := string(reverseToolNamesIfPresent(toolRewriteCtxStub{}, []byte(in)))
+		require.Equal(t, want, got, "input=%q", in)
+	}
+}
