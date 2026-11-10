@@ -85,14 +85,19 @@ func (h *SettingHandler) TestSMTPConnection(c *gin.Context) {
 
 // SendTestEmailRequest 发送测试邮件请求
 type SendTestEmailRequest struct {
-	Email        string `json:"email" binding:"required,email"`
-	SMTPHost     string `json:"smtp_host"`
-	SMTPPort     int    `json:"smtp_port"`
-	SMTPUsername string `json:"smtp_username"`
-	SMTPPassword string `json:"smtp_password"`
-	SMTPFrom     string `json:"smtp_from_email"`
-	SMTPFromName string `json:"smtp_from_name"`
-	SMTPUseTLS   *bool  `json:"smtp_use_tls"`
+	Email               string `json:"email" binding:"required,email"`
+	Provider            string `json:"provider"`
+	SMTPHost            string `json:"smtp_host"`
+	SMTPPort            int    `json:"smtp_port"`
+	SMTPUsername        string `json:"smtp_username"`
+	SMTPPassword        string `json:"smtp_password"`
+	SMTPFrom            string `json:"smtp_from_email"`
+	SMTPFromName        string `json:"smtp_from_name"`
+	SMTPUseTLS          *bool  `json:"smtp_use_tls"`
+	CloudflareAPIToken  string `json:"cloudflare_api_token"`
+	CloudflareAccountID string `json:"cloudflare_account_id"`
+	CloudflareFromEmail string `json:"cloudflare_from_email"`
+	CloudflareFromName  string `json:"cloudflare_from_name"`
 }
 
 // SendTestEmail 发送测试邮件
@@ -104,52 +109,20 @@ func (h *SettingHandler) SendTestEmail(c *gin.Context) {
 		return
 	}
 
-	req.SMTPHost = strings.TrimSpace(req.SMTPHost)
-	req.SMTPUsername = strings.TrimSpace(req.SMTPUsername)
-	req.SMTPFrom = strings.TrimSpace(req.SMTPFrom)
-	req.SMTPFromName = strings.TrimSpace(req.SMTPFromName)
-
-	var savedConfig *service.SMTPConfig
-	if cfg, err := h.emailService.GetSMTPConfig(c.Request.Context()); err == nil && cfg != nil {
-		savedConfig = cfg
-	}
-
-	if req.SMTPHost == "" && savedConfig != nil {
-		req.SMTPHost = savedConfig.Host
-	}
-	if req.SMTPPort <= 0 {
-		if savedConfig != nil && savedConfig.Port > 0 {
-			req.SMTPPort = savedConfig.Port
-		} else {
-			req.SMTPPort = 587
+	// 未显式指定 provider 时，跟随系统当前配置的邮件发送渠道
+	provider := strings.TrimSpace(strings.ToLower(req.Provider))
+	if provider == "" {
+		currentProvider, err := h.emailService.GetEmailProvider(c.Request.Context())
+		if err != nil {
+			response.ErrorFrom(c, err)
+			return
 		}
+		provider = currentProvider
 	}
-	if req.SMTPUsername == "" && savedConfig != nil {
-		req.SMTPUsername = savedConfig.Username
-	}
-	password := strings.TrimSpace(req.SMTPPassword)
-	if password == "" && savedConfig != nil {
-		password = savedConfig.Password
-	}
-	if req.SMTPFrom == "" && savedConfig != nil {
-		req.SMTPFrom = savedConfig.From
-	}
-	if req.SMTPFromName == "" && savedConfig != nil {
-		req.SMTPFromName = savedConfig.FromName
-	}
-	if req.SMTPHost == "" {
-		response.BadRequest(c, "SMTP host is required")
+	provider, err := service.NormalizeEmailProvider(provider)
+	if err != nil {
+		response.ErrorFrom(c, err)
 		return
-	}
-
-	config := &service.SMTPConfig{
-		Host:     req.SMTPHost,
-		Port:     req.SMTPPort,
-		Username: req.SMTPUsername,
-		Password: password,
-		From:     req.SMTPFrom,
-		FromName: req.SMTPFromName,
-		UseTLS:   resolveSMTPUseTLS(req.SMTPUseTLS, savedConfig),
 	}
 
 	siteName := h.settingService.GetSiteName(c.Request.Context())
@@ -186,11 +159,111 @@ func (h *SettingHandler) SendTestEmail(c *gin.Context) {
 </html>
 `
 
+	if provider == service.EmailProviderCloudflare {
+		h.sendTestEmailViaCloudflare(c, req, subject, body)
+		return
+	}
+
+	req.SMTPHost = strings.TrimSpace(req.SMTPHost)
+	req.SMTPUsername = strings.TrimSpace(req.SMTPUsername)
+	req.SMTPFrom = strings.TrimSpace(req.SMTPFrom)
+	req.SMTPFromName = strings.TrimSpace(req.SMTPFromName)
+
+	var savedConfig *service.SMTPConfig
+	if cfg, err := h.emailService.GetSMTPConfig(c.Request.Context()); err == nil && cfg != nil {
+		savedConfig = cfg
+	}
+
+	if req.SMTPHost == "" && savedConfig != nil {
+		req.SMTPHost = savedConfig.Host
+	}
+	if req.SMTPPort <= 0 {
+		if savedConfig != nil && savedConfig.Port > 0 {
+			req.SMTPPort = savedConfig.Port
+		} else {
+			req.SMTPPort = 587
+		}
+	}
+	if req.SMTPUsername == "" && savedConfig != nil {
+		req.SMTPUsername = savedConfig.Username
+	}
+	password := strings.TrimSpace(req.SMTPPassword)
+	if password == "" && savedConfig != nil {
+		password = savedConfig.Password
+	}
+	if req.SMTPFrom == "" && savedConfig != nil {
+		req.SMTPFrom = savedConfig.From
+	}
+	if req.SMTPFromName == "" && savedConfig != nil {
+		req.SMTPFromName = savedConfig.FromName
+	}
+
+	if req.SMTPHost == "" {
+		response.BadRequest(c, "SMTP host is required")
+		return
+	}
+
+	config := &service.SMTPConfig{
+		Host:     req.SMTPHost,
+		Port:     req.SMTPPort,
+		Username: req.SMTPUsername,
+		Password: password,
+		From:     req.SMTPFrom,
+		FromName: req.SMTPFromName,
+		UseTLS:   resolveSMTPUseTLS(req.SMTPUseTLS, savedConfig),
+	}
+
 	if err := h.emailService.SendEmailWithConfig(config, req.Email, subject, body); err != nil {
 		response.BadRequest(c, "Failed to send test email: "+err.Error())
 		return
 	}
 
+	response.Success(c, gin.H{"message": "Test email sent successfully"})
+}
+
+// sendTestEmailViaCloudflare 用 Cloudflare Email Sending 通道发送测试邮件。
+// 请求里留空的字段回退到已保存的配置，方便前端只改一处就能试发。
+func (h *SettingHandler) sendTestEmailViaCloudflare(c *gin.Context, req SendTestEmailRequest, subject, body string) {
+	apiToken := strings.TrimSpace(req.CloudflareAPIToken)
+	accountID := strings.TrimSpace(req.CloudflareAccountID)
+	fromEmail := strings.TrimSpace(req.CloudflareFromEmail)
+	fromName := strings.TrimSpace(req.CloudflareFromName)
+	if saved, err := h.emailService.GetCloudflareConfig(c.Request.Context()); err == nil && saved != nil {
+		if apiToken == "" {
+			apiToken = saved.APIToken
+		}
+		if accountID == "" {
+			accountID = saved.AccountID
+		}
+		if fromEmail == "" {
+			fromEmail = saved.FromEmail
+		}
+		if fromName == "" {
+			fromName = saved.FromName
+		}
+	}
+	switch {
+	case apiToken == "":
+		response.BadRequest(c, "Cloudflare API token is required")
+		return
+	case accountID == "":
+		response.BadRequest(c, "Cloudflare account ID is required")
+		return
+	case fromEmail == "":
+		response.BadRequest(c, "Cloudflare from email is required")
+		return
+	}
+
+	config := &service.CloudflareConfig{
+		APIToken:  apiToken,
+		AccountID: accountID,
+		FromEmail: fromEmail,
+		FromName:  fromName,
+	}
+	if err := h.emailService.SendEmailWithCloudflareConfig(c.Request.Context(), config, req.Email, subject, body); err != nil {
+		response.BadRequest(c, "Failed to send test email: "+err.Error())
+		return
+	}
 	response.Success(c, gin.H{"message": "Test email sent successfully"})
 }
 

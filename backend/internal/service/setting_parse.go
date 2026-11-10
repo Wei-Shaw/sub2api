@@ -318,6 +318,12 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 			forwardedClientIPHeaders = parsed
 		}
 	}
+	// 邮件发送渠道：非法值回退到原始字符串，保持回显可见
+	emailProvider, err := NormalizeEmailProvider(settings[SettingKeyEmailProvider])
+	if err != nil {
+		emailProvider = strings.TrimSpace(settings[SettingKeyEmailProvider])
+	}
+
 	result := &SystemSettings{
 		RegistrationEnabled:                    settings[SettingKeyRegistrationEnabled] == "true",
 		EmailVerifyEnabled:                     emailVerifyEnabled,
@@ -342,6 +348,11 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		SMTPFromName:                           settings[SettingKeySMTPFromName],
 		SMTPUseTLS:                             settings[SettingKeySMTPUseTLS] == "true",
 		SMTPPasswordConfigured:                 settings[SettingKeySMTPPassword] != "",
+		EmailProvider:                          emailProvider,
+		CloudflareAPITokenConfigured:           settings[SettingKeyCloudflareAPIToken] != "",
+		CloudflareAccountID:                    strings.TrimSpace(settings[SettingKeyCloudflareAccountID]),
+		CloudflareFromEmail:                    strings.TrimSpace(settings[SettingKeyCloudflareFromEmail]),
+		CloudflareFromName:                     strings.TrimSpace(settings[SettingKeyCloudflareFromName]),
 		TurnstileEnabled:                       settings[SettingKeyTurnstileEnabled] == "true",
 		TurnstileSiteKey:                       settings[SettingKeyTurnstileSiteKey],
 		TurnstileSecretKeyConfigured:           settings[SettingKeyTurnstileSecretKey] != "",
@@ -427,6 +438,7 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 
 	// 敏感信息直接返回，方便测试连接时使用
 	result.SMTPPassword = settings[SettingKeySMTPPassword]
+	result.CloudflareAPIToken = strings.TrimSpace(settings[SettingKeyCloudflareAPIToken])
 	result.TurnstileSecretKey = settings[SettingKeyTurnstileSecretKey]
 	result.TencentCaptchaAppSecretKey = settings[SettingKeyTencentCaptchaAppSecretKey]
 	result.TencentCaptchaCloudSecretID = settings[SettingKeyTencentCaptchaCloudSecretID]
