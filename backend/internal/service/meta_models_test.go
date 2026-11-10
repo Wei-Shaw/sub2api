@@ -87,6 +87,19 @@ func TestMetaSyncUpstreamModelCatalogReturnsLiveModels(t *testing.T) {
 	require.Equal(t, []string{"muse-spark-1.3", "muse-wonder-2.0"}, catalog.Models)
 }
 
+func TestMetaSyncUpstreamModelCatalogDropsNonChatModels(t *testing.T) {
+	upstream := &metaModelsUpstreamStub{body: `{"data":[
+		{"id":"muse-ember-1.0"},{"id":"sam-3.1"},{"id":"muse-spark-1.3"},
+		{"id":"muse-voice-transcribe-1.0"},{"id":"muse-image-1.0"}
+	]}`}
+	svc := &AccountTestService{httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+	account := metaTestAccount(map[string]any{"api_key": "sk-muse"}, AccountTypeOAuth)
+
+	catalog, err := svc.SyncUpstreamModelCatalog(context.Background(), account)
+	require.NoError(t, err)
+	require.ElementsMatch(t, []string{"muse-ember-1.0", "muse-spark-1.3"}, catalog.Models)
+}
+
 func TestMetaBuildUpstreamModelsRequestFailsWithoutAPIKey(t *testing.T) {
 	svc := &AccountTestService{cfg: upstreamModelSyncTestConfig()}
 	account := metaTestAccount(map[string]any{"base_url": "https://relay.example/v1"}, AccountTypeAPIKey)

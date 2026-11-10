@@ -830,6 +830,10 @@ func (s *AccountTestService) fetchUpstreamModelListRequest(ctx context.Context, 
 	if account.IsGrok() {
 		extractModels = extractGrokUpstreamModelIDs
 	}
+	if account.IsMeta() {
+		extractModels = extractMetaUpstreamModelIDs
+	}
+
 	models, err := extractModels(body)
 	if err != nil {
 		if account.IsGrok() && errors.Is(err, errGrokCatalogEmpty) {

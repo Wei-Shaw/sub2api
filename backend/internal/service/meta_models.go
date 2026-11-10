@@ -32,6 +32,18 @@ func (s *AccountTestService) FetchMetaAccountModels(ctx context.Context, account
 	return projectMetaModels(models, account.GetModelMapping()), nil
 }
 
+func extractMetaUpstreamModelIDs(body []byte) ([]string, error) {
+	models, err := meta.ParseModelList(body)
+	if err != nil {
+		return nil, err
+	}
+	ids := make([]string, 0, len(models))
+	for _, model := range models {
+		ids = append(ids, model.ID)
+	}
+	return ids, nil
+}
+
 func projectMetaModels(models []meta.Model, mapping map[string]string) []meta.Model {
 	if len(mapping) == 0 {
 		return models
