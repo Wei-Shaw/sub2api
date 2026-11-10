@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
@@ -13,12 +14,15 @@ const MaxBulkSubscriptionActions = 100
 
 // BulkSubscriptionActionInput applies one operation to a bounded set of subscriptions.
 type BulkSubscriptionActionInput struct {
-	SubscriptionIDs []int64 `json:"subscription_ids"`
-	Action          string  `json:"action"`
-	Days            int     `json:"days,omitempty"`
-	Daily           bool    `json:"daily,omitempty"`
-	Weekly          bool    `json:"weekly,omitempty"`
-	Monthly         bool    `json:"monthly,omitempty"`
+	SubscriptionIDs    []int64    `json:"subscription_ids"`
+	Action             string     `json:"action"`
+	Days               int        `json:"days,omitempty"`
+	Daily              bool       `json:"daily,omitempty"`
+	Weekly             bool       `json:"weekly,omitempty"`
+	Monthly            bool       `json:"monthly,omitempty"`
+	DailyWindowStart   *time.Time `json:"daily_window_start,omitempty"`
+	WeeklyWindowStart  *time.Time `json:"weekly_window_start,omitempty"`
+	MonthlyWindowStart *time.Time `json:"monthly_window_start,omitempty"`
 }
 
 // Validate checks the entire request before any subscription is changed.
@@ -43,9 +47,13 @@ func (input *BulkSubscriptionActionInput) Validate() error {
 		if !input.Daily && !input.Weekly && !input.Monthly {
 			return ErrInvalidInput
 		}
+	case "set_quota_windows":
+		if input.DailyWindowStart == nil && input.WeeklyWindowStart == nil && input.MonthlyWindowStart == nil {
+			return ErrInvalidQuotaWindows
+		}
 	case "revoke", "restore":
 	default:
-		return infraerrors.BadRequest("INVALID_SUBSCRIPTION_ACTION", "action must be extend, reset_quota, revoke, or restore")
+		return infraerrors.BadRequest("INVALID_SUBSCRIPTION_ACTION", "action must be extend, reset_quota, set_quota_windows, revoke, or restore")
 	}
 	return nil
 }
@@ -91,6 +99,12 @@ func (s *SubscriptionService) BulkSubscriptionAction(ctx context.Context, input 
 					changed, mutationErr = s.ExtendSubscription(txCtx, id, input.Days)
 				case "reset_quota":
 					changed, mutationErr = s.AdminResetQuota(txCtx, id, input.Daily, input.Weekly, input.Monthly)
+				case "set_quota_windows":
+					changed, mutationErr = s.AdminSetQuotaWindows(txCtx, id, &SetQuotaWindowsInput{
+						DailyWindowStart:   input.DailyWindowStart,
+						WeeklyWindowStart:  input.WeeklyWindowStart,
+						MonthlyWindowStart: input.MonthlyWindowStart,
+					})
 				case "revoke":
 					changed, mutationErr = s.userSubRepo.GetByID(txCtx, id)
 					if mutationErr == nil {

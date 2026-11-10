@@ -164,6 +164,9 @@ func (userSubRepoNoop) ActivateWindows(context.Context, int64, time.Time, time.T
 func (userSubRepoNoop) ResetUsageWindows(context.Context, int64, bool, bool, bool, time.Time, time.Time) error {
 	panic("unexpected ResetUsageWindows call")
 }
+func (userSubRepoNoop) SetQuotaWindows(context.Context, int64, *time.Time, *time.Time, *time.Time) error {
+	panic("unexpected SetQuotaWindows call")
+}
 func (userSubRepoNoop) ResetDailyUsage(context.Context, int64, *time.Time, time.Time) error {
 	panic("unexpected ResetDailyUsage call")
 }

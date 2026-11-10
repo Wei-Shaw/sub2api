@@ -428,6 +428,14 @@
               </button>
               <button
                 v-if="row.status === 'active'"
+                @click="handleSetQuotaWindows(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-teal-50 hover:text-teal-600 dark:hover:bg-teal-900/20 dark:hover:text-teal-400"
+              >
+                <Icon name="clock" size="sm" />
+                <span class="text-xs">{{ t('admin.subscriptions.setQuotaWindows') }}</span>
+              </button>
+              <button
+                v-if="row.status === 'active'"
                 @click="handleResetQuota(row)"
                 :disabled="resettingQuota && resettingSubscription?.id === row.id"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-orange-50 hover:text-orange-600 dark:hover:bg-orange-900/20 dark:hover:text-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
@@ -757,6 +765,36 @@
       @confirm="confirmResetQuota"
       @cancel="showResetQuotaConfirm = false"
     />
+
+    <BaseDialog
+      :show="showSetQuotaWindows"
+      :title="t('admin.subscriptions.setQuotaWindowsTitle')"
+      @close="showSetQuotaWindows = false"
+    >
+      <div class="space-y-3">
+        <p class="text-sm text-gray-600 dark:text-gray-400">{{ t('admin.subscriptions.setQuotaWindowsHint') }}</p>
+        <label class="input-label" for="subscription-weekly-window">{{ t('admin.subscriptions.weeklyWindowStart') }}</label>
+        <input id="subscription-weekly-window" v-model="quotaWindowForm.weekly" type="datetime-local" class="input" />
+        <label class="input-label" for="subscription-monthly-window">{{ t('admin.subscriptions.monthlyWindowStart') }}</label>
+        <input id="subscription-monthly-window" v-model="quotaWindowForm.monthly" type="datetime-local" class="input" />
+        <button
+          v-if="groupPeerWindowLabel"
+          type="button"
+          class="btn btn-secondary btn-sm"
+          @click="applyGroupPeerWindow"
+        >
+          {{ t('admin.subscriptions.alignToGroupPeer', { time: groupPeerWindowLabel }) }}
+        </button>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-3">
+          <button type="button" class="btn btn-secondary" @click="showSetQuotaWindows = false">{{ t('common.cancel') }}</button>
+          <button type="button" class="btn btn-primary" :disabled="settingQuotaWindows" @click="confirmSetQuotaWindows">
+            {{ t('common.confirm') }}
+          </button>
+        </div>
+      </template>
+    </BaseDialog>
     <!-- Subscription Guide Modal -->
     <teleport to="body">
       <transition name="modal">
@@ -851,6 +889,7 @@ import { useTableSelection } from '@/composables/useTableSelection'
 import BulkSubscriptionActionDialog from '@/components/admin/subscription/BulkSubscriptionActionDialog.vue'
 import type { Column } from '@/components/common/types'
 import { formatDateTimeToMinute } from '@/utils/format'
+import { dateTimeLocalInputToISO, formatDateTimeLocalInputFromISO } from '@/utils/datetimeLocal'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import TablePageLayout from '@/components/layout/TablePageLayout.vue'
@@ -1014,13 +1053,14 @@ let abortController: AbortController | null = null
 
 const { selectedIds, selectedCount, setSelectedIds, clear: clearSelection, removeMany: removeSelectedIds } =
   useTableSelection<UserSubscription>({ rows: subscriptions, getId: (subscription) => subscription.id })
-const bulkActions: SubscriptionBulkAction[] = ['extend', 'reset_quota', 'revoke', 'restore']
+const bulkActions: SubscriptionBulkAction[] = ['extend', 'set_quota_windows', 'reset_quota', 'revoke', 'restore']
 const bulkAction = ref<SubscriptionBulkAction | null>(null)
 const bulkSubscriptions = ref<UserSubscription[]>([])
 const bulkTargets = computed(() => {
   const selected = subscriptions.value.filter((subscription) => selectedIds.value.includes(subscription.id))
   return {
     extend: selected.filter((subscription) => ['active', 'expired'].includes(subscription.status)),
+    set_quota_windows: selected.filter((subscription) => subscription.status === 'active'),
     reset_quota: selected.filter((subscription) => subscription.status === 'active'),
     revoke: selected.filter((subscription) => subscription.status === 'active'),
     restore: selected.filter((subscription) => subscription.status === 'revoked')
@@ -1086,9 +1126,13 @@ const showExtendModal = ref(false)
 const showRevokeDialog = ref(false)
 const showRestoreDialog = ref(false)
 const showResetQuotaConfirm = ref(false)
+const showSetQuotaWindows = ref(false)
 const submitting = ref(false)
 const resettingSubscription = ref<UserSubscription | null>(null)
 const resettingQuota = ref(false)
+const settingQuotaWindows = ref(false)
+const quotaWindowTarget = ref<UserSubscription | null>(null)
+const quotaWindowForm = reactive({ weekly: '', monthly: '' })
 const extendingSubscription = ref<UserSubscription | null>(null)
 const revokingSubscription = ref<UserSubscription | null>(null)
 const restoringSubscription = ref<UserSubscription | null>(null)
@@ -1472,6 +1516,59 @@ const confirmRestore = async () => {
 const handleResetQuota = (subscription: UserSubscription) => {
   resettingSubscription.value = subscription
   showResetQuotaConfirm.value = true
+}
+
+const groupPeerWindow = computed(() => {
+  const target = quotaWindowTarget.value
+  if (!target) return null
+  return subscriptions.value.find((subscription) =>
+    subscription.id !== target.id &&
+    subscription.group_id === target.group_id &&
+    subscription.status === 'active' &&
+    !!subscription.weekly_window_start
+  ) ?? null
+})
+const groupPeerWindowLabel = computed(() => {
+  const peer = groupPeerWindow.value?.weekly_window_start
+  return peer ? formatDateTimeToMinute(peer) : ''
+})
+const applyGroupPeerWindow = () => {
+  const peer = groupPeerWindow.value
+  if (!peer) return
+  quotaWindowForm.weekly = formatDateTimeLocalInputFromISO(peer.weekly_window_start)
+  quotaWindowForm.monthly = formatDateTimeLocalInputFromISO(peer.monthly_window_start || peer.weekly_window_start)
+}
+
+const handleSetQuotaWindows = (subscription: UserSubscription) => {
+  quotaWindowTarget.value = subscription
+  quotaWindowForm.weekly = formatDateTimeLocalInputFromISO(subscription.weekly_window_start)
+  quotaWindowForm.monthly = formatDateTimeLocalInputFromISO(subscription.monthly_window_start)
+  showSetQuotaWindows.value = true
+}
+
+const confirmSetQuotaWindows = async () => {
+  if (!quotaWindowTarget.value || settingQuotaWindows.value) return
+  const weekly = dateTimeLocalInputToISO(quotaWindowForm.weekly)
+  const monthly = dateTimeLocalInputToISO(quotaWindowForm.monthly)
+  if (!weekly && !monthly) {
+    appStore.showError(t('admin.subscriptions.pleaseSetWindowStart'))
+    return
+  }
+  settingQuotaWindows.value = true
+  try {
+    await adminAPI.subscriptions.setQuotaWindows(quotaWindowTarget.value.id, {
+      weekly_window_start: weekly,
+      monthly_window_start: monthly
+    })
+    appStore.showSuccess(t('admin.subscriptions.quotaWindowsUpdated'))
+    showSetQuotaWindows.value = false
+    quotaWindowTarget.value = null
+    await loadSubscriptions()
+  } catch (error: any) {
+    appStore.showError(error.response?.data?.detail || t('admin.subscriptions.failedToSetQuotaWindows'))
+  } finally {
+    settingQuotaWindows.value = false
+  }
 }
 
 const confirmResetQuota = async () => {
