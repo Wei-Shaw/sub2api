@@ -16,3 +16,11 @@
 - [x] 3.2 相关测试在 race detector 下通过。
 - [x] 3.3 `openspec validate add-codex-appserver-provider --strict` 与 `git diff --check` 通过。
 - [x] 3.4 记录未执行真实 Codex/OpenAI live smoke 的边界。
+
+## 4. Official app-server black-box E2E
+
+- [x] 4.1 增加 build-tag 黑盒测试，真实启动固定版本官方 `codex app-server` 并连接 loopback fake Responses API。
+- [x] 4.2 增加固定基础镜像、非 root 运行的测试 Dockerfile。
+- [x] 4.3 增加 `--network none`、只读 rootfs、drop capabilities 的一键脚本。
+- [x] 4.4 实际执行黑盒测试，验证真实请求的 fake Bearer、model、stream、input，以及 app-server delta/completed。
+- [x] 4.5 验证临时 `CODEX_HOME` 不含 `auth.json`，记录没有真实账号、OpenAI 网络或额度消耗。

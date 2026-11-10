@@ -45,3 +45,20 @@ worker 生命周期 MUST 独立于单次调用 context。收到 context cancella
 
 - **WHEN** 在无 Codex 登录和无网络依赖的环境运行相关测试
 - **THEN** 成功、RPC 错误和取消场景 MUST 可重复完成
+
+### Requirement: 官方 app-server 黑盒测试不得访问真实账号或公网
+
+系统 SHALL 提供可选黑盒测试，运行固定版本官方 Codex app-server，并将 custom Responses provider 指向测试容器 loopback fake upstream。测试运行阶段 MUST 断开容器网络、使用空临时 `CODEX_HOME` 与假 token，MUST NOT 挂载宿主凭据目录。
+
+#### Scenario: 官方 binary 连接 fake Responses upstream
+
+- **WHEN** 黑盒测试通过 `Provider.RunTurn` 启动真实 app-server turn
+- **THEN** fake upstream MUST 收到 POST `/v1/responses`、假 Bearer token、目标 model、`stream:true` 与非空 input
+- **THEN** provider MUST 收到由真实 app-server 转换出的文本 delta 与 completed 状态
+
+#### Scenario: 运行时网络和凭据隔离
+
+- **WHEN** 执行黑盒测试容器
+- **THEN** 容器 MUST 使用 `--network none`、只读 rootfs、非 root 用户和临时写目录
+- **THEN** 临时 `CODEX_HOME` MUST 不含 `auth.json`
+- **THEN** 测试 MUST NOT 需要或读取宿主 Codex/OpenAI 登录态

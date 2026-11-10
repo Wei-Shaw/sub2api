@@ -13,7 +13,7 @@
 
 ## Acceptance Boundary
 
-本变更只验证 sub2api 内部 provider 与 fake app-server 子进程之间的 hermetic 链路。它不访问真实 Codex binary、ChatGPT/OpenAI 账号或模型服务，不证明 OAuth、模型权限、配额、真实 streaming 或服务端协议兼容。
+本变更验证两层：快速层覆盖 sub2api provider 与 fake app-server 子进程；可选黑盒层覆盖 provider、固定版本官方 Codex binary、真实 app-server JSON-RPC 和容器 loopback fake Responses API。两层都不访问 ChatGPT/OpenAI 账号或模型服务，不证明 OAuth、模型权限、配额、OpenAI 边缘层、模型语义或服务端风控。黑盒入口仍是 `codexapp.Provider`，尚未覆盖生产 `/v1/responses` handler、账号路由与计费。
 
 ## GREEN Evidence
 
@@ -24,6 +24,15 @@
 - `golangci-lint v2.14.0 run ./internal/codexapp --timeout=5m`：`0 issues`。v2.14.0 来自当前 `.github/workflows/backend-ci.yml`；旧 `DEV_GUIDE.md` 所写 v2.13.0 无法读取 Go 1.27.3 export data，不作为代码失败。
 - `go test -tags=unit ./... -timeout=10m`：完整后端 unit 通过，含 `internal/service`（约 249 秒）。
 - `openspec validate add-codex-appserver-provider --strict`：通过。
+
+## Official binary black-box evidence
+
+- `backend/scripts/test-codex-appserver-blackbox.sh`
+- 构建：固定 `golang:1.27.3-bookworm`、`node:22-bookworm-slim` digest 与 `@openai/codex@0.166.0`。
+- 运行约束：`--network none`、`--read-only`、`--cap-drop ALL`、`no-new-privileges`、非 root、无宿主 volume。
+- 结果：`TestRealAppServerAgainstFakeResponses` 通过，耗时 9.40 秒，退出码 0。
+- 观察：官方 app-server 向 loopback `/v1/responses` 发出 POST；携带 `Bearer fake-codex-e2e-token`；body 中 model 为 `gpt-6-sol`、`stream:true`、input 非空；provider 收到 hello delta 与 completed；临时 `CODEX_HOME` 中不存在 `auth.json`。
+- 未发生：没有读取宿主 `~/.codex`/钥匙串/token，没有访问 OpenAI/ChatGPT 域名，没有真实账号请求或额度消耗。
 
 ## Debugging Evidence
 

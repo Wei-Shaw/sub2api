@@ -36,9 +36,17 @@ worker 由 provider 生命周期管理，不绑定单次 HTTP context。turn con
 
 测试复用 Go test binary 作为 helper process，按场景读写 JSONL。它验证 OS pipe、framing、响应路由与通知顺序，而不是只替换 Go interface。
 
+### D5：官方 binary 黑盒测试在断网容器运行
+
+可选 build-tag 测试使用固定版本官方 `@openai/codex`，通过 custom model provider 把 `base_url` 指向同一容器内的 `httptest.Server`。Docker 构建阶段允许下载固定镜像和 npm 包；测试运行阶段 MUST 使用 `--network none`、只读根文件系统、drop all capabilities、非 root 用户和临时文件系统。容器不挂载宿主目录或凭据。
+
+黑盒测试从 `Provider.RunTurn` 进入，真实经过官方 app-server stdio JSON-RPC，再由官方 binary 发出 HTTP Responses 请求。fake upstream MUST 观察到假 Bearer token、目标模型、`stream:true` 与非空 input，并返回官方测试同形的 SSE 事件。测试完成后 MUST 验证临时 `CODEX_HOME` 未生成 `auth.json`。
+
 ## Risks / Trade-offs
 
 - [app-server 协议可能漂移] → 类型只覆盖稳定最小面；错误包含 method 与 RPC code；后续用真实 app-server + fake Responses upstream 做协议差分。
 - [Scanner 默认 token 限制] → client 显式设置有界最大消息大小，超限快速失败。
 - [stderr 阻塞子进程] → 始终并发 drain stderr，默认丢弃，允许调用方注入 writer。
 - [mock 通过被误解为真实上游通过] → OpenSpec 与测试命名明确标注 hermetic/fake 边界。
+- [容器构建时需要公网下载依赖] → build 与 run 分离；只有 build 联网，最终 test run 强制 `--network none`，且镜像/官方 Codex 版本固定。
+- [官方 app-server 测试被误解为完整 sub2api HTTP E2E] → 明确入口是 `codexapp.Provider`，尚未覆盖生产 `/v1/responses` handler、账号路由和计费。
