@@ -36,14 +36,23 @@ func TestProviderRunTurnStreamsAndCompletes(t *testing.T) {
 	if result.ThreadID != "thr-e2e" || result.TurnID != "turn-e2e" || result.Status != "completed" {
 		t.Fatalf("RunTurn() result = %#v", result)
 	}
-	if len(events) != 2 {
-		t.Fatalf("events count = %d, want 2: %#v", len(events), events)
+	if result.Usage != (TokenUsage{InputTokens: 4, CachedInputTokens: 1, OutputTokens: 2, ReasoningOutputTokens: 1, TotalTokens: 6}) {
+		t.Fatalf("RunTurn() usage = %#v", result.Usage)
+	}
+	if len(events) != 4 {
+		t.Fatalf("events count = %d, want 4: %#v", len(events), events)
 	}
 	if events[0].Type != EventAgentMessageDelta || events[0].Delta != "hello" {
 		t.Fatalf("first event = %#v", events[0])
 	}
-	if events[1].Type != EventTurnCompleted || events[1].Status != "completed" {
+	if events[1].Type != EventThreadTokenUsage || events[1].Usage.TotalTokens != 3 {
 		t.Fatalf("second event = %#v", events[1])
+	}
+	if events[2].Type != EventThreadTokenUsage || events[2].Usage.TotalTokens != 3 {
+		t.Fatalf("third event = %#v", events[2])
+	}
+	if events[3].Type != EventTurnCompleted || events[3].Status != "completed" {
+		t.Fatalf("fourth event = %#v", events[3])
 	}
 }
 
@@ -217,7 +226,7 @@ func TestDecodeTurnEventIgnoresUnrelatedNotifications(t *testing.T) {
 func TestDecodeTurnEventRejectsMalformedPayloads(t *testing.T) {
 	t.Parallel()
 
-	for _, method := range []string{EventAgentMessageDelta, EventTurnCompleted} {
+	for _, method := range []string{EventAgentMessageDelta, EventThreadTokenUsage, EventTurnCompleted} {
 		_, _, err := decodeTurnEvent(rpcNotification{Method: method, Params: json.RawMessage(`{`)}, "thr", "turn")
 		if err == nil || !contains(err.Error(), "decode "+method+" notification") {
 			t.Fatalf("decodeTurnEvent(%s) error = %v", method, err)
@@ -386,6 +395,32 @@ func TestCodexAppServerHelperProcess(t *testing.T) {
 			_ = encoder.Encode(map[string]any{
 				"method": "item/agentMessage/delta",
 				"params": map[string]any{"threadId": params.ThreadID, "turnId": "turn-e2e", "delta": "hello"},
+			})
+			_ = encoder.Encode(map[string]any{
+				"method": "thread/tokenUsage/updated",
+				"params": map[string]any{
+					"threadId": params.ThreadID,
+					"turnId":   "turn-e2e",
+					"tokenUsage": map[string]any{
+						"last": map[string]any{
+							"inputTokens": 2, "cachedInputTokens": 0, "outputTokens": 1,
+							"reasoningOutputTokens": 0, "totalTokens": 3,
+						},
+					},
+				},
+			})
+			_ = encoder.Encode(map[string]any{
+				"method": "thread/tokenUsage/updated",
+				"params": map[string]any{
+					"threadId": params.ThreadID,
+					"turnId":   "turn-e2e",
+					"tokenUsage": map[string]any{
+						"last": map[string]any{
+							"inputTokens": 2, "cachedInputTokens": 1, "outputTokens": 1,
+							"reasoningOutputTokens": 1, "totalTokens": 3,
+						},
+					},
+				},
 			})
 			_ = encoder.Encode(map[string]any{
 				"method": "turn/completed",

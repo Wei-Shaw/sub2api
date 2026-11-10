@@ -24,3 +24,11 @@
 - [x] 4.3 增加 `--network none`、只读 rootfs、drop capabilities 的一键脚本。
 - [x] 4.4 实际执行黑盒测试，验证真实请求的 fake Bearer、model、stream、input，以及 app-server delta/completed。
 - [x] 4.5 验证临时 `CODEX_HOME` 不含 `auth.json`，记录没有真实账号、OpenAI 网络或额度消耗。
+
+## 5. User HTTP E2E and warm worker pool
+
+- [x] 5.1 实现按账号隔离、容量有界、idle 回收的常驻 worker pool。
+- [x] 5.2 实现 session key → thread ID 粘性，并覆盖同会话复用和 pool busy/exhausted。
+- [x] 5.3 解析 `thread/tokenUsage/updated.last` 并映射到既有 usage 结果。
+- [x] 5.4 为显式 app-server 账号增加 Responses JSON/SSE service adapter，其他账号路径不变。
+- [x] 5.5 增加真实 HTTP → handler → 账号选择 → pool → 官方 app-server → fake upstream 黑盒 E2E，连续两次请求验证单进程和 thread 复用。

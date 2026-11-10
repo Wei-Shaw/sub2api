@@ -27,6 +27,15 @@
 - **WHEN** app-server 对 `turn/start` 返回 JSON-RPC error
 - **THEN** provider MUST 返回包含 method、code 和 message 的错误，不得伪造 completed
 
+### Requirement: Provider 以本轮 token usage 接入计费结果
+
+系统 SHALL 读取匹配 thread/turn 的 `thread/tokenUsage/updated`，并累加各 notification 的 `tokenUsage.last` 作为本轮输入、缓存输入、输出、推理输出和总 token；MUST NOT 把累计 `tokenUsage.total` 重复计费。
+
+#### Scenario: 本轮 usage 到达 completed 之前
+
+- **WHEN** app-server 发送匹配 turn 的 token usage notification 后发送 `turn/completed`
+- **THEN** `TurnResult.Usage` MUST 等于 notification 的 `last` usage
+
 ### Requirement: 调用取消通过 turn/interrupt 传播
 
 worker 生命周期 MUST 独立于单次调用 context。收到 context cancellation 后，provider SHALL 在短超时内调用 `turn/interrupt`，并向调用方返回原 context 错误。
@@ -62,3 +71,29 @@ worker 生命周期 MUST 独立于单次调用 context。收到 context cancella
 - **THEN** 容器 MUST 使用 `--network none`、只读 rootfs、非 root 用户和临时写目录
 - **THEN** 临时 `CODEX_HOME` MUST 不含 `auth.json`
 - **THEN** 测试 MUST NOT 需要或读取宿主 Codex/OpenAI 登录态
+
+### Requirement: worker pool 按账号常驻复用并按会话粘住 thread
+
+系统 SHALL 以账号 key 隔离 app-server worker，并在 idle TTL 内复用已初始化进程。提供 session key 时 SHALL 将成功 turn 的 thread ID 用于同 session 后续请求；没有 session key 的请求 SHALL 使用 ephemeral thread。pool MUST 有最大 worker 数量，所有容量都忙时 MUST 快速返回 exhausted。
+
+#### Scenario: 同账号同会话连续两次请求
+
+- **WHEN** 两次 turn 使用相同 worker key 和 session key
+- **THEN** factory MUST 只创建一个 worker
+- **THEN** 第二次 turn MUST 携带第一次结果的 thread ID
+
+#### Scenario: pool 已满且 worker 忙
+
+- **WHEN** 新账号请求到达且 pool 所有容量均被活动 turn 占用
+- **THEN** 请求 MUST 收到 pool exhausted 错误，不得无界启动新进程
+
+### Requirement: 显式账号可走用户 HTTP app-server 路径
+
+系统 SHALL 仅对 `openai_execution_backend=codex_app_server` 的账号启用 app-server service adapter；其他账号 MUST 保持现有 direct forwarding。适配器 SHALL 接受 Responses 文本输入，输出非流式 Responses JSON 或流式 Responses SSE，并把本轮 usage 交给现有 `OpenAIForwardResult`。
+
+#### Scenario: 用户经 Responses handler 连续请求
+
+- **WHEN** 用户携带有效测试 API key 向 `/openai/v1/responses` 连续发送同会话请求
+- **THEN** 请求 MUST 经账号选择和常驻 pool 到达真实官方 app-server
+- **THEN** 用户 MUST 收到 `completed` Responses 输出和 fake upstream 返回的文本
+- **THEN** 两次请求 MUST 只创建一个 app-server 进程并续接同一 thread

@@ -1,9 +1,11 @@
 FROM golang:1.27.3-bookworm@sha256:dc0963f32053e4bc451d24d87e3892d42d01021b61f093e98eb95c0352bb84b0 AS test-build
 
 WORKDIR /src
-COPY go.mod ./
-COPY internal/codexapp ./internal/codexapp
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
 RUN go test -c -tags=codexapp_real_e2e -o /out/codexapp-real-e2e.test ./internal/codexapp
+RUN go test -c -tags=codexapp_real_e2e -o /out/codexapp-handler-e2e.test ./internal/handler
 
 FROM node:22-bookworm-slim@sha256:5ec23b7c622b00547753bc6ffd78085dd868a68aeb41c8e0a1418f033e13d96d
 
@@ -14,10 +16,11 @@ RUN npm install --global "@openai/codex@${CODEX_VERSION}" \
     && chown codex-e2e:codex-e2e /workspace
 
 COPY --from=test-build /out/codexapp-real-e2e.test /usr/local/bin/codexapp-real-e2e.test
+COPY --from=test-build /out/codexapp-handler-e2e.test /usr/local/bin/codexapp-handler-e2e.test
 
 USER codex-e2e
 WORKDIR /workspace
 ENV CODEX_REAL_E2E_BIN=/usr/local/bin/codex
 
-ENTRYPOINT ["/usr/local/bin/codexapp-real-e2e.test", "-test.v", "-test.run", "^TestRealAppServerAgainstFakeResponses$"]
+ENTRYPOINT ["/bin/sh", "-c", "/usr/local/bin/codexapp-real-e2e.test -test.v -test.run '^TestRealAppServerAgainstFakeResponses$' && /usr/local/bin/codexapp-handler-e2e.test -test.v -test.run '^TestOpenAIResponsesViaRealAppServerUserE2E$'"]
 

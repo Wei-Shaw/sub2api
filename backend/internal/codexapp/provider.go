@@ -33,6 +33,20 @@ func (p *Provider) Close(ctx context.Context) error {
 	return p.proc.close(ctx)
 }
 
+// Healthy reports whether the child process is still available for another
+// turn. Pool users discard a worker after the app-server process exits.
+func (p *Provider) Healthy() bool {
+	if p == nil || p.proc == nil || p.proc.rpc == nil {
+		return false
+	}
+	select {
+	case <-p.proc.rpc.Done():
+		return false
+	default:
+		return true
+	}
+}
+
 func (p *Provider) RunTurn(ctx context.Context, request TurnRequest, sink EventSink) (TurnResult, error) {
 	if p == nil || p.proc == nil {
 		return TurnResult{}, errors.New("codex app-server provider is not started")
@@ -83,6 +97,7 @@ func (p *Provider) RunTurn(ctx context.Context, request TurnRequest, sink EventS
 		return TurnResult{}, errors.New("codex app-server turn/start returned an empty turn id")
 	}
 
+	var usage TokenUsage
 	for {
 		select {
 		case notification, ok := <-p.proc.rpc.Notifications():
@@ -102,8 +117,11 @@ func (p *Provider) RunTurn(ctx context.Context, request TurnRequest, sink EventS
 					return TurnResult{}, fmt.Errorf("emit codex app-server event: %w", err)
 				}
 			}
+			if event.Type == EventThreadTokenUsage {
+				usage = usage.add(event.Usage)
+			}
 			if event.Type == EventTurnCompleted {
-				return TurnResult{ThreadID: threadID, TurnID: turnID, Status: event.Status}, nil
+				return TurnResult{ThreadID: threadID, TurnID: turnID, Status: event.Status, Usage: usage}, nil
 			}
 		case <-ctx.Done():
 			p.interrupt(threadID, turnID)
@@ -138,6 +156,36 @@ func decodeTurnEvent(notification rpcNotification, threadID, turnID string) (Eve
 			return Event{}, false, nil
 		}
 		return Event{Type: notification.Method, ThreadID: params.ThreadID, TurnID: params.TurnID, Delta: params.Delta}, true, nil
+	case EventThreadTokenUsage:
+		var params struct {
+			ThreadID   string `json:"threadId"`
+			TurnID     string `json:"turnId"`
+			TokenUsage struct {
+				Last struct {
+					InputTokens           int `json:"inputTokens"`
+					CachedInputTokens     int `json:"cachedInputTokens"`
+					OutputTokens          int `json:"outputTokens"`
+					ReasoningOutputTokens int `json:"reasoningOutputTokens"`
+					TotalTokens           int `json:"totalTokens"`
+				} `json:"last"`
+			} `json:"tokenUsage"`
+		}
+		if err := json.Unmarshal(notification.Params, &params); err != nil {
+			return Event{}, false, fmt.Errorf("decode %s notification: %w", notification.Method, err)
+		}
+		if params.ThreadID != threadID || params.TurnID != turnID {
+			return Event{}, false, nil
+		}
+		return Event{
+			Type: notification.Method, ThreadID: params.ThreadID, TurnID: params.TurnID,
+			Usage: TokenUsage{
+				InputTokens:           params.TokenUsage.Last.InputTokens,
+				CachedInputTokens:     params.TokenUsage.Last.CachedInputTokens,
+				OutputTokens:          params.TokenUsage.Last.OutputTokens,
+				ReasoningOutputTokens: params.TokenUsage.Last.ReasoningOutputTokens,
+				TotalTokens:           params.TokenUsage.Last.TotalTokens,
+			},
+		}, true, nil
 	case EventTurnCompleted:
 		var params struct {
 			ThreadID string `json:"threadId"`

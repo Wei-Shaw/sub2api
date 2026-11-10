@@ -9,6 +9,7 @@ import (
 
 const (
 	EventAgentMessageDelta = "item/agentMessage/delta"
+	EventThreadTokenUsage  = "thread/tokenUsage/updated"
 	EventTurnCompleted     = "turn/completed"
 )
 
@@ -52,12 +53,33 @@ type Event struct {
 	TurnID   string
 	Delta    string
 	Status   string
+	Usage    TokenUsage
 }
 
 type TurnResult struct {
 	ThreadID string
 	TurnID   string
 	Status   string
+	Usage    TokenUsage
+}
+
+// TokenUsage is one or more last-turn token increments reported by app-server.
+// It is not the cumulative thread total.
+type TokenUsage struct {
+	InputTokens           int
+	CachedInputTokens     int
+	OutputTokens          int
+	ReasoningOutputTokens int
+	TotalTokens           int
+}
+
+func (u TokenUsage) add(delta TokenUsage) TokenUsage {
+	u.InputTokens += delta.InputTokens
+	u.CachedInputTokens += delta.CachedInputTokens
+	u.OutputTokens += delta.OutputTokens
+	u.ReasoningOutputTokens += delta.ReasoningOutputTokens
+	u.TotalTokens += delta.TotalTokens
+	return u
 }
 
 type EventSink func(Event) error
