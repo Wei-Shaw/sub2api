@@ -9,6 +9,7 @@ import (
 
 	metapkg "github.com/Wei-Shaw/sub2api/internal/pkg/meta"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestMetaSubscriptionUsageExtraUpdates(t *testing.T) {
@@ -80,4 +81,21 @@ func TestMetaUsageEmptyBeforeFirstSample(t *testing.T) {
 	require.Zero(t, usage.FiveHour.Utilization)
 	require.Nil(t, usage.SevenDay)
 	require.Empty(t, usage.SubscriptionTierRaw)
+}
+
+func TestStripMetaSubscriptionUsage(t *testing.T) {
+	body := []byte(`{"type":"response.completed","subscription":{"tier":"muse-pro","window":{"resets_at":1792272519,"used_percent":42}},"usage":{"input_tokens":1}}`)
+	stripped, usage := stripMetaSubscriptionUsage(body)
+	require.NotNil(t, usage)
+	require.Equal(t, "muse-pro", usage.Tier)
+	require.False(t, gjson.GetBytes(stripped, "subscription").Exists())
+	require.True(t, gjson.GetBytes(stripped, "usage.input_tokens").Exists())
+
+	untouched, nilUsage := stripMetaSubscriptionUsage([]byte(`{"type":"response.completed"}`))
+	require.Nil(t, nilUsage)
+	require.Equal(t, `{"type":"response.completed"}`, string(untouched))
+
+	keptBody, parsed := stripMetaSubscriptionUsage([]byte(`{"subscription":{"tier":"muse-pro"}}`))
+	require.Nil(t, parsed)
+	require.False(t, gjson.GetBytes(keptBody, "subscription").Exists())
 }

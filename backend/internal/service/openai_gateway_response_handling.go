@@ -1711,6 +1711,14 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		}
 	}
 
+	if account != nil && account.IsMeta() {
+		var metaSnapshot *metapkg.SubscriptionUsage
+		body, metaSnapshot = stripMetaSubscriptionUsage(body)
+		if metaSnapshot != nil {
+			s.sampleMetaSubscriptionUsage(context.WithoutCancel(ctx), account, metaSnapshot)
+		}
+	}
+
 	usageValue, usageOK := extractOpenAIUsageFromJSONBytes(body)
 	if !usageOK {
 		if bodyLooksLikeSSE {

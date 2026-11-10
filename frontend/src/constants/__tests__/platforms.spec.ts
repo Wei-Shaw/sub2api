@@ -33,7 +33,7 @@ const concretePlatforms = [
 ]
 
 describe('platform option catalogs', () => {
-  it('supports upstream model sync for meta like openai', () => {
+  it('keeps meta in the upstream model sync set (regression guard)', () => {
     expect(supportsUpstreamModelSync('meta')).toBe(true)
     expect(supportsUpstreamModelSync('openai')).toBe(true)
     expect(supportsUpstreamModelSync('unregistered')).toBe(false)

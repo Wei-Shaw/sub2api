@@ -64,6 +64,9 @@ follows whatever the account's key can actually serve:
 - The normal "sync upstream models" action (account form, and the preview used
   before creation) reads the same endpoint.
 - Only `muse-*` IDs are kept; the same key can expose unrelated surfaces.
+- The picker is not cached: opening "Test account" costs one upstream round-trip
+  for that account (and mints a key first when only the DCA token is stored).
+  The static fallback covers a slow or failing upstream.
 
 The static fallback (mirrors the captured Muse client release) is used when the
 upstream call fails:
@@ -96,7 +99,10 @@ Meta returns resets_at (epoch seconds) on throttling:
   subscription windows in a `response.subscription_usage` event during streamed
   turns, and the gateway samples that into the account's 5h/weekly usage cells.
   A fresh account shows no usage until its first streamed turn completes. The
-  event is stripped before it could reach downstream clients.
+  event is stripped before it could reach downstream clients, and a
+  `subscription` object on a non-stream response is stripped the same way.
+  The sampled keys (`meta_usage_*`) are scheduler-neutral, so recording usage
+  never touches the scheduler outbox.
 - The device flow session store is in-process with a TTL equal to the device code
   lifetime; a restart during login simply requires starting the login again.
 - That store holds at most 4096 pending logins. When a new login pushes past the cap,

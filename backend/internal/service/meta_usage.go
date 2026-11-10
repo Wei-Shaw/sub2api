@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/meta"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 const (
@@ -30,6 +32,21 @@ func (s *OpenAIGatewayService) sampleMetaSubscriptionUsage(ctx context.Context, 
 	if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
 		slog.Warn("meta_usage_sample_failed", "account_id", account.ID, "error", err)
 	}
+}
+
+func stripMetaSubscriptionUsage(body []byte) ([]byte, *meta.SubscriptionUsage) {
+	if len(body) == 0 || !gjson.GetBytes(body, "subscription").IsObject() {
+		return body, nil
+	}
+	usage, ok := meta.ParseSubscriptionUsage(body)
+	if !ok {
+		usage = nil
+	}
+	stripped, err := sjson.DeleteBytes(body, "subscription")
+	if err != nil {
+		return body, usage
+	}
+	return stripped, usage
 }
 
 func metaSubscriptionUsageExtraUpdates(usage *meta.SubscriptionUsage, now time.Time) map[string]any {
