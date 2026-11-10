@@ -73,10 +73,31 @@ upstream call fails:
 
 muse-spark-1.3, muse-spark-1.3-contributor, muse-spark-1.2, muse-spark-1.2-contributor,
 muse-spark-1.1, muse-wonder-1.0, muse-wonder-1.0-contributor, muse-wonder-full-1.0,
-muse-wonder-full-1.0-contributor, muse-ember-1.0.
+muse-wonder-full-1.0-contributor, muse-ember-1.0, muse-image-1.0.
 
-The upstream list also returns non-chat ids (`muse-image-*`, `muse-voice-*`, `sam-*`);
-discovery drops them so they never land in a chat whitelist.
+The upstream list also returns `muse-voice-transcribe-1.0` and `sam-3.1`. Discovery
+drops them because no gateway endpoint serves them: Meta answers `model_not_found` for
+the voice model on `/responses` and `/chat/completions` and exposes no audio route
+(`/audio/transcriptions` and similar return 404), and `sam-3.1` on `/responses` only
+answered `429 Service temporarily unavailable` when probed (2026-11-10).
+
+## Image generation
+
+`muse-image-1.0` is served on `POST /v1/images/generations` and `POST /v1/images/edits`
+for meta groups, with the OpenAI Images request and response shape:
+
+- Enable "Allow image generation" on the meta group (off by default).
+- The response carries `data[].b64_json` (webp, 1920x1280 by default) or, with
+  `response_format: "url"`, a short-lived `data[].url`, plus `output_format`,
+  `background`, `size` and `usage.input_tokens/output_tokens`.
+- Only `muse-image-*` is sent upstream; another model on these endpoints is rejected
+  before any upstream call.
+- Meta publishes no image price, so the request is billed per image with the group's
+  image prices (the defaults when unset); the upstream token usage is logged too.
+- Quota throttling (`resets_at`) parks the account exactly as for chat.
+
+`muse-image-1.0` also works on `/v1/responses`, where Meta returns an
+`image_generation_call` output item.
 
 `GET /v1/models` with a key of a meta group returns the account model mappings when the
 group's accounts have any, otherwise the static catalog above.

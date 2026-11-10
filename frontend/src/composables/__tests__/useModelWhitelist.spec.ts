@@ -40,6 +40,7 @@ describe('useModelWhitelist', () => {
     const models = getModelsByPlatform('meta')
     expect(models).toContain('muse-spark-1.3')
     expect(models).toContain('muse-ember-1.0')
+    expect(models).toContain('muse-image-1.0')
     expect(models.every((model) => model.startsWith('muse-'))).toBe(true)
   })
 

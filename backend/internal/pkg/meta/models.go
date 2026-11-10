@@ -26,9 +26,12 @@ var defaultModelIDs = []string{
 	"muse-wonder-full-1.0",
 	"muse-wonder-full-1.0-contributor",
 	"muse-ember-1.0",
+	"muse-image-1.0",
 }
 
-var nonChatModelPrefixes = []string{"muse-image-", "muse-voice-"}
+const imageModelPrefix = "muse-image-"
+
+var unsupportedModelPrefixes = []string{"muse-voice-"}
 
 func DefaultModelIDs() []string {
 	return append([]string(nil), defaultModelIDs...)
@@ -107,10 +110,14 @@ func IsMuseModelID(id string) bool {
 	if !strings.HasPrefix(normalized, "muse-") {
 		return false
 	}
-	for _, prefix := range nonChatModelPrefixes {
+	for _, prefix := range unsupportedModelPrefixes {
 		if strings.HasPrefix(normalized, prefix) {
 			return false
 		}
 	}
 	return true
+}
+
+func IsImageModelID(id string) bool {
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(id)), imageModelPrefix)
 }

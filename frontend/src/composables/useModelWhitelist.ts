@@ -197,7 +197,8 @@ const museModels = [
   'muse-wonder-1.0-contributor',
   'muse-wonder-full-1.0',
   'muse-wonder-full-1.0-contributor',
-  'muse-ember-1.0'
+  'muse-ember-1.0',
+  'muse-image-1.0'
 ]
 
 // xAI Grok

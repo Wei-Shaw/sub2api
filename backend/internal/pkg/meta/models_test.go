@@ -19,6 +19,15 @@ func TestDefaultModelsMatchCatalogIDs(t *testing.T) {
 	}
 }
 
+func TestImageModelIsServedAndClassified(t *testing.T) {
+	require.Contains(t, DefaultModelIDs(), "muse-image-1.0")
+	require.True(t, IsMuseModelID("muse-image-1.0"))
+	require.True(t, IsImageModelID("Muse-Image-1.0"))
+	require.False(t, IsImageModelID("muse-spark-1.3"))
+	require.False(t, IsMuseModelID("muse-voice-transcribe-1.0"))
+	require.False(t, IsMuseModelID("sam-3.1"))
+}
+
 func TestParseModelListFiltersAndDeduplicates(t *testing.T) {
 	body := []byte(`{"data":[
 		{"id":"muse-spark-1.3","object":"model","owned_by":"meta","created":123},
@@ -33,11 +42,12 @@ func TestParseModelListFiltersAndDeduplicates(t *testing.T) {
 
 	models, err := ParseModelList(body)
 	require.NoError(t, err)
-	require.Len(t, models, 2)
+	require.Len(t, models, 3)
 	require.Equal(t, "muse-spark-1.3", models[0].ID)
 	require.Equal(t, "meta", models[0].OwnedBy)
 	require.Equal(t, "muse-wonder-1.0", models[1].ID)
 	require.Equal(t, "meta", models[1].OwnedBy)
+	require.Equal(t, "muse-image-1.0", models[2].ID)
 
 	_, err = ParseModelList(nil)
 	require.Error(t, err)

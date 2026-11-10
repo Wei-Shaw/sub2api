@@ -2114,7 +2114,7 @@ func (a *Account) openAIEndpointCapabilitySet() (map[string]bool, bool) {
 }
 
 func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapability) bool {
-	if capability == "" {
+	if capability == "" || a.IsMeta() {
 		return true
 	}
 	if !a.IsOpenAI() {

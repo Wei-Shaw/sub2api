@@ -19,6 +19,11 @@ describe("groups image pricing platform support", () => {
     expect(imagePricingPlatforms.has("grok")).toBe(true);
   });
 
+  it("lets Meta groups enable and price muse-image generation", () => {
+    expect(supportsImagePricingPlatform("meta")).toBe(true);
+    expect(defaultAllowImageGenerationForPlatform("meta")).toBe(false);
+  });
+
   it("enables video pricing controls for Grok only", () => {
     expect(supportsVideoPricingPlatform("grok")).toBe(true);
     expect(supportsVideoPricingPlatform("openai")).toBe(false);

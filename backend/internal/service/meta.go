@@ -1,6 +1,7 @@
 package service
 
 import (
+	"net/http"
 	"net/url"
 	"strings"
 
@@ -19,6 +20,18 @@ var DefaultMetaModelIDs = meta.DefaultModelIDs()
 
 func DefaultMetaProtocolRules() []ProtocolRule {
 	return []ProtocolRule{{Pattern: "*", Protocol: APIProtocolResponses}}
+}
+
+func isMetaImageModel(model string) bool {
+	return meta.IsImageModelID(model)
+}
+
+func applyMetaImagesClientIdentity(account *Account, header http.Header) {
+	if !account.IsMeta() {
+		return
+	}
+	stripOpenAIClientCodexIdentityHeaders(header)
+	meta.ApplyClientIdentity(header, "")
 }
 
 func (a *Account) IsMeta() bool {
