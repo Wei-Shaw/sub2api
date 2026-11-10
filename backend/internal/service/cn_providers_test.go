@@ -321,6 +321,11 @@ func TestMiniMaxQuotaURL(t *testing.T) {
 		minimaxQuotaURL("https://api.minimaxi.com/v1"))
 	require.Equal(t, "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
 		minimaxQuotaURL("https://api.minimax.com/v1"))
+	// 国内站新域名 api.minimax.cn 的 Token Plan 额度端点在 www.minimax.cn，不能回落到 api.minimaxi.com。
+	require.Equal(t, "https://www.minimax.cn/v1/token_plan/remains",
+		minimaxQuotaURL("https://api.minimax.cn/v1"))
+	require.Equal(t, "https://www.minimax.cn/v1/token_plan/remains",
+		minimaxQuotaURL("https://api.minimax.cn/anthropic"))
 	require.Equal(t, "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
 		minimaxQuotaURL("https://custom.example.com"))
 }
@@ -381,6 +386,12 @@ func TestGetCodingPlanProvider_MiniMax(t *testing.T) {
 		"base_url":     "https://api.minimax.io/anthropic",
 	}}
 	require.Equal(t, PlatformMiniMax, intl.GetCodingPlanProvider())
+	// 国内站新域名 api.minimax.cn 的 Coding Plan 账号同样要能查询额度。
+	cn := &Account{Platform: PlatformMiniMax, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"account_mode": AccountModeCoding,
+		"base_url":     "https://api.minimax.cn/v1",
+	}}
+	require.Equal(t, PlatformMiniMax, cn.GetCodingPlanProvider())
 	// 未配 base_url 时走国内站默认域名，仍能识别官方额度端点。
 	require.Equal(t, PlatformMiniMax, (&Account{Platform: PlatformMiniMax, Type: AccountTypeAPIKey, Credentials: map[string]any{
 		"account_mode": AccountModeCoding,
