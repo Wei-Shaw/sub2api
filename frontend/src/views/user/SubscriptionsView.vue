@@ -101,14 +101,14 @@
             </div>
 
             <!-- Daily Usage -->
-            <div v-if="subscription.group?.daily_limit_usd" class="space-y-2">
+            <div v-if="effectiveLimit(subscription, 'daily')" class="space-y-2">
               <div class="flex items-center justify-between">
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
                   {{ t('userSubscriptions.daily') }}
                 </span>
                 <span class="text-sm text-gray-500 dark:text-dark-400">
                   ${{ (subscription.daily_usage_usd || 0).toFixed(2) }} / ${{
-                    subscription.group.daily_limit_usd.toFixed(2)
+                    effectiveLimit(subscription, 'daily')?.toFixed(2)
                   }}
                 </span>
               </div>
@@ -118,13 +118,13 @@
                   :class="
                     getProgressBarClass(
                       subscription.daily_usage_usd,
-                      subscription.group.daily_limit_usd
+                      effectiveLimit(subscription, 'daily')
                     )
                   "
                   :style="{
                     width: getProgressWidth(
                       subscription.daily_usage_usd,
-                      subscription.group.daily_limit_usd
+                      effectiveLimit(subscription, 'daily')
                     )
                   }"
                 ></div>
@@ -138,14 +138,14 @@
             </div>
 
             <!-- Weekly Usage -->
-            <div v-if="subscription.group?.weekly_limit_usd" class="space-y-2">
+            <div v-if="effectiveLimit(subscription, 'weekly')" class="space-y-2">
               <div class="flex items-center justify-between">
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
                   {{ t('userSubscriptions.weekly') }}
                 </span>
                 <span class="text-sm text-gray-500 dark:text-dark-400">
                   ${{ (subscription.weekly_usage_usd || 0).toFixed(2) }} / ${{
-                    subscription.group.weekly_limit_usd.toFixed(2)
+                    effectiveLimit(subscription, 'weekly')?.toFixed(2)
                   }}
                 </span>
               </div>
@@ -155,13 +155,13 @@
                   :class="
                     getProgressBarClass(
                       subscription.weekly_usage_usd,
-                      subscription.group.weekly_limit_usd
+                      effectiveLimit(subscription, 'weekly')
                     )
                   "
                   :style="{
                     width: getProgressWidth(
                       subscription.weekly_usage_usd,
-                      subscription.group.weekly_limit_usd
+                      effectiveLimit(subscription, 'weekly')
                     )
                   }"
                 ></div>
@@ -179,14 +179,14 @@
             </div>
 
             <!-- Monthly Usage -->
-            <div v-if="subscription.group?.monthly_limit_usd" class="space-y-2">
+            <div v-if="effectiveLimit(subscription, 'monthly')" class="space-y-2">
               <div class="flex items-center justify-between">
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
                   {{ t('userSubscriptions.monthly') }}
                 </span>
                 <span class="text-sm text-gray-500 dark:text-dark-400">
                   ${{ (subscription.monthly_usage_usd || 0).toFixed(2) }} / ${{
-                    subscription.group.monthly_limit_usd.toFixed(2)
+                    effectiveLimit(subscription, 'monthly')?.toFixed(2)
                   }}
                 </span>
               </div>
@@ -196,13 +196,13 @@
                   :class="
                     getProgressBarClass(
                       subscription.monthly_usage_usd,
-                      subscription.group.monthly_limit_usd
+                      effectiveLimit(subscription, 'monthly')
                     )
                   "
                   :style="{
                     width: getProgressWidth(
                       subscription.monthly_usage_usd,
-                      subscription.group.monthly_limit_usd
+                      effectiveLimit(subscription, 'monthly')
                     )
                   }"
                 ></div>
@@ -222,9 +222,7 @@
             <!-- No limits configured - Unlimited badge -->
             <div
               v-if="
-                !subscription.group?.daily_limit_usd &&
-                !subscription.group?.weekly_limit_usd &&
-                !subscription.group?.monthly_limit_usd
+                !hasAnyEffectiveSubscriptionLimit(subscription)
               "
               class="flex items-center justify-center rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 py-6 dark:from-emerald-900/20 dark:to-teal-900/20"
             >
@@ -265,6 +263,16 @@ import {
   isOneTimeDailyQuota,
   type RemainingDurationParts
 } from '@/utils/subscriptionQuota'
+import {
+  getEffectiveSubscriptionLimit,
+  hasAnyEffectiveSubscriptionLimit,
+  type SubscriptionLimitWindow
+} from '@/utils/subscriptionLimits'
+
+const effectiveLimit = (
+  subscription: UserSubscription,
+  window: SubscriptionLimitWindow
+): number | null => getEffectiveSubscriptionLimit(subscription, window)
 
 function platformAccentDotClass(p: string): string {
   switch (p) {
