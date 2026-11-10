@@ -167,6 +167,8 @@ export default {
       metaUsage: {
         noSample: 'No usage sampled yet — press Query, or wait for the next streamed response',
         tier: 'Subscription tier',
+        tierWithId: 'Subscription tier (ID {id})',
+        tierUnknown: 'Unknown plan',
         activeSampled: 'Queried',
         queryTooltip: 'Send a minimal Muse request (16 output tokens) to read the current subscription windows',
       },

@@ -370,6 +370,8 @@ export default {
       metaUsage: {
         noSample: '暂无用量采样 — 点击查询，或等待下一次流式响应',
         tier: '订阅等级',
+        tierWithId: '订阅等级（ID {id}）',
+        tierUnknown: '未知套餐',
         activeSampled: '已查询',
         queryTooltip: '发送一个极小的 Muse 请求（16 个输出 token）读取当前订阅窗口',
       },

@@ -144,6 +144,21 @@ func (s *AccountUsageService) probeMetaUsage(ctx context.Context, account *Accou
 	return err == nil, err
 }
 
+func metaUsageTier(account *Account) (name, id string) {
+	sampled, _ := account.Extra[metaUsageTierKey].(string)
+	sampled = strings.TrimSpace(sampled)
+	mintedID := strings.TrimSpace(account.GetCredential("subs_tier_id"))
+	mintedName := strings.TrimSpace(account.GetCredential("subs_tier_name"))
+	id = sampled
+	if id == "" {
+		id = mintedID
+	}
+	if mintedName != "" && (sampled == "" || sampled == mintedID) {
+		name = mintedName
+	}
+	return name, id
+}
+
 func (s *AccountUsageService) getMetaUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
 	info := &UsageInfo{Source: "passive"}
 	if window := buildPassiveUsageWindow(account.Extra, metaUsageWindowUtilizationKey, metaUsageWindowResetKey); window != nil {
@@ -152,9 +167,7 @@ func (s *AccountUsageService) getMetaUsage(ctx context.Context, account *Account
 		info.FiveHour = &UsageProgress{}
 	}
 	info.SevenDay = buildPassiveUsageWindow(account.Extra, metaUsageWeeklyUtilizationKey, metaUsageWeeklyResetKey)
-	if tier, ok := account.Extra[metaUsageTierKey].(string); ok {
-		info.SubscriptionTierRaw = strings.TrimSpace(tier)
-	}
+	info.SubscriptionTierRaw, info.SubscriptionTierID = metaUsageTier(account)
 	if raw, ok := account.Extra[metaUsageSampledAtKey].(string); ok {
 		if sampledAt, err := time.Parse(time.RFC3339, raw); err == nil {
 			info.UpdatedAt = &sampledAt

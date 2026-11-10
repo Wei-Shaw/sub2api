@@ -17,7 +17,8 @@ vi.mock('vue-i18n', async () => {
   return {
     ...actual,
     useI18n: () => ({
-      t: (key: string) => key
+      t: (key: string, params?: Record<string, unknown>) =>
+        params ? `${key} ${JSON.stringify(params)}` : key
     })
   }
 })
@@ -46,7 +47,8 @@ const sampledUsage = (): AccountUsageInfo => ({
   five_hour: { utilization: 25, resets_at: '2026-07-22T17:00:00Z', remaining_seconds: 18000 },
   seven_day: { utilization: 80, resets_at: '2026-07-29T12:00:00Z', remaining_seconds: 600000 },
   seven_day_sonnet: null,
-  subscription_tier_raw: 'tier-1'
+  subscription_tier_raw: 'Muse Code Power Usage',
+  subscription_tier_id: '27681631238169137'
 } as AccountUsageInfo)
 
 describe('MetaUsageCell', () => {
@@ -64,7 +66,24 @@ describe('MetaUsageCell', () => {
     expect(bars.map((bar) => bar.props('label'))).toEqual(['5h', '7d'])
     expect(wrapper.get('[data-testid="meta-usage-window"]').exists()).toBe(true)
     expect(wrapper.get('[data-testid="meta-usage-weekly"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('tier-1')
+    const tier = wrapper.get('[data-testid="meta-usage-tier"]')
+    expect(tier.text()).toBe('Muse Code Power Usage')
+    expect(tier.attributes('title')).toContain('27681631238169137')
+  })
+
+  it('keeps an unnamed tier id out of the badge text', async () => {
+    getUsage.mockResolvedValue({
+      ...sampledUsage(),
+      subscription_tier_raw: undefined,
+      subscription_tier_id: '28367280949604159'
+    })
+    const wrapper = mount(MetaUsageCell, { props: { account: account() } })
+    await flushPromises()
+
+    const tier = wrapper.get('[data-testid="meta-usage-tier"]')
+    expect(tier.text()).toBe('admin.accounts.metaUsage.tierUnknown')
+    expect(tier.attributes('title')).toContain('28367280949604159')
+    expect(wrapper.text()).not.toContain('28367280949604159')
   })
 
   it('shows an empty state before Meta has sampled usage', async () => {

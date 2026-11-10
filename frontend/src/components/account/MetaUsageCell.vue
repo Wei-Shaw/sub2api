@@ -37,11 +37,12 @@
         {{ usage?.source === 'active' ? t('admin.accounts.metaUsage.activeSampled') : t('admin.accounts.usageWindow.passiveSampled') }}
       </span>
       <span
-        v-if="usage?.subscription_tier_raw"
+        v-if="tierLabel"
         class="rounded bg-indigo-50 px-1 py-0.5 text-[10px] text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300"
-        :title="t('admin.accounts.metaUsage.tier')"
+        :title="tierTitle"
+        data-testid="meta-usage-tier"
       >
-        {{ usage.subscription_tier_raw }}
+        {{ tierLabel }}
       </span>
       <button
         type="button"
@@ -88,6 +89,17 @@ const hasSample = computed(() =>
   )
 )
 const usage = ref<AccountUsageInfo | undefined>(undefined)
+const tierLabel = computed(() => {
+  const name = usage.value?.subscription_tier_raw?.trim()
+  if (name) return name
+  return usage.value?.subscription_tier_id?.trim() ? t('admin.accounts.metaUsage.tierUnknown') : ''
+})
+const tierTitle = computed(() => {
+  const id = usage.value?.subscription_tier_id?.trim()
+  return id
+    ? t('admin.accounts.metaUsage.tierWithId', { id })
+    : t('admin.accounts.metaUsage.tier')
+})
 const loading = ref(false)
 const querying = ref(false)
 

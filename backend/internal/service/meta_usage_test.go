@@ -59,13 +59,51 @@ func TestGetMetaUsageReadsSampledWindows(t *testing.T) {
 	require.InDelta(t, 25.0, usage.FiveHour.Utilization, 0.001)
 	require.NotNil(t, usage.SevenDay)
 	require.InDelta(t, 80.0, usage.SevenDay.Utilization, 0.001)
-	require.Equal(t, "tier-1", usage.SubscriptionTierRaw)
+	require.Empty(t, usage.SubscriptionTierRaw)
+	require.Equal(t, "tier-1", usage.SubscriptionTierID)
 	require.NotNil(t, usage.UpdatedAt)
 
 	passive, err := svc.getPassiveUsageForAccount(context.Background(), account)
 	require.NoError(t, err)
 	require.Equal(t, "passive", passive.Source)
 	require.NotNil(t, passive.SevenDay)
+}
+
+func TestGetMetaUsageNamesTierFromMintedCredentials(t *testing.T) {
+	const maxID = "28367280949604159"
+	const powerID = "27681631238169137"
+	cases := []struct {
+		name        string
+		credentials map[string]any
+		sampled     string
+		wantName    string
+		wantID      string
+	}{
+		{"sampled id matches minted id", map[string]any{"subs_tier_id": maxID, "subs_tier_name": "Muse Code Max Usage"}, maxID, "Muse Code Max Usage", maxID},
+		{"no sample yet uses minted plan", map[string]any{"subs_tier_id": powerID, "subs_tier_name": "Muse Code Power Usage"}, "", "Muse Code Power Usage", powerID},
+		{"tier changed since mint", map[string]any{"subs_tier_id": powerID, "subs_tier_name": "Muse Code Power Usage"}, maxID, "", maxID},
+		{"api key account without mint", map[string]any{"api_key": "sk-muse"}, powerID, "", powerID},
+		{"minted id without name", map[string]any{"subs_tier_id": maxID}, maxID, "", maxID},
+		{"nothing known", map[string]any{"api_key": "sk-muse"}, "", "", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			account := metaTestAccount(tc.credentials, AccountTypeOAuth)
+			account.Extra = map[string]any{}
+			if tc.sampled != "" {
+				account.Extra[metaUsageTierKey] = " " + tc.sampled + " "
+			}
+			svc := &AccountUsageService{
+				accountRepo:  &metaAccountRepoStub{account: account},
+				usageLogRepo: &usageBatchLogRepoStub{},
+				cache:        NewUsageCache(),
+			}
+			usage, err := svc.getMetaUsage(context.Background(), account)
+			require.NoError(t, err)
+			require.Equal(t, tc.wantName, usage.SubscriptionTierRaw)
+			require.Equal(t, tc.wantID, usage.SubscriptionTierID)
+		})
+	}
 }
 
 func TestMetaUsageEmptyBeforeFirstSample(t *testing.T) {
@@ -81,6 +119,7 @@ func TestMetaUsageEmptyBeforeFirstSample(t *testing.T) {
 	require.Zero(t, usage.FiveHour.Utilization)
 	require.Nil(t, usage.SevenDay)
 	require.Empty(t, usage.SubscriptionTierRaw)
+	require.Empty(t, usage.SubscriptionTierID)
 }
 
 func TestStripMetaSubscriptionUsage(t *testing.T) {
