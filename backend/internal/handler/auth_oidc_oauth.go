@@ -957,6 +957,9 @@ func buildOIDCAuthorizeURL(cfg config.OIDCConnectConfig, state, nonce, codeChall
 		q.Set("code_challenge", codeChallenge)
 		q.Set("code_challenge_method", "S256")
 	}
+	if prompt := strings.TrimSpace(cfg.Prompt); prompt != "" {
+		q.Set("prompt", prompt)
+	}
 
 	u.RawQuery = q.Encode()
 	return u.String(), nil
