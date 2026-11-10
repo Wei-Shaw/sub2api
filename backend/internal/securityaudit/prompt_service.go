@@ -13,15 +13,16 @@ import (
 )
 
 type PromptService struct {
-	config    ConfigStore
-	repo      *PostgreSQLRepository
-	payload   *RedisPayloadStore
-	enqueuer  *Enqueuer
-	runner    *Runner
-	evaluator *GuardEvaluator
-	scanner   *OpenAICompatibleScanner
-	metrics   *AtomicMetrics
-	clock     Clock
+	config          ConfigStore
+	repo            *PostgreSQLRepository
+	payload         *RedisPayloadStore
+	enqueuer        *Enqueuer
+	runner          *Runner
+	evaluator       *GuardEvaluator
+	latestTurnCache LatestTurnDecisionCache
+	scanner         *OpenAICompatibleScanner
+	metrics         *AtomicMetrics
+	clock           Clock
 
 	lifecycleMu  sync.Mutex
 	cancel       context.CancelFunc
@@ -42,9 +43,13 @@ func NewPromptService(
 	enqueuer := NewEnqueuer(config, repo, payload, metrics)
 	evaluator := NewGuardEvaluator(scanner, repo, metrics)
 	runner := NewRunner(config, repo, payload, scanner, metrics)
+	var latestTurnCache LatestTurnDecisionCache
+	if payload != nil {
+		latestTurnCache = payload
+	}
 	return &PromptService{
 		config: config, repo: repo, payload: payload, scanner: scanner, metrics: metrics,
-		enqueuer: enqueuer, evaluator: evaluator, runner: runner, clock: realClock{},
+		enqueuer: enqueuer, evaluator: evaluator, latestTurnCache: latestTurnCache, runner: runner, clock: realClock{},
 		enqueueSlots: make(chan struct{}, 128), probes: map[string]ProbeResult{},
 	}
 }
@@ -163,7 +168,33 @@ func (s *PromptService) Evaluate(ctx context.Context, req Request) (*PromptDecis
 	if err != nil {
 		return nil, &GuardError{Code: ErrorCodeInvalidResponse, Cause: err}
 	}
-	return s.evaluator.Evaluate(ctx, cfg, snapshot)
+	cacheKey := ""
+	if cfg.BlockingLatestTurnOnly && snapshot.PromptHash != "" && s.latestTurnCache != nil {
+		cacheKey = latestTurnDecisionCacheKey(cfg.ConfigVersion, snapshot.PromptHash)
+		cached, cacheErr := s.latestTurnCache.GetLatestTurnDecision(ctx, cacheKey)
+		if cacheErr != nil {
+			LogWarn(EventLatestTurnCacheError, mergeLogFields(snapshotLogFields(snapshot), map[string]any{
+				"config_version": cfg.ConfigVersion, "status": "read_failed", "error_code": "cache_read_failed",
+			}))
+		} else if cached != nil {
+			LogInfo(EventLatestTurnCacheHit, mergeLogFields(snapshotLogFields(snapshot), map[string]any{
+				"config_version": cfg.ConfigVersion, "status": "hit",
+			}))
+			return cached, nil
+		}
+	}
+	decision, err := s.evaluator.Evaluate(ctx, cfg, snapshot)
+	if err == nil && decision != nil {
+		if cacheKey != "" && cacheableLatestTurnDecision(decision) {
+			if cacheErr := s.latestTurnCache.SetLatestTurnDecision(ctx, cacheKey, decision, LatestTurnDecisionCacheTTL); cacheErr != nil {
+				LogWarn(EventLatestTurnCacheError, mergeLogFields(snapshotLogFields(snapshot), map[string]any{
+					"config_version": cfg.ConfigVersion, "status": "write_failed", "error_code": "cache_write_failed",
+				}))
+			}
+		}
+		return decision, nil
+	}
+	return decision, err
 }
 
 func (s *PromptService) GetConfig() (PublicConfig, error) { return s.config.Public() }
