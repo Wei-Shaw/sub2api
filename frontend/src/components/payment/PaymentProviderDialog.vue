@@ -473,6 +473,7 @@ const resolvedFields = computed(() => {
   return fields.map(f => ({
     ...f,
     label: f.label || t(`admin.settings.payment.field_${f.key}`),
+    options: f.options?.map(o => (typeof o.labelKey === 'string' ? { ...o, label: t(o.labelKey) } : o)),
   }))
 })
 

@@ -119,7 +119,17 @@ func TestEasyPayConfirmNotification(t *testing.T) {
 			body:        `<html>502 Bad Gateway</html>`,
 			status:      http.StatusBadGateway,
 			notifyTrade: "2026101600001",
-			wantErr:     "parse query",
+			wantErr:     "upstream returned HTTP 502",
+		},
+		{
+			// BEpusdt's EasyPay compatibility mode has no api.php; gin answers
+			// with a plain-text 404 that would otherwise fail as
+			// "invalid character 'p' after top-level value".
+			name:        "gateway without order query endpoint",
+			body:        `404 page not found`,
+			status:      http.StatusNotFound,
+			notifyTrade: "2026101600001",
+			wantErr:     "upstream returned HTTP 404",
 		},
 	}
 	for _, tt := range tests {
@@ -164,6 +174,55 @@ func TestEasyPayConfirmNotificationSkipsNonSuccess(t *testing.T) {
 	}
 	if calls.Load() != 0 {
 		t.Fatalf("upstream query calls = %d, want 0", calls.Load())
+	}
+}
+
+func TestEasyPayConfirmNotificationDisabledSkipsUpstreamQuery(t *testing.T) {
+	t.Parallel()
+
+	for _, value := range []string{"disabled", " Disabled "} {
+		var calls atomic.Int32
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			calls.Add(1)
+			w.WriteHeader(http.StatusNotFound)
+			_, _ = w.Write([]byte("404 page not found"))
+		}))
+		provider, err := NewEasyPay("test-instance", map[string]string{
+			"pid":           "1001",
+			"pkey":          "pkey-1",
+			"apiBase":       server.URL,
+			"notifyUrl":     "https://example.com/notify",
+			"returnUrl":     "https://example.com/return",
+			"confirmNotify": value,
+		})
+		if err != nil {
+			server.Close()
+			t.Fatalf("NewEasyPay: %v", err)
+		}
+		n := confirmTestNotification()
+		if err := provider.ConfirmNotification(context.Background(), n); err != nil {
+			t.Fatalf("confirmNotify=%q: ConfirmNotification returned error: %v", value, err)
+		}
+		if calls.Load() != 0 {
+			t.Fatalf("confirmNotify=%q: upstream query calls = %d, want 0", value, calls.Load())
+		}
+		if n.TradeNo != "2026101600001" {
+			t.Fatalf("confirmNotify=%q: trade_no changed to %q", value, n.TradeNo)
+		}
+		server.Close()
+	}
+}
+
+func TestEasyPayConfirmNotificationEnabledByDefaultForUnknownValues(t *testing.T) {
+	t.Parallel()
+
+	provider, calls := newConfirmTestEasyPay(t, `404 page not found`, http.StatusNotFound)
+	provider.config["confirmNotify"] = "enabled"
+	if err := provider.ConfirmNotification(context.Background(), confirmTestNotification()); err == nil {
+		t.Fatal("ConfirmNotification must still confirm upstream unless explicitly disabled")
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("upstream query calls = %d, want 1", calls.Load())
 	}
 }
 
