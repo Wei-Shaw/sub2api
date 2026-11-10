@@ -2513,6 +2513,7 @@ func newOAuthPendingFlowTestHandlerWithOptions(
 }
 
 type oauthPendingFlowTestHandlerOptions struct {
+	dingTalk           *config.DingTalkConnectConfig
 	invitationEnabled  bool
 	emailVerifyEnabled bool
 	emailCache         service.EmailCache
@@ -2590,6 +2591,9 @@ CREATE TABLE IF NOT EXISTS user_affiliates (
 			UserBalance:     0,
 			UserConcurrency: 1,
 		},
+	}
+	if options.dingTalk != nil {
+		cfg.DingTalk = *options.dingTalk
 	}
 	settingValues := map[string]string{
 		service.SettingKeyRegistrationEnabled:              "true",
