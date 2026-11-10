@@ -1,6 +1,8 @@
 package claude
 
 import (
+	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 )
@@ -55,6 +57,46 @@ func IsSonnet55(model string) bool {
 // IsHaiku55 identifies the fixed Haiku 5.5 ID after provider/local suffix normalization.
 func IsHaiku55(model string) bool {
 	return normalizeEffortModelID(model) == "claude-haiku-5-5"
+}
+
+var adaptiveVersionRe = regexp.MustCompile(`claude-(haiku|sonnet|opus)-(\d+)(?:[-.](\d+))?`)
+
+// RequiresAdaptiveThinking reports whether a Claude model rejects the legacy
+// thinking.type="enabled" + budget_tokens form and only accepts
+// thinking.type="adaptive" (depth controlled by output_config.effort).
+//
+// Known adaptive-only families:
+//   - Fable 5 (always-on adaptive thinking)
+//   - Opus 4.7 and newer
+//   - Sonnet 5 and newer
+//
+// Older models (Opus 4.6, Sonnet 4.6, Haiku 4.5, ...) still accept "enabled".
+// Opus/Sonnet/Haiku 5.5 have dedicated handling in validateClaude55Request.
+func RequiresAdaptiveThinking(model string) bool {
+	id := normalizeEffortModelID(model)
+	if strings.HasPrefix(id, "claude-fable-5") {
+		return true
+	}
+	match := adaptiveVersionRe.FindStringSubmatch(id)
+	if match == nil {
+		return false
+	}
+	major, err := strconv.Atoi(match[2])
+	if err != nil {
+		return false
+	}
+	minor := 0
+	if match[3] != "" {
+		minor, _ = strconv.Atoi(match[3])
+	}
+	switch match[1] {
+	case "opus":
+		return major > 4 || (major == 4 && minor >= 7)
+	case "sonnet":
+		return major >= 5
+	default:
+		return false
+	}
 }
 
 func normalizeEffortModelID(model string) string {

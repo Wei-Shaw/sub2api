@@ -76,3 +76,39 @@ func TestIsHaiku55(t *testing.T) {
 		require.False(t, IsHaiku55(model), model)
 	}
 }
+
+func TestRequiresAdaptiveThinking(t *testing.T) {
+	t.Parallel()
+	adaptiveOnly := []string{
+		"claude-fable-5",
+		"claude-fable-5-1",
+		"claude-opus-4-7",
+		"claude-opus-4.7",
+		"claude-opus-4-8-20260529",
+		"claude-opus-5",
+		"claude-opus-5-5",
+		"claude-sonnet-5",
+		"claude-sonnet-5-20250716",
+		"claude-sonnet-5-5",
+		"anthropic/claude-sonnet-5.5",
+		"us.anthropic.claude-opus-5-v1",
+	}
+	for _, model := range adaptiveOnly {
+		require.True(t, RequiresAdaptiveThinking(model), model)
+	}
+
+	legacy := []string{
+		"claude-opus-4-6",
+		"claude-opus-4.6",
+		"claude-sonnet-4-6",
+		"claude-sonnet-4-5-20250929",
+		"claude-haiku-4-5-20251001",
+		"claude-opus-4-5",
+		"claude-3-opus-20240229",
+		"gpt-5.6",
+		"",
+	}
+	for _, model := range legacy {
+		require.False(t, RequiresAdaptiveThinking(model), model)
+	}
+}
