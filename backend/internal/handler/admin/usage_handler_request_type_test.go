@@ -46,6 +46,28 @@ func newAdminUsageRequestTypeTestRouter(repo *adminUsageRepoCapture) *gin.Engine
 	return router
 }
 
+func TestAdminUsageStatsIncludeUserAgents(t *testing.T) {
+	for _, tc := range []struct {
+		query  string
+		want   bool
+		status int
+	}{
+		{"", false, http.StatusOK},
+		{"&include_user_agents=true", true, http.StatusOK},
+		{"&include_user_agents=false", false, http.StatusOK},
+		{"&include_user_agents=invalid", false, http.StatusBadRequest},
+	} {
+		t.Run(tc.query, func(t *testing.T) {
+			repo := &adminUsageRepoCapture{}
+			router := newAdminUsageRequestTypeTestRouter(repo)
+			rec := httptest.NewRecorder()
+			router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/admin/usage/stats?nocache=true"+tc.query, nil))
+			require.Equal(t, tc.status, rec.Code)
+			require.Equal(t, tc.want, repo.statsFilters.IncludeUserAgents)
+		})
+	}
+}
+
 func TestAdminUsageListRequestTypePriority(t *testing.T) {
 	repo := &adminUsageRepoCapture{}
 	router := newAdminUsageRequestTypeTestRouter(repo)
