@@ -47,6 +47,7 @@ type AdminHandlers struct {
 
 // Handlers contains all HTTP handlers
 type Handlers struct {
+	OpenAIAsync      *OpenAIAsyncHandler
 	Auth             *AuthHandler
 	User             *UserHandler
 	MCPOAuth         *MCPOAuthHandler
