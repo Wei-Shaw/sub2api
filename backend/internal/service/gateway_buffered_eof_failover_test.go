@@ -86,6 +86,33 @@ func TestChatBufferedEOFKeepsMeteredAnthropicFailure(t *testing.T) {
 	require.True(t, c.Writer.Written())
 }
 
+func TestForwardChatBufferedAnthropicUsageWithoutMessageStartDoesNotReplay(t *testing.T) {
+	for name, delta := range map[string]string{
+		"terminal usage":   `{"stop_reason":"end_turn"}`,
+		"usage before EOF": `{}`,
+	} {
+		for _, pool := range []bool{false, true} {
+			t.Run(name+"/pool="+map[bool]string{false: "false", true: "true"}[pool], func(t *testing.T) {
+				c, rec := bufferedEOFTestContext()
+				stream := "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":" + delta + ",\"usage\":{\"output_tokens\":7}}\n\n"
+				account := &Account{ID: 1, Platform: PlatformAnthropic, Type: AccountTypeAPIKey,
+					Credentials: map[string]any{"api_key": "fixture-key", "pool_mode": pool, "pool_mode_retry_status_codes": []any{float64(502)}}}
+				svc := &GatewayService{cfg: &config.Config{}, httpUpstream: &anthropicHTTPUpstreamRecorder{resp: bufferedEOFTestResponse(stream)}}
+				result, err := svc.ForwardAsChatCompletions(context.Background(), c, account,
+					[]byte(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hello"}],"stream":false}`), nil)
+
+				require.Error(t, err)
+				var failoverErr *UpstreamFailoverError
+				require.NotErrorAs(t, err, &failoverErr, "observed usage must not become a replay signal even when message_start is missing")
+				require.Nil(t, result, "preserve the existing missing-response result and billing behavior")
+				require.Equal(t, http.StatusBadGateway, rec.Code)
+				require.True(t, c.Writer.Written())
+				require.Contains(t, rec.Body.String(), `"type":"server_error"`)
+			})
+		}
+	}
+}
+
 func TestChatBufferedEOFDoesNotFailoverAfterOutput(t *testing.T) {
 	for _, anthropic := range []bool{false, true} {
 		c, _ := bufferedEOFTestContext()

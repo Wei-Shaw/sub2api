@@ -355,7 +355,7 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 	}
 
 	if finalResp == nil {
-		if !c.Writer.Written() && !IsResponseCommitted(c) {
+		if !usage.hasObservedTokens() && !c.Writer.Written() && !IsResponseCommitted(c) {
 			return nil, errCCBufferedIncompleteResponse
 		}
 		writeGatewayCCError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without a response")
