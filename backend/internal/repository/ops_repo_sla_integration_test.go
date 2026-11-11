@@ -38,7 +38,8 @@ func TestOpsSLAMetricsExcludeClientFailures(t *testing.T) {
 		{429, "client", true},
 		{503, "", false}, // Legacy rows without an owner still count as SLA errors.
 	}
-	repo := NewOpsRepository(integrationDB).(*opsRepository)
+	repo, ok := NewOpsRepository(integrationDB).(*opsRepository)
+	require.True(t, ok)
 	var entries []*service.OpsInsertErrorLogInput
 	// Exercise a partial-hour raw head, a complete aggregated hour, and a raw tail.
 	for _, offset := range []time.Duration{5 * time.Minute, 90 * time.Minute, 175 * time.Minute} {
