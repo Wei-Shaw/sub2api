@@ -73,7 +73,7 @@ type rateLimitCall struct {
 
 type modelRateLimitCall struct {
 	accountID int64
-	modelKey  string // 存储的 key（应该是官方模型 ID，如 "claude-sonnet-4-5"）
+	modelKey  string // 存储的 key（应该是官方模型 ID，如 "claude-sonnet-4-6"）
 	resetAt   time.Time
 }
 
@@ -140,7 +140,7 @@ func TestAntigravityRetryLoop_NoURLFallback_UsesConfiguredBaseURL(t *testing.T) 
 		action:         "generateContent",
 		body:           []byte(`{"input":"test"}`),
 		httpUpstream:   upstream,
-		requestedModel: "claude-sonnet-4-5",
+		requestedModel: "claude-sonnet-4-6",
 		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
 			handleErrorCalled = true
 			return nil
@@ -174,21 +174,21 @@ func TestHandleUpstreamError_429_ModelRateLimit(t *testing.T) {
 		"error": {
 			"status": "RESOURCE_EXHAUSTED",
 			"details": [
-				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-5"}, "reason": "RATE_LIMIT_EXCEEDED"},
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-6"}, "reason": "RATE_LIMIT_EXCEEDED"},
 				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "15s"}
 			]
 		}
 	}`)
 
-	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusTooManyRequests, http.Header{}, body, "claude-sonnet-4-5", 0, "", false)
+	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusTooManyRequests, http.Header{}, body, "claude-sonnet-4-6", 0, "", false)
 
 	// 应该触发模型限流
 	require.NotNil(t, result)
 	require.True(t, result.Handled)
 	require.NotNil(t, result.SwitchError)
-	require.Equal(t, "claude-sonnet-4-5", result.SwitchError.RateLimitedModel)
+	require.Equal(t, "claude-sonnet-4-6", result.SwitchError.RateLimitedModel)
 	require.Len(t, repo.modelRateLimitCalls, 1)
-	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
+	require.Equal(t, "claude-sonnet-4-6", repo.modelRateLimitCalls[0].modelKey)
 }
 
 // TestHandleUpstreamError_429_NonModelRateLimit 测试 429 非模型限流场景（走模型级限流兜底）
@@ -200,13 +200,13 @@ func TestHandleUpstreamError_429_NonModelRateLimit(t *testing.T) {
 	// 429 + 普通限流响应（无 RATE_LIMIT_EXCEEDED reason）→ 走模型级限流兜底
 	body := buildGeminiRateLimitBody("5s")
 
-	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusTooManyRequests, http.Header{}, body, "claude-sonnet-4-5", 0, "", false)
+	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusTooManyRequests, http.Header{}, body, "claude-sonnet-4-6", 0, "", false)
 
 	// handleModelRateLimit 不会处理（因为没有 RATE_LIMIT_EXCEEDED），
 	// 但 429 兜底逻辑会使用 requestedModel 设置模型级限流
 	require.Nil(t, result)
 	require.Len(t, repo.modelRateLimitCalls, 1)
-	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
+	require.Equal(t, "claude-sonnet-4-6", repo.modelRateLimitCalls[0].modelKey)
 }
 
 // TestHandleUpstreamError_429_NonModelRateLimit_UsesMappedModelKey 测试 429 非模型限流场景
@@ -237,13 +237,13 @@ func TestHandleUpstreamError_503_ModelCapacityExhausted(t *testing.T) {
 		"error": {
 			"status": "UNAVAILABLE",
 			"details": [
-				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-pro-high"}, "reason": "MODEL_CAPACITY_EXHAUSTED"},
+				{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-pro-agent"}, "reason": "MODEL_CAPACITY_EXHAUSTED"},
 				{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "30s"}
 			]
 		}
 	}`)
 
-	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusServiceUnavailable, http.Header{}, body, "gemini-3-pro-high", 0, "", false)
+	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusServiceUnavailable, http.Header{}, body, "gemini-pro-agent", 0, "", false)
 
 	// MODEL_CAPACITY_EXHAUSTED 应该标记为已处理，不切换账号，不设置模型限流
 	// 实际重试由 handleSmartRetry 处理
@@ -271,7 +271,7 @@ func TestHandleUpstreamError_503_NonModelRateLimit(t *testing.T) {
 		}
 	}`)
 
-	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusServiceUnavailable, http.Header{}, body, "gemini-3-pro-high", 0, "", false)
+	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusServiceUnavailable, http.Header{}, body, "gemini-pro-agent", 0, "", false)
 
 	// 503 非模型限流不应该做任何处理
 	require.Nil(t, result)
@@ -288,7 +288,7 @@ func TestHandleUpstreamError_503_EmptyBody(t *testing.T) {
 	// 503 + 空响应体 → 不做任何处理
 	body := []byte(`{}`)
 
-	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusServiceUnavailable, http.Header{}, body, "gemini-3-pro-high", 0, "", false)
+	result := svc.handleUpstreamError(context.Background(), "[test]", account, http.StatusServiceUnavailable, http.Header{}, body, "gemini-pro-agent", 0, "", false)
 
 	// 503 空响应不应该做任何处理
 	require.Nil(t, result)
@@ -309,11 +309,11 @@ func TestAccountIsSchedulableForModel_AntigravityRateLimits(t *testing.T) {
 	}
 
 	account.RateLimitResetAt = &future
-	require.False(t, account.IsSchedulableForModel("claude-sonnet-4-5"))
+	require.False(t, account.IsSchedulableForModel("claude-sonnet-4-6"))
 	require.False(t, account.IsSchedulableForModel("gemini-3-flash"))
 
 	account.RateLimitResetAt = nil
-	require.True(t, account.IsSchedulableForModel("claude-sonnet-4-5"))
+	require.True(t, account.IsSchedulableForModel("claude-sonnet-4-6"))
 	require.True(t, account.IsSchedulableForModel("gemini-3-flash"))
 }
 
@@ -356,7 +356,7 @@ func TestParseAntigravitySmartRetryInfo(t *testing.T) {
 							"@type": "type.googleapis.com/google.rpc.ErrorInfo",
 							"domain": "cloudcode-pa.googleapis.com",
 							"metadata": {
-								"model": "claude-sonnet-4-5",
+								"model": "claude-sonnet-4-6",
 								"quotaResetDelay": "201.506475ms"
 							},
 							"reason": "RATE_LIMIT_EXCEEDED"
@@ -371,7 +371,7 @@ func TestParseAntigravitySmartRetryInfo(t *testing.T) {
 				}
 			}`,
 			expectedDelay: 201506475 * time.Nanosecond,
-			expectedModel: "claude-sonnet-4-5",
+			expectedModel: "claude-sonnet-4-6",
 		},
 		{
 			name: "429 RESOURCE_EXHAUSTED without RATE_LIMIT_EXCEEDED - should return nil",
@@ -382,7 +382,7 @@ func TestParseAntigravitySmartRetryInfo(t *testing.T) {
 					"details": [
 						{
 							"@type": "type.googleapis.com/google.rpc.ErrorInfo",
-							"metadata": {"model": "claude-sonnet-4-5"},
+							"metadata": {"model": "claude-sonnet-4-6"},
 							"reason": "QUOTA_EXCEEDED"
 						},
 						{
@@ -401,14 +401,14 @@ func TestParseAntigravitySmartRetryInfo(t *testing.T) {
 					"code": 503,
 					"status": "UNAVAILABLE",
 					"details": [
-						{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-pro-high"}, "reason": "MODEL_CAPACITY_EXHAUSTED"},
+						{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-pro-agent"}, "reason": "MODEL_CAPACITY_EXHAUSTED"},
 						{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "39s"}
 					],
-					"message": "No capacity available for model gemini-3-pro-high on the server"
+					"message": "No capacity available for model gemini-pro-agent on the server"
 				}
 			}`,
 			expectedDelay:                    39 * time.Second,
-			expectedModel:                    "gemini-3-pro-high",
+			expectedModel:                    "gemini-pro-agent",
 			expectedIsModelCapacityExhausted: true,
 		},
 		{
@@ -584,14 +584,14 @@ func TestShouldTriggerAntigravitySmartRetry(t *testing.T) {
 				"error": {
 					"status": "RESOURCE_EXHAUSTED",
 					"details": [
-						{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-5"}, "reason": "RATE_LIMIT_EXCEEDED"},
+						{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-6"}, "reason": "RATE_LIMIT_EXCEEDED"},
 						{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "15s"}
 					]
 				}
 			}`,
 			expectedShouldRetry:     false,
 			expectedShouldRateLimit: true,
-			modelName:               "claude-sonnet-4-5",
+			modelName:               "claude-sonnet-4-6",
 		},
 		{
 			name:    "Upstream account with short delay - smart retry",
@@ -600,7 +600,7 @@ func TestShouldTriggerAntigravitySmartRetry(t *testing.T) {
 				"error": {
 					"status": "RESOURCE_EXHAUSTED",
 					"details": [
-						{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-5"}, "reason": "RATE_LIMIT_EXCEEDED"},
+						{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-6"}, "reason": "RATE_LIMIT_EXCEEDED"},
 						{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "2s"}
 					]
 				}
@@ -608,7 +608,7 @@ func TestShouldTriggerAntigravitySmartRetry(t *testing.T) {
 			expectedShouldRetry:     true,
 			expectedShouldRateLimit: false,
 			minWait:                 2 * time.Second,
-			modelName:               "claude-sonnet-4-5",
+			modelName:               "claude-sonnet-4-6",
 		},
 		{
 			name:    "API Key account - should not trigger",
@@ -650,7 +650,7 @@ func TestShouldTriggerAntigravitySmartRetry(t *testing.T) {
 					"code": 503,
 					"status": "UNAVAILABLE",
 					"details": [
-						{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-3-pro-high"}, "reason": "MODEL_CAPACITY_EXHAUSTED"},
+						{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "gemini-pro-agent"}, "reason": "MODEL_CAPACITY_EXHAUSTED"},
 						{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "39s"}
 					]
 				}
@@ -659,7 +659,7 @@ func TestShouldTriggerAntigravitySmartRetry(t *testing.T) {
 			expectedShouldRateLimit:          false,
 			expectedIsModelCapacityExhausted: true,
 			minWait:                          1 * time.Second,
-			modelName:                        "gemini-3-pro-high",
+			modelName:                        "gemini-pro-agent",
 		},
 		{
 			name:    "503 UNAVAILABLE with MODEL_CAPACITY_EXHAUSTED - no retryDelay - use fixed wait",
@@ -688,7 +688,7 @@ func TestShouldTriggerAntigravitySmartRetry(t *testing.T) {
 					"code": 429,
 					"status": "RESOURCE_EXHAUSTED",
 					"details": [
-						{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-5"}, "reason": "RATE_LIMIT_EXCEEDED"}
+						{"@type": "type.googleapis.com/google.rpc.ErrorInfo", "metadata": {"model": "claude-sonnet-4-6"}, "reason": "RATE_LIMIT_EXCEEDED"}
 					],
 					"message": "You have exhausted your capacity on this model."
 				}
@@ -696,7 +696,7 @@ func TestShouldTriggerAntigravitySmartRetry(t *testing.T) {
 			expectedShouldRetry:     false,
 			expectedShouldRateLimit: true,
 			minWait:                 30 * time.Second,
-			modelName:               "claude-sonnet-4-5",
+			modelName:               "claude-sonnet-4-6",
 		},
 	}
 
@@ -738,15 +738,15 @@ func TestSetModelRateLimitByModelName_UsesOfficialModelID(t *testing.T) {
 		expectedSuccess  bool
 	}{
 		{
-			name:             "claude-sonnet-4-5 should be stored as-is",
-			modelName:        "claude-sonnet-4-5",
-			expectedModelKey: "claude-sonnet-4-5",
+			name:             "claude-sonnet-4-6 should be stored as-is",
+			modelName:        "claude-sonnet-4-6",
+			expectedModelKey: "claude-sonnet-4-6",
 			expectedSuccess:  true,
 		},
 		{
-			name:             "gemini-3-pro-high should be stored as-is",
-			modelName:        "gemini-3-pro-high",
-			expectedModelKey: "gemini-3-pro-high",
+			name:             "gemini-pro-agent should be stored as-is",
+			modelName:        "gemini-pro-agent",
+			expectedModelKey: "gemini-pro-agent",
 			expectedSuccess:  true,
 		},
 		{
@@ -805,7 +805,7 @@ func TestSetModelRateLimitByModelName_NotConvertToScope(t *testing.T) {
 		context.Background(),
 		repo,
 		456,
-		"claude-sonnet-4-5", // 官方模型 ID
+		"claude-sonnet-4-6", // 官方模型 ID
 		"[test]",
 		429,
 		resetAt,
@@ -816,8 +816,8 @@ func TestSetModelRateLimitByModelName_NotConvertToScope(t *testing.T) {
 	require.Len(t, repo.modelRateLimitCalls, 1)
 
 	call := repo.modelRateLimitCalls[0]
-	// 关键断言：存储的应该是 "claude-sonnet-4-5"，而不是 "claude_sonnet"
-	require.Equal(t, "claude-sonnet-4-5", call.modelKey, "should NOT convert to scope like claude_sonnet")
+	// 关键断言：存储的应该是 "claude-sonnet-4-6"，而不是 "claude_sonnet"
+	require.Equal(t, "claude-sonnet-4-6", call.modelKey, "should NOT convert to scope like claude_sonnet")
 	require.NotEqual(t, "claude_sonnet", call.modelKey, "should NOT be scope")
 }
 
@@ -874,14 +874,14 @@ func TestSetAntigravityModelRateLimits_DoesNotDoubleMapCustomChain(t *testing.T)
 		Platform: PlatformAntigravity,
 		Credentials: map[string]any{
 			"model_mapping": map[string]any{
-				"custom-sonnet":     "claude-sonnet-4-5",
-				"claude-sonnet-4-5": "claude-sonnet-4-6",
+				"custom-sonnet":     "claude-sonnet-4-6",
+				"claude-sonnet-4-6": "claude-sonnet-4-6",
 			},
 		},
 	}
 	resetAt := time.Now().Add(30 * time.Second)
 	canonicalModel := resolveFinalAntigravityModelKey(context.Background(), account, "custom-sonnet")
-	require.Equal(t, "claude-sonnet-4-5", canonicalModel)
+	require.Equal(t, "claude-sonnet-4-6", canonicalModel)
 
 	success := svc.setAntigravityModelRateLimits(
 		context.Background(),
@@ -896,7 +896,7 @@ func TestSetAntigravityModelRateLimits_DoesNotDoubleMapCustomChain(t *testing.T)
 
 	require.True(t, success)
 	require.Len(t, repo.modelRateLimitCalls, 1)
-	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
+	require.Equal(t, "claude-sonnet-4-6", repo.modelRateLimitCalls[0].modelKey)
 }
 
 func TestSetModelRateLimitAndClearSession_UsesUpstreamReportedModelMetadata(t *testing.T) {
@@ -907,7 +907,7 @@ func TestSetModelRateLimitAndClearSession_UsesUpstreamReportedModelMetadata(t *t
 		Platform: PlatformAntigravity,
 		Credentials: map[string]any{
 			"model_mapping": map[string]any{
-				"claude-sonnet-4-5": "claude-sonnet-4-6",
+				"claude-sonnet-4-6": "claude-sonnet-4-6",
 			},
 		},
 	}
@@ -919,11 +919,11 @@ func TestSetModelRateLimitAndClearSession_UsesUpstreamReportedModelMetadata(t *t
 		statusCode: 429,
 	}, &antigravitySmartRetryInfo{
 		RetryDelay: 30 * time.Second,
-		ModelName:  "claude-sonnet-4-5",
+		ModelName:  "claude-sonnet-4-6",
 	})
 
 	require.Len(t, repo.modelRateLimitCalls, 1)
-	require.Equal(t, "claude-sonnet-4-5", repo.modelRateLimitCalls[0].modelKey)
+	require.Equal(t, "claude-sonnet-4-6", repo.modelRateLimitCalls[0].modelKey)
 }
 
 func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRateLimited(t *testing.T) {
@@ -937,7 +937,7 @@ func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRateLimited(t *testing.T) {
 		Concurrency: 1,
 		Extra: map[string]any{
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5": map[string]any{
+				"claude-sonnet-4-6": map[string]any{
 					"rate_limit_reset_at": time.Now().Add(2 * time.Second).Format(time.RFC3339),
 				},
 			},
@@ -952,7 +952,7 @@ func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRateLimited(t *testing.T) {
 		accessToken:     "token",
 		action:          "generateContent",
 		body:            []byte(`{"input":"test"}`),
-		requestedModel:  "claude-sonnet-4-5",
+		requestedModel:  "claude-sonnet-4-6",
 		httpUpstream:    upstream,
 		isStickySession: true,
 		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
@@ -964,7 +964,7 @@ func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRateLimited(t *testing.T) {
 	var switchErr *AntigravityAccountSwitchError
 	require.ErrorAs(t, err, &switchErr)
 	require.Equal(t, account.ID, switchErr.OriginalAccountID)
-	require.Equal(t, "claude-sonnet-4-5", switchErr.RateLimitedModel)
+	require.Equal(t, "claude-sonnet-4-6", switchErr.RateLimitedModel)
 	require.True(t, switchErr.IsStickySession)
 	require.Equal(t, 0, upstream.calls, "should not call upstream when switching on pre-check")
 }
@@ -980,7 +980,7 @@ func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRemainingLong(t *testing.T) {
 		Concurrency: 1,
 		Extra: map[string]any{
 			modelRateLimitsKey: map[string]any{
-				"claude-sonnet-4-5": map[string]any{
+				"claude-sonnet-4-6": map[string]any{
 					"rate_limit_reset_at": time.Now().Add(11 * time.Second).Format(time.RFC3339),
 				},
 			},
@@ -995,7 +995,7 @@ func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRemainingLong(t *testing.T) {
 		accessToken:     "token",
 		action:          "generateContent",
 		body:            []byte(`{"input":"test"}`),
-		requestedModel:  "claude-sonnet-4-5",
+		requestedModel:  "claude-sonnet-4-6",
 		httpUpstream:    upstream,
 		isStickySession: true,
 		handleError: func(ctx context.Context, prefix string, account *Account, statusCode int, headers http.Header, body []byte, requestedModel string, groupID int64, sessionHash string, isStickySession bool) *handleModelRateLimitResult {
@@ -1007,7 +1007,7 @@ func TestAntigravityRetryLoop_PreCheck_SwitchesWhenRemainingLong(t *testing.T) {
 	var switchErr *AntigravityAccountSwitchError
 	require.ErrorAs(t, err, &switchErr)
 	require.Equal(t, account.ID, switchErr.OriginalAccountID)
-	require.Equal(t, "claude-sonnet-4-5", switchErr.RateLimitedModel)
+	require.Equal(t, "claude-sonnet-4-6", switchErr.RateLimitedModel)
 	require.True(t, switchErr.IsStickySession)
 	require.Equal(t, 0, upstream.calls, "should not call upstream when switching on pre-check")
 }
@@ -1034,12 +1034,12 @@ func TestIsAntigravityAccountSwitchError(t *testing.T) {
 			name: "account switch error",
 			err: &AntigravityAccountSwitchError{
 				OriginalAccountID: 123,
-				RateLimitedModel:  "claude-sonnet-4-5",
+				RateLimitedModel:  "claude-sonnet-4-6",
 				IsStickySession:   true,
 			},
 			expectedOK:    true,
 			expectedID:    123,
-			expectedModel: "claude-sonnet-4-5",
+			expectedModel: "claude-sonnet-4-6",
 		},
 		{
 			name: "wrapped account switch error",
@@ -1164,7 +1164,7 @@ func TestUpdateAccountModelRateLimitInCache_UpdatesExtraAndCallsCache(t *testing
 		Name:     "test-account",
 		Platform: PlatformAntigravity,
 	}
-	modelKey := "claude-sonnet-4-5"
+	modelKey := "claude-sonnet-4-6"
 	resetAt := time.Now().Add(30 * time.Second)
 
 	svc.updateAccountModelRateLimitInCache(context.Background(), account, modelKey, resetAt)
@@ -1192,7 +1192,7 @@ func TestUpdateAccountModelRateLimitInCache_NilSchedulerSnapshot(t *testing.T) {
 	account := &Account{ID: 1, Name: "test"}
 
 	// 不应 panic
-	svc.updateAccountModelRateLimitInCache(context.Background(), account, "claude-sonnet-4-5", time.Now().Add(30*time.Second))
+	svc.updateAccountModelRateLimitInCache(context.Background(), account, "claude-sonnet-4-6", time.Now().Add(30*time.Second))
 
 	// Extra 不应被更新（因为函数提前返回）
 	require.Nil(t, account.Extra)
@@ -1221,13 +1221,13 @@ func TestUpdateAccountModelRateLimitInCache_PreservesExistingExtra(t *testing.T)
 		},
 	}
 
-	svc.updateAccountModelRateLimitInCache(context.Background(), account, "claude-sonnet-4-5", time.Now().Add(30*time.Second))
+	svc.updateAccountModelRateLimitInCache(context.Background(), account, "claude-sonnet-4-6", time.Now().Add(30*time.Second))
 
 	// 验证已有数据被保留
 	require.Equal(t, "existing_value", account.Extra["existing_key"])
 	limits := account.Extra["model_rate_limits"].(map[string]any)
 	require.NotNil(t, limits["gemini-3-flash"])
-	require.NotNil(t, limits["claude-sonnet-4-5"])
+	require.NotNil(t, limits["claude-sonnet-4-6"])
 }
 
 // TestSchedulerSnapshotService_UpdateAccountInCache 测试 UpdateAccountInCache 方法
@@ -1300,13 +1300,13 @@ func TestNormalizeAntigravityModelName(t *testing.T) {
 		},
 		{
 			name:     "publishers/anthropic/models/ prefix",
-			model:    "publishers/anthropic/models/claude-sonnet-4-5",
-			expected: "claude-sonnet-4-5",
+			model:    "publishers/anthropic/models/claude-sonnet-4-6",
+			expected: "claude-sonnet-4-6",
 		},
 		{
 			name:     "projects/.../publishers/anthropic/models/ path",
-			model:    "projects/my-proj/locations/global/publishers/anthropic/models/claude-sonnet-4-5",
-			expected: "claude-sonnet-4-5",
+			model:    "projects/my-proj/locations/global/publishers/anthropic/models/claude-sonnet-4-6",
+			expected: "claude-sonnet-4-6",
 		},
 		{
 			name:     "mixed case and spaces",
