@@ -1097,15 +1097,15 @@
     "supports_xhigh_reasoning_effort": true
   },
   "deepseek-flash": {
-    "cache_read_input_token_cost": 2e-08,
-    "input_cost_per_token": 1e-06,
+    "cache_read_input_token_cost": 3e-09,
+    "input_cost_per_token": 1.5e-07,
     "litellm_provider": "deepseek",
     "max_input_tokens": 1048576,
     "max_output_tokens": 393216,
     "max_tokens": 393216,
     "mode": "chat",
-    "output_cost_per_token": 4e-06,
-    "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing (CNY idle)",
+    "output_cost_per_token": 6e-07,
+    "source": "https://api-docs.deepseek.com/quick_start/pricing",
     "supported_endpoints": [
       "/v1/chat/completions"
     ],
@@ -1117,19 +1117,18 @@
     "supports_response_schema": true,
     "supports_system_messages": true,
     "supports_tool_choice": true,
-    "supports_vision": true,
-    "input_cost_per_token_cache_hit": 2e-08
+    "supports_vision": true
   },
   "deepseek-v4-flash": {
-    "cache_read_input_token_cost": 2e-08,
-    "input_cost_per_token": 1e-06,
+    "cache_read_input_token_cost": 3e-09,
+    "input_cost_per_token": 1.5e-07,
     "litellm_provider": "deepseek",
     "max_input_tokens": 1048576,
     "max_output_tokens": 393216,
     "max_tokens": 393216,
     "mode": "chat",
-    "output_cost_per_token": 4e-06,
-    "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing (CNY idle)",
+    "output_cost_per_token": 6e-07,
+    "source": "https://api-docs.deepseek.com/quick_start/pricing",
     "supported_endpoints": [
       "/v1/chat/completions"
     ],
@@ -1140,19 +1139,18 @@
     "supports_reasoning": true,
     "supports_response_schema": true,
     "supports_system_messages": true,
-    "supports_tool_choice": true,
-    "input_cost_per_token_cache_hit": 2e-08
+    "supports_tool_choice": true
   },
   "deepseek-v4-flash-vision-exp": {
-    "cache_read_input_token_cost": 2e-08,
-    "input_cost_per_token": 1e-06,
+    "cache_read_input_token_cost": 3e-09,
+    "input_cost_per_token": 1.5e-07,
     "litellm_provider": "deepseek",
     "max_input_tokens": 1048576,
     "max_output_tokens": 393216,
     "max_tokens": 393216,
     "mode": "chat",
-    "output_cost_per_token": 4e-06,
-    "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing (CNY idle)",
+    "output_cost_per_token": 6e-07,
+    "source": "https://api-docs.deepseek.com/quick_start/pricing",
     "supported_endpoints": [
       "/v1/chat/completions"
     ],
@@ -1164,19 +1162,18 @@
     "supports_response_schema": true,
     "supports_system_messages": true,
     "supports_tool_choice": true,
-    "supports_vision": true,
-    "input_cost_per_token_cache_hit": 2e-08
+    "supports_vision": true
   },
   "deepseek-v4-pro": {
-    "cache_read_input_token_cost": 1.5e-07,
-    "input_cost_per_token": 4.5e-06,
+    "cache_read_input_token_cost": 2.2e-08,
+    "input_cost_per_token": 6.6e-07,
     "litellm_provider": "deepseek",
     "max_input_tokens": 1048576,
     "max_output_tokens": 393216,
     "max_tokens": 393216,
     "mode": "chat",
-    "output_cost_per_token": 1.35e-05,
-    "source": "https://api-docs.deepseek.com/zh-cn/quick_start/pricing (CNY idle)",
+    "output_cost_per_token": 1.98e-06,
+    "source": "https://api-docs.deepseek.com/quick_start/pricing",
     "supported_endpoints": [
       "/v1/chat/completions"
     ],
@@ -1187,8 +1184,7 @@
     "supports_reasoning": true,
     "supports_response_schema": true,
     "supports_system_messages": true,
-    "supports_tool_choice": true,
-    "input_cost_per_token_cache_hit": 1.5e-07
+    "supports_tool_choice": true
   },
   "gemini-2.0-flash": {
     "cache_read_input_token_cost": 2.5e-08,
@@ -5598,12 +5594,12 @@
     "cache_read_input_token_cost": 5e-07,
     "cache_read_input_token_cost_above_272k_tokens": 1e-06,
     "cache_read_input_token_cost_flex": 2.5e-07,
-    "cache_read_input_token_cost_priority": 1.25e-06,
+    "cache_read_input_token_cost_priority": 1.25e-6,
     "input_cost_per_token": 5e-06,
     "input_cost_per_token_above_272k_tokens": 1e-05,
     "input_cost_per_token_batches": 2.5e-06,
     "input_cost_per_token_flex": 2.5e-06,
-    "input_cost_per_token_priority": 1.25e-05,
+    "input_cost_per_token_priority": 12.5e-6,
     "litellm_provider": "openai",
     "max_input_tokens": 1050000,
     "max_output_tokens": 128000,
@@ -5613,7 +5609,7 @@
     "output_cost_per_token_above_272k_tokens": 4.5e-05,
     "output_cost_per_token_batches": 1.5e-05,
     "output_cost_per_token_flex": 1.5e-05,
-    "output_cost_per_token_priority": 7.5e-05,
+    "output_cost_per_token_priority": 75e-6,
     "supported_endpoints": [
       "/v1/chat/completions",
       "/v1/batch",
@@ -5646,12 +5642,12 @@
     "cache_read_input_token_cost": 5e-07,
     "cache_read_input_token_cost_above_272k_tokens": 1e-06,
     "cache_read_input_token_cost_flex": 2.5e-07,
-    "cache_read_input_token_cost_priority": 1.25e-06,
+    "cache_read_input_token_cost_priority": 1.25e-6,
     "input_cost_per_token": 5e-06,
     "input_cost_per_token_above_272k_tokens": 1e-05,
     "input_cost_per_token_batches": 2.5e-06,
     "input_cost_per_token_flex": 2.5e-06,
-    "input_cost_per_token_priority": 1.25e-05,
+    "input_cost_per_token_priority": 12.5e-6,
     "litellm_provider": "openai",
     "max_input_tokens": 1050000,
     "max_output_tokens": 128000,
@@ -5661,7 +5657,7 @@
     "output_cost_per_token_above_272k_tokens": 4.5e-05,
     "output_cost_per_token_batches": 1.5e-05,
     "output_cost_per_token_flex": 1.5e-05,
-    "output_cost_per_token_priority": 7.5e-05,
+    "output_cost_per_token_priority": 75e-6,
     "supported_endpoints": [
       "/v1/chat/completions",
       "/v1/batch",
@@ -6737,100 +6733,100 @@
     "supports_vision": true,
     "supports_web_search": true
   },
-  "gpt-image-2.6-flare": {
-    "cache_read_input_image_token_cost": 2e-06,
-    "cache_read_input_token_cost": 1.25e-06,
-    "input_cost_per_image_token": 8e-06,
-    "input_cost_per_token": 5e-06,
-    "litellm_provider": "openai",
-    "mode": "image_generation",
-    "output_cost_per_image_token": 3e-05,
-    "output_cost_per_token": 0,
-    "supported_endpoints": [
-      "/v1/images/generations",
-      "/v1/images/edits"
-    ],
-    "supports_vision": true,
-    "supports_prompt_caching": true
-  },
-  "gpt-image-2.5-flare": {
-    "cache_read_input_image_token_cost": 2e-06,
-    "cache_read_input_token_cost": 1.25e-06,
-    "input_cost_per_image_token": 8e-06,
-    "input_cost_per_token": 5e-06,
-    "litellm_provider": "openai",
-    "mode": "image_generation",
-    "output_cost_per_image_token": 3e-05,
-    "output_cost_per_token": 0,
-    "supported_endpoints": [
-      "/v1/images/generations",
-      "/v1/images/edits"
-    ],
-    "supports_vision": true,
-    "supports_prompt_caching": true
-  },
-  "gpt-image-2.5-flare-2026-09-08": {
-    "cache_read_input_image_token_cost": 2e-06,
-    "cache_read_input_token_cost": 1.25e-06,
-    "input_cost_per_image_token": 8e-06,
-    "input_cost_per_token": 5e-06,
-    "litellm_provider": "openai",
-    "mode": "image_generation",
-    "output_cost_per_image_token": 3e-05,
-    "output_cost_per_token": 0,
-    "supported_endpoints": [
-      "/v1/images/generations",
-      "/v1/images/edits"
-    ],
-    "supports_vision": true,
-    "supports_prompt_caching": true
-  },
-  "gpt-image-2.6-sunburst": {
-    "cache_read_input_image_token_cost": 2e-06,
-    "cache_read_input_token_cost": 1.25e-06,
-    "input_cost_per_image_token": 8e-06,
-    "input_cost_per_token": 5e-06,
-    "litellm_provider": "openai",
-    "mode": "image_generation",
-    "output_cost_per_image_token": 3e-05,
-    "output_cost_per_token": 0,
-    "supported_endpoints": [
-      "/v1/images/generations",
-      "/v1/images/edits"
-    ],
-    "supports_vision": true,
-    "supports_prompt_caching": true
-  },
-  "gpt-image-2.5-sunburst": {
-    "cache_read_input_image_token_cost": 2e-06,
-    "cache_read_input_token_cost": 1.25e-06,
-    "input_cost_per_image_token": 8e-06,
-    "input_cost_per_token": 5e-06,
-    "litellm_provider": "openai",
-    "mode": "image_generation",
-    "output_cost_per_image_token": 3e-05,
-    "output_cost_per_token": 0,
-    "supported_endpoints": [
-      "/v1/images/generations",
-      "/v1/images/edits"
-    ],
-    "supports_vision": true,
-    "supports_prompt_caching": true
-  },
-  "gpt-image-2.5-sunburst-2026-09-08": {
-    "cache_read_input_image_token_cost": 2e-06,
-    "cache_read_input_token_cost": 1.25e-06,
-    "input_cost_per_image_token": 8e-06,
-    "input_cost_per_token": 5e-06,
-    "litellm_provider": "openai",
-    "mode": "image_generation",
-    "output_cost_per_image_token": 3e-05,
-    "output_cost_per_token": 0,
-    "supported_endpoints": [
-      "/v1/images/generations",
-      "/v1/images/edits"
-    ],
-    "supports_vision": true,
-    "supports_prompt_caching": true
-  }
+    "gpt-image-2.6-flare": {
+        "cache_read_input_image_token_cost": 2e-06,
+        "cache_read_input_token_cost": 1.25e-06,
+        "input_cost_per_image_token": 8e-06,
+        "input_cost_per_token": 5e-06,
+        "litellm_provider": "openai",
+        "mode": "image_generation",
+        "output_cost_per_image_token": 3e-05,
+        "output_cost_per_token": 0,
+        "supported_endpoints": [
+            "/v1/images/generations",
+            "/v1/images/edits"
+        ],
+        "supports_vision": true,
+        "supports_prompt_caching": true
+    },
+    "gpt-image-2.5-flare": {
+        "cache_read_input_image_token_cost": 2e-06,
+        "cache_read_input_token_cost": 1.25e-06,
+        "input_cost_per_image_token": 8e-06,
+        "input_cost_per_token": 5e-06,
+        "litellm_provider": "openai",
+        "mode": "image_generation",
+        "output_cost_per_image_token": 3e-05,
+        "output_cost_per_token": 0,
+        "supported_endpoints": [
+            "/v1/images/generations",
+            "/v1/images/edits"
+        ],
+        "supports_vision": true,
+        "supports_prompt_caching": true
+    },
+    "gpt-image-2.5-flare-2026-09-08": {
+        "cache_read_input_image_token_cost": 2e-06,
+        "cache_read_input_token_cost": 1.25e-06,
+        "input_cost_per_image_token": 8e-06,
+        "input_cost_per_token": 5e-06,
+        "litellm_provider": "openai",
+        "mode": "image_generation",
+        "output_cost_per_image_token": 3e-05,
+        "output_cost_per_token": 0,
+        "supported_endpoints": [
+            "/v1/images/generations",
+            "/v1/images/edits"
+        ],
+        "supports_vision": true,
+        "supports_prompt_caching": true
+    },
+    "gpt-image-2.6-sunburst": {
+        "cache_read_input_image_token_cost": 2e-06,
+        "cache_read_input_token_cost": 1.25e-06,
+        "input_cost_per_image_token": 8e-06,
+        "input_cost_per_token": 5e-06,
+        "litellm_provider": "openai",
+        "mode": "image_generation",
+        "output_cost_per_image_token": 3e-05,
+        "output_cost_per_token": 0,
+        "supported_endpoints": [
+            "/v1/images/generations",
+            "/v1/images/edits"
+        ],
+        "supports_vision": true,
+        "supports_prompt_caching": true
+    },
+    "gpt-image-2.5-sunburst": {
+        "cache_read_input_image_token_cost": 2e-06,
+        "cache_read_input_token_cost": 1.25e-06,
+        "input_cost_per_image_token": 8e-06,
+        "input_cost_per_token": 5e-06,
+        "litellm_provider": "openai",
+        "mode": "image_generation",
+        "output_cost_per_image_token": 3e-05,
+        "output_cost_per_token": 0,
+        "supported_endpoints": [
+            "/v1/images/generations",
+            "/v1/images/edits"
+        ],
+        "supports_vision": true,
+        "supports_prompt_caching": true
+    },
+    "gpt-image-2.5-sunburst-2026-09-08": {
+        "cache_read_input_image_token_cost": 2e-06,
+        "cache_read_input_token_cost": 1.25e-06,
+        "input_cost_per_image_token": 8e-06,
+        "input_cost_per_token": 5e-06,
+        "litellm_provider": "openai",
+        "mode": "image_generation",
+        "output_cost_per_image_token": 3e-05,
+        "output_cost_per_token": 0,
+        "supported_endpoints": [
+            "/v1/images/generations",
+            "/v1/images/edits"
+        ],
+        "supports_vision": true,
+        "supports_prompt_caching": true
+    }
 }
