@@ -47,7 +47,7 @@ func TestPrepareUsageLogInsert_SessionIDArgWiring(t *testing.T) {
 
 	require.Equal(t, "text", usageLogInsertArgTypes[sessionArgIndex],
 		"session_id arg type must be text")
-	require.Equal(t, "boolean", usageLogInsertArgTypes[len(usageLogInsertArgTypes)-4],
+	require.Equal(t, "boolean", usageLogInsertArgTypes[len(usageLogInsertArgTypes)-6],
 		"native_compaction_v2 arg type must be boolean")
 }
 
