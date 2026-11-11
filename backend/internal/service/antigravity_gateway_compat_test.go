@@ -1116,6 +1116,8 @@ func TestAntigravityCompatHandlerRepeatsPreContentKeepalive(t *testing.T) {
 		MaxLineSize: defaultMaxLineSize, StreamDataIntervalTimeout: 30, StreamKeepaliveInterval: 0,
 	}, nil)
 	c, recorder := newAntigravityCompatContext(http.MethodPost, "/", nil)
+	notifier := &antigravityCompatNotifyingWriter{ResponseWriter: c.Writer, wrote: make(chan struct{}, 1)}
+	c.Writer = notifier
 	reader, pipeWriter := io.Pipe()
 	defer func() { _ = reader.Close() }()
 	resp := &http.Response{StatusCode: http.StatusOK, Body: reader}
@@ -1127,7 +1129,19 @@ func TestAntigravityCompatHandlerRepeatsPreContentKeepalive(t *testing.T) {
 		)
 		done <- err
 	}()
-	time.Sleep(55 * time.Millisecond)
+	// Observe repeated writes before closing the stream; a fixed sleep can
+	// expire before the handler goroutine has been scheduled.
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+	for writes := 0; writes < 3; writes++ {
+		select {
+		case <-notifier.wrote:
+		case <-timer.C:
+			_ = pipeWriter.Close()
+			<-done
+			t.Fatal("no repeated pre-content keepalive before timeout")
+		}
+	}
 	require.NoError(t, pipeWriter.Close())
 	require.Error(t, <-done)
 	require.GreaterOrEqual(t, strings.Count(recorder.Body.String(), ": ping\n\n"), 3)
