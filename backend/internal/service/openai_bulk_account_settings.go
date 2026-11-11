@@ -2,6 +2,7 @@ package service
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -70,12 +71,19 @@ func normalizeBulkOpenAISettings(input *BulkUpdateAccountsInput) (bulkOpenAISett
 	return settings, nil
 }
 
+// bulkOpenAIEndpointCapabilities 是批量编辑可写入的端点能力，声明顺序即规范化输出顺序。
+var bulkOpenAIEndpointCapabilities = []OpenAIEndpointCapability{
+	OpenAIEndpointCapabilityChatCompletions,
+	OpenAIEndpointCapabilityEmbeddings,
+	OpenAIEndpointCapabilityRerank,
+}
+
 func normalizeBulkOpenAIEndpointCapabilities(raw any) (any, bool, error) {
 	if raw == nil {
 		return nil, true, nil
 	}
 
-	values := make([]string, 0, 2)
+	values := make([]string, 0, len(bulkOpenAIEndpointCapabilities))
 	switch typed := raw.(type) {
 	case []any:
 		for _, item := range typed {
@@ -91,33 +99,35 @@ func normalizeBulkOpenAIEndpointCapabilities(raw any) (any, bool, error) {
 		return nil, false, invalidBulkOpenAIEndpointCapabilities()
 	}
 
-	selected := make(map[string]bool, 2)
+	selected := make(map[OpenAIEndpointCapability]bool, len(bulkOpenAIEndpointCapabilities))
 	for _, value := range values {
-		switch OpenAIEndpointCapability(value) {
-		case OpenAIEndpointCapabilityChatCompletions, OpenAIEndpointCapabilityEmbeddings:
-			selected[value] = true
-		default:
+		capability := OpenAIEndpointCapability(value)
+		if !slices.Contains(bulkOpenAIEndpointCapabilities, capability) {
 			return nil, false, invalidBulkOpenAIEndpointCapabilities()
 		}
+		selected[capability] = true
 	}
 	if len(selected) == 0 {
 		return nil, false, invalidBulkOpenAIEndpointCapabilities()
 	}
 
-	includeChat := selected[string(OpenAIEndpointCapabilityChatCompletions)]
-	if includeChat && selected[string(OpenAIEndpointCapabilityEmbeddings)] {
+	capabilities := make([]string, 0, len(selected))
+	for _, capability := range bulkOpenAIEndpointCapabilities {
+		if selected[capability] {
+			capabilities = append(capabilities, string(capability))
+		}
+	}
+	if len(capabilities) == len(bulkOpenAIEndpointCapabilities) {
+		// 全选等价于未配置：清空键，账号放行全部端点能力。
 		return nil, true, nil
 	}
-	if includeChat {
-		return []string{string(OpenAIEndpointCapabilityChatCompletions)}, true, nil
-	}
-	return []string{string(OpenAIEndpointCapabilityEmbeddings)}, false, nil
+	return capabilities, selected[OpenAIEndpointCapabilityChatCompletions], nil
 }
 
 func invalidBulkOpenAIEndpointCapabilities() error {
 	return infraerrors.BadRequest(
 		"OPENAI_ENDPOINT_CAPABILITIES_INVALID",
-		"openai_capabilities must contain chat_completions, embeddings, or both",
+		"openai_capabilities must contain at least one of chat_completions, embeddings, or rerank",
 	)
 }
 
