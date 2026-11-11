@@ -3,6 +3,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -11,8 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestHandleCCBufferedFromAnthropic_ToolArgumentsAreValidJSON(t *testing.T) {
@@ -246,4 +249,67 @@ func TestHandleCCStreamingFromAnthropic_PreservesMessageStartCacheUsageAndReason
 	require.NotNil(t, result.ReasoningEffort)
 	require.Equal(t, "medium", *result.ReasoningEffort)
 	require.Contains(t, rec.Body.String(), `[DONE]`)
+}
+
+// Chat Completions 入站同样走 CC→Responses→Anthropic 转换，转换本身不会补
+// cache_control。这里守住真正的 /v1/chat/completions 出口：Claude 模型必须拿到
+// 随对话前进的断点，非 Claude 上游保持原样。
+func TestForwardAsChatCompletionsAppliesTurnFollowingCacheBreakpoints(t *testing.T) {
+	body := `{"model":"public-opus","messages":[
+		{"role":"user","content":"turn one"},
+		{"role":"assistant","content":"answer one"},
+		{"role":"user","content":"turn two"},
+		{"role":"assistant","content":"answer two"},
+		{"role":"user","content":"turn three"}
+	]}`
+
+	tests := []struct {
+		name        string
+		mappedModel string
+		wantInject  bool
+	}{
+		{name: "claude family gets turn following breakpoints", mappedModel: "claude-opus-5-5", wantInject: true},
+		{name: "non claude upstream untouched", mappedModel: "deepseek-v4-flash", wantInject: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+
+			upstream := &anthropicHTTPUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{},
+				Body:       io.NopCloser(strings.NewReader(namespaceToolAnthropicStream())),
+			}}
+			account := &Account{
+				ID:          1,
+				Platform:    PlatformAnthropic,
+				Type:        AccountTypeAPIKey,
+				Credentials: map[string]any{"api_key": "fixture-key", "model_mapping": map[string]any{"public-opus": tt.mappedModel}},
+			}
+			svc := &GatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+
+			result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, []byte(body), nil)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.NotNil(t, upstream.lastReq)
+			require.Equal(t, tt.mappedModel, gjson.GetBytes(upstream.lastBody, "model").String())
+			require.Len(t, gjson.GetBytes(upstream.lastBody, "messages").Array(), 5)
+
+			if !tt.wantInject {
+				require.Equal(t, 0, countAnthropicCacheBreakpoints(upstream.lastBody))
+				return
+			}
+
+			// 断点落在当前最后一条 message 与倒数第二个 user message 上。
+			require.Equal(t, "ephemeral", gjson.GetBytes(upstream.lastBody, "messages.4.content.0.cache_control.type").String())
+			require.Equal(t, "ephemeral", gjson.GetBytes(upstream.lastBody, "messages.2.content.0.cache_control.type").String())
+			require.False(t, gjson.GetBytes(upstream.lastBody, "messages.0.content.0.cache_control").Exists())
+			require.LessOrEqual(t, countAnthropicCacheBreakpoints(upstream.lastBody), maxCacheControlBlocks)
+		})
+	}
 }
