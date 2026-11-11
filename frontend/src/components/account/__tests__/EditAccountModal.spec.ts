@@ -336,6 +336,46 @@ describe('EditAccountModal', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it.each(['apikey', 'bedrock', 'oauth'])('loads and saves transport cooldown settings for Anthropic %s', async (type) => {
+    const account = { ...buildAccount(), platform: 'anthropic', type,
+      extra: { transport_error_cooldown_enabled: false, transport_error_cooldown_minutes: 3, unrelated: 'keep' } }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    const toggle = wrapper.get('[data-testid="transport-error-cooldown-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+    await toggle.trigger('click')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="transport-error-cooldown-minutes"]').element.value).toBe('3')
+    await wrapper.get('[data-testid="transport-error-cooldown-minutes"]').setValue(1)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).toHaveBeenCalledOnce()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({
+      transport_error_cooldown_enabled: true, transport_error_cooldown_minutes: 1, unrelated: 'keep'
+    })
+    wrapper.unmount()
+  })
+
+  it('defaults legacy accounts to enabled and reloads settings when changing accounts', async () => {
+    const account = { ...buildAccount(), platform: 'anthropic' }
+    const wrapper = mountModal(account)
+    expect(wrapper.get('[data-testid="transport-error-cooldown-toggle"]').attributes('aria-checked')).toBe('true')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="transport-error-cooldown-minutes"]').element.value).toBe('10')
+    await wrapper.setProps({ account: { ...account, id: 2, extra: { transport_error_cooldown_enabled: false } } })
+    expect(wrapper.get('[data-testid="transport-error-cooldown-toggle"]').attributes('aria-checked')).toBe('false')
+    await wrapper.setProps({ account: buildAccount() })
+    expect(wrapper.find('[data-testid="transport-error-cooldown-toggle"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it.each([0, -1, 1.5, 1441, ''])('rejects invalid transport cooldown duration %s before update', async (minutes) => {
+    updateAccountMock.mockReset()
+    const wrapper = mountModal({ ...buildAccount(), platform: 'anthropic' })
+    await wrapper.get('[data-testid="transport-error-cooldown-minutes"]').setValue(minutes)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('passes existing non-identity mappings to the whitelist selector and preserves them on save', async () => {
     const account = buildAccount()
     account.credentials.model_mapping = { 'gpt-5.2': 'gpt-5.2', 'gpt-latest': 'deepseek-chat' }

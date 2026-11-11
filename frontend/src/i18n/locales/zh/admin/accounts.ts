@@ -458,6 +458,13 @@ export default {
         viewTempUnschedDetails: '查看临时不可调度详情',
         tempUnschedulableUntil: '预计 {time} 恢复'
       },
+      transportErrorCooldown: {
+        title: '传输错误自动停调度',
+        hint: '仅适用于 Anthropic/Bedrock。连接拒绝、DNS/路由故障或代理认证失败时暂停账号调度。默认开启，冷却 10 分钟；不影响 HTTP 错误处理。',
+        minutes: '冷却时长（分钟，1–1440）',
+        invalidMinutes: '传输错误冷却时长须为 1–1440 的整数。',
+        disabledWarning: '关闭后，后续传输错误不会新增停调度。已有停调度不会自动解除。上游长期故障时，请求仍会尝试该账号；不会额外启用同账号重试。'
+      },
       tempUnschedulable: {
         title: '临时不可调度',
         statusTitle: '临时不可调度状态',
