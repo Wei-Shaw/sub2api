@@ -199,9 +199,31 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		}
 	} else {
 		result, handleErr = s.handleCCBufferedFromAnthropic(resp, c, originalModel, mappedModel, reasoningEffort, startTime)
+		if errors.Is(handleErr, errCCBufferedIncompleteResponse) {
+			return nil, s.ccBufferedIncompleteResponseFailover(c, account, resp)
+		}
 	}
 
 	return result, handleErr
+}
+
+var errCCBufferedIncompleteResponse = errors.New("upstream stream ended without a complete response")
+
+func (s *GatewayService) ccBufferedIncompleteResponseFailover(c *gin.Context, account *Account, resp *http.Response) *UpstreamFailoverError {
+	const message = "Upstream stream ended without a complete response"
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		ProxyID: opsUpstreamProxyID(account), ProxyName: opsUpstreamProxyName(account),
+		Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
+		UpstreamStatusCode: http.StatusBadGateway, UpstreamRequestID: resp.Header.Get("x-request-id"),
+		Kind: "failover", Message: message,
+	})
+	body, _ := json.Marshal(gin.H{"error": gin.H{"type": "server_error", "message": message}})
+	return &UpstreamFailoverError{
+		StatusCode: http.StatusBadGateway, ResponseBody: body, ResponseHeaders: resp.Header.Clone(),
+		RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(http.StatusBadGateway),
+		// An upstream stream ending early may repeat for the same request.
+		SameAccountRetryMax: 1, Scope: GatewayFailureScopeProvider,
+	}
 }
 
 // extractCCReasoningEffortFromBody reads reasoning effort from a Chat Completions
@@ -321,6 +343,9 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 	streamStatus.readErr = scanner.Err()
 	if failure := streamStatus.failure(); failure != nil {
 		_ = resp.Body.Close()
+		if failure.errType == "stream_incomplete" && !usage.hasObservedTokens() && !c.Writer.Written() && !IsResponseCommitted(c) {
+			return nil, errCCBufferedIncompleteResponse
+		}
 		writeGatewayCCError(c, http.StatusBadGateway, "server_error", failure.message)
 		return &ForwardResult{
 			RequestID: requestID, UpstreamHeaders: resp.Header, Usage: usage,
@@ -330,6 +355,9 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 	}
 
 	if finalResp == nil {
+		if !usage.hasObservedTokens() && !c.Writer.Written() && !IsResponseCommitted(c) {
+			return nil, errCCBufferedIncompleteResponse
+		}
 		writeGatewayCCError(c, http.StatusBadGateway, "server_error", "Upstream stream ended without a response")
 		return nil, fmt.Errorf("upstream stream ended without response")
 	}
