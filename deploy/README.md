@@ -217,9 +217,9 @@ docker compose -f docker-compose.local.yml logs -f sub2api
 # Restart Sub2API only
 docker compose -f docker-compose.local.yml restart sub2api
 
-# Update to latest version
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
+# Update only Sub2API to the configured image
+docker compose -f docker-compose.local.yml pull sub2api
+docker compose -f docker-compose.local.yml up -d --no-deps sub2api
 
 # Remove all data (caution!)
 docker compose -f docker-compose.local.yml down
@@ -241,15 +241,17 @@ docker compose logs -f sub2api
 # Restart Sub2API only
 docker compose restart sub2api
 
-# Update to latest version
-docker compose pull
-docker compose up -d
+# Update only Sub2API to the configured image
+docker compose pull sub2api
+docker compose up -d --no-deps sub2api
 
 # Remove all data (caution!)
 docker compose down -v
 ```
 
 ### Environment Variables
+
+For binary self-updates, container image updates, multi-replica deployments, and recovery boundaries, see [Upgrading Sub2API](./UPGRADING.md). Updating the application image does not establish database migration or long-stream draining compatibility.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
