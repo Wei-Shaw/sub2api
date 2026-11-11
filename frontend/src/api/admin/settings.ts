@@ -1570,6 +1570,7 @@ export interface WebSearchProviderConfig {
 
 export interface WebSearchEmulationConfig {
   enabled: boolean;
+  managed_account_id?: number | null;
   providers: WebSearchProviderConfig[];
 }
 

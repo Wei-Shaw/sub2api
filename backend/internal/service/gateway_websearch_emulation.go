@@ -94,6 +94,13 @@ func shouldEmulateWebSearchFor(
 	}
 }
 
+// IsOnlyWebSearchToolInBody reports whether the request carries exactly one
+// web_search server tool and nothing else. Callers use it to identify a pure
+// search turn that a managed search account can serve without model routing.
+func IsOnlyWebSearchToolInBody(body []byte) bool {
+	return isOnlyWebSearchToolInBody(body)
+}
+
 // isOnlyWebSearchToolInBody checks if the body contains exactly one web_search tool.
 func isOnlyWebSearchToolInBody(body []byte) bool {
 	tools := gjson.GetBytes(body, "tools")
