@@ -42,8 +42,8 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
-	if RequestedReasoningEffortFromContext(ctx) == nil {
-		ctx = WithRequestedReasoningEffort(ctx, explicitRequestedReasoningEffortFromBody(body))
+	if diagnosticRequestedReasoningEffortFromContext(ctx) == nil {
+		ctx = WithRawRequestedReasoningEffort(ctx, body)
 	}
 
 	// 1. Lower Codex client-side tools to function tools understood by Anthropic.

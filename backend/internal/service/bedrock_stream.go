@@ -249,6 +249,13 @@ type bedrockEventStreamDecoder struct {
 	reader *bufio.Reader
 }
 
+// AWS EventStream 协议上限（与 AWS SDK 的 eventstream 解码器一致）。帧长度来自
+// 上游，必须在分配前校验，否则单个伪造的 prelude 即可申请约 4 GiB。
+const (
+	bedrockEventStreamMaxHeadersLength = 128 << 10
+	bedrockEventStreamMaxPayloadLength = 16 << 20
+)
+
 func newBedrockEventStreamDecoder(r io.Reader) *bedrockEventStreamDecoder {
 	return &bedrockEventStreamDecoder{
 		reader: bufio.NewReaderSize(r, 64*1024),
@@ -275,6 +282,12 @@ func (d *bedrockEventStreamDecoder) Decode() ([]byte, error) {
 
 		if totalLength < 16 { // minimum: 12 prelude + 4 message_crc
 			return nil, fmt.Errorf("invalid eventstream frame: total_length=%d", totalLength)
+		}
+		if headersLength > bedrockEventStreamMaxHeadersLength || headersLength > totalLength-16 {
+			return nil, fmt.Errorf("invalid eventstream frame: headers_length=%d total_length=%d", headersLength, totalLength)
+		}
+		if totalLength-16-headersLength > bedrockEventStreamMaxPayloadLength {
+			return nil, fmt.Errorf("invalid eventstream frame: payload too large, total_length=%d", totalLength)
 		}
 
 		// 读取 headers + payload + message_crc

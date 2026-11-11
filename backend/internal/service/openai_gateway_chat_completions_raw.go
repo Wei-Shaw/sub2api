@@ -72,8 +72,8 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	defaultMappedModel string,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
-	if RequestedReasoningEffortFromContext(ctx) == nil {
-		ctx = WithRequestedReasoningEffort(ctx, explicitRequestedReasoningEffortFromBody(body))
+	if diagnosticRequestedReasoningEffortFromContext(ctx) == nil {
+		ctx = WithRawRequestedReasoningEffort(ctx, body)
 	}
 
 	// 1. Parse minimal fields needed for routing/billing
@@ -87,7 +87,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	// 2. Resolve model mapping (same as ForwardAsChatCompletions)
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
-	if err := validateGPT61SolCompatRequest(body, upstreamModel); err != nil {
+	if err := validateGPT61CompatRequest(body, upstreamModel); err != nil {
 		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
 	}

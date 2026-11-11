@@ -109,6 +109,7 @@ func bindRequestedReasoningEffort(c *gin.Context, body []byte, model string) {
 	if c == nil || c.Request == nil {
 		return
 	}
+	c.Request = c.Request.WithContext(service.WithRawRequestedReasoningEffort(c.Request.Context(), body))
 	effort := service.CanonicalRequestedReasoningEffort(body, model)
 	if effort == nil {
 		return
@@ -174,20 +175,22 @@ func bindOpenAIReasoningEffortPolicyForMessagesRequest(c *gin.Context, apiKey *s
 		return
 	}
 	bindRequestedReasoningEffort(c, body, strings.TrimSpace(gjson.GetBytes(body, "model").String()))
-	// The Messages bridge synthesizes a default OpenAI effort when
-	// output_config.effort is omitted. Bind the group policy only for an
-	// explicit client value so the ceiling does not alter that default.
-	effort := gjson.GetBytes(body, "output_config.effort")
-	if !effort.Exists() || effort.Type != gjson.String || strings.TrimSpace(effort.String()) == "" {
-		return
+	isCNTarget := service.IsCNProvider(effectiveAPIKeyPlatform(c, apiKey))
+	if isCNTarget {
+		effort := gjson.GetBytes(body, "output_config.effort")
+		if effort.Type != gjson.String || strings.TrimSpace(effort.String()) == "" {
+			return
+		}
 	}
 	maxEffort, mappings, overLimit, ok := openAIReasoningEffortPolicyForRequest(c, apiKey)
 	if !ok {
 		return
 	}
-	if service.IsCNProvider(effectiveAPIKeyPlatform(c, apiKey)) {
+	if isCNTarget {
 		_, mappings = anthropicCompatibleReasoningEffortPolicy(maxEffort, mappings)
+		model := clientRequestedModel(c, gjson.GetBytes(body, "model").String())
+		c.Request = c.Request.WithContext(service.WithOpenAIReasoningEffortPolicyForModel(c.Request.Context(), maxEffort, mappings, overLimit, model))
+		return
 	}
-	model := clientRequestedModel(c, gjson.GetBytes(body, "model").String())
-	c.Request = c.Request.WithContext(service.WithOpenAIReasoningEffortPolicyForModel(c.Request.Context(), maxEffort, mappings, overLimit, model))
+	c.Request = c.Request.WithContext(service.WithOpenAIReasoningEffortPolicyForMessages(c.Request.Context(), body, maxEffort, mappings, overLimit))
 }

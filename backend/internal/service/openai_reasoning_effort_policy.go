@@ -48,6 +48,7 @@ func isReasoningEffortMappingDeny(raw string) bool {
 
 type openAIReasoningEffortPolicyContextKey struct{}
 type requestedReasoningEffortContextKey struct{}
+type rawRequestedReasoningEffortContextKey struct{}
 
 type openAIReasoningEffortPolicy struct {
 	maxEffort string
@@ -414,6 +415,31 @@ func WithRequestedReasoningEffort(ctx context.Context, effort string) context.Co
 	return context.WithValue(ctx, requestedReasoningEffortContextKey{}, effort)
 }
 
+func WithRawRequestedReasoningEffort(ctx context.Context, body []byte) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, captured := ctx.Value(rawRequestedReasoningEffortContextKey{}).(string); captured {
+		return ctx
+	}
+	for _, path := range []string{"reasoning.effort", "reasoning_effort", "output_config.effort"} {
+		field := gjson.GetBytes(body, path)
+		if field.Type == gjson.String && strings.TrimSpace(field.String()) != "" {
+			return context.WithValue(ctx, rawRequestedReasoningEffortContextKey{}, field.String())
+		}
+	}
+	return ctx
+}
+
+func diagnosticRequestedReasoningEffortFromContext(ctx context.Context) *string {
+	if ctx != nil {
+		if raw, captured := ctx.Value(rawRequestedReasoningEffortContextKey{}).(string); captured {
+			return &raw
+		}
+	}
+	return RequestedReasoningEffortFromContext(ctx)
+}
+
 // RequestedReasoningEffortFromContext returns the inbound requested effort bound
 // to ctx, or nil when none was captured.
 func RequestedReasoningEffortFromContext(ctx context.Context) *string {
@@ -454,6 +480,25 @@ func WithOpenAIReasoningEffortPolicyForModel(ctx context.Context, maxEffort stri
 	return context.WithValue(ctx, openAIReasoningEffortPolicyContextKey{}, policy)
 }
 
+// WithOpenAIReasoningEffortPolicyForMessages preserves ordinary bridge defaults,
+// but retains ceilings and none mappings for explicitly disabled thinking.
+func WithOpenAIReasoningEffortPolicyForMessages(ctx context.Context, body []byte, maxEffort string, mappings []ReasoningEffortMapping, overLimit string) context.Context {
+	effort := gjson.GetBytes(body, "output_config.effort")
+	if effort.Type != gjson.String || strings.TrimSpace(effort.String()) == "" {
+		if gjson.GetBytes(body, "thinking.type").String() != "disabled" {
+			maxEffort = ""
+		}
+		noneMappings := make([]ReasoningEffortMapping, 0, len(mappings))
+		for _, mapping := range mappings {
+			if normalizeReasoningEffortMappingSource(mapping.From) == "none" {
+				noneMappings = append(noneMappings, mapping)
+			}
+		}
+		mappings = noneMappings
+	}
+	return WithOpenAIReasoningEffortPolicy(ctx, maxEffort, mappings, overLimit)
+}
+
 // ApplyOpenAIReasoningEffortPolicyFromContext applies a policy previously bound
 // to the request. An unbound request is returned byte-for-byte unchanged.
 func ApplyOpenAIReasoningEffortPolicyFromContext(ctx context.Context, body []byte) ([]byte, bool, error) {
@@ -468,7 +513,7 @@ func ApplyOpenAIReasoningEffortPolicyFromContext(ctx context.Context, body []byt
 	if model == "" {
 		model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	}
-	return applyReasoningEffortPolicyForModel(body, policy.maxEffort, policy.mappings, policy.overLimit, model, RequestedReasoningEffortFromContext(ctx))
+	return applyReasoningEffortPolicyForModel(body, policy.maxEffort, policy.mappings, policy.overLimit, model, diagnosticRequestedReasoningEffortFromContext(ctx))
 }
 
 func applyFinalOpenAIReasoningEffortCeiling(ctx context.Context, account *Account, body []byte, upstreamModel string) ([]byte, bool, error) {
@@ -480,7 +525,7 @@ func applyFinalOpenAIReasoningEffortCeiling(ctx context.Context, account *Accoun
 		return body, false, nil
 	}
 	glmModel := strings.HasPrefix(strings.ToLower(strings.TrimSpace(upstreamModel)), "glm-")
-	requested := RequestedReasoningEffortFromContext(ctx)
+	requested := diagnosticRequestedReasoningEffortFromContext(ctx)
 	if !glmModel {
 		return applyReasoningEffortPolicyForModel(body, policy.maxEffort, nil, policy.overLimit, upstreamModel, requested)
 	}
@@ -635,11 +680,14 @@ func applyReasoningEffortPolicyForModel(body []byte, maxEffort string, mappings 
 
 		effective, mapped := mapReasoningEffort(original, mappings, requestModel)
 		if mapped && isReasoningEffortMappingDeny(effective) {
-			requested := normalizeReasoningEffortMappingSource(original)
-			if requested == "" {
-				requested = original
+			inbound := normalizeReasoningEffortMappingSource(original)
+			if inbound == "" {
+				inbound = original
 			}
-			return body, false, &ReasoningEffortMappingDeniedError{Requested: requested}
+			if requested != nil {
+				inbound = *requested
+			}
+			return body, false, &ReasoningEffortMappingDeniedError{Requested: inbound}
 		}
 		if currentRank, recognized := reasoningEffortRank(effective); recognized {
 			effective = NormalizeMaxReasoningEffort(effective)

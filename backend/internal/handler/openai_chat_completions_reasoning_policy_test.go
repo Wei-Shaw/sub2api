@@ -307,3 +307,55 @@ func TestCNMessagesOmittedEffortDoesNotBindSynthesizedDefault(t *testing.T) {
 		})
 	}
 }
+
+func TestCNReasoningDiagnosticPreservesIngressToken(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, endpoint := range []string{"chat/completions", "responses"} {
+		for _, protocol := range []string{service.APIProtocolChatCompletions, service.APIProtocolAnthropic} {
+			for _, token := range []string{"none", "NoNe", " HIGH "} {
+				t.Run(endpoint+"/"+protocol+"/"+token, func(t *testing.T) {
+					body := []byte(fmt.Sprintf(`{"model":"glm-4.6","messages":[{"role":"user","content":"hello"}],"reasoning_effort":%q}`, token))
+					field := "reasoning_effort"
+					if endpoint == "responses" {
+						field = "reasoning.effort"
+						body = []byte(fmt.Sprintf(`{"model":"glm-4.6","input":"hello","reasoning":{"effort":%q}}`, token))
+					}
+					recorder := httptest.NewRecorder()
+					ginContext, _ := gin.CreateTestContext(recorder)
+					ginContext.Request = httptest.NewRequest(http.MethodPost, "/v1/"+endpoint, strings.NewReader(string(body)))
+					ginContext.Request = ginContext.Request.WithContext(service.WithResolvedTargetPlatform(ginContext.Request.Context(), service.PlatformZhipu))
+					apiKey := &service.APIKey{Group: &service.Group{
+						Platform: service.PlatformComposite, MaxReasoningEffort: "xhigh", MaxReasoningEffortOverLimit: "deny",
+						ReasoningEffortMappings: []service.ReasoningEffortMapping{{From: strings.ToLower(strings.TrimSpace(token)), To: "xhigh"}},
+					}}
+					forwardBody, changed, err := applyOpenAIReasoningEffortPolicyForRequest(ginContext, apiKey, body)
+					require.NoError(t, err)
+					require.True(t, changed)
+					require.Equal(t, "xhigh", gjson.GetBytes(forwardBody, field).String())
+					require.Equal(t, service.CanonicalRequestedReasoningEffort(body), service.RequestedReasoningEffortFromContext(ginContext.Request.Context()))
+					upstream := &chatReasoningPolicyUpstream{}
+					cfg := &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{AllowInsecureHTTP: true}}}
+					gateway := service.NewOpenAIGatewayService(nil, nil, nil, nil, nil, nil, nil, cfg, nil, nil, nil, nil, nil, upstream, nil, nil, nil, nil, nil, nil, nil, nil)
+					account := &service.Account{ID: 101, Platform: service.PlatformZhipu, Type: service.AccountTypeAPIKey, Credentials: map[string]any{
+						"api_key": "sk-test", "base_url": "http://upstream.example", "api_protocol": protocol,
+					}}
+					for retry := 0; retry < 2; retry++ {
+						var result *service.OpenAIForwardResult
+						if endpoint == "responses" {
+							result, err = gateway.Forward(ginContext.Request.Context(), ginContext, account, forwardBody)
+						} else {
+							result, err = gateway.ForwardAsChatCompletions(ginContext.Request.Context(), ginContext, account, forwardBody, "", "")
+						}
+						var denial *service.ReasoningEffortOverLimitError
+						require.ErrorAs(t, err, &denial)
+						require.Equal(t, token, denial.Requested)
+						require.Equal(t, "xhigh", denial.Max)
+						require.Nil(t, result)
+						require.Equal(t, http.StatusForbidden, recorder.Code)
+						require.Empty(t, upstream.bodies)
+					}
+				})
+			}
+		}
+	}
+}

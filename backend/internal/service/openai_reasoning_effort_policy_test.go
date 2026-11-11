@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
@@ -9,6 +10,29 @@ import (
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
+
+func TestGLMReasoningEffortPolicyPreservesNoneAndMinimal(t *testing.T) {
+	for _, model := range []string{"glm-5.2", "glm-5.3"} {
+		for _, field := range []string{`"reasoning":{"effort":"%s"}`, `"reasoning_effort":"%s"`} {
+			for _, effort := range []string{"none", "minimal"} {
+				for _, ceiling := range []string{"minimal", "low"} {
+					for _, overLimit := range []string{ReasoningEffortOverLimitDowngrade, ReasoningEffortOverLimitDeny} {
+						t.Run(model+"/"+field+"/"+effort+"/"+ceiling+"/"+overLimit, func(t *testing.T) {
+							body := []byte(fmt.Sprintf(`{"model":%q,`+field+`}`, model, effort))
+							ctx := WithOpenAIReasoningEffortPolicy(context.Background(), ceiling, nil, overLimit)
+							normalized, normalizationChanged := NormalizeGLMOpenAIReasoningEffort(body, model)
+							require.False(t, normalizationChanged)
+							got, changed, err := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, normalized)
+							require.NoError(t, err)
+							require.False(t, changed)
+							require.Equal(t, body, got)
+						})
+					}
+				}
+			}
+		}
+	}
+}
 
 func TestCanonicalRequestedReasoningEffort(t *testing.T) {
 	t.Parallel()
@@ -26,6 +50,8 @@ func TestCanonicalRequestedReasoningEffort(t *testing.T) {
 	require.Equal(t, "high", *claude)
 
 	require.Nil(t, CanonicalRequestedReasoningEffort([]byte(`{"model":"gpt-5.4"}`), "gpt-5.4"))
+	require.Nil(t, CanonicalRequestedReasoningEffort([]byte(`{"reasoning_effort":"none"}`)))
+	require.Nil(t, CanonicalRequestedReasoningEffort([]byte(`{"reasoning":{"effort":"NoNe"}}`)))
 }
 
 func TestRequestedReasoningEffortContext(t *testing.T) {
@@ -36,6 +62,44 @@ func TestRequestedReasoningEffortContext(t *testing.T) {
 	got := RequestedReasoningEffortFromContext(ctx)
 	require.NotNil(t, got)
 	require.Equal(t, "max", *got)
+}
+
+func TestRawRequestedReasoningEffortDiagnostics(t *testing.T) {
+	for _, field := range []string{"reasoning.effort", "reasoning_effort", "output_config.effort"} {
+		for _, token := range []string{"none", "NoNe", " HIGH ", "MAX", "vendor-token"} {
+			t.Run(field+"/"+token, func(t *testing.T) {
+				body, err := sjson.SetBytes([]byte(`{"model":"glm-4.6"}`), field, token)
+				require.NoError(t, err)
+				ctx := WithRawRequestedReasoningEffort(context.Background(), body)
+				require.Nil(t, RequestedReasoningEffortFromContext(ctx))
+				canonical := CanonicalRequestedReasoningEffort(body)
+				if canonical != nil {
+					ctx = WithRequestedReasoningEffort(ctx, *canonical)
+				}
+				converted := []byte(`{"model":"glm-4.6","output_config":{"effort":"max"}}`)
+				ctx = WithRawRequestedReasoningEffort(ctx, converted)
+				ctx = WithOpenAIReasoningEffortPolicy(ctx, "xhigh", nil, "deny")
+				_, _, err = applyFinalOpenAIReasoningEffortCeiling(ctx, &Account{Platform: PlatformZhipu}, converted, "glm-4.6")
+				var capDenial *ReasoningEffortOverLimitError
+				require.ErrorAs(t, err, &capDenial)
+				require.Equal(t, token, capDenial.Requested)
+				_, _, err = ApplyOpenAIReasoningEffortPolicyFromContext(ctx, converted)
+				require.ErrorAs(t, err, &capDenial)
+				require.Equal(t, token, capDenial.Requested)
+				ctx = WithOpenAIReasoningEffortPolicy(ctx, "", []ReasoningEffortMapping{{From: "max", To: "deny"}}, "")
+				_, _, err = ApplyOpenAIReasoningEffortPolicyFromContext(ctx, converted)
+				var mappingDenial *ReasoningEffortMappingDeniedError
+				require.ErrorAs(t, err, &mappingDenial)
+				require.Equal(t, token, mappingDenial.Requested)
+				require.Equal(t, canonical, RequestedReasoningEffortFromContext(ctx))
+			})
+		}
+	}
+	for _, body := range []string{`{}`, `{"reasoning_effort":null}`, `{"reasoning_effort":123}`, `{"reasoning_effort":" "}`} {
+		require.Nil(t, diagnosticRequestedReasoningEffortFromContext(WithRawRequestedReasoningEffort(context.Background(), []byte(body))))
+	}
+	ctx := WithRequestedReasoningEffort(context.Background(), "max")
+	require.Equal(t, RequestedReasoningEffortFromContext(ctx), diagnosticRequestedReasoningEffortFromContext(ctx))
 }
 
 func TestFinalCNGLMReasoningCeiling(t *testing.T) {

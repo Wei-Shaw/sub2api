@@ -31,8 +31,8 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	body []byte,
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
-	if RequestedReasoningEffortFromContext(ctx) == nil {
-		ctx = WithRequestedReasoningEffort(ctx, explicitRequestedReasoningEffortFromBody(body))
+	if diagnosticRequestedReasoningEffortFromContext(ctx) == nil {
+		ctx = WithRawRequestedReasoningEffort(ctx, body)
 	}
 	var responsesReq apicompat.ResponsesRequest
 	if err := json.Unmarshal(body, &responsesReq); err != nil {
@@ -74,7 +74,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 
 	billingModel := resolveOpenAIForwardModel(account, originalModel, "")
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
-	if err := validateGPT61SolCompatRequest(body, upstreamModel); err != nil {
+	if err := validateGPT61CompatRequest(body, upstreamModel); err != nil {
 		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
 	}

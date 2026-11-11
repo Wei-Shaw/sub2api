@@ -42,8 +42,8 @@ func (s *OpenAIGatewayService) forwardChatCompletionsViaNativeAnthropic(
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
-	if RequestedReasoningEffortFromContext(ctx) == nil {
-		ctx = WithRequestedReasoningEffort(ctx, explicitRequestedReasoningEffortFromBody(body))
+	if diagnosticRequestedReasoningEffortFromContext(ctx) == nil {
+		ctx = WithRawRequestedReasoningEffort(ctx, body)
 	}
 
 	// 1. Parse Chat Completions request
