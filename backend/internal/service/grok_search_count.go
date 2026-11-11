@@ -9,8 +9,8 @@ import (
 
 // countGrokNativeSearchCallsFromJSONBytes counts completed native search tool
 // calls in a Responses-style JSON body (output array or nested response.output).
-// Counts: web_search_call, x_search_call, tool_search_call, and function_call
-// named tool_search / web_search / x_search.
+// Counts web_search_call and x_search_call. Client function/custom calls and
+// tool_search discovery do not incur a server-side search surcharge.
 func countGrokNativeSearchCallsFromJSONBytes(body []byte) int {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return 0
@@ -222,11 +222,8 @@ func isGrokNativeSearchOutputItem(item gjson.Result) bool {
 	}
 	itemType := strings.ToLower(strings.TrimSpace(item.Get("type").String()))
 	switch itemType {
-	case "web_search_call", "x_search_call", "tool_search_call":
+	case "web_search_call", "x_search_call":
 		return true
-	case "function_call", "custom_tool_call":
-		name := strings.ToLower(strings.TrimSpace(item.Get("name").String()))
-		return name == "web_search" || name == "x_search" || name == "tool_search"
 	default:
 		return false
 	}
