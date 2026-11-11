@@ -229,6 +229,12 @@
                   </template>
                   <span v-else>{{ t('version.restartNow') }}</span>
                 </button>
+                <p
+                  v-if="restartError"
+                  class="rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-600 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-400"
+                >
+                  {{ restartError }}
+                </p>
               </div>
 
               <!-- Priority 3: Update available for source build - show git pull hint -->
@@ -684,6 +690,7 @@ const needRestart = ref(false)
 const updateError = ref('')
 const updateSuccess = ref(false)
 const restartCountdown = ref(0)
+const restartError = ref('')
 // Distinguishes the success + restart panel between update and rollback flows
 const successKind = ref<'update' | 'rollback'>('update')
 
@@ -746,6 +753,7 @@ async function refreshVersion(force = true) {
   updateError.value = ''
   updateSuccess.value = false
   needRestart.value = false
+  restartError.value = ''
   resetRollbackState()
 
   await appStore.fetchVersion(force)
@@ -853,11 +861,19 @@ async function handleRestart() {
 
   restarting.value = true
   restartCountdown.value = 8
+  restartError.value = ''
 
   try {
     await restartService()
     // Service will restart, page will reload automatically or show disconnected
   } catch (error) {
+    // The server answered that it cannot restart itself on this platform: nothing will come back up.
+    if ((error as { reason?: string })?.reason === 'SYSTEM_RESTART_UNSUPPORTED') {
+      restarting.value = false
+      restartCountdown.value = 0
+      restartError.value = t('version.restartUnsupported')
+      return
+    }
     // Expected - connection will be lost during restart
     console.log('Service restarting...')
   }
