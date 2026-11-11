@@ -113,6 +113,38 @@ const cnUsageCellStubs = {
 }
 
 describe('AccountUsageCell', () => {
+  it('shows Antigravity local usage and separate account/user costs when the upstream query fails', async () => {
+    getUsage.mockRejectedValue(new Error('upstream quota unavailable'))
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 6401 }),
+        todayStats: { requests: 56, tokens: 5715898, cost: 2.6253228, user_cost: 0.003426 }
+      },
+      global: { stubs: { AccountQuotaInfo: true } }
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('56 req')
+    expect(wrapper.find('[title="usage.accountBilled"]').text()).toBe('A $2.63')
+    expect(wrapper.find('[title="usage.userBilled"]').text()).toBe('· U $0.00')
+    wrapper.unmount()
+  })
+
+  it('renders zero local usage without inventing a user cost', async () => {
+    getUsage.mockResolvedValue({})
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 6402 }),
+        todayStats: { requests: 0, tokens: 0, cost: 0 }
+      },
+      global: { stubs: { AccountQuotaInfo: true } }
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('0 req')
+    expect(wrapper.find('[title="usage.accountBilled"]').text()).toBe('A $0.00')
+    expect(wrapper.find('[title="usage.userBilled"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   beforeEach(() => {
     getUsage.mockReset()
     Object.defineProperty(window, 'matchMedia', {
