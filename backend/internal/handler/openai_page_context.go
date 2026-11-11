@@ -16,7 +16,7 @@ var codexSelectedPageName = regexp.MustCompile(`^codex_apps_selected_page_part_(
 func codexStandaloneContextValidationBody(body []byte) []byte {
 	if !mayContainCodexCallOutputCandidate(body, "codex_apps_open_page", "codex_apps_selected_page_part_", "browser_tabs",
 		"goal_objective", "proposed_plan", "untrusted_content", "guardian_housekeeper_input",
-		"guardian_channel_selection_input", "guardian_original_evidence", "send_message") || !hasUniqueJSONMembers(body) {
+		"guardian_channel_selection_input", "guardian_original_evidence", "send_message", "create_thread", "automation_update") || !hasUniqueJSONMembers(body) {
 		return body
 	}
 	var request map[string]json.RawMessage
@@ -82,6 +82,10 @@ func isCodexStandaloneContextItem(item map[string]any) bool {
 		}
 	case "cloud_threads":
 		return name == "send_message" && validCodexCloudDelegationEnvelope(output)
+	case "codex_app":
+		return isCodexAutomationCandidate(item) || isCodexDelegationCandidate(item)
+	case "codex_tui":
+		return isCodexDelegationCandidate(item)
 	}
 	return false
 }

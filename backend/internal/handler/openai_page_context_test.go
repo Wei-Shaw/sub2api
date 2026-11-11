@@ -94,14 +94,11 @@ func TestCodexPageContextMixedBootstrap(t *testing.T) {
 		{"type": "function_call_output", "namespace": "codex_app", "name": "automation_update", "output": "<heartbeat><automation_id>test</automation_id></heartbeat>"},
 	} {
 		body := pageContextRequest(t, pageContextItem("browser_tabs", browserTabsContext), pageContextItem("codex_apps_open_page", `{"page_id":null}`), item)
-		got, _ := normalizeCodexAutomationBootstrap(body)
-		got, _ = normalizeCodexDelegationBootstrap(got)
-		for _, index := range []string{"input.0", "input.1"} {
-			require.JSONEq(t, gjson.GetBytes(body, index).Raw, gjson.GetBytes(got, index).Raw)
-		}
-		require.Equal(t, "user", gjson.GetBytes(got, "input.2.role").String())
+		original := append([]byte(nil), body...)
+		require.Empty(t, gjson.GetBytes(codexStandaloneContextValidationBody(body), "input").Array())
 		c, _ := gin.CreateTestContext(httptest.NewRecorder())
-		require.True(t, (&OpenAIGatewayHandler{}).validateFunctionCallOutputRequest(c, got, zap.NewNop()))
+		require.True(t, (&OpenAIGatewayHandler{}).validateFunctionCallOutputRequest(c, body, zap.NewNop()))
+		require.Equal(t, original, body)
 	}
 }
 

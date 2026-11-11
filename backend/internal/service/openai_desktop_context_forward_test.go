@@ -26,6 +26,11 @@ func TestOpenAIForwardPreservesStandaloneDesktopContext(t *testing.T) {
 		{"type":"function_call_output","namespace":"guardian","name":"guardian_channel_selection_input","output":"{\"channels\":[]}"},
 		{"type":"function_call_output","namespace":"guardian","name":"guardian_original_evidence","output":"{\"sources\":[]}"},
 		{"type":"function_call_output","id":"fco_delivery","namespace":"cloud_threads","name":"send_message","output":"<codex_delegation><source_thread_id>thread-1</source_thread_id><source_orbit_id>orbit-1</source_orbit_id><input>do the work</input></codex_delegation>"},
+		{"type":"function_call_output","id":"fco_automation","namespace":"codex_app","name":"automation_update","output":"<heartbeat><automation_id>test</automation_id></heartbeat>"},
+		{"type":"function_call_output","id":"fco_app_create","namespace":"codex_app","name":"create_thread","output":"<codex_delegation><source_thread_id>thread-1</source_thread_id><input>do the work</input></codex_delegation>"},
+		{"type":"function_call_output","id":"fco_app_send","namespace":"codex_app","name":"send_message_to_thread","output":"<codex_delegation><source_thread_id>thread-1</source_thread_id><input>do the work</input></codex_delegation>"},
+		{"type":"function_call_output","id":"fco_tui_create","namespace":"codex_tui","name":"create_thread","output":"<codex_delegation><source_thread_id>thread-1</source_thread_id><input>do the work</input></codex_delegation>"},
+		{"type":"function_call_output","id":"fco_tui_send","namespace":"codex_tui","name":"send_message_to_thread","output":"<codex_delegation><source_thread_id>thread-1</source_thread_id><input>do the work</input></codex_delegation>"},
 		{"role":"user","content":"Reply OK"}
 	]}`)
 	for _, accountType := range []string{AccountTypeOAuth, AccountTypeAPIKey} {
