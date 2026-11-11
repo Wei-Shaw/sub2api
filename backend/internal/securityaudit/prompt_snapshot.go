@@ -65,7 +65,6 @@ func extractPromptSnapshot(req Request, latestTurnOnly bool) (PromptSnapshot, er
 		GroupID: cloneInt64Ptr(req.GroupID), GroupName: req.GroupName, Provider: req.Provider,
 		Endpoint: req.Endpoint, Protocol: req.Protocol, Model: req.Model,
 		PromptHash: hex.EncodeToString(digest[:]), RedactedPreview: BuildPromptPreview(metadataText, DefaultPromptPreviewMaxRunes),
-		FullPrompt:   BuildFullPrompt(metadataText, DefaultFullPromptMaxRunes),
 		PromptLength: utf8.RuneCountInString(metadataText), MessageCount: len(segments), Stage: stage,
 		ScanText: scanText,
 	}, nil
@@ -74,11 +73,6 @@ func extractPromptSnapshot(req Request, latestTurnOnly bool) (PromptSnapshot, er
 // DefaultPromptPreviewMaxRunes caps how much sanitized prompt text may be
 // considered before BuildPromptPreview withholds the majority for storage/UI.
 const DefaultPromptPreviewMaxRunes = 96
-
-// DefaultFullPromptMaxRunes caps how much unredacted prompt text is persisted
-// on an audit event for admin review. It is deliberately generous so realistic
-// prompts are kept intact while bounding per-row storage.
-const DefaultFullPromptMaxRunes = 65536
 
 func extractProtocolSegments(protocol string, document any) []promptSegment {
 	root, _ := document.(map[string]any)
@@ -690,24 +684,10 @@ func BuildPromptPreview(value string, maxRunes int) string {
 	return preview
 }
 
-// BuildFullPrompt returns the complete prompt text for audit-event storage and
-// admin review, without redaction. NUL bytes are stripped because PostgreSQL
-// TEXT rejects them, and the result is capped at maxRunes.
-func BuildFullPrompt(value string, maxRunes int) string {
-	if maxRunes <= 0 {
-		maxRunes = DefaultFullPromptMaxRunes
-	}
-	value = strings.ReplaceAll(value, "\x00", "")
-	return TrimRunes(strings.TrimSpace(value), maxRunes)
-}
-
-// FullPromptFromScanText reconstructs the display prompt from the worker scan
-// payload. buildPrioritizedScanText inserts exactly one priority separator
-// between the prioritized segment and the remainder, so replacing it with the
-// metadata joiner yields the original multi-segment text.
-func FullPromptFromScanText(scanText string) string {
-	return BuildFullPrompt(strings.ReplaceAll(scanText, promptAuditPrioritySeparator, "\n\n"), DefaultFullPromptMaxRunes)
-}
+// BuildFullPrompt is intentionally absent: the unredacted prompt must never be
+// materialized into a value that could later be persisted, serialized, or
+// rendered. The transient scan payload is produced by buildPrioritizedScanText
+// and lives only in request memory and the short-TTL Redis entry.
 
 func TrimRunes(value string, limit int) string {
 	if limit <= 0 {

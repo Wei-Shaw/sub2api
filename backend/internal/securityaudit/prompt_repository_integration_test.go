@@ -43,7 +43,7 @@ func openPromptAuditIntegrationDB(t *testing.T) *sql.DB {
 		);
 	`)
 	require.NoError(t, err)
-	for _, name := range []string{"181_prompt_audit.sql", "182_prompt_audit_full_prompt.sql"} {
+	for _, name := range []string{"181_prompt_audit.sql", "182_prompt_audit_full_prompt.sql", "251_prompt_audit_drop_full_prompt.sql"} {
 		migration, err := os.ReadFile(filepath.Join("..", "..", "migrations", name))
 		require.NoError(t, err)
 		// The migration runner can retry an interrupted deployment; the migration
@@ -109,7 +109,11 @@ func TestPromptAuditMigrationSchemaAndLeakageGate(t *testing.T) {
 		WHERE table_schema='public' AND table_name IN ('prompt_audit_jobs','prompt_audit_events')`)
 	require.NoError(t, err)
 	defer func() { _ = rows.Close() }()
-	forbidden := []string{"raw_prompt", "raw_request", "payload", "token", "authorization", "credential", "ciphertext"}
+	// The prompt audit tables must never hold the unredacted prompt, the Guard
+	// credential, or any equivalent raw-text column. "full_prompt" was added by
+	// 182 and removed again by 239; it stays on the forbidden list so a
+	// re-introduction cannot pass this gate unnoticed.
+	forbidden := []string{"raw_prompt", "raw_request", "full_prompt", "payload", "token", "authorization", "credential", "ciphertext"}
 	for rows.Next() {
 		var tableName, columnName string
 		require.NoError(t, rows.Scan(&tableName, &columnName))
@@ -151,7 +155,7 @@ func TestPromptAuditMigrationSchemaAndLeakageGate(t *testing.T) {
 	require.Error(t, err)
 }
 
-func TestPromptAuditDatabasePersistsFullPromptOnEventsOnly(t *testing.T) {
+func TestPromptAuditDatabaseAndAdminJSONNeverPersistCanaryPromptOrRawErrors(t *testing.T) {
 	db := openPromptAuditIntegrationDB(t)
 	repo := NewPostgreSQLRepository(db)
 	ctx := context.Background()
@@ -164,27 +168,36 @@ func TestPromptAuditDatabasePersistsFullPromptOnEventsOnly(t *testing.T) {
 	snapshot, err := ExtractPromptSnapshot(request)
 	require.NoError(t, err)
 	require.NotContains(t, snapshot.RedactedPreview, promptCanary)
-	require.Contains(t, snapshot.FullPrompt, promptCanary)
+	// The unredacted prompt lives only in the transient scan payload.
+	require.Contains(t, snapshot.ScanText, promptCanary)
 	event, err := repo.RecordBlocking(ctx, snapshot.Redacted(), 1, integrationResult(EventCritical), true)
 	require.NoError(t, err)
-	// The event intentionally retains the full prompt for admin review; the
-	// redacted preview and transient job row still never contain it.
+	// The event keeps only redacted metadata, so neither the admin JSON nor the
+	// stored row may contain the original prompt.
 	adminJSON, err := json.Marshal(event)
 	require.NoError(t, err)
-	require.Contains(t, string(adminJSON), promptCanary)
+	require.NotContains(t, string(adminJSON), promptCanary)
 	require.NotContains(t, event.Snapshot.RedactedPreview, promptCanary)
 
-	var storedFullPrompt string
-	require.NoError(t, db.QueryRow(`SELECT full_prompt FROM prompt_audit_events WHERE id=$1`, event.ID).Scan(&storedFullPrompt))
-	require.Contains(t, storedFullPrompt, promptCanary)
+	// The dropped column must not be reachable again.
+	var columnCount int
+	require.NoError(t, db.QueryRow(`SELECT COUNT(*) FROM information_schema.columns
+		WHERE table_schema='public' AND table_name='prompt_audit_events' AND column_name='full_prompt'`).Scan(&columnCount))
+	require.Zero(t, columnCount)
 
 	detail, err := repo.GetEvent(ctx, event.ID)
 	require.NoError(t, err)
-	require.Contains(t, detail.Snapshot.FullPrompt, promptCanary)
+	detailJSON, err := json.Marshal(detail)
+	require.NoError(t, err)
+	require.NotContains(t, string(detailJSON), promptCanary)
 
 	var jobJSON string
 	require.NoError(t, db.QueryRow(`SELECT row_to_json(j)::text FROM prompt_audit_jobs j WHERE id=$1`, event.JobID).Scan(&jobJSON))
 	require.NotContains(t, jobJSON, promptCanary)
+
+	var eventJSON string
+	require.NoError(t, db.QueryRow(`SELECT row_to_json(e)::text FROM prompt_audit_events e WHERE id=$1`, event.ID).Scan(&eventJSON))
+	require.NotContains(t, eventJSON, promptCanary)
 
 	failedJob, err := repo.CreateStagingWithCapacity(ctx, integrationSnapshot("error"), 1, 3, 10)
 	require.NoError(t, err)

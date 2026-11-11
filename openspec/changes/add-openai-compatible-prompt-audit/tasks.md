@@ -198,3 +198,21 @@
 - [x] 16.1 将审计池改为紧凑、响应式的节点列表，修复开关与节点名称拥挤并强化状态、限制和操作层级
 - [x] 16.2 回归 Prompt Audit 前端组件测试、类型检查和生产构建
 - [x] 16.3 在 deploy 目录按现有 Compose 配置重建镜像、重启容器并验证页面和节点探测
+
+## 17. 撤销提示词原文入库并修正门禁顺序
+
+> 背景：审计发现实现偏离了本 change 的设计约束。`182_prompt_audit_full_prompt.sql` 曾把未脱敏的完整提示词写入 `prompt_audit_events.full_prompt`，并经管理 API 与前端事件详情回显，违反 `design.md:39`、`proposal.md:43`、`specs/prompt-input-audit/spec.md:81` 与 `specs/security-audit-console/spec.md:113`。同时 `grok_audio.go` 与 `gateway_web_search.go` 的同步门禁位于计费资格检查之后，违反 `specs/prompt-input-guard/spec.md:43` 与 `:47`（被拦截请求不得产生计费副作用）。按 `tasks.md:14.14` 先回写文档再修代码。
+
+- [x] 17.1 新增 `251_prompt_audit_drop_full_prompt.sql` 删除 `prompt_audit_events.full_prompt`（不修改已应用的 182，保持迁移不可变）
+- [x] 17.2 移除 `PromptSnapshot.FullPrompt` 字段及 `insertEvent`/`eventDetailColumns`/`scanEvent` 的写入与读取路径
+- [x] 17.3 移除 Worker 从 Redis 载荷反推原文的 `FullPromptFromScanText` 调用，事件只保留脱敏快照
+- [x] 17.4 前端 `PromptAuditEvent.snapshot` 移除 `full_prompt`，事件详情只展示 `redacted_preview`，中英文 i18n 同步改写
+- [x] 17.5 强化 schema 泄露门禁：forbidden 列名单加入 `full_prompt`，并断言该列不再存在
+- [x] 17.6 将 `TestPromptAuditDatabasePersistsFullPromptOnEventsOnly` 改写为 `TestPromptAuditDatabaseAndAdminJSONNeverPersistCanaryPromptOrRawErrors`，断言 canary 原文不出现在事件行、管理 JSON 和事件详情中
+- [x] 17.7 将 `grok_audio.go` 与 `gateway_web_search.go` 的同步门禁上移到 `CheckBillingEligibility` 之前
+- [x] 17.8 将 `grok_audio.go` 与 `gateway_web_search.go` 纳入 `TestPromptAuditGatePrecedesAccountBillingAndUpstreamSideEffects` 结构测试
+- [x] 17.9 回写 `design.md`、`proposal.md`、两个 spec 与 `verification.md`，记录偏离与修正
+- [x] 17.10 重建本地容器并执行端到端验证（28 项断言全部通过），证据见 `verification.md` 第 16.6 节
+- [x] 17.11 用 Gemini(AI Studio API Key) 与 OpenAI(Codex OAuth) 两个真实上游复验，覆盖放行/异步落库/同步阻止/fail-closed/泄露共 38 项断言，证据见 `verification.md` 第 16.7 节
+- [x] 17.12 同步上游最新 `main`（`ee58c0013`）：迁移重编号 239 → 251，重建分支并解决 2 处手工冲突，在最新基线上重新验证全部通过，证据见 `verification.md` 第 16.8 节
+
