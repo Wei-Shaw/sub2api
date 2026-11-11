@@ -1039,6 +1039,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			if err != nil {
 				return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream stream")
 			}
+			collected = tracker.consolidate(collected)
 			collectedBytes, _ := json.Marshal(collected)
 			upstreamResponseModelObserverFromContext(c).ObserveGemini(collectedBytes)
 			observeGeminiImageOutputs(c, collectedBytes)
@@ -1047,8 +1048,10 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			if usageObj != nil && (usageObj.InputTokens > 0 || usageObj.OutputTokens > 0) {
 				usage = usageObj
 			}
-			if !tracker.deliverable {
-				if handled, err := s.handleGeminiCompatNoContent(c, account, tracker.finishReason, tracker.signal, usage, false, requestID, func(message string) error {
+			if !geminiHasDeliverableParts(collected) {
+				if handled, err := s.handleGeminiCompatNoContent(c, account, tracker.finishReason, tracker.signal, tracker.errorBody, usage, false, requestID, func(status int, body []byte) error {
+					return s.writeGeminiMappedError(c, account, status, requestID, body)
+				}, func(message string) error {
 					return s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", message)
 				}); handled {
 					return nil, err
@@ -2175,7 +2178,9 @@ func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context,
 	claudeResp, usage := convertGeminiToClaudeMessage(geminiResp, originalModel, unwrappedBody, false)
 	if !geminiHasDeliverableParts(geminiResp) {
 		sig, _ := detectGeminiResponseSignalInBody(unwrappedBody)
-		if handled, err := s.handleGeminiCompatNoContent(c, account, extractGeminiFinishReason(geminiResp), sig, usage, false, upstreamRequestID, func(message string) error {
+		if handled, err := s.handleGeminiCompatNoContent(c, account, extractGeminiFinishReason(geminiResp), sig, unwrappedBody, usage, false, upstreamRequestID, func(status int, body []byte) error {
+			return s.writeGeminiMappedError(c, account, status, upstreamRequestID, body)
+		}, func(message string) error {
 			return s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", message)
 		}); handled {
 			return nil, err
@@ -2233,6 +2238,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	sawToolUse := false
 	sawInlineImage := false
 	var bestSignal geminiResponseSignal
+	var bestSignalBody []byte
 
 	nextBlockIndex := 0
 	openBlockIndex := -1
@@ -2289,6 +2295,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		if !committed {
 			if sig, ok := detectGeminiResponseSignal(unwrappedBytes); ok && sig.Kind > bestSignal.Kind {
 				bestSignal = sig
+				bestSignalBody = unwrappedBytes
 			}
 		}
 
@@ -2503,7 +2510,9 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	}
 
 	if !committed && !sawInlineImage {
-		handled, err := s.handleGeminiCompatNoContent(c, account, finishReason, bestSignal, &usage, true, upstreamRequestID, func(message string) error {
+		handled, err := s.handleGeminiCompatNoContent(c, account, finishReason, bestSignal, bestSignalBody, &usage, true, upstreamRequestID, func(status int, body []byte) error {
+			return s.writeGeminiMappedError(c, account, status, upstreamRequestID, body)
+		}, func(message string) error {
 			return s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", message)
 		})
 		if handled {

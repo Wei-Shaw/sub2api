@@ -35,9 +35,11 @@ func geminiPartMapIsInlineImage(part map[string]any) bool {
 	return isGeminiInlineImageMIMEType(mimeType) && isValidBase64(data)
 }
 
+// Non-streaming converters omit thoughts. Valid images retain the existing
+// image-only exception even for the Messages format, which omits inline data.
 func geminiHasDeliverableParts(geminiResp map[string]any) bool {
 	for _, part := range extractGeminiParts(geminiResp) {
-		if text, ok := part["text"].(string); ok && strings.TrimSuffix(text, "\u0000") != "" {
+		if text, ok := part["text"].(string); ok && !isGeminiThoughtPart(part) && strings.TrimSuffix(text, "\u0000") != "" {
 			return true
 		}
 		if _, ok := part["functionCall"].(map[string]any); ok {
@@ -50,36 +52,120 @@ func geminiHasDeliverableParts(geminiResp map[string]any) bool {
 	return false
 }
 
-// geminiCompatCompletionTracker observes every event, including terminal events
-// that the buffered collector may omit when retaining an earlier content event.
+// geminiCompatCompletionTracker retains the content and terminal metadata used
+// by the non-streaming compatibility converters. The shared native collector
+// can select a later empty parts event and does not retain all tools or images.
 type geminiCompatCompletionTracker struct {
 	finishReason string
-	deliverable  bool
 	signal       geminiResponseSignal
+	errorBody    []byte
+	usage        map[string]any
+	parts        []any
+	textParts    []string
+	event        int
+	toolCalls    map[string]geminiCompatToolPart
+}
+
+type geminiCompatToolPart struct {
+	index int
+	event int
 }
 
 func (t *geminiCompatCompletionTracker) observe(rawBytes []byte) {
 	if sig, ok := detectGeminiResponseSignal(rawBytes); ok && sig.Kind > t.signal.Kind {
 		t.signal = sig
+		if sig.Kind == geminiSignalError {
+			t.errorBody = rawBytes
+		}
 	}
 	var resp map[string]any
 	if err := json.Unmarshal(rawBytes, &resp); err != nil {
 		return
 	}
+	t.event++
 	if fr := extractGeminiFinishReason(resp); fr != "" {
 		t.finishReason = fr
 	}
-	if !t.deliverable && geminiHasDeliverableParts(resp) {
-		t.deliverable = true
+	if usage, ok := resp["usageMetadata"].(map[string]any); ok {
+		t.usage = usage
 	}
+	for _, part := range extractGeminiParts(resp) {
+		if text, ok := part["text"].(string); ok && text != "" && !isGeminiThoughtPart(part) {
+			// Keep the buffered collector's incremental text contract, while
+			// excluding thoughts that the non-streaming converter omits.
+			t.textParts = append(t.textParts, text)
+		}
+		if call, ok := part["functionCall"].(map[string]any); ok && call != nil {
+			t.flushText()
+			// Equal names or arguments do not identify a call. Only an explicit
+			// ID can associate an update in a later event with retained content.
+			id, _ := call["id"].(string)
+			previous, identified := t.toolCalls[id]
+			index := len(t.parts)
+			if id != "" && identified && previous.event != t.event {
+				index = previous.index
+				t.parts[index] = map[string]any{"functionCall": call}
+			} else {
+				t.parts = append(t.parts, map[string]any{"functionCall": call})
+			}
+			if id != "" {
+				if t.toolCalls == nil {
+					t.toolCalls = make(map[string]geminiCompatToolPart)
+				}
+				t.toolCalls[id] = geminiCompatToolPart{index: index, event: t.event}
+			}
+		}
+		if geminiPartMapIsInlineImage(part) {
+			t.flushText()
+			t.parts = append(t.parts, map[string]any{"inlineData": part["inlineData"]})
+		}
+	}
+}
+
+func (t *geminiCompatCompletionTracker) flushText() {
+	if len(t.textParts) > 0 {
+		t.parts = append(t.parts, map[string]any{"text": strings.Join(t.textParts, "")})
+		t.textParts = nil
+	}
+}
+
+func (t *geminiCompatCompletionTracker) consolidate(collected map[string]any) map[string]any {
+	t.flushText()
+	if collected == nil {
+		collected = make(map[string]any)
+	}
+	candidate := make(map[string]any)
+	if candidates, ok := collected["candidates"].([]any); ok && len(candidates) > 0 {
+		if original, ok := candidates[0].(map[string]any); ok {
+			for key, value := range original {
+				candidate[key] = value
+			}
+		}
+	}
+	parts := t.parts
+	if parts == nil {
+		parts = []any{}
+	}
+	candidate["content"] = map[string]any{"role": "model", "parts": parts}
+	if t.finishReason != "" {
+		candidate["finishReason"] = t.finishReason
+	}
+	collected["candidates"] = []any{candidate}
+	if t.usage != nil {
+		collected["usageMetadata"] = t.usage
+	}
+	return collected
 }
 
 // handleGeminiCompatNoContent runs before client output. Policy blocks remain
 // request errors, and MAX_TOKENS remains a valid result when thinking used the budget.
-func (s *GeminiMessagesCompatService) handleGeminiCompatNoContent(c *gin.Context, account *Account, finishReason string, sig geminiResponseSignal, usage *ClaudeUsage, stream bool, upstreamRequestID string, writePolicyError func(message string) error) (bool, error) {
+func (s *GeminiMessagesCompatService) handleGeminiCompatNoContent(c *gin.Context, account *Account, finishReason string, sig geminiResponseSignal, errorBody []byte, usage *ClaudeUsage, stream bool, upstreamRequestID string, writeUpstreamError func(int, []byte) error, writePolicyError func(message string) error) (bool, error) {
 	switch sig.Kind {
 	case geminiSignalError:
-		return true, s.geminiCompatErrorEnvelopeFailover(c, account, sig, upstreamRequestID)
+		if !s.shouldFailoverGeminiUpstreamError(sig.Status) {
+			return true, writeUpstreamError(sig.Status, errorBody)
+		}
+		return true, s.geminiCompatErrorEnvelopeFailover(c, account, sig, errorBody, upstreamRequestID)
 	case geminiSignalPromptBlocked, geminiSignalContentFilter:
 		logger.LegacyPrintf("service.gemini_messages_compat", "[Gemini] compat no-content policy stop account=%d reason=%s stream=%t", geminiAccountID(account), sig.Reason, stream)
 		return true, writePolicyError(sanitizeUpstreamErrorMessage(strings.TrimSpace(sig.Message)))
@@ -116,13 +202,13 @@ func geminiCompatOpsEvent(account *Account, status int, upstreamRequestID, messa
 	return event
 }
 
-func (s *GeminiMessagesCompatService) geminiCompatErrorEnvelopeFailover(c *gin.Context, account *Account, sig geminiResponseSignal, upstreamRequestID string) *UpstreamFailoverError {
+func (s *GeminiMessagesCompatService) geminiCompatErrorEnvelopeFailover(c *gin.Context, account *Account, sig geminiResponseSignal, body []byte, upstreamRequestID string) *UpstreamFailoverError {
 	message := sanitizeUpstreamErrorMessage(strings.TrimSpace(sig.Message))
-	appendOpsUpstreamError(c, geminiCompatOpsEvent(account, sig.Status, upstreamRequestID, message, sig.Detail))
+	appendOpsUpstreamError(c, geminiCompatOpsEvent(account, sig.Status, upstreamRequestID, message, s.upstreamErrorDetail(body)))
 	c.Writer.Header().Del("x-request-id")
 	return &UpstreamFailoverError{
 		StatusCode:             sig.Status,
-		ResponseBody:           []byte(sig.Detail),
+		ResponseBody:           body,
 		RetryableOnSameAccount: account != nil && account.IsPoolMode() && account.IsPoolModeRetryableStatus(sig.Status),
 	}
 }

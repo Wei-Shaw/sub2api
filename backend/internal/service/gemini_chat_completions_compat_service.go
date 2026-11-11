@@ -270,13 +270,16 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 		if err != nil {
 			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream stream")
 		}
+		collected = tracker.consolidate(collected)
 		collectedBytes, _ := json.Marshal(collected)
 		chatResp, usageObj2, err := geminiResponseToChatCompletions(collected, originalModel, collectedBytes, usageObj)
 		if err != nil {
 			return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
 		}
-		if !tracker.deliverable {
-			if handled, err := s.handleGeminiCompatNoContent(c, account, tracker.finishReason, tracker.signal, usageObj2, false, requestID, func(message string) error {
+		if !geminiHasDeliverableParts(collected) {
+			if handled, err := s.handleGeminiCompatNoContent(c, account, tracker.finishReason, tracker.signal, tracker.errorBody, usageObj2, false, requestID, func(status int, body []byte) error {
+				return s.writeGeminiChatCompletionsMappedError(c, account, status, requestID, body)
+			}, func(message string) error {
 				return s.writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", message)
 			}); handled {
 				return nil, err
@@ -491,7 +494,9 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsNonStreamingResponseF
 	}
 	if !geminiHasDeliverableParts(geminiResp) {
 		sig, _ := detectGeminiResponseSignalInBody(respBody)
-		if handled, err := s.handleGeminiCompatNoContent(c, account, extractGeminiFinishReason(geminiResp), sig, usage, false, upstreamRequestID, func(message string) error {
+		if handled, err := s.handleGeminiCompatNoContent(c, account, extractGeminiFinishReason(geminiResp), sig, respBody, usage, false, upstreamRequestID, func(status int, body []byte) error {
+			return s.writeGeminiChatCompletionsMappedError(c, account, status, upstreamRequestID, body)
+		}, func(message string) error {
 			return s.writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", message)
 		}); handled {
 			return nil, err
@@ -622,6 +627,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 	sawToolUse := false
 	sawInlineImage := false
 	var bestSignal geminiResponseSignal
+	var bestSignalBody []byte
 	nextBlockIndex := 0
 	openBlockIndex := -1
 	openBlockType := ""
@@ -669,6 +675,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 					if !committed {
 						if sig, ok := detectGeminiResponseSignal(rawBytes); ok && sig.Kind > bestSignal.Kind {
 							bestSignal = sig
+							bestSignalBody = rawBytes
 						}
 					}
 					var geminiResp map[string]any
@@ -853,7 +860,9 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 	}
 
 	if !committed && !sawInlineImage {
-		handled, err := s.handleGeminiCompatNoContent(c, account, finishReason, bestSignal, &usage, true, upstreamRequestID, func(message string) error {
+		handled, err := s.handleGeminiCompatNoContent(c, account, finishReason, bestSignal, bestSignalBody, &usage, true, upstreamRequestID, func(status int, body []byte) error {
+			return s.writeGeminiChatCompletionsMappedError(c, account, status, upstreamRequestID, body)
+		}, func(message string) error {
 			return s.writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", message)
 		})
 		if handled {
