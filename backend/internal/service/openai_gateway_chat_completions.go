@@ -243,6 +243,20 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		}
 	}
 
+	// OAuth 账号由下方 Codex transform 把 input 里的 system 提升到 instructions；
+	// APIKey 上游（第三方 Codex 兼容网关等）不会再经过该 transform，而这类上游会以
+	// "System messages are not allowed" 拒绝 input 中的 role:"system"。这里对
+	// 非 Codex 协议账号补同样的提升，纯文本场景从 input 移除，混合内容降级为
+	// developer 保留（与 Codex transform 的规则一致）。
+	if !account.UsesOpenAICodexProtocol() {
+		omitPromoted := !strings.EqualFold(strings.TrimSpace(
+			gjson.GetBytes(responsesBody, "text.format.type").String()), "json_object")
+		responsesBody, err = promoteResponsesSystemMessages(responsesBody, omitPromoted)
+		if err != nil {
+			return nil, fmt.Errorf("promote responses system messages: %w", err)
+		}
+	}
+
 	logFields := []zap.Field{
 		zap.Int64("account_id", account.ID),
 		zap.String("original_model", originalModel),
