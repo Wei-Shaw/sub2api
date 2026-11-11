@@ -45,8 +45,10 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		return err
 	}
 	forwardedClientIPHeaders := []string{}
+	trustForwardedIP := false
 	if s != nil && s.cfg != nil {
 		forwardedClientIPHeaders = s.cfg.ForwardedClientIPSettings().Headers
+		trustForwardedIP = s.cfg.TrustForwardedIPForAPIKeyACL()
 	}
 	forwardedClientIPHeadersJSON, err := json.Marshal(forwardedClientIPHeaders)
 	if err != nil {
@@ -64,7 +66,7 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyLoginAgreementMode:                        defaultLoginAgreementMode,
 		SettingKeyLoginAgreementUpdatedAt:                   defaultLoginAgreementDate,
 		SettingKeyLoginAgreementDocuments:                   loginAgreementDocumentsJSON,
-		SettingKeyAPIKeyACLTrustForwardedIP:                 "true",
+		SettingKeyAPIKeyACLTrustForwardedIP:                 strconv.FormatBool(trustForwardedIP),
 		SettingKeyForwardedClientIPHeaders:                  string(forwardedClientIPHeadersJSON),
 		settingKeyForwardedClientIPModeV2:                   "true",
 		SettingKeySiteName:                                  "Sub2API",
