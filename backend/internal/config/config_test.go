@@ -1577,18 +1577,20 @@ func TestValidateOpsCleanupScheduleRequired(t *testing.T) {
 
 func TestValidateConcurrencyPingInterval(t *testing.T) {
 	resetViperWithJWTSecret(t)
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("Load() error: %v", err)
-	}
-	cfg.Concurrency.PingInterval = 3
-	err = cfg.Validate()
-	if err == nil {
-		t.Fatalf("Validate() expected error for concurrency.ping_interval")
-	}
-	if !strings.Contains(err.Error(), "concurrency.ping_interval") {
-		t.Fatalf("Validate() expected concurrency.ping_interval error, got: %v", err)
+	for _, interval := range []int{-1, 0, 1, 3, 4, 5, 10, 30, 31} {
+		cfg, err := Load()
+		if err != nil {
+			t.Fatalf("Load() error: %v", err)
+		}
+		cfg.Concurrency.PingInterval = interval
+		err = cfg.Validate()
+		valid := interval == 0 || (interval >= 5 && interval <= 30)
+		if valid && err != nil {
+			t.Errorf("Validate() interval %d: %v", interval, err)
+		}
+		if !valid && (err == nil || !strings.Contains(err.Error(), "concurrency.ping_interval")) {
+			t.Errorf("Validate() interval %d: expected concurrency.ping_interval error, got %v", interval, err)
+		}
 	}
 }
 
