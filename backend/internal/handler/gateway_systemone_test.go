@@ -53,6 +53,25 @@ func newTypeSafeGroupContext(t *testing.T, path, body, groupPlatform string) (*g
 	return c, recorder
 }
 
+func TestSystemOneCommandCodeGroupValidatesModelBeforeScheduling(t *testing.T) {
+	// A Command Code group reaches System One, but only with Command Code's Jev
+	// ids; anything else is refused before any account is touched.
+	for body, want := range map[string]string{
+		`{"model":"jev-latest","state":"s","questions":{"q":{"type":"noul"}}}`:                 "typesafe/jev",
+		`{"model":"deepseek/deepseek-v4-flash","state":"s","questions":{"q":{"type":"noul"}}}`: "typesafe/jev",
+	} {
+		c, recorder := newSystemOneHandlerContext(body)
+		groupID := int64(13)
+		c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+			ID: 10, GroupID: &groupID, Group: &service.Group{ID: groupID, Platform: service.PlatformCommandCode},
+		})
+		c.Set(string(middleware2.ContextKeyUser), middleware2.AuthSubject{UserID: 1})
+		(&GatewayHandler{}).SystemOne(c)
+		require.Equal(t, http.StatusBadRequest, recorder.Code, body)
+		require.Contains(t, recorder.Body.String(), want, body)
+	}
+}
+
 func TestRejectSystemOneOnlyPlatform(t *testing.T) {
 	write := func(c *gin.Context, status int, errType, message string) {
 		c.JSON(status, gin.H{"type": errType, "message": message})
