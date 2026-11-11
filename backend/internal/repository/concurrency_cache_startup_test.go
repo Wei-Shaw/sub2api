@@ -23,7 +23,8 @@ func TestStartupCleanupPreservesSharedLeasesAndWaiters(t *testing.T) {
 			server.SetTime(time.Unix(1700000000, 0))
 			client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 			t.Cleanup(func() { _ = client.Close() })
-			cache := NewConcurrencyCache(client, 15, 60).(*concurrencyCache)
+			cache, ok := NewConcurrencyCache(client, 15, 60).(*concurrencyCache)
+			require.True(t, ok)
 			if markerPresent {
 				require.NoError(t, client.Set(ctx, legacyWaitSweepMarkerKey, "1", 0).Err())
 			}
@@ -69,7 +70,8 @@ func TestStartupCleanupBoundsOnlyNonexpiringWaiters(t *testing.T) {
 		server := miniredis.RunT(t)
 		client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 		t.Cleanup(func() { _ = client.Close() })
-		cache := NewConcurrencyCache(client, 15, 60).(*concurrencyCache)
+		cache, ok := NewConcurrencyCache(client, 15, 60).(*concurrencyCache)
+		require.True(t, ok)
 		if markerPresent {
 			require.NoError(t, client.Set(ctx, legacyWaitSweepMarkerKey, "1", 0).Err())
 		}
@@ -133,7 +135,8 @@ func TestStartupCleanupDoesNotRemoveConcurrentPeerIndex(t *testing.T) {
 			client := redis.NewClient(&redis.Options{Addr: server.Addr()})
 			peer := redis.NewClient(&redis.Options{Addr: server.Addr()})
 			t.Cleanup(func() { _ = client.Close(); _ = peer.Close() })
-			cache := NewConcurrencyCache(client, 15, 60).(*concurrencyCache)
+			cache, ok := NewConcurrencyCache(client, 15, 60).(*concurrencyCache)
+			require.True(t, ok)
 			now := client.Time(ctx).Val().Unix()
 			require.NoError(t, client.ZAdd(ctx, spec.slotKey(123), redis.Z{Score: float64(now - 901), Member: "dead-peer"}).Err())
 			require.NoError(t, client.ZAdd(ctx, spec.indexKey, redis.Z{Score: 1, Member: "123"}).Err())
