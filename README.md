@@ -288,6 +288,8 @@ The web interface will:
 - Download and apply updates with one click
 - Support rollback if needed
 
+This updates the executable on the instance handling the request. It does not update a Docker image or roll out other replicas. For container deployments, use the [container upgrade guidance](deploy/UPGRADING.md).
+
 #### Useful Commands
 
 ```bash
@@ -429,10 +431,12 @@ docker compose -f docker-compose.local.yml logs sub2api | grep "Generated admin"
 
 #### Upgrade
 
+Review the release's database migrations and back up persistent state before upgrading. Update only the application service; see [upgrade and recovery considerations](deploy/UPGRADING.md), especially when sharing PostgreSQL and Redis across replicas.
+
 ```bash
-# Pull latest image and recreate container
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
+# Pull the configured application image and recreate only Sub2API
+docker compose -f docker-compose.local.yml pull sub2api
+docker compose -f docker-compose.local.yml up -d --no-deps sub2api
 ```
 
 #### Easy Migration (Local Directory Version)

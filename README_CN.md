@@ -314,6 +314,8 @@ sudo systemctl enable sub2api
 - 一键下载并应用更新
 - 支持回滚
 
+网页更新只替换接收请求的实例中的可执行文件，不会更新 Docker 镜像，也不会滚动更新其他副本。容器部署请参阅[容器升级说明](deploy/UPGRADING.md)。
+
 #### 常用命令
 
 ```bash
@@ -467,10 +469,12 @@ docker compose -f docker-compose.local.yml logs sub2api | grep "Generated admin"
 
 #### 升级
 
+升级前请检查发行版本的数据库迁移并备份持久化数据。只更新应用服务；多个副本共享 PostgreSQL 和 Redis 时，尤其需要阅读[升级与恢复注意事项](deploy/UPGRADING.md)。
+
 ```bash
-# 拉取最新镜像并重建容器
-docker compose -f docker-compose.local.yml pull
-docker compose -f docker-compose.local.yml up -d
+# 拉取已配置的应用镜像，只重建 Sub2API
+docker compose -f docker-compose.local.yml pull sub2api
+docker compose -f docker-compose.local.yml up -d --no-deps sub2api
 ```
 
 #### 轻松迁移（本地目录版）
