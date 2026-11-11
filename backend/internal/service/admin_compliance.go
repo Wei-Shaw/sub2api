@@ -20,6 +20,7 @@ const (
 	AdminComplianceDocumentURLZH  = "https://github.com/Wei-Shaw/sub2api/blob/main/docs/legal/admin-compliance.zh.md"
 	AdminComplianceDocumentURLEN  = "https://github.com/Wei-Shaw/sub2api/blob/main/docs/legal/admin-compliance.en.md"
 	AdminComplianceAckPhraseZH    = "我已阅读、理解并同意 Sub2API 部署与运营合规承诺"
+	AdminComplianceAckPhraseZHHK  = "我已閱讀、理解並同意 Sub2API 部署與運營合規承諾"
 	AdminComplianceAckPhraseEN    = "I have read, understood, and agree to the Sub2API Deployment and Operation Compliance Commitment"
 
 	settingKeyAdminComplianceAcknowledgement = "admin_compliance_acknowledgement"
@@ -76,10 +77,25 @@ func normalizeAdminComplianceLanguage(raw string) string {
 }
 
 func expectedAdminCompliancePhrase(language string) string {
+	raw := strings.ToLower(strings.TrimSpace(language))
+	if strings.HasPrefix(raw, "zh-hk") || strings.HasPrefix(raw, "zh-hant") || strings.Contains(raw, "hant") {
+		return AdminComplianceAckPhraseZHHK
+	}
 	if normalizeAdminComplianceLanguage(language) == "zh" {
 		return AdminComplianceAckPhraseZH
 	}
 	return AdminComplianceAckPhraseEN
+}
+
+func adminCompliancePhraseAccepted(language, phrase string) bool {
+	phrase = strings.TrimSpace(phrase)
+	if phrase == expectedAdminCompliancePhrase(language) {
+		return true
+	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(language)), "zh") {
+		return phrase == AdminComplianceAckPhraseZH || phrase == AdminComplianceAckPhraseZHHK
+	}
+	return false
 }
 
 func adminComplianceAcknowledgementKey(adminUserID int64) string {
@@ -136,7 +152,7 @@ func (s *SettingService) AcceptAdminCompliance(ctx context.Context, input AdminC
 		return nil, infraerrors.InternalServer("SETTING_SERVICE_UNAVAILABLE", "setting service is unavailable")
 	}
 	phrase := strings.TrimSpace(input.Phrase)
-	if phrase != expectedAdminCompliancePhrase(input.Language) {
+	if !adminCompliancePhraseAccepted(input.Language, phrase) {
 		return nil, ErrAdminComplianceInvalidPhrase
 	}
 
