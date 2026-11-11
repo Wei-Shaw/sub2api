@@ -732,7 +732,8 @@ const defaultThinkingBudgetTokens = 10000
 // sanitizeBedrockThinking 修复 thinking 字段的 Bedrock 兼容性问题：
 //   - Sonnet 5.5: enabled 改为 adaptive；disabled 改为 between_tools
 //   - Fable 5: 仅使用 always-on adaptive thinking，不支持手动 budget_tokens
-//   - Opus 4.7+: 仅支持 "adaptive"，将 "enabled" 转换为 "adaptive" 并移除 budget_tokens
+//   - Opus 4.7+ 及其他仅支持 adaptive 的模型（Haiku 5.5、Sonnet 5、Mythos 5 等）：
+//     将 "enabled" 转换为 "adaptive" 并移除 budget_tokens
 //   - 其他模型: "enabled" 必须带 budget_tokens，缺失时补充默认值
 func sanitizeBedrockThinking(body []byte, modelID string) []byte {
 	thinking := gjson.GetBytes(body, "thinking")
@@ -766,7 +767,7 @@ func sanitizeBedrockThinking(body []byte, modelID string) []byte {
 		return body
 	}
 
-	if isBedrockOpus47OrNewer(modelID) {
+	if isBedrockOpus47OrNewer(modelID) || claude.RequiresAdaptiveThinking(modelID) {
 		if thinkingType == "enabled" {
 			body, _ = sjson.SetBytes(body, "thinking.type", "adaptive")
 			body, _ = sjson.DeleteBytes(body, "thinking.budget_tokens")
