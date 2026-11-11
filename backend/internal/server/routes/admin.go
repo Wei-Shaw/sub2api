@@ -471,6 +471,8 @@ func registerOpenAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		openai.POST("/accounts/:id/reset-quota", h.Admin.OpenAIOAuth.ResetQuota)
 		openai.POST("/accounts/:id/referrals/refresh", h.Admin.OpenAIOAuth.RefreshReferrals)
 		openai.POST("/accounts/:id/referrals/invite", h.Admin.OpenAIOAuth.SendReferralInvite)
+		openai.GET("/accounts/:id/sessions", h.Admin.OpenAIOAuth.ListActiveSessions)
+		openai.POST("/accounts/:id/sessions/revoke", h.Admin.OpenAIOAuth.RevokeActiveSession)
 	}
 }
 

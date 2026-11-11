@@ -23,6 +23,7 @@ type OpenAIOAuthHandler struct {
 	adminService       service.AdminService
 	quotaService       openAIQuotaService
 	referralService    openAIReferralService
+	sessionsService    openAISessionsService
 	rateLimitService   openAIAccountStateRecoverer
 }
 
@@ -97,6 +98,7 @@ func NewOpenAIOAuthHandler(
 	if quotaService != nil {
 		h.quotaService = quotaService
 		h.referralService = quotaService
+		h.sessionsService = quotaService
 	}
 	if rateLimitService != nil {
 		h.rateLimitService = rateLimitService

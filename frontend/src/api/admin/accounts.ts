@@ -5,6 +5,7 @@
 
 import { apiClient } from '../client'
 import type { OpenAIReferralRefreshResult, OpenAIReferralSendResult } from '@/types/openaiReferrals'
+import type { OpenAIActiveSessions } from '@/types/openaiSessions'
 import type {
   Account,
   AccountListItem,
@@ -1139,7 +1140,21 @@ export async function refreshOpenCodeGoUsage(id: number): Promise<OpenCodeGoUsag
   return data
 }
 
+export async function getOpenAIActiveSessions(id: number, signal?: AbortSignal): Promise<OpenAIActiveSessions> {
+  const { data } = await apiClient.get<OpenAIActiveSessions>(`/admin/openai/accounts/${id}/sessions`, { signal })
+  return data
+}
+
+export async function revokeOpenAIActiveSession(id: number, sessionId: string): Promise<{ revoked: boolean }> {
+  const { data } = await apiClient.post<{ revoked: boolean }>(`/admin/openai/accounts/${id}/sessions/revoke`, {
+    session_id: sessionId
+  })
+  return data
+}
+
 export const accountsAPI = {
+  getOpenAIActiveSessions,
+  revokeOpenAIActiveSession,
   list,
   listWithEtag,
   getUpstreamBillingRatesWithEtag,
