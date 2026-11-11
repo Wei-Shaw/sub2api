@@ -55,8 +55,8 @@ const (
 	activeIndexCleanupBatchSize  = 1000
 	activeIndexPipelineChunkSize = 500
 
-	// 一次性迁移 marker：活跃索引机制上线前遗留的等待计数键无法被索引发现，
-	// 且有流量时 TTL 会被不断刷新，必须清扫一次。marker 存在即代表已完成。
+	// One-time migration marker for wait counters predating the active index.
+	// Startup bounds nonexpiring counters without deleting shared waiters.
 	legacyWaitSweepMarkerKey = "concurrency:startup:legacy_wait_sweep:v1"
 )
 
@@ -330,27 +330,15 @@ var (
 		return 1
 	`)
 
-	// startupCleanupSlotScript 清理单个槽位 key 中非当前进程前缀的成员，避免 Redis Cluster CROSSSLOT。
-	// KEYS[1] 是有序集合键，ARGV[1] 是当前进程前缀，ARGV[2] 是槽位 TTL。
-	// 返回 {清除数量, 剩余成员数}，Go 侧据剩余数决定索引 member 去留，无需再回读槽位。
-	startupCleanupSlotScript = redis.NewScript(`
-		local key = KEYS[1]
-		local activePrefix = ARGV[1]
-		local slotTTL = tonumber(ARGV[2])
-		local removed = 0
-		local members = redis.call('ZRANGE', key, 0, -1)
-		for _, member in ipairs(members) do
-			if string.sub(member, 1, string.len(activePrefix)) ~= activePrefix then
-				removed = removed + redis.call('ZREM', key, member)
-			end
+	// boundWaitTTLScript preserves shared counters and their existing lifetime.
+	// Checking TTL and setting expiry must be atomic with peer increments, which
+	// refresh TTL themselves. A single key also avoids Redis Cluster CROSSSLOT.
+	// Unlike EXPIRE NX, this works on Redis versions before 7.0.
+	boundWaitTTLScript = redis.NewScript(`
+		if redis.call('TTL', KEYS[1]) == -1 then
+			return redis.call('EXPIRE', KEYS[1], ARGV[1])
 		end
-		local remaining = redis.call('ZCARD', key)
-		if remaining == 0 then
-			redis.call('DEL', key)
-		else
-			redis.call('EXPIRE', key, slotTTL)
-		end
-		return {removed, remaining}
+		return 0
 	`)
 )
 
@@ -1138,7 +1126,10 @@ func (c *concurrencyCache) reconcileExpiredIndexCandidates(ctx context.Context, 
 	return nil
 }
 
-// CleanupStaleProcessSlots 启动时清理非当前进程前缀的槽位。
+// CleanupStaleProcessSlots reclaims expired leases without evicting live peers.
+// A different request prefix is not evidence that a peer has stopped, including
+// peers on older versions without process heartbeats. Keep the prefix argument
+// for compatibility with the ConcurrencyCache interface.
 // 清理范围来自活跃索引（含 score 已过期的成员——它们往往正是崩溃进程留下的残留），
 // 避免在 Redis 上 SCAN 全部 concurrency:* 键；另有一次性迁移清扫兜底索引机制上线前的遗留等待计数。
 // API Key 槽位（concurrency:api_key:*）是 stats-only 数据：每次 Track/读取都会按分数
@@ -1150,16 +1141,11 @@ func (c *concurrencyCache) CleanupStaleProcessSlots(ctx context.Context, activeR
 	if err := c.sweepLegacyWaitKeysOnce(ctx); err != nil {
 		return err
 	}
-	now, err := c.redisUnixSeconds(ctx)
-	if err != nil {
-		return err
-	}
-
 	accountMembers, err := c.allIndexMembers(ctx, accountActiveIndexKey)
 	if err != nil {
 		return err
 	}
-	if err := c.cleanupStaleProcessSlotsForIndex(ctx, accountSlotIndex, accountMembers, activeRequestPrefix, now); err != nil {
+	if err := c.cleanupStaleProcessSlotsForIndex(ctx, accountSlotIndex, accountMembers); err != nil {
 		return err
 	}
 
@@ -1167,13 +1153,12 @@ func (c *concurrencyCache) CleanupStaleProcessSlots(ctx context.Context, activeR
 	if err != nil {
 		return err
 	}
-	return c.cleanupStaleProcessSlotsForIndex(ctx, userSlotIndex, userMembers, activeRequestPrefix, now)
+	return c.cleanupStaleProcessSlotsForIndex(ctx, userSlotIndex, userMembers)
 }
 
-// sweepLegacyWaitKeysOnce 一次性清扫活跃索引机制上线前遗留的等待计数键。
-// 等待计数在有流量时会不断刷新 TTL、无法自然过期，而索引不认识旧键，
-// 因此这里例外地做一次 SCAN，用 marker 键保证整个 Redis 数据生命周期内只执行一次。
-// 先清扫后写 marker：清扫失败时下次启动会重试；并发实例重复清扫是幂等的。
+// sweepLegacyWaitKeysOnce bounds unindexed legacy wait counters once. Shared
+// counters may belong to live peers, so preserve their values and existing TTLs.
+// Only nonexpiring keys need a lifetime; repeated or concurrent sweeps are safe.
 func (c *concurrencyCache) sweepLegacyWaitKeysOnce(ctx context.Context) error {
 	exists, err := c.rdb.Exists(ctx, legacyWaitSweepMarkerKey).Result()
 	if err != nil {
@@ -1189,9 +1174,9 @@ func (c *concurrencyCache) sweepLegacyWaitKeysOnce(ctx context.Context) error {
 			if err != nil {
 				return fmt.Errorf("scan legacy wait keys %s: %w", pattern, err)
 			}
-			if len(keys) > 0 {
-				if err := c.rdb.Del(ctx, keys...).Err(); err != nil {
-					return fmt.Errorf("delete legacy wait keys: %w", err)
+			for _, key := range keys {
+				if err := boundWaitTTLScript.Run(ctx, c.rdb, []string{key}, c.waitQueueTTLSeconds).Err(); err != nil {
+					return fmt.Errorf("bound legacy wait key %s: %w", key, err)
 				}
 			}
 			cursor = next
@@ -1216,18 +1201,16 @@ func (c *concurrencyCache) allIndexMembers(ctx context.Context, indexKey string)
 	return members, nil
 }
 
-// cleanupStaleProcessSlotsForIndex 逐个处理索引中的账号/用户。
-// Lua 脚本一次只碰一个槽位 key，兼容 Redis Cluster，随后删除重启后已失效的等待计数；
-// 索引 member 的去留由脚本返回的剩余槽位数决定，最后批量写回。
+// cleanupStaleProcessSlotsForIndex uses single-key scripts for Cluster-compatible
+// cleanup. Retain valid index members, including queue-only candidates: removing
+// one using a load snapshot could erase a concurrent peer's index update. The
+// bounded background index reconciliation will reap idle candidates later.
 func (c *concurrencyCache) cleanupStaleProcessSlotsForIndex(
 	ctx context.Context,
 	spec slotIndexSpec,
 	members []string,
-	activeRequestPrefix string,
-	now int64,
 ) error {
 	staleMembers := make([]string, 0)
-	refreshed := make([]redis.Z, 0)
 	for _, member := range members {
 		id, err := strconv.ParseInt(member, 10, 64)
 		if err != nil || id <= 0 {
@@ -1235,26 +1218,11 @@ func (c *concurrencyCache) cleanupStaleProcessSlotsForIndex(
 			continue
 		}
 
-		_, remaining, err := runScriptInt64Pair(ctx, c.rdb, startupCleanupSlotScript, []string{spec.slotKey(id)}, activeRequestPrefix, c.slotTTLSeconds)
-		if err != nil {
+		if err := cleanupExpiredSlotsScript.Run(ctx, c.rdb, []string{spec.slotKey(id)}, c.slotTTLSeconds).Err(); err != nil {
 			return fmt.Errorf("cleanup stale process slots %s: %w", spec.slotKey(id), err)
 		}
-		// 等待计数属于已死进程，直接删除；剩余槽位（当前进程前缀）决定索引 member 去留。
-		if err := c.rdb.Del(ctx, spec.waitKey(id)).Err(); err != nil {
-			return fmt.Errorf("delete stale wait key %s: %w", spec.waitKey(id), err)
-		}
-		if remaining > 0 {
-			refreshed = append(refreshed, redis.Z{
-				Score:  float64(now + int64(c.slotTTLSeconds)),
-				Member: member,
-			})
-		} else {
-			staleMembers = append(staleMembers, member)
-		}
-	}
-	if len(refreshed) > 0 {
-		if err := c.rdb.ZAdd(ctx, spec.indexKey, refreshed...).Err(); err != nil {
-			logger.LegacyPrintf("repository.concurrency", "Warning: refresh %d active index members in %s failed: %v", len(refreshed), spec.indexKey, err)
+		if err := boundWaitTTLScript.Run(ctx, c.rdb, []string{spec.waitKey(id)}, c.waitQueueTTLSeconds).Err(); err != nil {
+			return fmt.Errorf("bound wait key %s: %w", spec.waitKey(id), err)
 		}
 	}
 	c.removeActiveIndexMembers(ctx, spec.indexKey, staleMembers)
