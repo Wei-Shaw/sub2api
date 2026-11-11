@@ -155,6 +155,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
+	service.SetOpsRequestParameters(c, body)
+
 	if len(body) == 0 {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return
@@ -2167,6 +2169,8 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		h.errorResponse(c, status, "invalid_request_error", message)
 		return
 	}
+
+	service.SetOpsRequestParameters(c, body)
 
 	if len(body) == 0 {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")

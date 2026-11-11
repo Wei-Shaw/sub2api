@@ -433,6 +433,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		return
 	}
 
+	service.SetOpsRequestParameters(c, body)
+
 	if len(body) == 0 {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return
@@ -1227,6 +1229,8 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		h.anthropicErrorResponse(c, status, "invalid_request_error", message)
 		return
 	}
+	service.SetOpsRequestParameters(c, body)
+
 	if len(body) == 0 {
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return
@@ -2573,6 +2577,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "invalid JSON payload")
 		return
 	}
+	service.SetOpsRequestParameters(c, firstMessage)
 	reqModel := strings.TrimSpace(gjson.GetBytes(firstMessage, "model").String())
 	if reqModel == "" {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "model is required in first response.create payload")
@@ -4200,6 +4205,8 @@ const cyberPolicyRecordedKey = "ops_cyber_recorded"
 // cyberPolicyOpsErrorMeta carries request-scoped fields captured outside the
 // async goroutine for building the cyber ops_error_logs entry.
 type cyberPolicyOpsErrorMeta struct {
+	ReasoningEffort string
+	ServiceTier     string
 	RequestID       string
 	ClientRequestID string
 	Platform        string
@@ -4224,6 +4231,8 @@ type cyberPolicyOpsErrorMeta struct {
 func buildCyberPolicyOpsErrorEntry(meta cyberPolicyOpsErrorMeta, mark *service.CyberPolicyMark) *service.OpsInsertErrorLogInput {
 	rt := int16(service.RequestTypeCyberBlocked)
 	entry := &service.OpsInsertErrorLogInput{
+		ReasoningEffort:   meta.ReasoningEffort,
+		ServiceTier:       meta.ServiceTier,
 		RequestID:         meta.RequestID,
 		ClientRequestID:   meta.ClientRequestID,
 		Platform:          meta.Platform,
@@ -4272,6 +4281,8 @@ const cyberSessionBlockedClientMsg = "该会话已被网络安全策略屏蔽，
 func buildCyberSessionBlockedOpsEntry(meta cyberPolicyOpsErrorMeta) *service.OpsInsertErrorLogInput {
 	rt := int16(service.RequestTypeCyberBlocked)
 	entry := &service.OpsInsertErrorLogInput{
+		ReasoningEffort:   meta.ReasoningEffort,
+		ServiceTier:       meta.ServiceTier,
 		RequestID:         meta.RequestID,
 		ClientRequestID:   meta.ClientRequestID,
 		Platform:          meta.Platform,
@@ -4407,6 +4418,7 @@ func (h *OpenAIGatewayHandler) enqueueCyberSessionBlockedOpsEntry(c *gin.Context
 	// request; suppress the generic middleware record of the same 403 response.
 	c.Set(opsDedicatedErrorRecordedKey, true)
 	meta := cyberPolicyOpsErrorMeta{Model: model, InboundEndpoint: GetInboundEndpoint(c), CreatedAt: time.Now(), SessionBlockKey: sessionBlockKey}
+	meta.ReasoningEffort, meta.ServiceTier = service.OpsRequestParameters(c)
 	meta.RequestID = c.Writer.Header().Get("X-Request-Id")
 	if c.Request != nil && c.Request.URL != nil {
 		meta.RequestPath = c.Request.URL.Path
@@ -4522,6 +4534,7 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 		ClientIP:        clientIPStr,
 		CreatedAt:       time.Now(),
 	}
+	opsMeta.ReasoningEffort, opsMeta.ServiceTier = service.OpsRequestParameters(c)
 	cyberLogOnly := h.cyberPolicyLogOnly(c, apiKey)
 	if gwSvc != nil && apiKey != nil && !cyberLogOnly {
 		block := buildCyberSessionBlock(apiKey.ID, c, cyberBlockBody)

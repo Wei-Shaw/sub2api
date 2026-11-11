@@ -2242,6 +2242,8 @@ export interface ExtendSubscriptionRequest {
 // ==================== Query Parameters ====================
 
 export interface UserErrorRequest {
+  reasoning_effort?: string
+  service_tier?: string
   id: number
   created_at: string
   model: string
