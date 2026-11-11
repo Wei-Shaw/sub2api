@@ -21,6 +21,7 @@ func RegisterAuthRoutes(
 	redisClient *redis.Client,
 	settingService *service.SettingService,
 	panelRateLimiter *servermiddleware.PanelRateLimiter,
+	loginBanGuard *middleware.LoginFailureBanGuard,
 ) {
 	// 创建速率限制器
 	rateLimiter := middleware.NewRateLimiter(redisClient)
@@ -35,16 +36,17 @@ func RegisterAuthRoutes(
 		auth.POST("/register", rateLimiter.LimitWithOptions("auth-register", 5, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.Register)
-		auth.POST("/login", rateLimiter.LimitWithOptions("auth-login", 20, time.Minute, middleware.RateLimitOptions{
+		// 登录失败自动封禁挂在最外层：窗口期内失败达阈值的 IP 直接拒绝（可配置，默认关闭）
+		auth.POST("/login", loginBanGuard.Guard(), rateLimiter.LimitWithOptions("auth-login", 20, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.Login)
-		auth.POST("/login/2fa", rateLimiter.LimitWithOptions("auth-login-2fa", 20, time.Minute, middleware.RateLimitOptions{
+		auth.POST("/login/2fa", loginBanGuard.Guard(), rateLimiter.LimitWithOptions("auth-login-2fa", 20, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Auth.Login2FA)
 		auth.POST("/passkey/login/begin", rateLimiter.LimitWithOptions("passkey-login-begin", 20, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Passkey.BeginLogin)
-		auth.POST("/passkey/login/finish", rateLimiter.LimitWithOptions("passkey-login-finish", 20, time.Minute, middleware.RateLimitOptions{
+		auth.POST("/passkey/login/finish", loginBanGuard.Guard(), rateLimiter.LimitWithOptions("passkey-login-finish", 20, time.Minute, middleware.RateLimitOptions{
 			FailureMode: middleware.RateLimitFailClose,
 		}), h.Passkey.FinishLogin)
 		auth.POST("/send-verify-code", rateLimiter.LimitWithOptions("auth-send-verify-code", 5, time.Minute, middleware.RateLimitOptions{

@@ -294,3 +294,16 @@ func TestGetSecurityClientIPRequestSnapshotOverridesLiveFallback(t *testing.T) {
 		})
 	}
 }
+
+func TestMatchesIPRules(t *testing.T) {
+	rules := CompileIPRules([]string{"203.0.113.10", "198.51.100.0/24", "2001:db8::/32", "not-a-rule"})
+
+	require.True(t, MatchesIPRules("203.0.113.10", rules))
+	require.True(t, MatchesIPRules("198.51.100.77", rules))
+	require.True(t, MatchesIPRules("2001:db8:1:2::10", rules))
+	require.False(t, MatchesIPRules("203.0.113.11", rules))
+	require.False(t, MatchesIPRules("198.51.101.1", rules))
+	require.False(t, MatchesIPRules("not-an-ip", rules))
+	require.False(t, MatchesIPRules("203.0.113.10", nil))
+	require.False(t, MatchesIPRules("203.0.113.10", CompileIPRules(nil)))
+}
