@@ -83,68 +83,82 @@ func TestOpenCodeCapacityPostmanSimulation(t *testing.T) {
 		}
 		return selected
 	}
-	for _, tt := range []struct {
-		name, path, content string
-		stream              bool
+	for _, capacity := range []struct {
+		marker     string
+		minDelayMS int64
 	}{
-		{"chat", "/v1/chat/completions", `"messages":[{"role":"user","content":"hello"}]`, false},
-		{"stream", "/v1/chat/completions", `"messages":[{"role":"user","content":"hello"}]`, true},
-		{"responses", "/v1/responses", `"input":"hello"`, false},
-		{"messages", "/v1/messages", `"max_tokens":10,"messages":[{"role":"user","content":"hello"}]`, false},
+		{"ttft_admission_refused", 1900},
+		{"prefill_cap_refused", 4900},
+		{"overloaded", 450},
+		{"inference_service_overloaded", 450},
 	} {
-		t.Run(tt.name, func(t *testing.T) {
-			model := "deepseek-recover-" + tt.name
-			body := fmt.Sprintf(`{"model":%q,"stream":%t,%s}`, model, tt.stream, tt.content)
-			rec := httptest.NewRecorder()
-			req := httptest.NewRequest(http.MethodPost, tt.path, strings.NewReader(body))
-			req.Header.Set("Content-Type", "application/json")
-			router.ServeHTTP(rec, req)
-			require.Equal(t, 200, rec.Code, rec.Body.String())
-			require.Contains(t, rec.Body.String(), "Recovered")
-			require.NotContains(t, rec.Body.String(), "ttft_admission_refused", "intermediate errors must not reach the client")
-			if tt.stream {
-				require.Equal(t, 1, strings.Count(rec.Body.String(), "[DONE]"))
+		t.Run(capacity.marker, func(t *testing.T) {
+			for _, tt := range []struct {
+				name, path, content string
+				stream              bool
+			}{
+				{"chat", "/v1/chat/completions", `"messages":[{"role":"user","content":"hello"}]`, false},
+				{"stream", "/v1/chat/completions", `"messages":[{"role":"user","content":"hello"}]`, true},
+				{"responses", "/v1/responses", `"input":"hello"`, false},
+				{"messages", "/v1/messages", `"max_tokens":10,"messages":[{"role":"user","content":"hello"}]`, false},
+			} {
+				t.Run(tt.name, func(t *testing.T) {
+					model := "deepseek-recover-" + capacity.marker + "-" + tt.name
+					body := fmt.Sprintf(`{"model":%q,"stream":%t,%s}`, model, tt.stream, tt.content)
+					rec := httptest.NewRecorder()
+					req := httptest.NewRequest(http.MethodPost, tt.path, strings.NewReader(body))
+					req.Header.Set("Content-Type", "application/json")
+					router.ServeHTTP(rec, req)
+					require.Equal(t, 200, rec.Code, rec.Body.String())
+					require.Contains(t, rec.Body.String(), "Recovered")
+					require.NotContains(t, rec.Body.String(), `"error":`, "intermediate errors must not reach the client")
+					if tt.stream {
+						require.Equal(t, 1, strings.Count(rec.Body.String(), "[DONE]"))
+					}
+					hits := readHits(model)
+					require.Len(t, hits, 2)
+					require.Equal(t, hits[0].Account, hits[1].Account, "retry must stay on the selected account")
+					require.GreaterOrEqual(t, hits[1].At-hits[0].At, capacity.minDelayMS, "respect the provider hint or default backoff")
+				})
 			}
-			hits := readHits(model)
-			require.Len(t, hits, 2)
-			require.Equal(t, hits[0].Account, hits[1].Account, "retry must stay on the selected account")
-			require.GreaterOrEqual(t, hits[1].At-hits[0].At, int64(1900), "respect the observed two-second admission delay")
+			t.Run("exhaust_then_switch", func(t *testing.T) {
+				model := "deepseek-exhaust-" + capacity.marker
+				rec := httptest.NewRecorder()
+				router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewBufferString(`{"model":"`+model+`","messages":[{"role":"user","content":"hello"}]}`)))
+				require.Equal(t, 200, rec.Code, rec.Body.String())
+				hits := readHits(model)
+				var accounts []string
+				for _, row := range hits {
+					accounts = append(accounts, row.Account)
+				}
+				require.Equal(t, []string{"a", "a", "a", "a", "b"}, accounts)
+			})
+			t.Run("single_account_exhaustion_returns_429", func(t *testing.T) {
+				accounts := repo.accounts
+				repo.accounts = accounts[:1]
+				defer func() { repo.accounts = accounts }()
+				model := "deepseek-exhaust-single-" + capacity.marker
+				rec := httptest.NewRecorder()
+				router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"`+model+`","messages":[{"role":"user","content":"hello"}]}`)))
+				require.Equal(t, 429, rec.Code, rec.Body.String())
+				hits := readHits(model)
+				require.Len(t, hits, 4)
+				for _, row := range hits {
+					require.Equal(t, "a", row.Account)
+				}
+			})
+			t.Run("cancel_during_wait", func(t *testing.T) {
+				ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
+				defer cancel()
+				model := "deepseek-cancel-" + capacity.marker
+				req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"`+model+`","messages":[{"role":"user","content":"hello"}]}`)).WithContext(ctx)
+				started := time.Now()
+				router.ServeHTTP(httptest.NewRecorder(), req)
+				require.Less(t, time.Since(started), time.Second)
+				require.Len(t, readHits(model), 1)
+			})
 		})
 	}
-	t.Run("exhaust_then_switch", func(t *testing.T) {
-		model := "deepseek-exhaust"
-		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewBufferString(`{"model":"`+model+`","messages":[{"role":"user","content":"hello"}]}`)))
-		require.Equal(t, 200, rec.Code, rec.Body.String())
-		hits := readHits(model)
-		var accounts []string
-		for _, row := range hits {
-			accounts = append(accounts, row.Account)
-		}
-		require.Equal(t, []string{"a", "a", "a", "a", "b"}, accounts)
-	})
-	t.Run("single_account_exhaustion_returns_429", func(t *testing.T) {
-		accounts := repo.accounts
-		repo.accounts = accounts[:1]
-		defer func() { repo.accounts = accounts }()
-		rec := httptest.NewRecorder()
-		router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"deepseek-exhaust-single","messages":[{"role":"user","content":"hello"}]}`)))
-		require.Equal(t, 429, rec.Code, rec.Body.String())
-		hits := readHits("deepseek-exhaust-single")
-		require.Len(t, hits, 4)
-		for _, row := range hits {
-			require.Equal(t, "a", row.Account)
-		}
-	})
-	t.Run("cancel_during_wait", func(t *testing.T) {
-		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
-		defer cancel()
-		req := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"deepseek-cancel","messages":[{"role":"user","content":"hello"}]}`)).WithContext(ctx)
-		started := time.Now()
-		router.ServeHTTP(httptest.NewRecorder(), req)
-		require.Less(t, time.Since(started), time.Second)
-		require.Len(t, readHits("deepseek-cancel"), 1)
-	})
 	t.Run("parameter_error_is_not_retried", func(t *testing.T) {
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"deepseek-invalid","messages":[{"role":"user","content":"hello"}]}`)))

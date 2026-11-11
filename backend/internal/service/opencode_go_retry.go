@@ -18,17 +18,35 @@ const (
 
 var openCodeCapacityRetryHint = regexp.MustCompile(`(?i)\bretry shortly \(after ([0-9]+(?:\.[0-9]+)?) s\)`)
 
+var openCodeCapacityRefusalMarkers = [...]string{
+	"ttft_admission_refused",
+	"prefill_cap_refused",
+	"overloaded",
+}
+
 func isOpenCodeCapacityRefused(account *Account, statusCode int, body []byte) bool {
 	if account == nil || !account.IsOpenCodeGo() || statusCode != http.StatusTooManyRequests {
 		return false
 	}
 	// 只接受上游错误字段中的容量拒绝信号；配额耗尽、参数错误和回显的请求内容不参与重试分类。
 	code := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "error.code").String()))
-	if code != "" {
-		return code == "ttft_admission_refused"
+	message := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "error.message").String()))
+	// 已确认的另一种 OpenCode 容量响应没有方括号标记；只匹配完整句子及错误类型，避免普通限流被误重试。
+	if code == "" && strings.EqualFold(strings.TrimSpace(gjson.GetBytes(body, "error.type").String()), "server_error") &&
+		message == "the inference service is overloaded. please try again later." {
+		return true
 	}
-	message := strings.ToLower(gjson.GetBytes(body, "error.message").String())
-	return strings.Contains(message, "[ttft_admission_refused]")
+	for _, marker := range openCodeCapacityRefusalMarkers {
+		// 明确错误码优先于消息，避免额度错误中回显的容量标记绕过原有冷却。
+		if code != "" {
+			if code == marker {
+				return true
+			}
+		} else if strings.Contains(message, "["+marker+"]") {
+			return true
+		}
+	}
+	return false
 }
 
 func openCodeCapacityRetryDelay(headers http.Header, body []byte) (time.Duration, bool) {

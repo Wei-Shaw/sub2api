@@ -31,6 +31,33 @@ func TestOpenCodeCapacityRetryClassification(t *testing.T) {
 			require.Equal(t, time.Duration(seconds)*time.Second, err.SameAccountRetryDelay)
 			require.Equal(t, 3, err.SameAccountRetryMax)
 			require.Equal(t, 429, err.StatusCode)
+			require.Equal(t, 429, err.ClientStatusCode)
+		})
+	}
+	for _, tt := range []struct {
+		name, body string
+		delay      time.Duration
+	}{
+		{"prefill_message", `{"error":{"type":"server_error","message":"Upstream request failed: [prefill_cap_refused] the cell is at capacity; retry shortly (after 5 s)"}}`, 5 * time.Second},
+		{"overloaded_message_without_hint", `{"error":{"type":"server_error","message":"Upstream request failed: [overloaded] the server is overloaded; retry shortly"}}`, 500 * time.Millisecond},
+		{"prefill_code", `{"error":{"code":"prefill_cap_refused","message":"retry shortly (after 5 s)"}}`, 5 * time.Second},
+		{"overloaded_code", `{"error":{"code":"overloaded"}}`, 500 * time.Millisecond},
+		{"normalized_code", `{"error":{"code":" OVERLOADED "}}`, 500 * time.Millisecond},
+		{"normalized_message", `{"error":{"message":"Upstream request failed: [PREFILL_CAP_REFUSED]; retry shortly (after 5 s)"}}`, 5 * time.Second},
+		{"inference_overloaded", `{"error":{"type":"server_error","message":"The inference service is overloaded. Please try again later."}}`, 500 * time.Millisecond},
+		{"normalized_inference_overloaded", `{"error":{"type":" SERVER_ERROR ","message":" THE INFERENCE SERVICE IS OVERLOADED. PLEASE TRY AGAIN LATER. "}}`, 500 * time.Millisecond},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(tt.body)
+			svc := &OpenAIGatewayService{rateLimitService: &RateLimitService{}}
+			require.False(t, svc.handleOpenAIAccountUpstreamError(context.Background(), account, 429, nil, body))
+			err := svc.newOpenAIAccountFailoverError(account, 429, nil, body, "", false, false)
+			require.True(t, err.RetryableOnSameAccount)
+			require.True(t, err.RequestScopedTransient)
+			require.Equal(t, tt.delay, err.SameAccountRetryDelay)
+			require.Equal(t, 3, err.SameAccountRetryMax)
+			require.Equal(t, 429, err.StatusCode)
+			require.Equal(t, 429, err.ClientStatusCode)
 		})
 	}
 	for _, tt := range []struct {
@@ -44,8 +71,24 @@ func TestOpenCodeCapacityRetryClassification(t *testing.T) {
 		{"empty_400", 400, `{"error":{"type":"server_error","message":""}}`},
 		{"request_echo", 429, `{"error":{"message":"quota exhausted"},"request":{"message":"[ttft_admission_refused]"}}`},
 		{"different_code", 429, `{"error":{"code":"usage_limit_reached","message":"[ttft_admission_refused]"}}`},
+		{"prefill_quota_code", 429, `{"error":{"code":"usage_limit_reached","message":"[prefill_cap_refused]"}}`},
+		{"overloaded_quota_code", 429, `{"error":{"code":"usage_limit_reached","message":"[overloaded]"}}`},
+		{"unknown_code", 429, `{"error":{"code":"unknown_error","message":"[overloaded]"}}`},
+		{"generic_rate_limit", 429, `{"error":{"type":"rate_limit_error","message":"rate limit exceeded, please retry later"}}`},
+		{"marker_in_type", 429, `{"error":{"type":"overloaded","message":"retry shortly"}}`},
+		{"new_marker_request_echo", 429, `{"error":{"message":"quota exhausted"},"request":{"message":"[prefill_cap_refused] [overloaded]"}}`},
+		{"new_marker_wrong_status", 400, `{"error":{"code":"overloaded","message":"[prefill_cap_refused]"}}`},
+		{"inference_overloaded_quota_code", 429, `{"error":{"code":"usage_limit_reached","type":"server_error","message":"The inference service is overloaded. Please try again later."}}`},
+		{"inference_overloaded_unknown_code", 429, `{"error":{"code":"unknown_error","type":"server_error","message":"The inference service is overloaded. Please try again later."}}`},
+		{"inference_overloaded_wrong_type", 429, `{"error":{"type":"rate_limit_error","message":"The inference service is overloaded. Please try again later."}}`},
+		{"inference_overloaded_missing_type", 429, `{"error":{"message":"The inference service is overloaded. Please try again later."}}`},
+		{"inference_overloaded_suffix", 429, `{"error":{"type":"server_error","message":"The inference service is overloaded. Please try again later. quota exhausted"}}`},
+		{"inference_overloaded_prefix", 429, `{"error":{"type":"server_error","message":"Echo: The inference service is overloaded. Please try again later."}}`},
+		{"inference_overloaded_echo", 429, `{"error":{"type":"server_error","message":"quota exhausted"},"request":{"message":"The inference service is overloaded. Please try again later."}}`},
+		{"inference_overloaded_wrong_status", 503, `{"error":{"type":"server_error","message":"The inference service is overloaded. Please try again later."}}`},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
+			require.False(t, isOpenCodeCapacityRefused(account, tt.code, []byte(tt.body)))
 			err := (&OpenAIGatewayService{}).newOpenAIAccountFailoverError(account, tt.code, nil, []byte(tt.body), "", false, false)
 			require.False(t, err.RetryableOnSameAccount)
 			require.Zero(t, err.SameAccountRetryMax)
@@ -53,6 +96,10 @@ func TestOpenCodeCapacityRetryClassification(t *testing.T) {
 	}
 	require.False(t, isOpenCodeCapacityRefused(&Account{Platform: PlatformOpenAI}, 429, openCodeCapacityFixture("2")))
 	require.True(t, isOpenCodeCapacityRefused(account, 429, []byte(`{"error":{"code":"ttft_admission_refused"}}`)))
+	// 既有共享容量策略可单独识别该文案；本次 OpenCode 分类器不扩大到任意过载文本。
+	require.False(t, isOpenCodeCapacityRefused(account, 429, []byte(`{"error":{"type":"server_error","message":"the server is overloaded; retry shortly"}}`)))
+	require.False(t, isOpenCodeCapacityRefused(nil, 429, []byte(`{"error":{"code":"overloaded"}}`)))
+	require.False(t, isOpenCodeCapacityRefused(&Account{Platform: PlatformOpenAI}, 429, []byte(`{"error":{"message":"[prefill_cap_refused] [overloaded]"}}`)))
 }
 
 func TestOpenCodeCapacityRetryDelayBounds(t *testing.T) {

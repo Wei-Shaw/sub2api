@@ -466,6 +466,8 @@ func (s *OpenAIGatewayService) newOpenAIAccountFailoverErrorWithClassificationHe
 		failoverErr.RequestScopedTransient = true
 		failoverErr.SameAccountRetryDelay = delay
 		failoverErr.SameAccountRetryMax = openCodeCapacityRetryMax
+		// OpenCode 容量拒绝耗尽后保留上游 429，避免继承共享容量策略的 503 映射。
+		failoverErr.ClientStatusCode = statusCode
 	}
 	return failoverErr
 }

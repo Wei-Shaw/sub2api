@@ -21,11 +21,19 @@ http.createServer((req, res) => {
   const capacity = model.includes('recover') && attempt === 1 ||
     model.includes('exhaust') && account === 'a' || model.includes('cancel');
   if (capacity) {
-    const seconds = model.includes('cancel') ? 15 : model.includes('recover') ? 2 : 0;
+    const marker = model.includes('prefill_cap_refused') ? 'prefill_cap_refused' :
+      model.includes('overloaded') ? 'overloaded' : 'ttft_admission_refused';
+    const seconds = model.includes('cancel') ? marker === 'prefill_cap_refused' ? 5 : 15 :
+      model.includes('recover') ? marker === 'prefill_cap_refused' ? 5 : 2 : 0;
+    // Match the reported overload body without a hint so the real gateway must use its default backoff.
+    const hint = marker === 'overloaded' ? '' : ` (after ${seconds} s)`;
+    const reason = marker === 'overloaded' ? 'the server is overloaded' : 'the cell is at capacity';
     res.writeHead(429, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: {
       type: 'server_error',
-      message: `Upstream request failed: [ttft_admission_refused] the cell is at capacity; retry shortly (after ${seconds} s)`,
+      message: model.includes('inference_service_overloaded') ?
+        'The inference service is overloaded. Please try again later.' :
+        `Upstream request failed: [${marker}] ${reason}; retry shortly${hint}`,
     } }));
     return;
   }
