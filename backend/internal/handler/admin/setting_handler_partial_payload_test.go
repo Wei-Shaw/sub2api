@@ -203,3 +203,20 @@ func TestUpdateSettingsSubscriptionEnabledIsWritableAndKeptWhenOmitted(t *testin
 	require.Equal(t, "false", repo.values[service.SettingKeySubscriptionEnabled],
 		"a payload without subscription_enabled must not flip the stored value back to true")
 }
+
+func TestAppearanceSettingsPersistAndAllowPartialUpdates(t *testing.T) {
+	h, repo := newStepUpSwitchTestHandler(t, map[string]string{})
+	rec := doUpdateSettings(t, h, map[string]any{"site_theme": "violet", "custom_css": "body { color: red }"}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "violet", repo.values[service.SettingKeySiteTheme])
+	require.Equal(t, "body { color: red }", repo.values[service.SettingKeyCustomCSS])
+	rec = doUpdateSettings(t, h, map[string]any{"site_name": "Example"}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "violet", repo.values[service.SettingKeySiteTheme])
+	require.Equal(t, "body { color: red }", repo.values[service.SettingKeyCustomCSS])
+	rec = doUpdateSettings(t, h, map[string]any{"site_theme": "invalid"}, nil)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	rec = doUpdateSettings(t, h, map[string]any{"custom_css": ""}, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Empty(t, repo.values[service.SettingKeyCustomCSS])
+}

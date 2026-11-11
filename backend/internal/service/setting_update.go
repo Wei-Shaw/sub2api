@@ -336,6 +336,8 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	}
 
 	// OEM设置
+	updates[SettingKeySiteTheme] = settings.SiteTheme
+	updates[SettingKeyCustomCSS] = settings.CustomCSS
 	updates[SettingKeySiteName] = settings.SiteName
 	updates[SettingKeySiteLogo] = settings.SiteLogo
 	updates[SettingKeySiteSubtitle] = settings.SiteSubtitle

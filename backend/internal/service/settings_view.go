@@ -149,6 +149,8 @@ type SystemSettings struct {
 	GoogleOAuthRedirectURL            string
 	GoogleOAuthFrontendRedirectURL    string
 
+	SiteTheme                   string
+	CustomCSS                   string
 	SiteName                    string
 	SiteLogo                    string
 	SiteSubtitle                string
@@ -351,6 +353,8 @@ type PublicSettings struct {
 	AliyunCaptchaSceneID                string
 	AliyunCaptchaPrefix                 string
 	AliyunCaptchaRegion                 string
+	SiteTheme                           string
+	CustomCSS                           string
 	SiteName                            string
 	SiteLogo                            string
 	SiteSubtitle                        string

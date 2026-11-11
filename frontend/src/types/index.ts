@@ -232,6 +232,8 @@ export interface PublicSettings {
   aliyun_captcha_scene_id?: string
   aliyun_captcha_prefix?: string
   aliyun_captcha_region?: string
+  site_theme?: string
+  custom_css?: string
   site_name: string
   site_logo: string
   site_subtitle: string
