@@ -2081,6 +2081,34 @@ describe('EditAccountModal temp-unschedulable rule scope', () => {
     wrapper.unmount()
   })
 
+  it.each([0, '0'])('loads and saves zero duration %s without converting it to an empty value', async (durationValue) => {
+    const account = buildAccountWithTempUnschedRules([
+      { error_code: 403, keywords: ['service_tier_not_allowed'], duration_minutes: durationValue }
+    ])
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+
+    const duration = wrapper.get<HTMLInputElement>('[data-testid="temp-unsched-duration"]')
+    expect(duration.attributes('min')).toBe('0')
+    expect(duration.element.value).toBe('0')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(savedRules()).toEqual([expect.objectContaining({ duration_minutes: 0 })])
+    wrapper.unmount()
+  })
+
+  it.each([false, ' ', null])('keeps invalid duration %s from becoming an ignore rule', async (durationValue) => {
+    const wrapper = mountModal(buildAccountWithTempUnschedRules([
+      { error_code: 403, keywords: ['service_tier_not_allowed'], duration_minutes: durationValue }
+    ]))
+
+    const duration = wrapper.get<HTMLInputElement>('[data-testid="temp-unsched-duration"]')
+    expect(duration.element.value).toBe('')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('defaults a newly added rule to model scope', async () => {
     const wrapper = mountModal(buildAccountWithTempUnschedRules([]))
 
