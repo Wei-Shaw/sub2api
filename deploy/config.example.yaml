@@ -882,8 +882,8 @@ idempotency:
 # 并发等待配置
 # =============================================================================
 concurrency:
-  # SSE ping interval during concurrency wait (seconds)
-  # 并发等待期间的 SSE ping 间隔（秒）
+  # SSE ping interval during concurrency wait (seconds); 0 disables pings to avoid committing HTTP status early
+  # 并发等待期间的 SSE ping 间隔（秒）；0 禁用 ping，避免提前写入 HTTP 状态码
   ping_interval: 10
 
 # =============================================================================

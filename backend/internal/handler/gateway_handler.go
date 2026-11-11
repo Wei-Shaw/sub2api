@@ -80,7 +80,7 @@ func NewGatewayHandler(
 	cfg *config.Config,
 	settingService *service.SettingService,
 ) *GatewayHandler {
-	pingInterval := time.Duration(0)
+	pingInterval := defaultPingInterval
 	maxAccountSwitches := 10
 	maxAccountSwitchesGemini := 3
 	if cfg != nil {
