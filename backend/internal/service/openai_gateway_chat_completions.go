@@ -233,6 +233,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		chatReq.Model = upstreamModel
 		responsesReq, err = chatCompletionsToResponses(s.cfg, &chatReq)
 		if err != nil {
+			writeChatInputAudioValidationError(c, err)
 			return nil, fmt.Errorf("convert chat completions to responses: %w", err)
 		}
 		responsesReq.Model = upstreamModel

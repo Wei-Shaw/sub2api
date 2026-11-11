@@ -46,6 +46,7 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	// 2. Convert CC → Responses → Anthropic (chained conversion)
 	responsesReq, err := chatCompletionsToResponses(s.cfg, &ccReq)
 	if err != nil {
+		writeChatInputAudioValidationError(c, err)
 		return nil, fmt.Errorf("convert chat completions to responses: %w", err)
 	}
 

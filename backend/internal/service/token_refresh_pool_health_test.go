@@ -939,6 +939,7 @@ func TestTokenRefreshService_ParentCancellationStopsRetryWithoutAccountMutation(
 
 func TestTokenRefreshService_LateSuccessPastAttemptDeadlineIsRejected(t *testing.T) {
 	repo := &poolHealthAccountRepo{}
+	// Wait for actual cancellation, not elapsed time, then return successful credentials.
 	refresher := &poolHealthRefresher{
 		waitForContextDone: true,
 	}
