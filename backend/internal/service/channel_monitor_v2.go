@@ -136,6 +136,8 @@ type ChannelMonitorV2Health struct {
 type ChannelMonitorV2HealthThresholds struct {
 	// MinimumSample is required before scoring request/latency/cache signals.
 	MinimumSample int64 `json:"minimum_sample"`
+	// Optional view-specific request minimums; absent entries use MinimumSample.
+	MinimumSampleByRange map[string]int64 `json:"minimum_sample_by_range,omitempty"`
 	// WarningErrorRate / CriticalErrorRate map to discrete bands for legacy UI.
 	WarningErrorRate  float64 `json:"warning_error_rate"`
 	CriticalErrorRate float64 `json:"critical_error_rate"`
@@ -821,6 +823,21 @@ func NormalizeChannelMonitorV2HealthThresholds(in ChannelMonitorV2HealthThreshol
 	if in.MinimumSample > 10000 {
 		in.MinimumSample = 10000
 	}
+	if in.MinimumSampleByRange != nil {
+		byRange := make(map[string]int64, 4)
+		for _, window := range []string{"90m", "24h", "7d", "30d"} {
+			if minimum, ok := in.MinimumSampleByRange[window]; ok {
+				if minimum < 1 {
+					minimum = in.MinimumSample
+				}
+				if minimum > 10000 {
+					minimum = 10000
+				}
+				byRange[window] = minimum
+			}
+		}
+		in.MinimumSampleByRange = byRange
+	}
 	if in.WarningErrorRate <= 0 {
 		in.WarningErrorRate = def.WarningErrorRate
 	}
@@ -951,6 +968,14 @@ func normalizeChannelMonitorV2GroupIDs(values []int64) ([]int64, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
 	return out, nil
+}
+
+// ForRange resolves only the sample minimum, leaving scoring budgets and weights unchanged.
+func (in ChannelMonitorV2HealthThresholds) ForRange(window string) ChannelMonitorV2HealthThresholds {
+	if minimum := in.MinimumSampleByRange[window]; minimum > 0 {
+		in.MinimumSample = minimum
+	}
+	return in
 }
 
 func ChannelMonitorV2HealthFor(metrics ChannelMonitorV2Metric) ChannelMonitorV2Health {
