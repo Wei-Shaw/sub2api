@@ -145,43 +145,43 @@ func randomCacheControlBody(rng *rand.Rand) []byte {
 		}
 	}
 	var b bytes.Buffer
-	b.WriteString(`{"model":"claude-sonnet"`)
+	_, _ = b.WriteString(`{"model":"claude-sonnet"`)
 	if rng.Intn(5) == 0 {
-		b.WriteString(`,"cache_control":{"type":"ephemeral","ttl":"1h"}`)
+		_, _ = b.WriteString(`,"cache_control":{"type":"ephemeral","ttl":"1h"}`)
 	}
 	if rng.Intn(2) == 0 {
-		b.WriteString(`,"tools":[`)
+		_, _ = b.WriteString(`,"tools":[`)
 		n := rng.Intn(4)
 		for i := 0; i < n; i++ {
 			if i > 0 {
-				b.WriteByte(',')
+				_ = b.WriteByte(',')
 			}
 			fmt.Fprintf(&b, `{"name":"tool_%d"%s}`, i, cc())
 		}
-		b.WriteByte(']')
+		_ = b.WriteByte(']')
 	}
 	if rng.Intn(2) == 0 {
-		b.WriteString(`,"system":[`)
+		_, _ = b.WriteString(`,"system":[`)
 		n := rng.Intn(3)
 		for i := 0; i < n; i++ {
 			if i > 0 {
-				b.WriteByte(',')
+				_ = b.WriteByte(',')
 			}
 			fmt.Fprintf(&b, `{"type":"text","text":"sys %d"%s}`, i, cc())
 		}
-		b.WriteByte(']')
+		_ = b.WriteByte(']')
 	}
-	b.WriteString(`,"messages":[`)
+	_, _ = b.WriteString(`,"messages":[`)
 	m := rng.Intn(4)
 	for i := 0; i < m; i++ {
 		if i > 0 {
-			b.WriteByte(',')
+			_ = b.WriteByte(',')
 		}
-		b.WriteString(`{"role":"user","content":[`)
+		_, _ = b.WriteString(`{"role":"user","content":[`)
 		c := rng.Intn(3) + 1
 		for j := 0; j < c; j++ {
 			if j > 0 {
-				b.WriteByte(',')
+				_ = b.WriteByte(',')
 			}
 			blockType := "text"
 			if rng.Intn(6) == 0 {
@@ -189,9 +189,9 @@ func randomCacheControlBody(rng *rand.Rand) []byte {
 			}
 			fmt.Fprintf(&b, `{"type":%q,"text":"m%d-%d"%s}`, blockType, i, j, cc())
 		}
-		b.WriteString(`]}`)
+		_, _ = b.WriteString(`]}`)
 	}
-	b.WriteString(`]}`)
+	_, _ = b.WriteString(`]}`)
 	return b.Bytes()
 }
 

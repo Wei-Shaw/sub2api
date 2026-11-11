@@ -11,27 +11,27 @@ import (
 // 20 tools, a system prompt, and 40 messages with 4 content blocks each.
 func claudeCodeLikeBody(cacheControls int, with1h bool) []byte {
 	var b strings.Builder
-	b.WriteString(`{"model":"claude-sonnet-5-5","max_tokens":32000,"stream":true,"tools":[`)
+	_, _ = b.WriteString(`{"model":"claude-sonnet-5-5","max_tokens":32000,"stream":true,"tools":[`)
 	for i := 0; i < 20; i++ {
 		if i > 0 {
-			b.WriteByte(',')
+			_ = b.WriteByte(',')
 		}
 		fmt.Fprintf(&b, `{"name":"tool_%d","description":"%s","input_schema":{"type":"object","properties":{"path":{"type":"string"}}}`, i, strings.Repeat("d", 40))
 		if i == 19 && cacheControls > 0 {
-			b.WriteString(`,"cache_control":{"type":"ephemeral"}`)
+			_, _ = b.WriteString(`,"cache_control":{"type":"ephemeral"}`)
 			cacheControls--
 		}
-		b.WriteByte('}')
+		_ = b.WriteByte('}')
 	}
-	b.WriteString(`],"system":[{"type":"text","text":"You are Claude Code, Anthropic's official CLI for Claude."`)
+	_, _ = b.WriteString(`],"system":[{"type":"text","text":"You are Claude Code, Anthropic's official CLI for Claude."`)
 	if cacheControls > 0 {
-		b.WriteString(`,"cache_control":{"type":"ephemeral"}`)
+		_, _ = b.WriteString(`,"cache_control":{"type":"ephemeral"}`)
 		cacheControls--
 	}
-	b.WriteString(`}],"messages":[`)
+	_, _ = b.WriteString(`}],"messages":[`)
 	for m := 0; m < 40; m++ {
 		if m > 0 {
-			b.WriteByte(',')
+			_ = b.WriteByte(',')
 		}
 		role := "user"
 		if m%2 == 1 {
@@ -40,7 +40,7 @@ func claudeCodeLikeBody(cacheControls int, with1h bool) []byte {
 		fmt.Fprintf(&b, `{"role":%q,"content":[`, role)
 		for c := 0; c < 4; c++ {
 			if c > 0 {
-				b.WriteByte(',')
+				_ = b.WriteByte(',')
 			}
 			fmt.Fprintf(&b, `{"type":"text","text":"%s"`, strings.Repeat("x", 120))
 			if m >= 38 && c == 3 && cacheControls > 0 {
@@ -51,11 +51,11 @@ func claudeCodeLikeBody(cacheControls int, with1h bool) []byte {
 				fmt.Fprintf(&b, `,"cache_control":{"type":"ephemeral"%s}`, ttl)
 				cacheControls--
 			}
-			b.WriteByte('}')
+			_ = b.WriteByte('}')
 		}
-		b.WriteString(`]}`)
+		_, _ = b.WriteString(`]}`)
 	}
-	b.WriteString(`]}`)
+	_, _ = b.WriteString(`]}`)
 	return []byte(b.String())
 }
 
