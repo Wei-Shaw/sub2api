@@ -310,7 +310,15 @@ func extractUpstreamErrorMessage(body []byte) string {
 	}
 
 	// 兜底：尝试顶层 message
-	return gjson.GetBytes(body, "message").String()
+	if m := gjson.GetBytes(body, "message").String(); strings.TrimSpace(m) != "" {
+		return m
+	}
+
+	// xAI 风格：{"code":"...","error":"..."}。不要把未知对象当作消息透出。
+	if e := gjson.GetBytes(body, "error"); e.Type == gjson.String {
+		return e.String()
+	}
+	return ""
 }
 
 func extractUpstreamErrorCode(body []byte) string {
@@ -319,20 +327,21 @@ func extractUpstreamErrorCode(body []byte) string {
 	}
 
 	inner := strings.TrimSpace(gjson.GetBytes(body, "error.message").String())
-	if !strings.HasPrefix(inner, "{") {
-		return ""
-	}
-
-	if code := strings.TrimSpace(gjson.Get(inner, "error.code").String()); code != "" {
-		return code
-	}
-
-	if lastBrace := strings.LastIndex(inner, "}"); lastBrace >= 0 {
-		if code := strings.TrimSpace(gjson.Get(inner[:lastBrace+1], "error.code").String()); code != "" {
+	if strings.HasPrefix(inner, "{") {
+		if code := strings.TrimSpace(gjson.Get(inner, "error.code").String()); code != "" {
 			return code
+		}
+
+		if lastBrace := strings.LastIndex(inner, "}"); lastBrace >= 0 {
+			if code := strings.TrimSpace(gjson.Get(inner[:lastBrace+1], "error.code").String()); code != "" {
+				return code
+			}
 		}
 	}
 
+	if code := gjson.GetBytes(body, "code"); code.Type == gjson.String || code.Type == gjson.Number {
+		return strings.TrimSpace(code.String())
+	}
 	return ""
 }
 
