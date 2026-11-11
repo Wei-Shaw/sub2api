@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -764,10 +765,28 @@ func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accou
 	// 根据状态码选择封禁策略
 	switch failoverErr.StatusCode {
 	case http.StatusBadRequest:
+		if s.isPoolModeConfiguredRetryStatus(ctx, accountID, failoverErr.StatusCode) {
+			return
+		}
 		tempUnscheduleGoogleConfigError(ctx, s.accountRepo, accountID, "[handler]")
 	case http.StatusBadGateway:
+		if s.isPoolModeConfiguredRetryStatus(ctx, accountID, failoverErr.StatusCode) {
+			return
+		}
 		tempUnscheduleEmptyResponse(ctx, s.accountRepo, accountID, "[handler]")
 	}
+}
+
+// Explicitly configured pool retry statuses describe attempts within the
+// upstream pool, not failure of the local credential. Exhaust the request's
+// retry budget without cooling every request using that pool account.
+// Missing configuration or a failed lookup preserves the existing cooldown.
+func (s *GatewayService) isPoolModeConfiguredRetryStatus(ctx context.Context, accountID int64, statusCode int) bool {
+	if s == nil || s.accountRepo == nil {
+		return false
+	}
+	account, err := s.accountRepo.GetByID(ctx, accountID)
+	return err == nil && account != nil && account.IsPoolMode() && slices.Contains(account.GetPoolModeRetryStatusCodes(), statusCode)
 }
 
 // GatewayService handles API gateway operations
