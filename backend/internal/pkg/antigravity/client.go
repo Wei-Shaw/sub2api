@@ -683,8 +683,10 @@ type FetchAvailableModelsResponse struct {
 
 // FetchAvailableModels 获取可用模型和配额信息，返回解析后的结构体和原始 JSON
 // 保留旧调用的 URL fallback：prod → daily。
+// The per-model quota figures follow the generation endpoint order too (daily first), for the
+// same reason as RetrieveUserQuotaSummary: prod can report a stale quota window.
 func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectID string, bodyLimit int64) (*FetchAvailableModelsResponse, map[string]any, error) {
-	return c.fetchAvailableModels(ctx, BaseURLs, accessToken, projectID, bodyLimit, false)
+	return c.fetchAvailableModels(ctx, ForwardBaseURLs(), accessToken, projectID, bodyLimit, false)
 }
 
 // FetchAvailableModelsFromURL 获取指定端点的模型目录，不回退到其他端点。
