@@ -645,6 +645,7 @@ export default {
       cacheWritePrice: '缓存写入',
       cacheWrite5mPrice: '缓存写入（5m）',
       cacheWrite1hPrice: '缓存写入（1h）',
+      cacheWrite12hPrice: '缓存写入（12h）',
       cacheReadPrice: '缓存读取',
       imageInputPrice: '图片输入',
       imageOutputPrice: '图片输出',

@@ -74,6 +74,7 @@ type userSupportedModelPricing struct {
 	OutputPrice                *float64                 `json:"output_price"`
 	CacheWritePrice            *float64                 `json:"cache_write_price"`
 	CacheWrite1hPrice          *float64                 `json:"cache_write_1h_price"`
+	CacheWrite12hPrice         *float64                 `json:"cache_write_12h_price"`
 	CacheReadPrice             *float64                 `json:"cache_read_price"`
 	ReasoningEffortMultipliers map[string]float64       `json:"reasoning_effort_multipliers,omitempty"`
 	ImageInputPrice            *float64                 `json:"image_input_price"`
@@ -91,6 +92,7 @@ type userPricingIntervalDTO struct {
 	OutputPrice          *float64 `json:"output_price"`
 	CacheWritePrice      *float64 `json:"cache_write_price"`
 	CacheWrite1hPrice    *float64 `json:"cache_write_1h_price"`
+	CacheWrite12hPrice   *float64 `json:"cache_write_12h_price"`
 	CacheReadPrice       *float64 `json:"cache_read_price"`
 	InputMultiplier      *float64 `json:"input_multiplier"`
 	OutputMultiplier     *float64 `json:"output_multiplier"`
@@ -319,6 +321,7 @@ func toUserPricingIntervals(src []service.PricingInterval) []userPricingInterval
 			OutputPrice:          iv.OutputPrice,
 			CacheWritePrice:      iv.CacheWritePrice,
 			CacheWrite1hPrice:    iv.CacheWrite1hPrice,
+			CacheWrite12hPrice:   iv.CacheWrite12hPrice,
 			CacheReadPrice:       iv.CacheReadPrice,
 			InputMultiplier:      iv.InputMultiplier,
 			OutputMultiplier:     iv.OutputMultiplier,
@@ -350,6 +353,7 @@ func toUserPricing(p *service.ChannelModelPricing) *userSupportedModelPricing {
 		OutputPrice:                p.OutputPrice,
 		CacheWritePrice:            p.CacheWritePrice,
 		CacheWrite1hPrice:          p.CacheWrite1hPrice,
+		CacheWrite12hPrice:         p.CacheWrite12hPrice,
 		CacheReadPrice:             p.CacheReadPrice,
 		ReasoningEffortMultipliers: p.ReasoningEffortMultipliers,
 		ImageInputPrice:            p.ImageInputPrice,

@@ -10,11 +10,12 @@ import (
 // PlazaOfficialPricing 模型广场展示用的官方参考价（USD per token），与计费同源：
 // LiteLLM → 内置兜底价卡 → 模型策略。字段为 nil 表示该项缺失（0 视为未配置）。
 type PlazaOfficialPricing struct {
-	InputPrice        *float64
-	OutputPrice       *float64
-	CacheWritePrice   *float64 // 5m 缓存写入（= LiteLLM cache_creation）
-	CacheWrite1hPrice *float64 // 1h 缓存写入，仅计费会区分 5m/1h 时给出
-	CacheReadPrice    *float64
+	InputPrice         *float64
+	OutputPrice        *float64
+	CacheWritePrice    *float64 // 5m 缓存写入（= LiteLLM cache_creation）
+	CacheWrite1hPrice  *float64 // 1h 缓存写入，仅计费会区分 5m/1h 时给出
+	CacheWrite12hPrice *float64 // OpenAI 12h cache-write price
+	CacheReadPrice     *float64
 	// Intervals 官方长上下文阶梯（多档时给出），不受分组开关影响。
 	Intervals []PricingInterval
 }
@@ -272,6 +273,7 @@ func plazaPricingFromSchedule(raw *ChannelModelPricing, sched *ContextPricingSch
 	out.OutputPrice = first.Output
 	out.CacheWritePrice = first.CacheWrite
 	out.CacheWrite1hPrice = first.CacheWrite1h
+	out.CacheWrite12hPrice = first.CacheWrite12h
 	out.CacheReadPrice = first.CacheRead
 	if len(sched.Tiers) > 1 {
 		out.Intervals = plazaIntervalsFromTiers(sched.Tiers)
@@ -283,15 +285,16 @@ func plazaIntervalsFromTiers(tiers []ContextPricingTier) []PricingInterval {
 	intervals := make([]PricingInterval, 0, len(tiers))
 	for i, t := range tiers {
 		intervals = append(intervals, PricingInterval{
-			MinTokens:         t.MinTokens,
-			MaxTokens:         t.MaxTokens,
-			TierLabel:         t.Label,
-			InputPrice:        t.Input,
-			OutputPrice:       t.Output,
-			CacheWritePrice:   t.CacheWrite,
-			CacheWrite1hPrice: t.CacheWrite1h,
-			CacheReadPrice:    t.CacheRead,
-			SortOrder:         i,
+			MinTokens:          t.MinTokens,
+			MaxTokens:          t.MaxTokens,
+			TierLabel:          t.Label,
+			InputPrice:         t.Input,
+			OutputPrice:        t.Output,
+			CacheWritePrice:    t.CacheWrite,
+			CacheWrite1hPrice:  t.CacheWrite1h,
+			CacheWrite12hPrice: t.CacheWrite12h,
+			CacheReadPrice:     t.CacheRead,
+			SortOrder:          i,
 		})
 	}
 	return intervals
@@ -366,6 +369,7 @@ func (s *ModelPlazaService) lookupOfficialPricing(ctx context.Context, modelName
 		if mp.SupportsCacheBreakdown {
 			result.CacheWrite1hPrice = nonZeroPtr(mp.CacheCreation1hPrice)
 		}
+		result.CacheWrite12hPrice = mp.CacheCreation12hPricePerToken
 		if s.resolver != nil {
 			sched, schedErr := s.billingService.ResolveContextPricingSchedule(ctx, s.resolver, ContextPricingScheduleInput{Model: modelName})
 			if schedErr == nil && sched != nil && len(sched.Tiers) > 1 {
@@ -373,7 +377,7 @@ func (s *ModelPlazaService) lookupOfficialPricing(ctx context.Context, modelName
 			}
 		}
 		if result.InputPrice == nil && result.OutputPrice == nil && result.CacheWritePrice == nil &&
-			result.CacheWrite1hPrice == nil && result.CacheReadPrice == nil && len(result.Intervals) == 0 {
+			result.CacheWrite1hPrice == nil && result.CacheWrite12hPrice == nil && result.CacheReadPrice == nil && len(result.Intervals) == 0 {
 			result = nil
 		}
 	}

@@ -62,3 +62,26 @@ func toolImageCompatWire(t *testing.T, raw []byte, model string) []byte {
 	require.NoError(t, err)
 	return wire
 }
+
+func TestAntigravityResponsesParallelToolResultImagesKeepFunctionResponsesContiguous(t *testing.T) {
+	for _, model := range []string{"claude-opus-5-5-medium", "gemini-2.5-flash"} {
+		t.Run(model, func(t *testing.T) {
+			raw := []byte(`{"model":"client-alias","input":[
+ {"type":"function_call","call_id":"call_img_1","name":"view_image","arguments":"{}"},
+ {"type":"function_call","call_id":"call_img_2","name":"view_image","arguments":"{}"},
+ {"type":"function_call","call_id":"call_cmd_3","name":"exec_command","arguments":"{}"},
+ {"type":"function_call_output","call_id":"call_img_1","output":[{"type":"input_image","image_url":"data:image/png;base64,AQID"}]},
+ {"type":"function_call_output","call_id":"call_img_2","output":[{"type":"input_text","text":"second image"},{"type":"input_image","image_url":"data:image/jpeg;base64,BAUG"}]},
+ {"type":"function_call_output","call_id":"call_cmd_3","output":"done"}
+ ]}`)
+			wire := toolImageCompatWire(t, raw, model)
+			parts := gjson.GetBytes(wire, "request.contents.1.parts").Array()
+			require.Len(t, parts, 5)
+			require.Equal(t, "view_image", parts[0].Get("functionResponse.name").String())
+			require.Equal(t, "view_image", parts[1].Get("functionResponse.name").String())
+			require.Equal(t, "exec_command", parts[2].Get("functionResponse.name").String())
+			require.Equal(t, "AQID", parts[3].Get("inlineData.data").String())
+			require.Equal(t, "BAUG", parts[4].Get("inlineData.data").String())
+		})
+	}
+}

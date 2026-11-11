@@ -180,6 +180,60 @@ func TestEasyPayRefundResponseErrors(t *testing.T) {
 	}
 }
 
+func TestEasyPayRefundSuccessCode(t *testing.T) {
+	t.Parallel()
+
+	for _, successCode := range []string{"", "1", "0"} {
+		t.Run("configured="+successCode, func(t *testing.T) {
+			t.Parallel()
+			for _, code := range []string{`0`, `"0"`, `1`, `"1"`, `-1`, `1.5`, `0.5`, `null`, `false`, `""`} {
+				t.Run("response="+code, func(t *testing.T) {
+					server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+						_, _ = w.Write([]byte(`{"code":` + code + `,"msg":"gateway result"}`))
+					}))
+					defer server.Close()
+					provider, err := NewEasyPay("test-instance", map[string]string{
+						"pid": "1001", "pkey": "test-key", "apiBase": server.URL,
+						"notifyUrl": "https://site.example/notify", "returnUrl": "https://site.example/return",
+						"refundSuccessCode": successCode,
+					})
+					if err != nil {
+						t.Fatal(err)
+					}
+					resp, err := provider.Refund(context.Background(), payment.RefundRequest{OrderID: "out-456", Amount: "1.50"})
+					wantSuccess := code == `1` || code == `"1"`
+					if successCode == "0" {
+						wantSuccess = code == `0` || code == `"0"`
+					}
+					if wantSuccess {
+						if err != nil || resp == nil || resp.Status != payment.ProviderStatusSuccess {
+							t.Fatalf("Refund() = %+v, %v; want success", resp, err)
+						}
+					} else if err == nil || resp != nil {
+						t.Fatalf("Refund() = %+v, %v; want rejection", resp, err)
+					}
+				})
+			}
+		})
+	}
+}
+
+func TestNewEasyPayRejectsInvalidRefundSuccessCode(t *testing.T) {
+	t.Parallel()
+	for _, code := range []string{"-1", "2", "0.5", "0,1", "auto"} {
+		t.Run(code, func(t *testing.T) {
+			_, err := NewEasyPay("test-instance", map[string]string{
+				"pid": "1001", "pkey": "test-key", "apiBase": "https://pay.example",
+				"notifyUrl": "https://site.example/notify", "returnUrl": "https://site.example/return",
+				"refundSuccessCode": code,
+			})
+			if err == nil {
+				t.Fatal("NewEasyPay accepted an invalid refund success code")
+			}
+		})
+	}
+}
+
 func TestSummarizeEasyPayResponsePreservesUTF8(t *testing.T) {
 	t.Parallel()
 
