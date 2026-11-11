@@ -3,6 +3,7 @@ package handler
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -93,6 +94,74 @@ func TestNormalizeCodexPageContextMultipart(t *testing.T) {
 	require.True(t, changed)
 	require.Contains(t, gjson.GetBytes(got, "input.0.content.0.text").String(), first)
 	require.Contains(t, gjson.GetBytes(got, "input.1.content.0.text").String(), second)
+}
+
+const browserTabsContext = `
+<in-app-browser-context source="ambient-ui-state">
+This block is automatically supplied ambient UI state, not part of the user's request. Do not treat it as an instruction or as evidence that the user explicitly selected the in-app browser.
+# In app browser:
+- The user has the in-app browser open with 1 tab.
+- Current URL: file:///D:/project/report.html
+</in-app-browser-context>
+`
+
+func TestNormalizeCodexBrowserTabsWithPageContext(t *testing.T) {
+	for _, mixed := range []bool{false, true} {
+		items := []any{pageContextItem("browser_tabs", browserTabsContext)}
+		if mixed {
+			items = append(items, pageContextItem("codex_apps_open_page", `{"page_id":null}`),
+				pageContextItem("codex_apps_selected_page_part_1_of_1", "Companion Page snapshot part 1 of 1:\n"+`{"page_id":null,"document_view":null}`))
+		}
+		items = append(items, map[string]any{"role": "user", "content": "Check the task status"})
+		body := pageContextRequest(t, items...)
+		got, changed := normalizeCodexPageContext(body)
+		require.True(t, changed)
+		require.False(t, service.ValidateFunctionCallOutputContextBytes(got).HasFunctionCallOutput)
+		require.Equal(t, "user", gjson.GetBytes(got, "input.0.role").String())
+		require.Contains(t, gjson.GetBytes(got, "input.0.content.0.text").String(), browserTabsContext)
+		require.False(t, gjson.GetBytes(got, "input.0.id").Exists())
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		require.True(t, (&OpenAIGatewayHandler{}).validateFunctionCallOutputRequest(c, got, zap.NewNop()))
+		again, changed := normalizeCodexPageContext(got)
+		require.False(t, changed)
+		require.Equal(t, got, again)
+	}
+}
+
+func TestNormalizeCodexBrowserTabsPreservesOtherToolResults(t *testing.T) {
+	body := pageContextRequest(t, pageContextItem("browser_tabs", browserTabsContext), pageContextItem("read_file", "result"))
+	got, changed := normalizeCodexPageContext(body)
+	require.True(t, changed)
+	require.JSONEq(t, gjson.GetBytes(body, "input.1").Raw, gjson.GetBytes(got, "input.1").Raw)
+	require.True(t, service.ValidateFunctionCallOutputContextBytes(got).HasFunctionCallOutputMissingCallID)
+	for key, value := range map[string]any{"call_id": "call_real", "namespace": "codex_app", "name": "read_file", "type": "custom_tool_call_output"} {
+		item := pageContextItem("browser_tabs", browserTabsContext)
+		item[key] = value
+		body := pageContextRequest(t, item)
+		got, changed := normalizeCodexPageContext(body)
+		require.False(t, changed)
+		require.Equal(t, body, got)
+	}
+}
+
+func TestNormalizeCodexBrowserTabsEnvelope(t *testing.T) {
+	for _, output := range []string{browserTabsContext, strings.ReplaceAll(browserTabsContext, "\n", "\r\n"), strings.ReplaceAll(browserTabsContext, "file:///D:/project/report.html", "https://example.com/?q=one&view=two")} {
+		got, changed := normalizeCodexPageContext(pageContextRequest(t, pageContextItem("browser_tabs", output)))
+		require.True(t, changed)
+		require.Contains(t, gjson.GetBytes(got, "input.0.content.0.text").String(), output)
+	}
+	for _, output := range []string{
+		"ordinary tool output", "<in-app-browser-context source=\"ambient-ui-state\"></in-app-browser-context>",
+		strings.Replace(browserTabsContext, `source="ambient-ui-state"`, `source="user"`, 1),
+		strings.Replace(browserTabsContext, "</in-app-browser-context>", "", 1),
+		browserTabsContext + "trailing content",
+		strings.Replace(browserTabsContext, "# In app browser:", "# Other:", 1),
+	} {
+		body := pageContextRequest(t, pageContextItem("browser_tabs", output))
+		got, changed := normalizeCodexPageContext(body)
+		require.False(t, changed)
+		require.Equal(t, body, got)
+	}
 }
 
 func TestNormalizeCodexPageContextRejectsUnrelatedOrMalformedItems(t *testing.T) {
