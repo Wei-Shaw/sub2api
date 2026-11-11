@@ -237,6 +237,9 @@ func (s *OpenAIOAuthService) RefreshTokenWithClientID(ctx context.Context, refre
 		ExpiresIn:    int64(tokenResp.ExpiresIn),
 		ExpiresAt:    time.Now().Unix() + int64(tokenResp.ExpiresIn),
 	}
+	if tokenInfo.RefreshToken == "" {
+		tokenInfo.RefreshToken = refreshToken
+	}
 	if trimmed := strings.TrimSpace(clientID); trimmed != "" {
 		tokenInfo.ClientID = trimmed
 	}
@@ -362,26 +365,6 @@ func (s *OpenAIOAuthService) RefreshAccountToken(ctx context.Context, account *A
 
 	refreshToken := account.GetCredential("refresh_token")
 	if refreshToken == "" {
-		if accessToken != "" {
-			tokenInfo := &OpenAITokenInfo{
-				AccessToken:           accessToken,
-				RefreshToken:          "",
-				IDToken:               account.GetCredential("id_token"),
-				ClientID:              account.GetCredential("client_id"),
-				Email:                 account.GetCredential("email"),
-				ChatGPTAccountID:      account.GetCredential("chatgpt_account_id"),
-				ChatGPTUserID:         account.GetCredential("chatgpt_user_id"),
-				OrganizationID:        account.GetCredential("organization_id"),
-				PlanType:              account.GetCredential("plan_type"),
-				SubscriptionExpiresAt: account.GetCredential("subscription_expires_at"),
-			}
-			if expiresAt := account.GetCredentialAsTime("expires_at"); expiresAt != nil {
-				tokenInfo.ExpiresAt = expiresAt.Unix()
-				tokenInfo.ExpiresIn = int64(time.Until(*expiresAt).Seconds())
-			}
-			s.enrichTokenInfo(ctx, tokenInfo, proxyURL)
-			return tokenInfo, nil
-		}
 		return nil, infraerrors.New(http.StatusBadRequest, "OPENAI_OAUTH_NO_REFRESH_TOKEN", "no refresh token available")
 	}
 
