@@ -590,7 +590,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 						if eventType == "error" {
 							shouldFailover = openAIStreamErrorEventShouldFailover(dataBytes, failedMessage)
 						} else {
-							shouldFailover = openAIStreamFailedEventShouldFailover(dataBytes, failedMessage)
+							shouldFailover = openAIStreamFailedEventShouldFailoverForAccount(c, account, dataBytes, failedMessage)
 						}
 					}
 					if shouldFailover {

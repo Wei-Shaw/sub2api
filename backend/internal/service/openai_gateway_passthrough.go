@@ -1455,6 +1455,29 @@ func openAIStream403AccountFailure(payload []byte, message string) bool {
 	return isOpenAIUpstreamAccessStateError(message, payload) || openAIStreamCredentialAuthFailure(payload)
 }
 
+func isOpenAIRelayUpstreamAccessForbidden(payload []byte, message string) bool {
+	if openAIStreamFailedEventErrorCode(payload) != "upstream_error" {
+		return false
+	}
+	errType := firstNonEmpty(gjson.GetBytes(payload, "response.error.type").String(), gjson.GetBytes(payload, "error.type").String())
+	if errType != "" && !strings.EqualFold(strings.TrimSpace(errType), "upstream_error") {
+		return false
+	}
+	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(message)), "upstream access forbidden, please contact administrator")
+}
+
+// Preserve operator passthrough rules for this newly retryable relay failure.
+// The pure classifier remains usable by stream-output and timing observers.
+func openAIStreamFailedEventShouldFailoverForAccount(c *gin.Context, account *Account, payload []byte, message string) bool {
+	if account != nil && isOpenAIRelayUpstreamAccessForbidden(payload, message) {
+		if svc := getBoundErrorPassthroughService(c); svc != nil &&
+			svc.MatchRule(account.Platform, openAIStreamFailedEventSemanticStatus(payload, message), openAIStreamFailedEventPassthroughBody(payload, message)) != nil {
+			return false
+		}
+	}
+	return openAIStreamFailedEventShouldFailover(payload, message)
+}
+
 // openAICapacityShedRuleBody excludes response output and metadata from custom
 // cooldown keyword matching and from the persisted rule reason.
 func openAICapacityShedRuleBody(payload []byte) []byte {
@@ -1565,6 +1588,9 @@ func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 		return false
 	}
 	if isOpenAIUpstreamAccessStateError(message, payload) {
+		return true
+	}
+	if isOpenAIRelayUpstreamAccessForbidden(payload, message) {
 		return true
 	}
 	semanticStatus := openAIStreamFailureStatus(payload, message)
@@ -1845,7 +1871,7 @@ func (s *OpenAIGatewayService) nonStreamingTerminalFailureFailover(
 	if account == nil || IsResponseCommitted(c) {
 		return nil
 	}
-	shouldFailover := openAIStreamFailedEventShouldFailover(payload, message)
+	shouldFailover := openAIStreamFailedEventShouldFailoverForAccount(c, account, payload, message)
 	if terminalType == "error" {
 		shouldFailover = openAIStreamErrorEventShouldFailover(payload, message)
 	}
@@ -2134,7 +2160,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 						if eventType == "error" {
 							shouldFailover = openAIStreamErrorEventShouldFailover(dataBytes, failedMessage)
 						} else {
-							shouldFailover = openAIStreamFailedEventShouldFailover(dataBytes, failedMessage)
+							shouldFailover = openAIStreamFailedEventShouldFailoverForAccount(c, account, dataBytes, failedMessage)
 						}
 					}
 					if shouldFailover {
