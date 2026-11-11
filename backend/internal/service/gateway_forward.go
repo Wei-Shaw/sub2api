@@ -823,55 +823,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		if err != nil {
 			var sseErr *sseStreamErrorEventError
 			if errors.As(err, &sseErr) {
-				// 上游 HTTP 200 + SSE 流体内出现 event:error 帧。
-				body := []byte(sseErr.RawData)
-				semanticStatus := http.StatusForbidden
-				if c.Writer.Size() == writerSizeBeforeStream && gjson.GetBytes(body, "error.type").String() == "overloaded_error" {
-					semanticStatus = 529
-					syntheticResp := &http.Response{
-						StatusCode: semanticStatus,
-						Header:     resp.Header.Clone(),
-						Body:       io.NopCloser(bytes.NewReader(body)),
-					}
-					s.handleFailoverSideEffects(ctx, syntheticResp, account, reqModel)
-				}
-
-				upstreamMsg := sanitizeUpstreamErrorMessage(
-					strings.TrimSpace(extractUpstreamErrorMessage(body)),
-				)
-
-				upstreamDetail := ""
-				if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
-					maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
-					if maxBytes <= 0 {
-						maxBytes = 2048
-					}
-					upstreamDetail = truncateString(sseErr.RawData, maxBytes)
-				}
-
-				appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
-					ProxyID:            opsUpstreamProxyID(account),
-					ProxyName:          opsUpstreamProxyName(account),
-					Platform:           account.Platform,
-					AccountID:          account.ID,
-					AccountName:        account.Name,
-					UpstreamStatusCode: semanticStatus,
-					UpstreamRequestID:  resp.Header.Get("x-request-id"),
-					Kind:               "stream_error",
-					Message:            upstreamMsg,
-					Detail:             upstreamDetail,
-				})
-
-				logger.LegacyPrintf("service.gateway",
-					"[Forward] SSE error event in stream: Account=%d(%s) RequestID=%s Body=%s",
-					account.ID, account.Name, resp.Header.Get("x-request-id"),
-					truncateString(sseErr.RawData, 1000),
-				)
-
-				return nil, &UpstreamFailoverError{
-					StatusCode:   semanticStatus,
-					ResponseBody: body,
-				}
+				return nil, s.sseStreamErrorEventFailover(ctx, c, account, resp, sseErr.RawData, reqModel, c.Writer.Size() != writerSizeBeforeStream)
 			}
 			// 流中断（缺失 terminal 事件、读错误、数据间隔超时等）时保留已观测到的
 			// usage 与错误一起返回，handler 在错误处理完成后照常提交 usage 记录。
@@ -920,7 +872,7 @@ func anthropicSpeedModel(parsed *ParsedRequest, result *ForwardResult) string {
 
 // anthropicSpeedServiceTier 把 Anthropic 的 speed=fast 归一成可计费的 "fast" tier。
 //
-// Fast mode 目前只在 Claude Opus 5 / Opus 4.8 上存在，且不支持 Bedrock 等第三方
+// Fast mode 支持 Claude Fable/Mythos 5.2、Opus 5 / Opus 4.8，且不支持 Bedrock 等第三方
 // 承载（Opus 4.7 的 fast mode 已被移除，传 speed=fast 会直接报错）。这里按模型和
 // 平台收紧，避免上游根本没跑 fast 时仍然按 2x 计费——宁可漏收也不能多收。
 //
@@ -938,8 +890,11 @@ func anthropicSpeedServiceTier(account *Account, speed, model string) *string {
 	return &tier
 }
 
-// modelSupportsAnthropicFastMode 判断模型是否属于支持 fast mode 的 Opus 5 / Opus 4.8。
+// modelSupportsAnthropicFastMode 判断模型是否支持 Anthropic fast mode。
 func modelSupportsAnthropicFastMode(model string) bool {
+	if claude.IsFable52(model) || claude.IsMythos52(model) {
+		return true
+	}
 	modelLower := strings.ToLower(strings.TrimSpace(model))
 	if !strings.Contains(modelLower, "opus") {
 		return false
@@ -1063,4 +1018,58 @@ func (s *GatewayService) isStickyAccountUpstreamRestricted(ctx context.Context, 
 		return false
 	}
 	return s.isUpstreamModelRestrictedByChannel(ctx, *groupID, account, requestedModel)
+}
+
+// sseStreamErrorEventFailover 把上游 HTTP 200 + SSE 流体内的 event:error 帧转为
+// UpstreamFailoverError：尚未向客户端写出内容且错误类型为 overloaded_error 时按 529
+// 处理并触发账号侧副作用，其余按 403；同时登记 stream_error 运维记录。
+func (s *GatewayService) sseStreamErrorEventFailover(ctx context.Context, c *gin.Context, account *Account, resp *http.Response, rawData, model string, outputStarted bool) *UpstreamFailoverError {
+	body := []byte(rawData)
+	semanticStatus := http.StatusForbidden
+	if !outputStarted && gjson.GetBytes(body, "error.type").String() == "overloaded_error" {
+		semanticStatus = 529
+		syntheticResp := &http.Response{
+			StatusCode: semanticStatus,
+			Header:     resp.Header.Clone(),
+			Body:       io.NopCloser(bytes.NewReader(body)),
+		}
+		s.handleFailoverSideEffects(ctx, syntheticResp, account, model)
+	}
+
+	upstreamMsg := sanitizeUpstreamErrorMessage(
+		strings.TrimSpace(extractUpstreamErrorMessage(body)),
+	)
+
+	upstreamDetail := ""
+	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+		if maxBytes <= 0 {
+			maxBytes = 2048
+		}
+		upstreamDetail = truncateString(rawData, maxBytes)
+	}
+
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		ProxyID:            opsUpstreamProxyID(account),
+		ProxyName:          opsUpstreamProxyName(account),
+		Platform:           account.Platform,
+		AccountID:          account.ID,
+		AccountName:        account.Name,
+		UpstreamStatusCode: semanticStatus,
+		UpstreamRequestID:  resp.Header.Get("x-request-id"),
+		Kind:               "stream_error",
+		Message:            upstreamMsg,
+		Detail:             upstreamDetail,
+	})
+
+	logger.LegacyPrintf("service.gateway",
+		"[Forward] SSE error event in stream: Account=%d(%s) RequestID=%s Body=%s",
+		account.ID, account.Name, resp.Header.Get("x-request-id"),
+		truncateString(rawData, 1000),
+	)
+
+	return &UpstreamFailoverError{
+		StatusCode:   semanticStatus,
+		ResponseBody: body,
+	}
 }

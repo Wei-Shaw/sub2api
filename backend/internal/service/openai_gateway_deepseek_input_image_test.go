@@ -63,7 +63,7 @@ func TestNormalizeDeepSeekResponsesRequestBodyAliasesInputImageURL(t *testing.T)
 		got := normalizeDeepSeekResponsesRequestBody(mapped, body)
 		require.Equal(t, "input_image", gjson.GetBytes(got, "input.0.content.1.type").String())
 		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.image_url").String())
-		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.url").String())
+		require.False(t, gjson.GetBytes(got, "input.0.content.1.url").Exists())
 		require.Equal(t, "what is this?", gjson.GetBytes(got, "input.0.content.0.text").String())
 		require.True(t, gjson.GetBytes(got, "store").Bool(), "mapped openai 账号不应被无状态适配改掉 store")
 	})
@@ -73,7 +73,7 @@ func TestNormalizeDeepSeekResponsesRequestBodyAliasesInputImageURL(t *testing.T)
 		got := normalizeDeepSeekResponsesRequestBody(native, body)
 		require.Equal(t, gjson.String, gjson.GetBytes(got, "input.0.content.1.image_url").Type)
 		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.image_url").String())
-		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.url").String())
+		require.False(t, gjson.GetBytes(got, "input.0.content.1.url").Exists())
 	})
 
 	t.Run("chat_completions_image_url_part_converted", func(t *testing.T) {
@@ -81,7 +81,7 @@ func TestNormalizeDeepSeekResponsesRequestBodyAliasesInputImageURL(t *testing.T)
 		got := normalizeDeepSeekResponsesRequestBody(mapped, body)
 		require.Equal(t, "input_image", gjson.GetBytes(got, "input.0.content.1.type").String())
 		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.image_url").String())
-		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.url").String())
+		require.False(t, gjson.GetBytes(got, "input.0.content.1.url").Exists())
 	})
 
 	t.Run("anthropic_source_becomes_data_uri", func(t *testing.T) {
@@ -89,16 +89,24 @@ func TestNormalizeDeepSeekResponsesRequestBodyAliasesInputImageURL(t *testing.T)
 		got := normalizeDeepSeekResponsesRequestBody(native, body)
 		require.Equal(t, "input_image", gjson.GetBytes(got, "input.0.content.1.type").String())
 		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.image_url").String())
-		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.url").String())
+		require.False(t, gjson.GetBytes(got, "input.0.content.1.url").Exists())
 	})
 
-	t.Run("lifted_tool_output_image_gets_url", func(t *testing.T) {
+	t.Run("lifted_tool_output_image_keeps_image_url_only", func(t *testing.T) {
 		body := []byte(`{"model":"deepseek-flash","input":[{"type":"function_call","call_id":"call_image","name":"view_image","arguments":"{}"},{"type":"function_call_output","call_id":"call_image","output":[{"type":"input_image","image_url":"` + deepSeekInputImageDataURI + `"}]}]}`)
 		got := normalizeDeepSeekResponsesRequestBody(mapped, body)
 		require.Equal(t, gjson.String, gjson.GetBytes(got, "input.1.output").Type)
 		require.Equal(t, "input_image", gjson.GetBytes(got, "input.2.content.1.type").String())
 		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.2.content.1.image_url").String())
-		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.2.content.1.url").String())
+		require.False(t, gjson.GetBytes(got, "input.2.content.1.url").Exists())
+	})
+
+	t.Run("dual_field_input_drops_duplicate_url", func(t *testing.T) {
+		body := deepSeekUserImageBody(`{"type":"input_image","image_url":"` + deepSeekInputImageDataURI + `","url":"` + deepSeekInputImageDataURI + `"}`)
+		got := normalizeDeepSeekResponsesRequestBody(native, body)
+		require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(got, "input.0.content.1.image_url").String())
+		require.False(t, gjson.GetBytes(got, "input.0.content.1.url").Exists())
+		require.Equal(t, string(got), string(normalizeDeepSeekResponsesRequestBody(native, got)))
 	})
 
 	t.Run("file_id_only_does_not_gain_empty_url", func(t *testing.T) {
@@ -144,7 +152,7 @@ func TestForwardResponses_OpenAIMappedDeepSeekAliasesInputImageURL(t *testing.T)
 	require.NotNil(t, result)
 	require.Contains(t, upstream.lastReq.URL.String(), "/responses")
 	require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(upstream.lastBody, "input.0.content.1.image_url").String())
-	require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(upstream.lastBody, "input.0.content.1.url").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "input.0.content.1.url").Exists())
 }
 
 func TestForwardResponses_NativeDeepSeekAliasesInputImageURL(t *testing.T) {
@@ -167,5 +175,5 @@ func TestForwardResponses_NativeDeepSeekAliasesInputImageURL(t *testing.T) {
 	require.NotNil(t, result)
 	require.Equal(t, "https://api.deepseek.com/responses", upstream.lastReq.URL.String())
 	require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(upstream.lastBody, "input.0.content.1.image_url").String())
-	require.Equal(t, deepSeekInputImageDataURI, gjson.GetBytes(upstream.lastBody, "input.0.content.1.url").String())
+	require.False(t, gjson.GetBytes(upstream.lastBody, "input.0.content.1.url").Exists())
 }

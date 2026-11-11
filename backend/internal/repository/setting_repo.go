@@ -82,6 +82,20 @@ func (r *settingRepository) Set(ctx context.Context, key, value string) error {
 		Exec(ctx)
 }
 
+// ReplaceExistingAdminAPIKey 原子轮换仍存在的旧版管理员密钥。
+// 受影响行数为零表示密钥已被删除或不存在，绝不能通过 upsert 重新创建。
+func (r *settingRepository) ReplaceExistingAdminAPIKey(ctx context.Context, value string) (bool, error) {
+	n, err := r.client.Setting.Update().
+		Where(setting.KeyEQ(service.SettingKeyAdminAPIKey), setting.ValueNEQ("")).
+		SetValue(value).
+		SetUpdatedAt(time.Now()).
+		Save(ctx)
+	if err != nil {
+		return false, err
+	}
+	return n == 1, nil
+}
+
 func (r *settingRepository) GetMultiple(ctx context.Context, keys []string) (map[string]string, error) {
 	if len(keys) == 0 {
 		return map[string]string{}, nil

@@ -2,15 +2,18 @@ package service
 
 import (
 	"context"
+	"maps"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 )
 
 const (
 	modelRateLimitsKey                 = "model_rate_limits"
 	antigravityGeminiModelRateLimitKey = "antigravity:gemini"
+	antigravityArgonModelRateLimitKey  = "antigravity:gemini:argon"
 	openAIImageGenerationRateLimitKey  = "openai:image_generation"
 	openAICodexSparkRateLimitReason    = "openai_codex_spark_rate_limit"
 	// anthropicFableRateLimitKey 是 Anthropic 7d_oi（Fable 专属 7d 窗口）限流的
@@ -79,9 +82,7 @@ func (a *Account) modelRateLimitKeysForRequest(ctx context.Context, requestedMod
 	keys := []string{modelKey}
 	switch a.Platform {
 	case PlatformAntigravity:
-		if isAntigravityGeminiModel(modelKey) && !isAntigravityGeminiImageModel(modelKey) && modelKey != antigravityGeminiModelRateLimitKey {
-			keys = append(keys, antigravityGeminiModelRateLimitKey)
-		}
+		return antigravityModelRateLimitKeys(a, modelKey)
 	case PlatformOpenAI:
 		if openAIImageGenerationRateLimitApplies(ctx, requestedModel, modelKey) && modelKey != openAIImageGenerationRateLimitKey {
 			keys = append(keys, openAIImageGenerationRateLimitKey)
@@ -158,14 +159,23 @@ func isAntigravityGeminiModel(model string) bool {
 	return strings.HasPrefix(normalizeAntigravityModelName(model), "gemini-")
 }
 
-func antigravityModelRateLimitKeys(model string) []string {
+func antigravityModelRateLimitKeys(account *Account, model string) []string {
 	model = strings.TrimSpace(model)
 	if model == "" {
 		return nil
 	}
 	keys := []string{model}
 	if isAntigravityGeminiModel(model) && !isAntigravityGeminiImageModel(model) && model != antigravityGeminiModelRateLimitKey {
-		keys = append(keys, antigravityGeminiModelRateLimitKey)
+		familyKey := antigravityGeminiModelRateLimitKey
+		// Pro has a separate Argon quota pool. Ultra and unknown plans retain
+		// the shared Gemini scope; Argon variants still cool down together.
+		if account != nil && strings.EqualFold(strings.TrimSpace(antigravity.TierIDToPlanType(account.GetCredential("plan_type"))), "Pro") {
+			normalized := normalizeAntigravityModelName(model)
+			if normalized == "gemini-4-argon" || strings.HasPrefix(normalized, "gemini-4-argon-") {
+				familyKey = antigravityArgonModelRateLimitKey
+			}
+		}
+		keys = append(keys, familyKey)
 	}
 	return keys
 }
@@ -209,17 +219,12 @@ func (a *Account) modelRateLimitReason(scope string) string {
 	return reason
 }
 
+// setAccountModelRateLimitSnapshot 把模型级限流写进本账号对象的 Extra 快照。
+// 写时复制：Extra 与其中的 model_rate_limits 可能与调度快照母本及其它副本共享，
+// 这里只读取旧 map，写入新复制的 map 后替换 account.Extra，不修改任何已有 map。
 func setAccountModelRateLimitSnapshot(account *Account, scope string, resetAt time.Time, reason string, now time.Time) {
 	if account == nil || strings.TrimSpace(scope) == "" {
 		return
-	}
-	if account.Extra == nil {
-		account.Extra = make(map[string]any)
-	}
-	limits, ok := account.Extra[modelRateLimitsKey].(map[string]any)
-	if !ok {
-		limits = make(map[string]any)
-		account.Extra[modelRateLimitsKey] = limits
 	}
 	payload := map[string]any{
 		"rate_limited_at":     now.UTC().Format(time.RFC3339),
@@ -228,5 +233,14 @@ func setAccountModelRateLimitSnapshot(account *Account, scope string, resetAt ti
 	if reason = strings.TrimSpace(reason); reason != "" {
 		payload["reason"] = reason
 	}
+
+	oldLimits, _ := account.Extra[modelRateLimitsKey].(map[string]any)
+	limits := make(map[string]any, len(oldLimits)+1)
+	maps.Copy(limits, oldLimits)
 	limits[scope] = payload
+
+	extra := make(map[string]any, len(account.Extra)+1)
+	maps.Copy(extra, account.Extra)
+	extra[modelRateLimitsKey] = limits
+	account.Extra = extra
 }

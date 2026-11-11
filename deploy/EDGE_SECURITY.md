@@ -1,8 +1,8 @@
 # Edge and HTTP Ingress Security
 
-Sub2API supports long-lived SSE and WebSocket requests. Protect the request
-ingress without imposing a response `WriteTimeout`: a write deadline would
-terminate healthy long generations and streams.
+Sub2API supports long-lived SSE and WebSocket requests. Protect request ingress
+and individual socket operations without imposing a fixed timeout on the entire
+response. Healthy generations can remain open while an upstream is thinking.
 
 ## Application defaults
 
@@ -15,6 +15,54 @@ terminate healthy long generations and streams.
   image, video, and batch-image endpoints.
 - `gateway.text_max_body_size: 33554432` limits the known pure-text
   `/embeddings` and `/alpha/search` endpoints to 32 MiB.
+- `gateway.request_body_memory_budget_bytes` shares one buffering budget
+  across gateway routes and aliases. When it is set in neither the config file
+  nor `GATEWAY_REQUEST_BODY_MEMORY_BUDGET_BYTES`, startup sizes it to a quarter
+  of the process memory limit (the smallest of physical memory, the cgroup
+  limit and `GOMEMLIMIT`), never below 1 GiB, and logs the chosen value. Any
+  explicit value is used as-is (`0` disables the budget). Chunk allocations, the
+  contiguous body copy, decompressed output, JSON normalization, and a Zstd
+  decoder reservation are charged before allocation. Each phase releases the
+  intermediate allocations it no longer references: chunks after assembly,
+  compressed input and decoder workspace after decoding, and owned input after
+  normalization. The final body allocation stays charged until the handler
+  returns, including throughout a long SSE response. A preread buffer that may
+  still be referenced by middleware stays charged alongside a normalized copy.
+  Exhaustion returns 503 with `Retry-After`; a single-request
+  size violation remains 413. Set this budget to fit the instance's memory,
+  leaving headroom for connections, conversion state, caches and GC. This is
+  conservative ingress accounting, not a hard bound on total heap or RSS.
+- Compressed request output is capped at 64 MiB, with overflow rejected rather
+  than truncated. Zstd additionally has an 8 MiB window cap and one decoder
+  worker per request.
+- `gateway.request_body_read_timeout_seconds: 120` bounds a stalled body read;
+  `gateway.downstream_write_timeout_seconds: 120` bounds each write/flush.
+  Successful operations clear their deadline, so upstream thinking does not
+  consume a whole-response time budget. Zero disables the corresponding limit.
+- `gateway.max_line_size: 524288000` preserves the 500 MiB SSE line default
+  required by large base64 4K images, image-generation output and multi-image
+  responses. Upgrading does not silently lower this compatibility limit.
+  `sse_event_max_bytes: 0` inherits that cap for each complete event and
+  `sse_event_max_lines: 4096` also bounds streams of short lines without a blank
+  delimiter. `sse_queue_max_bytes: 8388608` bounds queued payload bytes; a line
+  larger than 8 MiB can occupy the queue alone, up to the line/event cap.
+  The consumer's current line and producer's scanner/read buffer are additional
+  bounded storage. The 8 MiB queue budget does not reduce the maximum size of
+  one image frame. Lower line/event limits only when the supported models and
+  output sizes fit them. Explicit event byte/line settings also apply to Grok
+  billing-ping and client-tool prefilters.
+- Detached HTTP upstream attempts may continue collecting late billing usage
+  after client cancellation, but only for a finite drain window. The window
+  follows the stream data interval timeout (180 seconds by default). OpenAI
+  image API-key/OAuth forwarding uses the image timeout (900 seconds by
+  default); Grok media retains the general drain timeout. Incoming pings do not
+  restart the window.
+  This replaces the previously unlimited post-disconnect drain: when the
+  window expires, the attempt is cancelled and only usage observed before
+  cancellation is available for settlement. Final usage arriving later may be
+  lost even if the provider continues generating and charging. Disabling the
+  stream idle timeout does not disable this drain safety limit (180 seconds;
+  OpenAI image API-key/OAuth forwarding retains a 900-second fallback).
 - H2C defaults to 50 concurrent streams per connection, a 2 MiB connection
   upload window, and a 512 KiB stream upload window.
 - Invalid credential abuse is limited in process by trusted client IP (IPv6
@@ -22,10 +70,58 @@ terminate healthy long generations and streams.
   per-instance safety net; multi-instance enforcement still belongs at the
   load balancer, CDN, or WAF.
 
-Do not add a single application-wide request semaphore: an SSE request may
-legitimately occupy it for many minutes. Apply connection and unauthenticated
-request controls at the edge; authenticated user/API-key concurrency remains
-the application's responsibility.
+Do not replace these controls with a single application-wide request semaphore:
+an SSE request may legitimately occupy it for many minutes. Apply connection
+and unauthenticated request controls at the edge; authenticated user/API-key
+concurrency and buffered request bytes remain the application's responsibility.
+
+Compatibility session caches (digest sessions, Responses continuation bindings
+and Anthropic digest bindings) each have fixed limits of 16,384 entries and
+32 MiB of accounted storage, including 512 bytes of bookkeeping per entry.
+These limits are not currently configurable. The least recently used entry is
+evicted when either limit is reached, even if its TTL has not expired; a TTL is
+therefore not a guarantee that a continuation binding remains available. Active
+expiry scans run at most once a minute while the cache is nonempty, and shutdown
+stops cleanup. Monitor 503 body-budget rejections, response-too-large errors,
+allocation rate, retained heap after GC, goroutine counts, usage-worker queues
+and database connection waits when tuning capacity. Notification queues may
+skip best-effort messages on overload or shutdown and log a dropped count;
+committed-charge persistence is not dropped by that notification policy.
+When the platform-quota flusher is disabled, its quota mirror update now runs
+inside the usage task with a separate five-second database deadline. Failures
+remain counted and logged for reconciliation; this path has no durable automatic
+retry. The main charge is committed idempotently before this mirror update.
+With the default `gateway.usage_record.overflow_policy: sync`, a full usage
+queue executes the task in the submitting handler. Database latency can
+therefore delay usage submission and handler completion by up to the separate
+five-second quota persistence attempt, in addition to the other usage work.
+The configured worker count is not a hard global limit on database concurrency.
+
+## Sizing the request-body budget
+
+Size `request_body_memory_budget_bytes` for the final body allocations retained
+by all active requests, plus peak workspace for requests currently being read,
+decoded or normalized. Streaming duration increases the number of retained
+bodies even after their upload has finished. The budget is not just the number
+of simultaneous uploads, and releasing an allocation's charge does not force Go
+to reclaim that unreachable memory immediately.
+
+For example, 200 long-lived streams retaining 4 MiB each account for about
+800 MiB before new uploads and decoding. Another 32 concurrent Zstd decoders
+can reserve 256 MiB of window space alone, exceeding a 1 GiB budget (the
+auto-sized value on instances with 4 GiB or less) before their input/output
+buffers are counted. Increase the budget for such a workload only with
+sufficient instance memory, or reduce concurrency/request sizes. Deployments
+that copied the old example config pin `request_body_memory_budget_bytes:
+1073741824`; remove that line to use auto-sizing. Leave separate memory headroom for SSE frames (which may be larger than
+the queue budget), conversion state, caches, connections and GC. Setting the
+budget to `0` disables ingress memory admission rather than limiting RSS.
+
+Legacy Read tool-call completion still validates the growing JSON argument
+prefix. Incremental storage removes repeated prefix allocations, but validation
+CPU can remain quadratic for large arguments delivered in many small deltas.
+Measure this separately from allocation savings; cumulative bytes allocated in
+benchmarks are not retained heap or RSS.
 
 ## Trusted client IPs
 

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"testing"
@@ -136,7 +137,7 @@ func BenchmarkOpenAIResponses_LargeInputRawPatch(b *testing.B) {
 				view := newOpenAIRequestView(body)
 				view.MarkPatchSet("instructions", "You are a helpful coding assistant.")
 				view.MarkPatchSet("reasoning.effort", "none")
-				patched, err := view.ApplyPatches()
+				patched, err := view.ApplyPatches(context.Background())
 				if err != nil {
 					b.Fatalf("应用 OpenAI raw patch 失败: %v", err)
 				}

@@ -46,8 +46,10 @@
 
         <!-- Tab: Security — Admin API Key -->
         <div v-show="activeTab === 'security'" class="space-y-6">
-          <!-- Admin API Key Settings -->
-          <div class="card">
+          <AdminAccessKeysSettings />
+          <!-- 已有全权密钥只提供轮换和删除入口。 -->
+          <details v-if="adminApiKeyExists" class="card">
+            <summary class="cursor-pointer px-6 py-4 font-medium">{{ t("adminAccessKeys.legacy") }}</summary>
             <div
               class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
             >
@@ -84,48 +86,6 @@
                   class="h-4 w-4 animate-spin rounded-full border-b-2 border-primary-600"
                 ></div>
                 {{ t("common.loading") }}
-              </div>
-
-              <!-- No Key Configured -->
-              <div
-                v-else-if="!adminApiKeyExists"
-                class="flex items-center justify-between"
-              >
-                <span class="text-gray-500 dark:text-gray-400">
-                  {{ t("admin.settings.adminApiKey.notConfigured") }}
-                </span>
-                <button
-                  type="button"
-                  @click="createAdminApiKey"
-                  :disabled="adminApiKeyOperating"
-                  class="btn btn-primary btn-sm"
-                >
-                  <svg
-                    v-if="adminApiKeyOperating"
-                    class="mr-1 h-4 w-4 animate-spin"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                  >
-                    <circle
-                      class="opacity-25"
-                      cx="12"
-                      cy="12"
-                      r="10"
-                      stroke="currentColor"
-                      stroke-width="4"
-                    ></circle>
-                    <path
-                      class="opacity-75"
-                      fill="currentColor"
-                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                    ></path>
-                  </svg>
-                  {{
-                    adminApiKeyOperating
-                      ? t("admin.settings.adminApiKey.creating")
-                      : t("admin.settings.adminApiKey.create")
-                  }}
-                </button>
               </div>
 
               <!-- Key Exists -->
@@ -197,7 +157,7 @@
                 </div>
               </div>
             </div>
-          </div>
+          </details>
         </div>
         <!-- /Tab: Security — Admin API Key -->
 
@@ -1551,6 +1511,9 @@
                   v-model="form.registration_email_domain_quota_enabled"
                 />
               </div>
+
+              <!-- Exact Email Blacklist -->
+              <RegistrationEmailBlacklistEditor />
 
               <!-- Promo Code -->
               <div
@@ -8075,8 +8038,8 @@
                           ) || 1
                       "
                       type="number"
-                      step="0.01"
-                      min="0.01"
+                      step="0.000001"
+                      min="0.000001"
                       class="input"
                     />
                     <p class="mt-0.5 text-xs text-gray-400">
@@ -8091,10 +8054,10 @@
                     >
                       {{
                         t("admin.settings.payment.balanceRechargePreview", {
-                          usd: (
+                          usd: formatBalanceRechargeMultiplier(
                             Number(form.payment_balance_recharge_multiplier) ||
-                            1
-                          ).toFixed(2),
+                              1,
+                          ),
                         })
                       }}
                     </p>
@@ -8901,8 +8864,8 @@
           <BackupSettings />
         </div>
 
-        <!-- Save Button -->
-        <div v-show="activeTab !== 'backup'" class="flex justify-end">
+        <!-- Save dock — sticky so long tabs never require scrolling to the end -->
+        <div v-show="activeTab !== 'backup'" class="settings-save-dock">
           <button
             type="submit"
             :disabled="saving || loadFailed"
@@ -9040,6 +9003,7 @@ import {
   type RechargeBonusMode,
   type RechargeBonusTierDraft,
 } from "@/utils/rechargeBonus";
+import RegistrationEmailBlacklistEditor from "@/components/admin/settings/RegistrationEmailBlacklistEditor.vue";
 import OpenAIFastPolicyUserSelector from "@/views/admin/settings/OpenAIFastPolicyUserSelector.vue";
 import { useClipboard } from "@/composables/useClipboard";
 import {
@@ -9048,9 +9012,11 @@ import {
   isStepUpBlocked,
   stepUpBlockReason,
 } from "@/composables/useStepUp";
+import AdminAccessKeysSettings from "@/components/admin/settings/AdminAccessKeysSettings.vue";
 import TotpStepUpDialog from "@/components/auth/TotpStepUpDialog.vue";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
+import { formatBalanceRechargeMultiplier } from "@/utils/rechargeBonus";
 import { useAppStore } from "@/stores";
 import { useAdminSettingsStore } from "@/stores/adminSettings";
 import { normalizeVisibleMethod } from "@/components/payment/paymentFlow";
@@ -12029,15 +11995,17 @@ async function loadAdminApiKey() {
 }
 
 async function createAdminApiKey() {
+  if (!adminApiKeyExists.value) return;
   adminApiKeyOperating.value = true;
   try {
-    const result = await adminAPI.settings.regenerateAdminApiKey();
+    const result = await settingsStepUp.run(() => adminAPI.settings.regenerateAdminApiKey());
     newAdminApiKey.value = result.key;
     adminApiKeyExists.value = true;
     adminApiKeyMasked.value =
       result.key.substring(0, 10) + "..." + result.key.slice(-4);
     appStore.showSuccess(t("admin.settings.adminApiKey.keyGenerated"));
   } catch (error: unknown) {
+    if (isStepUpCancelled(error)) return;
     appStore.showError(extractApiErrorMessage(error, t("common.error")));
   } finally {
     adminApiKeyOperating.value = false;
@@ -12053,12 +12021,13 @@ async function deleteAdminApiKey() {
   if (!confirm(t("admin.settings.adminApiKey.deleteConfirm"))) return;
   adminApiKeyOperating.value = true;
   try {
-    await adminAPI.settings.deleteAdminApiKey();
+    await settingsStepUp.run(() => adminAPI.settings.deleteAdminApiKey());
     adminApiKeyExists.value = false;
     adminApiKeyMasked.value = "";
     newAdminApiKey.value = "";
     appStore.showSuccess(t("admin.settings.adminApiKey.keyDeleted"));
   } catch (error: unknown) {
+    if (isStepUpCancelled(error)) return;
     appStore.showError(extractApiErrorMessage(error, t("common.error")));
   } finally {
     adminApiKeyOperating.value = false;
@@ -13404,6 +13373,14 @@ watch(
 .settings-tab-label {
   @apply min-w-0 overflow-hidden text-ellipsis whitespace-nowrap leading-none;
 }
+
+/* ============ 系统设置 保存浮标 ============ */
+.settings-save-dock {
+  @apply sticky bottom-3 z-20 ml-auto flex w-fit items-center rounded-full border border-white/80 bg-white/90 p-1.5 backdrop-blur-xl;
+  box-shadow:
+    0 10px 26px rgb(15 23 42 / 0.12),
+    0 1px 0 rgb(255 255 255 / 0.9) inset;
+}
 </style>
 
 <style>
@@ -13426,5 +13403,13 @@ watch(
   box-shadow:
     0 12px 26px rgb(0 0 0 / 0.22),
     0 1px 0 rgb(255 255 255 / 0.08) inset;
+}
+
+.dark .settings-save-dock {
+  border-color: rgb(51 65 85 / 0.65);
+  background: rgb(15 23 42 / 0.86);
+  box-shadow:
+    0 14px 32px rgb(0 0 0 / 0.34),
+    0 1px 0 rgb(255 255 255 / 0.06) inset;
 }
 </style>

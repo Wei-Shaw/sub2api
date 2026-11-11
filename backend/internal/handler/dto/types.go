@@ -112,6 +112,7 @@ type Group struct {
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration         bool    `json:"allow_image_generation"`
 	AllowBatchImageGeneration    bool    `json:"allow_batch_image_generation"`
+	ImageCountBilling            bool    `json:"image_count_billing"`
 	ImageRateIndependent         bool    `json:"image_rate_independent"`
 	ImageRateMultiplier          float64 `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier float64 `json:"batch_image_discount_multiplier"`
@@ -327,6 +328,9 @@ type Account struct {
 
 	GroupIDs []int64  `json:"group_ids,omitempty"`
 	Groups   []*Group `json:"groups,omitempty"`
+
+	// 仅账号详情填充。列表和公共 mapper 不计算，避免把目录诊断扩散到调度响应。
+	GrokModelDiagnostics *service.GrokModelDiagnostics `json:"grok_model_diagnostics,omitempty"`
 }
 
 // AccountListItem is the compact representation returned by the admin account
@@ -616,8 +620,10 @@ type UsageLog struct {
 	CacheCreationTokens int `json:"cache_creation_tokens"`
 	CacheReadTokens     int `json:"cache_read_tokens"`
 
-	CacheCreation5mTokens int `json:"cache_creation_5m_tokens"`
-	CacheCreation1hTokens int `json:"cache_creation_1h_tokens"`
+	CacheCreation5mTokens  int `json:"cache_creation_5m_tokens"`
+	CacheCreation1hTokens  int `json:"cache_creation_1h_tokens"`
+	CacheCreation30mTokens int `json:"cache_creation_30m_tokens"`
+	CacheCreation12hTokens int `json:"cache_creation_12h_tokens"`
 
 	InputCost                 float64 `json:"input_cost"`
 	OutputCost                float64 `json:"output_cost"`

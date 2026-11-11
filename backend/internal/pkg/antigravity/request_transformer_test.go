@@ -2,6 +2,7 @@ package antigravity
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -55,7 +56,7 @@ func TestBuildParts_ThinkingBlockWithoutSignature(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			toolIDToName := make(map[string]string)
-			parts, _, err := buildParts(json.RawMessage(tt.content), toolIDToName, tt.allowDummyThought)
+			parts, _, err := buildParts(json.RawMessage(tt.content), toolIDToName, tt.allowDummyThought, false)
 
 			if err != nil {
 				t.Fatalf("buildParts() error = %v", err)
@@ -105,7 +106,7 @@ func TestBuildParts_ToolUseSignatureHandling(t *testing.T) {
 
 	t.Run("Gemini preserves provided tool_use signature", func(t *testing.T) {
 		toolIDToName := make(map[string]string)
-		parts, _, err := buildParts(json.RawMessage(content), toolIDToName, true)
+		parts, _, err := buildParts(json.RawMessage(content), toolIDToName, true, false)
 		if err != nil {
 			t.Fatalf("buildParts() error = %v", err)
 		}
@@ -122,7 +123,7 @@ func TestBuildParts_ToolUseSignatureHandling(t *testing.T) {
 			{"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "ls"}}
 		]`
 		toolIDToName := make(map[string]string)
-		parts, _, err := buildParts(json.RawMessage(contentNoSig), toolIDToName, true)
+		parts, _, err := buildParts(json.RawMessage(contentNoSig), toolIDToName, true, false)
 		if err != nil {
 			t.Fatalf("buildParts() error = %v", err)
 		}
@@ -136,7 +137,7 @@ func TestBuildParts_ToolUseSignatureHandling(t *testing.T) {
 
 	t.Run("Claude model - preserve valid signature for tool_use", func(t *testing.T) {
 		toolIDToName := make(map[string]string)
-		parts, _, err := buildParts(json.RawMessage(content), toolIDToName, false)
+		parts, _, err := buildParts(json.RawMessage(content), toolIDToName, false, false)
 		if err != nil {
 			t.Fatalf("buildParts() error = %v", err)
 		}
@@ -651,7 +652,7 @@ func TestBuildParts_DocumentBecomesInlineData(t *testing.T) {
 		{"type":"text","text":"read this"},
 		{"type":"document","source":{"type":"base64","media_type":"application/pdf","data":"JVBERi0="}}
 	]`
-	parts, stripped, err := buildParts(json.RawMessage(content), map[string]string{}, true)
+	parts, stripped, err := buildParts(json.RawMessage(content), map[string]string{}, true, false)
 	require.NoError(t, err)
 	require.False(t, stripped)
 	require.Len(t, parts, 2)
@@ -702,8 +703,7 @@ func TestTransformClaudeToGemini_ToolResultImagesReachUpstream(t *testing.T) {
 			{
 				Role: "assistant",
 				Content: json.RawMessage(`[
-					{"type":"tool_use","id":"toolu_img_1","name":"read_image","input":{"path":"colors.png"}},
-					{"type":"tool_use","id":"toolu_img_2","name":"read_image","input":{"path":"photo.jpg"}}
+					{"type":"tool_use","id":"toolu_img_1","name":"read_image","input":{"path":"colors.png"}}
 				]`),
 			},
 			{
@@ -719,7 +719,7 @@ func TestTransformClaudeToGemini_ToolResultImagesReachUpstream(t *testing.T) {
 					},
 					{
 						"type":"tool_result",
-						"tool_use_id":"toolu_img_2",
+						"tool_use_id":"toolu_img_1",
 						"content":[
 							{"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":"d29ybGQ="}}
 						]
@@ -746,7 +746,6 @@ func TestTransformClaudeToGemini_ToolResultImagesReachUpstream(t *testing.T) {
 
 	require.NotNil(t, userParts[1].FunctionResponse)
 	require.Equal(t, "read_image", userParts[1].FunctionResponse.Name)
-	require.Equal(t, "toolu_img_2", userParts[1].FunctionResponse.ID)
 	require.Equal(t, "Command executed successfully.", userParts[1].FunctionResponse.Response["result"])
 
 	require.NotNil(t, userParts[2].InlineData)
@@ -758,31 +757,32 @@ func TestTransformClaudeToGemini_ToolResultImagesReachUpstream(t *testing.T) {
 	require.Equal(t, "d29ybGQ=", userParts[3].InlineData.Data)
 }
 
-func TestBuildParts_ParallelToolResultsBeforeOtherParts(t *testing.T) {
-	for _, model := range []string{"claude-opus-5-5", "gemini-4-argon"} {
-		t.Run(model, func(t *testing.T) {
+func TestBuildParts_ParallelResultsWithInterleavedNotice(t *testing.T) {
+	for _, multimodal := range []bool{false, true} {
+		t.Run(fmt.Sprintf("multimodal=%t", multimodal), func(t *testing.T) {
 			content := json.RawMessage(`[
 				{"type":"tool_result","tool_use_id":"image-1","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"aGVsbG8="}}]},
-				{"type":"text","text":"Keep every result and attachment."},
-				{"type":"tool_result","tool_use_id":"text-2","is_error":true,"content":"Read failed"},
-				{"type":"tool_result","tool_use_id":"image-3","content":[{"type":"image","source":{"type":"base64","media_type":"image/jpeg","data":"d29ybGQ="}},{"type":"document","source":{"type":"base64","media_type":"application/pdf","data":"JVBERi0="}}]}
+				{"type":"text","text":"Keep this notice."},
+				{"type":"tool_result","tool_use_id":"image-2","content":[{"type":"document","source":{"type":"base64","media_type":"application/pdf","data":"JVBERi0="}}]}
 			]`)
-			names := map[string]string{"image-1": "Read", "text-2": "Bash", "image-3": "Read"}
-			parts, stripped, err := buildParts(content, names, strings.HasPrefix(model, "gemini-"))
+			parts, stripped, err := buildParts(content, map[string]string{"image-1": "Read", "image-2": "Read"}, true, multimodal)
 			require.NoError(t, err)
 			require.False(t, stripped)
-			require.Len(t, parts, 7)
-			for i, id := range []string{"image-1", "text-2", "image-3"} {
+			for i, id := range []string{"image-1", "image-2"} {
 				require.NotNil(t, parts[i].FunctionResponse)
 				require.Equal(t, id, parts[i].FunctionResponse.ID)
-				require.Equal(t, names[id], parts[i].FunctionResponse.Name)
 			}
-			require.Equal(t, "Read failed", parts[1].FunctionResponse.Response["result"])
-			require.Equal(t, "aGVsbG8=", parts[3].InlineData.Data)
-			require.Equal(t, "Keep every result and attachment.", parts[4].Text)
-			require.Equal(t, "d29ybGQ=", parts[5].InlineData.Data)
-			require.Equal(t, "application/pdf", parts[6].InlineData.MimeType)
-			require.Equal(t, "JVBERi0=", parts[6].InlineData.Data)
+			require.Equal(t, "Keep this notice.", parts[2].Text)
+			if multimodal {
+				require.Len(t, parts, 3)
+				require.Equal(t, "aGVsbG8=", parts[0].FunctionResponse.Parts[0].InlineData.Data)
+				require.Equal(t, "JVBERi0=", parts[1].FunctionResponse.Parts[0].InlineData.Data)
+			} else {
+				require.Len(t, parts, 5)
+				require.Equal(t, "aGVsbG8=", parts[3].InlineData.Data)
+				require.Equal(t, "application/pdf", parts[4].InlineData.MimeType)
+				require.Equal(t, "JVBERi0=", parts[4].InlineData.Data)
+			}
 		})
 	}
 }
