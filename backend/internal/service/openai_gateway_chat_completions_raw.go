@@ -186,6 +186,27 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	upstreamBody = applyOllamaCloudRawChatCompletionsRequest(account, upstreamBody)
 	upstreamBody = clampOllamaCloudUpstreamMaxTokens(account, upstreamBody)
 
+	// Drop explicit prompt-cache hints this Chat Completions upstream rejects.
+	// The body still has the client's `messages[]` shape here; the Responses
+	// conversion path sanitizes `input[]` instead.
+	if account.IsOpenAI() {
+		if policy := resolvePromptCacheHintPolicy(account, upstreamModel); policy.stripsHints() {
+			sanitizedBody, report, sanitizeErr := sanitizePromptCacheHints(upstreamBody, policy)
+			if sanitizeErr != nil {
+				return nil, fmt.Errorf("sanitize prompt cache hints: %w", sanitizeErr)
+			}
+			if report.changed() {
+				upstreamBody = sanitizedBody
+				logger.L().Debug("openai chat_completions raw: stripped unsupported prompt cache hints",
+					zap.Int64("account_id", account.ID),
+					zap.String("upstream_model", upstreamModel),
+					zap.Int("prompt_cache_breakpoints", report.Breakpoints),
+					zap.Bool("prompt_cache_options", report.Options),
+				)
+			}
+		}
+	}
+
 	logger.L().Debug("openai chat_completions raw: forwarding without protocol conversion",
 		zap.Int64("account_id", account.ID),
 		zap.String("original_model", originalModel),

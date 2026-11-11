@@ -311,7 +311,26 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		}
 	}
 
-	// 4b. Apply OpenAI fast policy (may filter service_tier or block the request).
+	// 4b. Drop explicit prompt-cache hints the mapped upstream rejects. The
+	// self-heal below covers wordings this policy cannot predict, but stripping
+	// first keeps the common case at a single upstream round trip.
+	if policy := resolvePromptCacheHintPolicy(account, upstreamModel); policy.stripsHints() {
+		sanitizedBody, report, sanitizeErr := sanitizePromptCacheHints(responsesBody, policy)
+		if sanitizeErr != nil {
+			return nil, fmt.Errorf("sanitize prompt cache hints: %w", sanitizeErr)
+		}
+		if report.changed() {
+			responsesBody = sanitizedBody
+			logger.L().Debug("openai chat_completions: stripped unsupported prompt cache hints",
+				zap.Int64("account_id", account.ID),
+				zap.String("upstream_model", upstreamModel),
+				zap.Int("prompt_cache_breakpoints", report.Breakpoints),
+				zap.Bool("prompt_cache_options", report.Options),
+			)
+		}
+	}
+
+	// 4c. Apply OpenAI fast policy (may filter service_tier or block the request).
 	responsesBody, _, err = normalizeGPT6ResponsesSampling(responsesBody, upstreamModel)
 	if err != nil {
 		return nil, err
@@ -334,45 +353,71 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		return nil, fmt.Errorf("get access token: %w", err)
 	}
 
-	// 6. Build upstream request
+	// 6. Build and send the upstream request. If the upstream rejects a field it
+	// does not implement (for example an explicit prompt-cache hint behind an
+	// account whose upstream has no explicit caching), drop that field and
+	// resend instead of failing the client request.
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	cancelUpstream := func() {}
 	if clientStream {
 		upstreamCtx, cancelUpstream = context.WithCancel(upstreamCtx)
 	}
 	defer cancelUpstream()
-	upstreamReq, err := s.buildUpstreamRequest(upstreamCtx, c, account, responsesBody, token, true, promptCacheKey, false)
-	releaseUpstreamCtx()
-	if err != nil {
-		return nil, fmt.Errorf("build upstream request: %w", err)
-	}
-
-	if promptCacheKey != "" {
-		apiKeyID := getAPIKeyIDFromContext(c)
-		sessionKey := promptCacheKey
-		if !compatPromptCacheTenantIsolated {
-			sessionKey = isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), promptCacheKey)
-		}
-		upstreamReq.Header.Set("session_id", generateSessionUUID(sessionKey))
-	}
-
-	// 7. Send request
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
-	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
-	if err != nil {
-		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
-	}
-	defer func() {
-		cancelUpstream()
+	rejectedFieldRetryState := openAIResponsesRejectedFieldRetryStateForRequest(c, responsesBody)
+
+	var (
+		resp              *http.Response
+		respBody          []byte
+		upstreamMsg       string
+		completeErrorBody bool
+	)
+	for {
+		upstreamReq, buildErr := s.buildUpstreamRequest(upstreamCtx, c, account, responsesBody, token, true, promptCacheKey, false)
+		releaseUpstreamCtx()
+		if buildErr != nil {
+			return nil, fmt.Errorf("build upstream request: %w", buildErr)
+		}
+		if promptCacheKey != "" {
+			apiKeyID := getAPIKeyIDFromContext(c)
+			sessionKey := promptCacheKey
+			if !compatPromptCacheTenantIsolated {
+				sessionKey = isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), promptCacheKey)
+			}
+			upstreamReq.Header.Set("session_id", generateSessionUUID(sessionKey))
+		}
+		resp, err = s.doOpenAIUpstream(upstreamReq, proxyURL, account)
+		if err != nil {
+			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
+		}
+		if resp.StatusCode < 400 {
+			break
+		}
+		respBody, upstreamMsg, completeErrorBody = s.readOpenAIUpstreamErrorWithCompleteness(resp)
+		retryBody, retryReason, changed, retryErr := normalizeOpenAIResponsesRejectedFieldRetryBody(resp.StatusCode, responsesBody, respBody)
+		if retryErr != nil {
+			_ = resp.Body.Close()
+			return nil, fmt.Errorf("normalize rejected field retry body: %w", retryErr)
+		}
+		if !changed || !rejectedFieldRetryState.Allow(retryBody) {
+			break
+		}
 		_ = resp.Body.Close()
-	}()
+		responsesBody = retryBody
+		logger.L().Info("openai chat_completions: retrying after upstream rejected a field",
+			zap.Int64("account_id", account.ID),
+			zap.String("upstream_model", upstreamModel),
+			zap.String("reason", retryReason),
+			zap.Int("upstream_status", resp.StatusCode),
+		)
+	}
+	defer func() { _ = resp.Body.Close() }()
 
 	// 8. Handle error response with failover
 	if resp.StatusCode >= 400 {
-		respBody, upstreamMsg, completeErrorBody := s.readOpenAIUpstreamErrorWithCompleteness(resp)
 		if !agentIdentityTaskRecoveryWasTried(ctx) && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, respBody) {
 			expectedTaskID := account.GetCredential("task_id")
 			if err := s.recoverAgentIdentityTask(ctx, account, expectedTaskID); err != nil {
