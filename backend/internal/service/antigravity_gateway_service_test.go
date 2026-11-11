@@ -2184,3 +2184,54 @@ func TestAntigravityGatewayService_ForwardGemini_StreamAndFunctionResponseFollow
 	require.True(t, ok)
 	require.Equal(t, "It is sunny in Tokyo.", firstPart["text"])
 }
+
+// TestAntigravityGatewayService_Forward_EntityNotFoundTriggersFailover
+// 验证：账号对模型无权益（404 "Requested entity was not found."）时，Forward 应返回
+// UpstreamFailoverError 让 Handler 换号，而不是直接向客户端写 502。
+func TestAntigravityGatewayService_Forward_EntityNotFoundTriggersFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	writer := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(writer)
+
+	body, err := json.Marshal(map[string]any{
+		"model":      "claude-opus-4-6",
+		"messages":   []map[string]any{{"role": "user", "content": "hi"}},
+		"max_tokens": 1,
+		"stream":     false,
+	})
+	require.NoError(t, err)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewReader(body))
+
+	respBody := []byte(`{"error":{"code":404,"message":"Requested entity was not found.","status":"NOT_FOUND"}}`)
+	resp := &http.Response{
+		StatusCode: http.StatusNotFound,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(respBody)),
+	}
+	repo := &stubAntigravityAccountRepo{}
+	svc := &AntigravityGatewayService{
+		settingService: NewSettingService(&antigravitySettingRepoStub{}, &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}),
+		tokenProvider:  &AntigravityTokenProvider{},
+		httpUpstream:   &httpUpstreamStub{resp: resp},
+		accountRepo:    repo,
+	}
+	account := &Account{
+		ID:          317,
+		Name:        "acc-no-claude",
+		Platform:    PlatformAntigravity,
+		Type:        AccountTypeOAuth,
+		Status:      StatusActive,
+		Concurrency: 1,
+		Credentials: map[string]any{"access_token": "token", "project_id": "proj"},
+	}
+
+	result, err := svc.Forward(context.Background(), c, account, body, false)
+	require.Nil(t, result)
+
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusNotFound, failoverErr.StatusCode)
+	require.False(t, c.Writer.Written(), "nothing should be written to the client before failover")
+	require.Len(t, repo.modelRateLimitCalls, 1)
+	require.Equal(t, "claude-opus-4-6-thinking", repo.modelRateLimitCalls[0].modelKey)
+}
