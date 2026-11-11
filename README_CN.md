@@ -121,11 +121,6 @@
 </tr>
 
 <tr>
-<td width="180"><a href="https://lanox.ai/?c=6"><img src="assets/partners/logos/lanox.jpg" alt="LanoX AI" width="150"></a></td>
-<td>感谢 LanoX AI 对本项目的赞助！<a href="https://lanox.ai/?c=6">LanoX AI</a> 为开发者、团队与企业提供稳定、高性价比的全球模型接入服务。 🎁 新用户福利 — 免费领取 百万 Token ,更有500+ 免费模型 — 低成本测试、验证、部署更轻松 🧠 全球主流模型 — GPT · Claude · Gemini · Qwen · Grok... 🎬 多模态创作 — Seedance 2.0 · GPT Image · Gemini Nano Banana 🛡️ 企业级稳定服务 — 高可用💎原生能力输出💎不降智💎不混模💎调用与计费透明💎 💰 更低调用成本 — 顶级模型低至官方价 1 折起，文档清晰、接入简单、支持开票与企业批量调用 🏢 企业优选 — 适用于 AI 产品、Agent、内容平台、研发团队批量调用</td>
-</tr>
-
-<tr>
 <td width="180"><a href="https://www.rapidproxy.io/?ref=sub2api"><img src="assets/partners/logos/rapidproxy.jpg" alt="RapidProxy" width="150"></a></td>
 <td><a href="https://www.rapidproxy.io/?ref=sub2api">RapidProxy</a> 是面向开发者的数据采集代理解决方案，提供稳定可靠的住宅代理服务。通过 9000 万+全球住宅 IP和 200+国家覆盖、智能轮换机制和精准地区定位能力，帮助爬虫、AI 数据训练、SEO 监控、电商数据分析等项目突破访问限制，提高数据采集效率。支持 Playwright、Selenium、Puppeteer 等主流自动化框架，价格低至 $0.65/GB，<a href="https://www.rapidproxy.io/?ref=sub2api">立即免费测试吧</a>。</td>
 </tr>
@@ -187,7 +182,7 @@
 
 <tr>
 <td width="180"><a href="https://massivetokens.com/signup?ref=SUB2API"><img src="assets/partners/logos/massivetokens.jpg" alt="Massive Tokens" width="150"></a></td>
-<td><a href="https://massivetokens.com/signup?ref=SUB2API">Massive Tokens</a> 以批发价向企业和大用量开发者提供 Claude API。提供标准的 Anthropic Messages API，Claude Code、Sub2API、LiteLLM、One API 无需改代码即可接入。使用邀请码 SUB2API 注册，每次调用立减 5%。</td>
+<td><a href="https://massivetokens.com/signup?ref=SUB2API">Massive Tokens</a> 以批发价向企业和大用量开发者提供 Claude API。提供标准的 Anthropic Messages API，Claude Code、Sub2API、LiteLLM、One API 无需改代码即可接入。使用邀请码 SUB2API 注册，每次调用立减 5%；注册后加入 Telegram 群 @massivetokens (<a href="https://t.me/massivetokens">https://t.me/massivetokens</a>)，向管理员申请 $10 额度。</td>
 </tr>
 
 </table>
