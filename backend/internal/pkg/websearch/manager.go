@@ -23,6 +23,7 @@ import (
 type ProviderConfig struct {
 	Type         string `json:"type"`                    // ProviderTypeBrave | ProviderTypeTavily
 	APIKey       string `json:"api_key"`                 // secret
+	Endpoint     string `json:"endpoint,omitempty"`      // optional custom endpoint (for Google/Vertex grounding)
 	QuotaLimit   int64  `json:"quota_limit"`             // 0 = unlimited
 	SubscribedAt *int64 `json:"subscribed_at,omitempty"` // subscription start (unix seconds); quota resets monthly from this date
 	ProxyURL     string `json:"-"`                       // resolved proxy URL (not persisted)
@@ -464,6 +465,8 @@ func (m *Manager) buildProvider(cfg ProviderConfig, client *http.Client) Provide
 		return NewBraveProvider(cfg.APIKey, client)
 	case tavilyProviderName:
 		return NewTavilyProvider(cfg.APIKey, client)
+	case googleProviderName:
+		return NewGoogleProvider(cfg.Endpoint, cfg.APIKey, client)
 	default:
 		slog.Warn("websearch: unknown provider type, falling back to brave",
 			"type", cfg.Type)
