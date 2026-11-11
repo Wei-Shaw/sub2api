@@ -42,35 +42,24 @@ func (c *userRPMCacheImpl) minuteTS(ctx context.Context) (int64, error) {
 	return t.Unix() / 60, nil
 }
 
-// atomicIncr 原子 INCR+EXPIRE。
-func (c *userRPMCacheImpl) atomicIncr(ctx context.Context, key string) (int, error) {
-	pipe := c.rdb.TxPipeline()
-	incr := pipe.Incr(ctx, key)
-	pipe.Expire(ctx, key, userRPMKeyTTL)
-	if _, err := pipe.Exec(ctx); err != nil {
-		return 0, fmt.Errorf("user rpm increment: %w", err)
-	}
-	return int(incr.Val()), nil
-}
-
 // IncrementUserGroupRPM 递增 (user, group) 分钟计数。
 func (c *userRPMCacheImpl) IncrementUserGroupRPM(ctx context.Context, userID, groupID int64) (int, error) {
-	minute, err := c.minuteTS(ctx)
+	keyPrefix := fmt.Sprintf("%s%d:%d", userGroupRPMKeyPrefix, userID, groupID)
+	count, err := incrementRPMScript.Run(ctx, c.rdb, []string{keyPrefix}, int(userRPMKeyTTL/time.Second)).Int()
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("user rpm increment: %w", err)
 	}
-	key := fmt.Sprintf("%s%d:%d:%d", userGroupRPMKeyPrefix, userID, groupID, minute)
-	return c.atomicIncr(ctx, key)
+	return count, nil
 }
 
 // IncrementUserRPM 递增用户分钟计数。
 func (c *userRPMCacheImpl) IncrementUserRPM(ctx context.Context, userID int64) (int, error) {
-	minute, err := c.minuteTS(ctx)
+	keyPrefix := fmt.Sprintf("%s%d", userRPMKeyPrefix, userID)
+	count, err := incrementRPMScript.Run(ctx, c.rdb, []string{keyPrefix}, int(userRPMKeyTTL/time.Second)).Int()
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("user rpm increment: %w", err)
 	}
-	key := fmt.Sprintf("%s%d:%d", userRPMKeyPrefix, userID, minute)
-	return c.atomicIncr(ctx, key)
+	return count, nil
 }
 
 // GetUserGroupRPM 获取 (user, group) 当前分钟已用 RPM（只读）。

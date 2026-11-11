@@ -67,25 +67,30 @@ func (c *RPMCacheImpl) currentMinuteSuffix(ctx context.Context) (string, error) 
 	return strconv.FormatInt(minuteTS, 10), nil
 }
 
-// IncrementRPM 原子递增并返回当前分钟的计数
-// 使用 TxPipeline (MULTI/EXEC) 执行 INCR + EXPIRE，保证原子性且兼容 Redis Cluster
+// incrementRPMScript computes the current minute from Redis TIME and
+// increments the counter in one round trip. KEYS[1] is the key prefix without
+// the minute suffix; ARGV[1] is the TTL in seconds.
+var incrementRPMScript = redis.NewScript(`
+	-- Redis 3.2-4.x compat: opt into effects replication so redis.call('TIME')
+	-- replicates correctly. No-op on Redis 5.0+.
+	redis.replicate_commands()
+	local t = redis.call('TIME')
+	local minute = math.floor(tonumber(t[1]) / 60)
+	local key = KEYS[1] .. ':' .. string.format('%d', minute)
+	local count = redis.call('INCR', key)
+	redis.call('EXPIRE', key, tonumber(ARGV[1]))
+	return count
+`)
+
+// IncrementRPM 原子递增并返回当前分钟的计数。
+// 使用 Lua 在脚本内取 Redis TIME，避免 TIME + INCR/EXPIRE 的两次往返。
 func (c *RPMCacheImpl) IncrementRPM(ctx context.Context, accountID int64) (int, error) {
-	key, err := c.currentMinuteKey(ctx, accountID)
+	keyPrefix := fmt.Sprintf("%s%d", rpmKeyPrefix, accountID)
+	count, err := incrementRPMScript.Run(ctx, c.rdb, []string{keyPrefix}, int(rpmKeyTTL/time.Second)).Int()
 	if err != nil {
 		return 0, fmt.Errorf("rpm increment: %w", err)
 	}
-
-	// 使用 TxPipeline (MULTI/EXEC) 保证 INCR + EXPIRE 原子执行
-	// EXPIRE 幂等，每次都设置不影响正确性
-	pipe := c.rdb.TxPipeline()
-	incrCmd := pipe.Incr(ctx, key)
-	pipe.Expire(ctx, key, rpmKeyTTL)
-
-	if _, err := pipe.Exec(ctx); err != nil {
-		return 0, fmt.Errorf("rpm increment: %w", err)
-	}
-
-	return int(incrCmd.Val()), nil
+	return count, nil
 }
 
 // GetRPM 获取当前分钟的 RPM 计数
