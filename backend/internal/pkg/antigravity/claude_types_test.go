@@ -15,6 +15,7 @@ func TestDefaultModels_ContainsNewAndLegacyImageModels(t *testing.T) {
 	}
 
 	requiredIDs := []string{
+		"gemini-4-carbon",
 		"claude-fable-5-1",
 		"claude-fable-5",
 		"claude-opus-4-8",
@@ -80,6 +81,9 @@ func TestClaudeContentItem_ThinkingAlwaysHasSignature(t *testing.T) {
 func TestIsGeminiReasoningModel_IncludesProAgent(t *testing.T) {
 	t.Parallel()
 
+	if !IsGeminiReasoningModel("gemini-4-carbon") {
+		t.Fatal("expected Carbon to be recognized as a Gemini reasoning model")
+	}
 	if !IsGeminiReasoningModel("gemini-pro-agent") {
 		t.Fatal("expected gemini-pro-agent to be recognized as a Gemini reasoning model")
 	}
