@@ -28,6 +28,18 @@ ui/assets/...
 - `transport_api`：请求和响应帧协议。
 - `ui_bridge`：配置 UI 消息协议。
 
+能力声明允许仅 OpenAI、仅 Anthropic，或两者同时声明，禁止重复和不匹配的平台：
+
+```json
+{
+  "capabilities": [
+    { "id": "anthropic.oauth.request_patch.v1", "platform": "anthropic", "account_type": "oauth" }
+  ]
+}
+```
+
+请求补丁是协议 v1 上的可选服务，不提高已有握手、Transport API 或 UI Bridge 版本。旧宿主不识别新能力时仍会拒绝安装；发布者必须在 `requires.sub2api` 中声明包含该能力的真实宿主版本范围，不能把本地开发检查等同于正式版本支持。
+
 ## 签名
 
 `signature.json`：

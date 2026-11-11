@@ -2,7 +2,7 @@
 
 ## 稳定边界
 
-当前宿主只支持 `openai.oauth.outbound_transport.v1`。插件负责建立实际上游 HTTP/TLS 连接，Sub2API 负责账号选择、OAuth Token 生命周期、下游协议、响应解析、SSE、错误映射、用量统计和计费。
+宿主支持 `openai.oauth.outbound_transport.v1` 与 `anthropic.oauth.request_patch.v1`。前者由插件建立实际上游 HTTP/TLS 连接；后者只提供最终请求补丁，由宿主继续发送。两种能力都由 Sub2API 负责账号选择、OAuth Token 生命周期、下游协议、响应解析、SSE、错误映射、用量统计和计费。
 
 插件不应修改 API Key 路径，也不应自行刷新或持久化 OAuth Token。
 
@@ -32,6 +32,8 @@ plugin/
 | `ApplyConfig` | 原子应用配置；失败时保留旧配置 |
 | `TestConfig` | 验证当前环境和已保存配置，返回简短诊断 |
 | `Forward` | 双向流式传输请求与原始 HTTP 响应 |
+
+只声明 Anthropic 请求补丁能力时，沿用上表的生命周期方法，嵌入 `UnimplementedTransportPluginServer` 即可保留未使用的 `Forward`。另行实现 `RequestPatchServer`（嵌入 `UnimplementedRequestPatchServer`）；`pluginv1.Serve` 会按实现选择性注册服务。旧 OpenAI 插件无需实现新接口或重新编译。参见[请求补丁契约](request-patch.md)。
 
 请求帧顺序：`start`、零到多个 `body_chunk`、`body_end`。响应帧顺序：`start`、零到多个 `body_chunk`、`end`。不能继续处理的错误使用 `error` 帧。
 

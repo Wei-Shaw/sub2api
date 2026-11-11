@@ -29,6 +29,7 @@ type pluginRuntime struct {
 	installation *PluginInstallation
 	client       *hcplugin.Client
 	api          pluginv1.TransportPluginClient
+	patcher      pluginv1.RequestPatchClient
 	inFlight     atomic.Int64
 	draining     atomic.Bool
 	done         chan struct{}
@@ -80,6 +81,7 @@ func startPluginRuntime(ctx context.Context, installation *PluginInstallation, s
 		installation: installation,
 		client:       client,
 		api:          api,
+		patcher:      transportClient.RequestPatcher,
 		done:         make(chan struct{}),
 	}
 	infoCtx, cancel := context.WithTimeout(ctx, startTimeout)
