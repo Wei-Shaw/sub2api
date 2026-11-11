@@ -601,6 +601,8 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 	openToolIndex := -1
 	openToolName := ""
 	var seenToolJSON geminiTextDelta
+	chunkSeq := 0
+	openToolChunk := 0
 
 	closeOpenBlock := func() bool {
 		if openBlockIndex < 0 {
@@ -639,6 +641,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 
 					var geminiResp map[string]any
 					if err := json.Unmarshal(rawBytes, &geminiResp); err == nil {
+						chunkSeq++
 						if firstChunk {
 							firstChunk = false
 							ms := int(time.Since(startTime).Milliseconds())
@@ -735,7 +738,21 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 								if closeOpenBlock() {
 									return streamResult(), nil
 								}
-								if openToolIndex >= 0 && openToolName != name {
+								argsJSONText := "{}"
+								switch v := fc["args"].(type) {
+								case nil:
+								case string:
+									if strings.TrimSpace(v) != "" {
+										argsJSONText = v
+									}
+								default:
+									if b, err := json.Marshal(v); err == nil && len(b) > 0 {
+										argsJSONText = string(b)
+									}
+								}
+								// Parallel calls to one function arrive as consecutive parts with
+								// the same name; see geminiFunctionCallContinuesOpenTool.
+								if openToolIndex >= 0 && !geminiFunctionCallContinuesOpenTool(openToolName, seenToolJSON.seen.String(), name, argsJSONText, openToolChunk == chunkSeq) {
 									if closeOpenTool() {
 										return streamResult(), nil
 									}
@@ -759,19 +776,8 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 										return streamResult(), nil
 									}
 								}
+								openToolChunk = chunkSeq
 
-								argsJSONText := "{}"
-								switch v := fc["args"].(type) {
-								case nil:
-								case string:
-									if strings.TrimSpace(v) != "" {
-										argsJSONText = v
-									}
-								default:
-									if b, err := json.Marshal(v); err == nil && len(b) > 0 {
-										argsJSONText = string(b)
-									}
-								}
 								delta := seenToolJSON.next(argsJSONText)
 								if delta != "" {
 									if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
