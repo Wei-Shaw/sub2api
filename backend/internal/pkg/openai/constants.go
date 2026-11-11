@@ -16,6 +16,12 @@ type Model struct {
 	OwnedBy     string `json:"owned_by"`
 	Type        string `json:"type"`
 	DisplayName string `json:"display_name"`
+	// ContextWindow and MaxContextWindow mirror the values the Codex models
+	// manifest advertises for the same model so generic /v1/models consumers
+	// (OpenAI-compatible clients) can size their context without bundling a
+	// local catalog. Both are omitted when unknown.
+	ContextWindow    int64 `json:"context_window,omitempty"`
+	MaxContextWindow int64 `json:"max_context_window,omitempty"`
 }
 
 // DefaultModels OpenAI models list
