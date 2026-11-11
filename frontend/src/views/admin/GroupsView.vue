@@ -4491,6 +4491,7 @@ const emptyGroupPricing = (): PricingFormEntry => ({
   output_price: null,
   cache_write_price: null,
   cache_write_1h_price: null,
+  cache_write_12h_price: null,
   cache_read_price: null,
   reasoning_effort_multipliers: null,
   image_input_price: null,
@@ -4513,6 +4514,7 @@ const groupPricingFromAPI = (
     output_price: perTokenToMTok(entry.output_price),
     cache_write_price: perTokenToMTok(entry.cache_write_price),
     cache_write_1h_price: perTokenToMTok(entry.cache_write_1h_price),
+    cache_write_12h_price: perTokenToMTok(entry.cache_write_12h_price),
     cache_read_price: perTokenToMTok(entry.cache_read_price),
     reasoning_effort_multipliers: entry.reasoning_effort_multipliers
       ? { ...entry.reasoning_effort_multipliers }
@@ -4538,6 +4540,7 @@ const groupPricingToAPI = (
       output_price: mTokToPerToken(entry.output_price),
       cache_write_price: mTokToPerToken(entry.cache_write_price),
       cache_write_1h_price: mTokToPerToken(entry.cache_write_1h_price),
+      cache_write_12h_price: mTokToPerToken(entry.cache_write_12h_price),
       cache_read_price: mTokToPerToken(entry.cache_read_price),
       reasoning_effort_multipliers: formReasoningEffortMultipliersToAPI(
         entry.reasoning_effort_multipliers,
