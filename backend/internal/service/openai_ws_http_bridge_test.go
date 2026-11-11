@@ -510,6 +510,127 @@ func TestOpenAIWSHTTPBridgeAPIKeyReusesClientToolMappingWhenFollowupOmitsTools(t
 	require.False(t, secondInput[2].Get("id").Exists())
 }
 
+func TestOpenAIWSHTTPBridgeReplaysAssistantOutputOnFollowupTurn(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	firstSSEBody := strings.Join([]string{
+		`data: {"type":"response.output_item.done","item":{"type":"reasoning","id":"rs_keep","summary":[],"encrypted_content":"gAAAA-keep"}}`,
+		"",
+		`data: {"type":"response.output_item.done","item":{"type":"reasoning","id":"rs_drop","summary":[]}}`,
+		"",
+		`data: {"type":"response.output_item.done","item":{"type":"message","id":"msg_1","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"checking the working directory"}]}}`,
+		"",
+		`data: {"type":"response.completed","response":{"id":"resp_first","model":"gpt-5.6-sol","output":[{"type":"reasoning","id":"rs_keep","summary":[],"encrypted_content":"gAAAA-keep"},{"type":"reasoning","id":"rs_drop","summary":[]},{"type":"message","id":"msg_1","role":"assistant","phase":"commentary","content":[{"type":"output_text","text":"checking the working directory"}]},{"type":"function_call","id":"fc_1","call_id":"call_1","name":"exec","arguments":"{\"input\":\"pwd\"}"}],"usage":{"input_tokens":9,"output_tokens":1}}}`,
+		"",
+	}, "\n")
+	secondSSEBody := strings.Join([]string{
+		`data: {"type":"response.completed","response":{"id":"resp_second","model":"gpt-5.6-sol","output":[],"usage":{"input_tokens":1,"output_tokens":1}}}`,
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(firstSSEBody))},
+		{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(secondSSEBody))},
+	}}
+	cfg := &config.Config{}
+	cfg.Security.URLAllowlist.Enabled = false
+	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
+	cfg.Gateway.OpenAIWS.Enabled = true
+	cfg.Gateway.OpenAIWS.APIKeyEnabled = true
+	cfg.Gateway.OpenAIWS.ResponsesWebsocketsV2 = true
+	cfg.Gateway.OpenAIWS.HTTPBridgeEnabled = true
+	cfg.Gateway.OpenAIWS.HTTPBridgeThresholdBytes = 1
+	cfg.Gateway.OpenAIWS.MaxConnsPerAccount = 1
+	cfg.Gateway.OpenAIWS.QueueLimitPerConn = 8
+	cfg.Gateway.OpenAIWS.DialTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.ReadTimeoutSeconds = 3
+	cfg.Gateway.OpenAIWS.WriteTimeoutSeconds = 3
+
+	svc := &OpenAIGatewayService{
+		cfg: cfg, httpUpstream: upstream, cache: &stubGatewayCache{},
+		openaiWSResolver: NewOpenAIWSProtocolResolver(cfg), toolCorrector: NewCodexToolCorrector(),
+	}
+	account := &Account{
+		ID: 9002, Name: "api-key-replay-output", Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-upstream"}, Extra: map[string]any{"responses_websockets_v2_enabled": true},
+		Concurrency: 1, Status: StatusActive, Schedulable: true,
+	}
+
+	errCh := make(chan error, 1)
+	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := coderws.Accept(w, r, nil)
+		if err != nil {
+			errCh <- err
+			return
+		}
+		defer func() { _ = conn.CloseNow() }()
+		readCtx, cancelRead := context.WithTimeout(r.Context(), 3*time.Second)
+		_, firstMessage, err := conn.Read(readCtx)
+		cancelRead()
+		if err != nil {
+			errCh <- err
+			return
+		}
+		rec := httptest.NewRecorder()
+		ginCtx, _ := gin.CreateTestContext(rec)
+		ginCtx.Request = r.Clone(r.Context())
+		errCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "sk-test", firstMessage, nil)
+	}))
+	defer wsServer.Close()
+
+	dialCtx, cancelDial := context.WithTimeout(context.Background(), 3*time.Second)
+	clientConn, _, err := coderws.Dial(dialCtx, "ws"+strings.TrimPrefix(wsServer.URL, "http"), nil)
+	cancelDial()
+	require.NoError(t, err)
+	defer func() { _ = clientConn.CloseNow() }()
+
+	writeMessage := func(payload string) {
+		writeCtx, cancelWrite := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancelWrite()
+		require.NoError(t, clientConn.Write(writeCtx, coderws.MessageText, []byte(payload)))
+	}
+	readUntilCompleted := func() {
+		for {
+			readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+			_, event, readErr := clientConn.Read(readCtx)
+			cancelRead()
+			require.NoError(t, readErr)
+			if gjson.GetBytes(event, "type").String() == "response.completed" {
+				return
+			}
+		}
+	}
+
+	writeMessage(`{"type":"response.create","model":"gpt-5.6-sol","stream":true,"tools":[{"type":"custom","name":"exec"}],"input":"run pwd"}`)
+	readUntilCompleted()
+	writeMessage(`{"type":"response.create","model":"gpt-5.6-sol","stream":true,"previous_response_id":"resp_first","input":[{"type":"custom_tool_call_output","call_id":"call_1","output":"ok"}]}`)
+	readUntilCompleted()
+
+	require.NoError(t, clientConn.Close(coderws.StatusNormalClosure, "done"))
+	select {
+	case proxyErr := <-errCh:
+		require.NoError(t, proxyErr)
+	case <-time.After(5 * time.Second):
+		t.Fatal("timed out waiting for websocket bridge proxy to finish")
+	}
+
+	// The follow-up turn must carry what previous_response_id stands for: the
+	// model's own reasoning and message, not only the tool call it made.
+	require.Len(t, upstream.bodies, 2)
+	secondInput := gjson.GetBytes(upstream.bodies[1], "input").Array()
+	require.Len(t, secondInput, 5)
+	require.Equal(t, "run pwd", secondInput[0].String())
+	require.Equal(t, "reasoning", secondInput[1].Get("type").String())
+	require.Equal(t, "gAAAA-keep", secondInput[1].Get("encrypted_content").String())
+	require.Equal(t, "message", secondInput[2].Get("type").String())
+	require.Equal(t, "checking the working directory", secondInput[2].Get("content.0.text").String())
+	require.Equal(t, "function_call", secondInput[3].Get("type").String())
+	require.Equal(t, "call_1", secondInput[3].Get("call_id").String())
+	require.Equal(t, "function_call_output", secondInput[4].Get("type").String())
+	// A reasoning item without encrypted_content is only an id the upstream
+	// cannot resolve when store=false, so it is left out.
+	require.NotContains(t, string(upstream.bodies[1]), "rs_drop")
+}
+
 func TestOpenAIWSHTTPBridgeFullCustomToolHistoryWithoutPreviousResponseIDDoesNotReplay(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
