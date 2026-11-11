@@ -2,6 +2,7 @@ package antigravity
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -754,4 +755,34 @@ func TestTransformClaudeToGemini_ToolResultImagesReachUpstream(t *testing.T) {
 	require.NotNil(t, userParts[3].InlineData)
 	require.Equal(t, "image/jpeg", userParts[3].InlineData.MimeType)
 	require.Equal(t, "d29ybGQ=", userParts[3].InlineData.Data)
+}
+
+func TestBuildParts_ParallelResultsWithInterleavedNotice(t *testing.T) {
+	for _, multimodal := range []bool{false, true} {
+		t.Run(fmt.Sprintf("multimodal=%t", multimodal), func(t *testing.T) {
+			content := json.RawMessage(`[
+				{"type":"tool_result","tool_use_id":"image-1","content":[{"type":"image","source":{"type":"base64","media_type":"image/png","data":"aGVsbG8="}}]},
+				{"type":"text","text":"Keep this notice."},
+				{"type":"tool_result","tool_use_id":"image-2","content":[{"type":"document","source":{"type":"base64","media_type":"application/pdf","data":"JVBERi0="}}]}
+			]`)
+			parts, stripped, err := buildParts(content, map[string]string{"image-1": "Read", "image-2": "Read"}, true, multimodal)
+			require.NoError(t, err)
+			require.False(t, stripped)
+			for i, id := range []string{"image-1", "image-2"} {
+				require.NotNil(t, parts[i].FunctionResponse)
+				require.Equal(t, id, parts[i].FunctionResponse.ID)
+			}
+			require.Equal(t, "Keep this notice.", parts[2].Text)
+			if multimodal {
+				require.Len(t, parts, 3)
+				require.Equal(t, "aGVsbG8=", parts[0].FunctionResponse.Parts[0].InlineData.Data)
+				require.Equal(t, "JVBERi0=", parts[1].FunctionResponse.Parts[0].InlineData.Data)
+			} else {
+				require.Len(t, parts, 5)
+				require.Equal(t, "aGVsbG8=", parts[3].InlineData.Data)
+				require.Equal(t, "application/pdf", parts[4].InlineData.MimeType)
+				require.Equal(t, "JVBERi0=", parts[4].InlineData.Data)
+			}
+		})
+	}
 }
