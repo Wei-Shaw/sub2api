@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 
 import AccountsView from '../AccountsView.vue'
+import AccountBulkActionsBar from '@/components/admin/account/AccountBulkActionsBar.vue'
+import BulkEditAccountModal from '@/components/account/BulkEditAccountModal.vue'
 
 const {
   listAccounts,
@@ -13,6 +15,7 @@ const {
   getAllGroups,
   probeUpstreamBilling,
   probeUpstreamBillingBatch,
+  bulkUpdate,
   showError,
   showSuccess
 } = vi.hoisted(() => ({
@@ -25,6 +28,7 @@ const {
   getAllGroups: vi.fn(),
   probeUpstreamBilling: vi.fn(),
   probeUpstreamBillingBatch: vi.fn(),
+  bulkUpdate: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn()
 }))
@@ -42,6 +46,8 @@ vi.mock('@/api/admin', () => ({
       batchRefresh: vi.fn(),
       probeUpstreamBilling,
       probeUpstreamBillingBatch,
+      bulkUpdate,
+      checkMixedChannelRisk: vi.fn().mockResolvedValue({ has_risk: false }),
       toggleSchedulable: vi.fn()
     },
     proxies: {
@@ -124,6 +130,50 @@ const BulkEditAccountModalStub = {
   template: '<div data-test="bulk-edit-modal" :data-show="String(show)" :data-target-mode="target?.mode ?? \'\'"></div>'
 }
 
+// Keep the actual toolbar and modal: their scope decision and submitted payload
+// are the regression boundary; unrelated account panels do not participate.
+const mountBulkEditFlow = () => mount(AccountsView, {
+  global: {
+    stubs: {
+      AppLayout: { template: '<div><slot /></div>' },
+      TablePageLayout: { template: '<div><slot name="table" /><slot name="pagination" /></div>' },
+      DataTable: DataTableStub,
+      Pagination: PaginationStub,
+      BaseDialog: { props: ['show'], template: '<div v-if="show"><slot /><slot name="footer" /></div>' },
+      ConfirmDialog: true,
+      AccountTableActions: true,
+      AccountTableFilters: true,
+      AccountActionMenu: true,
+      ImportDataModal: true,
+      ReAuthAccountModal: true,
+      AccountTestModal: true,
+      AccountStatsModal: true,
+      ScheduledTestsPanel: true,
+      SyncFromCrsModal: true,
+      TempUnschedStatusModal: true,
+      ErrorPassthroughRulesModal: true,
+      TLSFingerprintProfilesModal: true,
+      CreateAccountModal: true,
+      EditAccountModal: true,
+      PlatformTypeBadge: true,
+      AccountCapacityCell: true,
+      AccountStatusIndicator: true,
+      AccountTodayStatsCell: true,
+      AccountGroupsCell: true,
+      AccountUsageCell: true,
+      ProxySelector: true,
+      GroupSelector: true,
+      Icon: true
+    }
+  }
+})
+
+const scopeAccounts = [1, 2, 3].map(id => ({
+  id, name: `account-${id}`, platform: 'anthropic', type: 'apikey',
+  status: 'active', schedulable: true, group_ids: [],
+  created_at: '2026-07-23T00:00:00Z', updated_at: '2026-07-23T00:00:00Z'
+}))
+
 describe('admin AccountsView bulk edit scope', () => {
   beforeEach(() => {
     localStorage.clear()
@@ -137,6 +187,8 @@ describe('admin AccountsView bulk edit scope', () => {
     getAllGroups.mockReset()
     probeUpstreamBilling.mockReset()
     probeUpstreamBillingBatch.mockReset()
+    bulkUpdate.mockReset()
+    bulkUpdate.mockResolvedValue({ success: 2, failed: 0, results: [] })
     showError.mockReset()
     showSuccess.mockReset()
 
@@ -165,7 +217,112 @@ describe('admin AccountsView bulk edit scope', () => {
     probeUpstreamBillingBatch.mockResolvedValue([])
   })
 
+  it('submits the selected ID snapshot even if the table selection changes while editing', async () => {
+    listAccounts.mockResolvedValue({ items: scopeAccounts, total: 3, page: 1, page_size: 20, pages: 1 })
+    const wrapper = mountBulkEditFlow()
+    await flushPromises()
+    const checkboxes = wrapper.findAll('[data-test="select-row"] input')
+    await checkboxes[0].setValue(true)
+    await checkboxes[1].setValue(true)
+    const bar = wrapper.getComponent(AccountBulkActionsBar)
+    const edit = bar.findAll('button').find(button => button.text() === 'admin.accounts.bulkActions.edit')!
+    await edit.trigger('click')
+
+    // A later selection change must not silently add account 3 to an open edit.
+    await checkboxes[2].setValue(true)
+    await wrapper.get('#bulk-edit-groups-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit')
+    await flushPromises()
+
+    expect(bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(bulkUpdate).toHaveBeenCalledWith([1, 2], { group_ids: [] })
+    wrapper.unmount()
+  })
+
+  it('defends the filtered entry point against an existing partial selection', async () => {
+    listAccounts.mockResolvedValue({ items: scopeAccounts, total: 3, page: 1, page_size: 20, pages: 1 })
+    const wrapper = mountBulkEditFlow()
+    await flushPromises()
+    await wrapper.findAll('[data-test="select-row"] input')[0].setValue(true)
+    await wrapper.findAll('[data-test="select-row"] input')[1].setValue(true)
+    wrapper.getComponent(AccountBulkActionsBar).vm.$emit('edit-filtered')
+    await flushPromises()
+    await wrapper.get('#bulk-edit-groups-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit')
+    await flushPromises()
+
+    expect(bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(bulkUpdate).toHaveBeenCalledWith([1, 2], { group_ids: [] })
+    wrapper.unmount()
+  })
+
+  it('keeps filtered editing explicit when no accounts are selected', async () => {
+    listAccounts.mockResolvedValue({ items: scopeAccounts, total: 3, page: 1, page_size: 20, pages: 1 })
+    const wrapper = mountBulkEditFlow()
+    await flushPromises()
+    await wrapper.getComponent(AccountBulkActionsBar).get('button.btn-primary').trigger('click')
+    await flushPromises()
+    expect(wrapper.getComponent(BulkEditAccountModal).text()).toContain('admin.accounts.bulkEdit.filteredInfo')
+    await wrapper.get('#bulk-edit-groups-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit')
+    await flushPromises()
+
+    expect(bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(bulkUpdate).toHaveBeenCalledWith({
+      filters: { platform: '', type: '', status: '', group: '', search: '', privacy_mode: '', sort_by: 'name', sort_order: 'asc' },
+      group_ids: []
+    })
+    wrapper.unmount()
+  })
+
+  it('uses the selection made while the filtered preview request is pending', async () => {
+    const page = { items: scopeAccounts, total: 3, page: 1, page_size: 20, pages: 1 }
+    listAccounts.mockResolvedValue(page)
+    const wrapper = mountBulkEditFlow()
+    await flushPromises()
+    let resolvePreview!: (value: typeof page) => void
+    listAccounts.mockImplementationOnce(() => new Promise(resolve => { resolvePreview = resolve }))
+    await wrapper.getComponent(AccountBulkActionsBar).get('button.btn-primary').trigger('click')
+    await wrapper.findAll('[data-test="select-row"] input')[0].setValue(true)
+    await wrapper.findAll('[data-test="select-row"] input')[1].setValue(true)
+    resolvePreview(page)
+    await flushPromises()
+    await wrapper.get('#bulk-edit-groups-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit')
+    await flushPromises()
+
+    expect(bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(bulkUpdate).toHaveBeenCalledWith([1, 2], { group_ids: [] })
+    wrapper.unmount()
+  })
+
+  it('excludes a deselected account after selecting all results across pages', async () => {
+    listAccounts.mockImplementation((page: number, pageSize: number) => Promise.resolve({
+      items: pageSize === 1000 ? scopeAccounts : page === 1 ? scopeAccounts.slice(0, 2) : scopeAccounts.slice(2),
+      total: 3, page, page_size: pageSize, pages: pageSize === 1000 ? 1 : 2
+    }))
+    const wrapper = mountBulkEditFlow()
+    await flushPromises()
+    const bar = wrapper.getComponent(AccountBulkActionsBar)
+    await bar.findAll('button').find(button => button.text() === 'admin.accounts.bulkActions.selectAllResults')!.trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="next-page"]').trigger('click')
+    await flushPromises()
+    const thirdAccount = wrapper.get('[data-test="select-row"] input')
+    expect((thirdAccount.element as HTMLInputElement).checked).toBe(true)
+    await thirdAccount.setValue(false)
+    await bar.findAll('button').find(button => button.text() === 'admin.accounts.bulkActions.edit')!.trigger('click')
+    await wrapper.get('#bulk-edit-groups-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit')
+    await flushPromises()
+
+    expect(bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(bulkUpdate).toHaveBeenCalledWith([1, 2], { group_ids: [] })
+    wrapper.unmount()
+  })
+
   it('opens bulk edit in filtered-results mode from the bulk actions dropdown', async () => {
+    listAccounts.mockResolvedValue({ items: scopeAccounts, total: 3, page: 1, page_size: 20, pages: 1 })
     const wrapper = mount(AccountsView, {
       global: {
         stubs: {
