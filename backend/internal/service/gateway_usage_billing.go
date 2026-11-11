@@ -586,14 +586,14 @@ func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Cont
 	if !stream {
 		return ctx, func() {}
 	}
-	return pkghttputil.DetachUpstreamContext(ctx), func() {}
+	return detachUpstreamContext(ctx)
 }
 
 func detachUpstreamContext(ctx context.Context, drainTimeout ...time.Duration) (context.Context, context.CancelFunc) {
 	if ctx == nil {
 		return context.Background(), func() {}
 	}
-	return pkghttputil.DetachUpstreamContext(ctx, drainTimeout...), func() {}
+	return detachAPIKeyUpstreamContext(pkghttputil.DetachUpstreamContext(ctx, drainTimeout...))
 }
 
 // billingDeps 扣费逻辑依赖的服务（由各 gateway service 提供）

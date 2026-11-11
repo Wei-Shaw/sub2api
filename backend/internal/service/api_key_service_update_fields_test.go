@@ -44,6 +44,7 @@ func TestAPIKeyUpdate_OnlyDeclaresRequestedColumns(t *testing.T) {
 	name := "renamed"
 	quota := 500.0
 	rateLimit := 42.0
+	concurrencyLimit := 0
 	whitelist := []string{"10.0.0.1"}
 
 	tests := []struct {
@@ -51,6 +52,11 @@ func TestAPIKeyUpdate_OnlyDeclaresRequestedColumns(t *testing.T) {
 		req  UpdateAPIKeyRequest
 		want APIKeyUpdateFields
 	}{
+		{
+			name: "concurrency limit only",
+			req:  UpdateAPIKeyRequest{ConcurrencyLimit: &concurrencyLimit},
+			want: APIKeyUpdateFields{ConcurrencyLimit: true},
+		},
 		{
 			name: "name only",
 			req:  UpdateAPIKeyRequest{Name: &name},

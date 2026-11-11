@@ -41,6 +41,10 @@ func buildRedisOptions(cfg *config.Config) *redis.Options {
 		WriteTimeout: time.Duration(cfg.Redis.WriteTimeoutSeconds) * time.Second, // 写入超时
 		PoolSize:     cfg.Redis.PoolSize,                                         // 连接池大小
 		MinIdleConns: cfg.Redis.MinIdleConns,                                     // 最小空闲连接
+		// Respect caller context deadlines on socket I/O. Without this the
+		// per-operation budgets (queue admission, lease renewal, cleanup) would
+		// only bound the wait, while a stuck read could block until ReadTimeout.
+		ContextTimeoutEnabled: true,
 	}
 
 	if cfg.Redis.EnableTLS {
