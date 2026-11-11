@@ -829,6 +829,15 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 			}
 		}
 	}
+	// 仅对普通模型请求应用“零输出免费”策略；媒体和附加计费请求保留原有价格。
+	cost = zeroOutputFreeCost(
+		s.cfg,
+		cost,
+		result.Usage.OutputTokens,
+		result.Usage.ImageOutputTokens,
+		result.ImageCount > 0 || result.AudioUsage != nil ||
+			result.SearchCount > 0 || result.CacheStorageTokenHours > 0,
+	)
 
 	// 判断计费方式：订阅模式 vs 余额模式
 	isSubscriptionBilling := subscription != nil && apiKey.Group != nil && apiKey.Group.IsSubscriptionType()
