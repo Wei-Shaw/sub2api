@@ -11,7 +11,8 @@ import (
 // ollama.com) have quota-driven 429s; their headers must not be re-read as an
 // OpenAI codex / Anthropic / CN limit. handleOllamaCloudUsage429 applies a
 // never-shrinking immediate cooldown (valid Retry-After, else the seconds
-// fallback), announces runtime scheduling from the authoritative row, then
+// fallback floored at ollamaUsage429FallbackCooldownFloor), announces runtime
+// scheduling from the authoritative row, then
 // schedules an async usage probe (ollama_cloud_usage_rate_limit_probe.go) to
 // learn the true window reset. The probe callback only writes back while the
 // account still matches the trigger's fingerprint and rate-limit generation,
@@ -21,6 +22,16 @@ import (
 // own version in its callback closure.
 
 const ollamaCloudUsageProbeWritebackTimeout = 10 * time.Second
+
+// ollamaUsage429FallbackCooldownFloor is the minimum immediate cooldown for an
+// Ollama Cloud usage account hit by a 429 without a usable Retry-After. These
+// accounts are quota-driven (5h/7d windows): when the async usage probe is
+// unavailable or fails, the true window reset stays unknown, and without a
+// floor the account would loop 429 -> recover -> 429 on the global seconds
+// fallback until the probe regains sight. It applies even when the global 429
+// fallback is disabled, since disabling that generic fallback must not push
+// these quota-driven accounts back into that spin.
+const ollamaUsage429FallbackCooldownFloor = time.Hour
 
 // ollamaCloudUsageProbeScheduler is the single-method surface RateLimitService
 // needs from the Ollama Cloud usage service. It is optional.
@@ -59,10 +70,27 @@ func (s *RateLimitService) handleOllamaCloudUsage429(ctx context.Context, accoun
 	now := time.Now()
 	if d := retryAfter(headers, now); d > 0 {
 		shortReset = now.Add(d)
-	} else if cooldown, enabled := s.get429FallbackCooldown(ctx, account); enabled {
-		shortReset = now.Add(cooldown)
 	} else {
-		slog.Info("rate_limit_ollama_429_fallback_ignored", "account_id", account.ID, "platform", account.Platform)
+		// Without a usable Retry-After the cooldown is floored at
+		// ollamaUsage429FallbackCooldownFloor, even when the global fallback is
+		// disabled: see the constant's comment for why quota-driven usage
+		// accounts must never fall back to a bare seconds cooldown.
+		cooldown, enabled := s.get429FallbackCooldown(ctx, account)
+		source := "global_fallback"
+		if !enabled {
+			source = "global_fallback_disabled"
+			cooldown = 0
+		}
+		if cooldown < ollamaUsage429FallbackCooldownFloor {
+			slog.Info("rate_limit_ollama_429_fallback_floored",
+				"account_id", account.ID,
+				"platform", account.Platform,
+				"source", source,
+				"requested_cooldown_seconds", int(cooldown.Seconds()),
+				"cooldown_seconds", int(ollamaUsage429FallbackCooldownFloor.Seconds()))
+			cooldown = ollamaUsage429FallbackCooldownFloor
+		}
+		shortReset = now.Add(cooldown)
 	}
 
 	if !shortReset.IsZero() {
