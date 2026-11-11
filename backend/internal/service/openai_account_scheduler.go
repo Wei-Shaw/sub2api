@@ -1819,7 +1819,10 @@ func (s *defaultOpenAIAccountScheduler) isAccountRequestCompatibleReason(ctx con
 		return false, "channel_upstream_restricted"
 	}
 	if !accountSupportsOpenAICapabilities(account, req.RequiredCapability, req.RequiredImageCapability) {
-		return false, "capability_mismatch"
+		// 同上：sub2api 自压模式不依赖上游 Responses 能力。
+		if !sub2APICompactCapabilityAllowed(account, req.RequiredCapability) {
+			return false, "capability_mismatch"
+		}
 	}
 	if vetoed, reason := openAIImageSizeVetoReason(ctx, account); vetoed {
 		return false, reason
@@ -2427,7 +2430,9 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 				if selection == nil || selection.Account == nil {
 					return selection, decision, nil
 				}
-				if accountSupportsOpenAICapabilities(selection.Account, requiredCapability, requiredImageCapability) {
+				if accountSupportsOpenAICapabilities(selection.Account, requiredCapability, requiredImageCapability) ||
+					(sub2APICompactCapabilityAllowed(selection.Account, requiredCapability) &&
+						selection.Account.SupportsOpenAIImageCapability(requiredImageCapability)) {
 					applyLegacySelectionDecision(&decision, selection)
 					return selection, decision, nil
 				}
@@ -2454,7 +2459,9 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 				return selection, decision, nil
 			}
 			if s.isOpenAIAccountTransportCompatible(selection.Account, requiredTransport) &&
-				accountSupportsOpenAICapabilities(selection.Account, requiredCapability, requiredImageCapability) {
+				(accountSupportsOpenAICapabilities(selection.Account, requiredCapability, requiredImageCapability) ||
+					(sub2APICompactCapabilityAllowed(selection.Account, requiredCapability) &&
+						selection.Account.SupportsOpenAIImageCapability(requiredImageCapability))) {
 				applyLegacySelectionDecision(&decision, selection)
 				return selection, decision, nil
 			}
@@ -2512,6 +2519,18 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 		RequireCompact:          requireCompact,
 		ExcludedIDs:             excludedIDs,
 	})
+}
+
+// sub2APICompactCapabilityAllowed 报告「由 sub2api 压缩」是否越过了 Responses 端点
+// 能力要求：压缩在网关内完成，不依赖上游 /responses。
+//
+// 不区分 legacy（/responses/compact，requireCompact=true）与 native v2
+// （/responses + compaction_trigger，requireCompact=false）两种形态：两者都由
+// 网关自己压缩，只要求账号启用 sub2api 自压模式。
+func sub2APICompactCapabilityAllowed(account *Account, requiredCapability OpenAIEndpointCapability) bool {
+	return account != nil &&
+		account.UsesSub2APICompact() &&
+		requiredCapability == OpenAIEndpointCapabilityResponses
 }
 
 func accountSupportsOpenAICapabilities(account *Account, requiredCapability OpenAIEndpointCapability, requiredImageCapability OpenAIImagesCapability) bool {

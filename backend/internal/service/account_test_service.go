@@ -2186,6 +2186,22 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 // endpoint has been sunset upstream (404, #5598/#5624) and is no longer probed.
 func (s *AccountTestService) testOpenAICompactConnection(c *gin.Context, account *Account, testModelID string) error {
 	ctx := c.Request.Context()
+	// 「由 sub2api 压缩」由网关自己产出 compaction item，不依赖上游；
+	// 直接探测上游只会得到"没有 compaction item"，这里直接判定为可用。
+	if account != nil && account.UsesSub2APICompact() {
+		s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+		s.sendEvent(c, TestEvent{Type: "content", Text: "Compact handled by sub2api (no upstream compaction support required)"})
+		s.sendEvent(c, TestEvent{Type: "test_complete", Success: true})
+		if s.accountRepo != nil {
+			updates := map[string]any{
+				"openai_compact_supported":  true,
+				"openai_compact_last_error": "",
+			}
+			_ = s.accountRepo.UpdateExtra(ctx, account.ID, updates)
+			mergeAccountExtra(account, updates)
+		}
+		return nil
+	}
 	credentialAccount := account
 	if account.IsShadow() {
 		resolved, err := resolveCredentialAccount(ctx, s.accountRepo, account)

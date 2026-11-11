@@ -4808,7 +4808,8 @@ const geminiAIStudioOAuthEnabled = ref(false)
 const openAICompactModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.compactModeAuto') },
   { value: 'force_on', label: t('admin.accounts.openai.compactModeForceOn') },
-  { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') }
+  { value: 'force_off', label: t('admin.accounts.openai.compactModeForceOff') },
+  { value: 'sub2api', label: t('admin.accounts.openai.compactModeSub2API') }
 ])
 const openAIResponsesModeOptions = computed(() => [
   { value: 'auto', label: t('admin.accounts.openai.responsesModeAuto') },

@@ -580,6 +580,10 @@ const (
 	OpenAICompactModeForceOn = "force_on"
 	// OpenAICompactModeForceOff always treats the account as compact-unsupported.
 	OpenAICompactModeForceOff = "force_off"
+	// OpenAICompactModeSub2API 由 sub2api 自己完成压缩：收到压缩请求后向上游要一段
+	// 摘要，把摘要包成 compaction_summary item 返回给客户端；后续回合识别该 item
+	// 并还原成消息再转发。上游是否实现 OpenAI 的远程压缩 v2 不影响本模式。
+	OpenAICompactModeSub2API = "sub2api"
 )
 
 func normalizeOpenAICompactMode(mode string) string {
@@ -588,6 +592,8 @@ func normalizeOpenAICompactMode(mode string) string {
 		return OpenAICompactModeForceOn
 	case OpenAICompactModeForceOff:
 		return OpenAICompactModeForceOff
+	case OpenAICompactModeSub2API:
+		return OpenAICompactModeSub2API
 	default:
 		return OpenAICompactModeAuto
 	}
@@ -1038,6 +1044,9 @@ func (a *Account) OpenAICompactSupportKnown() (supported bool, known bool) {
 		return true, true
 	case OpenAICompactModeForceOff:
 		return false, true
+	case OpenAICompactModeSub2API:
+		// sub2api 自己压缩，不依赖上游能力：调度时应视为支持。
+		return true, true
 	}
 
 	if a.Extra == nil {

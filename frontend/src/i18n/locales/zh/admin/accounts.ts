@@ -857,6 +857,8 @@ export default {
         compactModeAuto: '自动',
         compactModeForceOn: '强制开启',
         compactModeForceOff: '强制关闭',
+        compactModeSub2API: '由 sub2api 压缩',
+        compactLocal: '由 sub2api 压缩',
         compactModelMapping: 'Compact 专属模型映射',
         compactModelMappingDesc:
           '仅在 /responses/compact 请求中生效。当上游 compact 端点需要特殊 compact 模型时使用。',
