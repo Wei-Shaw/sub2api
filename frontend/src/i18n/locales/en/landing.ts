@@ -222,7 +222,9 @@ export default {
       usernamePlaceholder: 'Leave empty for default user',
       passwordPlaceholder: 'Password',
       enableTls: 'Enable TLS',
-      enableTlsHint: 'Use TLS when connecting to Redis (public CA certs)'
+      enableTlsHint: 'Use TLS when connecting to Redis',
+      tlsSkipVerify: 'Skip certificate verification',
+      tlsSkipVerifyHint: 'Enabled by default for self-signed Redis TLS'
     },
     admin: {
       title: 'Admin Account',

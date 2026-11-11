@@ -141,6 +141,23 @@ describe('decidePaymentLaunch', () => {
     expect(decision.paymentState.paymentEnv).toBe('demo')
   })
 
+  it('redirects Creem orders to the hosted checkout URL', () => {
+    const decision = decidePaymentLaunch(createOrderResult({
+      pay_url: 'https://creem.io/test/checkout/prod_1/ch_1',
+      currency: 'USD',
+      out_trade_no: 'sub2_creem',
+    }), {
+      visibleMethod: 'creem',
+      orderType: 'balance',
+      isMobile: false,
+    })
+
+    expect(decision.kind).toBe('redirect_waiting')
+    expect(decision.paymentState.paymentType).toBe('creem')
+    expect(decision.paymentState.payUrl).toBe('https://creem.io/test/checkout/prod_1/ch_1')
+    expect(decision.paymentState.currency).toBe('USD')
+  })
+
   it('keeps hosted redirect metadata for recovery flows', () => {
     const decision = decidePaymentLaunch(createOrderResult({
       pay_url: 'https://pay.example.com/session/abc',
