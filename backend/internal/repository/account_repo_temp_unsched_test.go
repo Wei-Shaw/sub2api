@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"database/sql/driver"
+	"errors"
 	"regexp"
 	"strings"
 	"testing"
@@ -258,7 +259,77 @@ func TestAccountRepository_UpdateGrokOAuthCredentialsIfUnchanged_UsesExactAttemp
 	require.Contains(t, normalized, "proxy_id IS NOT DISTINCT FROM $6")
 	require.Contains(t, normalized, "INSERT INTO scheduler_outbox")
 	require.Len(t, exec.execArgs[0], 7)
+	require.Equal(t, service.PlatformGrok, exec.execArgs[0][2])
 	require.Equal(t, &proxyID, exec.execArgs[0][5])
+}
+
+func TestAccountRepository_UpdateOpenAIOAuthCredentialsIfUnchanged_UsesExactAttemptStateAndAtomicOutbox(t *testing.T) {
+	exec := &recordingSQLExecutor{result: rowsAffectedResult(1)}
+	repo := newAccountRepositoryWithSQL(nil, exec, nil)
+	proxyID := int64(29)
+
+	applied, err := repo.UpdateOpenAIOAuthCredentialsIfUnchanged(
+		context.Background(),
+		42,
+		map[string]any{"refresh_token": "attempted", "_token_version": int64(9)},
+		&proxyID,
+		map[string]any{"refresh_token": "rotated", "_token_version": int64(10)},
+	)
+
+	require.NoError(t, err)
+	require.True(t, applied)
+	require.Len(t, exec.execQueries, 1, "credential update and outbox insertion must share one SQL statement")
+	normalized := normalizeSQLWhitespace(exec.execQueries[0])
+	require.Contains(t, normalized, "WITH updated AS ( UPDATE accounts AS a SET credentials = $1::jsonb")
+	require.Contains(t, normalized, "a.deleted_at IS NULL")
+	require.Contains(t, normalized, "a.platform = $3")
+	require.Contains(t, normalized, "a.type = $4")
+	require.Contains(t, normalized, "a.credentials = $5::jsonb")
+	require.Contains(t, normalized, "a.proxy_id IS NOT DISTINCT FROM $6")
+	require.Contains(t, normalized, "($3 <> 'openai' OR a.parent_account_id IS NULL)")
+	require.Contains(t, normalized, "RETURNING a.id ) INSERT INTO scheduler_outbox")
+	require.Contains(t, normalized, "SELECT $7, updated.id, NULL, NULL FROM updated")
+	require.Len(t, exec.execArgs[0], 7)
+	require.JSONEq(t, `{"refresh_token":"rotated","_token_version":10}`, exec.execArgs[0][0].(string))
+	require.Equal(t, int64(42), exec.execArgs[0][1])
+	require.Equal(t, service.PlatformOpenAI, exec.execArgs[0][2])
+	require.Equal(t, service.AccountTypeOAuth, exec.execArgs[0][3])
+	require.JSONEq(t, `{"refresh_token":"attempted","_token_version":9}`, exec.execArgs[0][4].(string))
+	require.Equal(t, &proxyID, exec.execArgs[0][5])
+	require.Equal(t, service.SchedulerOutboxEventAccountChanged, exec.execArgs[0][6])
+}
+
+func TestAccountRepository_UpdateOpenAIOAuthCredentialsIfUnchanged_NoMatchDoesNotApply(t *testing.T) {
+	exec := &recordingSQLExecutor{result: rowsAffectedResult(0)}
+	repo := newAccountRepositoryWithSQL(nil, exec, nil)
+
+	applied, err := repo.UpdateOpenAIOAuthCredentialsIfUnchanged(
+		context.Background(), 42, map[string]any{"refresh_token": "attempted"}, nil,
+		map[string]any{"refresh_token": "rotated"},
+	)
+
+	require.NoError(t, err)
+	require.False(t, applied)
+	require.Len(t, exec.execQueries, 1)
+	require.Nil(t, exec.execArgs[0][5], "a nil proxy must match only a database NULL proxy")
+	require.Contains(t, normalizeSQLWhitespace(exec.execQueries[0]), "SELECT $7, updated.id, NULL, NULL FROM updated",
+		"a CAS miss must not insert an independent invalidation event")
+}
+
+func TestAccountRepository_UpdateOpenAIOAuthCredentialsIfUnchanged_OutboxFailureDoesNotReportSuccess(t *testing.T) {
+	outboxErr := errors.New("scheduler outbox insert failed")
+	exec := &recordingSQLExecutor{err: outboxErr}
+	repo := newAccountRepositoryWithSQL(nil, exec, nil)
+
+	applied, err := repo.UpdateOpenAIOAuthCredentialsIfUnchanged(
+		context.Background(), 42, map[string]any{"refresh_token": "attempted"}, nil,
+		map[string]any{"refresh_token": "rotated"},
+	)
+
+	require.ErrorIs(t, err, outboxErr)
+	require.False(t, applied)
+	require.Len(t, exec.execQueries, 1)
+	require.Contains(t, normalizeSQLWhitespace(exec.execQueries[0]), "INSERT INTO scheduler_outbox")
 }
 
 func TestAccountRepository_ListOAuthRefreshCandidatePage_SQLFilter(t *testing.T) {
