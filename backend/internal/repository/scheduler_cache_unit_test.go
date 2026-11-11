@@ -457,10 +457,14 @@ func TestSchedulerMetadataPayload_KeepsOpenAIAutoResetCreditFields(t *testing.T)
 		Status:      service.StatusActive,
 		Schedulable: true,
 		Extra: map[string]any{
-			"codex_7d_used_percent":                          90.0,
-			service.OpenAIAutoResetCreditEnabledExtraKey:     true,
-			service.OpenAIAutoResetCredit5hThresholdExtraKey: 0.95,
-			service.OpenAIAutoResetCredit7dThresholdExtraKey: 0.98,
+			"codex_7d_used_percent":                            90.0,
+			service.OpenAIAutoResetCreditEnabledExtraKey:       true,
+			service.OpenAIAutoResetCredit5hThresholdExtraKey:   0.95,
+			service.OpenAIAutoResetCredit7dThresholdExtraKey:   0.98,
+			service.OpenAIAutoResetCredit5hDisabledExtraKey:    true,
+			service.OpenAIAutoResetCredit7dDisabledExtraKey:    true,
+			service.OpenAIAutoResetCreditExpiryEnabledExtraKey: true,
+			service.OpenAIAutoResetCreditExpiryMinutesExtraKey: 1440,
 			service.OpenAIAutoResetCreditStateExtraKey: map[string]any{
 				"status":          service.OpenAIAutoResetStatusAvailable,
 				"available_count": 3,
@@ -479,6 +483,10 @@ func TestSchedulerMetadataPayload_KeepsOpenAIAutoResetCreditFields(t *testing.T)
 	require.True(t, config.Enabled)
 	require.Equal(t, 0.95, config.Threshold5h)
 	require.Equal(t, 0.98, config.Threshold7d)
+	require.True(t, config.Disabled5h)
+	require.True(t, config.Disabled7d)
+	require.True(t, config.ExpiryEnabled)
+	require.Equal(t, 1440, config.ExpiryMinutes)
 
 	state, ok := cached.Extra[service.OpenAIAutoResetCreditStateExtraKey].(map[string]any)
 	require.True(t, ok, "卡状态必须进入调度投影")
