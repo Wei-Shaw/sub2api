@@ -143,6 +143,25 @@
       }
     },
     {
+      "id": "byteplus",
+      "display_name": "BytePlus",
+      "gateway": "openai",
+      "cn_provider": true,
+      "multi_protocol": {
+        "default_mode": "payg",
+        "routing": "by_inbound",
+        "modes": [
+          {
+            "mode": "payg",
+            "base_urls": {
+              "chat_completions": "https://ark.ap-southeast.bytepluses.com/api/v3",
+              "responses": "https://ark.ap-southeast.bytepluses.com/api/v3"
+            }
+          }
+        ]
+      }
+    },
+    {
       "id": "opencode_go",
       "display_name": "OpenCode",
       "gateway": "openai",
@@ -290,6 +309,7 @@
     "zhipu",
     "deepseek",
     "minimax",
+    "byteplus",
     "opencode_go",
     "typesafe",
     "command_code",

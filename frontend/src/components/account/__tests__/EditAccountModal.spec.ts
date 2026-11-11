@@ -336,6 +336,26 @@ describe('EditAccountModal', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it('edits BytePlus capabilities while preserving its key and regional endpoint', async () => {
+    const account = buildAccount()
+    account.platform = 'byteplus'
+    account.credentials.base_url = 'https://ark.eu-west.bytepluses.com/api/v3'
+    account.credentials.account_mode = 'payg'
+    account.credentials.api_protocol = 'chat_completions'
+    account.credentials.openai_capabilities = ['chat_completions', 'seedance']
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    expect((wrapper.get('[data-testid="byteplus-capability-seedance"]').element as HTMLInputElement).checked).toBe(true)
+    await wrapper.get('[data-testid="byteplus-capability-seedance"]').setValue(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+      api_key: 'sk-test', base_url: 'https://ark.eu-west.bytepluses.com/api/v3',
+      openai_capabilities: ['chat_completions'], account_mode: 'payg'
+    })
+    await wrapper.setProps({ show: false })
+  })
+
   it('passes existing non-identity mappings to the whitelist selector and preserves them on save', async () => {
     const account = buildAccount()
     account.credentials.model_mapping = { 'gpt-5.2': 'gpt-5.2', 'gpt-latest': 'deepseek-chat' }

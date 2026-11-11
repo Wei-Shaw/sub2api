@@ -58,15 +58,15 @@ const legacyZenRules = [
 ]
 
 function legacyIsMultiProtocol(platform: string): boolean {
-  return ['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'command_code', 'cline'].includes(platform)
+  return ['kimi', 'zhipu', 'deepseek', 'minimax', 'byteplus', 'opencode_go', 'command_code', 'cline'].includes(platform)
 }
 
 function legacySupportsResponses(platform: string): boolean {
-  return ['deepseek', 'kimi', 'minimax', 'opencode_go', 'command_code'].includes(platform)
+  return ['deepseek', 'kimi', 'minimax', 'byteplus', 'opencode_go', 'command_code', 'byteplus'].includes(platform)
 }
 
 function legacyHeaderOverride(platform: string, type: string): boolean {
-  if (['anthropic', 'openai', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'command_code', 'cline'].includes(platform)) {
+  if (['anthropic', 'openai', 'kimi', 'zhipu', 'deepseek', 'minimax', 'byteplus', 'opencode_go', 'command_code', 'cline'].includes(platform)) {
     return type === 'apikey'
   }
   if (platform === 'grok') return type === 'apikey' || type === 'oauth'
@@ -97,6 +97,8 @@ function legacyDefaultCNBaseUrl(platform: string, mode: string, protocol: CnApiP
       return mode === 'coding' ? 'https://open.bigmodel.cn/api/coding/paas/v4' : 'https://open.bigmodel.cn/api/paas/v4'
     case 'deepseek':
       return 'https://api.deepseek.com'
+    case 'byteplus':
+      return 'https://ark.ap-southeast.bytepluses.com/api/v3'
     case 'minimax':
       return 'https://api.minimaxi.com/v1'
     case 'opencode_go':
@@ -119,6 +121,7 @@ const legacyModes: Record<string, string[]> = {
   kimi: ['payg', 'coding'],
   zhipu: ['payg', 'coding'],
   deepseek: ['payg'],
+  byteplus: ['payg'],
   minimax: ['payg', 'coding'],
   opencode_go: ['go', 'zen']
 }

@@ -145,6 +145,18 @@ var providerProfiles = map[string]*ProviderProfile{
 			},
 		},
 	},
+	PlatformBytePlus: {
+		Platform:         PlatformBytePlus,
+		DefaultMode:      AccountModePayG,
+		Routing:          ProviderRoutingByInbound,
+		DefaultTestModel: "dola-seed-2-1-turbo-260628",
+		Modes: map[string]ProviderEndpoints{
+			AccountModePayG: {BaseURLs: map[string]string{
+				APIProtocolChatCompletions: DefaultBytePlusBaseURL,
+				APIProtocolResponses:       DefaultBytePlusBaseURL,
+			}},
+		},
+	},
 	PlatformMiniMax: {
 		Platform:    PlatformMiniMax,
 		DefaultMode: AccountModePayG,
