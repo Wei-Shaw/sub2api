@@ -65,6 +65,23 @@ func normalizeKnownOpenAICodexModel(model string) string {
 	}
 
 	switch {
+	// GPT-6 / GPT-5.6 系列需先于 "gpt-5" 兜底匹配，避免被静默归一为 gpt-5.4
+	case strings.Contains(normalized, "gpt-6-astra"):
+		return "gpt-6-astra"
+	case strings.Contains(normalized, "gpt-6-sol"):
+		return "gpt-6-sol"
+	case strings.Contains(normalized, "gpt-6-luna"):
+		return "gpt-6-luna"
+	case strings.Contains(normalized, "gpt-6.1-sol"):
+		return "gpt-6.1-sol"
+	case strings.Contains(normalized, "gpt-6.1-terra"):
+		return "gpt-6.1-terra"
+	case strings.Contains(normalized, "gpt-5.6-terra"):
+		return "gpt-5.6-terra"
+	case strings.Contains(normalized, "gpt-5.6-luna"):
+		return "gpt-5.6-luna"
+	case strings.Contains(normalized, "gpt-5.6"):
+		return "gpt-5.6-sol"
 	case strings.Contains(normalized, "gpt-5.5"):
 		return "gpt-5.5"
 	case strings.Contains(normalized, "gpt-5.4-mini"):

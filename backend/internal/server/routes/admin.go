@@ -94,6 +94,7 @@ func RegisterAdminRoutes(
 
 		// 渠道管理
 		registerChannelRoutes(admin, h)
+		registerModelCatalogRoutes(admin, h)
 
 		// 渠道监控
 		registerChannelMonitorRoutes(admin, h)
@@ -604,6 +605,17 @@ func registerTLSFingerprintProfileRoutes(admin *gin.RouterGroup, h *handler.Hand
 		profiles.POST("", h.Admin.TLSFingerprintProfile.Create)
 		profiles.PUT("/:id", h.Admin.TLSFingerprintProfile.Update)
 		profiles.DELETE("/:id", h.Admin.TLSFingerprintProfile.Delete)
+	}
+}
+
+func registerModelCatalogRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	catalog := admin.Group("/model-catalog")
+	{
+		catalog.GET("", h.Admin.ModelCatalog.List)
+		catalog.GET("/:id", h.Admin.ModelCatalog.GetByID)
+		catalog.POST("", h.Admin.ModelCatalog.Create)
+		catalog.PUT("/:id", h.Admin.ModelCatalog.Update)
+		catalog.DELETE("/:id", h.Admin.ModelCatalog.Delete)
 	}
 }
 

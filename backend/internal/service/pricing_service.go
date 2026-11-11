@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
@@ -660,6 +661,12 @@ func (s *PricingService) extractBaseName(model string) string {
 
 // matchByModelFamily 基于模型系列匹配
 func (s *PricingService) matchByModelFamily(model string) *LiteLLMModelPricing {
+	// Claude 5 代（含 Fable / Mythos）与旧代价格差异很大（如 Opus 5.5 $4/$20 vs Opus 4 $15/$75），
+	// 不做跨代模糊匹配；未精确命中时交由模型目录 / 硬编码回退价格处理。
+	if claude.IsGeneration5OrNewer(model) {
+		return nil
+	}
+
 	// modelFamily 定义一个模型系列的匹配和定价查找规则。
 	type modelFamily struct {
 		name    string   // 系列名称

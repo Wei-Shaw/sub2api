@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 	"github.com/google/uuid"
 )
 
@@ -589,9 +590,11 @@ func maxOutputTokensLimit(model string) int {
 // 用于 adaptive thinking 时覆写为高预算。
 func isAntigravityOpusHighTierModel(model string) bool {
 	lower := strings.ToLower(model)
-	return strings.HasPrefix(lower, "claude-opus-4-6") ||
-		strings.HasPrefix(lower, "claude-opus-4-7") ||
-		strings.HasPrefix(lower, "claude-opus-4-8")
+	if !strings.HasPrefix(lower, "claude-opus-") {
+		return false
+	}
+	v, ok := claude.ParseModelVersion(lower)
+	return ok && v.Family == "opus" && v.AtLeast(4, 6)
 }
 
 func buildGenerationConfig(req *ClaudeRequest) *GeminiGenerationConfig {

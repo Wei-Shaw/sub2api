@@ -4663,6 +4663,12 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		reqModel = mappedModel
 		parsed.Model = mappedModel
 		logger.LegacyPrintf("service.gateway", "Model mapping applied: %s -> %s (account: %s, source=%s)", originalModel, mappedModel, account.Name, mappingSource)
+		// 跨模型映射（如旧客户端请求 → Claude 5 代模型）时，按目标模型修正 thinking 参数，避免上游 400
+		if mappingSource == "account" {
+			if err := replaceBody(normalizeClaudeThinkingForModel(body, mappedModel)); err != nil {
+				return nil, err
+			}
+		}
 	}
 
 	if s.shouldInjectAnthropicCacheTTL1h(ctx, account) {

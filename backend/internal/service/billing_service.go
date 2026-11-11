@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 )
 
 // APIKeyRateLimitCacheData holds rate limit usage data cached in Redis.
@@ -166,6 +167,41 @@ type BillingService struct {
 	cfg            *config.Config
 	pricingService *PricingService
 	fallbackPrices map[string]*ModelPricing // 硬编码回退价格
+	modelCatalog   *ModelCatalogService     // 数据库模型目录（可选，管理员配置的全局默认价格）
+}
+
+// SetModelCatalog 注入模型目录作为价格来源（在启动装配阶段调用）。
+func (s *BillingService) SetModelCatalog(catalog *ModelCatalogService) {
+	s.modelCatalog = catalog
+}
+
+// applyModelCatalogPricing 用模型目录中配置的价格覆盖 base（未配置的字段保留 base 值）。
+// base 为 nil 时仅使用目录价格构建。
+func applyModelCatalogPricing(base *ModelPricing, entry *ModelCatalogEntry) *ModelPricing {
+	pricing := &ModelPricing{}
+	if base != nil {
+		cloned := *base
+		pricing = &cloned
+	}
+	if entry.InputPrice != nil {
+		pricing.InputPricePerToken = *entry.InputPrice
+		pricing.InputPricePerTokenPriority = 0
+	}
+	if entry.OutputPrice != nil {
+		pricing.OutputPricePerToken = *entry.OutputPrice
+		pricing.OutputPricePerTokenPriority = 0
+	}
+	if entry.CacheWritePrice != nil {
+		pricing.CacheCreationPricePerToken = *entry.CacheWritePrice
+		pricing.CacheCreation5mPrice = *entry.CacheWritePrice
+		pricing.CacheCreation1hPrice = *entry.CacheWritePrice
+		pricing.SupportsCacheBreakdown = false
+	}
+	if entry.CacheReadPrice != nil {
+		pricing.CacheReadPricePerToken = *entry.CacheReadPrice
+		pricing.CacheReadPricePerTokenPriority = 0
+	}
+	return pricing
 }
 
 // NewBillingService 创建计费服务实例
@@ -244,6 +280,55 @@ func (s *BillingService) initFallbackPricing() {
 
 	// Claude 4.7 Opus (暂与4.6同价，待官方定价更新)
 	s.fallbackPrices["claude-opus-4.7"] = s.fallbackPrices["claude-opus-4.6"]
+	// Claude Opus 4.8（与 4.7 同价 $5/$25）
+	s.fallbackPrices["claude-opus-4.8"] = s.fallbackPrices["claude-opus-4.7"]
+
+	// Claude 5 代（Anthropic 官方定价，2026-11；缓存写入按 5 分钟 1.25x 输入价）
+	s.fallbackPrices["claude-fable-5"] = &ModelPricing{ // Fable 5 / 5.1、Mythos 5.1：$10 / $50
+		InputPricePerToken:         10e-6,
+		OutputPricePerToken:        50e-6,
+		CacheCreationPricePerToken: 12.5e-6,
+		CacheReadPricePerToken:     1e-6,
+	}
+	s.fallbackPrices["claude-fable-5.2"] = &ModelPricing{ // Fable 5.2、Mythos 5.2：$8 / $40，缓存读 $0.20
+		InputPricePerToken:         8e-6,
+		OutputPricePerToken:        40e-6,
+		CacheCreationPricePerToken: 10e-6,
+		CacheReadPricePerToken:     0.2e-6,
+	}
+	s.fallbackPrices["claude-opus-5"] = &ModelPricing{ // $5 / $25
+		InputPricePerToken:         5e-6,
+		OutputPricePerToken:        25e-6,
+		CacheCreationPricePerToken: 6.25e-6,
+		CacheReadPricePerToken:     0.5e-6,
+	}
+	s.fallbackPrices["claude-opus-5.5"] = &ModelPricing{ // $4 / $20，缓存读 $0.20
+		InputPricePerToken:         4e-6,
+		OutputPricePerToken:        20e-6,
+		CacheCreationPricePerToken: 5e-6,
+		CacheReadPricePerToken:     0.2e-6,
+	}
+	s.fallbackPrices["claude-sonnet-5"] = &ModelPricing{ // $2 / $10
+		InputPricePerToken:         2e-6,
+		OutputPricePerToken:        10e-6,
+		CacheCreationPricePerToken: 2.5e-6,
+		CacheReadPricePerToken:     0.2e-6,
+	}
+	s.fallbackPrices["claude-sonnet-5.5"] = &ModelPricing{ // $2 / $10，缓存读 $0.10
+		InputPricePerToken:         2e-6,
+		OutputPricePerToken:        10e-6,
+		CacheCreationPricePerToken: 2.5e-6,
+		CacheReadPricePerToken:     0.1e-6,
+	}
+	s.fallbackPrices["claude-haiku-5.5"] = &ModelPricing{ // $0.10 / $0.50（输入 > 100K 时 $0.50 / $2.50）
+		InputPricePerToken:          0.1e-6,
+		OutputPricePerToken:         0.5e-6,
+		CacheCreationPricePerToken:  0.125e-6,
+		CacheReadPricePerToken:      0.01e-6,
+		LongContextInputThreshold:   100000,
+		LongContextInputMultiplier:  5.0,
+		LongContextOutputMultiplier: 5.0,
+	}
 
 	// Gemini 3.1 Pro
 	s.fallbackPrices["gemini-3.1-pro"] = &ModelPricing{
@@ -311,6 +396,11 @@ func (s *BillingService) initFallbackPricing() {
 func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	modelLower := strings.ToLower(model)
 
+	// Claude 4.8+ / 5 代：按解析出的版本号精确匹配，避免子串匹配误落到旧代价格
+	if key := claudeVersionedFallbackKey(modelLower); key != "" {
+		return s.fallbackPrices[key]
+	}
+
 	// 按模型系列匹配
 	if strings.Contains(modelLower, "opus") {
 		if strings.Contains(modelLower, "4.7") || strings.Contains(modelLower, "4-7") {
@@ -365,10 +455,61 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	return nil
 }
 
-// GetModelPricing 获取模型价格配置
+// claudeVersionedFallbackKey 将 Claude 4.8+ / 5 代模型映射到 fallbackPrices 中的键。
+// 未来更高版本暂按同系列最新已知价格计费（宁可贴近新价，也不落到旧代高价）。
+func claudeVersionedFallbackKey(model string) string {
+	v, ok := claude.ParseModelVersion(model)
+	if !ok {
+		return ""
+	}
+	switch v.Family {
+	case "fable", "mythos":
+		if v.AtLeast(5, 2) {
+			return "claude-fable-5.2"
+		}
+		return "claude-fable-5"
+	case "opus":
+		switch {
+		case v.AtLeast(5, 5):
+			return "claude-opus-5.5"
+		case v.AtLeast(5, 0):
+			return "claude-opus-5"
+		case v.AtLeast(4, 8):
+			return "claude-opus-4.8"
+		}
+	case "sonnet":
+		switch {
+		case v.AtLeast(5, 5):
+			return "claude-sonnet-5.5"
+		case v.AtLeast(5, 0):
+			return "claude-sonnet-5"
+		}
+	case "haiku":
+		if v.AtLeast(5, 5) {
+			return "claude-haiku-5.5"
+		}
+	}
+	return ""
+}
+
+// GetModelPricing 获取模型价格配置。
+// 优先级：模型目录（数据库，管理员配置）> LiteLLM 动态价格 > 硬编码回退价格。
+// 渠道定价由 GetModelPricingWithChannel 在此结果之上覆盖。
 func (s *BillingService) GetModelPricing(model string) (*ModelPricing, error) {
 	// 标准化模型名称（转小写）
 	model = strings.ToLower(model)
+
+	base, err := s.getBaseModelPricing(model)
+	if s.modelCatalog != nil {
+		if entry := s.modelCatalog.LookupPricing(model); entry != nil {
+			return applyModelCatalogPricing(base, entry), nil
+		}
+	}
+	return base, err
+}
+
+// getBaseModelPricing 获取 LiteLLM / 硬编码回退价格（不含模型目录）。
+func (s *BillingService) getBaseModelPricing(model string) (*ModelPricing, error) {
 
 	// 1. 优先从动态价格服务获取
 	if s.pricingService != nil {

@@ -136,7 +136,7 @@ import { accountsAPI } from '@/api/admin/accounts'
 import type { SyncUpstreamPreviewParams } from '@/api/admin/accounts'
 import ModelIcon from '@/components/common/ModelIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { allModels, getModelsByPlatform } from '@/composables/useModelWhitelist'
+import { allModels, getCatalogModelsByPlatform, getModelsByPlatform } from '@/composables/useModelWhitelist'
 
 const { t } = useI18n()
 
@@ -205,7 +205,20 @@ const availableOptions = computed(() => {
     }
   }
 
-  return allModels.filter(model => allowedModels.has(model.value))
+  const options = allModels.filter(model => allowedModels.has(model.value))
+
+  // 模型目录（数据库）中启用的模型可能不在硬编码 allModels 中，追加到候选末尾
+  const known = new Set(options.map(model => model.value))
+  for (const platform of normalizedPlatforms.value) {
+    for (const model of getCatalogModelsByPlatform(platform)) {
+      if (!known.has(model)) {
+        known.add(model)
+        options.push({ value: model, label: model })
+      }
+    }
+  }
+
+  return options
 })
 
 const filteredModels = computed(() => {

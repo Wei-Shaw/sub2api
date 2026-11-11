@@ -54,6 +54,7 @@ type GatewayHandler struct {
 	maxAccountSwitchesGemini  int
 	cfg                       *config.Config
 	settingService            *service.SettingService
+	modelCatalog              *service.ModelCatalogService
 }
 
 // NewGatewayHandler creates a new GatewayHandler
@@ -72,6 +73,7 @@ func NewGatewayHandler(
 	userMsgQueueService *service.UserMessageQueueService,
 	cfg *config.Config,
 	settingService *service.SettingService,
+	modelCatalog *service.ModelCatalogService,
 ) *GatewayHandler {
 	pingInterval := time.Duration(0)
 	maxAccountSwitches := 10
@@ -93,6 +95,7 @@ func NewGatewayHandler(
 	}
 
 	return &GatewayHandler{
+		modelCatalog:              modelCatalog,
 		gatewayService:            gatewayService,
 		geminiCompatService:       geminiCompatService,
 		antigravityGatewayService: antigravityGatewayService,
@@ -998,7 +1001,8 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 	// Get available models from account configurations for the selected group platform.
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
 	if apiKey != nil && apiKey.Group != nil && apiKey.Group.CustomModelsListEnabled() {
-		availableModels = filterModelsByCustomList(availableModels, defaultModelIDsForPlatform(platform), apiKey.Group.ModelsListConfig.Models)
+		fallbackIDs := mergeModelIDs(defaultModelIDsForPlatform(platform), h.catalogModelIDs(c, platform))
+		availableModels = filterModelsByCustomList(availableModels, fallbackIDs, apiKey.Group.ModelsListConfig.Models)
 		writeCustomModelsList(c, platform, availableModels)
 		return
 	}
@@ -1008,27 +1012,143 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		return
 	}
 
-	// Fallback to default models
+	// Fallback to default models（合并数据库模型目录中已启用的条目）
+	catalogEntries := h.catalogEntries(c, platform)
 	if platform == service.PlatformOpenAI {
+		models := append([]openai.Model(nil), openai.DefaultModels...)
+		seen := make(map[string]struct{}, len(models))
+		for _, m := range models {
+			seen[m.ID] = struct{}{}
+		}
+		for _, e := range catalogEntries {
+			if _, ok := seen[e.ModelID]; ok {
+				continue
+			}
+			seen[e.ModelID] = struct{}{}
+			ownedBy := e.Vendor
+			if ownedBy == "" {
+				ownedBy = "openai"
+			}
+			created := int64(1704067200)
+			if e.ReleasedAt != nil {
+				created = e.ReleasedAt.Unix()
+			}
+			models = append(models, openai.Model{
+				ID:          e.ModelID,
+				Object:      "model",
+				Created:     created,
+				OwnedBy:     ownedBy,
+				Type:        "model",
+				DisplayName: catalogDisplayName(e),
+			})
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
-			"data":   openai.DefaultModels,
+			"data":   models,
 		})
 		return
 	}
 
 	if platform == service.PlatformGemini {
+		models := append([]geminicli.Model(nil), geminicli.DefaultModels...)
+		seen := make(map[string]struct{}, len(models))
+		for _, m := range models {
+			seen[m.ID] = struct{}{}
+		}
+		for _, e := range catalogEntries {
+			if _, ok := seen[e.ModelID]; ok {
+				continue
+			}
+			seen[e.ModelID] = struct{}{}
+			models = append(models, geminicli.Model{
+				ID:          e.ModelID,
+				Type:        "model",
+				DisplayName: catalogDisplayName(e),
+				CreatedAt:   catalogCreatedAt(e),
+			})
+		}
 		c.JSON(http.StatusOK, gin.H{
 			"object": "list",
-			"data":   geminicli.DefaultModels,
+			"data":   models,
 		})
 		return
 	}
 
+	models := append([]claude.Model(nil), claude.DefaultModels...)
+	seen := make(map[string]struct{}, len(models))
+	for _, m := range models {
+		seen[m.ID] = struct{}{}
+	}
+	for _, e := range catalogEntries {
+		if _, ok := seen[e.ModelID]; ok {
+			continue
+		}
+		seen[e.ModelID] = struct{}{}
+		models = append(models, claude.Model{
+			ID:          e.ModelID,
+			Type:        "model",
+			DisplayName: catalogDisplayName(e),
+			CreatedAt:   catalogCreatedAt(e),
+		})
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"object": "list",
-		"data":   claude.DefaultModels,
+		"data":   models,
 	})
+}
+
+// catalogEntries 返回模型目录中指定平台已启用的条目（未注入目录时返回 nil）。
+// Anthropic 分组的 /v1/models 回退列表同样适用于未知平台。
+func (h *GatewayHandler) catalogEntries(c *gin.Context, platform string) []*service.ModelCatalogEntry {
+	if h == nil || h.modelCatalog == nil {
+		return nil
+	}
+	if platform == "" {
+		platform = service.PlatformAnthropic
+	}
+	return h.modelCatalog.EnabledEntries(c.Request.Context(), platform)
+}
+
+func (h *GatewayHandler) catalogModelIDs(c *gin.Context, platform string) []string {
+	entries := h.catalogEntries(c, platform)
+	ids := make([]string, 0, len(entries))
+	for _, e := range entries {
+		ids = append(ids, e.ModelID)
+	}
+	return ids
+}
+
+func catalogDisplayName(e *service.ModelCatalogEntry) string {
+	if e.DisplayName != "" {
+		return e.DisplayName
+	}
+	return e.ModelID
+}
+
+func catalogCreatedAt(e *service.ModelCatalogEntry) string {
+	if e.ReleasedAt != nil {
+		return e.ReleasedAt.UTC().Format(time.RFC3339)
+	}
+	return "2024-01-01T00:00:00Z"
+}
+
+// mergeModelIDs 合并两个模型 ID 列表（保持顺序、去重）。
+func mergeModelIDs(base, extra []string) []string {
+	if len(extra) == 0 {
+		return base
+	}
+	seen := make(map[string]struct{}, len(base)+len(extra))
+	out := make([]string, 0, len(base)+len(extra))
+	for _, list := range [][]string{base, extra} {
+		for _, id := range list {
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			out = append(out, id)
+		}
+	}
+	return out
 }
 
 func writeModelsList(c *gin.Context, modelIDs []string) {

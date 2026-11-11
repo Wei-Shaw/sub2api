@@ -9,6 +9,16 @@ import (
 )
 
 var codexModelMap = map[string]string{
+	// GPT-6 / GPT-5.6 系列：原样透传（必须在 "gpt-5" 兜底归一之前命中，否则会被静默降级为 gpt-5.4）
+	"gpt-6-astra":                "gpt-6-astra",
+	"gpt-6-sol":                  "gpt-6-sol",
+	"gpt-6-luna":                 "gpt-6-luna",
+	"gpt-6.1-sol":                "gpt-6.1-sol",
+	"gpt-6.1-terra":              "gpt-6.1-terra",
+	"gpt-5.6":                    "gpt-5.6-sol", // gpt-5.6 即 Sol
+	"gpt-5.6-sol":                "gpt-5.6-sol",
+	"gpt-5.6-terra":              "gpt-5.6-terra",
+	"gpt-5.6-luna":               "gpt-5.6-luna",
 	"gpt-5.5":                    "gpt-5.5",
 	"codex-auto-review":          "codex-auto-review",
 	"gpt-5.4":                    "gpt-5.4",
@@ -57,6 +67,14 @@ var codexVersionModelPrefixes = []struct {
 	prefix string
 	target string
 }{
+	{prefix: "gpt-6-astra", target: "gpt-6-astra"},
+	{prefix: "gpt-6-sol", target: "gpt-6-sol"},
+	{prefix: "gpt-6-luna", target: "gpt-6-luna"},
+	{prefix: "gpt-6.1-sol", target: "gpt-6.1-sol"},
+	{prefix: "gpt-6.1-terra", target: "gpt-6.1-terra"},
+	{prefix: "gpt-5.6-sol", target: "gpt-5.6-sol"},
+	{prefix: "gpt-5.6-terra", target: "gpt-5.6-terra"},
+	{prefix: "gpt-5.6-luna", target: "gpt-5.6-luna"},
 	{prefix: "gpt-5.3-codex-spark", target: "gpt-5.3-codex-spark"},
 	{prefix: "gpt-5.3-codex", target: "gpt-5.3-codex"},
 	{prefix: "gpt-5.4-mini", target: "gpt-5.4-mini"},

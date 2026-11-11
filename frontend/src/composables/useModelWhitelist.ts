@@ -1,3 +1,7 @@
+import { shallowRef } from 'vue'
+import { list as listModelCatalog, type ModelCatalogPlatform } from '@/api/admin/modelCatalog'
+import { useAuthStore } from '@/stores/auth'
+
 // =====================
 // 模型列表（硬编码，与 new-api 一致）
 // =====================
@@ -31,7 +35,12 @@ export const claudeModels = [
   'claude-opus-4-7',
   'claude-opus-4-8',
   'claude-sonnet-4-6',
-  'claude-fable-5'
+  'claude-fable-5',
+  // Claude 5 系列
+  'claude-opus-5', 'claude-opus-5-5',
+  'claude-sonnet-5', 'claude-sonnet-5-5',
+  'claude-haiku-5-5',
+  'claude-fable-5-1', 'claude-fable-5-2'
 ]
 
 // Google Gemini
@@ -237,6 +246,10 @@ export const allModels = allModelsList.map(m => ({ value: m, label: m }))
 
 const anthropicPresetMappings = [
   { label: 'Fable 5', from: 'claude-fable-5', to: 'claude-fable-5', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400' },
+  { label: 'Fable 5.2', from: 'claude-fable-5-2', to: 'claude-fable-5-2', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400' },
+  { label: 'Opus 5.5', from: 'claude-opus-5-5', to: 'claude-opus-5-5', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
+  { label: 'Sonnet 5.5', from: 'claude-sonnet-5-5', to: 'claude-sonnet-5-5', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
+  { label: 'Haiku 5.5', from: 'claude-haiku-5-5', to: 'claude-haiku-5-5', color: 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400' },
   { label: 'Sonnet 4', from: 'claude-sonnet-4-20250514', to: 'claude-sonnet-4-20250514', color: 'bg-blue-100 text-blue-700 hover:bg-blue-200 dark:bg-blue-900/30 dark:text-blue-400' },
   { label: 'Sonnet 4.5', from: 'claude-sonnet-4-5-20250929', to: 'claude-sonnet-4-5-20250929', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
   { label: 'Sonnet 4.6', from: 'claude-sonnet-4-6', to: 'claude-sonnet-4-6', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
@@ -358,12 +371,13 @@ export const commonErrorCodes = [
 // 辅助函数
 // =====================
 
-// 按平台获取模型
-export function getModelsByPlatform(platform: string): string[] {
+// 按平台获取硬编码模型列表
+function getBuiltinModelsByPlatform(platform: string): string[] {
   switch (platform) {
     case 'openai': return openaiModels
     case 'anthropic':
-    case 'claude': return claudeModels
+    case 'claude':
+    case 'bedrock': return claudeModels
     case 'gemini': return geminiModels
     case 'antigravity': return antigravityModels
     case 'zhipu': return zhipuModels
@@ -383,6 +397,111 @@ export function getModelsByPlatform(platform: string): string[] {
     case 'perplexity': return perplexityModels
     default: return claudeModels
   }
+}
+
+// 硬编码列表平台 → 模型目录平台（anthropic|openai|gemini|antigravity）。
+// 返回 null 表示该平台不合并模型目录（zhipu/qwen 等纯厂商列表）。
+const vendorOnlyPlatforms = new Set([
+  'zhipu', 'qwen', 'deepseek', 'mistral', 'meta', 'xai', 'cohere', 'yi',
+  'moonshot', 'doubao', 'minimax', 'baidu', 'spark', 'hunyuan', 'perplexity'
+])
+
+function catalogPlatformFor(platform: string): ModelCatalogPlatform | null {
+  if (platform === 'openai' || platform === 'gemini' || platform === 'antigravity') return platform
+  if (vendorOnlyPlatforms.has(platform)) return null
+  // anthropic / claude / bedrock 以及默认分支（与 getBuiltinModelsByPlatform 默认返回 claudeModels 一致）
+  return 'anthropic'
+}
+
+// =====================
+// 模型目录（数据库）缓存
+// =====================
+//
+// 模块级响应式缓存：platform → 已启用的目录模型 ID 列表。
+// getModelsByPlatform 首次被调用时懒加载一次（仅管理员），失败静默。
+// 因为读取的是 shallowRef，computed() 调用方会在加载完成后自动重新计算。
+
+const catalogModelsByPlatform = shallowRef<Partial<Record<ModelCatalogPlatform, string[]>>>({})
+let catalogLoadPromise: Promise<void> | null = null
+// 每次 invalidate 自增，用于丢弃过期请求的结果
+let catalogGeneration = 0
+
+function isCurrentUserAdmin(): boolean {
+  try {
+    return useAuthStore().isAdmin
+  } catch {
+    // 无 active pinia（如单元测试 / 非组件上下文）
+    return false
+  }
+}
+
+function fetchCatalogModels(): Promise<void> {
+  const generation = ++catalogGeneration
+  return listModelCatalog({ enabled: true })
+    .then((res) => {
+      if (generation !== catalogGeneration) return
+      const grouped: Partial<Record<ModelCatalogPlatform, string[]>> = {}
+      for (const item of res?.items ?? []) {
+        if (!item || item.enabled === false) continue
+        const id = typeof item.model_id === 'string' ? item.model_id.trim() : ''
+        if (!id || !item.platform) continue
+        const bucket = (grouped[item.platform] ??= [])
+        if (!bucket.includes(id)) bucket.push(id)
+      }
+      catalogModelsByPlatform.value = grouped
+    })
+    .catch(() => {
+      // 静默失败：保留硬编码列表即可
+    })
+}
+
+/**
+ * 确保模型目录缓存已加载（仅管理员；只请求一次）。
+ * 非管理员或未登录时直接返回，不缓存结果，以便登录后可再次触发。
+ */
+export function ensureCatalogModelsLoaded(): Promise<void> {
+  if (catalogLoadPromise) return catalogLoadPromise
+  if (!isCurrentUserAdmin()) return Promise.resolve()
+  catalogLoadPromise = fetchCatalogModels()
+  return catalogLoadPromise
+}
+
+/**
+ * 使模型目录缓存失效并重新加载（模型目录增删改后调用）。
+ */
+export function reloadCatalogModels(): Promise<void> {
+  catalogLoadPromise = null
+  catalogGeneration++
+  if (!isCurrentUserAdmin()) {
+    catalogModelsByPlatform.value = {}
+    return Promise.resolve()
+  }
+  return ensureCatalogModelsLoaded()
+}
+
+/** 获取某平台已启用的目录模型 ID（响应式读取，触发懒加载） */
+export function getCatalogModelsByPlatform(platform: string): string[] {
+  void ensureCatalogModelsLoaded()
+  const catalogPlatform = catalogPlatformFor(platform)
+  if (!catalogPlatform) return []
+  return catalogModelsByPlatform.value[catalogPlatform] ?? []
+}
+
+/** 仅供测试：重置模块级缓存 */
+export function __resetCatalogModelsCacheForTest(): void {
+  catalogLoadPromise = null
+  catalogGeneration++
+  catalogModelsByPlatform.value = {}
+}
+
+// 按平台获取模型（硬编码列表 + 已启用的模型目录，去重，目录模型追加在后）
+export function getModelsByPlatform(platform: string): string[] {
+  const builtin = getBuiltinModelsByPlatform(platform)
+  const catalog = getCatalogModelsByPlatform(platform)
+  if (catalog.length === 0) return builtin
+  const seen = new Set(builtin)
+  const extras = catalog.filter((m) => !seen.has(m))
+  return extras.length > 0 ? [...builtin, ...extras] : builtin
 }
 
 // 按平台获取预设映射
