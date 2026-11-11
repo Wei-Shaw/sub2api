@@ -66,6 +66,10 @@ type LiveCallRecord struct {
 	UserAgent       string
 	IPAddress       string
 	InboundEndpoint string
+	// Authentication and session identity are pinned when the call is created;
+	// reconnecting a call must not pick up a later global configuration change.
+	UpstreamAuthMode  string
+	UpstreamSessionID string
 	// AttestationCiphertext 仅用于让同一会话的 Sideband 复用创建时的证明。
 	AttestationCiphertext string
 }
