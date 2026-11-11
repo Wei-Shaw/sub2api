@@ -644,7 +644,12 @@ func (s *OpenAIGatewayService) checkChannelPricingRestriction(ctx context.Contex
 	if groupID == nil || s.channelService == nil || requestedModel == "" {
 		return false
 	}
-	mapping := s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel)
+	var mapping ChannelMappingResult
+	if snapshot, ok := openAIQuotaPolicyPricingFromContext(ctx); ok {
+		requestedModel, mapping = snapshot.requestedModel, snapshot.mapping
+	} else {
+		mapping = s.channelService.ResolveChannelMapping(ctx, *groupID, requestedModel)
+	}
 	billingModel := billingModelForRestriction(mapping.BillingModelSource, requestedModel, mapping.MappedModel)
 	if billingModel == "" {
 		return false

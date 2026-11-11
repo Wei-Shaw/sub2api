@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -165,6 +166,16 @@ func NewOpenAIQuotaService(
 // OAuth account. Returns infraerrors so the handler layer can map them to
 // stable error codes / HTTP statuses.
 func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*OpenAIQuotaUsage, error) {
+	return s.queryUsage(ctx, accountID, true)
+}
+
+// QueryUsageWindows is the read-only sampler used by group quota policies. It
+// deliberately omits reset-credit detail requests and never consumes credits.
+func (s *OpenAIQuotaService) QueryUsageWindows(ctx context.Context, accountID int64) (*OpenAIQuotaUsage, error) {
+	return s.queryUsage(ctx, accountID, false)
+}
+
+func (s *OpenAIQuotaService) queryUsage(ctx context.Context, accountID int64, includeCreditDetails bool) (*OpenAIQuotaUsage, error) {
 	accessToken, chatGPTAccountID, proxyURL, fedRAMP, err := s.prepareUpstreamCall(ctx, accountID)
 	if err != nil {
 		return nil, err
@@ -202,18 +213,24 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 				continue
 			}
 			status := resp.StatusCode
-			if isOpenAIAutoResetContext(ctx) {
-				slog.Warn("openai_quota_query_failed", "account_id", accountID, "status", status, "source", "auto_reset")
+			if !includeCreditDetails || isOpenAIAutoResetContext(ctx) {
+				slog.Warn("openai_quota_query_failed", "account_id", accountID, "status", status)
 				return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_UPSTREAM_ERROR", "upstream returned %d", status)
 			}
 			body := truncate(s.redactQuotaErrorBody(ctx, accountID, resp.String()), 240)
 			slog.Warn("openai_quota_query_failed", "account_id", accountID, "status", status, "body", body)
 			return nil, infraerrors.Newf(mapUpstreamStatus(status), "OPENAI_QUOTA_UPSTREAM_ERROR", "upstream returned %d: %s", status, body)
 		}
+		if !includeCreditDetails {
+			validateGroupQuotaUsageWindowPresence(&payload, resp.Bytes())
+		}
 		break
 	}
 
 	payload.FetchedAt = time.Now().Unix()
+	if !includeCreditDetails {
+		return &payload, nil
+	}
 	details := s.queryResetCreditDetails(callCtx, client, accessToken, chatGPTAccountID, fedRAMP, accountID)
 	if details != nil {
 		payload.autoResetCandidates = details.AutoResetCandidates
@@ -232,6 +249,33 @@ func (s *OpenAIQuotaService) QueryUsage(ctx context.Context, accountID int64) (*
 		}
 	}
 	return &payload, nil
+}
+
+// A JSON null/missing percentage must not become Go's zero value (100%
+// remaining). Keep this check scoped to the new monitoring-only query.
+func validateGroupQuotaUsageWindowPresence(usage *OpenAIQuotaUsage, body []byte) {
+	if usage == nil || usage.RateLimit == nil {
+		return
+	}
+	type windowPresence struct {
+		UsedPercent *float64 `json:"used_percent"`
+	}
+	var raw struct {
+		RateLimit *struct {
+			Primary   *windowPresence `json:"primary_window"`
+			Secondary *windowPresence `json:"secondary_window"`
+		} `json:"rate_limit"`
+	}
+	if json.Unmarshal(body, &raw) != nil || raw.RateLimit == nil {
+		usage.RateLimit = nil
+		return
+	}
+	if raw.RateLimit.Primary == nil || raw.RateLimit.Primary.UsedPercent == nil {
+		usage.RateLimit.PrimaryWindow = nil
+	}
+	if raw.RateLimit.Secondary == nil || raw.RateLimit.Secondary.UsedPercent == nil {
+		usage.RateLimit.SecondaryWindow = nil
+	}
 }
 
 // CacheResetCreditsSnapshot persists a complete reset-credit snapshot after an

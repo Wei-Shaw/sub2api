@@ -37,6 +37,7 @@ import (
 
 // OpenAIGatewayHandler handles OpenAI API gateway requests
 type OpenAIGatewayHandler struct {
+	groupQuotaPolicy           openAIGroupQuotaPolicyResolver
 	compositeResolver          *service.CompositeRouteResolver
 	gatewayService             *service.OpenAIGatewayService
 	billingCacheService        *service.BillingCacheService
@@ -54,8 +55,11 @@ type OpenAIGatewayHandler struct {
 }
 
 type openAIWSTurnChannelMappingSnapshot struct {
-	turn    int
-	mapping service.ChannelMappingResult
+	turn           int
+	requestedModel string
+	mapping        service.ChannelMappingResult
+	forwardModel   string
+	quotaPolicy    service.GroupQuotaPolicyResolution
 }
 
 func advanceOpenAIWSCyberBlockState(blocked, pending, marked bool, turnErr error) (bool, bool) {
@@ -585,9 +589,14 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
-	forwardBody := openAIModelMappedBody(body, channelMapping.Mapped, channelMapping.MappedModel, h.gatewayService.ReplaceModelInBody)
-	seedOpenAIForwardImageIntentHint(c, channelMapping.Mapped, imageIntent)
-	forwardModel := openAIChannelForwardModel(channelMapping, reqModel)
+	quotaPolicy := h.resolveOpenAIGroupQuotaPolicy(apiKey, openAIChannelForwardModel(channelMapping, reqModel), legacyCompact)
+	forwardModel := quotaPolicy.TargetModel
+	forwardBody := openAIModelMappedBody(body, channelMapping.Mapped || quotaPolicy.Applied, forwardModel, h.gatewayService.ReplaceModelInBody)
+	seedOpenAIForwardImageIntentHint(c, channelMapping.Mapped || quotaPolicy.Applied, imageIntent)
+	logOpenAIGroupQuotaPolicy(reqLog, quotaPolicy)
+	if quotaPolicy.Applied {
+		c.Request = c.Request.WithContext(service.WithOpenAIQuotaPolicyPricingContext(c.Request.Context(), reqModel, channelMapping))
+	}
 	c.Request = c.Request.WithContext(service.WithOpenAIForwardModel(
 		c.Request.Context(),
 		forwardModel,
@@ -632,7 +641,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	// 余额模式在途预留：防止并发请求在预检时看到同一份余额而集体透支。
-	inflightRelease, err := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, tokenInflightEstimate(reqModel, body))
+	inflightRelease, err := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, quotaPolicyInflightEstimate(reqModel, body, quotaPolicy))
 	if err != nil {
 		reqLog.Info("openai.inflight_reservation_rejected", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
@@ -2672,7 +2681,14 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMappingWS, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, wsRouteModel)
-	wsForwardModel := openAIChannelForwardModel(channelMappingWS, wsRouteModel)
+	quotaPolicyWS := h.resolveOpenAIGroupQuotaPolicy(apiKey, openAIChannelForwardModel(channelMappingWS, wsRouteModel), false)
+	wsForwardModel := quotaPolicyWS.TargetModel
+	wsAttemptMapping := &openAIWSTurnChannelMappingSnapshot{turn: 1, requestedModel: reqModel, mapping: channelMappingWS, forwardModel: wsForwardModel, quotaPolicy: quotaPolicyWS}
+	quotaPolicyPricingContextActive := quotaPolicyWS.Applied
+	if quotaPolicyPricingContextActive {
+		ctx = service.WithOpenAIQuotaPolicyPricingContext(ctx, reqModel, channelMappingWS)
+	}
+	logOpenAIGroupQuotaPolicy(reqLog, quotaPolicyWS)
 
 	var currentUserRelease func()
 	var currentAccountRelease func()
@@ -2735,7 +2751,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 	// 余额模式在途预留（会话级）：按首帧估算一次，会话期间续期；每轮计费任务接管引用，
 	// 会话结束且所有轮次扣减落地后释放。
-	inflightCtx, inflightDone, inflightErr := reserveInflightBalanceCtx(ctx, h.billingCacheService, h.gatewayService, apiKey, subscription, tokenInflightEstimate(reqModel, firstMessage))
+	inflightCtx, inflightDone, inflightErr := reserveInflightBalanceCtx(ctx, h.billingCacheService, h.gatewayService, apiKey, subscription, quotaPolicyInflightEstimate(reqModel, firstMessage, quotaPolicyWS))
 	if inflightErr != nil {
 		reqLog.Info("openai.websocket_inflight_reservation_rejected", zap.Error(inflightErr))
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "billing check failed")
@@ -3011,7 +3027,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		// Passthrough rejects overlapping response.create frames, so one immutable
 		// turn-tagged slot preserves the exact mapping used for the in-flight request.
 		var turnChannelMapping atomic.Pointer[openAIWSTurnChannelMappingSnapshot]
-		turnChannelMapping.Store(&openAIWSTurnChannelMappingSnapshot{turn: 1, mapping: channelMappingWS})
+		turnChannelMapping.Store(wsAttemptMapping)
 		// turn 级定价：首轮回退到 TurnStarted 的所属 turn 时刻；后续 turn 由
 		// BeforeTurn 重新冻结 pricingAt 并按最新门复核当前账号。
 		var turnPricing openAIWSTurnPricing
@@ -3025,7 +3041,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		}
 		hooks := &service.OpenAIWSIngressHooks{
 			ClientLifecycleContext:      clientLifecycleCtx,
-			InitialRequestModel:         reqModel,
+			InitialRequestModel:         wsAttemptMapping.requestedModel,
 			InitialTurnStartedAt:        firstTurnStartedAt,
 			MaxReasoningEffort:          maxReasoningEffort,
 			MaxReasoningEffortOverLimit: maxReasoningEffortOverLimit,
@@ -3086,16 +3102,27 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					}
 					routeModel = wsRouteModel
 				}
+				// Proxy turn numbers restart after failover. Reuse this attempt's
+				// frozen turn, including a later client turn being retried.
+				if turn == 1 {
+					return wsAttemptMapping.forwardModel, nil
+				}
 				mapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, routeModel)
+				policy := h.resolveOpenAIGroupQuotaPolicy(apiKey, openAIChannelForwardModel(mapping, routeModel), false)
+				next := &openAIWSTurnChannelMappingSnapshot{turn: turn, requestedModel: model, mapping: mapping, forwardModel: policy.TargetModel, quotaPolicy: policy}
 				mappedModelUnchanged := false
 				if previous := turnChannelMapping.Load(); previous != nil && previous.turn < turn {
-					mappedModelUnchanged = strings.TrimSpace(previous.mapping.MappedModel) == strings.TrimSpace(mapping.MappedModel)
+					if openAIQuotaPolicyTurnRequiresReconnect(account, previous, next) {
+						return "", newOpenAIWSUnsupportedModelSwitchError(next.forwardModel)
+					}
+					mappedModelUnchanged = strings.TrimSpace(previous.forwardModel) == strings.TrimSpace(next.forwardModel)
 				}
-				if turn > 1 && !mappedModelUnchanged && !account.IsModelSupported(model) && !account.IsModelSupported(mapping.MappedModel) {
-					return "", newOpenAIWSUnsupportedModelSwitchError(mapping.MappedModel)
+				if !mappedModelUnchanged && !account.IsModelSupported(model) && !account.IsModelSupported(next.forwardModel) {
+					return "", newOpenAIWSUnsupportedModelSwitchError(next.forwardModel)
 				}
-				turnChannelMapping.Store(&openAIWSTurnChannelMappingSnapshot{turn: turn, mapping: mapping})
-				return mapping.MappedModel, nil
+				turnChannelMapping.Store(next)
+				logOpenAIGroupQuotaPolicy(reqLog, policy)
+				return next.forwardModel, nil
 			},
 			BeforeTurn: func(turn int) error {
 				// turn==1 的会话屏蔽已由握手层检查覆盖；连接内 flag 只拦截后续 turn。
@@ -3155,7 +3182,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					clearCyberPolicyAttemptState(c, !cyberBlockPendingAfterFailover)
 				}()
 				releaseTurnSlots()
-				turnRequestedModel := reqModel
+				turnRequestedModel := wsAttemptMapping.requestedModel
 				turnUpstreamModel := ""
 				if result != nil && turn > 1 {
 					if model := strings.TrimSpace(result.Model); model != "" {
@@ -3167,6 +3194,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				var turnMapping service.ChannelMappingResult
 				if snapshot := turnChannelMapping.Load(); snapshot != nil && snapshot.turn == turn {
+					turnRequestedModel = snapshot.requestedModel
 					turnMapping = snapshot.mapping
 				} else {
 					turnMapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, turnRequestedModel)
@@ -3294,6 +3322,17 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				wsAttemptMessage = nextAttemptMessage
 				if retryCurrentTurn {
+					// The retry payload belongs to the current client turn, not
+					// necessarily the first one. Preserve its exact channel/policy
+					// decision for same-account retries and account reselection.
+					wsAttemptMapping = openAIWSTurnMappingForRetry(turnChannelMapping.Load(), wsAttemptMapping)
+					wsForwardModel = wsAttemptMapping.forwardModel
+					quotaPolicyPricingContextActive = quotaPolicyPricingContextActive || wsAttemptMapping.quotaPolicy.Applied
+					if quotaPolicyPricingContextActive {
+						ctx = service.WithOpenAIQuotaPolicyPricingContext(ctx, wsAttemptMapping.requestedModel, wsAttemptMapping.mapping)
+					}
+					hooks.InitialRequestModel = wsAttemptMapping.requestedModel
+					turnChannelMapping.Store(wsAttemptMapping)
 					previousResponseID = ""
 					reqLog.Warn("openai.websocket_current_turn_failover_retry",
 						zap.Int64("account_id", account.ID),
