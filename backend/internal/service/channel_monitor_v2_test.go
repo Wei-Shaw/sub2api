@@ -191,6 +191,7 @@ func TestChannelMonitorV2ErrorTaxonomyPriority(t *testing.T) {
 		{"auth before forbidden", ChannelMonitorV2ErrorInput{StatusCode: 403, Message: "invalid API key"}, "authentication"},
 		{"context", ChannelMonitorV2ErrorInput{Message: "maximum prompt length exceeded"}, "context_limit"},
 		{"unsupported", ChannelMonitorV2ErrorInput{Message: "not supported by any configured account"}, "model_unsupported"},
+		{"account balance before forbidden", ChannelMonitorV2ErrorInput{StatusCode: 403, Message: "Insufficient account balance"}, "quota_or_balance"},
 		{"pool", ChannelMonitorV2ErrorInput{Message: "No available accounts"}, "account_pool_unavailable"},
 		{"timeout", ChannelMonitorV2ErrorInput{Message: "error code: 524"}, "timeout"},
 		{"upstream", ChannelMonitorV2ErrorInput{ErrorOwner: "provider", StatusCode: 502, UpstreamStatusCode: 502}, "upstream_5xx"},
