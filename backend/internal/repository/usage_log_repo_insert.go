@@ -87,6 +87,8 @@ var usageLogInsertArgTypes = [...]string{
 	"boolean",     // native_compaction_v2
 	"integer",     // cache_creation_30m_tokens
 	"integer",     // cache_creation_12h_tokens
+	"bigint",      // custom_domain_id
+	"text",        // custom_domain
 	"timestamptz", // created_at
 }
 
@@ -101,6 +103,14 @@ const (
 	usageLogBestEffortBatchQueueCap = 32768
 	usageLogBestEffortRecentTTL     = 30 * time.Second
 )
+
+func usageLogInsertValuePlaceholders() string {
+	placeholders := make([]string, len(usageLogInsertArgTypes))
+	for i := range placeholders {
+		placeholders[i] = "$" + strconv.Itoa(i+1)
+	}
+	return strings.Join(placeholders, ", ")
+}
 
 type usageLogCreateRequest struct {
 	log      *service.UsageLog
@@ -225,7 +235,7 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 		return false, service.MarkUsageLogCreateNotPersisted(ctx.Err())
 	}
 
-	query := `
+	query := fmt.Sprintf(`
 		INSERT INTO usage_logs (
 			user_id,
 			api_key_id,
@@ -290,18 +300,13 @@ func (r *usageLogRepository) createSingle(ctx context.Context, sqlq sqlExecutor,
 			native_compaction_v2,
 			cache_creation_30m_tokens,
 			cache_creation_12h_tokens,
+			custom_domain_id,
+			custom_domain,
 			created_at
-		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9,
-			$10, $11,
-			$12, $13, $14, $15,
-			$16, $17, $18, $19,
-			$20, $21, $22, $23, $24, $25,
-			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64
-		)
+		) VALUES (%s)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
 		RETURNING id, created_at
-	`
+	`, usageLogInsertValuePlaceholders())
 
 	if err := scanSingleRow(ctx, sqlq, query, prepared.args, &log.ID, &log.CreatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) && prepared.requestID != "" {
@@ -752,12 +757,12 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 			native_compaction_v2,
 			cache_creation_30m_tokens,
 			cache_creation_12h_tokens,
+			custom_domain_id,
+			custom_domain,
 			created_at
 		) AS (VALUES `)
 
-	// Each batch row prepends the synthetic input_index before the 60
-	// usage-log column values.
-	args := make([]any, 0, len(keys)*61)
+	args := make([]any, 0, len(keys)*(len(usageLogInsertArgTypes)+1))
 	argPos := 1
 	for idx, key := range keys {
 		if idx > 0 {
@@ -849,6 +854,8 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				native_compaction_v2,
 				cache_creation_30m_tokens,
 				cache_creation_12h_tokens,
+				custom_domain_id,
+				custom_domain,
 				created_at
 			)
 			SELECT
@@ -915,6 +922,8 @@ func buildUsageLogBatchInsertQuery(keys []string, preparedByKey map[string]usage
 				native_compaction_v2,
 				cache_creation_30m_tokens,
 				cache_creation_12h_tokens,
+				custom_domain_id,
+				custom_domain,
 				created_at
 			FROM input
 			ON CONFLICT (request_id, api_key_id) DO NOTHING
@@ -1021,10 +1030,12 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			native_compaction_v2,
 			cache_creation_30m_tokens,
 			cache_creation_12h_tokens,
+			custom_domain_id,
+			custom_domain,
 			created_at
 		) AS (VALUES `)
 
-	args := make([]any, 0, len(preparedList)*60)
+	args := make([]any, 0, len(preparedList)*len(usageLogInsertArgTypes))
 	argPos := 1
 	for idx, prepared := range preparedList {
 		if idx > 0 {
@@ -1113,6 +1124,8 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			native_compaction_v2,
 			cache_creation_30m_tokens,
 			cache_creation_12h_tokens,
+			custom_domain_id,
+			custom_domain,
 			created_at
 		)
 		SELECT
@@ -1179,6 +1192,8 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 			native_compaction_v2,
 			cache_creation_30m_tokens,
 			cache_creation_12h_tokens,
+			custom_domain_id,
+			custom_domain,
 			created_at
 		FROM input
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
@@ -1188,7 +1203,7 @@ func buildUsageLogBestEffortInsertQuery(preparedList []usageLogInsertPrepared) (
 }
 
 func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared usageLogInsertPrepared) error {
-	_, err := sqlq.ExecContext(ctx, `
+	query := fmt.Sprintf(`
 		INSERT INTO usage_logs (
 			user_id,
 			api_key_id,
@@ -1253,17 +1268,13 @@ func execUsageLogInsertNoResult(ctx context.Context, sqlq sqlExecutor, prepared 
 			native_compaction_v2,
 			cache_creation_30m_tokens,
 			cache_creation_12h_tokens,
+			custom_domain_id,
+			custom_domain,
 			created_at
-		) VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9,
-			$10, $11,
-			$12, $13, $14, $15,
-			$16, $17, $18, $19,
-			$20, $21, $22, $23, $24, $25,
-			$26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38, $39, $40, $41, $42, $43, $44, $45, $46, $47, $48, $49, $50, $51, $52, $53, $54, $55, $56, $57, $58, $59, $60, $61, $62, $63, $64
-		)
+		) VALUES (%s)
 		ON CONFLICT (request_id, api_key_id) DO NOTHING
-	`, prepared.args...)
+	`, usageLogInsertValuePlaceholders())
+	_, err := sqlq.ExecContext(ctx, query, prepared.args...)
 	return err
 }
 
@@ -1304,6 +1315,8 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 	billingMode := nullString(log.BillingMode)
 	upstreamRequestID := nullString(log.UpstreamRequestID)
 	sessionID := nullString(log.SessionID)
+	customDomainID := nullInt64(log.CustomDomainID)
+	customDomain := nullString(log.CustomDomain)
 	requestedModel := strings.TrimSpace(log.RequestedModel)
 	if requestedModel == "" {
 		requestedModel = strings.TrimSpace(log.Model)
@@ -1386,6 +1399,8 @@ func prepareUsageLogInsert(log *service.UsageLog) usageLogInsertPrepared {
 			log.NativeCompactionV2,
 			log.CacheCreation30mTokens,
 			log.CacheCreation12hTokens,
+			customDomainID,
+			customDomain,
 			createdAt,
 		},
 	}

@@ -11,6 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+var errFrontendNotEmbedded = errors.New("frontend not embedded")
+
 // PublicSettingsProvider is an interface to fetch public settings
 // This stub is needed for compilation when frontend is not embedded
 type PublicSettingsProvider interface {
@@ -22,7 +24,7 @@ type FrontendServer struct{}
 
 // NewFrontendServer returns an error when frontend is not embedded
 func NewFrontendServer(settingsProvider PublicSettingsProvider) (*FrontendServer, error) {
-	return nil, errors.New("frontend not embedded")
+	return nil, errFrontendNotEmbedded
 }
 
 // InvalidateCache is a no-op for non-embed builds
