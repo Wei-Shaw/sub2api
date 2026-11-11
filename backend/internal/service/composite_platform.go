@@ -105,6 +105,8 @@ func DetectModelPlatform(model string) (string, bool) {
 			return PlatformOpenAI, true
 		case "google", "google-ai-studio", "gemini":
 			return PlatformGemini, true
+		case "muse":
+			return PlatformMuse, true
 		case "xai", "x-ai", "grok":
 			return PlatformGrok, true
 		case "kimi", "moonshot":
