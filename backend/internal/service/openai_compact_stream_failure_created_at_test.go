@@ -34,10 +34,11 @@ func TestWriteOpenAICompactSSEFailureMessage_CarriesCreatedAt(t *testing.T) {
 		Type           string `json:"type"`
 		SequenceNumber *int   `json:"sequence_number"`
 		Response       struct {
-			ID        string `json:"id"`
-			Object    string `json:"object"`
-			CreatedAt int64  `json:"created_at"`
-			Status    string `json:"status"`
+			ID        string  `json:"id"`
+			Object    string  `json:"object"`
+			CreatedAt int64   `json:"created_at"`
+			Model     *string `json:"model"`
+			Status    string  `json:"status"`
 		} `json:"response"`
 	}
 	require.NoError(t, json.Unmarshal([]byte(strings.TrimSpace(payload)), &event))
@@ -47,6 +48,7 @@ func TestWriteOpenAICompactSSEFailureMessage_CarriesCreatedAt(t *testing.T) {
 	require.GreaterOrEqual(t, *event.SequenceNumber, 0)
 	require.Equal(t, "response", event.Response.Object)
 	require.Equal(t, "failed", event.Response.Status)
+	require.NotNil(t, event.Response.Model, "response.failed must include model so strict clients can read its error")
 	require.Greater(t, event.Response.CreatedAt, int64(0),
 		"response.failed 必须带有效的 created_at，否则严格客户端读不出这帧")
 }
