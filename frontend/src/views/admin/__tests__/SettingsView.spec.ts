@@ -130,6 +130,18 @@ vi.mock("@/stores", () => ({
   }),
 }));
 
+vi.mock("@/api/admin/paymentFx", () => ({
+  getPaymentFXSyncConfig: vi.fn().mockResolvedValue({
+    enabled: false,
+    urls: [],
+    interval_hours: 24,
+    markup_percent: 0,
+    update_subscription_rate: false,
+  }),
+  updatePaymentFXSyncConfig: vi.fn(),
+  syncPaymentFXNow: vi.fn(),
+}));
+
 vi.mock("@/stores/adminSettings", () => ({
   useAdminSettingsStore: () => ({
     fetch: adminSettingsFetch,
