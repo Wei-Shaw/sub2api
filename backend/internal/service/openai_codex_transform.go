@@ -1619,6 +1619,13 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 			continue
 		}
 		typ, _ := m["type"].(string)
+		// Standalone context has an item ID, but no corresponding model call.
+		// Do not synthesize call_id from id or strip its native identity.
+		if _, hasCallID := m["call_id"]; !hasCallID && typ == "function_call_output" &&
+			strings.TrimSpace(firstNonEmptyString(m["name"])) != "" {
+			filtered = append(filtered, item)
+			continue
+		}
 
 		// chatgpt.com codex (OAuth path) runs with store=false (forced by
 		// applyCodexOAuthTransform). Replaying a reasoning item with its rs_*
