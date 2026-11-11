@@ -1,0 +1,6 @@
+simulation: openai-reset-expiry
+routing: path
+mocks:
+  - name: Codex reset credits
+    routeKey: codex
+    path: postman/mocks/openai-reset-expiry/config.yaml
