@@ -604,6 +604,26 @@ describe('EditAccountModal', () => {
       return account
     }
 
+    it('preserves a Qwen account mode and custom endpoints on save', async () => {
+      const account = buildAccount()
+      account.platform = 'qwen'
+      account.credentials = {
+        api_key: 'sk-test',
+        account_mode: 'token_sg',
+        api_protocol: 'adaptive',
+        base_url: 'https://relay.example.com/v1',
+        api_base_urls: { chat_completions: 'https://relay.example.com/v1', anthropic: 'https://relay.example.com/anthropic' }
+      }
+      updateAccountMock.mockReset().mockResolvedValue(account)
+      const wrapper = mountModal(account)
+      await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+      expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).toMatchObject({
+        account_mode: 'token_sg',
+        api_protocol: 'adaptive',
+        api_base_urls: { chat_completions: 'https://relay.example.com/v1', anthropic: 'https://relay.example.com/anthropic' }
+      })
+    })
+
     it('preserves stored endpoints and rules on submit', async () => {
       const wrapper = mountModal(commandCodeAccount())
       await wrapper.get('form#edit-account-form').trigger('submit.prevent')
