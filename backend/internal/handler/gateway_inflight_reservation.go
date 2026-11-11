@@ -77,7 +77,7 @@ func reserveInflightBalanceCtx(
 	if apiKey.Group != nil && apiKey.Group.IsSubscriptionType() && subscription != nil {
 		return ctx, inflightNoop, nil
 	}
-	estimate, priced := estimator.EstimateInflightReservation(ctx, apiKey, req)
+	estimate, priced := estimateCompositeInflightReservation(ctx, estimator, apiKey, req)
 	if !priced && billing.InflightReservationFailClosedOnUnpriced() {
 		return ctx, inflightNoop, service.ErrInsufficientBalance
 	}

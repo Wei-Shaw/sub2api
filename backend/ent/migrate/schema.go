@@ -811,6 +811,7 @@ var (
 		{Name: "match_type", Type: field.TypeString, Size: 20, Default: "exact"},
 		{Name: "target_platform", Type: field.TypeString, Size: 50, Default: "openai"},
 		{Name: "upstream_model", Type: field.TypeString, Size: 200, Default: ""},
+		{Name: "fallback_targets", Type: field.TypeJSON},
 		{Name: "endpoint", Type: field.TypeString, Size: 50, Default: "any"},
 		{Name: "priority", Type: field.TypeInt, Default: 100},
 		{Name: "enabled", Type: field.TypeBool, Default: true},
@@ -825,7 +826,7 @@ var (
 		ForeignKeys: []*schema.ForeignKey{
 			{
 				Symbol:     "composite_model_routes_groups_group",
-				Columns:    []*schema.Column{CompositeModelRoutesColumns[12]},
+				Columns:    []*schema.Column{CompositeModelRoutesColumns[13]},
 				RefColumns: []*schema.Column{GroupsColumns[0]},
 				OnDelete:   schema.NoAction,
 			},
@@ -834,22 +835,22 @@ var (
 			{
 				Name:    "compositemodelroute_group_id",
 				Unique:  false,
-				Columns: []*schema.Column{CompositeModelRoutesColumns[12]},
+				Columns: []*schema.Column{CompositeModelRoutesColumns[13]},
 			},
 			{
 				Name:    "compositemodelroute_group_id_enabled",
 				Unique:  false,
-				Columns: []*schema.Column{CompositeModelRoutesColumns[12], CompositeModelRoutesColumns[10]},
+				Columns: []*schema.Column{CompositeModelRoutesColumns[13], CompositeModelRoutesColumns[11]},
 			},
 			{
 				Name:    "compositemodelroute_group_id_endpoint",
 				Unique:  false,
-				Columns: []*schema.Column{CompositeModelRoutesColumns[12], CompositeModelRoutesColumns[8]},
+				Columns: []*schema.Column{CompositeModelRoutesColumns[13], CompositeModelRoutesColumns[9]},
 			},
 			{
 				Name:    "compositemodelroute_group_id_target_platform",
 				Unique:  false,
-				Columns: []*schema.Column{CompositeModelRoutesColumns[12], CompositeModelRoutesColumns[6]},
+				Columns: []*schema.Column{CompositeModelRoutesColumns[13], CompositeModelRoutesColumns[6]},
 			},
 			{
 				Name:    "compositemodelroute_deleted_at",
@@ -859,7 +860,7 @@ var (
 			{
 				Name:    "compositemodelroute_priority",
 				Unique:  false,
-				Columns: []*schema.Column{CompositeModelRoutesColumns[9]},
+				Columns: []*schema.Column{CompositeModelRoutesColumns[10]},
 			},
 		},
 	}

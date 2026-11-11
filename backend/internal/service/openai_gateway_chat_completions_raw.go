@@ -264,6 +264,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 		s.updateGrokUsageFromResponse(withGrokTeamRateLimitModel(ctx, upstreamModel), account, resp.Header, resp.StatusCode)
 	}
 
+	originalModel = compositeFallbackResponseModel(ctx, originalModel)
 	// 8. Forward response
 	var result *OpenAIForwardResult
 	var forwardErr error
@@ -528,6 +529,9 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
+		if failover := compositeFallbackPreOutputReadError(c.Request.Context(), c, err); failover != nil {
+			return nil, failover
+		}
 		if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
 			writeChatCompletionsError(c, http.StatusBadGateway, "api_error", "Failed to read upstream response")
 		}

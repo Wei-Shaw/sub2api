@@ -19707,27 +19707,29 @@ func (m *ChannelMonitorRequestTemplateMutation) ResetEdge(name string) error {
 // CompositeModelRouteMutation represents an operation that mutates the CompositeModelRoute nodes in the graph.
 type CompositeModelRouteMutation struct {
 	config
-	op              Op
-	typ             string
-	id              *int64
-	created_at      *time.Time
-	updated_at      *time.Time
-	deleted_at      *time.Time
-	public_model    *string
-	match_type      *string
-	target_platform *string
-	upstream_model  *string
-	endpoint        *string
-	priority        *int
-	addpriority     *int
-	enabled         *bool
-	notes           *string
-	clearedFields   map[string]struct{}
-	group           *int64
-	clearedgroup    bool
-	done            bool
-	oldValue        func(context.Context) (*CompositeModelRoute, error)
-	predicates      []predicate.CompositeModelRoute
+	op                     Op
+	typ                    string
+	id                     *int64
+	created_at             *time.Time
+	updated_at             *time.Time
+	deleted_at             *time.Time
+	public_model           *string
+	match_type             *string
+	target_platform        *string
+	upstream_model         *string
+	fallback_targets       *[]domain.CompositeFallbackTarget
+	appendfallback_targets []domain.CompositeFallbackTarget
+	endpoint               *string
+	priority               *int
+	addpriority            *int
+	enabled                *bool
+	notes                  *string
+	clearedFields          map[string]struct{}
+	group                  *int64
+	clearedgroup           bool
+	done                   bool
+	oldValue               func(context.Context) (*CompositeModelRoute, error)
+	predicates             []predicate.CompositeModelRoute
 }
 
 var _ ent.Mutation = (*CompositeModelRouteMutation)(nil)
@@ -20129,6 +20131,57 @@ func (m *CompositeModelRouteMutation) ResetUpstreamModel() {
 	m.upstream_model = nil
 }
 
+// SetFallbackTargets sets the "fallback_targets" field.
+func (m *CompositeModelRouteMutation) SetFallbackTargets(dft []domain.CompositeFallbackTarget) {
+	m.fallback_targets = &dft
+	m.appendfallback_targets = nil
+}
+
+// FallbackTargets returns the value of the "fallback_targets" field in the mutation.
+func (m *CompositeModelRouteMutation) FallbackTargets() (r []domain.CompositeFallbackTarget, exists bool) {
+	v := m.fallback_targets
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFallbackTargets returns the old "fallback_targets" field's value of the CompositeModelRoute entity.
+// If the CompositeModelRoute object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *CompositeModelRouteMutation) OldFallbackTargets(ctx context.Context) (v []domain.CompositeFallbackTarget, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFallbackTargets is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFallbackTargets requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFallbackTargets: %w", err)
+	}
+	return oldValue.FallbackTargets, nil
+}
+
+// AppendFallbackTargets adds dft to the "fallback_targets" field.
+func (m *CompositeModelRouteMutation) AppendFallbackTargets(dft []domain.CompositeFallbackTarget) {
+	m.appendfallback_targets = append(m.appendfallback_targets, dft...)
+}
+
+// AppendedFallbackTargets returns the list of values that were appended to the "fallback_targets" field in this mutation.
+func (m *CompositeModelRouteMutation) AppendedFallbackTargets() ([]domain.CompositeFallbackTarget, bool) {
+	if len(m.appendfallback_targets) == 0 {
+		return nil, false
+	}
+	return m.appendfallback_targets, true
+}
+
+// ResetFallbackTargets resets all changes to the "fallback_targets" field.
+func (m *CompositeModelRouteMutation) ResetFallbackTargets() {
+	m.fallback_targets = nil
+	m.appendfallback_targets = nil
+}
+
 // SetEndpoint sets the "endpoint" field.
 func (m *CompositeModelRouteMutation) SetEndpoint(s string) {
 	m.endpoint = &s
@@ -20367,7 +20420,7 @@ func (m *CompositeModelRouteMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *CompositeModelRouteMutation) Fields() []string {
-	fields := make([]string, 0, 12)
+	fields := make([]string, 0, 13)
 	if m.created_at != nil {
 		fields = append(fields, compositemodelroute.FieldCreatedAt)
 	}
@@ -20391,6 +20444,9 @@ func (m *CompositeModelRouteMutation) Fields() []string {
 	}
 	if m.upstream_model != nil {
 		fields = append(fields, compositemodelroute.FieldUpstreamModel)
+	}
+	if m.fallback_targets != nil {
+		fields = append(fields, compositemodelroute.FieldFallbackTargets)
 	}
 	if m.endpoint != nil {
 		fields = append(fields, compositemodelroute.FieldEndpoint)
@@ -20428,6 +20484,8 @@ func (m *CompositeModelRouteMutation) Field(name string) (ent.Value, bool) {
 		return m.TargetPlatform()
 	case compositemodelroute.FieldUpstreamModel:
 		return m.UpstreamModel()
+	case compositemodelroute.FieldFallbackTargets:
+		return m.FallbackTargets()
 	case compositemodelroute.FieldEndpoint:
 		return m.Endpoint()
 	case compositemodelroute.FieldPriority:
@@ -20461,6 +20519,8 @@ func (m *CompositeModelRouteMutation) OldField(ctx context.Context, name string)
 		return m.OldTargetPlatform(ctx)
 	case compositemodelroute.FieldUpstreamModel:
 		return m.OldUpstreamModel(ctx)
+	case compositemodelroute.FieldFallbackTargets:
+		return m.OldFallbackTargets(ctx)
 	case compositemodelroute.FieldEndpoint:
 		return m.OldEndpoint(ctx)
 	case compositemodelroute.FieldPriority:
@@ -20533,6 +20593,13 @@ func (m *CompositeModelRouteMutation) SetField(name string, value ent.Value) err
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetUpstreamModel(v)
+		return nil
+	case compositemodelroute.FieldFallbackTargets:
+		v, ok := value.([]domain.CompositeFallbackTarget)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFallbackTargets(v)
 		return nil
 	case compositemodelroute.FieldEndpoint:
 		v, ok := value.(string)
@@ -20664,6 +20731,9 @@ func (m *CompositeModelRouteMutation) ResetField(name string) error {
 		return nil
 	case compositemodelroute.FieldUpstreamModel:
 		m.ResetUpstreamModel()
+		return nil
+	case compositemodelroute.FieldFallbackTargets:
+		m.ResetFallbackTargets()
 		return nil
 	case compositemodelroute.FieldEndpoint:
 		m.ResetEndpoint()

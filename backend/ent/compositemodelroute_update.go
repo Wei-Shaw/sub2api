@@ -10,10 +10,12 @@ import (
 
 	"entgo.io/ent/dialect/sql"
 	"entgo.io/ent/dialect/sql/sqlgraph"
+	"entgo.io/ent/dialect/sql/sqljson"
 	"entgo.io/ent/schema/field"
 	"github.com/Wei-Shaw/sub2api/ent/compositemodelroute"
 	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/ent/predicate"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // CompositeModelRouteUpdate is the builder for updating CompositeModelRoute entities.
@@ -122,6 +124,18 @@ func (_u *CompositeModelRouteUpdate) SetNillableUpstreamModel(v *string) *Compos
 	if v != nil {
 		_u.SetUpstreamModel(*v)
 	}
+	return _u
+}
+
+// SetFallbackTargets sets the "fallback_targets" field.
+func (_u *CompositeModelRouteUpdate) SetFallbackTargets(v []domain.CompositeFallbackTarget) *CompositeModelRouteUpdate {
+	_u.mutation.SetFallbackTargets(v)
+	return _u
+}
+
+// AppendFallbackTargets appends value to the "fallback_targets" field.
+func (_u *CompositeModelRouteUpdate) AppendFallbackTargets(v []domain.CompositeFallbackTarget) *CompositeModelRouteUpdate {
+	_u.mutation.AppendFallbackTargets(v)
 	return _u
 }
 
@@ -318,6 +332,14 @@ func (_u *CompositeModelRouteUpdate) sqlSave(ctx context.Context) (_node int, er
 	if value, ok := _u.mutation.UpstreamModel(); ok {
 		_spec.SetField(compositemodelroute.FieldUpstreamModel, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.FallbackTargets(); ok {
+		_spec.SetField(compositemodelroute.FieldFallbackTargets, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedFallbackTargets(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, compositemodelroute.FieldFallbackTargets, value)
+		})
+	}
 	if value, ok := _u.mutation.Endpoint(); ok {
 		_spec.SetField(compositemodelroute.FieldEndpoint, field.TypeString, value)
 	}
@@ -478,6 +500,18 @@ func (_u *CompositeModelRouteUpdateOne) SetNillableUpstreamModel(v *string) *Com
 	if v != nil {
 		_u.SetUpstreamModel(*v)
 	}
+	return _u
+}
+
+// SetFallbackTargets sets the "fallback_targets" field.
+func (_u *CompositeModelRouteUpdateOne) SetFallbackTargets(v []domain.CompositeFallbackTarget) *CompositeModelRouteUpdateOne {
+	_u.mutation.SetFallbackTargets(v)
+	return _u
+}
+
+// AppendFallbackTargets appends value to the "fallback_targets" field.
+func (_u *CompositeModelRouteUpdateOne) AppendFallbackTargets(v []domain.CompositeFallbackTarget) *CompositeModelRouteUpdateOne {
+	_u.mutation.AppendFallbackTargets(v)
 	return _u
 }
 
@@ -703,6 +737,14 @@ func (_u *CompositeModelRouteUpdateOne) sqlSave(ctx context.Context) (_node *Com
 	}
 	if value, ok := _u.mutation.UpstreamModel(); ok {
 		_spec.SetField(compositemodelroute.FieldUpstreamModel, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.FallbackTargets(); ok {
+		_spec.SetField(compositemodelroute.FieldFallbackTargets, field.TypeJSON, value)
+	}
+	if value, ok := _u.mutation.AppendedFallbackTargets(); ok {
+		_spec.AddModifier(func(u *sql.UpdateBuilder) {
+			sqljson.Append(u, compositemodelroute.FieldFallbackTargets, value)
+		})
 	}
 	if value, ok := _u.mutation.Endpoint(); ok {
 		_spec.SetField(compositemodelroute.FieldEndpoint, field.TypeString, value)
