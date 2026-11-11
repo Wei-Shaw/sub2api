@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import { getCodexDefaultModel } from '@/constants/codexConfig'
 import {
   CC_SWITCH_USAGE_SCRIPT,
-  GROK_CC_SWITCH_MODEL,
-  OPENAI_CC_SWITCH_CODEX_MODEL,
   buildCcSwitchImportDeeplink
 } from '@/utils/ccswitchImport'
 import type { GroupPlatform } from '@/types'
@@ -13,20 +12,64 @@ function paramsFromDeeplink(deeplink: string): URLSearchParams {
 }
 
 describe('ccswitchImport utils', () => {
-  it('defaults OpenAI CC Switch imports to the current Codex model', () => {
-    expect(OPENAI_CC_SWITCH_CODEX_MODEL).toBe('gpt-6.1-sol')
-  })
-
-  it('defaults Grok Build imports to the current Grok model', () => {
-    expect(GROK_CC_SWITCH_MODEL).toBe('grok-4.5')
-  })
-
   const baseInput = {
     baseUrl: 'https://api.example.com',
     providerName: 'Sub2API',
     apiKey: 'sk-test',
     usageScript: 'return true'
   }
+
+  it('omits the model parameter for unconfigured OpenAI imports', () => {
+    const params = paramsFromDeeplink(
+      buildCcSwitchImportDeeplink({
+        ...baseInput,
+        platform: 'openai',
+        clientType: 'claude'
+      })
+    )
+
+    expect(params.get('resource')).toBe('provider')
+    expect(params.get('app')).toBe('codex')
+    expect(params.get('endpoint')).toBe(baseInput.baseUrl)
+    expect(params.has('model')).toBe(false)
+    expect(atob(params.get('usageScript') || '')).toBe(baseInput.usageScript)
+  })
+
+  it.each([
+    ['openai', 'custom-openai-model'],
+    ['grok', 'custom-grok-model']
+  ] as const)('uses the configured Codex default model for %s imports', (platform, model) => {
+    const params = paramsFromDeeplink(
+      buildCcSwitchImportDeeplink({
+        ...baseInput,
+        platform,
+        clientType: 'claude',
+        codexConfigDefaultModel: `  ${model}  `
+      })
+    )
+
+    expect(params.get('model')).toBe(model)
+    if (platform === 'openai') {
+      const payload = JSON.parse(atob(params.get('config') || '')) as { config: string }
+      expect(payload.config).toContain(`model = ${JSON.stringify(model)}\nweb_search = "live"`)
+    }
+  })
+
+  it.each(['openai', 'grok'] as const)(
+    'uses the shared %s default model for blank configuration',
+    (platform) => {
+      const params = paramsFromDeeplink(
+        buildCcSwitchImportDeeplink({
+          ...baseInput,
+          platform,
+          clientType: 'claude',
+          codexConfigDefaultModel: '  '
+        })
+      )
+
+      expect(params.get('model')).toBe(getCodexDefaultModel(platform) || null)
+    }
+  )
 
   it.each([
     ['https://api.example.com', 'https://api.example.com'],
@@ -46,12 +89,12 @@ describe('ccswitchImport utils', () => {
     expect(params.get('resource')).toBe('provider')
     expect(params.get('app')).toBe('codex')
     expect(params.get('endpoint')).toBe(endpoint)
-    expect(params.get('model')).toBe(OPENAI_CC_SWITCH_CODEX_MODEL)
+    expect(params.has('model')).toBe(false)
     expect(atob(params.get('usageScript') || '')).toBe(baseInput.usageScript)
     const payload = JSON.parse(atob(params.get('config') || '')) as { config: string }
     expect(params.get('configFormat')).toBe('json')
     expect(payload.config).toContain(`base_url = "${endpoint}"`)
-    expect(payload.config).toContain(`model = "${OPENAI_CC_SWITCH_CODEX_MODEL}"`)
+    expect(payload.config).not.toMatch(/^model\s*=/m)
     expect(payload.config.split('[model_providers.')[0]).toContain('web_search = "live"')
     expect(payload.config).toContain('requires_openai_auth = false')
     expect(payload.config).toContain('experimental_bearer_token = "sk-test"')
@@ -93,7 +136,7 @@ describe('ccswitchImport utils', () => {
 
     expect(params.get('app')).toBe('grokbuild')
     expect(params.get('endpoint')).toBe('https://api.example.com/v1')
-    expect(params.get('model')).toBe(GROK_CC_SWITCH_MODEL)
+    expect(params.get('model')).toBe(getCodexDefaultModel('grok'))
     expect(params.has('config')).toBe(false)
   })
 
@@ -105,7 +148,8 @@ describe('ccswitchImport utils', () => {
       buildCcSwitchImportDeeplink({
         ...baseInput,
         platform,
-        clientType
+        clientType,
+        codexConfigDefaultModel: 'configured-model'
       })
     )
 
