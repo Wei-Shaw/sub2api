@@ -1,5 +1,6 @@
 <template>
-  <div ref="rootRef" v-if="showUsageWindows" :aria-busy="loading || activeQueryLoading">
+  <BytePlusUsageCell v-if="isBytePlusAccount" :account-id="account.id" :refresh-token="manualRefreshToken + localFundingRefreshToken" />
+  <div ref="rootRef" v-else-if="showUsageWindows" :aria-busy="loading || activeQueryLoading">
     <!-- Anthropic OAuth and Setup Token accounts: fetch real usage data -->
     <template
       v-if="
@@ -770,6 +771,10 @@ import {
   isMultiProtocolApiKeyPlatform
 } from './credentialsBuilder'
 import OpenCodeGoUsageCell from './OpenCodeGoUsageCell.vue'
+import BytePlusUsageCell from './BytePlusUsageCell.vue'
+import { isBytePlusEndpoint } from '@/utils/byteplusPrepaid'
+
+const isBytePlusAccount = computed(() => props.account.type === 'apikey' && (String(props.account.platform) === 'byteplus' || isBytePlusEndpoint(props.account.credentials?.base_url)))
 
 // Module-level cache shared across all AccountUsageCell instances
 const _usageCache = new Map<number, { data: AccountUsageInfo; ts: number }>()
@@ -780,6 +785,7 @@ const props = withDefaults(
     account: Account
     todayStats?: WindowStats | null
     todayStatsLoading?: boolean
+    localFundingRefreshToken?: number
     manualRefreshToken?: number
     batchedUsage?: AccountUsageInfo | null
     batchedUsageError?: string | null
@@ -789,6 +795,7 @@ const props = withDefaults(
   {
     todayStats: null,
     todayStatsLoading: false,
+    localFundingRefreshToken: 0,
     manualRefreshToken: 0,
     batchedUsage: null,
     batchedUsageError: null,
