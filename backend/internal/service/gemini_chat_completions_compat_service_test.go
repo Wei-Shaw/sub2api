@@ -2,8 +2,14 @@ package service
 
 import (
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -222,4 +228,58 @@ func TestConvertGeminiToClaudeMessageOmitsThoughtParts(t *testing.T) {
 	require.Equal(t, "tool_use", toolUse["type"])
 	require.Equal(t, "get_weather", toolUse["name"])
 	require.Equal(t, "tool_use", got["stop_reason"])
+}
+
+// TestGeminiChatCompletionsStreamingSameNameToolCalls is the chat-completions
+// counterpart of TestGeminiMessagesHandleStreamingResponse_SameNameToolCalls:
+// every same-name parallel call needs its own tool_calls index and id.
+func TestGeminiChatCompletionsStreamingSameNameToolCalls(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tt := range geminiSameNameToolCallStreams {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			svc := &GeminiMessagesCompatService{}
+			_, err := svc.handleChatCompletionsStreamingResponseFromGemini(c, geminiSSEResponse(tt.payloads...), time.Now(), "gemini-test", false, false)
+			require.NoError(t, err)
+
+			type toolCall struct{ id, args string }
+			calls := map[int]*toolCall{}
+			for _, line := range strings.Split(rec.Body.String(), "\n") {
+				data, ok := strings.CutPrefix(line, "data: ")
+				if !ok || data == "[DONE]" {
+					continue
+				}
+				var chunk apicompat.ChatCompletionsChunk
+				require.NoError(t, json.Unmarshal([]byte(data), &chunk))
+				for _, choice := range chunk.Choices {
+					for _, tc := range choice.Delta.ToolCalls {
+						require.NotNil(t, tc.Index)
+						call := calls[*tc.Index]
+						if call == nil {
+							call = &toolCall{}
+							calls[*tc.Index] = call
+						}
+						if tc.ID != "" {
+							require.Truef(t, call.id == "" || call.id == tc.ID, "tool call %d changed id from %q to %q", *tc.Index, call.id, tc.ID)
+							call.id = tc.ID
+						}
+						call.args += tc.Function.Arguments
+					}
+				}
+			}
+
+			require.Len(t, calls, len(tt.wantArgs))
+			ids := map[string]bool{}
+			for i, want := range tt.wantArgs {
+				call := calls[i]
+				require.NotNilf(t, call, "missing tool call index %d", i)
+				require.JSONEq(t, want, call.args, "tool call %d", i)
+				require.NotEmpty(t, call.id)
+				require.Falsef(t, ids[call.id], "tool call id %q reused", call.id)
+				ids[call.id] = true
+			}
+		})
+	}
 }

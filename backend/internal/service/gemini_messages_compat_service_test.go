@@ -1521,3 +1521,141 @@ func parseAnthropicContentBlockEvents(t *testing.T, raw string) []anthropicConte
 	}
 	return events
 }
+
+// geminiSameNameToolCallStreams are upstream Gemini streams whose consecutive
+// functionCall parts share one function name, paired with the arguments of each
+// tool call a client must receive, in order.
+var geminiSameNameToolCallStreams = []struct {
+	name     string
+	payloads []string
+	wantArgs []string
+}{
+	{
+		name: "parallel calls in one chunk",
+		payloads: []string{`{"candidates":[{"content":{"parts":[` +
+			`{"functionCall":{"name":"read","args":{"path":"a.md"}}},` +
+			`{"functionCall":{"name":"read","args":{"path":"b.md"}}},` +
+			`{"functionCall":{"name":"read","args":{"path":"c.md"}}}]},"finishReason":"STOP"}]}`},
+		wantArgs: []string{`{"path":"a.md"}`, `{"path":"b.md"}`, `{"path":"c.md"}`},
+	},
+	{
+		name: "parallel calls across chunks",
+		payloads: []string{
+			`{"candidates":[{"content":{"parts":[{"functionCall":{"name":"read","args":{"path":"a.md"}}}]}}]}`,
+			`{"candidates":[{"content":{"parts":[{"functionCall":{"name":"read","args":{"path":"b.md"}}}]},"finishReason":"STOP"}]}`,
+		},
+		wantArgs: []string{`{"path":"a.md"}`, `{"path":"b.md"}`},
+	},
+	{
+		name: "identical parallel calls in one chunk",
+		payloads: []string{`{"candidates":[{"content":{"parts":[` +
+			`{"functionCall":{"name":"read","args":{"path":"a.md"}}},` +
+			`{"functionCall":{"name":"read","args":{"path":"a.md"}}}]},"finishReason":"STOP"}]}`},
+		wantArgs: []string{`{"path":"a.md"}`, `{"path":"a.md"}`},
+	},
+	{
+		name: "finished call repeated by a cumulative stream",
+		payloads: []string{
+			`{"candidates":[{"content":{"parts":[{"functionCall":{"name":"read","args":{"path":"a.md"}}}]}}]}`,
+			`{"candidates":[{"content":{"parts":[{"functionCall":{"name":"read","args":{"path":"a.md"}}}]},"finishReason":"STOP"}]}`,
+		},
+		wantArgs: []string{`{"path":"a.md"}`},
+	},
+	{
+		name: "arguments streamed in pieces",
+		payloads: []string{
+			`{"candidates":[{"content":{"parts":[{"functionCall":{"name":"read","args":"{\"path\":"}}]}}]}`,
+			`{"candidates":[{"content":{"parts":[{"functionCall":{"name":"read","args":"\"a.md\"}"}}]},"finishReason":"STOP"}]}`,
+		},
+		wantArgs: []string{`{"path":"a.md"}`},
+	},
+}
+
+func geminiSSEResponse(payloads ...string) *http.Response {
+	var body strings.Builder
+	for _, payload := range payloads {
+		body.WriteString("data: " + payload + "\n\n")
+	}
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(body.String())),
+	}
+}
+
+// TestGeminiMessagesHandleStreamingResponse_SameNameToolCalls guards parallel
+// calls to one function. Gemini sends every functionCall part complete, so
+// consecutive parts that share a name are separate calls: each must become its
+// own tool_use block with its own id, or their arguments are concatenated into
+// one invalid JSON input. A finished call that a cumulative stream repeats, and
+// arguments streamed in pieces, still form one call.
+func TestGeminiMessagesHandleStreamingResponse_SameNameToolCalls(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tt := range geminiSameNameToolCallStreams {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			svc := &GeminiMessagesCompatService{}
+			_, err := svc.handleStreamingResponse(c, geminiSSEResponse(tt.payloads...), time.Now(), "claude-sonnet-4-5")
+			require.NoError(t, err)
+
+			type toolUse struct{ id, args string }
+			var calls []toolUse
+			callAt := map[int]int{}
+			open := -1
+			for _, frame := range strings.Split(rec.Body.String(), "\n\n") {
+				var data string
+				for _, line := range strings.Split(frame, "\n") {
+					if strings.HasPrefix(line, "data:") {
+						data = strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+					}
+				}
+				if data == "" {
+					continue
+				}
+				var ev struct {
+					Type         string `json:"type"`
+					Index        int    `json:"index"`
+					ContentBlock struct {
+						Type string `json:"type"`
+						ID   string `json:"id"`
+						Name string `json:"name"`
+					} `json:"content_block"`
+					Delta struct {
+						Type        string `json:"type"`
+						PartialJSON string `json:"partial_json"`
+					} `json:"delta"`
+				}
+				require.NoError(t, json.Unmarshal([]byte(data), &ev))
+				switch ev.Type {
+				case "content_block_start":
+					require.Equalf(t, -1, open, "block %d opened while block %d was still open", ev.Index, open)
+					open = ev.Index
+					if ev.ContentBlock.Type == "tool_use" {
+						require.Equal(t, "read", ev.ContentBlock.Name)
+						callAt[ev.Index] = len(calls)
+						calls = append(calls, toolUse{id: ev.ContentBlock.ID})
+					}
+				case "content_block_delta":
+					if ev.Delta.Type == "input_json_delta" {
+						pos, ok := callAt[ev.Index]
+						require.Truef(t, ok, "input_json_delta for block %d, which is not a tool_use", ev.Index)
+						calls[pos].args += ev.Delta.PartialJSON
+					}
+				case "content_block_stop":
+					require.Equal(t, open, ev.Index)
+					open = -1
+				}
+			}
+			require.Equal(t, -1, open, "stream ended with a content block still open")
+
+			require.Len(t, calls, len(tt.wantArgs))
+			ids := map[string]bool{}
+			for i, call := range calls {
+				require.JSONEq(t, tt.wantArgs[i], call.args, "tool call %d", i)
+				require.Falsef(t, ids[call.id], "tool_use id %q reused", call.id)
+				ids[call.id] = true
+			}
+		})
+	}
+}

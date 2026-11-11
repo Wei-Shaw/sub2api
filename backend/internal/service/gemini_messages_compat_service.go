@@ -2216,6 +2216,8 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	openToolID := ""
 	openToolName := ""
 	var seenToolJSON geminiTextDelta
+	chunkSeq := 0
+	openToolChunk := 0
 
 	reader := newBoundedSSELineReader(resp.Body, s.cfg)
 	for {
@@ -2262,6 +2264,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		if err := json.Unmarshal(unwrappedBytes, &geminiResp); err != nil {
 			continue
 		}
+		chunkSeq++
 
 		if fr := extractGeminiFinishReason(geminiResp); fr != "" {
 			finishReason = fr
@@ -2393,8 +2396,24 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					openBlockType = ""
 				}
 
-				// If we receive streamed tool args in pieces, keep a single tool block open and emit deltas.
-				if openToolIndex >= 0 && openToolName != name {
+				argsJSONText := "{}"
+				switch v := args.(type) {
+				case nil:
+					// keep default "{}"
+				case string:
+					if strings.TrimSpace(v) != "" {
+						argsJSONText = v
+					}
+				default:
+					if b, err := json.Marshal(args); err == nil && len(b) > 0 {
+						argsJSONText = string(b)
+					}
+				}
+
+				// Parallel calls to one function arrive as consecutive parts with
+				// the same name; geminiFunctionCallContinuesOpenTool decides whether
+				// this part extends the open tool_use block or starts a new call.
+				if openToolIndex >= 0 && !geminiFunctionCallContinuesOpenTool(openToolName, seenToolJSON.seen.String(), name, argsJSONText, openToolChunk == chunkSeq) {
 					writeSSE(c.Writer, "content_block_stop", map[string]any{
 						"type":  "content_block_stop",
 						"index": openToolIndex,
@@ -2422,20 +2441,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 						},
 					})
 				}
-
-				argsJSONText := "{}"
-				switch v := args.(type) {
-				case nil:
-					// keep default "{}"
-				case string:
-					if strings.TrimSpace(v) != "" {
-						argsJSONText = v
-					}
-				default:
-					if b, err := json.Marshal(args); err == nil && len(b) > 0 {
-						argsJSONText = string(b)
-					}
-				}
+				openToolChunk = chunkSeq
 
 				delta := seenToolJSON.next(argsJSONText)
 				if delta != "" {
@@ -3457,6 +3463,28 @@ func (d *geminiTextDelta) next(incoming string) string {
 
 func (d *geminiTextDelta) reset() {
 	d.seen.Reset()
+}
+
+// geminiFunctionCallContinuesOpenTool reports whether a streamed functionCall
+// part continues the tool_use block that is still open instead of starting a
+// new tool call.
+//
+// Gemini returns every functionCall part complete (name plus full args) unless
+// argument streaming is requested, which these bridges never do. Parallel calls
+// to the same function therefore arrive as consecutive parts with the same
+// name, and each one is a separate call: merging them concatenates their
+// arguments into one invalid JSON input, and an identical second call vanishes.
+// The open block only continues while its arguments are still an unfinished
+// JSON fragment (an upstream streaming args in pieces) or when a later chunk
+// repeats the finished call verbatim (a cumulative stream).
+func geminiFunctionCallContinuesOpenTool(openName, openArgs, name, args string, sameChunk bool) bool {
+	if name != openName {
+		return false
+	}
+	if !json.Valid([]byte(openArgs)) {
+		return true
+	}
+	return !sameChunk && args == openArgs
 }
 
 func mapGeminiFinishReasonToClaudeStopReason(finishReason string) string {
