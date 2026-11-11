@@ -1072,11 +1072,25 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 							"message": disconnectMsg,
 						},
 					})
-					return nil, &UpstreamFailoverError{
+					failoverErr := &UpstreamFailoverError{
 						StatusCode:             http.StatusBadGateway,
 						ResponseBody:           body,
 						RetryableOnSameAccount: true,
 					}
+					// 重试成功时 handler 会丢弃该字段（见 partialStreamUsageResult 的不变式），
+					// 只有重试全部耗尽才用于补记上游已计量成本。
+					if account != nil && account.ShouldRecordFailedStreamUsage() && usage != nil && usage.hasObservedTokens() {
+						failoverErr.PartialResult = &ForwardResult{
+							Usage:            *usage,
+							Model:            originalModel,
+							UpstreamModel:    mappedModel,
+							Stream:           true,
+							Duration:         time.Since(startTime),
+							FirstTokenMs:     firstTokenMs,
+							ClientDisconnect: clientDisconnected,
+						}
+					}
+					return nil, failoverErr
 				}
 				sendErrorEvent("stream_read_error", disconnectMsg)
 				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs}, fmt.Errorf("stream read error: %w", ev.err)

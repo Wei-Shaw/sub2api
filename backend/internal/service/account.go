@@ -2399,6 +2399,22 @@ func (a *Account) IsAnthropicAPIKeyPassthroughEnabled() bool {
 	return ok && enabled
 }
 
+// ShouldRecordFailedStreamUsage 返回该账号在流式中断重试全部失败后是否仍要记录上游已计量的 usage。
+// 字段：accounts.extra.record_failed_stream_usage。
+// 字段缺失或类型不正确时按 false（关闭）处理，因此默认行为与未引入该开关前完全一致。
+//
+// 背景：partialStreamUsageResult 对 UpstreamFailoverError 故意返回 nil，避免"重试成功后
+// 与成功结果重复计费"。但重试最终耗尽（pool_mode 重试多次仍失败）时，上游对这些尝试
+// 已按 token 计费，不落库会让该账号的成本完全不可见。该开关只对开启了它的账号生效，
+// 用于按账号粒度控制影响面。
+func (a *Account) ShouldRecordFailedStreamUsage() bool {
+	if a == nil || a.Extra == nil {
+		return false
+	}
+	enabled, ok := a.Extra["record_failed_stream_usage"].(bool)
+	return ok && enabled
+}
+
 // WebSearch 模拟三态常量
 const (
 	WebSearchModeDefault  = "default"  // 跟随渠道配置
