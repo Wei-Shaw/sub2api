@@ -104,6 +104,72 @@ func TestOpenAICacheWriteTTLRecordUsage(t *testing.T) {
 	}
 }
 
+func TestCacheWriteTTLProjectionAndPricingCoexist(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		usage     OpenAIUsage
+		tokens    UsageTokens
+		cost      float64
+		statsCost float64
+	}{
+		{
+			name:      "OpenAI 30m and 12h",
+			usage:     OpenAIUsage{CacheCreationInputTokens: 50, CacheCreation30mInputTokens: 20, CacheCreation12hInputTokens: 30},
+			tokens:    UsageTokens{CacheCreationTokens: 50, CacheCreation30mTokens: 20, CacheCreation12hTokens: 30},
+			cost:      270,
+			statsCost: 250,
+		},
+		{
+			name:      "Anthropic partial details with 5m remainder",
+			usage:     OpenAIUsage{CacheCreationInputTokens: 100, CacheCreation5mTokens: 20, CacheCreation1hTokens: 30, cacheCreationInputTokensPresent: true},
+			tokens:    UsageTokens{CacheCreationTokens: 100, CacheCreation5mTokens: 20, CacheCreation1hTokens: 30},
+			cost:      260,
+			statsCost: 260,
+		},
+		{
+			name:      "Anthropic explicit zero falls back to details",
+			usage:     OpenAIUsage{CacheCreation5mTokens: 20, CacheCreation1hTokens: 30, cacheCreationInputTokensPresent: true},
+			tokens:    UsageTokens{CacheCreationTokens: 50, CacheCreation5mTokens: 20, CacheCreation1hTokens: 30},
+			cost:      160,
+			statsCost: 160,
+		},
+		{
+			name:      "Anthropic contradictory details capped at aggregate",
+			usage:     OpenAIUsage{CacheCreationInputTokens: 100, CacheCreation5mTokens: 50, CacheCreation1hTokens: 200, cacheCreationInputTokensPresent: true},
+			tokens:    UsageTokens{CacheCreationTokens: 100, CacheCreation5mTokens: 50, CacheCreation1hTokens: 200},
+			cost:      360,
+			statsCost: 360,
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			test.usage.InputTokens = 200
+			test.usage.CacheReadInputTokens = 10
+			test.usage.OutputTokens = 2
+			test.tokens.InputTokens = 190 - test.tokens.CacheCreationTokens
+			test.tokens.CacheReadTokens = 10
+			test.tokens.OutputTokens = 2
+			tokens := test.usage.billingUsageTokens()
+			require.Equal(t, test.tokens, tokens)
+
+			pricing := &ModelPricing{
+				SupportsCacheBreakdown:        true,
+				CacheCreation5mPrice:          2,
+				CacheCreation1hPrice:          4,
+				CacheCreation12hPricePerToken: float64Ptr(7),
+			}
+			service := &BillingService{}
+			require.Equal(t, test.cost*2, service.computeCacheCreationCost(pricing, tokens, 3, 2))
+			statsCost := calculateTokenStatsCost(&ChannelModelPricing{
+				CacheWritePrice:    float64Ptr(2),
+				CacheWrite1hPrice:  float64Ptr(4),
+				CacheWrite12hPrice: float64Ptr(7),
+			}, tokens)
+			require.NotNil(t, statsCost)
+			require.Equal(t, test.statsCost, *statsCost)
+		})
+	}
+}
+
 func TestOpenAICacheWriteTTLInvalidDetailsKeepAggregate(t *testing.T) {
 	for _, details := range []string{
 		`null`, `{}`, `{"ttl_12h_tokens":10}`,

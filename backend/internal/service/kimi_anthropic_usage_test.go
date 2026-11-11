@@ -246,3 +246,19 @@ func TestCNProviderAnthropicUsageBillsUncachedInput(t *testing.T) {
 		})
 	}
 }
+
+func TestMergeAnthropicUsagePreservesCacheCreationBreakdownPresence(t *testing.T) {
+	var first apicompat.AnthropicUsage
+	require.NoError(t, json.Unmarshal([]byte(`{"input_tokens":10,"cache_creation":{"ephemeral_5m_input_tokens":2,"ephemeral_1h_input_tokens":3}}`), &first))
+	var later apicompat.AnthropicUsage
+	require.NoError(t, json.Unmarshal([]byte(`{"output_tokens":7,"cache_creation":{"ephemeral_1h_input_tokens":0}}`), &later))
+
+	usage := &ClaudeUsage{}
+	mergeAnthropicUsage(usage, first)
+	mergeAnthropicUsage(usage, later)
+
+	require.Equal(t, 2, usage.CacheCreation5mTokens)
+	require.Equal(t, 0, usage.CacheCreation1hTokens)
+	require.Equal(t, 2, usage.CacheCreationInputTokens)
+	require.Equal(t, 7, usage.OutputTokens)
+}
