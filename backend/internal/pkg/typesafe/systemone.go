@@ -76,7 +76,7 @@ func validateSystemOneRequest(body []byte, allowCommandCode bool) (string, error
 	if err != nil {
 		return "", err
 	}
-	if model != JevLatestModel && !(allowCommandCode && IsCommandCodeJevModel(model)) {
+	if model != JevLatestModel && (!allowCommandCode || !IsCommandCodeJevModel(model)) {
 		if allowCommandCode {
 			return "", fmt.Errorf("model must be %s, %s or %s<version>", JevLatestModel, CommandCodeJevModel, commandCodeJevPinnedStart)
 		}
