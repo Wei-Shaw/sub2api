@@ -14,7 +14,9 @@ The update endpoint downloads a release archive, verifies its checksum when one 
 
 This operation does not pull a container image, change a Compose configuration or Kubernetes Deployment, drain other replicas, or verify their versions. Shared PostgreSQL and Redis do not distribute the downloaded executable. A shared operation lock coordinates update requests, but does not perform a multi-replica rollout.
 
-Some container supervisors support restarting a binary updated through the UI, including the documented Apple-container workflow. Such an update still changes the container's writable layer, not its image. Recreating the container uses the configured image again. An immutable or read-only container may reject the binary replacement entirely.
+Some container supervisors support restarting a binary updated through the UI. In the ordinary Docker layout, the executable is in the container's writable layer, so recreating the container restores the executable from its configured image. An immutable or read-only container may reject the binary replacement entirely.
+
+The [Apple-container workflow](APPLE_CONTAINER.md#web-ui-updates) persists the active executable in `sub2api-apple-data`. Routine `up`, `restart`, and `up --recreate` operations preserve a UI-downloaded update. When `APPLE_CONTAINER_SUB2API_IMAGE` resolves to a different image ID, the supervisor replaces the persisted executable with the image's binary; it also initializes the executable from the image if it is missing. UI updates do not change the image or coordinate other replicas in either layout.
 
 ## Container image updates
 
