@@ -383,14 +383,12 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 	// Print a compact upstream request fingerprint when we hit the Claude Code OAuth
 	// credential scope error. This avoids requiring env-var tweaks in a fixed deploy.
 	if isClaudeCodeCredentialScopeError(upstreamMsg) && c != nil {
-		if v, ok := c.Get(claudeMimicDebugInfoKey); ok {
-			if line, ok := v.(string); ok && strings.TrimSpace(line) != "" {
-				logger.LegacyPrintf("service.gateway", "[ClaudeMimicDebugOnError] status=%d request_id=%s %s",
-					resp.StatusCode,
-					resp.Header.Get("x-request-id"),
-					line,
-				)
-			}
+		if line := claudeMimicDebugLineFromContext(c); strings.TrimSpace(line) != "" {
+			logger.LegacyPrintf("service.gateway", "[ClaudeMimicDebugOnError] status=%d request_id=%s %s",
+				resp.StatusCode,
+				resp.Header.Get("x-request-id"),
+				line,
+			)
 		}
 	}
 
@@ -572,14 +570,12 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 	upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 
 	if isClaudeCodeCredentialScopeError(upstreamMsg) && c != nil {
-		if v, ok := c.Get(claudeMimicDebugInfoKey); ok {
-			if line, ok := v.(string); ok && strings.TrimSpace(line) != "" {
-				logger.LegacyPrintf("service.gateway", "[ClaudeMimicDebugOnError] status=%d request_id=%s %s",
-					resp.StatusCode,
-					resp.Header.Get("x-request-id"),
-					line,
-				)
-			}
+		if line := claudeMimicDebugLineFromContext(c); strings.TrimSpace(line) != "" {
+			logger.LegacyPrintf("service.gateway", "[ClaudeMimicDebugOnError] status=%d request_id=%s %s",
+				resp.StatusCode,
+				resp.Header.Get("x-request-id"),
+				line,
+			)
 		}
 	}
 

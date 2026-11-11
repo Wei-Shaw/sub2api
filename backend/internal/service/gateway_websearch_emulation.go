@@ -100,11 +100,10 @@ func isOnlyWebSearchToolInBody(body []byte) bool {
 	if !tools.IsArray() {
 		return false
 	}
-	arr := tools.Array()
-	if len(arr) != 1 {
+	if !tools.Get("0").Exists() || tools.Get("1").Exists() {
 		return false
 	}
-	return isWebSearchToolJSON(arr[0])
+	return isWebSearchToolJSON(tools.Get("0"))
 }
 
 func isWebSearchToolJSON(tool gjson.Result) bool {
@@ -125,12 +124,14 @@ func extractSearchQueryFromBody(body []byte) string {
 	if !messages.IsArray() {
 		return ""
 	}
-	arr := messages.Array()
-	if len(arr) == 0 {
-		return ""
-	}
-	lastMsg := arr[len(arr)-1]
-	if lastMsg.Get("role").String() != "user" {
+	var lastMsg gjson.Result
+	found := false
+	messages.ForEach(func(_, msg gjson.Result) bool {
+		lastMsg = msg
+		found = true
+		return true
+	})
+	if !found || lastMsg.Get("role").String() != "user" {
 		return ""
 	}
 	return extractWebSearchTextFromContent(lastMsg.Get("content"))
@@ -141,13 +142,17 @@ func extractWebSearchTextFromContent(content gjson.Result) string {
 		return content.String()
 	}
 	if content.IsArray() {
-		for _, block := range content.Array() {
+		var result string
+		content.ForEach(func(_, block gjson.Result) bool {
 			if block.Get("type").String() == "text" {
 				if text := block.Get("text").String(); text != "" {
-					return text
+					result = text
+					return false
 				}
 			}
-		}
+			return true
+		})
+		return result
 	}
 	return ""
 }
