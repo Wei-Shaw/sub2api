@@ -15,6 +15,7 @@ import (
 
 // mockAccountRepoForGemini Gemini 测试用的 mock
 type mockAccountRepoForGemini struct {
+	AccountNameRepository
 	accounts           []Account
 	accountsByID       map[int64]*Account
 	listByGroupFunc    func(ctx context.Context, groupID int64, platforms []string) ([]Account, error)

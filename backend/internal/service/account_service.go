@@ -152,6 +152,7 @@ type AdminAccountRepository interface {
 	AccountRepository
 	AccountDuplicateRepository
 	AccountBillingSettingsRepository
+	AccountNameRepository
 }
 
 // AccountBulkUpdate describes the fields that can be updated in a bulk operation.
