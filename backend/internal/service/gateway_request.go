@@ -9,6 +9,7 @@ import (
 	"math"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"unsafe"
 
@@ -2008,6 +2009,96 @@ func RectifyThinkingBudget(body []byte) ([]byte, bool) {
 	}
 
 	return modified, changed
+}
+
+// =========================
+// Max Tokens Rectifier
+// =========================
+
+// maxTokensRectifyMinBudgetTokens is the smallest thinking.budget_tokens Anthropic accepts.
+const maxTokensRectifyMinBudgetTokens = 1024
+
+var (
+	// "max_tokens: 131072 > 128000, which is the maximum allowed number of output tokens for claude-opus-5-5"
+	maxTokensModelLimitErrorRe = regexp.MustCompile(`(?i)max_tokens:\s*(\d+)\s*>\s*(\d+),\s*which is the maximum allowed number of output tokens`)
+	// "non-streaming requests cannot set max_tokens to 128000 or above; use stream=true or a lower max_tokens"
+	maxTokensNonStreamingErrorRe = regexp.MustCompile(`(?i)non-streaming requests cannot set max_tokens to\s*(\d+)\s*or above`)
+)
+
+// parseMaxTokensLimitError recognizes upstream errors caused by a max_tokens value
+// above what the model/request mode accepts and returns the largest allowed value:
+//  1. "max_tokens: N > M, which is the maximum allowed number of output tokens ..." → M
+//  2. "non-streaming requests cannot set max_tokens to N or above ..." → N-1
+//
+// Any other message, or a message whose numbers cannot be parsed, returns false.
+func parseMaxTokensLimitError(errMsg string) (int64, bool) {
+	if m := maxTokensModelLimitErrorRe.FindStringSubmatch(errMsg); m != nil {
+		requested, err1 := strconv.ParseInt(m[1], 10, 64)
+		limit, err2 := strconv.ParseInt(m[2], 10, 64)
+		if err1 != nil || err2 != nil || limit <= 0 || requested <= limit {
+			return 0, false
+		}
+		return limit, true
+	}
+	if m := maxTokensNonStreamingErrorRe.FindStringSubmatch(errMsg); m != nil {
+		threshold, err := strconv.ParseInt(m[1], 10, 64)
+		if err != nil || threshold <= 1 {
+			return 0, false
+		}
+		return threshold - 1, true
+	}
+	return 0, false
+}
+
+// RectifyMaxTokens lowers max_tokens to limit. When thinking.type is "enabled" and
+// thinking.budget_tokens >= limit, budget_tokens is scaled down proportionally
+// (keeping the client's thinking/answer split) so that budget_tokens < max_tokens.
+// Adaptive (and any other non-"enabled") thinking has no budget to keep in sync, so
+// only max_tokens changes.
+// Returns (original body, false) when max_tokens is already within limit or no legal
+// budget_tokens (>= 1024) fits below limit.
+func RectifyMaxTokens(body []byte, limit int64) ([]byte, bool) {
+	if limit <= 0 {
+		return body, false
+	}
+	maxTokensResult := gjson.GetBytes(body, "max_tokens")
+	if !maxTokensResult.Exists() {
+		return body, false
+	}
+	original := maxTokensResult.Int()
+	if original <= limit {
+		return body, false
+	}
+
+	modified, err := sjson.SetBytes(body, "max_tokens", limit)
+	if err != nil {
+		return body, false
+	}
+
+	if gjson.GetBytes(modified, "thinking.type").String() != "enabled" {
+		return modified, true
+	}
+	budgetResult := gjson.GetBytes(modified, "thinking.budget_tokens")
+	if !budgetResult.Exists() {
+		return modified, true
+	}
+	budget := budgetResult.Int()
+	if budget < limit {
+		return modified, true
+	}
+
+	newBudget := int64(float64(budget) * float64(limit) / float64(original))
+	if newBudget >= limit {
+		newBudget = limit - 1
+	}
+	if newBudget < maxTokensRectifyMinBudgetTokens {
+		return body, false
+	}
+	modified, err = sjson.SetBytes(modified, "thinking.budget_tokens", newBudget)
+	if err != nil {
+		return body, false
+	}
+	return modified, true
 }
 
 // NormalizeChineseLLMThinking rewrites the top-level `thinking` object for Chinese
