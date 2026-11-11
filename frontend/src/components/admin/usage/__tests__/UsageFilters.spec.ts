@@ -130,6 +130,16 @@ describe('UsageFilters — user search dropdown', () => {
     vi.useRealTimers()
   })
 
+  it('shows and clears a key ID supplied by a dashboard link', async () => {
+    const wrapper = mountFilters()
+    await wrapper.setProps({ modelValue: { ...defaultFilters(), api_key_id: 9 } })
+    expect((wrapper.find('input[placeholder="Search API key..."]').element as HTMLInputElement).value).toBe('#9')
+    await wrapper.find('button[aria-label="Clear API key filter"]').trigger('click')
+    expect(wrapper.props('modelValue').api_key_id).toBeUndefined()
+    expect((wrapper.find('input[placeholder="Search API key..."]').element as HTMLInputElement).value).toBe('')
+    wrapper.unmount()
+  })
+
   it('(a) labels deleted users with the i18n badge and (b) sorts active users before deleted ones, (c) selection sets user_id', async () => {
     // Arrange: mock returns deleted FIRST (proves sorting re-orders to active-first)
     mockSearchUsers.mockResolvedValue([

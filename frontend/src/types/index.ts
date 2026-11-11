@@ -1989,6 +1989,8 @@ export interface RedeemCodeRequest {
 
 // ==================== Dashboard & Statistics ====================
 
+export type DashboardDimension = 'user' | 'api_key'
+
 export interface DashboardStats {
   // 用户统计
   total_users: number
@@ -2104,6 +2106,8 @@ export interface GroupStat {
 }
 
 export interface UserBreakdownItem {
+  api_key_id?: number
+  key_name?: string
   user_id: number
   email: string
   requests: number
@@ -2128,6 +2132,8 @@ export interface UserUsageTrendPoint {
 }
 
 export interface UserSpendingRankingItem {
+  api_key_id?: number
+  key_name?: string
   user_id: number
   email: string
   username: string
@@ -2151,6 +2157,7 @@ export interface ApiKeyUsageTrendPoint {
   key_name: string
   requests: number
   tokens: number
+  actual_cost: number
 }
 
 // ==================== Admin User Management ====================

@@ -1619,7 +1619,7 @@ func (s *UsageLogRepoSuite) TestGetAPIKeyUsageTrend() {
 	startTime := base.Add(-1 * time.Hour)
 	endTime := base.Add(48 * time.Hour)
 
-	trend, err := s.repo.GetAPIKeyUsageTrend(s.ctx, startTime, endTime, "day", 10)
+	trend, err := s.repo.GetAPIKeyUsageTrend(s.ctx, startTime, endTime, "day", 10, "tokens")
 	s.Require().NoError(err, "GetAPIKeyUsageTrend")
 	s.Require().GreaterOrEqual(len(trend), 2)
 }
@@ -1636,9 +1636,49 @@ func (s *UsageLogRepoSuite) TestGetAPIKeyUsageTrend_HourlyGranularity() {
 	startTime := base.Add(-1 * time.Hour)
 	endTime := base.Add(3 * time.Hour)
 
-	trend, err := s.repo.GetAPIKeyUsageTrend(s.ctx, startTime, endTime, "hour", 10)
+	trend, err := s.repo.GetAPIKeyUsageTrend(s.ctx, startTime, endTime, "hour", 10, "tokens")
 	s.Require().NoError(err, "GetAPIKeyUsageTrend hourly")
 	s.Require().Len(trend, 2)
+}
+
+func (s *UsageLogRepoSuite) TestGetAPIKeyUsageTrend_SelectsTopByMetric() {
+	user := mustCreateUser(s.T(), s.client, &service.User{Email: "key-metric@test.com"})
+	tokenKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-key-metric-tokens", Name: "shared"})
+	spendKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-key-metric-spend", Name: "shared"})
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "key-metric"})
+	at := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
+	s.createUsageLog(user, tokenKey, account, 1000, 0, 0.1, at)
+	s.createUsageLog(user, spendKey, account, 10, 0, 5, at)
+	s.createUsageLog(user, spendKey, account, 20, 0, 2, at)
+	// Exclude the end boundary from both the Top N selection and the totals.
+	s.createUsageLog(user, tokenKey, account, 10000, 0, 100, at.Add(time.Hour))
+	start, end := at.Add(-time.Hour), at.Add(time.Hour)
+	tokens, err := s.repo.GetAPIKeyUsageTrend(s.ctx, start, end, "day", 1, "tokens")
+	s.Require().NoError(err)
+	s.Require().Len(tokens, 1)
+	s.Require().Equal(tokenKey.ID, tokens[0].APIKeyID)
+	spend, err := s.repo.GetAPIKeyUsageTrend(s.ctx, start, end, "day", 1, "actual_cost")
+	s.Require().NoError(err)
+	s.Require().Len(spend, 1)
+	s.Require().Equal(spendKey.ID, spend[0].APIKeyID)
+	s.Require().Equal(7.0, spend[0].ActualCost)
+	s.Require().Equal(int64(30), spend[0].Tokens)
+	s.Require().Equal(int64(2), spend[0].Requests)
+
+	keyRanking, err := s.repo.GetUserSpendingRanking(s.ctx, start, end, 12, "api_key")
+	s.Require().NoError(err)
+	s.Require().Len(keyRanking.Ranking, 2)
+	s.Require().Equal(spendKey.ID, keyRanking.Ranking[0].APIKeyID)
+	s.Require().Equal(tokenKey.ID, keyRanking.Ranking[1].APIKeyID)
+	userRanking, err := s.repo.GetUserSpendingRanking(s.ctx, start, end, 12, "user")
+	s.Require().NoError(err)
+	s.Require().Len(userRanking.Ranking, 1)
+	s.Require().Equal(userRanking.TotalActualCost, keyRanking.TotalActualCost)
+	s.Require().Equal(userRanking.TotalTokens, keyRanking.TotalTokens)
+	breakdown, err := s.repo.GetUserBreakdownStats(s.ctx, start, end, usagestats.UserBreakdownDimension{GroupBy: "api_key", Model: "claude-3"}, 50)
+	s.Require().NoError(err)
+	s.Require().Len(breakdown, 2)
+	s.Require().Equal(spendKey.ID, breakdown[0].APIKeyID)
 }
 
 // --- ListWithFilters (additional filter tests) ---
