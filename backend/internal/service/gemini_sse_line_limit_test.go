@@ -30,11 +30,11 @@ func TestGeminiStreamsRejectOversizedUpstreamLines(t *testing.T) {
 			return err
 		},
 		"messages": func(c *gin.Context, resp *http.Response) error {
-			_, err := svc.handleStreamingResponse(c, resp, time.Now(), "gemini-2.5-pro")
+			_, err := svc.handleStreamingResponse(c, resp, time.Now(), "gemini-2.5-pro", &Account{ID: 1, Platform: PlatformGemini}, "")
 			return err
 		},
 		"chat_completions": func(c *gin.Context, resp *http.Response) error {
-			_, err := svc.handleChatCompletionsStreamingResponseFromGemini(c, resp, time.Now(), "gemini-2.5-pro", false, false)
+			_, err := svc.handleChatCompletionsStreamingResponseFromGemini(c, resp, time.Now(), "gemini-2.5-pro", false, false, &Account{ID: 1, Platform: PlatformGemini}, "")
 			return err
 		},
 		"collector": func(_ *gin.Context, resp *http.Response) error {
