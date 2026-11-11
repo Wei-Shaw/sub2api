@@ -268,6 +268,16 @@ func TestDuplicateGroupRecoversSameOperationAndScopesByAdmin(t *testing.T) {
 	require.Equal(t, "team (Copy 2)", otherAdmin.Name)
 }
 
+func TestDuplicateGroupPreservesUltrafastPolicy(t *testing.T) {
+	source := &Group{ID: 9, Name: "ultrafast", Platform: PlatformOpenAI, Status: StatusActive, ForceOpenAIUltrafast: true}
+	repo := newDuplicateGroupRepoStub(source)
+	svc := &adminServiceImpl{groupRepo: repo, groupDuplicateRepo: repo}
+	duplicate, err := svc.DuplicateGroup(context.Background(), source.ID, "admin:7", "ultrafast-policy")
+	require.NoError(t, err)
+	require.True(t, duplicate.ForceOpenAIUltrafast)
+	require.False(t, duplicate.ForceOpenAIFast)
+}
+
 func TestDuplicateGroupAdvancesNameAndTruncatesUnicodeByRunes(t *testing.T) {
 	source := &Group{ID: 12, Name: "team", Platform: PlatformAnthropic, Status: StatusActive}
 	repo := newDuplicateGroupRepoStub(source)
