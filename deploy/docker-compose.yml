@@ -250,7 +250,7 @@ services:
       -c shared_buffers=${POSTGRES_SHARED_BUFFERS:-128MB}
       -c effective_cache_size=${POSTGRES_EFFECTIVE_CACHE_SIZE:-4GB}
       -c maintenance_work_mem=${POSTGRES_MAINTENANCE_WORK_MEM:-64MB}
-    volumes:
+    volumes:https://github.com/Wei-Shaw/sub2api/pull/8600/conflict?name=deploy%252Fdocker-compose.yml&ancestor_oid=fd682a87e66ed15922ef9dc3b46217ed3d1a9809&base_oid=9cf8b8011a8f32b8d57e2c96d324400b1b26abb0&head_oid=4d94afb1ab7e9e46c0d267604099d9f2caeb9d14
       - postgres_data:/var/lib/postgresql/data
     environment:
       # postgres:18-alpine 默认 PGDATA=/var/lib/postgresql/18/docker（位于镜像声明的匿名卷 /var/lib/postgresql 内）。
@@ -273,8 +273,10 @@ services:
       timeout: 5s
       retries: 18
       start_period: 60s
-    # 注意：不暴露端口到宿主机，应用通过内部网络连接
-    # 如需调试，可临时添加：ports: ["127.0.0.1:5433:5432"]
+    ports:
+      # 注意：不暴露端口到宿主机，应用通过内部网络连接
+      # 如需调试，可临时添加：ports: ["127.0.0.1:5433:5432"]
+      - "127.0.0.1:5432:5432"
 
   # ===========================================================================
   # Redis Cache
