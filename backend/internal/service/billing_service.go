@@ -426,7 +426,7 @@ func (s *BillingService) initFallbackPricing() {
 		InputPricePerToken:         2e-6,
 		OutputPricePerToken:        10e-6,
 		CacheCreationPricePerToken: 2.5e-6,
-		CacheReadPricePerToken:     0.2e-6,
+		CacheReadPricePerToken:     0.1e-6,
 		CacheCreation5mPrice:       2.5e-6,
 		CacheCreation1hPrice:       4e-6,
 		SupportsCacheBreakdown:     true,
@@ -445,7 +445,19 @@ func (s *BillingService) initFallbackPricing() {
 		LongContextInputMultiplier:  5,
 		LongContextOutputMultiplier: 5,
 	}
-	// Claude Fable 5.x uses the same input/output and cache-write prices, while
+	for _, model := range []string{"claude-fable-5-2", "claude-mythos-5-2"} {
+		p := claude52FallbackPricing
+		s.fallbackPrices[model] = &ModelPricing{
+			InputPricePerToken:         p.InputCostPerToken,
+			OutputPricePerToken:        p.OutputCostPerToken,
+			CacheCreationPricePerToken: p.CacheCreationInputTokenCost,
+			CacheCreation5mPrice:       p.CacheCreationInputTokenCost,
+			CacheCreation1hPrice:       p.CacheCreationInputTokenCostAbove1hr,
+			CacheReadPricePerToken:     p.CacheReadInputTokenCost,
+			SupportsCacheBreakdown:     true,
+		}
+	}
+	// Claude Fable 5.0 and 5.1 use the same input/output and cache-write prices, while
 	// Fable 5.1 reduces cache reads from $1 to $0.25 per MTok.
 	s.fallbackPrices["claude-fable-5"] = &ModelPricing{
 		InputPricePerToken:         10e-6,
@@ -1065,6 +1077,12 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	}
 
 	// 按模型系列匹配
+	if claude.IsFable52(modelLower) {
+		return s.fallbackPrices["claude-fable-5-2"]
+	}
+	if claude.IsMythos52(modelLower) {
+		return s.fallbackPrices["claude-mythos-5-2"]
+	}
 	if isClaudeFable51Model(modelLower) {
 		return s.fallbackPrices["claude-fable-5-1"]
 	}

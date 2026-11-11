@@ -50,6 +50,48 @@ func TestChatInputAudioConvertersPreserveReasoningValidation(t *testing.T) {
 	}
 }
 
+func TestChatInputAudioPreservesAdaptiveThinkingConversion(t *testing.T) {
+	for _, model := range []string{"claude-fable-5-2", "claude-mythos-5-2", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"} {
+		for _, thinking := range []AnthropicContentBlock{
+			{Type: "thinking", Signature: "upstream-signed-block"},
+			{Type: "redacted_thinking", Data: "upstream-redacted-block"},
+		} {
+			t.Run(model+"/"+thinking.Type, func(t *testing.T) {
+				request := &ChatCompletionsRequest{
+					Model:    "gemini-3.1-pro-high",
+					Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`[{"type":"input_audio","input_audio":{"data":"YXVkaW8=","format":"wav"}}]`)}},
+				}
+				converted, err := ChatCompletionsToResponsesForGemini(request)
+				require.NoError(t, err)
+				var items []ResponsesInputItem
+				require.NoError(t, json.Unmarshal(converted.Input, &items))
+				response := AnthropicToResponsesResponse(&AnthropicResponse{Model: model, Content: []AnthropicContentBlock{thinking, {Type: "text", Text: "progress"}}})
+				raw, err := json.Marshal(response.Output)
+				require.NoError(t, err)
+				var history []ResponsesInputItem
+				require.NoError(t, json.Unmarshal(raw, &history))
+				converted.Input, err = json.Marshal(append(items, history...))
+				require.NoError(t, err)
+				converted.Model = model
+				anthropic, err := ResponsesToAnthropicRequest(converted)
+				require.NoError(t, err)
+				require.Equal(t, "adaptive", anthropic.Thinking.Type)
+				require.Len(t, anthropic.Messages, 2)
+				var audioBlocks []AnthropicContentBlock
+				require.NoError(t, json.Unmarshal(anthropic.Messages[0].Content, &audioBlocks))
+				require.Len(t, audioBlocks, 1)
+				require.Equal(t, "image", audioBlocks[0].Type)
+				require.Equal(t, &AnthropicImageSource{Type: "base64", MediaType: "audio/wav", Data: "YXVkaW8="}, audioBlocks[0].Source)
+				var thinkingBlocks []AnthropicContentBlock
+				require.NoError(t, json.Unmarshal(anthropic.Messages[1].Content, &thinkingBlocks))
+				require.Len(t, thinkingBlocks, 2)
+				require.Equal(t, thinking, thinkingBlocks[0])
+				require.Equal(t, "progress", thinkingBlocks[1].Text)
+			})
+		}
+	}
+}
+
 func TestChatInputAudioCaseInsensitiveTextSibling(t *testing.T) {
 	audio := `{"type":"input_audio","input_audio":{"data":"YXVkaW8=","format":"wav"}}`
 	for _, sibling := range []string{
