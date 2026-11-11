@@ -300,14 +300,19 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	token string,
 ) (*http.Request, []byte, error) {
 	body = stripDeferredToolCacheControl(body)
+	// 与 buildUpstreamRequest 同源的 base 协议化：CN/多协议账号按协议 base 拼
+	// /v1/messages（无 ?beta=true）；classic anthropic 保持
+	// GetBaseURL()+"/v1/messages?beta=true"。认证 / clamp 与本次实际选用的 base 同源。
 	targetURL := claudeAPIURL
 	baseURL := getAnthropicGatewayBaseURL(account)
-	if baseURL != "" {
-		validatedURL, err := s.validateUpstreamBaseURL(baseURL)
+	if account.Type == AccountTypeAPIKey {
+		protocolTargetURL, err := s.anthropicUpstreamTargetURL(account, "/v1/messages")
 		if err != nil {
 			return nil, nil, err
 		}
-		targetURL = buildAnthropicMessagesURL(validatedURL)
+		if protocolTargetURL != "" {
+			targetURL = protocolTargetURL
+		}
 	}
 
 	// 能力维度 body sanitize：透传路径上 anthropic-beta header 原样透传客户端值，

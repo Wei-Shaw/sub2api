@@ -770,7 +770,25 @@ func logResponseModelBillingApplied(component string, account *Account, requestI
 }
 
 // recordUsageCore 是 RecordUsage 的核心实现。
+// usagePricingContext 把组合分组的定价作用域限定到本次请求实际服务的平台。后扣运行在
+// worker 池的 background ctx 上，取不到请求期的目标平台；handler 已在请求 ctx 内把它算定
+// 为 QuotaPlatform（账号池请求为选中账号的平台）。各平台渠道定价严格独立，不能按组合
+// 分组的回退顺序取到其他平台的价格。
+func usagePricingContext(ctx context.Context, apiKey *APIKey, quotaPlatform string) context.Context {
+	if ctx == nil || apiKey == nil || apiKey.Group == nil || apiKey.Group.Platform != PlatformComposite {
+		return ctx
+	}
+	if _, ok := ResolvedTargetPlatformFromContext(ctx); ok {
+		return ctx
+	}
+	if platform := strings.TrimSpace(quotaPlatform); isConcreteRequestPlatform(platform) {
+		return WithResolvedTargetPlatform(ctx, platform)
+	}
+	return ctx
+}
+
 func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsageCoreInput) error {
+	ctx = usagePricingContext(ctx, input.APIKey, input.QuotaPlatform)
 	result := input.Result
 	apiKey := input.APIKey
 	user := input.User
@@ -797,7 +815,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	}
 
 	multiplier, imageMultiplier, pricingAt := s.recordUsageMultipliers(ctx, apiKey, user, input.PricingAt)
-	billingModel := s.recordUsageBillingModel(ctx, apiKey, result, input.ChannelUsageFields)
+	billingModel := s.recordUsageBillingModel(ctx, apiKey, account, result, input.ChannelUsageFields)
 	cacheStorageCost := s.cacheStorageCost(result, billingModel)
 
 	// 确定 RequestedModel（渠道映射前的原始模型）
@@ -927,8 +945,16 @@ func (s *GatewayService) recordUsageMultipliers(ctx context.Context, apiKey *API
 }
 
 // recordUsageBillingModel 按计费模型来源、composite 规则与无价兜底确定计费模型。
-func (s *GatewayService) recordUsageBillingModel(ctx context.Context, apiKey *APIKey, result *ForwardResult, fields ChannelUsageFields) string {
+// account 用于识别托管模型上游（CN 供应商 / OpenCode Go / Ollama Cloud，见
+// accountServesHostedModels）：其请求名只是入站别名，计费须按实际转发的模型。
+func (s *GatewayService) recordUsageBillingModel(ctx context.Context, apiKey *APIKey, account *Account, result *ForwardResult, fields ChannelUsageFields) string {
 	concreteBillingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
+	hostedModels := accountServesHostedModels(account)
+	if hostedModels {
+		// 托管模型上游（composite 跨族池经 generic 链转发的 CN / Ollama Cloud 账号）
+		// 按实际转发的模型计费，与 OpenAI 链 result.BillingModel 同口径。
+		concreteBillingModel = forwardResultBillingModel(result.UpstreamModel, result.Model)
+	}
 	billingModel := concreteBillingModel
 	if fields.BillingModelSource == BillingModelSourceChannelMapped && fields.ChannelMappedModel != "" {
 		billingModel = fields.ChannelMappedModel
@@ -945,7 +971,16 @@ func (s *GatewayService) recordUsageBillingModel(ctx context.Context, apiKey *AP
 	}
 	// 通用兜底（与 OpenAI 路径的 usageBillingModelCandidates 语义对齐）：
 	// 选定模型查不到任何价格时回退到实际转发的具体模型。已定价流量不受影响。
-	return s.billableModelWithFallback(ctx, apiKey, billingModel, result.UpstreamModel, result.Model)
+	billingModel = s.billableModelWithFallback(ctx, apiKey, billingModel, result.UpstreamModel, result.Model)
+	if hostedModels {
+		// 与 OpenAI 链 filterCNProviderBillingModelCandidates 一致：claude-* 名不会被
+		// 托管上游真正服务，未显式定价时不得按 Claude 价计费；候选全部落空则走零成本告警。
+		billingModel = firstUsageBillingModel(dropUnpricedClaudeBillingCandidates(
+			usageBillingModelCandidates(billingModel, concreteBillingModel),
+			func(model string) bool { return s.resolveChannelPricing(ctx, model, apiKey) != nil },
+		))
+	}
+	return billingModel
 }
 
 // cacheStoragePrice 返回计费模型的显式缓存存储单价；计费模型未配置时依次回退到实际转发模型与请求模型。
@@ -982,7 +1017,7 @@ func isCacheStorageOnlyResult(result *ForwardResult) bool {
 
 // CacheStoragePriced 判断 RecordUsage 对 input.Result 采用的计费模型（含回退候选）是否配置了显式缓存存储单价。
 func (s *GatewayService) CacheStoragePriced(ctx context.Context, input *RecordUsageInput) bool {
-	billingModel := s.recordUsageBillingModel(ctx, input.APIKey, input.Result, input.ChannelUsageFields)
+	billingModel := s.recordUsageBillingModel(ctx, input.APIKey, input.Account, input.Result, input.ChannelUsageFields)
 	return s.cacheStoragePrice(input.Result, billingModel) > 0
 }
 
@@ -993,7 +1028,7 @@ func (s *GatewayService) QuoteUsageCost(ctx context.Context, input *RecordUsageI
 		user = input.APIKey.User
 	}
 	multiplier, imageMultiplier, pricingAt := s.recordUsageMultipliers(ctx, input.APIKey, user, input.PricingAt)
-	billingModel := s.recordUsageBillingModel(ctx, input.APIKey, input.Result, input.ChannelUsageFields)
+	billingModel := s.recordUsageBillingModel(ctx, input.APIKey, input.Account, input.Result, input.ChannelUsageFields)
 	cost := s.calculateRecordUsageCost(ctx, input.Result, input.APIKey, billingModel, multiplier, imageMultiplier, pricingAt)
 	if cost == nil {
 		return 0

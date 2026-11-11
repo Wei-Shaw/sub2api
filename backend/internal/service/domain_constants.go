@@ -52,6 +52,8 @@ const (
 	PlatformTypeSafe    = domain.PlatformTypeSafe
 	PlatformCommandCode = domain.PlatformCommandCode
 	PlatformCline       = domain.PlatformCline
+	// PlatformOllamaCloud 是 Ollama Cloud 订阅制聚合上游。
+	PlatformOllamaCloud = domain.PlatformOllamaCloud
 	PlatformComposite   = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
@@ -64,6 +66,9 @@ const (
 	AccountModeCoding = domain.AccountModeCoding
 	AccountModeZen    = domain.AccountModeZen
 	AccountModeGo     = domain.AccountModeGo
+
+	AccountModeOllamaLegacy  = domain.AccountModeOllamaLegacy  // Ollama Cloud legacy：5h / 7d 滚动窗口
+	AccountModeOllamaCredits = domain.AccountModeOllamaCredits // Ollama Cloud 月度美元信用池
 )
 
 // 上游 API 协议（国产供应商）：决定转发端点与格式，与接入模式正交。
@@ -88,6 +93,8 @@ const (
 	DefaultOpenCodeGoBaseURL = "https://opencode.ai/zen/go/v1"
 	// OpenCode Zen：按量付费网关，模型列表为 /zen/v1/models。
 	DefaultOpenCodeZenBaseURL = "https://opencode.ai/zen/v1"
+	// Ollama Cloud：Chat Completions / Responses 共用带 /v1 的基址。
+	DefaultOllamaCloudBaseURL = "https://ollama.com/v1"
 	// Command Code Provider API：Chat Completions / Responses / models 共用 /provider/v1 基址。
 	DefaultCommandCodeBaseURL = "https://api.commandcode.ai/provider/v1"
 	// Cline API：只提供 Chat Completions（{base}/chat/completions）与模型列表。
@@ -105,6 +112,8 @@ const (
 	// OpenCode Go Anthropic 基址不含 /v1：nativeAnthropicTargetURL 会再拼 /v1/messages。
 	DefaultOpenCodeGoAnthropicBaseURL  = "https://opencode.ai/zen/go"
 	DefaultOpenCodeZenAnthropicBaseURL = "https://opencode.ai/zen"
+	// Ollama Cloud Anthropic 基址不含 /v1：nativeAnthropicTargetURL 会再拼 /v1/messages。
+	DefaultOllamaCloudAnthropicBaseURL = "https://ollama.com"
 	// Command Code 的 Anthropic 端点为 /provider/v1/messages（Claude 系模型只在此端点提供）。
 	DefaultCommandCodeAnthropicBaseURL = "https://api.commandcode.ai/provider"
 )
@@ -118,6 +127,11 @@ func IsCNProvider(platform string) bool {
 // IsOpenCodeGo 报告 platform 是否为 OpenCode Go 订阅网关。
 func IsOpenCodeGo(platform string) bool {
 	return platform == PlatformOpenCodeGo
+}
+
+// IsOllamaCloud 报告 platform 是否为 Ollama Cloud 多协议 API Key 网关。
+func IsOllamaCloud(platform string) bool {
+	return platform == PlatformOllamaCloud
 }
 
 // IsMultiProtocolAPIKeyProvider 报告 platform 是否为多协议 API Key 网关
@@ -135,6 +149,8 @@ var AllowedQuotaPlatforms = domain.ConcretePlatformIDs()
 // openai/anthropic/grok 有原生用量窗口；kimi/zhipu/minimax 的 Coding Plan 同样暴露
 // 5h/weekly 滚动窗口，纳入阈值评估。deepseek 为余额型，走余额检测而非阈值。
 // OpenCode Go 与 Command Code 的订阅套餐另有月度窗口。
+// ollama_cloud 仅 legacy 账号有 5h/7d 滚动窗口可等 reset；credits 型是月度美元
+// 信用池、没有窗口 reset，评估器候选恒空（见 ollamaCloudThresholdCandidates）。
 var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformOpenAI,
 	PlatformAnthropic,
@@ -144,6 +160,7 @@ var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformMiniMax,
 	PlatformOpenCodeGo,
 	PlatformCommandCode,
+	PlatformOllamaCloud,
 }
 
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。

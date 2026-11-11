@@ -213,6 +213,14 @@ func TestGrokMonitorConfiguration(t *testing.T) {
 	}
 }
 
+// ollama_cloud 探活适配器与 OpenAI Chat 同构：replace 模式的请求体同样必须带 messages，
+// 否则保存成功后每次探活都失败。
+func TestValidateReplaceRequestBody_OllamaCloudRequiresMessages(t *testing.T) {
+	if err := validateReplaceRequestBody(MonitorProviderOllamaCloud, MonitorAPIModeChatCompletions, map[string]any{}); err == nil {
+		t.Fatal("ollama_cloud replace-mode body should require messages")
+	}
+}
+
 func TestRunCheckForModel_Grok_DefaultChatRequest(t *testing.T) {
 	h := &openAICaptureHandler{}
 	endpoint := setupFakeOpenAI(t, h)

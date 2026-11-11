@@ -25,8 +25,10 @@ func NewChannelMonitorRequestTemplateHandler(templateService *service.ChannelMon
 // --- DTO ---
 
 type channelMonitorTemplateCreateRequest struct {
-	Name             string            `json:"name" binding:"required,max=100"`
-	Provider         string            `json:"provider" binding:"required,oneof=openai anthropic gemini grok"`
+	Name string `json:"name" binding:"required,max=100"`
+	// Provider 为历史短列表：CN 5 平台缺失属历史债（本批不扩），仅补 ollama_cloud
+	// 与监控/模板的 service 层放行对齐。模板按 provider 与监控匹配（应用时校验一致）。
+	Provider         string            `json:"provider" binding:"required,oneof=openai anthropic gemini grok ollama_cloud"`
 	APIMode          string            `json:"api_mode" binding:"omitempty,oneof=chat_completions responses"`
 	Description      string            `json:"description" binding:"max=500"`
 	ExtraHeaders     map[string]string `json:"extra_headers"`

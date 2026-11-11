@@ -148,6 +148,19 @@
             </button>
           </div>
         </div>
+        <!-- Ollama Cloud credits 模式的月度信用额度（USD）：额度分母 -->
+        <div v-if="isOllamaCreditsAccount" data-testid="edit-ollama-monthly-credit">
+          <label class="input-label">{{ t('admin.accounts.ollamaCloud.accountMode.monthlyCreditUsd') }}</label>
+          <input
+            v-model="editOllamaMonthlyCreditUsd"
+            type="number"
+            min="0"
+            step="1"
+            class="input"
+            :placeholder="t('admin.accounts.ollamaCloud.accountMode.monthlyCreditUsdPlaceholder')"
+            data-testid="edit-ollama-monthly-credit-usd"
+          />
+        </div>
         <!-- Account Mode Selection (CN providers) -->
         <div v-if="isCNApiKeyAccount && isCNProviderPlatform(account.platform)">
           <label class="input-label">{{ t('admin.accounts.cnProviders.accountMode.title') }}</label>
@@ -3451,6 +3464,7 @@ import {
   defaultOpenCodeProtocolRules,
   defaultProviderProtocolRules,
   isMultiProtocolApiKeyPlatform,
+  parseOllamaMonthlyCreditUsd,
   parseOpenCodeGoProtocolRules,
   providerAccountModes,
   providerModeLabel,
@@ -3676,6 +3690,11 @@ const isGenericMultiProtocolAccount = computed(
     props.account?.platform !== 'opencode_go'
 )
 const genericAccountModes = computed(() => providerAccountModes(props.account?.platform ?? ''))
+// Ollama Cloud credits 模式的月度信用额度（USD）输入；仅 credits 模式写入凭据。
+const editOllamaMonthlyCreditUsd = ref('60')
+const isOllamaCreditsAccount = computed(
+  () => isGenericMultiProtocolAccount.value && props.account?.platform === 'ollama_cloud' && editAccountMode.value === 'ollama_credits'
+)
 // CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
 // `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
 const cnPresetPlatform = computed<CnProviderPlatform>(() => {
@@ -4876,6 +4895,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
       } else {
         editAccountMode.value = resolveProviderAccountMode(newAccount.platform, credentials.account_mode)
       }
+      if (newAccount.platform === 'ollama_cloud') {
+        const storedCredit = Number(credentials.monthly_credit_usd)
+        editOllamaMonthlyCreditUsd.value = Number.isFinite(storedCredit) && storedCredit > 0 ? String(storedCredit) : '60'
+      }
       const storedProtocol = credentials.api_protocol
       editApiProtocol.value =
         storedProtocol === 'adaptive' ||
@@ -5657,6 +5680,14 @@ const handleSubmit = async () => {
 		}
 	}
 
+  const ollamaMonthlyCreditUsd = isOllamaCreditsAccount.value
+    ? parseOllamaMonthlyCreditUsd(editOllamaMonthlyCreditUsd.value)
+    : null
+  if (isOllamaCreditsAccount.value && ollamaMonthlyCreditUsd === null) {
+    appStore.showError(t('admin.accounts.ollamaCloud.accountMode.monthlyCreditUsdInvalid'))
+    return
+  }
+
   const updatePayload: Record<string, unknown> = { ...form }
   try {
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
@@ -5695,6 +5726,10 @@ const handleSubmit = async () => {
       // 国产供应商：模式与协议写入凭据（决定额度/余额探测与转发端点/格式）。
       if (isCNApiKeyAccount.value) {
         newCredentials.account_mode = currentOpenCodeOrCNMode()
+        if (props.account.platform === 'ollama_cloud') {
+          if (ollamaMonthlyCreditUsd !== null) newCredentials.monthly_credit_usd = ollamaMonthlyCreditUsd
+          else delete newCredentials.monthly_credit_usd
+        }
         newCredentials.api_protocol = editApiProtocol.value
         if (editApiProtocol.value === 'adaptive') {
           const defaults = defaultCNAdaptiveBaseUrls(adaptivePresetPlatform.value, currentOpenCodeOrCNMode())
