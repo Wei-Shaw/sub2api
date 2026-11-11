@@ -514,6 +514,12 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/upstream-quota',
+    name: 'UpstreamQuota',
+    component: () => import('@/views/user/UpstreamQuotaView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Upstream quota', titleKey: 'upstreamQuota.title' }
+  },
+  {
     path: '/monitor',
     name: 'ChannelStatus',
     component: () => import('@/views/user/ChannelStatusView.vue'),

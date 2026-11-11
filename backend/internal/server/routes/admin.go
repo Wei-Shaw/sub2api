@@ -570,6 +570,10 @@ func registerPromoCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 }
 
 func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAuth middleware.StepUpAuthMiddleware) {
+	if h.UpstreamQuota != nil {
+		admin.GET("/upstream-quota/settings", h.UpstreamQuota.AdminSettings)
+		admin.PUT("/upstream-quota/settings", h.UpstreamQuota.SaveSettings)
+	}
 	adminSettings := admin.Group("/settings")
 	registerScopedAdminKeyRoutes(adminSettings, h, stepUpAuth)
 	{
