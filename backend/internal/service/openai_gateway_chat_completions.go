@@ -39,6 +39,28 @@ var cursorResponsesUnsupportedFields = []string{
 	"stream_options",
 }
 
+// validateChatCompletionsTokenLimits rejects negative output token limits at
+// the Chat Completions ingress. The upstream-facing conversion only forwards
+// positive limits, so without this check a negative max_tokens is silently
+// dropped instead of returning the 400 that OpenAI clients expect.
+//
+// max_completion_tokens takes precedence over max_tokens, matching the
+// conversion path and the OpenAI API.
+func validateChatCompletionsTokenLimits(body []byte) error {
+	maxCompletionTokens := gjson.GetBytes(body, "max_completion_tokens")
+	if maxCompletionTokens.Exists() && maxCompletionTokens.Type != gjson.Null {
+		if maxCompletionTokens.Type == gjson.Number && maxCompletionTokens.Float() < 0 {
+			return fmt.Errorf("max_completion_tokens must be greater than or equal to 0")
+		}
+		return nil
+	}
+	maxTokens := gjson.GetBytes(body, "max_tokens")
+	if maxTokens.Exists() && maxTokens.Type == gjson.Number && maxTokens.Float() < 0 {
+		return fmt.Errorf("max_tokens must be greater than or equal to 0")
+	}
+	return nil
+}
+
 // ForwardAsChatCompletions accepts a Chat Completions request body, converts it
 // to OpenAI Responses API format, forwards to the OpenAI upstream, and converts
 // the response back to Chat Completions format.
@@ -76,6 +98,10 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	rememberOpenCodeInboundBody(c, body)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
+	if err := validateChatCompletionsTokenLimits(body); err != nil {
+		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return nil, err
+	}
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
 		SetActualOpenAIUpstreamEndpoint(c, "/v1/chat/completions")
 	}
