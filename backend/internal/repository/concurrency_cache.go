@@ -352,6 +352,32 @@ var (
 		end
 		return {removed, remaining}
 	`)
+
+	// releaseSlotScript 原子释放槽位、清理过期槽位并返回当前负载，
+	// 让 Go 侧只需再发一次索引命令，避免 TIME + Pipeline + ZADD 的多轮往返。
+	// KEYS[1] = 槽位键，KEYS[2] = 等待计数键
+	// ARGV[1] = requestID，ARGV[2] = 槽位 TTL（秒）
+	// 返回 {now, slotCount, waitCount}
+	releaseSlotScript = redis.NewScript(`
+		redis.replicate_commands()
+		local t = redis.call('TIME')
+		local now = tonumber(t[1])
+		local slotTTL = tonumber(ARGV[2])
+
+		redis.call('ZREM', KEYS[1], ARGV[1])
+		redis.call('ZREMRANGEBYSCORE', KEYS[1], '-inf', now - slotTTL)
+
+		local slotCount = redis.call('ZCARD', KEYS[1])
+		local waitRaw = redis.call('GET', KEYS[2])
+		local waitCount = 0
+		if waitRaw then
+			waitCount = tonumber(waitRaw)
+			if waitCount == nil or waitCount < 0 then
+				waitCount = 0
+			end
+		end
+		return {now, slotCount, waitCount}
+	`)
 )
 
 type concurrencyCache struct {
@@ -643,13 +669,44 @@ func (c *concurrencyCache) AcquireAccountSlot(ctx context.Context, accountID int
 }
 
 func (c *concurrencyCache) ReleaseAccountSlot(ctx context.Context, accountID int64, requestID string) error {
-	key := accountSlotKey(accountID)
-	if err := c.rdb.ZRem(ctx, key, requestID).Err(); err != nil {
+	now, slotCount, waitCount, err := c.releaseSlot(ctx, accountSlotKey(accountID), accountWaitKey(accountID), requestID)
+	if err != nil {
 		return err
 	}
 	// 释放后用真实负载刷新索引；若没有槽位和等待计数，会移除索引 member。
-	c.refreshAccountActiveIndex(ctx, accountID)
+	c.refreshActiveIndexWithLoad(ctx, accountActiveIndexKey, accountID, slotCount, waitCount, now)
 	return nil
+}
+
+// releaseSlot 在一个 Lua 调用里完成释放、清理过期槽位和读取当前负载。
+func (c *concurrencyCache) releaseSlot(ctx context.Context, slotKey, waitKey, requestID string) (int64, int, int, error) {
+	values, err := releaseSlotScript.Run(ctx, c.rdb, []string{slotKey, waitKey}, requestID, c.slotTTLSeconds).Int64Slice()
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	if len(values) != 3 {
+		return 0, 0, 0, fmt.Errorf("release slot script returned %d values", len(values))
+	}
+	return values[0], int(values[1]), int(values[2]), nil
+}
+
+// refreshActiveIndexWithLoad 用已读取的负载更新活跃索引，只发一次 ZREM/ZADD。
+func (c *concurrencyCache) refreshActiveIndexWithLoad(ctx context.Context, indexKey string, id int64, slotCount, waitCount int, now int64) {
+	if c == nil || c.rdb == nil || id <= 0 {
+		return
+	}
+	member := strconv.FormatInt(id, 10)
+	if slotCount == 0 && waitCount <= 0 {
+		if err := c.rdb.ZRem(ctx, indexKey, member).Err(); err != nil {
+			logger.LegacyPrintf("repository.concurrency", "Warning: remove active index member %s from %s failed: %v", member, indexKey, err)
+		}
+		return
+	}
+	ttlSeconds := c.activeIndexTTL(slotCount, waitCount)
+	if ttlSeconds <= 0 {
+		return
+	}
+	c.touchActiveIndexAt(ctx, indexKey, id, now+int64(ttlSeconds))
 }
 
 func (c *concurrencyCache) GetAccountConcurrency(ctx context.Context, accountID int64) (int, error) {
@@ -720,12 +777,12 @@ func (c *concurrencyCache) AcquireUserSlot(ctx context.Context, userID int64, ma
 }
 
 func (c *concurrencyCache) ReleaseUserSlot(ctx context.Context, userID int64, requestID string) error {
-	key := userSlotKey(userID)
-	if err := c.rdb.ZRem(ctx, key, requestID).Err(); err != nil {
+	now, slotCount, waitCount, err := c.releaseSlot(ctx, userSlotKey(userID), waitQueueKey(userID), requestID)
+	if err != nil {
 		return err
 	}
 	// 释放后按 Redis 中剩余负载修正索引状态。
-	c.refreshUserActiveIndex(ctx, userID)
+	c.refreshActiveIndexWithLoad(ctx, userActiveIndexKey, userID, slotCount, waitCount, now)
 	return nil
 }
 
