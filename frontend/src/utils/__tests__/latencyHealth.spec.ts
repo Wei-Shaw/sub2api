@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { durationSeverity, firstTokenSeverity, formatUsageOutputRate } from '../latencyHealth'
+import { durationSeverity, firstTokenSeverity, formatUsageCacheHitRate, formatUsageOutputRate } from '../latencyHealth'
 
 describe('latencyHealth', () => {
   it('classifies first-token latency at 10s/30s/60s boundaries', () => {
@@ -59,5 +59,34 @@ describe('formatUsageOutputRate', () => {
     { request_type: 'unknown' as const },
   ])('omits non-text or unknown request rates: %j', (fields) => {
     expect(formatUsageOutputRate({ ...row, ...fields })).toBe('—')
+  })
+})
+
+describe('formatUsageCacheHitRate', () => {
+  const row = {
+    input_tokens: 20,
+    cache_creation_tokens: 0,
+    cache_read_tokens: 80,
+    image_count: 0,
+    billing_mode: 'token' as const,
+    request_type: 'stream' as const,
+  }
+
+  it('uses cache_read / (input + cache_create + cache_read)', () => {
+    expect(formatUsageCacheHitRate(row)).toBe('80.0%')
+    expect(formatUsageCacheHitRate({ ...row, input_tokens: 100, cache_creation_tokens: 100, cache_read_tokens: 100 })).toBe('33.3%')
+    expect(formatUsageCacheHitRate({ ...row, input_tokens: 50, cache_creation_tokens: 0, cache_read_tokens: 0 })).toBe('0.0%')
+  })
+
+  it('returns em dash when there is no prompt token mass', () => {
+    expect(formatUsageCacheHitRate({ ...row, input_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0 })).toBe('—')
+  })
+
+  it.each([
+    { image_count: 1 },
+    { billing_mode: 'image' },
+    { request_type: 'live' as const },
+  ])('omits non-text or unknown request rates: %j', (fields) => {
+    expect(formatUsageCacheHitRate({ ...row, ...fields })).toBe('—')
   })
 })

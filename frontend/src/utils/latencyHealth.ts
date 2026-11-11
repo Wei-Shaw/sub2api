@@ -83,3 +83,19 @@ export const formatUsageOutputRate = (row: Pick<UsageLog,
   }
   return `${(outputTokens * 1000 / durationMs).toFixed(1)} tok/s`
 }
+
+// 与渠道监控 cache_rate 一致：cache_read / (input + cache_creation + cache_read)。
+export const formatUsageCacheHitRate = (row: Pick<UsageLog,
+  'input_tokens' | 'cache_creation_tokens' | 'cache_read_tokens' | 'image_count' | 'billing_mode' | 'request_type'
+>): string => {
+  if (row.image_count > 0 || row.billing_mode === 'image'
+    || (row.request_type && !['sync', 'stream', 'ws_v2', 'cyber'].includes(row.request_type))) {
+    return '—'
+  }
+  const input = Number(row.input_tokens) || 0
+  const cacheCreate = Number(row.cache_creation_tokens) || 0
+  const cacheRead = Number(row.cache_read_tokens) || 0
+  const denom = input + cacheCreate + cacheRead
+  if (denom <= 0) return '—'
+  return `${((cacheRead / denom) * 100).toFixed(1)}%`
+}
