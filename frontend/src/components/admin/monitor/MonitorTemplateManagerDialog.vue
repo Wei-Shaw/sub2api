@@ -66,7 +66,7 @@
                 {{ modeLabel(tpl.body_override_mode) }}
               </span>
               <span
-                v-if="tpl.provider === PROVIDER_OPENAI"
+                v-if="monitorProviderSupportsResponses(tpl.provider)"
                 class="inline-flex items-center rounded-md px-1.5 py-0.5 text-xs"
                 :class="apiModeBadgeClass(tpl.api_mode)"
               >
@@ -144,7 +144,7 @@
         </div>
       </div>
 
-      <div v-if="form.provider === PROVIDER_OPENAI" class="rounded-lg border border-blue-100 bg-blue-50/50 p-3 dark:border-blue-500/20 dark:bg-blue-500/10">
+      <div v-if="monitorProviderSupportsResponses(form.provider)" class="rounded-lg border border-blue-100 bg-blue-50/50 p-3 dark:border-blue-500/20 dark:bg-blue-500/10">
         <label class="input-label">{{ t('admin.channelMonitor.form.apiMode') }}</label>
         <div class="grid gap-3 sm:grid-cols-2">
           <button
@@ -247,6 +247,7 @@ import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
 import {
   PROVIDER_ANTHROPIC,
   PROVIDER_OPENAI,
+  monitorProviderSupportsResponses,
   PROVIDER_GEMINI,
   PROVIDER_GROK,
   PROVIDER_ANTIGRAVITY,
@@ -397,7 +398,7 @@ async function handleSubmit() {
       await adminAPI.channelMonitorTemplate.create({
         name: form.name.trim(),
         provider: form.provider,
-        api_mode: form.provider === PROVIDER_OPENAI ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
+        api_mode: monitorProviderSupportsResponses(form.provider) ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
         description: form.description.trim(),
         extra_headers: form.extra_headers,
         body_override_mode: form.body_override_mode,
@@ -407,7 +408,7 @@ async function handleSubmit() {
     } else if (typeof editing.value === 'number') {
       await adminAPI.channelMonitorTemplate.update(editing.value, {
         name: form.name.trim(),
-        api_mode: form.provider === PROVIDER_OPENAI ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
+        api_mode: monitorProviderSupportsResponses(form.provider) ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
         description: form.description.trim(),
         extra_headers: form.extra_headers,
         body_override_mode: form.body_override_mode,
@@ -512,7 +513,7 @@ const apiModeOptions = computed<{ value: APIMode; label: string; hint: string }[
 ])
 
 watch(() => form.provider, (provider) => {
-  if (provider !== PROVIDER_OPENAI) {
+  if (!monitorProviderSupportsResponses(provider)) {
     form.api_mode = API_MODE_CHAT_COMPLETIONS
   }
 })
