@@ -2,145 +2,105 @@ package handler
 
 import (
 	"encoding/json"
+	"maps"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
+	"go.uber.org/zap"
 )
 
 const delegationEnvelope = `<codex_delegation><source_thread_id>thread-1</source_thread_id><input>do the work</input></codex_delegation>`
 
-func TestNormalizeCodexDelegationBootstrapSupportedTools(t *testing.T) {
-	tests := []struct {
-		name      string
-		namespace string
-		tool      string
-		callID    string
-	}{
-		{name: "app create missing call id", namespace: "codex_app", tool: "create_thread"},
-		{name: "app send empty call id", namespace: "codex_app", tool: "send_message_to_thread", callID: `,"call_id":""`},
-		{name: "tui create whitespace call id", namespace: "codex_tui", tool: "create_thread", callID: `,"call_id":"  "`},
-		{name: "tui send missing call id", namespace: "codex_tui", tool: "send_message_to_thread"},
+func assertNativeCodexContext(t *testing.T, body []byte) {
+	t.Helper()
+	original := append([]byte(nil), body...)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	require.True(t, (&OpenAIGatewayHandler{}).validateFunctionCallOutputRequest(c, body, zap.NewNop()))
+	require.False(t, c.Writer.Written())
+	require.Empty(t, gjson.GetBytes(codexStandaloneContextValidationBody(body), "input").Array())
+	require.Equal(t, original, body)
+}
+
+func codexBootstrapContextItems() []map[string]any {
+	items := []map[string]any{{"type": "function_call_output", "id": "fco_automation", "namespace": "codex_app", "name": "automation_update", "output": `<heartbeat><automation_id>wiki</automation_id></heartbeat>`}}
+	for _, namespace := range []string{"codex_app", "codex_tui"} {
+		for _, name := range []string{"create_thread", "send_message_to_thread"} {
+			items = append(items, map[string]any{"type": "function_call_output", "id": "fco_delivery", "namespace": namespace, "name": name, "output": delegationEnvelope})
+		}
 	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			body := []byte(`{"model":"gpt-5","input":[{"type":"function_call_output","namespace":"` + tt.namespace + `","name":"` + tt.tool + `","output":"` + delegationEnvelope + `"` + tt.callID + `}]}`)
-			got, changed := normalizeCodexDelegationBootstrap(body)
-			require.True(t, changed)
-			require.Equal(t, "message", gjson.GetBytes(got, "input.0.type").String())
-			require.Equal(t, "user", gjson.GetBytes(got, "input.0.role").String())
-			require.Equal(t, delegationEnvelope, gjson.GetBytes(got, "input.0.content.0.text").String())
-			require.False(t, gjson.GetBytes(got, "input.0.call_id").Exists())
-		})
+	return items
+}
+
+func TestCodexBootstrapContextPreservesNativeItemsAndHistory(t *testing.T) {
+	for _, item := range codexBootstrapContextItems() {
+		assertNativeCodexContext(t, pageContextRequest(t, item))
+		body := pageContextRequest(t,
+			map[string]any{"role": "user", "content": "before"}, item,
+			map[string]any{"type": "function_call", "name": "read_file", "call_id": "call_real", "arguments": "{}"},
+			map[string]any{"type": "function_call_output", "call_id": "call_real", "output": "result"},
+			map[string]any{"role": "user", "content": "after"})
+		// Preserve opaque fields and exact JSON numbers in the validation copy.
+		body = append([]byte(`{"previous_response_id":"resp_history","metadata":{"large":9007199254740993},`), body[1:]...)
+		original := append([]byte(nil), body...)
+		validation := codexStandaloneContextValidationBody(body)
+		require.Equal(t, "9007199254740993", gjson.GetBytes(validation, "metadata.large").Raw)
+		require.Equal(t, "resp_history", gjson.GetBytes(validation, "previous_response_id").String())
+		for i, originalIndex := range []int{0, 2, 3, 4} {
+			require.JSONEq(t, gjson.GetBytes(body, "input").Array()[originalIndex].Raw, gjson.GetBytes(validation, "input").Array()[i].Raw)
+		}
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		require.True(t, (&OpenAIGatewayHandler{}).validateFunctionCallOutputRequest(c, body, zap.NewNop()))
+		require.Equal(t, original, body)
 	}
 }
 
-func TestNormalizeCodexDelegationBootstrapRejectsUnsafeShapes(t *testing.T) {
-	tests := []struct {
-		name  string
-		item  string
-		extra string
-	}{
-		{name: "ordinary missing call id", item: `{"type":"function_call_output","name":"other","namespace":"codex_app","output":"` + delegationEnvelope + `"}`},
-		{name: "valid call id", item: `{"type":"function_call_output","call_id":"call-1","name":"create_thread","namespace":"codex_app","output":"` + delegationEnvelope + `"}`},
-		{name: "ambiguous call context", item: `{"type":"function_call_output","name":"create_thread","namespace":"codex_app","output":"` + delegationEnvelope + `"},{"type":"function_call"}`},
-		{name: "ambiguous built-in call context", item: `{"type":"function_call_output","name":"create_thread","namespace":"codex_app","output":"` + delegationEnvelope + `"},{"type":"computer_call"}`},
-		{name: "mixed missing call id output", item: `{"type":"function_call_output","name":"create_thread","namespace":"codex_app","output":"` + delegationEnvelope + `"},{"type":"computer_call_output","output":"done"}`},
-		{name: "mixed tool search output", item: `{"type":"function_call_output","name":"create_thread","namespace":"codex_app","output":"` + delegationEnvelope + `"},{"type":"tool_search_output","output":"done"}`},
-		{name: "mixed invalid delegation output", item: `{"type":"function_call_output","name":"create_thread","namespace":"codex_app","output":"` + delegationEnvelope + `"},{"type":"function_call_output","name":"create_thread","namespace":"codex_app","output":"not an envelope"}`},
-		{name: "non string call id", item: `{"type":"function_call_output","call_id":42,"name":"create_thread","namespace":"codex_app","output":"` + delegationEnvelope + `"}`},
-		{name: "padded type", item: `{"type":" function_call_output ","name":"create_thread","namespace":"codex_app","output":"` + delegationEnvelope + `"}`},
-		{name: "padded name", item: `{"type":"function_call_output","name":" create_thread ","namespace":"codex_app","output":"` + delegationEnvelope + `"}`},
-		{name: "padded namespace", item: `{"type":"function_call_output","name":"create_thread","namespace":" codex_app ","output":"` + delegationEnvelope + `"}`},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			body := []byte(`{"model":"gpt-5","input":[` + tt.item + `]` + tt.extra + `}`)
-			got, changed := normalizeCodexDelegationBootstrap(body)
-			require.False(t, changed)
-			require.Equal(t, body, got)
-		})
-	}
-}
-
-func TestNormalizeCodexDelegationBootstrapWithHistoricalContext(t *testing.T) {
-	body := []byte(`{"model":"gpt-5","previous_response_id":"resp-1","input":[{"type":"function_call_output","namespace":"codex_app","name":"send_message_to_thread","output":"` + delegationEnvelope + `"},{"type":"function_call","call_id":"call-1"},{"type":"function_call_output","call_id":"call-1","output":"done"},{"type":"item_reference","id":"item-1"},{"type":"computer_call","call_id":"call-2"}]}`)
-
-	got, changed := normalizeCodexDelegationBootstrap(body)
-	require.True(t, changed)
-	require.Equal(t, "message", gjson.GetBytes(got, "input.0.type").String())
-	require.Equal(t, "user", gjson.GetBytes(got, "input.0.role").String())
-	require.Equal(t, "resp-1", gjson.GetBytes(got, "previous_response_id").String())
-	require.Equal(t, "call-1", gjson.GetBytes(got, "input.2.call_id").String())
-	require.Equal(t, "item-1", gjson.GetBytes(got, "input.3.id").String())
-}
-
-func TestNormalizeCodexDelegationBootstrapPreviousResponseID(t *testing.T) {
-	tests := []struct {
-		name    string
-		value   string
-		changed bool
-	}{
-		{name: "absent", changed: true},
-		{name: "blank string", value: `,"previous_response_id":"  "`, changed: true},
-		{name: "non-empty string", value: `,"previous_response_id":"resp-1"`, changed: true},
-		{name: "null", value: `,"previous_response_id":null`},
-		{name: "number", value: `,"previous_response_id":42`},
-		{name: "boolean", value: `,"previous_response_id":false`},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			body := []byte(`{"model":"gpt-5","input":[{"type":"function_call_output","namespace":"codex_app","name":"create_thread","output":"` + delegationEnvelope + `"}]` + tt.value + `}`)
-			got, changed := normalizeCodexDelegationBootstrap(body)
-			require.Equal(t, tt.changed, changed)
-			if !tt.changed {
-				require.Equal(t, body, got)
+func TestCodexBootstrapContextRetainsToolValidation(t *testing.T) {
+	for _, item := range codexBootstrapContextItems() {
+		for field, values := range map[string][]any{
+			"call_id":   {"", " ", "call_real", nil, 42},
+			"namespace": {"other", " codex_app "}, "name": {"unknown", " create_thread "},
+			"type": {" function_call_output ", "custom_tool_call_output"}, "output": {"not an envelope", nil, 42},
+		} {
+			for _, value := range values {
+				bad := maps.Clone(item)
+				bad[field] = value
+				body := pageContextRequest(t, bad)
+				require.Equal(t, body, codexStandaloneContextValidationBody(body), "%s=%v", field, value)
 			}
-		})
+		}
+		for _, typ := range []string{"function_call_output", "custom_tool_call_output", "mcp_tool_call_output", "tool_search_output"} {
+			body := pageContextRequest(t, item, map[string]any{"type": typ, "name": "read_file", "output": "unpaired"})
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			require.False(t, (&OpenAIGatewayHandler{}).validateFunctionCallOutputRequest(c, body, zap.NewNop()), typ)
+			require.Equal(t, 400, c.Writer.Status())
+		}
+		// Built-in outputs outside this validator's remit must still reach upstream validation.
+		body := pageContextRequest(t, item, map[string]any{"type": "computer_call_output", "output": "unpaired"})
+		require.JSONEq(t, gjson.GetBytes(body, "input.1").Raw,
+			gjson.GetBytes(codexStandaloneContextValidationBody(body), "input.0").Raw)
+	}
+	tuiAutomation := maps.Clone(codexBootstrapContextItems()[0])
+	tuiAutomation["namespace"] = "codex_tui"
+	body := pageContextRequest(t, tuiAutomation)
+	require.Equal(t, body, codexStandaloneContextValidationBody(body))
+}
+
+func TestCodexBootstrapContextRejectsDuplicateMembers(t *testing.T) {
+	for _, body := range []string{
+		`{"previous_response_id":"","previous_response_id":"resp-1","input":[{"type":"function_call_output","namespace":"codex_app","name":"create_thread","output":"` + delegationEnvelope + `"}]}`,
+		`{"input":[{"type":"message","type":"function_call_output","namespace":"codex_app","name":"create_thread","output":"` + delegationEnvelope + `"}]}`,
+		`{"input":[{"type":"function_call_output","namespace":"codex_app","name":"create_thread","call_id":"call-1","call_id":"","output":"` + delegationEnvelope + `"}]}`,
+		`{"input":[{"type":"function_call_output","namespace":"codex_app","name":"create_thread","output":"not a delegation","output":"` + delegationEnvelope + `"}]}`,
+	} {
+		require.Equal(t, body, string(codexStandaloneContextValidationBody([]byte(body))))
 	}
 }
 
-func TestNormalizeCodexDelegationBootstrapRejectsDuplicateMembers(t *testing.T) {
-	tests := []struct {
-		name string
-		body string
-	}{
-		{
-			name: "top-level previous response id",
-			body: `{"model":"gpt-5","previous_response_id":"","previous_response_id":"resp-1","input":[{"type":"function_call_output","namespace":"codex_app","name":"create_thread","output":"` + delegationEnvelope + `"}]}`,
-		},
-		{
-			name: "candidate discriminator",
-			body: `{"model":"gpt-5","input":[{"type":"message","type":"function_call_output","namespace":"codex_app","name":"create_thread","output":"` + delegationEnvelope + `"}]}`,
-		},
-		{
-			name: "candidate call id",
-			body: `{"model":"gpt-5","input":[{"type":"function_call_output","namespace":"codex_app","name":"create_thread","call_id":"call-1","call_id":"","output":"` + delegationEnvelope + `"}]}`,
-		},
-		{
-			name: "candidate output",
-			body: `{"model":"gpt-5","input":[{"type":"function_call_output","namespace":"codex_app","name":"create_thread","output":"not a delegation","output":"` + delegationEnvelope + `"}]}`,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			body := []byte(tt.body)
-			got, changed := normalizeCodexDelegationBootstrap(body)
-			require.False(t, changed)
-			require.Equal(t, body, got)
-		})
-	}
-}
-
-func TestNormalizeCodexDelegationBootstrapPreservesExactNumbers(t *testing.T) {
-	body := []byte(`{"model":"gpt-5","metadata":{"integer":9007199254740993},"input":[{"type":"function_call_output","namespace":"codex_app","name":"create_thread","output":"` + delegationEnvelope + `"}]}`)
-	got, changed := normalizeCodexDelegationBootstrap(body)
-	require.True(t, changed)
-	require.Equal(t, "9007199254740993", gjson.GetBytes(got, "metadata.integer").Raw)
-}
-
-func TestNormalizeCodexDelegationBootstrapRequiresCompleteEnvelope(t *testing.T) {
-	malformed := []string{
+func TestCodexDelegationContextRequiresCompleteEnvelope(t *testing.T) {
+	for _, envelope := range []string{
 		`<codex_delegation><source_thread_id>thread-1</source_thread_id></codex_delegation>`,
 		`<codex_delegation><source_thread_id></source_thread_id><input>work</input></codex_delegation>`,
 		`<codex_delegation><source_thread_id>thread-1</source_thread_id><input> </input></codex_delegation>`,
@@ -154,26 +114,10 @@ func TestNormalizeCodexDelegationBootstrapRequiresCompleteEnvelope(t *testing.T)
 		`<codex_delegation xmlns:x="urn:test"><x:source_thread_id>thread-1</x:source_thread_id><input>work</input></codex_delegation>`,
 		`<codex_delegation><x:source_thread_id>thread-1</x:source_thread_id><input>work</input></codex_delegation>`,
 		`<codex_delegation xmlns=""><source_thread_id>thread-1</source_thread_id><input>work</input></codex_delegation>`,
+	} {
+		body := []byte(`{"input":[{"type":"function_call_output","namespace":"codex_app","name":"create_thread","output":` + mustJSON(t, envelope) + `}]}`)
+		require.Equal(t, body, codexStandaloneContextValidationBody(body), envelope)
 	}
-	for _, envelope := range malformed {
-		body := []byte(`{"model":"gpt-5","input":[{"type":"function_call_output","namespace":"codex_app","name":"create_thread","output":` + mustJSON(t, envelope) + `}]}`)
-		got, changed := normalizeCodexDelegationBootstrap(body)
-		require.False(t, changed, envelope)
-		require.Equal(t, body, got)
-	}
-}
-
-func TestNormalizeCodexDelegationBootstrapPreservesOrderAndIsIdempotent(t *testing.T) {
-	body := []byte(`{"model":"gpt-5","input":[{"type":"message","role":"user","content":"before"},{"type":"function_call_output","namespace":"codex_tui","name":"send_message_to_thread","output":"` + delegationEnvelope + `"},{"type":"message","role":"user","content":"after"}]}`)
-	got, changed := normalizeCodexDelegationBootstrap(body)
-	require.True(t, changed)
-	require.Equal(t, "before", gjson.GetBytes(got, "input.0.content").String())
-	require.Equal(t, delegationEnvelope, gjson.GetBytes(got, "input.1.content.0.text").String())
-	require.Equal(t, "after", gjson.GetBytes(got, "input.2.content").String())
-
-	again, changedAgain := normalizeCodexDelegationBootstrap(got)
-	require.False(t, changedAgain)
-	require.Equal(t, got, again)
 }
 
 func mustJSON(t *testing.T, value string) string {

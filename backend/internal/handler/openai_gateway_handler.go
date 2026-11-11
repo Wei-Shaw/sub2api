@@ -489,24 +489,6 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	} else if changed {
 		body = cappedBody
 	}
-	if normalizedBody, changed := normalizeCodexPageContext(body); changed {
-		body = normalizedBody
-		reqLog.Info("openai.codex_page_context_normalized",
-			zap.String("normalization", "call_output_to_user_message"),
-		)
-	}
-	if normalizedBody, changed := normalizeCodexAutomationBootstrap(body); changed {
-		body = normalizedBody
-		reqLog.Info("openai.codex_automation_bootstrap_normalized",
-			zap.String("normalization", "call_output_to_user_message"),
-		)
-	}
-	if normalizedBody, changed := normalizeCodexDelegationBootstrap(body); changed {
-		body = normalizedBody
-		reqLog.Info("openai.codex_delegation_bootstrap_normalized",
-			zap.String("normalization", "call_output_to_user_message"),
-		)
-	}
 
 	reqStream, ok := parseOpenAICompatibleStream(body)
 	if !ok {
@@ -1681,7 +1663,7 @@ func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context,
 		return true
 	}
 
-	validation := service.ValidateFunctionCallOutputContextBytes(body)
+	validation := service.ValidateFunctionCallOutputContextBytes(codexStandaloneContextValidationBody(body))
 	if !validation.HasFunctionCallOutput {
 		return true
 	}
@@ -1709,27 +1691,10 @@ func (h *OpenAIGatewayHandler) validateFunctionCallOutputRequest(c *gin.Context,
 	return false
 }
 
-func normalizeCodexDelegationBootstrap(body []byte) ([]byte, bool) {
-	if !mayContainCodexCallOutputCandidate(body, "create_thread", "send_message_to_thread") {
-		return body, false
-	}
-	// 已有任务通过 send_message_to_thread 唤醒时会携带 previous_response_id；
-	// 完整历史回放还会带有已配对的调用项。delegation 仍是客户端注入的用户输入，
-	// 不属于这些历史调用的结果，因此允许它与可明确配对的历史上下文共存。
-	return normalizeCodexCallOutputBootstrap(body, isCodexDelegationCandidate, true)
-}
-
-func normalizeCodexAutomationBootstrap(body []byte) ([]byte, bool) {
-	if !mayContainCodexCallOutputCandidate(body, "automation_update") {
-		return body, false
-	}
-	return normalizeCodexCallOutputBootstrap(body, isCodexAutomationCandidate, false)
-}
-
-// mayContainCodexCallOutputCandidate is a necessary condition for a bootstrap
+// mayContainCodexCallOutputCandidate is a necessary condition for a context
 // candidate, checked before the full uniqueness scan and decode. Its type and
 // tool name are JSON strings, which appear literally unless a \u escape spells
-// their letters; without either, normalization cannot change the body.
+// their letters; without either, the validation copy needs no filtering.
 func mayContainCodexCallOutputCandidate(body []byte, toolNames ...string) bool {
 	if bytes.Contains(body, []byte(`\u`)) {
 		return true
@@ -1743,89 +1708,6 @@ func mayContainCodexCallOutputCandidate(body []byte, toolNames ...string) bool {
 		}
 	}
 	return false
-}
-
-func normalizeCodexCallOutputBootstrap(body []byte, isCandidate func(map[string]any) bool, allowHistoricalContext bool) ([]byte, bool) {
-	if !hasUniqueJSONMembers(body) {
-		return body, false
-	}
-	decoder := json.NewDecoder(bytes.NewReader(body))
-	decoder.UseNumber()
-	var request map[string]any
-	if err := decoder.Decode(&request); err != nil {
-		return body, false
-	}
-	if previousResponseID, exists := request["previous_response_id"]; exists {
-		value, ok := previousResponseID.(string)
-		if !ok || (!allowHistoricalContext && strings.TrimSpace(value) != "") {
-			return body, false
-		}
-	}
-	input, ok := request["input"].([]any)
-	if !ok {
-		return body, false
-	}
-
-	// Responses built-ins follow the *_call / *_call_output naming convention,
-	// so classify by the wire type shape instead of maintaining an incomplete
-	// allowlist. Delegation may coexist with historical anchors only when their
-	// IDs make them unambiguous; automation retains the bootstrap-only boundary.
-	for _, raw := range input {
-		item, ok := raw.(map[string]any)
-		if !ok {
-			continue
-		}
-		typ := stringField(item, "type")
-		if isCandidate(item) {
-			callIDValue, exists := item["call_id"]
-			callID, isString := callIDValue.(string)
-			if exists && (!isString || strings.TrimSpace(callID) != "") {
-				return body, false
-			}
-			continue
-		}
-		if typ == "item_reference" {
-			if allowHistoricalContext && strings.TrimSpace(stringField(item, "id")) != "" {
-				continue
-			}
-			return body, false
-		}
-		if strings.HasSuffix(typ, "_call") || isResponsesCallOutputType(typ) {
-			if allowHistoricalContext && strings.TrimSpace(stringField(item, "call_id")) != "" {
-				continue
-			}
-			return body, false
-		}
-	}
-
-	changed := false
-	for i, raw := range input {
-		item, ok := raw.(map[string]any)
-		if !ok || !isCandidate(item) {
-			continue
-		}
-		output, ok := item["output"].(string)
-		if !ok {
-			continue
-		}
-		input[i] = map[string]any{
-			"type": "message",
-			"role": "user",
-			"content": []any{map[string]any{
-				"type": "input_text",
-				"text": output,
-			}},
-		}
-		changed = true
-	}
-	if !changed {
-		return body, false
-	}
-	normalized, err := json.Marshal(request)
-	if err != nil {
-		return body, false
-	}
-	return normalized, true
 }
 
 func hasUniqueJSONMembers(body []byte) bool {
@@ -1880,10 +1762,6 @@ func consumeUniqueJSONValue(decoder *json.Decoder) bool {
 	default:
 		return false
 	}
-}
-
-func isResponsesCallOutputType(typ string) bool {
-	return strings.HasSuffix(typ, "_call_output") || typ == "tool_search_output"
 }
 
 func isCodexDelegationCandidate(item map[string]any) bool {
