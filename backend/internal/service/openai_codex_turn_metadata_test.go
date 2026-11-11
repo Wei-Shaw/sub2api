@@ -24,7 +24,7 @@ func TestCodexTurnMetadataRewritePreservesHeaderSafeJSON(t *testing.T) {
 		},
 		"account_body_map": func(t *testing.T, raw string) string {
 			cm := map[string]any{openAIWSTurnMetadataHeader: raw}
-			require.True(t, applyCodexAccountIdentityClientMetadataMap(map[string]any{"client_metadata": cm}, account, 77))
+			require.True(t, applyCodexAccountIdentityClientMetadataMap(map[string]any{"client_metadata": cm}, account, 77, ""))
 			value, ok := cm[openAIWSTurnMetadataHeader].(string)
 			require.True(t, ok)
 			return value
@@ -32,7 +32,7 @@ func TestCodexTurnMetadataRewritePreservesHeaderSafeJSON(t *testing.T) {
 		"account_body_raw": func(t *testing.T, raw string) string {
 			body, err := json.Marshal(map[string]any{"client_metadata": map[string]any{openAIWSTurnMetadataHeader: raw}})
 			require.NoError(t, err)
-			updated, changed, err := applyCodexAccountIdentityClientMetadataRaw(body, account, 77)
+			updated, changed, err := applyCodexAccountIdentityClientMetadataRaw(body, account, 77, "")
 			require.NoError(t, err)
 			require.True(t, changed)
 			return gjson.GetBytes(updated, "client_metadata."+openAIWSTurnMetadataHeader).String()
