@@ -1955,6 +1955,12 @@ func (h *GatewayHandler) handleFailoverExhausted(c *gin.Context, failoverErr *se
 	upstreamMsg := service.ExtractUpstreamErrorMessage(responseBody)
 	service.SetOpsUpstreamError(c, statusCode, upstreamMsg, "")
 
+	// Explain the unbilled empty completion when account failover is exhausted.
+	if failoverErr.IsGeminiEmptyCompletion() {
+		h.handleStreamingAwareError(c, failoverErr.ClientStatusCode, "api_error", failoverErr.ClientMessage, streamStarted)
+		return
+	}
+
 	// 使用默认的错误映射
 	status, errType, errMsg := h.mapUpstreamError(statusCode)
 	h.handleStreamingAwareError(c, status, errType, errMsg, streamStarted)

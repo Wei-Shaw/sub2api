@@ -222,7 +222,7 @@ func TestGeminiMessagesHandleStreamingResponse_EmitsThinkingBlockBeforeText(t *t
 	c, _ := gin.CreateTestContext(rec)
 	svc := &GeminiMessagesCompatService{}
 
-	result, err := svc.handleStreamingResponse(c, resp, time.Now(), "claude-sonnet-4-5")
+	result, err := svc.handleStreamingResponse(c, resp, time.Now(), "claude-sonnet-4-5", &Account{ID: 1, Platform: PlatformGemini}, "")
 	require.NoError(t, err)
 	require.NotNil(t, result.firstTokenMs)
 

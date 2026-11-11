@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -415,6 +416,17 @@ func (h *GatewayHandler) chatCompletionsErrorResponse(c *gin.Context, status int
 // handleCCFailoverExhausted writes a failover-exhausted error in CC format.
 func (h *GatewayHandler) handleCCFailoverExhausted(c *gin.Context, lastErr *service.UpstreamFailoverError, streamStarted bool) {
 	if streamStarted {
+		// A queue keepalive may already have started the stream. Surface the
+		// empty completion as an error instead of silently ending the stream.
+		if lastErr.IsGeminiEmptyCompletion() {
+			service.SetOpsUpstreamError(c, lastErr.StatusCode, service.ExtractUpstreamErrorMessage(lastErr.ResponseBody), "")
+			service.MarkOpsStreamError(c, "server_error", lastErr.ClientMessage, lastErr.ClientStatusCode)
+			if flusher, ok := c.Writer.(http.Flusher); ok {
+				_, _ = fmt.Fprintf(c.Writer, "data: {\"error\":{\"type\":\"server_error\",\"code\":%s,\"message\":%s}}\n\n",
+					strconv.Quote(string(service.GatewayFailureReasonGeminiEmptyCompletion)), strconv.Quote(lastErr.ClientMessage))
+				flusher.Flush()
+			}
+		}
 		return
 	}
 	if lastErr != nil {
@@ -423,6 +435,11 @@ func (h *GatewayHandler) handleCCFailoverExhausted(c *gin.Context, lastErr *serv
 	if lastErr != nil && lastErr.IsCredentialFailure() {
 		status, message := credentialFailoverClientResponse(lastErr)
 		h.chatCompletionsErrorResponse(c, status, "server_error", message)
+		return
+	}
+	if lastErr.IsGeminiEmptyCompletion() {
+		service.SetOpsUpstreamError(c, lastErr.StatusCode, service.ExtractUpstreamErrorMessage(lastErr.ResponseBody), "")
+		h.chatCompletionsErrorResponse(c, lastErr.ClientStatusCode, "server_error", lastErr.ClientMessage)
 		return
 	}
 	if lastErr != nil && lastErr.IsOpenAICapacityShed() && strings.TrimSpace(lastErr.ClientMessage) != "" {

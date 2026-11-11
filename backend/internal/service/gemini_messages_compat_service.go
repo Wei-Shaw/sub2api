@@ -1024,7 +1024,7 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 	clientDisconnect := false
 	streamFinished := false
 	if req.Stream {
-		streamRes, err := s.handleStreamingResponse(c, resp, startTime, originalModel)
+		streamRes, err := s.handleStreamingResponse(c, resp, startTime, originalModel, account, requestID)
 		if err != nil {
 			return nil, err
 		}
@@ -1034,7 +1034,8 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		streamFinished = streamRes.finished
 	} else {
 		if useUpstreamStream {
-			collected, usageObj, err := collectGeminiSSE(s.cfg, resp.Body, true)
+			var tracker geminiCompatCompletionTracker
+			collected, usageObj, _, err := collectGeminiSSEObserved(s.cfg, resp.Body, true, tracker.observe)
 			if err != nil {
 				return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream stream")
 			}
@@ -1042,13 +1043,20 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			upstreamResponseModelObserverFromContext(c).ObserveGemini(collectedBytes)
 			observeGeminiImageOutputs(c, collectedBytes)
 			claudeResp, usageObj2 := convertGeminiToClaudeMessage(collected, originalModel, collectedBytes, false)
-			c.JSON(http.StatusOK, claudeResp)
 			usage = usageObj2
 			if usageObj != nil && (usageObj.InputTokens > 0 || usageObj.OutputTokens > 0) {
 				usage = usageObj
 			}
+			if !tracker.deliverable {
+				if handled, err := s.handleGeminiCompatNoContent(c, account, tracker.finishReason, tracker.signal, usage, false, requestID, func(message string) error {
+					return s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", message)
+				}); handled {
+					return nil, err
+				}
+			}
+			c.JSON(http.StatusOK, claudeResp)
 		} else {
-			usage, err = s.handleNonStreamingResponse(c, resp, originalModel)
+			usage, err = s.handleNonStreamingResponse(c, resp, originalModel, account, requestID)
 			if err != nil {
 				return nil, err
 			}
@@ -2142,7 +2150,7 @@ type geminiStreamResult struct {
 	finished         bool // 断开前已收到上游 finishReason
 }
 
-func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context, resp *http.Response, originalModel string) (*ClaudeUsage, error) {
+func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context, resp *http.Response, originalModel string, account *Account, upstreamRequestID string) (*ClaudeUsage, error) {
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
 	if err != nil {
 		return nil, s.writeClaudeError(c, http.StatusBadGateway, "upstream_error", "Failed to read upstream response")
@@ -2165,47 +2173,66 @@ func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context,
 	}
 
 	claudeResp, usage := convertGeminiToClaudeMessage(geminiResp, originalModel, unwrappedBody, false)
+	if !geminiHasDeliverableParts(geminiResp) {
+		sig, _ := detectGeminiResponseSignalInBody(unwrappedBody)
+		if handled, err := s.handleGeminiCompatNoContent(c, account, extractGeminiFinishReason(geminiResp), sig, usage, false, upstreamRequestID, func(message string) error {
+			return s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", message)
+		}); handled {
+			return nil, err
+		}
+	}
 	c.JSON(http.StatusOK, claudeResp)
 
 	return usage, nil
 }
 
-func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string) (*geminiStreamResult, error) {
-	c.Header("Content-Type", "text/event-stream")
-	c.Header("Cache-Control", "no-cache")
-	c.Header("Connection", "keep-alive")
-	c.Header("X-Accel-Buffering", "no")
-	c.Status(http.StatusOK)
-
+func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, originalModel string, account *Account, upstreamRequestID string) (*geminiStreamResult, error) {
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		return nil, errors.New("streaming not supported")
 	}
 
-	messageID := generateAnthropicMsgID()
-	messageStart := map[string]any{
-		"type": "message_start",
-		"message": map[string]any{
-			"id":            messageID,
-			"type":          "message",
-			"role":          "assistant",
-			"model":         originalModel,
-			"content":       []any{},
-			"stop_reason":   nil,
-			"stop_sequence": nil,
-			"usage": map[string]any{
-				"input_tokens":  0,
-				"output_tokens": 0,
+	// Defer headers and message_start until content is available so an empty
+	// completion can fail over before any response is committed.
+	committed := false
+	commit := func() {
+		if committed {
+			return
+		}
+		committed = true
+		c.Header("Content-Type", "text/event-stream")
+		c.Header("Cache-Control", "no-cache")
+		c.Header("Connection", "keep-alive")
+		c.Header("X-Accel-Buffering", "no")
+		c.Status(http.StatusOK)
+
+		messageID := generateAnthropicMsgID()
+		messageStart := map[string]any{
+			"type": "message_start",
+			"message": map[string]any{
+				"id":            messageID,
+				"type":          "message",
+				"role":          "assistant",
+				"model":         originalModel,
+				"content":       []any{},
+				"stop_reason":   nil,
+				"stop_sequence": nil,
+				"usage": map[string]any{
+					"input_tokens":  0,
+					"output_tokens": 0,
+				},
 			},
-		},
+		}
+		writeSSE(c.Writer, "message_start", messageStart)
+		flusher.Flush()
 	}
-	writeSSE(c.Writer, "message_start", messageStart)
-	flusher.Flush()
 
 	var firstTokenMs *int
 	var usage ClaudeUsage
 	finishReason := ""
 	sawToolUse := false
+	sawInlineImage := false
+	var bestSignal geminiResponseSignal
 
 	nextBlockIndex := 0
 	openBlockIndex := -1
@@ -2221,7 +2248,9 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	for {
 		line, err := reader.ReadLineString()
 		if err != nil && !errors.Is(err, io.EOF) {
-			if geminiStreamAbortedWithBillableOutput(c, err, &usage) {
+			// Usage metadata alone cannot turn an empty aborted completion into
+			// a billable success. Preserve partial text/tool and observed image results.
+			if (committed || sawInlineImage) && geminiStreamAbortedWithBillableOutput(c, err, &usage) {
 				logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] Client disconnected during messages stream, billing collected usage: %v", err)
 				return &geminiStreamResult{
 					usage:            &usage,
@@ -2257,6 +2286,11 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		}
 		observer.ObserveGemini(unwrappedBytes)
 		observeGeminiImageOutputs(c, unwrappedBytes)
+		if !committed {
+			if sig, ok := detectGeminiResponseSignal(unwrappedBytes); ok && sig.Kind > bestSignal.Kind {
+				bestSignal = sig
+			}
+		}
 
 		var geminiResp map[string]any
 		if err := json.Unmarshal(unwrappedBytes, &geminiResp); err != nil {
@@ -2269,11 +2303,15 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 
 		parts := extractGeminiParts(geminiResp)
 		for _, part := range parts {
+			if !committed && !sawInlineImage && geminiPartMapIsInlineImage(part) {
+				sawInlineImage = true
+			}
 			if text, ok := part["text"].(string); ok && isGeminiThoughtPart(part) {
 				delta := seenThought.next(text)
 				if delta == "" {
 					continue
 				}
+				commit()
 				if openToolIndex >= 0 {
 					writeSSE(c.Writer, "content_block_stop", map[string]any{
 						"type":  "content_block_stop",
@@ -2339,6 +2377,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 				if delta == "" {
 					continue
 				}
+				commit()
 
 				if openBlockType != "text" {
 					if openBlockIndex >= 0 {
@@ -2383,6 +2422,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 					name = "tool"
 				}
 
+				commit()
 				// Close any open text block before tool_use.
 				if openBlockIndex >= 0 {
 					writeSSE(c.Writer, "content_block_stop", map[string]any{
@@ -2461,6 +2501,16 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 			break
 		}
 	}
+
+	if !committed && !sawInlineImage {
+		handled, err := s.handleGeminiCompatNoContent(c, account, finishReason, bestSignal, &usage, true, upstreamRequestID, func(message string) error {
+			return s.writeClaudeError(c, http.StatusBadRequest, "invalid_request_error", message)
+		})
+		if handled {
+			return nil, err
+		}
+	}
+	commit()
 
 	if openBlockIndex >= 0 {
 		writeSSE(c.Writer, "content_block_stop", map[string]any{
