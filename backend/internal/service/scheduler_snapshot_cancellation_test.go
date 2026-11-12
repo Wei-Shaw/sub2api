@@ -36,7 +36,7 @@ type schedulerCancellationAccountRepo struct {
 	getByIDCalls int
 }
 
-func (r *schedulerCancellationAccountRepo) ListSchedulableUngroupedByPlatform(ctx context.Context, _ string) ([]Account, error) {
+func (r *schedulerCancellationAccountRepo) ListModelAvailabilityCandidates(ctx context.Context, _ *int64, _ []string, _ bool) ([]Account, error) {
 	r.listCalls++
 	return nil, ctx.Err()
 }
