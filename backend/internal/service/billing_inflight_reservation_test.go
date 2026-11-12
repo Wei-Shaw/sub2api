@@ -79,6 +79,8 @@ func newInflightEstimateGateway(t *testing.T, channelService *ChannelService) *G
 		billingService: billing,
 		resolver:       NewModelPricingResolver(channelService, billing),
 		channelService: channelService,
+		// 与生产构造函数一致：缺省时 getUserGroupRateMultiplier 每次调用都新建带 janitor 的 go-cache，内存断言会量到 finalizer 回收进度。
+		userGroupRateResolver: newUserGroupRateResolver(nil, nil, 0, nil, ""),
 	}
 }
 
