@@ -13,21 +13,21 @@ import (
 
 func oauthInputMetadataHistory(items, textBytes, metadataEvery int) []byte {
 	var body strings.Builder
-	body.WriteString(`{"model":"gpt-5.5","opaque":9007199254740993,"input":[`)
+	_, _ = body.WriteString(`{"model":"gpt-5.5","opaque":9007199254740993,"input":[`)
 	text := strings.Repeat("x", textBytes)
 	for i := 0; i < items; i++ {
 		if i > 0 {
-			body.WriteByte(',')
+			_ = body.WriteByte(',')
 		}
-		body.WriteString(`{"role":"user","content":"`)
-		body.WriteString(text)
-		body.WriteByte('"')
+		_, _ = body.WriteString(`{"role":"user","content":"`)
+		_, _ = body.WriteString(text)
+		_ = body.WriteByte('"')
 		if metadataEvery > 0 && i%metadataEvery == 0 {
-			body.WriteString(`,"internal_chat_message_metadata_passthrough":{"content_item_kinds":["text"]}`)
+			_, _ = body.WriteString(`,"internal_chat_message_metadata_passthrough":{"content_item_kinds":["text"]}`)
 		}
-		body.WriteByte('}')
+		_ = body.WriteByte('}')
 	}
-	body.WriteString(`],"tail":{"keep":true}}`)
+	_, _ = body.WriteString(`],"tail":{"keep":true}}`)
 	return []byte(body.String())
 }
 
