@@ -934,6 +934,7 @@ func maxBatchImageReferenceImagesForModel(model string) int {
 }
 
 func (s *BatchImagePublicService) selectProviderAndAccount(ctx context.Context, owner BatchImageOwner, requestedProvider, model string) (BatchImageProvider, *Account, error) {
+	preferredUserID := preferredUserInGroup(ctx, owner.GroupID, s.Config)
 	providers := batchImageProviderSelectionOrder(requestedProvider)
 	for _, providerName := range providers {
 		provider, ok := s.ProviderRegistry.Get(providerName)
@@ -946,6 +947,12 @@ func (s *BatchImagePublicService) selectProviderAndAccount(ctx context.Context, 
 		}
 		// 与普通账号调度一致：priority 数值越小越优先，同优先级按 ID 排序。
 		sort.SliceStable(accounts, func(i, j int) bool {
+			if preferredUserID > 0 {
+				left, right := accounts[i].prefersUser(preferredUserID), accounts[j].prefersUser(preferredUserID)
+				if left != right {
+					return left
+				}
+			}
 			if accounts[i].Priority != accounts[j].Priority {
 				return accounts[i].Priority < accounts[j].Priority
 			}

@@ -629,7 +629,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		FreeOpenAIFast:                  input.FreeOpenAIFast,
 		RequireOAuthOnly:                input.RequireOAuthOnly,
 		RequirePrivacySet:               input.RequirePrivacySet,
-		PreferUserAccounts:              platform == PlatformOpenAI && input.PreferUserAccounts,
+		PreferUserAccounts:              input.PreferUserAccounts,
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		ModelAllowlist:                  modelAllowlist,
@@ -1028,9 +1028,6 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 	}
 	if input.PreferUserAccounts != nil {
 		group.PreferUserAccounts = *input.PreferUserAccounts
-	}
-	if group.Platform != PlatformOpenAI {
-		group.PreferUserAccounts = false
 	}
 	if input.RequirePrivacySet != nil {
 		group.RequirePrivacySet = *input.RequirePrivacySet

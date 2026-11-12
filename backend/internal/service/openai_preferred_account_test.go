@@ -47,7 +47,7 @@ func TestOpenAIPreferredAccountSharedPool(t *testing.T) {
 			}
 			ctx := withOpenAIQuotaAutoPauseSettings(context.Background(), OpsOpenAIAccountQuotaAutoPauseSettings{DefaultThreshold7d: 1})
 			caller := func(userID int64) context.Context {
-				return WithOpenAIPreferredAccountUser(ctx, &APIKey{UserID: userID, Group: group})
+				return WithPreferredAccountUser(ctx, &APIKey{UserID: userID, Group: group})
 			}
 			selectAccount := func(ctx context.Context, previous, session string, transport OpenAIUpstreamTransport, excluded map[int64]struct{}, want int64) {
 				t.Helper()

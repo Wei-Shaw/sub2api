@@ -1887,13 +1887,14 @@
             </div>
             <Toggle v-model="createForm.require_privacy_set" />
           </div>
-          <div v-if="createForm.platform === 'openai' && !authStore.isSimpleMode" class="flex items-center justify-between gap-3">
-            <div>
-              <p class="text-sm text-gray-600 dark:text-gray-400">{{ t("admin.groups.preferUserAccounts") }}</p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.preferUserAccountsHint") }}</p>
-            </div>
-            <Toggle v-model="createForm.prefer_user_accounts" :aria-label="t('admin.groups.preferUserAccounts')" />
+        </div>
+
+        <div v-if="!authStore.isSimpleMode" class="flex items-center justify-between gap-3">
+          <div>
+            <p class="text-sm text-gray-600 dark:text-gray-400">{{ t("admin.groups.preferUserAccounts") }}</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.preferUserAccountsHint") }}</p>
           </div>
+          <Toggle v-model="createForm.prefer_user_accounts" :aria-label="t('admin.groups.preferUserAccounts')" />
         </div>
 
         <!-- 无效请求兜底（仅 anthropic/antigravity 平台，且非订阅分组） -->
@@ -3557,13 +3558,14 @@
             </div>
             <Toggle v-model="editForm.require_privacy_set" />
           </div>
-          <div v-if="editForm.platform === 'openai' && !authStore.isSimpleMode" class="flex items-center justify-between gap-3">
-            <div>
-              <p class="text-sm text-gray-600 dark:text-gray-400">{{ t("admin.groups.preferUserAccounts") }}</p>
-              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.preferUserAccountsHint") }}</p>
-            </div>
-            <Toggle v-model="editForm.prefer_user_accounts" :aria-label="t('admin.groups.preferUserAccounts')" />
+        </div>
+
+        <div v-if="!authStore.isSimpleMode" class="flex items-center justify-between gap-3">
+          <div>
+            <p class="text-sm text-gray-600 dark:text-gray-400">{{ t("admin.groups.preferUserAccounts") }}</p>
+            <p class="text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.preferUserAccountsHint") }}</p>
           </div>
+          <Toggle v-model="editForm.prefer_user_accounts" :aria-label="t('admin.groups.preferUserAccounts')" />
         </div>
 
         <!-- 无效请求兜底（仅 anthropic/antigravity 平台，且非订阅分组） -->

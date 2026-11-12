@@ -1159,8 +1159,7 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 	ctx = withOpenAIImageSizeStickyAccount(ctx, stickyAccountID)
 	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
-		preferredUserID, _ := ctx.Value(openAIPreferredOnlyContextKey{}).(int64)
-		preferredOnly := preferredUserID > 0
+		preferredOnly := preferredAccountsOnly(ctx) > 0
 		effectiveExcludedIDs := excludedIDs
 		if preferredOnly {
 			effectiveExcludedIDs = make(map[int64]struct{}, len(excludedIDs)+1)
@@ -1533,7 +1532,7 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 		if platform == PlatformGrok {
 			accounts = s.filterGrokFreeQuotaAccountsForOpenAI(ctx, accounts)
 		}
-		return filterPreferredOpenAIAccounts(ctx, accounts), nil
+		return filterPreferredAccounts(ctx, accounts), nil
 	}
 	var accounts []Account
 	var err error
@@ -1551,7 +1550,7 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 	if platform == PlatformGrok {
 		accounts = s.filterGrokFreeQuotaAccountsForOpenAI(ctx, accounts)
 	}
-	return filterPreferredOpenAIAccounts(ctx, accounts), nil
+	return filterPreferredAccounts(ctx, accounts), nil
 }
 
 func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {

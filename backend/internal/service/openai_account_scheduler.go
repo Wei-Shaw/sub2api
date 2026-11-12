@@ -2221,17 +2221,21 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerBySize(
 			initialStickyAccountID = accountID
 		}
 	}
-	preferredUserID := s.preferredOpenAIUserForNewSession(ctx, groupID, NormalizeOpenAICompatiblePlatform(platform), previousResponseID, sessionHash)
+	preferredUserID := s.preferredOpenAIUserForNewSession(ctx, groupID, previousResponseID, sessionHash)
 	return selectOpenAIAccountByImageSizePasses(ctx, func(passCtx context.Context) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
 		if preferredUserID > 0 {
 			// Reuse the regular selector and all its eligibility and admission
 			// checks. An empty session hash prevents a speculative wait plan
 			// from binding the session to a preferred account.
-			preferredCtx := context.WithValue(passCtx, openAIPreferredOnlyContextKey{}, preferredUserID)
+			preferredCtx := context.WithValue(passCtx, preferredAccountsOnlyContextKey{}, preferredUserID)
 			preferred, decision, err := s.selectAccountWithSchedulerOnce(preferredCtx, groupID, "", "", requestedModel, excludedIDs, requiredTransport, requiredCapability, requiredImageCapability, requireCompact, platform, false, useUpstreamTokenCost)
-			if err == nil && preferred != nil && preferred.Acquired && preferred.Account.prefersOpenAIUser(preferredUserID) {
+			if err == nil && preferred != nil && preferred.Acquired && preferred.Account.prefersUser(preferredUserID) {
 				bindingCtx := ContextWithSelectionProfitGate(passCtx, preferred)
-				_ = s.bindOpenAIStickySessionDuringSelection(bindingCtx, groupID, sessionHash, preferred.Account.ID)
+				if openAIImageSizeSpilloverPass(passCtx) {
+					s.bindOpenAIImageSizeSpilloverAccount(bindingCtx, groupID, sessionHash, initialStickyAccountID, preferred)
+				} else {
+					_ = s.bindOpenAIStickySessionDuringSelection(bindingCtx, groupID, sessionHash, preferred.Account.ID)
+				}
 				return preferred, decision, nil
 			}
 			if preferred != nil && preferred.ReleaseFunc != nil {

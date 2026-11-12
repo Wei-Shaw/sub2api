@@ -1161,7 +1161,7 @@ export default {
       priority: 'Priority',
       preferredUser: 'Preferred user',
       preferredUserPlaceholder: 'Search by email',
-      preferredUserHint: 'New sessions from this user try this account first in OpenAI groups with user preference enabled.',
+      preferredUserHint: 'New sessions from this user try this account first in groups with user preference enabled.',
       priorityHint: 'Lower value accounts are used first',
       billingRateMultiplier: 'Billing Rate Multiplier',
       billingRateMultiplierHint: '0 = free, affects account billing only',

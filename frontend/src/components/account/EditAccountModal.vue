@@ -1932,7 +1932,7 @@
         :type="account.type"
       />
 
-      <div v-if="account.platform === 'openai'">
+      <div>
         <label for="account-preferred-user" class="input-label">{{ t('admin.accounts.preferredUser') }}</label>
         <Select
           id="account-preferred-user"
@@ -5711,7 +5711,7 @@ const handleSubmit = async () => {
 	}
 
   const updatePayload: Record<string, unknown> = { ...form }
-  if (props.account.platform === 'openai' && preferredUserID.value !== (props.account.preferred_user_id ?? null)) {
+  if (preferredUserID.value !== (props.account.preferred_user_id ?? null)) {
     updatePayload.preferred_user_id = preferredUserID.value ?? 0
   }
   try {

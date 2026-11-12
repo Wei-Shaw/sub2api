@@ -581,8 +581,8 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
-	if input.PreferredUserID != nil && (*input.PreferredUserID < 0 || account.Platform != PlatformOpenAI) {
-		return nil, infraerrors.BadRequest("INVALID_PREFERRED_USER", "preferred user is only supported for OpenAI accounts")
+	if input.PreferredUserID != nil && *input.PreferredUserID < 0 {
+		return nil, infraerrors.BadRequest("INVALID_PREFERRED_USER", "preferred user ID must be non-negative")
 	}
 	if account.Platform == PlatformTypeSafe && input.Type != "" && input.Type != AccountTypeAPIKey {
 		return nil, errors.New("typesafe accounts only support apikey credentials")

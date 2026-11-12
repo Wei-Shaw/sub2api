@@ -1168,7 +1168,7 @@ export default {
         }
       },
       preferUserAccounts: 'Prefer the caller’s accounts',
-      preferUserAccountsHint: 'New Responses sessions try the caller’s eligible accounts first and fall back to the shared pool.',
+      preferUserAccountsHint: 'New requests without an existing session binding try the caller’s eligible accounts first and fall back to the shared pool.',
       codexModelsManifest: {
         title: 'Pinned Accounts for Model Lists',
         hint: 'When enabled, ordinary model lists and Codex Model Manifest are discovered from the pinned accounts first, then merged and filtered using account mappings and the group model list. Rate-limited or overloaded pinned accounts are still used.',
