@@ -83,6 +83,9 @@ RUN VERSION_VALUE="${VERSION}" && \
 # -----------------------------------------------------------------------------
 FROM ${ALPINE_IMAGE}
 
+# Container updates belong to the image/deployment lifecycle.
+ENV SUB2API_UPDATE_MODE=managed
+
 # Labels
 LABEL maintainer="Wei-Shaw <github.com/Wei-Shaw>"
 LABEL description="Sub2API - AI API Gateway Platform"

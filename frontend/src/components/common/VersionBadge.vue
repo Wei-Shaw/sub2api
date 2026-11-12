@@ -114,8 +114,25 @@
                 </p>
               </div>
 
+              <!-- Managed deployment: never replace the running container binary in place. -->
+              <div v-if="isManagedBuild" class="space-y-3" data-testid="managed-update-hint">
+                <div class="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-800/50 dark:bg-blue-900/20">
+                  <p class="text-sm font-medium text-blue-700 dark:text-blue-300">
+                    {{ t('version.managedMode') }}
+                  </p>
+                  <p class="mt-1 text-xs leading-5 text-blue-600 dark:text-blue-400">
+                    {{ t('version.managedModeHint') }}
+                  </p>
+                </div>
+                <a v-if="hasUpdate && releaseInfo?.html_url && releaseInfo.html_url !== '#'"
+                   :href="releaseInfo.html_url" target="_blank" rel="noopener noreferrer"
+                   class="block text-center text-xs text-primary-600 dark:text-primary-400">
+                  {{ t('version.viewChangelog') }}
+                </a>
+              </div>
+
               <!-- Priority 1: Update error (must check before hasUpdate) -->
-              <div v-if="updateError" class="space-y-2">
+              <div v-else-if="updateError" class="space-y-2">
                 <div
                   class="flex items-center gap-3 rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800/50 dark:bg-red-900/20"
                 >
@@ -375,7 +392,7 @@
                 </a>
 
                 <!-- Version rollback entry -->
-                <div class="border-t border-gray-100 pt-2 dark:border-dark-700">
+                <div v-if="!isManagedBuild" class="border-t border-gray-100 pt-2 dark:border-dark-700">
                   <button
                     @click="toggleRollbackPanel"
                     class="group flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600 dark:text-dark-500 dark:hover:bg-dark-700/50 dark:hover:text-dark-300"
@@ -730,6 +747,7 @@ const activeManualCommand = computed(() =>
 
 // Only show update check for release builds (binary/docker deployment)
 const isReleaseBuild = computed(() => buildType.value === 'release')
+const isManagedBuild = computed(() => buildType.value === 'managed')
 
 function toggleDropdown() {
   dropdownOpen.value = !dropdownOpen.value
@@ -752,7 +770,7 @@ async function refreshVersion(force = true) {
 }
 
 async function handleUpdate() {
-  if (updating.value) return
+  if (!isAdmin.value || isManagedBuild.value || updating.value) return
 
   updating.value = true
   updateError.value = ''
@@ -783,7 +801,7 @@ function resetRollbackState() {
 }
 
 async function toggleRollbackPanel() {
-  if (!isAdmin.value) return
+  if (!isAdmin.value || isManagedBuild.value) return
   rollbackPanelOpen.value = !rollbackPanelOpen.value
   // Source builds only show a hint, no version list to fetch
   if (
@@ -797,7 +815,7 @@ async function toggleRollbackPanel() {
 }
 
 async function loadRollbackVersions() {
-  if (!isAdmin.value) return
+  if (!isAdmin.value || isManagedBuild.value) return
   rollbackVersionsLoading.value = true
   rollbackVersionsError.value = ''
   try {
@@ -826,7 +844,7 @@ function formatPublishedAt(publishedAt: string): string {
 }
 
 async function handleRollback() {
-  if (!isAdmin.value) return
+  if (!isAdmin.value || isManagedBuild.value) return
   if (rollingBack.value || !selectedRollbackVersion.value) return
 
   rollingBack.value = true
