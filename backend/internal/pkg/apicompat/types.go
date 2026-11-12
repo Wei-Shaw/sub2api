@@ -275,6 +275,9 @@ type ResponsesInputItem struct {
 
 	// type=reasoning (multi-turn replay of encrypted reasoning)
 	EncryptedContent string `json:"encrypted_content,omitempty"`
+	// Summary is required by the Responses API on every reasoning input item (it may be
+	// an empty array); upstreams reject the item with "missing required field `summary`".
+	Summary json.RawMessage `json:"summary,omitempty"`
 
 	// type=function_call
 	CallID    string `json:"call_id,omitempty"`
