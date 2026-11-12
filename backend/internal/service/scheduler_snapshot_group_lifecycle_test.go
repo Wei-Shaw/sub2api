@@ -296,11 +296,7 @@ func (r *groupLifecycleTestAccountRepo) load(ctx context.Context, platform strin
 	return []Account{{ID: 9001, Platform: platform, Status: StatusActive, Schedulable: true}}, nil
 }
 
-func (r *groupLifecycleTestAccountRepo) ListSchedulableByGroupIDAndPlatform(ctx context.Context, _ int64, platform string) ([]Account, error) {
-	return r.load(ctx, platform)
-}
-
-func (r *groupLifecycleTestAccountRepo) ListSchedulableByGroupIDAndPlatforms(ctx context.Context, _ int64, platforms []string) ([]Account, error) {
+func (r *groupLifecycleTestAccountRepo) ListModelAvailabilityCandidates(ctx context.Context, _ *int64, platforms []string, _ bool) ([]Account, error) {
 	platform := "mixed"
 	if len(platforms) > 0 {
 		platform = platforms[0]
