@@ -51,6 +51,39 @@ func TestWSResponseCreate_DefaultPassesPriorityAndNormalizesFast(t *testing.T) {
 	require.Equal(t, "priority", gjson.GetBytes(updated, "service_tier").String())
 }
 
+func TestWSResponseCreate_CompositeNegotiatesFastCapability(t *testing.T) {
+	t.Parallel()
+
+	svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
+	account := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url":      "https://relay.example/v1",
+			"model_mapping": map[string]any{"gpt-6-astra": "gpt-6-astra"},
+		},
+	}
+	frame := []byte(`{"type":"response.create","model":"gpt-6-astra","service_tier":"priority","input":[]}`)
+
+	normalCtx := context.WithValue(context.Background(), ctxkey.Group, &Group{
+		ID: 7, Platform: PlatformComposite, Status: StatusActive, Hydrated: true,
+		AllowOpenAIFastDowngrade: true,
+	})
+	updated, blocked, err := svc.applyOpenAIFastPolicyToWSResponseCreate(normalCtx, account, "gpt-6-astra", frame)
+	require.NoError(t, err)
+	require.Nil(t, blocked)
+	require.False(t, gjson.GetBytes(updated, "service_tier").Exists())
+
+	forcedCtx := context.WithValue(context.Background(), ctxkey.Group, &Group{
+		ID: 7, Platform: PlatformComposite, Status: StatusActive, Hydrated: true,
+		ForceOpenAIFast: true, AllowOpenAIFastDowngrade: true,
+	})
+	_, blocked, err = svc.applyOpenAIFastPolicyToWSResponseCreate(forcedCtx, account, "gpt-6-astra", frame)
+	require.NoError(t, err)
+	require.NotNil(t, blocked)
+	require.Contains(t, blocked.Message, "does not support Fast")
+}
+
 func TestWSResponseCreate_ExplicitFilterStripsServiceTier(t *testing.T) {
 	svc := newOpenAIGatewayServiceWithSettings(t, openAIFastFilterPriorityPolicy())
 	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
