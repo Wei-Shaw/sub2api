@@ -6,6 +6,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	mathrand "math/rand"
@@ -130,6 +131,7 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 
 	var stickyAccountID int64
 	var stickySource string
+	var stickyLookupFailed bool
 	if prefetch := prefetchedStickyAccountIDFromContext(ctx, groupID); prefetch > 0 {
 		stickyAccountID = prefetch
 		stickySource = "prefetch"
@@ -137,6 +139,35 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		if accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), sessionHash); err == nil {
 			stickyAccountID = accountID
 			stickySource = "cache"
+		} else {
+			stickyLookupFailed = !errors.Is(err, ErrStickySessionNotFound)
+		}
+	}
+
+	preferredOnly := preferredAccountsOnly(ctx) > 0
+	preferredUserID := preferredUserInGroup(ctx, groupID, s.cfg)
+	hasModelRoute := false
+	if preferredUserID > 0 && group != nil && len(group.GetRoutingAccountIDs(requestedModel)) > 0 {
+		platform, _, err := s.resolvePlatform(ctx, groupID, group, requestedModel)
+		hasModelRoute = err != nil || modelRoutingAppliesToPlatform(platform, group.Platform)
+	}
+	if preferredOnly && (stickyAccountID > 0 || stickyLookupFailed || hasModelRoute) {
+		return nil, ErrNoAvailableAccounts
+	}
+	// Model routing is an explicit administrator rule and keeps its precedence.
+	if !preferredOnly && !stickyLookupFailed && stickyAccountID == 0 && !hasModelRoute && preferredUserID > 0 {
+		preferredCtx := context.WithValue(ctx, preferredAccountsOnlyContextKey{}, preferredUserID)
+		preferred, err := s.SelectAccountWithLoadAwareness(preferredCtx, groupID, sessionHash, requestedModel, excludedIDs, metadataUserID, sub2apiUserID)
+		if err == nil && preferred != nil && preferred.Acquired && preferred.Account.prefersUser(preferredUserID) {
+			bindingCtx := ContextWithSelectionProfitGate(ctx, preferred)
+			_ = s.bindGatewayStickySessionDuringSelection(bindingCtx, groupID, sessionHash, preferred.Account.ID)
+			return preferred, nil
+		}
+		if preferred != nil && preferred.ReleaseFunc != nil {
+			preferred.ReleaseFunc()
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
 		}
 	}
 
@@ -168,8 +199,14 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			localExcluded[k] = v
 		}
 
+		selectionSessionHash := sessionHash
+		if preferredOnly {
+			// The outer selector binds the successful choice. Session admission
+			// below still receives the real session identifier.
+			selectionSessionHash = ""
+		}
 		for {
-			account, err := s.SelectAccountForModelWithExclusions(ctx, groupID, sessionHash, requestedModel, localExcluded)
+			account, err := s.SelectAccountForModelWithExclusions(ctx, groupID, selectionSessionHash, requestedModel, localExcluded)
 			if err != nil {
 				return nil, err
 			}
@@ -185,6 +222,13 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 				return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
 			}
 
+			if preferredOnly {
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+				localExcluded[account.ID] = struct{}{}
+				continue
+			}
 			// 对于等待计划的情况，也需要先检查会话限制
 			if !s.checkAndRegisterSession(ctx, account, sessionHash) {
 				localExcluded[account.ID] = struct{}{}
@@ -776,6 +820,10 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 		}
 	}
 
+	if preferredOnly {
+		return nil, ErrNoAvailableAccounts
+	}
+
 	// ============ Layer 3: 兜底排队 ============
 	s.sortCandidatesForFallback(candidates, preferOAuth, cfg.FallbackSelectionMode)
 	for _, acc := range candidates {
@@ -1036,7 +1084,7 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 				}
 			}
 		}
-		return accounts, useMixed, err
+		return filterPreferredAccounts(ctx, accounts), useMixed, err
 	}
 	useMixed := (platform == PlatformAnthropic || platform == PlatformGemini) && !hasForcePlatform
 	if useMixed {
@@ -1080,7 +1128,7 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 					"tls_fingerprint", acc.IsTLSFingerprintEnabled())
 			}
 		}
-		return s.filterAccountsBySchedulingThreshold(ctx, filtered), useMixed, nil
+		return filterPreferredAccounts(ctx, s.filterAccountsBySchedulingThreshold(ctx, filtered)), useMixed, nil
 	}
 
 	var accounts []Account
@@ -1119,7 +1167,7 @@ func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *i
 	if platform == PlatformGrok || strings.EqualFold(platform, PlatformGrok) {
 		accounts = s.filterGrokFreeQuotaAccountsForGateway(ctx, accounts)
 	}
-	return accounts, useMixed, nil
+	return filterPreferredAccounts(ctx, accounts), useMixed, nil
 }
 
 // WithSingleAntigravityAccountGroupProbe 为请求挂载「分组是否只有一个 antigravity 可调度账号」的延迟判定。

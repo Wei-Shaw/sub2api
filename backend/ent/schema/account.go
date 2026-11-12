@@ -102,6 +102,8 @@ func (Account) Fields() []ent.Field {
 
 		field.Int("load_factor").Optional().Nillable(),
 
+		field.Int64("preferred_user_id").Optional().Nillable(),
+
 		// priority: 账户优先级，数值越小优先级越高
 		// 调度器会优先使用高优先级的账户
 		field.Int("priority").

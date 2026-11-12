@@ -10,6 +10,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	dbaccount "github.com/Wei-Shaw/sub2api/ent/account"
 	"github.com/Wei-Shaw/sub2api/ent/apikey"
 	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/ent/authidentitychannel"
@@ -528,7 +529,16 @@ func (r *userRepository) deleteUser(ctx context.Context, exec *dbent.Client, id 
 	if affected == 0 {
 		return service.ErrUserNotFound
 	}
-	return nil
+
+	// User deletion is soft; the foreign key only handles hard deletion.
+	accountIDs, err := exec.Account.Query().Where(dbaccount.PreferredUserIDEQ(id)).IDs(ctx)
+	if err != nil || len(accountIDs) == 0 {
+		return err
+	}
+	if _, err := exec.Account.Update().Where(dbaccount.PreferredUserIDEQ(id)).ClearPreferredUserID().Save(ctx); err != nil {
+		return err
+	}
+	return enqueueSchedulerOutbox(ctx, exec, service.SchedulerOutboxEventAccountBulkChanged, nil, nil, map[string]any{"account_ids": accountIDs})
 }
 
 func (r *userRepository) List(ctx context.Context, params pagination.PaginationParams) ([]service.User, *pagination.PaginationResult, error) {

@@ -581,6 +581,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	if input.PreferredUserID != nil && *input.PreferredUserID < 0 {
+		return nil, infraerrors.BadRequest("INVALID_PREFERRED_USER", "preferred user ID must be non-negative")
+	}
 	if account.Platform == PlatformTypeSafe && input.Type != "" && input.Type != AccountTypeAPIKey {
 		return nil, errors.New("typesafe accounts only support apikey credentials")
 	}
@@ -883,12 +886,16 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			requestedProbeEnabledUpdate,
 			requestedRateSyncEnabledUpdate,
 			input.RateMultiplier,
+			input.PreferredUserID,
 		); err != nil {
 			return nil, err
 		}
 		billingSettingsAppliedAtomically = true
 	}
 	if !billingSettingsAppliedAtomically {
+		if input.PreferredUserID != nil {
+			return nil, errors.New("account repository does not support updating the preferred user")
+		}
 		if err := s.accountRepo.Update(ctx, account); err != nil {
 			return nil, err
 		}

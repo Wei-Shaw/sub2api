@@ -36,6 +36,7 @@ const (
 
 var (
 	integrationDB        *sql.DB
+	integrationDSN       string
 	integrationEntClient *dbent.Client
 	integrationRedis     *redisclient.Client
 
@@ -91,6 +92,7 @@ func TestMain(m *testing.M) {
 		os.Exit(1)
 	}
 
+	integrationDSN = dsn
 	integrationDB, err = openSQLWithRetry(ctx, dsn, 30*time.Second)
 	if err != nil {
 		log.Printf("failed to open sql db: %v", err)

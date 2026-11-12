@@ -1159,34 +1159,53 @@ func (s *OpenAIGatewayService) selectAccountWithLoadAwareness(ctx context.Contex
 	}
 	ctx = withOpenAIImageSizeStickyAccount(ctx, stickyAccountID)
 	if s.concurrencyService == nil || !cfg.LoadBatchEnabled {
-		account, stickyHit, err := s.selectAccountForModelWithExclusionsStickyHit(ctx, groupID, platform, sessionHash, requestedModel, excludedIDs, requireCompact, stickyAccountID, requiredCapability, preferLowUpstreamRate)
-		if err != nil {
-			return nil, err
-		}
-		result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
-		if err == nil && result != nil && result.Acquired {
-			selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
-			return markStickySessionHit(selection, stickyHit), selectErr
-		}
-		if stickyAccountID > 0 && stickyAccountID == account.ID && s.concurrencyService != nil {
-			waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
-			if waitingCount < cfg.StickySessionMaxWaiting {
-				selection, selectErr := s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
-					AccountID:      account.ID,
-					MaxConcurrency: account.Concurrency,
-					Timeout:        cfg.StickySessionWaitTimeout,
-					MaxWaiting:     cfg.StickySessionMaxWaiting,
-				})
-				return markStickySessionHit(selection, stickyHit), selectErr
+		preferredOnly := preferredAccountsOnly(ctx) > 0
+		effectiveExcludedIDs := excludedIDs
+		if preferredOnly {
+			effectiveExcludedIDs = make(map[int64]struct{}, len(excludedIDs)+1)
+			for id := range excludedIDs {
+				effectiveExcludedIDs[id] = struct{}{}
 			}
 		}
-		selection, selectErr := s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
-			AccountID:      account.ID,
-			MaxConcurrency: account.Concurrency,
-			Timeout:        cfg.FallbackWaitTimeout,
-			MaxWaiting:     cfg.FallbackMaxWaiting,
-		})
-		return markStickySessionHit(selection, stickyHit), selectErr
+		for {
+			account, stickyHit, err := s.selectAccountForModelWithExclusionsStickyHit(ctx, groupID, platform, sessionHash, requestedModel, effectiveExcludedIDs, requireCompact, stickyAccountID, requiredCapability, preferLowUpstreamRate)
+			if err != nil {
+				return nil, err
+			}
+			result, err := s.tryAcquireAccountSlot(ctx, account.ID, account.Concurrency)
+			if err == nil && result != nil && result.Acquired {
+				selection, selectErr := s.newAcquiredSelectionResult(ctx, account, result.ReleaseFunc)
+				return markStickySessionHit(selection, stickyHit), selectErr
+			}
+			if preferredOnly {
+				// A preference pass cannot wait; try any remaining preferred accounts
+				// even when the operator disabled batch load lookups.
+				if err := ctx.Err(); err != nil {
+					return nil, err
+				}
+				effectiveExcludedIDs[account.ID] = struct{}{}
+				continue
+			}
+			if stickyAccountID > 0 && stickyAccountID == account.ID && s.concurrencyService != nil {
+				waitingCount, _ := s.concurrencyService.GetAccountWaitingCount(ctx, account.ID)
+				if waitingCount < cfg.StickySessionMaxWaiting {
+					selection, selectErr := s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+						AccountID:      account.ID,
+						MaxConcurrency: account.Concurrency,
+						Timeout:        cfg.StickySessionWaitTimeout,
+						MaxWaiting:     cfg.StickySessionMaxWaiting,
+					})
+					return markStickySessionHit(selection, stickyHit), selectErr
+				}
+			}
+			selection, selectErr := s.newSelectionResult(ctx, account, false, nil, &AccountWaitPlan{
+				AccountID:      account.ID,
+				MaxConcurrency: account.Concurrency,
+				Timeout:        cfg.FallbackWaitTimeout,
+				MaxWaiting:     cfg.FallbackMaxWaiting,
+			})
+			return markStickySessionHit(selection, stickyHit), selectErr
+		}
 	}
 
 	accounts, err := s.listSchedulableAccounts(ctx, groupID, platform)
@@ -1513,7 +1532,7 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 		if platform == PlatformGrok {
 			accounts = s.filterGrokFreeQuotaAccountsForOpenAI(ctx, accounts)
 		}
-		return accounts, nil
+		return filterPreferredAccounts(ctx, accounts), nil
 	}
 	var accounts []Account
 	var err error
@@ -1531,7 +1550,7 @@ func (s *OpenAIGatewayService) listSchedulableAccounts(ctx context.Context, grou
 	if platform == PlatformGrok {
 		accounts = s.filterGrokFreeQuotaAccountsForOpenAI(ctx, accounts)
 	}
-	return accounts, nil
+	return filterPreferredAccounts(ctx, accounts), nil
 }
 
 func (s *OpenAIGatewayService) tryAcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int) (*AcquireResult, error) {

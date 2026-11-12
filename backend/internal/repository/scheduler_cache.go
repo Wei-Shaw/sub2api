@@ -1163,6 +1163,7 @@ func buildSchedulerMetadataAccount(account service.Account) service.Account {
 		Concurrency:             account.Concurrency,
 		LoadFactor:              account.LoadFactor,
 		Priority:                account.Priority,
+		PreferredUserID:         account.PreferredUserID,
 		RateMultiplier:          account.RateMultiplier,
 		Status:                  account.Status,
 		LastUsedAt:              account.LastUsedAt,

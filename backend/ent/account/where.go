@@ -110,6 +110,11 @@ func LoadFactor(v int) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldLoadFactor, v))
 }
 
+// PreferredUserID applies equality check predicate on the "preferred_user_id" field. It's identical to PreferredUserIDEQ.
+func PreferredUserID(v int64) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldPreferredUserID, v))
+}
+
 // Priority applies equality check predicate on the "priority" field. It's identical to PriorityEQ.
 func Priority(v int) predicate.Account {
 	return predicate.Account(sql.FieldEQ(FieldPriority, v))
@@ -763,6 +768,56 @@ func LoadFactorIsNil() predicate.Account {
 // LoadFactorNotNil applies the NotNil predicate on the "load_factor" field.
 func LoadFactorNotNil() predicate.Account {
 	return predicate.Account(sql.FieldNotNull(FieldLoadFactor))
+}
+
+// PreferredUserIDEQ applies the EQ predicate on the "preferred_user_id" field.
+func PreferredUserIDEQ(v int64) predicate.Account {
+	return predicate.Account(sql.FieldEQ(FieldPreferredUserID, v))
+}
+
+// PreferredUserIDNEQ applies the NEQ predicate on the "preferred_user_id" field.
+func PreferredUserIDNEQ(v int64) predicate.Account {
+	return predicate.Account(sql.FieldNEQ(FieldPreferredUserID, v))
+}
+
+// PreferredUserIDIn applies the In predicate on the "preferred_user_id" field.
+func PreferredUserIDIn(vs ...int64) predicate.Account {
+	return predicate.Account(sql.FieldIn(FieldPreferredUserID, vs...))
+}
+
+// PreferredUserIDNotIn applies the NotIn predicate on the "preferred_user_id" field.
+func PreferredUserIDNotIn(vs ...int64) predicate.Account {
+	return predicate.Account(sql.FieldNotIn(FieldPreferredUserID, vs...))
+}
+
+// PreferredUserIDGT applies the GT predicate on the "preferred_user_id" field.
+func PreferredUserIDGT(v int64) predicate.Account {
+	return predicate.Account(sql.FieldGT(FieldPreferredUserID, v))
+}
+
+// PreferredUserIDGTE applies the GTE predicate on the "preferred_user_id" field.
+func PreferredUserIDGTE(v int64) predicate.Account {
+	return predicate.Account(sql.FieldGTE(FieldPreferredUserID, v))
+}
+
+// PreferredUserIDLT applies the LT predicate on the "preferred_user_id" field.
+func PreferredUserIDLT(v int64) predicate.Account {
+	return predicate.Account(sql.FieldLT(FieldPreferredUserID, v))
+}
+
+// PreferredUserIDLTE applies the LTE predicate on the "preferred_user_id" field.
+func PreferredUserIDLTE(v int64) predicate.Account {
+	return predicate.Account(sql.FieldLTE(FieldPreferredUserID, v))
+}
+
+// PreferredUserIDIsNil applies the IsNil predicate on the "preferred_user_id" field.
+func PreferredUserIDIsNil() predicate.Account {
+	return predicate.Account(sql.FieldIsNull(FieldPreferredUserID))
+}
+
+// PreferredUserIDNotNil applies the NotNil predicate on the "preferred_user_id" field.
+func PreferredUserIDNotNil() predicate.Account {
+	return predicate.Account(sql.FieldNotNull(FieldPreferredUserID))
 }
 
 // PriorityEQ applies the EQ predicate on the "priority" field.

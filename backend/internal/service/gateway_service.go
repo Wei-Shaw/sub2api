@@ -977,7 +977,7 @@ func (s *GatewayService) BindStickySession(ctx context.Context, groupID *int64, 
 // only after the terminal post-slot check, otherwise a rejected candidate could
 // overwrite a healthy pre-existing sticky binding.
 func (s *GatewayService) bindGatewayStickySessionDuringSelection(ctx context.Context, groupID *int64, sessionHash string, accountID int64) error {
-	if gatewayProfitControlGateActive(ctx) {
+	if gatewayProfitControlGateActive(ctx) || preferredAccountsOnly(ctx) > 0 {
 		return nil
 	}
 	return s.BindStickySession(ctx, groupID, sessionHash, accountID)
