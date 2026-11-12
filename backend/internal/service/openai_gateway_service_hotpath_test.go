@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"unsafe"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
@@ -24,6 +25,21 @@ func TestOpenAIRequestView_ExtractsRawScalars(t *testing.T) {
 	require.Equal(t, "resp-1", view.PreviousResponseID)
 	require.Equal(t, "fast", view.ServiceTier)
 	require.Equal(t, "medium", view.ReasoningEffort)
+}
+
+func TestOpenAIRequestView_MetadataOwnsScalarValues(t *testing.T) {
+	body := []byte(`{"model":"gpt-5","stream":true,"prompt_cache_key":"session-1","previous_response_id":"resp-1","service_tier":"flex","reasoning":{"effort":"high"},"input":"` + strings.Repeat("x", 2<<20) + `"}`)
+	view := newOpenAIRequestView(body)
+	start := uintptr(unsafe.Pointer(unsafe.SliceData(body)))
+	end := start + uintptr(len(body))
+	for name, value := range map[string]string{
+		"model": view.Model, "prompt_cache_key": view.PromptCacheKey,
+		"previous_response_id": view.PreviousResponseID, "service_tier": view.ServiceTier,
+		"reasoning.effort": view.ReasoningEffort,
+	} {
+		pointer := uintptr(unsafe.Pointer(unsafe.StringData(value)))
+		require.True(t, pointer < start || pointer >= end, "%s metadata retains the large request buffer", name)
+	}
 }
 
 func TestOpenAIRequestView_ExtractsFieldsAfterLargeInput(t *testing.T) {
