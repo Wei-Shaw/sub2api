@@ -1,8 +1,7 @@
 # Meta Muse Code provider
 
-Meta Muse Code (api.meta.ai) is a first-class provider in this fork. It is not part of
-upstream Wei-Shaw/sub2api, so the whole feature lives in the fork keep-set
-(AGENTS.md section 2.H).
+Meta Muse Code (api.meta.ai) is a first-class provider: platform `meta`, served by the
+OpenAI gateway.
 
 ## What it is
 
