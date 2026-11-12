@@ -737,7 +737,7 @@ func stripOpenAILegacyResponsesBeta(headers http.Header) {
 }
 
 func shouldFailoverOpenAIPassthroughResponse(account *Account, statusCode int, responseBody []byte) bool {
-	if hit, _, _ := detectOpenAICyberPolicy(responseBody); hit {
+	if hit, _, _ := detectOpenAIPolicyBlock(responseBody); hit {
 		return false
 	}
 	if isOpenAIContextWindowError("", responseBody) {
@@ -905,10 +905,10 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	MarkResponseCommitted(c)
 	body := s.redactAgentIdentitySensitiveBody(ctx, account, responseBody)
 
-	// cyber_policy 仍按原始 body 打内部标记，供 handler 事后写风控/邮件；面向客户端的
-	// 错误体在下方统一重建。cyber 是上游网络安全策略拦截，不冷却账号，
+	// 上游 prompt 策略拦截仍按原始 body 打内部标记，供 handler 事后写风控/邮件；面向客户端的
+	// 错误体在下方统一重建。策略拦截不冷却账号，
 	// 故下方跳过 handleOpenAIAccountUpstreamError（避免自定义 temp-unschedulable 规则误冷却）。
-	cyberHit, cyberCode, cyberMsg := detectOpenAICyberPolicy(body)
+	cyberHit, cyberCode, cyberMsg := detectOpenAIPolicyBlock(body)
 	if cyberHit {
 		MarkOpsCyberPolicy(c, CyberPolicyMark{
 			Code:           cyberCode,
@@ -1558,7 +1558,7 @@ func applyOpenAIStreamFailedErrorPassthroughRule(
 }
 
 func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool {
-	if hit, _, _ := detectOpenAICyberPolicy(payload); hit {
+	if hit, _, _ := detectOpenAIPolicyBlock(payload); hit {
 		return false
 	}
 	if isOpenAIContextWindowError(message, payload) {
@@ -1610,7 +1610,7 @@ func openAIStreamFailedEventShouldFailover(payload []byte, message string) bool 
 }
 
 func openAIStreamErrorEventShouldFailover(payload []byte, message string) bool {
-	if hit, _, _ := detectOpenAICyberPolicy(payload); hit {
+	if hit, _, _ := detectOpenAIPolicyBlock(payload); hit {
 		return false
 	}
 	if isOpenAIContextWindowError(message, payload) {
@@ -2096,7 +2096,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				// 再打 cyber 标记，否则 mark 记到的是解析前的 0，导致流式 cyber 按 0 token 计费
 				// 而漏记真实用量。对齐 WS V2 / Chat 流式路径（均先解析 usage 再 Mark）。
 				s.parseSSEUsageBytesWithType(dataBytes, eventType, usage)
-				if hit, code, msg := detectOpenAICyberPolicy(dataBytes); hit {
+				if hit, code, msg := detectOpenAIPolicyBlock(dataBytes); hit {
 					cyberHit = true
 					MarkOpsCyberPolicy(c, CyberPolicyMark{
 						Code:           code,

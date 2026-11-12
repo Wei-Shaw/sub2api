@@ -18,7 +18,7 @@ const (
 	RequestTypeSync         RequestType = 1
 	RequestTypeStream       RequestType = 2
 	RequestTypeWSV2         RequestType = 3
-	RequestTypeCyberBlocked RequestType = 4 // cyber_policy 命中（透传但被上游安全策略拒绝）
+	RequestTypeCyberBlocked RequestType = 4 // 上游 prompt 策略拦截（cyber_policy / invalid_prompt，透传但被上游安全策略拒绝）
 	RequestTypeLive         RequestType = 5
 )
 
