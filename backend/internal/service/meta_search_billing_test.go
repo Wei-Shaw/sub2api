@@ -52,6 +52,56 @@ func TestMetaForwardResponsesCountsWebSearchCalls(t *testing.T) {
 	}
 }
 
+func TestMetaCompatPathsCountWebSearchCalls(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	sseBody := strings.Join([]string{
+		`data: {"type":"response.created","response":{"id":"resp_meta","object":"response","created_at":1794469676.0,"model":"muse-spark-1.3","output":[]}}`,
+		"",
+		`data: {"type":"response.output_item.done","output_index":0,"item":{"type":"web_search_call","id":"ws_call_1","status":"completed","action":{"type":"search","query":"go release"}}}`,
+		"",
+		`data: {"type":"response.output_text.delta","item_id":"msg_1","output_index":1,"content_index":0,"delta":"ok"}`,
+		"",
+		`data: {"type":"response.output_item.done","output_index":1,"item":{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok"}]}}`,
+		"",
+		`data: {"type":"response.completed","response":{"id":"resp_meta","object":"response","created_at":1794469677.0,"model":"muse-spark-1.3","status":"completed","output":[{"type":"web_search_call","id":"ws_call_1","status":"completed","action":{"type":"search","query":"go release"}},{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"ok"}]}],"usage":{"input_tokens":2,"output_tokens":1}}}`,
+		"",
+		"",
+	}, "\n")
+	for _, tc := range []struct {
+		name, path, body string
+		forward          func(*OpenAIGatewayService, *gin.Context, []byte) (*OpenAIForwardResult, error)
+	}{
+		{"chat buffered", "/v1/chat/completions", `{"model":"muse-spark-1.3","messages":[{"role":"user","content":"news"}],"stream":false}`, chatForward},
+		{"chat stream", "/v1/chat/completions", `{"model":"muse-spark-1.3","messages":[{"role":"user","content":"news"}],"stream":true}`, chatForward},
+		{"messages buffered", "/v1/messages", `{"model":"muse-spark-1.3","max_tokens":64,"messages":[{"role":"user","content":"news"}],"stream":false}`, messagesForward},
+		{"messages stream", "/v1/messages", `{"model":"muse-spark-1.3","max_tokens":64,"messages":[{"role":"user","content":"news"}],"stream":true}`, messagesForward},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(sseBody)),
+			}}
+			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+			c.Request.Header.Set("Content-Type", "application/json")
+
+			result, err := tc.forward(svc, c, []byte(tc.body))
+			require.NoError(t, err)
+			require.Equal(t, 1, result.SearchCount)
+		})
+	}
+}
+
+func chatForward(svc *OpenAIGatewayService, c *gin.Context, body []byte) (*OpenAIForwardResult, error) {
+	return svc.ForwardAsChatCompletions(context.Background(), c, metaGatewayTestAccount("muse-spark-1.3"), body, "", "")
+}
+
+func messagesForward(svc *OpenAIGatewayService, c *gin.Context, body []byte) (*OpenAIForwardResult, error) {
+	return svc.ForwardAsAnthropic(context.Background(), c, metaGatewayTestAccount("muse-spark-1.3"), body, "", "")
+}
+
 func TestMetaGroupDefaultsWebSearchGroundingPrice(t *testing.T) {
 	meta := &Group{Platform: PlatformMeta}
 	require.InDelta(t, 2.5, *meta.GetSearchPricePer1k(), 1e-12)
