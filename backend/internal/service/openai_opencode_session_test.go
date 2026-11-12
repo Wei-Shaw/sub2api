@@ -219,6 +219,31 @@ func TestApplyOpenCodeSessionHeaderUsesRememberedInboundBodyAfterConversion(t *t
 	require.Equal(t, "inbound-messages-session", headers2.Get(openCodeSessionHeader))
 }
 
+func TestRememberOpenCodeInboundBodyRetainsOnlySessionHint(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	c := newOpenCodeSessionTestContext(t, "")
+	body := []byte(`{"model":"gpt-5","prompt_cache_key":"conversation-42","input":"` + strings.Repeat("x", 2<<20) + `"}`)
+	rememberOpenCodeInboundBody(c, body)
+
+	remembered := openCodeInboundBodies(c)
+	require.Len(t, remembered, 1)
+	require.Less(t, len(remembered[0]), 256, "conversation correlation only retains the session hint")
+	headers := make(http.Header)
+	applyOpenCodeSessionHeader(c, account, "https://opencode.ai/zen/go/v1/messages", headers, []byte(`{"messages":[]}`))
+	require.Equal(t, "conversation-42", headers.Get(openCodeSessionHeader))
+}
+
+func TestRememberOpenCodeInboundBodyPreservesSessionFallback(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	c := newOpenCodeSessionTestContext(t, "")
+	rememberOpenCodeInboundBody(c, []byte(`{"prompt_cache_key":"previous-session"}`))
+	rememberOpenCodeInboundBody(c, []byte(`{"prompt_cache_key":"a\nb","metadata":{"user_id":"metadata-session"}}`))
+
+	headers := make(http.Header)
+	applyOpenCodeSessionHeader(c, account, "https://opencode.ai/zen/go/v1/messages", headers, []byte(`{"metadata":{"user_id":"converted-session"}}`))
+	require.Equal(t, "converted-session", headers.Get(openCodeSessionHeader))
+}
+
 func TestOpenCodeSessionIDFromPayloadIgnoresEmptyBody(t *testing.T) {
 	require.Empty(t, openCodeSessionIDFromPayload(nil))
 	require.Empty(t, openCodeSessionIDFromPayload([]byte(`{"model":"gpt-5"}`)))

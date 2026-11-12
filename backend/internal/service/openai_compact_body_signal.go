@@ -2,9 +2,12 @@ package service
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
@@ -32,6 +35,49 @@ func NormalizeCompactionTriggerInputOrder(body []byte) ([]byte, bool, error) {
 	if !compactionTriggerNeedsDecode(body) {
 		return body, false, nil
 	}
+	// 直接读取历史项的类型，让普通长会话和图片请求复用原始字节。
+	// 重复键与异常输入沿用完整解码的既有语义。
+	root := parseRawJSONView(body)
+	if !json.Valid(body) || !utf8.Valid(body) || !root.IsObject() || hasDuplicateJSONObjectKeys(root) {
+		return normalizeCompactionTriggerInputOrderDecoded(body)
+	}
+	input := root.Get("input")
+	if !input.IsArray() {
+		return body, false, nil
+	}
+	items := make([]string, 0)
+	triggerCount := 0
+	lastIsTrigger := false
+	duplicateKeys := false
+	input.ForEach(func(_, item gjson.Result) bool {
+		if item.IsObject() && hasDuplicateJSONObjectKeys(item) {
+			duplicateKeys = true
+			return false
+		}
+		typ := item.Get("type")
+		lastIsTrigger = item.IsObject() && typ.Type == gjson.String && typ.Str == "compaction_trigger"
+		if lastIsTrigger {
+			triggerCount++
+		} else {
+			items = append(items, item.Raw)
+		}
+		return true
+	})
+	if duplicateKeys {
+		return normalizeCompactionTriggerInputOrderDecoded(body)
+	}
+	if triggerCount == 0 || (triggerCount == 1 && lastIsTrigger) {
+		return body, false, nil
+	}
+	// 重排前核对所有嵌套对象，使输出继续采用完整解码的末值语义。
+	if _, conflict := requestmodel.ConflictingField("application/json", body); conflict {
+		return normalizeCompactionTriggerInputOrderDecoded(body)
+	}
+	items = append(items, `{"type":"compaction_trigger"}`)
+	return replaceOpenAIRawInput(body, input, items), true, nil
+}
+
+func normalizeCompactionTriggerInputOrderDecoded(body []byte) ([]byte, bool, error) {
 	var payload map[string]any
 	if err := decodeOpenAIJSONUseNumber(body, &payload); err != nil {
 		return body, false, err
