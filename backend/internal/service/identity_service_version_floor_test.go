@@ -69,8 +69,13 @@ func TestGetOrCreateFingerprintFloorsStaleCachedUserAgent(t *testing.T) {
 	require.Equal(t, "claude-cli/"+claude.CLICurrentVersion+" (external, cli)", fp.UserAgent)
 	require.Equal(t, 1, cache.setCalls, "下限抬升必须持久化写回缓存")
 	require.Equal(t, "claude-cli/"+claude.CLICurrentVersion+" (external, cli)", cache.lastSet.UserAgent)
-	// X-Stainless-* 维持既有 merge 语义：客户端未携带时保留缓存中的真实值，不被下限逻辑覆盖。
-	require.Equal(t, "0.91.1", fp.StainlessPackageVersion)
+	// UA 被 floor 抬升后，Package/Runtime 必须同步到抬升后版本的同源组合；
+	// 缓存里的旧值对应的是抬升前的 CLI，继续沿用会拼出真实客户端不存在的三元组。
+	wantVersions, _ := claude.StainlessVersionsForCLIVersion(claude.CLICurrentVersion)
+	require.Equal(t, wantVersions.PackageVersion, fp.StainlessPackageVersion)
+	require.Equal(t, wantVersions.RuntimeVersion, fp.StainlessRuntimeVersion)
+	require.Equal(t, wantVersions.PackageVersion, cache.lastSet.StainlessPackageVersion)
+	require.Equal(t, wantVersions.RuntimeVersion, cache.lastSet.StainlessRuntimeVersion)
 }
 
 // 缓存版本高于下限：不得被降级，也不得触发多余写入。
@@ -91,6 +96,7 @@ func TestGetOrCreateFingerprintDoesNotTouchCacheAboveFloor(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, ua, fp.UserAgent, "高于下限的缓存版本不得被降级")
+	require.Equal(t, "0.91.1", fp.StainlessPackageVersion, "未触发 floor 时不得改写客户端真实值")
 	require.Zero(t, cache.setCalls)
 }
 
