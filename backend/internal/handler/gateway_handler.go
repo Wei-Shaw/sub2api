@@ -1216,6 +1216,10 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		writeModelsList(c, platform, []string{typesafe.JevLatestModel})
 		return
 	}
+	if platform == service.PlatformMeta {
+		writeModelsList(c, platform, defaultModelIDsForPlatform(platform))
+		return
+	}
 
 	writeModelsListResponse(c, claude.DefaultModels)
 }
@@ -1503,6 +1507,8 @@ func defaultModelIDsForPlatform(platform string) []string {
 		return xai.DefaultModelIDs()
 	case service.PlatformOpenCodeGo:
 		return service.DefaultOpenCodeGoModelIDs()
+	case service.PlatformMeta:
+		return service.DefaultMetaModelIDs
 	case service.PlatformTypeSafe:
 		return []string{"jev-latest"}
 	case service.PlatformComposite:

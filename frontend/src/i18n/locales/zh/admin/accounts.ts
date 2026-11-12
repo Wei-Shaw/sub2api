@@ -367,6 +367,14 @@ export default {
         balanceLow: '余额不足',
         noBalanceEndpoint: '该平台暂无余额查询接口',
       },
+      metaUsage: {
+        noSample: '暂无用量采样 — 点击查询，或等待下一次流式响应',
+        tier: '订阅等级',
+        tierWithId: '订阅等级（ID {id}）',
+        tierUnknown: '未知套餐',
+        activeSampled: '已查询',
+        queryTooltip: '发送一个极小的 Muse 请求（16 个输出 token）读取当前订阅窗口',
+      },
       opencodeGo: {
         accountMode: {
           zen: 'Zen',
@@ -1326,6 +1334,20 @@ export default {
       },
       // OAuth flow
       oauth: {
+        meta: {
+          description:
+            '使用 Meta Muse 设备码（OAuth）登录：点击按钮后在 Meta 页面输入验证码即可，无需手动复制 token。',
+          startButton: '使用 Meta 登录',
+          apiKeyMethod: 'API Key',
+          starting: '正在发起授权...',
+          userCodeLabel: '请在 Meta 授权页面输入此验证码',
+          openVerification: '打开 Meta 授权页面',
+          checkNow: '立即检查',
+          statePending: '等待授权中...（剩余 {seconds} 秒）',
+          stateSlowDown: 'Meta 要求降低轮询频率，稍后自动重试。',
+          stateDenied: '授权已被拒绝。',
+          stateExpired: '设备码已过期，请重新发起登录。',
+        },
         title: 'Claude 账号授权',
         authMethod: '授权方式',
         manualAuth: '手动授权',

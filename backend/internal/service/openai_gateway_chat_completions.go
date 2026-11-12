@@ -365,6 +365,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	if err != nil {
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
+	s.wrapMetaCompatResponse(ctx, account, resp)
 	defer func() {
 		cancelUpstream()
 		_ = resp.Body.Close()
@@ -771,12 +772,8 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		Duration:                      time.Since(startTime),
 	}
 	// Grok chat bridge: bill native search tools found in the terminal Responses body.
-	if account != nil && account.IsGrok() && finalResponse != nil {
-		if body, err := json.Marshal(finalResponse); err == nil {
-			if n := countGrokNativeSearchCallsFromJSONBytes(body); n > 0 {
-				result.SearchCount = n
-			}
-		}
+	if account != nil && account.billsNativeSearchCalls() && finalResponse != nil {
+		result.SearchCount = countNativeSearchCallsInResponsesOutput(finalResponse.Output)
 	}
 	return result, nil
 }
@@ -856,7 +853,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	// Grok chat bridge reuses Responses SSE; count native search tools for surcharge.
 	searchCount := 0
 	streamSearchSeen := make(map[string]struct{})
-	countSearch := account != nil && account.IsGrok()
+	countSearch := account != nil && account.billsNativeSearchCalls()
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
@@ -906,9 +903,6 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
 		}
-		if countSearch {
-			searchCount += countGrokNativeSearchCallsInSSEDataDedup([]byte(payload), streamSearchSeen)
-		}
 
 		var event apicompat.ResponsesStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
@@ -917,6 +911,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				zap.String("request_id", requestID),
 			)
 			return false
+		}
+		if countSearch && isNativeSearchCountEvent(event.Type) {
+			searchCount += countGrokNativeSearchCallsInSSEDataDedup([]byte(payload), streamSearchSeen)
 		}
 		observer.ObserveOpenAI([]byte(payload), event.Type)
 		refusalDetector.ObservePayload([]byte(payload))

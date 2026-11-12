@@ -830,6 +830,10 @@ func (s *AccountTestService) fetchUpstreamModelListRequest(ctx context.Context, 
 	if account.IsGrok() {
 		extractModels = extractGrokUpstreamModelIDs
 	}
+	if account.IsMeta() {
+		extractModels = extractMetaUpstreamModelIDs
+	}
+
 	models, err := extractModels(body)
 	if err != nil {
 		if account.IsGrok() && errors.Is(err, errGrokCatalogEmpty) {
@@ -994,6 +998,8 @@ func (s *AccountTestService) buildUpstreamModelsRequest(ctx context.Context, acc
 		return s.buildAntigravityAPIKeyModelsRequest(ctx, account)
 	case account.IsGrok():
 		return s.buildGrokUpstreamModelsRequest(ctx, account)
+	case account.IsMeta():
+		return s.buildMetaUpstreamModelsRequest(ctx, account)
 	case account.IsOpenAI() || account.IsMultiProtocolAPIKey():
 		// 多协议 API Key 供应商（国产厂商与聚合平台）复用 OpenAI /v1/models 探测。
 		return s.buildOpenAIUpstreamModelsRequest(ctx, account)

@@ -510,6 +510,10 @@
         :account="account"
         @updated="handleOpenCodeGoUsageUpdated"
       />
+      <MetaUsageCell
+        v-else-if="account.platform === 'meta'"
+        :account="account"
+      />
       <div v-else class="space-y-1">
         <!-- 子单元格各自按 模式×平台 判定可见；两者都不可见时（智谱 payg 无公开
              余额端点、coding 探测也不适用）才回落到占位符。 -->
@@ -769,6 +773,7 @@ import {
   cnBalanceCellVisible as cnBalanceCellVisibleFn,
   isMultiProtocolApiKeyPlatform
 } from './credentialsBuilder'
+import MetaUsageCell from './MetaUsageCell.vue'
 import OpenCodeGoUsageCell from './OpenCodeGoUsageCell.vue'
 
 // Module-level cache shared across all AccountUsageCell instances

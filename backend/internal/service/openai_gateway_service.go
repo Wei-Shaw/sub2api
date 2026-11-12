@@ -466,6 +466,7 @@ type OpenAIGatewayService struct {
 	deferredService       *DeferredService
 	openAITokenProvider   *OpenAITokenProvider
 	grokTokenProvider     *GrokTokenProvider
+	metaTokenProvider     *MetaTokenProvider
 	toolCorrector         *CodexToolCorrector
 	openaiWSResolver      OpenAIWSProtocolResolver
 	resolver              *ModelPricingResolver
@@ -570,6 +571,7 @@ func NewOpenAIGatewayService(
 		deferredService:       deferredService,
 		openAITokenProvider:   openAITokenProvider,
 		grokTokenProvider:     grokTokenProvider,
+		metaTokenProvider:     NewMetaTokenProvider(accountRepo, httpUpstream),
 		toolCorrector:         NewCodexToolCorrector(),
 		openaiWSResolver:      NewOpenAIWSProtocolResolver(cfg),
 		resolver:              resolver,
@@ -1243,6 +1245,20 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 				return "", "", errors.New("access_token not found in credentials")
 			}
 			return accessToken, "oauth", nil
+		}
+		if account.IsMeta() {
+			apiKey := account.GetMetaAPIKey()
+			if apiKey == "" && account.GetMetaDCAToken() != "" && s.metaTokenProvider != nil {
+				minted, err := s.metaTokenProvider.GetAPIKey(ctx, account)
+				if err != nil {
+					return "", "", err
+				}
+				apiKey = minted
+			}
+			if apiKey == "" {
+				return "", "", errors.New("meta: api_key not found in credentials")
+			}
+			return apiKey, "apikey", nil
 		}
 		// 使用 TokenProvider 获取缓存的 token
 		if s.openAITokenProvider != nil {

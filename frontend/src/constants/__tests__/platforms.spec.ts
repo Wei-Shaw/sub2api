@@ -7,7 +7,8 @@ import {
   listPlatformIds,
   platformDisplayName,
   resetPlatformCatalog,
-  setPlatformCatalog
+  setPlatformCatalog,
+  supportsUpstreamModelSync
 } from '@/constants/platformCatalog'
 import { platformLabel } from '@/utils/platformColors'
 import { normalizePlatformQuotasMap, sanitizePlatformQuotasMap } from '@/api/admin/settings'
@@ -27,10 +28,17 @@ const concretePlatforms = [
   'opencode_go',
   'typesafe',
   'command_code',
-  'cline'
+  'cline',
+  'meta'
 ]
 
 describe('platform option catalogs', () => {
+  it('keeps meta in the upstream model sync set (regression guard)', () => {
+    expect(supportsUpstreamModelSync('meta')).toBe(true)
+    expect(supportsUpstreamModelSync('openai')).toBe(true)
+    expect(supportsUpstreamModelSync('unregistered')).toBe(false)
+  })
+
   it('exposes every concrete account platform', () => {
     expect(CONCRETE_PLATFORM_OPTIONS.map((option) => option.value)).toEqual(concretePlatforms)
   })
@@ -60,11 +68,11 @@ describe('platform catalog with a newly registered platform', () => {
     expect(listPlatformIds()).toEqual(concretePlatforms)
     expect(compositePrecedencePlatformIds()).toEqual([
       'anthropic', 'gemini', 'openai', 'antigravity', 'grok',
-      'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'typesafe', 'command_code', 'cline'
+      'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'typesafe', 'command_code', 'cline', 'meta'
     ])
     expect(CONCRETE_PLATFORM_OPTIONS.map((option) => option.label)).toEqual([
       'Anthropic', 'OpenAI', 'Gemini', 'Antigravity', 'Grok',
-      'Kimi', 'Zhipu GLM', 'DeepSeek', 'MiniMax', 'OpenCode', 'TypeSafe / Jev', 'Command Code', 'Cline'
+      'Kimi', 'Zhipu GLM', 'DeepSeek', 'MiniMax', 'OpenCode', 'TypeSafe / Jev', 'Command Code', 'Cline', 'Meta Muse'
     ])
     expect(platformLabel('zhipu')).toBe('Zhipu GLM')
     expect(platformLabel('composite')).toBe('Composite')

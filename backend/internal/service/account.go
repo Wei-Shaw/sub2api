@@ -1476,7 +1476,10 @@ func (a *Account) IsOpenAIOAuthLike() bool {
 // UsesOpenAICodexProtocol preserves legacy OpenAI gateway OAuth routing for
 // accounts whose platform is implicit, while adding OpenAI SetupToken.
 func (a *Account) UsesOpenAICodexProtocol() bool {
-	return a != nil && (a.Type == AccountTypeOAuth || a.IsOpenAIOAuthLike())
+	if a == nil || a.IsMeta() {
+		return false
+	}
+	return a.Type == AccountTypeOAuth || a.IsOpenAIOAuthLike()
 }
 
 func (a *Account) IsOpenAIChatGPTSubscription() bool {
@@ -1509,6 +1512,9 @@ func (a *Account) IsOpenAIApiKey() bool {
 func (a *Account) GetOpenAIBaseURL() string {
 	if !a.IsOpenAI() && !a.IsMultiProtocolAPIKey() {
 		return ""
+	}
+	if a.IsMeta() {
+		return a.GetMetaBaseURL()
 	}
 	if a.IsMultiProtocolAPIKey() && a.IsAdaptiveAPIProtocol() {
 		if baseURLs, ok := a.Credentials["api_base_urls"].(map[string]any); ok {
@@ -1606,6 +1612,9 @@ func (a *Account) IsAdaptiveAPIProtocol() bool {
 func (a *Account) GetCNProtocolBaseURL(protocol string) string {
 	if a == nil || !a.IsMultiProtocolAPIKey() {
 		return ""
+	}
+	if a.IsMeta() {
+		return a.GetMetaBaseURL()
 	}
 	if a.IsAdaptiveAPIProtocol() {
 		if baseURLs, ok := a.Credentials["api_base_urls"].(map[string]any); ok {
@@ -1849,6 +1858,9 @@ func (a *Account) GetOpenAIProtocolAPIKey() string {
 		return ""
 	}
 	if a.IsMultiProtocolAPIKey() {
+		if a.IsMeta() {
+			return a.GetMetaAPIKey()
+		}
 		if a.Type != AccountTypeAPIKey {
 			return ""
 		}
@@ -2102,7 +2114,7 @@ func (a *Account) openAIEndpointCapabilitySet() (map[string]bool, bool) {
 }
 
 func (a *Account) SupportsOpenAIImageCapability(capability OpenAIImagesCapability) bool {
-	if capability == "" {
+	if capability == "" || a.IsMeta() {
 		return true
 	}
 	if !a.IsOpenAI() {

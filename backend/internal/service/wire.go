@@ -253,6 +253,9 @@ func ProvideAccountUsageService(
 		tlsFPProfileService,
 	)
 	service.agentIdentityWS = openAIGatewayService
+	if openAIGatewayService != nil {
+		service.metaUsageProber = openAIGatewayService
+	}
 	return service
 }
 
@@ -284,6 +287,14 @@ func ProvideAccountTestService(
 	service.SetSettingService(settingService)
 	service.SetPluginManager(pluginManager)
 	return service
+}
+
+func ProvideMetaOAuthService(proxyRepo ProxyRepository) *MetaOAuthService {
+	return NewMetaOAuthService(proxyRepo)
+}
+
+func ProvideMetaTokenProvider(accountRepo AccountRepository, httpUpstream HTTPUpstream) *MetaTokenProvider {
+	return NewMetaTokenProvider(accountRepo, httpUpstream)
 }
 
 func ProvideGrokQuotaService(
@@ -908,6 +919,8 @@ var ProviderSet = wire.NewSet(
 	NewGeminiMessagesCompatService,
 	ProvideAntigravityTokenProvider,
 	ProvideGrokTokenProvider,
+	ProvideMetaOAuthService,
+	ProvideMetaTokenProvider,
 	ProvideOpenAITokenProvider,
 	ProvideOpenAIQuotaService,
 	ProvideOpenAIQuotaAutoResetService,

@@ -164,6 +164,14 @@ export default {
         balanceLow: 'Insufficient balance',
         noBalanceEndpoint: 'This platform has no balance query endpoint',
       },
+      metaUsage: {
+        noSample: 'No usage sampled yet — press Query, or wait for the next streamed response',
+        tier: 'Subscription tier',
+        tierWithId: 'Subscription tier (ID {id})',
+        tierUnknown: 'Unknown plan',
+        activeSampled: 'Queried',
+        queryTooltip: 'Send a minimal Muse request (16 output tokens) to read the current subscription windows',
+      },
       opencodeGo: {
         accountMode: {
           zen: 'Zen',
@@ -1218,6 +1226,20 @@ export default {
       },
       // OAuth flow
       oauth: {
+        meta: {
+          description:
+            'Sign in with the Meta Muse device-code flow. Click the button, then enter the verification code on the Meta page; no token copy-paste needed.',
+          startButton: 'Login with Meta',
+          apiKeyMethod: 'API key',
+          starting: 'Starting authorization...',
+          userCodeLabel: 'Enter this code on the Meta authorization page',
+          openVerification: 'Open the Meta authorization page',
+          checkNow: 'Check now',
+          statePending: 'Waiting for authorization... ({seconds}s left)',
+          stateSlowDown: 'Meta asked us to poll less often; retrying shortly.',
+          stateDenied: 'The authorization was denied.',
+          stateExpired: 'The device code expired. Start the login again.',
+        },
         title: 'Claude Account Authorization',
         authMethod: 'Authorization Method',
         manualAuth: 'Manual Authorization',

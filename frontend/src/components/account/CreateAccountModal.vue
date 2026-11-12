@@ -1499,6 +1499,30 @@
         </div>
       </div>
 
+      <div v-if="form.platform === 'meta'">
+        <label class="input-label">{{ t('admin.accounts.addMethod') }}</label>
+        <div class="mt-2 flex gap-4">
+          <label class="flex cursor-pointer items-center">
+            <input
+              v-model="metaAddMethod"
+              type="radio"
+              value="oauth"
+              class="mr-2 text-primary-600 focus:ring-primary-500"
+            />
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.accounts.oauth.meta.startButton') }}</span>
+          </label>
+          <label class="flex cursor-pointer items-center">
+            <input
+              v-model="metaAddMethod"
+              type="radio"
+              value="apikey"
+              class="mr-2 text-primary-600 focus:ring-primary-500"
+            />
+            <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.accounts.oauth.meta.apiKeyMethod') }}</span>
+          </label>
+        </div>
+      </div>
+
       <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
       <div v-if="form.type === 'apikey' && form.platform !== 'antigravity'" class="space-y-4">
         <div v-if="!isMultiProtocolPlatform || apiProtocol !== 'adaptive'">
@@ -2484,9 +2508,8 @@
         </div>
       </div>
 
-      <!-- OpenAI OAuth Model Mapping (OAuth 类型没有 apikey 容器，需要独立的模型映射区域) -->
       <div
-        v-if="(form.platform === 'openai' || form.platform === 'grok') && isOAuthFlow"
+        v-if="(form.platform === 'openai' || form.platform === 'grok' || form.platform === 'meta') && isOAuthFlow"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"
       >
         <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
@@ -3770,7 +3793,14 @@
 
     <!-- Step 2: OAuth Authorization -->
     <div v-else class="space-y-5">
+      <MetaDeviceLogin
+        v-if="form.platform === 'meta'"
+        :proxy-id="form.proxy_id"
+        :account-options="metaDeviceAccountOptions"
+        @created="handleMetaAccountCreated"
+      />
       <OAuthAuthorizationFlow
+        v-else
         ref="oauthFlowRef"
         :add-method="form.platform === 'anthropic' ? addMethod : 'oauth'"
         :auth-url="currentAuthUrl"
@@ -4134,6 +4164,7 @@ import {
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
 import { adminAPI } from '@/api/admin'
+import type { MetaDeviceAccountOptions } from '@/api/admin/meta'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
   useAccountOAuth,
@@ -4230,6 +4261,7 @@ import {
   type OpenAIWSMode
 } from '@/utils/openaiWsMode'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
+import MetaDeviceLogin from './MetaDeviceLogin.vue'
 
 // Type for exposed OAuthAuthorizationFlow component
 // Note: defineExpose automatically unwraps refs, so we use the unwrapped types
@@ -4338,6 +4370,41 @@ const emit = defineEmits<{
   created: []
 }>()
 
+const metaDeviceAccountOptions = computed<MetaDeviceAccountOptions>(() => {
+  const credentials: Record<string, unknown> = {}
+  const modelMapping = buildModelMappingObject(modelRestrictionMode.value, allowedModels.value, modelMappings.value)
+  if (modelMapping) {
+    credentials.model_mapping = modelMapping
+  }
+  if (tempUnschedEnabled.value) {
+    const rules = buildTempUnschedRules(tempUnschedRules.value)
+    if (rules.length > 0) {
+      credentials.temp_unschedulable_enabled = true
+      credentials.temp_unschedulable_rules = rules
+    }
+  }
+  const extra = withUpstreamRequestIdHeader(undefined)
+  return {
+    name: form.name,
+    notes: form.notes || undefined,
+    concurrency: form.concurrency,
+    priority: form.priority,
+    group_ids: form.group_ids,
+    rate_multiplier: form.rate_multiplier,
+    load_factor: form.load_factor ?? undefined,
+    expires_at: form.expires_at,
+    auto_pause_on_expired: autoPauseOnExpired.value,
+    ...(Object.keys(credentials).length > 0 ? { credentials } : {}),
+    ...(extra ? { extra } : {})
+  }
+})
+
+function handleMetaAccountCreated() {
+  appStore.showSuccess(t('admin.accounts.accountCreated'))
+  emit('created')
+  handleClose()
+}
+
 const appStore = useAppStore()
 
 const hideAccountLongContextBilling = computed(() => {
@@ -4407,6 +4474,12 @@ const step = ref(1)
 const submitting = ref(false)
 const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_account'>('oauth-based') // UI selection for account category
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
+const metaAddMethod = ref<'oauth' | 'apikey'>('oauth')
+
+watch(metaAddMethod, (method) => {
+  if (form.platform !== 'meta') return
+  accountCategory.value = method === 'oauth' ? 'oauth-based' : 'apikey'
+})
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
@@ -4545,6 +4618,18 @@ function selectTypeSafePlatform() {
 }
 function selectGenericMultiProtocolPlatform(platform: string) {
   form.platform = platform
+  // Meta Muse 默认走设备码登录（OAuth）；仍可在表单里切换到 API Key。
+  if (platform === 'meta') {
+    form.type = 'oauth'
+    accountCategory.value = 'oauth-based'
+    metaAddMethod.value = 'oauth'
+    apiProtocol.value = 'adaptive'
+    accountMode.value = resolveProviderAccountMode(platform, undefined)
+    apiKeyBaseUrl.value = defaultCNBaseUrl(platform, accountMode.value, apiProtocol.value)
+    resetAdaptiveBaseUrls(platform, accountMode.value)
+    openCodeGoProtocolRules.value = cloneOpenCodeGoProtocolRules(defaultProviderProtocolRules(platform, accountMode.value))
+    return
+  }
   form.type = 'apikey'
   accountCategory.value = 'apikey'
   apiProtocol.value = 'adaptive'
@@ -5961,6 +6046,9 @@ const handleSubmit = async () => {
   if (isOAuthFlow.value) {
     if (!isGrokSSOInputMethod.value && !form.name.trim()) {
       appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
+      return
+    }
+    if (form.platform === 'meta' && !applyTempUnschedConfig({})) {
       return
     }
     const canContinue = await ensureAntigravityMixedChannelConfirmed(async () => {

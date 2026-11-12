@@ -12,6 +12,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/meta"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/gin-gonic/gin"
@@ -1363,7 +1364,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// Grok-native web_search / x_search / tool_search tool invocations (per-1k pricing).
 		// Token cost still applies separately when usage is present; search is additive only
 		// when search_price_per_1k is configured (nil price → $0 from CalculateSearchCost).
-		if searchCount > 0 && account != nil && account.IsGrok() {
+		if searchCount > 0 && account != nil && account.billsNativeSearchCalls() {
 			forwardResult.SearchCount = searchCount
 		}
 		stampOpenAIResponsesUpstreamEndpoint(c, forwardResult)
@@ -1401,7 +1402,14 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	var targetURL string
 	switch account.Type {
 	case AccountTypeOAuth:
-		// OAuth accounts use ChatGPT internal API
+		if account.IsMeta() {
+			validatedURL, err := s.validateUpstreamBaseURL(account.GetMetaBaseURL())
+			if err != nil {
+				return nil, err
+			}
+			targetURL = buildOpenAIResponsesURLForPlatform(account.Platform, validatedURL)
+			break
+		}
 		targetURL = chatgptCodexURL
 	case AccountTypeSetupToken:
 		if account.IsOpenAIOAuthLike() {
@@ -1428,6 +1436,10 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		targetURL = openaiPlatformAPIURL
 	}
 	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
+
+	if account.IsMeta() {
+		body = meta.EnsureMuseToolNamespace(body)
+	}
 
 	// DeepSeek / Kimi 原生 Responses 端点为无状态实现：强制 store=false、清除
 	// previous_response_id，避免携带状态字段被上游拒绝。
@@ -1522,6 +1534,12 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		req.Header.Set("user-agent", CodexCanonicalUserAgent())
 	}
 
+	if account.IsMeta() {
+		stripOpenAIClientCodexIdentityHeaders(req.Header)
+		meta.ApplyClientIdentity(req.Header, "")
+		meta.ApplyContributorMode(req.Header, gjson.GetBytes(body, "model").String())
+	}
+
 	// 账号 namespace 不改变客户端身份基数，但确保 scheduler failover 后不会把
 	// 同一组 Codex IDs 发送给另一份 OAuth 凭据。可选指纹收敛随后仍可覆盖这些值。
 	applyCodexAccountIdentityHeaders(req.Header, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
@@ -1557,6 +1575,22 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 		return nil, err
 	}
 	return req, nil
+}
+
+func stripOpenAIClientCodexIdentityHeaders(h http.Header) {
+	for _, key := range []string{
+		"originator",
+		"openai-beta",
+		"session_id",
+		"conversation_id",
+		"x-codex-beta-features",
+		"x-codex-installation-id",
+		"x-codex-turn-state",
+		"x-codex-turn-metadata",
+		"x-codex-window-id",
+	} {
+		h.Del(key)
+	}
 }
 
 // codexIdentityOverrideUA 返回账号级显式配置的出站 User-Agent，供强制统一身份时作为覆写来源。
