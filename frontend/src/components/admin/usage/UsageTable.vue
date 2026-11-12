@@ -317,6 +317,7 @@
   <Teleport to="body">
     <div
       v-if="tokenTooltipVisible"
+      ref="tokenTooltipEl"
       class="fixed z-[9999] pointer-events-none -translate-y-1/2"
       :style="{
         left: tokenTooltipPosition.x + 'px',
@@ -410,6 +411,7 @@
   <Teleport to="body">
     <div
       v-if="tooltipVisible"
+      ref="tooltipEl"
       class="fixed z-[9999] pointer-events-none -translate-y-1/2"
       :style="{
         left: tooltipPosition.x + 'px',
@@ -545,7 +547,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { formatDateTime, formatReasoningEffort, reasoningEffortValuesEqual } from '@/utils/format'
@@ -705,11 +707,13 @@ const copyUpstreamRequestId = (upstreamRequestId: string) =>
 // Tooltip state - cost
 const tooltipVisible = ref(false)
 const tooltipPosition = ref({ x: 0, y: 0 })
+const tooltipEl = ref<HTMLElement | null>(null)
 const tooltipData = ref<AdminUsageLog | null>(null)
 
 // Tooltip state - token
 const tokenTooltipVisible = ref(false)
 const tokenTooltipPosition = ref({ x: 0, y: 0 })
+const tokenTooltipEl = ref<HTMLElement | null>(null)
 const tokenTooltipData = ref<AdminUsageLog | null>(null)
 
 const getRequestTypeLabel = (row: AdminUsageLog): string => {
@@ -748,14 +752,36 @@ const formatDuration = (ms: number | null | undefined): string => {
   return `${Math.floor(totalSec / 3600)}h ${Math.floor((totalSec % 3600) / 60)}m`
 }
 
+// 浮层默认放在图标右侧；右侧放不下时翻到左侧，两侧都放不下（手机窄屏）就贴视口右边缘；上下也夹在视口内
+const TOOLTIP_GAP = 8
+const placeTooltip = async (
+  rect: DOMRect,
+  tipEl: Ref<HTMLElement | null>,
+  position: Ref<{ x: number; y: number }>
+) => {
+  position.value = { x: rect.right + TOOLTIP_GAP, y: rect.top + rect.height / 2 }
+  await nextTick()
+  if (!tipEl.value) return
+  const { width, height } = tipEl.value.getBoundingClientRect()
+  const viewportWidth = document.documentElement.clientWidth || window.innerWidth
+  const viewportHeight = window.innerHeight
+  let x = position.value.x
+  if (x + width > viewportWidth - TOOLTIP_GAP) {
+    x = rect.left - TOOLTIP_GAP - width
+    if (x < TOOLTIP_GAP) x = Math.max(TOOLTIP_GAP, viewportWidth - TOOLTIP_GAP - width)
+  }
+  const halfHeight = height / 2
+  const y = Math.max(TOOLTIP_GAP + halfHeight, Math.min(position.value.y, viewportHeight - TOOLTIP_GAP - halfHeight))
+  position.value = { x, y }
+}
+
 // Cost tooltip functions
 const showTooltip = (event: MouseEvent, row: AdminUsageLog) => {
   const target = event.currentTarget as HTMLElement
   const rect = target.getBoundingClientRect()
   tooltipData.value = row
-  tooltipPosition.value.x = rect.right + 8
-  tooltipPosition.value.y = rect.top + rect.height / 2
   tooltipVisible.value = true
+  placeTooltip(rect, tooltipEl, tooltipPosition)
 }
 
 const hideTooltip = () => {
@@ -768,9 +794,8 @@ const showTokenTooltip = (event: MouseEvent, row: AdminUsageLog) => {
   const target = event.currentTarget as HTMLElement
   const rect = target.getBoundingClientRect()
   tokenTooltipData.value = row
-  tokenTooltipPosition.value.x = rect.right + 8
-  tokenTooltipPosition.value.y = rect.top + rect.height / 2
   tokenTooltipVisible.value = true
+  placeTooltip(rect, tokenTooltipEl, tokenTooltipPosition)
 }
 
 const hideTokenTooltip = () => {
