@@ -66,6 +66,21 @@
         />
       </div>
 
+      <div v-if="supportsPlainAPIKeyTest" class="space-y-1">
+        <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+          <input
+            v-model="plainAPIKey"
+            type="checkbox"
+            class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            :disabled="status === 'connecting'"
+          />
+          {{ t('admin.accounts.plainAPIKeyTest') }}
+        </label>
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.plainAPIKeyTestHint') }}
+        </p>
+      </div>
+
       <div v-if="supportsImageTest" class="space-y-1.5">
         <TextArea
           v-model="testPrompt"
@@ -287,6 +302,9 @@ const loadingModels = ref(false)
 let abortController: AbortController | null = null
 const generatedImages = ref<PreviewImage[]>([])
 const testMode = ref<'default' | 'compact'>('default')
+const plainAPIKey = ref(false)
+// Only Anthropic/OpenAI api_key probes mimic an official client; other platforms are already plain.
+const supportsPlainAPIKeyTest = computed(() => props.account?.type === 'apikey')
 const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
@@ -326,6 +344,7 @@ watch(
   async (newVal) => {
     if (newVal && props.account) {
       testPrompt.value = ''
+      plainAPIKey.value = false
       testMode.value = 'default'
       resetState()
       await loadAvailableModels()
@@ -431,7 +450,8 @@ const startTest = async () => {
       body: JSON.stringify({
         model_id: selectedModelId.value,
         prompt: supportsImageTest.value ? testPrompt.value.trim() : '',
-        mode: isOpenAIAccount.value ? testMode.value : 'default'
+        mode: isOpenAIAccount.value ? testMode.value : 'default',
+        ...(supportsPlainAPIKeyTest.value && plainAPIKey.value ? { plain_api_key: true } : {})
       }),
       signal: abortController.signal
     })

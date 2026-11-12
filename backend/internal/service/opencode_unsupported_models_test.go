@@ -128,11 +128,11 @@ func TestAccountTestService_OpenCodeUnsupportedModelReturnsError(t *testing.T) {
 	}
 
 	svc := &AccountTestService{}
-	err := svc.testModelRoutedAccountConnection(c, account, "gemini-3.8-flash", "hi")
+	err := svc.testModelRoutedAccountConnection(c, account, "gemini-3.8-flash", "hi", false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not supported on OpenCode standard gateway")
 
-	err = svc.testModelRoutedAccountConnection(c, account, "jev-1.13", "hi")
+	err = svc.testModelRoutedAccountConnection(c, account, "jev-1.13", "hi", false)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not supported on OpenCode standard gateway")
 }
