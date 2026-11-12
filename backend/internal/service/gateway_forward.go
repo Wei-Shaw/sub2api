@@ -53,6 +53,37 @@ func (s *GatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 	}
 }
 
+// rotatedClaudeAccessToken recovers a token rotated while this request was in
+// flight. Compare against the token actually sent, which may have come from the
+// cache rather than the account snapshot. Never refresh or persist credentials
+// here: an unchanged token must retain the normal 401 policy.
+func (s *GatewayService) rotatedClaudeAccessToken(ctx context.Context, account *Account, rejectedToken string) string {
+	if account == nil || account.Platform != PlatformAnthropic || account.Type != AccountTypeOAuth ||
+		s.accountRepo == nil || rejectedToken == "" || ctx.Err() != nil {
+		return ""
+	}
+	latest, err := s.accountRepo.GetByID(ctx, account.ID)
+	if err != nil {
+		slog.Warn("claude_oauth_401_reload_failed", "account_id", account.ID, "error", err)
+		return ""
+	}
+	if latest == nil || latest.Platform != PlatformAnthropic || latest.Type != AccountTypeOAuth ||
+		latest.Status != StatusActive || !latest.Schedulable {
+		return ""
+	}
+	token := strings.TrimSpace(latest.GetCredential("access_token"))
+	if token == "" || token == rejectedToken {
+		return ""
+	}
+	if p := s.claudeTokenProvider; p != nil && p.tokenCache != nil {
+		if err := p.tokenCache.DeleteAccessToken(ctx, ClaudeTokenCacheKey(latest)); err != nil {
+			slog.Warn("claude_oauth_401_invalidate_cache_failed", "account_id", account.ID, "error", err)
+		}
+	}
+	slog.Info("claude_oauth_rotated_token_retry", "account_id", account.ID)
+	return token
+}
+
 func retryBackoffDelay(attempt int) time.Duration {
 	// attempt 从 1 开始，表示第 attempt 次请求刚失败，需要等待后进行第 attempt+1 次请求。
 	if attempt <= 0 {
@@ -387,6 +418,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	var resp *http.Response
 	lastWireBody := body
 	retryStart := time.Now()
+	retriedRotatedToken := false
 	for attempt := 1; attempt <= maxRetryAttempts; attempt++ {
 		// 构建上游请求（每次重试需要重新构建，因为请求体需要重新读取）
 		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
@@ -407,6 +439,16 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			return nil, s.handleUpstreamTransportError(ctx, c, account, err, OpsUpstreamErrorEvent{
 				UpstreamURL: safeUpstreamURL(upstreamReq.URL.String()),
 			})
+		}
+
+		if resp.StatusCode == http.StatusUnauthorized && !retriedRotatedToken &&
+			attempt < maxRetryAttempts && time.Since(retryStart) < maxRetryElapsed {
+			if rotatedToken := s.rotatedClaudeAccessToken(ctx, account, token); rotatedToken != "" {
+				_ = resp.Body.Close()
+				token = rotatedToken
+				retriedRotatedToken = true
+				continue
+			}
 		}
 
 		// 优先检测thinking block签名错误（400）并重试一次
