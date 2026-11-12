@@ -305,6 +305,36 @@ describe('admin UsageTable tooltip', () => {
     wrapper.unmount()
   })
 
+  it('keeps the cost tooltip inside a narrow mobile viewport', async () => {
+    const originalWidth = window.innerWidth
+    const rectSpy = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      // 浮层宽 260，触发图标贴在 375px 视口右侧
+      if (this.classList.contains('fixed')) return { left: 0, top: 0, right: 260, bottom: 200, width: 260, height: 200 } as DOMRect
+      return { left: 340, top: 100, right: 356, bottom: 116, width: 16, height: 16 } as DOMRect
+    })
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 375 })
+    const wrapper = mount(UsageTable, {
+      props: { data: [{ ...baseImageRow, billing_mode: 'token', image_count: 0, input_cost: 0.01, input_tokens: 100 }], loading: false, columns: [] },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    try {
+      const triggers = wrapper.findAll('.group.relative')
+      await triggers[triggers.length - 1].trigger('mouseenter')
+      await nextTick()
+      await nextTick()
+      const style = wrapper.get('.fixed').attributes('style') ?? ''
+      const left = Number(style.match(/left:\s*([\d.]+)px/)?.[1])
+      const top = Number(style.match(/top:\s*([\d.]+)px/)?.[1])
+      expect(left).toBe(340 - 8 - 260)
+      expect(left + 260).toBeLessThanOrEqual(375)
+      expect(top).toBe(108)
+    } finally {
+      wrapper.unmount()
+      rectSpy.mockRestore()
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth })
+    }
+  })
+
   it('shows service tier and billing breakdown in cost tooltip', async () => {
     const row = {
       request_id: 'req-admin-1',
