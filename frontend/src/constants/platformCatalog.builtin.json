@@ -284,6 +284,7 @@
       "display_name": "Meta Muse",
       "gateway": "openai",
       "cn_provider": false,
+      "litellm_provider": "meta",
       "multi_protocol": {
         "default_mode": "payg",
         "routing": "by_model",
