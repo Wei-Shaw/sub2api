@@ -31,6 +31,7 @@ const (
 	BetaContextManagement           = "context-management-2025-06-27"
 	BetaThinkingBindingControls     = "thinking-binding-controls-2026-08-01"
 	BetaMidConversationOutputConfig = "mid-conversation-output-config-2026-07-01"
+	BetaPerTurnControl              = "per-turn-control-2026-07-01"
 	BetaExtendedCacheTTL            = "extended-cache-ttl-2025-04-11"
 
 	// server-side refusal fallback beta 字段族（beta Messages API 专有）。

@@ -5,8 +5,10 @@ package service
 import (
 	"bytes"
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -17,7 +19,7 @@ import (
 )
 
 // ============================================================================
-// message-level output_config ↔ mid-conversation-output-config beta
+// message-level output_config ↔ mid-conversation-output-config / per-turn-control beta
 // ============================================================================
 //
 // 背景：pi-ai（Harness 使用的 Anthropic provider）会为 opus5 生成形如
@@ -32,11 +34,11 @@ import (
 //	"output_config: Extra inputs are not permitted"
 //
 // 修复策略（剥字段，不注入 beta）：
-//   - header 缺该 token：仅为携带 message-level output_config 的消息剥此字段；
+//   - header 缺这两种 token：仅为携带 message-level output_config 的消息剥此字段；
 //     role=system 且 content 无正文（缺失 / null / 空 string / 空 array / 仅空
 //     text 块）时整条删除；system 有正文保留正文与其余字段；user/assistant 只剥
 //     字段，绝不整条删除。
-//   - header 含该 token：完全保留。
+//   - header 含任一 token：完全保留。
 //   - 无任何 message-level output_config：字节 no-op。
 //   - 顶层 output_config / effort 不受该 beta 约束，本增量不触碰。
 //
@@ -154,10 +156,120 @@ func TestSanitizeAnthropicBodyForBetaTokens_MidConversationOutputConfig_SystemWi
 // header 含该 beta → 完全保留，字节 no-op（即使是空控制 system 消息）。
 func TestSanitizeAnthropicBodyForBetaTokens_MidConversationOutputConfig_ByteNoopWhenBetaPresent(t *testing.T) {
 	body := []byte(`{"model":"claude-opus-5","output_config":{"effort":"high"},"messages":[{"role":"system","content":[],"output_config":{"effort":"high"}},{"role":"user","content":"hi"}]}`)
-	out, changed := sanitizeAnthropicBodyForBetaTokens(body,
-		"claude-code-20250219,oauth-2025-04-20,"+claude.BetaMidConversationOutputConfig)
-	require.False(t, changed, "header 含 mid-conversation-output-config beta → 完全保留")
-	require.True(t, bytes.Equal(body, out), "含 beta 时必须字节 no-op")
+	for _, beta := range []string{
+		claude.BetaMidConversationOutputConfig,
+		"per-turn-control-2026-07-01",
+		"per-turn-control-2026-07-01," + claude.BetaMidConversationOutputConfig,
+	} {
+		t.Run(beta, func(t *testing.T) {
+			out, changed := sanitizeAnthropicBodyForBetaTokens(body, "claude-code-20250219, "+beta+" ")
+			require.False(t, changed, "a supported beta must preserve message-level output_config")
+			require.True(t, bytes.Equal(body, out), "含 beta 时必须字节 no-op")
+		})
+	}
+}
+
+func TestForward_PerTurnControlMessageOutputConfig(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const perTurnBeta = "per-turn-control-2026-07-01"
+	const body = `{"model":"claude-opus-5","max_tokens":256,"output_config":{"effort":"high"},` +
+		`"metadata":{"user_id":"user_a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2_account_550e8400-e29b-41d4-a716-446655440000_session_123e4567-e89b-12d3-a456-426614174000"},` +
+		`"messages":[{"role":"user","content":"Hello"},{"role":"assistant","content":"Hi"},` +
+		`{"role":"system","content":[],"output_config":{"effort":"low"}},` +
+		`{"role":"user","content":"Summarize that in one sentence."}]}`
+	for _, mode := range []string{"oauth_claude_code", "oauth_mimic", "apikey", "apikey_passthrough"} {
+		for _, withBeta := range []bool{true, false} {
+			name := "without_beta"
+			if withBeta {
+				name = "with_beta"
+			}
+			t.Run(mode+"/"+name, func(t *testing.T) {
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+				c.Request.Header.Set("User-Agent", "claude-cli/2.1.321")
+				if mode == "oauth_mimic" {
+					c.Request.Header.Set("User-Agent", "third-party-client/1.0")
+				}
+				if withBeta {
+					c.Request.Header.Set("Anthropic-Beta", "claude-code-20250219,"+perTurnBeta)
+				}
+				account := newAnthropicAPIKeyAccountForTest()
+				account.Extra["anthropic_passthrough"] = mode == "apikey_passthrough"
+				if strings.HasPrefix(mode, "oauth") {
+					account = newAnthropicOAuthAccountForPartialUsageTest()
+				}
+				upstream := &anthropicHTTPUpstreamRecorder{resp: &http.Response{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body: io.NopCloser(strings.NewReader(`{"id":"msg_test","type":"message","role":"assistant",` +
+						`"model":"claude-opus-5","content":[{"type":"text","text":"OK"}],"stop_reason":"end_turn",` +
+						`"usage":{"input_tokens":10,"output_tokens":1}}`)),
+				}}
+				parsed, err := ParseGatewayRequest(NewRequestBodyRef([]byte(body)), PlatformAnthropic)
+				require.NoError(t, err)
+				svc := newForwardPartialUsageServiceForTest(upstream)
+				_, err = svc.Forward(context.Background(), c, account, parsed)
+				require.NoError(t, err)
+				require.NotNil(t, upstream.lastReq)
+
+				beta := getHeaderRaw(upstream.lastReq.Header, "anthropic-beta")
+				require.Equal(t, withBeta && mode != "oauth_mimic", anthropicBetaTokensContains(beta, perTurnBeta))
+				wantControl := withBeta || mode == "oauth_mimic"
+				messages := gjson.GetBytes(upstream.lastBody, "messages").Array()
+				if wantControl {
+					require.Len(t, messages, 4)
+					require.Equal(t, "system", messages[2].Get("role").String())
+					require.Equal(t, "[]", messages[2].Get("content").Raw)
+					require.Equal(t, "low", messages[2].Get("output_config.effort").String())
+				} else {
+					require.Len(t, messages, 3)
+				}
+				require.Equal(t, "Hello", messages[0].Get("content").String())
+				require.Equal(t, "Hi", messages[1].Get("content").String())
+				require.Equal(t, "Summarize that in one sentence.", messages[len(messages)-1].Get("content").String())
+				require.Equal(t, "high", gjson.GetBytes(upstream.lastBody, "output_config.effort").String())
+			})
+		}
+	}
+}
+
+func TestBuildUpstreamRequest_PerTurnControlPolicyFilter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const perTurnBeta = "per-turn-control-2026-07-01"
+	const midConversationBeta = "mid-conversation-output-config-2026-07-01"
+	body := []byte(`{"model":"claude-opus-5","messages":[{"role":"user","content":"Hello"},` +
+		`{"role":"system","content":[],"output_config":{"effort":"low"}}]}`)
+	for _, tc := range []struct {
+		name string
+		drop []string
+		keep bool
+	}{
+		{"drop_per_turn_only", []string{perTurnBeta}, true},
+		{"drop_mid_conversation_only", []string{midConversationBeta}, true},
+		{"drop_both", []string{perTurnBeta, midConversationBeta}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+			c.Request.Header.Set("Anthropic-Beta", "claude-code-20250219,"+perTurnBeta+","+midConversationBeta)
+			c.Set(betaPolicyFilterSetKey, buildBetaTokenSet(tc.drop))
+			svc := &GatewayService{cfg: &config.Config{}}
+			req, _, err := svc.buildUpstreamRequest(context.Background(), c,
+				newAnthropicOAuthAccountForPartialUsageTest(), body,
+				"oauth-token", "oauth", "claude-opus-5", false, false)
+			require.NoError(t, err)
+			for _, token := range tc.drop {
+				require.False(t, anthropicBetaTokensContains(getHeaderRaw(req.Header, "anthropic-beta"), token))
+			}
+			out := readUpstreamBodyForTest(t, req)
+			require.Equal(t, tc.keep, gjson.GetBytes(out, "messages.1.output_config").Exists())
+			if tc.keep {
+				require.Equal(t, "low", gjson.GetBytes(out, "messages.1.output_config.effort").String())
+			} else {
+				require.Len(t, gjson.GetBytes(out, "messages").Array(), 1)
+			}
+		})
+	}
 }
 
 // 无 message-level output_config（仅有顶层 output_config，或完全没有）→ 字节 no-op。
