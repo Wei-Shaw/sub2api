@@ -390,6 +390,30 @@ func isOpenAIWSTokenEvent(eventType string) bool {
 	return false
 }
 
+// openAIWSUpstreamModelForAccount 是 WS 入口「渠道映射后的模型 → 实际写进上游
+// payload 的模型」的唯一推导入口：账号级 model_mapping + 上游别名归一。
+// ctx_pool（openai_ws_forwarder_ingress.go）与 http_bridge
+// （openai_ws_http_bridge.go）两条入口都必须调用它，任何一处自己重写这两步都会让
+// 「实际发往上游的模型」与「按模型做的准入/限流判定」悄悄分叉。
+//
+// 注意它刻意不看 openai_passthrough 开关。HTTP Forward 路径的
+// resolveOpenAIAccountUpstreamModelForRequest 在 IsOpenAIPassthroughEnabled()
+// 时原样返回、不做账号映射也不做别名归一，那是 Forward 的口径；WS 的 ctx_pool /
+// http_bridge 入口从来没有这个分叉，passthrough 账号走 WS 时发往上游的仍然是别名
+// 归一后的模型（例如 Codex 协议账号上 gpt-5.1 → gpt-5.4）。所以 WS 侧按模型算 key
+// 的地方必须共用本函数，而不是 canonicalOpenAIAccountSchedulingModel——后者带着
+// Forward 的 passthrough 分叉，对 passthrough 账号会返回客户端模型本身，直接漏掉记在
+// 归一后模型名上的限制。
+//
+// channelModel 传「渠道映射后的模型」（hooks.MapRequestModel 的结果，为空时是客户端
+// 模型本身），返回值即本轮写进 payload 的 model 字段。
+func openAIWSUpstreamModelForAccount(account *Account, channelModel string) string {
+	if account == nil {
+		return normalizeOpenAIModelForUpstream(account, channelModel)
+	}
+	return normalizeOpenAIModelForUpstream(account, account.GetMappedModel(channelModel))
+}
+
 func replaceOpenAIWSMessageModel(message []byte, fromModel, toModel string) []byte {
 	if len(message) == 0 {
 		return message
