@@ -145,11 +145,14 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 			return nil, s.handleUpstreamTransportError(ctx, c, account, err)
 		}
 
-		checked, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp, mappedModel)
-		resp = rebuilt
-		checkedPolicy = checked
-		if checked != nil && *checked != ErrorPolicyNone {
-			break
+		// 403 先做跨账号确认，不能在这里写入账号策略状态。
+		if resp.StatusCode != http.StatusForbidden {
+			checked, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp, mappedModel)
+			resp = rebuilt
+			checkedPolicy = checked
+			if checked != nil && *checked != ErrorPolicyNone {
+				break
+			}
 		}
 
 		if resp.StatusCode >= 400 && s.shouldRetryGeminiUpstreamError(account, resp.StatusCode) {
@@ -212,6 +215,17 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
+		// 请求内容与账号鉴权都可能返回同一条 403：第一个账号只换号，
+		// 另一个账号成功后再回补处理；两个不同账号都 403 则判为请求级。
+		if resp.StatusCode == http.StatusForbidden {
+			evBody := unwrapIfNeeded(account.Type == AccountTypeOAuth, respBody)
+			switch s.classifyGemini403ForRequest(c, account, resp.StatusCode, resp.Header, respBody, mappedModel) {
+			case gemini403RequestScoped:
+				return nil, s.writeGeminiChatRequestScoped403(c, account, evBody, requestID)
+			case gemini403Defer:
+				return nil, s.gemini403DeferredFailoverError(c, account, resp, evBody, requestID)
+			}
+		}
 		policy := ErrorPolicyNone
 		if s.rateLimitService != nil {
 			policy = s.finalErrorPolicy(ctx, account, resp.StatusCode, respBody, mappedModel, checkedPolicy)
@@ -250,6 +264,8 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 		}
 		return nil, s.writeGeminiChatCompletionsMappedError(c, account, resp.StatusCode, requestID, evBody)
 	}
+
+	s.confirmDeferredGemini403(ctx, c, account)
 
 	var usage *ClaudeUsage
 	var firstTokenMs *int

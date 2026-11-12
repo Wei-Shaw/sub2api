@@ -815,12 +815,14 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 			break
 		}
 
-		// 错误策略优先：匹配则跳过重试直接处理。
-		checked, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp, mappedModel)
-		resp = rebuilt
-		checkedPolicy = checked
-		if checked != nil && *checked != ErrorPolicyNone {
-			break
+		// 403 先做跨账号确认，不能在这里写入账号策略状态。
+		if resp.StatusCode != http.StatusForbidden {
+			checked, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp, mappedModel)
+			resp = rebuilt
+			checkedPolicy = checked
+			if checked != nil && *checked != ErrorPolicyNone {
+				break
+			}
 		}
 
 		if resp.StatusCode >= 400 && s.shouldRetryGeminiUpstreamError(account, resp.StatusCode) {
@@ -887,6 +889,20 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
+		// 请求内容与账号鉴权都可能返回同一条 403：第一个账号只换号，
+		// 另一个账号成功后再回补处理；两个不同账号都 403 则判为请求级。
+		if resp.StatusCode == http.StatusForbidden {
+			upstreamReqID := resp.Header.Get(requestIDHeader)
+			if upstreamReqID == "" {
+				upstreamReqID = resp.Header.Get("x-goog-request-id")
+			}
+			switch s.classifyGemini403ForRequest(c, account, resp.StatusCode, resp.Header, respBody, mappedModel) {
+			case gemini403RequestScoped:
+				return nil, s.writeGeminiClaudeRequestScoped403(c, account, respBody, upstreamReqID)
+			case gemini403Defer:
+				return nil, s.gemini403DeferredFailoverError(c, account, resp, respBody, upstreamReqID)
+			}
+		}
 		// 统一错误策略：自定义错误码 + 临时不可调度
 		if s.rateLimitService != nil {
 			policy := s.finalErrorPolicy(ctx, account, resp.StatusCode, respBody, mappedModel, checkedPolicy)
@@ -1010,6 +1026,8 @@ func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Contex
 		}
 		return nil, s.writeGeminiMappedError(c, account, resp.StatusCode, upstreamReqID, respBody)
 	}
+
+	s.confirmDeferredGemini403(ctx, c, account)
 
 	requestID := resp.Header.Get(requestIDHeader)
 	if requestID == "" {
@@ -1321,12 +1339,14 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			resp = rebuilt
 		}
 
-		// 错误策略优先：匹配则跳过重试直接处理。
-		checked, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp, mappedModel)
-		resp = rebuilt
-		checkedPolicy = checked
-		if checked != nil && *checked != ErrorPolicyNone {
-			break
+		// 403 先做跨账号确认；其余状态仍按错误策略优先处理。
+		if resp.StatusCode != http.StatusForbidden {
+			checked, rebuilt := s.checkErrorPolicyInLoop(ctx, account, resp, mappedModel)
+			resp = rebuilt
+			checkedPolicy = checked
+			if checked != nil && *checked != ErrorPolicyNone {
+				break
+			}
 		}
 
 		if resp.StatusCode >= 400 && s.shouldRetryGeminiUpstreamError(account, resp.StatusCode) {
@@ -1440,6 +1460,17 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			}, nil
 		}
 
+		// 请求内容与账号鉴权都可能返回同一条 403：第一个账号只换号，
+		// 另一个账号成功后再回补处理；两个不同账号都 403 则判为请求级。
+		if resp.StatusCode == http.StatusForbidden {
+			switch s.classifyGemini403ForRequest(c, account, resp.StatusCode, resp.Header, respBody, mappedModel) {
+			case gemini403RequestScoped:
+				return nil, s.writeGeminiNativeRequestScoped403(c, account, unwrapIfNeeded(isOAuth, respBody), requestID)
+			case gemini403Defer:
+				return nil, s.gemini403DeferredFailoverError(c, account, resp, unwrapIfNeeded(isOAuth, respBody), requestID)
+			}
+		}
+
 		// 统一错误策略：自定义错误码 + 临时不可调度
 		if s.rateLimitService != nil {
 			policy := s.finalErrorPolicy(ctx, account, resp.StatusCode, respBody, mappedModel, checkedPolicy)
@@ -1547,6 +1578,8 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 
 		return nil, s.writeGeminiNativeUpstreamError(c, account, resp, respBody, requestID, isOAuth)
 	}
+
+	s.confirmDeferredGemini403(ctx, c, account)
 
 	var usage *ClaudeUsage
 	var firstTokenMs *int
