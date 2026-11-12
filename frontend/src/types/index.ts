@@ -640,6 +640,7 @@ export interface Group {
 }
 
 export interface AdminGroup extends Group {
+  prefer_user_accounts?: boolean
   // 管理端的 name / description 始终是原字段，各语言译文另放在 i18n 里
   i18n?: GroupI18n
   force_openai_fast: boolean
@@ -806,6 +807,7 @@ export interface UpdateApiKeyRequest {
 }
 
 export interface CreateGroupRequest {
+  prefer_user_accounts?: boolean
   name: string
   description?: string | null
   i18n?: GroupI18n
@@ -873,6 +875,7 @@ export interface CreateGroupRequest {
 }
 
 export interface UpdateGroupRequest {
+  prefer_user_accounts?: boolean
   name?: string
   description?: string | null
   i18n?: GroupI18n
@@ -1263,6 +1266,7 @@ export interface GrokModelDiagnostics {
 }
 
 export interface Account {
+  preferred_user_id?: number
   id: number
   name: string
   notes?: string | null
@@ -1620,6 +1624,7 @@ export interface CreateAccountRequest {
 }
 
 export interface UpdateAccountRequest {
+  preferred_user_id?: number
   name?: string
   notes?: string | null
   type?: AccountType

@@ -242,6 +242,7 @@ type CreateGroupRequest struct {
 	FreeOpenAIFast              bool                                      `json:"free_openai_fast"`
 	RequireOAuthOnly            bool                                      `json:"require_oauth_only"`
 	RequirePrivacySet           bool                                      `json:"require_privacy_set"`
+	PreferUserAccounts          bool                                      `json:"prefer_user_accounts"`
 	DefaultMappedModel          string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	ModelAllowlist              service.GroupModelAllowlist               `json:"model_allowlist"`
@@ -319,6 +320,7 @@ type UpdateGroupRequest struct {
 	FreeOpenAIFast              *bool                                      `json:"free_openai_fast"`
 	RequireOAuthOnly            *bool                                      `json:"require_oauth_only"`
 	RequirePrivacySet           *bool                                      `json:"require_privacy_set"`
+	PreferUserAccounts          *bool                                      `json:"prefer_user_accounts"`
 	DefaultMappedModel          *string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	ModelAllowlist              *service.GroupModelAllowlist               `json:"model_allowlist"`
@@ -722,6 +724,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		FreeOpenAIFast:                  req.FreeOpenAIFast,
 		RequireOAuthOnly:                req.RequireOAuthOnly,
 		RequirePrivacySet:               req.RequirePrivacySet,
+		PreferUserAccounts:              req.PreferUserAccounts,
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelAllowlist:                  req.ModelAllowlist,
@@ -870,6 +873,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		FreeOpenAIFast:                  req.FreeOpenAIFast,
 		RequireOAuthOnly:                req.RequireOAuthOnly,
 		RequirePrivacySet:               req.RequirePrivacySet,
+		PreferUserAccounts:              req.PreferUserAccounts,
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelAllowlist:                  req.ModelAllowlist,

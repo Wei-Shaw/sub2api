@@ -146,7 +146,8 @@ type APIKeyAuthGroupSnapshot struct {
 	ProfitSafetyBuffer   float64 `json:"profit_safety_buffer"`
 
 	// RequirePrivacySet 由 OpenAI 选号从 ctx 分组读取，与 GetByKeyForAuth 投影同步。
-	RequirePrivacySet bool `json:"require_privacy_set"`
+	RequirePrivacySet  bool `json:"require_privacy_set"`
+	PreferUserAccounts bool `json:"prefer_user_accounts"`
 }
 
 // APIKeyAuthCacheEntry 缓存条目，支持负缓存

@@ -766,6 +766,20 @@ func (_c *GroupCreate) SetNillableRequireOauthOnly(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetPreferUserAccounts sets the "prefer_user_accounts" field.
+func (_c *GroupCreate) SetPreferUserAccounts(v bool) *GroupCreate {
+	_c.mutation.SetPreferUserAccounts(v)
+	return _c
+}
+
+// SetNillablePreferUserAccounts sets the "prefer_user_accounts" field if the given value is not nil.
+func (_c *GroupCreate) SetNillablePreferUserAccounts(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetPreferUserAccounts(*v)
+	}
+	return _c
+}
+
 // SetRequirePrivacySet sets the "require_privacy_set" field.
 func (_c *GroupCreate) SetRequirePrivacySet(v bool) *GroupCreate {
 	_c.mutation.SetRequirePrivacySet(v)
@@ -1191,6 +1205,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultRequireOauthOnly
 		_c.mutation.SetRequireOauthOnly(v)
 	}
+	if _, ok := _c.mutation.PreferUserAccounts(); !ok {
+		v := group.DefaultPreferUserAccounts
+		_c.mutation.SetPreferUserAccounts(v)
+	}
 	if _, ok := _c.mutation.RequirePrivacySet(); !ok {
 		v := group.DefaultRequirePrivacySet
 		_c.mutation.SetRequirePrivacySet(v)
@@ -1400,6 +1418,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.RequireOauthOnly(); !ok {
 		return &ValidationError{Name: "require_oauth_only", err: errors.New(`ent: missing required field "Group.require_oauth_only"`)}
+	}
+	if _, ok := _c.mutation.PreferUserAccounts(); !ok {
+		return &ValidationError{Name: "prefer_user_accounts", err: errors.New(`ent: missing required field "Group.prefer_user_accounts"`)}
 	}
 	if _, ok := _c.mutation.RequirePrivacySet(); !ok {
 		return &ValidationError{Name: "require_privacy_set", err: errors.New(`ent: missing required field "Group.require_privacy_set"`)}
@@ -1702,6 +1723,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.RequireOauthOnly(); ok {
 		_spec.SetField(group.FieldRequireOauthOnly, field.TypeBool, value)
 		_node.RequireOauthOnly = value
+	}
+	if value, ok := _c.mutation.PreferUserAccounts(); ok {
+		_spec.SetField(group.FieldPreferUserAccounts, field.TypeBool, value)
+		_node.PreferUserAccounts = value
 	}
 	if value, ok := _c.mutation.RequirePrivacySet(); ok {
 		_spec.SetField(group.FieldRequirePrivacySet, field.TypeBool, value)
@@ -2822,6 +2847,18 @@ func (u *GroupUpsert) SetRequireOauthOnly(v bool) *GroupUpsert {
 // UpdateRequireOauthOnly sets the "require_oauth_only" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateRequireOauthOnly() *GroupUpsert {
 	u.SetExcluded(group.FieldRequireOauthOnly)
+	return u
+}
+
+// SetPreferUserAccounts sets the "prefer_user_accounts" field.
+func (u *GroupUpsert) SetPreferUserAccounts(v bool) *GroupUpsert {
+	u.Set(group.FieldPreferUserAccounts, v)
+	return u
+}
+
+// UpdatePreferUserAccounts sets the "prefer_user_accounts" field to the value that was provided on create.
+func (u *GroupUpsert) UpdatePreferUserAccounts() *GroupUpsert {
+	u.SetExcluded(group.FieldPreferUserAccounts)
 	return u
 }
 
@@ -4103,6 +4140,20 @@ func (u *GroupUpsertOne) SetRequireOauthOnly(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateRequireOauthOnly() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRequireOauthOnly()
+	})
+}
+
+// SetPreferUserAccounts sets the "prefer_user_accounts" field.
+func (u *GroupUpsertOne) SetPreferUserAccounts(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPreferUserAccounts(v)
+	})
+}
+
+// UpdatePreferUserAccounts sets the "prefer_user_accounts" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdatePreferUserAccounts() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePreferUserAccounts()
 	})
 }
 
@@ -5577,6 +5628,20 @@ func (u *GroupUpsertBulk) SetRequireOauthOnly(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateRequireOauthOnly() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateRequireOauthOnly()
+	})
+}
+
+// SetPreferUserAccounts sets the "prefer_user_accounts" field.
+func (u *GroupUpsertBulk) SetPreferUserAccounts(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetPreferUserAccounts(v)
+	})
+}
+
+// UpdatePreferUserAccounts sets the "prefer_user_accounts" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdatePreferUserAccounts() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdatePreferUserAccounts()
 	})
 }
 

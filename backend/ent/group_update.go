@@ -1051,6 +1051,20 @@ func (_u *GroupUpdate) SetNillableRequireOauthOnly(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetPreferUserAccounts sets the "prefer_user_accounts" field.
+func (_u *GroupUpdate) SetPreferUserAccounts(v bool) *GroupUpdate {
+	_u.mutation.SetPreferUserAccounts(v)
+	return _u
+}
+
+// SetNillablePreferUserAccounts sets the "prefer_user_accounts" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillablePreferUserAccounts(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetPreferUserAccounts(*v)
+	}
+	return _u
+}
+
 // SetRequirePrivacySet sets the "require_privacy_set" field.
 func (_u *GroupUpdate) SetRequirePrivacySet(v bool) *GroupUpdate {
 	_u.mutation.SetRequirePrivacySet(v)
@@ -1892,6 +1906,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.RequireOauthOnly(); ok {
 		_spec.SetField(group.FieldRequireOauthOnly, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.PreferUserAccounts(); ok {
+		_spec.SetField(group.FieldPreferUserAccounts, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.RequirePrivacySet(); ok {
 		_spec.SetField(group.FieldRequirePrivacySet, field.TypeBool, value)
@@ -3271,6 +3288,20 @@ func (_u *GroupUpdateOne) SetNillableRequireOauthOnly(v *bool) *GroupUpdateOne {
 	return _u
 }
 
+// SetPreferUserAccounts sets the "prefer_user_accounts" field.
+func (_u *GroupUpdateOne) SetPreferUserAccounts(v bool) *GroupUpdateOne {
+	_u.mutation.SetPreferUserAccounts(v)
+	return _u
+}
+
+// SetNillablePreferUserAccounts sets the "prefer_user_accounts" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillablePreferUserAccounts(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetPreferUserAccounts(*v)
+	}
+	return _u
+}
+
 // SetRequirePrivacySet sets the "require_privacy_set" field.
 func (_u *GroupUpdateOne) SetRequirePrivacySet(v bool) *GroupUpdateOne {
 	_u.mutation.SetRequirePrivacySet(v)
@@ -4142,6 +4173,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.RequireOauthOnly(); ok {
 		_spec.SetField(group.FieldRequireOauthOnly, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.PreferUserAccounts(); ok {
+		_spec.SetField(group.FieldPreferUserAccounts, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.RequirePrivacySet(); ok {
 		_spec.SetField(group.FieldRequirePrivacySet, field.TypeBool, value)

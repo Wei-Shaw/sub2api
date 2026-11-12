@@ -143,6 +143,7 @@ type AccountBillingSettingsRepository interface {
 		probeEnabled *bool,
 		rateSyncEnabled *bool,
 		rateMultiplier *float64,
+		preferredUserID *int64,
 	) error
 }
 

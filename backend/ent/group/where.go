@@ -310,6 +310,11 @@ func RequireOauthOnly(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRequireOauthOnly, v))
 }
 
+// PreferUserAccounts applies equality check predicate on the "prefer_user_accounts" field. It's identical to PreferUserAccountsEQ.
+func PreferUserAccounts(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldPreferUserAccounts, v))
+}
+
 // RequirePrivacySet applies equality check predicate on the "require_privacy_set" field. It's identical to RequirePrivacySetEQ.
 func RequirePrivacySet(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldRequirePrivacySet, v))
@@ -2328,6 +2333,16 @@ func RequireOauthOnlyEQ(v bool) predicate.Group {
 // RequireOauthOnlyNEQ applies the NEQ predicate on the "require_oauth_only" field.
 func RequireOauthOnlyNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldRequireOauthOnly, v))
+}
+
+// PreferUserAccountsEQ applies the EQ predicate on the "prefer_user_accounts" field.
+func PreferUserAccountsEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldPreferUserAccounts, v))
+}
+
+// PreferUserAccountsNEQ applies the NEQ predicate on the "prefer_user_accounts" field.
+func PreferUserAccountsNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldPreferUserAccounts, v))
 }
 
 // RequirePrivacySetEQ applies the EQ predicate on the "require_privacy_set" field.

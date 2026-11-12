@@ -1164,6 +1164,8 @@ export default {
           duplicate: '该条目已存在'
         }
       },
+      preferUserAccounts: '优先使用用户的账号',
+      preferUserAccountsHint: '新的 Responses 会话会优先尝试该用户的可用账号，并可回落到同组共享池。',
       codexModelsManifest: {
         title: '固定账号获取模型列表',
         hint: '开启后，普通模型列表与 Codex Model Manifest 均优先从选定账号获取并合并，再应用账号映射和分组列表过滤；限流/过载中的选定账号仍会被使用。',

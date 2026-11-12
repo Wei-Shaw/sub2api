@@ -1887,6 +1887,13 @@
             </div>
             <Toggle v-model="createForm.require_privacy_set" />
           </div>
+          <div v-if="createForm.platform === 'openai' && !authStore.isSimpleMode" class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-sm text-gray-600 dark:text-gray-400">{{ t("admin.groups.preferUserAccounts") }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.preferUserAccountsHint") }}</p>
+            </div>
+            <Toggle v-model="createForm.prefer_user_accounts" :aria-label="t('admin.groups.preferUserAccounts')" />
+          </div>
         </div>
 
         <!-- 无效请求兜底（仅 anthropic/antigravity 平台，且非订阅分组） -->
@@ -3550,6 +3557,13 @@
             </div>
             <Toggle v-model="editForm.require_privacy_set" />
           </div>
+          <div v-if="editForm.platform === 'openai' && !authStore.isSimpleMode" class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-sm text-gray-600 dark:text-gray-400">{{ t("admin.groups.preferUserAccounts") }}</p>
+              <p class="text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.preferUserAccountsHint") }}</p>
+            </div>
+            <Toggle v-model="editForm.prefer_user_accounts" :aria-label="t('admin.groups.preferUserAccounts')" />
+          </div>
         </div>
 
         <!-- 无效请求兜底（仅 anthropic/antigravity 平台，且非订阅分组） -->
@@ -5034,6 +5048,7 @@ const createForm = reactive({
   // 账号过滤控制（OpenAI/Antigravity 平台）
   require_oauth_only: false,
   require_privacy_set: false,
+  prefer_user_accounts: false,
   // 模型路由开关
   model_routing_enabled: false,
   // 支持的模型系列（仅 antigravity 平台）
@@ -5402,6 +5417,7 @@ const editForm = reactive({
   // 账号过滤控制（OpenAI/Antigravity 平台）
   require_oauth_only: false,
   require_privacy_set: false,
+  prefer_user_accounts: false,
   // 模型路由开关
   model_routing_enabled: false,
   // 支持的模型系列（仅 antigravity 平台）
@@ -5865,6 +5881,7 @@ const closeCreateModal = () => {
   createForm.allow_live = false;
   createForm.require_oauth_only = false;
   createForm.require_privacy_set = false;
+  createForm.prefer_user_accounts = false;
   createForm.supported_model_scopes = ["claude", "gemini_text", "gemini_image"];
   createForm.mcp_xml_inject = true;
   createForm.copy_accounts_from_group_ids = [];
@@ -6175,6 +6192,7 @@ const handleEdit = async (group: AdminGroup) => {
     messagesDispatchFormState.exact_model_mappings;
   editForm.require_oauth_only = group.require_oauth_only ?? false;
   editForm.require_privacy_set = group.require_privacy_set ?? false;
+  editForm.prefer_user_accounts = group.prefer_user_accounts ?? false;
   editForm.model_routing_enabled = group.model_routing_enabled || false;
   editForm.supported_model_scopes = group.supported_model_scopes || [
     "claude",
