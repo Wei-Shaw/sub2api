@@ -11,6 +11,11 @@ import (
 // calls in a Responses-style JSON body (output array or nested response.output).
 // Counts: web_search_call, x_search_call, tool_search_call, and function_call
 // named tool_search / web_search / x_search.
+// billsNativeSearchCalls reports whether the account's upstream bills native search tool calls per query.
+func (a *Account) billsNativeSearchCalls() bool {
+	return a.IsGrok() || a.IsMeta()
+}
+
 func countGrokNativeSearchCallsFromJSONBytes(body []byte) int {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return 0

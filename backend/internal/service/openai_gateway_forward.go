@@ -1364,7 +1364,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		// Grok-native web_search / x_search / tool_search tool invocations (per-1k pricing).
 		// Token cost still applies separately when usage is present; search is additive only
 		// when search_price_per_1k is configured (nil price → $0 from CalculateSearchCost).
-		if searchCount > 0 && account != nil && account.IsGrok() {
+		if searchCount > 0 && account != nil && account.billsNativeSearchCalls() {
 			forwardResult.SearchCount = searchCount
 		}
 		stampOpenAIResponsesUpstreamEndpoint(c, forwardResult)

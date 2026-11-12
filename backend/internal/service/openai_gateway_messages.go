@@ -703,7 +703,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 		Duration:                      time.Since(startTime),
 	}
 	// Grok /v1/messages uses Responses upstream; count native search for surcharge.
-	if account != nil && account.IsGrok() && finalResponse != nil {
+	if account != nil && account.billsNativeSearchCalls() && finalResponse != nil {
 		if body, err := json.Marshal(finalResponse); err == nil {
 			if n := countGrokNativeSearchCallsFromJSONBytes(body); n > 0 {
 				result.SearchCount = n
@@ -1032,7 +1032,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	terminalEventType := ""
 	searchCount := 0
 	streamSearchSeen := make(map[string]struct{})
-	countSearch := account != nil && account.IsGrok()
+	countSearch := account != nil && account.billsNativeSearchCalls()
 
 	scanner := s.newUpstreamSSEScanner(resp.Body)
 
