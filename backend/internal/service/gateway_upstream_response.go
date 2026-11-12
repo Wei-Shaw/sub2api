@@ -453,13 +453,7 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 		"upstream_error",
 		"Upstream request failed",
 	); matched {
-		c.JSON(status, gin.H{
-			"type": "error",
-			"error": gin.H{
-				"type":    errType,
-				"message": errMsg,
-			},
-		})
+		writeGatewayErrorResponse(c, status, errType, errMsg)
 
 		summary := upstreamMsg
 		if summary == "" {
@@ -477,7 +471,19 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 
 	switch resp.StatusCode {
 	case 400:
-		c.Data(http.StatusBadRequest, "application/json", body)
+		if gatewaySSEStarted(c) {
+			errType := strings.TrimSpace(gjson.GetBytes(body, "error.type").String())
+			if errType == "" {
+				errType = "invalid_request_error"
+			}
+			message := upstreamMsg
+			if message == "" {
+				message = "Upstream rejected the request"
+			}
+			writeGatewayErrorResponse(c, http.StatusBadRequest, errType, message)
+		} else {
+			c.Data(http.StatusBadRequest, "application/json", body)
+		}
 		summary := upstreamMsg
 		if summary == "" {
 			summary = truncateForLog(body, 512)
@@ -513,13 +519,7 @@ func (s *GatewayService) handleErrorResponse(ctx context.Context, resp *http.Res
 	}
 
 	// 返回自定义错误响应
-	c.JSON(statusCode, gin.H{
-		"type": "error",
-		"error": gin.H{
-			"type":    errType,
-			"message": errMsg,
-		},
-	})
+	writeGatewayErrorResponse(c, statusCode, errType, errMsg)
 
 	if upstreamMsg == "" {
 		return nil, fmt.Errorf("upstream error: %d", resp.StatusCode)
@@ -624,13 +624,7 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 		"upstream_error",
 		"Upstream request failed after retries",
 	); matched {
-		c.JSON(status, gin.H{
-			"type": "error",
-			"error": gin.H{
-				"type":    errType,
-				"message": errMsg,
-			},
-		})
+		writeGatewayErrorResponse(c, status, errType, errMsg)
 
 		summary := upstreamMsg
 		if summary == "" {
@@ -643,18 +637,35 @@ func (s *GatewayService) handleRetryExhaustedError(ctx context.Context, resp *ht
 	}
 
 	// 返回统一的重试耗尽错误响应
-	c.JSON(http.StatusBadGateway, gin.H{
-		"type": "error",
-		"error": gin.H{
-			"type":    "upstream_error",
-			"message": "Upstream request failed after retries",
-		},
-	})
+	writeGatewayErrorResponse(c, http.StatusBadGateway, "upstream_error", "Upstream request failed after retries")
 
 	if upstreamMsg == "" {
 		return nil, fmt.Errorf("upstream error: %d (retries exhausted)", resp.StatusCode)
 	}
 	return nil, fmt.Errorf("upstream error: %d (retries exhausted) message=%s", resp.StatusCode, upstreamMsg)
+}
+
+func gatewaySSEStarted(c *gin.Context) bool {
+	return c.Writer.Written() && strings.HasPrefix(strings.ToLower(c.Writer.Header().Get("Content-Type")), "text/event-stream")
+}
+
+// A concurrency or user-message queue may have already flushed a keepalive.
+// In that case the HTTP status is fixed, and a JSON body would be lost by SSE clients.
+func writeGatewayErrorResponse(c *gin.Context, status int, errType, message string) {
+	payload := gin.H{
+		"type": "error",
+		"error": gin.H{
+			"type":    errType,
+			"message": message,
+		},
+	}
+	if gatewaySSEStarted(c) {
+		MarkOpsStreamError(c, errType, message, status)
+		c.SSEvent("error", payload)
+		c.Writer.Flush()
+		return
+	}
+	c.JSON(status, payload)
 }
 
 // streamingResult 流式响应结果
