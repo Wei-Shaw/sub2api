@@ -14,6 +14,58 @@ type opsRepoMock struct {
 	ListSystemLogsFn              func(ctx context.Context, filter *OpsSystemLogFilter) (*OpsSystemLogList, error)
 	DeleteSystemLogsFn            func(ctx context.Context, filter *OpsSystemLogCleanupFilter) (int64, error)
 	InsertSystemLogCleanupAuditFn func(ctx context.Context, input *OpsSystemLogCleanupAudit) error
+
+	// 账号追溯（migrations/251、252）
+	InsertUpstreamAttemptsFn    func(ctx context.Context, records []*OpsUpstreamAttemptRecord) (int, error)
+	InsertAccountStatusEventsFn func(ctx context.Context, records []*OpsAccountStatusEventRecord) (int, error)
+	GetRequestTraceFn           func(ctx context.Context, requestID string) (*OpsRequestTrace, error)
+	GetAccountTraceFn           func(ctx context.Context, accountID int64, since time.Time, limit int) (*OpsAccountTrace, error)
+	GetAccountAttemptStatsFn    func(ctx context.Context, since time.Time, minAttempts int) ([]*AccountAttemptStat, error)
+	RecordedAttempts            []*OpsUpstreamAttemptRecord
+}
+
+func (m *opsRepoMock) InsertUpstreamAttempts(ctx context.Context, records []*OpsUpstreamAttemptRecord) (int, error) {
+	if m.InsertUpstreamAttemptsFn != nil {
+		return m.InsertUpstreamAttemptsFn(ctx, records)
+	}
+	m.RecordedAttempts = append(m.RecordedAttempts, records...)
+	return len(records), nil
+}
+
+func (m *opsRepoMock) InsertAccountStatusEvents(ctx context.Context, records []*OpsAccountStatusEventRecord) (int, error) {
+	if m.InsertAccountStatusEventsFn != nil {
+		return m.InsertAccountStatusEventsFn(ctx, records)
+	}
+	return len(records), nil
+}
+
+func (m *opsRepoMock) GetRequestTrace(ctx context.Context, requestID string) (*OpsRequestTrace, error) {
+	if m.GetRequestTraceFn != nil {
+		return m.GetRequestTraceFn(ctx, requestID)
+	}
+	return &OpsRequestTrace{RequestID: requestID}, nil
+}
+
+func (m *opsRepoMock) GetAccountTrace(ctx context.Context, accountID int64, since time.Time, limit int) (*OpsAccountTrace, error) {
+	if m.GetAccountTraceFn != nil {
+		return m.GetAccountTraceFn(ctx, accountID, since, limit)
+	}
+	return &OpsAccountTrace{AccountID: accountID}, nil
+}
+
+func (m *opsRepoMock) ListAccountLifecycleEvents(ctx context.Context, accountID int64, since time.Time, limit int) ([]*OpsAccountLifecycleEvent, error) {
+	return nil, nil
+}
+
+func (m *opsRepoMock) ListExpiringAccounts(ctx context.Context, before time.Time, limit int) ([]*OpsExpiringAccount, error) {
+	return nil, nil
+}
+
+func (m *opsRepoMock) GetAccountAttemptStats(ctx context.Context, since time.Time, minAttempts int) ([]*AccountAttemptStat, error) {
+	if m.GetAccountAttemptStatsFn != nil {
+		return m.GetAccountAttemptStatsFn(ctx, since, minAttempts)
+	}
+	return nil, nil
 }
 
 func (m *opsRepoMock) InsertErrorLog(ctx context.Context, input *OpsInsertErrorLogInput) (int64, error) {

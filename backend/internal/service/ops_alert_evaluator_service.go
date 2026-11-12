@@ -55,6 +55,10 @@ type OpsAlertEvaluatorService struct {
 	skipLogAt time.Time
 
 	warnNoRedisOnce sync.Once
+
+	// account_failure_rate_1h 规则引擎只能回一个数字，最差账号的身份存在这里，
+	// 拼进告警描述。ruleID -> *AccountAttemptStat
+	worstAccountByRule sync.Map
 }
 
 type opsAlertRuleState struct {
@@ -276,7 +280,7 @@ func (s *OpsAlertEvaluatorService) evaluateOnce(interval time.Duration) {
 				Severity:       strings.TrimSpace(rule.Severity),
 				Status:         OpsAlertStatusFiring,
 				Title:          fmt.Sprintf("%s: %s", strings.TrimSpace(rule.Severity), strings.TrimSpace(rule.Name)),
-				Description:    buildOpsAlertDescription(rule, metricValue, windowMinutes, scopePlatform, scopeGroupID),
+				Description:    s.appendWorstAccountDescription(rule, buildOpsAlertDescription(rule, metricValue, windowMinutes, scopePlatform, scopeGroupID)),
 				MetricValue:    float64Ptr(metricValue),
 				ThresholdValue: float64Ptr(rule.Threshold),
 				Dimensions:     buildOpsAlertDimensions(scopePlatform, scopeGroupID),
@@ -581,6 +585,31 @@ func (s *OpsAlertEvaluatorService) computeRuleMetric(
 			return 0, false
 		}
 		return float64(n), true
+	case opsMetricAccountFailureRate:
+		// 注意：该指标是账号维度的全局统计，不按 platform/group 过滤。
+		if s == nil || s.opsRepo == nil {
+			return 0, false
+		}
+		stats, err := s.opsRepo.GetAccountAttemptStats(ctx, start, accountFailureRateMinAttempts)
+		if err != nil {
+			return 0, false
+		}
+		if len(stats) == 0 || stats[0] == nil {
+			s.worstAccountByRule.Delete(rule.ID)
+			return 0, true
+		}
+		s.worstAccountByRule.Store(rule.ID, stats[0])
+		return stats[0].FailurePct, true
+	case opsMetricAccountExpiringSoon:
+		if s == nil || s.opsRepo == nil {
+			return 0, false
+		}
+		now := time.Now()
+		items, err := s.opsRepo.ListExpiringAccounts(ctx, now.Add(accountExpiringSoonWindow), 500)
+		if err != nil {
+			return 0, false
+		}
+		return float64(countAccountsNeedingRenewal(items, now)), true
 	}
 
 	overview, err := s.opsRepo.GetDashboardOverview(ctx, &OpsDashboardFilter{
@@ -649,6 +678,51 @@ func buildOpsAlertDimensions(platform string, groupID *int64) map[string]any {
 		return nil
 	}
 	return dims
+}
+
+const (
+	opsMetricAccountFailureRate  = "account_failure_rate_1h"
+	opsMetricAccountExpiringSoon = "account_expiring_soon_count"
+
+	// 到期巡检窗口：72 小时内到期的账号需要续费处理。
+	accountExpiringSoonWindow = 72 * time.Hour
+)
+
+// countAccountsNeedingRenewal 统计需要续费处理的账号：72 小时内即将到期的，
+// 以及已经到期但仍在调度（没开自动暂停）的。已到期且已暂停的不计入，
+// 否则告警会永远处于 firing。
+func countAccountsNeedingRenewal(items []*OpsExpiringAccount, now time.Time) int {
+	n := 0
+	for _, it := range items {
+		if it == nil {
+			continue
+		}
+		if it.ExpiresAt.After(now) {
+			n++
+			continue
+		}
+		if it.Schedulable && it.Status == StatusActive {
+			n++
+		}
+	}
+	return n
+}
+
+// appendWorstAccountDescription 给账号失败率告警补上最差账号的身份。
+func (s *OpsAlertEvaluatorService) appendWorstAccountDescription(rule *OpsAlertRule, desc string) string {
+	if s == nil || rule == nil || strings.TrimSpace(rule.MetricType) != opsMetricAccountFailureRate {
+		return desc
+	}
+	v, ok := s.worstAccountByRule.Load(rule.ID)
+	if !ok {
+		return desc
+	}
+	stat, ok := v.(*AccountAttemptStat)
+	if !ok || stat == nil {
+		return desc
+	}
+	return fmt.Sprintf("%s worst_account=%d attempts=%d failures=%d top_kind=%s",
+		desc, stat.AccountID, stat.Attempts, stat.Failures, stat.TopKind)
 }
 
 func buildOpsAlertDescription(rule *OpsAlertRule, value float64, windowMinutes int, platform string, groupID *int64) string {

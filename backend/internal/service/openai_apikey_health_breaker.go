@@ -106,7 +106,7 @@ func (s *RateLimitService) ObserveOpenAIAPIKeyHealthFailure(ctx context.Context,
 		account.TempUnschedulableUntil = &until
 		account.TempUnschedulableReason = reason
 	}
-	s.notifyAccountSchedulingBlocked(account, until, openAIAPIKeyHealthBreakerReason)
+	s.notifyAccountSchedulingBlocked(ctx, account, until, openAIAPIKeyHealthBreakerReason)
 	if s.tempUnschedCache != nil {
 		if err := s.tempUnschedCache.SetTempUnsched(persistCtx, account.ID, state); err != nil {
 			logger.L().Warn("openai.apikey_health_breaker_cache_failed", zap.Int64("account_id", account.ID), zap.Error(err))

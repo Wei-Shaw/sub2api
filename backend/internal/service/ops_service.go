@@ -140,6 +140,9 @@ func NewOpsService(
 	}
 	svc.initRuntimeSettings(context.Background())
 	svc.applyRuntimeLogConfigOnStartup(context.Background())
+	// 账号状态变更事件的落库出口。默认 nil（no-op），注册后 RateLimitService /
+	// TokenRefreshService 的阻断点即可把状态变更写进 account_status_events。
+	SetAccountStatusEventSink(svc)
 	return svc
 }
 
@@ -417,6 +420,8 @@ func (s *OpsService) RecordError(ctx context.Context, entry *OpsInsertErrorLogIn
 		return nil
 	}
 
+	// 账号追溯：把 failover 链归一化写入 upstream_attempts（与 JSONB 双写，失败只记日志）。
+	s.recordUpstreamAttempts(ctx, []*OpsInsertErrorLogInput{prepared})
 	if _, err := s.opsRepo.InsertErrorLog(ctx, prepared); err != nil {
 		// Never bubble up to gateway; best-effort logging.
 		log.Printf("[Ops] RecordError failed: %v", err)
@@ -443,6 +448,9 @@ func (s *OpsService) RecordErrorBatch(ctx context.Context, entries []*OpsInsertE
 	if len(prepared) == 0 {
 		return nil
 	}
+	// 账号追溯：把本次批次里每个请求的 failover 链归一化写入 upstream_attempts。
+	// 与 ops_error_logs 的 JSONB 双写，互不影响；失败只记日志。
+	s.recordUpstreamAttempts(ctx, prepared)
 	if len(prepared) == 1 {
 		_, err := s.opsRepo.InsertErrorLog(ctx, prepared[0])
 		if err != nil {
