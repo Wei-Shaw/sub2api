@@ -120,3 +120,21 @@ func (h *AccountHandler) ProbeUpstreamBillingBatch(c *gin.Context) {
 	}
 	response.Success(c, gin.H{"results": h.upstreamBillingProbe.ProbeAccounts(c.Request.Context(), accountIDs)})
 }
+
+func (h *AccountHandler) ProbeUpstreamBalance(c *gin.Context) {
+	if h.upstreamBillingProbe == nil {
+		response.ErrorFrom(c, service.ErrUpstreamBillingProbeUnavailable)
+		return
+	}
+	accountID, err := strconv.ParseInt(c.Param("id"), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "Invalid account ID")
+		return
+	}
+	result, err := h.upstreamBillingProbe.ProbeUpstreamBalance(c.Request.Context(), accountID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, result)
+}

@@ -167,6 +167,31 @@ func TestIsAccountQuotaNotifyEnabled(t *testing.T) {
 	require.True(t, s.isAccountQuotaNotifyEnabled(context.Background()))
 }
 
+func TestGetAccountBalanceLowNotifyConfig(t *testing.T) {
+	s, repo := newBalanceNotifyServiceForTest()
+	enabled, threshold, emails := s.getAccountBalanceLowNotifyConfig(context.Background())
+	require.False(t, enabled)
+	require.Equal(t, 0.0, threshold)
+	require.Empty(t, emails)
+
+	repo.data[SettingKeyAccountBalanceLowNotifyEnabled] = "true"
+	repo.data[SettingKeyAccountBalanceLowNotifyThreshold] = "12.5"
+	repo.data[SettingKeyAccountBalanceLowNotifyEmails] = `[{"email":"ops@example.com","verified":true,"disabled":false}]`
+	enabled, threshold, emails = s.getAccountBalanceLowNotifyConfig(context.Background())
+	require.True(t, enabled)
+	require.Equal(t, 12.5, threshold)
+	require.Equal(t, []string{"ops@example.com"}, emails)
+}
+
+func TestCheckAccountBalanceLow_SkipsWhenAboveThreshold(t *testing.T) {
+	s, repo := newBalanceNotifyServiceForTest()
+	repo.data[SettingKeyAccountBalanceLowNotifyEnabled] = "true"
+	repo.data[SettingKeyAccountBalanceLowNotifyThreshold] = "10"
+	repo.data[SettingKeyAccountBalanceLowNotifyEmails] = `[{"email":"ops@example.com","verified":true,"disabled":false}]`
+	account := &Account{ID: 7, Name: "sheapi", Platform: PlatformOpenAI, Extra: map[string]any{}}
+	s.CheckAccountBalanceLow(context.Background(), account, 20, "USD")
+}
+
 func TestGetSiteName_FallsBackToDefault(t *testing.T) {
 	s, _ := newBalanceNotifyServiceForTest()
 	name := s.getSiteName(context.Background())

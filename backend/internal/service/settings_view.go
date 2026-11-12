@@ -156,6 +156,10 @@ type SystemSettings struct {
 	ContactInfo                 string
 	DocURL                      string
 	HomeContent                 string
+	FooterIcpNumber             string
+	FooterIcpURL                string
+	FooterPsbNumber             string
+	FooterPsbURL                string
 	CompactHomeEnabled          bool
 	HideCcsImportButton         bool
 	PurchaseSubscriptionEnabled bool
@@ -311,6 +315,11 @@ type SystemSettings struct {
 	AccountQuotaNotifyEnabled bool
 	AccountQuotaNotifyEmails  []NotifyEmailEntry
 
+	// 账号上游余额不足提醒
+	AccountBalanceLowNotifyEnabled   bool
+	AccountBalanceLowNotifyThreshold float64
+	AccountBalanceLowNotifyEmails    []NotifyEmailEntry
+
 	// 系统全局默认平台配额（key = platform，nil/缺省 = 不限制）
 	DefaultPlatformQuotas map[string]*DefaultPlatformQuotaSetting `json:"default_platform_quotas"`
 
@@ -358,6 +367,10 @@ type PublicSettings struct {
 	ContactInfo                         string
 	DocURL                              string
 	HomeContent                         string
+	FooterIcpNumber                  string
+	FooterIcpURL                     string
+	FooterPsbNumber                  string
+	FooterPsbURL                     string
 	CompactHomeEnabled                  bool
 	HideCcsImportButton                 bool
 

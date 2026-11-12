@@ -307,16 +307,44 @@
             <span class="text-sm text-gray-700 dark:text-gray-300">{{ value || '-' }}</span>
           </template>
 
-          <template #cell-notes="{ value }">
-            <div class="max-w-xs">
-              <span
-                v-if="value"
-                :title="value.length > 30 ? value : undefined"
-                class="block truncate text-sm text-gray-600 dark:text-gray-400"
+          <template #cell-notes="{ row }">
+            <div class="max-w-[14rem]">
+              <textarea
+                v-if="editingNotesUserId === row.id"
+                ref="notesEditorRef"
+                v-model="editingNotesValue"
+                rows="3"
+                class="input w-full min-w-[12rem] text-sm"
+                :disabled="savingNotes"
+                :placeholder="t('admin.users.enterNotes')"
+                @keydown.esc.prevent="cancelNotesEdit"
+                @keydown.meta.enter.prevent="saveNotesEdit(row)"
+                @keydown.ctrl.enter.prevent="saveNotesEdit(row)"
+                @blur="saveNotesEdit(row)"
+              ></textarea>
+              <button
+                v-else
+                type="button"
+                class="group/notes flex w-full max-w-[14rem] items-start gap-1 rounded-md px-1.5 py-1 text-left transition-colors hover:bg-gray-100 dark:hover:bg-dark-700"
+                :title="row.notes || t('admin.users.enterNotes')"
+                @click="startNotesEdit(row)"
               >
-                {{ value.length > 30 ? value.substring(0, 25) + '...' : value }}
-              </span>
-              <span v-else class="text-sm text-gray-400">-</span>
+                <span
+                  v-if="row.notes"
+                  class="block min-w-0 flex-1 truncate text-sm text-gray-700 dark:text-gray-300"
+                >
+                  {{ row.notes }}
+                </span>
+                <span v-else class="block min-w-0 flex-1 text-sm text-gray-400 dark:text-dark-500">
+                  {{ t('admin.users.notesEmpty') }}
+                </span>
+                <Icon
+                  name="edit"
+                  size="sm"
+                  class="mt-0.5 h-3.5 w-3.5 shrink-0 text-gray-300 opacity-0 transition-opacity group-hover/notes:opacity-100 dark:text-dark-500"
+                  :stroke-width="2"
+                />
+              </button>
             </div>
           </template>
 
@@ -792,7 +820,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { getPersistedPageSize } from '@/composables/usePersistedPageSize'
@@ -916,7 +944,7 @@ const hiddenColumns = reactive<Set<string>>(new Set())
 
 // Default hidden columns (columns hidden by default on first load)
 const DEFAULT_HIDDEN_COLUMNS = [
-  'notes', 'groups', 'subscriptions', 'usage', 'concurrency',
+  'groups', 'subscriptions', 'usage', 'concurrency',
   'usage_anthropic', 'usage_openai', 'usage_gemini', 'usage_antigravity',
   'balance_platform_quota'
 ]
@@ -931,10 +959,14 @@ const HIDDEN_COLUMNS_KEY = 'user-hidden-columns'
 // 并在 VERSION_NEW_HIDDEN_COLUMNS 中登记该版本新增的 key。
 // 这样老用户升级后这些新列会被自动隐藏一次，而不会影响他们对其它老列的偏好。
 const COLUMN_SETTINGS_VERSION_KEY = 'user-column-settings-version'
-const COLUMN_SETTINGS_VERSION = 3
+const COLUMN_SETTINGS_VERSION = 4
 const VERSION_NEW_HIDDEN_COLUMNS: Record<number, string[]> = {
   2: ['usage_anthropic', 'usage_openai', 'usage_gemini', 'usage_antigravity'],
   3: ['balance_platform_quota']
+}
+// 升级时强制重新显示的列（例如备注改为默认可见）
+const VERSION_NEW_VISIBLE_COLUMNS: Record<number, string[]> = {
+  4: ['notes']
 }
 
 // Load saved column settings
@@ -958,6 +990,9 @@ const loadSavedColumns = () => {
               hiddenColumns.add(key)
               mutated = true
             }
+          }
+          for (const key of VERSION_NEW_VISIBLE_COLUMNS[v] ?? []) {
+            if (hiddenColumns.delete(key)) mutated = true
           }
         }
         if (mutated) saveColumnsToStorage()
@@ -1042,6 +1077,54 @@ const columns = computed<Column[]>(() =>
 const users = ref<AdminUser[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
+
+const editingNotesUserId = ref<number | null>(null)
+const editingNotesValue = ref('')
+const editingNotesOriginal = ref('')
+const savingNotes = ref(false)
+const notesEditorRef = ref<HTMLTextAreaElement | null>(null)
+
+const startNotesEdit = async (user: AdminUser) => {
+  if (savingNotes.value) return
+  editingNotesUserId.value = user.id
+  editingNotesValue.value = user.notes || ''
+  editingNotesOriginal.value = user.notes || ''
+  await nextTick()
+  notesEditorRef.value?.focus()
+  notesEditorRef.value?.select()
+}
+
+const cancelNotesEdit = () => {
+  if (savingNotes.value) return
+  editingNotesUserId.value = null
+  editingNotesValue.value = ''
+  editingNotesOriginal.value = ''
+}
+
+const saveNotesEdit = async (user: AdminUser) => {
+  if (editingNotesUserId.value !== user.id || savingNotes.value) return
+  const nextNotes = editingNotesValue.value
+  if (nextNotes === editingNotesOriginal.value) {
+    cancelNotesEdit()
+    return
+  }
+  savingNotes.value = true
+  try {
+    await adminAPI.users.update(user.id, { notes: nextNotes })
+    const target = users.value.find((item) => item.id === user.id)
+    if (target) target.notes = nextNotes
+    appStore.showSuccess(t('admin.users.notesSaved'))
+    editingNotesUserId.value = null
+    editingNotesValue.value = ''
+    editingNotesOriginal.value = ''
+  } catch (e: any) {
+    appStore.showError(e?.message || t('admin.users.notesSaveFailed'))
+    await nextTick()
+    notesEditorRef.value?.focus()
+  } finally {
+    savingNotes.value = false
+  }
+}
 const USER_SORT_STORAGE_KEY = 'admin-users-table-sort'
 const loadInitialSortState = (): { sort_by: string; sort_order: 'asc' | 'desc' } => {
   const fallback = { sort_by: 'created_at', sort_order: 'desc' as 'asc' | 'desc' }

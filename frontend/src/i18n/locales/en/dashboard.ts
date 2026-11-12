@@ -413,6 +413,7 @@ export default {
     cacheHit: 'Cache hit',
     cacheCreate: 'Cache create',
     cacheHitRate: 'Cache hit rate',
+    cacheHitRateHint: 'Cache-read tokens ÷ (input + cache-create + cache-read), matching channel-monitor cache rate.',
     inputTokenPrice: 'Input price',
     outputTokenPrice: 'Output price',
     perMillionTokens: '/ 1M tokens',

@@ -338,6 +338,18 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.HomeContent != after.HomeContent {
 		changed = append(changed, "home_content")
 	}
+	if before.FooterIcpNumber != after.FooterIcpNumber {
+		changed = append(changed, "footer_icp_number")
+	}
+	if before.FooterIcpURL != after.FooterIcpURL {
+		changed = append(changed, "footer_icp_url")
+	}
+	if before.FooterPsbNumber != after.FooterPsbNumber {
+		changed = append(changed, "footer_psb_number")
+	}
+	if before.FooterPsbURL != after.FooterPsbURL {
+		changed = append(changed, "footer_psb_url")
+	}
 	if before.CompactHomeEnabled != after.CompactHomeEnabled {
 		changed = append(changed, "compact_home_enabled")
 	}
@@ -575,6 +587,15 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if !equalNotifyEmailEntries(before.AccountQuotaNotifyEmails, after.AccountQuotaNotifyEmails) {
 		changed = append(changed, "account_quota_notify_emails")
+	}
+	if before.AccountBalanceLowNotifyEnabled != after.AccountBalanceLowNotifyEnabled {
+		changed = append(changed, "account_balance_low_notify_enabled")
+	}
+	if before.AccountBalanceLowNotifyThreshold != after.AccountBalanceLowNotifyThreshold {
+		changed = append(changed, "account_balance_low_notify_threshold")
+	}
+	if !equalNotifyEmailEntries(before.AccountBalanceLowNotifyEmails, after.AccountBalanceLowNotifyEmails) {
+		changed = append(changed, "account_balance_low_notify_emails")
 	}
 	if before.ChannelMonitorEnabled != after.ChannelMonitorEnabled {
 		changed = append(changed, "channel_monitor_enabled")

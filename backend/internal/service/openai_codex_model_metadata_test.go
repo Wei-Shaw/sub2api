@@ -1,6 +1,7 @@
 package service
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"context"
 	"encoding/json"
 	"errors"
@@ -879,7 +880,7 @@ func TestCodexAliasFailoverMappingHonorsModelRouting(t *testing.T) {
 			ID:                  2,
 			Platform:            PlatformOpenAI,
 			ModelRoutingEnabled: true,
-			ModelRouting:        map[string][]int64{"gpt-6-astra": {16, 1}},
+			ModelRouting:        domain.LegacyModelRouting(map[string][]int64{"gpt-6-astra": {16, 1}}),
 		}
 		levels, def, modalities := manifestFieldsOf(t, group)
 		require.Equal(t,
@@ -896,7 +897,7 @@ func TestCodexAliasFailoverMappingHonorsModelRouting(t *testing.T) {
 			ID:                  2,
 			Platform:            PlatformOpenAI,
 			ModelRoutingEnabled: false,
-			ModelRouting:        map[string][]int64{"gpt-6-astra": {16, 1}},
+			ModelRouting:        domain.LegacyModelRouting(map[string][]int64{"gpt-6-astra": {16, 1}}),
 		}
 		levels, _, _ := manifestFieldsOf(t, group)
 		require.Empty(t, levels, "a disabled routing rule must not resolve the alias")
@@ -907,7 +908,7 @@ func TestCodexAliasFailoverMappingHonorsModelRouting(t *testing.T) {
 			ID:                  2,
 			Platform:            PlatformOpenAI,
 			ModelRoutingEnabled: true,
-			ModelRouting:        map[string][]int64{"gpt-5.6-sol": {1}},
+			ModelRouting:        domain.LegacyModelRouting(map[string][]int64{"gpt-5.6-sol": {1}}),
 		}
 		levels, _, _ := manifestFieldsOf(t, group)
 		require.Empty(t, levels, "unrelated routing rules must not resolve this alias")

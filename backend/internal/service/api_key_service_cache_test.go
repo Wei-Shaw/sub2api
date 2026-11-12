@@ -3,6 +3,7 @@
 package service
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"context"
 	"errors"
 	"strings"
@@ -213,9 +214,9 @@ func TestAPIKeyService_GetByKey_UsesL2Cache(t *testing.T) {
 				SubscriptionType:    SubscriptionTypeStandard,
 				RateMultiplier:      1,
 				ModelRoutingEnabled: true,
-				ModelRouting: map[string][]int64{
+				ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 					"claude-opus-*": {1, 2},
-				},
+				}),
 			},
 		},
 	}
@@ -229,7 +230,7 @@ func TestAPIKeyService_GetByKey_UsesL2Cache(t *testing.T) {
 	require.Equal(t, int64(2), apiKey.User.ID)
 	require.Equal(t, groupID, apiKey.Group.ID)
 	require.True(t, apiKey.Group.ModelRoutingEnabled)
-	require.Equal(t, map[string][]int64{"claude-opus-*": {1, 2}}, apiKey.Group.ModelRouting)
+	require.Equal(t, domain.LegacyModelRouting(map[string][]int64{"claude-opus-*": {1, 2}}), apiKey.Group.ModelRouting)
 }
 
 func TestAPIKeyService_SnapshotRoundTrip_PreservesMessagesDispatchModelConfig(t *testing.T) {

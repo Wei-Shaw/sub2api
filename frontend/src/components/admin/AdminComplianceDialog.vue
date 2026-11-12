@@ -34,15 +34,6 @@
               {{ complianceStore.status?.version || 'v2026.06.10' }}
             </p>
           </div>
-          <a
-            :href="documentUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="inline-flex items-center gap-2 text-primary-600 underline underline-offset-4 hover:text-primary-700 dark:text-primary-300 dark:hover:text-primary-200"
-          >
-            <Icon name="externalLink" size="sm" />
-            {{ t('adminCompliance.openDocument') }}
-          </a>
           <p class="leading-6 text-gray-600 dark:text-dark-300">
             {{ t('adminCompliance.documentSource') }}
           </p>
@@ -125,12 +116,6 @@ const visible = computed(() => authStore.isAuthenticated && authStore.isAdmin &&
 const expectedPhrase = computed(() => complianceStore.expectedPhrase)
 const canSubmit = computed(() => typedPhrase.value.trim() === expectedPhrase.value)
 const currentDocument = computed(() => getLocale() === 'zh' ? zhDocument : enDocument)
-const documentUrl = computed(() => {
-  if (getLocale() === 'zh') {
-    return complianceStore.status?.document_url_zh || 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/legal/admin-compliance.zh.md'
-  }
-  return complianceStore.status?.document_url_en || 'https://github.com/Wei-Shaw/sub2api/blob/main/docs/legal/admin-compliance.en.md'
-})
 const inputError = computed(() => {
   if (!attemptedSubmit.value || canSubmit.value) {
     return ''

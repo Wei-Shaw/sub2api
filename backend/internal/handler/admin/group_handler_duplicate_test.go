@@ -3,6 +3,7 @@
 package admin
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -73,7 +74,7 @@ func duplicateGroupHandlerFixture() *service.Group {
 		AccountCount:         3,
 		ActiveAccountCount:   2,
 		DuplicateOperationID: "internal-operation-must-not-leak",
-		ModelRouting:         map[string][]int64{"claude-*": {7}},
+		ModelRouting:         domain.LegacyModelRouting(map[string][]int64{"claude-*": {7}}),
 	}
 }
 
