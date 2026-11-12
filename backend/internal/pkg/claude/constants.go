@@ -117,17 +117,20 @@ func FullClaudeCodeMimicryBetas() []string {
 // 不再在包 init 时固化。同一次请求内应只取一次 UA 字符串并在出站头与
 // billing 两条路径间复用，避免版本缓存翻转瞬间头/体不一致。
 func DefaultHeaders() map[string]string {
+	// Package/Runtime 版本必须与 UA 版本同源：真实客户端的这两个值由构建固定，
+	// 不能一边按运行期版本发 UA、另一边继续用旧构建的常量。
+	stainless, _ := StainlessVersionsForCLIVersion(EffectiveCLIVersion())
 	return map[string]string{
 		// Keep these in sync with recent Claude CLI traffic to reduce the chance
 		// that Claude Code-scoped OAuth credentials are rejected as "non-CLI" usage.
 		// 版本参考：对齐 Parrot (src/transform/cc_mimicry.py:49) 的 CLI_USER_AGENT。
 		"User-Agent":                                DefaultUserAgent(),
 		"X-Stainless-Lang":                          "js",
-		"X-Stainless-Package-Version":               "0.94.0",
+		"X-Stainless-Package-Version":               stainless.PackageVersion,
 		"X-Stainless-OS":                            "Linux",
 		"X-Stainless-Arch":                          "arm64",
 		"X-Stainless-Runtime":                       "node",
-		"X-Stainless-Runtime-Version":               "v24.3.0",
+		"X-Stainless-Runtime-Version":               stainless.RuntimeVersion,
 		"X-Stainless-Retry-Count":                   "0",
 		"X-Stainless-Timeout":                       "600",
 		"X-App":                                     "cli",
