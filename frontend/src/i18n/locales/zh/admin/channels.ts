@@ -525,6 +525,7 @@ export default {
         block: '拦截',
         keywordBlock: '关键词拦截',
         cyberPolicy: '网络安全策略',
+        invalidPrompt: '提示词违规',
         error: '异常',
       },
     },

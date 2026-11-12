@@ -157,6 +157,39 @@ func TestRecordCyberPolicyEvent_WritesLogWhenEnabled(t *testing.T) {
 		"Error should mention flagged or cyber_policy")
 }
 
+func TestRecordCyberPolicyEvent_InvalidPromptUsesDistinctAction(t *testing.T) {
+	repo := &contentModerationTestRepo{}
+	svc := NewContentModerationService(
+		&contentModerationTestSettingRepo{values: map[string]string{
+			SettingKeyRiskControlEnabled: "true",
+		}},
+		repo,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
+		Code:            "invalid_prompt",
+		UserID:          1,
+		UserEmail:       "u@x.com",
+		Model:           "gpt-5",
+		Endpoint:        "/v1/responses",
+		UpstreamMessage: "Invalid prompt: your prompt was flagged as potentially violating our usage policy.",
+		UpstreamStatus:  400,
+	})
+
+	logs := repo.snapshotLogs()
+	require.Len(t, logs, 1)
+	require.Equal(t, ContentModerationActionInvalidPrompt, logs[0].Action)
+	require.Equal(t, "invalid_prompt", logs[0].HighestCategory)
+	require.True(t, logs[0].Flagged)
+	require.False(t, logs[0].AutoBanned)
+}
+
 func TestRecordCyberPolicyEvent_RespectsContentModerationScope(t *testing.T) {
 	groupID := int64(7)
 	tests := []struct {

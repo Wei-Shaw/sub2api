@@ -237,3 +237,16 @@ func TestBuildCyberPolicyOpsErrorEntry_StatusCode(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildCyberPolicyOpsErrorEntry_InvalidPromptKeepsEvidence(t *testing.T) {
+	mark := &service.CyberPolicyMark{
+		Code:           "invalid_prompt",
+		Message:        "Invalid prompt: your prompt was flagged as potentially violating our usage policy.",
+		UpstreamStatus: 400,
+	}
+	entry := buildCyberPolicyOpsErrorEntry(cyberPolicyOpsErrorMeta{RequestID: "req-2"}, mark)
+
+	require.Equal(t, "cyber_policy", entry.ErrorType, "ops taxonomy keeps the unified policy bucket")
+	require.Contains(t, entry.ErrorMessage, "invalid_prompt")
+	require.Contains(t, entry.ErrorMessage, "usage policy")
+}
