@@ -177,6 +177,7 @@ func TestUpstreamBillingProbeOfficialAPIBaseURLIsUnsupportedWithoutRequest(t *te
 		{PlatformOpenCodeGo, "https://opencode.ai/zen/go"},
 		{PlatformTypeSafe, "https://api.typesafe.ai"},
 		{PlatformTypeSafe, "https://api.typesafe.ai/v1"},
+		{PlatformMeta, "https://api.meta.ai/v1"},
 	}
 	for i, tc := range cases {
 		account := &Account{
@@ -221,6 +222,7 @@ func TestUpstreamBillingProbeOfficialAPIHostMatchingIsNormalized(t *testing.T) {
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://opencode.ai/zen/go/v1"))
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://opencode.ai/zen/go"))
 	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://api.typesafe.ai"))
+	require.True(t, upstreamBillingProbeTargetIsOfficialAPI("https://api.meta.ai/v1"))
 	// 相似但不同的注册域不拦：中转完全可能叫 *-x.ai 之外的任何名字。
 	require.False(t, upstreamBillingProbeTargetIsOfficialAPI("https://relay.example/v1"))
 	require.False(t, upstreamBillingProbeTargetIsOfficialAPI("https://notx.ai"))

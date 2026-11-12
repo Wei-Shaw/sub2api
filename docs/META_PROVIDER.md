@@ -92,8 +92,9 @@ for meta groups, with the OpenAI Images request and response shape:
   `background`, `size` and `usage.input_tokens/output_tokens`.
 - Only `muse-image-*` is sent upstream; another model on these endpoints is rejected
   before any upstream call.
-- Meta publishes no image price, so the request is billed per image with the group's
-  image prices (the defaults when unset); the upstream token usage is logged too.
+- The request is billed per image: the group's image prices when set, otherwise the
+  catalog price of $0.01 per image, flat for every size; the upstream token usage is
+  logged too.
 - Quota throttling (`resets_at`) parks the account exactly as for chat.
 
 `muse-image-1.0` also works on `/v1/responses`, where Meta returns an
@@ -107,6 +108,40 @@ models" controls as OpenAI OAuth accounts. For a device-flow account the chosen 
 sent with the poll request and stored when the account is created.
 
 The *-contributor variants are special: they take the contributor-mode header.
+
+## Pricing
+
+The bundled catalog (`backend/resources/model-pricing/model_prices_and_context_window.json`)
+carries Meta's pay-as-you-go prices under plain model ids with `litellm_provider: "meta"`,
+taken from https://dev.meta.ai/docs/pricing-rate-limits (read 2026-11-12). Prices per
+1M tokens:
+
+| Model | Cached input | Input | Output |
+| --- | --- | --- | --- |
+| muse-spark-1.3, muse-spark-1.2, muse-spark-1.1 | $0.15 | $1.25 | $4.25 |
+| muse-spark-1.3-contributor, muse-spark-1.2-contributor | $0.002 | $0.10 | $0.20 |
+| muse-wonder-1.0 | $0.20 | $4.00 | $20.00 |
+| muse-wonder-1.0-contributor, muse-wonder-full-1.0, muse-wonder-full-1.0-contributor | $0.20 | $4.00 | $20.00 |
+| muse-ember-1.0, up to 200K input tokens | $0.004 | $0.10 | $0.50 |
+| muse-ember-1.0, over 200K input tokens | $0.012 | $0.30 | $1.50 |
+
+- The plan-only Wonder models have no pay-as-you-go price on Meta's page; the catalog
+  bills them at the `muse-wonder-1.0` rates.
+- Muse Ember bills the whole request at the long-context rates once its input (cached
+  tokens included) exceeds 200K tokens.
+- `muse-image-1.0` costs $0.01 per generated image.
+- Web search grounding costs $2.50 per 1,000 queries on top of the tokens. Every
+  `web_search_call` item in a Meta response is billed at that rate; a group's
+  `search_price_per_1k` overrides it.
+- Because the platform declares `litellm_provider: "meta"`, channel pricing can pull
+  these models from the catalog.
+
+Subscription (OAuth) accounts and API key accounts use the same catalog prices, for the
+customer charge and for the account cost. The flat monthly plan fee is not modelled:
+Meta sells Muse Code plans at Everyday $5, High $15, Power $50 and Maximum $200 per
+month (https://dev.meta.ai/help/subscriptions/what-is-a-muse-code-subscription) and
+publishes no token quota per plan. Set the account rate multiplier or an account-stats
+pricing rule on the channel to record a different account cost.
 
 ## Rate limits and quota
 
