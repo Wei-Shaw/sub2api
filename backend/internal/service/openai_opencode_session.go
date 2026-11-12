@@ -24,14 +24,14 @@ const (
 	openCodeUpstreamUserAgent = "opencode/1.0.0"
 )
 
-// rememberOpenCodeInboundBody keeps the client request body so protocol
-// conversion (Responses↔Anthropic↔Chat Completions) can still recover
-// prompt_cache_key / metadata.user_id after those fields are dropped.
+// 协议转换前保存会话提示，使转换后的请求仍能使用原始会话身份。
+// 提示只包含已校验的会话标识，请求中的文本和图片随原请求释放。
 func rememberOpenCodeInboundBody(c *gin.Context, body []byte) {
 	if c == nil || len(body) == 0 {
 		return
 	}
-	c.Set(openCodeInboundBodyContextKey, body)
+	sessionID := sanitizeSessionID(openCodeSessionIDFromPayload(body))
+	c.Set(openCodeInboundBodyContextKey, openCodeSessionHintBody(sessionID))
 }
 
 func openCodeInboundBodies(c *gin.Context) [][]byte {
