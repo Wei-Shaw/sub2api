@@ -218,11 +218,12 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 		// 请求内容与账号鉴权都可能返回同一条 403：第一个账号只换号，
 		// 另一个账号成功后再回补处理；两个不同账号都 403 则判为请求级。
 		if resp.StatusCode == http.StatusForbidden {
+			evBody := unwrapIfNeeded(account.Type == AccountTypeOAuth, respBody)
 			switch s.classifyGemini403ForRequest(c, account, resp.StatusCode, resp.Header, respBody, mappedModel) {
 			case gemini403RequestScoped:
-				return nil, s.writeGeminiChatRequestScoped403(c, account, respBody, requestID)
+				return nil, s.writeGeminiChatRequestScoped403(c, account, evBody, requestID)
 			case gemini403Defer:
-				return nil, s.gemini403DeferredFailoverError(c, account, resp, respBody, requestID)
+				return nil, s.gemini403DeferredFailoverError(c, account, resp, evBody, requestID)
 			}
 		}
 		policy := ErrorPolicyNone

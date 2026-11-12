@@ -1465,9 +1465,9 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		if resp.StatusCode == http.StatusForbidden {
 			switch s.classifyGemini403ForRequest(c, account, resp.StatusCode, resp.Header, respBody, mappedModel) {
 			case gemini403RequestScoped:
-				return nil, s.writeGeminiNativeRequestScoped403(c, account, respBody, requestID)
+				return nil, s.writeGeminiNativeRequestScoped403(c, account, unwrapIfNeeded(isOAuth, respBody), requestID)
 			case gemini403Defer:
-				return nil, s.gemini403DeferredFailoverError(c, account, resp, respBody, requestID)
+				return nil, s.gemini403DeferredFailoverError(c, account, resp, unwrapIfNeeded(isOAuth, respBody), requestID)
 			}
 		}
 
