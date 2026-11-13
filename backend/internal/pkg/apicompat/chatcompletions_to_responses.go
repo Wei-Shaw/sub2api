@@ -235,34 +235,43 @@ func chatUserToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 	return []ResponsesInputItem{{Type: "message", Role: "user", Content: content}}, nil
 }
 
-// chatAssistantToResponses converts an assistant message. If there is both
-// text content and tool_calls, the text is emitted as an assistant message
-// first, then each tool_call becomes a function_call item. If the content is
-// empty/nil and there are tool_calls, only function_call items are emitted.
+// chatAssistantToResponses converts an assistant message. Reasoning content is
+// emitted as a dedicated reasoning item first. If there is both text content
+// and tool_calls, the text is emitted as an assistant message next, then each
+// tool_call becomes a function_call item. If the content is empty/nil and
+// there are tool_calls, only the reasoning and function_call items are emitted.
 func chatAssistantToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 	var items []ResponsesInputItem
-	content := ""
 
-	if m.ReasoningContent != "" {
-		content = "<thinking>" + m.ReasoningContent + "</thinking>"
-	}
-
-	// Emit assistant message with output_text if content is non-empty.
+	// Reasoning must travel as a dedicated reasoning item, never as text inside
+	// the assistant message: models condition on their own prior visible output
+	// and start emitting the wrapper tags (e.g. <thinking>...</thinking>) as
+	// answer content on later turns.
+	reasoning := m.ReasoningContent
+	visible := ""
 	if len(m.Content) > 0 {
-		s, err := parseAssistantContent(m.Content)
+		content, contentReasoning, err := parseAssistantContent(m.Content)
 		if err != nil {
 			return nil, err
 		}
-		if s != "" {
-			if content != "" {
-				content += "\n"
+		visible = content
+		if contentReasoning != "" {
+			if reasoning != "" {
+				reasoning += "\n"
 			}
-			content += s
+			reasoning += contentReasoning
 		}
 	}
+	if reasoning != "" {
+		items = append(items, ResponsesInputItem{
+			Type:    "reasoning",
+			Summary: []ResponsesSummary{{Type: "summary_text", Text: reasoning}},
+		})
+	}
 
-	if content != "" {
-		parts := []ResponsesContentPart{{Type: "output_text", Text: content}}
+	// Emit assistant message with output_text if content is non-empty.
+	if visible != "" {
+		parts := []ResponsesContentPart{{Type: "output_text", Text: visible}}
 		partsJSON, err := json.Marshal(parts)
 		if err != nil {
 			return nil, err
@@ -287,36 +296,32 @@ func chatAssistantToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 	return items, nil
 }
 
-// parseAssistantContent returns assistant content as plain text.
+// parseAssistantContent splits assistant content into visible text and
+// reasoning text. Structured thinking/reasoning parts stay out of the visible
+// content so callers can emit them as dedicated reasoning items instead of
+// teaching the model to write thinking tags into its answers.
 //
 // Supported formats:
 // - JSON string
 // - JSON array of typed parts (e.g. [{"type":"text","text":"..."}])
-//
-// For structured thinking/reasoning parts, it preserves semantics by wrapping
-// the text in explicit tags so downstream can still distinguish it from normal text.
-func parseAssistantContent(raw json.RawMessage) (string, error) {
+func parseAssistantContent(raw json.RawMessage) (string, string, error) {
 	if len(raw) == 0 {
-		return "", nil
+		return "", "", nil
 	}
 
 	var s string
 	if err := json.Unmarshal(raw, &s); err == nil {
-		return s, nil
+		return s, "", nil
 	}
 
 	var parts []map[string]any
 	if err := json.Unmarshal(raw, &parts); err != nil {
 		// Keep compatibility with prior behavior: unsupported assistant content
 		// formats are ignored instead of failing the whole request conversion.
-		return "", nil
+		return "", "", nil
 	}
 
-	var b strings.Builder
-	write := func(v string) error {
-		_, err := b.WriteString(v)
-		return err
-	}
+	var visible, reasoning strings.Builder
 	for _, p := range parts {
 		typ, _ := p["type"].(string)
 		text, _ := p["text"].(string)
@@ -325,36 +330,16 @@ func parseAssistantContent(raw json.RawMessage) (string, error) {
 		switch typ {
 		case "thinking", "reasoning":
 			if thinking != "" {
-				if err := write("<thinking>"); err != nil {
-					return "", err
-				}
-				if err := write(thinking); err != nil {
-					return "", err
-				}
-				if err := write("</thinking>"); err != nil {
-					return "", err
-				}
-			} else if text != "" {
-				if err := write("<thinking>"); err != nil {
-					return "", err
-				}
-				if err := write(text); err != nil {
-					return "", err
-				}
-				if err := write("</thinking>"); err != nil {
-					return "", err
-				}
+				reasoning.WriteString(thinking)
+			} else {
+				reasoning.WriteString(text)
 			}
 		default:
-			if text != "" {
-				if err := write(text); err != nil {
-					return "", err
-				}
-			}
+			visible.WriteString(text)
 		}
 	}
 
-	return b.String(), nil
+	return visible.String(), reasoning.String(), nil
 }
 
 // chatToolToResponses converts a tool result message (role=tool) into a

@@ -119,28 +119,30 @@ func TestChatCompletionsToResponses_MessageTypesWithReasoningAndTools(t *testing
 
 	var items []ResponsesInputItem
 	require.NoError(t, json.Unmarshal(resp.Input, &items))
-	require.Len(t, items, 7)
+	require.Len(t, items, 8)
 	for i, want := range []struct{ typ, role string }{
 		{"message", "system"},
 		{"message", "user"},
+		{"reasoning", ""},
 		{"message", "assistant"},
 		{"function_call", ""},
 		{"function_call_output", ""},
-		{"message", "assistant"},
+		{"reasoning", ""},
 		{"message", "user"},
 	} {
 		assert.Equal(t, want.typ, items[i].Type, "input item %d type", i)
 		assert.Equal(t, want.role, items[i].Role, "input item %d role", i)
 	}
-	var assistantContent, reasoningOnlyContent []ResponsesContentPart
-	require.NoError(t, json.Unmarshal(items[2].Content, &assistantContent))
-	require.NoError(t, json.Unmarshal(items[5].Content, &reasoningOnlyContent))
+	var assistantContent []ResponsesContentPart
+	require.NoError(t, json.Unmarshal(items[3].Content, &assistantContent))
 	require.Len(t, assistantContent, 1)
-	require.Len(t, reasoningOnlyContent, 1)
-	assert.Equal(t, "<thinking>Need to inspect the directory.</thinking>\nI will check.", assistantContent[0].Text)
-	assert.Equal(t, "<thinking>The tool returned /tmp.</thinking>", reasoningOnlyContent[0].Text)
-	assert.Equal(t, "call_1", items[3].CallID)
+	assert.Equal(t, "I will check.", assistantContent[0].Text)
+	require.Len(t, items[2].Summary, 1)
+	assert.Equal(t, "Need to inspect the directory.", items[2].Summary[0].Text)
+	require.Len(t, items[6].Summary, 1)
+	assert.Equal(t, "The tool returned /tmp.", items[6].Summary[0].Text)
 	assert.Equal(t, "call_1", items[4].CallID)
+	assert.Equal(t, "call_1", items[5].CallID)
 }
 
 func TestChatCompletionsToResponses_ToolCalls(t *testing.T) {
@@ -885,14 +887,16 @@ func TestChatCompletionsToResponses_AssistantThinkingTagPreserved(t *testing.T) 
 
 	var items []ResponsesInputItem
 	require.NoError(t, json.Unmarshal(resp.Input, &items))
-	require.Len(t, items, 2)
+	require.Len(t, items, 3)
+	assert.Equal(t, "reasoning", items[1].Type)
+	require.Len(t, items[1].Summary, 1)
+	assert.Equal(t, "internal plan", items[1].Summary[0].Text)
 
 	var parts []ResponsesContentPart
-	require.NoError(t, json.Unmarshal(items[1].Content, &parts))
+	require.NoError(t, json.Unmarshal(items[2].Content, &parts))
 	require.Len(t, parts, 1)
 	assert.Equal(t, "output_text", parts[0].Type)
-	assert.Contains(t, parts[0].Text, "<thinking>internal plan</thinking>")
-	assert.Contains(t, parts[0].Text, "final answer")
+	assert.Equal(t, "final answer", parts[0].Text)
 }
 
 func TestChatCompletionsToResponses_AssistantReasoningContentPreserved(t *testing.T) {
@@ -913,14 +917,16 @@ func TestChatCompletionsToResponses_AssistantReasoningContentPreserved(t *testin
 
 	var items []ResponsesInputItem
 	require.NoError(t, json.Unmarshal(resp.Input, &items))
-	require.Len(t, items, 2)
+	require.Len(t, items, 3)
+	assert.Equal(t, "reasoning", items[1].Type)
+	require.Len(t, items[1].Summary, 1)
+	assert.Equal(t, "internal plan", items[1].Summary[0].Text)
 
 	var parts []ResponsesContentPart
-	require.NoError(t, json.Unmarshal(items[1].Content, &parts))
+	require.NoError(t, json.Unmarshal(items[2].Content, &parts))
 	require.Len(t, parts, 1)
 	assert.Equal(t, "output_text", parts[0].Type)
-	assert.Contains(t, parts[0].Text, "<thinking>internal plan</thinking>")
-	assert.Contains(t, parts[0].Text, "final answer")
+	assert.Equal(t, "final answer", parts[0].Text)
 }
 
 // ---------------------------------------------------------------------------
