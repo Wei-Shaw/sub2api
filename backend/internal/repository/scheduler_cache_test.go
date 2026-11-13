@@ -1,8 +1,10 @@
 package repository
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/stretchr/testify/require"
@@ -52,6 +54,34 @@ func TestSchedulerMetadataAccountKeepsOpenAISubscriptionIdentity(t *testing.T) {
 
 	require.True(t, metadata.IsOpenAIChatGPTSubscription())
 	require.Empty(t, metadata.GetCredential("access_token"))
+}
+
+func TestSchedulerMetadataAccountKeepsProArgonQuotaIsolation(t *testing.T) {
+	account := service.Account{
+		ID: 25, Platform: service.PlatformAntigravity, Type: service.AccountTypeOAuth,
+		Status: service.StatusActive, Schedulable: true,
+		Credentials: map[string]any{
+			"plan_type": "Pro", "access_token": "secret-access-token", "refresh_token": "secret-refresh-token",
+		},
+		Extra: map[string]any{
+			"model_rate_limits": map[string]any{
+				"antigravity:gemini:argon": map[string]any{
+					"rate_limit_reset_at": time.Now().Add(time.Hour).Format(time.RFC3339),
+				},
+			},
+		},
+	}
+	_, payload, err := marshalSchedulerCacheAccount(account)
+	require.NoError(t, err)
+	var metadata service.Account
+	require.NoError(t, json.Unmarshal([]byte(payload), &metadata))
+	require.Equal(t, "Pro", metadata.GetCredential("plan_type"))
+	require.Empty(t, metadata.GetCredential("access_token"))
+	require.Empty(t, metadata.GetCredential("refresh_token"))
+	require.False(t, metadata.IsSchedulableForModel("gemini-4-argon-low"))
+	require.Positive(t, metadata.GetRateLimitRemainingTime("gemini-4-argon-low"))
+	require.True(t, metadata.IsSchedulableForModel("gemini-3.8-flash"))
+	require.Zero(t, metadata.GetRateLimitRemainingTime("gemini-3.8-flash"))
 }
 
 func TestSchedulerMetadataAccountProjectsUpstreamBillingProbe(t *testing.T) {
