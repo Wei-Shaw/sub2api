@@ -610,6 +610,18 @@
             </span>
           </template>
 
+          <template #cell-registration_ip="{ value }">
+            <span class="whitespace-nowrap font-mono text-sm text-gray-500 dark:text-dark-400" :title="value || undefined">
+              {{ value || '—' }}
+            </span>
+          </template>
+
+          <template #cell-last_login_ip="{ value }">
+            <span class="whitespace-nowrap font-mono text-sm text-gray-500 dark:text-dark-400" :title="value || undefined">
+              {{ value || '—' }}
+            </span>
+          </template>
+
           <template #cell-actions="{ row }">
             <div class="flex items-center gap-1">
               <!-- Edit Button -->
@@ -899,6 +911,8 @@ const allColumns = computed<Column[]>(() => [
   { key: 'usage_antigravity', label: t('admin.users.columns.usageAntigravity'), sortable: false },
   { key: 'concurrency', label: t('admin.users.columns.concurrency'), sortable: true },
   { key: 'status', label: t('admin.users.columns.status'), sortable: true },
+  { key: 'registration_ip', label: t('admin.users.columns.registrationIP'), sortable: false },
+  { key: 'last_login_ip', label: t('admin.users.columns.lastLoginIP'), sortable: false },
   { key: 'last_active_at', label: t('admin.users.columns.lastActive'), sortable: true },
   { key: 'last_used_at', label: t('admin.users.columns.lastUsed'), sortable: true },
   { key: 'created_at', label: t('admin.users.columns.created'), sortable: true },

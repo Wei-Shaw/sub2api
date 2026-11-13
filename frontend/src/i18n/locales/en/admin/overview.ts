@@ -606,6 +606,8 @@ export default {
         concurrency: 'Concurrency',
         status: 'Status',
         lastActive: 'Last Active',
+        registrationIP: 'Registration IP',
+        lastLoginIP: 'Last Login IP',
         lastUsed: 'Last Used',
         created: 'Created',
         actions: 'Actions'

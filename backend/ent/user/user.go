@@ -47,6 +47,10 @@ const (
 	FieldTotpEnabledAt = "totp_enabled_at"
 	// FieldSignupSource holds the string denoting the signup_source field in the database.
 	FieldSignupSource = "signup_source"
+	// FieldRegistrationIP holds the string denoting the registration_ip field in the database.
+	FieldRegistrationIP = "registration_ip"
+	// FieldLastLoginIP holds the string denoting the last_login_ip field in the database.
+	FieldLastLoginIP = "last_login_ip"
 	// FieldLastLoginAt holds the string denoting the last_login_at field in the database.
 	FieldLastLoginAt = "last_login_at"
 	// FieldLastActiveAt holds the string denoting the last_active_at field in the database.
@@ -212,6 +216,8 @@ var Columns = []string{
 	FieldTotpEnabled,
 	FieldTotpEnabledAt,
 	FieldSignupSource,
+	FieldRegistrationIP,
+	FieldLastLoginIP,
 	FieldLastLoginAt,
 	FieldLastActiveAt,
 	FieldRestrictPublicGroups,
@@ -283,6 +289,14 @@ var (
 	DefaultSignupSource string
 	// SignupSourceValidator is a validator for the "signup_source" field. It is called by the builders before save.
 	SignupSourceValidator func(string) error
+	// DefaultRegistrationIP holds the default value on creation for the "registration_ip" field.
+	DefaultRegistrationIP string
+	// RegistrationIPValidator is a validator for the "registration_ip" field. It is called by the builders before save.
+	RegistrationIPValidator func(string) error
+	// DefaultLastLoginIP holds the default value on creation for the "last_login_ip" field.
+	DefaultLastLoginIP string
+	// LastLoginIPValidator is a validator for the "last_login_ip" field. It is called by the builders before save.
+	LastLoginIPValidator func(string) error
 	// DefaultRestrictPublicGroups holds the default value on creation for the "restrict_public_groups" field.
 	DefaultRestrictPublicGroups bool
 	// DefaultBalanceNotifyEnabled holds the default value on creation for the "balance_notify_enabled" field.
@@ -383,6 +397,16 @@ func ByTotpEnabledAt(opts ...sql.OrderTermOption) OrderOption {
 // BySignupSource orders the results by the signup_source field.
 func BySignupSource(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldSignupSource, opts...).ToFunc()
+}
+
+// ByRegistrationIP orders the results by the registration_ip field.
+func ByRegistrationIP(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldRegistrationIP, opts...).ToFunc()
+}
+
+// ByLastLoginIP orders the results by the last_login_ip field.
+func ByLastLoginIP(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldLastLoginIP, opts...).ToFunc()
 }
 
 // ByLastLoginAt orders the results by the last_login_at field.

@@ -584,6 +584,8 @@ export default {
         concurrency: '并发数',
         status: '状态',
         lastActive: '最后活跃时间',
+        registrationIP: '注册 IP',
+        lastLoginIP: '最后登录 IP',
         lastUsed: '最后使用时间',
         created: '创建时间',
         actions: '操作'
