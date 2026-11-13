@@ -398,7 +398,7 @@ describe('EditAccountModal', () => {
       }
     })
 
-    expect(wrapper.find('[data-testid="model-whitelist-value"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="model-whitelist-value"]').isVisible()).toBe(false)
     await clickDeleteBeside(wrapper, 'admin.accounts.requestModel')
     await clickButtonIncluding(wrapper, 'admin.accounts.modelWhitelist')
     expect(wrapper.get('[data-testid="model-whitelist-value"]').text().trim()).toBe('gpt-5.6-sol')
