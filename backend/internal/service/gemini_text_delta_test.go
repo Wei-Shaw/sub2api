@@ -1,8 +1,14 @@
 package service
 
 import (
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -49,14 +55,38 @@ func TestGeminiTextDeltaMatchesLegacy(t *testing.T) {
 }
 
 func TestGeminiTextDeltaIncrementalAllocationsStayLinear(t *testing.T) {
-	chunk := strings.Repeat("x", 100)
+	// AllocsPerRun reads process-wide counters. Background goroutines left by
+	// other service tests can allocate even when it sets GOMAXPROCS to one.
+	const childEnv = "SUB2API_GEMINI_ALLOC_TEST_CHILD"
+	if os.Getenv(childEnv) != "1" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		executable, err := os.Executable()
+		require.NoError(t, err)
+		cmd := exec.CommandContext(ctx, executable, "-test.run=^"+regexp.QuoteMeta(t.Name())+"$", "-test.count=1")
+		cmd.Env = append(os.Environ(), childEnv+"=1")
+		output, err := cmd.CombinedOutput()
+		require.NoError(t, err, "isolated allocation test failed:\n%s", output)
+		return
+	}
+
 	const chunks = 2000
+	inputs := make([]string, chunks)
+	for i := range inputs {
+		// Repeating the same chunk exercises duplicate suppression instead of
+		// growing the buffer. A unique prefix makes every chunk incremental.
+		inputs[i] = fmt.Sprintf("%04d:%s", i, strings.Repeat("x", 95))
+	}
+	want := strings.Join(inputs, "")
+	var got string
 	allocs := testing.AllocsPerRun(5, func() {
 		var state geminiTextDelta
-		for i := 0; i < chunks; i++ {
+		for _, chunk := range inputs {
 			_ = state.next(chunk)
 		}
+		got = state.seen.String()
 	})
+	require.Equal(t, want, got, "all incremental chunks must be retained")
 	// Concatenation allocates once per chunk; amortized growth needs O(log n).
 	require.Less(t, allocs, float64(100), "allocs per stream: %v", allocs)
 }
