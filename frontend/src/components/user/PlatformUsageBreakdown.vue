@@ -10,9 +10,21 @@
         class="text-gray-400 dark:text-gray-500"
       />
     </div>
-    <div class="mt-0.5 flex items-center gap-1.5">
+    <div
+      class="whitespace-nowrap text-xs text-gray-500 dark:text-gray-400"
+      :title="t('admin.users.billedUsageHint')"
+    >
+      {{ t('admin.users.billedUsage', { requests: formatNumber(todayRequests), tokens: formatNumber(todayTokens) }) }}
+    </div>
+    <div class="mt-1 flex items-center gap-1.5">
       <span class="text-gray-500 dark:text-gray-400">{{ t('admin.users.total') }}:</span>
       <span class="font-medium text-gray-900 dark:text-white">${{ total.toFixed(4) }}</span>
+    </div>
+    <div
+      class="whitespace-nowrap text-xs text-gray-500 dark:text-gray-400"
+      :title="t('admin.users.billedUsageHint')"
+    >
+      {{ t('admin.users.billedUsage', { requests: formatNumber(totalRequests), tokens: formatNumber(totalTokens) }) }}
     </div>
 
     <div
@@ -46,11 +58,16 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import { formatNumber } from '@/utils/format'
 import type { PlatformUsage } from '@/api/admin/dashboard'
 
 const props = defineProps<{
   today: number
   total: number
+  todayRequests: number
+  totalRequests: number
+  todayTokens: number
+  totalTokens: number
   byPlatform?: PlatformUsage[]
 }>()
 
