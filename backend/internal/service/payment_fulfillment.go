@@ -838,6 +838,11 @@ func (s *PaymentService) tryClaimAffiliateRebateAudit(ctx context.Context, clien
 	return true, nil
 }
 
+// affiliateRebateAuditClaimConflictTarget 的谓词必须与迁移 251 的部分唯一索引
+// idx_payment_audit_logs_order_action_once_uniq 逐字一致：PostgreSQL 靠谓词推断索引，
+// SQLite 要求冲突目标与索引谓词完全相同，否则 ON CONFLICT 直接报错。
+const affiliateRebateAuditClaimConflictTarget = "ON CONFLICT (order_id, action) WHERE action IN ('SUBSCRIPTION_ASSIGNED', 'AFFILIATE_REBATE_APPLIED', 'AFFILIATE_REBATE_SKIPPED') DO NOTHING"
+
 func buildAffiliateRebateAuditClaimQuery(client *dbent.Client, orderID, detail string) (string, []any) {
 	nowExpr := paymentAuditCurrentTimestampExpr(client)
 	if paymentAuditDialect(client) == dialect.Postgres {
@@ -850,8 +855,8 @@ WHERE NOT EXISTS (
 	WHERE order_id = $1::text
 	  AND action IN ('AFFILIATE_REBATE_APPLIED', 'AFFILIATE_REBATE_SKIPPED')
 )
-ON CONFLICT (order_id, action) DO NOTHING
-RETURNING id`, nowExpr), []any{orderID, detail}
+%s
+RETURNING id`, nowExpr, affiliateRebateAuditClaimConflictTarget), []any{orderID, detail}
 	}
 	return fmt.Sprintf(`
 INSERT INTO payment_audit_logs (order_id, action, detail, operator, created_at)
@@ -862,8 +867,8 @@ WHERE NOT EXISTS (
 	WHERE order_id = ?
 	  AND action IN ('AFFILIATE_REBATE_APPLIED', 'AFFILIATE_REBATE_SKIPPED')
 )
-ON CONFLICT (order_id, action) DO NOTHING
-RETURNING id`, nowExpr), []any{orderID, detail, orderID}
+%s
+RETURNING id`, nowExpr, affiliateRebateAuditClaimConflictTarget), []any{orderID, detail, orderID}
 }
 
 func paymentAuditCurrentTimestampExpr(client *dbent.Client) string {

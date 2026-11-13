@@ -66,6 +66,8 @@ const usageLogsUpstreamRequestIDIndexMigration = "233_add_usage_log_upstream_req
 const usageLogsUpstreamRequestIDIndex = "idx_usage_logs_upstream_request_id"
 const usageLogsAPIKeyCostIndexMigration = "249_add_usage_logs_api_key_cost_index_notx.sql"
 const usageLogsAPIKeyCostIndex = "idx_usage_logs_api_key_created_cost"
+const paymentAuditLifecycleUniqueIndexMigration = "251_payment_audit_logs_lifecycle_unique_index_notx.sql"
+const paymentAuditLifecycleUniqueIndex = "idx_payment_audit_logs_order_action_once_uniq"
 
 type migrationChecksumCompatibilityRule struct {
 	fileChecksum       string
@@ -313,6 +315,10 @@ func prepareNonTransactionalMigration(ctx context.Context, db migrationConnectio
 		return dropInvalidIndexIfPresent(ctx, db, usageLogsUpstreamRequestIDIndex)
 	case usageLogsAPIKeyCostIndexMigration:
 		return dropInvalidIndexIfPresent(ctx, db, usageLogsAPIKeyCostIndex)
+	case paymentAuditLifecycleUniqueIndexMigration:
+		// 并发建索引失败会留下 INVALID 索引，IF NOT EXISTS 会让重跑直接跳过它；
+		// 先清理再重建，避免旧的全量唯一索引已被删除而新索引不可用。
+		return dropInvalidIndexIfPresent(ctx, db, paymentAuditLifecycleUniqueIndex)
 	default:
 		return nil
 	}

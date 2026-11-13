@@ -248,9 +248,13 @@ func (s *paymentFulfillmentSettingRepoStub) Delete(_ context.Context, key string
 	return nil
 }
 
+// ensurePaymentAuditOrderActionUniqueIndex 复刻迁移 251 之后的索引形态：
+// 唯一约束只覆盖“一单只发生一次”的动作，退款类事件按每次尝试追加。
 func ensurePaymentAuditOrderActionUniqueIndex(t *testing.T, ctx context.Context, client *dbent.Client) {
 	t.Helper()
-	_, err := client.ExecContext(ctx, "CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_audit_logs_order_action_uniq ON payment_audit_logs(order_id, action)")
+	_, err := client.ExecContext(ctx, `CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_audit_logs_order_action_once_uniq
+ON payment_audit_logs(order_id, action)
+WHERE action IN ('SUBSCRIPTION_ASSIGNED', 'AFFILIATE_REBATE_APPLIED', 'AFFILIATE_REBATE_SKIPPED')`)
 	require.NoError(t, err)
 }
 
