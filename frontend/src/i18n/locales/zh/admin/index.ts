@@ -7,6 +7,9 @@ import settings from './settings'
 import audit from './audit'
 import promptAudit from './promptAudit'
 import plugins from './plugins'
+import traceRequest from './traceRequest'
+import traceAccount from './traceAccount'
+import traceRenewal from './traceRenewal'
 
 export default {
   ...overview,
@@ -18,4 +21,7 @@ export default {
   ...audit,
   ...promptAudit,
   ...plugins,
+  ...traceRequest,
+  ...traceAccount,
+  ...traceRenewal,
 }

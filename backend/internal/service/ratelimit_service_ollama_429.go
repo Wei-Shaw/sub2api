@@ -78,7 +78,7 @@ func (s *RateLimitService) handleOllamaCloudUsage429(ctx context.Context, accoun
 		return
 	}
 	if authoritative.RateLimitResetAt != nil && authoritative.RateLimitResetAt.After(now) {
-		s.notifyAccountSchedulingBlocked(authoritative, *authoritative.RateLimitResetAt, "ollama_429")
+		s.notifyAccountSchedulingBlocked(ctx, authoritative, *authoritative.RateLimitResetAt, "ollama_429")
 	}
 
 	if s.ollamaCloudUsageProbe == nil {
@@ -209,7 +209,7 @@ func (s *RateLimitService) applyOllamaCloudUsageProbeReset(
 		return
 	}
 
-	s.notifyAccountSchedulingBlocked(account, resetAt, "ollama_cloud_usage_429_probe")
+	s.notifyAccountSchedulingBlocked(context.Background(), account, resetAt, "ollama_cloud_usage_429_probe")
 	slog.Info("ollama_cloud_account_rate_limited_probe",
 		"account_id", accountID,
 		"reset_at", resetAt.UTC(),

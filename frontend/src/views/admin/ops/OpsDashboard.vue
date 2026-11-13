@@ -84,6 +84,9 @@
         />
       </div>
 
+      <!-- Row: Renewal (expiring accounts) -->
+      <OpsRenewalCard v-if="opsEnabled && !(loading && !hasLoadedOnce)" :refresh-token="dashboardRefreshToken" />
+
       <!-- Row: Token Stats -->
       <div v-if="opsEnabled && showOpenAITokenStats && !(loading && !hasLoadedOnce)" class="grid grid-cols-1 gap-6">
         <OpsOpenAITokenStatsCard
@@ -173,6 +176,7 @@ import OpsSystemLogTable from './components/OpsSystemLogTable.vue'
 import OpsRequestDetailsModal, { type OpsRequestDetailsPreset } from './components/OpsRequestDetailsModal.vue'
 import OpsSettingsDialog from './components/OpsSettingsDialog.vue'
 import OpsAlertRulesCard from './components/OpsAlertRulesCard.vue'
+import OpsRenewalCard from './components/trace/OpsRenewalCard.vue'
 
 const route = useRoute()
 const router = useRouter()

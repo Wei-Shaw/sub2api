@@ -33,6 +33,21 @@ type OpsRepository interface {
 	InsertSystemMetrics(ctx context.Context, input *OpsInsertSystemMetricsInput) error
 	GetLatestSystemMetrics(ctx context.Context, windowMinutes int) (*OpsSystemMetricsSnapshot, error)
 
+	// Account traceability (migrations/251): normalized attempt trail and
+	// append-only account state transition history. Both are best-effort writes on
+	// the observability path and must never fail a request.
+	InsertUpstreamAttempts(ctx context.Context, records []*OpsUpstreamAttemptRecord) (int, error)
+	InsertAccountStatusEvents(ctx context.Context, records []*OpsAccountStatusEventRecord) (int, error)
+	// GetRequestTrace aggregates usage_logs + upstream_attempts +
+	// account_status_events + ops_error_logs for one request_id.
+	GetRequestTrace(ctx context.Context, requestID string) (*OpsRequestTrace, error)
+	// Account-scoped trace, subscription ledger (migrations/252), expiry sweep and
+	// per-account failure rate for alerting.
+	GetAccountTrace(ctx context.Context, accountID int64, since time.Time, limit int) (*OpsAccountTrace, error)
+	ListAccountLifecycleEvents(ctx context.Context, accountID int64, since time.Time, limit int) ([]*OpsAccountLifecycleEvent, error)
+	ListExpiringAccounts(ctx context.Context, before time.Time, limit int) ([]*OpsExpiringAccount, error)
+	GetAccountAttemptStats(ctx context.Context, since time.Time, minAttempts int) ([]*AccountAttemptStat, error)
+
 	UpsertJobHeartbeat(ctx context.Context, input *OpsUpsertJobHeartbeatInput) error
 	ListJobHeartbeats(ctx context.Context) ([]*OpsJobHeartbeat, error)
 

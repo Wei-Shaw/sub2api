@@ -329,6 +329,9 @@ func (s *OpsCleanupService) runCleanupOnce(ctx context.Context) (opsCleanupDelet
 		{effective.ErrorLogRetentionDays, "ops_error_logs", "created_at", false, &out.errorLogs},
 		{effective.ErrorLogRetentionDays, "ops_ingress_reject_aggregates", "bucket_start", false, &out.ingressRejects},
 		{effective.ErrorLogRetentionDays, "ops_alert_events", "created_at", false, &out.alertEvents},
+		// 账号追溯明细与错误日志同一保留期；account_lifecycle_events（台账）刻意不清理。
+		{effective.ErrorLogRetentionDays, "upstream_attempts", "created_at", false, &out.upstreamAttempts},
+		{effective.ErrorLogRetentionDays, "account_status_events", "created_at", false, &out.statusEvents},
 		{effective.SystemLogRetentionDays, "ops_system_logs", "created_at", false, &out.systemLogs},
 		{effective.SystemLogRetentionDays, "ops_system_log_cleanup_audits", "created_at", false, &out.logAudits},
 		{effective.MinuteMetricsRetentionDays, "ops_system_metrics", "created_at", false, &out.systemMetrics},
