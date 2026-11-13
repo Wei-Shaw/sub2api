@@ -1743,7 +1743,10 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 			}
 		}
 
-		if !opts.PreserveReferences {
+		// additional_tools IDs identify declarations carried in this request,
+		// not stored history. Removing them can change native tool discovery
+		// into ordinary function calls even with store=false.
+		if !opts.PreserveReferences && typ != "additional_tools" {
 			ensureCopy()
 			delete(newItem, "id")
 		} else if id, ok := m["id"].(string); ok && shouldStripOpenAIResponsesInputItemID(typ, id) {
