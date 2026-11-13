@@ -424,6 +424,11 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			return false
 		}
 	}
+	if account.IsBedrock() {
+		if handled, disable := s.handleBedrockUpstreamError(ctx, account, statusCode, upstreamMsg, firstRequestedModel(requestedModel)); handled {
+			return disable
+		}
+	}
 
 	switch statusCode {
 	case 400:
