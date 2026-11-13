@@ -253,7 +253,7 @@ func DefaultModelIDs() []string {
 }
 
 // DefaultTestModel 测试时使用的默认模型
-const DefaultTestModel = "claude-sonnet-4-5-20250929"
+const DefaultTestModel = "claude-sonnet-4-6"
 
 // ModelIDOverrides Claude OAuth 请求需要的模型 ID 映射
 var ModelIDOverrides = map[string]string{
