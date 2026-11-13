@@ -56,6 +56,10 @@ const (
 	FieldCacheCreation5mTokens = "cache_creation_5m_tokens"
 	// FieldCacheCreation1hTokens holds the string denoting the cache_creation_1h_tokens field in the database.
 	FieldCacheCreation1hTokens = "cache_creation_1h_tokens"
+	// FieldCacheCreation30mTokens holds the string denoting the cache_creation_30m_tokens field in the database.
+	FieldCacheCreation30mTokens = "cache_creation_30m_tokens"
+	// FieldCacheCreation12hTokens holds the string denoting the cache_creation_12h_tokens field in the database.
+	FieldCacheCreation12hTokens = "cache_creation_12h_tokens"
 	// FieldInputCost holds the string denoting the input_cost field in the database.
 	FieldInputCost = "input_cost"
 	// FieldOutputCost holds the string denoting the output_cost field in the database.
@@ -181,6 +185,8 @@ var Columns = []string{
 	FieldCacheReadTokens,
 	FieldCacheCreation5mTokens,
 	FieldCacheCreation1hTokens,
+	FieldCacheCreation30mTokens,
+	FieldCacheCreation12hTokens,
 	FieldInputCost,
 	FieldOutputCost,
 	FieldCacheCreationCost,
@@ -248,6 +254,10 @@ var (
 	DefaultCacheCreation5mTokens int
 	// DefaultCacheCreation1hTokens holds the default value on creation for the "cache_creation_1h_tokens" field.
 	DefaultCacheCreation1hTokens int
+	// DefaultCacheCreation30mTokens holds the default value on creation for the "cache_creation_30m_tokens" field.
+	DefaultCacheCreation30mTokens int
+	// DefaultCacheCreation12hTokens holds the default value on creation for the "cache_creation_12h_tokens" field.
+	DefaultCacheCreation12hTokens int
 	// DefaultInputCost holds the default value on creation for the "input_cost" field.
 	DefaultInputCost float64
 	// DefaultOutputCost holds the default value on creation for the "output_cost" field.
@@ -403,6 +413,16 @@ func ByCacheCreation5mTokens(opts ...sql.OrderTermOption) OrderOption {
 // ByCacheCreation1hTokens orders the results by the cache_creation_1h_tokens field.
 func ByCacheCreation1hTokens(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldCacheCreation1hTokens, opts...).ToFunc()
+}
+
+// ByCacheCreation30mTokens orders the results by the cache_creation_30m_tokens field.
+func ByCacheCreation30mTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheCreation30mTokens, opts...).ToFunc()
+}
+
+// ByCacheCreation12hTokens orders the results by the cache_creation_12h_tokens field.
+func ByCacheCreation12hTokens(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldCacheCreation12hTokens, opts...).ToFunc()
 }
 
 // ByInputCost orders the results by the input_cost field.

@@ -38,11 +38,12 @@ func NewModelPlazaHandler(
 
 // modelPlazaOfficialPricing 官方参考价（USD per token，与计费目录同源）。
 type modelPlazaOfficialPricing struct {
-	InputPrice        *float64 `json:"input_price"`
-	OutputPrice       *float64 `json:"output_price"`
-	CacheWritePrice   *float64 `json:"cache_write_price"`
-	CacheWrite1hPrice *float64 `json:"cache_write_1h_price,omitempty"`
-	CacheReadPrice    *float64 `json:"cache_read_price"`
+	InputPrice         *float64 `json:"input_price"`
+	OutputPrice        *float64 `json:"output_price"`
+	CacheWritePrice    *float64 `json:"cache_write_price"`
+	CacheWrite1hPrice  *float64 `json:"cache_write_1h_price,omitempty"`
+	CacheWrite12hPrice *float64 `json:"cache_write_12h_price,omitempty"`
+	CacheReadPrice     *float64 `json:"cache_read_price"`
 	// Intervals 官方长上下文阶梯，仅多档模型给出。
 	Intervals []userPricingIntervalDTO `json:"intervals,omitempty"`
 }
@@ -257,11 +258,12 @@ func toModelPlazaOfficialPricing(p *service.PlazaOfficialPricing) *modelPlazaOff
 		return nil
 	}
 	return &modelPlazaOfficialPricing{
-		InputPrice:        p.InputPrice,
-		OutputPrice:       p.OutputPrice,
-		CacheWritePrice:   p.CacheWritePrice,
-		CacheWrite1hPrice: p.CacheWrite1hPrice,
-		CacheReadPrice:    p.CacheReadPrice,
-		Intervals:         toUserPricingIntervals(p.Intervals),
+		InputPrice:         p.InputPrice,
+		OutputPrice:        p.OutputPrice,
+		CacheWritePrice:    p.CacheWritePrice,
+		CacheWrite1hPrice:  p.CacheWrite1hPrice,
+		CacheWrite12hPrice: p.CacheWrite12hPrice,
+		CacheReadPrice:     p.CacheReadPrice,
+		Intervals:          toUserPricingIntervals(p.Intervals),
 	}
 }

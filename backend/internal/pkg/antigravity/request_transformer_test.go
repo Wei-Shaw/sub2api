@@ -743,13 +743,13 @@ func TestTransformClaudeToGemini_ToolResultImagesReachUpstream(t *testing.T) {
 	require.Equal(t, "toolu_img_1", userParts[0].FunctionResponse.ID)
 	require.Equal(t, "loaded colors.png", userParts[0].FunctionResponse.Response["result"])
 
-	require.NotNil(t, userParts[1].InlineData)
-	require.Equal(t, "image/png", userParts[1].InlineData.MimeType)
-	require.Equal(t, "aGVsbG8=", userParts[1].InlineData.Data)
+	require.NotNil(t, userParts[1].FunctionResponse)
+	require.Equal(t, "read_image", userParts[1].FunctionResponse.Name)
+	require.Equal(t, "Command executed successfully.", userParts[1].FunctionResponse.Response["result"])
 
-	require.NotNil(t, userParts[2].FunctionResponse)
-	require.Equal(t, "read_image", userParts[2].FunctionResponse.Name)
-	require.Equal(t, "Command executed successfully.", userParts[2].FunctionResponse.Response["result"])
+	require.NotNil(t, userParts[2].InlineData)
+	require.Equal(t, "image/png", userParts[2].InlineData.MimeType)
+	require.Equal(t, "aGVsbG8=", userParts[2].InlineData.Data)
 
 	require.NotNil(t, userParts[3].InlineData)
 	require.Equal(t, "image/jpeg", userParts[3].InlineData.MimeType)
