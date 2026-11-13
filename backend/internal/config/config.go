@@ -1382,6 +1382,11 @@ type GatewayOpenAIWSConfig struct {
 	PrewarmGenerateEnabled bool `mapstructure:"prewarm_generate_enabled"`
 	// ClientReadLimitBytes: 入站客户端 WS 单帧读取上限。
 	ClientReadLimitBytes int64 `mapstructure:"client_read_limit_bytes"`
+	// Native replay budgets are per connection, with no aggregate admission limit.
+	// They cover retained history, not transient request buffers.
+	// A zero limit disables transparent native later-turn account migration.
+	NativeReplayMaxSessionBytes int64 `mapstructure:"native_replay_max_session_bytes"`
+	NativeReplayMaxItems        int   `mapstructure:"native_replay_max_items"`
 	// HTTPBridgeEnabled: 首包过大时，保持客户端 WS，改用 HTTP Responses 上游。
 	HTTPBridgeEnabled bool `mapstructure:"http_bridge_enabled"`
 	// HTTPBridgeThresholdBytes: 触发 HTTP bridge 的入站 WS payload 阈值。
@@ -2552,6 +2557,8 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_ws.store_disabled_force_new_conn", true)
 	viper.SetDefault("gateway.openai_ws.prewarm_generate_enabled", false)
 	viper.SetDefault("gateway.openai_ws.client_read_limit_bytes", 64*1024*1024)
+	viper.SetDefault("gateway.openai_ws.native_replay_max_session_bytes", 64*1024*1024)
+	viper.SetDefault("gateway.openai_ws.native_replay_max_items", 32768)
 	viper.SetDefault("gateway.openai_ws.http_bridge_enabled", true)
 	viper.SetDefault("gateway.openai_ws.http_bridge_threshold_bytes", 15*1024*1024)
 	viper.SetDefault("gateway.openai_ws.responses_websockets", false)
@@ -3645,6 +3652,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.OpenAIWS.ClientReadLimitBytes <= 0 {
 		return fmt.Errorf("gateway.openai_ws.client_read_limit_bytes must be positive")
+	}
+	if c.Gateway.OpenAIWS.NativeReplayMaxSessionBytes < 0 || c.Gateway.OpenAIWS.NativeReplayMaxItems < 0 {
+		return fmt.Errorf("gateway.openai_ws native replay budgets must be non-negative")
 	}
 	if c.Gateway.OpenAIWS.HTTPBridgeThresholdBytes < 0 {
 		return fmt.Errorf("gateway.openai_ws.http_bridge_threshold_bytes must be non-negative")
