@@ -1023,7 +1023,11 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					)
 					continue
 				}
-				if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
+				// response.created converts to one role-only chunk (SentRole in
+				// the converter bounds this to one). It is not semantic output:
+				// committing it would prevent retrying an immediate overload even
+				// for short requests where silent-refusal detection is disabled.
+				if !clientOutputStarted && (event.Type == "response.created" || !refusalDetector.ShouldReleaseClientOutput()) {
 					pendingSSE = append(pendingSSE, sse)
 					continue
 				}
@@ -1306,7 +1310,8 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			if clientDisconnected {
 				continue
 			}
-			if refusalDetector.Enabled() && !clientOutputStarted {
+			// Do not let a heartbeat commit the pending role-only preamble.
+			if !clientOutputStarted && (refusalDetector.Enabled() || len(pendingSSE) > 0) {
 				continue
 			}
 			if time.Since(lastDataAt) < keepaliveInterval {
