@@ -476,6 +476,8 @@ func TestOpenAIGatewayServiceRecordUsage_PeakRateAffectsTokenModeImageOutputToke
 		},
 		User:    &User{ID: 2004},
 		Account: &Account{ID: 3004},
+		// The peak window excludes 23:59, so do not depend on the wall clock.
+		PricingAt: time.Date(2026, time.January, 15, 12, 0, 0, 0, time.UTC),
 	})
 
 	require.NoError(t, err)
