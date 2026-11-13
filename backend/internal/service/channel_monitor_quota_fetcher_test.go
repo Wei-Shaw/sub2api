@@ -694,6 +694,9 @@ func TestUsageQuotaTiers_MapsAllWindowKinds(t *testing.T) {
 func TestUsageQuotaTiers_NilAndEmptyInputs(t *testing.T) {
 	require.Nil(t, usageQuotaTiers(nil))
 	require.Nil(t, usageQuotaTiers(&UsageInfo{}))
+	require.Nil(t, usageQuotaTiers(&UsageInfo{
+		FiveHour: &UsageProgress{UtilizationUnknown: true, WindowStats: &WindowStats{Requests: 2}},
+	}))
 
 	// Grok 窗口 limit<=0 时跳过，避免除零。
 	var zero int64
