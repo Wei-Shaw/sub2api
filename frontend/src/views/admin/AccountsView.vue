@@ -192,12 +192,12 @@
           @select-all-results="handleSelectAllResults"
           @toggle-schedulable="handleBulkToggleSchedulable"
         />
-        <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden">
+        <div ref="accountTableRef" class="flex min-h-0 flex-1 flex-col overflow-hidden" :aria-busy="loading" :inert="loading && accounts.length > 0">
         <DataTable
           ref="dataTableRef"
           :columns="cols"
           :data="accounts"
-          :loading="loading"
+          :loading="loading && accounts.length === 0"
           row-key="id"
           :server-side-sort="true"
           @sort="handleSort"
@@ -1256,6 +1256,7 @@ watch(loading, (isLoading, wasLoading) => {
 
 const isAnyModalOpen = computed(() => {
   return (
+    showQuotaOverview.value ||
     showCreate.value ||
     showEdit.value ||
     showSync.value ||

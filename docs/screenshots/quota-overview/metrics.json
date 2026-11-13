@@ -1,374 +1,123 @@
 {
-  "before-fix": {
-    "browser": "157.0.4341.42",
-    "simulatedLatencyMs": {
-      "list": 25,
-      "usage": 50
-    },
-    "cases": [
-      {
-        "label": "desktop-100",
-        "count": 100,
-        "mobile": false,
-        "openMs": 369,
-        "domNodes": 4680,
-        "longTasks": [],
-        "rows": 100,
-        "idle": {
-          "maxFrameGapMs": 18,
-          "longTasks": []
-        },
-        "remainingErrors": 0
-      },
-      {
-        "label": "desktop-500",
-        "count": 500,
-        "mobile": false,
-        "openMs": 693,
-        "domNodes": 23080,
-        "longTasks": [
-          {
-            "start": 923,
-            "duration": 212
-          }
-        ],
-        "rows": 500,
-        "idle": {
-          "maxFrameGapMs": 20,
-          "longTasks": [
-            {
-              "start": 923,
-              "duration": 212
-            }
-          ]
-        },
-        "remainingErrors": 0
-      },
-      {
-        "label": "desktop-1000",
-        "count": 1000,
-        "mobile": false,
-        "openMs": 1225,
-        "domNodes": 46080,
-        "longTasks": [
-          {
-            "start": 967.3999996185303,
-            "duration": 65
-          },
-          {
-            "start": 1094.0999994277954,
-            "duration": 503
-          }
-        ],
-        "rows": 1000,
-        "idle": {
-          "maxFrameGapMs": 22,
-          "longTasks": [
-            {
-              "start": 967.3999996185303,
-              "duration": 65
-            },
-            {
-              "start": 1094.0999994277954,
-              "duration": 503
-            }
-          ]
-        },
-        "remainingErrors": 0
-      },
-      {
-        "label": "mobile-1000",
-        "count": 1000,
-        "mobile": true,
-        "openMs": 1242,
-        "domNodes": 47084,
-        "longTasks": [
-          {
-            "start": 924.8000001907349,
-            "duration": 64
-          },
-          {
-            "start": 1049.8000001907349,
-            "duration": 516
-          }
-        ],
-        "rows": 1000,
-        "idle": {
-          "maxFrameGapMs": 22,
-          "longTasks": [
-            {
-              "start": 924.8000001907349,
-              "duration": 64
-            },
-            {
-              "start": 1049.8000001907349,
-              "duration": 516
-            }
-          ]
-        },
-        "remainingErrors": 0
-      },
-      {
-        "label": "partial-failure-100",
-        "count": 100,
-        "mobile": false,
-        "openMs": 320,
-        "domNodes": 4310,
-        "longTasks": [],
-        "rows": 100,
-        "idle": {
-          "maxFrameGapMs": 18,
-          "longTasks": []
-        },
-        "remainingErrors": 0
-      }
-    ]
+  "date": "2026-11-14",
+  "upstream": "530c5e3a4f9c73ca2b0881191d0ef8e0d82c5484",
+  "browser": "157.0.4341.46",
+  "simulatedLatencyMs": {
+    "list": 25,
+    "usage": 50
   },
-  "final-perf": {
-    "browser": "157.0.4341.42",
-    "simulatedLatencyMs": {
-      "list": 25,
-      "usage": 50
-    },
-    "cases": [
-      {
-        "label": "desktop-100",
-        "count": 100,
-        "mobile": false,
-        "openMs": 344,
-        "domNodes": 1327,
-        "longTasks": [],
-        "rows": 25,
-        "initialErrors": 0,
-        "idle": {
-          "maxFrameGapMs": 18,
-          "longTasks": []
-        },
-        "remainingErrors": 0,
-        "reloadQuotaRequests": 0
-      },
-      {
-        "label": "desktop-500",
-        "count": 500,
-        "mobile": false,
-        "openMs": 1017,
-        "domNodes": 1728,
-        "longTasks": [],
-        "rows": 25,
-        "initialErrors": 0,
-        "idle": {
-          "maxFrameGapMs": 17,
-          "longTasks": []
-        },
-        "remainingErrors": 0,
-        "reloadQuotaRequests": 0
-      },
-      {
-        "label": "desktop-1000",
-        "count": 1000,
-        "mobile": false,
-        "openMs": 2034,
-        "domNodes": 2228,
-        "longTasks": [],
-        "rows": 25,
-        "initialErrors": 0,
-        "idle": {
-          "maxFrameGapMs": 17,
-          "longTasks": []
-        },
-        "remainingErrors": 0,
-        "reloadQuotaRequests": 0
-      },
-      {
-        "label": "mobile-1000",
-        "count": 1000,
-        "mobile": true,
-        "openMs": 1980,
-        "domNodes": 2257,
-        "longTasks": [],
-        "rows": 25,
-        "initialErrors": 0,
-        "idle": {
-          "maxFrameGapMs": 18,
-          "longTasks": []
-        },
-        "remainingErrors": 0,
-        "reloadQuotaRequests": 0
+  "cases": [
+    {
+      "label": "pr-desktop",
+      "count": 6,
+      "mobile": false,
+      "openMs": 200,
+      "domNodes": 356,
+      "rows": 6,
+      "initialErrors": 0,
+      "remainingErrors": 0,
+      "reloadQuotaRequests": 1,
+      "activeQueryVerified": true,
+      "idle": {
+        "maxFrameGapMs": 19,
+        "longTasks": []
       }
-    ]
-  },
-  "before-slow": {
-    "browser": "157.0.4341.42",
-    "simulatedLatencyMs": {
-      "list": 25,
-      "usage": 50
     },
-    "cases": [
-      {
-        "label": "slow-1000",
-        "count": 1000,
-        "mobile": false,
-        "openMs": 30851,
-        "domNodes": 9820,
-        "longTasks": [
-          {
-            "start": 1041.3999996185303,
-            "duration": 68
-          },
-          {
-            "start": 31095.300000190735,
-            "duration": 58
-          }
-        ],
-        "rows": 1000,
-        "initialErrors": 980,
-        "idle": {
-          "maxFrameGapMs": 18,
-          "longTasks": [
-            {
-              "start": 1041.3999996185303,
-              "duration": 68
-            },
-            {
-              "start": 31095.300000190735,
-              "duration": 58
-            }
-          ]
-        },
-        "remainingErrors": 1000
+    {
+      "label": "pr-mobile",
+      "count": 6,
+      "mobile": true,
+      "openMs": 348,
+      "domNodes": 366,
+      "rows": 6,
+      "initialErrors": 0,
+      "remainingErrors": 0,
+      "reloadQuotaRequests": 2,
+      "activeQueryVerified": true,
+      "idle": {
+        "maxFrameGapMs": 19,
+        "longTasks": []
       }
-    ]
-  },
-  "final-slow": {
-    "browser": "157.0.4341.42",
-    "simulatedLatencyMs": {
-      "list": 25,
-      "usage": 50
     },
-    "cases": [
-      {
-        "label": "slow-1000",
-        "count": 1000,
-        "mobile": false,
-        "openMs": 2023,
-        "domNodes": 2228,
-        "longTasks": [],
-        "rows": 25,
-        "initialErrors": 0,
-        "idle": {
-          "maxFrameGapMs": 18,
-          "longTasks": []
-        },
-        "remainingErrors": 0,
-        "reloadQuotaRequests": 0
+    {
+      "label": "desktop-100",
+      "count": 100,
+      "mobile": false,
+      "openMs": 352,
+      "domNodes": 1327,
+      "rows": 25,
+      "initialErrors": 0,
+      "remainingErrors": 0,
+      "reloadQuotaRequests": 3,
+      "activeQueryVerified": true,
+      "idle": {
+        "maxFrameGapMs": 18,
+        "longTasks": []
       }
-    ]
-  },
-  "narrowed-functional": {
-    "browser": "157.0.4341.42",
-    "simulatedLatencyMs": {
-      "list": 25,
-      "usage": 50
     },
-    "cases": [
-      {
-        "label": "pr-desktop",
-        "count": 6,
-        "mobile": false,
-        "openMs": 232,
-        "domNodes": 356,
-        "rows": 6,
-        "initialErrors": 0,
-        "remainingErrors": 0,
-        "reloadQuotaRequests": 0
-      },
-      {
-        "label": "pr-mobile",
-        "count": 6,
-        "mobile": true,
-        "openMs": 324,
-        "domNodes": 366,
-        "rows": 6,
-        "initialErrors": 0,
-        "remainingErrors": 0,
-        "reloadQuotaRequests": 0
-      },
-      {
-        "label": "desktop-100",
-        "count": 100,
-        "mobile": false,
-        "openMs": 341,
-        "domNodes": 1327,
-        "rows": 25,
-        "initialErrors": 0,
-        "remainingErrors": 0,
-        "reloadQuotaRequests": 0
-      },
-      {
-        "label": "desktop-500",
-        "count": 500,
-        "mobile": false,
-        "openMs": 1471,
-        "domNodes": 1728,
-        "rows": 25,
-        "initialErrors": 0,
-        "remainingErrors": 0,
-        "reloadQuotaRequests": 0
-      },
-      {
-        "label": "desktop-1000",
-        "count": 1000,
-        "mobile": false,
-        "openMs": 1968,
-        "domNodes": 2228,
-        "rows": 25,
-        "initialErrors": 0,
-        "remainingErrors": 0,
-        "reloadQuotaRequests": 0
-      },
-      {
-        "label": "mobile-1000",
-        "count": 1000,
-        "mobile": true,
-        "openMs": 1952,
-        "domNodes": 2257,
-        "rows": 25,
-        "initialErrors": 0,
-        "remainingErrors": 0,
-        "reloadQuotaRequests": 0
-      },
-      {
-        "label": "partial-failure-100",
-        "count": 100,
-        "mobile": false,
-        "openMs": 381,
-        "domNodes": 1253,
-        "rows": 25,
-        "initialErrors": 2,
-        "remainingErrors": 0,
-        "reloadQuotaRequests": 0
+    {
+      "label": "desktop-500",
+      "count": 500,
+      "mobile": false,
+      "openMs": 938,
+      "domNodes": 1728,
+      "rows": 25,
+      "initialErrors": 0,
+      "remainingErrors": 0,
+      "reloadQuotaRequests": 11,
+      "activeQueryVerified": true,
+      "idle": {
+        "maxFrameGapMs": 17,
+        "longTasks": []
       }
-    ]
-  },
-  "narrowed-mixed": {
-    "browser": "157.0.4341.42",
-    "simulatedLatencyMs": {
-      "list": 25,
-      "usage": 50
     },
-    "cases": [
-      {
-        "label": "mixed-desktop",
-        "count": 9,
-        "mobile": false,
-        "openMs": 229,
-        "domNodes": 649,
-        "rows": 9,
-        "initialErrors": 0,
-        "mixedAssertionsPassed": true,
-        "remainingErrors": 0,
-        "reloadQuotaRequests": 0
+    {
+      "label": "desktop-1000",
+      "count": 1000,
+      "mobile": false,
+      "openMs": 1988,
+      "domNodes": 2228,
+      "rows": 25,
+      "initialErrors": 0,
+      "remainingErrors": 0,
+      "reloadQuotaRequests": 21,
+      "activeQueryVerified": true,
+      "idle": {
+        "maxFrameGapMs": 19,
+        "longTasks": []
       }
-    ]
-  }
+    },
+    {
+      "label": "mobile-1000",
+      "count": 1000,
+      "mobile": true,
+      "openMs": 1970,
+      "domNodes": 2257,
+      "rows": 25,
+      "initialErrors": 0,
+      "remainingErrors": 0,
+      "reloadQuotaRequests": 21,
+      "activeQueryVerified": true,
+      "idle": {
+        "maxFrameGapMs": 19,
+        "longTasks": []
+      }
+    },
+    {
+      "label": "partial-failure-100",
+      "count": 100,
+      "mobile": false,
+      "openMs": 355,
+      "domNodes": 1253,
+      "rows": 25,
+      "initialErrors": 2,
+      "remainingErrors": 0,
+      "reloadQuotaRequests": 3,
+      "activeQueryVerified": true,
+      "idle": {
+        "maxFrameGapMs": 19,
+        "longTasks": []
+      }
+    }
+  ]
 }

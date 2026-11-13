@@ -86,7 +86,7 @@ async function scenario(origin, count, label, mobile = false, fault = false, ove
     if (!url.pathname.startsWith('/api/')) { await route.continue(); return }
     const endpoint = url.pathname.replace('/api/v1', '')
     const body = req.postDataJSON() || {}
-    requests.push({ endpoint, method: req.method(), ids: body.account_ids, force: body.force, page: url.searchParams.get('page'), pageSize: url.searchParams.get('page_size') })
+    requests.push({ endpoint, method: req.method(), ids: body.account_ids, force: body.force ?? (url.searchParams.get('force') === 'true'), source: url.searchParams.get('source'), page: url.searchParams.get('page'), pageSize: url.searchParams.get('page_size') })
     let data
     if (endpoint === '/admin/accounts') {
       const page = Number(url.searchParams.get('page') || 1), size = Number(url.searchParams.get('page_size') || 20)
@@ -225,7 +225,20 @@ async function scenario(origin, count, label, mobile = false, fault = false, ove
       await page.getByRole('button', { name: '额度总览', exact: true }).click()
       await page.getByRole('dialog').getByRole('button', { name: '刷新', exact: true }).waitFor()
       result.reloadQuotaRequests = requests.slice(beforeReload).filter(r => r.endpoint.endsWith('/usage/batch')).length
-      assert.equal(result.reloadQuotaRequests, 0, 'reload uses persisted cache')
+      assert.ok(result.reloadQuotaRequests > 0, 'reload fetches fresh quotas without persistence')
+      const reloaded = requests.slice(beforeReload).filter(r => r.endpoint.endsWith('/usage/batch'))
+      assert.equal(reloaded.flatMap(r => r.ids).length, count, 'reload still coalesces list and overview')
+      assert.equal(await page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('sub2api:account-usage:')).length), 0, 'no quota responses in localStorage')
+      const reloadedDialog = page.getByRole('dialog')
+      await reloadedDialog.getByRole('button', { name: 'Close modal' }).click()
+      const beforeActive = requests.length
+      await page.locator('[data-testid="antigravity-active-query"]').first().click()
+      await page.waitForTimeout(100)
+      const activeRequests = requests.slice(beforeActive).filter(r => /\/accounts\/\d+\/usage$/.test(r.endpoint))
+      assert.equal(activeRequests.length, 1, 'upstream active-query button is retained')
+      assert.equal(activeRequests[0].force, true)
+      assert.equal(activeRequests[0].source, 'active')
+      result.activeQueryVerified = true
     }
   }
   results.cases.push(result)

@@ -775,7 +775,7 @@ export default {
         maxAmount: 'Maximum Amount',
         dailyLimit: 'Daily Limit',
         balanceRechargeMultiplier: 'Balance Recharge Multiplier',
-        balanceRechargeMultiplierHint: 'How many USD balance the user receives for each 1 CNY paid',
+        balanceRechargeMultiplierHint: 'How many USD balance the user receives for each 1 CNY paid (up to 6 decimal places, e.g. for live FX rates)',
         balanceRechargePreview: 'Preview: 1 CNY = {usd} USD',
         subscriptionUsdToCnyRate: 'Subscription USD to CNY Rate',
         subscriptionUsdToCnyRateHint:
@@ -893,6 +893,8 @@ export default {
         field_cid: 'Channel ID',
         field_cidAlipay: 'Alipay Channel ID',
         field_cidWxpay: 'WeChat Channel ID',
+        field_refundSuccessCode: 'Refund success code',
+        field_refundSuccessCodeHint: 'Use the success code documented by this gateway\'s refund API. Default: 1 (e.g. ZPAY). Select 0 only for gateways that document it. Payment creation and order queries still require 1.',
         easypayCustomMethods: 'Custom EasyPay methods',
         easypayCustomMethodsHint: 'Add provider-specific methods supported by this EasyPay endpoint. The payment type is stored on Sub2API orders; the upstream type is sent as EasyPay type.',
         addCustomMethod: 'Add method',

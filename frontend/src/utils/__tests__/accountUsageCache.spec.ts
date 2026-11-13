@@ -9,18 +9,13 @@ import type { AccountUsageInfo } from '@/types'
 
 const usage = (value = 0.8) => ({ updated_at: new Date().toISOString(), five_hour: { utilization: value } }) as AccountUsageInfo
 const result = (ids: number[], value = 0.8) => ({ usage: Object.fromEntries(ids.map(id => [id, usage(value)])), errors: {} })
-const storage = () => {
-  const map = new Map<string, string>()
-  return { getItem: (key: string) => map.get(key) ?? null, setItem: (key: string, value: string) => { map.set(key, value) } }
-}
-
-describe('shared persisted account usage', () => {
+describe('shared in-memory account usage', () => {
   beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-03T04:00:00Z')) })
   afterEach(() => vi.useRealTimers())
 
   it('coalesces overlapping list and overview requests into one batch', async () => {
     const fetch = vi.fn(async (ids: number[]) => result(ids))
-    const cache = createAccountUsageCache(fetch, storage())
+    const cache = createAccountUsageCache(fetch)
     await Promise.all([cache.load([1, 2]), cache.load([2, 3])])
     expect(fetch).toHaveBeenCalledTimes(1)
     expect(fetch.mock.calls[0][0]).toEqual([1, 2, 3])
@@ -30,7 +25,7 @@ describe('shared persisted account usage', () => {
 
   it('upgrades a queued refresh without duplicating the request', async () => {
     const fetch = vi.fn(async (ids: number[]) => result(ids))
-    const cache = createAccountUsageCache(fetch, storage())
+    const cache = createAccountUsageCache(fetch)
     const first = cache.load([1])
     expect(cache.loading.value[1]).toBe(true)
     await Promise.all([first, cache.load([1], true)])
@@ -43,7 +38,7 @@ describe('shared persisted account usage', () => {
     const fetch = vi.fn()
       .mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
       .mockImplementation(async (ids: number[]) => result(ids, 0.2))
-    const cache = createAccountUsageCache(fetch, storage())
+    const cache = createAccountUsageCache(fetch)
     const first = cache.load([1]); await Promise.resolve()
     const second = cache.load([1, 2]); await Promise.resolve()
     expect(fetch.mock.calls.map(call => call[0])).toEqual([[1]])
@@ -63,7 +58,7 @@ describe('shared persisted account usage', () => {
       if (fail) throw new Error('mock timeout')
       return result(ids)
     })
-    const cache = createAccountUsageCache(fetch, storage())
+    const cache = createAccountUsageCache(fetch)
     const ids = Array.from({ length: 1000 }, (_, i) => i + 1)
     await Promise.all([cache.load(ids), cache.load([10, 50, 999])])
     expect(maxActive).toBe(1)
@@ -84,7 +79,7 @@ describe('shared persisted account usage', () => {
     let finish!: (value: ReturnType<typeof result>) => void
     const fetch = vi.fn().mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
       .mockImplementation(async (ids: number[]) => result(ids, 0.2))
-    const cache = createAccountUsageCache(fetch, storage(), () => user)
+    const cache = createAccountUsageCache(fetch, () => user)
     const old = cache.load(Array.from({ length: 101 }, (_, i) => i + 1))
     await Promise.resolve()
     user = 'second'
@@ -96,66 +91,94 @@ describe('shared persisted account usage', () => {
     expect(cache.usage.value[51]).toBeUndefined()
   })
 
-  it('survives a page reload for five minutes without extending the deadline', async () => {
-    const disk = storage()
+  it('expires in memory without persisting responses across reloads', async () => {
     const fetch = vi.fn(async (ids: number[]) => result(ids))
-    await createAccountUsageCache(fetch, disk).load([1])
+    const cache = createAccountUsageCache(fetch)
+    await cache.load([1])
     vi.advanceTimersByTime(ACCOUNT_USAGE_TTL - 1000)
-    const reloaded = createAccountUsageCache(fetch, disk)
-    expect(reloaded.usage.value[1]).not.toBeNull()
-    await reloaded.load([1])
+    await cache.load([1])
     expect(fetch).toHaveBeenCalledTimes(1)
     vi.advanceTimersByTime(1001)
-    expect(fetch).toHaveBeenCalledTimes(1) // Expiry alone never queries.
-    await reloaded.load([1])
+    await cache.load([1])
     expect(fetch).toHaveBeenCalledTimes(2)
+    const reloaded = createAccountUsageCache(fetch)
+    expect(reloaded.usage.value[1]).toBeUndefined()
+    await reloaded.load([1])
+    expect(fetch).toHaveBeenCalledTimes(3)
   })
 
   it('fetches only accounts absent from the shared cache', async () => {
     const fetch = vi.fn(async (ids: number[]) => result(ids))
-    const cache = createAccountUsageCache(fetch, storage())
+    const cache = createAccountUsageCache(fetch)
     await cache.load([1, 2])
     await cache.load([1, 2, 3])
     expect(fetch.mock.calls[1][0]).toEqual([3])
   })
 
-  it('shares an in-flight request even when the other view clicks refresh', async () => {
+  it('queues one forced follow-up after an ordinary request has started', async () => {
     let finish!: (value: ReturnType<typeof result>) => void
-    const fetch = vi.fn(() => new Promise<ReturnType<typeof result>>(resolve => { finish = resolve }))
-    const cache = createAccountUsageCache(fetch, storage())
-    const list = cache.load([1])
-    await Promise.resolve()
-    expect(cache.loading.value[1]).toBe(true)
-    const overview = cache.load([1], true)
-    await Promise.resolve()
+    const fetch = vi.fn().mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+      .mockImplementation(async (ids: number[]) => result(ids, 0.2))
+    const cache = createAccountUsageCache(fetch)
+    const list = cache.load([1]); await Promise.resolve()
+    const refresh = cache.load([1], true)
+    const duplicate = cache.load([1], true)
     expect(fetch).toHaveBeenCalledTimes(1)
-    finish(result([1])); await Promise.all([list, overview])
+    finish(result([1], 0.8)); await Promise.all([list, refresh, duplicate])
+    expect(fetch.mock.calls).toEqual([[[1], false], [[1], true]])
+    expect(cache.usage.value[1]?.five_hour?.utilization).toBe(0.2)
     expect(cache.loading.value[1]).toBe(false)
   })
 
-  it('explicit refresh updates both subscribers and persisted data', async () => {
+  it('coalesces a refresh with an already forced request', async () => {
+    let finish!: (value: ReturnType<typeof result>) => void
+    const fetch = vi.fn(() => new Promise<ReturnType<typeof result>>(resolve => { finish = resolve }))
+    const cache = createAccountUsageCache(fetch)
+    const first = cache.load([1], true); await Promise.resolve()
+    const second = cache.load([1], true)
+    finish(result([1])); await Promise.all([first, second])
+    expect(fetch.mock.calls).toEqual([[[1], true]])
+  })
+
+  it('does not force ordinary accounts that share a queue with a refreshed account', async () => {
+    const fetch = vi.fn(async (ids: number[]) => result(ids))
+    const cache = createAccountUsageCache(fetch)
+    await Promise.all([cache.load([1, 3]), cache.load([2], true)])
+    expect(fetch.mock.calls).toEqual([[[1, 3], false], [[2], true]])
+  })
+
+  it('does not let an older batch overwrite a newer explicit query', async () => {
+    let finish!: (value: ReturnType<typeof result>) => void
+    const fetch = vi.fn(() => new Promise<ReturnType<typeof result>>(resolve => { finish = resolve }))
+    const cache = createAccountUsageCache(fetch)
+    const old = cache.load([1]); await Promise.resolve()
+    cache.set(1, usage(0.2))
+    finish(result([1], 0.8)); await old; await Promise.resolve()
+    expect(cache.usage.value[1]?.five_hour?.utilization).toBe(0.2)
+    expect(cache.loading.value[1]).toBe(false)
+    await cache.load([1])
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('explicit refresh updates both subscribers', async () => {
     let value = 0.8
-    const disk = storage()
     const fetch = vi.fn(async (ids: number[]) => result(ids, value))
-    const cache = createAccountUsageCache(fetch, disk)
+    const cache = createAccountUsageCache(fetch)
     const list = cache.usage, overview = cache.usage
     await cache.load([1]); value = 0.4
     await cache.load([1], true)
     expect(fetch.mock.calls[1]).toEqual([[1], true])
     expect(list.value[1]).toBe(overview.value[1])
     expect(overview.value[1]?.five_hour?.utilization).toBe(0.4)
-    await createAccountUsageCache(fetch, disk).load([1])
-    expect(fetch).toHaveBeenCalledTimes(2)
   })
 
-  it('persists failures and releases loading state instead of retrying on each view', async () => {
+  it('shares failures in memory without retrying on every view', async () => {
     const fetch = vi.fn().mockRejectedValue(new Error('offline'))
-    const disk = storage()
-    const cache = createAccountUsageCache(fetch, disk)
+    const cache = createAccountUsageCache(fetch)
     await cache.load([1])
     expect(cache.errors.value[1]).toBe(ACCOUNT_USAGE_LOAD_ERROR)
     expect(cache.loading.value[1]).toBe(false)
-    await createAccountUsageCache(fetch, disk).load([1])
+    await cache.load([1])
     expect(fetch).toHaveBeenCalledTimes(1)
     await cache.load([1], true)
     expect(fetch).toHaveBeenCalledTimes(2)
@@ -165,7 +188,7 @@ describe('shared persisted account usage', () => {
     let user = 'first'
     let finish!: (value: ReturnType<typeof result>) => void
     const fetch = vi.fn().mockImplementationOnce(() => new Promise(resolve => { finish = resolve })).mockImplementation(async (ids: number[]) => result(ids, 0.2))
-    const cache = createAccountUsageCache(fetch, storage(), () => user)
+    const cache = createAccountUsageCache(fetch, () => user)
     const old = cache.load([1]); await Promise.resolve()
     user = 'second'
     await cache.load([1])
@@ -180,7 +203,7 @@ describe('shared persisted account usage', () => {
     const fetch = vi.fn()
       .mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve }))
       .mockImplementationOnce(() => new Promise(resolve => { finishNew = resolve }))
-    const cache = createAccountUsageCache(fetch, storage(), () => user)
+    const cache = createAccountUsageCache(fetch, () => user)
     const old = cache.load([1]); await Promise.resolve()
     user = 'second'; await cache.load([])
     user = 'first'
@@ -194,7 +217,7 @@ describe('shared persisted account usage', () => {
 
   it('does not refresh the TTL merely because a cell emits the cached data', async () => {
     const fetch = vi.fn(async (ids: number[]) => result(ids))
-    const cache = createAccountUsageCache(fetch, storage())
+    const cache = createAccountUsageCache(fetch)
     await cache.load([1])
     vi.advanceTimersByTime(ACCOUNT_USAGE_TTL - 1000)
     cache.set(1, cache.usage.value[1]!)
