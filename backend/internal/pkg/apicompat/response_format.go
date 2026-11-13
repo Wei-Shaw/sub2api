@@ -23,6 +23,11 @@ func chatResponseFormatToResponsesTextFormat(raw json.RawMessage) json.RawMessag
 		return raw
 	}
 	schema["type"] = rawJSONString("json_schema")
+	// Chat Completions defaults strict to false while Responses defaults to strict,
+	// so make the intended mode explicit to avoid the upstream rejecting the schema.
+	if _, ok := schema["strict"]; !ok {
+		schema["strict"] = json.RawMessage("false")
+	}
 
 	out, err := json.Marshal(schema)
 	if err != nil {
