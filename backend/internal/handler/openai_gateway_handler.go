@@ -3295,6 +3295,26 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				wsAttemptMessage = nextAttemptMessage
 				if retryCurrentTurn {
 					previousResponseID = ""
+					previousResponseCanMove = true
+					// Selection and first-turn billing for the new account must use
+					// the current turn, not the model from the connection's first frame.
+					if retryModel := strings.TrimSpace(gjson.GetBytes(retryPayload, "model").String()); retryModel != "" {
+						reqModel = retryModel
+					}
+					if apiKey.Group == nil || apiKey.Group.Platform != service.PlatformComposite {
+						wsRouteModel = reqModel
+					}
+					channelMappingWS, _ = h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, wsRouteModel)
+					wsForwardModel = openAIChannelForwardModel(channelMappingWS, wsRouteModel)
+					imageIntent = service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, retryPayload)
+					if imageIntent && !service.GroupAllowsImageGeneration(apiKey.Group) {
+						closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, service.ImageGenerationPermissionMessage())
+						return
+					}
+					requiredCapability = service.OpenAIEndpointCapabilityChatCompletions
+					if imageIntent && requestPlatform == service.PlatformOpenAI {
+						requiredCapability = service.OpenAIEndpointCapabilityResponses
+					}
 					reqLog.Warn("openai.websocket_current_turn_failover_retry",
 						zap.Int64("account_id", account.ID),
 						zap.Int("upstream_status", failoverErr.StatusCode),
