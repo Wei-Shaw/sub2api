@@ -120,7 +120,9 @@ func TestNativeAnthropicResponseObservationReachesUsage(t *testing.T) {
 			require.Equal(t, 20, result.Usage.InputTokens)
 			wantOutput := 10
 			if tt.partial {
-				wantOutput = 0
+				// 流在 message_delta 前中断：保留 message_start 已上报的 output_tokens（夹具为 1），
+				// 而不是记成 0（#7873）。
+				wantOutput = 1
 			}
 			require.Equal(t, wantOutput, result.Usage.OutputTokens)
 			require.Equal(t, tt.disconnect, result.ClientDisconnect)

@@ -1389,6 +1389,12 @@ func (s *GatewayService) extractSSEUsagePatch(event map[string]any) *sseUsagePat
 			patch.hasCacheReadInput = true
 		}
 		applyAnthropicCacheReadAliases(patch, usageObj)
+		// message_start 可能已带非零 output_tokens；流在 message_delta 前中断时它是
+		// 唯一已观测到的输出用量。message_delta 的 output_tokens 是累计值，后续覆盖即可。
+		if v, ok := parseSSEUsageInt(usageObj["output_tokens"]); ok && v > 0 {
+			patch.outputTokens = v
+			patch.hasOutputTokens = true
+		}
 		if cc, ok := usageObj["cache_creation"].(map[string]any); ok {
 			if v, exists := parseSSEUsageInt(cc["ephemeral_5m_input_tokens"]); exists {
 				patch.cacheCreation5mTokens = v
