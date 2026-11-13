@@ -1443,12 +1443,12 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	hasAnyMapping := false
 
 	for _, acc := range accounts {
-		// Passthrough routing accepts models independently of model_mapping, so a
+		// Default passthrough accepts models independently of model_mapping, so a
 		// stale mapping on a passthrough account must not narrow the public list.
 		// Treat it like an unmapped account: skip its mapping here and let
 		// supplementUnmappedOpenAIModels contribute the default set. Mappings on
 		// the ordinary accounts in the same group still count.
-		if platform == PlatformOpenAI && acc.IsOpenAIPassthroughEnabled() {
+		if platform == PlatformOpenAI && acc.IsOpenAIPassthroughEnabled() && !acc.IsOpenAIPassthroughModelFilterEnabled() {
 			continue
 		}
 

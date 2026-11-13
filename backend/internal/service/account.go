@@ -971,7 +971,13 @@ func (a *Account) isModelMappingSupported(requestedModel string) bool {
 	// credentials 里常残留旧的非空 model_mapping，若不在此放行，透传账号会被
 	// model_mapping 白名单错误排除出候选集，导致 no available accounts / 404（issue #4936）。
 	if a.IsOpenAIPassthroughEnabled() {
-		return true
+		if !a.IsOpenAIPassthroughModelFilterEnabled() {
+			return true
+		}
+		// Explicit opt-in filters candidates by source keys only. Forward still
+		// ignores mapping targets and preserves the passthrough request body.
+		mapping := a.GetModelMapping()
+		return len(mapping) == 0 || mappingSupportsRequestedModel(mapping, strings.TrimSpace(requestedModel))
 	}
 	mapping := a.GetModelMapping()
 	if len(mapping) == 0 {
@@ -2196,6 +2202,13 @@ func (a *Account) IsOpenAIPassthroughEnabled() bool {
 		return enabled
 	}
 	return false
+}
+
+// IsOpenAIPassthroughModelFilterEnabled reports the explicit opt-in to model
+// filtering during passthrough account selection. Missing or invalid values
+// preserve the default behavior of ignoring leftover model_mapping entries.
+func (a *Account) IsOpenAIPassthroughModelFilterEnabled() bool {
+	return a.IsOpenAIPassthroughEnabled() && a.Extra["openai_passthrough_model_filter"] == true
 }
 
 // IsOpenAIResponsesWebSocketV2Enabled 返回 OpenAI 账号是否开启 Responses WebSocket v2。
