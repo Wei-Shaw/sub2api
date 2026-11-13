@@ -101,3 +101,45 @@ func TestToolResultMediaPlacement(t *testing.T) {
 		})
 	}
 }
+
+func TestParallelToolResultsKeepFunctionResponsesContiguousBeforeMedia(t *testing.T) {
+	for _, model := range []string{"claude-opus-5-5-medium", "claude-sonnet-4-6", "gemini-2.5-flash"} {
+		t.Run(model, func(t *testing.T) {
+			raw := []byte(`{"model":"` + model + `","input":[
+ {"type":"function_call","call_id":"call_img_1","name":"view_image","arguments":"{\"path\":\"a.png\"}"},
+ {"type":"function_call","call_id":"call_img_2","name":"view_image","arguments":"{\"path\":\"b.jpg\"}"},
+ {"type":"function_call","call_id":"call_cmd_3","name":"exec_command","arguments":"{\"cmd\":\"ls\"}"},
+ {"type":"function_call_output","call_id":"call_img_1","output":[{"type":"input_image","image_url":"data:image/png;base64,AQID"}]},
+ {"type":"function_call_output","call_id":"call_img_2","output":[{"type":"input_text","text":"loaded b.jpg"},{"type":"input_image","image_url":"data:image/jpeg;base64,BAUG"}]},
+ {"type":"function_call_output","call_id":"call_cmd_3","output":"README.md"}
+ ]}`)
+			var req apicompat.ResponsesRequest
+			require.NoError(t, json.Unmarshal(raw, &req))
+			anthropic, err := apicompat.ResponsesToAnthropicRequest(&req)
+			require.NoError(t, err)
+			body, err := json.Marshal(anthropic)
+			require.NoError(t, err)
+			var claude ClaudeRequest
+			require.NoError(t, json.Unmarshal(body, &claude))
+			wire, err := TransformClaudeToGeminiWithOptions(&claude, "test-project", model, TransformOptions{})
+			require.NoError(t, err)
+
+			parts := gjson.GetBytes(wire, "request.contents.1.parts").Array()
+			require.Len(t, parts, 5)
+
+			require.Equal(t, "call_img_1", parts[0].Get("functionResponse.id").String())
+			require.Equal(t, "view_image", parts[0].Get("functionResponse.name").String())
+			require.Equal(t, "call_img_2", parts[1].Get("functionResponse.id").String())
+			require.Equal(t, "view_image", parts[1].Get("functionResponse.name").String())
+			require.Equal(t, "loaded b.jpg", parts[1].Get("functionResponse.response.result").String())
+			require.Equal(t, "call_cmd_3", parts[2].Get("functionResponse.id").String())
+			require.Equal(t, "exec_command", parts[2].Get("functionResponse.name").String())
+			require.Equal(t, "README.md", parts[2].Get("functionResponse.response.result").String())
+
+			require.Equal(t, "image/png", parts[3].Get("inlineData.mimeType").String())
+			require.Equal(t, "AQID", parts[3].Get("inlineData.data").String())
+			require.Equal(t, "image/jpeg", parts[4].Get("inlineData.mimeType").String())
+			require.Equal(t, "BAUG", parts[4].Get("inlineData.data").String())
+		})
+	}
+}

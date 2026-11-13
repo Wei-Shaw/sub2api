@@ -396,7 +396,7 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 
 	// Antigravity 平台：使用 AntigravityQuotaFetcher 获取额度
 	if account.Platform == PlatformAntigravity {
-		usage, err := s.getAntigravityUsage(ctx, account)
+		usage, err := s.getAntigravityUsage(ctx, account, forceProbe)
 		if err == nil {
 			s.tryClearRecoverableAccountError(ctx, account)
 		}
@@ -1091,41 +1091,45 @@ func (s *AccountUsageService) getGeminiUsage(ctx context.Context, account *Accou
 	return usage, nil
 }
 
-// getAntigravityUsage 获取 Antigravity 账户额度
-func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
+// cachedAntigravityUsage returns the account's cached usage while it is fresh, unless force is
+// set: a manual refresh (the usage cell's query button, force=true) must reach Google, or an
+// account upgraded or reset upstream keeps showing the old figures for the cache TTL.
+func (s *AccountUsageService) cachedAntigravityUsage(accountID int64, force bool) (*UsageInfo, bool) {
+	if force {
+		return nil, false
+	}
+	cached, ok := s.cache.antigravityCache.Load(accountID)
+	if !ok {
+		return nil, false
+	}
+	cache, ok := cached.(*antigravityUsageCache)
+	if !ok || time.Since(cache.timestamp) >= antigravityCacheTTL(cache.usageInfo) {
+		return nil, false
+	}
+	usage := cache.usageInfo
+	// 重新计算 RemainingSeconds，避免返回过时的剩余秒数
+	recalcAntigravityRemainingSeconds(usage)
+	return usage, true
+}
+
+// getAntigravityUsage 获取 Antigravity 账户额度；force 跳过缓存（仍经 singleflight 合并并发请求）。
+func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *Account, force bool) (*UsageInfo, error) {
 	if s.antigravityQuotaFetcher == nil || !s.antigravityQuotaFetcher.CanFetch(account) {
 		now := time.Now()
 		return &UsageInfo{UpdatedAt: &now}, nil
 	}
 
 	// 1. 检查缓存
-	if cached, ok := s.cache.antigravityCache.Load(account.ID); ok {
-		if cache, ok := cached.(*antigravityUsageCache); ok {
-			ttl := antigravityCacheTTL(cache.usageInfo)
-			if time.Since(cache.timestamp) < ttl {
-				usage := cache.usageInfo
-				if usage.FiveHour != nil && usage.FiveHour.ResetsAt != nil {
-					usage.FiveHour.RemainingSeconds = int(time.Until(*usage.FiveHour.ResetsAt).Seconds())
-				}
-				return usage, nil
-			}
-		}
+	if usage, ok := s.cachedAntigravityUsage(account.ID, force); ok {
+		return usage, nil
 	}
 
 	// 2. singleflight 防止并发击穿
 	flightKey := fmt.Sprintf("ag-usage:%d", account.ID)
 	result, flightErr, _ := s.cache.antigravityFlight.Do(flightKey, func() (any, error) {
 		// 再次检查缓存（等待期间可能已被填充）
-		if cached, ok := s.cache.antigravityCache.Load(account.ID); ok {
-			if cache, ok := cached.(*antigravityUsageCache); ok {
-				ttl := antigravityCacheTTL(cache.usageInfo)
-				if time.Since(cache.timestamp) < ttl {
-					usage := cache.usageInfo
-					// 重新计算 RemainingSeconds，避免返回过时的剩余秒数
-					recalcAntigravityRemainingSeconds(usage)
-					return usage, nil
-				}
-			}
+		if usage, ok := s.cachedAntigravityUsage(account.ID, force); ok {
+			return usage, nil
 		}
 
 		// 使用独立 context，避免调用方 cancel 导致所有共享 flight 的请求失败
