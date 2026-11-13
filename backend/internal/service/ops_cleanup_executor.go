@@ -33,11 +33,14 @@ type opsCleanupDeletedCounts struct {
 	systemMetrics  int64
 	hourlyPreagg   int64
 	dailyPreagg    int64
+
+	upstreamAttempts int64
+	statusEvents     int64
 }
 
 func (c opsCleanupDeletedCounts) String() string {
 	return fmt.Sprintf(
-		"error_logs=%d ingress_rejects=%d alert_events=%d system_logs=%d log_audits=%d system_metrics=%d hourly_preagg=%d daily_preagg=%d",
+		"error_logs=%d ingress_rejects=%d alert_events=%d system_logs=%d log_audits=%d system_metrics=%d hourly_preagg=%d daily_preagg=%d upstream_attempts=%d status_events=%d",
 		c.errorLogs,
 		c.ingressRejects,
 		c.alertEvents,
@@ -46,6 +49,8 @@ func (c opsCleanupDeletedCounts) String() string {
 		c.systemMetrics,
 		c.hourlyPreagg,
 		c.dailyPreagg,
+		c.upstreamAttempts,
+		c.statusEvents,
 	)
 }
 

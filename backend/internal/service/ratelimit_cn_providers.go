@@ -219,7 +219,7 @@ func (s *RateLimitService) handleCNProviderInsufficientBalance(
 	}
 
 	until := time.Now().Add(s.cnBalanceCooldownDuration())
-	s.notifyAccountSchedulingBlocked(account, until, "cn_insufficient_balance")
+	s.notifyAccountSchedulingBlocked(ctx, account, until, "cn_insufficient_balance")
 	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, msg); err != nil {
 		slog.Warn("cn_balance_set_temp_unschedulable_failed", "account_id", account.ID, "error", err)
 		return
@@ -304,7 +304,7 @@ func (s *RateLimitService) cooldownCNProviderToQuotaSnapshotReset(ctx context.Co
 	if until == nil {
 		return nil
 	}
-	s.notifyAccountSchedulingBlocked(account, *until, reason)
+	s.notifyAccountSchedulingBlocked(ctx, account, *until, reason)
 	if err := s.accountRepo.SetRateLimited(ctx, account.ID, *until); err != nil {
 		slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
 		return nil
@@ -321,7 +321,7 @@ func (s *RateLimitService) cooldownCNProviderToQuotaSnapshotReset(ctx context.Co
 // 各分支（并发限制、配额耗尽兜底）共用。告警 key 由 notifyReason 派生，保持
 // 各分支既有日志 key 稳定（<prefix>_set_temp_unschedulable_failed）。
 func (s *RateLimitService) setCNProviderTempUnschedulable(ctx context.Context, account *Account, until time.Time, notifyReason, storeReason, logEvent string) {
-	s.notifyAccountSchedulingBlocked(account, until, notifyReason)
+	s.notifyAccountSchedulingBlocked(ctx, account, until, notifyReason)
 	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, storeReason); err != nil {
 		slog.Warn(notifyReason+"_set_temp_unschedulable_failed", "account_id", account.ID, "error", err)
 		return
@@ -347,7 +347,7 @@ func (s *RateLimitService) applyCNProviderReactive429(
 		}
 		if resetAt := parseOpenAIRateLimitResetTime(responseBody); resetAt != nil {
 			resetTime := time.Unix(*resetAt, 0)
-			s.notifyAccountSchedulingBlocked(account, resetTime, "429")
+			s.notifyAccountSchedulingBlocked(ctx, account, resetTime, "429")
 			if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetTime); err != nil {
 				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
 				return true
