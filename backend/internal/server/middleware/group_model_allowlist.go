@@ -113,6 +113,9 @@ func isResponsesWebSocketRoute(c *gin.Context) bool {
 func groupModelAllowlistModelsFromBody(c *gin.Context) ([]string, bool) {
 	body, err := httputil.ReadRequestBodyWithPrealloc(c.Request)
 	if err != nil {
+		if RejectRequestBodyReadError(c, err) {
+			return nil, false
+		}
 		status := http.StatusBadRequest
 		message := "Failed to read request body"
 		var maxErr *http.MaxBytesError

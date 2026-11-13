@@ -73,7 +73,7 @@ func (r *scopedSubscriptionRepo) ExtendExpiry(context.Context, int64, time.Time)
 	return nil
 }
 
-func TestScopedAdminSubscriptionExtendReplayRespectsReadPermission(t *testing.T) {
+func TestScopedAdminSubscriptionExtendReplayRejectsChangedAuthorization(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	previous := service.DefaultIdempotencyCoordinator()
 	t.Cleanup(func() { service.SetDefaultIdempotencyCoordinator(previous) })
@@ -100,10 +100,12 @@ func TestScopedAdminSubscriptionExtendReplayRespectsReadPermission(t *testing.T)
 		req.Header.Set("X-Test-Mode", mode)
 		w := httptest.NewRecorder()
 		r.ServeHTTP(w, req)
-		require.Equal(t, 200, w.Code, w.Body.String())
 		if i > 0 {
-			require.Equal(t, "true", w.Header().Get("X-Idempotency-Replayed"))
+			require.Equal(t, 409, w.Code, w.Body.String())
+			require.NotContains(t, w.Body.String(), "private-user")
+			continue
 		}
+		require.Equal(t, 200, w.Code, w.Body.String())
 		var result struct {
 			Data map[string]json.RawMessage `json:"data"`
 		}

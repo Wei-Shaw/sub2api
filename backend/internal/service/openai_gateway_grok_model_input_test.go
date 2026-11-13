@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
 	"testing"
@@ -8,6 +9,61 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestSanitizeGrokResponsesModelInputAgentMessage(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		text    string
+	}{
+		{"text only", `[{"type":"input_text","text":"What is 19 plus 23?"}]`, "What is 19 plus 23?"},
+		{"envelope and plaintext payload", `[{"type":"input_text","text":"Message Type: NEW_TASK\nPayload:\n"},{"type":"encrypted_content","encrypted_content":"Review the code"},{"type":"text","text":"\nthen report"},{"type":"encrypted_content","encrypted_content":" back. "}]`, "Message Type: NEW_TASK\nPayload:\nReview the code\nthen report back. "},
+		{"string content", `"  task\n"`, "  task\n"},
+		{"opaque content is not decrypted", `[{"type":"encrypted_content","encrypted_content":"gAAAAABopaque=="}]`, "gAAAAABopaque=="},
+		{"empty content", `[]`, ""},
+		{"null content", `null`, ""},
+		{"unsupported content", `[{"type":"input_image","image_url":"https://example.com/image.png"},{"type":"output_text","text":"ignored"}]`, ""},
+		{"malformed content", `{"text":"ignored"}`, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := []byte(`{"input":[{"type":"agent_message","id":"amsg_1","author":"/root","recipient":"/root/child","role":"assistant","content":` + tt.content + `}]}`)
+			patched, err := sanitizeGrokResponsesModelInput(body)
+			require.NoError(t, err)
+			if tt.text == "" {
+				require.Empty(t, gjson.GetBytes(patched, "input").Array())
+				return
+			}
+			expected, err := json.Marshal([]map[string]any{{"type": "message", "role": "user", "content": tt.text}})
+			require.NoError(t, err)
+			require.JSONEq(t, string(expected), gjson.GetBytes(patched, "input").Raw)
+		})
+	}
+}
+
+func TestSanitizeGrokResponsesModelInputAgentMessageMixedHistory(t *testing.T) {
+	body := []byte(`{"input":[
+		{"type":"message","role":"user","content":"start"},
+		{"type":"agent_message","author":"/root","recipient":"/root/child","content":[{"type":"input_text","text":"Payload:\n"},{"type":"encrypted_content","encrypted_content":"task"}]},
+		{"type":"message","role":"assistant","content":"working"},
+		{"type":"function_call","call_id":"call_1","name":"lookup","arguments":"{}"},
+		{"type":"function_call_output","call_id":"call_1","output":"found"},
+		{"type":"agent_message","content":[]},
+		{"type":"agent_message","author":"/root/child","recipient":"/root","content":[{"type":"input_text","text":"result"}]},
+		{"type":"message","role":"user","content":"continue"}
+	]}`)
+	patched, err := sanitizeGrokResponsesModelInput(body)
+	require.NoError(t, err)
+	require.JSONEq(t, `[
+		{"type":"message","role":"user","content":"start"},
+		{"type":"message","role":"user","content":"Payload:\ntask"},
+		{"type":"message","role":"assistant","content":"working"},
+		{"type":"function_call","call_id":"call_1","name":"lookup","arguments":"{}"},
+		{"type":"function_call_output","call_id":"call_1","output":"found"},
+		{"type":"message","role":"user","content":"result"},
+		{"type":"message","role":"user","content":"continue"}
+	]`, gjson.GetBytes(patched, "input").Raw)
+}
 
 func TestSanitizeGrokResponsesModelInputNormalizesReplayHistory(t *testing.T) {
 	body := []byte(`{

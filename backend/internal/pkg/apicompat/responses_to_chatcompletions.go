@@ -132,6 +132,7 @@ type ResponsesEventToChatState struct {
 	NextToolCallIndex      int         // next sequential tool_call index to assign
 	OutputIndexToToolIndex map[int]int // Responses output_index → Chat tool_calls index
 	OutputIndexToArguments map[int]string
+	argumentBuffers        map[int]*strings.Builder
 	IncludeUsage           bool
 	Usage                  *ChatUsage
 }
@@ -296,7 +297,7 @@ func resToChatHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEve
 	if !ok {
 		return nil
 	}
-	state.OutputIndexToArguments[evt.OutputIndex] += evt.Delta
+	state.OutputIndexToArguments[evt.OutputIndex] = appendIndexedStreamString(&state.argumentBuffers, evt.OutputIndex, state.OutputIndexToArguments[evt.OutputIndex], evt.Delta)
 
 	return []ChatCompletionsChunk{makeChatDeltaChunk(state, ChatDelta{
 		ToolCalls: []ChatToolCall{{
@@ -325,6 +326,7 @@ func resToChatHandleFuncArgsDone(evt *ResponsesStreamEvent, state *ResponsesEven
 
 	remainder := completed[len(current):]
 	state.OutputIndexToArguments[evt.OutputIndex] = completed
+	delete(state.argumentBuffers, evt.OutputIndex)
 	return []ChatCompletionsChunk{makeChatDeltaChunk(state, ChatDelta{
 		ToolCalls: []ChatToolCall{{
 			Index: &idx,
