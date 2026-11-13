@@ -1055,6 +1055,10 @@ type GatewayConfig struct {
 	// 等待上游响应头的超时时间（秒），0表示无超时
 	// 注意：这不影响流式数据传输，只控制等待响应头的时间
 	ResponseHeaderTimeout int `mapstructure:"response_header_timeout"`
+	// AntigravityFirstByteTimeout: Antigravity 上游首字节超时（秒），0表示禁用。
+	// 覆盖等待响应头以及响应头已返回但响应体尚无任何字节的阶段；
+	// 超时且尚未向客户端写出语义内容时切换账号。
+	AntigravityFirstByteTimeout int `mapstructure:"antigravity_first_byte_timeout"`
 	// OpenAIResponseHeaderTimeout: OpenAI/Codex 上游等待响应头的超时时间（秒），0表示无超时
 	// OpenAI/Codex 请求可能在上游排队较久；默认不使用通用响应头超时截断。
 	OpenAIResponseHeaderTimeout         int  `mapstructure:"openai_response_header_timeout"`
@@ -2517,6 +2521,7 @@ func setDefaults() {
 
 	// Gateway
 	viper.SetDefault("gateway.response_header_timeout", 600) // 600秒(10分钟)等待上游响应头，LLM高负载时可能排队较久
+	viper.SetDefault("gateway.antigravity_first_byte_timeout", 30)
 	viper.SetDefault("gateway.openai_response_header_timeout", 0)
 	viper.SetDefault("gateway.disable_openai_transport_error_cooldown", false)
 	viper.SetDefault("gateway.grok_response_header_timeout", 120)
@@ -3482,6 +3487,10 @@ func (c *Config) Validate() error {
 	}
 	if c.Gateway.ResponseHeaderTimeout < 0 {
 		return fmt.Errorf("gateway.response_header_timeout must be non-negative")
+	}
+	if c.Gateway.AntigravityFirstByteTimeout < 0 || c.Gateway.AntigravityFirstByteTimeout > 600 ||
+		(c.Gateway.AntigravityFirstByteTimeout > 0 && c.Gateway.AntigravityFirstByteTimeout < 5) {
+		return fmt.Errorf("gateway.antigravity_first_byte_timeout must be 0 or between 5-600 seconds")
 	}
 	if c.Gateway.OpenAIResponseHeaderTimeout < 0 {
 		return fmt.Errorf("gateway.openai_response_header_timeout must be non-negative")

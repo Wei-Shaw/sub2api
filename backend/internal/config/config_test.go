@@ -791,6 +791,23 @@ func TestLoadOpenAIResponseHeaderTimeoutFromEnv(t *testing.T) {
 	require.Equal(t, 1800, cfg.Gateway.OpenAIResponseHeaderTimeout)
 }
 
+func TestLoadDefaultAntigravityFirstByteTimeout(t *testing.T) {
+	resetViperWithJWTSecret(t)
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 30, cfg.Gateway.AntigravityFirstByteTimeout)
+}
+
+func TestLoadAntigravityFirstByteTimeoutFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_ANTIGRAVITY_FIRST_BYTE_TIMEOUT", "45")
+
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Equal(t, 45, cfg.Gateway.AntigravityFirstByteTimeout)
+}
+
 func TestLoadImageNonstreamKeepaliveFromEnv(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("GATEWAY_IMAGE_NONSTREAM_KEEPALIVE_INTERVAL", "15")
@@ -1996,6 +2013,16 @@ func TestValidateConfigErrors(t *testing.T) {
 			name:    "gateway response header timeout",
 			mutate:  func(c *Config) { c.Gateway.ResponseHeaderTimeout = -1 },
 			wantErr: "gateway.response_header_timeout",
+		},
+		{
+			name:    "gateway antigravity first byte timeout below minimum",
+			mutate:  func(c *Config) { c.Gateway.AntigravityFirstByteTimeout = 4 },
+			wantErr: "gateway.antigravity_first_byte_timeout",
+		},
+		{
+			name:    "gateway antigravity first byte timeout too large",
+			mutate:  func(c *Config) { c.Gateway.AntigravityFirstByteTimeout = 601 },
+			wantErr: "gateway.antigravity_first_byte_timeout",
 		},
 		{
 			name:    "gateway openai response header timeout",

@@ -346,7 +346,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				// Can't failover if streaming content already sent
-				if c.Writer.Size() != writerSizeBeforeForward {
+				if !gatewayForwardMayFailover(c, writerSizeBeforeForward, failoverErr) {
 					h.handleResponsesFailoverExhausted(c, failoverErr, true)
 					return
 				}
@@ -397,6 +397,9 @@ func (h *GatewayHandler) responsesErrorResponse(c *gin.Context, status int, code
 
 // handleResponsesFailoverExhausted writes a failover-exhausted error in Responses format.
 func (h *GatewayHandler) handleResponsesFailoverExhausted(c *gin.Context, lastErr *service.UpstreamFailoverError, streamStarted bool) {
+	if !streamStarted && c != nil && c.Writer != nil && c.Writer.Written() {
+		streamStarted = true
+	}
 	if lastErr != nil {
 		copyFailoverRetryAfter(c, lastErr.ResponseHeaders)
 	}

@@ -242,6 +242,9 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 				return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: cw.Disconnected()}, nil
 			}
 			if ev.err != nil {
+				if errors.Is(ev.err, errAntigravityFirstByteTimeout) {
+					return nil, newAntigravityFirstByteTimeoutFailoverError(resp, "antigravity gemini")
+				}
 				if disconnect, handled := handleStreamReadError(ev.err, cw.Disconnected(), "antigravity gemini"); handled {
 					return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: disconnect}, nil
 				}
@@ -427,6 +430,9 @@ func (s *AntigravityGatewayService) handleGeminiStreamToNonStreaming(c *gin.Cont
 				goto returnResponse
 			}
 			if ev.err != nil {
+				if errors.Is(ev.err, errAntigravityFirstByteTimeout) {
+					return nil, newAntigravityFirstByteTimeoutFailoverError(resp, "antigravity gemini non-stream")
+				}
 				if errors.Is(ev.err, bufio.ErrTooLong) {
 					logger.LegacyPrintf("service.antigravity_gateway", "SSE line too long (antigravity non-stream): max_size=%d error=%v", maxLineSize, ev.err)
 				}
@@ -847,6 +853,9 @@ func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, 
 				goto returnResponse
 			}
 			if ev.err != nil {
+				if errors.Is(ev.err, errAntigravityFirstByteTimeout) {
+					return nil, nil, newAntigravityFirstByteTimeoutFailoverError(resp, "antigravity claude non-stream")
+				}
 				if errors.Is(ev.err, bufio.ErrTooLong) {
 					logger.LegacyPrintf("service.antigravity_gateway", "SSE line too long (antigravity claude non-stream): max_size=%d error=%v", maxLineSize, ev.err)
 				}
@@ -1132,6 +1141,9 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 				return &antigravityStreamResult{usage: convertUsage(agUsage), firstTokenMs: firstTokenMs, clientDisconnect: cw.Disconnected()}, nil
 			}
 			if ev.err != nil {
+				if errors.Is(ev.err, errAntigravityFirstByteTimeout) {
+					return nil, newAntigravityFirstByteTimeoutFailoverError(resp, "antigravity claude")
+				}
 				if disconnect, handled := handleStreamReadError(ev.err, cw.Disconnected(), "antigravity claude"); handled {
 					return &antigravityStreamResult{usage: finishUsage(), firstTokenMs: firstTokenMs, clientDisconnect: disconnect}, nil
 				}

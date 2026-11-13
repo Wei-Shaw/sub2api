@@ -39,6 +39,19 @@ func gatewayStreamHasOnlyHeartbeats(c *gin.Context) bool {
 	return heartbeatBytes > 0 && c.Writer.Size() == heartbeatBytes
 }
 
+// gatewayForwardMayFailover 判断 Forward 返回 failover 错误后能否继续切换账号。
+// 未写出任何字节时始终允许；已写出字节时仅当错误显式声明只包含非语义字节
+// （例如 SSE 注释/ping keepalive）才允许，避免把两段语义流拼接到同一响应。
+func gatewayForwardMayFailover(c *gin.Context, writerSizeBeforeForward int, failoverErr *service.UpstreamFailoverError) bool {
+	if c == nil || c.Writer == nil {
+		return false
+	}
+	if c.Writer.Size() == writerSizeBeforeForward {
+		return true
+	}
+	return failoverErr != nil && failoverErr.SafeToFailoverAfterWrite
+}
+
 // claudeCodeValidator is a singleton validator for Claude Code client detection
 var claudeCodeValidator = service.NewClaudeCodeValidator()
 
