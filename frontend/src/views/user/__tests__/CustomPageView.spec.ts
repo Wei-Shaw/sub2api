@@ -89,8 +89,8 @@ describe('custom page open button', () => {
   it('preserves the embedded URL, secure link attributes, and normal clicks with small pointer movements', async () => {
     const { wrapper, button } = mountEmbed()
     expect(button.href).toBe(wrapper.get('iframe').attributes('src'))
-    expect(button.href).toContain('user_id=7')
-    expect(button.href).toContain('token=test-token')
+    expect(new URL(button.href).searchParams.has('user_id')).toBe(false)
+    expect(new URL(button.href).searchParams.has('token')).toBe(false)
     expect(button.target).toBe('_blank')
     expect(button.rel).toBe('noopener noreferrer')
     await pointer(button, 'pointerdown', 700, 24)
@@ -99,6 +99,21 @@ describe('custom page open button', () => {
     expect(button.style.left).toBe('')
     expect(click(button).defaultPrevented).toBe(false)
     expect(click(button, 0).defaultPrevented).toBe(false)
+  })
+
+  it.each([
+    { pass_user_id: false, pass_auth_token: false },
+    { pass_user_id: true, pass_auth_token: false },
+    { pass_user_id: false, pass_auth_token: true },
+    { pass_user_id: true, pass_auth_token: true },
+  ])('uses the selected page authentication settings for both iframe and new tab: %j', (options) => {
+    Object.assign(appStore.cachedPublicSettings.custom_menu_items[0], options)
+    const wrapper = mountPage()
+    const src = wrapper.get('iframe').attributes('src')
+    const url = new URL(src)
+    expect(url.searchParams.get('user_id')).toBe(options.pass_user_id ? '7' : null)
+    expect(url.searchParams.get('token')).toBe(options.pass_auth_token ? 'test-token' : null)
+    expect(wrapper.get('.custom-open-fab').attributes('href')).toBe(src)
   })
 
   it('captures the pointer across iframe content and suppresses only the click following a drag', async () => {

@@ -192,6 +192,8 @@ export interface CustomMenuItem {
   url: string
   page_slug?: string
   hide_open_button?: boolean
+  pass_user_id?: boolean
+  pass_auth_token?: boolean
   visibility: 'user' | 'admin'
   sort_order: number
 }
