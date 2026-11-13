@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -268,6 +269,18 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 		result.PlanLevel = strings.TrimSpace(gjson.GetBytes(bodyBytes, "current_subscribe_title").String())
 	}
 	result.Tiers = tiers
+	// 2xx 但一个可用窗口都解析不出来，通常意味着上游报文改版/字段改名，而不是
+	// 「额度无限」。必须按失败处理：保留旧快照、不写成功时间；否则下面的缺席
+	// 清理会把 5h/weekly/monthly 全写 nil，调度层看到「没有窗口」就会解除预停调，
+	// 让仍处于耗尽的账号回池撞 429。
+	if len(tiers) == 0 {
+		result.Error = fmt.Sprintf(
+			"quota response for %s contains no recognized usage window (upstream schema may have changed); keeping the previous snapshot",
+			provider)
+		slog.Warn("cn_quota_no_recognized_window",
+			"account_id", account.ID, "provider", provider, "http_status", resp.StatusCode)
+		return result, nil
+	}
 	result.Success = true
 	result.CredentialValid = true
 
@@ -406,23 +419,22 @@ func parseKimiUsageTiers(body []byte) []CNQuotaTier {
 			if !detail.Exists() {
 				return true
 			}
-			limit, _ := cnParseF64(detail.Get("limit").Value())
-			remaining, _ := cnParseF64(detail.Get("remaining").Value())
-			used := limit - remaining
-			if used < 0 {
-				used = 0
+			// 字段节点存在不等于数值可信：limit/remaining 必须可解析、limit>0、
+			// remaining 落在 [0, limit]，否则跳过该条（`{"detail":{}}` 或 limit=0
+			// 不能产出一个「已用 0%」的伪窗口，那会掩盖真实的额度耗尽状态）。
+			limit, okLimit := cnParseF64(detail.Get("limit").Value())
+			remaining, okRemaining := cnParseF64(detail.Get("remaining").Value())
+			if !okLimit || !okRemaining || limit <= 0 || remaining < 0 || remaining > limit {
+				return true
 			}
-			var util float64
-			if limit > 0 {
-				util = used / limit * 100
-			}
+			util := (limit - remaining) / limit * 100
 			tiers = append(tiers, CNQuotaTier{
 				Window:      "5h",
 				UsedPercent: util,
 				ResetAt:     cnNormalizeResetTime(detail.Get("resetTime").Value()),
 			})
 			hasFiveHour = true
-			return false // 取首个 detail 作为 5h 窗口
+			return false // 取首个有效 detail 作为 5h 窗口
 		})
 	}
 	if !hasFiveHour {
@@ -436,38 +448,34 @@ func parseKimiUsageTiers(body []byte) []CNQuotaTier {
 	if tier, ok := kimiUsedRatioTier(body, "limit_7d", "weekly"); ok {
 		tiers = append(tiers, tier)
 	} else if usage := gjson.GetBytes(body, "usage"); usage.Exists() {
-		limit, _ := cnParseF64(usage.Get("limit").Value())
-		remaining, _ := cnParseF64(usage.Get("remaining").Value())
-		used := limit - remaining
-		if used < 0 {
-			used = 0
+		limit, okLimit := cnParseF64(usage.Get("limit").Value())
+		remaining, okRemaining := cnParseF64(usage.Get("remaining").Value())
+		if okLimit && okRemaining && limit > 0 && remaining >= 0 && remaining <= limit {
+			tiers = append(tiers, CNQuotaTier{
+				Window:      "weekly",
+				UsedPercent: (limit - remaining) / limit * 100,
+				ResetAt:     cnNormalizeResetTime(usage.Get("resetTime").Value()),
+			})
 		}
-		var util float64
-		if limit > 0 {
-			util = used / limit * 100
-		}
-		tiers = append(tiers, CNQuotaTier{
-			Window:      "weekly",
-			UsedPercent: util,
-			ResetAt:     cnNormalizeResetTime(usage.Get("resetTime").Value()),
-		})
 	}
 
-	// 月度限额（新套餐）：total 与 code 任一耗尽都会限流 → 取较大用量；
-	// 重置时间取较早者（先恢复可用额度，避免过度停调）。
+	// 月度限额（新套餐）：total 与 code 是两个**独立**的限流窗口，任一耗尽都会限流。
+	// 用量取两者较大值；重置时间取**较晚**者——取较早会在另一个窗口仍耗尽时提前
+	// 解除预停调（例如 total 到 11-26 才恢复、code 到 11-20 恢复）。宁可晚回池，
+	// 不可提前撞 429。
 	total, hasTotal := kimiUsedRatioTier(body, "limit_month_total", "monthly")
 	code, hasCode := kimiUsedRatioTier(body, "limit_month_code", "monthly")
 	if hasTotal || hasCode {
-		monthly := CNQuotaTier{Window: "monthly"}
-		if hasTotal {
-			monthly = total
-		}
-		if hasCode && (!hasTotal || code.UsedPercent > monthly.UsedPercent) {
-			monthly.UsedPercent = code.UsedPercent
-		}
-		if hasTotal && hasCode && code.ResetAt != "" &&
-			(monthly.ResetAt == "" || code.ResetAt < monthly.ResetAt) {
-			monthly.ResetAt = code.ResetAt
+		monthly := total
+		if !hasTotal {
+			monthly = code
+		} else if hasCode {
+			if code.UsedPercent > monthly.UsedPercent {
+				monthly.UsedPercent = code.UsedPercent
+			}
+			if code.ResetAt != "" && (monthly.ResetAt == "" || code.ResetAt > monthly.ResetAt) {
+				monthly.ResetAt = code.ResetAt
+			}
 		}
 		tiers = append(tiers, monthly)
 	}
@@ -476,7 +484,7 @@ func parseKimiUsageTiers(body []byte) []CNQuotaTier {
 }
 
 // kimiUsedRatioTier 解析 usages.<key>.{used_ratio,reset_time} 为窗口档位。
-// used_ratio 是 0-1 比例，输出换算为百分比；键缺失或不可解析返回 false。
+// used_ratio 是 0-1 比例，输出换算为百分比；键缺失、不可解析或越界返回 false。
 func kimiUsedRatioTier(body []byte, key, window string) (CNQuotaTier, bool) {
 	node := gjson.GetBytes(body, "usages."+key)
 	if !node.Exists() {
@@ -490,8 +498,10 @@ func kimiUsedRatioTier(body []byte, key, window string) (CNQuotaTier, bool) {
 	if !ok {
 		return CNQuotaTier{}, false
 	}
-	if ratio < 0 {
-		ratio = 0
+	// 必须落在上游声明区间 [0,1]：越界值（例如把百分数 65 直接塞进 used_ratio）
+	// 会算出 6500%，NaN/Inf 同理不可信。
+	if ratio < 0 || ratio > 1 {
+		return CNQuotaTier{}, false
 	}
 	return CNQuotaTier{
 		Window:      window,
@@ -642,9 +652,11 @@ func parseZhipuTokenTiers(data gjson.Result) []CNQuotaTier {
 		if limitType != "TOKENS_LIMIT" && limitType != "CREDIT_LIMIT" {
 			return true
 		}
-		percentage := 0.0
-		if p, ok := cnParseF64(item.Get("percentage").Value()); ok {
-			percentage = p
+		// percentage 缺失/非数字/NaN/越界时不能默认 0：那会产出一个「已用 0%」的
+		// 合法窗口，既掩盖真实耗尽状态，也会被缺席清理当成有效快照落库。
+		percentage, okPercentage := cnParseF64(item.Get("percentage").Value())
+		if !okPercentage || percentage < 0 || percentage > 100 {
+			return true
 		}
 		var (
 			resetMs  int64
@@ -815,24 +827,37 @@ func parseOpenCodeGoUsageTiers(body []byte) []CNQuotaTier {
 
 // cnParseF64 把 JSON 数值或字符串解析为 float64（兼容 "100" 与 100）。
 func cnParseF64(raw any) (float64, bool) {
+	var value float64
 	switch v := raw.(type) {
 	case float64:
-		return v, true
+		value = v
 	case float32:
-		return float64(v), true
+		value = float64(v)
 	case int:
-		return float64(v), true
+		value = float64(v)
 	case int64:
-		return float64(v), true
+		value = float64(v)
 	case json.Number:
 		f, err := v.Float64()
-		return f, err == nil
+		if err != nil {
+			return 0, false
+		}
+		value = f
 	case string:
 		f, err := strconv.ParseFloat(strings.TrimSpace(v), 64)
-		return f, err == nil
+		if err != nil {
+			return 0, false
+		}
+		value = f
 	default:
 		return 0, false
 	}
+	// strconv.ParseFloat 接受 "NaN"/"Inf"，JSON 的 1e999 也会得到 +Inf；
+	// 这类值参与百分比与阈值比较会让停调判定失效，一律视为不可解析。
+	if math.IsNaN(value) || math.IsInf(value, 0) {
+		return 0, false
+	}
+	return value, true
 }
 
 // cnNormalizeResetTime 把上游重置时间（ISO8601 字符串 / 秒级 / 毫秒级数字）归一化为
