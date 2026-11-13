@@ -25,6 +25,14 @@ const defaultMaxResults = 5
 
 // Provider type identifiers.
 const (
-	ProviderTypeBrave  = "brave"
-	ProviderTypeTavily = "tavily"
+	ProviderTypeBrave   = "brave"
+	ProviderTypeTavily  = "tavily"
+	ProviderTypeSearxng = "searxng"
 )
+
+// RequiresAPIKey reports whether a provider type cannot work without a key.
+// SearXNG is self-hosted and normally unauthenticated, so an empty key is valid
+// for it; Brave and Tavily always need one.
+func RequiresAPIKey(providerType string) bool {
+	return providerType != ProviderTypeSearxng
+}

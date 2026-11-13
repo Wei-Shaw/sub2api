@@ -21,8 +21,9 @@ import (
 
 // ProviderConfig holds the configuration for a single search provider.
 type ProviderConfig struct {
-	Type         string `json:"type"`                    // ProviderTypeBrave | ProviderTypeTavily
-	APIKey       string `json:"api_key"`                 // secret
+	Type         string `json:"type"`                    // ProviderTypeBrave | ProviderTypeTavily | ProviderTypeSearxng
+	APIKey       string `json:"api_key"`                 // secret; optional for searxng
+	BaseURL      string `json:"base_url,omitempty"`      // searxng only: instance root, e.g. http://searxng:8080
 	QuotaLimit   int64  `json:"quota_limit"`             // 0 = unlimited
 	SubscribedAt *int64 `json:"subscribed_at,omitempty"` // subscription start (unix seconds); quota resets monthly from this date
 	ProxyURL     string `json:"-"`                       // resolved proxy URL (not persisted)
@@ -228,7 +229,10 @@ func mergeWeightedResults(withQuota, withoutQuota []weighted, capacity int) []Pr
 }
 
 func (m *Manager) isProviderAvailable(cfg ProviderConfig) bool {
-	if cfg.APIKey == "" {
+	if RequiresAPIKey(cfg.Type) && cfg.APIKey == "" {
+		return false
+	}
+	if cfg.Type == ProviderTypeSearxng && cfg.BaseURL == "" {
 		return false
 	}
 	if cfg.ExpiresAt != nil && time.Now().Unix() > *cfg.ExpiresAt {
@@ -464,6 +468,8 @@ func (m *Manager) buildProvider(cfg ProviderConfig, client *http.Client) Provide
 		return NewBraveProvider(cfg.APIKey, client)
 	case tavilyProviderName:
 		return NewTavilyProvider(cfg.APIKey, client)
+	case searxngProviderName:
+		return NewSearxngProvider(cfg.BaseURL, cfg.APIKey, client)
 	default:
 		slog.Warn("websearch: unknown provider type, falling back to brave",
 			"type", cfg.Type)
