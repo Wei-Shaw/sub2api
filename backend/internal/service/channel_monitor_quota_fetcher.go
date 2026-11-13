@@ -309,7 +309,7 @@ func usageQuotaTiers(usage *UsageInfo) []domain.MonitorQuotaTier {
 }
 
 func appendProgressTier(tiers *[]domain.MonitorQuotaTier, window, label string, p *UsageProgress) {
-	if p == nil {
+	if p == nil || p.UtilizationUnknown {
 		return
 	}
 	tier := domain.MonitorQuotaTier{
