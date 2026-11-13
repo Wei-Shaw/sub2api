@@ -125,6 +125,7 @@ function mountView(stubActionMenu = true) {
         AccountTodayStatsCell: true,
         AccountGroupsCell: AccountGroupsCellStub,
         AccountUsageCell: true,
+        AccountQuotaOverview: { props: ['show'], template: '<div v-if="show" data-test="quota-overview"><button @click="$emit(\'close\')">close</button></div>' },
         UpstreamBillingRateCell: true,
         HelpTooltip: true,
         Icon: true,
@@ -263,6 +264,22 @@ describe('admin AccountsView lite account list', () => {
       expect.objectContaining({ lite: '1' }),
       expect.objectContaining({ etag: null })
     )
+    wrapper.unmount()
+  })
+
+  it('pauses automatic account refresh while the quota overview is open', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'admin.quota.title')!.trigger('click')
+    expect(wrapper.find('[data-test="quota-overview"]').exists()).toBe(true)
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(listWithEtag).not.toHaveBeenCalled()
+    await wrapper.get('[data-test="quota-overview"] button').trigger('click')
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(listWithEtag).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 
