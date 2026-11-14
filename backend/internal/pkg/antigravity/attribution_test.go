@@ -137,6 +137,16 @@ func TestNeutralizeClaudeIdentity(t *testing.T) {
 			text: "Example: You are a Claude agent, built on Anthropic's Claude Agent SDK.",
 			want: "Example: You are a Claude agent, built on Anthropic's Claude Agent SDK.",
 		},
+		{
+			name: "pi opener",
+			text: "You are a coding assistant running inside pi, a coding agent harness. Help users inspect files.",
+			want: "You are an AI agent. Help users inspect files.",
+		},
+		{
+			name: "pi mentioned inside instructions",
+			text: "Follow the pi documentation in ~/.pi/agent.",
+			want: "Follow the pi documentation in ~/.pi/agent.",
+		},
 		{name: "ordinary text", text: "Keep these instructions.", want: "Keep these instructions."},
 	}
 	for _, tt := range tests {
