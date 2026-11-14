@@ -696,38 +696,48 @@ func isAntigravityOpusHighTierModel(model string) bool {
 		strings.HasPrefix(lower, "claude-opus-4-8")
 }
 
+// ResolveClaudeThinkingLevel maps Claude thinking and output_config.effort to a
+// Gemini thinkingLevel ("low", "medium", "high"), or "" when unspecified.
+func ResolveClaudeThinkingLevel(req *ClaudeRequest) string {
+	if req == nil {
+		return ""
+	}
+	if req.Thinking != nil && strings.EqualFold(strings.TrimSpace(req.Thinking.Type), "disabled") {
+		return "low"
+	}
+	if req.OutputConfig != nil {
+		switch strings.ToLower(strings.TrimSpace(req.OutputConfig.Effort)) {
+		case "none", "minimal", "low":
+			return "low"
+		case "medium":
+			return "medium"
+		case "high", "xhigh", "max":
+			return "high"
+		}
+	}
+	if req.Thinking != nil && strings.EqualFold(strings.TrimSpace(req.Thinking.Type), "enabled") && req.Thinking.BudgetTokens > 0 {
+		switch {
+		case req.Thinking.BudgetTokens <= 1024:
+			return "low"
+		case req.Thinking.BudgetTokens <= 8192:
+			return "medium"
+		default:
+			return "high"
+		}
+	}
+	return ""
+}
+
 // carbonThinkingConfig preserves the upstream default when no effort is specified.
 // https://aistudio.google.com/docs/whats-new-gemini-4-carbon
 func carbonThinkingConfig(req *ClaudeRequest, bareModel bool) *GeminiThinkingConfig {
 	cfg := &GeminiThinkingConfig{}
 	if req.Thinking != nil {
-		cfg.IncludeThoughts = req.Thinking.Type == "enabled" || req.Thinking.Type == "adaptive"
+		thinkingType := strings.ToLower(strings.TrimSpace(req.Thinking.Type))
+		cfg.IncludeThoughts = thinkingType == "enabled" || thinkingType == "adaptive"
 	}
 	if bareModel {
-		if req.OutputConfig != nil {
-			switch strings.ToLower(strings.TrimSpace(req.OutputConfig.Effort)) {
-			case "none", "minimal", "low":
-				cfg.ThinkingLevel = "low"
-			case "medium":
-				cfg.ThinkingLevel = "medium"
-			case "high", "xhigh", "max":
-				cfg.ThinkingLevel = "high"
-			}
-		}
-		if req.Thinking != nil {
-			if req.Thinking.Type == "disabled" {
-				cfg.ThinkingLevel = "low"
-			} else if cfg.ThinkingLevel == "" && req.Thinking.Type == "enabled" && req.Thinking.BudgetTokens > 0 {
-				switch {
-				case req.Thinking.BudgetTokens <= 1024:
-					cfg.ThinkingLevel = "low"
-				case req.Thinking.BudgetTokens <= 8192:
-					cfg.ThinkingLevel = "medium"
-				default:
-					cfg.ThinkingLevel = "high"
-				}
-			}
-		}
+		cfg.ThinkingLevel = ResolveClaudeThinkingLevel(req)
 	}
 	if !cfg.IncludeThoughts && cfg.ThinkingLevel == "" {
 		return nil

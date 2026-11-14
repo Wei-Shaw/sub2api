@@ -144,6 +144,38 @@ func TestGeminiThinkingLevelFromClaudeThinking(t *testing.T) {
 	}
 }
 
+func TestGeminiThinkingLevelFromClaudeRequest_HonorsOutputEffortAndCarbonTiers(t *testing.T) {
+	svc := &AntigravityGatewayService{}
+	account := newAntigravityAccountWithMapping(map[string]string{
+		"gemini-4-carbon":        "gemini-4-carbon",
+		"gemini-4-carbon-low":    "gemini-4-carbon-low",
+		"gemini-4-carbon-medium": "gemini-4-carbon-medium",
+		"gemini-4-carbon-high":   "gemini-4-carbon-high",
+	})
+
+	for _, tc := range []struct {
+		name string
+		req  antigravity.ClaudeRequest
+		want string
+	}{
+		{"effort low without thinking", antigravity.ClaudeRequest{OutputConfig: &antigravity.ClaudeOutputConfig{Effort: "low"}}, "gemini-4-carbon-low"},
+		{"effort wins over high budget", antigravity.ClaudeRequest{
+			Thinking:     &antigravity.ThinkingConfig{Type: "enabled", BudgetTokens: 32768},
+			OutputConfig: &antigravity.ClaudeOutputConfig{Effort: "medium"},
+		}, "gemini-4-carbon-medium"},
+		{"disabled wins over high effort", antigravity.ClaudeRequest{
+			Thinking:     &antigravity.ThinkingConfig{Type: "disabled"},
+			OutputConfig: &antigravity.ClaudeOutputConfig{Effort: "high"},
+		}, "gemini-4-carbon-low"},
+		{"default falls back to high variant", antigravity.ClaudeRequest{}, "gemini-4-carbon-high"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := svc.getMappedModelForThinkingLevel(account, "gemini-4-carbon", geminiThinkingLevelFromClaudeRequest(&tc.req))
+			require.Equal(t, tc.want, got)
+		})
+	}
+}
+
 // 锁定线上 404 回归：Chat Completions / Messages 兼容层收到裸 Gemini 模型名时，
 // 必须和 Gemini 原生路径一样解析到带后缀的上游变体，而不是把裸名透传给上游。
 func TestResolveGeminiThinkingVariantForLevel_CompatPathResolvesBareModel(t *testing.T) {

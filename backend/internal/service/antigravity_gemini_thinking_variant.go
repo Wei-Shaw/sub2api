@@ -85,27 +85,18 @@ func geminiThinkingLevelFromBody(body []byte) string {
 	}
 }
 
-// geminiThinkingLevelFromClaudeThinking 用 Claude Messages 协议的 thinking 配置推导档位，
-// 阈值与 geminiThinkingLevelFromBody 保持一致，使同一请求无论走 Gemini 原生还是
-// Chat Completions / Messages 兼容层都落到同一个上游变体。
+// geminiThinkingLevelFromClaudeRequest 用 Claude Messages 协议的 thinking 与 output_config.effort
+// 推导档位（disabled > effort > budget_tokens），与 Carbon 思考配置及 Gemini 原生路径保持一致。
+func geminiThinkingLevelFromClaudeRequest(req *antigravity.ClaudeRequest) string {
+	if level := antigravity.ResolveClaudeThinkingLevel(req); level != "" {
+		return level
+	}
+	return "high"
+}
+
+// geminiThinkingLevelFromClaudeThinking 仅根据 thinking 配置推导档位。
 func geminiThinkingLevelFromClaudeThinking(thinking *antigravity.ThinkingConfig) string {
-	if thinking == nil {
-		return "high"
-	}
-	if strings.EqualFold(strings.TrimSpace(thinking.Type), "disabled") {
-		return "low"
-	}
-	budget := thinking.BudgetTokens
-	switch {
-	case budget <= 0:
-		return "high" // 动态思考 / 未指定预算
-	case budget <= geminiThinkingBudgetLowMax:
-		return "low"
-	case budget <= geminiThinkingBudgetMediumMax:
-		return "medium"
-	default:
-		return "high"
-	}
+	return geminiThinkingLevelFromClaudeRequest(&antigravity.ClaudeRequest{Thinking: thinking})
 }
 
 // resolveGeminiThinkingVariant 为裸 Gemini 模型名挑选账号映射表里存在的思考深度变体。
