@@ -338,7 +338,7 @@ func RegisterGatewayRoutes(
 		// OCR/ASR/files 上传可能是大 multipart，沿用组级 bodyLimit，不收紧 textBodyLimit。
 		deepseekToolsGate := func(handler gin.HandlerFunc) gin.HandlerFunc {
 			return func(c *gin.Context) {
-				if getGroupPlatform(c) != service.PlatformDeepseek {
+				if platform := getGroupPlatform(c); platform != service.PlatformDeepseek && platform != service.PlatformComposite {
 					service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 					c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "DeepSeek tools API is not supported for this platform"}})
 					return
