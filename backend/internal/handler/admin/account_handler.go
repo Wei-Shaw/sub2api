@@ -2567,7 +2567,7 @@ func (h *AccountHandler) GetUsage(c *gin.Context) {
 	if source == "passive" {
 		usage, err = h.accountUsageService.GetPassiveUsage(c.Request.Context(), accountID)
 	} else {
-		usage, err = h.accountUsageService.GetUsage(c.Request.Context(), accountID, force)
+		usage, err = h.accountUsageService.GetActiveUsage(c.Request.Context(), accountID, force)
 	}
 	if err != nil {
 		response.ErrorFrom(c, err)

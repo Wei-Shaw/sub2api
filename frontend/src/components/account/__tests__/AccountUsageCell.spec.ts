@@ -185,7 +185,7 @@ describe('AccountUsageCell', () => {
 
   it('does not add automatic usage requests for other providers', async () => {
     const requestBatchedUsage = vi.fn()
-    const wrapper = mount(AccountUsageCell, { props: { account: makeAccount({ id: 99001, platform: 'openai', type: 'oauth' }), requestBatchedUsage }, global: { stubs: { UsageProgressBar: true, AccountQuotaInfo: true } } })
+    const wrapper = mount(AccountUsageCell, { props: { account: makeAccount({ id: 99001, platform: 'gemini', type: 'oauth' }), requestBatchedUsage }, global: { stubs: { UsageProgressBar: true, AccountQuotaInfo: true } } })
     await flushPromises()
     requestBatchedUsage.mockClear()
     await wrapper.setProps({ autoRefreshToken: 1 })

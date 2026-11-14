@@ -273,11 +273,11 @@ describe('admin AccountsView lite account list', () => {
     wrapper.unmount()
   })
 
-  it('refreshes quota on an unchanged list ETag without forcing upstream probes', async () => {
+  it.each(['anthropic', 'openai'] as const)('refreshes %s quota on an unchanged list ETag without forcing upstream probes', async (platform) => {
     vi.useFakeTimers()
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
     localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
-    listAccounts.mockResolvedValue({ items: [{ ...listRow, platform: 'anthropic' }], total: 1, page: 1, page_size: 20, pages: 1 })
+    listAccounts.mockResolvedValue({ items: [{ ...listRow, platform }], total: 1, page: 1, page_size: 20, pages: 1 })
     const usage = (percent: number) => ({ usage: { '42': { five_hour: { utilization: percent }, seven_day: { utilization: percent } } }, errors: {} })
     getBatchUsage.mockResolvedValueOnce(usage(12)).mockResolvedValue(usage(43))
     const wrapper = mountView(true, true)

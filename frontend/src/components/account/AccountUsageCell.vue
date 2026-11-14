@@ -1819,7 +1819,7 @@ watch(
   () => props.autoRefreshToken,
   (nextToken, prevToken) => {
     if (nextToken === prevToken || !shouldFetchUsage.value) return
-    if (props.account.platform !== 'anthropic' || props.account.type !== 'oauth') return
+    if (!['anthropic', 'openai'].includes(props.account.platform) || props.account.type !== 'oauth') return
     if (isBatchManaged.value) {
       requestParentBatchUsage({ source: 'active', bypassCache: true })
       return
@@ -1836,9 +1836,9 @@ watch(
     if (nextToken === prevToken) return
     if (!shouldFetchUsage.value) return
 
-    const source = isAnthropicOAuthOrSetupToken.value
-      ? props.account.type === 'oauth' ? 'active' : 'passive'
-      : undefined
+    const source = props.account.type === 'oauth' && ['anthropic', 'openai'].includes(props.account.platform)
+      ? 'active'
+      : isAnthropicOAuthOrSetupToken.value ? 'passive' : undefined
     if (isBatchManaged.value) {
       requestParentBatchUsage({ force: true, ...(source === 'active' ? { source } : {}) })
       return
