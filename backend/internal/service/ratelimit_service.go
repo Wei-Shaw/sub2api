@@ -1598,7 +1598,48 @@ func (s *RateLimitService) persistAnthropicExhaustedWindowLimit(ctx context.Cont
 const (
 	anthropicFableWindowReason          = "anthropic_7d_oi_window_exhausted"
 	anthropicFableCreditsRequiredReason = "anthropic_fable_credits_required"
+
+	// anthropicFableWindowRecoveredUtilization 是判定 7d_oi 窗口已恢复的用量上限。
+	// 上游明确回报利用率低于该值（重置卡生效、窗口滚动）时撤销窗口耗尽写入的限流；
+	// 留出余量避免贴着 1.0 的采样来回抖动。
+	anthropicFableWindowRecoveredUtilization = 0.95
 )
+
+// recoverAnthropicFableWindowLimit 在上游明确回报 7d_oi 用量已回落到耗尽线以下时，
+// 撤销此前由窗口耗尽写入的 claude-fable-5 模型级限流。
+//
+// 三条约束：
+//  1. 只有明确拿到利用率才判断；缺失一律不动，缺失不等于 0；
+//  2. 只撤销 anthropicFableWindowReason 来源的限流——积分不足（credits required）
+//     与管理端阈值来源的语义不同，不能被窗口用量顺手清掉；
+//  3. 只清 claude-fable-5 这一个 scope，不影响其他模型与并发新写入的限流。
+func recoverAnthropicFableWindowLimit(ctx context.Context, repo AccountRepository, account *Account, utilization float64) bool {
+	if repo == nil || account == nil || account.ID <= 0 {
+		return false
+	}
+	if utilization < 0 || utilization >= anthropicFableWindowRecoveredUtilization {
+		return false
+	}
+	if !account.isRateLimitActiveForKey(anthropicFableRateLimitKey) {
+		return false
+	}
+	if account.modelRateLimitReason(anthropicFableRateLimitKey) != anthropicFableWindowReason {
+		return false
+	}
+	if err := repo.ClearModelRateLimit(ctx, account.ID, anthropicFableRateLimitKey); err != nil {
+		slog.Warn("anthropic_fable_window_recovery_clear_failed",
+			"account_id", account.ID,
+			"utilization", utilization,
+			"error", err)
+		return false
+	}
+	clearAccountModelRateLimitSnapshot(account, anthropicFableRateLimitKey)
+	slog.Info("anthropic_fable_window_recovered",
+		"account_id", account.ID,
+		"scope", anthropicFableRateLimitKey,
+		"utilization", utilization)
+	return true
+}
 
 // persistAnthropicFableCreditsRequired handles Anthropic's credits_required
 // response for Fable. Although the upstream status is 429, this response only
@@ -2157,9 +2198,11 @@ func (s *RateLimitService) samplePassiveUsageFromHeaders(ctx context.Context, ac
 		}
 	}
 	// 7d_oi (Fable 专属 7d 窗口) utilization（0-1 小数）
+	var fableUtil *float64
 	if utilStr := headers.Get("anthropic-ratelimit-unified-7d_oi-utilization"); utilStr != "" {
 		if util, err := strconv.ParseFloat(utilStr, 64); err == nil {
 			extraUpdates["passive_usage_7d_oi_utilization"] = util
+			fableUtil = &util
 		}
 	}
 	// 7d_oi reset timestamp
@@ -2176,6 +2219,13 @@ func (s *RateLimitService) samplePassiveUsageFromHeaders(ctx context.Context, ac
 		if err := s.accountRepo.UpdateExtra(ctx, account.ID, extraUpdates); err != nil {
 			slog.Warn("passive_usage_update_failed", "account_id", account.ID, "error", err)
 		}
+	}
+
+	// 上游已明确回报 7d_oi 用量回落到耗尽线以下（额度重置或窗口滚动）时，
+	// 撤销此前窗口耗尽写入的模型级限流，避免重置卡生效后仍被本地拦到原
+	// rate_limit_reset_at 才解封。窗口仍处于 rejected/exceeded 时不撤销。
+	if fableUtil != nil && !isAnthropicWindowRejected(headers, "7d_oi") && !isAnthropicWindowExceeded(headers, "7d_oi") {
+		recoverAnthropicFableWindowLimit(ctx, s.accountRepo, account, *fableUtil)
 	}
 }
 

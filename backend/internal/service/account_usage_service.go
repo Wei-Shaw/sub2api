@@ -483,8 +483,9 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 		// 4. 添加窗口统计（有独立缓存，1 分钟）
 		s.addWindowStats(ctx, account, usage)
 
-		// 5. 将主动查询结果同步到被动缓存，下次 passive 加载即为最新值
-		s.syncActiveToPassive(ctx, account.ID, usage)
+		// 5. 将主动查询结果同步到被动缓存，下次 passive 加载即为最新值；
+		// 其中还会在上游明确给出已回落的 7d_oi 用量时撤销窗口耗尽写入的模型级限流。
+		s.syncActiveToPassive(ctx, account, usage)
 
 		// 6. 上游 usage API 目前不一定下发 Fable 7d 窗口；缺失时回填被动采样
 		// （7d_oi 响应头）的数据，避免主动查询后 7d F 进度条丢失。
@@ -715,7 +716,15 @@ func buildPassiveUsageWindow(extra map[string]any, utilKey, resetKey string) *Us
 
 // syncActiveToPassive 将主动查询的最新数据回写到 Extra 被动缓存，
 // 这样下次被动加载时能看到最新值。
-func (s *AccountUsageService) syncActiveToPassive(ctx context.Context, accountID int64, usage *UsageInfo) {
+//
+// 主动查询是“重置卡生效后额度已恢复”最直接的观测点：这里在拿到 API 明确回报的
+// 7d_oi 用量后，顺手撤销窗口耗尽写入的模型级限流。回填被动采样发生在调用方，
+// 因此本函数的 usage.SevenDayFable 一定是上游返回值，不会把旧采样当成恢复依据。
+func (s *AccountUsageService) syncActiveToPassive(ctx context.Context, account *Account, usage *UsageInfo) {
+	if account == nil {
+		return
+	}
+	accountID := account.ID
 	extraUpdates := make(map[string]any, 4)
 
 	if usage.FiveHour != nil {
@@ -747,6 +756,10 @@ func (s *AccountUsageService) syncActiveToPassive(ctx context.Context, accountID
 		if err := s.accountRepo.UpdateSessionWindowEnd(ctx, accountID, *usage.FiveHour.ResetsAt); err != nil {
 			slog.Warn("sync_active_to_passive_session_window_end_failed", "account_id", accountID, "error", err)
 		}
+	}
+
+	if usage.SevenDayFable != nil {
+		recoverAnthropicFableWindowLimit(ctx, s.accountRepo, account, usage.SevenDayFable.Utilization/100)
 	}
 }
 

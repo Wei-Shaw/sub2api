@@ -2047,6 +2047,10 @@ func (s *stubAccountRepo) ClearModelRateLimits(ctx context.Context, id int64) er
 	return errors.New("not implemented")
 }
 
+func (s *stubAccountRepo) ClearModelRateLimit(ctx context.Context, id int64, scope string) error {
+	return errors.New("not implemented")
+}
+
 func (s *stubAccountRepo) UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error {
 	return errors.New("not implemented")
 }

@@ -97,7 +97,7 @@ func TestSyncActiveToPassive_WritesFiveHourSessionWindowEnd(t *testing.T) {
 	repo := &sessionWindowSyncRepo{}
 	svc := &AccountUsageService{accountRepo: repo}
 	resetsAt := time.Now().Add(3 * time.Hour).UTC().Truncate(time.Second)
-	svc.syncActiveToPassive(context.Background(), 42, &UsageInfo{
+	svc.syncActiveToPassive(context.Background(), &Account{ID: 42}, &UsageInfo{
 		FiveHour: &UsageProgress{
 			Utilization: 53,
 			ResetsAt:    &resetsAt,
@@ -123,7 +123,7 @@ func TestSyncActiveToPassive_SkipsSessionWindowEndWhenResetMissing(t *testing.T)
 
 	repo := &sessionWindowSyncRepo{}
 	svc := &AccountUsageService{accountRepo: repo}
-	svc.syncActiveToPassive(context.Background(), 99, &UsageInfo{
+	svc.syncActiveToPassive(context.Background(), &Account{ID: 99}, &UsageInfo{
 		FiveHour: &UsageProgress{Utilization: 10},
 	})
 
