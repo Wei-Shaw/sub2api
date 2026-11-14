@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest'
 import {
   CC_SWITCH_USAGE_SCRIPT,
   GROK_CC_SWITCH_MODEL,
-  OPENAI_CC_SWITCH_CODEX_MODEL,
   buildCcSwitchImportDeeplink
 } from '@/utils/ccswitchImport'
 import type { GroupPlatform } from '@/types'
@@ -13,8 +12,20 @@ function paramsFromDeeplink(deeplink: string): URLSearchParams {
 }
 
 describe('ccswitchImport utils', () => {
-  it('defaults OpenAI CC Switch imports to the current Codex model', () => {
-    expect(OPENAI_CC_SWITCH_CODEX_MODEL).toBe('gpt-6.1-sol')
+  it('uses the selected model for Codex imports', () => {
+    const params = paramsFromDeeplink(buildCcSwitchImportDeeplink({
+      baseUrl: 'https://api.example.com',
+      platform: 'openai',
+      clientType: 'codex',
+      providerName: 'Sub2API',
+      apiKey: 'sk-test',
+      usageScript: 'return true',
+      model: 'deepseek-chat'
+    }))
+
+    expect(params.get('app')).toBe('codex')
+    expect(params.get('model')).toBe('deepseek-chat')
+    expect(params.get('apiFormat')).toBe('openai_responses')
   })
 
   it('defaults Grok Build imports to the current Grok model', () => {
@@ -39,19 +50,20 @@ describe('ccswitchImport utils', () => {
         ...baseInput,
         baseUrl,
         platform: 'openai',
-        clientType: 'claude'
+        clientType: 'codex',
+        model: 'deepseek-chat'
       })
     )
 
     expect(params.get('resource')).toBe('provider')
     expect(params.get('app')).toBe('codex')
     expect(params.get('endpoint')).toBe(endpoint)
-    expect(params.get('model')).toBe(OPENAI_CC_SWITCH_CODEX_MODEL)
+    expect(params.get('model')).toBe('deepseek-chat')
     expect(atob(params.get('usageScript') || '')).toBe(baseInput.usageScript)
     const payload = JSON.parse(atob(params.get('config') || '')) as { config: string }
     expect(params.get('configFormat')).toBe('json')
     expect(payload.config).toContain(`base_url = "${endpoint}"`)
-    expect(payload.config).toContain(`model = "${OPENAI_CC_SWITCH_CODEX_MODEL}"`)
+    expect(payload.config).toContain('model = "deepseek-chat"')
     expect(payload.config.split('[model_providers.')[0]).toContain('web_search = "live"')
     expect(payload.config).toContain('requires_openai_auth = false')
     expect(payload.config).toContain('experimental_bearer_token = "sk-test"')
@@ -67,7 +79,8 @@ describe('ccswitchImport utils', () => {
       apiKey,
       baseUrl: 'https://example.com/网关',
       platform: 'openai',
-      clientType: 'claude'
+      clientType: 'codex',
+      model: 'deepseek-chat'
     }))
     const bytes = Uint8Array.from(atob(params.get('config') || ''), (char) => char.charCodeAt(0))
     const payload = JSON.parse(new TextDecoder().decode(bytes)) as { config: string }
@@ -87,7 +100,7 @@ describe('ccswitchImport utils', () => {
         ...baseInput,
         baseUrl,
         platform: 'grok',
-        clientType: 'claude'
+        clientType: 'grokbuild'
       })
     )
 
@@ -155,7 +168,13 @@ describe('CC Switch usage script', () => {
         buildCcSwitchImportDeeplink({
           baseUrl: 'https://api.example.com',
           platform,
-          clientType: platform === 'gemini' ? 'gemini' : 'claude',
+        clientType: platform === 'gemini'
+          ? 'gemini'
+          : platform === 'grok'
+            ? 'grokbuild'
+            : platform === 'openai'
+              ? 'codex'
+              : 'claude',
           providerName: 'Sub2API',
           apiKey: 'sk-test',
           usageScript: CC_SWITCH_USAGE_SCRIPT
