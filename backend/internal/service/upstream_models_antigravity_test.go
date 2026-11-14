@@ -239,7 +239,28 @@ func TestConfiguredUpstreamModelsForCapabilitySyncSkipsInjectedAntigravityPassth
 	got := configuredUpstreamModelsForCapabilitySync(account)
 	require.ElementsMatch(t, []string{"gemini-3.8-flash-high", "gemini-3.8-flash-tiered", "gemini-3.6-flash-low"}, got)
 
-	// 空映射走默认目录，其中的同名条目不是运行时补齐。
+	// 空映射走默认目录，其中的同名条目不是运行时补齐，且动态分档裸键会解析为真实上游变体而非裸名。
 	empty := &Account{Platform: PlatformAntigravity, Credentials: map[string]any{}}
-	require.Contains(t, configuredUpstreamModelsForCapabilitySync(empty), "gemini-3.8-flash-low")
+	emptyConfigured := configuredUpstreamModelsForCapabilitySync(empty)
+	require.Contains(t, emptyConfigured, "gemini-3.8-flash-low")
+	require.Contains(t, emptyConfigured, "claude-opus-5-5-high")
+	require.NotContains(t, emptyConfigured, "claude-opus-5-5")
+	require.NotContains(t, emptyConfigured, "claude-sonnet-5-5")
+	require.NotContains(t, emptyConfigured, "gemini-4-hydrogen")
+
+	// 动态分档裸键读取同步元数据时，聚合实际支持的推理档位并保留权威上下文上限。
+	reasoningTrue := true
+	empty.Extra = map[string]any{UpstreamModelMetadataExtraKey: UpstreamModelMetadataSnapshot{
+		Source: "upstream",
+		Models: map[string]UpstreamModelMetadata{
+			"claude-opus-5-5-low":    {Reasoning: &reasoningTrue, SupportedReasoningLevels: []string{"low"}, DefaultReasoningLevel: "low", ContextWindow: 200000, MaxOutputTokens: 64000},
+			"claude-opus-5-5-medium": {Reasoning: &reasoningTrue, SupportedReasoningLevels: []string{"medium"}, DefaultReasoningLevel: "medium", ContextWindow: 200000, MaxOutputTokens: 64000},
+			"claude-opus-5-5-high":   {Reasoning: &reasoningTrue, SupportedReasoningLevels: []string{"high"}, DefaultReasoningLevel: "high", ContextWindow: 200000, MaxOutputTokens: 64000},
+		},
+	}}
+	meta, ok := empty.GetUpstreamModelMetadata("claude-opus-5-5")
+	require.True(t, ok)
+	require.Equal(t, []string{"low", "medium", "high"}, meta.SupportedReasoningLevels)
+	require.Equal(t, "high", meta.DefaultReasoningLevel)
+	require.Equal(t, int64(200000), meta.ContextWindow)
 }

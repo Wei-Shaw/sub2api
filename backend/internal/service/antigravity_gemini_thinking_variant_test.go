@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/stretchr/testify/require"
@@ -242,6 +243,130 @@ func TestGeminiThinkingLevelFromClaudeRequest_HonorsOutputEffortAndCarbonTiers(t
 	// web_search 降级把实际外发模型改写为 gemini-2.5-flash 时，不得再按原 Hydrogen 档位后缀收取 xhigh 倍率。
 	webSearchBody := []byte(`{"model":"gemini-2.5-flash","request":{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}}`)
 	require.Nil(t, effectiveAntigravityGeminiReasoningEffort("gemini-4-hydrogen-xhigh", webSearchBody, true))
+}
+
+func TestClaude55ThinkingVariantResolutionOnAntigravity(t *testing.T) {
+	svc := &AntigravityGatewayService{}
+	gwSvc := &GatewayService{}
+	defaultAccount := &Account{ID: 55, Name: "ag-default", Platform: PlatformAntigravity}
+
+	for _, model := range []string{"claude-opus-5-5", "claude-sonnet-5-5"} {
+		for _, tc := range []struct {
+			name string
+			req  antigravity.ClaudeRequest
+			want string
+		}{
+			{"default falls back to high", antigravity.ClaudeRequest{}, model + "-high"},
+			{"adaptive without effort falls back to high", antigravity.ClaudeRequest{Thinking: &antigravity.ThinkingConfig{Type: "adaptive"}}, model + "-high"},
+			{"effort low", antigravity.ClaudeRequest{OutputConfig: &antigravity.ClaudeOutputConfig{Effort: "low"}}, model + "-low"},
+			{"effort medium", antigravity.ClaudeRequest{
+				Thinking:     &antigravity.ThinkingConfig{Type: "adaptive"},
+				OutputConfig: &antigravity.ClaudeOutputConfig{Effort: "medium"},
+			}, model + "-medium"},
+			{"effort high", antigravity.ClaudeRequest{OutputConfig: &antigravity.ClaudeOutputConfig{Effort: "high"}}, model + "-high"},
+			{"xhigh degrades to high", antigravity.ClaudeRequest{OutputConfig: &antigravity.ClaudeOutputConfig{Effort: "xhigh"}}, model + "-high"},
+			{"disabled maps to low", antigravity.ClaudeRequest{Thinking: &antigravity.ThinkingConfig{Type: "disabled"}}, model + "-low"},
+			{"between_tools with low effort", antigravity.ClaudeRequest{
+				Thinking:     &antigravity.ThinkingConfig{Type: "between_tools"},
+				OutputConfig: &antigravity.ClaudeOutputConfig{Effort: "low"},
+			}, model + "-low"},
+		} {
+			t.Run(model+"/"+tc.name, func(t *testing.T) {
+				got := svc.getMappedModelForThinkingLevel(defaultAccount, model, geminiThinkingLevelFromClaudeRequest(&tc.req))
+				require.Equal(t, tc.want, got)
+			})
+		}
+	}
+
+	// 仅配置分档变体后缀的账号支持调度准入与按档位转发，且自定义别名指向裸 claude-opus-5-5 也能二次解析到档位。
+	tieredOnly := newAntigravityAccountWithMapping(map[string]string{
+		"claude-opus-5-5-low":    "claude-opus-5-5-low",
+		"claude-opus-5-5-medium": "claude-opus-5-5-medium",
+		"claude-opus-5-5-high":   "claude-opus-5-5-high",
+		"my-opus":                "claude-opus-5-5",
+	})
+	require.True(t, gwSvc.isModelSupportedByAccountWithContext(context.Background(), tieredOnly, "claude-opus-5-5"))
+	require.True(t, gwSvc.isModelSupportedByAccount(tieredOnly, "claude-opus-5-5"))
+	require.Equal(t, "claude-opus-5-5-medium", svc.getMappedModelForThinkingLevel(tieredOnly, "my-opus", "medium"))
+	require.Equal(t, "claude-opus-5-5-low", resolveFinalAntigravityModelKey(context.Background(), tieredOnly, antigravityRateLimitModelKey(tieredOnly, "claude-opus-5-5", "claude-opus-5-5-low")))
+
+	// 显式固定映射（如 Opus 5.5→High 预设）优先于动态分档。
+	pinnedHigh := newAntigravityAccountWithMapping(map[string]string{
+		"claude-opus-5-5":     "claude-opus-5-5-high",
+		"claude-opus-5-5-low": "claude-opus-5-5-low",
+	})
+	require.Equal(t, "claude-opus-5-5-high", svc.getMappedModelForThinkingLevel(pinnedHigh, "claude-opus-5-5", "low"))
+
+	// xhigh 降级到 claude-opus-5-5-high 时，实际计费 effort 记为 high。
+	wrappedBody := []byte(`{"model":"claude-opus-5-5-high","request":{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}}`)
+	require.Equal(t, "high", optionalStringValue(effectiveAntigravityGeminiReasoningEffort("claude-opus-5-5-high", wrappedBody, true)))
+	require.Nil(t, effectiveAntigravityGeminiReasoningEffort("claude-opus-5-5-high", wrappedBody, false))
+
+	// 单独配置裸动态预设（{"claude-opus-5-5": "claude-opus-5-5"}）时，回退官方默认分档变体而非发裸名 404。
+	barePresetOnly := newAntigravityAccountWithMapping(map[string]string{"claude-opus-5-5": "claude-opus-5-5"})
+	require.Equal(t, "claude-opus-5-5-low", svc.getMappedModelForThinkingLevel(barePresetOnly, "claude-opus-5-5", "low"))
+	require.Equal(t, "claude-opus-5-5-medium", svc.getMappedModelForThinkingLevel(barePresetOnly, "claude-opus-5-5", "medium"))
+	require.Equal(t, "claude-opus-5-5-high", svc.getMappedModelForThinkingLevel(barePresetOnly, "claude-opus-5-5", ""))
+
+	// 原生 Anthropic 订阅隔离与混合分组冷却对齐：
+	// 1) PlatformAnthropic OAuth / SetupToken 订阅账号保持裸模型名不变，绝不附加 -high/-medium/-low 后缀；
+	// 2) 混合分组中 Antigravity 账号的 claude-opus-5-5-high 处于冷却时，调度阶段对默认/high 请求直接跳过该账号，
+	//    不消耗切换预算即可路由到健康的原生 Anthropic 订阅账号；而对 low 请求仍可正常命中 -low 变体。
+	for _, acctType := range []string{AccountTypeOAuth, AccountTypeSetupToken} {
+		anthropicSub := &Account{ID: 101, Name: "claude-sub", Platform: PlatformAnthropic, Type: acctType, Status: StatusActive}
+		require.Equal(t, "claude-opus-5-5", anthropicSub.GetMappedModel("claude-opus-5-5"))
+		require.Equal(t, "claude-sonnet-5-5", anthropicSub.GetMappedModel("claude-sonnet-5-5"))
+		require.True(t, gwSvc.isModelSupportedByAccountWithContext(context.Background(), anthropicSub, "claude-opus-5-5"))
+		require.False(t, anthropicSub.isModelRateLimitedWithContext(context.Background(), "claude-opus-5-5"))
+	}
+
+	coolingAG := &Account{
+		ID:       102,
+		Name:     "ag-cooling-high",
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
+		Extra: map[string]any{
+			modelRateLimitsKey: map[string]any{
+				"claude-opus-5-5-high": map[string]any{
+					"rate_limit_reset_at": time.Now().Add(5 * time.Minute).UTC().Format(time.RFC3339),
+				},
+			},
+		},
+	}
+	require.True(t, coolingAG.isModelRateLimitedWithContext(context.Background(), "claude-opus-5-5"),
+		"bare default-high request must detect claude-opus-5-5-high cooldown during scheduling")
+	require.True(t, coolingAG.isModelRateLimitedWithContext(WithRequestedReasoningEffort(context.Background(), "high"), "claude-opus-5-5"))
+	require.False(t, coolingAG.isModelRateLimitedWithContext(WithRequestedReasoningEffort(context.Background(), "low"), "claude-opus-5-5"),
+		"low effort request resolves to claude-opus-5-5-low and must not be blocked by -high cooldown")
+
+	// 分组策略将入站 high 改写为 low 后，调度冷却预检必须按改写后的实际有效档位（-low）判定，而非改写前的 high。
+	coolingLowAG := &Account{
+		ID:       103,
+		Name:     "ag-cooling-low",
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
+		Extra: map[string]any{
+			modelRateLimitsKey: map[string]any{
+				"claude-opus-5-5-low": map[string]any{
+					"rate_limit_reset_at": time.Now().Add(5 * time.Minute).UTC().Format(time.RFC3339),
+				},
+			},
+		},
+	}
+	rewrittenBody, changed, err := ApplyReasoningEffortPolicy(
+		[]byte(`{"model":"claude-opus-5-5","output_config":{"effort":"high"}}`),
+		"low", nil, "",
+	)
+	require.NoError(t, err)
+	require.True(t, changed)
+	policyCtx := WithRequestedReasoningEffort(context.Background(), "high")
+	policyCtx = WithAntigravityThinkingLevelFromClaudeBody(policyCtx, rewrittenBody)
+	require.True(t, coolingLowAG.isModelRateLimitedWithContext(policyCtx, "claude-opus-5-5"),
+		"post-policy low request must detect claude-opus-5-5-low cooldown during scheduling")
+	require.False(t, coolingAG.isModelRateLimitedWithContext(policyCtx, "claude-opus-5-5"),
+		"post-policy low request must not be blocked by claude-opus-5-5-high cooldown")
 }
 
 // 锁定线上 404 回归：Chat Completions / Messages 兼容层收到裸 Gemini 模型名时，

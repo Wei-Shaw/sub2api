@@ -586,7 +586,9 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 
 	// 单账号分组首次 503 就不设模型限流标记，避免设 29s 限流导致后续请求连续快速失败；
 	// 是否单账号分组在 antigravity 账号遇到 503 或模型限流预检查时才判定。
-	c.Request = c.Request.WithContext(h.gatewayService.WithSingleAntigravityAccountGroupProbe(c.Request.Context(), apiKey.GroupID))
+	geminiCtx := h.gatewayService.WithSingleAntigravityAccountGroupProbe(c.Request.Context(), apiKey.GroupID)
+	geminiCtx = service.WithAntigravityThinkingLevelFromGeminiBody(geminiCtx, body)
+	c.Request = c.Request.WithContext(geminiCtx)
 
 	for {
 		excludedAccountIDs := fs.FailedAccountIDs

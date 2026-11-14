@@ -1,12 +1,53 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/tidwall/gjson"
 )
+
+type antigravityThinkingLevelContextKey struct{}
+
+// WithAntigravityThinkingLevelFromClaudeBody 从策略改写后的最终 Claude 请求体提取
+// Antigravity 思考档位写入 ctx，确保混合分组调度冷却预检与实际转发命中同一变体。
+func WithAntigravityThinkingLevelFromClaudeBody(ctx context.Context, body []byte) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	var probe struct {
+		Thinking     *antigravity.ThinkingConfig     `json:"thinking"`
+		OutputConfig *antigravity.ClaudeOutputConfig `json:"output_config"`
+	}
+	if len(body) > 0 && json.Unmarshal(body, &probe) == nil {
+		level := geminiThinkingLevelFromClaudeRequest(&antigravity.ClaudeRequest{
+			Thinking:     probe.Thinking,
+			OutputConfig: probe.OutputConfig,
+		})
+		return context.WithValue(ctx, antigravityThinkingLevelContextKey{}, level)
+	}
+	return ctx
+}
+
+// WithAntigravityThinkingLevelFromGeminiBody 从 Gemini 原生请求体提取思考档位写入 ctx。
+func WithAntigravityThinkingLevelFromGeminiBody(ctx context.Context, body []byte) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return context.WithValue(ctx, antigravityThinkingLevelContextKey{}, geminiThinkingLevelFromBody(body))
+}
+
+// AntigravityThinkingLevelFromContext 读取请求体解析出的有效 Antigravity 思考档位。
+func AntigravityThinkingLevelFromContext(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
+	}
+	level, ok := ctx.Value(antigravityThinkingLevelContextKey{}).(string)
+	return level, ok && level != ""
+}
 
 // Gemini 原生请求（/v1beta/models/{model}:generateContent 等）经 Antigravity 账号转发时，
 // 客户端（如 Antigravity CLI / go-genai）习惯发"裸"模型名（gemini-3.8-flash）并用
@@ -46,6 +87,17 @@ type geminiThinkingInnerProbe struct {
 	ThinkingLevelSnake  string       `json:"thinking_level"`
 }
 
+// isAntigravityThinkingVariantFamily 判断模型是否属于 Antigravity 按思考深度拆分的模型族
+// （gemini-* 以及 claude-opus-5-5* / claude-sonnet-5-5*）。
+func isAntigravityThinkingVariantFamily(model string) bool {
+	lower := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(model)), "models/")
+	return strings.HasPrefix(lower, "gemini-") ||
+		lower == "claude-opus-5-5" ||
+		lower == "claude-sonnet-5-5" ||
+		strings.HasPrefix(lower, "claude-opus-5-5-") ||
+		strings.HasPrefix(lower, "claude-sonnet-5-5-")
+}
+
 // hasGeminiThinkingVariantSuffix 判断模型名是否已经带了思考深度后缀。
 func hasGeminiThinkingVariantSuffix(model string) bool {
 	lower := strings.ToLower(strings.TrimSpace(model))
@@ -66,8 +118,8 @@ func antigravityRateLimitModelKey(account *Account, originalModel, mappedModel s
 	return originalModel
 }
 
-// effectiveAntigravityGeminiReasoningEffort 提取转发到 Gemini 上游时实际生效的思考档位，
-// 仅在客户端显式指定了 effort 且目标为 Gemini 模型时返回（不给未传 effort 的请求虚构计费档位）。
+// effectiveAntigravityGeminiReasoningEffort 提取转发到 Antigravity 分档模型族时实际生效的思考档位，
+// 仅在客户端显式指定了 effort 且目标属于分档模型族时返回（不给未传 effort 的请求虚构计费档位）。
 func effectiveAntigravityGeminiReasoningEffort(mappedModel string, wrappedGeminiBody []byte, hadExplicitEffort bool) *string {
 	if !hadExplicitEffort {
 		return nil
@@ -77,7 +129,7 @@ func effectiveAntigravityGeminiReasoningEffort(mappedModel string, wrappedGemini
 		actualModel = mappedModel
 	}
 	lowerModel := strings.TrimPrefix(strings.ToLower(actualModel), "models/")
-	if !strings.HasPrefix(lowerModel, "gemini-") {
+	if !isAntigravityThinkingVariantFamily(lowerModel) {
 		return nil
 	}
 	requestRaw := gjson.GetBytes(wrappedGeminiBody, "request").Raw
@@ -177,7 +229,7 @@ func resolveGeminiThinkingVariantForLevel(account *Account, requestedModel strin
 		return "", false
 	}
 	model := strings.TrimPrefix(strings.TrimSpace(requestedModel), "models/")
-	if !strings.HasPrefix(model, "gemini-") || hasGeminiThinkingVariantSuffix(model) {
+	if !isAntigravityThinkingVariantFamily(model) || hasGeminiThinkingVariantSuffix(model) {
 		return "", false
 	}
 	mapping := account.GetModelMapping()
@@ -218,6 +270,15 @@ func resolveGeminiThinkingVariantForLevel(account *Account, requestedModel strin
 		}
 		if variantMatched && strings.TrimSpace(variantMapped) != "" {
 			return variantMapped, true
+		}
+	}
+	// 当账号显式添加了裸动态分档自映射（如前端点击 Opus 5.5 / Sonnet 5.5 / 4 Hydrogen 预设
+	// 产生 base -> base），但未单独逐条录入后缀变体时，回退到官方默认分档目录避免把裸名直接发往上游 404。
+	if modelMatched && strings.TrimSpace(mapped) == model {
+		for _, level := range order {
+			if defaultTarget, ok := domain.DefaultAntigravityModelMapping[model+"-"+level]; ok && strings.TrimSpace(defaultTarget) != "" {
+				return defaultTarget, true
+			}
 		}
 	}
 	return "", false

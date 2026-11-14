@@ -74,6 +74,13 @@ func (s *AntigravityGatewayService) ForwardAsChatCompletions(
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 	}
 
+	extractedEffort := extractCCReasoningEffortFromBody(body, request.Model)
+	if extractedEffort != nil {
+		request.ReasoningEffort = *extractedEffort
+	} else if nestedRaw := strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String()); nestedRaw != "" && strings.TrimSpace(request.ReasoningEffort) == "" {
+		request.ReasoningEffort = nestedRaw
+	}
+
 	responsesRequest, err := chatCompletionsToResponses(settingServiceConfig(s.settingService), &request)
 	if err != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
@@ -97,7 +104,7 @@ func (s *AntigravityGatewayService) ForwardAsChatCompletions(
 		clientStream:    request.Stream,
 		includeUsage:    request.StreamOptions != nil && request.StreamOptions.IncludeUsage,
 		startTime:       time.Now(),
-		reasoningEffort: extractCCReasoningEffortFromBody(body),
+		reasoningEffort: extractedEffort,
 	})
 }
 
@@ -257,10 +264,14 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request body")
 	}
 
+	reqForVariant := claudeRequest
+	if request.reasoningEffort == nil {
+		reqForVariant.OutputConfig = nil
+	}
 	mappedModel := s.getMappedModelForThinkingLevel(
 		account,
 		request.originalModel,
-		geminiThinkingLevelFromClaudeRequest(&claudeRequest),
+		geminiThinkingLevelFromClaudeRequest(&reqForVariant),
 	)
 	if mappedModel == "" {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)

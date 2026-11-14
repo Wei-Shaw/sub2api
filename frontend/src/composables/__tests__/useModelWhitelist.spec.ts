@@ -248,7 +248,11 @@ describe('useModelWhitelist', () => {
       expect.objectContaining({ from: 'gemini-4-hydrogen-xhigh', to: 'gemini-4-hydrogen-xhigh' }),
       expect.objectContaining({ from: 'gemini-4-hydrogen-high', to: 'gemini-4-hydrogen-high' }),
       expect.objectContaining({ from: 'gemini-4-hydrogen-medium', to: 'gemini-4-hydrogen-medium' }),
-      expect.objectContaining({ from: 'gemini-4-hydrogen-low', to: 'gemini-4-hydrogen-low' })
+      expect.objectContaining({ from: 'gemini-4-hydrogen-low', to: 'gemini-4-hydrogen-low' }),
+      expect.objectContaining({ from: 'claude-opus-5-5', to: 'claude-opus-5-5' }),
+      expect.objectContaining({ from: 'claude-opus-5-5-low', to: 'claude-opus-5-5-low' }),
+      expect.objectContaining({ from: 'claude-sonnet-5-5', to: 'claude-sonnet-5-5' }),
+      expect.objectContaining({ from: 'claude-sonnet-5-5-low', to: 'claude-sonnet-5-5-low' })
     ]))
   })
 

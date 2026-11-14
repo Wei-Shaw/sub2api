@@ -208,22 +208,20 @@ func (s *GatewayService) ForwardAsChatCompletions(
 // request body. It checks both nested (reasoning.effort) and flat (reasoning_effort)
 // formats used by OpenAI-compatible clients.
 func extractCCReasoningEffortFromBody(body []byte, modelCandidates ...string) *string {
-	raw := strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String())
-	if raw == "" {
-		raw = strings.TrimSpace(gjson.GetBytes(body, "reasoning_effort").String())
-	}
-	if raw == "" {
-		return nil
-	}
 	model := firstNonEmpty(modelCandidates...)
 	if model == "" {
 		model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	}
-	normalized := normalizeOpenAIReasoningEffortForModel(raw, model)
-	if normalized == "" {
-		return nil
+	for _, path := range []string{"reasoning.effort", "reasoning_effort"} {
+		raw := strings.TrimSpace(gjson.GetBytes(body, path).String())
+		if raw == "" {
+			continue
+		}
+		if normalized := normalizeOpenAIReasoningEffortForModel(raw, model); normalized != "" {
+			return &normalized
+		}
 	}
-	return &normalized
+	return nil
 }
 
 // handleCCBufferedFromAnthropic reads Anthropic SSE events, assembles the full

@@ -473,9 +473,17 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 	}
 
 	var requestedEffort, effectiveEffort *string
-	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(mappedModel)), "gemini-") && claudeReq.OutputConfig != nil {
-		requestedEffort = NormalizeClaudeOutputEffort(claudeReq.OutputConfig.Effort)
-		effectiveEffort = effectiveAntigravityGeminiReasoningEffort(mappedModel, geminiBody, requestedEffort != nil)
+	if isAntigravityThinkingVariantFamily(mappedModel) {
+		var bodyEffort *string
+		if claudeReq.OutputConfig != nil {
+			bodyEffort = NormalizeClaudeOutputEffort(claudeReq.OutputConfig.Effort)
+		}
+		if inbound := RequestedReasoningEffortFromContext(ctx); inbound != nil {
+			requestedEffort = inbound
+		} else {
+			requestedEffort = bodyEffort
+		}
+		effectiveEffort = effectiveAntigravityGeminiReasoningEffort(mappedModel, geminiBody, bodyEffort != nil || requestedEffort != nil)
 	}
 
 	return &ForwardResult{

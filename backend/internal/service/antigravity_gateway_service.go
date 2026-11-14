@@ -317,7 +317,13 @@ func (s *AntigravityGatewayService) getMappedModelForThinkingLevel(account *Acco
 	if mapped, ok := resolveGeminiThinkingVariantForLevel(account, requestedModel, thinkingLevel); ok {
 		return mapped
 	}
-	return mapAntigravityModel(account, requestedModel)
+	mapped := mapAntigravityModel(account, requestedModel)
+	if mapped != "" && mapped != requestedModel {
+		if resolved, ok := resolveGeminiThinkingVariantForLevel(account, mapped, thinkingLevel); ok {
+			return resolved
+		}
+	}
+	return mapped
 }
 
 func resolveAntigravityProjectID(account *Account) (string, error) {
@@ -433,7 +439,7 @@ func (s *AntigravityGatewayService) TestConnectionWithPrompt(ctx context.Context
 		httpUpstream:   s.httpUpstream,
 		settingService: s.settingService,
 		accountRepo:    s.accountRepo,
-		requestedModel: modelID,
+		requestedModel: antigravityRateLimitModelKey(account, modelID, mappedModel),
 		handleError:    testConnectionHandleError,
 	}
 
