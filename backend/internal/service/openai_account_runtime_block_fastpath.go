@@ -96,6 +96,11 @@ func (s *OpenAIGatewayService) handleOpenAIAccountUpstreamError(ctx context.Cont
 	if account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(statusCode, responseBody) {
 		return false
 	}
+	// Codex gpt-6 的 invalid_prompt 误报是账号/模型维度的问题，不是账号健康故障；
+	// 换号由请求级 failover 处理，这里禁止冷却或停用账号。
+	if isOpenAICodexInvalidPromptFalsePositive(account, statusCode, responseBody) {
+		return false
+	}
 	// Any non-2xx upstream HTTP response means the model request was actually sent.
 	if s != nil {
 		scheduleOllamaCloudUsageActivity(s.deferredService, account)
