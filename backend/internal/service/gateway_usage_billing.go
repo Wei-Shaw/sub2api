@@ -819,7 +819,8 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		input.BillingModelSource,
 		result.UpstreamResponseModel,
 		result.UpstreamResponseModelConflict,
-		result.ImageCount > 0 || result.AudioUsage != nil || result.SearchCount > 0 || result.CacheStorageTokenHours > 0,
+		result.ImageCount > 0 || result.AudioUsage != nil || result.SearchCount > 0 ||
+			result.Usage.ServerToolUseCalls > 0 || result.CacheStorageTokenHours > 0,
 	); responseModel != "" && !strings.EqualFold(responseModel, strings.TrimSpace(billingModel)) {
 		if identified, responseChannelPriced := s.hasIdentifiedResponseModelPricing(ctx, responseModel, apiKey); identified {
 			responseCost := s.calculateRecordUsageCost(ctx, result, apiKey, responseModel, multiplier, imageMultiplier, pricingAt)
@@ -1076,12 +1077,15 @@ func (s *GatewayService) calculateRecordUsageCost(
 			applyUpstreamPriceFactor(tokenCost, result)
 		}
 	}
-	if result.SearchCount > 0 {
+	if result.SearchCount > 0 || result.Usage.ServerToolUseCalls > 0 {
+		// DeepSeek server_tool_use（tool_search/tool_fetch/tool_image_search，各
+		// ¥5/千次）与 Grok 原生 web_search 共用同一按次计费通道，次数直接合计。
+		searchCalls := result.SearchCount + result.Usage.ServerToolUseCalls
 		price := groupSearchPricePer1kFromAPIKey(apiKey)
 		if price != nil && *price == 0 {
-			logger.LegacyPrintf("service.gateway", "[Billing] search_price_per_1k explicit 0; search free group_model=%s count=%d", billingModel, result.SearchCount)
+			logger.LegacyPrintf("service.gateway", "[Billing] search_price_per_1k explicit 0; search free group_model=%s count=%d", billingModel, searchCalls)
 		}
-		searchCost := s.billingService.CalculateSearchCost(result.SearchCount, price, multiplier)
+		searchCost := s.billingService.CalculateSearchCost(searchCalls, price, multiplier)
 		if searchCost != nil && (searchCost.TotalCost > 0 || searchCost.ActualCost > 0) {
 			if tokenCost == nil {
 				return searchCost
