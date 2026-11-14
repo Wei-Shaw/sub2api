@@ -311,7 +311,7 @@ func (p *openAIResponsesToolSchemaParser) parseObject(
 	parameterValueEnd := -1
 	droppedPatternPropertyKeys := 0
 	lostPatternProperty := false
-	var additionalPropertiesFalse []openAIResponsesToolSchemaEdit
+	var additionalPropertiesEdits []openAIResponsesToolSchemaEdit
 	for {
 		p.skipWhitespace()
 		memberStart := p.pos
@@ -355,10 +355,10 @@ func (p *openAIResponsesToolSchemaParser) parseObject(
 				}
 			}
 			if context == openAIResponsesToolSchema && openAIResponsesJSONStringEquals(key, "additionalProperties") &&
-				bytes.Equal(p.body[valueStart:valueEnd], []byte("false")) {
+				!bytes.Equal(p.body[valueStart:valueEnd], []byte("true")) {
 				// Defer the edit: patternProperties may appear after this
 				// member, and only actual key removal requires reopening.
-				additionalPropertiesFalse = append(additionalPropertiesFalse, openAIResponsesToolSchemaEdit{
+				additionalPropertiesEdits = append(additionalPropertiesEdits, openAIResponsesToolSchemaEdit{
 					start:       valueStart,
 					end:         valueEnd,
 					replacement: "true",
@@ -460,7 +460,7 @@ func (p *openAIResponsesToolSchemaParser) parseObject(
 			// additionalProperties: false would reject argument keys the client
 			// declared as valid, so reopen the object. This only widens what the
 			// upstream accepts; it does not invent constraints.
-			for _, edit := range additionalPropertiesFalse {
+			for _, edit := range additionalPropertiesEdits {
 				if err := p.addEdit(edit.start, edit.end, edit.replacement); err != nil {
 					return err
 				}

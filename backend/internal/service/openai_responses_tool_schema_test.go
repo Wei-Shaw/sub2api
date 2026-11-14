@@ -516,6 +516,12 @@ func TestSanitizeOpenAIResponsesToolSchemaPatterns_ReopensClosedObjectAfterDropp
 			schemaPath: "tools.0.parameters",
 			instance:   `{"labels":{"abc":"value"}}`,
 		},
+		{
+			name:       "additionalProperties schema",
+			body:       `{"tools":[{"type":"function","name":"t","parameters":{"type":"object","patternProperties":{"^\\p{L}+$":{"type":"string"}},"additionalProperties":{"type":"integer"}}}]}`,
+			schemaPath: "tools.0.parameters",
+			instance:   `{"abc":"value","123":5}`,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -532,6 +538,17 @@ func TestSanitizeOpenAIResponsesToolSchemaPatterns_ReopensClosedObjectAfterDropp
 
 // 未删除 patternProperties 键时不得放宽封闭对象；只删除其值内部的 pattern
 // 也不能改写 additionalProperties:false。
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_KeepsAdditionalPropertiesSchemaWhenNoPatternKeyDropped(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","name":"t","parameters":{"type":"object","patternProperties":{"^[a-z]+$":{"type":"string"}},"additionalProperties":{"type":"integer"}}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, "integer", gjson.GetBytes(sanitized, "tools.0.parameters.additionalProperties.type").String())
+	require.True(t, json.Valid(sanitized))
+}
+
 func TestSanitizeOpenAIResponsesToolSchemaPatterns_KeepsClosedObjectWhenNoPatternKeyDropped(t *testing.T) {
 	tests := []struct {
 		name    string
