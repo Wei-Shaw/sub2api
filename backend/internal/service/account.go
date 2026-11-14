@@ -2410,10 +2410,8 @@ const (
 // 三态：default（跟随渠道）/ enabled（强制开启）/ disabled（强制关闭）。
 // 兼容旧 bool 值：true→enabled, false→default（并记录 debug 日志）。
 func (a *Account) GetWebSearchEmulationMode() string {
-	// OpenAI API Key accounts reach this via /v1/messages; their upstreams
-	// (DeepSeek etc. over Chat Completions) have no web_search tool.
 	if a == nil || a.Type != AccountTypeAPIKey || a.Extra == nil ||
-		(a.Platform != PlatformAnthropic && a.Platform != PlatformOpenAI) {
+		!webSearchEmulationPlatformEnabled(a.Platform) {
 		return WebSearchModeDefault
 	}
 	raw := a.Extra[featureKeyWebSearchEmulation]
@@ -2435,6 +2433,17 @@ func (a *Account) GetWebSearchEmulationMode() string {
 	default:
 		return WebSearchModeDefault
 	}
+}
+
+// webSearchEmulationPlatformEnabled reports whether API key accounts of the
+// platform can set the account-level web search emulation mode. Keep it in sync
+// with WEB_SEARCH_EMULATION_PLATFORMS in frontend/src/views/admin/ChannelsView.vue.
+func webSearchEmulationPlatformEnabled(platform string) bool {
+	switch platform {
+	case PlatformAnthropic, PlatformOpenAI, PlatformZhipu, PlatformCommandCode, PlatformOpenCodeGo, PlatformMiniMax:
+		return true
+	}
+	return false
 }
 
 // IsCodexCLIOnlyEnabled 返回 OpenAI OAuth 账号是否启用"仅允许 Codex 官方客户端"。
