@@ -1202,3 +1202,54 @@ func TestPassthroughBilling_BlockedFrameDoesNotMutateServiceTier(t *testing.T) {
 	require.Equal(t, "flex", *tier,
 		"blocked frame is never sent upstream; billing must retain the previous turn's tier")
 }
+
+func TestWSResponseCreate_GroupForceUltrafast(t *testing.T) {
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	ctx := context.WithValue(context.Background(), ctxkey.Group, &Group{
+		ID: 7, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForceOpenAIUltrafast: true,
+	})
+
+	t.Run("injects and overrides tier on response.create", func(t *testing.T) {
+		svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
+		for _, frame := range [][]byte{
+			[]byte(`{"type":"response.create","model":"gpt-5.6-sol","input":[]}`),
+			[]byte(`{"type":"response.create","model":"gpt-5.6-sol","service_tier":"priority"}`),
+			[]byte(`{"type":"response.create","model":"gpt-5.6-sol","service_tier":"flex"}`),
+		} {
+			updated, blocked, err := svc.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, "gpt-5.6-sol", frame)
+			require.NoError(t, err)
+			require.Nil(t, blocked)
+			require.Equal(t, OpenAIFastTierUltrafast, gjson.GetBytes(updated, "service_tier").String(), "frame %s", frame)
+		}
+	})
+
+	t.Run("does not touch other frames", func(t *testing.T) {
+		svc := newOpenAIGatewayServiceWithSettings(t, DefaultOpenAIFastPolicySettings())
+		frame := []byte(`{"type":"response.cancel","model":"gpt-5.6-sol"}`)
+		updated, blocked, err := svc.applyOpenAIFastPolicyToWSResponseCreate(ctx, account, "gpt-5.6-sol", frame)
+		require.NoError(t, err)
+		require.Nil(t, blocked)
+		require.Equal(t, string(frame), string(updated))
+	})
+
+	t.Run("global ultrafast filter remains authoritative", func(t *testing.T) {
+		svc := newOpenAIGatewayServiceWithSettings(t, &OpenAIFastPolicySettings{Rules: []OpenAIFastPolicyRule{{
+			ServiceTier: OpenAIFastTierUltrafast, Action: BetaPolicyActionFilter, Scope: BetaPolicyScopeAll,
+		}}})
+		updated, blocked, err := svc.applyOpenAIFastPolicyToWSResponseCreate(
+			ctx, account, "gpt-5.6-sol", []byte(`{"type":"response.create","model":"gpt-5.6-sol"}`))
+		require.NoError(t, err)
+		require.Nil(t, blocked)
+		require.False(t, gjson.GetBytes(updated, "service_tier").Exists())
+	})
+
+	t.Run("global ultrafast block rejects the frame", func(t *testing.T) {
+		svc := newOpenAIGatewayServiceWithSettings(t, &OpenAIFastPolicySettings{Rules: []OpenAIFastPolicyRule{{
+			ServiceTier: OpenAIFastTierUltrafast, Action: BetaPolicyActionBlock, Scope: BetaPolicyScopeAll,
+		}}})
+		_, blocked, err := svc.applyOpenAIFastPolicyToWSResponseCreate(
+			ctx, account, "gpt-5.6-sol", []byte(`{"type":"response.create","model":"gpt-5.6-sol"}`))
+		require.NoError(t, err)
+		require.NotNil(t, blocked)
+	})
+}
