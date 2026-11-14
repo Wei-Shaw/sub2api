@@ -163,7 +163,14 @@ onMounted(async () => {
 
 <template>
   <NavigationProgress />
-  <RouterView />
+  <RouterView v-slot="{ Component, route: viewRoute }">
+    <Transition name="page" mode="out-in">
+      <!-- 多根节点页面无法触发退出动画完成回调，统一用真实元素承载路由动画。 -->
+      <div v-if="Component" :key="viewRoute.name ?? viewRoute.path">
+        <component :is="Component" />
+      </div>
+    </Transition>
+  </RouterView>
   <Toast />
   <AnnouncementPopup />
   <AdminComplianceDialog />

@@ -2350,3 +2350,57 @@ func TestAdminService_CreateGroup_CodexModelsManifestConfigDisabledAccepted(t *t
 	require.Equal(t, []int64{1, 2}, group.CodexModelsManifestConfig.AccountIDs)
 	require.False(t, repo.created.CodexModelsManifestConfig.Enabled)
 }
+
+func TestAdminService_CreateGroup_PricingUnit(t *testing.T) {
+	for _, unit := range []string{"usd", "points"} {
+		repo := &groupRepoStubForAdmin{}
+		svc := &adminServiceImpl{groupRepo: repo}
+		g, err := svc.CreateGroup(context.Background(), &CreateGroupInput{Name: "test", Platform: PlatformOpenAI, RateMultiplier: 1, PricingUnit: unit})
+		require.NoError(t, err)
+		require.Equal(t, unit, g.PricingUnit)
+		require.Equal(t, SubscriptionTypeStandard, g.SubscriptionType)
+	}
+}
+
+func TestAdminService_UpdateGroup_PricingUnit(t *testing.T) {
+	repo := &groupRepoStubForAdmin{getByID: &Group{ID: 1, Name: "test", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, PricingUnit: "points", RateMultiplier: 1}}
+	svc := &adminServiceImpl{groupRepo: repo}
+	g, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{})
+	require.NoError(t, err)
+	require.Equal(t, "points", g.PricingUnit)
+	g, err = svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{PricingUnit: "usd"})
+	require.NoError(t, err)
+	require.Equal(t, "usd", g.PricingUnit)
+	require.Equal(t, SubscriptionTypeSubscription, g.SubscriptionType)
+}
+
+func TestAdminService_GroupSubscriptionUsageDisplay(t *testing.T) {
+	for _, mode := range []string{"", "amount", "percentage", "invalid"} {
+		t.Run("create_"+mode, func(t *testing.T) {
+			repo := &groupRepoStubForAdmin{}
+			svc := &adminServiceImpl{groupRepo: repo}
+			g, err := svc.CreateGroup(context.Background(), &CreateGroupInput{Name: "test", Platform: PlatformOpenAI, RateMultiplier: 1, SubscriptionType: SubscriptionTypeSubscription, SubscriptionUsageDisplay: mode})
+			if mode == "invalid" {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			expected := mode
+			if expected == "" {
+				expected = "amount"
+			}
+			require.Equal(t, expected, g.SubscriptionUsageDisplay)
+			require.Equal(t, expected, repo.created.SubscriptionUsageDisplay)
+		})
+	}
+	repo := &groupRepoStubForAdmin{getByID: &Group{ID: 1, Name: "test", Platform: PlatformOpenAI, Status: StatusActive, SubscriptionType: SubscriptionTypeSubscription, SubscriptionUsageDisplay: "percentage", RateMultiplier: 1}}
+	svc := &adminServiceImpl{groupRepo: repo}
+	g, err := svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{})
+	require.NoError(t, err)
+	require.Equal(t, "percentage", g.SubscriptionUsageDisplay)
+	g, err = svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{SubscriptionUsageDisplay: "amount"})
+	require.NoError(t, err)
+	require.Equal(t, "amount", g.SubscriptionUsageDisplay)
+	_, err = svc.UpdateGroup(context.Background(), 1, &UpdateGroupInput{SubscriptionUsageDisplay: "invalid"})
+	require.Error(t, err)
+}

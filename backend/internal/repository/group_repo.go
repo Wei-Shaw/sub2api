@@ -80,6 +80,9 @@ func (r *groupRepository) Create(ctx context.Context, groupIn *service.Group) er
 	if err := createGroupRecord(ctx, r.client, groupIn); err != nil {
 		return err
 	}
+	if err := upsertDefaultSkillIDs(ctx, r.sql, groupIn.ID, groupIn.DefaultSkillIDs); err != nil {
+		return err
+	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
 		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group create failed: group=%d err=%v", groupIn.ID, err)
 	}
@@ -103,6 +106,8 @@ func createGroupRecord(ctx context.Context, client *dbent.Client, groupIn *servi
 		SetIsExclusive(groupIn.IsExclusive).
 		SetStatus(groupIn.Status).
 		SetSubscriptionType(groupIn.SubscriptionType).
+		SetPricingUnit(effectiveGroupPricingUnit(groupIn)).
+		SetSubscriptionUsageDisplay(effectiveGroupSubscriptionUsageDisplay(groupIn)).
 		SetNillableDailyLimitUsd(groupIn.DailyLimitUSD).
 		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
@@ -197,7 +202,7 @@ func (r *groupRepository) FindByDuplicateOperationID(ctx context.Context, operat
 	if err != nil {
 		return nil, fmt.Errorf("find group duplicate operation: %w", err)
 	}
-	return groupEntityToService(row), nil
+	return r.groupEntityToService(ctx, row), nil
 }
 
 // CreateFromSource atomically persists a copied group, clones the source
@@ -221,6 +226,9 @@ func (r *groupRepository) CreateFromSource(ctx context.Context, groupIn *service
 	}
 
 	if err := createGroupRecord(ctx, txClient, groupIn); err != nil {
+		return err
+	}
+	if err := upsertDefaultSkillIDs(ctx, txClient, groupIn.ID, groupIn.DefaultSkillIDs); err != nil {
 		return err
 	}
 	result, err := txClient.ExecContext(
@@ -279,7 +287,7 @@ func (r *groupRepository) GetByIDLite(ctx context.Context, id int64) (*service.G
 	if err != nil {
 		return nil, translatePersistenceError(err, service.ErrGroupNotFound, nil)
 	}
-	return groupEntityToService(m), nil
+	return r.groupEntityToService(ctx, m), nil
 }
 
 func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) error {
@@ -295,6 +303,8 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		SetIsExclusive(groupIn.IsExclusive).
 		SetStatus(groupIn.Status).
 		SetSubscriptionType(groupIn.SubscriptionType).
+		SetPricingUnit(effectiveGroupPricingUnit(groupIn)).
+		SetSubscriptionUsageDisplay(effectiveGroupSubscriptionUsageDisplay(groupIn)).
 		SetNillableDailyLimitUsd(groupIn.DailyLimitUSD).
 		SetNillableWeeklyLimitUsd(groupIn.WeeklyLimitUSD).
 		SetNillableMonthlyLimitUsd(groupIn.MonthlyLimitUSD).
@@ -448,6 +458,9 @@ func (r *groupRepository) Update(ctx context.Context, groupIn *service.Group) er
 		return translatePersistenceError(err, service.ErrGroupNotFound, service.ErrGroupExists)
 	}
 	groupIn.UpdatedAt = updated.UpdatedAt
+	if err := upsertDefaultSkillIDs(ctx, r.sql, groupIn.ID, groupIn.DefaultSkillIDs); err != nil {
+		return err
+	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventGroupChanged, nil, &groupIn.ID, nil); err != nil {
 		logger.LegacyPrintf("repository.group", "[SchedulerOutbox] enqueue group update failed: group=%d err=%v", groupIn.ID, err)
 	}
@@ -521,7 +534,7 @@ func (r *groupRepository) listWithFiltersQuery(ctx context.Context, q *dbent.Gro
 	groupIDs := make([]int64, 0, len(groups))
 	outGroups := make([]service.Group, 0, len(groups))
 	for i := range groups {
-		g := groupEntityToService(groups[i])
+		g := r.groupEntityToService(ctx, groups[i])
 		outGroups = append(outGroups, *g)
 		groupIDs = append(groupIDs, g.ID)
 	}
@@ -613,7 +626,7 @@ func (r *groupRepository) listWithAccountCountSort(ctx context.Context, q *dbent
 
 	outGroups := make([]service.Group, len(page))
 	for i := range groups {
-		g := groupEntityToService(groups[i])
+		g := r.groupEntityToService(ctx, groups[i])
 		c := counts[g.ID]
 		g.AccountCount = c.Total
 		g.ActiveAccountCount = c.Active
@@ -692,7 +705,7 @@ func (r *groupRepository) ListActive(ctx context.Context) ([]service.Group, erro
 	groupIDs := make([]int64, 0, len(groups))
 	outGroups := make([]service.Group, 0, len(groups))
 	for i := range groups {
-		g := groupEntityToService(groups[i])
+		g := r.groupEntityToService(ctx, groups[i])
 		outGroups = append(outGroups, *g)
 		groupIDs = append(groupIDs, g.ID)
 	}
@@ -765,7 +778,7 @@ func (r *groupRepository) ListActiveByPlatform(ctx context.Context, platform str
 	groupIDs := make([]int64, 0, len(groups))
 	outGroups := make([]service.Group, 0, len(groups))
 	for i := range groups {
-		g := groupEntityToService(groups[i])
+		g := r.groupEntityToService(ctx, groups[i])
 		outGroups = append(outGroups, *g)
 		groupIDs = append(groupIDs, g.ID)
 	}
@@ -785,6 +798,62 @@ func (r *groupRepository) ListActiveByPlatform(ctx context.Context, platform str
 
 func (r *groupRepository) ExistsByName(ctx context.Context, name string) (bool, error) {
 	return r.client.Group.Query().Where(group.NameEQ(name)).Exist(ctx)
+}
+
+func (r *groupRepository) groupEntityToService(ctx context.Context, entity *dbent.Group) *service.Group {
+	g := groupEntityToService(entity)
+	if g != nil {
+		if err := r.hydrateDefaultSkillIDs(ctx, g); err != nil {
+			logger.LegacyPrintf("repository.group", "load default skills failed: group=%d err=%v", g.ID, err)
+			g.DefaultSkillIDs = []string{}
+		}
+	}
+	return g
+}
+
+func upsertDefaultSkillIDs(ctx context.Context, exec sqlExecutor, groupID int64, skillIDs []string) error {
+	if exec == nil || groupID <= 0 {
+		return nil
+	}
+	if skillIDs == nil {
+		skillIDs = []string{}
+	}
+	payload, err := json.Marshal(skillIDs)
+	if err != nil {
+		return fmt.Errorf("marshal group default skills: %w", err)
+	}
+	_, err = exec.ExecContext(ctx, `
+		INSERT INTO group_default_skills (group_id, skill_ids, updated_at)
+		VALUES ($1, $2::jsonb, NOW())
+		ON CONFLICT (group_id) DO UPDATE SET skill_ids = EXCLUDED.skill_ids, updated_at = NOW()
+	`, groupID, string(payload))
+	return err
+}
+
+func (r *groupRepository) hydrateDefaultSkillIDs(ctx context.Context, g *service.Group) error {
+	if r.sql == nil || g == nil || g.ID <= 0 {
+		return nil
+	}
+	rows, err := r.sql.QueryContext(ctx, `SELECT skill_ids FROM group_default_skills WHERE group_id = $1`, g.ID)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		g.DefaultSkillIDs = []string{}
+		return rows.Err()
+	}
+	var raw []byte
+	if err := rows.Scan(&raw); err != nil {
+		return err
+	}
+	if err := json.Unmarshal(raw, &g.DefaultSkillIDs); err != nil {
+		return fmt.Errorf("decode group default skills: %w", err)
+	}
+	if g.DefaultSkillIDs == nil {
+		g.DefaultSkillIDs = []string{}
+	}
+	return nil
 }
 
 // ExistsByIDs 批量检查分组是否存在（仅检查未软删除记录）。
@@ -1226,4 +1295,26 @@ func (r *groupRepository) UpdateSortOrders(ctx context.Context, updates []servic
 		}
 	}
 	return nil
+}
+
+func effectiveGroupPricingUnit(g *service.Group) string {
+	if g.PricingUnit != "" {
+		return g.PricingUnit
+	}
+	if g.SubscriptionType == service.SubscriptionTypeSubscription {
+		return "points"
+	}
+	return "usd"
+}
+
+// Includes inactive groups; deleted groups no longer refer to live units.
+func (r *groupRepository) CountGroupsUsingPricingUnits(ctx context.Context, ids []string) (int, error) {
+	return r.client.Group.Query().Where(group.PricingUnitIn(ids...)).Count(ctx)
+}
+
+func effectiveGroupSubscriptionUsageDisplay(g *service.Group) string {
+	if g.SubscriptionUsageDisplay == "percentage" {
+		return "percentage"
+	}
+	return "amount"
 }

@@ -203,7 +203,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyAvailableChannelsEnabled: "false",
 
 		// Subscription feature (default enabled; opt-out)
-		SettingKeySubscriptionEnabled: "true",
+		SettingKeySubscriptionEnabled:  "true",
+		SettingKeySubscriptionUnitName: "积分",
+		SettingKeySubscriptionUnits:    `[{"id":"points","name":"积分","units_per_usd":1}]`,
 
 		// Model plaza feature (default disabled; opt-in, public unless require_auth)
 		SettingKeyModelPlazaEnabled:       "false",
@@ -828,6 +830,8 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	result.AvailableChannelsEnabled = settings[SettingKeyAvailableChannelsEnabled] == "true"
 
 	// Subscription feature (default: enabled; only an explicit false disables)
+	result.SubscriptionUnitName = normalizeSubscriptionUnitName(settings[SettingKeySubscriptionUnitName])
+	result.SubscriptionUnits = parseSubscriptionUnits(settings[SettingKeySubscriptionUnits], result.SubscriptionUnitName)
 	result.SubscriptionEnabled = !isFalseSettingValue(settings[SettingKeySubscriptionEnabled])
 
 	// Model plaza feature (default: disabled; strict true)
@@ -1353,4 +1357,16 @@ func normalizeTablePreferences(defaultPageSize int, options []int) (int, []int) 
 	}
 
 	return defaultPageSize, normalizedOptions
+}
+
+func normalizeSubscriptionUnitName(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "积分"
+	}
+	chars := []rune(value)
+	if len(chars) > 20 {
+		return string(chars[:20])
+	}
+	return value
 }

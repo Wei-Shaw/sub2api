@@ -22097,6 +22097,8 @@ type GroupMutation struct {
 	is_exclusive                            *bool
 	status                                  *string
 	duplicate_operation_id                  *string
+	pricing_unit                            *string
+	subscription_usage_display              *string
 	platform                                *string
 	subscription_type                       *string
 	daily_limit_usd                         *float64
@@ -22882,6 +22884,78 @@ func (m *GroupMutation) DuplicateOperationIDCleared() bool {
 func (m *GroupMutation) ResetDuplicateOperationID() {
 	m.duplicate_operation_id = nil
 	delete(m.clearedFields, group.FieldDuplicateOperationID)
+}
+
+// SetPricingUnit sets the "pricing_unit" field.
+func (m *GroupMutation) SetPricingUnit(s string) {
+	m.pricing_unit = &s
+}
+
+// PricingUnit returns the value of the "pricing_unit" field in the mutation.
+func (m *GroupMutation) PricingUnit() (r string, exists bool) {
+	v := m.pricing_unit
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPricingUnit returns the old "pricing_unit" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldPricingUnit(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPricingUnit is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPricingUnit requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPricingUnit: %w", err)
+	}
+	return oldValue.PricingUnit, nil
+}
+
+// ResetPricingUnit resets all changes to the "pricing_unit" field.
+func (m *GroupMutation) ResetPricingUnit() {
+	m.pricing_unit = nil
+}
+
+// SetSubscriptionUsageDisplay sets the "subscription_usage_display" field.
+func (m *GroupMutation) SetSubscriptionUsageDisplay(s string) {
+	m.subscription_usage_display = &s
+}
+
+// SubscriptionUsageDisplay returns the value of the "subscription_usage_display" field in the mutation.
+func (m *GroupMutation) SubscriptionUsageDisplay() (r string, exists bool) {
+	v := m.subscription_usage_display
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldSubscriptionUsageDisplay returns the old "subscription_usage_display" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldSubscriptionUsageDisplay(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldSubscriptionUsageDisplay is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldSubscriptionUsageDisplay requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldSubscriptionUsageDisplay: %w", err)
+	}
+	return oldValue.SubscriptionUsageDisplay, nil
+}
+
+// ResetSubscriptionUsageDisplay resets all changes to the "subscription_usage_display" field.
+func (m *GroupMutation) ResetSubscriptionUsageDisplay() {
+	m.subscription_usage_display = nil
 }
 
 // SetPlatform sets the "platform" field.
@@ -25995,7 +26069,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 68)
+	fields := make([]string, 0, 70)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26037,6 +26111,12 @@ func (m *GroupMutation) Fields() []string {
 	}
 	if m.duplicate_operation_id != nil {
 		fields = append(fields, group.FieldDuplicateOperationID)
+	}
+	if m.pricing_unit != nil {
+		fields = append(fields, group.FieldPricingUnit)
+	}
+	if m.subscription_usage_display != nil {
+		fields = append(fields, group.FieldSubscriptionUsageDisplay)
 	}
 	if m.platform != nil {
 		fields = append(fields, group.FieldPlatform)
@@ -26236,6 +26316,10 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.Status()
 	case group.FieldDuplicateOperationID:
 		return m.DuplicateOperationID()
+	case group.FieldPricingUnit:
+		return m.PricingUnit()
+	case group.FieldSubscriptionUsageDisplay:
+		return m.SubscriptionUsageDisplay()
 	case group.FieldPlatform:
 		return m.Platform()
 	case group.FieldSubscriptionType:
@@ -26381,6 +26465,10 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldStatus(ctx)
 	case group.FieldDuplicateOperationID:
 		return m.OldDuplicateOperationID(ctx)
+	case group.FieldPricingUnit:
+		return m.OldPricingUnit(ctx)
+	case group.FieldSubscriptionUsageDisplay:
+		return m.OldSubscriptionUsageDisplay(ctx)
 	case group.FieldPlatform:
 		return m.OldPlatform(ctx)
 	case group.FieldSubscriptionType:
@@ -26595,6 +26683,20 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetDuplicateOperationID(v)
+		return nil
+	case group.FieldPricingUnit:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPricingUnit(v)
+		return nil
+	case group.FieldSubscriptionUsageDisplay:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetSubscriptionUsageDisplay(v)
 		return nil
 	case group.FieldPlatform:
 		v, ok := value.(string)
@@ -27526,6 +27628,12 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldDuplicateOperationID:
 		m.ResetDuplicateOperationID()
+		return nil
+	case group.FieldPricingUnit:
+		m.ResetPricingUnit()
+		return nil
+	case group.FieldSubscriptionUsageDisplay:
+		m.ResetSubscriptionUsageDisplay()
 		return nil
 	case group.FieldPlatform:
 		m.ResetPlatform()
@@ -44778,6 +44886,7 @@ type UsageLogMutation struct {
 	addfirst_token_ms            *int
 	user_agent                   *string
 	ip_address                   *string
+	proxy_snapshot               *map[string]interface{}
 	image_count                  *int
 	addimage_count               *int
 	image_size                   *string
@@ -46873,6 +46982,55 @@ func (m *UsageLogMutation) ResetIPAddress() {
 	delete(m.clearedFields, usagelog.FieldIPAddress)
 }
 
+// SetProxySnapshot sets the "proxy_snapshot" field.
+func (m *UsageLogMutation) SetProxySnapshot(value map[string]interface{}) {
+	m.proxy_snapshot = &value
+}
+
+// ProxySnapshot returns the value of the "proxy_snapshot" field in the mutation.
+func (m *UsageLogMutation) ProxySnapshot() (r map[string]interface{}, exists bool) {
+	v := m.proxy_snapshot
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldProxySnapshot returns the old "proxy_snapshot" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldProxySnapshot(ctx context.Context) (v map[string]interface{}, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldProxySnapshot is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldProxySnapshot requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldProxySnapshot: %w", err)
+	}
+	return oldValue.ProxySnapshot, nil
+}
+
+// ClearProxySnapshot clears the value of the "proxy_snapshot" field.
+func (m *UsageLogMutation) ClearProxySnapshot() {
+	m.proxy_snapshot = nil
+	m.clearedFields[usagelog.FieldProxySnapshot] = struct{}{}
+}
+
+// ProxySnapshotCleared returns if the "proxy_snapshot" field was cleared in this mutation.
+func (m *UsageLogMutation) ProxySnapshotCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldProxySnapshot]
+	return ok
+}
+
+// ResetProxySnapshot resets all changes to the "proxy_snapshot" field.
+func (m *UsageLogMutation) ResetProxySnapshot() {
+	m.proxy_snapshot = nil
+	delete(m.clearedFields, usagelog.FieldProxySnapshot)
+}
+
 // SetImageCount sets the "image_count" field.
 func (m *UsageLogMutation) SetImageCount(i int) {
 	m.image_count = &i
@@ -47590,7 +47748,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 49)
+	fields := make([]string, 0, 50)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -47704,6 +47862,9 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.ip_address != nil {
 		fields = append(fields, usagelog.FieldIPAddress)
+	}
+	if m.proxy_snapshot != nil {
+		fields = append(fields, usagelog.FieldProxySnapshot)
 	}
 	if m.image_count != nil {
 		fields = append(fields, usagelog.FieldImageCount)
@@ -47822,6 +47983,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.UserAgent()
 	case usagelog.FieldIPAddress:
 		return m.IPAddress()
+	case usagelog.FieldProxySnapshot:
+		return m.ProxySnapshot()
 	case usagelog.FieldImageCount:
 		return m.ImageCount()
 	case usagelog.FieldImageSize:
@@ -47929,6 +48092,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldUserAgent(ctx)
 	case usagelog.FieldIPAddress:
 		return m.OldIPAddress(ctx)
+	case usagelog.FieldProxySnapshot:
+		return m.OldProxySnapshot(ctx)
 	case usagelog.FieldImageCount:
 		return m.OldImageCount(ctx)
 	case usagelog.FieldImageSize:
@@ -48225,6 +48390,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetIPAddress(v)
+		return nil
+	case usagelog.FieldProxySnapshot:
+		v, ok := value.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetProxySnapshot(v)
 		return nil
 	case usagelog.FieldImageCount:
 		v, ok := value.(int)
@@ -48657,6 +48829,9 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	if m.FieldCleared(usagelog.FieldIPAddress) {
 		fields = append(fields, usagelog.FieldIPAddress)
 	}
+	if m.FieldCleared(usagelog.FieldProxySnapshot) {
+		fields = append(fields, usagelog.FieldProxySnapshot)
+	}
 	if m.FieldCleared(usagelog.FieldImageSize) {
 		fields = append(fields, usagelog.FieldImageSize)
 	}
@@ -48736,6 +48911,9 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldIPAddress:
 		m.ClearIPAddress()
+		return nil
+	case usagelog.FieldProxySnapshot:
+		m.ClearProxySnapshot()
 		return nil
 	case usagelog.FieldImageSize:
 		m.ClearImageSize()
@@ -48879,6 +49057,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldIPAddress:
 		m.ResetIPAddress()
+		return nil
+	case usagelog.FieldProxySnapshot:
+		m.ResetProxySnapshot()
 		return nil
 	case usagelog.FieldImageCount:
 		m.ResetImageCount()
@@ -49088,6 +49269,8 @@ type UserMutation struct {
 	totp_enabled                  *bool
 	totp_enabled_at               *time.Time
 	signup_source                 *string
+	registration_ip               *string
+	last_login_ip                 *string
 	last_login_at                 *time.Time
 	last_active_at                *time.Time
 	restrict_public_groups        *bool
@@ -49916,6 +50099,78 @@ func (m *UserMutation) OldSignupSource(ctx context.Context) (v string, err error
 // ResetSignupSource resets all changes to the "signup_source" field.
 func (m *UserMutation) ResetSignupSource() {
 	m.signup_source = nil
+}
+
+// SetRegistrationIP sets the "registration_ip" field.
+func (m *UserMutation) SetRegistrationIP(s string) {
+	m.registration_ip = &s
+}
+
+// RegistrationIP returns the value of the "registration_ip" field in the mutation.
+func (m *UserMutation) RegistrationIP() (r string, exists bool) {
+	v := m.registration_ip
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldRegistrationIP returns the old "registration_ip" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldRegistrationIP(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldRegistrationIP is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldRegistrationIP requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldRegistrationIP: %w", err)
+	}
+	return oldValue.RegistrationIP, nil
+}
+
+// ResetRegistrationIP resets all changes to the "registration_ip" field.
+func (m *UserMutation) ResetRegistrationIP() {
+	m.registration_ip = nil
+}
+
+// SetLastLoginIP sets the "last_login_ip" field.
+func (m *UserMutation) SetLastLoginIP(s string) {
+	m.last_login_ip = &s
+}
+
+// LastLoginIP returns the value of the "last_login_ip" field in the mutation.
+func (m *UserMutation) LastLoginIP() (r string, exists bool) {
+	v := m.last_login_ip
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldLastLoginIP returns the old "last_login_ip" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldLastLoginIP(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldLastLoginIP is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldLastLoginIP requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldLastLoginIP: %w", err)
+	}
+	return oldValue.LastLoginIP, nil
+}
+
+// ResetLastLoginIP resets all changes to the "last_login_ip" field.
+func (m *UserMutation) ResetLastLoginIP() {
+	m.last_login_ip = nil
 }
 
 // SetLastLoginAt sets the "last_login_at" field.
@@ -51078,7 +51333,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 25)
+	fields := make([]string, 0, 27)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -51126,6 +51381,12 @@ func (m *UserMutation) Fields() []string {
 	}
 	if m.signup_source != nil {
 		fields = append(fields, user.FieldSignupSource)
+	}
+	if m.registration_ip != nil {
+		fields = append(fields, user.FieldRegistrationIP)
+	}
+	if m.last_login_ip != nil {
+		fields = append(fields, user.FieldLastLoginIP)
 	}
 	if m.last_login_at != nil {
 		fields = append(fields, user.FieldLastLoginAt)
@@ -51194,6 +51455,10 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.TotpEnabledAt()
 	case user.FieldSignupSource:
 		return m.SignupSource()
+	case user.FieldRegistrationIP:
+		return m.RegistrationIP()
+	case user.FieldLastLoginIP:
+		return m.LastLoginIP()
 	case user.FieldLastLoginAt:
 		return m.LastLoginAt()
 	case user.FieldLastActiveAt:
@@ -51253,6 +51518,10 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldTotpEnabledAt(ctx)
 	case user.FieldSignupSource:
 		return m.OldSignupSource(ctx)
+	case user.FieldRegistrationIP:
+		return m.OldRegistrationIP(ctx)
+	case user.FieldLastLoginIP:
+		return m.OldLastLoginIP(ctx)
 	case user.FieldLastLoginAt:
 		return m.OldLastLoginAt(ctx)
 	case user.FieldLastActiveAt:
@@ -51391,6 +51660,20 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetSignupSource(v)
+		return nil
+	case user.FieldRegistrationIP:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetRegistrationIP(v)
+		return nil
+	case user.FieldLastLoginIP:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetLastLoginIP(v)
 		return nil
 	case user.FieldLastLoginAt:
 		v, ok := value.(time.Time)
@@ -51665,6 +51948,12 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldSignupSource:
 		m.ResetSignupSource()
+		return nil
+	case user.FieldRegistrationIP:
+		m.ResetRegistrationIP()
+		return nil
+	case user.FieldLastLoginIP:
+		m.ResetLastLoginIP()
 		return nil
 	case user.FieldLastLoginAt:
 		m.ResetLastLoginAt()

@@ -68,6 +68,13 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	if apiKey.Group != nil {
+		if enrichedBody, skillErr := h.gatewayService.ApplyGroupDefaultSkills(c.Request.Context(), apiKey.Group, "chat_completions", body); skillErr != nil {
+			reqLog.Warn("openai.chat_completions_default_skills_injection_failed", zap.Error(skillErr))
+		} else {
+			body = enrichedBody
+		}
+	}
 
 	modelResult := gjson.GetBytes(body, "model")
 	if !modelResult.Exists() || modelResult.Type != gjson.String || modelResult.String() == "" {

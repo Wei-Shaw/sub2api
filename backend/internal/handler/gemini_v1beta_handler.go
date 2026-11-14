@@ -385,6 +385,13 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		googleError(c, http.StatusBadRequest, "Request body is empty")
 		return
 	}
+	if h.settingService != nil && apiKey.Group != nil {
+		if enrichedBody, skillErr := h.settingService.ApplyGroupDefaultSkills(c.Request.Context(), apiKey.Group, domain.PlatformGemini, body); skillErr != nil {
+			reqLog.Warn("gemini.default_skills_injection_failed", zap.Error(skillErr))
+		} else {
+			body = enrichedBody
+		}
+	}
 
 	setOpsRequestContext(c, modelName, stream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(stream, false)))

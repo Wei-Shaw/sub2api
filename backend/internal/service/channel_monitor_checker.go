@@ -12,6 +12,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 	"github.com/tidwall/gjson"
@@ -25,7 +26,7 @@ var monitorHTTPClient = newSSRFSafeHTTPClient(monitorRequestTimeout)
 var monitorPingHTTPClient = newSSRFSafeHTTPClient(monitorPingTimeout)
 
 // newSSRFSafeHTTPClient 返回一个使用 safeDialContext 的 http.Client。
-// 仅供监控模块对外发起请求使用——所有目标都应是公网 endpoint。
+// 仅供监控模块发起请求使用，支持公网 endpoint 和明确指定的本机地址。
 func newSSRFSafeHTTPClient(timeout time.Duration) *http.Client {
 	tr := &http.Transport{
 		DialContext:           safeDialContext,
@@ -41,6 +42,8 @@ func newSSRFSafeHTTPClient(timeout time.Duration) *http.Client {
 // CheckOptions 承载一次检测的自定义入参。
 // 所有字段都是可选（零值即等价于"用默认行为"）。
 type CheckOptions struct {
+	// ErrorRules uses the same administrator-defined mappings as gateway responses.
+	ErrorRules *ErrorPassthroughService
 	// APIMode 仅对 OpenAI provider 生效；空串等同 chat_completions。
 	APIMode string
 	// ExtraHeaders 用户自定义 HTTP 头（merge 到 adapter 默认 headers，用户优先）。
@@ -81,8 +84,7 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 		// 错误路径：用 rawBody 而非 respText（gjson textPath 抽取在错误响应里通常为空，
 		// 会丢掉真正的上游错误信息，例如 `{"error":{"message":"No available accounts ..."}}`）。
 		res.Status = MonitorStatusError
-		bodySnippet := truncateForErrorBody(rawBody)
-		res.Message = truncateMessage(sanitizeErrorMessage(fmt.Sprintf("upstream HTTP %d: %s", statusCode, bodySnippet)))
+		res.Message = formatMonitorHTTPError(provider, statusCode, rawBody, opts)
 		return res
 	}
 
@@ -660,6 +662,51 @@ func sanitizeErrorMessage(msg string) string {
 	return msg
 }
 
+func formatMonitorHTTPError(provider string, statusCode int, rawBody string, opts *CheckOptions) string {
+	// Match the original response before truncation or built-in translations.
+	// Monitoring preserves the actual HTTP status and error state regardless of
+	// response-code / skip-monitoring actions configured for gateway clients.
+	if opts != nil && opts.ErrorRules != nil {
+		if rule := opts.ErrorRules.MatchRule(provider, statusCode, []byte(rawBody)); rule != nil &&
+			!rule.PassthroughBody && rule.CustomMessage != nil {
+			return truncateMessage(sanitizeErrorMessage(*rule.CustomMessage))
+		}
+	}
+	message := fmt.Sprintf("upstream HTTP %d: %s", statusCode, rawBody)
+	if statusCode == http.StatusTooManyRequests {
+		localized := localizeUsageLimitMessage(message)
+		if localized != message {
+			return localized
+		}
+	}
+	return truncateMessage(sanitizeErrorMessage(fmt.Sprintf("upstream HTTP %d: %s", statusCode, truncateForErrorBody(rawBody))))
+}
+
+// localizeUsageLimitMessage 将订阅限额错误转换为用户可读的中文提示。
+// 上游可能把项目自身的错误再次包装成一段 JSON 字符串，不能只依赖
+// 顶层 code，需要同时识别 DAILY/WEEKLY/MONTHLY_LIMIT_EXCEEDED 和英文文案。
+func localizeUsageLimitMessage(msg string) string {
+	upper := strings.ToUpper(msg)
+	localized := ""
+	switch {
+	case strings.Contains(upper, "DAILY_LIMIT_EXCEEDED") || strings.Contains(upper, "DAILY USAGE LIMIT EXCEEDED"):
+		localized = "日限额已满，请等待下次重置后使用"
+	case strings.Contains(upper, "WEEKLY_LIMIT_EXCEEDED") || strings.Contains(upper, "WEEKLY USAGE LIMIT EXCEEDED"):
+		localized = "周限额已满，请等待下次重置后使用"
+	case strings.Contains(upper, "MONTHLY_LIMIT_EXCEEDED") || strings.Contains(upper, "MONTHLY USAGE LIMIT EXCEEDED"):
+		localized = "月限额已满，请等待下次重置后使用"
+	}
+	if localized == "" {
+		return msg
+	}
+
+	// 保留监控中的 HTTP 状态，但把英文前缀也翻译掉；普通 API 错误则只返回中文提示。
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(msg)), "upstream http 429:") {
+		return "上游 HTTP 429：" + localized
+	}
+	return localized
+}
+
 // truncateMessage 把消息按 monitorMessageMaxBytes 截断，避免 DB 列溢出与日志过长。
 func truncateMessage(msg string) string {
 	if len(msg) <= monitorMessageMaxBytes {
@@ -669,6 +716,9 @@ func truncateMessage(msg string) string {
 	cutoff := monitorMessageMaxBytes - len(ellipsis)
 	if cutoff < 0 {
 		cutoff = 0
+	}
+	for cutoff > 0 && !utf8.RuneStart(msg[cutoff]) {
+		cutoff--
 	}
 	return msg[:cutoff] + ellipsis
 }
@@ -685,6 +735,9 @@ func truncateForErrorBody(body string) string {
 	cutoff := monitorErrorBodySnippetMaxBytes - len(ellipsis)
 	if cutoff < 0 {
 		cutoff = 0
+	}
+	for cutoff > 0 && !utf8.RuneStart(body[cutoff]) {
+		cutoff--
 	}
 	return body[:cutoff] + ellipsis
 }

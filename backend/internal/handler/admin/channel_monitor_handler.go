@@ -85,6 +85,10 @@ type channelMonitorUpdateRequest struct {
 	AccountID *int64  `json:"account_id"`
 }
 
+type channelMonitorResetRequest struct {
+	IDs []int64 `json:"ids" binding:"required,min=1,max=100,dive,gt=0"`
+}
+
 type channelMonitorResponse struct {
 	ID                  int64                                `json:"id"`
 	Name                string                               `json:"name"`
@@ -508,6 +512,33 @@ func (h *ChannelMonitorHandler) History(c *gin.Context) {
 		out = append(out, historyEntryToResponse(e))
 	}
 	response.Success(c, gin.H{"items": out})
+}
+
+// ResetHistory POST /api/v1/admin/channel-monitors/:id/reset-history
+func (h *ChannelMonitorHandler) ResetHistory(c *gin.Context) {
+	id, ok := ParseChannelMonitorID(c)
+	if !ok {
+		return
+	}
+	if err := h.monitorService.ResetHistory(c.Request.Context(), []int64{id}); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, nil)
+}
+
+// ResetHistoryBatch POST /api/v1/admin/channel-monitors/reset-history
+func (h *ChannelMonitorHandler) ResetHistoryBatch(c *gin.Context) {
+	var req channelMonitorResetRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.ErrorFrom(c, infraerrors.BadRequest("VALIDATION_ERROR", err.Error()))
+		return
+	}
+	if err := h.monitorService.ResetHistory(c.Request.Context(), req.IDs); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, nil)
 }
 
 // parseHistoryLimit 解析 history 接口的 limit query。

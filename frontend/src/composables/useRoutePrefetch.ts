@@ -15,6 +15,28 @@ import type { RouteLocationNormalized, Router } from 'vue-router'
  */
 type ComponentImportFn = () => Promise<unknown>
 
+type NetworkInformationLike = {
+  saveData?: boolean
+  effectiveType?: string
+}
+
+/**
+ * 预加载只应该利用“空闲带宽”。在省流量或 2G 网络下，提前下载相邻页面
+ * 会拖慢当前页面，因此直接跳过，把带宽留给用户正在看的内容。
+ */
+const canPrefetch = (): boolean => {
+  if (typeof window === 'undefined' || document.visibilityState !== 'visible') {
+    return false
+  }
+
+  const connection = (navigator as Navigator & {
+    connection?: NetworkInformationLike
+  }).connection
+
+  if (connection?.saveData) return false
+  return !['slow-2g', '2g'].includes(connection?.effectiveType ?? '')
+}
+
 /**
  * 预加载邻接表：定义每个路由应该预加载哪些相邻路由
  * 只存储路由路径，不存储 import 函数，避免打包问题
@@ -129,6 +151,8 @@ export function useRoutePrefetch(router?: Router) {
    */
   const triggerPrefetch = (route: RouteLocationNormalized): void => {
     cancelPendingPrefetch()
+
+    if (!canPrefetch()) return
 
     const prefetchPaths = getPrefetchPaths(route)
     if (prefetchPaths.length === 0) return

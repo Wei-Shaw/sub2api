@@ -470,6 +470,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	if apiKey.Group != nil {
+		if enrichedBody, skillErr := h.gatewayService.ApplyGroupDefaultSkills(c.Request.Context(), apiKey.Group, "responses", body); skillErr != nil {
+			reqLog.Warn("openai.default_skills_injection_failed", zap.Error(skillErr))
+		} else {
+			body = enrichedBody
+		}
+	}
 
 	// 使用 gjson 只读提取字段做校验，避免完整 Unmarshal
 	modelResult := gjson.GetBytes(body, "model")
@@ -1236,6 +1243,13 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		logRequestBodyParseFailure(reqLog, body, nil)
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
+	}
+	if apiKey.Group != nil {
+		if enrichedBody, skillErr := h.gatewayService.ApplyGroupDefaultSkills(c.Request.Context(), apiKey.Group, "anthropic", body); skillErr != nil {
+			reqLog.Warn("openai.messages_default_skills_injection_failed", zap.Error(skillErr))
+		} else {
+			body = enrichedBody
+		}
 	}
 
 	modelResult := gjson.GetBytes(body, "model")
@@ -2572,6 +2586,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	if !gjson.ValidBytes(firstMessage) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "invalid JSON payload")
 		return
+	}
+	if apiKey.Group != nil {
+		if enrichedMessage, skillErr := h.gatewayService.ApplyGroupDefaultSkills(c.Request.Context(), apiKey.Group, "responses", firstMessage); skillErr != nil {
+			reqLog.Warn("openai.websocket_default_skills_injection_failed", zap.Error(skillErr))
+		} else {
+			firstMessage = enrichedMessage
+		}
 	}
 	reqModel := strings.TrimSpace(gjson.GetBytes(firstMessage, "model").String())
 	if reqModel == "" {

@@ -433,6 +433,22 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyAvailableChannelsEnabled] = strconv.FormatBool(settings.AvailableChannelsEnabled)
 
 	// Subscription feature switch
+	updates[SettingKeySubscriptionUnitName] = normalizeSubscriptionUnitName(settings.SubscriptionUnitName)
+	if settings.SubscriptionUnits != nil {
+		units, err := ValidateSubscriptionUnits(settings.SubscriptionUnits)
+		if err != nil {
+			return nil, err
+		}
+		if err := s.validateUnitRemoval(ctx, units); err != nil {
+			return nil, err
+		}
+		raw, err := json.Marshal(units)
+		if err != nil {
+			return nil, err
+		}
+		updates[SettingKeySubscriptionUnits] = string(raw)
+		settings.SubscriptionUnits = units
+	}
 	updates[SettingKeySubscriptionEnabled] = strconv.FormatBool(settings.SubscriptionEnabled)
 
 	// Model plaza feature switches + description

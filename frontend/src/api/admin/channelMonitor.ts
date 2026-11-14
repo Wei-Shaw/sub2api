@@ -345,6 +345,14 @@ export async function listHistory(
   return data
 }
 
+export async function resetHistory(id: number): Promise<void> {
+  await apiClient.post(`/admin/channel-monitors/${id}/reset-history`)
+}
+
+export async function resetHistoryBatch(ids: number[]): Promise<void> {
+  await apiClient.post('/admin/channel-monitors/reset-history', { ids })
+}
+
 export const channelMonitorAPI = {
   list,
   get,
@@ -354,6 +362,8 @@ export const channelMonitorAPI = {
   del,
   runNow,
   listHistory,
+  resetHistory,
+  resetHistoryBatch,
 }
 
 export default channelMonitorAPI

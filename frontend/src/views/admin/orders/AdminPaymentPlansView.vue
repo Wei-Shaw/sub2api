@@ -26,6 +26,24 @@
             :rate-multiplier="getGroup(value)!.rate_multiplier"
           />
           <span v-else class="text-sm text-gray-400">-</span>
+          <span v-if="value" class="ml-1 font-mono text-[10px] text-gray-400">#{{ value }}</span>
+        </template>
+        <template #cell-quota="{ row }">
+          <div v-if="hasPlanQuota(row)" class="space-y-1 text-xs">
+            <div v-if="row.daily_limit_usd != null">
+              <span class="text-gray-500">{{ t('payment.admin.dailyLimit') }}:</span>
+              <span class="ml-1 font-medium text-gray-700 dark:text-gray-300">{{ formatPlanQuota(row.daily_limit_usd, row) }}</span>
+            </div>
+            <div v-if="row.weekly_limit_usd != null">
+              <span class="text-gray-500">{{ t('payment.admin.weeklyLimit') }}:</span>
+              <span class="ml-1 font-medium text-gray-700 dark:text-gray-300">{{ formatPlanQuota(row.weekly_limit_usd, row) }}</span>
+            </div>
+            <div v-if="row.monthly_limit_usd != null">
+              <span class="text-gray-500">{{ t('payment.admin.monthlyLimit') }}:</span>
+              <span class="ml-1 font-medium text-gray-700 dark:text-gray-300">{{ formatPlanQuota(row.monthly_limit_usd, row) }}</span>
+            </div>
+          </div>
+          <span v-else class="text-xs text-gray-400">{{ t('payment.admin.unlimited') }}</span>
         </template>
         <template #cell-price="{ value, row }">
           <div class="text-sm">
@@ -93,9 +111,11 @@ import GroupBadge from '@/components/common/GroupBadge.vue'
 import PlanEditDialog from './PlanEditDialog.vue'
 import { currencySymbol } from '@/components/payment/currency'
 import { platformTextClass } from '@/utils/platformColors'
+import { useQuotaDisplay } from '@/composables/useSubscriptionUnit'
 
 const { t } = useI18n()
 const appStore = useAppStore()
+const formatQuota = useQuotaDisplay()
 
 function planCurrencySymbol(currency?: string): string {
   return currencySymbol(currency || 'USD')
@@ -132,6 +152,14 @@ function getPlanNameClass(groupId: number): string {
   return group ? platformTextClass(group.platform) : 'text-gray-900 dark:text-white'
 }
 
+function hasPlanQuota(plan: SubscriptionPlan): boolean {
+  return plan.daily_limit_usd != null || plan.weekly_limit_usd != null || plan.monthly_limit_usd != null
+}
+
+function formatPlanQuota(value: number | null | undefined, plan: SubscriptionPlan): string {
+  return formatQuota(value, getGroup(plan.group_id) || plan)
+}
+
 
 // ==================== Plans ====================
 
@@ -146,6 +174,7 @@ const planColumns = computed((): Column[] => [
   { key: 'id', label: 'ID' },
   { key: 'name', label: t('payment.admin.planName') },
   { key: 'group_id', label: t('payment.admin.group') },
+  { key: 'quota', label: t('payment.admin.quota') },
   { key: 'price', label: t('payment.admin.price') },
   { key: 'validity_days', label: t('payment.admin.validity') },
   { key: 'for_sale', label: t('payment.admin.forSale') },

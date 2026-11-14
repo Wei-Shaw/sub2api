@@ -3,6 +3,8 @@
  * Handles system settings management for administrators
  */
 
+import type { SubscriptionUnit } from '@/types'
+
 import { apiClient } from "../client";
 import { listPlatformIds } from "@/constants/platformCatalog";
 import type {
@@ -743,6 +745,8 @@ export interface SystemSettings {
   available_channels_enabled: boolean;
 
   // Subscription feature switch (user sidebar "My Subscriptions" entry)
+  subscription_unit_name?: string;
+  subscription_units?: SubscriptionUnit[];
   subscription_enabled: boolean;
 
   // Model Plaza feature switches + description
@@ -1055,6 +1059,8 @@ export interface UpdateSettingsRequest {
   available_channels_enabled?: boolean;
 
   // Subscription feature switch
+  subscription_unit_name?: string;
+  subscription_units?: SubscriptionUnit[];
   subscription_enabled?: boolean;
 
   // Model Plaza feature switches + description
@@ -1094,6 +1100,60 @@ export async function updateSettings(
     settings,
   );
   return data;
+}
+
+export interface SiteLogoUploadResult {
+  url: string;
+  content_type?: string;
+}
+
+export async function uploadSiteLogo(file: File): Promise<SiteLogoUploadResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await apiClient.post<SiteLogoUploadResult>(
+    "/admin/settings/logo",
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
+  return data;
+}
+
+export interface ModelSkill {
+  id: string
+  name: string
+  filename?: string
+  content: string
+  created_at: string
+  updated_at: string
+}
+
+export async function listModelSkills(): Promise<ModelSkill[]> {
+  const { data } = await apiClient.get<ModelSkill[]>('/admin/settings/model-skills')
+  return data
+}
+
+export async function createModelSkill(input: { name: string; filename?: string; content: string }): Promise<ModelSkill> {
+  const { data } = await apiClient.post<ModelSkill>('/admin/settings/model-skills', input)
+  return data
+}
+
+export async function uploadModelSkill(file: File, name?: string): Promise<ModelSkill> {
+  const form = new FormData()
+  form.append('file', file)
+  if (name?.trim()) form.append('name', name.trim())
+  const { data } = await apiClient.post<ModelSkill>('/admin/settings/model-skills/upload', form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+  return data
+}
+
+export async function updateModelSkill(id: string, input: { name: string; filename?: string; content: string }): Promise<ModelSkill> {
+  const { data } = await apiClient.put<ModelSkill>(`/admin/settings/model-skills/${id}`, input)
+  return data
+}
+
+export async function deleteModelSkill(id: string): Promise<void> {
+  await apiClient.delete(`/admin/settings/model-skills/${id}`)
 }
 
 /**
@@ -1618,6 +1678,12 @@ export async function resetWebSearchUsage(payload: {
 export const settingsAPI = {
   getSettings,
   updateSettings,
+  uploadSiteLogo,
+  listModelSkills,
+  createModelSkill,
+  uploadModelSkill,
+  updateModelSkill,
+  deleteModelSkill,
   testSmtpConnection,
   sendTestEmail,
   getEmailTemplates,

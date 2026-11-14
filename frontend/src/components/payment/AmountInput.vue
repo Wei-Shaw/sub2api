@@ -1,46 +1,46 @@
 <template>
   <div class="space-y-4">
     <!-- Quick Amount Buttons -->
-    <div>
-      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+    <div v-if="filteredAmounts.length > 0">
+      <label class="mb-4 block text-base font-semibold text-gray-900 dark:text-white">
         {{ t('payment.quickAmounts') }}
+        <span class="ml-1 text-xs font-normal text-gray-400 dark:text-gray-500">· {{ t('payment.paymentAmount') }}</span>
       </label>
-      <div class="grid grid-cols-3 gap-x-4 gap-y-4 pt-2">
+      <div class="grid grid-cols-2 gap-3 pt-2 sm:grid-cols-3 sm:gap-4">
         <button
           v-for="amt in filteredAmounts"
           :key="amt"
           type="button"
           :class="[
-            'relative rounded-lg border-2 px-3 py-3 text-center font-medium transition-colors',
+            'relative rounded-2xl border px-3 py-5 text-center font-semibold tabular-nums transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500',
             modelValue === amt
-              ? 'border-primary-500 bg-primary-50 text-primary-700 dark:border-primary-400 dark:bg-primary-900/40 dark:text-primary-300'
+              ? 'border-primary-500 bg-primary-50 text-primary-700 ring-1 ring-primary-500 dark:border-primary-400 dark:bg-primary-900/40 dark:text-primary-300 dark:ring-primary-400'
               : quoteFor(amt).percent > 0
-                ? 'border-red-200 bg-white text-gray-700 hover:border-red-300 dark:border-red-500/40 dark:bg-dark-800 dark:text-gray-200 dark:hover:border-red-400/60'
+                ? 'border-teal-200 bg-white text-gray-700 hover:border-teal-400 dark:border-teal-500/25 dark:bg-dark-800 dark:text-gray-200 dark:hover:border-teal-400/60'
                 : 'border-gray-200 bg-white text-gray-700 hover:border-gray-300 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-200 dark:hover:border-dark-500',
           ]"
           :data-testid="`quick-amount-${amt}`"
+          :aria-pressed="modelValue === amt"
           @click="selectAmount(amt)"
         >
-          <!-- 促销价签（单行）：仅命中档位的金额显示；红底白字、内圈点线、右侧圆孔、整体旋转 -->
+          <!-- 促销价签仅在命中优惠档位时展示 -->
           <span
             v-if="quoteFor(amt).percent > 0"
-            class="pointer-events-none absolute -right-2 -top-3 z-10 rotate-12"
+            class="pointer-events-none absolute -top-2.5 right-2 z-10"
             data-testid="quick-amount-bonus-badge"
           >
             <span
-              class="relative flex items-center gap-1 whitespace-nowrap rounded bg-red-600 py-0.5 pl-1.5 pr-1 text-[11px] font-extrabold leading-tight tracking-tight text-white shadow-md ring-2 ring-white before:pointer-events-none before:absolute before:inset-[2px] before:rounded-sm before:border before:border-dotted before:border-white/70 dark:bg-red-500 dark:ring-dark-800"
+              class="inline-flex items-center whitespace-nowrap rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-[10px] font-semibold leading-tight tracking-tight text-teal-700 dark:border-teal-700 dark:bg-teal-950 dark:text-teal-200"
             >
               <span>{{ badgeText(amt) }}</span>
-              <span class="h-1 w-1 shrink-0 rounded-full bg-white"></span>
             </span>
           </span>
-          <span class="block">{{ amt }}</span>
-          <!-- 配置了优惠阶梯时，所有按钮都显示第二行，保持高度一致：赠金显示到账 USD，折扣显示折后实付 -->
+          <span class="block text-xl tracking-tight">{{ formatPaymentAmount(quoteFor(amt).payBase, currency) }}</span>
+          <!-- 下方固定显示最终到账金额，避免把支付金额和到账余额混淆。 -->
           <span
-            v-if="showSecondLine"
             :class="[
               'mt-0.5 block text-[11px] font-normal leading-tight',
-              quoteFor(amt).percent > 0 ? 'text-red-600 dark:text-red-300' : 'text-gray-400 dark:text-gray-500',
+              quoteFor(amt).percent > 0 ? 'text-teal-700 dark:text-teal-300' : 'text-gray-500 dark:text-gray-400',
             ]"
             data-testid="quick-amount-credited"
           >{{ secondLine(amt) }}</span>
@@ -50,19 +50,20 @@
 
     <!-- Custom Amount Input -->
     <div>
-      <label class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300">
+      <label for="recharge-custom-amount" class="mb-3 mt-6 block text-sm font-medium text-gray-700 dark:text-gray-300">
         {{ t('payment.customAmount') }}
       </label>
       <div class="relative">
         <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-dark-500">
-          $
+          {{ currencySymbol(currency || 'USD') }}
         </span>
         <input
+          id="recharge-custom-amount"
           type="text"
           inputmode="decimal"
           :value="customText"
           :placeholder="placeholderText"
-          class="input w-full py-3 pl-8 pr-4"
+          class="input w-full rounded-xl py-3.5 pl-8 pr-4 tabular-nums"
           @input="handleInput"
         />
       </div>
@@ -75,7 +76,7 @@ import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { RechargeBonusTier } from '@/types/payment'
 import { formatRechargeBonusNumber, quoteRechargeBonus, type RechargeBonusMode } from '@/utils/rechargeBonus'
-import { formatPaymentAmount } from './currency'
+import { currencySymbol, formatPaymentAmount } from './currency'
 
 const props = withDefaults(defineProps<{
   amounts?: number[]
@@ -88,8 +89,10 @@ const props = withDefaults(defineProps<{
   bonusMode?: RechargeBonusMode
   /** 充值倍率（1 支付币种 = multiplier USD），用于计算到账金额 */
   multiplier?: number
-  /** 支付币种（折扣模式第二行实付金额的币种与精度） */
+  /** 支付币种（顶部实付金额与自定义金额输入使用） */
   currency?: string
+  /** 到账余额币种；余额固定以 USD 记账，但保留参数便于明确展示。 */
+  creditedCurrency?: string
 }>(), {
   amounts: () => [10, 20, 50, 100, 200, 500, 1000, 2000, 5000],
   min: 0,
@@ -98,6 +101,7 @@ const props = withDefaults(defineProps<{
   bonusMode: 'bonus',
   multiplier: 1,
   currency: undefined,
+  creditedCurrency: 'USD',
 })
 
 const emit = defineEmits<{
@@ -112,8 +116,6 @@ const customText = ref('')
 const filteredAmounts = computed(() =>
   props.amounts.filter((a) => (props.min <= 0 || a >= props.min) && (props.max <= 0 || a <= props.max))
 )
-
-const showSecondLine = computed(() => props.bonusTiers.length > 0)
 
 function currencyDigits(): number {
   if (!props.currency) return 2
@@ -140,10 +142,7 @@ function badgeText(amt: number): string {
 
 function secondLine(amt: number): string {
   const quote = quoteFor(amt)
-  if (props.bonusMode === 'discount') {
-    return t('payment.rechargeBonus.payShort', { amount: formatPaymentAmount(quote.payBase, props.currency) })
-  }
-  return t('payment.rechargeBonus.creditedShort', { amount: '$' + quote.credited.toFixed(2) })
+  return t('payment.rechargeBonus.creditedShort', { amount: formatPaymentAmount(quote.credited, props.creditedCurrency) })
 }
 
 const placeholderText = computed(() => {

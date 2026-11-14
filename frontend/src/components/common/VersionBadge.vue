@@ -44,7 +44,7 @@
             <button
               @click="refreshVersion(true)"
               class="rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700 dark:hover:text-dark-200"
-              :disabled="loading"
+              :disabled="loading || versionActionBusy"
               :title="t('version.refresh')"
             >
               <Icon
@@ -142,7 +142,7 @@
                 <!-- Retry button -->
                 <button
                   @click="handleUpdate"
-                  :disabled="updating"
+                  :disabled="versionActionBusy"
                   class="flex w-full items-center justify-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {{ t('version.retry') }}
@@ -320,7 +320,7 @@
                 <!-- Update button -->
                 <button
                   @click="handleUpdate"
-                  :disabled="updating"
+                  :disabled="versionActionBusy"
                   class="flex w-full items-center justify-center gap-2 rounded-lg bg-primary-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <svg v-if="updating" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
@@ -355,7 +355,7 @@
                 </a>
               </div>
 
-              <!-- Priority 5: Up to date - GitHub link + version rollback -->
+              <!-- Priority 5: Up to date - GitHub link -->
               <div v-else class="space-y-2">
                 <a
                   v-if="releaseInfo?.html_url && releaseInfo.html_url !== '#'"
@@ -373,256 +373,260 @@
                   </svg>
                   {{ t('version.viewRelease') }}
                 </a>
+              </div>
 
-                <!-- Version rollback entry -->
-                <div class="border-t border-gray-100 pt-2 dark:border-dark-700">
-                  <button
-                    @click="toggleRollbackPanel"
-                    class="group flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600 dark:text-dark-500 dark:hover:bg-dark-700/50 dark:hover:text-dark-300"
-                  >
-                    <span class="flex items-center gap-1.5">
-                      <Icon name="clock" size="xs" :stroke-width="2" />
-                      {{ t('version.rollback') }}
-                    </span>
-                    <Icon
-                      name="chevronDown"
-                      size="xs"
-                      :stroke-width="2"
-                      class="transition-transform duration-200"
-                      :class="{ 'rotate-180': rollbackPanelOpen }"
-                    />
-                  </button>
+              <!-- Rollback stays available whether or not an update exists. -->
+              <div
+                v-if="!needRestart && !restarting"
+                class="mt-2 border-t border-gray-100 pt-2 dark:border-dark-700"
+              >
+                <button
+                  @click="toggleRollbackPanel"
+                  :disabled="versionActionBusy"
+                  class="group flex w-full items-center justify-between rounded-lg px-2 py-1.5 text-xs text-gray-400 transition-colors hover:bg-gray-50 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-50 dark:text-dark-500 dark:hover:bg-dark-700/50 dark:hover:text-dark-300"
+                >
+                  <span class="flex items-center gap-1.5">
+                    <Icon name="clock" size="xs" :stroke-width="2" />
+                    {{ t('version.rollback') }}
+                  </span>
+                  <Icon
+                    name="chevronDown"
+                    size="xs"
+                    :stroke-width="2"
+                    class="transition-transform duration-200"
+                    :class="{ 'rotate-180': rollbackPanelOpen }"
+                  />
+                </button>
 
-                  <transition name="rollback">
-                    <div v-if="rollbackPanelOpen" class="mt-2 space-y-2">
-                      <!-- Source build: online rollback unavailable, use git instead -->
-                      <div
-                        v-if="!isReleaseBuild"
-                        class="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 p-2 dark:border-blue-800/50 dark:bg-blue-900/20"
+                <transition name="rollback">
+                  <div v-if="rollbackPanelOpen" class="mt-2 space-y-2">
+                    <!-- Source build: online rollback unavailable, use git instead -->
+                    <div
+                      v-if="!isReleaseBuild"
+                      class="flex items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 p-2 dark:border-blue-800/50 dark:bg-blue-900/20"
+                    >
+                      <svg
+                        class="h-3.5 w-3.5 flex-shrink-0 text-blue-500 dark:text-blue-400"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="2"
                       >
-                        <svg
-                          class="h-3.5 w-3.5 flex-shrink-0 text-blue-500 dark:text-blue-400"
-                          fill="none"
-                          viewBox="0 0 24 24"
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                      <p class="min-w-0 flex-1 text-xs leading-4 text-blue-600 dark:text-blue-400">
+                        {{ t('version.rollbackSourceHint') }}
+                      </p>
+                    </div>
+
+                    <!-- Loading versions -->
+                    <div
+                      v-else-if="rollbackVersionsLoading"
+                      class="flex items-center justify-center py-4"
+                    >
+                      <svg
+                        class="h-5 w-5 animate-spin text-primary-500"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <circle
+                          class="opacity-25"
+                          cx="12"
+                          cy="12"
+                          r="10"
                           stroke="currentColor"
-                          stroke-width="2"
-                        >
-                          <path
-                            stroke-linecap="round"
-                            stroke-linejoin="round"
-                            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                          />
-                        </svg>
-                        <p class="min-w-0 flex-1 text-xs leading-4 text-blue-600 dark:text-blue-400">
-                          {{ t('version.rollbackSourceHint') }}
-                        </p>
-                      </div>
+                          stroke-width="4"
+                        ></circle>
+                        <path
+                          class="opacity-75"
+                          fill="currentColor"
+                          d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                      </svg>
+                    </div>
 
-                      <!-- Loading versions -->
-                      <div
-                        v-else-if="rollbackVersionsLoading"
-                        class="flex items-center justify-center py-4"
-                      >
-                        <svg
-                          class="h-5 w-5 animate-spin text-primary-500"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                        >
-                          <circle
-                            class="opacity-25"
-                            cx="12"
-                            cy="12"
-                            r="10"
-                            stroke="currentColor"
-                            stroke-width="4"
-                          ></circle>
-                          <path
-                            class="opacity-75"
-                            fill="currentColor"
-                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                          ></path>
-                        </svg>
-                      </div>
-
-                      <!-- Load error + retry -->
-                      <div v-else-if="rollbackVersionsError" class="space-y-2">
-                        <p
-                          class="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-600 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-400"
-                        >
-                          {{ rollbackVersionsError }}
-                        </p>
-                        <button
-                          @click="loadRollbackVersions"
-                          class="w-full rounded-lg border border-gray-200 py-1.5 text-xs text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-dark-700 dark:text-dark-400 dark:hover:bg-dark-700/50 dark:hover:text-dark-200"
-                        >
-                          {{ t('version.retry') }}
-                        </button>
-                      </div>
-
-                      <!-- No versions available -->
+                    <!-- Load error + retry -->
+                    <div v-else-if="rollbackVersionsError" class="space-y-2">
                       <p
-                        v-else-if="rollbackVersions.length === 0"
-                        class="py-3 text-center text-xs text-gray-400 dark:text-dark-500"
+                        class="rounded-lg border border-red-200 bg-red-50 p-2.5 text-xs text-red-600 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-400"
                       >
-                        {{ t('version.noRollbackVersions') }}
+                        {{ rollbackVersionsError }}
+                      </p>
+                      <button
+                        @click="loadRollbackVersions"
+                        class="w-full rounded-lg border border-gray-200 py-1.5 text-xs text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-700 dark:border-dark-700 dark:text-dark-400 dark:hover:bg-dark-700/50 dark:hover:text-dark-200"
+                      >
+                        {{ t('version.retry') }}
+                      </button>
+                    </div>
+
+                    <!-- No versions available -->
+                    <p
+                      v-else-if="rollbackVersions.length === 0"
+                      class="py-3 text-center text-xs text-gray-400 dark:text-dark-500"
+                    >
+                      {{ t('version.noRollbackVersions') }}
+                    </p>
+
+                    <!-- Version list -->
+                    <template v-else>
+                      <p class="px-0.5 text-[11px] text-gray-400 dark:text-dark-500">
+                        {{ t('version.rollbackSelectVersion') }}
                       </p>
 
-                      <!-- Version list -->
-                      <template v-else>
-                        <p class="px-0.5 text-[11px] text-gray-400 dark:text-dark-500">
-                          {{ t('version.rollbackSelectVersion') }}
-                        </p>
-
-                        <button
-                          v-for="item in rollbackVersions"
-                          :key="item.version"
-                          @click="selectRollbackVersion(item.version)"
-                          :disabled="rollingBack"
-                          class="flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60"
-                          :class="
-                            selectedRollbackVersion === item.version
-                              ? 'border-amber-300 bg-amber-50 shadow-sm dark:border-amber-700 dark:bg-amber-900/20'
-                              : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-dark-700 dark:hover:border-dark-600 dark:hover:bg-dark-700/40'
-                          "
-                        >
-                          <span class="flex items-center gap-2">
+                      <button
+                        v-for="item in rollbackVersions"
+                        :key="item.version"
+                        @click="selectRollbackVersion(item.version)"
+                        :disabled="versionActionBusy"
+                        class="flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left transition-all disabled:cursor-not-allowed disabled:opacity-60"
+                        :class="
+                          selectedRollbackVersion === item.version
+                            ? 'border-amber-300 bg-amber-50 shadow-sm dark:border-amber-700 dark:bg-amber-900/20'
+                            : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 dark:border-dark-700 dark:hover:border-dark-600 dark:hover:bg-dark-700/40'
+                        "
+                      >
+                        <span class="flex items-center gap-2">
+                          <span
+                            class="flex h-3.5 w-3.5 items-center justify-center rounded-full border transition-colors"
+                            :class="
+                              selectedRollbackVersion === item.version
+                                ? 'border-amber-500'
+                                : 'border-gray-300 dark:border-dark-500'
+                            "
+                          >
                             <span
-                              class="flex h-3.5 w-3.5 items-center justify-center rounded-full border transition-colors"
-                              :class="
-                                selectedRollbackVersion === item.version
-                                  ? 'border-amber-500'
-                                  : 'border-gray-300 dark:border-dark-500'
-                              "
-                            >
-                              <span
-                                v-if="selectedRollbackVersion === item.version"
-                                class="h-1.5 w-1.5 rounded-full bg-amber-500"
-                              ></span>
-                            </span>
-                            <span
-                              class="text-sm font-semibold"
-                              :class="
-                                selectedRollbackVersion === item.version
-                                  ? 'text-amber-700 dark:text-amber-300'
-                                  : 'text-gray-700 dark:text-dark-200'
-                              "
-                              >v{{ item.version }}</span
-                            >
+                              v-if="selectedRollbackVersion === item.version"
+                              class="h-1.5 w-1.5 rounded-full bg-amber-500"
+                            ></span>
                           </span>
-                          <span class="text-[11px] tabular-nums text-gray-400 dark:text-dark-500">
-                            {{ formatPublishedAt(item.published_at) }}
-                          </span>
-                        </button>
+                          <span
+                            class="text-sm font-semibold"
+                            :class="
+                              selectedRollbackVersion === item.version
+                                ? 'text-amber-700 dark:text-amber-300'
+                                : 'text-gray-700 dark:text-dark-200'
+                            "
+                            >v{{ item.version }}</span
+                          >
+                        </span>
+                        <span class="text-[11px] tabular-nums text-gray-400 dark:text-dark-500">
+                          {{ formatPublishedAt(item.published_at) }}
+                        </span>
+                      </button>
 
-                        <!-- Selected version: manual command (per deploy method) + confirm -->
-                        <transition name="rollback">
-                          <div v-if="selectedRollbackVersion" class="space-y-2">
-                            <p class="px-0.5 text-[11px] text-gray-400 dark:text-dark-500">
-                              {{ t('version.manualRollbackCommand') }}
-                            </p>
+                      <!-- Selected version: manual command (per deploy method) + confirm -->
+                      <transition name="rollback">
+                        <div v-if="selectedRollbackVersion" class="space-y-2">
+                          <p class="px-0.5 text-[11px] text-gray-400 dark:text-dark-500">
+                            {{ t('version.manualRollbackCommand') }}
+                          </p>
 
-                            <!-- Terminal-style block with deploy-method tabs -->
+                          <!-- Terminal-style block with deploy-method tabs -->
+                          <div
+                            class="overflow-hidden rounded-lg border border-gray-200 dark:border-dark-600"
+                          >
                             <div
-                              class="overflow-hidden rounded-lg border border-gray-200 dark:border-dark-600"
+                              class="flex items-center justify-between border-b border-gray-200 bg-gray-100 px-2 py-1.5 dark:border-dark-600 dark:bg-dark-700"
                             >
                               <div
-                                class="flex items-center justify-between border-b border-gray-200 bg-gray-100 px-2 py-1.5 dark:border-dark-600 dark:bg-dark-700"
+                                class="flex items-center gap-0.5 rounded-md bg-gray-200/70 p-0.5 dark:bg-dark-600/70"
                               >
-                                <div
-                                  class="flex items-center gap-0.5 rounded-md bg-gray-200/70 p-0.5 dark:bg-dark-600/70"
-                                >
-                                  <button
-                                    v-for="tab in manualTabs"
-                                    :key="tab.key"
-                                    @click="manualTab = tab.key"
-                                    class="rounded px-2 py-0.5 text-[11px] font-medium transition-colors"
-                                    :class="
-                                      manualTab === tab.key
-                                        ? 'bg-white text-gray-700 shadow-sm dark:bg-dark-800 dark:text-dark-100'
-                                        : 'text-gray-400 hover:text-gray-600 dark:text-dark-400 dark:hover:text-dark-200'
-                                    "
-                                  >
-                                    {{ tab.label }}
-                                  </button>
-                                </div>
                                 <button
-                                  @click="copyToClipboard(activeManualCommand)"
-                                  class="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600 dark:text-dark-400 dark:hover:bg-dark-600 dark:hover:text-dark-200"
+                                  v-for="tab in manualTabs"
+                                  :key="tab.key"
+                                  @click="manualTab = tab.key"
+                                  class="rounded px-2 py-0.5 text-[11px] font-medium transition-colors"
+                                  :class="
+                                    manualTab === tab.key
+                                      ? 'bg-white text-gray-700 shadow-sm dark:bg-dark-800 dark:text-dark-100'
+                                      : 'text-gray-400 hover:text-gray-600 dark:text-dark-400 dark:hover:text-dark-200'
+                                  "
                                 >
-                                  <Icon
-                                    :name="copied ? 'check' : 'copy'"
-                                    size="xs"
-                                    :stroke-width="2"
-                                    :class="copied ? 'text-green-500' : ''"
-                                  />
-                                  {{ copied ? t('version.copied') : t('version.copyCommand') }}
+                                  {{ tab.label }}
                                 </button>
                               </div>
-                              <code
-                                class="block select-all whitespace-pre-wrap break-all bg-gray-50 p-2.5 font-mono text-[10px] leading-relaxed text-gray-600 dark:bg-dark-900 dark:text-dark-300"
-                                >{{ activeManualCommand }}</code
+                              <button
+                                @click="copyToClipboard(activeManualCommand)"
+                                class="flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-gray-400 transition-colors hover:bg-gray-200 hover:text-gray-600 dark:text-dark-400 dark:hover:bg-dark-600 dark:hover:text-dark-200"
                               >
+                                <Icon
+                                  :name="copied ? 'check' : 'copy'"
+                                  size="xs"
+                                  :stroke-width="2"
+                                  :class="copied ? 'text-green-500' : ''"
+                                />
+                                {{ copied ? t('version.copied') : t('version.copyCommand') }}
+                              </button>
                             </div>
-
-                            <p
-                              class="flex items-start gap-1.5 px-0.5 text-[11px] leading-4 text-amber-600 dark:text-amber-400"
+                            <code
+                              class="block select-all whitespace-pre-wrap break-all bg-gray-50 p-2.5 font-mono text-[10px] leading-relaxed text-gray-600 dark:bg-dark-900 dark:text-dark-300"
+                              >{{ activeManualCommand }}</code
                             >
-                              <Icon
-                                name="exclamationTriangle"
-                                size="xs"
-                                :stroke-width="2"
-                                class="mt-px flex-shrink-0"
-                              />
-                              {{ t('version.rollbackWarning') }}
-                            </p>
-
-                            <p
-                              v-if="rollbackError"
-                              class="rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-600 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-400"
-                            >
-                              {{ rollbackError }}
-                            </p>
-
-                            <button
-                              @click="handleRollback"
-                              :disabled="rollingBack"
-                              class="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              <svg
-                                v-if="rollingBack"
-                                class="h-4 w-4 animate-spin"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                              >
-                                <circle
-                                  class="opacity-25"
-                                  cx="12"
-                                  cy="12"
-                                  r="10"
-                                  stroke="currentColor"
-                                  stroke-width="4"
-                                ></circle>
-                                <path
-                                  class="opacity-75"
-                                  fill="currentColor"
-                                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                ></path>
-                              </svg>
-                              <Icon v-else name="clock" size="sm" :stroke-width="2" />
-                              <span>{{
-                                rollingBack
-                                  ? t('version.rollingBack')
-                                  : t('version.rollbackConfirm', {
-                                      version: 'v' + selectedRollbackVersion
-                                    })
-                              }}</span>
-                            </button>
                           </div>
-                        </transition>
-                      </template>
-                    </div>
-                  </transition>
-                </div>
+
+                          <p
+                            class="flex items-start gap-1.5 px-0.5 text-[11px] leading-4 text-amber-600 dark:text-amber-400"
+                          >
+                            <Icon
+                              name="exclamationTriangle"
+                              size="xs"
+                              :stroke-width="2"
+                              class="mt-px flex-shrink-0"
+                            />
+                            {{ t('version.rollbackWarning') }}
+                          </p>
+
+                          <p
+                            v-if="rollbackError"
+                            class="rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-600 dark:border-red-800/50 dark:bg-red-900/20 dark:text-red-400"
+                          >
+                            {{ rollbackError }}
+                          </p>
+
+                          <button
+                            @click="handleRollback"
+                            :disabled="versionActionBusy"
+                            class="flex w-full items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <svg
+                              v-if="rollingBack"
+                              class="h-4 w-4 animate-spin"
+                              fill="none"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                class="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                stroke-width="4"
+                              ></circle>
+                              <path
+                                class="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              ></path>
+                            </svg>
+                            <Icon v-else name="clock" size="sm" :stroke-width="2" />
+                            <span>{{
+                              rollingBack
+                                ? t('version.rollingBack')
+                                : t('version.rollbackConfirm', {
+                                    version: 'v' + selectedRollbackVersion
+                                  })
+                            }}</span>
+                          </button>
+                        </div>
+                      </transition>
+                    </template>
+                  </div>
+                </transition>
               </div>
             </template>
           </div>
@@ -652,7 +656,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import Icon from '@/components/icons/Icon.vue'
 
 const GITHUB_REPO = 'Wei-Shaw/sub2api'
-// Docker Hub image published by CI (tags carry no "v" prefix, e.g. weishaw/sub2api:0.1.146)
+// Docker Hub image published by CI (version tags carry no "v" prefix).
 const DOCKER_IMAGE = 'weishaw/sub2api'
 
 const { t } = useI18n()
@@ -710,7 +714,8 @@ const manualTabs = computed(() => [
 const scriptRollbackCommand = computed(() => {
   if (!selectedRollbackVersion.value) return ''
   const tag = `v${selectedRollbackVersion.value}`
-  return `curl -sSL https://raw.githubusercontent.com/${GITHUB_REPO}/${tag}/deploy/install.sh | sudo bash -s -- rollback ${tag}`
+  // Older tags may still contain an installer pointing at upstream releases.
+  return `curl -sSL https://raw.githubusercontent.com/${GITHUB_REPO}/main/deploy/install.sh | sudo bash -s -- rollback ${tag}`
 })
 
 const dockerRollbackCommand = computed(() => {
@@ -731,6 +736,10 @@ const activeManualCommand = computed(() =>
 // Only show update check for release builds (binary/docker deployment)
 const isReleaseBuild = computed(() => buildType.value === 'release')
 
+const versionActionBusy = computed(
+  () => updating.value || rollingBack.value || restarting.value || needRestart.value
+)
+
 function toggleDropdown() {
   dropdownOpen.value = !dropdownOpen.value
 }
@@ -740,7 +749,7 @@ function closeDropdown() {
 }
 
 async function refreshVersion(force = true) {
-  if (!isAdmin.value) return
+  if (!isAdmin.value || versionActionBusy.value) return
 
   // Reset update states when refreshing
   updateError.value = ''
@@ -752,11 +761,12 @@ async function refreshVersion(force = true) {
 }
 
 async function handleUpdate() {
-  if (updating.value) return
+  if (!isAdmin.value || versionActionBusy.value) return
 
   updating.value = true
   updateError.value = ''
   updateSuccess.value = false
+  rollbackPanelOpen.value = false
 
   try {
     const result = await performUpdate()
@@ -783,7 +793,7 @@ function resetRollbackState() {
 }
 
 async function toggleRollbackPanel() {
-  if (!isAdmin.value) return
+  if (!isAdmin.value || versionActionBusy.value) return
   rollbackPanelOpen.value = !rollbackPanelOpen.value
   // Source builds only show a hint, no version list to fetch
   if (
@@ -813,7 +823,7 @@ async function loadRollbackVersions() {
 }
 
 function selectRollbackVersion(version: string) {
-  if (rollingBack.value) return
+  if (versionActionBusy.value) return
   rollbackError.value = ''
   selectedRollbackVersion.value = selectedRollbackVersion.value === version ? '' : version
 }
@@ -827,10 +837,12 @@ function formatPublishedAt(publishedAt: string): string {
 
 async function handleRollback() {
   if (!isAdmin.value) return
-  if (rollingBack.value || !selectedRollbackVersion.value) return
+  if (versionActionBusy.value || !selectedRollbackVersion.value) return
 
   rollingBack.value = true
   rollbackError.value = ''
+  updateError.value = ''
+  updateSuccess.value = false
 
   try {
     const result = await rollbackAPI(selectedRollbackVersion.value)

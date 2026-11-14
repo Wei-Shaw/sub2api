@@ -794,6 +794,18 @@ func (_u *UsageLogUpdate) ClearIPAddress() *UsageLogUpdate {
 	return _u
 }
 
+// SetProxySnapshot sets the "proxy_snapshot" field.
+func (_u *UsageLogUpdate) SetProxySnapshot(v map[string]interface{}) *UsageLogUpdate {
+	_u.mutation.SetProxySnapshot(v)
+	return _u
+}
+
+// ClearProxySnapshot clears the value of the "proxy_snapshot" field.
+func (_u *UsageLogUpdate) ClearProxySnapshot() *UsageLogUpdate {
+	_u.mutation.ClearProxySnapshot()
+	return _u
+}
+
 // SetImageCount sets the "image_count" field.
 func (_u *UsageLogUpdate) SetImageCount(v int) *UsageLogUpdate {
 	_u.mutation.ResetImageCount()
@@ -1374,6 +1386,12 @@ func (_u *UsageLogUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if _u.mutation.IPAddressCleared() {
 		_spec.ClearField(usagelog.FieldIPAddress, field.TypeString)
+	}
+	if value, ok := _u.mutation.ProxySnapshot(); ok {
+		_spec.SetField(usagelog.FieldProxySnapshot, field.TypeJSON, value)
+	}
+	if _u.mutation.ProxySnapshotCleared() {
+		_spec.ClearField(usagelog.FieldProxySnapshot, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ImageCount(); ok {
 		_spec.SetField(usagelog.FieldImageCount, field.TypeInt, value)
@@ -2362,6 +2380,18 @@ func (_u *UsageLogUpdateOne) ClearIPAddress() *UsageLogUpdateOne {
 	return _u
 }
 
+// SetProxySnapshot sets the "proxy_snapshot" field.
+func (_u *UsageLogUpdateOne) SetProxySnapshot(v map[string]interface{}) *UsageLogUpdateOne {
+	_u.mutation.SetProxySnapshot(v)
+	return _u
+}
+
+// ClearProxySnapshot clears the value of the "proxy_snapshot" field.
+func (_u *UsageLogUpdateOne) ClearProxySnapshot() *UsageLogUpdateOne {
+	_u.mutation.ClearProxySnapshot()
+	return _u
+}
+
 // SetImageCount sets the "image_count" field.
 func (_u *UsageLogUpdateOne) SetImageCount(v int) *UsageLogUpdateOne {
 	_u.mutation.ResetImageCount()
@@ -2972,6 +3002,12 @@ func (_u *UsageLogUpdateOne) sqlSave(ctx context.Context) (_node *UsageLog, err 
 	}
 	if _u.mutation.IPAddressCleared() {
 		_spec.ClearField(usagelog.FieldIPAddress, field.TypeString)
+	}
+	if value, ok := _u.mutation.ProxySnapshot(); ok {
+		_spec.SetField(usagelog.FieldProxySnapshot, field.TypeJSON, value)
+	}
+	if _u.mutation.ProxySnapshotCleared() {
+		_spec.ClearField(usagelog.FieldProxySnapshot, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.ImageCount(); ok {
 		_spec.SetField(usagelog.FieldImageCount, field.TypeInt, value)

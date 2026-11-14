@@ -519,6 +519,12 @@ func (_c *UsageLogCreate) SetNillableIPAddress(v *string) *UsageLogCreate {
 	return _c
 }
 
+// SetProxySnapshot sets the "proxy_snapshot" field.
+func (_c *UsageLogCreate) SetProxySnapshot(v map[string]interface{}) *UsageLogCreate {
+	_c.mutation.SetProxySnapshot(v)
+	return _c
+}
+
 // SetImageCount sets the "image_count" field.
 func (_c *UsageLogCreate) SetImageCount(v int) *UsageLogCreate {
 	_c.mutation.SetImageCount(v)
@@ -1140,6 +1146,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.IPAddress(); ok {
 		_spec.SetField(usagelog.FieldIPAddress, field.TypeString, value)
 		_node.IPAddress = &value
+	}
+	if value, ok := _c.mutation.ProxySnapshot(); ok {
+		_spec.SetField(usagelog.FieldProxySnapshot, field.TypeJSON, value)
+		_node.ProxySnapshot = value
 	}
 	if value, ok := _c.mutation.ImageCount(); ok {
 		_spec.SetField(usagelog.FieldImageCount, field.TypeInt, value)
@@ -1985,6 +1995,24 @@ func (u *UsageLogUpsert) UpdateIPAddress() *UsageLogUpsert {
 // ClearIPAddress clears the value of the "ip_address" field.
 func (u *UsageLogUpsert) ClearIPAddress() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldIPAddress)
+	return u
+}
+
+// SetProxySnapshot sets the "proxy_snapshot" field.
+func (u *UsageLogUpsert) SetProxySnapshot(v map[string]interface{}) *UsageLogUpsert {
+	u.Set(usagelog.FieldProxySnapshot, v)
+	return u
+}
+
+// UpdateProxySnapshot sets the "proxy_snapshot" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateProxySnapshot() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldProxySnapshot)
+	return u
+}
+
+// ClearProxySnapshot clears the value of the "proxy_snapshot" field.
+func (u *UsageLogUpsert) ClearProxySnapshot() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldProxySnapshot)
 	return u
 }
 
@@ -2987,6 +3015,27 @@ func (u *UsageLogUpsertOne) UpdateIPAddress() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearIPAddress() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearIPAddress()
+	})
+}
+
+// SetProxySnapshot sets the "proxy_snapshot" field.
+func (u *UsageLogUpsertOne) SetProxySnapshot(v map[string]interface{}) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetProxySnapshot(v)
+	})
+}
+
+// UpdateProxySnapshot sets the "proxy_snapshot" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateProxySnapshot() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateProxySnapshot()
+	})
+}
+
+// ClearProxySnapshot clears the value of the "proxy_snapshot" field.
+func (u *UsageLogUpsertOne) ClearProxySnapshot() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearProxySnapshot()
 	})
 }
 
@@ -4185,6 +4234,27 @@ func (u *UsageLogUpsertBulk) UpdateIPAddress() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearIPAddress() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearIPAddress()
+	})
+}
+
+// SetProxySnapshot sets the "proxy_snapshot" field.
+func (u *UsageLogUpsertBulk) SetProxySnapshot(v map[string]interface{}) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetProxySnapshot(v)
+	})
+}
+
+// UpdateProxySnapshot sets the "proxy_snapshot" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateProxySnapshot() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateProxySnapshot()
+	})
+}
+
+// ClearProxySnapshot clears the value of the "proxy_snapshot" field.
+func (u *UsageLogUpsertBulk) ClearProxySnapshot() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearProxySnapshot()
 	})
 }
 

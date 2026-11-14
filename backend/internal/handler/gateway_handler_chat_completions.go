@@ -90,6 +90,13 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", invalidStreamFieldTypeMessage)
 		return
 	}
+	if h.settingService != nil && apiKey.Group != nil {
+		if enrichedBody, skillErr := h.settingService.ApplyGroupDefaultSkills(c.Request.Context(), apiKey.Group, "chat_completions", body); skillErr != nil {
+			reqLog.Warn("gateway.chat_completions_default_skills_injection_failed", zap.Error(skillErr))
+		} else {
+			body = enrichedBody
+		}
+	}
 	if service.IsGPTImageGenerationModel(reqModel) {
 		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "This model is not supported on the Chat Completions endpoint")
 		return

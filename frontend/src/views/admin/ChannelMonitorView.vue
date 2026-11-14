@@ -60,11 +60,18 @@
           @create="openCreateDialog"
           @manage-templates="showTemplateManager = true"
           @search-input="handleSearch"
-        />
+        >
+          <template #actions>
+            <button v-if="selectedMonitorIds.length" type="button" class="btn btn-secondary" :disabled="resetting" data-testid="monitor-batch-reset" @click="handleBatchReset">
+              <Icon name="refresh" size="md" class="mr-2" />
+              {{ t('admin.channelMonitor.batchResetHistory', { count: selectedMonitorIds.length }) }}
+            </button>
+          </template>
+        </MonitorFiltersBar>
       </template>
 
       <template #table>
-        <DataTable :columns="columns" :data="monitors" :loading="loading">
+        <DataTable :columns="columns" :data="monitors" :loading="loading" selectable row-key="id" :selected-keys="selectedMonitorIds" @update:selected-keys="selectedMonitorIds = $event">
           <template #cell-name="{ row, value }">
             <div class="flex items-center gap-1.5">
               <span class="font-medium text-gray-900 dark:text-white">{{ value }}</span>
@@ -107,6 +114,7 @@
               :duplicating="duplicatingIds.has(row.id)"
               @run="handleRunNow"
               @duplicate="handleDuplicate"
+              @reset="handleReset"
               @edit="openEditDialog"
               @delete="handleDelete"
             />
@@ -164,6 +172,16 @@
       :danger="true"
       @confirm="confirmDelete"
       @cancel="showDeleteDialog = false"
+    />
+    <ConfirmDialog
+      :show="showResetDialog"
+      :title="t('admin.channelMonitor.resetHistory')"
+      :message="resetConfirmMessage"
+      :confirm-text="resetting ? t('common.processing') : t('admin.channelMonitor.resetHistory')"
+      :cancel-text="t('common.cancel')"
+      :danger="true"
+      @confirm="confirmReset"
+      @cancel="cancelReset"
     />
   </AppLayout>
 </template>
@@ -230,6 +248,13 @@ const deleting = ref<ChannelMonitor | null>(null)
 const showRunResult = ref(false)
 const runResults = ref<CheckResult[]>([])
 const duplicatingIds = reactive(new Set<number>())
+const selectedMonitorIds = ref<Array<string | number>>([])
+const showResetDialog = ref(false)
+const resetting = ref(false)
+const resetTargetIds = ref<number[]>([])
+const resetConfirmMessage = computed(() => resetTargetIds.value.length > 1
+  ? t('admin.channelMonitor.batchResetConfirm', { count: resetTargetIds.value.length })
+  : t('admin.channelMonitor.resetConfirm'))
 
 let abortController: AbortController | null = null
 let searchTimeout: ReturnType<typeof setTimeout> | null = null
@@ -367,6 +392,42 @@ async function handleDuplicate(row: ChannelMonitor) {
 function handleDelete(row: ChannelMonitor) {
   deleting.value = row
   showDeleteDialog.value = true
+}
+
+function handleReset(row: ChannelMonitor) {
+  if (resetting.value) return
+  resetTargetIds.value = [row.id]
+  showResetDialog.value = true
+}
+
+function handleBatchReset() {
+  if (resetting.value || !selectedMonitorIds.value.length) return
+  resetTargetIds.value = selectedMonitorIds.value.map(Number)
+  showResetDialog.value = true
+}
+
+function cancelReset() {
+  if (resetting.value) return
+  showResetDialog.value = false
+  resetTargetIds.value = []
+}
+
+async function confirmReset() {
+  if (resetting.value || !resetTargetIds.value.length) return
+  resetting.value = true
+  try {
+    if (resetTargetIds.value.length === 1) await adminAPI.channelMonitor.resetHistory(resetTargetIds.value[0])
+    else await adminAPI.channelMonitor.resetHistoryBatch(resetTargetIds.value)
+    appStore.showSuccess(t('admin.channelMonitor.resetSuccess'))
+    showResetDialog.value = false
+    selectedMonitorIds.value = []
+    resetTargetIds.value = []
+    await reload()
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.channelMonitor.resetFailed')))
+  } finally {
+    resetting.value = false
+  }
 }
 
 async function confirmDelete() {

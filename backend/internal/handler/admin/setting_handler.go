@@ -62,6 +62,12 @@ type SettingHandler struct {
 	notificationEmailService *service.NotificationEmailService
 	totpService              *service.TotpService
 	userService              *service.UserService
+	siteLogoDir              string
+}
+
+// SetSiteLogoDataDir configures persistent storage for uploaded site logos.
+func (h *SettingHandler) SetSiteLogoDataDir(dataDir string) {
+	h.siteLogoDir = dataDir
 }
 
 // NewSettingHandler 创建系统设置处理器
@@ -391,6 +397,8 @@ func (h *SettingHandler) GetSettings(c *gin.Context) {
 
 		AvailableChannelsEnabled: settings.AvailableChannelsEnabled,
 		SubscriptionEnabled:      settings.SubscriptionEnabled,
+		SubscriptionUnitName:     settings.SubscriptionUnitName,
+		SubscriptionUnits:        settings.SubscriptionUnits,
 
 		ModelPlazaEnabled:       settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:   settings.ModelPlazaRequireAuth,

@@ -1,5 +1,17 @@
 import type { UserSubscription } from '@/types'
 
+// Subscription quotas are stored internally in USD for billing accuracy. The
+// user-facing subscription UI uses points to distinguish plan allowances from
+// wallet money: one USD of quota equals one point.
+export const SUBSCRIPTION_POINTS_PER_USD = 1
+
+export function formatSubscriptionPoints(value: number | null | undefined): string {
+  const amount = Number.isFinite(value) ? Math.max(0, value as number) : 0
+  return (amount * SUBSCRIPTION_POINTS_PER_USD).toLocaleString('en-US', {
+    maximumFractionDigits: 2,
+  })
+}
+
 const ONE_DAY_MS = 24 * 60 * 60 * 1000
 
 export type ExpirationDateRelation = 'expired' | 'today' | 'tomorrow' | 'later'

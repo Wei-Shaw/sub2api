@@ -12,6 +12,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
+
+	"github.com/Wei-Shaw/sub2api/internal/model"
 )
 
 // swapMonitorHTTPClient 临时替换 monitorHTTPClient 为不带 SSRF 校验的普通 client，
@@ -287,6 +290,84 @@ func TestSanitizeErrorMessage_RedactsGeminiAuthKey(t *testing.T) {
 	}
 	if !strings.Contains(got, "AQ.***REDACTED***") {
 		t.Fatalf("expected redaction marker, got %q", got)
+	}
+}
+
+func TestLocalizeUsageLimitMessage(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		want string
+	}{
+		{
+			name: "daily wrapped upstream response",
+			msg:  `upstream HTTP 429: {"code":"USAGE_LIMIT_EXCEEDED","message":"error: reason=\\"DAILY_LIMIT_EXCEEDED\\""}`,
+			want: "上游 HTTP 429：日限额已满，请等待下次重置后使用",
+		},
+		{
+			name: "weekly code",
+			msg:  `{"code":"WEEKLY_LIMIT_EXCEEDED"}`,
+			want: "周限额已满，请等待下次重置后使用",
+		},
+		{
+			name: "monthly english message",
+			msg:  `monthly usage limit exceeded`,
+			want: "月限额已满，请等待下次重置后使用",
+		},
+		{
+			name: "unrelated error unchanged",
+			msg:  `upstream HTTP 500: internal server error`,
+			want: `upstream HTTP 500: internal server error`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := localizeUsageLimitMessage(tt.msg); got != tt.want {
+				t.Fatalf("localizeUsageLimitMessage() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMonitorErrorMappingUsesOriginalResponseAndKeepsHealth(t *testing.T) {
+	message := "自定义：今日积分已用完，请重置后再试 DAILY_LIMIT_EXCEEDED"
+	rules := &ErrorPassthroughService{}
+	rules.setLocalCache([]*model.ErrorPassthroughRule{
+		{ID: 1, Enabled: false, Priority: 0, Keywords: []string{"DAILY_LIMIT_EXCEEDED"}, CustomMessage: &message},
+		{ID: 2, Enabled: true, Priority: 1, ErrorCodes: []int{429}, Keywords: []string{"DAILY_LIMIT_EXCEEDED"}, MatchMode: model.MatchModeAll, Platforms: []string{"gemini"}, CustomMessage: &message},
+		{ID: 3, Enabled: true, Priority: 2, ErrorCodes: []int{429}, Keywords: []string{"DAILY_LIMIT_EXCEEDED"}, MatchMode: model.MatchModeAll, CustomMessage: &message},
+	})
+	// The reason occurs beyond the old 300-byte display snippet.
+	body := `{"padding":"` + strings.Repeat("x", 400) + `","message":"DAILY_LIMIT_EXCEEDED"}`
+	h := &openAICaptureHandler{status: http.StatusTooManyRequests, rawResponse: body}
+	endpoint := setupFakeOpenAI(t, h)
+	res := runCheckForModel(context.Background(), MonitorProviderOpenAI, endpoint, "request-key", "gpt-test", &CheckOptions{ErrorRules: rules})
+	if res.Status != MonitorStatusError || res.Message != message {
+		t.Fatalf("expected unchanged error status and custom message, got status=%s message=%q", res.Status, res.Message)
+	}
+
+	// A status mismatch must not accidentally apply the daily-quota mapping.
+	got := formatMonitorHTTPError(MonitorProviderOpenAI, 500, body, &CheckOptions{ErrorRules: rules})
+	if !strings.HasPrefix(got, "upstream HTTP 500:") {
+		t.Fatalf("unmatched status was rewritten: %q", got)
+	}
+
+	// Disabling a mapping restores the built-in Chinese message.
+	rules.setLocalCache([]*model.ErrorPassthroughRule{})
+	got = formatMonitorHTTPError(MonitorProviderOpenAI, 429, body, &CheckOptions{ErrorRules: rules})
+	if got != "上游 HTTP 429：日限额已满，请等待下次重置后使用" {
+		t.Fatalf("expected built-in fallback, got %q", got)
+	}
+}
+
+func TestMonitorErrorMappingTruncatesChineseWithoutBreakingUTF8(t *testing.T) {
+	message := strings.Repeat("自定义提示", 100)
+	rules := &ErrorPassthroughService{}
+	rules.setLocalCache([]*model.ErrorPassthroughRule{{Enabled: true, ErrorCodes: []int{429}, CustomMessage: &message}})
+	got := formatMonitorHTTPError(MonitorProviderOpenAI, 429, `{}`, &CheckOptions{ErrorRules: rules})
+	if len(got) > monitorMessageMaxBytes || !utf8.ValidString(got) {
+		t.Fatalf("message must fit database column and remain valid UTF-8: %q", got)
 	}
 }
 

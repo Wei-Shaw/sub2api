@@ -20,6 +20,8 @@ func RegisterAdminRoutes(
 	settingService *service.SettingService,
 	panelRateLimiter *middleware.PanelRateLimiter,
 ) {
+	// Uploaded site logos are public static assets so browser img tags can load them.
+	v1.GET("/site-logo/:filename", h.Admin.Setting.ServeSiteLogo)
 	// 插件 UI 使用短时能力 URL，仅提供经过安装校验的静态资源。
 	v1.GET("/plugin-ui/:token/*path", h.Admin.Plugin.ServeUIAsset)
 
@@ -469,6 +471,8 @@ func registerOpenAIOAuthRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		openai.POST("/accounts/:id/reset-quota", h.Admin.OpenAIOAuth.ResetQuota)
 		openai.POST("/accounts/:id/referrals/refresh", h.Admin.OpenAIOAuth.RefreshReferrals)
 		openai.POST("/accounts/:id/referrals/invite", h.Admin.OpenAIOAuth.SendReferralInvite)
+		openai.GET("/accounts/:id/sessions", h.Admin.OpenAIOAuth.ListActiveSessions)
+		openai.POST("/accounts/:id/sessions/revoke", h.Admin.OpenAIOAuth.RevokeActiveSession)
 	}
 }
 
@@ -575,6 +579,12 @@ func registerSettingsRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpA
 	{
 		adminSettings.GET("", h.Admin.Setting.GetSettings)
 		adminSettings.PUT("", h.Admin.Setting.UpdateSettings)
+		adminSettings.POST("/logo", h.Admin.Setting.UploadSiteLogo)
+		adminSettings.GET("/model-skills", h.Admin.Setting.ListModelSkills)
+		adminSettings.POST("/model-skills", h.Admin.Setting.CreateModelSkill)
+		adminSettings.POST("/model-skills/upload", h.Admin.Setting.UploadModelSkill)
+		adminSettings.PUT("/model-skills/:id", h.Admin.Setting.UpdateModelSkill)
+		adminSettings.DELETE("/model-skills/:id", h.Admin.Setting.DeleteModelSkill)
 		adminSettings.POST("/test-smtp", h.Admin.Setting.TestSMTPConnection)
 		adminSettings.POST("/send-test-email", h.Admin.Setting.SendTestEmail)
 		adminSettings.GET("/email-templates", h.Admin.Setting.ListEmailTemplates)
@@ -811,6 +821,8 @@ func registerChannelMonitorRoutes(admin *gin.RouterGroup, h *handler.Handlers, s
 		monitors.DELETE("/:id", h.Admin.ChannelMonitor.Delete)
 		monitors.POST("/:id/run", h.Admin.ChannelMonitor.Run)
 		monitors.GET("/:id/history", h.Admin.ChannelMonitor.History)
+		monitors.POST("/reset-history", h.Admin.ChannelMonitor.ResetHistoryBatch)
+		monitors.POST("/:id/reset-history", h.Admin.ChannelMonitor.ResetHistory)
 	}
 
 	templates := admin.Group("/channel-monitor-templates")

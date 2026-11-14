@@ -628,6 +628,9 @@ export default {
     },
     pricing: {
       billingMode: 'Billing Mode',
+      billingType: 'Billing Type',
+      billingTypeBalance: 'Balance',
+      billingTypeSubscription: 'Subscription',
       billingModeToken: 'Per Token',
       billingModePerRequest: 'Per Request',
       billingModeImage: 'Per Image',

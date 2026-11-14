@@ -1,3 +1,5 @@
+import { SUBSCRIPTION_POINTS_PER_USD } from '@/utils/subscriptionQuota'
+
 /**
  * formatScaled formats a per-token (or per-request) USD price scaled by `scale`.
  *
@@ -40,4 +42,20 @@ export function resolveIntervalPrices(iv: UserPricingInterval, base: TokenPrices
     cache_write_12h_price: iv.cache_write_12h_price ?? (base.cache_write_12h_price == null ? null : iv.cache_write_price ?? price(null, iv.cache_write_multiplier, base.cache_write_12h_price)),
     cache_read_price: price(iv.cache_read_price, iv.cache_read_multiplier, base.cache_read_price)
   }
+}
+
+/** Display subscription prices without rounding away small per-request charges. */
+export type ChannelPricingUnit = string | 'usd' | 'both'
+
+export function formatChannelPrice(
+  value: number | null,
+  scale: number,
+  unit: ChannelPricingUnit,
+  pointsLabel: string,
+  unitsPerUSD = 1
+): string {
+  if (value == null) return '-'
+  const usd = formatScaled(value, scale)
+  const points = `${formatScaled(value * SUBSCRIPTION_POINTS_PER_USD * unitsPerUSD, scale).slice(1)} ${pointsLabel}`
+  return unit === 'points' ? points : unit === 'both' ? `${usd} (${points})` : usd
 }

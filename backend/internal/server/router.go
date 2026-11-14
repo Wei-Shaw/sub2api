@@ -90,6 +90,9 @@ func SetupRouter(
 	}
 
 	// 注册路由
+	if handlers.Admin != nil && handlers.Admin.Setting != nil {
+		handlers.Admin.Setting.SetSiteLogoDataDir(cfg.Pricing.DataDir)
+	}
 	registerRoutes(r, handlers, jwtAuth, optionalJWTAuth, adminAuth, apiKeyAuth, auditLog, stepUpAuth, apiKeyService, subscriptionService, opsService, settingService, compositeResolver, cfg, redisClient)
 
 	return r

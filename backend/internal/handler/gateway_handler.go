@@ -169,6 +169,13 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	if h.settingService != nil && apiKey.Group != nil {
+		if enrichedBody, skillErr := h.settingService.ApplyGroupDefaultSkills(c.Request.Context(), apiKey.Group, domain.PlatformAnthropic, parsedReq.Body.Bytes()); skillErr != nil {
+			reqLog.Warn("gateway.default_skills_injection_failed", zap.Error(skillErr))
+		} else {
+			parsedReq.ReplaceBody(enrichedBody)
+		}
+	}
 	body = parsedReq.Body.Bytes()
 	reqModel := parsedReq.Model
 	reqStream := parsedReq.Stream
@@ -1812,14 +1819,16 @@ func (h *GatewayHandler) usageUnrestricted(c *gin.Context, ctx context.Context, 
 			remaining := h.calculateSubscriptionRemaining(apiKey.Group, subscription)
 			resp["remaining"] = remaining
 			resp["subscription"] = gin.H{
-				"daily_usage_usd":     subscription.DailyUsageUSD,
-				"weekly_usage_usd":    subscription.WeeklyUsageUSD,
-				"monthly_usage_usd":   subscription.MonthlyUsageUSD,
-				"daily_limit_usd":     apiKey.Group.DailyLimitUSD,
-				"weekly_limit_usd":    apiKey.Group.WeeklyLimitUSD,
-				"monthly_limit_usd":   apiKey.Group.MonthlyLimitUSD,
-				"weekly_window_start": subscription.WeeklyWindowStart,
-				"expires_at":          subscription.ExpiresAt,
+				"daily_usage_usd":            subscription.DailyUsageUSD,
+				"weekly_usage_usd":           subscription.WeeklyUsageUSD,
+				"monthly_usage_usd":          subscription.MonthlyUsageUSD,
+				"pricing_unit":               apiKey.Group.PricingUnit,
+				"subscription_usage_display": apiKey.Group.SubscriptionUsageDisplay,
+				"daily_limit_usd":            apiKey.Group.DailyLimitUSD,
+				"weekly_limit_usd":           apiKey.Group.WeeklyLimitUSD,
+				"monthly_limit_usd":          apiKey.Group.MonthlyLimitUSD,
+				"weekly_window_start":        subscription.WeeklyWindowStart,
+				"expires_at":                 subscription.ExpiresAt,
 			}
 		}
 
@@ -2181,6 +2190,13 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		logRequestBodyParseFailure(reqLog, body, err)
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
+	}
+	if h.settingService != nil && apiKey.Group != nil {
+		if enrichedBody, skillErr := h.settingService.ApplyGroupDefaultSkills(c.Request.Context(), apiKey.Group, domain.PlatformAnthropic, parsedReq.Body.Bytes()); skillErr != nil {
+			reqLog.Warn("gateway.count_tokens_default_skills_injection_failed", zap.Error(skillErr))
+		} else {
+			parsedReq.ReplaceBody(enrichedBody)
+		}
 	}
 	body = parsedReq.Body.Bytes()
 	// count_tokens 走 messages 严格校验时，复用已解析请求，避免二次反序列化。

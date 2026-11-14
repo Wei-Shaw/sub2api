@@ -11,11 +11,15 @@ const {
   duplicateMonitor,
   showSuccess,
   showError,
+  resetHistory,
+  resetHistoryBatch,
 } = vi.hoisted(() => ({
   listMonitors: vi.fn(),
   duplicateMonitor: vi.fn(),
   showSuccess: vi.fn(),
   showError: vi.fn(),
+  resetHistory: vi.fn(),
+  resetHistoryBatch: vi.fn(),
 }))
 
 
@@ -37,6 +41,8 @@ vi.mock('@/api/admin', () => ({
       update: vi.fn(),
       runNow: vi.fn(),
       del: vi.fn(),
+      resetHistory,
+      resetHistoryBatch,
     },
   },
 }))
@@ -111,7 +117,7 @@ function mountView() {
         AppLayout: AppLayoutStub,
         TablePageLayout: TablePageLayoutStub,
         DataTable: DataTableStub,
-        MonitorFiltersBar: true,
+        MonitorFiltersBar: { template: '<div><slot name="actions" /></div>' },
         Pagination: true,
         ConfirmDialog: true,
         EmptyState: true,
@@ -129,7 +135,7 @@ function mountView() {
 describe('ChannelMonitorView duplicate action', () => {
   beforeEach(() => {
     localStorage.clear()
-    for (const fn of [listMonitors, duplicateMonitor, showSuccess, showError]) fn.mockReset()
+    for (const fn of [listMonitors, duplicateMonitor, showSuccess, showError, resetHistory, resetHistoryBatch]) fn.mockReset()
     listMonitors.mockResolvedValue({
       items: [monitor],
       total: 1,
@@ -151,6 +157,54 @@ describe('ChannelMonitorView duplicate action', () => {
     expect(duplicateMonitor).toHaveBeenCalledWith(42)
     expect(showSuccess).toHaveBeenCalledWith('admin.channelMonitor.duplicateSuccess')
     expect(listMonitors.mock.calls.length).toBeGreaterThan(1)
+    wrapper.unmount()
+  })
+
+  it('only resets a single monitor after confirmation and reloads the list', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="monitor-reset"]').trigger('click')
+    expect(resetHistory).not.toHaveBeenCalled()
+    const dialog = wrapper.findAllComponents({ name: 'ConfirmDialog' }).find(c => c.props('show'))!
+    dialog.vm.$emit('confirm')
+    await flushPromises()
+    expect(resetHistory).toHaveBeenCalledWith(42)
+    expect(resetHistoryBatch).not.toHaveBeenCalled()
+    expect(showSuccess).toHaveBeenCalledWith('admin.channelMonitor.resetSuccess')
+    expect(listMonitors).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it('resets only the selected monitors as one batch', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    wrapper.findComponent(DataTableStub).vm.$emit('update:selectedKeys', [42, 43])
+    await wrapper.vm.$nextTick()
+    await wrapper.get('[data-testid="monitor-batch-reset"]').trigger('click')
+    const dialog = wrapper.findAllComponents({ name: 'ConfirmDialog' }).find(c => c.props('show'))!
+    dialog.vm.$emit('confirm')
+    await flushPromises()
+    expect(resetHistoryBatch).toHaveBeenCalledWith([42, 43])
+    expect(resetHistory).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="monitor-batch-reset"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('keeps the reset dialog available after failure and ignores repeated confirms', async () => {
+    let rejectReset!: (reason: Error) => void
+    resetHistory.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectReset = reject }))
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-testid="monitor-reset"]').trigger('click')
+    const dialog = wrapper.findAllComponents({ name: 'ConfirmDialog' }).find(c => c.props('show'))!
+    dialog.vm.$emit('confirm')
+    dialog.vm.$emit('confirm')
+    expect(resetHistory).toHaveBeenCalledTimes(1)
+    rejectReset(new Error('reset failed'))
+    await flushPromises()
+    expect(showError).toHaveBeenCalledWith('reset failed')
+    expect(dialog.props('show')).toBe(true)
+    expect(listMonitors).toHaveBeenCalledTimes(1)
     wrapper.unmount()
   })
 

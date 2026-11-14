@@ -2,9 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, flushPromises, mount } from '@vue/test-utils'
 import ErrorPassthroughRulesModal from '../ErrorPassthroughRulesModal.vue'
 
-const mocks = vi.hoisted(() => ({ list: vi.fn(), toggleEnabled: vi.fn(), showError: vi.fn() }))
+const mocks = vi.hoisted(() => ({ list: vi.fn(), toggleEnabled: vi.fn(), create: vi.fn(), showError: vi.fn(), showSuccess: vi.fn() }))
 vi.mock('@/api/admin', () => ({ adminAPI: { errorPassthrough: mocks } }))
-vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError: mocks.showError }) }))
+vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError: mocks.showError, showSuccess: mocks.showSuccess }) }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 enableAutoUnmount(afterEach)
 afterEach(() => vi.restoreAllMocks())
@@ -30,6 +30,32 @@ async function openRules(enabled = true) {
 }
 
 describe('error passthrough enabled state', () => {
+  it.each(['daily', 'weekly', 'monthly'])('loads inline rules and saves an editable %s quota template', async (period) => {
+    mocks.list.mockResolvedValue([])
+    mocks.create.mockResolvedValue({ id: 8 })
+    const wrapper = mount(ErrorPassthroughRulesModal, {
+      props: { show: true, embedded: true, mappingMode: true },
+      global: { stubs: {
+        BaseDialog: { props: ['show'], template: '<div v-if="show"><slot /><slot name="footer" /></div>' },
+        ConfirmDialog: true, Icon: true,
+      } },
+    })
+    await flushPromises()
+    expect(mocks.list).toHaveBeenCalledOnce()
+    const template = wrapper.findAll('button').find(b => b.text() === `admin.errorPassthrough.quotaTemplates.${period}.name`)!
+    await template.trigger('click')
+    await wrapper.get('input[placeholder="admin.errorPassthrough.form.customMessagePlaceholder"]').setValue('额度已用完，请等待重置')
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
+      error_codes: [429],
+      keywords: [`${period.toUpperCase()}_LIMIT_EXCEEDED`, `${period} usage limit exceeded`],
+      match_mode: 'all', enabled: true, passthrough_code: true,
+      passthrough_body: false, custom_message: '额度已用完，请等待重置', skip_monitoring: false,
+    }))
+    expect(mocks.list).toHaveBeenCalledTimes(2)
+  })
+
   it.each([true, false])('keeps the server state after two pending clicks (enabled=%s)', async (enabled) => {
     const finishes: Array<(value: unknown) => void> = []
     mocks.toggleEnabled.mockImplementation(() => new Promise(resolve => { finishes.push(resolve) }))

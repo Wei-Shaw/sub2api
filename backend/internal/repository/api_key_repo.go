@@ -86,7 +86,9 @@ func (r *apiKeyRepository) GetByID(ctx context.Context, id int64) (*service.APIK
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	apiKey := apiKeyEntityToService(m)
+	r.hydrateGroupDefaultSkillIDs(ctx, apiKey)
+	return apiKey, nil
 }
 
 // GetKeyAndOwnerID 根据 API Key ID 获取其 key 与所有者（用户）ID。
@@ -124,7 +126,9 @@ func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.A
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	apiKey := apiKeyEntityToService(m)
+	r.hydrateGroupDefaultSkillIDs(ctx, apiKey)
+	return apiKey, nil
 }
 
 func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*service.APIKey, error) {
@@ -177,6 +181,8 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				group.FieldIsExclusive,
 				group.FieldStatus,
 				group.FieldSubscriptionType,
+				group.FieldSubscriptionUsageDisplay,
+				group.FieldPricingUnit,
 				group.FieldRateMultiplier,
 				group.FieldDailyLimitUsd,
 				group.FieldWeeklyLimitUsd,
@@ -242,7 +248,44 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 		}
 		return nil, err
 	}
-	return apiKeyEntityToService(m), nil
+	apiKey := apiKeyEntityToService(m)
+	r.hydrateGroupDefaultSkillIDs(ctx, apiKey)
+	return apiKey, nil
+}
+
+// hydrateGroupDefaultSkillIDs loads the group-level Skills relation used by
+// gateway requests. The API-key auth projection selects only columns from the
+// groups table, while default Skills live in their own table.
+func (r *apiKeyRepository) hydrateGroupDefaultSkillIDs(ctx context.Context, apiKey *service.APIKey) {
+	if r == nil || r.sql == nil || apiKey == nil || apiKey.Group == nil || apiKey.Group.ID <= 0 {
+		return
+	}
+	rows, err := r.sql.QueryContext(ctx, `SELECT skill_ids FROM group_default_skills WHERE group_id = $1`, apiKey.Group.ID)
+	if err != nil {
+		slog.Warn("repository.api_key.load_default_skills_failed", "group_id", apiKey.Group.ID, "error", err)
+		return
+	}
+	defer func() { _ = rows.Close() }()
+	if !rows.Next() {
+		if err := rows.Err(); err != nil {
+			slog.Warn("repository.api_key.load_default_skills_failed", "group_id", apiKey.Group.ID, "error", err)
+			return
+		}
+		apiKey.Group.DefaultSkillIDs = []string{}
+		return
+	}
+	var raw []byte
+	if err := rows.Scan(&raw); err != nil {
+		slog.Warn("repository.api_key.decode_default_skills_failed", "group_id", apiKey.Group.ID, "error", err)
+		return
+	}
+	if err := json.Unmarshal(raw, &apiKey.Group.DefaultSkillIDs); err != nil {
+		slog.Warn("repository.api_key.parse_default_skills_failed", "group_id", apiKey.Group.ID, "error", err)
+		return
+	}
+	if apiKey.Group.DefaultSkillIDs == nil {
+		apiKey.Group.DefaultSkillIDs = []string{}
+	}
 }
 
 func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fields service.APIKeyUpdateFields) error {
@@ -944,6 +987,8 @@ func userEntityToService(u *dbent.User) *service.User {
 		Concurrency:                u.Concurrency,
 		Status:                     u.Status,
 		SignupSource:               u.SignupSource,
+		RegistrationIP:             u.RegistrationIP,
+		LastLoginIP:                u.LastLoginIP,
 		LastLoginAt:                u.LastLoginAt,
 		LastActiveAt:               u.LastActiveAt,
 		TotpSecretEncrypted:        u.TotpSecretEncrypted,
@@ -989,6 +1034,8 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		Status:                          g.Status,
 		Hydrated:                        true,
 		DuplicateOperationID:            derefString(g.DuplicateOperationID),
+		PricingUnit:                     g.PricingUnit,
+		SubscriptionUsageDisplay:        g.SubscriptionUsageDisplay,
 		SubscriptionType:                g.SubscriptionType,
 		DailyLimitUSD:                   g.DailyLimitUsd,
 		WeeklyLimitUSD:                  g.WeeklyLimitUsd,

@@ -71,6 +71,9 @@ export interface CheckoutInfoResponse {
   methods: Record<string, MethodLimit>
   global_min: number
   global_max: number
+  /** Configured balance recharge bounds on the entered amount; 0 = unlimited. */
+  min_amount?: number
+  max_amount?: number
   plans: SubscriptionPlan[]
   balance_disabled: boolean
   balance_recharge_multiplier: number
@@ -132,6 +135,7 @@ export interface SubscriptionPlan {
   peak_start?: string
   peak_end?: string
   peak_rate_multiplier?: number
+  pricing_unit?: string
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
   monthly_limit_usd?: number | null

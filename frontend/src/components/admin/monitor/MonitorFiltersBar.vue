@@ -36,6 +36,7 @@
 
     <!-- Right: Actions -->
     <div class="flex w-full flex-shrink-0 flex-wrap items-center justify-end gap-3 lg:w-auto">
+      <slot name="actions" />
       <button
         @click="$emit('reload')"
         :disabled="loading"

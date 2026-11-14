@@ -113,7 +113,7 @@ func (s *sparkShadowRepoStub) BatchUpdateLastUsed(_ context.Context, _ map[int64
 func (s *sparkShadowRepoStub) ListByGroup(_ context.Context, _ int64) ([]Account, error) {
 	return nil, nil
 }
-func (s *sparkShadowRepoStub) ListWithFilters(_ context.Context, _ pagination.PaginationParams, _, _, _, _ string, _ int64, _ string) ([]Account, *pagination.PaginationResult, error) {
+func (s *sparkShadowRepoStub) ListWithFilters(_ context.Context, _ pagination.PaginationParams, _, _, _, _ string, _ int64, _ string, subscriptionTier ...string) ([]Account, *pagination.PaginationResult, error) {
 	return nil, nil, nil
 }
 

@@ -312,6 +312,18 @@ func TestSettingService_GetPublicSettings_PaymentBalanceDisabledStrictTrue(t *te
 	}
 }
 
+func TestSettingService_GetPublicSettings_SubscriptionUnitName(t *testing.T) {
+	for _, tc := range []struct{ value, want string }{{"", "积分"}, {"  能量  ", "能量"}} {
+		svc := NewSettingService(&settingPublicRepoStub{values: map[string]string{SettingKeySubscriptionUnitName: tc.value}}, &config.Config{})
+		settings, err := svc.GetPublicSettings(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, tc.want, settings.SubscriptionUnitName)
+		raw, err := svc.GetPublicSettingsForInjection(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, tc.want, raw.(*PublicSettingsInjectionPayload).SubscriptionUnitName)
+	}
+}
+
 func TestSettingService_GetPublicSettings_MCPEnabledFollowsExplicitPublicURL(t *testing.T) {
 	for _, tc := range []struct {
 		publicURL, frontendURL string

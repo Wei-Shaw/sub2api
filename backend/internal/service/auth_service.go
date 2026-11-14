@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"net/mail"
 	"strconv"
 	"strings"
@@ -246,13 +247,14 @@ func (s *AuthService) RegisterWithVerification(ctx context.Context, email, passw
 
 	// 创建用户
 	user := &User{
-		Email:        email,
-		PasswordHash: hashedPassword,
-		Role:         RoleUser,
-		Balance:      grantPlan.Balance,
-		Concurrency:  grantPlan.Concurrency,
-		RPMLimit:     defaultRPMLimit,
-		Status:       StatusActive,
+		RegistrationIP: authClientIPFromContext(ctx),
+		Email:          email,
+		PasswordHash:   hashedPassword,
+		Role:           RoleUser,
+		Balance:        grantPlan.Balance,
+		Concurrency:    grantPlan.Concurrency,
+		RPMLimit:       defaultRPMLimit,
+		Status:         StatusActive,
 	}
 
 	if err := s.createUserAndClaimInvitation(ctx, user, invitationRedeemCode); err != nil {
@@ -619,15 +621,16 @@ func (s *AuthService) LoginOrRegisterOAuth(ctx context.Context, email, username 
 			}
 
 			newUser := &User{
-				Email:        email,
-				Username:     username,
-				PasswordHash: hashedPassword,
-				Role:         RoleUser,
-				Balance:      grantPlan.Balance,
-				Concurrency:  grantPlan.Concurrency,
-				RPMLimit:     defaultRPMLimit,
-				Status:       StatusActive,
-				SignupSource: signupSource,
+				RegistrationIP: authClientIPFromContext(ctx),
+				Email:          email,
+				Username:       username,
+				PasswordHash:   hashedPassword,
+				Role:           RoleUser,
+				Balance:        grantPlan.Balance,
+				Concurrency:    grantPlan.Concurrency,
+				RPMLimit:       defaultRPMLimit,
+				Status:         StatusActive,
+				SignupSource:   signupSource,
 			}
 
 			if err := s.userRepo.Create(ctx, newUser); err != nil {
@@ -768,15 +771,16 @@ func (s *AuthService) loginOrRegisterOAuthWithTokenPair(ctx context.Context, ema
 			}
 
 			newUser := &User{
-				Email:        email,
-				Username:     username,
-				PasswordHash: hashedPassword,
-				Role:         RoleUser,
-				Balance:      grantPlan.Balance,
-				Concurrency:  grantPlan.Concurrency,
-				RPMLimit:     defaultRPMLimit,
-				Status:       StatusActive,
-				SignupSource: signupSource,
+				RegistrationIP: authClientIPFromContext(ctx),
+				Email:          email,
+				Username:       username,
+				PasswordHash:   hashedPassword,
+				Role:           RoleUser,
+				Balance:        grantPlan.Balance,
+				Concurrency:    grantPlan.Concurrency,
+				RPMLimit:       defaultRPMLimit,
+				Status:         StatusActive,
+				SignupSource:   signupSource,
 			}
 
 			if s.entClient != nil && invitationRedeemCode != nil {
@@ -1026,15 +1030,29 @@ func (s *AuthService) updateUserSignupSource(ctx context.Context, userID int64, 
 	}
 }
 
+// authClientIPFromContext reuses the trusted-proxy resolution from the HTTP
+// middleware. An unavailable or invalid address must stay unknown.
+func authClientIPFromContext(ctx context.Context) string {
+	if binding := SessionBindingFromContext(ctx); binding != nil {
+		if address := net.ParseIP(strings.TrimSpace(binding.IP)); address != nil {
+			return address.String()
+		}
+	}
+	return ""
+}
+
 func (s *AuthService) touchUserLogin(ctx context.Context, userID int64) {
 	if s == nil || s.entClient == nil || userID <= 0 {
 		return
 	}
 	now := time.Now().UTC()
-	if err := s.entClient.User.UpdateOneID(userID).
+	update := s.entClient.User.UpdateOneID(userID).
 		SetLastLoginAt(now).
-		SetLastActiveAt(now).
-		Exec(ctx); err != nil {
+		SetLastActiveAt(now)
+	if clientIP := authClientIPFromContext(ctx); clientIP != "" {
+		update.SetLastLoginIP(clientIP)
+	}
+	if err := update.Exec(ctx); err != nil {
 		logger.LegacyPrintf("service.auth", "[Auth] Failed to touch login timestamps: user_id=%d err=%v", userID, err)
 	}
 }

@@ -31,6 +31,7 @@ type ChannelMonitorRepository interface {
 	ListEnabled(ctx context.Context) ([]*ChannelMonitor, error)
 	MarkChecked(ctx context.Context, id int64, checkedAt time.Time) error
 	InsertHistoryBatch(ctx context.Context, rows []*ChannelMonitorHistoryRow) error
+	ResetHistory(ctx context.Context, ids []int64) error
 	DeleteHistoryBefore(ctx context.Context, before time.Time) (int64, error)
 
 	// 历史记录
@@ -82,6 +83,7 @@ type ChannelMonitorService struct {
 	// 之后构造，构造参数注入会破坏既有依赖顺序）。nil 时 fail-closed：
 	// 配额模式的检测产出「未配置」错误快照，Create/Update 关联账号直接报错。
 	quotaFetcher *ChannelMonitorQuotaFetcher
+	errorRules   *ErrorPassthroughService
 }
 
 const maxChannelMonitorNameRunes = 100
@@ -574,6 +576,28 @@ func (s *ChannelMonitorService) Delete(ctx context.Context, id int64) error {
 	return nil
 }
 
+// ResetHistory removes all recorded checks and restarts summary calculation.
+func (s *ChannelMonitorService) ResetHistory(ctx context.Context, ids []int64) error {
+	unique := make([]int64, 0, len(ids))
+	seen := make(map[int64]struct{}, len(ids))
+	for _, id := range ids {
+		if id <= 0 {
+			return ErrChannelMonitorNotFound
+		}
+		if _, ok := seen[id]; !ok {
+			seen[id] = struct{}{}
+			unique = append(unique, id)
+		}
+	}
+	if len(unique) == 0 {
+		return nil
+	}
+	if err := s.repo.ResetHistory(ctx, unique); err != nil {
+		return fmt.Errorf("reset channel monitor history: %w", err)
+	}
+	return nil
+}
+
 // ListHistory 列出某个监控最近的检测历史。
 // model 为空表示返回所有模型；limit <= 0 时使用默认值，超过上限会被截断。
 func (s *ChannelMonitorService) ListHistory(ctx context.Context, id int64, model string, limit int) ([]*ChannelMonitorHistoryEntry, error) {
@@ -704,6 +728,7 @@ func (s *ChannelMonitorService) runChecksConcurrent(ctx context.Context, m *Chan
 
 	// 所有模型共用同一份 CheckOptions（来自监控的快照字段）。
 	opts := &CheckOptions{
+		ErrorRules:       s.errorRules,
 		APIMode:          m.APIMode,
 		ExtraHeaders:     m.ExtraHeaders,
 		BodyOverrideMode: m.BodyOverrideMode,

@@ -6,7 +6,9 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -14,6 +16,10 @@ import (
 func TestValidateMonitorEndpoint_BasePath(t *testing.T) {
 	for _, endpoint := range []string{
 		"https://8.8.8.8",
+		"http://8.8.8.8/anthropic",
+		"http://localhost:3000",
+		"https://127.0.0.1/anthropic",
+		"http://[::1]:3000/anthropic",
 		"https://8.8.8.8/anthropic",
 		"https://8.8.8.8/anthropic/",
 		"https://8.8.8.8/anthropic/v1",
@@ -28,18 +34,51 @@ func TestValidateMonitorEndpoint_BasePath(t *testing.T) {
 		endpoint string
 		want     error
 	}{
-		{"http://8.8.8.8/anthropic", ErrChannelMonitorEndpointScheme},
+		{"ftp://8.8.8.8/anthropic", ErrChannelMonitorEndpointScheme},
 		{"https://8.8.8.8/anthropic?key=secret", ErrChannelMonitorEndpointPath},
 		{"https://8.8.8.8/anthropic#fragment", ErrChannelMonitorEndpointPath},
-		{"https://127.0.0.1/anthropic", ErrChannelMonitorEndpointPrivate},
 		{"https://10.0.0.1/anthropic", ErrChannelMonitorEndpointPrivate},
 		{"https://169.254.169.254/anthropic", ErrChannelMonitorEndpointPrivate},
-		{"https://[::1]/anthropic", ErrChannelMonitorEndpointPrivate},
+		{"http://metadata.google.internal", ErrChannelMonitorEndpointPrivate},
 		{"https://[fd00::1]/anthropic", ErrChannelMonitorEndpointPrivate},
 		{"https:///anthropic", ErrChannelMonitorInvalidEndpoint},
 	} {
 		t.Run(tc.endpoint, func(t *testing.T) {
 			require.ErrorIs(t, validateEndpoint(tc.endpoint), tc.want)
+		})
+	}
+}
+
+func TestMonitorHTTPClient_LocalHTTP(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/relay/v1/models" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(server.Close)
+	client := newSSRFSafeHTTPClient(5 * time.Second)
+	t.Cleanup(client.CloseIdleConnections)
+	for _, endpoint := range []string{server.URL, strings.Replace(server.URL, "127.0.0.1", "localhost", 1)} {
+		t.Run(endpoint, func(t *testing.T) {
+			require.NoError(t, validateEndpoint(endpoint))
+			resp, err := client.Get(endpoint + "/relay/v1/models")
+			require.NoError(t, err)
+			defer resp.Body.Close()
+			require.Equal(t, http.StatusNoContent, resp.StatusCode)
+		})
+	}
+}
+
+func TestMonitorDial_RejectsPrivateTargets(t *testing.T) {
+	for _, address := range []string{"10.0.0.1:80", "169.254.169.254:80", "[fd00::1]:80", "metadata.google.internal:80"} {
+		t.Run(address, func(t *testing.T) {
+			conn, err := safeDialContext(context.Background(), "tcp", address)
+			if conn != nil {
+				conn.Close()
+			}
+			require.ErrorContains(t, err, "blocked by SSRF policy")
 		})
 	}
 }

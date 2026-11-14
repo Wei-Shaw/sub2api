@@ -191,6 +191,8 @@ type CreateGroupRequest struct {
 	Platform                  string                        `json:"platform" binding:"omitempty,group_platform"`
 	RateMultiplier            float64                       `json:"rate_multiplier"`
 	IsExclusive               bool                          `json:"is_exclusive"`
+	PricingUnit               string                        `json:"pricing_unit" binding:"omitempty,max=20"`
+	SubscriptionUsageDisplay  string                        `json:"subscription_usage_display" binding:"omitempty,oneof=amount percentage"`
 	SubscriptionType          string                        `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
 	DailyLimitUSD             optionalLimitField            `json:"daily_limit_usd"`
 	WeeklyLimitUSD            optionalLimitField            `json:"weekly_limit_usd"`
@@ -245,6 +247,7 @@ type CreateGroupRequest struct {
 	DefaultMappedModel          string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	ModelAllowlist              service.GroupModelAllowlist               `json:"model_allowlist"`
+	DefaultSkillIDs             []string                                  `json:"default_skill_ids"`
 	// 固定账号 manifest 配置；创建路径禁止开启，仅编辑可配置。
 	CodexModelsManifestConfig service.GroupCodexModelsManifestConfig `json:"codex_models_manifest_config"`
 	// 分组 RPM 上限（0 = 不限制）
@@ -268,6 +271,8 @@ type UpdateGroupRequest struct {
 	RateMultiplier            *float64                       `json:"rate_multiplier"`
 	IsExclusive               *bool                          `json:"is_exclusive"`
 	Status                    string                         `json:"status" binding:"omitempty,oneof=active inactive"`
+	PricingUnit               string                         `json:"pricing_unit" binding:"omitempty,max=20"`
+	SubscriptionUsageDisplay  string                         `json:"subscription_usage_display" binding:"omitempty,oneof=amount percentage"`
 	SubscriptionType          string                         `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
 	DailyLimitUSD             optionalLimitField             `json:"daily_limit_usd"`
 	WeeklyLimitUSD            optionalLimitField             `json:"weekly_limit_usd"`
@@ -322,6 +327,7 @@ type UpdateGroupRequest struct {
 	DefaultMappedModel          *string                                    `json:"default_mapped_model"`
 	MessagesDispatchModelConfig *service.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	ModelAllowlist              *service.GroupModelAllowlist               `json:"model_allowlist"`
+	DefaultSkillIDs             *[]string                                  `json:"default_skill_ids"`
 	// 固定账号 manifest 配置；nil 表示不修改。
 	CodexModelsManifestConfig *service.GroupCodexModelsManifestConfig `json:"codex_models_manifest_config"`
 	// 分组 RPM 上限（0 = 不限制）；nil 表示未提供不改动
@@ -669,12 +675,15 @@ func (h *GroupHandler) Create(c *gin.Context) {
 	}
 
 	group, err := h.adminService.CreateGroup(c.Request.Context(), &service.CreateGroupInput{
-		Name:                            req.Name,
-		Description:                     req.Description,
-		I18n:                            req.I18n,
-		Platform:                        req.Platform,
-		RateMultiplier:                  req.RateMultiplier,
-		IsExclusive:                     req.IsExclusive,
+		Name:                     req.Name,
+		Description:              req.Description,
+		I18n:                     req.I18n,
+		Platform:                 req.Platform,
+		RateMultiplier:           req.RateMultiplier,
+		IsExclusive:              req.IsExclusive,
+		PricingUnit:              req.PricingUnit,
+		SubscriptionUsageDisplay: req.SubscriptionUsageDisplay,
+
 		SubscriptionType:                req.SubscriptionType,
 		DailyLimitUSD:                   req.DailyLimitUSD.ToServiceInput(),
 		WeeklyLimitUSD:                  req.WeeklyLimitUSD.ToServiceInput(),
@@ -725,6 +734,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelAllowlist:                  req.ModelAllowlist,
+		DefaultSkillIDs:                 req.DefaultSkillIDs,
 		CodexModelsManifestConfig:       req.CodexModelsManifestConfig,
 		RPMLimit:                        req.RPMLimit,
 		MaxReasoningEffort:              req.MaxReasoningEffort,
@@ -816,13 +826,16 @@ func (h *GroupHandler) Update(c *gin.Context) {
 	}
 
 	group, err := h.adminService.UpdateGroup(c.Request.Context(), groupID, &service.UpdateGroupInput{
-		Name:                            req.Name,
-		Description:                     req.Description,
-		I18n:                            req.I18n,
-		Platform:                        req.Platform,
-		RateMultiplier:                  req.RateMultiplier,
-		IsExclusive:                     req.IsExclusive,
-		Status:                          req.Status,
+		Name:                     req.Name,
+		Description:              req.Description,
+		I18n:                     req.I18n,
+		Platform:                 req.Platform,
+		RateMultiplier:           req.RateMultiplier,
+		IsExclusive:              req.IsExclusive,
+		Status:                   req.Status,
+		PricingUnit:              req.PricingUnit,
+		SubscriptionUsageDisplay: req.SubscriptionUsageDisplay,
+
 		SubscriptionType:                req.SubscriptionType,
 		DailyLimitUSD:                   req.DailyLimitUSD.ToServiceInput(),
 		WeeklyLimitUSD:                  req.WeeklyLimitUSD.ToServiceInput(),
@@ -873,6 +886,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		DefaultMappedModel:              req.DefaultMappedModel,
 		MessagesDispatchModelConfig:     req.MessagesDispatchModelConfig,
 		ModelAllowlist:                  req.ModelAllowlist,
+		DefaultSkillIDs:                 req.DefaultSkillIDs,
 		CodexModelsManifestConfig:       req.CodexModelsManifestConfig,
 		RPMLimit:                        req.RPMLimit,
 		MaxReasoningEffort:              req.MaxReasoningEffort,
