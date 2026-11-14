@@ -568,10 +568,10 @@ func (r *liveTestBestEffortUsageRepo) CreateBestEffort(_ context.Context, _ *Usa
 	return r.bestEffortErr
 }
 
-// TestFinalizeLiveCallUsageLogFallsBackToSyncCreate 锁定：finalize 是该会话唯一一次
-// 落库机会（MarkLiveCallClosed 已标记 first），best-effort 写入失败必须走同步 Create
-// 兜底，而不是丢弃错误。
-func TestFinalizeLiveCallUsageLogFallsBackToSyncCreate(t *testing.T) {
+// TestFinalizeLiveCallUsageLogIsNotRewrittenAfterWriterDrops 锁定：finalize 是该会话唯一一次
+// 落库机会（MarkLiveCallClosed 已标记 first），写入行交给会重试的 best-effort 写入器；
+// 写入器报 dropped 时它已放弃并记过丢失，不再走第二条同步 Create。
+func TestFinalizeLiveCallUsageLogIsNotRewrittenAfterWriterDrops(t *testing.T) {
 	record := &LiveCallRecord{
 		CallID:     "call_usage_fallback",
 		CallHash:   hashLiveCallID("call_usage_fallback"),
@@ -586,7 +586,7 @@ func TestFinalizeLiveCallUsageLogFallsBackToSyncCreate(t *testing.T) {
 	}
 	store := &liveTestStore{}
 	require.NoError(t, store.SaveLiveCall(context.Background(), record, time.Hour))
-	usageRepo := &liveTestBestEffortUsageRepo{bestEffortErr: errors.New("usage log queue dropped")}
+	usageRepo := &liveTestBestEffortUsageRepo{bestEffortErr: MarkUsageLogCreateDropped(errors.New("usage log queue dropped"))}
 	svc := &OpenAIGatewayService{
 		cache:              store,
 		concurrencyService: NewConcurrencyService(&liveTestConcurrencyCache{}),
@@ -598,6 +598,5 @@ func TestFinalizeLiveCallUsageLogFallsBackToSyncCreate(t *testing.T) {
 	usageRepo.mu.Lock()
 	defer usageRepo.mu.Unlock()
 	require.Equal(t, 1, usageRepo.bestEffortCalls)
-	require.Len(t, usageRepo.logs, 1, "best-effort 失败后必须同步兜底落库")
-	require.Equal(t, record.CallHash, usageRepo.logs[0].RequestID)
+	require.Empty(t, usageRepo.logs, "writer dropped the row; no second synchronous write")
 }

@@ -638,9 +638,9 @@ func TestGatewayServiceRecordUsage_GeneratesRequestIDWhenAllSourcesMissing(t *te
 	require.Equal(t, billingRepo.lastCmd.RequestID, usageRepo.lastLog.RequestID)
 }
 
-func TestGatewayServiceRecordUsage_DroppedUsageLogFallsBackToSyncCreate(t *testing.T) {
-	// 计费成功后 best-effort 写入被丢弃（队列超时）时必须同步兜底，
-	// 否则出现“已扣费但无 usage_log”的对账缺口（issue #3656）。
+func TestGatewayServiceRecordUsage_DroppedUsageLogIsNotRewrittenSynchronously(t *testing.T) {
+	// best-effort 写入器自己重试瞬时错误；它报 dropped 时已放弃并记过丢失，
+	// 不再走第二条同步写入路径。
 	usageRepo := &openAIRecordUsageBestEffortLogRepoStub{
 		bestEffortErr: MarkUsageLogCreateDropped(errors.New("usage log best-effort queue full")),
 	}
@@ -664,9 +664,7 @@ func TestGatewayServiceRecordUsage_DroppedUsageLogFallsBackToSyncCreate(t *testi
 
 	require.NoError(t, err)
 	require.Equal(t, 1, usageRepo.bestEffortCalls)
-	require.Equal(t, 1, usageRepo.createCalls)
-	// 兜底调用使用的 ctx 必须仍然存活，不能带着已死的 ctx 走过场。
-	require.NoError(t, usageRepo.lastCtxErr)
+	require.Zero(t, usageRepo.createCalls)
 }
 
 func TestGatewayServiceRecordUsage_BillingErrorWritesUnsettledUsageLog(t *testing.T) {

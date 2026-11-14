@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -148,6 +149,9 @@ type usageLogRepository struct {
 	bestEffortBatchOnce sync.Once
 	bestEffortBatchCh   chan usageLogBestEffortRequest
 	bestEffortRecent    *gocache.Cache
+	bestEffortRetry     usageLogWriteRetry
+	// bestEffortLost counts the usage_logs rows this process gave up on.
+	bestEffortLost atomic.Uint64
 }
 
 func NewUsageLogRepository(client *dbent.Client, sqlDB *sql.DB) service.UsageLogRepository {
@@ -156,7 +160,7 @@ func NewUsageLogRepository(client *dbent.Client, sqlDB *sql.DB) service.UsageLog
 
 func newUsageLogRepositoryWithSQL(client *dbent.Client, sqlq sqlExecutor) *usageLogRepository {
 	// 使用 scanSingleRow 替代 QueryRowContext，保证 ent.Tx 作为 sqlExecutor 可用。
-	repo := &usageLogRepository{client: client, sql: sqlq}
+	repo := &usageLogRepository{client: client, sql: sqlq, bestEffortRetry: defaultUsageLogWriteRetry}
 	if db, ok := sqlq.(*sql.DB); ok {
 		repo.db = db
 	}
