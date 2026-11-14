@@ -332,6 +332,29 @@ func RegisterGatewayRoutes(
 			}
 			h.Gateway.XSearch(c)
 		})
+
+		// DeepSeek 独立工具接口（DeepSeek 平台专属）：/v1/tools/* 与 /v1/files*。
+		// 与既有路由无冲突（蓝图 §1 已核）；只挂 /v1 组，不加根路径别名。
+		// OCR/ASR/files 上传可能是大 multipart，沿用组级 bodyLimit，不收紧 textBodyLimit。
+		deepseekToolsGate := func(handler gin.HandlerFunc) gin.HandlerFunc {
+			return func(c *gin.Context) {
+				if getGroupPlatform(c) != service.PlatformDeepseek {
+					service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
+					c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "DeepSeek tools API is not supported for this platform"}})
+					return
+				}
+				handler(c)
+			}
+		}
+		gateway.POST("/tools/search", deepseekToolsGate(func(c *gin.Context) { h.OpenAIGateway.DeepseekTools(c, "search") }))
+		gateway.POST("/tools/fetch", deepseekToolsGate(func(c *gin.Context) { h.OpenAIGateway.DeepseekTools(c, "fetch") }))
+		gateway.POST("/tools/ocr", deepseekToolsGate(func(c *gin.Context) { h.OpenAIGateway.DeepseekTools(c, "ocr") }))
+		gateway.POST("/tools/asr", deepseekToolsGate(func(c *gin.Context) { h.OpenAIGateway.DeepseekTools(c, "asr") }))
+		gateway.POST("/tools/tts", deepseekToolsGate(func(c *gin.Context) { h.OpenAIGateway.DeepseekTools(c, "tts") }))
+		gateway.POST("/files", deepseekToolsGate(func(c *gin.Context) { h.OpenAIGateway.DeepseekTools(c, "files_create") }))
+		gateway.GET("/files", deepseekToolsGate(func(c *gin.Context) { h.OpenAIGateway.DeepseekTools(c, "files_list") }))
+		gateway.GET("/files/:file_id", deepseekToolsGate(func(c *gin.Context) { h.OpenAIGateway.DeepseekTools(c, "files_get/"+c.Param("file_id")) }))
+		gateway.DELETE("/files/:file_id", deepseekToolsGate(func(c *gin.Context) { h.OpenAIGateway.DeepseekTools(c, "files_delete/"+c.Param("file_id")) }))
 	}
 
 	// Gemini 原生 API 兼容层（Gemini SDK/CLI 直连）

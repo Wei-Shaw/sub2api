@@ -610,6 +610,14 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		//（用户专属 > 分组 rate_multiplier > 系统默认），与分组表单的价格预览承诺一致。
 		return s.billingService.CalculateWebSearchCost(result.WebSearchCalls, webSearchPricePerCallFromAPIKey(apiKey), webSearchMultiplier), nil
 	}
+	// DeepSeek 独立工具接口按次计费（search/fetch）：纯工具请求无 token 用量，
+	// 若按对话模型走 token 定价会因无价可循整单归零、丢掉按次费；这里先于
+	// token 通道单独结算（同 WebSearchCalls 按次先例）。有 token 用量的对话内
+	// search 附加费仍走下方「token + search」合并通道，不受影响。
+	if result != nil && result.SearchCount > 0 && result.AudioUsage == nil && result.ImageCount == 0 &&
+		result.VideoCount == 0 && result.Usage.ServerToolUseCalls == 0 && tokens == (UsageTokens{}) {
+		return s.billingService.CalculateSearchCost(result.SearchCount, groupSearchPricePer1kFromAPIKey(apiKey), webSearchMultiplier), nil
+	}
 	if isGrokVideoUsageResult(result, billingModels) {
 		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
 			return s.calculateOpenAIVideoCost(ctx, billingModel, apiKey, result, videoMultiplier), nil
