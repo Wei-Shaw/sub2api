@@ -350,7 +350,7 @@ func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account,
 
 	h := make([]string, 0, len(interesting))
 	for _, k := range interesting {
-		if v := req.Header.Get(k); v != "" {
+		if v := getHeaderRaw(req.Header, k); v != "" {
 			h = append(h, fmt.Sprintf("%s=%q", k, safeHeaderValueForLog(k, v)))
 		}
 	}
