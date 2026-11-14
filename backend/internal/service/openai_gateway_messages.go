@@ -834,6 +834,22 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 	requestID string,
 ) (*apicompat.ResponsesResponse, OpenAIUsage, *apicompat.BufferedResponseAccumulator, openAICompatPriorModelAudit, error) {
 	acc := apicompat.NewBufferedResponseAccumulator()
+	doneItems := newResponsesStreamOutputItems()
+	terminalResponse := func(event *apicompat.ResponsesStreamEvent, payload []byte) *apicompat.ResponsesResponse {
+		response := openAICompatTerminalResponse(event, payload)
+		if response == nil || !isOpenAICompatResponsesTerminalEvent(event.Type) || len(response.Output) > 0 {
+			return response
+		}
+		// Completed items preserve hosted tools, signed reasoning and item order
+		// that the text/function delta accumulator cannot reconstruct.
+		if output, ok := doneItems.BuildOutput(); ok {
+			var items []apicompat.ResponsesOutput
+			if err := json.Unmarshal(output, &items); err == nil {
+				response.Output = items
+			}
+		}
+		return response
+	}
 	var usage OpenAIUsage
 	if resp == nil || resp.Body == nil {
 		return nil, usage, acc, openAICompatPriorModelAudit{}, errors.New("upstream response body is nil")
@@ -925,9 +941,10 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 					var event apicompat.ResponsesStreamEvent
 					if err := json.Unmarshal([]byte(payload), &event); err == nil {
 						s.parseSSEUsageBytesWithType([]byte(payload), event.Type, &usage)
+						doneItems.Observe([]byte(payload))
 						acc.ProcessEvent(&event)
 						recordPrior(&event)
-						if response := openAICompatTerminalResponse(&event, []byte(payload)); isOpenAICompatResponsesTerminalEvent(event.Type) && response != nil {
+						if response := terminalResponse(&event, []byte(payload)); isOpenAICompatResponsesTerminalEvent(event.Type) && response != nil {
 							if event.Usage != nil {
 								usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
 								if response.Usage == nil {
@@ -974,10 +991,11 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 			}
 			s.parseSSEUsageBytesWithType([]byte(payload), event.Type, &usage)
 
+			doneItems.Observe([]byte(payload))
 			acc.ProcessEvent(&event)
 			recordPrior(&event)
 
-			if response := openAICompatTerminalResponse(&event, []byte(payload)); isOpenAICompatResponsesTerminalEvent(event.Type) && response != nil {
+			if response := terminalResponse(&event, []byte(payload)); isOpenAICompatResponsesTerminalEvent(event.Type) && response != nil {
 				if event.Usage != nil {
 					usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
 					if response.Usage == nil {
