@@ -397,6 +397,7 @@ func RegisterGatewayRoutes(
 		})
 		codexDirect.GET("/models", codexModelsHandler)
 	}
+
 	// OpenAI Chat Completions API（不带v1前缀的别名）— auto-route based on group platform
 	rootRoute(http.MethodPost, "/chat/completions", bodyLimit, func(c *gin.Context) {
 		if isOpenAIResponsesCompatibleGatewayPlatform(c) {
