@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -343,4 +344,64 @@ func TestBufferedCompat_FailedTerminalKeepsErrorPayload(t *testing.T) {
 			require.Equal(t, want, recordedPayload(t, path, requestBody, withHosted))
 		})
 	}
+}
+
+func readBufferedOutputItems(t *testing.T, sse string) []string {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+	account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1}
+	response, _, _, _, err := (&OpenAIGatewayService{}).readOpenAICompatBufferedTerminal(
+		bufferedHostedItemsSSEResponse(sse), c, account, "openai chat buffered", "req-1")
+	require.NoError(t, err)
+	require.NotNil(t, response)
+	var items []string
+	for _, item := range response.Output {
+		items = append(items, item.Type+":"+item.ID+":"+item.Arguments+":"+item.Input)
+	}
+	return items
+}
+
+// Items that share an output_index stay apart; the same item reported again
+// replaces its earlier copy; equal indexes keep arrival order.
+func TestReadOpenAICompatBufferedTerminal_DoneItemsMergeByItemID(t *testing.T) {
+	done := func(index int, id string) string {
+		return `{"type":"response.output_item.done","output_index":` + strconv.Itoa(index) + `,"item":{"type":"web_search_call","id":"` + id + `","status":"completed"}}`
+	}
+	items := readBufferedOutputItems(t, bufferedItemsSSE(
+		bufferedHostedItemsCreated,
+		done(0, "ws_a"), done(0, "ws_b"), done(1, "ws_c"), done(0, "ws_a"),
+		bufferedHostedItemsCompleted,
+	))
+	require.Equal(t, []string{"web_search_call:ws_a::", "web_search_call:ws_b::", "web_search_call:ws_c::"}, items)
+}
+
+// The done item is the upstream's final form of an item; deltas only complete a
+// text, refusal or arguments field that the done item left empty, and rebuild an
+// item that never got a done event.
+func TestReadOpenAICompatBufferedTerminal_DoneItemsWinOverDeltas(t *testing.T) {
+	items := readBufferedOutputItems(t, bufferedItemsSSE(
+		bufferedHostedItemsCreated,
+		`{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get","arguments":""}}`,
+		`{"type":"response.function_call_arguments.delta","output_index":0,"delta":"{\"stale\":1}"}`,
+		`{"type":"response.function_call_arguments.done","output_index":0,"arguments":"{\"a\":1}"}`,
+		`{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get","arguments":""}}`,
+		`{"type":"response.output_item.added","output_index":1,"item":{"type":"function_call","id":"fc_2","call_id":"call_2","name":"get","arguments":""}}`,
+		`{"type":"response.function_call_arguments.delta","output_index":1,"delta":"{\"b\":2}"}`,
+		`{"type":"response.output_item.done","output_index":2,"item":{"type":"function_call","id":"fc_3","call_id":"call_3","name":"get","arguments":"{\"c\":3}"}}`,
+		bufferedHostedItemsCompleted,
+	))
+	require.Equal(t, []string{
+		`function_call:fc_1:{"a":1}:`,
+		`function_call:fc_2:{"b":2}:`,
+		`function_call:fc_3:{"c":3}:`,
+	}, items)
+}
+
+func TestForwardAsAnthropic_CancelledTerminalKeepsHostedOutputItems(t *testing.T) {
+	cancelled := `{"type":"response.cancelled","response":{"id":"resp_1","status":"cancelled","output":[],"usage":{"input_tokens":5,"output_tokens":2,"total_tokens":7}}}`
+	out := forwardBufferedHostedItems(t, "/v1/messages", bufferedHostedItemsMessagesBody,
+		bufferedItemsSSE(bufferedHostedItemsCreated, bufferedHostedItemsWebSearchDone, cancelled))
+	require.Equal(t, "server_tool_use", gjson.Get(out, "content.0.type").String(), out)
 }
