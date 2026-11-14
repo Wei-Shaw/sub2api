@@ -263,12 +263,6 @@ fast_mode = true
 
 ## 部署方式
 
-### 版本更新来源
-
-管理后台的版本检查、在线更新和历史版本回退均使用 [codkeep/sub2api 的 Releases](https://github.com/codkeep/sub2api/releases)。更新弹窗中的脚本回退命令使用该仓库的安装脚本，Docker 回退命令使用 `ghcr.io/codkeep/sub2api:<版本号>`。
-
-需要先在该仓库发布包含对应平台程序包的正式 Release，才能下载更新；仅推送源码不会触发版本提示。源码构建仍需自行重新编译部署，发布构建可在管理后台更新并重启生效。切换更新来源后会使用独立的版本缓存，避免继续显示旧上游的发布信息。
-
 ### 方式一：脚本安装（推荐）
 
 一键安装脚本，自动从 GitHub Releases 下载预编译的二进制文件。
@@ -283,7 +277,7 @@ fast_mode = true
 #### 安装步骤
 
 ```bash
-curl -sSL https://raw.githubusercontent.com/codkeep/sub2api/main/deploy/install.sh | sudo bash
+curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash
 ```
 
 脚本会自动：
@@ -333,7 +327,7 @@ sudo journalctl -u sub2api -f
 sudo systemctl restart sub2api
 
 # 卸载
-curl -sSL https://raw.githubusercontent.com/codkeep/sub2api/main/deploy/install.sh | sudo bash -s -- uninstall -y
+curl -sSL https://raw.githubusercontent.com/Wei-Shaw/sub2api/main/deploy/install.sh | sudo bash -s -- uninstall -y
 ```
 
 ---
