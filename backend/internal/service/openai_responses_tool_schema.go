@@ -68,9 +68,11 @@ func sanitizeOpenAIResponsesToolSchemasForPlatform(body []byte, platform string)
 // sanitizeOpenAIResponsesToolSchemaPatterns removes schema constraints whose
 // regular expressions OpenAI's Python re validator rejects, including
 // lookaround, non-Python named groups, and unsupported backslash escapes. It
-// also drops patternProperties keys with such expressions. It deliberately
-// does not descend into instance-valued keywords such as default, examples,
-// const, or enum.
+// also drops patternProperties keys with such expressions. When dropping a key
+// would otherwise close a schema object (additionalProperties: false), the
+// object is reopened so arguments that matched the removed pattern stay
+// representable. It deliberately does not descend into instance-valued
+// keywords such as default, examples, const, or enum.
 func sanitizeOpenAIResponsesToolSchemaPatterns(body []byte) ([]byte, bool, error) {
 	if len(body) == 0 || !openAIResponsesBodyMayContainUnsupportedRegex(body) {
 		return body, false, nil
@@ -203,6 +205,10 @@ type openAIResponsesToolSchemaParser struct {
 	options   openAIResponsesToolSchemaOptions
 	edits     []openAIResponsesToolSchemaEdit
 	probeType string
+	// patternPropertiesDrops records, per patternProperties object start byte,
+	// how many unsupported pattern keys were removed. Parents consult it to
+	// decide whether a closed object must be reopened.
+	patternPropertiesDrops map[int]int
 }
 
 func sanitizeOpenAIResponsesToolSchemas(
@@ -288,6 +294,7 @@ func (p *openAIResponsesToolSchemaParser) parseValue(
 func (p *openAIResponsesToolSchemaParser) parseObject(
 	context openAIResponsesToolSchemaContext, schemaRoot bool, depth int,
 ) error {
+	objectStart := p.pos
 	p.pos++
 	p.skipWhitespace()
 	if p.consume('}') {
@@ -302,6 +309,9 @@ func (p *openAIResponsesToolSchemaParser) parseObject(
 	parameterCount := 0
 	parameterValueStart := -1
 	parameterValueEnd := -1
+	droppedPatternPropertyKeys := 0
+	lostPatternProperty := false
+	var additionalPropertiesFalse []openAIResponsesToolSchemaEdit
 	for {
 		p.skipWhitespace()
 		memberStart := p.pos
@@ -337,6 +347,23 @@ func (p *openAIResponsesToolSchemaParser) parseObject(
 			parameterValueEnd = valueEnd
 		}
 		if p.options.removeUnsupportedRegexPatterns {
+			if context == openAIResponsesToolSchema && openAIResponsesJSONStringEquals(key, "patternProperties") {
+				// The child parser records how many keys it had to remove. A
+				// closed sibling object must be reopened in that case.
+				if p.patternPropertiesDrops[valueStart] > 0 {
+					lostPatternProperty = true
+				}
+			}
+			if context == openAIResponsesToolSchema && openAIResponsesJSONStringEquals(key, "additionalProperties") &&
+				bytes.Equal(p.body[valueStart:valueEnd], []byte("false")) {
+				// Defer the edit: patternProperties may appear after this
+				// member, and only actual key removal requires reopening.
+				additionalPropertiesFalse = append(additionalPropertiesFalse, openAIResponsesToolSchemaEdit{
+					start:       valueStart,
+					end:         valueEnd,
+					replacement: "true",
+				})
+			}
 			if context == openAIResponsesToolSchema && openAIResponsesJSONStringEquals(key, "pattern") {
 				if pattern, ok := decodeOpenAIResponsesJSONStringValue(p.body[valueStart:valueEnd]); ok && hasUnsupportedOpenAIRegexPattern(pattern) {
 					deleteMember = true
@@ -370,6 +397,9 @@ func (p *openAIResponsesToolSchemaParser) parseObject(
 
 		if p.pos >= len(p.body) {
 			return p.syntaxError("unterminated object")
+		}
+		if deleteMember && context == openAIResponsesToolSchemaPatternPropertiesMap {
+			droppedPatternPropertyKeys++
 		}
 		if deleteMember && deleteRunStart < 0 {
 			deleteRunStart = memberStart
@@ -413,6 +443,24 @@ func (p *openAIResponsesToolSchemaParser) parseObject(
 			if edit, ok := openAIMissingRootObjectUnionTypeEdit(
 				p.body[parameterValueStart:parameterValueEnd], parameterValueStart,
 			); ok {
+				if err := p.addEdit(edit.start, edit.end, edit.replacement); err != nil {
+					return err
+				}
+			}
+		}
+		if droppedPatternPropertyKeys > 0 {
+			if p.patternPropertiesDrops == nil {
+				p.patternPropertiesDrops = make(map[int]int)
+			}
+			p.patternPropertiesDrops[objectStart] = droppedPatternPropertyKeys
+		}
+		if lostPatternProperty {
+			// Removing a patternProperties entry turns keys that only matched
+			// that pattern into additional properties. Keeping
+			// additionalProperties: false would reject argument keys the client
+			// declared as valid, so reopen the object. This only widens what the
+			// upstream accepts; it does not invent constraints.
+			for _, edit := range additionalPropertiesFalse {
 				if err := p.addEdit(edit.start, edit.end, edit.replacement); err != nil {
 					return err
 				}
