@@ -222,6 +222,52 @@ func TestOpenAIGatewayService_NativeResponsesBodyModificationPreservesHTMLChars(
 	require.NotContains(t, string(upstream.lastBody), `\\u0026`)
 }
 
+func TestOpenAIGatewayService_OAuthMessagesBridgeEnforcesCodexIdentity(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, client := range []struct {
+		name      string
+		userAgent string
+	}{
+		{name: "pi", userAgent: "pi (darwin 25.0.0; arm64)"},
+		{name: "no_user_agent"},
+	} {
+		t.Run(client.name, func(t *testing.T) {
+			body := []byte(`{"model":"gpt-5.5","stream":true,"prompt_cache_key":"anthropic-metadata-session-1","input":[{"type":"message","role":"developer","content":[{"type":"input_text","text":"<sub2api-claude-code-todo-guard>"}]},{"type":"message","role":"user","content":"hello"}]}`)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			if client.userAgent != "" {
+				c.Request.Header.Set("User-Agent", client.userAgent)
+			}
+
+			upstream := &httpUpstreamRecorder{resp: openAICompatSSECompletedResponse("resp_bridge_identity", "gpt-5.5")}
+			svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+			account := &Account{
+				ID:          123,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeOAuth,
+				Concurrency: 1,
+				Credentials: map[string]any{
+					"access_token":       "oauth-token",
+					"chatgpt_account_id": "chatgpt-acc",
+				},
+			}
+
+			result, err := svc.Forward(context.Background(), c, account, body)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.NotNil(t, upstream.lastReq)
+			require.Equal(t, chatgptCodexURL, upstream.lastReq.URL.String())
+			require.Equal(t, codexCLIUserAgent, upstream.lastReq.Header.Get("User-Agent"))
+			require.Equal(t, openai.CodexDefaultOriginator, upstream.lastReq.Header.Get("originator"))
+			require.Equal(t, codexCLIVersion, upstream.lastReq.Header.Get("version"))
+			require.Empty(t, upstream.lastReq.Header.Get("OpenAI-Beta"))
+		})
+	}
+}
+
 func TestOpenAIGatewayService_OAuthMessagesBridgeDoesNotInjectDefaultInstructions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -262,8 +308,10 @@ func TestOpenAIGatewayService_OAuthMessagesBridgeDoesNotInjectDefaultInstruction
 	require.False(t, gjson.GetBytes(upstream.lastBody, "prompt_cache_key").Exists())
 	require.NotEmpty(t, upstream.lastReq.Header.Get("Session_Id"))
 	require.Empty(t, upstream.lastReq.Header.Get("Conversation_Id"))
+	require.Equal(t, codexCLIUserAgent, upstream.lastReq.Header.Get("User-Agent"))
+	require.Equal(t, openai.CodexDefaultOriginator, upstream.lastReq.Header.Get("originator"))
+	require.Equal(t, codexCLIVersion, upstream.lastReq.Header.Get("version"))
 	require.Empty(t, upstream.lastReq.Header.Get("OpenAI-Beta"))
-	require.Empty(t, upstream.lastReq.Header.Get("originator"))
 }
 
 type openAIPassthroughFailoverRepo struct {
