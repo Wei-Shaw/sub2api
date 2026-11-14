@@ -169,14 +169,23 @@ func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParam
 		var lastRetryResp *http.Response
 		var lastRetryBody []byte
 
-		// MODEL_CAPACITY_EXHAUSTED 使用独立的重试参数（60 次，固定 1s 间隔）
+		// MODEL_CAPACITY_EXHAUSTED 使用独立的重试参数（固定 1s 间隔）：
+		// 多账号模式只重试 antigravityModelCapacitySwitchAttempts 次后切换账号；
+		// 单账号模式最多 60 次，并做按模型的全局去重
 		maxAttempts := antigravitySmartRetryMaxAttempts
+		capacitySwitch := false
 		if isModelCapacityExhausted {
-			maxAttempts = antigravityModelCapacityRetryMaxAttempts
 			waitDuration = antigravityModelCapacityRetryWait
+			capacitySwitch = !isSingleAccountRetry(p.ctx)
+			if capacitySwitch {
+				maxAttempts = antigravityModelCapacitySwitchAttempts
+			} else {
+				maxAttempts = antigravityModelCapacityRetryMaxAttempts
+			}
 
-			// 全局去重：如果其他 goroutine 已在重试同一模型且尚在 cooldown 中，直接返回 503
-			if modelName != "" {
+			// 全局去重（仅单账号模式）：如果其他 goroutine 已在重试同一模型且尚在 cooldown 中，直接返回 503。
+			// 多账号模式不用它：它按模型而非账号记录，会让一个账号的容量不足拖累其他账号的请求。
+			if modelName != "" && !capacitySwitch {
 				modelCapacityExhaustedMu.RLock()
 				cooldownUntil, exists := modelCapacityExhaustedUntil[modelName]
 				modelCapacityExhaustedMu.RUnlock()
@@ -270,7 +279,27 @@ func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParam
 			retryBody = respBody
 		}
 
-		// MODEL_CAPACITY_EXHAUSTED：模型容量不足，切换账号无意义
+		// MODEL_CAPACITY_EXHAUSTED，多账号模式：只让本账号的这个模型短暂冷却（不写 Gemini 家族 scope），
+		// 清除粘性会话并切换账号
+		if isModelCapacityExhausted && capacitySwitch {
+			resetAt := time.Now().Add(antigravityModelCapacityAccountCooldown)
+			if modelName != "" && setModelRateLimitByModelName(p.ctx, p.accountRepo, p.account.ID, modelName, p.prefix, resp.StatusCode, resetAt, true) {
+				s.updateAccountModelRateLimitInCache(p.ctx, p.account, modelName, resetAt)
+			}
+			log.Printf("%s status=%d smart_retry_exhausted_model_capacity attempts=%d model=%s account=%d body=%s (switch account)",
+				p.prefix, resp.StatusCode, maxAttempts, modelName, p.account.ID, truncateForLog(retryBody, 200))
+			s.clearStickySession(p.ctx, p.groupID, p.sessionHash)
+			return &smartRetryResult{
+				action: smartRetryActionBreakWithResp,
+				switchError: &AntigravityAccountSwitchError{
+					OriginalAccountID: p.account.ID,
+					RateLimitedModel:  modelName,
+					IsStickySession:   p.isStickySession,
+				},
+			}
+		}
+
+		// MODEL_CAPACITY_EXHAUSTED，单账号模式：没有其他账号可换
 		// 直接返回上游错误响应，不设置模型限流，不切换账号
 		if isModelCapacityExhausted {
 			// 设置 cooldown，让后续请求快速失败，避免重复重试
