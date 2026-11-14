@@ -228,6 +228,32 @@ func TestRateLimitService_HandleUpstreamError_OAuth401InvalidatorError(t *testin
 	require.Len(t, invalidator.accounts, 1)
 }
 
+// setup-token 通常没有 refresh_token，一次瞬时 401 不应把仍可用的账号永久置为 Error。
+// 与 OAuth 一致先失效 token 缓存并临时停调，让后续请求重新读取持久化凭据。
+func TestRateLimitService_HandleUpstreamError_SetupToken401SetsTempUnschedulable(t *testing.T) {
+	repo := &rateLimitAccountRepoStub{}
+	invalidator := &tokenCacheInvalidatorRecorder{}
+	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	service.SetTokenCacheInvalidator(invalidator)
+	account := &Account{
+		ID:       105,
+		Platform: PlatformAnthropic,
+		Type:     AccountTypeSetupToken,
+		Credentials: map[string]any{
+			"access_token": "setup-token-access",
+		},
+	}
+
+	shouldDisable := service.HandleUpstreamError(context.Background(), account, 401, http.Header{}, []byte("unauthorized"))
+
+	require.True(t, shouldDisable)
+	require.Equal(t, 0, repo.setErrorCalls, "setup-token 401 must not permanently disable the account")
+	require.Equal(t, 1, repo.tempCalls)
+	require.Equal(t, int64(105), repo.lastTempID)
+	require.Contains(t, repo.lastTempReason, "invalid or expired credentials")
+	require.Len(t, invalidator.accounts, 1, "cached token should be invalidated")
+}
+
 func TestRateLimitService_HandleUpstreamError_NonOAuth401(t *testing.T) {
 	repo := &rateLimitAccountRepoStub{}
 	invalidator := &tokenCacheInvalidatorRecorder{}
