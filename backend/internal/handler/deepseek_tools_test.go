@@ -80,6 +80,18 @@ func TestDeepseekToolsGate(t *testing.T) {
 		require.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
 		require.Contains(t, rec.Body.String(), "No available DeepSeek accounts")
 	})
+
+	// composite 组（多平台账号池）放行进 handler，由调度器按 deepseek 选号；
+	// 组内无 deepseek 账号时 503 而非 404（对齐 Grok video 的 composite 放行先例）。
+	t.Run("composite platform allowed, falls through to account selection", func(t *testing.T) {
+		router := newDeepseekToolsRouter(h, service.PlatformComposite, "search")
+		req := httptest.NewRequest(http.MethodPost, "/v1/tools/search", strings.NewReader(`{"query":"golang"}`))
+		req.Header.Set("Content-Type", "application/json")
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
+		require.Contains(t, rec.Body.String(), "No available DeepSeek accounts")
+	})
 }
 
 // files_list 等 files_* 端点同样受平台门禁约束。
