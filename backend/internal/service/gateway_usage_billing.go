@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
@@ -243,7 +244,21 @@ func isForcedUsageBillingRequestID(requestID string) bool {
 		strings.HasPrefix(id, "grok-video:") ||
 		strings.HasPrefix(id, "grok_audio:") ||
 		strings.HasPrefix(id, "grok_realtime:") ||
+		strings.HasPrefix(id, "deepseek_tools:") ||
 		strings.HasPrefix(id, GeminiCachedContentUsageRequestIDPrefix)
+}
+
+// deepseekToolsBillingIDWindow 是同一 (endpoint, payloadHash) 计费键的时间窗：
+// 窗口内的重复请求生成同一 request id 供 usage 记录防重，跨窗重新计费。
+const deepseekToolsBillingIDWindow = 5 * time.Minute
+
+// StableDeepseekToolsBillingRequestID 是 DeepSeek 独立工具接口的 durable
+// usage_logs / 去重键：deepseek_tools:{endpoint}:{payloadHash}:{时间窗序号}。
+// 与 StableGrokAudioBillingRequestID 同模式：强前缀保证不会被客户端复用的
+// request id 折叠。
+func StableDeepseekToolsBillingRequestID(endpoint string, payloadHash string) string {
+	window := time.Now().Unix() / int64(deepseekToolsBillingIDWindow/time.Second)
+	return "deepseek_tools:" + strings.TrimSpace(endpoint) + ":" + strings.TrimSpace(payloadHash) + ":" + strconv.FormatInt(window, 10)
 }
 
 // StableGrokAudioBillingRequestID is the durable usage_logs / dedup key for one
