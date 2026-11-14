@@ -1302,11 +1302,13 @@ interface GroupOption {
   platform: GroupPlatform
 }
 
+type CcsClientIcon = 'terminal' | 'server' | 'sparkles'
+
 interface CcsClientOption {
   clientType: CcSwitchClientType
   label: string
   description: string
-  icon: string
+  icon: CcsClientIcon
   disabled?: boolean
 }
 
@@ -1479,7 +1481,7 @@ const ccsClientOptions = computed<CcsClientOption[]>(() => {
     clientType: CcSwitchClientType,
     label: string,
     description: string,
-    icon: string,
+    icon: CcsClientIcon,
     disabled = false
   ): CcsClientOption => ({ clientType, label, description, icon, disabled })
 
