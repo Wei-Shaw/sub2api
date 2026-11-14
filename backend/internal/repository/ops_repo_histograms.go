@@ -35,6 +35,7 @@ FROM usage_logs ul
 ` + join + `
 ` + where + `
 AND ul.duration_ms IS NOT NULL
+AND ` + usageLogResponseDeliveredUL + `
 GROUP BY 1, 3
 ORDER BY 3 ASC`
 

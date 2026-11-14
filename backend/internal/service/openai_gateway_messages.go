@@ -612,7 +612,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
-	finalResponse, usage, acc, prior, err := s.readOpenAICompatBufferedTerminal(resp, c, account, "openai messages buffered", requestID)
+	finalResponse, usage, acc, prior, err := s.readOpenAICompatBufferedTerminal(resp, c, account, "openai messages buffered", requestID, nil)
 	if err != nil {
 		var readErr *openAICompatBufferedReadError
 		if errors.As(err, &readErr) && readErr != nil {
@@ -826,13 +826,20 @@ func (a openAICompatPriorModelAudit) apply(observer *upstreamResponseModelObserv
 	}
 }
 
+// downstreamCtx, when non-nil, aborts buffering as soon as the downstream
+// request ends (covered GPT Chat path); nil keeps the legacy behavior.
 func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 	resp *http.Response,
 	c *gin.Context,
 	account *Account,
 	logPrefix string,
 	requestID string,
+	downstreamCtx context.Context,
 ) (*apicompat.ResponsesResponse, OpenAIUsage, *apicompat.BufferedResponseAccumulator, openAICompatPriorModelAudit, error) {
+	var downstreamDone <-chan struct{}
+	if downstreamCtx != nil {
+		downstreamDone = downstreamCtx.Done()
+	}
 	acc := apicompat.NewBufferedResponseAccumulator()
 	var usage OpenAIUsage
 	if resp == nil || resp.Body == nil {
@@ -929,13 +936,13 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 						recordPrior(&event)
 						if response := openAICompatTerminalResponse(&event, []byte(payload)); isOpenAICompatResponsesTerminalEvent(event.Type) && response != nil {
 							if event.Usage != nil {
-								usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
+								applyOpenAITerminalUsage(&usage, copyOpenAIUsageFromResponsesUsage(event.Usage))
 								if response.Usage == nil {
 									response.Usage = event.Usage
 								}
 							}
 							if response.Usage != nil {
-								usage = copyOpenAIUsageFromResponsesUsage(response.Usage)
+								applyOpenAITerminalUsage(&usage, copyOpenAIUsageFromResponsesUsage(response.Usage))
 							}
 							return response, usage, acc, prior, nil
 						}
@@ -979,13 +986,13 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 
 			if response := openAICompatTerminalResponse(&event, []byte(payload)); isOpenAICompatResponsesTerminalEvent(event.Type) && response != nil {
 				if event.Usage != nil {
-					usage = copyOpenAIUsageFromResponsesUsage(event.Usage)
+					applyOpenAITerminalUsage(&usage, copyOpenAIUsageFromResponsesUsage(event.Usage))
 					if response.Usage == nil {
 						response.Usage = event.Usage
 					}
 				}
 				if response.Usage != nil {
-					usage = copyOpenAIUsageFromResponsesUsage(response.Usage)
+					applyOpenAITerminalUsage(&usage, copyOpenAIUsageFromResponsesUsage(response.Usage))
 				}
 				return response, usage, acc, prior, nil
 			}
@@ -997,6 +1004,12 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 				zap.Duration("interval", streamInterval),
 			)
 			return nil, usage, acc, prior, fmt.Errorf("stream data interval timeout")
+
+		case <-downstreamDone:
+			// Stop generation instead of buffering for a client that left; the
+			// reader goroutine exits once the closed body fails its read.
+			_ = resp.Body.Close()
+			return nil, usage, acc, prior, &openAICompatBufferedReadError{cause: downstreamCtx.Err()}
 		}
 	}
 }
