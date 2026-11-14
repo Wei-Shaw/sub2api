@@ -65,15 +65,17 @@ func sanitizeOpenAIResponsesToolSchemasForPlatform(body []byte, platform string)
 	return normalized, changed, nil
 }
 
-// sanitizeOpenAIResponsesToolSchemaPatterns removes only schema constraints
-// containing regex lookaround, which OpenAI rejects. It deliberately does not
-// descend into instance-valued keywords such as default, examples, const, or
-// enum.
+// sanitizeOpenAIResponsesToolSchemaPatterns removes schema constraints whose
+// regular expressions OpenAI's Python re validator rejects, including
+// lookaround, non-Python named groups, and unsupported backslash escapes. It
+// also drops patternProperties keys with such expressions. It deliberately
+// does not descend into instance-valued keywords such as default, examples,
+// const, or enum.
 func sanitizeOpenAIResponsesToolSchemaPatterns(body []byte) ([]byte, bool, error) {
-	if len(body) == 0 || !openAIResponsesBodyMayContainRegexLookaround(body) {
+	if len(body) == 0 || !openAIResponsesBodyMayContainUnsupportedRegex(body) {
 		return body, false, nil
 	}
-	return sanitizeOpenAIResponsesToolSchemas(body, openAIResponsesToolSchemaOptions{removeLookaroundPatterns: true})
+	return sanitizeOpenAIResponsesToolSchemas(body, openAIResponsesToolSchemaOptions{removeUnsupportedRegexPatterns: true})
 }
 
 // sanitizeOpenAIResponsesToolParameterTypes replaces an explicitly null type
@@ -92,20 +94,79 @@ func sanitizeOpenAIResponsesToolParameterTypes(body []byte) ([]byte, bool, error
 	})
 }
 
-func openAIResponsesBodyMayContainRegexLookaround(body []byte) bool {
+func openAIResponsesBodyMayContainUnsupportedRegex(body []byte) bool {
 	// An opening parenthesis may be literal or encoded as JSON's canonical
-	// Unicode escape. Other lookaround characters may themselves be escaped, so
-	// the full decoded pattern is checked only after scoped parsing.
-	return bytes.Contains(body, []byte("(")) || bytes.Contains(body, []byte(`\u0028`))
+	// Unicode escape. A backslash inside a JSON string is escaped as \\, so the
+	// sequence \\<letter> exposes the decoded regex escape without parsing.
+	if bytes.Contains(body, []byte("(")) || bytes.Contains(body, []byte(`\u0028`)) ||
+		bytes.Contains(body, []byte(`\u005c`)) || bytes.Contains(body, []byte(`\u005C`)) {
+		return true
+	}
+	for i := 0; i+2 < len(body); i++ {
+		if body[i] != '\\' || body[i+1] != '\\' {
+			continue
+		}
+		escaped := body[i+2]
+		if isASCIILetter(escaped) && !pythonRegexEscapeAllowed(escaped) {
+			return true
+		}
+	}
+	return false
 }
 
-func hasRegexLookaround(pattern string) bool {
-	return strings.Contains(pattern, "(?=") || strings.Contains(pattern, "(?!") ||
-		strings.Contains(pattern, "(?<=") || strings.Contains(pattern, "(?<!")
+// hasUnsupportedOpenAIRegexPattern reports whether Python re rejects pattern.
+// OpenAI validates tool-schema patterns with Python re, which supports neither
+// lookaround nor the .NET/Java (?<name>...) and (?'name'...) group forms, and
+// reserves unknown ASCII-letter escapes such as \p and \R.
+func hasUnsupportedOpenAIRegexPattern(pattern string) bool {
+	inCharacterClass := false
+	for i := 0; i < len(pattern); i++ {
+		switch pattern[i] {
+		case '\\':
+			if i+1 >= len(pattern) {
+				return true
+			}
+			escaped := pattern[i+1]
+			if isASCIILetter(escaped) && !pythonRegexEscapeAllowed(escaped) {
+				return true
+			}
+			i++
+		case '[':
+			inCharacterClass = true
+		case ']':
+			inCharacterClass = false
+		case '(':
+			if inCharacterClass || i+1 >= len(pattern) || pattern[i+1] != '?' {
+				continue
+			}
+			if i+2 >= len(pattern) {
+				return true
+			}
+			switch pattern[i+2] {
+			case '=', '!', '<', '\'':
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isASCIILetter(ch byte) bool {
+	return ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z'
+}
+
+func pythonRegexEscapeAllowed(ch byte) bool {
+	switch ch {
+	case 'a', 'b', 'f', 'n', 'r', 't', 'v',
+		'd', 'D', 's', 'S', 'w', 'W',
+		'A', 'Z', 'B', 'N', 'u', 'U', 'x':
+		return true
+	}
+	return false
 }
 
 type openAIResponsesToolSchemaOptions struct {
-	removeLookaroundPatterns        bool
+	removeUnsupportedRegexPatterns  bool
 	replaceNullParameterTypes       bool
 	injectObjectUnionRootObjectType bool
 	dropNullRequired                bool
@@ -126,6 +187,7 @@ const (
 	openAIResponsesToolSchema
 	openAIResponsesToolSchemaArray
 	openAIResponsesToolSchemaMap
+	openAIResponsesToolSchemaPatternPropertiesMap
 	openAIResponsesToolSchemaOrArray
 )
 
@@ -274,9 +336,16 @@ func (p *openAIResponsesToolSchemaParser) parseObject(
 			parameterValueStart = valueStart
 			parameterValueEnd = valueEnd
 		}
-		if context == openAIResponsesToolSchema && openAIResponsesJSONStringEquals(key, "pattern") && p.options.removeLookaroundPatterns {
-			if pattern, ok := decodeOpenAIResponsesJSONStringValue(p.body[valueStart:valueEnd]); ok && hasRegexLookaround(pattern) {
-				deleteMember = true
+		if p.options.removeUnsupportedRegexPatterns {
+			if context == openAIResponsesToolSchema && openAIResponsesJSONStringEquals(key, "pattern") {
+				if pattern, ok := decodeOpenAIResponsesJSONStringValue(p.body[valueStart:valueEnd]); ok && hasUnsupportedOpenAIRegexPattern(pattern) {
+					deleteMember = true
+				}
+			}
+			if context == openAIResponsesToolSchemaPatternPropertiesMap {
+				if pattern, ok := decodeOpenAIResponsesJSONStringValue(key); ok && hasUnsupportedOpenAIRegexPattern(pattern) {
+					deleteMember = true
+				}
 			}
 		}
 		// JSON Schema requires "required" to be an array. Clients occasionally emit
@@ -496,11 +565,13 @@ func openAIResponsesToolSchemaChildContext(
 			return openAIResponsesToolSchemaOrArray, false
 		case openAIResponsesJSONStringMatchesAny(key, "anyOf", "oneOf", "allOf", "prefixItems"):
 			return openAIResponsesToolSchemaArray, false
+		case openAIResponsesJSONStringEquals(key, "patternProperties"):
+			return openAIResponsesToolSchemaPatternPropertiesMap, false
 		case openAIResponsesJSONStringMatchesAny(key,
-			"properties", "patternProperties", "$defs", "definitions", "dependentSchemas", "dependencies"):
+			"properties", "$defs", "definitions", "dependentSchemas", "dependencies"):
 			return openAIResponsesToolSchemaMap, false
 		}
-	case openAIResponsesToolSchemaMap:
+	case openAIResponsesToolSchemaMap, openAIResponsesToolSchemaPatternPropertiesMap:
 		return openAIResponsesToolSchema, false
 	}
 	return openAIResponsesToolSchemaSkip, false

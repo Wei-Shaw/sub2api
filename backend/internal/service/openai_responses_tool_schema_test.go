@@ -409,6 +409,73 @@ func TestSanitizeOpenAIResponsesToolSchemaPatterns_RemovesLookaroundOnly(t *test
 	require.Equal(t, "^[a-z]+$", gjson.GetBytes(sanitized, "tools.0.parameters.properties.id.pattern").String())
 }
 
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_DropsPythonRegexIncompatiblePatterns(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","name":"search","parameters":{"type":"object","properties":{
+		"unicode":{"type":"string","pattern":"^\\p{L}+$"},
+		"unknownEscape":{"type":"string","pattern":"^\\R+$"},
+		"named":{"type":"string","pattern":"^(?<word>[a-z]+)$"},
+		"namedSingle":{"type":"string","pattern":"^(?'word'[a-z]+)$"},
+		"pythonNamed":{"type":"string","pattern":"^(?P<word>[a-z]+)$"},
+		"escapedLiteral":{"type":"string","pattern":"^\\\\p{L}+$"},
+		"digits":{"type":"string","pattern":"^\\d+$"}
+	}}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+	require.NoError(t, err)
+	require.True(t, changed)
+	for _, name := range []string{"unicode", "unknownEscape", "named", "namedSingle"} {
+		require.False(t, gjson.GetBytes(sanitized, "tools.0.parameters.properties."+name+".pattern").Exists(), name)
+	}
+	require.Equal(t, `^(?P<word>[a-z]+)$`, gjson.GetBytes(sanitized, "tools.0.parameters.properties.pythonNamed.pattern").String())
+	require.Equal(t, `^\\p{L}+$`, gjson.GetBytes(sanitized, "tools.0.parameters.properties.escapedLiteral.pattern").String())
+	require.Equal(t, `^\d+$`, gjson.GetBytes(sanitized, "tools.0.parameters.properties.digits.pattern").String())
+	require.True(t, json.Valid(sanitized))
+}
+
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_DropsUnicodePropertyEscape(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","name":"search","parameters":{"type":"object","properties":{"word":{"type":"string","pattern":"^\\p{L}+$"}}}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(sanitized, "tools.0.parameters.properties.word.pattern").Exists())
+}
+
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_DropsUnsupportedPatternProperties(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","name":"search","parameters":{"type":"object","patternProperties":{
+		"^\\p{L}+$":{"type":"string","pattern":"(?=nested)"},
+		"^(?<word>[a-z]+)$":{"type":"number"},
+		"^[a-z]+$":{"type":"string","pattern":"(?=nested)"},
+		"^\\\\p{L}+$":{"type":"boolean"}
+	}}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	var doc struct {
+		Tools []struct {
+			Parameters struct {
+				PatternProperties map[string]struct {
+					Type    string  `json:"type"`
+					Pattern *string `json:"pattern"`
+				} `json:"patternProperties"`
+			} `json:"parameters"`
+		} `json:"tools"`
+	}
+	require.NoError(t, json.Unmarshal(sanitized, &doc))
+	properties := doc.Tools[0].Parameters.PatternProperties
+	require.NotContains(t, properties, `^\p{L}+$`)
+	require.NotContains(t, properties, `^(?<word>[a-z]+)$`)
+	valid := properties[`^[a-z]+$`]
+	require.Equal(t, "string", valid.Type)
+	require.Nil(t, valid.Pattern)
+	escaped := properties[`^\\p{L}+$`]
+	require.Equal(t, "boolean", escaped.Type)
+	require.True(t, json.Valid(sanitized))
+}
+
 func TestSanitizeOpenAIResponsesToolSchemaPatterns_PreservesRawDocumentRepresentation(t *testing.T) {
 	body := []byte("{\n \"number\":1e+999,\n \"tools\":[{\"parameters\":{\"pattern\":\"(?=drop)\", \"description\":\"\\u003ctag\\u003e\", \"type\":\"string\"}}],\n \"tail\":-0.00\n}")
 	want := []byte("{\n \"number\":1e+999,\n \"tools\":[{\"parameters\":{ \"description\":\"\\u003ctag\\u003e\", \"type\":\"string\"}}],\n \"tail\":-0.00\n}")
