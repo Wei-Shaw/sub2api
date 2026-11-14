@@ -95,9 +95,19 @@ func (s *AccountUsageService) getActiveUsageForAccount(ctx context.Context, acco
 	// Each caller owns its projection, even when several tabs share one read.
 	copy := *account
 	copy.Extra = maps.Clone(account.Extra)
+	if entry.usage.PlanType != "" {
+		copy.Credentials = maps.Clone(account.Credentials)
+		if copy.Credentials == nil {
+			copy.Credentials = make(map[string]any)
+		}
+		copy.Credentials["plan_type"] = entry.usage.PlanType
+	}
 	mergeAccountExtra(&copy, updates)
 	usage, err := s.getOpenAIUsage(ctx, &copy, false, true)
 	if usage != nil {
+		if _, reported := updates["codex_5h_used_percent"]; !reported {
+			usage.FiveHour = nil
+		}
 		usage.Source = "active"
 		usage.UpdatedAt = &entry.at
 	}

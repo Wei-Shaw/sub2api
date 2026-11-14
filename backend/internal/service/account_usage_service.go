@@ -198,6 +198,7 @@ type AICredit struct {
 
 // UsageInfo 账号使用量信息
 type UsageInfo struct {
+	FiveHourAvailable  *bool          `json:"-"`
 	Source             string         `json:"source,omitempty"`               // "passive" or "active"
 	UpdatedAt          *time.Time     `json:"updated_at,omitempty"`           // 更新时间
 	FiveHour           *UsageProgress `json:"five_hour"`                      // 5小时窗口
@@ -274,7 +275,8 @@ type ClaudeUsageWindow struct {
 
 // ClaudeUsageResponse Anthropic API返回的usage结构
 type ClaudeUsageResponse struct {
-	FiveHour struct {
+	FiveHourAvailable *bool `json:"-"` // nil: not reported; false: explicit upstream null.
+	FiveHour          struct {
 		Utilization float64 `json:"utilization"`
 		ResetsAt    string  `json:"resets_at"`
 	} `json:"five_hour"`
@@ -654,6 +656,9 @@ func (s *AccountUsageService) getPassiveUsageForAccount(ctx context.Context, acc
 	// 复用 estimateSetupTokenUsage 构建 5h 窗口（OAuth 和 SetupToken 逻辑一致）
 	info := s.estimateSetupTokenUsage(account)
 	info.Source = "passive"
+	if available, ok := account.Extra["claude_five_hour_available"].(bool); ok && !available && account.Type == AccountTypeOAuth {
+		info.FiveHour = nil
+	}
 
 	// 设置采样时间
 	if raw, ok := account.Extra["passive_usage_sampled_at"]; ok {
@@ -725,6 +730,9 @@ func buildPassiveUsageWindow(extra map[string]any, utilKey, resetKey string) *Us
 // 这样下次被动加载时能看到最新值。
 func (s *AccountUsageService) syncActiveToPassive(ctx context.Context, accountID int64, usage *UsageInfo) {
 	extraUpdates := make(map[string]any, 4)
+	if usage.FiveHourAvailable != nil {
+		extraUpdates["claude_five_hour_available"] = *usage.FiveHourAvailable
+	}
 
 	if usage.FiveHour != nil {
 		extraUpdates["session_window_utilization"] = usage.FiveHour.Utilization / 100
@@ -815,17 +823,22 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 		}
 	}
 
+	if openAIPlanHasNoFiveHour(account) {
+		usage.FiveHour = nil
+	}
+
 	if s.usageLogRepo == nil {
 		return usage, nil
 	}
 
-	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, codexWindowStatsStart(usage.FiveHour, 5*time.Hour, now)); err == nil {
-		if usage.FiveHour == nil {
-			usage.FiveHour = &UsageProgress{Utilization: 0}
+	if !openAIPlanHasNoFiveHour(account) {
+		if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, codexWindowStatsStart(usage.FiveHour, 5*time.Hour, now)); err == nil {
+			if usage.FiveHour == nil {
+				usage.FiveHour = &UsageProgress{Utilization: 0}
+			}
+			usage.FiveHour.WindowStats = windowStatsFromAccountStats(stats)
 		}
-		usage.FiveHour.WindowStats = windowStatsFromAccountStats(stats)
 	}
-
 	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, codexWindowStatsStart(usage.SevenDay, 7*24*time.Hour, now)); err == nil {
 		if usage.SevenDay == nil {
 			usage.SevenDay = &UsageProgress{Utilization: 0}
@@ -1735,16 +1748,19 @@ func (s *AccountUsageService) buildUsageInfo(resp *ClaudeUsageResponse, updatedA
 		UpdatedAt: updatedAt,
 	}
 
-	// 5小时窗口 - 始终创建对象（即使 ResetsAt 为空）
-	info.FiveHour = &UsageProgress{
-		Utilization: resp.FiveHour.Utilization,
-	}
-	if resp.FiveHour.ResetsAt != "" {
-		if fiveHourReset, err := parseTime(resp.FiveHour.ResetsAt); err == nil {
-			info.FiveHour.ResetsAt = &fiveHourReset
-			info.FiveHour.RemainingSeconds = int(time.Until(fiveHourReset).Seconds())
-		} else {
-			log.Printf("Failed to parse FiveHour.ResetsAt: %s, error: %v", resp.FiveHour.ResetsAt, err)
+	// An explicit null window is absent, not zero-percent usage.
+	info.FiveHourAvailable = resp.FiveHourAvailable
+	if resp.FiveHourAvailable == nil || *resp.FiveHourAvailable {
+		info.FiveHour = &UsageProgress{
+			Utilization: resp.FiveHour.Utilization,
+		}
+		if resp.FiveHour.ResetsAt != "" {
+			if fiveHourReset, err := parseTime(resp.FiveHour.ResetsAt); err == nil {
+				info.FiveHour.ResetsAt = &fiveHourReset
+				info.FiveHour.RemainingSeconds = int(time.Until(fiveHourReset).Seconds())
+			} else {
+				log.Printf("Failed to parse FiveHour.ResetsAt: %s, error: %v", resp.FiveHour.ResetsAt, err)
+			}
 		}
 	}
 
