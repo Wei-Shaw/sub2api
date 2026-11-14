@@ -75,6 +75,8 @@ func TestResponseOutcomePostgresPersistenceAndAccounting(t *testing.T) {
 		return &service.UsageLog{UserID: userID, APIKeyID: keyID, AccountID: accountID, GroupID: &groupID, RequestID: "client:" + request, Model: "delivery-fixture-gpt", RequestedModel: "delivery-fixture-gpt", InputTokens: 20, OutputTokens: 10, TotalCost: 0.03, ActualCost: 0.03, RateMultiplier: 1, RequestType: service.RequestTypeSync, CreatedAt: createdAt, ResponseOutcome: service.ResponseOutcomePtr(outcome)}
 	}
 	failed := makeLog("failed-fixture", service.ResponseOutcomeUpstreamFailed)
+	failed.CacheCreation30mTokens = 3
+	failed.CacheCreation12hTokens = 7
 	inserted, err := repo.createSingle(ctx, db, failed)
 	require.NoError(t, err)
 	require.True(t, inserted)
@@ -88,10 +90,14 @@ func TestResponseOutcomePostgresPersistenceAndAccounting(t *testing.T) {
 	stored, err := repo.GetByID(ctx, failed.ID)
 	require.NoError(t, err)
 	require.Equal(t, "upstream_failed", *stored.ResponseOutcome)
+	require.Equal(t, 3, stored.CacheCreation30mTokens)
+	require.Equal(t, 7, stored.CacheCreation12hTokens)
 	require.InDelta(t, 0.03, stored.ActualCost, 1e-9)
 	entFailed, err := client.UsageLog.Get(ctx, failed.ID)
 	require.NoError(t, err)
 	require.Equal(t, "upstream_failed", *entFailed.ResponseOutcome)
+	require.Equal(t, 3, entFailed.CacheCreation30mTokens)
+	require.Equal(t, 7, entFailed.CacheCreation12hTokens)
 	_, err = client.UsageLog.Query().Where(usagelog.ResponseOutcomeEQ("upstream_failed")).All(ctx)
 	require.NoError(t, err)
 	// Guard new values, without backfilling or inventing old outcomes.

@@ -16,15 +16,19 @@ func TestPrepareUsageLogInsertResponseOutcomeNullableAndPositioned(t *testing.T)
 	legacy := &service.UsageLog{UserID: 1, APIKeyID: 2, AccountID: 3, RequestID: "client:legacy", Model: "gpt-5.5", CreatedAt: time.Now()}
 	prepared := prepareUsageLogInsert(legacy)
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
-	// account_stats_cost sits five slots before the end: ..., account_stats_cost, response_outcome, upstream_request_id, session_id, native_compaction_v2, created_at
-	outcomeIdx := len(prepared.args) - 5
+	// Preserve outcome position alongside upstream's two cache-write lifetimes:
+	// ..., response_outcome, upstream_request_id, session_id, native_compaction_v2,
+	// cache_creation_30m_tokens, cache_creation_12h_tokens, created_at.
+	outcomeIdx := len(prepared.args) - 7
 	require.Equal(t, "text", usageLogInsertArgTypes[outcomeIdx])
 	require.Equal(t, sql.NullString{}, prepared.args[outcomeIdx], "legacy rows persist NULL")
 
 	outcome := string(service.ResponseOutcomeClientCancelled)
-	failed := &service.UsageLog{UserID: 1, APIKeyID: 2, AccountID: 3, RequestID: "client:failed", Model: "gpt-5.5", ResponseOutcome: &outcome, CreatedAt: time.Now()}
+	failed := &service.UsageLog{UserID: 1, APIKeyID: 2, AccountID: 3, RequestID: "client:failed", Model: "gpt-5.5", ResponseOutcome: &outcome, CacheCreation30mTokens: 3, CacheCreation12hTokens: 7, CreatedAt: time.Now()}
 	prepared = prepareUsageLogInsert(failed)
 	require.Equal(t, sql.NullString{String: outcome, Valid: true}, prepared.args[outcomeIdx])
+	require.Equal(t, 3, prepared.args[len(prepared.args)-3])
+	require.Equal(t, 7, prepared.args[len(prepared.args)-2])
 	require.Contains(t, usageLogSelectColumns, "account_stats_cost, response_outcome, upstream_request_id")
 }
 

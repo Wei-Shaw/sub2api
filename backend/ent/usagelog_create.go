@@ -281,6 +281,34 @@ func (_c *UsageLogCreate) SetNillableCacheCreation1hTokens(v *int) *UsageLogCrea
 	return _c
 }
 
+// SetCacheCreation30mTokens sets the "cache_creation_30m_tokens" field.
+func (_c *UsageLogCreate) SetCacheCreation30mTokens(v int) *UsageLogCreate {
+	_c.mutation.SetCacheCreation30mTokens(v)
+	return _c
+}
+
+// SetNillableCacheCreation30mTokens sets the "cache_creation_30m_tokens" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCacheCreation30mTokens(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetCacheCreation30mTokens(*v)
+	}
+	return _c
+}
+
+// SetCacheCreation12hTokens sets the "cache_creation_12h_tokens" field.
+func (_c *UsageLogCreate) SetCacheCreation12hTokens(v int) *UsageLogCreate {
+	_c.mutation.SetCacheCreation12hTokens(v)
+	return _c
+}
+
+// SetNillableCacheCreation12hTokens sets the "cache_creation_12h_tokens" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableCacheCreation12hTokens(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetCacheCreation12hTokens(*v)
+	}
+	return _c
+}
+
 // SetInputCost sets the "input_cost" field.
 func (_c *UsageLogCreate) SetInputCost(v float64) *UsageLogCreate {
 	_c.mutation.SetInputCost(v)
@@ -735,6 +763,14 @@ func (_c *UsageLogCreate) defaults() {
 		v := usagelog.DefaultCacheCreation1hTokens
 		_c.mutation.SetCacheCreation1hTokens(v)
 	}
+	if _, ok := _c.mutation.CacheCreation30mTokens(); !ok {
+		v := usagelog.DefaultCacheCreation30mTokens
+		_c.mutation.SetCacheCreation30mTokens(v)
+	}
+	if _, ok := _c.mutation.CacheCreation12hTokens(); !ok {
+		v := usagelog.DefaultCacheCreation12hTokens
+		_c.mutation.SetCacheCreation12hTokens(v)
+	}
 	if _, ok := _c.mutation.InputCost(); !ok {
 		v := usagelog.DefaultInputCost
 		_c.mutation.SetInputCost(v)
@@ -867,6 +903,12 @@ func (_c *UsageLogCreate) check() error {
 	}
 	if _, ok := _c.mutation.CacheCreation1hTokens(); !ok {
 		return &ValidationError{Name: "cache_creation_1h_tokens", err: errors.New(`ent: missing required field "UsageLog.cache_creation_1h_tokens"`)}
+	}
+	if _, ok := _c.mutation.CacheCreation30mTokens(); !ok {
+		return &ValidationError{Name: "cache_creation_30m_tokens", err: errors.New(`ent: missing required field "UsageLog.cache_creation_30m_tokens"`)}
+	}
+	if _, ok := _c.mutation.CacheCreation12hTokens(); !ok {
+		return &ValidationError{Name: "cache_creation_12h_tokens", err: errors.New(`ent: missing required field "UsageLog.cache_creation_12h_tokens"`)}
 	}
 	if _, ok := _c.mutation.InputCost(); !ok {
 		return &ValidationError{Name: "input_cost", err: errors.New(`ent: missing required field "UsageLog.input_cost"`)}
@@ -1049,6 +1091,14 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.CacheCreation1hTokens(); ok {
 		_spec.SetField(usagelog.FieldCacheCreation1hTokens, field.TypeInt, value)
 		_node.CacheCreation1hTokens = value
+	}
+	if value, ok := _c.mutation.CacheCreation30mTokens(); ok {
+		_spec.SetField(usagelog.FieldCacheCreation30mTokens, field.TypeInt, value)
+		_node.CacheCreation30mTokens = value
+	}
+	if value, ok := _c.mutation.CacheCreation12hTokens(); ok {
+		_spec.SetField(usagelog.FieldCacheCreation12hTokens, field.TypeInt, value)
+		_node.CacheCreation12hTokens = value
 	}
 	if value, ok := _c.mutation.InputCost(); ok {
 		_spec.SetField(usagelog.FieldInputCost, field.TypeFloat64, value)
@@ -1646,6 +1696,42 @@ func (u *UsageLogUpsert) UpdateCacheCreation1hTokens() *UsageLogUpsert {
 // AddCacheCreation1hTokens adds v to the "cache_creation_1h_tokens" field.
 func (u *UsageLogUpsert) AddCacheCreation1hTokens(v int) *UsageLogUpsert {
 	u.Add(usagelog.FieldCacheCreation1hTokens, v)
+	return u
+}
+
+// SetCacheCreation30mTokens sets the "cache_creation_30m_tokens" field.
+func (u *UsageLogUpsert) SetCacheCreation30mTokens(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldCacheCreation30mTokens, v)
+	return u
+}
+
+// UpdateCacheCreation30mTokens sets the "cache_creation_30m_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCacheCreation30mTokens() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCacheCreation30mTokens)
+	return u
+}
+
+// AddCacheCreation30mTokens adds v to the "cache_creation_30m_tokens" field.
+func (u *UsageLogUpsert) AddCacheCreation30mTokens(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldCacheCreation30mTokens, v)
+	return u
+}
+
+// SetCacheCreation12hTokens sets the "cache_creation_12h_tokens" field.
+func (u *UsageLogUpsert) SetCacheCreation12hTokens(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldCacheCreation12hTokens, v)
+	return u
+}
+
+// UpdateCacheCreation12hTokens sets the "cache_creation_12h_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateCacheCreation12hTokens() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldCacheCreation12hTokens)
+	return u
+}
+
+// AddCacheCreation12hTokens adds v to the "cache_creation_12h_tokens" field.
+func (u *UsageLogUpsert) AddCacheCreation12hTokens(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldCacheCreation12hTokens, v)
 	return u
 }
 
@@ -2578,6 +2664,48 @@ func (u *UsageLogUpsertOne) AddCacheCreation1hTokens(v int) *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) UpdateCacheCreation1hTokens() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheCreation1hTokens()
+	})
+}
+
+// SetCacheCreation30mTokens sets the "cache_creation_30m_tokens" field.
+func (u *UsageLogUpsertOne) SetCacheCreation30mTokens(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheCreation30mTokens(v)
+	})
+}
+
+// AddCacheCreation30mTokens adds v to the "cache_creation_30m_tokens" field.
+func (u *UsageLogUpsertOne) AddCacheCreation30mTokens(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheCreation30mTokens(v)
+	})
+}
+
+// UpdateCacheCreation30mTokens sets the "cache_creation_30m_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCacheCreation30mTokens() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheCreation30mTokens()
+	})
+}
+
+// SetCacheCreation12hTokens sets the "cache_creation_12h_tokens" field.
+func (u *UsageLogUpsertOne) SetCacheCreation12hTokens(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheCreation12hTokens(v)
+	})
+}
+
+// AddCacheCreation12hTokens adds v to the "cache_creation_12h_tokens" field.
+func (u *UsageLogUpsertOne) AddCacheCreation12hTokens(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheCreation12hTokens(v)
+	})
+}
+
+// UpdateCacheCreation12hTokens sets the "cache_creation_12h_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateCacheCreation12hTokens() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheCreation12hTokens()
 	})
 }
 
@@ -3755,6 +3883,48 @@ func (u *UsageLogUpsertBulk) AddCacheCreation1hTokens(v int) *UsageLogUpsertBulk
 func (u *UsageLogUpsertBulk) UpdateCacheCreation1hTokens() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.UpdateCacheCreation1hTokens()
+	})
+}
+
+// SetCacheCreation30mTokens sets the "cache_creation_30m_tokens" field.
+func (u *UsageLogUpsertBulk) SetCacheCreation30mTokens(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheCreation30mTokens(v)
+	})
+}
+
+// AddCacheCreation30mTokens adds v to the "cache_creation_30m_tokens" field.
+func (u *UsageLogUpsertBulk) AddCacheCreation30mTokens(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheCreation30mTokens(v)
+	})
+}
+
+// UpdateCacheCreation30mTokens sets the "cache_creation_30m_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCacheCreation30mTokens() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheCreation30mTokens()
+	})
+}
+
+// SetCacheCreation12hTokens sets the "cache_creation_12h_tokens" field.
+func (u *UsageLogUpsertBulk) SetCacheCreation12hTokens(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetCacheCreation12hTokens(v)
+	})
+}
+
+// AddCacheCreation12hTokens adds v to the "cache_creation_12h_tokens" field.
+func (u *UsageLogUpsertBulk) AddCacheCreation12hTokens(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddCacheCreation12hTokens(v)
+	})
+}
+
+// UpdateCacheCreation12hTokens sets the "cache_creation_12h_tokens" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateCacheCreation12hTokens() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateCacheCreation12hTokens()
 	})
 }
 
