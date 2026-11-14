@@ -475,8 +475,10 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			shouldDisable = true
 			break
 		}
-		// OAuth 账号在 401 错误时临时不可调度（给 token 刷新窗口）；非 OAuth 账号保持原有 SetError 行为。
-		if authAccount.Type == AccountTypeOAuth {
+		// OAuth / setup-token 账号在 401 错误时临时不可调度（给 token 刷新或重新读取凭据的窗口）；
+		// 其余账号保持原有 SetError 行为。setup-token 通常没有 refresh_token，一次瞬时 401
+		// 不等于凭据永久失效，不能直接永久禁用。
+		if authAccount.IsOAuth() {
 			// 1. 失效缓存
 			if s.tokenCacheInvalidator != nil {
 				if err := s.tokenCacheInvalidator.InvalidateToken(ctx, authAccount); err != nil {
@@ -485,7 +487,9 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			}
 			// 缺少 refresh_token 的 OAuth 账号无法在冷却期内自愈（后台刷新服务也会跳过），
 			// 直接走 SetError 永久禁用，避免冷却结束后再被选中产生一发无意义的 502。
-			if strings.TrimSpace(authAccount.GetCredential("refresh_token")) == "" {
+			// setup-token 不走该分支：它本身通常没有 refresh_token，但仍可依靠缓存失效后
+			// 重新读取持久化凭据或人工复测恢复。
+			if authAccount.Type == AccountTypeOAuth && strings.TrimSpace(authAccount.GetCredential("refresh_token")) == "" {
 				msg := "Authentication failed (401): refresh_token missing, cannot recover"
 				if upstreamMsg != "" {
 					msg = "OAuth 401 (no refresh_token): " + upstreamMsg
