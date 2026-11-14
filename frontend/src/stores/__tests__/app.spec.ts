@@ -81,11 +81,15 @@ describe('useAppStore', () => {
     vi.useFakeTimers()
     localStorage.clear()
     vi.mocked(getPublicSettings).mockReset()
+    document.head.querySelectorAll('script[data-custom-head-script]').forEach(script => script.remove())
+    delete document.documentElement.dataset.customHeadRuns
     // 清除 window.__APP_CONFIG__
     delete (window as any).__APP_CONFIG__
   })
 
   afterEach(() => {
+    document.head.querySelectorAll('script[data-custom-head-script]').forEach(script => script.remove())
+    delete document.documentElement.dataset.customHeadRuns
     vi.useRealTimers()
     localStorage.clear()
   })
@@ -327,6 +331,39 @@ describe('useAppStore', () => {
   // --- 公开设置 ---
 
   describe('公开设置加载', () => {
+    it('injects initial scripts but does not rerun them on forced settings refresh', async () => {
+      const source = 'document.documentElement.dataset.customHeadRuns = String(Number(document.documentElement.dataset.customHeadRuns || 0) + 1);'
+      window.__APP_CONFIG__ = createPublicSettings({ custom_head_script: source })
+      const store = useAppStore()
+      expect(store.initFromInjectedConfig()).toBe(true)
+      expect(document.documentElement.dataset.customHeadRuns).toBe('1')
+
+      vi.mocked(getPublicSettings).mockResolvedValue(createPublicSettings({ custom_head_script: source }))
+      await store.fetchPublicSettings(true)
+      expect(document.documentElement.dataset.customHeadRuns).toBe('1')
+      expect(document.head.querySelectorAll('script[data-custom-head-script]')).toHaveLength(1)
+    })
+
+    it('injects scripts when public settings are fetched without SSR configuration', async () => {
+      vi.mocked(getPublicSettings).mockResolvedValue(createPublicSettings({
+        custom_head_script: 'document.documentElement.dataset.customHeadRuns = "1";',
+      }))
+      await useAppStore().fetchPublicSettings()
+      expect(document.documentElement.dataset.customHeadRuns).toBe('1')
+    })
+
+    it('defers newly configured scripts until reload after an initially empty setting', async () => {
+      window.__APP_CONFIG__ = createPublicSettings({ custom_head_script: '' })
+      const store = useAppStore()
+      store.initFromInjectedConfig()
+      vi.mocked(getPublicSettings).mockResolvedValue(createPublicSettings({
+        custom_head_script: 'document.documentElement.dataset.customHeadRuns = "1";',
+      }))
+      await store.fetchPublicSettings(true)
+      expect(document.documentElement.dataset.customHeadRuns).toBeUndefined()
+      expect(document.head.querySelectorAll('script[data-custom-head-script]')).toHaveLength(0)
+    })
+
     it('并发调用复用并等待同一个请求，包括 force 调用', async () => {
       const deferred = createDeferred<PublicSettings>()
       vi.mocked(getPublicSettings).mockReturnValue(deferred.promise)

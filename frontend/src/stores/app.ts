@@ -4,6 +4,7 @@
  */
 
 import { defineStore } from 'pinia'
+import { injectCustomHeadScript } from '@/utils/custom-head-script'
 import { ref, computed } from 'vue'
 import type { Toast, ToastType, PublicSettings } from '@/types'
 import { i18n } from '@/i18n'
@@ -290,6 +291,9 @@ export const useAppStore = defineStore('app', () => {
    * Apply settings to store state (internal helper to avoid code duplication)
    */
   function applySettings(config: PublicSettings): void {
+    if (!publicSettingsLoaded.value) {
+      void injectCustomHeadScript(config.custom_head_script)
+    }
     if (typeof window !== 'undefined') {
       window.__APP_CONFIG__ = { ...config }
     }
