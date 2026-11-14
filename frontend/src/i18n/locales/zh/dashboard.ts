@@ -298,9 +298,11 @@ export default {
       geminiCliDesc: '导入为 Gemini CLI 配置',
       messagesDispatchRequired: '请先在分组设置中启用 Messages API 调度。',
       modelLabel: '模型 ID',
-      modelPlaceholder: '选择或输入模型 ID',
+      defaultModelLabel: '默认模型',
+      modelPlaceholder: '选择此密钥可用的模型',
+      manualModelPlaceholder: '请输入模型 ID',
       loadingModels: '正在读取此密钥可用的模型…',
-      modelsUnavailable: '无法读取模型列表，可手动输入模型 ID。',
+      modelsUnavailable: '无法获取模型列表，请手动输入模型 ID。',
       modelOptional: 'Claude Code 可留空，使用分组默认模型。',
       import: '导入'
     },

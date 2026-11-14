@@ -1126,22 +1126,31 @@
           </button>
         </div>
         <div v-if="selectedCcsClient" class="space-y-2">
-          <label for="ccs-model-input" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-            {{ t('keys.ccsClientSelect.modelLabel') }}
+          <label for="ccs-model-select" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            {{ t(requiresCcsModel ? 'keys.ccsClientSelect.defaultModelLabel' : 'keys.ccsClientSelect.modelLabel') }}
             <span v-if="requiresCcsModel" class="text-red-500">*</span>
           </label>
-          <input
-            id="ccs-model-input"
+          <select
+            v-if="ccsModelsLoading || ccsModelOptions.length > 0"
+            id="ccs-model-select"
             v-model="selectedCcsModel"
-            list="ccs-model-options"
+            :disabled="ccsModelsLoading"
+            class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 disabled:cursor-wait disabled:opacity-60 dark:border-dark-600 dark:bg-dark-800 dark:text-white"
+          >
+            <option v-if="!selectedCcsModel && ccsModelOptions.length !== 1" value="" disabled>
+              {{ t(ccsModelsLoading ? 'keys.ccsClientSelect.loadingModels' : 'keys.ccsClientSelect.modelPlaceholder') }}
+            </option>
+            <option v-for="model in ccsModelOptions" :key="model" :value="model">{{ model }}</option>
+          </select>
+          <input
+            v-else
+            id="ccs-model-select"
+            v-model="selectedCcsModel"
             type="text"
             autocomplete="off"
-            :placeholder="t('keys.ccsClientSelect.modelPlaceholder')"
+            :placeholder="t('keys.ccsClientSelect.manualModelPlaceholder')"
             class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800 dark:text-white"
           />
-          <datalist id="ccs-model-options">
-            <option v-for="model in ccsModelOptions" :key="model" :value="model" />
-          </datalist>
           <p v-if="ccsModelsLoading" class="text-xs text-gray-500 dark:text-gray-400">
             {{ t('keys.ccsClientSelect.loadingModels') }}
           </p>
@@ -2255,7 +2264,9 @@ const handleCcsClientSelect = (clientType: CcSwitchClientType) => {
   if (!option || option.disabled) return
 
   selectedCcsClient.value = clientType
-  selectedCcsModel.value = pendingCcsRow.value?.group?.default_mapped_model?.trim() || ''
+  if (!ccsModelOptions.value.includes(selectedCcsModel.value)) {
+    selectedCcsModel.value = ''
+  }
 }
 
 const confirmCcsClientSelect = () => {
