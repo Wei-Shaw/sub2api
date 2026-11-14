@@ -144,9 +144,37 @@ func OpenAIImagesEndpointFromContext(ctx context.Context) bool {
 }
 
 func resolveFinalAntigravityModelKey(ctx context.Context, account *Account, requestedModel string) string {
+	preferred := ""
+	if level, ok := AntigravityThinkingLevelFromContext(ctx); ok {
+		preferred = level
+	} else {
+		if enabled, ok := ThinkingEnabledFromContext(ctx); ok && !enabled {
+			preferred = "low"
+		}
+		if effort := RequestedReasoningEffortFromContext(ctx); effort != nil {
+			switch strings.ToLower(strings.TrimSpace(*effort)) {
+			case "none", "minimal", "low":
+				preferred = "low"
+			case "medium":
+				preferred = "medium"
+			case "high":
+				preferred = "high"
+			case "xhigh", "max":
+				preferred = "xhigh"
+			}
+		}
+	}
+	if resolved, ok := resolveGeminiThinkingVariantForLevel(account, requestedModel, preferred); ok {
+		return resolved
+	}
 	modelKey := mapAntigravityModel(account, requestedModel)
 	if modelKey == "" {
 		return ""
+	}
+	if modelKey != requestedModel {
+		if resolved, ok := resolveGeminiThinkingVariantForLevel(account, modelKey, preferred); ok {
+			return resolved
+		}
 	}
 	// thinking 会影响 Antigravity 最终模型名（例如 claude-sonnet-4-5 -> claude-sonnet-4-5-thinking）
 	if enabled, ok := ThinkingEnabledFromContext(ctx); ok {

@@ -34,14 +34,15 @@ const (
 const antigravityCompatMaxTokens = 64000
 
 type antigravityCompatRequest struct {
-	protocol        antigravityCompatProtocol
-	originalBody    []byte
-	claudeBody      []byte
-	originalModel   string
-	clientStream    bool
-	includeUsage    bool
-	startTime       time.Time
-	reasoningEffort *string
+	protocol                 antigravityCompatProtocol
+	originalBody             []byte
+	claudeBody               []byte
+	originalModel            string
+	clientStream             bool
+	includeUsage             bool
+	startTime                time.Time
+	reasoningEffort          *string
+	requestedReasoningEffort *string
 }
 
 type antigravityCompatUpstreamCall struct {
@@ -73,6 +74,13 @@ func (s *AntigravityGatewayService) ForwardAsChatCompletions(
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 	}
 
+	extractedEffort := extractCCReasoningEffortFromBody(body, request.Model)
+	if extractedEffort != nil {
+		request.ReasoningEffort = *extractedEffort
+	} else if nestedRaw := strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String()); nestedRaw != "" && strings.TrimSpace(request.ReasoningEffort) == "" {
+		request.ReasoningEffort = nestedRaw
+	}
+
 	responsesRequest, err := chatCompletionsToResponses(settingServiceConfig(s.settingService), &request)
 	if err != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
@@ -96,7 +104,7 @@ func (s *AntigravityGatewayService) ForwardAsChatCompletions(
 		clientStream:    request.Stream,
 		includeUsage:    request.StreamOptions != nil && request.StreamOptions.IncludeUsage,
 		startTime:       time.Now(),
-		reasoningEffort: extractCCReasoningEffortFromBody(body),
+		reasoningEffort: extractedEffort,
 	})
 }
 
@@ -233,7 +241,7 @@ func (s *AntigravityGatewayService) forwardAntigravityCompat(
 		settingService:  s.settingService,
 		accountRepo:     s.accountRepo,
 		handleError:     s.handleUpstreamError,
-		requestedModel:  request.originalModel,
+		requestedModel:  antigravityRateLimitModelKey(account, request.originalModel, call.billingModel),
 		isStickySession: false,
 		groupID:         0,
 		sessionHash:     "",
@@ -256,10 +264,14 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request body")
 	}
 
+	reqForVariant := claudeRequest
+	if request.reasoningEffort == nil {
+		reqForVariant.OutputConfig = nil
+	}
 	mappedModel := s.getMappedModelForThinkingLevel(
 		account,
 		request.originalModel,
-		geminiThinkingLevelFromClaudeThinking(claudeRequest.Thinking),
+		geminiThinkingLevelFromClaudeRequest(&reqForVariant),
 	)
 	if mappedModel == "" {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
@@ -294,7 +306,12 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request")
 	}
 
-	request.reasoningEffort = ApplyThinkingEnabledFallback(request.reasoningEffort, request.originalBody, mappedModel)
+	request.requestedReasoningEffort = request.reasoningEffort
+	if effective := effectiveAntigravityGeminiReasoningEffort(mappedModel, geminiBody, request.reasoningEffort != nil); effective != nil {
+		request.reasoningEffort = effective
+	} else {
+		request.reasoningEffort = ApplyThinkingEnabledFallback(request.reasoningEffort, request.originalBody, mappedModel)
+	}
 	return &antigravityCompatUpstreamCall{
 		request:      request,
 		billingModel: mappedModel,
@@ -322,6 +339,7 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 			return nil, err
 		}
 		body = ensureGeminiFunctionCallThoughtSignatures(body)
+		body = applyGeminiCompatThinkingConfig(body, claudeBody, mappedModel, claudeRequestEnablesThinking(claudeBody))
 		body, err = injectIdentityPatchToGeminiRequest(body)
 		if err != nil {
 			return nil, err
@@ -462,6 +480,7 @@ func (s *AntigravityGatewayService) consumeAntigravityCompatResponse(
 		Duration:                      time.Since(call.request.startTime),
 		FirstTokenMs:                  streamResult.firstTokenMs,
 		ReasoningEffort:               call.request.reasoningEffort,
+		RequestedReasoningEffort:      call.request.requestedReasoningEffort,
 		ClientDisconnect:              streamResult.clientDisconnect,
 	}, nil
 }
@@ -505,7 +524,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatHTTPError(
 		resp.StatusCode,
 		resp.Header,
 		body,
-		call.request.originalModel,
+		antigravityRateLimitModelKey(account, call.request.originalModel, call.billingModel),
 		0,
 		"",
 		false,

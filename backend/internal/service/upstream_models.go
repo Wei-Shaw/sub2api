@@ -139,8 +139,47 @@ func (a *Account) GetUpstreamModelMetadata(modelID string) (UpstreamModelMetadat
 	if snapshot == nil {
 		return UpstreamModelMetadata{}, false
 	}
-	metadata, ok := snapshot.Models[strings.TrimSpace(modelID)]
-	return metadata, ok
+	trimmed := strings.TrimSpace(modelID)
+	if metadata, ok := snapshot.Models[trimmed]; ok {
+		return metadata, true
+	}
+	if a.Platform != PlatformAntigravity {
+		return UpstreamModelMetadata{}, false
+	}
+	defaultVariant, ok := resolveGeminiThinkingVariantForLevel(a, trimmed, "")
+	if !ok {
+		return UpstreamModelMetadata{}, false
+	}
+	baseMeta, ok := snapshot.Models[defaultVariant]
+	if !ok {
+		return UpstreamModelMetadata{}, false
+	}
+	levels := make([]string, 0, 4)
+	seen := make(map[string]struct{}, 4)
+	for _, level := range []string{"low", "medium", "high", "xhigh"} {
+		variant, matched := resolveGeminiThinkingVariantForLevel(a, trimmed, level)
+		if !matched || !strings.HasSuffix(strings.ToLower(variant), "-"+level) {
+			continue
+		}
+		variantMeta, exists := snapshot.Models[variant]
+		if !exists {
+			return UpstreamModelMetadata{}, false
+		}
+		if variantMeta.ContextWindow > 0 && (baseMeta.ContextWindow == 0 || variantMeta.ContextWindow < baseMeta.ContextWindow) {
+			baseMeta.ContextWindow = variantMeta.ContextWindow
+		}
+		if variantMeta.MaxOutputTokens > 0 && (baseMeta.MaxOutputTokens == 0 || variantMeta.MaxOutputTokens < baseMeta.MaxOutputTokens) {
+			baseMeta.MaxOutputTokens = variantMeta.MaxOutputTokens
+		}
+		if _, dup := seen[level]; !dup {
+			seen[level] = struct{}{}
+			levels = append(levels, level)
+		}
+	}
+	if len(levels) > 0 {
+		baseMeta.SupportedReasoningLevels = levels
+	}
+	return baseMeta, true
 }
 
 // UpstreamModelSyncErrorKind classifies model sync failures for safe HTTP mapping.
@@ -390,6 +429,17 @@ func configuredUpstreamModelsForCapabilitySync(account *Account) []string {
 		mappedModel = strings.TrimSpace(mappedModel)
 		if mappedModel == "" || strings.Contains(mappedModel, "*") {
 			continue
+		}
+		if account.Platform == PlatformAntigravity {
+			if resolved, ok := resolveGeminiThinkingVariantForLevel(account, mappedModel, ""); ok {
+				models = append(models, resolved)
+				for _, level := range []string{"low", "medium", "high", "xhigh"} {
+					if tierTarget, matched := resolveGeminiThinkingVariantForLevel(account, mappedModel, level); matched {
+						models = append(models, tierTarget)
+					}
+				}
+				continue
+			}
 		}
 		models = append(models, mappedModel)
 	}

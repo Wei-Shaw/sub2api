@@ -208,8 +208,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
-	// 在请求上下文中记录 thinking 状态，供 Antigravity 最终模型 key 推导/模型维度限流使用
-	c.Request = c.Request.WithContext(service.WithThinkingEnabled(c.Request.Context(), parsedReq.ThinkingEnabled, h.metadataBridgeEnabled()))
+	// 在请求上下文中记录 thinking 状态与策略改写后的有效档位，供 Antigravity 最终模型 key 推导/模型维度限流使用
+	reqCtx := service.WithThinkingEnabled(c.Request.Context(), parsedReq.ThinkingEnabled, h.metadataBridgeEnabled())
+	reqCtx = service.WithAntigravityThinkingLevelFromClaudeBody(reqCtx, body)
+	c.Request = c.Request.WithContext(reqCtx)
 
 	setOpsRequestContext(c, reqModel, reqStream)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeFromLegacy(reqStream, false)))
@@ -579,8 +581,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			inboundEndpoint := GetInboundEndpoint(c)
 			upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 
+			effortAlreadyResolved := result.RequestedReasoningEffort != nil
 			stampForwardRequestedReasoningEffort(result, service.NormalizeClaudeOutputEffort(parsedReq.OutputEffort))
-			if result.ReasoningEffort == nil {
+			if result.ReasoningEffort == nil && !effortAlreadyResolved {
 				result.ReasoningEffort = service.NormalizeClaudeOutputEffort(parsedReq.OutputEffort)
 			}
 			// 国产模型 thinking-enabled 默认 effort 填充：Kimi/GLM/MiniMax 这些不支持 effort 档位的
@@ -945,8 +948,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				inboundEndpoint := GetInboundEndpoint(c)
 				upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 
+				effortAlreadyResolved := result.RequestedReasoningEffort != nil
 				stampForwardRequestedReasoningEffort(result, service.NormalizeClaudeOutputEffort(attemptParsedReq.OutputEffort))
-				if result.ReasoningEffort == nil {
+				if result.ReasoningEffort == nil && !effortAlreadyResolved {
 					result.ReasoningEffort = service.NormalizeClaudeOutputEffort(attemptParsedReq.OutputEffort)
 				}
 				// 同上（重试路径中的对称填充）。详见非重试路径同名注释。
@@ -2187,8 +2191,10 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	SetClaudeCodeClientContext(c, body, parsedReq)
 	ensureCompositeTargetPlatform(c, apiKey, parsedReq.Model)
 	reqLog = reqLog.With(zap.String("model", parsedReq.Model), zap.Bool("stream", parsedReq.Stream))
-	// 在请求上下文中记录 thinking 状态，供 Antigravity 最终模型 key 推导/模型维度限流使用
-	c.Request = c.Request.WithContext(service.WithThinkingEnabled(c.Request.Context(), parsedReq.ThinkingEnabled, h.metadataBridgeEnabled()))
+	// 在请求上下文中记录 thinking 状态与有效档位，供 Antigravity 最终模型 key 推导/模型维度限流使用
+	countCtx := service.WithThinkingEnabled(c.Request.Context(), parsedReq.ThinkingEnabled, h.metadataBridgeEnabled())
+	countCtx = service.WithAntigravityThinkingLevelFromClaudeBody(countCtx, body)
+	c.Request = c.Request.WithContext(countCtx)
 
 	// 验证 model 必填
 	if parsedReq.Model == "" {

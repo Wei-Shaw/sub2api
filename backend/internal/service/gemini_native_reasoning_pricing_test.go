@@ -27,6 +27,7 @@ func TestGeminiNativeReasoningPricingUsesExplicitForwardedLevel(t *testing.T) {
 				multiplier float64
 			}{
 				{"high", map[string]any{"thinkingLevel": "high"}, "high", 2},
+				{"xhigh", map[string]any{"thinkingLevel": "XHIGH"}, "xhigh", 2.5},
 				{"uppercase_high", map[string]any{"thinkingLevel": "HIGH"}, "high", 2},
 				{"snake_case_high", map[string]any{"thinking_level": "high"}, "high", 2},
 				{"minimal", map[string]any{"thinkingLevel": "minimal"}, "minimal", 1.1},
@@ -120,7 +121,7 @@ func TestGeminiNativeReasoningPricingUsesExplicitForwardedLevel(t *testing.T) {
 						ModelPricing: []ChannelModelPricing{{
 							Models: []string{model}, BillingMode: BillingModeToken,
 							InputPrice: testPtrFloat64(0.05), OutputPrice: testPtrFloat64(0.1),
-							ReasoningEffortMultipliers: map[string]float64{"minimal": 1.1, "low": 1.2, "medium": 1.5, "high": 2},
+							ReasoningEffortMultipliers: map[string]float64{"minimal": 1.1, "low": 1.2, "medium": 1.5, "high": 2, "xhigh": 2.5},
 						}},
 					}}
 					require.NoError(t, billing.RecordUsage(context.Background(), &RecordUsageInput{

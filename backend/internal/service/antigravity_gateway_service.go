@@ -262,7 +262,10 @@ func mapAntigravityModel(account *Account, requestedModel string) string {
 	if account == nil {
 		return ""
 	}
-	requestedModel = strings.TrimPrefix(requestedModel, "models/")
+	requestedModel = strings.TrimPrefix(strings.TrimSpace(requestedModel), "models/")
+	if requestedModel == "" {
+		return ""
+	}
 
 	// 获取映射表（未配置时自动使用 DefaultAntigravityModelMapping）
 	mapping := account.GetModelMapping()
@@ -291,6 +294,14 @@ func mapAntigravityModel(account *Account, requestedModel string) string {
 	return ""
 }
 
+func canMapAntigravityModel(account *Account, requestedModel string) bool {
+	if mapAntigravityModel(account, requestedModel) != "" {
+		return true
+	}
+	_, ok := resolveGeminiThinkingVariantForLevel(account, requestedModel, "")
+	return ok
+}
+
 // getMappedModel 获取映射后的模型名
 // 完全依赖映射配置：账户映射（通配符）→ 默认映射兜底
 func (s *AntigravityGatewayService) getMappedModel(account *Account, requestedModel string) string {
@@ -306,7 +317,13 @@ func (s *AntigravityGatewayService) getMappedModelForThinkingLevel(account *Acco
 	if mapped, ok := resolveGeminiThinkingVariantForLevel(account, requestedModel, thinkingLevel); ok {
 		return mapped
 	}
-	return mapAntigravityModel(account, requestedModel)
+	mapped := mapAntigravityModel(account, requestedModel)
+	if mapped != "" && mapped != requestedModel {
+		if resolved, ok := resolveGeminiThinkingVariantForLevel(account, mapped, thinkingLevel); ok {
+			return resolved
+		}
+	}
+	return mapped
 }
 
 func resolveAntigravityProjectID(account *Account) (string, error) {
@@ -422,7 +439,7 @@ func (s *AntigravityGatewayService) TestConnectionWithPrompt(ctx context.Context
 		httpUpstream:   s.httpUpstream,
 		settingService: s.settingService,
 		accountRepo:    s.accountRepo,
-		requestedModel: modelID,
+		requestedModel: antigravityRateLimitModelKey(account, modelID, mappedModel),
 		handleError:    testConnectionHandleError,
 	}
 

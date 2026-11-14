@@ -424,7 +424,7 @@ func (s *GeminiMessagesCompatService) isModelSupportedByAccount(account *Account
 		if strings.TrimSpace(requestedModel) == "" {
 			return true
 		}
-		return mapAntigravityModel(account, requestedModel) != ""
+		return canMapAntigravityModel(account, requestedModel)
 	}
 	return account.IsModelSupported(requestedModel)
 }
