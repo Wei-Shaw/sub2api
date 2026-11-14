@@ -132,7 +132,9 @@ func extractDeepseekToolsPromptText(body []byte) string {
 // 计费资格/在途预留、选号 failover 与落账。
 func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
-	if !ok || apiKey.Group == nil || apiKey.Group.Platform != service.PlatformDeepseek {
+	// composite 组放行：工具请求不带 model，无法经 compositeTarget 中间件解析，
+	// 交给调度器按 platformOverride=deepseek 选号（对齐 Grok video 先例）。
+	if !ok || apiKey.Group == nil || (apiKey.Group.Platform != service.PlatformDeepseek && apiKey.Group.Platform != service.PlatformComposite) {
 		h.errorResponse(c, http.StatusNotFound, "not_found_error", "DeepSeek tools API is not supported for this platform")
 		return
 	}
