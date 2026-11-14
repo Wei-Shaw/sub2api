@@ -280,9 +280,8 @@ func (s *openAICompatOutputSlot) buildMessage() (apicompat.ResponsesOutput, bool
 	return item, s.done != nil || s.text.Len() > 0 || s.refusal.Len() > 0
 }
 
-// buildToolCall returns a function_call item. A custom_tool_call is returned in
-// that form as well, with its input as the arguments, because that is the shape
-// the Chat Completions and Messages converters render as a tool call.
+// buildToolCall returns the function_call or custom_tool_call item of the slot,
+// with the arguments or input a done item left empty taken from the deltas.
 func (s *openAICompatOutputSlot) buildToolCall() (apicompat.ResponsesOutput, bool) {
 	if s.done == nil && s.added == nil {
 		return apicompat.ResponsesOutput{}, false
@@ -317,6 +316,10 @@ func (s *openAICompatOutputSlot) buildToolCall() (apicompat.ResponsesOutput, boo
 	if arguments == "" {
 		arguments = s.args.String()
 	}
-	item.Type, item.Input, item.Arguments = "function_call", "", arguments
+	if item.Type == "custom_tool_call" {
+		item.Input = arguments
+	} else {
+		item.Arguments = arguments
+	}
 	return item, true
 }

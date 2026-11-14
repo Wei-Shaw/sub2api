@@ -405,3 +405,34 @@ func TestForwardAsAnthropic_CancelledTerminalKeepsHostedOutputItems(t *testing.T
 		bufferedItemsSSE(bufferedHostedItemsCreated, bufferedHostedItemsWebSearchDone, cancelled))
 	require.Equal(t, "server_tool_use", gjson.Get(out, "content.0.type").String(), out)
 }
+
+// A tool call whose arguments are not a JSON object must not empty the response:
+// a truncated function call gets {}, a custom tool call its input wrapped.
+func TestForwardAsAnthropic_BufferedNonObjectToolInput(t *testing.T) {
+	toolBody := `{"model":"gpt-5.5","max_tokens":64,"stream":false,"tools":[{"name":"get","input_schema":{"type":"object"}}],"messages":[{"role":"user","content":"hi"}]}`
+	truncated := bufferedItemsSSE(
+		bufferedHostedItemsCreated,
+		`{"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"plan"}]}}`,
+		`{"type":"response.output_item.added","output_index":1,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"get","arguments":""}}`,
+		`{"type":"response.function_call_arguments.delta","output_index":1,"delta":"{\"a\":1"}`,
+		`{"type":"response.incomplete","response":{"id":"resp_1","status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[]}}`,
+	)
+	out := forwardBufferedHostedItems(t, "/v1/messages", toolBody, truncated)
+	require.Equal(t, "thinking", gjson.Get(out, "content.0.type").String(), out)
+	require.Equal(t, "plan", gjson.Get(out, "content.0.thinking").String(), out)
+	require.Equal(t, "tool_use", gjson.Get(out, "content.1.type").String(), out)
+	require.Equal(t, "{}", gjson.Get(out, "content.1.input").Raw, out)
+	require.Equal(t, "max_tokens", gjson.Get(out, "stop_reason").String(), out)
+
+	custom := bufferedItemsSSE(
+		bufferedHostedItemsCreated,
+		`{"type":"response.output_item.added","output_index":0,"item":{"type":"custom_tool_call","id":"ctc_1","call_id":"call_1","name":"get","input":""}}`,
+		`{"type":"response.custom_tool_call_input.delta","output_index":0,"delta":"dir"}`,
+		`{"type":"response.output_item.done","output_index":0,"item":{"type":"custom_tool_call","id":"ctc_1","call_id":"call_1","name":"get","input":"dir"}}`,
+		bufferedHostedItemsCompleted,
+	)
+	out = forwardBufferedHostedItems(t, "/v1/messages", toolBody, custom)
+	require.Equal(t, "tool_use", gjson.Get(out, "content.0.type").String(), out)
+	require.Equal(t, `{"input":"dir"}`, gjson.Get(out, "content.0.input").Raw, out)
+	require.Equal(t, "tool_use", gjson.Get(out, "stop_reason").String(), out)
+}

@@ -56,6 +56,15 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 					Arguments: item.Arguments,
 				},
 			})
+		case "custom_tool_call":
+			toolCalls = append(toolCalls, ChatToolCall{
+				ID:   item.CallID,
+				Type: "function",
+				Function: ChatFunctionCall{
+					Name:      item.Name,
+					Arguments: item.Input,
+				},
+			})
 		case "reasoning":
 			reasoningText += responsesReasoningText(item)
 		case "web_search_call":
