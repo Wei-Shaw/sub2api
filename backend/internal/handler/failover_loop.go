@@ -51,9 +51,10 @@ const (
 	maxProfitVetoAttempts = 10
 )
 
-// profitVetoExhaustedMessage 是利润否决次数耗尽时返回给客户端的文案。
+// profitVetoExhaustedReason 是利润否决次数耗尽时记录到 ops 错误日志的内部原因。
 // 语义上等同于「无可用账号」：候选账号都不满足分组的利润约束。
-const profitVetoExhaustedMessage = "No available accounts: all candidates rejected by group profit control"
+// 客户端只收到中性的 noAvailableAccountsClientMessage，不暴露利润控制的存在。
+const profitVetoExhaustedReason = "all candidates rejected by group profit control"
 
 func sameAccountRetryDelayFor(failoverErr *service.UpstreamFailoverError, retryCount int) time.Duration {
 	if failoverErr == nil {

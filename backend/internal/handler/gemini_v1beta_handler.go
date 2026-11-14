@@ -103,7 +103,8 @@ func (h *GatewayHandler) GeminiV1BetaListModels(c *gin.Context) {
 			return
 		}
 		markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-		googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts: "+err.Error())
+		recordNoAvailableAccountsErrorForOps(c, err)
+		googleError(c, http.StatusServiceUnavailable, noAvailableAccountsClientMessage)
 		return
 	}
 
@@ -301,7 +302,8 @@ func (h *GatewayHandler) GeminiV1BetaGetModel(c *gin.Context) {
 			return
 		}
 		markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
-		googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts: "+err.Error())
+		recordNoAvailableAccountsErrorForOps(c, err)
+		googleError(c, http.StatusServiceUnavailable, noAvailableAccountsClientMessage)
 		return
 	}
 
@@ -624,11 +626,10 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 				if !cls.ModelNotFound {
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
-				message := cls.Message
 				if !cls.ModelNotFound {
-					message = "No available Gemini accounts: " + err.Error()
+					recordNoAvailableAccountsErrorForOps(c, err)
 				}
-				googleError(c, cls.Status, message)
+				googleError(c, cls.Status, cls.Message)
 				return
 			}
 			action := fs.HandleSelectionExhausted(c.Request.Context())
@@ -677,7 +678,8 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		if !selection.Acquired {
 			if selection.WaitPlan == nil {
 				markOpsRoutingCapacityLimited(c)
-				googleError(c, http.StatusServiceUnavailable, "No available Gemini accounts")
+				recordNoAvailableAccountsReasonForOps(c, noAvailableAccountsReasonNoSlot)
+				googleError(c, http.StatusServiceUnavailable, noAvailableAccountsClientMessage)
 				return
 			}
 			accountWaitCounted := false
@@ -735,7 +737,8 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 			if fs.RecordProfitVeto(account.ID) == FailoverExhausted {
 				reqLog.Warn("gemini.profit_veto_attempts_exhausted", zap.Int("profit_veto_count", fs.ProfitVetoCount()))
 				markOpsRoutingCapacityLimited(c)
-				googleError(c, http.StatusServiceUnavailable, profitVetoExhaustedMessage)
+				recordNoAvailableAccountsReasonForOps(c, profitVetoExhaustedReason)
+				googleError(c, http.StatusServiceUnavailable, noAvailableAccountsClientMessage)
 				return
 			}
 			continue
