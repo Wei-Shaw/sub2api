@@ -285,11 +285,24 @@ export default {
       'CC-Switch 未安装或协议处理程序未注册。请先安装 CC-Switch 或手动复制 API 密钥。',
     ccsClientSelect: {
       title: '选择客户端',
-      description: '请选择您要导入到 CC-Switch 的客户端类型：',
+      description: '选择要导入的客户端。模型列表来自此 API Key 可用的模型。',
+      codex: 'Codex',
+      codexDesc: '导入为 Codex 供应商配置',
       claudeCode: 'Claude Code',
       claudeCodeDesc: '导入为 Claude Code 配置',
+      claudeDesktop: 'Claude Desktop',
+      claudeDesktopDesc: '导入为 Claude Desktop 供应商配置',
+      deepSeekHarness: 'DeepSeek Harness',
+      deepSeekHarnessDesc: '导入为 DeepSeek Harness 供应商',
       geminiCli: 'Gemini CLI',
-      geminiCliDesc: '导入为 Gemini CLI 配置'
+      geminiCliDesc: '导入为 Gemini CLI 配置',
+      messagesDispatchRequired: '请先在分组设置中启用 Messages API 调度。',
+      modelLabel: '模型 ID',
+      modelPlaceholder: '选择或输入模型 ID',
+      loadingModels: '正在读取此密钥可用的模型…',
+      modelsUnavailable: '无法读取模型列表，可手动输入模型 ID。',
+      modelOptional: 'Claude Code 可留空，使用分组默认模型。',
+      import: '导入'
     },
     // 配额和有效期
     quotaLimit: '额度限制',

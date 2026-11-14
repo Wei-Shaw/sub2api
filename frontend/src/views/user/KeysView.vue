@@ -1089,7 +1089,7 @@
       @close="closeUseKeyModal"
     />
 
-    <!-- CCS Client Selection Dialog for Antigravity -->
+    <!-- CC Switch Client Selection Dialog -->
     <BaseDialog
       :show="showCcsClientSelect"
       :title="t('keys.ccsClientSelect.title')"
@@ -1099,38 +1099,73 @@
       <div class="space-y-4">
         <p class="text-sm text-gray-600 dark:text-gray-400">
           {{ t('keys.ccsClientSelect.description') }}
-	        </p>
-	        <div class="grid grid-cols-2 gap-3">
-	          <button
-	            @click="handleCcsClientSelect('claude')"
-	            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
-	          >
-	            <Icon name="terminal" size="xl" class="text-gray-600 dark:text-gray-400" />
-	            <span class="font-medium text-gray-900 dark:text-white">{{
-	              t('keys.ccsClientSelect.claudeCode')
-	            }}</span>
-	            <span class="text-xs text-gray-500 dark:text-gray-400">{{
-	              t('keys.ccsClientSelect.claudeCodeDesc')
-	            }}</span>
-	          </button>
-	          <button
-	            @click="handleCcsClientSelect('gemini')"
-	            class="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-dark-600 hover:border-primary-500 dark:hover:border-primary-500 hover:bg-primary-50 dark:hover:bg-primary-900/20 transition-all"
-	          >
-	            <Icon name="sparkles" size="xl" class="text-gray-600 dark:text-gray-400" />
-	            <span class="font-medium text-gray-900 dark:text-white">{{
-	              t('keys.ccsClientSelect.geminiCli')
-	            }}</span>
-	            <span class="text-xs text-gray-500 dark:text-gray-400">{{
-	              t('keys.ccsClientSelect.geminiCliDesc')
-	            }}</span>
-	          </button>
-	        </div>
-	      </div>
+        </p>
+        <div class="grid grid-cols-2 gap-3">
+          <button
+            v-for="option in ccsClientOptions"
+            :key="option.clientType"
+            type="button"
+            :disabled="option.disabled"
+            :title="option.disabled ? t('keys.ccsClientSelect.messagesDispatchRequired') : undefined"
+            @click="handleCcsClientSelect(option.clientType)"
+            :class="[
+              'flex min-h-28 flex-col items-center justify-center gap-2 rounded-lg border-2 p-3 text-center transition-colors',
+              selectedCcsClient === option.clientType
+                ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                : 'border-gray-200 hover:border-primary-500 hover:bg-primary-50 dark:border-dark-600 dark:hover:bg-primary-900/20',
+              option.disabled ? 'cursor-not-allowed opacity-50' : ''
+            ]"
+          >
+            <Icon :name="option.icon" size="xl" class="text-gray-600 dark:text-gray-400" />
+            <span class="font-medium text-gray-900 dark:text-white">{{ t(option.label) }}</span>
+            <span class="text-xs text-gray-500 dark:text-gray-400">{{
+              option.disabled
+                ? t('keys.ccsClientSelect.messagesDispatchRequired')
+                : t(option.description)
+            }}</span>
+          </button>
+        </div>
+        <div v-if="selectedCcsClient" class="space-y-2">
+          <label for="ccs-model-input" class="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            {{ t('keys.ccsClientSelect.modelLabel') }}
+            <span v-if="requiresCcsModel" class="text-red-500">*</span>
+          </label>
+          <input
+            id="ccs-model-input"
+            v-model="selectedCcsModel"
+            list="ccs-model-options"
+            type="text"
+            autocomplete="off"
+            :placeholder="t('keys.ccsClientSelect.modelPlaceholder')"
+            class="w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-dark-600 dark:bg-dark-800 dark:text-white"
+          />
+          <datalist id="ccs-model-options">
+            <option v-for="model in ccsModelOptions" :key="model" :value="model" />
+          </datalist>
+          <p v-if="ccsModelsLoading" class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('keys.ccsClientSelect.loadingModels') }}
+          </p>
+          <p v-else-if="ccsModelsUnavailable" class="text-xs text-amber-600 dark:text-amber-400">
+            {{ t('keys.ccsClientSelect.modelsUnavailable') }}
+          </p>
+          <p v-else-if="!requiresCcsModel" class="text-xs text-gray-500 dark:text-gray-400">
+            {{ t('keys.ccsClientSelect.modelOptional') }}
+          </p>
+        </div>
+      </div>
       <template #footer>
-        <div class="flex justify-end">
-          <button @click="closeCcsClientSelect" class="btn btn-secondary">
+        <div class="flex justify-between">
+          <button type="button" @click="closeCcsClientSelect" class="btn btn-secondary">
             {{ t('common.cancel') }}
+          </button>
+          <button
+            v-if="selectedCcsClient"
+            type="button"
+            class="btn btn-primary"
+            :disabled="!canConfirmCcsImport"
+            @click="confirmCcsClientSelect"
+          >
+            {{ t('keys.ccsClientSelect.import') }}
           </button>
         </div>
       </template>
@@ -1265,6 +1300,14 @@ interface GroupOption {
   peakRateMultiplier: number
   subscriptionType: SubscriptionType
   platform: GroupPlatform
+}
+
+interface CcsClientOption {
+  clientType: CcSwitchClientType
+  label: string
+  description: string
+  icon: string
+  disabled?: boolean
 }
 
 const appStore = useAppStore()
@@ -1415,6 +1458,69 @@ const showUseKeyModal = ref(false)
 const showCcsClientSelect = ref(false)
 const showColumnDropdown = ref(false)
 const pendingCcsRow = ref<ApiKey | null>(null)
+const selectedCcsClient = ref<CcSwitchClientType | null>(null)
+const selectedCcsModel = ref('')
+const ccsModelOptions = ref<string[]>([])
+const ccsModelsLoading = ref(false)
+const ccsModelsUnavailable = ref(false)
+const requiresCcsModel = computed(() =>
+  selectedCcsClient.value === 'codex' ||
+  selectedCcsClient.value === 'claude-desktop' ||
+  selectedCcsClient.value === 'dsh'
+)
+const canConfirmCcsImport = computed(() =>
+  !!selectedCcsClient.value &&
+  (!requiresCcsModel.value || selectedCcsModel.value.trim().length > 0)
+)
+const ccsClientOptions = computed<CcsClientOption[]>(() => {
+  const platform = pendingCcsRow.value?.group?.platform || 'anthropic'
+  const messagesDispatchEnabled = pendingCcsRow.value?.group?.allow_messages_dispatch === true
+  const option = (
+    clientType: CcSwitchClientType,
+    label: string,
+    description: string,
+    icon: string,
+    disabled = false
+  ): CcsClientOption => ({ clientType, label, description, icon, disabled })
+
+  if (platform === 'antigravity') {
+    return [
+      option('claude', 'keys.ccsClientSelect.claudeCode', 'keys.ccsClientSelect.claudeCodeDesc', 'terminal'),
+      option('gemini', 'keys.ccsClientSelect.geminiCli', 'keys.ccsClientSelect.geminiCliDesc', 'sparkles')
+    ]
+  }
+
+  const claudeOptions = [
+    option('claude', 'keys.ccsClientSelect.claudeCode', 'keys.ccsClientSelect.claudeCodeDesc', 'terminal'),
+    option(
+      'claude-desktop',
+      'keys.ccsClientSelect.claudeDesktop',
+      'keys.ccsClientSelect.claudeDesktopDesc',
+      'server'
+    )
+  ]
+
+  if (platform === 'openai') {
+    return [
+      option('codex', 'keys.ccsClientSelect.codex', 'keys.ccsClientSelect.codexDesc', 'terminal'),
+      ...claudeOptions.map((item) => ({ ...item, disabled: !messagesDispatchEnabled })),
+      option('dsh', 'keys.ccsClientSelect.deepSeekHarness', 'keys.ccsClientSelect.deepSeekHarnessDesc', 'sparkles')
+    ]
+  }
+
+  if (platform === 'composite') {
+    return [
+      option('codex', 'keys.ccsClientSelect.codex', 'keys.ccsClientSelect.codexDesc', 'terminal'),
+      ...claudeOptions,
+      option('dsh', 'keys.ccsClientSelect.deepSeekHarness', 'keys.ccsClientSelect.deepSeekHarnessDesc', 'sparkles')
+    ]
+  }
+
+  return [
+    ...claudeOptions,
+    option('dsh', 'keys.ccsClientSelect.deepSeekHarness', 'keys.ccsClientSelect.deepSeekHarnessDesc', 'sparkles')
+  ]
+})
 const selectedKey = ref<ApiKey | null>(null)
 const copiedKeyId = ref<number | null>(null)
 const groupSelectorKeyId = ref<number | null>(null)
@@ -2031,18 +2137,87 @@ const resetRateLimitUsage = async () => {
 const importToCcswitch = (row: ApiKey) => {
   const platform = row.group?.platform || 'anthropic'
 
-  // For antigravity platform, show client selection dialog
-  if (platform === 'antigravity') {
+  if (['openai', 'anthropic', 'composite', 'antigravity'].includes(platform)) {
     pendingCcsRow.value = row
+    selectedCcsClient.value = null
+    selectedCcsModel.value = ''
+    ccsModelOptions.value = []
+    ccsModelsUnavailable.value = false
     showCcsClientSelect.value = true
+    if (platform !== 'antigravity') {
+      void loadCcsModels(row)
+    }
     return
   }
 
-  // For other platforms, execute directly
-  executeCcsImport(row, platform === 'gemini' ? 'gemini' : 'claude')
+  if (platform === 'gemini') {
+    executeCcsImport(row, 'gemini')
+    return
+  }
+
+  executeCcsImport(row, 'grokbuild')
 }
 
-const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
+const loadCcsModels = async (row: ApiKey) => {
+  ccsModelsLoading.value = true
+  ccsModelsUnavailable.value = false
+
+  try {
+    const baseUrl = publicSettings.value?.api_base_url || window.location.origin
+    const url = new URL(baseUrl)
+    const basePath = url.pathname.replace(/\/+$/, '')
+    url.pathname = basePath.endsWith('/v1') ? `${basePath}/models` : `${basePath}/v1/models`
+    url.search = ''
+    url.hash = ''
+
+    const response = await fetch(url.toString(), {
+      headers: { Authorization: `Bearer ${row.key}`, Accept: 'application/json' },
+      credentials: 'omit'
+    })
+    if (!response.ok) {
+      throw new Error(`Model request failed with status ${response.status}`)
+    }
+
+    const payload = await response.json() as { data?: unknown[]; models?: unknown[] }
+    const records = Array.isArray(payload.data)
+      ? payload.data
+      : Array.isArray(payload.models)
+        ? payload.models
+        : []
+    const models = records
+      .map((record) => {
+        if (typeof record === 'string') return record.trim()
+        if (!record || typeof record !== 'object') return ''
+        const id = (record as Record<string, unknown>).id
+        return typeof id === 'string' ? id.trim() : ''
+      })
+      .filter((model, index, list) => model.length > 0 && list.indexOf(model) === index)
+
+    if (pendingCcsRow.value?.id !== row.id) return
+    ccsModelOptions.value = models
+    ccsModelsUnavailable.value = models.length === 0
+    const suggestedModel = row.group?.default_mapped_model?.trim()
+    if (suggestedModel && models.includes(suggestedModel)) {
+      selectedCcsModel.value = suggestedModel
+    } else if (models.length === 1) {
+      selectedCcsModel.value = models[0]
+    }
+  } catch {
+    if (pendingCcsRow.value?.id === row.id) {
+      ccsModelsUnavailable.value = true
+    }
+  } finally {
+    if (pendingCcsRow.value?.id === row.id) {
+      ccsModelsLoading.value = false
+    }
+  }
+}
+
+const executeCcsImport = (
+  row: ApiKey,
+  clientType: CcSwitchClientType,
+  model = ''
+) => {
   const baseUrl = publicSettings.value?.api_base_url || window.location.origin
   const platform = row.group?.platform || 'anthropic'
 
@@ -2054,7 +2229,8 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
     clientType,
     providerName,
     apiKey: row.key,
-    usageScript
+    usageScript,
+    model: model.trim() || undefined
   })
 
   try {
@@ -2073,16 +2249,27 @@ const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
 }
 
 const handleCcsClientSelect = (clientType: CcSwitchClientType) => {
-  if (pendingCcsRow.value) {
-    executeCcsImport(pendingCcsRow.value, clientType)
-  }
-  showCcsClientSelect.value = false
-  pendingCcsRow.value = null
+  const option = ccsClientOptions.value.find((item) => item.clientType === clientType)
+  if (!option || option.disabled) return
+
+  selectedCcsClient.value = clientType
+  selectedCcsModel.value = pendingCcsRow.value?.group?.default_mapped_model?.trim() || ''
+}
+
+const confirmCcsClientSelect = () => {
+  if (!pendingCcsRow.value || !selectedCcsClient.value || !canConfirmCcsImport.value) return
+  executeCcsImport(pendingCcsRow.value, selectedCcsClient.value, selectedCcsModel.value)
+  closeCcsClientSelect()
 }
 
 const closeCcsClientSelect = () => {
   showCcsClientSelect.value = false
   pendingCcsRow.value = null
+  selectedCcsClient.value = null
+  selectedCcsModel.value = ''
+  ccsModelOptions.value = []
+  ccsModelsLoading.value = false
+  ccsModelsUnavailable.value = false
 }
 
 function formatResetTime(resetAt: string | null): string {
