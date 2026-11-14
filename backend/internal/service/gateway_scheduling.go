@@ -2634,10 +2634,11 @@ func (s *GatewayService) isModelSupportedByAccountWithContext(ctx context.Contex
 		if strings.TrimSpace(requestedModel) == "" {
 			return true
 		}
-		// 使用与转发阶段一致的映射逻辑：自定义映射优先 → 默认映射兜底
+		// 使用与转发阶段一致的映射逻辑：自定义映射优先 → 默认映射兜底 → Gemini 思考档位变体
 		mapped := mapAntigravityModel(account, requestedModel)
 		if mapped == "" {
-			return false
+			_, ok := resolveGeminiThinkingVariantForLevel(account, requestedModel, "")
+			return ok
 		}
 		// 应用 thinking 后缀后检查最终模型是否在账号映射中
 		if enabled, ok := ThinkingEnabledFromContext(ctx); ok {
@@ -2658,7 +2659,7 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 		if strings.TrimSpace(requestedModel) == "" {
 			return true
 		}
-		return mapAntigravityModel(account, requestedModel) != ""
+		return canMapAntigravityModel(account, requestedModel)
 	}
 	if account.IsBedrock() {
 		_, ok := ResolveBedrockModelID(account, requestedModel)

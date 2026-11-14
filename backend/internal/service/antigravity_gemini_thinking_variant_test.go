@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
@@ -36,7 +37,11 @@ func TestGeminiThinkingLevelFromBody(t *testing.T) {
 		{"budget 4000 (agy medium)", `{"generationConfig":{"thinkingConfig":{"thinkingBudget":4000}}}`, "medium"},
 		{"budget 24576", `{"generationConfig":{"thinkingConfig":{"thinkingBudget":24576}}}`, "high"},
 		{"thinkingLevel wins over budget", `{"generationConfig":{"thinkingConfig":{"thinkingBudget":24576,"thinkingLevel":"low"}}}`, "low"},
+		{"thinkingLevel minimal wins over high budget", `{"generationConfig":{"thinkingConfig":{"thinkingBudget":24576,"thinkingLevel":" MINIMAL "}}}`, "low"},
+		{"thinkingLevel minimal without budget", `{"generationConfig":{"thinkingConfig":{"thinkingLevel":"minimal"}}}`, "low"},
 		{"thinkingLevel medium", `{"generationConfig":{"thinkingConfig":{"thinkingLevel":"MEDIUM"}}}`, "medium"},
+		{"thinkingLevel xhigh", `{"generationConfig":{"thinkingConfig":{"thinkingLevel":"XHIGH"}}}`, "xhigh"},
+		{"snake_case thinking_level xhigh", `{"generation_config":{"thinking_config":{"thinking_level":"xhigh"}}}`, "xhigh"},
 		{"invalid json", `{"generationConfig":`, "high"},
 	}
 	for _, tt := range tests {
@@ -139,7 +144,7 @@ func TestGeminiThinkingLevelFromClaudeThinking(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, geminiThinkingLevelFromClaudeThinking(tt.thinking))
+			require.Equal(t, tt.want, geminiThinkingLevelFromClaudeRequest(&antigravity.ClaudeRequest{Thinking: tt.thinking}))
 		})
 	}
 }
@@ -167,6 +172,9 @@ func TestGeminiThinkingLevelFromClaudeRequest_HonorsOutputEffortAndCarbonTiers(t
 			Thinking:     &antigravity.ThinkingConfig{Type: "disabled"},
 			OutputConfig: &antigravity.ClaudeOutputConfig{Effort: "high"},
 		}, "gemini-4-carbon-low"},
+		{"xhigh degrades to high when model lacks xhigh variant", antigravity.ClaudeRequest{
+			OutputConfig: &antigravity.ClaudeOutputConfig{Effort: "xhigh"},
+		}, "gemini-4-carbon-high"},
 		{"default falls back to high variant", antigravity.ClaudeRequest{}, "gemini-4-carbon-high"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -174,6 +182,66 @@ func TestGeminiThinkingLevelFromClaudeRequest_HonorsOutputEffortAndCarbonTiers(t
 			require.Equal(t, tc.want, got)
 		})
 	}
+
+	hydrogenAccount := newAntigravityAccountWithMapping(map[string]string{
+		"gemini-4-hydrogen-low":    "gemini-4-hydrogen-low",
+		"gemini-4-hydrogen-medium": "gemini-4-hydrogen-medium",
+		"gemini-4-hydrogen-high":   "gemini-4-hydrogen-high",
+		"gemini-4-hydrogen-xhigh":  "gemini-4-hydrogen-xhigh",
+	})
+	for _, effort := range []string{"xhigh", "max"} {
+		req := antigravity.ClaudeRequest{OutputConfig: &antigravity.ClaudeOutputConfig{Effort: effort}}
+		require.Equal(t, "gemini-4-hydrogen-xhigh",
+			svc.getMappedModelForThinkingLevel(hydrogenAccount, "gemini-4-hydrogen", geminiThinkingLevelFromClaudeRequest(&req)))
+	}
+	require.Equal(t, "gemini-4-hydrogen-xhigh", svc.getMappedModel(hydrogenAccount, "gemini-4-hydrogen-xhigh"))
+	require.Equal(t, "gemini-4-hydrogen-low",
+		svc.getMappedModelForThinkingLevel(hydrogenAccount, " models/gemini-4-hydrogen ", "low"))
+
+	// 默认映射（rawMapping 为空）与持久化默认映射下，裸 gemini-4-hydrogen 应支持按 effort 动态分档，缺省落到 -high。
+	defaultAccount := &Account{ID: 2, Name: "ag-default", Platform: PlatformAntigravity}
+	for _, tc := range []struct {
+		effort string
+		want   string
+	}{
+		{"", "gemini-4-hydrogen-high"},
+		{"low", "gemini-4-hydrogen-low"},
+		{"medium", "gemini-4-hydrogen-medium"},
+		{"high", "gemini-4-hydrogen-high"},
+		{"xhigh", "gemini-4-hydrogen-xhigh"},
+	} {
+		req := antigravity.ClaudeRequest{}
+		if tc.effort != "" {
+			req.OutputConfig = &antigravity.ClaudeOutputConfig{Effort: tc.effort}
+		}
+		require.Equal(t, tc.want,
+			svc.getMappedModelForThinkingLevel(defaultAccount, "gemini-4-hydrogen", geminiThinkingLevelFromClaudeRequest(&req)),
+			"effort=%q", tc.effort)
+	}
+
+	// 调度准入：仅包含同步变体后缀（包括仅含 -xhigh）的账号必须放行裸模型请求，而显式仅放行 Claude 的账号仍须拒绝。
+	gwSvc := &GatewayService{}
+	require.True(t, gwSvc.isModelSupportedByAccountWithContext(context.Background(), hydrogenAccount, "gemini-4-hydrogen"))
+	require.True(t, gwSvc.isModelSupportedByAccount(hydrogenAccount, "gemini-4-hydrogen"))
+	xhighOnlyAccount := newAntigravityAccountWithMapping(map[string]string{"gemini-4-hydrogen-xhigh": "gemini-4-hydrogen-xhigh"})
+	require.True(t, gwSvc.isModelSupportedByAccountWithContext(context.Background(), xhighOnlyAccount, "gemini-4-hydrogen"))
+	require.True(t, gwSvc.isModelSupportedByAccount(xhighOnlyAccount, "gemini-4-hydrogen"))
+	require.Equal(t, "gemini-4-hydrogen-xhigh", svc.getMappedModel(xhighOnlyAccount, "gemini-4-hydrogen"))
+	claudeOnlyAccount := newAntigravityAccountWithMapping(map[string]string{"claude-sonnet-4-5": "claude-sonnet-4-5"})
+	require.False(t, gwSvc.isModelSupportedByAccountWithContext(context.Background(), claudeOnlyAccount, "gemini-4-hydrogen"))
+	require.False(t, gwSvc.isModelSupportedByAccount(claudeOnlyAccount, "gemini-4-hydrogen"))
+
+	// 模型级冷却键归属：裸请求解析为自映射 -low 时冷却 -low，显式单向别名不因二次映射变空。
+	lowKey := antigravityRateLimitModelKey(hydrogenAccount, "gemini-4-hydrogen", "gemini-4-hydrogen-low")
+	require.Equal(t, "gemini-4-hydrogen-low", resolveFinalAntigravityModelKey(context.Background(), hydrogenAccount, lowKey))
+	require.Equal(t, "gemini-4-hydrogen-low", resolveFinalAntigravityModelKey(context.Background(), defaultAccount, antigravityRateLimitModelKey(defaultAccount, "gemini-4-hydrogen", "gemini-4-hydrogen-low")))
+	aliasOnlyAccount := newAntigravityAccountWithMapping(map[string]string{"gemini-4-hydrogen": "gemini-4-hydrogen-high"})
+	aliasKey := antigravityRateLimitModelKey(aliasOnlyAccount, "gemini-4-hydrogen", "gemini-4-hydrogen-high")
+	require.Equal(t, "gemini-4-hydrogen-high", resolveFinalAntigravityModelKey(context.Background(), aliasOnlyAccount, aliasKey))
+
+	// web_search 降级把实际外发模型改写为 gemini-2.5-flash 时，不得再按原 Hydrogen 档位后缀收取 xhigh 倍率。
+	webSearchBody := []byte(`{"model":"gemini-2.5-flash","request":{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}}`)
+	require.Nil(t, effectiveAntigravityGeminiReasoningEffort("gemini-4-hydrogen-xhigh", webSearchBody, true))
 }
 
 // 锁定线上 404 回归：Chat Completions / Messages 兼容层收到裸 Gemini 模型名时，
@@ -209,7 +277,7 @@ func TestResolveGeminiThinkingVariantForLevel_CompatPathResolvesBareModel(t *tes
 // 同一请求无论走 Gemini 原生还是兼容层，都必须落到同一个上游变体。
 func TestGeminiThinkingLevel_NativeAndCompatAgree(t *testing.T) {
 	native := geminiThinkingLevelFromBody([]byte(`{"generationConfig":{"thinkingConfig":{"thinkingBudget":4000}}}`))
-	compat := geminiThinkingLevelFromClaudeThinking(&antigravity.ThinkingConfig{Type: "enabled", BudgetTokens: 4000})
+	compat := geminiThinkingLevelFromClaudeRequest(&antigravity.ClaudeRequest{Thinking: &antigravity.ThinkingConfig{Type: "enabled", BudgetTokens: 4000}})
 	require.Equal(t, native, compat)
 }
 

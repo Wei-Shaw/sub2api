@@ -234,6 +234,24 @@ describe('useModelWhitelist', () => {
     ]))
   })
 
+  it('Gemini 4 Hydrogen 在 gemini 与 antigravity 平台使用对应真实模型 ID 与预设映射', () => {
+    expect(getModelsByPlatform('gemini')).toContain('gemini-4-hydrogen')
+    const agModels = getModelsByPlatform('antigravity')
+    expect(agModels).not.toContain('gemini-4-hydrogen')
+    expect(agModels).toContain('gemini-4-hydrogen-xhigh')
+    expect(agModels).toContain('gemini-4-hydrogen-high')
+    expect(agModels).toContain('gemini-4-hydrogen-medium')
+    expect(agModels).toContain('gemini-4-hydrogen-low')
+    expect(getPresetMappingsByPlatform('antigravity')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ from: 'gemini-4-hydrogen', to: 'gemini-4-hydrogen' }),
+      expect.objectContaining({ from: 'gemini-4-hydrogen', to: 'gemini-4-hydrogen-high' }),
+      expect.objectContaining({ from: 'gemini-4-hydrogen-xhigh', to: 'gemini-4-hydrogen-xhigh' }),
+      expect.objectContaining({ from: 'gemini-4-hydrogen-high', to: 'gemini-4-hydrogen-high' }),
+      expect.objectContaining({ from: 'gemini-4-hydrogen-medium', to: 'gemini-4-hydrogen-medium' }),
+      expect.objectContaining({ from: 'gemini-4-hydrogen-low', to: 'gemini-4-hydrogen-low' })
+    ]))
+  })
+
   it('whitelist 模式会忽略通配符条目', () => {
     const mapping = buildModelMappingObject('whitelist', ['claude-*', 'gemini-3.1-flash-image'], [])
     expect(mapping).toEqual({

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/tidwall/gjson"
 )
 
 // Gemini 原生请求（/v1beta/models/{model}:generateContent 等）经 Antigravity 账号转发时，
@@ -21,7 +22,7 @@ import (
 // 选中的后缀在映射表里不存在时按 high → medium → low → tiered 的顺序降级到存在的变体。
 // 显式映射（裸名本身在 model_mapping 里）始终优先，行为与现在完全一致。
 
-var geminiThinkingVariantSuffixes = []string{"-low", "-medium", "-high", "-tiered"}
+var geminiThinkingVariantSuffixes = []string{"-low", "-medium", "-high", "-xhigh", "-tiered"}
 
 const (
 	geminiThinkingBudgetLowMax    = 1024
@@ -29,47 +30,118 @@ const (
 )
 
 type geminiThinkingConfigProbe struct {
-	GenerationConfig struct {
-		ThinkingConfig *struct {
-			ThinkingBudget *json.Number `json:"thinkingBudget"`
-			ThinkingLevel  string       `json:"thinkingLevel"`
-		} `json:"thinkingConfig"`
-	} `json:"generationConfig"`
+	GenerationConfig      *geminiThinkingGenerationConfigProbe `json:"generationConfig"`
+	GenerationConfigSnake *geminiThinkingGenerationConfigProbe `json:"generation_config"`
+}
+
+type geminiThinkingGenerationConfigProbe struct {
+	ThinkingConfig      *geminiThinkingInnerProbe `json:"thinkingConfig"`
+	ThinkingConfigSnake *geminiThinkingInnerProbe `json:"thinking_config"`
+}
+
+type geminiThinkingInnerProbe struct {
+	ThinkingBudget      *json.Number `json:"thinkingBudget"`
+	ThinkingBudgetSnake *json.Number `json:"thinking_budget"`
+	ThinkingLevel       string       `json:"thinkingLevel"`
+	ThinkingLevelSnake  string       `json:"thinking_level"`
 }
 
 // hasGeminiThinkingVariantSuffix 判断模型名是否已经带了思考深度后缀。
 func hasGeminiThinkingVariantSuffix(model string) bool {
+	lower := strings.ToLower(strings.TrimSpace(model))
 	for _, suffix := range geminiThinkingVariantSuffixes {
-		if strings.HasSuffix(model, suffix) {
+		if strings.HasSuffix(lower, suffix) {
 			return true
 		}
 	}
 	return false
 }
 
-// geminiThinkingLevelFromBody 从 Gemini 原生请求体推导期望的思考档位（low/medium/high）。
+// antigravityRateLimitModelKey 在裸 Gemini 模型按请求思考档位落到自映射变体时返回实际转发变体，
+// 避免模型级冷却将低档位失败误记到默认高档位，同时对无自映射目标的显式别名保留原名以免二次映射置空。
+func antigravityRateLimitModelKey(account *Account, originalModel, mappedModel string) string {
+	if mappedModel != "" && mappedModel != originalModel && hasGeminiThinkingVariantSuffix(mappedModel) && mapAntigravityModel(account, mappedModel) == mappedModel {
+		return mappedModel
+	}
+	return originalModel
+}
+
+// effectiveAntigravityGeminiReasoningEffort 提取转发到 Gemini 上游时实际生效的思考档位，
+// 仅在客户端显式指定了 effort 且目标为 Gemini 模型时返回（不给未传 effort 的请求虚构计费档位）。
+func effectiveAntigravityGeminiReasoningEffort(mappedModel string, wrappedGeminiBody []byte, hadExplicitEffort bool) *string {
+	if !hadExplicitEffort {
+		return nil
+	}
+	actualModel := strings.TrimSpace(gjson.GetBytes(wrappedGeminiBody, "model").String())
+	if actualModel == "" {
+		actualModel = mappedModel
+	}
+	lowerModel := strings.TrimPrefix(strings.ToLower(actualModel), "models/")
+	if !strings.HasPrefix(lowerModel, "gemini-") {
+		return nil
+	}
+	requestRaw := gjson.GetBytes(wrappedGeminiBody, "request").Raw
+	if requestRaw == "" {
+		requestRaw = string(wrappedGeminiBody)
+	}
+	if effort := extractGeminiReasoningEffortFromBody([]byte(requestRaw)); effort != nil {
+		return effort
+	}
+	for _, level := range []string{"xhigh", "high", "medium", "low"} {
+		if strings.HasSuffix(lowerModel, "-"+level) {
+			resolved := level
+			return &resolved
+		}
+	}
+	return nil
+}
+
+// geminiThinkingLevelFromBody 从 Gemini 原生请求体推导期望的思考档位（low/medium/high/xhigh）。
 // 解析失败或未携带 thinkingConfig 时返回 "high"。
 func geminiThinkingLevelFromBody(body []byte) string {
 	if len(body) == 0 {
 		return "high"
 	}
 	var probe geminiThinkingConfigProbe
-	if err := json.Unmarshal(body, &probe); err != nil || probe.GenerationConfig.ThinkingConfig == nil {
+	if err := json.Unmarshal(body, &probe); err != nil {
 		return "high"
 	}
-	tc := probe.GenerationConfig.ThinkingConfig
-	switch strings.ToLower(strings.TrimSpace(tc.ThinkingLevel)) {
-	case "low":
+	gc := probe.GenerationConfig
+	if gc == nil {
+		gc = probe.GenerationConfigSnake
+	}
+	if gc == nil {
+		return "high"
+	}
+	tc := gc.ThinkingConfig
+	if tc == nil {
+		tc = gc.ThinkingConfigSnake
+	}
+	if tc == nil {
+		return "high"
+	}
+	rawLevel := strings.TrimSpace(tc.ThinkingLevel)
+	if rawLevel == "" {
+		rawLevel = strings.TrimSpace(tc.ThinkingLevelSnake)
+	}
+	switch strings.ToLower(rawLevel) {
+	case "minimal", "low":
 		return "low"
 	case "medium":
 		return "medium"
 	case "high":
 		return "high"
+	case "xhigh":
+		return "xhigh"
 	}
-	if tc.ThinkingBudget == nil {
+	rawBudget := tc.ThinkingBudget
+	if rawBudget == nil {
+		rawBudget = tc.ThinkingBudgetSnake
+	}
+	if rawBudget == nil {
 		return "high"
 	}
-	budget, err := tc.ThinkingBudget.Float64()
+	budget, err := rawBudget.Float64()
 	if err != nil {
 		return "high"
 	}
@@ -86,17 +158,12 @@ func geminiThinkingLevelFromBody(body []byte) string {
 }
 
 // geminiThinkingLevelFromClaudeRequest 用 Claude Messages 协议的 thinking 与 output_config.effort
-// 推导档位（disabled > effort > budget_tokens），与 Carbon 思考配置及 Gemini 原生路径保持一致。
+// 推导档位（disabled > effort > budget_tokens），与 Carbon/Hydrogen 思考配置及 Gemini 原生路径保持一致。
 func geminiThinkingLevelFromClaudeRequest(req *antigravity.ClaudeRequest) string {
 	if level := antigravity.ResolveClaudeThinkingLevel(req); level != "" {
 		return level
 	}
 	return "high"
-}
-
-// geminiThinkingLevelFromClaudeThinking 仅根据 thinking 配置推导档位。
-func geminiThinkingLevelFromClaudeThinking(thinking *antigravity.ThinkingConfig) string {
-	return geminiThinkingLevelFromClaudeRequest(&antigravity.ClaudeRequest{Thinking: thinking})
 }
 
 // resolveGeminiThinkingVariant 为裸 Gemini 模型名挑选账号映射表里存在的思考深度变体。
@@ -105,14 +172,11 @@ func resolveGeminiThinkingVariant(account *Account, requestedModel string, body 
 	return resolveGeminiThinkingVariantForLevel(account, requestedModel, geminiThinkingLevelFromBody(body))
 }
 
-// resolveGeminiThinkingVariantForLevel 是 resolveGeminiThinkingVariant 的协议无关内核：
-// 调用方负责按自身协议推导 preferred 档位（Gemini 原生读 generationConfig.thinkingConfig，
-// Claude/OpenAI 兼容层读 thinking.budget_tokens），此处只做映射查找与降级。
 func resolveGeminiThinkingVariantForLevel(account *Account, requestedModel string, preferred string) (string, bool) {
 	if account == nil {
 		return "", false
 	}
-	model := strings.TrimSpace(strings.TrimPrefix(requestedModel, "models/"))
+	model := strings.TrimPrefix(strings.TrimSpace(requestedModel), "models/")
 	if !strings.HasPrefix(model, "gemini-") || hasGeminiThinkingVariantSuffix(model) {
 		return "", false
 	}
@@ -136,7 +200,7 @@ func resolveGeminiThinkingVariantForLevel(account *Account, requestedModel strin
 		preferred = "high"
 	}
 	order := []string{preferred}
-	for _, level := range []string{"high", "medium", "low", "tiered"} {
+	for _, level := range []string{"high", "medium", "low", "xhigh", "tiered"} {
 		if level != preferred {
 			order = append(order, level)
 		}

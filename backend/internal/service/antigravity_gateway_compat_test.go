@@ -1256,3 +1256,87 @@ func TestAntigravityCompatEmptyAfterKeepaliveReportsStreamError(t *testing.T) {
 		})
 	}
 }
+
+func TestAntigravityCompatAppliesThinkingLevelForBareCarbonAndHydrogen(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	t.Run("chat completions clamps xhigh to high for bare carbon and bills effective effort", func(t *testing.T) {
+		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse()}}
+		svc := newAntigravityCompatService(config.GatewayConfig{}, upstream)
+		account := &Account{
+			ID:          3758,
+			Name:        "ag-default",
+			Platform:    PlatformAntigravity,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Concurrency: 1,
+			Credentials: map[string]any{"access_token": "tok", "project_id": "proj"},
+		}
+		body := []byte(`{"model":"gemini-4-carbon","reasoning_effort":"xhigh","messages":[{"role":"user","content":"hi"}]}`)
+		c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", body)
+		res, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, nil)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, recorder.Code)
+		require.Len(t, upstream.requestBodies, 1)
+		require.Equal(t, "gemini-4-carbon", gjson.GetBytes(upstream.requestBodies[0], "model").String())
+		require.Equal(t, "high", gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.thinkingConfig.thinkingLevel").String())
+		require.Equal(t, "high", optionalStringValue(res.ReasoningEffort))
+		require.Equal(t, "xhigh", optionalStringValue(res.RequestedReasoningEffort))
+	})
+
+	t.Run("responses selects xhigh variant for hydrogen without redundant thinkingLevel", func(t *testing.T) {
+		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse()}}
+		svc := newAntigravityCompatService(config.GatewayConfig{}, upstream)
+		account := &Account{
+			ID:          3759,
+			Name:        "ag-default",
+			Platform:    PlatformAntigravity,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Concurrency: 1,
+			Credentials: map[string]any{"access_token": "tok", "project_id": "proj"},
+		}
+		body := []byte(`{"model":"gemini-4-hydrogen","reasoning":{"effort":"xhigh"},"input":"hi"}`)
+		c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/responses", body)
+		res, err := svc.ForwardAsResponses(context.Background(), c, account, body, nil)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, recorder.Code)
+		require.Len(t, upstream.requestBodies, 1)
+		require.Equal(t, "gemini-4-hydrogen-xhigh", gjson.GetBytes(upstream.requestBodies[0], "model").String())
+		require.Empty(t, gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.thinkingConfig.thinkingLevel").String())
+		require.Equal(t, "xhigh", optionalStringValue(res.ReasoningEffort))
+		require.Equal(t, "xhigh", optionalStringValue(res.RequestedReasoningEffort))
+	})
+
+	t.Run("hydrogen fallback from xhigh to high bills high and omitted effort stays nil", func(t *testing.T) {
+		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse(), antigravityCompatSuccessResponse()}}
+		svc := newAntigravityCompatService(config.GatewayConfig{}, upstream)
+		account := &Account{
+			ID:          3760,
+			Name:        "ag-high-only",
+			Platform:    PlatformAntigravity,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Concurrency: 1,
+			Credentials: map[string]any{
+				"access_token":  "tok",
+				"project_id":    "proj",
+				"model_mapping": map[string]any{"gemini-4-hydrogen-high": "gemini-4-hydrogen-high"},
+			},
+		}
+		body := []byte(`{"model":"gemini-4-hydrogen","reasoning":{"effort":"xhigh"},"input":"hi"}`)
+		c, _ := newAntigravityCompatContext(http.MethodPost, "/v1/responses", body)
+		res, err := svc.ForwardAsResponses(context.Background(), c, account, body, nil)
+		require.NoError(t, err)
+		require.Equal(t, "gemini-4-hydrogen-high", res.UpstreamModel)
+		require.Equal(t, "high", optionalStringValue(res.ReasoningEffort))
+		require.Equal(t, "xhigh", optionalStringValue(res.RequestedReasoningEffort))
+
+		bodyNoEffort := []byte(`{"model":"gemini-4-hydrogen","input":"hi"}`)
+		c2, _ := newAntigravityCompatContext(http.MethodPost, "/v1/responses", bodyNoEffort)
+		res2, err := svc.ForwardAsResponses(context.Background(), c2, account, bodyNoEffort, nil)
+		require.NoError(t, err)
+		require.Nil(t, res2.ReasoningEffort)
+		require.Nil(t, res2.RequestedReasoningEffort)
+	})
+}

@@ -262,7 +262,10 @@ func mapAntigravityModel(account *Account, requestedModel string) string {
 	if account == nil {
 		return ""
 	}
-	requestedModel = strings.TrimPrefix(requestedModel, "models/")
+	requestedModel = strings.TrimPrefix(strings.TrimSpace(requestedModel), "models/")
+	if requestedModel == "" {
+		return ""
+	}
 
 	// 获取映射表（未配置时自动使用 DefaultAntigravityModelMapping）
 	mapping := account.GetModelMapping()
@@ -289,6 +292,14 @@ func mapAntigravityModel(account *Account, requestedModel string) string {
 
 	// 未在映射表中配置的模型，返回空字符串（不支持）
 	return ""
+}
+
+func canMapAntigravityModel(account *Account, requestedModel string) bool {
+	if mapAntigravityModel(account, requestedModel) != "" {
+		return true
+	}
+	_, ok := resolveGeminiThinkingVariantForLevel(account, requestedModel, "")
+	return ok
 }
 
 // getMappedModel 获取映射后的模型名

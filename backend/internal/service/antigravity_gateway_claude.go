@@ -104,6 +104,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 	// Antigravity 上游只支持流式请求，统一使用 streamGenerateContent
 	// 如果客户端请求非流式，在响应处理阶段会收集完整流式响应后转换返回
 	action := "streamGenerateContent"
+	rateLimitModel := antigravityRateLimitModelKey(account, originalModel, mappedModel)
 
 	// 执行带重试的请求
 	result, err := s.antigravityRetryLoop(antigravityRetryLoopParams{
@@ -119,7 +120,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 		settingService:  s.settingService,
 		accountRepo:     s.accountRepo,
 		handleError:     s.handleUpstreamError,
-		requestedModel:  originalModel,
+		requestedModel:  rateLimitModel,
 		isStickySession: isStickySession, // Forward 由上层判断粘性会话
 		groupID:         0,               // Forward 方法没有 groupID，由上层处理粘性会话清除
 		sessionHash:     "",              // Forward 方法没有 sessionHash，由上层处理粘性会话清除
@@ -205,7 +206,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 					settingService:  s.settingService,
 					accountRepo:     s.accountRepo,
 					handleError:     s.handleUpstreamError,
-					requestedModel:  originalModel,
+					requestedModel:  rateLimitModel,
 					isStickySession: isStickySession,
 					groupID:         0,  // Forward 方法没有 groupID，由上层处理粘性会话清除
 					sessionHash:     "", // Forward 方法没有 sessionHash，由上层处理粘性会话清除
@@ -230,6 +231,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 					_ = resp.Body.Close()
 					resp = retryResp
 					respBody = nil
+					geminiBody = retryGeminiBody
 					break
 				}
 
@@ -333,7 +335,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 							settingService:  s.settingService,
 							accountRepo:     s.accountRepo,
 							handleError:     s.handleUpstreamError,
-							requestedModel:  originalModel,
+							requestedModel:  rateLimitModel,
 							isStickySession: isStickySession,
 							groupID:         0,
 							sessionHash:     "",
@@ -344,6 +346,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 								_ = resp.Body.Close()
 								resp = retryResp
 								respBody = nil
+								geminiBody = retryGeminiBody
 							} else {
 								retryBody := s.readUpstreamErrorBody(retryResp)
 								_ = retryResp.Body.Close()
@@ -392,7 +395,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 				}
 			}
 
-			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, originalModel, 0, "", isStickySession)
+			s.handleUpstreamError(ctx, prefix, account, resp.StatusCode, resp.Header, respBody, rateLimitModel, 0, "", isStickySession)
 
 			// 精确匹配服务端配置类 400 错误，触发同账号重试 + failover
 			if resp.StatusCode == http.StatusBadRequest {
@@ -469,6 +472,12 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 		firstTokenMs = streamRes.firstTokenMs
 	}
 
+	var requestedEffort, effectiveEffort *string
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(mappedModel)), "gemini-") && claudeReq.OutputConfig != nil {
+		requestedEffort = NormalizeClaudeOutputEffort(claudeReq.OutputConfig.Effort)
+		effectiveEffort = effectiveAntigravityGeminiReasoningEffort(mappedModel, geminiBody, requestedEffort != nil)
+	}
+
 	return &ForwardResult{
 		RequestID:                     requestID,
 		UpstreamHeaders:               resp.Header,
@@ -480,6 +489,8 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 		Stream:                        claudeReq.Stream,
 		Duration:                      time.Since(startTime),
 		FirstTokenMs:                  firstTokenMs,
+		ReasoningEffort:               effectiveEffort,
+		RequestedReasoningEffort:      requestedEffort,
 		ClientDisconnect:              clientDisconnect,
 	}, nil
 }

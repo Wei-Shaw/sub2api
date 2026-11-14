@@ -98,8 +98,10 @@ func parseClaudeThinkingIntent(claudeBody []byte) claudeThinkingIntent {
 		intent.tier = "low"
 	case "medium":
 		intent.tier = "medium"
-	case "high", "xhigh", "max":
+	case "high":
 		intent.tier = "high"
+	case "xhigh", "max":
+		intent.tier = "xhigh"
 	}
 	if intent.thinkingType == "enabled" {
 		intent.budgetTokens = int(gjson.GetBytes(claudeBody, "thinking.budget_tokens").Int())
@@ -118,8 +120,9 @@ func claudeRequestEnablesThinking(claudeBody []byte) bool {
 }
 
 // geminiThinkingLevelFor 把思考意图映射为 thinkingLevel；返回空串表示交给模型默认档位。
-// minimal 只发给 flash 系列，其余模型用 low；medium 只发给 flash 系列、Gemini 3.1 Pro
-// 与 Gemini 4 Carbon，其余模型用 high。未指定档位时保留上游默认值。
+// minimal 只发给 flash 系列，其余模型用 low；medium 只发给 flash 系列、Gemini 3.1 Pro、
+// Gemini 4 Carbon 与 Gemini 4 Hydrogen，其余模型用 high；xhigh 只发给 Gemini 4 Hydrogen，
+// 其余模型降级为 high。未指定档位时保留上游默认值。
 func geminiThinkingLevelFor(model string, intent claudeThinkingIntent) string {
 	tier := intent.tier
 	if tier == "" && intent.budgetTokens > 0 {
@@ -134,10 +137,13 @@ func geminiThinkingLevelFor(model string, intent claudeThinkingIntent) string {
 	}
 	name := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(model)), "models/")
 	isFlash := strings.Contains(name, "flash")
+	if tier == "xhigh" && name != "gemini-4-hydrogen" {
+		tier = "high"
+	}
 	if tier == "minimal" && !isFlash {
 		tier = "low"
 	}
-	if tier == "medium" && !isFlash && !strings.HasPrefix(name, "gemini-3.1-pro") && name != "gemini-4-carbon" {
+	if tier == "medium" && !isFlash && !strings.HasPrefix(name, "gemini-3.1-pro") && name != "gemini-4-carbon" && name != "gemini-4-hydrogen" {
 		tier = "high"
 	}
 	return tier
@@ -166,7 +172,7 @@ func geminiThinkingBudgetFor(model string, intent claudeThinkingIntent) (budget 
 		budget = 1024
 	case "medium":
 		budget = 8192
-	case "high":
+	case "high", "xhigh":
 		budget = maxBudget
 	default:
 		if intent.budgetTokens <= 0 {

@@ -579,8 +579,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			inboundEndpoint := GetInboundEndpoint(c)
 			upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 
+			effortAlreadyResolved := result.RequestedReasoningEffort != nil
 			stampForwardRequestedReasoningEffort(result, service.NormalizeClaudeOutputEffort(parsedReq.OutputEffort))
-			if result.ReasoningEffort == nil {
+			if result.ReasoningEffort == nil && !effortAlreadyResolved {
 				result.ReasoningEffort = service.NormalizeClaudeOutputEffort(parsedReq.OutputEffort)
 			}
 			// 国产模型 thinking-enabled 默认 effort 填充：Kimi/GLM/MiniMax 这些不支持 effort 档位的
@@ -945,8 +946,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				inboundEndpoint := GetInboundEndpoint(c)
 				upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 
+				effortAlreadyResolved := result.RequestedReasoningEffort != nil
 				stampForwardRequestedReasoningEffort(result, service.NormalizeClaudeOutputEffort(attemptParsedReq.OutputEffort))
-				if result.ReasoningEffort == nil {
+				if result.ReasoningEffort == nil && !effortAlreadyResolved {
 					result.ReasoningEffort = service.NormalizeClaudeOutputEffort(attemptParsedReq.OutputEffort)
 				}
 				// 同上（重试路径中的对称填充）。详见非重试路径同名注释。
