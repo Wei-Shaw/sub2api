@@ -342,6 +342,22 @@ type ResponsesRequest struct {
 	ServiceTier        string              `json:"service_tier,omitempty"`
 	PromptCacheKey     string              `json:"prompt_cache_key,omitempty"`
 	PreviousResponseID string              `json:"previous_response_id,omitempty"`
+
+	// DeepSeek extension fields, passed through verbatim.
+	SafetyCheck *SafetyCheckParam `json:"safety_check,omitempty"`
+	Title       *TitleParam       `json:"title,omitempty"`
+}
+
+// SafetyCheckParam is the DeepSeek extension field enabling content safety
+// review: {"level":"low"} (default) | {"level":"high"}.
+type SafetyCheckParam struct {
+	Level string `json:"level"` // "low" | "high"
+}
+
+// TitleParam is the DeepSeek extension field requesting a conversation title:
+// {"enabled":true}.
+type TitleParam struct {
+	Enabled bool `json:"enabled"`
 }
 
 // ResponsesReasoning configures reasoning effort in the Responses API.
@@ -768,6 +784,10 @@ type ChatCompletionsRequest struct {
 	// Legacy function calling (deprecated but still supported)
 	Functions    []ChatFunction  `json:"functions,omitempty"`
 	FunctionCall json.RawMessage `json:"function_call,omitempty"`
+
+	// DeepSeek extension fields, passed through verbatim.
+	SafetyCheck *SafetyCheckParam `json:"safety_check,omitempty"`
+	Title       *TitleParam       `json:"title,omitempty"`
 }
 
 // ChatStreamOptions configures streaming behavior.
@@ -814,8 +834,11 @@ type ChatFile struct {
 
 // ChatTool describes a tool available to the model.
 type ChatTool struct {
-	Type     string        `json:"type"` // "function" | "web_search" | "code_execution" | "x_search"
+	Type     string        `json:"type"` // "function" | "web_search" | "code_execution" | "x_search" | "deepseek_web_search" | "deepseek_read_url"
 	Function *ChatFunction `json:"function,omitempty"`
+	// Name is the tool name for name-carrying server tools such as the DeepSeek
+	// extensions ("deepseek_web_search" / "deepseek_read_url").
+	Name string `json:"name,omitempty"`
 
 	// type=x_search
 	AllowedXHandles          []string `json:"allowed_x_handles,omitempty"`
