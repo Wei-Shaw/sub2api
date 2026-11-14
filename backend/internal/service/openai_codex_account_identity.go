@@ -10,7 +10,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
-	"github.com/tidwall/sjson"
 )
 
 const codexAccountIdentityNamespaceVersion = "v1"
@@ -193,19 +192,18 @@ func applyCodexAccountIdentityClientMetadataMap(requestBody map[string]any, acco
 }
 
 // applyCodexAccountIdentityClientMetadataRaw scopes only the small identity
-// subobjects with gjson/sjson. The passthrough hot path never unmarshals the
-// potentially multi-megabyte request body.
+// subobjects with gjson. The passthrough hot path never unmarshals the
+// potentially multi-megabyte request body, and both rewritten values are
+// spliced into a single copy of it.
 func applyCodexAccountIdentityClientMetadataRaw(body []byte, account *Account, apiKeyID int64) ([]byte, bool, error) {
 	if len(body) == 0 || codexAccountIdentityNamespace(account) == "" {
 		return body, false, nil
 	}
-	root := gjson.ParseBytes(body)
-	if !root.IsObject() {
+	if !parseRawJSONView(body).IsObject() {
 		return body, false, nil
 	}
 
-	next := body
-	changed := false
+	var edits []rawJSONValueEdit
 	originalBodySessionID := ""
 	if cm := gjson.GetBytes(body, "client_metadata"); cm.IsObject() {
 		clientMetadata := map[string]any{}
@@ -222,12 +220,7 @@ func applyCodexAccountIdentityClientMetadataRaw(body []byte, account *Account, a
 			if err != nil {
 				return body, false, fmt.Errorf("encode account-scoped client_metadata: %w", err)
 			}
-			var setErr error
-			next, setErr = sjson.SetRawBytes(next, "client_metadata", raw)
-			if setErr != nil {
-				return body, false, fmt.Errorf("splice account-scoped client_metadata: %w", setErr)
-			}
-			changed = true
+			edits = append(edits, rawJSONValueEdit{value: cm, raw: raw})
 		}
 	}
 	if promptCacheKey := gjson.GetBytes(body, "prompt_cache_key"); promptCacheKey.Type == gjson.String && strings.TrimSpace(promptCacheKey.String()) != "" {
@@ -238,15 +231,21 @@ func applyCodexAccountIdentityClientMetadataRaw(body []byte, account *Account, a
 		}
 		scoped := scopeCodexAccountIdentityValue(account, apiKeyID, kind, raw)
 		if scoped != raw {
-			rewritten, err := sjson.SetBytes(next, "prompt_cache_key", scoped)
+			quoted, err := json.Marshal(scoped)
 			if err != nil {
-				return body, false, fmt.Errorf("splice account-scoped prompt_cache_key: %w", err)
+				return body, false, fmt.Errorf("encode account-scoped prompt_cache_key: %w", err)
 			}
-			next = rewritten
-			changed = true
+			edits = append(edits, rawJSONValueEdit{value: promptCacheKey, raw: quoted})
 		}
 	}
-	return next, changed, nil
+	if len(edits) == 0 {
+		return body, false, nil
+	}
+	next, err := spliceRawJSONValues(body, edits)
+	if err != nil {
+		return body, false, fmt.Errorf("splice account-scoped client identity: %w", err)
+	}
+	return next, true, nil
 }
 
 func applyCodexAccountIdentityHeaders(headers http.Header, account *Account, apiKeyID int64) {
