@@ -13,15 +13,16 @@ vi.mock('@/components/common/ConfirmDialog.vue', () => ({
     props: { show: Boolean, title: String, message: String, confirmText: String, cancelText: String, danger: Boolean },
     emits: ['confirm', 'cancel'],
     template: `<div v-if="show" data-testid="confirm-dialog" :data-danger="String(danger)">{{ message }}
+      <slot />
       <button data-testid="confirm-ok" @click="$emit('confirm')">ok</button>
       <button data-testid="confirm-cancel" @click="$emit('cancel')">cancel</button></div>`
   }
 }))
 const account = { id: 1, platform: 'anthropic', type: 'oauth' } as Account
 const credit = {
-  label: 'Launch reset', resets_left: 1,
+  label: 'Launch reset', kind: 'full', resets_left: 1,
   expires_at: '2026-10-22T16:00:00Z', clears: ['five_hour', 'seven_day'],
-  percent_used: {}, blocking: [], use_requires_limit: false, redeemable: true
+  percent_used: {}, blocking: [], use_requires_limit: false, nothing_to_reset: false, redeemable: true
 }
 const snapshot = { eligible: true, available_count: 1, credits: [credit], fetched_at: '2026-09-25T00:00:00Z' }
 const countButton = (wrapper: ReturnType<typeof mount>) => wrapper.find('[data-testid="claude-reset-count"]')
@@ -50,7 +51,7 @@ describe('Claude reset credit status', () => {
     await countButton(wrapper).trigger('click')
     await flushPromises()
     expect(getCredits).toHaveBeenCalledWith(1)
-    expect(countButton(wrapper).text()).toBe('admin.accounts.claudeResetCredits.count1')
+    expect(wrapper.get('[data-testid="claude-reset-kind-full"]').text()).toBe('admin.accounts.claudeResetCredits.kinds.full 1')
     const expiry = wrapper.get('[data-testid="claude-reset-expiry"]')
     expect(expiry.attributes('title')).toContain('Launch reset')
   })
@@ -62,7 +63,7 @@ describe('Claude reset credit status', () => {
     const wrapper = mount(ClaudeResetCreditsCell, { props: { account } })
     await countButton(wrapper).trigger('click')
     await flushPromises()
-    expect(countButton(wrapper).text()).toBe('admin.accounts.claudeResetCredits.count2')
+    expect(wrapper.get('[data-testid="claude-reset-kind-full"]').text()).toBe('admin.accounts.claudeResetCredits.kinds.full 2')
     expect(wrapper.get('[data-testid="claude-reset-expiry"]').attributes('title')).toContain('Next')
     expect(wrapper.find('[data-testid="claude-reset-not-usable"]').exists()).toBe(false)
   })
@@ -73,8 +74,62 @@ describe('Claude reset credit status', () => {
     const wrapper = mount(ClaudeResetCreditsCell, { props: { account } })
     await countButton(wrapper).trigger('click')
     await flushPromises()
-    expect(countButton(wrapper).text()).toBe('admin.accounts.claudeResetCredits.count1')
+    expect(wrapper.get('[data-testid="claude-reset-kind-full"]').text()).toBe('admin.accounts.claudeResetCredits.kinds.full 1')
     expect(wrapper.find('[data-testid="claude-reset-not-usable"]').exists()).toBe(true)
+  })
+
+  it('counts weekly and Fable resets separately', async () => {
+    const weekly = { ...credit, label: 'Weekly', kind: 'weekly', clears: ['seven_day', 'seven_day_overage_included'] }
+    const fable = { ...credit, label: 'Fable', kind: 'fable', clears: ['seven_day_overage_included'] }
+    const wrapper = await queried({ ...snapshot, available_count: 2, credits: [weekly, fable] })
+    expect(wrapper.get('[data-testid="claude-reset-kind-weekly"]').text()).toBe('admin.accounts.claudeResetCredits.kinds.weekly 1')
+    expect(wrapper.get('[data-testid="claude-reset-kind-fable"]').text()).toBe('· admin.accounts.claudeResetCredits.kinds.fable 1')
+    expect(wrapper.find('[data-testid="claude-reset-not-usable"]').exists()).toBe(false)
+  })
+
+  it('explains a Fable reset with no Fable usage and keeps reset disabled', async () => {
+    const fable = { ...credit, label: 'Fable', kind: 'fable', clears: ['seven_day_overage_included'], nothing_to_reset: true, redeemable: false }
+    const wrapper = await queried({ ...snapshot, available_count: 0, credits: [fable] })
+    expect(wrapper.get('[data-testid="claude-reset-not-usable"]').text()).toBe('admin.accounts.claudeResetCredits.nothingToReset')
+    expect(t).toHaveBeenCalledWith('admin.accounts.claudeResetCredits.nothingToReset', { kind: 'admin.accounts.claudeResetCredits.kinds.fable' })
+    expect(redeemButton(wrapper).attributes('disabled')).toBeDefined()
+  })
+
+  it('makes the operator pick a kind when several are usable and sends that kind', async () => {
+    const weekly = { ...credit, label: 'Weekly', kind: 'weekly', clears: ['seven_day', 'seven_day_overage_included'] }
+    const fable = { ...credit, label: 'Fable', kind: 'fable', clears: ['seven_day_overage_included'] }
+    const wrapper = await queried({ ...snapshot, available_count: 2, credits: [weekly, fable] })
+    redeem.mockResolvedValue({ outcome: 'reset', cleared: ['seven_day_overage_included'], replayed: false })
+    await redeemButton(wrapper).trigger('click')
+    await wrapper.get('[data-testid="confirm-ok"]').trigger('click')
+    await flushPromises()
+    expect(redeem).not.toHaveBeenCalled()
+    expect(wrapper.find('[data-testid="claude-reset-kind-required"]').exists()).toBe(true)
+
+    await wrapper.get('[data-testid="claude-reset-pick-fable"]').trigger('click')
+    expect(wrapper.find('[data-testid="claude-reset-fable-note"]').exists()).toBe(true)
+    expect(t).toHaveBeenCalledWith('admin.accounts.claudeResetCredits.confirmMessage', {
+      kind: 'admin.accounts.claudeResetCredits.kinds.fable',
+      windows: 'admin.accounts.claudeResetCredits.windows.sevenDayOverage',
+      count: 0
+    })
+    await wrapper.get('[data-testid="confirm-ok"]').trigger('click')
+    await flushPromises()
+    expect(redeem).toHaveBeenCalledTimes(1)
+    expect(redeem.mock.calls[0][2]).toBe('fable')
+  })
+
+  it('does not let an unusable kind be picked', async () => {
+    const weekly = { ...credit, label: 'Weekly', kind: 'weekly' }
+    const fable = { ...credit, label: 'Fable', kind: 'fable', nothing_to_reset: true, redeemable: false }
+    const wrapper = await queried({ ...snapshot, available_count: 1, credits: [weekly, fable] })
+    await redeemButton(wrapper).trigger('click')
+    expect(wrapper.get('[data-testid="claude-reset-pick-fable"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-testid="claude-reset-pick-weekly"]').attributes('aria-checked')).toBe('true')
+    redeem.mockResolvedValue({ outcome: 'reset', replayed: false })
+    await wrapper.get('[data-testid="confirm-ok"]').trigger('click')
+    await flushPromises()
+    expect(redeem.mock.calls[0][2]).toBe('weekly')
   })
 
   it('disables reset until a query shows a redeemable credit', async () => {
@@ -107,6 +162,7 @@ describe('Claude reset credit status', () => {
     expect(dialog.text()).toContain('admin.accounts.claudeResetCredits.confirmMessage')
     // Known windows render as readable labels; count is what remains after this use.
     expect(t).toHaveBeenCalledWith('admin.accounts.claudeResetCredits.confirmMessage', {
+      kind: 'admin.accounts.claudeResetCredits.kinds.full',
       windows: 'admin.accounts.claudeResetCredits.windows.fiveHour, admin.accounts.claudeResetCredits.windows.sevenDay',
       count: 0
     })

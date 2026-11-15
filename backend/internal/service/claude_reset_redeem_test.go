@@ -126,7 +126,7 @@ func newRedeemService(t *testing.T, f *redeemFake) (*ClaudeResetCreditService, *
 func TestClaudeResetRedeemHappyPathServerPicksNextGrant(t *testing.T) {
 	f := &redeemFake{claim: `{"result":"reset","resets_left":1,"cleared":["five_hour","seven_day"]}`}
 	s, _, _ := newRedeemService(t, f)
-	out, err := s.Redeem(context.Background(), 1, "op-1")
+	out, err := s.Redeem(context.Background(), 1, "op-1", "")
 	require.NoError(t, err)
 	require.Equal(t, ClaudeResetOutcomeReset, out.Outcome)
 	require.False(t, out.Replayed)
@@ -163,7 +163,7 @@ func TestClaudeResetRedeemNonRedeemableSendsNoPost(t *testing.T) {
 			require.NotEqual(t, redeemableStatus, status)
 			f := &redeemFake{status: status, claim: `{"result":"reset"}`}
 			s, _, _ := newRedeemService(t, f)
-			_, err := s.Redeem(context.Background(), 1, "op-1")
+			_, err := s.Redeem(context.Background(), 1, "op-1", "")
 			require.Error(t, err)
 			require.Equal(t, "CLAUDE_RESET_NOT_AVAILABLE", infraerrors.Reason(err))
 			require.Zero(t, f.postCount())
@@ -174,13 +174,13 @@ func TestClaudeResetRedeemNonRedeemableSendsNoPost(t *testing.T) {
 func TestClaudeResetRedeemRequiresKeyAndStores(t *testing.T) {
 	f := &redeemFake{claim: `{"result":"reset"}`}
 	s, _, locks := newRedeemService(t, f)
-	_, err := s.Redeem(context.Background(), 1, "  ")
+	_, err := s.Redeem(context.Background(), 1, "  ", "")
 	require.ErrorIs(t, err, ErrIdempotencyKeyRequired)
 	locks.fail = true
-	_, err = s.Redeem(context.Background(), 1, "op-1")
+	_, err = s.Redeem(context.Background(), 1, "op-1", "")
 	require.Error(t, err)
 	unconfigured := &ClaudeResetCreditService{accounts: redeemAccountsStub{}, tokens: resetTokenStub{}, now: time.Now}
-	_, err = unconfigured.Redeem(context.Background(), 1, "op-2")
+	_, err = unconfigured.Redeem(context.Background(), 1, "op-2", "")
 	require.ErrorIs(t, err, ErrIdempotencyStoreUnavail)
 	require.Zero(t, f.postCount())
 }
@@ -188,16 +188,16 @@ func TestClaudeResetRedeemRequiresKeyAndStores(t *testing.T) {
 func TestClaudeResetRedeemSameKeyReplaysWithoutSecondPost(t *testing.T) {
 	f := &redeemFake{claim: `{"result":"reset"}`}
 	s, _, _ := newRedeemService(t, f)
-	first, err := s.Redeem(context.Background(), 1, "op-1")
+	first, err := s.Redeem(context.Background(), 1, "op-1", "")
 	require.NoError(t, err)
-	again, err := s.Redeem(context.Background(), 1, "op-1")
+	again, err := s.Redeem(context.Background(), 1, "op-1", "")
 	require.NoError(t, err)
 	require.True(t, again.Replayed)
 	require.Equal(t, first.Outcome, again.Outcome)
 	require.Equal(t, 1, f.postCount())
 
 	// A new confirmation is a new operation with a new upstream request_id.
-	_, err = s.Redeem(context.Background(), 1, "op-2")
+	_, err = s.Redeem(context.Background(), 1, "op-2", "")
 	require.NoError(t, err)
 	require.Equal(t, 2, f.postCount())
 	require.NotEqual(t, f.posts[0]["request_id"], f.posts[1]["request_id"])
@@ -212,11 +212,11 @@ func TestClaudeResetRedeemDuplicateOrgAccountsConcurrentOnlyOnePost(t *testing.T
 	}
 	first := make(chan res, 1)
 	go func() {
-		out, err := s.Redeem(context.Background(), 1, "account-one")
+		out, err := s.Redeem(context.Background(), 1, "account-one", "")
 		first <- res{out, err}
 	}()
 	<-f.entered // account 1 holds the organization lease and is mid-claim
-	_, err := s.Redeem(context.Background(), 2, "account-two")
+	_, err := s.Redeem(context.Background(), 2, "account-two", "")
 	require.Error(t, err)
 	require.Equal(t, "CLAUDE_RESET_BUSY", infraerrors.Reason(err))
 	close(f.gate)
@@ -234,14 +234,14 @@ func TestClaudeResetRedeemUnknownOutcomeFencesOrganization(t *testing.T) {
 				f.claim, f.claimHTTP = `{"result":"reset"}`, http.StatusInternalServerError
 			}
 			s, _, _ := newRedeemService(t, f)
-			out, err := s.Redeem(context.Background(), 1, "op-1")
+			out, err := s.Redeem(context.Background(), 1, "op-1", "")
 			require.NoError(t, err)
 			require.Equal(t, ClaudeResetOutcomeUnknown, out.Outcome)
 			require.Nil(t, out.Credits)
 			require.NotContains(t, out.Reason, "private")
 
 			// Same confirmation replays, no resend.
-			again, err := s.Redeem(context.Background(), 1, "op-1")
+			again, err := s.Redeem(context.Background(), 1, "op-1", "")
 			require.NoError(t, err)
 			require.True(t, again.Replayed)
 			require.Equal(t, ClaudeResetOutcomeUnknown, again.Outcome)
@@ -250,7 +250,7 @@ func TestClaudeResetRedeemUnknownOutcomeFencesOrganization(t *testing.T) {
 			// duplicate account of the same organization is blocked by the fence.
 			s.locks = &redeemLeaseStub{}
 			for _, id := range []int64{1, 2} {
-				_, err = s.Redeem(context.Background(), id, "op-new")
+				_, err = s.Redeem(context.Background(), id, "op-new", "")
 				require.Error(t, err)
 				require.Equal(t, "CLAUDE_RESET_UNRESOLVED", infraerrors.Reason(err))
 			}
@@ -258,13 +258,13 @@ func TestClaudeResetRedeemUnknownOutcomeFencesOrganization(t *testing.T) {
 
 			// Still blocked past the short unavailable fence.
 			s.now = func() time.Time { return time.Now().Add(claudeResetUnavailableFenceTTL + time.Minute) }
-			_, err = s.Redeem(context.Background(), 1, "op-new")
+			_, err = s.Redeem(context.Background(), 1, "op-new", "")
 			require.Equal(t, "CLAUDE_RESET_UNRESOLVED", infraerrors.Reason(err))
 
 			// Once the fence has settled, a fresh query is authoritative again.
 			s.now = func() time.Time { return time.Now().Add(claudeResetUnknownFenceTTL + time.Minute) }
 			f.claim, f.claimHTTP = `{"result":"reset"}`, 0
-			out, err = s.Redeem(context.Background(), 1, "op-later")
+			out, err = s.Redeem(context.Background(), 1, "op-later", "")
 			require.NoError(t, err)
 			require.Equal(t, ClaudeResetOutcomeReset, out.Outcome)
 			require.Equal(t, 2, f.postCount())
@@ -281,7 +281,7 @@ func TestClaudeResetRedeemCrashAfterMarkerNeverResends(t *testing.T) {
 	require.NoError(t, err)
 	op := HashIdempotencyKey("claude-reset:1:op-1")
 	require.NoError(t, s.persistFence(context.Background(), fence.ID, claudeResetFence{Operation: op, Outcome: ClaudeResetOutcomeUnknown, Reason: "claim_unconfirmed", At: time.Now()}))
-	out, err := s.Redeem(context.Background(), 1, "op-1")
+	out, err := s.Redeem(context.Background(), 1, "op-1", "")
 	require.NoError(t, err)
 	require.Equal(t, ClaudeResetOutcomeUnknown, out.Outcome)
 	require.True(t, out.Replayed)
@@ -305,7 +305,7 @@ func TestClaudeResetRedeemMapsUpstreamResults(t *testing.T) {
 		t.Run(tc.claim, func(t *testing.T) {
 			f := &redeemFake{claim: tc.claim, claimHTTP: tc.http}
 			s, _, _ := newRedeemService(t, f)
-			out, err := s.Redeem(context.Background(), 1, "op-1")
+			out, err := s.Redeem(context.Background(), 1, "op-1", "")
 			require.NoError(t, err)
 			require.Equal(t, tc.outcome, out.Outcome)
 			if tc.outcome == ClaudeResetOutcomeCooldown {
@@ -316,7 +316,7 @@ func TestClaudeResetRedeemMapsUpstreamResults(t *testing.T) {
 			}
 			// Definite outcomes never block a later confirmation.
 			if tc.outcome != ClaudeResetOutcomeUnknown {
-				_, err = s.Redeem(context.Background(), 1, "op-2")
+				_, err = s.Redeem(context.Background(), 1, "op-2", "")
 				require.NoError(t, err)
 				require.Equal(t, 2, f.postCount())
 			}
@@ -327,7 +327,7 @@ func TestClaudeResetRedeemMapsUpstreamResults(t *testing.T) {
 func TestClaudeResetRedeemSanitizesUpstreamReason(t *testing.T) {
 	f := &redeemFake{claim: `{"result":"ineligible","reason":"Bearer synthetic-token leaked <script>","cleared":["five_hour","<bad>"]}`}
 	s, _, _ := newRedeemService(t, f)
-	out, err := s.Redeem(context.Background(), 1, "op-1")
+	out, err := s.Redeem(context.Background(), 1, "op-1", "")
 	require.NoError(t, err)
 	require.Empty(t, out.Reason)
 	require.Equal(t, []string{"five_hour"}, out.Cleared)
@@ -336,19 +336,19 @@ func TestClaudeResetRedeemSanitizesUpstreamReason(t *testing.T) {
 func TestClaudeResetRedeemExplicitUnavailableFencesBriefly(t *testing.T) {
 	f := &redeemFake{claim: `{"result":"unavailable","reason":"grant_next"}`}
 	s, _, _ := newRedeemService(t, f)
-	out, err := s.Redeem(context.Background(), 1, "op-1")
+	out, err := s.Redeem(context.Background(), 1, "op-1", "")
 	require.NoError(t, err)
 	require.Equal(t, ClaudeResetOutcomeUnknown, out.Outcome)
 	require.Equal(t, claudeResetReasonUnavailable, out.Reason)
 
 	s.locks = &redeemLeaseStub{}
-	_, err = s.Redeem(context.Background(), 2, "op-new")
+	_, err = s.Redeem(context.Background(), 2, "op-new", "")
 	require.Equal(t, "CLAUDE_RESET_UPSTREAM_UNAVAILABLE", infraerrors.Reason(err))
 	require.Equal(t, 1, f.postCount())
 
 	s.now = func() time.Time { return time.Now().Add(claudeResetUnavailableFenceTTL + time.Minute) }
 	f.claim = `{"result":"reset"}`
-	out, err = s.Redeem(context.Background(), 1, "op-later")
+	out, err = s.Redeem(context.Background(), 1, "op-later", "")
 	require.NoError(t, err)
 	require.Equal(t, ClaudeResetOutcomeReset, out.Outcome)
 	require.Equal(t, 2, f.postCount())
@@ -357,7 +357,7 @@ func TestClaudeResetRedeemExplicitUnavailableFencesBriefly(t *testing.T) {
 func TestClaudeResetRedeemNeverEchoesGrantIDs(t *testing.T) {
 	f := &redeemFake{claim: `{"result":"reset","reason":"grant_next","cleared":["five_hour","grant_next","launch","seven_day_overage_included"]}`}
 	s, _, _ := newRedeemService(t, f)
-	out, err := s.Redeem(context.Background(), 1, "op-1")
+	out, err := s.Redeem(context.Background(), 1, "op-1", "")
 	require.NoError(t, err)
 	raw, err := json.Marshal(out)
 	require.NoError(t, err)

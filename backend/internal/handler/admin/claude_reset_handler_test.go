@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -13,6 +14,7 @@ import (
 
 type claudeResetHandlerStub struct {
 	key   string
+	kind  string
 	calls int
 }
 
@@ -20,9 +22,10 @@ func (s *claudeResetHandlerStub) Query(context.Context, int64) (*service.ClaudeR
 	return &service.ClaudeResetCredits{Credits: []service.ClaudeResetCredit{}}, nil
 }
 
-func (s *claudeResetHandlerStub) Redeem(_ context.Context, _ int64, key string) (*service.ClaudeResetOutcome, error) {
+func (s *claudeResetHandlerStub) Redeem(_ context.Context, _ int64, key, kind string) (*service.ClaudeResetOutcome, error) {
 	s.calls++
 	s.key = key
+	s.kind = kind
 	if key == "" {
 		return nil, service.ErrIdempotencyKeyRequired
 	}
@@ -42,7 +45,22 @@ func TestClaudeResetHandlerRedeemContract(t *testing.T) {
 	r.ServeHTTP(w, req)
 	require.Equal(t, http.StatusOK, w.Code)
 	require.Equal(t, "same-operation", stub.key)
+	require.Equal(t, "", stub.kind)
 	require.Contains(t, w.Body.String(), `"outcome":"reset"`)
+
+	req = httptest.NewRequest(http.MethodPost, "/accounts/1/claude/reset-credits/redeem", strings.NewReader(`{"kind":"fable"}`))
+	req.Header.Set("Idempotency-Key", "fable-operation")
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, "fable", stub.kind)
+
+	req = httptest.NewRequest(http.MethodPost, "/accounts/1/claude/reset-credits/redeem", strings.NewReader(`{"kind":`))
+	req.Header.Set("Idempotency-Key", "bad-body")
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+	require.Equal(t, http.StatusBadRequest, w.Code)
 
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/accounts/1/claude/reset-credits/redeem", nil))
@@ -52,5 +70,5 @@ func TestClaudeResetHandlerRedeemContract(t *testing.T) {
 	w = httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest(http.MethodPost, "/accounts/abc/claude/reset-credits/redeem", nil))
 	require.Equal(t, http.StatusBadRequest, w.Code)
-	require.Equal(t, 2, stub.calls)
+	require.Equal(t, 3, stub.calls)
 }
