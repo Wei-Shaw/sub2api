@@ -450,3 +450,143 @@ func TestForwardAsAnthropic_BufferedReasoningSummaryAndContentKeepBoth(t *testin
 	out := forwardBufferedHostedItems(t, "/v1/messages", bufferedHostedItemsThinkingBody, sse)
 	require.Equal(t, "raw thoughtssummary", gjson.Get(out, "content.0.thinking").String(), out)
 }
+
+// bufferedPartsEntries are the two buffered entries, each with the request that
+// makes it show the field under test.
+var bufferedPartsEntries = []struct{ name, path, body string }{
+	{"messages", "/v1/messages", bufferedHostedItemsThinkingBody},
+	{"chat", "/v1/chat/completions", `{"model":"gpt-5.5","stream":false,"reasoning_effort":"high","messages":[{"role":"user","content":"search the web"}]}`},
+}
+
+// bufferedPartsVisible is the text of one kind ("text", "thinking" or "refusal")
+// the client is shown: the text or thinking blocks joined for /v1/messages, the
+// content, reasoning_content or refusal of the message for /v1/chat/completions.
+func bufferedPartsVisible(out, path, kind string) string {
+	if path == "/v1/chat/completions" {
+		return gjson.Get(out, "choices.0.message."+map[string]string{"text": "content", "thinking": "reasoning_content", "refusal": "refusal"}[kind]).String()
+	}
+	var text strings.Builder
+	for _, block := range gjson.Get(out, "content").Array() {
+		if block.Get("type").String() == kind {
+			text.WriteString(block.Get(kind).String())
+		}
+	}
+	return text.String()
+}
+
+// One item with several parts whose done item leaves only some of them empty, and
+// an empty terminal output: a part is completed with the deltas of its own part
+// index, a part that has text and the order of the parts stay as the done item
+// has them.
+func TestBufferedCompat_PartialTextParts(t *testing.T) {
+	text := func(s string) string { return `{"type":"output_text","text":"` + s + `"}` }
+	cases := []struct {
+		name, parts, want string
+		deltas            []string
+	}{
+		{"first empty", "[" + text("") + "," + text("second") + "]", "first second", []string{"first ", "second"}},
+		{"second empty", "[" + text("first ") + "," + text("") + "]", "first second", []string{"first ", "second"}},
+		{"both empty", "[" + text("") + "," + text("") + "]", "first second", []string{"first ", "second"}},
+		{"both with text, the done item wins", "[" + text("one ") + "," + text("two") + "]", "one two", []string{"first ", "second"}},
+		{"middle with text of three", "[" + text("") + "," + text("b ") + "," + text("") + "]", "a b c", []string{"a ", "b ", "c"}},
+	}
+	for _, entry := range bufferedPartsEntries {
+		for _, tc := range cases {
+			t.Run(entry.name+" "+tc.name, func(t *testing.T) {
+				events := []string{
+					bufferedHostedItemsCreated,
+					`{"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":"msg_1","role":"assistant","content":[]}}`,
+				}
+				for index, delta := range tc.deltas {
+					events = append(events, `{"type":"response.output_text.delta","output_index":0,"content_index":`+strconv.Itoa(index)+`,"delta":"`+delta+`"}`)
+				}
+				events = append(events,
+					`{"type":"response.output_item.done","output_index":0,"item":{"type":"message","id":"msg_1","role":"assistant","content":`+tc.parts+`}}`,
+					bufferedHostedItemsCompleted)
+				sse := bufferedItemsSSE(events...)
+				out := forwardBufferedHostedItems(t, entry.path, entry.body, sse)
+				require.Equal(t, tc.want, bufferedPartsVisible(out, entry.path, "text"), out)
+			})
+		}
+	}
+}
+
+// The same for the refusal parts of a message, which only /v1/chat/completions renders.
+func TestBufferedCompat_PartialRefusalParts(t *testing.T) {
+	refusal := func(s string) string { return `{"type":"refusal","refusal":"` + s + `"}` }
+	cases := []struct{ name, parts, want string }{
+		{"first empty", "[" + refusal("") + "," + refusal("second") + "]", "first second"},
+		{"second empty", "[" + refusal("first ") + "," + refusal("") + "]", "first second"},
+		{"both empty", "[" + refusal("") + "," + refusal("") + "]", "first second"},
+		{"both with text, the done item wins", "[" + refusal("one ") + "," + refusal("two") + "]", "one two"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sse := bufferedItemsSSE(
+				bufferedHostedItemsCreated,
+				`{"type":"response.refusal.delta","output_index":0,"content_index":0,"delta":"first "}`,
+				`{"type":"response.refusal.delta","output_index":0,"content_index":1,"delta":"second"}`,
+				`{"type":"response.output_item.done","output_index":0,"item":{"type":"message","id":"msg_1","role":"assistant","content":`+tc.parts+`}}`,
+				bufferedHostedItemsCompleted,
+			)
+			out := forwardBufferedHostedItems(t, "/v1/chat/completions", bufferedHostedItemsChatBody, sse)
+			require.Equal(t, tc.want, bufferedPartsVisible(out, "/v1/chat/completions", "refusal"), out)
+		})
+	}
+}
+
+// A refusal part and a text part of one message keep their own deltas.
+func TestBufferedCompat_RefusalAndTextPartsKeepTheirOwnDeltas(t *testing.T) {
+	sse := bufferedItemsSSE(
+		bufferedHostedItemsCreated,
+		`{"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"answer"}`,
+		`{"type":"response.refusal.delta","output_index":0,"content_index":1,"delta":"no"}`,
+		`{"type":"response.output_item.done","output_index":0,"item":{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":""},{"type":"refusal","refusal":""}]}}`,
+		bufferedHostedItemsCompleted,
+	)
+	out := forwardBufferedHostedItems(t, "/v1/chat/completions", bufferedHostedItemsChatBody, sse)
+	require.Equal(t, "answer", bufferedPartsVisible(out, "/v1/chat/completions", "text"), out)
+	require.Equal(t, "no", bufferedPartsVisible(out, "/v1/chat/completions", "refusal"), out)
+}
+
+// Reasoning with several summary parts, or several reasoning_text parts, whose
+// done item leaves only some of them empty.
+func TestBufferedCompat_PartialReasoningParts(t *testing.T) {
+	summary := func(s string) string { return `{"type":"summary_text","text":"` + s + `"}` }
+	raw := func(s string) string { return `{"type":"reasoning_text","text":"` + s + `"}` }
+	summaryDeltas := []string{
+		`{"type":"response.reasoning_summary_text.delta","output_index":0,"summary_index":0,"delta":"first "}`,
+		`{"type":"response.reasoning_summary_text.delta","output_index":0,"summary_index":1,"delta":"second"}`,
+	}
+	rawDeltas := []string{
+		`{"type":"response.reasoning_text.delta","output_index":0,"content_index":0,"delta":"first "}`,
+		`{"type":"response.reasoning_text.delta","output_index":0,"content_index":1,"delta":"second"}`,
+	}
+	cases := []struct {
+		name             string
+		deltas           []string
+		summary, content string
+		want             string
+	}{
+		{"summary, first empty", summaryDeltas, "[" + summary("") + "," + summary("second") + "]", "[]", "first second"},
+		{"summary, second empty", summaryDeltas, "[" + summary("first ") + "," + summary("") + "]", "[]", "first second"},
+		{"summary, both empty", summaryDeltas, "[" + summary("") + "," + summary("") + "]", "[]", "first second"},
+		{"summary, both with text, the done item wins", summaryDeltas, "[" + summary("one ") + "," + summary("two") + "]", "[]", "one two"},
+		{"reasoning_text, first empty", rawDeltas, "[]", "[" + raw("") + "," + raw("second") + "]", "first second"},
+		{"reasoning_text, second empty", rawDeltas, "[]", "[" + raw("first ") + "," + raw("") + "]", "first second"},
+		{"reasoning_text, both empty", rawDeltas, "[]", "[" + raw("") + "," + raw("") + "]", "first second"},
+		{"reasoning_text, both with text, the done item wins", rawDeltas, "[]", "[" + raw("one ") + "," + raw("two") + "]", "one two"},
+	}
+	for _, entry := range bufferedPartsEntries {
+		for _, tc := range cases {
+			t.Run(entry.name+" "+tc.name, func(t *testing.T) {
+				events := append([]string{bufferedHostedItemsCreated}, tc.deltas...)
+				events = append(events,
+					`{"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","id":"rs_1","summary":`+tc.summary+`,"content":`+tc.content+`}}`,
+					bufferedHostedItemsCompleted)
+				out := forwardBufferedHostedItems(t, entry.path, entry.body, bufferedItemsSSE(events...))
+				require.Equal(t, tc.want, bufferedPartsVisible(out, entry.path, "thinking"), out)
+			})
+		}
+	}
+}

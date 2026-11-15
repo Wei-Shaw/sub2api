@@ -345,3 +345,93 @@ func TestBufferedCompat_MatchesStreamingPathOnRealStreamShapes(t *testing.T) {
 		})
 	}
 }
+
+// bufferedParityStreamedText folds the text of one kind ("text", "thinking" or
+// "refusal") out of a streamed answer of the entry at path.
+func bufferedParityStreamedText(sse, path, kind string) string {
+	var text strings.Builder
+	for _, line := range strings.Split(sse, "\n") {
+		data, ok := strings.CutPrefix(line, "data: ")
+		if !ok || !gjson.Valid(data) {
+			continue
+		}
+		if path == "/v1/chat/completions" {
+			text.WriteString(gjson.Get(data, "choices.0.delta."+map[string]string{"text": "content", "thinking": "reasoning_content", "refusal": "refusal"}[kind]).String())
+			continue
+		}
+		if delta := gjson.Get(data, "delta"); delta.Get("type").String() == kind+"_delta" {
+			text.WriteString(delta.Get(kind).String())
+		}
+	}
+	return text.String()
+}
+
+// bufferedParityPartItem is a streamed item of several parts: every part gets its
+// own part.added, delta and done events, with its own content_index or
+// summary_index, and the item.done event carries the part texts of done.
+func bufferedParityPartItem(kind string, deltas, done []string) []string {
+	var events []string
+	itemType, doneKey, deltaType, indexKey, partType, partKey := "message", "content", "response.output_text.delta", "content_index", "output_text", "text"
+	switch kind {
+	case "refusal":
+		deltaType, partType, partKey = "response.refusal.delta", "refusal", "refusal"
+	case "summary":
+		itemType, doneKey, deltaType, indexKey, partType = "reasoning", "summary", "response.reasoning_summary_text.delta", "summary_index", "summary_text"
+	case "reasoning_text":
+		itemType, deltaType, partType = "reasoning", "response.reasoning_text.delta", "reasoning_text"
+	}
+	events = append(events, fmt.Sprintf(`{"type":"response.output_item.added","output_index":0,"item":{"type":%q,"id":"item_1","role":"assistant","summary":[],"content":[]}}`, itemType))
+	for i, delta := range deltas {
+		events = append(events, fmt.Sprintf(`{"type":%q,"output_index":0,%q:%d,"delta":%q}`, deltaType, indexKey, i, delta))
+	}
+	parts := make([]string, len(done))
+	for i, text := range done {
+		parts[i] = fmt.Sprintf(`{"type":%q,%q:%q}`, partType, partKey, text)
+	}
+	item := fmt.Sprintf(`{"type":%q,"id":"item_1","role":"assistant","status":"completed",%q:[%s]`, itemType, doneKey, strings.Join(parts, ","))
+	if itemType == "reasoning" && doneKey == "content" {
+		item += `,"summary":[]`
+	}
+	return append(events, `{"type":"response.output_item.done","output_index":0,"item":`+item+`}}`)
+}
+
+// An item with several parts, of which the done item leaves some empty, and an
+// empty terminal output: the buffered answer carries the text the streaming path
+// delivers, for every kind of part that has a part index.
+func TestBufferedCompat_MatchesStreamingPathOnMultiPartItems(t *testing.T) {
+	deltas := []string{"first ", "second"}
+	variants := []struct {
+		name string
+		done []string
+	}{
+		{"first part empty", []string{"", "second"}},
+		{"second part empty", []string{"first ", ""}},
+		{"both parts empty", []string{"", ""}},
+		{"both parts with text", []string{"first ", "second"}},
+	}
+	kinds := []struct{ kind, shown string }{
+		{"text", "text"},
+		{"summary", "thinking"},
+		{"reasoning_text", "thinking"},
+		{"refusal", "refusal"},
+	}
+	for _, k := range kinds {
+		for _, v := range variants {
+			sse := bufferedParityStream(`[]`, bufferedParityPartItem(k.kind, deltas, v.done))
+			for _, entry := range []struct{ name, path, body string }{
+				{"messages", "/v1/messages", bufferedParityMessagesBody},
+				{"chat", "/v1/chat/completions", bufferedParityChatBody},
+			} {
+				if k.shown == "refusal" && entry.path == "/v1/messages" {
+					continue // an Anthropic message has no refusal block
+				}
+				t.Run(k.kind+" "+v.name+" "+entry.name, func(t *testing.T) {
+					buffered := forwardBufferedParity(t, entry.path, fmt.Sprintf(entry.body, false), sse)
+					streamed := forwardBufferedParity(t, entry.path, fmt.Sprintf(entry.body, true), sse)
+					require.Equal(t, "first second", bufferedParityStreamedText(streamed, entry.path, k.shown), streamed)
+					require.Equal(t, "first second", bufferedPartsVisible(buffered, entry.path, k.shown), buffered)
+				})
+			}
+		}
+	}
+}

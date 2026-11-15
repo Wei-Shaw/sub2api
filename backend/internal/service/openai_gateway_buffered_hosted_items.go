@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"math"
 	"sort"
 	"strings"
 
@@ -9,20 +10,69 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+// openAICompatPartText keeps the delta text of one kind per part index, the
+// content_index or summary_index of its events, so that a part of an item is
+// completed with the text of that part only.
+type openAICompatPartText struct {
+	parts map[int64]*strings.Builder
+}
+
+func (p *openAICompatPartText) write(index int64, delta string) {
+	if p.parts == nil {
+		p.parts = map[int64]*strings.Builder{}
+	}
+	if p.parts[index] == nil {
+		p.parts[index] = &strings.Builder{}
+	}
+	_, _ = p.parts[index].WriteString(delta)
+}
+
+func (p *openAICompatPartText) any() bool {
+	return len(p.parts) > 0
+}
+
+func (p *openAICompatPartText) at(index int64) string {
+	if builder := p.parts[index]; builder != nil {
+		return builder.String()
+	}
+	return ""
+}
+
+// unclaimed joins, in part order, the text of the parts from index from on that
+// are not in claimed.
+func (p *openAICompatPartText) unclaimed(claimed map[int64]bool, from int64) string {
+	indexes := make([]int64, 0, len(p.parts))
+	for index := range p.parts {
+		if index >= from && !claimed[index] {
+			indexes = append(indexes, index)
+		}
+	}
+	sort.Slice(indexes, func(i, j int) bool { return indexes[i] < indexes[j] })
+	var text strings.Builder
+	for _, index := range indexes {
+		_, _ = text.WriteString(p.parts[index].String())
+	}
+	return text.String()
+}
+
 // openAICompatOutputSlot is everything the upstream stream said about one output
 // item: the item of its output_item.added and output_item.done events and the
-// text, refusal and argument deltas that arrived for it.
+// text, refusal and argument deltas that arrived for it. Text, refusal and the
+// two kinds of reasoning text are kept per part, and the reasoning text also in
+// arrival order across its kinds.
 type openAICompatOutputSlot struct {
-	index     int64
-	indexed   bool
-	itemType  string
-	added     *apicompat.ResponsesOutput
-	done      *apicompat.ResponsesOutput
-	reasoning strings.Builder
-	text      strings.Builder
-	refusal   strings.Builder
-	args      strings.Builder
-	argsDone  string
+	index         int64
+	indexed       bool
+	itemType      string
+	added         *apicompat.ResponsesOutput
+	done          *apicompat.ResponsesOutput
+	reasoning     strings.Builder
+	summaryText   openAICompatPartText
+	reasoningText openAICompatPartText
+	text          openAICompatPartText
+	refusal       openAICompatPartText
+	args          strings.Builder
+	argsDone      string
 }
 
 // openAICompatOutputSlots records the output items of a buffered upstream stream
@@ -52,15 +102,23 @@ func (o *openAICompatOutputSlots) Observe(payload []byte) {
 		}
 	case "response.output_text.delta":
 		if delta := gjson.GetBytes(payload, "delta").String(); delta != "" {
-			_, _ = o.slot(payload, "message", "", false, true).text.WriteString(delta)
+			o.slot(payload, "message", "", false, true).text.write(gjson.GetBytes(payload, "content_index").Int(), delta)
 		}
 	case "response.refusal.delta":
 		if delta := gjson.GetBytes(payload, "delta").String(); delta != "" {
-			_, _ = o.slot(payload, "message", "", false, true).refusal.WriteString(delta)
+			o.slot(payload, "message", "", false, true).refusal.write(gjson.GetBytes(payload, "content_index").Int(), delta)
 		}
-	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
+	case "response.reasoning_summary_text.delta":
 		if delta := gjson.GetBytes(payload, "delta").String(); delta != "" {
-			_, _ = o.slot(payload, "reasoning", "", false, true).reasoning.WriteString(delta)
+			slot := o.slot(payload, "reasoning", "", false, true)
+			_, _ = slot.reasoning.WriteString(delta)
+			slot.summaryText.write(gjson.GetBytes(payload, "summary_index").Int(), delta)
+		}
+	case "response.reasoning_text.delta":
+		if delta := gjson.GetBytes(payload, "delta").String(); delta != "" {
+			slot := o.slot(payload, "reasoning", "", false, true)
+			_, _ = slot.reasoning.WriteString(delta)
+			slot.reasoningText.write(gjson.GetBytes(payload, "content_index").Int(), delta)
 		}
 	case "response.function_call_arguments.delta", "response.custom_tool_call_input.delta":
 		if delta := gjson.GetBytes(payload, "delta").String(); delta != "" {
@@ -168,8 +226,8 @@ func (o *openAICompatOutputSlots) slot(payload []byte, kind, id string, done, cr
 // items, in output_index order, items without an output_index after the indexed
 // ones in arrival order. Items with the same output_index keep arrival order.
 // An item that received output_item.done is taken from that event, completed with the deltas where the event left a text, refusal or
-// the arguments empty; an item that never received it is rebuilt from its
-// deltas. Only terminals that carry a result are filled; the output of
+// the arguments empty, a part with the deltas of its own content_index or
+// summary_index; an item that never received it is rebuilt from its deltas. Only terminals that carry a result are filled; the output of
 // response.failed and error terminals never reaches the client and is left as
 // the upstream sent it.
 func (o *openAICompatOutputSlots) fillTerminalOutput(eventType string, response *apicompat.ResponsesResponse) {
@@ -231,9 +289,40 @@ func (s *openAICompatOutputSlot) buildReasoning() (apicompat.ResponsesOutput, bo
 		for _, part := range item.Content {
 			content = content || (part.Type == "reasoning_text" && part.Text != "")
 		}
-		if summary == content {
+		switch {
+		case summary == content:
 			item.Summary = []apicompat.ResponsesSummary{{Type: "summary_text", Text: s.reasoning.String()}}
 			item.Content = nil
+		case summary:
+			// The item keeps its text; a summary part it left empty takes the
+			// deltas of its own summary_index.
+			item.Summary = append([]apicompat.ResponsesSummary(nil), item.Summary...)
+			claimed := map[int64]bool{}
+			for i := range item.Summary {
+				if part := &item.Summary[i]; part.Type == "summary_text" {
+					claimed[int64(i)] = true
+					if part.Text == "" {
+						part.Text = s.summaryText.at(int64(i))
+					}
+				}
+			}
+			if rest := s.summaryText.unclaimed(claimed, int64(len(item.Summary))); rest != "" {
+				item.Summary = append(item.Summary, apicompat.ResponsesSummary{Type: "summary_text", Text: rest})
+			}
+		default:
+			item.Content = append([]apicompat.ResponsesContentPart(nil), item.Content...)
+			claimed := map[int64]bool{}
+			for i := range item.Content {
+				if part := &item.Content[i]; part.Type == "reasoning_text" {
+					claimed[int64(i)] = true
+					if part.Text == "" {
+						part.Text = s.reasoningText.at(int64(i))
+					}
+				}
+			}
+			if rest := s.reasoningText.unclaimed(claimed, int64(len(item.Content))); rest != "" {
+				item.Content = append(item.Content, apicompat.ResponsesContentPart{Type: "reasoning_text", Text: rest})
+			}
 		}
 	}
 	return item, s.done != nil || s.reasoning.Len() > 0
@@ -245,38 +334,52 @@ func (s *openAICompatOutputSlot) buildMessage() (apicompat.ResponsesOutput, bool
 		item = *s.done
 		item.Content = append([]apicompat.ResponsesContentPart(nil), item.Content...)
 	}
-	if s.text.Len() > 0 {
-		filled := false
-		hasText := false
-		for i := range item.Content {
-			part := &item.Content[i]
-			if part.Type != "output_text" {
-				continue
-			}
-			if strings.TrimSpace(part.Text) != "" {
-				hasText = true
-				break
-			}
-			if !filled {
-				part.Text, filled = s.text.String(), true
-			}
-		}
-		if !hasText && !filled {
-			item.Content = append(item.Content, apicompat.ResponsesContentPart{Type: "output_text", Text: s.text.String()})
+	declared := int64(len(item.Content))
+	if s.text.any() {
+		blank := func(text string) bool { return strings.TrimSpace(text) == "" }
+		if rest := completeContentParts(item.Content, &s.text, "output_text", declared, blank); rest != "" {
+			item.Content = append(item.Content, apicompat.ResponsesContentPart{Type: "output_text", Text: rest})
 		}
 	}
-	if s.refusal.Len() > 0 {
-		hasRefusal := false
-		for _, part := range item.Content {
-			if part.Type == "refusal" && part.Refusal != "" {
-				hasRefusal = true
-			}
-		}
-		if !hasRefusal {
-			item.Content = append(item.Content, apicompat.ResponsesContentPart{Type: "refusal", Refusal: s.refusal.String()})
+	if s.refusal.any() {
+		blank := func(text string) bool { return text == "" }
+		if rest := completeContentParts(item.Content, &s.refusal, "refusal", declared, blank); rest != "" {
+			item.Content = append(item.Content, apicompat.ResponsesContentPart{Type: "refusal", Refusal: rest})
 		}
 	}
-	return item, s.done != nil || s.text.Len() > 0 || s.refusal.Len() > 0
+	return item, s.done != nil || s.text.any() || s.refusal.any()
+}
+
+// completeContentParts gives each blank part of partType the deltas of its own
+// content_index, the position of the part in the content, and leaves the parts
+// that have text as they are. It returns the deltas of the indexes that have no
+// part of that type: all of them when no part has text, else those beyond the
+// last of the declared parts of the done item.
+func completeContentParts(content []apicompat.ResponsesContentPart, deltas *openAICompatPartText, partType string, declared int64, blank func(string) bool) string {
+	claimed := map[int64]bool{}
+	present := false
+	for i := range content {
+		part := &content[i]
+		if part.Type != partType {
+			continue
+		}
+		field := &part.Text
+		if partType == "refusal" {
+			field = &part.Refusal
+		}
+		claimed[int64(i)] = true
+		if blank(*field) {
+			if delta := deltas.at(int64(i)); delta != "" {
+				*field = delta
+			}
+		}
+		present = present || !blank(*field)
+	}
+	from := declared
+	if !present {
+		from = math.MinInt64
+	}
+	return deltas.unclaimed(claimed, from)
 }
 
 // buildToolCall returns the function_call or custom_tool_call item of the slot,
