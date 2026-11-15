@@ -70,6 +70,18 @@ func TestAntigravityCompatSessionKeepsUpstreamTail(t *testing.T) {
 	require.Equal(t, 4, s.upstreamDataLines)
 	require.Len(t, s.upstreamTail, antigravityCompatTailLines)
 	require.Equal(t, `data: {"a":2}`, s.upstreamTail[0])
-	require.LessOrEqual(t, len(s.upstreamTail[2]), antigravityCompatTailLineBytes+3)
-	require.True(t, strings.HasSuffix(s.upstreamTail[2], "..."))
+	require.LessOrEqual(t, len(s.upstreamTail[2]), antigravityCompatTailLineBytes+5)
+	require.Contains(t, s.upstreamTail[2], " ... ")
+}
+
+func TestAntigravityCompatSessionTailKeepsLineEnd(t *testing.T) {
+	s := &antigravityCompatStreamSession{}
+	line := `data: {"response": {"candidates": [{"content": {"role": "model","parts": [{"thoughtSignature": "` +
+		strings.Repeat("S", 4000) + `"}]},"finishReason": "STOP"}],"usageMetadata": {"promptTokenCount": 9}}}`
+	s.recordUpstreamLine(line)
+
+	got := s.upstreamTail[0]
+	require.True(t, strings.HasPrefix(got, `data: {"response": {"candidates"`))
+	require.Contains(t, got, `"finishReason": "STOP"`)
+	require.Contains(t, got, `"promptTokenCount": 9`)
 }
