@@ -4,8 +4,37 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/tidwall/gjson"
 )
+
+// xAI reserves these custom-call IDs for server-side X and attachment searches.
+// https://docs.x.ai/developers/tools/tool-usage-details#identifying-tool-call-types
+func isGrokServerSearchCall(itemType, callID string) bool {
+	return itemType == "custom_tool_call" &&
+		(strings.HasPrefix(callID, "xs_") || strings.HasPrefix(callID, "as_"))
+}
+
+// grokCompatServerToolFilter keeps server-side invocations out of the client
+// tool stream. Their input events carry only an output index, not the call ID.
+type grokCompatServerToolFilter map[int]struct{}
+
+func (f *grokCompatServerToolFilter) ignore(event *apicompat.ResponsesStreamEvent) bool {
+	switch event.Type {
+	case "response.output_item.added", "response.output_item.done":
+		if event.Item != nil && isGrokServerSearchCall(event.Item.Type, event.Item.CallID) {
+			if *f == nil {
+				*f = make(grokCompatServerToolFilter)
+			}
+			(*f)[event.OutputIndex] = struct{}{}
+		}
+	case "response.custom_tool_call_input.delta", "response.custom_tool_call_input.done":
+	default:
+		return false
+	}
+	_, ignored := (*f)[event.OutputIndex]
+	return ignored
+}
 
 // countGrokNativeSearchCallsFromJSONBytes counts completed native search tool
 // calls in a Responses-style JSON body (output array or nested response.output).
@@ -224,7 +253,14 @@ func isGrokNativeSearchOutputItem(item gjson.Result) bool {
 	switch itemType {
 	case "web_search_call", "x_search_call", "tool_search_call":
 		return true
-	case "function_call", "custom_tool_call":
+	case "custom_tool_call":
+		callID := strings.TrimSpace(item.Get("call_id").String())
+		if isGrokServerSearchCall(itemType, callID) {
+			// Attachment searches are not X/web search invocations.
+			return strings.HasPrefix(callID, "xs_")
+		}
+		fallthrough
+	case "function_call":
 		name := strings.ToLower(strings.TrimSpace(item.Get("name").String()))
 		return name == "web_search" || name == "x_search" || name == "tool_search"
 	default:

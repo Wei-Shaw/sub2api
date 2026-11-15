@@ -612,7 +612,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
-	finalResponse, usage, acc, prior, err := s.readOpenAICompatBufferedTerminal(resp, c, account, "openai messages buffered", requestID)
+	finalResponse, usage, acc, prior, searchCount, err := s.readOpenAICompatBufferedTerminal(resp, c, account, "openai messages buffered", requestID)
 	if err != nil {
 		var readErr *openAICompatBufferedReadError
 		if errors.As(err, &readErr) && readErr != nil {
@@ -701,14 +701,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 		Stream:                        false,
 		Duration:                      time.Since(startTime),
 	}
-	// Grok /v1/messages uses Responses upstream; count native search for surcharge.
-	if account != nil && account.IsGrok() && finalResponse != nil {
-		if body, err := json.Marshal(finalResponse); err == nil {
-			if n := countGrokNativeSearchCallsFromJSONBytes(body); n > 0 {
-				result.SearchCount = n
-			}
-		}
-	}
+	result.SearchCount = searchCount
 	return result, nil
 }
 
@@ -832,13 +825,36 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 	account *Account,
 	logPrefix string,
 	requestID string,
-) (*apicompat.ResponsesResponse, OpenAIUsage, *apicompat.BufferedResponseAccumulator, openAICompatPriorModelAudit, error) {
+) (*apicompat.ResponsesResponse, OpenAIUsage, *apicompat.BufferedResponseAccumulator, openAICompatPriorModelAudit, int, error) {
 	acc := apicompat.NewBufferedResponseAccumulator()
 	var usage OpenAIUsage
+	searchCount := 0
 	if resp == nil || resp.Body == nil {
-		return nil, usage, acc, openAICompatPriorModelAudit{}, errors.New("upstream response body is nil")
+		return nil, usage, acc, openAICompatPriorModelAudit{}, searchCount, errors.New("upstream response body is nil")
 	}
 	prior := newOpenAICompatPriorModelAudit(account)
+	countSearch := account != nil && account.IsGrok()
+	var serverTools grokCompatServerToolFilter
+	var seenSearchCalls map[string]struct{}
+	if countSearch {
+		seenSearchCalls = make(map[string]struct{})
+	}
+	processEvent := func(payload []byte, event *apicompat.ResponsesStreamEvent) {
+		if countSearch {
+			// Buffered responses also bill searches reported only in an incomplete
+			// or cancelled terminal. Count its output with the same stream dedup.
+			if isOpenAICompatResponsesTerminalEvent(event.Type) && event.Response != nil {
+				if body, err := json.Marshal(event.Response); err == nil {
+					payload = body
+				}
+			}
+			searchCount += countGrokNativeSearchCallsInSSEDataDedup(payload, seenSearchCalls)
+			if serverTools.ignore(event) {
+				return
+			}
+		}
+		acc.ProcessEvent(event)
+	}
 	recordPrior := func(event *apicompat.ResponsesStreamEvent) {
 		prior.record(event)
 	}
@@ -925,7 +941,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 					var event apicompat.ResponsesStreamEvent
 					if err := json.Unmarshal([]byte(payload), &event); err == nil {
 						s.parseSSEUsageBytesWithType([]byte(payload), event.Type, &usage)
-						acc.ProcessEvent(&event)
+						processEvent([]byte(payload), &event)
 						recordPrior(&event)
 						if response := openAICompatTerminalResponse(&event, []byte(payload)); isOpenAICompatResponsesTerminalEvent(event.Type) && response != nil {
 							if event.Usage != nil {
@@ -937,11 +953,11 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 							if response.Usage != nil {
 								usage = copyOpenAIUsageFromResponsesUsage(response.Usage)
 							}
-							return response, usage, acc, prior, nil
+							return response, usage, acc, prior, searchCount, nil
 						}
 					}
 				}
-				return nil, usage, acc, prior, nil
+				return nil, usage, acc, prior, searchCount, nil
 			}
 			resetTimeout()
 			if ev.err != nil {
@@ -951,11 +967,11 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 						zap.String("request_id", requestID),
 					)
 				}
-				return nil, usage, acc, prior, &openAICompatBufferedReadError{cause: ev.err}
+				return nil, usage, acc, prior, searchCount, &openAICompatBufferedReadError{cause: ev.err}
 			}
 
 			if isOpenAICompatDoneSentinelLine(ev.line) {
-				return nil, usage, acc, prior, nil
+				return nil, usage, acc, prior, searchCount, nil
 			}
 			frame, ok := parser.AddLine(ev.line)
 			if !ok {
@@ -974,7 +990,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 			}
 			s.parseSSEUsageBytesWithType([]byte(payload), event.Type, &usage)
 
-			acc.ProcessEvent(&event)
+			processEvent([]byte(payload), &event)
 			recordPrior(&event)
 
 			if response := openAICompatTerminalResponse(&event, []byte(payload)); isOpenAICompatResponsesTerminalEvent(event.Type) && response != nil {
@@ -987,7 +1003,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 				if response.Usage != nil {
 					usage = copyOpenAIUsageFromResponsesUsage(response.Usage)
 				}
-				return response, usage, acc, prior, nil
+				return response, usage, acc, prior, searchCount, nil
 			}
 
 		case <-timeoutCh:
@@ -996,7 +1012,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 				zap.String("request_id", requestID),
 				zap.Duration("interval", streamInterval),
 			)
-			return nil, usage, acc, prior, fmt.Errorf("stream data interval timeout")
+			return nil, usage, acc, prior, searchCount, fmt.Errorf("stream data interval timeout")
 		}
 	}
 }
@@ -1019,6 +1035,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
 
 	state := apicompat.NewResponsesEventToAnthropicState()
+	var serverTools grokCompatServerToolFilter
 	state.Model = originalModel
 	var usage OpenAIUsage
 	responseID := ""
@@ -1181,6 +1198,10 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 				streamNonFailoverErr = fmt.Errorf("upstream response failed: %s", errMsg)
 				return true
 			}
+		}
+
+		if countSearch && serverTools.ignore(&event) {
+			return false
 		}
 
 		// Convert to Anthropic events

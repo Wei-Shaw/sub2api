@@ -676,7 +676,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
-	finalResponse, usage, acc, priorModels, err := s.readOpenAICompatBufferedTerminal(resp, c, account, "openai chat_completions buffered", requestID)
+	finalResponse, usage, acc, priorModels, searchCount, err := s.readOpenAICompatBufferedTerminal(resp, c, account, "openai chat_completions buffered", requestID)
 	if err != nil {
 		return nil, s.newOpenAICompatBufferedReadFailoverError(c, account, resp, requestID, err)
 	}
@@ -770,14 +770,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		Stream:                        false,
 		Duration:                      time.Since(startTime),
 	}
-	// Grok chat bridge: bill native search tools found in the terminal Responses body.
-	if account != nil && account.IsGrok() && finalResponse != nil {
-		if body, err := json.Marshal(finalResponse); err == nil {
-			if n := countGrokNativeSearchCallsFromJSONBytes(body); n > 0 {
-				result.SearchCount = n
-			}
-		}
-	}
+	result.SearchCount = searchCount
 	return result, nil
 }
 
@@ -838,6 +831,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
 
 	state := apicompat.NewResponsesEventToChatState()
+	var serverTools grokCompatServerToolFilter
 	state.Model = originalModel
 	// 网关作为计费链路的一环，不能把下游 usage 输出绑定到客户端是否显式请求。
 	// raw Chat Completions 直转路径已经强制透出 usage，这里保持同样行为，避免级联代理计费为 0。
@@ -1009,6 +1003,10 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			}
 			streamNonFailoverErr = fmt.Errorf("upstream response failed: %s", message)
 			return true
+		}
+
+		if countSearch && serverTools.ignore(&event) {
+			return false
 		}
 
 		chunks := apicompat.ResponsesEventToChatChunks(&event, state)
