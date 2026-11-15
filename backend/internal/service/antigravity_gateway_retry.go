@@ -816,7 +816,7 @@ const emptyResponseCooldown = 1 * time.Minute
 // 避免短时间内反复调度到同一个返回空响应的账号。
 func tempUnscheduleEmptyResponse(ctx context.Context, repo AccountRepository, accountID int64, logPrefix string) {
 	until := time.Now().Add(emptyResponseCooldown)
-	reason := "empty stream response (auto temp-unschedule 1m)"
+	reason := emptyResponseCooldownReason
 	if err := repo.SetTempUnschedulable(ctx, accountID, until, reason); err != nil {
 		log.Printf("%s temp_unschedule_failed account=%d error=%v", logPrefix, accountID, err)
 	} else {

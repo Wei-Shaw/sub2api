@@ -1045,7 +1045,7 @@ func TestFailoverClientGone(t *testing.T) {
 // HandleFailoverError — 每个请求最多封禁一个账号
 // ---------------------------------------------------------------------------
 
-func exhaustSameAccount(fs *FailoverState, mock *mockTempUnscheduler, accountID int64, err *service.UpstreamFailoverError) FailoverAction {
+func exhaustSameAccount(fs *FailoverState, mock TempUnscheduler, accountID int64, err *service.UpstreamFailoverError) FailoverAction {
 	var action FailoverAction
 	for i := 0; i <= maxSameAccountRetries; i++ {
 		action = fs.HandleFailoverError(context.Background(), mock, accountID, service.PlatformAntigravity, maxSameAccountRetries, err)

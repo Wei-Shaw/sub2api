@@ -2,6 +2,7 @@ package service
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"go.uber.org/zap"
 )
 
 type antigravityCompatStreamAdapter interface {
@@ -117,12 +119,21 @@ type antigravityCompatStreamSession struct {
 	meaningfulData              bool
 	preContentKeepaliveSent     bool
 	preContentKeepaliveInterval time.Duration
+	// logCtx carries the request logger; upstreamTail keeps the last raw data
+	// lines so an empty stream can be explained (finishReason, promptFeedback).
+	logCtx            context.Context
+	model             string
+	upstreamTail      []string
+	upstreamDataLines int
 }
 
 const (
 	antigravityCompatPreContentKeepaliveInterval = 15 * time.Second
 	// Allow slow first tokens, but do not let comment-only streams reset the idle timer forever.
 	antigravityCompatPreContentMaxWait = 2 * time.Minute
+
+	antigravityCompatTailLines     = 3
+	antigravityCompatTailLineBytes = 512
 )
 
 func newAntigravityCompatStreamSession(
@@ -138,15 +149,53 @@ func newAntigravityCompatStreamSession(
 		usage:                       &ClaudeUsage{},
 		startTime:                   startTime,
 		preContentKeepaliveInterval: antigravityCompatPreContentKeepaliveInterval,
+		model:                       model,
 	}
 }
 
 func (s *antigravityCompatStreamSession) consume(line string) {
+	s.recordUpstreamLine(line)
 	claudeEvents := s.processor.ProcessLine(strings.TrimRight(line, "\r\n"))
 	if len(claudeEvents) == 0 {
 		return
 	}
 	s.consumeClaudeEvents(claudeEvents)
+}
+
+// recordUpstreamLine keeps the last few upstream data lines, truncated.
+func (s *antigravityCompatStreamSession) recordUpstreamLine(line string) {
+	line = strings.TrimSpace(line)
+	if !strings.HasPrefix(line, "data:") {
+		return
+	}
+	s.upstreamDataLines++
+	if len(line) > antigravityCompatTailLineBytes {
+		line = line[:antigravityCompatTailLineBytes] + "..."
+	}
+	s.upstreamTail = append(s.upstreamTail, line)
+	if len(s.upstreamTail) > antigravityCompatTailLines {
+		s.upstreamTail = s.upstreamTail[len(s.upstreamTail)-antigravityCompatTailLines:]
+	}
+}
+
+// logEmptyStream records why a stream produced no content: the upstream's
+// last data lines usually carry the finishReason or a promptFeedback block.
+func (s *antigravityCompatStreamSession) logEmptyStream(reason string, committed bool) {
+	logger.FromContext(s.logCtx).Warn("antigravity_compat_empty_stream",
+		zap.String("model", s.model),
+		zap.String("reason", reason),
+		zap.Bool("committed", committed),
+		zap.Int("upstream_data_lines", s.upstreamDataLines),
+		zap.Strings("upstream_tail", s.upstreamTail),
+		zap.Duration("elapsed", time.Since(s.startTime)),
+	)
+}
+
+// committedNoContent logs and returns the error for a stream that committed
+// its response and then produced no content.
+func (s *antigravityCompatStreamSession) committedNoContent(reason, msg string) error {
+	s.logEmptyStream(reason, true)
+	return newAntigravityCompatCommittedNoContentError(msg)
 }
 
 func (s *antigravityCompatStreamSession) hasMeaningfulData() bool {
@@ -171,7 +220,7 @@ func (s *antigravityCompatStreamSession) finish() (*antigravityStreamResult, err
 	if !s.hasMeaningfulData() && !s.writer.Disconnected() {
 		if s.preContentKeepaliveSent {
 			s.adapter.WriteError(s.writer, s.emptyStreamReason())
-			return s.result(false), newAntigravityCompatCommittedNoContentError("empty Antigravity compatibility stream after keepalive")
+			return s.result(false), s.committedNoContent(s.emptyStreamReason(), "empty Antigravity compatibility stream after keepalive")
 		}
 		return nil, s.emptyStreamError()
 	}
@@ -344,6 +393,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithTiming(
 	}
 	session := newAntigravityCompatStreamSession(originalModel, startTime, adapter, writer)
 	session.preContentKeepaliveSent = IsResponseCommitted(c) && c.Writer.Written()
+	session.logCtx = c.Request.Context()
 	session.preContentKeepaliveInterval = interval
 	events, stopScanner, maxLineSize, queueBudget := s.startAntigravityCompatScanner(resp.Body)
 	defer stopScanner()
@@ -377,7 +427,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithTiming(
 	preContentTimeout := func() (*antigravityStreamResult, error) {
 		if session.preContentKeepaliveSent {
 			writeAntigravityCompatStreamError(c, adapter, writer, "stream_timeout")
-			return session.collectResult(false), newAntigravityCompatCommittedNoContentError("pre-content stream timeout")
+			return session.collectResult(false), session.committedNoContent("stream_timeout", "pre-content stream timeout")
 		}
 		return nil, session.emptyStreamError()
 	}
@@ -438,7 +488,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithTiming(
 func handleAntigravityCompatEmptyStream(c *gin.Context, session *antigravityCompatStreamSession) (*antigravityStreamResult, error) {
 	if session.preContentKeepaliveSent {
 		writeAntigravityCompatStreamError(c, session.adapter, session.writer, session.emptyStreamReason())
-		return session.collectResult(false), newAntigravityCompatCommittedNoContentError("empty Antigravity compatibility stream after keepalive")
+		return session.collectResult(false), session.committedNoContent(session.emptyStreamReason(), "empty Antigravity compatibility stream after keepalive")
 	}
 	return nil, session.emptyStreamError()
 }
@@ -585,6 +635,7 @@ func antigravityCompatEmptyStreamError() error {
 		StatusCode:             http.StatusBadGateway,
 		ResponseBody:           []byte(`{"error":"empty stream response from upstream"}`),
 		RetryableOnSameAccount: true,
+		EmptyStream:            true,
 	}
 }
 
@@ -593,6 +644,7 @@ func antigravityCompatEmptyStreamError() error {
 // failure belongs to the request: the same tools and history fail on every
 // account, so the error stays retryable but must not cool the account down.
 func (s *antigravityCompatStreamSession) emptyStreamError() error {
+	s.logEmptyStream(s.emptyStreamReason(), false)
 	if s.processor == nil || !s.processor.SawMalformedFunctionCall() {
 		return antigravityCompatEmptyStreamError()
 	}
