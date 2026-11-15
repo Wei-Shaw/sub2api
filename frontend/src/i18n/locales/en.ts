@@ -702,6 +702,7 @@ export default {
     copyToClipboard: 'Copy to clipboard',
     copied: 'Copied!',
     importToCcSwitch: 'Import to CCS',
+    importToMagpie: 'Import to Magpie',
     enable: 'Enable',
     disable: 'Disable',
     nameLabel: 'Name',
