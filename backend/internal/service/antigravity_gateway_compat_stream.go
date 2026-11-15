@@ -134,6 +134,9 @@ const (
 
 	antigravityCompatTailLines     = 3
 	antigravityCompatTailLineBytes = 512
+	// Long lines keep their start and their end: a thought signature can fill
+	// kilobytes, and finishReason / usageMetadata come after it.
+	antigravityCompatTailHeadBytes = 160
 )
 
 func newAntigravityCompatStreamSession(
@@ -170,7 +173,8 @@ func (s *antigravityCompatStreamSession) recordUpstreamLine(line string) {
 	}
 	s.upstreamDataLines++
 	if len(line) > antigravityCompatTailLineBytes {
-		line = line[:antigravityCompatTailLineBytes] + "..."
+		tailBytes := antigravityCompatTailLineBytes - antigravityCompatTailHeadBytes
+		line = line[:antigravityCompatTailHeadBytes] + " ... " + line[len(line)-tailBytes:]
 	}
 	s.upstreamTail = append(s.upstreamTail, line)
 	if len(s.upstreamTail) > antigravityCompatTailLines {
