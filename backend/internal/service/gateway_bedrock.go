@@ -21,10 +21,19 @@ import (
 // ApplyBedrockCCCompat 应用 Bedrock CC 兼容转换（渠道级模型映射后调用）
 // 清理 body 中 Anthropic API 专有字段、修复 thinking/tool_use ID、过滤 beta token，
 // 同时过滤 HTTP header 中的 anthropic-beta（防止 Passthrough 路径透传不支持的 token）。
+// 注意：仅对 Bedrock 账号应用过滤，以保持 Claude Code auto mode 的 server-side classifier 支持。
 func (s *GatewayService) ApplyBedrockCCCompat(c *gin.Context, body []byte, model string, account *Account, groupID *int64) []byte {
 	if !s.isBedrockCCCompatEnabled(c.Request.Context(), account, groupID) {
 		return body
 	}
+
+	// 只对实际的 Bedrock 账号应用兼容性转换
+	// 非 Bedrock 账号保持 anthropic-beta header 和 safeguards 字段完整透传，
+	// 以支持 Claude Code auto mode 的 server-side classifier（免计费）
+	if !account.IsBedrock() {
+		return body
+	}
+
 	if resolved, ok := ResolveBedrockModelID(account, model); ok {
 		model = resolved
 	}
