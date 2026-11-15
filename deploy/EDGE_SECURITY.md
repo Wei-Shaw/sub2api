@@ -237,22 +237,22 @@ processing is restricted to explicit trusted proxy CIDRs.
 
 ## Caddy and CDN
 
-The NanaFox deployment files `deploy/Caddyfile.server`,
-`deploy/Caddyfile.tob`, and `deploy/Caddyfile.template` set a 64 KiB header
-limit, a 10-second header timeout, and a 100 MB edge body limit. The application
-still keeps its 256 MiB absolute safety net, but requests larger than the edge
-limit do not reach it. These files overwrite forwarded addresses from the TCP
-peer and are therefore direct-to-Caddy baselines. Do not use their
-`{remote_host}` forwarding lines unchanged behind a CDN: all clients would be
-attributed to a CDN egress address, collapsing rejection aggregation and the
-invalid-auth limiter onto unrelated users.
+NanaFox no longer keeps a Caddyfile in this repository; the live gateway
+configuration is maintained in the private `nana-fox/nanafox-ops` repository.
+Apply the same edge baseline there: a 64 KiB header limit, a 10-second header
+timeout, and a 100 MB edge body limit. The application still keeps its 256 MiB
+absolute safety net, but requests larger than the edge limit do not reach it.
+A direct-to-Caddy configuration overwrites forwarded addresses from the TCP
+peer. Do not use such `{remote_host}` forwarding lines unchanged behind a CDN:
+all clients would be attributed to a CDN egress address, collapsing rejection
+aggregation and the invalid-auth limiter onto unrelated users.
 
-The bundled Caddy configuration leaves `flush_interval` unset so Caddy can
+The gateway Caddy configuration should leave `flush_interval` unset so Caddy can
 automatically flush `text/event-stream` responses while still propagating
 client cancellation upstream. Do not set it globally: positive values can add
 streaming latency, while Caddy 2.6.2's special `-1` mode also causes
-reverse-proxied requests to continue after clients disconnect. The
-configuration uses an explicit response content-type list for compression. Do
+reverse-proxied requests to continue after clients disconnect. It should
+use an explicit response content-type list for compression. Do
 not replace that list with `text/*` or the shorthand `encode gzip zstd`: both
 match `text/event-stream` and can buffer SSE until the response ends. Keep
 streaming responses uncompressed while retaining compression for the web UI,

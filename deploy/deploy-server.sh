@@ -18,7 +18,7 @@ if [[ "$ENV" == "test" ]]; then
     exit 64
 fi
 if [[ "$ENV" == "prod" ]]; then
-    echo "错误：旧 prod 部署入口已退役。Router 生产环境为 fx-production-router / 127.0.0.1:18080。" >&2
+    echo "错误：旧 prod 部署入口已退役。生产在 ssh tmhhost：Router 为 nanafox-router-formal-router / 127.0.0.1:18083，Studio 为 nanafox-studio-formal-app / 127.0.0.1:18790。" >&2
     echo "先执行 deploy/check-router-production.py 并按 docs/engineering/deployment.md 发布。" >&2
     exit 64
 fi

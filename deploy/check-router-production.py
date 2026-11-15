@@ -5,9 +5,47 @@ import socket
 import subprocess
 import sys
 
-HOST = "iZt4nfdwwipifuqc4q2v01Z"
-ROOT = "/home/nio/recovery/live-production-20260906"
-NAMES = ["fx-production-router", "fx-production-studio", "fx-production-postgres", "fx-production-redis"]
+HOST = "cuii930539864895"
+ROUTER_DIR = "/srv/nanafox-router-formal"
+STUDIO_DIR = "/srv/nanafox-studio-formal"
+GATEWAY_DIR = "/srv/nanafox-gateway"
+NAMES = [
+    "nanafox-router-formal-router",
+    "nanafox-router-formal-postgres",
+    "nanafox-router-formal-redis",
+    "nanafox-studio-formal-app",
+    "nanafox-studio-formal-postgres",
+    "nanafox-gateway",
+]
+NETWORKS = {
+    "nanafox-router-formal-router": {"nanafox-router-formal_database", "nanafox-router-formal_egress"},
+    "nanafox-router-formal-postgres": {"nanafox-router-formal_database"},
+    "nanafox-router-formal-redis": {"nanafox-router-formal_database"},
+    "nanafox-studio-formal-app": {"nanafox-studio-formal_internal", "nanafox-studio-formal_egress"},
+    "nanafox-studio-formal-postgres": {"nanafox-studio-formal_internal"},
+    "nanafox-gateway": {"host"},
+}
+VOLUMES = {
+    "nanafox-router-formal-router": ("nanafox-router-formal_routerdata", "/app/data"),
+    "nanafox-router-formal-postgres": ("nanafox-router-formal_pgdata", "/var/lib/postgresql"),
+    "nanafox-router-formal-redis": ("nanafox-router-formal_redisdata", "/data"),
+    "nanafox-studio-formal-app": ("nanafox-studio-formal-data-20261110T021929Z", "/data"),
+    "nanafox-studio-formal-postgres": ("nanafox-studio-formal-pg-20261110T021929Z", "/var/lib/postgresql"),
+}
+BINDS = {
+    "nanafox-router-formal-router": (ROUTER_DIR + "/config.original.json", "/app/data/config.yaml"),
+    "nanafox-gateway": (GATEWAY_DIR + "/Caddyfile", "/etc/caddy/Caddyfile"),
+}
+PORTS = {
+    "nanafox-router-formal-router": {"8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "18083"}]},
+    "nanafox-studio-formal-app": {"8788/tcp": [{"HostIp": "127.0.0.1", "HostPort": "18790"}]},
+}
+ENV = {
+    "nanafox-router-formal-router": {"GOMEMLIMIT": "900MiB", "GATEWAY_REQUEST_BODY_MEMORY_BUDGET_BYTES": "268435456"},
+    "nanafox-studio-formal-app": {"STUDIO_PUBLIC_ORIGIN": "https://studio.nanafox.com", "ROUTER_AUTH_BASE_URL": "https://router.nanafox.com"},
+}
+# Router: mem_limit 1g, memswap_limit 1280m (see docs/ops/2026-11-15-router-oom-memory-limits.md).
+MEMORY = {"nanafox-router-formal-router": (1073741824, 1342177280)}
 
 
 def validate(hostname, containers):
@@ -23,40 +61,32 @@ def validate(hostname, containers):
         if not row.get("State", {}).get("Running"):
             errors.append(name + ": not running")
         nets = set(row.get("NetworkSettings", {}).get("Networks", {}))
-        expected = {"fx-production-internal"}
-        if name.endswith("router"):
-            expected.add("fx-router-egress")
-        if name.endswith("studio"):
-            expected.add("fx-studio-egress")
-        if nets != expected:
+        if nets != NETWORKS[name]:
             errors.append(name + ": unexpected networks")
         mounts = row.get("Mounts", [])
-        if name.endswith("router"):
-            if not any(m.get("Type") == "bind" and m.get("Source") == ROOT + "/router.preview.json"
-                       and m.get("Destination") == "/app/data/config.yaml" and m.get("RW") is False for m in mounts):
-                errors.append(name + ": unexpected config mount")
-        else:
-            volume, dest = {
-                "fx-production-studio": ("fx-production-studiodata", "/data"),
-                "fx-production-postgres": ("fx-production-pgdata", "/var/lib/postgresql"),
-                "fx-production-redis": ("fx-production-redisdata", "/data"),
-            }[name]
+        if name in VOLUMES:
+            volume, dest = VOLUMES[name]
             if not any(m.get("Type") == "volume" and m.get("Name") == volume and m.get("Destination") == dest for m in mounts):
                 errors.append(name + ": unexpected data volume")
+        if name in BINDS:
+            source, dest = BINDS[name]
+            if not any(m.get("Type") == "bind" and m.get("Source") == source
+                       and m.get("Destination") == dest and m.get("RW") is False for m in mounts):
+                errors.append(name + ": unexpected config mount")
         ports = row.get("HostConfig", {}).get("PortBindings") or {}
-        expected_ports = {}
-        if name.endswith("router"):
-            expected_ports = {"8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "18080"}]}
-        if name.endswith("studio"):
-            expected_ports = {"8788/tcp": [{"HostIp": "127.0.0.1", "HostPort": "18789"}]}
+        if ports != PORTS.get(name, {}):
+            errors.append(name + ": unexpected published ports")
+        if name in ENV:
             env = dict(v.split("=", 1) for v in row.get("Config", {}).get("Env", []) if "=" in v)
-            for key, value in {"STUDIO_PUBLIC_ORIGIN": "https://studio.nanafox.com", "ROUTER_AUTH_BASE_URL": "https://router.nanafox.com"}.items():
+            for key, value in ENV[name].items():
                 if env.get(key) != value:
                     errors.append(name + ": unexpected " + key)
-            if row.get("Config", {}).get("StopTimeout") != 600:
-                errors.append(name + ": unexpected stop timeout")
-        if ports != expected_ports:
-            errors.append(name + ": unexpected published ports")
+        if name in MEMORY:
+            host_config = row.get("HostConfig", {})
+            if (host_config.get("Memory"), host_config.get("MemorySwap")) != MEMORY[name]:
+                errors.append(name + ": unexpected memory limit")
+        if name == "nanafox-studio-formal-app" and row.get("Config", {}).get("StopTimeout") != 600:
+            errors.append(name + ": unexpected stop timeout")
     return errors
 
 
@@ -74,7 +104,7 @@ def main():
         print("FAIL: " + error, file=sys.stderr)
     if errors:
         return 1
-    print("PASS: Router production host, containers, ports, mounts, networks and Studio origin match")
+    print("PASS: production host, Router/Studio/gateway containers, ports, mounts, networks, Router limits and Studio origin match")
     print("Read-only targeting check only; app health, DB connections and backup freshness still require verification")
     return 0
 

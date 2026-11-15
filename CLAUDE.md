@@ -45,13 +45,13 @@ cd backend && go run ./cmd/server
 pnpm --dir frontend dev
 ```
 
-配置文件放 `backend/config.yaml`（已在 `.gitignore`），连接服务器测试库（Tailscale IP：`100.71.166.42`）。
+配置文件放 `backend/config.yaml`（已在 `.gitignore`），连接测试库（地址见私有仓库 nana-fox/nanafox-ops，不写进本仓库）。
 参考 `docs/engineering/deployment.md` 了解完整配置。
 
 ## 部署
 
-当前生产唯一目标为 Router 生产环境 新加坡。Router 与 Router 生产环境 域名共用 `fx-production-router`，回环端口 18080；Studio 为 `fx-production-studio`，18789。先读 `docs/engineering/deployment.md` 并运行 `deploy/check-router-production.py` 只读预检。
-旧 `deploy-server.sh prod` 已退役；旧主机不再部署 Router/Studio 生产。生产主机暂无测试栈，合并 main 不自动触发多环境发布。数据库自动 migrations 仍需发布前核对备份和兼容性。
+生产唯一主机：`ssh tmhhost`（2026-11-10 起）。Router 为 `nanafox-router-formal-router`，回环端口 18083，compose 在 `/srv/nanafox-router-formal/`；Studio 为 `nanafox-studio-formal-app`，18790；网关为 Caddy 容器 `nanafox-gateway`。先读 `docs/engineering/deployment.md` 并运行 `deploy/check-router-production.py` 只读预检。
+主机配置（Caddyfile、compose、备份脚本）在私有仓库 `nana-fox/nanafox-ops`，本仓库不放副本。旧 `deploy-server.sh prod` 已退役；旧阿里云新加坡主机不再运行 Router/Studio。没有测试栈，合并 main 不自动发布。数据库自动 migrations 仍需发布前核对备份和兼容性。
 
 ## 支付模块
 
@@ -87,7 +87,7 @@ cd backend && go generate ./ent/...
 
 | 文件 | 说明 |
 |------|------|
-| `deploy/deploy-server.sh` | 服务器部署脚本 |
+| `deploy/deploy-server.sh` | 已退役的旧部署脚本（只输出提示） |
 | `deploy/docker-compose.yml` | 基础设施（postgres + redis） |
 | `deploy/docker-compose.override.yml` | 服务器本地覆盖（端口暴露，不提交） |
 | `docs/engineering/deployment.md` | 完整部署文档 |
