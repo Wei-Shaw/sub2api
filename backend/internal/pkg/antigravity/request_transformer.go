@@ -304,11 +304,12 @@ var systemIdentityOpeners = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)^[ \t\r\n]*You are GPT-[0-9]+(?:\.[0-9]+)*(?:-[a-z0-9]+)* running in the Codex CLI\.?`),
 }
 
-// NeutralizeSystemIdentity removes leading client attribution and rewrites a
+// NeutralizeSystemIdentity removes leading client attribution, drops sentences the
+// upstream rejects with a fake 429 (see StripUpstreamTriggerSentences) and rewrites a
 // leading vendor identity sentence, preserving the rest of the system block.
 // Only Antigravity forwarding should use this; native Anthropic may require attribution.
 func NeutralizeSystemIdentity(text string) string {
-	text = stripClaudeAttribution(text)
+	text = StripUpstreamTriggerSentences(stripClaudeAttribution(text))
 	for _, re := range systemIdentityOpeners {
 		if loc := re.FindStringIndex(text); loc != nil {
 			if strings.HasPrefix(text[loc[1]:], ",") {
