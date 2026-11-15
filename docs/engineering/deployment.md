@@ -1,56 +1,91 @@
 # NanaFox 当前部署与运维
 
-最后核对：2026-11-08。本文是生产目标的唯一部署入口；历史日期文档、迁移前双生产模板不能覆盖本文。运行前再次检查宿主机与 Docker 状态。
+最后核对：2026-11-15。本文是生产目标的唯一部署入口；历史日期文档、迁移前模板不能覆盖本文。运行前再次检查宿主机与 Docker 状态。
+
+主机级配置（Caddyfile、compose 文件、备份脚本、监控）统一放在私有仓库 `nana-fox/nanafox-ops`，本仓库不再保留副本。改主机配置先改那里，再同步到服务器。
 
 ## 当前生产拓扑
 
-唯一生产主机：阿里云新加坡 Router 生产环境，`nio@43.106.8.109`，hostname `iZt4nfdwwipifuqc4q2v01Z`，实际 2 vCPU / 4 GiB（系统约 3.41 GiB）。历史 `router` 和 `fx` 指向同一 Router 服务，不是两套生产；2026-10-08 发布前已确认 `fx.nanafox.com` 为 NXDOMAIN，当前可用入口是 `router.nanafox.com`。不在普通应用发布中恢复历史 DNS。
+唯一生产主机：TmhHost，登录用 `ssh tmhhost`，2 vCPU / 约 4 GiB 内存 + 2 GiB swap，40 GB 根盘，Docker 29.x、compose v5。2026-11-10 从阿里云新加坡旧主机迁来；旧主机不再运行 Router/Studio，只临时把旧 DNS 缓存的流量转发过来。
 
 | 服务 | 域名 | 容器与宿主机回环端口 | 数据/配置 |
 |---|---|---|---|
-| Router v0.2.20（保留 snapshot1 hotfix） | router.nanafox.com | fx-production-router，18080 → 8080 | sub2api，role router_app |
-| Studio（独立发布） | studio.nanafox.com | fx-production-studio，18789 → 8788 | nanafox_studio_prod，role studio_app |
-| PostgreSQL 18 | 仅内部网络 | fx-production-postgres | fx-production-pgdata |
-| Redis 8 | 仅内部网络 | fx-production-redis | fx-production-redisdata，AOF |
-| 图像创作插件 | Router /tools/image-playground/ | Caddy 静态文件 + Router 内置 API | /srv/nanafox/image-playground/prod-current，release 8bba7e8 |
-| Landing | nanafox.com、www.nanafox.com | Caddy 静态文件，无 Node/Docker | /srv/nanafox-landing/current |
+| Router v0.2.20 | router.nanafox.com | nanafox-router-formal-router，127.0.0.1:18083 → 8080 | 卷 nanafox-router-formal_routerdata |
+| Router PostgreSQL 18 | 仅内部网络 | nanafox-router-formal-postgres（网络别名 fx-production-postgres） | 卷 nanafox-router-formal_pgdata |
+| Router Redis 8 | 仅内部网络 | nanafox-router-formal-redis（网络别名 fx-production-redis） | 卷 nanafox-router-formal_redisdata |
+| Studio | studio.nanafox.com | nanafox-studio-formal-app，127.0.0.1:18790 → 8788 | 卷 nanafox-studio-formal-data-20261110T021929Z |
+| Studio PostgreSQL 18 | 仅内部网络 | nanafox-studio-formal-postgres | 卷 nanafox-studio-formal-pg-20261110T021929Z |
+| 网关 Caddy 2.11.2 | 上述两个域名 | nanafox-gateway，host 网络，占 80/443 | /srv/nanafox-gateway |
+| 图像创作插件 | Router /tools/image-playground/ | 网关静态文件 + Router 内置 API | /srv/nanafox-gateway/site/image-playground/prod-current，release 8bba7e8 |
 
-`R=/home/nio/recovery/live-production-20260906` 是现有配置目录，不是可随意清理的临时目录：
+### Router
 
-- Router **实际挂载** `R/router.preview.json` → `/app/data/config.yaml:ro`。历史文件名虽叫 preview，内容已是完整生产配置；`router.production.json` 是生产副本。后续从实际挂载来源延续，不能按名字切回早期预览配置。
-- Studio **实际 env 文件** `R/studio.production.env`；`studio.active.env` 是早期临时域名配置，不用于当前生产。
-- Studio `STUDIO_PUBLIC_ORIGIN=https://studio.nanafox.com`、`ROUTER_AUTH_BASE_URL=https://router.nanafox.com`。生图、支付均保持生产开启，保留原签名及密文解密密钥。
-- Router 网络 `fx-production-internal` + `fx-router-egress`；Studio 网络 `fx-production-internal` + `fx-studio-egress`，数据卷 `fx-production-studiodata:/data`。
-- Router 在 2026-10-12 20:20 的 503 恢复中在线调整为内存 1536 MiB、内存与 swap 合计上限 2048 MiB / 1 CPU；调整前实际为 1024 MiB / 合计 1536 MiB。未重启、未替换镜像。Studio 仍限内存 512 MiB / 1 CPU。两应用 no-new-privileges，Router nofile=100000，Studio stop-timeout=600。后续启动延续实际 inspect，不恢复旧容量；本次是临时缓解，详情见 [延迟与 503 恢复记录](../ops/2026-10-12-router-latency-recovery.md)。
-- 2026-11-08 v0.2.20 发布保持上述容器资源；新增唯一环境覆盖 `GATEWAY_REQUEST_BODY_MEMORY_BUDGET_BYTES=536870912`，使用已演练的 512 MiB 入口预算，不套用上游 1 GiB 默认。原挂载配置文件字节不变。预算不是 RSS 硬上限；大帧、转换和 GC 仍需观察，不能关闭预算或缩小兼容帧上限来掩盖压力。
-- Logo 文件 `/srv/nanafox/fx-web-assets` 经 `/migration-assets/` 提供；不能漏备份或删除。
-- Caddy 当前文件 `/etc/caddy/Caddyfile`，只读运行快照 [当前快照](../../deploy/Caddyfile.router-production.reference)。先读实时配置并合并目标站点，验证后 reload；不能覆盖其他已有站点。
+- 目录 `/srv/nanafox-router-formal/`，compose 文件 `compose.json`，项目名 `nanafox-router-formal`。文件里有相对路径挂载，**必须在该目录下执行 compose**。
+- 应用配置 `config.original.json` 只读挂载为 `/app/data/config.yaml`；`redis.conf` 只读挂给 Redis。Router 网络 `nanafox-router-formal_database`（internal）+ `nanafox-router-formal_egress`。
+- 资源：内存 1g、内存加 swap 1280m、1 CPU；环境变量 `GOMEMLIMIT=900MiB`、`GATEWAY_REQUEST_BODY_MEMORY_BUDGET_BYTES=268435456`（256 MiB）；日志 json-file 50m × 3。原因见 [2026-11-15 OOM 记录](../ops/2026-11-15-router-oom-memory-limits.md)。不要退回旧的 768m / 512 MiB 预算。
+- 只重建 Router（不动 PG/Redis）：
+
+  ```bash
+  cd /srv/nanafox-router-formal && sudo docker compose -f compose.json up -d --no-deps router
+  ```
+
+### Studio
+
+- 目录 `/srv/nanafox-studio-formal/`，项目名 `nanafox-studio-formal`，compose 文件 `compose.yaml` + `compose.normal-runtime.yaml`（后者覆盖启动命令，两份都要带上）。env 文件 `production.env`、`postgres.env` 在同目录，不要外传。
+- `STUDIO_PUBLIC_ORIGIN=https://studio.nanafox.com`、`ROUTER_AUTH_BASE_URL=https://router.nanafox.com`。生图、支付保持开启。内存 512m、1 CPU、停止窗口 600 秒、no-new-privileges。
+- 只重建 Studio：
+
+  ```bash
+  cd /srv/nanafox-studio-formal && sudo docker compose -f compose.yaml -f compose.normal-runtime.yaml up -d --no-deps studio
+  ```
+
+  Studio 配置连续性用 Studio 仓库 `deploy/check-config-continuity.mjs` 核验；停止前处理活动任务。
+
+### 网关（Caddy）
+
+- 容器 `nanafox-gateway`，镜像 `caddy:2.11.2-alpine`，host 网络，restart unless-stopped。
+- `/srv/nanafox-gateway/` 下：`Caddyfile`（只读挂载）、`site/`（fx-web-assets、image-playground）、`data/`（ACME 证书，Caddy 自动续期）、`config/`、`logs/`（router.log、studio.log，自动滚动）。
+- 改完 Caddyfile 后先校验再热加载，不停服：
+
+  ```bash
+  sudo docker exec nanafox-gateway caddy validate --config /etc/caddy/Caddyfile && sudo docker exec nanafox-gateway caddy reload --config /etc/caddy/Caddyfile
+  ```
+
+- Caddyfile 以 `nana-fox/nanafox-ops` 为准。本仓库原来的 `deploy/Caddyfile.*` 快照已删除，请勿从 Git 历史里拿旧文件覆盖线上。
+- 旧临时网关 `nanafox-migration-caddy-stage` 已停止，只留作回退，清理前不要启动（会抢 80/443）。
+
+### 主机上的其他残留
+
+`/srv/` 下 `nanafox-router-prod`、`nanafox-studio-prod`、`nanafox-router-candidate`、`migration` 及对应已停止容器（`nanafox-router-prod-*`、`nanafox-studio-prod-*`、`nanafox-router-candidate-*`、`nanafox-migration-*`）是迁移过程材料，不是生产，也不是测试环境。不要启动、不要当回退目标，清理需单独确认。同机 `claude-us-*` 容器属其他业务，与 NanaFox 无关。
 
 ## 旧服务与测试边界
 
-旧主机 `108.160.133.141` 的 `sub2api-prod`、`nanafox-studio-prod` 已停止且 restart=no。旧 Caddy 的 Router/Studio 站点临时 HTTPS 转发到 Router 生产环境，处理 DNS 缓存。数据库、镜像和备份仍保留；**整台旧机没有退役**。
+阿里云新加坡旧主机：2026-11-10 起不再运行 Router/Studio，只把旧 DNS 缓存的流量转发到新主机；新网关为此临时信任其转发头，旧机转发撤掉时一起删除。旧机上的库、镜像和回退容器（如 `fx-production-router-rollback-*`）只是历史材料，不能在旧机重启生产。
 
-新主机上迁移前的独立服务 `sub2api-prod` 已停止，原 `sub2api_tob` 库、旧 PG/Redis 与其他业务保留。生产只连接上述 fx-production 栈；库名不同也不代表可复用旧容器或凭据。
-
-`pick`、`newapi` 用户明确不迁移。当前没有 Router/Studio 测试环境；旧主机上遗留的 `sub2api-test`、测试配置、端口和历史域名都不是发布目标。不要因合并 main 自动部署、把遗留容器当成测试环境，或重新启动旧生产。
+更早的旧主机（`sub2api-prod`、`sub2api-test`、`/etc/sub2api/test.yaml`、回环 8081、`router-test.nanafox.com`）已退役，不是发布目标。当前没有 Router/Studio 测试环境。不要因合并 main 自动部署，也不要擅自在生产主机建测试栈。
 
 ## 应用更新流程
 
-1. 明确本次授权的项目、版本和 Router 生产环境目标，固定 release 提交与候选镜像 digest。先按 Git 工作流验证候选。当前没有测试环境；未明确提供新的验证目标时，只报告本地验证缺口，不登录旧机部署，也不擅自占用生产主机建测试栈。
-2. 在 生产主机对当前运行态执行只读检查（脚本可从当前受审阅版本经 SSH stdin 运行）：
+1. 明确本次授权的项目、版本，固定 release 提交与候选镜像 digest，按 Git 工作流验证候选。没有测试环境时只报告本地验证缺口。
+2. 在生产主机对运行态做只读预检（脚本从当前受审阅版本经 SSH stdin 运行，需 sudo 读 Docker）：
 
    ```bash
-   ssh nio@43.106.8.109 'python3 -' < deploy/check-router-production.py
+   ssh tmhhost 'sudo -n python3 -' < deploy/check-router-production.py
    ```
 
-   错主机、错挂载、旧卷或网络不匹配即失败；通过只证明部署目标匹配，不等于应用验收或备份通过。
-3. 私有保存当前 `docker inspect`、image ID、实际配置/环境文件和 Caddy；核对备份时间。不要把 env、密钥或 inspect 全量输出到终端/仓库。延续 Router JWT/TOTP、Studio HMAC、生图/支付解密和 R2 配置；候选数据库/Redis必须指向当前生产栈。
-4. 按实际 inspect 参数准备本次候选启动命令，逐项核对镜像、挂载、两张网络、回环端口、资源限制、日志配置、restart 与停止窗口。只替换目标应用，保留上一镜像和可回退容器；不重建 PostgreSQL/Redis，不执行 compose down -v。Studio 配置连续性用 Studio 仓库 `deploy/check-config-continuity.mjs` 核验，保留 600 秒停止窗口并处理活动任务。
-5. 使用已验证的同一镜像进行应用更新；不隐式 `git pull` 未固定分支再构建。**旧 `bash deploy/deploy-server.sh prod` 已禁用**，该脚本不能创建当前生产布局。当前仓库没有经验证的全自动 生产替换脚本，不能把只读预检误当作部署完成。
-6. 检查下列验收项；失败先保全新数据，再恢复上一个兼容应用镜像及当前生产配置。不要恢复旧数据库覆盖新增业务记录。
-7. 应用验证通过后按发布分支流程合并 main，记录已运行 image ID 与源码提交。常规应用发布不需要重切 DNS。仅文档/运维规则更新不重建应用。
+   错主机、错挂载、旧卷、网络、端口或 Router 资源限制不匹配即失败；通过只证明目标匹配，不等于应用验收或备份通过。
+3. 私有保存当前 `docker inspect`、image ID、compose 文件和 Caddyfile；核对最近备份时间。不要把 env、密钥或 inspect 全量输出到终端/仓库。
+4. 把新镜像 load 到主机并打 tag，修改对应 compose 文件里的 `image`（改动同步提交到 `nana-fox/nanafox-ops`），再用上面的命令只重建目标应用。不重建 PostgreSQL/Redis，不执行 `compose down -v`。保留上一镜像以便回退。
+5. 不在生产主机 `git pull` 构建。**旧 `bash deploy/deploy-server.sh prod` 已禁用**。
+6. 检查下列验收项；失败先保全新数据，再回退。
+7. 验证通过后按发布分支流程合并 main，记录运行的 image ID 与源码提交。仅文档/运维规则更新不重建应用。
 
-`deploy/deploy-server.sh` 已完全退役：当前没有测试环境，且该脚本不能创建现有生产布局。遗留的 `sub2api-test`、`/etc/sub2api/test.yaml`、回环 8081 和 `router-test.nanafox.com` 不能作为当前发布依据。
+### 回退
+
+- 应用回退：把 compose 文件里的 `image` 改回上一个 image ID，再执行同一条只重建命令。当前 Router image ID `sha256:183fac4972a13a6784f38a643d97486f43daa3a4fb695b0b7fde844d220fdb69`（tag `sub2api:prod-v0.2.20-a9367cc4c`），Studio `sha256:ce5d240d3cfa69a07272ba005b8817255ecbf730746569133067c567bc482f4a`。新主机上目前没有 v0.2.17 镜像；需要退到更旧版本时先从备份或旧机导出镜像。
+- 只回退 compose 配置：2026-11-15 改限制前的原文件私有保存在 `/srv/nanafox-ops/window-20261115/compose.json.orig`。
+- 网关回退：先 `caddy validate` 再 `reload`；失败时恢复上一份 Caddyfile 再 reload。
+- 数据库：迁移后已有新写入，不能用旧快照覆盖生产库。v0.2.20 回退边界（新管理密钥/MCP 授权、按张计费、邮箱黑名单产生后禁止直接退旧镜像）见 [v0.2.20 发布记录](../ops/2026-11-08-router-v0.2.20-deployment.md)。
 
 ## 验收与真实流量证明
 
@@ -58,58 +93,32 @@
 - Studio `/api/health`、`/api/ready`、正式深链、带正式 Origin 的认证请求、可信 Router 签名链路与 R2 文件读取。
 - 核对账号、用户、分组、订单、余额、模板及关键配置；区分 API 可见计数和包含软删除记录的物理表行数。
 - 模型调用用确实支持的模型；支付配置读取、下单与真实扣款分别记录。真实付款需要具体交易授权。未执行的生成/交互登录不能写成通过。
-- 确认容器实际网络与 PG 连接：router_app→sub2api、studio_app→nanafox_studio_prod；账号长期数据在 PG，Redis 缓存/会话/锁不等于完整账号备份。
-- DNS 核对权威 A 与递归缓存，再以唯一 query 标记请求正式域名，在 Router 生产环境 Caddy 日志查到同一标记。持续运行的 ping 只反映最初解析；旧 IP 的 HTTPS 可能经旧机桥接到 Router 生产环境。单看 IP 或 HTTP 200 不证明新应用处理了请求。
-- 观察内存、磁盘、队列、错误和备份，4 GiB 不是已完成生产并发容量验证。
+- 以唯一 query 标记请求正式域名，在 `/srv/nanafox-gateway/logs/` 查到同一标记，证明是新主机处理；旧 DNS 缓存的请求可能经旧机转发。单看 HTTP 200 不证明。
+- 观察内存（含 OOM 次数：`sudo docker inspect nanafox-router-formal-router --format '{{.State.OOMKilled}} {{.RestartCount}}'` 及内核日志）、磁盘、错误和备份。
 
-## 已部署版本与回退边界
+## 备份
 
-当前 Router 发布（2026-11-08 13:45）：v0.2.20，应用源码 `a9367cc4c45d4e59bc97e31ea400f103cc7ebc75`，镜像 tag `sub2api:prod-v0.2.20-a9367cc4c`，服务器 image ID `sha256:183fac4972a13a6784f38a643d97486f43daa3a4fb695b0b7fde844d220fdb69`。迁移 328 项（至 273），原 324 项记录逐项保持不变；仅 1 个 Antigravity 分组发生迁移预期的生图开关变化。保留 snapshot1、Studio 与生图定制；配置文件及 Studio/PG/Redis 未变，新增上述 512 MiB body 预算环境覆盖。发布前恢复点、异机备份回读、隔离资源/新旧回退演练和线上验收见 [v0.2.20 发布记录](../ops/2026-11-08-router-v0.2.20-deployment.md)。
-
-最近回退材料是 `fx-production-router-rollback-v0.2.17-9d4bed3da-20261108`，停止且 restart=no，镜像 `sha256:e6df74f02efd3fb4b0f4adb9794ca84ef92314bdc945c5e8981d476f0017ecbe`。本次已演练 324->328 后旧程序启动与合成业务读取，但只适用于未产生不兼容新状态的场景。用户明确接受：若已创建新管理密钥/MCP 授权、启用按张计费或非空邮箱黑名单，禁止直接退旧镜像，须兼容回退或前向修复。先停候选写入再查状态；不能只根据发布前零计数决定回退，更不能恢复旧库覆盖新写入。Studio 当前 image ID 仍为 `sha256:ce5d240d3cfa69a07272ba005b8817255ecbf730746569133067c567bc482f4a`。更早回退材料仍保留，适用各自历史发布记录的额外限制，不自动启动。
-
-赠金促销未开启、TypeSafe 账号尚无；启用新功能/产生相应记录后，不能直接回退原 v0.2.8。回退前检查生产数据兼容性，仅恢复兼容应用与当前配置，不恢复旧数据库。发布前快照与运行参数私有保存在 `/home/nio/releases/router-v0.2.14-20261008`，详细验证范围和剩余缺口见 [v0.2.14 发布记录](../plans/2026-10-08-upstream-v0.2.14-execution.md)。
-
-以下是迁移后历史版本记录，不是当前版本：
-
-- 2026-10-18 的 v0.2.17 源码 `9d4bed3da5e1805c473b2e1abf64deee17123d6f`、镜像 `sha256:e6df74f02efd3fb4b0f4adb9794ca84ef92314bdc945c5e8981d476f0017ecbe`；迁移当时为 324 项至 269，已接受 GPT-5.5 OAuth 退役，见 [v0.2.17 发布记录](../ops/2026-10-18-router-v0.2.17-deployment.md)。
-- 2026-10-12 的 v0.2.14 snapshot1 热修源码 `d32154752f70e07c1ddd7a738a8e5ddf5e5514a4`、镜像 `sha256:841dd9d2b88a13922d8f7788608deff6433f37fad448acd6f33c09e348edd995`；当时迁移 319 项至 264，详见 [snapshot1 发布记录](../ops/2026-10-12-ops-snapshot-guard-deployment.md)。
-- Router 于 2026-09-09 部署源码 `8caa9e0c6173f70824006299248e9ea008de36fb`，服务器镜像 `sha256:9ba863606057cc1d58f97b933748425afe4d20d52ae4838a265d044bfdcaef0f`（tag `sub2api:prod-v0.2.4-8caa9e0c6`），数据库迁移至 `257_add_minimax_platform.sql`。切换前容器保留为 `fx-production-router-rollback-v0.2.1-7c1552fca`，其镜像为 `sha256:543d5975d7f60d633cd31e64998b1813d5086ed83c882a39149beb85f22db38a`。
-- Studio 源码 `7c69139d273da0feaf5a66339378cd0d3cee750b`，image `sha256:f5e7004ad8bb718499414db2860945436f4278b34847c6d3a77af2f21b2cf5d1`，schema 21。
-- Landing deploy 产物 `c63fc7e7beb7ec3010a1f223dcd5bd7927c645fb`，43 文件逐一 SHA256 相同。
-
-这是迁移时基线，不应固定为未来每次发布版本。迁移后生产已有新写入，不能重新导入迁移前快照或直接启动旧生产库回退。用户本次接受少量切换差异、不要求停写，不等于未来任意数据库变更都可忽略一致性。
-
-## NAS MinIO 备份
-
-Bucket `nanafox-postgres-backups`：
-
-- 原 Router 生产环境 保全：`fx-pre-recovery/20260906T125728Z/`。
-- 迁移源生产完整快照：`live-production-migration/20260906T151329Z/`；插件、Landing、证书、最终配置在其 `supplements/`，已回读 SHA256 核验。
-- 新日常备份：`fx-production/<UTC时间>/`，NAS 北京时间 03:35 拉取两生产库、角色、配置、容器参数、证书和静态产物；不依赖旧生产机。
-- Router 生产环境 导出 `/home/nio/backups/fx-production/export-backup.py`；NAS `/home/Nio/.local/share/nanafox-fx-production-backup/backup.py`；cron `/etc/cron.d/nanafox-fx-production`。
-- NAS SSH key 仅允许固定 `backup-v1` 导出。只有全部上传和回读一致后才写 `last-success.json`；检查其时间和 MinIO 对象，不能用 cron 存在代替备份成功。
-- 2026-09-07 首轮导出时传输缓慢，彼时尚未确认日常备份端到端完成；此为历史状态。2026-10-08 已核对最新 Router 快照 `20261007T193504Z`，本日 11:34 北京时间完成，6 对象 verified；MinIO manifest 回读与成功状态中的文件 SHA256/大小一致。本轮未重新回读全部 dump 或演练异机恢复。
-- 2026-10-18 发布前刷新：NAS Router 最近成功仍为 `20261014T193506Z`（10 月 15 日完成），新任务在传输 `20261017T193510Z`，未完成异机回读。当天完整源快照已在生产 `/home/nio/releases/router-v0.2.17-20261018/pre-release-backup` 保留，五文件大小/SHA256 及 PG 归档目录校验通过；这是同盘恢复点，不是新的异机备份，勿中断现有 NAS 任务或把传输中当作完成。Studio 独立备份本次已成功至 `20261017T194506Z`。
-- 2026-11-08 发布前刷新：Router 最新完整快照 `20261107T193508Z` 于当天北京时间 08:50 完成；已重新从 MinIO 回读全部 6 对象核对大小与 SHA256，Studio 独立成功记录至 `20261107T194504Z`。本次同盘新恢复点 `20261108T050848Z` 私有保留在 `/home/nio/releases/router-v0.2.20-20261108/pre-release-backup.tar`，5 个内容文件已逐项核验；它不替代异机副本，也不是完整灾难恢复演练。
-- 新任务不包含可恢复的 Redis AOF 快照、Docker 镜像层、Studio /data 卷或 R2 全量对象；原源 Redis 快照/应用镜像有迁移备份。账号以 PG 为准，会话可能重建；需要 Redis 恢复点或新镜像异机保全时另补验证。
-
-执行证据与时间线见 [迁移记录](../plans/2026-09-07-router-production-migration.md)。旧流程通过 Git 历史查阅，不复制回当前操作入口。
-
-## Caddy 快照限制
-
-`.reference` 文件记录迁移后的实际配置，不是直接发布模板。当前运行快照仍含针对静态资源的 immutable 覆盖和 text/* 压缩，与仓库旧缓存/SSE 策略不同；本次仅记录，不宣称流式取消与所有缓存场景已验证。后续改 Caddy 应审查这些差异并单独验证流式请求，不能用非流式 200 代替。
-
-备份程序版本化参考与未覆盖范围见 [备份说明](../../deploy/backup/README.md)。
+- NAS 每天北京时间 03:35 拉取完整备份（两生产库、角色、配置、容器参数、证书和静态产物），03:45 单独拉取 Studio。NAS 用固定命令（forced command）的 SSH key 登录 `tmhhost`，只能执行导出，不能开 shell。
+- 主机上的导出脚本：`/srv/nanafox-ops/backup/export-backup.py`（源码在 `nana-fox/nanafox-ops`）。
+- MinIO bucket `nanafox-postgres-backups`：完整备份 `fx-production/<UTC时间>/`，Studio `studio-production/<UTC时间>/`。只有全部上传并回读一致后才写 `last-success.json`；检查其时间和对象，不能用 cron 存在代替备份成功。
+- 不包含：Redis AOF、Docker 镜像层、Studio /data 卷、R2 全量对象。账号以 PG 为准。
+- 本仓库 `deploy/backup/` 是旧主机时期的版本，路径和容器名已过期，仅作历史参考。
 
 ## 后续核对项（不能标为已完成）
 
-- 每日备份目前有完成及回读记录；继续关注传输是否满足每日窗口，目前无断点续传。完整异机恢复演练未完成。
-- Redis AOF、Studio /data、R2 对象和后续镜像版本的独立恢复点；具体范围见备份说明。
-- 图像菜单域名：用户于 2026-09-07 明确确认已改回，此项完成（依据用户确认）。
-- Caddy 流式/SSE、缓存和客户端取消行为；已验证非流式调用不覆盖这些场景。
-- 旧机仍有未迁移或明确不迁移的业务，不可销毁整机。远端旧仓库可能仍带旧部署脚本；本次仓库保护不等于旧服务器 checkout 已自动同步。
+- 线上 Caddyfile 尚未设置 `max_header_size 64KB` / `read_header 10s`；Studio 站点用的是 `encode zstd gzip` 简写，静态资源仍是 immutable 缓存。按 [EDGE_SECURITY](../../deploy/EDGE_SECURITY.md) 在 `nana-fox/nanafox-ops` 里修改并单独验证流式请求。
+- 完整异机恢复演练未完成；Redis AOF、Studio /data、R2 对象没有独立恢复点。
+- 旧机转发撤掉后，删除网关里对旧机的 trusted_proxies。
+- 清理迁移残留容器、卷和 `nanafox-migration-caddy-stage`（单独确认）。
+- Landing（nanafox.com）不在当前网关，部署位置另行核对。
 
-## Studio 独立备份（2026-09-07）
+## 历史版本记录（不是当前状态）
 
-已新增独立 Studio 生产数据库备份，NAS 北京时间 03:45 执行 `backup.py --studio`，MinIO `nanafox-postgres-backups/studio-production/<UTC>/`。独立进程锁和 `studio/last-success.json`，不被 Router 大文件备份锁阻塞。固定 SSH 命令新增 `backup-studio-v1`，仅导出 nanafox_studio_prod、角色、私有容器信息、Studio 环境配置和 Caddy/Studio 证书；不执行 shell。首轮快照为北京时间 2026-09-07 01:29:52，于 01:31:15 完成全部 5 个文件的 MinIO SHA256 回读。Studio dump 1,877,745 字节，SHA256 `bb4acf9a8f0ef92909d667ba54181a514a45520be6754d1d1c556ce89a41b663`；前缀 `studio-production/20260906T172952Z/`。Router 大备份仍在传输，不混淆两项状态。
+- 2026-11-10 迁到 TmhHost，Router/Studio 镜像与迁移前一致。
+- 2026-11-08 v0.2.20：源码 `a9367cc4c45d4e59bc97e31ea400f103cc7ebc75`，镜像 tag `sub2api:prod-v0.2.20-a9367cc4c`，迁移 328 项（至 273）；在旧主机容器 `fx-production-router`（回环 18080）上发布，Studio 当时为 `fx-production-studio`（18789）。见 [v0.2.20 发布记录](../ops/2026-11-08-router-v0.2.20-deployment.md)。
+- 2026-10-18 v0.2.17：源码 `9d4bed3da5e1805c473b2e1abf64deee17123d6f`、镜像 `sha256:e6df74f02efd3fb4b0f4adb9794ca84ef92314bdc945c5e8981d476f0017ecbe`，见 [v0.2.17 发布记录](../ops/2026-10-18-router-v0.2.17-deployment.md)。
+- 2026-10-12 v0.2.14 snapshot1 热修：源码 `d32154752f70e07c1ddd7a738a8e5ddf5e5514a4`，见 [snapshot1 发布记录](../ops/2026-10-12-ops-snapshot-guard-deployment.md)、[延迟与 503 恢复记录](../ops/2026-10-12-router-latency-recovery.md)。
+- 2026-10-08 v0.2.14，见 [v0.2.14 发布记录](../plans/2026-10-08-upstream-v0.2.14-execution.md)。
+- 2026-09-06/07 从更早的旧主机迁到阿里云新加坡，见 [迁移记录](../plans/2026-09-07-router-production-migration.md)。
+
+更早的旧流程通过 Git 历史查阅，不复制回当前操作入口。

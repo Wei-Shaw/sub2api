@@ -18,22 +18,23 @@ spec.loader.exec_module(check)
 def fixture():
     rows = []
     for name in check.NAMES:
-        nets = {"fx-production-internal": {}}
+        nets = {net: {} for net in check.NETWORKS[name]}
         mounts = []
-        ports = {}
+        host_config = {"PortBindings": copy.deepcopy(check.PORTS.get(name, {}))}
         config = {}
-        if name.endswith("router"):
-            nets["fx-router-egress"] = {}
-            mounts = [{"Type": "bind", "Source": check.ROOT + "/router.preview.json", "Destination": "/app/data/config.yaml", "RW": False}]
-            ports = {"8080/tcp": [{"HostIp": "127.0.0.1", "HostPort": "18080"}]}
-        else:
-            volume, dest = {"fx-production-studio": ("fx-production-studiodata", "/data"), "fx-production-postgres": ("fx-production-pgdata", "/var/lib/postgresql"), "fx-production-redis": ("fx-production-redisdata", "/data")}[name]
-            mounts = [{"Type": "volume", "Name": volume, "Destination": dest}]
-        if name.endswith("studio"):
-            nets["fx-studio-egress"] = {}
-            ports = {"8788/tcp": [{"HostIp": "127.0.0.1", "HostPort": "18789"}]}
-            config = {"Env": ["STUDIO_PUBLIC_ORIGIN=https://studio.nanafox.com", "ROUTER_AUTH_BASE_URL=https://router.nanafox.com"], "StopTimeout": 600}
-        rows.append({"Name": "/" + name, "State": {"Running": True}, "NetworkSettings": {"Networks": nets}, "Mounts": mounts, "HostConfig": {"PortBindings": ports}, "Config": config})
+        if name in check.VOLUMES:
+            volume, dest = check.VOLUMES[name]
+            mounts.append({"Type": "volume", "Name": volume, "Destination": dest})
+        if name in check.BINDS:
+            source, dest = check.BINDS[name]
+            mounts.append({"Type": "bind", "Source": source, "Destination": dest, "RW": False})
+        if name in check.ENV:
+            config["Env"] = [key + "=" + value for key, value in check.ENV[name].items()]
+        if name in check.MEMORY:
+            host_config["Memory"], host_config["MemorySwap"] = check.MEMORY[name]
+        if name == "nanafox-studio-formal-app":
+            config["StopTimeout"] = 600
+        rows.append({"Name": "/" + name, "State": {"Running": True}, "NetworkSettings": {"Networks": nets}, "Mounts": mounts, "HostConfig": host_config, "Config": config})
     return rows
 
 
@@ -47,24 +48,32 @@ class ProductionTargetTests(unittest.TestCase):
             run.assert_not_called()
 
     def test_rejects_old_database_volume(self):
-        rows = fixture(); rows[2]["Mounts"][0]["Name"] = "deploy_postgres_data"
-        self.assertIn("fx-production-postgres: unexpected data volume", check.validate(check.HOST, rows))
+        rows = fixture(); rows[1]["Mounts"][0]["Name"] = "fx-production-pgdata"
+        self.assertIn("nanafox-router-formal-postgres: unexpected data volume", check.validate(check.HOST, rows))
 
     def test_rejects_old_config(self):
-        rows = fixture(); rows[0]["Mounts"][0]["Source"] = "/etc/sub2api/prod.yaml"
-        self.assertIn("fx-production-router: unexpected config mount", check.validate(check.HOST, rows))
+        rows = fixture(); rows[0]["Mounts"][1]["Source"] = "/home/nio/recovery/live-production-20260906/router.preview.json"
+        self.assertIn("nanafox-router-formal-router: unexpected config mount", check.validate(check.HOST, rows))
 
     def test_rejects_missing_egress(self):
-        rows = fixture(); del rows[0]["NetworkSettings"]["Networks"]["fx-router-egress"]
+        rows = fixture(); del rows[0]["NetworkSettings"]["Networks"]["nanafox-router-formal_egress"]
         self.assertTrue(check.validate(check.HOST, rows))
 
     def test_rejects_public_database_port(self):
-        rows = fixture(); rows[2]["HostConfig"]["PortBindings"] = {"5432/tcp": [{"HostIp": "0.0.0.0", "HostPort": "5432"}]}
+        rows = fixture(); rows[1]["HostConfig"]["PortBindings"] = {"5432/tcp": [{"HostIp": "0.0.0.0", "HostPort": "5432"}]}
         self.assertTrue(check.validate(check.HOST, rows))
 
     def test_rejects_old_app_port(self):
-        rows = fixture(); rows[0]["HostConfig"]["PortBindings"]["8080/tcp"][0]["HostPort"] = "8080"
+        rows = fixture(); rows[0]["HostConfig"]["PortBindings"]["8080/tcp"][0]["HostPort"] = "18080"
         self.assertTrue(check.validate(check.HOST, rows))
+
+    def test_rejects_old_router_memory_limit(self):
+        rows = fixture(); rows[0]["HostConfig"]["Memory"] = 805306368
+        self.assertIn("nanafox-router-formal-router: unexpected memory limit", check.validate(check.HOST, rows))
+
+    def test_rejects_writable_caddyfile(self):
+        rows = fixture(); rows[5]["Mounts"][0]["RW"] = True
+        self.assertIn("nanafox-gateway: unexpected config mount", check.validate(check.HOST, rows))
 
     def test_rejects_missing_or_stopped_container(self):
         self.assertTrue(check.validate(check.HOST, fixture()[:-1]))
@@ -72,7 +81,7 @@ class ProductionTargetTests(unittest.TestCase):
         self.assertTrue(check.validate(check.HOST, rows))
 
     def test_origin_failure_does_not_print_value(self):
-        rows = fixture(); rows[1]["Config"]["Env"][0] = "STUDIO_PUBLIC_ORIGIN=secret-sentinel"
+        rows = fixture(); rows[3]["Config"]["Env"][0] = "STUDIO_PUBLIC_ORIGIN=secret-sentinel"
         errors = check.validate(check.HOST, rows)
         self.assertTrue(errors)
         self.assertNotIn("secret-sentinel", str(errors))

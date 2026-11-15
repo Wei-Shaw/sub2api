@@ -1,5 +1,7 @@
 # Router 生产备份程序
 
+> 这是旧主机时期的版本，路径、容器名和主机已过期。当前导出脚本在 `ssh tmhhost` 的 `/srv/nanafox-ops/backup/export-backup.py`，源码在私有仓库 `nana-fox/nanafox-ops`。
+
 这两份是已安装程序的版本化参考，修改仓库不等于已更新远端，也不能在开发机直接运行：
 
 - `export-router-production.py` → 生产 `/home/nio/backups/fx-production/export-backup.py`，SSH forced command 只接受 backup-v1。
