@@ -468,6 +468,69 @@ describe('ModelWhitelistSelector', () => {
     expect(syncButton?.exists()).toBe(true)
   })
 
+  it('includes both 2.5 entries and marks them as web compatibility entries only for Free', async () => {
+    const wrapper = mountSelector({ webImageCompatibility: true })
+    expect(wrapper.get('[data-testid="free-web-image-model-policy"]').text()).toContain('admin.accounts.openai.webImageModelPolicy')
+    await wrapper.get('.cursor-pointer').trigger('click')
+    for (const model of ['gpt-image-2.5-flare', 'gpt-image-2.5-sunburst']) {
+      const row = findModelRow(wrapper, model)
+      expect(row.text()).toContain('admin.accounts.openai.webImageEntryBadge')
+      await row.get('[data-testid="select-model"]').trigger('click')
+      expect(wrapper.emitted('update:modelValue')?.at(-1)?.[0]).toContain(model)
+    }
+    await wrapper.setProps({ webImageCompatibility: false })
+    expect(wrapper.text()).not.toContain('admin.accounts.openai.webImageEntryBadge')
+    expect(wrapper.find('[data-testid="free-web-image-model-policy"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('makes Free image entries automatic and read-only only while the bridge is enabled', async () => {
+    const wrapper = mountSelector({ webImageCompatibility: true, webImageBridgeEnabled: true, modelValue: ['gpt-image-2'] })
+    const selectedImage = wrapper.find('.grid').findAll('span.inline-flex')[0]
+    expect(selectedImage.text()).toContain('admin.accounts.openai.webImageAutomatic')
+    expect(selectedImage.find('button').exists()).toBe(false)
+    await wrapper.get('.cursor-pointer').trigger('click')
+    for (const model of ['gpt-image-1', 'gpt-image-1.5', 'gpt-image-2', 'gpt-image-2.5-flare', 'gpt-image-2.5-sunburst']) {
+      const row = findModelRow(wrapper, model)
+      expect(row.find('[data-testid="model-checkbox"]').exists()).toBe(false)
+      expect(row.get('[data-testid="select-model"]').attributes('disabled')).toBeDefined()
+      expect(row.text()).toContain('admin.accounts.openai.webImageAutomatic')
+      await row.get('[data-testid="select-model"]').trigger('click')
+    }
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+    await findModelRow(wrapper, 'gpt-image-2.5-flare').get('[data-testid="copy-model-id"]').trigger('click')
+    expect(copyToClipboard).toHaveBeenCalledWith('gpt-image-2.5-flare')
+    await findModelRow(wrapper, 'gpt-5.6-sol').get('[data-testid="select-model"]').trigger('click')
+    expect(wrapper.emitted('update:modelValue')).toEqual([[['gpt-image-2', 'gpt-5.6-sol']]])
+
+    await wrapper.setProps({ webImageBridgeEnabled: false })
+    expect(findModelRow(wrapper, 'gpt-image-2.5-flare').find('[data-testid="model-checkbox"]').exists()).toBe(true)
+    expect(findModelRow(wrapper, 'gpt-image-2.5-flare').get('[data-testid="select-model"]').attributes('disabled')).toBeUndefined()
+    await wrapper.setProps({ webImageCompatibility: false, webImageBridgeEnabled: true })
+    expect(findModelRow(wrapper, 'gpt-image-2.5-flare').find('[data-testid="model-checkbox"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('admin.accounts.openai.webImageAutomatic')
+    wrapper.unmount()
+  })
+
+  it('preserves legacy image selections during fill and sync but explicitly clears the entire whitelist', async () => {
+    syncUpstreamModels.mockResolvedValue({ models: ['gpt-6-luna', 'gpt-image-2.5-flare'], warnings: [] })
+    const wrapper = mountSelector({ webImageCompatibility: true, webImageBridgeEnabled: true, accountId: 42, modelValue: ['gpt-image-2', 'gpt-5.6-sol'] })
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.clearAllModels')!.trigger('click')
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([[]])
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.fillRelatedModels')!.trigger('click')
+    const filledModels = wrapper.emitted('update:modelValue')?.at(-1)?.[0] as string[]
+    expect(filledModels.filter(model => model.startsWith('gpt-image-'))).toEqual(['gpt-image-2'])
+    expect(filledModels).toContain('gpt-5.6-sol')
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.syncUpstreamModels')!.trigger('click')
+    await flushPromises()
+    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([['gpt-image-2', 'gpt-5.6-sol', 'gpt-6-luna']])
+    await wrapper.get('input[placeholder="admin.accounts.enterCustomModelName"]').setValue('gpt-image-future')
+    await wrapper.findAll('button').find(button => button.text() === 'admin.accounts.addModel')!.trigger('click')
+    expect(wrapper.emitted('update:modelValue')).toHaveLength(3)
+    expect(showInfo).toHaveBeenCalledWith('admin.accounts.openai.webImageModelPolicy')
+    wrapper.unmount()
+  })
+
   it('can hide only the built-in trigger while retaining its public sync action', async () => {
     syncUpstreamModels.mockResolvedValue({ models: ['grok-4.7'], discovery_source: 'upstream' })
     const wrapper = mountSelector({ platform: 'grok', accountId: 46, showSyncButton: false })

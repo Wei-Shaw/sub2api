@@ -48,7 +48,7 @@ func TestOpenAIGatewayHandlerResponses_ImagePermissionHardSignalsStillRejected(t
 		{
 			name:     "OpenAI native image_generation tool",
 			platform: service.PlatformOpenAI,
-			body:     `{"model":"gpt-5.5","tools":[{"type":"image_generation","model":"gpt-image-2"}],"input":"draw a cat"}`,
+			body:     `{"model":"gpt-5.5","tools":[{"type":"image_generation","model":"gpt-image-2"}],"tool_choice":{"type":"image_generation"},"input":"draw a cat"}`,
 		},
 		{
 			name:     "OpenAI image model",
@@ -73,6 +73,19 @@ func TestOpenAIGatewayHandlerResponses_PassiveNamespaceDoesNotTrigger403(t *test
 
 	require.NotEqual(t, http.StatusForbidden, rec.Code,
 		"passive image_gen namespace with tool_choice=auto should not trigger 403 (#4447)")
+}
+
+func TestOpenAIGatewayHandlerResponses_DisabledImagesPassiveNativeToolKeepsChat(t *testing.T) {
+	body := `{"model":"gpt-5.5","tools":[{"type":"image_generation","model":"gpt-image-2","action":"edit","quality":"high"},{"type":"function","name":"ordinary_tool","parameters":{"type":"object"}}],"tool_choice":"auto","input":"say hello"}`
+	rec := runOpenAIResponsesImagePermissionGateTest(t, service.PlatformOpenAI, body)
+	require.NotEqual(t, http.StatusForbidden, rec.Code)
+	require.NotContains(t, rec.Body.String(), service.ImageGenerationPermissionMessage())
+	// The common entry filter is account-agnostic: a Pro account selected later
+	// also receives only ordinary tools, preserving the group's image denial.
+	filtered, err := service.PrepareOpenAIImageDisabledRequest([]byte(body))
+	require.NoError(t, err)
+	require.NotContains(t, string(filtered), "image_generation")
+	require.Contains(t, string(filtered), "ordinary_tool")
 }
 
 func runOpenAIResponsesImagePermissionGateTest(t *testing.T, platform string, body string) *httptest.ResponseRecorder {

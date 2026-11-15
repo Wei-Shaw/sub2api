@@ -70,7 +70,7 @@
         />
       </div>
 
-      <div v-if="isOpenAIAccount" class="space-y-1.5">
+      <div v-if="isOpenAIAccount && !isFreeWebImageTest" class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
           {{ t('admin.accounts.openai.testMode') }}
         </label>
@@ -79,6 +79,11 @@
           :options="openAITestModeOptions"
           :disabled="status === 'connecting'"
         />
+      </div>
+
+      <div v-if="isFreeWebImageTest" data-testid="free-web-image-test-path" class="rounded-lg bg-emerald-50 p-3 text-xs leading-5 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200">
+        <p>{{ t('admin.accounts.openai.webImageTestHint') }}</p>
+        <p v-if="webImageTestBlocked" data-testid="free-web-image-test-disabled" class="mt-1 text-amber-700 dark:text-amber-300">{{ t('admin.accounts.openai.webImageTestDisabled') }}</p>
       </div>
 
       <div v-if="supportsPromptInput" class="space-y-1.5">
@@ -376,6 +381,7 @@ import { buildApiUrl } from '@/api/client'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { adminAPI } from '@/api/admin'
 import type { Account, ClaudeModel } from '@/types'
+import { isFreeWebImageAccount, isOpenAIImageTestModel, readWebImageSettings } from '@/components/account/webImageBridge'
 
 const { t } = useI18n()
 const { copyToClipboard } = useClipboard()
@@ -445,10 +451,15 @@ const supportsGeminiImageTest = computed(() => {
   return props.account?.platform === 'gemini' || props.account?.platform === 'antigravity'
 })
 
-const supportsOpenAIImageTest = computed(() => {
-  const modelID = selectedModelId.value.toLowerCase()
-  if (!modelID.startsWith('gpt-image-')) return false
-  return props.account?.platform === 'openai'
+const isFreeWebImageEligible = computed(() => isFreeWebImageAccount(props.account))
+const supportsOpenAIImageTest = computed(() => props.account?.platform === 'openai' &&
+  isOpenAIImageTestModel(props.account.credentials?.model_mapping, selectedModelId.value, isFreeWebImageEligible.value))
+
+const isFreeWebImageTest = computed(() => isFreeWebImageEligible.value && supportsOpenAIImageTest.value)
+const webImageTestBlocked = computed(() => {
+  if (!isFreeWebImageTest.value) return false
+  const settings = readWebImageSettings(props.account?.extra)
+  return !settings.enabled || !settings.regularChat
 })
 
 const isGrokImageModel = (id: string) => {
@@ -629,6 +640,7 @@ const promptInputPlaceholder = computed(() => {
 })
 
 const promptInputHint = computed(() => {
+  if (isFreeWebImageTest.value) return t('admin.accounts.openai.webImageTestHint')
   if (grokTestMode.value === 'video') {
     return t('admin.accounts.videoTestHint')
   }
@@ -651,6 +663,7 @@ const promptInputHint = computed(() => {
 })
 
 const testModeSummary = computed(() => {
+  if (isFreeWebImageTest.value) return t('admin.accounts.openai.webImageTestPath')
   if (isGrokAccount.value) {
     switch (grokTestMode.value) {
       case 'video':
@@ -674,7 +687,7 @@ const testModeSummary = computed(() => {
 })
 
 const canStartTest = computed(() => {
-  if (status.value === 'connecting') return false
+  if (status.value === 'connecting' || webImageTestBlocked.value) return false
   if (isGrokAccount.value) {
     if (
       grokTestMode.value === 'search' ||
@@ -766,7 +779,11 @@ const loadAvailableModels = async () => {
   loadingModels.value = true
   selectedModelId.value = '' // Reset selection before loading
   try {
-    const models = await adminAPI.accounts.getAvailableModels(props.account.id)
+    const fetchedModels = await adminAPI.accounts.getAvailableModels(props.account.id)
+    const models = fetchedModels.map(model => isFreeWebImageEligible.value &&
+      isOpenAIImageTestModel(props.account?.credentials?.model_mapping, model.id, true)
+      ? { ...model, display_name: `${model.display_name || model.id} · ${t('admin.accounts.openai.webImageEntryBadge')}` }
+      : model)
     availableModels.value = props.account.platform === 'gemini' || props.account.platform === 'antigravity'
       ? sortTestModels(models)
       : models
@@ -845,6 +862,7 @@ const startTest = async () => {
 
   try {
     const requestBody: {
+      operation_id?: string
       model_id: string
       prompt: string
       mode?: string
@@ -855,7 +873,10 @@ const startTest = async () => {
       prompt: supportsPromptInput.value ? testPrompt.value.trim() : ''
     }
     if (isOpenAIAccount.value) {
-      requestBody.mode = testMode.value
+      requestBody.mode = isFreeWebImageTest.value ? 'default' : testMode.value
+      if (isFreeWebImageTest.value) {
+        requestBody.operation_id = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      }
     }
     if (isGrokAccount.value) {
       // Always send explicit Grok mode. search/tts/stt/realtime are standalone
@@ -948,11 +969,15 @@ const handleEvent = (event: {
   audio_url?: string
   video_url?: string
   mime_type?: string
+  provider?: string
 }) => {
   switch (event.type) {
     case 'test_start':
       addLine(t('admin.accounts.connectedToApi'), 'text-green-400')
-      if (event.model) {
+      if (event.provider === 'chatgpt_web') {
+        addLine(t('admin.accounts.openai.webImageTestPath'), 'text-emerald-300')
+        if (event.model) addLine(t('admin.accounts.openai.webImageCompatibleEntry', { model: event.model }), 'text-cyan-400')
+      } else if (event.model) {
         addLine(t('admin.accounts.usingModel', { model: event.model }), 'text-cyan-400')
       }
       addLine(
