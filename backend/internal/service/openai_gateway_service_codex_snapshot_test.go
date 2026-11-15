@@ -223,3 +223,41 @@ func TestBuildCodexUsageExtraUpdates_WithoutNormalizedWindowFields(t *testing.T)
 		t.Fatalf("did not expect codex_7d_reset_at in updates: %v", updates["codex_7d_reset_at"])
 	}
 }
+
+func TestBuildCodexUsageExtraUpdates_WeeklyOnlyClearsShortWindow(t *testing.T) {
+	primaryUsed := 22.0
+	primaryReset := 4 * 24 * 60 * 60
+	primaryWindow := 7 * 24 * 60
+	snapshot := &OpenAICodexUsageSnapshot{
+		PrimaryUsedPercent:       &primaryUsed,
+		PrimaryResetAfterSeconds: &primaryReset,
+		PrimaryWindowMinutes:     &primaryWindow,
+		UpdatedAt:                "2026-07-13T12:00:00Z",
+	}
+
+	updates := buildCodexUsageExtraUpdates(snapshot, time.Time{})
+
+	if got := updates["codex_7d_used_percent"]; got != 22.0 {
+		t.Fatalf("codex_7d_used_percent = %v, want 22", got)
+	}
+	if got := updates["codex_7d_window_minutes"]; got != 10080 {
+		t.Fatalf("codex_7d_window_minutes = %v, want 10080", got)
+	}
+	for _, key := range []string{
+		"codex_secondary_used_percent",
+		"codex_secondary_reset_after_seconds",
+		"codex_secondary_window_minutes",
+		"codex_5h_used_percent",
+		"codex_5h_reset_after_seconds",
+		"codex_5h_window_minutes",
+		"codex_5h_reset_at",
+	} {
+		value, ok := updates[key]
+		if !ok {
+			t.Fatalf("expected %s to be explicitly cleared", key)
+		}
+		if value != nil {
+			t.Fatalf("%s = %v, want nil", key, value)
+		}
+	}
+}
