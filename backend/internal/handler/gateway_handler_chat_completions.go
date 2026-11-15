@@ -390,6 +390,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				zap.Bool("upstream_error_response_already_written", upstreamErrorAlreadyCommunicated),
 				zap.Error(err),
 			)
+			h.gatewayService.ReleaseStickySessionAfterCommittedNoContent(context.WithoutCancel(c.Request.Context()), apiKey.GroupID, selectionSessionHash, account.ID, err)
 			if result != nil {
 				submitForwardUsage(result)
 			}
