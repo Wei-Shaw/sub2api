@@ -253,12 +253,18 @@ func isForcedUsageBillingRequestID(requestID string) bool {
 const deepseekToolsBillingIDWindow = 5 * time.Minute
 
 // StableDeepseekToolsBillingRequestID 是 DeepSeek 独立工具接口的 durable
-// usage_logs / 去重键：deepseek_tools:{endpoint}:{payloadHash}:{时间窗序号}。
+// usage_logs / 去重键：deepseek_tools:{endpoint}:{payloadHash 前 16 hex}:{时间窗序号}。
 // 与 StableGrokAudioBillingRequestID 同模式：强前缀保证不会被客户端复用的
-// request id 折叠。
+// request id 折叠。hash 截短到 16 hex：同一 5 分钟窗口内的幂等去重碰撞概率
+// 可忽略，且保证总长不超过 usage_logs.request_id 的 varchar(64)
+// （前缀 14 + endpoint ≤12 + 冒号 + 16 + 冒号 + 10 位时间窗 = ≤54）。
 func StableDeepseekToolsBillingRequestID(endpoint string, payloadHash string) string {
 	window := time.Now().Unix() / int64(deepseekToolsBillingIDWindow/time.Second)
-	return "deepseek_tools:" + strings.TrimSpace(endpoint) + ":" + strings.TrimSpace(payloadHash) + ":" + strconv.FormatInt(window, 10)
+	hash := strings.TrimSpace(payloadHash)
+	if len(hash) > 16 {
+		hash = hash[:16]
+	}
+	return "deepseek_tools:" + strings.TrimSpace(endpoint) + ":" + hash + ":" + strconv.FormatInt(window, 10)
 }
 
 // StableGrokAudioBillingRequestID is the durable usage_logs / dedup key for one
