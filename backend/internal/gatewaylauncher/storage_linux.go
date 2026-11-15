@@ -274,6 +274,16 @@ func (a *authority) read() (journal, bool, error) {
 	return j, true, nil
 }
 
+// Reserve the next retirement before publishing a reservation or executing a
+// child. PID/birth widths and the longest valid method bound both exit paths.
+func retirementFits(j journal, b Binding) bool {
+	b.PID, b.BirthTicks = int(^uint(0)>>1), ^uint64(0)
+	j.Current = record{b, "retired"}
+	j.Receipts = append(j.Receipts[:len(j.Receipts):len(j.Receipts)], Receipt{b, LocalTeardownScope, "reacquired-after-supervisor-loss"})
+	data, err := json.Marshal(j)
+	return err == nil && len(data) <= maxJournalBytes
+}
+
 func (a *authority) write(j journal) error {
 	if a.lock == nil {
 		return ErrEvidence

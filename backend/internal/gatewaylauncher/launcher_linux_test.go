@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -1477,6 +1478,43 @@ func TestJournalByteBoundPreservesEvidence(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+	// A valid near-full journal must refuse launch before a new reservation
+	// can consume the space needed for its eventual exact retirement receipt.
+	if err = json.Unmarshal(before, &j); err != nil {
+		t.Fatal(err)
+	}
+	extra := (maxJournalBytes - len(before)) / (len(encoded) + 1)
+	for i := 0; i < extra; i++ {
+		r := receipt
+		r.Binding.Incarnation = fmt.Sprintf("00000000-0000-4000-8000-%012x", i+1)
+		j.Receipts = append(j.Receipts, r)
+	}
+	a, err = openAuthority(f.config.Authority.Directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = a.acquire(false); err != nil {
+		a.close()
+		t.Fatal(err)
+	}
+	if err = a.write(j); err != nil {
+		a.close()
+		t.Fatal(err)
+	}
+	a.close()
+	nearFull, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, startErr := Start(f.config)
+	trackLauncher(t, next)
+	if next != nil || !errors.Is(startErr, ErrSaturated) {
+		t.Fatalf("near-full journal started child: %v", startErr)
+	}
+	after, err = os.ReadFile(path)
+	if err != nil || string(nearFull) != string(after) {
+		t.Fatal("capacity refusal changed existing journal")
 	}
 }
 

@@ -258,6 +258,9 @@ func Start(config Config) (*Launcher, error) {
 	}
 	b := Binding{OriginRef: c.Authority.OriginRef, BootID: boot, Incarnation: inc, LockDevice: a.device, LockInode: a.inode}
 	j.Version = 1
+	if !retirementFits(j, b) {
+		return nil, ErrSaturated
+	}
 	j.Current = record{b, "reserved"}
 	// This durable reservation prevents a crash between exec and recording
 	// process birth from erasing an unresolved incarnation. Such a crash fails
