@@ -19,8 +19,9 @@ import (
 const lockName = "origin.lock"
 const journalName = "origin.json"
 const stagingName = "origin.next"
-const maxJournalBytes = 256 * 1024
-const retainedLimit = 64
+
+// Bound retained evidence by bytes without imposing a process restart count.
+const maxJournalBytes = 8 * 1024 * 1024
 
 var (
 	ErrUnsafe    = errors.New("launcher: unsafe protected authority")
@@ -252,7 +253,7 @@ func (a *authority) read() (journal, bool, error) {
 		return j, false, ErrEvidence
 	}
 	var extra any
-	if dec.Decode(&extra) != io.EOF || j.Version != 1 || len(j.Receipts) > retainedLimit {
+	if dec.Decode(&extra) != io.EOF || j.Version != 1 {
 		return j, false, ErrEvidence
 	}
 	// These records are emitted only by this supervisor. Requiring its exact
@@ -409,9 +410,6 @@ func (a *authority) recover(j *journal) error {
 	exactExited := err == nil && n == b.BirthTicks && (state == 'Z' || state == 'X')
 	if !absent && !exactExited {
 		return ErrBinding
-	}
-	if len(j.Receipts) >= retainedLimit {
-		return ErrSaturated
 	}
 	j.Receipts = append(j.Receipts, Receipt{b, LocalTeardownScope, "reacquired-after-supervisor-loss"})
 	j.Current.Phase = "retired"

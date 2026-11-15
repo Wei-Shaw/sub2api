@@ -252,9 +252,6 @@ func Start(config Config) (*Launcher, error) {
 			return nil, err
 		}
 	}
-	if len(j.Receipts) >= retainedLimit {
-		return nil, ErrSaturated
-	}
 	inc, err := randomID()
 	if err != nil {
 		return nil, err
@@ -524,9 +521,6 @@ func (l *Launcher) publishRetirement() (Receipt, error) {
 	}
 	if j.Current.Binding != l.binding {
 		return Receipt{}, ErrBinding
-	}
-	if len(j.Receipts) >= retainedLimit {
-		return Receipt{}, ErrSaturated
 	}
 	r := Receipt{l.binding, LocalTeardownScope, "observed-child-exit"}
 	j.Receipts = append(j.Receipts, r)

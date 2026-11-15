@@ -1382,22 +1382,21 @@ func TestRetainedHolderAfterChildExit(t *testing.T) {
 	}
 }
 
-// Regression: retained receipts cannot be evicted when fixed storage capacity
-// is exhausted. Every retained record below comes from an ACTUAL child exit.
-func TestRetentionSaturation(t *testing.T) {
-	t.Log("Regression: saturation denies new startup without evicting actual exact local evidence")
+// Restart history is bounded by bytes, not an arbitrary number of restarts.
+func TestRetirementHistoryBeyond64(t *testing.T) {
 	f := newFixture(t)
-	var first Binding
-	for i := 0; i < retainedLimit; i++ {
+	var bindings []Binding
+	for i := 0; i < 129; i++ {
 		if i > 0 {
 			if err := os.Remove(filepath.Join(f.root, "exchange", "stop")); err != nil {
 				t.Fatal(err)
 			}
 		}
-		l := startFixture(t, f.config)
-		if i == 0 {
-			first = l.Binding()
+		if i == 64 || i == 128 {
+			t.Logf("starting restart %d", i+1)
 		}
+		l := startFixture(t, f.config)
+		bindings = append(bindings, l.Binding())
 		stopEngine(t, f.root)
 		ctx, cancel := deadline(t)
 		_, err := l.Wait(ctx)
@@ -1405,22 +1404,79 @@ func TestRetentionSaturation(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if i == 64 || i == 128 {
+			for _, binding := range bindings {
+				if _, err := ReadReceipt(f.config.Authority, binding); err != nil {
+					t.Fatalf("history lost after %d restarts: %v", i+1, err)
+				}
+			}
+		}
 	}
-	before, err := os.ReadFile(filepath.Join(f.config.Authority.Directory, journalName))
+}
+
+func TestJournalByteBoundPreservesEvidence(t *testing.T) {
+	f := newFixture(t)
+	l := startFixture(t, f.config)
+	binding := l.Binding()
+	stopEngine(t, f.root)
+	ctx, cancel := deadline(t)
+	receipt, err := l.Wait(ctx)
+	cancel()
 	if err != nil {
 		t.Fatal(err)
 	}
-	next, startErr := Start(f.config)
-	trackLauncher(t, next)
-	if next != nil || !errors.Is(startErr, ErrSaturated) {
-		t.Fatal("saturated journal started child")
+	path := filepath.Join(f.config.Authority.Directory, journalName)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
 	}
-	after, err := os.ReadFile(filepath.Join(f.config.Authority.Directory, journalName))
+	a, err := openAuthority(f.config.Authority.Directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer a.close()
+	if err = a.acquire(false); err != nil {
+		t.Fatal(err)
+	}
+	j, _, err := a.read()
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	j.Receipts = make([]Receipt, maxJournalBytes/len(encoded)+1)
+	for i := range j.Receipts {
+		j.Receipts[i] = receipt
+	}
+	if err = a.write(j); !errors.Is(err, ErrStorage) {
+		t.Fatalf("oversize write accepted: %v", err)
+	}
+	after, err := os.ReadFile(path)
 	if err != nil || string(before) != string(after) {
-		t.Fatal("saturation evicted evidence")
+		t.Fatal("oversize write changed existing evidence")
 	}
-	if _, err = ReadReceipt(f.config.Authority, first); err != nil {
-		t.Fatal("original actual receipt lost at saturation")
+	a.close()
+	if _, err = ReadReceipt(f.config.Authority, binding); err != nil {
+		t.Fatal("existing receipt lost:", err)
+	}
+	for _, tc := range []struct{ name, raw string }{
+		{"duplicate", strings.Replace(string(before), `"version":1`, `"version":1,"version":1`, 1)},
+		{"malformed", "{"},
+		{"oversize", strings.Repeat(" ", maxJournalBytes+1)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := os.WriteFile(path, []byte(tc.raw), 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := ReadReceipt(f.config.Authority, binding); err == nil {
+				t.Fatal("invalid journal accepted")
+			}
+			if err := os.WriteFile(path, before, 0600); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 
