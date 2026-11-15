@@ -28,6 +28,15 @@ func TestGeminiParallelToolStreams(t *testing.T) {
 		{"same_id_incremental_strings", [][]string{{`{"id":"a","name":"read_file","args":"{\"path\":"}`}, {`{"id":"a","name":"read_file","args":"\"a\"}"}`}}, []string{`{"path":"a"}`}},
 		{"no_id_incremental_strings", [][]string{{`{"name":"read_file","args":"{\"path\":"}`}, {`{"name":"read_file","args":"\"a\"}"}`}}, []string{`{"path":"a"}`}},
 		{"same_id_cumulative_and_duplicate", [][]string{{`{"id":"a","name":"read_file","args":"{\"path\":"}`}, {`{"id":"a","name":"read_file","args":"{\"path\":\"a\"}"}`}, {`{"id":"a","name":"read_file","args":{"path":"a"}}`}}, []string{`{"path":"a"}`}},
+		{"anonymous_incremental_then_final_snapshot", [][]string{{`{"name":"read_file","args":"{\"path\":"}`}, {`{"name":"read_file","args":"\"a\"}"}`}, {`{"name":"read_file","args":{"path":"a"}}`}}, []string{`{"path":"a"}`}},
+		{"id_first_chunk_only_then_final_snapshot", [][]string{{`{"id":"a","name":"read_file","args":"{\"path\":"}`}, {`{"name":"read_file","args":"\"a\"}"}`}, {`{"name":"read_file","args":{"path":"a"}}`}}, []string{`{"path":"a"}`}},
+		{"id_learned_on_second_chunk_then_duplicate", [][]string{{`{"name":"read_file","args":"{\"path\":"}`}, {`{"id":"a","name":"read_file","args":"{\"path\":\"a\"}"}`}, {`{"id":"a","name":"read_file","args":{"path":"a"}}`}}, []string{`{"path":"a"}`}},
+		{"same_name_no_ids_identical_one_event", [][]string{{`{"name":"read_file","args":{"path":"a"}}`, `{"name":"read_file","args":{"path":"a"}}`}}, []string{`{"path":"a"}`, `{"path":"a"}`}},
+		{"anonymous_fragments_snapshot_then_identical_call", [][]string{{`{"name":"read_file","args":"{\"path\":"}`}, {`{"name":"read_file","args":"\"a\"}"}`}, {`{"name":"read_file","args":{"path":"a"}}`}, {`{"name":"read_file","args":{"path":"a"}}`}}, []string{`{"path":"a"}`, `{"path":"a"}`}},
+		{"anonymous_fragments_then_distinct_complete_call", [][]string{{`{"name":"read_file","args":"{\"path\":"}`}, {`{"name":"read_file","args":"\"a\"}"}`}, {`{"name":"read_file","args":{"path":"b"}}`}}, []string{`{"path":"a"}`, `{"path":"b"}`}},
+		{"late_id_then_distinct_same_arguments_call", [][]string{{`{"name":"read_file","args":"{\"path\":"}`}, {`{"name":"read_file","args":"\"a\"}","id":"a"}`}, {`{"name":"read_file","args":{"path":"a"},"id":"b"}`}}, []string{`{"path":"a"}`, `{"path":"a"}`}},
+		{"anonymous_cumulative_final_string_then_snapshot", [][]string{{`{"name":"read_file","args":"{\"path\":"}`}, {`{"name":"read_file","args":"{\"path\":\"a\"}"}`}, {`{"name":"read_file","args":"{\"path\":\"a\"}"}`}, {`{"name":"read_file","args":{"path":"a"}}`}}, []string{`{"path":"a"}`}},
+		{"explicit_id_change_overrides_fragment_snapshot", [][]string{{`{"name":"read_file","args":"{\"path\":","id":"a"}`}, {`{"name":"read_file","args":"\"a\"}","id":"a"}`}, {`{"name":"read_file","args":{"path":"a"},"id":"b"}`}}, []string{`{"path":"a"}`, `{"path":"a"}`}},
 		{"different_names", [][]string{{`{"name":"read_file","args":{}}`, `{"name":"read_other","args":{}}`}}, []string{`{}`, `{}`}},
 	}
 	for _, tt := range tests {
@@ -43,9 +52,9 @@ func TestGeminiParallelToolStreams(t *testing.T) {
 					}
 					b, err := json.Marshal(map[string]any{"candidates": []any{map[string]any{"content": map[string]any{"parts": parts}}}})
 					require.NoError(t, err)
-					upstream.WriteString("data: " + string(b) + "\n\n")
+					_, _ = upstream.WriteString("data: " + string(b) + "\n\n")
 				}
-				upstream.WriteString(`data: {"candidates":[{"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":11,"candidatesTokenCount":7,"cachedContentTokenCount":3}}` + "\n\ndata: [DONE]\n\n")
+				_, _ = upstream.WriteString(`data: {"candidates":[{"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":11,"candidatesTokenCount":7,"cachedContentTokenCount":3}}` + "\n\ndata: [DONE]\n\n")
 				rec := httptest.NewRecorder()
 				c, _ := gin.CreateTestContext(rec)
 				svc := &GeminiMessagesCompatService{}
