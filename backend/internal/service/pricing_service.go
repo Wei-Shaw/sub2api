@@ -232,10 +232,17 @@ var (
 	}
 )
 
+// tokenPriceOverrides tracks explicit nonnegative rates from pricing.override_file.
+// Keep this provenance with the parsed card so billing never rereads the file.
+type tokenPriceOverrides struct {
+	input, output, cacheRead bool
+}
+
 // LiteLLMModelPricing LiteLLM价格数据结构
 // 只保留我们需要的字段，使用指针来处理可能缺失的值
 type LiteLLMModelPricing struct {
-	CacheCreationInputTokenCostExplicit bool    `json:"-"`
+	CacheCreationInputTokenCostExplicit bool `json:"-"`
+	priceOverrides                      tokenPriceOverrides
 	InputCostPerToken                   float64 `json:"input_cost_per_token"`
 	InputCostPerTokenPriority           float64 `json:"input_cost_per_token_priority"`
 	OutputCostPerToken                  float64 `json:"output_cost_per_token"`
@@ -686,7 +693,7 @@ func (s *PricingService) parsePricingData(body []byte) (map[string]*LiteLLMModel
 	if err := json.Unmarshal(body, &rawData); err != nil {
 		return nil, fmt.Errorf("parse raw JSON: %w", err)
 	}
-	rawData = s.applyPricingOverrides(rawData)
+	rawData, priceOverrides := s.applyPricingOverrides(rawData)
 
 	result := make(map[string]*LiteLLMModelPricing)
 	skipped := 0
@@ -711,6 +718,7 @@ func (s *PricingService) parsePricingData(body []byte) (map[string]*LiteLLMModel
 		}
 
 		pricing := &LiteLLMModelPricing{
+			priceOverrides:        priceOverrides[modelName],
 			LiteLLMProvider:       entry.LiteLLMProvider,
 			Mode:                  entry.Mode,
 			SupportsPromptCaching: entry.SupportsPromptCaching,
@@ -951,11 +959,12 @@ func warnOrphanCacheTierFields(entries []string) {
 // 文件的解析都经过 parsePricingData，因此 override 是最高优先级的数据源。这里只修补
 // 已存在的条目：目录/回退里都没有的模型由 mergeOverrideOnlyModels 在两层数据合并后
 // 统一并入——若在此处抢先建条目，纯 override 条目会挡住回退文件中同名完整条目的合并。
-func (s *PricingService) applyPricingOverrides(rawData map[string]json.RawMessage) map[string]json.RawMessage {
+func (s *PricingService) applyPricingOverrides(rawData map[string]json.RawMessage) (map[string]json.RawMessage, map[string]tokenPriceOverrides) {
 	overrides := s.loadPricingOverrideEntries()
 	if len(overrides) == 0 {
-		return rawData
+		return rawData, nil
 	}
+	priceOverrides := make(map[string]tokenPriceOverrides, len(overrides))
 	for name, patch := range overrides {
 		base, ok := rawData[name]
 		if !ok {
@@ -967,8 +976,25 @@ func (s *PricingService) applyPricingOverrides(rawData map[string]json.RawMessag
 			continue
 		}
 		rawData[name] = merged
+		priceOverrides[name] = tokenPriceOverridesFromPatch(patch)
 	}
-	return rawData
+	return rawData, priceOverrides
+}
+
+func tokenPriceOverridesFromPatch(patch json.RawMessage) tokenPriceOverrides {
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(patch, &fields) != nil {
+		return tokenPriceOverrides{}
+	}
+	explicitRate := func(field string) bool {
+		var rate *float64
+		return json.Unmarshal(fields[field], &rate) == nil && rate != nil && *rate >= 0
+	}
+	return tokenPriceOverrides{
+		input:     explicitRate("input_cost_per_token"),
+		output:    explicitRate("output_cost_per_token"),
+		cacheRead: explicitRate("cache_read_input_token_cost"),
+	}
 }
 
 // loadPricingOverrideEntries 读取 override 文件的原始条目。未配置返回 nil；
