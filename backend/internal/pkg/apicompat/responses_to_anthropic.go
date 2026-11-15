@@ -55,6 +55,9 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 				Input: anthropicToolUseInput(item.Type, item.Name, item.Arguments),
 			})
 		case "custom_tool_call":
+			if !resp.RenderCustomToolCalls {
+				continue
+			}
 			blocks = append(blocks, AnthropicContentBlock{
 				Type:  "tool_use",
 				ID:    fromResponsesCallID(item.CallID),

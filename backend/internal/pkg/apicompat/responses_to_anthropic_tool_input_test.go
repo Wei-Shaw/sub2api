@@ -46,7 +46,7 @@ func TestResponsesToAnthropicInvalidToolInputStillMarshals(t *testing.T) {
 		{Type: "reasoning", Summary: []ResponsesSummary{{Type: "summary_text", Text: "plan"}}},
 		{Type: "function_call", CallID: "call_1", Name: "get", Arguments: "{\"a\":1"},
 		{Type: "custom_tool_call", CallID: "call_2", Name: "exec", Input: "dir"},
-	}}
+	}, RenderCustomToolCalls: true}
 	out := ResponsesToAnthropic(resp, "m")
 	body, err := json.Marshal(out)
 	require.NoError(t, err)
@@ -60,9 +60,21 @@ func TestResponsesToAnthropicInvalidToolInputStillMarshals(t *testing.T) {
 func TestResponsesToChatCompletionsRendersCustomToolCall(t *testing.T) {
 	resp := &ResponsesResponse{ID: "resp_1", Status: "completed", Output: []ResponsesOutput{
 		{Type: "custom_tool_call", CallID: "call_1", Name: "exec", Input: "dir"},
-	}}
+	}, RenderCustomToolCalls: true}
 	out := ResponsesToChatCompletions(resp, "m")
 	require.Len(t, out.Choices[0].Message.ToolCalls, 1)
 	require.Equal(t, "dir", out.Choices[0].Message.ToolCalls[0].Function.Arguments)
 	require.Equal(t, "tool_calls", out.Choices[0].FinishReason)
+}
+
+// An output the upstream delivered keeps custom_tool_call items unrendered.
+func TestResponsesToAnthropicAndChatSkipDeliveredCustomToolCall(t *testing.T) {
+	resp := &ResponsesResponse{ID: "resp_1", Status: "completed", Output: []ResponsesOutput{
+		{Type: "custom_tool_call", CallID: "xs_123", Name: "x_keyword_search", Input: "{}"},
+	}}
+	require.Len(t, ResponsesToAnthropic(resp, "m").Content, 1)
+	require.Equal(t, "text", ResponsesToAnthropic(resp, "m").Content[0].Type)
+	chat := ResponsesToChatCompletions(resp, "m")
+	require.Empty(t, chat.Choices[0].Message.ToolCalls)
+	require.Equal(t, "stop", chat.Choices[0].FinishReason)
 }

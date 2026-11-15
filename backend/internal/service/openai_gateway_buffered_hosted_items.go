@@ -166,8 +166,8 @@ func (o *openAICompatOutputSlots) slot(payload []byte, kind, id string, done, cr
 
 // fillTerminalOutput rebuilds an empty terminal output from the stream's output
 // items, in output_index order, items without an output_index after the indexed
-// ones in arrival order. Items with the same output_index keep arrival order. An item that received output_item.done is taken from
-// that event, completed with the deltas where the event left a text, refusal or
+// ones in arrival order. Items with the same output_index keep arrival order.
+// An item that received output_item.done is taken from that event, completed with the deltas where the event left a text, refusal or
 // the arguments empty; an item that never received it is rebuilt from its
 // deltas. Only terminals that carry a result are filled; the output of
 // response.failed and error terminals never reaches the client and is left as
@@ -192,6 +192,9 @@ func (o *openAICompatOutputSlots) fillTerminalOutput(eventType string, response 
 	for _, slot := range slots {
 		if item, ok := slot.build(); ok {
 			response.Output = append(response.Output, item)
+			if item.Type == "custom_tool_call" {
+				response.RenderCustomToolCalls = true
+			}
 		}
 	}
 }
@@ -211,31 +214,27 @@ func (s *openAICompatOutputSlot) build() (apicompat.ResponsesOutput, bool) {
 	return *s.done, true
 }
 
-func openAICompatReasoningItemText(item apicompat.ResponsesOutput) string {
-	var text strings.Builder
-	for _, part := range item.Summary {
-		if part.Type == "summary_text" {
-			_, _ = text.WriteString(part.Text)
-		}
-	}
-	if text.Len() == 0 {
-		for _, part := range item.Content {
-			if part.Type == "reasoning_text" {
-				_, _ = text.WriteString(part.Text)
-			}
-		}
-	}
-	return text.String()
-}
-
 func (s *openAICompatOutputSlot) buildReasoning() (apicompat.ResponsesOutput, bool) {
 	item := apicompat.ResponsesOutput{Type: "reasoning"}
 	if s.done != nil {
 		item = *s.done
 	}
-	if s.reasoning.Len() > 0 && openAICompatReasoningItemText(item) == "" {
-		item.Summary = []apicompat.ResponsesSummary{{Type: "summary_text", Text: s.reasoning.String()}}
-		item.Content = nil
+	// The converters render the summary text and fall back to the reasoning_text
+	// content only when the summary has none, so an item carrying both would lose
+	// one. The deltas carried every text the client is shown, so they stand in
+	// for a text field that is empty or that would be dropped.
+	if s.reasoning.Len() > 0 {
+		var summary, content bool
+		for _, part := range item.Summary {
+			summary = summary || (part.Type == "summary_text" && part.Text != "")
+		}
+		for _, part := range item.Content {
+			content = content || (part.Type == "reasoning_text" && part.Text != "")
+		}
+		if summary == content {
+			item.Summary = []apicompat.ResponsesSummary{{Type: "summary_text", Text: s.reasoning.String()}}
+			item.Content = nil
+		}
 	}
 	return item, s.done != nil || s.reasoning.Len() > 0
 }

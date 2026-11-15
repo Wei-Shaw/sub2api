@@ -436,3 +436,17 @@ func TestForwardAsAnthropic_BufferedNonObjectToolInput(t *testing.T) {
 	require.Equal(t, `{"input":"dir"}`, gjson.Get(out, "content.0.input").Raw, out)
 	require.Equal(t, "tool_use", gjson.Get(out, "stop_reason").String(), out)
 }
+
+// A reasoning item with a summary and raw reasoning_text content: the converters render one of the two,
+// so the deltas that carried both supply the text, as the streaming path shows it.
+func TestForwardAsAnthropic_BufferedReasoningSummaryAndContentKeepBoth(t *testing.T) {
+	sse := bufferedItemsSSE(
+		bufferedHostedItemsCreated,
+		`{"type":"response.reasoning_text.delta","output_index":0,"content_index":0,"delta":"raw thoughts"}`,
+		`{"type":"response.reasoning_summary_text.delta","output_index":0,"summary_index":0,"delta":"summary"}`,
+		`{"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"summary"}],"content":[{"type":"reasoning_text","text":"raw thoughts"}]}}`,
+		bufferedHostedItemsCompleted,
+	)
+	out := forwardBufferedHostedItems(t, "/v1/messages", bufferedHostedItemsThinkingBody, sse)
+	require.Equal(t, "raw thoughtssummary", gjson.Get(out, "content.0.thinking").String(), out)
+}

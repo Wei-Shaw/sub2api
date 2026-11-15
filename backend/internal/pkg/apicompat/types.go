@@ -384,6 +384,11 @@ type ResponsesResponse struct {
 
 	// Error is present when status="failed"
 	Error *ResponsesError `json:"error,omitempty"`
+
+	// RenderCustomToolCalls is set on an output rebuilt from stream events, where
+	// the accumulator has always handed custom_tool_call items to the converters
+	// as tool calls. An output the upstream delivered keeps them unrendered.
+	RenderCustomToolCalls bool `json:"-"`
 }
 
 // ResponsesError describes an error in a failed response.

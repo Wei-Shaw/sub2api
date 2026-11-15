@@ -57,6 +57,9 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 				},
 			})
 		case "custom_tool_call":
+			if !resp.RenderCustomToolCalls {
+				continue
+			}
 			toolCalls = append(toolCalls, ChatToolCall{
 				ID:   item.CallID,
 				Type: "function",
