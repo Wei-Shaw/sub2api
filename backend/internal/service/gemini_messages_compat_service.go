@@ -2428,7 +2428,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 				}
 
 				delta := seenToolJSON.next(argsJSONText)
-				toolBoundary.observe(fc, seenToolJSON.seen.String())
+				toolBoundary.observe(fc)
 				if delta != "" {
 					writeSSE(c.Writer, "content_block_delta", map[string]any{
 						"type":  "content_block_delta",

@@ -37,6 +37,14 @@ func TestGeminiParallelToolStreams(t *testing.T) {
 		{"late_id_then_distinct_same_arguments_call", [][]string{{`{"name":"read_file","args":"{\"path\":"}`}, {`{"name":"read_file","args":"\"a\"}","id":"a"}`}, {`{"name":"read_file","args":{"path":"a"},"id":"b"}`}}, []string{`{"path":"a"}`, `{"path":"a"}`}},
 		{"anonymous_cumulative_final_string_then_snapshot", [][]string{{`{"name":"read_file","args":"{\"path\":"}`}, {`{"name":"read_file","args":"{\"path\":\"a\"}"}`}, {`{"name":"read_file","args":"{\"path\":\"a\"}"}`}, {`{"name":"read_file","args":{"path":"a"}}`}}, []string{`{"path":"a"}`}},
 		{"explicit_id_change_overrides_fragment_snapshot", [][]string{{`{"name":"read_file","args":"{\"path\":","id":"a"}`}, {`{"name":"read_file","args":"\"a\"}","id":"a"}`}, {`{"name":"read_file","args":{"path":"a"},"id":"b"}`}}, []string{`{"path":"a"}`, `{"path":"a"}`}},
+		{"complete_string_duplicate_no_ids", [][]string{{`{"name":"read_file","args":"{\"path\":\"a\"}"}`}, {`{"name":"read_file","args":"{\"path\":\"a\"}"}`}}, []string{`{"path":"a"}`}},
+		{"complete_string_duplicate_first_id_only", [][]string{{`{"name":"read_file","args":"{\"path\":\"a\"}","id":"a"}`}, {`{"name":"read_file","args":"{\"path\":\"a\"}"}`}}, []string{`{"path":"a"}`}},
+		{"complete_string_duplicate_final_object_same_id", [][]string{{`{"name":"read_file","args":"{\"path\":\"a\"}","id":"a"}`}, {`{"name":"read_file","args":"{\"path\":\"a\"}"}`}, {`{"name":"read_file","args":{"path":"a"},"id":"a"}`}}, []string{`{"path":"a"}`}},
+		{"complete_string_final_object_no_ids", [][]string{{`{"name":"read_file","args":"{\"path\":\"a\"}"}`}, {`{"name":"read_file","args":{"path":"a"}}`}}, []string{`{"path":"a"}`}},
+		{"complete_strings_stable_id", [][]string{{`{"name":"read_file","args":"{\"path\":\"a\"}","id":"a"}`}, {`{"name":"read_file","args":"{\"path\":\"a\"}","id":"a"}`}, {`{"name":"read_file","args":{"path":"a"},"id":"a"}`}}, []string{`{"path":"a"}`}},
+		{"complete_strings_distinct_ids", [][]string{{`{"name":"read_file","args":"{\"path\":\"a\"}","id":"a"}`}, {`{"name":"read_file","args":"{\"path\":\"a\"}","id":"b"}`}}, []string{`{"path":"a"}`, `{"path":"a"}`}},
+		{"complete_string_snapshot_then_identical_native_call", [][]string{{`{"name":"read_file","args":"{\"path\":\"a\"}"}`}, {`{"name":"read_file","args":{"path":"a"}}`}, {`{"name":"read_file","args":{"path":"a"}}`}}, []string{`{"path":"a"}`, `{"path":"a"}`}},
+		{"complete_string_late_id_then_new_id", [][]string{{`{"name":"read_file","args":"{\"path\":\"a\"}"}`}, {`{"name":"read_file","args":"{\"path\":\"a\"}","id":"a"}`}, {`{"name":"read_file","args":{"path":"a"},"id":"b"}`}}, []string{`{"path":"a"}`, `{"path":"a"}`}},
 		{"different_names", [][]string{{`{"name":"read_file","args":{}}`, `{"name":"read_other","args":{}}`}}, []string{`{}`, `{}`}},
 	}
 	for _, tt := range tests {

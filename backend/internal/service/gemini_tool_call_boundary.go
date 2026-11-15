@@ -7,13 +7,13 @@ import (
 
 // geminiToolCallBoundary tracks identity separately from the function name.
 // Native object-valued args without IDs represent independent calls, including
-// identical calls. String-valued fragments may end with a cumulative snapshot;
-// preserve that snapshot's identity until its object-valued args arrive.
-// Without IDs, a terminal snapshot and a new identical call immediately after
-// fragments are indistinguishable; prefer the snapshot in that specific case.
+// identical calls. String-valued arguments use stream mode even when the first
+// chunk is already complete JSON; retain duplicate strings and the terminal
+// object snapshot in that call. Without IDs, a terminal snapshot and a new
+// identical call after strings are indistinguishable; prefer the snapshot.
 type geminiToolCallBoundary struct {
 	upstreamID string
-	fragmented bool
+	stringArgs bool
 }
 
 func (b *geminiToolCallBoundary) startsNewBlock(openName, seenJSON, argsJSON string, fc map[string]any) bool {
@@ -32,24 +32,21 @@ func (b *geminiToolCallBoundary) startsNewBlock(openName, seenJSON, argsJSON str
 		return false
 	}
 	// Keep the existing delta accumulator's duplicate/rewind behavior for a
-	// fragmented call. Do not deduplicate separate complete native calls.
-	if b.fragmented && strings.HasPrefix(seenJSON, strings.TrimSuffix(argsJSON, "\u0000")) {
+	// string-argument call. Do not deduplicate separate complete native calls.
+	if b.stringArgs && strings.HasPrefix(seenJSON, strings.TrimSuffix(argsJSON, "\u0000")) {
 		return false
 	}
 	return true
 }
 
-func (b *geminiToolCallBoundary) observe(fc map[string]any, seenJSON string) {
+func (b *geminiToolCallBoundary) observe(fc map[string]any) {
 	if b.upstreamID == "" {
 		b.upstreamID, _ = fc["id"].(string)
 	}
-	if _, isString := fc["args"].(string); isString {
-		b.fragmented = b.fragmented || !json.Valid([]byte(seenJSON))
-	} else {
-		// The terminal object snapshot has been consumed. A following
-		// anonymous complete object can now be another identical call.
-		b.fragmented = false
-	}
+	// The representation determines the mode, not whether the first string
+	// happens to contain complete JSON. An object consumes the final snapshot,
+	// allowing the next anonymous native object to be an independent call.
+	_, b.stringArgs = fc["args"].(string)
 }
 
 func geminiToolCallArgsJSON(args any) string {
