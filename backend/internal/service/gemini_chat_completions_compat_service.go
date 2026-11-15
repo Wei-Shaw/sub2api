@@ -600,6 +600,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 	var seenThought geminiTextDelta
 	openToolIndex := -1
 	openToolName := ""
+	openToolUpstreamID := ""
 	var seenToolJSON geminiTextDelta
 
 	closeOpenBlock := func() bool {
@@ -735,7 +736,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 								if closeOpenBlock() {
 									return streamResult(), nil
 								}
-								if openToolIndex >= 0 && openToolName != name {
+								if openToolIndex >= 0 && geminiToolCallStartsNewBlock(openToolUpstreamID, openToolName, seenToolJSON.seen.String(), fc) {
 									if closeOpenTool() {
 										return streamResult(), nil
 									}
@@ -745,6 +746,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 									nextBlockIndex++
 									openToolIndex = idx
 									openToolName = name
+									openToolUpstreamID, _ = fc["id"].(string)
 									sawToolUse = true
 									if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
 										Type:  "content_block_start",
