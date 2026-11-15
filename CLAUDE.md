@@ -45,7 +45,7 @@ cd backend && go run ./cmd/server
 pnpm --dir frontend dev
 ```
 
-配置文件放 `backend/config.yaml`（已在 `.gitignore`），连接服务器测试库（Tailscale IP：`100.71.166.42`）。
+配置文件放 `backend/config.yaml`（已在 `.gitignore`），连接测试库（地址见私有仓库 nana-fox/nanafox-ops，不写进本仓库）。
 参考 `docs/engineering/deployment.md` 了解完整配置。
 
 ## 部署
