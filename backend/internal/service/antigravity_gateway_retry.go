@@ -686,7 +686,7 @@ urlFallbackLoop:
 
 				// INTERNAL 500 渐进惩罚：3 次重试全部命中特定 500 时递增计数器并惩罚
 				if allAttemptsInternal500 && isAntigravityInternalServerError(resp.StatusCode, respBody) {
-					s.handleInternal500RetryExhausted(p.ctx, p.prefix, p.account)
+					s.handleInternal500ForModel(p.ctx, p.prefix, p.account, resolveFinalAntigravityModelKey(p.ctx, p.account, p.requestedModel))
 				}
 
 				// 其他 4xx 错误或重试用尽，直接返回
@@ -882,7 +882,7 @@ func (s *AntigravityGatewayService) setAntigravityModelRateLimits(ctx context.Co
 	if account == nil || repo == nil {
 		return false
 	}
-	keys := antigravityModelRateLimitKeys(modelName)
+	keys := antigravityModelRateLimitKeys(account, modelName)
 	if len(keys) == 0 {
 		return false
 	}

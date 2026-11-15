@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -160,21 +162,64 @@ func TestPricingHotReload_DeletedFileDropsItsLayer(t *testing.T) {
 	require.NotNil(t, svc.pricingData["custom-a"], "文件重新出现即恢复")
 }
 
-type stubPricingRemoteClient struct{ body string }
+type stubPricingRemoteClient struct {
+	body      string
+	hash      string
+	downloads int
+}
 
-func (c stubPricingRemoteClient) FetchPricingJSON(context.Context, string) ([]byte, error) {
+func (c *stubPricingRemoteClient) FetchPricingJSON(context.Context, string) ([]byte, error) {
+	c.downloads++
 	return []byte(c.body), nil
 }
 
-func (c stubPricingRemoteClient) FetchHashText(context.Context, string) (string, error) {
-	return "", nil
+func (c *stubPricingRemoteClient) FetchHashText(context.Context, string) (string, error) {
+	return c.hash, nil
+}
+
+func TestPricingSyncRetriesMismatchedCatalogUntilDataCatchesUp(t *testing.T) {
+	oldBody := hotReloadCatalogJSON
+	newBody := `{` + hotReloadModelJSON("remote-model", 3e-6, 6e-6) + `}`
+	oldHash := fmt.Sprintf("%x", sha256.Sum256([]byte(oldBody)))
+	newHash := fmt.Sprintf("%x", sha256.Sum256([]byte(newBody)))
+	remote := &stubPricingRemoteClient{body: oldBody, hash: newHash}
+	svc := NewPricingService(&config.Config{Pricing: config.PricingConfig{
+		DataDir:   t.TempDir(),
+		RemoteURL: "https://example.com/pricing.json",
+		HashURL:   "https://example.com/pricing.sha256",
+	}}, remote)
+
+	// The hash endpoint has advanced, but the catalog endpoint still serves old prices.
+	require.NoError(t, svc.ForceUpdate())
+	require.InDelta(t, 1e-6, svc.GetModelPricing("remote-model").InputCostPerToken, 1e-12)
+	require.Equal(t, oldHash, svc.localHash)
+	savedHash, err := os.ReadFile(svc.getHashFilePath())
+	require.NoError(t, err)
+	require.Equal(t, oldHash+"\n", string(savedHash))
+
+	// An unchanged remote hash must not suppress the later catalog download.
+	remote.body = newBody
+	require.NoError(t, svc.syncWithRemote())
+	require.Equal(t, 2, remote.downloads)
+	require.InDelta(t, 3e-6, svc.GetModelPricing("remote-model").InputCostPerToken, 1e-12)
+	require.Equal(t, newHash, svc.localHash)
+	savedBody, err := os.ReadFile(svc.getPricingFilePath())
+	require.NoError(t, err)
+	require.Equal(t, newBody, string(savedBody))
+	savedHash, err = os.ReadFile(svc.getHashFilePath())
+	require.NoError(t, err)
+	require.Equal(t, newHash+"\n", string(savedHash))
+
+	// Once both endpoints agree, normal polling skips redundant downloads.
+	require.NoError(t, svc.syncWithRemote())
+	require.Equal(t, 2, remote.downloads)
 }
 
 // 远程下载重建后指纹必须同步到当前文件内容，否则下一轮定时比对会多做一次无意义重载。
 func TestPricingHotReload_DownloadRefreshesFingerprint(t *testing.T) {
 	svc := newHotReloadPricingService(t, `{`+hotReloadModelJSON("custom-a", 4e-6, 8e-6)+`}`, "")
 	svc.cfg.Pricing.RemoteURL = "https://example.com/pricing.json"
-	svc.remoteClient = stubPricingRemoteClient{body: hotReloadCatalogJSON}
+	svc.remoteClient = &stubPricingRemoteClient{body: hotReloadCatalogJSON}
 	require.NoError(t, os.WriteFile(svc.cfg.Pricing.FallbackFile, []byte(`{`+hotReloadModelJSON("custom-b", 1e-6, 3e-6)+`}`), 0644))
 
 	require.NoError(t, svc.downloadPricingData())

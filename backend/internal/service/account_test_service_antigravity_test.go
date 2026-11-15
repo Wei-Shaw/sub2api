@@ -80,3 +80,39 @@ func TestAntigravityShouldUseGeminiTestBuilder_UsesMappedModel(t *testing.T) {
 	require.False(t, shouldUseAntigravityGeminiTestRequest("gemini-alias", "claude-sonnet-4-6"))
 	require.False(t, shouldUseAntigravityGeminiTestRequest("claude-sonnet-4-6", "claude-sonnet-4-6"))
 }
+
+// Every other platform's connection test sends the admin's prompt (default "hi") and lets the
+// model answer. The Antigravity text test sent "." with maxOutputTokens 1, ignoring the prompt,
+// so thinking models (gemini-4-argon, gemini-3.8-flash) spent that token thinking and the test
+// showed "sent: hi" with an empty response.
+func TestAntigravityBuildGeminiTestRequest_UsesPromptAndRoomToAnswer(t *testing.T) {
+	t.Parallel()
+
+	svc := &AntigravityGatewayService{}
+	for _, tc := range []struct{ prompt, want string }{{"hello there", "hello there"}, {"", "hi"}, {"   ", "hi"}} {
+		raw, err := svc.buildGeminiTestRequestWithPrompt("proj-123", "gemini-4-argon-high", tc.prompt)
+		require.NoError(t, err)
+		var v1Req map[string]any
+		require.NoError(t, json.Unmarshal(raw, &v1Req))
+		inner := v1Req["request"].(map[string]any)
+		parts := inner["contents"].([]any)[0].(map[string]any)["parts"].([]any)
+		require.Equal(t, tc.want, parts[0].(map[string]any)["text"], "prompt %q", tc.prompt)
+		genCfg := inner["generationConfig"].(map[string]any)
+		require.EqualValues(t, antigravityTestMaxOutputTokens, genCfg["maxOutputTokens"])
+		require.GreaterOrEqual(t, antigravityTestMaxOutputTokens, 128, "a thinking model needs room to answer")
+	}
+}
+
+func TestAntigravityBuildClaudeTestRequest_UsesPromptAndRoomToAnswer(t *testing.T) {
+	t.Parallel()
+
+	svc := &AntigravityGatewayService{}
+	raw, err := svc.buildClaudeTestRequest("proj-123", "claude-sonnet-4-6", "hello there")
+	require.NoError(t, err)
+	require.Contains(t, string(raw), "hello there")
+	require.NotContains(t, string(raw), `"text":"."`)
+
+	raw, err = svc.buildClaudeTestRequest("proj-123", "claude-sonnet-4-6", "")
+	require.NoError(t, err)
+	require.Contains(t, string(raw), `"hi"`)
+}

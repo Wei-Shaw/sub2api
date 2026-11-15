@@ -266,7 +266,7 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 	// 例外：采样锁定的模型（sonnet-5-5/haiku-5-5）上 temperature+top_p 共存即 400，
 	// 客户端只传 top_p 时不得再补 temperature，否则网关自己制造 400（issue #7919）。
 	samplingLocked := claude.IsSonnet55(modelID) || claude.IsHaiku55(modelID)
-	if !gjson.GetBytes(out, "temperature").Exists() && !claude.IsOpus55(modelID) &&
+	if !gjson.GetBytes(out, "temperature").Exists() && !claude.IsOpus55(modelID) && !claude.IsFable52(modelID) && !claude.IsMythos52(modelID) &&
 		(!samplingLocked || !gjson.GetBytes(out, "top_p").Exists()) {
 		if next, ok := setJSONValueBytes(out, "temperature", 1); ok {
 			out = next
@@ -993,7 +993,10 @@ type cacheControlPath struct {
 }
 
 func collectCacheControlPaths(body []byte) (invalidThinking []cacheControlPath, messagePaths []string, toolPaths []string, systemPaths []string) {
-	system := gjson.GetBytes(body, "system")
+	// Borrow only during this synchronous scan. Returned paths/logs own their
+	// strings; no result may retain the request body after this function returns.
+	view := openAIWSPayloadStringView(body)
+	system := gjson.Get(view, "system")
 	if system.IsArray() {
 		sysIndex := 0
 		system.ForEach(func(_, item gjson.Result) bool {
@@ -1013,7 +1016,7 @@ func collectCacheControlPaths(body []byte) (invalidThinking []cacheControlPath, 
 		})
 	}
 
-	messages := gjson.GetBytes(body, "messages")
+	messages := gjson.Get(view, "messages")
 	if messages.IsArray() {
 		msgIndex := 0
 		messages.ForEach(func(_, msg gjson.Result) bool {
@@ -1041,7 +1044,7 @@ func collectCacheControlPaths(body []byte) (invalidThinking []cacheControlPath, 
 		})
 	}
 
-	tools := gjson.GetBytes(body, "tools")
+	tools := gjson.Get(view, "tools")
 	if tools.IsArray() {
 		toolIndex := 0
 		tools.ForEach(func(_, tool gjson.Result) bool {

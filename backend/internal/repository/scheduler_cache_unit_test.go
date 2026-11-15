@@ -567,6 +567,23 @@ func TestBuildSchedulerMetadataAccount_KeepsQuotaStateForCachedAccounts(t *testi
 	}
 }
 
+func TestBuildSchedulerMetadataAccount_KeepsOpenAIImageSizeTiers(t *testing.T) {
+	account := service.Account{
+		ID:       91,
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeAPIKey,
+		Extra: map[string]any{
+			service.AccountExtraOpenAIImageSizeTiers: []any{"4K"},
+			"unused_large_field":                     "drop-me",
+		},
+	}
+
+	got := buildSchedulerMetadataAccount(account)
+
+	require.Equal(t, []string{"4K"}, got.OpenAIImageSizeTiers())
+	require.Nil(t, got.Extra["unused_large_field"])
+}
+
 func TestBuildSchedulerMetadataAccount_KeepsModelRateLimits(t *testing.T) {
 	account := service.Account{
 		ID:       90,

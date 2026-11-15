@@ -20,24 +20,27 @@ var ErrScopedAdminKeyConflict = infraerrors.Conflict("ADMIN_KEY_CONFLICT", "密�
 var ErrScopedAdminKeyNotFound = infraerrors.NotFound("ADMIN_KEY_NOT_FOUND", "Admin key not found")
 
 type ScopedAdminKeyInput struct {
-	Name        string             `json:"name"`
-	Description string             `json:"description"`
-	Enabled     bool               `json:"enabled"`
-	ExpiresAt   *time.Time         `json:"expires_at"`
-	AllowedIPs  []string           `json:"allowed_ips"`
-	Policy      adminaccess.Policy `json:"policy"`
+	ConfirmFullAccess bool               `json:"confirm_full_access,omitempty"`
+	Name              string             `json:"name"`
+	Description       string             `json:"description"`
+	Enabled           bool               `json:"enabled"`
+	ExpiresAt         *time.Time         `json:"expires_at"`
+	AllowedIPs        []string           `json:"allowed_ips"`
+	Policy            adminaccess.Policy `json:"policy"`
 }
 type ScopedAdminKey struct {
 	ScopedAdminKeyInput
-	ID         string     `json:"id"`
-	KeyPrefix  string     `json:"key_prefix"`
-	Hash       string     `json:"-"`
-	CreatedBy  int64      `json:"created_by"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
-	LastUsedAt *time.Time `json:"last_used_at"`
-	LastUsedIP string     `json:"last_used_ip"`
-	RevokedAt  *time.Time `json:"revoked_at"`
+	PreviousFullAccess bool       `json:"-"`
+	ExpectedUpdatedAt  time.Time  `json:"-"`
+	ID                 string     `json:"id"`
+	KeyPrefix          string     `json:"key_prefix"`
+	Hash               string     `json:"-"`
+	CreatedBy          int64      `json:"created_by"`
+	CreatedAt          time.Time  `json:"created_at"`
+	UpdatedAt          time.Time  `json:"updated_at"`
+	LastUsedAt         *time.Time `json:"last_used_at"`
+	LastUsedIP         string     `json:"last_used_ip"`
+	RevokedAt          *time.Time `json:"revoked_at"`
 }
 type ScopedAdminKeyRepository interface {
 	ListScopedAdminKeys(context.Context) ([]*ScopedAdminKey, error)
@@ -126,6 +129,10 @@ func (s *SettingService) ListScopedAdminKeys(ctx context.Context) ([]*ScopedAdmi
 	return r.ListScopedAdminKeys(ctx)
 }
 func (s *SettingService) CreateScopedAdminKey(ctx context.Context, in ScopedAdminKeyInput, creator int64) (string, *ScopedAdminKey, error) {
+	if in.Policy.FullAccess && !in.ConfirmFullAccess {
+		return "", nil, infraerrors.BadRequest("ADMIN_KEY_FULL_ACCESS_CONFIRMATION_REQUIRED", "开启全权访问需要显式确认")
+	}
+	in.ConfirmFullAccess = false
 	if e := validateScopedAdminKeyInput(&in); e != nil {
 		return "", nil, e
 	}
@@ -161,9 +168,15 @@ func (s *SettingService) UpdateScopedAdminKey(ctx context.Context, id string, in
 	if item.RevokedAt != nil {
 		return nil, ErrScopedAdminKeyNotFound
 	}
+	if in.Policy.FullAccess && !item.Policy.FullAccess && !in.ConfirmFullAccess {
+		return nil, infraerrors.BadRequest("ADMIN_KEY_FULL_ACCESS_CONFIRMATION_REQUIRED", "开启全权访问需要显式确认")
+	}
+	in.ConfirmFullAccess = false
 	if e := validateScopedAdminKeyInputForUpdate(&in, item.ExpiresAt); e != nil {
 		return nil, e
 	}
+	item.PreviousFullAccess = item.Policy.FullAccess
+	item.ExpectedUpdatedAt = item.UpdatedAt
 	item.ScopedAdminKeyInput = in
 	item.UpdatedAt = time.Now().UTC()
 	if e = r.UpdateScopedAdminKey(ctx, item); e != nil {

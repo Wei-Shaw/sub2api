@@ -34,11 +34,11 @@ Please read the following carefully before using this project:
 <details open>
 <summary>Click to collapse</summary>
 
-<p align="center"><a href="https://wandapi.ai/r/sub2api"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/banners/wandapi-en-dark.svg"><img src="assets/partners/banners/wandapi-en.svg" alt="WandAPI" width="100%"></picture></a></p>
+<p align="center"><a href="https://wandapi.com/go/sub2api"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/banners/wandapi-en-dark.svg"><img src="assets/partners/banners/wandapi-en.svg" alt="WandAPI" width="100%"></picture></a></p>
 
-**[WandAPI](https://wandapi.ai/r/sub2api)** — an enterprise-grade, stable AI model API gateway built by a core contributor to this project. One API key gives you access to Claude, GPT, Gemini and other leading models, natively compatible with the OpenAI and Anthropic protocols, so Claude Code, Codex and your existing SDKs work by simply changing the Base URL. Real-time routing by latency and upstream health with millisecond-level automatic failover keeps requests online, backed by 99.99% service availability. Pay as you go, with per-request token and cost breakdowns.
+**[WandAPI](https://wandapi.com/go/sub2api)** — an enterprise-grade, stable AI model API gateway built by a core contributor to this project. One API key gives you access to Claude, GPT, Gemini and other leading models, natively compatible with the OpenAI and Anthropic protocols, so Claude Code, Codex and your existing SDKs work by simply changing the Base URL. Real-time routing by latency and upstream health with millisecond-level automatic failover keeps requests online, backed by 99.99% service availability. Pay as you go, with per-request token and cost breakdowns.
 
-**Free trial credits**: sign up via [this exclusive link](https://wandapi.ai/r/sub2api) to claim free trial credits.
+**Free trial credits**: sign up via [this exclusive link](https://wandapi.com/go/sub2api) to claim free trial credits.
 
 ---
 
@@ -65,8 +65,8 @@ Please read the following carefully before using this project:
 </tr>
 
 <tr>
-<td width="180"><a href="https://api.aigocode.dev/invite/SUB2API"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></a></td>
-<td>Thanks to AIGoCode for sponsoring this project! AIGoCode is an all-in-one platform that integrates Claude Code, Codex, and the latest Gemini models, providing you with stable, efficient, and highly cost-effective AI coding services. The platform offers flexible subscription plans, zero risk of account suspension, direct access with no VPN required, and lightning-fast responses. AIGoCode has prepared a special benefit for sub2api users: if you register via <a href="https://api.aigocode.dev/invite/SUB2API">this link</a>, you'll receive an extra 10% bonus credit on your first top-up!</td>
+<td width="180"><a href="https://api.aigocode.dev/invite/SUB2API"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/partners/logos/aigocode-dark.png"><img src="assets/partners/logos/aigocode.png" alt="AIGoCode" width="150"></picture></a></td>
+<td>Thanks to AIGoCode for sponsoring this project! A subscription-based AI coding platform, not just pay-per-token. One account, one monthly plan for Claude Code, Codex and Gemini, with direct connection on the mainland and fast responses. Subscribe via <a href="https://api.aigocode.dev/invite/SUB2API">this link</a> to get an extra 10% credits!</td>
 </tr>
 
 <tr>
@@ -118,11 +118,6 @@ Please read the following carefully before using this project:
 </tr>
 
 <tr>
-<td width="180"><a href="https://lanox.ai/?c=6"><img src="assets/partners/logos/lanox.jpg" alt="LanoX AI" width="150"></a></td>
-<td>Thank you to LanoX AI for sponsoring this project! <a href="https://lanox.ai/?c=6">LanoX AI</a> provides stable, cost-effective global model access services for developers, teams, and enterprises. 🎁 New User Benefits — Claim millions of free tokens, plus 500+ free models for easier low-cost testing, validation, and deployment 🧠 Global Leading Models — GPT · Claude · Gemini · Qwen · Grok... 🎬 Multimodal Creation — Seedance 2.0 · GPT Image · Gemini Nano Banana 🛡️ Enterprise-Grade Reliability — High availability 💎 native capability output 💎 no intelligence degradation 💎 no model mixing 💎 transparent usage and billing 💎 💰 Lower API Costs — Top-tier models from as low as 10% of official pricing, with clear documentation, simple integration, invoicing support, and enterprise-scale batch usage 🏢 Enterprise Choice — Ideal for AI products, Agents, content platforms, and R&D teams with high-volume model usage</td>
-</tr>
-
-<tr>
 <td width="180"><a href="https://www.rapidproxy.io/?ref=sub2api"><img src="assets/partners/logos/rapidproxy.jpg" alt="RapidProxy" width="150"></a></td>
 <td><a href="https://www.rapidproxy.io/?ref=sub2api">RapidProxy</a> is a data collection proxy solution built for developers, providing stable and reliable residential proxy services. With 90M+ global residential IPs and 200+ country coverage, intelligent rotation, and precise geo-targeting, it helps projects such as web scraping, AI data training, SEO monitoring, and e-commerce data analysis break through access restrictions and improve data collection efficiency. It supports mainstream automation frameworks such as Playwright, Selenium, and Puppeteer, with prices as low as $0.65/GB — <a href="https://www.rapidproxy.io/?ref=sub2api">start your free test now</a>.</td>
 </tr>
@@ -135,11 +130,6 @@ Please read the following carefully before using this project:
 <tr>
 <td width="180"><a href="https://www.swiftproxy.net/?ref=sub2api"><img src="assets/partners/logos/swiftprox.png" alt="Swiftproxy" width="150"></a></td>
 <td>Swiftproxy is a high-performance proxy solution built for developers, providing stable and reliable residential and static residential proxy services. With 90M+ clean residential IPs, global coverage, flexible rotation, and precise geo-targeting, it helps projects such as web scraping, AI automation, browser automation, SEO monitoring, and multi-account management overcome access restrictions and improve workflow efficiency. It supports HTTP(S) and SOCKS5 protocols, integrates with popular automation tools like Playwright, Selenium, and Puppeteer, with dynamic proxy traffic that never expires until used and free testing available — <a href="https://www.swiftproxy.net/?ref=sub2api">start your free test now</a>!</td>
-</tr>
-
-<tr>
-<td width="180"><a href="https://go.apimart.ai/gh-sub2api"><img src="assets/partners/logos/apimart.jpg" alt="APIMart" width="150"></a></td>
-<td>Thanks to APIMart for sponsoring this project! <a href="https://go.apimart.ai/gh-sub2api">APIMart</a> is a low-cost API platform for AI image and video generation — GPT-Image-2 from $0.006 per image, with 160+ images per dollar. One async API covers both image and video: submit a task, get an ID, and retrieve results via polling or callback. Batch tens of thousands of images without timeouts, and switch models without changing code. Pay as you go with no monthly fee — <a href="https://go.apimart.ai/gh-sub2api">sign up here</a> to get started.</td>
 </tr>
 
 <tr>
@@ -180,6 +170,16 @@ Please read the following carefully before using this project:
 <tr>
 <td width="180"><a href="https://soleapi.com/r/sub2api"><img src="assets/partners/logos/soleapi.png" alt="SoleAPI" width="150"></a></td>
 <td>Thanks to <a href="https://soleapi.com/r/sub2api">SoleAPI</a> for supporting this project! SoleAPI is an AI model gateway for developers and enterprises: one API key gives you access to 30+ leading models including Claude, GPT and Gemini. It is natively compatible with the OpenAI and Anthropic protocols, so Claude Code, Codex, Cursor and your existing SDKs work by simply changing the Base URL. Requests are routed in real time by latency and upstream health, with millisecond-level automatic failover to backup channels, 99.99% service availability and 24/7 technical support. Every call lands on a single bill with per-request token and cost breakdowns you can inspect at any time. Sign up through this project's <a href="https://soleapi.com/r/sub2api">referral link</a> to receive free trial credits, and earn ongoing cashback by inviting friends who top up!</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://api.muteki.site/register?aff=Sub2"><img src="assets/partners/logos/marucode.jpg" alt="MaruCode" width="150"></a></td>
+<td><a href="https://api.muteki.site/register?aff=Sub2">MaruCode</a> — a small, no-frills API site that does a bit of charity now and then. 🍟 Every Thursday it runs limited-time rate-multiplier events. In operation for over half a year, with a 3K-member main group, focused on stability and welcoming collaboration with universities, enterprises, and more — thank you 🙇. It runs a self-operated account pool with no top-up marketing gimmicks, mainly offering mainstream models such as Codex (GPT 6.2 Astra), Claude Code (Claude Opus 5.5), and GPT Image 2.6, with WebSocket protocol support, clearly published pricing (Codex 0.3x, CC 1.7x), and a transparent exchange rate (1:1).</td>
+</tr>
+
+<tr>
+<td width="180"><a href="https://massivetokens.com/signup?ref=SUB2API"><img src="assets/partners/logos/massivetokens.jpg" alt="Massive Tokens" width="150"></a></td>
+<td><a href="https://massivetokens.com/signup?ref=SUB2API">Massive Tokens</a> supplies Claude API access at wholesale per-token prices to businesses and high-volume developers. It serves the standard Anthropic Messages API, so it works with Claude Code, Sub2API, LiteLLM and One API without code changes. Sign up with code SUB2API for 5% off every call, then join our Telegram group @massivetokens (<a href="https://t.me/massivetokens">https://t.me/massivetokens</a>) and ask an admin for $10 in credits.</td>
 </tr>
 
 </table>
@@ -748,6 +748,16 @@ Simple Mode is designed for individual developers or internal teams who want qui
 - Optional key windows: Set `SIMPLE_MODE_KEY_RATE_LIMIT_ENABLED=true` to enforce each API key's configured 5-hour, daily, and 7-day spending windows. The default is `false`; balance and subscription debit remain bypassed when enabled.
 - Window enforcement uses the database as its source of truth and records only API-key window usage. It is a post-request soft cap, so concurrent in-flight requests can overshoot by their final costs. Historical simple-mode usage is not backfilled.
 - Security note: In production, you must also set `SIMPLE_MODE_CONFIRM=true` to allow startup
+
+---
+
+## OpenAI Image Output Formats
+
+On `/v1/images/generations` and `/v1/images/edits`, OAuth / Setup Token requests use the Codex-native Images endpoints when the mapped upstream model is a supported GPT Image 1.5, 2, 2.5, or 2.6 model. Models before 2.6 can fall back to Responses if the native endpoint returns 404 or 405.
+
+Sub2API forwards `output_format` and `output_compression`, but whether they take effect depends on the upstream account and endpoint. An upstream may reject a format with a 4xx error or return HTTP 200 with a different format: for example, requesting `jpeg` or `svg` can yield `output_format: "png"` and PNG data. This behavior has also been reported for `gpt-image-2.5-flare` requests for `jpeg`.
+
+Before saving or serving an image, compare the returned `output_format` (including any per-image value) with the request and verify the actual image format. Use the actual output format for the filename extension and MIME type. A successful response containing a different format retains its status, image content, and usage; it can still incur charges. Automatically retrying may generate and bill another image.
 
 ---
 

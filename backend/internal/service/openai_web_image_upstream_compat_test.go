@@ -129,3 +129,50 @@ func TestFreeWebImageUpstreamCompatProjectionRetiresAfterAliases(t *testing.T) {
 		})
 	}
 }
+
+func TestFreeWebImageUpstreamCompatSizeRoutingRetainsConsentAndChatMappingIndependence(t *testing.T) {
+	for _, mode := range openAIImageSizeSchedulerModes {
+		for _, model := range []string{"gpt-image-2.6-flare", "gpt-image-2.6-sunburst"} {
+			for _, tc := range []struct {
+				name, size string
+				wantID     int64
+			}{
+				{"explicit_1k", "1024x1024", 270},
+				{"explicit_4k_replaces_sticky_1k", "3840x2160", 271},
+				{"auto_prefers_4k", "auto", 271},
+			} {
+				t.Run(mode.name+"/"+model+"/"+tc.name, func(t *testing.T) {
+					resetOpenAIAdvancedSchedulerSettingCacheForTest()
+					oneK, fourK, noConsent := webImageSchedulingAccount(270), webImageSchedulingAccount(271), webImageSchedulingAccount(272)
+					oneK.Extra[AccountExtraOpenAIImageSizeTiers] = []string{ImageBillingSize1K}
+					fourK.Extra[AccountExtraOpenAIImageSizeTiers] = []string{ImageBillingSize4K}
+					fourK.Priority = 10
+					noConsent.Priority = -10
+					noConsent.Extra[AccountExtraChatGPTWebImageRegularChat] = false
+					accounts := []Account{oneK, fourK, noConsent}
+					for i := range accounts {
+						// Image compatibility entries remain independent of the chat
+						// allowlist, including newly added upstream image names.
+						accounts[i].Credentials["model_mapping"] = map[string]any{"chat": "gpt-6-luna"}
+					}
+					cache := &schedulerTestGatewayCache{}
+					session := ""
+					if tc.name == "explicit_4k_replaces_sticky_1k" {
+						session = "web-image-size"
+						cache.sessionBindings = map[string]int64{"openai:" + session: oneK.ID}
+					}
+					var acquired []int64
+					svc := newOpenAIImageSizeSchedulerTestService(mode, accounts, cache, schedulerTestConcurrencyCache{acquiredIDs: &acquired})
+					groupID := int64(101)
+					ctx := WithOpenAIImageSizeRouting(context.Background(), tc.size)
+					selection, _, err := svc.SelectAccountWithSchedulerForImages(ctx, &groupID, session, model, nil, OpenAIImagesCapabilityNative)
+					require.NoError(t, err)
+					require.NotNil(t, selection)
+					defer selection.ReleaseFunc()
+					require.Equal(t, tc.wantID, selection.Account.ID)
+					require.Equal(t, []int64{tc.wantID}, acquired, "unconsented and incompatible-size accounts must not acquire a slot")
+				})
+			}
+		}
+	}
+}

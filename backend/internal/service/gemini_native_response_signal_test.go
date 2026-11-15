@@ -501,7 +501,7 @@ func TestGeminiForwardNative_CountTokensBodyLeavesNoMark(t *testing.T) {
 
 func TestCollectGeminiSSEObserved_SeesTerminalChunkEvenWhenAggregateDropsIt(t *testing.T) {
 	var observed []string
-	collected, usage, stats, err := collectGeminiSSEObserved(strings.NewReader(geminiSignalTestProhibitedSSE), false, func(raw []byte) {
+	collected, usage, stats, err := collectGeminiSSEObserved(nil, strings.NewReader(geminiSignalTestProhibitedSSE), false, func(raw []byte) {
 		observed = append(observed, string(raw))
 	})
 	require.NoError(t, err)

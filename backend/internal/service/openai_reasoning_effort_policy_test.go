@@ -2,12 +2,36 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestGLMReasoningEffortPolicyPreservesNoneAndMinimal(t *testing.T) {
+	for _, model := range []string{"glm-5.2", "glm-5.3"} {
+		for _, field := range []string{`"reasoning":{"effort":"%s"}`, `"reasoning_effort":"%s"`} {
+			for _, effort := range []string{"none", "minimal"} {
+				for _, ceiling := range []string{"minimal", "low"} {
+					for _, overLimit := range []string{ReasoningEffortOverLimitDowngrade, ReasoningEffortOverLimitDeny} {
+						t.Run(model+"/"+field+"/"+effort+"/"+ceiling+"/"+overLimit, func(t *testing.T) {
+							body := []byte(fmt.Sprintf(`{"model":%q,`+field+`}`, model, effort))
+							ctx := WithOpenAIReasoningEffortPolicy(context.Background(), ceiling, nil, overLimit)
+							normalized, normalizationChanged := NormalizeGLMOpenAIReasoningEffort(body, model)
+							require.False(t, normalizationChanged)
+							got, changed, err := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, normalized)
+							require.NoError(t, err)
+							require.False(t, changed)
+							require.Equal(t, body, got)
+						})
+					}
+				}
+			}
+		}
+	}
+}
 
 func TestCanonicalRequestedReasoningEffort(t *testing.T) {
 	t.Parallel()

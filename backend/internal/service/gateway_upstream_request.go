@@ -66,7 +66,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 			if err != nil {
 				return nil, nil, err
 			}
-			targetURL = validatedURL + "/v1/messages?beta=true"
+			targetURL = buildAnthropicMessagesURL(validatedURL)
 		}
 	} else if account.IsCustomBaseURLEnabled() {
 		customURL := account.GetCustomBaseURL()
