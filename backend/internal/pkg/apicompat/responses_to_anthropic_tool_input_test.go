@@ -20,7 +20,7 @@ func TestAnthropicToolUseInput(t *testing.T) {
 		{"empty function arguments", "function_call", "", "{}"},
 		{"non-object function arguments", "function_call", "[1]", "{}"},
 		{"custom input wrapped", "custom_tool_call", "dir /b", "{\"input\":\"dir /b\"}"},
-		{"empty custom input wrapped", "custom_tool_call", "", "{\"input\":\"\"}"},
+		{"empty custom input is an empty object", "custom_tool_call", "", "{}"},
 		{"custom input that is an object kept", "custom_tool_call", "{\"a\":1}", "{\"a\":1}"},
 	}
 	for _, tc := range tests {

@@ -64,6 +64,7 @@ type openAICompatOutputSlot struct {
 	index         int64
 	indexed       bool
 	itemType      string
+	id            string
 	added         *apicompat.ResponsesOutput
 	done          *apicompat.ResponsesOutput
 	reasoning     strings.Builder
@@ -92,48 +93,48 @@ func (o *openAICompatOutputSlots) Observe(payload []byte) {
 	switch strings.TrimSpace(gjson.GetBytes(payload, "type").String()) {
 	case "response.output_item.added":
 		if item, ok := openAICompatEventItem(payload); ok {
-			slot := o.slot(payload, item.Type, item.ID, false, true)
+			slot := o.slot(payload, item.Type, item.ID, item.CallID, false, true)
 			slot.added = &item
 		}
 	case "response.output_item.done":
 		if item, ok := openAICompatEventItem(payload); ok {
-			slot := o.slot(payload, item.Type, item.ID, true, true)
+			slot := o.slot(payload, item.Type, item.ID, item.CallID, true, true)
 			slot.done = &item
 		}
 	case "response.output_text.delta":
 		if delta := gjson.GetBytes(payload, "delta").String(); delta != "" {
-			o.slot(payload, "message", "", false, true).text.write(gjson.GetBytes(payload, "content_index").Int(), delta)
+			o.slot(payload, "message", gjson.GetBytes(payload, "item_id").String(), "", false, true).text.write(gjson.GetBytes(payload, "content_index").Int(), delta)
 		}
 	case "response.refusal.delta":
 		if delta := gjson.GetBytes(payload, "delta").String(); delta != "" {
-			o.slot(payload, "message", "", false, true).refusal.write(gjson.GetBytes(payload, "content_index").Int(), delta)
+			o.slot(payload, "message", gjson.GetBytes(payload, "item_id").String(), "", false, true).refusal.write(gjson.GetBytes(payload, "content_index").Int(), delta)
 		}
 	case "response.reasoning_summary_text.delta":
 		if delta := gjson.GetBytes(payload, "delta").String(); delta != "" {
-			slot := o.slot(payload, "reasoning", "", false, true)
+			slot := o.slot(payload, "reasoning", gjson.GetBytes(payload, "item_id").String(), "", false, true)
 			_, _ = slot.reasoning.WriteString(delta)
 			slot.summaryText.write(gjson.GetBytes(payload, "summary_index").Int(), delta)
 		}
 	case "response.reasoning_text.delta":
 		if delta := gjson.GetBytes(payload, "delta").String(); delta != "" {
-			slot := o.slot(payload, "reasoning", "", false, true)
+			slot := o.slot(payload, "reasoning", gjson.GetBytes(payload, "item_id").String(), "", false, true)
 			_, _ = slot.reasoning.WriteString(delta)
 			slot.reasoningText.write(gjson.GetBytes(payload, "content_index").Int(), delta)
 		}
 	case "response.function_call_arguments.delta", "response.custom_tool_call_input.delta":
 		if delta := gjson.GetBytes(payload, "delta").String(); delta != "" {
-			if slot := o.slot(payload, "function_call", "", false, false); slot != nil {
+			if slot := o.slot(payload, "function_call", gjson.GetBytes(payload, "item_id").String(), "", false, false); slot != nil {
 				_, _ = slot.args.WriteString(delta)
 			}
 		}
 	case "response.function_call_arguments.done":
-		if slot := o.slot(payload, "function_call", "", false, false); slot != nil {
+		if slot := o.slot(payload, "function_call", gjson.GetBytes(payload, "item_id").String(), "", false, false); slot != nil {
 			if completed := gjson.GetBytes(payload, "arguments").String(); completed != "" {
 				slot.argsDone = completed
 			}
 		}
 	case "response.custom_tool_call_input.done":
-		if slot := o.slot(payload, "function_call", "", false, false); slot != nil {
+		if slot := o.slot(payload, "function_call", gjson.GetBytes(payload, "item_id").String(), "", false, false); slot != nil {
 			if completed := gjson.GetBytes(payload, "input").String(); completed != "" {
 				slot.argsDone = completed
 			}
@@ -151,17 +152,24 @@ func openAICompatEventItem(payload []byte) (apicompat.ResponsesOutput, bool) {
 	return item, item.Type != ""
 }
 
-// slot finds the slot an event belongs to. A done event whose item has an id
+// slot finds the slot an event belongs to. id is the id of the item the event
+// is about (the item of an added or done event, the item_id of a delta) and
+// callID the call_id of a tool call item. A done event whose item has an id
 // belongs to the slot that already holds a done item with that id, so a repeated
-// item replaces its earlier copy and items that merely share an output_index stay
-// apart. Otherwise an event with an output_index belongs to the newest slot of
-// that index (an added event: the newest one that has none yet; a done event
-// without an id replaces the done item of that slot). An event without an
-// output_index belongs to the newest unindexed slot of its kind (a done event:
-// the oldest one still without a done item), and an added event always starts a
-// new slot, so unindexed items keep arrival order. With create unset, a missing
-// slot returns nil.
-func (o *openAICompatOutputSlots) slot(payload []byte, kind, id string, done, create bool) *openAICompatOutputSlot {
+// item replaces its earlier copy. Otherwise an event whose id a slot already
+// has, because the deltas or the added event of that item opened it, belongs to
+// that slot, also when the event has no output_index. Otherwise an event with an
+// output_index belongs to the newest slot of that index that can hold its kind
+// of item and has no other id (an added event: the newest one without an added or
+// done item; a done event with an id: the newest one without a done item; a done
+// event without an id replaces the done item of that slot), so items that merely
+// share an output_index stay apart. An event without an output_index belongs to
+// the newest slot of its kind that is not done, else to the newest unindexed
+// one; a done event with a call_id belongs to the slot of that call, else to the
+// oldest unindexed slot of its kind without a done item, and an added event
+// always starts a new slot, so unindexed items keep arrival order. With create
+// unset, a missing slot returns nil.
+func (o *openAICompatOutputSlots) slot(payload []byte, kind, id, callID string, done, create bool) *openAICompatOutputSlot {
 	index := gjson.GetBytes(payload, "output_index")
 	added := strings.TrimSpace(gjson.GetBytes(payload, "type").String()) == "response.output_item.added"
 	matches := func(slot *openAICompatOutputSlot) bool {
@@ -169,6 +177,9 @@ func (o *openAICompatOutputSlots) slot(payload []byte, kind, id string, done, cr
 			return true
 		}
 		return openAICompatIsToolCallType(kind) && openAICompatIsToolCallType(slot.itemType)
+	}
+	fits := func(slot *openAICompatOutputSlot) bool {
+		return matches(slot) && (slot.id == "" || id == "" || slot.id == id)
 	}
 	newest := func(accept func(*openAICompatOutputSlot) bool) *openAICompatOutputSlot {
 		for i := len(o.slots) - 1; i >= 0; i-- {
@@ -182,39 +193,63 @@ func (o *openAICompatOutputSlots) slot(payload []byte, kind, id string, done, cr
 	if done && id != "" {
 		found = newest(func(slot *openAICompatOutputSlot) bool { return slot.done != nil && slot.done.ID == id })
 	}
+	if found == nil && id != "" && (done || added || !index.Exists()) {
+		found = newest(func(slot *openAICompatOutputSlot) bool {
+			return slot.id == id && matches(slot) && slot.done == nil && (!added || slot.added == nil)
+		})
+	}
 	if found == nil {
 		switch {
 		case index.Exists():
-			atIndex := func(slot *openAICompatOutputSlot) bool { return slot.indexed && slot.index == index.Int() }
+			atIndex := func(slot *openAICompatOutputSlot) bool {
+				return slot.indexed && slot.index == index.Int() && matches(slot)
+			}
 			switch {
 			case done && id != "":
 				found = newest(func(slot *openAICompatOutputSlot) bool { return atIndex(slot) && slot.done == nil })
 			case added:
-				found = newest(func(slot *openAICompatOutputSlot) bool { return atIndex(slot) && slot.added == nil })
+				found = newest(func(slot *openAICompatOutputSlot) bool { return atIndex(slot) && slot.added == nil && slot.done == nil })
 			default:
 				found = newest(atIndex)
 			}
 		case added:
 		case done:
+			if callID != "" {
+				found = newest(func(slot *openAICompatOutputSlot) bool {
+					return slot.done == nil && slot.added != nil && slot.added.CallID == callID && matches(slot)
+				})
+			}
 			for _, slot := range o.slots {
-				if !slot.indexed && slot.done == nil && slot.itemType == kind {
+				if found == nil && !slot.indexed && slot.done == nil && slot.itemType == kind {
 					found = slot
-					break
 				}
 			}
 		default:
-			found = newest(func(slot *openAICompatOutputSlot) bool { return !slot.indexed && matches(slot) })
+			found = newest(func(slot *openAICompatOutputSlot) bool { return slot.done == nil && fits(slot) })
+			if found == nil {
+				found = newest(func(slot *openAICompatOutputSlot) bool { return !slot.indexed && fits(slot) })
+			}
 		}
+	}
+	if found == nil && index.Exists() && (added || done) {
+		// Deltas that came with no output_index and before their item was announced
+		// belong to the newest such item of this kind.
+		found = newest(func(slot *openAICompatOutputSlot) bool {
+			return !slot.indexed && slot.added == nil && slot.done == nil && fits(slot)
+		})
 	}
 	if found == nil {
 		if !create {
 			return nil
 		}
 		found = &openAICompatOutputSlot{}
-		if index.Exists() {
-			found.index, found.indexed = index.Int(), true
-		}
 		o.slots = append(o.slots, found)
+	}
+	if index.Exists() && !found.indexed {
+		found.index, found.indexed = index.Int(), true
+	}
+	if found.id == "" {
+		found.id = id
 	}
 	if found.itemType == "" || done || added {
 		found.itemType = kind
@@ -249,6 +284,10 @@ func (o *openAICompatOutputSlots) fillTerminalOutput(eventType string, response 
 	})
 	for _, slot := range slots {
 		if item, ok := slot.build(); ok {
+			// The streaming converters render a web search only once it is completed.
+			if item.Type == "web_search_call" && item.Status != "completed" {
+				continue
+			}
 			response.Output = append(response.Output, item)
 			if item.Type == "custom_tool_call" {
 				response.RenderCustomToolCalls = true
@@ -276,6 +315,10 @@ func (s *openAICompatOutputSlot) buildReasoning() (apicompat.ResponsesOutput, bo
 	item := apicompat.ResponsesOutput{Type: "reasoning"}
 	if s.done != nil {
 		item = *s.done
+	}
+	// The signature may be on the added event only.
+	if s.added != nil && strings.TrimSpace(item.EncryptedContent) == "" {
+		item.EncryptedContent = s.added.EncryptedContent
 	}
 	// The converters render the summary text and fall back to the reasoning_text
 	// content only when the summary has none, so an item carrying both would lose
@@ -325,7 +368,7 @@ func (s *openAICompatOutputSlot) buildReasoning() (apicompat.ResponsesOutput, bo
 			}
 		}
 	}
-	return item, s.done != nil || s.reasoning.Len() > 0
+	return item, s.done != nil || s.reasoning.Len() > 0 || strings.TrimSpace(item.EncryptedContent) != ""
 }
 
 func (s *openAICompatOutputSlot) buildMessage() (apicompat.ResponsesOutput, bool) {

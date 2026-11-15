@@ -590,3 +590,188 @@ func TestBufferedCompat_PartialReasoningParts(t *testing.T) {
 		}
 	}
 }
+
+// The streaming converters render a web search once it is completed, so a
+// rebuilt output does the same.
+func TestBufferedCompat_WebSearchNotCompletedIsNotRebuilt(t *testing.T) {
+	for _, tc := range []struct {
+		status string
+		want   []string
+	}{
+		{"completed", []string{"server_tool_use", "web_search_tool_result"}},
+		{"in_progress", []string{"text"}},
+	} {
+		t.Run(tc.status, func(t *testing.T) {
+			sse := bufferedItemsSSE(
+				bufferedHostedItemsCreated,
+				`{"type":"response.output_item.done","output_index":0,"item":{"type":"web_search_call","id":"ws_1","status":"`+tc.status+`","action":{"type":"search","query":"q"}}}`,
+				bufferedHostedItemsCompleted,
+			)
+			out := forwardBufferedHostedItems(t, "/v1/messages", bufferedHostedItemsMessagesBody, sse)
+			var types []string
+			for _, block := range gjson.Get(out, "content").Array() {
+				types = append(types, block.Get("type").String())
+			}
+			require.Equal(t, tc.want, types, out)
+		})
+	}
+}
+
+// A custom tool call without input is {} as in the streamed tool_use.
+func TestBufferedCompat_EmptyCustomToolInputIsAnEmptyObject(t *testing.T) {
+	sse := bufferedItemsSSE(
+		bufferedHostedItemsCreated,
+		`{"type":"response.output_item.added","output_index":0,"item":{"type":"custom_tool_call","id":"ctc_1","call_id":"call_1","name":"exec","input":""}}`,
+		`{"type":"response.output_item.done","output_index":0,"item":{"type":"custom_tool_call","id":"ctc_1","call_id":"call_1","name":"exec","input":""}}`,
+		bufferedHostedItemsCompleted,
+	)
+	toolBody := `{"model":"gpt-5.5","max_tokens":64,"stream":false,"tools":[{"name":"exec","input_schema":{"type":"object"}}],"messages":[{"role":"user","content":"hi"}]}`
+	out := forwardBufferedHostedItems(t, "/v1/messages", toolBody, sse)
+	require.Equal(t, "tool_use", gjson.Get(out, "content.0.type").String(), out)
+	require.Equal(t, "{}", gjson.Get(out, "content.0.input").Raw, out)
+}
+
+// Deltas without an output_index belong to their item, found by item_id or as the
+// newest open item of their kind, not to a second copy of it.
+func TestBufferedCompat_DeltasWithoutOutputIndexJoinTheirItem(t *testing.T) {
+	customBody := `{"model":"gpt-5.5","stream":false,"tools":[{"type":"custom","custom":{"name":"exec","description":"run"}}],"messages":[{"role":"user","content":"hi"}]}`
+	cases := []struct {
+		name, shown string
+		sse         string
+	}{
+		{"item_id, no added event", "text", bufferedItemsSSE(bufferedHostedItemsCreated,
+			`{"type":"response.output_text.delta","item_id":"msg_1","content_index":0,"delta":"hello"}`,
+			`{"type":"response.output_item.done","output_index":0,"item":{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"hello"}]}}`,
+			bufferedHostedItemsCompleted)},
+		{"item_id, after added", "thinking", bufferedItemsSSE(bufferedHostedItemsCreated,
+			`{"type":"response.output_item.added","output_index":0,"item":{"type":"reasoning","id":"rs_1","summary":[]}}`,
+			`{"type":"response.reasoning_text.delta","item_id":"rs_1","content_index":0,"delta":"hello"}`,
+			`{"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","id":"rs_1","summary":[],"content":[{"type":"reasoning_text","text":"hello"}]}}`,
+			bufferedHostedItemsCompleted)},
+		{"no item_id, after added", "text", bufferedItemsSSE(bufferedHostedItemsCreated,
+			`{"type":"response.output_item.added","output_index":1,"item":{"type":"message","role":"assistant","content":[]}}`,
+			`{"type":"response.output_text.delta","content_index":0,"delta":"hello"}`,
+			`{"type":"response.output_item.done","output_index":1,"item":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"hello"}]}}`,
+			bufferedHostedItemsCompleted)},
+	}
+	for _, entry := range bufferedPartsEntries {
+		for _, tc := range cases {
+			t.Run(entry.name+" "+tc.name, func(t *testing.T) {
+				out := forwardBufferedHostedItems(t, entry.path, entry.body, tc.sse)
+				require.Equal(t, "hello", bufferedPartsVisible(out, entry.path, tc.shown), out)
+			})
+		}
+	}
+	t.Run("custom tool call input", func(t *testing.T) {
+		sse := bufferedItemsSSE(bufferedHostedItemsCreated,
+			`{"type":"response.output_item.added","output_index":1,"item":{"type":"reasoning","summary":[]}}`,
+			`{"type":"response.reasoning_summary_text.delta","summary_index":0,"delta":"plan"}`,
+			`{"type":"response.output_item.added","output_index":0,"item":{"type":"custom_tool_call","call_id":"call_1","name":"exec","input":""}}`,
+			`{"type":"response.custom_tool_call_input.delta","delta":"dir"}`,
+			`{"type":"response.custom_tool_call_input.done"}`,
+			`{"type":"response.output_item.done","output_index":0,"item":{"type":"custom_tool_call","call_id":"call_1","name":"exec","input":""}}`,
+			bufferedHostedItemsCompleted)
+		out := forwardBufferedHostedItems(t, "/v1/chat/completions", customBody, sse)
+		require.Equal(t, "dir", gjson.Get(out, "choices.0.message.tool_calls.0.function.arguments").String(), out)
+		require.Equal(t, "plan", gjson.Get(out, "choices.0.message.reasoning_content").String(), out)
+	})
+}
+
+// Items that share an output_index, or have none, and lack an added or a done
+// event keep their own deltas.
+func TestBufferedCompat_ItemsOfOneOutputIndexKeepTheirOwnEvents(t *testing.T) {
+	fnBody := `{"model":"gpt-5.5","stream":false,"tools":[{"type":"function","function":{"name":"get","parameters":{"type":"object"}}}],"messages":[{"role":"user","content":"hi"}]}`
+	t.Run("reasoning deltas, then a message added at the same index", func(t *testing.T) {
+		sse := bufferedItemsSSE(bufferedHostedItemsCreated,
+			`{"type":"response.reasoning_summary_text.delta","output_index":0,"summary_index":0,"delta":"plan"}`,
+			`{"type":"response.output_item.added","output_index":0,"item":{"type":"message","id":"msg_1","role":"assistant","content":[]}}`,
+			`{"type":"response.output_text.delta","output_index":0,"content_index":0,"item_id":"msg_1","delta":"answer"}`,
+			`{"type":"response.output_item.done","output_index":0,"item":{"type":"message","id":"msg_1","role":"assistant","content":[{"type":"output_text","text":"answer"}]}}`,
+			bufferedHostedItemsCompleted)
+		for _, entry := range bufferedPartsEntries {
+			out := forwardBufferedHostedItems(t, entry.path, entry.body, sse)
+			require.Equal(t, "plan", bufferedPartsVisible(out, entry.path, "thinking"), out)
+			require.Equal(t, "answer", bufferedPartsVisible(out, entry.path, "text"), out)
+		}
+	})
+	t.Run("a message done, then another message added at the same index", func(t *testing.T) {
+		sse := bufferedItemsSSE(bufferedHostedItemsCreated,
+			`{"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"first "}`,
+			`{"type":"response.output_item.done","output_index":0,"item":{"type":"message","role":"assistant","content":[{"type":"output_text","text":""}]}}`,
+			`{"type":"response.output_item.added","output_index":0,"item":{"type":"message","role":"assistant","content":[]}}`,
+			`{"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"second"}`,
+			`{"type":"response.output_item.done","output_index":0,"item":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"second"}]}}`,
+			bufferedHostedItemsCompleted)
+		for _, entry := range bufferedPartsEntries {
+			out := forwardBufferedHostedItems(t, entry.path, entry.body, sse)
+			require.Equal(t, "first second", bufferedPartsVisible(out, entry.path, "text"), out)
+		}
+	})
+	t.Run("a hosted call added at the index of delta-only text", func(t *testing.T) {
+		sse := bufferedItemsSSE(bufferedHostedItemsCreated,
+			`{"type":"response.refusal.delta","output_index":0,"content_index":0,"delta":"no"}`,
+			`{"type":"response.output_item.added","output_index":0,"item":{"type":"web_search_call","status":"in_progress"}}`,
+			`{"type":"response.output_item.done","output_index":0,"item":{"type":"web_search_call","status":"completed"}}`,
+			bufferedHostedItemsCompleted)
+		out := forwardBufferedHostedItems(t, "/v1/chat/completions", bufferedHostedItemsChatBody, sse)
+		require.Equal(t, "no", bufferedPartsVisible(out, "/v1/chat/completions", "refusal"), out)
+	})
+	t.Run("two function calls without index and id", func(t *testing.T) {
+		sse := bufferedItemsSSE(bufferedHostedItemsCreated,
+			`{"type":"response.output_item.added","item":{"type":"function_call","call_id":"call_a","name":"get","arguments":""}}`,
+			`{"type":"response.function_call_arguments.delta","delta":"{\"a\":1}"}`,
+			`{"type":"response.output_item.added","item":{"type":"function_call","call_id":"call_b","name":"get","arguments":""}}`,
+			`{"type":"response.function_call_arguments.delta","delta":"{\"b\":2}"}`,
+			`{"type":"response.output_item.done","item":{"type":"function_call","call_id":"call_b","name":"get","arguments":""}}`,
+			bufferedHostedItemsCompleted)
+		out := forwardBufferedHostedItems(t, "/v1/chat/completions", fnBody, sse)
+		calls := gjson.Get(out, "choices.0.message.tool_calls").Array()
+		require.Len(t, calls, 2, out)
+		require.Equal(t, "call_a", calls[0].Get("id").String())
+		require.Equal(t, `{"a":1}`, calls[0].Get("function.arguments").String())
+		require.Equal(t, "call_b", calls[1].Get("id").String())
+		require.Equal(t, `{"b":2}`, calls[1].Get("function.arguments").String())
+	})
+}
+
+// The signature of a reasoning item may be on its added event only; the item is
+// kept for it even without text, as the streaming path keeps it.
+func TestBufferedCompat_ReasoningSignatureOnAddedEventIsKept(t *testing.T) {
+	cases := []struct {
+		name, sse string
+		want      []string
+	}{
+		{"with text deltas and a done item without it", bufferedItemsSSE(bufferedHostedItemsCreated,
+			`{"type":"response.output_item.added","output_index":0,"item":{"type":"reasoning","id":"rs_1","summary":[],"encrypted_content":"ENC"}}`,
+			`{"type":"response.reasoning_summary_text.delta","output_index":0,"summary_index":0,"delta":"plan"}`,
+			`{"type":"response.output_item.done","output_index":0,"item":{"type":"reasoning","id":"rs_1","summary":[{"type":"summary_text","text":"plan"}]}}`,
+			bufferedHostedItemsCompleted), []string{`thinking "plan" ENC`}},
+		{"added event only", bufferedItemsSSE(bufferedHostedItemsCreated,
+			`{"type":"response.output_item.added","output_index":0,"item":{"type":"reasoning","id":"rs_1","summary":[],"encrypted_content":"ENC"}}`,
+			bufferedHostedItemsCompleted), []string{`thinking "" ENC`}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out := forwardBufferedHostedItems(t, "/v1/messages", bufferedHostedItemsThinkingBody, tc.sse)
+			var got []string
+			for _, block := range gjson.Get(out, "content").Array() {
+				got = append(got, block.Get("type").String()+" "+strconv.Quote(block.Get("thinking").String())+" "+block.Get("signature").String())
+			}
+			require.Equal(t, tc.want, got, out)
+		})
+	}
+}
+
+// Reasoning deltas that came with no output_index before the item was added belong
+// to that item, so the text keeps its arrival order.
+func TestBufferedCompat_UnindexedReasoningDeltasJoinTheItemAddedLater(t *testing.T) {
+	sse := bufferedItemsSSE(bufferedHostedItemsCreated,
+		`{"type":"response.reasoning_text.delta","content_index":0,"delta":"first "}`,
+		`{"type":"response.output_item.added","output_index":1,"item":{"type":"reasoning","summary":[]}}`,
+		`{"type":"response.reasoning_summary_text.delta","summary_index":0,"delta":"second"}`,
+		bufferedHostedItemsCompleted)
+	for _, entry := range bufferedPartsEntries {
+		out := forwardBufferedHostedItems(t, entry.path, entry.body, sse)
+		require.Equal(t, "first second", bufferedPartsVisible(out, entry.path, "thinking"), out)
+	}
+}

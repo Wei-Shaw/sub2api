@@ -154,12 +154,13 @@ func containsAnthropicToolUseBlock(blocks []AnthropicContentBlock) bool {
 // arguments are not an object (truncated by max_output_tokens, or empty) gets {};
 // a custom_tool_call's free-form input is wrapped in the same {"input": ...}
 // shape that downgrades a custom tool to a function tool, so that
-// extractCustomToolCallInput gives the text back.
+// extractCustomToolCallInput gives the text back; an empty custom input is {} as
+// it is in the streamed tool_use.
 func anthropicToolUseInput(itemType, name, raw string) json.RawMessage {
 	if trimmed := strings.TrimSpace(raw); strings.HasPrefix(trimmed, "{") && json.Valid([]byte(trimmed)) {
 		return sanitizeAnthropicToolUseInput(name, raw)
 	}
-	if itemType == "custom_tool_call" {
+	if itemType == "custom_tool_call" && raw != "" {
 		wrapped, err := json.Marshal(map[string]string{"input": raw})
 		if err == nil {
 			return wrapped
