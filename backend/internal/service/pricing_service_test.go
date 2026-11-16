@@ -856,6 +856,75 @@ func TestDefaultPricingIncludesGrok47FastRates(t *testing.T) {
 	require.InDelta(t, 0.18, cost.OutputCost, 1e-12)
 }
 
+func TestDefaultPricingIncludesMetaMuseRates(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
+	require.NoError(t, err)
+
+	pricingSvc := &PricingService{}
+	pricingData, err := pricingSvc.parsePricingData(data)
+	require.NoError(t, err)
+	pricingSvc.pricingData = pricingData
+
+	cases := []struct {
+		model               string
+		input, output, read float64
+	}{
+		{"muse-spark-1.3", 1.25e-6, 4.25e-6, 1.5e-7},
+		{"muse-spark-1.2", 1.25e-6, 4.25e-6, 1.5e-7},
+		{"muse-spark-1.1", 1.25e-6, 4.25e-6, 1.5e-7},
+		{"muse-spark-1.3-contributor", 1e-7, 2e-7, 2e-9},
+		{"muse-spark-1.2-contributor", 1e-7, 2e-7, 2e-9},
+		{"muse-wonder-1.0", 4e-6, 2e-5, 2e-7},
+		{"muse-wonder-1.0-contributor", 4e-6, 2e-5, 2e-7},
+		{"muse-wonder-full-1.0", 4e-6, 2e-5, 2e-7},
+		{"muse-wonder-full-1.0-contributor", 4e-6, 2e-5, 2e-7},
+		{"muse-ember-1.0", 1e-7, 5e-7, 4e-9},
+	}
+	for _, tc := range cases {
+		t.Run(tc.model, func(t *testing.T) {
+			pricing := pricingSvc.GetModelPricing(tc.model)
+			require.NotNil(t, pricing)
+			require.Equal(t, "meta", pricing.LiteLLMProvider)
+			require.InDelta(t, tc.input, pricing.InputCostPerToken, 1e-15)
+			require.InDelta(t, tc.output, pricing.OutputCostPerToken, 1e-15)
+			require.InDelta(t, tc.read, pricing.CacheReadInputTokenCost, 1e-15)
+			if tc.model != "muse-ember-1.0" {
+				require.Zero(t, pricing.LongContextInputTokenThreshold)
+			}
+		})
+	}
+
+	ember := pricingSvc.GetModelPricing("muse-ember-1.0")
+	require.NotNil(t, ember)
+	require.Equal(t, 200000, ember.LongContextInputTokenThreshold)
+	require.InDelta(t, 3.0, ember.LongContextInputCostMultiplier, 1e-12)
+	require.InDelta(t, 3.0, ember.LongContextOutputCostMultiplier, 1e-12)
+
+	billing := NewBillingService(&config.Config{}, pricingSvc)
+	atLimit, err := billing.CalculateCost("muse-ember-1.0", UsageTokens{InputTokens: 150_000, CacheReadTokens: 50_000, OutputTokens: 10_000}, 1)
+	require.NoError(t, err)
+	require.False(t, atLimit.LongContextBillingApplied)
+	require.InDelta(t, 0.015, atLimit.InputCost, 1e-12)
+	require.InDelta(t, 0.0002, atLimit.CacheReadCost, 1e-12)
+	require.InDelta(t, 0.005, atLimit.OutputCost, 1e-12)
+
+	overLimit, err := billing.CalculateCost("muse-ember-1.0", UsageTokens{InputTokens: 150_001, CacheReadTokens: 50_000, OutputTokens: 10_000}, 1)
+	require.NoError(t, err)
+	require.True(t, overLimit.LongContextBillingApplied)
+	require.InDelta(t, 0.0450003, overLimit.InputCost, 1e-12)
+	require.InDelta(t, 0.0006, overLimit.CacheReadCost, 1e-12)
+	require.InDelta(t, 0.015, overLimit.OutputCost, 1e-12)
+
+	for _, size := range []string{"1K", "2K", "4K"} {
+		cost := billing.CalculateImageCost("muse-image-1.0", size, 2, nil, 1)
+		require.InDelta(t, 0.02, cost.TotalCost, 1e-12, size)
+	}
+
+	metaModels := pricingSvc.ListModelNamesByProvider("meta")
+	require.Contains(t, metaModels, "muse-spark-1.3")
+	require.Contains(t, metaModels, "muse-image-1.0")
+}
+
 func TestDefaultPricingUsesCurrentCodexAutoReviewBaseRates(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
 	require.NoError(t, err)

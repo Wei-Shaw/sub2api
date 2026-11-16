@@ -237,6 +237,7 @@ type UsageInfo struct {
 	// Antigravity 账号级信息
 	SubscriptionTier    string `json:"subscription_tier,omitempty"`     // 归一化订阅等级: FREE/PRO/ULTRA/UNKNOWN
 	SubscriptionTierRaw string `json:"subscription_tier_raw,omitempty"` // 上游原始订阅等级名称
+	SubscriptionTierID  string `json:"subscription_tier_id,omitempty"`
 
 	// Antigravity 模型详细能力信息（与 antigravity_quota 同 key）
 	AntigravityQuotaDetails map[string]*AntigravityModelDetail `json:"antigravity_quota_details,omitempty"`
@@ -322,6 +323,7 @@ type AccountUsageService struct {
 	tlsFPProfileService     *TLSFingerprintProfileService
 	agentIdentityTaskMu     sync.Mutex
 	agentIdentityWS         agentIdentityWSConnectionInvalidator
+	metaUsageProber         metaUsageProber
 }
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -384,6 +386,21 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 		// Usage can come from a stored snapshot even when a probe fails. Neither
 		// that nor a working access token proves a rejected refresh token recovered.
 		return s.getOpenAIUsage(ctx, account, forceProbe)
+	}
+
+	if account.IsMeta() {
+		probed, probeErr := s.probeMetaUsage(ctx, account, forceProbe)
+		usage, err := s.getMetaUsage(ctx, account)
+		if err == nil && probed {
+			usage.Source = "active"
+		}
+		if err == nil && probeErr != nil {
+			usage.Error = probeErr.Error()
+		}
+		if err == nil && probeErr == nil {
+			s.tryClearRecoverableAccountError(ctx, account)
+		}
+		return usage, err
 	}
 
 	if account.Platform == PlatformGemini {
@@ -638,6 +655,9 @@ func (s *AccountUsageService) GetPassiveUsage(ctx context.Context, accountID int
 func (s *AccountUsageService) getPassiveUsageForAccount(ctx context.Context, account *Account) (*UsageInfo, error) {
 	if err := scopedAccountAccess(ctx, s.accountRepo, account, "accounts.usage.read", false); err != nil {
 		return nil, err
+	}
+	if account.IsMeta() {
+		return s.getMetaUsage(ctx, account)
 	}
 	if !supportsAnthropicPassiveUsage(account) {
 		return nil, fmt.Errorf("passive usage only supported for Anthropic OAuth/SetupToken accounts")

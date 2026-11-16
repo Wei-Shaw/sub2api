@@ -590,10 +590,17 @@ func isGeminiCompatibleImageModel(model string) bool {
 }
 
 func validateCompatibleImagesModel(model string) error {
-	if isGeminiCompatibleImageModel(model) {
+	if isGeminiCompatibleImageModel(model) || isMetaImageModel(model) {
 		return nil
 	}
 	return validateOpenAIImagesModel(model)
+}
+
+func validateUpstreamImagesModel(account *Account, model string) error {
+	if account.IsMeta() && !isMetaImageModel(model) {
+		return fmt.Errorf("images endpoint requires a Meta image model, got %q", model)
+	}
+	return validateCompatibleImagesModel(model)
 }
 
 // RequiredCapabilityForModel also applies the API-key-only fence when channel
@@ -690,6 +697,9 @@ func (s *OpenAIGatewayService) ForwardImages(
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
 	}
+	if account.IsMeta() {
+		return s.forwardOpenAIImagesAPIKey(ctx, c, account, body, parsed, channelMappedModel)
+	}
 	switch account.Type {
 	case AccountTypeAPIKey:
 		return s.forwardOpenAIImagesAPIKey(ctx, c, account, body, parsed, channelMappedModel)
@@ -717,7 +727,7 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 		return nil, err
 	}
 	upstreamModel := account.GetMappedModel(requestModel)
-	if err := validateCompatibleImagesModel(upstreamModel); err != nil {
+	if err := validateUpstreamImagesModel(account, upstreamModel); err != nil {
 		return nil, err
 	}
 	SetOpsUpstreamModel(c, upstreamModel)
@@ -943,6 +953,7 @@ func (s *OpenAIGatewayService) buildOpenAIImagesRequest(
 	if customUA != "" {
 		req.Header.Set("User-Agent", customUA)
 	}
+	applyMetaImagesClientIdentity(account, req.Header)
 	if strings.TrimSpace(contentType) != "" {
 		req.Header.Set("Content-Type", contentType)
 	}

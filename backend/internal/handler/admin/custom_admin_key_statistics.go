@@ -199,6 +199,7 @@ func scopedUsageDTO(u *service.UsageInfo, p adminaccess.Policy, a *service.Accou
 	if p.AllowsAccount("accounts.identity.read", scopedAccountResource(a)) {
 		out["subscription_tier"] = u.SubscriptionTier
 		out["subscription_tier_raw"] = u.SubscriptionTierRaw
+		out["subscription_tier_id"] = u.SubscriptionTierID
 	}
 
 	if u.GrokBilling != nil {

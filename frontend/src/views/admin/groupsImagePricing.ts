@@ -3,6 +3,7 @@ export const imagePricingPlatforms = new Set([
   "composite",
   "gemini",
   "grok",
+  "meta",
   "openai",
 ]);
 

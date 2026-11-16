@@ -476,5 +476,9 @@ func (g *Group) GetSearchPricePer1k() *float64 {
 	if g == nil {
 		return nil
 	}
+	if g.SearchPricePer1k == nil && g.Platform == PlatformMeta {
+		price := defaultMetaSearchPricePer1k
+		return &price
+	}
 	return g.SearchPricePer1k
 }

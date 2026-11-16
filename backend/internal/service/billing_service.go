@@ -2210,6 +2210,8 @@ const (
 	// xAI server-side web/X search and code execution are $5/1000 calls.
 	defaultSearchPricePer1k = 5.0
 
+	defaultMetaSearchPricePer1k = 2.5
+
 	// Generic realtime defaults to think-fast-1.0; think-fast-2.0 can be
 	// configured independently through per-model group/channel pricing.
 	defaultAudioRealtimePricePerMin     = 0.05
@@ -2432,18 +2434,23 @@ func (s *BillingService) getDefaultImagePrice(model string, imageSize string) fl
 	}
 
 	basePrice := 0.0
+	flatPerImage := false
 
 	// 从 PricingService 获取 output_cost_per_image
 	if s.pricingService != nil {
 		pricing := s.pricingService.GetModelPricing(model)
 		if pricing != nil && pricing.OutputCostPerImage > 0 {
 			basePrice = pricing.OutputCostPerImage
+			flatPerImage = strings.EqualFold(pricing.LiteLLMProvider, "meta")
 		}
 	}
 
 	// 如果没有找到价格，使用硬编码默认值（$0.134，来自 gemini-3-pro-image-preview）
 	if basePrice <= 0 {
 		basePrice = defaultImageGenerationPrice
+	}
+	if flatPerImage {
+		return basePrice
 	}
 
 	// 2K 尺寸 1.5 倍，4K 尺寸翻倍

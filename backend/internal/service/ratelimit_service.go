@@ -403,6 +403,11 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		upstreamMsg = truncateForLog([]byte(upstreamMsg), 512)
 	}
 
+	if account.IsMeta() && (statusCode == http.StatusTooManyRequests || statusCode == http.StatusNotFound) {
+		if s.handleMetaThrottle(ctx, account, statusCode, responseBody) {
+			return false
+		}
+	}
 	// Command Code 用量超限按文案区分、与状态码无关（见 ratelimit_command_code.go）；
 	// 未识别的错误（含普通频率限制）继续走下面的默认逻辑。
 	if account.IsCommandCode() && (statusCode == http.StatusPaymentRequired ||

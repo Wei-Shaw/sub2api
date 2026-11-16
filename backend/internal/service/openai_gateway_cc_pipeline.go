@@ -14,8 +14,10 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/meta"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
+	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
@@ -238,6 +240,10 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 			applyGrokCLIHeaders(upstreamReq.Header)
 		}
 		applyGrokCacheHeaders(upstreamReq.Header, grokCacheIdentity)
+	}
+	if account.IsMeta() {
+		meta.ApplyClientIdentity(upstreamReq.Header, "")
+		meta.ApplyContributorMode(upstreamReq.Header, gjson.GetBytes(body, "model").String())
 	}
 	// 官方 OpenCode / Command Code 上游收敛为规范客户端 UA：客户端透传的编程库
 	// UA 会命中其前置 Cloudflare bot 拦截（CF 1010/403），并被计入账号 403 strike。

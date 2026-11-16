@@ -102,7 +102,7 @@ func TestResolveUpstreamProtocol(t *testing.T) {
 func TestRoutesByModelOnlyForAggregators(t *testing.T) {
 	t.Parallel()
 
-	aggregators := map[string]bool{PlatformOpenCodeGo: true, PlatformCommandCode: true}
+	aggregators := map[string]bool{PlatformOpenCodeGo: true, PlatformCommandCode: true, PlatformMeta: true}
 	for platform, profile := range providerProfiles {
 		account := &Account{Platform: platform}
 		require.Equal(t, aggregators[platform], account.routesByModel(), platform)

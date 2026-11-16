@@ -4,6 +4,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/tidwall/gjson"
 )
 
@@ -11,6 +12,11 @@ import (
 // calls in a Responses-style JSON body (output array or nested response.output).
 // Counts: web_search_call, x_search_call, tool_search_call, and function_call
 // named tool_search / web_search / x_search.
+// billsNativeSearchCalls reports whether the account's upstream bills native search tool calls per query.
+func (a *Account) billsNativeSearchCalls() bool {
+	return a.IsGrok() || a.IsMeta()
+}
+
 func countGrokNativeSearchCallsFromJSONBytes(body []byte) int {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return 0
@@ -217,15 +223,34 @@ func countGrokNativeSearchCallsInOutputArray(output gjson.Result) int {
 }
 
 func isGrokNativeSearchOutputItem(item gjson.Result) bool {
-	if !item.Exists() {
+	return item.Exists() && isNativeSearchCall(item.Get("type").String(), item.Get("name").String())
+}
+
+func countNativeSearchCallsInResponsesOutput(output []apicompat.ResponsesOutput) int {
+	count := 0
+	for i := range output {
+		if isNativeSearchCall(output[i].Type, output[i].Name) {
+			count++
+		}
+	}
+	return count
+}
+
+func isNativeSearchCountEvent(eventType string) bool {
+	switch strings.TrimSpace(eventType) {
+	case "response.output_item.done", "response.completed", "response.done":
+		return true
+	default:
 		return false
 	}
-	itemType := strings.ToLower(strings.TrimSpace(item.Get("type").String()))
-	switch itemType {
+}
+
+func isNativeSearchCall(itemType, name string) bool {
+	switch strings.ToLower(strings.TrimSpace(itemType)) {
 	case "web_search_call", "x_search_call", "tool_search_call":
 		return true
 	case "function_call", "custom_tool_call":
-		name := strings.ToLower(strings.TrimSpace(item.Get("name").String()))
+		name = strings.ToLower(strings.TrimSpace(name))
 		return name == "web_search" || name == "x_search" || name == "tool_search"
 	default:
 		return false

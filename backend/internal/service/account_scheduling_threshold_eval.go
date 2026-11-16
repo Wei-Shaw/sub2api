@@ -58,6 +58,8 @@ func EvaluateAccountSchedulingThreshold(account *Account, thresholds map[string]
 		winner = pickLatestResetSchedulingCandidate(anthropicThresholdCandidates(account), threshold, now)
 	case PlatformGrok:
 		winner = pickLatestResetSchedulingCandidate(grokThresholdCandidates(account), threshold, now)
+	case PlatformMeta:
+		winner = pickLatestResetSchedulingCandidate(metaThresholdCandidates(account), threshold, now)
 	case PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformOpenCodeGo, PlatformCommandCode:
 		winner = pickLatestResetSchedulingCandidate(cnProviderThresholdCandidates(account, decision.Platform), threshold, now)
 	default:
@@ -351,6 +353,29 @@ func grokThresholdCandidates(account *Account) []*accountSchedulingThresholdCand
 			until:       parseSchedulingResetAt(account.Extra["grok_sched_reset_at"]),
 		},
 	}
+}
+
+func metaThresholdCandidates(account *Account) []*accountSchedulingThresholdCandidate {
+	if account == nil || len(account.Extra) == 0 {
+		return nil
+	}
+	candidates := make([]*accountSchedulingThresholdCandidate, 0, 2)
+	for _, window := range []struct{ name, usedKey, resetKey string }{
+		{"5h", metaUsageWindowUtilizationKey, metaUsageWindowResetKey},
+		{"weekly", metaUsageWeeklyUtilizationKey, metaUsageWeeklyResetKey},
+	} {
+		used, ok := account.Extra[window.usedKey]
+		if !ok {
+			continue
+		}
+		candidates = append(candidates, &accountSchedulingThresholdCandidate{
+			window:      window.name,
+			scope:       PlatformMeta,
+			usedPercent: parseExtraFloat64(used) * 100,
+			until:       parseSchedulingResetAt(account.Extra[window.resetKey]),
+		})
+	}
+	return candidates
 }
 
 // cnProviderThresholdCandidates 读取国产供应商 Coding Plan、OpenCode Go 与 Command Code

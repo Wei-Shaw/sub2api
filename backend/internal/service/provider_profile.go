@@ -221,6 +221,21 @@ var providerProfiles = map[string]*ProviderProfile{
 			},
 		},
 	},
+	PlatformMeta: {
+		Platform:         PlatformMeta,
+		DefaultMode:      AccountModePayG,
+		Routing:          ProviderRoutingByModel,
+		DefaultTestModel: DefaultMetaTestModel,
+		Modes: map[string]ProviderEndpoints{
+			AccountModePayG: {
+				BaseURLs: map[string]string{
+					APIProtocolChatCompletions: DefaultMetaBaseURL,
+					APIProtocolResponses:       DefaultMetaBaseURL,
+				},
+				ProtocolRules: DefaultMetaProtocolRules(),
+			},
+		},
+	},
 }
 
 // LookupProviderProfile 返回 platform 对应的多协议供应商 profile；非此类平台返回 nil。
