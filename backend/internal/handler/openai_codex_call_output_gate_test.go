@@ -16,7 +16,7 @@ func TestCodexCallOutputGateSkipsDeclaredToolsWithoutCandidate(t *testing.T) {
 	require.False(t, mayContainCodexCallOutputCandidate(body, "automation_update"))
 	require.False(t, mayContainCodexCallOutputCandidate(body, "create_thread", "send_message_to_thread"))
 	for name, normalize := range map[string]func([]byte) ([]byte, bool){
-		"page":       normalizeCodexPageContext,
+		"untrusted":  normalizeCodexUntrustedContext,
 		"automation": normalizeCodexAutomationBootstrap,
 		"delegation": normalizeCodexDelegationBootstrap,
 	} {
