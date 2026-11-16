@@ -484,11 +484,16 @@ func isCredentialErrorMessage(msg string) bool {
 //
 // grok 的 ErrorCode=quota_unknown 是「尚未观测到计费快照/限流头」的已知未知态，
 // 不是失败（严格按 ErrorCode 判会把健康 grok 账号永久判 error），显式豁免。
+//
+// OpenAI OAuth 的 quota_refresh_failed 同理豁免：它只说明本次主动刷新没拿到新额度、
+// 返回的是上次观测，账号本身未必不可用；且探测受 openAIProbeCacheTTL 节流，只有真正
+// 发起探测的那次读取会带该码，若判 error，监控会在 error/operational 间周期性跳动。
+// 状态按缓存观测（未知窗口已在 appendProgressTier 跳过）推导。
 func usageFailureInfo(usage *UsageInfo) (failed, credentialInvalid bool, msg string) {
 	if usage == nil {
 		return false, false, ""
 	}
-	if usage.ErrorCode == "quota_unknown" {
+	if usage.ErrorCode == "quota_unknown" || usage.ErrorCode == errorCodeQuotaRefreshFailed {
 		return false, false, ""
 	}
 	failed = usage.Error != "" || usage.NeedsReauth || usage.IsBanned ||

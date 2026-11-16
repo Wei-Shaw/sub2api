@@ -831,7 +831,7 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 		if usage.Source != "active" {
 			// Keep the last observation available, but never turn a failed probe
 			// (or a response without quota data) into a fresh successful read.
-			usage.ErrorCode = "quota_refresh_failed"
+			usage.ErrorCode = errorCodeQuotaRefreshFailed
 			usage.Error = "Unable to refresh OpenAI quota; displayed values may be from an earlier observation"
 		}
 	}
@@ -1070,6 +1070,10 @@ func applyExtraToUsage(usage *UsageInfo, extra map[string]any, now time.Time) {
 		usage.SevenDay = progress
 	}
 }
+
+// errorCodeQuotaRefreshFailed 标记 OpenAI OAuth 额度主动刷新失败：返回值仍是上次
+// 观测（或未知），只说明额度数据可能陈旧，不代表账号不可用。
+const errorCodeQuotaRefreshFailed = "quota_refresh_failed"
 
 func hasOpenAIQuotaObservation(updates map[string]any) bool {
 	_, has5h := updates["codex_5h_used_percent"]

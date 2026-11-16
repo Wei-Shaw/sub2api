@@ -348,6 +348,7 @@ func TestUsageFailureInfo_ClassificationMatrix(t *testing.T) {
 		{name: "error code rate limited", usage: &UsageInfo{ErrorCode: errorCodeRateLimited}, failed: true, msg: errorCodeRateLimited},
 		{name: "error code network error", usage: &UsageInfo{ErrorCode: errorCodeNetworkError}, failed: true, msg: errorCodeNetworkError},
 		{name: "grok quota unknown exempted", usage: &UsageInfo{ErrorCode: "quota_unknown", Error: "Grok quota is unknown until billing is probed"}},
+		{name: "openai quota refresh failed exempted", usage: &UsageInfo{ErrorCode: errorCodeQuotaRefreshFailed, Error: "Unable to refresh OpenAI quota"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -747,4 +748,39 @@ func TestDeriveQuotaCheckResult_StatusMatrix(t *testing.T) {
 
 	res = deriveQuotaCheckResult(nil, "quota", now)
 	require.Equal(t, MonitorStatusError, res.Status)
+}
+
+// OpenAI OAuth 额度刷新失败（探测被 10 分钟节流）不能让配额监控在 error 与
+// operational 间来回跳：失败只出现在真正发起探测的那一次读取上，节流窗口内的
+// 后续读取不带错误。刷新失败只说明额度数据可能陈旧，不代表账号不可用，
+// 监控须与 #8747 之前一致按缓存观测推导状态。
+func TestQuotaFetcher_OpenAIQuotaRefreshFailureDoesNotFlap(t *testing.T) {
+	observedAt := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
+	account := &Account{
+		ID:       77,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
+		// 只有 7d 窗口 → shouldRefreshOpenAICodexSnapshot 恒为 true；无 access token → 探测必失败。
+		Extra: map[string]any{
+			"codex_7d_used_percent":  95.0,
+			"codex_usage_updated_at": observedAt.Format(time.RFC3339),
+		},
+	}
+	fetcher := &ChannelMonitorQuotaFetcher{
+		usage:            &AccountUsageService{cache: NewUsageCache()},
+		accounts:         &stubMonitorAccountSource{accounts: map[int64]*Account{77: account}},
+		balanceThreshold: monitorBalanceThreshold(nil),
+		cache:            make(map[int64]monitorQuotaCacheEntry),
+	}
+
+	var statuses []string
+	for i := 0; i < 3; i++ {
+		snapshot := fetcher.fetchUncached(context.Background(), 77, time.Now())
+		res := deriveQuotaCheckResult(snapshot, "quota", time.Now())
+		statuses = append(statuses, res.Status)
+		require.True(t, snapshot.Success, "round %d: refresh failure must not be a failed snapshot: %s", i, snapshot.Error)
+		require.Len(t, snapshot.Tiers, 1, "round %d: cached 7d observation stays visible", i)
+	}
+	require.Equal(t, []string{MonitorStatusDegraded, MonitorStatusDegraded, MonitorStatusDegraded}, statuses)
 }
