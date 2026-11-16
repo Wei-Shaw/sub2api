@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
@@ -282,6 +283,84 @@ func TestOpenAIFirstOutputStageCommitCopiesSpoolAndRemovesTemp(t *testing.T) {
 		require.ErrorIs(t, err, os.ErrNotExist)
 	}
 	require.NoError(t, stage.Close())
+}
+
+func TestOpenAIFirstOutputStageCreateFailurePreservesBoundedBuffer(t *testing.T) {
+	for _, useWriteString := range []bool{false, true} {
+		t.Run(fmt.Sprintf("write_string_%t", useWriteString), func(t *testing.T) {
+			stage := newOpenAIFirstOutputStage(70 * 1024)
+			stage.memoryOnly = false
+			t.Cleanup(func() { require.NoError(t, stage.Close()) })
+			createCalls := 0
+			stage.createTemp = func() (*os.File, error) {
+				createCalls++
+				return nil, &os.PathError{Op: "open", Path: "unwritable/spool", Err: os.ErrPermission}
+			}
+			stage.removeFile = func(string) error {
+				t.Fatal("failed creation must not leave a spool to remove")
+				return nil
+			}
+			write := func(value string) (int, error) {
+				if useWriteString {
+					return stage.WriteString(value)
+				}
+				return stage.Write([]byte(value))
+			}
+
+			payload := ""
+			for _, chunk := range []string{strings.Repeat("a", 32*1024), strings.Repeat("b", 36*1024), strings.Repeat("c", 2*1024)} {
+				n, err := write(chunk)
+				require.NoError(t, err)
+				require.Equal(t, len(chunk), n)
+				payload += chunk
+			}
+			require.Equal(t, 1, createCalls, "fallback must not retry CreateTemp on later writes")
+			require.EqualValues(t, len(payload), stage.Buffered())
+
+			n, err := write("overflow")
+			require.Zero(t, n)
+			require.ErrorIs(t, err, errOpenAIFirstOutputStageLimit)
+			require.EqualValues(t, len(payload), stage.Buffered())
+			var downstream bytes.Buffer
+			require.NoError(t, stage.CommitTo(&downstream))
+			require.Equal(t, payload, downstream.String())
+			require.Zero(t, stage.Buffered())
+		})
+	}
+}
+
+func TestOpenAINativeFirstOutputWithUnavailableTempDir(t *testing.T) {
+	missingDir := filepath.Join(t.TempDir(), "missing")
+	for _, name := range []string{"TMPDIR", "TMP", "TEMP"} {
+		t.Setenv(name, missingDir)
+	}
+	cfg := &config.Config{Gateway: config.GatewayConfig{
+		OpenAIFirstOutputTimeoutSeconds: 30,
+		MaxLineSize:                     defaultMaxLineSize,
+	}}
+	svc := &OpenAIGatewayService{cfg: cfg, responseHeaderFilter: compileResponseHeaderFilter(cfg)}
+	// Cross the disk-spill threshold before any semantic output is available.
+	preamble := `data: {"type":"response.created","response":{"id":"resp_no_temp","created_at":1700000000,"padding":"` + strings.Repeat("x", 68*1024) + `"}}` + "\n\n"
+	delta := "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n"
+	payload := preamble + delta +
+		"data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_no_temp\",\"usage\":{\"input_tokens\":3,\"output_tokens\":2}}}\n\n"
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{
+		"X-Request-Id": []string{"request-no-temp"},
+	}, Body: io.NopCloser(strings.NewReader(payload))}
+
+	result, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI}, time.Now(), "model", "model")
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.NotNil(t, result.firstTokenMs)
+	require.True(t, strings.HasPrefix(rec.Body.String(), preamble+delta), "buffered preamble and first output must be forwarded intact")
+	require.Contains(t, rec.Body.String(), `"type":"response.completed"`)
+	require.Equal(t, 3, result.usage.InputTokens)
+	require.Equal(t, 2, result.usage.OutputTokens)
+	require.Equal(t, "request-no-temp", rec.Header().Get("X-Request-Id"))
 }
 
 func TestOpenAIFirstOutputStageUnlinkFailurePermanentlyFallsBackToMemoryAndRetriesCleanup(t *testing.T) {
