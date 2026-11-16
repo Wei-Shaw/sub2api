@@ -1477,16 +1477,18 @@ func (s *UsageLogRepoSuite) TestGetModelStatsWithFilters() {
 
 	base := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 
+	accountRate := 0.4
 	log1 := &service.UsageLog{
-		UserID:       user.ID,
-		APIKeyID:     apiKey.ID,
-		AccountID:    account.ID,
-		Model:        "claude-3-opus",
-		InputTokens:  100,
-		OutputTokens: 200,
-		TotalCost:    0.5,
-		ActualCost:   0.5,
-		CreatedAt:    base,
+		UserID:                user.ID,
+		APIKeyID:              apiKey.ID,
+		AccountID:             account.ID,
+		Model:                 "claude-3-opus",
+		InputTokens:           100,
+		OutputTokens:          200,
+		TotalCost:             0.5,
+		ActualCost:            1.0,
+		AccountRateMultiplier: &accountRate,
+		CreatedAt:             base,
 	}
 	_, err := s.repo.Create(s.ctx, log1)
 	s.Require().NoError(err)
@@ -1522,6 +1524,12 @@ func (s *UsageLogRepoSuite) TestGetModelStatsWithFilters() {
 	stats, err = s.repo.GetModelStatsWithFilters(s.ctx, startTime, endTime, 0, 0, account.ID, 0, nil, nil, nil)
 	s.Require().NoError(err, "GetModelStatsWithFilters account filter")
 	s.Require().Len(stats, 2)
+	for _, stat := range stats {
+		if stat.Model == "claude-3-opus" {
+			s.Require().InEpsilon(1.0, stat.ActualCost, 0.0001)
+			s.Require().InEpsilon(0.2, stat.AccountCost, 0.0001)
+		}
+	}
 }
 
 // --- GetAccountUsageStats ---
