@@ -163,7 +163,7 @@ func TestSyncActiveToPassive_WritesFableExtras(t *testing.T) {
 		},
 	}
 
-	svc.syncActiveToPassive(t.Context(), 1, usage)
+	svc.syncActiveToPassive(t.Context(), &Account{ID: 1}, usage)
 
 	select {
 	case updates := <-repo.updateExtraCh:
