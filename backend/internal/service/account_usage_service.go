@@ -123,6 +123,7 @@ type UsageCache struct {
 	antigravityCache  sync.Map           // accountID -> *antigravityUsageCache
 	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
+	openAIReadCache   sync.Map           // accountID -> *openAIReadUsageCache
 	openAIProbeCache  sync.Map           // accountID -> time.Time
 	grokProbeCache    sync.Map           // accountID -> last billing probe attempt
 }
@@ -197,6 +198,7 @@ type AICredit struct {
 
 // UsageInfo 账号使用量信息
 type UsageInfo struct {
+	FiveHourAvailable  *bool          `json:"-"`
 	Source             string         `json:"source,omitempty"`               // "passive" or "active"
 	UpdatedAt          *time.Time     `json:"updated_at,omitempty"`           // 更新时间
 	FiveHour           *UsageProgress `json:"five_hour"`                      // 5小时窗口
@@ -273,7 +275,8 @@ type ClaudeUsageWindow struct {
 
 // ClaudeUsageResponse Anthropic API返回的usage结构
 type ClaudeUsageResponse struct {
-	FiveHour struct {
+	FiveHourAvailable *bool `json:"-"` // nil: not reported; false: explicit upstream null.
+	FiveHour          struct {
 		Utilization float64 `json:"utilization"`
 		ResetsAt    string  `json:"resets_at"`
 	} `json:"five_hour"`
@@ -328,7 +331,7 @@ type AccountUsageService struct {
 	antigravityQuotaFetcher *AntigravityQuotaFetcher
 	grokQuotaFetcher        *GrokQuotaFetcher
 	grokQuotaService        *GrokQuotaService
-	openAIQuotaService      *OpenAIQuotaService
+	openAIQuotaService      openAIUsageReader
 	cache                   *UsageCache
 	identityCache           IdentityCache
 	tlsFPProfileService     *TLSFingerprintProfileService
@@ -350,6 +353,10 @@ func NewAccountUsageService(
 	identityCache IdentityCache,
 	tlsFPProfileService *TLSFingerprintProfileService,
 ) *AccountUsageService {
+	var quotaReader openAIUsageReader
+	if openAIQuotaService != nil {
+		quotaReader = openAIQuotaService
+	}
 	return &AccountUsageService{
 		accountRepo:             accountRepo,
 		usageLogRepo:            usageLogRepo,
@@ -358,7 +365,7 @@ func NewAccountUsageService(
 		antigravityQuotaFetcher: antigravityQuotaFetcher,
 		grokQuotaFetcher:        grokQuotaFetcher,
 		grokQuotaService:        grokQuotaService,
-		openAIQuotaService:      openAIQuotaService,
+		openAIQuotaService:      quotaReader,
 		cache:                   cache,
 		identityCache:           identityCache,
 		tlsFPProfileService:     tlsFPProfileService,
@@ -435,7 +442,7 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 					// 负缓存命中：返回缓存的错误，避免重试风暴
 					return nil, cache.err
 				}
-				if cache.response != nil && age < apiCacheTTL {
+				if !forceProbe && cache.response != nil && age < apiCacheTTL {
 					apiResp = cache.response
 				}
 			}
@@ -461,7 +468,7 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 						if cache.err != nil && age < apiErrorCacheTTL {
 							return nil, cache.err
 						}
-						if cache.response != nil && age < apiCacheTTL {
+						if !forceProbe && cache.response != nil && age < apiCacheTTL {
 							return cache.response, nil
 						}
 					}
@@ -546,9 +553,10 @@ func (s *AccountUsageService) GetUsageForAccount(ctx context.Context, account *A
 }
 
 // GetUsageBatch 批量获取账号使用量。
-// Anthropic OAuth/SetupToken 统一走 passive 链路，其他账号复用现有主动查询逻辑。
+// Anthropic defaults to passive; source=active opts OAuth into cached upstream reads.
+// Setup Token and synthetic UI accounts remain passive.
 // 单个账号失败不会中断整批请求，错误会按账号返回。
-func (s *AccountUsageService) GetUsageBatch(ctx context.Context, accountIDs []int64, force bool) (map[int64]*UsageInfo, map[int64]string, error) {
+func (s *AccountUsageService) GetUsageBatch(ctx context.Context, accountIDs []int64, force bool, source string) (map[int64]*UsageInfo, map[int64]string, error) {
 	if adminaccess.RestrictedFromContext(ctx) != nil {
 		if len(accountIDs) > 100 {
 			return nil, nil, fmt.Errorf("账户数量超过限制")
@@ -613,8 +621,10 @@ func (s *AccountUsageService) GetUsageBatch(ctx context.Context, accountIDs []in
 		g.Go(func() error {
 			var usage *UsageInfo
 			var usageErr error
-			if supportsAnthropicPassiveUsage(account) {
+			if supportsAnthropicPassiveUsage(account) && (source != "active" || account.Type == AccountTypeSetupToken) {
 				usage, usageErr = s.getPassiveUsageForAccount(gctx, account)
+			} else if source == "active" {
+				usage, usageErr = s.getActiveUsageForAccount(gctx, account, force)
 			} else {
 				usage, usageErr = s.getUsageForAccount(gctx, account, force)
 			}
@@ -659,6 +669,9 @@ func (s *AccountUsageService) getPassiveUsageForAccount(ctx context.Context, acc
 	// 复用 estimateSetupTokenUsage 构建 5h 窗口（OAuth 和 SetupToken 逻辑一致）
 	info := s.estimateSetupTokenUsage(account)
 	info.Source = "passive"
+	if available, ok := account.Extra["claude_five_hour_available"].(bool); ok && !available && account.Type == AccountTypeOAuth {
+		info.FiveHour = nil
+	}
 
 	// 设置采样时间
 	if raw, ok := account.Extra["passive_usage_sampled_at"]; ok {
@@ -738,6 +751,9 @@ func (s *AccountUsageService) syncActiveToPassive(ctx context.Context, account *
 	}
 	accountID := account.ID
 	extraUpdates := make(map[string]any, 4)
+	if usage.FiveHourAvailable != nil {
+		extraUpdates["claude_five_hour_available"] = *usage.FiveHourAvailable
+	}
 
 	if usage.FiveHour != nil {
 		extraUpdates["session_window_utilization"] = usage.FiveHour.Utilization / 100
@@ -775,7 +791,7 @@ func (s *AccountUsageService) syncActiveToPassive(ctx context.Context, account *
 	}
 }
 
-func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Account, force bool) (*UsageInfo, error) {
+func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Account, force bool, skipProbe ...bool) (*UsageInfo, error) {
 	now := time.Now()
 	usage := &UsageInfo{UpdatedAt: &now}
 
@@ -785,7 +801,7 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 
 	applyExtraToUsage(usage, account.Extra, now)
 
-	if (force || shouldRefreshOpenAICodexSnapshot(account, usage, now)) && s.shouldProbeOpenAICodexSnapshot(account.ID, now, force) {
+	if !(len(skipProbe) > 0 && skipProbe[0]) && (force || shouldRefreshOpenAICodexSnapshot(account, usage, now)) && s.shouldProbeOpenAICodexSnapshot(account.ID, now, force) {
 		if adminaccess.RestrictedFromContext(ctx) != nil {
 			// 受限额度读取只调用额度 API，不生成 /responses 合成请求或消费重置次数。
 			if s.openAIQuotaService != nil {
@@ -832,17 +848,22 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 		}
 	}
 
+	if openAIPlanHasNoFiveHour(account) {
+		usage.FiveHour = nil
+	}
+
 	if s.usageLogRepo == nil {
 		return usage, nil
 	}
 
-	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, codexWindowStatsStart(usage.FiveHour, 5*time.Hour, now)); err == nil {
-		if usage.FiveHour == nil {
-			usage.FiveHour = &UsageProgress{Utilization: 0}
+	if !openAIPlanHasNoFiveHour(account) {
+		if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, codexWindowStatsStart(usage.FiveHour, 5*time.Hour, now)); err == nil {
+			if usage.FiveHour == nil {
+				usage.FiveHour = &UsageProgress{Utilization: 0}
+			}
+			usage.FiveHour.WindowStats = windowStatsFromAccountStats(stats)
 		}
-		usage.FiveHour.WindowStats = windowStatsFromAccountStats(stats)
 	}
-
 	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, codexWindowStatsStart(usage.SevenDay, 7*24*time.Hour, now)); err == nil {
 		if usage.SevenDay == nil {
 			usage.SevenDay = &UsageProgress{Utilization: 0}
@@ -1752,16 +1773,19 @@ func (s *AccountUsageService) buildUsageInfo(resp *ClaudeUsageResponse, updatedA
 		UpdatedAt: updatedAt,
 	}
 
-	// 5小时窗口 - 始终创建对象（即使 ResetsAt 为空）
-	info.FiveHour = &UsageProgress{
-		Utilization: resp.FiveHour.Utilization,
-	}
-	if resp.FiveHour.ResetsAt != "" {
-		if fiveHourReset, err := parseTime(resp.FiveHour.ResetsAt); err == nil {
-			info.FiveHour.ResetsAt = &fiveHourReset
-			info.FiveHour.RemainingSeconds = int(time.Until(fiveHourReset).Seconds())
-		} else {
-			log.Printf("Failed to parse FiveHour.ResetsAt: %s, error: %v", resp.FiveHour.ResetsAt, err)
+	// An explicit null window is absent, not zero-percent usage.
+	info.FiveHourAvailable = resp.FiveHourAvailable
+	if resp.FiveHourAvailable == nil || *resp.FiveHourAvailable {
+		info.FiveHour = &UsageProgress{
+			Utilization: resp.FiveHour.Utilization,
+		}
+		if resp.FiveHour.ResetsAt != "" {
+			if fiveHourReset, err := parseTime(resp.FiveHour.ResetsAt); err == nil {
+				info.FiveHour.ResetsAt = &fiveHourReset
+				info.FiveHour.RemainingSeconds = int(time.Until(fiveHourReset).Seconds())
+			} else {
+				log.Printf("Failed to parse FiveHour.ResetsAt: %s, error: %v", resp.FiveHour.ResetsAt, err)
+			}
 		}
 	}
 

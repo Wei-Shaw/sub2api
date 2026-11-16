@@ -57,12 +57,15 @@ func TestAccountUsageService_SetupTokenWeeklyUsage(t *testing.T) {
 			require.NoError(t, err)
 			passive, err := svc.GetPassiveUsage(ctx, account.ID)
 			require.NoError(t, err)
-			batch, failures, err := svc.GetUsageBatch(ctx, []int64{account.ID}, true)
+			batch, failures, err := svc.GetUsageBatch(ctx, []int64{account.ID}, true, "")
+			require.NoError(t, err)
+			require.Empty(t, failures)
+			activeBatch, failures, err := svc.GetUsageBatch(ctx, []int64{account.ID}, false, "active")
 			require.NoError(t, err)
 			require.Empty(t, failures)
 
 			for name, result := range map[string]*UsageInfo{
-				"explicit": usage, "forced": forced, "passive": passive, "batch": batch[account.ID],
+				"explicit": usage, "forced": forced, "passive": passive, "batch": batch[account.ID], "active_batch": activeBatch[account.ID],
 			} {
 				t.Run(name, func(t *testing.T) {
 					require.NotNil(t, result)
