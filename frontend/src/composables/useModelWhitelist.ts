@@ -582,9 +582,14 @@ export function isValidWildcardPattern(pattern: string): boolean {
 
 export type ModelRestrictionMode = 'whitelist' | 'mapping' | 'combined'
 
+// Row-local provenance survives Vue proxies without leaking into API payloads.
+// A new draft must not inherit support from a previously deleted row with the same source.
+const persistedMappingSource = Symbol('persistedMappingSource')
+
 export interface ModelMappingEntry {
   from: string
   to: string
+  readonly [persistedMappingSource]?: string
 }
 
 export function splitModelMappingObject(
@@ -606,7 +611,11 @@ export function splitModelMappingObject(
     if (from === to) {
       allowedModels.push(from)
     } else {
-      modelMappings.push({ from, to })
+      const entry: ModelMappingEntry = { from, to }
+      if (!from.includes('*') && !to.includes('*')) {
+        Object.defineProperty(entry, persistedMappingSource, { value: from })
+      }
+      modelMappings.push(entry)
     }
   }
 
@@ -673,7 +682,13 @@ export function removeModelMappingEntry(
   if (index < 0 || index >= modelMappings.length) return
   const removed = modelMappings[index]
   modelMappings.splice(index, 1)
-  const from = removed.from.trim()
+  // Incomplete/invalid new drafts never granted support. Loaded rewrites did:
+  // retain their original source even if the user cleared the target before deleting.
+  const to = removed.to.trim()
+  const currentFrom = removed.from.trim()
+  const from = currentFrom && !currentFrom.includes('*') && to && !to.includes('*')
+    ? currentFrom
+    : removed[persistedMappingSource] ?? ''
   if (!from || from.includes('*')) return
   if (allowedModels.some((model) => model.trim() === from)) return
   allowedModels.push(from)

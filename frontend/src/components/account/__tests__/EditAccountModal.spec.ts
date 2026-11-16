@@ -368,6 +368,50 @@ describe('EditAccountModal', () => {
     ])
   })
 
+  it('does not add a model when an incomplete rewrite draft is cancelled', async () => {
+    const account = buildAccount()
+    account.credentials.model_mapping = { B: 'B' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await clickButtonIncluding(wrapper, 'admin.accounts.modelMapping')
+    await clickButtonIncluding(wrapper, 'admin.accounts.addMapping')
+    await wrapper.get('input[placeholder="admin.accounts.requestModel"]').setValue('A')
+    await clickDeleteBeside(wrapper, 'admin.accounts.requestModel')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({ B: 'B' })
+    wrapper.unmount()
+  })
+
+  it('retains a loaded source after clearing its target, without granting later drafts its provenance', async () => {
+    const account = buildAccount()
+    account.credentials.model_mapping = { A: 'C', B: 'B' }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await clickButtonIncluding(wrapper, 'admin.accounts.modelMapping')
+    await wrapper.get('input[placeholder="admin.accounts.actualModel"]').setValue('')
+    await clickDeleteBeside(wrapper, 'admin.accounts.requestModel')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({ A: 'A', B: 'B' })
+
+    // Explicit whitelist removal must not be undone by a new cancelled same-source draft.
+    await clickButtonIncluding(wrapper, 'admin.accounts.modelWhitelist')
+    wrapper.getComponent(ModelWhitelistSelectorStub).vm.$emit('update:modelValue', ['B'])
+    await flushPromises()
+    await clickButtonIncluding(wrapper, 'admin.accounts.modelMapping')
+    await clickButtonIncluding(wrapper, 'admin.accounts.addMapping')
+    await wrapper.get('input[placeholder="admin.accounts.requestModel"]').setValue('A')
+    await clickDeleteBeside(wrapper, 'admin.accounts.requestModel')
+    updateAccountMock.mockClear()
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials?.model_mapping).toEqual({ B: 'B' })
+    wrapper.unmount()
+  })
+
   it('keeps a whitelisted model after deleting the rewrite that replaced it', async () => {
     const account = buildAccount()
     account.credentials.model_mapping = { 'gpt-5.6-sol': 'gpt-5.6-sol' }
