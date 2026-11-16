@@ -2301,8 +2301,21 @@ func (s *RateLimitService) RecoverAccountState(ctx context.Context, accountID in
 
 	result := &SuccessfulTestRecoveryResult{}
 	if account.Status == StatusError {
-		if err := s.accountRepo.ClearError(ctx, accountID); err != nil {
-			return nil, err
+		if account.IsOpenAIOAuth() && strings.HasPrefix(account.ErrorMessage, openAIReauthorizationRequired) {
+			return result, nil
+		}
+		if repo, ok := s.accountRepo.(OpenAIOAuthRecoveryRepository); ok && account.IsOpenAIOAuth() && recoverableOpenAITestError(account) {
+			applied, err := repo.SetOpenAIOAuthRecoveryStateIfUnchanged(ctx, account, "")
+			if err != nil {
+				return nil, err
+			}
+			if !applied {
+				return result, nil
+			}
+		} else {
+			if err := s.accountRepo.ClearError(ctx, accountID); err != nil {
+				return nil, err
+			}
 		}
 		result.ClearedError = true
 		if options.InvalidateToken && s.tokenCacheInvalidator != nil && account.IsOAuth() {
