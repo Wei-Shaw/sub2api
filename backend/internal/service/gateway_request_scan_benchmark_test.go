@@ -11,35 +11,37 @@ import (
 func buildGatewayRequestBenchmarkBody(targetBytes int, anthropic bool) []byte {
 	var sb strings.Builder
 	sb.Grow(targetBytes + 1024)
+	// strings.Builder.WriteString 的 error 恒为 nil，errcheck 不接受裸忽略，收口在这里。
+	write := func(s string) { _, _ = sb.WriteString(s) }
 	item := `{"type":"message","role":"user","content":[{"type":"input_text","text":"` + strings.Repeat("x", 4000) + `"}]}`
 	if anthropic {
-		sb.WriteString(`{"model":"claude-sonnet-5-5","stream":true,"system":[{"type":"text","text":"`)
-		sb.WriteString(strings.Repeat("z", targetBytes/8))
-		sb.WriteString(`"}],"tools":[{"name":"shell","description":"`)
-		sb.WriteString(strings.Repeat("y", targetBytes/16))
-		sb.WriteString(`"}],"messages":[`)
+		write(`{"model":"claude-sonnet-5-5","stream":true,"system":[{"type":"text","text":"`)
+		write(strings.Repeat("z", targetBytes/8))
+		write(`"}],"tools":[{"name":"shell","description":"`)
+		write(strings.Repeat("y", targetBytes/16))
+		write(`"}],"messages":[`)
 		msg := `{"role":"user","content":[{"type":"text","text":"` + strings.Repeat("x", 4000) + `"}]}`
 		for i := 0; sb.Len() < targetBytes; i++ {
 			if i > 0 {
-				sb.WriteString(`,`)
+				write(`,`)
 			}
-			sb.WriteString(msg)
+			write(msg)
 		}
-		sb.WriteString(`]}`)
+		write(`]}`)
 		return []byte(sb.String())
 	}
-	sb.WriteString(`{"model":"gpt-5.5","stream":true,"instructions":"`)
-	sb.WriteString(strings.Repeat("z", targetBytes/8))
-	sb.WriteString(`","tools":[{"type":"function","name":"shell","description":"`)
-	sb.WriteString(strings.Repeat("y", targetBytes/16))
-	sb.WriteString(`"}],"input":[`)
+	write(`{"model":"gpt-5.5","stream":true,"instructions":"`)
+	write(strings.Repeat("z", targetBytes/8))
+	write(`","tools":[{"type":"function","name":"shell","description":"`)
+	write(strings.Repeat("y", targetBytes/16))
+	write(`"}],"input":[`)
 	for i := 0; sb.Len() < targetBytes; i++ {
 		if i > 0 {
-			sb.WriteString(`,`)
+			write(`,`)
 		}
-		sb.WriteString(item)
+		write(item)
 	}
-	sb.WriteString(`]}`)
+	write(`]}`)
 	return []byte(sb.String())
 }
 
