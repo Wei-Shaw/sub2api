@@ -473,17 +473,18 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 	}
 
 	var requestedEffort, effectiveEffort *string
-	if isAntigravityThinkingVariantFamily(mappedModel) {
-		var bodyEffort *string
-		if claudeReq.OutputConfig != nil {
-			bodyEffort = NormalizeClaudeOutputEffort(claudeReq.OutputConfig.Effort)
-		}
-		if inbound := RequestedReasoningEffortFromContext(ctx); inbound != nil {
-			requestedEffort = inbound
+	var bodyEffort *string
+	if claudeReq.OutputConfig != nil {
+		bodyEffort = NormalizeClaudeOutputEffort(claudeReq.OutputConfig.Effort)
+	}
+	inboundEffort := RequestedReasoningEffortFromContext(ctx)
+	if effective, handled := effectiveAntigravityGeminiReasoningEffort(mappedModel, geminiBody, bodyEffort != nil || inboundEffort != nil); handled {
+		if inboundEffort != nil {
+			requestedEffort = inboundEffort
 		} else {
 			requestedEffort = bodyEffort
 		}
-		effectiveEffort = effectiveAntigravityGeminiReasoningEffort(mappedModel, geminiBody, bodyEffort != nil || requestedEffort != nil)
+		effectiveEffort = effective
 	}
 
 	return &ForwardResult{

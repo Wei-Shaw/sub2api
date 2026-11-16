@@ -306,8 +306,18 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request")
 	}
 
-	request.requestedReasoningEffort = request.reasoningEffort
-	if effective := effectiveAntigravityGeminiReasoningEffort(mappedModel, geminiBody, request.reasoningEffort != nil); effective != nil {
+	if inbound := RequestedReasoningEffortFromContext(ctx); inbound != nil {
+		request.requestedReasoningEffort = inbound
+	} else if raw := explicitRequestedReasoningEffortFromBody(request.originalBody); raw != "" {
+		if canonical := NormalizeMaxReasoningEffort(raw); canonical != "" {
+			request.requestedReasoningEffort = &canonical
+		} else {
+			request.requestedReasoningEffort = request.reasoningEffort
+		}
+	} else {
+		request.requestedReasoningEffort = request.reasoningEffort
+	}
+	if effective, handled := effectiveAntigravityGeminiReasoningEffort(mappedModel, geminiBody, request.reasoningEffort != nil); handled {
 		request.reasoningEffort = effective
 	} else {
 		request.reasoningEffort = ApplyThinkingEnabledFallback(request.reasoningEffort, request.originalBody, mappedModel)
@@ -339,7 +349,9 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 			return nil, err
 		}
 		body = ensureGeminiFunctionCallThoughtSignatures(body)
-		body = applyGeminiCompatThinkingConfig(body, claudeBody, mappedModel, claudeRequest != nil && claudeRequest.Stream)
+		includeThoughts := (claudeRequest != nil && claudeRequest.Stream) ||
+			(claudeRequestEnablesThinking(claudeBody) && parseClaudeThinkingIntent(claudeBody).tier != "minimal")
+		body = applyGeminiCompatThinkingConfig(body, claudeBody, mappedModel, includeThoughts)
 		body, err = injectIdentityPatchToGeminiRequest(body)
 		if err != nil {
 			return nil, err

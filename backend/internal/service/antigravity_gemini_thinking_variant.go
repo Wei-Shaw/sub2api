@@ -40,6 +40,24 @@ func WithAntigravityThinkingLevelFromGeminiBody(ctx context.Context, body []byte
 	return context.WithValue(ctx, antigravityThinkingLevelContextKey{}, geminiThinkingLevelFromBody(body))
 }
 
+// WithAntigravityThinkingLevelFromOpenAIBody 从策略改写后的 OpenAI Chat Completions /
+// Responses 请求体提取有效 Antigravity 思考档位写入 ctx，与原始 RequestedReasoningEffort 归因解耦。
+func WithAntigravityThinkingLevelFromOpenAIBody(ctx context.Context, body []byte) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	level := "high"
+	switch strings.ToLower(explicitRequestedReasoningEffortFromBody(body)) {
+	case "none", "minimal", "low":
+		level = "low"
+	case "medium":
+		level = "medium"
+	case "xhigh", "max":
+		level = "xhigh"
+	}
+	return context.WithValue(ctx, antigravityThinkingLevelContextKey{}, level)
+}
+
 // AntigravityThinkingLevelFromContext 读取请求体解析出的有效 Antigravity 思考档位。
 func AntigravityThinkingLevelFromContext(ctx context.Context) (string, bool) {
 	if ctx == nil {
@@ -118,34 +136,36 @@ func antigravityRateLimitModelKey(account *Account, originalModel, mappedModel s
 	return originalModel
 }
 
-// effectiveAntigravityGeminiReasoningEffort 提取转发到 Antigravity 分档模型族时实际生效的思考档位，
-// 仅在客户端显式指定了 effort 且目标属于分档模型族时返回（不给未传 effort 的请求虚构计费档位）。
-func effectiveAntigravityGeminiReasoningEffort(mappedModel string, wrappedGeminiBody []byte, hadExplicitEffort bool) *string {
-	if !hadExplicitEffort {
-		return nil
-	}
+// effectiveAntigravityGeminiReasoningEffort 提取转发到 Antigravity 分档模型族时实际生效的思考档位。
+// 返回值的第二个布尔值表示实际外发模型是否属于由本函数裁决的分档/Gemini 模型族：
+// 当请求因纯 web_search 降级到 gemini-2.5-flash（仅预算无分档）时返回 (nil, true)，
+// 阻止上层回退恢复降级前的分档 effort。
+func effectiveAntigravityGeminiReasoningEffort(mappedModel string, wrappedGeminiBody []byte, hadExplicitEffort bool) (*string, bool) {
 	actualModel := strings.TrimSpace(gjson.GetBytes(wrappedGeminiBody, "model").String())
 	if actualModel == "" {
 		actualModel = mappedModel
 	}
 	lowerModel := strings.TrimPrefix(strings.ToLower(actualModel), "models/")
 	if !isAntigravityThinkingVariantFamily(lowerModel) {
-		return nil
+		return nil, false
+	}
+	if !hadExplicitEffort {
+		return nil, true
 	}
 	requestRaw := gjson.GetBytes(wrappedGeminiBody, "request").Raw
 	if requestRaw == "" {
 		requestRaw = string(wrappedGeminiBody)
 	}
 	if effort := extractGeminiReasoningEffortFromBody([]byte(requestRaw)); effort != nil {
-		return effort
+		return effort, true
 	}
 	for _, level := range []string{"xhigh", "high", "medium", "low"} {
 		if strings.HasSuffix(lowerModel, "-"+level) {
 			resolved := level
-			return &resolved
+			return &resolved, true
 		}
 	}
-	return nil
+	return nil, true
 }
 
 // geminiThinkingLevelFromBody 从 Gemini 原生请求体推导期望的思考档位（low/medium/high/xhigh）。

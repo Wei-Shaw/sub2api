@@ -1348,8 +1348,45 @@ func TestAntigravityCompatAppliesThinkingLevelForBareCarbonAndHydrogen(t *testin
 		require.Len(t, upstream.requestBodies, 1)
 		require.Equal(t, "gemini-4-carbon", gjson.GetBytes(upstream.requestBodies[0], "model").String())
 		require.Equal(t, "high", gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.thinkingConfig.thinkingLevel").String())
+		require.True(t, gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.thinkingConfig.includeThoughts").Bool())
 		require.Equal(t, "high", optionalStringValue(res.ReasoningEffort))
 		require.Equal(t, "xhigh", optionalStringValue(res.RequestedReasoningEffort))
+	})
+
+	t.Run("non-streaming explicit effort enables includeThoughts and returns reasoning while none suppresses thoughts", func(t *testing.T) {
+		thoughtRespBody := `data: {"response":{"responseId":"resp_thought","candidates":[{"content":{"role":"model","parts":[{"thought":true,"text":"analyzing step by step"},{"text":"done"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":10,"candidatesTokenCount":4,"thoughtsTokenCount":6}}}` + "\n\n"
+		thoughtResp := &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       io.NopCloser(strings.NewReader(thoughtRespBody)),
+		}
+		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{thoughtResp, antigravityCompatSuccessResponse()}}
+		svc := newAntigravityCompatService(config.GatewayConfig{}, upstream)
+		account := &Account{
+			ID:          3762,
+			Name:        "ag-default",
+			Platform:    PlatformAntigravity,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Concurrency: 1,
+			Credentials: map[string]any{"access_token": "tok", "project_id": "proj"},
+		}
+
+		highBody := []byte(`{"model":"gemini-4-carbon","stream":false,"reasoning_effort":"high","messages":[{"role":"user","content":"analyze"}]}`)
+		cHigh, recHigh := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", highBody)
+		_, err := svc.ForwardAsChatCompletions(context.Background(), cHigh, account, highBody, nil)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, recHigh.Code)
+		require.True(t, gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.thinkingConfig.includeThoughts").Bool())
+		require.Equal(t, "analyzing step by step", gjson.Get(recHigh.Body.String(), "choices.0.message.reasoning_content").String())
+
+		noneBody := []byte(`{"model":"gemini-4-carbon","stream":false,"reasoning":{"effort":"none"},"input":"quick"}`)
+		cNone, recNone := newAntigravityCompatContext(http.MethodPost, "/v1/responses", noneBody)
+		_, err = svc.ForwardAsResponses(context.Background(), cNone, account, noneBody, nil)
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, recNone.Code)
+		require.Equal(t, "low", gjson.GetBytes(upstream.requestBodies[1], "request.generationConfig.thinkingConfig.thinkingLevel").String())
+		require.False(t, gjson.GetBytes(upstream.requestBodies[1], "request.generationConfig.thinkingConfig.includeThoughts").Bool())
 	})
 
 	t.Run("responses selects xhigh variant for hydrogen without redundant thinkingLevel", func(t *testing.T) {
@@ -1459,6 +1496,52 @@ func TestAntigravityCompatAppliesThinkingLevelForBareCarbonAndHydrogen(t *testin
 		require.Equal(t, "claude-sonnet-5-5-low", res3.UpstreamModel)
 		require.Equal(t, "low", optionalStringValue(res3.ReasoningEffort))
 		require.Equal(t, "none", optionalStringValue(res3.RequestedReasoningEffort))
+	})
+
+	t.Run("preserves pre-policy requested effort and clears effective effort on web_search downgrade", func(t *testing.T) {
+		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{
+			antigravityCompatSuccessResponse(),
+			antigravityCompatSuccessResponse(),
+			antigravityCompatSuccessResponse(),
+		}}
+		svc := newAntigravityCompatService(config.GatewayConfig{}, upstream)
+		account := &Account{
+			ID:          3763,
+			Name:        "ag-default",
+			Platform:    PlatformAntigravity,
+			Type:        AccountTypeOAuth,
+			Status:      StatusActive,
+			Concurrency: 1,
+			Credentials: map[string]any{"access_token": "tok", "project_id": "proj"},
+		}
+
+		// max 原始请求值保留在 RequestedReasoningEffort，Opus 5.5 实际生效档位记为 high。
+		maxBody := []byte(`{"model":"claude-opus-5-5","reasoning_effort":"max","messages":[{"role":"user","content":"hi"}]}`)
+		cMax, _ := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", maxBody)
+		resMax, err := svc.ForwardAsChatCompletions(context.Background(), cMax, account, maxBody, nil)
+		require.NoError(t, err)
+		require.Equal(t, "claude-opus-5-5-high", resMax.UpstreamModel)
+		require.Equal(t, "high", optionalStringValue(resMax.ReasoningEffort))
+		require.Equal(t, "max", optionalStringValue(resMax.RequestedReasoningEffort))
+
+		// 分组策略改写 body 为 low 后，Context 中预先绑定的原始 high 归因不被覆盖。
+		rewrittenLowBody := []byte(`{"model":"claude-opus-5-5","reasoning_effort":"low","messages":[{"role":"user","content":"hi"}]}`)
+		cPolicy, _ := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", rewrittenLowBody)
+		ctxWithOriginal := WithRequestedReasoningEffort(context.Background(), "high")
+		resPolicy, err := svc.ForwardAsChatCompletions(ctxWithOriginal, cPolicy, account, rewrittenLowBody, nil)
+		require.NoError(t, err)
+		require.Equal(t, "claude-opus-5-5-low", resPolicy.UpstreamModel)
+		require.Equal(t, "low", optionalStringValue(resPolicy.ReasoningEffort))
+		require.Equal(t, "high", optionalStringValue(resPolicy.RequestedReasoningEffort))
+
+		// 纯 web_search 将实际外发模型降级为 gemini-2.5-flash 时，不回退恢复 xhigh 计费档位。
+		webSearchBody := []byte(`{"model":"claude-opus-5-5","reasoning":{"effort":"xhigh"},"input":"search","tools":[{"type":"web_search"}]}`)
+		cSearch, _ := newAntigravityCompatContext(http.MethodPost, "/v1/responses", webSearchBody)
+		resSearch, err := svc.ForwardAsResponses(context.Background(), cSearch, account, webSearchBody, nil)
+		require.NoError(t, err)
+		require.Equal(t, "gemini-2.5-flash", gjson.GetBytes(upstream.requestBodies[2], "model").String())
+		require.Nil(t, resSearch.ReasoningEffort)
+		require.Equal(t, "xhigh", optionalStringValue(resSearch.RequestedReasoningEffort))
 	})
 }
 

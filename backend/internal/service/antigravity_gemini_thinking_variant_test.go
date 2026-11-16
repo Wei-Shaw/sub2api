@@ -242,7 +242,9 @@ func TestGeminiThinkingLevelFromClaudeRequest_HonorsOutputEffortAndCarbonTiers(t
 
 	// web_search 降级把实际外发模型改写为 gemini-2.5-flash 时，不得再按原 Hydrogen 档位后缀收取 xhigh 倍率。
 	webSearchBody := []byte(`{"model":"gemini-2.5-flash","request":{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}}`)
-	require.Nil(t, effectiveAntigravityGeminiReasoningEffort("gemini-4-hydrogen-xhigh", webSearchBody, true))
+	downgradedEffort, downgradedHandled := effectiveAntigravityGeminiReasoningEffort("gemini-4-hydrogen-xhigh", webSearchBody, true)
+	require.True(t, downgradedHandled)
+	require.Nil(t, downgradedEffort)
 }
 
 func TestClaude55ThinkingVariantResolutionOnAntigravity(t *testing.T) {
@@ -299,8 +301,12 @@ func TestClaude55ThinkingVariantResolutionOnAntigravity(t *testing.T) {
 
 	// xhigh 降级到 claude-opus-5-5-high 时，实际计费 effort 记为 high。
 	wrappedBody := []byte(`{"model":"claude-opus-5-5-high","request":{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}}`)
-	require.Equal(t, "high", optionalStringValue(effectiveAntigravityGeminiReasoningEffort("claude-opus-5-5-high", wrappedBody, true)))
-	require.Nil(t, effectiveAntigravityGeminiReasoningEffort("claude-opus-5-5-high", wrappedBody, false))
+	opusHighEffort, opusHighHandled := effectiveAntigravityGeminiReasoningEffort("claude-opus-5-5-high", wrappedBody, true)
+	require.True(t, opusHighHandled)
+	require.Equal(t, "high", optionalStringValue(opusHighEffort))
+	opusOmittedEffort, opusOmittedHandled := effectiveAntigravityGeminiReasoningEffort("claude-opus-5-5-high", wrappedBody, false)
+	require.True(t, opusOmittedHandled)
+	require.Nil(t, opusOmittedEffort)
 
 	// 单独配置裸动态预设（{"claude-opus-5-5": "claude-opus-5-5"}）时，回退官方默认分档变体而非发裸名 404。
 	barePresetOnly := newAntigravityAccountWithMapping(map[string]string{"claude-opus-5-5": "claude-opus-5-5"})

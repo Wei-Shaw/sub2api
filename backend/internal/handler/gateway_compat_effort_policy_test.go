@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -159,5 +160,177 @@ func TestGatewayCompatibilityHandlersReasoningEffortPolicy(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+type antigravityCompatPolicyUpstream struct {
+	service.HTTPUpstream
+	bodies [][]byte
+}
+
+func (u *antigravityCompatPolicyUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	body, err := io.ReadAll(req.Body)
+	if err != nil {
+		return nil, err
+	}
+	u.bodies = append(u.bodies, body)
+	sse := `data: {"response":{"responseId":"resp_ag","candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":8,"candidatesTokenCount":3}}}` + "\n\n"
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(sse)),
+	}, nil
+}
+
+func TestGatewayCompatibilityHandlersAntigravityEffortPolicySchedulingAndAttribution(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	resetAt := time.Now().Add(10 * time.Minute).UTC().Format(time.RFC3339)
+
+	for _, endpoint := range []string{"chat/completions", "responses"} {
+		t.Run(endpoint+"/policy_rewrite_high_to_low_uses_post_policy_cooldown_and_preserves_requested_effort", func(t *testing.T) {
+			cfg := &config.Config{}
+			groupID := int64(9410)
+			group := &service.Group{
+				ID: groupID, Hydrated: true, Platform: service.PlatformAnthropic, Status: service.StatusActive, RateMultiplier: 1,
+				ReasoningEffortMappings: []service.ReasoningEffortMapping{{From: "high", To: "low"}},
+			}
+			// -high 处于冷却，但策略改写后实际应命中健康的 -low 变体。
+			agAccount := &service.Account{
+				ID: 9411, Name: "ag-mixed", Platform: service.PlatformAntigravity, Type: service.AccountTypeOAuth,
+				Status: service.StatusActive, Schedulable: true, Concurrency: 1,
+				Credentials: map[string]any{"access_token": "tok", "project_id": "proj"},
+				Extra: map[string]any{
+					"mixed_scheduling": true,
+					"model_rate_limits": map[string]any{
+						"claude-opus-5-5-high": map[string]any{"rate_limit_reset_at": resetAt},
+					},
+				},
+				AccountGroups: []service.AccountGroup{{AccountID: 9411, GroupID: groupID}},
+			}
+			cache := &countingGatewaySchedulerCache{fakeSchedulerCache: &fakeSchedulerCache{accounts: []*service.Account{agAccount}}}
+			snapshot := service.NewSchedulerSnapshotService(cache, nil, nil, nil, nil)
+			upstream := &antigravityCompatPolicyUpstream{}
+			usageRepo := &openAIWSUsageHandlerUsageLogRepoStub{created: make(chan *service.UsageLog, 1)}
+			billingRepo := &compatStreamUsageBillingRepo{}
+			billingCache := service.NewBillingCacheService(newHandlerInflightCache(100), nil, nil, nil, nil, nil, cfg, nil)
+			t.Cleanup(billingCache.Stop)
+			gateway := service.NewGatewayService(
+				nil, &fakeGroupRepo{group: group}, usageRepo, billingRepo, nil, nil, nil, nil, cfg,
+				snapshot, nil, service.NewBillingService(cfg, nil), nil, nil, nil, upstream,
+				&service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+			)
+			agGateway := service.NewAntigravityGatewayService(
+				nil, nil, snapshot, service.NewAntigravityTokenProvider(nil, nil, nil), nil, upstream, service.NewSettingService(&handlerMCPSettings{}, cfg), nil,
+			)
+			h := &GatewayHandler{
+				gatewayService: gateway, antigravityGatewayService: agGateway,
+				billingCacheService: billingCache, cfg: cfg, maxAccountSwitches: 1,
+				concurrencyHelper: NewConcurrencyHelper(service.NewConcurrencyService(&fakeConcurrencyCache{}), SSEPingFormatClaude, 0),
+			}
+
+			reqMap := map[string]any{"model": "claude-opus-5-5", "stream": false}
+			if endpoint == "chat/completions" {
+				reqMap["messages"] = []map[string]string{{"role": "user", "content": "hello"}}
+				reqMap["reasoning_effort"] = "high"
+			} else {
+				reqMap["input"] = "hello"
+				reqMap["reasoning"] = map[string]string{"effort": "high"}
+			}
+			body, err := json.Marshal(reqMap)
+			require.NoError(t, err)
+
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			ctx := context.WithValue(context.Background(), ctxkey.Group, group)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/"+endpoint, bytes.NewReader(body)).WithContext(ctx)
+			c.Request.Header.Set("Content-Type", "application/json")
+			apiKey := &service.APIKey{
+				ID: 9412, UserID: 9413, GroupID: &groupID, Group: group,
+				User: &service.User{ID: 9413, Balance: 100},
+			}
+			c.Set(string(middleware.ContextKeyAPIKey), apiKey)
+			c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 9413})
+			if endpoint == "chat/completions" {
+				h.ChatCompletions(c)
+			} else {
+				h.Responses(c)
+			}
+
+			require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+			require.Len(t, upstream.bodies, 1)
+			require.Equal(t, "claude-opus-5-5-low", gjson.GetBytes(upstream.bodies[0], "model").String())
+			require.Len(t, usageRepo.created, 1)
+			usage := <-usageRepo.created
+			wantRequested, wantEffective := "high", "low"
+			require.Equal(t, &wantRequested, usage.RequestedReasoningEffort)
+			require.Equal(t, &wantEffective, usage.ReasoningEffort)
+		})
+
+		t.Run(endpoint+"/policy_rewrite_high_to_low_skips_cooled_low_variant", func(t *testing.T) {
+			cfg := &config.Config{}
+			groupID := int64(9420)
+			group := &service.Group{
+				ID: groupID, Hydrated: true, Platform: service.PlatformAnthropic, Status: service.StatusActive, RateMultiplier: 1,
+				ReasoningEffortMappings: []service.ReasoningEffortMapping{{From: "high", To: "low"}},
+			}
+			// -low 处于冷却、-high 健康时，high->low 改写后的请求应在调度阶段被拦截而非误放行。
+			agAccount := &service.Account{
+				ID: 9421, Name: "ag-low-cooled", Platform: service.PlatformAntigravity, Type: service.AccountTypeOAuth,
+				Status: service.StatusActive, Schedulable: true, Concurrency: 1,
+				Credentials: map[string]any{"access_token": "tok", "project_id": "proj"},
+				Extra: map[string]any{
+					"mixed_scheduling": true,
+					"model_rate_limits": map[string]any{
+						"claude-opus-5-5-low": map[string]any{"rate_limit_reset_at": resetAt},
+					},
+				},
+				AccountGroups: []service.AccountGroup{{AccountID: 9421, GroupID: groupID}},
+			}
+			cache := &countingGatewaySchedulerCache{fakeSchedulerCache: &fakeSchedulerCache{accounts: []*service.Account{agAccount}}}
+			snapshot := service.NewSchedulerSnapshotService(cache, nil, nil, nil, nil)
+			upstream := &antigravityCompatPolicyUpstream{}
+			billingCache := service.NewBillingCacheService(newHandlerInflightCache(100), nil, nil, nil, nil, nil, cfg, nil)
+			t.Cleanup(billingCache.Stop)
+			gateway := service.NewGatewayService(
+				nil, &fakeGroupRepo{group: group}, nil, nil, nil, nil, nil, nil, cfg,
+				snapshot, nil, service.NewBillingService(cfg, nil), nil, nil, nil, upstream,
+				&service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+			)
+			h := &GatewayHandler{
+				gatewayService: gateway, billingCacheService: billingCache, cfg: cfg, maxAccountSwitches: 1,
+				concurrencyHelper: NewConcurrencyHelper(service.NewConcurrencyService(&fakeConcurrencyCache{}), SSEPingFormatClaude, 0),
+			}
+
+			reqMap := map[string]any{"model": "claude-opus-5-5", "stream": false}
+			if endpoint == "chat/completions" {
+				reqMap["messages"] = []map[string]string{{"role": "user", "content": "hello"}}
+				reqMap["reasoning_effort"] = "high"
+			} else {
+				reqMap["input"] = "hello"
+				reqMap["reasoning"] = map[string]string{"effort": "high"}
+			}
+			body, err := json.Marshal(reqMap)
+			require.NoError(t, err)
+
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			ctx := context.WithValue(context.Background(), ctxkey.Group, group)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/"+endpoint, bytes.NewReader(body)).WithContext(ctx)
+			c.Request.Header.Set("Content-Type", "application/json")
+			apiKey := &service.APIKey{
+				ID: 9422, UserID: 9423, GroupID: &groupID, Group: group,
+				User: &service.User{ID: 9423, Balance: 100},
+			}
+			c.Set(string(middleware.ContextKeyAPIKey), apiKey)
+			c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 9423})
+			if endpoint == "chat/completions" {
+				h.ChatCompletions(c)
+			} else {
+				h.Responses(c)
+			}
+
+			require.Equal(t, http.StatusTooManyRequests, recorder.Code, recorder.Body.String())
+			require.Empty(t, upstream.bodies)
+		})
 	}
 }
