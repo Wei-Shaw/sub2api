@@ -130,6 +130,26 @@ describe('AccountUsageCell', () => {
     })
   })
 
+  it('keeps cached Claude quota visible while a replacement batch is loading', async () => {
+    const requestBatchedUsage = vi.fn()
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: 98101, platform: 'anthropic', type: 'oauth' }), requestBatchedUsage,
+        batchedUsage: { five_hour: { utilization: 21 } }, batchedUsageLoading: false },
+      global: { stubs: { UsageProgressBar: { props: ['utilization'], template: '<div data-test="quota">{{ utilization }}</div>' }, AccountQuotaInfo: true } }
+    })
+    await flushPromises()
+    const quota = wrapper.get('[data-test="quota"]').element
+    await wrapper.setProps({ batchedUsageLoading: true })
+    expect(wrapper.get('[data-test="quota"]').text()).toBe('21')
+    expect(wrapper.get('[data-test="quota"]').element).toBe(quota)
+    expect(wrapper.find('.animate-pulse').exists()).toBe(false)
+    expect(wrapper.attributes('aria-busy')).toBe('true')
+    await wrapper.setProps({ batchedUsage: { five_hour: { utilization: 44 } }, batchedUsageLoading: false })
+    expect(wrapper.get('[data-test="quota"]').text()).toBe('44')
+    expect(wrapper.get('[data-test="quota"]').element).toBe(quota)
+    wrapper.unmount()
+  })
+
   it('renders eligible Ollama Cloud state and forwards query updates', async () => {
     const wrapper = mount(AccountUsageCell, {
       props: {
@@ -508,6 +528,47 @@ describe('AccountUsageCell', () => {
     ])
     // The per-model figure (one tighter window per model) is not shown next to the real windows.
     expect(wrapper.text()).not.toContain('gemini3Flash')
+  })
+
+  it('Antigravity query button refreshes past the server cache', async () => {
+    const first = {
+      antigravity_quota_groups: [
+        { key: '3p', name: 'Claude and GPT models', windows: [{ window: 'weekly', utilization: 100, resets_at: '2026-11-12T03:39:37Z' }] }
+      ]
+    }
+    const upgraded = {
+      antigravity_quota_groups: [
+        { key: '3p', name: 'Claude and GPT models', windows: [{ window: 'weekly', utilization: 0, resets_at: '2026-11-14T21:22:49Z' }] }
+      ]
+    }
+    getUsage.mockResolvedValueOnce(first).mockResolvedValueOnce(upgraded)
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 1006, platform: 'antigravity', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'color'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ resetsAt }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+    await flushPromises()
+    expect(wrapper.find('.usage-bar').text()).toContain('|100|')
+
+    const button = wrapper.find('[data-testid="antigravity-active-query"]')
+    expect(button.exists()).toBe(true)
+    expect(button.text()).toContain('admin.accounts.usageWindow.activeQuery')
+    await button.trigger('click')
+    await flushPromises()
+
+    // An active query that bypasses the cache (an upgrade or reset shows at once).
+    expect(getUsage).toHaveBeenLastCalledWith(1006, 'active', true)
+    expect(wrapper.find('.usage-bar').text()).toContain('|0|2026-11-14T21:22:49Z')
   })
 
   it('Antigravity 会显示 AI Credits 余额信息', async () => {
