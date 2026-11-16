@@ -11,9 +11,8 @@ import (
 	"go.uber.org/zap"
 )
 
-// gatewayTransportErrorTempUnschedDuration is how long an account is temporarily
-// unscheduled after a durable transport failure (matches the OpenAI-side
-// openAITransportErrorTempUnschedDuration).
+// gatewayTransportErrorTempUnschedDuration is the default cooldown after a
+// durable transport failure. Anthropic/Bedrock accounts can override it.
 const gatewayTransportErrorTempUnschedDuration = 10 * time.Minute
 
 // gatewayTransportFailoverBody is the Anthropic-format error body attached to
@@ -98,7 +97,15 @@ func tempUnscheduleAccountForTransportError(ctx context.Context, repo AccountRep
 	if account == nil || repo == nil {
 		return
 	}
-	until := time.Now().Add(gatewayTransportErrorTempUnschedDuration)
+	duration := account.transportErrorCooldown()
+	if duration == 0 {
+		logger.L().With(zap.String("component", "service.gateway")).Warn(
+			"gateway.account_transport_cooldown_disabled",
+			zap.Int64("account_id", account.ID),
+		)
+		return
+	}
+	until := time.Now().Add(duration)
 	reason := "upstream transport error (proxy/network): " + safeErr
 
 	bgCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), openAIAccountStateUpdateTimeout)

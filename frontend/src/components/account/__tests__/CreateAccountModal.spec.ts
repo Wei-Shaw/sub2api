@@ -219,6 +219,54 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it.each(['apikey', 'bedrock'])('saves independent transport cooldown settings for %s', async (type) => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, type === 'apikey' ? 'admin.accounts.claudeConsole' : 'admin.accounts.bedrockLabel')
+    if (type === 'bedrock') {
+      await wrapper.get('input[type="radio"][value="apikey"]').setValue(true)
+    }
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('transport policy')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    const toggle = wrapper.get('[data-testid="transport-error-cooldown-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="transport-error-cooldown-minutes"]').element.value).toBe('10')
+    await wrapper.get('[data-testid="transport-error-cooldown-minutes"]').setValue(2)
+    await toggle.trigger('click')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock).toHaveBeenCalledOnce()
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'anthropic', type,
+      extra: { transport_error_cooldown_enabled: false, transport_error_cooldown_minutes: 2 }
+    })
+    wrapper.unmount()
+  })
+
+  it('resets transport cooldown settings when reopening the create dialog', async () => {
+    const wrapper = mountModal()
+    await wrapper.get('[data-testid="transport-error-cooldown-minutes"]').setValue(2)
+    await wrapper.get('[data-testid="transport-error-cooldown-toggle"]').trigger('click')
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    expect(wrapper.get('[data-testid="transport-error-cooldown-toggle"]').attributes('aria-checked')).toBe('true')
+    expect(wrapper.get<HTMLInputElement>('[data-testid="transport-error-cooldown-minutes"]').element.value).toBe('10')
+    await selectButtonByText(wrapper, 'OpenAI')
+    expect(wrapper.find('[data-testid="transport-error-cooldown-toggle"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it.each([0, -1, 1.5, 1441, ''])('rejects invalid transport cooldown duration %s before creation', async (minutes) => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'admin.accounts.claudeConsole')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('transport policy')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('[data-testid="transport-error-cooldown-minutes"]').setValue(minutes)
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
   it('sets month and year expiry presets without submitting the account form', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
     vi.setSystemTime(new Date('2026-01-31T12:34:00'))

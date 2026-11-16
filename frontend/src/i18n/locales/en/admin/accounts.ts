@@ -410,6 +410,13 @@ export default {
           normal: 'Quota normal'
         },
       },
+      transportErrorCooldown: {
+        title: 'Transport error cooldown',
+        hint: 'Anthropic/Bedrock only. Pause scheduling after connection refusal, DNS/routing failures or proxy authentication failures. Enabled by default for 10 minutes; HTTP error handling is unchanged.',
+        minutes: 'Cooldown duration (minutes, 1–1440)',
+        invalidMinutes: 'Transport error cooldown must be an integer between 1 and 1440 minutes.',
+        disabledWarning: 'When disabled, subsequent transport errors do not start a cooldown. Existing blocks are not cleared. Requests may keep trying an unavailable account; no additional same-account retries are enabled.'
+      },
       tempUnschedulable: {
         title: 'Temp Unschedulable',
         statusTitle: 'Temp Unschedulable Status',

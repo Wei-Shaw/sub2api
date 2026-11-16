@@ -1640,6 +1640,10 @@ func (h *AccountHandler) ApplyOAuthCredentials(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	if err := service.ValidateTransportErrorCooldownExtra(req.Extra); err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
 
 	// Re-auth only returns authentication fields. Preserve account configuration
 	// stored alongside them (for example model_mapping), while allowing the new
