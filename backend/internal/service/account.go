@@ -677,6 +677,11 @@ func (a *Account) PrepareSharedSnapshot() {
 	a.modelMappingCacheShared = true
 }
 
+// SharedSnapshotCurrent 报告账号是否为 PrepareSharedSnapshot 处理过的母本，且其预解析结果对应当前的运行时模型映射版本。
+func (a *Account) SharedSnapshotCurrent() bool {
+	return a != nil && a.modelMappingCacheShared && a.modelMappingCacheRuntimeVersion == xai.RuntimeModelMappingVersion()
+}
+
 func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]string {
 	if a.Credentials == nil {
 		// Antigravity 平台使用默认映射
