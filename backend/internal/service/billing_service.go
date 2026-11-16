@@ -98,15 +98,16 @@ type BillingCache interface {
 type ModelPricing struct {
 	// UltrafastMultiplier is model-owned and independent of operator Fast pricing.
 	UltrafastMultiplier                float64
-	InputPricePerToken                 float64            // 每token输入价格 (USD)
-	InputPricePerTokenPriority         float64            // priority service tier 下每token输入价格 (USD)
-	ImageInputPricePerToken            float64            // 图片输入 token 价格 (USD)，用于多模态 embedding 等图文不同价场景；为 0 时回退到 InputPricePerToken
-	ImageCacheReadPricePerToken        float64            // 图片缓存输入价格；无独立价格时沿用缓存读取价
-	OutputPricePerToken                float64            // 每token输出价格 (USD)
-	OutputPricePerTokenPriority        float64            // priority service tier 下每token输出价格 (USD)
-	CacheCreationPricePerToken         float64            // 缓存创建每token价格 (USD)
-	CacheCreationPricePerTokenPriority float64            // priority service tier 下缓存创建每token价格 (USD)
-	CacheCreationPriceExplicit         bool               // 是否由渠道/区间定价显式设定（为 true 时即使 == 0 也不回退）
+	InputPricePerToken                 float64 // 每token输入价格 (USD)
+	InputPricePerTokenPriority         float64 // priority service tier 下每token输入价格 (USD)
+	ImageInputPricePerToken            float64 // 图片输入 token 价格 (USD)，用于多模态 embedding 等图文不同价场景；为 0 时回退到 InputPricePerToken
+	ImageCacheReadPricePerToken        float64 // 图片缓存输入价格；无独立价格时沿用缓存读取价
+	OutputPricePerToken                float64 // 每token输出价格 (USD)
+	OutputPricePerTokenPriority        float64 // priority service tier 下每token输出价格 (USD)
+	CacheCreationPricePerToken         float64 // 缓存创建每token价格 (USD)
+	CacheCreationPricePerTokenPriority float64 // priority service tier 下缓存创建每token价格 (USD)
+	CacheCreationPriceExplicit         bool    // 是否由渠道/区间定价显式设定（为 true 时即使 == 0 也不回退）
+	priceOverrides                     tokenPriceOverrides
 	CacheReadPricePerToken             float64            // 缓存读取每token价格 (USD)
 	CacheReadPricePerTokenPriority     float64            // priority service tier 下缓存读取每token价格 (USD)
 	FastMultiplier                     *float64           // 渠道显式 Fast/priority 倍率；nil 时沿用模型目录行为
@@ -1454,6 +1455,7 @@ func (s *BillingService) getModelPricingAt(model string, pricingAt time.Time) (*
 			price1h := litellmPricing.CacheCreationInputTokenCostAbove1hr
 			enableBreakdown := price1h > 0 && price1h > price5m
 			return s.applyModelSpecificPricingPolicyEx(model, &ModelPricing{
+				priceOverrides:                     litellmPricing.priceOverrides,
 				InputPricePerToken:                 litellmPricing.InputCostPerToken,
 				InputPricePerTokenPriority:         litellmPricing.InputCostPerTokenPriority,
 				OutputPricePerToken:                litellmPricing.OutputCostPerToken,
@@ -1676,13 +1678,19 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 	// DeepSeek 模型默认价卡按官方峰谷口径调整：高峰时段（01:00–04:00 与
 	// 06:00–10:00 UTC，仅工作日；北京时间周末全天低谷）按 2× 低谷价计费。
 	// 仅作用于默认价卡（Source=LiteLLM，无分组/渠道自定义定价）——分组/渠道
-	// 自定义定价保持运营者语义，不叠加。先克隆再乘，避免污染共享 fallbackPrices 指针。
+	// 自定义定价及 override_file 显式覆盖的字段不叠加。先克隆再乘，避免污染共享价卡。
 	if resolved.Source == PricingSourceLiteLLM && isDeepSeekModel(input.Model) {
 		if mult := deepseekPeakMultiplierAt(pricingAt); mult > 1 {
 			cloned := *pricing
-			cloned.InputPricePerToken *= mult
-			cloned.OutputPricePerToken *= mult
-			cloned.CacheReadPricePerToken *= mult
+			if !cloned.priceOverrides.input {
+				cloned.InputPricePerToken *= mult
+			}
+			if !cloned.priceOverrides.output {
+				cloned.OutputPricePerToken *= mult
+			}
+			if !cloned.priceOverrides.cacheRead {
+				cloned.CacheReadPricePerToken *= mult
+			}
 			pricing = &cloned
 		}
 	}
@@ -1986,7 +1994,7 @@ func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing
 	if pricing == nil {
 		return nil
 	}
-	// DeepSeek 模型：无论 JSON/远端价格表给什么价，一律强制官方低谷价
+	// DeepSeek 模型：目录/回退数据使用官方低谷价；override_file 显式覆盖的字段保留。
 	// （Flash 三档为 2026-09-10 官方降价后口径）。这是覆盖远端旧价的关键——远端
 	// 仓库不可改，生产会先拉到旧价，必须在此兜底修正；克隆后再覆盖，避免污染
 	// 共享 fallbackPrices 指针。
@@ -1997,16 +2005,18 @@ func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing
 	// 对默认价卡另行叠加（分组/渠道自定义定价不叠加）。
 	if forceDeepSeekRates && isDeepSeekModel(model) {
 		cloned := *pricing
+		inputPrice, outputPrice, cacheReadPrice := deepseekFlashOffPeakInputPrice, deepseekFlashOffPeakOutputPrice, deepseekFlashOffPeakCacheRead
 		if isDeepSeekProModel(model) {
-			cloned.InputPricePerToken = deepseekProOffPeakInputPrice
-			cloned.OutputPricePerToken = deepseekProOffPeakOutputPrice
-			cloned.CacheReadPricePerToken = deepseekProOffPeakCacheRead
-		} else {
-			// deepseek-flash（= V4.1-Flash）、deepseek-v4-flash /
-			// deepseek-v4-flash-vision-exp 与其余 deepseek-* 共用 flash 价。
-			cloned.InputPricePerToken = deepseekFlashOffPeakInputPrice
-			cloned.OutputPricePerToken = deepseekFlashOffPeakOutputPrice
-			cloned.CacheReadPricePerToken = deepseekFlashOffPeakCacheRead
+			inputPrice, outputPrice, cacheReadPrice = deepseekProOffPeakInputPrice, deepseekProOffPeakOutputPrice, deepseekProOffPeakCacheRead
+		}
+		if !cloned.priceOverrides.input {
+			cloned.InputPricePerToken = inputPrice
+		}
+		if !cloned.priceOverrides.output {
+			cloned.OutputPricePerToken = outputPrice
+		}
+		if !cloned.priceOverrides.cacheRead {
+			cloned.CacheReadPricePerToken = cacheReadPrice
 		}
 		return &cloned
 	}
