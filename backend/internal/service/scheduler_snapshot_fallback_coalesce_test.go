@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
@@ -38,7 +39,7 @@ func (c *fallbackCoalesceCache) SetSnapshot(_ context.Context, _ SchedulerBucket
 	return nil
 }
 
-// fallbackCoalesceRepo 的分组查询停在 release 关闭之前，并统计调用次数。
+// fallbackCoalesceRepo 的配置池查询停在 release 关闭之前，并统计调用次数。
 type fallbackCoalesceRepo struct {
 	AccountRepository
 	release  chan struct{}
@@ -46,7 +47,7 @@ type fallbackCoalesceRepo struct {
 	accounts []Account
 }
 
-func (r *fallbackCoalesceRepo) ListSchedulableByGroupIDAndPlatform(ctx context.Context, _ int64, _ string) ([]Account, error) {
+func (r *fallbackCoalesceRepo) ListModelAvailabilityCandidates(ctx context.Context, _ *int64, _ []string, _ bool) ([]Account, error) {
 	r.calls.Add(1)
 	select {
 	case <-r.release:
@@ -171,7 +172,10 @@ func (c *valuesReaderCache) GetSnapshot(context.Context, SchedulerBucket) ([]*Ac
 }
 
 func TestSchedulerSnapshotListUsesValuesReaderWithoutCopy(t *testing.T) {
-	cache := &valuesReaderCache{values: []Account{{ID: 7301, Platform: PlatformOpenAI}, {ID: 7302, Platform: PlatformOpenAI}}}
+	cache := &valuesReaderCache{values: []Account{
+		{ID: 7301, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true},
+		{ID: 7302, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true},
+	}}
 	svc := newFallbackCoalesceService(cache, nil)
 	groupID := int64(73)
 
@@ -180,6 +184,48 @@ func TestSchedulerSnapshotListUsesValuesReaderWithoutCopy(t *testing.T) {
 	require.Len(t, accounts, 2)
 	require.Same(t, &cache.values[0], &accounts[0])
 	require.Zero(t, cache.snapshotCalls.Load())
+}
+
+// 快照缓存的是配置池（#8729）：值切片路径同样要在读取时排除限时封禁中的账号，到期的账号直接回到候选。
+func TestSchedulerSnapshotValuesReaderFiltersTimeBlockedAccounts(t *testing.T) {
+	future := time.Now().Add(time.Hour)
+	past := time.Now().Add(-time.Minute)
+	cache := &valuesReaderCache{values: []Account{
+		{ID: 7311, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, RateLimitResetAt: &future},
+		{ID: 7312, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, RateLimitResetAt: &past},
+		{ID: 7313, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, TempUnschedulableUntil: &future},
+		{ID: 7314, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, OverloadUntil: &past},
+	}}
+	svc := newFallbackCoalesceService(cache, nil)
+	groupID := int64(74)
+
+	accounts, _, err := svc.ListSchedulableAccounts(context.Background(), &groupID, PlatformOpenAI, false)
+	require.NoError(t, err)
+	require.Equal(t, []int64{7312, 7314}, []int64{accounts[0].ID, accounts[1].ID})
+	require.Len(t, accounts, 2)
+}
+
+// 合并回源时回写快照保留完整配置池，各调用方拿到的切片只含当前可调度的账号。
+func TestSchedulerFallbackPublishesPoolAndReturnsSchedulable(t *testing.T) {
+	future := time.Now().Add(time.Hour)
+	release := make(chan struct{})
+	close(release)
+	cache := &fallbackCoalesceCache{}
+	repo := &fallbackCoalesceRepo{
+		release: release,
+		accounts: []Account{
+			{ID: 7401, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true},
+			{ID: 7402, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true, RateLimitResetAt: &future},
+		},
+	}
+	svc := newFallbackCoalesceService(cache, repo)
+	groupID := int64(75)
+
+	accounts, _, err := svc.ListSchedulableAccounts(context.Background(), &groupID, PlatformOpenAI, false)
+	require.NoError(t, err)
+	require.Len(t, accounts, 1)
+	require.Equal(t, int64(7401), accounts[0].ID)
+	require.Len(t, cache.snapshot, 2, "the published snapshot keeps the configured pool")
 }
 
 func TestFilterAccountsBySchedulingThresholdCompactsInPlace(t *testing.T) {
