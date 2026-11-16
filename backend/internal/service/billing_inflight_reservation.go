@@ -369,10 +369,13 @@ const (
 
 // InflightEstimateRequest 单请求估算输入。
 type InflightEstimateRequest struct {
-	Model     string
-	BodyBytes int
-	MaxTokens int
-	Kind      InflightEstimateKind
+	// AdditionalUpstreamModel is a frozen quota-policy target. It supplements
+	// the original billing identity without applying channel mapping twice.
+	AdditionalUpstreamModel string
+	Model                   string
+	BodyBytes               int
+	MaxTokens               int
+	Kind                    InflightEstimateKind
 	// Units 按次/按张数量（<=0 视为 1）。
 	Units int
 	// SearchCalls 叠加的搜索次数（按分组 search_price_per_1k 计）。
@@ -672,6 +675,15 @@ func (d inflightEstimateDeps) estimate(ctx context.Context, apiKey *APIKey, req 
 			if c := bestOf(d.accountMappedModels(ctx, apiKey, upstreamInput)); c > best {
 				best = c
 			}
+		}
+	}
+	if target := strings.TrimSpace(req.AdditionalUpstreamModel); target != "" {
+		models := []string{target}
+		if d.accountMappedModels != nil {
+			models = append(models, d.accountMappedModels(ctx, apiKey, target)...)
+		}
+		if c := bestOf(models); c > best {
+			best = c
 		}
 	}
 	if best <= 0 {

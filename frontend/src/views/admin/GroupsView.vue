@@ -3153,6 +3153,11 @@
           :account-names="editCodexManifestAccountNames"
         />
 
+        <GroupQuotaPolicyFields
+          v-if="editForm.platform === 'openai' && editingGroup"
+          :key="editingGroup.id"
+          :group-id="editingGroup.id"
+        />
 
         <div class="border-t border-gray-200 pt-4 mt-4 dark:border-dark-400">
           <div class="flex flex-wrap items-start justify-between gap-3">
@@ -4334,6 +4339,7 @@ import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesMo
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
 import ReasoningEffortPolicyFields from "@/components/admin/group/ReasoningEffortPolicyFields.vue";
 import CodexManifestAccountsField from "@/components/admin/group/CodexManifestAccountsField.vue";
+import GroupQuotaPolicyFields from "@/components/admin/group/GroupQuotaPolicyFields.vue";
 import PricingEntryCard from "@/components/admin/channel/PricingEntryCard.vue";
 import type { PricingFormEntry } from "@/components/admin/channel/types";
 import {

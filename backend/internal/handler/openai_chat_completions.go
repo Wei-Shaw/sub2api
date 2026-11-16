@@ -115,7 +115,14 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, reqModel)
-	forwardModel := openAIChannelForwardModel(channelMapping, reqModel)
+	quotaPolicy := h.resolveOpenAIGroupQuotaPolicy(apiKey, openAIChannelForwardModel(channelMapping, reqModel), false)
+	forwardModel := quotaPolicy.TargetModel
+	forwardBody := openAIModelMappedBody(body, channelMapping.Mapped || quotaPolicy.Applied, forwardModel, h.gatewayService.ReplaceModelInBody)
+	if quotaPolicy.Applied {
+		c.Request = c.Request.WithContext(service.WithOpenAIQuotaPolicyPricingContext(c.Request.Context(), reqModel, channelMapping))
+		c.Request = c.Request.WithContext(service.WithOpenAIForwardModel(c.Request.Context(), forwardModel, false))
+	}
+	logOpenAIGroupQuotaPolicy(reqLog, quotaPolicy)
 
 	if h.errorPassthroughService != nil {
 		service.BindErrorPassthroughService(c, h.errorPassthroughService)
@@ -146,7 +153,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	}
 
 	// 余额模式在途预留：防止并发请求在预检时看到同一份余额而集体透支。
-	inflightRelease, err := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, tokenInflightEstimate(reqModel, body))
+	inflightRelease, err := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, quotaPolicyInflightEstimate(reqModel, body, quotaPolicy))
 	if err != nil {
 		reqLog.Info("openai_chat_completions.inflight_reservation_rejected", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
@@ -248,10 +255,6 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		service.SetOpsLatencyMs(c, service.OpsRoutingLatencyMsKey, time.Since(routingStart).Milliseconds())
 		forwardStart := time.Now()
 
-		forwardBody := body
-		if channelMapping.Mapped {
-			forwardBody = h.gatewayService.ReplaceModelInBody(body, channelMapping.MappedModel)
-		}
 		writerSizeBeforeForward := c.Writer.Size()
 		result, err := func() (*service.OpenAIForwardResult, error) {
 			defer func() {

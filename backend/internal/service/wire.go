@@ -225,6 +225,13 @@ func ProvideOpenAIQuotaAutoResetService(
 	return service
 }
 
+func ProvideGroupQuotaPolicyService(repo GroupQuotaPolicyRepository, groups GroupRepository, accounts AccountRepository, quota *OpenAIQuotaService, leader LeaderLockCache, tester *AccountTestService) *GroupQuotaPolicyService {
+	svc := NewGroupQuotaPolicyService(repo, groups, accounts, quota, leader)
+	svc.SetModelDiagnostics(tester)
+	svc.Start()
+	return svc
+}
+
 func ProvideAccountUsageService(
 	accountRepo AccountRepository,
 	usageLogRepo UsageLogRepository,
@@ -911,6 +918,7 @@ var ProviderSet = wire.NewSet(
 	ProvideOpenAITokenProvider,
 	ProvideOpenAIQuotaService,
 	ProvideOpenAIQuotaAutoResetService,
+	ProvideGroupQuotaPolicyService,
 	ProvideGrokQuotaService,
 	ProvideCNProviderQuotaService,
 	ProvideCNProviderBalanceService,
