@@ -212,3 +212,52 @@ func TestGenerateSessionHash_BreakpointAfterFirstMessageUsesAnchor(t *testing.T)
 	other := svc.GenerateSessionHash(mustParseSessionHashRequest(t, anthropicSessionBody("Sys", []any{msg("user", "second"), msg("assistant", "a1"), marked("q2")}, ""), &SessionContext{ClientIP: "1.1.1.1", UserAgent: "my-app/1.0", APIKeyID: 7}))
 	require.NotEqual(t, moving2, other)
 }
+
+// Rolling a conversation back, or editing a message after the first one, keeps
+// the key: the anchor is the first message that has text and nothing after it.
+func TestGenerateSessionHash_RollbackOrEditAfterFirstMessageKeepsKey(t *testing.T) {
+	svc := &GatewayService{}
+	ctx := &SessionContext{ClientIP: "1.2.3.4", UserAgent: "test", APIKeyID: 1}
+	hash := func(messages ...any) string {
+		return svc.GenerateSessionHash(mustParseSessionHashRequest(t, anthropicSessionBody("System prompt", messages, ""), ctx))
+	}
+
+	original := hash(msg("user", "msg1"), msg("assistant", "reply1"), msg("user", "msg2"), msg("assistant", "reply2"), msg("user", "msg3"))
+	require.NotEmpty(t, original)
+	require.Equal(t, original, hash(msg("user", "msg1"), msg("assistant", "reply1"), msg("user", "msg2"), msg("assistant", "reply2"), msg("user", "different msg3")), "editing the last message keeps the key")
+	require.Equal(t, original, hash(msg("user", "msg1"), msg("assistant", "reply1"), msg("user", "msg2")), "rolling back to an earlier round keeps the key")
+	require.Equal(t, original, hash(msg("user", "msg1"), msg("assistant", "edited reply1"), msg("user", "msg2"), msg("assistant", "reply2"), msg("user", "msg3")), "editing a reply keeps the key")
+	require.NotEqual(t, original, hash(msg("user", "edited msg1"), msg("assistant", "reply1"), msg("user", "msg2"), msg("assistant", "reply2"), msg("user", "msg3")), "editing the first message is another conversation")
+
+	chat := func(rest string) string {
+		return svc.GenerateSessionHash(mustParseChatCompletionsSessionHashRequest(t, `{"model":"my-model","messages":[{"role":"system","content":"Sys"},{"role":"user","content":"msg1"}`+rest+`]}`, ctx))
+	}
+	chatOriginal := chat(`,{"role":"assistant","content":"reply1"},{"role":"user","content":"msg2"}`)
+	require.Equal(t, chatOriginal, chat(`,{"role":"assistant","content":"reply1"},{"role":"user","content":"different msg2"}`))
+	require.Equal(t, chatOriginal, chat(""))
+
+	gemini := func(contents ...any) string {
+		return svc.GenerateSessionHash(mustParseGeminiSessionHashRequest(t, geminiSessionBody(nil, contents), ctx))
+	}
+	geminiOriginal := gemini(geminiMsg("user", "msg1"), geminiMsg("model", "reply1"), geminiMsg("user", "msg2"))
+	require.Equal(t, geminiOriginal, gemini(geminiMsg("user", "msg1"), geminiMsg("model", "reply1"), geminiMsg("user", "different msg2")))
+	require.Equal(t, geminiOriginal, gemini(geminiMsg("user", "msg1")))
+	require.NotEqual(t, geminiOriginal, gemini(geminiMsg("user", "edited msg1"), geminiMsg("model", "reply1"), geminiMsg("user", "msg2")))
+}
+
+// Adding user messages after the first, or changing them, keeps the key, so a
+// client that sends several user messages in a row stays on one account.
+func TestGenerateSessionHash_AddingOrChangingLaterUserMessagesKeepsKey(t *testing.T) {
+	svc := &GatewayService{}
+	ctx := &SessionContext{ClientIP: "1.2.3.4", UserAgent: "test", APIKeyID: 1}
+	hash := func(messages ...any) string {
+		return svc.GenerateSessionHash(mustParseSessionHashRequest(t, anthropicSessionBody(nil, messages, ""), ctx))
+	}
+
+	base := hash(msg("user", "first"), msg("user", "second"), msg("user", "third"), msg("user", "fourth"), msg("user", "fifth"))
+	require.NotEmpty(t, base)
+	require.Equal(t, base, hash(msg("user", "first"), msg("user", "CHANGED"), msg("user", "third"), msg("user", "fourth"), msg("user", "fifth")), "changing a later user message keeps the key")
+	require.Equal(t, base, hash(msg("user", "first"), msg("user", "second")), "fewer user messages keep the key")
+	require.Equal(t, base, hash(msg("user", "first"), msg("user", "second"), msg("user", "third"), msg("user", "fourth"), msg("user", "fifth"), msg("assistant", "ok"), msg("user", "one more")), "more messages keep the key")
+	require.NotEqual(t, base, hash(msg("user", "CHANGED first"), msg("user", "second"), msg("user", "third"), msg("user", "fourth"), msg("user", "fifth")), "changing the first user message is another conversation")
+}
