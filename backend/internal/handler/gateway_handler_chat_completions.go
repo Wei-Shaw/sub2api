@@ -85,6 +85,12 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	if rejectSystemOneOnlyPlatform(c, apiKey, h.chatCompletionsErrorResponse) {
 		return
 	}
+	if cappedBody, changed, err := applyOpenAIReasoningEffortPolicyForRequest(c, apiKey, body); err != nil {
+		respondOpenAIReasoningEffortPolicyError(c, err, h.chatCompletionsErrorResponse)
+		return
+	} else if changed {
+		body = cappedBody
+	}
 	reqStream, ok := parseOpenAICompatibleStream(body)
 	if !ok {
 		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", invalidStreamFieldTypeMessage)
