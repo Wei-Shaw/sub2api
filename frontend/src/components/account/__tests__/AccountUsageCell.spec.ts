@@ -113,6 +113,68 @@ const cnUsageCellStubs = {
 }
 
 describe('AccountUsageCell', () => {
+  it.each([
+    ['anthropic', 'oauth'], ['anthropic', 'setup-token'], ['gemini', 'oauth'], ['gemini', 'apikey']
+  ] as const)('refreshes %s %s snapshots without forcing upstream reads and reuses the new cache', async (platform, type) => {
+    const account = makeAccount({ id: 98200 + (platform === 'gemini' ? 10 : 0) + (type === 'oauth' ? 1 : 2), platform, type, extra: {} })
+    getUsage.mockResolvedValue({ five_hour: { utilization: 21 }, seven_day: { utilization: 31 }, gemini_shared_daily: { utilization: 31 } })
+    const wrapper = mount(AccountUsageCell, { props: { account } })
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledTimes(1)
+    getUsage.mockResolvedValue({ five_hour: { utilization: 44 }, seven_day: { utilization: 54 }, gemini_shared_daily: { utilization: 54 } })
+    const next = { ...account, last_used_at: platform === 'gemini' ? '2026-11-16T10:00:00Z' : null, extra: { passive_usage_7d_utilization: 0.54 } }
+    await wrapper.setProps({ account: next })
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledTimes(2)
+    expect(getUsage).toHaveBeenLastCalledWith(...(platform === 'anthropic' ? [account.id, 'passive', false] : [account.id]))
+    expect(wrapper.text()).toContain('54')
+    await wrapper.setProps({ account: { ...next, updated_at: 'unrelated', current_concurrency: 3 } })
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledTimes(2)
+    wrapper.unmount()
+  })
+
+  it.each(['anthropic', 'gemini'] as const)('asks the desktop batch manager to refresh %s without force', async (platform) => {
+    const account = makeAccount({ id: 98301, platform, extra: {} })
+    const requestBatchedUsage = vi.fn()
+    const wrapper = mount(AccountUsageCell, { props: { account, requestBatchedUsage } })
+    await flushPromises()
+    requestBatchedUsage.mockClear()
+    await wrapper.setProps({ account: { ...account, last_used_at: '2026-11-16T10:00:00Z' } })
+    expect(requestBatchedUsage).toHaveBeenCalledTimes(1)
+    expect(requestBatchedUsage).toHaveBeenCalledWith(expect.objectContaining({ id: account.id }), undefined)
+    expect(getUsage).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it.each(['anthropic', 'gemini'] as const)('defers mobile %s snapshot refresh until visible', async (platform) => {
+    vi.mocked(window.matchMedia).mockReturnValue({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as MediaQueryList)
+    let notify: IntersectionObserverCallback = () => {}
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: IntersectionObserverCallback) { notify = callback }
+      observe() {}
+      disconnect() {}
+    })
+    const account = makeAccount({ id: 98401, platform, extra: {} })
+    getUsage.mockResolvedValue({ five_hour: { utilization: 44 }, gemini_shared_daily: { utilization: 44 } })
+    const wrapper = mount(AccountUsageCell, { props: { account } })
+    try {
+      await flushPromises()
+      await wrapper.setProps({ account: { ...account, last_used_at: '2026-11-16T10:00:00Z' } })
+      expect(getUsage).not.toHaveBeenCalled()
+      notify([{ isIntersecting: true }] as IntersectionObserverEntry[], {} as IntersectionObserver)
+      await flushPromises()
+      expect(getUsage).toHaveBeenCalledTimes(1)
+      expect(getUsage).toHaveBeenLastCalledWith(...(platform === 'anthropic' ? [account.id, 'passive', false] : [account.id]))
+      await wrapper.setProps({ account: { ...account, last_used_at: '2026-11-16T10:01:00Z' } })
+      await flushPromises()
+      expect(getUsage).toHaveBeenCalledTimes(2)
+    } finally {
+      wrapper.unmount()
+      vi.unstubAllGlobals()
+    }
+  })
+
   beforeEach(() => {
     getUsage.mockReset()
     Object.defineProperty(window, 'matchMedia', {
