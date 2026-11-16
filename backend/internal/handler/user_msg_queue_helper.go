@@ -86,7 +86,8 @@ func (h *UserMsgQueueHelper) waitForLockWithPing(
 	streamStarted *bool,
 	reqLog *zap.Logger,
 ) (func(), error) {
-	needPing := isStream && h.pingFormat != ""
+	pingFormat := queuePingFormat(c, h.pingFormat)
+	needPing := isStream && pingFormat != ""
 
 	var flusher http.Flusher
 	if needPing {
@@ -121,7 +122,7 @@ func (h *UserMsgQueueHelper) waitForLockWithPing(
 				c.Header("X-Accel-Buffering", "no")
 				*streamStarted = true
 			}
-			written, err := fmt.Fprint(c.Writer, string(h.pingFormat))
+			written, err := fmt.Fprint(c.Writer, string(pingFormat))
 			if err != nil {
 				return nil, err
 			}
@@ -196,7 +197,8 @@ func (h *UserMsgQueueHelper) ThrottleWithPing(
 	)
 
 	// 延迟期间发送 SSE ping（复用 waitForLockWithPing 的 ping 逻辑）
-	needPing := isStream && h.pingFormat != ""
+	pingFormat := queuePingFormat(c, h.pingFormat)
+	needPing := isStream && pingFormat != ""
 	var flusher http.Flusher
 	if needPing {
 		flusher, _ = c.Writer.(http.Flusher)
@@ -228,7 +230,7 @@ func (h *UserMsgQueueHelper) ThrottleWithPing(
 				c.Header("X-Accel-Buffering", "no")
 				*streamStarted = true
 			}
-			written, err := fmt.Fprint(c.Writer, string(h.pingFormat))
+			written, err := fmt.Fprint(c.Writer, string(pingFormat))
 			if err != nil {
 				return err
 			}
