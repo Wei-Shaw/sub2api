@@ -45,7 +45,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	)
 
 	// Read request body
-	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
+	body, jsonValid, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
 		if handleRequestBodyReadError(c, reqLog, err) {
 			return
@@ -63,7 +63,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 	setOpsRequestContext(c, "", false)
 
 	// Validate JSON
-	if !gjson.ValidBytes(body) {
+	if !jsonValid && !gjson.ValidBytes(body) {
 		logRequestBodyParseFailure(reqLog, body, nil)
 		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return

@@ -49,7 +49,7 @@ func TestNormalizeLenientJSONRequestBody_accepts_client_control_chars_in_strings
 			}
 
 			// When
-			got, err := NormalizeLenientJSONRequestBody(tt.body, 1024)
+			got, _, err := NormalizeLenientJSONRequestBody(tt.body, 1024)
 			if err != nil {
 				t.Fatalf("NormalizeLenientJSONRequestBody: %v", err)
 			}
@@ -87,7 +87,7 @@ func TestNormalizeLenientJSONRequestBody_keeps_invalid_structure_invalid(t *test
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// When
-			got, err := NormalizeLenientJSONRequestBody(tt.body, 1024)
+			got, _, err := NormalizeLenientJSONRequestBody(tt.body, 1024)
 			if err != nil {
 				t.Fatalf("NormalizeLenientJSONRequestBody: %v", err)
 			}
@@ -103,7 +103,7 @@ func TestNormalizeLenientJSONRequestBody_keeps_invalid_structure_invalid(t *test
 func TestNormalizeLenientJSONRequestBody_allows_http_requests_with_client_control_chars(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Given
-		body, err := ReadLenientJSONRequestBodyWithPrealloc(r, 1024)
+		body, _, err := ReadLenientJSONRequestBodyWithPrealloc(r, 1024)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
@@ -171,7 +171,7 @@ func TestNormalizeLenientJSONRequestBody_rejects_expansion_past_limit(t *testing
 	body := []byte("{\"input\":\"\x00\x00\"}")
 
 	// When
-	_, err := NormalizeLenientJSONRequestBody(body, int64(len(body)+5))
+	_, _, err := NormalizeLenientJSONRequestBody(body, int64(len(body)+5))
 
 	// Then
 	var maxErr *http.MaxBytesError

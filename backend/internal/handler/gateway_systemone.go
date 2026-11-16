@@ -54,7 +54,7 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 		zap.Any("group_id", apiKey.GroupID),
 	)
 
-	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
+	body, _, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
 		if handleRequestBodyReadError(c, reqLog, err) {
 			return
