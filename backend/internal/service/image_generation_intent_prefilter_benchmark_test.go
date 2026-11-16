@@ -78,13 +78,23 @@ func BenchmarkImageGenerationIntentPrefilter(b *testing.B) {
 		}
 	})
 
-	// Codex 在普通请求里就带 image_gen namespace（见 IsImageGenerationIntentForPlatform
-	// 注释），预检查必然放行，这类流量仍需完整扫描，本项用于跟踪它的成本。
+	// Codex 在普通请求里就带 image_gen namespace，预检查必然放行，
+	// 这类流量只能靠「已校验」变体省掉重复的全量校验。
 	b.Run("intent/codex_namespace", func(b *testing.B) {
 		b.SetBytes(int64(len(codex)))
 		b.ReportAllocs()
 		for range b.N {
 			if !IsImageGenerationIntent(openAIResponsesEndpoint, "gpt-5.5", codex) {
+				b.Fatal("codex namespace body must have image intent")
+			}
+		}
+	})
+
+	b.Run("validated_intent/codex_namespace", func(b *testing.B) {
+		b.SetBytes(int64(len(codex)))
+		b.ReportAllocs()
+		for range b.N {
+			if !IsImageGenerationIntentForPlatformValidated(openAIResponsesEndpoint, "gpt-5.5", codex, PlatformOpenAI) {
 				b.Fatal("codex namespace body must have image intent")
 			}
 		}

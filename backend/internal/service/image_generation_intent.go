@@ -72,14 +72,14 @@ func openAIBodyMayDeclareImageGeneration(body []byte) bool {
 
 // IsImageGenerationIntent classifies requests that can produce generated images.
 func IsImageGenerationIntent(endpoint string, requestedModel string, body []byte) bool {
-	return openAIImageGenerationIntent(endpoint, requestedModel, body, false)
+	return openAIImageGenerationIntent(endpoint, requestedModel, body, false, true)
 }
 
 // IsExplicitImageGenerationIntent 仅检测原生 image_generation 工具、图片模型和显式 tool_choice，
 // 不检测被动的 image_gen namespace 声明。用于 capability 路由决策——被动 namespace 不应
 // 强制要求原生 Responses 能力，否则 Chat Completions-only 账号会被误过滤（#4476）。
 func IsExplicitImageGenerationIntent(endpoint string, requestedModel string, body []byte) bool {
-	return openAIImageGenerationIntent(endpoint, requestedModel, body, true)
+	return openAIImageGenerationIntent(endpoint, requestedModel, body, true, true)
 }
 
 // IsImageGenerationIntentForPlatform applies platform-specific intent rules.
@@ -91,24 +91,36 @@ func IsExplicitImageGenerationIntent(endpoint string, requestedModel string, bod
 // Native image_generation tools, explicit image selection and image models
 // remain image intent. Other platforms retain the original declaration rule.
 func IsImageGenerationIntentForPlatform(endpoint string, requestedModel string, body []byte, platform string) bool {
+	return openAIImageGenerationIntentForPlatform(endpoint, requestedModel, body, platform, true)
+}
+
+// IsImageGenerationIntentForPlatformValidated 与 IsImageGenerationIntentForPlatform 判定相同，
+// 但要求调用方已经确认 body 是合法 JSON（例如 handler 已对同一份字节做过 gjson.ValidBytes）。
+// 它跳过这次全量校验——大 body 上这一项占判定耗时的六成以上。非法 JSON 的语义与未校验
+// 版本不同，只允许在校验过同一份字节、且后续改写只经由 sjson / json.Marshal 的调用点使用。
+func IsImageGenerationIntentForPlatformValidated(endpoint string, requestedModel string, body []byte, platform string) bool {
+	return openAIImageGenerationIntentForPlatform(endpoint, requestedModel, body, platform, false)
+}
+
+func openAIImageGenerationIntentForPlatform(endpoint string, requestedModel string, body []byte, platform string, validate bool) bool {
 	if !strings.EqualFold(strings.TrimSpace(platform), PlatformGrok) {
-		return openAIImageGenerationIntent(endpoint, requestedModel, body, false)
+		return openAIImageGenerationIntent(endpoint, requestedModel, body, false, validate)
 	}
 	// Grok removes namespace catalogs before forwarding. Native image_generation
 	// remains an explicit capability request.
-	return openAIImageGenerationIntent(endpoint, requestedModel, body, true)
+	return openAIImageGenerationIntent(endpoint, requestedModel, body, true, validate)
 }
 
 // openAIImageGenerationIntent 统一入口：先做 O(1) 端点/模型判断，再用字节级预检查
-// 挡住不可能命中扫描的 body，最后才校验并遍历根对象。
-func openAIImageGenerationIntent(endpoint string, requestedModel string, body []byte, explicit bool) bool {
+// 挡住不可能命中扫描的 body，最后才按需校验并遍历根对象。
+func openAIImageGenerationIntent(endpoint string, requestedModel string, body []byte, explicit bool, validate bool) bool {
 	if IsImageGenerationEndpoint(endpoint) || isOpenAIImageGenerationModel(requestedModel) {
 		return true
 	}
 	if !openAIBodyMayDeclareImageGeneration(body) {
 		return false
 	}
-	if !gjson.ValidBytes(body) {
+	if validate && !gjson.ValidBytes(body) {
 		return false
 	}
 	root := parseRawJSONView(body)

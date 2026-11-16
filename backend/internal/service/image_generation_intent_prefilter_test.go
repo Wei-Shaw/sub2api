@@ -104,6 +104,13 @@ func FuzzImageGenerationIntentPrefilter(f *testing.F) {
 		if referenceExplicitImageGenerationIntent(body) && !openAIBodyMayDeclareImageGeneration(body) {
 			t.Fatalf("prefilter hid a detected body: %q", body)
 		}
+		// 已校验分支不得与校验分支结论不同：同一份合法 JSON 上两者必须一致。
+		if gjson.ValidBytes(body) {
+			require.Equal(t,
+				referenceImageGenerationIntent(body),
+				IsImageGenerationIntentForPlatformValidated(openAIResponsesEndpoint, "gpt-5.5", body, PlatformOpenAI),
+				"validated variant must agree with the reference scan: %q", body)
+		}
 	})
 }
 
