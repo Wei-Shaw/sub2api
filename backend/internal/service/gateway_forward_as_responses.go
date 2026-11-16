@@ -133,29 +133,42 @@ func (s *GatewayService) ForwardAsResponses(
 		proxyURL = account.Proxy.URL()
 	}
 
-	// 10. Build upstream request
-	upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
-	upstreamReq, forwardedBody, err := s.buildUpstreamRequest(upstreamCtx, c, account, anthropicBody, token, tokenType, mappedModel, reqStream, shouldMimicClaudeCode)
-	releaseUpstreamCtx()
-	if err != nil {
-		return nil, fmt.Errorf("build upstream request: %w", err)
+	// 10. Build and send the request, recovering a concurrent token rotation once.
+	var upstreamReq *http.Request
+	var forwardedBody []byte
+	var resp *http.Response
+	for retriedRotatedToken := false; ; {
+		upstreamCtx, releaseUpstreamCtx := detachStreamUpstreamContext(ctx, reqStream)
+		upstreamReq, forwardedBody, err = s.buildUpstreamRequest(upstreamCtx, c, account, anthropicBody, token, tokenType, mappedModel, reqStream, shouldMimicClaudeCode)
+		releaseUpstreamCtx()
+		if err != nil {
+			return nil, fmt.Errorf("build upstream request: %w", err)
+		}
+		resp, err = s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+		if err != nil {
+			if resp != nil && resp.Body != nil {
+				_ = resp.Body.Close()
+			}
+			return nil, s.handleUpstreamTransportError(ctx, c, account, err, OpsUpstreamErrorEvent{
+				UpstreamURL: safeUpstreamURL(upstreamReq.URL.String()),
+			})
+		}
+		if resp.StatusCode == http.StatusUnauthorized && !retriedRotatedToken {
+			if rotatedToken := s.rotatedClaudeAccessToken(ctx, account, token); rotatedToken != "" {
+				_ = resp.Body.Close()
+				token = rotatedToken
+				retriedRotatedToken = true
+				continue
+			}
+		}
+		break
 	}
+	defer func() { _ = resp.Body.Close() }()
+
 	// Bill the final Anthropic effort after conversion and account normalization.
 	// For example, OpenAI xhigh is forwarded as output_config.effort=max.
 	reasoningEffort := NormalizeClaudeOutputEffort(gjson.GetBytes(forwardedBody, "output_config.effort").String())
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, forwardedBody, mappedModel)
-
-	// 11. Send request
-	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
-	if err != nil {
-		if resp != nil && resp.Body != nil {
-			_ = resp.Body.Close()
-		}
-		return nil, s.handleUpstreamTransportError(ctx, c, account, err, OpsUpstreamErrorEvent{
-			UpstreamURL: safeUpstreamURL(upstreamReq.URL.String()),
-		})
-	}
-	defer func() { _ = resp.Body.Close() }()
 
 	// 12. Handle error response with failover
 	if resp.StatusCode >= 400 {
