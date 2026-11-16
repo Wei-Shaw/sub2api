@@ -57,7 +57,7 @@ func ResponsesToChatCompletions(resp *ResponsesResponse, model string) *ChatComp
 				},
 			})
 		case "custom_tool_call":
-			if !resp.RenderCustomToolCalls {
+			if !resp.RenderCustomToolCalls || (resp.XAIServerSideSearch && IsServerSideSearchCall(item.Type, item.CallID)) {
 				continue
 			}
 			toolCalls = append(toolCalls, ChatToolCall{

@@ -80,6 +80,9 @@ type openAICompatOutputSlot struct {
 // so that an empty terminal output can be rebuilt from them.
 type openAICompatOutputSlots struct {
 	slots []*openAICompatOutputSlot
+	// xaiServerSideSearch is set when the upstream is xAI, so that the rebuilt
+	// output keeps a server-side search call out of the client tool calls.
+	xaiServerSideSearch bool
 }
 
 func openAICompatIsToolCallType(itemType string) bool {
@@ -291,6 +294,7 @@ func (o *openAICompatOutputSlots) fillTerminalOutput(eventType string, response 
 			response.Output = append(response.Output, item)
 			if item.Type == "custom_tool_call" {
 				response.RenderCustomToolCalls = true
+				response.XAIServerSideSearch = o.xaiServerSideSearch
 			}
 		}
 	}

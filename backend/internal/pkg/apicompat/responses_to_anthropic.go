@@ -55,7 +55,7 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 				Input: anthropicToolUseInput(item.Type, item.Name, item.Arguments),
 			})
 		case "custom_tool_call":
-			if !resp.RenderCustomToolCalls {
+			if !resp.RenderCustomToolCalls || (resp.XAIServerSideSearch && IsServerSideSearchCall(item.Type, item.CallID)) {
 				continue
 			}
 			blocks = append(blocks, AnthropicContentBlock{
