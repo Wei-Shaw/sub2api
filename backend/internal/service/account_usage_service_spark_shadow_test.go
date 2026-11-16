@@ -151,7 +151,9 @@ func TestGetOpenAIUsage_SparkShadow_WritesExtraAndReturnsNonEmptyWindows(t *test
 	require.Equal(t, "active", usage.Source)
 	require.Empty(t, usage.Error)
 	require.NotNil(t, usage.UpdatedAt)
-	observedAt, err := time.Parse(time.RFC3339, shadow.Extra["codex_usage_updated_at"].(string))
+	stamp, ok := shadow.Extra["codex_usage_updated_at"].(string)
+	require.True(t, ok, "snapshot observation time must be stored as a string")
+	observedAt, err := time.Parse(time.RFC3339, stamp)
 	require.NoError(t, err)
 	require.True(t, usage.UpdatedAt.Equal(observedAt))
 }
