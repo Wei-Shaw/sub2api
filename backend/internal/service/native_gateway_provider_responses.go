@@ -133,16 +133,8 @@ func gatewayNativePrepareProviderResponses(profile string, body []byte, requestB
 		if !GatewayNVIDIABuildModelValid(model) {
 			return deny()
 		}
-	case GatewayKimiCodeResponsesProfile:
-		if model != GatewayKimiCodeResponsesModel {
-			return deny()
-		}
-	case GatewayGLMCodingResponsesProfile:
-		if model != GatewayGLMCodingResponsesModel {
-			return deny()
-		}
-	case GatewayMiniMaxMPlanResponsesProfile:
-		if model != GatewayMiniMaxMPlanResponsesModel {
+	case GatewayKimiCodeResponsesProfile, GatewayGLMCodingResponsesProfile, GatewayMiniMaxMPlanResponsesProfile:
+		if !GatewayCodingPlanModelAdmitted(profile, model) {
 			return deny()
 		}
 	case GatewayGrokOAuthResponsesProfile:

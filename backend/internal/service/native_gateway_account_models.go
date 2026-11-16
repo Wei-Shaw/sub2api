@@ -89,7 +89,12 @@ func (s *GatewayAccountModelsReader) Read(ctx context.Context, in GatewayAccount
 		return s.openRouter.readGatewayOpenRouterAccountModels(ctx, in, before, s.authorize)
 	}
 	if in.ProfileID == GatewayNVIDIABuildChatProfile {
-		return s.readNVIDIABuildAccountModels(ctx, in, before)
+		return s.readStaticCatalogAccountModels(ctx, in, before, "nvidia", []GatewayAccountModel{
+			{ModelID: GatewayNVIDIABuildAnchorModel, Tools: GatewayAccountModelChoices{Allowed: []string{"function"}, Default: "function"}},
+		})
+	}
+	if GatewayCodingPlanCatalogProfile(in.ProfileID) {
+		return s.readStaticCatalogAccountModels(ctx, in, before, "native_catalog", gatewayCodingPlanAccountModels(in.ProfileID))
 	}
 	if in.ProfileID != GatewayCodexOAuthResponsesProfile {
 		return GatewayAccountModelsResult{Status: "unsupported"}
@@ -137,15 +142,17 @@ func (s *GatewayAccountModelsReader) Read(ctx context.Context, in GatewayAccount
 	return out
 }
 
-// Native alone qualifies the bounded static NVIDIA model set for one exact
-// managed account. This is NOT an upstream entitlement/credit observation.
+// Native alone qualifies a bounded static model set for one exact managed
+// API-key account (NVIDIA Build and the coding plans with a catalog). This is
+// NOT an upstream entitlement/credit observation, and it never decrypts the key.
 // Owner, physical generation and current encrypted account are checked again.
-func (s *GatewayAccountModelsReader) readNVIDIABuildAccountModels(
+func (s *GatewayAccountModelsReader) readStaticCatalogAccountModels(
 	ctx context.Context, in GatewayAccountModelsInput, before GatewayNativeRoute,
+	source string, models []GatewayAccountModel,
 ) GatewayAccountModelsResult {
 	unavailable := GatewayAccountModelsResult{Status: "unavailable"}
 	if s.openRouter == nil || s.openRouter.accountRepo == nil ||
-		before.Profile != GatewayNVIDIABuildChatProfile || before.Profile != in.ProfileID ||
+		before.Profile != in.ProfileID ||
 		before.AccountID <= 0 || before.CreatedAt.IsZero() || before.CreatedAt.Nanosecond()%1000 != 0 ||
 		!GatewayNativeAPIKeyProfileValid(before.Profile, before.BaseURL, before.Model) {
 		return unavailable
@@ -170,11 +177,8 @@ func (s *GatewayAccountModelsReader) readNVIDIABuildAccountModels(
 		return unavailable
 	}
 	now := time.Now().UTC()
-	models := []GatewayAccountModel{
-		{ModelID: GatewayNVIDIABuildAnchorModel, Tools: GatewayAccountModelChoices{Allowed: []string{"function"}, Default: "function"}},
-	}
 	return GatewayAccountModelsResult{
-		Status: "snapshot", Source: "nvidia", PhysicalGeneration: before.Generation,
+		Status: "snapshot", Source: source, PhysicalGeneration: before.Generation,
 		PrincipalVersion: in.AccountRef,
 		FetchedAt:        now.Format(time.RFC3339Nano),
 		ExpiresAt:        now.Add(time.Minute).Format(time.RFC3339Nano),

@@ -296,7 +296,8 @@ func (s *OpenAIGatewayService) ForwardGatewayRoute(ctx context.Context, c *gin.C
 		return s.forwardGatewayOAuthRoute(ctx, c, route, body)
 	}
 	if ctx == nil || c == nil || c.Request == nil || s.accountRepo == nil || len(body) > 4<<20 || !gjson.ValidBytes(body) || !gjson.ParseBytes(body).IsObject() || !gatewayNativeUnambiguousPolicyFields(body) ||
-		(route.Profile != GatewayOpenRouterResponsesProfile && route.Profile != GatewayNVIDIABuildChatProfile && gjson.GetBytes(body, "model").String() != route.Model) || !GatewayNativeAPIKeyProfileValid(route.Profile, route.BaseURL, route.Model) ||
+		(route.Profile != GatewayOpenRouterResponsesProfile && route.Profile != GatewayNVIDIABuildChatProfile && !GatewayCodingPlanCatalogProfile(route.Profile) && gjson.GetBytes(body, "model").String() != route.Model) ||
+		(GatewayCodingPlanCatalogProfile(route.Profile) && !GatewayCodingPlanModelAdmitted(route.Profile, gjson.GetBytes(body, "model").String())) || !GatewayNativeAPIKeyProfileValid(route.Profile, route.BaseURL, route.Model) ||
 		gjson.GetBytes(body, "previous_response_id").String() != "" ||
 		(gjson.GetBytes(body, "service_tier").Exists() && gjson.GetBytes(body, "service_tier").String() != "default") ||
 		(gjson.GetBytes(body, "store").Exists() && gjson.GetBytes(body, "store").Bool()) {
@@ -376,7 +377,7 @@ func (s *OpenAIGatewayService) ForwardGatewayRoute(ctx context.Context, c *gin.C
 	}
 	a = snapshotGatewayNativeAccount(a)
 	state := &gatewayNativeDispatch{route: route, account: a, scope: scope, custody: custody}
-	if route.Profile == GatewayNVIDIABuildChatProfile {
+	if route.Profile == GatewayNVIDIABuildChatProfile || GatewayCodingPlanCatalogProfile(route.Profile) {
 		state.requestedModel = gjson.GetBytes(body, "model").String()
 	}
 	if route.Profile == GatewayOpenRouterResponsesProfile {
@@ -496,10 +497,14 @@ func (s *OpenAIGatewayService) checkGatewayNativeDispatch(request *http.Request,
 		gatewayNativeAdmissionDiagnostic(gatewayAdmissionCredential)
 		return noop, ErrGatewayNativeIdentity
 	}
-	if state.route.Profile == GatewayNVIDIABuildChatProfile {
-		// The bound provider/model tuple and the actual outgoing Chat body
-		// must still agree at the final locked credential entry boundary.
-		if request.GetBody == nil || !GatewayNVIDIABuildModelValid(state.requestedModel) {
+	if state.route.Profile == GatewayNVIDIABuildChatProfile || GatewayCodingPlanCatalogProfile(state.route.Profile) {
+		// The bound provider/model tuple and the actual outgoing body must still
+		// agree at the final locked credential entry boundary.
+		modelAdmitted := GatewayNVIDIABuildModelValid(state.requestedModel)
+		if state.route.Profile != GatewayNVIDIABuildChatProfile {
+			modelAdmitted = GatewayCodingPlanModelAdmitted(state.route.Profile, state.requestedModel)
+		}
+		if request.GetBody == nil || !modelAdmitted {
 			release()
 			return noop, ErrGatewayNativeIdentity
 		}

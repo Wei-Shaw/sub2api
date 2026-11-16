@@ -175,7 +175,7 @@ func (r *ownerFixtureRepo) LockGatewayNativeAccount(_ context.Context, id int64)
 // One simultaneous catalog, real admit HTTP and TLS Responses entry for both
 // presets. Cross-tuples and each profile's own caps deny before callback/entry.
 func TestFiniteAPIKeyProfilesHTTPAdmissionAndForward(t *testing.T) {
-	var entries, admits atomic.Int32
+	var entries, admits, glmCatalogue atomic.Int32
 	const dynamicOpenRouterModel = "unseen-vendor/new-model:free"
 	var driftAfterAdmit atomic.Bool
 	var quotaResponse atomic.Bool
@@ -201,7 +201,16 @@ func TestFiniteAPIKeyProfilesHTTPAdmissionAndForward(t *testing.T) {
 			paths := map[string]string{"api.kimi.ai": "/coding/v1/responses", "api.z.ai": "/api/v1/responses", "api.minimax.io": "/v1/responses"}
 			models := map[string]string{"api.kimi.ai": "k3-256k", "api.z.ai": "glm-5.3-flash", "api.minimax.io": "MiniMax-M3.1-Flash"}
 			require.Equal(t, paths[r.Host], r.URL.Path)
-			require.Equal(t, models[r.Host], payload["model"])
+			if r.Host == "api.z.ai" {
+				// The GLM catalog carries the model through unchanged; count the
+				// catalogue model separately so a swap in either direction is caught.
+				require.Contains(t, []any{models[r.Host], "glm-5.3"}, payload["model"])
+				if payload["model"] == "glm-5.3" {
+					glmCatalogue.Add(1)
+				}
+			} else {
+				require.Equal(t, models[r.Host], payload["model"])
+			}
 			require.Equal(t, float64(40), payload["max_output_tokens"])
 			if _, firstTurn := payload["input"].(string); firstTurn {
 				require.NotContains(t, payload, "service_tier")
@@ -392,8 +401,29 @@ func TestFiniteAPIKeyProfilesHTTPAdmissionAndForward(t *testing.T) {
 		require.Equal(t, http.StatusOK, result.code)
 		require.Contains(t, string(result.body), "controlled final")
 	}
-	require.EqualValues(t, 8, admits.Load())
-	require.EqualValues(t, 8, entries.Load())
+	// The GLM catalog model beside the enrollment anchor passes the same
+	// transport; a model outside the catalog is rejected before admission.
+	glm := inputs[3]
+	require.Equal(t, service.GatewayGLMCodingResponsesProfile, glm.Descriptor.Profile)
+	glm.RequestRef += "-catalog-model"
+	glm.Payload = json.RawMessage(strings.Replace(string(glm.Payload), service.GatewayGLMCodingResponsesModel, service.GatewayGLMCodingResponsesModelFull, 1))
+	glmResult := ownerPOST(server.Client(), server.URL, "", fixtureExecutionToken, glm)
+	require.NoError(t, glmResult.err)
+	require.Equal(t, http.StatusOK, glmResult.code)
+	require.Contains(t, string(glmResult.body), "controlled final")
+	require.EqualValues(t, 1, glmCatalogue.Load(), "exactly the catalogue request reaches the provider as glm-5.3")
+	require.EqualValues(t, 9, admits.Load())
+	require.EqualValues(t, 9, entries.Load())
+	for _, model := range []string{"glm-5.2", "GLM-5.3", "glm-5.3-extra"} {
+		outside := glm
+		outside.RequestRef += "-outside-" + model
+		outside.Payload = json.RawMessage(strings.Replace(string(glm.Payload), service.GatewayGLMCodingResponsesModelFull, model, 1))
+		denied := ownerPOST(server.Client(), server.URL, "", fixtureExecutionToken, outside)
+		require.NoError(t, denied.err)
+		require.Equal(t, http.StatusBadRequest, denied.code)
+	}
+	require.EqualValues(t, 9, admits.Load())
+	require.EqualValues(t, 9, entries.Load())
 	quotaResponse.Store(true)
 	h.cfg.IOTimeout = 50 * time.Millisecond
 	quotaInput := inputs[1]
@@ -424,8 +454,8 @@ func TestFiniteAPIKeyProfilesHTTPAdmissionAndForward(t *testing.T) {
 	stale.RequestRef = "openrouter-stale-tuple"
 	result := ownerPOST(server.Client(), server.URL, "", fixtureExecutionToken, stale)
 	require.NoError(t, result.err)
-	require.EqualValues(t, 10, admits.Load())
-	require.EqualValues(t, 9, entries.Load())
+	require.EqualValues(t, 11, admits.Load())
+	require.EqualValues(t, 10, entries.Load())
 	require.NotContains(t, string(result.body), "controlled final")
 }
 
