@@ -83,7 +83,7 @@ func TestRiskControlAllowlistAuditsWithoutLocalPenalties(t *testing.T) {
 					SettingKeyRiskControlEnabled: "true", SettingKeyContentModerationConfig: string(raw), SettingKeyCyberPolicyUserAllowlist: "12",
 				}},
 				repo: repo, hashCache: hashes, emailService: &EmailService{},
-				httpClient: server.Client(), asyncQueue: make(chan contentModerationTask, 4), keyHealth: make(map[string]*contentModerationKeyHealth),
+				httpClient: server.Client(), asyncQueue: make(chan *contentModerationTask, 4), keyHealth: make(map[string]*contentModerationKeyHealth),
 			}
 			decision, err := svc.Check(context.Background(), ContentModerationCheckInput{
 				UserID: 12, UserEmail: "trusted@example.com", Protocol: ContentModerationProtocolOpenAIChat,
@@ -92,7 +92,7 @@ func TestRiskControlAllowlistAuditsWithoutLocalPenalties(t *testing.T) {
 			require.NoError(t, err)
 			require.True(t, decision.Allowed)
 			require.False(t, decision.Blocked)
-			var task contentModerationTask
+			var task *contentModerationTask
 			select {
 			case task = <-svc.asyncQueue:
 			case <-time.After(time.Second):

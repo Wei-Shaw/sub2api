@@ -1084,12 +1084,12 @@ func newOpenAIRequestView(body []byte) openAIRequestView {
 
 	view := openAIRequestView{body: body}
 	var seen uint8
-	// parseRawJSONView reads body without copying; view keeps body alive for extracted strings.
+	// 原始 JSON 在同步读取时复用请求字节，元数据单独持有字符串，供转发结果与计费继续使用。
 	parseRawJSONView(body).ForEach(func(key, value gjson.Result) bool {
 		switch key.Str {
 		case "model":
 			if seen&modelField == 0 {
-				view.Model = strings.TrimSpace(value.String())
+				view.Model = strings.Clone(strings.TrimSpace(value.String()))
 				seen |= modelField
 			}
 		case "stream":
@@ -1099,22 +1099,22 @@ func newOpenAIRequestView(body []byte) openAIRequestView {
 			}
 		case "prompt_cache_key":
 			if seen&promptCacheKeyField == 0 {
-				view.PromptCacheKey = strings.TrimSpace(value.String())
+				view.PromptCacheKey = strings.Clone(strings.TrimSpace(value.String()))
 				seen |= promptCacheKeyField
 			}
 		case "previous_response_id":
 			if seen&previousResponseIDField == 0 {
-				view.PreviousResponseID = strings.TrimSpace(value.String())
+				view.PreviousResponseID = strings.Clone(strings.TrimSpace(value.String()))
 				seen |= previousResponseIDField
 			}
 		case "service_tier":
 			if seen&serviceTierField == 0 {
-				view.ServiceTier = strings.TrimSpace(value.String())
+				view.ServiceTier = strings.Clone(strings.TrimSpace(value.String()))
 				seen |= serviceTierField
 			}
 		case "reasoning":
 			if seen&reasoningField == 0 {
-				view.ReasoningEffort = strings.TrimSpace(value.Get("effort").String())
+				view.ReasoningEffort = strings.Clone(strings.TrimSpace(value.Get("effort").String()))
 				seen |= reasoningField
 			}
 		}
@@ -1477,23 +1477,34 @@ func normalizeOpenAIOAuthResponsesCompatibilityBody(body []byte) ([]byte, bool, 
 		normalized = next
 		changed = true
 	}
-	// Only remove the input-item field, never same-named user content.
-	input := gjson.GetBytes(normalized, "input")
+	// 逐项清理输入元数据，其余项沿用原始 JSON，最后一次合成完整请求。
+	input := parseRawJSONView(normalized).Get("input")
 	if !input.IsArray() {
 		return normalized, changed, nil
 	}
-	for i, item := range input.Array() {
-		if !item.IsObject() || !item.Get("internal_chat_message_metadata_passthrough").Exists() {
-			continue
+	const inputMetadataField = "internal_chat_message_metadata_passthrough"
+	items := make([]string, 0)
+	inputChanged := false
+	var inputErr error
+	input.ForEach(func(_, item gjson.Result) bool {
+		itemJSON := item.Raw
+		if item.IsObject() && item.Get(inputMetadataField).Exists() {
+			itemJSON, inputErr = sjson.Delete(itemJSON, inputMetadataField)
+			if inputErr != nil {
+				return false
+			}
+			inputChanged = true
 		}
-		next, err := sjson.DeleteBytes(normalized, fmt.Sprintf("input.%d.internal_chat_message_metadata_passthrough", i))
-		if err != nil {
-			return body, false, fmt.Errorf("normalize oauth input metadata: %w", err)
-		}
-		normalized = next
-		changed = true
+		items = append(items, itemJSON)
+		return true
+	})
+	if inputErr != nil {
+		return body, false, fmt.Errorf("normalize oauth input metadata: %w", inputErr)
 	}
-	return normalized, changed, nil
+	if !inputChanged {
+		return normalized, changed, nil
+	}
+	return replaceOpenAIRawInput(normalized, input, items), true, nil
 }
 
 func normalizeGPT6ResponsesSampling(body []byte, model string) ([]byte, bool, error) {

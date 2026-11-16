@@ -521,7 +521,7 @@ type ContentModerationService struct {
 	emailService             *EmailService
 	httpClient               *http.Client
 	moderationProxyCache     atomic.Pointer[moderationProxyURLCacheEntry]
-	asyncQueue               chan contentModerationTask
+	asyncQueue               chan *contentModerationTask
 	workerCount              int
 	apiKeyCursor             atomic.Uint64
 	asyncActive              atomic.Int64
@@ -605,8 +605,9 @@ func NewContentModerationService(
 		emailService:         emailService,
 		httpClient:           servertiming.InstrumentClient(nil),
 		workerCount:          maxContentModerationWorkerCount,
-		asyncQueue:           make(chan contentModerationTask, maxContentModerationQueueSize),
-		keyHealth:            make(map[string]*contentModerationKeyHealth),
+		// 队列槽保存任务引用，完整任务仅在实际入队时分配。
+		asyncQueue: make(chan *contentModerationTask, maxContentModerationQueueSize),
+		keyHealth:  make(map[string]*contentModerationKeyHealth),
 	}
 	if settingRepo != nil && repo != nil {
 		for i := 0; i < svc.workerCount; i++ {
@@ -1207,7 +1208,7 @@ func (s *ContentModerationService) enqueueAsync(input ContentModerationCheckInpu
 		enqueuedAt: time.Now(),
 	}
 	select {
-	case s.asyncQueue <- task:
+	case s.asyncQueue <- &task:
 		s.asyncEnqueued.Add(1)
 	default:
 		slog.Warn("content_moderation.async_queue_full", "user_id", input.UserID, "endpoint", input.Endpoint)
@@ -1242,7 +1243,7 @@ func (s *ContentModerationService) enqueueRecord(input ContentModerationCheckInp
 		enqueuedAt:       time.Now(),
 	}
 	select {
-	case s.asyncQueue <- task:
+	case s.asyncQueue <- &task:
 		s.asyncEnqueued.Add(1)
 	default:
 		slog.Warn("content_moderation.record_queue_full",
@@ -1306,8 +1307,8 @@ func (s *ContentModerationService) worker(id int) {
 	}
 }
 
-func (s *ContentModerationService) dequeueAsyncTask(ctx context.Context, idleWait time.Duration) (contentModerationTask, bool) {
-	var zero contentModerationTask
+func (s *ContentModerationService) dequeueAsyncTask(ctx context.Context, idleWait time.Duration) (*contentModerationTask, bool) {
+	var zero *contentModerationTask
 	if s == nil || s.asyncQueue == nil {
 		return zero, false
 	}
