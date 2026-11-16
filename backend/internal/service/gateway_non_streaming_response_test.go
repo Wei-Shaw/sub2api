@@ -144,6 +144,151 @@ func TestHandleNonStreamingResponseAnthropicAPIKeyPassthrough_ValidJSONUnchanged
 	require.JSONEq(t, string(body), rec.Body.String())
 }
 
+func TestHandleNonStreamingResponseAnthropicAPIKeyPassthrough_StripsDuplicatedRawToolCall(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	body := []byte(`{
+		"id":"msg_raw_duplicate",
+		"type":"message",
+		"content":[
+			{"type":"text","text":"Running the check.\n<invoke name=\"Bash\"><parameter name=\"command\">printf test</parameter></invoke>"},
+			{"type":"tool_use","id":"toolu_1","name":"Bash","input":{"command":"printf test"}}
+		],
+		"stop_reason":"tool_use",
+		"usage":{"input_tokens":5,"output_tokens":3}
+	}`)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(body)),
+	}
+	svc := &GatewayService{cfg: &config.Config{}}
+
+	usage, err := svc.handleNonStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 2})
+
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	require.NotContains(t, rec.Body.String(), "<invoke")
+	require.Equal(t, "Running the check.\n", gjson.Get(rec.Body.String(), "content.0.text").String())
+	require.Equal(t, "tool_use", gjson.Get(rec.Body.String(), "content.1.type").String())
+	require.Equal(t, "Bash", gjson.Get(rec.Body.String(), "content.1.name").String())
+}
+
+func TestHandleNonStreamingResponseAnthropicAPIKeyPassthrough_PreservesRawOnlyToolCall(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	body := []byte(`{
+		"id":"msg_raw_only",
+		"type":"message",
+		"content":[{"type":"text","text":"<invoke name=\"Bash\"><parameter name=\"command\">printf test</parameter></invoke>"}],
+		"stop_reason":"end_turn",
+		"usage":{"input_tokens":5,"output_tokens":3}
+	}`)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(body)),
+	}
+	svc := &GatewayService{cfg: &config.Config{}}
+
+	usage, err := svc.handleNonStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 2})
+
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	require.Equal(t, `<invoke name="Bash"><parameter name="command">printf test</parameter></invoke>`, gjson.Get(rec.Body.String(), "content.0.text").String())
+}
+
+func TestHandleNonStreamingResponseAnthropicAPIKeyPassthrough_PreservesIncompleteRawToolCall(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	body := []byte(`{
+		"id":"msg_raw_incomplete",
+		"type":"message",
+		"content":[{"type":"text","text":"<invoke name=\"Bash\"><parameter name=\"command\">printf test</parameter>"}],
+		"stop_reason":"end_turn",
+		"usage":{"input_tokens":5,"output_tokens":3}
+	}`)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(body)),
+	}
+	svc := &GatewayService{cfg: &config.Config{}}
+
+	usage, err := svc.handleNonStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 2})
+
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	require.Equal(t, `<invoke name="Bash"><parameter name="command">printf test</parameter>`, gjson.Get(rec.Body.String(), "content.0.text").String())
+}
+
+func TestHandleNonStreamingResponseAnthropicAPIKeyPassthrough_PreservesMismatchedRawToolCall(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	body := []byte(`{
+		"id":"msg_raw_mismatch",
+		"type":"message",
+		"content":[
+			{"type":"text","text":"<invoke name=\"Bash\"><parameter name=\"command\">printf test</parameter></invoke>"},
+			{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"README.md"}}
+		],
+		"stop_reason":"tool_use",
+		"usage":{"input_tokens":5,"output_tokens":3}
+	}`)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(body)),
+	}
+	svc := &GatewayService{cfg: &config.Config{}}
+
+	usage, err := svc.handleNonStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 2})
+
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	require.Equal(t, `<invoke name="Bash"><parameter name="command">printf test</parameter></invoke>`, gjson.Get(rec.Body.String(), "content.0.text").String())
+	require.Equal(t, "Read", gjson.Get(rec.Body.String(), "content.1.name").String())
+}
+
+func TestHandleNonStreamingResponseAnthropicAPIKeyPassthrough_PreservesInvokeCodeExample(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	body := []byte(`{
+		"id":"msg_invoke_example",
+		"type":"message",
+		"content":[{"type":"text","text":"Example:\n<invoke name=\"Bash\"><parameter name=\"command\">printf test</parameter></invoke>\nThis is literal XML."}],
+		"stop_reason":"end_turn",
+		"usage":{"input_tokens":5,"output_tokens":3}
+	}`)
+	resp := &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(body)),
+	}
+	svc := &GatewayService{cfg: &config.Config{}}
+
+	usage, err := svc.handleNonStreamingResponseAnthropicAPIKeyPassthrough(context.Background(), resp, c, &Account{ID: 2})
+
+	require.NoError(t, err)
+	require.NotNil(t, usage)
+	require.JSONEq(t, string(body), rec.Body.String())
+}
+
 func TestHandleNonStreamingResponseAnthropicAPIKeyPassthrough_ForceCacheBillingResponse(t *testing.T) {
 	tests := []struct {
 		name string
