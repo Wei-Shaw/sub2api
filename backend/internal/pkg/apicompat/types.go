@@ -510,6 +510,10 @@ type ResponsesUsage struct {
 	// Optional detailed breakdown
 	InputTokensDetails  *ResponsesInputTokensDetails  `json:"input_tokens_details,omitempty"`
 	OutputTokensDetails *ResponsesOutputTokensDetails `json:"output_tokens_details,omitempty"`
+
+	// ServerSideToolUsageDetails is xAI's per-class success count object,
+	// kept raw so Grok search counting can read it from a decoded response.
+	ServerSideToolUsageDetails json.RawMessage `json:"server_side_tool_usage_details,omitempty"`
 }
 
 func (u *ResponsesUsage) UnmarshalJSON(data []byte) error {
