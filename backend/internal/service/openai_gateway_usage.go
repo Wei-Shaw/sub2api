@@ -196,6 +196,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		CacheReadTokens:        result.Usage.CacheReadInputTokens,
 		ImageOutputTokens:      result.Usage.ImageOutputTokens,
 	}
+	tokens = openAIEndpointBillingTokens(result, tokens)
 
 	// Get rate multiplier
 	multiplier := 1.0
@@ -595,6 +596,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	pricingAt time.Time,
 ) (*CostBreakdown, error) {
 	billingModel := firstUsageBillingModel(billingModels)
+	tokens = openAIEndpointBillingTokens(result, tokens)
 	if result != nil && result.WebSearchCalls > 0 {
 		// Codex alpha/search 网页搜索按次计费：上游不返回 usage/token 字段，单价只取
 		// 分组覆盖价（nil 时默认 0.01 = 官方 $10/1000 次），不参与渠道级模型定价。
@@ -704,6 +706,16 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	tokenCost.TotalCost += searchCost.TotalCost
 	tokenCost.ActualCost += searchCost.ActualCost
 	return tokenCost, nil
+}
+
+func openAIEndpointBillingTokens(result *OpenAIForwardResult, tokens UsageTokens) UsageTokens {
+	if result != nil && result.UpstreamEndpoint == "/v1/decisions" {
+		// Keep reported usage intact while excluding free output from both
+		// customer billing and account statistics pricing.
+		tokens.OutputTokens = 0
+		tokens.ImageOutputTokens = 0
+	}
+	return tokens
 }
 
 func isGrokVideoBillingModel(model string) bool {

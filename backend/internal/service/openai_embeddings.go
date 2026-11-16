@@ -24,11 +24,37 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 	body []byte,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
+	return s.forwardOpenAISyncJSON(ctx, c, account, body, defaultMappedModel, "/v1/embeddings")
+}
+
+func (s *OpenAIGatewayService) ForwardDecisions(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	defaultMappedModel string,
+) (*OpenAIForwardResult, error) {
+	if account == nil || !account.SupportsOpenAIEndpointCapability(OpenAIEndpointCapabilityDecisions) {
+		writeOpenAISyncJSONError(c, http.StatusBadRequest, "invalid_request_error", "Decisions API requires an OpenAI API key account with decisions capability")
+		return nil, fmt.Errorf("account does not support decisions")
+	}
+	return s.forwardOpenAISyncJSON(ctx, c, account, body, defaultMappedModel, "/v1/decisions")
+}
+
+func (s *OpenAIGatewayService) forwardOpenAISyncJSON(
+	ctx context.Context,
+	c *gin.Context,
+	account *Account,
+	body []byte,
+	defaultMappedModel string,
+	endpoint string,
+) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
+	SetActualOpenAIUpstreamEndpoint(c, endpoint)
 
 	originalModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	if originalModel == "" {
-		writeOpenAIEmbeddingsError(c, http.StatusBadRequest, "invalid_request_error", "model is required")
+		writeOpenAISyncJSONError(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return nil, fmt.Errorf("missing model in request")
 	}
 
@@ -40,7 +66,8 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 		upstreamBody = ReplaceModelInBody(body, upstreamModel)
 	}
 
-	logger.L().Debug("openai embeddings: forwarding",
+	logger.L().Debug("openai native JSON: forwarding",
+		zap.String("endpoint", endpoint),
 		zap.Int64("account_id", account.ID),
 		zap.String("original_model", originalModel),
 		zap.String("billing_model", billingModel),
@@ -61,7 +88,7 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 	if err != nil {
 		return nil, fmt.Errorf("invalid base_url: %w", err)
 	}
-	targetURL := buildOpenAIEmbeddingsURL(validatedURL)
+	targetURL := buildOpenAIEndpointURL(validatedURL, endpoint)
 
 	upstreamCtx, releaseUpstreamCtx := detachUpstreamContext(ctx)
 	upstreamReq, err := http.NewRequestWithContext(upstreamCtx, http.MethodPost, targetURL, bytes.NewReader(upstreamBody))
@@ -106,7 +133,7 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 			Kind:               "request_error",
 			Message:            safeErr,
 		})
-		writeOpenAIEmbeddingsError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
+		writeOpenAISyncJSONError(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
 		return nil, fmt.Errorf("upstream request failed: %s", safeErr)
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -149,33 +176,40 @@ func (s *OpenAIGatewayService) ForwardEmbeddings(
 			}
 			return nil, &UpstreamFailoverError{StatusCode: resp.StatusCode, ResponseBody: respBody, RetryableOnSameAccount: retryableOnSameAccount}
 		}
-		writeOpenAIEmbeddingsUpstreamResponse(c, resp, respBody, s.responseHeaderFilter)
+		writeOpenAISyncJSONUpstreamResponse(c, resp, respBody, s.responseHeaderFilter)
 		return nil, fmt.Errorf("upstream returned status %d", resp.StatusCode)
 	}
 
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		if !errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
-			writeOpenAIEmbeddingsError(c, http.StatusBadGateway, "api_error", "Failed to read upstream response")
+			writeOpenAISyncJSONError(c, http.StatusBadGateway, "api_error", "Failed to read upstream response")
 		}
 		return nil, fmt.Errorf("read upstream body: %w", err)
 	}
 
-	writeOpenAIEmbeddingsUpstreamResponse(c, resp, respBody, s.responseHeaderFilter)
+	writeOpenAISyncJSONUpstreamResponse(c, resp, respBody, s.responseHeaderFilter)
+	usage := extractOpenAISyncJSONUsage(respBody)
+	if endpoint == "/v1/decisions" {
+		// Decisions uses native input/output fields. total_tokens includes free
+		// output and must never be used as a fallback for zero input.
+		usage, _ = openAIUsageFromGJSON(gjson.GetBytes(respBody, "usage"))
+	}
 
 	return &OpenAIForwardResult{
-		RequestID:       firstNonEmptyString(resp.Header.Get("x-request-id"), resp.Header.Get("request-id")),
-		UpstreamHeaders: resp.Header,
-		Usage:           extractOpenAIEmbeddingsUsage(respBody),
-		Model:           originalModel,
-		BillingModel:    billingModel,
-		UpstreamModel:   upstreamModel,
-		Stream:          false,
-		Duration:        time.Since(startTime),
+		RequestID:        firstNonEmptyString(resp.Header.Get("x-request-id"), resp.Header.Get("request-id")),
+		UpstreamHeaders:  resp.Header,
+		Usage:            usage,
+		Model:            originalModel,
+		BillingModel:     billingModel,
+		UpstreamModel:    upstreamModel,
+		UpstreamEndpoint: endpoint,
+		Stream:           false,
+		Duration:         time.Since(startTime),
 	}, nil
 }
 
-func writeOpenAIEmbeddingsUpstreamResponse(c *gin.Context, resp *http.Response, body []byte, filter *responseheaders.CompiledHeaderFilter) {
+func writeOpenAISyncJSONUpstreamResponse(c *gin.Context, resp *http.Response, body []byte, filter *responseheaders.CompiledHeaderFilter) {
 	if c == nil || resp == nil {
 		return
 	}
@@ -194,7 +228,7 @@ func writeOpenAIEmbeddingsUpstreamResponse(c *gin.Context, resp *http.Response, 
 	_, _ = c.Writer.Write(body)
 }
 
-func writeOpenAIEmbeddingsError(c *gin.Context, statusCode int, errType, message string) {
+func writeOpenAISyncJSONError(c *gin.Context, statusCode int, errType, message string) {
 	c.JSON(statusCode, gin.H{
 		"error": gin.H{
 			"type":    errType,
@@ -203,7 +237,7 @@ func writeOpenAIEmbeddingsError(c *gin.Context, statusCode int, errType, message
 	})
 }
 
-func extractOpenAIEmbeddingsUsage(body []byte) OpenAIUsage {
+func extractOpenAISyncJSONUsage(body []byte) OpenAIUsage {
 	usage := gjson.GetBytes(body, "usage")
 	if !usage.Exists() || !usage.IsObject() {
 		return OpenAIUsage{}
