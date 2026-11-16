@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 )
 
 type PromptService struct {
@@ -108,7 +110,7 @@ func (s *PromptService) EffectiveMode() Mode {
 	return s.config.EffectiveMode()
 }
 
-func (s *PromptService) Enqueue(_ context.Context, req Request) error {
+func (s *PromptService) Enqueue(requestCtx context.Context, req Request) error {
 	if s == nil || s.enqueuer == nil || s.EffectiveMode() != ModeAsync {
 		return nil
 	}
@@ -143,10 +145,25 @@ func (s *PromptService) Enqueue(_ context.Context, req Request) error {
 		<-s.enqueueSlots
 		return errors.New("prompt audit service not started")
 	}
+	// The clone and snapshot work can outlive the HTTP handler. Use a separate
+	// scope on its shared budget; ending the request must not refund this work.
+	workCtx, releaseMemory := httputil.WithRequestBodyMemoryScope(requestCtx)
+	memoryErr := httputil.ReserveRequestBodyMemory(workCtx, int64(len(req.Body)))
+	if memoryErr == nil {
+		memoryErr = httputil.ReserveJSONProcessingMemory(workCtx, req.Body)
+	}
+	if memoryErr != nil {
+		releaseMemory()
+		<-s.enqueueSlots
+		s.enqueuer.recordDropped()
+		LogWarn(EventEnqueueDropped, mergeLogFields(requestLogFields(req), map[string]any{"config_version": cfg.ConfigVersion, "status": "dropped", "error_code": "local_memory_busy"}))
+		return nil // Async audit retains its existing best-effort overload policy.
+	}
 	requestCopy := req.Clone()
 	s.enqueueWG.Add(1)
 	go func() {
 		defer s.enqueueWG.Done()
+		defer releaseMemory()
 		defer func() { <-s.enqueueSlots }()
 		ctx, cancel := context.WithTimeout(background, 2*time.Second)
 		defer cancel()
