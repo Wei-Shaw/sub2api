@@ -12,12 +12,16 @@ const {
   getUsageSummary,
   getCapacitySummary,
   getLiveCapability,
+  createGroup,
+  updateGroup,
 } = vi.hoisted(() => ({
   listGroups: vi.fn(),
   getModelAllowlistCandidates: vi.fn(),
   getUsageSummary: vi.fn(),
   getCapacitySummary: vi.fn(),
   getLiveCapability: vi.fn(),
+  createGroup: vi.fn(),
+  updateGroup: vi.fn(),
 }));
 
 vi.mock("@/api/admin", () => ({
@@ -29,8 +33,8 @@ vi.mock("@/api/admin", () => ({
       getUsageSummary,
       getCapacitySummary,
       getLiveCapability,
-      create: vi.fn(),
-      update: vi.fn(),
+      create: createGroup,
+      update: updateGroup,
       delete: vi.fn(),
       duplicate: vi.fn(),
       updateSortOrder: vi.fn(),
@@ -144,7 +148,7 @@ const DataTableStub = defineComponent({
   props: {
     data: { type: Array, default: () => [] },
   },
-  template: '<div><div v-if="data.length"><slot name="cell-actions" :row="data[0]" /></div></div>',
+  template: '<div><div v-if="data.length"><slot name="cell-name" :row="data[0]" :value="data[0].name" /><slot name="cell-actions" :row="data[0]" /></div></div>',
 });
 
 const BaseDialogStub = defineComponent({
@@ -152,6 +156,19 @@ const BaseDialogStub = defineComponent({
     show: { type: Boolean, default: false },
   },
   template: '<div v-if="show"><slot /><slot name="footer" /></div>',
+});
+
+const ReasoningEffortPolicyFieldsStub = defineComponent({
+  setup(_, { expose }) {
+    expose({ validate: () => true, resetValidation: () => undefined });
+    return () => h("div");
+  },
+});
+
+const GroupI18nFieldStub = defineComponent({
+  props: ["modelValue"],
+  emits: ["update:modelValue"],
+  template: '<div><input :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" /></div>',
 });
 
 const CodexManifestAccountsFieldStub = defineComponent({
@@ -220,7 +237,8 @@ const mountView = () =>
         GroupCapacityBadge: true,
         GroupRateMultipliersModal: true,
         GroupRPMOverridesModal: true,
-        ReasoningEffortPolicyFields: true,
+        ReasoningEffortPolicyFields: ReasoningEffortPolicyFieldsStub,
+        GroupI18nField: GroupI18nFieldStub,
         CodexManifestAccountsField: CodexManifestAccountsFieldStub,
         PricingEntryCard: true,
         VueDraggable: true,
@@ -236,6 +254,10 @@ describe("GroupsView Codex manifest binding", () => {
     getUsageSummary.mockReset();
     getCapacitySummary.mockReset();
     getLiveCapability.mockReset();
+    createGroup.mockReset();
+    updateGroup.mockReset();
+    createGroup.mockResolvedValue(sourceGroup);
+    updateGroup.mockResolvedValue(sourceGroup);
 
     listGroups.mockResolvedValue({
       items: [sourceGroup],
@@ -283,6 +305,55 @@ describe("GroupsView Codex manifest binding", () => {
       }),
     );
 
+    wrapper.unmount();
+  });
+
+  it.each(["client", "priority", "ultrafast"] as const)("saves the edited %s policy", async (tier) => {
+    const wrapper = mountView();
+    await flushPromises();
+    const edit = wrapper.findAll("button").find(button => button.text().includes("common.edit"));
+    await edit!.trigger("click");
+    await flushPromises();
+    await wrapper.get(`[data-testid="edit-openai-service-tier"] [data-tier="${tier}"]`).trigger("click");
+    await wrapper.get("#edit-group-form").trigger("submit");
+    await flushPromises();
+    expect(updateGroup).toHaveBeenCalledWith(sourceGroup.id, expect.objectContaining({
+      force_openai_fast: tier === "priority",
+      force_openai_ultrafast: tier === "ultrafast",
+    }));
+    wrapper.unmount();
+  });
+
+  it("loads the persisted Ultrafast selection and list badge", async () => {
+    listGroups.mockResolvedValue({ items: [{ ...sourceGroup, force_openai_ultrafast: true }], total: 1, page: 1, page_size: 20, pages: 1 });
+    const wrapper = mountView();
+    await flushPromises();
+    expect(wrapper.text()).toContain("Ultrafast");
+    const edit = wrapper.findAll("button").find(button => button.text().includes("common.edit"));
+    await edit!.trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="edit-openai-service-tier"] [data-tier="ultrafast"]').attributes("aria-checked")).toBe("true");
+    wrapper.unmount();
+  });
+
+  it("creates an OpenAI group with Ultrafast and resets to client mode", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.get('[data-tour="groups-create-btn"]').trigger("click");
+    await flushPromises();
+    wrapper.findComponent('[data-tour="group-form-platform"]').vm.$emit("update:modelValue", "openai");
+    await flushPromises();
+    await wrapper.get('[data-tour="group-form-name"] input').setValue("Ultra group");
+    await wrapper.get('[data-testid="create-openai-service-tier"] [data-tier="ultrafast"]').trigger("click");
+    await wrapper.get("#create-group-form").trigger("submit");
+    await flushPromises();
+    expect(createGroup).toHaveBeenCalledWith(expect.objectContaining({
+      name: "Ultra group", platform: "openai", force_openai_fast: false, force_openai_ultrafast: true,
+    }));
+    await wrapper.get('[data-tour="groups-create-btn"]').trigger("click");
+    wrapper.findComponent('[data-tour="group-form-platform"]').vm.$emit("update:modelValue", "openai");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="create-openai-service-tier"] [data-tier="client"]').attributes("aria-checked")).toBe("true");
     wrapper.unmount();
   });
 });
