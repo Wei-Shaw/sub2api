@@ -2,10 +2,14 @@ package repository
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -210,4 +214,226 @@ func (s *ClaudeUsageServiceSuite) TestFetchUsage_InvalidProxyReturnsError() {
 
 func TestClaudeUsageServiceSuite(t *testing.T) {
 	suite.Run(t, new(ClaudeUsageServiceSuite))
+}
+
+type claudeUsageRecoveryRepo struct {
+	service.AccountRepository
+	mu         sync.Mutex
+	account    *service.Account
+	clearCalls int
+	clearErr   error
+	requests   atomic.Int32
+}
+
+func (r *claudeUsageRecoveryRepo) GetByID(context.Context, int64) (*service.Account, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	copy := *r.account
+	raw, err := json.Marshal(r.account.Extra)
+	if err != nil {
+		return nil, err
+	}
+	copy.Extra = nil
+	if err := json.Unmarshal(raw, &copy.Extra); err != nil {
+		return nil, err
+	}
+	return &copy, nil
+}
+
+func (r *claudeUsageRecoveryRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for key, value := range updates {
+		r.account.Extra[key] = value
+	}
+	r.account.UpdatedAt = time.Now()
+	return nil
+}
+
+func (r *claudeUsageRecoveryRepo) ClearModelRateLimit(_ context.Context, _ int64, scope string) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.clearCalls++
+	if r.clearErr != nil {
+		return r.clearErr
+	}
+	limits, ok := r.account.Extra["model_rate_limits"].(map[string]any)
+	if !ok {
+		return errors.New("model rate limits missing from recovery fixture")
+	}
+	delete(limits, scope)
+	r.account.UpdatedAt = time.Now()
+	return nil
+}
+
+func TestClaudeUsageFetcher_RecoversFableModelQuota(t *testing.T) {
+	reset := time.Now().Add(72 * time.Hour).UTC().Truncate(time.Second)
+	scoped := func(percent string, reset time.Time, model, surface string) string {
+		return fmt.Sprintf(`{"limits":[{"kind":"weekly_scoped","group":"weekly","percent":%s,"resets_at":%q,"scope":{"model":{"display_name":%q},"surface":%s}}]}`, percent, reset.Format(time.RFC3339), model, surface)
+	}
+	for _, tc := range []struct {
+		name, response, reason string
+		wantClear              bool
+	}{
+		{name: "scoped zero", response: scoped("0", reset, "Fable", "null"), wantClear: true},
+		{name: "available quota", response: scoped("15", reset, "Fable", "null"), wantClear: true},
+		{name: "below recovery threshold", response: scoped("94", reset, "Fable", "null"), wantClear: true},
+		{name: "at recovery threshold", response: scoped("95", reset, "Fable", "null")},
+		{name: "legacy zero", response: fmt.Sprintf(`{"seven_day_overage_included":{"utilization":0,"resets_at":%q}}`, reset.Format(time.RFC3339)), wantClear: true},
+		{name: "missing percent", response: scoped("null", reset, "Fable", "null")},
+		{name: "missing legacy utilization", response: fmt.Sprintf(`{"seven_day_overage_included":{"resets_at":%q}}`, reset.Format(time.RFC3339))},
+		{name: "null legacy utilization", response: fmt.Sprintf(`{"seven_day_overage_included":{"utilization":null,"resets_at":%q}}`, reset.Format(time.RFC3339))},
+		{name: "no active window", response: `{}`},
+		{name: "expired active window", response: scoped("0", time.Now().Add(-time.Hour), "Fable", "null")},
+		{name: "still exhausted", response: scoped("100", reset, "Fable", "null")},
+		{name: "other model", response: scoped("0", reset, "Sonnet", "null")},
+		{name: "restricted surface", response: scoped("0", reset, "Fable", `"claude_code"`)},
+		{name: "credits required", response: scoped("0", reset, "Fable", "null"), reason: "anthropic_fable_credits_required"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo, svc := newClaudeUsageRecoveryFixture(t, tc.response, nil)
+			if tc.reason != "" {
+				limits, ok := repo.account.Extra["model_rate_limits"].(map[string]any)
+				require.True(t, ok)
+				limit, ok := limits["claude-fable-5"].(map[string]any)
+				require.True(t, ok)
+				limit["reason"] = tc.reason
+			}
+			usage := getClaudeRecoveryUsage(t, repo, svc)
+			current, err := repo.GetByID(t.Context(), 1)
+			require.NoError(t, err)
+			if tc.wantClear {
+				require.NotNil(t, usage.SevenDayFable)
+				require.Less(t, usage.SevenDayFable.Utilization, 100.0)
+				require.Zero(t, current.GetModelRateLimitRemainingTime("claude-fable-5-2"), "fresh upstream quota must recover the locally blocked model")
+				require.Equal(t, 1, repo.clearCalls)
+			} else {
+				require.Positive(t, current.GetModelRateLimitRemainingTime("claude-fable-5-2"))
+				require.Zero(t, repo.clearCalls)
+			}
+			require.Positive(t, current.GetModelRateLimitRemainingTime("claude-sonnet-4-6"), "other model limits must survive")
+		})
+	}
+}
+
+func newClaudeUsageRecoveryFixture(t *testing.T, response string, duringFetch func(*claudeUsageRecoveryRepo)) (*claudeUsageRecoveryRepo, *service.AccountUsageService) {
+	t.Helper()
+	reset := time.Now().Add(72 * time.Hour).UTC().Truncate(time.Second)
+	repo := &claudeUsageRecoveryRepo{account: &service.Account{
+		ID: 1, Platform: service.PlatformAnthropic, Type: service.AccountTypeOAuth,
+		Status: service.StatusActive, Credentials: map[string]any{"access_token": "test-token"},
+		UpdatedAt: time.Now().Add(-time.Hour),
+		Extra: map[string]any{
+			"passive_usage_7d_oi_utilization": 1.0,
+			"passive_usage_7d_oi_reset":       reset.Unix(),
+			"model_rate_limits": map[string]any{
+				"claude-fable-5": map[string]any{
+					"reason": "anthropic_7d_oi_window_exhausted", "rate_limit_reset_at": reset.Format(time.RFC3339),
+				},
+				"claude-sonnet-4-6": map[string]any{"rate_limit_reset_at": reset.Format(time.RFC3339)},
+			},
+		},
+	}}
+	srv := newLocalTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		repo.requests.Add(1)
+		if duringFetch != nil {
+			duringFetch(repo)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, response)
+	}))
+	t.Cleanup(srv.Close)
+	fetcher := &claudeUsageService{usageURL: srv.URL, allowPrivateHosts: true}
+	svc := service.NewAccountUsageService(repo, &claudeUsageWindowLogRepo{}, fetcher,
+		nil, nil, nil, nil, nil, service.NewUsageCache(), nil, nil)
+	return repo, svc
+}
+
+func getClaudeRecoveryUsage(t *testing.T, repo *claudeUsageRecoveryRepo, svc *service.AccountUsageService) *service.UsageInfo {
+	t.Helper()
+	snapshot, err := repo.GetByID(t.Context(), 1)
+	require.NoError(t, err)
+	usage, err := svc.GetUsageForAccount(t.Context(), snapshot)
+	require.NoError(t, err)
+	return usage
+}
+
+func TestClaudeUsageFetcher_CachedQuotaPreservesNewFableLimit(t *testing.T) {
+	reset := time.Now().Add(72 * time.Hour).UTC().Format(time.RFC3339)
+	response := fmt.Sprintf(`{"seven_day_overage_included":{"utilization":0,"resets_at":%q}}`, reset)
+	repo, svc := newClaudeUsageRecoveryFixture(t, response, nil)
+	getClaudeRecoveryUsage(t, repo, svc)
+	require.Equal(t, 1, repo.clearCalls)
+	repo.mu.Lock()
+	limits, ok := repo.account.Extra["model_rate_limits"].(map[string]any)
+	if ok {
+		limits["claude-fable-5"] = map[string]any{
+			"reason": "anthropic_7d_oi_window_exhausted", "rate_limit_reset_at": reset,
+		}
+		repo.account.UpdatedAt = time.Now()
+	}
+	repo.mu.Unlock()
+	require.True(t, ok)
+	getClaudeRecoveryUsage(t, repo, svc)
+	current, err := repo.GetByID(t.Context(), 1)
+	require.NoError(t, err)
+	require.EqualValues(t, 1, repo.requests.Load())
+	require.Positive(t, current.GetModelRateLimitRemainingTime("claude-fable-5-2"))
+	require.Equal(t, 1, repo.clearCalls, "a cached response must not trigger another recovery")
+	require.EqualValues(t, 1, repo.requests.Load())
+}
+
+func TestClaudeUsageFetcher_ConcurrentFableLimitSurvives(t *testing.T) {
+	reset := time.Now().Add(72 * time.Hour).UTC().Format(time.RFC3339)
+	response := fmt.Sprintf(`{"seven_day_overage_included":{"utilization":0,"resets_at":%q}}`, reset)
+	repo, svc := newClaudeUsageRecoveryFixture(t, response, func(r *claudeUsageRecoveryRepo) {
+		r.mu.Lock()
+		defer r.mu.Unlock()
+		// A new 429 may have the exact same reset and reason. Its row version
+		// must still distinguish it from the generation read before the fetch.
+		r.account.UpdatedAt = time.Now()
+	})
+	getClaudeRecoveryUsage(t, repo, svc)
+	current, err := repo.GetByID(t.Context(), 1)
+	require.NoError(t, err)
+	require.Positive(t, current.GetModelRateLimitRemainingTime("claude-fable-5-2"))
+	require.Equal(t, 1, repo.clearCalls)
+}
+
+func TestClaudeUsageFetcher_RecoveryErrorPreservesFableLimit(t *testing.T) {
+	reset := time.Now().Add(72 * time.Hour).UTC().Format(time.RFC3339)
+	response := fmt.Sprintf(`{"seven_day_overage_included":{"utilization":0,"resets_at":%q}}`, reset)
+	repo, svc := newClaudeUsageRecoveryFixture(t, response, nil)
+	repo.clearErr = errors.New("persistence unavailable")
+	getClaudeRecoveryUsage(t, repo, svc)
+	current, err := repo.GetByID(t.Context(), 1)
+	require.NoError(t, err)
+	require.Positive(t, current.GetModelRateLimitRemainingTime("claude-fable-5-2"))
+	require.Equal(t, 1, repo.clearCalls)
+}
+
+func (r *claudeUsageRecoveryRepo) RecoverModelRateLimitIfUnchanged(_ context.Context, _ int64, scope string, expected json.RawMessage, expectedUpdatedAt time.Time, updates map[string]any) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.clearCalls++
+	if r.clearErr != nil {
+		return false, r.clearErr
+	}
+	limits, ok := r.account.Extra["model_rate_limits"].(map[string]any)
+	if !ok {
+		return false, nil
+	}
+	actual, err := json.Marshal(limits[scope])
+	if err != nil {
+		return false, err
+	}
+	if !r.account.UpdatedAt.Equal(expectedUpdatedAt) || string(actual) != string(expected) {
+		return false, nil
+	}
+	for key, value := range updates {
+		r.account.Extra[key] = value
+	}
+	delete(limits, scope)
+	r.account.UpdatedAt = time.Now()
+	return true, nil
 }
