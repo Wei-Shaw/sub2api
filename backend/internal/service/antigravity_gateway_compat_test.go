@@ -132,6 +132,74 @@ func antigravityCompatSuccessResponse() *http.Response {
 	}
 }
 
+func TestAntigravityCompatToolSchemaItemsMatchSelectedType(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const schema = `{"type":"object","properties":{
+		"uri":{"type":["string","array"],"items":{"type":"string"}},
+		"paths":{"type":["array","string"],"items":{"type":"integer"}},
+		"nested":{"type":"array","items":{"type":"object","properties":{
+			"uri":{"type":["string","array"],"items":{"type":"string"}}
+		}}},
+		"fallback":{"type":"array","items":17},
+		"inferred":{"items":{"type":"integer"}},
+		"items":{"type":"string"}
+	}}`
+	const expected = `{"type":"object","properties":{
+		"uri":{"type":"string"},
+		"paths":{"type":"array","items":{"type":"integer"}},
+		"nested":{"type":"array","items":{"type":"object","properties":{
+			"uri":{"type":"string"}
+		}}},
+		"fallback":{"type":"array","items":{"type":"string"}},
+		"inferred":{"type":"array","items":{"type":"integer"}},
+		"items":{"type":"string"}
+	}}`
+	for _, protocol := range []string{"chat", "responses", "messages"} {
+		t.Run(protocol, func(t *testing.T) {
+			var parameters map[string]any
+			require.NoError(t, json.Unmarshal([]byte(schema), &parameters))
+			tool := map[string]any{"name": "inspect", "parameters": parameters}
+			request := map[string]any{"model": "gemini-3.1-pro-high", "max_tokens": 128}
+			switch protocol {
+			case "chat":
+				request["messages"] = []map[string]any{{"role": "user", "content": "inspect URI"}}
+				request["tools"] = []any{map[string]any{"type": "function", "function": tool}}
+			case "responses":
+				request["input"] = "inspect URI"
+				tool["type"] = "function"
+				request["tools"] = []any{tool}
+			case "messages":
+				request["messages"] = []map[string]any{{"role": "user", "content": "inspect URI"}}
+				request["tools"] = []any{map[string]any{"name": "inspect", "input_schema": parameters}}
+			}
+			body, err := json.Marshal(request)
+			require.NoError(t, err)
+			var forwarded []byte
+			upstream := &queuedHTTPUpstreamStub{
+				responses: []*http.Response{antigravityCompatSuccessResponse()},
+				onCall: func(req *http.Request, _ *queuedHTTPUpstreamStub) {
+					forwarded, err = io.ReadAll(req.Body)
+					require.NoError(t, err)
+				},
+			}
+			svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+			account := newAntigravityCompatAccount(AccountTypeOAuth)
+			c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/"+protocol, body)
+			switch protocol {
+			case "chat":
+				_, err = svc.ForwardAsChatCompletions(context.Background(), c, account, body, nil)
+			case "responses":
+				_, err = svc.ForwardAsResponses(context.Background(), c, account, body, nil)
+			case "messages":
+				_, err = svc.Forward(context.Background(), c, account, body, false)
+			}
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, recorder.Code)
+			require.JSONEq(t, expected, gjson.GetBytes(forwarded, "request.tools.0.functionDeclarations.0.parameters").Raw)
+		})
+	}
+}
+
 func TestAntigravitySystemIdentityAcrossProtocols(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	const task = "\nKeep GPT-5.6, gpt-6 and Claude model ids unchanged."
