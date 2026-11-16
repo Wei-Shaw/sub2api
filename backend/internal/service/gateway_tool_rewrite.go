@@ -128,17 +128,15 @@ func buildToolNameRewriteFromBody(body []byte) *ToolNameRewrite {
 	}
 
 	mimicableNames := make([]string, 0)
-	toolsArr := tools.Array()
-	for _, t := range toolsArr {
+	tools.ForEach(func(_, t gjson.Result) bool {
 		if !shouldMimicToolName(t.Get("type").String()) {
-			continue
+			return true
 		}
-		name := t.Get("name").String()
-		if name == "" {
-			continue
+		if name := t.Get("name").String(); name != "" {
+			mimicableNames = append(mimicableNames, name)
 		}
-		mimicableNames = append(mimicableNames, name)
-	}
+		return true
+	})
 
 	dynamic := buildDynamicToolMap(mimicableNames)
 
@@ -269,22 +267,22 @@ func applyToolsLastCacheBreakpoint(body []byte) []byte {
 	if !tools.IsArray() {
 		return body
 	}
-	arr := tools.Array()
-	if len(arr) == 0 {
-		return body
-	}
+	idx := 0
 	lastIdx := -1
-	for idx, tool := range arr {
-		if isDeferredLoadingTool(tool) {
-			continue
+	lastTool := gjson.Result{}
+	tools.ForEach(func(_, tool gjson.Result) bool {
+		if !isDeferredLoadingTool(tool) {
+			lastIdx = idx
+			lastTool = tool
 		}
-		lastIdx = idx
-	}
+		idx++
+		return true
+	})
 	if lastIdx == -1 {
 		return body
 	}
 
-	existingCC := arr[lastIdx].Get("cache_control")
+	existingCC := lastTool.Get("cache_control")
 
 	if existingCC.Exists() && existingCC.Get("ttl").String() != "" {
 		return body
@@ -316,14 +314,16 @@ func stripDeferredToolCacheControl(body []byte) []byte {
 	if !tools.IsArray() {
 		return body
 	}
-	for idx, tool := range tools.Array() {
-		if !isDeferredLoadingTool(tool) || !tool.Get("cache_control").Exists() {
-			continue
+	idx := 0
+	tools.ForEach(func(_, tool gjson.Result) bool {
+		if isDeferredLoadingTool(tool) && tool.Get("cache_control").Exists() {
+			if next, err := sjson.DeleteBytes(body, fmt.Sprintf("tools.%d.cache_control", idx)); err == nil {
+				body = next
+			}
 		}
-		if next, err := sjson.DeleteBytes(body, fmt.Sprintf("tools.%d.cache_control", idx)); err == nil {
-			body = next
-		}
-	}
+		idx++
+		return true
+	})
 	return body
 }
 
