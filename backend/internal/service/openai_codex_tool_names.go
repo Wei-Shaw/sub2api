@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -165,27 +166,51 @@ func aliasOpenAIOAuthReservedToolNamesBody(body []byte) ([]byte, map[string]stri
 	return normalized, reverse, true, nil
 }
 
+// containsASCIIFold reports whether haystack contains needle under ASCII case
+// folding.
+//
+// 逐字节比较在 1MiB 级请求体上等于整段扫描；只按首字节 memchr 又会为每个候选
+// 重新探测「大小写两种首字节」各自的整段尾部，候选一多就退化成平方级。这里给
+// 大小写两条候选游标，每条只在自身未消费的区间上前进，整体保持线性，
+// 结果与逐字节折叠比较完全一致。
 func containsASCIIFold(haystack, needle []byte) bool {
 	if len(needle) == 0 || len(haystack) < len(needle) {
 		return false
 	}
-	for i := 0; i <= len(haystack)-len(needle); i++ {
-		matched := true
-		for j := range needle {
-			a, b := haystack[i+j], needle[j]
-			if a >= 'A' && a <= 'Z' {
-				a += 'a' - 'A'
-			}
-			if b >= 'A' && b <= 'Z' {
-				b += 'a' - 'A'
-			}
-			if a != b {
-				matched = false
-				break
-			}
+	first := needle[0]
+	upper := first
+	if 'a' <= first && first <= 'z' {
+		upper = first - ('a' - 'A')
+	}
+	last := len(haystack) - len(needle)
+
+	lowerPos := bytes.IndexByte(haystack, first)
+	upperPos := -1
+	if upper != first {
+		upperPos = bytes.IndexByte(haystack, upper)
+	}
+	for lowerPos >= 0 || upperPos >= 0 {
+		pos := lowerPos
+		if pos < 0 || (upperPos >= 0 && upperPos < pos) {
+			pos = upperPos
 		}
-		if matched {
+		if pos > last {
+			return false
+		}
+		if bytes.EqualFold(haystack[pos:pos+len(needle)], needle) {
 			return true
+		}
+		// 只推进刚刚消费掉的那条游标。
+		if pos == lowerPos {
+			lowerPos = -1
+			if next := bytes.IndexByte(haystack[pos+1:], first); next >= 0 {
+				lowerPos = pos + 1 + next
+			}
+			continue
+		}
+		upperPos = -1
+		if next := bytes.IndexByte(haystack[pos+1:], upper); next >= 0 {
+			upperPos = pos + 1 + next
 		}
 	}
 	return false
