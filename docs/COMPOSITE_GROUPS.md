@@ -132,6 +132,20 @@ names such as `gpt-*`, `claude-*`, `gemini-*`, and `grok-*`. Explicit routes are
 recommended for bundled plan aliases because they make endpoint, provider, and
 upstream model attribution reviewable in the admin UI.
 
+## OpenAI Fast Capability
+
+The admin-only `allow_openai_fast_downgrade` setting defaults to `false` and
+applies only to composite groups. When enabled, an ordinary Fast request loses
+`service_tier` if the selected account does not advertise the requested tier.
+The global Fast/Flex policy is evaluated first. A `missing` rule that injects
+priority is evaluated once, consistently across HTTP and WebSocket forwarding.
+
+Force Fast remains strict: a selected account without the required capability
+is rejected, and enabling Force Fast disables downgrade. Account-backed model
+manifests use the same capability data as forwarding. Empty or absent tier
+declarations do not gain Fast from a model name; existing verified defaults for
+official endpoints still apply when the declaration is absent.
+
 ## Limits
 
 Composite routes choose a concrete provider and upstream model; they do not

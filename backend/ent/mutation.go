@@ -22161,6 +22161,7 @@ type GroupMutation struct {
 	allow_messages_dispatch                 *bool
 	allow_live                              *bool
 	force_openai_fast                       *bool
+	allow_openai_fast_downgrade             *bool
 	free_openai_fast                        *bool
 	require_oauth_only                      *bool
 	require_privacy_set                     *bool
@@ -25058,6 +25059,42 @@ func (m *GroupMutation) ResetForceOpenaiFast() {
 	m.force_openai_fast = nil
 }
 
+// SetAllowOpenaiFastDowngrade sets the "allow_openai_fast_downgrade" field.
+func (m *GroupMutation) SetAllowOpenaiFastDowngrade(b bool) {
+	m.allow_openai_fast_downgrade = &b
+}
+
+// AllowOpenaiFastDowngrade returns the value of the "allow_openai_fast_downgrade" field in the mutation.
+func (m *GroupMutation) AllowOpenaiFastDowngrade() (r bool, exists bool) {
+	v := m.allow_openai_fast_downgrade
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldAllowOpenaiFastDowngrade returns the old "allow_openai_fast_downgrade" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldAllowOpenaiFastDowngrade(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldAllowOpenaiFastDowngrade is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldAllowOpenaiFastDowngrade requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldAllowOpenaiFastDowngrade: %w", err)
+	}
+	return oldValue.AllowOpenaiFastDowngrade, nil
+}
+
+// ResetAllowOpenaiFastDowngrade resets all changes to the "allow_openai_fast_downgrade" field.
+func (m *GroupMutation) ResetAllowOpenaiFastDowngrade() {
+	m.allow_openai_fast_downgrade = nil
+}
+
 // SetFreeOpenaiFast sets the "free_openai_fast" field.
 func (m *GroupMutation) SetFreeOpenaiFast(b bool) {
 	m.free_openai_fast = &b
@@ -25995,7 +26032,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 68)
+	fields := make([]string, 0, 69)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26158,6 +26195,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.force_openai_fast != nil {
 		fields = append(fields, group.FieldForceOpenaiFast)
 	}
+	if m.allow_openai_fast_downgrade != nil {
+		fields = append(fields, group.FieldAllowOpenaiFastDowngrade)
+	}
 	if m.free_openai_fast != nil {
 		fields = append(fields, group.FieldFreeOpenaiFast)
 	}
@@ -26316,6 +26356,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.AllowLive()
 	case group.FieldForceOpenaiFast:
 		return m.ForceOpenaiFast()
+	case group.FieldAllowOpenaiFastDowngrade:
+		return m.AllowOpenaiFastDowngrade()
 	case group.FieldFreeOpenaiFast:
 		return m.FreeOpenaiFast()
 	case group.FieldRequireOauthOnly:
@@ -26461,6 +26503,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldAllowLive(ctx)
 	case group.FieldForceOpenaiFast:
 		return m.OldForceOpenaiFast(ctx)
+	case group.FieldAllowOpenaiFastDowngrade:
+		return m.OldAllowOpenaiFastDowngrade(ctx)
 	case group.FieldFreeOpenaiFast:
 		return m.OldFreeOpenaiFast(ctx)
 	case group.FieldRequireOauthOnly:
@@ -26875,6 +26919,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetForceOpenaiFast(v)
+		return nil
+	case group.FieldAllowOpenaiFastDowngrade:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetAllowOpenaiFastDowngrade(v)
 		return nil
 	case group.FieldFreeOpenaiFast:
 		v, ok := value.(bool)
@@ -27646,6 +27697,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldForceOpenaiFast:
 		m.ResetForceOpenaiFast()
+		return nil
+	case group.FieldAllowOpenaiFastDowngrade:
+		m.ResetAllowOpenaiFastDowngrade()
 		return nil
 	case group.FieldFreeOpenaiFast:
 		m.ResetFreeOpenaiFast()

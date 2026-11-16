@@ -358,6 +358,76 @@ func TestAdminService_CreateGroup_RejectsTimePricing(t *testing.T) {
 	require.Nil(t, repo.created)
 }
 
+func TestAdminService_CreateGroup_SanitizesOpenAIFastDowngrade(t *testing.T) {
+	tests := []struct {
+		name  string
+		force bool
+		want  bool
+	}{
+		{name: "composite can enable", want: true},
+		{name: "force fast disables downgrade", force: true, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &groupRepoStubForAdmin{createID: 51}
+			svc := &adminServiceImpl{groupRepo: repo}
+
+			group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+				Name:                     "fast-downgrade",
+				Platform:                 PlatformComposite,
+				RateMultiplier:           1,
+				ForceOpenAIFast:          tt.force,
+				AllowOpenAIFastDowngrade: true,
+			})
+			require.NoError(t, err)
+			require.Equal(t, tt.want, group.AllowOpenAIFastDowngrade)
+			require.Equal(t, tt.force, group.ForceOpenAIFast)
+		})
+	}
+
+	repo := &groupRepoStubForAdmin{createID: 52}
+	svc := &adminServiceImpl{groupRepo: repo}
+	group, err := svc.CreateGroup(context.Background(), &CreateGroupInput{
+		Name:                     "openai-fast-downgrade",
+		Platform:                 PlatformOpenAI,
+		RateMultiplier:           1,
+		AllowOpenAIFastDowngrade: true,
+	})
+	require.NoError(t, err)
+	require.False(t, group.AllowOpenAIFastDowngrade)
+}
+
+func TestAdminService_UpdateGroup_SanitizesOpenAIFastDowngrade(t *testing.T) {
+	tests := []struct {
+		name     string
+		platform string
+		force    bool
+		want     bool
+	}{
+		{name: "composite can enable", platform: PlatformComposite, want: true},
+		{name: "force fast disables downgrade", platform: PlatformComposite, force: true, want: false},
+		{name: "openai cannot enable", platform: PlatformOpenAI, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			existing := &Group{ID: 1, Name: "existing", Platform: tt.platform, Status: StatusActive}
+			repo := &groupRepoStubForAdmin{getByID: existing}
+			svc := &adminServiceImpl{groupRepo: repo}
+			allow, force := true, tt.force
+
+			group, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{
+				AllowOpenAIFastDowngrade: &allow,
+				ForceOpenAIFast:          &force,
+			})
+			require.NoError(t, err)
+			require.Equal(t, tt.want, group.AllowOpenAIFastDowngrade)
+			require.Equal(t, tt.force, group.ForceOpenAIFast)
+		})
+	}
+}
+
 func TestAdminService_UpdateGroup_RejectsTimePricing(t *testing.T) {
 	existing := &Group{ID: 1, Name: "existing", Platform: PlatformOpenAI, Status: StatusActive}
 	repo := &groupRepoStubForAdmin{getByID: existing}
