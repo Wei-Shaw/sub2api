@@ -1274,6 +1274,36 @@ type TestAccountRequest struct {
 	// ImageDataURL / AudioDataURL are data:<mime>;base64,... payloads.
 	ImageDataURL string `json:"image_data_url"`
 	AudioDataURL string `json:"audio_data_url"`
+	// Playground conversation. When Messages is set it replaces Prompt, and
+	// System / MaxTokens / Temperature apply to the same request.
+	Messages    []TestAccountMessage `json:"messages"`
+	System      string               `json:"system"`
+	MaxTokens   int                  `json:"max_tokens"`
+	Temperature *float64             `json:"temperature"`
+}
+
+// TestAccountMessage is one turn of a playground conversation.
+type TestAccountMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// conversation returns the playground conversation carried by the request, or
+// nil for a plain connectivity test.
+func (r TestAccountRequest) conversation() *service.AccountTestConversation {
+	if len(r.Messages) == 0 {
+		return nil
+	}
+	messages := make([]service.AccountTestMessage, 0, len(r.Messages))
+	for _, message := range r.Messages {
+		messages = append(messages, service.AccountTestMessage{Role: message.Role, Content: message.Content})
+	}
+	return &service.AccountTestConversation{
+		Messages:    messages,
+		System:      r.System,
+		MaxTokens:   r.MaxTokens,
+		Temperature: r.Temperature,
+	}
 }
 
 type SyncFromCRSRequest struct {
@@ -1306,6 +1336,7 @@ func (h *AccountHandler) Test(c *gin.Context) {
 	opts := service.AccountTestOptions{
 		ImageDataURL: req.ImageDataURL,
 		AudioDataURL: req.AudioDataURL,
+		Conversation: req.conversation(),
 	}
 
 	// Use AccountTestService to test the account with SSE streaming
