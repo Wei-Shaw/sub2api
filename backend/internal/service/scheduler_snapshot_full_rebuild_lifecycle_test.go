@@ -214,8 +214,12 @@ func (r *fullRebuildAccountRepo) ListSchedulableUngroupedByPlatforms(_ context.C
 	return r.record(0, firstPlatform(platforms))
 }
 
-func (r *fullRebuildAccountRepo) ListModelAvailabilityCandidates(context.Context, *int64, []string, bool) ([]Account, error) {
-	panic("unexpected ListModelAvailabilityCandidates call")
+func (r *fullRebuildAccountRepo) ListModelAvailabilityCandidates(_ context.Context, groupID *int64, platforms []string, _ bool) ([]Account, error) {
+	var id int64
+	if groupID != nil {
+		id = *groupID
+	}
+	return r.record(id, firstPlatform(platforms))
 }
 
 func (r *fullRebuildAccountRepo) ListSchedulableByPlatform(_ context.Context, platform string) ([]Account, error) {
