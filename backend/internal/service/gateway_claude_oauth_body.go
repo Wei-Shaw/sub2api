@@ -1091,7 +1091,15 @@ func enforceCacheControlLimit(body []byte) []byte {
 		}
 		return normalizeCacheControlTTLOrder(body)
 	}
-	return normalizeCacheControlTTLOrder(enforceCacheControlBlockLimit(body))
+	out := enforceCacheControlBlockLimit(body)
+	// Escaped bodies returned earlier, so a missing "1h" literal here is exact:
+	// the TTL walk would find no 1h breakpoint and rewrite nothing, yet it still
+	// costs a full collectCacheControlPaths pass over the body. Deletions above
+	// only remove cache_control keys, so they cannot introduce a 1h breakpoint.
+	if !bytes.Contains(body, cacheTTL1hJSONBytes) {
+		return out
+	}
+	return normalizeCacheControlTTLOrder(out)
 }
 
 // enforceCacheControlBlockLimit 强制执行 cache_control 块数量限制（最多 4 个）
