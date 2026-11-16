@@ -60,8 +60,8 @@ func legacyStripOpenAIResponsesInputNamespaces(body []byte, keepToolCallNamespac
 }
 
 type stripSnapshot struct {
-	err      string
-	output   string
+	err       string
+	output    string
 	unchanged bool // 是否原样返回了传入的 slice（两个实现都应如此）
 }
 
