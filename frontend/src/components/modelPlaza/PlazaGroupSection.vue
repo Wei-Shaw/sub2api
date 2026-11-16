@@ -56,6 +56,7 @@
       <PlazaModelPricingTable
         v-if="group.models.length > 0"
         :models="group.models"
+        :pricing-unit="group.pricing_unit"
         :platform="group.platform"
         :rate-multiplier="group.rate_multiplier"
         :user-rate-multiplier="group.user_rate_multiplier ?? null"

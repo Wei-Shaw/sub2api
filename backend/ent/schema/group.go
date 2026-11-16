@@ -80,6 +80,8 @@ func (Group) Fields() []ent.Field {
 			Immutable().
 			Comment("内部幂等恢复标识，不对 API 暴露"),
 
+		field.String("pricing_unit").MaxLen(20).Default("usd"),
+		field.String("subscription_usage_display").MaxLen(20).Default("amount"),
 		// Subscription-related fields (added by migration 003)
 		field.String("platform").
 			MaxLen(50).

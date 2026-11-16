@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 27 // v27: group require_privacy_set (OpenAI scheduling reads it from ctx)
+const apiKeyAuthSnapshotVersion = 29 // v29: default Skills, image-count billing, privacy gate and RPM override lookup state
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -386,6 +386,8 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			IsExclusive:                     apiKey.Group.IsExclusive,
 			Status:                          apiKey.Group.Status,
 			SubscriptionType:                apiKey.Group.SubscriptionType,
+			PricingUnit:                     apiKey.Group.PricingUnit,
+			SubscriptionUsageDisplay:        apiKey.Group.SubscriptionUsageDisplay,
 			RateMultiplier:                  apiKey.Group.RateMultiplier,
 			DailyLimitUSD:                   apiKey.Group.DailyLimitUSD,
 			WeeklyLimitUSD:                  apiKey.Group.WeeklyLimitUSD,
@@ -425,6 +427,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			DefaultMappedModel:              apiKey.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     apiKey.Group.MessagesDispatchModelConfig,
 			ModelAllowlist:                  apiKey.Group.ModelAllowlist,
+			DefaultSkillIDs:                 append([]string(nil), apiKey.Group.DefaultSkillIDs...),
 			CodexModelsManifestConfig:       apiKey.Group.CodexModelsManifestConfig,
 			RPMLimit:                        apiKey.Group.RPMLimit,
 			MaxReasoningEffort:              apiKey.Group.MaxReasoningEffort,
@@ -491,6 +494,8 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			Status:                          snapshot.Group.Status,
 			Hydrated:                        true,
 			SubscriptionType:                snapshot.Group.SubscriptionType,
+			PricingUnit:                     snapshot.Group.PricingUnit,
+			SubscriptionUsageDisplay:        snapshot.Group.SubscriptionUsageDisplay,
 			RateMultiplier:                  snapshot.Group.RateMultiplier,
 			DailyLimitUSD:                   snapshot.Group.DailyLimitUSD,
 			WeeklyLimitUSD:                  snapshot.Group.WeeklyLimitUSD,
@@ -530,6 +535,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			DefaultMappedModel:              snapshot.Group.DefaultMappedModel,
 			MessagesDispatchModelConfig:     snapshot.Group.MessagesDispatchModelConfig,
 			ModelAllowlist:                  snapshot.Group.ModelAllowlist,
+			DefaultSkillIDs:                 append([]string(nil), snapshot.Group.DefaultSkillIDs...),
 			CodexModelsManifestConfig:       snapshot.Group.CodexModelsManifestConfig,
 			RPMLimit:                        snapshot.Group.RPMLimit,
 			MaxReasoningEffort:              snapshot.Group.MaxReasoningEffort,

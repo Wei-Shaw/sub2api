@@ -260,6 +260,37 @@ func (r *channelMonitorRepository) InsertHistoryBatch(ctx context.Context, rows 
 	return nil
 }
 
+func (r *channelMonitorRepository) ResetHistory(ctx context.Context, ids []int64) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin reset monitor history: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	// Lock the selected monitors before deleting their records. Missing IDs cause
+	// the entire batch to roll back rather than silently resetting only a subset.
+	result, err := tx.ExecContext(ctx, `UPDATE channel_monitors SET last_checked_at = NULL, updated_at = NOW() WHERE id = ANY($1)`, pq.Array(ids))
+	if err != nil {
+		return fmt.Errorf("clear monitor check time: %w", err)
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if count != int64(len(ids)) {
+		return service.ErrChannelMonitorNotFound
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM channel_monitor_histories WHERE monitor_id = ANY($1)`, pq.Array(ids)); err != nil {
+		return fmt.Errorf("delete monitor history: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM channel_monitor_daily_rollups WHERE monitor_id = ANY($1)`, pq.Array(ids)); err != nil {
+		return fmt.Errorf("delete monitor rollups: %w", err)
+	}
+	return tx.Commit()
+}
+
 // DeleteHistoryBefore 物理删 checked_at < before 的明细，分批 channelMonitorPruneBatchSize 行一批，
 // 避免单事务删除过多引起锁/WAL 压力。借助 (checked_at) 索引定位小批 id，再按 id 删。
 func (r *channelMonitorRepository) DeleteHistoryBefore(ctx context.Context, before time.Time) (int64, error) {

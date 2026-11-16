@@ -606,6 +606,8 @@ export default {
         concurrency: 'Concurrency',
         status: 'Status',
         lastActive: 'Last Active',
+        registrationIP: 'Registration IP',
+        lastLoginIP: 'Last Login IP',
         lastUsed: 'Last Used',
         created: 'Created',
         actions: 'Actions'
@@ -1059,6 +1061,11 @@ export default {
       deleteConfirmSubscription:
         "Are you sure you want to delete subscription group '{name}'? This will invalidate all API keys bound to this subscription and delete all related subscription records. This action cannot be undone.",
       subscription: {
+        usageDisplay: 'Subscription usage display',
+        usageDisplayHint: 'Controls usage display for subscriptions in this group without changing quotas or charges.',
+        percentageOnly: 'Percentage only (e.g. 35%)',
+        amountWithUnit: 'Amount and group unit',
+
         title: 'Subscription Settings',
         type: 'Billing Type',
         typeHint:
@@ -1166,6 +1173,13 @@ export default {
           empty: 'Please enter a model entry',
           duplicate: 'This entry already exists'
         }
+      },
+      modelSkills: {
+        title: 'Default model Skills',
+        hint: 'Selected Skills are associated with this group. Create or upload Skills first in System Settings.',
+        loading: 'Loading Skills...',
+        empty: 'No Skills available. Create or upload one in System Settings first.',
+        selectPlaceholder: 'Select a Skill'
       },
       codexModelsManifest: {
         title: 'Pinned Accounts for Model Lists',

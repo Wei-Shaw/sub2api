@@ -211,11 +211,11 @@
                         )
                       "
                       >{{
-                        formatUsd(usageMap.get(row.id)?.today_cost ?? 0)
+                        formatQuota(usageMap.get(row.id)?.today_cost ?? 0, row)
                       }}</span
                     >
                     <span class="text-gray-400 dark:text-gray-500">
-                      / {{ formatUsd(row.daily_limit_usd) }}/{{
+                      / {{ formatQuota(row.daily_limit_usd, row) }}/{{
                         t("admin.groups.limitDay")
                       }}</span
                     >
@@ -229,7 +229,7 @@
                     >·</span
                   >
                   <span v-if="row.weekly_limit_usd" class="whitespace-nowrap"
-                    >{{ formatUsd(row.weekly_limit_usd) }}/{{
+                    >{{ formatQuota(row.weekly_limit_usd, row) }}/{{
                       t("admin.groups.limitWeek")
                     }}</span
                   >
@@ -239,7 +239,7 @@
                     >·</span
                   >
                   <span v-if="row.monthly_limit_usd" class="whitespace-nowrap"
-                    >{{ formatUsd(row.monthly_limit_usd) }}/{{
+                    >{{ formatQuota(row.monthly_limit_usd, row) }}/{{
                       t("admin.groups.limitMonth")
                     }}</span
                   >
@@ -253,7 +253,7 @@
                     >{{
                       usageLoading
                         ? "—"
-                        : formatUsd(usageMap.get(row.id)?.total_cost ?? 0)
+                        : formatQuota(usageMap.get(row.id)?.total_cost ?? 0, row)
                     }}</span
                   >
                 </div>
@@ -340,9 +340,7 @@
                   t("admin.groups.usageToday")
                 }}</span>
                 <span class="ml-1 font-medium text-gray-700 dark:text-gray-300"
-                  >${{
-                    formatCost(usageMap.get(row.id)?.today_cost ?? 0)
-                  }}</span
+                  >{{ formatQuota(usageMap.get(row.id)?.today_cost ?? 0, row) }}</span
                 >
               </div>
               <div class="text-gray-500 dark:text-gray-400">
@@ -350,9 +348,7 @@
                   t("admin.groups.usageYesterday")
                 }}</span>
                 <span class="ml-1 font-medium text-gray-700 dark:text-gray-300"
-                  >${{
-                    formatCost(usageMap.get(row.id)?.yesterday_cost ?? 0)
-                  }}</span
+                  >{{ formatQuota(usageMap.get(row.id)?.yesterday_cost ?? 0, row) }}</span
                 >
               </div>
               <div class="text-gray-500 dark:text-gray-400">
@@ -360,9 +356,7 @@
                   t("admin.groups.usageTotal")
                 }}</span>
                 <span class="ml-1 font-medium text-gray-700 dark:text-gray-300"
-                  >${{
-                    formatCost(usageMap.get(row.id)?.total_cost ?? 0)
-                  }}</span
+                  >{{ formatQuota(usageMap.get(row.id)?.total_cost ?? 0, row) }}</span
                 >
               </div>
             </div>
@@ -720,6 +714,16 @@
               {{ t("admin.groups.subscription.typeHint") }}
             </p>
           </div>
+          <div v-if="createForm.subscription_type === 'subscription'" class="mt-4">
+            <label class="input-label">{{ t('admin.settings.features.siteBillingMode.pricingUnit') }}</label>
+            <Select v-model="createForm.pricing_unit" :options="pricingUnitOptions" />
+            <p class="input-hint">{{ t('admin.settings.features.siteBillingMode.pricingUnitHint') }}</p>
+          </div>
+          <div v-if="createForm.subscription_type === 'subscription'" class="mt-4">
+            <label class="input-label">{{ t('admin.groups.subscription.usageDisplay') }}</label>
+            <Select v-model="createForm.subscription_usage_display" :options="subscriptionUsageDisplayOptions" />
+            <p class="input-hint">{{ t('admin.groups.subscription.usageDisplayHint') }}</p>
+          </div>
 
           <!-- Subscription limits (only show when subscription type is selected) -->
           <div
@@ -728,10 +732,11 @@
           >
             <div>
               <label class="input-label">{{
-                t("admin.groups.subscription.dailyLimit")
+                t("admin.groups.subscription.dailyLimit").replace("USD", unitName(createForm.pricing_unit))
               }}</label>
               <input
-                v-model.number="createForm.daily_limit_usd"
+                :value="quotaInput(createForm.daily_limit_usd, createForm.pricing_unit)"
+                @input="setQuotaInput(createForm, 'daily_limit_usd', $event)"
                 type="number"
                 step="0.01"
                 min="0"
@@ -741,10 +746,11 @@
             </div>
             <div>
               <label class="input-label">{{
-                t("admin.groups.subscription.weeklyLimit")
+                t("admin.groups.subscription.weeklyLimit").replace("USD", unitName(createForm.pricing_unit))
               }}</label>
               <input
-                v-model.number="createForm.weekly_limit_usd"
+                :value="quotaInput(createForm.weekly_limit_usd, createForm.pricing_unit)"
+                @input="setQuotaInput(createForm, 'weekly_limit_usd', $event)"
                 type="number"
                 step="0.01"
                 min="0"
@@ -754,10 +760,11 @@
             </div>
             <div>
               <label class="input-label">{{
-                t("admin.groups.subscription.monthlyLimit")
+                t("admin.groups.subscription.monthlyLimit").replace("USD", unitName(createForm.pricing_unit))
               }}</label>
               <input
-                v-model.number="createForm.monthly_limit_usd"
+                :value="quotaInput(createForm.monthly_limit_usd, createForm.pricing_unit)"
+                @input="setQuotaInput(createForm, 'monthly_limit_usd', $event)"
                 type="number"
                 step="0.01"
                 min="0"
@@ -886,6 +893,38 @@
                 {{ t(createAllowlistCustomErrorKey) }}
               </p>
             </div>
+          </div>
+        </div>
+
+        <div class="border-t pt-4">
+          <label class="input-label">{{ t("admin.groups.modelSkills.title") }}</label>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.modelSkills.hint") }}</p>
+          <div v-if="modelSkillsLoading" class="mt-2 text-xs text-gray-500">{{ t("admin.groups.modelSkills.loading") }}</div>
+          <div v-else class="mt-2">
+            <div v-if="createForm.default_skill_ids.length > 0" class="mb-2 flex flex-wrap gap-1.5">
+              <span v-for="skillId in createForm.default_skill_ids" :key="skillId" class="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2.5 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                {{ modelSkills.find((skill) => skill.id === skillId)?.name || skillId }}
+                <button type="button" class="ml-0.5 text-primary-500 hover:text-primary-700 dark:hover:text-primary-200" @click="createForm.default_skill_ids = createForm.default_skill_ids.filter((id) => id !== skillId)">
+                  <Icon name="x" size="xs" />
+                </button>
+              </span>
+            </div>
+            <select
+              class="input"
+              @change="
+                (e) => {
+                  const val = (e.target as HTMLSelectElement).value;
+                  if (val && !createForm.default_skill_ids.includes(val)) createForm.default_skill_ids.push(val);
+                  (e.target as HTMLSelectElement).value = '';
+                }
+              "
+            >
+              <option value="">{{ t("admin.groups.modelSkills.selectPlaceholder") }}</option>
+              <option v-for="skill in modelSkills" :key="skill.id" :value="skill.id" :disabled="createForm.default_skill_ids.includes(skill.id)">
+                {{ skill.name }}{{ skill.filename ? ` · ${skill.filename}` : '' }}
+              </option>
+            </select>
+            <p v-if="modelSkills.length === 0" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.modelSkills.empty") }}</p>
           </div>
         </div>
 
@@ -2374,6 +2413,16 @@
               {{ t("admin.groups.subscription.typeNotEditable") }}
             </p>
           </div>
+          <div v-if="editForm.subscription_type === 'subscription'" class="mt-4">
+            <label class="input-label">{{ t('admin.settings.features.siteBillingMode.pricingUnit') }}</label>
+            <Select v-model="editForm.pricing_unit" :options="pricingUnitOptions" />
+            <p class="input-hint">{{ t('admin.settings.features.siteBillingMode.pricingUnitHint') }}</p>
+          </div>
+          <div v-if="editForm.subscription_type === 'subscription'" class="mt-4">
+            <label class="input-label">{{ t('admin.groups.subscription.usageDisplay') }}</label>
+            <Select v-model="editForm.subscription_usage_display" :options="subscriptionUsageDisplayOptions" />
+            <p class="input-hint">{{ t('admin.groups.subscription.usageDisplayHint') }}</p>
+          </div>
 
           <!-- Subscription limits (only show when subscription type is selected) -->
           <div
@@ -2382,10 +2431,11 @@
           >
             <div>
               <label class="input-label">{{
-                t("admin.groups.subscription.dailyLimit")
+                t("admin.groups.subscription.dailyLimit").replace("USD", unitName(editForm.pricing_unit))
               }}</label>
               <input
-                v-model.number="editForm.daily_limit_usd"
+                :value="quotaInput(editForm.daily_limit_usd, editForm.pricing_unit)"
+                @input="setQuotaInput(editForm, 'daily_limit_usd', $event)"
                 type="number"
                 step="0.01"
                 min="0"
@@ -2395,10 +2445,11 @@
             </div>
             <div>
               <label class="input-label">{{
-                t("admin.groups.subscription.weeklyLimit")
+                t("admin.groups.subscription.weeklyLimit").replace("USD", unitName(editForm.pricing_unit))
               }}</label>
               <input
-                v-model.number="editForm.weekly_limit_usd"
+                :value="quotaInput(editForm.weekly_limit_usd, editForm.pricing_unit)"
+                @input="setQuotaInput(editForm, 'weekly_limit_usd', $event)"
                 type="number"
                 step="0.01"
                 min="0"
@@ -2408,10 +2459,11 @@
             </div>
             <div>
               <label class="input-label">{{
-                t("admin.groups.subscription.monthlyLimit")
+                t("admin.groups.subscription.monthlyLimit").replace("USD", unitName(editForm.pricing_unit))
               }}</label>
               <input
-                v-model.number="editForm.monthly_limit_usd"
+                :value="quotaInput(editForm.monthly_limit_usd, editForm.pricing_unit)"
+                @input="setQuotaInput(editForm, 'monthly_limit_usd', $event)"
                 type="number"
                 step="0.01"
                 min="0"
@@ -2540,6 +2592,38 @@
                 {{ t(editAllowlistCustomErrorKey) }}
               </p>
             </div>
+          </div>
+        </div>
+
+        <div class="border-t pt-4">
+          <label class="input-label">{{ t("admin.groups.modelSkills.title") }}</label>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.modelSkills.hint") }}</p>
+          <div v-if="modelSkillsLoading" class="mt-2 text-xs text-gray-500">{{ t("admin.groups.modelSkills.loading") }}</div>
+          <div v-else class="mt-2">
+            <div v-if="editForm.default_skill_ids.length > 0" class="mb-2 flex flex-wrap gap-1.5">
+              <span v-for="skillId in editForm.default_skill_ids" :key="skillId" class="inline-flex items-center gap-1 rounded-full bg-primary-100 px-2.5 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
+                {{ modelSkills.find((skill) => skill.id === skillId)?.name || skillId }}
+                <button type="button" class="ml-0.5 text-primary-500 hover:text-primary-700 dark:hover:text-primary-200" @click="editForm.default_skill_ids = editForm.default_skill_ids.filter((id) => id !== skillId)">
+                  <Icon name="x" size="xs" />
+                </button>
+              </span>
+            </div>
+            <select
+              class="input"
+              @change="
+                (e) => {
+                  const val = (e.target as HTMLSelectElement).value;
+                  if (val && !editForm.default_skill_ids.includes(val)) editForm.default_skill_ids.push(val);
+                  (e.target as HTMLSelectElement).value = '';
+                }
+              "
+            >
+              <option value="">{{ t("admin.groups.modelSkills.selectPlaceholder") }}</option>
+              <option v-for="skill in modelSkills" :key="skill.id" :value="skill.id" :disabled="editForm.default_skill_ids.includes(skill.id)">
+                {{ skill.name }}{{ skill.filename ? ` · ${skill.filename}` : '' }}
+              </option>
+            </select>
+            <p v-if="modelSkills.length === 0" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.groups.modelSkills.empty") }}</p>
           </div>
         </div>
 
@@ -4293,12 +4377,25 @@
 </template>
 
 <script setup lang="ts">
+import { useSubscriptionUnits, useQuotaDisplay } from '@/composables/useSubscriptionUnit'
+const subscriptionUnits = useSubscriptionUnits()
+const formatQuota = useQuotaDisplay()
+function unitName(id: string) { return id === 'usd' ? 'USD' : subscriptionUnits.value.find(u => u.id === id)?.name || id }
+function unitRate(id: string) { return id === 'usd' ? 1 : subscriptionUnits.value.find(u => u.id === id)?.units_per_usd || 1 }
+function quotaInput(value: number | null, id: string) { return value == null ? '' : Number((value * unitRate(id)).toPrecision(12)) }
+function setQuotaInput(form: { pricing_unit: string; daily_limit_usd: number | null; weekly_limit_usd: number | null; monthly_limit_usd: number | null }, key: 'daily_limit_usd' | 'weekly_limit_usd' | 'monthly_limit_usd', event: Event) {
+  const value = (event.target as HTMLInputElement).value
+  form[key] = value === '' ? null : Number(value) / unitRate(form.pricing_unit)
+}
+const pricingUnitOptions = computed(() => [{ value: 'usd', label: t('admin.settings.features.siteBillingMode.usdUnit') }, ...subscriptionUnits.value.filter(unit => unit.id !== 'usd').map(unit => ({ value: unit.id, label: `${unit.name}（1 USD = ${unit.units_per_usd}）` }))])
+
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useAppStore } from "@/stores/app";
 import { useAuthStore } from "@/stores/auth";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { adminAPI } from "@/api/admin";
+import { listModelSkills, type ModelSkill } from "@/api/admin/settings";
 import type {
   AdminGroup,
   CodexModelsManifestConfig,
@@ -4697,6 +4794,10 @@ const editStatusOptions = computed(() => [
   { value: "inactive", label: t("admin.accounts.status.inactive") },
 ]);
 
+const subscriptionUsageDisplayOptions = computed(() => [
+  { value: 'percentage', label: t('admin.groups.subscription.percentageOnly') },
+  { value: 'amount', label: t('admin.groups.subscription.amountWithUnit') },
+]);
 const subscriptionTypeOptions = computed(() => [
   { value: "standard", label: t("admin.groups.subscription.standard") },
   { value: "subscription", label: t("admin.groups.subscription.subscription") },
@@ -4910,6 +5011,18 @@ const compositeRouteForm = reactive<CompositeRouteFormState>({
   enabled: true,
   notes: "",
 });
+const modelSkills = ref<ModelSkill[]>([]);
+const modelSkillsLoading = ref(false);
+const loadModelSkills = async () => {
+  modelSkillsLoading.value = true;
+  try {
+    modelSkills.value = await listModelSkills();
+  } catch (error) {
+    console.error("Failed to load model skills", error);
+  } finally {
+    modelSkillsLoading.value = false;
+  }
+};
 const createMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
 const editMessagesDispatchDefaults = createDefaultMessagesDispatchFormState();
 const createModelAllowlistState = reactive(createInitialModelAllowlistState());
@@ -4980,6 +5093,8 @@ const createForm = reactive({
   rate_multiplier: 1.0,
   is_exclusive: false,
   subscription_type: "standard" as SubscriptionType,
+  pricing_unit: "usd" as string,
+  subscription_usage_display: "amount" as "amount" | "percentage",
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
@@ -4987,6 +5102,7 @@ const createForm = reactive({
   force_openai_fast: false,
   free_openai_fast: false,
   model_pricing: [] as PricingFormEntry[],
+  default_skill_ids: [] as string[],
   // 图片生成计费配置
   allow_image_generation: false,
   allow_batch_image_generation: false,
@@ -5347,6 +5463,8 @@ const editForm = reactive({
   is_exclusive: false,
   status: "active" as "active" | "inactive",
   subscription_type: "standard" as SubscriptionType,
+  pricing_unit: "usd" as string,
+  subscription_usage_display: "amount" as "amount" | "percentage",
   daily_limit_usd: null as number | null,
   weekly_limit_usd: null as number | null,
   monthly_limit_usd: null as number | null,
@@ -5354,6 +5472,7 @@ const editForm = reactive({
   force_openai_fast: false,
   free_openai_fast: false,
   model_pricing: [] as PricingFormEntry[],
+  default_skill_ids: [] as string[],
   // 图片生成计费配置
   allow_image_generation: false,
   allow_batch_image_generation: false,
@@ -5695,15 +5814,6 @@ const loadGroups = async () => {
   }
 };
 
-const formatCost = (cost: number): string => {
-  if (cost >= 1000) return cost.toFixed(0);
-  if (cost >= 100) return cost.toFixed(1);
-  return cost.toFixed(2);
-};
-
-const formatUsd = (cost: number | null | undefined): string =>
-  `$${formatCost(cost ?? 0)}`;
-
 const getQuotaUsageClass = (
   used: number,
   limit: number | null | undefined,
@@ -5823,6 +5933,8 @@ const closeCreateModal = () => {
   createForm.rate_multiplier = 1.0;
   createForm.is_exclusive = false;
   createForm.subscription_type = "standard";
+  createForm.pricing_unit = "usd";
+  createForm.subscription_usage_display = "amount";
   createForm.daily_limit_usd = null;
   createForm.weekly_limit_usd = null;
   createForm.monthly_limit_usd = null;
@@ -6113,6 +6225,8 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.is_exclusive = group.is_exclusive;
   editForm.status = group.status;
   editForm.subscription_type = group.subscription_type || "standard";
+  editForm.subscription_usage_display = group.subscription_usage_display || "amount";
+  editForm.pricing_unit = group.pricing_unit || (group.subscription_type === "subscription" ? "points" : "usd");
   editForm.daily_limit_usd = group.daily_limit_usd;
   editForm.weekly_limit_usd = group.weekly_limit_usd;
   editForm.monthly_limit_usd = group.monthly_limit_usd;
@@ -6121,6 +6235,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.force_openai_fast = group.force_openai_fast ?? false;
   editForm.free_openai_fast = group.free_openai_fast ?? false;
   editForm.model_pricing = groupPricingFromAPI(group.model_pricing);
+  editForm.default_skill_ids = [...(group.default_skill_ids ?? [])];
   editForm.allow_image_generation = group.allow_image_generation ?? false;
   editForm.allow_batch_image_generation =
     group.allow_batch_image_generation ?? false;
@@ -6256,6 +6371,7 @@ const closeEditModal = () => {
   editForm.force_openai_fast = false;
   editForm.free_openai_fast = false;
   editForm.model_pricing = [];
+  editForm.default_skill_ids = [];
   editForm.web_search_price_per_call = null;
   editForm.search_price_per_1k = null;
   editForm.audio_realtime_price_per_min = null;
@@ -6716,6 +6832,7 @@ watch(
       createForm.is_exclusive = true;
       createForm.fallback_group_id_on_invalid_request = null;
     } else {
+      createForm.pricing_unit = "usd";
       createForm.peak_rate_enabled = false;
       createForm.peak_start = "";
       createForm.peak_end = "";
@@ -6729,6 +6846,7 @@ watch(
   () => editForm.subscription_type,
   (newVal) => {
     if (newVal !== "subscription") {
+      editForm.pricing_unit = "usd";
       editForm.peak_rate_enabled = false;
       editForm.peak_start = "";
       editForm.peak_end = "";
@@ -6930,6 +7048,7 @@ const saveSortOrder = async () => {
 
 onMounted(() => {
   loadGroups();
+  void loadModelSkills();
   if (!authStore.isSimpleMode) {
     void loadLiveCapability();
     loadModelAllowlistCandidates("create", 0, createForm.platform);

@@ -236,6 +236,8 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyChannelMonitorHideUserRanking,
 		SettingKeyAvailableChannelsEnabled,
 		SettingKeySubscriptionEnabled,
+		SettingKeySubscriptionUnitName,
+		SettingKeySubscriptionUnits,
 		SettingKeyModelPlazaEnabled,
 		SettingKeyModelPlazaRequireAuth,
 		SettingKeyPluginManagementEnabled,
@@ -367,7 +369,9 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 
 		AvailableChannelsEnabled: settings[SettingKeyAvailableChannelsEnabled] == "true",
 
-		SubscriptionEnabled: !isFalseSettingValue(settings[SettingKeySubscriptionEnabled]),
+		SubscriptionEnabled:  !isFalseSettingValue(settings[SettingKeySubscriptionEnabled]),
+		SubscriptionUnitName: normalizeSubscriptionUnitName(settings[SettingKeySubscriptionUnitName]),
+		SubscriptionUnits:    parseSubscriptionUnits(settings[SettingKeySubscriptionUnits], settings[SettingKeySubscriptionUnitName]),
 
 		ModelPlazaEnabled:       settings[SettingKeyModelPlazaEnabled] == "true",
 		ModelPlazaRequireAuth:   settings[SettingKeyModelPlazaRequireAuth] == "true",
@@ -635,16 +639,18 @@ type PublicSettingsInjectionPayload struct {
 	// monitors; fail-closed (absent/false = hidden). Admin UI always shows it.
 	// ChannelMonitorHideUserRanking hides the user ranking tab and /users payload
 	// from non-admin channel-monitor v2 viewers; default false (visible).
-	ChannelMonitorHideUserRanking bool `json:"channel_monitor_hide_user_ranking"`
-	ChannelMonitorShowQuota       bool `json:"channel_monitor_show_quota"`
-	AvailableChannelsEnabled      bool `json:"available_channels_enabled"`
-	SubscriptionEnabled           bool `json:"subscription_enabled"`
-	ModelPlazaEnabled             bool `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth         bool `json:"model_plaza_require_auth"`
-	PluginManagementEnabled       bool `json:"plugin_management_enabled"`
-	AffiliateEnabled              bool `json:"affiliate_enabled"`
-	RiskControlEnabled            bool `json:"risk_control_enabled"`
-	AllowUserViewErrorRequests    bool `json:"allow_user_view_error_requests"`
+	ChannelMonitorHideUserRanking bool                     `json:"channel_monitor_hide_user_ranking"`
+	ChannelMonitorShowQuota       bool                     `json:"channel_monitor_show_quota"`
+	AvailableChannelsEnabled      bool                     `json:"available_channels_enabled"`
+	SubscriptionEnabled           bool                     `json:"subscription_enabled"`
+	SubscriptionUnitName          string                   `json:"subscription_unit_name"`
+	SubscriptionUnits             []SubscriptionUnitConfig `json:"subscription_units"`
+	ModelPlazaEnabled             bool                     `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth         bool                     `json:"model_plaza_require_auth"`
+	PluginManagementEnabled       bool                     `json:"plugin_management_enabled"`
+	AffiliateEnabled              bool                     `json:"affiliate_enabled"`
+	RiskControlEnabled            bool                     `json:"risk_control_enabled"`
+	AllowUserViewErrorRequests    bool                     `json:"allow_user_view_error_requests"`
 }
 
 // GetPublicSettingsForInjection returns public settings in a format suitable for HTML injection.
@@ -724,6 +730,8 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		ChannelMonitorHideUserRanking:        settings.ChannelMonitorHideUserRanking,
 		AvailableChannelsEnabled:             settings.AvailableChannelsEnabled,
 		SubscriptionEnabled:                  settings.SubscriptionEnabled,
+		SubscriptionUnitName:                 settings.SubscriptionUnitName,
+		SubscriptionUnits:                    settings.SubscriptionUnits,
 		ModelPlazaEnabled:                    settings.ModelPlazaEnabled,
 		ModelPlazaRequireAuth:                settings.ModelPlazaRequireAuth,
 		PluginManagementEnabled:              settings.PluginManagementEnabled,

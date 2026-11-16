@@ -105,6 +105,7 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			log.CacheCreation30mTokens,
 			log.CacheCreation12hTokens,
 			createdAt,
+			nil, // proxy_snapshot
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
 
@@ -202,6 +203,7 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			log.CacheCreation30mTokens,
 			log.CacheCreation12hTokens,
 			createdAt,
+			nil, // proxy_snapshot
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
 
@@ -282,8 +284,8 @@ func TestPrepareUsageLogInsert_PersistsNativeCompactionV2WithoutChangingRequestT
 	prepared := prepareUsageLogInsert(log)
 
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
-	require.Equal(t, "boolean", usageLogInsertArgTypes[len(usageLogInsertArgTypes)-4])
-	require.Equal(t, true, prepared.args[len(prepared.args)-4])
+	require.Equal(t, "boolean", usageLogInsertArgTypes[len(usageLogInsertArgTypes)-5])
+	require.Equal(t, true, prepared.args[len(prepared.args)-5])
 	require.Equal(t, int16(service.RequestTypeStream), prepared.args[30])
 	require.Equal(t, service.RequestTypeStream, log.RequestType)
 	require.True(t, log.Stream)
@@ -967,6 +969,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			0,     // cache_creation_30m_tokens
 			0,     // cache_creation_12h_tokens
 			now,
+			sql.NullString{}, // proxy_snapshot
 		}})
 		require.NoError(t, err)
 		require.Equal(t, 2, log.ImageCount)
@@ -1049,6 +1052,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			0,                 // cache_creation_30m_tokens
 			0,                 // cache_creation_12h_tokens
 			now,
+			sql.NullString{}, // proxy_snapshot
 		}})
 		require.NoError(t, err)
 		require.NotNil(t, log.ServiceTier)
@@ -1114,6 +1118,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			0,                 // cache_creation_30m_tokens
 			0,                 // cache_creation_12h_tokens
 			now,
+			sql.NullString{}, // proxy_snapshot
 		}})
 		require.NoError(t, err)
 		require.NotNil(t, log.ServiceTier)
@@ -1180,6 +1185,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			0,                 // cache_creation_30m_tokens
 			0,                 // cache_creation_12h_tokens
 			now,
+			sql.NullString{}, // proxy_snapshot
 		}})
 		require.NoError(t, err)
 		require.NotNil(t, log.ServiceTier)

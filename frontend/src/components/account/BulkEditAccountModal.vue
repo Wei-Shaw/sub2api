@@ -303,6 +303,12 @@
           </div>
 
           <template v-else>
+            <ModelRestrictionEditor
+              v-model:allowed-models="allowedModels"
+              v-model:model-mappings="modelMappings"
+              :disabled="!enableModelRestriction"
+            >
+            <template #mode>
             <!-- Mode Toggle -->
             <div class="mb-4 flex gap-2">
               <button
@@ -356,6 +362,7 @@
                 {{ t('admin.accounts.modelMapping') }}
               </button>
             </div>
+            </template>
 
             <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
@@ -496,6 +503,7 @@
                 </button>
               </div>
             </div>
+            </ModelRestrictionEditor>
           </template>
         </div>
       </div>
@@ -1530,6 +1538,7 @@ import Select from '@/components/common/Select.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import ModelRestrictionEditor from '@/components/account/ModelRestrictionEditor.vue'
 import Icon from '@/components/icons/Icon.vue'
 import {
   buildModelMappingObject as buildModelMappingPayload,
@@ -1958,7 +1967,7 @@ const removeErrorCode = (code: number) => {
 
 const buildModelMappingObject = (): Record<string, string> | null => {
   return buildModelMappingPayload(
-    modelRestrictionMode.value,
+    'combined',
     allowedModels.value,
     modelMappings.value
   )
@@ -2067,22 +2076,9 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   }
 
   if (enableModelRestriction.value && !isOpenAIModelRestrictionDisabled.value) {
-    // 统一使用 model_mapping 字段
-    if (modelRestrictionMode.value === 'whitelist') {
-      // 白名单模式：将模型转换为 model_mapping 格式（key=value）
-      // 空白名单表示“支持所有模型”，需显式发送空对象以覆盖已有限制。
-      const mapping: Record<string, string> = {}
-      for (const m of allowedModels.value) {
-        mapping[m] = m
-      }
-      credentials.model_mapping = mapping
-      credentialsChanged = true
-    } else {
-      // 映射模式下空配置同样表示“支持所有模型”。
-      const modelMapping = buildModelMappingObject()
-      credentials.model_mapping = modelMapping ?? {}
-      credentialsChanged = true
-    }
+    // 标签页只控制展示；保存时合并白名单和映射，两者均为空才清除限制。
+    credentials.model_mapping = buildModelMappingObject() ?? {}
+    credentialsChanged = true
   }
 
   if (enableCustomErrorCodes.value) {

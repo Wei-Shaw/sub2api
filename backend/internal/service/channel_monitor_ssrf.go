@@ -7,7 +7,7 @@ import (
 )
 
 // SSRF 防护 helper：
-//   - validateEndpoint 在 admin 提交时阻止 http/loopback/私网/云元数据 URL
+//   - validateEndpoint 在 admin 提交时阻止私网/云元数据 URL，允许明确指定的本机地址
 //   - safeDialContext 在 socket 层再次校验真实 IP，防止 DNS rebinding
 //
 // 已知 cloud metadata hostname 拒绝列表（小写比较）。
@@ -65,6 +65,14 @@ func isBlockedHostname(hostname string) bool {
 	return blocked
 }
 
+// isExplicitMonitorLoopbackHost 仅允许显式本机地址，不放行解析到本机的任意域名。
+func isExplicitMonitorLoopbackHost(hostname string) bool {
+	if ip := net.ParseIP(hostname); ip != nil {
+		return ip.IsLoopback()
+	}
+	return strings.EqualFold(hostname, "localhost") || strings.EqualFold(hostname, "localhost.localdomain")
+}
+
 // isPrivateIP 判断 IP 是否落在禁止段（loopback/RFC1918/link-local/ULA 等）。
 func isPrivateIP(ip net.IP) bool {
 	if ip == nil {
@@ -86,6 +94,9 @@ func isPrivateIP(ip net.IP) bool {
 //
 // hostname 是 IP 字面量时也走同一路径。
 func isPrivateOrLoopbackHost(ctx context.Context, hostname string) (bool, error) {
+	if isExplicitMonitorLoopbackHost(hostname) {
+		return false, nil
+	}
 	if isBlockedHostname(hostname) {
 		return true, nil
 	}
@@ -118,12 +129,13 @@ func safeDialContext(ctx context.Context, network, address string) (net.Conn, er
 	}
 	// 字面量 IP 走快速路径。
 	if ip := net.ParseIP(host); ip != nil {
-		if isPrivateIP(ip) {
+		if isPrivateIP(ip) && !ip.IsLoopback() {
 			return nil, &net.AddrError{Err: "blocked by SSRF policy", Addr: address}
 		}
 		return monitorDialer.DialContext(ctx, network, address)
 	}
-	if isBlockedHostname(host) {
+	localHost := isExplicitMonitorLoopbackHost(host)
+	if isBlockedHostname(host) && !localHost {
 		return nil, &net.AddrError{Err: "blocked by SSRF policy", Addr: address}
 	}
 	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
@@ -135,7 +147,7 @@ func safeDialContext(ctx context.Context, network, address string) (net.Conn, er
 	}
 	var lastErr error
 	for _, a := range addrs {
-		if isPrivateIP(a.IP) {
+		if (localHost && !a.IP.IsLoopback()) || (!localHost && isPrivateIP(a.IP)) {
 			lastErr = &net.AddrError{Err: "blocked by SSRF policy", Addr: a.IP.String()}
 			continue
 		}

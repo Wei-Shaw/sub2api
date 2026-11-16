@@ -43,8 +43,10 @@ type User struct {
 type AdminUser struct {
 	User
 
-	Notes      string     `json:"notes"`
-	LastUsedAt *time.Time `json:"last_used_at"`
+	Notes          string     `json:"notes"`
+	LastUsedAt     *time.Time `json:"last_used_at"`
+	RegistrationIP string     `json:"registration_ip"`
+	LastLoginIP    string     `json:"last_login_ip"`
 	// GroupRates 用户专属分组倍率配置
 	// map[groupID]rateMultiplier
 	GroupRates map[int64]float64 `json:"group_rates,omitempty"`
@@ -103,6 +105,8 @@ type Group struct {
 	// name/description 换成请求语言的版本后清空本字段。
 	I18n domain.GroupI18n `json:"i18n,omitempty"`
 
+	PricingUnit               string   `json:"pricing_unit"`
+	SubscriptionUsageDisplay  string   `json:"subscription_usage_display"`
 	SubscriptionType          string   `json:"subscription_type"`
 	DailyLimitUSD             *float64 `json:"daily_limit_usd"`
 	WeeklyLimitUSD            *float64 `json:"weekly_limit_usd"`
@@ -195,6 +199,7 @@ type AdminGroup struct {
 	DefaultMappedModel          string                                   `json:"default_mapped_model"`
 	MessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config"`
 	ModelAllowlist              service.GroupModelAllowlist              `json:"model_allowlist"`
+	DefaultSkillIDs             []string                                 `json:"default_skill_ids"`
 	// 固定账号获取 Codex Model Manifest 配置（仅 openai 平台使用）。
 	CodexModelsManifestConfig domain.GroupCodexModelsManifestConfig `json:"codex_models_manifest_config"`
 
@@ -682,6 +687,7 @@ type UsageLog struct {
 // AdminUsageLog 是管理员接口使用的 usage log DTO（包含管理员字段）。
 type AdminUsageLog struct {
 	UsageLog
+	ProxySnapshot *service.UsageProxySnapshot `json:"proxy_snapshot"`
 
 	// UpstreamModel is the actual model sent to the upstream provider after mapping.
 	// Omitted when no mapping was applied (requested model was used as-is).

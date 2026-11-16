@@ -1,6 +1,9 @@
 package service
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestAPIKeyService_RejectsV10AuthSnapshotWithoutModelAllowlist(t *testing.T) {
 	groupID := int64(9)
@@ -57,5 +60,19 @@ func TestAPIKeyService_RejectsV15AuthSnapshotWithoutReasoningEffortPolicy(t *tes
 	}
 	if apiKey != nil {
 		t.Fatalf("expected no API key from stale snapshot, got %#v", apiKey)
+	}
+}
+
+func TestAPIKeyAuthSnapshotPreservesGroupQuotaDisplay(t *testing.T) {
+	svc := &APIKeyService{}
+	original := &APIKey{ID: 1, UserID: 2, User: &User{ID: 2}, Group: &Group{ID: 3, PricingUnit: "credits", SubscriptionType: SubscriptionTypeSubscription, SubscriptionUsageDisplay: "percentage"}}
+	snapshot := svc.snapshotFromAPIKey(context.Background(), original)
+	restored := svc.snapshotToAPIKey("test", snapshot)
+	if restored.Group.PricingUnit != "credits" || restored.Group.SubscriptionUsageDisplay != "percentage" {
+		t.Fatalf("group quota display was lost in auth cache: %+v", restored.Group)
+	}
+	_, ok, err := svc.applyAuthCacheEntry("test", &APIKeyAuthCacheEntry{Snapshot: &APIKeyAuthSnapshot{Version: 24}})
+	if err != nil || ok {
+		t.Fatal("legacy auth snapshot should be ignored")
 	}
 }

@@ -584,6 +584,8 @@ export default {
         concurrency: '并发数',
         status: '状态',
         lastActive: '最后活跃时间',
+        registrationIP: '注册 IP',
+        lastLoginIP: '最后登录 IP',
         lastUsed: '最后使用时间',
         created: '创建时间',
         actions: '操作'
@@ -1057,6 +1059,11 @@ export default {
       revertChanges: '撤销修改',
       userInfo: '用户信息',
       subscription: {
+        usageDisplay: '订阅用量展示',
+        usageDisplayHint: '仅影响本分组订阅列表和用量进度的显示；额度与扣费不变。',
+        percentageOnly: '仅显示百分比（例如 35%）',
+        amountWithUnit: '显示额度与单位（随分组单位）',
+
         title: '订阅设置',
         type: '计费类型',
         typeHint: '标准计费从用户余额扣除。订阅模式使用配额限制。',
@@ -1163,6 +1170,13 @@ export default {
           empty: '请输入模型条目',
           duplicate: '该条目已存在'
         }
+      },
+      modelSkills: {
+        title: '默认模型 Skills',
+        hint: '选择后，该分组的模型请求会使用这些 Skills 配置。Skills 请先在系统设置中创建或上传。',
+        loading: '正在加载 Skills...',
+        empty: '暂无可用 Skills，请先到系统设置创建或上传。',
+        selectPlaceholder: '选择一个 Skill'
       },
       codexModelsManifest: {
         title: '固定账号获取模型列表',

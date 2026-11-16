@@ -6316,6 +6316,14 @@
             </div>
           </div>
 
+        <!-- Upstream error messages are managed with the gateway settings. -->
+        <ErrorPassthroughRulesModal
+          v-if="activeTab === 'gateway'"
+          :show="true"
+          embedded
+          mapping-mode
+        />
+
         <!-- Usage Records Settings -->
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -6647,21 +6655,79 @@
                 </p>
               </div>
 
-              <!-- Site Logo Upload -->
+              <!-- Site Logo -->
               <div>
                 <label
                   class="mb-2 block text-sm font-medium text-gray-700 dark:text-gray-300"
                 >
                   {{ t("admin.settings.site.siteLogo") }}
                 </label>
-                <ImageUpload
-                  v-model="form.site_logo"
-                  mode="image"
-                  :upload-label="t('admin.settings.site.uploadImage')"
-                  :remove-label="t('admin.settings.site.remove')"
-                  :hint="t('admin.settings.site.logoHint')"
-                  :max-size="300 * 1024"
-                />
+                <div class="flex flex-col items-start gap-4 sm:flex-row sm:gap-6">
+                  <div class="flex-shrink-0 text-center">
+                  <div data-testid="site-logo-preview" class="flex h-20 w-20 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 dark:border-dark-600 dark:bg-dark-800">
+                    <img v-if="form.site_logo" :src="form.site_logo" alt="" class="h-full w-full object-contain" />
+                    <Icon v-else name="document" size="lg" class="text-gray-400" />
+                  </div>
+                    <p class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ t("admin.settings.site.logoPreviewHint") }}</p>
+                  </div>
+                  <div class="min-w-0 flex-1 w-full">
+                <div class="mb-4 flex gap-5 border-b border-gray-200 dark:border-dark-600" role="tablist" :aria-label="t('admin.settings.site.logoMode')">
+                  <button
+                    type="button"
+                    data-testid="site-logo-upload-tab"
+                    role="tab"
+                    :aria-selected="siteLogoMode === 'upload'"
+                    :class="['border-b-2 px-1 pb-2 text-sm font-medium transition-colors', siteLogoMode === 'upload' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-dark-500 dark:hover:text-gray-200']"
+                    @click="siteLogoMode = 'upload'"
+                  >
+                    {{ t("admin.settings.site.uploadImage") }}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="site-logo-url-tab"
+                    role="tab"
+                    :aria-selected="siteLogoMode === 'url'"
+                    :class="['border-b-2 px-1 pb-2 text-sm font-medium transition-colors', siteLogoMode === 'url' ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 dark:text-gray-400 dark:hover:border-dark-500 dark:hover:text-gray-200']"
+                    @click="siteLogoMode = 'url'"
+                  >
+                    {{ t("admin.settings.site.logoUrl") }}
+                  </button>
+                </div>
+
+                <div v-if="siteLogoMode === 'upload'" role="tabpanel">
+                  <div class="flex items-start gap-4">
+                    <div class="space-y-2">
+                      <div class="flex flex-wrap items-center gap-2">
+                      <label class="btn btn-secondary btn-sm cursor-pointer" :class="siteLogoUploading && 'pointer-events-none opacity-60'">
+                        <input type="file" accept="image/png,image/jpeg,image/gif,image/svg+xml" class="hidden" :disabled="siteLogoUploading" @change="handleSiteLogoUpload" />
+                        <Icon name="upload" size="sm" class="mr-1.5" :stroke-width="2" />
+                        {{ siteLogoUploading ? t("admin.settings.site.logoUploading") : t("admin.settings.site.uploadImage") }}
+                      </label>
+                      <button v-if="form.site_logo" type="button" class="btn btn-secondary btn-sm text-red-600" @click="form.site_logo = ''">
+                        <Icon name="trash" size="sm" class="mr-1.5" :stroke-width="2" />
+                        {{ t("admin.settings.site.remove") }}
+                      </button>
+                      </div>
+                      <p class="text-xs text-gray-500 dark:text-gray-400">{{ t("admin.settings.site.logoHint") }}</p>
+                      <p v-if="siteLogoUploadError" class="text-xs text-red-500">{{ siteLogoUploadError }}</p>
+                    </div>
+                  </div>
+                </div>
+                <div v-else role="tabpanel">
+                  <input
+                    id="site-logo-url"
+                    v-model="form.site_logo"
+                    type="url"
+                    class="input font-mono text-sm"
+                    :placeholder="t('admin.settings.site.logoUrlPlaceholder')"
+                    autocomplete="off"
+                  />
+                  <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t("admin.settings.site.logoUrlHint") }}
+                  </p>
+                </div>
+                  </div>
+                </div>
               </div>
 
               <!-- Home Content -->
@@ -6715,6 +6781,105 @@
               </div>
             </div>
           </div>
+
+          <!-- Model Skills -->
+          <div class="card">
+            <div class="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-4 dark:border-dark-700">
+              <div>
+                <h2 class="text-lg font-semibold text-gray-900 dark:text-white">{{ t("admin.settings.modelSkills.title") }}</h2>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t("admin.settings.modelSkills.description") }}</p>
+              </div>
+              <div class="flex shrink-0 items-center gap-2">
+                <button type="button" class="btn btn-secondary btn-sm" @click="openModelSkillUploadModal">
+                  <Icon name="upload" size="sm" class="mr-1.5" />{{ t('admin.settings.modelSkills.upload') }}
+                </button>
+                <button type="button" class="btn btn-primary btn-sm" @click="openModelSkillCreateModal">
+                  <Icon name="plus" size="sm" class="mr-1.5" />{{ t('admin.settings.modelSkills.create') }}
+                </button>
+              </div>
+            </div>
+            <div class="p-6">
+              <div v-if="modelSkillsLoading" class="flex min-h-32 items-center justify-center text-sm text-gray-500">{{ t('admin.settings.modelSkills.loading') }}</div>
+              <div v-else-if="modelSkills.length === 0" class="flex min-h-32 flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500 dark:border-dark-600">
+                <Icon name="document" size="lg" class="mb-2 text-gray-400" />
+                {{ t('admin.settings.modelSkills.empty') }}
+              </div>
+              <div v-else class="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-600">
+                <div class="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] gap-4 border-b border-gray-200 bg-gray-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:border-dark-600 dark:bg-dark-800/70 dark:text-gray-400">
+                  <span>{{ t('admin.settings.modelSkills.listName') }}</span>
+                  <span>{{ t('admin.settings.modelSkills.listContent') }}</span>
+                  <span>{{ t('admin.settings.modelSkills.listActions') }}</span>
+                </div>
+                <div class="divide-y divide-gray-200 dark:divide-dark-600">
+                  <div v-for="skill in modelSkills" :key="skill.id" class="grid grid-cols-1 gap-3 px-4 py-4 transition-colors hover:bg-gray-50/80 dark:hover:bg-dark-800/50 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] md:items-center md:gap-4">
+                    <div class="min-w-0">
+                      <div class="flex items-center gap-2">
+                        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600 dark:bg-primary-900/30 dark:text-primary-300"><Icon name="document" size="sm" /></span>
+                        <div class="min-w-0">
+                          <div class="truncate font-medium text-gray-900 dark:text-white">{{ skill.name }}</div>
+                          <div class="truncate text-xs text-gray-500 dark:text-gray-400">{{ skill.filename || t('admin.settings.modelSkills.manual') }}</div>
+                        </div>
+                      </div>
+                    </div>
+                    <p class="line-clamp-2 whitespace-pre-wrap text-sm leading-6 text-gray-600 dark:text-gray-300">{{ skill.content }}</p>
+                    <div class="flex items-center gap-2 md:justify-end">
+                      <button type="button" class="btn btn-secondary btn-xs" @click="editModelSkill(skill)"><Icon name="edit" size="xs" class="mr-1" />{{ t('common.edit') }}</button>
+                      <button type="button" class="btn btn-secondary btn-xs text-red-600 hover:text-red-700" @click="removeModelSkill(skill)"><Icon name="trash" size="xs" class="mr-1" />{{ t('common.delete') }}</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <BaseDialog :show="modelSkillModalOpen" :title="modelSkillEditing ? t('admin.settings.modelSkills.editTitle') : t('admin.settings.modelSkills.createTitle')" width="wide" @close="closeModelSkillModal">
+            <div class="space-y-4">
+              <div>
+                <label class="input-label">{{ t('admin.settings.modelSkills.nameLabel') }}</label>
+                <input v-model="modelSkillDraft.name" class="input" :placeholder="t('admin.settings.modelSkills.namePlaceholder')" />
+              </div>
+              <div>
+                <label class="input-label">{{ t('admin.settings.modelSkills.contentLabel') }}</label>
+                <textarea v-model="modelSkillDraft.content" rows="16" class="input min-h-72 resize-y font-mono text-sm" :placeholder="t('admin.settings.modelSkills.contentPlaceholder')"></textarea>
+                <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.settings.modelSkills.contentHint') }}</p>
+              </div>
+            </div>
+            <template #footer>
+              <div class="flex justify-end gap-3">
+                <button type="button" class="btn btn-secondary" @click="closeModelSkillModal">{{ t('common.cancel') }}</button>
+                <button type="button" class="btn btn-primary" :disabled="modelSkillSaving" @click="saveModelSkill">{{ modelSkillEditing ? t('admin.settings.modelSkills.update') : t('admin.settings.modelSkills.create') }}</button>
+              </div>
+            </template>
+          </BaseDialog>
+
+          <BaseDialog :show="modelSkillUploadModalOpen" :title="t('admin.settings.modelSkills.uploadTitle')" width="normal" @close="closeModelSkillUploadModal">
+            <div
+              class="rounded-xl border-2 border-dashed p-8 text-center transition-colors"
+              :class="modelSkillDragActive ? 'border-primary-500 bg-primary-50/70 dark:bg-primary-900/20' : 'border-gray-300 bg-gray-50/70 dark:border-dark-600 dark:bg-dark-800/50'"
+              @dragenter.prevent="modelSkillDragActive = true"
+              @dragover.prevent="modelSkillDragActive = true"
+              @dragleave.prevent="modelSkillDragActive = false"
+              @drop.prevent="handleModelSkillDrop"
+            >
+              <Icon name="upload" size="xl" class="mx-auto mb-3 text-primary-500" />
+              <p class="font-medium text-gray-900 dark:text-white">{{ t('admin.settings.modelSkills.uploadHint') }}</p>
+              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">{{ t('admin.settings.modelSkills.uploadFormats') }}</p>
+              <label class="btn btn-secondary mt-4 inline-flex cursor-pointer items-center gap-2">
+                <Icon name="document" size="sm" />{{ t('admin.settings.modelSkills.chooseFile') }}
+                <input type="file" accept=".md,.txt,text/markdown,text/plain" class="sr-only" :disabled="modelSkillSaving" @change="handleModelSkillUpload" />
+              </label>
+              <div v-if="modelSkillUploadFile" class="mx-auto mt-4 flex max-w-sm items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-left shadow-sm ring-1 ring-gray-200 dark:bg-dark-800 dark:ring-dark-600">
+                <div class="min-w-0"><p class="truncate text-sm font-medium text-gray-800 dark:text-gray-100">{{ modelSkillUploadFile.name }}</p><p class="text-xs text-gray-500">{{ (modelSkillUploadFile.size / 1024).toFixed(1) }} KB</p></div>
+                <button type="button" class="rounded p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" @click="modelSkillUploadFile = null"><Icon name="x" size="sm" /></button>
+              </div>
+            </div>
+            <template #footer>
+              <div class="flex justify-end gap-3">
+                <button type="button" class="btn btn-secondary" @click="closeModelSkillUploadModal">{{ t('common.cancel') }}</button>
+                <button type="button" class="btn btn-primary" :disabled="!modelSkillUploadFile || modelSkillSaving" @click="submitModelSkillUpload">{{ t('admin.settings.modelSkills.uploadAction') }}</button>
+              </div>
+            </template>
+          </BaseDialog>
 
           <!-- Custom Menu Items -->
           <div class="card">
@@ -7366,8 +7531,11 @@
                 />
               </div>
             </div>
+
           </div>
         </div>
+
+        <QuotaUnitsEditor v-model="form.subscription_units" />
 
         <div class="card">
           <div class="border-b border-gray-100 px-6 py-4 dark:border-dark-700">
@@ -8868,7 +9036,7 @@
         <div v-show="activeTab !== 'backup'" class="settings-save-dock">
           <button
             type="submit"
-            :disabled="saving || loadFailed"
+            :disabled="saving || loadFailed || siteLogoUploading"
             class="btn btn-primary"
           >
             <svg
@@ -8938,6 +9106,7 @@
 </template>
 
 <script setup lang="ts">
+import QuotaUnitsEditor from '@/components/admin/QuotaUnitsEditor.vue'
 import { ref, reactive, computed, onMounted, watch } from "vue";
 import { listPlatformIds } from "@/constants/platformCatalog";
 import { useI18n } from "vue-i18n";
@@ -8954,6 +9123,11 @@ import {
   deriveWeChatConnectStoredMode,
   normalizeDefaultSubscriptionSettings,
   resolveWeChatConnectModeCapabilities,
+  listModelSkills,
+  createModelSkill,
+  uploadModelSkill,
+  updateModelSkill,
+  deleteModelSkill,
 } from "@/api/admin/settings";
 import type {
   AuthSourceDefaultsState,
@@ -8967,6 +9141,7 @@ import type {
   WebSearchEmulationConfig,
   WebSearchProviderConfig,
   WebSearchTestResult,
+  ModelSkill,
 } from "@/api/admin/settings";
 import type {
   AdminGroup,
@@ -8976,6 +9151,7 @@ import type {
 } from "@/types";
 import type { ProviderInstance } from "@/types/payment";
 import AppLayout from "@/components/layout/AppLayout.vue";
+import ErrorPassthroughRulesModal from "@/components/admin/ErrorPassthroughRulesModal.vue";
 import Icon from "@/components/icons/Icon.vue";
 import Select, { type SelectOption } from "@/components/common/Select.vue";
 import {
@@ -8986,6 +9162,7 @@ import {
   type SiteBillingMode,
 } from "@/utils/siteBillingMode";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
+import BaseDialog from "@/components/common/BaseDialog.vue";
 import PaymentProviderList from "@/components/payment/PaymentProviderList.vue";
 import PaymentProviderDialog from "@/components/payment/PaymentProviderDialog.vue";
 import GroupBadge from "@/components/common/GroupBadge.vue";
@@ -9067,6 +9244,18 @@ type SettingsTab =
   | "email"
   | "backup";
 const activeTab = ref<SettingsTab>("general");
+const siteLogoMode = ref<"upload" | "url">("upload");
+const siteLogoUploading = ref(false);
+const siteLogoUploadError = ref("");
+const modelSkills = ref<ModelSkill[]>([]);
+const modelSkillsLoading = ref(false);
+const modelSkillSaving = ref(false);
+const modelSkillDraft = reactive({ id: "", name: "", content: "", filename: "" });
+const modelSkillEditing = ref(false);
+const modelSkillModalOpen = ref(false);
+const modelSkillUploadModalOpen = ref(false);
+const modelSkillUploadFile = ref<File | null>(null);
+const modelSkillDragActive = ref(false);
 const settingsTabs = [
   { key: "general" as SettingsTab, icon: "home" as const },
   { key: "agreement" as SettingsTab, icon: "document" as const },
@@ -9687,6 +9876,7 @@ type SettingsForm = Omit<
   channel_monitor_hide_throughput: boolean;
   channel_monitor_show_quota: boolean;
   channel_monitor_hide_user_ranking: boolean;
+  subscription_units: { id: string; name: string; units_per_usd: number }[];
   smtp_password: string;
   turnstile_secret_key: string;
   tencent_captcha_app_secret_key: string;
@@ -10024,6 +10214,8 @@ const form = reactive<SettingsForm>({
   // Available Channels feature switch
   available_channels_enabled: false,
   // Subscription feature switch (user sidebar "My Subscriptions" entry)
+  subscription_unit_name: '积分',
+  subscription_units: [{ id: 'points', name: '积分', units_per_usd: 1 }],
   subscription_enabled: true,
   // Model Plaza feature switches + description
   model_plaza_enabled: false,
@@ -11008,6 +11200,166 @@ const claudeSyncedVersionLabel = computed(() => {
   });
 });
 
+async function handleSiteLogoUpload(event: Event): Promise<void> {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  siteLogoUploadError.value = "";
+  if (!file) return;
+  if (file.size > 300 * 1024) {
+    siteLogoUploadError.value = t("admin.settings.site.logoSizeError", {
+      size: (file.size / 1024).toFixed(1),
+    });
+    return;
+  }
+  siteLogoUploading.value = true;
+  try {
+    const result = await adminAPI.settings.uploadSiteLogo(file);
+    form.site_logo = result.url;
+    siteLogoMode.value = "upload";
+  } catch (error) {
+    siteLogoUploadError.value = extractApiErrorMessage(
+      error,
+      t("admin.settings.site.logoUploadError"),
+    );
+  } finally {
+    siteLogoUploading.value = false;
+  }
+}
+
+async function loadModelSkills(): Promise<void> {
+  modelSkillsLoading.value = true;
+  try {
+    modelSkills.value = await listModelSkills();
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t("admin.settings.modelSkills.loadError")));
+  } finally {
+    modelSkillsLoading.value = false;
+  }
+}
+
+function resetModelSkillDraft(): void {
+  modelSkillDraft.id = "";
+  modelSkillDraft.name = "";
+  modelSkillDraft.content = "";
+  modelSkillDraft.filename = "";
+  modelSkillEditing.value = false;
+}
+
+function openModelSkillCreateModal(): void {
+  resetModelSkillDraft();
+  modelSkillModalOpen.value = true;
+}
+
+function closeModelSkillModal(): void {
+  if (modelSkillSaving.value) return;
+  modelSkillModalOpen.value = false;
+  resetModelSkillDraft();
+}
+
+function openModelSkillUploadModal(): void {
+  modelSkillUploadFile.value = null;
+  modelSkillDragActive.value = false;
+  modelSkillUploadModalOpen.value = true;
+}
+
+function closeModelSkillUploadModal(): void {
+  if (modelSkillSaving.value) return;
+  modelSkillUploadModalOpen.value = false;
+  modelSkillUploadFile.value = null;
+  modelSkillDragActive.value = false;
+}
+
+function editModelSkill(skill: ModelSkill): void {
+  modelSkillDraft.id = skill.id;
+  modelSkillDraft.name = skill.name;
+  modelSkillDraft.content = skill.content;
+  modelSkillDraft.filename = skill.filename || "";
+  modelSkillEditing.value = true;
+  modelSkillModalOpen.value = true;
+}
+
+async function saveModelSkill(): Promise<void> {
+  if (!modelSkillDraft.name.trim() || !modelSkillDraft.content.trim()) {
+    appStore.showError(t("admin.settings.modelSkills.required"));
+    return;
+  }
+  modelSkillSaving.value = true;
+  try {
+    const input = {
+      name: modelSkillDraft.name,
+      content: modelSkillDraft.content,
+      filename: modelSkillDraft.filename,
+    };
+    if (modelSkillEditing.value) {
+      await updateModelSkill(modelSkillDraft.id, input);
+    } else {
+      await createModelSkill(input);
+    }
+    modelSkillModalOpen.value = false;
+    resetModelSkillDraft();
+    await loadModelSkills();
+    appStore.showSuccess(t("admin.settings.modelSkills.saved"));
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t("admin.settings.modelSkills.saveError")));
+  } finally {
+    modelSkillSaving.value = false;
+  }
+}
+
+function setModelSkillUploadFile(file: File | undefined): void {
+  if (!file) return;
+  const fileName = file.name.toLowerCase();
+  if (!fileName.endsWith(".md") && !fileName.endsWith(".txt")) {
+    appStore.showError(t("admin.settings.modelSkills.formatError"));
+    return;
+  }
+  if (file.size > 512 * 1024) {
+    appStore.showError(t("admin.settings.modelSkills.sizeError"));
+    return;
+  }
+  modelSkillUploadFile.value = file;
+  modelSkillDragActive.value = false;
+}
+
+function handleModelSkillUpload(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  setModelSkillUploadFile(input.files?.[0]);
+  input.value = "";
+}
+
+function handleModelSkillDrop(event: DragEvent): void {
+  setModelSkillUploadFile(event.dataTransfer?.files?.[0]);
+}
+
+async function submitModelSkillUpload(): Promise<void> {
+  const file = modelSkillUploadFile.value;
+  if (!file) return;
+  modelSkillSaving.value = true;
+  try {
+    await uploadModelSkill(file);
+    modelSkillUploadModalOpen.value = false;
+    modelSkillUploadFile.value = null;
+    await loadModelSkills();
+    appStore.showSuccess(t("admin.settings.modelSkills.uploaded"));
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t("admin.settings.modelSkills.saveError")));
+  } finally {
+    modelSkillSaving.value = false;
+  }
+}
+
+async function removeModelSkill(skill: ModelSkill): Promise<void> {
+  if (!window.confirm(t("admin.settings.modelSkills.deleteConfirm", { name: skill.name }))) return;
+  try {
+    await deleteModelSkill(skill.id);
+    modelSkills.value = modelSkills.value.filter((item) => item.id !== skill.id);
+    appStore.showSuccess(t("admin.settings.modelSkills.deleted"));
+  } catch (error) {
+    appStore.showError(extractApiErrorMessage(error, t("admin.settings.modelSkills.saveError")));
+  }
+}
+
 async function loadSettings() {
   loading.value = true;
   loadFailed.value = false;
@@ -11021,6 +11373,9 @@ async function loadSettings() {
         (form as Record<string, unknown>)[key] = value;
       }
     }
+    siteLogoMode.value = !form.site_logo || /^\/api\/v1\/site-logo\//.test(form.site_logo) || /^data:image\//i.test(form.site_logo)
+      ? "upload"
+      : "url";
     // For this optional override, null explicitly selects per-account rates.
     if (settings.openai_oauth_scheduling_rate_multiplier === null) {
       form.openai_oauth_scheduling_rate_multiplier = null;
@@ -11283,6 +11638,7 @@ const siteBillingModeHint = computed(() =>
 );
 
 async function saveSettings() {
+  if (siteLogoUploading.value) return;
   saving.value = true;
   try {
     const normalizedTableDefaultPageSize = Math.floor(
@@ -11417,6 +11773,16 @@ async function saveSettings() {
     // Optional URL fields: auto-clear invalid values so they don't cause backend 400 errors
     if (!isValidHttpUrl(form.frontend_url)) form.frontend_url = "";
     if (!isValidHttpUrl(form.doc_url)) form.doc_url = "";
+    // A site logo may be an uploaded data URL, a relative path, or a remote HTTP(S) URL.
+    // Keep the URL form explicit so an invalid custom URL cannot be saved silently.
+    const siteLogo = form.site_logo.trim();
+    const isDataImage = /^data:image\/[a-z0-9.+-]+;base64,/i.test(siteLogo);
+    const isRelativeImage = siteLogo.startsWith("/");
+    if (siteLogo && !isDataImage && !isRelativeImage && !isValidHttpUrl(siteLogo)) {
+      appStore.showError(t("admin.settings.site.logoUrlInvalid"));
+      return;
+    }
+    form.site_logo = siteLogo;
     syncWeChatConnectMode();
     const wechatStoredMode = deriveWeChatConnectStoredMode(
       form.wechat_connect_open_enabled,
@@ -11759,6 +12125,8 @@ async function saveSettings() {
       // Available Channels feature switch
       available_channels_enabled: form.available_channels_enabled,
       // Subscription feature switch
+      subscription_unit_name: form.subscription_unit_name,
+      subscription_units: form.subscription_units,
       subscription_enabled: form.subscription_enabled,
       // Model Plaza feature switches + description
       model_plaza_enabled: form.model_plaza_enabled,
@@ -12887,6 +13255,7 @@ async function handleDeleteProvider() {
 
 onMounted(() => {
   loadSettings();
+  loadModelSkills();
   loadSubscriptionGroups();
   loadAdminApiKey();
   loadUpstreamBillingProbeSettings();

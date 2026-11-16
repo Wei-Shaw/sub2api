@@ -5,6 +5,7 @@
 
 import { apiClient } from '../client'
 import type { OpenAIReferralRefreshResult, OpenAIReferralSendResult } from '@/types/openaiReferrals'
+import type { OpenAIActiveSessions } from '@/types/openaiSessions'
 import type {
   Account,
   AccountListItem,
@@ -52,6 +53,7 @@ export async function list(
     group?: string
     search?: string
     privacy_mode?: string
+    subscription_tier?: string
     lite?: string
     include_scheduler_score?: string
     sort_by?: string
@@ -94,6 +96,7 @@ export async function getUpstreamBillingRatesWithEtag(
     group?: string
     search?: string
     privacy_mode?: string
+    subscription_tier?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
   },
@@ -127,6 +130,7 @@ export async function listWithEtag(
     group?: string
     search?: string
     privacy_mode?: string
+    subscription_tier?: string
     lite?: string
     include_scheduler_score?: string
     sort_by?: string
@@ -729,6 +733,7 @@ export async function exportData(options?: {
     status?: string
     group?: string
     privacy_mode?: string
+    subscription_tier?: string
     search?: string
     sort_by?: string
     sort_order?: 'asc' | 'desc'
@@ -739,12 +744,13 @@ export async function exportData(options?: {
   if (options?.ids && options.ids.length > 0) {
     params.ids = options.ids.join(',')
   } else if (options?.filters) {
-    const { platform, type, status, group, privacy_mode, search, sort_by, sort_order } = options.filters
+    const { platform, type, status, group, privacy_mode, subscription_tier, search, sort_by, sort_order } = options.filters
     if (platform) params.platform = platform
     if (type) params.type = type
     if (status) params.status = status
     if (group) params.group = group
     if (privacy_mode) params.privacy_mode = privacy_mode
+    if (subscription_tier) params.subscription_tier = subscription_tier
     if (search) params.search = search
     if (sort_by) params.sort_by = sort_by
     if (sort_order) params.sort_order = sort_order
@@ -1134,7 +1140,21 @@ export async function refreshOpenCodeGoUsage(id: number): Promise<OpenCodeGoUsag
   return data
 }
 
+export async function getOpenAIActiveSessions(id: number, signal?: AbortSignal): Promise<OpenAIActiveSessions> {
+  const { data } = await apiClient.get<OpenAIActiveSessions>(`/admin/openai/accounts/${id}/sessions`, { signal })
+  return data
+}
+
+export async function revokeOpenAIActiveSession(id: number, sessionId: string): Promise<{ revoked: boolean }> {
+  const { data } = await apiClient.post<{ revoked: boolean }>(`/admin/openai/accounts/${id}/sessions/revoke`, {
+    session_id: sessionId
+  })
+  return data
+}
+
 export const accountsAPI = {
+  getOpenAIActiveSessions,
+  revokeOpenAIActiveSession,
   list,
   listWithEtag,
   getUpstreamBillingRatesWithEtag,

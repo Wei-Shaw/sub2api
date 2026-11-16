@@ -65,7 +65,46 @@
     @apply bg-primary-500/20 text-primary-900 dark:text-primary-100;
   }
 
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-primary-500;
+  }
 
+
+}
+
+/* 键盘用户可以直接跳过导航，减少重复操作。 */
+.skip-link {
+  @apply fixed left-4 top-3 z-[100] -translate-y-20 rounded-lg bg-primary-600 px-4 py-2 text-sm font-medium text-white shadow-lg transition-transform duration-200 focus:translate-y-0;
+}
+
+/* 页面切换保持轻量，避免大型管理页切换时产生突兀的白屏感。 */
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(4px);
+}
+
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-4px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 @layer components {

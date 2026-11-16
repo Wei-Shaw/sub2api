@@ -1,20 +1,25 @@
 <template>
   <div>
-    <!-- 铃铛按钮 -->
+    <!-- 公告入口 -->
     <button
+      type="button"
       @click="openModal"
-      class="relative flex h-9 w-9 items-center justify-center rounded-lg text-gray-600 transition-all hover:bg-gray-100 hover:scale-105 dark:text-gray-400 dark:hover:bg-dark-800"
-      :class="{ 'text-blue-600 dark:text-blue-400': unreadCount > 0 }"
+      class="flex h-9 shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-2.5 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-dark-900"
+      :class="unreadCount > 0
+        ? 'border-primary-300 bg-primary-100 text-primary-800 hover:bg-primary-200 dark:border-primary-500/40 dark:bg-primary-500/20 dark:text-primary-200 dark:hover:bg-primary-500/30'
+        : 'border-primary-200/70 bg-primary-50 text-primary-700 hover:border-primary-300 hover:bg-primary-100 dark:border-primary-500/20 dark:bg-primary-500/10 dark:text-primary-300 dark:hover:bg-primary-500/20'"
       :aria-label="t('announcements.title')"
+      :title="t('announcements.title')"
     >
-      <Icon name="bell" size="md" />
-      <!-- 未读红点 -->
+      <Icon name="bell" size="sm" class="shrink-0" />
+      <span>{{ t('announcements.title') }}</span>
+      <!-- 未读公告数量 -->
       <span
         v-if="unreadCount > 0"
-        class="absolute right-1 top-1 flex h-2 w-2"
+        class="inline-flex h-4 min-w-[1rem] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold leading-none tabular-nums text-white"
+        :aria-label="`${t('announcements.unread')} ${unreadCount}`"
       >
-        <span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-500 opacity-75"></span>
-        <span class="relative inline-flex h-2 w-2 rounded-full bg-red-500"></span>
+        {{ unreadCount > 99 ? '99+' : unreadCount }}
       </span>
     </button>
 

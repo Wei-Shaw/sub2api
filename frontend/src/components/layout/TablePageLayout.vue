@@ -28,18 +28,33 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 
 const isMobile = ref(false)
+let mediaQuery: MediaQueryList | null = null
+let resizeFallback: (() => void) | null = null
 
-const checkMobile = () => {
-  isMobile.value = window.innerWidth < 1024
+const updateMobileState = () => {
+  isMobile.value = mediaQuery?.matches ?? window.innerWidth < 1024
 }
 
 onMounted(() => {
-  checkMobile()
-  window.addEventListener('resize', checkMobile)
+  // MediaQueryList 只在跨过断点时触发，避免拖动窗口时每一帧都触发响应式更新。
+  if (typeof window.matchMedia === 'function') {
+    mediaQuery = window.matchMedia('(max-width: 1023px)')
+    updateMobileState()
+    mediaQuery.addEventListener?.('change', updateMobileState)
+  } else {
+    resizeFallback = updateMobileState
+    updateMobileState()
+    window.addEventListener('resize', resizeFallback, { passive: true })
+  }
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', checkMobile)
+  mediaQuery?.removeEventListener?.('change', updateMobileState)
+  if (resizeFallback) {
+    window.removeEventListener('resize', resizeFallback)
+    resizeFallback = null
+  }
+  mediaQuery = null
 })
 </script>
 
@@ -47,7 +62,7 @@ onUnmounted(() => {
 /* 桌面端：Flexbox 布局 */
 .table-page-layout {
   @apply flex flex-col gap-6;
-  height: calc(100vh - 64px - 4rem); /* 减去 header + lg:p-8 的上下padding */
+  height: calc(100dvh - 64px - 4rem); /* 减去 header + lg:p-8 的上下padding */
 }
 
 .layout-section-fixed {
@@ -94,6 +109,13 @@ onUnmounted(() => {
 /* 移动端：恢复正常滚动 */
 .table-page-layout.mobile-mode .table-scroll-container {
   @apply h-auto overflow-visible border-none shadow-none bg-transparent;
+}
+
+@media (max-width: 1023px) {
+  .table-page-layout {
+    height: auto;
+    min-height: calc(100dvh - 64px - 2rem);
+  }
 }
 
 .table-page-layout.mobile-mode .layout-section-scrollable {

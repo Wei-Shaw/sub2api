@@ -268,6 +268,12 @@
           </div>
 
           <template v-else>
+            <ModelRestrictionEditor
+              v-model:allowed-models="allowedModels"
+              v-model:model-mappings="modelMappings"
+              :key="account.id"
+            >
+            <template #mode>
             <!-- Mode Toggle -->
             <div
               :data-testid="account.platform === 'grok' ? 'grok-model-mode-tabs' : undefined"
@@ -344,6 +350,7 @@
                 {{ t('admin.accounts.modelMapping') }}
               </button>
             </div>
+            </template>
 
             <GrokModelDiagnosticsPanel
               v-if="account.platform === 'grok'"
@@ -512,6 +519,7 @@
                 </button>
               </div>
             </div>
+            </ModelRestrictionEditor>
           </template>
         </div>
 
@@ -892,6 +900,12 @@
         </div>
 
         <template v-else>
+          <ModelRestrictionEditor
+            v-model:allowed-models="allowedModels"
+            v-model:model-mappings="modelMappings"
+            :key="account.id"
+          >
+          <template #mode>
           <!-- Mode Toggle -->
           <div
             :data-testid="account.platform === 'grok' ? 'grok-model-mode-tabs' : undefined"
@@ -940,6 +954,7 @@
               {{ t('admin.accounts.modelMapping') }}
             </button>
           </div>
+          </template>
 
           <GrokModelDiagnosticsPanel
             v-if="account.platform === 'grok'"
@@ -1080,6 +1095,7 @@
               </button>
             </div>
           </div>
+          </ModelRestrictionEditor>
         </template>
       </div>
 
@@ -1172,6 +1188,12 @@
         <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
+          <ModelRestrictionEditor
+            v-model:allowed-models="allowedModels"
+            v-model:model-mappings="modelMappings"
+            :key="account.id"
+          >
+          <template #mode>
           <!-- Mode Toggle -->
           <div class="mb-4 flex gap-2">
             <button
@@ -1225,6 +1247,7 @@
               {{ t('admin.accounts.modelMapping') }}
             </button>
           </div>
+          </template>
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
@@ -1341,6 +1364,7 @@
               </button>
             </div>
           </div>
+          </ModelRestrictionEditor>
         </div>
       </div>
 
@@ -1420,6 +1444,12 @@
         <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
           <label class="input-label">{{ t('admin.accounts.modelRestriction') }}</label>
 
+          <ModelRestrictionEditor
+            v-model:allowed-models="allowedModels"
+            v-model:model-mappings="modelMappings"
+            :key="account.id"
+          >
+          <template #mode>
           <!-- Mode Toggle -->
           <div class="mb-4 flex gap-2">
             <button
@@ -1447,6 +1477,7 @@
               {{ t('admin.accounts.modelMapping') }}
             </button>
           </div>
+          </template>
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
@@ -1483,6 +1514,7 @@
               </button>
             </div>
           </div>
+          </ModelRestrictionEditor>
         </div>
 
         <!-- Pool Mode Section for Bedrock -->
@@ -3428,6 +3460,7 @@ import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
+import ModelRestrictionEditor from '@/components/account/ModelRestrictionEditor.vue'
 import GrokModelDiagnosticsPanel from '@/components/account/GrokModelDiagnosticsPanel.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'

@@ -52,6 +52,7 @@ export default {
     close: '关闭',
     toggleMenu: '切换菜单',
     userMenu: '用户菜单',
+    skipToContent: '跳转到主要内容',
     pageNotFound: '页面不存在',
     enabled: '已启用',
     disabled: '已禁用',

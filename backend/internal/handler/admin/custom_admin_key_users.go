@@ -29,6 +29,8 @@ func adminUserResponse(c *gin.Context, user *service.User) any {
 		out["concurrency"] = user.Concurrency
 		out["rpm_limit"] = user.RPMLimit
 		out["last_active_at"] = user.LastActiveAt
+		out["registration_ip"] = user.RegistrationIP
+		out["last_login_ip"] = user.LastLoginIP
 		out["created_at"] = user.CreatedAt
 		out["updated_at"] = user.UpdatedAt
 		out["deleted_at"] = user.DeletedAt

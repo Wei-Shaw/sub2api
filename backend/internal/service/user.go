@@ -32,6 +32,8 @@ type User struct {
 	// value expected in JWT claims and refresh-token state.
 	TokenVersionResolved bool
 	SignupSource         string
+	RegistrationIP       string
+	LastLoginIP          string
 	LastLoginAt          *time.Time
 	LastActiveAt         *time.Time
 	LastUsedAt           *time.Time

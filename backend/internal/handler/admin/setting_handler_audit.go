@@ -2,6 +2,7 @@ package admin
 
 import (
 	"log/slog"
+	"reflect"
 
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -584,6 +585,12 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	}
 	if before.AvailableChannelsEnabled != after.AvailableChannelsEnabled {
 		changed = append(changed, "available_channels_enabled")
+	}
+	if !reflect.DeepEqual(before.SubscriptionUnits, after.SubscriptionUnits) {
+		changed = append(changed, "subscription_units")
+	}
+	if before.SubscriptionUnitName != after.SubscriptionUnitName {
+		changed = append(changed, "subscription_unit_name")
 	}
 	if before.SubscriptionEnabled != after.SubscriptionEnabled {
 		changed = append(changed, "subscription_enabled")

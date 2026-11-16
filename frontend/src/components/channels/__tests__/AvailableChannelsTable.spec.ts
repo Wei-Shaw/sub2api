@@ -101,8 +101,8 @@ function mountTable(props = {}) {
             '<span data-group-badge>{{ name }}:{{ rateMultiplier }}:{{ userRateMultiplier }}</span>',
         },
         SupportedModelChip: {
-          props: ['model', 'noPricingLabel'],
-          template: '<span data-model-chip>{{ model.name }}:{{ noPricingLabel }}</span>',
+          props: ['model', 'noPricingLabel', 'pricingUnits'],
+          template: `<span data-model-chip :data-unit="pricingUnits?.join(',')">{{ model.name }}:{{ noPricingLabel }}</span>`,
         },
       },
     },
@@ -110,6 +110,16 @@ function mountTable(props = {}) {
 }
 
 describe('AvailableChannelsTable responsive surfaces', () => {
+  it.each(['usd', 'points', 'both'])('uses explicit group units on both surfaces: %s', (unit) => {
+    const data = structuredClone(rows)
+    data[0].platforms[0].groups[0].subscription_type = 'subscription'
+    data[0].platforms[0].groups[0].pricing_unit = unit === 'both' ? 'usd' : unit as 'usd' | 'points'
+    data[0].platforms[0].groups[1].pricing_unit = unit === 'both' ? 'points' : unit as 'usd' | 'points'
+    const wrapper = mountTable({ rows: data })
+    expect(wrapper.findAll('[data-model-chip]').map((chip) => chip.attributes('data-unit'))).toEqual([unit === 'both' ? 'usd,points' : unit, unit === 'both' ? 'usd,points' : unit])
+    wrapper.unmount()
+  })
+
   it('keeps the five-column table as the desktop-only surface', () => {
     const wrapper = mountTable()
     const desktop = wrapper.get('[data-testid="desktop-channels"]')

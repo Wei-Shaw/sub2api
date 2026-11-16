@@ -417,6 +417,24 @@ describe('admin GroupsView column settings', () => {
     expect(getCapacitySummary).toHaveBeenCalledTimes(1)
   })
 
+  it('only offers usage display when creating a subscription group', async () => {
+    const wrapper = await mountView()
+    await wrapper.get('[data-tour="groups-create-btn"]').trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).not.toContain('admin.groups.subscription.usageDisplayHint')
+    const billingType = wrapper.findAll('select').find(select => select.find('option[value="subscription"]').exists())
+    expect(billingType).toBeDefined()
+    await billingType!.setValue('subscription')
+    expect(wrapper.text()).toContain('admin.groups.subscription.usageDisplayHint')
+    const display = wrapper.findAll('select').find(select => select.find('option[value="percentage"]').exists())
+    expect(display).toBeDefined()
+    expect(display!.element.value).toBe('amount')
+    await display!.setValue('percentage')
+    expect(display!.element.value).toBe('percentage')
+    await billingType!.setValue('standard')
+    expect(wrapper.text()).not.toContain('admin.groups.subscription.usageDisplayHint')
+  })
+
   it('renders yesterday usage between today and total', async () => {
     getUsageSummary.mockResolvedValue([
       { group_id: 1, today_cost: 1.25, yesterday_cost: 2.5, total_cost: 9.75 },
@@ -426,7 +444,7 @@ describe('admin GroupsView column settings', () => {
     const text = wrapper.get('[data-test="usage-cell"]').text()
 
     expect(text).toContain('Today$1.25')
-    expect(text).toContain('Yesterday$2.50')
+    expect(text).toContain('Yesterday$2.5')
     expect(text).toContain('Total$9.75')
     expect(text.indexOf('Today')).toBeLessThan(text.indexOf('Yesterday'))
     expect(text.indexOf('Yesterday')).toBeLessThan(text.indexOf('Total'))

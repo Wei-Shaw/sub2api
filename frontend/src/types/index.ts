@@ -105,6 +105,8 @@ export interface AdminUser extends User {
   // 管理员备注（普通用户接口不返回）
   notes: string
   last_used_at?: string | null
+  registration_ip?: string
+  last_login_ip?: string
   // 用户专属分组倍率配置 (group_id -> rate_multiplier)
   group_rates?: Record<number, number>
   // 为 true 时该用户仅可使用 allowed_groups 中列出的公开分组。
@@ -208,6 +210,12 @@ export interface LoginAgreementDocument {
   content_md: string
 }
 
+export interface SubscriptionUnit {
+  id: string
+  name: string
+  units_per_usd: number
+}
+
 export interface PublicSettings {
   registration_enabled: boolean
   email_verify_enabled: boolean
@@ -278,6 +286,8 @@ export interface PublicSettings {
   channel_monitor_hide_user_ranking?: boolean
   available_channels_enabled: boolean
   /** When false, the whole user-facing subscription surface is hidden. Default true. */
+  subscription_unit_name?: string
+  subscription_units?: SubscriptionUnit[]
   subscription_enabled: boolean
   /** Mirrors payment config BALANCE_PAYMENT_DISABLED; true = balance top-up closed (subscription-only site). */
   payment_balance_disabled: boolean
@@ -588,6 +598,8 @@ export interface Group {
   reasoning_effort_mappings?: ReasoningEffortMapping[]
   is_exclusive: boolean
   status: 'active' | 'inactive'
+  subscription_usage_display?: 'amount' | 'percentage'
+  pricing_unit?: string
   subscription_type: SubscriptionType
   daily_limit_usd: number | null
   weekly_limit_usd: number | null
@@ -670,6 +682,7 @@ export interface AdminGroup extends Group {
   default_mapped_model?: string
   messages_dispatch_model_config?: OpenAIMessagesDispatchModelConfig
   model_allowlist?: ModelAllowlist
+  default_skill_ids?: string[]
   codex_models_manifest_config?: CodexModelsManifestConfig
 
   // 分组排序
@@ -812,6 +825,8 @@ export interface CreateGroupRequest {
   platform?: GroupPlatform
   rate_multiplier?: number
   is_exclusive?: boolean
+  subscription_usage_display?: 'amount' | 'percentage'
+  pricing_unit?: string
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
@@ -855,6 +870,7 @@ export interface CreateGroupRequest {
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
   model_allowlist?: ModelAllowlist
+  default_skill_ids?: string[]
   codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
@@ -880,6 +896,8 @@ export interface UpdateGroupRequest {
   rate_multiplier?: number
   is_exclusive?: boolean
   status?: 'active' | 'inactive'
+  subscription_usage_display?: 'amount' | 'percentage'
+  pricing_unit?: string
   subscription_type?: SubscriptionType
   daily_limit_usd?: number | null
   weekly_limit_usd?: number | null
@@ -923,6 +941,7 @@ export interface UpdateGroupRequest {
   mcp_xml_inject?: boolean
   supported_model_scopes?: string[]
   model_allowlist?: ModelAllowlist
+  default_skill_ids?: string[]
   codex_models_manifest_config?: CodexModelsManifestConfig
   allow_messages_dispatch?: boolean
   allow_live?: boolean
@@ -1895,6 +1914,10 @@ export interface UsageLogAccountSummary {
 }
 
 export interface AdminUsageLog extends UsageLog {
+  proxy_snapshot?: {
+    id?: number
+    name?: string
+  } | null
   upstream_model?: string | null
   upstream_reasoning_effort?: string | null
   upstream_response_model?: string | null

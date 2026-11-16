@@ -1,5 +1,7 @@
 import { nextTick } from 'vue'
-import { describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import { useAppStore } from '@/stores/app'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import SupportedModelChip from '../SupportedModelChip.vue'
 
@@ -12,6 +14,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 describe('SupportedModelChip', () => {
+  beforeEach(() => setActivePinia(createPinia()))
   it.each(['availableChannels.pricing', 'admin.availableChannels.pricing'])(
     'shows video prices per second using %s translations',
     async (pricingKeyPrefix) => {
@@ -49,6 +52,14 @@ describe('SupportedModelChip', () => {
         expect(tooltip?.textContent).toContain('480p')
         expect(tooltip?.textContent).toContain(`$0 ${pricingKeyPrefix}.unitPerSecond`)
         expect(tooltip?.textContent).toContain('720p')
+        await wrapper.setProps({ pricingUnit: 'points' })
+        expect(tooltip?.textContent).toContain('0.05 积分')
+        expect(tooltip?.textContent).toContain('0.12 积分')
+        expect(tooltip?.textContent).not.toContain('$')
+        useAppStore().$patch({ cachedPublicSettings: { subscription_unit_name: '能量' } as never })
+        await nextTick()
+        expect(tooltip?.textContent).toContain('0.05 能量')
+        await wrapper.setProps({ pricingUnit: 'usd' })
         expect(tooltip?.textContent).toContain(`$0.12 ${pricingKeyPrefix}.unitPerSecond`)
         const model = wrapper.props('model')
         await wrapper.setProps({

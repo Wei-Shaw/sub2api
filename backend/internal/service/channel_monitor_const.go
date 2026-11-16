@@ -179,16 +179,16 @@ var (
 		"CHANNEL_MONITOR_INVALID_JITTER", "jitter_seconds must be >= 0 and interval_seconds - jitter_seconds must be >= 15",
 	)
 	ErrChannelMonitorInvalidEndpoint = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_INVALID_ENDPOINT", "endpoint must be a valid https URL",
+		"CHANNEL_MONITOR_INVALID_ENDPOINT", "endpoint must be a valid http or https URL",
 	)
 	ErrChannelMonitorEndpointScheme = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_ENDPOINT_SCHEME", "endpoint must use https scheme",
+		"CHANNEL_MONITOR_ENDPOINT_SCHEME", "endpoint must use http or https scheme",
 	)
 	ErrChannelMonitorEndpointPath = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_ENDPOINT_PATH", "endpoint must not contain query parameters or a fragment",
 	)
 	ErrChannelMonitorEndpointPrivate = infraerrors.BadRequest(
-		"CHANNEL_MONITOR_ENDPOINT_PRIVATE", "endpoint must be a public host",
+		"CHANNEL_MONITOR_ENDPOINT_PRIVATE", "endpoint must be a public host or an explicit loopback address",
 	)
 	ErrChannelMonitorEndpointUnreachable = infraerrors.BadRequest(
 		"CHANNEL_MONITOR_ENDPOINT_UNREACHABLE", "endpoint hostname could not be resolved",

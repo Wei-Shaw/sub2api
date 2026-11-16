@@ -633,6 +633,9 @@ export default {
     },
     pricing: {
       billingMode: '计费模式',
+      billingType: '计费类型',
+      billingTypeBalance: '余额',
+      billingTypeSubscription: '订阅',
       billingModeToken: '按 Token',
       billingModePerRequest: '按次',
       billingModeImage: '按图片',

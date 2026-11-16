@@ -159,9 +159,11 @@
                 :key="`${section.platform}-${m.name}`"
                 :model="m"
                 :pricing-key-prefix="pricingKeyPrefix"
+                :pricing-units="sectionPricingUnits(section)"
                 :no-pricing-label="noPricingLabel"
                 :show-platform="false"
                 :platform-hint="section.platform"
+                :billing-types="sectionBillingTypes(section)"
               />
               <span v-if="section.supported_models.length === 0" class="text-xs text-gray-400">
                 {{ noModelsLabel }}
@@ -302,9 +304,11 @@
                     class="max-w-full [&>span]:max-w-full [&>span]:truncate"
                     :model="m"
                     :pricing-key-prefix="pricingKeyPrefix"
+                    :pricing-units="sectionPricingUnits(section)"
                     :no-pricing-label="noPricingLabel"
                     :show-platform="false"
                     :platform-hint="section.platform"
+                    :billing-types="sectionBillingTypes(section)"
                   />
                   <span v-if="section.supported_models.length === 0" class="text-xs text-gray-400">
                     {{ noModelsLabel }}
@@ -321,6 +325,7 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import { resolveQuotaUnit } from '@/composables/useSubscriptionUnit'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
@@ -354,6 +359,14 @@ const props = defineProps<{
 void props.userGroupRates
 
 const { t } = useI18n()
+
+function sectionPricingUnits(section: UserChannelPlatformSection): string[] {
+  return [...new Set(section.groups.map(resolveQuotaUnit))]
+}
+
+function sectionBillingTypes(section: UserChannelPlatformSection): string[] {
+  return [...new Set(section.groups.map((group) => group.subscription_type || 'standard'))]
+}
 
 function exclusiveGroups(section: UserChannelPlatformSection): UserAvailableGroup[] {
   return section.groups.filter((g) => g.is_exclusive)

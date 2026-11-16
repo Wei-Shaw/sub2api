@@ -44,6 +44,10 @@ const (
 	FieldStatus = "status"
 	// FieldDuplicateOperationID holds the string denoting the duplicate_operation_id field in the database.
 	FieldDuplicateOperationID = "duplicate_operation_id"
+	// FieldPricingUnit holds the string denoting the pricing_unit field in the database.
+	FieldPricingUnit = "pricing_unit"
+	// FieldSubscriptionUsageDisplay holds the string denoting the subscription_usage_display field in the database.
+	FieldSubscriptionUsageDisplay = "subscription_usage_display"
 	// FieldPlatform holds the string denoting the platform field in the database.
 	FieldPlatform = "platform"
 	// FieldSubscriptionType holds the string denoting the subscription_type field in the database.
@@ -241,6 +245,8 @@ var Columns = []string{
 	FieldIsExclusive,
 	FieldStatus,
 	FieldDuplicateOperationID,
+	FieldPricingUnit,
+	FieldSubscriptionUsageDisplay,
 	FieldPlatform,
 	FieldSubscriptionType,
 	FieldDailyLimitUsd,
@@ -356,6 +362,14 @@ var (
 	StatusValidator func(string) error
 	// DuplicateOperationIDValidator is a validator for the "duplicate_operation_id" field. It is called by the builders before save.
 	DuplicateOperationIDValidator func(string) error
+	// DefaultPricingUnit holds the default value on creation for the "pricing_unit" field.
+	DefaultPricingUnit string
+	// PricingUnitValidator is a validator for the "pricing_unit" field. It is called by the builders before save.
+	PricingUnitValidator func(string) error
+	// DefaultSubscriptionUsageDisplay holds the default value on creation for the "subscription_usage_display" field.
+	DefaultSubscriptionUsageDisplay string
+	// SubscriptionUsageDisplayValidator is a validator for the "subscription_usage_display" field. It is called by the builders before save.
+	SubscriptionUsageDisplayValidator func(string) error
 	// DefaultPlatform holds the default value on creation for the "platform" field.
 	DefaultPlatform string
 	// PlatformValidator is a validator for the "platform" field. It is called by the builders before save.
@@ -517,6 +531,16 @@ func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 // ByDuplicateOperationID orders the results by the duplicate_operation_id field.
 func ByDuplicateOperationID(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldDuplicateOperationID, opts...).ToFunc()
+}
+
+// ByPricingUnit orders the results by the pricing_unit field.
+func ByPricingUnit(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPricingUnit, opts...).ToFunc()
+}
+
+// BySubscriptionUsageDisplay orders the results by the subscription_usage_display field.
+func BySubscriptionUsageDisplay(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldSubscriptionUsageDisplay, opts...).ToFunc()
 }
 
 // ByPlatform orders the results by the platform field.

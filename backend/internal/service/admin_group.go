@@ -429,9 +429,36 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		return nil, infraerrors.Newf(http.StatusBadRequest, "INVALID_REASONING_EFFORT_MAPPING", "%v", err)
 	}
 
+	if err := s.validateGroupPricingUnit(ctx, input.PricingUnit); err != nil {
+		return nil, err
+	}
+	if err := validateSubscriptionUsageDisplay(input.SubscriptionUsageDisplay); err != nil {
+		return nil, err
+	}
+	usageDisplay := normalizeSubscriptionUsageDisplay(input.SubscriptionUsageDisplay)
+	pricingUnit := input.PricingUnit
+	if pricingUnit == "" {
+		pricingUnit = "usd"
+		if input.SubscriptionType == SubscriptionTypeSubscription {
+			if s.settingService == nil {
+				pricingUnit = "points"
+			} else {
+				units, err := s.settingService.GetSubscriptionUnits(ctx)
+				if err != nil {
+					return nil, err
+				}
+				if len(units) > 0 {
+					pricingUnit = units[0].ID
+				}
+			}
+		}
+	}
 	subscriptionType := input.SubscriptionType
 	if subscriptionType == "" {
 		subscriptionType = SubscriptionTypeStandard
+	}
+	if subscriptionType != SubscriptionTypeSubscription {
+		pricingUnit = "usd"
 	}
 
 	// 限额字段：nil/负数 表示"无限制"，0 表示"不允许用量"，正数表示具体限额
@@ -584,6 +611,8 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		IsExclusive:                     input.IsExclusive,
 		Status:                          StatusActive,
 		SubscriptionType:                subscriptionType,
+		PricingUnit:                     pricingUnit,
+		SubscriptionUsageDisplay:        usageDisplay,
 		DailyLimitUSD:                   dailyLimit,
 		WeeklyLimitUSD:                  weeklyLimit,
 		MonthlyLimitUSD:                 monthlyLimit,
@@ -632,6 +661,7 @@ func (s *adminServiceImpl) CreateGroup(ctx context.Context, input *CreateGroupIn
 		DefaultMappedModel:              input.DefaultMappedModel,
 		MessagesDispatchModelConfig:     normalizeOpenAIMessagesDispatchModelConfig(input.MessagesDispatchModelConfig),
 		ModelAllowlist:                  modelAllowlist,
+		DefaultSkillIDs:                 append([]string(nil), input.DefaultSkillIDs...),
 		// 固定账号 manifest 配置：账号绑定发生在分组创建之后，创建路径禁止开启，
 		// 成员关系无从校验（前端创建对话框也不展示）。
 		CodexModelsManifestConfig:   normalizeCodexModelsManifestConfig(platform, input.CodexModelsManifestConfig),
@@ -824,9 +854,24 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		group.ModelPricing = modelPricing
 	}
 
+	if input.PricingUnit != "" {
+		if err := s.validateGroupPricingUnit(ctx, input.PricingUnit); err != nil {
+			return nil, err
+		}
+		group.PricingUnit = input.PricingUnit
+	}
+	if input.SubscriptionUsageDisplay != "" {
+		if err := validateSubscriptionUsageDisplay(input.SubscriptionUsageDisplay); err != nil {
+			return nil, err
+		}
+		group.SubscriptionUsageDisplay = input.SubscriptionUsageDisplay
+	}
 	// 订阅相关字段
 	if input.SubscriptionType != "" {
 		group.SubscriptionType = input.SubscriptionType
+	}
+	if group.SubscriptionType != SubscriptionTypeSubscription {
+		group.PricingUnit = "usd"
 	}
 	// 限额字段：nil 表示不修改，负数表示"无限制"，0 表示"不允许用量"，正数表示具体限额。
 	if input.DailyLimitUSD != nil {
@@ -1040,6 +1085,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 			return nil, err
 		}
 		group.ModelAllowlist = modelAllowlist
+	}
+	if input.DefaultSkillIDs != nil {
+		group.DefaultSkillIDs = append([]string(nil), (*input.DefaultSkillIDs)...)
 	}
 	if input.CodexModelsManifestConfig != nil {
 		group.CodexModelsManifestConfig = *input.CodexModelsManifestConfig

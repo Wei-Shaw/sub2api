@@ -72,6 +72,8 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
 		User:                 *base,
 		Notes:                u.Notes,
 		LastUsedAt:           u.LastUsedAt,
+		RegistrationIP:       u.RegistrationIP,
+		LastLoginIP:          u.LastLoginIP,
 		GroupRates:           u.GroupRates,
 		RestrictPublicGroups: u.RestrictPublicGroups,
 	}
@@ -160,6 +162,7 @@ func GroupFromServiceAdmin(g *service.Group) *AdminGroup {
 		DefaultMappedModel:          g.DefaultMappedModel,
 		MessagesDispatchModelConfig: g.MessagesDispatchModelConfig,
 		ModelAllowlist:              g.ModelAllowlist,
+		DefaultSkillIDs:             g.DefaultSkillIDs,
 		CodexModelsManifestConfig:   g.CodexModelsManifestConfig,
 		SupportedModelScopes:        g.SupportedModelScopes,
 		AccountCount:                g.AccountCount,
@@ -187,6 +190,8 @@ func groupFromServiceBase(g *service.Group) Group {
 		RateMultiplier:                  g.RateMultiplier,
 		IsExclusive:                     g.IsExclusive,
 		Status:                          g.Status,
+		PricingUnit:                     g.PricingUnit,
+		SubscriptionUsageDisplay:        g.SubscriptionUsageDisplay,
 		SubscriptionType:                g.SubscriptionType,
 		DailyLimitUSD:                   g.DailyLimitUSD,
 		WeeklyLimitUSD:                  g.WeeklyLimitUSD,
@@ -780,6 +785,7 @@ func UsageLogFromServiceAdmin(l *service.UsageLog) *AdminUsageLog {
 		BillingTier:             l.BillingTier,
 		AccountRateMultiplier:   l.AccountRateMultiplier,
 		AccountStatsCost:        l.AccountStatsCost,
+		ProxySnapshot:           l.ProxySnapshot,
 		IPAddress:               l.IPAddress,
 		Account:                 AccountSummaryFromService(l.Account),
 	}

@@ -1,20 +1,32 @@
 <template>
-  <BaseDialog
+  <component
+    :is="embedded ? InlineRules : BaseDialog"
     :show="show"
-    :title="t('admin.errorPassthrough.title')"
+    :title="t(mappingMode ? 'admin.errorPassthrough.mappingTitle' : 'admin.errorPassthrough.title')"
     width="extra-wide"
     @close="$emit('close')"
   >
     <div class="space-y-4">
+      <h2 v-if="embedded" class="text-lg font-semibold text-gray-900 dark:text-white">{{ t('admin.errorPassthrough.mappingTitle') }}</h2>
       <!-- Header -->
       <div class="flex items-center justify-between">
         <p class="text-sm text-gray-500 dark:text-gray-400">
-          {{ t('admin.errorPassthrough.description') }}
+          {{ t(mappingMode ? 'admin.errorPassthrough.mappingDescription' : 'admin.errorPassthrough.description') }}
         </p>
-        <button @click="showCreateModal = true" class="btn btn-primary btn-sm">
+        <button type="button" @click="openCreate" class="btn btn-primary btn-sm shrink-0">
           <Icon name="plus" size="sm" class="mr-1" />
           {{ t('admin.errorPassthrough.createRule') }}
         </button>
+      </div>
+
+      <div v-if="mappingMode" class="rounded-lg bg-primary-50 p-4 dark:bg-primary-900/20">
+        <p class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.errorPassthrough.mappingHint') }}</p>
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <span class="text-xs text-gray-500">{{ t('admin.errorPassthrough.templates') }}</span>
+          <button v-for="period in quotaPeriods" :key="period" type="button" class="btn btn-secondary btn-sm" @click="openQuotaTemplate(period)">
+            {{ t(`admin.errorPassthrough.quotaTemplates.${period}.name`) }}
+          </button>
+        </div>
       </div>
 
       <!-- Rules Table -->
@@ -158,6 +170,7 @@
                       {{ t('admin.errorPassthrough.skipMonitoring') }}
                     </span>
                   </div>
+                  <p v-if="!rule.passthrough_body && rule.custom_message" class="mt-1 max-w-xs whitespace-pre-wrap break-words text-primary-700 dark:text-primary-300">{{ rule.custom_message }}</p>
                 </div>
               </td>
               <td class="px-3 py-2">
@@ -426,11 +439,11 @@
       @confirm="confirmDelete"
       @cancel="showDeleteDialog = false"
     />
-  </BaseDialog>
+  </component>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch } from 'vue'
+import { ref, reactive, computed, watch, defineComponent, h } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
@@ -442,7 +455,18 @@ import Icon from '@/components/icons/Icon.vue'
 
 const props = defineProps<{
   show: boolean
+  embedded?: boolean
+  mappingMode?: boolean
 }>()
+
+const InlineRules = defineComponent({
+  inheritAttrs: false,
+  setup(_, { slots }) {
+    return () => h('section', { class: 'card p-6' }, slots.default?.())
+  }
+})
+
+const quotaPeriods = ['daily', 'weekly', 'monthly'] as const
 
 const emit = defineEmits<{
   close: []
@@ -488,13 +512,6 @@ const matchModeOptions = computed(() => [
 
 const platformOptions = CONCRETE_PLATFORM_OPTIONS
 
-// Load rules when dialog opens
-watch(() => props.show, (newVal) => {
-  if (newVal) {
-    loadRules()
-  }
-})
-
 const loadRules = async () => {
   loading.value = true
   try {
@@ -511,16 +528,31 @@ const resetForm = () => {
   form.name = ''
   form.enabled = true
   form.priority = 0
-  form.match_mode = 'any'
+  form.match_mode = props.mappingMode ? 'all' : 'any'
   form.platforms = []
   form.passthrough_code = true
   form.response_code = null
-  form.passthrough_body = true
+  form.passthrough_body = !props.mappingMode
   form.custom_message = null
   form.skip_monitoring = false
   form.description = null
   errorCodesInput.value = ''
   keywordsInput.value = ''
+}
+
+const openCreate = () => {
+  resetForm()
+  showCreateModal.value = true
+}
+
+const openQuotaTemplate = (period: typeof quotaPeriods[number]) => {
+  openCreate()
+  form.name = t(`admin.errorPassthrough.quotaTemplates.${period}.name`)
+  form.match_mode = 'all'
+  form.passthrough_body = false
+  form.custom_message = t(`admin.errorPassthrough.quotaTemplates.${period}.message`)
+  errorCodesInput.value = '429'
+  keywordsInput.value = `${period.toUpperCase()}_LIMIT_EXCEEDED\n${period} usage limit exceeded`
 }
 
 const closeFormModal = () => {
@@ -580,6 +612,11 @@ const handleSubmit = async () => {
 
   if (errorCodes.length === 0 && keywords.length === 0) {
     appStore.showError(t('admin.errorPassthrough.conditionsRequired'))
+    return
+  }
+
+  if (!form.passthrough_body && !form.custom_message?.trim()) {
+    appStore.showError(t('admin.errorPassthrough.messageRequired'))
     return
   }
 
@@ -643,4 +680,9 @@ const confirmDelete = async () => {
     console.error('Error deleting rule:', error)
   }
 }
+
+// Embedded settings are mounted with show=true, while the account dialog opens later.
+watch(() => props.show, (newVal) => {
+  if (newVal) void loadRules()
+}, { immediate: true })
 </script>

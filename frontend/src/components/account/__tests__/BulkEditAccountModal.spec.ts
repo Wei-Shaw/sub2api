@@ -167,6 +167,80 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
+  it.each(['whitelist', 'mapping'] as const)(
+    '在 %s 标签页提交时同时保留白名单和模型映射，重名时保留显式映射',
+    async (activeTab) => {
+      const wrapper = mountModal({
+        selectedPlatforms: ['openai'],
+        selectedTypes: ['apikey']
+      })
+
+      await wrapper.get('#bulk-edit-model-restriction-enabled').setValue(true)
+      wrapper.getComponent(ModelWhitelistSelector).vm.$emit('update:modelValue', ['gpt-5.4', 'gpt-latest'])
+      await nextTick()
+
+      const mappingTab = wrapper.findAll('button').find((btn) => btn.text() === 'admin.accounts.modelMapping')!
+      await mappingTab.trigger('click')
+      const addMapping = wrapper.findAll('button').find((btn) => btn.text() === 'admin.accounts.addMapping')!
+      await addMapping.trigger('click')
+      await wrapper.get('input[placeholder="admin.accounts.requestModel"]').setValue('gpt-latest')
+      await wrapper.get('input[placeholder="admin.accounts.actualModel"]').setValue('gpt-5.4')
+
+      if (activeTab === 'whitelist') {
+        const whitelistTab = wrapper.findAll('button').find((btn) => btn.text() === 'admin.accounts.modelWhitelist')!
+        await whitelistTab.trigger('click')
+        expect(wrapper.getComponent(ModelWhitelistSelector).props('modelValue')).toEqual(['gpt-5.4', 'gpt-latest'])
+      }
+
+      await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+      await flushPromises()
+
+      expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+      expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+        credentials: {
+          model_mapping: {
+            'gpt-5.4': 'gpt-5.4',
+            'gpt-latest': 'gpt-5.4'
+          }
+        }
+      })
+    }
+  )
+
+  it('清空白名单后仍保留映射，删除最后一条映射后可清空所有模型限制', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+
+    await wrapper.get('#bulk-edit-model-restriction-enabled').setValue(true)
+    wrapper.getComponent(ModelWhitelistSelector).vm.$emit('update:modelValue', ['gpt-5.4'])
+    await nextTick()
+    await wrapper.findAll('button').find((btn) => btn.text() === 'admin.accounts.modelMapping')!.trigger('click')
+    await wrapper.findAll('button').find((btn) => btn.text() === 'admin.accounts.addMapping')!.trigger('click')
+    await wrapper.get('input[placeholder="admin.accounts.requestModel"]').setValue('gpt-*')
+    await wrapper.get('input[placeholder="admin.accounts.actualModel"]').setValue('gpt-5.4')
+    await wrapper.findAll('button').find((btn) => btn.text() === 'admin.accounts.modelWhitelist')!.trigger('click')
+    wrapper.getComponent(ModelWhitelistSelector).vm.$emit('update:modelValue', [])
+    await nextTick()
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenLastCalledWith([1, 2], {
+      credentials: { model_mapping: { 'gpt-*': 'gpt-5.4' } }
+    })
+
+    await wrapper.findAll('button').find((btn) => btn.text() === 'admin.accounts.modelMapping')!.trigger('click')
+    const mappingRow = wrapper.get('input[placeholder="admin.accounts.requestModel"]').element.parentElement!
+    await wrapper.findAll('button').find((btn) => btn.element.parentElement === mappingRow)!.trigger('click')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenLastCalledWith([1, 2], {
+      credentials: { model_mapping: {} }
+    })
+  })
+
   it('全部目标为 Grok OAuth 时，官方主机 base_url 作为手动端点切换正常提交', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['grok'],

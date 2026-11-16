@@ -8,6 +8,17 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestUsageProxySnapshotOnlyVisibleToAdmin(t *testing.T) {
+	log := &service.UsageLog{ProxySnapshot: &service.UsageProxySnapshot{ID: 42, Name: "egress"}}
+	userJSON, err := json.Marshal(UsageLogFromService(log))
+	require.NoError(t, err)
+	require.NotContains(t, string(userJSON), "proxy_snapshot")
+	adminJSON, err := json.Marshal(UsageLogFromServiceAdmin(log))
+	require.NoError(t, err)
+	require.Contains(t, string(adminJSON), `"proxy_snapshot":{"id":42,"name":"egress"}`)
+	require.NotContains(t, string(adminJSON), "exit_ip")
+}
+
 func TestUsageLogFromService_IncludesOpenAIWSMode(t *testing.T) {
 	t.Parallel()
 

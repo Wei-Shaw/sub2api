@@ -24,7 +24,7 @@
           <th colspan="3" class="pz-bg pt-2 text-center">
             <div class="pz-title border-b pb-2 font-semibold">
               {{ t('modelPlaza.table.paidPrice') }}
-              <span class="pz-unit ml-1 normal-case font-normal">{{ t('modelPlaza.table.unitPerMillion') }}</span>
+              <span class="pz-unit ml-1 normal-case font-normal">{{ t('modelPlaza.table.unitPerMillion').replace('$', '').trim() }}</span>
             </div>
           </th>
           <th
@@ -33,7 +33,7 @@
           >
             <div class="border-b border-gray-200 pb-2 text-gray-400 dark:border-dark-600 dark:text-dark-500">
               {{ t('modelPlaza.table.officialPrice') }}
-              <span class="ml-1 normal-case font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.unitPerMillion') }}</span>
+              <span class="ml-1 normal-case font-normal text-gray-400 dark:text-dark-500">{{ t('modelPlaza.table.unitPerMillion').replace('$', '').trim() }}</span>
             </div>
           </th>
           <th
@@ -318,9 +318,11 @@
 </template>
 
 <script setup lang="ts">
+import { useSubscriptionUnits } from '@/composables/useSubscriptionUnit'
+const subscriptionUnits = useSubscriptionUnits()
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { formatScaled, resolveIntervalPrices } from '@/utils/pricing'
+import { formatScaled, formatChannelPrice, resolveIntervalPrices } from '@/utils/pricing'
 import { platformAccentColor, platformBadgeLightClass, platformLabel } from '@/utils/platformColors'
 import {
   BILLING_MODE_TOKEN,
@@ -343,6 +345,7 @@ function reasoningEffortMultipliers(model: PlazaModel): [string, number][] {
 }
 
 const props = defineProps<{
+  pricingUnit?: string
   models: PlazaModel[]
   /** 分组平台;实付分区底色随平台着色,未知平台回退品牌青。 */
   platform?: string
@@ -438,7 +441,7 @@ function periodRate(period: PlazaTimePricingPeriod): number {
 function paidPerMillion(value: number | null | undefined, period: PlazaTimePricingPeriod | null = null): string {
   if (value == null) return '-'
   const rate = period ? periodRate(period) : effectiveRate.value
-  return formatScaled(value * rate, PER_MILLION, MIN_DECIMALS)
+  const unit = subscriptionUnits.value.find(u => u.id === props.pricingUnit); return unit ? formatChannelPrice(value * rate, PER_MILLION, 'points', unit.name, unit.units_per_usd) : formatScaled(value * rate, PER_MILLION, MIN_DECIMALS)
 }
 
 /** 图片和视频分别使用对应的独立倍率开关。 */
@@ -460,7 +463,7 @@ function requestRate(m: PlazaModel): number {
 /** 非 token 单价乘该行生效倍率，不换算为每百万 token。 */
 function paidRequestPrice(m: PlazaModel, value: number | null | undefined): string {
   if (value == null) return '-'
-  return formatScaled(value * requestRate(m), 1, MIN_DECIMALS)
+  const unit = subscriptionUnits.value.find(u => u.id === props.pricingUnit); return unit ? formatChannelPrice(value * requestRate(m), 1, 'points', unit.name, unit.units_per_usd) : formatScaled(value * requestRate(m), 1, MIN_DECIMALS)
 }
 
 /** 官方参考价不乘倍率。 */

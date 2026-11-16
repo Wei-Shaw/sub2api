@@ -11,6 +11,7 @@ import SettingsView from "../SettingsView.vue";
 const {
   getSettings,
   updateSettings,
+  uploadSiteLogo,
   getWebSearchEmulationConfig,
   updateWebSearchEmulationConfig,
   getAdminApiKey,
@@ -39,6 +40,7 @@ const {
 } = vi.hoisted(() => ({
   getSettings: vi.fn(),
   updateSettings: vi.fn(),
+  uploadSiteLogo: vi.fn(),
   getWebSearchEmulationConfig: vi.fn(),
   updateWebSearchEmulationConfig: vi.fn(),
   getAdminApiKey: vi.fn(),
@@ -86,6 +88,7 @@ vi.mock("@/api", () => ({
     settings: {
       getSettings,
       updateSettings,
+      uploadSiteLogo,
       getWebSearchEmulationConfig,
       updateWebSearchEmulationConfig,
       getAdminApiKey,
@@ -635,6 +638,7 @@ describe("admin SettingsView payment visible method controls", () => {
   beforeEach(() => {
     getSettings.mockReset();
     updateSettings.mockReset();
+    uploadSiteLogo.mockReset();
     getWebSearchEmulationConfig.mockReset();
     updateWebSearchEmulationConfig.mockReset();
     getAdminApiKey.mockReset();
@@ -665,6 +669,7 @@ describe("admin SettingsView payment visible method controls", () => {
       ...baseSettingsResponse,
       ...payload,
     }));
+    uploadSiteLogo.mockResolvedValue({ url: "/api/v1/site-logo/logo-test.png" });
     getWebSearchEmulationConfig.mockResolvedValue({
       enabled: false,
       providers: [],
@@ -763,6 +768,47 @@ describe("admin SettingsView payment visible method controls", () => {
 
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({ compact_home_enabled: true }),
+    );
+  });
+
+  it("saves a custom site logo URL without converting it to Base64", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.get('[data-testid="site-logo-url-tab"]').trigger("click");
+    const logoUrl = wrapper.get("#site-logo-url");
+    await logoUrl.setValue("https://cdn.example.com/brand/logo.svg");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({
+        site_logo: "https://cdn.example.com/brand/logo.svg",
+      }),
+    );
+  });
+
+  it("uploads a site logo as a file and saves the returned URL", async () => {
+    const wrapper = mountView();
+
+    await flushPromises();
+    await wrapper.get('[data-testid="site-logo-upload-tab"]').trigger("click");
+    const file = new File(["fake-png"], "logo.png", { type: "image/png" });
+    const input = wrapper.get('input[type="file"]');
+    Object.defineProperty(input.element, "files", { value: [file] });
+    await input.trigger("change");
+    await flushPromises();
+
+    expect(uploadSiteLogo).toHaveBeenCalledWith(file);
+    const preview = wrapper.get('[data-testid="site-logo-preview"]');
+    expect(preview.get("img").attributes("src")).toBe("/api/v1/site-logo/logo-test.png");
+    await wrapper.get('[data-testid="site-logo-url-tab"]').trigger("click");
+    expect(wrapper.get('[data-testid="site-logo-preview"]').get("img").attributes("src"))
+      .toBe("/api/v1/site-logo/logo-test.png");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ site_logo: "/api/v1/site-logo/logo-test.png" }),
     );
   });
 

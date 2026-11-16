@@ -15,11 +15,12 @@ const props = withDefaults(
     value: number | null
     unit: string
     scale: number
+    formatter?: (value: number | null, scale: number) => string
   }>(),
   { value: null }
 )
 
 const display = computed(() =>
-  props.value == null ? '-' : `${formatScaled(props.value, props.scale)} ${props.unit}`
+  props.value == null ? '-' : `${(props.formatter ?? formatScaled)(props.value, props.scale)} ${props.unit}`
 )
 </script>
