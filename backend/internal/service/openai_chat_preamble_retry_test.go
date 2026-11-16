@@ -15,11 +15,11 @@ import (
 
 func TestChatPreambleKeepaliveDoesNotCommitBeforeRetry(t *testing.T) {
 	reader, writer := io.Pipe()
-	defer reader.Close()
+	defer func() { _ = reader.Close() }()
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		defer writer.Close()
+		defer func() { _ = writer.Close() }()
 		_, _ = io.WriteString(writer, "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_1\",\"status\":\"in_progress\"}}\n\n")
 		time.Sleep(1200 * time.Millisecond)
 		_, _ = io.WriteString(writer, "data: {\"type\":\"response.failed\",\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"server_is_overloaded\",\"message\":\"Our servers are currently overloaded. Please try again later.\"}}}\n\n")
