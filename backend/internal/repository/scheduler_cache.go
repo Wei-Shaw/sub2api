@@ -1556,6 +1556,8 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		// 走网关报 no available accounts"。
 		"openai_passthrough",
 		"openai_oauth_passthrough",
+		// 透传账号显式开启按模型筛选后，候选过滤同样依赖本投影里的开关判定白名单。
+		"openai_passthrough_model_filter",
 		// 生图尺寸档位在候选过滤阶段按本投影判定，裁掉后受限账号会接到不允许的档位。
 		service.AccountExtraOpenAIImageSizeTiers,
 		"codex_fingerprint_mode",
