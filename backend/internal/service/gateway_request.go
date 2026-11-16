@@ -316,14 +316,15 @@ func normalizeClaudeCodeLongContextModel(model string) string {
 }
 
 // parseGatewayRequestBody 只做标量和 raw range 轻量解析，不恢复 system/messages 对象图。
-func parseGatewayRequestBody(parsed *ParsedRequest, protocol string) error {
+// validate 为 false 时要求调用方已经确认 body 是合法 JSON（见 ParseGatewayRequestValidated）。
+func parseGatewayRequestBody(parsed *ParsedRequest, protocol string, validate bool) error {
 	if parsed == nil || parsed.Body == nil {
 		return fmt.Errorf("empty request body")
 	}
 	parsed.Body.parsed = nil
 
 	bodyBytes := parsed.Body.Bytes()
-	if !gjson.ValidBytes(bodyBytes) {
+	if validate && !gjson.ValidBytes(bodyBytes) {
 		return DescribeInvalidJSON(bodyBytes)
 	}
 
@@ -388,7 +389,7 @@ func parseGatewayRequestBody(parsed *ParsedRequest, protocol string) error {
 }
 
 func refreshGatewayRequestRanges(parsed *ParsedRequest, protocol string) error {
-	return parseGatewayRequestBody(parsed, protocol)
+	return parseGatewayRequestBody(parsed, protocol, true)
 }
 
 // DescribeInvalidJSON returns a diagnostic error for a request body that
@@ -495,8 +496,20 @@ func normalizeSessionUserAgentFallback(raw string) string {
 // protocol 指定请求协议格式（domain.PlatformAnthropic / domain.PlatformGemini），
 // 不同协议使用不同的 system/messages 字段名。
 func ParseGatewayRequest(body *RequestBodyRef, protocol string) (*ParsedRequest, error) {
+	return parseGatewayRequest(body, protocol, true)
+}
+
+// ParseGatewayRequestValidated 与 ParseGatewayRequest 结果相同，但要求调用方已经确认
+// body 是合法 JSON（例如 handler 已对同一份字节做过 gjson.ValidBytes，且此后的改写只
+// 经过 sjson）。它跳过这次全量校验——1 MiB body 上约 510µs，占解析耗时的七成。
+// 非法 JSON 的语义与未校验版本不同，只允许在校验过同一份字节的调用点使用。
+func ParseGatewayRequestValidated(body *RequestBodyRef, protocol string) (*ParsedRequest, error) {
+	return parseGatewayRequest(body, protocol, false)
+}
+
+func parseGatewayRequest(body *RequestBodyRef, protocol string, validate bool) (*ParsedRequest, error) {
 	parsed := &ParsedRequest{Body: body}
-	if err := parseGatewayRequestBody(parsed, protocol); err != nil {
+	if err := parseGatewayRequestBody(parsed, protocol, validate); err != nil {
 		return nil, err
 	}
 	return parsed, nil

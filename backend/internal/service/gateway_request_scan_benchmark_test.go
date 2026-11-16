@@ -72,7 +72,18 @@ func BenchmarkParseGatewayRequestScan(b *testing.B) {
 			b.ReportAllocs()
 			for range b.N {
 				parsed := &ParsedRequest{Body: NewRequestBodyRef(body)}
-				if err := parseGatewayRequestBody(parsed, tc.protocol); err != nil {
+				if err := parseGatewayRequestBody(parsed, tc.protocol, true); err != nil {
+					b.Fatal(err)
+				}
+			}
+		})
+		// 调用方已经校验过同一份字节时（handler 已做 gjson.ValidBytes，且之后只经 sjson 改写）。
+		b.Run(tc.name+"/scan_validated", func(b *testing.B) {
+			b.SetBytes(int64(len(body)))
+			b.ReportAllocs()
+			for range b.N {
+				parsed := &ParsedRequest{Body: NewRequestBodyRef(body)}
+				if err := parseGatewayRequestBody(parsed, tc.protocol, false); err != nil {
 					b.Fatal(err)
 				}
 			}

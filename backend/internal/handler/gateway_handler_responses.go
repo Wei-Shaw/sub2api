@@ -178,8 +178,10 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	defer inflightRelease()
 
 	// Parse request for session hash
+	// body 已在本函数开头用 gjson.ValidBytes 校验过，之后只经过 sjson 改写
+	// （applyOpenAIReasoningEffortPolicyForRequest），合法性保持，因此跳过重复校验。
 	bodyRef := service.NewRequestBodyRef(body)
-	parsedReq, _ := service.ParseGatewayRequest(bodyRef, "responses")
+	parsedReq, _ := service.ParseGatewayRequestValidated(bodyRef, "responses")
 	if parsedReq == nil {
 		parsedReq = &service.ParsedRequest{Model: reqModel, Stream: reqStream, Body: bodyRef}
 	}

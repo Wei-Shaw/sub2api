@@ -165,7 +165,7 @@ func parseBoth(t *testing.T, protocol string, body []byte) (parsedSnapshot, pars
 	// 直接调被重构的这一步：ParseGatewayRequest 在失败时返回 nil，无法比较错误路径上的中间状态。
 	newBody := NewRequestBodyRef(append([]byte(nil), body...))
 	newParsed := &ParsedRequest{Body: newBody}
-	newErr := parseGatewayRequestBody(newParsed, protocol)
+	newErr := parseGatewayRequestBody(newParsed, protocol, true)
 
 	return snapshotOf(legacyParsed, legacyErr), snapshotOf(newParsed, newErr)
 }
@@ -275,6 +275,30 @@ func TestParseGatewayRequestMatchesLegacyRandomized(t *testing.T) {
 	}
 }
 
+// 已校验变体只允许在「body 合法」的前提下使用；合法 JSON 上两者必须产出完全相同的结果。
+func TestParseGatewayRequestValidatedMatchesValidatingPath(t *testing.T) {
+	bodies := []string{
+		`{"model":"gpt-5.5","stream":true,"input":[{"type":"message"}]}`,
+		`{"model":"claude-x[1m]","messages":[],"system":"s","max_tokens":8}`,
+		`{"metadata":{"user_id":"u"},"thinking":{"type":"enabled"},"output_config":{"effort":" high "}}`,
+		`{"contents":[],"systemInstruction":{"parts":[]}}`,
+		`{}`,
+	}
+	protocols := []string{"responses", "chat_completions", domain.PlatformAnthropic, domain.PlatformGemini}
+	for _, body := range bodies {
+		for _, protocol := range protocols {
+			validating := &ParsedRequest{Body: NewRequestBodyRef([]byte(body))}
+			validatingErr := parseGatewayRequestBody(validating, protocol, true)
+
+			trusted := &ParsedRequest{Body: NewRequestBodyRef([]byte(body))}
+			trustedErr := parseGatewayRequestBody(trusted, protocol, false)
+
+			require.Equal(t, snapshotOf(validating, validatingErr), snapshotOf(trusted, trustedErr),
+				"body=%s protocol=%s", body, protocol)
+		}
+	}
+}
+
 func FuzzParseGatewayRequestMatchesLegacy(f *testing.F) {
 	f.Add([]byte(`{"model":"m","stream":true,"input":[]}`), "responses")
 	f.Add([]byte(`{"model":"claude-x[1m]","messages":[],"system":"s"}`), domain.PlatformAnthropic)
@@ -289,5 +313,14 @@ func FuzzParseGatewayRequestMatchesLegacy(f *testing.F) {
 		want, got := parseBoth(t, protocol, body)
 		require.Equal(t, want, got, "body=%q protocol=%s", body, protocol)
 
+		// 合法 JSON 上，跳过校验不得改变结果。
+		if gjson.ValidBytes(body) {
+			validating := &ParsedRequest{Body: NewRequestBodyRef(append([]byte(nil), body...))}
+			validatingErr := parseGatewayRequestBody(validating, protocol, true)
+			trusted := &ParsedRequest{Body: NewRequestBodyRef(append([]byte(nil), body...))}
+			trustedErr := parseGatewayRequestBody(trusted, protocol, false)
+			require.Equal(t, snapshotOf(validating, validatingErr), snapshotOf(trusted, trustedErr),
+				"validated path diverged: body=%q protocol=%s", body, protocol)
+		}
 	})
 }
