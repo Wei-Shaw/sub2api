@@ -19,6 +19,7 @@ type Group struct {
 	ID             int64
 	Name           string
 	Description    string
+	I18n           GroupI18n // 名称与描述的界面语言译文；缺失的语言沿用 Name/Description
 	Platform       string
 	RateMultiplier float64
 	// 高峰时段倍率：peak_rate_enabled 为 true 且当前时刻处于 [PeakStart, PeakEnd) 时，
@@ -43,6 +44,7 @@ type Group struct {
 	// 图片生成计费配置（antigravity 和 gemini 平台使用）
 	AllowImageGeneration         bool
 	AllowBatchImageGeneration    bool
+	ImageCountBilling            bool
 	ImageRateIndependent         bool
 	ImageRateMultiplier          float64
 	ImagePrice1K                 *float64

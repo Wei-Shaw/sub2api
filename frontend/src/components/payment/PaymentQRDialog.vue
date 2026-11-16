@@ -234,12 +234,13 @@ async function tryRecoverPendingOrder(order: PaymentOrder): Promise<PaymentOrder
 
 function startCountdown(seconds: number) {
   remainingSeconds.value = Math.max(0, seconds)
+  const deadline = Date.now() + remainingSeconds.value * 1000
   if (remainingSeconds.value <= 0) {
     expired.value = true
     return
   }
   countdownTimer = setInterval(() => {
-    remainingSeconds.value--
+    remainingSeconds.value = Math.max(0, Math.floor((deadline - Date.now()) / 1000))
     if (remainingSeconds.value <= 0) {
       expired.value = true
       cleanup()

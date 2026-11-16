@@ -74,12 +74,7 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
-const readMode = (): string => {
-  const mode = props.account.credentials?.account_mode
-  return typeof mode === 'string' ? mode : ''
-}
-
-const visible = computed(() => cnQuotaCellVisible(props.account.platform, readMode()))
+const visible = computed(() => cnQuotaCellVisible(props.account))
 
 const loading = ref(false)
 const error = ref<string | null>(null)

@@ -92,7 +92,7 @@ jobs:
           version: 9
       - uses: actions/setup-node@v6
         with:
-          node-version: '20'
+          node-version: '24'
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
@@ -137,7 +137,7 @@ jobs:
           check-latest: false
           cache: false
       - name: Verify Go version
-        run: go version | grep -q 'go1.27.0'
+        run: go version | grep -q 'go1.27.3'
       - name: Restore target-specific Go cache
         id: go-cache
         uses: actions/cache/restore@v6

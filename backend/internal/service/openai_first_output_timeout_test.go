@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -481,10 +482,12 @@ func TestOpenAINativeFirstOutputStageOverflowFailsOverWithoutAttemptBytes(t *tes
 	}}
 	svc := &OpenAIGatewayService{cfg: cfg, responseHeaderFilter: compileResponseHeaderFilter(cfg)}
 	const lineSize = 1024*1024 - 256
-	prefix := `data: {"type":"response.output_text.delta","delta":"`
-	suffix := `"}`
+	// Complete metadata events stay staged until visible output arrives. Each
+	// event fits the transport cap; their cumulative size exceeds the stage cap.
+	prefix := `data: {"type":"response.in_progress","response":{"id":"resp_staged","padding":"`
+	suffix := `"}}`
 	line := prefix + strings.Repeat("x", lineSize-len(prefix)-len(suffix)) + suffix
-	body := strings.Repeat(line+"\n", 9)
+	body := strings.Repeat(line+"\n\n", 9)
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
@@ -507,6 +510,45 @@ func TestOpenAINativeFirstOutputStageOverflowFailsOverWithoutAttemptBytes(t *tes
 	require.Empty(t, rec.Body.String())
 	require.Empty(t, rec.Header().Values("X-Request-Id"))
 	require.Empty(t, rec.Header().Values("X-Ratelimit-Remaining-Requests"))
+}
+
+func TestOpenAINativeFirstOutputEventLimitFailsOverWithoutAttemptBytes(t *testing.T) {
+	for _, explicitLimit := range []int64{0, 1024} {
+		t.Run(fmt.Sprintf("event_limit_%d", explicitLimit), func(t *testing.T) {
+			cfg := &config.Config{Gateway: config.GatewayConfig{
+				OpenAIFirstOutputTimeoutSeconds: 30,
+				MaxLineSize:                     2048,
+				SSEEventMaxBytes:                explicitLimit,
+			}}
+			svc := &OpenAIGatewayService{cfg: cfg, responseHeaderFilter: compileResponseHeaderFilter(cfg)}
+			line := `data: {"type":"response.output_text.delta","delta":"` + strings.Repeat("x", 700) + `"}`
+			// No blank line: several individually legal lines form one oversized
+			// event, which must fail before the independent 8 MiB stage limit.
+			body := strings.Repeat(line+"\n", 4)
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+			resp := &http.Response{
+				StatusCode: http.StatusOK,
+				Header: http.Header{
+					"X-Request-Id":                   []string{"request-event-overflow"},
+					"X-Ratelimit-Remaining-Requests": []string{"1"},
+				},
+				Body: io.NopCloser(strings.NewReader(body)),
+			}
+
+			_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI}, time.Now(), "model", "model")
+
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+			require.True(t, failoverErr.SafeToFailoverAfterWrite)
+			require.Contains(t, string(failoverErr.ResponseBody), "event exceeds first-output transport limit")
+			require.Empty(t, rec.Body.String())
+			require.Empty(t, rec.Header().Values("X-Request-Id"))
+			require.Empty(t, rec.Header().Values("X-Ratelimit-Remaining-Requests"))
+		})
+	}
 }
 
 func TestOpenAINativeFirstOutputScannerRejectsOversizedLineWithoutLeak(t *testing.T) {

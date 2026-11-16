@@ -57,6 +57,9 @@ func (s *OpenAIGatewayService) resolveOpenAICompactFallbackModel(account *Accoun
 	if account != nil {
 		if mapped, matched := account.ResolveCompactMappedModel(requestedModel); matched {
 			if mapped = strings.TrimSpace(mapped); mapped != "" {
+				if isRetiredOpenAISubscriptionModel(account, mapped) {
+					return ""
+				}
 				return mapped
 			}
 		}
@@ -68,7 +71,11 @@ func (s *OpenAIGatewayService) resolveOpenAICompactFallbackModel(account *Accoun
 	if fallback == "" {
 		return ""
 	}
-	return strings.TrimSpace(resolveOpenAIAccountUpstreamModelForRequest(account, fallback, false))
+	resolved := strings.TrimSpace(resolveOpenAIAccountUpstreamModelForRequest(account, fallback, false))
+	if isRetiredOpenAISubscriptionModel(account, resolved) {
+		return ""
+	}
+	return resolved
 }
 
 func isOpenAICompactModelFailure(statusCode int, upstreamMsg string, upstreamBody []byte) bool {

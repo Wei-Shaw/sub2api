@@ -2881,6 +2881,10 @@ func (s *oauthPendingFlowRefreshTokenCacheStub) DeleteTokenFamily(context.Contex
 	return nil
 }
 
+func (s *oauthPendingFlowRefreshTokenCacheStub) ConsumeRefreshToken(context.Context, string) (*service.RefreshTokenData, error) {
+	return nil, service.ErrRefreshTokenNotFound
+}
+
 func (s *oauthPendingFlowRefreshTokenCacheStub) AddToUserTokenSet(context.Context, int64, string, time.Duration) error {
 	return nil
 }
@@ -3592,4 +3596,21 @@ func (oauthPendingFlowTotpEncryptorStub) Encrypt(plaintext string) (string, erro
 
 func (oauthPendingFlowTotpEncryptorStub) Decrypt(ciphertext string) (string, error) {
 	return ciphertext, nil
+}
+
+func (s *oauthPendingFlowEmailCacheStub) IncrVerificationCodeAttempts(_ context.Context, email string) (int, error) {
+	data := s.verificationCodes[email]
+	if data == nil {
+		return 0, errors.New("verification code not found")
+	}
+	data.Attempts++
+	return data.Attempts, nil
+}
+
+func (s *oauthPendingFlowEmailCacheStub) IncrNotifyVerifyCodeAttempts(context.Context, string) (int, error) {
+	return 0, errors.New("notify verification code not found")
+}
+
+func (s *oauthPendingFlowEmailCacheStub) ConsumePasswordResetToken(context.Context, string, string) (bool, error) {
+	return false, nil
 }

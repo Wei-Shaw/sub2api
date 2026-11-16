@@ -142,6 +142,8 @@ type simpleModeGroupResponse struct {
 	Platform    string `json:"platform"`
 	Status      string `json:"status"`
 
+	I18n service.GroupI18n `json:"i18n,omitempty"`
+
 	AccountCount            int64     `json:"account_count,omitempty"`
 	ActiveAccountCount      int64     `json:"active_account_count,omitempty"`
 	RateLimitedAccountCount int64     `json:"rate_limited_account_count,omitempty"`
@@ -157,6 +159,7 @@ func groupForSimpleMode(group *service.Group) *simpleModeGroupResponse {
 	return &simpleModeGroupResponse{
 		ID: group.ID, Name: group.Name, Description: group.Description, Platform: group.Platform,
 		Status:             group.Status,
+		I18n:               group.I18n,
 		AccountCount:       group.AccountCount,
 		ActiveAccountCount: group.ActiveAccountCount, RateLimitedAccountCount: group.RateLimitedAccountCount,
 		SortOrder: group.SortOrder, CreatedAt: group.CreatedAt, UpdatedAt: group.UpdatedAt,
@@ -167,7 +170,7 @@ func sanitizeCreateGroupRequestForSimpleMode(req *CreateGroupRequest) {
 	if req == nil {
 		return
 	}
-	allowed := CreateGroupRequest{Name: req.Name, Description: req.Description, Platform: req.Platform}
+	allowed := CreateGroupRequest{Name: req.Name, Description: req.Description, I18n: req.I18n, Platform: req.Platform}
 	allowed.RateMultiplier = 1
 	allowed.SubscriptionType = service.SubscriptionTypeStandard
 	*req = allowed
@@ -177,14 +180,15 @@ func sanitizeUpdateGroupRequestForSimpleMode(req *UpdateGroupRequest) {
 	if req == nil {
 		return
 	}
-	*req = UpdateGroupRequest{Name: req.Name, Description: req.Description}
+	*req = UpdateGroupRequest{Name: req.Name, Description: req.Description, I18n: req.I18n}
 }
 
 // CreateGroupRequest represents create group request
 type CreateGroupRequest struct {
 	Name                      string                        `json:"name" binding:"required"`
 	Description               string                        `json:"description"`
-	Platform                  string                        `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok kimi zhipu deepseek minimax opencode_go composite"`
+	I18n                      service.GroupI18n             `json:"i18n"` // 名称与描述的界面语言译文
+	Platform                  string                        `json:"platform" binding:"omitempty,group_platform"`
 	RateMultiplier            float64                       `json:"rate_multiplier"`
 	IsExclusive               bool                          `json:"is_exclusive"`
 	SubscriptionType          string                        `json:"subscription_type" binding:"omitempty,oneof=standard subscription"`
@@ -196,6 +200,7 @@ type CreateGroupRequest struct {
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            bool                          `json:"allow_image_generation"`
 	AllowBatchImageGeneration       bool                          `json:"allow_batch_image_generation"`
+	ImageCountBilling               bool                          `json:"image_count_billing"`
 	ImageRateIndependent            bool                          `json:"image_rate_independent"`
 	ImageRateMultiplier             *float64                      `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier    *float64                      `json:"batch_image_discount_multiplier"`
@@ -258,7 +263,8 @@ type CreateGroupRequest struct {
 type UpdateGroupRequest struct {
 	Name                      string                         `json:"name"`
 	Description               *string                        `json:"description"`
-	Platform                  string                         `json:"platform" binding:"omitempty,oneof=anthropic openai gemini antigravity grok kimi zhipu deepseek minimax opencode_go composite"`
+	I18n                      *service.GroupI18n             `json:"i18n"` // 缺省不修改，传入则整体替换
+	Platform                  string                         `json:"platform" binding:"omitempty,group_platform"`
 	RateMultiplier            *float64                       `json:"rate_multiplier"`
 	IsExclusive               *bool                          `json:"is_exclusive"`
 	Status                    string                         `json:"status" binding:"omitempty,oneof=active inactive"`
@@ -271,6 +277,7 @@ type UpdateGroupRequest struct {
 	// 图片生成计费配置（antigravity 和 gemini 平台使用，负数表示清除配置）
 	AllowImageGeneration            *bool                         `json:"allow_image_generation"`
 	AllowBatchImageGeneration       *bool                         `json:"allow_batch_image_generation"`
+	ImageCountBilling               *bool                         `json:"image_count_billing"`
 	ImageRateIndependent            *bool                         `json:"image_rate_independent"`
 	ImageRateMultiplier             *float64                      `json:"image_rate_multiplier"`
 	BatchImageDiscountMultiplier    *float64                      `json:"batch_image_discount_multiplier"`
@@ -332,7 +339,7 @@ type UpdateGroupRequest struct {
 type CompositeRouteRequest struct {
 	PublicModel    string `json:"public_model" binding:"required"`
 	MatchType      string `json:"match_type" binding:"omitempty,oneof=exact prefix"`
-	TargetPlatform string `json:"target_platform" binding:"required,oneof=anthropic openai gemini antigravity grok kimi zhipu deepseek minimax opencode_go"`
+	TargetPlatform string `json:"target_platform" binding:"required,concrete_platform"`
 	UpstreamModel  string `json:"upstream_model"`
 	Endpoint       string `json:"endpoint" binding:"omitempty,oneof=any messages count_tokens responses chat_completions embeddings images gemini"`
 	Priority       int    `json:"priority"`
@@ -664,6 +671,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 	group, err := h.adminService.CreateGroup(c.Request.Context(), &service.CreateGroupInput{
 		Name:                            req.Name,
 		Description:                     req.Description,
+		I18n:                            req.I18n,
 		Platform:                        req.Platform,
 		RateMultiplier:                  req.RateMultiplier,
 		IsExclusive:                     req.IsExclusive,
@@ -675,6 +683,7 @@ func (h *GroupHandler) Create(c *gin.Context) {
 		ModelPricing:                    req.ModelPricing,
 		AllowImageGeneration:            req.AllowImageGeneration,
 		AllowBatchImageGeneration:       req.AllowBatchImageGeneration,
+		ImageCountBilling:               req.ImageCountBilling,
 		ImageRateIndependent:            req.ImageRateIndependent,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    req.BatchImageDiscountMultiplier,
@@ -809,6 +818,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 	group, err := h.adminService.UpdateGroup(c.Request.Context(), groupID, &service.UpdateGroupInput{
 		Name:                            req.Name,
 		Description:                     req.Description,
+		I18n:                            req.I18n,
 		Platform:                        req.Platform,
 		RateMultiplier:                  req.RateMultiplier,
 		IsExclusive:                     req.IsExclusive,
@@ -821,6 +831,7 @@ func (h *GroupHandler) Update(c *gin.Context) {
 		ModelPricing:                    req.ModelPricing,
 		AllowImageGeneration:            req.AllowImageGeneration,
 		AllowBatchImageGeneration:       req.AllowBatchImageGeneration,
+		ImageCountBilling:               req.ImageCountBilling,
 		ImageRateIndependent:            req.ImageRateIndependent,
 		ImageRateMultiplier:             req.ImageRateMultiplier,
 		BatchImageDiscountMultiplier:    req.BatchImageDiscountMultiplier,

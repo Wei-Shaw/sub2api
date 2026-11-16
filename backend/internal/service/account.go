@@ -4,10 +4,10 @@ package service
 import (
 	"encoding/json"
 	"errors"
-	"hash/fnv"
 	"log/slog"
 	"net/url"
 	"reflect"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -17,6 +17,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/geminicli"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
@@ -74,6 +75,9 @@ type Account struct {
 	modelMappingCacheRawLen         int
 	modelMappingCacheRawSig         uint64
 	modelMappingCacheRuntimeVersion uint64
+	// modelMappingCacheShared 为 true 时缓存来自只读共享母本（见 PrepareSharedSnapshot），
+	// 指针、长度与运行时版本匹配即直接复用预解析结果，不计算签名。
+	modelMappingCacheShared bool
 
 	// header_overrides 热路径缓存（非持久化字段，同 model_mapping 缓存先例）
 	headerOverrideCache               map[string]string
@@ -128,11 +132,20 @@ func isOpenAIPersonalAccessTokenAuthMode(value string) bool {
 	}
 }
 
+// TempUnschedulableRule.Scope 的取值：命中后隔离的粒度。
+const (
+	TempUnschedScopeAccount = "account"
+	TempUnschedScopeModel   = "model"
+)
+
 type TempUnschedulableRule struct {
 	ErrorCode       int      `json:"error_code"`
 	Keywords        []string `json:"keywords"`
 	DurationMinutes int      `json:"duration_minutes"`
 	Description     string   `json:"description"`
+	// Scope 决定命中后的隔离粒度：account 暂停整个账号，model 只冷却本次请求的模型。
+	// 为空时模型已知且非 401 走模型级，否则账号级。
+	Scope string `json:"scope,omitempty"`
 }
 
 func (a *Account) IsActive() bool {
@@ -195,7 +208,7 @@ func (a *Account) IsSchedulable() bool {
 	if a.TempUnschedulableUntil != nil && now.Before(*a.TempUnschedulableUntil) {
 		return false
 	}
-	if a.IsAPIKeyOrBedrock() && a.IsQuotaExceeded() {
+	if a.SupportsAccountQuota() && a.IsQuotaExceeded() {
 		return false
 	}
 	return true
@@ -268,6 +281,10 @@ func (a *Account) IsGrok() bool {
 	return a.Platform == PlatformGrok
 }
 
+func (a *Account) IsTypeSafe() bool {
+	return a != nil && a.Platform == PlatformTypeSafe
+}
+
 func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
 }
@@ -298,7 +315,7 @@ func (a *Account) IsCNProvider() bool {
 // openai/grok 原生走 OpenAI 网关；国产供应商同为 OpenAI Chat Completions
 // 兼容上游，也经 OpenAI 网关转发。OpenCode 同样经 OpenAI 网关按模型分流。
 func (a *Account) IsOpenAICompatible() bool {
-	return a != nil && (a.Platform == PlatformOpenAI || a.Platform == PlatformGrok || a.IsCNProvider() || a.IsOpenCodeGo())
+	return a != nil && domain.UsesOpenAIGateway(a.Platform)
 }
 
 func (a *Account) GeminiOAuthType() string {
@@ -332,6 +349,13 @@ func (a *Account) IsGeminiCodeAssist() bool {
 // Gemini CLI / Code Assist OAuth channel.
 func (a *Account) IsGeminiGoogleOne() bool {
 	return a.Platform == PlatformGemini && a.Type == AccountTypeOAuth && a.GeminiOAuthType() == "google_one"
+}
+
+// IsGeminiThirdPartyAPIKey reports whether a Gemini API Key account points at a
+// non-Google base URL. Such upstreams carry no AI Studio tier or daily quota.
+func (a *Account) IsGeminiThirdPartyAPIKey() bool {
+	return a != nil && a.Platform == PlatformGemini && a.Type == AccountTypeAPIKey &&
+		!isOfficialGeminiAPIBaseURL(a.GetCredential("base_url"))
 }
 
 func (a *Account) CanGetUsage() bool {
@@ -455,6 +479,7 @@ func (a *Account) GetTempUnschedulableRules() []TempUnschedulableRule {
 			Keywords:        parseTempUnschedStrings(entry["keywords"]),
 			DurationMinutes: parseTempUnschedInt(entry["duration_minutes"]),
 			Description:     parseTempUnschedString(entry["description"]),
+			Scope:           normalizeTempUnschedScope(entry["scope"]),
 		}
 
 		if rule.ErrorCode <= 0 || rule.DurationMinutes <= 0 || len(rule.Keywords) == 0 {
@@ -465,6 +490,18 @@ func (a *Account) GetTempUnschedulableRules() []TempUnschedulableRule {
 	}
 
 	return rules
+}
+
+// normalizeTempUnschedScope 只认 account / model 两个值，其余一律视为未设置。
+func normalizeTempUnschedScope(raw any) string {
+	switch strings.ToLower(strings.TrimSpace(parseTempUnschedString(raw))) {
+	case TempUnschedScopeAccount:
+		return TempUnschedScopeAccount
+	case TempUnschedScopeModel:
+		return TempUnschedScopeModel
+	default:
+		return ""
+	}
 }
 
 func parseTempUnschedString(value any) string {
@@ -600,6 +637,9 @@ func (a *Account) GetModelMapping() map[string]string {
 		a.modelMappingCacheRawPtr == rawPtr &&
 		a.modelMappingCacheRawLen == rawLen &&
 		a.modelMappingCacheRuntimeVersion == runtimeVersion {
+		if a.modelMappingCacheShared {
+			return a.modelMappingCache
+		}
 		rawSig = modelMappingSignature(rawMapping)
 		rawSigReady = true
 		if a.modelMappingCacheRawSig == rawSig {
@@ -619,7 +659,22 @@ func (a *Account) GetModelMapping() map[string]string {
 	a.modelMappingCacheRawLen = rawLen
 	a.modelMappingCacheRawSig = rawSig
 	a.modelMappingCacheRuntimeVersion = runtimeVersion
+	a.modelMappingCacheShared = false
 	return mapping
+}
+
+// PrepareSharedSnapshot 预解析模型映射，并把账号标记为只读共享母本。
+// 母本按值复制出的副本与母本共用 Credentials 及其中 model_mapping 的同一 map：
+// 这些内层 map 在运行期不被原地修改，母本留在缓存期间持有这些 map，其地址不会被复用，
+// 因此副本在指针、长度与运行时版本都匹配时直接复用预解析结果，不计算签名；
+// 副本替换 Credentials 等导致任一项不匹配时回到普通的重建路径。
+// 只能由构造该账号的 goroutine 在其发布给其它 goroutine 之前调用，发布后母本不得再被修改。
+func (a *Account) PrepareSharedSnapshot() {
+	if a == nil {
+		return
+	}
+	a.GetModelMapping()
+	a.modelMappingCacheShared = true
 }
 
 func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]string {
@@ -656,26 +711,7 @@ func (a *Account) resolveModelMapping(rawMapping map[string]any) map[string]stri
 	}
 	if len(result) > 0 {
 		if a.Platform == domain.PlatformAntigravity {
-			ensureAntigravityDefaultPassthroughs(result, []string{
-				"gemini-3-flash",
-				"gemini-3.1-pro-high",
-				"gemini-3.1-pro-low",
-				"gemini-3.6-flash",
-				"gemini-3.6-flash-high",
-				"gemini-3.6-flash-low",
-				"gemini-3.6-flash-medium",
-				"gemini-3.6-flash-tiered",
-				"gemini-3.7-flash",
-				"gemini-3.7-flash-high",
-				"gemini-3.7-flash-low",
-				"gemini-3.7-flash-medium",
-				"gemini-3.7-flash-tiered",
-				"gemini-3.8-flash",
-				"gemini-3.8-flash-high",
-				"gemini-3.8-flash-low",
-				"gemini-3.8-flash-medium",
-				"gemini-3.8-flash-tiered",
-			})
+			ensureAntigravityDefaultPassthroughs(result, antigravityDefaultPassthroughModels)
 			applyAntigravityGemini31ProAliases(result)
 		}
 		return result
@@ -701,28 +737,101 @@ func mapPtr(m map[string]any) uintptr {
 	return reflect.ValueOf(m).Pointer()
 }
 
+const (
+	modelMappingSignatureFNVOffset = 14695981039346656037
+	modelMappingSignatureFNVPrime  = 1099511628211
+)
+
+// modelMappingSignature 计算原始映射内容的进程内校验值，与 map 遍历顺序无关且不分配内存。
+// 每个条目把 key、分隔字节 0 与 value（string 写其字节，其它类型写标记字节 1）
+// 放进同一个 FNV-1a 哈希并经 fmix64 收尾，再对所有条目求和；
+// key 与 value 同在一个条目哈希里，交换两个 key 的 value 会改变结果。
 func modelMappingSignature(rawMapping map[string]any) uint64 {
 	if len(rawMapping) == 0 {
 		return 0
 	}
-	keys := make([]string, 0, len(rawMapping))
-	for k := range rawMapping {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	h := fnv.New64a()
-	for _, k := range keys {
-		_, _ = h.Write([]byte(k))
-		_, _ = h.Write([]byte{0})
-		if v, ok := rawMapping[k].(string); ok {
-			_, _ = h.Write([]byte(v))
+	var sum uint64
+	for k, v := range rawMapping {
+		h := uint64(modelMappingSignatureFNVOffset)
+		h = fnv1aString(h, k)
+		h = fnv1aByte(h, 0)
+		if s, ok := v.(string); ok {
+			h = fnv1aString(h, s)
 		} else {
-			_, _ = h.Write([]byte{1})
+			h = fnv1aByte(h, 1)
 		}
-		_, _ = h.Write([]byte{0xff})
+		sum += fmix64(h)
 	}
-	return h.Sum64()
+	return sum
+}
+
+func fnv1aString(h uint64, s string) uint64 {
+	for i := 0; i < len(s); i++ {
+		h ^= uint64(s[i])
+		h *= modelMappingSignatureFNVPrime
+	}
+	return h
+}
+
+func fnv1aByte(h uint64, b byte) uint64 {
+	h ^= uint64(b)
+	h *= modelMappingSignatureFNVPrime
+	return h
+}
+
+// fmix64 是 MurmurHash3 的 64 位收尾函数，使条目哈希各位充分混合后再求和。
+func fmix64(h uint64) uint64 {
+	h ^= h >> 33
+	h *= 0xff51afd7ed558ccd
+	h ^= h >> 33
+	h *= 0xc4ceb9fe1a85ec53
+	h ^= h >> 33
+	return h
+}
+
+// antigravityDefaultPassthroughModels 是 Antigravity 显式 model_mapping 运行时补齐的默认透传条目：
+// 让新模型发布前保存的映射也能调用这些模型。
+var antigravityDefaultPassthroughModels = []string{
+	"gemini-3-flash",
+	"gemini-3.1-pro-high",
+	"gemini-3.1-pro-low",
+	"gemini-3.6-flash",
+	"gemini-3.6-flash-high",
+	"gemini-3.6-flash-low",
+	"gemini-3.6-flash-medium",
+	"gemini-3.6-flash-tiered",
+	"gemini-3.7-flash",
+	"gemini-3.7-flash-high",
+	"gemini-3.7-flash-low",
+	"gemini-3.7-flash-medium",
+	"gemini-3.7-flash-tiered",
+	"gemini-3.8-flash",
+	"gemini-3.8-flash-high",
+	"gemini-3.8-flash-low",
+	"gemini-3.8-flash-medium",
+	"gemini-3.8-flash-tiered",
+}
+
+// isAntigravityInjectedDefaultPassthrough 判断 GetModelMapping 中的 key→target 是否仅由
+// resolveModelMapping 运行时补齐（管理员未写入 credentials.model_mapping）。
+func (a *Account) isAntigravityInjectedDefaultPassthrough(key, target string) bool {
+	if a == nil || a.Platform != domain.PlatformAntigravity || key != target || !slices.Contains(antigravityDefaultPassthroughModels, key) {
+		return false
+	}
+	rawMapping, _ := a.Credentials["model_mapping"].(map[string]any)
+	hasExplicitEntry := false
+	for _, v := range rawMapping {
+		if _, ok := v.(string); ok {
+			hasExplicitEntry = true
+			break
+		}
+	}
+	if !hasExplicitEntry {
+		// 空映射走默认目录，不做运行时补齐。
+		return false
+	}
+	_, configured := rawMapping[key].(string)
+	return !configured
 }
 
 func ensureAntigravityDefaultPassthrough(mapping map[string]string, model string) {
@@ -853,6 +962,10 @@ func resolveRequestedModelInMapping(mapping map[string]string, requestedModel st
 // （isDeepseekServableModel）——未知模型名透传上游只会得到 404/400，并误触发
 // per-(账号,模型) 30 分钟冷却；带 [1m] 上下文后缀的写法先归一化再比对。
 func (a *Account) IsModelSupported(requestedModel string) bool {
+	return supportsOpenAIRequestModel(a, requestedModel, false)
+}
+
+func (a *Account) isModelMappingSupported(requestedModel string) bool {
 	// 透传模式仅替换认证、模型语义完全交由上游决定，因此放行所有模型。
 	// 该短路必须在 model_mapping 判定之前：账号从"白名单模式"切换到透传后，
 	// credentials 里常残留旧的非空 model_mapping，若不在此放行，透传账号会被
@@ -980,6 +1093,10 @@ func (a *Account) GetBaseURL() string {
 	}
 	baseURL := a.GetCredential("base_url")
 	if baseURL == "" {
+		// TypeSafe keys must never fall back to the Anthropic host.
+		if a.Platform == PlatformTypeSafe {
+			return typesafe.DefaultBaseURL
+		}
 		return "https://api.anthropic.com"
 	}
 	if a.Platform == PlatformAntigravity {
@@ -999,6 +1116,28 @@ func (a *Account) GetGeminiBaseURL(defaultBaseURL string) string {
 		return strings.TrimRight(baseURL, "/") + "/antigravity"
 	}
 	return baseURL
+}
+
+func (a *Account) GetTypeSafeBaseURL() string {
+	if a == nil || !a.IsTypeSafe() || a.Type != AccountTypeAPIKey {
+		return ""
+	}
+	baseURL := strings.TrimRight(strings.TrimSpace(a.GetCredential("base_url")), "/")
+	// The System One path already carries /v1; accept a base URL pasted with it.
+	if len(baseURL) >= 3 && strings.EqualFold(baseURL[len(baseURL)-3:], "/v1") {
+		baseURL = strings.TrimRight(baseURL[:len(baseURL)-3], "/")
+	}
+	if baseURL == "" {
+		return typesafe.DefaultBaseURL
+	}
+	return baseURL
+}
+
+func (a *Account) GetTypeSafeAPIKey() string {
+	if a == nil || !a.IsTypeSafe() || a.Type != AccountTypeAPIKey {
+		return ""
+	}
+	return strings.TrimSpace(a.GetCredential("api_key"))
 }
 
 func (a *Account) GetExtraString(key string) string {
@@ -1287,9 +1426,24 @@ func (a *Account) IsBedrockAPIKey() bool {
 	return a.IsBedrock() && a.GetCredential("auth_mode") == "apikey"
 }
 
-// IsAPIKeyOrBedrock 返回账号类型是否支持配额和池模式等特性
+// IsAPIKeyOrBedrock 返回账号类型是否支持池模式等特性（账号配额判定见 SupportsAccountQuota）
 func (a *Account) IsAPIKeyOrBedrock() bool {
 	return a.Type == AccountTypeAPIKey || a.Type == AccountTypeBedrock
+}
+
+// AccountTypeSupportsQuota 返回账号类型是否支持账号配额（quota_limit 及日/周额度、quota_used 累加、超限停调度）。
+// 在 apikey/bedrock 之外额外放开 Vertex service_account；池模式等其它特性仍只看 IsAPIKeyOrBedrock。
+func AccountTypeSupportsQuota(accountType string) bool {
+	switch strings.ToLower(accountType) {
+	case AccountTypeAPIKey, AccountTypeBedrock, AccountTypeServiceAccount:
+		return true
+	}
+	return false
+}
+
+// SupportsAccountQuota 返回账号是否支持账号配额，类型集合见 AccountTypeSupportsQuota。
+func (a *Account) SupportsAccountQuota() bool {
+	return AccountTypeSupportsQuota(a.Type)
 }
 
 func (a *Account) IsOpenAI() bool {
@@ -1353,7 +1507,7 @@ func (a *Account) IsOpenAIApiKey() bool {
 // 适用 openai、国产 OpenAI 兼容供应商（kimi/zhipu/deepseek）与 OpenCode Go；
 // grok 走 GetGrokBaseURL，此处对 grok 返回 "" 以保持原有行为。
 func (a *Account) GetOpenAIBaseURL() string {
-	if !a.IsOpenAI() && !a.IsCNProvider() && !a.IsOpenCodeGo() {
+	if !a.IsOpenAI() && !a.IsMultiProtocolAPIKey() {
 		return ""
 	}
 	if a.IsMultiProtocolAPIKey() && a.IsAdaptiveAPIProtocol() {
@@ -1368,27 +1522,11 @@ func (a *Account) GetOpenAIBaseURL() string {
 			return baseURL
 		}
 	}
-	// 平台默认 base_url：CN 供应商按 account_mode 选择 payg / coding 默认值。
-	switch a.Platform {
-	case PlatformKimi:
-		if a.GetAccountMode() == AccountModeCoding {
-			return DefaultKimiCodingBaseURL
-		}
-		return DefaultKimiPayGBaseURL
-	case PlatformZhipu:
-		if a.GetAccountMode() == AccountModeCoding {
-			return DefaultZhipuCodingBaseURL
-		}
-		return DefaultZhipuPayGBaseURL
-	case PlatformDeepseek:
-		return DefaultDeepseekBaseURL
-	case PlatformMiniMax:
-		return DefaultMiniMaxBaseURL
-	case PlatformOpenCodeGo:
-		return a.openCodeDefaultChatBaseURL()
-	default:
-		return "https://api.openai.com"
+	// 平台默认 base_url：多协议供应商按 account_mode 查 provider profile。
+	if baseURL := a.defaultProviderBaseURL(APIProtocolChatCompletions); baseURL != "" {
+		return baseURL
 	}
+	return "https://api.openai.com"
 }
 
 // GetAccountMode 返回国产供应商账号的接入模式（payg / coding）；非国产供应商或未设置时
@@ -1429,7 +1567,8 @@ func (a *Account) GetAPIProtocol() string {
 	case APIProtocolChatCompletions:
 		return APIProtocolChatCompletions
 	}
-	if a.IsOpenCodeGo() {
+	// 按模型分流的供应商（多模型聚合平台）未显式配置时默认 adaptive。
+	if a.routesByModel() {
 		return APIProtocolAdaptive
 	}
 	return APIProtocolChatCompletions
@@ -1439,15 +1578,7 @@ func (a *Account) GetAPIProtocol() string {
 // DeepSeek 官方为 /responses（无 /v1）；Kimi 按量付费与 Coding Plan 均为
 // /v1/responses（moonshot.cn / kimi.com/coding）；MiniMax 为 /v1/responses。
 func (a *Account) SupportsNativeCNResponses() bool {
-	if a == nil {
-		return false
-	}
-	switch a.Platform {
-	case PlatformDeepseek, PlatformKimi, PlatformMiniMax, PlatformOpenCodeGo:
-		return true
-	default:
-		return false
-	}
+	return a.providerSupportsProtocol(APIProtocolResponses)
 }
 
 // UsesNativeCNResponses 报告当前账号是否应按原生 Responses 协议转发
@@ -1488,48 +1619,7 @@ func (a *Account) GetCNProtocolBaseURL(protocol string) string {
 			}
 		}
 	}
-	return a.defaultCNProtocolBaseURL(protocol)
-}
-
-func (a *Account) defaultCNProtocolBaseURL(protocol string) string {
-	switch protocol {
-	case APIProtocolAnthropic:
-		switch a.Platform {
-		case PlatformKimi:
-			if a.GetAccountMode() == AccountModeCoding {
-				return DefaultKimiCodingAnthropicBaseURL
-			}
-			return DefaultKimiPayGAnthropicBaseURL
-		case PlatformZhipu:
-			return DefaultZhipuAnthropicBaseURL
-		case PlatformDeepseek:
-			return DefaultDeepseekAnthropicBaseURL
-		case PlatformMiniMax:
-			return DefaultMiniMaxAnthropicBaseURL
-		case PlatformOpenCodeGo:
-			return a.openCodeDefaultAnthropicBaseURL()
-		}
-	case APIProtocolChatCompletions, APIProtocolResponses:
-		switch a.Platform {
-		case PlatformKimi:
-			if a.GetAccountMode() == AccountModeCoding {
-				return DefaultKimiCodingBaseURL
-			}
-			return DefaultKimiPayGBaseURL
-		case PlatformZhipu:
-			if a.GetAccountMode() == AccountModeCoding {
-				return DefaultZhipuCodingBaseURL
-			}
-			return DefaultZhipuPayGBaseURL
-		case PlatformDeepseek:
-			return DefaultDeepseekBaseURL
-		case PlatformMiniMax:
-			return DefaultMiniMaxBaseURL
-		case PlatformOpenCodeGo:
-			return a.openCodeDefaultChatBaseURL()
-		}
-	}
-	return ""
+	return a.defaultProviderBaseURL(protocol)
 }
 
 // IsAnthropicProtocol 报告账号是否以原生 Anthropic 协议接入上游
@@ -1553,23 +1643,7 @@ func (a *Account) GetAnthropicProtocolBaseURL() string {
 			return baseURL
 		}
 	}
-	switch a.Platform {
-	case PlatformKimi:
-		if a.GetAccountMode() == AccountModeCoding {
-			return DefaultKimiCodingAnthropicBaseURL
-		}
-		return DefaultKimiPayGAnthropicBaseURL
-	case PlatformZhipu:
-		return DefaultZhipuAnthropicBaseURL
-	case PlatformDeepseek:
-		return DefaultDeepseekAnthropicBaseURL
-	case PlatformMiniMax:
-		return DefaultMiniMaxAnthropicBaseURL
-	case PlatformOpenCodeGo:
-		return a.openCodeDefaultAnthropicBaseURL()
-	default:
-		return ""
-	}
+	return a.defaultProviderBaseURL(APIProtocolAnthropic)
 }
 
 // GetOpenAIFormatBaseURL 返回供 OpenAI 格式端点（/v1/models、/v1/chat/completions
@@ -1581,26 +1655,10 @@ func (a *Account) GetOpenAIFormatBaseURL() string {
 	if a == nil || !a.IsAnthropicProtocol() {
 		return a.GetOpenAIBaseURL()
 	}
-	switch a.Platform {
-	case PlatformKimi:
-		if a.GetAccountMode() == AccountModeCoding {
-			return DefaultKimiCodingBaseURL
-		}
-		return DefaultKimiPayGBaseURL
-	case PlatformZhipu:
-		if a.GetAccountMode() == AccountModeCoding {
-			return DefaultZhipuCodingBaseURL
-		}
-		return DefaultZhipuPayGBaseURL
-	case PlatformDeepseek:
-		return DefaultDeepseekBaseURL
-	case PlatformMiniMax:
-		return DefaultMiniMaxBaseURL
-	case PlatformOpenCodeGo:
-		return a.openCodeDefaultChatBaseURL()
-	default:
-		return a.GetOpenAIBaseURL()
+	if baseURL := a.defaultProviderBaseURL(APIProtocolChatCompletions); baseURL != "" {
+		return baseURL
 	}
+	return a.GetOpenAIBaseURL()
 }
 
 // GetCNAPIKey 返回国产 OpenAI 兼容供应商账号的 api_key 凭据（kimi/zhipu/deepseek）。
@@ -1612,7 +1670,8 @@ func (a *Account) GetCNAPIKey() string {
 	return a.GetCredential("api_key")
 }
 
-// GetCodingPlanProvider 根据 base_url 识别 Coding Plan 供应商（kimi / zhipu / minimax），
+// GetCodingPlanProvider 根据 base_url 识别 Coding Plan 供应商（kimi / zhipu / minimax；
+// OpenCode Go 订阅与官方主机上的 Command Code、Cline 账号按平台识别），
 // 用于路由到对应的额度查询端点。非 coding 模式或无法识别时返回空串。
 // 只认官方域名：自定义中转不得把第三方 Key 发往厂商官方额度端点。
 func (a *Account) GetCodingPlanProvider() string {
@@ -1622,12 +1681,24 @@ func (a *Account) GetCodingPlanProvider() string {
 	if a.IsOpenCodeGoPlan() {
 		return PlatformOpenCodeGo
 	}
+	if a.IsCommandCode() {
+		if a.commandCodeUsageSupported() {
+			return PlatformCommandCode
+		}
+		return ""
+	}
+	if a.IsCline() {
+		if a.clineAccountAPISupported() {
+			return PlatformCline
+		}
+		return ""
+	}
 	if a.GetAccountMode() != AccountModeCoding {
 		return ""
 	}
 	baseURL := strings.ToLower(a.GetOpenAIBaseURL())
 	switch {
-	case strings.Contains(baseURL, "api.kimi.com/coding"):
+	case isKimiCodingBaseURL(a.GetOpenAIBaseURL()):
 		return PlatformKimi
 	case strings.Contains(baseURL, "bigmodel.cn"), strings.Contains(baseURL, "api.z.ai"):
 		return PlatformZhipu
@@ -1637,6 +1708,24 @@ func (a *Account) GetCodingPlanProvider() string {
 		return PlatformMiniMax
 	default:
 		return ""
+	}
+}
+
+func isKimiCodingBaseURL(baseURL string) bool {
+	parsed, err := url.Parse(baseURL)
+	if err != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.Opaque != "" ||
+		parsed.RawQuery != "" || parsed.ForceQuery || strings.Contains(baseURL, "#") {
+		return false
+	}
+	host := strings.ToLower(parsed.Host)
+	if host != "api.kimi.com" && host != "api.kimi.ai" && host != "api.kimi.com:443" && host != "api.kimi.ai:443" {
+		return false
+	}
+	switch parsed.EscapedPath() {
+	case "/coding", "/coding/", "/coding/v1", "/coding/v1/":
+		return true
+	default:
+		return false
 	}
 }
 
@@ -2321,7 +2410,10 @@ const (
 // 三态：default（跟随渠道）/ enabled（强制开启）/ disabled（强制关闭）。
 // 兼容旧 bool 值：true→enabled, false→default（并记录 debug 日志）。
 func (a *Account) GetWebSearchEmulationMode() string {
-	if a == nil || a.Platform != PlatformAnthropic || a.Type != AccountTypeAPIKey || a.Extra == nil {
+	// OpenAI API Key accounts reach this via /v1/messages; their upstreams
+	// (DeepSeek etc. over Chat Completions) have no web_search tool.
+	if a == nil || a.Type != AccountTypeAPIKey || a.Extra == nil ||
+		(a.Platform != PlatformAnthropic && a.Platform != PlatformOpenAI) {
 		return WebSearchModeDefault
 	}
 	raw := a.Extra[featureKeyWebSearchEmulation]

@@ -16,6 +16,7 @@ import (
 type AvailableGroupRef struct {
 	ID                 int64
 	Name               string
+	I18n               GroupI18n
 	Platform           string
 	SubscriptionType   string
 	RateMultiplier     float64
@@ -66,6 +67,7 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 		groupByID[g.ID] = AvailableGroupRef{
 			ID:                 g.ID,
 			Name:               g.Name,
+			I18n:               g.I18n,
 			Platform:           g.Platform,
 			SubscriptionType:   g.SubscriptionType,
 			RateMultiplier:     g.RateMultiplier,
@@ -137,13 +139,13 @@ func pricingNeedsFallback(p *ChannelModelPricing) bool {
 		return true
 	}
 	if p.InputPrice != nil || p.OutputPrice != nil ||
-		p.CacheWritePrice != nil || p.CacheWrite1hPrice != nil || p.CacheReadPrice != nil ||
+		p.CacheWritePrice != nil || p.CacheWrite1hPrice != nil || p.CacheWrite12hPrice != nil || p.CacheReadPrice != nil ||
 		p.ImageOutputPrice != nil || p.PerRequestPrice != nil {
 		return false
 	}
 	for _, iv := range p.Intervals {
 		if iv.InputPrice != nil || iv.OutputPrice != nil ||
-			iv.CacheWritePrice != nil || iv.CacheWrite1hPrice != nil || iv.CacheReadPrice != nil ||
+			iv.CacheWritePrice != nil || iv.CacheWrite1hPrice != nil || iv.CacheWrite12hPrice != nil || iv.CacheReadPrice != nil ||
 			iv.PerRequestPrice != nil {
 			return false
 		}

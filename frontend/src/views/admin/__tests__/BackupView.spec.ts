@@ -108,6 +108,27 @@ describe('admin BackupView', () => {
     document.body.innerHTML = ''
   })
 
+  it.each(['backup', 'restore'])('does not resume %s polling after navigation during initial loading', async (operation) => {
+    vi.useFakeTimers()
+    let finish!: (value: object) => void
+    listBackups.mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const wrapper = mountBackupView()
+    try {
+      await flushPromises()
+      wrapper.unmount()
+      finish({ items: [{ ...baseRecord('pending'),
+        status: operation === 'backup' ? 'running' : 'completed',
+        restore_status: operation === 'restore' ? 'running' : undefined,
+      }] })
+      await flushPromises()
+      expect(vi.getTimerCount()).toBe(0)
+    } finally {
+      wrapper.unmount()
+      vi.clearAllTimers()
+      vi.useRealTimers()
+    }
+  })
+
   it('显示分卷数并在下载时列出每个分卷链接', async () => {
     listBackups.mockResolvedValue({
       items: [baseRecord('split', [{ index: 1 }, { index: 2 }, { index: 3 }])],

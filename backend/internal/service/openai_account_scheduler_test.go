@@ -48,6 +48,10 @@ func (r schedulerTestOpenAIAccountRepo) ListSchedulableByGroupID(ctx context.Con
 	return append([]Account(nil), r.accounts...), nil
 }
 
+func (r schedulerTestOpenAIAccountRepo) ListModelAvailabilityCandidates(ctx context.Context, groupID *int64, _ []string, _ bool) ([]Account, error) {
+	return r.ListSchedulableByGroupID(ctx, *groupID)
+}
+
 func (r schedulerTestOpenAIAccountRepo) ListSchedulableByPlatform(ctx context.Context, platform string) ([]Account, error) {
 	var result []Account
 	for _, acc := range r.accounts {

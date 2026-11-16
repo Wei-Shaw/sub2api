@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/stretchr/testify/require"
 )
 
@@ -327,14 +328,14 @@ func TestGetOpenAICodexClientVersionFallsBackOnError(t *testing.T) {
 	require.Equal(t, codexCLIVersion, svc.GetOpenAICodexClientVersion(context.Background()))
 }
 
-// 规范 UA：面板未填完整 UA 时按当前生效版本号拼出标准 TUI 形态。
+// 规范 UA：面板未填完整 UA 时按当前生效版本号拼出标准 CLI 形态。
 func TestGetOpenAICodexCanonicalUserAgentBuildsFromVersion(t *testing.T) {
 	svc := NewSettingService(&codexVersionSettingRepoStub{values: map[string]string{
 		SettingKeyOpenAICodexClientVersionSynced: "0.200.1",
 	}}, nil)
 
 	require.Equal(t,
-		"codex-tui/0.200.1"+codexCLIUserAgentSuffix,
+		"codex_cli_rs/0.200.1"+codexCLIUserAgentSuffix,
 		svc.GetOpenAICodexCanonicalUserAgent(context.Background()),
 	)
 }
@@ -517,16 +518,19 @@ func TestGetOpenAICodexCanonicalUserAgentOutboundIdentity(t *testing.T) {
 					SettingKeyOpenAICodexClientVersion:       version.manual,
 					SettingKeyOpenAICodexClientVersionSynced: version.synced,
 				}}, nil)
-				wantUA := buildCodexCLIUserAgent(version.want)
-				wantOriginator := "codex-tui"
+				wantCanonicalUA := buildCodexCLIUserAgent(version.want)
+				wantUA := wantCanonicalUA
+				wantOriginator := openai.CodexDefaultOriginator
 				if ua.client != "" {
 					wantUA = ua.client + "/" + version.want + ua.suffix
+					wantCanonicalUA = wantUA
 					wantOriginator = ua.client
 				}
+				wantOriginator, wantUA, _ = openai.NormalizeCodexClientIdentityToCLI(wantOriginator, wantUA)
 				SetCodexCanonicalUserAgentResolver(func() string {
 					return svc.GetOpenAICodexCanonicalUserAgent(context.Background())
 				})
-				require.Equal(t, wantUA, svc.GetOpenAICodexCanonicalUserAgent(context.Background()))
+				require.Equal(t, wantCanonicalUA, svc.GetOpenAICodexCanonicalUserAgent(context.Background()))
 				identity := resolveCodexOutboundIdentity("")
 				require.Equal(t, wantUA, identity.userAgent)
 				require.Equal(t, wantOriginator, identity.originator)

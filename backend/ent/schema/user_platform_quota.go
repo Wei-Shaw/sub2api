@@ -11,6 +11,7 @@ import (
 	"entgo.io/ent/schema/field"
 	"entgo.io/ent/schema/index"
 	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
 // UserPlatformQuota holds the schema definition for per-user per-platform quota.
@@ -38,15 +39,12 @@ func (UserPlatformQuota) Fields() []ent.Field {
 			MaxLen(32).
 			NotEmpty().
 			Validate(func(s string) error {
-				// 注意：平台列表的单一权威源为 service.AllowedQuotaPlatforms；
-				// 此处为 ent 构建期约束，需与 service.AllowedQuotaPlatforms 保持同步。
-				switch s {
-				case "anthropic", "openai", "gemini", "antigravity", "grok",
-					"kimi", "zhipu", "deepseek", "minimax", "opencode_go":
-					return nil
-				default:
+				// 平台白名单为平台清单（domain/platforms.go）中的全部具体平台，
+				// 与 service.AllowedQuotaPlatforms 同源；数据库不再维护 CHECK 约束。
+				if !domain.IsConcretePlatform(s) {
 					return fmt.Errorf("platform %q is not allowed", s)
 				}
+				return nil
 			}),
 
 		// 日 / 周 / 月 USD 上限：

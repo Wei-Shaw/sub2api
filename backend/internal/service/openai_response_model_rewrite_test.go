@@ -56,7 +56,7 @@ func TestMappedResponseModelForwarding(t *testing.T) {
 						contentType := "application/json"
 						body := payload
 						if kind == "responses" {
-							payload = `{"type":"response.completed","response":{"id":"resp_1","model":"` + returned + `","output":[],"usage":{"input_tokens":1,"output_tokens":1}}}`
+							payload = `{"type":"response.completed","response":{"id":"resp_1","created_at":1700000000,"model":"` + returned + `","output":[],"usage":{"input_tokens":1,"output_tokens":1}}}`
 							want = strings.Replace(payload, `"model":"`+returned+`"`, `"model":"`+model+`"`, 1)
 						}
 						if kind != "json" {

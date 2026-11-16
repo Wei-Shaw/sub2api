@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/tidwall/gjson"
 )
@@ -13,6 +14,10 @@ import (
 // payloads that a few Responses clients still emit. Native Responses input is
 // always authoritative because this path has no separate full-replay attempt.
 func normalizeOpenAIResponsesLegacyIngress(body []byte) ([]byte, bool, error) {
+	return normalizeOpenAIResponsesLegacyIngressWithConfig(nil, body)
+}
+
+func normalizeOpenAIResponsesLegacyIngressWithConfig(cfg *config.Config, body []byte) ([]byte, bool, error) {
 	if len(body) == 0 {
 		return body, false, nil
 	}
@@ -43,7 +48,7 @@ func normalizeOpenAIResponsesLegacyIngress(body []byte) ([]byte, bool, error) {
 	if hasMessages {
 		messages, messagesAreArray := messagesValue.([]any)
 		if messagesAreArray && len(messages) > 0 {
-			legacy, err := convertLegacyResponsesMessages(body)
+			legacy, err := convertLegacyResponsesMessages(cfg, body)
 			if err != nil {
 				return body, false, err
 			}
@@ -105,13 +110,13 @@ type convertedLegacyResponsesMessages struct {
 	hasReasoningEffort bool
 }
 
-func convertLegacyResponsesMessages(body []byte) (convertedLegacyResponsesMessages, error) {
+func convertLegacyResponsesMessages(cfg *config.Config, body []byte) (convertedLegacyResponsesMessages, error) {
 	var converted convertedLegacyResponsesMessages
 	var chatRequest apicompat.ChatCompletionsRequest
 	if err := json.Unmarshal(body, &chatRequest); err != nil {
 		return converted, fmt.Errorf("normalize legacy Responses messages: %w", err)
 	}
-	responsesRequest, err := apicompat.ChatCompletionsToResponses(&chatRequest)
+	responsesRequest, err := chatCompletionsToResponses(cfg, &chatRequest)
 	if err != nil {
 		return converted, fmt.Errorf("normalize legacy Responses messages: %w", err)
 	}

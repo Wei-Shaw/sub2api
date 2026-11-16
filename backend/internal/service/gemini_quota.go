@@ -373,6 +373,10 @@ func geminiQuotaTierKeyForAccount(account *Account) string {
 	if account == nil || account.Platform != PlatformGemini {
 		return ""
 	}
+	// 本地模拟配额只适用于按 Google 账号等级限额的通道；第三方上游与 Vertex 按量付费不套用。
+	if account.IsGeminiThirdPartyAPIKey() || account.IsVertexServiceAccount() {
+		return ""
+	}
 
 	// Note: GeminiOAuthType() already defaults legacy (project_id present) to code_assist.
 	oauthType := strings.ToLower(strings.TrimSpace(account.GeminiOAuthType()))

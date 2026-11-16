@@ -168,10 +168,10 @@ export default {
       openai: {
         description: '将以下配置文件添加到 Codex CLI 配置目录中。',
         authModeTitle: 'Codex 认证模式',
-        authModeDescription: '兼容模式保留旧版 Codex 配置；API Key Mode 用于授权客户端图片执行器。',
+        authModeDescription: '配置默认启用实时联网搜索；API Key 模式支持 Codex 原生生图，旧版客户端可选择兼容模式。',
         authModeLegacy: '兼容模式',
-        authModeApiKey: 'API Key Mode',
-        authModeApiKeyRestartNotice: '保存此配置后，必须完全退出并重启 Codex Desktop 或 CLI，然后新建 task，让客户端重新构建工具注册表。',
+        authModeApiKey: 'API Key 模式（推荐）',
+        authModeApiKeyRestartNotice: '此配置包含 API 密钥，请勿共享或提交到仓库。保存后新建会话验证；若配置未加载，再重启 Codex。生图仍需分组权限、可用余额和上游支持。',
         configTomlHint: '请确保以下内容位于 config.toml 文件的开头部分',
         note: '请确保配置目录存在。macOS/Linux 用户可运行 mkdir -p ~/.codex 创建目录。',
         noteWindows:
@@ -183,7 +183,12 @@ export default {
         codexCli: 'Codex CLI',
         codexCliWs: 'Codex CLI (WebSocket)',
         grokCli: 'Grok CLI',
+        systemOne: 'System One',
         opencode: 'OpenCode'
+      },
+      typesafe: {
+        description: '通过 TypeSafe 原生 System One 端点调用 Jev。',
+        note: 'System One 不支持流式请求，也不兼容 Chat Completions、Responses、Claude Code 或 Codex 客户端。'
       },
       antigravity: {
         description: '为 Antigravity 分组配置 API 访问。请根据您使用的客户端选择对应的配置方式。',
@@ -395,6 +400,8 @@ export default {
     latency: '延迟',
     latencyFirstToken: '首字',
     latencyDuration: '总耗时',
+    outputTps: '输出 TPS',
+    outputTpsHint: '输出 Token ÷ 总耗时（包含首字等待），单位 tok/s。输出 Token 可能包含推理 Token。',
     time: '时间',
     ws: 'WS',
     stream: '流式',
@@ -452,6 +459,7 @@ export default {
     noDataToExport: '没有可导出的数据',
     exportSuccess: '使用数据导出成功',
     exportFailed: '使用数据导出失败',
+    exportRateLimited: '请求过于频繁，{seconds} 秒后自动继续导出',
     exportExcelSuccess: '使用数据导出成功（Excel格式）',
     exportExcelFailed: '使用数据导出失败',
     imageUnit: '张',
@@ -636,6 +644,7 @@ export default {
       cacheWritePrice: '缓存写入',
       cacheWrite5mPrice: '缓存写入（5m）',
       cacheWrite1hPrice: '缓存写入（1h）',
+      cacheWrite12hPrice: '缓存写入（12h）',
       cacheReadPrice: '缓存读取',
       imageInputPrice: '图片输入',
       imageOutputPrice: '图片输出',

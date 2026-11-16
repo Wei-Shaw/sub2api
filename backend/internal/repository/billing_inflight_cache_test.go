@@ -285,3 +285,72 @@ func TestInflightReservation_RenewDoesNotResurrectExpiredMember(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, exists)
 }
+
+func TestInflightScopeReservation_ReturnsOthersAndReleases(t *testing.T) {
+	mr, cache, _ := newInflightTestEnv(t, true, 60)
+	ctx := context.Background()
+
+	others, err := cache.ReserveInflightScope(ctx, "apikey:7", "r1", 3, time.Minute)
+	require.NoError(t, err)
+	require.Zero(t, others)
+	others, err = cache.ReserveInflightScope(ctx, "apikey:7", "r2", 2, time.Minute)
+	require.NoError(t, err)
+	require.InDelta(t, 3, others, 1e-9, "返回登记前其他在途预留的合计")
+	others, err = cache.ReserveInflightScope(ctx, "sub:7", "r3", 5, time.Minute)
+	require.NoError(t, err)
+	require.Zero(t, others, "不同维度互不影响")
+
+	require.NoError(t, cache.ReleaseInflightScope(ctx, "apikey:7", "r1"))
+	require.NoError(t, cache.ReleaseInflightScope(ctx, "apikey:7", "r1"))
+	others, err = cache.ReserveInflightScope(ctx, "apikey:7", "r4", 1, time.Minute)
+	require.NoError(t, err)
+	require.InDelta(t, 2, others, 1e-9)
+
+	mr.FastForward(2 * time.Minute)
+	others, err = cache.ReserveInflightScope(ctx, "apikey:7", "r5", 1, time.Minute)
+	require.NoError(t, err)
+	require.Zero(t, others, "过期预留不再计入")
+}
+
+func TestReserveFixedCharge_ConcurrentChargesAdmitOnlyWhatAPIKeyQuotaCovers(t *testing.T) {
+	_, cache, svc := newInflightTestEnv(t, true, 60)
+	ctx := context.Background()
+	user := &service.User{ID: 42}
+	apiKey := &service.APIKey{ID: 9, UserID: user.ID, Quota: 1.0}
+	require.NoError(t, cache.SetUserBalance(ctx, user.ID, 100))
+
+	const n = 20
+	var admitted atomic.Int32
+	reservations := make(chan *service.InflightReservation, n)
+	var wg sync.WaitGroup
+	start := make(chan struct{})
+	for i := 0; i < n; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			res, err := svc.ReserveFixedCharge(ctx, user, apiKey, nil, nil, 0.3)
+			if err != nil {
+				if !errors.Is(err, service.ErrAPIKeyQuotaExhausted) {
+					t.Errorf("unexpected error: %v", err)
+				}
+				return
+			}
+			admitted.Add(1)
+			reservations <- res
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(reservations)
+
+	require.Equal(t, int32(3), admitted.Load(), "Key 额度 1.0、每笔 0.3：同时在途的不超过 3 笔")
+	for res := range reservations {
+		res.Release()
+	}
+	zkey, _ := billingInflightScopeKeys("apikey:9")
+	remaining, err := cache.rdb.ZCard(ctx, zkey).Result()
+	require.NoError(t, err)
+	require.Zero(t, remaining)
+	require.Equal(t, int64(0), inflightCount(t, cache, user.ID))
+}

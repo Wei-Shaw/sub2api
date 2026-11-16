@@ -2,6 +2,7 @@ package apicompat
 
 import (
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -290,6 +291,46 @@ func mustMarshalJSON(t *testing.T, value any) []byte {
 }
 
 func TestChatCompletionsToResponses_MaxTokens(t *testing.T) {
+	t.Run("default floor", func(t *testing.T) {
+		maxTokens := 1
+		req := &ChatCompletionsRequest{
+			Model:     "gpt-4o",
+			MaxTokens: &maxTokens,
+			Messages:  []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		}
+		resp, err := ChatCompletionsToResponses(req)
+		require.NoError(t, err)
+		require.NotNil(t, resp.MaxOutputTokens)
+		assert.Equal(t, DefaultMinMaxOutputTokens, *resp.MaxOutputTokens)
+	})
+
+	t.Run("configured floor", func(t *testing.T) {
+		for _, input := range []int{16, 64, 127, 128} {
+			input := input
+			t.Run(fmt.Sprintf("input_%d", input), func(t *testing.T) {
+				req := &ChatCompletionsRequest{
+					Model:     "gpt-4o",
+					MaxTokens: &input,
+					Messages:  []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+				}
+				resp, err := ChatCompletionsToResponsesWithMinOutputTokens(req, 16)
+				require.NoError(t, err)
+				require.NotNil(t, resp.MaxOutputTokens)
+				assert.Equal(t, input, *resp.MaxOutputTokens)
+			})
+		}
+		input := 1
+		req := &ChatCompletionsRequest{
+			Model:     "gpt-4o",
+			MaxTokens: &input,
+			Messages:  []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		}
+		resp, err := ChatCompletionsToResponsesWithMinOutputTokens(req, 16)
+		require.NoError(t, err)
+		require.NotNil(t, resp.MaxOutputTokens)
+		assert.Equal(t, 16, *resp.MaxOutputTokens)
+	})
+
 	t.Run("max_tokens", func(t *testing.T) {
 		maxTokens := 100
 		req := &ChatCompletionsRequest{
@@ -317,6 +358,21 @@ func TestChatCompletionsToResponses_MaxTokens(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, resp.MaxOutputTokens)
 		assert.Equal(t, 500, *resp.MaxOutputTokens)
+	})
+
+	t.Run("max_completion_tokens_preferred before configured floor", func(t *testing.T) {
+		maxTokens := 500
+		maxCompletion := 1
+		req := &ChatCompletionsRequest{
+			Model:               "gpt-4o",
+			MaxTokens:           &maxTokens,
+			MaxCompletionTokens: &maxCompletion,
+			Messages:            []ChatMessage{{Role: "user", Content: json.RawMessage(`"Hi"`)}},
+		}
+		resp, err := ChatCompletionsToResponsesWithMinOutputTokens(req, 16)
+		require.NoError(t, err)
+		require.NotNil(t, resp.MaxOutputTokens)
+		assert.Equal(t, 16, *resp.MaxOutputTokens)
 	})
 }
 
