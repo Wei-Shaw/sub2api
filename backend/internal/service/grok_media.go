@@ -1266,7 +1266,7 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 	// Reconcile readiness before configurable passthrough branches can return;
 	// otherwise a Grok 429 can remain schedulable.
 	s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
-	upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(body)))
+	upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(grokUpstreamErrorMessage(body)))
 	if upstreamMsg == "" {
 		upstreamMsg = fmt.Sprintf("xAI upstream returned status %d", resp.StatusCode)
 	}
@@ -1295,11 +1295,11 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 			Detail:             upstreamDetail,
 		})
 		MarkResponseCommitted(c)
-		writeGrokMediaErrorResponse(c, http.StatusForbidden, "invalid_request_error", clientMsg, extractUpstreamErrorCode(body))
+		writeGrokMediaErrorResponse(c, http.StatusForbidden, "invalid_request_error", clientMsg, grokUpstreamErrorCode(body))
 		return nil, fmt.Errorf("grok content policy rejection: %s", clientMsg)
 	}
 
-	if status, errType, errMsg, matched := applyErrorPassthroughRule(
+	if status, errType, errMsg, matched := applyErrorPassthroughRuleWithMessage(
 		c,
 		account.Platform,
 		resp.StatusCode,
@@ -1307,6 +1307,7 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 		http.StatusBadGateway,
 		"upstream_error",
 		"Upstream request failed",
+		grokUpstreamErrorMessage,
 	); matched {
 		MarkResponseCommitted(c)
 		writeGrokMediaErrorResponse(c, status, errType, errMsg, "")
@@ -1362,7 +1363,7 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 	}
 
 	MarkResponseCommitted(c)
-	writeGrokMediaErrorResponse(c, resp.StatusCode, grokMediaErrorType(resp.StatusCode), upstreamMsg, extractUpstreamErrorCode(body))
+	writeGrokMediaErrorResponse(c, resp.StatusCode, grokMediaErrorType(resp.StatusCode), upstreamMsg, grokUpstreamErrorCode(body))
 	return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 }
 

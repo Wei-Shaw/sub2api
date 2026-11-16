@@ -1,3 +1,5 @@
+//go:build unit
+
 package service
 
 import (
@@ -6,7 +8,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestExtractUpstreamErrorMessageFormats(t *testing.T) {
+func TestGrokUpstreamErrorMessageFormats(t *testing.T) {
 	for _, tt := range []struct {
 		name string
 		body string
@@ -26,12 +28,12 @@ func TestExtractUpstreamErrorMessageFormats(t *testing.T) {
 		{"empty", ``, ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, extractUpstreamErrorMessage([]byte(tt.body)))
+			require.Equal(t, tt.want, grokUpstreamErrorMessage([]byte(tt.body)))
 		})
 	}
 }
 
-func TestExtractUpstreamErrorCodeFormats(t *testing.T) {
+func TestGrokUpstreamErrorCodeFormats(t *testing.T) {
 	for _, tt := range []struct {
 		name string
 		body string
@@ -51,7 +53,31 @@ func TestExtractUpstreamErrorCodeFormats(t *testing.T) {
 		{"no code", `{"error":{"message":"reason"}}`, ""},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, extractUpstreamErrorCode([]byte(tt.body)))
+			require.Equal(t, tt.want, grokUpstreamErrorCode([]byte(tt.body)))
+		})
+	}
+}
+
+// The shared extractors drive failover, model-not-found cooldown and account
+// disable decisions on every platform; xAI's flat shape must stay Grok-only.
+func TestSharedUpstreamErrorExtractorsIgnoreXAIFlatShape(t *testing.T) {
+	flat := []byte(`{"code":"invalid_image","error":"Image could not be decoded."}`)
+	require.Empty(t, extractUpstreamErrorMessage(flat))
+	require.Empty(t, extractUpstreamErrorCode(flat))
+
+	require.Empty(t, extractUpstreamErrorCode([]byte(`{"object":"error","message":"m","code":400}`)))
+	require.Empty(t, extractUpstreamErrorCode([]byte(`{"error":{"message":"m"},"code":"token_revoked"}`)))
+}
+
+func TestOpenAICompatibleModelNotFoundIgnoresTopLevelCode(t *testing.T) {
+	for _, body := range []string{
+		`{"object":"error","message":"model not found: foo","type":"BadRequestError","param":null,"code":400}`,
+		`{"code":"invalid_argument","message":"Unknown model: foo"}`,
+		`{"error":{"message":"The model is not supported"},"code":"bad_request"}`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			require.True(t, isOpenAICompatibleModelNotFoundBody([]byte(body)))
+			require.True(t, IsOpenAICompatibleModelNotFound400([]byte(body)))
 		})
 	}
 }
