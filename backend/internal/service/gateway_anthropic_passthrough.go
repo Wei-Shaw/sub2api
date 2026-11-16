@@ -561,7 +561,7 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 			}
 
 			if !clientDisconnected {
-				restored := string(reverseToolNamesIfPresent(c, []byte(line)))
+				restored := reverseToolNamesIfPresentString(c, line)
 				if _, err := io.WriteString(w, restored); err != nil {
 					clientDisconnected = true
 					logger.LegacyPrintf("service.gateway", "[Anthropic passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)

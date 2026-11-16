@@ -351,10 +351,14 @@ func restoreToolNamesInBytes(data []byte, rw *ToolNameRewrite) []byte {
 
 // replaceAllBytes 是 bytes.ReplaceAll 的便捷封装，避免每个调用点各自做 []byte 转换。
 func replaceAllBytes(data []byte, from, to string) []byte {
-	if len(data) == 0 || from == to || !strings.Contains(string(data), from) {
+	if len(data) == 0 || from == to {
 		return data
 	}
-	return []byte(strings.ReplaceAll(string(data), from, to))
+	fromBytes := []byte(from)
+	if !bytes.Contains(data, fromBytes) {
+		return data
+	}
+	return bytes.ReplaceAll(data, fromBytes, []byte(to))
 }
 
 // toolNameRewriteFromContext 从 gin.Context 取出请求阶段保存的工具名映射。
@@ -383,4 +387,31 @@ func reverseToolNamesIfPresent(c interface {
 		return chunk
 	}
 	return restoreToolNamesInBytes(chunk, rw)
+}
+
+// reverseToolNamesIfPresentString is the string-typed variant for streaming
+// writers. The common case (no tool names in the chunk) returns the original
+// string without any []byte/string copy.
+func reverseToolNamesIfPresentString(c interface {
+	Get(string) (any, bool)
+}, chunk string) string {
+	rw := toolNameRewriteFromContext(c)
+	if rw == nil && len(staticToolNameRewrites) == 0 {
+		return chunk
+	}
+	if rw != nil {
+		for _, pair := range rw.ReverseOrdered {
+			fake, real := pair[0], pair[1]
+			if fake == "" || fake == real || !strings.Contains(chunk, fake) {
+				continue
+			}
+			chunk = strings.ReplaceAll(chunk, fake, real)
+		}
+	}
+	for prefix, replacement := range staticToolNameRewrites {
+		if strings.Contains(chunk, replacement) {
+			chunk = strings.ReplaceAll(chunk, replacement, prefix)
+		}
+	}
+	return chunk
 }

@@ -402,10 +402,7 @@ func isClaudeCodeCredentialScopeError(msg string) bool {
 		strings.Contains(m, "cannot be used for other api requests")
 }
 
-// sseDataRe matches SSE data lines with optional whitespace after colon.
-// Some upstream APIs return non-standard "data:" without space (should be "data: ").
 var (
-	sseDataRe            = regexp.MustCompile(`^data:\s*`)
 	claudeCliUserAgentRe = regexp.MustCompile(`(?i)^claude-cli/\d+\.\d+\.\d+`)
 
 	// claudeCodePromptPrefixes 用于检测 Claude Code 系统提示词的前缀列表
