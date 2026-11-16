@@ -577,6 +577,72 @@ func TestSanitizeOpenAIResponsesToolSchemaPatterns_KeepsClosedObjectWhenNoPatter
 	}
 }
 
+// 外层补丁（additionalProperties 整体改写为 true、整条删除 patternProperties
+// 键）覆盖内层补丁时，内层补丁无意义，不得让整次清洗以 overlapping patches
+// 失败（否则请求在本地就以 502 结束，连原样转发都做不到）。
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_EnclosingEditSupersedesNestedEdits(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		instance string
+	}{
+		{
+			name:     "reopened additionalProperties schema contains unsupported pattern",
+			body:     `{"tools":[{"type":"function","name":"t","parameters":{"type":"object","patternProperties":{"^\\p{L}+$":{"type":"string"}},"additionalProperties":{"type":"string","pattern":"^\\p{N}+$"}}}]}`,
+			instance: `{"abc":"value","1":"x"}`,
+		},
+		{
+			name:     "reopened additionalProperties schema contains its own reopen",
+			body:     `{"tools":[{"type":"function","name":"t","parameters":{"type":"object","patternProperties":{"^\\p{L}+$":{"type":"string"}},"additionalProperties":{"type":"object","patternProperties":{"^\\p{N}+$":{"type":"string"}},"additionalProperties":false}}}]}`,
+			instance: `{"abc":"value","1":{"2":"x"}}`,
+		},
+		{
+			name:     "dropped patternProperties value contains a reopen",
+			body:     `{"tools":[{"type":"function","name":"t","parameters":{"type":"object","patternProperties":{"^\\p{L}+$":{"type":"object","patternProperties":{"^\\p{N}+$":{"type":"string"}},"additionalProperties":false}}}}]}`,
+			instance: `{"abc":{"1":"x"}}`,
+		},
+		{
+			name:     "anthropic input_schema",
+			body:     `{"tools":[{"name":"t","input_schema":{"type":"object","patternProperties":{"^\\p{L}+$":{"type":"string"}},"additionalProperties":{"type":"string","pattern":"(?<n>\\d+)"}}}]}`,
+			instance: `{"abc":"value"}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sanitized, changed, err := sanitizeOpenAIResponsesToolSchemasForPlatform([]byte(tt.body), PlatformOpenAI)
+			require.NoError(t, err)
+			require.True(t, changed)
+			require.True(t, json.Valid(sanitized))
+			require.NotContains(t, string(sanitized), `\p{`)
+			require.NotContains(t, string(sanitized), `(?<`)
+			schema := gjson.GetBytes(sanitized, "tools.0.parameters")
+			if !schema.Exists() {
+				schema = gjson.GetBytes(sanitized, "tools.0.input_schema")
+			}
+			require.NotEqual(t, "false", schema.Get("additionalProperties").Raw)
+			requireJSONSchemaAdmits(t, schema.Raw, tt.instance)
+		})
+	}
+}
+
+// 包含关系以外的重叠仍须报错；零宽插入与同起点删除须同时生效。
+func TestApplyOpenAIResponsesToolSchemaEdits_ContainmentOrdering(t *testing.T) {
+	body := []byte(`{"required":null,"anyOf":[]}`)
+	out, changed, err := applyOpenAIResponsesToolSchemaEdits(body, []openAIResponsesToolSchemaEdit{
+		{start: 1, end: 17, replacement: ""},
+		{start: 1, end: 1, replacement: `"type":"object",`},
+	})
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, `{"type":"object","anyOf":[]}`, string(out))
+
+	_, _, err = applyOpenAIResponsesToolSchemaEdits([]byte(`{"a":1,"b":2}`), []openAIResponsesToolSchemaEdit{
+		{start: 5, end: 9, replacement: "x"},
+		{start: 7, end: 12, replacement: ""},
+	})
+	require.ErrorContains(t, err, "overlapping patches")
+}
+
 // 评审复现路径：API Key 与 OAuth 账号都经过 WebSocket 兼容归一化。
 func TestOpenAIResponsesToolSchemaPlatformGate_ReopensClosedObject(t *testing.T) {
 	body := []byte(`{"tools":[{"type":"function","name":"t","parameters":{"type":"object","patternProperties":{"^\\p{L}+$":{"type":"string"}},"additionalProperties":false}}]}`)

@@ -798,11 +798,18 @@ func decodeOpenAIResponsesJSONStringValue(raw []byte) (string, bool) {
 func applyOpenAIResponsesToolSchemaEdits(
 	body []byte, edits []openAIResponsesToolSchemaEdit,
 ) ([]byte, bool, error) {
+	// Order by start; at equal starts keep zero-width insertions ahead of the
+	// span they precede, then put wider spans first so an enclosing edit is
+	// seen before the edits nested inside it.
 	sort.Slice(edits, func(i, j int) bool {
 		if edits[i].start != edits[j].start {
 			return edits[i].start < edits[j].start
 		}
-		return edits[i].end < edits[j].end
+		iEmpty, jEmpty := edits[i].start == edits[i].end, edits[j].start == edits[j].end
+		if iEmpty != jEmpty {
+			return iEmpty
+		}
+		return edits[i].end > edits[j].end
 	})
 
 	merged := edits[:0]
@@ -812,6 +819,13 @@ func applyOpenAIResponsesToolSchemaEdits(
 			continue
 		}
 		previous := &merged[len(merged)-1]
+		if edit.end <= previous.end {
+			// The enclosing edit deletes or replaces this whole span with
+			// content that does not depend on it, e.g. a dropped
+			// patternProperties entry or an additionalProperties schema
+			// reopened to true. Edits nested inside it are moot.
+			continue
+		}
 		if previous.replacement != "" || edit.replacement != "" {
 			return nil, false, fmt.Errorf("sanitize OpenAI Responses tool schemas: overlapping patches")
 		}
