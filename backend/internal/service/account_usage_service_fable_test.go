@@ -2,6 +2,8 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -54,6 +56,61 @@ func TestBuildUsageInfo_SevenDayFable(t *testing.T) {
 	empty.FiveHour.Utilization = 10
 	info = svc.buildUsageInfo(&empty, &now)
 	require.Nil(t, info.SevenDayFable)
+}
+
+func TestBuildUsageInfo_ScopedFableLimits(t *testing.T) {
+	resetAt := time.Now().Add(72 * time.Hour).In(time.FixedZone("UTC+8", 8*60*60)).Truncate(time.Microsecond)
+	entry := fmt.Sprintf(`{"kind":"weekly_scoped","group":"weekly","percent":5.25,"resets_at":%q,"scope":{"model":{"display_name":"Fable"},"surface":null},"is_active":false}`, resetAt.Format(time.RFC3339Nano))
+	for _, tc := range []struct {
+		name       string
+		limits     string
+		legacy     string
+		wantWindow bool
+		wantUsage  float64
+	}{
+		{name: "inactive scoped window", limits: entry, wantWindow: true, wantUsage: 5.25},
+		{name: "active scoped window", limits: strings.Replace(entry, `"is_active":false`, `"is_active":true`, 1), wantWindow: true, wantUsage: 5.25},
+		{name: "omitted surface", limits: strings.Replace(entry, `,"surface":null`, ``, 1), wantWindow: true, wantUsage: 5.25},
+		{name: "zero percent", limits: strings.Replace(entry, `"percent":5.25`, `"percent":0`, 1), wantWindow: true},
+		{name: "over quota percent", limits: strings.Replace(entry, `"percent":5.25`, `"percent":105.25`, 1), wantWindow: true, wantUsage: 105.25},
+		{name: "legacy takes precedence", limits: entry, legacy: fmt.Sprintf(`{"utilization":56,"resets_at":%q}`, resetAt.Format(time.RFC3339Nano)), wantWindow: true, wantUsage: 56},
+		{name: "null legacy", limits: entry, legacy: "null", wantWindow: true, wantUsage: 5.25},
+		{name: "other model", limits: strings.Replace(entry, `"Fable"`, `"Sonnet"`, 1)},
+		{name: "unscoped weekly", limits: strings.Replace(entry, `"weekly_scoped"`, `"weekly"`, 1)},
+		{name: "other group", limits: strings.Replace(entry, `"group":"weekly"`, `"group":"daily"`, 1)},
+		{name: "missing model", limits: strings.Replace(entry, `{"display_name":"Fable"}`, `null`, 1)},
+		{name: "surface restricted", limits: strings.Replace(entry, `"surface":null`, `"surface":{"display_name":"Claude Code"}`, 1)},
+		{name: "missing percent", limits: strings.Replace(entry, `"percent":5.25,`, ``, 1)},
+		{name: "null percent", limits: strings.Replace(entry, `"percent":5.25`, `"percent":null`, 1)},
+		{name: "negative percent", limits: strings.Replace(entry, `"percent":5.25`, `"percent":-1`, 1)},
+		{name: "missing reset", limits: strings.Replace(entry, resetAt.Format(time.RFC3339Nano), "", 1)},
+		{name: "invalid reset", limits: strings.Replace(entry, resetAt.Format(time.RFC3339Nano), "not-a-time", 1)},
+		{name: "invalid entry before valid", limits: strings.Replace(entry, resetAt.Format(time.RFC3339Nano), "not-a-time", 1) + "," + entry, wantWindow: true, wantUsage: 5.25},
+		{name: "unknown entry before valid", limits: `null,{"kind":"future_limit"},` + entry, wantWindow: true, wantUsage: 5.25},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			legacy := tc.legacy
+			if legacy == "" {
+				legacy = "null"
+			}
+			raw := fmt.Sprintf(`{"five_hour":{"utilization":12},"seven_day":{"utilization":34,"resets_at":%q},"seven_day_overage_included":%s,"limits":[%s]}`, resetAt.Format(time.RFC3339Nano), legacy, tc.limits)
+			var resp ClaudeUsageResponse
+			require.NoError(t, json.Unmarshal([]byte(raw), &resp))
+			now := time.Now()
+			info := (&AccountUsageService{}).buildUsageInfo(&resp, &now)
+			require.Equal(t, 12.0, info.FiveHour.Utilization)
+			require.Equal(t, 34.0, info.SevenDay.Utilization)
+			if !tc.wantWindow {
+				require.Nil(t, info.SevenDayFable)
+				return
+			}
+			require.NotNil(t, info.SevenDayFable)
+			require.Equal(t, tc.wantUsage, info.SevenDayFable.Utilization)
+			require.NotNil(t, info.SevenDayFable.ResetsAt)
+			require.True(t, resetAt.Equal(*info.SevenDayFable.ResetsAt))
+			require.Positive(t, info.SevenDayFable.RemainingSeconds)
+		})
+	}
 }
 
 func TestBuildPassiveUsageWindow(t *testing.T) {
