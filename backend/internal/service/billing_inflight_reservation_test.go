@@ -450,6 +450,8 @@ func TestInflightEstimate_AccountMappingNoDBAndBoundedMemory(t *testing.T) {
 	require.Zero(t, snap.reads.Load(), "priced models must never trigger account-mapping lookup")
 
 	var before, after runtime.MemStats
+	// Drain transient sync.Pool victims before measuring persistent growth.
+	runtime.GC()
 	runtime.GC()
 	runtime.ReadMemStats(&before)
 	const n = 20000
@@ -457,6 +459,7 @@ func TestInflightEstimate_AccountMappingNoDBAndBoundedMemory(t *testing.T) {
 		_, priced := svc.EstimateInflightReservation(ctx, apiKey, InflightEstimateRequest{Model: fmt.Sprintf("rand-%d-%d", i, time.Now().UnixNano()), BodyBytes: 4000, MaxTokens: 1000})
 		require.False(t, priced)
 	}
+	runtime.GC()
 	runtime.GC()
 	runtime.ReadMemStats(&after)
 	require.Zero(t, repo.dbCalls.Load(), "no direct DB query on the request path")
