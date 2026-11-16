@@ -539,6 +539,7 @@ import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import { formatMultiplier } from '@/utils/formatters'
 import type { Account, AccountListItem, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
+import { buildAnthropicUsageRefreshKey, buildGeminiUsageRefreshKey } from '@/utils/accountUsageRefresh'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -1436,6 +1437,8 @@ const shouldReplaceAutoRefreshRow = (current: Account, next: Account) => {
     current.overload_until !== next.overload_until ||
     current.temp_unschedulable_until !== next.temp_unschedulable_until ||
     buildOpenAIUsageRefreshKey(current) !== buildOpenAIUsageRefreshKey(next) ||
+    buildAnthropicUsageRefreshKey(current) !== buildAnthropicUsageRefreshKey(next) ||
+    buildGeminiUsageRefreshKey(current) !== buildGeminiUsageRefreshKey(next) ||
     buildGrokUsageRefreshKey(current) !== buildGrokUsageRefreshKey(next)
   )
 }

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { buildGrokUsageRefreshKey, buildOpenAIUsageRefreshKey } from '../accountUsageRefresh'
+import {
+  buildAnthropicUsageRefreshKey,
+  buildGeminiUsageRefreshKey,
+  buildGrokUsageRefreshKey,
+  buildOpenAIUsageRefreshKey
+} from '../accountUsageRefresh'
 
 describe('buildOpenAIUsageRefreshKey', () => {
   it('会在 codex 快照变化时生成不同 key', () => {
@@ -157,5 +162,78 @@ describe('buildGrokUsageRefreshKey', () => {
       platform: 'openai',
       extra: { grok_usage_snapshot: { subscription_tier: 'SuperGrok' } }
     } as any)).toBe('')
+  })
+})
+
+describe('buildAnthropicUsageRefreshKey', () => {
+  const base = {
+    id: 7,
+    platform: 'anthropic',
+    type: 'oauth',
+    updated_at: '2026-10-25T10:00:00Z',
+    last_used_at: '2026-10-25T09:59:00Z',
+    rate_limit_reset_at: null,
+    session_window_start: '2026-10-25T08:00:00Z',
+    session_window_end: '2026-10-25T13:00:00Z',
+    session_window_status: 'allowed',
+    extra: {
+      passive_usage_sampled_at: '2026-10-25T09:59:00Z',
+      session_window_utilization: 0.1,
+      passive_usage_7d_utilization: 0.2,
+      passive_usage_7d_reset: 1761900000,
+      passive_usage_7d_oi_utilization: 0.3,
+      passive_usage_7d_oi_reset: 1761900000
+    }
+  } as any
+
+  it('changes when any input of the passive /usage response changes', () => {
+    const variants = [
+      { last_used_at: '2026-10-25T10:01:00Z' },
+      { session_window_start: '2026-10-25T13:00:00Z' },
+      { session_window_end: '2026-10-25T18:00:00Z' },
+      { session_window_status: 'rejected' },
+      { extra: { ...base.extra, passive_usage_sampled_at: '2026-10-25T10:01:00Z' } },
+      { extra: { ...base.extra, session_window_utilization: 0.5 } },
+      { extra: { ...base.extra, passive_usage_7d_utilization: 0.6 } },
+      { extra: { ...base.extra, passive_usage_7d_reset: 1762500000 } },
+      { extra: { ...base.extra, passive_usage_7d_oi_utilization: 0.7 } },
+      { extra: { ...base.extra, passive_usage_7d_oi_reset: 1762500000 } }
+    ]
+    for (const variant of variants) {
+      expect(buildAnthropicUsageRefreshKey({ ...base, ...variant })).not.toBe(buildAnthropicUsageRefreshKey(base))
+    }
+  })
+
+  it('covers setup-token accounts', () => {
+    const setupToken = { ...base, type: 'setup-token' }
+    expect(buildAnthropicUsageRefreshKey(setupToken)).not.toBe('')
+    expect(buildAnthropicUsageRefreshKey({
+      ...setupToken,
+      extra: { ...base.extra, session_window_utilization: 0.9 }
+    })).not.toBe(buildAnthropicUsageRefreshKey(setupToken))
+  })
+
+  it('returns an empty key for other Anthropic types and other platforms', () => {
+    expect(buildAnthropicUsageRefreshKey({ ...base, type: 'apikey' })).toBe('')
+    expect(buildAnthropicUsageRefreshKey({ ...base, platform: 'openai' })).toBe('')
+  })
+})
+
+describe('buildGeminiUsageRefreshKey', () => {
+  const base = {
+    id: 8,
+    platform: 'gemini',
+    type: 'oauth',
+    updated_at: '2026-10-25T10:00:00Z',
+    last_used_at: '2026-10-25T09:59:00Z'
+  } as any
+
+  it('changes when the account is used or updated', () => {
+    expect(buildGeminiUsageRefreshKey({ ...base, last_used_at: '2026-10-25T10:01:00Z' })).not.toBe(buildGeminiUsageRefreshKey(base))
+    expect(buildGeminiUsageRefreshKey({ ...base, updated_at: '2026-10-25T10:01:00Z' })).not.toBe(buildGeminiUsageRefreshKey(base))
+  })
+
+  it('returns an empty key for non-Gemini accounts', () => {
+    expect(buildGeminiUsageRefreshKey({ ...base, platform: 'anthropic' })).toBe('')
   })
 })

@@ -52,6 +52,43 @@ export const buildOpenAIUsageRefreshKey = (account: Pick<Account, 'id' | 'platfo
   ].map(normalizeUsageRefreshValue).join('|')
 }
 
+// Inputs of the passive /usage response: session window columns, header samples
+// in extra, and window stats from usage logs (signalled by last_used_at).
+export const buildAnthropicUsageRefreshKey = (account: Pick<Account, 'id' | 'platform' | 'type' | 'last_used_at' | 'session_window_start' | 'session_window_end' | 'session_window_status' | 'extra'>): string => {
+  if (account.platform !== 'anthropic' || (account.type !== 'oauth' && account.type !== 'setup-token')) {
+    return ''
+  }
+
+  const extra = account.extra ?? {}
+  return [
+    account.id,
+    account.last_used_at,
+    account.session_window_start,
+    account.session_window_end,
+    account.session_window_status,
+    extra.passive_usage_sampled_at,
+    extra.session_window_utilization,
+    extra.passive_usage_7d_utilization,
+    extra.passive_usage_7d_reset,
+    extra.passive_usage_7d_oi_utilization,
+    extra.passive_usage_7d_oi_reset
+  ].map(normalizeUsageRefreshValue).join('|')
+}
+
+// Gemini /usage counts usage logs against a tier derived from the account, so
+// new use (last_used_at) or an account edit (updated_at) changes it.
+export const buildGeminiUsageRefreshKey = (account: Pick<Account, 'id' | 'platform' | 'updated_at' | 'last_used_at'>): string => {
+  if (account.platform !== 'gemini') {
+    return ''
+  }
+
+  return [
+    account.id,
+    account.updated_at,
+    account.last_used_at
+  ].map(normalizeUsageRefreshValue).join('|')
+}
+
 export const buildGrokUsageRefreshKey = (account: Pick<Account, 'platform' | 'extra'>): string => {
   if (account.platform !== 'grok') {
     return ''

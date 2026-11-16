@@ -751,7 +751,11 @@ import { ref, computed, onMounted, onBeforeUnmount, onUnmounted, watch } from 'v
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type { Account, AccountUsageInfo, GeminiCredentials, WindowStats } from '@/types'
-import { buildOpenAIUsageRefreshKey } from '@/utils/accountUsageRefresh'
+import {
+  buildAnthropicUsageRefreshKey,
+  buildGeminiUsageRefreshKey,
+  buildOpenAIUsageRefreshKey
+} from '@/utils/accountUsageRefresh'
 import { enqueueUsageRequest } from '@/utils/usageLoadQueue'
 import { formatCompactNumber } from '@/utils/format'
 import { isOfficialGeminiBaseUrl } from '@/utils/geminiExplicitCache'
@@ -917,7 +921,12 @@ const openAISevenDayEstimatedTotalCost = computed(() => {
   return Number.isFinite(estimate) && estimate > 0 ? estimate : null
 })
 
-const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.account))
+// Each builder returns '' for other platforms, so at most one contributes.
+const usageRefreshKey = computed(() => (
+  buildOpenAIUsageRefreshKey(props.account) ||
+  buildAnthropicUsageRefreshKey(props.account) ||
+  buildGeminiUsageRefreshKey(props.account)
+))
 
 const shouldAutoLoadUsageOnMount = computed(() => {
   return shouldFetchUsage.value
@@ -1797,9 +1806,8 @@ watch(
   { flush: 'post' }
 )
 
-watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
+watch(usageRefreshKey, (nextKey, prevKey) => {
   if (!prevKey || nextKey === prevKey) return
-  if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return
 
   if (isBatchManaged.value) {
     requestParentBatchUsage({ force: true })
@@ -1807,7 +1815,7 @@ watch(openAIUsageRefreshKey, (nextKey, prevKey) => {
   }
 
   _usageCache.delete(props.account.id)
-  requestAutoLoad()
+  requestAutoLoad(isAnthropicOAuthOrSetupToken.value ? 'passive' : undefined)
 })
 
 watch(
