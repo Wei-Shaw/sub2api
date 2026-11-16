@@ -343,7 +343,10 @@ func (s *PricingService) Initialize() error {
 	// 启动定时更新
 	s.startUpdateScheduler()
 
-	logger.LegacyPrintf("service.pricing", "[Pricing] Service initialized with %d models", len(s.pricingData))
+	s.mu.RLock()
+	modelCount := len(s.pricingData)
+	s.mu.RUnlock()
+	logger.LegacyPrintf("service.pricing", "[Pricing] Service initialized with %d models", modelCount)
 	return nil
 }
 
@@ -416,25 +419,10 @@ func (s *PricingService) checkAndUpdatePricing() error {
 		return s.downloadPricingData()
 	}
 
-	// 如果配置了哈希URL，通过远程哈希检查是否有更新
+	// 如果配置了哈希URL，通过远程哈希检查是否有更新。本地文件已加载，服务已可用，
+	// 校验放到后台做：远端慢或不通时不挡启动与监听（fetchRemoteHash 请求挂住时会一直等到客户端超时）。
 	if s.cfg.Pricing.HashURL != "" {
-		remoteHash, err := s.fetchRemoteHash()
-		if err != nil {
-			logger.LegacyPrintf("service.pricing", "[Pricing] Failed to fetch remote hash on startup: %v", err)
-			return nil // 已加载本地文件，哈希获取失败不影响启动
-		}
-
-		s.mu.RLock()
-		localHash := s.localHash
-		s.mu.RUnlock()
-
-		if localHash == "" || remoteHash != localHash {
-			logger.LegacyPrintf("service.pricing", "[Pricing] Remote hash differs on startup (local=%s remote=%s), downloading...",
-				localHash[:min(8, len(localHash))], remoteHash[:min(8, len(remoteHash))])
-			if err := s.downloadPricingData(); err != nil {
-				logger.LegacyPrintf("service.pricing", "[Pricing] Download failed, using existing file: %v", err)
-			}
-		}
+		go s.checkRemoteHashOnStartup()
 		return nil
 	}
 
@@ -455,6 +443,27 @@ func (s *PricingService) checkAndUpdatePricing() error {
 	}
 
 	return nil
+}
+
+// checkRemoteHashOnStartup 启动后在后台比对远程哈希，不同则下载；失败只记日志，沿用已加载的本地文件。
+func (s *PricingService) checkRemoteHashOnStartup() {
+	remoteHash, err := s.fetchRemoteHash()
+	if err != nil {
+		logger.LegacyPrintf("service.pricing", "[Pricing] Failed to fetch remote hash on startup: %v", err)
+		return
+	}
+
+	s.mu.RLock()
+	localHash := s.localHash
+	s.mu.RUnlock()
+
+	if localHash == "" || remoteHash != localHash {
+		logger.LegacyPrintf("service.pricing", "[Pricing] Remote hash differs on startup (local=%s remote=%s), downloading...",
+			localHash[:min(8, len(localHash))], remoteHash[:min(8, len(remoteHash))])
+		if err := s.downloadPricingData(); err != nil {
+			logger.LegacyPrintf("service.pricing", "[Pricing] Download failed, using existing file: %v", err)
+		}
+	}
 }
 
 // syncWithRemote 与远程同步（基于哈希校验）
