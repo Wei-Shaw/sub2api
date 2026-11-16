@@ -241,6 +241,9 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		if err != nil {
 			return nil, fmt.Errorf("marshal responses request: %w", err)
 		}
+		// responsesReq lives until billing after the stream; only its scalar
+		// fields are read from here on, so drop the body-sized input.
+		responsesReq.Input = nil
 	}
 
 	logFields := []zap.Field{
