@@ -23,6 +23,7 @@ import (
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	"github.com/Wei-Shaw/sub2api/internal/securityaudit"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -319,6 +320,17 @@ func openAIResponsesRequiredCapabilityForRequest(imageIntent bool, needsResponse
 		return service.OpenAIEndpointCapabilityResponses
 	}
 	return openAIResponsesRequiredCapability(imageIntent, platform)
+}
+
+// openAIRequestRequiresResponsesForToolCalls prevents a Chat Completions-only
+// account from reaching the compatibility fallback for GPT-6.1 tool calls.
+// Those models reject tool calls unless the upstream request stays on Responses.
+func openAIRequestRequiresResponsesForToolCalls(model, platform string, body []byte) bool {
+	if platform != service.PlatformOpenAI || !openai.RequiresResponsesForToolCalls(model) {
+		return false
+	}
+	return len(gjson.GetBytes(body, "tools").Array()) > 0 ||
+		len(gjson.GetBytes(body, "functions").Array()) > 0
 }
 
 func allowOpenAICompatibleMessagesDispatch(c *gin.Context, apiKey *service.APIKey) bool {
@@ -683,7 +695,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 仅对 OpenAI 平台生效：Grok 生图走独立的 forwardGrokResponses 路径，不应被过滤。
 	// 复用前置权限与并发阶段在未修改 body 上确认的显式生图意图，避免大 tools 请求重复扫描。
 	// 该判断已排除 Codex 被动 image_gen namespace，避免 CC-only 账号被误过滤（#4476）。
-	needsResponses := nativeV2 || legacyCompact
+	needsResponses := nativeV2 || legacyCompact || openAIRequestRequiresResponsesForToolCalls(forwardModel, requestPlatform, body)
 	requiredCapability := openAIResponsesRequiredCapabilityForRequest(imageIntent, needsResponses, requestPlatform)
 	imageSizeRouted := imageIntent && requestPlatform == service.PlatformOpenAI
 	imageSize := ""

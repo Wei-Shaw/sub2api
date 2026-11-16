@@ -160,6 +160,9 @@ func TestDecideResponsesProbeSupport(t *testing.T) {
 		{"200 reasoning only", 200, reasoningOnly, false},
 		{"200 invalid json", 200, []byte("not-json"), false},
 		{"200 no output field", 200, []byte(`{"status":"completed"}`), false},
+		// A relay can expose /responses while explicitly rejecting tool calls;
+		// that message is capability evidence, not an inconclusive 400.
+		{"400 explicit chat-only tool rejection", 400, []byte(`{"error":{"type":"invalid_request_error","message":"gpt-6.1-sol requires Responses for tool calls; this account only supports Chat Completions"}}`), false},
 		// Non-2xx (other than 404/405): endpoint exists, capability undecidable -> conservative true.
 		{"400 conservative true", 400, reasoningOnly, true},
 		{"401 conservative true", 401, nil, true},

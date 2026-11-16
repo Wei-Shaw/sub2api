@@ -116,6 +116,12 @@ func TestProbeOpenAIAPIKeyResponsesSupport_ConclusiveResponsesStillPersist(t *te
 			want:   false,
 		},
 		{
+			name:   "explicit_chat_only_tool_rejection",
+			status: http.StatusBadRequest,
+			body:   `{"error":{"type":"invalid_request_error","message":"gpt-6.1-sol requires Responses for tool calls; this account only supports Chat Completions"}}`,
+			want:   false,
+		},
+		{
 			// 响应体没有 status 字段（第三方兼容上游常见）时维持既有行为。
 			name:   "no_status_field",
 			status: http.StatusOK,

@@ -174,6 +174,17 @@ func TestOpenAIResponsesRequiredCapability(t *testing.T) {
 	}
 }
 
+func TestOpenAIRequestRequiresResponsesForToolCalls(t *testing.T) {
+	toolBody := []byte(`{"tools":[{"type":"function","name":"probe"}]}`)
+	functionBody := []byte(`{"functions":[{"name":"probe"}]}`)
+
+	require.True(t, openAIRequestRequiresResponsesForToolCalls("gpt-6.1-sol", service.PlatformOpenAI, toolBody))
+	require.True(t, openAIRequestRequiresResponsesForToolCalls("gpt-6.1-terra", service.PlatformOpenAI, functionBody))
+	require.False(t, openAIRequestRequiresResponsesForToolCalls("gpt-6.1-sol", service.PlatformOpenAI, []byte(`{"messages":[]}`)))
+	require.False(t, openAIRequestRequiresResponsesForToolCalls("gpt-5.5", service.PlatformOpenAI, toolBody))
+	require.False(t, openAIRequestRequiresResponsesForToolCalls("gpt-6.1-sol", service.PlatformGrok, toolBody))
+}
+
 func TestResolveOpenAIMessagesMetadataSession_DoesNotDerivePromptCacheKey(t *testing.T) {
 	body := []byte(`{"model":"claude-sonnet-4-5","metadata":{"user_id":"claude-code-session"},"messages":[{"role":"user","content":"hello"}]}`)
 

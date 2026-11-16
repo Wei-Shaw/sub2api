@@ -324,6 +324,12 @@ func decideResponsesProbeSupport(status int, body []byte) bool {
 	if isResponsesProbeModelUnavailable(status, body) {
 		return true // The model error says nothing negative about the endpoint.
 	}
+	if isResponsesToolCallsUnsupported(status, body) {
+		// Some OpenAI-compatible relays expose /responses but reject the
+		// tool-call contract with a 400. Treat that explicit provider verdict
+		// as capability evidence instead of the generic non-2xx fallback below.
+		return false
+	}
 	if status == http.StatusNotFound || status == http.StatusMethodNotAllowed {
 		return false
 	}
@@ -331,6 +337,15 @@ func decideResponsesProbeSupport(status int, body []byte) bool {
 		return true
 	}
 	return responsesProbeBodyHasFunctionCall(body)
+}
+
+func isResponsesToolCallsUnsupported(status int, body []byte) bool {
+	if status != http.StatusBadRequest && status != http.StatusUnprocessableEntity {
+		return false
+	}
+	message := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(body)))
+	return strings.Contains(message, "requires responses for tool calls") &&
+		strings.Contains(message, "only supports chat completions")
 }
 
 // isResponsesProbeModelUnavailable 判断 400/404 是否只是在说探测模型不可用
