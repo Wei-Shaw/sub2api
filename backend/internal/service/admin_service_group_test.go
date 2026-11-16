@@ -2377,7 +2377,8 @@ func TestAdminService_CreateGroup_NormalizesForceOpenAIUltrafastByPlatform(t *te
 	}
 }
 
-func TestAdminService_CreateGroup_RejectsForcingFastAndUltrafastTogether(t *testing.T) {
+// 两个开关相互独立：同时开启表示"支持的模型走 Ultra Fast，其余走 Fast"。
+func TestAdminService_CreateGroup_AllowsForcingFastAndUltrafastTogether(t *testing.T) {
 	repo := &groupRepoStubForAdmin{}
 	svc := &adminServiceImpl{groupRepo: repo}
 
@@ -2385,12 +2386,13 @@ func TestAdminService_CreateGroup_RejectsForcingFastAndUltrafastTogether(t *test
 		Name: "both", Platform: PlatformOpenAI, RateMultiplier: 1, ForceOpenAIFast: true, ForceOpenAIUltrafast: true,
 	})
 
-	require.Nil(t, group)
-	require.Equal(t, "GROUP_OPENAI_FORCED_SERVICE_TIER_CONFLICT", infraerrors.Reason(err))
-	require.Nil(t, repo.created)
+	require.NoError(t, err)
+	require.NotNil(t, group)
+	require.True(t, repo.created.ForceOpenAIFast)
+	require.True(t, repo.created.ForceOpenAIUltrafast)
 }
 
-// 不支持该能力的平台两个开关都会被清零，不应因为"同时为真"被拒绝。
+// 不支持该能力的平台两个开关都会被清零。
 func TestAdminService_CreateGroup_UnsupportedPlatformIgnoresBothForcedTiers(t *testing.T) {
 	repo := &groupRepoStubForAdmin{}
 	svc := &adminServiceImpl{groupRepo: repo}
@@ -2436,28 +2438,40 @@ func TestAdminService_UpdateGroup_ForceOpenAIUltrafast(t *testing.T) {
 		require.True(t, repo.updated.ForceOpenAIUltrafast)
 	})
 
-	t.Run("enabling ultrafast while fast stays on is rejected", func(t *testing.T) {
+	t.Run("enabling ultrafast leaves fast untouched", func(t *testing.T) {
 		existing := &Group{ID: 1, Name: "g", Platform: PlatformOpenAI, Status: StatusActive, ForceOpenAIFast: true}
 		repo := &groupRepoStubForAdmin{getByID: existing}
 		svc := &adminServiceImpl{groupRepo: repo}
 
-		group, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{ForceOpenAIUltrafast: &truth})
+		_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{ForceOpenAIUltrafast: &truth})
 
-		require.Nil(t, group)
-		require.Equal(t, "GROUP_OPENAI_FORCED_SERVICE_TIER_CONFLICT", infraerrors.Reason(err))
-		require.Nil(t, repo.updated)
+		require.NoError(t, err)
+		require.True(t, repo.updated.ForceOpenAIFast)
+		require.True(t, repo.updated.ForceOpenAIUltrafast)
 	})
 
-	t.Run("enabling fast while ultrafast stays on is rejected", func(t *testing.T) {
+	t.Run("enabling fast leaves ultrafast untouched", func(t *testing.T) {
 		existing := &Group{ID: 1, Name: "g", Platform: PlatformOpenAI, Status: StatusActive, ForceOpenAIUltrafast: true}
 		repo := &groupRepoStubForAdmin{getByID: existing}
 		svc := &adminServiceImpl{groupRepo: repo}
 
-		group, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{ForceOpenAIFast: &truth})
+		_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{ForceOpenAIFast: &truth})
 
-		require.Nil(t, group)
-		require.Equal(t, "GROUP_OPENAI_FORCED_SERVICE_TIER_CONFLICT", infraerrors.Reason(err))
-		require.Nil(t, repo.updated)
+		require.NoError(t, err)
+		require.True(t, repo.updated.ForceOpenAIFast)
+		require.True(t, repo.updated.ForceOpenAIUltrafast)
+	})
+
+	t.Run("platform change clears both", func(t *testing.T) {
+		existing := &Group{ID: 1, Name: "g", Platform: PlatformOpenAI, Status: StatusActive, ForceOpenAIFast: true, ForceOpenAIUltrafast: true}
+		repo := &groupRepoStubForAdmin{getByID: existing}
+		svc := &adminServiceImpl{groupRepo: repo}
+
+		_, err := svc.UpdateGroup(context.Background(), existing.ID, &UpdateGroupInput{Platform: PlatformAnthropic})
+
+		require.NoError(t, err)
+		require.False(t, repo.updated.ForceOpenAIFast)
+		require.False(t, repo.updated.ForceOpenAIUltrafast)
 	})
 
 	t.Run("platform change clears ultrafast", func(t *testing.T) {

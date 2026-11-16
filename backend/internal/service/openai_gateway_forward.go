@@ -678,7 +678,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 
 	rawTier := requestView.ServiceTier
-	if forcedTier := openAIGroupForcedServiceTier(ctx, account); forcedTier != "" {
+	if forcedTier := openAIGroupForcedServiceTier(ctx, account, upstreamModel); forcedTier != "" {
 		rawTier = forcedTier
 		if requestView.ServiceTier != forcedTier {
 			markPatchSet("service_tier", forcedTier)

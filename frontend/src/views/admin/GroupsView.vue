@@ -1579,19 +1579,31 @@
           <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
             {{ t("admin.groups.openaiFast.title") }}
           </h4>
-          <div>
-            <label class="input-label">
-              {{ t("admin.groups.openaiFast.forcedTier") }}
+          <div class="flex items-center justify-between gap-4">
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.openaiFast.force") }}
             </label>
-            <Select
-              data-testid="create-openai-forced-tier"
-              :model-value="groupOpenAIForcedTier(createForm)"
-              :options="openAIForcedTierOptions"
-              @update:model-value="setGroupOpenAIForcedTier(createForm, $event)"
+            <Toggle
+              data-testid="create-force-openai-fast"
+              :aria-label="t('admin.groups.openaiFast.force')"
+              v-model="createForm.force_openai_fast"
             />
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {{ t("admin.groups.openaiFast.hint") }}
+          </p>
+          <div class="flex items-center justify-between gap-4 mt-4">
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.openaiFast.forceUltrafast") }}
+            </label>
+            <Toggle
+              data-testid="create-force-openai-ultrafast"
+              :aria-label="t('admin.groups.openaiFast.forceUltrafast')"
+              v-model="createForm.force_openai_ultrafast"
+            />
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {{ t("admin.groups.openaiFast.ultrafastHint") }}
           </p>
           <div class="flex items-center justify-between gap-4 mt-4">
             <label class="text-sm text-gray-600 dark:text-gray-400">
@@ -3244,19 +3256,31 @@
           <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
             {{ t("admin.groups.openaiFast.title") }}
           </h4>
-          <div>
-            <label class="input-label">
-              {{ t("admin.groups.openaiFast.forcedTier") }}
+          <div class="flex items-center justify-between gap-4">
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.openaiFast.force") }}
             </label>
-            <Select
-              data-testid="edit-openai-forced-tier"
-              :model-value="groupOpenAIForcedTier(editForm)"
-              :options="openAIForcedTierOptions"
-              @update:model-value="setGroupOpenAIForcedTier(editForm, $event)"
+            <Toggle
+              data-testid="edit-force-openai-fast"
+              :aria-label="t('admin.groups.openaiFast.force')"
+              v-model="editForm.force_openai_fast"
             />
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {{ t("admin.groups.openaiFast.hint") }}
+          </p>
+          <div class="flex items-center justify-between gap-4 mt-4">
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.openaiFast.forceUltrafast") }}
+            </label>
+            <Toggle
+              data-testid="edit-force-openai-ultrafast"
+              :aria-label="t('admin.groups.openaiFast.forceUltrafast')"
+              v-model="editForm.force_openai_ultrafast"
+            />
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {{ t("admin.groups.openaiFast.ultrafastHint") }}
           </p>
           <div class="flex items-center justify-between gap-4 mt-4">
             <label class="text-sm text-gray-600 dark:text-gray-400">
@@ -4363,9 +4387,7 @@ import {
   type MessagesDispatchMappingRow,
 } from "./groupsMessagesDispatch";
 import {
-  groupOpenAIForcedTier,
   normalizeGroupOpenAIFast,
-  setGroupOpenAIForcedTier,
   supportsGroupOpenAIFast,
 } from "./groupsOpenAIFast";
 import {
@@ -4704,12 +4726,6 @@ const editStatusOptions = computed(() => [
 const subscriptionTypeOptions = computed(() => [
   { value: "standard", label: t("admin.groups.subscription.standard") },
   { value: "subscription", label: t("admin.groups.subscription.subscription") },
-]);
-
-const openAIForcedTierOptions = computed(() => [
-  { value: "client", label: t("admin.groups.openaiFast.followClient") },
-  { value: "priority", label: t("admin.groups.openaiFast.force") },
-  { value: "ultrafast", label: t("admin.groups.openaiFast.forceUltrafast") },
 ]);
 
 // 降级分组选项（创建时）- 仅包含 anthropic 平台且未启用 claude_code_only 的分组

@@ -159,17 +159,6 @@ const BaseDialogStub = defineComponent({
   template: '<div v-if="show"><slot /><slot name="footer" /></div>',
 });
 
-// 透传 data-testid 的 Select 桩：暴露 modelValue / options，供用例读取当前档位并切换。
-const SelectStub = defineComponent({
-  name: "SelectStub",
-  props: {
-    modelValue: { type: [String, Number, Boolean, null], default: null },
-    options: { type: Array, default: () => [] },
-  },
-  emits: ["update:modelValue"],
-  setup: () => () => h("div"),
-});
-
 // 表单提交前会调用这些子组件的 validate()，自动桩不提供该方法。
 const ValidatingFieldStub = defineComponent({
   setup(_, { expose }) {
@@ -190,7 +179,7 @@ const mountView = () =>
         BaseDialog: BaseDialogStub,
         ConfirmDialog: true,
         EmptyState: true,
-        Select: SelectStub,
+        Select: true,
         PlatformIcon: true,
         Icon: true,
         GroupCapacityBadge: true,
@@ -223,10 +212,21 @@ const openEditDialog = async (group: AdminGroup) => {
   return wrapper;
 };
 
-const forcedTierSelect = (wrapper: ReturnType<typeof mountView>) =>
-  wrapper.getComponent<typeof SelectStub>(
-    '[data-testid="edit-openai-forced-tier"]',
-  );
+const toggle = (
+  wrapper: ReturnType<typeof mountView>,
+  name: "fast" | "ultrafast",
+) => wrapper.get(`[data-testid="edit-force-openai-${name}"]`);
+
+const isOn = (wrapper: ReturnType<typeof mountView>, name: "fast" | "ultrafast") =>
+  toggle(wrapper, name).attributes("aria-checked") === "true";
+
+const submit = async (wrapper: ReturnType<typeof mountView>) => {
+  await wrapper.get("#edit-group-form").trigger("submit");
+  await flushPromises();
+  expect(updateGroup).toHaveBeenCalledTimes(1);
+  expect(updateGroup.mock.calls[0][0]).toBe(sourceGroup.id);
+  return updateGroup.mock.calls[0][1];
+};
 
 describe("GroupsView OpenAI forced service tier", () => {
   beforeEach(() => {
@@ -246,46 +246,59 @@ describe("GroupsView OpenAI forced service tier", () => {
     updateGroup.mockResolvedValue({});
   });
 
-  it("offers follow-client, Fast and Ultra Fast", async () => {
+  it("shows both switches off for a group that follows the client", async () => {
     const wrapper = await openEditDialog(sourceGroup);
 
-    expect(forcedTierSelect(wrapper).props("options")).toEqual([
-      { value: "client", label: "admin.groups.openaiFast.followClient" },
-      { value: "priority", label: "admin.groups.openaiFast.force" },
-      { value: "ultrafast", label: "admin.groups.openaiFast.forceUltrafast" },
-    ]);
-    expect(forcedTierSelect(wrapper).props("modelValue")).toBe("client");
+    expect(isOn(wrapper, "fast")).toBe(false);
+    expect(isOn(wrapper, "ultrafast")).toBe(false);
 
     wrapper.unmount();
   });
 
   it.each([
-    [{ force_openai_fast: true, force_openai_ultrafast: false }, "priority"],
-    [{ force_openai_fast: false, force_openai_ultrafast: true }, "ultrafast"],
-  ])("loads the saved tier %o as %s", async (flags, tier) => {
+    [{ force_openai_fast: true, force_openai_ultrafast: false }],
+    [{ force_openai_fast: false, force_openai_ultrafast: true }],
+    [{ force_openai_fast: true, force_openai_ultrafast: true }],
+  ])("loads and resaves the stored flags %o unchanged", async (flags) => {
     const wrapper = await openEditDialog({ ...sourceGroup, ...flags });
 
-    expect(forcedTierSelect(wrapper).props("modelValue")).toBe(tier);
+    expect(isOn(wrapper, "fast")).toBe(flags.force_openai_fast);
+    expect(isOn(wrapper, "ultrafast")).toBe(flags.force_openai_ultrafast);
+    expect(await submit(wrapper)).toMatchObject(flags);
 
     wrapper.unmount();
   });
 
-  it("saves Ultra Fast as the only forced tier when switching from Fast", async () => {
+  it("turning on Ultra Fast keeps Force Fast as the fallback for other models", async () => {
     const wrapper = await openEditDialog({
       ...sourceGroup,
       force_openai_fast: true,
     });
 
-    forcedTierSelect(wrapper).vm.$emit("update:modelValue", "ultrafast");
-    await flushPromises();
-    expect(forcedTierSelect(wrapper).props("modelValue")).toBe("ultrafast");
+    await toggle(wrapper, "ultrafast").trigger("click");
+    expect(isOn(wrapper, "fast")).toBe(true);
+    expect(isOn(wrapper, "ultrafast")).toBe(true);
 
-    await wrapper.get("#edit-group-form").trigger("submit");
-    await flushPromises();
+    expect(await submit(wrapper)).toMatchObject({
+      force_openai_fast: true,
+      force_openai_ultrafast: true,
+    });
 
-    expect(updateGroup).toHaveBeenCalledTimes(1);
-    expect(updateGroup.mock.calls[0][0]).toBe(sourceGroup.id);
-    expect(updateGroup.mock.calls[0][1]).toMatchObject({
+    wrapper.unmount();
+  });
+
+  it("the two switches toggle independently", async () => {
+    const wrapper = await openEditDialog({
+      ...sourceGroup,
+      force_openai_fast: true,
+      force_openai_ultrafast: true,
+    });
+
+    await toggle(wrapper, "fast").trigger("click");
+    expect(isOn(wrapper, "fast")).toBe(false);
+    expect(isOn(wrapper, "ultrafast")).toBe(true);
+
+    expect(await submit(wrapper)).toMatchObject({
       force_openai_fast: false,
       force_openai_ultrafast: true,
     });
@@ -293,18 +306,17 @@ describe("GroupsView OpenAI forced service tier", () => {
     wrapper.unmount();
   });
 
-  it("clears both flags when switching back to follow-client", async () => {
+  it("clears both flags when both switches are turned off", async () => {
     const wrapper = await openEditDialog({
       ...sourceGroup,
+      force_openai_fast: true,
       force_openai_ultrafast: true,
     });
 
-    forcedTierSelect(wrapper).vm.$emit("update:modelValue", "client");
-    await flushPromises();
-    await wrapper.get("#edit-group-form").trigger("submit");
-    await flushPromises();
+    await toggle(wrapper, "fast").trigger("click");
+    await toggle(wrapper, "ultrafast").trigger("click");
 
-    expect(updateGroup.mock.calls[0][1]).toMatchObject({
+    expect(await submit(wrapper)).toMatchObject({
       force_openai_fast: false,
       force_openai_ultrafast: false,
     });
