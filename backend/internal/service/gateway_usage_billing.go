@@ -370,10 +370,9 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 		return true, nil
 	}
 
-	billingCtx, cancel := detachedBillingContext(ctx)
-	defer cancel()
-
-	result, err := repo.Apply(billingCtx, cmd)
+	applyCtx, cancelApply := detachedBillingContext(ctx)
+	result, err := repo.Apply(applyCtx, cmd)
+	cancelApply()
 	if err != nil {
 		return false, err
 	}
@@ -382,6 +381,10 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 		deps.deferredService.ScheduleLastUsedUpdate(p.Account.ID)
 		return false, nil
 	}
+
+	// Apply 可能在按用户合并的结算通道中排队，结算后的缓存同步使用独立的超时。
+	billingCtx, cancel := detachedBillingContext(ctx)
+	defer cancel()
 
 	if result.APIKeyQuotaExhausted {
 		if invalidator, ok := p.APIKeyService.(apiKeyAuthCacheInvalidator); ok && p.APIKey != nil && p.APIKey.Key != "" {

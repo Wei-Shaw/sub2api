@@ -653,19 +653,43 @@ func normalizeOpenAIParallelToolCallsWithoutTools(body []byte, responsesLite boo
 }
 
 // openAIRequestBodyHasTools 同时识别顶层 tools 和 input[].additional_tools。
+// additional_tools 类型字符串只有在字面出现、或被能拼出可见 ASCII 的 \u 转义
+// 拼出时才可能匹配，其余请求体跳过对 input 的结构扫描。
 func openAIRequestBodyHasTools(body []byte) bool {
-	if tools := gjson.GetBytes(body, "tools"); tools.IsArray() && len(tools.Array()) > 0 {
+	root := parseRawJSONView(body)
+	if gjsonArrayHasElements(root.Get("tools")) {
 		return true
 	}
-	for _, item := range gjson.GetBytes(body, "input").Array() {
-		if strings.TrimSpace(item.Get("type").String()) != "additional_tools" {
-			continue
-		}
-		if tools := item.Get("tools"); tools.IsArray() && len(tools.Array()) > 0 {
-			return true
-		}
+	if !bytes.Contains(body, []byte("additional_tools")) && !JSONMayEscapePlainASCII(body) {
+		return false
 	}
-	return false
+	found := false
+	isAdditionalToolsWithTools := func(item gjson.Result) bool {
+		return strings.TrimSpace(item.Get("type").String()) == "additional_tools" && gjsonArrayHasElements(item.Get("tools"))
+	}
+	input := root.Get("input")
+	if !input.IsArray() {
+		// gjson 把非数组的值当作只含它自身的数组。
+		return input.Type != gjson.Null && isAdditionalToolsWithTools(input)
+	}
+	input.ForEach(func(_, item gjson.Result) bool {
+		found = isAdditionalToolsWithTools(item)
+		return !found
+	})
+	return found
+}
+
+// gjsonArrayHasElements 不分配结果切片地判断数组是否非空。
+func gjsonArrayHasElements(value gjson.Result) bool {
+	if !value.IsArray() {
+		return false
+	}
+	nonEmpty := false
+	value.ForEach(func(_, _ gjson.Result) bool {
+		nonEmpty = true
+		return false
+	})
+	return nonEmpty
 }
 
 // normalizeOpenAIResponsesReasoningContentReplay removes non-portable
@@ -2512,7 +2536,7 @@ func openAIRequestBodyMayContainEmptyBase64InputImage(body []byte) bool {
 	if len(body) == 0 || !openAIRequestBodyMayContainInputImageToken(body) {
 		return false
 	}
-	input := gjson.GetBytes(body, "input")
+	input := parseRawJSONView(body).Get("input")
 	if !input.Exists() {
 		return false
 	}
@@ -2523,8 +2547,9 @@ func openAIRequestBodyMayContainInputImageToken(body []byte) bool {
 	if bytes.Contains(body, []byte("input_image")) {
 		return true
 	}
-	// JSON 字符串任意字符都可能被 unicode escape，遇到 \u 时交给 gjson 解码后的结构扫描兜底。
-	return bytes.Contains(body, []byte("\\u"))
+	// JSON 字符串任意字符都可能被 unicode escape；只有能拼出可见 ASCII 字符的 \u
+	// 才可能藏住 input_image，此时交给 gjson 解码后的结构扫描兜底。
+	return JSONMayEscapePlainASCII(body)
 }
 
 func openAIJSONValueMayContainEmptyBase64InputImage(value gjson.Result) bool {
