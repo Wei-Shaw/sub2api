@@ -167,6 +167,20 @@ func (_c *AccountCreate) SetNillableLoadFactor(v *int) *AccountCreate {
 	return _c
 }
 
+// SetPreferredUserID sets the "preferred_user_id" field.
+func (_c *AccountCreate) SetPreferredUserID(v int64) *AccountCreate {
+	_c.mutation.SetPreferredUserID(v)
+	return _c
+}
+
+// SetNillablePreferredUserID sets the "preferred_user_id" field if the given value is not nil.
+func (_c *AccountCreate) SetNillablePreferredUserID(v *int64) *AccountCreate {
+	if v != nil {
+		_c.SetPreferredUserID(*v)
+	}
+	return _c
+}
+
 // SetPriority sets the "priority" field.
 func (_c *AccountCreate) SetPriority(v int) *AccountCreate {
 	_c.mutation.SetPriority(v)
@@ -733,6 +747,10 @@ func (_c *AccountCreate) createSpec() (*Account, *sqlgraph.CreateSpec) {
 		_spec.SetField(account.FieldLoadFactor, field.TypeInt, value)
 		_node.LoadFactor = &value
 	}
+	if value, ok := _c.mutation.PreferredUserID(); ok {
+		_spec.SetField(account.FieldPreferredUserID, field.TypeInt64, value)
+		_node.PreferredUserID = &value
+	}
 	if value, ok := _c.mutation.Priority(); ok {
 		_spec.SetField(account.FieldPriority, field.TypeInt, value)
 		_node.Priority = value
@@ -1128,6 +1146,30 @@ func (u *AccountUpsert) AddLoadFactor(v int) *AccountUpsert {
 // ClearLoadFactor clears the value of the "load_factor" field.
 func (u *AccountUpsert) ClearLoadFactor() *AccountUpsert {
 	u.SetNull(account.FieldLoadFactor)
+	return u
+}
+
+// SetPreferredUserID sets the "preferred_user_id" field.
+func (u *AccountUpsert) SetPreferredUserID(v int64) *AccountUpsert {
+	u.Set(account.FieldPreferredUserID, v)
+	return u
+}
+
+// UpdatePreferredUserID sets the "preferred_user_id" field to the value that was provided on create.
+func (u *AccountUpsert) UpdatePreferredUserID() *AccountUpsert {
+	u.SetExcluded(account.FieldPreferredUserID)
+	return u
+}
+
+// AddPreferredUserID adds v to the "preferred_user_id" field.
+func (u *AccountUpsert) AddPreferredUserID(v int64) *AccountUpsert {
+	u.Add(account.FieldPreferredUserID, v)
+	return u
+}
+
+// ClearPreferredUserID clears the value of the "preferred_user_id" field.
+func (u *AccountUpsert) ClearPreferredUserID() *AccountUpsert {
+	u.SetNull(account.FieldPreferredUserID)
 	return u
 }
 
@@ -1697,6 +1739,34 @@ func (u *AccountUpsertOne) UpdateLoadFactor() *AccountUpsertOne {
 func (u *AccountUpsertOne) ClearLoadFactor() *AccountUpsertOne {
 	return u.Update(func(s *AccountUpsert) {
 		s.ClearLoadFactor()
+	})
+}
+
+// SetPreferredUserID sets the "preferred_user_id" field.
+func (u *AccountUpsertOne) SetPreferredUserID(v int64) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetPreferredUserID(v)
+	})
+}
+
+// AddPreferredUserID adds v to the "preferred_user_id" field.
+func (u *AccountUpsertOne) AddPreferredUserID(v int64) *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddPreferredUserID(v)
+	})
+}
+
+// UpdatePreferredUserID sets the "preferred_user_id" field to the value that was provided on create.
+func (u *AccountUpsertOne) UpdatePreferredUserID() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdatePreferredUserID()
+	})
+}
+
+// ClearPreferredUserID clears the value of the "preferred_user_id" field.
+func (u *AccountUpsertOne) ClearPreferredUserID() *AccountUpsertOne {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearPreferredUserID()
 	})
 }
 
@@ -2482,6 +2552,34 @@ func (u *AccountUpsertBulk) UpdateLoadFactor() *AccountUpsertBulk {
 func (u *AccountUpsertBulk) ClearLoadFactor() *AccountUpsertBulk {
 	return u.Update(func(s *AccountUpsert) {
 		s.ClearLoadFactor()
+	})
+}
+
+// SetPreferredUserID sets the "preferred_user_id" field.
+func (u *AccountUpsertBulk) SetPreferredUserID(v int64) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.SetPreferredUserID(v)
+	})
+}
+
+// AddPreferredUserID adds v to the "preferred_user_id" field.
+func (u *AccountUpsertBulk) AddPreferredUserID(v int64) *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.AddPreferredUserID(v)
+	})
+}
+
+// UpdatePreferredUserID sets the "preferred_user_id" field to the value that was provided on create.
+func (u *AccountUpsertBulk) UpdatePreferredUserID() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.UpdatePreferredUserID()
+	})
+}
+
+// ClearPreferredUserID clears the value of the "preferred_user_id" field.
+func (u *AccountUpsertBulk) ClearPreferredUserID() *AccountUpsertBulk {
+	return u.Update(func(s *AccountUpsert) {
+		s.ClearPreferredUserID()
 	})
 }
 

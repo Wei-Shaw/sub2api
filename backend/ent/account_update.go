@@ -226,6 +226,33 @@ func (_u *AccountUpdate) ClearLoadFactor() *AccountUpdate {
 	return _u
 }
 
+// SetPreferredUserID sets the "preferred_user_id" field.
+func (_u *AccountUpdate) SetPreferredUserID(v int64) *AccountUpdate {
+	_u.mutation.ResetPreferredUserID()
+	_u.mutation.SetPreferredUserID(v)
+	return _u
+}
+
+// SetNillablePreferredUserID sets the "preferred_user_id" field if the given value is not nil.
+func (_u *AccountUpdate) SetNillablePreferredUserID(v *int64) *AccountUpdate {
+	if v != nil {
+		_u.SetPreferredUserID(*v)
+	}
+	return _u
+}
+
+// AddPreferredUserID adds value to the "preferred_user_id" field.
+func (_u *AccountUpdate) AddPreferredUserID(v int64) *AccountUpdate {
+	_u.mutation.AddPreferredUserID(v)
+	return _u
+}
+
+// ClearPreferredUserID clears the value of the "preferred_user_id" field.
+func (_u *AccountUpdate) ClearPreferredUserID() *AccountUpdate {
+	_u.mutation.ClearPreferredUserID()
+	return _u
+}
+
 // SetPriority sets the "priority" field.
 func (_u *AccountUpdate) SetPriority(v int) *AccountUpdate {
 	_u.mutation.ResetPriority()
@@ -856,6 +883,15 @@ func (_u *AccountUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if _u.mutation.LoadFactorCleared() {
 		_spec.ClearField(account.FieldLoadFactor, field.TypeInt)
 	}
+	if value, ok := _u.mutation.PreferredUserID(); ok {
+		_spec.SetField(account.FieldPreferredUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPreferredUserID(); ok {
+		_spec.AddField(account.FieldPreferredUserID, field.TypeInt64, value)
+	}
+	if _u.mutation.PreferredUserIDCleared() {
+		_spec.ClearField(account.FieldPreferredUserID, field.TypeInt64)
+	}
 	if value, ok := _u.mutation.Priority(); ok {
 		_spec.SetField(account.FieldPriority, field.TypeInt, value)
 	}
@@ -1363,6 +1399,33 @@ func (_u *AccountUpdateOne) AddLoadFactor(v int) *AccountUpdateOne {
 // ClearLoadFactor clears the value of the "load_factor" field.
 func (_u *AccountUpdateOne) ClearLoadFactor() *AccountUpdateOne {
 	_u.mutation.ClearLoadFactor()
+	return _u
+}
+
+// SetPreferredUserID sets the "preferred_user_id" field.
+func (_u *AccountUpdateOne) SetPreferredUserID(v int64) *AccountUpdateOne {
+	_u.mutation.ResetPreferredUserID()
+	_u.mutation.SetPreferredUserID(v)
+	return _u
+}
+
+// SetNillablePreferredUserID sets the "preferred_user_id" field if the given value is not nil.
+func (_u *AccountUpdateOne) SetNillablePreferredUserID(v *int64) *AccountUpdateOne {
+	if v != nil {
+		_u.SetPreferredUserID(*v)
+	}
+	return _u
+}
+
+// AddPreferredUserID adds value to the "preferred_user_id" field.
+func (_u *AccountUpdateOne) AddPreferredUserID(v int64) *AccountUpdateOne {
+	_u.mutation.AddPreferredUserID(v)
+	return _u
+}
+
+// ClearPreferredUserID clears the value of the "preferred_user_id" field.
+func (_u *AccountUpdateOne) ClearPreferredUserID() *AccountUpdateOne {
+	_u.mutation.ClearPreferredUserID()
 	return _u
 }
 
@@ -2025,6 +2088,15 @@ func (_u *AccountUpdateOne) sqlSave(ctx context.Context) (_node *Account, err er
 	}
 	if _u.mutation.LoadFactorCleared() {
 		_spec.ClearField(account.FieldLoadFactor, field.TypeInt)
+	}
+	if value, ok := _u.mutation.PreferredUserID(); ok {
+		_spec.SetField(account.FieldPreferredUserID, field.TypeInt64, value)
+	}
+	if value, ok := _u.mutation.AddedPreferredUserID(); ok {
+		_spec.AddField(account.FieldPreferredUserID, field.TypeInt64, value)
+	}
+	if _u.mutation.PreferredUserIDCleared() {
+		_spec.ClearField(account.FieldPreferredUserID, field.TypeInt64)
 	}
 	if value, ok := _u.mutation.Priority(); ok {
 		_spec.SetField(account.FieldPriority, field.TypeInt, value)

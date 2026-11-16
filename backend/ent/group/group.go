@@ -128,6 +128,8 @@ const (
 	FieldFreeOpenaiFast = "free_openai_fast"
 	// FieldRequireOauthOnly holds the string denoting the require_oauth_only field in the database.
 	FieldRequireOauthOnly = "require_oauth_only"
+	// FieldPreferUserAccounts holds the string denoting the prefer_user_accounts field in the database.
+	FieldPreferUserAccounts = "prefer_user_accounts"
 	// FieldRequirePrivacySet holds the string denoting the require_privacy_set field in the database.
 	FieldRequirePrivacySet = "require_privacy_set"
 	// FieldDefaultMappedModel holds the string denoting the default_mapped_model field in the database.
@@ -283,6 +285,7 @@ var Columns = []string{
 	FieldForceOpenaiFast,
 	FieldFreeOpenaiFast,
 	FieldRequireOauthOnly,
+	FieldPreferUserAccounts,
 	FieldRequirePrivacySet,
 	FieldDefaultMappedModel,
 	FieldMessagesDispatchModelConfig,
@@ -414,6 +417,8 @@ var (
 	DefaultFreeOpenaiFast bool
 	// DefaultRequireOauthOnly holds the default value on creation for the "require_oauth_only" field.
 	DefaultRequireOauthOnly bool
+	// DefaultPreferUserAccounts holds the default value on creation for the "prefer_user_accounts" field.
+	DefaultPreferUserAccounts bool
 	// DefaultRequirePrivacySet holds the default value on creation for the "require_privacy_set" field.
 	DefaultRequirePrivacySet bool
 	// DefaultDefaultMappedModel holds the default value on creation for the "default_mapped_model" field.
@@ -707,6 +712,11 @@ func ByFreeOpenaiFast(opts ...sql.OrderTermOption) OrderOption {
 // ByRequireOauthOnly orders the results by the require_oauth_only field.
 func ByRequireOauthOnly(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRequireOauthOnly, opts...).ToFunc()
+}
+
+// ByPreferUserAccounts orders the results by the prefer_user_accounts field.
+func ByPreferUserAccounts(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldPreferUserAccounts, opts...).ToFunc()
 }
 
 // ByRequirePrivacySet orders the results by the require_privacy_set field.

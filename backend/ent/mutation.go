@@ -2300,6 +2300,8 @@ type AccountMutation struct {
 	addconcurrency              *int
 	load_factor                 *int
 	addload_factor              *int
+	preferred_user_id           *int64
+	addpreferred_user_id        *int64
 	priority                    *int
 	addpriority                 *int
 	rate_multiplier             *float64
@@ -3029,6 +3031,76 @@ func (m *AccountMutation) ResetLoadFactor() {
 	m.load_factor = nil
 	m.addload_factor = nil
 	delete(m.clearedFields, account.FieldLoadFactor)
+}
+
+// SetPreferredUserID sets the "preferred_user_id" field.
+func (m *AccountMutation) SetPreferredUserID(i int64) {
+	m.preferred_user_id = &i
+	m.addpreferred_user_id = nil
+}
+
+// PreferredUserID returns the value of the "preferred_user_id" field in the mutation.
+func (m *AccountMutation) PreferredUserID() (r int64, exists bool) {
+	v := m.preferred_user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPreferredUserID returns the old "preferred_user_id" field's value of the Account entity.
+// If the Account object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *AccountMutation) OldPreferredUserID(ctx context.Context) (v *int64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPreferredUserID is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPreferredUserID requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPreferredUserID: %w", err)
+	}
+	return oldValue.PreferredUserID, nil
+}
+
+// AddPreferredUserID adds i to the "preferred_user_id" field.
+func (m *AccountMutation) AddPreferredUserID(i int64) {
+	if m.addpreferred_user_id != nil {
+		*m.addpreferred_user_id += i
+	} else {
+		m.addpreferred_user_id = &i
+	}
+}
+
+// AddedPreferredUserID returns the value that was added to the "preferred_user_id" field in this mutation.
+func (m *AccountMutation) AddedPreferredUserID() (r int64, exists bool) {
+	v := m.addpreferred_user_id
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearPreferredUserID clears the value of the "preferred_user_id" field.
+func (m *AccountMutation) ClearPreferredUserID() {
+	m.preferred_user_id = nil
+	m.addpreferred_user_id = nil
+	m.clearedFields[account.FieldPreferredUserID] = struct{}{}
+}
+
+// PreferredUserIDCleared returns if the "preferred_user_id" field was cleared in this mutation.
+func (m *AccountMutation) PreferredUserIDCleared() bool {
+	_, ok := m.clearedFields[account.FieldPreferredUserID]
+	return ok
+}
+
+// ResetPreferredUserID resets all changes to the "preferred_user_id" field.
+func (m *AccountMutation) ResetPreferredUserID() {
+	m.preferred_user_id = nil
+	m.addpreferred_user_id = nil
+	delete(m.clearedFields, account.FieldPreferredUserID)
 }
 
 // SetPriority sets the "priority" field.
@@ -4138,7 +4210,7 @@ func (m *AccountMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *AccountMutation) Fields() []string {
-	fields := make([]string, 0, 31)
+	fields := make([]string, 0, 32)
 	if m.created_at != nil {
 		fields = append(fields, account.FieldCreatedAt)
 	}
@@ -4177,6 +4249,9 @@ func (m *AccountMutation) Fields() []string {
 	}
 	if m.load_factor != nil {
 		fields = append(fields, account.FieldLoadFactor)
+	}
+	if m.preferred_user_id != nil {
+		fields = append(fields, account.FieldPreferredUserID)
 	}
 	if m.priority != nil {
 		fields = append(fields, account.FieldPriority)
@@ -4266,6 +4341,8 @@ func (m *AccountMutation) Field(name string) (ent.Value, bool) {
 		return m.Concurrency()
 	case account.FieldLoadFactor:
 		return m.LoadFactor()
+	case account.FieldPreferredUserID:
+		return m.PreferredUserID()
 	case account.FieldPriority:
 		return m.Priority()
 	case account.FieldRateMultiplier:
@@ -4337,6 +4414,8 @@ func (m *AccountMutation) OldField(ctx context.Context, name string) (ent.Value,
 		return m.OldConcurrency(ctx)
 	case account.FieldLoadFactor:
 		return m.OldLoadFactor(ctx)
+	case account.FieldPreferredUserID:
+		return m.OldPreferredUserID(ctx)
 	case account.FieldPriority:
 		return m.OldPriority(ctx)
 	case account.FieldRateMultiplier:
@@ -4472,6 +4551,13 @@ func (m *AccountMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetLoadFactor(v)
+		return nil
+	case account.FieldPreferredUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPreferredUserID(v)
 		return nil
 	case account.FieldPriority:
 		v, ok := value.(int)
@@ -4616,6 +4702,9 @@ func (m *AccountMutation) AddedFields() []string {
 	if m.addload_factor != nil {
 		fields = append(fields, account.FieldLoadFactor)
 	}
+	if m.addpreferred_user_id != nil {
+		fields = append(fields, account.FieldPreferredUserID)
+	}
 	if m.addpriority != nil {
 		fields = append(fields, account.FieldPriority)
 	}
@@ -4636,6 +4725,8 @@ func (m *AccountMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedConcurrency()
 	case account.FieldLoadFactor:
 		return m.AddedLoadFactor()
+	case account.FieldPreferredUserID:
+		return m.AddedPreferredUserID()
 	case account.FieldPriority:
 		return m.AddedPriority()
 	case account.FieldRateMultiplier:
@@ -4669,6 +4760,13 @@ func (m *AccountMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddLoadFactor(v)
+		return nil
+	case account.FieldPreferredUserID:
+		v, ok := value.(int64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddPreferredUserID(v)
 		return nil
 	case account.FieldPriority:
 		v, ok := value.(int)
@@ -4706,6 +4804,9 @@ func (m *AccountMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(account.FieldLoadFactor) {
 		fields = append(fields, account.FieldLoadFactor)
+	}
+	if m.FieldCleared(account.FieldPreferredUserID) {
+		fields = append(fields, account.FieldPreferredUserID)
 	}
 	if m.FieldCleared(account.FieldErrorMessage) {
 		fields = append(fields, account.FieldErrorMessage)
@@ -4771,6 +4872,9 @@ func (m *AccountMutation) ClearField(name string) error {
 		return nil
 	case account.FieldLoadFactor:
 		m.ClearLoadFactor()
+		return nil
+	case account.FieldPreferredUserID:
+		m.ClearPreferredUserID()
 		return nil
 	case account.FieldErrorMessage:
 		m.ClearErrorMessage()
@@ -4854,6 +4958,9 @@ func (m *AccountMutation) ResetField(name string) error {
 		return nil
 	case account.FieldLoadFactor:
 		m.ResetLoadFactor()
+		return nil
+	case account.FieldPreferredUserID:
+		m.ResetPreferredUserID()
 		return nil
 	case account.FieldPriority:
 		m.ResetPriority()
@@ -22163,6 +22270,7 @@ type GroupMutation struct {
 	force_openai_fast                       *bool
 	free_openai_fast                        *bool
 	require_oauth_only                      *bool
+	prefer_user_accounts                    *bool
 	require_privacy_set                     *bool
 	default_mapped_model                    *string
 	messages_dispatch_model_config          *domain.OpenAIMessagesDispatchModelConfig
@@ -25130,6 +25238,42 @@ func (m *GroupMutation) ResetRequireOauthOnly() {
 	m.require_oauth_only = nil
 }
 
+// SetPreferUserAccounts sets the "prefer_user_accounts" field.
+func (m *GroupMutation) SetPreferUserAccounts(b bool) {
+	m.prefer_user_accounts = &b
+}
+
+// PreferUserAccounts returns the value of the "prefer_user_accounts" field in the mutation.
+func (m *GroupMutation) PreferUserAccounts() (r bool, exists bool) {
+	v := m.prefer_user_accounts
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldPreferUserAccounts returns the old "prefer_user_accounts" field's value of the Group entity.
+// If the Group object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *GroupMutation) OldPreferUserAccounts(ctx context.Context) (v bool, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldPreferUserAccounts is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldPreferUserAccounts requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldPreferUserAccounts: %w", err)
+	}
+	return oldValue.PreferUserAccounts, nil
+}
+
+// ResetPreferUserAccounts resets all changes to the "prefer_user_accounts" field.
+func (m *GroupMutation) ResetPreferUserAccounts() {
+	m.prefer_user_accounts = nil
+}
+
 // SetRequirePrivacySet sets the "require_privacy_set" field.
 func (m *GroupMutation) SetRequirePrivacySet(b bool) {
 	m.require_privacy_set = &b
@@ -25995,7 +26139,7 @@ func (m *GroupMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *GroupMutation) Fields() []string {
-	fields := make([]string, 0, 68)
+	fields := make([]string, 0, 69)
 	if m.created_at != nil {
 		fields = append(fields, group.FieldCreatedAt)
 	}
@@ -26164,6 +26308,9 @@ func (m *GroupMutation) Fields() []string {
 	if m.require_oauth_only != nil {
 		fields = append(fields, group.FieldRequireOauthOnly)
 	}
+	if m.prefer_user_accounts != nil {
+		fields = append(fields, group.FieldPreferUserAccounts)
+	}
 	if m.require_privacy_set != nil {
 		fields = append(fields, group.FieldRequirePrivacySet)
 	}
@@ -26320,6 +26467,8 @@ func (m *GroupMutation) Field(name string) (ent.Value, bool) {
 		return m.FreeOpenaiFast()
 	case group.FieldRequireOauthOnly:
 		return m.RequireOauthOnly()
+	case group.FieldPreferUserAccounts:
+		return m.PreferUserAccounts()
 	case group.FieldRequirePrivacySet:
 		return m.RequirePrivacySet()
 	case group.FieldDefaultMappedModel:
@@ -26465,6 +26614,8 @@ func (m *GroupMutation) OldField(ctx context.Context, name string) (ent.Value, e
 		return m.OldFreeOpenaiFast(ctx)
 	case group.FieldRequireOauthOnly:
 		return m.OldRequireOauthOnly(ctx)
+	case group.FieldPreferUserAccounts:
+		return m.OldPreferUserAccounts(ctx)
 	case group.FieldRequirePrivacySet:
 		return m.OldRequirePrivacySet(ctx)
 	case group.FieldDefaultMappedModel:
@@ -26889,6 +27040,13 @@ func (m *GroupMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetRequireOauthOnly(v)
+		return nil
+	case group.FieldPreferUserAccounts:
+		v, ok := value.(bool)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetPreferUserAccounts(v)
 		return nil
 	case group.FieldRequirePrivacySet:
 		v, ok := value.(bool)
@@ -27652,6 +27810,9 @@ func (m *GroupMutation) ResetField(name string) error {
 		return nil
 	case group.FieldRequireOauthOnly:
 		m.ResetRequireOauthOnly()
+		return nil
+	case group.FieldPreferUserAccounts:
+		m.ResetPreferUserAccounts()
 		return nil
 	case group.FieldRequirePrivacySet:
 		m.ResetRequirePrivacySet()

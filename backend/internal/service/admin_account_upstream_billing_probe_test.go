@@ -31,6 +31,7 @@ func (r *accountBillingSettingsAdminRepo) UpdateWithAccountBillingSettings(
 	probeEnabled *bool,
 	rateSyncEnabled *bool,
 	rateMultiplier *float64,
+	_ *int64,
 ) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

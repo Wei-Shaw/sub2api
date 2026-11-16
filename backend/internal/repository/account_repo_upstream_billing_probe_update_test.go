@@ -398,7 +398,7 @@ func TestUpdateWithAccountBillingSettingsRollsBackWhenOutboxFails(t *testing.T) 
 	}
 
 	probeDisabled := false
-	err = repo.UpdateWithAccountBillingSettings(context.Background(), account, &probeDisabled, nil, nil)
+	err = repo.UpdateWithAccountBillingSettings(context.Background(), account, &probeDisabled, nil, nil, nil)
 
 	require.EqualError(t, err, "outbox failed")
 	require.Equal(t, false, account.Extra[service.UpstreamBillingProbeEnabledExtraKey])

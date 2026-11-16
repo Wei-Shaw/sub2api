@@ -45,6 +45,27 @@ func TestBatchImagePublicService_SelectAccountPriority(t *testing.T) {
 	}
 }
 
+func TestBatchImagePublicService_PreferredAccount(t *testing.T) {
+	svc, _, _, _, _ := newTestBatchImagePublicService(true)
+	group := &Group{ID: 12, Platform: PlatformGemini, PreferUserAccounts: true}
+	owner := testBatchImageOwner()
+	owner.GroupID = &group.ID
+	accounts := []Account{testBatchImageAccount(202, AccountTypeAPIKey), testBatchImageAccount(101, AccountTypeAPIKey)}
+	accounts[0].Priority, accounts[0].PreferredUserID = 90, &owner.UserID
+	accounts[1].Priority = 1
+	svc.AccountRepo = &publicBatchImageAccountRepo{accounts: accounts}
+	ctx := WithPreferredAccountUser(context.Background(), &APIKey{UserID: owner.UserID, Group: group})
+	pick := func(want int64) {
+		t.Helper()
+		_, account, err := svc.selectProviderAndAccount(ctx, owner, BatchImageProviderGeminiAPI, "gemini-2.5-flash-image")
+		require.NoError(t, err)
+		require.Equal(t, want, account.ID)
+	}
+	pick(202)
+	accounts[0].Extra = map[string]any{"quota_limit": 10.0, "quota_used": 10.0}
+	pick(101)
+}
+
 func TestBatchImagePublicService_Submit(t *testing.T) {
 	ctx := context.Background()
 

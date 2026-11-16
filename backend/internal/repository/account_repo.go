@@ -25,6 +25,7 @@ import (
 	dbgroup "github.com/Wei-Shaw/sub2api/ent/group"
 	dbpredicate "github.com/Wei-Shaw/sub2api/ent/predicate"
 	dbproxy "github.com/Wei-Shaw/sub2api/ent/proxy"
+	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/adminaccess"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -449,7 +450,7 @@ func (r *accountRepository) Update(ctx context.Context, account *service.Account
 	if scoped := r.accountTransactionScope(ctx); scoped != r {
 		return scoped.Update(ctx, account)
 	}
-	return r.updateAccount(ctx, account, nil, nil, account.RateMultiplier)
+	return r.updateAccount(ctx, account, nil, nil, account.RateMultiplier, nil)
 }
 
 // UpdateWithAccountBillingSettings applies an admin account edit while
@@ -461,8 +462,9 @@ func (r *accountRepository) UpdateWithAccountBillingSettings(
 	probeEnabled *bool,
 	rateSyncEnabled *bool,
 	rateMultiplier *float64,
+	preferredUserID *int64,
 ) error {
-	return r.updateAccount(ctx, account, probeEnabled, rateSyncEnabled, rateMultiplier)
+	return r.updateAccount(ctx, account, probeEnabled, rateSyncEnabled, rateMultiplier, preferredUserID)
 }
 
 func (r *accountRepository) updateAccount(
@@ -471,6 +473,7 @@ func (r *accountRepository) updateAccount(
 	explicitProbeEnabled *bool,
 	explicitRateSyncEnabled *bool,
 	explicitRateMultiplier *float64,
+	preferredUserID *int64,
 ) error {
 	if account == nil {
 		return nil
@@ -495,6 +498,16 @@ func (r *accountRepository) updateAccount(
 		}
 	}
 
+	// Serialize preference assignment with soft deletion of the target user.
+	if preferredUserID != nil && *preferredUserID > 0 {
+		_, err := client.User.Query().Where(dbuser.IDEQ(*preferredUserID)).ForShare().Only(ctx)
+		if dbent.IsNotFound(err) {
+			return service.ErrUserNotFound
+		}
+		if err != nil {
+			return err
+		}
+	}
 	updated, err := r.updateLockedAccount(
 		ctx,
 		client,
@@ -502,6 +515,7 @@ func (r *accountRepository) updateAccount(
 		explicitProbeEnabled,
 		explicitRateSyncEnabled,
 		explicitRateMultiplier,
+		preferredUserID,
 	)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrAccountNotFound, nil)
@@ -516,6 +530,7 @@ func (r *accountRepository) updateAccount(
 	}
 
 	account.UpdatedAt = updated.UpdatedAt
+	account.PreferredUserID = updated.PreferredUserID
 	// 普通账号编辑（如 model_mapping / credentials）也需要立即刷新单账号快照，
 	// 否则网关在 outbox worker 延迟或异常时仍可能读到旧配置。
 	if contextTx == nil {
@@ -531,6 +546,7 @@ func (r *accountRepository) updateLockedAccount(
 	explicitProbeEnabled *bool,
 	explicitRateSyncEnabled *bool,
 	explicitRateMultiplier *float64,
+	preferredUserID *int64,
 ) (*dbent.Account, error) {
 	extra, err := lockAndMergeAccountProbeExtra(ctx, client, account, explicitProbeEnabled, explicitRateSyncEnabled)
 	if err != nil {
@@ -557,6 +573,13 @@ func (r *accountRepository) updateLockedAccount(
 		SetSchedulable(schedulable).
 		SetAutoPauseOnExpired(account.AutoPauseOnExpired)
 
+	if preferredUserID != nil {
+		if *preferredUserID == 0 {
+			builder.ClearPreferredUserID()
+		} else {
+			builder.SetPreferredUserID(*preferredUserID)
+		}
+	}
 	if explicitRateMultiplier != nil {
 		builder.SetRateMultiplier(*explicitRateMultiplier)
 	}
@@ -3692,6 +3715,7 @@ func accountEntityToService(m *dbent.Account) *service.Account {
 		ProxyFallbackOriginID:   m.ProxyFallbackOriginID,
 		Concurrency:             m.Concurrency,
 		Priority:                m.Priority,
+		PreferredUserID:         m.PreferredUserID,
 		RateMultiplier:          &rateMultiplier,
 		LoadFactor:              m.LoadFactor,
 		Status:                  m.Status,

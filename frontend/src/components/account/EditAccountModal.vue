@@ -1932,6 +1932,22 @@
         :type="account.type"
       />
 
+      <div>
+        <label for="account-preferred-user" class="input-label">{{ t('admin.accounts.preferredUser') }}</label>
+        <Select
+          id="account-preferred-user"
+          v-model="preferredUserID"
+          :options="preferredUserOptions"
+          :loading="preferredUserSearchLoading"
+          :placeholder="t('admin.accounts.preferredUserPlaceholder')"
+          searchable
+          clearable
+          remote
+          @search="searchPreferredUsers"
+        />
+        <p class="input-hint">{{ t('admin.accounts.preferredUserHint') }}</p>
+      </div>
+
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
@@ -4501,6 +4517,39 @@ const mixedChannelWarningMessageText = computed(() => {
   return mixedChannelWarningRawMessage.value
 })
 
+const preferredUserID = ref<number | null>(null)
+const preferredUserSearchLoading = ref(false)
+const preferredUsers = ref<{ value: number; label: string }[]>([])
+let preferredUserSearchRevision = 0
+const preferredUserOptions = computed(() => {
+  const id = preferredUserID.value
+  if (id == null || preferredUsers.value.some(option => option.value === id)) return preferredUsers.value
+  return [{ value: id, label: `#${id}` }, ...preferredUsers.value]
+})
+
+async function searchPreferredUsers(query: string) {
+  const revision = ++preferredUserSearchRevision
+  if (!query) {
+    preferredUsers.value = []
+    preferredUserSearchLoading.value = false
+    return
+  }
+  preferredUserSearchLoading.value = true
+  try {
+    const users = await adminAPI.usage.searchUsers(query)
+    if (revision === preferredUserSearchRevision) {
+      preferredUsers.value = users.filter(user => !user.deleted).map(user => ({
+        value: user.id,
+        label: `${user.email} (#${user.id})`
+      }))
+    }
+  } catch {
+    if (revision === preferredUserSearchRevision) preferredUsers.value = []
+  } finally {
+    if (revision === preferredUserSearchRevision) preferredUserSearchLoading.value = false
+  }
+}
+
 const form = reactive({
   name: '',
   notes: '',
@@ -4615,6 +4664,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   form.proxy_id = newAccount.proxy_id
   form.concurrency = newAccount.concurrency
   form.load_factor = newAccount.load_factor ?? null
+  preferredUserSearchRevision++
+  preferredUsers.value = []
+  preferredUserSearchLoading.value = false
+  preferredUserID.value = newAccount.preferred_user_id ?? null
   form.priority = newAccount.priority
   form.rate_multiplier = newAccount.rate_multiplier ?? 1
   form.status = (newAccount.status === 'active' || newAccount.status === 'inactive' || newAccount.status === 'error')
@@ -5658,6 +5711,9 @@ const handleSubmit = async () => {
 	}
 
   const updatePayload: Record<string, unknown> = { ...form }
+  if (preferredUserID.value !== (props.account.preferred_user_id ?? null)) {
+    updatePayload.preferred_user_id = preferredUserID.value ?? 0
+  }
   try {
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
     if (updatePayload.proxy_id === null) {
