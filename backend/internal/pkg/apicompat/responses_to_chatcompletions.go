@@ -503,6 +503,7 @@ type bufferedFuncCall struct {
 	Name                  string
 	Namespace             string
 	EncryptedFunctionArgs json.RawMessage
+	EncryptedContent      string
 	Args                  strings.Builder
 }
 
@@ -547,6 +548,7 @@ func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) 
 				Name:                  event.Item.Name,
 				Namespace:             event.Item.Namespace,
 				EncryptedFunctionArgs: event.Item.EncryptedFunctionArgs,
+				EncryptedContent:      event.Item.EncryptedContent,
 			})
 		}
 	case "response.function_call_arguments.delta", "response.custom_tool_call_input.delta":
@@ -616,6 +618,7 @@ func (a *BufferedResponseAccumulator) BuildOutput() []ResponsesOutput {
 			Name:                  a.funcCalls[i].Name,
 			Namespace:             a.funcCalls[i].Namespace,
 			EncryptedFunctionArgs: a.funcCalls[i].EncryptedFunctionArgs,
+			EncryptedContent:      a.funcCalls[i].EncryptedContent,
 			Arguments:             a.funcCalls[i].Args.String(),
 		})
 	}

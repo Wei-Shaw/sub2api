@@ -1548,18 +1548,21 @@ func (s *GatewayService) getSchedulableAccount(ctx context.Context, accountID in
 	return account, nil
 }
 
+// filterAccountsBySchedulingThreshold 在 accounts 上原地剔除被调度阈值暂停的账号并返回剔除后的切片；
+// accounts 必须由调用方独占，调用后只能使用返回值。
 func (s *GatewayService) filterAccountsBySchedulingThreshold(ctx context.Context, accounts []Account) []Account {
 	if len(accounts) == 0 {
 		return accounts
 	}
 
-	filtered := make([]Account, 0, len(accounts))
+	filtered := accounts[:0]
 	for i := range accounts {
 		if s.isAccountBlockedBySchedulingThreshold(ctx, &accounts[i]) {
 			continue
 		}
 		filtered = append(filtered, accounts[i])
 	}
+	clear(accounts[len(filtered):])
 	return filtered
 }
 

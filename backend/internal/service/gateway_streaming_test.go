@@ -532,3 +532,104 @@ func TestHandleStreamingResponse_SSEErrorEvent_NonJSONDataLine(t *testing.T) {
 	})
 	require.Equal(t, "", ExtractUpstreamErrorMessage([]byte(sseErr.RawData)))
 }
+
+func TestSSEEventNeedsJSONParse(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name         string
+		eventName    string
+		data         string
+		keepalive    bool
+		modelReplace bool
+		want         bool
+	}{
+		{
+			name:      "content_block_delta is forwarded verbatim",
+			eventName: "content_block_delta",
+			data:      `{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"hello"}}`,
+			want:      false,
+		},
+		{
+			name:      "ping is forwarded verbatim",
+			eventName: "ping",
+			data:      `{"type":"ping"}`,
+			want:      false,
+		},
+		{
+			name:      "message_start needs usage parsing",
+			eventName: "message_start",
+			data:      `{"type":"message_start","message":{"usage":{"input_tokens":1}}}`,
+			want:      true,
+		},
+		{
+			name:      "message_delta needs usage parsing",
+			eventName: "message_delta",
+			data:      `{"type":"message_delta","usage":{"output_tokens":1}}`,
+			want:      true,
+		},
+		{
+			name:      "missing event name falls back to parsing",
+			eventName: "",
+			data:      `{"type":"content_block_delta"}`,
+			want:      true,
+		},
+		{
+			name:      "keepalive needs block fields",
+			eventName: "content_block_delta",
+			data:      `{"type":"content_block_delta","index":0}`,
+			keepalive: true,
+			want:      true,
+		},
+		{
+			name:         "model replace needs message parsing",
+			eventName:    "content_block_start",
+			data:         `{"type":"content_block_start","message":{"model":"x"}}`,
+			modelReplace: true,
+			want:         true,
+		},
+		{
+			name:      "unknown event with usage must be parsed",
+			eventName: "custom_event",
+			data:      `{"usage":{"input_tokens":1}}`,
+			want:      true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, sseEventNeedsJSONParse(tt.eventName, []byte(tt.data), tt.keepalive, tt.modelReplace))
+		})
+	}
+}
+
+// 快路径必须原样转发 content_block_delta，不能重新序列化改变 key 顺序/空格/转义；
+// message_stop 在没有 keepalive 的情况下也要能被识别为终态。
+func TestHandleStreamingResponse_FastPathForwardsDeltaBytesVerbatim(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newMinimalGatewayService()
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+	pr, pw := io.Pipe()
+	resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: pr}
+
+	delta := `{"delta":{"text":"你好","type":"text_delta"},"type":"content_block_delta","index":0,"extra":"a  b"}`
+	go func() {
+		defer func() { _ = pw.Close() }()
+		_, _ = pw.Write([]byte("event: content_block_delta\ndata: " + delta + "\n\n"))
+		_, _ = pw.Write([]byte("event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"))
+	}()
+
+	result, err := svc.handleStreamingResponse(context.Background(), resp, c, &Account{ID: 1}, time.Now(), "model", "model", false)
+	_ = pr.Close()
+	require.NoError(t, err)
+	require.NotNil(t, result)
+
+	body := rec.Body.String()
+	require.Contains(t, body, "event: content_block_delta\ndata: "+delta+"\n\n",
+		"网关必须逐字节转发不需要改写的 delta")
+	require.Contains(t, body, "event: message_stop")
+}
