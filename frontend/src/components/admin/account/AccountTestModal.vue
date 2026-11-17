@@ -442,7 +442,7 @@ const supportsGeminiImageTest = computed(() => {
   const modelID = selectedModelId.value.toLowerCase()
   if (!modelID.startsWith('gemini-') || !modelID.includes('-image')) return false
 
-  return props.account?.platform === 'gemini' || (props.account?.platform === 'antigravity' && props.account?.type === 'apikey')
+  return props.account?.platform === 'gemini' || props.account?.platform === 'antigravity'
 })
 
 const supportsOpenAIImageTest = computed(() => {

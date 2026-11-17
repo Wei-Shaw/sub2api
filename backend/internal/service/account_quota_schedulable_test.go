@@ -113,6 +113,48 @@ func TestAccountIsSchedulable_QuotaExceeded(t *testing.T) {
 			},
 			want: false,
 		},
+		{
+			name: "service_account total quota exceeded",
+			account: &Account{
+				Status:      StatusActive,
+				Schedulable: true,
+				Platform:    PlatformGemini,
+				Type:        AccountTypeServiceAccount,
+				Extra: map[string]any{
+					"quota_limit": 50.0,
+					"quota_used":  50.0,
+				},
+			},
+			want: false,
+		},
+		{
+			name: "service_account daily quota exceeded",
+			account: &Account{
+				Status:      StatusActive,
+				Schedulable: true,
+				Platform:    PlatformGemini,
+				Type:        AccountTypeServiceAccount,
+				Extra: map[string]any{
+					"quota_daily_limit": 10.0,
+					"quota_daily_used":  12.0,
+					"quota_daily_start": now.Add(-1 * time.Hour).Format(time.RFC3339),
+				},
+			},
+			want: false,
+		},
+		{
+			name: "service_account without limit stays schedulable regardless of quota_used",
+			account: &Account{
+				Status:      StatusActive,
+				Schedulable: true,
+				Platform:    PlatformGemini,
+				Type:        AccountTypeServiceAccount,
+				Extra: map[string]any{
+					"quota_used": 9999.0,
+				},
+			},
+			want: true,
+		},
 	}
 
 	for _, tt := range tests {

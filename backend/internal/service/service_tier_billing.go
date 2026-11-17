@@ -53,6 +53,8 @@ func serviceTierCostRank(tier string) (rank int, known bool) {
 		return 1, true
 	case "priority", "fast":
 		return 2, true
+	case "ultrafast":
+		return 3, true
 	default:
 		return 1, false
 	}

@@ -4,13 +4,15 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/tidwall/gjson"
 )
 
 // countGrokNativeSearchCallsFromJSONBytes counts completed native search tool
 // calls in a Responses-style JSON body (output array or nested response.output).
-// Counts web_search_call and x_search_call. Client function/custom calls and
-// tool_search discovery do not incur a server-side search surcharge.
+// Counts native web/X searches, non-client tool_search_call items, and custom
+// search calls the xAI server runs itself (call_id xs_ / as_). Client tools do
+// not incur a search surcharge merely because they have a search-like name.
 func countGrokNativeSearchCallsFromJSONBytes(body []byte) int {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return 0
@@ -224,6 +226,10 @@ func isGrokNativeSearchOutputItem(item gjson.Result) bool {
 	switch itemType {
 	case "web_search_call", "x_search_call":
 		return true
+	case "tool_search_call":
+		return !strings.EqualFold(strings.TrimSpace(item.Get("execution").String()), "client")
+	case "custom_tool_call":
+		return apicompat.IsServerSideSearchCall(itemType, item.Get("call_id").String())
 	default:
 		return false
 	}

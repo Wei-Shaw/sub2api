@@ -84,6 +84,9 @@ func TestCallProvider_BasePath(t *testing.T) {
 		{"openai responses version", MonitorProviderOpenAI, MonitorAPIModeResponses, "/relay/v1", "/relay/v1/responses"},
 		{"gemini version", MonitorProviderGemini, "", "/relay/v1beta", "/relay/v1beta/models/test-model:generateContent"},
 		{"zhipu version", MonitorProviderZhipu, "", "/api/paas/v4", "/api/paas/v4/chat/completions"},
+		{"zhipu coding plan", MonitorProviderZhipu, "", "/api/coding/paas/v4", "/api/coding/paas/v4/chat/completions"},
+		{"zhipu relay origin", MonitorProviderZhipu, "", "", "/v1/chat/completions"},
+		{"zhipu relay version", MonitorProviderZhipu, "", "/relay/v1", "/relay/v1/chat/completions"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, _, status, err := callProvider(context.Background(), tc.provider,
@@ -93,4 +96,20 @@ func TestCallProvider_BasePath(t *testing.T) {
 			require.Equal(t, tc.wantPath, <-requests)
 		})
 	}
+}
+
+func TestMonitorRequestPath_Zhipu(t *testing.T) {
+	adapter := providerAdapters[MonitorProviderZhipu]
+	for endpoint, want := range map[string]string{
+		"https://open.bigmodel.cn":                    providerZhipuPath,
+		"https://api.z.ai":                            providerZhipuPath,
+		"https://open.bigmodel.cn/api/coding/paas/v4": "/chat/completions",
+		"https://birdapi.up.railway.app":              providerOpenAIPath,
+		"https://notbigmodel.cn":                      providerOpenAIPath,
+		"https://relay.example.com/v1":                providerOpenAIPath,
+	} {
+		require.Equal(t, want, monitorRequestPath(MonitorProviderZhipu, endpoint, adapter, "glm-5.3-flash"), endpoint)
+	}
+	require.Equal(t, providerOpenAIPath,
+		monitorRequestPath(MonitorProviderDeepseek, "https://birdapi.up.railway.app", providerAdapters[MonitorProviderDeepseek], "m"))
 }

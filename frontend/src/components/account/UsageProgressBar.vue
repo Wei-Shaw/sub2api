@@ -62,7 +62,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import type { WindowStats } from '@/types'
@@ -72,6 +72,7 @@ const props = withDefaults(
   defineProps<{
     label: string
     utilization: number // Percentage (0-100+)
+    utilizationUnknown?: boolean
     resetsAt?: string | null
     color: 'indigo' | 'emerald' | 'purple' | 'amber'
     windowStats?: WindowStats | null
@@ -97,6 +98,11 @@ const { pause: pauseClock, resume: resumeClock } = useIntervalFn(
   { immediate: false },
 )
 if (props.resetsAt) resumeClock()
+const refreshClockWhenVisible = () => {
+  if (!document.hidden && props.resetsAt) now.value = new Date()
+}
+onMounted(() => document.addEventListener('visibilitychange', refreshClockWhenVisible))
+onUnmounted(() => document.removeEventListener('visibilitychange', refreshClockWhenVisible))
 watch(
   () => props.resetsAt,
   (val) => {
@@ -168,11 +174,13 @@ const textClass = computed(() => {
 
 // Bar width (capped at 100%)
 const barWidth = computed(() => {
+  if (props.utilizationUnknown) return '0%'
   return `${Math.min(Math.max(props.utilization, 0), 100)}%`
 })
 
 // Display percentage (cap at 999% for readability)
 const displayPercent = computed(() => {
+  if (props.utilizationUnknown) return '—'
   const percent = Math.round(
     props.remainingCapacity
       ? Math.min(Math.max(props.utilization, 0), 100)
@@ -182,6 +190,7 @@ const displayPercent = computed(() => {
 })
 
 const shouldShowResetTime = computed(() => {
+  if (props.utilizationUnknown) return false
   if (props.resetsAt) return true
   return Boolean(props.showNowWhenIdle && props.utilization <= 0)
 })

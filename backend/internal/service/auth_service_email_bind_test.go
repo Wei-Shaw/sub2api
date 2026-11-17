@@ -919,6 +919,24 @@ func (s *emailBindRefreshTokenCacheStub) DeleteRefreshToken(_ context.Context, t
 	return nil
 }
 
+func (s *emailBindRefreshTokenCacheStub) ConsumeRefreshToken(_ context.Context, tokenHash string) (*service.RefreshTokenData, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, ok := s.tokens[tokenHash]
+	if !ok {
+		return nil, service.ErrRefreshTokenNotFound
+	}
+	delete(s.tokens, tokenHash)
+	for _, tokenSet := range s.userSets {
+		delete(tokenSet, tokenHash)
+	}
+	for _, tokenSet := range s.families {
+		delete(tokenSet, tokenHash)
+	}
+	cloned := *data
+	return &cloned, nil
+}
+
 func (s *emailBindRefreshTokenCacheStub) DeleteUserRefreshTokens(_ context.Context, userID int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -1164,4 +1182,20 @@ func cloneEmailBindUser(user *service.User) *service.User {
 	}
 	cloned := *user
 	return &cloned
+}
+
+func (s *emailBindCacheStub) IncrVerificationCodeAttempts(context.Context, string) (int, error) {
+	if s.data == nil {
+		return 0, errors.New("verification code not found")
+	}
+	s.data.Attempts++
+	return s.data.Attempts, nil
+}
+
+func (s *emailBindCacheStub) IncrNotifyVerifyCodeAttempts(context.Context, string) (int, error) {
+	return 0, errors.New("notify verification code not found")
+}
+
+func (s *emailBindCacheStub) ConsumePasswordResetToken(context.Context, string, string) (bool, error) {
+	return false, nil
 }

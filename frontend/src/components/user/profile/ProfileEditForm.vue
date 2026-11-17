@@ -58,10 +58,12 @@ const authStore = useAuthStore()
 const appStore = useAppStore()
 
 const username = ref(props.initialUsername)
+let savedUsername = props.initialUsername
 const loading = ref(false)
 
 watch(() => props.initialUsername, (val) => {
-  username.value = val
+  if (username.value === savedUsername) username.value = val
+  savedUsername = val
 })
 
 const handleUpdateProfile = async () => {
@@ -71,10 +73,13 @@ const handleUpdateProfile = async () => {
   }
 
   loading.value = true
+  const submittedUsername = username.value
   try {
     const updatedUser = await userAPI.updateProfile({
-      username: username.value
+      username: submittedUsername
     })
+    if (username.value === submittedUsername) username.value = updatedUser.username
+    savedUsername = updatedUser.username
     authStore.user = updatedUser
     appStore.showSuccess(t('profile.updateSuccess'))
   } catch (error: unknown) {

@@ -138,8 +138,8 @@ func (s *authCacheStub) IncrementCreateAttemptCount(ctx context.Context, userID 
 	return nil
 }
 
-func (s *authCacheStub) DeleteCreateAttemptCount(ctx context.Context, userID int64) error {
-	return nil
+func (s *authCacheStub) IncrementCreateCount(ctx context.Context, userID int64, window time.Duration) (int64, error) {
+	return 0, nil
 }
 
 func (s *authCacheStub) IncrementDailyUsage(ctx context.Context, apiKey string) error {
@@ -613,6 +613,16 @@ func TestAPIKeyService_GetByKeyAllowsMaximumLength(t *testing.T) {
 	_, err := svc.GetByKey(context.Background(), key)
 	require.ErrorIs(t, err, ErrAPIKeyNotFound)
 	require.Equal(t, int32(1), repoCalls.Load())
+}
+
+func TestAPIKeyService_GetByKeyRejectsNonUTF8BeforeLookup(t *testing.T) {
+	repo := &authRepoStub{getByKeyForAuth: func(context.Context, string) (*APIKey, error) {
+		t.Fatal("non-UTF-8 credential reached repository")
+		return nil, nil
+	}}
+	svc := NewAPIKeyService(repo, nil, nil, nil, nil, nil, &config.Config{})
+	_, err := svc.GetByKey(context.Background(), "sk-\xff\xfe")
+	require.ErrorIs(t, err, ErrAPIKeyNotFound)
 }
 
 func TestAPIKeyService_AuthLookupBulkheadRejectsExcessMisses(t *testing.T) {

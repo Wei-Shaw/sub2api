@@ -22,6 +22,7 @@ func filterGrokPingTestInput(t *testing.T, input string) string {
 		io.NopCloser(strings.NewReader(input)),
 		&Account{Platform: PlatformGrok},
 		defaultMaxLineSize,
+		nil,
 	)
 	output, err := io.ReadAll(body)
 	require.NoError(t, err)
@@ -157,7 +158,7 @@ func TestGrokResponsesBillingPingFilterConvertsPartialPingFrameAtEOF(t *testing.
 func TestGrokResponsesBillingPingFilterDoesNotFilterNonGrokAccounts(t *testing.T) {
 	input := "event: ping\ndata: {\"type\":\"ping\",\"cost\":\"0\"}\n\n"
 	source := io.NopCloser(strings.NewReader(input))
-	body := newGrokResponsesBillingPingFilterBody(source, &Account{Platform: PlatformOpenAI}, defaultMaxLineSize)
+	body := newGrokResponsesBillingPingFilterBody(source, &Account{Platform: PlatformOpenAI}, defaultMaxLineSize, nil)
 
 	output, err := io.ReadAll(body)
 	require.NoError(t, err)
@@ -180,7 +181,7 @@ func TestGrokResponsesBillingPingFilterPreservesUsageAndTerminalEvent(t *testing
 		StatusCode: http.StatusOK,
 		Header:     http.Header{},
 		Body: newGrokResponsesBillingPingFilterBody(
-			io.NopCloser(strings.NewReader(input)), account, defaultMaxLineSize,
+			io.NopCloser(strings.NewReader(input)), account, defaultMaxLineSize, nil,
 		),
 	}
 	recorder := httptest.NewRecorder()
@@ -215,7 +216,7 @@ func (r *grokPingFilterTestReadCloser) Close() error {
 func TestGrokResponsesBillingPingFilterCloseCancelsSourceOnce(t *testing.T) {
 	upstreamReader, upstreamWriter := io.Pipe()
 	source := &grokPingFilterTestReadCloser{reader: upstreamReader}
-	body := newGrokResponsesBillingPingFilterBody(source, &Account{Platform: PlatformGrok}, defaultMaxLineSize)
+	body := newGrokResponsesBillingPingFilterBody(source, &Account{Platform: PlatformGrok}, defaultMaxLineSize, nil)
 
 	require.NoError(t, body.Close())
 	require.Eventually(t, func() bool { return source.closeCount.Load() == 1 }, time.Second, time.Millisecond)
@@ -226,7 +227,7 @@ func TestGrokResponsesBillingPingFilterCloseCancelsSourceOnce(t *testing.T) {
 
 func TestGrokResponsesBillingPingFilterFlushesCompletedFrames(t *testing.T) {
 	upstreamReader, upstreamWriter := io.Pipe()
-	body := newGrokResponsesBillingPingFilterBody(upstreamReader, &Account{Platform: PlatformGrok}, defaultMaxLineSize)
+	body := newGrokResponsesBillingPingFilterBody(upstreamReader, &Account{Platform: PlatformGrok}, defaultMaxLineSize, nil)
 	t.Cleanup(func() { require.NoError(t, body.Close()) })
 
 	go func() {
@@ -255,6 +256,7 @@ func TestGrokResponsesBillingPingFilterReportsOversizedLine(t *testing.T) {
 		io.NopCloser(strings.NewReader("data: 123456789\n\n")),
 		&Account{Platform: PlatformGrok},
 		8,
+		nil,
 	)
 	_, err := io.ReadAll(body)
 	require.ErrorContains(t, err, "filter Grok Responses billing ping")

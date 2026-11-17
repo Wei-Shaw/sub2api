@@ -23,6 +23,10 @@ type ssoDeviceFakeClient struct {
 
 func (c *ssoDeviceFakeClient) Do(req *http.Request) (*http.Response, error) {
 	c.cookieHeaders = append(c.cookieHeaders, req.Header.Get("Cookie"))
+	if req.URL.String() != SSOApproveURL {
+		require.Empty(c.t, req.Header.Get("Origin"))
+		require.Empty(c.t, req.Header.Get("Referer"))
+	}
 	switch req.URL.String() {
 	case SSOAccountsURL:
 		require.Equal(c.t, http.MethodGet, req.Method)
@@ -43,13 +47,16 @@ func (c *ssoDeviceFakeClient) Do(req *http.Request) (*http.Response, error) {
 		return ssoDeviceResponse(http.StatusFound, http.Header{"Location": {"/oauth2/device/consent"}}, ``), nil
 	case "https://auth.x.ai/oauth2/device/consent":
 		require.Equal(c.t, http.MethodGet, req.Method)
-		return ssoDeviceResponse(http.StatusOK, nil, `<html>consent</html>`), nil
+		return ssoDeviceResponse(http.StatusOK, nil, `<html><form><input type="hidden" name="consent_token" value="consent&amp;token"/></form></html>`), nil
 	case SSOApproveURL:
 		require.Equal(c.t, http.MethodPost, req.Method)
+		require.Equal(c.t, "https://auth.x.ai", req.Header.Get("Origin"))
+		require.Equal(c.t, "https://auth.x.ai/oauth2/device/consent", req.Header.Get("Referer"))
 		values := readSSODeviceForm(c.t, req)
 		require.Equal(c.t, "USER-1", values.Get("user_code"))
 		require.Equal(c.t, "allow", values.Get("action"))
 		require.Equal(c.t, "User", values.Get("principal_type"))
+		require.Equal(c.t, "consent&token", values.Get("consent_token"))
 		return ssoDeviceResponse(http.StatusSeeOther, http.Header{"Location": {"/oauth2/device/done"}}, ``), nil
 	case "https://auth.x.ai/oauth2/device/done":
 		require.Equal(c.t, http.MethodGet, req.Method)
@@ -87,6 +94,24 @@ func TestConvertSSOToBuildCompletesDeviceFlow(t *testing.T) {
 	require.Contains(t, client.cookieHeaders[0], "sso-rw=sso-token")
 	require.Contains(t, client.cookieHeaders[len(client.cookieHeaders)-1], "session=web-session")
 	require.Contains(t, client.cookieHeaders[len(client.cookieHeaders)-1], "csrf=csrf-token")
+	for _, cookie := range client.cookieHeaders {
+		require.NotContains(t, cookie, "consent&token")
+	}
+}
+
+func TestSSOConsentToken(t *testing.T) {
+	for _, tc := range []struct {
+		name, body, want string
+	}{
+		{"legacy page", `<html>consent</html>`, ""},
+		{"encoded hidden value", `<input value='a&amp;b&#43;c' name='consent_token' type='hidden'>`, "a&b+c"},
+		{"case insensitive HTML", `<INPUT TYPE="HIDDEN" NAME="consent_token" VALUE="token"/>`, "token"},
+		{"ignore script and visible fields", `<script>"<input type='hidden' name='consent_token' value='fake'>"</script><input name='consent_token' value='visible'><input type='hidden' name='user_code' value='user'><input type='hidden' name='consent_token' value='real'>`, "real"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			require.Equal(t, tc.want, ssoConsentToken([]byte(tc.body)))
+		})
+	}
 }
 
 func TestNormalizeSSOTokenAcceptsCookieHeader(t *testing.T) {

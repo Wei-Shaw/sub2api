@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -208,6 +209,27 @@ func TestProjectAccountModelsPassthroughIgnoresStaleMappings(t *testing.T) {
 	require.JSONEq(t, string(body), string(projected))
 }
 
+func TestProjectAccountModelsPassthroughFilterKeepsSourceNames(t *testing.T) {
+	for _, codex := range []bool{false, true} {
+		t.Run(fmt.Sprint(codex), func(t *testing.T) {
+			account := newCodexModelsAPIKeyTestAccount("https://models.example/v1")
+			account.Extra = map[string]any{"openai_passthrough": true, "openai_passthrough_model_filter": true}
+			account.Credentials["model_mapping"] = map[string]any{
+				"qwen3.8-max": "must-not-rewrite", "qwen3.8-*": "also-not-a-model", "absent-alias": "gpt-6.1-sol",
+			}
+			body := `{"object":"list","data":[{"id":"qwen3.8-max","display_name":"Qwen Max"},{"id":"qwen3.8-plus"},{"id":"gpt-6.1-sol"}]}`
+			want := `{"object":"list","data":[{"id":"qwen3.8-max","display_name":"Qwen Max"},{"id":"qwen3.8-plus"}]}`
+			if codex {
+				body = strings.NewReplacer(`"data"`, `"models"`, `"id"`, `"slug"`).Replace(body)
+				want = strings.NewReplacer(`"data"`, `"models"`, `"id"`, `"slug"`).Replace(want)
+			}
+			projected, err := projectAccountModelsBody([]byte(body), account, nil, codex)
+			require.NoError(t, err)
+			require.JSONEq(t, want, string(projected))
+		})
+	}
+}
+
 func TestFetchOpenAIModelsListEmptyAndMalformedResponses(t *testing.T) {
 	for _, body := range []string{`{"data":[]}`, `{"data":null}`, `{}`, `{"data":{}}`, `{"data":[{}]}`, `{"data":[null]}`} {
 		t.Run(body, func(t *testing.T) {
@@ -345,4 +367,19 @@ func TestOpenAIModelsCacheSeparatesRepresentationsForIdenticalRequests(t *testin
 	require.NoError(t, err)
 	require.JSONEq(t, manifestBody, string(manifest.Body))
 	require.EqualValues(t, 2, calls.Load())
+}
+
+func TestApplyCodexModelsMappingPreservesUnchangedBodyAndETag(t *testing.T) {
+	for _, pinned := range []bool{false, true} {
+		t.Run(fmt.Sprint(pinned), func(t *testing.T) {
+			account := newCodexModelsAPIKeyTestAccount("https://models.example/v1")
+			account.Credentials["model_mapping"] = map[string]any{"gpt-5.4": "gpt-5.4"}
+			body := []byte(`{ "unknown": { "keep": true }, "models": [ { "slug": "gpt-5.4", "custom": 123 } ] }`)
+			response := &OpenAIModelsResponse{Body: body, ETag: `W/"upstream-validator"`}
+			group := &Group{Platform: PlatformOpenAI, CodexModelsManifestConfig: GroupCodexModelsManifestConfig{Enabled: pinned}}
+			require.NoError(t, ApplyPinnedCodexModelsMapping(response, account, group))
+			require.Equal(t, body, response.Body)
+			require.Equal(t, `W/"upstream-validator"`, response.ETag)
+		})
+	}
 }

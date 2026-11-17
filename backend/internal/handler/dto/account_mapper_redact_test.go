@@ -100,3 +100,58 @@ func TestAccountFromServiceShallow_NilCredentialsOmitsStatus(t *testing.T) {
 	require.Nil(t, got.Credentials)
 	require.Nil(t, got.CredentialsStatus)
 }
+
+func TestAccountFromService_RedactsGrokModelDiagnostics(t *testing.T) {
+	src := &service.Account{
+		ID: 25, Name: "grok", Platform: service.PlatformGrok, Type: service.AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token":  "access-secret",
+			"refresh_token": "refresh-secret",
+			"api_key":       "sk-secret",
+			"base_url":      "https://cli-chat-proxy.grok.com/v1",
+			"model_mapping": map[string]any{"friendly": "grok-4.7"},
+		},
+		Extra: map[string]any{"grok_observed_models": map[string]any{"models": []any{"grok-4.7"}}},
+	}
+
+	got := AccountFromService(src)
+	require.Nil(t, got.GrokModelDiagnostics)
+	shallow := AccountFromServiceShallow(src)
+	require.Nil(t, shallow.GrokModelDiagnostics)
+
+	diagnostics := &service.GrokModelDiagnostics{
+		State:    "fresh",
+		Endpoint: "https://cli-chat-proxy.grok.com/v1/models",
+		Models:   []string{"grok-4.7"},
+		Mappings: []service.GrokModelDiagnosticItem{{Requested: "friendly", Upstream: "grok-4.7", Status: "listed"}},
+		LastAttempt: &service.GrokCatalogAttempt{
+			StartedAt: "2026-10-25T06:00:00Z", FinishedAt: "2026-10-25T06:00:01Z", Status: "failed", ErrorCode: "http_error",
+			Scope: &service.GrokCatalogScope{AccountID: 25, AccountType: service.AccountTypeOAuth, Endpoint: "https://cli-chat-proxy.grok.com/v1/models"},
+		},
+	}
+	diagRaw, err := json.Marshal(diagnostics)
+	require.NoError(t, err)
+	require.NotContains(t, string(diagRaw), "access-secret")
+	require.NotContains(t, string(diagRaw), "query-secret")
+	require.NotContains(t, string(diagRaw), "s3cret")
+	require.NotContains(t, string(diagRaw), "user:")
+	require.Contains(t, string(diagRaw), `"models":["grok-4.7"]`)
+	require.NotContains(t, string(diagRaw), `"models":null`)
+	require.NotContains(t, string(diagRaw), `"mappings":null`)
+	got.GrokModelDiagnostics = diagnostics
+	raw, err := json.Marshal(got)
+	require.NoError(t, err)
+	body := string(raw)
+	require.Contains(t, body, `"grok_model_diagnostics"`)
+	require.Contains(t, body, `"mappings":[`)
+	require.NotContains(t, body, "access-secret")
+	require.NotContains(t, body, "refresh-secret")
+	require.NotContains(t, body, "sk-secret")
+	require.NotContains(t, body, "query-secret")
+	require.NotContains(t, body, "s3cret")
+
+	listRaw, err := json.Marshal(AccountListItemFromAccount(got))
+	require.NoError(t, err)
+	require.NotContains(t, string(listRaw), "grok_model_diagnostics")
+	require.NotContains(t, string(listRaw), "access-secret")
+}

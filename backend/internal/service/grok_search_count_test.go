@@ -20,6 +20,25 @@ func TestCountGrokNativeSearchCallsFromJSONBytes(t *testing.T) {
 	require.Equal(t, 2, countGrokNativeSearchCallsFromJSONBytes(body))
 }
 
+// xAI runs X Search (call_id xs_) and attachment search (as_) on its own server and reports
+// them as custom_tool_call items. A custom tool the client declared keeps its call_ id.
+func TestCountGrokNativeSearchCalls_ServerSideSearchCustomToolCall(t *testing.T) {
+	t.Parallel()
+	xSearch := `{"type":"custom_tool_call","id":"ctc_1","call_id":"xs_1","name":"x_keyword_search","input":"{}"}`
+	attachment := `{"type":"custom_tool_call","id":"ctc_2","call_id":"as_1","name":"attachment_search","input":"{}"}`
+	client := `{"type":"custom_tool_call","id":"ctc_3","call_id":"call_1","name":"exec","input":"dir"}`
+
+	require.Equal(t, 2, countGrokNativeSearchCallsFromJSONBytes([]byte(`{"output":[`+xSearch+`,`+attachment+`,`+client+`]}`)))
+	require.Equal(t, 0, countGrokNativeSearchCallsFromJSONBytes([]byte(`{"output":[`+client+`]}`)))
+
+	sse := stringsJoin(
+		`data: {"type":"response.output_item.done","item":`+xSearch+`}`,
+		`data: {"type":"response.output_item.done","item":`+client+`}`,
+		`data: {"type":"response.completed","response":{"output":[`+xSearch+`,`+client+`]}}`,
+	)
+	require.Equal(t, 1, countGrokNativeSearchCallsFromSSEBody(sse), "item.done and the terminal output list the same call once")
+}
+
 func TestCountGrokNativeSearchCallsFromJSONBytes_PrefersNestedResponse(t *testing.T) {
 	t.Parallel()
 	body := []byte(`{"output":[{"type":"web_search_call","id":"duplicate"}],"response":{"output":[{"type":"web_search_call","id":"duplicate"},{"type":"x_search_call","id":"xs1"}]}}`)
@@ -87,6 +106,7 @@ func TestCountGrokNativeSearchCallsExcludesClientTools(t *testing.T) {
 		`{"type":"custom_tool_call","name":"x_search","call_id":"client"}`,
 		`{"type":"custom_tool_call","name":"tool_search","call_id":"client"}`,
 		`{"type":"tool_search_call","execution":"client","call_id":"client"}`,
+		`{"type":"tool_search_call","execution":" Client ","call_id":"client"}`,
 	} {
 		t.Run(item, func(t *testing.T) {
 			body := []byte(fmt.Sprintf(`{"output":[%s,{"type":"web_search_call","id":"server"}]}`, item))
@@ -98,6 +118,28 @@ func TestCountGrokNativeSearchCallsExcludesClientTools(t *testing.T) {
 			require.Equal(t, 1, countGrokNativeSearchCallsInSSEDataDedup(completed, seen))
 			require.Zero(t, countGrokNativeSearchCallsInSSEDataDedup(completed, seen))
 			require.Equal(t, 1, countGrokNativeSearchCallsFromSSEBody(stringsJoin("data: "+string(done), "data: "+string(completed))))
+		})
+	}
+}
+
+func TestCountGrokNativeSearchCallsPreservesServerTools(t *testing.T) {
+	t.Parallel()
+	for _, item := range []string{
+		`{"type":"web_search_call","id":"ws1"}`,
+		`{"type":"x_search_call","id":"xs1"}`,
+		`{"type":"tool_search_call","execution":"server","id":"ts1"}`,
+		`{"type":"tool_search_call","id":"ts1"}`,
+		`{"type":"custom_tool_call","call_id":"xs_1","name":"x_keyword_search"}`,
+		`{"type":"custom_tool_call","call_id":"as_1","name":"attachment_search"}`,
+	} {
+		t.Run(item, func(t *testing.T) {
+			body := []byte(fmt.Sprintf(`{"output":[%s]}`, item))
+			require.Equal(t, 1, countGrokNativeSearchCallsFromJSONBytes(body))
+			done := []byte(fmt.Sprintf(`{"type":"response.output_item.done","item":%s}`, item))
+			completed := []byte(fmt.Sprintf(`{"type":"response.completed","response":%s}`, body))
+			seen := make(map[string]struct{})
+			require.Equal(t, 1, countGrokNativeSearchCallsInSSEDataDedup(done, seen))
+			require.Zero(t, countGrokNativeSearchCallsInSSEDataDedup(completed, seen))
 		})
 	}
 }
