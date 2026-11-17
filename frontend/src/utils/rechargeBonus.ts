@@ -138,10 +138,10 @@ export function matchRechargeBonusTier(tiers: RechargeBonusTier[], paymentAmount
   return matched
 }
 
-// 赠送额度 = 到账基数 × 百分比，保留两位小数；与后端 calculateRechargeBonus 一致。
+// 赠送额度 = 到账基数 × 百分比，保留六位小数；与后端 calculateRechargeBonus 一致。
 export function calculateRechargeBonus(baseCredited: number, percent: number): number {
   if (!Number.isFinite(baseCredited) || !Number.isFinite(percent) || baseCredited <= 0 || percent <= 0) return 0
-  return roundRechargeAmount((baseCredited * percent) / 100)
+  return roundRechargeAmount((baseCredited * percent) / 100, 6)
 }
 
 export interface RechargeBonusQuoteOptions {
@@ -163,7 +163,7 @@ export function quoteRechargeBonus(
   const amount = Number.isFinite(paymentAmount) && paymentAmount > 0 ? paymentAmount : 0
   const rate = typeof opts.multiplier === 'number' && Number.isFinite(opts.multiplier) && opts.multiplier > 0 ? opts.multiplier : 1
   const digits = typeof opts.currencyDigits === 'number' && Number.isInteger(opts.currencyDigits) && opts.currencyDigits >= 0 ? opts.currencyDigits : 2
-  const base = roundRechargeAmount(amount * rate)
+  const base = roundRechargeAmount(amount * rate, 6)
   const quote: RechargeBonusQuote = { mode, percent: 0, payBase: amount, base, bonus: 0, credited: base, tier: null }
   const tier = matchRechargeBonusTier(tiers, amount)
   if (!tier || tier.bonus_percent <= 0) return quote
@@ -172,16 +172,16 @@ export function quoteRechargeBonus(
     if (tier.bonus_percent >= 100) return quote
     const payBase = roundRechargeAmount((amount * (100 - tier.bonus_percent)) / 100, digits)
     if (payBase <= 0 || payBase >= amount) return quote
-    const paidCredit = roundRechargeAmount(payBase * rate)
+    const paidCredit = roundRechargeAmount(payBase * rate, 6)
     quote.payBase = payBase
-    quote.bonus = Math.max(0, roundRechargeAmount(base - paidCredit))
+    quote.bonus = Math.max(0, roundRechargeAmount(base - paidCredit, 6))
     quote.percent = tier.bonus_percent
     return quote
   }
   const bonus = calculateRechargeBonus(base, tier.bonus_percent)
   if (bonus <= 0) return quote
   quote.bonus = bonus
-  quote.credited = roundRechargeAmount(base + bonus)
+  quote.credited = roundRechargeAmount(base + bonus, 6)
   quote.percent = tier.bonus_percent
   return quote
 }

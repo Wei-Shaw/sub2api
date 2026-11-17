@@ -44,15 +44,15 @@ func (PaymentOrder) Fields() []ent.Field {
 
 		// 金额信息
 		field.Float("amount").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}),
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,6)"}),
 		field.Float("pay_amount").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}),
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,6)"}),
 		field.Float("fee_rate").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(0),
 		// 充值赠送额度（USD）。已计入 amount；单独记录用于订单展示与推广返利基数剔除。
 		field.Float("bonus_amount").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,6)"}).
 			Default(0),
 		field.String("recharge_code").
 			MaxLen(64),
@@ -110,7 +110,7 @@ func (PaymentOrder) Fields() []ent.Field {
 
 		// 退款信息
 		field.Float("refund_amount").
-			SchemaType(map[string]string{dialect.Postgres: "decimal(20,2)"}).
+			SchemaType(map[string]string{dialect.Postgres: "decimal(20,6)"}).
 			Default(0),
 		field.String("refund_reason").
 			Optional().
