@@ -1725,6 +1725,68 @@ func TestBufferedResponseAccumulator_TextOnly(t *testing.T) {
 	assert.Equal(t, "Hello, world!", output[0].Content[0].Text)
 }
 
+func TestBufferedResponseAccumulator_CapsBufferedText(t *testing.T) {
+	acc := NewBufferedResponseAccumulatorWithLimit(8)
+	acc.ProcessEvent(&ResponsesStreamEvent{Type: "response.output_text.delta", Delta: "1234"})
+	acc.ProcessEvent(&ResponsesStreamEvent{Type: "response.output_text.delta", Delta: "5678"})
+	assert.True(t, acc.HasContent(), "contents exactly at the limit must be retained")
+
+	acc.ProcessEvent(&ResponsesStreamEvent{Type: "response.output_text.delta", Delta: "9"})
+	assert.False(t, acc.HasContent(), "overflow must drop the buffered content")
+	assert.Nil(t, acc.BuildOutput(), "overflowed buffers must not be reconstructed")
+
+	// Once overflowed the accumulator stays disabled, so a long stream cannot
+	// grow the buffer again event by event.
+	acc.ProcessEvent(&ResponsesStreamEvent{Type: "response.output_text.delta", Delta: "more"})
+	assert.False(t, acc.HasContent())
+}
+
+func TestBufferedResponseAccumulator_CapsFunctionArguments(t *testing.T) {
+	acc := NewBufferedResponseAccumulatorWithLimit(16)
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "function_call", CallID: "c", Name: "f"},
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.delta",
+		OutputIndex: 0,
+		Delta:       "0123456789",
+	})
+	assert.True(t, acc.HasContent())
+
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.delta",
+		OutputIndex: 0,
+		Delta:       "0123456789abc",
+	})
+	assert.False(t, acc.HasContent())
+	assert.Nil(t, acc.BuildOutput())
+}
+
+func TestBufferedResponseAccumulator_DoneEventReplacesDeltasWithinLimit(t *testing.T) {
+	acc := NewBufferedResponseAccumulatorWithLimit(32)
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.output_item.added",
+		OutputIndex: 0,
+		Item:        &ResponsesOutput{Type: "function_call", CallID: "c", Name: "f"},
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.delta",
+		OutputIndex: 0,
+		Delta:       "abc",
+	})
+	acc.ProcessEvent(&ResponsesStreamEvent{
+		Type:        "response.function_call_arguments.done",
+		OutputIndex: 0,
+		Arguments:   "abcdef",
+	})
+	assert.True(t, acc.HasContent())
+	output := acc.BuildOutput()
+	require.Len(t, output, 1)
+	assert.Equal(t, "abcdef", string(output[0].Arguments))
+}
+
 func TestBufferedResponseAccumulator_ToolCalls(t *testing.T) {
 	acc := NewBufferedResponseAccumulator()
 
