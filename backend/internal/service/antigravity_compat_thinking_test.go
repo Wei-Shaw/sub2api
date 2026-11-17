@@ -37,37 +37,40 @@ func TestAntigravityThinkingBudgetForModel(t *testing.T) {
 	}
 }
 
-func TestApplyAntigravityGeminiThinkingConfigAddsBudgetAndHeadroom(t *testing.T) {
-	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"generationConfig":{"maxOutputTokens":1024}}`)
-	out := applyAntigravityGeminiThinkingConfig(body, []byte(`{}`), "gemini-3.8-flash-high")
+func TestApplyAntigravityGeminiThinkingConfigAddsHeadroomWithoutOverridingThinkingShape(t *testing.T) {
+	body := []byte(`{"contents":[{"role":"user","parts":[{"text":"hi"}]}],"generationConfig":{"maxOutputTokens":1024,"thinkingConfig":{"includeThoughts":true,"thinkingLevel":"high"}}}`)
+	out := applyAntigravityGeminiThinkingConfig(body, []byte(`{}`), "gemini-3.8-flash-high", true)
 
 	require.True(t, gjson.GetBytes(out, "generationConfig.thinkingConfig.includeThoughts").Bool())
-	require.Equal(t, int64(10000), gjson.GetBytes(out, "generationConfig.thinkingConfig.thinkingBudget").Int())
+	require.Equal(t, "high", gjson.GetBytes(out, "generationConfig.thinkingConfig.thinkingLevel").String())
+	require.False(t, gjson.GetBytes(out, "generationConfig.thinkingConfig.thinkingBudget").Exists())
 	require.Equal(t, int64(18192), gjson.GetBytes(out, "generationConfig.maxOutputTokens").Int(), "maxOutputTokens 必须给思考留出 8192 余量")
 }
 
 func TestApplyAntigravityGeminiThinkingConfigKeepsLargerOutputBudget(t *testing.T) {
 	body := []byte(`{"generationConfig":{"maxOutputTokens":32000}}`)
-	out := applyAntigravityGeminiThinkingConfig(body, []byte(`{}`), "gemini-3.8-flash-high")
+	out := applyAntigravityGeminiThinkingConfig(body, []byte(`{}`), "gemini-3.8-flash-high", true)
 	require.Equal(t, int64(32000), gjson.GetBytes(out, "generationConfig.maxOutputTokens").Int())
 }
 
 func TestApplyAntigravityGeminiThinkingConfigPreservesTinyExplicitLimit(t *testing.T) {
 	body := []byte(`{"generationConfig":{"maxOutputTokens":8}}`)
-	out := applyAntigravityGeminiThinkingConfig(body, []byte(`{}`), "gemini-3.8-flash-high")
+	out := applyAntigravityGeminiThinkingConfig(body, []byte(`{}`), "gemini-3.8-flash-high", true)
 	require.Equal(t, int64(8), gjson.GetBytes(out, "generationConfig.maxOutputTokens").Int())
 }
 
 func TestApplyAntigravityGeminiThinkingConfigRespectsDisabledThinking(t *testing.T) {
 	body := []byte(`{"generationConfig":{"maxOutputTokens":1024}}`)
-	out := applyAntigravityGeminiThinkingConfig(body, []byte(`{"thinking":{"type":"disabled"}}`), "gemini-3.8-flash-high")
+	out := applyAntigravityGeminiThinkingConfig(body, []byte(`{"thinking":{"type":"disabled"}}`), "gemini-3.8-flash-high", true)
 	require.Equal(t, int64(1024), gjson.GetBytes(out, "generationConfig.maxOutputTokens").Int())
 	require.False(t, gjson.GetBytes(out, "generationConfig.thinkingConfig").Exists())
 }
 
-func TestApplyAntigravityGeminiThinkingConfigSkipsNonGemini34(t *testing.T) {
+func TestApplyAntigravityGeminiThinkingConfigSkipsNonStreamingAndNonGemini34(t *testing.T) {
 	body := []byte(`{"generationConfig":{"maxOutputTokens":1024}}`)
-	out := applyAntigravityGeminiThinkingConfig(body, []byte(`{}`), "claude-opus-5-5-20251001")
+	out := applyAntigravityGeminiThinkingConfig(body, []byte(`{}`), "gemini-3.8-flash-high", false)
+	require.Equal(t, string(body), string(out))
+	out = applyAntigravityGeminiThinkingConfig(body, []byte(`{}`), "claude-opus-5-5-20251001", true)
 	require.Equal(t, string(body), string(out))
 }
 

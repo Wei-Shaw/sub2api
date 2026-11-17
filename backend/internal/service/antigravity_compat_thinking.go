@@ -20,9 +20,9 @@ const (
 	antigravityTinyOutputLimit = 1024
 )
 
-// antigravityThinkingBudgetForModel 按 Antigravity 上游模型名返回固定思考预算。
+// antigravityThinkingBudgetForModel 按 Antigravity 上游模型名估算思考预算，仅用于计算输出余量。
 // 与 Antigravity-Manager 的 model_specs 保持一致：档位后缀决定预算，flash 系列比
-// 非 flash 低 1；Gemini 4 / argon 的 low 档最低 1024。ok=false 表示不该注入思考参数
+// 非 flash 低 1；Gemini 4 / argon 的 low 档最低 1024。ok=false 表示不需要预留余量
 // （非 Gemini 3/4、图像/语音/向量类模型）。
 func antigravityThinkingBudgetForModel(model string) (int, bool) {
 	name := strings.ToLower(strings.TrimPrefix(strings.TrimSpace(model), "models/"))
@@ -69,25 +69,19 @@ func antigravityThinkingBudgetForModel(model string) (int, bool) {
 	}
 }
 
-// applyAntigravityGeminiThinkingConfig 给 Antigravity Gemini 3/4 请求注入固定思考预算，
-// 并保证 maxOutputTokens 至少是「思考预算 + 8192」。客户端显式关闭思考时不注入。
-func applyAntigravityGeminiThinkingConfig(geminiBody, claudeBody []byte, upstreamModel string) []byte {
-	if parseClaudeThinkingIntent(claudeBody).thinkingType == "disabled" {
+// applyAntigravityGeminiThinkingConfig reserves output-token headroom for streaming
+// Gemini 3/4 thinking responses. Thinking shape (includeThoughts/thinkingLevel or a
+// tier-suffixed model name) is owned by applyGeminiCompatThinkingConfig; this helper
+// must not overwrite it with thinkingBudget.
+func applyAntigravityGeminiThinkingConfig(geminiBody, claudeBody []byte, upstreamModel string, stream bool) []byte {
+	if !stream || parseClaudeThinkingIntent(claudeBody).thinkingType == "disabled" {
 		return geminiBody
 	}
 	budget, ok := antigravityThinkingBudgetForModel(upstreamModel)
 	if !ok {
 		return geminiBody
 	}
-	out, err := sjson.SetBytes(geminiBody, "generationConfig.thinkingConfig.includeThoughts", true)
-	if err != nil {
-		return geminiBody
-	}
-	out, err = sjson.SetBytes(out, "generationConfig.thinkingConfig.thinkingBudget", budget)
-	if err != nil {
-		return geminiBody
-	}
-	return ensureAntigravityOutputHeadroom(out, budget)
+	return ensureAntigravityOutputHeadroom(geminiBody, budget)
 }
 
 // ensureAntigravityOutputHeadroom 把 maxOutputTokens 抬到思考预算 + 余量；

@@ -63,7 +63,7 @@ func resolveAntigravityForwardBaseURL(account *Account) string {
 //   - 付费账号（包含 Google One AI Pro/Ultra，plan_type 经 IsPaidPlanType 判定）：
 //     优先 daily 端点以享受完整模型配额与权益，并以 prod 作为容灾兜底端点 [daily, prod]。
 //   - 免费账号：
-//     优先 prod 端点避免 OAuth token 产生 401 认证失效，并以 daily 作为容灾备用端点 [prod, daily]。
+//     仅使用 prod 端点，在保持 Google One 权益路由的同时避免 OAuth token 产生 401 认证失效。
 func resolveAntigravityForwardBaseURLs(account *Account) []string {
 	baseURLs := antigravity.BaseURLs
 	if len(baseURLs) == 0 {
@@ -907,7 +907,7 @@ func (s *AntigravityGatewayService) setAntigravityModelRateLimits(ctx context.Co
 	if account == nil || repo == nil {
 		return false
 	}
-	keys := antigravityModelRateLimitKeys(modelName)
+	keys := antigravityModelRateLimitKeys(account, modelName)
 	if len(keys) == 0 {
 		return false
 	}

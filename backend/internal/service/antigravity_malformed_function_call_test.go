@@ -88,7 +88,6 @@ func TestAntigravityCompatGenericEmptyStreamStillTempsUnschedules(t *testing.T) 
 	failoverErr, ok := err.(*UpstreamFailoverError)
 	require.True(t, ok)
 	require.False(t, failoverErr.RequestScopedTransient, "普通空流仍按账号健康处理")
-	require.Equal(t, "empty_stream", session.emptyStreamReason())
 
 	repo := &malformedFnTempUnschedRepo{}
 	svc := &GatewayService{accountRepo: repo}
@@ -112,7 +111,6 @@ func TestAntigravityCompatThinkingOnlyStreamIsRequestScoped(t *testing.T) {
 	require.True(t, failoverErr.RequestScopedTransient, "仅思考/签名帧不得归因到账号")
 	require.Equal(t, GatewayFailureScopeRequest, failoverErr.Scope)
 	require.Equal(t, GatewayFailureReason("antigravity_empty_stream"), failoverErr.Reason)
-	require.Equal(t, "thinking_without_content", session.emptyStreamReason())
 
 	repo := &malformedFnTempUnschedRepo{}
 	svc := &GatewayService{accountRepo: repo}

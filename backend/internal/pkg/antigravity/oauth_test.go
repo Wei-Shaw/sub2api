@@ -77,15 +77,15 @@ func TestGetUserAgentForContextPreservesVersionOverride(t *testing.T) {
 		version string
 		want    string
 	}{
-		{version: " 3.4.5 ", want: "antigravity/hub/3.4.5 windows/amd64"},
-		{version: "invalid", want: "antigravity/hub/2.23.0 windows/amd64"},
+		{version: " 3.4.5 ", want: "antigravity/hub/3.4.5 (aidev_client; os_type=darwin; arch=arm64; cl=986210228)"},
+		{version: "invalid", want: "antigravity/hub/2.23.0 (aidev_client; os_type=darwin; arch=arm64; cl=986210228)"},
 	} {
 		ctx := context.WithValue(context.Background(), userAgentVersionTestContextKey{}, tc.version)
 		if got := GetUserAgentForContext(ctx); got != tc.want {
 			t.Fatalf("context version override must use Hub family: got %q, want %q", got, tc.want)
 		}
 	}
-	if got := GetUserAgentForContext(nil); got != "antigravity/hub/2.23.0 windows/amd64" {
+	if got := GetUserAgentForContext(nil); got != "antigravity/hub/2.23.0 (aidev_client; os_type=darwin; arch=arm64; cl=986210228)" {
 		t.Fatalf("nil context must keep the default Hub user agent: %q", got)
 	}
 }
@@ -96,7 +96,7 @@ func TestGetUserAgentEnvironmentOverride(t *testing.T) {
 		if got := GetDefaultUserAgentVersion(); got != expected {
 			t.Fatalf("environment version must be loaded during initialization: got %q, want %q", got, expected)
 		}
-		if got := GetUserAgent(); got != "antigravity/hub/"+expected+" windows/amd64" {
+		if got := GetUserAgent(); got != "antigravity/hub/"+expected+" (aidev_client; os_type=darwin; arch=arm64; cl=986210228)" {
 			t.Fatalf("environment override must keep Hub family: %q", got)
 		}
 		return
@@ -810,7 +810,7 @@ func TestConstants_值正确(t *testing.T) {
 	if DefaultUserAgentVersion != "2.23.0" {
 		t.Errorf("default Hub version must match the verified upstream release: got %s", DefaultUserAgentVersion)
 	}
-	if GetUserAgent() != "antigravity/hub/2.23.0 windows/amd64" {
+	if GetUserAgent() != "antigravity/hub/2.23.0 (aidev_client; os_type=darwin; arch=arm64; cl=986210228)" {
 		t.Errorf("UserAgent 不匹配: got %s", GetUserAgent())
 	}
 	if SessionTTL != 30*time.Minute {

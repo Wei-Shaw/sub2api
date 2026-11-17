@@ -148,7 +148,7 @@ func BuildOfficialHubUserAgent(version, osType, arch string) string {
 
 // GetUserAgentForContext 返回当前请求应使用的 User-Agent。
 func GetUserAgentForContext(ctx context.Context) string {
-	return BuildUserAgent(GetUserAgentVersionForContext(ctx))
+	return BuildOfficialHubUserAgent(GetUserAgentVersionForContext(ctx), "darwin", "arm64")
 }
 
 // GetUserAgent 返回当前配置的 User-Agent。
