@@ -125,11 +125,11 @@ func (c StubGatewayCache) GetReasoningContent(_ context.Context, _ string) (stri
 	return "", service.ErrReasoningContentNotFound
 }
 
-func (c StubGatewayCache) SetAnthropicFileOwner(_ context.Context, _ string, _ int64, _ string, _ time.Duration) error {
+func (c StubGatewayCache) SetAnthropicFileOwner(_ context.Context, _ string, _ int64, _ int64, _ string, _ time.Duration) error {
 	return nil
 }
-func (c StubGatewayCache) GetAnthropicFileOwner(_ context.Context, _ string) (int64, string, bool, error) {
-	return 0, "", false, nil
+func (c StubGatewayCache) GetAnthropicFileOwner(_ context.Context, _ string) (int64, int64, string, bool, error) {
+	return 0, 0, "", false, nil
 }
 
 // ============================================================

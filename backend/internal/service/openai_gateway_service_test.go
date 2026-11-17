@@ -810,11 +810,11 @@ func (c *stubGatewayCache) GetReasoningContent(_ context.Context, _ string) (str
 	return "", ErrReasoningContentNotFound
 }
 
-func (c *stubGatewayCache) SetAnthropicFileOwner(_ context.Context, _ string, _ int64, _ string, _ time.Duration) error {
+func (c *stubGatewayCache) SetAnthropicFileOwner(_ context.Context, _ string, _ int64, _ int64, _ string, _ time.Duration) error {
 	return nil
 }
-func (c *stubGatewayCache) GetAnthropicFileOwner(_ context.Context, _ string) (int64, string, bool, error) {
-	return 0, "", false, nil
+func (c *stubGatewayCache) GetAnthropicFileOwner(_ context.Context, _ string) (int64, int64, string, bool, error) {
+	return 0, 0, "", false, nil
 }
 
 func TestOpenAISelectAccountWithLoadAwareness_FiltersUnschedulable(t *testing.T) {

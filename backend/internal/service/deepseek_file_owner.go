@@ -68,9 +68,9 @@ func AnthropicFileIDs(body []byte) []string {
 }
 
 // recordAnthropicFileOwner 从 Anthropic Files 上传响应中提取 file_id 并记录
-// 归属。只接受 type=="file" 且 id 非空的响应；解析或写入失败都只记日志，
-// 不影响已经成功的上传响应。
-func (s *OpenAIGatewayService) recordAnthropicFileOwner(ctx context.Context, account *Account, groupID *int64, respBody []byte) {
+// 归属（归属用户 + 上传账号）。只接受 type=="file" 且 id 非空的响应；解析或
+// 写入失败都只记日志，不影响已经成功的上传响应。
+func (s *OpenAIGatewayService) recordAnthropicFileOwner(ctx context.Context, userID int64, account *Account, groupID *int64, respBody []byte) {
 	if len(respBody) == 0 || gjson.GetBytes(respBody, "type").String() != "file" {
 		return
 	}
@@ -78,12 +78,13 @@ func (s *OpenAIGatewayService) recordAnthropicFileOwner(ctx context.Context, acc
 	if fileID == "" {
 		return
 	}
-	if err := s.BindAnthropicFileOwner(ctx, account, fileID); err != nil {
+	if err := s.BindAnthropicFileOwner(ctx, userID, account, fileID); err != nil {
 		accountID := int64(0)
 		if account != nil {
 			accountID = account.ID
 		}
 		slog.Warn("anthropic_file_owner_bind_failed",
+			"user_id", userID,
 			"group_id", derefGroupID(groupID),
 			"account_id", accountID,
 			"error", err,
@@ -91,11 +92,17 @@ func (s *OpenAIGatewayService) recordAnthropicFileOwner(ctx context.Context, acc
 	}
 }
 
-// BindAnthropicFileOwner 记录 Anthropic 形状 file_id 由 account 上传。上传响应
-// 已写回客户端前调用；调用方失败只记日志，不影响上传结果。
-func (s *OpenAIGatewayService) BindAnthropicFileOwner(ctx context.Context, account *Account, fileID string) error {
+// BindAnthropicFileOwner 记录 Anthropic 形状 file_id 由用户 ownerUserID 在
+// account 上传。ownerUserID<=0 表示无法确定归属用户：直接返回 nil 且不写缓存，
+// 后续解析按未命中处理、fail-open 到原选号路径——归属绑定只服务于同一用户的
+// 硬钉，不能成为跨用户的路由旁路。上传响应已写回客户端前调用；调用方失败只
+// 记日志，不影响上传结果。
+func (s *OpenAIGatewayService) BindAnthropicFileOwner(ctx context.Context, ownerUserID int64, account *Account, fileID string) error {
 	if s == nil || s.cache == nil {
 		return fmt.Errorf("anthropic file owner cache is unavailable")
+	}
+	if ownerUserID <= 0 {
+		return nil
 	}
 	if account == nil || account.ID <= 0 {
 		return fmt.Errorf("anthropic file owner account is invalid")
@@ -104,46 +111,64 @@ func (s *OpenAIGatewayService) BindAnthropicFileOwner(ctx context.Context, accou
 	if fileID == "" {
 		return fmt.Errorf("anthropic file id is empty")
 	}
-	return s.cache.SetAnthropicFileOwner(ctx, fileID, account.ID, account.Platform, anthropicFileOwnerTTL)
+	return s.cache.SetAnthropicFileOwner(ctx, fileID, ownerUserID, account.ID, account.Platform, anthropicFileOwnerTTL)
 }
 
-// ResolveAnthropicFileOwner 解析请求体里的 file 源，并查缓存得到上传账号。
-// 只有"至少一个 file_id 命中，且所有命中的 file_id 都指向同一账号+平台"时
-// 才返回 ok=true；否则退回原选号路径（命中不一致或全部未命中都返回 false）。
-// 缓存读取错误按未命中处理并记日志：归属记录不可用时不应阻断正常调度。
-func (s *OpenAIGatewayService) ResolveAnthropicFileOwner(ctx context.Context, body []byte) (int64, string, bool) {
-	if s == nil || s.cache == nil {
-		return 0, "", false
+// ResolveAnthropicFileOwner 解析请求体里的 file 源并查缓存归属，返回
+// (ownerAccountID, platform, foreign, ok)：
+//   - 任一 file_id 的归属用户有效且不等于 requesterUserID → foreign=true 立即
+//     返回。这是拒绝信号，调用方必须拒绝请求（403），不能回退原选号：否则
+//     普通选号仍可能落到同一共享上游账号并读到他人文件。
+//   - requesterUserID<=0，或所有 file_id 都未命中（含旧格式未知归属）→
+//     foreign=false, ok=false，保持原选号路径。
+//   - 命中且都属于 requesterUserID，但指向不同账号/平台 → ok=false（不存在能
+//     同时满足它们的账号，放弃硬钉，保持原选号路径）。
+//   - 命中且归属一致 → ok=true。
+//
+// 缓存读取错误按未命中（unknown）处理并记日志：归属记录不可用时不应阻断正常调度。
+func (s *OpenAIGatewayService) ResolveAnthropicFileOwner(ctx context.Context, requesterUserID int64, body []byte) (ownerAccountID int64, platform string, foreign bool, ok bool) {
+	if s == nil || s.cache == nil || requesterUserID <= 0 {
+		return 0, "", false, false
 	}
 	fileIDs := AnthropicFileIDs(body)
 	if len(fileIDs) == 0 {
-		return 0, "", false
+		return 0, "", false, false
 	}
 	ownerID := int64(0)
 	ownerPlatform := ""
 	hit := false
+	conflict := false
 	for _, fileID := range fileIDs {
-		accountID, platform, ok, err := s.cache.GetAnthropicFileOwner(ctx, fileID)
+		cachedUserID, accountID, cachedPlatform, found, err := s.cache.GetAnthropicFileOwner(ctx, fileID)
 		if err != nil {
 			slog.Warn("anthropic_file_owner_lookup_failed", "error", err)
 			continue
 		}
-		if !ok || accountID <= 0 || platform == "" {
+		if !found || cachedUserID <= 0 || accountID <= 0 || cachedPlatform == "" {
 			continue
+		}
+		if cachedUserID != requesterUserID {
+			// 已知属于其他用户：必须拒绝，不能当作未命中回原路。先于冲突判定
+			// 返回，保证混入他人文件时一定拒绝。
+			return 0, "", true, false
 		}
 		if !hit {
-			ownerID, ownerPlatform, hit = accountID, platform, true
+			ownerID, ownerPlatform, hit = accountID, cachedPlatform, true
 			continue
 		}
-		if accountID != ownerID || platform != ownerPlatform {
+		if accountID != ownerID || cachedPlatform != ownerPlatform {
 			// 多个 file 指向不同上游：不存在能同时满足它们的账号，放弃硬钉。
-			return 0, "", false
+			// 不立即返回，继续扫描是否混有他人的 file（拒绝优先）。
+			conflict = true
 		}
 	}
-	if !hit {
-		return 0, "", false
+	if conflict {
+		return 0, "", false, false
 	}
-	return ownerID, ownerPlatform, true
+	if !hit {
+		return 0, "", false, false
+	}
+	return ownerID, ownerPlatform, false, true
 }
 
 // SelectAnthropicFileOwnerAccount 只准入 file_id 的上传账号：复用 Grok video
