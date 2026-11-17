@@ -1563,7 +1563,7 @@ func (r *accountRepository) ResumeSchedulableIfAutoDisabled(ctx context.Context,
 		UPDATE accounts
 		SET schedulable = TRUE,
 			extra = (COALESCE(extra, '{}'::jsonb) - 'scheduling_auto_disabled')
-				|| jsonb_build_object('scheduling_auto_resumed_at', $2),
+				|| jsonb_build_object('scheduling_auto_resumed_at', $2::text),
 			updated_at = NOW()
 		WHERE id = $1
 			AND deleted_at IS NULL
