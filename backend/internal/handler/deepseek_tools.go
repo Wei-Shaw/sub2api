@@ -252,7 +252,7 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 		}
 		result, forwardErr := func() (*service.DeepseekToolsForwardResult, error) {
 			defer release()
-			return h.gatewayService.ForwardDeepseekToolsRequest(c.Request.Context(), c, account, apiKey.GroupID, endpoint, body, contentType)
+			return h.gatewayService.ForwardDeepseekToolsRequest(c.Request.Context(), c, account, apiKey.GroupID, apiKey.UserID, endpoint, body, contentType)
 		}()
 		if forwardErr == nil {
 			h.recordDeepseekToolsUsage(c, apiKey, account, subscription, endpoint, body, result)

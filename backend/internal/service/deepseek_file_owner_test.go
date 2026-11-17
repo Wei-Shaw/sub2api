@@ -11,14 +11,16 @@ import (
 )
 
 type fakeAnthropicFileOwnerEntry struct {
-	accountID int64
-	platform  string
+	ownerUserID int64
+	accountID   int64
+	platform    string
 }
 
-// fakeAnthropicFileOwnerCache 只实现归属读写，其余 GatewayCache 方法由嵌入的
-// nil 接口占位——本文件不会调用它们。
+// fakeAnthropicFileOwnerCache 在调度器测试用缓存的基础上只覆写归属读写，其余
+// GatewayCache 方法直接复用 schedulerTestGatewayCache 的实现（普通选号会读取
+// 会话绑定，nil 接口会 panic）。
 type fakeAnthropicFileOwnerCache struct {
-	GatewayCache
+	schedulerTestGatewayCache
 	owners  map[string]fakeAnthropicFileOwnerEntry
 	ttls    map[string]time.Duration
 	setErr  error
@@ -27,7 +29,7 @@ type fakeAnthropicFileOwnerCache struct {
 	onSet   func()
 }
 
-func (c *fakeAnthropicFileOwnerCache) SetAnthropicFileOwner(_ context.Context, fileID string, accountID int64, platform string, ttl time.Duration) error {
+func (c *fakeAnthropicFileOwnerCache) SetAnthropicFileOwner(_ context.Context, fileID string, ownerUserID int64, accountID int64, platform string, ttl time.Duration) error {
 	c.setCall++
 	if c.onSet != nil {
 		c.onSet()
@@ -41,20 +43,20 @@ func (c *fakeAnthropicFileOwnerCache) SetAnthropicFileOwner(_ context.Context, f
 	if c.ttls == nil {
 		c.ttls = make(map[string]time.Duration)
 	}
-	c.owners[fileID] = fakeAnthropicFileOwnerEntry{accountID: accountID, platform: platform}
+	c.owners[fileID] = fakeAnthropicFileOwnerEntry{ownerUserID: ownerUserID, accountID: accountID, platform: platform}
 	c.ttls[fileID] = ttl
 	return nil
 }
 
-func (c *fakeAnthropicFileOwnerCache) GetAnthropicFileOwner(_ context.Context, fileID string) (int64, string, bool, error) {
+func (c *fakeAnthropicFileOwnerCache) GetAnthropicFileOwner(_ context.Context, fileID string) (int64, int64, string, bool, error) {
 	if c.getErr != nil {
-		return 0, "", false, c.getErr
+		return 0, 0, "", false, c.getErr
 	}
 	owner, ok := c.owners[fileID]
 	if !ok {
-		return 0, "", false, nil
+		return 0, 0, "", false, nil
 	}
-	return owner.accountID, owner.platform, true, nil
+	return owner.ownerUserID, owner.accountID, owner.platform, true, nil
 }
 
 func TestAnthropicFileIDs(t *testing.T) {
@@ -129,73 +131,177 @@ func TestBindAndResolveAnthropicFileOwner(t *testing.T) {
 	cache := &fakeAnthropicFileOwnerCache{}
 	svc := &OpenAIGatewayService{cache: cache}
 
-	require.NoError(t, svc.BindAnthropicFileOwner(ctx, &Account{ID: 901, Platform: PlatformDeepseek}, "file_a"))
+	require.NoError(t, svc.BindAnthropicFileOwner(ctx, 1, &Account{ID: 901, Platform: PlatformDeepseek}, "file_a"))
 	require.Equal(t, anthropicFileOwnerTTL, cache.ttls["file_a"], "TTL must be the fixed 7-day window")
 	require.Equal(t, 7*24*time.Hour, anthropicFileOwnerTTL)
+	require.Equal(t, fakeAnthropicFileOwnerEntry{ownerUserID: 1, accountID: 901, platform: PlatformDeepseek}, cache.owners["file_a"])
 
 	// 绑定失败属于可观测错误，调用方只记日志。
-	require.Error(t, svc.BindAnthropicFileOwner(ctx, nil, "file_a"))
-	require.Error(t, svc.BindAnthropicFileOwner(ctx, &Account{ID: 0, Platform: PlatformDeepseek}, "file_a"))
-	require.Error(t, svc.BindAnthropicFileOwner(ctx, &Account{ID: 901, Platform: PlatformDeepseek}, "  "))
-	require.Error(t, (&OpenAIGatewayService{}).BindAnthropicFileOwner(ctx, &Account{ID: 901, Platform: PlatformDeepseek}, "file_a"))
+	require.Error(t, svc.BindAnthropicFileOwner(ctx, 1, nil, "file_a"))
+	require.Error(t, svc.BindAnthropicFileOwner(ctx, 1, &Account{ID: 0, Platform: PlatformDeepseek}, "file_a"))
+	require.Error(t, svc.BindAnthropicFileOwner(ctx, 1, &Account{ID: 901, Platform: PlatformDeepseek}, "  "))
+	require.Error(t, (&OpenAIGatewayService{}).BindAnthropicFileOwner(ctx, 1, &Account{ID: 901, Platform: PlatformDeepseek}, "file_a"))
+
+	// userID<=0 无法确定归属用户：不写、不命中，fail-open 回原选号。
+	require.NoError(t, svc.BindAnthropicFileOwner(ctx, 0, &Account{ID: 903, Platform: PlatformDeepseek}, "file_zero_user"))
+	require.NotContains(t, cache.owners, "file_zero_user")
 
 	imageBody := []byte(`{"messages":[{"role":"user","content":[{"type":"image","source":{"type":"file","file_id":"file_a"}}]}]}`)
-	ownerID, platform, ok := svc.ResolveAnthropicFileOwner(ctx, imageBody)
+	ownerID, platform, foreign, ok := svc.ResolveAnthropicFileOwner(ctx, 1, imageBody)
 	require.True(t, ok)
+	require.False(t, foreign)
 	require.Equal(t, int64(901), ownerID)
 	require.Equal(t, PlatformDeepseek, platform)
 
-	// 混合命中/未命中：命中的只有一个账号，仍算命中。
-	mixedBody := []byte(`{"messages":[{"role":"user","content":[
-		{"type":"image","source":{"type":"file","file_id":"file_a"}},
-		{"type":"document","source":{"type":"file","file_id":"file_missing"}}
-	]}]}`)
-	ownerID, platform, ok = svc.ResolveAnthropicFileOwner(ctx, mixedBody)
-	require.True(t, ok)
-	require.Equal(t, int64(901), ownerID)
-	require.Equal(t, PlatformDeepseek, platform)
-
-	// 全部未命中：退回原选号路径。
-	ownerID, platform, ok = svc.ResolveAnthropicFileOwner(ctx, []byte(`{"messages":[{"role":"user","content":[
-		{"type":"image","source":{"type":"file","file_id":"file_missing"}}
-	]}]}`))
+	// 其他用户引用同一 file_id：foreign=true 拒绝，不命中、不回原路。
+	ownerID, platform, foreign, ok = svc.ResolveAnthropicFileOwner(ctx, 2, imageBody)
+	require.True(t, foreign)
 	require.False(t, ok)
 	require.Zero(t, ownerID)
 	require.Empty(t, platform)
 
-	// 多个 file 指向不同账号：无法同时满足，放弃硬钉。
-	require.NoError(t, svc.BindAnthropicFileOwner(ctx, &Account{ID: 902, Platform: PlatformDeepseek}, "file_b"))
+	// 无法识别请求用户（userID<=0）：既不命中也不判为他人的文件。
+	ownerID, platform, foreign, ok = svc.ResolveAnthropicFileOwner(ctx, 0, imageBody)
+	require.False(t, foreign)
+	require.False(t, ok)
+	require.Zero(t, ownerID)
+	require.Empty(t, platform)
+
+	// 混合命中/未命中（未命中按 unknown 忽略）：命中的只有一个账号，仍算命中。
+	mixedBody := []byte(`{"messages":[{"role":"user","content":[
+		{"type":"image","source":{"type":"file","file_id":"file_a"}},
+		{"type":"document","source":{"type":"file","file_id":"file_missing"}}
+	]}]}`)
+	ownerID, platform, foreign, ok = svc.ResolveAnthropicFileOwner(ctx, 1, mixedBody)
+	require.True(t, ok)
+	require.False(t, foreign)
+	require.Equal(t, int64(901), ownerID)
+	require.Equal(t, PlatformDeepseek, platform)
+
+	// 全部未命中：退回原选号路径，且不误判为他人文件。
+	ownerID, platform, foreign, ok = svc.ResolveAnthropicFileOwner(ctx, 1, []byte(`{"messages":[{"role":"user","content":[
+		{"type":"image","source":{"type":"file","file_id":"file_missing"}}
+	]}]}`))
+	require.False(t, ok)
+	require.False(t, foreign)
+	require.Zero(t, ownerID)
+	require.Empty(t, platform)
+
+	// 多个 file 指向不同账号：无法同时满足，放弃硬钉（foreign=false）。
+	require.NoError(t, svc.BindAnthropicFileOwner(ctx, 1, &Account{ID: 902, Platform: PlatformDeepseek}, "file_b"))
 	inconsistentBody := []byte(`{"messages":[{"role":"user","content":[
 		{"type":"image","source":{"type":"file","file_id":"file_a"}},
 		{"type":"image","source":{"type":"file","file_id":"file_b"}}
 	]}]}`)
-	ownerID, platform, ok = svc.ResolveAnthropicFileOwner(ctx, inconsistentBody)
+	ownerID, platform, foreign, ok = svc.ResolveAnthropicFileOwner(ctx, 1, inconsistentBody)
+	require.False(t, ok)
+	require.False(t, foreign)
+	require.Zero(t, ownerID)
+	require.Empty(t, platform)
+
+	// 混入其他用户的 file：即使自己的 file 能命中，也必须 foreign 拒绝。
+	require.NoError(t, svc.BindAnthropicFileOwner(ctx, 2, &Account{ID: 904, Platform: PlatformDeepseek}, "file_other"))
+	foreignMixBody := []byte(`{"messages":[{"role":"user","content":[
+		{"type":"image","source":{"type":"file","file_id":"file_a"}},
+		{"type":"image","source":{"type":"file","file_id":"file_other"}}
+	]}]}`)
+	ownerID, platform, foreign, ok = svc.ResolveAnthropicFileOwner(ctx, 1, foreignMixBody)
+	require.True(t, foreign)
+	require.False(t, ok)
+	require.Zero(t, ownerID)
+	require.Empty(t, platform)
+
+	// 自有 file 冲突与他人的 file 同时出现：拒绝优先于冲突，仍必须 foreign。
+	conflictForeignBody := []byte(`{"messages":[{"role":"user","content":[
+		{"type":"image","source":{"type":"file","file_id":"file_a"}},
+		{"type":"image","source":{"type":"file","file_id":"file_b"}},
+		{"type":"image","source":{"type":"file","file_id":"file_other"}}
+	]}]}`)
+	ownerID, platform, foreign, ok = svc.ResolveAnthropicFileOwner(ctx, 1, conflictForeignBody)
+	require.True(t, foreign)
 	require.False(t, ok)
 	require.Zero(t, ownerID)
 	require.Empty(t, platform)
 
 	// 同账号同平台重复出现仍然命中。
-	require.NoError(t, svc.BindAnthropicFileOwner(ctx, &Account{ID: 901, Platform: PlatformDeepseek}, "file_c"))
+	require.NoError(t, svc.BindAnthropicFileOwner(ctx, 1, &Account{ID: 901, Platform: PlatformDeepseek}, "file_c"))
 	sameOwnerBody := []byte(`{"messages":[{"role":"user","content":[
 		{"type":"image","source":{"type":"file","file_id":"file_a"}},
 		{"type":"image","source":{"type":"file","file_id":"file_c"}}
 	]}]}`)
-	ownerID, platform, ok = svc.ResolveAnthropicFileOwner(ctx, sameOwnerBody)
+	ownerID, platform, foreign, ok = svc.ResolveAnthropicFileOwner(ctx, 1, sameOwnerBody)
 	require.True(t, ok)
+	require.False(t, foreign)
 	require.Equal(t, int64(901), ownerID)
 	require.Equal(t, PlatformDeepseek, platform)
 
 	// 无 file 源（文本 / base64）不改变行为。
-	_, _, ok = svc.ResolveAnthropicFileOwner(ctx, []byte(`{"messages":[{"role":"user","content":[
+	_, _, foreign, ok = svc.ResolveAnthropicFileOwner(ctx, 1, []byte(`{"messages":[{"role":"user","content":[
 		{"type":"image","source":{"type":"base64","media_type":"image/png","data":"x"}},
 		{"type":"text","text":"hi"}
 	]}]}`))
+	require.False(t, foreign)
 	require.False(t, ok)
 
-	// 缓存读取失败按未命中处理（fail-open 到原选号），不 panic、不硬钉。
+	// 缓存读取失败按未命中处理（fail-open 到原选号），不 panic、不硬钉也不拒绝。
 	broken := &OpenAIGatewayService{cache: &fakeAnthropicFileOwnerCache{getErr: errors.New("redis down")}}
-	_, _, ok = broken.ResolveAnthropicFileOwner(ctx, imageBody)
+	_, _, foreign, ok = broken.ResolveAnthropicFileOwner(ctx, 1, imageBody)
+	require.False(t, foreign)
 	require.False(t, ok)
+}
+
+// TestAnthropicFileOwnerPinsOwnerInCompositeGroup 复现评审场景：同一组合分组里
+// 163 官方 DeepSeek（优先级 99）与 167 挂 ollama.com 的 DeepSeek 平台账号
+// （优先级 1）。无 file 时普通选号按优先级选中 167（可能读到别人文件）；
+// file 归属 163 时必须硬钉回 163，而不是被普通选号落回 167。
+func TestAnthropicFileOwnerPinsOwnerInCompositeGroup(t *testing.T) {
+	ctx := context.Background()
+	groupID := int64(163)
+	official := Account{ID: 163, Platform: PlatformDeepseek, Type: AccountTypeAPIKey,
+		Status: StatusActive, Schedulable: true, Concurrency: 50, Priority: 99, GroupIDs: []int64{groupID}}
+	ollama := official
+	ollama.ID = 167
+	ollama.Priority = 1
+
+	cfg := &config.Config{}
+	cfg.Gateway.OpenAIScheduler.StickyEscapeEnabled = true
+	cfg.Gateway.Scheduling.StickySessionWaitTimeout = time.Second
+	cfg.Gateway.Scheduling.StickySessionMaxWaiting = 3
+	svc := &OpenAIGatewayService{
+		accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{official, ollama}},
+		cache:       &fakeAnthropicFileOwnerCache{},
+		cfg:         cfg,
+		concurrencyService: NewConcurrencyService(schedulerTestConcurrencyCache{
+			acquireResults: map[int64]bool{163: true, 167: true},
+		}),
+	}
+
+	// 无 file：普通选号按优先级选中 167（ollama.com），即本修复要避免的落点。
+	selection, _, err := svc.SelectAccountWithSchedulerForCapability(
+		ctx, &groupID, "", "session-normal", "deepseek-flash", nil,
+		OpenAIUpstreamTransportAny, OpenAIEndpointCapabilityChatCompletions, false, false, true, PlatformDeepseek,
+	)
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.Equal(t, int64(167), selection.Account.ID, "plain scheduling must prefer the lower priority account")
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+
+	// file 归属 163：解析命中且硬钉回 163。
+	require.NoError(t, svc.BindAnthropicFileOwner(ctx, 1, &official, "file-composite"))
+	body := []byte(`{"messages":[{"role":"user","content":[{"type":"image","source":{"type":"file","file_id":"file-composite"}}]}]}`)
+	ownerID, platform, foreign, ok := svc.ResolveAnthropicFileOwner(ctx, 1, body)
+	require.True(t, ok)
+	require.False(t, foreign)
+	selection, decision, err := svc.SelectAnthropicFileOwnerAccount(ctx, &groupID, ownerID, platform, "deepseek-flash")
+	require.NoError(t, err)
+	require.NotNil(t, selection)
+	require.Equal(t, int64(163), selection.Account.ID, "file owner pin must override priority and select the uploading account")
+	require.True(t, decision.StickySessionHit)
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
 }
 
 func TestSelectAnthropicFileOwnerAccountPinsOwner(t *testing.T) {

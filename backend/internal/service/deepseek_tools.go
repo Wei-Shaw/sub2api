@@ -45,8 +45,9 @@ type DeepseekToolsForwardResult struct {
 // files_list/files_get 为 GET、files_delete 为 DELETE（无 body）。
 // 响应回写：TTS 成功响应为二进制音频，走流式回写避免长音频全量缓冲；
 // 其余端点（含上游错误体）经缓冲后按状态码 + Content-Type + 过滤响应头原样透传。
-// groupID 仅用于归属记录失败时的日志定位（file_id 归属本身与分组无关）。
-func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, c *gin.Context, account *Account, groupID *int64, endpoint string, body []byte, contentType string) (*DeepseekToolsForwardResult, error) {
+// groupID 仅用于归属记录失败时的日志定位；userID 是 file_id 归属的用户维度，
+// 与分组无关：归属只对同一用户生效，避免成为跨用户的路由旁路。
+func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, c *gin.Context, account *Account, groupID *int64, userID int64, endpoint string, body []byte, contentType string) (*DeepseekToolsForwardResult, error) {
 	if s == nil || account == nil {
 		return nil, fmt.Errorf("deepseek tools service/account is required")
 	}
@@ -143,7 +144,7 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 	// 归属记录必须在响应 flush 之前写入，否则客户端拿到 file_id 后立即发起的
 	// /v1/messages 可能先于缓存写入到达。失败只记日志，不影响上传响应。
 	if anthropicFiles && endpoint == "files_create" && success {
-		s.recordAnthropicFileOwner(ctx, account, groupID, data)
+		s.recordAnthropicFileOwner(ctx, userID, account, groupID, data)
 	}
 	writeGrokMediaResponse(c, resp, data, s.responseHeaderFilter)
 	return &DeepseekToolsForwardResult{

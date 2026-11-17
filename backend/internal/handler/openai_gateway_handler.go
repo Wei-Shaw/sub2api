@@ -1332,12 +1332,22 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	msgPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
 	c.Request = c.Request.WithContext(msgPricingCtx)
 
-	// Anthropic file 源硬钉：file_id 只在其上传账号的上游有效，落到组内其它
-	// 上游会被拒（如 Ollama：invalid image source type: file）。未命中归属或
-	// 多个 file_id 归属不一致时保持原选号路径不变。
-	fileOwnerID, fileOwnerPlatform, fileOwnerPinned := h.gatewayService.ResolveAnthropicFileOwner(c.Request.Context(), body)
+	// Anthropic file 源归属：同一用户上传的 file_id 只在其上传账号的上游有效，
+	// 落到组内其它上游会被拒（如 Ollama：invalid image source type: file）。
+	// 归属用户与请求用户不一致时直接 403——不能回退原选号，否则普通选号仍可能
+	// 落到同一共享上游账号并读到他人文件。未命中或同用户多 file 冲突时保持原
+	// 选号路径不变。
+	fileOwnerID, fileOwnerPlatform, fileOwnerForeign, fileOwnerPinned := h.gatewayService.ResolveAnthropicFileOwner(c.Request.Context(), apiKey.UserID, body)
+	if fileOwnerForeign {
+		reqLog.Warn("openai_messages.anthropic_file_owner_foreign",
+			zap.Int64("anthropic_file_owner_user_id", apiKey.UserID),
+		)
+		h.anthropicStreamingAwareError(c, http.StatusForbidden, "permission_error", "file_id belongs to another user", streamStarted)
+		return
+	}
 	if fileOwnerPinned {
 		reqLog = reqLog.With(
+			zap.Int64("anthropic_file_owner_user_id", apiKey.UserID),
 			zap.Int64("anthropic_file_owner_account_id", fileOwnerID),
 			zap.String("anthropic_file_owner_platform", fileOwnerPlatform),
 		)
