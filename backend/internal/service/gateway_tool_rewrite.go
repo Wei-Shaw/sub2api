@@ -128,17 +128,15 @@ func buildToolNameRewriteFromBody(body []byte) *ToolNameRewrite {
 	}
 
 	mimicableNames := make([]string, 0)
-	toolsArr := tools.Array()
-	for _, t := range toolsArr {
+	tools.ForEach(func(_, t gjson.Result) bool {
 		if !shouldMimicToolName(t.Get("type").String()) {
-			continue
+			return true
 		}
-		name := t.Get("name").String()
-		if name == "" {
-			continue
+		if name := t.Get("name").String(); name != "" {
+			mimicableNames = append(mimicableNames, name)
 		}
-		mimicableNames = append(mimicableNames, name)
-	}
+		return true
+	})
 
 	dynamic := buildDynamicToolMap(mimicableNames)
 
@@ -269,22 +267,22 @@ func applyToolsLastCacheBreakpoint(body []byte) []byte {
 	if !tools.IsArray() {
 		return body
 	}
-	arr := tools.Array()
-	if len(arr) == 0 {
-		return body
-	}
+	idx := 0
 	lastIdx := -1
-	for idx, tool := range arr {
-		if isDeferredLoadingTool(tool) {
-			continue
+	lastTool := gjson.Result{}
+	tools.ForEach(func(_, tool gjson.Result) bool {
+		if !isDeferredLoadingTool(tool) {
+			lastIdx = idx
+			lastTool = tool
 		}
-		lastIdx = idx
-	}
+		idx++
+		return true
+	})
 	if lastIdx == -1 {
 		return body
 	}
 
-	existingCC := arr[lastIdx].Get("cache_control")
+	existingCC := lastTool.Get("cache_control")
 
 	if existingCC.Exists() && existingCC.Get("ttl").String() != "" {
 		return body
@@ -316,14 +314,16 @@ func stripDeferredToolCacheControl(body []byte) []byte {
 	if !tools.IsArray() {
 		return body
 	}
-	for idx, tool := range tools.Array() {
-		if !isDeferredLoadingTool(tool) || !tool.Get("cache_control").Exists() {
-			continue
+	idx := 0
+	tools.ForEach(func(_, tool gjson.Result) bool {
+		if isDeferredLoadingTool(tool) && tool.Get("cache_control").Exists() {
+			if next, err := sjson.DeleteBytes(body, fmt.Sprintf("tools.%d.cache_control", idx)); err == nil {
+				body = next
+			}
 		}
-		if next, err := sjson.DeleteBytes(body, fmt.Sprintf("tools.%d.cache_control", idx)); err == nil {
-			body = next
-		}
-	}
+		idx++
+		return true
+	})
 	return body
 }
 
@@ -351,10 +351,14 @@ func restoreToolNamesInBytes(data []byte, rw *ToolNameRewrite) []byte {
 
 // replaceAllBytes 是 bytes.ReplaceAll 的便捷封装，避免每个调用点各自做 []byte 转换。
 func replaceAllBytes(data []byte, from, to string) []byte {
-	if len(data) == 0 || from == to || !strings.Contains(string(data), from) {
+	if len(data) == 0 || from == to {
 		return data
 	}
-	return []byte(strings.ReplaceAll(string(data), from, to))
+	fromBytes := []byte(from)
+	if !bytes.Contains(data, fromBytes) {
+		return data
+	}
+	return bytes.ReplaceAll(data, fromBytes, []byte(to))
 }
 
 // toolNameRewriteFromContext 从 gin.Context 取出请求阶段保存的工具名映射。
@@ -383,4 +387,31 @@ func reverseToolNamesIfPresent(c interface {
 		return chunk
 	}
 	return restoreToolNamesInBytes(chunk, rw)
+}
+
+// reverseToolNamesIfPresentString is the string-typed variant for streaming
+// writers. The common case (no tool names in the chunk) returns the original
+// string without any []byte/string copy.
+func reverseToolNamesIfPresentString(c interface {
+	Get(string) (any, bool)
+}, chunk string) string {
+	rw := toolNameRewriteFromContext(c)
+	if rw == nil && len(staticToolNameRewrites) == 0 {
+		return chunk
+	}
+	if rw != nil {
+		for _, pair := range rw.ReverseOrdered {
+			fake, real := pair[0], pair[1]
+			if fake == "" || fake == real || !strings.Contains(chunk, fake) {
+				continue
+			}
+			chunk = strings.ReplaceAll(chunk, fake, real)
+		}
+	}
+	for prefix, replacement := range staticToolNameRewrites {
+		if strings.Contains(chunk, replacement) {
+			chunk = strings.ReplaceAll(chunk, replacement, prefix)
+		}
+	}
+	return chunk
 }

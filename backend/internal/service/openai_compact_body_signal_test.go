@@ -3,6 +3,7 @@
 package service
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -115,4 +116,26 @@ func TestWebSocketCompatibilityNormalizesTriggerAfterPairedOutputCleanup(t *test
 	require.Equal(t, "function_call_output", items[1].Get("type").String())
 	require.Equal(t, "message", items[2].Get("type").String())
 	require.Equal(t, "compaction_trigger", items[3].Get("type").String())
+}
+
+func TestNormalizeCompactionTriggerInputOrder_PrecheckKeepsContract(t *testing.T) {
+	plain := []byte(`{"model":"gpt-5","input":[{"type":"message","role":"user","content":"` + strings.Repeat("x", 4096) + `"}]}`)
+	allocs := testing.AllocsPerRun(10, func() {
+		got, changed, err := NormalizeCompactionTriggerInputOrder(plain)
+		if err != nil || changed || &got[0] != &plain[0] {
+			t.Fatal("body without a trigger must be returned unchanged")
+		}
+	})
+	require.Zero(t, allocs)
+
+	for _, invalid := range []string{`{"input":[`, `[{"type":"message"}]`, `{"input":[]} {}`} {
+		_, _, err := NormalizeCompactionTriggerInputOrder([]byte(invalid))
+		require.Error(t, err, invalid)
+	}
+
+	escaped := []byte(`{"input":[{"type":"\u0063ompaction_trigger"},{"type":"message","role":"user","content":"hi"}]}`)
+	normalized, changed, err := NormalizeCompactionTriggerInputOrder(escaped)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "compaction_trigger", gjson.GetBytes(normalized, "input.1.type").String())
 }

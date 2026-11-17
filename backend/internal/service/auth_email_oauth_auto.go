@@ -85,7 +85,8 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 	if isReservedEmail(email) {
 		return nil, nil, ErrEmailReserved
 	}
-	if err := s.validateRegistrationEmailPolicy(ctx, email); err != nil {
+	// 精确黑名单只拦新建账号（见 createEmailOAuthUser），已有账号能否登录由账号状态决定。
+	if err := s.validateRegistrationEmailSuffixPolicy(ctx, email); err != nil {
 		return nil, nil, err
 	}
 
@@ -157,6 +158,9 @@ func (s *AuthService) loginOrRegisterVerifiedEmailOAuth(
 func (s *AuthService) createEmailOAuthUser(ctx context.Context, email, username, providerType, invitationCode, affiliateCode string) (*User, error) {
 	if s.settingService == nil || !s.settingService.IsRegistrationEnabled(ctx) {
 		return nil, ErrRegDisabled
+	}
+	if s.settingService.IsRegistrationEmailBlacklisted(ctx, email) {
+		return nil, ErrEmailBlocked
 	}
 	invitationRedeemCode, err := s.validateOAuthRegistrationInvitation(ctx, invitationCode)
 	if err != nil {

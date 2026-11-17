@@ -1548,18 +1548,21 @@ func (s *GatewayService) getSchedulableAccount(ctx context.Context, accountID in
 	return account, nil
 }
 
+// filterAccountsBySchedulingThreshold 在 accounts 上原地剔除被调度阈值暂停的账号并返回剔除后的切片；
+// accounts 必须由调用方独占，调用后只能使用返回值。
 func (s *GatewayService) filterAccountsBySchedulingThreshold(ctx context.Context, accounts []Account) []Account {
 	if len(accounts) == 0 {
 		return accounts
 	}
 
-	filtered := make([]Account, 0, len(accounts))
+	filtered := accounts[:0]
 	for i := range accounts {
 		if s.isAccountBlockedBySchedulingThreshold(ctx, &accounts[i]) {
 			continue
 		}
 		filtered = append(filtered, accounts[i])
 	}
+	clear(accounts[len(filtered):])
 	return filtered
 }
 
@@ -1587,6 +1590,11 @@ func (s *GatewayService) hydrateSelectedAccount(ctx context.Context, account *Ac
 func (s *GatewayService) newSelectionResult(ctx context.Context, account *Account, acquired bool, release func(), waitPlan *AccountWaitPlan) (*AccountSelectionResult, error) {
 	hydrated, err := s.hydrateSelectedAccount(ctx, account)
 	if err != nil {
+		// release 只在成功结果里返回给调用方；hydrate 失败时这里不释放的话，
+		// 已从 Redis 占用的槽位会一直泄漏到 TTL 到期。
+		if release != nil {
+			release()
+		}
 		return nil, err
 	}
 	return attachSelectionProfitGate(ctx, &AccountSelectionResult{
@@ -2659,8 +2667,8 @@ func (s *GatewayService) isModelSupportedByAccount(account *Account, requestedMo
 		_, ok := ResolveBedrockModelID(account, requestedModel)
 		return ok
 	}
-	// OpenAI 透传模式：仅替换认证，允许所有模型
-	if account.Platform == PlatformOpenAI && account.IsOpenAIPassthroughEnabled() {
+	// Passthrough ignores leftover mappings unless model filtering is enabled.
+	if account.IsOpenAIPassthroughEnabled() && !account.IsOpenAIPassthroughModelFilterEnabled() {
 		return true
 	}
 	// OAuth/SetupToken 账号使用 Anthropic 标准映射（短ID → 长ID）
