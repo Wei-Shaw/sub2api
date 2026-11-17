@@ -24,7 +24,7 @@ const config = (): PromptAuditConfig => ({
   group_ids: [],
   endpoints: [{
     id: 'guard-1', name: 'Guard One', protocol: 'openai_compatible', base_url: 'http://127.0.0.1:8000',
-    model: 'sileader/qwen3guard:0.6b', timeout_ms: 3000, input_limit: 4000, enabled: true,
+    model: 'sileader/qwen3guard:0.6b', timeout_ms: 3000, input_limit: 4000, category_threshold: 0, enabled: true,
     has_token: true, token_status: 'configured',
   }],
   config_version: 7,
@@ -34,6 +34,16 @@ const config = (): PromptAuditConfig => ({
 })
 
 describe('Prompt Audit view model', () => {
+  it('keeps each endpoint protocol and its default model in the save payload', () => {
+    const draft = configToDraft(config())
+    draft.endpoints.push({
+      ...draft.endpoints[0], id: 'decisions-1', name: 'Decisions', protocol: 'openai_decisions',
+      base_url: 'https://api.openai.com', model: '', input_limit: 16000, category_threshold: 0.6, token: '', clear_token: false,
+    })
+    const [qwen, decisions] = buildUpdateRequest(draft).endpoints
+    expect(qwen).toMatchObject({ protocol: 'openai_compatible', model: 'sileader/qwen3guard:0.6b' })
+    expect(decisions).toMatchObject({ protocol: 'openai_decisions', model: 'gpt-6-luna', category_threshold: 0.6, input_limit: 16000 })
+  })
   it('normalizes legacy null collections from the public config', () => {
     const legacy = { ...config(), group_ids: null, scanners: null, endpoints: null } as unknown as PromptAuditConfig
     expect(configToDraft(legacy)).toMatchObject({ group_ids: [], scanners: [], endpoints: [] })

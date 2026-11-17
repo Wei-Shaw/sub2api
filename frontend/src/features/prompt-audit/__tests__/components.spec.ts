@@ -19,7 +19,7 @@ const PaginationStub = defineComponent({ props: ['total', 'page', 'pageSize'], e
 
 const endpoint = (): PromptAuditEndpointDraft => ({
   id: 'guard-1', name: 'Guard One', protocol: 'openai_compatible', base_url: 'http://127.0.0.1:8000',
-  model: 'guard-model', timeout_ms: 3000, input_limit: 4000, enabled: true,
+  model: 'guard-model', timeout_ms: 3000, input_limit: 4000, category_threshold: 0, enabled: true,
   has_token: true, token_status: 'configured', token: '', clear_token: false,
 })
 

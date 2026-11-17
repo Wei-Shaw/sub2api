@@ -2,11 +2,28 @@ import type {
   PromptAuditConfig,
   PromptAuditDraft,
   PromptAuditEndpointDraft,
+  PromptAuditProtocol,
   PromptAuditUpdateRequest,
   PromptEventFilters,
 } from './types'
 
 export const DEFAULT_GUARD_MODEL = 'sileader/qwen3guard:0.6b'
+export const DEFAULT_DECISIONS_MODEL = 'gpt-6-luna'
+export const DEFAULT_DECISIONS_BASE_URL = 'https://api.openai.com'
+export const DEFAULT_CATEGORY_THRESHOLD = 0.5
+// The Decisions API caps input_json at 256 KiB; the backend enforces the same limit.
+export const MAX_DECISIONS_INPUT_LIMIT = 40000
+export const MAX_INPUT_LIMIT = 100000
+// Category the backend records when the Decisions model refused a question; it always blocks.
+export const DECISIONS_REFUSAL_CATEGORY = 'decisions_refusal'
+
+export function defaultModelForProtocol(protocol: PromptAuditProtocol): string {
+  return protocol === 'openai_decisions' ? DEFAULT_DECISIONS_MODEL : DEFAULT_GUARD_MODEL
+}
+
+export function maxInputLimitForProtocol(protocol: PromptAuditProtocol): number {
+  return protocol === 'openai_decisions' ? MAX_DECISIONS_INPUT_LIMIT : MAX_INPUT_LIMIT
+}
 
 export const SCANNER_CATALOG = [
   { id: 'violent', label: 'Violent' },
@@ -49,6 +66,7 @@ export function createDefaultEndpoint(index = 1): PromptAuditEndpointDraft {
     model: DEFAULT_GUARD_MODEL,
     timeout_ms: 3000,
     input_limit: 4000,
+    category_threshold: DEFAULT_CATEGORY_THRESHOLD,
     enabled: true,
     has_token: false,
     token_status: 'missing',
@@ -73,13 +91,14 @@ export function buildUpdateRequest(draft: PromptAuditDraft): PromptAuditUpdateRe
     endpoints: draft.endpoints.map((endpoint) => ({
       id: endpoint.id.trim(),
       name: endpoint.name.trim(),
-      protocol: 'openai_compatible',
+      protocol: endpoint.protocol,
       base_url: endpoint.base_url.trim(),
-      model: endpoint.model.trim() || DEFAULT_GUARD_MODEL,
+      model: endpoint.model.trim() || defaultModelForProtocol(endpoint.protocol),
       token: endpoint.token.trim() || undefined,
       clear_token: endpoint.clear_token,
       timeout_ms: Number(endpoint.timeout_ms),
       input_limit: Number(endpoint.input_limit),
+      category_threshold: Number(endpoint.category_threshold),
       enabled: endpoint.enabled,
     })),
   }
