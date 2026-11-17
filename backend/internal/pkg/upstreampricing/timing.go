@@ -1,12 +1,11 @@
 package upstreampricing
 
-// On-demand station evidence, kept separate from request forwarding and billing.
+// Cached station evidence, kept separate from request forwarding and billing.
 import (
 	"context"
 	"database/sql"
 	"encoding/json"
 	"math"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -113,63 +112,7 @@ func compareTiming(local TimingRecord, upstreamID string, rows []TimingRecord) T
 }
 
 func (r *Remote) timingRecords(ctx context.Context, c Config, start, end time.Time) ([]TimingRecord, error) {
-	rows := []TimingRecord{}
-	seen := map[string]bool{}
-	total := int64(-1)
-	for page := 1; page <= 10; page++ {
-		q := url.Values{"page_size": {"100"}}
-		path := "/api/v1/usage"
-		if c.Provider == "newapi" {
-			path = "/api/log/self"
-			q.Set("p", strconv.Itoa(page))
-			q.Set("type", "2")
-			q.Set("start_timestamp", strconv.FormatInt(start.Unix(), 10))
-			q.Set("end_timestamp", strconv.FormatInt(end.Unix(), 10))
-			q.Set("group", c.Group)
-		} else {
-			q.Set("page", strconv.Itoa(page))
-			q.Set("timezone", "UTC")
-			q.Set("start_date", start.UTC().Format("2006-01-02"))
-			q.Set("end_date", end.UTC().Format("2006-01-02"))
-			q.Set("sort_by", "created_at")
-			q.Set("sort_order", "asc")
-		}
-		v, err := r.get(ctx, c, path+"?"+q.Encode())
-		if err != nil {
-			return nil, err
-		}
-		data := object(v["data"])
-		items, ok := data["items"].([]any)
-		n := timingInteger(data["total"])
-		if !ok || n == nil || *n > 1000 || (total >= 0 && *n != total) || len(items) > 100 {
-			return nil, safeError("站点日志分页结构不兼容、数量超限或查询期间发生变化，请稍后重试")
-		}
-		total = *n
-		for _, value := range items {
-			raw := object(value)
-			if c.Provider == "newapi" && (stringValue(raw["type"]) == "" || stringValue(raw["group"]) == "") {
-				return nil, safeError("站点日志缺少类型或分组，无法验证查询范围")
-			}
-			if c.Provider == "newapi" && (stringValue(raw["type"]) != "2" || stringValue(raw["group"]) != c.Group) {
-				continue
-			}
-			row, valid := normalizeTiming(raw, c.Provider)
-			if !valid || seen[row.ID] {
-				return nil, safeError("站点日志包含缺失或重复的标识，无法可靠匹配")
-			}
-			seen[row.ID] = true
-			if !row.CreatedAt.Before(start) && !row.CreatedAt.After(end) {
-				rows = append(rows, row)
-			}
-		}
-		if int64((page-1)*100+len(items)) >= total {
-			return rows, nil
-		}
-		if len(items) < 100 {
-			return nil, safeError("站点日志分页不完整，未进行匹配")
-		}
-	}
-	return nil, safeError("站点日志过多，请缩小查询范围")
+	return r.activityRecords(ctx, c, start, end)
 }
 
 func (m *Manager) CompareTiming(ctx context.Context, accountID, usageID int64) (*TimingComparison, error) {
@@ -205,22 +148,9 @@ func (m *Manager) CompareTiming(ctx context.Context, accountID, usageID int64) (
 	if json.Unmarshal(payload, &snapshot) != nil || snapshot.AccountFingerprint != fp {
 		return nil, safeError("该历史请求缺少当前上游账号的原始快照，无法验证站点归属")
 	}
-	c := src.Config
-	if err = ValidateConfig(&c); err != nil {
-		return nil, err
-	}
-	c.Token, err = m.Cipher.Decrypt(src.Credential)
+	remote, err := m.Store.cachedTiming(ctx, accountID, activityIdentity(src), local.RequestID, upstreamID)
 	if err != nil {
-		return nil, safeError("面板读取凭证无法解密，请重新填写")
-	}
-	start := snapshot.PricingAt.Add(-180 * time.Second)
-	end := local.CreatedAt.Add(180 * time.Second)
-	if snapshot.PricingAt.IsZero() || end.Sub(start) < 0 || end.Sub(start) > 24*time.Hour {
-		return nil, safeError("请求时间范围无效或过大，无法查询站点记录")
-	}
-	remote, err := m.Remote.timingRecords(ctx, c, start, end)
-	if err != nil {
-		return nil, err
+		return nil, safeError("上游明细缓存暂不可用")
 	}
 	after, err := m.Store.Source(ctx, accountID)
 	currentFP, fpErr := m.Store.AccountFingerprint(ctx, accountID)

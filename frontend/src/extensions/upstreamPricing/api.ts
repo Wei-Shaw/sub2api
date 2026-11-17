@@ -1,8 +1,9 @@
 import { apiClient } from '@/api/client'
-import type { PricingConfig, PricingGroup, PricingState, Preview, PricingComparison, BrowserImportStart, BrowserImportStatus } from '.'
+import type { PricingConfig, PricingGroup, PricingState, Preview, PricingComparison, BrowserImportStart, BrowserImportStatus, ActivityState } from '.'
 
 const path = (id: number) => `/admin/upstream-pricing/accounts/${id}`
 export const upstreamPricingAPI = {
+  async activity(id: number, signal?: AbortSignal) { return (await apiClient.get<ActivityState>(`${path(id)}/activity`, { signal })).data },
   async comparison(params: { model: string; account_id: number; page: number; page_size: number }, signal?: AbortSignal) {
     return (await apiClient.get<PricingComparison>('/admin/upstream-pricing/comparison', { params, signal })).data
   },

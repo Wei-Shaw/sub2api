@@ -104,11 +104,12 @@ func TestStationTimingRemoteScopesAndBounds(t *testing.T) {
 	}
 }
 
-func TestStationTimingSub2APIUTCQuery(t *testing.T) {
+func TestStationTimingSub2APIShanghaiQuery(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
 		require.Equal(t, "/api/v1/usage", req.URL.Path)
-		require.Equal(t, "UTC", req.URL.Query().Get("timezone"))
-		require.Equal(t, "2026-11-11", req.URL.Query().Get("start_date"))
+		require.Equal(t, "Asia/Shanghai", req.URL.Query().Get("timezone"))
+		require.Equal(t, "desc", req.URL.Query().Get("sort_order"))
+		require.Equal(t, "2026-11-12", req.URL.Query().Get("start_date"))
 		require.Equal(t, "2026-11-12", req.URL.Query().Get("end_date"))
 		_, _ = w.Write([]byte(`{"code":0,"data":{"total":1,"items":[{"id":6,"request_id":"exact","model":"m","created_at":"2026-11-12T07:59:00+08:00","duration_ms":456}]}}`))
 	}))

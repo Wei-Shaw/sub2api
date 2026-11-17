@@ -28,3 +28,21 @@ func (h *UpstreamPricingHandler) Timing(c *gin.Context) {
 	}
 	response.Success(c, comparison)
 }
+
+// Activity returns cached wallet/synchronization state only; rendering the
+// accounts table never initiates station network requests.
+func (h *UpstreamPricingHandler) Activity(c *gin.Context) {
+	id, ok := h.account(c)
+	if !ok {
+		return
+	}
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 5*time.Second)
+	defer cancel()
+	state, err := h.pricing.Activity(ctx, id)
+	if err != nil {
+		pricingError(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	response.Success(c, state)
+}

@@ -1,6 +1,7 @@
 <template>
   <section class="space-y-5" :aria-label="labels.tab">
     <p class="text-sm text-gray-500">{{ labels.note }}</p>
+    <ActivityStatusPanel :account-id="accountId" :revision="state?.source.revision" />
     <p class="text-xs text-gray-500">{{ labels.baseUrlHint }}</p>
     <p v-if="error" role="alert" class="rounded-lg bg-red-50 p-3 text-sm text-red-700 dark:bg-red-900/20 dark:text-red-300">{{ error }}</p>
     <p v-if="notice" role="status" class="text-sm text-green-700 dark:text-green-400">{{ notice }}</p>
@@ -96,6 +97,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { upstreamPricingAPI } from './api'
+import ActivityStatusPanel from './ActivityStatusPanel.vue'
 import BrowserImportPanel from './BrowserImportPanel.vue'
 import type { BrowserImportStatus } from '.'
 import { blankPrice, useUpstreamPricingLabels, type Catalog, type Price, type Preview, type PricingConfig, type PricingGroup, type PricingState } from '.'

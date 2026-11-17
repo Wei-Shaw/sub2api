@@ -28,6 +28,16 @@ export interface PricingConfig {
   overrides?: Price[]
 }
 export interface PricingGroup { id?: string; name: string; multiplier: string }
+export interface ActivityState {
+  configured: boolean
+  last_success: string | null
+  last_attempt: string | null
+  next_attempt: string | null
+  last_error: string
+  wallet_balance: string | null
+  wallet_checked_at: string | null
+  wallet_error: string
+}
 export interface ComparisonAccount {
   id: number; name: string; provider: string; base_url: string; group: string; automatic: boolean
   version_id: number | null; last_success: string | null; next_sync: string | null

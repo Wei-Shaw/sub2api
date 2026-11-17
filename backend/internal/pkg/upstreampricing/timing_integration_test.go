@@ -67,17 +67,12 @@ func TestStationTimingManagerIntegration(t *testing.T) {
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO fork_upstream_pricing_usage(usage_id,payload) VALUES(7,$1::jsonb)`, string(encoded(Usage{AccountID: 1, AccountFingerprint: fp, PricingAt: stamp})))
 	require.NoError(t, err)
+	activityMigration, err := os.ReadFile("../../../migrations/254_fork_upstream_activity.sql")
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, string(activityMigration))
+	require.NoError(t, err)
 	calls := 0
-	changeRevision := false
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		calls++
-		require.Equal(t, "Bearer synthetic-panel", r.Header.Get("Authorization"))
-		if changeRevision {
-			_, execErr := db.ExecContext(ctx, `UPDATE fork_upstream_pricing_sources SET revision=revision+1 WHERE account_id=1`)
-			require.NoError(t, execErr)
-		}
-		_, _ = w.Write([]byte(`{"data":{"total":1,"items":[{"id":99,"request_id":"station-id","type":2,"group":"private","model_name":"m","created_at":1794470460,"use_time":2,"other":{"frt":100}}]}}`))
-	}))
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { calls++; w.WriteHeader(503) }))
 	defer server.Close()
 	c := Config{Provider: "newapi", BaseURL: server.URL, UserID: "42", Group: "private", IntervalMinutes: 60}
 	_, err = db.ExecContext(ctx, `INSERT INTO fork_upstream_pricing_sources(account_id,revision,config,credential,account_fingerprint) VALUES(1,1,$1::jsonb,'fixture:synthetic-panel',$2)`, string(encoded(c)), fp)
@@ -86,25 +81,30 @@ func TestStationTimingManagerIntegration(t *testing.T) {
 	defer m.cancel()
 	out, err := m.CompareTiming(ctx, 1, 7)
 	require.NoError(t, err)
+	require.Equal(t, "unmatched", out.Status)
+	require.Zero(t, calls, "hover never queries the station")
+	src, err := store.Source(ctx, 1)
+	require.NoError(t, err)
+	duration, first := int64(2000), int64(100)
+	record := TimingRecord{ID: "99", RequestID: "station-id", Model: "m", CreatedAt: stamp, DurationMs: &duration, FirstTokenMs: &first, PrecisionMs: 1000}
+	_, err = db.ExecContext(ctx, `INSERT INTO fork_upstream_activity_records VALUES($1,$2,$3,$4,$5::jsonb,$6)`, 1, activityIdentity(src), record.ID, record.RequestID, string(encoded(record)), stamp)
+	require.NoError(t, err)
+	out, err = m.CompareTiming(ctx, 1, 7)
+	require.NoError(t, err)
 	require.Equal(t, "exact", out.Status)
 	require.EqualValues(t, 500, *out.DurationDiff)
 	require.EqualValues(t, 200, *out.FirstDiff)
-	require.Equal(t, 1, calls)
 	_, err = m.CompareTiming(ctx, 2, 7)
-	require.Error(t, err, "cross-account reads must not query the station")
-	require.Equal(t, 1, calls)
-	changeRevision = true
-	_, err = m.CompareTiming(ctx, 1, 7)
-	require.ErrorIs(t, err, ErrConflict, "configuration changed during remote request")
-	changeRevision = false
+	require.Error(t, err, "cross-account cache isolation")
+	require.Zero(t, calls)
 	_, err = db.ExecContext(ctx, `UPDATE accounts SET credentials='{"api_key":"changed"}' WHERE id=1`)
 	require.NoError(t, err)
 	_, err = m.CompareTiming(ctx, 1, 7)
 	require.ErrorIs(t, err, ErrConflict)
-	require.Equal(t, 2, calls)
+	require.Zero(t, calls)
 	_, err = db.ExecContext(ctx, `UPDATE accounts SET credentials='{"base_url":"https://example.com","api_key":"synthetic-key"}' WHERE id=1; DELETE FROM fork_upstream_pricing_usage WHERE usage_id=7`)
 	require.NoError(t, err)
 	_, err = m.CompareTiming(ctx, 1, 7)
 	require.Error(t, err, "old requests without immutable upstream identity are not guessed")
-	require.Equal(t, 2, calls)
+	require.Zero(t, calls)
 }

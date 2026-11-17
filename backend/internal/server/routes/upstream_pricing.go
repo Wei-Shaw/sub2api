@@ -15,6 +15,7 @@ func registerUpstreamPricingRoutes(admin *gin.RouterGroup, h *handler.Handlers) 
 	v := h.Admin.UpstreamPricing
 	admin.GET("/upstream-pricing/comparison", v.Comparison)
 	p.GET("", v.Get)
+	p.GET("/activity", v.Activity)
 	p.POST("/browser-imports", v.StartBrowserImport)
 	p.GET("/browser-imports/:importId", v.BrowserImportStatus)
 	p.GET("/usage/:usageId/timing", v.Timing)

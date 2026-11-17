@@ -25,8 +25,15 @@ func NewManager(store *Store, remote *Remote, cipher Cipher) *Manager {
 	return &Manager{Store: store, Remote: remote, Cipher: cipher, Imports: newBrowserImports(), ctx: ctx, cancel: cancel, jobs: make(chan UsageJob, 1024)}
 }
 
-func (m *Manager) Start() { m.once.Do(func() { m.wg.Add(2); go m.jobLoop(); go m.syncLoop() }) }
-func (m *Manager) Stop()  { m.cancel(); m.wg.Wait() }
+func (m *Manager) Start() {
+	m.once.Do(func() {
+		m.wg.Add(3)
+		go m.jobLoop()
+		go m.syncLoop()
+		go m.activityLoop()
+	})
+}
+func (m *Manager) Stop() { m.cancel(); m.wg.Wait() }
 
 func (m *Manager) prepare(ctx context.Context, id int64, c Config) (Config, *Source, string, string, error) {
 	if err := ValidateConfig(&c); err != nil {

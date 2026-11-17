@@ -15,7 +15,7 @@ import (
 func TestUpstreamPricingRestrictedAdminDenied(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	h := &UpstreamPricingHandler{}
-	for _, action := range []func(*gin.Context){h.Get, h.Groups, h.Preview, h.Apply, h.Sync, h.Schedule, h.RollbackPreview, h.Comparison, h.StartBrowserImport, h.BrowserImportStatus} {
+	for _, action := range []func(*gin.Context){h.Get, h.Groups, h.Preview, h.Apply, h.Sync, h.Schedule, h.RollbackPreview, h.Comparison, h.StartBrowserImport, h.BrowserImportStatus, h.Activity} {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 		c.Request = httptest.NewRequest(http.MethodPost, "/admin/upstream-pricing/accounts/7", nil)
