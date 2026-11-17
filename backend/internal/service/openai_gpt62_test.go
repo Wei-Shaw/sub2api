@@ -244,3 +244,53 @@ func TestGPT62ResponsesToChatDropsSamplingAfterMapping(t *testing.T) {
 	require.NotContains(t, outbound, "temperature")
 	require.NotContains(t, outbound, "top_p")
 }
+
+func TestGPT62SubscriptionUltrafastInManifestAndForcedRequests(t *testing.T) {
+	const fastOnly = `[{"id":"priority","name":"Fast","description":"account Fast"}]`
+	const both = `[{"id":"priority","name":"Fast"},{"id":"ultrafast","name":"Ultrafast","description":"workspace grant"}]`
+	for _, tc := range []struct {
+		plan, model, snapshot string
+		want                  bool
+	}{
+		{"pro", "gpt-6.2-sol", fastOnly, true},
+		{"pro", "gpt-6.2-astra", fastOnly, false},
+		{"chatgpt_pro", "gpt-6.2-sol", "", true},
+		{"promax", "gpt-6.2-astra", fastOnly, true},
+		{"promax", "gpt-6.2-sol", "", true},
+		{"prolite", "gpt-6.2-sol", fastOnly, false},
+		{"enterprise", "gpt-6.2-astra", both, true},
+		{"edu", "gpt-6.2-sol", fastOnly, false},
+		{"pro", "gpt-6.2-sol", both, true},
+	} {
+		t.Run(tc.plan+"/"+tc.model+"/"+tc.snapshot, func(t *testing.T) {
+			account := Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Credentials: map[string]any{"plan_type": tc.plan, "model_mapping": map[string]any{"public": tc.model}}}
+			if tc.snapshot != "" {
+				account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{tc.model: {ID: tc.model, CodexToolCapabilities: map[string]json.RawMessage{"service_tiers": json.RawMessage(tc.snapshot)}}}})
+			}
+			group := &Group{ID: 1, Platform: PlatformOpenAI, Status: StatusActive, Hydrated: true, ForceOpenAIFast: true, ForceOpenAIUltrafast: true}
+			gateway := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{1: {account}}}}
+			body, err := gateway.BuildCodexModelsManifestForGroup(context.Background(), group, "", []string{"public"})
+			require.NoError(t, err)
+			models := decodeCodexManifestModels(t, body)
+			require.Len(t, models, 1)
+			tiers := models[0]["service_tiers"].([]any)
+			require.Equal(t, "priority", tiers[0].(map[string]any)["id"])
+			if tc.snapshot == fastOnly {
+				require.Equal(t, "account Fast", tiers[0].(map[string]any)["description"])
+			}
+			ctx := context.WithValue(context.Background(), ctxkey.Group, group)
+			forced := openAIGroupForcedServiceTier(ctx, &account, account.GetMappedModel("public")+"-max")
+			if tc.want {
+				require.Len(t, tiers, 2)
+				require.Equal(t, "ultrafast", tiers[1].(map[string]any)["id"])
+				require.Equal(t, OpenAIFastTierUltrafast, forced)
+				if tc.snapshot == both {
+					require.Equal(t, "workspace grant", tiers[1].(map[string]any)["description"])
+				}
+			} else {
+				require.Len(t, tiers, 1)
+				require.Equal(t, OpenAIFastTierPriority, forced)
+			}
+		})
+	}
+}

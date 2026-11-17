@@ -2264,8 +2264,11 @@ func openAIGroupForcedServiceTier(ctx context.Context, account *Account, model s
 		return ""
 	}
 	if group.ForceOpenAIUltrafast && openAIModelSupportsUltrafast(model) {
-		// GPT-6.2 API support does not establish subscription entitlement.
+		// Resolve the published Pro entitlement first, then account-specific grants.
 		if base := openai.GPT62ModelID(model); base != "" && account.IsOpenAIOAuthLike() {
+			if gpt62PlanIncludesUltrafast(account, base) {
+				return OpenAIFastTierUltrafast
+			}
 			metadata, ok := account.GetUpstreamModelMetadata(base)
 			if ok && gjson.GetBytes(metadata.CodexToolCapabilities["service_tiers"], `#(id=="ultrafast")`).Exists() {
 				return OpenAIFastTierUltrafast
