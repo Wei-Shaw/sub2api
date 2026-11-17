@@ -69,6 +69,7 @@ type AccountHandler struct {
 	ollamaCloudUsage        *service.OllamaCloudUsageService
 	cfg                     *config.Config
 	opencodeGoUsage         *service.OpenCodeGoUsageService
+	opendesignDeviceAuth    *service.OpenDesignDeviceAuthService
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.
@@ -82,6 +83,12 @@ func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUs
 
 func (h *AccountHandler) SetOpenCodeGoUsageService(usage *service.OpenCodeGoUsageService) {
 	h.opencodeGoUsage = usage
+}
+
+// SetOpenDesignDeviceAuthService attaches the optional OpenDesign device
+// authorization service (OAuth-based credential pickup for control/runtime keys).
+func (h *AccountHandler) SetOpenDesignDeviceAuthService(svc *service.OpenDesignDeviceAuthService) {
+	h.opendesignDeviceAuth = svc
 }
 
 // NewAccountHandler creates a new admin account handler
