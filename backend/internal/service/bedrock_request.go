@@ -226,21 +226,21 @@ func PrepareBedrockRequestBodyWithTokens(body []byte, modelID string, betaTokens
 		}
 		logger.LegacyPrintf("service.gateway", "[Bedrock] Injected beta tokens: %v (model=%s ccCompat=%v)", betaTokens, modelID, ccCompat)
 	} else {
-		body, _ = sjson.DeleteBytes(body, "anthropic_beta")
+		body, _ = deleteJSONPathIfPresent(body, "anthropic_beta")
 	}
 
 	// 移除 Bedrock 不支持的 Anthropic 直连 API 专有顶层字段
-	body, _ = sjson.DeleteBytes(body, "provider")
-	body, _ = sjson.DeleteBytes(body, "metadata")
+	body, _ = deleteJSONPathIfPresent(body, "provider")
+	body, _ = deleteJSONPathIfPresent(body, "metadata")
 
 	// 移除 model 字段（Bedrock 通过 URL 指定模型）
-	body, err = sjson.DeleteBytes(body, "model")
+	body, err = deleteJSONPathIfPresent(body, "model")
 	if err != nil {
 		return nil, fmt.Errorf("remove model field: %w", err)
 	}
 
 	// 移除 stream 字段（Bedrock 通过不同端点控制流式，不接受请求体中的 stream 字段）
-	body, err = sjson.DeleteBytes(body, "stream")
+	body, err = deleteJSONPathIfPresent(body, "stream")
 	if err != nil {
 		return nil, fmt.Errorf("remove stream field: %w", err)
 	}
@@ -256,10 +256,10 @@ func PrepareBedrockRequestBodyWithTokens(body []byte, modelID string, betaTokens
 		if effort := gjson.GetBytes(body, "output_config.effort"); effort.Exists() {
 			body, err = sjson.SetRawBytes(body, "output_config", []byte(`{"effort":`+effort.Raw+`}`))
 		} else {
-			body, err = sjson.DeleteBytes(body, "output_config")
+			body, err = deleteJSONPathIfPresent(body, "output_config")
 		}
 	} else {
-		body, err = sjson.DeleteBytes(body, "output_config")
+		body, err = deleteJSONPathIfPresent(body, "output_config")
 	}
 	if err != nil {
 		return nil, fmt.Errorf("normalize output_config field: %w", err)
@@ -287,6 +287,16 @@ func ResolveBedrockBetaTokens(betaHeader string, body []byte, modelID string) []
 	betaTokens := parseAnthropicBetaHeader(betaHeader)
 	betaTokens = autoInjectBedrockBetaTokens(betaTokens, body, modelID)
 	return filterBedrockBetaTokens(betaTokens)
+}
+
+// deleteJSONPathIfPresent 删除 path 指向的值。sjson 在值不存在时也会先复制整个
+// body 再丢弃，所以先用零拷贝视图确认存在；不存在时原样返回 body。path 只能是
+// gjson 与 sjson 语义一致的简单路径。
+func deleteJSONPathIfPresent(body []byte, path string) ([]byte, error) {
+	if !parseRawJSONView(body).Get(path).Exists() {
+		return body, nil
+	}
+	return sjson.DeleteBytes(body, path)
 }
 
 // convertOutputFormatToInlineSchema 将结构化输出的 JSON schema 内联到最后一条 user message
@@ -402,45 +412,44 @@ func isBedrockClaude45OrNewer(modelID string) bool {
 func sanitizeBedrockCacheControl(body []byte, modelID string) []byte {
 	isClaude45 := isBedrockClaude45OrNewer(modelID)
 
+	// 两段扫描都读零拷贝视图：sjson 每次删除都写入新 buffer，视图所指的旧 body
+	// 不会被修改；删除只发生在 cache_control 内部，数组下标保持不变。
+
 	// 清理 system 数组中的 cache_control
-	systemArr := gjson.GetBytes(body, "system")
-	if systemArr.Exists() && systemArr.IsArray() {
-		for i, item := range systemArr.Array() {
-			if !item.IsObject() {
-				continue
+	systemArr := parseRawJSONView(body).Get("system")
+	if systemArr.IsArray() {
+		i := -1
+		systemArr.ForEach(func(_, item gjson.Result) bool {
+			i++
+			if cc := item.Get("cache_control"); item.IsObject() && cc.IsObject() {
+				body = deleteCacheControlUnsupportedFields(body, fmt.Sprintf("system.%d.cache_control", i), cc, isClaude45)
 			}
-			cc := item.Get("cache_control")
-			if !cc.Exists() || !cc.IsObject() {
-				continue
-			}
-			body = deleteCacheControlUnsupportedFields(body, fmt.Sprintf("system.%d.cache_control", i), cc, isClaude45)
-		}
+			return true
+		})
 	}
 
 	// 清理 messages 中的 cache_control
-	messages := gjson.GetBytes(body, "messages")
-	if !messages.Exists() || !messages.IsArray() {
+	messages := parseRawJSONView(body).Get("messages")
+	if !messages.IsArray() {
 		return body
 	}
-	for mi, msg := range messages.Array() {
-		if !msg.IsObject() {
-			continue
-		}
+	mi := -1
+	messages.ForEach(func(_, msg gjson.Result) bool {
+		mi++
 		content := msg.Get("content")
-		if !content.Exists() || !content.IsArray() {
-			continue
+		if !msg.IsObject() || !content.IsArray() {
+			return true
 		}
-		for ci, block := range content.Array() {
-			if !block.IsObject() {
-				continue
+		ci := -1
+		content.ForEach(func(_, block gjson.Result) bool {
+			ci++
+			if cc := block.Get("cache_control"); block.IsObject() && cc.IsObject() {
+				body = deleteCacheControlUnsupportedFields(body, fmt.Sprintf("messages.%d.content.%d.cache_control", mi, ci), cc, isClaude45)
 			}
-			cc := block.Get("cache_control")
-			if !cc.Exists() || !cc.IsObject() {
-				continue
-			}
-			body = deleteCacheControlUnsupportedFields(body, fmt.Sprintf("messages.%d.content.%d.cache_control", mi, ci), cc, isClaude45)
-		}
-	}
+			return true
+		})
+		return true
+	})
 
 	return body
 }

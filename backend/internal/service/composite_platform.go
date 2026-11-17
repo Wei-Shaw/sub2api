@@ -6,6 +6,8 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // WithResolvedTargetPlatform stores the concrete provider chosen for a request
@@ -71,6 +73,33 @@ func RequestedPublicModelFromContext(ctx context.Context) (string, bool) {
 		return "", false
 	}
 	return model, true
+}
+
+// compositeClientModel returns the public model the client asked for when a
+// composite route sent a different model upstream, and fallback otherwise. The
+// response reports that public name whatever model the upstream says served it.
+func compositeClientModel(ctx context.Context, fallback string) string {
+	publicModel, ok := RequestedPublicModelFromContext(ctx)
+	if !ok {
+		return fallback
+	}
+	if upstreamModel, ok := ResolvedUpstreamModelFromContext(ctx); !ok || upstreamModel == publicModel {
+		return fallback
+	}
+	return publicModel
+}
+
+// restoreCompositeClientModel reports the client's public model in an Anthropic
+// response body when a composite route rewrote the model.
+func restoreCompositeClientModel(ctx context.Context, body []byte) []byte {
+	clientModel := compositeClientModel(ctx, "")
+	if clientModel == "" || !gjson.GetBytes(body, "model").Exists() {
+		return body
+	}
+	if rewritten, err := sjson.SetBytes(body, "model", clientModel); err == nil {
+		return rewritten
+	}
+	return body
 }
 
 func CompositeRouteSourceFromContext(ctx context.Context) (string, bool) {

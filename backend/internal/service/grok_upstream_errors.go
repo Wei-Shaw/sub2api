@@ -185,11 +185,41 @@ func grokContentPolicyMessage(value string) bool {
 }
 
 func grokContentPolicyClientMessage(responseBody []byte) string {
-	message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(responseBody)))
+	message := sanitizeUpstreamErrorMessage(strings.TrimSpace(grokUpstreamErrorMessage(responseBody)))
 	if message == "" {
 		return "Request blocked by upstream content policy"
 	}
 	return message
+}
+
+// grokUpstreamErrorMessage extends the shared extractor with xAI's flat error
+// body {"code":"...","error":"..."}. It is Grok-only on purpose: the shared
+// extractUpstreamErrorMessage feeds failover, model-not-found and account
+// disable decisions on every platform and must not drift with xAI's format.
+// Non-string error values are never surfaced so unknown objects cannot leak.
+func grokUpstreamErrorMessage(body []byte) string {
+	if message := extractUpstreamErrorMessage(body); strings.TrimSpace(message) != "" {
+		return message
+	}
+	if errValue := gjson.GetBytes(body, "error"); errValue.Type == gjson.String {
+		return errValue.String()
+	}
+	return ""
+}
+
+// grokUpstreamErrorCode extends the shared extractor with xAI's top-level code.
+// Nested error.code keeps priority. Like grokUpstreamErrorMessage it stays
+// Grok-only: a top-level code would otherwise short-circuit the OpenAI-
+// compatible model-not-found failover for bodies such as
+// {"object":"error","message":"model not found","code":400}.
+func grokUpstreamErrorCode(body []byte) string {
+	if code := strings.TrimSpace(extractUpstreamErrorCode(body)); code != "" {
+		return code
+	}
+	if code := gjson.GetBytes(body, "code"); code.Type == gjson.String || code.Type == gjson.Number {
+		return strings.TrimSpace(code.String())
+	}
+	return ""
 }
 
 // shouldFailoverGrokUpstreamError is the body-aware counterpart of the

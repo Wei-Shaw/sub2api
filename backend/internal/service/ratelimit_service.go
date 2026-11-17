@@ -373,6 +373,8 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	// otherwise a broad "rate limit" keyword rule can shorten a multi-hour
 	// cooldown to a local temporary pause.
 	if statusCode == http.StatusTooManyRequests && account.Platform == PlatformAnthropic {
+		// 429 也携带最新用量；在窗口限流分支提前返回前保留耗尽时的周额度。
+		s.samplePassiveUsageFromHeaders(ctx, account, headers)
 		// Fable may be rejected because the organization has no usage credits for
 		// this model. Anthropic reports that as 429, but it is a model entitlement
 		// failure rather than a shared account window exhaustion.
@@ -420,6 +422,11 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		// status=error，而周期探测只覆盖激活账号，充值后无法自动恢复。
 		if statusCode == http.StatusPaymentRequired {
 			return false
+		}
+	}
+	if account.IsBedrock() {
+		if handled, disable := s.handleBedrockUpstreamError(ctx, account, statusCode, upstreamMsg, firstRequestedModel(requestedModel)); handled {
+			return disable
 		}
 	}
 
@@ -1003,10 +1010,19 @@ func buildForbiddenErrorMessage(prefix string, upstreamMsg string, responseBody 
 	return prefix + fallback
 }
 
-// handle403 处理 403 Forbidden 错误
-// Antigravity 平台区分 validation/violation/generic 三种类型，均 SetError 永久禁用；
-// 其他平台保持原有 SetError 行为。
+// handle403 处理 403 Forbidden 错误。Cloudflare 1010 是请求/边缘级拦截，
+// 不应将其视为账号级故障；其他真实 403 继续按平台策略处理。
 func (s *RateLimitService) handle403(ctx context.Context, account *Account, upstreamMsg string, responseBody []byte) (shouldDisable bool) {
+	if isCloudflareBotBlockResponse(responseBody) {
+		slog.Warn(
+			"403_cloudflare_bot_block_skips_account_penalty",
+			"account_id", account.ID,
+			"platform", account.Platform,
+			"upstream_message", upstreamMsg,
+		)
+		return false
+	}
+
 	if account.Platform == PlatformAntigravity {
 		return s.handleAntigravity403(ctx, account, upstreamMsg, responseBody)
 	}
@@ -1064,16 +1080,6 @@ func (s *RateLimitService) handleOpenAI403(ctx context.Context, account *Account
 		)
 		return false
 	}
-	if isCloudflareBotBlockResponse(responseBody) {
-		slog.Warn(
-			"openai_403_cloudflare_bot_block_skips_account_penalty",
-			"account_id", account.ID,
-			"platform", account.Platform,
-			"upstream_message", upstreamMsg,
-		)
-		return false
-	}
-
 	msg := buildForbiddenErrorMessage(
 		"Access forbidden (403):",
 		upstreamMsg,
@@ -1123,7 +1129,60 @@ func (s *RateLimitService) handleOpenAI403(ctx context.Context, account *Account
 // request/edge-level failure and must not consume the account 403 strike budget.
 func isCloudflareBotBlockResponse(body []byte) bool {
 	normalized := strings.ToLower(strings.TrimSpace(string(body)))
+	var payload any
+	if json.Unmarshal(body, &payload) == nil {
+		return containsCloudflareBotBlockCode(payload)
+	}
 	return strings.Contains(normalized, "error code: 1010")
+}
+
+func containsCloudflareBotBlockCode(value any) bool {
+	switch node := value.(type) {
+	case map[string]any:
+		cloudflareError := false
+		for key, child := range node {
+			if strings.EqualFold(key, "cloudflare_error") {
+				if is, ok := child.(bool); ok && is {
+					cloudflareError = true
+				}
+			}
+		}
+		for key, child := range node {
+			if strings.EqualFold(key, "error_name") {
+				if name, ok := child.(string); ok && strings.EqualFold(strings.TrimSpace(name), "browser_signature_banned") {
+					return true
+				}
+			}
+			if cloudflareError && (strings.EqualFold(key, "code") || strings.EqualFold(key, "error_code")) {
+				if isCloudflareBotBlockCode(child) {
+					return true
+				}
+			}
+			if containsCloudflareBotBlockCode(child) {
+				return true
+			}
+		}
+	case []any:
+		for _, child := range node {
+			if containsCloudflareBotBlockCode(child) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func isCloudflareBotBlockCode(value any) bool {
+	switch code := value.(type) {
+	case float64:
+		return code == 1010
+	case json.Number:
+		return code == "1010"
+	case string:
+		return strings.TrimSpace(code) == "1010"
+	default:
+		return false
+	}
 }
 
 // handleAntigravity403 处理 Antigravity 平台的 403 错误
@@ -1544,7 +1603,48 @@ func (s *RateLimitService) persistAnthropicExhaustedWindowLimit(ctx context.Cont
 const (
 	anthropicFableWindowReason          = "anthropic_7d_oi_window_exhausted"
 	anthropicFableCreditsRequiredReason = "anthropic_fable_credits_required"
+
+	// anthropicFableWindowRecoveredUtilization 是判定 7d_oi 窗口已恢复的用量上限。
+	// 上游明确回报利用率低于该值（重置卡生效、窗口滚动）时撤销窗口耗尽写入的限流；
+	// 留出余量避免贴着 1.0 的采样来回抖动。
+	anthropicFableWindowRecoveredUtilization = 0.95
 )
+
+// recoverAnthropicFableWindowLimit 在上游明确回报 7d_oi 用量已回落到耗尽线以下时，
+// 撤销此前由窗口耗尽写入的 claude-fable-5 模型级限流。
+//
+// 三条约束：
+//  1. 只有明确拿到利用率才判断；缺失一律不动，缺失不等于 0；
+//  2. 只撤销 anthropicFableWindowReason 来源的限流——积分不足（credits required）
+//     与管理端阈值来源的语义不同，不能被窗口用量顺手清掉；
+//  3. 只清 claude-fable-5 这一个 scope，不影响其他模型与并发新写入的限流。
+func recoverAnthropicFableWindowLimit(ctx context.Context, repo AccountRepository, account *Account, utilization float64) bool {
+	if repo == nil || account == nil || account.ID <= 0 {
+		return false
+	}
+	if utilization < 0 || utilization >= anthropicFableWindowRecoveredUtilization {
+		return false
+	}
+	if !account.isRateLimitActiveForKey(anthropicFableRateLimitKey) {
+		return false
+	}
+	if account.modelRateLimitReason(anthropicFableRateLimitKey) != anthropicFableWindowReason {
+		return false
+	}
+	if err := repo.ClearModelRateLimit(ctx, account.ID, anthropicFableRateLimitKey); err != nil {
+		slog.Warn("anthropic_fable_window_recovery_clear_failed",
+			"account_id", account.ID,
+			"utilization", utilization,
+			"error", err)
+		return false
+	}
+	clearAccountModelRateLimitSnapshot(account, anthropicFableRateLimitKey)
+	slog.Info("anthropic_fable_window_recovered",
+		"account_id", account.ID,
+		"scope", anthropicFableRateLimitKey,
+		"utilization", utilization)
+	return true
+}
 
 // persistAnthropicFableCreditsRequired handles Anthropic's credits_required
 // response for Fable. Although the upstream status is 429, this response only
@@ -1643,10 +1743,6 @@ func (s *RateLimitService) persistAnthropicFableWindowLimit(ctx context.Context,
 	if limit == nil {
 		return false
 	}
-	// 429 响应头本身携带最新的窗口用量（7d_oi utilization=1.0）。限流期内
-	// Fable 请求不再调度到该账号，若不在此处采样，7d F 进度条会冻结在
-	// 限流前的旧值直到窗口重置。
-	s.samplePassiveUsageFromHeaders(ctx, account, headers)
 	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, anthropicFableRateLimitKey, limit.resetAt, limit.reason); err != nil {
 		slog.Warn("anthropic_fable_window_rate_limit_set_failed",
 			"account_id", account.ID,
@@ -2004,10 +2100,12 @@ func (s *RateLimitService) handle529(ctx context.Context, account *Account) {
 	slog.Info("account_overloaded", "account_id", account.ID, "until", until)
 }
 
-// UpdateSessionWindow 从成功响应更新5h窗口状态
+// UpdateSessionWindow 从成功响应更新5h窗口状态并采样可用的额度窗口。
 func (s *RateLimitService) UpdateSessionWindow(ctx context.Context, account *Account, headers http.Header) {
 	status := headers.Get("anthropic-ratelimit-unified-5h-status")
 	if status == "" {
+		// Ultra 等账号可能仅返回周窗口；不能因缺少 5h 状态而丢弃真实的 7d 用量。
+		s.samplePassiveUsageFromHeaders(ctx, account, headers)
 		return
 	}
 
@@ -2052,16 +2150,10 @@ func (s *RateLimitService) UpdateSessionWindow(ctx context.Context, account *Acc
 		slog.Info("account_session_window_initialized", "account_id", account.ID, "window_start", start, "window_end", end, "status", status)
 	}
 
-	// 窗口重置时清除旧的 utilization 和被动采样数据，避免残留上个窗口的数据
+	// 5h 窗口重置时清除上个 5h 窗口的 utilization。周窗口有自己的重置时间，
+	// 只清除已经过期的周读数（见 rolloverPassiveUsageClears）。
 	if windowEnd != nil && needInitWindow {
-		_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
-			"session_window_utilization":      nil,
-			"passive_usage_7d_utilization":    nil,
-			"passive_usage_7d_reset":          nil,
-			"passive_usage_7d_oi_utilization": nil,
-			"passive_usage_7d_oi_reset":       nil,
-			"passive_usage_sampled_at":        nil,
-		})
+		_ = s.accountRepo.UpdateExtra(ctx, account.ID, rolloverPassiveUsageClears(account.Extra, time.Now()))
 	}
 
 	if err := s.accountRepo.UpdateSessionWindow(ctx, account.ID, windowStart, windowEnd, status); err != nil {
@@ -2077,6 +2169,36 @@ func (s *RateLimitService) UpdateSessionWindow(ctx context.Context, account *Acc
 			slog.Warn("rate_limit_clear_failed", "account_id", account.ID, "error", err)
 		}
 	}
+}
+
+// passiveWeeklyUsageWindows lists the sampled weekly windows as utilization/reset Extra keys.
+var passiveWeeklyUsageWindows = [...][2]string{
+	{"passive_usage_7d_utilization", "passive_usage_7d_reset"},
+	{"passive_usage_7d_oi_utilization", "passive_usage_7d_oi_reset"},
+}
+
+// rolloverPassiveUsageClears returns the Extra updates for a 5h window rollover.
+// The 5h utilization always belongs to the previous window. A weekly reading
+// is kept while its own reset is still ahead: only Fable responses carry 7d_oi,
+// so a Fable-exhausted account that no longer receives Fable traffic would
+// otherwise lose its 7d F reading at every rollover until the weekly reset.
+// Readings with no reset, or a reset that has passed, are stale and cleared.
+func rolloverPassiveUsageClears(extra map[string]any, now time.Time) map[string]any {
+	updates := map[string]any{"session_window_utilization": nil}
+	kept := false
+	for _, keys := range passiveWeeklyUsageWindows {
+		if reset := parseExtraFloat64(extra[keys[1]]); reset > 0 && time.Unix(int64(reset), 0).After(now) {
+			kept = true
+			continue
+		}
+		updates[keys[0]] = nil
+		updates[keys[1]] = nil
+	}
+	// The sample time still describes any weekly reading that was kept.
+	if !kept {
+		updates["passive_usage_sampled_at"] = nil
+	}
+	return updates
 }
 
 // samplePassiveUsageFromHeaders 从 Anthropic 响应头收集 5h/7d/7d_oi 的
@@ -2105,9 +2227,11 @@ func (s *RateLimitService) samplePassiveUsageFromHeaders(ctx context.Context, ac
 		}
 	}
 	// 7d_oi (Fable 专属 7d 窗口) utilization（0-1 小数）
+	var fableUtil *float64
 	if utilStr := headers.Get("anthropic-ratelimit-unified-7d_oi-utilization"); utilStr != "" {
 		if util, err := strconv.ParseFloat(utilStr, 64); err == nil {
 			extraUpdates["passive_usage_7d_oi_utilization"] = util
+			fableUtil = &util
 		}
 	}
 	// 7d_oi reset timestamp
@@ -2124,6 +2248,13 @@ func (s *RateLimitService) samplePassiveUsageFromHeaders(ctx context.Context, ac
 		if err := s.accountRepo.UpdateExtra(ctx, account.ID, extraUpdates); err != nil {
 			slog.Warn("passive_usage_update_failed", "account_id", account.ID, "error", err)
 		}
+	}
+
+	// 上游已明确回报 7d_oi 用量回落到耗尽线以下（额度重置或窗口滚动）时，
+	// 撤销此前窗口耗尽写入的模型级限流，避免重置卡生效后仍被本地拦到原
+	// rate_limit_reset_at 才解封。窗口仍处于 rejected/exceeded 时不撤销。
+	if fableUtil != nil && !isAnthropicWindowRejected(headers, "7d_oi") && !isAnthropicWindowExceeded(headers, "7d_oi") {
+		recoverAnthropicFableWindowLimit(ctx, s.accountRepo, account, *fableUtil)
 	}
 }
 

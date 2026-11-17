@@ -8,6 +8,8 @@ import (
 	"io"
 	"strings"
 	"sync"
+
+	"github.com/Wei-Shaw/sub2api/internal/config"
 )
 
 // OpenAI Responses SSE event types are a closed enum for strict clients
@@ -46,13 +48,13 @@ func (b *grokResponsesBillingPingFilterBody) closeSource() error {
 	return b.closeErr
 }
 
-func newGrokResponsesBillingPingFilterBody(source io.ReadCloser, account *Account, maxLineSize int) io.ReadCloser {
+func newGrokResponsesBillingPingFilterBody(source io.ReadCloser, account *Account, maxLineSize int, cfg *config.Config) io.ReadCloser {
 	if account == nil || account.Platform != PlatformGrok {
 		return source
 	}
 	reader, writer := io.Pipe()
 	body := &grokResponsesBillingPingFilterBody{PipeReader: reader, source: source}
-	go filterGrokResponsesBillingPings(source, writer, body.closeSource, maxLineSize)
+	go filterGrokResponsesBillingPings(source, writer, body.closeSource, maxLineSize, cfg)
 	return body
 }
 
@@ -61,6 +63,7 @@ func filterGrokResponsesBillingPings(
 	destination *io.PipeWriter,
 	closeSource func() error,
 	maxLineSize int,
+	cfg *config.Config,
 ) {
 	defer func() { _ = closeSource() }()
 	if maxLineSize <= 0 {
@@ -75,7 +78,7 @@ func filterGrokResponsesBillingPings(
 		initialBufferSize = maxLineSize
 	}
 	scanner.Buffer(scanBuf[:0:initialBufferSize], maxLineSize)
-	scanner.Split(scanSSELinesPreservingEndings)
+	scanner.Split(newBoundedSSESplit(cfg, maxLineSize, scanSSELinesPreservingEndings))
 
 	// Only frames opened by an `event: ping` line are buffered (pingFrame);
 	// every other frame streams through line by line without copying.

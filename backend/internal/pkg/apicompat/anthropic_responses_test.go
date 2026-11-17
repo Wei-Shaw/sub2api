@@ -1,6 +1,7 @@
 package apicompat
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"testing"
 
@@ -195,6 +196,50 @@ func TestAnthropicToResponses_ThinkingSignatureBecomesReasoning(t *testing.T) {
 	assert.Equal(t, "enc-rs-1", items[1].EncryptedContent)
 	assert.Equal(t, "assistant", items[2].Role)
 	assert.Equal(t, "function_call", items[3].Type)
+}
+
+func TestAnthropicToResponses_ForeignReasoningEnvelopePreservesToolHistory(t *testing.T) {
+	envelope := "ccswitch-openai-reasoning-v1:" + base64.RawURLEncoding.EncodeToString([]byte(
+		`{"type":"reasoning","id":"rs_1","summary":[],"encrypted_content":"gAAAA-foreign"}`,
+	))
+	for _, tc := range []struct{ name, signature string }{
+		{"valid envelope", envelope},
+		{"surrounding whitespace", " \n" + envelope + "\t"},
+		{"malformed envelope", "ccswitch-openai-reasoning-v1:not-base64!"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			blocks, err := json.Marshal([]AnthropicContentBlock{
+				{Type: "thinking", Signature: tc.signature},
+				{Type: "thinking", Signature: "native-ciphertext"},
+				{Type: "text", Text: "Checking now."},
+				{Type: "tool_use", ID: "call_1", Name: "lookup", Input: json.RawMessage(`{"key":"value"}`)},
+			})
+			require.NoError(t, err)
+			resp, err := AnthropicToResponses(&AnthropicRequest{
+				Model: "gpt-6.1-sol", MaxTokens: 1024,
+				Messages: []AnthropicMessage{
+					{Role: "user", Content: json.RawMessage(`"Check this"`)},
+					{Role: "assistant", Content: blocks},
+					{Role: "user", Content: json.RawMessage(`[{"type":"tool_result","tool_use_id":"call_1","content":"found"}]`)},
+				},
+			})
+			require.NoError(t, err)
+			var items []ResponsesInputItem
+			require.NoError(t, json.Unmarshal(resp.Input, &items))
+			require.Len(t, items, 5)
+			require.Equal(t, "reasoning", items[1].Type)
+			require.Equal(t, "native-ciphertext", items[1].EncryptedContent)
+			require.Equal(t, "assistant", items[2].Role)
+			require.JSONEq(t, `[{"type":"output_text","text":"Checking now."}]`, string(items[2].Content))
+			require.Equal(t, "function_call", items[3].Type)
+			require.Equal(t, "call_1", items[3].CallID)
+			require.Equal(t, "lookup", items[3].Name)
+			require.JSONEq(t, `{"key":"value"}`, items[3].Arguments)
+			require.Equal(t, "function_call_output", items[4].Type)
+			require.Equal(t, "call_1", items[4].CallID)
+			require.Equal(t, "found", items[4].Output)
+		})
+	}
 }
 
 func TestAnthropicToResponses_MaxTokensFloor(t *testing.T) {
