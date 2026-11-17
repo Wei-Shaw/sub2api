@@ -18,13 +18,6 @@ type TempUnscheduler interface {
 	TempUnscheduleRetryableError(ctx context.Context, accountID int64, failoverErr *service.UpstreamFailoverError)
 }
 
-// EmptyStreamCooldownReleaser is implemented by GatewayService. It undoes the
-// empty-stream cooldown a request gave its first account once a second account
-// also returned an empty stream for the same request.
-type EmptyStreamCooldownReleaser interface {
-	ReleaseEmptyStreamTempUnschedule(ctx context.Context, accountID int64) bool
-}
-
 // FailoverAction 表示 failover 错误处理后的下一步动作
 type FailoverAction int
 
@@ -147,15 +140,6 @@ type FailoverState struct {
 	// next request that lands on them first.
 	tempUnscheduledAccountID int64
 
-	// Empty streams: emptyStreamAccountID is the first account that exhausted
-	// its retries with an empty stream, emptyStreamCooledAccountID the account
-	// this request cooled for it. When a second account is empty too, the
-	// request is treated as the cause: that cooldown is released and no other
-	// account is cooled for it.
-	emptyStreamAccountID       int64
-	emptyStreamCooledAccountID int64
-	emptyStreamRequestScoped   bool
-
 	// profitVetoedAccountIDs 记录被分组利润门终检否决的账号，是 FailedAccountIDs
 	// 的子集。之所以单独维护：HandleSelectionExhausted 的 503 退避分支会清空
 	// FailedAccountIDs，而利润否决在同一请求内的判定不会改变（下游倍率 D 已在
@@ -260,14 +244,16 @@ func (s *FailoverState) HandleFailoverError(
 
 	// 同账号重试用尽，执行临时封禁（每个请求最多封禁一个账号）
 	if failoverErr.RetryableOnSameAccount {
-		if s.emptyStreamIsRequestScoped(ctx, gatewayService, accountID, failoverErr) {
-			// The request is the likely cause; no account is cooled for it.
+		if failoverErr.EmptyStream {
+			// An empty stream is request-scoped: this request moves on to
+			// another account, but the shared account stays available to
+			// everyone else.
+			logger.FromContext(ctx).Warn("gateway.failover_empty_stream_not_cooled",
+				zap.Int64("account_id", accountID),
+			)
 		} else if s.tempUnscheduledAccountID == 0 || s.tempUnscheduledAccountID == accountID {
 			if !failoverErr.RequestScopedTransient {
 				s.tempUnscheduledAccountID = accountID
-				if failoverErr.EmptyStream {
-					s.emptyStreamCooledAccountID = accountID
-				}
 			}
 			gatewayService.TempUnscheduleRetryableError(ctx, accountID, failoverErr)
 		} else {
@@ -305,41 +291,6 @@ func (s *FailoverState) HandleFailoverError(
 	}
 
 	return FailoverContinue
-}
-
-// emptyStreamIsRequestScoped records an empty stream that exhausted its
-// same-account retries and reports whether the request already got one from a
-// different account. On that second account it releases the cooldown this
-// request gave the first one.
-func (s *FailoverState) emptyStreamIsRequestScoped(ctx context.Context, gatewayService TempUnscheduler, accountID int64, failoverErr *service.UpstreamFailoverError) bool {
-	if !failoverErr.EmptyStream || failoverErr.RequestScopedTransient {
-		return false
-	}
-	if s.emptyStreamRequestScoped {
-		return true
-	}
-	if s.emptyStreamAccountID == 0 || s.emptyStreamAccountID == accountID {
-		s.emptyStreamAccountID = accountID
-		return false
-	}
-	s.emptyStreamRequestScoped = true
-	released := false
-	if s.emptyStreamCooledAccountID != 0 {
-		if releaser, ok := gatewayService.(EmptyStreamCooldownReleaser); ok {
-			releaseCtx := context.Background()
-			if ctx != nil {
-				releaseCtx = context.WithoutCancel(ctx)
-			}
-			released = releaser.ReleaseEmptyStreamTempUnschedule(releaseCtx, s.emptyStreamCooledAccountID)
-		}
-	}
-	logger.FromContext(ctx).Warn("gateway.failover_empty_stream_request_scoped",
-		zap.Int64("account_id", accountID),
-		zap.Int64("first_empty_account_id", s.emptyStreamAccountID),
-		zap.Int64("released_cooldown_account_id", s.emptyStreamCooledAccountID),
-		zap.Bool("released", released),
-	)
-	return true
 }
 
 // HandleSelectionExhausted 处理选号失败（所有候选账号都在排除列表中）时的退避重试决策。

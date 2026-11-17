@@ -812,6 +812,9 @@ func tempUnscheduleGoogleConfigError(ctx context.Context, repo AccountRepository
 // emptyResponseCooldown 空流式响应的临时封禁时长
 const emptyResponseCooldown = 1 * time.Minute
 
+// emptyResponseCooldownReason is the reason recorded with that cooldown.
+const emptyResponseCooldownReason = "empty stream response (auto temp-unschedule 1m)"
+
 // tempUnscheduleEmptyResponse 对空流式响应触发临时封禁，
 // 避免短时间内反复调度到同一个返回空响应的账号。
 func tempUnscheduleEmptyResponse(ctx context.Context, repo AccountRepository, accountID int64, logPrefix string) {

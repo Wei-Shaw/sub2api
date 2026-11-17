@@ -838,6 +838,11 @@ func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accou
 	if failoverErr.RequestScopedTransient {
 		return
 	}
+	// An empty stream is request-scoped too: the request fails over, but the
+	// shared account is not taken offline for every other request.
+	if failoverErr.EmptyStream {
+		return
+	}
 	// 根据状态码选择封禁策略
 	switch failoverErr.StatusCode {
 	case http.StatusBadRequest:
