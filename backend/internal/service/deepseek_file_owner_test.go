@@ -142,118 +142,125 @@ func TestBindAndResolveAnthropicFileOwner(t *testing.T) {
 	require.Error(t, svc.BindAnthropicFileOwner(ctx, 1, &Account{ID: 901, Platform: PlatformDeepseek}, "  "))
 	require.Error(t, (&OpenAIGatewayService{}).BindAnthropicFileOwner(ctx, 1, &Account{ID: 901, Platform: PlatformDeepseek}, "file_a"))
 
-	// userID<=0 无法确定归属用户：不写、不命中，fail-open 回原选号。
+	// userID<=0 无法确定归属用户：不写；带该 file 的请求会判定 unknown。
 	require.NoError(t, svc.BindAnthropicFileOwner(ctx, 0, &Account{ID: 903, Platform: PlatformDeepseek}, "file_zero_user"))
 	require.NotContains(t, cache.owners, "file_zero_user")
 
 	imageBody := []byte(`{"messages":[{"role":"user","content":[{"type":"image","source":{"type":"file","file_id":"file_a"}}]}]}`)
-	ownerID, platform, foreign, ok := svc.ResolveAnthropicFileOwner(ctx, 1, imageBody)
-	require.True(t, ok)
-	require.False(t, foreign)
+
+	// 无 file 源 → none，保持原选号路径。
+	textBody := []byte(`{"messages":[{"role":"user","content":"hi"}]}`)
+	_, _, decision, resolveErr := svc.ResolveAnthropicFileOwner(ctx, 1, textBody)
+	require.Equal(t, AnthropicFileOwnerNone, decision)
+	require.NoError(t, resolveErr)
+
+	// 同用户命中同一账号+平台 → pinned。
+	ownerID, platform, decision, resolveErr := svc.ResolveAnthropicFileOwner(ctx, 1, imageBody)
+	require.Equal(t, AnthropicFileOwnerPinned, decision)
+	require.NoError(t, resolveErr)
 	require.Equal(t, int64(901), ownerID)
 	require.Equal(t, PlatformDeepseek, platform)
 
-	// 其他用户引用同一 file_id：foreign=true 拒绝，不命中、不回原路。
-	ownerID, platform, foreign, ok = svc.ResolveAnthropicFileOwner(ctx, 2, imageBody)
-	require.True(t, foreign)
-	require.False(t, ok)
+	// 其他用户引用同一 file_id → foreign（handler 必须 403）。
+	ownerID, platform, decision, resolveErr = svc.ResolveAnthropicFileOwner(ctx, 2, imageBody)
+	require.Equal(t, AnthropicFileOwnerForeign, decision)
+	require.NoError(t, resolveErr)
 	require.Zero(t, ownerID)
 	require.Empty(t, platform)
 
-	// 无法识别请求用户（userID<=0）：既不命中也不判为他人的文件。
-	ownerID, platform, foreign, ok = svc.ResolveAnthropicFileOwner(ctx, 0, imageBody)
-	require.False(t, foreign)
-	require.False(t, ok)
-	require.Zero(t, ownerID)
-	require.Empty(t, platform)
+	// 无法识别请求用户（userID<=0）且有 file 源 → unknown，不得当成 none 放行。
+	_, _, decision, _ = svc.ResolveAnthropicFileOwner(ctx, 0, imageBody)
+	require.Equal(t, AnthropicFileOwnerUnknown, decision)
 
-	// 混合命中/未命中（未命中按 unknown 忽略）：命中的只有一个账号，仍算命中。
-	mixedBody := []byte(`{"messages":[{"role":"user","content":[
+	// 自有已绑定 file + 未知 file 混合 → unknown：不得 pinned 后把未授权文件一起转发。
+	ownPlusUnknownBody := []byte(`{"messages":[{"role":"user","content":[
 		{"type":"image","source":{"type":"file","file_id":"file_a"}},
 		{"type":"document","source":{"type":"file","file_id":"file_missing"}}
 	]}]}`)
-	ownerID, platform, foreign, ok = svc.ResolveAnthropicFileOwner(ctx, 1, mixedBody)
-	require.True(t, ok)
-	require.False(t, foreign)
-	require.Equal(t, int64(901), ownerID)
-	require.Equal(t, PlatformDeepseek, platform)
-
-	// 全部未命中：退回原选号路径，且不误判为他人文件。
-	ownerID, platform, foreign, ok = svc.ResolveAnthropicFileOwner(ctx, 1, []byte(`{"messages":[{"role":"user","content":[
-		{"type":"image","source":{"type":"file","file_id":"file_missing"}}
-	]}]}`))
-	require.False(t, ok)
-	require.False(t, foreign)
+	ownerID, platform, decision, _ = svc.ResolveAnthropicFileOwner(ctx, 1, ownPlusUnknownBody)
+	require.Equal(t, AnthropicFileOwnerUnknown, decision)
 	require.Zero(t, ownerID)
 	require.Empty(t, platform)
 
-	// 多个 file 指向不同账号：无法同时满足，放弃硬钉（foreign=false）。
+	// 全部未命中 → unknown（不是 none，必须要求重新上传）。
+	_, _, decision, _ = svc.ResolveAnthropicFileOwner(ctx, 1, []byte(`{"messages":[{"role":"user","content":[
+		{"type":"image","source":{"type":"file","file_id":"file_missing"}}
+	]}]}`))
+	require.Equal(t, AnthropicFileOwnerUnknown, decision)
+
+	// 同用户不同账号 → conflict。
 	require.NoError(t, svc.BindAnthropicFileOwner(ctx, 1, &Account{ID: 902, Platform: PlatformDeepseek}, "file_b"))
 	inconsistentBody := []byte(`{"messages":[{"role":"user","content":[
 		{"type":"image","source":{"type":"file","file_id":"file_a"}},
 		{"type":"image","source":{"type":"file","file_id":"file_b"}}
 	]}]}`)
-	ownerID, platform, foreign, ok = svc.ResolveAnthropicFileOwner(ctx, 1, inconsistentBody)
-	require.False(t, ok)
-	require.False(t, foreign)
-	require.Zero(t, ownerID)
-	require.Empty(t, platform)
+	_, _, decision, _ = svc.ResolveAnthropicFileOwner(ctx, 1, inconsistentBody)
+	require.Equal(t, AnthropicFileOwnerConflict, decision)
 
-	// 混入其他用户的 file：即使自己的 file 能命中，也必须 foreign 拒绝。
+	// 自有 + 他人的 file 混合 → foreign（拒绝优先于 pinned）。
 	require.NoError(t, svc.BindAnthropicFileOwner(ctx, 2, &Account{ID: 904, Platform: PlatformDeepseek}, "file_other"))
 	foreignMixBody := []byte(`{"messages":[{"role":"user","content":[
 		{"type":"image","source":{"type":"file","file_id":"file_a"}},
 		{"type":"image","source":{"type":"file","file_id":"file_other"}}
 	]}]}`)
-	ownerID, platform, foreign, ok = svc.ResolveAnthropicFileOwner(ctx, 1, foreignMixBody)
-	require.True(t, foreign)
-	require.False(t, ok)
-	require.Zero(t, ownerID)
-	require.Empty(t, platform)
+	_, _, decision, _ = svc.ResolveAnthropicFileOwner(ctx, 1, foreignMixBody)
+	require.Equal(t, AnthropicFileOwnerForeign, decision)
 
-	// 自有 file 冲突与他人的 file 同时出现：拒绝优先于冲突，仍必须 foreign。
+	// 全部属于他人 → foreign。
+	foreignOnlyBody := []byte(`{"messages":[{"role":"user","content":[
+		{"type":"image","source":{"type":"file","file_id":"file_a"}},
+		{"type":"image","source":{"type":"file","file_id":"file_other"}}
+	]}]}`)
+	_, _, decision, _ = svc.ResolveAnthropicFileOwner(ctx, 3, foreignOnlyBody)
+	require.Equal(t, AnthropicFileOwnerForeign, decision)
+
+	// 自有 file 冲突 + 他人的 file 同时出现：拒绝优先于冲突，仍为 foreign。
 	conflictForeignBody := []byte(`{"messages":[{"role":"user","content":[
 		{"type":"image","source":{"type":"file","file_id":"file_a"}},
 		{"type":"image","source":{"type":"file","file_id":"file_b"}},
 		{"type":"image","source":{"type":"file","file_id":"file_other"}}
 	]}]}`)
-	ownerID, platform, foreign, ok = svc.ResolveAnthropicFileOwner(ctx, 1, conflictForeignBody)
-	require.True(t, foreign)
-	require.False(t, ok)
-	require.Zero(t, ownerID)
-	require.Empty(t, platform)
+	_, _, decision, _ = svc.ResolveAnthropicFileOwner(ctx, 1, conflictForeignBody)
+	require.Equal(t, AnthropicFileOwnerForeign, decision)
 
-	// 同账号同平台重复出现仍然命中。
+	// 同账号同平台重复出现仍然 pinned。
 	require.NoError(t, svc.BindAnthropicFileOwner(ctx, 1, &Account{ID: 901, Platform: PlatformDeepseek}, "file_c"))
 	sameOwnerBody := []byte(`{"messages":[{"role":"user","content":[
 		{"type":"image","source":{"type":"file","file_id":"file_a"}},
 		{"type":"image","source":{"type":"file","file_id":"file_c"}}
 	]}]}`)
-	ownerID, platform, foreign, ok = svc.ResolveAnthropicFileOwner(ctx, 1, sameOwnerBody)
-	require.True(t, ok)
-	require.False(t, foreign)
+	ownerID, platform, decision, resolveErr = svc.ResolveAnthropicFileOwner(ctx, 1, sameOwnerBody)
+	require.Equal(t, AnthropicFileOwnerPinned, decision)
+	require.NoError(t, resolveErr)
 	require.Equal(t, int64(901), ownerID)
 	require.Equal(t, PlatformDeepseek, platform)
 
-	// 无 file 源（文本 / base64）不改变行为。
-	_, _, foreign, ok = svc.ResolveAnthropicFileOwner(ctx, 1, []byte(`{"messages":[{"role":"user","content":[
+	// 无 file 源（base64 图片 / 文本）→ none。
+	_, _, decision, _ = svc.ResolveAnthropicFileOwner(ctx, 1, []byte(`{"messages":[{"role":"user","content":[
 		{"type":"image","source":{"type":"base64","media_type":"image/png","data":"x"}},
 		{"type":"text","text":"hi"}
 	]}]}`))
-	require.False(t, foreign)
-	require.False(t, ok)
+	require.Equal(t, AnthropicFileOwnerNone, decision)
 
-	// 缓存读取失败按未命中处理（fail-open 到原选号），不 panic、不硬钉也不拒绝。
+	// 缓存读取失败 → storeError（503，可重试），绝不当作 none/pinned。
 	broken := &OpenAIGatewayService{cache: &fakeAnthropicFileOwnerCache{getErr: errors.New("redis down")}}
-	_, _, foreign, ok = broken.ResolveAnthropicFileOwner(ctx, 1, imageBody)
-	require.False(t, foreign)
-	require.False(t, ok)
+	_, _, decision, resolveErr = broken.ResolveAnthropicFileOwner(ctx, 1, imageBody)
+	require.Equal(t, AnthropicFileOwnerStoreError, decision)
+	require.Error(t, resolveErr)
+
+	// 归属缓存不可用 → storeError，不得放行。
+	_, _, decision, resolveErr = (&OpenAIGatewayService{}).ResolveAnthropicFileOwner(ctx, 1, imageBody)
+	require.Equal(t, AnthropicFileOwnerStoreError, decision)
+	require.Error(t, resolveErr)
 }
 
 // TestAnthropicFileOwnerPinsOwnerInCompositeGroup 复现评审场景：同一组合分组里
-// 163 官方 DeepSeek（优先级 99）与 167 挂 ollama.com 的 DeepSeek 平台账号
-// （优先级 1）。无 file 时普通选号按优先级选中 167（可能读到别人文件）；
-// file 归属 163 时必须硬钉回 163，而不是被普通选号落回 167。
+// 163 官方 DeepSeek（优先级 99）与 167 挂 ollama.com 的账号（优先级 1）。
+// 注：仓库没有 "ollama_cloud" 平台常量——Ollama Cloud 账号就是 platform=deepseek
+// 或 openai、base_url=https://ollama.com(/v1) 的普通账号（见 ollama 相关用例），
+// 这里用同名账号 + base_url 模拟，调度行为与真实账号一致。
+// 无 file 时普通选号按优先级选中 167（可能读到别人文件）；file 归属 163 时
+// 必须硬钉回 163，而不是被普通选号落回 167。
 func TestAnthropicFileOwnerPinsOwnerInCompositeGroup(t *testing.T) {
 	ctx := context.Background()
 	groupID := int64(163)
@@ -261,7 +268,9 @@ func TestAnthropicFileOwnerPinsOwnerInCompositeGroup(t *testing.T) {
 		Status: StatusActive, Schedulable: true, Concurrency: 50, Priority: 99, GroupIDs: []int64{groupID}}
 	ollama := official
 	ollama.ID = 167
+	ollama.Name = "ollama_cloud"
 	ollama.Priority = 1
+	ollama.Extra = map[string]any{"base_url": "https://ollama.com/v1"}
 
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIScheduler.StickyEscapeEnabled = true
@@ -291,9 +300,9 @@ func TestAnthropicFileOwnerPinsOwnerInCompositeGroup(t *testing.T) {
 	// file 归属 163：解析命中且硬钉回 163。
 	require.NoError(t, svc.BindAnthropicFileOwner(ctx, 1, &official, "file-composite"))
 	body := []byte(`{"messages":[{"role":"user","content":[{"type":"image","source":{"type":"file","file_id":"file-composite"}}]}]}`)
-	ownerID, platform, foreign, ok := svc.ResolveAnthropicFileOwner(ctx, 1, body)
-	require.True(t, ok)
-	require.False(t, foreign)
+	ownerID, platform, fileOwnerDecision, resolveErr := svc.ResolveAnthropicFileOwner(ctx, 1, body)
+	require.NoError(t, resolveErr)
+	require.Equal(t, AnthropicFileOwnerPinned, fileOwnerDecision)
 	selection, decision, err := svc.SelectAnthropicFileOwnerAccount(ctx, &groupID, ownerID, platform, "deepseek-flash")
 	require.NoError(t, err)
 	require.NotNil(t, selection)
