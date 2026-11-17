@@ -285,14 +285,14 @@ func TestForwardDeepseekToolsRequest_AnthropicFilesPassthrough(t *testing.T) {
 
 	// 归属按用户生效：上传用户解析命中；其他用户引用同一 file_id 被判为他人的文件。
 	fileBody := []byte(`{"messages":[{"role":"user","content":[{"type":"document","source":{"type":"file","file_id":"file-api-1"}}]}]}`)
-	ownerID, platform, foreign, ok := svc.ResolveAnthropicFileOwner(context.Background(), 7, fileBody)
-	require.True(t, ok)
-	require.False(t, foreign)
+	ownerID, platform, decision, resolveErr := svc.ResolveAnthropicFileOwner(context.Background(), 7, fileBody)
+	require.NoError(t, resolveErr)
+	require.Equal(t, AnthropicFileOwnerPinned, decision)
 	require.Equal(t, account.ID, ownerID)
 	require.Equal(t, PlatformDeepseek, platform)
-	_, _, foreign, ok = svc.ResolveAnthropicFileOwner(context.Background(), 8, fileBody)
-	require.True(t, foreign)
-	require.False(t, ok)
+	_, _, decision, resolveErr = svc.ResolveAnthropicFileOwner(context.Background(), 8, fileBody)
+	require.NoError(t, resolveErr)
+	require.Equal(t, AnthropicFileOwnerForeign, decision)
 }
 
 func TestForwardDeepseekToolsRequest_FilesWithoutBetaStaysOpenAI(t *testing.T) {
