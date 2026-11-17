@@ -27,7 +27,7 @@ func NewUserMsgQueueHelper(
 	pingFormat SSEPingFormat,
 	pingInterval time.Duration,
 ) *UserMsgQueueHelper {
-	if pingInterval <= 0 {
+	if pingInterval < 0 {
 		pingInterval = defaultPingInterval
 	}
 	return &UserMsgQueueHelper{
@@ -86,7 +86,7 @@ func (h *UserMsgQueueHelper) waitForLockWithPing(
 	streamStarted *bool,
 	reqLog *zap.Logger,
 ) (func(), error) {
-	needPing := isStream && h.pingFormat != ""
+	needPing := isStream && h.pingFormat != "" && h.pingInterval > 0
 
 	var flusher http.Flusher
 	if needPing {
@@ -121,9 +121,11 @@ func (h *UserMsgQueueHelper) waitForLockWithPing(
 				c.Header("X-Accel-Buffering", "no")
 				*streamStarted = true
 			}
-			if _, err := fmt.Fprint(c.Writer, string(h.pingFormat)); err != nil {
+			written, err := fmt.Fprint(c.Writer, string(h.pingFormat))
+			if err != nil {
 				return nil, err
 			}
+			recordGatewayStreamHeartbeat(c, written)
 			flusher.Flush()
 
 		case <-timer.C:
@@ -194,7 +196,7 @@ func (h *UserMsgQueueHelper) ThrottleWithPing(
 	)
 
 	// 延迟期间发送 SSE ping（复用 waitForLockWithPing 的 ping 逻辑）
-	needPing := isStream && h.pingFormat != ""
+	needPing := isStream && h.pingFormat != "" && h.pingInterval > 0
 	var flusher http.Flusher
 	if needPing {
 		flusher, _ = c.Writer.(http.Flusher)
@@ -226,9 +228,11 @@ func (h *UserMsgQueueHelper) ThrottleWithPing(
 				c.Header("X-Accel-Buffering", "no")
 				*streamStarted = true
 			}
-			if _, err := fmt.Fprint(c.Writer, string(h.pingFormat)); err != nil {
+			written, err := fmt.Fprint(c.Writer, string(h.pingFormat))
+			if err != nil {
 				return err
 			}
+			recordGatewayStreamHeartbeat(c, written)
 			flusher.Flush()
 		case <-timer.C:
 			return nil

@@ -93,6 +93,8 @@ func TestGatewayHandlerPreCancelledCompatibleRequestsDoNotSelectAccount(t *testi
 			require.Zero(t, schedulerCache.snapshotCalls.Load(), "a cancelled request must stop before the account selector")
 			_, selected := c.Get(opsAccountIDKey)
 			require.False(t, selected)
+			require.Equal(t, statusClientClosedRequest, c.Writer.Status(), "an uncommitted cancelled request is marked 499")
+			require.Zero(t, recorder.Body.Len())
 		})
 	}
 }

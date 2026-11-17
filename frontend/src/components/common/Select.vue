@@ -55,6 +55,7 @@
           :class="[instanceId]"
           :style="dropdownStyle"
           role="listbox"
+          tabindex="-1"
           @click.stop
           @mousedown.stop
           @keydown="onDropdownKeyDown"
@@ -111,7 +112,7 @@
 
             <!-- Empty state -->
             <div v-if="filteredOptions.length === 0" class="select-empty">
-              {{ emptyTextDisplay }}
+              {{ props.loading ? t('common.loading') : emptyTextDisplay }}
             </div>
           </div>
         </div>
@@ -154,11 +155,16 @@ interface Props {
   id?: string
   ariaLabel?: string
   ariaDescribedby?: string
+  /** 远程搜索模式：输入不在本地过滤 options，而是防抖后 emit('search', query)，由父组件请求数据更新 options */
+  remote?: boolean
+  /** 远程搜索模式下的加载态：options 为空时下拉显示 loading 文案 */
+  loading?: boolean
 }
 
 interface Emits {
   (e: 'update:modelValue', value: string | number | boolean | null): void
   (e: 'change', value: string | number | boolean | null, option: SelectOption | null): void
+  (e: 'search', query: string): void
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -169,7 +175,9 @@ const props = withDefaults(defineProps<Props>(), {
   creatablePrefix: '',
   clearable: false,
   valueKey: 'value',
-  labelKey: 'label'
+  labelKey: 'label',
+  remote: false,
+  loading: false
 })
 
 const emit = defineEmits<Emits>()
@@ -192,7 +200,13 @@ const placeholderText = computed(() => props.placeholder ?? t('common.selectOpti
 const searchPlaceholderText = computed(() => props.searchPlaceholder ?? t('common.searchPlaceholder'))
 const emptyTextDisplay = computed(() => props.emptyText ?? t('common.noOptionsFound'))
 
+// 远程搜索的防抖间隔（对齐 OpenAIFastPolicyUserSelector 的 300ms 惯例）。
+const REMOTE_SEARCH_DEBOUNCE_MS = 300
+let remoteSearchTimer: ReturnType<typeof setTimeout> | null = null
+
 const isSearchable = computed(() => {
+  // 远程搜索模式始终显示搜索框（选项只是服务端结果的一页）。
+  if (props.remote) return true
   if (props.searchable === 'auto') return props.options.length > 5
   return props.searchable
 })
@@ -276,7 +290,8 @@ const hasValue = computed(
 
 const filteredOptions = computed(() => {
   let opts = props.options as any[]
-  if (isSearchable.value && searchQuery.value) {
+  // 远程搜索模式不在本地过滤（选项即服务端搜索结果的一页）。
+  if (isSearchable.value && searchQuery.value && !props.remote) {
     const query = searchQuery.value.toLowerCase()
     opts = opts.filter((opt) => {
       // Match label
@@ -319,6 +334,12 @@ const findPrevEnabledIndex = (startIndex: number): number => {
   return -1
 }
 
+watch(filteredOptions, () => {
+  if (!isOpen.value) return
+  focusedIndex.value = findNextEnabledIndex(0)
+  if (focusedIndex.value >= 0) scrollToFocused()
+})
+
 const handleOptionMouseEnter = (option: any, index: number) => {
   if (isOptionDisabled(option) || isGroupHeaderOption(option)) return
   focusedIndex.value = index
@@ -354,6 +375,10 @@ const toggle = () => {
   isOpen.value = !isOpen.value
 }
 
+watch(() => props.disabled, (disabled) => {
+  if (disabled) isOpen.value = false
+})
+
 watch(isOpen, (open) => {
   if (open) {
     calculateDropdownPosition()
@@ -370,6 +395,8 @@ watch(isOpen, (open) => {
 
     if (isSearchable.value) {
       nextTick(() => searchInputRef.value?.focus())
+    } else {
+      nextTick(() => dropdownRef.value?.focus())
     }
     // Add scroll listener to update position
     window.addEventListener('scroll', updateTriggerRect, { capture: true, passive: true })
@@ -377,9 +404,24 @@ watch(isOpen, (open) => {
   } else {
     searchQuery.value = ''
     focusedIndex.value = -1
+    // 关闭时取消仍在排队的远程搜索（避免关闭后尾随 emit 一次 search(''))。
+    if (remoteSearchTimer) {
+      clearTimeout(remoteSearchTimer)
+      remoteSearchTimer = null
+    }
     window.removeEventListener('scroll', updateTriggerRect, { capture: true })
     window.removeEventListener('resize', calculateDropdownPosition)
   }
+})
+
+// 远程搜索：输入防抖后交给父组件请求（!isOpen 抑制关闭重置 searchQuery 触发的空 query）。
+watch(searchQuery, (query) => {
+  if (!props.remote || !isOpen.value) return
+  if (remoteSearchTimer) clearTimeout(remoteSearchTimer)
+  remoteSearchTimer = setTimeout(() => {
+    remoteSearchTimer = null
+    emit('search', query.trim())
+  }, REMOTE_SEARCH_DEBOUNCE_MS)
 })
 
 const selectOption = (option: any) => {
@@ -404,6 +446,7 @@ const onTriggerKeyDown = () => {
 }
 
 const onDropdownKeyDown = (e: KeyboardEvent) => {
+  if (e.isComposing) return
   switch (e.key) {
     case 'ArrowDown':
       e.preventDefault()
@@ -467,6 +510,10 @@ onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside)
   window.removeEventListener('scroll', updateTriggerRect, { capture: true })
   window.removeEventListener('resize', calculateDropdownPosition)
+  if (remoteSearchTimer) {
+    clearTimeout(remoteSearchTimer)
+    remoteSearchTimer = null
+  }
 })
 </script>
 

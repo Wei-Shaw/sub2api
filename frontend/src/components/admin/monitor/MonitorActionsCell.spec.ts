@@ -34,6 +34,8 @@ function makeMonitor(overrides: Partial<ChannelMonitor> = {}): ChannelMonitor {
     extra_headers: {},
     body_override_mode: 'off',
     body_override: null,
+    check_mode: 'probe',
+    account_id: null,
     ...overrides,
   }
 }

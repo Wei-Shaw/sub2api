@@ -126,6 +126,21 @@ describe('useClipboard', () => {
     expect(document.execCommand).toHaveBeenCalledWith('copy')
   })
 
+  it.each([false, true])('reports a thrown fallback error (secure context: %s)', async (secure) => {
+    Object.defineProperty(window, 'isSecureContext', { value: secure, writable: true })
+    vi.mocked(navigator.clipboard.writeText).mockRejectedValue(new Error('Clipboard denied'))
+    Object.defineProperty(document, 'execCommand', {
+      configurable: true,
+      value: vi.fn(() => { throw new DOMException('Copy denied', 'NotAllowedError') })
+    })
+    const { copyToClipboard, copied } = useClipboard()
+    await expect(copyToClipboard('text')).resolves.toBe(false)
+    expect(copied.value).toBe(false)
+    expect(mockShowError).toHaveBeenCalledWith('common.copyFailed')
+    expect(mockShowSuccess).not.toHaveBeenCalled()
+    expect(document.querySelector('textarea')).toBeNull()
+  })
+
   it('所有复制方式均失败时调用 showError', async () => {
     const writeTextMock = navigator.clipboard.writeText as any
     writeTextMock.mockRejectedValue(new Error('fail'))

@@ -500,3 +500,19 @@ type helperConcurrencyCacheStubWithError struct {
 func (s *helperConcurrencyCacheStubWithError) AcquireAccountSlot(ctx context.Context, accountID int64, maxConcurrency int, requestID string) (bool, error) {
 	return false, s.err
 }
+
+func TestSetClaudeCodeClientContext_ParsedRequestProbeWithoutSystemPrompt(t *testing.T) {
+	c, _ := newHelperTestContext(http.MethodPost, "/v1/messages")
+	c.Request.Header.Set("User-Agent", "claude-cli/2.1.260 (external, cli)")
+
+	// The hot path reuses ParsedRequest instead of re-parsing the body; the probe
+	// marker must survive that projection or the exemption only works cold.
+	parsed := &service.ParsedRequest{Model: "claude-sonnet-4-5", MaxTokens: 1}
+	SetClaudeCodeClientContext(c, nil, parsed)
+	require.True(t, service.IsClaudeCodeClient(c.Request.Context()))
+
+	c2, _ := newHelperTestContext(http.MethodPost, "/v1/messages")
+	c2.Request.Header.Set("User-Agent", "claude-cli/2.1.260 (external, cli)")
+	SetClaudeCodeClientContext(c2, nil, &service.ParsedRequest{Model: "claude-sonnet-4-5", MaxTokens: 64})
+	require.False(t, service.IsClaudeCodeClient(c2.Request.Context()))
+}

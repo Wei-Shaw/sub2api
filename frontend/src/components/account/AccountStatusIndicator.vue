@@ -14,15 +14,19 @@
 
     <!-- Main Status Badge (shown when not rate limited/overloaded) -->
     <template v-else>
-      <button
-        v-if="isTempUnschedulable"
-        type="button"
-        :class="['badge text-xs', statusClass, 'cursor-pointer']"
-        :title="t('admin.accounts.status.viewTempUnschedDetails')"
-        @click="handleTempUnschedClick"
-      >
-        {{ statusText }}
-      </button>
+      <div v-if="isTempUnschedulable" class="flex flex-col items-center gap-1">
+        <button
+          type="button"
+          :class="['badge text-xs', statusClass, 'cursor-pointer']"
+          :title="t('admin.accounts.status.viewTempUnschedDetails')"
+          @click="handleTempUnschedClick"
+        >
+          {{ statusText }}
+        </button>
+        <span class="max-w-[180px] text-center text-[11px] leading-4 text-gray-500 dark:text-gray-400">
+          {{ tempUnschedRecoveryText }}
+        </span>
+      </div>
       <span v-else :class="['badge text-xs', statusClass]">
         {{ statusText }}
       </span>
@@ -220,15 +224,21 @@ const activeModelStatuses = computed<AccountModelStatusItem[]>(() => {
 const formatScopeName = (scope: string): string => {
   const aliases: Record<string, string> = {
     // Claude 系列
+    'claude-fable-5-2': 'CFable52',
+    'claude-mythos-5-2': 'CMythos52',
+    'claude-fable-5-1': 'CFable51',
     'claude-fable-5': 'CFable5',
     'claude-opus-4-6': 'COpus46',
     'claude-opus-4-6-thinking': 'COpus46T',
     'claude-opus-4-7': 'COpus47',
     'claude-opus-4-8': 'COpus48',
+    'claude-opus-5-5': 'COpus55',
     'claude-opus-5': 'COpus5',
     'claude-sonnet-4-6': 'CSon46',
     'claude-sonnet-4-5': 'CSon45',
     'claude-sonnet-4-5-thinking': 'CSon45T',
+    'claude-sonnet-5-5': 'CSon55',
+    'claude-sonnet-5': 'CSon5',
     // Gemini 2.5 系列
     'gemini-2.5-flash': 'G25F',
     'gemini-2.5-flash-lite': 'G25FL',
@@ -299,6 +309,13 @@ const rateLimitResumeText = computed(() => {
 // Computed: countdown text for overload (529)
 const overloadCountdown = computed(() => {
   return formatCountdownWithSuffix(props.account.overload_until)
+})
+
+const tempUnschedRecoveryText = computed(() => {
+  if (!isTempUnschedulable.value || !props.account.temp_unschedulable_until) return ''
+  return t('admin.accounts.status.tempUnschedulableUntil', {
+    time: formatDateTime(props.account.temp_unschedulable_until)
+  })
 })
 
 // Computed: status badge class

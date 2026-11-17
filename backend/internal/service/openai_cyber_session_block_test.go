@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -23,57 +25,129 @@ func newCyberBlockTestCtx(headers map[string]string, body string) (*gin.Context,
 	return c, []byte(body)
 }
 
-// TestCyberSessionBlockKey verifies F5a key derivation: explicit session signals
-// only (header session_id/conversation_id or body prompt_cache_key), apiKey
-// isolated, and EMPTY when no explicit signal (no content-derived fallback —
-// "不退化" decision).
-func TestCyberSessionBlockKey(t *testing.T) {
+func TestCyberSessionExplicitBlockKey(t *testing.T) {
 	c1, b1 := newCyberBlockTestCtx(map[string]string{"session_id": "sess-abc"}, `{}`)
-	k1 := CyberSessionBlockKey(101, c1, b1)
+	k1 := CyberSessionExplicitBlockKey(101, c1, b1)
 	require.NotEmpty(t, k1)
 
 	// Same session, different apiKey → different key (isolation).
 	c2, b2 := newCyberBlockTestCtx(map[string]string{"session_id": "sess-abc"}, `{}`)
-	require.NotEqual(t, k1, CyberSessionBlockKey(202, c2, b2))
+	require.NotEqual(t, k1, CyberSessionExplicitBlockKey(202, c2, b2))
 
 	// Same session + same apiKey → stable key.
 	c3, b3 := newCyberBlockTestCtx(map[string]string{"session_id": "sess-abc"}, `{}`)
-	require.Equal(t, k1, CyberSessionBlockKey(101, c3, b3))
+	require.Equal(t, k1, CyberSessionExplicitBlockKey(101, c3, b3))
 
 	// prompt_cache_key in body counts as explicit.
 	c4, b4 := newCyberBlockTestCtx(nil, `{"prompt_cache_key":"pck-1"}`)
-	require.NotEmpty(t, CyberSessionBlockKey(101, c4, b4))
+	require.NotEmpty(t, CyberSessionExplicitBlockKey(101, c4, b4))
 
 	// No explicit signal → empty key → caller must skip blocking entirely.
 	c5, b5 := newCyberBlockTestCtx(nil, `{"input":"hello world"}`)
-	require.Empty(t, CyberSessionBlockKey(101, c5, b5))
+	require.Empty(t, CyberSessionExplicitBlockKey(101, c5, b5))
 
 	// conversation_id header counts as explicit; key is stable and non-empty.
 	c6, b6 := newCyberBlockTestCtx(map[string]string{"conversation_id": "conv-xyz"}, `{}`)
-	k6 := CyberSessionBlockKey(101, c6, b6)
+	k6 := CyberSessionExplicitBlockKey(101, c6, b6)
 	require.NotEmpty(t, k6)
 	c6b, b6b := newCyberBlockTestCtx(map[string]string{"conversation_id": "conv-xyz"}, `{}`)
-	require.Equal(t, k6, CyberSessionBlockKey(101, c6b, b6b), "conversation_id key must be stable")
+	require.Equal(t, k6, CyberSessionExplicitBlockKey(101, c6b, b6b), "conversation_id key must be stable")
+}
+
+func TestCyberTranscriptBlocksRequireModelGeneratedHistory(t *testing.T) {
+	first := []byte(`{"instructions":"shared","input":[{"role":"user","content":"fixed environment"},{"role":"user","content":"question one"}]}`)
+	second := []byte(`{"instructions":"shared","input":[{"role":"user","content":"fixed environment"},{"role":"user","content":"question two"}]}`)
+	firstBlocks := CyberSessionTranscriptBlocks(77, first)
+	secondBlocks := CyberSessionTranscriptBlocks(77, second)
+	require.Len(t, firstBlocks, 1)
+	require.Len(t, secondBlocks, 1)
+	require.NotEqual(t, firstBlocks[0].Key, secondBlocks[0].Key)
+
+	hit := []byte(`{"messages":[{"role":"user","content":"setup"},{"role":"assistant","content":"ready"},{"role":"user","content":"trigger"}]}`)
+	continuation := []byte(`{"messages":[{"role":"user","content":"setup"},{"role":"assistant","content":"ready"},{"role":"user","content":"different trigger"},{"role":"assistant","content":"blocked"},{"role":"user","content":"continue"}]}`)
+	hitBlocks := CyberSessionTranscriptBlocks(77, hit)
+	require.Equal(t, []int{3, 2}, []int{hitBlocks[0].Length, hitBlocks[1].Length})
+	require.Equal(t, []string{hitBlocks[1].Key}, cyberSessionTranscriptKeysAt(77, continuation, []int{hitBlocks[1].Length}))
+	require.NotEqual(t, []string{hitBlocks[0].Key}, cyberSessionTranscriptKeysAt(77, continuation, []int{hitBlocks[0].Length}))
+}
+
+func TestCyberTranscriptBlocksWebSocketResponseCreate(t *testing.T) {
+	body := []byte(`{"type":"response.create","response":{"prompt_cache_key":"ws-session","input":[{"role":"user","content":"setup"},{"role":"assistant","content":"ready"},{"role":"user","content":"trigger"}]}}`)
+	c, _ := newCyberBlockTestCtx(nil, string(body))
+	require.NotEmpty(t, CyberSessionExplicitBlockKey(88, c, body))
+	require.Len(t, CyberSessionTranscriptBlocks(88, body), 2)
+}
+
+func TestCyberTranscriptBlocksStringInputMatchesSingleItemHistory(t *testing.T) {
+	blocks := CyberSessionTranscriptBlocks(77, []byte(`{"input":"hello"}`))
+	require.Equal(t, []CyberSessionTranscriptBlock{{Key: blocks[0].Key, Length: 1}}, blocks)
+	require.Equal(t, []string{blocks[0].Key}, cyberSessionTranscriptKeysAt(77, []byte(`{"input":["hello","more"]}`), []int{1}))
+	require.Empty(t, CyberSessionTranscriptBlocks(77, []byte(`{"input":"  "}`)))
+}
+
+func TestCyberTranscriptKeysAtRecomputesRecordedLengthsInOrder(t *testing.T) {
+	messages := make([]map[string]string, 300)
+	for i := range messages {
+		messages[i] = map[string]string{"role": "user", "content": "message-" + strconv.Itoa(i)}
+	}
+	body, err := json.Marshal(map[string]any{"messages": messages})
+	require.NoError(t, err)
+	prefixKey := func(length int) string {
+		prefix, err := json.Marshal(map[string]any{"messages": messages[:length]})
+		require.NoError(t, err)
+		return CyberSessionTranscriptBlocks(77, prefix)[0].Key
+	}
+
+	require.Equal(t, []string{prefixKey(1), prefixKey(45), prefixKey(300)},
+		cyberSessionTranscriptKeysAt(77, body, []int{300, 45, 1, 45, 301, 0}))
+	require.Empty(t, cyberSessionTranscriptKeysAt(77, body, nil))
+	require.Equal(t, CyberSessionTranscriptBlocks(77, body)[0], CyberSessionTranscriptBlock{Key: prefixKey(300), Length: 300})
 }
 
 // --- fakes ---
 
 type fakeCyberBlockStore struct {
-	blocked map[string]bool
+	blocked  map[string]bool
+	scopes   map[string]bool
+	lengths  map[int64][]int
+	findKeys [][]string
 }
 
 var _ CyberSessionBlockStore = (*fakeCyberBlockStore)(nil)
 
-func (f *fakeCyberBlockStore) SetCyberSessionBlocked(_ context.Context, key string, _ time.Duration) error {
+func (f *fakeCyberBlockStore) SetCyberSessionBlocked(_ context.Context, block CyberSessionBlock, _ time.Duration) error {
 	if f.blocked == nil {
 		f.blocked = map[string]bool{}
 	}
-	f.blocked[key] = true
+	for _, key := range block.Keys {
+		f.blocked[key] = true
+	}
+	if block.ScopeKey != "" {
+		if f.scopes == nil {
+			f.scopes = map[string]bool{}
+			f.lengths = map[int64][]int{}
+		}
+		f.scopes[block.ScopeKey] = true
+		f.lengths[block.APIKeyID] = append(f.lengths[block.APIKeyID], block.TranscriptLengths...)
+	}
 	return nil
 }
 
-func (f *fakeCyberBlockStore) IsCyberSessionBlocked(_ context.Context, key string) (bool, error) {
-	return f.blocked[key], nil
+func (f *fakeCyberBlockStore) CyberSessionTranscriptLengths(_ context.Context, apiKeyID int64, scopeKey string) ([]int, error) {
+	if !f.scopes[scopeKey] {
+		return nil, nil
+	}
+	return f.lengths[apiKeyID], nil
+}
+
+func (f *fakeCyberBlockStore) FindCyberSessionBlocked(_ context.Context, keys []string) (string, error) {
+	f.findKeys = append(f.findKeys, keys)
+	for _, key := range keys {
+		if f.blocked[key] {
+			return key, nil
+		}
+	}
+	return "", nil
 }
 
 // fakeSettingRepo is a minimal SettingRepository stub for unit tests.
@@ -133,25 +207,49 @@ func (c *comboCacheAndStore) RefreshSessionTTL(_ context.Context, _ int64, _ str
 func (c *comboCacheAndStore) DeleteSessionAccountID(_ context.Context, _ int64, _ string) error {
 	return nil
 }
-func (c *comboCacheAndStore) SetCyberSessionBlocked(ctx context.Context, key string, ttl time.Duration) error {
-	return c.store.SetCyberSessionBlocked(ctx, key, ttl)
+
+func (c *comboCacheAndStore) SetGrokVideoPendingBilling(_ context.Context, _ string, _ []byte, _ time.Duration) error {
+	return nil
 }
-func (c *comboCacheAndStore) IsCyberSessionBlocked(ctx context.Context, key string) (bool, error) {
-	return c.store.IsCyberSessionBlocked(ctx, key)
+func (c *comboCacheAndStore) GetGrokVideoPendingBilling(_ context.Context, _ string) ([]byte, error) {
+	return nil, nil
+}
+func (c *comboCacheAndStore) ClaimGrokVideoBilled(_ context.Context, _ string, _ time.Duration) (bool, error) {
+	return true, nil
+}
+
+func (c *comboCacheAndStore) ReleaseGrokVideoBilled(_ context.Context, _ string) error {
+	return nil
+}
+
+func (c *comboCacheAndStore) SetReasoningContent(_ context.Context, _ string, _ string, _ time.Duration) error {
+	return nil
+}
+func (c *comboCacheAndStore) GetReasoningContent(_ context.Context, _ string) (string, error) {
+	return "", ErrReasoningContentNotFound
+}
+
+func (c *comboCacheAndStore) SetCyberSessionBlocked(ctx context.Context, block CyberSessionBlock, ttl time.Duration) error {
+	return c.store.SetCyberSessionBlocked(ctx, block, ttl)
+}
+func (c *comboCacheAndStore) CyberSessionTranscriptLengths(ctx context.Context, apiKeyID int64, scopeKey string) ([]int, error) {
+	return c.store.CyberSessionTranscriptLengths(ctx, apiKeyID, scopeKey)
+}
+func (c *comboCacheAndStore) FindCyberSessionBlocked(ctx context.Context, keys []string) (string, error) {
+	return c.store.FindCyberSessionBlocked(ctx, keys)
 }
 
 // --- tests ---
 
 // TestIsCyberSessionBlocked_EmptyKeyAndNilService covers the fail-open paths:
 // empty key, nil service, store missing → always false / no panic.
-func TestIsCyberSessionBlocked_EmptyKeyAndNilService(t *testing.T) {
+func TestFindCyberSessionBlocked_EmptyAndNilService(t *testing.T) {
 	var nilSvc *OpenAIGatewayService
-	require.False(t, nilSvc.IsCyberSessionBlocked(context.Background(), "k"))
-	require.NotPanics(t, func() { nilSvc.MarkCyberSessionBlocked(context.Background(), "k") })
+	require.Empty(t, nilSvc.FindCyberSessionBlockedForRequest(context.Background(), 1, nil, nil, "", ""))
+	require.NotPanics(t, func() { nilSvc.MarkCyberSessionBlocked(context.Background(), CyberSessionBlock{Keys: []string{"k"}}) })
 
 	svc := &OpenAIGatewayService{}
-	require.False(t, svc.IsCyberSessionBlocked(context.Background(), ""))
-	require.False(t, svc.IsCyberSessionBlocked(context.Background(), "k"), "no store + no settings → fail-open false")
+	require.Empty(t, svc.FindCyberSessionBlockedForRequest(context.Background(), 1, nil, nil, "", ""))
 }
 
 // TestCyberSessionBlock_RoundTrip exercises the type-assertion success path:
@@ -178,15 +276,99 @@ func TestCyberSessionBlock_RoundTrip(t *testing.T) {
 	ctx := context.Background()
 	const testKey = "deadbeef1234"
 
-	// Before marking: not blocked.
-	require.False(t, svc.IsCyberSessionBlocked(ctx, testKey))
+	c, body := newCyberBlockTestCtx(map[string]string{"session_id": "sess-roundtrip"}, `{}`)
+	explicitKey := CyberSessionExplicitBlockKey(1, c, body)
+	require.Empty(t, svc.FindCyberSessionBlockedForRequest(ctx, 1, c, body, "203.0.113.1", "client/1.0"))
 
-	// Mark as blocked.
-	svc.MarkCyberSessionBlocked(ctx, testKey)
+	svc.MarkCyberSessionBlocked(ctx, CyberSessionBlock{APIKeyID: 1, Keys: []string{explicitKey, testKey}})
 
-	// After marking: blocked.
-	require.True(t, svc.IsCyberSessionBlocked(ctx, testKey))
+	require.Equal(t, explicitKey, svc.FindCyberSessionBlockedForRequest(ctx, 1, c, body, "203.0.113.1", "client/1.0"))
+}
 
-	// Different key: still not blocked.
-	require.False(t, svc.IsCyberSessionBlocked(ctx, "other-key"))
+func TestFindCyberSessionBlockedForRequestUsesScopeForTranscript(t *testing.T) {
+	settingSvc := &SettingService{settingRepo: &fakeSettingRepo{vals: map[string]string{
+		SettingKeyCyberSessionBlockEnabled:    "true",
+		SettingKeyCyberSessionBlockTTLSeconds: "60",
+	}}}
+	combo := &comboCacheAndStore{}
+	svc := &OpenAIGatewayService{cache: combo, settingService: settingSvc}
+	ctx := context.Background()
+
+	hitBody := []byte(`{"messages":[{"role":"user","content":"setup"},{"role":"assistant","content":"ready"},{"role":"user","content":"trigger"}]}`)
+	nextBody := []byte(`{"messages":[{"role":"user","content":"setup"},{"role":"assistant","content":"ready"},{"role":"user","content":"different trigger"},{"role":"assistant","content":"blocked"},{"role":"user","content":"continue"}]}`)
+	nextCtx, _ := newCyberBlockTestCtx(nil, string(nextBody))
+	const clientIP = "203.0.113.20"
+	const userAgent = "Codex CLI 1.2.3"
+	block := CyberSessionTranscriptBlocks(9, hitBody)[1]
+
+	// Without an active source scope, transcript candidates are never blocks.
+	require.Empty(t, svc.FindCyberSessionBlockedForRequest(ctx, 9, nextCtx, nextBody, clientIP, userAgent))
+	scopeKey := CyberSessionScopeKey(9, clientIP, userAgent)
+	svc.MarkCyberSessionBlocked(ctx, CyberSessionBlock{APIKeyID: 9, ScopeKey: scopeKey, Keys: []string{block.Key}, TranscriptLengths: []int{block.Length}})
+	require.Equal(t, block.Key, svc.FindCyberSessionBlockedForRequest(ctx, 9, nextCtx, nextBody, clientIP, "Codex CLI 1.2.4"))
+}
+
+// Issue #8519: once a source scope is active, unrelated sessions with long
+// histories must pass, while a blocked transcript padded with any number of
+// appended items must still match its recorded prefix.
+func TestFindCyberSessionBlockedForRequestMatchesLongHistoriesExactly(t *testing.T) {
+	settingSvc := &SettingService{settingRepo: &fakeSettingRepo{vals: map[string]string{
+		SettingKeyCyberSessionBlockEnabled:    "true",
+		SettingKeyCyberSessionBlockTTLSeconds: "60",
+	}}}
+	combo := &comboCacheAndStore{}
+	svc := &OpenAIGatewayService{cache: combo, settingService: settingSvc}
+	ctx := context.Background()
+	const apiKeyID = int64(9)
+	const clientIP = "203.0.113.20"
+	const userAgent = "Codex CLI 1.2.3"
+
+	history := func(prefix []map[string]string, padding int, tag string) []byte {
+		items := append([]map[string]string{}, prefix...)
+		for i := 0; i < padding; i++ {
+			role := "user"
+			if i%2 == 0 {
+				role = "assistant"
+			}
+			items = append(items, map[string]string{"role": role, "content": tag + "-" + strconv.Itoa(i)})
+		}
+		body, err := json.Marshal(map[string]any{"input": items})
+		require.NoError(t, err)
+		return body
+	}
+	hitPrefix := []map[string]string{{"role": "user", "content": "setup"}, {"role": "assistant", "content": "ready"}, {"role": "user", "content": "trigger"}}
+	hitBody := history(hitPrefix, 0, "")
+	hitCtx, _ := newCyberBlockTestCtx(map[string]string{"session_id": "sess-hit"}, string(hitBody))
+	block := CyberSessionBlock{
+		APIKeyID: apiKeyID,
+		ScopeKey: CyberSessionScopeKey(apiKeyID, clientIP, userAgent),
+		Keys:     []string{CyberSessionExplicitBlockKey(apiKeyID, hitCtx, hitBody)},
+	}
+	transcripts := CyberSessionTranscriptBlocks(apiKeyID, hitBody)
+	for _, transcript := range transcripts {
+		block.Keys = append(block.Keys, transcript.Key)
+		block.TranscriptLengths = append(block.TranscriptLengths, transcript.Length)
+	}
+	svc.MarkCyberSessionBlocked(ctx, block)
+
+	for _, items := range []int{256, 257, 1000} {
+		unrelated := history(nil, items, "unrelated")
+		c, _ := newCyberBlockTestCtx(map[string]string{"session_id": "sess-other"}, string(unrelated))
+		require.Empty(t, svc.FindCyberSessionBlockedForRequest(ctx, apiKeyID, c, unrelated, clientIP, userAgent), "items=%d", items)
+	}
+
+	padded := history(hitPrefix, 1000, "padding")
+	c, _ := newCyberBlockTestCtx(nil, string(padded))
+	// The shorter rewrite-tolerant prefix is checked first (earliest match).
+	require.Equal(t, transcripts[1].Key, svc.FindCyberSessionBlockedForRequest(ctx, apiKeyID, c, padded, clientIP, userAgent))
+	require.Len(t, combo.store.findKeys[len(combo.store.findKeys)-1], len(block.TranscriptLengths),
+		"lookup must only recompute the recorded prefix lengths")
+}
+
+func TestCyberSessionScopeKeyNormalizesUserAgentVersion(t *testing.T) {
+	base := CyberSessionScopeKey(7, "203.0.113.10", "Codex CLI 1.2.3")
+	require.NotEmpty(t, base)
+	require.Equal(t, base, CyberSessionScopeKey(7, "203.0.113.10", "Codex CLI 1.2.4"))
+	require.NotEqual(t, base, CyberSessionScopeKey(8, "203.0.113.10", "Codex CLI 1.2.3"))
+	require.NotEqual(t, base, CyberSessionScopeKey(7, "203.0.113.11", "Codex CLI 1.2.3"))
 }

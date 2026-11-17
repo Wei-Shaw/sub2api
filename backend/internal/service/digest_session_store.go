@@ -4,8 +4,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	gocache "github.com/patrickmn/go-cache"
 )
 
 // digestSessionTTL 摘要会话默认 TTL
@@ -15,20 +13,32 @@ const digestSessionTTL = 5 * time.Minute
 type sessionEntry struct {
 	uuid      string
 	accountID int64
+	expiresAt time.Time
 }
 
-// DigestSessionStore 内存摘要会话存储（flat cache 实现）
+func (e *sessionEntry) sessionExpiresAt() time.Time { return e.expiresAt }
+func (e *sessionEntry) sessionCost() int            { return len(e.uuid) }
+func (e *sessionEntry) cloneSessionValue() sessionMemoryValue {
+	cloned := *e
+	cloned.uuid = strings.Clone(e.uuid)
+	return &cloned
+}
+
+// DigestSessionStore 内存摘要会话存储（有界 TTL 缓存，增量摘要索引）
 // key: "{groupID}:{prefixHash}|{digestChain}" → *sessionEntry
 type DigestSessionStore struct {
-	cache *gocache.Cache
+	cache sessionMemoryCache
+	ttl   time.Duration
 }
 
 // NewDigestSessionStore 创建内存摘要会话存储
 func NewDigestSessionStore() *DigestSessionStore {
 	return &DigestSessionStore{
-		cache: gocache.New(digestSessionTTL, time.Minute),
+		ttl: digestSessionTTL,
 	}
 }
+
+func (s *DigestSessionStore) Close() { s.cache.Close() }
 
 // Save 保存摘要会话。oldDigestChain 为 Find 返回的 matchedChain，用于删旧 key。
 func (s *DigestSessionStore) Save(groupID int64, prefixHash, digestChain, uuid string, accountID int64, oldDigestChain string) {
@@ -36,31 +46,28 @@ func (s *DigestSessionStore) Save(groupID int64, prefixHash, digestChain, uuid s
 		return
 	}
 	ns := buildNS(groupID, prefixHash)
-	s.cache.Set(ns+digestChain, &sessionEntry{uuid: uuid, accountID: accountID}, gocache.DefaultExpiration)
+	ttl := s.ttl
+	if ttl <= 0 {
+		ttl = digestSessionTTL
+	}
+	s.cache.Store(ns+digestChain, &sessionEntry{uuid: uuid, accountID: accountID, expiresAt: time.Now().Add(ttl)})
 	if oldDigestChain != "" && oldDigestChain != digestChain {
 		s.cache.Delete(ns + oldDigestChain)
 	}
 }
 
-// Find 查找摘要会话，从完整 chain 逐段截断，返回最长匹配及对应 matchedChain。
+// Find 查找摘要会话，在消息边界上返回最长匹配及对应 matchedChain。
 func (s *DigestSessionStore) Find(groupID int64, prefixHash, digestChain string) (uuid string, accountID int64, matchedChain string, found bool) {
 	if digestChain == "" {
 		return "", 0, "", false
 	}
 	ns := buildNS(groupID, prefixHash)
-	chain := digestChain
-	for {
-		if val, ok := s.cache.Get(ns + chain); ok {
-			if e, ok := val.(*sessionEntry); ok {
-				return e.uuid, e.accountID, chain, true
-			}
+	if val, chain, ok := s.cache.longestDigestPrefix(ns, digestChain); ok {
+		if e, ok := val.(*sessionEntry); ok {
+			return e.uuid, e.accountID, chain, true
 		}
-		i := strings.LastIndex(chain, "-")
-		if i < 0 {
-			return "", 0, "", false
-		}
-		chain = chain[:i]
 	}
+	return "", 0, "", false
 }
 
 // buildNS 构建 namespace 前缀

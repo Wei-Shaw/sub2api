@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,6 +15,8 @@ import (
 	"testing"
 	"time"
 )
+
+const defaultFetchAvailableModelsBodyLimit int64 = 8 << 20
 
 // ---------------------------------------------------------------------------
 // NewAPIRequestWithURL
@@ -258,6 +261,8 @@ func TestTierIDToPlanType(t *testing.T) {
 		{"free-tier", "Free"},
 		{"g1-pro-tier", "Pro"},
 		{"g1-ultra-tier", "Ultra"},
+		{"g1-ultra-lite-tier", "Ultra"},
+		{"G1-Pro-Plus-Tier", "Pro"},
 		{"FREE-TIER", "Free"},
 		{"", "Free"},
 		{"unknown-tier", "unknown-tier"},
@@ -1466,6 +1471,113 @@ func TestClient_LoadCodeAssist_ContextCanceled_RealCall(t *testing.T) {
 // Client.FetchAvailableModels - 真正调用方法的测试
 // ---------------------------------------------------------------------------
 
+func TestClient_FetchAvailableModelsFromURL_UsesSelectedEndpoint(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1internal:fetchAvailableModels" || r.Method != http.MethodPost {
+			t.Errorf("unexpected model list request: %s %s", r.Method, r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer selected-token" {
+			t.Errorf("unexpected authorization header")
+		}
+		var body FetchAvailableModelsRequest
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Project != "selected-project" {
+			t.Errorf("unexpected project request: %+v, %v", body, err)
+		}
+		_, _ = w.Write([]byte(`{"models":{"gemini-3.8-flash-high":{"displayName":"Gemini 3.8 Flash High","supportsImages":true,"supportsThinking":true,"thinkingBudget":24576,"maxTokens":1048576,"maxOutputTokens":65536}}}`))
+	}))
+	defer server.Close()
+
+	client := mustNewClient(t, "")
+	response, raw, err := client.FetchAvailableModelsFromURL(context.Background(), server.URL, "selected-token", "selected-project", defaultFetchAvailableModelsBodyLimit)
+	if err != nil {
+		t.Fatalf("selected endpoint should return its catalog: %v", err)
+	}
+	model, ok := response.Models["gemini-3.8-flash-high"]
+	if !ok || model.SupportsThinking == nil || !*model.SupportsThinking || model.MaxTokens == nil || *model.MaxTokens != 1048576 {
+		t.Fatalf("selected endpoint metadata must remain available: %+v", model)
+	}
+	if raw["models"] == nil {
+		t.Fatal("selected endpoint raw catalog must remain available")
+	}
+}
+
+func TestClient_FetchAvailableModelsFromURL_DoesNotFollowAnotherEndpoint(t *testing.T) {
+	otherEndpointCalls := 0
+	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		otherEndpointCalls++
+		_, _ = w.Write([]byte(`{"models":{"other-endpoint-model":{}}}`))
+	}))
+	defer other.Close()
+	selected := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, other.URL+"/v1internal:fetchAvailableModels", http.StatusTemporaryRedirect)
+	}))
+	defer selected.Close()
+	withMockBaseURLs(t, []string{selected.URL, other.URL})
+
+	response, _, err := mustNewClient(t, "").FetchAvailableModelsFromURL(context.Background(), selected.URL, "token", "project", defaultFetchAvailableModelsBodyLimit)
+	if err == nil || response != nil {
+		t.Fatalf("selected endpoint redirect must not produce another endpoint's catalog: %v, %v", response, err)
+	}
+	if otherEndpointCalls != 0 {
+		t.Fatalf("model discovery must stay on selected endpoint; other endpoint received %d requests", otherEndpointCalls)
+	}
+}
+
+func TestClient_FetchAvailableModelsFromURL_DoesNotFallbackOnFailure(t *testing.T) {
+	for _, status := range []int{http.StatusNotFound, http.StatusTooManyRequests, http.StatusInternalServerError, http.StatusForbidden} {
+		t.Run(fmt.Sprint(status), func(t *testing.T) {
+			otherEndpointCalls := 0
+			other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				otherEndpointCalls++
+				_, _ = w.Write([]byte(`{"models":{"other-endpoint-model":{}}}`))
+			}))
+			defer other.Close()
+			selected := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(status)
+				_, _ = w.Write([]byte(`{"error":"selected endpoint unavailable"}`))
+			}))
+			defer selected.Close()
+			withMockBaseURLs(t, []string{selected.URL, other.URL})
+
+			response, raw, err := mustNewClient(t, "").FetchAvailableModelsFromURL(context.Background(), selected.URL, "token", "project", defaultFetchAvailableModelsBodyLimit)
+			if err == nil || response != nil || raw != nil {
+				t.Fatalf("selected endpoint HTTP %d must fail without another catalog: %v, %v", status, response, err)
+			}
+			if otherEndpointCalls != 0 {
+				t.Fatalf("another endpoint must not receive fallback requests: %d", otherEndpointCalls)
+			}
+			if status == http.StatusForbidden {
+				if _, ok := err.(*ForbiddenError); !ok {
+					t.Fatalf("403 must preserve typed forbidden error: %T", err)
+				}
+			}
+		})
+	}
+}
+
+func TestClient_FetchAvailableModelsFromURL_ValidatesResponseAndLimit(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		body  string
+		limit int64
+	}{
+		{name: "invalid JSON", body: `not JSON`, limit: defaultFetchAvailableModelsBodyLimit},
+		{name: "oversized response", body: `{"models":{"model":{}}}`, limit: 8},
+		{name: "nonpositive limit", body: `{"models":{"model":{}}}`, limit: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				_, _ = io.WriteString(w, tc.body)
+			}))
+			defer server.Close()
+			_, _, err := mustNewClient(t, "").FetchAvailableModelsFromURL(context.Background(), server.URL, "token", "project", tc.limit)
+			if err == nil {
+				t.Fatal("invalid model catalog response or limit must fail")
+			}
+		})
+	}
+}
+
 func TestClient_FetchAvailableModels_Success_RealCall(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
@@ -1517,7 +1629,7 @@ func TestClient_FetchAvailableModels_Success_RealCall(t *testing.T) {
 	withMockBaseURLs(t, []string{server.URL})
 
 	client := mustNewClient(t, "")
-	resp, rawResp, err := client.FetchAvailableModels(context.Background(), "test-token", "project-abc")
+	resp, rawResp, err := client.FetchAvailableModels(context.Background(), "test-token", "project-abc", defaultFetchAvailableModelsBodyLimit)
 	if err != nil {
 		t.Fatalf("FetchAvailableModels 失败: %v", err)
 	}
@@ -1562,6 +1674,34 @@ func TestClient_FetchAvailableModels_Success_RealCall(t *testing.T) {
 	}
 }
 
+func TestClient_FetchAvailableModels_RejectsNonPositiveBodyLimit(t *testing.T) {
+	client := mustNewClient(t, "")
+	_, _, err := client.FetchAvailableModels(context.Background(), "token", "proj", 0)
+	if err == nil || !strings.Contains(err.Error(), "body limit must be positive") {
+		t.Fatalf("非正读取上限应返回调用错误: %v", err)
+	}
+}
+
+func TestClient_FetchAvailableModels_UsesConfiguredBodyLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"models":{"model-a":{}}}`))
+	}))
+	defer server.Close()
+
+	withMockBaseURLs(t, []string{server.URL})
+
+	client := mustNewClient(t, "")
+	_, _, err := client.FetchAvailableModels(context.Background(), "token", "proj", 8)
+	if err == nil {
+		t.Fatal("响应超过配置上限时应返回错误")
+	}
+	if !strings.Contains(err.Error(), "响应超过 8 字节") {
+		t.Fatalf("错误应包含配置上限: %v", err)
+	}
+}
+
 func TestClient_FetchAvailableModels_HTTPError_RealCall(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
@@ -1572,7 +1712,7 @@ func TestClient_FetchAvailableModels_HTTPError_RealCall(t *testing.T) {
 	withMockBaseURLs(t, []string{server.URL})
 
 	client := mustNewClient(t, "")
-	_, _, err := client.FetchAvailableModels(context.Background(), "bad-token", "proj")
+	_, _, err := client.FetchAvailableModels(context.Background(), "bad-token", "proj", defaultFetchAvailableModelsBodyLimit)
 	if err == nil {
 		t.Fatal("服务器返回 403 时应返回错误")
 	}
@@ -1592,7 +1732,7 @@ func TestClient_FetchAvailableModels_InvalidJSON_RealCall(t *testing.T) {
 	withMockBaseURLs(t, []string{server.URL})
 
 	client := mustNewClient(t, "")
-	_, _, err := client.FetchAvailableModels(context.Background(), "token", "proj")
+	_, _, err := client.FetchAvailableModels(context.Background(), "token", "proj", defaultFetchAvailableModelsBodyLimit)
 	if err == nil {
 		t.Fatal("无效 JSON 响应应返回错误")
 	}
@@ -1622,7 +1762,7 @@ func TestClient_FetchAvailableModels_URLFallback_RealCall(t *testing.T) {
 	withMockBaseURLs(t, []string{server1.URL, server2.URL})
 
 	client := mustNewClient(t, "")
-	resp, _, err := client.FetchAvailableModels(context.Background(), "token", "proj")
+	resp, _, err := client.FetchAvailableModels(context.Background(), "token", "proj", defaultFetchAvailableModelsBodyLimit)
 	if err != nil {
 		t.Fatalf("FetchAvailableModels 应在 fallback 后成功: %v", err)
 	}
@@ -1650,7 +1790,7 @@ func TestClient_FetchAvailableModels_AllURLsFail_RealCall(t *testing.T) {
 	withMockBaseURLs(t, []string{server1.URL, server2.URL})
 
 	client := mustNewClient(t, "")
-	_, _, err := client.FetchAvailableModels(context.Background(), "token", "proj")
+	_, _, err := client.FetchAvailableModels(context.Background(), "token", "proj", defaultFetchAvailableModelsBodyLimit)
 	if err == nil {
 		t.Fatal("所有 URL 都失败时应返回错误")
 	}
@@ -1669,7 +1809,7 @@ func TestClient_FetchAvailableModels_ContextCanceled_RealCall(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	_, _, err := client.FetchAvailableModels(ctx, "token", "proj")
+	_, _, err := client.FetchAvailableModels(ctx, "token", "proj", defaultFetchAvailableModelsBodyLimit)
 	if err == nil {
 		t.Fatal("context 取消时应返回错误")
 	}
@@ -1686,7 +1826,7 @@ func TestClient_FetchAvailableModels_EmptyModels_RealCall(t *testing.T) {
 	withMockBaseURLs(t, []string{server.URL})
 
 	client := mustNewClient(t, "")
-	resp, rawResp, err := client.FetchAvailableModels(context.Background(), "token", "proj")
+	resp, rawResp, err := client.FetchAvailableModels(context.Background(), "token", "proj", defaultFetchAvailableModelsBodyLimit)
 	if err != nil {
 		t.Fatalf("FetchAvailableModels 失败: %v", err)
 	}
@@ -1748,12 +1888,57 @@ func TestClient_FetchAvailableModels_404Fallback_RealCall(t *testing.T) {
 	withMockBaseURLs(t, []string{server1.URL, server2.URL})
 
 	client := mustNewClient(t, "")
-	resp, _, err := client.FetchAvailableModels(context.Background(), "token", "proj")
+	resp, _, err := client.FetchAvailableModels(context.Background(), "token", "proj", defaultFetchAvailableModelsBodyLimit)
 	if err != nil {
 		t.Fatalf("FetchAvailableModels 应在 404 fallback 后成功: %v", err)
 	}
 	if _, ok := resp.Models["m1"]; !ok {
 		t.Error("应返回 fallback server 的模型 m1")
+	}
+}
+
+func TestClient_HubUserAgentAndIDEVersionUseContextOverride(t *testing.T) {
+	withTestUserAgentVersionResolver(t)
+	ctx := context.WithValue(context.Background(), userAgentVersionTestContextKey{}, "3.4.5")
+	const expectedUserAgent = "antigravity/hub/3.4.5 windows/amd64"
+	for _, action := range []string{"generateContent", "streamGenerateContent"} {
+		req, err := NewAPIRequestWithURL(ctx, "https://upstream.example", action, "test-token", []byte(`{}`))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := req.Header.Get("User-Agent"); got != expectedUserAgent {
+			t.Fatalf("generation request must use the context Hub user agent: %q", got)
+		}
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("User-Agent"); got != expectedUserAgent {
+			t.Errorf("client API must use the context Hub user agent: %q", got)
+		}
+		switch r.URL.Path {
+		case "/v1internal:loadCodeAssist":
+			var body LoadCodeAssistRequest
+			if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+				t.Error(err)
+			}
+			if body.Metadata.IDEVersion != "3.4.5" {
+				t.Errorf("ideVersion must match the user agent version: %q", body.Metadata.IDEVersion)
+			}
+			_, _ = io.WriteString(w, `{"cloudaicompanionProject":"test-project"}`)
+		case "/v1internal:fetchAvailableModels":
+			_, _ = io.WriteString(w, `{"models":{"gemini-4-argon-high":{}}}`)
+		default:
+			t.Errorf("unexpected client endpoint: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	withMockBaseURLs(t, []string{server.URL})
+	client := mustNewClient(t, "")
+	if _, _, err := client.LoadCodeAssist(ctx, "test-token"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := client.FetchAvailableModelsFromURL(ctx, server.URL, "test-token", "test-project", defaultFetchAvailableModelsBodyLimit); err != nil {
+		t.Fatal(err)
 	}
 }
 

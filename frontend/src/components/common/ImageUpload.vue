@@ -50,16 +50,16 @@
             @change="handleUpload"
           />
           <Icon name="upload" size="sm" class="mr-1.5" :stroke-width="2" />
-          {{ uploadLabel }}
+          {{ resolvedUploadLabel }}
         </label>
         <button
           v-if="modelValue"
           type="button"
           class="btn btn-secondary btn-sm text-red-600 hover:text-red-700 dark:text-red-400"
-          @click="$emit('update:modelValue', '')"
+          @click="removeImage"
         >
           <Icon name="trash" size="sm" class="mr-1.5" :stroke-width="2" />
-          {{ removeLabel }}
+          {{ resolvedRemoveLabel }}
         </button>
       </div>
       <p v-if="hint" class="text-xs text-gray-500 dark:text-gray-400">{{ hint }}</p>
@@ -69,9 +69,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onBeforeUnmount } from 'vue'
+import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { sanitizeSvg } from '@/utils/sanitize'
+
+const { t } = useI18n()
 
 const props = withDefaults(defineProps<{
   modelValue: string
@@ -84,8 +87,8 @@ const props = withDefaults(defineProps<{
 }>(), {
   mode: 'image',
   size: 'md',
-  uploadLabel: 'Upload',
-  removeLabel: 'Remove',
+  uploadLabel: '',
+  removeLabel: '',
   hint: '',
   maxSize: 300 * 1024,
 })
@@ -95,6 +98,17 @@ const emit = defineEmits<{
 }>()
 
 const error = ref('')
+let reader: FileReader | null = null
+
+onBeforeUnmount(() => reader?.abort())
+
+function removeImage() {
+  reader?.abort()
+  emit('update:modelValue', '')
+}
+
+const resolvedUploadLabel = computed(() => props.uploadLabel || t('common.upload'))
+const resolvedRemoveLabel = computed(() => props.removeLabel || t('common.remove'))
 
 const acceptTypes = computed(() => props.mode === 'svg' ? '.svg' : 'image/*')
 
@@ -112,14 +126,18 @@ function handleUpload(event: Event) {
   error.value = ''
 
   if (!file) return
+  reader?.abort()
 
   if (props.maxSize && file.size > props.maxSize) {
-    error.value = `File too large (${(file.size / 1024).toFixed(1)} KB), max ${(props.maxSize / 1024).toFixed(0)} KB`
+    error.value = t('common.fileTooLargeKb', {
+      size: (file.size / 1024).toFixed(1),
+      max: (props.maxSize / 1024).toFixed(0)
+    })
     input.value = ''
     return
   }
 
-  const reader = new FileReader()
+  reader = new FileReader()
   if (props.mode === 'svg') {
     reader.onload = (e) => {
       const text = e.target?.result as string
@@ -128,7 +146,7 @@ function handleUpload(event: Event) {
     reader.readAsText(file)
   } else {
     if (!file.type.startsWith('image/')) {
-      error.value = 'Please select an image file'
+      error.value = t('common.selectImageFile')
       input.value = ''
       return
     }
@@ -139,7 +157,7 @@ function handleUpload(event: Event) {
   }
 
   reader.onerror = () => {
-    error.value = 'Failed to read file'
+    error.value = t('common.fileReadFailed')
   }
   input.value = ''
 }

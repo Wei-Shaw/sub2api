@@ -1,6 +1,8 @@
 package service
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"math/rand"
@@ -126,17 +128,15 @@ func buildToolNameRewriteFromBody(body []byte) *ToolNameRewrite {
 	}
 
 	mimicableNames := make([]string, 0)
-	toolsArr := tools.Array()
-	for _, t := range toolsArr {
+	tools.ForEach(func(_, t gjson.Result) bool {
 		if !shouldMimicToolName(t.Get("type").String()) {
-			continue
+			return true
 		}
-		name := t.Get("name").String()
-		if name == "" {
-			continue
+		if name := t.Get("name").String(); name != "" {
+			mimicableNames = append(mimicableNames, name)
 		}
-		mimicableNames = append(mimicableNames, name)
-	}
+		return true
+	})
 
 	dynamic := buildDynamicToolMap(mimicableNames)
 
@@ -167,6 +167,11 @@ func buildToolNameRewriteFromBody(body []byte) *ToolNameRewrite {
 	return rw
 }
 
+type toolNameSpan struct {
+	start, end int
+	value      []byte
+}
+
 // applyToolNameRewriteToBody 把已构造的 ToolNameRewrite 应用到 body 上：
 //
 //   - 改写 $.tools[*].name（仅对 shouldMimicToolName 通过的 tool）
@@ -181,91 +186,103 @@ func applyToolNameRewriteToBody(body []byte, rw *ToolNameRewrite) []byte {
 		return body
 	}
 
+	// gjson child indexes are absolute offsets into the original body. Gather all
+	// replacements before changing its length, then copy the body only once.
+	var edits []toolNameSpan
+	addName := func(name gjson.Result) {
+		if !name.Exists() {
+			return
+		}
+		fake, ok := rw.Forward[name.String()]
+		if !ok {
+			return
+		}
+		encoded, err := json.Marshal(fake)
+		if err != nil || name.Index < 0 || name.Index+len(name.Raw) > len(body) ||
+			!bytes.Equal(body[name.Index:name.Index+len(name.Raw)], []byte(name.Raw)) {
+			return
+		}
+		edits = append(edits, toolNameSpan{name.Index, name.Index + len(name.Raw), encoded})
+	}
+
 	tools := gjson.GetBytes(body, "tools")
 	if tools.IsArray() {
-		idx := -1
-		tools.ForEach(func(_, t gjson.Result) bool {
-			idx++
-			if !shouldMimicToolName(t.Get("type").String()) {
-				return true
-			}
-			name := t.Get("name").String()
-			if name == "" {
-				return true
-			}
-			fake, ok := rw.Forward[name]
-			if !ok {
-				return true
-			}
-			if next, err := sjson.SetBytes(body, fmt.Sprintf("tools.%d.name", idx), fake); err == nil {
-				body = next
+		tools.ForEach(func(_, tool gjson.Result) bool {
+			if shouldMimicToolName(tool.Get("type").String()) {
+				addName(tool.Get("name"))
 			}
 			return true
 		})
 	}
-
-	if tc := gjson.GetBytes(body, "tool_choice"); tc.Exists() && tc.Get("type").String() == "tool" {
-		name := tc.Get("name").String()
-		if fake, ok := rw.Forward[name]; ok {
-			if next, err := sjson.SetBytes(body, "tool_choice.name", fake); err == nil {
-				body = next
-			}
-		}
+	if choice := gjson.GetBytes(body, "tool_choice"); choice.Get("type").String() == "tool" {
+		addName(choice.Get("name"))
 	}
-
-	// 同步改写历史消息中的 tool_use.name，确保它和 tools[] 中的假名一致。
-	// 否则 Anthropic 会因为 tool_use 引用了未声明的原始工具名而拒绝请求。
-	messages := gjson.GetBytes(body, "messages")
-	if messages.IsArray() {
-		messages.ForEach(func(msgKey, msg gjson.Result) bool {
-			msgIdx := int(msgKey.Num)
+	if messages := gjson.GetBytes(body, "messages"); messages.IsArray() {
+		messages.ForEach(func(_, msg gjson.Result) bool {
 			content := msg.Get("content")
-			if !content.IsArray() {
-				return true
-			}
-			content.ForEach(func(blkKey, blk gjson.Result) bool {
-				blkIdx := int(blkKey.Num)
-				if blk.Get("type").String() != "tool_use" {
-					return true
-				}
-				name := blk.Get("name").String()
-				if name == "" {
-					return true
-				}
-				if fake, ok := rw.Forward[name]; ok {
-					path := fmt.Sprintf("messages.%d.content.%d.name", msgIdx, blkIdx)
-					if next, err := sjson.SetBytes(body, path, fake); err == nil {
-						body = next
+			if content.IsArray() {
+				content.ForEach(func(_, block gjson.Result) bool {
+					if block.Get("type").String() == "tool_use" {
+						addName(block.Get("name"))
 					}
-				}
-				return true
-			})
+					return true
+				})
+			}
 			return true
 		})
+	}
+	if len(edits) != 0 {
+		sort.Slice(edits, func(i, j int) bool { return edits[i].start < edits[j].start })
+		var out []byte
+		out = make([]byte, 0, len(body))
+		pos := 0
+		for _, edit := range edits {
+			if edit.start < pos { // Ignore any overlapping result from malformed JSON.
+				continue
+			}
+			out = append(out, body[pos:edit.start]...)
+			out = append(out, edit.value...)
+			pos = edit.end
+		}
+		body = append(out, body[pos:]...)
 	}
 
 	body = applyToolsLastCacheBreakpoint(body)
 	return body
 }
 
-// applyToolsLastCacheBreakpoint 在 tools 数组最后一个工具上注入 cache_control
-// 断点，对齐 Parrot `tools[-1]["cache_control"] = {"type":"ephemeral","ttl":"1h"}`
-// 行为，但 ttl 按本仓规则：
+// applyToolsLastCacheBreakpoint 在最后一个非延迟加载工具上注入 cache_control
+// 断点。Anthropic 不允许 defer_loading=true 的工具携带 cache_control，
+// 因此会先清理所有延迟加载工具上的客户端断点。兼容官方顶层字段和
+// Claude Code 使用的 custom.defer_loading 字段。其余行为对齐 Parrot
+// `tools[-1]["cache_control"] = {"type":"ephemeral","ttl":"1h"}`，
+// 但 ttl 按本仓规则：
 //   - 客户端已为该 tool 显式设置 cache_control.ttl → 完全透传不覆盖
 //   - 否则注入 {"type":"ephemeral","ttl": claude.DefaultCacheControlTTL}
 //
 // 纯副作用函数，tools 不存在或为空数组时 no-op。
 func applyToolsLastCacheBreakpoint(body []byte) []byte {
+	body = stripDeferredToolCacheControl(body)
 	tools := gjson.GetBytes(body, "tools")
 	if !tools.IsArray() {
 		return body
 	}
-	arr := tools.Array()
-	if len(arr) == 0 {
+	idx := 0
+	lastIdx := -1
+	lastTool := gjson.Result{}
+	tools.ForEach(func(_, tool gjson.Result) bool {
+		if !isDeferredLoadingTool(tool) {
+			lastIdx = idx
+			lastTool = tool
+		}
+		idx++
+		return true
+	})
+	if lastIdx == -1 {
 		return body
 	}
-	lastIdx := len(arr) - 1
-	existingCC := arr[lastIdx].Get("cache_control")
+
+	existingCC := lastTool.Get("cache_control")
 
 	if existingCC.Exists() && existingCC.Get("ttl").String() != "" {
 		return body
@@ -282,6 +299,31 @@ func applyToolsLastCacheBreakpoint(body []byte) []byte {
 	if next, err := sjson.SetRawBytes(body, fmt.Sprintf("tools.%d.cache_control", lastIdx), []byte(raw)); err == nil {
 		body = next
 	}
+	return body
+}
+
+func isDeferredLoadingTool(tool gjson.Result) bool {
+	return tool.Get("defer_loading").Type == gjson.True ||
+		tool.Get("custom.defer_loading").Type == gjson.True
+}
+
+// stripDeferredToolCacheControl removes the cache marker Anthropic rejects on
+// deferred tools. Only the literal JSON boolean true enables deferred loading.
+func stripDeferredToolCacheControl(body []byte) []byte {
+	tools := gjson.GetBytes(body, "tools")
+	if !tools.IsArray() {
+		return body
+	}
+	idx := 0
+	tools.ForEach(func(_, tool gjson.Result) bool {
+		if isDeferredLoadingTool(tool) && tool.Get("cache_control").Exists() {
+			if next, err := sjson.DeleteBytes(body, fmt.Sprintf("tools.%d.cache_control", idx)); err == nil {
+				body = next
+			}
+		}
+		idx++
+		return true
+	})
 	return body
 }
 
@@ -309,10 +351,14 @@ func restoreToolNamesInBytes(data []byte, rw *ToolNameRewrite) []byte {
 
 // replaceAllBytes 是 bytes.ReplaceAll 的便捷封装，避免每个调用点各自做 []byte 转换。
 func replaceAllBytes(data []byte, from, to string) []byte {
-	if len(data) == 0 || from == to || !strings.Contains(string(data), from) {
+	if len(data) == 0 || from == to {
 		return data
 	}
-	return []byte(strings.ReplaceAll(string(data), from, to))
+	fromBytes := []byte(from)
+	if !bytes.Contains(data, fromBytes) {
+		return data
+	}
+	return bytes.ReplaceAll(data, fromBytes, []byte(to))
 }
 
 // toolNameRewriteFromContext 从 gin.Context 取出请求阶段保存的工具名映射。
@@ -341,4 +387,31 @@ func reverseToolNamesIfPresent(c interface {
 		return chunk
 	}
 	return restoreToolNamesInBytes(chunk, rw)
+}
+
+// reverseToolNamesIfPresentString is the string-typed variant for streaming
+// writers. The common case (no tool names in the chunk) returns the original
+// string without any []byte/string copy.
+func reverseToolNamesIfPresentString(c interface {
+	Get(string) (any, bool)
+}, chunk string) string {
+	rw := toolNameRewriteFromContext(c)
+	if rw == nil && len(staticToolNameRewrites) == 0 {
+		return chunk
+	}
+	if rw != nil {
+		for _, pair := range rw.ReverseOrdered {
+			fake, real := pair[0], pair[1]
+			if fake == "" || fake == real || !strings.Contains(chunk, fake) {
+				continue
+			}
+			chunk = strings.ReplaceAll(chunk, fake, real)
+		}
+	}
+	for prefix, replacement := range staticToolNameRewrites {
+		if strings.Contains(chunk, replacement) {
+			chunk = strings.ReplaceAll(chunk, replacement, prefix)
+		}
+	}
+	return chunk
 }

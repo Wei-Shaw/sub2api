@@ -21,6 +21,11 @@ func newSQLMock(t *testing.T) (*sql.DB, sqlmock.Sqlmock) {
 	return db, mock
 }
 
+func setUsageCleanupRollupTestTimezone(t *testing.T) {
+	t.Helper()
+	useGroupUsageRepositoryTestTimezone(t, "Asia/Shanghai")
+}
+
 func TestNewUsageCleanupRepository(t *testing.T) {
 	db, _ := newSQLMock(t)
 	repo := NewUsageCleanupRepository(nil, db)
@@ -398,6 +403,7 @@ func TestUsageCleanupRepositoryDeleteUsageLogsBatchMissingRange(t *testing.T) {
 }
 
 func TestUsageCleanupRepositoryDeleteUsageLogsBatch(t *testing.T) {
+	setUsageCleanupRollupTestTimezone(t)
 	db, mock := newSQLMock(t)
 	repo := &usageCleanupRepository{sql: db}
 
@@ -414,7 +420,30 @@ func TestUsageCleanupRepositoryDeleteUsageLogsBatch(t *testing.T) {
 
 	mock.ExpectQuery("DELETE FROM usage_logs").
 		WithArgs(start, end, userID, "gpt-4", 2).
-		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(1)).AddRow(int64(2)))
+		WillReturnRows(sqlmock.NewRows([]string{"created_at"}).AddRow(start.Add(time.Hour)).AddRow(start.Add(2 * time.Hour)))
+
+	deleted, err := repo.DeleteUsageLogsBatch(context.Background(), filters, 2)
+	require.NoError(t, err)
+	require.Equal(t, int64(2), deleted)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// 分组日桶失效由 usage_logs 的行级触发器完成，删除批次不显式锁定汇总状态行，
+// 因而不与 usage_logs 写入串行。
+func TestUsageCleanupRepositoryDeleteUsageLogsBatchDoesNotLockGroupRollupState(t *testing.T) {
+	setUsageCleanupRollupTestTimezone(t)
+	db, mock := newSQLMock(t)
+	repo := &usageCleanupRepository{sql: db}
+
+	start := time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC)
+	end := start.Add(24 * time.Hour)
+	filters := service.UsageCleanupFilters{StartTime: start, EndTime: end}
+
+	mock.ExpectQuery(`(?s)WITH target AS.*DELETE FROM usage_logs.*RETURNING created_at`).
+		WithArgs(start, end, 2).
+		WillReturnRows(sqlmock.NewRows([]string{"created_at"}).
+			AddRow(start.Add(3 * time.Hour)).
+			AddRow(start.Add(4 * time.Hour)))
 
 	deleted, err := repo.DeleteUsageLogsBatch(context.Background(), filters, 2)
 	require.NoError(t, err)

@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,6 +27,28 @@ type countTokensRuntimeStateRepo struct {
 	AccountRepository
 	tempUnschedCalls int
 	setErrorCalls    int
+}
+
+func TestPrepareOpenAIInputTokensCountRequestIgnoresOutputEffort(t *testing.T) {
+	account := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	for _, preference := range []string{
+		`"thinking":{"type":"disabled"}`,
+		`"output_config":{"effort":"none"}`,
+		`"output_config":{"effort":"minimal"}`,
+	} {
+		t.Run(preference, func(t *testing.T) {
+			body := []byte(`{"model":"gpt-6.1-sol","messages":[{"role":"user","content":"hello"}],` + preference + `}`)
+			prepared, err := prepareOpenAIInputTokensCountRequest(body, account, "")
+			require.NoError(t, err)
+			encoded, err := json.Marshal(prepared.Request)
+			require.NoError(t, err)
+			require.Equal(t, "gpt-6.1-sol", prepared.Request.Model)
+			require.Contains(t, string(prepared.Request.Input), "hello")
+			for _, field := range []string{"reasoning", "reasoning_effort", "output_config", "thinking"} {
+				require.False(t, gjson.GetBytes(encoded, field).Exists(), field)
+			}
+		})
+	}
 }
 
 func (r *countTokensRuntimeStateRepo) SetTempUnschedulable(_ context.Context, _ int64, _ time.Time, _ string) error {
@@ -122,6 +146,11 @@ func TestOpenAIGatewayService_ForwardCountTokensAsAnthropic_OAuthFallsBackWhenPl
 			name:       "403_missing_responses_write_scope",
 			statusCode: http.StatusForbidden,
 			body:       `{"error":{"type":"invalid_request_error","code":"missing_scope","message":"Missing scopes: api.responses.write"}}`,
+		},
+		{
+			name:       "403_html_proxy_page",
+			statusCode: http.StatusForbidden,
+			body:       "<!doctype html><html><body>Forbidden</body></html>",
 		},
 		{
 			name:       "404_input_tokens_unsupported",
@@ -306,6 +335,10 @@ func TestEstimateOpenAIInputTokens_CompareWithOpenAIAPI(t *testing.T) {
 	if apiKey == "" {
 		t.Skip("OPENAI_API_KEY not set")
 	}
+	// Invalid/expired keys in local env must not fail the unit suite.
+	if strings.HasPrefix(apiKey, "sk-") && len(apiKey) < 20 {
+		t.Skip("OPENAI_API_KEY looks incomplete")
+	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	cases := []struct {
@@ -340,7 +373,17 @@ func TestEstimateOpenAIInputTokens_CompareWithOpenAIAPI(t *testing.T) {
 			require.NoError(t, err)
 
 			actual, err := callOpenAIInputTokensAPIForTest(client, apiKey, prepared.Request)
-			require.NoError(t, err)
+			if err != nil {
+				// This is an optional live-API comparison. Credential and transient
+				// network failures must not make the deterministic unit suite fail.
+				var netErr net.Error
+				if strings.Contains(err.Error(), "status=401") ||
+					strings.Contains(err.Error(), "invalid_api_key") ||
+					errors.As(err, &netErr) {
+					t.Skipf("OpenAI live comparison unavailable: %v", err)
+				}
+				require.NoError(t, err)
+			}
 
 			diff := estimated - actual
 			if diff < 0 {

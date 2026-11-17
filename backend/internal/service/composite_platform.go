@@ -4,7 +4,10 @@ import (
 	"context"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/tidwall/gjson"
+	"github.com/tidwall/sjson"
 )
 
 // WithResolvedTargetPlatform stores the concrete provider chosen for a request
@@ -72,6 +75,33 @@ func RequestedPublicModelFromContext(ctx context.Context) (string, bool) {
 	return model, true
 }
 
+// compositeClientModel returns the public model the client asked for when a
+// composite route sent a different model upstream, and fallback otherwise. The
+// response reports that public name whatever model the upstream says served it.
+func compositeClientModel(ctx context.Context, fallback string) string {
+	publicModel, ok := RequestedPublicModelFromContext(ctx)
+	if !ok {
+		return fallback
+	}
+	if upstreamModel, ok := ResolvedUpstreamModelFromContext(ctx); !ok || upstreamModel == publicModel {
+		return fallback
+	}
+	return publicModel
+}
+
+// restoreCompositeClientModel reports the client's public model in an Anthropic
+// response body when a composite route rewrote the model.
+func restoreCompositeClientModel(ctx context.Context, body []byte) []byte {
+	clientModel := compositeClientModel(ctx, "")
+	if clientModel == "" || !gjson.GetBytes(body, "model").Exists() {
+		return body
+	}
+	if rewritten, err := sjson.SetBytes(body, "model", clientModel); err == nil {
+		return rewritten
+	}
+	return body
+}
+
 func CompositeRouteSourceFromContext(ctx context.Context) (string, bool) {
 	if ctx == nil {
 		return "", false
@@ -106,6 +136,16 @@ func DetectModelPlatform(model string) (string, bool) {
 			return PlatformGemini, true
 		case "xai", "x-ai", "grok":
 			return PlatformGrok, true
+		case "kimi", "moonshot":
+			return PlatformKimi, true
+		case "zhipu", "glm", "bigmodel":
+			return PlatformZhipu, true
+		case "deepseek":
+			return PlatformDeepseek, true
+		case "minimax":
+			return PlatformMiniMax, true
+		case "typesafe", "jev":
+			return PlatformTypeSafe, true
 		}
 		if rest != "" {
 			normalized = strings.TrimPrefix(rest, "models/")
@@ -133,6 +173,22 @@ func DetectModelPlatform(model string) (string, bool) {
 		return PlatformGemini, true
 	case normalized == "grok" || strings.HasPrefix(normalized, "grok-"):
 		return PlatformGrok, true
+	case normalized == "k3",
+		normalized == "k3-256k",
+		strings.HasPrefix(normalized, "kimi-"),
+		strings.HasPrefix(normalized, "moonshot-"):
+		return PlatformKimi, true
+	case strings.HasPrefix(normalized, "glm-"):
+		return PlatformZhipu, true
+	case strings.HasPrefix(normalized, "deepseek-"):
+		return PlatformDeepseek, true
+	case strings.HasPrefix(normalized, "minimax-"),
+		strings.HasPrefix(normalized, "abab5"),
+		strings.HasPrefix(normalized, "abab6"),
+		strings.HasPrefix(normalized, "abab7"):
+		return PlatformMiniMax, true
+	case normalized == "jev-latest" || strings.HasPrefix(normalized, "jev-"):
+		return PlatformTypeSafe, true
 	default:
 		return "", false
 	}
@@ -178,10 +234,5 @@ func (s *GatewayService) resolveCompositeRouteDecision(ctx context.Context, grou
 }
 
 func isConcreteRequestPlatform(platform string) bool {
-	switch platform {
-	case PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok:
-		return true
-	default:
-		return false
-	}
+	return domain.IsConcretePlatform(platform)
 }

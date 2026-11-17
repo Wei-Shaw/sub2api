@@ -42,6 +42,22 @@ func TestParseGatewayRequest_ThinkingAdaptiveEnabled(t *testing.T) {
 	require.True(t, parsed.ThinkingEnabled)
 }
 
+func TestParseGatewayRequest_AnthropicFastSpeed(t *testing.T) {
+	parsed, err := ParseGatewayRequest(
+		NewRequestBodyRef([]byte(`{"model":"claude-opus-4-8","speed":" FAST "}`)),
+		domain.PlatformAnthropic,
+	)
+	require.NoError(t, err)
+	require.Equal(t, "fast", parsed.Speed)
+
+	nonAnthropic, err := ParseGatewayRequest(
+		NewRequestBodyRef([]byte(`{"model":"gpt-5.4","speed":"fast"}`)),
+		"responses",
+	)
+	require.NoError(t, err)
+	require.Empty(t, nonAnthropic.Speed)
+}
+
 func TestParseGatewayRequest_MaxTokens(t *testing.T) {
 	body := []byte(`{"model":"claude-haiku-4-5","max_tokens":1}`)
 	parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), "")
@@ -368,6 +384,33 @@ func TestFilterThinkingBlocksForRetry_DisablesThinkingAndPreservesAsText(t *test
 	require.True(t, ok)
 	require.Equal(t, "text", first["type"])
 	require.Equal(t, "Let me think...", first["text"])
+}
+
+func TestClaude55FilterThinkingBlocksRemovesSignedChainAfterInvalidBlock(t *testing.T) {
+	input := []byte(`{"model":"claude-sonnet-5-5","messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"old","signature":""},{"type":"text","text":"answer"}]},{"role":"assistant","content":[{"type":"thinking","thinking":"later","signature":"valid"},{"type":"redacted_thinking","data":"encrypted"},{"type":"text","text":"later answer"}]},{"role":"assistant","content":[{"type":"thinking","thinking":"only thought","signature":"valid"}]}]}`)
+	for _, model := range []string{"claude-sonnet-5-5", "claude-opus-5-5"} {
+		t.Run(model, func(t *testing.T) {
+			out := FilterThinkingBlocks(input, model)
+			require.False(t, gjson.GetBytes(out, "messages.0.content.#(type==thinking)").Exists())
+			require.Equal(t, "answer", gjson.GetBytes(out, "messages.0.content.0.text").String())
+			require.Len(t, gjson.GetBytes(out, "messages.1.content").Array(), 1)
+			require.Equal(t, "later answer", gjson.GetBytes(out, "messages.1.content.0.text").String())
+			require.Equal(t, "(assistant content removed)", gjson.GetBytes(out, "messages.2.content.0.text").String())
+		})
+	}
+}
+
+func TestSonnet55RetryKeepsBetweenToolsMode(t *testing.T) {
+	for _, messages := range []string{
+		`[{"role":"user","content":"hi"}]`,
+		`[{"role":"assistant","content":[{"type":"thinking","thinking":"old","signature":"invalid"},{"type":"text","text":"answer"}]}]`,
+	} {
+		input := []byte(`{"model":"claude-sonnet-5-5","thinking":{"type":"between_tools"},"output_config":{"effort":"low"},"messages":` + messages + `}`)
+		out := FilterThinkingBlocksForRetry(input, "claude-sonnet-5-5")
+		require.Equal(t, "between_tools", gjson.GetBytes(out, "thinking.type").String())
+		require.Equal(t, "low", gjson.GetBytes(out, "output_config.effort").String())
+		require.NoError(t, validateClaude55Request(out, "claude-sonnet-5-5"))
+	}
 }
 
 func TestFilterThinkingBlocksForRetry_DisablesThinkingEvenWithoutThinkingBlocks(t *testing.T) {
@@ -1590,12 +1633,27 @@ func TestNormalizeGLMOpenAIReasoningEffort(t *testing.T) {
 			wantValue:   "high",
 		},
 		{
+			name:        "glm 5.2 low maps to high",
+			model:       "glm-5.2",
+			input:       `{"model":"glm-5.2","reasoning_effort":"low","messages":[]}`,
+			wantApplied: true,
+			wantPath:    "reasoning_effort",
+			wantValue:   "high",
+		},
+		{
 			name:        "nested high case-normalizes",
 			model:       "glm-5.2",
 			input:       `{"model":"glm-5.2","reasoning":{"effort":"HIGH"},"messages":[]}`,
 			wantApplied: true,
 			wantPath:    "reasoning.effort",
 			wantValue:   "high",
+		},
+		{
+			name:          "glm 5.3 native low unchanged",
+			model:         "glm-5.3",
+			input:         `{"model":"glm-5.3","reasoning_effort":"low","messages":[]}`,
+			wantApplied:   false,
+			wantUnchanged: true,
 		},
 		{
 			name:          "native max unchanged",

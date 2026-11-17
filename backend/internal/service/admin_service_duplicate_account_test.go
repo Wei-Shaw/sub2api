@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/stretchr/testify/require"
 )
@@ -141,6 +142,7 @@ func TestDuplicateAccountCopiesConfigurationAndResetsRuntimeState(t *testing.T) 
 		SessionWindowStatus:     "active",
 	}
 	source.Extra[UpstreamBillingProbeEnabledExtraKey] = true
+	source.Extra[UpstreamBillingRateSyncEnabledExtraKey] = true
 	source.Extra[UpstreamBillingProbeExtraKey] = map[string]any{"status": "ok"}
 	require.NoError(t, repo.Create(ctx, source))
 
@@ -162,6 +164,7 @@ func TestDuplicateAccountCopiesConfigurationAndResetsRuntimeState(t *testing.T) 
 		"quota_limit":    float64(1000),
 		"codex_cli_only": true,
 	}, duplicate.Extra)
+	require.NotContains(t, duplicate.Extra, UpstreamBillingRateSyncEnabledExtraKey)
 	require.NotNil(t, duplicate.ExpiresAt)
 	require.True(t, source.ExpiresAt.Equal(*duplicate.ExpiresAt))
 	require.Equal(t, source.Notes, duplicate.Notes)
@@ -262,6 +265,28 @@ func TestDuplicateAccountPreservesUngroupedState(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, duplicate.GroupIDs)
 	require.NotContains(t, repo.groupsOf, duplicate.ID)
+}
+
+func TestDuplicateAccountSimpleModeRejectsCompositeGroupBinding(t *testing.T) {
+	ctx := context.Background()
+	repo := newDuplicateAccountRepoStub()
+	groupRepo := &groupRepoStubForAdmin{getByIDByID: map[int64]*Group{
+		9: {ID: 9, Platform: PlatformComposite},
+	}}
+	svc := &adminServiceImpl{
+		cfg: &config.Config{RunMode: config.RunModeSimple}, groupRepo: groupRepo,
+		accountRepo: repo, accountDuplicateRepo: repo,
+	}
+	source := &Account{
+		Name: "composite-bound", Platform: PlatformAnthropic, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "secret"}, GroupIDs: []int64{9},
+	}
+	require.NoError(t, repo.Create(ctx, source))
+
+	_, err := svc.DuplicateAccount(ctx, source.ID, "admin:1", "")
+
+	require.Equal(t, "SIMPLE_MODE_GROUP_NOT_BINDABLE", infraerrors.Reason(err))
+	require.Len(t, repo.accounts, 1)
 }
 
 func TestDuplicateAccountAtomicCreateFailureLeavesNoOrphan(t *testing.T) {

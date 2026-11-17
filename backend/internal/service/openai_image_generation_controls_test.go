@@ -424,6 +424,76 @@ func TestOpenAIGatewayServiceForward_CodexBridgePreservesExistingToolChoice(t *t
 	require.Equal(t, "image_generation", gjson.GetBytes(upstream.lastBody, "tool_choice.type").String())
 }
 
+// 国产原生 Responses 账号（Kimi / DeepSeek / MiniMax）在桥接由渠道级开关或全局开关
+// 单独打开时，发往上游的请求体都不能带 hosted image_generation 工具 / tool_choice / 桥接指令。
+func TestOpenAIGatewayServiceForward_CodexBridgeSkipsNativeCNResponsesAccounts(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	groupID := int64(4242)
+	triggers := []struct {
+		name    string
+		global  bool
+		channel *Channel
+	}{
+		{
+			name:   "channel_openai_true_global_off",
+			global: false,
+			channel: &Channel{ID: 1, Status: StatusActive, FeaturesConfig: map[string]any{
+				featureKeyCodexImageGenerationBridge: map[string]any{PlatformOpenAI: true},
+			}},
+		},
+		{
+			name:   "global_on_no_channel",
+			global: true,
+		},
+	}
+	for _, platform := range []string{PlatformKimi, PlatformDeepseek, PlatformMiniMax} {
+		for _, trig := range triggers {
+			t.Run(platform+"/"+trig.name, func(t *testing.T) {
+				upstream := &httpUpstreamRecorder{
+					resp: &http.Response{
+						StatusCode: http.StatusOK,
+						Header:     http.Header{"Content-Type": []string{"application/json"}},
+						Body:       io.NopCloser(strings.NewReader(`{"id":"resp_cn_codex","model":"cn-model","usage":{"input_tokens":1,"output_tokens":1}}`)),
+					},
+				}
+				svc := newOpenAIImageGenerationControlTestService(upstream)
+				svc.cfg.Gateway.CodexImageGenerationBridgeEnabled = trig.global
+				if trig.channel != nil {
+					svc.channelService = newOpenAIImageGenerationControlChannelService(groupID, trig.channel)
+				}
+				c, _ := newOpenAIImageGenerationControlTestContext(true, "codex_cli_rs/0.144.1")
+				account := &Account{
+					ID:          6100,
+					Name:        platform + "-native-responses",
+					Platform:    platform,
+					Type:        AccountTypeAPIKey,
+					Status:      StatusActive,
+					Schedulable: true,
+					Concurrency: 1,
+					Credentials: map[string]any{
+						"api_key":      "sk-cn-test",
+						"api_protocol": APIProtocolResponses,
+					},
+				}
+				// 前置条件：账号确实走原生 Responses 转发，而不是 Chat Completions 转换链。
+				require.True(t, account.UsesNativeCNResponses())
+				require.False(t, shouldForwardOpenAIResponsesViaRawChatCompletions(account))
+
+				result, err := svc.Forward(context.Background(), c, account, []byte(`{"model":"cn-model","input":"hello","stream":false,"tools":[{"type":"function","name":"shell","parameters":{"type":"object"}}]}`))
+
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.NotNil(t, upstream.lastReq)
+				require.Falsef(t, gjson.GetBytes(upstream.lastBody, `tools.#(type=="image_generation")`).Exists(), "image_generation tool injected into %s upstream body", platform)
+				require.Falsef(t, gjson.GetBytes(upstream.lastBody, "tool_choice").Exists(), "tool_choice injected into %s upstream body", platform)
+				require.NotContains(t, gjson.GetBytes(upstream.lastBody, "instructions").String(), codexImageGenerationBridgeMarker)
+				require.Equal(t, "shell", gjson.GetBytes(upstream.lastBody, "tools.0.name").String())
+			})
+		}
+	}
+}
+
 func TestOpenAIGatewayServiceForward_CodexBridgeSkipsCompactRequests(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -523,6 +593,42 @@ func TestOpenAIGatewayService_CodexImageGenerationBridgeOverridePrecedence(t *te
 				Extra:    map[string]any{featureKeyCodexImageGenerationBridge: true},
 			},
 			want: false,
+		},
+		{
+			name:   "kimi account ignores channel openai true",
+			global: false,
+			channel: &Channel{ID: 1, Status: StatusActive, FeaturesConfig: map[string]any{
+				featureKeyCodexImageGenerationBridge: map[string]any{PlatformOpenAI: true},
+			}},
+			account: &Account{Platform: PlatformKimi, Type: AccountTypeAPIKey},
+			want:    false,
+		},
+		{
+			name:    "kimi account ignores enabled global",
+			global:  true,
+			account: &Account{Platform: PlatformKimi, Type: AccountTypeAPIKey},
+			want:    false,
+		},
+		{
+			name:    "deepseek account ignores enabled global",
+			global:  true,
+			account: &Account{Platform: PlatformDeepseek, Type: AccountTypeAPIKey},
+			want:    false,
+		},
+		{
+			name:   "minimax account ignores channel openai true",
+			global: false,
+			channel: &Channel{ID: 1, Status: StatusActive, FeaturesConfig: map[string]any{
+				featureKeyCodexImageGenerationBridge: map[string]any{PlatformOpenAI: true},
+			}},
+			account: &Account{Platform: PlatformMiniMax, Type: AccountTypeAPIKey},
+			want:    false,
+		},
+		{
+			name:    "nil account never bridges",
+			global:  true,
+			account: nil,
+			want:    false,
 		},
 	}
 

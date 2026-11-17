@@ -1,9 +1,12 @@
 package apicompat
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
 )
 
 // ResponsesToAnthropicRequest converts a Responses API request into an
@@ -11,7 +14,12 @@ import (
 // enables Anthropic platform groups to accept OpenAI Responses API requests
 // by converting them to the native /v1/messages format before forwarding upstream.
 func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, error) {
-	system, messages, err := convertResponsesInputToAnthropic(req.Instructions, req.Input)
+	isOpus55 := claude.IsOpus55(req.Model)
+	isSonnet55 := claude.IsSonnet55(req.Model)
+	isHaiku55 := claude.IsHaiku55(req.Model)
+	isFableOrMythos52 := claude.IsFable52(req.Model) || claude.IsMythos52(req.Model)
+	isAdaptiveModel := isOpus55 || isSonnet55 || isHaiku55 || isFableOrMythos52
+	system, messages, err := convertResponsesInputToAnthropic(req.Instructions, req.Input, isAdaptiveModel)
 	if err != nil {
 		return nil, err
 	}
@@ -49,6 +57,82 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 			return nil, fmt.Errorf("convert tool_choice: %w", err)
 		}
 		out.ToolChoice = tc
+	}
+
+	// The 5.5 models and Fable/Mythos 5.2 reject manual thinking.
+	// Fable/Mythos 5.2 and Opus/Sonnet 5.5 additionally reject
+	// forced tool use; Haiku 5.5 accepts it (starts with the tool call, no thinking
+	// block). Sonnet 5.5 supports between_tools to disable up-front thinking;
+	// Haiku 5.5 uses disabled (at high effort or below) instead.
+	// Resolve the upstream model before conversion: client aliases need not
+	// identify a Claude model.
+	if isAdaptiveModel {
+		var choice struct {
+			Type string `json:"type"`
+		}
+		if len(out.ToolChoice) > 0 {
+			if err := json.Unmarshal(out.ToolChoice, &choice); err != nil {
+				return nil, fmt.Errorf("invalid tool_choice: %w", err)
+			}
+		}
+		if (choice.Type == "any" || choice.Type == "tool") && !isHaiku55 {
+			return nil, fmt.Errorf("%s does not support forced tool_choice; use auto or none", req.Model)
+		}
+		effort := "medium"
+		if isSonnet55 || isFableOrMythos52 {
+			effort = "high"
+		}
+		if isSonnet55 {
+			if req.Temperature != nil && *req.Temperature != 1 {
+				return nil, fmt.Errorf("claude-sonnet-5-5 does not support non-default temperature")
+			}
+			if req.TopP != nil && (*req.TopP < 0.99 || *req.TopP > 1) {
+				return nil, fmt.Errorf("claude-sonnet-5-5 does not support non-default top_p")
+			}
+		}
+		if isHaiku55 || isFableOrMythos52 {
+			if req.Temperature != nil && *req.Temperature != 1 {
+				return nil, fmt.Errorf("%s does not support non-default temperature", req.Model)
+			}
+			if req.TopP != nil && *req.TopP != 0.99 {
+				return nil, fmt.Errorf("%s does not support non-default top_p", req.Model)
+			}
+			if req.Temperature != nil && req.TopP != nil {
+				return nil, fmt.Errorf("%s does not allow temperature and top_p together; omit both", req.Model)
+			}
+		}
+		if req.Reasoning != nil && req.Reasoning.Effort != "" {
+			effort = req.Reasoning.Effort
+		}
+		if isSonnet55 && effort == "none" {
+			// OpenAI's no-reasoning request maps to Sonnet 5.5's lowest
+			// thinking mode. between_tools still preserves signed progress
+			// blocks produced during tool use.
+			out.Thinking = &AnthropicThinking{Type: "between_tools"}
+			if out.OutputConfig == nil {
+				out.OutputConfig = &AnthropicOutputConfig{}
+			}
+			out.OutputConfig.Effort = "low"
+			return out, nil
+		}
+		if isHaiku55 && effort == "none" {
+			// Haiku 5.5's lowest thinking mode is disabled (valid at high
+			// effort or below); low keeps token spend minimal like Sonnet above.
+			out.Thinking = &AnthropicThinking{Type: "disabled"}
+			if out.OutputConfig == nil {
+				out.OutputConfig = &AnthropicOutputConfig{}
+			}
+			out.OutputConfig.Effort = "low"
+			return out, nil
+		}
+		switch effort {
+		case "low", "medium", "high", "xhigh", "max":
+		default:
+			return nil, fmt.Errorf("%s does not support reasoning effort %q; use low, medium, high, xhigh or max", req.Model, effort)
+		}
+		out.Thinking = &AnthropicThinking{Type: "adaptive"}
+		out.OutputConfig = &AnthropicOutputConfig{Effort: effort}
+		return out, nil
 	}
 
 	// reasoning.effort → output_config.effort + thinking
@@ -100,7 +184,7 @@ func mapResponsesEffortToAnthropic(effort string) string {
 // convertResponsesInputToAnthropic extracts system prompt and messages from
 // a Responses API instructions + input array. Returns the system as raw JSON
 // (for Anthropic's polymorphic system field) and a list of Anthropic messages.
-func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMessage) (json.RawMessage, []AnthropicMessage, error) {
+func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMessage, preserveThinking bool) (json.RawMessage, []AnthropicMessage, error) {
 	var systemParts []string
 	if strings.TrimSpace(instructions) != "" {
 		systemParts = append(systemParts, strings.TrimSpace(instructions))
@@ -164,10 +248,38 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 				Content: blockJSON,
 			})
 
+		case item.Type == "reasoning":
+			// Only decode marked Anthropic bridge envelopes, not arbitrary
+			// OpenAI ciphertext. The upstream remains responsible for signature validation.
+			if preserveThinking && strings.HasPrefix(item.EncryptedContent, anthropicThinkingEnvelopePrefix) {
+				raw, err := base64.RawStdEncoding.DecodeString(strings.TrimPrefix(item.EncryptedContent, anthropicThinkingEnvelopePrefix))
+				if err != nil {
+					return nil, nil, fmt.Errorf("invalid Anthropic thinking envelope: %w", err)
+				}
+				var block AnthropicContentBlock
+				if err := json.Unmarshal(raw, &block); err != nil {
+					return nil, nil, fmt.Errorf("invalid Anthropic thinking block: %w", err)
+				}
+				if (block.Type != "thinking" || block.Signature == "") && (block.Type != "redacted_thinking" || block.Data == "") {
+					return nil, nil, fmt.Errorf("invalid Anthropic signed thinking block")
+				}
+				content, err := json.Marshal([]AnthropicContentBlock{block})
+				if err != nil {
+					return nil, nil, err
+				}
+				messages = append(messages, AnthropicMessage{Role: "assistant", Content: content})
+			}
+
 		case item.Role == "user":
 			content, err := convertResponsesUserToAnthropicContent(item.Content)
 			if err != nil {
 				return nil, nil, err
+			}
+			// 内容里只有网关不认识的分片时，sanitize 会得到空串。Anthropic 拒收
+			// 空内容消息（"all messages must have non-empty content"），整条丢掉
+			// 比发一条必然 400 的消息更可用。
+			if anthropicContentIsEmpty(content) {
+				continue
 			}
 			messages = append(messages, AnthropicMessage{
 				Role:    "user",
@@ -179,19 +291,35 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 			if err != nil {
 				return nil, nil, err
 			}
+			// 同上：分片全不认识时会退化成单个空 text 块，而 Anthropic 拒收
+			// 空文本块（"text content blocks must contain non-whitespace text"）。
+			if anthropicContentIsEmpty(content) || anthropicContentIsOnlyBlankText(content) {
+				continue
+			}
 			messages = append(messages, AnthropicMessage{
 				Role:    "assistant",
 				Content: content,
 			})
 
 		default:
-			// Unknown role/type — attempt as user message
-			if item.Content != nil {
-				messages = append(messages, AnthropicMessage{
-					Role:    "user",
-					Content: item.Content,
-				})
+			// 未知 role/type —— 尽量当作 user 消息保留其中的文本/图片。
+			// 必须走与真实 user 消息同一套白名单转换：直接透传 item.Content 会把
+			// Responses 专有的分片类型（reasoning_text、web_search_call 的载荷等）
+			// 原样发给 Anthropic，上游只会回 400 把整轮打挂。
+			if item.Content == nil {
+				continue
 			}
+			content, err := convertResponsesUserToAnthropicContent(item.Content)
+			if err != nil {
+				return nil, nil, err
+			}
+			if anthropicContentIsEmpty(content) {
+				continue
+			}
+			messages = append(messages, AnthropicMessage{
+				Role:    "user",
+				Content: content,
+			})
 		}
 	}
 
@@ -393,6 +521,32 @@ func extractTextFromContent(raw json.RawMessage) string {
 
 // convertResponsesUserToAnthropicContent converts a Responses user message
 // content field into Anthropic content blocks JSON.
+// anthropicContentIsEmpty 判断转换结果是否为"空内容"。
+// convertResponsesUserToAnthropicContent 在没有任何可识别分片时返回 JSON 空串，
+// 而 Anthropic 拒收空内容消息。
+func anthropicContentIsEmpty(content json.RawMessage) bool {
+	trimmed := strings.TrimSpace(string(content))
+	switch trimmed {
+	case "", "null", `""`, "[]":
+		return true
+	}
+	return false
+}
+
+// anthropicContentIsOnlyBlankText 判断内容是否只由空白 text 块组成。
+func anthropicContentIsOnlyBlankText(content json.RawMessage) bool {
+	blocks := parseContentBlocks(content)
+	if len(blocks) == 0 {
+		return false
+	}
+	for _, b := range blocks {
+		if b.Type != "text" || strings.TrimSpace(b.Text) != "" {
+			return false
+		}
+	}
+	return true
+}
+
 func convertResponsesUserToAnthropicContent(raw json.RawMessage) (json.RawMessage, error) {
 	if len(raw) == 0 {
 		return json.Marshal("") // empty string content
@@ -426,6 +580,14 @@ func convertResponsesUserToAnthropicContent(raw json.RawMessage) (json.RawMessag
 			if src != nil {
 				blocks = append(blocks, AnthropicContentBlock{
 					Type:   "image",
+					Source: src,
+				})
+			}
+		case "input_file":
+			src := dataURIToAnthropicFileSource(p.FileData)
+			if src != nil {
+				blocks = append(blocks, AnthropicContentBlock{
+					Type:   "document",
 					Source: src,
 				})
 			}
@@ -516,6 +678,12 @@ func dataURIToAnthropicImageSource(dataURI string) *AnthropicImageSource {
 	}
 }
 
+// dataURIToAnthropicFileSource parses a data URI into a document source.
+// file_id-only parts are not convertible here and stay dropped.
+func dataURIToAnthropicFileSource(fileData string) *AnthropicImageSource {
+	return dataURIToAnthropicImageSource(fileData)
+}
+
 // mergeConsecutiveMessages merges consecutive messages with the same role
 // because Anthropic requires alternating user/assistant turns.
 func mergeConsecutiveMessages(messages []AnthropicMessage) []AnthropicMessage {
@@ -591,6 +759,9 @@ func convertResponsesToAnthropicTools(tools []ResponsesTool) []AnthropicTool {
 }
 
 // normalizeAnthropicInputSchema ensures input_schema is a valid object schema.
+// Codex 会把部分内置工具（例如 codex_app 的 automation_update）的 parameters
+// 根节点声明成对象分支的 oneOf/anyOf，Anthropic 只接受 object 根节点，这里把
+// 顶层联合摊平成单个 object schema。
 func normalizeAnthropicInputSchema(schema json.RawMessage) json.RawMessage {
 	const emptyObjectSchema = `{"type":"object","properties":{}}`
 
@@ -603,6 +774,8 @@ func normalizeAnthropicInputSchema(schema json.RawMessage) json.RawMessage {
 	if err := json.Unmarshal(schema, &m); err != nil {
 		return json.RawMessage(`{"type":"object","properties":{}}`)
 	}
+
+	flattenAnthropicRootUnions(m)
 
 	typeRaw, ok := m["type"]
 	if !ok || strings.TrimSpace(string(typeRaw)) == "" || string(typeRaw) == "null" {

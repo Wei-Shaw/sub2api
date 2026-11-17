@@ -291,6 +291,7 @@ func (r *usageCleanupRepository) DeleteUsageLogsBatch(ctx context.Context, filte
 		return 0, fmt.Errorf("cleanup filters missing time range")
 	}
 	args = append(args, limit)
+	// usage_logs 的行级触发器按被删记录的日期使分组日桶失效。
 	query := fmt.Sprintf(`
 		WITH target AS (
 			SELECT id
@@ -301,7 +302,7 @@ func (r *usageCleanupRepository) DeleteUsageLogsBatch(ctx context.Context, filte
 		)
 		DELETE FROM usage_logs
 		WHERE id IN (SELECT id FROM target)
-		RETURNING id
+		RETURNING created_at
 	`, whereClause, len(args))
 
 	rows, err := r.sql.QueryContext(ctx, query, args...)

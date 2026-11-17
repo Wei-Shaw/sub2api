@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	coderws "github.com/coder/websocket"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -158,6 +160,63 @@ func TestResolveOpenAIWSFallbackErrorResponse(t *testing.T) {
 		_, _, _, _, ok := resolveOpenAIWSFallbackErrorResponse(errors.New("plain error"))
 		require.False(t, ok)
 	})
+}
+
+func TestWriteOpenAIWSFallbackErrorResponseMarksDefaultClientRouteUnknown(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	svc := &OpenAIGatewayService{}
+	account := &Account{ID: 42, Name: "default-client", Platform: PlatformOpenAI}
+
+	written := svc.writeOpenAIWSFallbackErrorResponse(
+		c,
+		account,
+		wrapOpenAIWSFallback("auth_failed", errors.New("unauthorized")),
+	)
+	require.True(t, written)
+
+	raw, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := raw.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.Nil(t, events[0].ProxyID)
+	require.Equal(t, opsProxyNameUnknown, events[0].ProxyName)
+}
+
+func TestWriteOpenAIWSFallbackErrorResponseKeepsManagedProxy(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	svc := &OpenAIGatewayService{}
+	proxyID := int64(10060)
+	account := &Account{ID: 42, Name: "proxied", Platform: PlatformOpenAI, ProxyID: &proxyID, Proxy: &Proxy{ID: proxyID, Name: "ws-proxy"}}
+
+	require.True(t, svc.writeOpenAIWSFallbackErrorResponse(c, account, wrapOpenAIWSFallback("auth_failed", errors.New("unauthorized"))))
+
+	raw, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := raw.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.NotNil(t, events[0].ProxyID)
+	require.Equal(t, proxyID, *events[0].ProxyID)
+	require.Equal(t, "ws-proxy", events[0].ProxyName)
+}
+
+func TestOpsUpstreamWSProxyAttributionNeverReportsDirect(t *testing.T) {
+	proxyID := int64(7)
+	id, name := opsUpstreamWSProxyAttribution(nil)
+	require.Nil(t, id)
+	require.Equal(t, opsProxyNameUnknown, name)
+
+	id, name = opsUpstreamWSProxyAttribution(&Account{})
+	require.Nil(t, id)
+	require.Equal(t, opsProxyNameUnknown, name, "no managed proxy => http.DefaultClient => unknown, never direct")
+
+	id, name = opsUpstreamWSProxyAttribution(&Account{ProxyID: &proxyID, Proxy: &Proxy{ID: proxyID, Name: "ws-proxy"}})
+	require.NotNil(t, id)
+	require.Equal(t, proxyID, *id)
+	require.Equal(t, "ws-proxy", name)
 }
 
 func TestOpenAIWSFallbackCooling(t *testing.T) {

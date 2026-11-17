@@ -1,9 +1,11 @@
 package securityaudit
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -32,6 +34,7 @@ func TestDefaultConfigIsOff(t *testing.T) {
 	storage, err := ParseStorageConfig("")
 	require.NoError(t, err)
 	require.False(t, storage.Enabled)
+	require.False(t, storage.BlockingLatestTurnOnly)
 	active, err := ActiveFromStorage(storage, true, prefixEncryptor{})
 	require.NoError(t, err)
 	require.Equal(t, ModeOff, active.EffectiveMode())
@@ -40,6 +43,28 @@ func TestDefaultConfigIsOff(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, string(publicJSON), `"group_ids":[]`)
 	require.Contains(t, string(publicJSON), `"endpoints":[]`)
+}
+
+func TestBlockingLatestTurnOnlyConfigRoundTrip(t *testing.T) {
+	manager := &ConfigManager{encryptor: prefixEncryptor{}, encryptionKeyConfigured: true}
+	request := UpdateConfigRequest{
+		ExpectedConfigVersion: 1, Enabled: true, BlockingEnabled: true, BlockingLatestTurnOnly: true,
+		Strategy: "priority", WorkerCount: 1, QueueCapacity: 10, Scanners: []string{"pii"}, AllGroups: true,
+		Endpoints: []UpdateEndpoint{{
+			ID: "guard-1", Name: "Guard", Protocol: "openai_compatible", BaseURL: "http://127.0.0.1:8080",
+			Model: DefaultGuardModel, TimeoutMS: 1000, InputLimit: 1000, Enabled: true,
+		}},
+	}
+	next, err := manager.buildNextStorage(DefaultStorageConfig(), request, 9)
+	require.NoError(t, err)
+	require.True(t, next.BlockingLatestTurnOnly)
+	require.Contains(t, changeSummary(next), `"blocking_latest_turn_only":true`)
+
+	active, err := ActiveFromStorage(next, true, prefixEncryptor{})
+	require.NoError(t, err)
+	require.True(t, active.BlockingLatestTurnOnly)
+	public := PublicFromStorage(next, true, nil)
+	require.True(t, public.BlockingLatestTurnOnly)
 }
 
 func TestConfigRejectsBlockingWithoutAudit(t *testing.T) {
@@ -430,4 +455,52 @@ func TestUpdateConfigStrictBoundsAndKnownValues(t *testing.T) {
 			require.Equal(t, tt.reason, infraerrors.Reason(err))
 		})
 	}
+}
+
+// Regression coverage for issue #5732: refreshLoop reloads every 5s, so
+// config_loaded must stay a change signal instead of ~17k identical lines a
+// day, while still reporting the first load, real config changes and a
+// recovery from a failed reload.
+func TestConfigLoadedIsLoggedOnlyWhenSomethingChanged(t *testing.T) {
+	storage := DefaultStorageConfig()
+	storage.ConfigVersion = 4
+	raw, err := json.Marshal(storage)
+	require.NoError(t, err)
+	repository := &switchableSettingRepository{staticSettingRepository: staticSettingRepository{values: map[string]string{
+		SettingKeyPromptAuditConfig: string(raw),
+		SettingKeyRiskControl:       "false",
+	}}}
+	manager := NewConfigManager(nil, repository, nil, prefixEncryptor{}, testTotpKeyConfig())
+
+	var output bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&output, nil)))
+	t.Cleanup(func() { slog.SetDefault(previous) })
+	loadedCount := func() int { return strings.Count(output.String(), EventConfigLoaded) }
+
+	require.NoError(t, manager.Reload(context.Background()))
+	require.Equal(t, 1, loadedCount(), "the first successful load must be logged")
+
+	require.NoError(t, manager.Reload(context.Background()))
+	require.NoError(t, manager.Reload(context.Background()))
+	require.Equal(t, 1, loadedCount(), "TTL refreshes of an unchanged config must stay silent")
+
+	repository.values[SettingKeyRiskControl] = "true"
+	require.NoError(t, manager.Reload(context.Background()))
+	require.Equal(t, 2, loadedCount(), "flipping the global risk control gate must be logged")
+
+	storage.ConfigVersion = 5
+	raw, err = json.Marshal(storage)
+	require.NoError(t, err)
+	repository.values[SettingKeyPromptAuditConfig] = string(raw)
+	require.NoError(t, manager.Reload(context.Background()))
+	require.Equal(t, 3, loadedCount(), "a new config version must be logged")
+
+	repository.loadErr = errors.New("settings unavailable")
+	require.Error(t, manager.Reload(context.Background()))
+	require.Equal(t, 3, loadedCount(), "a failed reload must not claim a load")
+
+	repository.loadErr = nil
+	require.NoError(t, manager.Reload(context.Background()))
+	require.Equal(t, 4, loadedCount(), "recovering from a failed reload must be visible")
 }

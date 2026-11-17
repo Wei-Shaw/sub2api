@@ -76,6 +76,35 @@ func TestOpenAIImagesJSONKeepalive_FastErrorPreservesStatus(t *testing.T) {
 	require.Equal(t, "invalid size", gjson.Get(rec.Body.String(), "error.message").String())
 }
 
+func TestOpenAIImagesJSONKeepalive_CodexLateErrorPreservesStatus(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, path := range []string{"/v1/images/generations", "/v1/images/edits"} {
+		t.Run(path, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, path, nil)
+			c.Request.Header.Set("X-Codex-Image-Turn-Id", "native-image-turn")
+			stop := StartOpenAIImagesJSONKeepalive(c, 5*time.Millisecond)
+			defer stop()
+
+			// Reproduce an error arriving after a normal heartbeat would have
+			// committed HTTP 200. Native Codex must see the real error status.
+			time.Sleep(20 * time.Millisecond)
+			wrote := writeOpenAIImagesUpstreamErrorResponse(c, &OpenAIImagesUpstreamError{
+				StatusCode: http.StatusTooManyRequests,
+				ErrorType:  "rate_limit_error",
+				Code:       "image_rate_limit",
+				Message:    "image quota exceeded",
+			})
+			require.True(t, wrote)
+			require.Equal(t, http.StatusTooManyRequests, rec.Code)
+			require.False(t, rec.Flushed)
+			require.Equal(t, "image_rate_limit", gjson.Get(rec.Body.String(), "error.code").String())
+			require.Equal(t, "image quota exceeded", gjson.Get(rec.Body.String(), "error.message").String())
+		})
+	}
+}
+
 func TestOpenAIImagesJSONKeepalive_LateErrorRemainsJSON(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	rec := httptest.NewRecorder()
@@ -134,6 +163,7 @@ func TestOpenAIImagesJSONKeepalive_KeepsOAuthNonStreamResponseValid(t *testing.T
 	}()
 
 	stop := StartOpenAIImagesJSONKeepalive(c, 5*time.Millisecond)
+	waitForOpenAIImagesJSONKeepalive(t, c)
 	resp := &http.Response{
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
@@ -180,7 +210,7 @@ func TestOpenAIImagesJSONKeepaliveWriter_NilGuards(t *testing.T) {
 // 可重试上游错误必须仍转换为 UpstreamFailoverError（而非裸错误吞掉换号）。
 func TestOpenAIImagesJSONKeepalive_HeartbeatBeforeForwardStillFailsOver(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	body := []byte(`{"model":"gpt-image-2","prompt":"draw a cat","response_format":"b64_json"}`)
+	body := []byte(`{"model":"gpt-image-1","prompt":"draw a cat","response_format":"b64_json"}`)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")

@@ -617,6 +617,7 @@ describe('WechatCallbackView', () => {
     await wrapper.get('[data-testid="existing-account-submit"]').trigger('click')
 
     expect(prepareOAuthBindAccessTokenCookieMock).toHaveBeenCalledTimes(1)
+    expect(locationState.current.href).toContain('/api/v1/auth/oauth/wechat/bind/start?')
     expect(locationState.current.href).toContain('intent=bind_current_user')
     expect(locationState.current.href).toContain('redirect=%2Fusage')
     expect(locationState.current.href).toContain('mode=open')
@@ -1052,7 +1053,7 @@ describe('WechatCallbackView', () => {
 
     expect(exchangePendingOAuthCompletionMock).not.toHaveBeenCalled()
     expect(prepareOAuthBindAccessTokenCookieMock).toHaveBeenCalledTimes(1)
-    expect(locationState.current.href).toContain('/api/v1/auth/oauth/wechat/start?')
+    expect(locationState.current.href).toContain('/api/v1/auth/oauth/wechat/bind/start?')
     expect(locationState.current.href).toContain('mode=mp')
     expect(locationState.current.href).toContain('intent=bind_current_user')
     expect(locationState.current.href).toContain('redirect=%2Fprofile')

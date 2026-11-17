@@ -84,7 +84,7 @@ func (s *UserRepoSuite) TestUpdate_PersistsSignupSourceAndActivityTimestamps() {
 	created.LastLoginAt = &lastLoginAt
 	created.LastActiveAt = &lastActiveAt
 
-	s.Require().NoError(s.repo.Update(s.ctx, created))
+	s.Require().NoError(s.repo.Update(s.ctx, created, service.UserUpdateFields{SignupSource: true, LastLoginAt: true, LastActiveAt: true}))
 
 	got, err := s.repo.GetByID(s.ctx, created.ID)
 	s.Require().NoError(err)

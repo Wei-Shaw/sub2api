@@ -143,8 +143,25 @@ func TestAnthropicToChatCompletionsRequest_ThinkingDropped(t *testing.T) {
 	out, err := AnthropicToChatCompletionsRequest(req)
 	require.NoError(t, err)
 	require.Len(t, out.Messages, 1)
-	// Only text survives; thinking is dropped
+	// Only text survives. Thinking is dropped because this turn carries no tool
+	// calls — reasoning rides along with tool calls only, matching the
+	// Responses→Chat bridge (see anthropicThinkingToReasoningContent).
 	require.Equal(t, `"answer"`, string(out.Messages[0].Content))
+	require.Empty(t, out.Messages[0].ReasoningContent)
+}
+
+func TestAnthropicToChatCompletionsRequest_ThinkingDisabledOverridesOutputEffort(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:        "gpt-5.6-luna",
+		MaxTokens:    1024,
+		Messages:     []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"Hello"`)}},
+		Thinking:     &AnthropicThinking{Type: "disabled"},
+		OutputConfig: &AnthropicOutputConfig{Effort: "max"},
+	}
+
+	out, err := AnthropicToChatCompletionsRequest(req)
+	require.NoError(t, err)
+	require.Equal(t, "none", out.ReasoningEffort)
 }
 
 func TestAnthropicToChatCompletionsRequest_ToolChoiceAuto(t *testing.T) {
@@ -248,6 +265,43 @@ func TestAnthropicToChatCompletionsRequest_MaxTokensFloor(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, out.MaxCompletionTokens)
 	require.Equal(t, minMaxOutputTokens, *out.MaxCompletionTokens)
+}
+
+func TestAnthropicToChatCompletionsRequestWithMinOutputTokens_ConfiguredFloor(t *testing.T) {
+	req := &AnthropicRequest{
+		Model:     "claude-sonnet-4-20250514",
+		MaxTokens: 16,
+		Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+	}
+
+	out, err := AnthropicToChatCompletionsRequestWithMinOutputTokens(req, 64)
+	require.NoError(t, err)
+	require.NotNil(t, out.MaxCompletionTokens)
+	require.Equal(t, 64, *out.MaxCompletionTokens)
+}
+
+func TestAnthropicToResponses_ConfiguredMaxTokensFloor(t *testing.T) {
+	for _, input := range []int{16, 64, 127} {
+		req := &AnthropicRequest{
+			Model:     "claude-sonnet-4-20250514",
+			MaxTokens: input,
+			Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+		}
+		out, err := AnthropicToResponsesWithMinOutputTokens(req, 16)
+		require.NoError(t, err)
+		require.NotNil(t, out.MaxOutputTokens)
+		require.Equal(t, input, *out.MaxOutputTokens)
+	}
+
+	req := &AnthropicRequest{
+		Model:     "claude-sonnet-4-20250514",
+		MaxTokens: 1,
+		Messages:  []AnthropicMessage{{Role: "user", Content: json.RawMessage(`"hi"`)}},
+	}
+	out, err := AnthropicToResponsesWithMinOutputTokens(req, 16)
+	require.NoError(t, err)
+	require.NotNil(t, out.MaxOutputTokens)
+	require.Equal(t, 16, *out.MaxOutputTokens)
 }
 
 func TestAnthropicToChatCompletionsRequest_ReasoningEffortMapping(t *testing.T) {
@@ -674,7 +728,7 @@ func TestDirectBridge_NonStreamingMatchesDoubleConversion(t *testing.T) {
 	direct := ChatCompletionsResponseToAnthropic(resp, "claude-sonnet-4-20250514")
 
 	// Double-conversion bridge
-	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, false, nil)
+	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, nil, false, nil)
 	double := ResponsesToAnthropic(responsesResp, "claude-sonnet-4-20250514")
 
 	// Compare key fields
@@ -988,7 +1042,7 @@ func TestDirectBridge_NonStreamingMatchesDoubleConversion_CacheWriteTokens(t *te
 
 	direct := ChatCompletionsResponseToAnthropic(resp, "claude-sonnet-4-20250514")
 
-	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, false, nil)
+	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, nil, false, nil)
 	double := ResponsesToAnthropic(responsesResp, "claude-sonnet-4-20250514")
 
 	require.Equal(t, double.Usage.InputTokens, direct.Usage.InputTokens)
@@ -1058,7 +1112,7 @@ func TestDirectBridge_NonStreamingMatchesDoubleConversion_EmptyChoices(t *testin
 
 	direct := ChatCompletionsResponseToAnthropic(resp, "claude-sonnet-4-20250514")
 
-	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, false, nil)
+	responsesResp := ChatCompletionsResponseToResponses(resp, "claude-sonnet-4-20250514", nil, nil, false, nil)
 	double := ResponsesToAnthropic(responsesResp, "claude-sonnet-4-20250514")
 
 	require.Equal(t, AnthropicStopReasonString(double.StopReason), AnthropicStopReasonString(direct.StopReason))

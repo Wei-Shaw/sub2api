@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"time"
@@ -58,7 +58,7 @@ func (_c *UsageCleanupTaskCreate) SetStatus(v string) *UsageCleanupTaskCreate {
 }
 
 // SetFilters sets the "filters" field.
-func (_c *UsageCleanupTaskCreate) SetFilters(v json.RawMessage) *UsageCleanupTaskCreate {
+func (_c *UsageCleanupTaskCreate) SetFilters(v jsontext.Value) *UsageCleanupTaskCreate {
 	_c.mutation.SetFilters(v)
 	return _c
 }
@@ -375,7 +375,7 @@ func (u *UsageCleanupTaskUpsert) UpdateStatus() *UsageCleanupTaskUpsert {
 }
 
 // SetFilters sets the "filters" field.
-func (u *UsageCleanupTaskUpsert) SetFilters(v json.RawMessage) *UsageCleanupTaskUpsert {
+func (u *UsageCleanupTaskUpsert) SetFilters(v jsontext.Value) *UsageCleanupTaskUpsert {
 	u.Set(usagecleanuptask.FieldFilters, v)
 	return u
 }
@@ -592,7 +592,7 @@ func (u *UsageCleanupTaskUpsertOne) UpdateStatus() *UsageCleanupTaskUpsertOne {
 }
 
 // SetFilters sets the "filters" field.
-func (u *UsageCleanupTaskUpsertOne) SetFilters(v json.RawMessage) *UsageCleanupTaskUpsertOne {
+func (u *UsageCleanupTaskUpsertOne) SetFilters(v jsontext.Value) *UsageCleanupTaskUpsertOne {
 	return u.Update(func(s *UsageCleanupTaskUpsert) {
 		s.SetFilters(v)
 	})
@@ -999,7 +999,7 @@ func (u *UsageCleanupTaskUpsertBulk) UpdateStatus() *UsageCleanupTaskUpsertBulk 
 }
 
 // SetFilters sets the "filters" field.
-func (u *UsageCleanupTaskUpsertBulk) SetFilters(v json.RawMessage) *UsageCleanupTaskUpsertBulk {
+func (u *UsageCleanupTaskUpsertBulk) SetFilters(v jsontext.Value) *UsageCleanupTaskUpsertBulk {
 	return u.Update(func(s *UsageCleanupTaskUpsert) {
 		s.SetFilters(v)
 	})

@@ -85,7 +85,7 @@ func TestHandleOpenAITransientError_CanonicalModelIsNotMappedTwice(t *testing.T)
 	}
 
 	require.True(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "public-alias"))
-	svc.ReportOpenAIAccountScheduleResult(account.ID, canonicalModel, true, nil)
+	svc.ReportOpenAIAccountScheduleResult(account, canonicalModel, true, nil)
 	require.False(t, svc.isOpenAIAccountModelRuntimeBlocked(account, "public-alias"))
 }
 
@@ -111,6 +111,8 @@ func TestHandleOpenAITransientError_HardDisableStillBlocksWholeAccount(t *testin
 
 	svc.BlockAccountScheduling(account, time.Now().Add(time.Minute), "upstream_disable")
 
-	require.True(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.5"))
-	require.True(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.6-sol"))
+	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.5"))
+	require.False(t, svc.isOpenAIAccountRequestRuntimeBlocked(account, "gpt-5.6-sol"))
+	require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
 }

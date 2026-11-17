@@ -1,6 +1,9 @@
 package pagination
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestNormalizeSortOrder(t *testing.T) {
 	t.Parallel()
@@ -84,6 +87,11 @@ func TestPaginationParamsOffsetUsesNormalizedLimit(t *testing.T) {
 		{name: "negative page size uses default", page: 2, pageSize: -1, want: 20},
 		{name: "normal values", page: 3, pageSize: 50, want: 100},
 		{name: "page size beyond max is clamped", page: 2, pageSize: 1500, want: 1000},
+		{name: "max int page saturates", page: math.MaxInt, pageSize: 20, want: (math.MaxInt/20 - 1) * 20},
+		{name: "max int page with odd page size saturates", page: math.MaxInt, pageSize: 21, want: (math.MaxInt/21 - 1) * 21},
+		{name: "max int page with max page size saturates", page: math.MaxInt, pageSize: 1000, want: (math.MaxInt/1000 - 1) * 1000},
+		{name: "page at saturation bound keeps", page: math.MaxInt / 20, pageSize: 20, want: (math.MaxInt/20 - 1) * 20},
+		{name: "page just past saturation bound saturates", page: math.MaxInt/20 + 1, pageSize: 20, want: (math.MaxInt/20 - 1) * 20},
 	}
 
 	for _, tt := range tests {
@@ -94,5 +102,24 @@ func TestPaginationParamsOffsetUsesNormalizedLimit(t *testing.T) {
 				t.Fatalf("Offset() for Page=%d, PageSize=%d = %d, want %d", tt.page, tt.pageSize, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestPaginationParamsOffsetDoesNotOverflow(t *testing.T) {
+	t.Parallel()
+
+	pages := []int{math.MinInt, -1, 0, 1, math.MaxInt, math.MaxInt - 1, math.MaxInt / 2, math.MaxInt/20 + 1, math.MaxInt/1000 + 1}
+	pageSizes := []int{math.MinInt, -1, 0, 1, 2, 3, 20, 21, 999, 1000, 1001, math.MaxInt}
+	for _, page := range pages {
+		for _, pageSize := range pageSizes {
+			params := PaginationParams{Page: page, PageSize: pageSize}
+			offset, limit := params.Offset(), params.Limit()
+			if offset < 0 || offset > math.MaxInt-limit {
+				t.Fatalf("Offset() for Page=%d, PageSize=%d = %d, want 0 <= offset <= MaxInt-%d", page, pageSize, offset, limit)
+			}
+			if again := params.Offset(); again != offset {
+				t.Fatalf("Offset() for Page=%d, PageSize=%d is unstable: %d then %d", page, pageSize, offset, again)
+			}
+		}
 	}
 }

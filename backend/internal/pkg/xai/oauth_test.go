@@ -255,6 +255,14 @@ func TestBuildResponsesURLWithValidatorUsesCallerPolicy(t *testing.T) {
 	require.Equal(t, "http://grok.example.test/v1/responses", target)
 }
 
+func TestValidateTrustedBaseURLAcceptsOfficialRegionalHosts(t *testing.T) {
+	for _, raw := range []string{DefaultUSEast1BaseURL, DefaultUSWest2BaseURL, DefaultEUWest1BaseURL} {
+		got, err := ValidateTrustedBaseURL(raw)
+		require.NoError(t, err, raw)
+		require.Equal(t, raw, got)
+	}
+}
+
 func TestBuildResponsesURLPreservesUnsafeOverrideCustomPath(t *testing.T) {
 	t.Setenv(EnvAllowUnsafeURLOverrides, "true")
 
@@ -338,24 +346,30 @@ func TestRuntimeSanityReportsInvalidOverridesWithoutSecrets(t *testing.T) {
 }
 
 func TestDefaultModelMappingIncludesGrokAliases(t *testing.T) {
-	t.Parallel()
-
+	original := RuntimeModelMappingOptions()
+	t.Cleanup(func() { SetRuntimeModelMappingOptions(original) })
+	SetRuntimeModelMappingOptions(ModelMappingOptions{})
 	mapping := DefaultModelMapping()
-	require.Equal(t, "grok-4.5", mapping["grok"])
-	require.Equal(t, "grok-4.5", mapping["grok-latest"])
+	require.Equal(t, "grok-4.6", mapping["grok"])
+	require.Equal(t, "grok-4.6", mapping["grok-latest"])
+	require.Equal(t, "grok-4.6", mapping["grok-4.6"])
+	require.Equal(t, "grok-4.6", mapping["grok-4.6-latest"])
 	require.Equal(t, "grok-4.5", mapping["grok-4.5"])
 	require.Equal(t, "grok-4.5", mapping["grok-4.5-latest"])
 	require.Equal(t, "grok-build-0.1", mapping["grok-build"])
-	require.Equal(t, "grok-4.5", mapping["grok-build-latest"])
+	require.Equal(t, "grok-build-0.1", mapping["grok-build-latest"])
 	require.Equal(t, "grok-composer-2.5-fast", mapping["grok-composer"])
 	require.Equal(t, "grok-composer-2.5-fast", mapping["composer-2.5"])
 	require.Equal(t, "grok-4.20-0309-reasoning", mapping["grok-4.20-reasoning"])
 	require.Equal(t, "grok-4.20-0309-non-reasoning", mapping["grok-4.20-non-reasoning"])
 	require.Equal(t, "grok-4.20-multi-agent-0309", mapping["grok-4.20-multi-agent-0309"])
-	require.Equal(t, "grok-imagine", mapping["grok-imagine"])
-	require.Equal(t, "grok-imagine-image", mapping["grok-imagine-image"])
-	require.Equal(t, "grok-imagine-image-quality", mapping["grok-imagine-image-quality"])
-	require.Equal(t, "grok-imagine-edit", mapping["grok-imagine-edit"])
-	require.Equal(t, "grok-imagine-video", mapping["grok-imagine-video"])
-	require.Equal(t, "grok-imagine-video-1.5", mapping["grok-imagine-video-1.5"])
+	require.Equal(t, DefaultImagineImageQualityModel, mapping["grok-imagine"])
+	require.Equal(t, DefaultImagineImageFastModel, mapping["grok-imagine-image"])
+	require.Equal(t, DefaultImagineImageQualityModel, mapping["grok-imagine-image-quality"])
+	require.Equal(t, DefaultImagineImageQualityModel, mapping["grok-imagine-edit"])
+	require.Equal(t, DefaultImagineVideoModel, mapping["grok-imagine-video"])
+	require.Equal(t, DefaultImagineVideo15Model, mapping["grok-imagine-video-1.5"])
+	require.Equal(t, DefaultImagineVideo15Model, mapping["grok-imagine-video-1.5-preview"])
+	_, hasGPT := mapping["gpt-*"]
+	require.False(t, hasGPT, "cross-client wildcards must be opt-in")
 }
