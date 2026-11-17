@@ -2225,6 +2225,35 @@ func TestAstraUltrafastPricingUsesSixTimesStandard(t *testing.T) {
 	require.Equal(t, 2.0, configuredServiceTierMultiplier("ultrafast", p))
 }
 
+// 门控与计费共用同一判定：凡是分组会强制写入 ultrafast 的模型，都必须按 6x 计费。
+func TestOpenAIUltrafastGateMatchesBilling(t *testing.T) {
+	svc := newTestBillingService()
+	for _, tt := range []struct {
+		model string
+		want  float64
+	}{
+		{model: "gpt-6-astra", want: 6},
+		{model: "gpt-6.1-sol", want: 6},
+		{model: "gpt-6.1-sol-high", want: 6},
+		{model: "gpt-6.1-terra", want: 2},
+		{model: "gpt-6-sol", want: 2},
+		{model: "gpt-5.6-sol", want: 2},
+	} {
+		pricing, err := svc.GetModelPricing(tt.model)
+		require.NoError(t, err, tt.model)
+		require.Equal(t, tt.want, configuredServiceTierMultiplier(OpenAIFastTierUltrafast, pricing), tt.model)
+		require.Equal(t, tt.want == 6, openAIModelSupportsUltrafast(tt.model), tt.model)
+
+		// 渠道自定义价格与显式 Fast 倍率都不改变 Ultrafast 倍率。
+		custom, fast := 1e-6, 3.0
+		channelPricing, err := svc.GetModelPricingWithChannel(tt.model, &ChannelModelPricing{
+			InputPrice: &custom, OutputPrice: &custom, FastMultiplier: &fast,
+		})
+		require.NoError(t, err, tt.model)
+		require.Equal(t, tt.want, configuredServiceTierMultiplier(OpenAIFastTierUltrafast, channelPricing), tt.model)
+	}
+}
+
 func TestGPT61SolExplicitZeroCacheWriteAcrossTiers(t *testing.T) {
 	pricing := &PricingService{}
 	var err error
