@@ -28,6 +28,7 @@ func registerUpstreamPricingRoutes(admin *gin.RouterGroup, h *handler.Handlers) 
 
 func RegisterUpstreamBrowserRoutes(v1 *gin.RouterGroup, h *handler.Handlers, limiter *middleware.PanelRateLimiter) {
 	if h.Admin.UpstreamPricing != nil {
+		v1.GET("/upstream-pricing/browser-connector.user.js", limiter.PublicIP(), h.Admin.UpstreamPricing.BrowserConnector)
 		v1.POST("/upstream-pricing/browser-import/:action", limiter.PublicIP(), h.Admin.UpstreamPricing.BrowserImportReceive)
 	}
 }

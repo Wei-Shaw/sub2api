@@ -84,40 +84,10 @@
         </div>
 
         <!-- Account Filter -->
-        <div ref="accountSearchRef" class="usage-filter-dropdown relative min-w-0">
+        <div class="min-w-0" data-testid="usage-account-filter">
           <label class="input-label">{{ t('admin.usage.account') }}</label>
-          <input
-            v-model="accountKeyword"
-            type="text"
-            class="input pr-8"
-            :placeholder="t('admin.usage.searchAccountPlaceholder')"
-            @input="debounceAccountSearch"
-            @focus="showAccountDropdown = true"
-          />
-          <button
-            v-if="filters.account_id"
-            type="button"
-            @click="clearAccount"
-            class="absolute right-2 top-9 text-gray-400"
-            aria-label="Clear account filter"
-          >
-            ✕
-          </button>
-          <div
-            v-if="showAccountDropdown && (accountResults.length > 0 || accountKeyword)"
-            class="absolute z-50 mt-1 max-h-60 w-full overflow-auto rounded-lg border bg-white shadow-lg dark:bg-dark-800"
-          >
-            <button
-              v-for="a in accountResults"
-              :key="a.id"
-              type="button"
-              @click="selectAccount(a)"
-              class="w-full px-4 py-2 text-left hover:bg-gray-100 dark:hover:bg-dark-700"
-            >
-              <span class="truncate">{{ a.name }}</span>
-              <span class="ml-2 text-xs text-gray-400">#{{ a.id }}</span>
-            </button>
-          </div>
+          <Select v-model="accountSelection" :options="accountOptions" searchable :disabled="accountsLoading" @change="emitChange" />
+          <button v-if="accountsError" type="button" class="mt-1 text-xs text-red-600" @click="loadAccounts">账号加载失败，点击重试</button>
         </div>
 
         <!-- Request Type Filter (usage only) -->
@@ -241,7 +211,6 @@ const filters = toRef(props, 'modelValue')
 
 const userSearchRef = ref<HTMLElement | null>(null)
 const apiKeySearchRef = ref<HTMLElement | null>(null)
-const accountSearchRef = ref<HTMLElement | null>(null)
 
 const userKeyword = ref('')
 const userResults = ref<SimpleUser[]>([])
@@ -254,14 +223,34 @@ const apiKeyResults = ref<SimpleApiKey[]>([])
 const showApiKeyDropdown = ref(false)
 let apiKeySearchTimeout: ReturnType<typeof setTimeout> | null = null
 
-interface SimpleAccount {
-  id: number
-  name: string
+const accounts = ref<{ id: number; name: string }[]>([])
+const accountsLoading = ref(false), accountsError = ref(false)
+const accountsController = new AbortController()
+const accountSelection = computed({
+  get: () => filters.value.account_id ?? null,
+  set: (value: number | null) => { filters.value.account_id = value ?? undefined },
+})
+const accountOptions = computed<SelectOption[]>(() => [
+  { value: null, label: t('admin.usage.allAccounts') },
+  ...accounts.value.map(a => ({ value: a.id, label: `${a.name} · #${a.id}` })),
+  ...(filters.value.account_id && !accounts.value.some(a => a.id === filters.value.account_id)
+    ? [{ value: filters.value.account_id, label: `#${filters.value.account_id}` }] : []),
+])
+async function loadAccounts() {
+  accountsLoading.value = true; accountsError.value = false
+  const loaded: { id: number; name: string }[] = []
+  try {
+    for (let page = 1; page <= 100; page++) {
+      const res = await adminAPI.accounts.list(page, 100, { lite: 'true' }, { signal: accountsController.signal })
+      if (accountsController.signal.aborted) return
+      loaded.push(...res.items.map(a => ({ id: a.id, name: a.name })))
+      if (!res.total || loaded.length >= res.total || res.items.length === 0) break
+      if (page === 100) throw new Error('Too many accounts')
+    }
+    accounts.value = loaded
+  } catch { if (!accountsController.signal.aborted) accountsError.value = true }
+  finally { accountsLoading.value = false }
 }
-const accountKeyword = ref('')
-const accountResults = ref<SimpleAccount[]>([])
-const showAccountDropdown = ref(false)
-let accountSearchTimeout: ReturnType<typeof setTimeout> | null = null
 
 const modelOptions = computed<SelectOption[]>(() => [
   { value: null, label: t('admin.usage.allModels') },
@@ -421,37 +410,6 @@ const onClearApiKey = () => {
   emitChange()
 }
 
-const debounceAccountSearch = () => {
-  if (accountSearchTimeout) clearTimeout(accountSearchTimeout)
-  accountSearchTimeout = setTimeout(async () => {
-    if (!accountKeyword.value) {
-      accountResults.value = []
-      return
-    }
-    try {
-      const res = await adminAPI.accounts.list(1, 20, { search: accountKeyword.value })
-      accountResults.value = res.items.map((a) => ({ id: a.id, name: a.name }))
-    } catch {
-      accountResults.value = []
-    }
-  }, 300)
-}
-
-const selectAccount = (a: SimpleAccount) => {
-  accountKeyword.value = a.name
-  showAccountDropdown.value = false
-  filters.value.account_id = a.id
-  emitChange()
-}
-
-const clearAccount = () => {
-  accountKeyword.value = ''
-  accountResults.value = []
-  showAccountDropdown.value = false
-  filters.value.account_id = undefined
-  emitChange()
-}
-
 const onApiKeyFocus = () => {
   showApiKeyDropdown.value = true
   // Trigger search if no results yet
@@ -466,11 +424,9 @@ const onDocumentClick = (e: MouseEvent) => {
 
   const clickedInsideUser = userSearchRef.value?.contains(target) ?? false
   const clickedInsideApiKey = apiKeySearchRef.value?.contains(target) ?? false
-  const clickedInsideAccount = accountSearchRef.value?.contains(target) ?? false
 
   if (!clickedInsideUser) showUserDropdown.value = false
   if (!clickedInsideApiKey) showApiKeyDropdown.value = false
-  if (!clickedInsideAccount) showAccountDropdown.value = false
 }
 
 watch(
@@ -510,18 +466,9 @@ watch(
   }
 )
 
-watch(
-  () => filters.value.account_id,
-  (accountId) => {
-    if (!accountId) {
-      accountKeyword.value = ''
-      accountResults.value = []
-    }
-  }
-)
-
 onMounted(async () => {
   document.addEventListener('click', onDocumentClick)
+  void loadAccounts()
   try {
     const gs = await adminAPI.groups.list(1, 1000)
     groupOptions.value.push(...gs.items.map((g: any) => ({ value: g.id, label: g.name })))
@@ -531,6 +478,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  accountsController.abort()
   clearPendingUserSearch()
   document.removeEventListener('click', onDocumentClick)
 })

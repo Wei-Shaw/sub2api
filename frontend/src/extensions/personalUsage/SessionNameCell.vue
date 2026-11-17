@@ -1,6 +1,6 @@
 <template>
-  <div class="inline-flex max-w-xs flex-wrap items-center gap-1" :title="details" data-testid="session-name-cell">
-    <span class="truncate text-sm">{{ row.session_name || '—' }}</span>
+  <div class="flex w-[15ch] max-w-[15ch] flex-col items-start gap-1" :title="details" data-testid="session-name-cell">
+    <span class="block w-full truncate text-sm">{{ row.session_name || '—' }}</span>
     <span v-if="kindLabel" class="rounded bg-blue-50 px-1.5 py-0.5 text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">{{ kindLabel }}</span>
     <span v-if="!exact" class="rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">{{ labels.threadMissing }}</span>
   </div>

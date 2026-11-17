@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-// BrowserImports holds only short-lived, explicitly supplied panel credentials.
-// Browser profiles, cookies, passwords and session storage are never read.
+// BrowserImports holds short-lived panel credentials supplied by the manual
+// form or a station-scoped userscript. Server-side browser profiles are never read.
 type BrowserImports struct {
 	mu      sync.Mutex
 	entries map[string]*browserImport
@@ -140,6 +140,19 @@ func (m *Manager) StartBrowserImport(ctx context.Context, owner, id, revision in
 func (m *Manager) BrowserImportInfo(ticket, origin string) (BrowserConnectionInfo, error) {
 	e, err := m.Imports.ticket(ticket, origin, false)
 	return BrowserConnectionInfo{e.config.BaseURL, e.config.Provider, e.config.UserID}, err
+}
+
+// FailBrowserImport consumes only the selected ticket. Browser diagnostics are
+// never accepted into the server's state or returned to another page.
+func (m *Manager) FailBrowserImport(ticket, origin string) error {
+	e, err := m.Imports.ticket(ticket, origin, true)
+	if err != nil {
+		return err
+	}
+	if !m.Imports.finish(e.ID, "", "", nil, safeError("browser connection failed")) {
+		return safeError("连接已过期，请重新发起")
+	}
+	return nil
 }
 func (m *Manager) CompleteBrowserImport(ctx context.Context, ticket, origin, token, userID string) error {
 	e, err := m.Imports.ticket(ticket, origin, true)

@@ -69,3 +69,16 @@ func TestBrowserImportOriginBinding(t *testing.T) {
 		require.Error(t, ValidateBrowserOrigin(origin, "localhost:8080", "http"))
 	}
 }
+
+func TestBrowserImportConnectorFailureConsumesTicket(t *testing.T) {
+	m := NewManager(nil, nil, nil)
+	defer m.Stop()
+	start, err := m.Imports.start(1, 7, 3, "fp", "http://localhost:8080", Config{})
+	require.NoError(t, err)
+	require.NoError(t, m.FailBrowserImport(start.Ticket, "http://localhost:8080"))
+	state, err := m.Imports.Status(start.ID, 1, 7)
+	require.NoError(t, err)
+	require.Equal(t, "failed", state.Status)
+	_, err = m.BrowserImportInfo(start.Ticket, "http://localhost:8080")
+	require.Error(t, err)
+}

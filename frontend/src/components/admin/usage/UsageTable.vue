@@ -262,7 +262,7 @@
         </template>
 
         <template #cell-created_at="{ value }">
-          <span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDateTime(value) }}</span>
+          <slot name="cell-created_at" :value="value"><span class="text-sm text-gray-600 dark:text-gray-400">{{ formatDateTime(value) }}</span></slot>
         </template>
 
         <template #cell-request_id="{ row }">

@@ -188,6 +188,8 @@ func TestUpstreamPricingRemoteGroupsAndExactIdentity(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/api/v1/groups/available":
+			require.Equal(t, "Asia/Shanghai", r.URL.Query().Get("timezone"))
+			require.Equal(t, "1", r.Header.Get("X-User-UI-Request"))
 			_, _ = w.Write([]byte(`{"data":[{"id":5,"name":"paid","rate_multiplier":9}]}`))
 		case "/api/v1/groups/rates":
 			_, _ = w.Write([]byte(`{"data":{"5":0.5}}`))

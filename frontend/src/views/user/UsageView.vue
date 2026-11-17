@@ -132,6 +132,7 @@
             <button type="button" @click="resetFilters" class="btn btn-secondary">
               {{ t('common.reset') }}
             </button>
+            <UsageTimeToggle v-if="activeTab === 'usage'" />
             <div class="relative" ref="columnDropdownRef">
               <button
                 type="button"
@@ -189,6 +190,7 @@
           @sort="handleSort"
           @ipGeoBatchFailed="handleIpGeoBatchFailed"
         >
+          <template #cell-created_at="{ value }"><UsageTimeCell :value="value" /></template>
           <template #cell-session_name="{ row }">
             <SessionNameCell :row="row" />
           </template>
@@ -238,6 +240,8 @@ import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'
 import CacheHitRateCell from '@/extensions/personalUsage/CacheHitRateCell.vue'
 import SessionNameCell from '@/extensions/personalUsage/SessionNameCell.vue'
+import UsageTimeCell from '@/extensions/personalUsage/UsageTimeCell.vue'
+import UsageTimeToggle from '@/extensions/personalUsage/UsageTimeToggle.vue'
 import TimingComparisonCell from '@/extensions/personalUsage/TimingComparisonCell.vue'
 import { useAuthStore } from '@/stores/auth'
 import { formatCacheHitRate, usePersonalUsageLabels, type PersonalUsageLog } from '@/extensions/personalUsage'

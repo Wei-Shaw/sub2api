@@ -130,6 +130,23 @@ describe('UsageFilters — user search dropdown', () => {
     vi.useRealTimers()
   })
 
+  it('loads paginated accounts into a searchable dropdown before typing, and selecting/clearing updates the filter', async () => {
+    mockAccountsList.mockResolvedValueOnce({ items: [{ id: 11, name: 'First' }], total: 2 })
+      .mockResolvedValueOnce({ items: [{ id: 12, name: 'Second' }], total: 2 })
+    const filters = defaultFilters()
+    const wrapper = mountFilters(filters)
+    await flushPromises()
+    const select = wrapper.get('[data-testid="usage-account-filter"]').findComponent({ name: 'Select' })
+    expect(select.attributes('searchable')).toBeDefined()
+    expect((select.props('options') as { value: number | null }[]).map(v => v.value)).toEqual([null, 11, 12])
+    select.vm.$emit('update:modelValue', 12); select.vm.$emit('change', 12)
+    expect(filters.account_id).toBe(12)
+    expect(wrapper.emitted('change')).toBeTruthy()
+    select.vm.$emit('update:modelValue', null)
+    expect(filters.account_id).toBeUndefined()
+    wrapper.unmount()
+  })
+
   it('(a) labels deleted users with the i18n badge and (b) sorts active users before deleted ones, (c) selection sets user_id', async () => {
     // Arrange: mock returns deleted FIRST (proves sorting re-orders to active-first)
     mockSearchUsers.mockResolvedValue([

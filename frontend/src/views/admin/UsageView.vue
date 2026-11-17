@@ -85,6 +85,7 @@
 
         <UsageFilters v-model="filters" ref="usageFiltersRef" flat :mode="activeTab" class="border-b border-gray-100 dark:border-dark-700/50" :start-date="startDate" :end-date="endDate" :exporting="exporting" :model-options="modelNameOptions" @change="applyFilters" @refresh="refreshData" @reset="resetFilters" @cleanup="openCleanupDialog" @export="exportToExcel">
           <template #after-reset>
+            <UsageTimeToggle v-if="activeTab === 'usage'" />
             <div v-if="activeTab !== 'ranking'" class="relative" ref="columnDropdownRef">
               <button
                 data-testid="usage-column-settings"
@@ -135,6 +136,7 @@
             @userClick="handleUserClick"
             @ipGeoBatchFailed="handleIpGeoBatchFailed"
           >
+            <template #cell-created_at="{ value }"><UsageTimeCell :value="value" /></template>
             <template #cell-session_name="{ row }">
               <SessionNameCell :row="row" />
             </template>
@@ -203,6 +205,8 @@ import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'; impo
 import UsageTable from '@/components/admin/usage/UsageTable.vue'; import UsageExportProgress from '@/components/admin/usage/UsageExportProgress.vue'
 import CacheHitRateCell from '@/extensions/personalUsage/CacheHitRateCell.vue'
 import SessionNameCell from '@/extensions/personalUsage/SessionNameCell.vue'
+import UsageTimeCell from '@/extensions/personalUsage/UsageTimeCell.vue'
+import UsageTimeToggle from '@/extensions/personalUsage/UsageTimeToggle.vue'
 import TimingComparisonCell from '@/extensions/personalUsage/TimingComparisonCell.vue'
 import { formatCacheHitRate, usePersonalUsageLabels, type PersonalAdminUsageLog } from '@/extensions/personalUsage'
 import UserTokenRanking from '@/components/admin/usage/UserTokenRanking.vue'

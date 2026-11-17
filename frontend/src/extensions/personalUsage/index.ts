@@ -56,6 +56,7 @@ export function cacheHitRateColor(row: CacheTokens): string {
 // Fork-only translations are co-located to avoid editing upstream locale trees.
 const messages = {
   zh: {
+    timeClock: '时间：时分秒', timeFull: '时间：完整日期',
     system: '系统', moreMenus: '更多菜单', sessionName: '会话名称', cacheHitRate: '缓存命中率', cacheMonitoring: '掉缓存监测',
     noTitle: '本机未找到会话名称', formula: '缓存读取 ÷（普通输入 + 缓存读取 + 缓存写入）',
     cacheDrop: '掉缓存', noSession: '无会话 ID', unavailable: '暂不可用',
@@ -68,6 +69,7 @@ const messages = {
     previous: '上次', current: '本次', drop: '下降', points: '个百分点', gap: '间隔', seconds: '秒', previousUsage: '上次用量记录',
   },
   en: {
+    timeClock: 'Time: clock', timeFull: 'Time: full date',
     system: 'System', moreMenus: 'More menus', sessionName: 'Session name', cacheHitRate: 'Cache hit rate', cacheMonitoring: 'Cache drop monitoring',
     noTitle: 'No local session title found', formula: 'Cache read ÷ (uncached input + cache read + cache write)',
     cacheDrop: 'Cache drop', noSession: 'No session ID', unavailable: 'Unavailable', noDrop: 'Not detected',

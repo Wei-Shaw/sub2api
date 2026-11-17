@@ -3,6 +3,7 @@ package admin
 import (
 	"context"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -87,7 +88,14 @@ func (h *UpstreamPricingHandler) BrowserImportReceive(c *gin.Context) {
 		response.BadRequest(c, "连接格式无效")
 		return
 	}
+	action := c.Param("action")
 	origin := c.GetHeader("Origin")
+	// Extension requests may omit Origin in Firefox. The custom header selects
+	// the ticket's loopback receiver; the single-use capability is authentication.
+	if strings.HasPrefix(action, "connector-") {
+		origin = c.GetHeader("X-Sub2API-Connector-Origin")
+		action = strings.TrimPrefix(action, "connector-")
+	}
 	scheme := "http"
 	if c.Request.TLS != nil {
 		scheme = "https"
@@ -96,7 +104,7 @@ func (h *UpstreamPricingHandler) BrowserImportReceive(c *gin.Context) {
 		pricingError(c, err)
 		return
 	}
-	if c.Param("action") == "info" {
+	if action == "info" {
 		site, err := h.pricing.BrowserImportInfo(body.Ticket, origin)
 		if err != nil {
 			pricingError(c, err)
@@ -105,7 +113,15 @@ func (h *UpstreamPricingHandler) BrowserImportReceive(c *gin.Context) {
 		response.Success(c, site)
 		return
 	}
-	if c.Param("action") != "complete" {
+	if action == "fail" {
+		if err := h.pricing.FailBrowserImport(body.Ticket, origin); err != nil {
+			pricingError(c, err)
+			return
+		}
+		response.Success(c, gin.H{"failed": true})
+		return
+	}
+	if action != "complete" {
 		response.BadRequest(c, "连接操作无效")
 		return
 	}
@@ -116,4 +132,26 @@ func (h *UpstreamPricingHandler) BrowserImportReceive(c *gin.Context) {
 		return
 	}
 	response.Success(c, gin.H{"verified": true})
+}
+
+// BrowserConnector serves a credential-free, station-scoped userscript so Firefox
+// can offer installation without putting an admin JWT in the download URL.
+func (h *UpstreamPricingHandler) BrowserConnector(c *gin.Context) {
+	scheme := "http"
+	if c.Request.TLS != nil {
+		scheme = "https"
+	}
+	origin := c.Query("origin")
+	if err := upstreampricing.ValidateBrowserOrigin(origin, c.Request.Host, scheme); err != nil {
+		pricingError(c, err)
+		return
+	}
+	script, err := upstreampricing.BrowserConnectorScript(c.Query("site"), origin)
+	if err != nil {
+		pricingError(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Data(http.StatusOK, "text/javascript; charset=utf-8", []byte(script))
 }

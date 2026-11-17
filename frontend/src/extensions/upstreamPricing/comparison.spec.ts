@@ -15,7 +15,7 @@ function fixture(): PricingComparison {
   return { accounts: [{ id: 7, name: 'Fixture upstream', provider: 'newapi', base_url: config.base_url, group: 'paid', automatic: true, version_id: 3, last_success: null, next_sync: null, stale: false, account_changed: false, last_error: '' }],
     items: [{ account_id: 7, version_id: 3, model: 'm', multiplier: '0.5', base: price, effective: { ...price, input: '1', output: '4' } }], total: 1, page: 1, page_size: 100 }
 }
-beforeEach(() => { vi.resetAllMocks(); api.comparison.mockResolvedValue(fixture()) })
+beforeEach(() => { vi.resetAllMocks(); vi.spyOn(window, 'open').mockReturnValue(null); api.comparison.mockResolvedValue(fixture()) })
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); window.history.replaceState({}, '', '/') })
 
 describe('saved upstream comparison', () => {
@@ -54,6 +54,22 @@ describe('explicit station connection', () => {
     await vi.advanceTimersByTimeAsync(2000); await flushPromises()
     expect(wrapper.emitted('imported')?.[0]?.[0]).toMatchObject({ id: 'import-id', user_id: '42' })
     await vi.advanceTimersByTimeAsync(10000); expect(api.importStatus).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+  it('reserves a Firefox tab during the click and navigates it with a ticket only', async () => {
+    const replace = vi.fn(), close = vi.fn()
+    const popup = { opener: {}, location: { replace }, close }
+    vi.mocked(window.open).mockReturnValue(popup as unknown as Window)
+    api.startImport.mockResolvedValue({ id: 'import-id', ticket: 'a'.repeat(48), expires_at: new Date(Date.now() + 300000).toISOString() })
+    const wrapper = mount(BrowserImportPanel, { props: { accountId: 7, revision: 1, config: { ...config, token: 'synthetic-do-not-copy' } } })
+    const installer = wrapper.find('a').attributes('href')!
+    expect(installer).toContain('browser-connector.user.js')
+    expect(installer).not.toContain('synthetic-do-not-copy')
+    await wrapper.find('button').trigger('click'); await flushPromises()
+    expect(window.open).toHaveBeenCalledWith('about:blank', '_blank')
+    expect(popup.opener).toBeNull()
+    expect(replace).toHaveBeenCalledWith(`https://example.com/#sub2api-connect=${'a'.repeat(48)}`)
+    expect(close).not.toHaveBeenCalled()
     wrapper.unmount()
   })
   it('clears the token after validation and keeps it out of the URL', async () => {

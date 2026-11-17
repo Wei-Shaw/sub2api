@@ -81,6 +81,9 @@ func (r *Remote) get(ctx context.Context, c Config, path string) (map[string]any
 	req.Header.Set("Authorization", "Bearer "+c.Token)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "Sub2API-Fork-Pricing/1")
+	if c.Provider == "sub2api" {
+		req.Header.Set("X-User-UI-Request", "1")
+	}
 	if c.Provider == "newapi" && c.UserID != "" {
 		req.Header.Set("New-Api-User", c.UserID)
 	}
@@ -154,7 +157,7 @@ func (r *Remote) Groups(ctx context.Context, c Config) ([]Group, error) {
 		sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 		return out, nil
 	}
-	v, err := r.get(ctx, c, "/api/v1/groups/available")
+	v, err := r.get(ctx, c, "/api/v1/groups/available?timezone=Asia%2FShanghai")
 	if err != nil {
 		return nil, err
 	}
