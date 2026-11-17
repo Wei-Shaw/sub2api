@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -98,7 +99,7 @@ func captureSol61InstructionsForward(t *testing.T, accountType string, chat bool
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	upstream := &httpUpstreamRecorder{err: errors.New("stop after capturing outbound request")}
-	svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
 	account := &Account{
 		ID: 1, Platform: PlatformOpenAI, Type: accountType, Concurrency: 1,
 		Credentials: map[string]any{
