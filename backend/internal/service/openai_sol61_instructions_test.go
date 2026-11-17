@@ -57,6 +57,7 @@ func TestSol61InstructionsTransformAliasesAndClientModes(t *testing.T) {
 				result := applyCodexOAuthTransformWithOptions(body, codexOAuthTransformOptions{IsCodexCLI: cli})
 				require.NoError(t, result.Error)
 				require.Equal(t, "", body["instructions"])
+				require.False(t, applyInstructions(body, cli), "an already empty default must not be marked as another rewrite")
 			})
 		}
 	}

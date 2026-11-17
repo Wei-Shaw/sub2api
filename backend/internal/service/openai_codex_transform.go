@@ -1514,7 +1514,11 @@ func applyInstructions(reqBody map[string]any, isCodexCLI bool) bool {
 		return false
 	}
 	model, _ := reqBody["model"].(string)
-	reqBody["instructions"] = defaultCodexSynthInstructions(model)
+	instructions := defaultCodexSynthInstructions(model)
+	if existing, ok := reqBody["instructions"].(string); ok && existing == instructions {
+		return false
+	}
+	reqBody["instructions"] = instructions
 	return true
 }
 
