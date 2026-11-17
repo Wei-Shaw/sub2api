@@ -275,6 +275,59 @@ func (c *gatewayCache) ReleaseGrokVideoBilled(ctx context.Context, key string) e
 var _ service.CyberSessionBlockStore = (*gatewayCache)(nil)
 var _ service.LiveCallStore = (*gatewayCache)(nil)
 
+// anthropicFileOwnerPrefix 是 Anthropic 形状 file_id → 上传账号归属的键前缀。
+const anthropicFileOwnerPrefix = "deepseek_file_owner:"
+
+// anthropicFileOwnerDefaultTTL 是调用方未给 TTL 时的兜底，与 service 层固定的
+// 7 天文件归属有效期保持一致。
+const anthropicFileOwnerDefaultTTL = 7 * 24 * time.Hour
+
+// SetAnthropicFileOwner 记录 file_id 的归属账号与平台（"accountID|platform"）。
+// fileID 或 platform 为空、accountID<=0 时直接返回 nil（无可缓存内容）。
+func (c *gatewayCache) SetAnthropicFileOwner(ctx context.Context, fileID string, accountID int64, platform string, ttl time.Duration) error {
+	if c == nil || c.rdb == nil {
+		return errors.New("gateway cache unavailable")
+	}
+	fileID = strings.TrimSpace(fileID)
+	platform = strings.TrimSpace(platform)
+	if fileID == "" || platform == "" || accountID <= 0 {
+		return nil
+	}
+	if ttl <= 0 {
+		ttl = anthropicFileOwnerDefaultTTL
+	}
+	value := strconv.FormatInt(accountID, 10) + "|" + platform
+	return c.rdb.Set(ctx, anthropicFileOwnerPrefix+fileID, value, ttl).Err()
+}
+
+// GetAnthropicFileOwner 返回 file_id 的归属账号与平台；未命中返回 (0,"",false,nil)。
+func (c *gatewayCache) GetAnthropicFileOwner(ctx context.Context, fileID string) (int64, string, bool, error) {
+	if c == nil || c.rdb == nil {
+		return 0, "", false, errors.New("gateway cache unavailable")
+	}
+	fileID = strings.TrimSpace(fileID)
+	if fileID == "" {
+		return 0, "", false, nil
+	}
+	val, err := c.rdb.Get(ctx, anthropicFileOwnerPrefix+fileID).Result()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return 0, "", false, nil
+		}
+		return 0, "", false, err
+	}
+	accountIDStr, platform, ok := strings.Cut(val, "|")
+	if !ok {
+		return 0, "", false, nil
+	}
+	platform = strings.TrimSpace(platform)
+	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
+	if err != nil || accountID <= 0 || platform == "" {
+		return 0, "", false, nil
+	}
+	return accountID, platform, true, nil
+}
+
 const reasoningContentPrefix = "reasoning_content:"
 
 // reasoningContentDefaultTTL 是 reasoning 缓存的默认过期时间。Codex 会话可能

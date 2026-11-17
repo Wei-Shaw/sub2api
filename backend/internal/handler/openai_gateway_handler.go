@@ -1332,6 +1332,17 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 	msgPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
 	c.Request = c.Request.WithContext(msgPricingCtx)
 
+	// Anthropic file 源硬钉：file_id 只在其上传账号的上游有效，落到组内其它
+	// 上游会被拒（如 Ollama：invalid image source type: file）。未命中归属或
+	// 多个 file_id 归属不一致时保持原选号路径不变。
+	fileOwnerID, fileOwnerPlatform, fileOwnerPinned := h.gatewayService.ResolveAnthropicFileOwner(c.Request.Context(), body)
+	if fileOwnerPinned {
+		reqLog = reqLog.With(
+			zap.Int64("anthropic_file_owner_account_id", fileOwnerID),
+			zap.String("anthropic_file_owner_platform", fileOwnerPlatform),
+		)
+	}
+
 	for {
 		if failoverClientGone(c) {
 			return
@@ -1341,20 +1352,42 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 			currentRoutingModel = effectiveMappedModel
 		}
 		reqLog.Debug("openai_messages.account_selecting", zap.Int("excluded_account_count", len(failedAccountIDs)))
-		selection, scheduleDecision, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
-			c.Request.Context(),
-			apiKey.GroupID,
-			"", // no previous_response_id
-			sessionHash,
-			currentRoutingModel,
-			failedAccountIDs,
-			service.OpenAIUpstreamTransportAny,
-			service.OpenAIEndpointCapabilityChatCompletions,
-			false,
-			false,
-			true,
-			requestPlatform,
-		)
+		var selection *service.AccountSelectionResult
+		var scheduleDecision service.OpenAIAccountScheduleDecision
+		var err error
+		if fileOwnerPinned {
+			if _, ownerFailed := failedAccountIDs[fileOwnerID]; ownerFailed {
+				// 归属账号已失败：file_id 在别的上游无效，换号只会继续 400。
+				reqLog.Warn("openai_messages.anthropic_file_owner_unavailable",
+					zap.Int64("anthropic_file_owner_account_id", fileOwnerID),
+					zap.String("anthropic_file_owner_platform", fileOwnerPlatform),
+				)
+				h.anthropicStreamingAwareError(c, http.StatusBadGateway, "api_error", "Anthropic file owner account is unavailable", streamStarted)
+				return
+			}
+			selection, scheduleDecision, err = h.gatewayService.SelectAnthropicFileOwnerAccount(
+				c.Request.Context(),
+				apiKey.GroupID,
+				fileOwnerID,
+				fileOwnerPlatform,
+				currentRoutingModel,
+			)
+		} else {
+			selection, scheduleDecision, err = h.gatewayService.SelectAccountWithSchedulerForCapability(
+				c.Request.Context(),
+				apiKey.GroupID,
+				"", // no previous_response_id
+				sessionHash,
+				currentRoutingModel,
+				failedAccountIDs,
+				service.OpenAIUpstreamTransportAny,
+				service.OpenAIEndpointCapabilityChatCompletions,
+				false,
+				false,
+				true,
+				requestPlatform,
+			)
+		}
 		if err != nil {
 			if failoverClientGone(c) {
 				reqLog.Info("openai_messages.account_select_aborted_client_disconnected", zap.Error(err))

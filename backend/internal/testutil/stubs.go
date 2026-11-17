@@ -125,6 +125,13 @@ func (c StubGatewayCache) GetReasoningContent(_ context.Context, _ string) (stri
 	return "", service.ErrReasoningContentNotFound
 }
 
+func (c StubGatewayCache) SetAnthropicFileOwner(_ context.Context, _ string, _ int64, _ string, _ time.Duration) error {
+	return nil
+}
+func (c StubGatewayCache) GetAnthropicFileOwner(_ context.Context, _ string) (int64, string, bool, error) {
+	return 0, "", false, nil
+}
+
 // ============================================================
 // StubSessionLimitCache — service.SessionLimitCache 的空实现
 // ============================================================
