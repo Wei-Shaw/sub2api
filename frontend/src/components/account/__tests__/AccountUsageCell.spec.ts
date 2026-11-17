@@ -831,6 +831,73 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('7d|36|900')
   })
 
+  it.each(['oauth', 'setup-token'] as const)('Claude %s 分别估算 5h 和 7d，不混用模型专属窗口费用', async (type) => {
+    getUsage.mockResolvedValue({
+      five_hour: {
+        utilization: 25, resets_at: null, remaining_seconds: 0,
+        window_stats: { requests: 1, tokens: 100, cost: 2, user_cost: 20 }
+      },
+      seven_day: {
+        utilization: 40, resets_at: null, remaining_seconds: 0,
+        window_stats: { requests: 2, tokens: 200, cost: 12, user_cost: 120 }
+      },
+      seven_day_sonnet: { utilization: 50, resets_at: null, remaining_seconds: 0 },
+      seven_day_fable: { utilization: 60, resets_at: null, remaining_seconds: 0 }
+    })
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: type === 'oauth' ? 6761 : 6762, platform: 'anthropic', type }) },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'windowStats', 'estimatedTotalCost'],
+            template: '<div>{{ label }}|{{ windowStats?.cost ?? "none" }}|{{ estimatedTotalCost ?? "none" }}</div>'
+          },
+          ClaudeResetCreditsCell: true
+        }
+      }
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('5h|2|8')
+    expect(wrapper.text()).toContain('7d|12|30')
+    expect(wrapper.text()).toContain('7d S|none|none')
+    expect(wrapper.text()).toContain('7d F|none|none')
+    wrapper.unmount()
+  })
+
+  it.each([
+    { utilization: 0, cost: 12 },
+    { utilization: -1, cost: 12 },
+    { utilization: Number.NaN, cost: 12 },
+    { utilization: Number.POSITIVE_INFINITY, cost: 12 },
+    { utilization: 40, cost: 0 },
+    { utilization: 40, cost: -1 },
+    { utilization: 40, cost: Number.POSITIVE_INFINITY },
+    { utilization: 40, cost: undefined },
+    { utilization: undefined, cost: 12 }
+  ])('Claude 缺少有效费用或使用率时隐藏估算 (%o)', async ({ utilization, cost }) => {
+    const window = {
+      utilization, resets_at: null, remaining_seconds: 0,
+      window_stats: { requests: 1, tokens: 100, cost }
+    }
+    getUsage.mockResolvedValue({ five_hour: window, seven_day: window })
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: 6763, platform: 'anthropic', type: 'setup-token' }) },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'estimatedTotalCost'],
+            template: '<div>{{ label }}|{{ estimatedTotalCost ?? "none" }}</div>'
+          },
+          ClaudeResetCreditsCell: true
+        }
+      }
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('5h|none')
+    expect(wrapper.text()).toContain('7d|none')
+    wrapper.unmount()
+  })
+
   it('仅为 OpenAI OAuth 7d 窗口计算预计总费用', async () => {
     getUsage.mockResolvedValue({
       five_hour: {

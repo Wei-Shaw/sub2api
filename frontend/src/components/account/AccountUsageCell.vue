@@ -47,15 +47,18 @@
           :utilization="usageInfo.five_hour.utilization"
           :resets-at="usageInfo.five_hour.resets_at"
           :window-stats="usageInfo.five_hour.window_stats"
+          :estimated-total-cost="estimateWindowTotalCost(usageInfo.five_hour)"
           color="indigo"
         />
 
-        <!-- 7d Window (OAuth only) -->
+        <!-- 7d Window (OAuth or Setup Token with passive samples) -->
         <UsageProgressBar
           v-if="usageInfo.seven_day"
           label="7d"
           :utilization="usageInfo.seven_day.utilization"
           :resets-at="usageInfo.seven_day.resets_at"
+          :window-stats="usageInfo.seven_day.window_stats"
+          :estimated-total-cost="estimateWindowTotalCost(usageInfo.seven_day)"
           color="emerald"
         />
 
@@ -921,12 +924,11 @@ const hasOpenAIQuotaObservation = computed(() => {
   return windows.some(window => window && !window.utilization_unknown)
 })
 
-const openAISevenDayEstimatedTotalCost = computed(() => {
-  const sevenDay = usageInfo.value?.seven_day
-  const utilization = sevenDay?.utilization
-  const currentCost = sevenDay?.window_stats?.cost
+function estimateWindowTotalCost(window?: AccountUsageInfo['seven_day']) {
+  const utilization = window?.utilization
+  const currentCost = window?.window_stats?.cost
   if (
-    sevenDay?.utilization_unknown ||
+    window?.utilization_unknown ||
     typeof utilization !== 'number' ||
     typeof currentCost !== 'number' ||
     !Number.isFinite(utilization) ||
@@ -939,7 +941,11 @@ const openAISevenDayEstimatedTotalCost = computed(() => {
 
   const estimate = (currentCost * 100) / utilization
   return Number.isFinite(estimate) && estimate > 0 ? estimate : null
-})
+}
+
+const openAISevenDayEstimatedTotalCost = computed(() =>
+  estimateWindowTotalCost(usageInfo.value?.seven_day)
+)
 
 const openAIUsageRefreshKey = computed(() => buildOpenAIUsageRefreshKey(props.account))
 
