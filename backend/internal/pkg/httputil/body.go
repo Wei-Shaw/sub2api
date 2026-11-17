@@ -18,7 +18,12 @@ import (
 const (
 	requestBodyReadInitCap    = 512
 	requestBodyReadMaxInitCap = 1 << 20
-	jsonUTF8BOMLen            = 3
+	// requestBodyReadTrustedContentLengthCap bounds how much of a client-supplied
+	// Content-Length is trusted for the initial allocation. Above this the reader
+	// falls back to 1 MiB chunks, so a lying header cannot reserve an unbounded
+	// buffer up front; the memory budget enforces the real limit either way.
+	requestBodyReadTrustedContentLengthCap = 256 << 20
+	jsonUTF8BOMLen                         = 3
 	// maxDecompressedBodySize limits the decompressed request body to 64 MB
 	// to prevent decompression bomb attacks.
 	maxDecompressedBodySize  = 64 << 20
@@ -96,12 +101,19 @@ func readRequestBodyWithBudget(req *http.Request) (requestBodyBuffer, error) {
 		return requestBodyBuffer{data: preread.Bytes()}, nil
 	}
 
+	// Size the first (and normally only) chunk from Content-Length so a large
+	// body is read into one buffer. readRequestBodyChunksWithBudget returns that
+	// single chunk directly, which avoids both the per-chunk slice list and the
+	// full-body assembly copy that the 1 MiB cap used to force for every request
+	// above that size. The hint is only trusted up to a fixed cap: Content-Length
+	// is client-controlled, and the memory budget still rejects anything that
+	// does not fit.
 	capHint := requestBodyReadInitCap
 	if req.ContentLength > 0 {
 		switch {
 		case req.ContentLength < int64(requestBodyReadInitCap):
 			capHint = requestBodyReadInitCap
-		case req.ContentLength > int64(requestBodyReadMaxInitCap):
+		case req.ContentLength > int64(requestBodyReadTrustedContentLengthCap):
 			capHint = requestBodyReadMaxInitCap
 		default:
 			capHint = int(req.ContentLength)
@@ -186,7 +198,17 @@ func readRequestBodyChunksWithBudget(ctx context.Context, reader io.Reader, init
 				return requestBodyBuffer{}, nil
 			}
 			if len(chunks) == 1 {
-				return requestBodyBuffer{data: chunks[0], charged: int64(cap(chunks[0]))}, nil
+				only := chunks[0]
+				// A Content-Length hint over-allocates when the client sends
+				// fewer bytes than promised (or the body ends early). Keep the
+				// buffer when it is mostly used; otherwise copy down so the
+				// reservation for the unused tail is refunded by the deferred
+				// release instead of being held for the whole request.
+				if cap(only) > 4*len(only)+4096 {
+					trimmed := append([]byte(nil), only...)
+					return requestBodyBuffer{data: trimmed, charged: int64(cap(trimmed))}, nil
+				}
+				return requestBodyBuffer{data: only, charged: int64(cap(only))}, nil
 			}
 			if err := reserveRequestBodyMemory(ctx, int64(total)); err != nil {
 				return requestBodyBuffer{}, err
