@@ -415,10 +415,10 @@ func TestClaudeCodeValidator_BillingBlockStillRequiresClaudeCodeUA(t *testing.T)
 	require.False(t, ok)
 }
 
-// 新版 Claude Code CLI 已取消 cch=... 签名字段，billing block 形如
+// 非第一方 base URL 的 Claude Code，以及本仓未启用 CCH 时的 mimicry，都会使用
 // `x-anthropic-billing-header: cc_version=...; cc_entrypoint=cli;`（无 cch）。
 // 检测依赖前缀 + cc_entrypoint=cli，不依赖 cch，故无身份 prose 的子请求仍应被识别。
-// 这同时覆盖了本仓 mimicry 注入的新格式 block（见 buildBillingAttributionText）。
+// 这同时覆盖了 buildBillingAttributionText 生成的基础 block。
 func TestClaudeCodeValidator_BillingBlockRecognizedWithoutCCH(t *testing.T) {
 	monitorPrompt, err := os.ReadFile("testdata/security_monitor_system_prompt.txt")
 	require.NoError(t, err)
@@ -437,7 +437,7 @@ func TestClaudeCodeValidator_BillingBlockRecognizedWithoutCCH(t *testing.T) {
 		"system": []any{
 			map[string]any{
 				"type": "text",
-				// 注意：无 cch 段，对齐新版 CLI 与本仓新的注入格式。
+				// 无 cch 段：覆盖 custom base URL 客户端和未启用 CCH 的 mimicry。
 				"text": "x-anthropic-billing-header: cc_version=2.1.162.884; cc_entrypoint=cli;",
 			},
 			map[string]any{
