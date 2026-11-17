@@ -322,6 +322,20 @@ func (_c *GroupCreate) SetNillableAllowBatchImageGeneration(v *bool) *GroupCreat
 	return _c
 }
 
+// SetImageCountBilling sets the "image_count_billing" field.
+func (_c *GroupCreate) SetImageCountBilling(v bool) *GroupCreate {
+	_c.mutation.SetImageCountBilling(v)
+	return _c
+}
+
+// SetNillableImageCountBilling sets the "image_count_billing" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageCountBilling(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetImageCountBilling(*v)
+	}
+	return _c
+}
+
 // SetImageRateIndependent sets the "image_rate_independent" field.
 func (_c *GroupCreate) SetImageRateIndependent(v bool) *GroupCreate {
 	_c.mutation.SetImageRateIndependent(v)
@@ -724,6 +738,20 @@ func (_c *GroupCreate) SetNillableForceOpenaiFast(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetForceOpenaiUltrafast sets the "force_openai_ultrafast" field.
+func (_c *GroupCreate) SetForceOpenaiUltrafast(v bool) *GroupCreate {
+	_c.mutation.SetForceOpenaiUltrafast(v)
+	return _c
+}
+
+// SetNillableForceOpenaiUltrafast sets the "force_openai_ultrafast" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableForceOpenaiUltrafast(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetForceOpenaiUltrafast(*v)
+	}
+	return _c
+}
+
 // SetFreeOpenaiFast sets the "free_openai_fast" field.
 func (_c *GroupCreate) SetFreeOpenaiFast(v bool) *GroupCreate {
 	_c.mutation.SetFreeOpenaiFast(v)
@@ -1105,6 +1133,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultAllowBatchImageGeneration
 		_c.mutation.SetAllowBatchImageGeneration(v)
 	}
+	if _, ok := _c.mutation.ImageCountBilling(); !ok {
+		v := group.DefaultImageCountBilling
+		_c.mutation.SetImageCountBilling(v)
+	}
 	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
 		v := group.DefaultImageRateIndependent
 		_c.mutation.SetImageRateIndependent(v)
@@ -1164,6 +1196,10 @@ func (_c *GroupCreate) defaults() error {
 	if _, ok := _c.mutation.ForceOpenaiFast(); !ok {
 		v := group.DefaultForceOpenaiFast
 		_c.mutation.SetForceOpenaiFast(v)
+	}
+	if _, ok := _c.mutation.ForceOpenaiUltrafast(); !ok {
+		v := group.DefaultForceOpenaiUltrafast
+		_c.mutation.SetForceOpenaiUltrafast(v)
 	}
 	if _, ok := _c.mutation.FreeOpenaiFast(); !ok {
 		v := group.DefaultFreeOpenaiFast
@@ -1309,6 +1345,9 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.AllowBatchImageGeneration(); !ok {
 		return &ValidationError{Name: "allow_batch_image_generation", err: errors.New(`ent: missing required field "Group.allow_batch_image_generation"`)}
 	}
+	if _, ok := _c.mutation.ImageCountBilling(); !ok {
+		return &ValidationError{Name: "image_count_billing", err: errors.New(`ent: missing required field "Group.image_count_billing"`)}
+	}
 	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
 		return &ValidationError{Name: "image_rate_independent", err: errors.New(`ent: missing required field "Group.image_rate_independent"`)}
 	}
@@ -1373,6 +1412,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ForceOpenaiFast(); !ok {
 		return &ValidationError{Name: "force_openai_fast", err: errors.New(`ent: missing required field "Group.force_openai_fast"`)}
+	}
+	if _, ok := _c.mutation.ForceOpenaiUltrafast(); !ok {
+		return &ValidationError{Name: "force_openai_ultrafast", err: errors.New(`ent: missing required field "Group.force_openai_ultrafast"`)}
 	}
 	if _, ok := _c.mutation.FreeOpenaiFast(); !ok {
 		return &ValidationError{Name: "free_openai_fast", err: errors.New(`ent: missing required field "Group.free_openai_fast"`)}
@@ -1546,6 +1588,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldAllowBatchImageGeneration, field.TypeBool, value)
 		_node.AllowBatchImageGeneration = value
 	}
+	if value, ok := _c.mutation.ImageCountBilling(); ok {
+		_spec.SetField(group.FieldImageCountBilling, field.TypeBool, value)
+		_node.ImageCountBilling = value
+	}
 	if value, ok := _c.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
 		_node.ImageRateIndependent = value
@@ -1669,6 +1715,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ForceOpenaiFast(); ok {
 		_spec.SetField(group.FieldForceOpenaiFast, field.TypeBool, value)
 		_node.ForceOpenaiFast = value
+	}
+	if value, ok := _c.mutation.ForceOpenaiUltrafast(); ok {
+		_spec.SetField(group.FieldForceOpenaiUltrafast, field.TypeBool, value)
+		_node.ForceOpenaiUltrafast = value
 	}
 	if value, ok := _c.mutation.FreeOpenaiFast(); ok {
 		_spec.SetField(group.FieldFreeOpenaiFast, field.TypeBool, value)
@@ -2185,6 +2235,18 @@ func (u *GroupUpsert) SetAllowBatchImageGeneration(v bool) *GroupUpsert {
 // UpdateAllowBatchImageGeneration sets the "allow_batch_image_generation" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateAllowBatchImageGeneration() *GroupUpsert {
 	u.SetExcluded(group.FieldAllowBatchImageGeneration)
+	return u
+}
+
+// SetImageCountBilling sets the "image_count_billing" field.
+func (u *GroupUpsert) SetImageCountBilling(v bool) *GroupUpsert {
+	u.Set(group.FieldImageCountBilling, v)
+	return u
+}
+
+// UpdateImageCountBilling sets the "image_count_billing" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageCountBilling() *GroupUpsert {
+	u.SetExcluded(group.FieldImageCountBilling)
 	return u
 }
 
@@ -2761,6 +2823,18 @@ func (u *GroupUpsert) SetForceOpenaiFast(v bool) *GroupUpsert {
 // UpdateForceOpenaiFast sets the "force_openai_fast" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateForceOpenaiFast() *GroupUpsert {
 	u.SetExcluded(group.FieldForceOpenaiFast)
+	return u
+}
+
+// SetForceOpenaiUltrafast sets the "force_openai_ultrafast" field.
+func (u *GroupUpsert) SetForceOpenaiUltrafast(v bool) *GroupUpsert {
+	u.Set(group.FieldForceOpenaiUltrafast, v)
+	return u
+}
+
+// UpdateForceOpenaiUltrafast sets the "force_openai_ultrafast" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateForceOpenaiUltrafast() *GroupUpsert {
+	u.SetExcluded(group.FieldForceOpenaiUltrafast)
 	return u
 }
 
@@ -3352,6 +3426,20 @@ func (u *GroupUpsertOne) SetAllowBatchImageGeneration(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateAllowBatchImageGeneration() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowBatchImageGeneration()
+	})
+}
+
+// SetImageCountBilling sets the "image_count_billing" field.
+func (u *GroupUpsertOne) SetImageCountBilling(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageCountBilling(v)
+	})
+}
+
+// UpdateImageCountBilling sets the "image_count_billing" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageCountBilling() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageCountBilling()
 	})
 }
 
@@ -4024,6 +4112,20 @@ func (u *GroupUpsertOne) SetForceOpenaiFast(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateForceOpenaiFast() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateForceOpenaiFast()
+	})
+}
+
+// SetForceOpenaiUltrafast sets the "force_openai_ultrafast" field.
+func (u *GroupUpsertOne) SetForceOpenaiUltrafast(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetForceOpenaiUltrafast(v)
+	})
+}
+
+// UpdateForceOpenaiUltrafast sets the "force_openai_ultrafast" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateForceOpenaiUltrafast() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateForceOpenaiUltrafast()
 	})
 }
 
@@ -4815,6 +4917,20 @@ func (u *GroupUpsertBulk) UpdateAllowBatchImageGeneration() *GroupUpsertBulk {
 	})
 }
 
+// SetImageCountBilling sets the "image_count_billing" field.
+func (u *GroupUpsertBulk) SetImageCountBilling(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageCountBilling(v)
+	})
+}
+
+// UpdateImageCountBilling sets the "image_count_billing" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageCountBilling() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageCountBilling()
+	})
+}
+
 // SetImageRateIndependent sets the "image_rate_independent" field.
 func (u *GroupUpsertBulk) SetImageRateIndependent(v bool) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -5484,6 +5600,20 @@ func (u *GroupUpsertBulk) SetForceOpenaiFast(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateForceOpenaiFast() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateForceOpenaiFast()
+	})
+}
+
+// SetForceOpenaiUltrafast sets the "force_openai_ultrafast" field.
+func (u *GroupUpsertBulk) SetForceOpenaiUltrafast(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetForceOpenaiUltrafast(v)
+	})
+}
+
+// UpdateForceOpenaiUltrafast sets the "force_openai_ultrafast" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateForceOpenaiUltrafast() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateForceOpenaiUltrafast()
 	})
 }
 

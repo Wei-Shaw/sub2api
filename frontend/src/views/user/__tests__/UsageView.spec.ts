@@ -71,6 +71,7 @@ const messages: Record<string, string> = {
   'usage.preparingExport': 'Preparing export',
   'usage.exportSuccess': 'Export success',
   'usage.exportFailed': 'Export failed',
+  'usage.exportRateLimited': 'Rate limited',
   'common.refresh': 'Refresh',
   'common.reset': 'Reset',
 }
@@ -390,7 +391,7 @@ describe('user UsageView', () => {
 
     expect(exportedBlob).not.toBeNull()
     expect(query).toHaveBeenCalledWith(expect.objectContaining({
-      page_size: 100,
+      page_size: 1000,
       sort_by: 'created_at',
       sort_order: 'desc',
       native_compaction_v2: true,
@@ -450,7 +451,7 @@ describe('user UsageView', () => {
   })
 
   it('keeps the initial filters, sort, and filename while exporting multiple pages', async () => {
-    const pageResponse = { items: [usageLog], total: 101, pages: 2 }
+    const pageResponse = { items: [usageLog], total: 1001, pages: 2 }
     query.mockResolvedValue(pageResponse)
     const wrapper = mountUsageView()
     await flushPromises()
@@ -478,7 +479,7 @@ describe('user UsageView', () => {
       await wrapper.findAll('button').find((button) => button.text() === 'Export CSV')!.trigger('click')
       const initialParams = { ...query.mock.calls[0][0] }
       expect(initialParams).toMatchObject({
-        page: 1, page_size: 100, start_date: '2026-03-01', end_date: '2026-03-08',
+        page: 1, page_size: 1000, start_date: '2026-03-01', end_date: '2026-03-08',
         sort_by: 'created_at', sort_order: 'desc',
       })
 
@@ -506,6 +507,65 @@ describe('user UsageView', () => {
     } finally {
       window.URL.createObjectURL = originalCreateObjectURL
       window.URL.revokeObjectURL = originalRevokeObjectURL
+      clickSpy.mockRestore()
+      wrapper.unmount()
+    }
+  })
+
+  it('waits for Retry-After and retries the same page when export is rate limited', async () => {
+    const wrapper = mountUsageView()
+    await flushPromises()
+    query.mockClear()
+    query.mockRejectedValueOnce({ status: 429, code: 'RATE_LIMITED', retry_after_seconds: 2 })
+    const originalCreateObjectURL = window.URL.createObjectURL
+    const originalRevokeObjectURL = window.URL.revokeObjectURL
+    window.URL.createObjectURL = vi.fn(() => 'blob:usage-export') as typeof window.URL.createObjectURL
+    window.URL.revokeObjectURL = vi.fn(() => {}) as typeof window.URL.revokeObjectURL
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    vi.useFakeTimers()
+
+    try {
+      const exporting = (wrapper.vm as any).exportToCSV()
+      await vi.advanceTimersByTimeAsync(1999)
+      expect(query).toHaveBeenCalledTimes(1)
+      expect(showInfo).toHaveBeenCalledWith('Rate limited')
+
+      await vi.advanceTimersByTimeAsync(1)
+      await exporting
+      expect(query).toHaveBeenCalledTimes(2)
+      expect(query.mock.calls[1]).toEqual(query.mock.calls[0])
+      expect(clickSpy).toHaveBeenCalled()
+      expect(showSuccess).toHaveBeenCalledWith('Export success')
+      expect(showError).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+      window.URL.createObjectURL = originalCreateObjectURL
+      window.URL.revokeObjectURL = originalRevokeObjectURL
+      clickSpy.mockRestore()
+      wrapper.unmount()
+    }
+  })
+
+  it('fails the export after repeated rate limiting', async () => {
+    const wrapper = mountUsageView()
+    await flushPromises()
+    query.mockClear()
+    query.mockRejectedValue({ status: 429, code: 'RATE_LIMITED', retry_after_seconds: 1 })
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.useFakeTimers()
+
+    try {
+      const exporting = (wrapper.vm as any).exportToCSV()
+      await vi.advanceTimersByTimeAsync(3000)
+      await exporting
+      expect(query).toHaveBeenCalledTimes(4)
+      expect(clickSpy).not.toHaveBeenCalled()
+      expect(showError).toHaveBeenCalledWith('Export failed')
+      expect((wrapper.vm as any).exporting).toBe(false)
+    } finally {
+      vi.useRealTimers()
+      vi.mocked(console.error).mockRestore()
       clickSpy.mockRestore()
       wrapper.unmount()
     }

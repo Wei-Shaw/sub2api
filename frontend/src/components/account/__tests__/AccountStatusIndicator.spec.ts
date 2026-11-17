@@ -86,6 +86,30 @@ describe('AccountStatusIndicator', () => {
     expect(wrapper.text()).not.toContain('claude-sonnet-5')
   })
 
+  it.each([
+    ['claude-fable-5-2', 'CFable52'],
+    ['claude-mythos-5-2', 'CMythos52']
+  ])('shows a short rate-limit badge for %s', (model, alias) => {
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          platform: 'anthropic',
+          extra: {
+            model_rate_limits: {
+              [model]: {
+                rate_limited_at: '2026-11-10T00:00:00Z',
+                rate_limit_reset_at: '2099-11-10T00:00:00Z'
+              }
+            }
+          }
+        })
+      },
+      global: { stubs: { Icon: true } }
+    })
+    expect(wrapper.text()).toContain(alias)
+    expect(wrapper.text()).not.toContain(model)
+  })
+
   it('Grok 账号额度限流时显示自动恢复时间而非临时不可调度', () => {
     const wrapper = mount(AccountStatusIndicator, {
       props: {

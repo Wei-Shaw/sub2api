@@ -109,6 +109,9 @@ func (Group) Fields() []ent.Field {
 		field.Bool("allow_batch_image_generation").
 			Default(false).
 			Comment("是否允许该分组使用批量图片生成能力"),
+		field.Bool("image_count_billing").
+			Default(false).
+			Comment("图片生成是否按实际出图张数计费"),
 		field.Bool("image_rate_independent").
 			Default(false).
 			Comment("图片生成是否使用独立倍率；false 表示共享分组有效倍率"),
@@ -250,6 +253,9 @@ func (Group) Fields() []ent.Field {
 		field.Bool("force_openai_fast").
 			Default(false).
 			Comment("是否强制此 OpenAI/Composite 分组请求使用 service_tier=priority"),
+		field.Bool("force_openai_ultrafast").
+			Default(false).
+			Comment("是否对支持 Ultrafast 的模型强制使用 service_tier=ultrafast（优先于 force_openai_fast）"),
 		field.Bool("free_openai_fast").
 			Default(false).
 			Comment("是否让此 OpenAI/Composite 分组的 Fast 请求按 Standard 价格计费"),

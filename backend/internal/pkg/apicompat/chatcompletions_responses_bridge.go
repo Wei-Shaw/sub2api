@@ -584,7 +584,7 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 			// input_text 是信封（消息类型、任务名、发送者），正文放在 encrypted_content 片段里
 			// （自定义 provider 下为明文）。chat 上游没有对应条目，按原顺序拼成一条 user 消息，
 			// 否则子智能体收不到任务却仍返回 200。
-			text := agentMessageText(item["content"])
+			text := AgentMessageText(item["content"])
 			if text == "" {
 				pendingReasoning = ""
 				continue
@@ -653,8 +653,9 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 	return messages, mediaByCallID, nil
 }
 
-// agentMessageText 按原顺序拼接 agent_message 里 input_text 与 encrypted_content 片段的文本。
-func agentMessageText(raw json.RawMessage) string {
+// AgentMessageText concatenates agent_message text and plaintext encrypted_content
+// parts in their original order without attempting to decrypt their contents.
+func AgentMessageText(raw json.RawMessage) string {
 	raw = bytesTrimSpace(raw)
 	if len(raw) == 0 || string(raw) == "null" {
 		return ""
@@ -1593,9 +1594,10 @@ type ChatCompletionsToResponsesStreamState struct {
 	Reasoning strings.Builder
 
 	// Tool-call lifecycle, keyed by the upstream tool_call index.
-	ToolCalls       map[int]*ChatToolCall
-	ToolItemIDs     map[int]string
-	ToolOutputIndex map[int]int
+	ToolCalls           map[int]*ChatToolCall
+	ToolItemIDs         map[int]string
+	ToolOutputIndex     map[int]int
+	toolArgumentBuffers map[int]*strings.Builder
 
 	// CustomTools 是客户端请求中 custom/freeform 工具的名字集合（见
 	// CustomToolNames）。命中的调用按 custom_tool_call 生命周期下发，codex 才能
@@ -1755,7 +1757,7 @@ func ChatCompletionsChunkToResponsesEvents(
 				// emitted delta and the stored value stay in sync. Some upstreams
 				// (e.g. GLM/Zhipu) pack id+name+arguments into the first tool_call
 				// chunk; without this reset the first chunk's arguments would be
-				// counted twice (once from this copy, once from the += below),
+				// counted twice (once from this copy, once from the append below),
 				// producing a doubled, invalid JSON like {"a":1}{"a":1}.
 				copyCall.Function.Arguments = ""
 				state.ToolCalls[idx] = &copyCall
@@ -1772,7 +1774,7 @@ func ChatCompletionsChunkToResponsesEvents(
 			}
 			events = append(events, announceChatToolItem(state, idx, stored, false)...)
 			if toolCall.Function.Arguments != "" {
-				stored.Function.Arguments += toolCall.Function.Arguments
+				stored.Function.Arguments = appendIndexedStreamString(&state.toolArgumentBuffers, idx, stored.Function.Arguments, toolCall.Function.Arguments)
 				// 未宣告（名字未到）时仅累积，宣告时统一补发；custom 调用的
 				// arguments 是包裹 input 的 JSON 片段，无法增量还原为自由文本
 				// 输入，缓冲整份 arguments 收尾时一次性下发（见 closeChatToolItems）；

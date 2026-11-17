@@ -63,14 +63,14 @@ func TestBuildVertexGeminiAccountURL(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			account := &Account{Platform: PlatformGemini, Type: AccountTypeServiceAccount, Credentials: tc.credentials}
-			got, err := buildVertexGeminiAccountURL(account, "gemini-3-flash-preview", "streamGenerateContent", true)
+			got, err := buildVertexGeminiAccountURL(account, "gemini-3-flash-preview", "streamGenerateContent", true, "")
 			require.NoError(t, err)
 			require.Equal(t, tc.want, got)
 		})
 	}
 
 	account := &Account{Platform: PlatformGemini, Type: AccountTypeServiceAccount, Credentials: map[string]any{"auth_mode": "apikey", "api_key": "k"}}
-	_, err := buildVertexGeminiAccountURL(account, "gemini-3-flash-preview", "rawPredict", false)
+	_, err := buildVertexGeminiAccountURL(account, "gemini-3-flash-preview", "rawPredict", false, "")
 	require.ErrorContains(t, err, "unsupported vertex gemini action")
 }
 
