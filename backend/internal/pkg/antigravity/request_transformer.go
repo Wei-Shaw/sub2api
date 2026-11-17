@@ -302,6 +302,22 @@ var systemIdentityOpeners = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)^[ \t\r\n]*You are Claude Code, Anthropic'?s official CLI for Claude\.?`),
 	regexp.MustCompile(`(?i)^[ \t\r\n]*You are Codex,? (?:a coding agent |an agent )?based on GPT-[0-9]+(?:\.[0-9]+)*(?:-[a-z0-9]+)*\.?`),
 	regexp.MustCompile(`(?i)^[ \t\r\n]*You are GPT-[0-9]+(?:\.[0-9]+)*(?:-[a-z0-9]+)* running in the Codex CLI\.?`),
+	regexp.MustCompile(`(?i)^[ \t\r\n]*You are an AI agent powered by (?:DeepSeek|DSH) Harness\.?`),
+}
+
+// systemSentenceRedactions rewrites known client prompt sentences that
+// Antigravity rejects with 429 RESOURCE_EXHAUSTED although they are ordinary
+// instruction text. Each entry applies wherever it appears in a system block,
+// after the leading-identity rewrite.
+var systemSentenceRedactions = []struct{ from, to string }{
+	{
+		from: "You are an AI agent powered by DeepSeek Harness.",
+		to:   "You are an AI agent.",
+	},
+	{
+		from: "The browser provides no implicit DOM, route, or screenshot context.",
+		to:   "The browser does not provide implicit DOM or screenshot context.",
+	},
 }
 
 // NeutralizeSystemIdentity removes leading client attribution and rewrites a
@@ -309,6 +325,15 @@ var systemIdentityOpeners = []*regexp.Regexp{
 // Only Antigravity forwarding should use this; native Anthropic may require attribution.
 func NeutralizeSystemIdentity(text string) string {
 	text = stripClaudeAttribution(text)
+	text = neutralizeLeadingIdentity(text)
+	for _, r := range systemSentenceRedactions {
+		text = strings.ReplaceAll(text, r.from, r.to)
+	}
+	return text
+}
+
+// neutralizeLeadingIdentity rewrites one leading client identity sentence.
+func neutralizeLeadingIdentity(text string) string {
 	for _, re := range systemIdentityOpeners {
 		if loc := re.FindStringIndex(text); loc != nil {
 			if strings.HasPrefix(text[loc[1]:], ",") {
