@@ -221,6 +221,25 @@ var providerProfiles = map[string]*ProviderProfile{
 			},
 		},
 	},
+
+	PlatformOpenDesign: {
+		Platform:    PlatformOpenDesign,
+		DefaultMode: AccountModePayG,
+		Routing:     ProviderRoutingByInbound,
+		// OpenDesign Go serves Chat Completions and native Responses from the same
+		// /v1 base URL, plus an Anthropic-compatible endpoint at the bare domain
+		// ({base}/v1/messages) accepting both x-api-key and Bearer auth. An
+		// adaptive account picks the endpoint by inbound protocol.
+		Modes: map[string]ProviderEndpoints{
+			AccountModePayG: {
+				BaseURLs: map[string]string{
+					APIProtocolChatCompletions: DefaultOpenDesignBaseURL,
+					APIProtocolResponses:       DefaultOpenDesignBaseURL,
+					APIProtocolAnthropic:       DefaultOpenDesignAnthropicBaseURL,
+				},
+			},
+		},
+	},
 }
 
 // LookupProviderProfile 返回 platform 对应的多协议供应商 profile；非此类平台返回 nil。

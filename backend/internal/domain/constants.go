@@ -38,7 +38,10 @@ const (
 	// PlatformCline 是 Cline API（多模型聚合，OpenAI 兼容 Chat Completions；按量积分计费，
 	// 另有 ClinePass 订阅）。
 	PlatformCline     = "cline"
-	PlatformComposite = "composite"
+	// PlatformOpenDesign 是 OpenDesign Go 平台（多模型聚合；一个 API Key 同时提供
+	// OpenAI 兼容 /v1（Chat Completions 与原生 Responses）与 Anthropic 兼容端点）。
+	PlatformOpenDesign = "open_design"
+	PlatformComposite  = "composite"
 )
 
 // Account mode constants 区分国产供应商的「按量付费（余额）」与「Coding Plan」两种接入方式。
