@@ -87,7 +87,13 @@ func (s *AntigravityGatewayService) ForwardAsChatCompletions(
 	if err != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 	}
-	mappedModel := s.getAntigravityCompatMappedModel(account, request.Model, (*antigravity.ThinkingConfig)(claudeRequest.Thinking))
+	preserveChatCompletionTokenLimit(&request, claudeRequest)
+	claudeRequest.Stream = request.Stream
+	claudeBody, err := json.Marshal(claudeRequest)
+	if err != nil {
+		return nil, fmt.Errorf("marshal anthropic request: %w", err)
+	}
+	mappedModel := s.getAntigravityCompatMappedModel(account, request.Model, claudeBody, (*antigravity.ThinkingConfig)(claudeRequest.Thinking))
 	if !strings.HasPrefix(strings.ToLower(mappedModel), "gemini-") {
 		if _, err := apicompat.ChatCompletionsToResponses(&request); err != nil {
 			if writeChatInputAudioValidationError(c, err) {
@@ -95,12 +101,6 @@ func (s *AntigravityGatewayService) ForwardAsChatCompletions(
 			}
 			return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		}
-	}
-	preserveChatCompletionTokenLimit(&request, claudeRequest)
-	claudeRequest.Stream = request.Stream
-	claudeBody, err := json.Marshal(claudeRequest)
-	if err != nil {
-		return nil, fmt.Errorf("marshal anthropic request: %w", err)
 	}
 
 	return s.forwardAntigravityCompat(ctx, c, account, antigravityCompatRequest{
@@ -260,8 +260,8 @@ func (s *AntigravityGatewayService) forwardAntigravityCompat(
 	return s.consumeAntigravityCompatResponse(ctx, c, account, call, result.resp)
 }
 
-func (s *AntigravityGatewayService) getAntigravityCompatMappedModel(account *Account, originalModel string, thinking *antigravity.ThinkingConfig) string {
-	mappedModel := s.getMappedModelForThinkingLevel(account, originalModel, geminiThinkingLevelFromClaudeThinking(thinking))
+func (s *AntigravityGatewayService) getAntigravityCompatMappedModel(account *Account, originalModel string, claudeBody []byte, thinking *antigravity.ThinkingConfig) string {
+	mappedModel := s.getMappedModelForThinkingLevel(account, originalModel, geminiThinkingLevelFromClaudeBody(claudeBody, thinking))
 	thinkingEnabled := thinking != nil && (thinking.Type == "enabled" || thinking.Type == "adaptive")
 	return applyThinkingModelSuffix(mappedModel, thinkingEnabled)
 }
@@ -277,7 +277,7 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request body")
 	}
 
-	mappedModel := s.getAntigravityCompatMappedModel(account, request.originalModel, claudeRequest.Thinking)
+	mappedModel := s.getAntigravityCompatMappedModel(account, request.originalModel, request.claudeBody, claudeRequest.Thinking)
 	if mappedModel == "" {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
 		message := fmt.Sprintf("model %s not in whitelist", request.originalModel)
@@ -336,6 +336,7 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 			return nil, err
 		}
 		body = ensureGeminiFunctionCallThoughtSignatures(body)
+		body = applyGeminiCompatThinkingConfig(body, claudeBody, mappedModel, claudeRequest != nil && claudeRequest.Stream)
 		body, err = injectIdentityPatchToGeminiRequest(body)
 		if err != nil {
 			return nil, err
