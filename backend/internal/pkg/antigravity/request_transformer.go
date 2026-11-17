@@ -318,6 +318,10 @@ var systemSentenceRedactions = []struct{ from, to string }{
 		from: "The browser provides no implicit DOM, route, or screenshot context.",
 		to:   "The browser does not provide implicit DOM or screenshot context.",
 	},
+	{
+		from: `Tokens prefixed with @ are paths the user explicitly referenced. Relative paths resolve from the workspace root; absolute paths identify files or directories on the host. A trailing slash marks a directory: list it when its contents matter. Anything else is a file: use the read tool when its contents are needed, and do not claim to have inspected it before reading. @"..." quotes a path containing spaces.`,
+		to:   `Paths prefixed with @ are references the user explicitly provided. Relative paths resolve from the workspace root; absolute paths name files or directories on the host. A trailing slash marks a directory: list it when its contents matter. Otherwise it is a file: use the read tool when its contents are needed, and do not claim to have inspected it before reading. @"..." quotes a path containing spaces.`,
+	},
 }
 
 // NeutralizeSystemIdentity removes leading client attribution and rewrites a
