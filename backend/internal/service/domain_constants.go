@@ -618,7 +618,7 @@ const (
 
 	// SettingKeyMinClaudeCodeVersion 最低 Claude Code 版本号要求 (semver, 如 "2.1.0"，空值=不检查)
 	SettingKeyMinClaudeCodeVersion = "min_claude_code_version"
-	// SettingKeyMinCodexVersion 最低 Codex 引擎版本号要求 (semver, 如 "0.141.0"，空值=不检查)
+	// SettingKeyMinCodexVersion 最低 Codex 引擎版本要求 (semver, 如 "0.141.0"，空值=不检查)
 	SettingKeyMinCodexVersion = "min_codex_version"
 	// SettingKeyMaxCodexVersion 最高 Codex 引擎版本限制 (semver, 如 "0.200.0"，空值=不检查)
 	SettingKeyMaxCodexVersion = "max_codex_version"
