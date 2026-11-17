@@ -323,6 +323,13 @@ func (m *mockGatewayCacheForGemini) ReleaseGrokVideoBilled(_ context.Context, _ 
 	return nil
 }
 
+func (m *mockGatewayCacheForGemini) SetAnthropicFileOwner(_ context.Context, _ string, _ int64, _ int64, _ string, _ time.Duration) error {
+	return nil
+}
+func (m *mockGatewayCacheForGemini) GetAnthropicFileOwner(_ context.Context, _ string) (int64, int64, string, bool, error) {
+	return 0, 0, "", false, nil
+}
+
 func (m *mockGatewayCacheForGemini) SetReasoningContent(_ context.Context, _ string, _ string, _ time.Duration) error {
 	return nil
 }
