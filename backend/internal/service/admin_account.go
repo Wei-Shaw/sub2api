@@ -414,7 +414,7 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	if input.Platform == PlatformTypeSafe && input.Type != AccountTypeAPIKey {
 		return nil, errors.New("typesafe accounts only support apikey credentials")
 	}
-	// Probe/session state is system-managed. New accounts always start with automatic refresh disabled.
+	// Probe/session state is system-managed; only dedicated creation settings may opt in.
 	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
 	delete(accountExtra, UpstreamBillingRateSyncEnabledExtraKey)
 	delete(accountExtra, UpstreamBillingProbeExtraKey)
@@ -437,14 +437,8 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		Status:      StatusActive,
 		Schedulable: true,
 	}
-	if input.ProbeEnabled != nil && *input.ProbeEnabled {
-		if !isUpstreamBillingProbeAccount(account) {
-			return nil, ErrUpstreamBillingProbeAccountInvalid
-		}
-		if account.Extra == nil {
-			account.Extra = make(map[string]any)
-		}
-		account.Extra[UpstreamBillingProbeEnabledExtraKey] = true
+	if err := applyCreationBillingSettings(account, input); err != nil {
+		return nil, err
 	}
 	// 预计算固定时间重置的下次重置时间
 	if account.Extra != nil {

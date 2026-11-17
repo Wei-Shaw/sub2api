@@ -191,6 +191,7 @@ async function submitApiKeyAccount(
 async function openCodexImportStep(toggleClicks = 0) {
   const wrapper = mountModal()
   await selectButtonByText(wrapper, 'OpenAI')
+  await selectButtonByText(wrapper, 'admin.accounts.types.chatgptOauth')
   for (let click = 0; click < toggleClicks; click += 1) {
     await wrapper.get('[data-testid="openai-long-context-billing-toggle"]').trigger('click')
   }
@@ -218,6 +219,68 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
   })
 
   afterEach(() => vi.useRealTimers())
+
+  it('defaults to API Key, pool mode and both upstream rate settings on creation and reopen', async () => {
+    const wrapper = mountModal()
+    await flushPromises()
+    expect(wrapper.get('[data-testid="upstream-billing-auto-probe"]').attributes('aria-checked')).toBe('true')
+    expect(wrapper.get('[data-testid="upstream-billing-rate-sync"]').attributes('aria-checked')).toBe('true')
+    await wrapper.get('input[type="text"]').setValue('default account')
+    await wrapper.get('input[type="password"]').setValue('synthetic-key')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      type: 'apikey', credentials: { pool_mode: true },
+      upstream_billing_probe_enabled: true, upstream_billing_rate_sync_enabled: true,
+    })
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    expect(wrapper.get('[data-testid="upstream-billing-rate-sync"]').attributes('aria-checked')).toBe('true')
+    wrapper.unmount()
+  })
+
+  it('keeps the rate toggles consistent and permits manual rate settings', async () => {
+    const wrapper = mountModal()
+    await wrapper.get('[data-testid="upstream-billing-auto-probe"]').trigger('click')
+    expect(wrapper.get('[data-testid="upstream-billing-rate-sync"]').attributes('aria-checked')).toBe('false')
+    await wrapper.get('[data-testid="upstream-billing-rate-sync"]').trigger('click')
+    expect(wrapper.get('[data-testid="upstream-billing-auto-probe"]').attributes('aria-checked')).toBe('true')
+    await wrapper.get('[data-testid="upstream-billing-rate-sync"]').trigger('click')
+    await wrapper.get('input[type="text"]').setValue('manual rate')
+    await wrapper.get('input[type="password"]').setValue('synthetic-key')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      upstream_billing_probe_enabled: true, upstream_billing_rate_sync_enabled: false,
+    })
+    wrapper.unmount()
+  })
+
+  it('selects the newest usable proxy and platform group after async loading without overwriting manual choices', async () => {
+    const wrapper = mountModal()
+    const proxy = (id: number, extra = {}) => ({ id, status: 'active', created_at: `2026-11-${id.toString().padStart(2, '0')}T00:00:00Z`, ...extra })
+    const group = (id: number, extra = {}) => ({ ...proxy(id), platform: 'anthropic', require_oauth_only: false, ...extra })
+    const proxies = [proxy(2), proxy(7, { status: 'inactive' }), proxy(8, { expires_at: '2000-01-01T00:00:00Z' }), proxy(9, { latency_status: 'failed' }), proxy(4), proxy(10, { quality_status: 'failed' })] as any[]
+    const groups = [group(2), group(3), group(9, { status: 'inactive' }), group(10, { require_oauth_only: true }), group(11, { platform: 'openai' }), group(12, { platform: 'composite' })]
+    await wrapper.setProps({ proxies, groups })
+    const proxySelector = wrapper.getComponent({ name: 'ProxySelector' })
+    const groupSelector = wrapper.getComponent(GroupSelectorStub)
+    expect(proxySelector.props('modelValue')).toBe(4)
+    expect(groupSelector.props('modelValue')).toEqual([3])
+    proxySelector.vm.$emit('update:modelValue', null)
+    groupSelector.vm.$emit('update:modelValue', [])
+    await wrapper.setProps({ proxies: [...proxies, proxy(13)] as any[], groups: [...groups, group(13)] })
+    expect(proxySelector.props('modelValue')).toBeNull()
+    expect(groupSelector.props('modelValue')).toEqual([])
+    await selectButtonByText(wrapper, 'OpenAI')
+    expect(groupSelector.props('modelValue')).toEqual([11])
+    expect(proxySelector.props('modelValue')).toBeNull()
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    expect(wrapper.getComponent({ name: 'ProxySelector' }).props('modelValue')).toBe(13)
+    expect(wrapper.getComponent(GroupSelectorStub).props('modelValue')).toEqual([13])
+    wrapper.unmount()
+  })
 
   it('sets month and year expiry presets without submitting the account form', async () => {
     vi.useFakeTimers({ toFake: ['Date'] })
@@ -426,6 +489,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
   it('shows the Codex namespace flatten toggle only for OpenAI OAuth accounts', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'admin.accounts.types.chatgptOauth')
 
     expect(wrapper.find('[data-testid="create-openai-flatten-namespaces-toggle"]').exists()).toBe(
       true
@@ -792,6 +856,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
   it('exposes Agent Identity in the OpenAI authorization methods', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'admin.accounts.types.chatgptOauth')
     await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenAI account')
     await wrapper.get('form#create-account-form').trigger('submit.prevent')
 

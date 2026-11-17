@@ -3229,7 +3229,7 @@
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
           <ProxyAdBanner />
         </div>
-        <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
+        <ProxySelector v-model="form.proxy_id" :proxies="proxies" @update:model-value="proxyChanged" />
       </div>
 
       <UpstreamRequestIdHeaderField
@@ -3264,8 +3264,15 @@
         </div>
         <div>
           <label class="input-label">{{ t('admin.accounts.billingRateMultiplier') }}</label>
-          <input v-model.number="form.rate_multiplier" type="number" min="0" step="0.001" class="input" />
-          <p class="input-hint">{{ t('admin.accounts.billingRateMultiplierHint') }}</p>
+          <input v-model.number="form.rate_multiplier" type="number" min="0" step="0.001" class="input disabled:opacity-60" :disabled="form.type === 'apikey' && upstreamBillingRateSyncEnabled" />
+          <p class="input-hint">{{ t(form.type === 'apikey' && upstreamBillingRateSyncEnabled ? 'admin.accounts.upstreamBilling.syncRateManagedHint' : 'admin.accounts.billingRateMultiplierHint') }}</p>
+          <div v-if="form.type === 'apikey'" class="mt-3 flex items-center justify-between gap-3">
+            <div>
+              <p class="text-xs font-medium">{{ t('admin.accounts.upstreamBilling.syncRate') }}</p>
+              <p class="input-hint">{{ t('admin.accounts.upstreamBilling.syncRateHint') }}</p>
+            </div>
+            <Toggle v-model="upstreamBillingRateSyncEnabled" data-testid="upstream-billing-rate-sync" :aria-label="t('admin.accounts.upstreamBilling.syncRate')" />
+          </div>
         </div>
       </div>
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
@@ -3762,6 +3769,7 @@
           :groups="groups"
           :platform="form.platform"
           :mixed-scheduling="mixedScheduling"
+          @update:model-value="groupsChanged"
           data-tour="account-form-groups"
         />
       </div>
@@ -4123,6 +4131,8 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { useAuthStore } from '@/stores/auth'
+import { useAccountCreationDefaults } from '@/extensions/personalUsage/accountDefaults'
 
 import {
   claudeModels,
@@ -4339,6 +4349,7 @@ const emit = defineEmits<{
 }>()
 
 const appStore = useAppStore()
+const authStore = useAuthStore()
 
 const hideAccountLongContextBilling = computed(() => {
   return allSelectedGroupsEnableLongContextPricing(form.group_ids, props.groups)
@@ -4405,11 +4416,14 @@ interface TempUnschedRuleForm {
 // State
 const step = ref(1)
 const submitting = ref(false)
-const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_account'>('oauth-based') // UI selection for account category
+const accountCategory = ref<'oauth-based' | 'apikey' | 'bedrock' | 'service_account'>('apikey') // UI selection for account category
 const addMethod = ref<AddMethod>('oauth') // For oauth-based: 'oauth' or 'setup-token'
 const apiKeyBaseUrl = ref('https://api.anthropic.com')
 const apiKeyValue = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
+const upstreamBillingRateSyncEnabled = ref(true)
+watch(upstreamBillingAutoProbeEnabled, enabled => { if (!enabled) upstreamBillingRateSyncEnabled.value = false })
+watch(upstreamBillingRateSyncEnabled, enabled => { if (enabled) upstreamBillingAutoProbeEnabled.value = true })
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）账号类型、API 协议与端点 ──
 // 多协议供应商（国产厂商与走通用表单的供应商）的接入模式；OpenCode 用 openCodeAccountMode。
@@ -4649,7 +4663,7 @@ const upstreamModelsPreviewed = ref(false)
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
-const poolModeEnabled = ref(false)
+const poolModeEnabled = ref(true)
 const explicitCacheUpstreamEnabled = ref(false)
 const explicitCacheUpstreamMaxTTL = ref<string | number>('')
 const poolModeRetryCount = ref(DEFAULT_POOL_MODE_RETRY_COUNT)
@@ -4762,7 +4776,7 @@ adminAPI.settings.getWebSearchEmulationConfig().then(cfg => {
 loadQuotaNotifyGlobal()
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 const allowOverages = ref(false) // For antigravity accounts: enable AI Credits overages
-const antigravityAccountType = ref<'oauth' | 'upstream'>('oauth') // For antigravity: oauth or upstream
+const antigravityAccountType = ref<'oauth' | 'upstream'>('upstream') // For antigravity: oauth or upstream
 const antigravityProjectId = ref('')
 const upstreamBaseUrl = ref('') // For upstream type: base URL
 const upstreamApiKey = ref('') // For upstream type: API key
@@ -5038,7 +5052,7 @@ const form = reactive({
   name: '',
   notes: '',
   platform: 'anthropic' as AccountPlatform,
-  type: 'oauth' as AccountType, // Will be 'oauth', 'setup-token', or 'apikey'
+  type: 'apikey' as AccountType, // Will be 'oauth', 'setup-token', or 'apikey'
   credentials: {} as Record<string, unknown>,
   proxy_id: null as number | null,
   concurrency: 10,
@@ -5150,6 +5164,7 @@ watch(
 watch(
   () => form.platform,
   (newPlatform) => {
+    accountCategory.value = 'apikey'
     // Reset base URL based on platform
     if (isMultiProtocolApiKeyPlatform(newPlatform)) {
       const mode = newPlatform === 'opencode_go' ? openCodeAccountMode.value : accountMode.value
@@ -5183,8 +5198,8 @@ watch(
         antigravityModelMappings.value = [...mappings]
       })
       antigravityWhitelistModels.value = []
-      accountCategory.value = 'oauth-based'
-      antigravityAccountType.value = 'oauth'
+      accountCategory.value = 'apikey'
+      antigravityAccountType.value = 'upstream'
     } else {
       allowOverages.value = false
       antigravityProjectId.value = ''
@@ -5193,17 +5208,11 @@ watch(
       antigravityModelRestrictionMode.value = 'mapping'
     }
     if (newPlatform === 'grok') {
-      accountCategory.value = 'oauth-based'
+      accountCategory.value = 'apikey'
       addMethod.value = 'oauth'
       modelRestrictionMode.value = 'mapping'
       form.concurrency = 1
       form.load_factor = null
-    }
-    if (newPlatform !== 'gemini' && newPlatform !== 'anthropic' && accountCategory.value === 'service_account') {
-      accountCategory.value = 'oauth-based'
-    }
-    if (newPlatform !== 'anthropic' && accountCategory.value === 'bedrock') {
-      accountCategory.value = 'oauth-based'
     }
     // Reset Bedrock fields when switching platforms
     bedrockAccessKeyId.value = ''
@@ -5254,6 +5263,11 @@ watch(
     grokOAuth.resetState()
   }
 )
+
+const { proxyChanged, groupsChanged } = useAccountCreationDefaults({
+  show: () => props.show, proxies: () => props.proxies, groups: () => props.groups,
+  mixed: () => mixedScheduling.value, simple: () => authStore.isSimpleMode, form
+})
 
 // Gemini AI Studio OAuth availability (requires operator-configured OAuth client)
 watch(
@@ -5629,7 +5643,7 @@ const resetForm = () => {
   form.name = ''
   form.notes = ''
   form.platform = 'anthropic'
-  form.type = 'oauth'
+  form.type = 'apikey'
   form.credentials = {}
   form.proxy_id = null
   form.concurrency = 10
@@ -5638,7 +5652,7 @@ const resetForm = () => {
   form.rate_multiplier = 1
   form.group_ids = []
   form.expires_at = null
-  accountCategory.value = 'oauth-based'
+  accountCategory.value = 'apikey'
   addMethod.value = 'oauth'
   accountMode.value = 'payg'
   openCodeAccountMode.value = 'zen'
@@ -5649,6 +5663,7 @@ const resetForm = () => {
   apiKeyValue.value = ''
   upstreamRequestIdHeader.value = ''
   upstreamBillingAutoProbeEnabled.value = true
+  upstreamBillingRateSyncEnabled.value = true
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
   editQuotaWeeklyLimit.value = null
@@ -5668,7 +5683,7 @@ const resetForm = () => {
   fetchAntigravityDefaultMappings().then(mappings => {
     antigravityModelMappings.value = [...mappings]
   })
-  poolModeEnabled.value = false
+  poolModeEnabled.value = true
   poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
   poolModeRetryStatusCodesInput.value = ''
   explicitCacheUpstreamEnabled.value = false
@@ -5719,7 +5734,7 @@ const resetForm = () => {
   customBaseUrlEnabled.value = false
   customBaseUrl.value = ''
   allowOverages.value = false
-  antigravityAccountType.value = 'oauth'
+  antigravityAccountType.value = 'upstream'
   antigravityProjectId.value = ''
   upstreamBaseUrl.value = ''
   upstreamApiKey.value = ''
@@ -6241,6 +6256,7 @@ const handleSubmit = async () => {
     group_ids: form.group_ids,
     extra: withUpstreamRequestIdHeader(extra),
     upstream_billing_probe_enabled: upstreamBillingAutoProbeEnabled.value,
+    upstream_billing_rate_sync_enabled: upstreamBillingRateSyncEnabled.value,
     auto_pause_on_expired: autoPauseOnExpired.value
   })
 }
@@ -6372,6 +6388,7 @@ const createAccountAndFinish = async (
     // 上游倍率探测对全部 API-key 平台开放（antigravity upstream 走本 helper）；
     // 非 apikey 类型（bedrock/oauth）不传，后端不动作。
     upstream_billing_probe_enabled: type === 'apikey' ? upstreamBillingAutoProbeEnabled.value : undefined,
+    upstream_billing_rate_sync_enabled: type === 'apikey' ? upstreamBillingRateSyncEnabled.value : undefined,
     auto_pause_on_expired: autoPauseOnExpired.value
   })
 }

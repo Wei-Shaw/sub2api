@@ -162,6 +162,40 @@ func TestCreateAccountAcceptsDedicatedUpstreamBillingProbeSetting(t *testing.T) 
 	require.ErrorIs(t, err, ErrUpstreamBillingProbeAccountInvalid)
 }
 
+func TestCreateAccountDedicatedRateSyncSettings(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		probe   *bool
+		sync    bool
+		typ     string
+		invalid bool
+	}{
+		{"both enabled", boolPointer(true), true, AccountTypeAPIKey, false},
+		{"sync implies probe", nil, true, AccountTypeAPIKey, false},
+		{"probe only", boolPointer(true), false, AccountTypeAPIKey, false},
+		{"explicit conflict", boolPointer(false), true, AccountTypeAPIKey, true},
+		{"OAuth excluded", nil, true, AccountTypeOAuth, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &upstreamBillingProbeAccountRepo{}
+			created, err := (&adminServiceImpl{accountRepo: repo}).CreateAccount(context.Background(), &CreateAccountInput{
+				Name: "synthetic", Platform: PlatformOpenAI, Type: tc.typ,
+				Credentials:  map[string]any{"api_key": "synthetic"},
+				ProbeEnabled: tc.probe, RateSyncEnabled: &tc.sync, SkipDefaultGroupBind: true,
+			})
+			if tc.invalid {
+				require.Error(t, err)
+				return
+			}
+			require.NoError(t, err)
+			require.Equal(t, true, created.Extra[UpstreamBillingProbeEnabledExtraKey])
+			require.Equal(t, tc.sync, created.Extra[UpstreamBillingRateSyncEnabledExtraKey])
+		})
+	}
+}
+
+func boolPointer(v bool) *bool { return &v }
+
 func TestUpdateAccountPreservesManagedUpstreamBillingProbeStateForUnrelatedEdit(t *testing.T) {
 	accountID := int64(110)
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{

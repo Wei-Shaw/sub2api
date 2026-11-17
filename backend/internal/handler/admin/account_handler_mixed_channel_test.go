@@ -169,6 +169,26 @@ func TestAccountHandlerUpdateMapsUpstreamBillingRateSyncSettings(t *testing.T) {
 	require.True(t, *adminSvc.lastUpdateAccountInput.RateSyncEnabled)
 }
 
+func TestAccountHandlerCreateMapsUpstreamBillingRateSyncSettings(t *testing.T) {
+	adminSvc := newStubAdminService()
+	router := setupAccountMixedChannelRouter(adminSvc)
+	body, _ := json.Marshal(map[string]any{
+		"name": "relay", "platform": "openai", "type": "apikey",
+		"credentials":                    map[string]any{"api_key": "synthetic"},
+		"upstream_billing_probe_enabled": true, "upstream_billing_rate_sync_enabled": true,
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/accounts", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Len(t, adminSvc.createdAccounts, 1)
+	require.NotNil(t, adminSvc.createdAccounts[0].ProbeEnabled)
+	require.True(t, *adminSvc.createdAccounts[0].ProbeEnabled)
+	require.NotNil(t, adminSvc.createdAccounts[0].RateSyncEnabled)
+	require.True(t, *adminSvc.createdAccounts[0].RateSyncEnabled)
+}
+
 func TestAccountHandlerBulkUpdateMixedChannelConflict(t *testing.T) {
 	adminSvc := newStubAdminService()
 	adminSvc.bulkUpdateAccountErr = &service.MixedChannelError{
