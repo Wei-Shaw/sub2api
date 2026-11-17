@@ -253,6 +253,18 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	case PlatformOpenCodeGo:
 		tiers = parseOpenCodeGoUsageTiers(bodyBytes)
 		result.PlanLevel = "OpenCode Go"
+	case PlatformOpenDesign:
+		var tierErr error
+		tiers, result.PlanLevel, tierErr = parseOpenDesignUsageTiers(bodyBytes)
+		if tierErr != nil {
+			// Upstream schema change: keep the previous snapshot instead of
+			// writing a bogus empty one (mirrors the CN no-window guard).
+			result.Error = "open_design funding-check parse failed: " + tierErr.Error()
+			return result, nil
+		}
+		if balance := opendesignBalanceUSD(bodyBytes); balance != "" {
+			result.PlanLevel = strings.TrimSpace(result.PlanLevel + " · balance " + balance)
+		}
 	case PlatformZhipu:
 		tiers = parseZhipuTokenTiers(gjson.GetBytes(bodyBytes, "data"))
 		result.PlanLevel = strings.TrimSpace(gjson.GetBytes(bodyBytes, "data.level").String())
@@ -327,6 +339,12 @@ func validateCodingPlanAccount(account *Account) error {
 	if account.IsCline() {
 		if !account.clineAccountAPISupported() {
 			return infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "cline usage is only available for api key accounts on the official host")
+		}
+		return nil
+	}
+	if account.Platform == PlatformOpenDesign {
+		if account.Type != AccountTypeAPIKey || strings.TrimSpace(account.GetCredential(OpenDesignUsageCredentialsKey)) == "" {
+			return infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "open_design usage requires an api key account with a control key")
 		}
 		return nil
 	}

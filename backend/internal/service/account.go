@@ -1704,6 +1704,15 @@ func (a *Account) GetCodingPlanProvider() string {
 		}
 		return ""
 	}
+	if a.Platform == PlatformOpenDesign {
+		// OpenDesign usage probing runs on API key accounts that carry the
+		// device-auth control key. Accounts without one (plain api_key) have no
+		// probe data source and are excluded, matching the cline gate.
+		if a.Type == AccountTypeAPIKey && strings.TrimSpace(a.GetCredential(OpenDesignUsageCredentialsKey)) != "" {
+			return PlatformOpenDesign
+		}
+		return ""
+	}
 	if a.GetAccountMode() != AccountModeCoding {
 		return ""
 	}

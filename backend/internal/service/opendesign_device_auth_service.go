@@ -46,7 +46,6 @@ const (
 	openDesignDefaultProfile    = "prod"
 	// openDesignAuthDefaultAPIBaseURL 是控制面（设备授权 + 钱包）基址；
 	// 转发面仍是 amr-link.open-design.ai（见 DefaultOpenDesignBaseURL）。
-	openDesignAuthDefaultAPIBaseURL = "https://amr-api.open-design.ai"
 
 	openDesignSessionDefaultTTL = 15 * time.Minute
 	openDesignSessionMaxAge     = 20 * time.Minute
@@ -141,7 +140,7 @@ func NewOpenDesignDeviceAuthService() *OpenDesignDeviceAuthService {
 	}
 	apiBaseURL := strings.TrimSpace(os.Getenv("OPENDESIGN_AUTH_API_BASE_URL"))
 	if apiBaseURL == "" {
-		apiBaseURL = openDesignAuthDefaultAPIBaseURL
+		apiBaseURL = DefaultOpenDesignAuthAPIBaseURL
 	}
 
 	svc := &OpenDesignDeviceAuthService{
