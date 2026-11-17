@@ -42,6 +42,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
+	SetActualOpenAIUpstreamEndpoint(c, "/v1/messages")
 	if diagnosticRequestedReasoningEffortFromContext(ctx) == nil {
 		ctx = WithRawRequestedReasoningEffort(ctx, body)
 	}
