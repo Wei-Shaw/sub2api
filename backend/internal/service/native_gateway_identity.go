@@ -297,7 +297,7 @@ func (s *OpenAIGatewayService) ForwardGatewayRoute(ctx context.Context, c *gin.C
 	}
 	if ctx == nil || c == nil || c.Request == nil || s.accountRepo == nil || len(body) > 4<<20 || !gjson.ValidBytes(body) || !gjson.ParseBytes(body).IsObject() || !gatewayNativeUnambiguousPolicyFields(body) ||
 		(route.Profile != GatewayOpenRouterResponsesProfile && route.Profile != GatewayNVIDIABuildChatProfile && !GatewayCodingPlanCatalogProfile(route.Profile) && gjson.GetBytes(body, "model").String() != route.Model) ||
-		(GatewayCodingPlanCatalogProfile(route.Profile) && !GatewayCodingPlanModelAdmitted(route.Profile, gjson.GetBytes(body, "model").String())) || !GatewayNativeAPIKeyProfileValid(route.Profile, route.BaseURL, route.Model) ||
+		(GatewayCodingPlanCatalogProfile(route.Profile) && !GatewayAccountModelIDValid(gjson.GetBytes(body, "model").String())) || !GatewayNativeAPIKeyProfileValid(route.Profile, route.BaseURL, route.Model) ||
 		gjson.GetBytes(body, "previous_response_id").String() != "" ||
 		(gjson.GetBytes(body, "service_tier").Exists() && gjson.GetBytes(body, "service_tier").String() != "default") ||
 		(gjson.GetBytes(body, "store").Exists() && gjson.GetBytes(body, "store").Bool()) {
@@ -379,6 +379,12 @@ func (s *OpenAIGatewayService) ForwardGatewayRoute(ctx context.Context, c *gin.C
 	state := &gatewayNativeDispatch{route: route, account: a, scope: scope, custody: custody}
 	if route.Profile == GatewayNVIDIABuildChatProfile || GatewayCodingPlanCatalogProfile(route.Profile) {
 		state.requestedModel = gjson.GetBytes(body, "model").String()
+	}
+	// Membership (anchor, static documented models or the last good live list) is
+	// read-only here: no network, no lease, no waiting.
+	if GatewayCodingPlanCatalogProfile(route.Profile) && !s.gatewayCodingPlanAdmitted(scope, a.GetCredential("api_key"), route.Profile, state.requestedModel) {
+		gatewayNativeAdmissionDiagnostic(gatewayAdmissionPayload)
+		return nil, false, ErrGatewayNativeIdentity
 	}
 	if route.Profile == GatewayOpenRouterResponsesProfile {
 		state.requestedModel = gjson.GetBytes(body, "model").String()
@@ -502,7 +508,7 @@ func (s *OpenAIGatewayService) checkGatewayNativeDispatch(request *http.Request,
 		// agree at the final locked credential entry boundary.
 		modelAdmitted := GatewayNVIDIABuildModelValid(state.requestedModel)
 		if state.route.Profile != GatewayNVIDIABuildChatProfile {
-			modelAdmitted = GatewayCodingPlanModelAdmitted(state.route.Profile, state.requestedModel)
+			modelAdmitted = s.gatewayCodingPlanAdmitted(state.scope, fresh.GetCredential("api_key"), state.route.Profile, state.requestedModel)
 		}
 		if request.GetBody == nil || !modelAdmitted {
 			release()

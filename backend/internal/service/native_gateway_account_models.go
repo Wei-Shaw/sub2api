@@ -89,12 +89,16 @@ func (s *GatewayAccountModelsReader) Read(ctx context.Context, in GatewayAccount
 		return s.openRouter.readGatewayOpenRouterAccountModels(ctx, in, before, s.authorize)
 	}
 	if in.ProfileID == GatewayNVIDIABuildChatProfile {
-		return s.readStaticCatalogAccountModels(ctx, in, before, "nvidia", []GatewayAccountModel{
-			{ModelID: GatewayNVIDIABuildAnchorModel, Tools: GatewayAccountModelChoices{Allowed: []string{"function"}, Default: "function"}},
+		return s.readStaticCatalogAccountModels(ctx, in, before, "nvidia", func(*Account, GatewayNativeCredentialScope) []GatewayAccountModel {
+			return []GatewayAccountModel{
+				{ModelID: GatewayNVIDIABuildAnchorModel, Tools: GatewayAccountModelChoices{Allowed: []string{"function"}, Default: "function"}},
+			}
 		})
 	}
 	if GatewayCodingPlanCatalogProfile(in.ProfileID) {
-		return s.readStaticCatalogAccountModels(ctx, in, before, "native_catalog", gatewayCodingPlanAccountModels(in.ProfileID))
+		return s.readStaticCatalogAccountModels(ctx, in, before, "native_catalog", func(account *Account, scope GatewayNativeCredentialScope) []GatewayAccountModel {
+			return s.openRouter.codingPlanCatalogueModels(ctx, in, before, account, scope)
+		})
 	}
 	if in.ProfileID != GatewayCodexOAuthResponsesProfile {
 		return GatewayAccountModelsResult{Status: "unsupported"}
@@ -144,11 +148,13 @@ func (s *GatewayAccountModelsReader) Read(ctx context.Context, in GatewayAccount
 
 // Native alone qualifies a bounded static model set for one exact managed
 // API-key account (NVIDIA Build and the coding plans with a catalog). This is
-// NOT an upstream entitlement/credit observation, and it never decrypts the key.
+// NOT an upstream entitlement/credit observation. It does not decrypt the key
+// itself; a coding plan catalogue callback may read the provider list through the
+// read-only quota lease.
 // Owner, physical generation and current encrypted account are checked again.
 func (s *GatewayAccountModelsReader) readStaticCatalogAccountModels(
 	ctx context.Context, in GatewayAccountModelsInput, before GatewayNativeRoute,
-	source string, models []GatewayAccountModel,
+	source string, catalogue func(*Account, GatewayNativeCredentialScope) []GatewayAccountModel,
 ) GatewayAccountModelsResult {
 	unavailable := GatewayAccountModelsResult{Status: "unavailable"}
 	if s.openRouter == nil || s.openRouter.accountRepo == nil ||
@@ -166,6 +172,9 @@ func (s *GatewayAccountModelsReader) readStaticCatalogAccountModels(
 		scope.Generation != before.Generation {
 		return unavailable
 	}
+	// The catalogue is built after the account and scope are authorized and before
+	// the final fence below; a failed fence discards it.
+	models := catalogue(account, scope)
 	after, err := s.authorize(ctx, in.GatewayAccountLimitsInput)
 	if err != nil || ctx.Err() != nil || !SameGatewayNativeDescriptor(before, after) {
 		return unavailable

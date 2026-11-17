@@ -20,8 +20,8 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// The catalog is exact membership. Only GLM has a model beside its anchor, and
-// the enrollment anchor itself is never widened.
+// The static lower bound is exact membership. Only GLM has a documented model
+// beside its anchor, and the enrollment anchor itself is never widened.
 func TestGatewayCodingPlanModelAdmission(t *testing.T) {
 	for _, tuple := range []struct {
 		profile, model string
@@ -40,37 +40,29 @@ func TestGatewayCodingPlanModelAdmission(t *testing.T) {
 		{GatewayNVIDIABuildChatProfile, GatewayNVIDIABuildAnchorModel, false},
 		{"unknown-profile", GatewayGLMCodingResponsesModelFull, false},
 	} {
-		require.Equal(t, tuple.admitted, GatewayCodingPlanModelAdmitted(tuple.profile, tuple.model), "%s %q", tuple.profile, tuple.model)
+		require.Equal(t, tuple.admitted, GatewayCodingPlanStaticModelAdmitted(tuple.profile, tuple.model), "%s %q", tuple.profile, tuple.model)
 	}
 	require.True(t, GatewayCodingPlanCatalogProfile(GatewayGLMCodingResponsesProfile))
-	require.False(t, GatewayCodingPlanCatalogProfile(GatewayKimiCodeResponsesProfile))
-	require.False(t, GatewayCodingPlanCatalogProfile(GatewayMiniMaxMPlanResponsesProfile))
+	require.True(t, GatewayCodingPlanCatalogProfile(GatewayKimiCodeResponsesProfile))
+	require.True(t, GatewayCodingPlanCatalogProfile(GatewayMiniMaxMPlanResponsesProfile))
+	require.False(t, GatewayCodingPlanCatalogProfile(GatewayNVIDIABuildChatProfile))
 	require.True(t, GatewayNativeCodingPlanProfileValid(GatewayGLMCodingResponsesProfile, GatewayGLMCodingResponsesBaseURL, GatewayGLMCodingResponsesModel))
 	require.False(t, GatewayNativeCodingPlanProfileValid(GatewayGLMCodingResponsesProfile, GatewayGLMCodingResponsesBaseURL, GatewayGLMCodingResponsesModelFull),
 		"the enrollment anchor stays the single birth model")
 }
 
-// A request for the second GLM model must pass the bounded input check; any
-// model outside the catalog, or another plan's model, must not.
-func TestGatewayCodingPlanPrepareResponsesModels(t *testing.T) {
+// The bounded input check is structural for the coding plans: any valid model ID
+// passes it and membership is decided at dispatch from the account's catalogue.
+func TestGatewayCodingPlanPrepareResponsesStructure(t *testing.T) {
 	payload := func(model string) []byte {
 		return []byte(fmt.Sprintf(`{"model":%q,"input":"text","stream":true,"store":false,"max_output_tokens":100}`, model))
 	}
-	for _, tuple := range []struct {
-		profile, model string
-		ok             bool
-	}{
-		{GatewayGLMCodingResponsesProfile, GatewayGLMCodingResponsesModel, true},
-		{GatewayGLMCodingResponsesProfile, GatewayGLMCodingResponsesModelFull, true},
-		{GatewayGLMCodingResponsesProfile, "glm-5.2", false},
-		{GatewayKimiCodeResponsesProfile, GatewayGLMCodingResponsesModelFull, false},
-		{GatewayMiniMaxMPlanResponsesProfile, GatewayGLMCodingResponsesModelFull, false},
-	} {
-		_, _, err := gatewayNativePrepareProviderResponses(tuple.profile, payload(tuple.model), 4096)
-		if tuple.ok {
-			require.NoError(t, err, "%s %s", tuple.profile, tuple.model)
-		} else {
-			require.ErrorIs(t, err, ErrGatewayNativeIdentity, "%s %s", tuple.profile, tuple.model)
+	for _, profile := range []string{GatewayKimiCodeResponsesProfile, GatewayGLMCodingResponsesProfile, GatewayMiniMaxMPlanResponsesProfile} {
+		_, _, err := gatewayNativePrepareProviderResponses(profile, payload("vendor/live-model-1"), 4096)
+		require.NoError(t, err, profile)
+		for _, invalid := range []string{"", "bad model", "x\ny"} {
+			_, _, err = gatewayNativePrepareProviderResponses(profile, payload(invalid), 4096)
+			require.ErrorIs(t, err, ErrGatewayNativeIdentity, "%s %q", profile, invalid)
 		}
 	}
 }
@@ -192,7 +184,8 @@ func TestGatewayGLMAccountModelsCatalog(t *testing.T) {
 				return route, nil
 			})
 			require.NoError(t, err)
-			// The catalogue never decodes the key, so it must be readable with a
+			// Without credential custody the lease refuses before any network use, so the
+			// catalogue is the static lower bound; it must be readable with a
 			// context that carries the consumer but no credential custody at all.
 			ctx, err := WithGatewayNativeConsumer(context.Background(), custodyTestScope().Consumer)
 			require.NoError(t, err)
@@ -200,7 +193,7 @@ func TestGatewayGLMAccountModelsCatalog(t *testing.T) {
 			switch change {
 			case "none":
 			case "profile":
-				// Kimi has no catalogue; its stored route is a GLM route, so no snapshot.
+				// Kimi profile with a GLM route: the route does not match, so no snapshot.
 				require.NotEqual(t, "snapshot", result.Status)
 				return
 			default:

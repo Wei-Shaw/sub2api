@@ -330,7 +330,7 @@ func TestFiniteAPIKeyProfilesHTTPAdmissionAndForward(t *testing.T) {
 	}))
 	defer callback.Close()
 	cfg := Config{Gateway: gateway, Custody: custody, Enrollment: Enrollment{"fixture-origin", ownerIncarnation, primary.QualificationRef}, Profile: primary, OpenRouter: &secondary, CodingPlans: plans,
-		MaxEntries: 12, EnvelopeBytes: 8192, CallbackBytes: 65536, CallbackOrigin: callback.URL, CallbackCredential: fixtureCallbackToken,
+		MaxEntries: 16, EnvelopeBytes: 8192, CallbackBytes: 65536, CallbackOrigin: callback.URL, CallbackCredential: fixtureCallbackToken,
 		CallbackTimeout: time.Second, IOTimeout: 5 * time.Second, ProviderReadIdle: time.Second, CleanupTimeout: time.Second,
 		Authorize: func(r *http.Request) (Peer, error) {
 			if r.Header.Get("Authorization") == "Bearer "+fixtureExecutionToken {
@@ -402,7 +402,7 @@ func TestFiniteAPIKeyProfilesHTTPAdmissionAndForward(t *testing.T) {
 		require.Contains(t, string(result.body), "controlled final")
 	}
 	// The GLM catalog model beside the enrollment anchor passes the same
-	// transport; a model outside the catalog is rejected before admission.
+	// transport; a model outside the catalogue is claimed and refused in dispatch.
 	glm := inputs[3]
 	require.Equal(t, service.GatewayGLMCodingResponsesProfile, glm.Descriptor.Profile)
 	glm.RequestRef += "-catalog-model"
@@ -420,10 +420,12 @@ func TestFiniteAPIKeyProfilesHTTPAdmissionAndForward(t *testing.T) {
 		outside.Payload = json.RawMessage(strings.Replace(string(glm.Payload), service.GatewayGLMCodingResponsesModelFull, model, 1))
 		denied := ownerPOST(server.Client(), server.URL, "", fixtureExecutionToken, outside)
 		require.NoError(t, denied.err)
-		require.Equal(t, http.StatusBadRequest, denied.code)
+		// Structure is checked before the claim; membership is native dispatch's
+		// decision, so the request is claimed but never reaches the provider.
+		require.NotContains(t, string(denied.body), "controlled final", model)
 	}
-	require.EqualValues(t, 9, admits.Load())
-	require.EqualValues(t, 9, entries.Load())
+	require.EqualValues(t, 12, admits.Load(), "outside models are claimed and refused in dispatch")
+	require.EqualValues(t, 9, entries.Load(), "no provider entry for a model outside the catalogue")
 	quotaResponse.Store(true)
 	h.cfg.IOTimeout = 50 * time.Millisecond
 	quotaInput := inputs[1]
@@ -454,7 +456,7 @@ func TestFiniteAPIKeyProfilesHTTPAdmissionAndForward(t *testing.T) {
 	stale.RequestRef = "openrouter-stale-tuple"
 	result := ownerPOST(server.Client(), server.URL, "", fixtureExecutionToken, stale)
 	require.NoError(t, result.err)
-	require.EqualValues(t, 11, admits.Load())
+	require.EqualValues(t, 14, admits.Load())
 	require.EqualValues(t, 10, entries.Load())
 	require.NotContains(t, string(result.body), "controlled final")
 }

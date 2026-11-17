@@ -122,8 +122,7 @@ func (h *Handler) serveRequest(raw http.ResponseWriter, r *http.Request, peer Pe
 		if profile.Profile == service.GatewayCodexOAuthResponsesProfile || profile.Profile == service.GatewayOpenRouterResponsesProfile || service.GatewayCodingPlanCatalogProfile(profile.Profile) {
 			fields, valid := service.GatewayNativePayloadFields(input.Payload, "model")
 			if !valid || json.Unmarshal(fields["model"], &requestedModel) != nil || !service.GatewayAccountModelIDValid(requestedModel) ||
-				profile.Profile == service.GatewayOpenRouterResponsesProfile && !service.GatewayOpenRouterModelValid(requestedModel) ||
-				service.GatewayCodingPlanCatalogProfile(profile.Profile) && !service.GatewayCodingPlanModelAdmitted(profile.Profile, requestedModel) {
+				profile.Profile == service.GatewayOpenRouterResponsesProfile && !service.GatewayOpenRouterModelValid(requestedModel) {
 				writeExecutionError(raw, public, http.StatusBadRequest, input.RequestRef)
 				return
 			}

@@ -17,10 +17,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// A public GLM request may select the catalogue model beside its descriptor
-// anchor. Admission and settlement must both carry that model (usage is labelled
-// from it), while a model outside the catalogue never reaches the public claim.
-// Dispatch verification denies entry, so no provider is involved.
+// A public GLM request may select a model beside its descriptor anchor.
+// Admission and settlement must both carry that model (usage is labelled from it).
+// Membership of the model in the account's catalogue is native dispatch's decision
+// and is covered by the service tests. Dispatch verification denies entry here, so
+// no provider is involved.
 func TestPublicGLMRequestedModelUsesCatalogueAndExactSettlement(t *testing.T) {
 	var original Request
 	var admitModels, settleModels []string
@@ -93,10 +94,7 @@ func TestPublicGLMRequestedModelUsesCatalogueAndExactSettlement(t *testing.T) {
 	require.Equal(t, []string{service.GatewayGLMCodingResponsesModelFull}, admitModels, "admission is attributed to the catalogue model")
 	require.Equal(t, []string{service.GatewayGLMCodingResponsesModelFull}, settleModels, "settlement keeps the same model")
 
-	for _, outside := range []string{"glm-5.2", "GLM-5.3", "glm-5.3-extra"} {
-		require.Equal(t, http.StatusBadRequest, call("glm-outside-"+outside, outside), outside)
-	}
-	require.EqualValues(t, 1, admits.Load(), "a model outside the catalogue never claims or settles")
+	require.EqualValues(t, 1, admits.Load())
 	require.EqualValues(t, 1, settlements.Load())
 	require.Zero(t, entries.Load(), "usage metadata never grants provider entry")
 }

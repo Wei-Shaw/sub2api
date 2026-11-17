@@ -134,7 +134,8 @@ func gatewayNativePrepareProviderResponses(profile string, body []byte, requestB
 			return deny()
 		}
 	case GatewayKimiCodeResponsesProfile, GatewayGLMCodingResponsesProfile, GatewayMiniMaxMPlanResponsesProfile:
-		if !GatewayCodingPlanModelAdmitted(profile, model) {
+		// Structural only: membership is decided at dispatch from the account's catalogue.
+		if !GatewayAccountModelIDValid(model) {
 			return deny()
 		}
 	case GatewayGrokOAuthResponsesProfile:
