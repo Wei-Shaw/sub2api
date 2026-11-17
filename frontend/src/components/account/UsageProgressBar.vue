@@ -72,6 +72,7 @@ const props = withDefaults(
   defineProps<{
     label: string
     utilization: number // Percentage (0-100+)
+    utilizationUnknown?: boolean
     resetsAt?: string | null
     color: 'indigo' | 'emerald' | 'purple' | 'amber'
     windowStats?: WindowStats | null
@@ -131,7 +132,7 @@ const labelClass = computed(() => {
 const labelSizeClass = computed(() =>
   props.labelWidth === 'auto'
     ? 'max-w-[72px] shrink-0 truncate rounded px-1 text-left text-[10px] font-medium'
-    : 'w-[32px] shrink-0 rounded px-1 text-center text-[10px] font-medium'
+    : 'min-w-[32px] shrink-0 whitespace-nowrap rounded px-1 text-center text-[10px] font-medium'
 )
 
 // Progress bar color based on utilization
@@ -174,11 +175,13 @@ const textClass = computed(() => {
 
 // Bar width (capped at 100%)
 const barWidth = computed(() => {
+  if (props.utilizationUnknown) return '0%'
   return `${Math.min(Math.max(props.utilization, 0), 100)}%`
 })
 
 // Display percentage (cap at 999% for readability)
 const displayPercent = computed(() => {
+  if (props.utilizationUnknown) return '—'
   if (props.precisePercent && props.utilization > 0 && props.utilization < 100) {
     return props.utilization < 0.01 ? '<0.01%' : `${props.utilization.toFixed(2)}%`
   }
@@ -191,6 +194,7 @@ const displayPercent = computed(() => {
 })
 
 const shouldShowResetTime = computed(() => {
+  if (props.utilizationUnknown) return false
   if (props.resetsAt) return true
   return Boolean(props.showNowWhenIdle && props.utilization <= 0)
 })

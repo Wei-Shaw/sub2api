@@ -5,6 +5,7 @@ package service
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -59,6 +60,39 @@ func (r *grokQuotaAccountRepo) UpdateExtra(_ context.Context, id int64, updates 
 		}
 	}
 	return nil
+}
+
+func (r *grokQuotaAccountRepo) CompareAndSwapGrokObservedModels(ctx context.Context, id int64, expected, next json.RawMessage) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if r == nil || r.mockAccountRepoForPlatform == nil {
+		return false, nil
+	}
+	account := r.accountsByID[id]
+	if account == nil || account.ID != id || account.Platform != PlatformGrok {
+		return false, nil
+	}
+	var current any
+	if account.Extra != nil {
+		current = account.Extra[grokObservedModelsExtraKey]
+	}
+	currentJSON, err := json.Marshal(current)
+	if err != nil {
+		return false, err
+	}
+	if !jsonValuesEqual(currentJSON, expected) {
+		return false, nil
+	}
+	var decoded any
+	if err := json.Unmarshal(next, &decoded); err != nil {
+		return false, err
+	}
+	if account.Extra == nil {
+		account.Extra = map[string]any{}
+	}
+	account.Extra[grokObservedModelsExtraKey] = decoded
+	return true, nil
 }
 
 func (r *grokQuotaAccountRepo) SetRateLimited(_ context.Context, id int64, resetAt time.Time) error {
@@ -139,7 +173,7 @@ func TestSyncGrokObservedModelsUsesCLIIdentityAndAccountHeaders(t *testing.T) {
 	require.Equal(t, "interactive", upstream.lastReq.Header.Get("X-Grok-Client-Mode"))
 	require.Equal(t, "user-902", upstream.lastReq.Header.Get("X-UserID"))
 	require.Equal(t, "user902@example.test", upstream.lastReq.Header.Get("X-Email"))
-	require.Contains(t, repo.updates[account.ID], grokObservedModelsExtraKey)
+	require.Equal(t, []string{"grok-4.5"}, parseGrokObservedModels(account.Extra).Models)
 }
 
 type grokQuotaProxyRepo struct {

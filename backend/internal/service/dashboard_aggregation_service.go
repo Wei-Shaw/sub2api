@@ -373,13 +373,18 @@ func (s *DashboardAggregationService) maybeCleanupRetention(ctx context.Context,
 	}
 	hourlyCutoff := now.AddDate(0, 0, -s.cfg.Retention.HourlyDays)
 	dailyCutoff := now.AddDate(0, 0, -s.cfg.Retention.DailyDays)
-	usageCutoff := now.AddDate(0, 0, -usageDays)
+	// usage_logs 按服务端配置时区整日保留，与分组日桶的日界对齐。
+	usageCutoff := GroupUsageTodayStart(now.AddDate(0, 0, -usageDays))
 	dedupDays := s.cfg.Retention.UsageBillingDedupDays
 	if dedupDays <= 0 {
 		dedupDays = 365
 	}
 	dedupDays = max(dedupDays, usageDays)
+	// 计费去重记录的保留不短于 usage_logs。
 	dedupCutoff := now.AddDate(0, 0, -dedupDays)
+	if usageDays > 0 && dedupCutoff.After(usageCutoff) {
+		dedupCutoff = usageCutoff
+	}
 
 	var aggErr, usageErr, dedupErr error
 	if s.cfg.Enabled {
