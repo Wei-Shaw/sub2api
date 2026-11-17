@@ -1434,6 +1434,7 @@ export interface WindowStats {
 
 export interface UsageProgress {
   utilization: number // Percentage (0-100+, 100 = 100%)
+  utilization_unknown?: boolean
   resets_at: string | null
   remaining_seconds: number
   window_stats?: WindowStats | null // 窗口期统计（从窗口开始到当前的使用量）
@@ -2089,8 +2090,9 @@ export interface EndpointStat {
   endpoint: string
   requests: number
   total_tokens: number
-  cost: number
-  actual_cost: number
+  cost: number // 标准计费
+  actual_cost: number // 实际扣除
+  account_cost?: number // 账号成本（仅管理员接口返回）
 }
 
 export interface GroupStat {
