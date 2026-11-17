@@ -618,7 +618,7 @@ const (
 
 	// SettingKeyMinClaudeCodeVersion 最低 Claude Code 版本号要求 (semver, 如 "2.1.0"，空值=不检查)
 	SettingKeyMinClaudeCodeVersion = "min_claude_code_version"
-	// SettingKeyMinCodexVersion 最低 Codex 引擎版本要求 (semver, 如 "0.141.0"，空值=不检查)
+	// SettingKeyMinCodexVersion 最低 Codex 引擎版本号要求 (semver, 如 "0.141.0"，空值=不检查)
 	SettingKeyMinCodexVersion = "min_codex_version"
 	// SettingKeyMaxCodexVersion 最高 Codex 引擎版本限制 (semver, 如 "0.200.0"，空值=不检查)
 	SettingKeyMaxCodexVersion = "max_codex_version"
@@ -671,9 +671,8 @@ const (
 	SettingKeyEnableFingerprintUnification = "enable_fingerprint_unification"
 	// SettingKeyEnableMetadataPassthrough 是否透传客户端原始 metadata.user_id（默认 false）
 	SettingKeyEnableMetadataPassthrough = "enable_metadata_passthrough"
-	// SettingKeyEnableCCHSigning 已废弃（no-op）：新版 Claude Code CLI 已取消 cch 签名字段，
-	// 网关随之不再注入/签名 cch（见 buildBillingAttributionText）。保留该 key 仅为向后兼容，
-	// 开关不再产生任何效果。
+	// SettingKeyEnableCCHSigning 是否为直连 Anthropic 第一方上游的 OAuth/SetupToken
+	// 请求补齐并最终化 Claude Code cch 签名（默认 false）。签名在所有 body 修改之后执行。
 	SettingKeyEnableCCHSigning = "enable_cch_signing"
 	// SettingKeyEnableClaudeOAuthSystemPromptInjection 是否对 Claude OAuth mimic 路径注入 Claude Code system blocks（默认 true）
 	SettingKeyEnableClaudeOAuthSystemPromptInjection = "enable_claude_oauth_system_prompt_injection"
