@@ -2392,7 +2392,16 @@ const handleDuplicateAccount = async (a: Account) => {
     duplicatingAccountIDs.delete(a.id)
   }
 }
+const lastManualRefreshAt = new Map<number, number>()
+const MANUAL_REFRESH_WARN_INTERVAL_MS = 60_000
+
 const handleRefresh = async (a: Account) => {
+  // 只提醒不阻拦：短时间内反复手动刷新可能与后台自动刷新竞争同一份轮换令牌
+  const lastAt = lastManualRefreshAt.get(a.id) ?? 0
+  if (Date.now() - lastAt < MANUAL_REFRESH_WARN_INTERVAL_MS) {
+    appStore.showWarning(t('admin.accounts.refreshTokenFrequentWarning'))
+  }
+  lastManualRefreshAt.set(a.id, Date.now())
   try {
     const result = await adminAPI.accounts.refreshCredentials(a.id)
     patchAccountInList(result.account)
