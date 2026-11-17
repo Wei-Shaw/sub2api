@@ -230,6 +230,13 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 			return
 		}
 		account := selection.Account
+		// 能力过滤：官方 DeepSeek 支持 /v1/tools/* 与 /v1/files*，ollama /
+		// crazyhub 等第三方中转通常只有对话端点。已探测/兜底判定不支持的工具
+		// 账号直接跳过，换下一个（避免把请求发到必然 404 的上游）。
+		if !account.SupportsOpenAIEndpointCapability(service.OpenAIEndpointCapabilityDeepseekTools) {
+			failed[account.ID] = struct{}{}
+			continue
+		}
 		var started bool
 		release, status := h.acquireResponsesAccountSlot(c, apiKey.GroupID, "", selection, false, &started, reqLog)
 		if status == openAISlotAcquireProfitVetoed {
