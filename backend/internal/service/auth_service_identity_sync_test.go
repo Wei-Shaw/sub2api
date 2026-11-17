@@ -259,6 +259,53 @@ func TestAuthServiceRecordSuccessfulLoginBackfillsEmailIdentity(t *testing.T) {
 	require.Equal(t, user.ID, identity.UserID)
 }
 
+func TestAuthServiceRecordSuccessfulLogin_EmailIdentityOwnedByAnotherUser(t *testing.T) {
+	assigner := &authIdentityDefaultSubAssignerStub{}
+	svc, _, client := newAuthServiceWithEnt(t, map[string]string{
+		service.SettingKeyRegistrationEnabled:                    "true",
+		service.SettingKeyAuthSourceDefaultEmailBalance:          "8.5",
+		service.SettingKeyAuthSourceDefaultEmailGrantOnFirstBind: "true",
+	}, assigner)
+	ctx := context.Background()
+
+	// users.email 唯一索引区分大小写，email 身份按小写邮箱唯一：只差大小写的两个账号共用一条身份。
+	owner, err := client.User.Create().
+		SetEmail("Shared@Example.com").
+		SetPasswordHash("hash").
+		SetBalance(1).
+		SetConcurrency(1).
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+	require.NoError(t, err)
+	user, err := client.User.Create().
+		SetEmail("shared@example.com").
+		SetPasswordHash("hash").
+		SetBalance(1).
+		SetConcurrency(1).
+		SetRole(service.RoleUser).
+		SetStatus(service.StatusActive).
+		Save(ctx)
+	require.NoError(t, err)
+	require.NoError(t, client.AuthIdentity.Create().
+		SetUserID(owner.ID).
+		SetProviderType("email").
+		SetProviderKey("email").
+		SetProviderSubject("shared@example.com").
+		SetVerifiedAt(time.Now().UTC()).
+		SetMetadata(map[string]any{"source": "auth_service_dual_write"}).
+		Exec(ctx))
+
+	require.NotPanics(t, func() { svc.RecordSuccessfulLogin(ctx, user.ID) })
+
+	storedUser, err := client.User.Get(ctx, user.ID)
+	require.NoError(t, err)
+	require.NotNil(t, storedUser.LastLoginAt)
+	require.Equal(t, 1.0, storedUser.Balance)
+	require.Empty(t, assigner.calls)
+	require.Equal(t, 0, countProviderGrantRecords(t, client, user.ID, "email", "first_bind"))
+}
+
 func TestAuthServiceLogin_DoesNotApplyEmailFirstBindDefaultsWhenBackfillingLegacyEmailIdentity(t *testing.T) {
 	assigner := &authIdentityDefaultSubAssignerStub{}
 	svc, _, client := newAuthServiceWithEnt(t, map[string]string{
