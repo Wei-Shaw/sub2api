@@ -53,7 +53,18 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 		return nil, fmt.Errorf("account platform %s is not supported for deepseek tools", account.Platform)
 	}
 	endpoint, fileID := splitDeepseekToolsEndpoint(endpoint)
-	targetURL, err := buildDeepseekToolsURL(account, endpoint, fileID)
+	// Anthropic 兼容 Files 语义分流：请求带 anthropic-beta: files-api-2025-04-14
+	// （DSH 等按官方 Anthropic Files API 形状的客户端）时，files_* 转发到上游
+	// {anthropic_base}/v1/files——官方该端点免 purpose 且返回 Anthropic 形状；
+	// 否则维持 OpenAI 兼容 /v1/files（强制 purpose、OpenAI 形状）透传。
+	anthropicFiles := strings.HasPrefix(endpoint, "files_") && isDeepseekFilesAnthropicRequest(c)
+	var targetURL string
+	var err error
+	if anthropicFiles {
+		targetURL, err = buildDeepseekFilesAnthropicURL(account, endpoint, fileID)
+	} else {
+		targetURL, err = buildDeepseekToolsURL(account, endpoint, fileID)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -81,6 +92,16 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
+	if anthropicFiles {
+		// 官方 /anthropic/v1/files 要求透传 anthropic-beta（files-api-2025-04-14），
+		// anthropic-version 一并保留以贴近客户端原始请求。
+		if beta := strings.TrimSpace(c.GetHeader("anthropic-beta")); beta != "" {
+			req.Header.Set("anthropic-beta", beta)
+		}
+		if version := strings.TrimSpace(c.GetHeader("anthropic-version")); version != "" {
+			req.Header.Set("anthropic-version", version)
+		}
+	}
 	if method == http.MethodPost {
 		if strings.TrimSpace(contentType) == "" {
 			contentType = "application/json"
@@ -238,4 +259,17 @@ func isDeepseekWideRune(r rune) bool {
 	default:
 		return false
 	}
+}
+
+// deepseekFilesBetaHeader 是官方 Anthropic 兼容 Files API 的 beta 标志。
+const deepseekFilesBetaHeader = "files-api-2025-04-14"
+
+// isDeepseekFilesAnthropicRequest 报告入站请求是否按 Anthropic 兼容 Files
+// 语义发起（带 anthropic-beta: files-api-2025-04-14 头）。该语义下官方
+// /anthropic/v1/files 免 purpose 且返回 Anthropic 形状。
+func isDeepseekFilesAnthropicRequest(c *gin.Context) bool {
+	if c == nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(c.GetHeader("anthropic-beta")), deepseekFilesBetaHeader)
 }
