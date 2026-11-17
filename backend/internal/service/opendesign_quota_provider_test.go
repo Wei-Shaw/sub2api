@@ -2,6 +2,7 @@ package service
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
@@ -95,4 +96,36 @@ func TestGetCodingPlanProviderOpenDesign(t *testing.T) {
 
 	oauth := &Account{Platform: PlatformOpenDesign, Type: AccountTypeOAuth, Credentials: map[string]any{OpenDesignUsageCredentialsKey: "ck"}}
 	require.Equal(t, "", oauth.GetCodingPlanProvider(), "account type must stay apikey for probing")
+}
+func TestOpenDesignSchedulingThresholdEvaluation(t *testing.T) {
+	t.Parallel()
+
+	extra := map[string]any{
+		"open_design_5h_used_percent":     30.0,
+		"open_design_weekly_used_percent": 96.0,
+		"open_design_weekly_reset_at":     "2026-11-24T00:00:00Z",
+	}
+	account := &Account{
+		ID:          1,
+		Platform:    PlatformOpenDesign,
+		Type:        AccountTypeAPIKey,
+		Status:      StatusActive,
+		Schedulable: true,
+		Extra:       extra,
+	}
+
+	// open_design must be an allowed platform and evaluate to a pause at 95.
+	require.Contains(t, AllowedSchedulingThresholdPlatforms, PlatformOpenDesign)
+	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformOpenDesign: 95}, time.Now())
+	require.True(t, decision.ShouldPause, "weekly 96% must pause at threshold 95")
+	require.Equal(t, "weekly", decision.Window)
+	require.NotNil(t, decision.Until)
+
+	// Below threshold: no pause.
+	decision = EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformOpenDesign: 99}, time.Now())
+	require.False(t, decision.ShouldPause)
+
+	// Threshold disabled (100): no pause.
+	decision = EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformOpenDesign: 100}, time.Now())
+	require.False(t, decision.ShouldPause)
 }

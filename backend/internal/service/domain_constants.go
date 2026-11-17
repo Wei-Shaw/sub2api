@@ -151,6 +151,7 @@ var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformMiniMax,
 	PlatformOpenCodeGo,
 	PlatformCommandCode,
+	PlatformOpenDesign,
 }
 
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。
