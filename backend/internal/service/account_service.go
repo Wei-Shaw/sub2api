@@ -48,6 +48,13 @@ type OAuthRefreshCandidatePager interface {
 	ListOAuthRefreshCandidatePage(ctx context.Context, options OAuthRefreshPageOptions) (*OAuthRefreshCandidatePage, error)
 }
 
+// SchedulingAutoResumeRepository 在观测到恢复信号（重新授权成功、手动测试成功、
+// 后台刷新成功）后，恢复被系统因错误自动暂停的账号的调度。通过类型断言按需启用，
+// 手动暂停的账号（无自动暂停标记）不受影响。
+type SchedulingAutoResumeRepository interface {
+	ResumeSchedulableIfAutoDisabled(ctx context.Context, id int64, resumedAt time.Time) (bool, error)
+}
+
 type AccountRepository interface {
 	Create(ctx context.Context, account *Account) error
 	GetByID(ctx context.Context, id int64) (*Account, error)
