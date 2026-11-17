@@ -48,7 +48,7 @@ type SystemSettings struct {
 	TencentCaptchaAppSecretKey             string
 	TencentCaptchaAppSecretKeyConfigured   bool
 	TencentCaptchaCloudSecretID            string
-	TencentCaptchaCloudSecretKeyConfigured bool
+	TencentCaptchaCloudSecretIDConfigured  bool
 	TencentCaptchaCloudSecretKey           string
 	TencentCaptchaCloudSecretKeyConfigured bool
 	TencentCaptchaRegion                   string
@@ -135,7 +135,7 @@ type SystemSettings struct {
 	OIDCConnectUserInfoIDPath         string
 	OIDCConnectUserInfoUsernamePath   string
 
-	// GitHub / Google 邮箱快捷登录设置
+	// GitHub / Google 邮箱快捷登录
 	GitHubOAuthEnabled                bool
 	GitHubOAuthClientID               string
 	GitHubOAuthClientSecret           string
@@ -411,7 +411,6 @@ type PublicSettings struct {
 	// Model Plaza feature (public group/model pricing showcase)
 	ModelPlazaEnabled       bool `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth   bool `json:"model_plaza_require_auth"`
-	ModelPlazaDescription   string
 	PluginManagementEnabled bool `json:"plugin_management_enabled"`
 
 	// Affiliate (邀请返利) feature toggle
@@ -466,9 +465,8 @@ func (cfg WeChatConnectOAuthConfig) ScopeForMode(mode string) string {
 		return normalizeWeChatConnectScopeSetting(cfg.Scopes, "mp")
 	case "mobile":
 		return ""
-	default:
-		return normalizeWeChatConnectScopeSetting(cfg.Scopes, "open")
 	}
+	return defaultWeChatConnectScopeForMode("open")
 }
 
 func (cfg WeChatConnectOAuthConfig) AppIDForMode(mode string) string {
@@ -477,9 +475,8 @@ func (cfg WeChatConnectOAuthConfig) AppIDForMode(mode string) string {
 		return strings.TrimSpace(firstNonEmpty(cfg.MPAppID, cfg.LegacyAppID))
 	case "mobile":
 		return strings.TrimSpace(firstNonEmpty(cfg.MobileAppID, cfg.LegacyAppID))
-	default:
-		return strings.TrimSpace(firstNonEmpty(cfg.OpenAppID, cfg.LegacyAppID))
 	}
+	return strings.TrimSpace(firstNonEmpty(cfg.OpenAppID, cfg.LegacyAppID))
 }
 
 func (cfg WeChatConnectOAuthConfig) AppSecretForMode(mode string) string {
@@ -488,9 +485,8 @@ func (cfg WeChatConnectOAuthConfig) AppSecretForMode(mode string) string {
 		return strings.TrimSpace(firstNonEmpty(cfg.MPAppSecret, cfg.LegacyAppSecret))
 	case "mobile":
 		return strings.TrimSpace(firstNonEmpty(cfg.MobileAppSecret, cfg.LegacyAppSecret))
-	default:
-		return strings.TrimSpace(firstNonEmpty(cfg.OpenAppSecret, cfg.LegacyAppSecret))
 	}
+	return strings.TrimSpace(firstNonEmpty(cfg.OpenAppSecret, cfg.LegacyAppSecret))
 }
 
 // StreamTimeoutSettings 流超时处理配置（仅控制超时后的处理方式，超时判定由网关配置控制）
