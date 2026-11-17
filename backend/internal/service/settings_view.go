@@ -48,7 +48,7 @@ type SystemSettings struct {
 	TencentCaptchaAppSecretKey             string
 	TencentCaptchaAppSecretKeyConfigured   bool
 	TencentCaptchaCloudSecretID            string
-	TencentCaptchaCloudSecretIDConfigured  bool
+	TencentCaptchaCloudSecretKeyConfigured bool
 	TencentCaptchaCloudSecretKey           string
 	TencentCaptchaCloudSecretKeyConfigured bool
 	TencentCaptchaRegion                   string
@@ -135,7 +135,7 @@ type SystemSettings struct {
 	OIDCConnectUserInfoIDPath         string
 	OIDCConnectUserInfoUsernamePath   string
 
-	// GitHub / Google 邮箱快捷登录
+	// GitHub / Google 邮箱快捷登录设置
 	GitHubOAuthEnabled                bool
 	GitHubOAuthClientID               string
 	GitHubOAuthClientSecret           string
@@ -239,7 +239,7 @@ type SystemSettings struct {
 	OpenAITTFTMode                         string // Responses first_token_ms 统计口径（默认 semantic）
 	EnableFingerprintUnification           bool   // 是否统一 OAuth 账号的指纹头（默认 true）
 	EnableMetadataPassthrough              bool   // 是否透传客户端原始 metadata（默认 false）
-	EnableCCHSigning                       bool   // 已废弃 no-op：新版 CLI 取消 cch 签名后网关不再注入/签名 cch，开关无效果
+	EnableCCHSigning                       bool   // 是否为直连 Anthropic 第一方上游的 OAuth/SetupToken 请求签名 cch（默认 false）
 	EnableClaudeOAuthSystemPromptInjection bool   // 是否对 Claude OAuth mimic 路径注入 Claude Code system blocks（默认 true）
 	ClaudeOAuthSystemPrompt                string // Claude OAuth mimic 路径注入的通用扩展 system prompt；空值使用内置默认
 	ClaudeOAuthSystemPromptBlocks          string // Claude OAuth mimic 路径注入的 system blocks JSON 配置；空值使用内置默认
@@ -411,6 +411,7 @@ type PublicSettings struct {
 	// Model Plaza feature (public group/model pricing showcase)
 	ModelPlazaEnabled       bool `json:"model_plaza_enabled"`
 	ModelPlazaRequireAuth   bool `json:"model_plaza_require_auth"`
+	ModelPlazaDescription   string
 	PluginManagementEnabled bool `json:"plugin_management_enabled"`
 
 	// Affiliate (邀请返利) feature toggle
@@ -465,8 +466,9 @@ func (cfg WeChatConnectOAuthConfig) ScopeForMode(mode string) string {
 		return normalizeWeChatConnectScopeSetting(cfg.Scopes, "mp")
 	case "mobile":
 		return ""
+	default:
+		return normalizeWeChatConnectScopeSetting(cfg.Scopes, "open")
 	}
-	return defaultWeChatConnectScopeForMode("open")
 }
 
 func (cfg WeChatConnectOAuthConfig) AppIDForMode(mode string) string {
@@ -475,8 +477,9 @@ func (cfg WeChatConnectOAuthConfig) AppIDForMode(mode string) string {
 		return strings.TrimSpace(firstNonEmpty(cfg.MPAppID, cfg.LegacyAppID))
 	case "mobile":
 		return strings.TrimSpace(firstNonEmpty(cfg.MobileAppID, cfg.LegacyAppID))
+	default:
+		return strings.TrimSpace(firstNonEmpty(cfg.OpenAppID, cfg.LegacyAppID))
 	}
-	return strings.TrimSpace(firstNonEmpty(cfg.OpenAppID, cfg.LegacyAppID))
 }
 
 func (cfg WeChatConnectOAuthConfig) AppSecretForMode(mode string) string {
@@ -485,8 +488,9 @@ func (cfg WeChatConnectOAuthConfig) AppSecretForMode(mode string) string {
 		return strings.TrimSpace(firstNonEmpty(cfg.MPAppSecret, cfg.LegacyAppSecret))
 	case "mobile":
 		return strings.TrimSpace(firstNonEmpty(cfg.MobileAppSecret, cfg.LegacyAppSecret))
+	default:
+		return strings.TrimSpace(firstNonEmpty(cfg.OpenAppSecret, cfg.LegacyAppSecret))
 	}
-	return strings.TrimSpace(firstNonEmpty(cfg.OpenAppSecret, cfg.LegacyAppSecret))
 }
 
 // StreamTimeoutSettings 流超时处理配置（仅控制超时后的处理方式，超时判定由网关配置控制）
