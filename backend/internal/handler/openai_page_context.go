@@ -11,10 +11,10 @@ import (
 
 var codexSelectedPageName = regexp.MustCompile(`^codex_apps_selected_page_part_([1-9][0-9]*)_of_([1-9][0-9]*)$`)
 
-// Desktop injects page snapshots as standalone outputs, without a model tool call.
-// Keep them as untrusted user text, including on history replay and mixed bootstrap turns.
-func normalizeCodexPageContext(body []byte) ([]byte, bool) {
-	if !mayContainCodexCallOutputCandidate(body, "codex_apps_open_page", "codex_apps_selected_page_part_") || !hasUniqueJSONMembers(body) {
+// Codex injects external context as standalone outputs, without a model tool call.
+// Use the legacy user-message representation for HTTP Responses interoperability.
+func normalizeCodexUntrustedContext(body []byte) ([]byte, bool) {
+	if !mayContainCodexCallOutputCandidate(body, "codex_apps_open_page", "codex_apps_selected_page_part_", "browser_info", "goal_objective", "untrusted_context") || !hasUniqueJSONMembers(body) {
 		return body, false
 	}
 	var request map[string]json.RawMessage
@@ -46,15 +46,19 @@ func normalizeCodexPageContext(body []byte) ([]byte, bool) {
 			}
 		}
 		name, output := readString("name"), readString("output")
-		if !validCodexPageContext(name, output) {
+		if !validCodexUntrustedContext(name, output) {
 			continue
+		}
+		text := "<external_" + name + ">" + output + "</external_" + name + ">"
+		if validCodexPageContext(name, output) {
+			text = "<external_" + name + ">\n" + output + "\n</external_" + name + ">"
 		}
 		message := map[string]any{
 			"type": "message",
 			"role": "user",
 			"content": []map[string]string{{
 				"type": "input_text",
-				"text": "<external_" + name + ">\n" + output + "\n</external_" + name + ">",
+				"text": text,
 			}},
 		}
 		encoded, err := json.Marshal(message)
@@ -77,6 +81,15 @@ func normalizeCodexPageContext(body []byte) ([]byte, bool) {
 		return body, false
 	}
 	return encoded, true
+}
+
+func validCodexUntrustedContext(name, output string) bool {
+	switch name {
+	case "browser_info", "goal_objective", "untrusted_context":
+		return strings.TrimSpace(output) != ""
+	default:
+		return validCodexPageContext(name, output)
+	}
 }
 
 func validCodexPageContext(name, output string) bool {
