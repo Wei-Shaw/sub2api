@@ -1229,68 +1229,55 @@ func forceEphemeralCacheControlTTL(body []byte, ttl string) []byte {
 	if len(body) == 0 || ttl == "" {
 		return body
 	}
-	out := body
-	var paths []string
-	addPath := func(path string, value gjson.Result) {
-		cc := value.Get("cache_control")
-		if !cc.Exists() || cc.Get("type").String() != "ephemeral" {
+	root := parseRawJSONView(body)
+	edits := make([]jsonSpanEdit, 0, 4)
+	add := func(cc gjson.Result) {
+		if !cc.IsObject() || cc.Get("type").String() != "ephemeral" || cc.Get("ttl").String() == ttl {
 			return
 		}
-		if cc.Get("ttl").String() == ttl {
+		var decoded map[string]any
+		if err := json.Unmarshal([]byte(cc.Raw), &decoded); err != nil {
 			return
 		}
-		paths = append(paths, path+".cache_control.ttl")
+		decoded["ttl"] = ttl
+		encoded, err := marshalOpenAIUpstreamJSON(decoded)
+		if err != nil {
+			return
+		}
+		edits = append(edits, jsonSpanEdit{start: cc.Index, end: cc.Index + len(cc.Raw), data: encoded})
 	}
 
-	if topCC := gjson.GetBytes(body, "cache_control"); topCC.Exists() && topCC.Get("type").String() == "ephemeral" && topCC.Get("ttl").String() != ttl {
-		paths = append(paths, "cache_control.ttl")
+	if topCC := root.Get("cache_control"); topCC.Exists() {
+		add(topCC)
 	}
-
-	system := gjson.GetBytes(body, "system")
-	if system.IsArray() {
-		idx := -1
+	if system := root.Get("system"); system.IsArray() {
 		system.ForEach(func(_, block gjson.Result) bool {
-			idx++
-			addPath(fmt.Sprintf("system.%d", idx), block)
+			add(block.Get("cache_control"))
 			return true
 		})
 	}
-
-	messages := gjson.GetBytes(body, "messages")
-	if messages.IsArray() {
-		msgIdx := -1
+	if messages := root.Get("messages"); messages.IsArray() {
 		messages.ForEach(func(_, msg gjson.Result) bool {
-			msgIdx++
-			content := msg.Get("content")
-			if !content.IsArray() {
-				return true
+			if content := msg.Get("content"); content.IsArray() {
+				content.ForEach(func(_, block gjson.Result) bool {
+					add(block.Get("cache_control"))
+					return true
+				})
 			}
-			contentIdx := -1
-			content.ForEach(func(_, block gjson.Result) bool {
-				contentIdx++
-				addPath(fmt.Sprintf("messages.%d.content.%d", msgIdx, contentIdx), block)
-				return true
-			})
 			return true
 		})
 	}
-
-	tools := gjson.GetBytes(body, "tools")
-	if tools.IsArray() {
-		idx := -1
+	if tools := root.Get("tools"); tools.IsArray() {
 		tools.ForEach(func(_, tool gjson.Result) bool {
-			idx++
-			addPath(fmt.Sprintf("tools.%d", idx), tool)
+			add(tool.Get("cache_control"))
 			return true
 		})
 	}
 
-	for _, path := range paths {
-		if next, err := sjson.SetBytes(out, path, ttl); err == nil {
-			out = next
-		}
+	if out, ok := applyJSONSpanEdits(body, edits); ok {
+		return out
 	}
-	return out
+	return body
 }
 
 func (s *GatewayService) shouldInjectAnthropicCacheTTL1h(ctx context.Context, account *Account) bool {
