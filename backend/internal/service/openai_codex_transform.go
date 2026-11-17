@@ -1423,11 +1423,16 @@ func extractPromptLikeInstructionsFromInput(reqBody map[string]any) string {
 	return strings.Join(texts, "\n\n")
 }
 
-// defaultCodexSynthInstructions 返回合成路径在 instructions 为空时应填入的默认提示词。
+// defaultCodexSynthInstructions returns the compatibility default for an empty
+// instructions field. GPT-6.1 Sol accepts an empty field: do not turn an ordinary
+// API request into a Codex coding task or charge for an unsolicited base prompt.
 //
-// 按 model 选择真实 Codex CLI 的 base instructions，使合成请求在提示词层面贴近真实 Codex 行为；
-// 若内嵌 prompt 意外为空，回退到最小占位符以保证字段非空。
+// Other models keep their existing model-specific Codex prompt and nonempty
+// fallback for upstream compatibility.
 func defaultCodexSynthInstructions(model string) string {
+	if openai.IsGPT61SolModelSpelling(model) {
+		return ""
+	}
 	if instructions := strings.TrimSpace(openai.CodexBaseInstructionsForModel(model)); instructions != "" {
 		return instructions
 	}
