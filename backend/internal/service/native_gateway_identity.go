@@ -28,14 +28,12 @@ const GatewayOpenRouterModel = "openai/gpt-5.4-mini"
 const GatewayOpenRouterNanoModel = "openai/gpt-5.4-nano"
 
 // NVIDIA Build is a separate API-key principal and a fixed upstream, not
-// an alias for other direct plans or an OpenRouter credential.
+// an alias for other direct plans or an OpenRouter credential. The anchor is the
+// enrollment model; requests may select any model of the account catalogue
+// (native_gateway_model_catalog.go).
 const GatewayNVIDIABuildChatProfile = "nvidia-build-chat-apikey-v1"
 const GatewayNVIDIABuildBaseURL = "https://integrate.api.nvidia.com/v1"
 const GatewayNVIDIABuildAnchorModel = "nvidia/nemotron-3.5-super-vl-120b-a12b"
-
-func GatewayNVIDIABuildModelValid(model string) bool {
-	return model == GatewayNVIDIABuildAnchorModel
-}
 
 func GatewayOpenRouterModelValid(model string) bool {
 	// This validates descriptor syntax only. Candidate qualification and every
@@ -296,8 +294,8 @@ func (s *OpenAIGatewayService) ForwardGatewayRoute(ctx context.Context, c *gin.C
 		return s.forwardGatewayOAuthRoute(ctx, c, route, body)
 	}
 	if ctx == nil || c == nil || c.Request == nil || s.accountRepo == nil || len(body) > 4<<20 || !gjson.ValidBytes(body) || !gjson.ParseBytes(body).IsObject() || !gatewayNativeUnambiguousPolicyFields(body) ||
-		(route.Profile != GatewayOpenRouterResponsesProfile && route.Profile != GatewayNVIDIABuildChatProfile && !GatewayCodingPlanCatalogProfile(route.Profile) && gjson.GetBytes(body, "model").String() != route.Model) ||
-		(GatewayCodingPlanCatalogProfile(route.Profile) && !GatewayAccountModelIDValid(gjson.GetBytes(body, "model").String())) || !GatewayNativeAPIKeyProfileValid(route.Profile, route.BaseURL, route.Model) ||
+		(route.Profile != GatewayOpenRouterResponsesProfile && !GatewayModelCatalogProfile(route.Profile) && gjson.GetBytes(body, "model").String() != route.Model) ||
+		(GatewayModelCatalogProfile(route.Profile) && !GatewayAccountModelIDValid(gjson.GetBytes(body, "model").String())) || !GatewayNativeAPIKeyProfileValid(route.Profile, route.BaseURL, route.Model) ||
 		gjson.GetBytes(body, "previous_response_id").String() != "" ||
 		(gjson.GetBytes(body, "service_tier").Exists() && gjson.GetBytes(body, "service_tier").String() != "default") ||
 		(gjson.GetBytes(body, "store").Exists() && gjson.GetBytes(body, "store").Bool()) {
@@ -377,12 +375,12 @@ func (s *OpenAIGatewayService) ForwardGatewayRoute(ctx context.Context, c *gin.C
 	}
 	a = snapshotGatewayNativeAccount(a)
 	state := &gatewayNativeDispatch{route: route, account: a, scope: scope, custody: custody}
-	if route.Profile == GatewayNVIDIABuildChatProfile || GatewayCodingPlanCatalogProfile(route.Profile) {
+	// Membership (anchor, static models or the last good live list) is read-only
+	// here: no network, no lease, no waiting.
+	if GatewayModelCatalogProfile(route.Profile) {
 		state.requestedModel = gjson.GetBytes(body, "model").String()
 	}
-	// Membership (anchor, static documented models or the last good live list) is
-	// read-only here: no network, no lease, no waiting.
-	if GatewayCodingPlanCatalogProfile(route.Profile) && !s.gatewayCodingPlanAdmitted(scope, a.GetCredential("api_key"), route.Profile, state.requestedModel) {
+	if GatewayModelCatalogProfile(route.Profile) && !s.gatewayModelCatalogueAdmitted(scope, a.GetCredential("api_key"), route.Profile, state.requestedModel) {
 		gatewayNativeAdmissionDiagnostic(gatewayAdmissionPayload)
 		return nil, false, ErrGatewayNativeIdentity
 	}
@@ -503,14 +501,10 @@ func (s *OpenAIGatewayService) checkGatewayNativeDispatch(request *http.Request,
 		gatewayNativeAdmissionDiagnostic(gatewayAdmissionCredential)
 		return noop, ErrGatewayNativeIdentity
 	}
-	if state.route.Profile == GatewayNVIDIABuildChatProfile || GatewayCodingPlanCatalogProfile(state.route.Profile) {
+	if GatewayModelCatalogProfile(state.route.Profile) {
 		// The bound provider/model tuple and the actual outgoing body must still
 		// agree at the final locked credential entry boundary.
-		modelAdmitted := GatewayNVIDIABuildModelValid(state.requestedModel)
-		if state.route.Profile != GatewayNVIDIABuildChatProfile {
-			modelAdmitted = s.gatewayCodingPlanAdmitted(state.scope, fresh.GetCredential("api_key"), state.route.Profile, state.requestedModel)
-		}
-		if request.GetBody == nil || !modelAdmitted {
+		if request.GetBody == nil || !s.gatewayModelCatalogueAdmitted(state.scope, fresh.GetCredential("api_key"), state.route.Profile, state.requestedModel) {
 			release()
 			return noop, ErrGatewayNativeIdentity
 		}

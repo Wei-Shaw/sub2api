@@ -474,9 +474,9 @@ type OpenAIGatewayService struct {
 	liveAttestation       liveattestation.Provider
 	liveAttestationCipher SecretEncryptor
 
-	gatewayOpenRouterModels   *GatewayOpenRouterModels
-	gatewayCodingPlanLive     *GatewayCodingPlanLiveModels
-	gatewayCodingPlanLiveOnce sync.Once
+	gatewayOpenRouterModels *GatewayOpenRouterModels
+	gatewayLiveModels       *GatewayLiveModels
+	gatewayLiveModelsOnce   sync.Once
 
 	openaiWSPoolOnce               sync.Once
 	openaiWSStateStoreOnce         sync.Once

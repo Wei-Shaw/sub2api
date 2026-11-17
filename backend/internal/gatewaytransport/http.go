@@ -119,7 +119,7 @@ func (h *Handler) serveRequest(raw http.ResponseWriter, r *http.Request, peer Pe
 		}
 	} else {
 		requireTier := !service.GatewayNativeCodingPlanProfileIDValid(profile.Profile) && profile.Profile != service.GatewayGrokOAuthResponsesProfile
-		if profile.Profile == service.GatewayCodexOAuthResponsesProfile || profile.Profile == service.GatewayOpenRouterResponsesProfile || service.GatewayCodingPlanCatalogProfile(profile.Profile) {
+		if profile.Profile == service.GatewayCodexOAuthResponsesProfile || profile.Profile == service.GatewayOpenRouterResponsesProfile || service.GatewayModelCatalogProfile(profile.Profile) {
 			fields, valid := service.GatewayNativePayloadFields(input.Payload, "model")
 			if !valid || json.Unmarshal(fields["model"], &requestedModel) != nil || !service.GatewayAccountModelIDValid(requestedModel) ||
 				profile.Profile == service.GatewayOpenRouterResponsesProfile && !service.GatewayOpenRouterModelValid(requestedModel) {

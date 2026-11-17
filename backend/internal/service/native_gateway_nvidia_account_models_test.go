@@ -5,6 +5,8 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net/http"
 	"testing"
 	"time"
 
@@ -60,7 +62,10 @@ func TestGatewayNVIDIAAccountModelsPhysicalRouteAndFences(t *testing.T) {
 				input.ExpectedAuthorizationEpoch++
 			}
 			repository := &gatewayIdentityRepoFixture{row: account}
-			gateway := &OpenAIGatewayService{accountRepo: repository}
+			// The public list is unreachable here, so the catalogue is the anchor alone.
+			gateway := &OpenAIGatewayService{accountRepo: repository, gatewayLiveModels: NewGatewayLiveModels(roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return nil, errors.New("no provider in this test")
+			}))}
 			authorizations := 0
 			reader, err := NewGatewayAccountModelsReader(nil, gateway, func(_ context.Context, in GatewayAccountLimitsInput) (GatewayNativeRoute, error) {
 				authorizations++

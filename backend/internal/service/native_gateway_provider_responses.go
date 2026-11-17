@@ -129,11 +129,7 @@ func gatewayNativePrepareProviderResponses(profile string, body []byte, requestB
 		return deny()
 	}
 	switch profile {
-	case GatewayNVIDIABuildChatProfile:
-		if !GatewayNVIDIABuildModelValid(model) {
-			return deny()
-		}
-	case GatewayKimiCodeResponsesProfile, GatewayGLMCodingResponsesProfile, GatewayMiniMaxMPlanResponsesProfile:
+	case GatewayNVIDIABuildChatProfile, GatewayKimiCodeResponsesProfile, GatewayGLMCodingResponsesProfile, GatewayMiniMaxMPlanResponsesProfile:
 		// Structural only: membership is decided at dispatch from the account's catalogue.
 		if !GatewayAccountModelIDValid(model) {
 			return deny()

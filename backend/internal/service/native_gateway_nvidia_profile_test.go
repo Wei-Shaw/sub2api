@@ -28,16 +28,3 @@ func TestGatewayNVIDIABuildProfileIsFixedAndIndependent(t *testing.T) {
 		}
 	}
 }
-
-func TestGatewayNVIDIABuildStaticModelMembership(t *testing.T) {
-	for _, model := range []string{GatewayNVIDIABuildAnchorModel} {
-		if !GatewayNVIDIABuildModelValid(model) {
-			t.Fatalf("qualified model refused: %s", model)
-		}
-	}
-	for _, model := range []string{"", "z-ai/glm-5.3-flash:free", "deepseek-ai/deepseek-v4.1-flash", "nvidia/nemotron-3.5-super-vl-120b-a12b ", "https://integrate.api.nvidia.com", "moonshotai/kimi-k3.1-pro"} {
-		if GatewayNVIDIABuildModelValid(model) {
-			t.Fatalf("unsupported model accepted: %s", model)
-		}
-	}
-}

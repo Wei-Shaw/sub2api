@@ -21,7 +21,7 @@ import (
 
 func nativeReviewStreamAccount(t *testing.T, base, profile string) *Account {
 	mode, pass := "force_responses", true
-	if profile == GatewayLegacyBridgeProfile {
+	if profile == GatewayLegacyBridgeProfile || profile == GatewayNVIDIABuildChatProfile {
 		mode, pass = "force_chat_completions", false
 	}
 	a := &Account{ID: 17, CreatedAt: time.Date(2026, 10, 3, 0, 0, 0, 123000, time.UTC), Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive,
