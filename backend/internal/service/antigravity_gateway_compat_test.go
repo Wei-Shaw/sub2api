@@ -1586,7 +1586,11 @@ func TestTempUnscheduleRetryableErrorSkipsMalformedFunctionCall(t *testing.T) {
 	emptyErr, ok := antigravityCompatEmptyStreamError().(*UpstreamFailoverError)
 	require.True(t, ok)
 	svc.TempUnscheduleRetryableError(context.Background(), 6, emptyErr)
-	require.Equal(t, []int64{6}, repo.ids, "普通空流仍按原逻辑封禁")
+	require.Empty(t, repo.ids, "an empty stream is request-scoped: no shared account is cooled")
+
+	otherErr := &UpstreamFailoverError{StatusCode: http.StatusBadGateway, RetryableOnSameAccount: true}
+	svc.TempUnscheduleRetryableError(context.Background(), 7, otherErr)
+	require.Equal(t, []int64{7}, repo.ids, "other retryable 502s keep their cooldown")
 }
 
 type malformedTempUnschedRepo struct {
