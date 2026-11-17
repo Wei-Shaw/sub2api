@@ -1801,8 +1801,8 @@ func TestGPT61SolRejectsDisabledReasoningBeforeForwarding(t *testing.T) {
 		`{"model":"public","thinking":{"type":"disabled"}}`,
 		`{"model":"gpt-6.1-sol-minimal"}`,
 	} {
-		require.Error(t, validateGPT61SolCompatRequest([]byte(body), "gpt-6.1-sol"))
-		require.NoError(t, validateGPT61SolCompatRequest([]byte(body), "gpt-6-sol"))
+		require.Error(t, validateGPT61CompatRequest([]byte(body), "gpt-6.1-sol"))
+		require.NoError(t, validateGPT61CompatRequest([]byte(body), "gpt-6-sol"))
 	}
 	for _, field := range []string{`"reasoning_effort":"none"`, `"reasoning_effort":"minimal"`, `"tools":[{"type":"function","function":{"name":"lookup"}}]`} {
 		body := []byte(`{"model":"public",` + field + `,"messages":[{"role":"user","content":"hello"}]}`)

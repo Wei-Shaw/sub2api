@@ -41,18 +41,24 @@ type anthropicNativeLineEvent struct {
 // anthropicNativeLinePump 以独立 goroutine 泵送 scanner 的行，并对逐行到达
 // 间隔施加 interval 上限（<=0 表示禁用，可经 enableInterval 启用）。
 type anthropicNativeLinePump struct {
-	events   chan anthropicNativeLineEvent
-	done     chan struct{}
-	timer    *time.Timer
-	interval time.Duration
+	events      chan anthropicNativeLineEvent
+	done        chan struct{}
+	timer       *time.Timer
+	interval    time.Duration
+	queueBudget *sseQueueBudget
 }
 
 // newAnthropicNativeLinePump 启动泵 goroutine；调用方 defer pump.stop()。
-func newAnthropicNativeLinePump(scanner *bufio.Scanner, interval time.Duration) *anthropicNativeLinePump {
+func newAnthropicNativeLinePump(scanner *bufio.Scanner, interval time.Duration, configs ...*config.Config) *anthropicNativeLinePump {
+	var cfg *config.Config
+	if len(configs) > 0 {
+		cfg = configs[0]
+	}
 	p := &anthropicNativeLinePump{
-		events:   make(chan anthropicNativeLineEvent, 16),
-		done:     make(chan struct{}),
-		interval: interval,
+		events:      make(chan anthropicNativeLineEvent, 16),
+		done:        make(chan struct{}),
+		interval:    interval,
+		queueBudget: newSSEQueueBudget(cfg),
 	}
 	if interval > 0 {
 		p.timer = time.NewTimer(interval)
@@ -60,9 +66,13 @@ func newAnthropicNativeLinePump(scanner *bufio.Scanner, interval time.Duration) 
 	go func() {
 		defer close(p.events)
 		for scanner.Scan() {
+			if !p.queueBudget.acquire(len(scanner.Bytes()), p.done) {
+				return
+			}
 			select {
 			case p.events <- anthropicNativeLineEvent{line: scanner.Text()}:
 			case <-p.done:
+				p.queueBudget.release(len(scanner.Bytes()))
 				return
 			}
 		}
@@ -109,6 +119,9 @@ func (p *anthropicNativeLinePump) nextOrClientGone(clientGone <-chan struct{}) (
 func (p *anthropicNativeLinePump) deliver(ev anthropicNativeLineEvent, ok bool) (string, error) {
 	if !ok {
 		return "", io.EOF
+	}
+	if p.queueBudget != nil {
+		p.queueBudget.release(len(ev.line))
 	}
 	p.resetTimer()
 	return ev.line, ev.err

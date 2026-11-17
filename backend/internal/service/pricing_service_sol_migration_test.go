@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
@@ -20,6 +22,7 @@ const solDefaultURL = "https://raw.githubusercontent.com/Wei-Shaw/model-price-re
 const solDeployURL = "https://raw.githubusercontent.com/Wei-Shaw/model-price-repo/refs/heads/main//model_prices_and_context_window.json"
 
 type solMigrationRemoteClient struct {
+	mu        sync.Mutex
 	body      string
 	err       error
 	downloads int
@@ -27,13 +30,23 @@ type solMigrationRemoteClient struct {
 }
 
 func (client *solMigrationRemoteClient) FetchPricingJSON(context.Context, string) ([]byte, error) {
+	client.mu.Lock()
+	defer client.mu.Unlock()
 	client.downloads++
 	return []byte(client.body), client.err
 }
 
 func (client *solMigrationRemoteClient) FetchHashText(context.Context, string) (string, error) {
+	client.mu.Lock()
+	defer client.mu.Unlock()
 	client.hashes++
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(client.body))), client.err
+}
+
+func (client *solMigrationRemoteClient) counts() (hashes, downloads int) {
+	client.mu.Lock()
+	defer client.mu.Unlock()
+	return client.hashes, client.downloads
 }
 
 func TestSolDefaultMigrationPriorBundledOfflineCache(t *testing.T) {
@@ -41,6 +54,8 @@ func TestSolDefaultMigrationPriorBundledOfflineCache(t *testing.T) {
 	require.NoError(t, err)
 	for _, url := range []string{solDefaultURL, solDeployURL} {
 		t.Run(url, func(t *testing.T) {
+			logs, restore := captureStructuredLog(t)
+			t.Cleanup(restore)
 			cfg := &config.Config{Pricing: config.PricingConfig{
 				RemoteURL: url, HashURL: "https://example.com/hash", DataDir: t.TempDir(), UpdateIntervalHours: 24,
 			}}
@@ -49,9 +64,8 @@ func TestSolDefaultMigrationPriorBundledOfflineCache(t *testing.T) {
 			require.NoError(t, os.WriteFile(svc.getPricingFilePath(), body, 0644))
 			require.NoError(t, svc.Initialize())
 			t.Cleanup(svc.Stop)
-			require.Equal(t, 1, client.hashes)
-			require.Zero(t, client.downloads)
 			pricing := svc.GetModelPricing("gpt-5.6-sol")
+			require.NotNil(t, pricing)
 			require.InDelta(t, 4e-6, pricing.InputCostPerToken, 1e-12)
 			require.InDelta(t, 20e-6, pricing.OutputCostPerToken, 1e-12)
 			require.InDelta(t, 5e-6, pricing.CacheCreationInputTokenCost, 1e-12)
@@ -59,6 +73,12 @@ func TestSolDefaultMigrationPriorBundledOfflineCache(t *testing.T) {
 			require.Equal(t, 272000, pricing.LongContextInputTokenThreshold)
 			require.Equal(t, 2.0, pricing.LongContextInputCostMultiplier)
 			require.Equal(t, 1.5, pricing.LongContextOutputCostMultiplier)
+			require.Eventually(t, func() bool {
+				return logs.ContainsMessage("Failed to fetch remote hash on startup: offline")
+			}, 2*time.Second, 10*time.Millisecond, "background hash failure must be logged")
+			hashes, downloads := client.counts()
+			require.Equal(t, 1, hashes)
+			require.Zero(t, downloads)
 			billing := NewBillingService(&config.Config{}, svc)
 			for _, input := range []int{272000, 272001} {
 				cost, err := billing.CalculateCost("gpt-5.6-sol", UsageTokens{InputTokens: input, OutputTokens: 100}, 1)
@@ -119,10 +139,12 @@ func TestSolDefaultMigrationRefreshPreservesFuturePrices(t *testing.T) {
 				require.NoError(t, err)
 				require.JSONEq(t, body, string(persisted))
 			}
-			require.Equal(t, 2, client.downloads)
+			_, downloads := client.counts()
+			require.Equal(t, 2, downloads)
 			if refresh == "hash_change" {
 				require.NoError(t, svc.syncWithRemote())
-				require.Equal(t, 2, client.downloads)
+				_, downloads = client.counts()
+				require.Equal(t, 2, downloads)
 			}
 		})
 	}
@@ -176,7 +198,7 @@ func initializedSolPricing(t *testing.T, url, body, override string, cached bool
 		cfg.Pricing.OverrideFile = filepath.Join(cfg.Pricing.DataDir, "override.json")
 		require.NoError(t, os.WriteFile(cfg.Pricing.OverrideFile, []byte(override), 0644))
 	}
-	svc := NewPricingService(cfg, stubPricingRemoteClient{body: body})
+	svc := NewPricingService(cfg, &stubPricingRemoteClient{body: body})
 	if cached {
 		require.NoError(t, os.WriteFile(svc.getPricingFilePath(), []byte(body), 0644))
 	}
@@ -259,7 +281,7 @@ func TestSolDefaultMigrationOverrideReloadAndDisable(t *testing.T) {
 	pricing = svc.GetModelPricing("gpt-5.6-sol")
 	require.InDelta(t, 9e-6, pricing.InputCostPerToken, 1e-12)
 	require.InDelta(t, 20e-6, pricing.OutputCostPerToken, 1e-12)
-	svc.remoteClient = stubPricingRemoteClient{body: obsoleteSolCatalog(t, map[string]any{"input_cost_per_token": 7e-6})}
+	svc.remoteClient = &stubPricingRemoteClient{body: obsoleteSolCatalog(t, map[string]any{"input_cost_per_token": 7e-6})}
 	require.NoError(t, svc.ForceUpdate())
 	require.NoError(t, os.Remove(svc.cfg.Pricing.OverrideFile))
 	svc.reloadIfCustomFilesChanged()
@@ -319,7 +341,7 @@ func TestSolDefaultMigrationCustomFallback(t *testing.T) {
 			cfg.Pricing.OverrideFile = filepath.Join(cfg.Pricing.DataDir, "override.json")
 			require.NoError(t, os.WriteFile(cfg.Pricing.FallbackFile, []byte(obsoleteSolCatalog(t, nil)), 0644))
 			require.NoError(t, os.WriteFile(cfg.Pricing.OverrideFile, []byte(`{"gpt-5.6-sol":{"cache_read_input_token_cost":0}}`), 0644))
-			svc := NewPricingService(cfg, stubPricingRemoteClient{body: remoteBody})
+			svc := NewPricingService(cfg, &stubPricingRemoteClient{body: remoteBody})
 			require.NoError(t, svc.Initialize())
 			t.Cleanup(svc.Stop)
 			pricing := svc.GetModelPricing("gpt-5.6-sol")
@@ -331,11 +353,11 @@ func TestSolDefaultMigrationCustomFallback(t *testing.T) {
 			require.InDelta(t, 5e-6, pricing.InputCostPerToken, 1e-12)
 			require.Zero(t, pricing.OutputCostPerToken)
 			if remoteBody == "{" {
-				restarted := NewPricingService(cfg, stubPricingRemoteClient{body: remoteBody})
+				restarted := NewPricingService(cfg, &stubPricingRemoteClient{body: remoteBody})
 				require.NoError(t, restarted.Initialize())
 				t.Cleanup(restarted.Stop)
 				require.InDelta(t, 5e-6, restarted.GetModelPricing("gpt-5.6-sol").InputCostPerToken, 1e-12)
-				svc.remoteClient = stubPricingRemoteClient{body: obsoleteSolCatalog(t, nil)}
+				svc.remoteClient = &stubPricingRemoteClient{body: obsoleteSolCatalog(t, nil)}
 				require.NoError(t, svc.ForceUpdate())
 				require.InDelta(t, 4e-6, svc.GetModelPricing("gpt-5.6-sol").InputCostPerToken, 1e-12)
 				svc.reloadIfCustomFilesChanged()

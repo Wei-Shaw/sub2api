@@ -3,12 +3,25 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 )
+
+// consumeRefreshTokenScript atomically reads and deletes a refresh token.
+// Rotation must only succeed for one concurrent caller, otherwise the same
+// token can be exchanged twice (double-spend).
+var consumeRefreshTokenScript = redis.NewScript(`
+	local value = redis.call('GET', KEYS[1])
+	if not value then
+		return nil
+	end
+	redis.call('DEL', KEYS[1])
+	return value
+`)
 
 const (
 	refreshTokenKeyPrefix   = "refresh_token:"
@@ -68,6 +81,21 @@ func (c *refreshTokenCache) GetRefreshToken(ctx context.Context, tokenHash strin
 func (c *refreshTokenCache) DeleteRefreshToken(ctx context.Context, tokenHash string) error {
 	key := refreshTokenKey(tokenHash)
 	return c.rdb.Del(ctx, key).Err()
+}
+
+func (c *refreshTokenCache) ConsumeRefreshToken(ctx context.Context, tokenHash string) (*service.RefreshTokenData, error) {
+	val, err := consumeRefreshTokenScript.Run(ctx, c.rdb, []string{refreshTokenKey(tokenHash)}).Text()
+	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return nil, service.ErrRefreshTokenNotFound
+		}
+		return nil, err
+	}
+	var data service.RefreshTokenData
+	if err := json.Unmarshal([]byte(val), &data); err != nil {
+		return nil, fmt.Errorf("unmarshal refresh token data: %w", err)
+	}
+	return &data, nil
 }
 
 func (c *refreshTokenCache) DeleteUserRefreshTokens(ctx context.Context, userID int64) error {

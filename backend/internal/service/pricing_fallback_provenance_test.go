@@ -17,12 +17,12 @@ func TestFallbackPricingMarkerWriteFailureDoesNotPersistUnmarkedCache(t *testing
 			}}
 			cfg.Pricing.FallbackFile = filepath.Join(cfg.Pricing.DataDir, "fallback.json")
 			require.NoError(t, os.WriteFile(cfg.Pricing.FallbackFile, []byte(obsoleteSolCatalog(t, nil)), 0644))
-			svc := NewPricingService(cfg, stubPricingRemoteClient{body: "{"})
+			svc := NewPricingService(cfg, &stubPricingRemoteClient{body: "{"})
 			require.NoError(t, os.Mkdir(svc.fallbackPricingMarkerPath(), 0755))
 			if existingCache {
 				require.NoError(t, os.WriteFile(svc.getPricingFilePath(), []byte("{"), 0644))
 			}
-			for _, current := range []*PricingService{svc, NewPricingService(cfg, stubPricingRemoteClient{body: "{"})} {
+			for _, current := range []*PricingService{svc, NewPricingService(cfg, &stubPricingRemoteClient{body: "{"})} {
 				require.NoError(t, current.Initialize())
 				t.Cleanup(current.Stop)
 				require.InDelta(t, 5e-6, current.GetModelPricing("gpt-5.6-sol").InputCostPerToken, 1e-12)
