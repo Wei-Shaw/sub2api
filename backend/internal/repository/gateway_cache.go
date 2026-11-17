@@ -275,57 +275,69 @@ func (c *gatewayCache) ReleaseGrokVideoBilled(ctx context.Context, key string) e
 var _ service.CyberSessionBlockStore = (*gatewayCache)(nil)
 var _ service.LiveCallStore = (*gatewayCache)(nil)
 
-// anthropicFileOwnerPrefix 是 Anthropic 形状 file_id → 上传账号归属的键前缀。
+// anthropicFileOwnerPrefix 是 Anthropic 形状 file_id → 上传归属的键前缀。
+// 键为 deepseek_file_owner:{fileID}，值为 ownerUserID|accountID|platform：
+// 归属用户与账号一起保存，供 /v1/messages 判定请求者是否为文件归属者。
 const anthropicFileOwnerPrefix = "deepseek_file_owner:"
 
 // anthropicFileOwnerDefaultTTL 是调用方未给 TTL 时的兜底，与 service 层固定的
 // 7 天文件归属有效期保持一致。
 const anthropicFileOwnerDefaultTTL = 7 * 24 * time.Hour
 
-// SetAnthropicFileOwner 记录 file_id 的归属账号与平台（"accountID|platform"）。
-// fileID 或 platform 为空、accountID<=0 时直接返回 nil（无可缓存内容）。
-func (c *gatewayCache) SetAnthropicFileOwner(ctx context.Context, fileID string, accountID int64, platform string, ttl time.Duration) error {
+// SetAnthropicFileOwner 记录 file_id 的归属，值为 "ownerUserID|accountID|platform"。
+// ownerUserID<=0（无法确定归属用户）、fileID/platform 为空或 accountID<=0 时
+// 直接返回 nil（无可缓存内容）。
+func (c *gatewayCache) SetAnthropicFileOwner(ctx context.Context, fileID string, ownerUserID int64, accountID int64, platform string, ttl time.Duration) error {
 	if c == nil || c.rdb == nil {
 		return errors.New("gateway cache unavailable")
 	}
 	fileID = strings.TrimSpace(fileID)
 	platform = strings.TrimSpace(platform)
-	if fileID == "" || platform == "" || accountID <= 0 {
+	if fileID == "" || platform == "" || ownerUserID <= 0 || accountID <= 0 {
 		return nil
 	}
 	if ttl <= 0 {
 		ttl = anthropicFileOwnerDefaultTTL
 	}
-	value := strconv.FormatInt(accountID, 10) + "|" + platform
+	value := strconv.FormatInt(ownerUserID, 10) + "|" + strconv.FormatInt(accountID, 10) + "|" + platform
 	return c.rdb.Set(ctx, anthropicFileOwnerPrefix+fileID, value, ttl).Err()
 }
 
-// GetAnthropicFileOwner 返回 file_id 的归属账号与平台；未命中返回 (0,"",false,nil)。
-func (c *gatewayCache) GetAnthropicFileOwner(ctx context.Context, fileID string) (int64, string, bool, error) {
+// GetAnthropicFileOwner 返回 file_id 的归属用户、账号与平台；未命中返回
+// (0,0,"",false,nil)。旧格式值（只有 accountID|platform、没有归属用户）或
+// 字段非法时同样返回 ok=false，按"未知归属"处理，避免旧数据误伤跨用户请求。
+func (c *gatewayCache) GetAnthropicFileOwner(ctx context.Context, fileID string) (int64, int64, string, bool, error) {
 	if c == nil || c.rdb == nil {
-		return 0, "", false, errors.New("gateway cache unavailable")
+		return 0, 0, "", false, errors.New("gateway cache unavailable")
 	}
 	fileID = strings.TrimSpace(fileID)
 	if fileID == "" {
-		return 0, "", false, nil
+		return 0, 0, "", false, nil
 	}
 	val, err := c.rdb.Get(ctx, anthropicFileOwnerPrefix+fileID).Result()
 	if err != nil {
 		if errors.Is(err, redis.Nil) {
-			return 0, "", false, nil
+			return 0, 0, "", false, nil
 		}
-		return 0, "", false, err
+		return 0, 0, "", false, err
 	}
-	accountIDStr, platform, ok := strings.Cut(val, "|")
-	if !ok {
-		return 0, "", false, nil
+	parts := strings.SplitN(val, "|", 3)
+	if len(parts) != 3 {
+		return 0, 0, "", false, nil
 	}
-	platform = strings.TrimSpace(platform)
-	accountID, err := strconv.ParseInt(accountIDStr, 10, 64)
-	if err != nil || accountID <= 0 || platform == "" {
-		return 0, "", false, nil
+	ownerUserID, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || ownerUserID <= 0 {
+		return 0, 0, "", false, nil
 	}
-	return accountID, platform, true, nil
+	accountID, err := strconv.ParseInt(parts[1], 10, 64)
+	if err != nil || accountID <= 0 {
+		return 0, 0, "", false, nil
+	}
+	platform := strings.TrimSpace(parts[2])
+	if platform == "" {
+		return 0, 0, "", false, nil
+	}
+	return ownerUserID, accountID, platform, true, nil
 }
 
 const reasoningContentPrefix = "reasoning_content:"

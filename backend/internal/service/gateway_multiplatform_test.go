@@ -305,11 +305,11 @@ func (m *mockGatewayCacheForPlatform) GetReasoningContent(_ context.Context, _ s
 	return "", ErrReasoningContentNotFound
 }
 
-func (m *mockGatewayCacheForPlatform) SetAnthropicFileOwner(_ context.Context, _ string, _ int64, _ string, _ time.Duration) error {
+func (m *mockGatewayCacheForPlatform) SetAnthropicFileOwner(_ context.Context, _ string, _ int64, _ int64, _ string, _ time.Duration) error {
 	return nil
 }
-func (m *mockGatewayCacheForPlatform) GetAnthropicFileOwner(_ context.Context, _ string) (int64, string, bool, error) {
-	return 0, "", false, nil
+func (m *mockGatewayCacheForPlatform) GetAnthropicFileOwner(_ context.Context, _ string) (int64, int64, string, bool, error) {
+	return 0, 0, "", false, nil
 }
 
 type mockGroupRepoForGateway struct {
