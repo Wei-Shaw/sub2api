@@ -196,3 +196,53 @@ func TestDeepseekToolsBodyRequired(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 	require.Contains(t, rec.Body.String(), "request body is required")
 }
+
+// deepseekToolsAccountRepo 返回固定账号列表，供调度器选号测试。
+type deepseekToolsAccountRepo struct {
+	service.AccountRepository
+	accounts []service.Account
+}
+
+func (r deepseekToolsAccountRepo) ListSchedulableByPlatform(ctx context.Context, platform string) ([]service.Account, error) {
+	return r.accounts, nil
+}
+
+func (r deepseekToolsAccountRepo) ListSchedulableByPlatforms(ctx context.Context, platforms []string) ([]service.Account, error) {
+	return r.accounts, nil
+}
+
+// 上游能力不支持的工具账号（非官方 base_url、未探测）必须被选号循环跳过，
+// 最终表现为无可用账号 503，而不是把请求发给必然 404 的第三方中转。
+func TestDeepseekToolsSkipsAccountWithoutToolsCapability(t *testing.T) {
+	account := service.Account{
+		ID:          950,
+		Platform:    service.PlatformDeepseek,
+		Type:        service.AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://www.crazyhub.cn/v1",
+		},
+	}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	t.Cleanup(billing.Stop)
+	gatewayService := service.NewOpenAIGatewayService(
+		deepseekToolsAccountRepo{accounts: []service.Account{account}},
+		nil, nil, nil, nil, nil, nil, cfg, nil, nil, nil, nil, billing, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+	)
+	h := &OpenAIGatewayHandler{
+		gatewayService:      gatewayService,
+		billingCacheService: billing,
+		apiKeyService:       &service.APIKeyService{},
+		concurrencyHelper:   &ConcurrencyHelper{concurrencyService: service.NewConcurrencyService(nil)},
+		cfg:                 cfg,
+	}
+	router := newDeepseekToolsRouter(h, service.PlatformDeepseek, "search")
+	req := httptest.NewRequest(http.MethodPost, "/v1/tools/search", strings.NewReader(`{"query":"golang"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "No available DeepSeek accounts")
+}

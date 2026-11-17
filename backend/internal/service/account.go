@@ -108,6 +108,13 @@ const (
 	// credentials["openai_capabilities"] 配置集。仅用于生图意图的 /v1/responses
 	// 调度，避免把请求调度到会在 forward 阶段被降级为 Chat Completions 的账号（#4417）。
 	OpenAIEndpointCapabilityResponses OpenAIEndpointCapability = "responses"
+	// OpenAIEndpointCapabilityDeepseekTools 表示上游提供 DeepSeek 独立工具接口
+	// （/v1/tools/* 与 /v1/files*）。官方 api.deepseek.com 支持；ollama /
+	// crazyhub 等第三方中转通常只有对话端点，不支持这些路径。支持状态来自
+	// accounts.extra 的自动探测标记（deepseek_tools_supported）与运维强制覆盖
+	// （deepseek_tools_mode）；未探测时按 base_url host 兜底：官方域名视为
+	// 支持，第三方默认不支持（避免把请求调度到 404 的账号）。
+	OpenAIEndpointCapabilityDeepseekTools OpenAIEndpointCapability = "deepseek_tools"
 )
 
 const openAIEndpointCapabilitiesCredentialKey = "openai_capabilities"
@@ -1978,6 +1985,10 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		// 支持 Responses 的上游同样需具备 chat 能力：复用下方 chat_completions
 		// 配置集校验。
 		capability = OpenAIEndpointCapabilityChatCompletions
+	case OpenAIEndpointCapabilityDeepseekTools:
+		// 支持状态由 accounts.extra 的探测标记 / 强制覆盖决定，未探测时按
+		// base_url host 兜底（官方支持、第三方默认不支持）。
+		return a.supportsDeepseekTools()
 	case OpenAIEndpointCapabilityAlphaSearch:
 		// alpha/search 的转发按账号类型分流：OAuth/PAT 走
 		// chatgpt.com/backend-api/codex/alpha/search，API key 走
@@ -2002,6 +2013,57 @@ func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapa
 		return true
 	}
 	return configured[string(capability)]
+}
+
+// deepseekToolsModeExtraKey / deepseekToolsSupportedExtraKey 是账号 extra 的
+// DeepSeek 工具能力标记：mode 供运维强制覆盖，supported 由账号创建/更新后的
+// 自动探测写入（见 ProbeDeepseekToolsSupport）。
+const (
+	deepseekToolsModeExtraKey      = "deepseek_tools_mode"
+	deepseekToolsSupportedExtraKey = "deepseek_tools_supported"
+)
+
+// deepseek_tools_mode 的取值。
+const (
+	deepseekToolsModeForceSupported   = "force_supported"
+	deepseekToolsModeForceUnsupported = "force_unsupported"
+)
+
+// supportsDeepseekTools 判定 platform=deepseek 账号是否可承接 DeepSeek 独立
+// 工具接口（/v1/tools/* 与 /v1/files*）。优先级：运维强制覆盖 > 探测标记 >
+// base_url host 兜底。官方 api.deepseek.com（含未配置 base_url 的默认值）
+// 兜底支持；第三方中转（ollama / crazyhub 等）默认不支持，探测确认支持后
+// 自动放行。
+func (a *Account) supportsDeepseekTools() bool {
+	if a == nil || a.Platform != PlatformDeepseek {
+		return false
+	}
+	if mode, ok := a.Extra[deepseekToolsModeExtraKey].(string); ok {
+		switch strings.TrimSpace(mode) {
+		case deepseekToolsModeForceSupported:
+			return true
+		case deepseekToolsModeForceUnsupported:
+			return false
+		}
+	}
+	if supported, ok := a.Extra[deepseekToolsSupportedExtraKey].(bool); ok {
+		return supported
+	}
+	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
+	if baseURL == "" {
+		return true
+	}
+	return isDeepseekOfficialHost(baseURL)
+}
+
+// isDeepseekOfficialHost 报告 base_url 是否指向 DeepSeek 官方域名
+// （api.deepseek.com）。空值由调用方按"官方默认"处理。
+func isDeepseekOfficialHost(rawBaseURL string) bool {
+	host := ""
+	if parsed, err := url.Parse(strings.TrimSpace(rawBaseURL)); err == nil {
+		host = strings.ToLower(parsed.Hostname())
+	}
+	return host == "api.deepseek.com"
 }
 
 // GrokMediaGenerationEligibility reports whether a Grok account may receive
