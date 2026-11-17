@@ -19,6 +19,25 @@ func TestCountGrokNativeSearchCallsFromJSONBytes(t *testing.T) {
 	require.Equal(t, 3, countGrokNativeSearchCallsFromJSONBytes(body))
 }
 
+// xAI runs X Search (call_id xs_) and attachment search (as_) on its own server and reports
+// them as custom_tool_call items. A custom tool the client declared keeps its call_ id.
+func TestCountGrokNativeSearchCalls_ServerSideSearchCustomToolCall(t *testing.T) {
+	t.Parallel()
+	xSearch := `{"type":"custom_tool_call","id":"ctc_1","call_id":"xs_1","name":"x_keyword_search","input":"{}"}`
+	attachment := `{"type":"custom_tool_call","id":"ctc_2","call_id":"as_1","name":"attachment_search","input":"{}"}`
+	client := `{"type":"custom_tool_call","id":"ctc_3","call_id":"call_1","name":"exec","input":"dir"}`
+
+	require.Equal(t, 2, countGrokNativeSearchCallsFromJSONBytes([]byte(`{"output":[`+xSearch+`,`+attachment+`,`+client+`]}`)))
+	require.Equal(t, 0, countGrokNativeSearchCallsFromJSONBytes([]byte(`{"output":[`+client+`]}`)))
+
+	sse := stringsJoin(
+		`data: {"type":"response.output_item.done","item":`+xSearch+`}`,
+		`data: {"type":"response.output_item.done","item":`+client+`}`,
+		`data: {"type":"response.completed","response":{"output":[`+xSearch+`,`+client+`]}}`,
+	)
+	require.Equal(t, 1, countGrokNativeSearchCallsFromSSEBody(sse), "item.done and the terminal output list the same call once")
+}
+
 func TestCountGrokNativeSearchCallsFromJSONBytes_PrefersNestedResponse(t *testing.T) {
 	t.Parallel()
 	body := []byte(`{"output":[{"type":"web_search_call","id":"duplicate"}],"response":{"output":[{"type":"web_search_call","id":"duplicate"},{"type":"x_search_call","id":"xs1"}]}}`)

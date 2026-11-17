@@ -919,6 +919,24 @@ func (s *emailBindRefreshTokenCacheStub) DeleteRefreshToken(_ context.Context, t
 	return nil
 }
 
+func (s *emailBindRefreshTokenCacheStub) ConsumeRefreshToken(_ context.Context, tokenHash string) (*service.RefreshTokenData, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	data, ok := s.tokens[tokenHash]
+	if !ok {
+		return nil, service.ErrRefreshTokenNotFound
+	}
+	delete(s.tokens, tokenHash)
+	for _, tokenSet := range s.userSets {
+		delete(tokenSet, tokenHash)
+	}
+	for _, tokenSet := range s.families {
+		delete(tokenSet, tokenHash)
+	}
+	cloned := *data
+	return &cloned, nil
+}
+
 func (s *emailBindRefreshTokenCacheStub) DeleteUserRefreshTokens(_ context.Context, userID int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

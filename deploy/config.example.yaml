@@ -263,8 +263,10 @@ gateway:
   # Per-instance ingress allocation budget. Unreferenced intermediates are released after each phase.
   # Final bodies (and still-referenced preread buffers) remain charged until the handler returns.
   # Include all concurrent long-lived requests and upload/decode workspace; see EDGE_SECURITY.md.
-  # 实例级请求体分配预算；超出返回 503 + Retry-After，0 禁用。按容器内存预留业务/GC空间。
-  request_body_memory_budget_bytes: 1073741824
+  # Unset (default): 1/4 of the memory limit (min of RAM, cgroup limit, GOMEMLIMIT), at least 1 GiB.
+  # 实例级请求体分配预算；超出返回 503 + Retry-After，0 禁用。
+  # 不配置时自动取内存上限（物理内存/cgroup 限额/GOMEMLIMIT 的最小值）的 1/4，最低 1GiB；显式配置后不再自适应。
+  # request_body_memory_budget_bytes: 1073741824
   # Individual socket read/write idle deadlines, not the entire SSE lifetime; 0 disables.
   # 上传单次读取、下游单次写入/flush 超时（秒），不会限制正常长流的总时长；0 禁用。
   request_body_read_timeout_seconds: 120
@@ -880,8 +882,8 @@ idempotency:
 # 并发等待配置
 # =============================================================================
 concurrency:
-  # SSE ping interval during concurrency wait (seconds)
-  # 并发等待期间的 SSE ping 间隔（秒）
+  # SSE ping interval during concurrency wait (seconds); 0 disables pings to avoid committing HTTP status early
+  # 并发等待期间的 SSE ping 间隔（秒）；0 禁用 ping，避免提前写入 HTTP 状态码
   ping_interval: 10
 
 # =============================================================================
@@ -1153,6 +1155,11 @@ pricing:
   # Gemini 显式缓存存储单价（每 token 每小时，USD）优先取这里的 cache_storage_cost_per_token_per_hour 字段，
   # 未配置时使用内置官方价（先按已发布型号，再按 Pro / Flash 系列兜底）；两者都没有的模型拒绝创建缓存。
   # 目录中不存在的模型条目还须同时提供 input_cost_per_token / output_cost_per_token。
+  # Explicit nonnegative DeepSeek input/output/cache-read token prices here,
+  # including zero, are final rates and do not receive the official peak multiplier.
+  # Omitted or null fields still use the official defaults and peak/off-peak rules.
+  # DeepSeek 的输入/输出/缓存读单价若在此显式设为非负值（含 0），按该价计费，
+  # 不叠加官方高峰倍率；省略或 null 的字段仍按官方默认价与峰谷规则计费。
   # override_file: "./data/model_pricing_overrides.json"
   # Update interval in hours
   # 更新间隔（小时）

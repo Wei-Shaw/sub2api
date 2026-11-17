@@ -320,16 +320,17 @@ func TestPricingRequestToService_Defaults(t *testing.T) {
 func TestPricingRequestToService_WithAllFields(t *testing.T) {
 	reqs := []channelModelPricingRequest{
 		{
-			Platform:          "openai",
-			Models:            []string{"gpt-4", "gpt-4o"},
-			BillingMode:       "per_request",
-			InputPrice:        float64Ptr(0.01),
-			OutputPrice:       float64Ptr(0.03),
-			CacheWritePrice:   float64Ptr(0.005),
-			CacheWrite1hPrice: float64Ptr(0.008),
-			CacheReadPrice:    float64Ptr(0.002),
-			ImageOutputPrice:  float64Ptr(0.04),
-			PerRequestPrice:   float64Ptr(0.5),
+			Platform:           "openai",
+			Models:             []string{"gpt-4", "gpt-4o"},
+			BillingMode:        "per_request",
+			InputPrice:         float64Ptr(0.01),
+			OutputPrice:        float64Ptr(0.03),
+			CacheWritePrice:    float64Ptr(0.005),
+			CacheWrite1hPrice:  float64Ptr(0.008),
+			CacheWrite12hPrice: float64Ptr(0.01),
+			CacheReadPrice:     float64Ptr(0.002),
+			ImageOutputPrice:   float64Ptr(0.04),
+			PerRequestPrice:    float64Ptr(0.5),
 		},
 	}
 
@@ -343,6 +344,7 @@ func TestPricingRequestToService_WithAllFields(t *testing.T) {
 	require.Equal(t, float64Ptr(0.03), r.OutputPrice)
 	require.Equal(t, float64Ptr(0.005), r.CacheWritePrice)
 	require.Equal(t, float64Ptr(0.008), r.CacheWrite1hPrice)
+	require.Equal(t, float64Ptr(0.01), r.CacheWrite12hPrice)
 	require.Equal(t, float64Ptr(0.002), r.CacheReadPrice)
 	require.Equal(t, float64Ptr(0.04), r.ImageOutputPrice)
 	require.Equal(t, float64Ptr(0.5), r.PerRequestPrice)
@@ -355,16 +357,17 @@ func TestPricingRequestToService_WithIntervals(t *testing.T) {
 			BillingMode: "per_request",
 			Intervals: []pricingIntervalRequest{
 				{
-					MinTokens:         0,
-					MaxTokens:         intPtr(2000),
-					TierLabel:         "small",
-					InputPrice:        float64Ptr(0.01),
-					OutputPrice:       float64Ptr(0.02),
-					CacheWritePrice:   float64Ptr(0.003),
-					CacheWrite1hPrice: float64Ptr(0.006),
-					CacheReadPrice:    float64Ptr(0.001),
-					PerRequestPrice:   float64Ptr(0.1),
-					SortOrder:         1,
+					MinTokens:          0,
+					MaxTokens:          intPtr(2000),
+					TierLabel:          "small",
+					InputPrice:         float64Ptr(0.01),
+					OutputPrice:        float64Ptr(0.02),
+					CacheWritePrice:    float64Ptr(0.003),
+					CacheWrite1hPrice:  float64Ptr(0.006),
+					CacheWrite12hPrice: float64Ptr(0),
+					CacheReadPrice:     float64Ptr(0.001),
+					PerRequestPrice:    float64Ptr(0.1),
+					SortOrder:          1,
 				},
 				{
 					MinTokens: 2000,
@@ -388,6 +391,7 @@ func TestPricingRequestToService_WithIntervals(t *testing.T) {
 	require.Equal(t, float64Ptr(0.02), iv0.OutputPrice)
 	require.Equal(t, float64Ptr(0.003), iv0.CacheWritePrice)
 	require.Equal(t, float64Ptr(0.006), iv0.CacheWrite1hPrice)
+	require.Equal(t, float64Ptr(0), iv0.CacheWrite12hPrice)
 	require.Equal(t, float64Ptr(0.001), iv0.CacheReadPrice)
 	require.Equal(t, float64Ptr(0.1), iv0.PerRequestPrice)
 	require.Equal(t, 1, iv0.SortOrder)

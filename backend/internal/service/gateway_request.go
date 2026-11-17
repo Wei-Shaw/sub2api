@@ -636,10 +636,10 @@ func StripEmptyTextBlocks(body []byte) []byte {
 	return out
 }
 
-// isClaude55SignedThinkingModel identifies models whose default thinking mode
+// isClaude55SignedThinkingModel identifies models (including Fable/Mythos 5.2) whose default thinking mode
 // requires signed history to survive protocol conversion and request filtering.
 func isClaude55SignedThinkingModel(model string) bool {
-	return claude.IsOpus55(model) || claude.IsSonnet55(model) || claude.IsHaiku55(model)
+	return claude.IsOpus55(model) || claude.IsSonnet55(model) || claude.IsHaiku55(model) || claude.IsFable52(model) || claude.IsMythos52(model)
 }
 
 // validateClaude55Request rejects settings that the upstream cannot honor.
@@ -650,6 +650,7 @@ func validateClaude55Request(body []byte, model string) error {
 	}
 	isSonnet55 := claude.IsSonnet55(model)
 	isHaiku55 := claude.IsHaiku55(model)
+	isClaude52 := claude.IsFable52(model) || claude.IsMythos52(model)
 	thinkingType := gjson.GetBytes(body, "thinking.type").String()
 	switch thinkingType {
 	case "disabled", "enabled":
@@ -668,13 +669,13 @@ func validateClaude55Request(body []byte, model string) error {
 		if isSonnet55 {
 			return fmt.Errorf("claude-sonnet-5-5 requires adaptive thinking or thinking.type=between_tools; omit thinking or use one of those modes")
 		}
-		return fmt.Errorf("claude-opus-5-5 requires adaptive thinking; omit thinking or use thinking.type=adaptive and output_config.effort")
+		return fmt.Errorf("%s requires adaptive thinking; omit thinking or use thinking.type=adaptive and output_config.effort", model)
 	case "between_tools":
 		if !isSonnet55 {
 			if isHaiku55 {
 				return fmt.Errorf("claude-haiku-5-5 requires adaptive thinking; thinking.type=between_tools is unsupported (use thinking.type=disabled at high effort or below)")
 			}
-			return fmt.Errorf("claude-opus-5-5 requires adaptive thinking; thinking.type=between_tools is unsupported")
+			return fmt.Errorf("%s requires adaptive thinking; thinking.type=between_tools is unsupported", model)
 		}
 		effort := gjson.GetBytes(body, "output_config.effort").String()
 		if effort == "xhigh" || effort == "max" {
@@ -686,7 +687,7 @@ func validateClaude55Request(body []byte, model string) error {
 			}
 		}
 	}
-	modelName := "claude-opus-5-5"
+	modelName := model
 	if isSonnet55 {
 		modelName = "claude-sonnet-5-5"
 	}
@@ -704,19 +705,19 @@ func validateClaude55Request(body []byte, model string) error {
 			return fmt.Errorf("%s does not support forced tool_choice; use auto or none", modelName)
 		}
 	}
-	if isSonnet55 || isHaiku55 {
+	if isSonnet55 || isHaiku55 || isClaude52 {
 		if temperature := gjson.GetBytes(body, "temperature"); temperature.Exists() && (temperature.Type != gjson.Number || temperature.Float() != 1) {
 			return fmt.Errorf("%s does not support non-default temperature", modelName)
 		}
 		// Haiku 5.5 只接受显式 top_p=0.99；保留 Sonnet 5.5 既有的区间策略。
 		if topP := gjson.GetBytes(body, "top_p"); topP.Exists() && (topP.Type != gjson.Number ||
-			(isHaiku55 && topP.Float() != 0.99) || (isSonnet55 && (topP.Float() < 0.99 || topP.Float() > 1))) {
+			((isHaiku55 || isClaude52) && topP.Float() != 0.99) || (isSonnet55 && (topP.Float() < 0.99 || topP.Float() > 1))) {
 			return fmt.Errorf("%s does not support non-default top_p", modelName)
 		}
 		if gjson.GetBytes(body, "top_k").Exists() {
 			return fmt.Errorf("%s does not support top_k", modelName)
 		}
-		if isHaiku55 && gjson.GetBytes(body, "temperature").Exists() && gjson.GetBytes(body, "top_p").Exists() {
+		if (isHaiku55 || isClaude52) && gjson.GetBytes(body, "temperature").Exists() && gjson.GetBytes(body, "top_p").Exists() {
 			return fmt.Errorf("%s does not allow temperature and top_p together; omit both", modelName)
 		}
 	}
@@ -1084,8 +1085,9 @@ const anthropicBetaContextManagementToken = "context-management-2025-06-27"
 //   - pi-ai（Harness 使用的 Anthropic provider）会为 opus5 生成形如
 //     `{"role":"system","content":[],"output_config":{"effort":"high"}}` 的控制消息，
 //     并请求 `mid-conversation-output-config-2026-07-01` beta
-//   - 该 output_config 是 **message 级**字段，只有该 beta 保护；顶层 output_config/effort
-//     不受它约束
+//   - Claude Code 也会以 `per-turn-control-2026-07-01` 请求该能力
+//   - 该 output_config 是 **message 级**字段，由上述任一 beta 保护；顶层 output_config/effort
+//     不受它们约束
 //   - OAuth mimic 用 FullClaudeCodeMimicryBetas 覆盖客户端 beta；固定列表漏该 beta 时
 //     body 字段与 header 不对称 → 上游报 "output_config: Extra inputs are not permitted"
 //   - 缺 token 时净化消息级 output_config（详见 stripAnthropicMessageOutputConfigUnlessBeta）
@@ -1136,7 +1138,7 @@ func sanitizeAnthropicBodyForBetaTokens(body []byte, anthropicBetaHeader string)
 		body, changed = b, true
 	}
 
-	// messages[].output_config：mid-conversation-output-config beta 专属字段。
+	// messages[].output_config：需要 mid-conversation-output-config 或 per-turn-control beta。
 	// 顶层 output_config / effort 不受该 beta 约束，本分支只净化消息内字段。
 	if b, deleted := stripAnthropicMessageOutputConfigUnlessBeta(body, anthropicBetaHeader); deleted {
 		body, changed = b, true
@@ -1185,17 +1187,18 @@ func anthropicBetaTokensContains(header, token string) bool {
 }
 
 // stripAnthropicMessageOutputConfigUnlessBeta 在 anthropic-beta header 缺
-// mid-conversation-output-config beta 时，净化 **messages[].output_config**：
+// mid-conversation-output-config 和 per-turn-control 两种 beta 时，净化 **messages[].output_config**：
 //   - 仅为携带 message-level output_config 的消息剥该字段；
 //   - 若该消息 role=system 且 content 无正文（缺失 / null / 空 string / 空 array /
 //     仅空 text 块），整条删除（pi-ai 为 opus5 生成的空 system 控制消息即此形态）；
 //   - system 有正文则保留正文与其余字段；user/assistant 只剥字段，绝不整条删除；
 //   - 无任何消息携带该字段时返回原 body（字节 no-op）。
 //
-// header 含该 beta 时完全保留。顶层 output_config / effort 不属于该 beta 保护范围，
+// header 含任一 beta 时完全保留。顶层 output_config / effort 不属于这些 beta 保护范围，
 // 本函数不做任何处理。多条删除用「稳健重建」实现，保留其余字段与消息先后顺序。
 func stripAnthropicMessageOutputConfigUnlessBeta(body []byte, anthropicBetaHeader string) ([]byte, bool) {
-	if anthropicBetaTokensContains(anthropicBetaHeader, claude.BetaMidConversationOutputConfig) {
+	if anthropicBetaTokensContains(anthropicBetaHeader, claude.BetaMidConversationOutputConfig) ||
+		anthropicBetaTokensContains(anthropicBetaHeader, claude.BetaPerTurnControl) {
 		return body, false
 	}
 	// 快速路径：body 中不含 output_config 字面量时无需解析。
