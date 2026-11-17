@@ -277,7 +277,7 @@ func geminiCachedContentBoundFromContext(ctx context.Context) bool {
 }
 
 // isGeminiBoundCacheUpstreamPassthrough 判断绑定缓存的请求在上游网关账号上收到的错误是否只反映
-// 上游持有缓存的那个账号的状态（429 / 5xx），不应据此限流或重试本账号。
+// 上游持有缓存的那个账号的状态（429 / 5xx），不应据此限流或封禁本账号。
 func isGeminiBoundCacheUpstreamPassthrough(ctx context.Context, account *Account, statusCode int) bool {
 	if statusCode != http.StatusTooManyRequests && statusCode < http.StatusInternalServerError {
 		return false

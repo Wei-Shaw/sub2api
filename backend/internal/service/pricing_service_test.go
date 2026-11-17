@@ -819,6 +819,43 @@ func TestDefaultPricingIncludesGemini4ArgonRates(t *testing.T) {
 	require.Contains(t, pricingSvc.ListModelNamesByProvider("gemini"), "gemini-4-argon")
 }
 
+func TestDefaultPricingIncludesGrok47FastRates(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
+	require.NoError(t, err)
+
+	pricingSvc := &PricingService{}
+	pricingData, err := pricingSvc.parsePricingData(data)
+	require.NoError(t, err)
+	pricingSvc.pricingData = pricingData
+
+	for _, model := range []string{"grok-4.7-fast", "xai/grok-4.7-fast"} {
+		t.Run(model, func(t *testing.T) {
+			pricing := pricingSvc.GetModelPricing(model)
+			require.NotNil(t, pricing)
+			require.Equal(t, "xai", pricing.LiteLLMProvider)
+			require.InDelta(t, 4e-6, pricing.InputCostPerToken, 1e-15)
+			require.InDelta(t, 12e-6, pricing.OutputCostPerToken, 1e-15)
+			require.InDelta(t, 1e-6, pricing.CacheReadInputTokenCost, 1e-15)
+			// Long-context Fast is $6 / $1.50 / $18, i.e. 1.5x the Fast base card.
+			require.Equal(t, 200000, pricing.LongContextInputTokenThreshold)
+			require.InDelta(t, 1.5, pricing.LongContextInputCostMultiplier, 1e-12)
+			require.InDelta(t, 1.5, pricing.LongContextOutputCostMultiplier, 1e-12)
+		})
+	}
+	// The Fast entry must not shadow the standard grok-4.7 card.
+	standard := pricingSvc.GetModelPricing("grok-4.7")
+	require.NotNil(t, standard)
+	require.InDelta(t, 2e-6, standard.InputCostPerToken, 1e-15)
+
+	billing := NewBillingService(&config.Config{}, pricingSvc)
+	cost, err := billing.CalculateCost("grok-4.7-fast", UsageTokens{InputTokens: 150_000, CacheReadTokens: 50_000, OutputTokens: 10_000}, 1)
+	require.NoError(t, err)
+	require.True(t, cost.LongContextBillingApplied)
+	require.InDelta(t, 0.9, cost.InputCost, 1e-12)
+	require.InDelta(t, 0.075, cost.CacheReadCost, 1e-12)
+	require.InDelta(t, 0.18, cost.OutputCost, 1e-12)
+}
+
 func TestDefaultPricingUsesCurrentCodexAutoReviewBaseRates(t *testing.T) {
 	data, err := os.ReadFile(filepath.Join("..", "..", "resources", "model-pricing", "model_prices_and_context_window.json"))
 	require.NoError(t, err)

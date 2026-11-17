@@ -24,12 +24,14 @@ var (
 
 func TestPrepareUsageLogInsert_RequestResult(t *testing.T) {
 	result := &service.UsageRequestResult{Outcome: "failed", UsageStatus: "unavailable", StatusCode: 503, HTTPStatusCode: 200, ErrorCode: "server_is_overloaded"}
-	prepared := prepareUsageLogInsert(&service.UsageLog{RequestResult: result})
+	prepared := prepareUsageLogInsert(&service.UsageLog{RequestResult: result, CacheCreation30mTokens: 9, CacheCreation12hTokens: 2390})
 	idx := len(usageLogInsertArgTypes) - 1
 	require.Equal(t, "jsonb", usageLogInsertArgTypes[idx])
 	var decoded service.UsageRequestResult
 	require.NoError(t, json.Unmarshal([]byte(prepared.args[idx].(string)), &decoded))
 	require.Equal(t, *result, decoded)
+	require.Equal(t, 9, prepared.args[idx-3], "30m cache tokens must precede created_at and request_result")
+	require.Equal(t, 2390, prepared.args[idx-2], "12h cache tokens must precede created_at and request_result")
 	absent := prepareUsageLogInsert(&service.UsageLog{})
 	require.Nil(t, absent.args[idx], "legacy/other providers must remain unknown")
 }
@@ -142,7 +144,7 @@ func TestPrepareUsageLogInsert_UpstreamRequestIDArgWiring(t *testing.T) {
 	})
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
 
-	idx := len(prepared.args) - 5
+	idx := len(prepared.args) - 7
 	arg, ok := prepared.args[idx].(sql.NullString)
 	require.True(t, ok, "upstream_request_id arg should be sql.NullString, got %T", prepared.args[idx])
 	require.True(t, arg.Valid)

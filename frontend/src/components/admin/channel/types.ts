@@ -11,6 +11,7 @@ export interface IntervalFormEntry {
   output_price: number | string | null
   cache_write_price: number | string | null
   cache_write_1h_price?: number | string | null
+  cache_write_12h_price?: number | string | null
   cache_read_price: number | string | null
   input_multiplier: number | string | null
   output_multiplier: number | string | null
@@ -27,6 +28,7 @@ export interface PricingFormEntry {
   output_price: number | string | null
   cache_write_price: number | string | null
   cache_write_1h_price?: number | string | null
+  cache_write_12h_price?: number | string | null
   cache_read_price: number | string | null
   fast_multiplier?: number | string | null
   flex_multiplier?: number | string | null
@@ -229,6 +231,7 @@ export function apiIntervalsToForm(intervals: PricingInterval[]): IntervalFormEn
     output_price: perTokenToMTok(iv.output_price),
     cache_write_price: perTokenToMTok(iv.cache_write_price),
     cache_write_1h_price: perTokenToMTok(iv.cache_write_1h_price),
+    cache_write_12h_price: perTokenToMTok(iv.cache_write_12h_price),
     cache_read_price: perTokenToMTok(iv.cache_read_price),
     input_multiplier: iv.input_multiplier,
     output_multiplier: iv.output_multiplier,
@@ -248,6 +251,7 @@ export function formIntervalsToAPI(intervals: IntervalFormEntry[]): PricingInter
     output_price: mTokToPerToken(iv.output_price),
     cache_write_price: mTokToPerToken(iv.cache_write_price),
     cache_write_1h_price: mTokToPerToken(iv.cache_write_1h_price),
+    cache_write_12h_price: mTokToPerToken(iv.cache_write_12h_price),
     cache_read_price: mTokToPerToken(iv.cache_read_price),
     input_multiplier: toNullableNumber(iv.input_multiplier),
     output_multiplier: toNullableNumber(iv.output_multiplier),
@@ -373,6 +377,7 @@ function validateIntervalPrices(iv: IntervalFormEntry, idx: number, t: Translate
     ['outputPrice', iv.output_price],
     ['cacheWritePrice', iv.cache_write_price],
     ['cacheWrite1hPrice', iv.cache_write_1h_price ?? null],
+    ['cacheWrite12hPrice', iv.cache_write_12h_price ?? null],
     ['cacheReadPrice', iv.cache_read_price],
     ['perRequestPrice', iv.per_request_price],
   ]
