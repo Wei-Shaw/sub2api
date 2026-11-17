@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -124,7 +123,7 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 		clientDisconnect = streamRes.clientDisconnect
 	} else {
 		// 非流式响应：直接透传
-		respBody, err := io.ReadAll(resp.Body)
+		respBody, err := ReadUpstreamResponseBody(resp.Body, s.antigravitySSEConfig(), c, anthropicTooLargeError)
 		if err != nil {
 			return nil, fmt.Errorf("read upstream response: %w", err)
 		}
@@ -150,6 +149,7 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 		Duration:                      duration,
 		FirstTokenMs:                  firstTokenMs,
 		ClientDisconnect:              clientDisconnect,
+		UpstreamHeaders:               resp.Header,
 		Usage: ClaudeUsage{
 			InputTokens:              usage.InputTokens,
 			OutputTokens:             usage.OutputTokens,
@@ -170,6 +170,7 @@ func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp 
 		maxLineSize = s.settingService.cfg.Gateway.MaxLineSize
 	}
 	scanner.Buffer(make([]byte, 64*1024), maxLineSize)
+	scanner.Split(newBoundedSSESplit(s.settingService.cfg, maxLineSize, nil))
 
 	type scanEvent struct {
 		line string
@@ -177,11 +178,16 @@ func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp 
 	}
 	events := make(chan scanEvent, 16)
 	done := make(chan struct{})
+	queueBudget := newSSEQueueBudget(s.settingService.cfg)
 	sendEvent := func(ev scanEvent) bool {
+		if !queueBudget.acquire(len(ev.line), done) {
+			return false
+		}
 		select {
 		case events <- ev:
 			return true
 		case <-done:
+			queueBudget.release(len(ev.line))
 			return false
 		}
 	}
@@ -237,6 +243,9 @@ func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp 
 	for {
 		select {
 		case ev, ok := <-events:
+			if ok {
+				queueBudget.release(len(ev.line))
+			}
 			if !ok {
 				return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: cw.Disconnected()}
 			}

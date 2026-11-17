@@ -10,10 +10,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
-// grokUpstreamUserAgent is kept for compatibility with older Grok request
-// tests. Current requests use the pinned default UA from this package.
-const grokUpstreamUserAgent = "sub2api-grok/1.0"
-
 // Fixed CLI identity aliases — single source of truth is internal/pkg/xai.
 const (
 	grokClientVersionHeader    = xai.CLIStableVersion
@@ -21,7 +17,7 @@ const (
 	grokClientModeHeader       = xai.CLIClientMode
 )
 
-// defaultGrokUpstreamUserAgent is the pinned Grok CLI / workspace UA.
+// defaultGrokUpstreamUserAgent 使用固定版本的官方交互式 CLI UA。
 // Grok upstream must not forward Claude Code / Codex / browser client UAs.
 func defaultGrokUpstreamUserAgent() string {
 	return xai.CLIUserAgent(xai.ResolveCLIVersion())

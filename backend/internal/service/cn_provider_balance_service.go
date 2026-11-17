@@ -123,6 +123,12 @@ func (s *CNProviderBalanceService) QueryBalanceForAccount(ctx context.Context, a
 }
 
 func (s *CNProviderBalanceService) queryBalanceForAccount(ctx context.Context, account *Account) (*CNProviderBalanceResult, error) {
+	if account.IsCommandCode() {
+		return s.queryCommandCodeBalance(ctx, account)
+	}
+	if account.IsCline() {
+		return s.queryClineBalance(ctx, account)
+	}
 	provider := account.Platform
 	if provider != PlatformKimi && provider != PlatformDeepseek {
 		return nil, infraerrors.New(http.StatusBadRequest, "CN_BALANCE_NO_ENDPOINT", "account provider has no balance endpoint")
@@ -190,9 +196,18 @@ func (s *CNProviderBalanceService) queryBalanceForAccount(ctx context.Context, a
 		}
 		// balance_infos 逐条解析：双币种账号同时返回 CNY + USD（数组顺序即
 		// 主次序，首条为主币种）。
-		gjson.GetBytes(bodyBytes, "balance_infos").ForEach(func(_, info gjson.Result) bool {
+		balanceInfos := gjson.GetBytes(bodyBytes, "balance_infos")
+		if !balanceInfos.Exists() || !balanceInfos.IsArray() {
+			result.Error = "Invalid balance response: missing balance_infos"
+			return result, nil
+		}
+		balanceInfos.ForEach(func(_, info gjson.Result) bool {
 			currency := strings.ToUpper(strings.TrimSpace(info.Get("currency").String()))
-			balance, _ := cnParseF64(info.Get("total_balance").Value())
+			totalBalance := info.Get("total_balance")
+			balance, ok := cnParseF64(totalBalance.Value())
+			if !totalBalance.Exists() || !ok {
+				return true
+			}
 			if currency == "" {
 				currency = "CNY"
 			}
@@ -200,7 +215,8 @@ func (s *CNProviderBalanceService) queryBalanceForAccount(ctx context.Context, a
 			return true
 		})
 		if len(entries) == 0 {
-			entries = append(entries, CNProviderBalanceEntry{Currency: "CNY"})
+			result.Error = "Invalid balance response: no valid balance entries"
+			return result, nil
 		}
 	}
 	result.Balances = entries
@@ -209,28 +225,33 @@ func (s *CNProviderBalanceService) queryBalanceForAccount(ctx context.Context, a
 	result.Available = available
 	result.Success = true
 
-	balanceUpdates := make([]any, 0, len(entries))
-	for _, entry := range entries {
-		balanceUpdates = append(balanceUpdates, map[string]any{
-			"currency": entry.Currency,
-			"balance":  entry.Balance,
-		})
-	}
-	updates := map[string]any{
-		cnExtraKey(provider, cnBalanceExtraSuffixBalance):   result.Balance,
-		cnExtraKey(provider, cnBalanceExtraSuffixCurrency):  result.Currency,
-		cnExtraKey(provider, cnBalanceExtraSuffixAvailable): available,
-		cnExtraKey(provider, cnBalanceExtraSuffixUpdated):   now.Format(time.RFC3339),
-		cnExtraKey(provider, cnBalanceExtraSuffixBalances):  balanceUpdates,
-		// 余额探测成功即清除响应式 402/429 写下的 balance_low 标记。
-		cnExtraKey(provider, cnBalanceExtraSuffixLow): false,
-	}
+	updates := cnBalanceExtraUpdates(provider, result, now)
 	if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
 		slog.Warn("cn_balance_persist_failed", "account_id", account.ID, "provider", provider, "error", err)
 	} else {
 		result.Persisted = true
 	}
 	return result, nil
+}
+
+// cnBalanceExtraUpdates 构造 provider 维度的余额快照更新。
+func cnBalanceExtraUpdates(provider string, result *CNProviderBalanceResult, now time.Time) map[string]any {
+	balanceUpdates := make([]any, 0, len(result.Balances))
+	for _, entry := range result.Balances {
+		balanceUpdates = append(balanceUpdates, map[string]any{
+			"currency": entry.Currency,
+			"balance":  entry.Balance,
+		})
+	}
+	return map[string]any{
+		cnExtraKey(provider, cnBalanceExtraSuffixBalance):   result.Balance,
+		cnExtraKey(provider, cnBalanceExtraSuffixCurrency):  result.Currency,
+		cnExtraKey(provider, cnBalanceExtraSuffixAvailable): result.Available,
+		cnExtraKey(provider, cnBalanceExtraSuffixUpdated):   now.Format(time.RFC3339),
+		cnExtraKey(provider, cnBalanceExtraSuffixBalances):  balanceUpdates,
+		// 余额探测成功即清除响应式 402/429 写下的 balance_low 标记。
+		cnExtraKey(provider, cnBalanceExtraSuffixLow): false,
+	}
 }
 
 // loadPayGAccount 加载 payg 模式的国产供应商账号（余额仅对 payg 有意义；coding 走额度）。
@@ -250,6 +271,20 @@ func (s *CNProviderBalanceService) loadPayGAccount(ctx context.Context, accountI
 func validatePayGAccount(account *Account) error {
 	if account == nil {
 		return infraerrors.New(http.StatusNotFound, "CN_BALANCE_ACCOUNT_NOT_FOUND", "account not found")
+	}
+	// Cline 积分余额只查官方主机。
+	if account.IsCline() {
+		if !account.clineAccountAPISupported() {
+			return infraerrors.New(http.StatusBadRequest, "CN_BALANCE_NO_ENDPOINT", "cline balance is only available for api key accounts on the official host")
+		}
+		return nil
+	}
+	// Command Code 积分余额与套餐窗口同源，只查官方主机。
+	if account.IsCommandCode() {
+		if !account.commandCodeUsageSupported() {
+			return infraerrors.New(http.StatusBadRequest, "CN_BALANCE_NO_ENDPOINT", "command code balance is only available for api key accounts on the official host")
+		}
+		return nil
 	}
 	if !account.IsCNProvider() {
 		return infraerrors.New(http.StatusBadRequest, "CN_BALANCE_INVALID_PLATFORM", "account is not a CN provider account")

@@ -217,7 +217,7 @@ describe('BulkEditAccountModal', () => {
     expect(wrapper.findAll('[data-testid="grok-base-url-preset"]').length).toBe(0)
   })
 
-  it.each(['kimi', 'zhipu', 'deepseek'])('全部目标为 %s API Key 时展示请求头覆写', (platform) => {
+  it.each(['kimi', 'zhipu', 'deepseek', 'minimax'])('全部目标为 %s API Key 时展示请求头覆写', (platform) => {
     const wrapper = mountModal({
       selectedPlatforms: [platform],
       selectedTypes: ['apikey']
@@ -226,7 +226,7 @@ describe('BulkEditAccountModal', () => {
     expect(wrapper.find('#bulk-edit-header-override-enabled').exists()).toBe(true)
   })
 
-  it.each(['kimi', 'zhipu', 'deepseek'])('目标为 %s OAuth 时不展示请求头覆写', (platform) => {
+  it.each(['kimi', 'zhipu', 'deepseek', 'minimax'])('目标为 %s OAuth 时不展示请求头覆写', (platform) => {
     const wrapper = mountModal({
       selectedPlatforms: [platform],
       selectedTypes: ['oauth']
@@ -287,7 +287,8 @@ describe('BulkEditAccountModal', () => {
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
       extra: {
-        openai_passthrough: true
+        openai_passthrough: true,
+        openai_passthrough_model_filter: false
       }
     })
   })
@@ -492,6 +493,42 @@ describe('BulkEditAccountModal', () => {
     })
   })
 
+  it('生图尺寸档位独立启用，全选时提交空列表表示不限', async () => {
+    const restricted = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth', 'apikey']
+    })
+    await restricted.get('#bulk-edit-openai-image-size-tiers-enabled').setValue(true)
+    await restricted.get('[data-testid="bulk-edit-openai-image-size-tier-4K"]').setValue(false)
+    await restricted.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenLastCalledWith([1, 2], {
+      extra: { openai_image_size_tiers: ['1K', '2K'] }
+    })
+    restricted.unmount()
+
+    vi.mocked(adminAPI.accounts.bulkUpdate).mockClear()
+    const unrestricted = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['apikey']
+    })
+    await unrestricted.get('#bulk-edit-openai-image-size-tiers-enabled').setValue(true)
+    await unrestricted.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: { openai_image_size_tiers: [] }
+    })
+    unrestricted.unmount()
+
+    const mixed = mountModal({
+      selectedPlatforms: ['openai', 'anthropic'],
+      selectedTypes: ['apikey']
+    })
+    expect(mixed.find('#bulk-edit-openai-image-size-tiers-enabled').exists()).toBe(false)
+  })
+
   it('端点能力默认值提交 null，表示恢复两个默认端点', async () => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],
@@ -554,6 +591,18 @@ describe('BulkEditAccountModal', () => {
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
       credentials: { openai_capabilities: ['embeddings'] },
       extra: { openai_responses_mode: null }
+    })
+  })
+
+  it('persists Seedance in a two-capability bulk update', async () => {
+    const wrapper = mountModal({ selectedPlatforms: ['openai'], selectedTypes: ['apikey'] })
+    await wrapper.get('#bulk-edit-openai-endpoint-capabilities-enabled').setValue(true)
+    await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-embeddings"]').setValue(false)
+    await wrapper.get('[data-testid="bulk-edit-openai-endpoint-capability-seedance"]').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      credentials: { openai_capabilities: ['chat_completions', 'seedance'] }
     })
   })
 
@@ -858,6 +907,7 @@ describe('BulkEditAccountModal', () => {
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
       extra: {
         openai_passthrough: false,
+        openai_passthrough_model_filter: false,
         openai_oauth_passthrough: false
       }
     })
@@ -878,10 +928,27 @@ describe('BulkEditAccountModal', () => {
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
       extra: {
-        openai_passthrough: true
+        openai_passthrough: true,
+        openai_passthrough_model_filter: false
       }
     })
     expect(wrapper.text()).toContain('admin.accounts.openai.modelRestrictionDisabledByPassthrough')
+  })
+
+  it('can bulk-enable passthrough model filtering and submit an explicit whitelist', async () => {
+    const wrapper = mountModal({ selectedPlatforms: ['openai'], selectedTypes: ['apikey'] })
+    await wrapper.get('#bulk-edit-openai-passthrough-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-openai-passthrough-toggle').trigger('click')
+    await wrapper.get('[data-testid="bulk-openai-passthrough-model-filter"]').setValue(true)
+    await wrapper.get('#bulk-edit-model-restriction-enabled').setValue(true)
+    wrapper.findComponent({ name: 'ModelWhitelistSelector' }).vm.$emit('update:modelValue', ['qwen3.8-max'])
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: { openai_passthrough: true, openai_passthrough_model_filter: true },
+      credentials: { model_mapping: { 'qwen3.8-max': 'qwen3.8-max' } }
+    })
   })
 
   it('filtered-results 模式下应提交 filters 而不是 account_ids', async () => {
@@ -918,6 +985,77 @@ describe('BulkEditAccountModal', () => {
         privacy_mode: 'training_set_cf_blocked'
       },
       status: 'active'
+    })
+  })
+  // issue #6327：批量编辑无法把 Codex 指纹收敛关掉。
+  //
+  // 批量更新走 JSONB 顶层合并（extra = COALESCE(extra,'{}') || payload），删掉 payload
+  // 里的键只表示「本次不更新该键」，清不掉账号已有的 device/session/full；而且只删不写会让
+  // payload 退化成 {extra:{}}，被后端 len(req.Extra) > 0 判为空更新直接 400
+  // "No updates provided"。Create/Edit 那两个表单能删键，是因为它们提交完整 extra 对象、
+  // 后端整体 SetExtra 覆盖——两种持久化语义不能共用同一套写法。
+  it('OpenAI OAuth 批量编辑选择「关闭」时应显式提交 codex_fingerprint_mode=off（issue #6327）', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+
+    // 下拉框默认就是 off，用户只勾选「编辑该项」即提交——正是 issue 描述的操作路径。
+    await wrapper.get('#bulk-edit-openai-codex-fingerprint-mode-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledTimes(1)
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        codex_fingerprint_mode: 'off'
+      }
+    })
+
+    // 缺陷时期的形状：extra 为空对象，后端必然回 400。显式钉死不得回退。
+    const payload = vi.mocked(adminAPI.accounts.bulkUpdate).mock.calls[0][1] as {
+      extra: Record<string, unknown>
+    }
+    expect(Object.keys(payload.extra).length).toBeGreaterThan(0)
+  })
+
+  // 与兄弟字段 codex_cli_only 的写法对齐：关闭态同样落显式值，不靠省略表达。
+  it('OpenAI OAuth 批量编辑显式 opt-in 模式仍原样提交', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+
+    await wrapper.get('#bulk-edit-openai-codex-fingerprint-mode-enabled').setValue(true)
+    await wrapper
+      .get('[data-testid="bulk-codex-fingerprint-mode-select"]')
+      .setValue('session')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        codex_fingerprint_mode: 'session'
+      }
+    })
+  })
+
+  // 未勾选「编辑该项」时不得写入该键，否则批量编辑别的字段会顺手清掉账号的收敛设置。
+  it('未勾选编辑该项时不写入 codex_fingerprint_mode', async () => {
+    const wrapper = mountModal({
+      selectedPlatforms: ['openai'],
+      selectedTypes: ['oauth']
+    })
+
+    await wrapper.get('#bulk-edit-openai-codex-cli-only-enabled').setValue(true)
+    await wrapper.get('#bulk-edit-openai-codex-cli-only-toggle').trigger('click')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
+      extra: {
+        codex_cli_only: true
+      }
     })
   })
 })

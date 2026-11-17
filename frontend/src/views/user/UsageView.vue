@@ -58,6 +58,7 @@
             :show-source-toggle="false"
             :show-metric-toggle="true"
             :enable-breakdown="false"
+            :show-account-cost="false"
             :title="t('usage.endpointDistribution')"
             :start-date="startDate"
             :end-date="endDate"
@@ -111,7 +112,11 @@
               <label class="input-label">{{ t('usage.type') }}</label>
               <Select v-model="filters.request_type" :options="requestTypeOptions" @change="applyFilters" />
             </div>
-            <div class="w-full sm:w-auto sm:min-w-[200px]">
+            <div class="w-full sm:w-auto sm:min-w-[180px]">
+              <label class="input-label">{{ t('usage.compactionFilter') }}</label>
+              <Select v-model="filters.native_compaction_v2" :options="compactionOptions" @change="applyFilters" />
+            </div>
+            <div v-if="subscriptionFeatureEnabled" class="w-full sm:w-auto sm:min-w-[200px]">
               <label class="input-label">{{ t('admin.usage.billingType') }}</label>
               <Select v-model="filters.billing_type" :options="billingTypeOptions" @change="applyFilters" />
             </div>
@@ -131,6 +136,7 @@
             <div class="relative" ref="columnDropdownRef">
               <button
                 type="button"
+                data-testid="usage-column-settings"
                 @click="showColumnDropdown = !showColumnDropdown"
                 class="btn btn-secondary px-2 md:px-3"
                 :title="t('admin.users.columnSettings')"
@@ -146,6 +152,7 @@
                   v-for="col in currentToggleableColumns"
                   :key="col.key"
                   type="button"
+                  :data-testid="`usage-column-toggle-${col.key}`"
                   @click="toggleCurrentColumn(col.key)"
                   class="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-dark-700"
                 >
@@ -216,6 +223,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+import { FeatureFlags, resolveFeatureFlag } from '@/utils/featureFlags'
 import { keysAPI, usageAPI, userGroupsAPI } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Pagination from '@/components/common/Pagination.vue'
@@ -355,6 +363,7 @@ const filters = ref<UsageQueryParams>({
   start_date: startDate.value,
   end_date: endDate.value,
   request_type: undefined,
+  native_compaction_v2: null,
   billing_type: null,
   billing_mode: null,
 })
@@ -380,6 +389,12 @@ const requestTypeOptions = computed<SelectOption[]>(() => [
   { value: 'stream', label: t('usage.stream') },
   { value: 'sync', label: t('usage.sync') },
 ])
+const compactionOptions = computed<SelectOption[]>(() => [
+  { value: null, label: t('usage.allCompactionTypes') },
+  { value: true, label: t('usage.compactionOnly') },
+])
+// 订阅功能关闭后只剩余额计费，「计费类型」筛选（余额/订阅）失去意义，整块隐藏。
+const subscriptionFeatureEnabled = computed(() => resolveFeatureFlag(appStore.cachedPublicSettings, FeatureFlags.subscription))
 const billingTypeOptions = computed<SelectOption[]>(() => [
   { value: null, label: t('admin.usage.allBillingTypes') },
   { value: 0, label: t('admin.usage.billingTypeBalance') },
@@ -551,6 +566,7 @@ const resetFilters = () => {
     start_date: range.start,
     end_date: range.end,
     request_type: undefined,
+    native_compaction_v2: null,
     billing_type: null,
     billing_mode: null,
   }
@@ -611,9 +627,31 @@ const escapeCSVValue = (value: unknown): string => {
   if (value == null) return ''
   const str = String(value)
   const escaped = str.replace(/"/g, '""')
+  if (str === '-') return str
   if (/^[=+\-@\t\r]/.test(str)) return `"\'${escaped}"`
   if (/[,"\n\r]/.test(str)) return `"${escaped}"`
   return str
+}
+
+const EXPORT_PAGE_SIZE = 1000
+const EXPORT_RATE_LIMIT_MAX_RETRIES = 3
+const EXPORT_RATE_LIMIT_MAX_WAIT_SECONDS = 60
+
+// 导出逐页请求计入按用户的重查询限流；429 时按 Retry-After 等待后重试同一页。
+const queryExportPage = async (params: UsageQueryParams) => {
+  for (let attempt = 0; ; attempt++) {
+    try {
+      return await usageAPI.query(params)
+    } catch (error: any) {
+      if (error?.status !== 429 || attempt >= EXPORT_RATE_LIMIT_MAX_RETRIES) throw error
+      const waitSeconds = Math.min(
+        Math.max(error.retry_after_seconds ?? EXPORT_RATE_LIMIT_MAX_WAIT_SECONDS, 1),
+        EXPORT_RATE_LIMIT_MAX_WAIT_SECONDS
+      )
+      appStore.showInfo(t('usage.exportRateLimited', { seconds: waitSeconds }))
+      await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000))
+    }
+  }
 }
 
 const exportToCSV = async () => {
@@ -625,10 +663,10 @@ const exportToCSV = async () => {
   appStore.showInfo(t('usage.preparingExport'))
   try {
     const allLogs: UsageLog[] = []
-    const pageSize = 100
-    const totalPages = Math.ceil(pagination.total / pageSize)
+    const exportParams = buildUsageListParams(1, EXPORT_PAGE_SIZE)
+    const totalPages = Math.ceil(pagination.total / EXPORT_PAGE_SIZE)
     for (let page = 1; page <= totalPages; page++) {
-      const response = await usageAPI.query(buildUsageListParams(page, pageSize))
+      const response = await queryExportPage({ ...exportParams, page })
       allLogs.push(...response.items)
     }
     if (allLogs.length === 0) {
@@ -681,7 +719,7 @@ const exportToCSV = async () => {
     const url = window.URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `usage_${startDate.value}_to_${endDate.value}.csv`
+    link.download = `usage_${exportParams.start_date}_to_${exportParams.end_date}.csv`
     link.click()
     window.URL.revokeObjectURL(url)
     appStore.showSuccess(t('usage.exportSuccess'))
@@ -799,13 +837,24 @@ const handleColumnClickOutside = (event: MouseEvent) => {
   }
 }
 
+const loadApiKeys = async () => {
+  const firstPage = await keysAPI.list(1, 100)
+  const keys = [...firstPage.items]
+  for (let page = 2; page <= firstPage.pages && keys.length > 0; page++) {
+    const response = await keysAPI.list(page, 100)
+    if (response.items.length === 0) break
+    keys.push(...response.items)
+  }
+  return keys
+}
+
 const loadFilterOptions = async () => {
   try {
     const [keys, availableGroups] = await Promise.all([
-      keysAPI.list(1, 100),
+      loadApiKeys(),
       userGroupsAPI.getAvailable(),
     ])
-    apiKeys.value = keys.items
+    apiKeys.value = keys
     groups.value = availableGroups
   } catch (error) {
     console.error('Failed to load usage filter options:', error)

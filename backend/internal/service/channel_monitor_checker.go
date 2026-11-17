@@ -175,6 +175,7 @@ var providerAdapters = map[string]providerAdapter{
 	MonitorProviderKimi:     providerKimiChatAdapter,
 	MonitorProviderZhipu:    providerZhipuChatAdapter,
 	MonitorProviderDeepseek: providerDeepseekChatAdapter,
+	MonitorProviderMiniMax:  providerMiniMaxChatAdapter,
 	MonitorProviderAnthropic: {
 		buildPath: func(string) string { return providerAnthropicPath },
 		buildBody: func(model, prompt string) ([]byte, error) {
@@ -198,7 +199,7 @@ var providerAdapters = map[string]providerAdapter{
 		buildBody: func(_, prompt string) ([]byte, error) {
 			return json.Marshal(map[string]any{
 				"contents": []map[string]any{
-					{"parts": []map[string]any{{"text": prompt}}},
+					{"role": "user", "parts": []map[string]any{{"text": prompt}}},
 				},
 				"generationConfig": map[string]any{"maxOutputTokens": monitorChallengeMaxTokens},
 			})
@@ -225,6 +226,9 @@ var providerZhipuChatAdapter = newOpenAICompatibleChatAdapter(providerZhipuPath)
 
 //nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
 var providerDeepseekChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
+
+//nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
+var providerMiniMaxChatAdapter = newOpenAICompatibleChatAdapter(providerOpenAIPath)
 
 func newOpenAICompatibleChatAdapter(path string) providerAdapter {
 	return providerAdapter{
@@ -293,7 +297,7 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 		return "", "", 0, err
 	}
 	headers := mergeHeaders(adapter.buildHeaders(apiKey), opts)
-	full := joinURL(endpoint, adapter.buildPath(model))
+	full := joinURL(endpoint, monitorRequestPath(provider, endpoint, adapter, model))
 	respBytes, status, err := postRawJSON(ctx, full, body, headers)
 	if err != nil {
 		return "", "", status, err
@@ -458,6 +462,7 @@ var bodyMergeKeyDenyList = map[string]map[string]bool{
 	MonitorProviderKimi:     {"model": true, "messages": true, "stream": true},
 	MonitorProviderZhipu:    {"model": true, "messages": true, "stream": true},
 	MonitorProviderDeepseek: {"model": true, "messages": true, "stream": true},
+	MonitorProviderMiniMax:  {"model": true, "messages": true, "stream": true},
 }
 
 func checkAPIMode(opts *CheckOptions) string {
@@ -479,7 +484,7 @@ func bodyMergeDenyKey(provider, apiMode string) string {
 func isOpenAICompatibleChatProvider(provider string) bool {
 	switch provider {
 	case MonitorProviderOpenAI, MonitorProviderGrok,
-		MonitorProviderKimi, MonitorProviderZhipu, MonitorProviderDeepseek:
+		MonitorProviderKimi, MonitorProviderZhipu, MonitorProviderDeepseek, MonitorProviderMiniMax:
 		return true
 	default:
 		return false
@@ -551,12 +556,51 @@ func postRawJSON(ctx context.Context, fullURL string, payload []byte, headers ma
 	return respBody, resp.StatusCode, nil
 }
 
-// joinURL 把 base origin 与 path 拼成完整 URL。
-// 容忍 base 末尾有/无斜杠，path 必带前导斜杠。
+// monitorRequestPath 返回探测请求路径。智谱按 endpoint 区分：
+//   - 已带 /paas/v4（含 Coding Plan 的 /api/coding/paas/v4）：只追加 /chat/completions
+//   - 官方域名根地址：/api/paas/v4/chat/completions
+//   - 中转站 / 本站网关：只暴露 OpenAI 兼容的 /v1/chat/completions，与 Kimi / DeepSeek 一致
+func monitorRequestPath(provider, endpoint string, adapter providerAdapter, model string) string {
+	if provider != MonitorProviderZhipu {
+		return adapter.buildPath(model)
+	}
+	u, err := url.Parse(strings.TrimSpace(endpoint))
+	if err != nil {
+		return providerOpenAIPath
+	}
+	if strings.Contains(u.EscapedPath(), "/paas/v4") {
+		return "/chat/completions"
+	}
+	if isZhipuOfficialHost(u) {
+		return adapter.buildPath(model)
+	}
+	return providerOpenAIPath
+}
+
+func isZhipuOfficialHost(u *url.URL) bool {
+	host := strings.ToLower(u.Hostname())
+	for _, official := range []string{"bigmodel.cn", "z.ai"} {
+		if host == official || strings.HasSuffix(host, "."+official) {
+			return true
+		}
+	}
+	return false
+}
+
+// joinURL 保留 base 的上游路径前缀，并避免重复追加已有的 API 路径前缀。
+// 使用 EscapedPath 匹配完整路径段，避免把 hostname 或编码斜杠当作路径。
 func joinURL(base, path string) string {
 	base = strings.TrimRight(base, "/")
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
+	}
+	if u, err := url.Parse(base); err == nil {
+		basePath := u.EscapedPath()
+		for end := strings.LastIndex(path, "/"); end > 0; end = strings.LastIndex(path[:end], "/") {
+			if strings.HasSuffix(basePath, path[:end]) {
+				return base + path[end:]
+			}
+		}
 	}
 	return base + path
 }
@@ -592,6 +636,8 @@ var monitorAPIKeyPatterns = []struct {
 	{regexp.MustCompile(`xai-[A-Za-z0-9_-]{6,}`), "xai-***REDACTED***"},
 	// Gemini / Google API Key：固定前缀 + 35 位
 	{regexp.MustCompile(`AIza[A-Za-z0-9_-]{35}`), "AIza***REDACTED***"},
+	// Gemini auth key：AQ.Ab 前缀 + 48 位，长度放宽以覆盖格式变体
+	{regexp.MustCompile(`AQ\.Ab[A-Za-z0-9_-]{40,}`), "AQ.***REDACTED***"},
 	// JWT 三段式（Bearer 后常出现）：eyJxxx.eyJxxx.signature
 	{regexp.MustCompile(`eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}`), "eyJ***REDACTED.JWT***"},
 }
@@ -599,7 +645,7 @@ var monitorAPIKeyPatterns = []struct {
 // sanitizeErrorMessage 擦除错误/响应文本中可能泄露的 API key。
 // 处理两类来源：
 //  1. URL query 中的 ?key= / ?api_key= 等（Go *url.Error 会回填完整 URL）
-//  2. 上游 HTTP body 文本里直接出现的 sk-* / xai-* / AIza* / JWT 等密钥碎片
+//  2. 上游 HTTP body 文本里直接出现的 sk-* / xai-* / AIza* / AQ.* / JWT 等密钥碎片
 //
 // 注意：与 gemini_messages_compat_service.go 的 sanitizeUpstreamErrorMessage 关注点类似但参数集更广，
 // 监控模块独立维护，避免互相耦合。

@@ -83,6 +83,21 @@ export default {
     columnAlwaysVisible: 'This column is always visible',
     createKey: 'Create API Key',
     editKey: 'Edit API Key',
+    bulkEdit: {
+      title: 'Bulk Edit',
+      selectedCount: '{count} keys selected',
+      selectKey: 'Select key {name}',
+      clearSelection: 'Clear selection',
+      hint: 'Check the fields to update. Unchecked fields keep their current values.',
+      limitHint: 'Enter 0 for no limit. Existing usage is preserved.',
+      ipHint: 'One IP or CIDR per line. Leave empty to clear this list on the selected keys.',
+      invalidLimit: 'Enter a valid amount greater than or equal to 0.',
+      invalidExpiration: 'Choose a valid expiration date or select Never expires.',
+      apply: 'Apply to {count} keys',
+      success: 'Updated {count} keys',
+      partialFailure: 'Updated {success} keys; {failed} failed',
+      failureHint: 'These keys could not be updated. Adjust the settings and retry. Only failed keys will be retried.'
+    },
     deleteKey: 'Delete API Key',
     deleteConfirmMessage: "Are you sure you want to delete '{name}'? This action cannot be undone.",
     id: 'ID',
@@ -101,6 +116,19 @@ export default {
     nameLabel: 'Name',
     namePlaceholder: 'My API Key',
     groupLabel: 'Group',
+    providerLabel: 'Provider',
+    providers: {
+      anthropic: 'Anthropic',
+      openai: 'OpenAI',
+      domestic: 'Chinese AI',
+      other: 'Other'
+    },
+    providerHints: {
+      anthropic: 'Choose an available Anthropic / Claude group',
+      openai: 'Choose an available OpenAI / GPT group',
+      domestic: 'Includes DeepSeek, Kimi, Zhipu GLM and MiniMax',
+      other: 'Includes Gemini, Grok, Antigravity, OpenCode and mixed groups'
+    },
     selectGroup: 'Select a group',
     statusLabel: 'Status',
     selectStatus: 'Select status',
@@ -140,10 +168,10 @@ export default {
       openai: {
         description: 'Add the following configuration files to your Codex CLI config directory.',
         authModeTitle: 'Codex authentication mode',
-        authModeDescription: 'Compatibility mode keeps the existing setup for older Codex clients. API Key Mode authorizes the client-side image executor.',
+        authModeDescription: 'The configuration enables live web search. API Key mode supports native Codex image generation by default. Choose compatibility mode for older clients.',
         authModeLegacy: 'Compatibility mode',
-        authModeApiKey: 'API Key Mode',
-        authModeApiKeyRestartNotice: 'After saving this configuration, completely quit and restart Codex Desktop or CLI, then create a new task so the client can rebuild its tool registry.',
+        authModeApiKey: 'API Key Mode (recommended)',
+        authModeApiKeyRestartNotice: 'This configuration contains your API key; do not share it or commit it. Save it and test in a new conversation; restart Codex if it has not loaded. Image generation still requires group permission, available balance, and upstream support.',
         configTomlHint: 'Make sure the following content is at the beginning of the config.toml file',
         note: 'Make sure the config directory exists. macOS/Linux users can run mkdir -p ~/.codex to create it.',
         noteWindows: 'Press Win+R and enter %userprofile%\\.codex to open the config directory. Create it manually if it does not exist.',
@@ -154,7 +182,12 @@ export default {
         codexCli: 'Codex CLI',
         codexCliWs: 'Codex CLI (WebSocket)',
         grokCli: 'Grok CLI',
+        systemOne: 'System One',
         opencode: 'OpenCode',
+      },
+      typesafe: {
+        description: 'Call Jev through the native TypeSafe System One endpoint.',
+        note: 'System One is non-streaming and is not compatible with Chat Completions, Responses, Claude Code, or Codex clients.',
       },
       antigravity: {
         description: 'Configure API access for Antigravity group. Select the configuration method based on your client.',
@@ -187,6 +220,42 @@ export default {
           'Export SUB2API_API_KEY, save config.toml under ~/.codex (mkdir -p ~/.codex). Prefer env_key auth; do not commit secrets.',
         codexNoteWindows:
           'Set $env:SUB2API_API_KEY, save config.toml under %USERPROFILE%\\.codex. Prefer env_key auth; do not commit secrets.',
+      },
+      deepseek: {
+        description: 'Configure Claude Code, Codex, or OpenCode through the current DeepSeek group.',
+        codexDescription: 'Configure Codex with API key authentication through the current DeepSeek group.',
+        codexConfigTomlHint: 'Save config.toml and restart Codex to load the remote catalog. In local file mode, also download the catalog to the configured path.',
+        codexNote: 'Export SUB2API_API_KEY before starting Codex. The downloaded catalog contains model metadata only, not your API key.',
+      },
+      minimax: {
+        description: 'Configure Claude Code, Codex, or OpenCode through the current MiniMax group.',
+        codexDescription: 'Configure Codex with API key authentication through the current MiniMax group.',
+        codexConfigTomlHint: 'Save config.toml and restart Codex to load the remote catalog. In local file mode, also download the catalog to the configured path.',
+        codexNote: 'Export SUB2API_API_KEY before starting Codex. The downloaded catalog contains model metadata only, not your API key.',
+      },
+      composite: {
+        description: 'Configure supported clients through the current Composite routing group.',
+        codexDescription: 'Configure Codex with API key authentication and the complete model catalog for this Composite group.',
+        codexConfigTomlHint: 'Save config.toml and restart Codex to load the remote catalog. In local file mode, also download the catalog to the configured path.',
+        codexNote: 'Export SUB2API_API_KEY before starting Codex. Model requests are routed by the selected catalog slug.',
+      },
+      routedCodex: {
+        description: 'Configure Codex with the complete model catalog for the current routed group.',
+        configTomlHint: 'Save config.toml and restart Codex to load the remote catalog. In local file mode, also download the catalog to the configured path.',
+        note: 'Export SUB2API_API_KEY before starting Codex. The downloaded catalog contains model metadata only, not your API key.',
+      },
+      codexModelCatalog: {
+        mode: 'Catalog source',
+        remote: 'Remote catalog (Codex 0.156.0+)',
+        local: 'Local file (older clients)',
+        oversized: 'The complete catalog exceeds the 1 MiB remote limit. Local file mode is selected; download it to the configured path.',
+        title: 'Codex model catalog',
+        description: 'Codex loads and refreshes the remote catalog using your configured authentication. For local file mode, fetch the catalog below and save it at the configured path.',
+        fetch: 'Fetch catalog',
+        retry: 'Retry',
+        download: 'Download catalog',
+        modelsCount: '{count} models ready to download',
+        errorDescription: 'The catalog could not be fetched with this API key.',
       },
       opencode: {
         title: 'OpenCode Example',
@@ -309,6 +378,7 @@ export default {
 	  modelVariant: 'Possible version variant',
 	  modelMismatch: 'Different model',
     reasoningEffort: 'Reasoning Effort',
+    requestedReasoningEffort: 'Requested reasoning effort',
     endpoint: 'Endpoint',
     endpointDistribution: 'Endpoint Distribution',
     inbound: 'Inbound',
@@ -325,10 +395,16 @@ export default {
     latency: 'Latency',
     latencyFirstToken: 'First',
     latencyDuration: 'Total',
+    outputTps: 'Output TPS',
+    outputTpsHint: 'Output tokens divided by total duration, including first-token wait, in tok/s. Output tokens may include reasoning tokens.',
     time: 'Time',
     ws: 'WS',
     stream: 'Stream',
     sync: 'Sync',
+    nativeCompactionV2: 'Compaction',
+    compactionFilter: 'Request Kind',
+    allCompactionTypes: 'All Requests',
+    compactionOnly: 'Compaction Only',
     cyber: 'Cyber',
     live: 'Live',
     unknown: 'Unknown',
@@ -367,6 +443,7 @@ export default {
     cacheWrite: 'Write',
     serviceTier: 'Service tier',
     serviceTierPriority: 'Fast',
+    serviceTierUltrafast: 'Ultrafast',
     serviceTierFlex: 'Flex',
     serviceTierStandard: 'Standard',
     rate: 'Rate',
@@ -377,6 +454,7 @@ export default {
     noDataToExport: 'No data to export',
     exportSuccess: 'Usage data exported successfully',
     exportFailed: 'Failed to export usage data',
+    exportRateLimited: 'Too many requests, export will resume in {seconds} seconds',
     exportExcelSuccess: 'Usage data exported successfully (Excel format)',
     exportExcelFailed: 'Failed to export usage data',
     imageUnit: ' images',
@@ -434,7 +512,9 @@ export default {
       antigravity: 'Antigravity',
       kimi: 'Kimi',
       zhipu: 'Zhipu GLM',
-      deepseek: 'DeepSeek'
+      deepseek: 'DeepSeek',
+      minimax: 'MiniMax',
+      opencode_go: 'OpenCode'
     },
     // Check modes (how a monitor performs its checks)
     checkMode: {
@@ -445,13 +525,13 @@ export default {
     // Quota snapshot rendering (MonitorQuotaView, shared by admin + user views)
     quota: {
       unavailable: 'Quota unavailable',
-      resetSoon: 'resetting',
       windows: {
         '5h': '5h',
         '7d': '7d',
         '7dSonnet': '7d Sonnet',
         '7dFable': '7d Fable',
         weekly: 'Weekly',
+        monthly: 'Monthly',
         daily: 'Daily',
         '30d': '30d',
         total: 'Total'
@@ -552,9 +632,14 @@ export default {
       billingModePerRequest: 'Per Request',
       billingModeImage: 'Per Image',
       billingModeVideo: 'Per Video',
+      videoPrice: 'Video Price',
+      unitPerSecond: '/ second',
       inputPrice: 'Input',
       outputPrice: 'Output',
       cacheWritePrice: 'Cache Write',
+      cacheWrite5mPrice: 'Cache Write (5m)',
+      cacheWrite1hPrice: 'Cache Write (1h)',
+      cacheWrite12hPrice: 'Cache Write (12h)',
       cacheReadPrice: 'Cache Read',
       imageInputPrice: 'Image Input',
       imageOutputPrice: 'Image Output',
@@ -589,7 +674,8 @@ export default {
     detail: {
       noModels: 'No models configured for this group',
       noPricing: 'Pricing not configured',
-      peakNote: 'Peak hours {window}: billing rate ×{multiplier}'
+      peakNote: 'Peak hours {window}: billing rate ×{multiplier}',
+      longContextDisabledNote: 'Long-context tier pricing is disabled for this group: requests above the threshold are billed at the base tier; official tiers are for reference only'
     },
     table: {
       model: 'Model',
@@ -598,6 +684,20 @@ export default {
       cache: 'Cache',
       cacheWrite: 'Write',
       cacheRead: 'Read',
+      cacheWriteShort: 'W',
+      cacheReadShort: 'R',
+      tierHint: 'The whole request is billed at the tier matching its total context (input + cache write + cache read)',
+      tierHintMarginal: 'Only the portion above the threshold is billed at this tier; output is unaffected',
+      reasoningMultiplierBadge: '{effort} ×{multiplier}',
+      reasoningMultiplierHint: 'When the forwarded reasoning effort is {effort}, billing and quota usage for the request are multiplied by {multiplier}. Unconfigured levels use 1×',
+      marginalBadge: 'excess-only tiers',
+      timePricingRowHint: 'Requests made within this period ({timezone} time) are billed at the prices in this row',
+      timePricingRowHintWeekdays:
+        'On weekdays (Mon–Fri) only, requests made within this period ({timezone} time) are billed at the prices in this row; weekends use the standard prices',
+      timePricingRowHintPeak:
+        '; prices in this row exclude the peak-hour rate — where this period overlaps the peak hours {window}, the overlapping portion is additionally multiplied by ×{multiplier}',
+      timePricingWeekdays: 'Weekdays',
+      timePricingRateHint: 'Effective rate {rate} × period multiplier {multiplier}',
       paidPrice: 'Your Price (Discounted)',
       officialPrice: 'Official Price',
       rate: 'Rate',
@@ -699,6 +799,8 @@ export default {
     days: ' days',
     codeRedeemSuccess: 'Code redeemed successfully!',
     failedToRedeem: 'Failed to redeem code. Please check the code and try again.',
+    historyLoadFailed: 'Failed to load activity. Please try again.',
+    userRefreshFailed: 'Redeemed successfully, but failed to refresh account information.',
     subscriptionRefreshFailed: 'Redeemed successfully, but failed to refresh subscription status.',
     pleaseEnterCode: 'Please enter a redeem code'
   },

@@ -117,6 +117,7 @@ type WebSearchManagerBuilder func(cfg *WebSearchEmulationConfig, proxyURLs map[i
 
 // SettingService 系统设置服务
 type SettingService struct {
+	scopedAdminKeyRepo          ScopedAdminKeyRepository
 	settingRepo                 SettingRepository
 	defaultSubGroupReader       DefaultSubscriptionGroupReader
 	proxyRepo                   ProxyRepository // for resolving websearch provider proxy URLs
@@ -130,9 +131,12 @@ type SettingService struct {
 	openAICodexUASF             singleflight.Group
 	openAICodexVersionCache     atomic.Value // *cachedOpenAICodexClientVersion
 	openAICodexVersionSF        singleflight.Group
+	claudeCodeVersionCache      atomic.Value // *cachedClaudeCodeClientVersion
+	claudeCodeVersionSF         singleflight.Group
 	codexRestrictionPolicyCache atomic.Value // *cachedCodexRestrictionPolicy
 	codexRestrictionPolicySF    singleflight.Group
 
+	cyberSessionBlockRuntimeMu    sync.Mutex
 	cyberSessionBlockRuntimeCache atomic.Value // *cachedCyberSessionBlockRuntime
 	cyberSessionBlockRuntimeSF    singleflight.Group
 
@@ -140,6 +144,14 @@ type SettingService struct {
 	// 面板每个认证请求都会读取，禁止在热路径上直接访问 DB。
 	panelRateLimitCache atomic.Value
 	panelRateLimitSF    singleflight.Group
+
+	// registrationEmailBlacklistCache 精确邮箱黑名单进程内缓存（*registrationEmailBlacklistIndex，60s TTL）。
+	// 公开的注册与发码接口每次请求都会读取，禁止在热路径上直接访问 DB。
+	// registrationEmailBlacklistMu 串行化刷新时的「读 DB + 写缓存」与保存后的写缓存，
+	// 避免进行中的刷新用旧名单覆盖刚保存的名单。
+	registrationEmailBlacklistMu    sync.Mutex
+	registrationEmailBlacklistCache atomic.Value
+	registrationEmailBlacklistSF    singleflight.Group
 
 	// openAIQuotaAutoPauseSettingsCache holds the most recently observed quota auto-pause
 	// settings. GetOpenAIQuotaAutoPauseSettings reads this atomic.Value on the request hot
@@ -149,6 +161,7 @@ type SettingService struct {
 	// instance owns its own cache, no shared package-level state.
 	openAIQuotaAutoPauseSettingsCache atomic.Value // *cachedOpenAIQuotaAutoPauseSettings
 	openAIQuotaAutoPauseSettingsSF    singleflight.Group
+	openAIAPIKeyHealthBreakerCache    atomic.Value // *cachedOpenAIAPIKeyHealthBreakerSettings
 
 	channelMonitorRuntimeListenersMu sync.Mutex
 	channelMonitorRuntimeListeners   []func()
@@ -159,6 +172,11 @@ type DefaultPlatformQuotaSetting struct {
 	DailyLimitUSD   *float64 `json:"daily"`
 	WeeklyLimitUSD  *float64 `json:"weekly"`
 	MonthlyLimitUSD *float64 `json:"monthly"`
+}
+
+// HasAnyLimit 报告是否至少配置了一档限额（0 也算配置）。nil receiver 视为未配置。
+func (q *DefaultPlatformQuotaSetting) HasAnyLimit() bool {
+	return q != nil && (q.DailyLimitUSD != nil || q.WeeklyLimitUSD != nil || q.MonthlyLimitUSD != nil)
 }
 
 type ProviderDefaultGrantSettings struct {

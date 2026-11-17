@@ -9,13 +9,14 @@ import (
 
 // CustomMenuItem represents a user-configured custom menu entry.
 type CustomMenuItem struct {
-	ID         string `json:"id"`
-	Label      string `json:"label"`
-	IconSVG    string `json:"icon_svg"`
-	URL        string `json:"url"`
-	PageSlug   string `json:"page_slug,omitempty"`
-	Visibility string `json:"visibility"` // "user" or "admin"
-	SortOrder  int    `json:"sort_order"`
+	ID             string `json:"id"`
+	Label          string `json:"label"`
+	IconSVG        string `json:"icon_svg"`
+	URL            string `json:"url"`
+	PageSlug       string `json:"page_slug,omitempty"`
+	Visibility     string `json:"visibility"` // "user" or "admin"
+	SortOrder      int    `json:"sort_order"`
+	HideOpenButton bool   `json:"hide_open_button,omitempty"`
 }
 
 // CustomEndpoint represents an admin-configured API endpoint for quick copy.
@@ -201,6 +202,7 @@ type SystemSettings struct {
 	BackendModeEnabled bool `json:"backend_mode_enabled"`
 
 	// Gateway forwarding behavior
+	OpenAITTFTMode                         string `json:"openai_ttft_mode"`
 	EnableFingerprintUnification           bool   `json:"enable_fingerprint_unification"`
 	EnableMetadataPassthrough              bool   `json:"enable_metadata_passthrough"`
 	EnableCCHSigning                       bool   `json:"enable_cch_signing"`
@@ -215,6 +217,9 @@ type SystemSettings struct {
 	OpenAICodexClientVersion               string `json:"openai_codex_client_version"`
 	OpenAICodexClientVersionSynced         string `json:"openai_codex_client_version_synced"`
 	OpenAICodexVersionAutoSyncEnabled      bool   `json:"openai_codex_version_auto_sync_enabled"`
+	ClaudeCodeClientVersion                string `json:"claude_code_client_version"`
+	ClaudeCodeClientVersionSynced          string `json:"claude_code_client_version_synced"`
+	ClaudeCodeVersionAutoSyncEnabled       bool   `json:"claude_code_version_auto_sync_enabled"`
 
 	// codex_cli_only 加固
 	MinCodexVersion                      string `json:"min_codex_version"`
@@ -234,33 +239,33 @@ type SystemSettings struct {
 	PaymentVisibleMethodWxpayEnabled  bool   `json:"payment_visible_method_wxpay_enabled"`
 
 	// OpenAI account scheduling
-	OpenAILowUpstreamRatePriorityEnabled                   bool    `json:"openai_low_upstream_rate_priority_enabled"`
-	OpenAIOAuthSchedulingRateMultiplier                    float64 `json:"openai_oauth_scheduling_rate_multiplier"`
-	OpenAIAdvancedSchedulerEnabled                         bool    `json:"openai_advanced_scheduler_enabled"`
-	OpenAIAdvancedSchedulerStickyWeightedEnabled           bool    `json:"openai_advanced_scheduler_sticky_weighted_enabled"`
-	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled     bool    `json:"openai_advanced_scheduler_subscription_priority_enabled"`
-	OpenAIAdvancedSchedulerLBTopK                          string  `json:"openai_advanced_scheduler_lb_top_k"`
-	OpenAIAdvancedSchedulerWeightPriority                  string  `json:"openai_advanced_scheduler_weight_priority"`
-	OpenAIAdvancedSchedulerWeightLoad                      string  `json:"openai_advanced_scheduler_weight_load"`
-	OpenAIAdvancedSchedulerWeightQueue                     string  `json:"openai_advanced_scheduler_weight_queue"`
-	OpenAIAdvancedSchedulerWeightErrorRate                 string  `json:"openai_advanced_scheduler_weight_error_rate"`
-	OpenAIAdvancedSchedulerWeightTTFT                      string  `json:"openai_advanced_scheduler_weight_ttft"`
-	OpenAIAdvancedSchedulerWeightReset                     string  `json:"openai_advanced_scheduler_weight_reset"`
-	OpenAIAdvancedSchedulerWeightQuotaHeadroom             string  `json:"openai_advanced_scheduler_weight_quota_headroom"`
-	OpenAIAdvancedSchedulerWeightUpstreamCost              string  `json:"openai_advanced_scheduler_weight_upstream_cost"`
-	OpenAIAdvancedSchedulerWeightPreviousResponse          string  `json:"openai_advanced_scheduler_weight_previous_response"`
-	OpenAIAdvancedSchedulerWeightSessionSticky             string  `json:"openai_advanced_scheduler_weight_session_sticky"`
-	OpenAIAdvancedSchedulerEffectiveLBTopK                 string  `json:"openai_advanced_scheduler_effective_lb_top_k"`
-	OpenAIAdvancedSchedulerEffectiveWeightPriority         string  `json:"openai_advanced_scheduler_effective_weight_priority"`
-	OpenAIAdvancedSchedulerEffectiveWeightLoad             string  `json:"openai_advanced_scheduler_effective_weight_load"`
-	OpenAIAdvancedSchedulerEffectiveWeightQueue            string  `json:"openai_advanced_scheduler_effective_weight_queue"`
-	OpenAIAdvancedSchedulerEffectiveWeightErrorRate        string  `json:"openai_advanced_scheduler_effective_weight_error_rate"`
-	OpenAIAdvancedSchedulerEffectiveWeightTTFT             string  `json:"openai_advanced_scheduler_effective_weight_ttft"`
-	OpenAIAdvancedSchedulerEffectiveWeightReset            string  `json:"openai_advanced_scheduler_effective_weight_reset"`
-	OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom    string  `json:"openai_advanced_scheduler_effective_weight_quota_headroom"`
-	OpenAIAdvancedSchedulerEffectiveWeightUpstreamCost     string  `json:"openai_advanced_scheduler_effective_weight_upstream_cost"`
-	OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse string  `json:"openai_advanced_scheduler_effective_weight_previous_response"`
-	OpenAIAdvancedSchedulerEffectiveWeightSessionSticky    string  `json:"openai_advanced_scheduler_effective_weight_session_sticky"`
+	OpenAILowUpstreamRatePriorityEnabled                   bool     `json:"openai_low_upstream_rate_priority_enabled"`
+	OpenAIOAuthSchedulingRateMultiplier                    *float64 `json:"openai_oauth_scheduling_rate_multiplier"`
+	OpenAIAdvancedSchedulerEnabled                         bool     `json:"openai_advanced_scheduler_enabled"`
+	OpenAIAdvancedSchedulerStickyWeightedEnabled           bool     `json:"openai_advanced_scheduler_sticky_weighted_enabled"`
+	OpenAIAdvancedSchedulerSubscriptionPriorityEnabled     bool     `json:"openai_advanced_scheduler_subscription_priority_enabled"`
+	OpenAIAdvancedSchedulerLBTopK                          string   `json:"openai_advanced_scheduler_lb_top_k"`
+	OpenAIAdvancedSchedulerWeightPriority                  string   `json:"openai_advanced_scheduler_weight_priority"`
+	OpenAIAdvancedSchedulerWeightLoad                      string   `json:"openai_advanced_scheduler_weight_load"`
+	OpenAIAdvancedSchedulerWeightQueue                     string   `json:"openai_advanced_scheduler_weight_queue"`
+	OpenAIAdvancedSchedulerWeightErrorRate                 string   `json:"openai_advanced_scheduler_weight_error_rate"`
+	OpenAIAdvancedSchedulerWeightTTFT                      string   `json:"openai_advanced_scheduler_weight_ttft"`
+	OpenAIAdvancedSchedulerWeightReset                     string   `json:"openai_advanced_scheduler_weight_reset"`
+	OpenAIAdvancedSchedulerWeightQuotaHeadroom             string   `json:"openai_advanced_scheduler_weight_quota_headroom"`
+	OpenAIAdvancedSchedulerWeightUpstreamCost              string   `json:"openai_advanced_scheduler_weight_upstream_cost"`
+	OpenAIAdvancedSchedulerWeightPreviousResponse          string   `json:"openai_advanced_scheduler_weight_previous_response"`
+	OpenAIAdvancedSchedulerWeightSessionSticky             string   `json:"openai_advanced_scheduler_weight_session_sticky"`
+	OpenAIAdvancedSchedulerEffectiveLBTopK                 string   `json:"openai_advanced_scheduler_effective_lb_top_k"`
+	OpenAIAdvancedSchedulerEffectiveWeightPriority         string   `json:"openai_advanced_scheduler_effective_weight_priority"`
+	OpenAIAdvancedSchedulerEffectiveWeightLoad             string   `json:"openai_advanced_scheduler_effective_weight_load"`
+	OpenAIAdvancedSchedulerEffectiveWeightQueue            string   `json:"openai_advanced_scheduler_effective_weight_queue"`
+	OpenAIAdvancedSchedulerEffectiveWeightErrorRate        string   `json:"openai_advanced_scheduler_effective_weight_error_rate"`
+	OpenAIAdvancedSchedulerEffectiveWeightTTFT             string   `json:"openai_advanced_scheduler_effective_weight_ttft"`
+	OpenAIAdvancedSchedulerEffectiveWeightReset            string   `json:"openai_advanced_scheduler_effective_weight_reset"`
+	OpenAIAdvancedSchedulerEffectiveWeightQuotaHeadroom    string   `json:"openai_advanced_scheduler_effective_weight_quota_headroom"`
+	OpenAIAdvancedSchedulerEffectiveWeightUpstreamCost     string   `json:"openai_advanced_scheduler_effective_weight_upstream_cost"`
+	OpenAIAdvancedSchedulerEffectiveWeightPreviousResponse string   `json:"openai_advanced_scheduler_effective_weight_previous_response"`
+	OpenAIAdvancedSchedulerEffectiveWeightSessionSticky    string   `json:"openai_advanced_scheduler_effective_weight_session_sticky"`
 
 	// Payment configuration
 	PaymentEnabled                   bool     `json:"payment_enabled"`
@@ -274,11 +279,15 @@ type SystemSettings struct {
 	PaymentBalanceRechargeMultiplier float64  `json:"payment_balance_recharge_multiplier"`
 	PaymentSubscriptionUSDToCNYRate  float64  `json:"payment_subscription_usd_to_cny_rate"`
 	PaymentRechargeFeeRate           float64  `json:"payment_recharge_fee_rate"`
-	PaymentLoadBalanceStrat          string   `json:"payment_load_balance_strategy"`
-	PaymentProductNamePrefix         string   `json:"payment_product_name_prefix"`
-	PaymentProductNameSuffix         string   `json:"payment_product_name_suffix"`
-	PaymentHelpImageURL              string   `json:"payment_help_image_url"`
-	PaymentHelpText                  string   `json:"payment_help_text"`
+	// 充值赠送阶梯与活动文案
+	PaymentRechargeBonusTiers  []RechargeBonusTier `json:"payment_recharge_bonus_tiers"`
+	PaymentRechargeBonusMode   string              `json:"payment_recharge_bonus_mode"`
+	PaymentRechargeBonusNotice string              `json:"payment_recharge_bonus_notice"`
+	PaymentLoadBalanceStrat    string              `json:"payment_load_balance_strategy"`
+	PaymentProductNamePrefix   string              `json:"payment_product_name_prefix"`
+	PaymentProductNameSuffix   string              `json:"payment_product_name_suffix"`
+	PaymentHelpImageURL        string              `json:"payment_help_image_url"`
+	PaymentHelpText            string              `json:"payment_help_text"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled bool   `json:"payment_cancel_rate_limit_enabled"`
@@ -306,6 +315,7 @@ type SystemSettings struct {
 	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
 	ChannelMonitorHideThroughput         bool   `json:"channel_monitor_hide_throughput"`
 	ChannelMonitorShowQuota              bool   `json:"channel_monitor_show_quota"`
+	ChannelMonitorHideUserRanking        bool   `json:"channel_monitor_hide_user_ranking"`
 
 	// Grok model mapping policy (admin settings; empty account mapping falls back to these).
 	GrokDefaultTextModel           string `json:"grok_default_text_model"`
@@ -315,17 +325,23 @@ type SystemSettings struct {
 	// Available Channels feature switch (user-facing aggregate view)
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
+	// Subscription feature switch: gates the whole user-facing subscription surface
+	// (sidebar entries, purchase-page subscription tab, header badge, /subscriptions route).
+	SubscriptionEnabled bool `json:"subscription_enabled"`
+
 	// Model Plaza feature (public group/model pricing showcase)
-	ModelPlazaEnabled     bool   `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth bool   `json:"model_plaza_require_auth"`
-	ModelPlazaDescription string `json:"model_plaza_description"`
+	ModelPlazaEnabled       bool   `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth   bool   `json:"model_plaza_require_auth"`
+	ModelPlazaDescription   string `json:"model_plaza_description"`
+	PluginManagementEnabled bool   `json:"plugin_management_enabled"`
 
 	// 风控中心功能开关
 	RiskControlEnabled bool `json:"risk_control_enabled"`
 
 	// cyber 会话屏蔽开关 + TTL
-	CyberSessionBlockEnabled    bool `json:"cyber_session_block_enabled"`
-	CyberSessionBlockTTLSeconds int  `json:"cyber_session_block_ttl_seconds"`
+	CyberSessionBlockEnabled    bool   `json:"cyber_session_block_enabled"`
+	CyberPolicyUserAllowlist    string `json:"cyber_policy_user_allowlist"`
+	CyberSessionBlockTTLSeconds int    `json:"cyber_session_block_ttl_seconds"`
 
 	// Affiliate (邀请返利) feature switch
 	AffiliateEnabled bool `json:"affiliate_enabled"`
@@ -399,8 +415,13 @@ type PublicSettings struct {
 	GitHubOAuthEnabled                  bool                     `json:"github_oauth_enabled"`
 	GoogleOAuthEnabled                  bool                     `json:"google_oauth_enabled"`
 	BackendModeEnabled                  bool                     `json:"backend_mode_enabled"`
+	MCPEnabled                          bool                     `json:"mcp_enabled"`
 	PaymentEnabled                      bool                     `json:"payment_enabled"`
-	Version                             string                   `json:"version"`
+	// PaymentBalanceDisabled mirrors the payment-config BALANCE_PAYMENT_DISABLED switch so the
+	// user shell can derive the site billing mode (recharge & subscription / recharge only /
+	// subscription only) before any authenticated checkout call.
+	PaymentBalanceDisabled bool   `json:"payment_balance_disabled"`
+	Version                string `json:"version"`
 	// 服务器全局时区（IANA 名称与当前 UTC 偏移，如 "Asia/Shanghai" / "+08:00"）。
 	// 高峰时段等按服务器本地时间判定的窗口，前端展示时据此标注，避免用户按浏览器本地时间误读。
 	ServerTimezone              string  `json:"server_timezone"`
@@ -415,11 +436,15 @@ type PublicSettings struct {
 	ChannelMonitorDefaultIntervalSeconds int    `json:"channel_monitor_default_interval_seconds"`
 	ChannelMonitorHideThroughput         bool   `json:"channel_monitor_hide_throughput"`
 	ChannelMonitorShowQuota              bool   `json:"channel_monitor_show_quota"`
+	ChannelMonitorHideUserRanking        bool   `json:"channel_monitor_hide_user_ranking"`
 
 	AvailableChannelsEnabled bool `json:"available_channels_enabled"`
 
-	ModelPlazaEnabled     bool `json:"model_plaza_enabled"`
-	ModelPlazaRequireAuth bool `json:"model_plaza_require_auth"`
+	SubscriptionEnabled bool `json:"subscription_enabled"`
+
+	ModelPlazaEnabled       bool `json:"model_plaza_enabled"`
+	ModelPlazaRequireAuth   bool `json:"model_plaza_require_auth"`
+	PluginManagementEnabled bool `json:"plugin_management_enabled"`
 
 	AffiliateEnabled bool `json:"affiliate_enabled"`
 
@@ -444,6 +469,10 @@ type OverloadCooldownSettings struct {
 type RateLimit429CooldownSettings struct {
 	Enabled         bool `json:"enabled"`
 	CooldownSeconds int  `json:"cooldown_seconds"`
+}
+
+type OpenAIImagesOAuthUnavailableCooldownSettings struct {
+	CooldownMinutes int `json:"cooldown_minutes"`
 }
 
 // PanelRateLimitSettings 面板 API 限流配置 DTO

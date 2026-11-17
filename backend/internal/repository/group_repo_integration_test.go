@@ -5,13 +5,17 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/stretchr/testify/require"
 	"github.com/stretchr/testify/suite"
 )
 
@@ -45,6 +49,55 @@ func (s *GroupRepoSuite) SetupTest() {
 
 func TestGroupRepoSuite(t *testing.T) {
 	suite.Run(t, new(GroupRepoSuite))
+}
+
+func TestModerationConfigWriteRejectsGroupDeletedAfterValidation(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	repo := newGroupRepositoryWithSQL(client, integrationDB)
+	settings := &settingRepository{client: client}
+	group := &service.Group{Name: "moderation-concurrent-delete", Platform: service.PlatformAnthropic, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard}
+	require.NoError(t, repo.Create(ctx, group))
+	t.Cleanup(func() { _, _ = integrationDB.ExecContext(ctx, "DELETE FROM groups WHERE id=$1", group.ID) })
+	key := service.SettingKeyContentModerationConfig
+	previous, previousErr := settings.GetValue(ctx, key)
+	t.Cleanup(func() {
+		if previousErr == nil {
+			_ = settings.Set(ctx, key, previous)
+		} else {
+			_ = settings.Delete(ctx, key)
+		}
+	})
+	require.NoError(t, settings.Set(ctx, key, `{"all_groups":false,"group_ids":[]}`))
+
+	// Hold the deleter's group lock while the config writer starts with an ID
+	// that was valid before deletion. It must recheck after this transaction commits.
+	tx, err := integrationDB.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	defer func() { _ = tx.Rollback() }()
+	var id int64
+	require.NoError(t, tx.QueryRowContext(ctx, "SELECT id FROM groups WHERE id=$1 FOR UPDATE", group.ID).Scan(&id))
+	finished := make(chan error, 1)
+	go func() {
+		finished <- settings.SetContentModerationConfig(ctx, `{"all_groups":false,"group_ids":[`+fmt.Sprint(group.ID)+`]}`, []int64{group.ID})
+	}()
+	select {
+	case err := <-finished:
+		t.Fatalf("config write passed a locked group before deletion: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	_, err = tx.ExecContext(ctx, "UPDATE groups SET deleted_at=NOW() WHERE id=$1", group.ID)
+	require.NoError(t, err)
+	require.NoError(t, tx.Commit())
+	select {
+	case err := <-finished:
+		require.ErrorIs(t, err, service.ErrGroupNotFound)
+	case <-time.After(5 * time.Second):
+		t.Fatal("config write did not finish after deletion")
+	}
+	stored, err := settings.GetValue(ctx, key)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"all_groups":false,"group_ids":[]}`, stored)
 }
 
 // --- Create / GetByID / Update / Delete ---
@@ -199,6 +252,48 @@ func (s *GroupRepoSuite) TestUpdate() {
 	s.Require().Equal("updated", got.Name)
 }
 
+func (s *GroupRepoSuite) TestI18n_RoundTrip() {
+	group := &service.Group{
+		Name:             "i18n-roundtrip",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+		I18n: service.GroupI18n{
+			"en": {Name: "Standard", Description: "Pro + Max pool"},
+		},
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, group))
+
+	got, err := s.repo.GetByID(s.ctx, group.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(group.I18n, got.I18n)
+
+	got.I18n = service.GroupI18n{"zh": {Description: "号池"}}
+	s.Require().NoError(s.repo.Update(s.ctx, got))
+	got, err = s.repo.GetByID(s.ctx, group.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.GroupI18n{"zh": {Description: "号池"}}, got.I18n)
+
+	// 未携带译文的写入落库为空对象，而不是 JSON null。
+	got.I18n = nil
+	s.Require().NoError(s.repo.Update(s.ctx, got))
+	var stored string
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx, "SELECT i18n::text FROM groups WHERE id = $1", []any{group.ID}, &stored))
+	s.Require().Equal("{}", stored)
+
+	plain := &service.Group{
+		Name:             "i18n-default",
+		Platform:         service.PlatformAnthropic,
+		RateMultiplier:   1.0,
+		Status:           service.StatusActive,
+		SubscriptionType: service.SubscriptionTypeStandard,
+	}
+	s.Require().NoError(s.repo.Create(s.ctx, plain))
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx, "SELECT i18n::text FROM groups WHERE id = $1", []any{plain.ID}, &stored))
+	s.Require().Equal("{}", stored)
+}
+
 func (s *GroupRepoSuite) TestGetByID_PreservesMessagesDispatchModelConfig() {
 	group := &service.Group{
 		Name:                  "openai-dispatch",
@@ -243,6 +338,179 @@ func (s *GroupRepoSuite) TestDelete() {
 	_, err = s.repo.GetByID(s.ctx, group.ID)
 	s.Require().Error(err, "expected error after delete")
 	s.Require().ErrorIs(err, service.ErrGroupNotFound)
+}
+
+func (s *GroupRepoSuite) TestDeleteCascadeIfEmptyRejectsGroupWithNonDeletedAccount() {
+	group := &service.Group{Name: "guarded-non-empty", Platform: service.PlatformAnthropic, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard}
+	s.Require().NoError(s.repo.Create(s.ctx, group))
+	var accountID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
+		[]any{"guarded-account", service.PlatformAnthropic, service.AccountTypeOAuth}, &accountID))
+	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, 1, NOW())", accountID, group.ID)
+	s.Require().NoError(err)
+
+	config, marshalErr := json.Marshal(map[string]any{"group_ids": []int64{group.ID}, "all_groups": false})
+	s.Require().NoError(marshalErr)
+	s.Require().NoError(NewSettingRepository(s.tx.Client()).Set(s.ctx, service.SettingKeyContentModerationConfig, string(config)))
+	_, err = s.repo.DeleteCascadeIfEmpty(s.ctx, group.ID)
+	s.Require().ErrorIs(err, service.ErrGroupNotEmpty)
+	stored, readErr := NewSettingRepository(s.tx.Client()).GetValue(s.ctx, service.SettingKeyContentModerationConfig)
+	s.Require().NoError(readErr)
+	s.Require().JSONEq(string(config), stored)
+	_, err = s.repo.GetByID(s.ctx, group.ID)
+	s.Require().NoError(err)
+	var bindings int
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx, "SELECT COUNT(*) FROM account_groups WHERE group_id = $1", []any{group.ID}, &bindings))
+	s.Require().Equal(1, bindings)
+}
+
+func (s *GroupRepoSuite) TestDeleteCascadeIfEmptyDeletesEmptyGroup() {
+	group := &service.Group{Name: "guarded-empty", Platform: service.PlatformAnthropic, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard}
+	s.Require().NoError(s.repo.Create(s.ctx, group))
+
+	_, err := s.repo.DeleteCascadeIfEmpty(s.ctx, group.ID)
+	s.Require().NoError(err)
+	_, err = s.repo.GetByID(s.ctx, group.ID)
+	s.Require().ErrorIs(err, service.ErrGroupNotFound)
+}
+
+func (s *GroupRepoSuite) TestDeleteCascadeRemovesOnlySelectedModerationGroup() {
+	for _, guarded := range []bool{false, true} {
+		name := map[bool]string{false: "normal", true: "guarded"}[guarded]
+		s.Run(name, func() {
+			deleted := &service.Group{Name: "moderation-deleted-" + name, Platform: service.PlatformAnthropic, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard}
+			kept := &service.Group{Name: "moderation-kept-" + name, Platform: service.PlatformAnthropic, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard}
+			s.Require().NoError(s.repo.Create(s.ctx, deleted))
+			s.Require().NoError(s.repo.Create(s.ctx, kept))
+			config := map[string]any{"group_ids": []int64{kept.ID, deleted.ID}, "all_groups": false, "mode": "observe"}
+			raw, err := json.Marshal(config)
+			s.Require().NoError(err)
+			s.Require().NoError(NewSettingRepository(s.tx.Client()).Set(s.ctx, service.SettingKeyContentModerationConfig, string(raw)))
+			if guarded {
+				_, err = s.repo.DeleteCascadeIfEmpty(s.ctx, deleted.ID)
+			} else {
+				_, err = s.repo.DeleteCascade(s.ctx, deleted.ID)
+			}
+			s.Require().NoError(err)
+			stored, err := NewSettingRepository(s.tx.Client()).GetValue(s.ctx, service.SettingKeyContentModerationConfig)
+			s.Require().NoError(err)
+			var got struct {
+				GroupIDs []int64 `json:"group_ids"`
+				Mode     string  `json:"mode"`
+			}
+			s.Require().NoError(json.Unmarshal([]byte(stored), &got))
+			s.Require().Equal([]int64{kept.ID}, got.GroupIDs)
+			s.Require().Equal("observe", got.Mode)
+		})
+	}
+}
+
+func (s *GroupRepoSuite) TestDeleteCascadeUnknownGroupPreservesModerationConfig() {
+	const original = `{"all_groups":false,"group_ids":[123,456],"mode":"observe"}`
+	s.Require().NoError(NewSettingRepository(s.tx.Client()).Set(s.ctx, service.SettingKeyContentModerationConfig, original))
+	for _, guarded := range []bool{false, true} {
+		var err error
+		if guarded {
+			_, err = s.repo.DeleteCascadeIfEmpty(s.ctx, -1)
+		} else {
+			_, err = s.repo.DeleteCascade(s.ctx, -1)
+		}
+		s.Require().ErrorIs(err, service.ErrGroupNotFound)
+		stored, readErr := NewSettingRepository(s.tx.Client()).GetValue(s.ctx, service.SettingKeyContentModerationConfig)
+		s.Require().NoError(readErr)
+		s.Require().JSONEq(original, stored)
+	}
+}
+
+func (s *GroupRepoSuite) TestDeleteCascadePreservesMalformedModerationConfig() {
+	for _, guarded := range []bool{false, true} {
+		name := map[bool]string{false: "normal", true: "guarded"}[guarded]
+		s.Run(name, func() {
+			group := &service.Group{Name: "malformed-moderation-" + name, Platform: service.PlatformAnthropic, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard}
+			s.Require().NoError(s.repo.Create(s.ctx, group))
+			const malformed = `{"group_ids":[oops]}`
+			s.Require().NoError(NewSettingRepository(s.tx.Client()).Set(s.ctx, service.SettingKeyContentModerationConfig, malformed))
+			var err error
+			if guarded {
+				_, err = s.repo.DeleteCascadeIfEmpty(s.ctx, group.ID)
+			} else {
+				_, err = s.repo.DeleteCascade(s.ctx, group.ID)
+			}
+			s.Require().NoError(err)
+			stored, err := NewSettingRepository(s.tx.Client()).GetValue(s.ctx, service.SettingKeyContentModerationConfig)
+			s.Require().NoError(err)
+			s.Require().Equal(malformed, stored)
+		})
+	}
+}
+
+func (s *GroupRepoSuite) TestDeleteCascadeIfEmptyIgnoresBindingsToSoftDeletedAccounts() {
+	group := &service.Group{Name: "guarded-soft-deleted-account", Platform: service.PlatformAnthropic, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard}
+	s.Require().NoError(s.repo.Create(s.ctx, group))
+	var accountID int64
+	s.Require().NoError(scanSingleRow(s.ctx, s.tx,
+		"INSERT INTO accounts (name, platform, type, deleted_at) VALUES ($1, $2, $3, NOW()) RETURNING id",
+		[]any{"guarded-deleted-account", service.PlatformAnthropic, service.AccountTypeOAuth}, &accountID))
+	_, err := s.tx.ExecContext(s.ctx, "INSERT INTO account_groups (account_id, group_id, priority, created_at) VALUES ($1, $2, 1, NOW())", accountID, group.ID)
+	s.Require().NoError(err)
+
+	_, err = s.repo.DeleteCascadeIfEmpty(s.ctx, group.ID)
+	s.Require().NoError(err)
+	_, err = s.repo.GetByID(s.ctx, group.ID)
+	s.Require().ErrorIs(err, service.ErrGroupNotFound)
+}
+
+func TestBindAccountsToGroupWaitingBehindGuardedDeleteCannotCommit(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var groupID, accountID int64
+	require.NoError(t, scanSingleRow(ctx, integrationDB,
+		"INSERT INTO groups (name, platform, rate_multiplier, status, subscription_type) VALUES ($1, $2, 1, $3, $4) RETURNING id",
+		[]any{"guarded-delete-bind-race", service.PlatformAnthropic, service.StatusActive, service.SubscriptionTypeStandard}, &groupID))
+	require.NoError(t, scanSingleRow(ctx, integrationDB,
+		"INSERT INTO accounts (name, platform, type) VALUES ($1, $2, $3) RETURNING id",
+		[]any{"guarded-delete-bind-race-account", service.PlatformAnthropic, service.AccountTypeOAuth}, &accountID))
+	t.Cleanup(func() {
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM account_groups WHERE group_id = $1 OR account_id = $2", groupID, accountID)
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM accounts WHERE id = $1", accountID)
+		_, _ = integrationDB.ExecContext(context.Background(), "DELETE FROM groups WHERE id = $1", groupID)
+	})
+
+	deleteTx, err := integrationEntClient.Tx(ctx)
+	require.NoError(t, err)
+	defer func() { _ = deleteTx.Rollback() }()
+	rows, err := deleteTx.Client().QueryContext(ctx, "SELECT id FROM groups WHERE id = $1 FOR UPDATE", groupID)
+	require.NoError(t, err)
+	require.True(t, rows.Next())
+	require.NoError(t, rows.Close())
+
+	bindDone := make(chan error, 1)
+	go func() {
+		bindDone <- newGroupRepositoryWithSQL(integrationEntClient, integrationDB).
+			BindAccountsToGroup(ctx, groupID, []int64{accountID})
+	}()
+
+	require.Eventually(t, func() bool {
+		var waiting bool
+		err := scanSingleRow(ctx, integrationDB, `SELECT EXISTS (
+			SELECT 1 FROM pg_stat_activity
+			WHERE query LIKE '/* account_group_live_group_lock */%'
+			  AND wait_event_type = 'Lock'
+		)`, nil, &waiting)
+		return err == nil && waiting
+	}, 5*time.Second, 10*time.Millisecond, "binder did not wait on the guarded deletion lock")
+
+	deleteRepo := newGroupRepositoryWithSQL(deleteTx.Client(), deleteTx)
+	_, err = deleteRepo.DeleteCascadeIfEmpty(ctx, groupID)
+	require.NoError(t, err)
+	require.NoError(t, deleteTx.Commit())
+
+	require.ErrorIs(t, <-bindDone, service.ErrGroupNotFound)
+	var bindings int
+	require.NoError(t, scanSingleRow(ctx, integrationDB, "SELECT COUNT(*) FROM account_groups WHERE group_id = $1", []any{groupID}, &bindings))
+	require.Zero(t, bindings)
 }
 
 // --- List / ListWithFilters ---
@@ -617,6 +885,22 @@ func (s *GroupRepoSuite) TestListActive() {
 		}
 	}
 	s.Require().True(found, "active1 group should be in results")
+}
+
+func (s *GroupRepoSuite) TestListBindableWithFiltersAppliesFilterBeforePagination() {
+	for _, g := range []*service.Group{
+		{Name: "bindable-a", Platform: service.PlatformAnthropic, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard},
+		{Name: "composite-hidden", Platform: service.PlatformComposite, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard},
+		{Name: "bindable-b", Platform: service.PlatformOpenAI, RateMultiplier: 1, Status: service.StatusActive, SubscriptionType: service.SubscriptionTypeStandard},
+	} {
+		s.Require().NoError(s.repo.Create(s.ctx, g))
+	}
+
+	groups, page, err := s.repo.ListBindableWithFilters(s.ctx, pagination.PaginationParams{Page: 2, PageSize: 1, SortBy: "name", SortOrder: "asc"}, "", service.StatusActive, "bindable-", nil)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(2), page.Total)
+	s.Require().Len(groups, 1)
+	s.Require().NotEqual(service.PlatformComposite, groups[0].Platform)
 }
 
 func (s *GroupRepoSuite) TestListActiveByPlatform() {

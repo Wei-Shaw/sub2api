@@ -1,19 +1,29 @@
+import { openAIPlanTypeLabel } from '@/utils/planType'
 import { describe, it, expect } from 'vitest'
 import {
   ANTIGRAVITY_PROJECT_ID_CREDENTIAL_KEY,
   HEADER_OVERRIDE_ENABLED_CREDENTIAL_KEY,
   HEADER_OVERRIDES_CREDENTIAL_KEY,
+  OPENCODE_GO_PROTOCOL_RULES_KEY,
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
+  applyOpenCodeGoProtocolRules,
   applyPlanType,
   buildHeaderOverridesObject,
   buildPlanTypeOptions,
+  cloneOpenCodeGoProtocolRules,
+  cnQuotaCellVisible,
+  defaultCNBaseUrl,
+  defaultOpenCodeProtocolRules,
   isCustomGrokBaseUrl,
+  resolveOpenCodeAccountMode,
   isHeaderOverrideCapable,
   GROK_BASE_URL_PRESETS,
   parseHeaderOverridesJson,
+  parseOpenCodeGoProtocolRules,
   planTypeDisplayLabel,
+  protocolRuleSet,
   readPlanType,
   serializeHeaderOverrideRows,
   splitHeaderOverridesObject,
@@ -98,6 +108,79 @@ describe('applyAntigravityProjectID', () => {
   })
 })
 
+describe('openCodeGo protocol rules', () => {
+  it('resolves missing OpenCode account_mode as GO and zen as Zen', () => {
+    expect(resolveOpenCodeAccountMode(undefined)).toBe('go')
+    expect(resolveOpenCodeAccountMode('coding')).toBe('go')
+    expect(resolveOpenCodeAccountMode('zen')).toBe('zen')
+    expect(resolveOpenCodeAccountMode('go')).toBe('go')
+  })
+
+  it('uses Zen vs GO default endpoints and protocol rules', () => {
+    expect(defaultCNBaseUrl('opencode_go', 'zen', 'adaptive')).toBe('https://opencode.ai/zen/v1')
+    expect(defaultCNBaseUrl('opencode_go', 'zen', 'anthropic')).toBe('https://opencode.ai/zen')
+    expect(defaultCNBaseUrl('opencode_go', 'go', 'adaptive')).toBe('https://opencode.ai/zen/go/v1')
+    expect(defaultCNBaseUrl('opencode_go', 'go', 'anthropic')).toBe('https://opencode.ai/zen/go')
+    expect(defaultOpenCodeProtocolRules('zen').some(rule => rule.pattern === 'claude-*')).toBe(true)
+    expect(defaultOpenCodeProtocolRules('go').some(rule => rule.pattern === 'minimax-*')).toBe(true)
+    const openCodeAccount = (account_mode?: string) => ({ platform: 'opencode_go', type: 'apikey', credentials: { account_mode } })
+    expect(cnQuotaCellVisible(openCodeAccount('zen'))).toBe(false)
+    expect(cnQuotaCellVisible(openCodeAccount('go'))).toBe(true)
+    expect(cnQuotaCellVisible(openCodeAccount())).toBe(true)
+  })
+
+  it('parses stored rules and skips invalid entries', () => {
+    expect(parseOpenCodeGoProtocolRules(null)).toBeNull()
+    expect(parseOpenCodeGoProtocolRules([])).toEqual([])
+    expect(
+      parseOpenCodeGoProtocolRules([
+        { pattern: 'grok-*', protocol: 'responses' },
+        { pattern: '', protocol: 'anthropic' },
+        { pattern: 'qwen*', protocol: 'adaptive' },
+        { pattern: 'minimax-*', protocol: 'anthropic' }
+      ])
+    ).toEqual([
+      { pattern: 'grok-*', protocol: 'responses' },
+      { pattern: 'minimax-*', protocol: 'anthropic' }
+    ])
+  })
+
+  it('round-trips protocol sets with the preferred protocol first', () => {
+    const parsed = parseOpenCodeGoProtocolRules([
+      { pattern: 'gpt-*', protocol: 'responses', protocols: ['responses', 'chat_completions', 'adaptive', 'chat_completions'] },
+      { pattern: 'glm-*', protocols: ['anthropic', 'chat_completions'] },
+      { pattern: 'kimi-*', protocol: 'chat_completions', protocols: ['chat_completions'] }
+    ])
+    expect(parsed).toEqual([
+      { pattern: 'gpt-*', protocol: 'responses', extraProtocols: ['chat_completions'] },
+      { pattern: 'glm-*', protocol: 'anthropic', extraProtocols: ['chat_completions'] },
+      { pattern: 'kimi-*', protocol: 'chat_completions' }
+    ])
+    expect(protocolRuleSet(parsed![0])).toEqual(['responses', 'chat_completions'])
+
+    const cloned = cloneOpenCodeGoProtocolRules(parsed!)
+    expect(cloned).toEqual(parsed)
+    expect(cloned[0].extraProtocols).not.toBe(parsed![0].extraProtocols)
+
+    const credentials: Record<string, unknown> = {}
+    applyOpenCodeGoProtocolRules(credentials, [{ pattern: ' GPT-* ', protocol: 'responses', extraProtocols: ['chat_completions', 'responses'] }, ...parsed!.slice(2)], 'create')
+    expect(credentials[OPENCODE_GO_PROTOCOL_RULES_KEY]).toEqual([
+      { pattern: 'gpt-*', protocol: 'responses', protocols: ['responses', 'chat_completions'] },
+      { pattern: 'kimi-*', protocol: 'chat_completions' }
+    ])
+  })
+
+  it('writes lowercase patterns on create and keeps an empty list on edit', () => {
+    const created: Record<string, unknown> = {}
+    applyOpenCodeGoProtocolRules(created, cloneOpenCodeGoProtocolRules(), 'create')
+    expect(created[OPENCODE_GO_PROTOCOL_RULES_KEY]).toEqual(cloneOpenCodeGoProtocolRules())
+
+    const edited: Record<string, unknown> = { api_key: 'sk' }
+    applyOpenCodeGoProtocolRules(edited, [], 'edit')
+    expect(edited[OPENCODE_GO_PROTOCOL_RULES_KEY]).toEqual([])
+  })
+})
+
 describe('isHeaderOverrideCapable', () => {
   it('anthropic/openai only support apikey accounts', () => {
     expect(isHeaderOverrideCapable('anthropic', 'apikey')).toBe(true)
@@ -107,7 +190,7 @@ describe('isHeaderOverrideCapable', () => {
   })
 
   it('kimi/zhipu/deepseek only support apikey accounts', () => {
-    for (const platform of ['kimi', 'zhipu', 'deepseek']) {
+    for (const platform of ['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go']) {
       expect(isHeaderOverrideCapable(platform, 'apikey')).toBe(true)
       expect(isHeaderOverrideCapable(platform, 'oauth')).toBe(false)
     }
@@ -396,11 +479,18 @@ describe('plan_type helpers', () => {
   describe('planTypeDisplayLabel', () => {
     it('maps canonical + alias values to friendly labels', () => {
       expect(planTypeDisplayLabel('plus')).toBe('Plus')
-      expect(planTypeDisplayLabel('pro')).toBe('Pro')
-      expect(planTypeDisplayLabel('chatgptpro')).toBe('Pro')
+      expect(planTypeDisplayLabel('pro')).toBe('Pro 200')
+      expect(planTypeDisplayLabel('chatgptpro')).toBe('Pro 200')
+      expect(planTypeDisplayLabel('prolite')).toBe('Pro 100')
       expect(planTypeDisplayLabel('free')).toBe('Free')
-      expect(planTypeDisplayLabel('team')).toBe('Team')
-      expect(planTypeDisplayLabel('CHATGPTPRO')).toBe('Pro')
+      expect(planTypeDisplayLabel('team')).toBe('Business')
+      expect(planTypeDisplayLabel('self_serve_business_prolite')).toBe('Business Premium')
+    })
+    it('normalizes case, separators and surrounding blanks', () => {
+      expect(planTypeDisplayLabel('CHATGPTPRO')).toBe('Pro 200')
+      expect(planTypeDisplayLabel('PROLITE')).toBe('Pro 100')
+      expect(planTypeDisplayLabel('  Pro Lite  ')).toBe('Pro 100')
+      expect(planTypeDisplayLabel('self-serve-business-pro-lite')).toBe('Business Premium')
     })
     it('returns unknown values verbatim', () => {
       expect(planTypeDisplayLabel('self_serve_business')).toBe('self_serve_business')
@@ -421,36 +511,37 @@ describe('plan_type helpers', () => {
   })
 
   describe('buildPlanTypeOptions', () => {
-    const clear = 'Clear'
-    it('returns clear + presets when current is empty', () => {
-      expect(buildPlanTypeOptions('', clear)).toEqual([
-        { value: '', label: clear },
-        { value: 'plus', label: 'Plus' },
-        { value: 'pro', label: 'Pro' },
-        { value: 'free', label: 'Free' }
+    it('includes all current SKUs with their status labels', () => {
+      const opts = buildPlanTypeOptions('', 'Clear')
+      expect(opts[0]).toEqual({ value: '', label: 'Clear' })
+      expect(opts).toContainEqual({ value: 'prolite', label: 'Pro 100' })
+      expect(opts).toContainEqual({ value: 'pro', label: 'Pro 200' })
+      expect(opts).toContainEqual({ value: 'promax', label: 'Pro 500' })
+      expect(opts).toContainEqual({ value: 'edu_plus', label: 'Edu Plus' })
+      expect(opts).toContainEqual({ value: 'edu_pro', label: 'Edu Pro' })
+      expect(opts).toContainEqual({ value: 'enterprise_cbp_automation', label: 'Enterprise (Automation)' })
+    })
+    it('preserves aliases without duplicating the same SKU', () => {
+      for (const [alias, canonical] of [['chatgpt_pro', 'pro'], ['pro_lite', 'prolite'], ['selfservebusinessprolite', 'self_serve_business_prolite']]) {
+        const opts = buildPlanTypeOptions(alias, 'Clear')
+        expect(opts.filter(option => option.value === alias)).toHaveLength(1)
+        expect(opts.some(option => option.value === canonical)).toBe(false)
+      }
+    })
+    it('keeps distinct SKUs that share the Enterprise label', () => {
+      const opts = buildPlanTypeOptions('ent26', 'Clear')
+      expect(opts.filter(option => option.label === 'Enterprise').map(option => option.value)).toEqual([
+        'business', 'enterprise', 'ent26', 'enterprise_cbp_usage_based'
       ])
+      for (const value of ['business', 'enterprise', 'ent26', 'enterprise_cbp_usage_based']) {
+        expect(applyPlanType({}, value)).toEqual({ plan_type: value })
+      }
     })
-    it('keeps canonical chatgptpro under a single friendly "Pro" option (no duplicate)', () => {
-      const opts = buildPlanTypeOptions('chatgptpro', clear)
-      const pros = opts.filter(o => o.label === 'Pro')
-      expect(pros).toHaveLength(1)
-      expect(pros[0].value).toBe('chatgptpro')
-      expect(opts.map(o => o.value)).toEqual(['', 'plus', 'chatgptpro', 'free'])
-    })
-    it('appends an unknown-but-labeled value (team) as its own option', () => {
-      const opts = buildPlanTypeOptions('team', clear)
-      expect(opts.find(o => o.value === 'team')).toEqual({ value: 'team', label: 'Team' })
-      // presets untouched
-      expect(opts.map(o => o.value)).toEqual(['', 'plus', 'pro', 'free', 'team'])
-    })
-    it('appends a fully custom value with a raw label', () => {
-      const opts = buildPlanTypeOptions('weird_x', clear)
-      expect(opts.at(-1)).toEqual({ value: 'weird_x', label: 'weird_x' })
-    })
-    it('does not duplicate an exact preset value', () => {
-      const opts = buildPlanTypeOptions('pro', clear)
-      expect(opts.filter(o => o.value === 'pro')).toHaveLength(1)
-      expect(opts.map(o => o.value)).toEqual(['', 'plus', 'pro', 'free'])
+    it('keeps unknown values and exact presets without duplicates', () => {
+      expect(buildPlanTypeOptions('future_sku', 'Clear').at(-1)).toEqual({ value: 'future_sku', label: 'future_sku' })
+      for (const value of ['promax', 'team', 'ent26', 'edu_plus']) {
+        expect(buildPlanTypeOptions(value, 'Clear').filter(option => option.value === value)).toHaveLength(1)
+      }
     })
   })
 
@@ -473,5 +564,16 @@ describe('plan_type helpers', () => {
       expect(out).toEqual({ email: 'a@b.c' })
       expect('plan_type' in out).toBe(false)
     })
+  })
+})
+
+describe('Codex subscription analytics labels', () => {
+  it.each([
+    ['business', 'Business'], ['self_serve_business_prolite', 'Business'],
+    ['enterprise_cbp_automation', 'Enterprise'], ['ent26', 'Enterprise'],
+    ['edu', 'Education'], ['edu_plus', 'Education'], ['edu_pro', 'Education'],
+    ['unknown', 'Account'], ['promax', 'Pro 500']
+  ])('groups %s without changing its status label', (sku, label) => {
+    expect(openAIPlanTypeLabel(sku, 'analytics')).toBe(label)
   })
 })

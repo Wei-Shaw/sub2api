@@ -4,6 +4,8 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -139,6 +141,21 @@ func TestSettingService_ChannelMonitorShowQuotaFailsClosed(t *testing.T) {
 	}
 }
 
+func TestSettingService_ChannelMonitorHideUserRankingDefaultsToVisible(t *testing.T) {
+	missing := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{}).GetChannelMonitorRuntime(context.Background())
+	require.False(t, missing.HideUserRanking)
+	public, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, &config.Config{}).GetPublicSettings(context.Background())
+	require.NoError(t, err)
+	require.False(t, public.ChannelMonitorHideUserRanking)
+
+	for _, value := range []string{"true", "1", "on", "enabled"} {
+		runtime := NewSettingService(&settingPublicRepoStub{values: map[string]string{
+			SettingKeyChannelMonitorHideUserRanking: value,
+		}}, &config.Config{}).GetChannelMonitorRuntime(context.Background())
+		require.True(t, runtime.HideUserRanking, "value=%q", value)
+	}
+}
+
 func TestSettingService_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {
 	repo := &settingPublicRepoStub{
 		values: map[string]string{
@@ -224,4 +241,96 @@ func TestSettingService_GetPublicSettings_FallsBackToConfigForWeChatOAuthCapabil
 	require.True(t, settings.WeChatOAuthOpenEnabled)
 	require.False(t, settings.WeChatOAuthMPEnabled)
 	require.False(t, settings.WeChatOAuthMobileEnabled)
+}
+
+// subscription_enabled gates the user-facing "My Subscriptions" sidebar entry and
+// is opt-out: only an explicit "false" hides it.
+func TestSettingService_GetPublicSettings_SubscriptionEnabledOnlyExplicitFalseDisables(t *testing.T) {
+	cases := []struct {
+		name   string
+		values map[string]string
+		want   bool
+	}{
+		{name: "missing key defaults to enabled", values: map[string]string{}, want: true},
+		{name: "empty value stays enabled", values: map[string]string{SettingKeySubscriptionEnabled: ""}, want: true},
+		{name: "explicit true", values: map[string]string{SettingKeySubscriptionEnabled: "true"}, want: true},
+		{name: "explicit false disables", values: map[string]string{SettingKeySubscriptionEnabled: "false"}, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewSettingService(&settingPublicRepoStub{values: tc.values}, &config.Config{})
+
+			settings, err := svc.GetPublicSettings(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tc.want, settings.SubscriptionEnabled)
+		})
+	}
+}
+
+// The SSR injection payload must mirror the switch so the opt-out flag does not
+// flicker off on first render before the async public-settings fetch resolves.
+func TestSettingService_GetPublicSettingsForInjection_MirrorsSubscriptionEnabled(t *testing.T) {
+	for _, value := range []string{"false", "true"} {
+		repo := &settingPublicRepoStub{values: map[string]string{SettingKeySubscriptionEnabled: value}}
+		svc := NewSettingService(repo, &config.Config{})
+
+		raw, err := svc.GetPublicSettingsForInjection(context.Background())
+		require.NoError(t, err)
+		payload, ok := raw.(*PublicSettingsInjectionPayload)
+		require.True(t, ok)
+		require.Equal(t, value == "true", payload.SubscriptionEnabled, "value=%q", value)
+	}
+}
+
+// payment_balance_disabled is exposed publicly so the user shell can derive the site
+// billing mode (recharge & subscription / recharge only / subscription only) before any
+// authenticated checkout call. Strict true, mirroring the payment-config parser.
+func TestSettingService_GetPublicSettings_PaymentBalanceDisabledStrictTrue(t *testing.T) {
+	cases := []struct {
+		name  string
+		value map[string]string
+		want  bool
+	}{
+		{name: "missing key stays enabled", value: map[string]string{}, want: false},
+		{name: "explicit false", value: map[string]string{SettingBalancePayDisabled: "false"}, want: false},
+		{name: "explicit true disables balance recharge", value: map[string]string{SettingBalancePayDisabled: "true"}, want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewSettingService(&settingPublicRepoStub{values: tc.value}, &config.Config{})
+
+			settings, err := svc.GetPublicSettings(context.Background())
+			require.NoError(t, err)
+			require.Equal(t, tc.want, settings.PaymentBalanceDisabled)
+
+			raw, err := svc.GetPublicSettingsForInjection(context.Background())
+			require.NoError(t, err)
+			payload, ok := raw.(*PublicSettingsInjectionPayload)
+			require.True(t, ok)
+			require.Equal(t, tc.want, payload.PaymentBalanceDisabled)
+		})
+	}
+}
+
+func TestSettingService_GetPublicSettings_MCPEnabledFollowsExplicitPublicURL(t *testing.T) {
+	for _, tc := range []struct {
+		publicURL, frontendURL string
+		want                   bool
+	}{
+		{"https://api.example.com/api/v1/mcp", "", true},
+		// A frontend URL alone never enables MCP.
+		{"", "https://platform.example.com", false},
+		{"  ", "", false},
+	} {
+		cfg := &config.Config{MCP: config.MCPConfig{PublicURL: tc.publicURL}}
+		cfg.Server.FrontendURL = tc.frontendURL
+		settings, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, cfg).GetPublicSettings(context.Background())
+		require.NoError(t, err)
+		require.Equal(t, tc.want, settings.MCPEnabled, tc)
+		payload, err := NewSettingService(&settingPublicRepoStub{values: map[string]string{}}, cfg).GetPublicSettingsForInjection(context.Background())
+		require.NoError(t, err)
+		encoded, err := json.Marshal(payload)
+		require.NoError(t, err)
+		require.Contains(t, string(encoded), fmt.Sprintf(`"mcp_enabled":%t`, tc.want))
+	}
 }

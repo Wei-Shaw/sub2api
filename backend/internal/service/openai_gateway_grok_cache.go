@@ -109,11 +109,20 @@ func explicitGrokCacheSeed(c *gin.Context, body []byte, explicitKey string) stri
 	if seed == "" {
 		seed = explicitOpenAIHeaderSessionID(c)
 	}
-	if seed == "" && c != nil {
-		seed = strings.TrimSpace(c.GetHeader(grokConversationIDHeader))
-	}
+	// Client-declared prompt_cache_key outranks X-Grok-Conv-Id. The
+	// grok-build CLI sets this field on recap-style side-calls
+	// (turn-summary/title-refresh) to the *parent* session id so the
+	// side-call shares the main turn's server-side cache prefix. Its
+	// X-Grok-Conv-Id header, in contrast, carries a fresh per-call label
+	// ("turn-summary-<uuid>"); preferring the header there fragments the
+	// cache identity per side-call and forces a full-price replay of the
+	// entire conversation (~300K+ tokens each time). The body field is the
+	// official xAI cache-routing signal — respect it when present.
 	if seed == "" && len(body) > 0 {
 		seed = strings.TrimSpace(gjson.GetBytes(body, "prompt_cache_key").String())
+	}
+	if seed == "" && c != nil {
+		seed = strings.TrimSpace(c.GetHeader(grokConversationIDHeader))
 	}
 	if seed == "" {
 		seed = strings.TrimSpace(explicitKey)

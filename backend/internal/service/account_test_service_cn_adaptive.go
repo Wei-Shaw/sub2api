@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
@@ -17,14 +18,19 @@ import (
 const accountTestSuppressCompletionContextKey = "account_test_suppress_completion"
 
 // testCNProviderAdaptiveConnection verifies every native endpoint used by an
-// adaptive CN-provider account. Kimi and Zhipu use Chat Completions plus
-// Anthropic; DeepSeek additionally uses its native Responses endpoint.
+// adaptive account of a provider that routes by inbound protocol. Zhipu uses
+// Chat Completions plus Anthropic; DeepSeek and Kimi additionally use their
+// native Responses endpoints. Endpoints the provider profile does not offer are
+// skipped.
 func (s *AccountTestService) testCNProviderAdaptiveConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
-	testModelID := strings.TrimSpace(modelID)
-	if testModelID == "" {
-		testModelID = openai.DefaultTestModel
+	requestedModelID := strings.TrimSpace(modelID)
+	if requestedModelID == "" {
+		requestedModelID = account.providerDefaultTestModel()
 	}
-	testModelID = account.GetMappedModel(testModelID)
+	if requestedModelID == "" {
+		requestedModelID = openai.DefaultTestModel
+	}
+	testModelID := account.GetMappedModel(requestedModelID)
 
 	authToken := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
 	if authToken == "" {
@@ -35,15 +41,17 @@ func (s *AccountTestService) testCNProviderAdaptiveConnection(c *gin.Context, ac
 	// completion events until every native adaptive endpoint has passed.
 	c.Set(accountTestSuppressCompletionContextKey, true)
 	defer c.Set(accountTestSuppressCompletionContextKey, false)
-	if err := s.testCNProviderChatCompletionsConnection(c, account, modelID, prompt); err != nil {
+	if err := s.testCNProviderChatCompletionsConnection(c, account, requestedModelID, prompt); err != nil {
 		return err
 	}
 
-	if err := s.testCNProviderAdaptiveAnthropicConnection(c, account, testModelID, authToken); err != nil {
-		return err
+	if account.providerSupportsProtocol(APIProtocolAnthropic) {
+		if err := s.testCNProviderAdaptiveAnthropicConnection(c, account, testModelID, authToken); err != nil {
+			return err
+		}
 	}
 
-	if account.Platform == PlatformDeepseek {
+	if account.SupportsNativeCNResponses() {
 		if err := s.testCNProviderAdaptiveResponsesConnection(c, account, testModelID, authToken); err != nil {
 			return err
 		}
@@ -76,12 +84,16 @@ func (s *AccountTestService) testCNProviderAdaptiveAnthropicConnection(c *gin.Co
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("anthropic-version", "2023-06-01")
-	for key, value := range claude.DefaultHeaders {
+	for key, value := range claude.DefaultHeaders() {
 		req.Header.Set(key, value)
 	}
 	req.Header.Set("anthropic-beta", claude.APIKeyBetaHeader)
-	setAnthropicAPIKeyAuthHeader(req.Header, account, authToken)
+	// Ollama Cloud Anthropic 兼容端点按 adaptive 实际选用的 Anthropic
+	// base_url 强制 Bearer，其余保持 extra/default 行为。
+	setAnthropicAPIKeyAuthHeader(req.Header, account, authToken, account.GetCNProtocolBaseURL(APIProtocolAnthropic))
+	applyOpenCodeUpstreamUserAgent(account, apiURL, req.Header)
 	account.ApplyHeaderOverrides(req.Header)
+	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
 
 	resp, err := s.doCNProviderAdaptiveRequest(req, account)
 	if err != nil {
@@ -158,8 +170,8 @@ func (s *AccountTestService) testCNProviderAdaptiveResponsesConnection(c *gin.Co
 	apiURL := buildOpenAIResponsesURLForPlatform(account.Platform, baseURL)
 
 	payload := createOpenAITestPayload(testModelID, false)
-	// DeepSeek's native Responses endpoint is stateless and does not need the
-	// OpenAI probe's synthetic instructions.
+	// DeepSeek / Kimi native Responses endpoints are stateless and do not need
+	// the OpenAI probe's synthetic instructions.
 	delete(payload, "instructions")
 	payloadBytes, _ := json.Marshal(payload)
 	payloadBytes = normalizeDeepSeekResponsesRequestBody(account, payloadBytes)
@@ -174,7 +186,9 @@ func (s *AccountTestService) testCNProviderAdaptiveResponsesConnection(c *gin.Co
 	req.Header.Set("Accept", "text/event-stream")
 	req.Header.Set("Authorization", "Bearer "+authToken)
 	applyOpenAICodexProbeHeaders(req.Header)
+	applyOpenCodeUpstreamUserAgent(account, apiURL, req.Header)
 	account.ApplyHeaderOverrides(req.Header)
+	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
 
 	resp, err := s.doCNProviderAdaptiveRequest(req, account)
 	if err != nil {
@@ -203,4 +217,113 @@ func (s *AccountTestService) doCNProviderAdaptiveRequest(req *http.Request, acco
 		proxyURL = account.Proxy.URL()
 	}
 	return s.httpUpstream.DoWithTLS(req, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
+}
+
+// testCNProviderAnthropicConnection verifies the native Anthropic endpoint of a
+// CN-provider account explicitly configured with api_protocol=anthropic. Before
+// this path existed such accounts fell through to the generic Claude tester,// which (a) appended ?beta=true and (b) defaulted a missing base_url to
+// https://api.anthropic.com — sending the provider's API key to Anthropic
+// instead of the provider's own Anthropic-compatible endpoint. The probe uses
+// GetAnthropicProtocolBaseURL (same resolution as real /v1/messages forwarding,
+// including per-platform defaults) and the shared API-key auth header.
+func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, account *Account, modelID string) error {
+	ctx := c.Request.Context()
+
+	testModelID := strings.TrimSpace(modelID)
+	if testModelID == "" {
+		testModelID = claude.DefaultTestModel
+	}
+	testModelID = account.GetMappedModel(testModelID)
+
+	authToken := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())
+	if authToken == "" {
+		return s.sendErrorAndEnd(c, "No API key available")
+	}
+
+	baseURL, err := s.validateUpstreamBaseURL(account.GetAnthropicProtocolBaseURL())
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Anthropic base URL: %s", err.Error()))
+	}
+	if hint := cnAnthropicBaseURLMisconfigHint(baseURL, account.routesByModel()); hint != "" {
+		return s.sendErrorAndEnd(c, hint)
+	}
+	apiURL := nativeAnthropicMessagesURL(account, baseURL)
+
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+
+	payload, err := createTestPayload(testModelID)
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create Anthropic test payload")
+	}
+	payloadBytes, _ := json.Marshal(payload)
+
+	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, apiURL, bytes.NewReader(payloadBytes))
+	if err != nil {
+		return s.sendErrorAndEnd(c, "Failed to create Anthropic test request")
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "text/event-stream")
+	req.Header.Set("anthropic-version", "2023-06-01")
+	for key, value := range claude.DefaultHeaders() {
+		req.Header.Set(key, value)
+	}
+	// Ollama Cloud Anthropic 兼容端点按实际 base_url 强制 Bearer，其余保持
+	// extra/default 行为。
+	setAnthropicAPIKeyAuthHeader(req.Header, account, authToken, account.GetAnthropicProtocolBaseURL())
+	applyOpenCodeUpstreamUserAgent(account, apiURL, req.Header)
+	account.ApplyHeaderOverrides(req.Header)
+	applyOpenCodeSessionHeader(c, account, apiURL, req.Header, payloadBytes)
+
+	resp, err := s.doCNProviderAdaptiveRequest(req, account)
+	if err != nil {
+		return s.sendErrorAndEnd(c, fmt.Sprintf("Anthropic endpoint request failed: %s", err.Error()))
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		errMsg := fmt.Sprintf("Anthropic endpoint returned %d: %s", resp.StatusCode, string(body))
+		if (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden) && s.accountRepo != nil {
+			_ = s.accountRepo.SetError(ctx, account.ID, errMsg)
+		}
+		return s.sendErrorAndEnd(c, errMsg)
+	}
+
+	return s.processClaudeStream(c, resp.Body)
+}
+
+// cnAnthropicBaseURLMisconfigHint reports an actionable error when an
+// anthropic-protocol account's base_url still points at an OpenAI-compatible
+// endpoint (paas path, version segment, or chat/completions / responses
+// suffix). The naive {base}/v1/messages join would 404 (e.g.
+// .../api/paas/v4/v1/messages) with no hint about the actual misconfiguration.
+// versionAware is set for providers whose join is version-aware (see
+// nativeAnthropicMessagesURL), where a trailing version segment is valid.
+func cnAnthropicBaseURLMisconfigHint(baseURL string, versionAware bool) string {
+	parsed, err := url.Parse(strings.TrimSpace(baseURL))
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return ""
+	}
+	path := strings.ToLower(strings.TrimRight(parsed.Path, "/"))
+	if path == "" {
+		return ""
+	}
+	openAICompatShaped := strings.Contains(path, "/paas/") ||
+		strings.HasSuffix(path, "/chat/completions") ||
+		strings.HasSuffix(path, "/responses") ||
+		(!versionAware && openAIBaseURLHasVersionSuffix(path))
+	if !openAICompatShaped {
+		return ""
+	}
+	return fmt.Sprintf(
+		"API protocol is anthropic but base_url (%s) looks like an OpenAI-compatible endpoint; "+
+			"requests would hit {base}/v1/messages and 404. Set base_url to the provider's Anthropic endpoint "+
+			"(e.g. https://open.bigmodel.cn/api/anthropic) or switch api_protocol to chat_completions/adaptive.",
+		baseURL,
+	)
 }

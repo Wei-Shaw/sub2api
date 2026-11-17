@@ -103,8 +103,84 @@ func TestParseKimiUsageTiers_LimitZero(t *testing.T) {
 	t.Parallel()
 	body := []byte(`{"limits":[{"detail":{"limit":0,"remaining":0,"resetTime":"2026-08-14T15:00:00Z"}}]}`)
 	tiers := parseKimiUsageTiers(body)
+	// limit=0 无法计算利用率：不能产出「已用 0%」的伪窗口（那会把额度耗尽
+	// 显示成完全没用），该条目应被跳过。
+	require.Len(t, tiers, 0)
+}
+
+// TestParseKimiUsageTiers_MonthlyPlan 新套餐形态（5h + 月度限额）：不再有顶层
+// usage，改由 usages.limit_5h / limit_month_total / limit_month_code 以
+// used_ratio（0-1）+ reset_time 上报。monthly 取两条月度键的较大用量 + 较早重置。
+func TestParseKimiUsageTiers_MonthlyPlan(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{
+		"limits": [{
+			"window": {"duration": 300, "timeUnit": "TIME_UNIT_MINUTE"},
+			"detail": {"limit": "100", "used": "10", "remaining": "90", "resetTime": "2026-11-13T16:10:29.523075Z"}
+		}],
+		"usages": {
+			"limit_5h": {"used_ratio": 0.0982, "reset_time": "2026-11-13T16:10:28Z"},
+			"limit_month_total": {"used_ratio": 0.6564, "reset_time": "2026-11-26T00:00:00Z"},
+			"limit_month_code": {"used_ratio": 0.6252, "reset_time": "2026-11-26T00:00:00Z"}
+		}
+	}`)
+	tiers := parseKimiUsageTiers(body)
+	require.Len(t, tiers, 2, "新套餐应为 5h + monthly，且不得产出已废弃的 weekly")
+
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 10.0, tiers[0].UsedPercent, 1e-9, "5h 用 limits[].detail 的绝对计数")
+	require.Equal(t, "2026-11-13T16:10:29Z", tiers[0].ResetAt)
+
+	require.Equal(t, "monthly", tiers[1].Window)
+	require.InDelta(t, 65.64, tiers[1].UsedPercent, 1e-9, "used_ratio 0-1 换算为百分比")
+	require.Equal(t, "2026-11-26T00:00:00Z", tiers[1].ResetAt)
+}
+
+// TestParseKimiUsageTiers_MonthlyPicksMaxUsage total/code 任一耗尽都会限流：
+// monthly 取较大用量；重置时间取较早者（先恢复额度，避免过度停调）。
+func TestParseKimiUsageTiers_MonthlyPicksMaxUsage(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"usages":{
+		"limit_month_total":{"used_ratio":0.4,"reset_time":"2026-11-26T00:00:00Z"},
+		"limit_month_code":{"used_ratio":0.9,"reset_time":"2026-11-20T00:00:00Z"}}}`)
+	tiers := parseKimiUsageTiers(body)
 	require.Len(t, tiers, 1)
-	require.InDelta(t, 0.0, tiers[0].UsedPercent, 1e-9)
+	require.Equal(t, "monthly", tiers[0].Window)
+	require.InDelta(t, 90.0, tiers[0].UsedPercent, 1e-9)
+	// total 与 code 是两个独立限流窗口：reset 必须取较晚者，否则 code 先到期的
+	// 11-20 会让仍处于 40% 的 total 窗口提前放行。
+	require.Equal(t, "2026-11-26T00:00:00Z", tiers[0].ResetAt)
+
+	// 两窗口同为 100% 时也不得取更早的 reset。
+	bothFull := parseKimiUsageTiers([]byte(`{"usages":{
+		"limit_month_total":{"used_ratio":1,"reset_time":"2026-11-26T00:00:00Z"},
+		"limit_month_code":{"used_ratio":1,"reset_time":"2026-11-20T00:00:00Z"}}}`))
+	require.Len(t, bothFull, 1)
+	require.Equal(t, "2026-11-26T00:00:00Z", bothFull[0].ResetAt)
+
+	onlyCode := parseKimiUsageTiers([]byte(`{"usages":{"limit_month_code":{"used_ratio":0.5,"reset_time":"2026-11-20T00:00:00Z"}}}`))
+	require.Len(t, onlyCode, 1)
+	require.Equal(t, "monthly", onlyCode[0].Window)
+	require.InDelta(t, 50.0, onlyCode[0].UsedPercent, 1e-9)
+}
+
+// TestParseKimiUsageTiers_LegacyWithUsedRatio 老套餐（顶层 usage）同时携带
+// usages.limit_7d 时，weekly 以 used_ratio 为准、不重复产出 weekly 档。
+func TestParseKimiUsageTiers_LegacyWithUsedRatio(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{
+		"usage": {"limit": "100", "remaining": "80", "resetTime": "2026-10-07T05:04:39.713183Z"},
+		"usages": {
+			"limit_5h": {"used_ratio": 0, "reset_time": "2026-10-04T11:04:38Z"},
+			"limit_7d": {"used_ratio": 0.203912, "reset_time": "2026-10-07T05:04:38Z"}
+		}
+	}`)
+	tiers := parseKimiUsageTiers(body)
+	require.Len(t, tiers, 2)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.Equal(t, "weekly", tiers[1].Window)
+	require.InDelta(t, 20.3912, tiers[1].UsedPercent, 1e-9)
+	require.Equal(t, "2026-10-07T05:04:38Z", tiers[1].ResetAt)
 }
 
 // TestParseZhipuTokenTiers_UnitClassification 显式 unit（3=5h / 6=weekly）优先分类，
@@ -124,6 +200,60 @@ func TestParseZhipuTokenTiers_UnitClassification(t *testing.T) {
 	require.InDelta(t, 20.0, tiers[0].UsedPercent, 1e-9)
 	require.Equal(t, "weekly", tiers[1].Window)
 	require.InDelta(t, 70.0, tiers[1].UsedPercent, 1e-9)
+}
+
+// TestParseZhipuTokenTiers_CreditLimitUnitClassification GLM Coding Plan 当前把 5h / weekly
+// 两条窗口都标成 CREDIT_LIMIT（实测 level=lite）。CREDIT_LIMIT 同样携带 unit，
+// 必须和 TOKENS_LIMIT 一样按 unit 显式分类，否则会退化成 reset 时间排序 ——
+// 此处刻意让 weekly 的 nextResetTime 早于 5h（周期末尾），两档会被标反。
+func TestParseZhipuTokenTiers_CreditLimitUnitClassification(t *testing.T) {
+	t.Parallel()
+	data := gjson.Parse(`{
+		"limits": [
+			{"type":"CREDIT_LIMIT","unit":3,"number":5,"percentage":14,"nextResetTime":1700000099999},
+			{"type":"CREDIT_LIMIT","unit":6,"number":1,"percentage":90,"nextResetTime":1700000000000}
+		]
+	}`)
+	tiers := parseZhipuTokenTiers(data)
+	require.Len(t, tiers, 2)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 14.0, tiers[0].UsedPercent, 1e-9)
+	require.Equal(t, "weekly", tiers[1].Window)
+	require.InDelta(t, 90.0, tiers[1].UsedPercent, 1e-9)
+}
+
+// TestParseZhipuTokenTiers_CreditLimitWithoutUnitFallback CREDIT_LIMIT 缺 unit 时，
+// 保留原有 fallback：无 nextResetTime 的优先归 5h，其余按 reset 升序填入剩余槽位。
+func TestParseZhipuTokenTiers_CreditLimitWithoutUnitFallback(t *testing.T) {
+	t.Parallel()
+	data := gjson.Parse(`{
+		"limits": [
+			{"type":"CREDIT_LIMIT","percentage":30,"nextResetTime":1700000000000},
+			{"type":"CREDIT_LIMIT","percentage":80}
+		]
+	}`)
+	tiers := parseZhipuTokenTiers(data)
+	require.Len(t, tiers, 2)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 80.0, tiers[0].UsedPercent, 1e-9)
+	require.Equal(t, "weekly", tiers[1].Window)
+	require.InDelta(t, 30.0, tiers[1].UsedPercent, 1e-9)
+}
+
+// TestParseZhipuTokenTiers_TokensLimitWinsOverCreditLimit 两种 type 同时返回时，
+// TOKENS_LIMIT 仍然优先占槽、CREDIT_LIMIT 不参与（原有语义保持不变）。
+func TestParseZhipuTokenTiers_TokensLimitWinsOverCreditLimit(t *testing.T) {
+	t.Parallel()
+	data := gjson.Parse(`{
+		"limits": [
+			{"type":"TOKENS_LIMIT","unit":3,"percentage":20,"nextResetTime":1700000000000},
+			{"type":"CREDIT_LIMIT","unit":6,"percentage":99,"nextResetTime":1700000099999}
+		]
+	}`)
+	tiers := parseZhipuTokenTiers(data)
+	require.Len(t, tiers, 1)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 20.0, tiers[0].UsedPercent, 1e-9)
 }
 
 // TestParseZhipuTokenTiers_SingleTierOldPlan 老套餐仅回 1 条 → 降级为仅 5h。
@@ -177,6 +307,135 @@ func TestCNQuotaExtraUpdates(t *testing.T) {
 	require.Equal(t, now.Format(time.RFC3339), updates["kimi_usage_updated_at"])
 }
 
+// 缺席窗口必须显式写 nil：extra 走 JSONB 合并（`extra || $1`），只"不写"会保留
+// 旧值。Kimi 老套餐 → 新套餐（月度）切换后 weekly 不再上报，不清理就会把切换前
+// 的用量永久冻结在快照里（生产实测冻结 13 天）。
+func TestCNQuotaExtraUpdatesClearsAbsentWindows(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)
+	tiers := []CNQuotaTier{
+		{Window: "5h", UsedPercent: 10, ResetAt: "2026-11-13T16:10:29Z"},
+		{Window: "monthly", UsedPercent: 65.64, ResetAt: "2026-11-26T00:00:00Z"},
+	}
+	updates := cnQuotaExtraUpdates(PlatformKimi, tiers, now)
+	clearAbsentCNQuotaWindows(PlatformKimi, tiers, updates)
+
+	value, present := updates["kimi_weekly_used_percent"]
+	require.True(t, present, "缺席的 weekly 必须显式出现在更新里")
+	require.Nil(t, value)
+	_, resetPresent := updates["kimi_weekly_reset_at"]
+	require.True(t, resetPresent)
+
+	require.Equal(t, 10.0, updates["kimi_5h_used_percent"])
+	require.Equal(t, 65.64, updates["kimi_monthly_used_percent"])
+	require.Equal(t, "2026-11-26T00:00:00Z", updates["kimi_monthly_reset_at"])
+}
+
+// TestParseKimiUsageTiers_RejectsMalformedWindows 受损/改版结构不得产出伪窗口。
+// 这类窗口一旦被当成有效快照落库，缺席清理会把其他窗口写成 nil，
+// 调度层看到「没有窗口」就会解除预停调。
+func TestParseKimiUsageTiers_RejectsMalformedWindows(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		body []byte
+	}{
+		"empty object":          {[]byte(`{}`)},
+		"empty detail":          {[]byte(`{"limits":[{"detail":{}}]}`)},
+		"limit zero":            {[]byte(`{"limits":[{"detail":{"limit":0,"remaining":0}}]}`)},
+		"remaining exceeds":     {[]byte(`{"limits":[{"detail":{"limit":100,"remaining":200}}]}`)},
+		"limit not a number":    {[]byte(`{"limits":[{"detail":{"limit":"abc","remaining":"1"}}]}`)},
+		"empty usage":           {[]byte(`{"usage":{}}`)},
+		"ratio out of range":    {[]byte(`{"usages":{"limit_5h":{"used_ratio":65}}}`)},
+		"ratio NaN":             {[]byte(`{"usages":{"limit_5h":{"used_ratio":"NaN"}}}`)},
+		"ratio negative":        {[]byte(`{"usages":{"limit_5h":{"used_ratio":-0.2}}}`)},
+		"renamed top level key": {[]byte(`{"limits_v2":[{"detail":{"limit":100,"remaining":50}}]}`)},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			tiers := parseKimiUsageTiers(tc.body)
+			require.Empty(t, tiers, "受损结构不得产出窗口：%s", string(tc.body))
+		})
+	}
+}
+
+// TestParseKimiUsageTiers_KeepsLegalEdgeValues 合法边界（0%、满额、单窗口、整数）不得被误伤。
+func TestParseKimiUsageTiers_KeepsLegalEdgeValues(t *testing.T) {
+	t.Parallel()
+	// remaining == limit → 合法的 0%。
+	tiers := parseKimiUsageTiers([]byte(`{"limits":[{"detail":{"limit":100,"remaining":100}}]}`))
+	require.Len(t, tiers, 1)
+	require.InDelta(t, 0.0, tiers[0].UsedPercent, 1e-9)
+
+	// remaining == 0 → 100%。
+	tiers = parseKimiUsageTiers([]byte(`{"limits":[{"detail":{"limit":100,"remaining":0}}]}`))
+	require.Len(t, tiers, 1)
+	require.InDelta(t, 100.0, tiers[0].UsedPercent, 1e-9)
+
+	// used_ratio == 0 / 1 同样合法。
+	tiers = parseKimiUsageTiers([]byte(`{"usages":{"limit_5h":{"used_ratio":0}}}`))
+	require.Len(t, tiers, 1)
+	require.InDelta(t, 0.0, tiers[0].UsedPercent, 1e-9)
+
+	tiers = parseKimiUsageTiers([]byte(`{"usages":{"limit_5h":{"used_ratio":1}}}`))
+	require.Len(t, tiers, 1)
+	require.InDelta(t, 100.0, tiers[0].UsedPercent, 1e-9)
+
+	// 首个 detail 坏、后续合法 → 采用首个有效条目。
+	tiers = parseKimiUsageTiers([]byte(`{"limits":[{"detail":{}},{"detail":{"limit":100,"remaining":60}}]}`))
+	require.Len(t, tiers, 1)
+	require.InDelta(t, 40.0, tiers[0].UsedPercent, 1e-9)
+}
+
+// TestParseZhipuTokenTiers_SkipsMissingPercentage percentage 缺失/非法不得伪造 0% 窗口。
+func TestParseZhipuTokenTiers_SkipsMissingPercentage(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		body      string
+		wantTiers int
+	}{
+		"missing percentage": {`{"limits":[{"type":"TOKENS_LIMIT","unit":3}]}`, 0},
+		"non numeric":        {`{"limits":[{"type":"TOKENS_LIMIT","unit":3,"percentage":"abc"}]}`, 0},
+		"negative":           {`{"limits":[{"type":"TOKENS_LIMIT","unit":3,"percentage":-5}]}`, 0},
+		"over 100":           {`{"limits":[{"type":"TOKENS_LIMIT","unit":3,"percentage":120}]}`, 0},
+		"legal zero":         {`{"limits":[{"type":"TOKENS_LIMIT","unit":3,"percentage":0}]}`, 1},
+		"legal five hour":    {`{"limits":[{"type":"TOKENS_LIMIT","unit":3,"percentage":42}]}`, 1},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			tiers := parseZhipuTokenTiers(gjson.Parse(tc.body))
+			require.Len(t, tiers, tc.wantTiers, "输入：%s", tc.body)
+		})
+	}
+}
+
+func TestParseOpenCodeGoUsageTiers(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{
+		"usage": {
+			"rolling": {"percent": 12.5, "resetsAt": "2026-09-07T12:00:00Z"},
+			"weekly": {"percent": 40, "resetsAt": "2026-09-10T00:00:00Z"},
+			"monthly": {"percent": 22.2, "resetsAt": "2026-10-01T00:00:00Z"}
+		}
+	}`)
+	tiers := parseOpenCodeGoUsageTiers(body)
+	require.Len(t, tiers, 3)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.Equal(t, 12.5, tiers[0].UsedPercent)
+	require.Equal(t, "2026-09-07T12:00:00Z", tiers[0].ResetAt)
+	require.Equal(t, "weekly", tiers[1].Window)
+	require.Equal(t, 40.0, tiers[1].UsedPercent)
+	require.Equal(t, "monthly", tiers[2].Window)
+	require.InDelta(t, 22.2, tiers[2].UsedPercent, 0.001)
+
+	updates := cnQuotaExtraUpdates(PlatformOpenCodeGo, tiers, time.Date(2026, 9, 7, 0, 0, 0, 0, time.UTC))
+	require.Equal(t, 12.5, updates["opencode_go_5h_used_percent"])
+	require.Equal(t, 40.0, updates["opencode_go_weekly_used_percent"])
+	require.Equal(t, 22.2, updates["opencode_go_monthly_used_percent"])
+	require.Equal(t, "2026-10-01T00:00:00Z", updates["opencode_go_monthly_reset_at"])
+
+	require.Empty(t, parseOpenCodeGoUsageTiers([]byte(`{"ok":true}`)))
+}
+
 // TestCNProviderResponseIndicatesInsufficientBalance 覆盖中英文余额不足文案与否定用例。
 func TestCNProviderResponseIndicatesInsufficientBalance(t *testing.T) {
 	t.Parallel()
@@ -227,6 +486,88 @@ func TestKimiQuotaURL(t *testing.T) {
 	require.Equal(t, "https://api.kimi.com/coding/v1/usages", kimiQuotaURL("https://api.kimi.com/coding"))
 	require.Equal(t, "https://api.kimi.com/coding/v1/usages", kimiQuotaURL("https://api.kimi.com/coding/"))
 	require.Equal(t, "https://api.kimi.com/coding/v1/usages", kimiQuotaURL("https://api.kimi.com/coding/v1/"))
+}
+
+func TestMiniMaxQuotaURL(t *testing.T) {
+	t.Parallel()
+	require.Equal(t, "https://api.minimax.io/v1/api/openplatform/coding_plan/remains",
+		minimaxQuotaURL("https://api.minimax.io/v1"))
+	require.Equal(t, "https://api.minimax.io/v1/api/openplatform/coding_plan/remains",
+		minimaxQuotaURL("https://api.minimax.io/anthropic"))
+	require.Equal(t, "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
+		minimaxQuotaURL("https://api.minimaxi.com/v1"))
+	require.Equal(t, "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
+		minimaxQuotaURL("https://api.minimax.com/v1"))
+	require.Equal(t, "https://api.minimaxi.com/v1/api/openplatform/coding_plan/remains",
+		minimaxQuotaURL("https://custom.example.com"))
+}
+
+func TestParseMiniMaxUsageTiers(t *testing.T) {
+	t.Parallel()
+	endMs := int64(1_700_000_000_000)
+	weeklyEndMs := endMs + 7*24*60*60*1000
+	body := []byte(`{
+		"base_resp": {"status_code": 0},
+		"current_subscribe_title": "Max",
+		"model_remains": [
+			{"model_name": "video", "current_interval_remaining_percent": 10},
+			{
+				"model_name": "general",
+				"current_interval_remaining_percent": 25,
+				"end_time": 1700000000000,
+				"current_weekly_status": 1,
+				"current_weekly_remaining_percent": 40,
+				"weekly_end_time": 1700604800000
+			}
+		]
+	}`)
+	tiers := parseMiniMaxUsageTiers(body)
+	require.Len(t, tiers, 2)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 75, tiers[0].UsedPercent, 1e-9)
+	require.Equal(t, time.UnixMilli(endMs).UTC().Format(time.RFC3339), tiers[0].ResetAt)
+	require.Equal(t, "weekly", tiers[1].Window)
+	require.InDelta(t, 60, tiers[1].UsedPercent, 1e-9)
+	require.Equal(t, time.UnixMilli(weeklyEndMs).UTC().Format(time.RFC3339), tiers[1].ResetAt)
+
+	noWeekly := parseMiniMaxUsageTiers([]byte(`{
+		"model_remains": [{
+			"model_name": "general",
+			"current_interval_remaining_percent": 80,
+			"end_time": 1700000000000,
+			"current_weekly_status": 3,
+			"current_weekly_remaining_percent": 10
+		}]
+	}`))
+	require.Len(t, noWeekly, 1)
+	require.Equal(t, "5h", noWeekly[0].Window)
+	require.InDelta(t, 20, noWeekly[0].UsedPercent, 1e-9)
+
+	require.Nil(t, parseMiniMaxUsageTiers([]byte(`{"model_remains":[{"model_name":"video","current_interval_remaining_percent":5}]}`)))
+}
+
+func TestGetCodingPlanProvider_MiniMax(t *testing.T) {
+	t.Parallel()
+	coding := &Account{Platform: PlatformMiniMax, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"account_mode": AccountModeCoding,
+		"base_url":     "https://api.minimaxi.com/v1",
+	}}
+	require.Equal(t, PlatformMiniMax, coding.GetCodingPlanProvider())
+	intl := &Account{Platform: PlatformMiniMax, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"account_mode": AccountModeCoding,
+		"base_url":     "https://api.minimax.io/anthropic",
+	}}
+	require.Equal(t, PlatformMiniMax, intl.GetCodingPlanProvider())
+	// 未配 base_url 时走国内站默认域名，仍能识别官方额度端点。
+	require.Equal(t, PlatformMiniMax, (&Account{Platform: PlatformMiniMax, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"account_mode": AccountModeCoding,
+	}}).GetCodingPlanProvider())
+	require.Empty(t, (&Account{Platform: PlatformMiniMax, Credentials: map[string]any{"account_mode": AccountModePayG}}).GetCodingPlanProvider())
+	// 自定义中转不得把第三方 Key 发往官方额度端点。
+	require.Empty(t, (&Account{Platform: PlatformMiniMax, Type: AccountTypeAPIKey, Credentials: map[string]any{
+		"account_mode": AccountModeCoding,
+		"base_url":     "https://relay.example.com/v1",
+	}}).GetCodingPlanProvider())
 }
 
 // TestCNBalanceURL Kimi 固定端点；DeepSeek 基于 base_url 拼接。
@@ -303,6 +644,28 @@ func TestEvaluateAccountSchedulingThreshold_KimiCodingPlan(t *testing.T) {
 	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformKimi: 80}, now)
 	require.True(t, decision.ShouldPause)
 	require.Equal(t, PlatformKimi, decision.Platform)
+	require.Equal(t, "5h", decision.Window)
+	require.InDelta(t, 90.0, decision.UsedPercent, 1e-9)
+	require.NotNil(t, decision.Until)
+	require.True(t, reset.Equal(*decision.Until))
+}
+
+func TestEvaluateAccountSchedulingThreshold_MiniMaxCodingPlan(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC)
+	reset := now.Add(3 * time.Hour)
+	account := &Account{
+		Platform: PlatformMiniMax,
+		Extra: map[string]any{
+			"minimax_5h_used_percent":     90.0,
+			"minimax_5h_reset_at":         reset.Format(time.RFC3339),
+			"minimax_weekly_used_percent": 30.0,
+			"minimax_weekly_reset_at":     now.Add(7 * 24 * time.Hour).Format(time.RFC3339),
+		},
+	}
+	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformMiniMax: 80}, now)
+	require.True(t, decision.ShouldPause)
+	require.Equal(t, PlatformMiniMax, decision.Platform)
 	require.Equal(t, "5h", decision.Window)
 	require.InDelta(t, 90.0, decision.UsedPercent, 1e-9)
 	require.NotNil(t, decision.Until)
@@ -398,6 +761,7 @@ func TestNormalizeOpenAICompatiblePlatform_SchedulerExactMatch(t *testing.T) {
 	require.Equal(t, PlatformKimi, NormalizeOpenAICompatiblePlatform(PlatformKimi))
 	require.Equal(t, PlatformZhipu, NormalizeOpenAICompatiblePlatform(PlatformZhipu))
 	require.Equal(t, PlatformDeepseek, NormalizeOpenAICompatiblePlatform(PlatformDeepseek))
+	require.Equal(t, PlatformOpenCodeGo, NormalizeOpenAICompatiblePlatform(PlatformOpenCodeGo))
 	// 其他平台（含空、anthropic、未知）一律归一为 openai。
 	require.Equal(t, PlatformOpenAI, NormalizeOpenAICompatiblePlatform(""))
 	require.Equal(t, PlatformOpenAI, NormalizeOpenAICompatiblePlatform(PlatformAnthropic))
@@ -432,6 +796,14 @@ func TestGetOpenAIProtocolAPIKey_CNProviders(t *testing.T) {
 		Credentials: map[string]any{"api_key": "sk-openai"},
 	}
 	require.Equal(t, "sk-openai", openai.GetOpenAIProtocolAPIKey())
+
+	openCodeGo := &Account{
+		Platform:    PlatformOpenCodeGo,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"api_key": "sk-opencode-go"},
+	}
+	require.Equal(t, "sk-opencode-go", openCodeGo.GetOpenAIProtocolAPIKey())
+	require.False(t, openCodeGo.IsOpenAIApiKey())
 }
 
 // TestBuildUpstreamModelsRequest_CNProviders 验证“同步上游支持的模型”对国产供应商可用：
@@ -451,6 +823,10 @@ func TestBuildUpstreamModelsRequest_CNProviders(t *testing.T) {
 		{"zhipu default", PlatformZhipu, "", "https://open.bigmodel.cn/api/paas/v4/models"},
 		{"zhipu coding", PlatformZhipu, AccountModeCoding, "https://open.bigmodel.cn/api/coding/paas/v4/models"},
 		{"deepseek", PlatformDeepseek, "", "https://api.deepseek.com/v1/models"},
+		{"minimax default", PlatformMiniMax, "", "https://api.minimaxi.com/v1/models"},
+		{"minimax coding", PlatformMiniMax, AccountModeCoding, "https://api.minimaxi.com/v1/models"},
+		{"opencode go", PlatformOpenCodeGo, AccountModeGo, "https://opencode.ai/zen/go/v1/models"},
+		{"opencode zen", PlatformOpenCodeGo, AccountModeZen, "https://opencode.ai/zen/v1/models"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -469,7 +845,7 @@ func TestBuildUpstreamModelsRequest_CNProviders(t *testing.T) {
 }
 
 // TestGetAPIProtocol 验证协议凭证维度的平台校验矩阵：
-// responses 仅 deepseek；缺失/非法值回退 chat_completions（与旧行为一致）。
+// responses 仅 deepseek / kimi；缺失/非法值回退 chat_completions（与旧行为一致）。
 func TestGetAPIProtocol(t *testing.T) {
 	t.Parallel()
 
@@ -486,13 +862,28 @@ func TestGetAPIProtocol(t *testing.T) {
 	require.Equal(t, APIProtocolAnthropic, mk(PlatformKimi, APIProtocolAnthropic).GetAPIProtocol())
 	require.Equal(t, APIProtocolAnthropic, mk(PlatformDeepseek, APIProtocolAnthropic).GetAPIProtocol())
 	require.Equal(t, APIProtocolResponses, mk(PlatformDeepseek, APIProtocolResponses).GetAPIProtocol())
+	require.Equal(t, APIProtocolResponses, mk(PlatformKimi, APIProtocolResponses).GetAPIProtocol())
+	require.Equal(t, APIProtocolResponses, mk(PlatformMiniMax, APIProtocolResponses).GetAPIProtocol())
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformKimi, APIProtocolAdaptive).GetAPIProtocol())
+	require.Equal(t, APIProtocolAdaptive, mk(PlatformMiniMax, APIProtocolAdaptive).GetAPIProtocol())
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformZhipu, APIProtocolAdaptive).GetAPIProtocol())
 	require.Equal(t, APIProtocolAdaptive, mk(PlatformDeepseek, APIProtocolAdaptive).GetAPIProtocol())
-	require.Equal(t, APIProtocolChatCompletions, mk(PlatformKimi, APIProtocolResponses).GetAPIProtocol(), "kimi 无 responses 端点")
 	require.Equal(t, APIProtocolChatCompletions, mk(PlatformZhipu, APIProtocolResponses).GetAPIProtocol(), "zhipu 无 responses 端点")
 	require.Equal(t, APIProtocolChatCompletions, mk(PlatformKimi, "bogus").GetAPIProtocol(), "非法值回退默认")
 	require.Equal(t, APIProtocolChatCompletions, (&Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}).GetAPIProtocol(), "非 CN 供应商恒为默认")
+	require.Equal(t, APIProtocolAdaptive, mk(PlatformOpenCodeGo, "").GetAPIProtocol(), "opencode go 默认 adaptive")
+	require.Equal(t, APIProtocolResponses, mk(PlatformOpenCodeGo, APIProtocolResponses).GetAPIProtocol())
+}
+
+func TestSupportsNativeCNResponses(t *testing.T) {
+	t.Parallel()
+	require.True(t, (&Account{Platform: PlatformDeepseek}).SupportsNativeCNResponses())
+	require.True(t, (&Account{Platform: PlatformKimi}).SupportsNativeCNResponses())
+	require.True(t, (&Account{Platform: PlatformKimi, Credentials: map[string]any{"account_mode": AccountModeCoding}}).SupportsNativeCNResponses())
+	require.True(t, (&Account{Platform: PlatformMiniMax}).SupportsNativeCNResponses())
+	require.True(t, (&Account{Platform: PlatformOpenCodeGo}).SupportsNativeCNResponses())
+	require.False(t, (&Account{Platform: PlatformZhipu}).SupportsNativeCNResponses())
+	require.False(t, (&Account{Platform: PlatformOpenAI}).SupportsNativeCNResponses())
 }
 
 func TestAdaptiveProtocolBaseURLs(t *testing.T) {
@@ -508,9 +899,14 @@ func TestAdaptiveProtocolBaseURLs(t *testing.T) {
 	}{
 		{"kimi payg", PlatformKimi, AccountModePayG, DefaultKimiPayGBaseURL, DefaultKimiPayGAnthropicBaseURL, DefaultKimiPayGBaseURL},
 		{"kimi coding", PlatformKimi, AccountModeCoding, DefaultKimiCodingBaseURL, DefaultKimiCodingAnthropicBaseURL, DefaultKimiCodingBaseURL},
-		{"zhipu payg", PlatformZhipu, AccountModePayG, DefaultZhipuPayGBaseURL, DefaultZhipuAnthropicBaseURL, DefaultZhipuPayGBaseURL},
-		{"zhipu coding", PlatformZhipu, AccountModeCoding, DefaultZhipuCodingBaseURL, DefaultZhipuAnthropicBaseURL, DefaultZhipuCodingBaseURL},
+		// 智谱没有原生 Responses 端点：profile 不登记 responses 条目，默认基址为空。
+		{"zhipu payg", PlatformZhipu, AccountModePayG, DefaultZhipuPayGBaseURL, DefaultZhipuAnthropicBaseURL, ""},
+		{"zhipu coding", PlatformZhipu, AccountModeCoding, DefaultZhipuCodingBaseURL, DefaultZhipuAnthropicBaseURL, ""},
 		{"deepseek", PlatformDeepseek, AccountModePayG, DefaultDeepseekBaseURL, DefaultDeepseekAnthropicBaseURL, DefaultDeepseekBaseURL},
+		{"minimax payg", PlatformMiniMax, AccountModePayG, DefaultMiniMaxBaseURL, DefaultMiniMaxAnthropicBaseURL, DefaultMiniMaxBaseURL},
+		{"minimax coding", PlatformMiniMax, AccountModeCoding, DefaultMiniMaxBaseURL, DefaultMiniMaxAnthropicBaseURL, DefaultMiniMaxBaseURL},
+		{"opencode go", PlatformOpenCodeGo, AccountModeGo, DefaultOpenCodeGoBaseURL, DefaultOpenCodeGoAnthropicBaseURL, DefaultOpenCodeGoBaseURL},
+		{"opencode zen", PlatformOpenCodeGo, AccountModeZen, DefaultOpenCodeZenBaseURL, DefaultOpenCodeZenAnthropicBaseURL, DefaultOpenCodeZenBaseURL},
 	}
 
 	for _, tc := range cases {
@@ -566,6 +962,10 @@ func TestAnthropicProtocolBaseURL(t *testing.T) {
 	}).GetAnthropicProtocolBaseURL())
 	require.Equal(t, "https://api.deepseek.com/anthropic", (&Account{
 		Platform: PlatformDeepseek, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_protocol": APIProtocolAnthropic},
+	}).GetAnthropicProtocolBaseURL())
+	require.Equal(t, "https://api.minimaxi.com/anthropic", (&Account{
+		Platform: PlatformMiniMax, Type: AccountTypeAPIKey,
 		Credentials: map[string]any{"api_protocol": APIProtocolAnthropic},
 	}).GetAnthropicProtocolBaseURL())
 
@@ -635,12 +1035,16 @@ func TestBuildUpstreamModelsRequest_AnthropicProtocol(t *testing.T) {
 func TestBuildOpenAIResponsesURLForPlatform(t *testing.T) {
 	t.Parallel()
 	require.Equal(t, "https://api.deepseek.com/responses", buildOpenAIResponsesURLForPlatform(PlatformDeepseek, "https://api.deepseek.com"))
+	require.Equal(t, "https://relay.example.com/responses", buildOpenAIResponsesURLForPlatform(PlatformDeepseek, "https://relay.example.com"))
+	require.Equal(t, "https://relay.example.com/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformDeepseek, "https://relay.example.com/v1"))
 	require.Equal(t, "https://api.openai.com/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformOpenAI, "https://api.openai.com"))
 	require.Equal(t, "https://open.bigmodel.cn/api/paas/v4/responses", buildOpenAIResponsesURLForPlatform(PlatformZhipu, "https://open.bigmodel.cn/api/paas/v4"))
+	require.Equal(t, "https://api.moonshot.cn/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformKimi, "https://api.moonshot.cn/v1"))
+	require.Equal(t, "https://api.kimi.com/coding/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformKimi, "https://api.kimi.com/coding/v1"))
 }
 
 // TestNormalizeDeepSeekResponsesRequestBody 无状态适配：强制 store=false、
-// 清除 previous_response_id；非 deepseek responses 协议原样返回。
+// 清除 previous_response_id；非原生 CN Responses 协议原样返回。
 func TestNormalizeDeepSeekResponsesRequestBody(t *testing.T) {
 	t.Parallel()
 
@@ -662,9 +1066,35 @@ func TestNormalizeDeepSeekResponsesRequestBody(t *testing.T) {
 	require.False(t, gjson.GetBytes(adaptiveNormalized, "store").Bool())
 	require.False(t, gjson.GetBytes(adaptiveNormalized, "previous_response_id").Exists())
 
+	mediaBody := []byte(`{"model":"deepseek-v4.1-flash","store":true,"input":[{"type":"function_call","call_id":"call_image","name":"view_image","arguments":"{}"},{"type":"function_call_output","call_id":"call_image","output":[{"type":"input_image","image_url":"data:image/png;base64,AQID"}]}]}`)
+	mediaNormalized := normalizeDeepSeekResponsesRequestBody(deepseekResponses, mediaBody)
+	require.False(t, gjson.GetBytes(mediaNormalized, "store").Bool())
+	require.Equal(t, gjson.String, gjson.GetBytes(mediaNormalized, "input.1.output").Type)
+	require.NotContains(t, gjson.GetBytes(mediaNormalized, "input.1.output").String(), "data:image/png")
+	require.Equal(t, "message", gjson.GetBytes(mediaNormalized, "input.2.type").String())
+	require.Equal(t, "user", gjson.GetBytes(mediaNormalized, "input.2.role").String())
+	require.Equal(t, "input_image", gjson.GetBytes(mediaNormalized, "input.2.content.1.type").String())
+	require.Equal(t, "data:image/png;base64,AQID", gjson.GetBytes(mediaNormalized, "input.2.content.1.image_url").String())
+
 	// 非 responses 协议（deepseek CC 账号）原样返回
 	deepseekCC := &Account{Platform: PlatformDeepseek, Type: AccountTypeAPIKey}
 	require.Equal(t, string(body), string(normalizeDeepSeekResponsesRequestBody(deepseekCC, body)))
+
+	kimiResponses := &Account{
+		Platform: PlatformKimi, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_protocol": APIProtocolResponses},
+	}
+	kimiNormalized := normalizeDeepSeekResponsesRequestBody(kimiResponses, body)
+	require.False(t, gjson.GetBytes(kimiNormalized, "store").Bool())
+	require.False(t, gjson.GetBytes(kimiNormalized, "previous_response_id").Exists())
+
+	kimiCodingAdaptive := &Account{
+		Platform: PlatformKimi, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"api_protocol": APIProtocolAdaptive, "account_mode": AccountModeCoding},
+	}
+	kimiCodingNormalized := normalizeDeepSeekResponsesRequestBody(kimiCodingAdaptive, body)
+	require.False(t, gjson.GetBytes(kimiCodingNormalized, "store").Bool())
+	require.False(t, gjson.GetBytes(kimiCodingNormalized, "previous_response_id").Exists())
 
 	// openai 账号原样返回
 	openai := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}

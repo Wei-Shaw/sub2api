@@ -26,6 +26,8 @@ const (
 	FieldName = "name"
 	// FieldDescription holds the string denoting the description field in the database.
 	FieldDescription = "description"
+	// FieldI18n holds the string denoting the i18n field in the database.
+	FieldI18n = "i18n"
 	// FieldRateMultiplier holds the string denoting the rate_multiplier field in the database.
 	FieldRateMultiplier = "rate_multiplier"
 	// FieldPeakRateEnabled holds the string denoting the peak_rate_enabled field in the database.
@@ -58,6 +60,8 @@ const (
 	FieldAllowImageGeneration = "allow_image_generation"
 	// FieldAllowBatchImageGeneration holds the string denoting the allow_batch_image_generation field in the database.
 	FieldAllowBatchImageGeneration = "allow_batch_image_generation"
+	// FieldImageCountBilling holds the string denoting the image_count_billing field in the database.
+	FieldImageCountBilling = "image_count_billing"
 	// FieldImageRateIndependent holds the string denoting the image_rate_independent field in the database.
 	FieldImageRateIndependent = "image_rate_independent"
 	// FieldImageRateMultiplier holds the string denoting the image_rate_multiplier field in the database.
@@ -118,6 +122,12 @@ const (
 	FieldAllowMessagesDispatch = "allow_messages_dispatch"
 	// FieldAllowLive holds the string denoting the allow_live field in the database.
 	FieldAllowLive = "allow_live"
+	// FieldForceOpenaiFast holds the string denoting the force_openai_fast field in the database.
+	FieldForceOpenaiFast = "force_openai_fast"
+	// FieldForceOpenaiUltrafast holds the string denoting the force_openai_ultrafast field in the database.
+	FieldForceOpenaiUltrafast = "force_openai_ultrafast"
+	// FieldFreeOpenaiFast holds the string denoting the free_openai_fast field in the database.
+	FieldFreeOpenaiFast = "free_openai_fast"
 	// FieldRequireOauthOnly holds the string denoting the require_oauth_only field in the database.
 	FieldRequireOauthOnly = "require_oauth_only"
 	// FieldRequirePrivacySet holds the string denoting the require_privacy_set field in the database.
@@ -126,12 +136,16 @@ const (
 	FieldDefaultMappedModel = "default_mapped_model"
 	// FieldMessagesDispatchModelConfig holds the string denoting the messages_dispatch_model_config field in the database.
 	FieldMessagesDispatchModelConfig = "messages_dispatch_model_config"
-	// FieldModelsListConfig holds the string denoting the models_list_config field in the database.
-	FieldModelsListConfig = "models_list_config"
+	// FieldModelAllowlist holds the string denoting the model_allowlist field in the database.
+	FieldModelAllowlist = "model_allowlist"
+	// FieldCodexModelsManifestConfig holds the string denoting the codex_models_manifest_config field in the database.
+	FieldCodexModelsManifestConfig = "codex_models_manifest_config"
 	// FieldRpmLimit holds the string denoting the rpm_limit field in the database.
 	FieldRpmLimit = "rpm_limit"
 	// FieldMaxReasoningEffort holds the string denoting the max_reasoning_effort field in the database.
 	FieldMaxReasoningEffort = "max_reasoning_effort"
+	// FieldMaxReasoningEffortOverLimit holds the string denoting the max_reasoning_effort_over_limit field in the database.
+	FieldMaxReasoningEffortOverLimit = "max_reasoning_effort_over_limit"
 	// FieldReasoningEffortMappings holds the string denoting the reasoning_effort_mappings field in the database.
 	FieldReasoningEffortMappings = "reasoning_effort_mappings"
 	// FieldProfitControlEnabled holds the string denoting the profit_control_enabled field in the database.
@@ -220,6 +234,7 @@ var Columns = []string{
 	FieldDeletedAt,
 	FieldName,
 	FieldDescription,
+	FieldI18n,
 	FieldRateMultiplier,
 	FieldPeakRateEnabled,
 	FieldPeakStart,
@@ -236,6 +251,7 @@ var Columns = []string{
 	FieldDefaultValidityDays,
 	FieldAllowImageGeneration,
 	FieldAllowBatchImageGeneration,
+	FieldImageCountBilling,
 	FieldImageRateIndependent,
 	FieldImageRateMultiplier,
 	FieldImagePrice1k,
@@ -266,13 +282,18 @@ var Columns = []string{
 	FieldSortOrder,
 	FieldAllowMessagesDispatch,
 	FieldAllowLive,
+	FieldForceOpenaiFast,
+	FieldForceOpenaiUltrafast,
+	FieldFreeOpenaiFast,
 	FieldRequireOauthOnly,
 	FieldRequirePrivacySet,
 	FieldDefaultMappedModel,
 	FieldMessagesDispatchModelConfig,
-	FieldModelsListConfig,
+	FieldModelAllowlist,
+	FieldCodexModelsManifestConfig,
 	FieldRpmLimit,
 	FieldMaxReasoningEffort,
+	FieldMaxReasoningEffortOverLimit,
 	FieldReasoningEffortMappings,
 	FieldProfitControlEnabled,
 	FieldProfitMinMargin,
@@ -314,6 +335,8 @@ var (
 	UpdateDefaultUpdatedAt func() time.Time
 	// NameValidator is a validator for the "name" field. It is called by the builders before save.
 	NameValidator func(string) error
+	// DefaultI18n holds the default value on creation for the "i18n" field.
+	DefaultI18n domain.GroupI18n
 	// DefaultRateMultiplier holds the default value on creation for the "rate_multiplier" field.
 	DefaultRateMultiplier float64
 	// DefaultPeakRateEnabled holds the default value on creation for the "peak_rate_enabled" field.
@@ -350,6 +373,8 @@ var (
 	DefaultAllowImageGeneration bool
 	// DefaultAllowBatchImageGeneration holds the default value on creation for the "allow_batch_image_generation" field.
 	DefaultAllowBatchImageGeneration bool
+	// DefaultImageCountBilling holds the default value on creation for the "image_count_billing" field.
+	DefaultImageCountBilling bool
 	// DefaultImageRateIndependent holds the default value on creation for the "image_rate_independent" field.
 	DefaultImageRateIndependent bool
 	// DefaultImageRateMultiplier holds the default value on creation for the "image_rate_multiplier" field.
@@ -386,6 +411,12 @@ var (
 	DefaultAllowMessagesDispatch bool
 	// DefaultAllowLive holds the default value on creation for the "allow_live" field.
 	DefaultAllowLive bool
+	// DefaultForceOpenaiFast holds the default value on creation for the "force_openai_fast" field.
+	DefaultForceOpenaiFast bool
+	// DefaultForceOpenaiUltrafast holds the default value on creation for the "force_openai_ultrafast" field.
+	DefaultForceOpenaiUltrafast bool
+	// DefaultFreeOpenaiFast holds the default value on creation for the "free_openai_fast" field.
+	DefaultFreeOpenaiFast bool
 	// DefaultRequireOauthOnly holds the default value on creation for the "require_oauth_only" field.
 	DefaultRequireOauthOnly bool
 	// DefaultRequirePrivacySet holds the default value on creation for the "require_privacy_set" field.
@@ -396,14 +427,20 @@ var (
 	DefaultMappedModelValidator func(string) error
 	// DefaultMessagesDispatchModelConfig holds the default value on creation for the "messages_dispatch_model_config" field.
 	DefaultMessagesDispatchModelConfig domain.OpenAIMessagesDispatchModelConfig
-	// DefaultModelsListConfig holds the default value on creation for the "models_list_config" field.
-	DefaultModelsListConfig domain.GroupModelsListConfig
+	// DefaultModelAllowlist holds the default value on creation for the "model_allowlist" field.
+	DefaultModelAllowlist domain.GroupModelAllowlist
+	// DefaultCodexModelsManifestConfig holds the default value on creation for the "codex_models_manifest_config" field.
+	DefaultCodexModelsManifestConfig domain.GroupCodexModelsManifestConfig
 	// DefaultRpmLimit holds the default value on creation for the "rpm_limit" field.
 	DefaultRpmLimit int
 	// DefaultMaxReasoningEffort holds the default value on creation for the "max_reasoning_effort" field.
 	DefaultMaxReasoningEffort string
 	// MaxReasoningEffortValidator is a validator for the "max_reasoning_effort" field. It is called by the builders before save.
 	MaxReasoningEffortValidator func(string) error
+	// DefaultMaxReasoningEffortOverLimit holds the default value on creation for the "max_reasoning_effort_over_limit" field.
+	DefaultMaxReasoningEffortOverLimit string
+	// MaxReasoningEffortOverLimitValidator is a validator for the "max_reasoning_effort_over_limit" field. It is called by the builders before save.
+	MaxReasoningEffortOverLimitValidator func(string) error
 	// DefaultReasoningEffortMappings holds the default value on creation for the "reasoning_effort_mappings" field.
 	DefaultReasoningEffortMappings []domain.ReasoningEffortMapping
 	// DefaultProfitControlEnabled holds the default value on creation for the "profit_control_enabled" field.
@@ -525,6 +562,11 @@ func ByAllowImageGeneration(opts ...sql.OrderTermOption) OrderOption {
 // ByAllowBatchImageGeneration orders the results by the allow_batch_image_generation field.
 func ByAllowBatchImageGeneration(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowBatchImageGeneration, opts...).ToFunc()
+}
+
+// ByImageCountBilling orders the results by the image_count_billing field.
+func ByImageCountBilling(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldImageCountBilling, opts...).ToFunc()
 }
 
 // ByImageRateIndependent orders the results by the image_rate_independent field.
@@ -657,6 +699,21 @@ func ByAllowLive(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldAllowLive, opts...).ToFunc()
 }
 
+// ByForceOpenaiFast orders the results by the force_openai_fast field.
+func ByForceOpenaiFast(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldForceOpenaiFast, opts...).ToFunc()
+}
+
+// ByForceOpenaiUltrafast orders the results by the force_openai_ultrafast field.
+func ByForceOpenaiUltrafast(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldForceOpenaiUltrafast, opts...).ToFunc()
+}
+
+// ByFreeOpenaiFast orders the results by the free_openai_fast field.
+func ByFreeOpenaiFast(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldFreeOpenaiFast, opts...).ToFunc()
+}
+
 // ByRequireOauthOnly orders the results by the require_oauth_only field.
 func ByRequireOauthOnly(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldRequireOauthOnly, opts...).ToFunc()
@@ -680,6 +737,11 @@ func ByRpmLimit(opts ...sql.OrderTermOption) OrderOption {
 // ByMaxReasoningEffort orders the results by the max_reasoning_effort field.
 func ByMaxReasoningEffort(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMaxReasoningEffort, opts...).ToFunc()
+}
+
+// ByMaxReasoningEffortOverLimit orders the results by the max_reasoning_effort_over_limit field.
+func ByMaxReasoningEffortOverLimit(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldMaxReasoningEffortOverLimit, opts...).ToFunc()
 }
 
 // ByProfitControlEnabled orders the results by the profit_control_enabled field.

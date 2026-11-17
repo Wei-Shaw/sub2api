@@ -163,6 +163,7 @@ export default {
     usedQuota: 'Used Quota',
     resetNow: 'Resetting soon',
     subscriptionType: 'Subscription Type',
+    billingType: 'Billing Type',
     subscriptionExpires: 'Subscription Expires',
     // Usage stat cells
     todayRequests: 'Today Requests',

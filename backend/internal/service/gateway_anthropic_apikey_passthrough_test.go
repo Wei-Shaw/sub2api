@@ -913,7 +913,7 @@ func TestGatewayService_AnthropicOAuthMimic_RewritesSystemWithBillingBlock(t *te
 				require.Truef(t, anthropicBetaTokensContains(finalBeta, beta), "missing mimic beta %s", beta)
 			}
 			require.False(t, anthropicBetaTokensContains(finalBeta, "client-only-beta"))
-			for key, value := range claude.DefaultHeaders {
+			for key, value := range claude.DefaultHeaders() {
 				require.Equal(t, value, getHeaderRaw(upstream.lastReq.Header, key), "mimic fingerprint header %s", key)
 			}
 			require.NotEmpty(t, getHeaderRaw(upstream.lastReq.Header, "x-client-request-id"))
@@ -1235,8 +1235,12 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardDirect_UpstreamRequest
 	result, err := svc.forwardAnthropicAPIKeyPassthrough(context.Background(), c, account, []byte(`{"model":"x"}`), "x", "x", false, time.Now())
 	require.Nil(t, result)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "upstream request failed")
-	require.Equal(t, http.StatusBadGateway, rec.Code)
+	var failoverErr *UpstreamFailoverError
+	require.ErrorAs(t, err, &failoverErr)
+	require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+	require.True(t, failoverErr.ShouldRetryNextAccount())
+	// 传输层错误交给 handler failover，service 不得写响应。
+	require.False(t, c.Writer.Written())
 }
 
 func TestGatewayService_AnthropicAPIKeyPassthrough_ForwardDirect_EmptyResponseBody(t *testing.T) {
@@ -1295,21 +1299,20 @@ func TestGatewayService_ParseSSEUsagePassthrough_MessageStartFallbacks(t *testin
 }
 
 func TestGatewayService_ParseSSEUsagePassthrough_MessageDeltaSelectiveOverwrite(t *testing.T) {
-	usage := &ClaudeUsage{
-		InputTokens:           10,
-		CacheCreation5mTokens: 2,
-		CacheCreation1hTokens: 6,
-	}
-	data := `{"type":"message_delta","usage":{"input_tokens":0,"output_tokens":5,"cache_creation_input_tokens":8,"cache_read_input_tokens":0,"cached_tokens":11,"cache_creation":{"ephemeral_5m_input_tokens":1,"ephemeral_1h_input_tokens":0}}}`
+	usage := &ClaudeUsage{}
+	start := `{"type":"message_start","message":{"usage":{"input_tokens":10,"cache_creation_input_tokens":463184,"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":463184}}}}`
+	parseSSEUsagePassthrough(start, usage)
+
+	data := `{"type":"message_delta","usage":{"input_tokens":0,"output_tokens":5,"cache_creation_input_tokens":463184,"cache_read_input_tokens":0,"cached_tokens":11,"cache_creation":{"ephemeral_5m_input_tokens":463184,"ephemeral_1h_input_tokens":0}}}`
 
 	parseSSEUsagePassthrough(data, usage)
 
 	require.Equal(t, 10, usage.InputTokens, "message_delta 中 0 值不应覆盖已有 input_tokens")
 	require.Equal(t, 5, usage.OutputTokens)
-	require.Equal(t, 8, usage.CacheCreationInputTokens)
+	require.Equal(t, 463184, usage.CacheCreationInputTokens)
 	require.Equal(t, 11, usage.CacheReadInputTokens, "cache_read_input_tokens 为空时应回退到 cached_tokens")
-	require.Equal(t, 1, usage.CacheCreation5mTokens)
-	require.Equal(t, 6, usage.CacheCreation1hTokens, "message_delta 中 0 值不应覆盖已有 1h 明细")
+	require.Equal(t, 463184, usage.CacheCreation5mTokens)
+	require.Equal(t, 0, usage.CacheCreation1hTokens)
 }
 
 func TestGatewayService_ParseSSEUsagePassthrough_NoopCases(t *testing.T) {
@@ -1765,4 +1768,152 @@ func TestGatewayService_AnthropicAPIKeyPassthrough_Non2xxRecordsOllamaActivity(t
 
 	_, ok := deferred.lastUsedUpdates.Load(int64(604))
 	require.True(t, ok, "Anthropic passthrough non-2xx on Ollama account must record activity via handleErrorResponse")
+}
+
+func TestOpus55RejectsUnsupportedParametersBeforeMimicry(t *testing.T) {
+	for _, typ := range []string{AccountTypeOAuth, AccountTypeAPIKey} {
+		for _, field := range []string{`"thinking":{"type":"disabled"}`, `"thinking":{"type":"enabled","budget_tokens":1024}`, `"tool_choice":{"type":"any"}`, `"tool_choice":{"type":"tool","name":"lookup"}`} {
+			for _, count := range []bool{false, true} {
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+				model := "claude-opus-5-5"
+				account := &Account{ID: 1, Platform: PlatformAnthropic, Type: typ}
+				if typ == AccountTypeAPIKey {
+					model = "public-opus"
+					account.Credentials = map[string]any{"model_mapping": map[string]any{model: "claude-opus-5-5"}}
+				}
+				body := []byte(`{"model":"` + model + `","messages":[{"role":"user","content":"hello"}],` + field + `}`)
+				parsed := &ParsedRequest{Model: model, Body: NewRequestBodyRef(body)}
+				svc := &GatewayService{}
+				var err error
+				if count {
+					err = svc.ForwardCountTokens(context.Background(), c, account, parsed)
+				} else {
+					_, err = svc.Forward(context.Background(), c, account, parsed)
+				}
+				require.Error(t, err)
+				require.Equal(t, http.StatusBadRequest, rec.Code)
+				require.Contains(t, rec.Body.String(), "invalid_request_error")
+			}
+		}
+	}
+}
+
+func TestOpus55ThinkingDefaultPreservesSignedHistory(t *testing.T) {
+	body := []byte(`{"model":"claude-opus-5-5","messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"","signature":"signed"},{"type":"redacted_thinking","data":"encrypted"},{"type":"tool_use","id":"toolu_1","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]}],"tool_choice":{"type":"none"},"thinking":{"type":"adaptive","display":"omitted"}}`)
+	require.Equal(t, string(body), string(FilterThinkingBlocks(body, "claude-opus-5-5")))
+	require.Equal(t, string(body), string(FilterThinkingBlocks(body, "anthropic/claude-opus-5.5")))
+	withoutThinking, _ := deleteJSONPathBytes(body, "thinking")
+	require.Equal(t, string(withoutThinking), string(FilterThinkingBlocks(withoutThinking, "claude-opus-5-5")))
+	out, _ := normalizeClaudeOAuthRequestBody(body, "claude-opus-5-5", claudeOAuthNormalizeOptions{})
+	require.Equal(t, "none", gjson.GetBytes(out, "tool_choice.type").String())
+	require.False(t, gjson.GetBytes(out, "output_config.effort").Exists(), "omission uses the official medium default")
+	require.Equal(t, "omitted", gjson.GetBytes(out, "thinking.display").String())
+	require.JSONEq(t, gjson.GetBytes(body, "messages").Raw, gjson.GetBytes(out, "messages").Raw)
+}
+
+func TestSonnet55RejectsUnsupportedParametersBeforeMimicry(t *testing.T) {
+	fields := []string{
+		`"thinking":{"type":"disabled"}`,
+		`"thinking":{"type":"enabled","budget_tokens":1024}`,
+		`"thinking":{"type":"between_tools"},"output_config":{"effort":"xhigh"}`,
+		`"thinking":{"type":"between_tools","display":"summarized"}`,
+		`"tool_choice":{"type":"any"}`,
+		`"tool_choice":{"type":"tool","name":"lookup"}`,
+		`"temperature":0.7`,
+		`"top_p":0.5`,
+		`"top_k":1`,
+	}
+	for _, field := range fields {
+		for _, typ := range []string{AccountTypeOAuth, AccountTypeAPIKey, AccountTypeBedrock, AccountTypeServiceAccount} {
+			for _, count := range []bool{false, true} {
+				model := "claude-sonnet-5-5"
+				account := &Account{ID: 1, Platform: PlatformAnthropic, Type: typ}
+				switch typ {
+				case AccountTypeAPIKey:
+					model = "public-sonnet"
+					account.Credentials = map[string]any{"model_mapping": map[string]any{model: "claude-sonnet-5-5"}}
+				case AccountTypeBedrock:
+					account.Credentials = map[string]any{"aws_region": "eu-west-1"}
+				}
+				body := []byte(`{"model":"` + model + `","messages":[{"role":"user","content":"hello"}],` + field + `}`)
+				parsed := &ParsedRequest{Model: model, Body: NewRequestBodyRef(body)}
+				rec := httptest.NewRecorder()
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+				svc := &GatewayService{}
+				var err error
+				if count {
+					err = svc.ForwardCountTokens(context.Background(), c, account, parsed)
+				} else {
+					_, err = svc.Forward(context.Background(), c, account, parsed)
+				}
+				require.Error(t, err, field)
+				require.Equal(t, http.StatusBadRequest, rec.Code, field)
+				require.Contains(t, rec.Body.String(), "invalid_request_error", field)
+			}
+		}
+	}
+}
+
+func TestSonnet55PreservesSignedHistoryAndAcceptsDefaultParameters(t *testing.T) {
+	body := []byte(`{"model":"claude-sonnet-5-5","messages":[{"role":"assistant","content":[{"type":"thinking","thinking":"","signature":"signed"},{"type":"redacted_thinking","data":"encrypted"},{"type":"tool_use","id":"toolu_1","name":"lookup","input":{}}]},{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]}],"thinking":{"type":"between_tools"},"output_config":{"effort":"high"},"tool_choice":{"type":"none"},"temperature":1,"top_p":0.99}`)
+	require.NoError(t, validateClaude55Request(body, "anthropic/claude-sonnet-5.5"))
+	require.JSONEq(t, string(body), string(FilterThinkingBlocks(body, "claude-sonnet-5-5")))
+	withoutThinking, _ := deleteJSONPathBytes(body, "thinking")
+	require.JSONEq(t, string(withoutThinking), string(FilterThinkingBlocks(withoutThinking, "claude-sonnet-5-5")))
+	out, _ := normalizeClaudeOAuthRequestBody(body, "claude-sonnet-5-5", claudeOAuthNormalizeOptions{})
+	require.Equal(t, "none", gjson.GetBytes(out, "tool_choice.type").String())
+	require.JSONEq(t, gjson.GetBytes(body, "messages").Raw, gjson.GetBytes(out, "messages").Raw)
+}
+
+func TestSonnet55BedrockCCCompatTransformsBeforeValidation(t *testing.T) {
+	groupID := int64(55)
+	channels := &ChannelService{}
+	channels.cache.Store(&channelCache{
+		loadedAt: time.Now(),
+		channelByGroupID: map[int64]*Channel{
+			groupID: {Status: StatusActive, FeaturesConfig: map[string]any{featureKeyBedrockCCCompat: true}},
+		},
+	})
+	svc := &GatewayService{channelService: channels}
+	account := &Account{Platform: PlatformAnthropic, Type: AccountTypeBedrock,
+		Credentials: map[string]any{"aws_region": "eu-west-1"}}
+	for _, tc := range []struct {
+		name         string
+		thinking     string
+		expectedType string
+		wantErr      bool
+	}{
+		{name: "enabled", thinking: `{"type":"enabled","budget_tokens":2048}`, expectedType: "adaptive"},
+		{name: "disabled", thinking: `{"type":"disabled"}`, expectedType: "between_tools"},
+		{name: "between_tools invalid effort", thinking: `{"type":"between_tools"}`, expectedType: "between_tools", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte(`{"model":"claude-sonnet-5-5","max_tokens":1024,"messages":[{"role":"user","content":"hello"}],"thinking":` + tc.thinking + `,"output_config":{"effort":"low"}}`)
+			if tc.wantErr {
+				body = []byte(`{"model":"claude-sonnet-5-5","max_tokens":1024,"messages":[{"role":"user","content":"hello"}],"thinking":` + tc.thinking + `,"output_config":{"effort":"xhigh"}}`)
+			}
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+			converted := svc.ApplyBedrockCCCompat(c, body, "claude-sonnet-5-5", account, &groupID)
+			require.Equal(t, tc.expectedType, gjson.GetBytes(converted, "thinking.type").String())
+			if tc.name == "enabled" {
+				require.False(t, gjson.GetBytes(converted, "thinking.budget_tokens").Exists())
+			}
+			mapped, ok := ResolveBedrockModelID(account, "claude-sonnet-5-5")
+			require.True(t, ok)
+			err := validateClaude55Request(converted, mapped)
+			if tc.wantErr {
+				require.ErrorContains(t, err, "only low, medium or high effort")
+				return
+			}
+			require.NoError(t, err)
+			prepared, err := PrepareBedrockRequestBodyWithTokens(converted, mapped, nil, false)
+			require.NoError(t, err)
+			require.Equal(t, "low", gjson.GetBytes(prepared, "output_config.effort").String())
+		})
+	}
 }

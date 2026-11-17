@@ -38,6 +38,28 @@ func TestRedactText_GOCSPX(t *testing.T) {
 	}
 }
 
+func TestRedactText_GeminiAPIKeys(t *testing.T) {
+	legacyKey := "AI" + "za" + strings.Repeat("Ab1_-", 7)
+	authKey := "AQ." + "Ab" + strings.Repeat("Xy9_-z", 8)
+	in := "upstream rejected " + legacyKey + " and " + authKey + " for model gemini-3.1-pro"
+	out := RedactText(in)
+	if strings.Contains(out, legacyKey) || strings.Contains(out, authKey) {
+		t.Fatalf("expected Gemini keys redacted, got %q", out)
+	}
+	for _, want := range []string{"AIza***", "AQ.***", "for model gemini-3.1-pro"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected %q in %q", want, out)
+		}
+	}
+}
+
+func TestRedactText_GeminiAuthKeyPrefixAloneUnchanged(t *testing.T) {
+	in := "key format AQ.Ab... is documented"
+	if out := RedactText(in); out != in {
+		t.Fatalf("expected short AQ. prefix unchanged, got %q", out)
+	}
+}
+
 func TestRedactText_ExtraKeyCacheUsesNormalizedSortedKey(t *testing.T) {
 	clearExtraTextPatternCache()
 

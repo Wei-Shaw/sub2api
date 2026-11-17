@@ -60,7 +60,8 @@ func TestProbeOpenAIAPIKeyResponsesSupportCNProviders(t *testing.T) {
 	}{
 		{name: "deepseek adaptive supports responses", id: 201, platform: PlatformDeepseek, protocol: APIProtocolAdaptive, wantSupport: true, wantMode: string(openai_compat.ResponsesSupportModeForceResponses)},
 		{name: "deepseek chat clears forced responses", id: 202, platform: PlatformDeepseek, protocol: APIProtocolChatCompletions, wantSupport: false, wantMode: string(openai_compat.ResponsesSupportModeAuto)},
-		{name: "kimi adaptive falls back to chat", id: 203, platform: PlatformKimi, protocol: APIProtocolAdaptive, wantSupport: false, wantMode: string(openai_compat.ResponsesSupportModeAuto)},
+		{name: "kimi adaptive supports responses", id: 203, platform: PlatformKimi, protocol: APIProtocolAdaptive, wantSupport: true, wantMode: string(openai_compat.ResponsesSupportModeForceResponses)},
+		{name: "kimi responses protocol supports responses", id: 205, platform: PlatformKimi, protocol: APIProtocolResponses, wantSupport: true, wantMode: string(openai_compat.ResponsesSupportModeForceResponses)},
 		{name: "zhipu adaptive falls back to chat", id: 204, platform: PlatformZhipu, protocol: APIProtocolAdaptive, wantSupport: false, wantMode: string(openai_compat.ResponsesSupportModeAuto)},
 	}
 
@@ -85,6 +86,57 @@ func TestProbeOpenAIAPIKeyResponsesSupportCNProviders(t *testing.T) {
 			updates := <-updateCalls
 			require.Equal(t, tc.wantSupport, updates[openai_compat.ExtraKeyResponsesSupported])
 			require.Equal(t, tc.wantMode, updates[openai_compat.ExtraKeyResponsesMode])
+		})
+	}
+}
+
+func TestProbeOpenAIAPIKeyResponsesSupportSkipsForcedModes(t *testing.T) {
+	cases := []struct {
+		name      string
+		mode      any
+		wantProbe bool
+	}{
+		{name: "force_responses skips probe", mode: string(openai_compat.ResponsesSupportModeForceResponses), wantProbe: false},
+		{name: "force_chat_completions skips probe", mode: string(openai_compat.ResponsesSupportModeForceChatCompletions), wantProbe: false},
+		{name: "auto probes", mode: string(openai_compat.ResponsesSupportModeAuto), wantProbe: true},
+		{name: "invalid mode falls back to auto and probes", mode: "bogus", wantProbe: true},
+		{name: "non-string mode falls back to auto and probes", mode: nil, wantProbe: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			updateCalls := make(chan map[string]any, 1)
+			account := Account{
+				ID:          301,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Concurrency: 1,
+				Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://compat-upstream.example/v1"},
+				Extra:       map[string]any{openai_compat.ExtraKeyResponsesMode: tc.mode},
+			}
+			repo := &snapshotUpdateAccountRepo{
+				stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
+				updateExtraCalls:      updateCalls,
+			}
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"output":[{"type":"function_call","name":"probe_ping"}]}`)),
+			}}
+			svc := &AccountTestService{
+				accountRepo:  repo,
+				httpUpstream: upstream,
+				cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+			}
+
+			svc.ProbeOpenAIAPIKeyResponsesSupport(context.Background(), account.ID)
+
+			if !tc.wantProbe {
+				require.Nil(t, upstream.lastReq)
+				require.Empty(t, updateCalls)
+				return
+			}
+			require.NotNil(t, upstream.lastReq)
+			require.Equal(t, true, (<-updateCalls)[openai_compat.ExtraKeyResponsesSupported])
 		})
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/ent/schema/mixins"
 	"github.com/Wei-Shaw/sub2api/ent/userplatformquota"
 	"github.com/stretchr/testify/require"
 )
@@ -145,4 +146,45 @@ func TestUpsertForUser_EmptyClearsAll(t *testing.T) {
 	got, err := repo.ListByUser(ctx, userID)
 	require.NoError(t, err)
 	require.Empty(t, got)
+}
+
+// TestUpsertForUser_UnlimitedRecordSoftDeletesAndDiscardsUsage 锁定语义：三档全空的记录视为未配置，
+// 等价于该平台不在列表里 → 软删既有行并放弃其累计用量；之后再配置限额会新建行、从新窗口起算。
+func TestUpsertForUser_UnlimitedRecordSoftDeletesAndDiscardsUsage(t *testing.T) {
+	ctx := context.Background()
+	client := testEntClient(t)
+	userID := mustCreateUserForQuota(t, client)
+	repo := NewUserPlatformQuotaRepository(client)
+
+	d := 10.0
+	require.NoError(t, repo.UpsertForUser(ctx, userID, []UserPlatformQuotaRecord{
+		{UserID: userID, Platform: "anthropic", DailyLimitUSD: &d},
+	}))
+	now := time.Date(2026, 5, 22, 10, 0, 0, 0, time.UTC)
+	require.NoError(t, repo.IncrementUsageWithReset(ctx, userID, "anthropic", 7.5, now))
+
+	// 清空限额：提交三档全空的记录
+	require.NoError(t, repo.UpsertForUser(ctx, userID, []UserPlatformQuotaRecord{
+		{UserID: userID, Platform: "anthropic"},
+	}))
+	gone, err := repo.GetByUserPlatform(ctx, userID, "anthropic")
+	require.NoError(t, err)
+	require.Nil(t, gone, "an unlimited record must soft-delete the row instead of keeping it with NULL limits")
+
+	// 重新配置限额：新行从零起算
+	require.NoError(t, repo.UpsertForUser(ctx, userID, []UserPlatformQuotaRecord{
+		{UserID: userID, Platform: "anthropic", DailyLimitUSD: &d},
+	}))
+	back, err := repo.GetByUserPlatform(ctx, userID, "anthropic")
+	require.NoError(t, err)
+	require.NotNil(t, back)
+	require.InDelta(t, 0, back.DailyUsageUSD, 1e-9, "usage restarts from zero")
+	require.Nil(t, back.DailyWindowStart, "window restarts")
+
+	// 软删 mixin 默认隐藏已删行，计数全部行需显式跳过
+	all, err := client.UserPlatformQuota.Query().
+		Where(userplatformquota.UserIDEQ(userID), userplatformquota.PlatformEQ("anthropic")).
+		All(mixins.SkipSoftDelete(ctx))
+	require.NoError(t, err)
+	require.Len(t, all, 2, "one soft-deleted history row plus one active row")
 }

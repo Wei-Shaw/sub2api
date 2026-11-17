@@ -17,7 +17,7 @@ import (
 type reqClientOptions struct {
 	ProxyURL    string        // 代理 URL（支持 http/https/socks5）
 	Timeout     time.Duration // 请求超时时间
-	Impersonate bool          // 是否模拟 Chrome 浏览器指纹
+	Impersonate bool          // 是否模拟浏览器指纹（当前为 Firefox，Chrome 伪装会被 chatgpt.com 的 Cloudflare 质询）
 	ForceHTTP2  bool          // 是否强制使用 HTTP/2
 }
 
@@ -50,7 +50,12 @@ func getSharedReqClient(opts reqClientOptions) (*req.Client, error) {
 		client = client.EnableForceHTTP2()
 	}
 	if opts.Impersonate {
-		client = client.ImpersonateChrome()
+		// chatgpt.com 的 Cloudflare 会对 req 内置的 Chrome 伪装（UA 固定为 Chrome/120，
+		// 与 sec-ch-ua 等 Client Hints 一起已明显过时）直接返回 403 cf-mitigated=challenge，
+		// 导致 accounts/check、subscriptions、隐私设置等 backend-api 调用全部失败，
+		// 订阅到期时间因此长期不更新（见 issue #4825）。Firefox 伪装的 UA/头部组合
+		// 在同一出口 IP 下稳定通过，故改用 Firefox 指纹。
+		client = client.ImpersonateFirefox()
 	}
 	trimmed, _, err := proxyurl.Parse(opts.ProxyURL)
 	if err != nil {
@@ -95,6 +100,6 @@ func CreatePrivacyReqClient(proxyURL string) (*req.Client, error) {
 	return getSharedReqClient(reqClientOptions{
 		ProxyURL:    proxyURL,
 		Timeout:     30 * time.Second,
-		Impersonate: true, // Enable Chrome TLS fingerprint impersonation
+		Impersonate: true, // Enable browser TLS fingerprint impersonation (Firefox, see getSharedReqClient)
 	})
 }

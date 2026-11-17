@@ -39,7 +39,35 @@ func (s *RedeemCacheSuite) TestIncrementAndGetRedeemAttemptCount() {
 
 	ttl, err := s.rdb.TTL(s.ctx, key).Result()
 	require.NoError(s.T(), err, "TTL")
-	s.AssertTTLWithin(ttl, 1*time.Second, redeemRateLimitDuration)
+	s.AssertTTLWithin(ttl, redeemRateLimitWindow-time.Second, redeemRateLimitWindow)
+}
+
+func (s *RedeemCacheSuite) TestIncrementDoesNotRefreshFixedWindow() {
+	userID := int64(3)
+	key := redeemRateLimitKey(userID)
+	shortTTL := 5 * time.Minute
+	require.NoError(s.T(), s.cache.IncrementRedeemAttemptCount(s.ctx, userID))
+	require.NoError(s.T(), s.rdb.PExpire(s.ctx, key, shortTTL).Err())
+	require.NoError(s.T(), s.cache.IncrementRedeemAttemptCount(s.ctx, userID))
+	ttl, err := s.rdb.PTTL(s.ctx, key).Result()
+	require.NoError(s.T(), err)
+	s.AssertTTLWithin(ttl, shortTTL-time.Second, shortTTL)
+}
+
+func (s *RedeemCacheSuite) TestIncrementRepairsMissingTTL() {
+	userID := int64(4)
+	key := redeemRateLimitKey(userID)
+	require.NoError(s.T(), s.rdb.Set(s.ctx, key, 5, 0).Err())
+	ttl, err := s.rdb.PTTL(s.ctx, key).Result()
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), time.Duration(-1), ttl)
+	require.NoError(s.T(), s.cache.IncrementRedeemAttemptCount(s.ctx, userID))
+	count, err := s.cache.GetRedeemAttemptCount(s.ctx, userID)
+	require.NoError(s.T(), err)
+	require.Equal(s.T(), 6, count)
+	ttl, err = s.rdb.PTTL(s.ctx, key).Result()
+	require.NoError(s.T(), err)
+	s.AssertTTLWithin(ttl, redeemRateLimitWindow-time.Second, redeemRateLimitWindow)
 }
 
 func (s *RedeemCacheSuite) TestMultipleIncrements() {

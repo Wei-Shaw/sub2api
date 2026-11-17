@@ -73,6 +73,8 @@ func TestBuildOpenAICompactSSEPayload_EmitsItemsAndCompleted(t *testing.T) {
 	require.Equal(t, "response.output_item.done", events[0][0])
 	first := events[0][1]
 	require.Equal(t, "response.output_item.done", gjson.Get(first, "type").String())
+	require.True(t, gjson.Get(first, "sequence_number").Exists(), "compact 合成帧必须带 sequence_number")
+	require.Equal(t, int64(0), gjson.Get(first, "sequence_number").Int())
 	require.Equal(t, int64(0), gjson.Get(first, "output_index").Int())
 	require.Equal(t, "compaction", gjson.Get(first, "item.type").String())
 	require.Equal(t, "cmp_1", gjson.Get(first, "item.id").String())
@@ -81,12 +83,14 @@ func TestBuildOpenAICompactSSEPayload_EmitsItemsAndCompleted(t *testing.T) {
 	require.True(t, gjson.Get(first, "item.opaque.kept").Bool(), "item 原始字段必须逐字节保留")
 
 	require.Equal(t, "response.output_item.done", events[1][0])
+	require.Equal(t, int64(1), gjson.Get(events[1][1], "sequence_number").Int())
 	require.Equal(t, int64(1), gjson.Get(events[1][1], "output_index").Int())
 	require.Equal(t, "message", gjson.Get(events[1][1], "item.type").String())
 
 	require.Equal(t, "response.completed", events[2][0])
 	completed := events[2][1]
 	require.Equal(t, "response.completed", gjson.Get(completed, "type").String())
+	require.Equal(t, int64(2), gjson.Get(completed, "sequence_number").Int())
 	require.Equal(t, "resp_compact_1", gjson.Get(completed, "response.id").String())
 	require.Equal(t, int64(13), gjson.Get(completed, "response.usage.total_tokens").Int())
 	require.Len(t, gjson.Get(completed, "response.output").Array(), 2)
@@ -318,7 +322,7 @@ func TestHandlePassthroughSSEToJSON_CompactRawOutputItemDoneRepairsEmptyTerminal
 		Body:       io.NopCloser(strings.NewReader(upstreamSSE)),
 	}
 
-	result, err := svc.handleNonStreamingResponsePassthrough(context.Background(), resp, c, "gpt-5.5", "")
+	result, err := svc.handleNonStreamingResponsePassthrough(context.Background(), resp, c, nil, "gpt-5.5", "")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 
@@ -512,7 +516,7 @@ func TestHandleNonStreamingResponsePassthrough_CompactClientStreamBridgesToSSE(t
 		}`)),
 	}
 
-	result, err := svc.handleNonStreamingResponsePassthrough(context.Background(), resp, c, "gpt-5.5", "")
+	result, err := svc.handleNonStreamingResponsePassthrough(context.Background(), resp, c, nil, "gpt-5.5", "")
 	require.NoError(t, err)
 	require.NotNil(t, result)
 

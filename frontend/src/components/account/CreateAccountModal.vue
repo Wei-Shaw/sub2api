@@ -160,14 +160,27 @@
             <PlatformIcon platform="grok" size="sm" />
             Grok
           </button>
+          <button
+            type="button"
+            @click="selectTypeSafePlatform()"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'typesafe'
+                ? 'bg-white text-sky-700 shadow-sm dark:bg-dark-600 dark:text-sky-300'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="typesafe" size="sm" />
+            TypeSafe / Jev
+          </button>
         </div>
-        <!-- CN providers row: Kimi / Zhipu GLM / DeepSeek -->
-        <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700">
+        <!-- 国产厂商：Kimi / Zhipu GLM / DeepSeek / MiniMax -->
+        <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700" data-testid="platform-row-cn">
           <button
             type="button"
             @click="selectCNPlatform('kimi')"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
               form.platform === 'kimi'
                 ? 'bg-white text-pink-600 shadow-sm dark:bg-dark-600 dark:text-pink-400'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -180,7 +193,7 @@
             type="button"
             @click="selectCNPlatform('zhipu')"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
               form.platform === 'zhipu'
                 ? 'bg-white text-indigo-600 shadow-sm dark:bg-dark-600 dark:text-indigo-400'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -193,7 +206,7 @@
             type="button"
             @click="selectCNPlatform('deepseek')"
             :class="[
-              'flex flex-1 items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium transition-all',
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
               form.platform === 'deepseek'
                 ? 'bg-white text-teal-600 shadow-sm dark:bg-dark-600 dark:text-teal-400'
                 : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
@@ -201,6 +214,54 @@
           >
             <PlatformIcon platform="deepseek" size="sm" />
             DeepSeek
+          </button>
+          <button
+            type="button"
+            @click="selectCNPlatform('minimax')"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'minimax'
+                ? 'bg-white text-rose-600 shadow-sm dark:bg-dark-600 dark:text-rose-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="minimax" size="sm" />
+            MiniMax
+          </button>
+        </div>
+
+        <!-- 多模型聚合平台：OpenCode 与平台清单中登记的其他多协议供应商 -->
+        <div class="mt-2 flex flex-wrap rounded-lg bg-gray-100 p-1 dark:bg-dark-700" data-testid="platform-row-aggregators">
+          <button
+            type="button"
+            data-testid="platform-button-opencode_go"
+            @click="selectOpenCodeGoPlatform()"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
+              form.platform === 'opencode_go'
+                ? 'bg-white text-amber-700 shadow-sm dark:bg-dark-600 dark:text-amber-300'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon platform="opencode_go" size="sm" />
+            OpenCode
+          </button>
+          <!-- 没有专属界面的多协议供应商：通用表单（模式 / 协议 / 端点来自 profile） -->
+          <button
+            v-for="spec in extraMultiProtocolPlatforms"
+            :key="spec.id"
+            type="button"
+            :data-testid="`platform-button-${spec.id}`"
+            @click="selectGenericMultiProtocolPlatform(spec.id)"
+            :class="[
+              'flex flex-1 items-center justify-center gap-2 rounded-md px-3 py-2.5 text-sm font-medium transition-all',
+              form.platform === spec.id
+                ? 'bg-white text-primary-600 shadow-sm dark:bg-dark-600 dark:text-primary-400'
+                : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
+            ]"
+          >
+            <PlatformIcon :platform="spec.id" size="sm" />
+            {{ spec.display_name }}
           </button>
         </div>
       </div>
@@ -320,8 +381,8 @@
               <Icon name="cloud" size="sm" />
             </div>
             <div>
-              <span class="block text-sm font-medium text-gray-900 dark:text-white">Vertex</span>
-              <span class="text-xs text-gray-500 dark:text-gray-400">Service Account</span>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.vertexLabel') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.vertexDesc') }}</span>
             </div>
           </button>
 
@@ -453,8 +514,90 @@
         </div>
       </div>
 
+      <!-- OpenCode Zen vs Go -->
+      <div v-if="isOpenCodeGoPlatform">
+        <label class="input-label">{{ t('admin.accounts.cnProviders.accountMode.title') }}</label>
+        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <button
+            type="button"
+            @click="openCodeAccountMode = 'zen'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              openCodeAccountMode === 'zen'
+                ? cnAccentActiveClass
+                : 'border-gray-200 hover:border-gray-400 dark:border-dark-600 dark:hover:border-gray-600'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                openCodeAccountMode === 'zen' ? cnAccentIconClass : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="creditCard" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.opencodeGo.accountMode.zen') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.opencodeGo.accountMode.zenDesc') }}</span>
+            </div>
+          </button>
+          <button
+            type="button"
+            @click="openCodeAccountMode = 'go'"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              openCodeAccountMode === 'go'
+                ? cnAccentActiveClass
+                : 'border-gray-200 hover:border-gray-400 dark:border-dark-600 dark:hover:border-gray-600'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                openCodeAccountMode === 'go' ? cnAccentIconClass : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="bolt" size="sm" />
+            </div>
+            <div>
+              <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ t('admin.accounts.opencodeGo.accountMode.go') }}</span>
+              <span class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.opencodeGo.accountMode.goDesc') }}</span>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Account Mode Selection (providers using the generic form) -->
+      <div v-if="isGenericMultiProtocolPlatform && genericAccountModes.length > 1" data-testid="generic-account-mode">
+        <label class="input-label">{{ t('admin.accounts.cnProviders.accountMode.title') }}</label>
+        <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <button
+            v-for="mode in genericAccountModes"
+            :key="mode"
+            type="button"
+            @click="accountMode = mode"
+            :class="[
+              'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+              accountMode === mode
+                ? cnAccentActiveClass
+                : 'border-gray-200 hover:border-gray-400 dark:border-dark-600 dark:hover:border-gray-600'
+            ]"
+          >
+            <div
+              :class="[
+                'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg',
+                accountMode === mode ? cnAccentIconClass : 'bg-gray-100 text-gray-500 dark:bg-dark-600 dark:text-gray-400'
+              ]"
+            >
+              <Icon name="creditCard" size="sm" />
+            </div>
+            <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ providerModeLabel(mode, t) }}</span>
+          </button>
+        </div>
+      </div>
+
       <!-- Account Mode Selection (Kimi / Zhipu / DeepSeek) -->
-      <div v-if="isCNPlatform">
+      <div v-if="isCNPlatform && !isOpenCodeGoPlatform">
         <label class="input-label">{{ t('admin.accounts.cnProviders.accountMode.title') }}</label>
         <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-2" data-tour="account-form-mode">
           <!-- Pay-as-you-go (token balance) -->
@@ -513,8 +656,8 @@
         </div>
       </div>
 
-      <!-- API Protocol Selection (Kimi / Zhipu / DeepSeek) -->
-      <div v-if="isCNPlatform" class="mt-4">
+      <!-- API Protocol Selection (Kimi / Zhipu / DeepSeek / OpenCode) -->
+      <div v-if="isMultiProtocolPlatform" class="mt-4">
         <label class="input-label">{{ t('admin.accounts.cnProviders.apiProtocol.title') }}</label>
         <div class="mt-2 grid grid-cols-1 gap-3 sm:grid-cols-3">
           <button
@@ -545,6 +688,36 @@
             </div>
           </button>
         </div>
+      </div>
+
+      <!-- Zhipu 团队版 Coding Plan：组织/项目 ID（可选，填写后额度探测走团队版端点） -->
+      <div v-if="form.platform === 'zhipu' && accountMode === 'coding'" class="mt-4">
+        <div class="flex items-center">
+          <label class="input-label">{{ t('admin.accounts.cnProviders.zhipuTeam.title') }}</label>
+          <HelpTooltip trigger="click" width-class="w-80">
+            <p class="mb-1 font-medium">{{ t('admin.accounts.cnProviders.zhipuTeam.help.title') }}</p>
+            <ol class="list-decimal space-y-1 pl-4">
+              <li>{{ t('admin.accounts.cnProviders.zhipuTeam.help.step1') }}</li>
+              <li>{{ t('admin.accounts.cnProviders.zhipuTeam.help.step2') }}</li>
+              <li>{{ t('admin.accounts.cnProviders.zhipuTeam.help.step3') }}</li>
+              <li>{{ t('admin.accounts.cnProviders.zhipuTeam.help.step4') }}</li>
+            </ol>
+            <p class="mt-2 break-all rounded bg-black/20 p-1.5 font-mono text-[11px] leading-relaxed">
+              {{ t('admin.accounts.cnProviders.zhipuTeam.help.example') }}
+            </p>
+          </HelpTooltip>
+        </div>
+        <div class="mt-2 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label class="input-label">{{ t('admin.accounts.cnProviders.zhipuTeam.organization') }}</label>
+            <input v-model="zhipuOrganization" type="text" class="input" :placeholder="t('admin.accounts.cnProviders.zhipuTeam.organizationPlaceholder')" />
+          </div>
+          <div>
+            <label class="input-label">{{ t('admin.accounts.cnProviders.zhipuTeam.project') }}</label>
+            <input v-model="zhipuProject" type="text" class="input" :placeholder="t('admin.accounts.cnProviders.zhipuTeam.projectPlaceholder')" />
+          </div>
+        </div>
+        <p class="input-hint mt-2">{{ t('admin.accounts.cnProviders.zhipuTeam.hint') }}</p>
       </div>
 
       <!-- Account Type Selection (Gemini) -->
@@ -657,17 +830,18 @@
             </div>
             <div>
               <span class="block text-sm font-medium text-gray-900 dark:text-white">
-                Vertex
+                {{ t('admin.accounts.vertexLabel') }}
               </span>
               <span class="text-xs text-gray-500 dark:text-gray-400">
-                Service Account
+                {{ t('admin.accounts.vertexGeminiDesc') }}
               </span>
             </div>
           </button>
         </div>
 
         <div
-          v-if="accountCategory === 'apikey'"
+          v-if="accountCategory === 'apikey' && isOfficialGeminiBaseUrl(apiKeyBaseUrl)"
+          data-testid="gemini-apikey-note"
           class="mt-3 rounded-lg border border-purple-200 bg-purple-50 px-3 py-2 text-xs text-purple-800 dark:border-purple-800/40 dark:bg-purple-900/20 dark:text-purple-200"
         >
           <p>{{ t('admin.accounts.gemini.accountType.apiKeyNote') }}</p>
@@ -895,7 +1069,7 @@
         </div>
 
         <!-- Tier selection (used as fallback when auto-detection is unavailable/fails) -->
-        <div v-if="accountCategory !== 'service_account'" class="mt-4">
+        <div v-if="accountCategory === 'oauth-based'" class="mt-4" data-testid="gemini-oauth-tier">
           <label class="input-label">{{ t('admin.accounts.gemini.tier.label') }}</label>
           <div class="mt-2">
             <select
@@ -1042,92 +1216,169 @@
 
       <!-- Vertex Service Account -->
       <div v-if="(form.platform === 'gemini' || form.platform === 'anthropic') && accountCategory === 'service_account'" class="space-y-4">
-        <div>
-          <label class="input-label">Service Account JSON</label>
-          <input
-            ref="vertexServiceAccountFileInput"
-            type="file"
-            accept="application/json,.json"
-            class="hidden"
-            @change="handleVertexServiceAccountFile"
-          />
-          <div
-            :class="[
-              'rounded-lg border-2 border-dashed px-4 py-5 transition-colors',
-              vertexServiceAccountDragActive
-                ? 'border-sky-500 bg-sky-50 dark:border-sky-500 dark:bg-sky-900/20'
-                : 'border-gray-300 bg-gray-50 hover:border-sky-400 hover:bg-sky-50/60 dark:border-dark-500 dark:bg-dark-700/40 dark:hover:border-sky-600 dark:hover:bg-sky-900/10'
-            ]"
-            @dragenter.prevent="vertexServiceAccountDragActive = true"
-            @dragover.prevent="vertexServiceAccountDragActive = true"
-            @dragleave.prevent="vertexServiceAccountDragActive = false"
-            @drop.prevent="handleVertexServiceAccountDrop"
-          >
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div class="min-w-0">
-                <div class="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
-                  <Icon name="upload" size="sm" />
-                  <span>{{ vertexClientEmail ? t('admin.accounts.vertexSaJsonLoaded') : t('admin.accounts.vertexSaJsonDrop') }}</span>
-                </div>
-                <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  {{ vertexClientEmail ? t('admin.accounts.vertexSaJsonKeyHidden') : t('admin.accounts.vertexSaJsonDropHint') }}
-                </p>
-              </div>
-              <button
-                type="button"
-                class="btn btn-secondary shrink-0"
-                @click="vertexServiceAccountFileInput?.click()"
-              >
-                <Icon name="upload" size="sm" />
-                {{ t('admin.accounts.vertexSaJsonSelectBtn') }}
-              </button>
-            </div>
-            <div
-              v-if="vertexClientEmail"
-              class="mt-3 rounded-md border border-sky-200 bg-white px-3 py-2 text-xs text-sky-900 dark:border-sky-800/50 dark:bg-dark-800 dark:text-sky-200"
-            >
-              <div class="truncate">Project ID: <span class="font-mono">{{ vertexProjectId }}</span></div>
-              <div class="truncate">Client Email: <span class="font-mono">{{ vertexClientEmail }}</span></div>
-            </div>
+        <div v-if="form.platform === 'gemini'">
+          <label class="input-label">{{ t('admin.accounts.vertexAuthMode') }}</label>
+          <div class="mt-2 flex gap-4">
+            <label class="flex cursor-pointer items-center">
+              <input
+                v-model="vertexAuthMode"
+                type="radio"
+                value="service_account"
+                class="mr-2 text-primary-600 focus:ring-primary-500"
+              />
+              <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.accounts.vertexAuthModeServiceAccount') }}</span>
+            </label>
+            <label class="flex cursor-pointer items-center">
+              <input
+                v-model="vertexAuthMode"
+                type="radio"
+                value="apikey"
+                data-testid="vertex-auth-mode-apikey"
+                class="mr-2 text-primary-600 focus:ring-primary-500"
+              />
+              <span class="text-sm text-gray-700 dark:text-gray-300">{{ t('admin.accounts.vertexAuthModeApiKey') }}</span>
+            </label>
           </div>
-          <p class="input-hint">{{ t('admin.accounts.vertexSaJsonUploadHint') }}</p>
         </div>
 
-        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <template v-if="vertexUsesApiKey">
           <div>
-            <label class="input-label">Project ID</label>
+            <label class="input-label">API Key</label>
             <input
-              v-model="vertexProjectId"
-              type="text"
-              class="input font-mono"
-              readonly
-              :placeholder="t('admin.accounts.vertexProjectIdPlaceholder')"
-            />
-          </div>
-          <div>
-            <label class="input-label">Location</label>
-            <select
-              v-model="vertexLocation"
+              v-model="vertexApiKey"
+              type="password"
               required
               class="input font-mono"
-            >
-              <optgroup
-                v-for="group in VERTEX_LOCATION_OPTIONS"
-                :key="group.label"
-                :label="group.label"
-              >
-                <option
-                  v-for="option in group.options"
-                  :key="option.value"
-                  :value="option.value"
-                >
-                  {{ option.label }}
-                </option>
-              </optgroup>
-            </select>
-            <p class="input-hint">{{ t('admin.accounts.vertexLocationHint') }}</p>
+              data-testid="vertex-api-key-input"
+            />
+            <p class="input-hint">{{ t('admin.accounts.vertexApiKeyHint') }}</p>
           </div>
-        </div>
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label class="input-label">Project ID</label>
+              <input
+                v-model="vertexProjectId"
+                type="text"
+                class="input font-mono"
+                data-testid="vertex-api-key-project-id-input"
+                :placeholder="t('admin.accounts.vertexApiKeyProjectIdPlaceholder')"
+              />
+              <p class="input-hint">{{ t('admin.accounts.vertexApiKeyProjectIdHint') }}</p>
+            </div>
+            <div v-if="vertexProjectId.trim()">
+              <label class="input-label">Location</label>
+              <select
+                v-model="vertexLocation"
+                required
+                class="input font-mono"
+              >
+                <optgroup
+                  v-for="group in VERTEX_LOCATION_OPTIONS"
+                  :key="group.label"
+                  :label="group.label"
+                >
+                  <option
+                    v-for="option in group.options"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </option>
+                </optgroup>
+              </select>
+              <p class="input-hint">{{ t('admin.accounts.vertexLocationHint') }}</p>
+            </div>
+          </div>
+        </template>
+
+        <template v-else>
+          <div>
+            <label class="input-label">Service Account JSON</label>
+            <input
+              ref="vertexServiceAccountFileInput"
+              type="file"
+              accept="application/json,.json"
+              class="hidden"
+              @change="handleVertexServiceAccountFile"
+            />
+            <div
+              :class="[
+                'rounded-lg border-2 border-dashed px-4 py-5 transition-colors',
+                vertexServiceAccountDragActive
+                  ? 'border-sky-500 bg-sky-50 dark:border-sky-500 dark:bg-sky-900/20'
+                  : 'border-gray-300 bg-gray-50 hover:border-sky-400 hover:bg-sky-50/60 dark:border-dark-500 dark:bg-dark-700/40 dark:hover:border-sky-600 dark:hover:bg-sky-900/10'
+              ]"
+              @dragenter.prevent="vertexServiceAccountDragActive = true"
+              @dragover.prevent="vertexServiceAccountDragActive = true"
+              @dragleave.prevent="vertexServiceAccountDragActive = false"
+              @drop.prevent="handleVertexServiceAccountDrop"
+            >
+              <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2 text-sm font-medium text-gray-900 dark:text-white">
+                    <Icon name="upload" size="sm" />
+                    <span>{{ vertexClientEmail ? t('admin.accounts.vertexSaJsonLoaded') : t('admin.accounts.vertexSaJsonDrop') }}</span>
+                  </div>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {{ vertexClientEmail ? t('admin.accounts.vertexSaJsonKeyHidden') : t('admin.accounts.vertexSaJsonDropHint') }}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-secondary shrink-0"
+                  @click="vertexServiceAccountFileInput?.click()"
+                >
+                  <Icon name="upload" size="sm" />
+                  {{ t('admin.accounts.vertexSaJsonSelectBtn') }}
+                </button>
+              </div>
+              <div
+                v-if="vertexClientEmail"
+                class="mt-3 rounded-md border border-sky-200 bg-white px-3 py-2 text-xs text-sky-900 dark:border-sky-800/50 dark:bg-dark-800 dark:text-sky-200"
+              >
+                <div class="truncate">Project ID: <span class="font-mono">{{ vertexProjectId }}</span></div>
+                <div class="truncate">Client Email: <span class="font-mono">{{ vertexClientEmail }}</span></div>
+              </div>
+            </div>
+            <p class="input-hint">{{ t('admin.accounts.vertexSaJsonUploadHint') }}</p>
+          </div>
+
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label class="input-label">Project ID</label>
+              <input
+                v-model="vertexProjectId"
+                type="text"
+                class="input font-mono"
+                readonly
+                :placeholder="t('admin.accounts.vertexProjectIdPlaceholder')"
+              />
+            </div>
+            <div>
+              <label class="input-label">Location</label>
+              <select
+                v-model="vertexLocation"
+                required
+                class="input font-mono"
+              >
+                <optgroup
+                  v-for="group in VERTEX_LOCATION_OPTIONS"
+                  :key="group.label"
+                  :label="group.label"
+                >
+                  <option
+                    v-for="option in group.options"
+                    :key="option.value"
+                    :value="option.value"
+                  >
+                    {{ option.label }}
+                  </option>
+                </optgroup>
+              </select>
+              <p class="input-hint">{{ t('admin.accounts.vertexLocationHint') }}</p>
+            </div>
+          </div>
+        </template>
       </div>
 
       <!-- Antigravity model restriction (applies to OAuth + Upstream) -->
@@ -1250,7 +1501,7 @@
 
       <!-- API Key input (only for apikey type, excluding Antigravity which has its own fields) -->
       <div v-if="form.type === 'apikey' && form.platform !== 'antigravity'" class="space-y-4">
-        <div v-if="!isCNPlatform || apiProtocol !== 'adaptive'">
+        <div v-if="!isMultiProtocolPlatform || apiProtocol !== 'adaptive'">
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
             v-model="apiKeyBaseUrl"
@@ -1265,10 +1516,10 @@
             @select="apiKeyBaseUrl = $event"
           />
           <CnBaseUrlPresets
-            v-if="isCNPlatform"
+            v-if="isCNPlatform && !isOpenCodeGoPlatform"
             class="mt-2"
             :platform="cnPresetPlatform"
-            :mode="accountMode"
+            :mode="cnPresetMode"
             :protocol="apiProtocol"
             :current-url="apiKeyBaseUrl"
             @select="onCnPresetSelect"
@@ -1289,10 +1540,16 @@
               />
             </div>
           </div>
-          <p v-if="form.platform !== 'deepseek'" class="input-hint">
+          <p v-if="!cnSupportsNativeResponses(form.platform, currentOpenCodeOrCNMode())" class="input-hint">
             {{ t('admin.accounts.cnProviders.apiProtocol.responsesFallbackDesc') }}
           </p>
         </div>
+        <OpenCodeGoProtocolRulesEditor
+          v-if="routesByModel && apiProtocol === 'adaptive'"
+          v-model:rows="openCodeGoProtocolRules"
+          :platform="form.platform"
+          :plan="currentOpenCodeOrCNMode()"
+        />
         <div>
           <label class="input-label">{{ t('admin.accounts.apiKeyRequired') }}</label>
           <input
@@ -1323,9 +1580,9 @@
         </div>
 
         <!-- Gemini API Key tier selection -->
-        <div v-if="form.platform === 'gemini'">
+        <div v-if="form.platform === 'gemini' && isOfficialGeminiBaseUrl(apiKeyBaseUrl)">
           <label class="input-label">{{ t('admin.accounts.gemini.tier.label') }}</label>
-          <select v-model="geminiTierAIStudio" class="input">
+          <select v-model="geminiTierAIStudio" class="input" data-testid="gemini-apikey-tier">
             <option value="aistudio_free">{{ t('admin.accounts.gemini.tier.aiStudio.free') }}</option>
             <option value="aistudio_paid">{{ t('admin.accounts.gemini.tier.aiStudio.paid') }}</option>
           </select>
@@ -1402,7 +1659,13 @@
 
             <!-- Whitelist Mode -->
             <div v-if="modelRestrictionMode === 'whitelist'">
-              <ModelWhitelistSelector v-model="allowedModels" :platform="form.platform" :sync-credentials="syncPreviewCredentials" />
+              <ModelWhitelistSelector
+                v-model="allowedModels"
+                :model-mappings="modelMappings"
+                :platform="form.platform"
+                :sync-credentials="syncPreviewCredentials"
+                @upstream-synced="upstreamModelsPreviewed = true"
+              />
               <p class="text-xs text-gray-500 dark:text-gray-400">
                 {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
                 <span v-if="allowedModels.length === 0">{{
@@ -1578,6 +1841,48 @@
             />
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.poolModeRetryStatusCodesHint', { default: DEFAULT_POOL_MODE_RETRY_STATUS_CODES.join(', ') }) }}
+            </p>
+          </div>
+        </div>
+
+        <!-- Gemini 显式缓存上游开关：仅自定义地址的 Gemini API Key 账号 -->
+        <div
+          v-if="form.platform === 'gemini' && !isOfficialGeminiBaseUrl(apiKeyBaseUrl)"
+          class="border-t border-gray-200 pt-4 dark:border-dark-600"
+          data-testid="explicit-cache-upstream-section"
+        >
+          <div class="flex items-center justify-between gap-4">
+            <div>
+              <label class="input-label mb-0">{{ t('admin.accounts.explicitCacheUpstream') }}</label>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.explicitCacheUpstreamHint') }}
+              </p>
+            </div>
+            <Toggle
+              v-model="explicitCacheUpstreamEnabled"
+              data-testid="explicit-cache-upstream-toggle"
+              :aria-label="t('admin.accounts.explicitCacheUpstream')"
+            />
+          </div>
+          <div v-if="explicitCacheUpstreamEnabled" class="mt-3 rounded-lg bg-blue-50 p-3 dark:bg-blue-900/20">
+            <p class="text-xs text-blue-700 dark:text-blue-400">
+              <Icon name="exclamationCircle" size="sm" class="mr-1 inline" :stroke-width="2" />
+              {{ t('admin.accounts.explicitCacheUpstreamInfo') }}
+            </p>
+          </div>
+          <div v-if="explicitCacheUpstreamEnabled" class="mt-3">
+            <label class="input-label">{{ t('admin.accounts.explicitCacheUpstreamMaxTTL') }}</label>
+            <input
+              v-model="explicitCacheUpstreamMaxTTL"
+              data-testid="explicit-cache-upstream-max-ttl"
+              type="number"
+              min="1"
+              step="1"
+              class="input"
+              placeholder="86400"
+            />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.explicitCacheUpstreamMaxTTLHint') }}
             </p>
           </div>
         </div>
@@ -1884,7 +2189,13 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" platform="anthropic" :sync-credentials="syncPreviewCredentials" />
+            <ModelWhitelistSelector
+              v-model="allowedModels"
+              :model-mappings="modelMappings"
+              platform="anthropic"
+              :sync-credentials="syncPreviewCredentials"
+              @upstream-synced="upstreamModelsPreviewed = true"
+            />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0">{{ t('admin.accounts.supportsAllModels') }}</span>
@@ -2036,9 +2347,9 @@
         />
       </div>
 
-      <!-- 配额控制 (非 Anthropic apikey/bedrock) -->
+      <!-- 配额控制 (非 Anthropic apikey/bedrock，以及 Vertex service_account) -->
       <div
-        v-else-if="form.type === 'apikey' || form.type === 'bedrock'"
+        v-else-if="supportsAccountQuota(form.type)"
         class="border-t border-gray-200 pt-4 dark:border-dark-600 space-y-4"
       >
         <div class="mb-3">
@@ -2220,7 +2531,13 @@
 
           <!-- Whitelist Mode -->
           <div v-if="modelRestrictionMode === 'whitelist'">
-            <ModelWhitelistSelector v-model="allowedModels" :platform="form.platform" :sync-credentials="syncPreviewCredentials" />
+            <ModelWhitelistSelector
+              v-model="allowedModels"
+              :model-mappings="modelMappings"
+              :platform="form.platform"
+              :sync-credentials="syncPreviewCredentials"
+              @upstream-synced="upstreamModelsPreviewed = true"
+            />
             <p class="text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.selectedModels', { count: allowedModels.length }) }}
               <span v-if="allowedModels.length === 0">{{
@@ -2415,6 +2732,44 @@
                     class="input"
                     :placeholder="t('admin.accounts.tempUnschedulable.durationPlaceholder')"
                   />
+                </div>
+                <div class="sm:col-span-2">
+                  <label class="input-label">{{ t('admin.accounts.tempUnschedulable.scope') }}</label>
+                  <div
+                    class="grid grid-cols-1 gap-2 sm:grid-cols-2"
+                    role="radiogroup"
+                    :aria-label="t('admin.accounts.tempUnschedulable.scope')"
+                  >
+                    <button
+                      v-for="option in tempUnschedScopeOptions"
+                      :key="option.value"
+                      type="button"
+                      role="radio"
+                      :aria-checked="rule.scope === option.value"
+                      :data-testid="`temp-unsched-scope-${option.value}`"
+                      @click="rule.scope = option.value"
+                      :class="[
+                        'flex items-center gap-3 rounded-lg border-2 p-3 text-left transition-all',
+                        rule.scope === option.value
+                          ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
+                          : 'border-gray-200 hover:border-gray-400 dark:border-dark-600 dark:hover:border-gray-600'
+                      ]"
+                    >
+                      <span
+                        :class="[
+                          'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2',
+                          rule.scope === option.value ? 'border-primary-500' : 'border-gray-300 dark:border-dark-500'
+                        ]"
+                      >
+                        <span v-if="rule.scope === option.value" class="h-1.5 w-1.5 rounded-full bg-primary-500" />
+                      </span>
+                      <span>
+                        <span class="block text-sm font-medium text-gray-900 dark:text-white">{{ option.label }}</span>
+                        <span class="text-xs text-gray-500 dark:text-gray-400">{{ option.description }}</span>
+                      </span>
+                    </button>
+                  </div>
+                  <p class="input-hint">{{ t('admin.accounts.tempUnschedulable.scopeHint') }}</p>
                 </div>
                 <div class="sm:col-span-2">
                   <label class="input-label">{{ t('admin.accounts.tempUnschedulable.keywords') }}</label>
@@ -2877,6 +3232,12 @@
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
+      <UpstreamRequestIdHeaderField
+        v-model="upstreamRequestIdHeader"
+        :platform="form.platform"
+        :type="form.type"
+      />
+
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
@@ -2910,7 +3271,18 @@
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
         <input v-model="expiresAtInput" type="datetime-local" class="input" />
-        <p class="input-hint">{{ t('admin.accounts.expiresAtHint') }}</p>
+        <div class="mt-2 flex gap-2">
+          <button type="button" class="btn btn-secondary btn-sm" @click="form.expires_at = getAccountExpiryTimestamp(1)">
+            {{ t('payment.oneMonth') }}
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" @click="form.expires_at = getAccountExpiryTimestamp(12)">
+            {{ t('payment.oneYear') }}
+          </button>
+        </div>
+        <p class="input-hint">
+          {{ t('admin.accounts.expiresAtHint') }}
+          {{ t('admin.accounts.expiresAtTimezoneHint', { timezone: browserTimeZone }) }}
+        </p>
       </div>
 
       <!-- OpenAI 自动透传开关（OAuth/API Key） -->
@@ -2927,6 +3299,7 @@
           </div>
           <button
             type="button"
+            data-testid="create-openai-passthrough-toggle"
             @click="openaiPassthroughEnabled = !openaiPassthroughEnabled"
             :class="[
               'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
@@ -2941,6 +3314,20 @@
             />
           </button>
         </div>
+        <label v-if="openaiPassthroughEnabled" class="mt-3 flex items-start gap-2">
+          <input
+            v-model="openaiPassthroughModelFilterEnabled"
+            type="checkbox"
+            data-testid="create-openai-passthrough-model-filter"
+            class="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+          <span class="text-sm">
+            {{ t('admin.accounts.openai.passthroughModelFilter') }}
+            <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.openai.passthroughModelFilterDesc') }}
+            </span>
+          </span>
+        </label>
       </div>
 
       <!-- OpenAI Codex namespace 工具摊平（兼容开关，仅 OAuth） -->
@@ -2986,8 +3373,8 @@
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.openai.wsModeDesc') }}
             </p>
-            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-              {{ t(openAIWSModeConcurrencyHintKey) }}
+            <p v-if="openAIWSModeHintKey" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t(openAIWSModeHintKey) }}
             </p>
           </div>
           <div class="w-52">
@@ -3259,6 +3646,45 @@
         </div>
       </div>
 
+      <!-- OpenAI APIKey images: backfill b64_json from url -->
+      <div
+        v-if="form.platform === 'openai' && accountCategory === 'apikey'"
+        class="flex items-center justify-between gap-4 border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div>
+          <label class="input-label mb-0">{{ t('admin.accounts.openai.imagesUrlToB64Json') }}</label>
+          <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            {{ t('admin.accounts.openai.imagesUrlToB64JsonDesc') }}
+          </p>
+        </div>
+        <button
+          type="button"
+          data-testid="openai-images-url-to-b64-json-toggle"
+          role="switch"
+          :aria-checked="openAIImagesUrlToB64JsonEnabled"
+          @click="openAIImagesUrlToB64JsonEnabled = !openAIImagesUrlToB64JsonEnabled"
+          :class="[
+            'relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2',
+            openAIImagesUrlToB64JsonEnabled ? 'bg-primary-600' : 'bg-gray-200 dark:bg-dark-600'
+          ]"
+        >
+          <span
+            :class="[
+              'pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+              openAIImagesUrlToB64JsonEnabled ? 'translate-x-5' : 'translate-x-0'
+            ]"
+          />
+        </button>
+      </div>
+
+      <!-- OpenAI images: size tier routing -->
+      <div
+        v-if="form.platform === 'openai'"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <OpenAIImageSizeTiersField v-model="openAIImageSizeTiers" />
+      </div>
+
       <div>
         <div class="flex items-center justify-between">
           <div>
@@ -3347,7 +3773,6 @@
 
         <!-- Group Selection - 仅标准模式显示 -->
         <GroupSelector
-          v-if="!authStore.isSimpleMode"
           v-model="form.group_ids"
           :groups="groups"
           :platform="form.platform"
@@ -3713,6 +4138,7 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+
 import {
   claudeModels,
   getPresetMappingsByPlatform,
@@ -3722,7 +4148,6 @@ import {
   fetchAntigravityDefaultMappings,
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
-import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
@@ -3744,11 +4169,20 @@ import type {
   CodexSessionImportMessage,
   OpenAICompactMode,
   OpenAIResponsesMode,
-  OpenAIEndpointCapability
+  OpenAIEndpointCapability,
+  TempUnschedulableScope
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
+import HelpTooltip from '@/components/common/HelpTooltip.vue'
+import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
+import OpenAIImageSizeTiersField from '@/components/account/OpenAIImageSizeTiersField.vue'
+import {
+  OPENAI_IMAGE_SIZE_TIERS,
+  applyOpenAIImageSizeTiersToExtra,
+  type OpenAIImageSizeTier
+} from '@/components/account/openaiImageSizeTiers'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
@@ -3759,23 +4193,47 @@ import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
+import { applyExplicitCacheUpstreamCredentials, isOfficialGeminiBaseUrl } from '@/utils/geminiExplicitCache'
+import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
   applyInterceptWarmup,
+  applyOpenCodeGoProtocolRules,
+  cloneOpenCodeGoProtocolRules,
+  cnSupportsNativeResponses,
   defaultCNAdaptiveBaseUrls,
   defaultCNBaseUrl,
+  defaultOpenCodeProtocolRules,
+  defaultProviderProtocolRules,
+  isCNProviderPlatform,
   isHeaderOverrideCapable,
+  isMultiProtocolApiKeyPlatform,
+  providerAccountModes,
+  providerModeLabel,
+  providerNativeProtocols,
+  providerRoutesByModel,
+  resolveProviderAccountMode,
   validateHeaderOverrideRows,
   type CnAccountMode,
   type CnApiProtocol,
   type CnNativeApiProtocol,
-  type HeaderOverrideRow
+  type CnProviderPlatform,
+  type HeaderOverrideRow,
+  type OpenCodeAccountMode,
+  type OpenCodeGoProtocolRule
 } from '@/components/account/credentialsBuilder'
-import { formatDateTimeLocalInput, parseDateTimeLocalInput } from '@/utils/format'
+import { listPlatforms } from '@/constants/platformCatalog'
+import {
+  formatDateTimeLocalInput,
+  getBrowserTimeZone,
+  parseDateTimeLocalInput
+} from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
+import { supportsAccountQuota } from '@/utils/accountQuota'
+import { getAccountExpiryTimestamp } from '@/components/account/accountExpiry'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
   OPENAI_WS_MODE_CTX_POOL,
@@ -3783,7 +4241,7 @@ import {
   OPENAI_WS_MODE_PASSTHROUGH,
   OPENAI_WS_MODE_HTTP_BRIDGE,
   isOpenAIWSModeEnabled,
-  resolveOpenAIWSModeConcurrencyHintKey,
+  resolveOpenAIWSModeHintKey,
   type OpenAIWSMode
 } from '@/utils/openaiWsMode'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
@@ -3805,7 +4263,7 @@ interface OAuthFlowExposed {
 }
 
 const { t } = useI18n()
-const authStore = useAuthStore()
+const browserTimeZone = getBrowserTimeZone()
 
 const oauthStepTitle = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.oauth.openai.title')
@@ -3816,6 +4274,14 @@ const oauthStepTitle = computed(() => {
 })
 
 // Platform-specific hints for API Key type
+// 上游ID：直接上游声明请求标识的响应头名，留空不记录。
+const upstreamRequestIdHeader = ref('')
+const withUpstreamRequestIdHeader = <T extends Record<string, unknown> | undefined>(extra: T): T | Record<string, unknown> => {
+  const name = upstreamRequestIdHeader.value.trim()
+  if (!name) return extra
+  return { ...(extra || {}), upstream_request_id_header: name }
+}
+
 const baseUrlHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.baseUrlHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.baseUrlHint')
@@ -3826,14 +4292,16 @@ const baseUrlHint = computed(() => {
 const apiKeyHint = computed(() => {
   if (form.platform === 'openai') return t('admin.accounts.openai.apiKeyHint')
   if (form.platform === 'gemini') return t('admin.accounts.gemini.apiKeyHint')
-  if (form.platform === 'grok') return ''
+  // Grok 与多协议供应商没有对应的说明文案；通用文案指 Claude Console Key。
+  if (form.platform === 'grok' || isMultiProtocolPlatform.value) return ''
   return t('admin.accounts.apiKeyHint')
 })
 
 // Base URL / API Key 占位符：国产供应商随账号类型变化。
 const apiKeyBaseUrlPlaceholder = computed(() => {
-  if (isCNPlatform.value) {
-    return defaultCNBaseUrl(form.platform, accountMode.value, apiProtocol.value) || 'https://api.example.com'
+  if (isMultiProtocolPlatform.value) {
+    const mode = form.platform === 'opencode_go' ? openCodeAccountMode.value : accountMode.value
+    return defaultCNBaseUrl(form.platform, mode, apiProtocol.value) || 'https://api.example.com'
   }
   switch (form.platform) {
     case 'openai':
@@ -3842,6 +4310,8 @@ const apiKeyBaseUrlPlaceholder = computed(() => {
       return 'https://generativelanguage.googleapis.com'
     case 'grok':
       return 'https://api.x.ai/v1'
+    case 'typesafe':
+      return 'https://api.typesafe.ai'
     default:
       return 'https://api.anthropic.com'
   }
@@ -3852,7 +4322,7 @@ const apiKeyValuePlaceholder = computed(() => {
     case 'openai':
       return 'sk-proj-...'
     case 'gemini':
-      return 'AIza...'
+      return 'AQ.Ab...'
     case 'grok':
       return 'xai-...'
     case 'kimi':
@@ -3861,8 +4331,13 @@ const apiKeyValuePlaceholder = computed(() => {
       return '<api-key>.<secret>'
     case 'deepseek':
       return 'sk-...'
+    case 'minimax':
+    case 'opencode_go':
+      return 'sk-...'
+    case 'typesafe':
+      return 'ts-...'
     default:
-      return 'sk-ant-...'
+      return isMultiProtocolPlatform.value ? 'sk-...' : 'sk-ant-...'
   }
 })
 
@@ -3938,6 +4413,8 @@ interface TempUnschedRuleForm {
   keywords: string
   duration_minutes: number | null
   description: string
+  // 作用范围：account 暂停整个账号，model 只冷却本次请求的模型。
+  scope: TempUnschedulableScope
 }
 
 // State
@@ -3950,48 +4427,73 @@ const apiKeyValue = ref('')
 const upstreamBillingAutoProbeEnabled = ref(true)
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）账号类型、API 协议与端点 ──
-const accountMode = ref<CnAccountMode>('payg')
+// 多协议供应商（国产厂商与走通用表单的供应商）的接入模式；OpenCode 用 openCodeAccountMode。
+const accountMode = ref<string>('payg')
+const openCodeAccountMode = ref<OpenCodeAccountMode>('zen')
 // API 协议决定转发端点与格式：cc=现有转换链，anthropic=原生直通（Claude Code），
-// responses=deepseek 原生 Responses 端点（Codex）。与账号类型正交。
+// responses=deepseek / kimi 原生 Responses 端点（Codex）。与账号类型正交。
 const apiProtocol = ref<CnApiProtocol>('adaptive')
+const openCodeGoProtocolRules = ref<OpenCodeGoProtocolRule[]>(
+  cloneOpenCodeGoProtocolRules(defaultOpenCodeProtocolRules('zen'))
+)
+// 智谱团队版 Coding Plan：组织/项目 ID，写入 credentials 供额度探测切换团队端点
+const zhipuOrganization = ref('')
+const zhipuProject = ref('')
 const adaptiveBaseUrls = ref<Record<CnNativeApiProtocol, string>>({
   chat_completions: '',
   anthropic: '',
   responses: ''
 })
-const isCNPlatform = computed(
-  () => form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek'
+const isCNPlatform = computed(() => isCNProviderPlatform(form.platform))
+const isOpenCodeGoPlatform = computed(() => form.platform === 'opencode_go')
+const isMultiProtocolPlatform = computed(() => isMultiProtocolApiKeyPlatform(form.platform))
+// 前端没有专属界面、走通用表单的多协议供应商：模式、协议、默认端点
+// 与分流规则全部来自平台清单中的 profile。
+const isGenericMultiProtocolPlatform = computed(
+  () => isMultiProtocolPlatform.value && !isCNPlatform.value && !isOpenCodeGoPlatform.value
 )
+const extraMultiProtocolPlatforms = computed(() =>
+  listPlatforms().filter(spec => !!spec.multi_protocol && !isCNProviderPlatform(spec.id) && spec.id !== 'opencode_go')
+)
+const genericAccountModes = computed(() => providerAccountModes(form.platform))
+// 按模型分流的供应商（OpenCode 等）：adaptive 账号携带 protocol_rules。
+const routesByModel = computed(() => providerRoutesByModel(form.platform))
+function currentOpenCodeOrCNMode(): string {
+  return isOpenCodeGoPlatform.value ? openCodeAccountMode.value : accountMode.value
+}
 // CnBaseUrlPresets 的 platform prop 是平台字面量联合类型，模板里不能写
 // `as` 断言（其中的 `|` 会被 eslint 误判为 Vue2 filter 语法），经此 computed 传递。
-const cnPresetPlatform = computed<'kimi' | 'zhipu' | 'deepseek'>(() => {
-  if (form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek') {
+const cnPresetPlatform = computed<CnProviderPlatform>(() => {
+  if (isCNProviderPlatform(form.platform)) {
     return form.platform
   }
   return 'kimi'
 })
-// 当前平台可选的协议档（responses 仅 deepseek）。
-const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: string }>>(() => {
-  const opts: Array<{ value: CnApiProtocol; labelKey: string }> = [
-    { value: 'adaptive', labelKey: 'adaptive' },
-    { value: 'chat_completions', labelKey: 'chatCompletions' },
-    { value: 'anthropic', labelKey: 'anthropic' }
-  ]
-  if (form.platform === 'deepseek') {
-    opts.push({ value: 'responses', labelKey: 'responses' })
-  }
-  return opts
+// 国产厂商的接入模式只有 payg / coding（selectCNPlatform 已按 profile 规范化）。
+const cnPresetMode = computed<CnAccountMode>(() => (accountMode.value === 'coding' ? 'coding' : 'payg'))
+const adaptivePresetPlatform = computed<string>(() => {
+  if (isMultiProtocolPlatform.value) return form.platform
+  return cnPresetPlatform.value
 })
-const cnAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol; labelKey: string }>>(() => {
-  const opts: Array<{ value: CnNativeApiProtocol; labelKey: string }> = [
-    { value: 'chat_completions', labelKey: 'chatCompletions' },
-    { value: 'anthropic', labelKey: 'anthropic' }
-  ]
-  if (form.platform === 'deepseek') opts.push({ value: 'responses', labelKey: 'responses' })
-  return opts
-})
+const NATIVE_PROTOCOL_LABEL_KEYS: Record<CnNativeApiProtocol, string> = {
+  chat_completions: 'chatCompletions',
+  anthropic: 'anthropic',
+  responses: 'responses'
+}
+// 当前平台与接入模式提供原生端点的协议（profile 中有默认基址的协议）。
+const cnAdaptiveProtocolOptions = computed<Array<{ value: CnNativeApiProtocol; labelKey: string }>>(() =>
+  providerNativeProtocols(form.platform, currentOpenCodeOrCNMode()).map(value => ({
+    value,
+    labelKey: NATIVE_PROTOCOL_LABEL_KEYS[value]
+  }))
+)
+// 可选的协议档：adaptive 加上各原生协议（responses 仅 deepseek / kimi 等提供原生端点的供应商）。
+const cnProtocolOptions = computed<Array<{ value: CnApiProtocol; labelKey: string }>>(() => [
+  { value: 'adaptive', labelKey: 'adaptive' },
+  ...cnAdaptiveProtocolOptions.value
+])
 
-function resetAdaptiveBaseUrls(platform: 'kimi' | 'zhipu' | 'deepseek', mode: CnAccountMode) {
+function resetAdaptiveBaseUrls(platform: string, mode: string) {
   adaptiveBaseUrls.value = defaultCNAdaptiveBaseUrls(platform, mode)
 }
 // 当前选中平台的品牌色（选中卡片描边 / 图标底色），与 platformColors 取色一致。
@@ -4003,6 +4505,10 @@ const cnAccentActiveClass = computed(() => {
       return 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20'
     case 'deepseek':
       return 'border-teal-500 bg-teal-50 dark:bg-teal-900/20'
+    case 'minimax':
+      return 'border-rose-500 bg-rose-50 dark:bg-rose-900/20'
+    case 'opencode_go':
+      return 'border-amber-500 bg-amber-50 dark:bg-amber-900/20'
     default:
       return 'border-primary-500 bg-primary-50 dark:bg-primary-900/20'
   }
@@ -4015,29 +4521,84 @@ const cnAccentIconClass = computed(() => {
       return 'bg-indigo-500 text-white'
     case 'deepseek':
       return 'bg-teal-500 text-white'
+    case 'minimax':
+      return 'bg-rose-500 text-white'
+    case 'opencode_go':
+      return 'bg-amber-500 text-white'
     default:
       return 'bg-primary-500 text-white'
   }
 })
 // 切换国产供应商平台：强制 apikey 类型，deepseek 无 coding 套餐故锁定 payg，
 // 协议回落 adaptive，并把 base url 重置为该平台默认端点。
-function selectCNPlatform(platform: 'kimi' | 'zhipu' | 'deepseek') {
+function selectCNPlatform(platform: CnProviderPlatform) {
   form.platform = platform
   form.type = 'apikey'
   accountCategory.value = 'apikey'
   apiProtocol.value = 'adaptive'
-  if (platform === 'deepseek') {
-    accountMode.value = 'payg'
-  }
+  // deepseek 无 coding 套餐（profile 仅 payg）；从其他供应商切换来的未知模式回落默认模式。
+  accountMode.value = resolveProviderAccountMode(platform, accountMode.value)
   apiKeyBaseUrl.value = defaultCNBaseUrl(platform, accountMode.value, apiProtocol.value)
   resetAdaptiveBaseUrls(platform, accountMode.value)
 }
+function selectOpenCodeGoPlatform() {
+  form.platform = 'opencode_go'
+  form.type = 'apikey'
+  accountCategory.value = 'apikey'
+  apiProtocol.value = 'adaptive'
+  openCodeAccountMode.value = 'zen'
+  apiKeyBaseUrl.value = defaultCNBaseUrl('opencode_go', openCodeAccountMode.value, 'adaptive')
+  resetAdaptiveBaseUrls('opencode_go', openCodeAccountMode.value)
+  openCodeGoProtocolRules.value = cloneOpenCodeGoProtocolRules(defaultOpenCodeProtocolRules(openCodeAccountMode.value))
+}
+function selectTypeSafePlatform() {
+  form.platform = 'typesafe'
+  form.type = 'apikey'
+  accountCategory.value = 'apikey'
+  apiKeyBaseUrl.value = 'https://api.typesafe.ai'
+  allowedModels.value = ['jev-latest']
+}
+function selectGenericMultiProtocolPlatform(platform: string) {
+  form.platform = platform
+  form.type = 'apikey'
+  accountCategory.value = 'apikey'
+  apiProtocol.value = 'adaptive'
+  accountMode.value = resolveProviderAccountMode(platform, undefined)
+  apiKeyBaseUrl.value = defaultCNBaseUrl(platform, accountMode.value, apiProtocol.value)
+  resetAdaptiveBaseUrls(platform, accountMode.value)
+  openCodeGoProtocolRules.value = cloneOpenCodeGoProtocolRules(defaultProviderProtocolRules(platform, accountMode.value))
+}
 // 账号类型 / 协议变更时同步默认 base url。
-watch(accountMode, (mode, previousMode) => {
-  if (!isCNPlatform.value) return
+watch(openCodeAccountMode, (mode, previousMode) => {
+  if (!isOpenCodeGoPlatform.value) return
   if (apiProtocol.value === 'adaptive') {
-    const previousDefaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, previousMode)
-    const nextDefaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, mode)
+    const previousDefaults = defaultCNAdaptiveBaseUrls('opencode_go', previousMode)
+    const nextDefaults = defaultCNAdaptiveBaseUrls('opencode_go', mode)
+    for (const item of cnAdaptiveProtocolOptions.value) {
+      if (!adaptiveBaseUrls.value[item.value] || adaptiveBaseUrls.value[item.value] === previousDefaults[item.value]) {
+        adaptiveBaseUrls.value[item.value] = nextDefaults[item.value]
+      }
+    }
+    apiKeyBaseUrl.value = adaptiveBaseUrls.value.chat_completions
+  } else {
+    apiKeyBaseUrl.value = defaultCNBaseUrl('opencode_go', mode, apiProtocol.value)
+  }
+  const previousRules = JSON.stringify(defaultOpenCodeProtocolRules(previousMode))
+  if (JSON.stringify(openCodeGoProtocolRules.value) === previousRules) {
+    openCodeGoProtocolRules.value = cloneOpenCodeGoProtocolRules(defaultOpenCodeProtocolRules(mode))
+  }
+})
+watch(accountMode, (mode, previousMode) => {
+  if (!isMultiProtocolPlatform.value || isOpenCodeGoPlatform.value) return
+  if (routesByModel.value) {
+    const previousRules = JSON.stringify(defaultProviderProtocolRules(form.platform, previousMode))
+    if (JSON.stringify(openCodeGoProtocolRules.value) === previousRules) {
+      openCodeGoProtocolRules.value = cloneOpenCodeGoProtocolRules(defaultProviderProtocolRules(form.platform, mode))
+    }
+  }
+  if (apiProtocol.value === 'adaptive') {
+    const previousDefaults = defaultCNAdaptiveBaseUrls(adaptivePresetPlatform.value, previousMode)
+    const nextDefaults = defaultCNAdaptiveBaseUrls(adaptivePresetPlatform.value, mode)
     for (const item of cnAdaptiveProtocolOptions.value) {
       if (!adaptiveBaseUrls.value[item.value] || adaptiveBaseUrls.value[item.value] === previousDefaults[item.value]) {
         adaptiveBaseUrls.value[item.value] = nextDefaults[item.value]
@@ -4049,16 +4610,16 @@ watch(accountMode, (mode, previousMode) => {
   apiKeyBaseUrl.value = defaultCNBaseUrl(form.platform, mode, apiProtocol.value)
 })
 watch(apiProtocol, (protocol) => {
-  if (!isCNPlatform.value) return
+  if (!isMultiProtocolPlatform.value) return
   if (protocol === 'adaptive') {
-    const defaults = defaultCNAdaptiveBaseUrls(cnPresetPlatform.value, accountMode.value)
+    const defaults = defaultCNAdaptiveBaseUrls(adaptivePresetPlatform.value, currentOpenCodeOrCNMode())
     for (const item of cnAdaptiveProtocolOptions.value) {
       if (!adaptiveBaseUrls.value[item.value]) adaptiveBaseUrls.value[item.value] = defaults[item.value]
     }
     apiKeyBaseUrl.value = adaptiveBaseUrls.value.chat_completions
     return
   }
-  apiKeyBaseUrl.value = defaultCNBaseUrl(form.platform, accountMode.value, protocol)
+  apiKeyBaseUrl.value = defaultCNBaseUrl(form.platform, currentOpenCodeOrCNMode(), protocol)
 })
 // 点击预设端点：同时回填 base url、账号类型与协议。
 function onCnPresetSelect(preset: { mode: CnAccountMode; protocol: CnApiProtocol; url: string }) {
@@ -4069,14 +4630,20 @@ function onCnPresetSelect(preset: { mode: CnAccountMode; protocol: CnApiProtocol
 
 const syncPreviewCredentials = computed(() => {
   if (!apiKeyValue.value) return undefined
-  const baseUrl = isCNPlatform.value && apiProtocol.value === 'adaptive'
+  const baseUrl = isMultiProtocolPlatform.value && apiProtocol.value === 'adaptive'
     ? adaptiveBaseUrls.value.chat_completions.trim() || apiKeyBaseUrl.value.trim()
     : apiKeyBaseUrl.value.trim()
+  const modelMapping = buildModelMappingObject(
+    modelRestrictionMode.value,
+    allowedModels.value,
+    modelMappings.value
+  )
   return {
     platform: form.platform,
     type: form.type,
     base_url: baseUrl || undefined,
-    api_key: apiKeyValue.value
+    api_key: apiKeyValue.value,
+    ...(modelMapping ? { model_mapping: modelMapping } : {})
   }
 })
 
@@ -4093,10 +4660,13 @@ const modelMappings = ref<ModelMapping[]>([])
 const openAICompactModelMappings = ref<ModelMapping[]>([])
 const modelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist')
 const allowedModels = ref<string[]>([])
+const upstreamModelsPreviewed = ref(false)
 const DEFAULT_POOL_MODE_RETRY_COUNT = 3
 const MAX_POOL_MODE_RETRY_COUNT = 10
 const DEFAULT_POOL_MODE_RETRY_STATUS_CODES = [401, 403, 429]
 const poolModeEnabled = ref(false)
+const explicitCacheUpstreamEnabled = ref(false)
+const explicitCacheUpstreamMaxTTL = ref<string | number>('')
 const poolModeRetryCount = ref(DEFAULT_POOL_MODE_RETRY_COUNT)
 const poolModeRetryStatusCodesInput = ref('')
 
@@ -4160,12 +4730,16 @@ const applyGrokOAuthUpstreamConfig = (credentials: Record<string, unknown>) => {
 const interceptWarmupRequests = ref(false)
 const autoPauseOnExpired = ref(true)
 const openaiPassthroughEnabled = ref(false)
+const openaiPassthroughModelFilterEnabled = ref(false)
 // OpenAI Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
 const openAILongContextBillingTouched = ref(false)
 const openAICompactMode = ref<OpenAICompactMode>('auto')
 const openAIResponsesMode = ref<OpenAIResponsesMode>('auto')
+// Images 非流式响应缺 b64_json 时由网关下载 url 回填（仅 OpenAI API Key）。
+const openAIImagesUrlToB64JsonEnabled = ref(false)
+const openAIImageSizeTiers = ref<OpenAIImageSizeTier[]>([...OPENAI_IMAGE_SIZE_TIERS])
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>(['chat_completions', 'embeddings'])
 const openaiOAuthResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
 const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OFF)
@@ -4228,6 +4802,17 @@ const vertexProjectId = ref('')
 const vertexClientEmail = ref('')
 const vertexLocation = ref('global')
 const vertexServiceAccountDragActive = ref(false)
+const vertexAuthMode = ref<'service_account' | 'apikey'>('service_account')
+const vertexApiKey = ref('')
+// API Key 认证只对 Gemini 平台开放，Anthropic 平台的 Vertex 账号始终使用 Service Account JSON。
+const vertexUsesApiKey = computed(() => form.platform === 'gemini' && vertexAuthMode.value === 'apikey')
+// 两种认证方式的 Project ID 来源不同（JSON 读取 / 手填），切换时清空凭证字段避免串用。
+watch(vertexAuthMode, () => {
+  vertexServiceAccountJson.value = ''
+  vertexProjectId.value = ''
+  vertexClientEmail.value = ''
+  vertexApiKey.value = ''
+})
 const tempUnschedEnabled = ref(false)
 const tempUnschedRules = ref<TempUnschedRuleForm[]>([])
 const getModelMappingKey = createStableObjectKeyResolver<ModelMapping>('create-model-mapping')
@@ -4257,16 +4842,17 @@ const openAITextEndpointCapabilityLabel = computed(() => {
 })
 const openAIEndpointCapabilityOptions = computed<{ value: OpenAIEndpointCapability; label: string }[]>(() => [
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
-  { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') }
+  { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') },
+  { value: 'seedance', label: 'Seedance (Ark)' }
 ])
 const openAITextGenerationCapabilityEnabled = computed(() =>
   openAIEndpointCapabilities.value.includes('chat_completions')
 )
 
 const normalizeOpenAIEndpointCapabilities = (values: OpenAIEndpointCapability[]) => {
-  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings']
+  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'seedance']
   const selected = allowed.filter((value) => values.includes(value))
-  return selected.length > 0 ? selected : allowed
+  return selected.length > 0 ? selected : ['chat_completions', 'embeddings'] as OpenAIEndpointCapability[]
 }
 
 const toggleOpenAIEndpointCapability = (capability: OpenAIEndpointCapability, event?: Event) => {
@@ -4292,7 +4878,7 @@ const toggleOpenAIEndpointCapability = (capability: OpenAIEndpointCapability, ev
 
 const applyOpenAIEndpointCapabilities = (credentials: Record<string, unknown>) => {
   const capabilities = normalizeOpenAIEndpointCapabilities(openAIEndpointCapabilities.value)
-  if (capabilities.length === 2) {
+  if (capabilities.length === 2 && !capabilities.includes('seedance')) {
     delete credentials.openai_capabilities
     return
   }
@@ -4386,12 +4972,12 @@ const openaiResponsesWebSocketV2Mode = computed({
   }
 })
 
-const openAIWSModeConcurrencyHintKey = computed(() =>
-  resolveOpenAIWSModeConcurrencyHintKey(openaiResponsesWebSocketV2Mode.value)
+const openAIWSModeHintKey = computed(() =>
+  resolveOpenAIWSModeHintKey(openaiResponsesWebSocketV2Mode.value)
 )
 
 const isOpenAIModelRestrictionDisabled = computed(() =>
-  form.platform === 'openai' && openaiPassthroughEnabled.value
+  form.platform === 'openai' && openaiPassthroughEnabled.value && !openaiPassthroughModelFilterEnabled.value
 )
 
 const mixedChannelWarningMessageText = computed(() => {
@@ -4418,6 +5004,19 @@ const geminiHelpLinks = {
 
 // Computed: current preset mappings based on platform
 const presetMappings = computed(() => getPresetMappingsByPlatform(form.platform))
+const tempUnschedScopeOptions = computed<Array<{ value: TempUnschedulableScope; label: string; description: string }>>(() => [
+  {
+    value: 'model',
+    label: t('admin.accounts.tempUnschedulable.scopeModel'),
+    description: t('admin.accounts.tempUnschedulable.scopeModelDesc')
+  },
+  {
+    value: 'account',
+    label: t('admin.accounts.tempUnschedulable.scopeAccount'),
+    description: t('admin.accounts.tempUnschedulable.scopeAccountDesc')
+  }
+])
+
 const tempUnschedPresets = computed(() => [
   {
     label: t('admin.accounts.tempUnschedulable.presets.overloadLabel'),
@@ -4425,7 +5024,8 @@ const tempUnschedPresets = computed(() => [
       error_code: 529,
       keywords: 'overloaded, too many',
       duration_minutes: 60,
-      description: t('admin.accounts.tempUnschedulable.presets.overloadDesc')
+      description: t('admin.accounts.tempUnschedulable.presets.overloadDesc'),
+      scope: 'model' as const
     }
   },
   {
@@ -4434,7 +5034,8 @@ const tempUnschedPresets = computed(() => [
       error_code: 429,
       keywords: 'rate limit, too many requests',
       duration_minutes: 10,
-      description: t('admin.accounts.tempUnschedulable.presets.rateLimitDesc')
+      description: t('admin.accounts.tempUnschedulable.presets.rateLimitDesc'),
+      scope: 'model' as const
     }
   },
   {
@@ -4443,7 +5044,8 @@ const tempUnschedPresets = computed(() => [
       error_code: 503,
       keywords: 'unavailable, maintenance',
       duration_minutes: 30,
-      description: t('admin.accounts.tempUnschedulable.presets.unavailableDesc')
+      description: t('admin.accounts.tempUnschedulable.presets.unavailableDesc'),
+      scope: 'model' as const
     }
   }
 ])
@@ -4565,8 +5167,9 @@ watch(
   () => form.platform,
   (newPlatform) => {
     // Reset base URL based on platform
-    if (newPlatform === 'kimi' || newPlatform === 'zhipu' || newPlatform === 'deepseek') {
-      apiKeyBaseUrl.value = defaultCNBaseUrl(newPlatform, accountMode.value, apiProtocol.value)
+    if (isMultiProtocolApiKeyPlatform(newPlatform)) {
+      const mode = newPlatform === 'opencode_go' ? openCodeAccountMode.value : accountMode.value
+      apiKeyBaseUrl.value = defaultCNBaseUrl(newPlatform, mode, apiProtocol.value)
     } else {
       apiKeyBaseUrl.value =
         (newPlatform === 'openai')
@@ -4575,11 +5178,20 @@ watch(
             ? 'https://generativelanguage.googleapis.com'
             : newPlatform === 'grok'
               ? 'https://api.x.ai/v1'
+              : newPlatform === 'typesafe'
+                ? 'https://api.typesafe.ai'
               : 'https://api.anthropic.com'
     }
     // Clear model-related settings
     allowedModels.value = []
+    upstreamModelsPreviewed.value = false
     modelMappings.value = []
+    if (newPlatform === 'typesafe') {
+      accountCategory.value = 'apikey'
+      // Grok 等平台会把模式切到映射；TypeSafe 只用白名单写入 jev-latest。
+      modelRestrictionMode.value = 'whitelist'
+      allowedModels.value = ['jev-latest']
+    }
     // Antigravity: 默认使用映射模式并填充默认映射
     if (newPlatform === 'antigravity') {
       antigravityModelRestrictionMode.value = 'mapping'
@@ -4621,12 +5233,15 @@ watch(
     vertexProjectId.value = ''
     vertexClientEmail.value = ''
     vertexLocation.value = 'global'
+    vertexAuthMode.value = 'service_account'
+    vertexApiKey.value = ''
     // Reset Anthropic/Antigravity-specific settings when switching to other platforms
     if (newPlatform !== 'anthropic' && newPlatform !== 'antigravity') {
       interceptWarmupRequests.value = false
     }
     if (newPlatform !== 'openai') {
       openaiPassthroughEnabled.value = false
+      openaiPassthroughModelFilterEnabled.value = false
       openaiFlattenNamespacesEnabled.value = false
       openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
       openaiOAuthResponsesWebSocketV2Mode.value = OPENAI_WS_MODE_OFF
@@ -4643,6 +5258,8 @@ watch(
     // 避免上一平台的配置行被提交到新平台账号
     headerOverrideEnabled.value = false
     headerOverrideRows.value = []
+    openAIImagesUrlToB64JsonEnabled.value = false
+    openAIImageSizeTiers.value = [...OPENAI_IMAGE_SIZE_TIERS]
     grokOAuthCustomBaseUrlEnabled.value = false
     grokOAuthBaseUrl.value = ''
     // Reset OAuth states
@@ -4817,7 +5434,8 @@ const addTempUnschedRule = (preset?: TempUnschedRuleForm) => {
     error_code: null,
     keywords: '',
     duration_minutes: 30,
-    description: ''
+    description: '',
+    scope: 'model'
   })
 }
 
@@ -4840,6 +5458,7 @@ const buildTempUnschedRules = (rules: TempUnschedRuleForm[]) => {
     keywords: string[]
     duration_minutes: number
     description: string
+    scope: TempUnschedulableScope
   }> = []
 
   for (const rule of rules) {
@@ -4859,7 +5478,8 @@ const buildTempUnschedRules = (rules: TempUnschedRuleForm[]) => {
       error_code: Math.trunc(errorCode),
       keywords,
       duration_minutes: Math.trunc(duration),
-      description: rule.description.trim()
+      description: rule.description.trim(),
+      scope: rule.scope
     })
   }
 
@@ -4970,6 +5590,26 @@ const submitCreateAccount = async (payload: CreateAccountRequest) => {
   submitting.value = true
   try {
     const account = await adminAPI.accounts.create(withAntigravityConfirmFlag(payload))
+    const modelMapping = payload.credentials.model_mapping
+    const hasConcreteMappedTarget = payload.type === 'apikey' &&
+      typeof modelMapping === 'object' &&
+      modelMapping !== null &&
+      Object.values(modelMapping).some((target) =>
+        typeof target === 'string' && target.trim() !== '' && !target.includes('*')
+      )
+    if (upstreamModelsPreviewed.value || hasConcreteMappedTarget) {
+      try {
+        const result = await adminAPI.accounts.syncUpstreamModels(account.id)
+        const warnings = result.warnings ?? []
+        if (warnings.some(warning => warning.code === 'upstream_model_metadata_incomplete')) {
+          appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataIncomplete'))
+        } else if (warnings.some(warning => warning.code === 'upstream_model_metadata_partial')) {
+          appStore.showWarning(t('admin.accounts.syncUpstreamModelsMetadataPartial'))
+        }
+      } catch {
+        appStore.showWarning(t('admin.accounts.syncUpstreamModelsFailed'))
+      }
+    }
     if (
       payload.type === 'apikey' &&
       payload.upstream_billing_probe_enabled === true
@@ -5018,10 +5658,13 @@ const resetForm = () => {
   accountCategory.value = 'oauth-based'
   addMethod.value = 'oauth'
   accountMode.value = 'payg'
+  openCodeAccountMode.value = 'zen'
   apiProtocol.value = 'adaptive'
+  openCodeGoProtocolRules.value = cloneOpenCodeGoProtocolRules(defaultOpenCodeProtocolRules('zen'))
   adaptiveBaseUrls.value = { chat_completions: '', anthropic: '', responses: '' }
   apiKeyBaseUrl.value = 'https://api.anthropic.com'
   apiKeyValue.value = ''
+  upstreamRequestIdHeader.value = ''
   upstreamBillingAutoProbeEnabled.value = true
   editQuotaLimit.value = null
   editQuotaDailyLimit.value = null
@@ -5045,16 +5688,21 @@ const resetForm = () => {
   poolModeEnabled.value = false
   poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
   poolModeRetryStatusCodesInput.value = ''
+  explicitCacheUpstreamEnabled.value = false
+  explicitCacheUpstreamMaxTTL.value = ''
   customErrorCodesEnabled.value = false
   selectedErrorCodes.value = []
   customErrorCodeInput.value = null
   headerOverrideEnabled.value = false
   headerOverrideRows.value = []
+  openAIImagesUrlToB64JsonEnabled.value = false
+  openAIImageSizeTiers.value = [...OPENAI_IMAGE_SIZE_TIERS]
   grokOAuthCustomBaseUrlEnabled.value = false
   grokOAuthBaseUrl.value = ''
   interceptWarmupRequests.value = false
   autoPauseOnExpired.value = true
   openaiPassthroughEnabled.value = false
+  openaiPassthroughModelFilterEnabled.value = false
   openaiFlattenNamespacesEnabled.value = false
   openAILongContextBillingEnabled.value = false
   openAILongContextBillingTouched.value = false
@@ -5097,6 +5745,8 @@ const resetForm = () => {
   vertexProjectId.value = ''
   vertexClientEmail.value = ''
   vertexLocation.value = 'global'
+  vertexAuthMode.value = 'service_account'
+  vertexApiKey.value = ''
   tempUnschedEnabled.value = false
   tempUnschedRules.value = []
   geminiOAuthType.value = 'code_assist'
@@ -5110,6 +5760,7 @@ const resetForm = () => {
   grokOAuth.resetState()
   oauthFlowRef.value?.reset()
   antigravityMixedChannelConfirmed.value = false
+  upstreamModelsPreviewed.value = false
   clearMixedChannelDialog()
 }
 
@@ -5140,6 +5791,11 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   } else {
     delete extra.openai_passthrough
     delete extra.openai_oauth_passthrough
+  }
+  if (openaiPassthroughEnabled.value && openaiPassthroughModelFilterEnabled.value) {
+    extra.openai_passthrough_model_filter = true
+  } else {
+    delete extra.openai_passthrough_model_filter
   }
   // 缺省即保留 namespace，不写空值，避免 extra 里堆积默认项
   if (form.type === 'oauth' && openaiFlattenNamespacesEnabled.value) {
@@ -5186,6 +5842,12 @@ const buildOpenAIExtra = (base?: Record<string, unknown>): Record<string, unknow
   } else {
     delete extra.openai_responses_mode
   }
+  if (accountCategory.value === 'apikey' && openAIImagesUrlToB64JsonEnabled.value) {
+    extra.images_url_to_b64_json = true
+  } else {
+    delete extra.images_url_to_b64_json
+  }
+  applyOpenAIImageSizeTiersToExtra(extra, openAIImageSizeTiers.value)
 
   return Object.keys(extra).length > 0 ? extra : undefined
 }
@@ -5439,6 +6101,28 @@ const handleSubmit = async () => {
       appStore.showError(t('admin.accounts.pleaseEnterAccountName'))
       return
     }
+    if (vertexUsesApiKey.value) {
+      if (!vertexApiKey.value.trim()) {
+        appStore.showError(t('admin.accounts.vertexApiKeyRequired'))
+        return
+      }
+      const projectId = vertexProjectId.value.trim()
+      if (projectId && !vertexLocation.value.trim()) {
+        appStore.showError(t('admin.accounts.vertexLocationRequired'))
+        return
+      }
+      const credentials: Record<string, unknown> = {
+        auth_mode: 'apikey',
+        api_key: vertexApiKey.value.trim(),
+        location: vertexLocation.value.trim() || 'global',
+        tier_id: 'vertex'
+      }
+      if (projectId) {
+        credentials.project_id = projectId
+      }
+      await createAccountAndFinish(form.platform, 'service_account' as AccountType, credentials)
+      return
+    }
     if (!parseVertexServiceAccountJson()) {
       return
     }
@@ -5471,6 +6155,8 @@ const handleSubmit = async () => {
         ? 'https://generativelanguage.googleapis.com'
         : form.platform === 'grok'
           ? 'https://api.x.ai/v1'
+          : form.platform === 'typesafe'
+            ? 'https://api.typesafe.ai'
           : 'https://api.anthropic.com'
 
   // Build credentials with optional model mapping
@@ -5478,18 +6164,21 @@ const handleSubmit = async () => {
     base_url: apiKeyBaseUrl.value.trim() || defaultBaseUrl,
     api_key: apiKeyValue.value.trim()
   }
-  if (form.platform === 'gemini') {
+  if (form.platform === 'gemini' && isOfficialGeminiBaseUrl(apiKeyBaseUrl.value)) {
     credentials.tier_id = geminiTierAIStudio.value
   }
 
   // 国产供应商：账号模式 + 协议 + 对应端点写入凭据；后端按 account_mode 路由
   // 额度/余额探测，按 api_protocol 路由转发端点与格式。注意 CN apikey 走本函数
   // 的通用路径（直接 doCreateAccount），不经过 createAccountAndFinish。
-  if (form.platform === 'kimi' || form.platform === 'zhipu' || form.platform === 'deepseek') {
-    credentials.account_mode = accountMode.value
+  if (isMultiProtocolApiKeyPlatform(form.platform)) {
+    credentials.account_mode = form.platform === 'opencode_go' ? openCodeAccountMode.value : accountMode.value
     credentials.api_protocol = apiProtocol.value
     if (apiProtocol.value === 'adaptive') {
-      const defaults = defaultCNAdaptiveBaseUrls(form.platform, accountMode.value)
+      const defaults = defaultCNAdaptiveBaseUrls(
+        form.platform,
+        form.platform === 'opencode_go' ? openCodeAccountMode.value : accountMode.value
+      )
       const protocolBaseUrls: Record<string, string> = {}
       for (const item of cnAdaptiveProtocolOptions.value) {
         protocolBaseUrls[item.value] = (adaptiveBaseUrls.value[item.value] || defaults[item.value]).trim()
@@ -5498,10 +6187,18 @@ const handleSubmit = async () => {
       credentials.base_url = protocolBaseUrls.chat_completions
     }
     const resolvedCNBase = (
-      apiKeyBaseUrl.value.trim() || defaultCNBaseUrl(form.platform, accountMode.value, apiProtocol.value)
+      apiKeyBaseUrl.value.trim() || defaultCNBaseUrl(form.platform, currentOpenCodeOrCNMode(), apiProtocol.value)
     ).trim()
     if (apiProtocol.value !== 'adaptive' && resolvedCNBase) {
       credentials.base_url = resolvedCNBase
+    }
+    // 智谱团队版 Coding Plan：组织/项目 ID 写入凭据（非空才写）
+    if (form.platform === 'zhipu' && accountMode.value === 'coding') {
+      if (zhipuOrganization.value.trim()) credentials.zhipu_organization = zhipuOrganization.value.trim()
+      if (zhipuProject.value.trim()) credentials.zhipu_project = zhipuProject.value.trim()
+    }
+    if (providerRoutesByModel(form.platform)) {
+      applyOpenCodeGoProtocolRules(credentials, openCodeGoProtocolRules.value, 'create')
     }
   }
 
@@ -5529,6 +6226,12 @@ const handleSubmit = async () => {
       credentials.pool_mode_retry_status_codes = parsedRetryStatusCodes
     }
   }
+
+  applyExplicitCacheUpstreamCredentials(
+    credentials,
+    form.platform === 'gemini' && !isOfficialGeminiBaseUrl(apiKeyBaseUrl.value) && explicitCacheUpstreamEnabled.value,
+    explicitCacheUpstreamMaxTTL.value
+  )
 
   // Add custom error codes if enabled
   if (customErrorCodesEnabled.value) {
@@ -5559,7 +6262,7 @@ const handleSubmit = async () => {
   await doCreateAccount({
     ...form,
     group_ids: form.group_ids,
-    extra,
+    extra: withUpstreamRequestIdHeader(extra),
     upstream_billing_probe_enabled: upstreamBillingAutoProbeEnabled.value,
     auto_pause_on_expired: autoPauseOnExpired.value
   })
@@ -5621,10 +6324,10 @@ const createAccountAndFinish = async (
   if (!applyTempUnschedConfig(credentials)) {
     return
   }
-  // Inject quota limits for apikey/bedrock accounts
-  let finalExtra = extra
-  if (type === 'apikey' || type === 'bedrock') {
-    const quotaExtra: Record<string, unknown> = { ...(extra || {}) }
+  // Inject quota limits for apikey/bedrock/service_account accounts
+  let finalExtra = withUpstreamRequestIdHeader(extra)
+  if (supportsAccountQuota(type)) {
+    const quotaExtra: Record<string, unknown> = { ...(finalExtra || {}) }
     if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {
       quotaExtra.quota_limit = editQuotaLimit.value
     }
@@ -5748,7 +6451,7 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
           platform: 'grok',
           type: 'oauth',
           credentials,
-          extra,
+          extra: withUpstreamRequestIdHeader(extra),
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
@@ -5925,7 +6628,7 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
           platform: 'grok',
           type: 'oauth',
           credentials,
-          extra,
+          extra: withUpstreamRequestIdHeader(extra),
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
@@ -6024,7 +6727,7 @@ const handleOpenAIExchange = async (authCode: string) => {
         platform: 'openai',
         type: 'oauth',
         credentials,
-        extra,
+        extra: withUpstreamRequestIdHeader(extra),
         proxy_id: form.proxy_id,
         concurrency: form.concurrency,
         load_factor: form.load_factor ?? undefined,
@@ -6139,7 +6842,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       expires_at: form.expires_at,
       auto_pause_on_expired: autoPauseOnExpired.value,
       credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
-      extra,
+      extra: withUpstreamRequestIdHeader(extra),
       update_existing: true
     })
 
@@ -6217,10 +6920,10 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
       expires_at: form.expires_at,
       auto_pause_on_expired: autoPauseOnExpired.value,
       credential_extras: Object.keys(credentialExtras).length > 0 ? credentialExtras : undefined,
-      extra
+      extra: withUpstreamRequestIdHeader(extra)
     })
 
-    appStore.showSuccess(t('admin.accounts.messages.accountCreated'))
+    appStore.showSuccess(t('admin.accounts.accountCreated'))
     emit('created')
     handleClose()
   } catch (error: any) {
@@ -6305,7 +7008,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             platform: 'openai',
             type: 'oauth',
             credentials,
-            extra,
+            extra: withUpstreamRequestIdHeader(extra),
             proxy_id: form.proxy_id,
             concurrency: form.concurrency,
             load_factor: form.load_factor ?? undefined,
@@ -6404,7 +7107,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           platform: 'antigravity',
           type: 'oauth',
           credentials,
-          extra: {},
+          extra: withUpstreamRequestIdHeader({}),
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
@@ -6785,7 +7488,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           platform: form.platform,
           type: addMethod.value, // Use addMethod as type: 'oauth' or 'setup-token'
           credentials,
-          extra,
+          extra: withUpstreamRequestIdHeader(extra),
           proxy_id: form.proxy_id,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,

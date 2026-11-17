@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
@@ -113,6 +112,8 @@ type UserUpdateFields struct {
 	BalanceNotifyExtraEmails bool
 	// AllowedGroups 为 true 时才同步 user_allowed_groups 关联表。
 	AllowedGroups bool
+	// RestrictPublicGroups 覆盖 restrict_public_groups 列。
+	RestrictPublicGroups bool
 }
 
 // BalanceChange 记录一次余额变更前后的值。
@@ -1316,28 +1317,7 @@ func (s *UserService) VerifyAndAddNotifyEmail(ctx context.Context, userID int64,
 
 // verifyNotifyCode validates the verification code against the cached data.
 func verifyNotifyCode(ctx context.Context, cache EmailCache, email, code string) error {
-	data, err := cache.GetNotifyVerifyCode(ctx, email)
-	if err != nil || data == nil {
-		return ErrInvalidVerifyCode
-	}
-	if data.Attempts >= maxVerifyCodeAttempts {
-		return ErrVerifyCodeMaxAttempts
-	}
-	if subtle.ConstantTimeCompare([]byte(data.Code), []byte(code)) != 1 {
-		data.Attempts++
-		remaining := time.Until(data.ExpiresAt)
-		if remaining <= 0 {
-			return ErrInvalidVerifyCode
-		}
-		if err := cache.SetNotifyVerifyCode(ctx, email, data, remaining); err != nil {
-			slog.Error("failed to update notify verify code attempts", "email", email, "error", err)
-		}
-		if data.Attempts >= maxVerifyCodeAttempts {
-			return ErrVerifyCodeMaxAttempts
-		}
-		return ErrInvalidVerifyCode
-	}
-	return nil
+	return verifyCodeWithAttempts(ctx, email, code, cache.GetNotifyVerifyCode, cache.IncrNotifyVerifyCodeAttempts, nil)
 }
 
 // addOrVerifyNotifyEmail adds the email to user's extra notification emails or marks it as verified.

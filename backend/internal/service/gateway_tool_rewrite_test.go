@@ -295,3 +295,106 @@ func TestBuildDynamicToolMap_FakeNameShape(t *testing.T) {
 		require.True(t, strings.Contains(fake, head), "fake %q should contain head3 %q of %q", fake, head, name)
 	}
 }
+
+func TestApplyToolNameRewriteToBody_Spans(t *testing.T) {
+	body := []byte(`{"tools":[{"name":"sessions_\"quoted"},{"name":"session_last","defer_loading":true,"cache_control":{"type":"ephemeral"}}],"tool_choice":{"type":"tool","name":"sessions_\"quoted"},"messages":[{"content":[{"type":"tool_use","name":"sessions_\"quoted","input":{"name":"sessions_\"quoted"}},{"type":"tool_use"}]}],"metadata":{"name":"sessions_\"quoted"}}`)
+	out := applyToolNameRewriteToBody(body, buildToolNameRewriteFromBody(body))
+	require.True(t, gjson.ValidBytes(out))
+	for _, path := range []string{"tools.0.name", "tool_choice.name", "messages.0.content.0.name"} {
+		require.Equal(t, `cc_sess_"quoted`, gjson.GetBytes(out, path).String())
+	}
+	require.Equal(t, `sessions_"quoted`, gjson.GetBytes(out, "messages.0.content.0.input.name").String())
+	require.Equal(t, `sessions_"quoted`, gjson.GetBytes(out, "metadata.name").String())
+	require.False(t, gjson.GetBytes(out, "tools.1.cache_control").Exists())
+	require.Equal(t, "5m", gjson.GetBytes(out, "tools.0.cache_control.ttl").String())
+	require.False(t, gjson.GetBytes(out, "messages.0.content.1.name").Exists())
+}
+
+func TestApplyToolNameRewriteToBody_DuplicateNames(t *testing.T) {
+	body := []byte(`{"tools":[{"name":"sessions_first","name":"sessions_second"}],"messages":[{"content":[{"type":"tool_use","name":"sessions_first","name":"sessions_second"}]}]}`)
+	out := applyToolNameRewriteToBody(body, buildToolNameRewriteFromBody(body))
+	require.True(t, gjson.ValidBytes(out))
+	require.Equal(t, 2, strings.Count(string(out), `"name":"cc_sess_first","name":"sessions_second"`))
+}
+
+func TestApplyToolNameRewriteToBody_NonStringReferences(t *testing.T) {
+	body := []byte(`{"tools":[{"name":"123"}],"tool_choice":{"type":"tool","name":123},"messages":[{"content":[{"type":"tool_use","name":123},{"type":"tool_use","name":true}]}]}`)
+	rw := &ToolNameRewrite{Forward: map[string]string{"123": "replacement", "true": "also_replaced"}}
+	out := applyToolNameRewriteToBody(body, rw)
+	require.True(t, gjson.ValidBytes(out))
+	require.Equal(t, "replacement", gjson.GetBytes(out, "tools.0.name").String())
+	require.Equal(t, `"replacement"`, gjson.GetBytes(out, "tool_choice.name").Raw)
+	require.Equal(t, `"replacement"`, gjson.GetBytes(out, "messages.0.content.0.name").Raw)
+	require.Equal(t, `"also_replaced"`, gjson.GetBytes(out, "messages.0.content.1.name").Raw)
+}
+
+func makeLongToolHistory() []byte {
+	var b strings.Builder
+	_, _ = b.WriteString(`{"tools":[{"name":"sessions_list"}],"tool_choice":{"type":"tool","name":"sessions_list"},"messages":[`)
+	for i := 0; i < 1000; i++ {
+		if i > 0 {
+			_ = b.WriteByte(',')
+		}
+		_, _ = b.WriteString(`{"content":[{"type":"tool_use","name":"sessions_list","input":{"name":"sessions_list"}}]}`)
+	}
+	_, _ = b.WriteString(`]}`)
+	return []byte(b.String())
+}
+
+func TestApplyToolNameRewriteToBody_LongHistory(t *testing.T) {
+	body := makeLongToolHistory()
+	out := applyToolNameRewriteToBody(body, buildToolNameRewriteFromBody(body))
+	require.True(t, gjson.ValidBytes(out))
+	require.Equal(t, "cc_sess_list", gjson.GetBytes(out, "messages.999.content.0.name").String())
+	require.Equal(t, "sessions_list", gjson.GetBytes(out, "messages.999.content.0.input.name").String())
+}
+
+func BenchmarkApplyToolNameRewriteToBody_LongHistory(b *testing.B) {
+	body := makeLongToolHistory()
+	rw := buildToolNameRewriteFromBody(body)
+	b.ReportAllocs()
+	b.SetBytes(int64(len(body)))
+	for i := 0; i < b.N; i++ {
+		_ = applyToolNameRewriteToBody(body, rw)
+	}
+}
+
+type toolRewriteCtxStub struct {
+	rw *ToolNameRewrite
+}
+
+func (c toolRewriteCtxStub) Get(key string) (any, bool) {
+	if key == toolNameRewriteKey && c.rw != nil {
+		return c.rw, true
+	}
+	return nil, false
+}
+
+// 字符串版本和 bytes 版本的还原结果必须完全一致，流式路径才能安全替换。
+func TestReverseToolNamesStringMatchesBytes(t *testing.T) {
+	rw := &ToolNameRewrite{
+		ReverseOrdered: [][2]string{
+			{"sessions_abc", "session_abc"},
+			{"sessions_x", "sessions_x"},
+		},
+	}
+	cases := []string{
+		"plain chunk",
+		`{"name":"sessions_x"}`,
+		`{"name":"sessions_abc"}`,
+		`{"name":"sessions_abc","x":"session_y"}`,
+		`{"name":"sessions_x","y":"sessions_abc","z":"session_y"}`,
+	}
+	for _, in := range cases {
+		got := reverseToolNamesIfPresentString(toolRewriteCtxStub{rw: rw}, in)
+		want := string(reverseToolNamesIfPresent(toolRewriteCtxStub{rw: rw}, []byte(in)))
+		require.Equal(t, want, got, "input=%q", in)
+	}
+
+	// mapping 为 nil 时仍要做静态前缀还原。
+	for _, in := range []string{`sessions_a`, `session_b`, `plain`} {
+		got := reverseToolNamesIfPresentString(toolRewriteCtxStub{}, in)
+		want := string(reverseToolNamesIfPresent(toolRewriteCtxStub{}, []byte(in)))
+		require.Equal(t, want, got, "input=%q", in)
+	}
+}

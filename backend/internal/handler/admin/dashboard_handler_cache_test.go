@@ -45,6 +45,7 @@ func (r *dashboardUsageRepoCacheProbe) GetUserUsageTrend(
 	startTime, endTime time.Time,
 	granularity string,
 	limit int,
+	metric string,
 ) ([]usagestats.UserUsageTrendPoint, error) {
 	r.usersTrendCalls.Add(1)
 	return []usagestats.UserUsageTrendPoint{{
@@ -115,4 +116,20 @@ func TestDashboardHandler_GetUserUsageTrend_UsesCache(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec2.Code)
 	require.Equal(t, "hit", rec2.Header().Get("X-Snapshot-Cache"))
 	require.Equal(t, int32(1), repo.usersTrendCalls.Load())
+
+	for _, tc := range []struct {
+		metric, cache string
+		calls         int32
+	}{
+		{"actual_cost", "miss", 2},
+		{"actual_cost", "hit", 2},
+		{"tokens", "hit", 2},
+	} {
+		req := httptest.NewRequest(http.MethodGet, "/admin/dashboard/users-trend?start_date=2026-03-01&end_date=2026-03-07&granularity=day&limit=8&metric="+tc.metric, nil)
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Equal(t, tc.cache, rec.Header().Get("X-Snapshot-Cache"))
+		require.Equal(t, tc.calls, repo.usersTrendCalls.Load())
+	}
 }

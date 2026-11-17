@@ -1,6 +1,7 @@
 package service
 
 import (
+	"encoding/json"
 	"testing"
 )
 
@@ -76,6 +77,29 @@ func TestResolveDefaultTierID(t *testing.T) {
 			got := resolveDefaultTierID(tc.loadRaw)
 			if got != tc.want {
 				t.Fatalf("resolveDefaultTierID() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// The OAuth handler serializes this DTO before the browser creates or reauthorizes an account.
+func TestAntigravityTokenInfoPreservesPlanTypeJSON(t *testing.T) {
+	for _, plan := range []string{"pro", "ultra", "free", ""} {
+		t.Run(plan, func(t *testing.T) {
+			data, err := json.Marshal(AntigravityTokenInfo{PlanType: plan})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var response map[string]any
+			if err := json.Unmarshal(data, &response); err != nil {
+				t.Fatal(err)
+			}
+			if plan == "" {
+				if _, exists := response["plan_type"]; exists {
+					t.Fatal("unknown plan must remain omitted")
+				}
+			} else if response["plan_type"] != plan {
+				t.Fatalf("OAuth response plan_type = %v, want %q", response["plan_type"], plan)
 			}
 		})
 	}

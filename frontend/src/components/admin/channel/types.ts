@@ -1,4 +1,5 @@
 import type { BillingMode, ChannelTimePricing, PricingInterval } from '@/api/admin/channels'
+import { REASONING_EFFORT_LEVELS } from '@/constants/channel'
 
 type TranslateFn = (key: string, params?: Record<string, unknown>) => string
 
@@ -9,6 +10,8 @@ export interface IntervalFormEntry {
   input_price: number | string | null
   output_price: number | string | null
   cache_write_price: number | string | null
+  cache_write_1h_price?: number | string | null
+  cache_write_12h_price?: number | string | null
   cache_read_price: number | string | null
   input_multiplier: number | string | null
   output_multiplier: number | string | null
@@ -24,9 +27,12 @@ export interface PricingFormEntry {
   input_price: number | string | null
   output_price: number | string | null
   cache_write_price: number | string | null
+  cache_write_1h_price?: number | string | null
+  cache_write_12h_price?: number | string | null
   cache_read_price: number | string | null
   fast_multiplier?: number | string | null
   flex_multiplier?: number | string | null
+  reasoning_effort_multipliers?: Record<string, number | string> | null
   image_input_price: number | string | null
   image_output_price: number | string | null
   per_request_price: number | string | null
@@ -42,6 +48,7 @@ export interface TimePricingPeriodFormEntry {
 
 export interface TimePricingFormEntry {
   timezone: string
+  weekdays_only: boolean
   periods: TimePricingPeriodFormEntry[]
 }
 
@@ -66,13 +73,14 @@ export const COMMON_TIMEZONES = [
 ]
 
 export function createDefaultTimePricingForm(): TimePricingFormEntry {
-  return { timezone: DEFAULT_TIME_PRICING_TIMEZONE, periods: [] }
+  return { timezone: DEFAULT_TIME_PRICING_TIMEZONE, weekdays_only: false, periods: [] }
 }
 
 export function apiTimePricingToForm(value: ChannelTimePricing | null | undefined): TimePricingFormEntry {
   if (!value) return createDefaultTimePricingForm()
   return {
     timezone: value.timezone || DEFAULT_TIME_PRICING_TIMEZONE,
+    weekdays_only: value.weekdays_only === true,
     periods: (value.periods || []).map(period => ({
       start_time: LEGACY_CLOCK_TIME.test(period.start_time) ? `${period.start_time}:00` : period.start_time,
       end_time: LEGACY_CLOCK_TIME.test(period.end_time) ? `${period.end_time}:00` : period.end_time,
@@ -86,6 +94,7 @@ export function formTimePricingToAPI(value: TimePricingFormEntry | null | undefi
   const timezone = typeof value.timezone === 'string' ? value.timezone.trim() : ''
   return {
     timezone,
+    weekdays_only: value.weekdays_only === true,
     periods: value.periods.map(period => ({
       start_time: period.start_time,
       end_time: period.end_time,
@@ -176,6 +185,30 @@ export function isValidPositiveMultiplier(val: number | string | null | undefine
   return Number.isFinite(multiplier) && multiplier > 0
 }
 
+export function formReasoningEffortMultipliersToAPI(
+  value: PricingFormEntry['reasoning_effort_multipliers'],
+): Record<string, number> | null {
+  const entries = Object.entries(value || {})
+    .filter(([, multiplier]) => multiplier !== '')
+    .map(([effort, multiplier]) => [effort, Number(multiplier)])
+  return entries.length ? Object.fromEntries(entries) : null
+}
+
+export function validateReasoningEffortMultipliers(
+  value: PricingFormEntry['reasoning_effort_multipliers'],
+  t: TranslateFn,
+): string | null {
+  for (const [effort, multiplier] of Object.entries(value || {})) {
+    if (!REASONING_EFFORT_LEVELS.some(level => level === effort)) {
+      return t('admin.channels.form.reasoningEffortLevelInvalid', { effort })
+    }
+    if (multiplier !== '' && !isValidPositiveMultiplier(multiplier)) {
+      return t('admin.channels.form.reasoningEffortMultiplierPositive', { effort })
+    }
+  }
+  return null
+}
+
 /** 前端显示值($/MTok) → 后端存储值(per-token) */
 export function mTokToPerToken(val: number | string | null | undefined): number | null {
   const num = toNullableNumber(val)
@@ -197,6 +230,8 @@ export function apiIntervalsToForm(intervals: PricingInterval[]): IntervalFormEn
     input_price: perTokenToMTok(iv.input_price),
     output_price: perTokenToMTok(iv.output_price),
     cache_write_price: perTokenToMTok(iv.cache_write_price),
+    cache_write_1h_price: perTokenToMTok(iv.cache_write_1h_price),
+    cache_write_12h_price: perTokenToMTok(iv.cache_write_12h_price),
     cache_read_price: perTokenToMTok(iv.cache_read_price),
     input_multiplier: iv.input_multiplier,
     output_multiplier: iv.output_multiplier,
@@ -215,6 +250,8 @@ export function formIntervalsToAPI(intervals: IntervalFormEntry[]): PricingInter
     input_price: mTokToPerToken(iv.input_price),
     output_price: mTokToPerToken(iv.output_price),
     cache_write_price: mTokToPerToken(iv.cache_write_price),
+    cache_write_1h_price: mTokToPerToken(iv.cache_write_1h_price),
+    cache_write_12h_price: mTokToPerToken(iv.cache_write_12h_price),
     cache_read_price: mTokToPerToken(iv.cache_read_price),
     input_multiplier: toNullableNumber(iv.input_multiplier),
     output_multiplier: toNullableNumber(iv.output_multiplier),
@@ -339,6 +376,8 @@ function validateIntervalPrices(iv: IntervalFormEntry, idx: number, t: Translate
     ['inputPrice', iv.input_price],
     ['outputPrice', iv.output_price],
     ['cacheWritePrice', iv.cache_write_price],
+    ['cacheWrite1hPrice', iv.cache_write_1h_price ?? null],
+    ['cacheWrite12hPrice', iv.cache_write_12h_price ?? null],
     ['cacheReadPrice', iv.cache_read_price],
     ['perRequestPrice', iv.per_request_price],
   ]

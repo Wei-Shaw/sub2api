@@ -172,6 +172,10 @@ func (m *mockAccountRepoForGemini) ClearAntigravityQuotaScopes(ctx context.Conte
 func (m *mockAccountRepoForGemini) ClearModelRateLimits(ctx context.Context, id int64) error {
 	return nil
 }
+
+func (m *mockAccountRepoForGemini) ClearModelRateLimit(ctx context.Context, id int64, scope string) error {
+	return nil
+}
 func (m *mockAccountRepoForGemini) UpdateSessionWindow(ctx context.Context, id int64, start, end *time.Time, status string) error {
 	return nil
 }
@@ -189,7 +193,7 @@ func (m *mockAccountRepoForGemini) IncrementQuotaUsed(ctx context.Context, id in
 	return nil
 }
 
-func (m *mockAccountRepoForGemini) ResetQuotaUsed(ctx context.Context, id int64) error {
+func (m *mockAccountRepoForGemini) ResetQuotaUsedAndClearRateLimitCooldown(ctx context.Context, id int64) error {
 	return nil
 }
 

@@ -41,6 +41,28 @@ func TestChatCompletionsToResponsesPreservesXSearchTool(t *testing.T) {
 	require.JSONEq(t, `{"type":"x_search"}`, string(resp.ToolChoice))
 }
 
+func TestChatCompletionsToResponsesPreservesSupportedBuiltInTools(t *testing.T) {
+	req := &ChatCompletionsRequest{
+		Model:    "claude-opus-4-6-thinking",
+		Messages: []ChatMessage{{Role: "user", Content: json.RawMessage(`"hello"`)}},
+		Tools: []ChatTool{
+			{Type: "function", Function: &ChatFunction{Name: "read_file", Parameters: json.RawMessage(`{"type":"object"}`)}},
+			{Type: "web_search"},
+			{Type: "code_execution"},
+			{Type: "unsupported_builtin"},
+			{Type: "function"},
+		},
+	}
+
+	resp, err := ChatCompletionsToResponses(req)
+	require.NoError(t, err)
+	require.Len(t, resp.Tools, 3)
+	require.Equal(t, "function", resp.Tools[0].Type)
+	require.Equal(t, "read_file", resp.Tools[0].Name)
+	require.Equal(t, "web_search", resp.Tools[1].Type)
+	require.Equal(t, "code_execution", resp.Tools[2].Type)
+}
+
 func TestResponsesToChatCompletionsPreservesXSearchTool(t *testing.T) {
 	enabled := true
 	req := &ResponsesRequest{

@@ -4,16 +4,52 @@ import {
   apiTimePricingToForm,
   createDefaultTimePricingForm,
   formIntervalsToAPI,
+  formReasoningEffortMultipliersToAPI,
   formTimePricingToAPI,
   isValidPositiveMultiplier,
   validateIntervals,
+  validateReasoningEffortMultipliers,
   validateTimePricing,
   type IntervalFormEntry,
   type TimePricingFormEntry,
   type TimePricingPeriodFormEntry,
 } from '../types'
 
+describe('reasoning effort multipliers', () => {
+  it('serializes independent overrides without altering their values', () => {
+    expect(formReasoningEffortMultipliersToAPI({ none: '0.5', high: 1, max: '3', low: '' }))
+      .toEqual({ none: 0.5, high: 1, max: 3 })
+  })
+
+  it.each([null, undefined, {}, { max: '' }])('clears empty overrides with null: %j', value => {
+    expect(formReasoningEffortMultipliersToAPI(value)).toBeNull()
+    expect(validateReasoningEffortMultipliers(value, t)).toBeNull()
+  })
+
+  it('accepts supported levels with positive finite multipliers, including discounts', () => {
+    expect(validateReasoningEffortMultipliers({
+      none: 0.01, minimal: 0.5, low: 1, medium: '1.2', high: 2, xhigh: 2.5, max: 3,
+    }, t)).toBeNull()
+  })
+
+  it.each([0, -1, Infinity, NaN, 'invalid', 'Infinity'])('rejects invalid multiplier %s', multiplier => {
+    expect(validateReasoningEffortMultipliers({ high: multiplier }, t)).toContain('reasoningEffortMultiplierPositive')
+  })
+
+  it('rejects unsupported effort keys', () => {
+    expect(validateReasoningEffortMultipliers({ unknown: 2 }, t)).toContain('reasoningEffortLevelInvalid')
+  })
+})
+
 describe('interval multiplier conversion', () => {
+  it('round-trips independent OpenAI TTL prices and explicit zero', () => {
+    const form = [makeInterval({ cache_write_price: 0, cache_write_12h_price: '1.625' })]
+    const serialized = formIntervalsToAPI(form)
+    expect(serialized[0]).toMatchObject({ cache_write_price: 0, cache_write_12h_price: 0.000001625 })
+    expect(apiIntervalsToForm(serialized)[0]).toMatchObject({ cache_write_price: 0, cache_write_12h_price: 1.625 })
+    expect(validateIntervals([makeInterval({ cache_write_12h_price: -1 })], 'token', t)).toContain('negativePrice')
+  })
+
   it('preserves component multipliers without MTok conversion', () => {
     const form = apiIntervalsToForm([{
       min_tokens: 272000,
@@ -146,15 +182,24 @@ describe('validateIntervals', () => {
 describe('time pricing', () => {
   it('uses a disabled Shanghai default', () => {
     const form = createDefaultTimePricingForm()
-    expect(form).toEqual({ timezone: 'Asia/Shanghai', periods: [] })
+    expect(form).toEqual({ timezone: 'Asia/Shanghai', periods: [], weekdays_only: false })
     expect(formTimePricingToAPI(form)).toBeNull()
   })
 
-  it('round-trips and formats multiplier', () => {
-    const form = apiTimePricingToForm({
+  it('defaults missing API day scope to every day', () => {
+    expect(apiTimePricingToForm({
       timezone: 'Asia/Shanghai',
       periods: [{ start_time: '09:00', end_time: '12:00', multiplier: 2 }],
+    }).weekdays_only).toBe(false)
+  })
+
+  it('round-trips day scope and formats multiplier', () => {
+    const form = apiTimePricingToForm({
+      timezone: 'Asia/Shanghai',
+      weekdays_only: true,
+      periods: [{ start_time: '09:00', end_time: '12:00', multiplier: 2 }],
     })
+    expect(form.weekdays_only).toBe(true)
     expect(form.periods[0]).toEqual({
       start_time: '09:00:00',
       end_time: '12:00:00',
@@ -162,6 +207,7 @@ describe('time pricing', () => {
     })
     expect(formTimePricingToAPI(form)).toEqual({
       timezone: 'Asia/Shanghai',
+      weekdays_only: true,
       periods: [{ start_time: '09:00:00', end_time: '12:00:00', multiplier: 2 }],
     })
   })

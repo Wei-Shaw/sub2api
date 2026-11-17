@@ -18,6 +18,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	"github.com/Wei-Shaw/sub2api/internal/payment"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/servertiming"
 )
 
 // ErrOrderNotFound is returned by HandlePaymentNotification when the webhook
@@ -54,6 +55,33 @@ func (s *PaymentService) HandlePaymentNotification(ctx context.Context, n *payme
 		return fmt.Errorf("lookup order failed for out_trade_no %s: %w", n.OrderID, err)
 	}
 	return s.confirmPayment(ctx, order.ID, n.TradeNo, n.Amount, pk, n.Metadata)
+}
+
+// ConfirmNotificationUpstream asks providers that implement
+// payment.NotificationConfirmer to confirm a verified success notification
+// against the upstream order, using the same instance that verified it.
+// Failures are recorded on the order's audit trail and returned so the webhook
+// answers non-success and the gateway retries.
+func (s *PaymentService) ConfirmNotificationUpstream(ctx context.Context, prov payment.Provider, n *payment.PaymentNotification) error {
+	confirmer, ok := prov.(payment.NotificationConfirmer)
+	if !ok || n == nil || n.Status != payment.NotificationStatusSuccess {
+		return nil
+	}
+	notifiedTradeNo := n.TradeNo
+	finishProviderCall := servertiming.ObserveDependency(ctx, "payment")
+	err := confirmer.ConfirmNotification(ctx, n)
+	finishProviderCall()
+	if err == nil {
+		return nil
+	}
+	if order, lookupErr := s.entClient.PaymentOrder.Query().Where(paymentorder.OutTradeNo(n.OrderID)).Only(ctx); lookupErr == nil {
+		s.writeAuditLog(ctx, order.ID, "PAYMENT_UPSTREAM_UNCONFIRMED", prov.ProviderKey(), map[string]any{
+			"detail":  err.Error(),
+			"tradeNo": notifiedTradeNo,
+			"amount":  n.Amount,
+		})
+	}
+	return err
 }
 
 func parseLegacyPaymentOrderID(orderID string, lookupErr error) (int64, bool) {
@@ -218,16 +246,47 @@ func (s *PaymentService) executeFulfillment(ctx context.Context, oid int64) erro
 	if err != nil {
 		return fmt.Errorf("get order: %w", err)
 	}
-	if o.OrderType == payment.OrderTypeSubscription {
+	switch o.OrderType {
+	case payment.OrderTypeSubscription:
 		return s.ExecuteSubscriptionFulfillment(ctx, oid)
+	case payment.OrderTypeBalance:
+		return s.ExecuteBalanceFulfillment(ctx, oid)
+	default:
+		// 不支持的订单类型不履约：标记 FAILED 后正常返回，避免支付回调持续 500 重试。
+		s.rejectUnsupportedOrderType(ctx, o)
+		return nil
 	}
-	return s.ExecuteBalanceFulfillment(ctx, oid)
+}
+
+func isSupportedPaymentOrderType(orderType string) bool {
+	return orderType == payment.OrderTypeBalance || orderType == payment.OrderTypeSubscription
+}
+
+func (s *PaymentService) rejectUnsupportedOrderType(ctx context.Context, o *dbent.PaymentOrder) {
+	reason := "unsupported order type: " + o.OrderType
+	c, err := s.entClient.PaymentOrder.Update().
+		Where(
+			paymentorder.IDEQ(o.ID),
+			paymentorder.StatusIn(OrderStatusPaid, OrderStatusRecharging),
+		).
+		SetStatus(OrderStatusFailed).SetFailedAt(time.Now()).SetFailedReason(reason).Save(ctx)
+	if err != nil {
+		slog.Error("mark unsupported order type FAILED", "orderID", o.ID, "error", err)
+		return
+	}
+	if c > 0 {
+		slog.Warn("payment order with unsupported order type not fulfilled", "orderID", o.ID, "orderType", o.OrderType)
+		s.writeAuditLog(ctx, o.ID, "FULFILLMENT_FAILED", "system", map[string]any{"reason": reason})
+	}
 }
 
 func (s *PaymentService) ExecuteBalanceFulfillment(ctx context.Context, oid int64) error {
 	o, err := s.entClient.PaymentOrder.Get(ctx, oid)
 	if err != nil {
 		return infraerrors.NotFound("NOT_FOUND", "order not found")
+	}
+	if o.OrderType != payment.OrderTypeBalance {
+		return infraerrors.BadRequest("INVALID_ORDER_TYPE", "order is not a balance order")
 	}
 	if o.Status == OrderStatusCompleted {
 		return nil
@@ -317,20 +376,62 @@ const (
 
 // resolveRedeemAction decides the idempotency action based on an existing redeem code lookup.
 // existing is the result of GetByCode; lookupErr is the error from that call.
-func resolveRedeemAction(existing *RedeemCode, lookupErr error) redeemAction {
-	if existing == nil || lookupErr != nil {
-		return redeemActionCreate
+func resolveRedeemAction(existing *RedeemCode, lookupErr error) (redeemAction, error) {
+	if lookupErr != nil {
+		if errors.Is(lookupErr, ErrRedeemCodeNotFound) {
+			return redeemActionCreate, nil
+		}
+		return redeemActionCreate, fmt.Errorf("lookup payment redeem code: %w", lookupErr)
+	}
+	if existing == nil {
+		return redeemActionCreate, nil
 	}
 	if existing.IsUsed() {
-		return redeemActionSkipCompleted
+		return redeemActionSkipCompleted, nil
 	}
-	return redeemActionRedeem
+	return redeemActionRedeem, nil
+}
+
+func validatePaymentRedeemCode(o *dbent.PaymentOrder, code *RedeemCode) error {
+	if o == nil || code == nil {
+		return errors.New("payment redeem code validation requires an order and code")
+	}
+	if code.Code != o.RechargeCode {
+		return fmt.Errorf("payment redeem code mismatch for order %d", o.ID)
+	}
+	if code.Type != RedeemTypeBalance {
+		return fmt.Errorf("payment redeem code type mismatch for order %d: got %s", o.ID, code.Type)
+	}
+	if math.IsNaN(code.Value) || math.IsInf(code.Value, 0) || math.Abs(code.Value-o.Amount) > 1e-8 {
+		return fmt.Errorf("payment redeem code amount mismatch for order %d: expected %.8f, got %.8f", o.ID, o.Amount, code.Value)
+	}
+	switch code.Status {
+	case StatusUnused:
+		if code.UsedBy != nil {
+			return fmt.Errorf("unused payment redeem code has a user for order %d", o.ID)
+		}
+	case StatusUsed:
+		if code.UsedBy == nil || *code.UsedBy != o.UserID {
+			return fmt.Errorf("payment redeem code user mismatch for order %d", o.ID)
+		}
+	default:
+		return fmt.Errorf("payment redeem code has invalid status for order %d: %s", o.ID, code.Status)
+	}
+	return nil
 }
 
 func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder, lease *paymentFulfillmentLease) error {
 	// Idempotency: check if redeem code already exists (from a previous partial run)
 	existing, lookupErr := s.redeemService.GetByCode(ctx, o.RechargeCode)
-	action := resolveRedeemAction(existing, lookupErr)
+	action, err := resolveRedeemAction(existing, lookupErr)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		if err := validatePaymentRedeemCode(o, existing); err != nil {
+			return err
+		}
+	}
 
 	switch action {
 	case redeemActionSkipCompleted:
@@ -347,7 +448,7 @@ func (s *PaymentService) doBalance(ctx context.Context, o *dbent.PaymentOrder, l
 	case redeemActionRedeem:
 		// Code exists but unused — skip creation, proceed to redeem
 	}
-	if _, err := s.redeemService.Redeem(ContextSkipRedeemAffiliate(ctx), o.UserID, o.RechargeCode); err != nil {
+	if _, err := s.redeemService.redeemForPaymentFulfillment(ctx, o.UserID, o.RechargeCode); err != nil {
 		return fmt.Errorf("redeem balance: %w", err)
 	}
 	if err := s.applyAffiliateRebateForOrder(ctx, o); err != nil {
@@ -699,7 +800,10 @@ func affiliateRebateBaseAmount(o *dbent.PaymentOrder) float64 {
 		return 0
 	}
 	switch o.OrderType {
-	case payment.OrderTypeBalance, payment.OrderTypeSubscription:
+	case payment.OrderTypeBalance:
+		// 返利只按实充部分计算，赠送额度不参与
+		return paymentOrderAmountWithoutBonus(o)
+	case payment.OrderTypeSubscription:
 		return o.Amount
 	default:
 		return 0
@@ -839,6 +943,9 @@ func (s *PaymentService) RetryFulfillment(ctx context.Context, oid int64) error 
 	}
 	if o.Status != OrderStatusFailed && o.Status != OrderStatusPaid && o.Status != OrderStatusRecharging {
 		return infraerrors.BadRequest("INVALID_STATUS", "only paid, failed, and recoverable recharging orders can retry")
+	}
+	if !isSupportedPaymentOrderType(o.OrderType) {
+		return infraerrors.BadRequest("INVALID_ORDER_TYPE", "unsupported order type")
 	}
 	s.writeAuditLog(ctx, oid, "RECHARGE_RETRY", "admin", map[string]any{"detail": "admin manual retry"})
 	return s.executeFulfillment(ctx, oid)

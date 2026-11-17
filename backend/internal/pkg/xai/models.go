@@ -84,6 +84,7 @@ func (o ModelMappingOptions) defaultText() string {
 
 var defaultModels = []Model{
 	// Text
+	{ID: "grok-4.7", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.7"},
 	{ID: "grok-4.6", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.6"},
 	{ID: "grok-4.5", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.5"},
 	{ID: "grok-4.3", Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok 4.3"},
@@ -106,6 +107,8 @@ var defaultModels = []Model{
 var grokTextResponsesModelAliases = map[string]string{
 	"grok":                         DefaultTextModel,
 	"grok-latest":                  DefaultTextModel,
+	"grok-4.7":                     "grok-4.7",
+	"grok-4.7-latest":              "grok-4.7",
 	"grok-4.6":                     "grok-4.6",
 	"grok-4.6-latest":              "grok-4.6",
 	"grok-4.5":                     "grok-4.5",
@@ -249,6 +252,30 @@ func IsGrokModelID(model string) bool {
 		return true
 	}
 	return false
+}
+
+// IsGrokImagineModel reports whether model is a Grok Imagine image or video
+// model. These media models cannot act as the primary Codex agent model.
+func IsGrokImagineModel(model string) bool {
+	normalized := strings.ToLower(StripGrokProviderPrefix(model))
+	if normalized == "" {
+		return false
+	}
+	if strings.HasPrefix(normalized, "imagine") {
+		return true
+	}
+	switch {
+	case normalized == "grok-imagine",
+		normalized == "grok-imagine-1",
+		normalized == "grok-imagine-edit",
+		normalized == "grok-video-1.5":
+		return true
+	case strings.HasPrefix(normalized, "grok-imagine-image"),
+		strings.HasPrefix(normalized, "grok-imagine-video"):
+		return true
+	default:
+		return false
+	}
 }
 
 // IsGrokTextResponsesModelID reports whether model is a known Grok text model

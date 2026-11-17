@@ -173,6 +173,30 @@ func TestQuotaFetcher_CodingPlanAccountUsesCNQuota(t *testing.T) {
 	require.Equal(t, 0, cnBalance.calls)
 }
 
+func TestQuotaFetcher_MiniMaxCodingPlanUsesCNQuota(t *testing.T) {
+	fetcher, usage, cnQuota, cnBalance, accounts := newQuotaFetcherTestSetup(t)
+	accounts.accounts[19] = &Account{
+		ID:          19,
+		Platform:    domain.PlatformMiniMax,
+		Credentials: map[string]any{"account_mode": AccountModeCoding},
+	}
+	cnQuota.result = &CNProviderQuotaProbeResult{
+		Success:         true,
+		CredentialValid: true,
+		Tiers: []CNQuotaTier{
+			{Window: "5h", UsedPercent: 12},
+		},
+	}
+
+	snapshot := fetcher.Fetch(context.Background(), 19)
+
+	require.True(t, snapshot.Success)
+	require.Equal(t, "cn_quota", snapshot.Source)
+	require.Equal(t, 1, cnQuota.calls)
+	require.Equal(t, 0, cnBalance.calls)
+	require.Equal(t, 0, usage.getCalls())
+}
+
 func TestQuotaFetcher_PayGAccountUsesCNBalance(t *testing.T) {
 	fetcher, _, _, cnBalance, accounts := newQuotaFetcherTestSetup(t)
 	accounts.accounts[11] = &Account{
@@ -324,6 +348,7 @@ func TestUsageFailureInfo_ClassificationMatrix(t *testing.T) {
 		{name: "error code rate limited", usage: &UsageInfo{ErrorCode: errorCodeRateLimited}, failed: true, msg: errorCodeRateLimited},
 		{name: "error code network error", usage: &UsageInfo{ErrorCode: errorCodeNetworkError}, failed: true, msg: errorCodeNetworkError},
 		{name: "grok quota unknown exempted", usage: &UsageInfo{ErrorCode: "quota_unknown", Error: "Grok quota is unknown until billing is probed"}},
+		{name: "openai quota refresh failed exempted", usage: &UsageInfo{ErrorCode: errorCodeQuotaRefreshFailed, Error: "Unable to refresh OpenAI quota"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -564,6 +589,48 @@ func TestQuotaFetcher_ConcurrentFetchesShareSingleFlight(t *testing.T) {
 	require.Equal(t, 1, usage.getCalls())
 }
 
+// 上面那条并发用例只能以极低概率撞上真正的缺陷窗口（实测约 300 次一次），
+// 所以这里直接钉住窗口本身。
+//
+// 窗口在 Fetch 顶部的 cachedSnapshot 与 flight.DoChan 之间：一个 goroutine 判定
+// 缓存未命中之后、真正入队之前，另一个 goroutine 的 flight 可能已经跑完、写好缓存
+// 并被摘掉 key，于是前者不会并入那次飞行，而是另起一次新的，对同一账号重复打上游。
+// fetchShared 就是 flight 的执行体，直接调用它等价于「已经越过顶层缓存判定、拿到了
+// 属于自己的那次飞行」这个状态。
+func TestQuotaFetcher_SharedFetchCacheRecheckAvoidsDuplicateUpstream(t *testing.T) {
+	fetcher, usage, _, _, accounts := newQuotaFetcherTestSetup(t)
+	accounts.accounts[13] = &Account{ID: 13, Platform: domain.PlatformOpenAI}
+	usage.usage = &UsageInfo{FiveHour: &UsageProgress{Utilization: 10}}
+
+	first := fetcher.Fetch(context.Background(), 13)
+	require.True(t, first.Success)
+	require.Equal(t, 1, usage.getCalls())
+
+	shared := fetcher.fetchShared(13)
+	require.Equal(t, 1, usage.getCalls(), "重查缓存后不得再打一次上游")
+	require.Same(t, first, shared, "应原样返回已缓存的快照")
+}
+
+// 重查不能变成无条件短路：缓存过期后同一个执行体必须照常回源，
+// 否则快照会永远停在第一次的值上。
+func TestQuotaFetcher_SharedFetchStillRefetchesAfterCacheExpiry(t *testing.T) {
+	fetcher, usage, _, _, accounts := newQuotaFetcherTestSetup(t)
+	accounts.accounts[14] = &Account{ID: 14, Platform: domain.PlatformOpenAI}
+	usage.usage = &UsageInfo{FiveHour: &UsageProgress{Utilization: 10}}
+
+	require.True(t, fetcher.Fetch(context.Background(), 14).Success)
+	require.Equal(t, 1, usage.getCalls())
+
+	fetcher.mu.Lock()
+	entry := fetcher.cache[14]
+	entry.expiry = time.Now().Add(-time.Second)
+	fetcher.cache[14] = entry
+	fetcher.mu.Unlock()
+
+	require.True(t, fetcher.fetchShared(14).Success)
+	require.Equal(t, 2, usage.getCalls(), "缓存过期后必须回源")
+}
+
 // --- UsageInfo → tiers 归一 ---
 
 func TestUsageQuotaTiers_MapsAllWindowKinds(t *testing.T) {
@@ -628,6 +695,9 @@ func TestUsageQuotaTiers_MapsAllWindowKinds(t *testing.T) {
 func TestUsageQuotaTiers_NilAndEmptyInputs(t *testing.T) {
 	require.Nil(t, usageQuotaTiers(nil))
 	require.Nil(t, usageQuotaTiers(&UsageInfo{}))
+	require.Nil(t, usageQuotaTiers(&UsageInfo{
+		FiveHour: &UsageProgress{UtilizationUnknown: true, WindowStats: &WindowStats{Requests: 2}},
+	}))
 
 	// Grok 窗口 limit<=0 时跳过，避免除零。
 	var zero int64
@@ -678,4 +748,39 @@ func TestDeriveQuotaCheckResult_StatusMatrix(t *testing.T) {
 
 	res = deriveQuotaCheckResult(nil, "quota", now)
 	require.Equal(t, MonitorStatusError, res.Status)
+}
+
+// OpenAI OAuth 额度刷新失败（探测被 10 分钟节流）不能让配额监控在 error 与
+// operational 间来回跳：失败只出现在真正发起探测的那一次读取上，节流窗口内的
+// 后续读取不带错误。刷新失败只说明额度数据可能陈旧，不代表账号不可用，
+// 监控须与 #8747 之前一致按缓存观测推导状态。
+func TestQuotaFetcher_OpenAIQuotaRefreshFailureDoesNotFlap(t *testing.T) {
+	observedAt := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
+	account := &Account{
+		ID:       77,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Status:   StatusActive,
+		// 只有 7d 窗口 → shouldRefreshOpenAICodexSnapshot 恒为 true；无 access token → 探测必失败。
+		Extra: map[string]any{
+			"codex_7d_used_percent":  95.0,
+			"codex_usage_updated_at": observedAt.Format(time.RFC3339),
+		},
+	}
+	fetcher := &ChannelMonitorQuotaFetcher{
+		usage:            &AccountUsageService{cache: NewUsageCache()},
+		accounts:         &stubMonitorAccountSource{accounts: map[int64]*Account{77: account}},
+		balanceThreshold: monitorBalanceThreshold(nil),
+		cache:            make(map[int64]monitorQuotaCacheEntry),
+	}
+
+	var statuses []string
+	for i := 0; i < 3; i++ {
+		snapshot := fetcher.fetchUncached(context.Background(), 77, time.Now())
+		res := deriveQuotaCheckResult(snapshot, "quota", time.Now())
+		statuses = append(statuses, res.Status)
+		require.True(t, snapshot.Success, "round %d: refresh failure must not be a failed snapshot: %s", i, snapshot.Error)
+		require.Len(t, snapshot.Tiers, 1, "round %d: cached 7d observation stays visible", i)
+	}
+	require.Equal(t, []string{MonitorStatusDegraded, MonitorStatusDegraded, MonitorStatusDegraded}, statuses)
 }

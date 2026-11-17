@@ -8,7 +8,7 @@
     <!-- Platform logo -->
     <PlatformIcon v-if="platform" :platform="platform" size="sm" />
     <!-- Group name -->
-    <span class="truncate">{{ name }}</span>
+    <span :class="truncate ? 'truncate' : 'min-w-0 whitespace-normal [overflow-wrap:anywhere]'">{{ name }}</span>
     <!-- Right side label -->
     <span v-if="showLabel" :class="labelClass">
       <template v-if="hasCustomRate">
@@ -45,6 +45,8 @@ interface Props {
   peakEnd?: string
   peakRateMultiplier?: number
   showRate?: boolean
+  /** Allow full group names to wrap in layouts that have room for multiple lines. */
+  truncate?: boolean
   daysRemaining?: number | null // 剩余天数（订阅类型时使用）
   /**
    * 订阅分组默认在右侧 label 展示"订阅"或剩余天数；
@@ -57,6 +59,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   subscriptionType: 'standard',
   showRate: true,
+  truncate: true,
   daysRemaining: null,
   userRateMultiplier: null,
   peakRateEnabled: false,
@@ -171,6 +174,9 @@ const labelClass = computed(() => {
   if (props.platform === 'deepseek') {
     return `${base} bg-teal-200/60 text-teal-800 dark:bg-teal-800/40 dark:text-teal-300`
   }
+  if (props.platform === 'minimax') {
+    return `${base} bg-rose-200/60 text-rose-800 dark:bg-rose-800/40 dark:text-rose-300`
+  }
   if (props.platform === 'composite') {
     return `${base} bg-cyan-200/70 text-cyan-900 dark:bg-cyan-900/50 dark:text-cyan-300`
   }
@@ -223,6 +229,11 @@ const badgeClass = computed(() => {
     return isSubscription.value
       ? 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400'
       : 'bg-teal-50 text-teal-700 dark:bg-teal-900/20 dark:text-teal-400'
+  }
+  if (props.platform === 'minimax') {
+    return isSubscription.value
+      ? 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400'
+      : 'bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400'
   }
   if (props.platform === 'composite') {
     return isSubscription.value

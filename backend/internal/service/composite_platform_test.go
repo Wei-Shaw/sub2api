@@ -8,6 +8,179 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type compositeOwnershipAccountRepo struct {
+	AccountRepository
+	accounts []Account
+}
+
+func (r *compositeOwnershipAccountRepo) ListModelAvailabilityCandidates(context.Context, *int64, []string, bool) ([]Account, error) {
+	return r.accounts, nil
+}
+
+// Scenario: 唯一平台的精确别名可路由
+func TestResolveCompositeModelOwnershipKeepsProviderAccountsIsolated(t *testing.T) {
+	groupID := int64(7)
+	repo := &compositeOwnershipAccountRepo{
+		accounts: []Account{
+			{
+				ID:       1,
+				Platform: PlatformOpenAI,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{"gpt-public": "gpt-5"},
+				},
+			},
+			{
+				ID:       2,
+				Platform: PlatformDeepseek,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{"reasoning-alias": "deepseek-v4-pro"},
+				},
+			},
+		},
+	}
+	svc := &GatewayService{accountRepo: repo}
+
+	deepSeekOwnership, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "reasoning-alias")
+	require.NoError(t, err)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformDeepseek, Matched: true}, deepSeekOwnership)
+
+	openAIOwnership, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "gpt-public")
+	require.NoError(t, err)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true}, openAIOwnership)
+}
+
+// Scenario: 通配符和空映射不声明所有权
+func TestResolveCompositeModelOwnershipRequiresNonEmptyExactMappings(t *testing.T) {
+	groupID := int64(7)
+	repo := &compositeOwnershipAccountRepo{
+		accounts: []Account{
+			{
+				ID:       1,
+				Platform: PlatformOpenAI,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{"*": "gpt-5", "gpt-*": "gpt-5", "empty-alias": ""},
+				},
+			},
+			{
+				ID:       2,
+				Platform: PlatformGrok,
+				Credentials: map[string]any{
+					"model_mapping": map[string]any{"grok-public": "grok-4"},
+				},
+			},
+		},
+	}
+	svc := &GatewayService{accountRepo: repo}
+
+	for _, model := range []string{"gpt-5", "empty-alias", "unknown-alias"} {
+		ownership, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, model)
+		require.NoError(t, err)
+		require.Equal(t, CompositeModelOwnership{}, ownership, "model=%s", model)
+	}
+
+	ownership, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "grok-public")
+	require.NoError(t, err)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformGrok, Matched: true}, ownership)
+}
+
+func TestResolveCompositeModelOwnershipAllowsSamePlatformAndRejectsCrossPlatformAliases(t *testing.T) {
+	groupID := int64(7)
+	repo := &compositeOwnershipAccountRepo{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformOpenAI, Credentials: map[string]any{"model_mapping": map[string]any{"shared-openai": "gpt-5", "ambiguous": "gpt-5"}}},
+			{ID: 2, Platform: PlatformOpenAI, Credentials: map[string]any{"model_mapping": map[string]any{"shared-openai": "gpt-5.1"}}},
+			{ID: 3, Platform: PlatformDeepseek, Credentials: map[string]any{"model_mapping": map[string]any{"ambiguous": "deepseek-v4-pro"}}},
+		},
+	}
+	svc := &GatewayService{accountRepo: repo}
+
+	samePlatform, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "shared-openai")
+	require.NoError(t, err)
+	require.Equal(t, CompositeModelOwnership{TargetPlatform: PlatformOpenAI, Matched: true}, samePlatform)
+
+	ambiguous, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "ambiguous")
+	require.NoError(t, err)
+	require.Equal(t, CompositeModelOwnership{Ambiguous: true}, ambiguous)
+}
+
+// Scenario: 只有 OpenAI 网关族的 OAuth 声明方会被标记（API Key 上游可能兼容多协议，
+// Anthropic / Antigravity 的 OAuth 在默认 Anthropic handler 中可正常转发）
+func TestResolveCompositeModelOwnershipFlagsOpenAIGatewayOAuthClaimants(t *testing.T) {
+	groupID := int64(7)
+	repo := &compositeOwnershipAccountRepo{
+		accounts: []Account{
+			{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Credentials: map[string]any{"model_mapping": map[string]any{"gpt-6-astra": "gpt-6-astra"}}},
+			{ID: 2, Platform: PlatformDeepseek, Type: AccountTypeAPIKey, Credentials: map[string]any{"model_mapping": map[string]any{"gpt-6-astra": "deepseek-v4-pro", "apikey-only": "deepseek-v4-pro"}}},
+			{ID: 3, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"model_mapping": map[string]any{"apikey-only": "gpt-5"}}},
+			// Antigravity 账号创建时会把默认映射（含 claude-*）写入 model_mapping。
+			{ID: 4, Platform: PlatformAntigravity, Type: AccountTypeOAuth, Credentials: map[string]any{"model_mapping": map[string]any{"claude-opus-4-8": "claude-opus-4-8"}}},
+			{ID: 5, Platform: PlatformAnthropic, Type: AccountTypeSetupToken, Credentials: map[string]any{"model_mapping": map[string]any{"claude-opus-4-8": "claude-opus-4-8"}}},
+		},
+	}
+	svc := &GatewayService{accountRepo: repo}
+
+	withOAuth, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "gpt-6-astra")
+	require.NoError(t, err)
+	require.Equal(t, CompositeModelOwnership{Ambiguous: true, OpenAIGatewayOAuthClaimed: true}, withOAuth)
+
+	apiKeyOnly, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "apikey-only")
+	require.NoError(t, err)
+	require.Equal(t, CompositeModelOwnership{Ambiguous: true}, apiKeyOnly)
+
+	anthropicFamily, err := svc.resolveCompositeModelOwnership(context.Background(), groupID, "claude-opus-4-8")
+	require.NoError(t, err)
+	require.Equal(t, CompositeModelOwnership{Ambiguous: true}, anthropicFamily)
+}
+
+func TestNewGatewayServiceWiresCompositeModelOwnershipResolver(t *testing.T) {
+	groupID := int64(7)
+	repo := &compositeOwnershipAccountRepo{
+		accounts: []Account{{
+			ID:          1,
+			Platform:    PlatformDeepseek,
+			Credentials: map[string]any{"model_mapping": map[string]any{"reasoning-alias": "deepseek-v4-pro"}},
+		}},
+	}
+	resolver := NewCompositeRouteResolver(nil)
+	svc := NewGatewayService(
+		repo,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+		resolver,
+		nil,
+		nil,
+	)
+	require.Same(t, resolver, svc.compositeResolver)
+
+	decision, err := resolver.Resolve(context.Background(), groupID, "reasoning-alias", CompositeRouteEndpointResponses)
+	require.NoError(t, err)
+	require.True(t, decision.Matched)
+	require.Equal(t, CompositeRouteSourceAccount, decision.Source)
+	require.Equal(t, PlatformDeepseek, decision.TargetPlatform)
+}
+
 func TestDetectModelPlatform(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -26,9 +199,20 @@ func TestDetectModelPlatform(t *testing.T) {
 		{name: "grok", model: "grok-4", platform: PlatformGrok, ok: true},
 		{name: "xai prefix", model: "xai/grok-4", platform: PlatformGrok, ok: true},
 		{name: "kimi", model: "kimi-k2-thinking", platform: PlatformKimi, ok: true},
+		{name: "kimi code bare k3", model: "K3", platform: PlatformKimi, ok: true},
+		{name: "kimi code bare k3 256k", model: "k3-256k", platform: PlatformKimi, ok: true},
+		{name: "kimi code provider prefix", model: "kimi-code/k3", platform: PlatformKimi, ok: true},
 		{name: "moonshot prefix", model: "moonshot/moonshot-v1-32k", platform: PlatformKimi, ok: true},
 		{name: "zhipu", model: "glm-5.2", platform: PlatformZhipu, ok: true},
 		{name: "deepseek", model: "deepseek-v4-pro", platform: PlatformDeepseek, ok: true},
+		{name: "minimax", model: "MiniMax-M3", platform: PlatformMiniMax, ok: true},
+		{name: "minimax prefix", model: "minimax/MiniMax-M2.5", platform: PlatformMiniMax, ok: true},
+		{name: "abab legacy", model: "abab6.5-chat", platform: PlatformMiniMax, ok: true},
+		{name: "abab7 legacy", model: "abab7-chat-preview", platform: PlatformMiniMax, ok: true},
+		{name: "jev", model: "jev-latest", platform: PlatformTypeSafe, ok: true},
+		{name: "typesafe prefix", model: "typesafe/jev-latest", platform: PlatformTypeSafe, ok: true},
+		{name: "abab unrelated namespace", model: "abab-other", ok: false},
+		{name: "unknown k3 alias", model: "k3-preview", ok: false},
 		{name: "unknown", model: "llama-4-maverick", ok: false},
 	}
 
@@ -63,13 +247,13 @@ func TestCompositeGroupSchedulerHasAllCanonicalPlatformBuckets(t *testing.T) {
 		platforms = append(platforms, platform)
 	}
 	require.ElementsMatch(t,
-		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek},
+		[]string{PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformTypeSafe, PlatformCommandCode, PlatformCline},
 		platforms,
 	)
 }
 
 func TestCompositeConcretePlatformsIncludeCNProviders(t *testing.T) {
-	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek} {
+	for _, platform := range []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformTypeSafe, PlatformCommandCode, PlatformCline} {
 		require.True(t, isConcreteRequestPlatform(platform))
 		require.True(t, canCopyAccountsFromGroupPlatform(PlatformComposite, platform))
 	}

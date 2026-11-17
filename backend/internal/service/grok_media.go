@@ -41,10 +41,13 @@ func (e GrokMediaEndpoint) RequiresRequestBody() bool {
 }
 
 func (e GrokMediaEndpoint) IsVideoLookupRequest() bool {
-	return e == GrokMediaEndpointVideoStatus || e == GrokMediaEndpointVideoContent
+	return e == GrokMediaEndpointVideoStatus || e == GrokMediaEndpointVideoContent || e == SeedanceEndpointStatus || e == SeedanceEndpointDelete
 }
 
 func (e GrokMediaEndpoint) IsGenerationRequest() bool {
+	if e == SeedanceEndpointCreate {
+		return true
+	}
 	switch e {
 	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits, GrokMediaEndpointVideosGenerations, GrokMediaEndpointVideosEdits, GrokMediaEndpointVideosExtensions:
 		return true
@@ -228,7 +231,9 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			_ = part.Close()
 			continue
 		}
-		data, err := io.ReadAll(io.LimitReader(part, openAIImageMaxUploadPartSize))
+		// The body is already bounded by the request body limit; truncating a part
+		// here would forward a corrupt image upstream.
+		data, err := io.ReadAll(part)
 		_ = part.Close()
 		if err != nil {
 			return
@@ -330,6 +335,42 @@ func (s *OpenAIGatewayService) ResolveGrokMediaVideoRequestAccount(
 		return 0, fmt.Errorf("grok video request binding is invalid")
 	}
 	return s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), cacheKey)
+}
+
+// SelectGrokMediaVideoRequestAccount only admits the already authenticated
+// task owner. Generic sticky fallback can query another account and overwrite
+// the ownership key; video lookups must neither escape nor refresh that key.
+func (s *OpenAIGatewayService) SelectGrokMediaVideoRequestAccount(
+	ctx context.Context, groupID *int64, sessionHash string, accountID int64, requestedModel string,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	return s.SelectMediaVideoRequestAccount(ctx, groupID, sessionHash, accountID, requestedModel, PlatformGrok)
+}
+
+func (s *OpenAIGatewayService) SelectMediaVideoRequestAccount(
+	ctx context.Context, groupID *int64, sessionHash string, accountID int64, requestedModel, platform string,
+) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	decision := OpenAIAccountScheduleDecision{Layer: openAIAccountScheduleLayerSessionSticky}
+	if accountID <= 0 || strings.TrimSpace(sessionHash) == "" {
+		return nil, decision, ErrNoAvailableAccounts
+	}
+	ctx = s.withOpenAIGroupPrivacyRequirement(WithOpenAIProfitControlSuppressed(ctx), groupID)
+	scheduler := &defaultOpenAIAccountScheduler{service: s}
+	selection, _, err := scheduler.selectBySessionHash(ctx, OpenAIAccountScheduleRequest{
+		GroupID: groupID, Platform: platform, SessionHash: sessionHash,
+		StickyAccountID: accountID, PreserveStickyBinding: true, DisableStickyEscape: true,
+		RequestedModel: requestedModel, RequiredTransport: OpenAIUpstreamTransportHTTPSSE,
+		RequirePrivacySet: s.openAIGroupRequiresPrivacySet(ctx, groupID),
+	})
+	if err != nil {
+		return nil, decision, err
+	}
+	if selection == nil || selection.Account == nil {
+		return nil, decision, ErrNoAvailableAccounts
+	}
+	decision.StickySessionHit = true
+	decision.SelectedAccountID = selection.Account.ID
+	decision.SelectedAccountType = selection.Account.Type
+	return selection, decision, nil
 }
 
 // GrokVideoPendingBilling is the create-time snapshot used when status polling
@@ -739,6 +780,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	}
 	return &OpenAIForwardResult{
 		RequestID:            requestIDHeader,
+		UpstreamHeaders:      resp.Header,
 		ResponseID:           usage.ResponseID,
 		Usage:                usage.Usage,
 		Model:                resultModel,
@@ -746,6 +788,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		UpstreamModel:        upstreamModel,
 		ResponseHeaders:      resp.Header.Clone(),
 		Duration:             time.Since(startTime),
+		ImageEndpoint:        usage.ImageCount > 0,
 		ImageCount:           usage.ImageCount,
 		ImageSize:            usage.ImageSize,
 		ImageInputSize:       usage.ImageInputSize,
@@ -873,6 +916,7 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 	// (same path as status polling). Pending snapshot is merged in the handler.
 	result := &OpenAIForwardResult{
 		RequestID:       contentRequestID,
+		UpstreamHeaders: contentResp.Header,
 		ResponseHeaders: contentResp.Header.Clone(),
 		Duration:        time.Since(startTime),
 	}
@@ -1222,7 +1266,7 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 	// Reconcile readiness before configurable passthrough branches can return;
 	// otherwise a Grok 429 can remain schedulable.
 	s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
-	upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(body)))
+	upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(grokUpstreamErrorMessage(body)))
 	if upstreamMsg == "" {
 		upstreamMsg = fmt.Sprintf("xAI upstream returned status %d", resp.StatusCode)
 	}
@@ -1239,6 +1283,8 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 	if isGrokContentPolicyRejection(resp.StatusCode, body) {
 		clientMsg := grokContentPolicyClientMessage(body)
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			ProxyID:            opsUpstreamProxyID(account),
+			ProxyName:          opsUpstreamProxyName(account),
 			Platform:           account.Platform,
 			AccountID:          account.ID,
 			AccountName:        account.Name,
@@ -1249,11 +1295,11 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 			Detail:             upstreamDetail,
 		})
 		MarkResponseCommitted(c)
-		writeGrokMediaErrorResponse(c, http.StatusForbidden, "invalid_request_error", clientMsg)
+		writeGrokMediaErrorResponse(c, http.StatusForbidden, "invalid_request_error", clientMsg, grokUpstreamErrorCode(body))
 		return nil, fmt.Errorf("grok content policy rejection: %s", clientMsg)
 	}
 
-	if status, errType, errMsg, matched := applyErrorPassthroughRule(
+	if status, errType, errMsg, matched := applyErrorPassthroughRuleWithMessage(
 		c,
 		account.Platform,
 		resp.StatusCode,
@@ -1261,14 +1307,17 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 		http.StatusBadGateway,
 		"upstream_error",
 		"Upstream request failed",
+		grokUpstreamErrorMessage,
 	); matched {
 		MarkResponseCommitted(c)
-		writeGrokMediaErrorResponse(c, status, errType, errMsg)
+		writeGrokMediaErrorResponse(c, status, errType, errMsg, "")
 		return nil, fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, upstreamMsg)
 	}
 
 	if !account.ShouldHandleErrorCode(resp.StatusCode) {
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			ProxyID:            opsUpstreamProxyID(account),
+			ProxyName:          opsUpstreamProxyName(account),
 			Platform:           account.Platform,
 			AccountID:          account.ID,
 			AccountName:        account.Name,
@@ -1279,7 +1328,7 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 			Detail:             upstreamDetail,
 		})
 		MarkResponseCommitted(c)
-		writeGrokMediaErrorResponse(c, http.StatusInternalServerError, "upstream_error", "Upstream gateway error")
+		writeGrokMediaErrorResponse(c, http.StatusInternalServerError, "upstream_error", "Upstream gateway error", "")
 		return nil, fmt.Errorf("upstream error: %d (not in custom error codes) message=%s", resp.StatusCode, upstreamMsg)
 	}
 
@@ -1288,6 +1337,8 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 		kind = "failover"
 	}
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		ProxyID:            opsUpstreamProxyID(account),
+		ProxyName:          opsUpstreamProxyName(account),
 		Platform:           account.Platform,
 		AccountID:          account.ID,
 		AccountName:        account.Name,
@@ -1312,7 +1363,7 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 	}
 
 	MarkResponseCommitted(c)
-	writeGrokMediaErrorResponse(c, resp.StatusCode, grokMediaErrorType(resp.StatusCode), upstreamMsg)
+	writeGrokMediaErrorResponse(c, resp.StatusCode, grokMediaErrorType(resp.StatusCode), upstreamMsg, grokUpstreamErrorCode(body))
 	return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 }
 
@@ -1329,16 +1380,18 @@ func grokMediaErrorType(statusCode int) string {
 	}
 }
 
-func writeGrokMediaErrorResponse(c *gin.Context, statusCode int, errType, message string) {
+func writeGrokMediaErrorResponse(c *gin.Context, statusCode int, errType, message, code string) {
 	if c == nil || c.Writer == nil || c.Writer.Written() {
 		return
 	}
-	c.JSON(statusCode, gin.H{
-		"error": gin.H{
-			"type":    strings.TrimSpace(errType),
-			"message": strings.TrimSpace(message),
-		},
-	})
+	payload := gin.H{
+		"type":    strings.TrimSpace(errType),
+		"message": sanitizeUpstreamErrorMessage(strings.TrimSpace(message)),
+	}
+	if code = sanitizeUpstreamErrorMessage(strings.TrimSpace(code)); code != "" {
+		payload["code"] = code
+	}
+	c.JSON(statusCode, gin.H{"error": payload})
 }
 
 func writeGrokMediaResponse(c *gin.Context, resp *http.Response, body []byte, filter *responseheaders.CompiledHeaderFilter) {

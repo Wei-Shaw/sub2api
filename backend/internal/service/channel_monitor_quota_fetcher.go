@@ -141,16 +141,7 @@ func (f *ChannelMonitorQuotaFetcher) Fetch(ctx context.Context, accountID int64)
 	// 避免某个监控的取消波及共享同一账号的其他监控。
 	key := "monitor-quota:" + strconv.FormatInt(accountID, 10)
 	ch := f.flight.DoChan(key, func() (any, error) {
-		fetchCtx, cancel := context.WithTimeout(context.Background(), monitorQuotaFetchTimeout)
-		defer cancel()
-		snapshot := f.fetchUncached(fetchCtx, accountID, time.Now())
-		// 失败也进短 TTL 负缓存：凭据失效/故障期间不必每次调度都打上游。
-		ttl := monitorQuotaFetchCacheTTL
-		if !snapshot.Success {
-			ttl = monitorQuotaErrorCacheTTL
-		}
-		f.storeSnapshot(accountID, snapshot, time.Now().Add(ttl))
-		return snapshot, nil
+		return f.fetchShared(accountID), nil
 	})
 	select {
 	case <-ctx.Done():
@@ -162,6 +153,33 @@ func (f *ChannelMonitorQuotaFetcher) Fetch(ctx context.Context, accountID int64)
 		}
 		return snapshot
 	}
+}
+
+// fetchShared 是 singleflight 的执行体：抓取一次并写入缓存，结果由同一 key 上
+// 所有等待者共享。
+//
+// 开头必须重查缓存。Fetch 顶部的 cachedSnapshot 与下面的 flight.DoChan 之间有一个
+// 窗口：期间另一个 goroutine 的 flight 可能已经跑完、写好缓存，并且它的 singleflight
+// key 也已被摘掉，于是本 goroutine 不会并入那次飞行，而是另起一个新的、对同一账号
+// 再打一次上游——正是 singleflight 要消除的那种重复查询。
+//
+// 这次重查一定命中，所以合并是确定的而不是尽力而为：storeSnapshot 发生在本函数
+// 返回之前，而 singleflight 删 key 发生在返回之后，因此「能新起一次飞行」必然蕴含
+// 「上一次的快照已经可见」。
+func (f *ChannelMonitorQuotaFetcher) fetchShared(accountID int64) *domain.MonitorQuotaSnapshot {
+	if cached, ok := f.cachedSnapshot(accountID, time.Now()); ok {
+		return cached
+	}
+	fetchCtx, cancel := context.WithTimeout(context.Background(), monitorQuotaFetchTimeout)
+	defer cancel()
+	snapshot := f.fetchUncached(fetchCtx, accountID, time.Now())
+	// 失败也进短 TTL 负缓存：凭据失效/故障期间不必每次调度都打上游。
+	ttl := monitorQuotaFetchCacheTTL
+	if !snapshot.Success {
+		ttl = monitorQuotaErrorCacheTTL
+	}
+	f.storeSnapshot(accountID, snapshot, time.Now().Add(ttl))
+	return snapshot
 }
 
 func (f *ChannelMonitorQuotaFetcher) cachedSnapshot(accountID int64, now time.Time) (*domain.MonitorQuotaSnapshot, bool) {
@@ -198,11 +216,13 @@ func (f *ChannelMonitorQuotaFetcher) fetchUncached(ctx context.Context, accountI
 	// （GetUsageForAccount / QueryUsageForAccount / QueryBalanceForAccount），
 	// 下游服务不再各自 GetByID（每次含 proxies/groups 联查）。
 	switch account.Platform {
-	case domain.PlatformKimi, domain.PlatformZhipu, domain.PlatformDeepseek:
+	case domain.PlatformKimi, domain.PlatformZhipu, domain.PlatformDeepseek, domain.PlatformMiniMax:
 		if account.IsCodingPlan() {
 			return f.fetchCNQuota(ctx, account, now)
 		}
 		return f.fetchCNBalance(ctx, account, now)
+	case domain.PlatformOpenCodeGo:
+		return f.fetchCNQuota(ctx, account, now)
 	default:
 		return f.fetchUsage(ctx, account, now)
 	}
@@ -289,7 +309,7 @@ func usageQuotaTiers(usage *UsageInfo) []domain.MonitorQuotaTier {
 }
 
 func appendProgressTier(tiers *[]domain.MonitorQuotaTier, window, label string, p *UsageProgress) {
-	if p == nil {
+	if p == nil || p.UtilizationUnknown {
 		return
 	}
 	tier := domain.MonitorQuotaTier{
@@ -464,11 +484,16 @@ func isCredentialErrorMessage(msg string) bool {
 //
 // grok 的 ErrorCode=quota_unknown 是「尚未观测到计费快照/限流头」的已知未知态，
 // 不是失败（严格按 ErrorCode 判会把健康 grok 账号永久判 error），显式豁免。
+//
+// OpenAI OAuth 的 quota_refresh_failed 同理豁免：它只说明本次主动刷新没拿到新额度、
+// 返回的是上次观测，账号本身未必不可用；且探测受 openAIProbeCacheTTL 节流，只有真正
+// 发起探测的那次读取会带该码，若判 error，监控会在 error/operational 间周期性跳动。
+// 状态按缓存观测（未知窗口已在 appendProgressTier 跳过）推导。
 func usageFailureInfo(usage *UsageInfo) (failed, credentialInvalid bool, msg string) {
 	if usage == nil {
 		return false, false, ""
 	}
-	if usage.ErrorCode == "quota_unknown" {
+	if usage.ErrorCode == "quota_unknown" || usage.ErrorCode == errorCodeQuotaRefreshFailed {
 		return false, false, ""
 	}
 	failed = usage.Error != "" || usage.NeedsReauth || usage.IsBanned ||

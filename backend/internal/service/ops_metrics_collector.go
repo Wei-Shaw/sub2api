@@ -601,24 +601,11 @@ func (c *OpsMetricsCollector) collectSystemStats(ctx context.Context) (*opsColle
 
 	sampleAt := time.Now().UTC()
 
-	// Prefer cgroup (container) metrics when available.
+	// CPU: prefer cgroup (container) metrics, falling back to host metrics when
+	// cgroup CPU accounting is unavailable.
 	if cpuPct := c.tryCgroupCPUPercent(sampleAt); cpuPct != nil {
 		out.cpuUsagePercent = cpuPct
 	}
-
-	cgroupUsed, cgroupTotal, cgroupOK := readCgroupMemoryBytes()
-	if cgroupOK {
-		usedMB := int64(cgroupUsed / bytesPerMB)
-		out.memoryUsedMB = &usedMB
-		if cgroupTotal > 0 {
-			totalMB := int64(cgroupTotal / bytesPerMB)
-			out.memoryTotalMB = &totalMB
-			pct := roundTo1DP(float64(cgroupUsed) / float64(cgroupTotal) * 100)
-			out.memoryUsagePercent = &pct
-		}
-	}
-
-	// Fallback to host metrics if cgroup metrics are unavailable (or incomplete).
 	if out.cpuUsagePercent == nil {
 		if cpuPercents, err := cpu.PercentWithContext(ctx, 0, false); err == nil && len(cpuPercents) > 0 {
 			v := roundTo1DP(cpuPercents[0])
@@ -626,30 +613,58 @@ func (c *OpsMetricsCollector) collectSystemStats(ctx context.Context) (*opsColle
 		}
 	}
 
-	// If total memory isn't available from cgroup (e.g. memory.max = "max"), fill total from host.
-	if out.memoryUsedMB == nil || out.memoryTotalMB == nil || out.memoryUsagePercent == nil {
-		if vm, err := mem.VirtualMemoryWithContext(ctx); err == nil && vm != nil {
-			if out.memoryUsedMB == nil {
-				usedMB := int64(vm.Used / bytesPerMB)
-				out.memoryUsedMB = &usedMB
-			}
-			if out.memoryTotalMB == nil {
-				totalMB := int64(vm.Total / bytesPerMB)
-				out.memoryTotalMB = &totalMB
-			}
-			if out.memoryUsagePercent == nil {
-				if out.memoryUsedMB != nil && out.memoryTotalMB != nil && *out.memoryTotalMB > 0 {
-					pct := roundTo1DP(float64(*out.memoryUsedMB) / float64(*out.memoryTotalMB) * 100)
-					out.memoryUsagePercent = &pct
-				} else {
-					pct := roundTo1DP(vm.UsedPercent)
-					out.memoryUsagePercent = &pct
-				}
-			}
+	// Memory: prefer cgroup (container) metrics, but only when the cgroup exposes
+	// BOTH a current usage and a concrete limit (memory.max != "max"). When the
+	// limit is missing or the cgroup data is otherwise incomplete, fall back
+	// ENTIRELY to host metrics. Never mix a container "used" with a host "total":
+	// doing so reports a misleadingly tiny percentage (e.g. 60MB / 23GB ~= 0.3%).
+	cgroupUsed, cgroupTotal, cgroupOK := readCgroupMemoryBytes()
+	var host *mem.VirtualMemoryStat
+	if !cgroupOK || cgroupTotal == 0 {
+		if vm, err := mem.VirtualMemoryWithContext(ctx); err == nil {
+			host = vm
 		}
 	}
+	out.memoryUsedMB, out.memoryTotalMB, out.memoryUsagePercent = resolveMemoryStats(cgroupUsed, cgroupTotal, cgroupOK, host)
 
 	return out, nil
+}
+
+// resolveMemoryStats picks a single, self-consistent (used, total, percent)
+// memory trio from either cgroup (container) or host metrics — never a mix of
+// the two.
+//
+// cgroup metrics are preferred, but only when the cgroup reports BOTH a current
+// usage and a concrete limit (i.e. memory.max is a number, not "max", so
+// cgroupTotal > 0). If the limit is absent or the cgroup data is otherwise
+// incomplete, all three values fall back to the host reading. This avoids the
+// classic pitfall of dividing a container "used" by a host "total", which
+// wildly understates memory usage (e.g. 60MB / 23GB ~= 0.3%).
+func resolveMemoryStats(cgroupUsed, cgroupTotal uint64, cgroupOK bool, host *mem.VirtualMemoryStat) (usedMB *int64, totalMB *int64, usagePercent *float64) {
+	if cgroupOK && cgroupTotal > 0 {
+		u := int64(cgroupUsed / bytesPerMB)
+		t := int64(cgroupTotal / bytesPerMB)
+		p := roundTo1DP(float64(cgroupUsed) / float64(cgroupTotal) * 100)
+		return &u, &t, &p
+	}
+
+	if host == nil {
+		return nil, nil, nil
+	}
+
+	u := int64(host.Used / bytesPerMB)
+	usedMB = &u
+	if host.Total > 0 {
+		t := int64(host.Total / bytesPerMB)
+		totalMB = &t
+		p := roundTo1DP(float64(host.Used) / float64(host.Total) * 100)
+		usagePercent = &p
+	} else {
+		// Degenerate: host reported no total. Preserve gopsutil's own percentage.
+		p := roundTo1DP(host.UsedPercent)
+		usagePercent = &p
+	}
+	return usedMB, totalMB, usagePercent
 }
 
 func (c *OpsMetricsCollector) tryCgroupCPUPercent(now time.Time) *float64 {

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import AccountUsageCell from '../AccountUsageCell.vue'
-import type { Account } from '@/types'
+import type { Account, AccountUsageInfo } from '@/types'
 
 const { getUsage } = vi.hoisted(() => ({
   getUsage: vi.fn()
@@ -54,6 +54,64 @@ function makeAccount(overrides: Partial<Account>): Account {
   }
 }
 
+function makeOllamaUsage(accountId: number, overrides: Partial<NonNullable<Account['ollama_cloud_usage']>> = {}) {
+  return {
+    account_id: accountId,
+    eligible: true,
+    configured: true,
+    auto_refresh_enabled: true,
+    encryption_key_configured: true,
+    snapshot: {
+      status: 'ok' as const,
+      last_attempt_at: '2026-07-23T00:00:00Z',
+      next_refresh_at: '2026-07-23T01:00:00Z',
+      data: {
+        five_hour: { used_percent: 12 },
+        seven_day: { used_percent: 34 }
+      }
+    },
+    ...overrides,
+  }
+}
+
+function makeOpenCodeGoUsage(accountId: number, overrides: Partial<NonNullable<Account['opencode_go_usage']>> = {}) {
+  return {
+    account_id: accountId,
+    eligible: true,
+    auto_refresh_enabled: true,
+    snapshot: {
+      status: 'ok' as const,
+      fetched_at: '2026-07-22T12:00:00Z',
+      last_attempt_at: '2026-07-22T12:00:00Z',
+      next_refresh_at: '2026-07-22T13:00:00Z',
+      data: {
+        rolling: { percent: 5.6, resets_at: '2026-07-23T03:00:00Z' },
+        weekly: { percent: 14.2, resets_at: '2026-07-29T00:00:00Z' },
+        monthly: { percent: 33.3, resets_at: '2026-08-01T00:00:00Z' }
+      }
+    },
+    ...overrides,
+  }
+}
+
+// CN 平台 Ollama Cloud / OpenCode Go 用例共用的子组件 stub：按 data-test 断言渲染与否
+const cnUsageCellStubs = {
+  OllamaCloudUsageCell: {
+    props: ['account'],
+    template: '<div data-test="embedded-ollama">ollama</div>'
+  },
+  OpenCodeGoUsageCell: {
+    props: ['account'],
+    template: '<div data-test="opencode-go-cell" />'
+  },
+  CNProviderQuotaCell: {
+    template: '<div data-test="cn-quota-cell" />'
+  },
+  CNProviderBalanceCell: {
+    template: '<div data-test="cn-balance-cell" />'
+  }
+}
+
 describe('AccountUsageCell', () => {
   beforeEach(() => {
     getUsage.mockReset()
@@ -70,6 +128,26 @@ describe('AccountUsageCell', () => {
         dispatchEvent: vi.fn(),
       }))
     })
+  })
+
+  it('keeps cached Claude quota visible while a replacement batch is loading', async () => {
+    const requestBatchedUsage = vi.fn()
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: 98101, platform: 'anthropic', type: 'oauth' }), requestBatchedUsage,
+        batchedUsage: { five_hour: { utilization: 21 } }, batchedUsageLoading: false },
+      global: { stubs: { UsageProgressBar: { props: ['utilization'], template: '<div data-test="quota">{{ utilization }}</div>' }, AccountQuotaInfo: true } }
+    })
+    await flushPromises()
+    const quota = wrapper.get('[data-test="quota"]').element
+    await wrapper.setProps({ batchedUsageLoading: true })
+    expect(wrapper.get('[data-test="quota"]').text()).toBe('21')
+    expect(wrapper.get('[data-test="quota"]').element).toBe(quota)
+    expect(wrapper.find('.animate-pulse').exists()).toBe(false)
+    expect(wrapper.attributes('aria-busy')).toBe('true')
+    await wrapper.setProps({ batchedUsage: { five_hour: { utilization: 44 } }, batchedUsageLoading: false })
+    expect(wrapper.get('[data-test="quota"]').text()).toBe('44')
+    expect(wrapper.get('[data-test="quota"]').element).toBe(quota)
+    wrapper.unmount()
   })
 
   it('renders eligible Ollama Cloud state and forwards query updates', async () => {
@@ -120,6 +198,235 @@ describe('AccountUsageCell', () => {
     expect(updatedAccount?.ollama_cloud_usage?.auto_refresh_enabled).toBe(false)
   })
 
+  it.each(['kimi', 'zhipu', 'deepseek', 'minimax'] as const)(
+    '%s apikey 账号 Ollama Cloud eligible 时渲染 Ollama 用量单元格并跳过 CN 子单元格',
+    async (platform) => {
+      const wrapper = mount(AccountUsageCell, {
+        props: {
+          account: makeAccount({
+            id: 9002,
+            platform,
+            type: 'apikey',
+            credentials: { account_mode: 'coding' },
+            ollama_cloud_usage: makeOllamaUsage(9002)
+          })
+        },
+        global: {
+          stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+        }
+      })
+
+      await flushPromises()
+
+      expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(true)
+      expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(false)
+      expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(false)
+      expect(wrapper.find('div[title="admin.accounts.cnProviders.noBalanceEndpoint"]').exists()).toBe(false)
+      expect(getUsage).not.toHaveBeenCalled()
+    }
+  )
+
+  it('CN 平台 Ollama Cloud eligible 账号的用量更新经 account-updated 透传', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9003,
+          platform: 'kimi',
+          type: 'apikey',
+          credentials: { account_mode: 'coding' },
+          ollama_cloud_usage: makeOllamaUsage(9003)
+        })
+      },
+      global: {
+        stubs: {
+          ...cnUsageCellStubs,
+          OllamaCloudUsageCell: {
+            props: ['account'],
+            emits: ['updated'],
+            template: '<button data-test="embedded-ollama" @click="$emit(\'updated\', { ...account.ollama_cloud_usage, auto_refresh_enabled: false })" />'
+          },
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await wrapper.get('[data-test="embedded-ollama"]').trigger('click')
+
+    const updatedAccount = wrapper.emitted<Account[]>('account-updated')?.[0]?.[0]
+    expect(updatedAccount?.id).toBe(9003)
+    expect(updatedAccount?.ollama_cloud_usage?.auto_refresh_enabled).toBe(false)
+  })
+
+  it.each([
+    { name: '无 ollama_cloud_usage', usage: undefined },
+    { name: 'eligible=false', usage: makeOllamaUsage(9004, { eligible: false }) }
+  ])('普通 kimi apikey 账号（$name）仍渲染 CN 子单元格', async ({ usage }) => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9004,
+          platform: 'kimi',
+          type: 'apikey',
+          credentials: { account_mode: 'coding' },
+          ollama_cloud_usage: usage
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(false)
+  })
+
+  it.each(['opencode_go', 'kimi', 'zhipu', 'deepseek', 'minimax'] as const)(
+    '%s 平台 OpenCode Go eligible 时只渲染 OpenCode 用量单元格并跳过 CN 子单元格',
+    async (platform) => {
+      const wrapper = mount(AccountUsageCell, {
+        props: {
+          account: makeAccount({
+            id: 9100,
+            platform,
+            type: 'apikey',
+            credentials: { account_mode: platform === 'opencode_go' ? 'go' : 'coding' },
+            opencode_go_usage: makeOpenCodeGoUsage(9100)
+          })
+        },
+        global: {
+          stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+        }
+      })
+
+      await flushPromises()
+
+      // 同一账号只渲染一次 OpenCode 用量单元格
+      expect(wrapper.findAll('[data-test="opencode-go-cell"]')).toHaveLength(1)
+      expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(false)
+      expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(false)
+      expect(wrapper.find('[data-test="embedded-ollama"]').exists()).toBe(false)
+      expect(wrapper.find('div[title="admin.accounts.cnProviders.noBalanceEndpoint"]').exists()).toBe(false)
+      expect(getUsage).not.toHaveBeenCalled()
+    }
+  )
+
+  it.each([
+    { name: 'opencode_go（go 模式）', platform: 'opencode_go' as const, mode: 'go' },
+    { name: 'kimi（coding 模式）', platform: 'kimi' as const, mode: 'coding' }
+  ])('OpenCode Go 不合格时（$name）仍渲染 CN 子单元格', async ({ platform, mode }) => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9101,
+          platform,
+          type: 'apikey',
+          credentials: { account_mode: mode },
+          opencode_go_usage: makeOpenCodeGoUsage(9101, { eligible: false })
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(true)
+    expect(wrapper.findAll('[data-test="opencode-go-cell"]')).toHaveLength(0)
+  })
+
+  it('openai apikey 挂载 OpenCode Go 时在非 CN 分支渲染一次且不渲染占位符', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9102,
+          platform: 'openai',
+          type: 'apikey',
+          opencode_go_usage: makeOpenCodeGoUsage(9102)
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.findAll('[data-test="opencode-go-cell"]')).toHaveLength(1)
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(false)
+    // 用量单元格已渲染时不再叠加 `-` 占位符
+    expect(wrapper.text()).not.toContain('-')
+  })
+
+  it('Command Code 账号渲染额度与积分余额单元格', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9103,
+          platform: 'command_code',
+          type: 'apikey',
+          credentials: { api_key: 'user_test_key', account_mode: 'payg' }
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(true)
+    expect(wrapper.text()).not.toContain('-')
+  })
+
+  it('自定义中转的 Command Code 账号没有可查的用量接口，显示占位符', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9105,
+          platform: 'command_code',
+          type: 'apikey',
+          credentials: { api_key: 'user_test_key', account_mode: 'payg', base_url: 'https://relay.example.com/v1' }
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('div[title="admin.accounts.cnProviders.noBalanceEndpoint"]').exists()).toBe(true)
+  })
+
+  it('Cline 账号渲染 ClinePass 窗口与积分余额单元格', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 9104,
+          platform: 'cline',
+          type: 'apikey',
+          credentials: { api_key: 'sk-cline' }
+        })
+      },
+      global: {
+        stubs: { ...cnUsageCellStubs, UsageProgressBar: true, AccountQuotaInfo: true }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(true)
+    // 子单元格可见时不显示 `-` 占位符（按量账号与订阅账号用同一套单元格）。
+    expect(wrapper.text()).not.toContain('-')
+  })
+
   it('Antigravity 图片用量会聚合新旧 image 模型', async () => {
     getUsage.mockResolvedValue({
       antigravity_quota: {
@@ -163,6 +470,107 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('admin.accounts.usageWindow.gemini3Image|70|2026-03-01T09:00:00Z')
   })
 
+  it('Antigravity shows the 5-hour and weekly window of each quota group when the summary is present', async () => {
+    getUsage.mockResolvedValue({
+      antigravity_quota: {
+        'gemini-3-flash': { utilization: 99, reset_time: '2026-11-11T15:52:48Z' }
+      },
+      antigravity_quota_groups: [
+        {
+          key: 'gemini',
+          name: 'Gemini Models',
+          windows: [
+            { window: '5h', utilization: 60, resets_at: '2026-11-04T20:52:48Z' },
+            { window: 'weekly', utilization: 25, resets_at: '2026-11-11T15:52:48Z' }
+          ]
+        },
+        {
+          key: '3p',
+          name: 'Claude and GPT models',
+          windows: [
+            { window: '5h', utilization: 0, resets_at: null },
+            { window: 'weekly', utilization: 10, resets_at: '2026-11-11T15:52:48Z' }
+          ]
+        },
+        {
+          key: 'gemini-argon-wtu',
+          name: 'Gemini 4 Argon',
+          windows: [{ window: 'weekly', utilization: 20, resets_at: '2026-11-11T17:11:15Z' }]
+        }
+      ]
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 1003, platform: 'antigravity', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'color'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ resetsAt }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const bars = wrapper.findAll('.usage-bar').map((bar) => bar.text())
+    expect(bars).toEqual([
+      'admin.accounts.usageWindow.antigravityGemini5h|60|2026-11-04T20:52:48Z',
+      'admin.accounts.usageWindow.antigravityGeminiWeekly|25|2026-11-11T15:52:48Z',
+      'admin.accounts.usageWindow.antigravityOther5h|0|',
+      'admin.accounts.usageWindow.antigravityOtherWeekly|10|2026-11-11T15:52:48Z',
+      // Pro plans' separate Argon quota is its own row, not a second Claude/GPT week.
+      'admin.accounts.usageWindow.antigravityArgonWeekly|20|2026-11-11T17:11:15Z'
+    ])
+    // The per-model figure (one tighter window per model) is not shown next to the real windows.
+    expect(wrapper.text()).not.toContain('gemini3Flash')
+  })
+
+  it('Antigravity query button refreshes past the server cache', async () => {
+    const first = {
+      antigravity_quota_groups: [
+        { key: '3p', name: 'Claude and GPT models', windows: [{ window: 'weekly', utilization: 100, resets_at: '2026-11-12T03:39:37Z' }] }
+      ]
+    }
+    const upgraded = {
+      antigravity_quota_groups: [
+        { key: '3p', name: 'Claude and GPT models', windows: [{ window: 'weekly', utilization: 0, resets_at: '2026-11-14T21:22:49Z' }] }
+      ]
+    }
+    getUsage.mockResolvedValueOnce(first).mockResolvedValueOnce(upgraded)
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 1006, platform: 'antigravity', type: 'oauth', extra: {} })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'utilization', 'resetsAt', 'color'],
+            template: '<div class="usage-bar">{{ label }}|{{ utilization }}|{{ resetsAt }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+    await flushPromises()
+    expect(wrapper.find('.usage-bar').text()).toContain('|100|')
+
+    const button = wrapper.find('[data-testid="antigravity-active-query"]')
+    expect(button.exists()).toBe(true)
+    expect(button.text()).toContain('admin.accounts.usageWindow.activeQuery')
+    await button.trigger('click')
+    await flushPromises()
+
+    // An active query that bypasses the cache (an upgrade or reset shows at once).
+    expect(getUsage).toHaveBeenLastCalledWith(1006, 'active', true)
+    expect(wrapper.find('.usage-bar').text()).toContain('|0|2026-11-14T21:22:49Z')
+  })
+
   it('Antigravity 会显示 AI Credits 余额信息', async () => {
     getUsage.mockResolvedValue({
       ai_credits: [
@@ -197,6 +605,108 @@ describe('AccountUsageCell', () => {
     expect(wrapper.text()).toContain('25')
   })
 
+
+  describe('OpenAI quota freshness', () => {
+    const observedAt = '2026-11-11T03:33:55Z'
+    const snapshot = (): AccountUsageInfo => ({
+      source: 'passive',
+      updated_at: observedAt,
+      five_hour: null,
+      seven_day: { utilization: 100, resets_at: null, remaining_seconds: 0 },
+      seven_day_sonnet: null
+    })
+    const stubs = {
+      UsageProgressBar: {
+        props: ['label', 'utilization'],
+        template: '<div class="usage-bar">{{ label }}|{{ utilization }}</div>'
+      },
+      OpenAIQuotaResetCell: { template: '<div><slot name="pre-actions" /></div>' }
+    }
+
+    it('marks a degraded HTTP 200 response as failed without hiding the last observation', async () => {
+      getUsage.mockResolvedValue({
+        ...snapshot(),
+        error_code: 'quota_refresh_failed',
+        error: 'Could not refresh quota'
+      })
+      const wrapper = mount(AccountUsageCell, {
+        props: { account: makeAccount({ id: 8101, platform: 'openai', type: 'oauth' }) },
+        global: { stubs }
+      })
+      await flushPromises()
+      expect(wrapper.get('[role="alert"]').text()).toContain('quotaRefreshFailedCached')
+      expect(wrapper.text()).toContain('7d|100')
+      expect(wrapper.get('time').attributes('datetime')).toBe(observedAt)
+      wrapper.unmount()
+    })
+
+    it('shows a failed manual refresh and clears the warning only after a successful retry', async () => {
+      getUsage.mockResolvedValueOnce(snapshot()).mockRejectedValueOnce(new Error('401'))
+      const wrapper = mount(AccountUsageCell, {
+        props: { account: makeAccount({ id: 8102, platform: 'openai', type: 'oauth' }) },
+        global: { stubs }
+      })
+      await flushPromises()
+      await wrapper.get('button').trigger('click')
+      await flushPromises()
+      expect(getUsage).toHaveBeenLastCalledWith(8102, 'active', true)
+      expect(wrapper.get('[role="alert"]').text()).toContain('quotaRefreshFailedCached')
+      expect(wrapper.text()).toContain('7d|100')
+      expect(wrapper.get('time').attributes('datetime')).toBe(observedAt)
+
+      const refreshedAt = '2026-11-12T15:08:56Z'
+      getUsage.mockResolvedValueOnce({
+        ...snapshot(), source: 'active', updated_at: refreshedAt,
+        seven_day: { utilization: 0, resets_at: null, remaining_seconds: 0 }
+      })
+      await wrapper.get('button').trigger('click')
+      await flushPromises()
+      expect(wrapper.find('[role="alert"]').exists()).toBe(false)
+      expect(wrapper.text()).toContain('7d|0')
+      expect(wrapper.get('time').attributes('datetime')).toBe(refreshedAt)
+      wrapper.unmount()
+    })
+
+    it('shows batch refresh failure alongside the retained snapshot', async () => {
+      const wrapper = mount(AccountUsageCell, {
+        props: {
+          account: makeAccount({ id: 8103, platform: 'openai', type: 'oauth' }),
+          batchedUsage: snapshot(), batchedUsageError: 'Failed', requestBatchedUsage: vi.fn()
+        },
+        global: { stubs }
+      })
+      await flushPromises()
+      expect(wrapper.get('[role="alert"]').text()).toContain('quotaRefreshFailedCached')
+      expect(wrapper.get('time').attributes('datetime')).toBe(observedAt)
+      wrapper.unmount()
+    })
+
+    it('shows local usage with an unknown percentage when no quota has been fetched', async () => {
+      getUsage.mockResolvedValue({
+        ...snapshot(), updated_at: null,
+        seven_day: {
+          utilization: 0,
+          utilization_unknown: true,
+          resets_at: null,
+          remaining_seconds: 0,
+          window_stats: { requests: 2, tokens: 100, cost: 0, standard_cost: 0, user_cost: 0 }
+        },
+        error_code: 'quota_refresh_failed', error: 'Could not refresh quota'
+      })
+      const wrapper = mount(AccountUsageCell, {
+        props: { account: makeAccount({ id: 8104, platform: 'openai', type: 'oauth' }) },
+        global: { stubs: { OpenAIQuotaResetCell: stubs.OpenAIQuotaResetCell } }
+      })
+      await flushPromises()
+      expect(wrapper.get('[role="alert"]').text()).toContain('quotaRefreshFailedUnknown')
+      expect(wrapper.find('time').exists()).toBe(false)
+      expect(wrapper.text()).toContain('2 req')
+      expect(wrapper.text()).toContain('—')
+      expect(wrapper.text()).not.toContain('0%')
+      expect(wrapper.text()).not.toContain('usage.resetNow')
+      wrapper.unmount()
+    })
+  })
 
   it('OpenAI OAuth 快照已过期时首屏会重新请求 usage', async () => {
     getUsage.mockResolvedValue({
@@ -319,6 +829,84 @@ describe('AccountUsageCell', () => {
     // 单一数据源：始终使用 /usage API 返回值，忽略 codex 快照
     expect(wrapper.text()).toContain('5h|18|900')
     expect(wrapper.text()).toContain('7d|36|900')
+  })
+
+  it('仅为 OpenAI OAuth 7d 窗口计算预计总费用', async () => {
+    getUsage.mockResolvedValue({
+      five_hour: {
+        utilization: 25,
+        resets_at: null,
+        remaining_seconds: 0,
+        window_stats: { requests: 1, tokens: 100, cost: 2 }
+      },
+      seven_day: {
+        utilization: 40,
+        resets_at: null,
+        remaining_seconds: 0,
+        window_stats: { requests: 2, tokens: 200, cost: 12 }
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 6752, platform: 'openai', type: 'oauth' })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'estimatedTotalCost'],
+            template: '<div class="usage-bar">{{ label }}|{{ estimatedTotalCost ?? "none" }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('5h|none')
+    expect(wrapper.text()).toContain('7d|30')
+  })
+
+  it.each([
+    { id: 6801, utilization: 0, cost: 12 },
+    { id: 6802, utilization: -1, cost: 12 },
+    { id: 6803, utilization: Number.NaN, cost: 12 },
+    { id: 6804, utilization: 40, cost: 0 },
+    { id: 6805, utilization: 40, cost: Number.POSITIVE_INFINITY }
+  ])('OpenAI OAuth 7d 输入无效时不显示预计总费用 (%o)', async ({ id, utilization, cost }) => {
+    getUsage.mockResolvedValue({
+      seven_day: {
+        utilization,
+        resets_at: null,
+        remaining_seconds: 0,
+        window_stats: { requests: 1, tokens: 100, cost }
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id,
+          platform: 'openai',
+          type: 'oauth'
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: ['label', 'estimatedTotalCost'],
+            template: '<div class="usage-bar">{{ label }}|{{ estimatedTotalCost ?? "none" }}</div>'
+          },
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('7d|none')
+    expect(wrapper.text()).not.toMatch(/Infinity|NaN/)
   })
 
   it('OpenAI OAuth 有现成快照时，手动刷新信号会触发 usage 重拉', async () => {
@@ -519,7 +1107,7 @@ describe('AccountUsageCell', () => {
 	expect(wrapper.text()).toContain('5h|0|200')
   })
 
-  it('OpenAI 重置响应更新账号行时不会额外拉取 usage', async () => {
+  it('OpenAI 重置响应更新账号行后重新拉取 usage', async () => {
     getUsage.mockResolvedValue({
       five_hour: {
         utilization: 0,
@@ -560,7 +1148,7 @@ describe('AccountUsageCell', () => {
     await wrapper.setProps({ account: updatedAccount as Account })
     await flushPromises()
 
-    expect(getUsage).toHaveBeenCalledTimes(1)
+    expect(getUsage).toHaveBeenCalledTimes(2)
   })
 
   it('OpenAI OAuth 已限额时显示 /usage API 返回的限额数据', async () => {
@@ -1344,6 +1932,166 @@ describe('AccountUsageCell', () => {
 		expect(wrapper.text()).toContain('0')
 		expect(wrapper.text()).toContain('A $0.00')
 		expect(wrapper.text()).toContain('U $0.00')
+		expect(wrapper.text()).toContain('vertex')
+		expect(wrapper.text()).not.toContain('admin.accounts.gemini.quotaPolicy.title')
+		expect(wrapper.text()).not.toContain('admin.accounts.gemini.rateLimit.unlimited')
+		expect(getUsage).not.toHaveBeenCalled()
+  })
+
+  it('Vertex 账号不设上限时不显示配额进度条', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 4011,
+          platform: 'gemini',
+          type: 'service_account',
+          credentials: { tier_id: 'vertex', project_id: 'vertex-proj', location: 'global' },
+          extra: {}
+        }),
+        todayStats: {
+          requests: 3,
+          tokens: 1200,
+          cost: 0.42,
+          standard_cost: 0.42,
+          user_cost: 0.5
+        }
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('A $0.42')
+    expect(wrapper.findAll('usage-progress-bar-stub')).toHaveLength(0)
+    expect(getUsage).not.toHaveBeenCalled()
+  })
+
+  it('Vertex 账号设置了配额上限时显示配额进度条', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 4012,
+          platform: 'gemini',
+          type: 'service_account',
+          credentials: { tier_id: 'vertex', project_id: 'vertex-proj', location: 'global' },
+          extra: { quota_daily_start: new Date().toISOString() },
+          quota_used: 123.456,
+          quota_limit: 500,
+          quota_daily_limit: 50,
+          quota_daily_used: 12.5
+        }),
+        todayStats: null,
+        todayStatsLoading: false
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const bars = wrapper.findAll('usage-progress-bar-stub')
+    expect(bars.map((bar) => bar.attributes('label'))).toEqual(['1d', 'total'])
+    expect(getUsage).not.toHaveBeenCalled()
+  })
+
+  it('Gemini 第三方上游 API Key 按普通 Key 账号展示今日统计与额度，不显示 Gemini 徽章', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 4002,
+          platform: 'gemini',
+          type: 'apikey',
+          credentials: {
+            base_url: 'https://relay.example.com/gemini',
+            api_key: 'sk-relay',
+            tier_id: 'aistudio_free'
+          },
+          extra: {},
+          quota_daily_limit: 10,
+          quota_daily_used: 2.5
+        }),
+        todayStats: {
+          requests: 123,
+          tokens: 2300000,
+          cost: 1.79,
+          standard_cost: 1.79,
+          user_cost: 0
+        }
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).not.toContain('api key')
+    expect(text).not.toContain('ai studio')
+    expect(text).not.toContain('free')
+    expect(text).not.toContain('relay.example.com')
+    expect(wrapper.find('account-quota-info-stub').exists()).toBe(false)
+    expect(text).toContain('123 req')
+    expect(text).toContain('A $1.79')
+    expect(text).toContain('U $0.00')
+    const bars = wrapper.findAll('usage-progress-bar-stub')
+    expect(bars.map((bar) => bar.attributes('label'))).toEqual(['1d'])
+    expect(text).not.toContain('admin.accounts.gemini.quotaPolicy.title')
+    expect(text).not.toContain('admin.accounts.gemini.quotaPolicy.simulatedNote')
+    expect(text).not.toContain('admin.accounts.gemini.rateLimit.unlimited')
+    expect(getUsage).not.toHaveBeenCalled()
+  })
+
+  it('Gemini 官方 API Key 保留 AI Studio 等级与模拟配额', async () => {
+    getUsage.mockResolvedValue({
+      gemini_pro_daily: {
+        utilization: 20,
+        resets_at: '2026-10-11T07:00:00Z',
+        remaining_seconds: 3600
+      }
+    })
+
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 4003,
+          platform: 'gemini',
+          type: 'apikey',
+          credentials: {
+            base_url: 'https://generativelanguage.googleapis.com',
+            api_key: 'AIza-official',
+            tier_id: 'aistudio_paid'
+          },
+          extra: {}
+        })
+      },
+      global: {
+        stubs: {
+          UsageProgressBar: true,
+          AccountQuotaInfo: true
+        }
+      }
+    })
+
+    await flushPromises()
+
+    const text = wrapper.text()
+    expect(text).toContain('ai studio paid')
+    expect(text).toContain('admin.accounts.gemini.quotaPolicy.title')
+    expect(text).toContain('admin.accounts.gemini.quotaPolicy.simulatedNote')
+    expect(getUsage).toHaveBeenCalledWith(4003)
   })
 
   it('Anthropic OAuth 会渲染 7d F (Fable) 进度条，且 7d S 逻辑保留', async () => {

@@ -15,12 +15,15 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/cespare/xxhash/v2"
@@ -71,8 +74,9 @@ const (
 )
 
 const (
-	cacheTTLTarget5m = "5m"
-	cacheTTLTarget1h = "1h"
+	cacheTTLTarget5m                   = "5m"
+	cacheTTLTarget1h                   = "1h"
+	compositeModelOwnershipCachePrefix = "composite-owner|"
 )
 
 // ForceCacheBillingContextKey 强制缓存计费上下文键
@@ -192,8 +196,8 @@ func openAIStreamEventIsTerminalWithType(data, eventType string) bool {
 }
 
 func openAIStreamEventTypeIsTerminal(eventType string) bool {
-	switch eventType {
-	case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled":
+	switch strings.TrimSpace(eventType) {
+	case "response.completed", "response.done", "response.failed", "response.incomplete", "response.cancelled", "response.canceled", "error":
 		return true
 	default:
 		return false
@@ -300,17 +304,20 @@ func extractSystemPreviewFromBody(body []byte) string {
 
 	switch {
 	case sys.IsArray():
-		for _, item := range sys.Array() {
+		var preview string
+		sys.ForEach(func(_, item gjson.Result) bool {
 			if !item.IsObject() {
-				continue
+				return true
 			}
 			if strings.EqualFold(item.Get("type").String(), "text") {
 				if t := item.Get("text").String(); strings.TrimSpace(t) != "" {
-					return t
+					preview = t
+					return false
 				}
 			}
-		}
-		return ""
+			return true
+		})
+		return preview
 	case sys.Type == gjson.String:
 		return sys.String()
 	default:
@@ -347,7 +354,7 @@ func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account,
 
 	h := make([]string, 0, len(interesting))
 	for _, k := range interesting {
-		if v := req.Header.Get(k); v != "" {
+		if v := getHeaderRaw(req.Header, k); v != "" {
 			h = append(h, fmt.Sprintf("%s=%q", k, safeHeaderValueForLog(k, v)))
 		}
 	}
@@ -382,6 +389,64 @@ func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account,
 	)
 }
 
+// claudeMimicDebugLine defers building the diagnostics line until an error
+// path actually needs it. The line is read only on Claude Code credential-scope
+// errors, so building it eagerly cost every OAuth request a header walk, a
+// system-prompt scan and several fmt.Sprintf calls for nothing.
+type claudeMimicDebugLine struct {
+	once            sync.Once
+	req             *http.Request
+	body            []byte
+	account         *Account
+	tokenType       string
+	mimicClaudeCode bool
+	line            string
+}
+
+func newClaudeMimicDebugLine(req *http.Request, body []byte, account *Account, tokenType string, mimicClaudeCode bool) *claudeMimicDebugLine {
+	return &claudeMimicDebugLine{
+		req:             req,
+		body:            body,
+		account:         account,
+		tokenType:       tokenType,
+		mimicClaudeCode: mimicClaudeCode,
+	}
+}
+
+func (l *claudeMimicDebugLine) String() string {
+	if l == nil {
+		return ""
+	}
+	l.once.Do(func() {
+		l.line = buildClaudeMimicDebugLine(l.req, l.body, l.account, l.tokenType, l.mimicClaudeCode)
+		// Drop references so the request/body are not retained after use.
+		l.req, l.body, l.account = nil, nil, nil
+	})
+	return l.line
+}
+
+// claudeMimicDebugLineFromContext returns the stored diagnostics line, building
+// it on first use. It also accepts a plain string for compatibility.
+func claudeMimicDebugLineFromContext(c interface {
+	Get(string) (any, bool)
+}) string {
+	if c == nil {
+		return ""
+	}
+	v, ok := c.Get(claudeMimicDebugInfoKey)
+	if !ok {
+		return ""
+	}
+	switch line := v.(type) {
+	case *claudeMimicDebugLine:
+		return line.String()
+	case string:
+		return line
+	default:
+		return ""
+	}
+}
+
 func logClaudeMimicDebug(req *http.Request, body []byte, account *Account, tokenType string, mimicClaudeCode bool) {
 	line := buildClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode)
 	if line == "" {
@@ -399,10 +464,7 @@ func isClaudeCodeCredentialScopeError(msg string) bool {
 		strings.Contains(m, "cannot be used for other api requests")
 }
 
-// sseDataRe matches SSE data lines with optional whitespace after colon.
-// Some upstream APIs return non-standard "data:" without space (should be "data: ").
 var (
-	sseDataRe            = regexp.MustCompile(`^data:\s*`)
 	claudeCliUserAgentRe = regexp.MustCompile(`(?i)^claude-cli/\d+\.\d+\.\d+`)
 
 	// claudeCodePromptPrefixes 用于检测 Claude Code 系统提示词的前缀列表
@@ -528,6 +590,10 @@ func modelsListCacheKey(groupID *int64, platform string) string {
 	return fmt.Sprintf("%d|%s", derefGroupID(groupID), strings.TrimSpace(platform))
 }
 
+func compositeModelOwnershipCacheKey(groupID int64, model string) string {
+	return fmt.Sprintf("%s%d|%s", compositeModelOwnershipCachePrefix, groupID, strings.TrimSpace(model))
+}
+
 func prefetchedStickyGroupIDFromContext(ctx context.Context) (int64, bool) {
 	return PrefetchedStickyGroupIDFromContext(ctx)
 }
@@ -575,6 +641,8 @@ type AccountSelectionResult struct {
 	Acquired    bool
 	ReleaseFunc func()
 	WaitPlan    *AccountWaitPlan // nil means no wait allowed
+	// stickySessionHit 标记账号来自会话粘性绑定命中，供非高级调度路径回填决策标签。
+	stickySessionHit bool
 	// profitGate 携带本次选号真实生效的利润门（无门为 nil）。门安装在调度栈的
 	// 局部 ctx 上，handler 必须经 ContextWithSelectionProfitGate 重放后才能在
 	// 调度栈之外做抢槽后终检与准入后粘性绑定。
@@ -605,8 +673,10 @@ type AudioUsage struct {
 
 type ForwardResult struct {
 	RequestID string
-	Usage     ClaudeUsage
-	Model     string
+	// UpstreamHeaders 是直接上游的响应头，用于按账户配置解析上游请求标识。
+	UpstreamHeaders http.Header
+	Usage           ClaudeUsage
+	Model           string
 	// UpstreamModel is the actual upstream model after mapping.
 	// Prefer empty when it is identical to Model; persistence normalizes equal values away as no-op mappings.
 	UpstreamModel string
@@ -614,17 +684,28 @@ type ForwardResult struct {
 	// response before any client-facing rewrite or protocol conversion.
 	UpstreamResponseModel         string
 	UpstreamResponseModelConflict bool
-	Stream                        bool
-	Duration                      time.Duration
-	FirstTokenMs                  *int // 首字时间（流式请求）
-	ClientDisconnect              bool // 客户端是否在流式传输过程中断开
-	ReasoningEffort               *string
-	// ServiceTier records the billable request tier. OpenAI uses service_tier;
-	// Anthropic speed=fast is normalized to "fast".
+	// UpstreamResponseServiceTier is the tier the upstream reports having used
+	// (Anthropic usage.speed: "fast" / "standard"); "" when not declared.
+	UpstreamResponseServiceTier string
+	Stream                      bool
+	Duration                    time.Duration
+	FirstTokenMs                *int // 首字时间（流式请求）
+	ClientDisconnect            bool // 客户端是否在流式传输过程中断开
+	ReasoningEffort             *string
+	// RequestedReasoningEffort is the client-requested effort before mapping.
+	RequestedReasoningEffort *string
+	// ServiceTier records the tier requested by the client. OpenAI uses
+	// service_tier; Anthropic speed=fast is normalized to "fast". Usage recording
+	// lowers it to UpstreamResponseServiceTier when the upstream reports a
+	// cheaper tier (see ResolveBillingServiceTier).
 	ServiceTier *string
 
 	// 图片生成计费字段（图片生成模型使用）
-	ImageCount         int    // 生成的图片数量
+	ImageCount int // 生成的图片数量
+	// ImageEndpoint 标记请求来自专用图片端点（/v1/images/*、图片模型端点）。
+	// 分组 image_count_billing 开关只对这类请求生效，混合的 Responses/Chat/WS
+	// 请求带图片工具时仍按 token 计费。
+	ImageEndpoint      bool
 	ImageSize          string // 最终计费尺寸 "1K", "2K", "4K"
 	ImageInputSize     string // 请求中的原始图片尺寸
 	ImageOutputSize    string // 上游响应中的图片尺寸
@@ -633,6 +714,20 @@ type ForwardResult struct {
 	ImageSizeBreakdown map[string]int
 	SearchCount        int
 	AudioUsage         *AudioUsage
+	// CacheStorageTokenHours 显式上下文缓存的存储量（缓存 token 数 × 存储小时数），按计费模型的
+	// 存储单价折算为费用后叠加在 token 费用之上。
+	CacheStorageTokenHours float64
+	// UpstreamPriceMultiplier 是上游按实际请求端点计价相对计费模型价格的倍数（见 VertexUpstreamPriceMultiplier），
+	// 只作用于 token 费用；0 按 1 处理。
+	UpstreamPriceMultiplier float64
+}
+
+// upstreamPriceFactor 返回 UpstreamPriceMultiplier，未设置时为 1。
+func (r *ForwardResult) upstreamPriceFactor() float64 {
+	if r == nil || r.UpstreamPriceMultiplier <= 0 {
+		return 1
+	}
+	return r.UpstreamPriceMultiplier
 }
 
 // GatewayFailureStage identifies which request stage failed. The zero value is
@@ -680,12 +775,14 @@ type UpstreamFailoverError struct {
 	SameAccountRetryMax      int           // 可选的错误级同账号重试上限，低于 handler 默认预算时优先采用
 	RequestScopedTransient   bool          // 故障因素与账号无关（如上游按客户端身份/模型容量降载）：可同账号重试，但不得据此对账号做临时封禁
 	SafeToFailoverAfterWrite bool          // 仅写出 SSE 注释等非语义字节时，仍可在同一客户端流中切换账号
+	BoundUpstreamPassthrough bool          // 绑定显式缓存的请求在上游网关账号上收到的 429 / 5xx：反映持有缓存的上游账号状态，原样回写不走错误映射
 	Stage                    GatewayFailureStage
 	Scope                    GatewayFailureScope
 	Reason                   GatewayFailureReason
 	NextAccountAction        NextAccountAction
 	ClientStatusCode         int
 	ClientMessage            string
+	StreamFailedFrame        *OpenAIStreamFailedFrame // 触发本次 failover 的流内 failed/error 帧；耗尽时用于错误透传规则匹配
 }
 
 func (e *UpstreamFailoverError) Error() string {
@@ -852,6 +949,9 @@ func NewGatewayService(
 		compositeResolver:     compositeResolver,
 		balanceNotifyService:  balanceNotifyService,
 		userPlatformQuotaRepo: userPlatformQuotaRepo,
+	}
+	if compositeResolver != nil {
+		compositeResolver.SetModelOwnershipResolver(svc.resolveCompositeModelOwnership)
 	}
 	svc.userGroupRateResolver = newUserGroupRateResolver(
 		userGroupRateRepo,
@@ -1358,6 +1458,19 @@ func (s *GatewayService) DoGrokNativeResponsesJSON(ctx context.Context, account 
 	return respBytes, nil
 }
 
+// mixedListingAccountAllowed mirrors the mixed-scheduling rule in
+// GeminiMessagesCompatService.listSchedulableAccountsOnce: a gemini group may be
+// served by antigravity accounts, so model listing must consider them too.
+func mixedListingAccountAllowed(groupPlatform string, account *Account) bool {
+	return groupPlatform == PlatformGemini && account.IsMixedSchedulingEnabled()
+}
+
+// mixedListingModelAllowed limits what a mixed-scheduling account may advertise
+// on the group's platform: only gemini-* wire IDs are meaningful on a gemini group.
+func mixedListingModelAllowed(groupPlatform, model string) bool {
+	return groupPlatform == PlatformGemini && isAntigravityGeminiModel(model)
+}
+
 func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64, platform string) []string {
 	cacheKey := modelsListCacheKey(groupID, platform)
 	if s.modelsListCache != nil {
@@ -1383,11 +1496,13 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 		return nil
 	}
 
-	// Filter by platform if specified
+	// Filter by platform if specified. Mixed scheduling (a gemini group routing
+	// to antigravity accounts) is honoured here as well, so the advertised list
+	// stays in sync with what the request path can actually serve.
 	if platform != "" {
 		filtered := make([]Account, 0)
 		for _, acc := range accounts {
-			if acc.Platform == platform {
+			if acc.Platform == platform || mixedListingAccountAllowed(platform, &acc) {
 				filtered = append(filtered, acc)
 			}
 		}
@@ -1399,27 +1514,35 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	hasAnyMapping := false
 
 	for _, acc := range accounts {
-		// Passthrough routing accepts models independently of model_mapping. A stale
-		// mapping on any eligible passthrough account therefore cannot define the
-		// public whitelist; return nil so the handler uses its default model set.
-		if platform == PlatformOpenAI && acc.IsOpenAIPassthroughEnabled() {
-			if s.modelsListCache != nil {
-				s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
-				modelsListCacheStoreTotal.Add(1)
-			}
-			return nil
+		// Default passthrough accepts models independently of model_mapping, so a
+		// stale mapping on a passthrough account must not narrow the public list.
+		// Treat it like an unmapped account: skip its mapping here and let
+		// supplementUnmappedOpenAIModels contribute the default set. Mappings on
+		// the ordinary accounts in the same group still count.
+		if platform == PlatformOpenAI && acc.IsOpenAIPassthroughEnabled() && !acc.IsOpenAIPassthroughModelFilterEnabled() {
+			continue
 		}
 
 		mapping := acc.GetModelMapping()
-		if len(mapping) > 0 {
-			hasAnyMapping = true
-			for model := range mapping {
-				modelSet[model] = struct{}{}
+		for model := range mapping {
+			// Accounts pulled in through mixed scheduling only contribute the
+			// models that belong to the listing platform (e.g. an antigravity
+			// account's claude-* mappings must not surface on a gemini group).
+			if platform != "" && acc.Platform != platform && !mixedListingModelAllowed(platform, model) {
+				continue
 			}
+			modelSet[model] = struct{}{}
+			hasAnyMapping = true
 		}
 	}
 
 	// If no account has model_mapping, return nil (use default)
+	if !hasAnyMapping && platform == PlatformOpenAI {
+		models := filterRetiredOpenAIModelIDs(accounts, openai.DefaultModelIDs())
+		if len(models) != len(openai.DefaultModels) {
+			return models
+		}
+	}
 	if !hasAnyMapping {
 		if s.modelsListCache != nil {
 			s.modelsListCache.Set(cacheKey, []string(nil), s.modelsListCacheTTL)
@@ -1435,11 +1558,91 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	}
 	sort.Strings(models)
 
+	if platform == PlatformOpenAI {
+		models = supplementUnmappedOpenAIModels(accounts, models)
+		models = filterRetiredOpenAIModelIDs(accounts, models)
+		// nil means "use defaults" to listing callers; an empty filtered catalog
+		// must remain authoritative instead of resurrecting retired defaults.
+		if len(models) == 0 {
+			return models
+		}
+	}
+
 	if s.modelsListCache != nil {
 		s.modelsListCache.Set(cacheKey, cloneStringSlice(models), s.modelsListCacheTTL)
 		modelsListCacheStoreTotal.Add(1)
 	}
 	return cloneStringSlice(models)
+}
+
+func (s *GatewayService) resolveCompositeModelOwnership(ctx context.Context, groupID int64, model string) (CompositeModelOwnership, error) {
+	model = strings.TrimSpace(model)
+	if s == nil || s.accountRepo == nil || groupID <= 0 || model == "" {
+		return CompositeModelOwnership{}, nil
+	}
+
+	cacheKey := compositeModelOwnershipCacheKey(groupID, model)
+	if s.modelsListCache != nil {
+		if cached, found := s.modelsListCache.Get(cacheKey); found {
+			if ownership, ok := cached.(CompositeModelOwnership); ok {
+				return ownership, nil
+			}
+		}
+	}
+
+	// 归属取决于配置而非运行时健康：限流/临时不可调度不应让同一模型在
+	// 「唯一归属」与「歧义」之间来回翻转，否则配置错误只会间歇暴露。
+	accounts, err := s.accountRepo.ListModelAvailabilityCandidates(ctx, &groupID, domain.ConcretePlatformIDs(), false)
+	if err != nil {
+		return CompositeModelOwnership{}, err
+	}
+
+	platforms := make(map[string]struct{})
+	ownership := CompositeModelOwnership{}
+	for _, account := range accounts {
+		if explicitModelMappingClaims(account, model) {
+			platforms[account.Platform] = struct{}{}
+			ownership.OpenAIGatewayOAuthClaimed = ownership.OpenAIGatewayOAuthClaimed ||
+				(account.IsOAuth() && domain.UsesOpenAIGateway(account.Platform))
+		}
+	}
+
+	if len(platforms) == 1 {
+		for platform := range platforms {
+			ownership.TargetPlatform = platform
+		}
+		ownership.Matched = true
+	} else if len(platforms) > 1 {
+		ownership.Ambiguous = true
+	}
+
+	if s.modelsListCache != nil {
+		s.modelsListCache.Set(cacheKey, ownership, s.modelsListCacheTTL)
+	}
+	return ownership, nil
+}
+
+func explicitModelMappingClaims(account Account, model string) bool {
+	if account.Credentials == nil || model == "" {
+		return false
+	}
+	mapped, ok := stringMappingFromRaw(account.Credentials["model_mapping"])[model]
+	return ok && strings.TrimSpace(mapped) != ""
+}
+
+// GetCompositeRouteModels returns public IDs from enabled exact composite routes.
+func (s *GatewayService) GetCompositeRouteModels(ctx context.Context, groupID *int64, endpoint string, includeSystemOne bool) ([]string, error) {
+	if s == nil || s.compositeResolver == nil || groupID == nil {
+		return nil, nil
+	}
+	return s.compositeResolver.ListExactPublicModels(ctx, *groupID, endpoint, includeSystemOne)
+}
+
+func (s *GatewayService) FilterCompositeCodexModels(ctx context.Context, groupID int64, models []string) ([]string, error) {
+	if s == nil || s.compositeResolver == nil {
+		return models, nil
+	}
+	return s.compositeResolver.FilterCodexModels(ctx, groupID, models)
 }
 
 // GetSchedulablePlatforms returns the concrete platforms that currently have
@@ -1474,6 +1677,7 @@ func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform
 	if s == nil || s.modelsListCache == nil {
 		return
 	}
+	s.invalidateCompositeModelOwnershipCache(groupID)
 
 	normalizedPlatform := strings.TrimSpace(platform)
 	// 完整匹配时精准失效；否则按维度批量失效。
@@ -1502,6 +1706,26 @@ func (s *GatewayService) InvalidateAvailableModelsCache(groupID *int64, platform
 	}
 }
 
+func (s *GatewayService) invalidateCompositeModelOwnershipCache(groupID *int64) {
+	for key := range s.modelsListCache.Items() {
+		if !strings.HasPrefix(key, compositeModelOwnershipCachePrefix) {
+			continue
+		}
+		if groupID == nil {
+			s.modelsListCache.Delete(key)
+			continue
+		}
+		parts := strings.SplitN(strings.TrimPrefix(key, compositeModelOwnershipCachePrefix), "|", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		cachedGroupID, err := strconv.ParseInt(parts[0], 10, 64)
+		if err == nil && cachedGroupID == *groupID {
+			s.modelsListCache.Delete(key)
+		}
+	}
+}
+
 const debugGatewayBodyDefaultFilename = "gateway_debug.log"
 
 // initDebugGatewayBodyFile 初始化网关调试日志文件。
@@ -1515,19 +1739,19 @@ func (s *GatewayService) initDebugGatewayBodyFile(path string) {
 	}
 
 	// 如果 path 指向一个已存在的目录，自动追加默认文件名
-	if info, err := os.Stat(path); err == nil && info.IsDir() {
+	if info, err := os.Stat(path); err == nil && info.IsDir() { //nolint:gosec // G703: path 仅来自启动环境变量 SUB2API_DEBUG_GATEWAY_BODY（运维配置），非请求输入
 		path = filepath.Join(path, debugGatewayBodyDefaultFilename)
 	}
 
 	// 确保父目录存在
 	if dir := filepath.Dir(path); dir != "." {
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0755); err != nil { //nolint:gosec // G703: 同上
 			slog.Error("failed to create gateway debug log directory", "dir", dir, "error", err)
 			return
 		}
 	}
 
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644) //nolint:gosec // G703: 同上
 	if err != nil {
 		slog.Error("failed to open gateway debug log file", "path", path, "error", err)
 		return

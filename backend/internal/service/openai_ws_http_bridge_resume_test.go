@@ -97,7 +97,10 @@ func TestProxyOpenAIWSHTTPBridgeTurnLaterTurnDoesNotFailOverAfterDownstreamOutpu
 	require.False(t, errors.As(err, &failoverErr))
 	require.Len(t, writes, 2)
 	require.Equal(t, "response.output_text.delta", gjson.GetBytes(writes[0], "type").String())
-	require.Equal(t, "error", gjson.GetBytes(writes[1], "type").String())
+	// P0.1: after downstream output, retain the upstream error and synthesize
+	// the official Responses terminal so Codex clients do not see a bare error
+	// followed by a closed stream.
+	require.Equal(t, "response.failed", gjson.GetBytes(writes[1], "type").String())
 }
 
 func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t *testing.T) {
@@ -147,11 +150,13 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 	account := &Account{
 		ID: 129, Name: "limited", Platform: PlatformOpenAI, Type: AccountTypeOAuth,
 		Status: StatusActive, Schedulable: true, Concurrency: 1,
-		Extra: map[string]any{"openai_oauth_responses_websockets_v2_mode": OpenAIWSIngressModeHTTPBridge},
+		Extra:       map[string]any{"openai_oauth_responses_websockets_v2_mode": OpenAIWSIngressModeHTTPBridge},
+		Credentials: map[string]any{"chatgpt_account_id": "account-a", "chatgpt_user_id": "user-a"},
 	}
 	nextAccount := *account
 	nextAccount.ID = 130
 	nextAccount.Name = "replacement"
+	nextAccount.Credentials = map[string]any{"chatgpt_account_id": "account-b", "chatgpt_user_id": "user-b"}
 
 	serverErrCh := make(chan error, 1)
 	failoverCh := make(chan []byte, 1)
@@ -209,7 +214,7 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 	require.Equal(t, "response.completed", gjson.GetBytes(completed, "type").String())
 
 	writeCtx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
-	err = clientConn.Write(writeCtx, websocket.MessageText, []byte(`{"type":"response.create","model":"gpt-5.6-sol","previous_response_id":"resp_first","input":[{"type":"function_call_output","call_id":"call_1","output":"second"}]}`))
+	err = clientConn.Write(writeCtx, websocket.MessageText, []byte(`{"type":"response.create","model":"gpt-5.6-sol","previous_response_id":"resp_first","prompt_cache_key":"client-session","client_metadata":{"session_id":"client-session","thread_id":"client-thread"},"input":[{"type":"function_call_output","call_id":"call_1","output":"second"}]}`))
 	cancel()
 	require.NoError(t, err)
 
@@ -234,6 +239,8 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 		require.Contains(t, input.Raw, "second")
 		require.Equal(t, 1, strings.Count(input.Raw, `"id":"fc_1"`))
 		require.Equal(t, 2, strings.Count(input.Raw, `"call_id":"call_1"`))
+		require.Equal(t, "client-session", gjson.GetBytes(retryPayload, "client_metadata.session_id").String())
+		require.Equal(t, "client-thread", gjson.GetBytes(retryPayload, "client_metadata.thread_id").String())
 	case <-time.After(5 * time.Second):
 		t.Fatal("timed out waiting for current-turn failover")
 	}
@@ -246,7 +253,11 @@ func TestOpenAIWSHTTPBridgeLaterTurn429RetriesCurrentTurnOnReplacementAccount(t 
 	}
 	require.Len(t, upstream.bodies, 3)
 	require.Contains(t, string(upstream.bodies[0]), "first")
+	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, "session", "client-session"), gjson.GetBytes(upstream.bodies[1], "client_metadata.session_id").String())
+	require.Equal(t, scopeCodexAccountIdentityValue(account, 0, "thread", "client-thread"), gjson.GetBytes(upstream.bodies[1], "client_metadata.thread_id").String())
 	require.NotContains(t, string(upstream.bodies[2]), "previous_response_id")
 	require.Contains(t, string(upstream.bodies[2]), "second")
+	require.Equal(t, scopeCodexAccountIdentityValue(&nextAccount, 0, "session", "client-session"), gjson.GetBytes(upstream.bodies[2], "client_metadata.session_id").String())
+	require.Equal(t, scopeCodexAccountIdentityValue(&nextAccount, 0, "thread", "client-thread"), gjson.GetBytes(upstream.bodies[2], "client_metadata.thread_id").String())
 	require.Empty(t, upstream.requests[2].Header.Get(openAIWSTurnStateHeader))
 }

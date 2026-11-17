@@ -42,7 +42,7 @@ func shouldFlattenOpenAIResponsesNamespaces(
 	passthroughEnabled bool,
 	compactPath bool,
 ) bool {
-	if account == nil || !account.IsOpenAIOAuth() {
+	if account == nil || !account.IsOpenAIOAuthLike() {
 		return false
 	}
 	if !compactPath && !account.IsOpenAIResponsesFlattenNamespacesEnabled() {
@@ -58,7 +58,7 @@ func shouldFlattenOpenAIResponsesNamespaces(
 // namespaces for OpenAI OAuth and API Key HTTP forwarding. Native WSv2 keeps
 // namespaces because that protocol supports them and does not restore payloads.
 func shouldStripOpenAIResponsesInputNamespaces(account *Account, transport OpenAIUpstreamTransport, passthroughEnabled bool) bool {
-	if account == nil || (!account.IsOpenAIOAuth() && !account.IsOpenAIApiKey()) {
+	if account == nil || (!account.IsOpenAIOAuthLike() && !account.IsOpenAIApiKey()) {
 		return false
 	}
 	if transport == OpenAIUpstreamTransportResponsesWebsocketV2 && !passthroughEnabled {
@@ -77,23 +77,74 @@ func shouldStripOpenAIResponsesInputNamespaces(account *Account, transport OpenA
 //     故 OAuth 非 compact 请求必须保留。
 //   - compact 端点的 schema 不含该字段，携带即 400 `Unknown parameter:
 //     input[N].namespace`（issue #4761 正文），故 compact 一律清理。
-//   - API Key 出口是标准 Responses API（api.openai.com 或自定义 base_url），同样
-//     不认识该字段，维持全量清理；否则只能退化成
-//     openai_responses_rejected_field_retry 的逐项删除，6 次上限根本盖不住长历史。
+//   - API Key 出口默认按标准 Responses API 处理并清理该字段；但当请求本身声明
+//     namespace 工具时（包括 Responses Lite 的 input[].additional_tools），上游显然
+//     使用了 namespace 扩展，此时必须保留调用项上的 namespace，否则声明与历史
+//     调用会失配并触发 Missing namespace。
 //   - 摊平模式下调用项已被改写成平名，残留 namespace 指向的声明已不存在，一律清理。
 func shouldKeepOpenAIResponsesToolCallNamespaces(
 	account *Account,
 	transport OpenAIUpstreamTransport,
 	passthroughEnabled bool,
 	compactPath bool,
+	body []byte,
 ) bool {
-	if account == nil || !account.IsOpenAIOAuth() {
+	if account == nil {
 		return false
 	}
 	if compactPath {
 		return false
 	}
+	if account.IsOpenAIApiKey() {
+		return hasOpenAIResponsesNamespaceToolDeclaration(body)
+	}
+	if !account.IsOpenAIOAuthLike() {
+		return false
+	}
 	return !shouldFlattenOpenAIResponsesNamespaces(account, transport, passthroughEnabled, compactPath)
+}
+
+func hasOpenAIResponsesNamespaceToolDeclaration(body []byte) bool {
+	hasNamespaceTool := func(tools gjson.Result) bool {
+		if !tools.IsArray() {
+			return false
+		}
+		found := false
+		tools.ForEach(func(_, tool gjson.Result) bool {
+			if strings.EqualFold(strings.TrimSpace(tool.Get("type").String()), "namespace") {
+				found = true
+				return false
+			}
+			return true
+		})
+		return found
+	}
+
+	root := parseRawJSONView(body)
+	if hasNamespaceTool(root.Get("tools")) {
+		return true
+	}
+
+	// Responses Lite moves private namespace declarations out of top-level
+	// tools and into an input.additional_tools carrier. API-key requests are
+	// intentionally not rewritten by normalizeOpenAIResponsesLiteTools, so the
+	// declaration can arrive here only in this form.
+	input := root.Get("input")
+	if !input.IsArray() {
+		return false
+	}
+	found := false
+	input.ForEach(func(_, item gjson.Result) bool {
+		if !strings.EqualFold(strings.TrimSpace(item.Get("type").String()), "additional_tools") {
+			return true
+		}
+		if hasNamespaceTool(item.Get("tools")) {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
 }
 
 // openAIResponsesToolCallItemTypes 是携带 namespace 的调用项类型集合。与
@@ -146,43 +197,47 @@ func stripOpenAIResponsesInputNamespaces(body []byte, keepToolCallNamespaces boo
 	if !bytes.Contains(body, []byte(`"namespace"`)) {
 		return body, nil
 	}
-	input := gjson.GetBytes(body, "input")
+	// Zero-copy view: input.Raw aliases body and is only read below; the
+	// rebuilt array is written into a fresh buffer.
+	input := parseRawJSONView(body).Get("input")
 	if !input.IsArray() {
 		return body, nil
 	}
 
 	var rebuilt bytes.Buffer
-	rebuilt.Grow(len(input.Raw))
-	_ = rebuilt.WriteByte('[')
 	changed := false
-	first := true
+	// Offsets below are relative to input.Raw, not the full request body.
+	copyFrom := 0
 	var stripErr error
 	input.ForEach(func(_, item gjson.Result) bool {
-		if !first {
-			_ = rebuilt.WriteByte(',')
+		if !item.IsObject() || !item.Get("namespace").Exists() ||
+			(keepToolCallNamespaces && isOpenAIResponsesToolCallItemType(item.Get("type").String())) {
+			return true
 		}
-		first = false
-		itemBody := []byte(item.Raw)
-		// 先判存在再判类型：长历史里绝大多数是 message/reasoning 等不带 namespace
-		// 的项，这样它们无需再扫一次 type。
-		if item.IsObject() && item.Get("namespace").Exists() &&
-			(!keepToolCallNamespaces || !isOpenAIResponsesToolCallItemType(item.Get("type").String())) {
-			itemBody, stripErr = sjson.DeleteBytes(itemBody, "namespace")
-			if stripErr != nil {
-				return false
-			}
+		itemBody, err := sjson.DeleteBytes([]byte(item.Raw), "namespace")
+		if err != nil {
+			stripErr = err
+			return false
+		}
+		if !changed {
+			// Allocate only on the first change; copy unchanged spans without
+			// traversing their items again or converting them to byte slices.
+			rebuilt.Grow(len(input.Raw))
 			changed = true
 		}
+		itemStart := item.Index - input.Index
+		_, _ = rebuilt.WriteString(input.Raw[copyFrom:itemStart])
 		_, _ = rebuilt.Write(itemBody)
+		copyFrom = itemStart + len(item.Raw)
 		return true
 	})
-	_ = rebuilt.WriteByte(']')
 	if stripErr != nil {
 		return body, fmt.Errorf("delete OpenAI input namespace: %w", stripErr)
 	}
 	if !changed {
 		return body, nil
 	}
+	_, _ = rebuilt.WriteString(input.Raw[copyFrom:])
 	stripped, err := sjson.SetRawBytes(body, "input", rebuilt.Bytes())
 	if err != nil {
 		return body, fmt.Errorf("replace OpenAI input after namespace deletion: %w", err)

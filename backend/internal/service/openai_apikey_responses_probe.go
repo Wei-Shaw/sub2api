@@ -77,7 +77,8 @@ func openaiResponsesProbePayload(modelID string) []byte {
 //
 // 工具能力探测必须用上游真实存在的模型——用占位模型(DefaultTestModel)打第三方
 // 上游只会拿到 400 model-not-found,无从判定工具能力。优先取账号 model_mapping
-// 的上游模型(值),按字典序取首个具体(非通配符)模型以保证可复现;无映射时回退
+// 的上游模型(值),其中优先通用 GPT 文本模型,同类按字典序取首个具体(非通配符)
+// 模型以保证可复现;无映射时回退
 // DefaultTestModel(适配 OpenAI 官方 APIKey 账号)。
 func selectResponsesProbeModel(account *Account) string {
 	mapping := account.GetModelMapping()
@@ -93,6 +94,13 @@ func selectResponsesProbeModel(account *Account) string {
 		return openai.DefaultTestModel
 	}
 	sort.Strings(candidates)
+	// Prefer a general text model over auxiliary entries such as
+	// codex-auto-review or image-only models, which cannot prove tool support.
+	for _, candidate := range candidates {
+		if strings.HasPrefix(candidate, "gpt-") && !isOpenAIImageGenerationModel(candidate) {
+			return candidate
+		}
+	}
 	return candidates[0]
 }
 
@@ -122,13 +130,13 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 	if account.Type != AccountTypeAPIKey {
 		return
 	}
-	if account.IsCNProvider() {
-		// 国产 OpenAI 兼容上游（kimi/zhipu/deepseek）普遍仅支持 /v1/chat/completions，
-		// 不存在 /v1/responses 端点。直接落标 false 走 Chat Completions 直转，跳过网络探测。
-		// 例外：deepseek 的固定 responses 和 adaptive 账号使用官方原生 /responses
-		// 端点，落标 force_responses；其余协议显式重置为 auto，避免切换后残留强制模式。
-		if account.GetAPIProtocol() == APIProtocolResponses ||
-			(account.Platform == PlatformDeepseek && account.IsAdaptiveAPIProtocol()) {
+	if account.RoutesProtocolByInbound() {
+		// 按入站协议分流的供应商（国产厂商等）默认仅支持 /v1/chat/completions。直接落标 false
+		// 走 Chat Completions 直转，跳过网络探测。
+		// 例外：deepseek / kimi 的固定 responses 和 adaptive 账号使用官方原生
+		// Responses 端点，落标 force_responses；其余协议显式重置为 auto，避免
+		// 切换后残留强制模式。
+		if account.UsesNativeCNResponses() {
 			_ = s.accountRepo.UpdateExtra(ctx, account.ID, map[string]any{
 				openai_compat.ExtraKeyResponsesMode:      string(openai_compat.ResponsesSupportModeForceResponses),
 				openai_compat.ExtraKeyResponsesSupported: true,
@@ -143,6 +151,11 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 	}
 	if account.Platform != PlatformOpenAI {
 		// 仅 OpenAI APIKey 账号需要探测；其他账号类型无能力差异。
+		return
+	}
+
+	// force_responses / force_chat_completions 下 ResolveResponsesSupport 优先读 mode，探测标记不可达，探测只会白跑一次上游调用，直接跳过。
+	if mode, _ := account.Extra[openai_compat.ExtraKeyResponsesMode].(string); openai_compat.NormalizeResponsesSupportMode(mode) != openai_compat.ResponsesSupportModeAuto {
 		return
 	}
 
@@ -259,9 +272,13 @@ func (s *AccountTestService) ProbeOpenAIAPIKeyResponsesSupport(ctx context.Conte
 // 其余 2xx 一律可下结论——尤其 status=completed 却只回 reasoning 的上游（火山方舟
 // coding/v3 × kimi-k2.6），仍按原逻辑判为不支持。
 //
-// 非 2xx 的结论只看状态码、不依赖响应内容，恒可下结论。
+// 明确指向探测模型不可用的 400/404(model_not_found 等)只说明模型不存在,不说明端点
+// 能力,不下结论;其余非 2xx 的结论只看状态码、不依赖响应内容，恒可下结论。
 // 缺少 status 字段的响应体（含非 JSON）也按可下结论处理，保持既有行为。
 func responsesProbeVerdictIsConclusive(status int, body []byte) bool {
+	if isResponsesProbeModelUnavailable(status, body) {
+		return false
+	}
 	if status < 200 || status >= 300 {
 		return true
 	}
@@ -296,13 +313,17 @@ func isResponsesEndpointSupportedByStatus(status int) bool {
 // decideResponsesProbeSupport 依据探测响应判定上游 /v1/responses 是否真正可用于
 // 携带工具的请求。
 //
-//   - 404 / 405：端点不存在 → false
+//   - 探测模型不可用的 400/404：与端点能力无关 → true(调用方同时不下结论,不写入)
+//   - 其他 404 / 405：端点不存在 → false
 //   - 其他非 2xx（401/403/422/5xx 等）：端点存在,但本次无法判定工具能力
 //     （鉴权/校验/瞬时故障）→ 保守按 true,保持既有"端点存在即支持"行为
 //   - 2xx：探测以 tool_choice=required 强制工具调用,响应必须含 function_call
 //     输出项才算真正可用;否则(如火山方舟 coding/v3 × kimi-k2.6 仅回 reasoning)
 //     判为 false,使网关改走 /v1/chat/completions 直转路径。
 func decideResponsesProbeSupport(status int, body []byte) bool {
+	if isResponsesProbeModelUnavailable(status, body) {
+		return true // The model error says nothing negative about the endpoint.
+	}
 	if status == http.StatusNotFound || status == http.StatusMethodNotAllowed {
 		return false
 	}
@@ -310,6 +331,21 @@ func decideResponsesProbeSupport(status int, body []byte) bool {
 		return true
 	}
 	return responsesProbeBodyHasFunctionCall(body)
+}
+
+// isResponsesProbeModelUnavailable 判断 400/404 是否只是在说探测模型不可用
+// (错误码/类型为 model_not_found 等,或错误文案明确说模型不存在/不可用)。
+func isResponsesProbeModelUnavailable(status int, body []byte) bool {
+	if status != http.StatusBadRequest && status != http.StatusNotFound {
+		return false
+	}
+	for _, path := range []string{"error.code", "error.type", "response.error.code", "response.error.type"} {
+		switch strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, path).String())) {
+		case "model_not_found", "model_not_available", "unsupported_model", "invalid_model":
+			return true
+		}
+	}
+	return isExplicitOpenAIModelAvailabilityMessage(extractUpstreamErrorMessage(body))
 }
 
 // responsesProbeBodyHasFunctionCall 判断非流式 Responses 响应体的 output 数组里

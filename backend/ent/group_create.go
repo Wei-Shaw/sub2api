@@ -4,7 +4,7 @@ package ent
 
 import (
 	"context"
-	"encoding/json"
+	"encoding/json/jsontext"
 	"errors"
 	"fmt"
 	"time"
@@ -89,6 +89,12 @@ func (_c *GroupCreate) SetNillableDescription(v *string) *GroupCreate {
 	if v != nil {
 		_c.SetDescription(*v)
 	}
+	return _c
+}
+
+// SetI18n sets the "i18n" field.
+func (_c *GroupCreate) SetI18n(v domain.GroupI18n) *GroupCreate {
+	_c.mutation.SetI18n(v)
 	return _c
 }
 
@@ -312,6 +318,20 @@ func (_c *GroupCreate) SetAllowBatchImageGeneration(v bool) *GroupCreate {
 func (_c *GroupCreate) SetNillableAllowBatchImageGeneration(v *bool) *GroupCreate {
 	if v != nil {
 		_c.SetAllowBatchImageGeneration(*v)
+	}
+	return _c
+}
+
+// SetImageCountBilling sets the "image_count_billing" field.
+func (_c *GroupCreate) SetImageCountBilling(v bool) *GroupCreate {
+	_c.mutation.SetImageCountBilling(v)
+	return _c
+}
+
+// SetNillableImageCountBilling sets the "image_count_billing" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableImageCountBilling(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetImageCountBilling(*v)
 	}
 	return _c
 }
@@ -575,7 +595,7 @@ func (_c *GroupCreate) SetNillableLongContextPricingEnabled(v *bool) *GroupCreat
 }
 
 // SetModelPricing sets the "model_pricing" field.
-func (_c *GroupCreate) SetModelPricing(v json.RawMessage) *GroupCreate {
+func (_c *GroupCreate) SetModelPricing(v jsontext.Value) *GroupCreate {
 	_c.mutation.SetModelPricing(v)
 	return _c
 }
@@ -704,6 +724,48 @@ func (_c *GroupCreate) SetNillableAllowLive(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetForceOpenaiFast sets the "force_openai_fast" field.
+func (_c *GroupCreate) SetForceOpenaiFast(v bool) *GroupCreate {
+	_c.mutation.SetForceOpenaiFast(v)
+	return _c
+}
+
+// SetNillableForceOpenaiFast sets the "force_openai_fast" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableForceOpenaiFast(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetForceOpenaiFast(*v)
+	}
+	return _c
+}
+
+// SetForceOpenaiUltrafast sets the "force_openai_ultrafast" field.
+func (_c *GroupCreate) SetForceOpenaiUltrafast(v bool) *GroupCreate {
+	_c.mutation.SetForceOpenaiUltrafast(v)
+	return _c
+}
+
+// SetNillableForceOpenaiUltrafast sets the "force_openai_ultrafast" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableForceOpenaiUltrafast(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetForceOpenaiUltrafast(*v)
+	}
+	return _c
+}
+
+// SetFreeOpenaiFast sets the "free_openai_fast" field.
+func (_c *GroupCreate) SetFreeOpenaiFast(v bool) *GroupCreate {
+	_c.mutation.SetFreeOpenaiFast(v)
+	return _c
+}
+
+// SetNillableFreeOpenaiFast sets the "free_openai_fast" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableFreeOpenaiFast(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetFreeOpenaiFast(*v)
+	}
+	return _c
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (_c *GroupCreate) SetRequireOauthOnly(v bool) *GroupCreate {
 	_c.mutation.SetRequireOauthOnly(v)
@@ -760,16 +822,30 @@ func (_c *GroupCreate) SetNillableMessagesDispatchModelConfig(v *domain.OpenAIMe
 	return _c
 }
 
-// SetModelsListConfig sets the "models_list_config" field.
-func (_c *GroupCreate) SetModelsListConfig(v domain.GroupModelsListConfig) *GroupCreate {
-	_c.mutation.SetModelsListConfig(v)
+// SetModelAllowlist sets the "model_allowlist" field.
+func (_c *GroupCreate) SetModelAllowlist(v domain.GroupModelAllowlist) *GroupCreate {
+	_c.mutation.SetModelAllowlist(v)
 	return _c
 }
 
-// SetNillableModelsListConfig sets the "models_list_config" field if the given value is not nil.
-func (_c *GroupCreate) SetNillableModelsListConfig(v *domain.GroupModelsListConfig) *GroupCreate {
+// SetNillableModelAllowlist sets the "model_allowlist" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableModelAllowlist(v *domain.GroupModelAllowlist) *GroupCreate {
 	if v != nil {
-		_c.SetModelsListConfig(*v)
+		_c.SetModelAllowlist(*v)
+	}
+	return _c
+}
+
+// SetCodexModelsManifestConfig sets the "codex_models_manifest_config" field.
+func (_c *GroupCreate) SetCodexModelsManifestConfig(v domain.GroupCodexModelsManifestConfig) *GroupCreate {
+	_c.mutation.SetCodexModelsManifestConfig(v)
+	return _c
+}
+
+// SetNillableCodexModelsManifestConfig sets the "codex_models_manifest_config" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableCodexModelsManifestConfig(v *domain.GroupCodexModelsManifestConfig) *GroupCreate {
+	if v != nil {
+		_c.SetCodexModelsManifestConfig(*v)
 	}
 	return _c
 }
@@ -798,6 +874,20 @@ func (_c *GroupCreate) SetMaxReasoningEffort(v string) *GroupCreate {
 func (_c *GroupCreate) SetNillableMaxReasoningEffort(v *string) *GroupCreate {
 	if v != nil {
 		_c.SetMaxReasoningEffort(*v)
+	}
+	return _c
+}
+
+// SetMaxReasoningEffortOverLimit sets the "max_reasoning_effort_over_limit" field.
+func (_c *GroupCreate) SetMaxReasoningEffortOverLimit(v string) *GroupCreate {
+	_c.mutation.SetMaxReasoningEffortOverLimit(v)
+	return _c
+}
+
+// SetNillableMaxReasoningEffortOverLimit sets the "max_reasoning_effort_over_limit" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableMaxReasoningEffortOverLimit(v *string) *GroupCreate {
+	if v != nil {
+		_c.SetMaxReasoningEffortOverLimit(*v)
 	}
 	return _c
 }
@@ -991,6 +1081,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultUpdatedAt()
 		_c.mutation.SetUpdatedAt(v)
 	}
+	if _, ok := _c.mutation.I18n(); !ok {
+		v := group.DefaultI18n
+		_c.mutation.SetI18n(v)
+	}
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		v := group.DefaultRateMultiplier
 		_c.mutation.SetRateMultiplier(v)
@@ -1038,6 +1132,10 @@ func (_c *GroupCreate) defaults() error {
 	if _, ok := _c.mutation.AllowBatchImageGeneration(); !ok {
 		v := group.DefaultAllowBatchImageGeneration
 		_c.mutation.SetAllowBatchImageGeneration(v)
+	}
+	if _, ok := _c.mutation.ImageCountBilling(); !ok {
+		v := group.DefaultImageCountBilling
+		_c.mutation.SetImageCountBilling(v)
 	}
 	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
 		v := group.DefaultImageRateIndependent
@@ -1095,6 +1193,18 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultAllowLive
 		_c.mutation.SetAllowLive(v)
 	}
+	if _, ok := _c.mutation.ForceOpenaiFast(); !ok {
+		v := group.DefaultForceOpenaiFast
+		_c.mutation.SetForceOpenaiFast(v)
+	}
+	if _, ok := _c.mutation.ForceOpenaiUltrafast(); !ok {
+		v := group.DefaultForceOpenaiUltrafast
+		_c.mutation.SetForceOpenaiUltrafast(v)
+	}
+	if _, ok := _c.mutation.FreeOpenaiFast(); !ok {
+		v := group.DefaultFreeOpenaiFast
+		_c.mutation.SetFreeOpenaiFast(v)
+	}
 	if _, ok := _c.mutation.RequireOauthOnly(); !ok {
 		v := group.DefaultRequireOauthOnly
 		_c.mutation.SetRequireOauthOnly(v)
@@ -1111,9 +1221,13 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultMessagesDispatchModelConfig
 		_c.mutation.SetMessagesDispatchModelConfig(v)
 	}
-	if _, ok := _c.mutation.ModelsListConfig(); !ok {
-		v := group.DefaultModelsListConfig
-		_c.mutation.SetModelsListConfig(v)
+	if _, ok := _c.mutation.ModelAllowlist(); !ok {
+		v := group.DefaultModelAllowlist
+		_c.mutation.SetModelAllowlist(v)
+	}
+	if _, ok := _c.mutation.CodexModelsManifestConfig(); !ok {
+		v := group.DefaultCodexModelsManifestConfig
+		_c.mutation.SetCodexModelsManifestConfig(v)
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		v := group.DefaultRpmLimit
@@ -1122,6 +1236,10 @@ func (_c *GroupCreate) defaults() error {
 	if _, ok := _c.mutation.MaxReasoningEffort(); !ok {
 		v := group.DefaultMaxReasoningEffort
 		_c.mutation.SetMaxReasoningEffort(v)
+	}
+	if _, ok := _c.mutation.MaxReasoningEffortOverLimit(); !ok {
+		v := group.DefaultMaxReasoningEffortOverLimit
+		_c.mutation.SetMaxReasoningEffortOverLimit(v)
 	}
 	if _, ok := _c.mutation.ReasoningEffortMappings(); !ok {
 		v := group.DefaultReasoningEffortMappings
@@ -1157,6 +1275,9 @@ func (_c *GroupCreate) check() error {
 		if err := group.NameValidator(v); err != nil {
 			return &ValidationError{Name: "name", err: fmt.Errorf(`ent: validator failed for field "Group.name": %w`, err)}
 		}
+	}
+	if _, ok := _c.mutation.I18n(); !ok {
+		return &ValidationError{Name: "i18n", err: errors.New(`ent: missing required field "Group.i18n"`)}
 	}
 	if _, ok := _c.mutation.RateMultiplier(); !ok {
 		return &ValidationError{Name: "rate_multiplier", err: errors.New(`ent: missing required field "Group.rate_multiplier"`)}
@@ -1224,6 +1345,9 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.AllowBatchImageGeneration(); !ok {
 		return &ValidationError{Name: "allow_batch_image_generation", err: errors.New(`ent: missing required field "Group.allow_batch_image_generation"`)}
 	}
+	if _, ok := _c.mutation.ImageCountBilling(); !ok {
+		return &ValidationError{Name: "image_count_billing", err: errors.New(`ent: missing required field "Group.image_count_billing"`)}
+	}
 	if _, ok := _c.mutation.ImageRateIndependent(); !ok {
 		return &ValidationError{Name: "image_rate_independent", err: errors.New(`ent: missing required field "Group.image_rate_independent"`)}
 	}
@@ -1286,6 +1410,15 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.AllowLive(); !ok {
 		return &ValidationError{Name: "allow_live", err: errors.New(`ent: missing required field "Group.allow_live"`)}
 	}
+	if _, ok := _c.mutation.ForceOpenaiFast(); !ok {
+		return &ValidationError{Name: "force_openai_fast", err: errors.New(`ent: missing required field "Group.force_openai_fast"`)}
+	}
+	if _, ok := _c.mutation.ForceOpenaiUltrafast(); !ok {
+		return &ValidationError{Name: "force_openai_ultrafast", err: errors.New(`ent: missing required field "Group.force_openai_ultrafast"`)}
+	}
+	if _, ok := _c.mutation.FreeOpenaiFast(); !ok {
+		return &ValidationError{Name: "free_openai_fast", err: errors.New(`ent: missing required field "Group.free_openai_fast"`)}
+	}
 	if _, ok := _c.mutation.RequireOauthOnly(); !ok {
 		return &ValidationError{Name: "require_oauth_only", err: errors.New(`ent: missing required field "Group.require_oauth_only"`)}
 	}
@@ -1303,8 +1436,11 @@ func (_c *GroupCreate) check() error {
 	if _, ok := _c.mutation.MessagesDispatchModelConfig(); !ok {
 		return &ValidationError{Name: "messages_dispatch_model_config", err: errors.New(`ent: missing required field "Group.messages_dispatch_model_config"`)}
 	}
-	if _, ok := _c.mutation.ModelsListConfig(); !ok {
-		return &ValidationError{Name: "models_list_config", err: errors.New(`ent: missing required field "Group.models_list_config"`)}
+	if _, ok := _c.mutation.ModelAllowlist(); !ok {
+		return &ValidationError{Name: "model_allowlist", err: errors.New(`ent: missing required field "Group.model_allowlist"`)}
+	}
+	if _, ok := _c.mutation.CodexModelsManifestConfig(); !ok {
+		return &ValidationError{Name: "codex_models_manifest_config", err: errors.New(`ent: missing required field "Group.codex_models_manifest_config"`)}
 	}
 	if _, ok := _c.mutation.RpmLimit(); !ok {
 		return &ValidationError{Name: "rpm_limit", err: errors.New(`ent: missing required field "Group.rpm_limit"`)}
@@ -1315,6 +1451,14 @@ func (_c *GroupCreate) check() error {
 	if v, ok := _c.mutation.MaxReasoningEffort(); ok {
 		if err := group.MaxReasoningEffortValidator(v); err != nil {
 			return &ValidationError{Name: "max_reasoning_effort", err: fmt.Errorf(`ent: validator failed for field "Group.max_reasoning_effort": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.MaxReasoningEffortOverLimit(); !ok {
+		return &ValidationError{Name: "max_reasoning_effort_over_limit", err: errors.New(`ent: missing required field "Group.max_reasoning_effort_over_limit"`)}
+	}
+	if v, ok := _c.mutation.MaxReasoningEffortOverLimit(); ok {
+		if err := group.MaxReasoningEffortOverLimitValidator(v); err != nil {
+			return &ValidationError{Name: "max_reasoning_effort_over_limit", err: fmt.Errorf(`ent: validator failed for field "Group.max_reasoning_effort_over_limit": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.ReasoningEffortMappings(); !ok {
@@ -1375,6 +1519,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Description(); ok {
 		_spec.SetField(group.FieldDescription, field.TypeString, value)
 		_node.Description = &value
+	}
+	if value, ok := _c.mutation.I18n(); ok {
+		_spec.SetField(group.FieldI18n, field.TypeJSON, value)
+		_node.I18n = value
 	}
 	if value, ok := _c.mutation.RateMultiplier(); ok {
 		_spec.SetField(group.FieldRateMultiplier, field.TypeFloat64, value)
@@ -1439,6 +1587,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.AllowBatchImageGeneration(); ok {
 		_spec.SetField(group.FieldAllowBatchImageGeneration, field.TypeBool, value)
 		_node.AllowBatchImageGeneration = value
+	}
+	if value, ok := _c.mutation.ImageCountBilling(); ok {
+		_spec.SetField(group.FieldImageCountBilling, field.TypeBool, value)
+		_node.ImageCountBilling = value
 	}
 	if value, ok := _c.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
@@ -1560,6 +1712,18 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldAllowLive, field.TypeBool, value)
 		_node.AllowLive = value
 	}
+	if value, ok := _c.mutation.ForceOpenaiFast(); ok {
+		_spec.SetField(group.FieldForceOpenaiFast, field.TypeBool, value)
+		_node.ForceOpenaiFast = value
+	}
+	if value, ok := _c.mutation.ForceOpenaiUltrafast(); ok {
+		_spec.SetField(group.FieldForceOpenaiUltrafast, field.TypeBool, value)
+		_node.ForceOpenaiUltrafast = value
+	}
+	if value, ok := _c.mutation.FreeOpenaiFast(); ok {
+		_spec.SetField(group.FieldFreeOpenaiFast, field.TypeBool, value)
+		_node.FreeOpenaiFast = value
+	}
 	if value, ok := _c.mutation.RequireOauthOnly(); ok {
 		_spec.SetField(group.FieldRequireOauthOnly, field.TypeBool, value)
 		_node.RequireOauthOnly = value
@@ -1576,9 +1740,13 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 		_spec.SetField(group.FieldMessagesDispatchModelConfig, field.TypeJSON, value)
 		_node.MessagesDispatchModelConfig = value
 	}
-	if value, ok := _c.mutation.ModelsListConfig(); ok {
-		_spec.SetField(group.FieldModelsListConfig, field.TypeJSON, value)
-		_node.ModelsListConfig = value
+	if value, ok := _c.mutation.ModelAllowlist(); ok {
+		_spec.SetField(group.FieldModelAllowlist, field.TypeJSON, value)
+		_node.ModelAllowlist = value
+	}
+	if value, ok := _c.mutation.CodexModelsManifestConfig(); ok {
+		_spec.SetField(group.FieldCodexModelsManifestConfig, field.TypeJSON, value)
+		_node.CodexModelsManifestConfig = value
 	}
 	if value, ok := _c.mutation.RpmLimit(); ok {
 		_spec.SetField(group.FieldRpmLimit, field.TypeInt, value)
@@ -1587,6 +1755,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.MaxReasoningEffort(); ok {
 		_spec.SetField(group.FieldMaxReasoningEffort, field.TypeString, value)
 		_node.MaxReasoningEffort = value
+	}
+	if value, ok := _c.mutation.MaxReasoningEffortOverLimit(); ok {
+		_spec.SetField(group.FieldMaxReasoningEffortOverLimit, field.TypeString, value)
+		_node.MaxReasoningEffortOverLimit = value
 	}
 	if value, ok := _c.mutation.ReasoningEffortMappings(); ok {
 		_spec.SetField(group.FieldReasoningEffortMappings, field.TypeJSON, value)
@@ -1817,6 +1989,18 @@ func (u *GroupUpsert) UpdateDescription() *GroupUpsert {
 // ClearDescription clears the value of the "description" field.
 func (u *GroupUpsert) ClearDescription() *GroupUpsert {
 	u.SetNull(group.FieldDescription)
+	return u
+}
+
+// SetI18n sets the "i18n" field.
+func (u *GroupUpsert) SetI18n(v domain.GroupI18n) *GroupUpsert {
+	u.Set(group.FieldI18n, v)
+	return u
+}
+
+// UpdateI18n sets the "i18n" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateI18n() *GroupUpsert {
+	u.SetExcluded(group.FieldI18n)
 	return u
 }
 
@@ -2051,6 +2235,18 @@ func (u *GroupUpsert) SetAllowBatchImageGeneration(v bool) *GroupUpsert {
 // UpdateAllowBatchImageGeneration sets the "allow_batch_image_generation" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateAllowBatchImageGeneration() *GroupUpsert {
 	u.SetExcluded(group.FieldAllowBatchImageGeneration)
+	return u
+}
+
+// SetImageCountBilling sets the "image_count_billing" field.
+func (u *GroupUpsert) SetImageCountBilling(v bool) *GroupUpsert {
+	u.Set(group.FieldImageCountBilling, v)
+	return u
+}
+
+// UpdateImageCountBilling sets the "image_count_billing" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateImageCountBilling() *GroupUpsert {
+	u.SetExcluded(group.FieldImageCountBilling)
 	return u
 }
 
@@ -2445,7 +2641,7 @@ func (u *GroupUpsert) UpdateLongContextPricingEnabled() *GroupUpsert {
 }
 
 // SetModelPricing sets the "model_pricing" field.
-func (u *GroupUpsert) SetModelPricing(v json.RawMessage) *GroupUpsert {
+func (u *GroupUpsert) SetModelPricing(v jsontext.Value) *GroupUpsert {
 	u.Set(group.FieldModelPricing, v)
 	return u
 }
@@ -2618,6 +2814,42 @@ func (u *GroupUpsert) UpdateAllowLive() *GroupUpsert {
 	return u
 }
 
+// SetForceOpenaiFast sets the "force_openai_fast" field.
+func (u *GroupUpsert) SetForceOpenaiFast(v bool) *GroupUpsert {
+	u.Set(group.FieldForceOpenaiFast, v)
+	return u
+}
+
+// UpdateForceOpenaiFast sets the "force_openai_fast" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateForceOpenaiFast() *GroupUpsert {
+	u.SetExcluded(group.FieldForceOpenaiFast)
+	return u
+}
+
+// SetForceOpenaiUltrafast sets the "force_openai_ultrafast" field.
+func (u *GroupUpsert) SetForceOpenaiUltrafast(v bool) *GroupUpsert {
+	u.Set(group.FieldForceOpenaiUltrafast, v)
+	return u
+}
+
+// UpdateForceOpenaiUltrafast sets the "force_openai_ultrafast" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateForceOpenaiUltrafast() *GroupUpsert {
+	u.SetExcluded(group.FieldForceOpenaiUltrafast)
+	return u
+}
+
+// SetFreeOpenaiFast sets the "free_openai_fast" field.
+func (u *GroupUpsert) SetFreeOpenaiFast(v bool) *GroupUpsert {
+	u.Set(group.FieldFreeOpenaiFast, v)
+	return u
+}
+
+// UpdateFreeOpenaiFast sets the "free_openai_fast" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateFreeOpenaiFast() *GroupUpsert {
+	u.SetExcluded(group.FieldFreeOpenaiFast)
+	return u
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (u *GroupUpsert) SetRequireOauthOnly(v bool) *GroupUpsert {
 	u.Set(group.FieldRequireOauthOnly, v)
@@ -2666,15 +2898,27 @@ func (u *GroupUpsert) UpdateMessagesDispatchModelConfig() *GroupUpsert {
 	return u
 }
 
-// SetModelsListConfig sets the "models_list_config" field.
-func (u *GroupUpsert) SetModelsListConfig(v domain.GroupModelsListConfig) *GroupUpsert {
-	u.Set(group.FieldModelsListConfig, v)
+// SetModelAllowlist sets the "model_allowlist" field.
+func (u *GroupUpsert) SetModelAllowlist(v domain.GroupModelAllowlist) *GroupUpsert {
+	u.Set(group.FieldModelAllowlist, v)
 	return u
 }
 
-// UpdateModelsListConfig sets the "models_list_config" field to the value that was provided on create.
-func (u *GroupUpsert) UpdateModelsListConfig() *GroupUpsert {
-	u.SetExcluded(group.FieldModelsListConfig)
+// UpdateModelAllowlist sets the "model_allowlist" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateModelAllowlist() *GroupUpsert {
+	u.SetExcluded(group.FieldModelAllowlist)
+	return u
+}
+
+// SetCodexModelsManifestConfig sets the "codex_models_manifest_config" field.
+func (u *GroupUpsert) SetCodexModelsManifestConfig(v domain.GroupCodexModelsManifestConfig) *GroupUpsert {
+	u.Set(group.FieldCodexModelsManifestConfig, v)
+	return u
+}
+
+// UpdateCodexModelsManifestConfig sets the "codex_models_manifest_config" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateCodexModelsManifestConfig() *GroupUpsert {
+	u.SetExcluded(group.FieldCodexModelsManifestConfig)
 	return u
 }
 
@@ -2705,6 +2949,18 @@ func (u *GroupUpsert) SetMaxReasoningEffort(v string) *GroupUpsert {
 // UpdateMaxReasoningEffort sets the "max_reasoning_effort" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateMaxReasoningEffort() *GroupUpsert {
 	u.SetExcluded(group.FieldMaxReasoningEffort)
+	return u
+}
+
+// SetMaxReasoningEffortOverLimit sets the "max_reasoning_effort_over_limit" field.
+func (u *GroupUpsert) SetMaxReasoningEffortOverLimit(v string) *GroupUpsert {
+	u.Set(group.FieldMaxReasoningEffortOverLimit, v)
+	return u
+}
+
+// UpdateMaxReasoningEffortOverLimit sets the "max_reasoning_effort_over_limit" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateMaxReasoningEffortOverLimit() *GroupUpsert {
+	u.SetExcluded(group.FieldMaxReasoningEffortOverLimit)
 	return u
 }
 
@@ -2883,6 +3139,20 @@ func (u *GroupUpsertOne) UpdateDescription() *GroupUpsertOne {
 func (u *GroupUpsertOne) ClearDescription() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.ClearDescription()
+	})
+}
+
+// SetI18n sets the "i18n" field.
+func (u *GroupUpsertOne) SetI18n(v domain.GroupI18n) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetI18n(v)
+	})
+}
+
+// UpdateI18n sets the "i18n" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateI18n() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateI18n()
 	})
 }
 
@@ -3156,6 +3426,20 @@ func (u *GroupUpsertOne) SetAllowBatchImageGeneration(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateAllowBatchImageGeneration() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowBatchImageGeneration()
+	})
+}
+
+// SetImageCountBilling sets the "image_count_billing" field.
+func (u *GroupUpsertOne) SetImageCountBilling(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageCountBilling(v)
+	})
+}
+
+// UpdateImageCountBilling sets the "image_count_billing" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateImageCountBilling() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageCountBilling()
 	})
 }
 
@@ -3615,7 +3899,7 @@ func (u *GroupUpsertOne) UpdateLongContextPricingEnabled() *GroupUpsertOne {
 }
 
 // SetModelPricing sets the "model_pricing" field.
-func (u *GroupUpsertOne) SetModelPricing(v json.RawMessage) *GroupUpsertOne {
+func (u *GroupUpsertOne) SetModelPricing(v jsontext.Value) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.SetModelPricing(v)
 	})
@@ -3817,6 +4101,48 @@ func (u *GroupUpsertOne) UpdateAllowLive() *GroupUpsertOne {
 	})
 }
 
+// SetForceOpenaiFast sets the "force_openai_fast" field.
+func (u *GroupUpsertOne) SetForceOpenaiFast(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetForceOpenaiFast(v)
+	})
+}
+
+// UpdateForceOpenaiFast sets the "force_openai_fast" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateForceOpenaiFast() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateForceOpenaiFast()
+	})
+}
+
+// SetForceOpenaiUltrafast sets the "force_openai_ultrafast" field.
+func (u *GroupUpsertOne) SetForceOpenaiUltrafast(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetForceOpenaiUltrafast(v)
+	})
+}
+
+// UpdateForceOpenaiUltrafast sets the "force_openai_ultrafast" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateForceOpenaiUltrafast() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateForceOpenaiUltrafast()
+	})
+}
+
+// SetFreeOpenaiFast sets the "free_openai_fast" field.
+func (u *GroupUpsertOne) SetFreeOpenaiFast(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetFreeOpenaiFast(v)
+	})
+}
+
+// UpdateFreeOpenaiFast sets the "free_openai_fast" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateFreeOpenaiFast() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateFreeOpenaiFast()
+	})
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (u *GroupUpsertOne) SetRequireOauthOnly(v bool) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
@@ -3873,17 +4199,31 @@ func (u *GroupUpsertOne) UpdateMessagesDispatchModelConfig() *GroupUpsertOne {
 	})
 }
 
-// SetModelsListConfig sets the "models_list_config" field.
-func (u *GroupUpsertOne) SetModelsListConfig(v domain.GroupModelsListConfig) *GroupUpsertOne {
+// SetModelAllowlist sets the "model_allowlist" field.
+func (u *GroupUpsertOne) SetModelAllowlist(v domain.GroupModelAllowlist) *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
-		s.SetModelsListConfig(v)
+		s.SetModelAllowlist(v)
 	})
 }
 
-// UpdateModelsListConfig sets the "models_list_config" field to the value that was provided on create.
-func (u *GroupUpsertOne) UpdateModelsListConfig() *GroupUpsertOne {
+// UpdateModelAllowlist sets the "model_allowlist" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateModelAllowlist() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
-		s.UpdateModelsListConfig()
+		s.UpdateModelAllowlist()
+	})
+}
+
+// SetCodexModelsManifestConfig sets the "codex_models_manifest_config" field.
+func (u *GroupUpsertOne) SetCodexModelsManifestConfig(v domain.GroupCodexModelsManifestConfig) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCodexModelsManifestConfig(v)
+	})
+}
+
+// UpdateCodexModelsManifestConfig sets the "codex_models_manifest_config" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateCodexModelsManifestConfig() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCodexModelsManifestConfig()
 	})
 }
 
@@ -3919,6 +4259,20 @@ func (u *GroupUpsertOne) SetMaxReasoningEffort(v string) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateMaxReasoningEffort() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateMaxReasoningEffort()
+	})
+}
+
+// SetMaxReasoningEffortOverLimit sets the "max_reasoning_effort_over_limit" field.
+func (u *GroupUpsertOne) SetMaxReasoningEffortOverLimit(v string) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetMaxReasoningEffortOverLimit(v)
+	})
+}
+
+// UpdateMaxReasoningEffortOverLimit sets the "max_reasoning_effort_over_limit" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateMaxReasoningEffortOverLimit() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateMaxReasoningEffortOverLimit()
 	})
 }
 
@@ -4276,6 +4630,20 @@ func (u *GroupUpsertBulk) ClearDescription() *GroupUpsertBulk {
 	})
 }
 
+// SetI18n sets the "i18n" field.
+func (u *GroupUpsertBulk) SetI18n(v domain.GroupI18n) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetI18n(v)
+	})
+}
+
+// UpdateI18n sets the "i18n" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateI18n() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateI18n()
+	})
+}
+
 // SetRateMultiplier sets the "rate_multiplier" field.
 func (u *GroupUpsertBulk) SetRateMultiplier(v float64) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -4546,6 +4914,20 @@ func (u *GroupUpsertBulk) SetAllowBatchImageGeneration(v bool) *GroupUpsertBulk 
 func (u *GroupUpsertBulk) UpdateAllowBatchImageGeneration() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateAllowBatchImageGeneration()
+	})
+}
+
+// SetImageCountBilling sets the "image_count_billing" field.
+func (u *GroupUpsertBulk) SetImageCountBilling(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetImageCountBilling(v)
+	})
+}
+
+// UpdateImageCountBilling sets the "image_count_billing" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateImageCountBilling() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateImageCountBilling()
 	})
 }
 
@@ -5005,7 +5387,7 @@ func (u *GroupUpsertBulk) UpdateLongContextPricingEnabled() *GroupUpsertBulk {
 }
 
 // SetModelPricing sets the "model_pricing" field.
-func (u *GroupUpsertBulk) SetModelPricing(v json.RawMessage) *GroupUpsertBulk {
+func (u *GroupUpsertBulk) SetModelPricing(v jsontext.Value) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.SetModelPricing(v)
 	})
@@ -5207,6 +5589,48 @@ func (u *GroupUpsertBulk) UpdateAllowLive() *GroupUpsertBulk {
 	})
 }
 
+// SetForceOpenaiFast sets the "force_openai_fast" field.
+func (u *GroupUpsertBulk) SetForceOpenaiFast(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetForceOpenaiFast(v)
+	})
+}
+
+// UpdateForceOpenaiFast sets the "force_openai_fast" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateForceOpenaiFast() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateForceOpenaiFast()
+	})
+}
+
+// SetForceOpenaiUltrafast sets the "force_openai_ultrafast" field.
+func (u *GroupUpsertBulk) SetForceOpenaiUltrafast(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetForceOpenaiUltrafast(v)
+	})
+}
+
+// UpdateForceOpenaiUltrafast sets the "force_openai_ultrafast" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateForceOpenaiUltrafast() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateForceOpenaiUltrafast()
+	})
+}
+
+// SetFreeOpenaiFast sets the "free_openai_fast" field.
+func (u *GroupUpsertBulk) SetFreeOpenaiFast(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetFreeOpenaiFast(v)
+	})
+}
+
+// UpdateFreeOpenaiFast sets the "free_openai_fast" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateFreeOpenaiFast() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateFreeOpenaiFast()
+	})
+}
+
 // SetRequireOauthOnly sets the "require_oauth_only" field.
 func (u *GroupUpsertBulk) SetRequireOauthOnly(v bool) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
@@ -5263,17 +5687,31 @@ func (u *GroupUpsertBulk) UpdateMessagesDispatchModelConfig() *GroupUpsertBulk {
 	})
 }
 
-// SetModelsListConfig sets the "models_list_config" field.
-func (u *GroupUpsertBulk) SetModelsListConfig(v domain.GroupModelsListConfig) *GroupUpsertBulk {
+// SetModelAllowlist sets the "model_allowlist" field.
+func (u *GroupUpsertBulk) SetModelAllowlist(v domain.GroupModelAllowlist) *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
-		s.SetModelsListConfig(v)
+		s.SetModelAllowlist(v)
 	})
 }
 
-// UpdateModelsListConfig sets the "models_list_config" field to the value that was provided on create.
-func (u *GroupUpsertBulk) UpdateModelsListConfig() *GroupUpsertBulk {
+// UpdateModelAllowlist sets the "model_allowlist" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateModelAllowlist() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
-		s.UpdateModelsListConfig()
+		s.UpdateModelAllowlist()
+	})
+}
+
+// SetCodexModelsManifestConfig sets the "codex_models_manifest_config" field.
+func (u *GroupUpsertBulk) SetCodexModelsManifestConfig(v domain.GroupCodexModelsManifestConfig) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetCodexModelsManifestConfig(v)
+	})
+}
+
+// UpdateCodexModelsManifestConfig sets the "codex_models_manifest_config" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateCodexModelsManifestConfig() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateCodexModelsManifestConfig()
 	})
 }
 
@@ -5309,6 +5747,20 @@ func (u *GroupUpsertBulk) SetMaxReasoningEffort(v string) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateMaxReasoningEffort() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateMaxReasoningEffort()
+	})
+}
+
+// SetMaxReasoningEffortOverLimit sets the "max_reasoning_effort_over_limit" field.
+func (u *GroupUpsertBulk) SetMaxReasoningEffortOverLimit(v string) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetMaxReasoningEffortOverLimit(v)
+	})
+}
+
+// UpdateMaxReasoningEffortOverLimit sets the "max_reasoning_effort_over_limit" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateMaxReasoningEffortOverLimit() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateMaxReasoningEffortOverLimit()
 	})
 }
 

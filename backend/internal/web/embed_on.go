@@ -149,18 +149,23 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 	// Check cache first
 	cached := s.cache.Get()
 	if cached != nil {
-		// Check If-None-Match for 304 response
-		if match := c.GetHeader("If-None-Match"); match == cached.ETag {
-			c.Status(http.StatusNotModified)
-			c.Abort()
-			return
+		// A matching ETag is only enough for 304 when the response has no
+		// per-request nonce. Otherwise the browser would reuse HTML carrying a
+		// stale nonce that no longer matches the CSP header of this request.
+		if nonce == "" {
+			if match := c.GetHeader("If-None-Match"); match == cached.ETag {
+				applyHTMLNoCacheHeaders(c.Writer.Header())
+				c.Status(http.StatusNotModified)
+				c.Abort()
+				return
+			}
 		}
 
 		// Replace nonce placeholder with actual nonce before serving
 		content := replaceNoncePlaceholder(cached.Content, nonce)
 
 		c.Header("ETag", cached.ETag)
-		c.Header("Cache-Control", "no-cache") // Must revalidate
+		applyHTMLNoCacheHeaders(c.Writer.Header())
 		c.Data(http.StatusOK, "text/html; charset=utf-8", content)
 		c.Abort()
 		return
@@ -173,6 +178,7 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 	settings, err := s.settings.GetPublicSettingsForInjection(ctx)
 	if err != nil {
 		// Fallback: serve without injection
+		applyHTMLNoCacheHeaders(c.Writer.Header())
 		c.Data(http.StatusOK, "text/html; charset=utf-8", s.baseHTML)
 		c.Abort()
 		return
@@ -181,6 +187,7 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 	settingsJSON, err := json.Marshal(settings)
 	if err != nil {
 		// Fallback: serve without injection
+		applyHTMLNoCacheHeaders(c.Writer.Header())
 		c.Data(http.StatusOK, "text/html; charset=utf-8", s.baseHTML)
 		c.Abort()
 		return
@@ -196,7 +203,7 @@ func (s *FrontendServer) serveIndexHTML(c *gin.Context) {
 	if cached != nil {
 		c.Header("ETag", cached.ETag)
 	}
-	c.Header("Cache-Control", "no-cache")
+	applyHTMLNoCacheHeaders(c.Writer.Header())
 	c.Data(http.StatusOK, "text/html; charset=utf-8", content)
 	c.Abort()
 }
@@ -355,6 +362,9 @@ func tryServeOverrideFile(c *gin.Context, overrideDir, cleanPath string) bool {
 func shouldBypassEmbeddedFrontend(path string) bool {
 	trimmed := strings.TrimSpace(path)
 	return strings.HasPrefix(trimmed, "/api/") ||
+		trimmed == "/.well-known/oauth-protected-resource" ||
+		trimmed == "/.well-known/oauth-protected-resource/api/v1/mcp" ||
+		trimmed == "/.well-known/oauth-authorization-server" ||
 		strings.HasPrefix(trimmed, "/v1/") ||
 		strings.HasPrefix(trimmed, "/v1beta/") ||
 		strings.HasPrefix(trimmed, "/backend-api/") ||
@@ -362,10 +372,26 @@ func shouldBypassEmbeddedFrontend(path string) bool {
 		strings.HasPrefix(trimmed, "/setup/") ||
 		trimmed == "/health" ||
 		trimmed == "/models" ||
+		strings.HasPrefix(trimmed, "/models/") ||
 		trimmed == "/responses" ||
 		strings.HasPrefix(trimmed, "/responses/") ||
+		trimmed == "/chat/completions" ||
+		trimmed == "/embeddings" ||
+		trimmed == "/messages/count_tokens" ||
 		trimmed == "/alpha/search" ||
+		trimmed == "/web_search" ||
+		trimmed == "/x_search" ||
+		trimmed == "/tts" ||
+		trimmed == "/stt" ||
+		trimmed == "/realtime" ||
+		trimmed == "/custom-voices" ||
+		strings.HasPrefix(trimmed, "/custom-voices/") ||
+		trimmed == "/contents/generations/tasks" ||
+		strings.HasPrefix(trimmed, "/contents/generations/tasks/") ||
+		trimmed == "/v3/contents/generations/tasks" ||
+		strings.HasPrefix(trimmed, "/v3/contents/generations/tasks/") ||
 		strings.HasPrefix(trimmed, "/images/") ||
+		trimmed == "/videos" ||
 		strings.HasPrefix(trimmed, "/videos/")
 }
 

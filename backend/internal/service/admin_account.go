@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -21,6 +22,11 @@ import (
 
 // Account management implementations
 func (s *adminServiceImpl) ListAccounts(ctx context.Context, page, pageSize int, platform, accountType, status, search string, groupID int64, privacyMode string, sortBy, sortOrder string) ([]Account, int64, error) {
+	if groupID > 0 {
+		if err := s.ValidateAccountGroupBindings(ctx, []int64{groupID}); err != nil {
+			return nil, 0, err
+		}
+	}
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}
 	accounts, result, err := s.accountRepo.ListWithFilters(ctx, params, platform, accountType, status, search, groupID, privacyMode)
 	if err != nil {
@@ -284,6 +290,9 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 	}
 	autoPauseOnExpired := source.AutoPauseOnExpired
 	groups, groupIDs := duplicateAccountGroups(source)
+	if err := s.ValidateAccountGroupBindings(ctx, groupIDs); err != nil {
+		return nil, err
+	}
 	proxyID := source.ProxyID
 	if source.ProxyFallbackOriginID != nil {
 		// Proxy fallback is transient runtime state; duplicate the configured origin.
@@ -312,6 +321,9 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 		return nil, fmt.Errorf("normalize duplicate account extra: %w", err)
 	}
 	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
+		return nil, err
+	}
+	if err := NormalizeProtocolRulesCredentials(input.Credentials); err != nil {
 		return nil, err
 	}
 	duplicate, err := buildAccountForCreate(input, accountExtra)
@@ -399,6 +411,9 @@ func normalizeOpenAILongContextBillingUpdateExtra(account *Account, input *Updat
 // Grok media eligibility helpers live in account_grok_media_eligibility.go.
 
 func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]any) (*Account, error) {
+	if input.Platform == PlatformTypeSafe && input.Type != AccountTypeAPIKey {
+		return nil, errors.New("typesafe accounts only support apikey credentials")
+	}
 	// Probe/session state is system-managed. New accounts always start with automatic refresh disabled.
 	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
 	delete(accountExtra, UpstreamBillingRateSyncEnabledExtraKey)
@@ -406,6 +421,8 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	delete(accountExtra, OllamaCloudUsageSessionExtraKey)
 	delete(accountExtra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(accountExtra, OllamaCloudUsageSnapshotExtraKey)
+	delete(accountExtra, OpenCodeGoUsageAutoRefreshExtraKey)
+	delete(accountExtra, OpenCodeGoUsageSnapshotExtraKey)
 	accountExtra = prepareCodexFingerprintExtraForCreate(input.Platform, input.Type, accountExtra)
 	account := &Account{
 		Name:        input.Name,
@@ -470,6 +487,13 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err != nil {
 		return nil, err
 	}
+	accountExtra, err = normalizeOpenAIAutoResetCreditExtra(input.Platform, input.Type, false, accountExtra)
+	if err != nil {
+		return nil, err
+	}
+	if err := ValidateUpstreamRequestIDHeaderExtra(accountExtra); err != nil {
+		return nil, err
+	}
 
 	// 绑定分组
 	groupIDs := input.GroupIDs
@@ -498,11 +522,17 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
 		return nil, err
 	}
+	if err := NormalizeProtocolRulesCredentials(input.Credentials); err != nil {
+		return nil, err
+	}
 	// Never persist ephemeral SSO/password secrets after OAuth conversion.
 	input.Credentials = SanitizeStoredCredentials(input.Platform, input.Credentials)
 
 	account, err := buildAccountForCreate(input, accountExtra)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.ValidateAccountGroupBindings(ctx, groupIDs); err != nil {
 		return nil, err
 	}
 	if err := s.accountRepo.Create(ctx, account); err != nil {
@@ -516,30 +546,32 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 		}
 	}
 
-	// OAuth 账号：创建后异步设置隐私。
-	// 使用 Ensure（幂等）而非 Force：新建账号 Extra 为空时效果相同，但更安全。
-	if account.Type == AccountTypeOAuth {
-		switch account.Platform {
-		case PlatformOpenAI:
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						slog.Error("create_account_openai_privacy_panic", "account_id", account.ID, "recover", r)
-					}
+	AfterAccountCommit(ctx, func(_ context.Context) {
+		// OAuth 账号：创建后异步设置隐私。
+		// 使用 Ensure（幂等）而非 Force：新建账号 Extra 为空时效果相同，但更安全。
+		if account.Type == AccountTypeOAuth {
+			switch account.Platform {
+			case PlatformOpenAI:
+				go func() {
+					defer func() {
+						if r := recover(); r != nil {
+							slog.Error("create_account_openai_privacy_panic", "account_id", account.ID, "recover", r)
+						}
+					}()
+					s.EnsureOpenAIPrivacy(context.Background(), account)
 				}()
-				s.EnsureOpenAIPrivacy(context.Background(), account)
-			}()
-		case PlatformAntigravity:
-			go func() {
-				defer func() {
-					if r := recover(); r != nil {
-						slog.Error("create_account_antigravity_privacy_panic", "account_id", account.ID, "recover", r)
-					}
+			case PlatformAntigravity:
+				go func() {
+					defer func() {
+						if r := recover(); r != nil {
+							slog.Error("create_account_antigravity_privacy_panic", "account_id", account.ID, "recover", r)
+						}
+					}()
+					s.EnsureAntigravityPrivacy(context.Background(), account)
 				}()
-				s.EnsureAntigravityPrivacy(context.Background(), account)
-			}()
+			}
 		}
-	}
+	})
 
 	return account, nil
 }
@@ -548,6 +580,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+	if account.Platform == PlatformTypeSafe && input.Type != "" && input.Type != AccountTypeAPIKey {
+		return nil, errors.New("typesafe accounts only support apikey credentials")
 	}
 	var normalizedExtra map[string]any
 	if input.Extra != nil {
@@ -559,9 +594,21 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		if err != nil {
 			return nil, err
 		}
+		effectiveType := account.Type
+		if input.Type != "" {
+			effectiveType = input.Type
+		}
+		normalizedExtra, err = normalizeOpenAIAutoResetCreditExtra(account.Platform, effectiveType, account.IsShadow(), normalizedExtra)
+		if err != nil {
+			return nil, err
+		}
+		if err := ValidateUpstreamRequestIDHeaderExtra(normalizedExtra); err != nil {
+			return nil, err
+		}
 	}
 	previousProbeIdentity := upstreamBillingProbeIdentity(account)
 	previousOllamaUsageIdentity := ollamaCloudUsageIdentity(account)
+	previousOpenCodeUsageIdentity := openCodeGoUsageIdentity(account)
 	// 安全/身份不变量(影子账号):通用更新路径被 edit/re-auth/refresh/batch 共用,
 	// 必须在此守住,否则仅在创建时的保证可被这些路径绕过。
 	if account.IsCredentialShadow() {
@@ -610,6 +657,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		if err := NormalizeHeaderOverrideCredentials(account.Credentials); err != nil {
 			return nil, err
 		}
+		if err := NormalizeProtocolRulesCredentials(account.Credentials); err != nil {
+			return nil, err
+		}
 		// Strip SSO/password residue that must never sit next to OAuth tokens.
 		account.Credentials = SanitizeStoredCredentials(account.Platform, account.Credentials)
 	}
@@ -635,6 +685,11 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		delete(normalizedExtra, OllamaCloudUsageSessionExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageAutoRefreshExtraKey)
 		delete(normalizedExtra, OllamaCloudUsageSnapshotExtraKey)
+		delete(normalizedExtra, OpenCodeGoUsageAutoRefreshExtraKey)
+		delete(normalizedExtra, OpenCodeGoUsageSnapshotExtraKey)
+		// 目录观察和能力 metadata 只由同步写入。表单里的旧值或注入值不能进入本次更新。
+		delete(normalizedExtra, grokObservedModelsExtraKey)
+		delete(normalizedExtra, UpstreamModelMetadataExtraKey)
 		// 保留配额用量和专用服务受管字段，防止普通账号编辑意外覆盖。
 		for _, key := range []string{
 			"quota_used",
@@ -643,12 +698,17 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			"quota_weekly_used",
 			"quota_weekly_start",
 			grokBillingExtraKey,
+			grokObservedModelsExtraKey,
+			UpstreamModelMetadataExtraKey,
 			UpstreamBillingProbeEnabledExtraKey,
 			UpstreamBillingRateSyncEnabledExtraKey,
 			UpstreamBillingProbeExtraKey,
 			OllamaCloudUsageSessionExtraKey,
 			OllamaCloudUsageAutoRefreshExtraKey,
 			OllamaCloudUsageSnapshotExtraKey,
+			OpenAIAutoResetCreditStateExtraKey,
+			OpenCodeGoUsageAutoRefreshExtraKey,
+			OpenCodeGoUsageSnapshotExtraKey,
 		} {
 			if v, ok := account.Extra[key]; ok {
 				normalizedExtra[key] = v
@@ -735,6 +795,17 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			delete(account.Extra, OllamaCloudUsageSnapshotExtraKey)
 		}
 	}
+	// OpenCode Go 受管键：身份改变或不再 eligible 时随本次写入清除，防止跨组污染。
+	// （代理变化只失效快照而保留开关，由 repository 合并层在锁定的 DB 行上裁决。）
+	if account.Extra != nil {
+		if !IsOpenCodeGoUsageAccount(account) {
+			delete(account.Extra, OpenCodeGoUsageAutoRefreshExtraKey)
+			delete(account.Extra, OpenCodeGoUsageSnapshotExtraKey)
+		} else if !reflect.DeepEqual(previousOpenCodeUsageIdentity, openCodeGoUsageIdentity(account)) {
+			delete(account.Extra, OpenCodeGoUsageAutoRefreshExtraKey)
+			delete(account.Extra, OpenCodeGoUsageSnapshotExtraKey)
+		}
+	}
 	// 只在指针非 nil 时更新 Concurrency（支持设置为 0）
 	if input.Concurrency != nil {
 		account.Concurrency = normalizeAccountConcurrency(account.Platform, account.Type, *input.Concurrency)
@@ -783,6 +854,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	// 先验证分组是否存在（在任何写操作之前）
 	if input.GroupIDs != nil {
 		if err := s.validateGroupIDsExist(ctx, *input.GroupIDs); err != nil {
+			return nil, err
+		}
+		if err := s.ValidateAccountGroupBindings(ctx, *input.GroupIDs); err != nil {
 			return nil, err
 		}
 
@@ -860,12 +934,15 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 // （如 model_rate_limits / passive_usage_* 等）。
 func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, updates map[string]any) error {
 	updates = sanitizedCodexFingerprintExtraUpdates(updates)
+	updates = stripOpenAIAutoResetCreditManagedExtra(updates, true)
 	delete(updates, UpstreamBillingProbeEnabledExtraKey)
 	delete(updates, UpstreamBillingRateSyncEnabledExtraKey)
 	delete(updates, UpstreamBillingProbeExtraKey)
 	delete(updates, OllamaCloudUsageSessionExtraKey)
 	delete(updates, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(updates, OllamaCloudUsageSnapshotExtraKey)
+	delete(updates, OpenCodeGoUsageAutoRefreshExtraKey)
+	delete(updates, OpenCodeGoUsageSnapshotExtraKey)
 	if _, exists := updates[openAILongContextBillingEnabledKey]; exists {
 		account, err := s.accountRepo.GetByID(ctx, id)
 		if err != nil {
@@ -886,12 +963,15 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUpdateAccountsInput) (*BulkUpdateAccountsResult, error) {
 	// Managed probe/session state may only enter through dedicated typed endpoints.
 	input.Extra = sanitizedCodexFingerprintExtraUpdates(input.Extra)
+	input.Extra = stripOpenAIAutoResetCreditManagedExtra(input.Extra, true)
 	delete(input.Extra, UpstreamBillingProbeEnabledExtraKey)
 	delete(input.Extra, UpstreamBillingRateSyncEnabledExtraKey)
 	delete(input.Extra, UpstreamBillingProbeExtraKey)
 	delete(input.Extra, OllamaCloudUsageSessionExtraKey)
 	delete(input.Extra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(input.Extra, OllamaCloudUsageSnapshotExtraKey)
+	delete(input.Extra, OpenCodeGoUsageAutoRefreshExtraKey)
+	delete(input.Extra, OpenCodeGoUsageSnapshotExtraKey)
 
 	if len(input.AccountIDs) == 0 && input.Filters != nil {
 		accountIDs, err := s.resolveBulkUpdateTargetIDs(ctx, input.Filters)
@@ -912,6 +992,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	}
 	if input.GroupIDs != nil {
 		if err := s.validateGroupIDsExist(ctx, *input.GroupIDs); err != nil {
+			return nil, err
+		}
+		if err := s.ValidateAccountGroupBindings(ctx, *input.GroupIDs); err != nil {
 			return nil, err
 		}
 	}
@@ -1024,6 +1107,9 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 
 	// 校验并规范化请求头覆写配置（批量路径为 JSONB 顶层 key 合并，直接校验增量即可）
 	if err := NormalizeHeaderOverrideCredentials(input.Credentials); err != nil {
+		return nil, err
+	}
+	if err := NormalizeProtocolRulesCredentials(input.Credentials); err != nil {
 		return nil, err
 	}
 	// Bulk may mix platforms; always drop ephemeral SSO/password keys (cookie
@@ -1245,10 +1331,16 @@ func (s *adminServiceImpl) ClearAccountError(ctx context.Context, id int64) (*Ac
 	if err := s.accountRepo.ClearTempUnschedulable(ctx, id); err != nil {
 		return nil, err
 	}
-	if s.runtimeBlocker != nil {
-		s.runtimeBlocker.ClearAccountSchedulingBlock(id)
+	account, err := s.accountRepo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
 	}
-	return s.accountRepo.GetByID(ctx, id)
+	AfterAccountCommit(ctx, func(context.Context) {
+		if s.runtimeBlocker != nil {
+			s.runtimeBlocker.ClearAccountSchedulingBlock(id)
+		}
+	})
+	return account, nil
 }
 
 func (s *adminServiceImpl) SetAccountError(ctx context.Context, id int64, errorMsg string) error {
@@ -1330,6 +1422,9 @@ func (s *adminServiceImpl) CreateShadow(ctx context.Context, parentID int64, opt
 				}
 			}
 		}
+	}
+	if err := s.ValidateAccountGroupBindings(ctx, groupIDs); err != nil {
+		return nil, err
 	}
 
 	// 4. 构造影子账号（安全不变量：Credentials 恒不含 auth token，仅含 model_mapping）。
@@ -1503,6 +1598,35 @@ func (s *adminServiceImpl) validateGroupIDsExist(ctx context.Context, groupIDs [
 	return nil
 }
 
+// ValidateAccountGroupBindings is the shared fail-closed policy boundary for
+// every account path that accepts explicit group bindings.
+func (s *adminServiceImpl) ValidateAccountGroupBindings(ctx context.Context, groupIDs []int64) error {
+	if len(groupIDs) == 0 || s.cfg == nil || s.cfg.RunMode != config.RunModeSimple {
+		return nil
+	}
+	if s.groupRepo == nil {
+		return errors.New("group repository not configured")
+	}
+	seen := make(map[int64]struct{}, len(groupIDs))
+	for _, groupID := range groupIDs {
+		if groupID <= 0 {
+			return fmt.Errorf("get group: %w", ErrGroupNotFound)
+		}
+		if _, ok := seen[groupID]; ok {
+			continue
+		}
+		seen[groupID] = struct{}{}
+		group, err := s.groupRepo.GetByIDLite(ctx, groupID)
+		if err != nil {
+			return fmt.Errorf("get group: %w", err)
+		}
+		if !IsGroupBindableInSimpleMode(group) {
+			return infraerrors.BadRequest("SIMPLE_MODE_GROUP_NOT_BINDABLE", "composite groups cannot be bound in simple mode")
+		}
+	}
+	return nil
+}
+
 // CheckMixedChannelRisk checks whether target groups contain mixed channels for the current account platform.
 func (s *adminServiceImpl) CheckMixedChannelRisk(ctx context.Context, currentAccountID int64, currentAccountPlatform string, groupIDs []int64) error {
 	return s.checkMixedChannelRisk(ctx, currentAccountID, currentAccountPlatform, groupIDs)
@@ -1544,7 +1668,7 @@ func (s *adminServiceImpl) ResetAccountQuota(ctx context.Context, id int64) erro
 		return infraerrors.New(http.StatusBadRequest, "SPARK_SHADOW_NO_QUOTA_RESET",
 			"cannot reset quota for a spark shadow account; manage it on the parent account")
 	}
-	return s.accountRepo.ResetQuotaUsed(ctx, id)
+	return s.accountRepo.ResetQuotaUsedAndClearRateLimitCooldown(ctx, id)
 }
 
 // EnsureOpenAIPrivacy 检查 OpenAI OAuth 账号是否已设置 privacy_mode，

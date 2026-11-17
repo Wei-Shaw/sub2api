@@ -17,11 +17,14 @@ import (
 )
 
 type openAIQuotaWorkflowStub struct {
-	resetResult *service.OpenAIQuotaResetResult
-	resetErr    error
-	queryResult *service.OpenAIQuotaUsage
-	queryErr    error
-	cacheErr    error
+	resetResult        *service.OpenAIQuotaResetResult
+	resetErr           error
+	queryResult        *service.OpenAIQuotaUsage
+	queryErr           error
+	cacheErr           error
+	creditsCacheErr    error
+	creditsCacheCalls  int
+	cachedCreditsUsage *service.OpenAIQuotaUsage
 
 	resetCalls int
 	queryCalls int
@@ -43,6 +46,18 @@ func (s *openAIQuotaWorkflowStub) QueryUsage(ctx context.Context, _ int64) (*ser
 }
 
 func (s *openAIQuotaWorkflowStub) CacheResetCreditsSnapshot(ctx context.Context, _ int64, _ *service.OpenAIRateLimitResetCredits) error {
+	s.cacheCalls++
+	s.cacheCtxErr = ctx.Err()
+	return s.cacheErr
+}
+
+func (s *openAIQuotaWorkflowStub) CacheCreditsSnapshot(_ context.Context, _ int64, usage *service.OpenAIQuotaUsage) error {
+	s.creditsCacheCalls++
+	s.cachedCreditsUsage = usage
+	return s.creditsCacheErr
+}
+
+func (s *openAIQuotaWorkflowStub) CachePostResetSnapshot(ctx context.Context, _ int64, _ *service.OpenAIQuotaUsage) error {
 	s.cacheCalls++
 	s.cacheCtxErr = ctx.Err()
 	return s.cacheErr
@@ -215,7 +230,7 @@ func TestOpenAIResetQuota_RecoveryFailureStopsWorkflow(t *testing.T) {
 	status, envelope := performOpenAIQuotaResetRequest(t, handler)
 
 	require.Equal(t, http.StatusOK, status)
-	require.Equal(t, openAIQuotaResetWarningAccountRecoveryFailed, envelope.Data.WarningCode)
+	require.Equal(t, service.OpenAIQuotaResetWarningAccountRecoveryFailed, envelope.Data.WarningCode)
 	require.False(t, envelope.Data.AccountStateRecovered)
 	require.False(t, envelope.Data.CacheRefreshed)
 	require.Nil(t, envelope.Data.Quota)
@@ -237,7 +252,7 @@ func TestOpenAIResetQuota_MissingRecovererReportsRecoveryFailure(t *testing.T) {
 	status, envelope := performOpenAIQuotaResetRequest(t, handler)
 
 	require.Equal(t, http.StatusOK, status)
-	require.Equal(t, openAIQuotaResetWarningAccountRecoveryFailed, envelope.Data.WarningCode)
+	require.Equal(t, service.OpenAIQuotaResetWarningAccountRecoveryFailed, envelope.Data.WarningCode)
 	require.False(t, envelope.Data.AccountStateRecovered)
 	require.Zero(t, quota.queryCalls)
 	require.Zero(t, adminService.calls)
@@ -260,7 +275,7 @@ func TestOpenAIResetQuota_QueryFailureStillRecoversAndReturnsAccount(t *testing.
 	status, envelope := performOpenAIQuotaResetRequest(t, handler)
 
 	require.Equal(t, http.StatusOK, status)
-	require.Equal(t, openAIQuotaResetWarningCacheRefreshFailed, envelope.Data.WarningCode)
+	require.Equal(t, service.OpenAIQuotaResetWarningCacheRefreshFailed, envelope.Data.WarningCode)
 	require.True(t, envelope.Data.AccountStateRecovered)
 	require.False(t, envelope.Data.CacheRefreshed)
 	require.Nil(t, envelope.Data.Quota)
@@ -285,7 +300,7 @@ func TestOpenAIResetQuota_CacheFailureStillRecoversAndReturnsAccount(t *testing.
 	status, envelope := performOpenAIQuotaResetRequest(t, handler)
 
 	require.Equal(t, http.StatusOK, status)
-	require.Equal(t, openAIQuotaResetWarningCacheRefreshFailed, envelope.Data.WarningCode)
+	require.Equal(t, service.OpenAIQuotaResetWarningCacheRefreshFailed, envelope.Data.WarningCode)
 	require.True(t, envelope.Data.AccountStateRecovered)
 	require.False(t, envelope.Data.CacheRefreshed)
 	require.Nil(t, envelope.Data.Quota)
@@ -307,7 +322,7 @@ func TestOpenAIResetQuota_AccountRefreshFailureReportsRecoveredState(t *testing.
 	status, envelope := performOpenAIQuotaResetRequest(t, handler)
 
 	require.Equal(t, http.StatusOK, status)
-	require.Equal(t, openAIQuotaResetWarningAccountRefreshFailed, envelope.Data.WarningCode)
+	require.Equal(t, service.OpenAIQuotaResetWarningAccountRefreshFailed, envelope.Data.WarningCode)
 	require.True(t, envelope.Data.CacheRefreshed)
 	require.True(t, envelope.Data.AccountStateRecovered)
 	require.NotNil(t, envelope.Data.Quota)
@@ -331,7 +346,7 @@ func TestOpenAIResetQuota_CacheAndAccountFailureKeepsFirstWarning(t *testing.T) 
 	status, envelope := performOpenAIQuotaResetRequest(t, handler)
 
 	require.Equal(t, http.StatusOK, status)
-	require.Equal(t, openAIQuotaResetWarningCacheRefreshFailed, envelope.Data.WarningCode)
+	require.Equal(t, service.OpenAIQuotaResetWarningCacheRefreshFailed, envelope.Data.WarningCode)
 	require.True(t, envelope.Data.AccountStateRecovered)
 	require.Nil(t, envelope.Data.Account)
 }
@@ -404,6 +419,34 @@ func TestOpenAIRefreshQuota_PersistFailureStillReturnsUsage(t *testing.T) {
 	require.Equal(t, 1, quota.cacheCalls)
 }
 
+func TestOpenAIRefreshQuota_CreditsPersistIndependently(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		resetErr   error
+		creditsErr error
+	}{
+		{name: "both saved"},
+		{name: "reset details missing", resetErr: errors.New("missing expirations")},
+		{name: "points cache failed", creditsErr: errors.New("write failed")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			quota := successfulOpenAIQuotaWorkflowStub()
+			balance := "1250.75"
+			quota.queryResult.Credits = &service.OpenAICredits{HasCredits: true, Balance: &balance}
+			quota.cacheErr = tc.resetErr
+			quota.creditsCacheErr = tc.creditsErr
+			status, envelope := performOpenAIQuotaRefreshRequest(t, &OpenAIOAuthHandler{quotaService: quota})
+			require.Equal(t, http.StatusOK, status)
+			require.Equal(t, tc.resetErr == nil, envelope.Data.CachePersisted)
+			require.Equal(t, tc.creditsErr == nil, envelope.Data.CreditsCachePersisted)
+			require.Equal(t, quota.queryResult.Credits, envelope.Data.Credits)
+			require.Equal(t, quota.queryResult, quota.cachedCreditsUsage)
+			require.Equal(t, 1, quota.creditsCacheCalls)
+			require.Zero(t, quota.resetCalls)
+		})
+	}
+}
+
 // An empty-but-successful upstream read must not be dereferenced blindly.
 func TestOpenAIQuotaEmptyUsageIsHandledWithoutPanic(t *testing.T) {
 	t.Run("refresh reports an internal error", func(t *testing.T) {
@@ -435,7 +478,7 @@ func TestOpenAIQuotaEmptyUsageIsHandledWithoutPanic(t *testing.T) {
 		status, envelope := performOpenAIQuotaResetRequest(t, handler)
 
 		require.Equal(t, http.StatusOK, status)
-		require.Equal(t, openAIQuotaResetWarningCacheRefreshFailed, envelope.Data.WarningCode)
+		require.Equal(t, service.OpenAIQuotaResetWarningCacheRefreshFailed, envelope.Data.WarningCode)
 		require.True(t, envelope.Data.AccountStateRecovered)
 		require.NotNil(t, envelope.Data.Account)
 		require.Zero(t, quota.cacheCalls)

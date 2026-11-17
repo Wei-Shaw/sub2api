@@ -24,9 +24,20 @@ const (
 	PlatformAntigravity = "antigravity"
 	PlatformGrok        = "grok"
 	// 国产 OpenAI 兼容供应商（经 OpenAI 网关转发，按 Chat Completions 协议）。
-	PlatformKimi      = "kimi"     // Kimi (月之暗面 / Moonshot)
-	PlatformZhipu     = "zhipu"    // 智谱 GLM (bigmodel)
-	PlatformDeepseek  = "deepseek" // DeepSeek
+	PlatformKimi     = "kimi"     // Kimi (月之暗面 / Moonshot)
+	PlatformZhipu    = "zhipu"    // 智谱 GLM (bigmodel)
+	PlatformDeepseek = "deepseek" // DeepSeek
+	PlatformMiniMax  = "minimax"  // MiniMax (M 系列)
+	PlatformTypeSafe = "typesafe" // TypeSafe AI System One (Jev)
+	// PlatformOpenCodeGo 是 OpenCode 平台（账号类型 Zen 按量 / Go 订阅）。
+	// 值保持 opencode_go 以兼容已落库的账号、分组、配额与 Composite 路由。
+	PlatformOpenCodeGo = "opencode_go"
+	// PlatformCommandCode 是 Command Code Provider API（多模型聚合，积分计费，
+	// 订阅套餐另有 5 小时 / 每周滚动窗口）。
+	PlatformCommandCode = "command_code"
+	// PlatformCline 是 Cline API（多模型聚合，OpenAI 兼容 Chat Completions；按量积分计费，
+	// 另有 ClinePass 订阅）。
+	PlatformCline     = "cline"
 	PlatformComposite = "composite"
 )
 
@@ -35,6 +46,8 @@ const (
 const (
 	AccountModePayG   = "payg"   // 按量付费：消耗余额，做余额检测冷却
 	AccountModeCoding = "coding" // Coding Plan：滚动用量窗口冷却（5h / weekly）
+	AccountModeZen    = "zen"    // OpenCode Zen：按量付费，https://opencode.ai/zen/v1
+	AccountModeGo     = "go"     // OpenCode Go：订阅额度窗口，https://opencode.ai/zen/go/v1
 )
 
 // API protocol constants 国产供应商的上游 API 协议维度。存储于
@@ -43,7 +56,7 @@ const (
 const (
 	APIProtocolChatCompletions = "chat_completions" // OpenAI Chat Completions（默认）
 	APIProtocolAnthropic       = "anthropic"        // 原生 Anthropic /v1/messages（适配 Claude Code）
-	APIProtocolResponses       = "responses"        // OpenAI Responses（仅 deepseek，适配 Codex）
+	APIProtocolResponses       = "responses"        // OpenAI Responses（deepseek / kimi / minimax 原生端点，适配 Codex）
 	APIProtocolAdaptive        = "adaptive"         // 按入站协议优先选择供应商原生端点
 )
 
@@ -98,18 +111,27 @@ const AntigravityGemini31ProAgentModel = "gemini-pro-agent"
 // 与前端 useModelWhitelist.ts 中的 antigravityDefaultMappings 保持一致
 var DefaultAntigravityModelMapping = map[string]string{
 	// Claude 白名单
+	"claude-fable-5-1":           "claude-fable-5-1",         // 官方模型
 	"claude-fable-5":             "claude-fable-5",           // 官方模型
+	"claude-opus-5-5":            "claude-opus-5-5-high",     // 简称映射
+	"claude-opus-5-5-high":       "claude-opus-5-5-high",     // 官方模型
+	"claude-opus-5-5-medium":     "claude-opus-5-5-medium",   // 官方模型
+	"claude-opus-5-5-low":        "claude-opus-5-5-low",      // 官方模型
+	"claude-sonnet-5-5":          "claude-sonnet-5-5-high",   // 简称映射
+	"claude-sonnet-5-5-high":     "claude-sonnet-5-5-high",   // 官方模型
+	"claude-sonnet-5-5-medium":   "claude-sonnet-5-5-medium", // 官方模型
+	"claude-sonnet-5-5-low":      "claude-sonnet-5-5-low",    // 官方模型
 	"claude-opus-4-8":            "claude-opus-4-8",          // 官方模型
 	"claude-opus-4-7":            "claude-opus-4-7",          // 官方模型
 	"claude-opus-4-6-thinking":   "claude-opus-4-6-thinking", // 官方模型
 	"claude-opus-4-6":            "claude-opus-4-6-thinking", // 简称映射
 	"claude-opus-4-5-thinking":   "claude-opus-4-6-thinking", // 迁移旧模型
 	"claude-sonnet-4-6":          "claude-sonnet-4-6",
-	"claude-sonnet-4-5":          "claude-sonnet-4-5",
-	"claude-sonnet-4-5-thinking": "claude-sonnet-4-5-thinking",
+	"claude-sonnet-4-5":          "claude-sonnet-4-5", // 显式 canonical 选择透传
+	"claude-sonnet-4-5-thinking": "claude-sonnet-4-6", // 迁移旧兼容别名
 	// Claude 详细版本 ID 映射
 	"claude-opus-4-5-20251101":   "claude-opus-4-6-thinking", // 迁移旧模型
-	"claude-sonnet-4-5-20250929": "claude-sonnet-4-5",
+	"claude-sonnet-4-5-20250929": "claude-sonnet-4-6",        // 迁移旧模型
 	// Claude Haiku → Sonnet（无 Haiku 支持）
 	"claude-haiku-4-5":          "claude-sonnet-4-6",
 	"claude-haiku-4-5-20251001": "claude-sonnet-4-6",
@@ -144,6 +166,25 @@ var DefaultAntigravityModelMapping = map[string]string{
 	"gemini-3.6-flash-low":    "gemini-3.6-flash-low",
 	"gemini-3.6-flash-medium": "gemini-3.6-flash-medium",
 	"gemini-3.6-flash-tiered": "gemini-3.6-flash-tiered",
+	// Gemini 3.7 Flash tiered models
+	"gemini-3.7-flash":        "gemini-3.7-flash",
+	"gemini-3.7-flash-high":   "gemini-3.7-flash-high",
+	"gemini-3.7-flash-low":    "gemini-3.7-flash-low",
+	"gemini-3.7-flash-medium": "gemini-3.7-flash-medium",
+	"gemini-3.7-flash-tiered": "gemini-3.7-flash-tiered",
+	// Gemini 3.8 Flash tiered models
+	"gemini-3.8-flash":        "gemini-3.8-flash",
+	"gemini-3.8-flash-high":   "gemini-3.8-flash-high",
+	"gemini-3.8-flash-low":    "gemini-3.8-flash-low",
+	"gemini-3.8-flash-medium": "gemini-3.8-flash-medium",
+	"gemini-3.8-flash-tiered": "gemini-3.8-flash-tiered",
+	// Gemini 4 models
+	// Carbon uses the published model ID; do not infer Argon-style tier aliases.
+	"gemini-4-carbon":       "gemini-4-carbon",
+	"gemini-4-argon":        "gemini-4-argon-high",
+	"gemini-4-argon-high":   "gemini-4-argon-high",
+	"gemini-4-argon-low":    "gemini-4-argon-low",
+	"gemini-4-argon-medium": "gemini-4-argon-medium",
 	// Gemini 3 image 兼容映射（向 3.1 image 迁移）
 	"gemini-3-pro-image":         "gemini-3.1-flash-image",
 	"gemini-3-pro-image-preview": "gemini-3.1-flash-image",
@@ -158,7 +199,10 @@ var DefaultAntigravityModelMapping = map[string]string{
 // aws_region 自动调整为匹配的区域前缀（如 eu.、apac.、jp. 等）
 var DefaultBedrockModelMapping = map[string]string{
 	// Claude Fable
-	"claude-fable-5": "anthropic.claude-fable-5",
+	"claude-fable-5-2":  "anthropic.claude-fable-5-2",
+	"claude-mythos-5-2": "anthropic.claude-mythos-5-2",
+	"claude-fable-5-1":  "anthropic.claude-fable-5-1",
+	"claude-fable-5":    "anthropic.claude-fable-5",
 	// Claude Opus
 	"claude-opus-5":            "us.anthropic.claude-opus-5-v1",
 	"claude-opus-4-8":          "us.anthropic.claude-opus-4-8-v1",
@@ -170,6 +214,8 @@ var DefaultBedrockModelMapping = map[string]string{
 	"claude-opus-4-1":          "us.anthropic.claude-opus-4-1-20250805-v1:0",
 	"claude-opus-4-20250514":   "us.anthropic.claude-opus-4-20250514-v1:0",
 	// Claude Sonnet
+	// Sonnet 5.5 is available on bedrock-runtime through Global inference only.
+	"claude-sonnet-5-5":          "global.anthropic.claude-sonnet-5-5",
 	"claude-sonnet-5":            "us.anthropic.claude-sonnet-5-v1",
 	"claude-sonnet-4-6-thinking": "us.anthropic.claude-sonnet-4-6",
 	"claude-sonnet-4-6":          "us.anthropic.claude-sonnet-4-6",

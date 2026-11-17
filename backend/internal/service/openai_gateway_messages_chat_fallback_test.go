@@ -91,6 +91,13 @@ func TestForwardAsAnthropic_ForceChatCompletionsPreservesFinalModelReasoningEffo
 			mapped:     "gpt-5.6-luna",
 			wantEffort: "medium",
 		},
+		{
+			name:       "disabled thinking overrides max",
+			model:      "gpt-5.6-luna",
+			mapped:     "gpt-5.6-luna",
+			effortJSON: `,"output_config":{"effort":"max"},"thinking":{"type":"disabled"}`,
+			wantEffort: "none",
+		},
 	}
 
 	for _, tt := range tests {
@@ -114,7 +121,7 @@ func TestForwardAsAnthropic_ForceChatCompletionsPreservesFinalModelReasoningEffo
 			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
 			ctx := context.Background()
 			if tt.maxPolicy != "" {
-				ctx = WithOpenAIReasoningEffortPolicy(ctx, tt.maxPolicy, nil)
+				ctx = WithOpenAIReasoningEffortPolicy(ctx, tt.maxPolicy, nil, "")
 			}
 			result, err := svc.ForwardAsAnthropic(ctx, c, account, []byte(body), "", "")
 			require.NoError(t, err)
@@ -140,7 +147,7 @@ func TestForwardAsAnthropic_ForceChatCompletionsNonStreaming(t *testing.T) {
 		StatusCode: http.StatusOK,
 		Header:     http.Header{"Content-Type": []string{"application/json"}, "x-request-id": []string{"rid_msg_chat_json"}},
 		Body: io.NopCloser(strings.NewReader(
-			`{"id":"chatcmpl_json","object":"chat.completion","model":"gpt-5.4","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5,"prompt_tokens_details":{"cached_tokens":1}}}`,
+			`{"id":"chatcmpl_json","object":"chat.completion","model":"gpt-5.4","service_tier":"priority","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":3,"completion_tokens":2,"total_tokens":5,"prompt_tokens_details":{"cached_tokens":1}}}`,
 		)),
 	}}
 	svc := &OpenAIGatewayService{
@@ -162,6 +169,8 @@ func TestForwardAsAnthropic_ForceChatCompletionsNonStreaming(t *testing.T) {
 	require.Equal(t, 3, result.Usage.InputTokens)
 	require.Equal(t, 2, result.Usage.OutputTokens)
 	require.Equal(t, 1, result.Usage.CacheReadInputTokens)
+	require.Nil(t, result.ServiceTier)
+	require.Equal(t, "priority", result.UpstreamResponseServiceTier)
 	require.False(t, result.Stream)
 }
 
@@ -462,7 +471,7 @@ func TestForwardAsAnthropic_ResponsesSupportedAccountStillUsesResponsesEndpoint(
 		openai_compat.ExtraKeyResponsesSupported: true,
 	}
 
-	ctx := WithOpenAIReasoningEffortPolicy(context.Background(), "medium", nil)
+	ctx := WithOpenAIReasoningEffortPolicy(context.Background(), "medium", nil, "")
 	result, err := svc.ForwardAsAnthropic(ctx, c, account, body, "", "")
 	require.NoError(t, err)
 	require.NotNil(t, result)

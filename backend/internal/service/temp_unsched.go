@@ -16,6 +16,8 @@ type TempUnschedState struct {
 	TriggerCount         int64  `json:"trigger_count,omitempty"`          // 本次触发累计命中次数
 	TriggerThreshold     int    `json:"trigger_threshold,omitempty"`      // 触发阈值
 	TriggerWindowMinutes int    `json:"trigger_window_minutes,omitempty"` // 计数窗口（分钟）
+	Scope                string `json:"scope,omitempty"`                  // 隔离粒度：account / model
+	Model                string `json:"model,omitempty"`                  // 模型级时被冷却的模型键
 }
 
 // TempUnschedCache 临时不可调度缓存接口
@@ -23,6 +25,12 @@ type TempUnschedCache interface {
 	SetTempUnsched(ctx context.Context, accountID int64, state *TempUnschedState) error
 	GetTempUnsched(ctx context.Context, accountID int64) (*TempUnschedState, error)
 	DeleteTempUnsched(ctx context.Context, accountID int64) error
+}
+
+// OpenAIAPIKeyHealthCache is an optional TempUnschedCache extension used to
+// aggregate pool API-key failures across gateway instances.
+type OpenAIAPIKeyHealthCache interface {
+	RecordOpenAIAPIKeyHealthFailure(ctx context.Context, accountID int64, windowMinutes, threshold int) (count int64, tripped bool, err error)
 }
 
 // TimeoutCounterCache 超时计数器缓存接口

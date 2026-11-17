@@ -6,8 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"testing"
 	"time"
 
@@ -39,18 +41,137 @@ func newOpenAITransportErrTestContext() (*gin.Context, *httptest.ResponseRecorde
 	return c, rec
 }
 
-type failingOpenAIHTTPUpstream struct {
-	err   error
-	calls int
+func TestHandleOpenAIUpstreamTransportError_DNSCooldownConfig(t *testing.T) {
+	transportErr := &url.Error{
+		Op:  "Post",
+		URL: "https://chatgpt.com/backend-api/codex/responses",
+		Err: &net.OpError{Op: "dial", Net: "tcp", Err: &net.DNSError{
+			Err: "no such host", Name: "chatgpt.com", Server: "127.0.0.11:53", IsNotFound: true,
+		}},
+	}
+	require.True(t, classifyUpstreamTransportError(transportErr).Persistent)
+	for _, testCase := range []struct {
+		name     string
+		cfg      *config.Config
+		disabled bool
+	}{
+		{name: "nil"},
+		{name: "zero", cfg: &config.Config{}},
+		{name: "enabled", cfg: &config.Config{Gateway: config.GatewayConfig{DisableOpenAITransportErrorCooldown: false}}},
+		{name: "disabled", cfg: &config.Config{Gateway: config.GatewayConfig{DisableOpenAITransportErrorCooldown: true}}, disabled: true},
+	} {
+		for _, withRepo := range []bool{false, true} {
+			for _, passthrough := range []bool{false, true} {
+				t.Run(fmt.Sprintf("%s/repo=%t/passthrough=%t", testCase.name, withRepo, passthrough), func(t *testing.T) {
+					repo := &openaiTransportAccountRepoStub{}
+					svc := &OpenAIGatewayService{cfg: testCase.cfg}
+					if withRepo {
+						svc.accountRepo = repo
+					}
+					account := &Account{ID: 8541, Name: "shared-egress", Platform: PlatformOpenAI}
+					c, rec := newOpenAITransportErrTestContext()
+					before := time.Now()
+					retErr := svc.handleOpenAIUpstreamTransportError(context.Background(), c, account, transportErr, passthrough)
+					after := time.Now()
+
+					var failover *UpstreamFailoverError
+					require.ErrorAs(t, retErr, &failover)
+					require.Equal(t, http.StatusBadGateway, failover.StatusCode)
+					require.JSONEq(t, `{"error":{"type":"upstream_error","message":"Upstream request failed"}}`, string(failover.ResponseBody))
+					require.False(t, rec.Flushed)
+					require.False(t, c.Writer.Written())
+					require.Empty(t, rec.Body.String())
+					rawEvents, exists := c.Get(OpsUpstreamErrorsKey)
+					require.True(t, exists)
+					var events []*OpsUpstreamErrorEvent
+					require.IsType(t, events, rawEvents)
+					events = rawEvents.([]*OpsUpstreamErrorEvent)
+					require.Len(t, events, 1)
+					require.Equal(t, account.ID, events[0].AccountID)
+					require.Equal(t, account.Name, events[0].AccountName)
+					require.Equal(t, PlatformOpenAI, events[0].Platform)
+					require.Equal(t, "request_error", events[0].Kind)
+					require.Zero(t, events[0].UpstreamStatusCode)
+					require.Equal(t, passthrough, events[0].Passthrough)
+					require.Contains(t, events[0].Message, "no such host")
+					require.Equal(t, 0, c.GetInt(OpsUpstreamStatusCodeKey))
+					require.Equal(t, events[0].Message, c.GetString(OpsUpstreamErrorMessageKey))
+
+					require.Equal(t, !testCase.disabled, svc.isOpenAIAccountRuntimeBlocked(account))
+					if testCase.disabled {
+						_, blocked := svc.openaiAccountRuntimeBlockUntil.Load(account.ID)
+						require.False(t, blocked)
+					} else {
+						blockUntil, exists := svc.openaiAccountRuntimeBlockUntil.Load(account.ID)
+						require.True(t, exists)
+						require.WithinRange(t, blockUntil.(time.Time), before.Add(10*time.Minute), after.Add(10*time.Minute))
+					}
+					if withRepo && !testCase.disabled {
+						require.Len(t, repo.tempUnschedCalls, 1)
+						call := repo.tempUnschedCalls[0]
+						require.Equal(t, account.ID, call.accountID)
+						require.WithinRange(t, call.until, before.Add(10*time.Minute), after.Add(10*time.Minute))
+						require.Contains(t, call.reason, "no such host")
+					} else {
+						require.Empty(t, repo.tempUnschedCalls)
+					}
+				})
+			}
+		}
+	}
 }
 
-func (u *failingOpenAIHTTPUpstream) Do(_ *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+func TestTempUnscheduleOpenAITransportError_DisabledPreservesExistingState(t *testing.T) {
+	for _, paused := range []bool{false, true} {
+		t.Run(fmt.Sprintf("paused=%t", paused), func(t *testing.T) {
+			repo := &openaiTransportAccountRepoStub{}
+			svc := &OpenAIGatewayService{accountRepo: repo, cfg: &config.Config{}}
+			account := &Account{ID: 8541, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: !paused}
+			svc.tempUnscheduleOpenAITransportError(context.Background(), account, "previous failure")
+			require.Len(t, repo.tempUnschedCalls, 1)
+			previousCall := repo.tempUnschedCalls[0]
+			persistedUntil := previousCall.until
+			account.TempUnschedulableUntil = &persistedUntil
+			account.TempUnschedulableReason = previousCall.reason
+			previousAccount := *account
+			previousBlock, exists := svc.openaiAccountRuntimeBlockUntil.Load(account.ID)
+			require.True(t, exists)
+			previousGeneration, _ := svc.openaiAccountRuntimeBlockGeneration.Load(account.ID)
+
+			svc.cfg.Gateway.DisableOpenAITransportErrorCooldown = true
+			svc.tempUnscheduleOpenAITransportError(context.Background(), account, "new failure")
+
+			require.Equal(t, []tempUnschedCall{previousCall}, repo.tempUnschedCalls)
+			require.Equal(t, previousAccount, *account)
+			require.Equal(t, previousCall.until, *account.TempUnschedulableUntil)
+			currentBlock, exists := svc.openaiAccountRuntimeBlockUntil.Load(account.ID)
+			require.True(t, exists)
+			require.Equal(t, previousBlock, currentBlock)
+			currentGeneration, _ := svc.openaiAccountRuntimeBlockGeneration.Load(account.ID)
+			require.Equal(t, previousGeneration, currentGeneration)
+			require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+		})
+	}
+}
+
+type failingOpenAIHTTPUpstream struct {
+	err       error
+	calls     int
+	proxyURL  string
+	proxyURLs []string
+}
+
+func (u *failingOpenAIHTTPUpstream) Do(_ *http.Request, proxyURL string, _ int64, _ int) (*http.Response, error) {
 	u.calls++
+	u.proxyURL = proxyURL
+	u.proxyURLs = append(u.proxyURLs, proxyURL)
 	return nil, u.err
 }
 
-func (u *failingOpenAIHTTPUpstream) DoWithTLS(_ *http.Request, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+func (u *failingOpenAIHTTPUpstream) DoWithTLS(_ *http.Request, proxyURL string, _ int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
 	u.calls++
+	u.proxyURL = proxyURL
+	u.proxyURLs = append(u.proxyURLs, proxyURL)
 	return nil, u.err
 }
 
@@ -60,7 +181,14 @@ func (u *failingOpenAIHTTPUpstream) DoWithTLS(_ *http.Request, _ string, _ int64
 func TestHandleOpenAIUpstreamTransportError_PersistentEvictsAndFailsOver(t *testing.T) {
 	repo := &openaiTransportAccountRepoStub{}
 	svc := &OpenAIGatewayService{accountRepo: repo}
-	account := &Account{ID: 4627, Name: "proxy-expired", Platform: PlatformOpenAI}
+	proxyID := int64(10060)
+	account := &Account{
+		ID:       4627,
+		Name:     "proxy-expired",
+		Platform: PlatformOpenAI,
+		ProxyID:  &proxyID,
+		Proxy:    &Proxy{ID: proxyID, Name: "wldsg82-ipv6-10060"},
+	}
 	c, rec := newOpenAITransportErrTestContext()
 
 	before := time.Now()
@@ -85,6 +213,15 @@ func TestHandleOpenAIUpstreamTransportError_PersistentEvictsAndFailsOver(t *test
 
 	// Must NOT write a response body — the handler owns the (failover) response.
 	require.Equal(t, 0, rec.Body.Len())
+
+	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.NotNil(t, events[0].ProxyID)
+	require.Equal(t, proxyID, *events[0].ProxyID)
+	require.Equal(t, "wldsg82-ipv6-10060", events[0].ProxyName)
 }
 
 // A transient blip should fail over but must NOT evict the account.
@@ -191,12 +328,22 @@ func TestForwardAsRawChatCompletions_TransportErrorFailsOver(t *testing.T) {
 			},
 		},
 	}
+	proxyID := int64(8001)
+	proxy := &Proxy{
+		ID:       proxyID,
+		Name:     "oxylabs-uk-8001",
+		Protocol: "http",
+		Host:     "proxy.example",
+		Port:     8080,
+	}
 	account := &Account{
 		ID:          81,
 		Name:        "oc-20053",
 		Platform:    PlatformOpenAI,
 		Type:        AccountTypeAPIKey,
 		Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://opencode.ai/zen/v1"},
+		ProxyID:     &proxyID,
+		Proxy:       proxy,
 	}
 	c, rec := newOpenAITransportErrTestContext()
 	body := []byte(`{"model":"deepseek-v4-flash-free","messages":[{"role":"user","content":"hello"}]}`)
@@ -204,11 +351,62 @@ func TestForwardAsRawChatCompletions_TransportErrorFailsOver(t *testing.T) {
 	_, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
 
 	require.Equal(t, 1, upstream.calls)
+	require.Equal(t, proxy.URL(), upstream.proxyURL)
 	var fo *UpstreamFailoverError
 	require.True(t, errors.As(err, &fo), "transport error must trigger account failover")
 	require.Equal(t, http.StatusBadGateway, fo.StatusCode)
 	require.Empty(t, repo.tempUnschedCalls, "plain EOF is transient: fail over but do not evict")
 	require.Equal(t, 0, rec.Body.Len(), "service must not write a hard 502 before handler can fail over")
+
+	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 1)
+	require.NotNil(t, events[0].ProxyID)
+	require.Equal(t, proxyID, *events[0].ProxyID)
+	require.Equal(t, proxy.Name, events[0].ProxyName)
+}
+
+func TestForwardAsRawChatCompletions_RecordsProxyPerAccountAttempt(t *testing.T) {
+	upstream := &failingOpenAIHTTPUpstream{err: errors.New("EOF")}
+	svc := &OpenAIGatewayService{
+		accountRepo:  &openaiTransportAccountRepoStub{},
+		httpUpstream: upstream,
+		cfg: &config.Config{Security: config.SecurityConfig{
+			URLAllowlist: config.URLAllowlistConfig{Enabled: false},
+		}},
+	}
+	proxyA := &Proxy{ID: 10060, Name: "proxy-a", Protocol: "http", Host: "proxy-a.example", Port: 8080}
+	proxyB := &Proxy{ID: 8001, Name: "proxy-b", Protocol: "http", Host: "proxy-b.example", Port: 8080}
+	fallbackOriginID := int64(10150)
+	accounts := []*Account{
+		{ID: 81, Name: "account-a", Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "a", "base_url": "https://example.com/v1"}, ProxyID: &proxyA.ID, Proxy: proxyA},
+		{ID: 82, Name: "account-b", Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "b", "base_url": "https://example.com/v1"}, ProxyID: &proxyB.ID, Proxy: proxyB, ProxyFallbackOriginID: &fallbackOriginID},
+		{ID: 83, Name: "account-direct", Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "c", "base_url": "https://example.com/v1"}},
+	}
+	c, _ := newOpenAITransportErrTestContext()
+	body := []byte(`{"model":"test","messages":[{"role":"user","content":"hello"}]}`)
+
+	for _, account := range accounts {
+		_, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+		var failoverErr *UpstreamFailoverError
+		require.ErrorAs(t, err, &failoverErr)
+	}
+
+	require.Equal(t, []string{proxyA.URL(), proxyB.URL(), ""}, upstream.proxyURLs)
+	rawEvents, ok := c.Get(OpsUpstreamErrorsKey)
+	require.True(t, ok)
+	events, ok := rawEvents.([]*OpsUpstreamErrorEvent)
+	require.True(t, ok)
+	require.Len(t, events, 3)
+	for i, proxy := range []*Proxy{proxyA, proxyB} {
+		require.NotNil(t, events[i].ProxyID)
+		require.Equal(t, proxy.ID, *events[i].ProxyID)
+		require.Equal(t, proxy.Name, events[i].ProxyName)
+	}
+	require.Nil(t, events[2].ProxyID)
+	require.Equal(t, opsProxyNameDirect, events[2].ProxyName)
 }
 
 func TestHandleOpenAIUpstreamTransportError_RecordsOllamaActivityOnly(t *testing.T) {

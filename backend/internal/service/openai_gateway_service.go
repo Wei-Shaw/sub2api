@@ -33,7 +33,7 @@ const (
 	openaiPlatformAPIURL            = "https://api.openai.com/v1/responses"
 	openaiPlatformAPIInputTokensURL = "https://api.openai.com/v1/responses/input_tokens"
 	openaiStickySessionTTL          = time.Hour // 粘性会话TTL
-	// 与真实 Codex TUI 的 User-Agent 结构对齐：
+	// 与真实 Codex CLI 的 User-Agent 结构对齐：
 	// {originator}/{version} ({OS} {OS_version}; {arch}) {terminal}
 	// 缺少 OS/架构/终端后缀的形态易被上游指纹识别为非官方客户端。
 	// 该后缀是 UA 形态的唯一定义处，buildCodexCLIUserAgent 按运行时版本号复用它。
@@ -57,8 +57,8 @@ const (
 	openAICompactSessionSeedKey        = "openai_compact_session_seed"
 	openAIUpstreamEndpointContextKey   = "openai_actual_upstream_endpoint"
 	// codexCLIVersion 是网关对上游声明的 Codex 客户端版本，同时供 codexCLIUserAgent
-	// 与 version 头使用。上游 /backend-api/codex 在容量紧张时按客户端身份分优先级降载，
-	// 陈旧版本会被优先丢弃（HTTP 200 + 流内 server_is_overloaded）；非官方客户端配不出
+	// 与 version 头使用。上游 /backend-api/codex 会按客户端身份进行风控分层，
+	// 陈旧版本可能被优先丢弃（HTTP 200 + 流内 server_is_overloaded）；非官方客户端配不出
 	// 官方身份时整体回退到本常量，因此它必须跟随官方 CLI 的当前发布版本，
 	// 落后多个版本会让这些请求稳定落在被优先丢弃的一侧。
 	codexCLIVersion = "0.146.0"
@@ -75,6 +75,7 @@ var openaiAllowedHeaders = map[string]bool{
 	"accept-language":         true,
 	"content-type":            true,
 	"conversation_id":         true,
+	"openai-beta":             true,
 	"user-agent":              true,
 	"originator":              true,
 	"session_id":              true,
@@ -221,20 +222,25 @@ func (s *OpenAICodexUsageSnapshot) Normalize() *NormalizedCodexLimits {
 
 // OpenAIUsage represents OpenAI API response usage
 type OpenAIUsage struct {
-	InputTokens              int `json:"input_tokens"`
-	ImageInputTokens         int `json:"image_input_tokens,omitempty"`
-	OutputTokens             int `json:"output_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens,omitempty"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens,omitempty"`
-	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
+	InputTokens                 int `json:"input_tokens"`
+	ImageInputTokens            int `json:"image_input_tokens,omitempty"`
+	ImageCacheReadTokens        int `json:"image_cache_read_tokens,omitempty"`
+	OutputTokens                int `json:"output_tokens"`
+	CacheCreationInputTokens    int `json:"cache_creation_input_tokens,omitempty"`
+	CacheCreation30mInputTokens int `json:"cache_creation_30m_input_tokens,omitempty"`
+	CacheCreation12hInputTokens int `json:"cache_creation_12h_input_tokens,omitempty"`
+	CacheReadInputTokens        int `json:"cache_read_input_tokens,omitempty"`
+	ImageOutputTokens           int `json:"image_output_tokens,omitempty"`
 }
 
 // OpenAIForwardResult represents the result of forwarding
 type OpenAIForwardResult struct {
 	RequestID  string
 	ResponseID string
-	Usage      OpenAIUsage
-	Model      string // 原始模型（用于响应和日志显示）
+	// UpstreamHeaders 是直接上游的响应头，用于按账户配置解析上游请求标识。
+	UpstreamHeaders http.Header
+	Usage           OpenAIUsage
+	Model           string // 原始模型（用于响应和日志显示）
 	// BillingModel is the model used for cost calculation.
 	// When non-empty, CalculateCost uses this instead of Model.
 	// This is set by the Anthropic Messages conversion path where
@@ -247,17 +253,25 @@ type OpenAIForwardResult struct {
 	// response before any client-facing rewrite or protocol conversion.
 	UpstreamResponseModel         string
 	UpstreamResponseModelConflict bool
+	// UpstreamResponseServiceTier is the tier the upstream reports having used
+	// (response service_tier: "priority" / "default" / "flex" / ...); "" when not declared.
+	UpstreamResponseServiceTier string
 	// UpstreamEndpoint is the actual upstream API path used for this request.
 	// It avoids guessing when one downstream protocol can use multiple upstream endpoints.
 	UpstreamEndpoint string
-	// ServiceTier records the OpenAI Responses API service tier, e.g. "priority" / "flex".
-	// Nil means the request did not specify a recognized tier.
+	// ServiceTier is the final tier sent upstream after policy rewriting.
+	// The upstream response declaration remains separate above and is reconciled
+	// at usage-recording time, where the credential protocol is available.
 	ServiceTier *string
-	// ReasoningEffort is extracted from request body (reasoning.effort) or derived from model suffix.
+	// ReasoningEffort is extracted from request body (reasoning.effort) or derived from model suffix
+	// after group policy rewriting and model-family remapping.
 	// Stored for usage records display; nil means not provided / not applicable.
 	ReasoningEffort *string
-	Stream          bool
-	OpenAIWSMode    bool
+	// RequestedReasoningEffort is the client-requested effort before mapping.
+	// Empty/nil means it should fall back to ReasoningEffort at persistence.
+	RequestedReasoningEffort *string
+	Stream                   bool
+	OpenAIWSMode             bool
 	// UpstreamTerminalEvent is the normalized terminal event observed on an
 	// upstream Responses WebSocket turn. Empty preserves legacy/non-WS success.
 	UpstreamTerminalEvent string
@@ -266,14 +280,17 @@ type OpenAIForwardResult struct {
 	FirstTokenMs          *int
 	ClientDisconnect      bool
 	ImageCount            int
-	ImageSize             string
-	ImageInputSize        string
-	ImageOutputSize       string
-	ImageOutputSizes      []string
-	ImageSizeSource       string
-	ImageSizeBreakdown    map[string]int
-	VideoCount            int
-	VideoResolution       string
+	// ImageEndpoint 标记请求来自专用图片端点；分组 image_count_billing 开关
+	// 只对这类请求生效，混合 Responses/Chat/WS 请求仍按 token 计费。
+	ImageEndpoint      bool
+	ImageSize          string
+	ImageInputSize     string
+	ImageOutputSize    string
+	ImageOutputSizes   []string
+	ImageSizeSource    string
+	ImageSizeBreakdown map[string]int
+	VideoCount         int
+	VideoResolution    string
 	// VideoDurationSeconds 是提交时请求的生成时长（xAI 按输出秒数计费），已归一化到 1-15 秒。
 	VideoDurationSeconds int
 	// WebSearchCalls 是 Codex alpha/search 网页搜索调用次数（每次成功请求为 1）。
@@ -304,6 +321,21 @@ func (r *OpenAIForwardResult) SucceededForScheduling() bool {
 	}
 }
 
+const openAIResponsesUpstreamEndpoint = "/v1/responses"
+
+// stampOpenAIResponsesUpstreamEndpoint records that this attempt hit the
+// Responses API. OpenCode Go / CN accounts cannot derive that from inbound
+// path (DeriveUpstreamEndpoint falls back to the client URL).
+func stampOpenAIResponsesUpstreamEndpoint(c *gin.Context, result *OpenAIForwardResult) {
+	SetActualOpenAIUpstreamEndpoint(c, openAIResponsesUpstreamEndpoint)
+	if result == nil {
+		return
+	}
+	if strings.TrimSpace(result.UpstreamEndpoint) == "" {
+		result.UpstreamEndpoint = openAIResponsesUpstreamEndpoint
+	}
+}
+
 // SetActualOpenAIUpstreamEndpoint records the endpoint selected by the current
 // forwarding attempt. It covers error paths where no OpenAIForwardResult is
 // available for usage and operations logging.
@@ -314,6 +346,16 @@ func SetActualOpenAIUpstreamEndpoint(c *gin.Context, endpoint string) {
 	if endpoint = strings.TrimSpace(endpoint); endpoint != "" {
 		c.Set(openAIUpstreamEndpointContextKey, endpoint)
 	}
+}
+
+// ClearActualOpenAIUpstreamEndpoint 清理当前转发尝试记录的端点。
+// Handler 会在账号 failover 尝试间复用同一个 Gin context，因此每次尝试
+// 都必须从无残留状态开始。
+func ClearActualOpenAIUpstreamEndpoint(c *gin.Context) {
+	if c == nil {
+		return
+	}
+	c.Set(openAIUpstreamEndpointContextKey, "")
 }
 
 // GetActualOpenAIUpstreamEndpoint returns the endpoint recorded by the latest
@@ -420,6 +462,7 @@ type OpenAIGatewayService struct {
 	billingCacheService   *BillingCacheService
 	userGroupRateResolver *userGroupRateResolver
 	httpUpstream          HTTPUpstream
+	pluginManager         *PluginManager
 	deferredService       *DeferredService
 	openAITokenProvider   *OpenAITokenProvider
 	grokTokenProvider     *GrokTokenProvider
@@ -444,6 +487,7 @@ type OpenAIGatewayService struct {
 	openaiWSStateStore             OpenAIWSStateStore
 	openaiScheduler                OpenAIAccountScheduler
 	openaiWSPassthroughDialer      openAIWSClientDialer
+	openaiWSSessionPreemptions     openAIWSSessionPreemptRegistry
 	openaiAccountStats             *openAIAccountRuntimeStats
 	openaiModelTransient           *openAIAccountModelTransientState
 	openaiProxyStreamCircuit       *openAIProxyStreamCircuit
@@ -454,15 +498,16 @@ type OpenAIGatewayService struct {
 	openaiAccountRuntimeBlockLocks      sync.Map // key: int64(accountID), value: *sync.Mutex
 	openaiAccountRuntimeBlockGeneration sync.Map // key: int64(accountID), value: uint64
 	openaiAccountRuntimeBlockSequence   atomic.Uint64
+	openaiOAuth429RetryStartedAt        sync.Map // key: int64(accountID), value: time.Time
 	grokCredentialMutationLocks         sync.Map // key: int64(accountID), value: *sync.Mutex
 	openaiOAuth429WindowStartUnixNano   atomic.Int64
 	openaiOAuth429WindowCount           atomic.Int64
 	openaiWSRetryMetrics                openAIWSRetryMetrics
 	responseHeaderFilter                *responseheaders.CompiledHeaderFilter
 	codexSnapshotThrottle               *accountWriteThrottle
-	codexModelsManifestCache            codexModelsManifestCache
-	openaiCompatSessionResponses        sync.Map
-	openaiCompatAnthropicDigestSessions sync.Map
+	openAIModelsCache                   openAIModelsCache
+	openaiCompatSessionResponses        sessionMemoryCache
+	openaiCompatAnthropicDigestSessions sessionMemoryCache
 	// openaiCodexTurnStateOrigins: 下游会话 seed → openAICodexTurnStateOrigin，
 	// 记录最近一次向该会话下发 x-codex-turn-state 的铸造账号，供出站守卫
 	// 剥离跨账号回带（openai_codex_turn_state.go）。
@@ -573,7 +618,14 @@ func (s *OpenAIGatewayService) ResolveChannelMappingAndRestrict(ctx context.Cont
 	return s.channelService.ResolveChannelMappingAndRestrict(ctx, groupID, model)
 }
 
+// isCodexImageGenerationBridgeEnabled 决定是否为 Codex 客户端自动注入 hosted
+// image_generation 工具。该工具是 OpenAI Responses 专属能力，Kimi / DeepSeek /
+// MiniMax 等经 OpenAI 网关转发的原生 Responses 上游不识别，注入后会被 400 拒绝，
+// 因此非 OpenAI 平台账号一律不桥接，后续再按账号 → 渠道 → 全局的优先级取开关。
 func (s *OpenAIGatewayService) isCodexImageGenerationBridgeEnabled(ctx context.Context, account *Account, apiKey *APIKey) bool {
+	if account == nil || account.Platform != PlatformOpenAI {
+		return false
+	}
 	if override := account.CodexImageGenerationBridgeOverride(); override != nil {
 		return *override
 	}
@@ -654,10 +706,15 @@ func (s *OpenAIGatewayService) billingDeps() *billingDeps {
 	}
 }
 
-// CloseOpenAIWSPool 关闭 OpenAI WebSocket 连接池的后台 worker 和空闲连接。
+// CloseOpenAIWSPool 关闭 OpenAI WebSocket 连接池、后台 worker 和会话缓存清理 timer。
 // 应在应用优雅关闭时调用。
 func (s *OpenAIGatewayService) CloseOpenAIWSPool() {
-	if s != nil && s.openaiWSPool != nil {
+	if s == nil {
+		return
+	}
+	s.openaiCompatSessionResponses.Close()
+	s.openaiCompatAnthropicDigestSessions.Close()
+	if s.openaiWSPool != nil {
 		s.openaiWSPool.Close()
 	}
 }
@@ -871,7 +928,10 @@ func (s *OpenAIGatewayService) writeOpenAIWSFallbackErrorResponse(c *gin.Context
 
 	setOpsUpstreamError(c, statusCode, upstreamMessage, "")
 	if account != nil {
+		proxyID, proxyName := opsUpstreamWSProxyAttribution(account)
 		appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+			ProxyID:            proxyID,
+			ProxyName:          proxyName,
 			Platform:           account.Platform,
 			AccountID:          account.ID,
 			AccountName:        account.Name,
@@ -1193,6 +1253,17 @@ func (s *OpenAIGatewayService) GetAccessToken(ctx context.Context, account *Acco
 			return accessToken, "oauth", nil
 		}
 		// 降级：TokenProvider 未配置时直接从账号读取
+		accessToken := account.GetOpenAIAccessToken()
+		if accessToken == "" {
+			return "", "", errors.New("access_token not found in credentials")
+		}
+		return accessToken, "oauth", nil
+	case AccountTypeSetupToken:
+		if !account.IsOpenAIOAuthLike() {
+			return "", "", fmt.Errorf("unsupported account type: %s", account.Type)
+		}
+		// OpenAI setup tokens are inference-only bearer credentials. They use the
+		// Codex OAuth forwarding protocol but have no refresh-token lifecycle.
 		accessToken := account.GetOpenAIAccessToken()
 		if accessToken == "" {
 			return "", "", errors.New("access_token not found in credentials")

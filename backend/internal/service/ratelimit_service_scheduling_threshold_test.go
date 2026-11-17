@@ -90,6 +90,70 @@ func TestRateLimitService_ApplyAccountSchedulingThreshold_UsesAccountOverrideInR
 	require.Contains(t, payload["error_message"], "85.5% used >= 80%")
 }
 
+type fableSchedulingThresholdRepoStub struct {
+	rateLimitAccountRepoStub
+	modelCalls      int
+	lastModelScope  string
+	lastModelReset  time.Time
+	lastModelReason string
+}
+
+func (r *fableSchedulingThresholdRepoStub) SetModelRateLimit(_ context.Context, _ int64, scope string, resetAt time.Time, reason ...string) error {
+	r.modelCalls++
+	r.lastModelScope = scope
+	r.lastModelReset = resetAt
+	if len(reason) > 0 {
+		r.lastModelReason = reason[0]
+	}
+	return nil
+}
+
+func TestRateLimitService_ApplyAccountSchedulingThreshold_FableOnlyLimitsFableModels(t *testing.T) {
+	accountSchedulingThresholdsSF.Forget(SettingKeyAccountSchedulingThresholds)
+	accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{})
+
+	settingsRepo := newMockSettingRepo()
+	settingsRepo.data[SettingKeyAccountSchedulingThresholds] = `{"anthropic":100}`
+
+	accountRepo := &fableSchedulingThresholdRepoStub{}
+	rl := NewRateLimitService(accountRepo, nil, &config.Config{}, nil, nil)
+	rl.SetSettingService(NewSettingService(settingsRepo, &config.Config{}))
+
+	until := time.Now().UTC().Add(4 * 24 * time.Hour).Truncate(time.Second)
+	account := &Account{
+		ID:          1004,
+		Platform:    PlatformAnthropic,
+		Status:      StatusActive,
+		Schedulable: true,
+		Credentials: map[string]any{
+			"account_scheduling_threshold": 60,
+		},
+		Extra: map[string]any{
+			"passive_usage_7d_utilization":    0.40,
+			"passive_usage_7d_reset":          float64(time.Now().UTC().Add(3 * 24 * time.Hour).Unix()),
+			"passive_usage_7d_oi_utilization": 0.61,
+			"passive_usage_7d_oi_reset":       float64(until.Unix()),
+		},
+	}
+
+	blocked := rl.ApplyAccountSchedulingThreshold(context.Background(), account)
+
+	require.False(t, blocked, "the Fable-only window must not pause the whole account")
+	require.Zero(t, accountRepo.tempCalls)
+	require.Equal(t, 1, accountRepo.modelCalls)
+	require.Equal(t, anthropicFableRateLimitKey, accountRepo.lastModelScope)
+	require.WithinDuration(t, until, accountRepo.lastModelReset, time.Second)
+	require.True(t, IsAccountSchedulingThresholdReason(accountRepo.lastModelReason))
+	require.False(t, account.IsSchedulableForModel("claude-fable-5"))
+	require.False(t, account.IsSchedulableForModel("claude-fable-5[1m]"))
+	require.True(t, account.IsSchedulableForModel("claude-opus-4-8"))
+	require.True(t, account.IsSchedulableForModel("claude-sonnet-4-6"))
+
+	blocked = rl.ApplyAccountSchedulingThreshold(context.Background(), account)
+	require.False(t, blocked)
+	require.Equal(t, 1, accountRepo.modelCalls, "an active model limit should not be persisted twice")
+}
+
 func TestRateLimitService_ApplyAccountSchedulingThreshold_SkipsDuplicateTempUnschedulable(t *testing.T) {
 	accountSchedulingThresholdsSF.Forget(SettingKeyAccountSchedulingThresholds)
 	accountSchedulingThresholdsCache.Store(&cachedAccountSchedulingThresholds{})

@@ -96,6 +96,43 @@ func TestEvaluateAccountSchedulingThreshold_AnthropicIgnoresExpiredFiveHourWindo
 	require.True(t, wantUntil.Equal(*decision.Until))
 }
 
+func TestEvaluateAnthropicFableSchedulingThreshold_UsesAccountOverrideWithoutPausingAccount(t *testing.T) {
+	t.Parallel()
+
+	now := time.Date(2026, 8, 29, 1, 0, 0, 0, time.UTC)
+	wantUntil := now.Add(4 * 24 * time.Hour)
+	account := &Account{
+		Platform: PlatformAnthropic,
+		Credentials: map[string]any{
+			"account_scheduling_threshold": 60,
+		},
+		Extra: map[string]any{
+			"passive_usage_7d_utilization":    0.40,
+			"passive_usage_7d_reset":          float64(now.Add(3 * 24 * time.Hour).Unix()),
+			"passive_usage_7d_oi_utilization": 0.61,
+			"passive_usage_7d_oi_reset":       float64(wantUntil.Unix()),
+		},
+	}
+
+	thresholds := map[string]int{
+		PlatformAnthropic: 100,
+	}
+
+	accountDecision := EvaluateAccountSchedulingThreshold(account, thresholds, now)
+	require.False(t, accountDecision.ShouldPause)
+
+	decision := evaluateAnthropicFableSchedulingThreshold(account, thresholds, now)
+
+	require.True(t, decision.ShouldPause)
+	require.Equal(t, PlatformAnthropic, decision.Platform)
+	require.Equal(t, "7d_oi", decision.Window)
+	require.Equal(t, anthropicFableRateLimitKey, decision.Scope)
+	require.Equal(t, 60, decision.ThresholdPercent)
+	require.Equal(t, 61.0, decision.UsedPercent)
+	require.NotNil(t, decision.Until)
+	require.True(t, wantUntil.Equal(*decision.Until))
+}
+
 func TestEvaluateAccountSchedulingThreshold_OpenAIPreservesPercentageSemantics(t *testing.T) {
 	t.Parallel()
 
@@ -135,13 +172,70 @@ func TestEvaluateAccountSchedulingThreshold_OpenAISkipsStaleSnapshot(t *testing.
 		Extra: map[string]any{
 			"codex_usage_updated_at": now.Add(-2 * time.Hour).Format(time.RFC3339),
 			"codex_5h_used_percent":  100.0,
-			"codex_5h_reset_at":      now.Add(3 * time.Hour).Format(time.RFC3339),
+			"codex_5h_reset_at":      "invalid",
 		},
 	}
 
 	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformOpenAI: 90}, now)
 
 	require.False(t, decision.ShouldPause)
+}
+
+func TestOpenAIThresholdCandidate_StaleSnapshotFutureReset(t *testing.T) {
+	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name  string
+		reset map[string]any
+		want  bool
+	}{
+		{"absolute future", map[string]any{"codex_5h_reset_at": now.Add(time.Hour).Format(time.RFC3339)}, true},
+		{"relative future", map[string]any{"codex_5h_reset_after_seconds": 4 * 3600}, true},
+		{"missing", nil, false},
+		{"invalid", map[string]any{"codex_5h_reset_at": "invalid"}, false},
+		{"past", map[string]any{"codex_5h_reset_at": now.Add(-time.Minute).Format(time.RFC3339)}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			extra := map[string]any{"codex_usage_updated_at": now.Add(-3 * time.Hour).Format(time.RFC3339), "codex_5h_used_percent": 99.0}
+			for key, value := range tc.reset {
+				extra[key] = value
+			}
+			candidate := openAIThresholdCandidate(extra, "5h", now)
+			require.Equal(t, tc.want, candidate != nil)
+			if tc.want {
+				decision := EvaluateAccountSchedulingThreshold(&Account{Platform: PlatformOpenAI, Extra: extra}, map[string]int{PlatformOpenAI: 95}, now)
+				require.True(t, decision.ShouldPause)
+				require.NotNil(t, decision.Until)
+				require.True(t, now.Before(*decision.Until))
+			}
+		})
+	}
+}
+
+func TestResolveOpenAIQuotaUtilization_StaleSnapshotFutureReset(t *testing.T) {
+	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
+	for _, tc := range []struct {
+		name  string
+		reset map[string]any
+		want  bool
+	}{
+		{"absolute future", map[string]any{"codex_5h_reset_at": now.Add(time.Hour).Format(time.RFC3339)}, true},
+		{"relative future", map[string]any{"codex_5h_reset_after_seconds": 4 * 3600}, true},
+		{"missing", nil, false},
+		{"invalid", map[string]any{"codex_5h_reset_at": "invalid"}, false},
+		{"past", map[string]any{"codex_5h_reset_at": now.Add(-time.Minute).Format(time.RFC3339)}, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			extra := map[string]any{"codex_usage_updated_at": now.Add(-3 * time.Hour).Format(time.RFC3339), "codex_5h_used_percent": 99.0}
+			for key, value := range tc.reset {
+				extra[key] = value
+			}
+			utilization, ok := resolveOpenAIQuotaUtilization(extra, "5h", now)
+			require.Equal(t, tc.want, ok)
+			if ok {
+				require.Equal(t, 0.99, utilization)
+			}
+		})
+	}
 }
 
 func TestEvaluateAccountSchedulingThreshold_OpenAISkipsResetWindow(t *testing.T) {

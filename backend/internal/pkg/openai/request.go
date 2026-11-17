@@ -3,6 +3,8 @@ package openai
 import (
 	"regexp"
 	"strings"
+
+	"golang.org/x/net/http/httpguts"
 )
 
 // CodexCLIUserAgentPrefixes matches Codex CLI User-Agent patterns
@@ -47,7 +49,7 @@ const codexOfficialClientFamilyPrefix = "codex "
 // 或在 bump context/codex 时同步补入本集合。
 var codexOfficialClientOriginators = map[string]bool{
 	"codex_cli_rs":          true, // CLI 默认 DEFAULT_ORIGINATOR
-	"codex-tui":             true, // 交互式 TUI（连字符，真实流量占比最高）
+	CodexTUIOriginator:      true, // 交互式 TUI（连字符，真实流量占比最高）
 	"codex_vscode":          true, // VSCode/Cursor 扩展
 	"codex_vscode_copilot":  true, // 扩展 GitHub Copilot 集成模式
 	"codex_app":             true, // 历史保留
@@ -198,6 +200,10 @@ func matchCodexClientHeaderStrictPrefixes(value string, prefixes []string) bool 
 //     UA 首段后配对，保留真实版本/OS/终端指纹；
 //  3. 均不命中 → ok=false，调用方应整体回退为默认官方身份。
 func PairCodexClientIdentity(userAgent string) (originator string, pairedUA string, ok bool) {
+	// Validate before trimming so control bytes cannot become a valid identity.
+	if !validCodexUserAgentValue(userAgent) {
+		return "", "", false
+	}
 	ua := strings.TrimSpace(userAgent)
 	slash := strings.IndexByte(ua, '/')
 	if slash <= 0 {
@@ -215,6 +221,15 @@ func PairCodexClientIdentity(userAgent string) (originator string, pairedUA stri
 		return trailer, trailer + ua[slash:], true
 	}
 	return "", "", false
+}
+
+func validCodexUserAgentValue(value string) bool {
+	if !httpguts.ValidHeaderFieldValue(value) {
+		return false
+	}
+	// httpguts follows the legacy field-value grammar and permits obs-fold.
+	// User-Agent is not an obs-folded header; reject CR/LF before forwarding.
+	return !strings.ContainsAny(value, "\r\n")
 }
 
 // codexOriginatorMaxLen 官方 clientInfo.name 均为短 ASCII 标识，远低于此上限。
@@ -244,11 +259,43 @@ func canonicalizeCodexOriginator(name string) string {
 	return name
 }
 
-// CodexCLIOriginator 是 codex-rs 客户端的历史默认 originator，保留用于兼容识别。
+// CodexCLIOriginator 是 codex-rs 客户端的默认 originator。
 const CodexCLIOriginator = "codex_cli_rs"
 
-// CodexDefaultOriginator 是网关默认使用的 Codex TUI originator。
-const CodexDefaultOriginator = "codex-tui"
+// CodexTUIOriginator 是交互式 Codex TUI 使用的 originator。
+const CodexTUIOriginator = "codex-tui"
+
+// CodexDefaultOriginator 是网关默认发送的 Codex originator。
+// 历史 TUI 身份曾触发上游的身份风控分层，因此默认使用 CLI 身份；TUI 仍保留在官方身份集合中，
+// 供入站识别和兼容归一化。
+const CodexDefaultOriginator = CodexCLIOriginator
+
+// NormalizeCodexClientIdentityToCLI 将已配对的 TUI 身份归一为 CLI 身份。
+// sub2api 历史默认 UA 使用 codex-tui；上游仓库的 #5198 记录了该身份会收到
+// server_is_overloaded，而相同请求改用 codex_cli_rs 可以成功。归一化必须同时改写
+// originator 和 User-Agent 首段，避免触发 #3901 的身份配对校验。
+//
+// 版本、操作系统、架构和终端指纹保持不变；尾部 `(name; version)` 客户端标识组
+// 属于 TUI 身份时移除，因为真实 CLI UA 不携带该组。
+func NormalizeCodexClientIdentityToCLI(originator, userAgent string) (string, string, bool) {
+	if !strings.EqualFold(strings.TrimSpace(originator), CodexTUIOriginator) {
+		return originator, userAgent, false
+	}
+
+	ua := strings.TrimSpace(userAgent)
+	slash := strings.IndexByte(ua, '/')
+	if slash <= 0 {
+		return CodexCLIOriginator, ua, true
+	}
+
+	rest := ua[slash:]
+	if trailer := codexUATrailerName(ua); trailer != "" && IsCodexOfficialClientOriginator(trailer) {
+		if open := strings.LastIndex(rest, "("); open > 0 {
+			rest = strings.TrimRight(rest[:open], " ")
+		}
+	}
+	return CodexCLIOriginator, CodexCLIOriginator + rest, true
+}
 
 // CodexUserAgentVersion 提取 Codex UA 的完整版本段，即 `{client}/{version} (...` 中的 version。
 // 与 ParseCodexEngineVersion 的区别：后者只取三段数字用于引擎版本比较（会丢掉 -alpha.4

@@ -7,7 +7,7 @@
       :loading="loading"
       :auto-refresh="autoRefresh"
       @update:window="handleWindowChange"
-      @refresh="manualReload"
+      @refresh="refresh()"
     />
 
     <MonitorCardGrid
@@ -66,7 +66,8 @@ const autoRefresh = useAutoRefresh({
   storageKey: 'channel-status-auto-refresh',
   intervals: [30, 60, 120] as const,
   defaultInterval: DEFAULT_INTERVAL_SECONDS,
-  onRefresh: () => reload(true),
+  defaultEnabled: true,
+  onRefresh: () => refresh(true),
   shouldPause: () => document.hidden || loading.value,
 })
 const countdown = autoRefresh.countdown
@@ -102,14 +103,14 @@ async function reload(silent = false) {
   } finally {
     if (abortController === ctrl) {
       if (!silent) loading.value = false
-      countdown.value = DEFAULT_INTERVAL_SECONDS
+      autoRefresh.resetCountdown()
       abortController = null
     }
   }
 }
 
-async function manualReload() {
-  await reload(false)
+async function refresh(silent = false) {
+  await reload(silent)
   // After base reload, refresh any cached detail records so non-7d availability
   // values stay in sync without forcing the user to switch tabs again.
   if (currentWindow.value !== '7d') {
@@ -162,7 +163,7 @@ watch(
 onMounted(() => {
   void reload(false)
   if (appStore.cachedPublicSettings?.channel_monitor_enabled !== false) {
-    autoRefresh.setEnabled(true)
+    autoRefresh.setEnabled(autoRefresh.enabled.value)
   }
 })
 

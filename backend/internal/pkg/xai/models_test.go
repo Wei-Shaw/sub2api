@@ -58,9 +58,24 @@ func TestIsGrokModelID(t *testing.T) {
 	require.False(t, IsGrokModelID("claude-sonnet-4"))
 }
 
-func TestDefaultModelsIncludesGrok46(t *testing.T) {
+func TestIsGrokImagineModel(t *testing.T) {
+	t.Parallel()
+	require.True(t, IsGrokImagineModel("grok-imagine-image"))
+	require.True(t, IsGrokImagineModel("grok-imagine-video-1.5-preview"))
+	require.True(t, IsGrokImagineModel("xai/grok-imagine-image-quality"))
+	require.True(t, IsGrokImagineModel("grok-video-1.5"))
+	require.False(t, IsGrokImagineModel("grok-4.6"))
+	require.False(t, IsGrokImagineModel("grok-build-0.1"))
+}
+
+func TestDefaultModelsIncludesGrok46And47(t *testing.T) {
 	t.Parallel()
 	ids := DefaultModelIDs()
+	require.Contains(t, ids, "grok-4.7")
+	require.Equal(t, "grok-4.7", ResolveGrokTextResponsesModelID("grok-4.7"))
+	require.Equal(t, "grok-4.7", ResolveGrokTextResponsesModelID("grok-4.7-latest"))
+
+	// Keep the existing assertions for the previous current model as well.
 	require.Contains(t, ids, "grok-4.6")
 	require.Equal(t, "grok-4.6", ResolveGrokTextResponsesModelID("grok-4.6"))
 	require.Equal(t, "grok-4.6", ResolveGrokTextResponsesModelID("grok-4.6-latest"))

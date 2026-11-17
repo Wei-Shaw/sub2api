@@ -79,6 +79,21 @@
               ]"
             />
           </button>
+          <label v-if="openaiPassthroughEnabled" class="mt-3 flex items-start gap-2">
+            <input
+              v-model="openaiPassthroughModelFilterEnabled"
+              type="checkbox"
+              data-testid="bulk-openai-passthrough-model-filter"
+              :disabled="!enableOpenAIPassthrough"
+              class="mt-1 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            <span class="text-sm">
+              {{ t('admin.accounts.openai.passthroughModelFilter') }}
+              <span class="mt-1 block text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.openai.passthroughModelFilterDesc') }}
+              </span>
+            </span>
+          </label>
         </div>
       </div>
 
@@ -191,6 +206,43 @@
         >
           {{ t('admin.accounts.bulkEdit.longContextShadowHint') }}
         </p>
+      </div>
+
+      <!-- OpenAI images: size tier routing -->
+      <div
+        v-if="allOpenAIPassthroughCapable"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+      >
+        <div class="mb-3 flex items-center justify-between gap-4">
+          <label
+            id="bulk-edit-openai-image-size-tiers-label"
+            class="input-label mb-0"
+            for="bulk-edit-openai-image-size-tiers-enabled"
+          >
+            {{ t('admin.accounts.openai.imageSizeTiers') }}
+          </label>
+          <input
+            v-model="enableOpenAIImageSizeTiers"
+            id="bulk-edit-openai-image-size-tiers-enabled"
+            data-testid="bulk-edit-openai-image-size-tiers-enabled"
+            type="checkbox"
+            aria-controls="bulk-edit-openai-image-size-tiers-body"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div
+          id="bulk-edit-openai-image-size-tiers-body"
+          :class="!enableOpenAIImageSizeTiers && 'pointer-events-none opacity-50'"
+          role="group"
+          aria-labelledby="bulk-edit-openai-image-size-tiers-label"
+        >
+          <OpenAIImageSizeTiersField
+            v-model="openAIImageSizeTiers"
+            :disabled="!enableOpenAIImageSizeTiers"
+            hide-label
+            test-id-prefix="bulk-edit-openai-image-size-tier"
+          />
+        </div>
       </div>
 
       <!-- Base URL (API Key only) -->
@@ -343,6 +395,7 @@
 
               <ModelWhitelistSelector
                 v-model="allowedModels"
+                :model-mappings="modelMappings"
                 :platforms="targetSelectedPlatforms"
               />
 
@@ -873,8 +926,8 @@
           <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
             {{ t('admin.accounts.openai.wsModeDesc') }}
           </p>
-          <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
-            {{ t(openAIWSModeConcurrencyHintKey) }}
+          <p v-if="openAIWSModeHintKey" class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+            {{ t(openAIWSModeHintKey) }}
           </p>
           <Select
             v-model="openaiOAuthResponsesWebSocketV2Mode"
@@ -978,6 +1031,7 @@
         <div class="mb-3 flex items-center justify-between">
           <label class="input-label mb-0">{{ t('admin.accounts.openai.codexFingerprintMode') }}</label>
           <input
+            id="bulk-edit-openai-codex-fingerprint-mode-enabled"
             v-model="enableCodexFingerprintMode"
             type="checkbox"
             class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
@@ -1150,8 +1204,8 @@
           <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
             {{ t('admin.accounts.openai.wsModeDesc') }}
           </p>
-          <p class="mb-3 text-xs text-gray-500 dark:text-gray-400">
-            {{ t(openAIAPIKeyWSModeConcurrencyHintKey) }}
+          <p v-if="openAIAPIKeyWSModeHintKey" class="mb-3 text-xs text-gray-500 dark:text-gray-400">
+            {{ t(openAIAPIKeyWSModeHintKey) }}
           </p>
           <Select
             v-model="openaiAPIKeyResponsesWebSocketV2Mode"
@@ -1506,13 +1560,20 @@ import {
   type HeaderOverrideRow
 } from '@/components/account/credentialsBuilder'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
+import OpenAIImageSizeTiersField from '@/components/account/OpenAIImageSizeTiersField.vue'
+import {
+  OPENAI_IMAGE_SIZE_TIERS,
+  OPENAI_IMAGE_SIZE_TIERS_EXTRA_KEY,
+  openAIImageSizeTiersPayload,
+  type OpenAIImageSizeTier
+} from '@/components/account/openaiImageSizeTiers'
 import {
   OPENAI_WS_MODE_CTX_POOL,
   OPENAI_WS_MODE_OFF,
   OPENAI_WS_MODE_PASSTHROUGH,
   OPENAI_WS_MODE_HTTP_BRIDGE,
   isOpenAIWSModeEnabled,
-  resolveOpenAIWSModeConcurrencyHintKey
+  resolveOpenAIWSModeHintKey
 } from '@/utils/openaiWsMode'
 import type { OpenAIWSMode } from '@/utils/openaiWsMode'
 interface Props {
@@ -1659,6 +1720,7 @@ const enableGroups = ref(false)
 const enableOpenAIPassthrough = ref(false)
 const enableOpenAIFlattenNamespaces = ref(false)
 const enableOpenAILongContextBilling = ref(false)
+const enableOpenAIImageSizeTiers = ref(false)
 const enableOpenAIEndpointCapabilities = ref(false)
 const enableOpenAIResponsesMode = ref(false)
 const enableOpenAIWSMode = ref(false)
@@ -1692,9 +1754,11 @@ const rateMultiplier = ref(1)
 const status = ref<'active' | 'inactive'>('active')
 const groupIds = ref<number[]>([])
 const openaiPassthroughEnabled = ref(false)
+const openaiPassthroughModelFilterEnabled = ref(false)
 // Codex namespace 工具摊平兼容开关（仅 OAuth），缺省关闭即原样保留
 const openaiFlattenNamespacesEnabled = ref(false)
 const openAILongContextBillingEnabled = ref(false)
+const openAIImageSizeTiers = ref<OpenAIImageSizeTier[]>([...OPENAI_IMAGE_SIZE_TIERS])
 const openAIEndpointCapabilities = ref<OpenAIEndpointCapability[]>([
   'chat_completions',
   'embeddings'
@@ -1750,7 +1814,8 @@ const isOpenAIModelRestrictionDisabled = computed(
   () =>
     allOpenAIPassthroughCapable.value &&
     enableOpenAIPassthrough.value &&
-    openaiPassthroughEnabled.value
+    openaiPassthroughEnabled.value &&
+    !openaiPassthroughModelFilterEnabled.value
 )
 
 const openAIWSModeOptions = computed(() => [
@@ -1785,7 +1850,8 @@ const openAIEndpointCapabilityOptions = computed<
   Array<{ value: OpenAIEndpointCapability; label: string }>
 >(() => [
   { value: 'chat_completions', label: openAITextEndpointCapabilityLabel.value },
-  { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') }
+  { value: 'embeddings', label: t('admin.accounts.openai.capabilityEmbeddings') },
+  { value: 'seedance', label: 'Seedance (Ark)' }
 ])
 const openAITextGenerationCapabilityEnabled = computed(() =>
   openAIEndpointCapabilities.value.includes('chat_completions')
@@ -1795,9 +1861,9 @@ const openAIResponsesModeApplicable = computed(
 )
 
 const normalizeOpenAIEndpointCapabilities = (values: OpenAIEndpointCapability[]) => {
-  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings']
+  const allowed: OpenAIEndpointCapability[] = ['chat_completions', 'embeddings', 'seedance']
   const selected = allowed.filter((value) => values.includes(value))
-  return selected.length > 0 ? selected : allowed
+  return selected.length > 0 ? selected : ['chat_completions', 'embeddings'] as OpenAIEndpointCapability[]
 }
 
 const toggleOpenAIEndpointCapability = (
@@ -1823,11 +1889,11 @@ const toggleOpenAIEndpointCapability = (
     capability
   ])
 }
-const openAIWSModeConcurrencyHintKey = computed(() =>
-  resolveOpenAIWSModeConcurrencyHintKey(openaiOAuthResponsesWebSocketV2Mode.value)
+const openAIWSModeHintKey = computed(() =>
+  resolveOpenAIWSModeHintKey(openaiOAuthResponsesWebSocketV2Mode.value)
 )
-const openAIAPIKeyWSModeConcurrencyHintKey = computed(() =>
-  resolveOpenAIWSModeConcurrencyHintKey(openaiAPIKeyResponsesWebSocketV2Mode.value)
+const openAIAPIKeyWSModeHintKey = computed(() =>
+  resolveOpenAIWSModeHintKey(openaiAPIKeyResponsesWebSocketV2Mode.value)
 )
 
 // Model mapping helpers
@@ -1977,6 +2043,7 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
   if (enableOpenAIPassthrough.value) {
     const extra = ensureExtra()
     extra.openai_passthrough = openaiPassthroughEnabled.value
+    extra.openai_passthrough_model_filter = openaiPassthroughEnabled.value && openaiPassthroughModelFilterEnabled.value
     if (!openaiPassthroughEnabled.value) {
       extra.openai_oauth_passthrough = false
     }
@@ -1993,9 +2060,14 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.openai_long_context_billing_enabled = openAILongContextBillingEnabled.value
   }
 
+  if (enableOpenAIImageSizeTiers.value && allOpenAIPassthroughCapable.value) {
+    // extra 按 JSONB 合并写入，不限档位用空列表覆盖旧值。
+    ensureExtra()[OPENAI_IMAGE_SIZE_TIERS_EXTRA_KEY] = openAIImageSizeTiersPayload(openAIImageSizeTiers.value) ?? []
+  }
+
   if (applyOpenAIEndpointCapabilities) {
     credentials.openai_capabilities =
-      openAIEndpointCapabilities.value.length === 2
+      openAIEndpointCapabilities.value.length === 2 && !openAIEndpointCapabilities.value.includes('seedance')
         ? null
         : [...openAIEndpointCapabilities.value]
     credentialsChanged = true
@@ -2089,12 +2161,23 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
 
   if (enableCodexFingerprintMode.value) {
     const extra = ensureExtra()
-    // off = 默认值，清键即可；device/session/full 是显式 opt-in，必须落键（#5610）。
-    if (codexFingerprintMode.value !== 'off') {
-      extra.codex_fingerprint_mode = codexFingerprintMode.value
-    } else {
-      delete extra.codex_fingerprint_mode
-    }
+    // off 必须显式落键，不能靠删本地键表达。批量更新走 JSONB 顶层合并
+    // （extra = COALESCE(extra,'{}') || payload），删掉 payload 里的键只表示
+    // "本次不更新该键"，清不掉账号上已有的 device/session/full；而且只删不写会让
+    // 整个 payload 退化成 {extra:{}}，被后端 len(req.Extra) > 0 判为空更新直接 400
+    // "No updates provided"（#6327）。
+    //
+    // Create/Edit 那两个表单可以删键，是因为它们提交完整 extra 对象、后端整体
+    // SetExtra 覆盖；批量接口只合并增量键，两种持久化语义不能共用同一套写法。
+    //
+    // 显式 off 与不设置在读取侧完全等价：codexFingerprintModeFromExtra 对空值/
+    // 非法值走 default 回落 off，对 "off" 命中同一分支，所以 #5610 定下的
+    // "不显式 opt-in 就保持旧客户端身份" 不受影响；ShouldEnsureCodexFingerprintSeed-
+    // ForExtraUpdates 同样只在 device/session/full 时要种子，off 不会触发。
+    //
+    // 与本函数里其它"关闭/清除"字段的写法一致：codex_cli_only 直接落 false，
+    // load_factor 落 0，proxy_id 落 0 —— 批量路径一律用显式哨兵值，不用省略。
+    extra.codex_fingerprint_mode = codexFingerprintMode.value
   }
 
   if (enableOpenAICompactMode.value) {
@@ -2192,6 +2275,7 @@ const handleSubmit = async () => {
     enableOpenAIPassthrough.value ||
     enableOpenAIFlattenNamespaces.value ||
     (enableOpenAILongContextBilling.value && allOpenAIPassthroughCapable.value) ||
+    (enableOpenAIImageSizeTiers.value && allOpenAIPassthroughCapable.value) ||
     (enableOpenAIEndpointCapabilities.value && allOpenAIAPIKey.value) ||
     (enableOpenAIResponsesMode.value && allOpenAIAPIKey.value) ||
     enableModelRestriction.value ||
@@ -2354,6 +2438,7 @@ watch(
       enableOpenAIPassthrough.value = false
       enableOpenAIFlattenNamespaces.value = false
       enableOpenAILongContextBilling.value = false
+      enableOpenAIImageSizeTiers.value = false
       enableOpenAIEndpointCapabilities.value = false
       enableOpenAIResponsesMode.value = false
       enableOpenAIWSMode.value = false
@@ -2370,8 +2455,10 @@ watch(
       // Reset all values
       baseUrl.value = ''
       openaiPassthroughEnabled.value = false
+      openaiPassthroughModelFilterEnabled.value = false
       openaiFlattenNamespacesEnabled.value = false
       openAILongContextBillingEnabled.value = false
+      openAIImageSizeTiers.value = [...OPENAI_IMAGE_SIZE_TIERS]
       openAIEndpointCapabilities.value = ['chat_completions', 'embeddings']
       openAIResponsesMode.value = 'auto'
       modelRestrictionMode.value = 'whitelist'

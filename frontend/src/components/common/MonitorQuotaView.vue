@@ -7,26 +7,19 @@
       </span>
     </div>
 
-    <!-- 用量窗口条形图（样式/阈值对齐账号页 CNProviderQuotaCell） -->
+    <!-- 用量窗口条形图（复用账号页 UsageProgressBar：同阈值配色、同倒计时格式） -->
     <div v-if="snapshot.success && tierRows.length" class="space-y-1">
-      <div v-for="row in tierRows" :key="row.key" class="flex items-center gap-1.5 text-[10px]">
-        <span class="w-14 shrink-0 truncate text-gray-500 dark:text-gray-400" :title="row.title">
-          {{ row.label }}
-        </span>
-        <div class="h-1.5 w-16 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-dark-600">
-          <div
-            class="h-full rounded-full transition-all"
-            :class="utilizationColor(row.tier.used_percent)"
-            :style="{ width: `${Math.min(100, Math.max(0, row.tier.used_percent))}%` }"
-          />
-        </div>
-        <span :class="['shrink-0 font-medium', utilizationTextColor(row.tier.used_percent)]">
-          {{ Math.round(row.tier.used_percent) }}%
-        </span>
-        <span v-if="row.tier.reset_at" class="truncate text-gray-400 dark:text-gray-500" :title="row.tier.reset_at">
-          · {{ formatReset(row.tier.reset_at) }}
-        </span>
-      </div>
+      <UsageProgressBar
+        v-for="row in tierRows"
+        :key="row.key"
+        data-testid="monitor-quota-tier"
+        :label="row.label"
+        :title="row.title"
+        label-width="auto"
+        :color="row.color"
+        :utilization="row.tier.used_percent"
+        :resets-at="row.tier.reset_at ?? null"
+      />
     </div>
 
     <!-- 余额（国产 payg；支持多币种） -->
@@ -50,12 +43,14 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { MonitorQuotaSnapshot, MonitorQuotaTier } from '@/api/admin/channelMonitor'
+import UsageProgressBar from '@/components/account/UsageProgressBar.vue'
 
 /**
  * 配额快照渲染（管理端监控列表/运行结果 + 用户端监控卡片共用）。
- * 展示形态对齐账号管理侧的用量视图（CNProviderQuotaCell：同阈值配色、
- * 同倒计时格式）；tier 的 Window/Label 是后端约定的机器 token，
- * 已知 token 走 i18n，未知 token 原样展示（前向兼容）。
+ * 用量条直接复用账号页的 UsageProgressBar（与 CNProviderQuotaCell、
+ * AccountUsageCell 同一组件：同阈值配色、同倒计时格式）；tier 的
+ * Window/Label 是后端约定的机器 token，已知 token 走 i18n，未知 token
+ * 原样展示（前向兼容）。
  */
 const props = defineProps<{
   snapshot?: MonitorQuotaSnapshot | null
@@ -63,10 +58,13 @@ const props = defineProps<{
 
 const { t, te } = useI18n()
 
+type TierColor = 'indigo' | 'emerald' | 'purple' | 'amber'
+
 interface QuotaTierRow {
   key: string
   label: string
   title: string
+  color: TierColor
   tier: MonitorQuotaTier
 }
 
@@ -103,11 +101,15 @@ function tierLabel(tier: MonitorQuotaTier): string {
   return `${label}/${window}`
 }
 
+// tier 配色按数组顺序轮转（UsageProgressBar 支持的色板）。
+const tierColors: TierColor[] = ['indigo', 'emerald', 'purple', 'amber']
+
 const tierRows = computed<QuotaTierRow[]>(() =>
   (props.snapshot?.tiers || []).map((tier, idx) => ({
     key: `${tier.window}-${tier.label || ''}-${idx}`,
     label: tierLabel(tier),
     title: tierLabel(tier),
+    color: tierColors[idx % tierColors.length],
     tier,
   })),
 )
@@ -126,31 +128,4 @@ const truncatedError = computed(() => {
   const error = props.snapshot?.error || t('monitorCommon.quota.unavailable')
   return error.length > 48 ? `${error.slice(0, 48)}…` : error
 })
-
-const utilizationColor = (pct: number) => {
-  if (pct >= 90) return 'bg-red-500'
-  if (pct >= 75) return 'bg-amber-500'
-  return 'bg-emerald-500'
-}
-
-const utilizationTextColor = (pct: number) => {
-  if (pct >= 90) return 'text-red-600 dark:text-red-400'
-  if (pct >= 75) return 'text-amber-600 dark:text-amber-400'
-  return 'text-emerald-600 dark:text-emerald-400'
-}
-
-// 重置时间相对/绝对简短显示（与账号页一致）。
-const formatReset = (iso: string) => {
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return iso
-  const now = Date.now()
-  const diffMs = d.getTime() - now
-  if (diffMs <= 0) return t('monitorCommon.quota.resetSoon')
-  if (diffMs < 3_600_000) return `${Math.max(1, Math.round(diffMs / 60_000))}m`
-  const hours = Math.round(diffMs / 3_600_000)
-  if (hours < 48) return `${hours}h`
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${mm}-${dd}`
-}
 </script>

@@ -239,8 +239,37 @@ func TierIDToPlanType(tierID string) string {
 		if tierID == "" {
 			return "Free"
 		}
+		// Google 新增的细分档位（如 g1-ultra-lite-tier、g1-pro-plus-tier）仍归入 Ultra / Pro。
+		if plan := paidPlanFromTierID(tierID); plan != "" {
+			return plan
+		}
 		return tierID
 	}
+}
+
+// paidPlanFromTierID 识别 g1-ultra-*-tier / g1-pro-*-tier 形式的付费档位 ID，未知时返回空串。
+func paidPlanFromTierID(tierID string) string {
+	id := strings.ToLower(strings.TrimSpace(tierID))
+	if !strings.HasSuffix(id, "-tier") {
+		return ""
+	}
+	switch {
+	case strings.HasPrefix(id, "g1-ultra-"):
+		return "Ultra"
+	case strings.HasPrefix(id, "g1-pro-"):
+		return "Pro"
+	default:
+		return ""
+	}
+}
+
+// IsPaidPlanType 判断账号记录的 plan_type 是否为付费套餐，兼容旧记录里直接保存的档位 ID。
+func IsPaidPlanType(planType string) bool {
+	switch strings.ToLower(strings.TrimSpace(planType)) {
+	case "pro", "ultra":
+		return true
+	}
+	return paidPlanFromTierID(planType) != ""
 }
 
 // Client Antigravity API 客户端
@@ -255,8 +284,6 @@ const (
 	proxyTLSHandshakeTimeout = 5 * time.Second
 	// clientTimeout 整体请求超时（含连接、发送、等待响应、读取 body）
 	clientTimeout = 10 * time.Second
-	// fetchAvailableModelsBodyLimit limits model-list responses to avoid unbounded memory use.
-	fetchAvailableModelsBodyLimit int64 = 8 << 20
 )
 
 func NewClient(proxyURL string) (*Client, error) {
@@ -655,10 +682,27 @@ type FetchAvailableModelsResponse struct {
 }
 
 // FetchAvailableModels 获取可用模型和配额信息，返回解析后的结构体和原始 JSON
-// 支持 URL fallback：sandbox → daily → prod
-func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectID string) (*FetchAvailableModelsResponse, map[string]any, error) {
+// 保留旧调用的 URL fallback：prod → daily。
+func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectID string, bodyLimit int64) (*FetchAvailableModelsResponse, map[string]any, error) {
+	return c.fetchAvailableModels(ctx, BaseURLs, accessToken, projectID, bodyLimit, false)
+}
+
+// FetchAvailableModelsFromURL 获取指定端点的模型目录，不回退到其他端点。
+// 模型发现应使用与生成请求相同的端点，避免返回该端点无法访问的模型。
+func (c *Client) FetchAvailableModelsFromURL(ctx context.Context, baseURL, accessToken, projectID string, bodyLimit int64) (*FetchAvailableModelsResponse, map[string]any, error) {
+	baseURL = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if baseURL == "" {
+		return nil, nil, errors.New("fetchAvailableModels base URL is required")
+	}
+	return c.fetchAvailableModels(ctx, []string{baseURL}, accessToken, projectID, bodyLimit, true)
+}
+
+func (c *Client) fetchAvailableModels(ctx context.Context, availableURLs []string, accessToken, projectID string, bodyLimit int64, fixedEndpoint bool) (*FetchAvailableModelsResponse, map[string]any, error) {
 	if c == nil || c.httpClient == nil {
 		return nil, nil, errors.New("antigravity client is not configured")
+	}
+	if bodyLimit <= 0 {
+		return nil, nil, errors.New("fetchAvailableModels body limit must be positive")
 	}
 
 	reqBody := FetchAvailableModelsRequest{Project: projectID}
@@ -667,10 +711,10 @@ func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectI
 		return nil, nil, fmt.Errorf("序列化请求失败: %w", err)
 	}
 
-	// 固定顺序：prod -> daily
-	availableURLs := BaseURLs
-
 	fetchClient := c.fetchAvailableModelsHTTPClient()
+	if fixedEndpoint {
+		fetchClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	}
 	var lastErr error
 	for urlIdx, baseURL := range availableURLs {
 		apiURL := baseURL + "/v1internal:fetchAvailableModels"
@@ -693,13 +737,13 @@ func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectI
 			return nil, nil, lastErr
 		}
 
-		respBodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, fetchAvailableModelsBodyLimit+1))
+		respBodyBytes, err := io.ReadAll(io.LimitReader(resp.Body, bodyLimit+1))
 		_ = resp.Body.Close() // 立即关闭，避免循环内 defer 导致的资源泄漏
 		if err != nil {
 			return nil, nil, fmt.Errorf("读取响应失败: %w", err)
 		}
-		if int64(len(respBodyBytes)) > fetchAvailableModelsBodyLimit {
-			return nil, nil, fmt.Errorf("响应超过 %d 字节", fetchAvailableModelsBodyLimit)
+		if int64(len(respBodyBytes)) > bodyLimit {
+			return nil, nil, fmt.Errorf("响应超过 %d 字节", bodyLimit)
 		}
 
 		// 检查是否需要 URL 降级

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"net/http"
 	"strings"
 
@@ -22,11 +23,104 @@ func MarkOpenAINativeCompactionV2(c *gin.Context) {
 	}
 }
 
+// NormalizeCompactionTriggerInputOrder keeps a single compaction trigger as
+// the final Responses input item, as required by the upstream v2 wire format.
+func NormalizeCompactionTriggerInputOrder(body []byte) ([]byte, bool, error) {
+	if len(body) == 0 {
+		return body, false, nil
+	}
+	if !compactionTriggerNeedsDecode(body) {
+		return body, false, nil
+	}
+	var payload map[string]any
+	if err := decodeOpenAIJSONUseNumber(body, &payload); err != nil {
+		return body, false, err
+	}
+	input, ok := payload["input"].([]any)
+	if !ok || len(input) == 0 {
+		return body, false, nil
+	}
+	triggerCount := 0
+	normalized := make([]any, 0, len(input))
+	for _, raw := range input {
+		item, itemOK := raw.(map[string]any)
+		if itemOK && item["type"] == "compaction_trigger" {
+			triggerCount++
+			continue
+		}
+		normalized = append(normalized, raw)
+	}
+	if triggerCount == 0 {
+		return body, false, nil
+	}
+	if triggerCount == 1 {
+		if last, ok := input[len(input)-1].(map[string]any); ok && last["type"] == "compaction_trigger" {
+			return body, false, nil
+		}
+	}
+	normalized = append(normalized, map[string]any{"type": "compaction_trigger"})
+	payload["input"] = normalized
+	encoded, err := marshalOpenAIUpstreamJSON(payload)
+	if err != nil {
+		return body, false, err
+	}
+	return encoded, true, nil
+}
+
+var compactionTriggerToken = []byte("compaction_trigger")
+
+// compactionTriggerNeedsDecode lets bodies whose input order cannot change
+// skip the full decode. Without a \u escape that spells plain ASCII, every
+// decoded "compaction_trigger" string is a literal occurrence of the token, so:
+//   - no occurrence means no trigger;
+//   - a single occurrence that is the type of the last input item, as read
+//     through the zero-copy view, means the decoder sees either that same item
+//     as the only trigger or, when a duplicate member shadows it, no trigger.
+//
+// Either way the body is returned unchanged. Such a body must still be a valid
+// JSON object, so decode errors keep surfacing from the original path.
+func compactionTriggerNeedsDecode(body []byte) bool {
+	if JSONMayEscapePlainASCII(body) {
+		return true
+	}
+	switch bytes.Count(body, compactionTriggerToken) {
+	case 0:
+		trimmed := bytes.TrimLeft(body, " \t\r\n")
+		return len(trimmed) == 0 || trimmed[0] != '{' || !gjson.ValidBytes(body)
+	case 1:
+		return !compactionTriggerIsLastInputItem(body) || !gjson.ValidBytes(body)
+	default:
+		return true
+	}
+}
+
+// compactionTriggerIsLastInputItem reports whether the last element of the
+// top-level input array is an object whose type is "compaction_trigger".
+func compactionTriggerIsLastInputItem(body []byte) bool {
+	input := parseRawJSONView(body).Get("input")
+	if !input.IsArray() {
+		return false
+	}
+	var last gjson.Result
+	input.ForEach(func(_, item gjson.Result) bool {
+		last = item
+		return true
+	})
+	return last.IsObject() && last.Get("type").String() == "compaction_trigger"
+}
+
 func isOpenAINativeCompactionV2(c *gin.Context) bool {
 	if c == nil {
 		return false
 	}
 	return c.GetBool(openAINativeCompactionV2Key)
+}
+
+// IsOpenAINativeCompactionV2 reports whether the handler identified this
+// request as the native remote compaction v2 wire. It exposes only the
+// request-scoped boolean marker; no request payload is retained.
+func IsOpenAINativeCompactionV2(c *gin.Context) bool {
+	return isOpenAINativeCompactionV2(c)
 }
 
 // ensureOpenAIRemoteCompactionV2BetaFeature 确保出站 x-codex-beta-features
@@ -101,7 +195,7 @@ func applyOpenAICodexBetaFeatures(c *gin.Context, account *Account, h http.Heade
 		ensureOpenAIRemoteCompactionV2BetaFeature(h)
 		return
 	}
-	if account == nil || !account.IsOpenAIOAuth() {
+	if account == nil || !account.IsOpenAIOAuthLike() {
 		return
 	}
 	if hasOpenAICodexBetaFeaturesHeader(h) {
@@ -113,12 +207,17 @@ func applyOpenAICodexBetaFeatures(c *gin.Context, account *Account, h http.Heade
 // HasCompactionTriggerInInput detects an input item with
 // type="compaction_trigger". The handler combines this body signal with the
 // request path and stream flag to distinguish the native remote compaction v2
-// wire from the legacy /responses/compact bridge.
+// wire from the legacy /responses/compact bridge. The type string appears
+// literally unless a \u escape spells plain ASCII, so other bodies skip the
+// structural scan.
 func HasCompactionTriggerInInput(body []byte) bool {
 	if len(body) == 0 {
 		return false
 	}
-	input := gjson.GetBytes(body, "input")
+	if !bytes.Contains(body, compactionTriggerToken) && !JSONMayEscapePlainASCII(body) {
+		return false
+	}
+	input := parseRawJSONView(body).Get("input")
 	if !input.IsArray() {
 		return false
 	}

@@ -62,31 +62,43 @@ type userAvailableGroup struct {
 	PeakEnd            string  `json:"peak_end"`
 	PeakRateMultiplier float64 `json:"peak_rate_multiplier"`
 	IsExclusive        bool    `json:"is_exclusive"`
+
+	// 不对外输出；List 按请求语言把 Name 换成译文后丢弃。
+	i18n service.GroupI18n
 }
 
 // userSupportedModelPricing 用户可见的定价字段白名单。
 type userSupportedModelPricing struct {
-	BillingMode      string                   `json:"billing_mode"`
-	InputPrice       *float64                 `json:"input_price"`
-	OutputPrice      *float64                 `json:"output_price"`
-	CacheWritePrice  *float64                 `json:"cache_write_price"`
-	CacheReadPrice   *float64                 `json:"cache_read_price"`
-	ImageInputPrice  *float64                 `json:"image_input_price"`
-	ImageOutputPrice *float64                 `json:"image_output_price"`
-	PerRequestPrice  *float64                 `json:"per_request_price"`
-	Intervals        []userPricingIntervalDTO `json:"intervals"`
+	BillingMode                string                   `json:"billing_mode"`
+	InputPrice                 *float64                 `json:"input_price"`
+	OutputPrice                *float64                 `json:"output_price"`
+	CacheWritePrice            *float64                 `json:"cache_write_price"`
+	CacheWrite1hPrice          *float64                 `json:"cache_write_1h_price"`
+	CacheWrite12hPrice         *float64                 `json:"cache_write_12h_price"`
+	CacheReadPrice             *float64                 `json:"cache_read_price"`
+	ReasoningEffortMultipliers map[string]float64       `json:"reasoning_effort_multipliers,omitempty"`
+	ImageInputPrice            *float64                 `json:"image_input_price"`
+	ImageOutputPrice           *float64                 `json:"image_output_price"`
+	PerRequestPrice            *float64                 `json:"per_request_price"`
+	Intervals                  []userPricingIntervalDTO `json:"intervals"`
 }
 
 // userPricingIntervalDTO 定价区间白名单（去掉内部 ID、SortOrder 等前端不渲染的字段）。
 type userPricingIntervalDTO struct {
-	MinTokens       int      `json:"min_tokens"`
-	MaxTokens       *int     `json:"max_tokens"`
-	TierLabel       string   `json:"tier_label,omitempty"`
-	InputPrice      *float64 `json:"input_price"`
-	OutputPrice     *float64 `json:"output_price"`
-	CacheWritePrice *float64 `json:"cache_write_price"`
-	CacheReadPrice  *float64 `json:"cache_read_price"`
-	PerRequestPrice *float64 `json:"per_request_price"`
+	MinTokens            int      `json:"min_tokens"`
+	MaxTokens            *int     `json:"max_tokens"`
+	TierLabel            string   `json:"tier_label,omitempty"`
+	InputPrice           *float64 `json:"input_price"`
+	OutputPrice          *float64 `json:"output_price"`
+	CacheWritePrice      *float64 `json:"cache_write_price"`
+	CacheWrite1hPrice    *float64 `json:"cache_write_1h_price"`
+	CacheWrite12hPrice   *float64 `json:"cache_write_12h_price"`
+	CacheReadPrice       *float64 `json:"cache_read_price"`
+	InputMultiplier      *float64 `json:"input_multiplier"`
+	OutputMultiplier     *float64 `json:"output_multiplier"`
+	CacheWriteMultiplier *float64 `json:"cache_write_multiplier"`
+	CacheReadMultiplier  *float64 `json:"cache_read_multiplier"`
+	PerRequestPrice      *float64 `json:"per_request_price"`
 }
 
 // userSupportedModel 用户可见的支持模型条目。
@@ -147,6 +159,7 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 		return
 	}
 
+	acceptLanguage := c.GetHeader("Accept-Language")
 	out := make([]userAvailableChannel, 0, len(channels))
 	for _, ch := range channels {
 		if ch.Status != service.StatusActive {
@@ -156,6 +169,7 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 		if len(visibleGroups) == 0 {
 			continue
 		}
+		localizeUserAvailableGroups(visibleGroups, acceptLanguage)
 		sections := buildPlatformSections(ch, visibleGroups)
 		if len(sections) == 0 {
 			continue
@@ -168,6 +182,13 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 	}
 
 	response.Success(c, out)
+}
+
+// localizeUserAvailableGroups 把分组名称就地换成请求首选语言的版本。
+func localizeUserAvailableGroups(groups []userAvailableGroup, acceptLanguage string) {
+	for i := range groups {
+		groups[i].Name = groups[i].i18n.LocalizeName(acceptLanguage, groups[i].Name)
+	}
 }
 
 // buildPlatformSections 把一个渠道按 visibleGroups 的平台集合拆成有序的 section 列表：
@@ -247,6 +268,7 @@ func filterUserVisibleGroups(
 		visible = append(visible, userAvailableGroup{
 			ID:                 g.ID,
 			Name:               g.Name,
+			i18n:               g.I18n,
 			Platform:           g.Platform,
 			SubscriptionType:   g.SubscriptionType,
 			RateMultiplier:     g.RateMultiplier,
@@ -284,37 +306,59 @@ func toUserSupportedModels(
 	return out
 }
 
+// toUserPricingIntervals 将定价区间转换为用户 DTO 白名单形态；nil 入参返回 nil（JSON omitempty 可省略）。
+func toUserPricingIntervals(src []service.PricingInterval) []userPricingIntervalDTO {
+	if src == nil {
+		return nil
+	}
+	intervals := make([]userPricingIntervalDTO, 0, len(src))
+	for _, iv := range src {
+		intervals = append(intervals, userPricingIntervalDTO{
+			MinTokens:            iv.MinTokens,
+			MaxTokens:            iv.MaxTokens,
+			TierLabel:            iv.TierLabel,
+			InputPrice:           iv.InputPrice,
+			OutputPrice:          iv.OutputPrice,
+			CacheWritePrice:      iv.CacheWritePrice,
+			CacheWrite1hPrice:    iv.CacheWrite1hPrice,
+			CacheWrite12hPrice:   iv.CacheWrite12hPrice,
+			CacheReadPrice:       iv.CacheReadPrice,
+			InputMultiplier:      iv.InputMultiplier,
+			OutputMultiplier:     iv.OutputMultiplier,
+			CacheWriteMultiplier: iv.CacheWriteMultiplier,
+			CacheReadMultiplier:  iv.CacheReadMultiplier,
+			PerRequestPrice:      iv.PerRequestPrice,
+		})
+	}
+	return intervals
+}
+
 // toUserPricing 将 service 层定价转换为用户 DTO；入参为 nil 时返回 nil。
 func toUserPricing(p *service.ChannelModelPricing) *userSupportedModelPricing {
 	if p == nil {
 		return nil
 	}
-	intervals := make([]userPricingIntervalDTO, 0, len(p.Intervals))
-	for _, iv := range p.Intervals {
-		intervals = append(intervals, userPricingIntervalDTO{
-			MinTokens:       iv.MinTokens,
-			MaxTokens:       iv.MaxTokens,
-			TierLabel:       iv.TierLabel,
-			InputPrice:      iv.InputPrice,
-			OutputPrice:     iv.OutputPrice,
-			CacheWritePrice: iv.CacheWritePrice,
-			CacheReadPrice:  iv.CacheReadPrice,
-			PerRequestPrice: iv.PerRequestPrice,
-		})
+	intervals := toUserPricingIntervals(p.Intervals)
+	if intervals == nil {
+		// 用户侧定价的 intervals 固定输出数组（空配置为 []），保持既有契约。
+		intervals = []userPricingIntervalDTO{}
 	}
 	billingMode := string(p.BillingMode)
 	if billingMode == "" {
 		billingMode = string(service.BillingModeToken)
 	}
 	return &userSupportedModelPricing{
-		BillingMode:      billingMode,
-		InputPrice:       p.InputPrice,
-		OutputPrice:      p.OutputPrice,
-		CacheWritePrice:  p.CacheWritePrice,
-		CacheReadPrice:   p.CacheReadPrice,
-		ImageInputPrice:  p.ImageInputPrice,
-		ImageOutputPrice: p.ImageOutputPrice,
-		PerRequestPrice:  p.PerRequestPrice,
-		Intervals:        intervals,
+		BillingMode:                billingMode,
+		InputPrice:                 p.InputPrice,
+		OutputPrice:                p.OutputPrice,
+		CacheWritePrice:            p.CacheWritePrice,
+		CacheWrite1hPrice:          p.CacheWrite1hPrice,
+		CacheWrite12hPrice:         p.CacheWrite12hPrice,
+		CacheReadPrice:             p.CacheReadPrice,
+		ReasoningEffortMultipliers: p.ReasoningEffortMultipliers,
+		ImageInputPrice:            p.ImageInputPrice,
+		ImageOutputPrice:           p.ImageOutputPrice,
+		PerRequestPrice:            p.PerRequestPrice,
+		Intervals:                  intervals,
 	}
 }
