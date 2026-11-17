@@ -9,48 +9,48 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tidwall/gjson"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
-// OpenAIProviderBalanceAlerts delivers bounded admin alerts for an API-key
-// provider's structured insufficient-balance responses.
-type OpenAIProviderBalanceAlerts struct {
+// ProviderBalanceAlerts delivers bounded admin alerts for API-key providers'
+// structured insufficient-balance responses.
+type ProviderBalanceAlerts struct {
 	telegram *TelegramNotifyService
 	claims   *IdempotencyCoordinator
 }
 
-func NewOpenAIProviderBalanceAlerts(telegram *TelegramNotifyService, claims *IdempotencyCoordinator) *OpenAIProviderBalanceAlerts {
-	return &OpenAIProviderBalanceAlerts{telegram: telegram, claims: claims}
+func NewProviderBalanceAlerts(telegram *TelegramNotifyService, claims *IdempotencyCoordinator) *ProviderBalanceAlerts {
+	return &ProviderBalanceAlerts{telegram: telegram, claims: claims}
 }
 
-// openAIProviderInsufficientBalance matches only structured account-level
+// providerInsufficientBalance matches only structured account-level
 // balance signals, never generic 403/HTML/CDN failures or a customer's wallet.
-func openAIProviderInsufficientBalance(account *Account, statusCode int, body []byte) bool {
-	if account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeAPIKey ||
+func providerInsufficientBalance(account *Account, statusCode int, body []byte) bool {
+	if account == nil || !domain.IsConcretePlatform(account.Platform) || account.Type != AccountTypeAPIKey ||
 		(statusCode != http.StatusForbidden && statusCode != http.StatusPaymentRequired) || !json.Valid(body) {
 		return false
 	}
 	if strings.EqualFold(strings.TrimSpace(extractUpstreamErrorCode(body)), "INSUFFICIENT_BALANCE") {
 		return true
 	}
-	message := strings.ToLower(strings.TrimSpace(gjson.GetBytes(body, "error.message").String()))
+	message := strings.ToLower(strings.TrimSpace(extractUpstreamErrorMessage(body)))
 	return message == "insufficient balance" || strings.HasPrefix(message, "insufficient account balance")
 }
 
 // Observe does not change the upstream error policy. One durable claim per
 // account/hour limits repeated failed requests across instances; a failed send
 // is retryable on the next matching response after coordinator backoff.
-func (s *OpenAIProviderBalanceAlerts) Observe(ctx context.Context, account *Account, statusCode int, body []byte) {
-	if !openAIProviderInsufficientBalance(account, statusCode, body) {
+func (s *ProviderBalanceAlerts) Observe(ctx context.Context, account *Account, statusCode int, body []byte) {
+	if !providerInsufficientBalance(account, statusCode, body) {
 		return
 	}
-	s.Deliver(ctx, account.ID, account.Name)
+	s.Deliver(ctx, account.ID, account.Name, account.Platform)
 }
 
 // Deliver is called only after classifying the raw upstream provider response.
 // Its arguments are copied scalars, so it is safe to invoke from the error
 // handler asynchronously without retaining a response buffer or account object.
-func (s *OpenAIProviderBalanceAlerts) Deliver(ctx context.Context, accountID int64, accountName string) {
+func (s *ProviderBalanceAlerts) Deliver(ctx context.Context, accountID int64, accountName, platform string) {
 	if s == nil || s.telegram == nil || s.claims == nil {
 		return
 	}
@@ -59,11 +59,11 @@ func (s *OpenAIProviderBalanceAlerts) Deliver(ctx context.Context, accountID int
 	if !s.telegram.isEnabled(ctx, SettingTelegramNotifyProviderBalance) {
 		return
 	}
-	key := fmt.Sprintf("openai-provider-balance:%d:%s", accountID, time.Now().UTC().Format("2006010215"))
+	key := fmt.Sprintf("provider-balance:%d:%s", accountID, time.Now().UTC().Format("2006010215"))
 	_, err := s.claims.Execute(ctx, IdempotencyExecuteOptions{
-		Scope: "telegram_provider_openai_balance", ActorScope: fmt.Sprintf("account:%d", accountID),
-		Method: "POST", Route: "telegram/admin/openai-provider-balance",
-		IdempotencyKey: key, Payload: map[string]any{"account_id": accountID, "status": "exhausted"},
+		Scope: "telegram_provider_balance", ActorScope: fmt.Sprintf("account:%d", accountID),
+		Method: "POST", Route: "telegram/admin/provider-balance",
+		IdempotencyKey: key, Payload: map[string]any{"account_id": accountID, "platform": platform, "status": "exhausted"},
 		RequireKey: true, TTL: 2 * time.Hour,
 	}, func(sendCtx context.Context) (any, error) {
 		cfg, configErr := s.telegram.getConfig(sendCtx)
@@ -73,8 +73,8 @@ func (s *OpenAIProviderBalanceAlerts) Deliver(ctx context.Context, accountID int
 		if cfg == nil {
 			return nil, fmt.Errorf("admin telegram bot is not configured")
 		}
-		text := fmt.Sprintf("<b>Provider hết số dư — cần nạp tiền</b>\n\nAccount: <code>%d</code> %s\nProvider: <b>openai</b>\nLỗi upstream: Insufficient account balance\nThời gian: %s",
-			accountID, escapeHTML(truncateTelegram(accountName, 128)), time.Now().Format("2006-01-02 15:04:05"))
+		text := fmt.Sprintf("<b>Provider hết số dư — cần nạp tiền</b>\n\nAccount: <code>%d</code> %s\nProvider: <b>%s</b>\nLỗi upstream: Insufficient account balance\nThời gian: %s",
+			accountID, escapeHTML(truncateTelegram(accountName, 128)), escapeHTML(truncateTelegram(platform, 64)), time.Now().Format("2006-01-02 15:04:05"))
 		if sendErr := s.telegram.sendWithConfig(sendCtx, cfg, cfg.ChatID, text); sendErr != nil {
 			// HTTP transport errors may contain the bot token in the URL. Never
 			// persist them in the claim or emit them to the application log.
@@ -83,6 +83,6 @@ func (s *OpenAIProviderBalanceAlerts) Deliver(ctx context.Context, accountID int
 		return nil, nil
 	})
 	if err != nil && err != ErrIdempotencyInProgress && err != ErrIdempotencyRetryBackoff {
-		slog.Warn("openai_provider_balance_alert_failed", "account_id", accountID, "error", err)
+		slog.Warn("provider_balance_alert_failed", "account_id", accountID, "platform", platform, "error", err)
 	}
 }

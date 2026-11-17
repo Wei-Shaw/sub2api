@@ -29,7 +29,7 @@ type RateLimitService struct {
 	timeoutCounterCache   TimeoutCounterCache
 	openAI403CounterCache OpenAI403CounterCache
 	settingService        *SettingService
-	providerBalanceAlerts *OpenAIProviderBalanceAlerts
+	providerBalanceAlerts *ProviderBalanceAlerts
 	tokenCacheInvalidator TokenCacheInvalidator
 	runtimeBlocker        AccountRuntimeBlocker
 	// ollamaCloudUsageProbe is the optional Ollama Cloud usage probe scheduler
@@ -128,9 +128,19 @@ func (s *RateLimitService) SetSettingService(settingService *SettingService) {
 	s.settingService = settingService
 }
 
-// SetOpenAIProviderBalanceAlerts wires the optional admin notification lane.
-func (s *RateLimitService) SetOpenAIProviderBalanceAlerts(alerts *OpenAIProviderBalanceAlerts) {
+// SetProviderBalanceAlerts wires the optional admin notification lane.
+func (s *RateLimitService) SetProviderBalanceAlerts(alerts *ProviderBalanceAlerts) {
 	s.providerBalanceAlerts = alerts
+}
+
+// observeProviderBalanceError records a matching provider response without
+// changing the account error policy or retaining request-owned buffers.
+func (s *RateLimitService) observeProviderBalanceError(ctx context.Context, account *Account, statusCode int, responseBody []byte) {
+	if s == nil || s.providerBalanceAlerts == nil || !providerInsufficientBalance(account, statusCode, responseBody) {
+		return
+	}
+	accountID, accountName, platform := account.ID, account.Name, account.Platform
+	go s.providerBalanceAlerts.Deliver(context.WithoutCancel(ctx), accountID, accountName, platform)
 }
 
 // SetTokenCacheInvalidator 设置 token 缓存清理器（可选依赖）
@@ -306,6 +316,7 @@ const (
 // CheckErrorPolicy 检查自定义错误码和临时不可调度规则。
 // 自定义错误码开启时覆盖后续所有逻辑（包括临时不可调度）。
 func (s *RateLimitService) CheckErrorPolicy(ctx context.Context, account *Account, statusCode int, responseBody []byte, requestedModel ...string) ErrorPolicyResult {
+	s.observeProviderBalanceError(ctx, account, statusCode, responseBody)
 	ctx = withTempUnschedulableModel(ctx, requestedModel)
 	if account.IsCustomErrorCodesEnabled() {
 		if account.ShouldHandleErrorCode(statusCode) {
@@ -341,11 +352,7 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 	// Team 联动熔断必须先于池模式/自定义错误码/临时不可调度的各类早退；
 	// 同请求内与 fastpath 调用点的重复触发由方法内去重吸收。
 	s.maybeHandleOpenAITeamLinkedError(ctx, account, statusCode, responseBody)
-	if s.providerBalanceAlerts != nil && openAIProviderInsufficientBalance(account, statusCode, responseBody) {
-		// An admin Telegram outage must not delay the customer's gateway error.
-		// Capture scalars, not the mutable account or pooled response buffer.
-		go s.providerBalanceAlerts.Deliver(context.WithoutCancel(ctx), account.ID, account.Name)
-	}
+	s.observeProviderBalanceError(ctx, account, statusCode, responseBody)
 	customErrorCodesEnabled := account.IsCustomErrorCodesEnabled()
 
 	// 池模式默认不标记本地账号状态；但管理员显式配置的临时不可调度规则优先。

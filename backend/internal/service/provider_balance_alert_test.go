@@ -9,25 +9,27 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
 
-type openAIAlertClaimRepo struct {
+type providerBalanceAlertClaimRepo struct {
 	IdempotencyRepository
 	mu     sync.Mutex
 	nextID int64
 	items  map[string]*IdempotencyRecord
 }
 
-type openAIAlertSettingRepo struct {
+type providerBalanceAlertSettingRepo struct {
 	SettingRepository
 	values map[string]string
 }
 
-func (r *openAIAlertSettingRepo) GetValue(_ context.Context, key string) (string, error) {
+func (r *providerBalanceAlertSettingRepo) GetValue(_ context.Context, key string) (string, error) {
 	return r.values[key], nil
 }
 
-func (r *openAIAlertSettingRepo) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+func (r *providerBalanceAlertSettingRepo) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
 	result := make(map[string]string, len(keys))
 	for _, key := range keys {
 		result[key] = r.values[key]
@@ -35,7 +37,7 @@ func (r *openAIAlertSettingRepo) GetMultiple(_ context.Context, keys []string) (
 	return result, nil
 }
 
-func (r *openAIAlertClaimRepo) CreateProcessing(_ context.Context, rec *IdempotencyRecord) (bool, error) {
+func (r *providerBalanceAlertClaimRepo) CreateProcessing(_ context.Context, rec *IdempotencyRecord) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.items == nil {
@@ -51,7 +53,7 @@ func (r *openAIAlertClaimRepo) CreateProcessing(_ context.Context, rec *Idempote
 	r.items[key] = &copy
 	return true, nil
 }
-func (r *openAIAlertClaimRepo) GetByScopeAndKeyHash(_ context.Context, scope, hash string) (*IdempotencyRecord, error) {
+func (r *providerBalanceAlertClaimRepo) GetByScopeAndKeyHash(_ context.Context, scope, hash string) (*IdempotencyRecord, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if rec := r.items[scope+":"+hash]; rec != nil {
@@ -60,7 +62,7 @@ func (r *openAIAlertClaimRepo) GetByScopeAndKeyHash(_ context.Context, scope, ha
 	}
 	return nil, nil
 }
-func (r *openAIAlertClaimRepo) TryReclaim(_ context.Context, id int64, fromStatus string, now, lockedUntil, expiresAt time.Time) (bool, error) {
+func (r *providerBalanceAlertClaimRepo) TryReclaim(_ context.Context, id int64, fromStatus string, now, lockedUntil, expiresAt time.Time) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, rec := range r.items {
@@ -71,7 +73,7 @@ func (r *openAIAlertClaimRepo) TryReclaim(_ context.Context, id int64, fromStatu
 	}
 	return false, nil
 }
-func (r *openAIAlertClaimRepo) MarkSucceeded(_ context.Context, id int64, code int, body string, expiresAt time.Time) error {
+func (r *providerBalanceAlertClaimRepo) MarkSucceeded(_ context.Context, id int64, code int, body string, expiresAt time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, rec := range r.items {
@@ -82,7 +84,7 @@ func (r *openAIAlertClaimRepo) MarkSucceeded(_ context.Context, id int64, code i
 	}
 	return errors.New("claim not found")
 }
-func (r *openAIAlertClaimRepo) MarkFailedRetryable(_ context.Context, id int64, reason string, retryAt, expiresAt time.Time) error {
+func (r *providerBalanceAlertClaimRepo) MarkFailedRetryable(_ context.Context, id int64, reason string, retryAt, expiresAt time.Time) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	for _, rec := range r.items {
@@ -94,7 +96,7 @@ func (r *openAIAlertClaimRepo) MarkFailedRetryable(_ context.Context, id int64, 
 	return errors.New("claim not found")
 }
 
-func TestOpenAIProviderBalanceAlertDeliveryAndDedup(t *testing.T) {
+func TestProviderBalanceAlertDeliveryAndDedup(t *testing.T) {
 	var mu sync.Mutex
 	var messages []string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -110,15 +112,15 @@ func TestOpenAIProviderBalanceAlertDeliveryAndDedup(t *testing.T) {
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer srv.Close()
-	settings := &openAIAlertSettingRepo{values: map[string]string{
+	settings := &providerBalanceAlertSettingRepo{values: map[string]string{
 		SettingTelegramAdminBotToken: "admin-token", SettingTelegramAdminChatID: "admin-chat",
 		SettingTelegramCustomerBotToken: "customer-token", SettingTelegramNotifyProviderBalance: "true",
 	}}
 	telegram := NewTelegramNotifyService(settings)
 	telegram.apiBaseURL = srv.URL + "/bot"
-	repo := &openAIAlertClaimRepo{}
+	repo := &providerBalanceAlertClaimRepo{}
 	claims := NewIdempotencyCoordinator(repo, IdempotencyConfig{DefaultTTL: time.Hour, ProcessingTimeout: time.Minute, FailedRetryBackoff: time.Millisecond, MaxStoredResponseLen: 1024})
-	alerts := NewOpenAIProviderBalanceAlerts(telegram, claims)
+	alerts := NewProviderBalanceAlerts(telegram, claims)
 	account := &Account{ID: 577, Name: "provider-577", Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 	ctx := context.Background()
 	depleted := []byte(`{"error":{"message":"Insufficient account balance"}}`)
@@ -145,7 +147,7 @@ func TestOpenAIProviderBalanceAlertDeliveryAndDedup(t *testing.T) {
 		{account, http.StatusForbidden, `{"error":{"message":"Customer has insufficient balance"}}`},
 		{&Account{ID: 582, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, http.StatusForbidden, `{"error":{"message":"Customer insufficient account balance"}}`},
 		{&Account{ID: 578, Platform: PlatformOpenAI, Type: AccountTypeOAuth}, http.StatusForbidden, string(depleted)},
-		{&Account{ID: 579, Platform: PlatformDeepseek, Type: AccountTypeAPIKey}, http.StatusForbidden, string(depleted)},
+		{&Account{ID: 579, Platform: PlatformComposite, Type: AccountTypeAPIKey}, http.StatusForbidden, string(depleted)},
 	} {
 		alerts.Observe(ctx, tc.account, tc.code, []byte(tc.body))
 	}
@@ -165,7 +167,58 @@ func TestOpenAIProviderBalanceAlertDeliveryAndDedup(t *testing.T) {
 	}
 }
 
-func TestOpenAIProviderBalanceAlertFailedSendRetryable(t *testing.T) {
+func TestProviderBalanceAlertSupportsAllPlatforms(t *testing.T) {
+	platforms := domain.ConcretePlatformIDs()
+	messages := make(chan string, len(platforms))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Errorf("form: %v", err)
+		}
+		messages <- r.Form.Get("text")
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer srv.Close()
+	settings := &providerBalanceAlertSettingRepo{values: map[string]string{
+		SettingTelegramAdminBotToken: "admin-token", SettingTelegramAdminChatID: "admin-chat",
+		SettingTelegramNotifyProviderBalance: "true",
+	}}
+	telegram := NewTelegramNotifyService(settings)
+	telegram.apiBaseURL = srv.URL + "/bot"
+	alerts := NewProviderBalanceAlerts(telegram, NewIdempotencyCoordinator(&providerBalanceAlertClaimRepo{}, IdempotencyConfig{
+		DefaultTTL: time.Hour, ProcessingTimeout: time.Minute, FailedRetryBackoff: time.Millisecond, MaxStoredResponseLen: 1024,
+	}))
+	rate := &RateLimitService{}
+	rate.SetProviderBalanceAlerts(alerts)
+	body := []byte(`{"error":{"code":"INSUFFICIENT_BALANCE","message":"Insufficient account balance"}}`)
+	for i, platform := range platforms {
+		account := &Account{ID: int64(700 + i), Name: platform, Platform: platform, Type: AccountTypeAPIKey, Credentials: map[string]any{"pool_mode": true}}
+		if rate.HandleUpstreamError(context.Background(), account, http.StatusForbidden, nil, body) {
+			t.Fatalf("%s: alert must not change existing pool-mode error policy", platform)
+		}
+	}
+
+	seen := make(map[string]bool, len(platforms))
+	for range platforms {
+		select {
+		case message := <-messages:
+			for _, platform := range platforms {
+				if strings.Contains(message, "Provider: <b>"+platform+"</b>") {
+					seen[platform] = true
+					break
+				}
+			}
+		case <-time.After(3 * time.Second):
+			t.Fatalf("delivered %d alerts; want one for all %d concrete platforms", len(seen), len(platforms))
+		}
+	}
+	for _, platform := range platforms {
+		if !seen[platform] {
+			t.Errorf("no alert identified provider %q", platform)
+		}
+	}
+}
+
+func TestProviderBalanceAlertFailedSendRetryable(t *testing.T) {
 	var mu sync.Mutex
 	attempts := 0
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -180,11 +233,11 @@ func TestOpenAIProviderBalanceAlertFailedSendRetryable(t *testing.T) {
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	}))
 	defer srv.Close()
-	settings := &openAIAlertSettingRepo{values: map[string]string{SettingTelegramAdminBotToken: "admin-token", SettingTelegramAdminChatID: "admin-chat", SettingTelegramNotifyProviderBalance: "true"}}
+	settings := &providerBalanceAlertSettingRepo{values: map[string]string{SettingTelegramAdminBotToken: "admin-token", SettingTelegramAdminChatID: "admin-chat", SettingTelegramNotifyProviderBalance: "true"}}
 	telegram := NewTelegramNotifyService(settings)
 	telegram.apiBaseURL = srv.URL + "/bot"
-	repo := &openAIAlertClaimRepo{}
-	alerts := NewOpenAIProviderBalanceAlerts(telegram, NewIdempotencyCoordinator(repo, IdempotencyConfig{DefaultTTL: time.Hour, ProcessingTimeout: time.Minute, FailedRetryBackoff: time.Millisecond, MaxStoredResponseLen: 1024}))
+	repo := &providerBalanceAlertClaimRepo{}
+	alerts := NewProviderBalanceAlerts(telegram, NewIdempotencyCoordinator(repo, IdempotencyConfig{DefaultTTL: time.Hour, ProcessingTimeout: time.Minute, FailedRetryBackoff: time.Millisecond, MaxStoredResponseLen: 1024}))
 	account := &Account{ID: 577, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
 	body := []byte(`{"error":{"code":"INSUFFICIENT_BALANCE","message":"payment required"}}`)
 	alerts.Observe(context.Background(), account, http.StatusForbidden, body)
@@ -212,10 +265,11 @@ func TestOpenAIProviderBalanceAlertFailedSendRetryable(t *testing.T) {
 	}
 }
 
-func TestOpenAIProviderBalanceAlertFromUpstreamError(t *testing.T) {
+func TestProviderBalanceAlertFromUpstreamError(t *testing.T) {
 	var mu sync.Mutex
 	sends := 0
-	sent := make(chan struct{}, 1)
+	platforms := []string{PlatformOpenAI, PlatformAnthropic, PlatformGemini}
+	sent := make(chan struct{}, len(platforms))
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		mu.Lock()
 		sends++
@@ -224,47 +278,51 @@ func TestOpenAIProviderBalanceAlertFromUpstreamError(t *testing.T) {
 		sent <- struct{}{}
 	}))
 	defer srv.Close()
-	settings := &openAIAlertSettingRepo{values: map[string]string{
+	settings := &providerBalanceAlertSettingRepo{values: map[string]string{
 		SettingTelegramAdminBotToken: "admin-token", SettingTelegramAdminChatID: "admin-chat", SettingTelegramNotifyProviderBalance: "true",
 	}}
 	telegram := NewTelegramNotifyService(settings)
 	telegram.apiBaseURL = srv.URL + "/bot"
-	alerts := NewOpenAIProviderBalanceAlerts(telegram, NewIdempotencyCoordinator(&openAIAlertClaimRepo{}, IdempotencyConfig{
+	alerts := NewProviderBalanceAlerts(telegram, NewIdempotencyCoordinator(&providerBalanceAlertClaimRepo{}, IdempotencyConfig{
 		DefaultTTL: time.Hour, ProcessingTimeout: time.Minute, FailedRetryBackoff: time.Millisecond, MaxStoredResponseLen: 1024,
 	}))
 	rate := &RateLimitService{}
-	rate.SetOpenAIProviderBalanceAlerts(alerts)
-	account := &Account{ID: 577, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"pool_mode": true}}
+	rate.SetProviderBalanceAlerts(alerts)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // A canceled client must not cancel the admin delivery.
-	if rate.HandleUpstreamError(ctx, account, http.StatusForbidden, nil, []byte(`{"error":{"message":"Insufficient account balance"}}`)) {
-		t.Fatal("alert must not change existing pool-mode error policy")
+	for i, platform := range platforms {
+		account := &Account{ID: int64(577 + i), Platform: platform, Type: AccountTypeAPIKey, Credentials: map[string]any{"pool_mode": true}}
+		if rate.HandleUpstreamError(ctx, account, http.StatusForbidden, nil, []byte(`{"error":{"message":"Insufficient account balance"}}`)) {
+			t.Fatalf("%s: alert must not change existing pool-mode error policy", platform)
+		}
 	}
-	select {
-	case <-sent:
-	case <-time.After(3 * time.Second):
-		t.Fatal("no admin send after gateway error")
+	for range platforms {
+		select {
+		case <-sent:
+		case <-time.After(3 * time.Second):
+			t.Fatal("no admin send after gateway error")
+		}
 	}
 	mu.Lock()
 	count := sends
 	mu.Unlock()
-	if count != 1 {
-		t.Fatalf("upstream 403 caused %d admin sends, want 1", count)
+	if count != len(platforms) {
+		t.Fatalf("upstream 403 caused %d admin sends, want %d", count, len(platforms))
 	}
 }
 
-func TestOpenAIProviderBalanceAlertTransportErrorDoesNotPersistToken(t *testing.T) {
+func TestProviderBalanceAlertTransportErrorDoesNotPersistToken(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
 	baseURL := srv.URL
 	srv.Close() // Force a transport error whose URL would ordinarily contain the bot token.
-	settings := &openAIAlertSettingRepo{values: map[string]string{
+	settings := &providerBalanceAlertSettingRepo{values: map[string]string{
 		SettingTelegramAdminBotToken: "sensitive-bot-token", SettingTelegramAdminChatID: "admin-chat",
 		SettingTelegramNotifyProviderBalance: "true",
 	}}
 	telegram := NewTelegramNotifyService(settings)
 	telegram.apiBaseURL = baseURL + "/bot"
-	repo := &openAIAlertClaimRepo{}
-	alerts := NewOpenAIProviderBalanceAlerts(telegram, NewIdempotencyCoordinator(repo, IdempotencyConfig{
+	repo := &providerBalanceAlertClaimRepo{}
+	alerts := NewProviderBalanceAlerts(telegram, NewIdempotencyCoordinator(repo, IdempotencyConfig{
 		DefaultTTL: time.Hour, ProcessingTimeout: time.Minute, FailedRetryBackoff: time.Millisecond, MaxStoredResponseLen: 1024,
 	}))
 	alerts.Observe(context.Background(), &Account{ID: 577, Platform: PlatformOpenAI, Type: AccountTypeAPIKey},
@@ -280,4 +338,48 @@ func TestOpenAIProviderBalanceAlertTransportErrorDoesNotPersistToken(t *testing.
 		return
 	}
 	t.Fatal("transport failure was not persisted as retryable")
+}
+
+func TestProviderBalanceAlertNotSuppressedByErrorPolicy(t *testing.T) {
+	sent := make(chan struct{}, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"ok":true}`))
+		sent <- struct{}{}
+	}))
+	defer srv.Close()
+	settings := &providerBalanceAlertSettingRepo{values: map[string]string{
+		SettingTelegramAdminBotToken: "admin-token", SettingTelegramAdminChatID: "admin-chat",
+		SettingTelegramNotifyProviderBalance: "true",
+	}}
+	telegram := NewTelegramNotifyService(settings)
+	telegram.apiBaseURL = srv.URL + "/bot"
+	alerts := NewProviderBalanceAlerts(telegram, NewIdempotencyCoordinator(&providerBalanceAlertClaimRepo{}, IdempotencyConfig{
+		DefaultTTL: time.Hour, ProcessingTimeout: time.Minute, FailedRetryBackoff: time.Millisecond, MaxStoredResponseLen: 1024,
+	}))
+	rate := &RateLimitService{}
+	rate.SetProviderBalanceAlerts(alerts)
+	body := []byte(`{"error":{"message":"Insufficient account balance"}}`)
+	accounts := []*Account{
+		{
+			ID: 681, Platform: PlatformGemini, Type: AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"custom_error_codes_enabled": true,
+				"custom_error_codes":         []any{float64(http.StatusTooManyRequests)},
+			},
+		},
+		{ID: 682, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"pool_mode": true}},
+	}
+	if got := rate.CheckErrorPolicy(context.Background(), accounts[1], http.StatusForbidden, body); got != ErrorPolicySkipped {
+		t.Fatalf("account %d: policy=%v, want skipped", accounts[1].ID, got)
+	}
+	(&GeminiMessagesCompatService{rateLimitService: rate}).handleGeminiUpstreamError(
+		context.Background(), accounts[0], http.StatusForbidden, nil, body,
+	)
+	for range accounts {
+		select {
+		case <-sent:
+		case <-time.After(3 * time.Second):
+			t.Fatal("admin notification was suppressed by error policy")
+		}
+	}
 }

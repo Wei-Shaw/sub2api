@@ -539,7 +539,7 @@ func ProvideRateLimitService(
 	svc.SetSettingService(settingService)
 	svc.SetTokenCacheInvalidator(tokenCacheInvalidator)
 	svc.SetOllamaCloudUsageProbeScheduler(ollamaCloudUsage)
-	svc.SetOpenAIProviderBalanceAlerts(NewOpenAIProviderBalanceAlerts(telegramNotifySvc, idempotencyCoordinator))
+	svc.SetProviderBalanceAlerts(NewProviderBalanceAlerts(telegramNotifySvc, idempotencyCoordinator))
 	return svc
 }
 
