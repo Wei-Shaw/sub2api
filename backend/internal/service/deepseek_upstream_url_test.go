@@ -105,3 +105,58 @@ func TestBuildDeepseekToolsURL_RejectsInvalidFileID(t *testing.T) {
 		require.Error(t, err, "fileID %q", bad)
 	}
 }
+
+func TestBuildDeepseekFilesAnthropicURL_UsesProtocolBase(t *testing.T) {
+	account := &Account{
+		Platform: PlatformDeepseek,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"api_protocol": "adaptive",
+			"base_url":     "https://api.deepseek.com",
+			"api_base_urls": map[string]any{
+				"anthropic":        "https://api.deepseek.com/anthropic",
+				"chat_completions": "https://api.deepseek.com",
+			},
+		},
+	}
+	cases := []struct {
+		endpoint string
+		fileID   string
+		want     string
+	}{
+		{"files_create", "", "https://api.deepseek.com/anthropic/v1/files"},
+		{"files_list", "", "https://api.deepseek.com/anthropic/v1/files"},
+		{"files_get", "file-abc_123", "https://api.deepseek.com/anthropic/v1/files/file-abc_123"},
+		{"files_delete", "file-abc_123", "https://api.deepseek.com/anthropic/v1/files/file-abc_123"},
+	}
+	for _, tc := range cases {
+		got, err := buildDeepseekFilesAnthropicURL(account, tc.endpoint, tc.fileID)
+		require.NoError(t, err, "endpoint %s", tc.endpoint)
+		require.Equal(t, tc.want, got, "endpoint %s", tc.endpoint)
+	}
+}
+
+func TestBuildDeepseekFilesAnthropicURL_FallsBackToBaseURL(t *testing.T) {
+	account := &Account{
+		Platform: PlatformDeepseek,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url": "https://relay.example.com",
+		},
+	}
+	got, err := buildDeepseekFilesAnthropicURL(account, "files_create", "")
+	require.NoError(t, err)
+	require.Equal(t, "https://relay.example.com/v1/files", got)
+}
+
+func TestBuildDeepseekFilesAnthropicURL_RejectsNonFilesEndpoint(t *testing.T) {
+	account := &Account{
+		Platform:    PlatformDeepseek,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"base_url": "https://relay.example.com"},
+	}
+	_, err := buildDeepseekFilesAnthropicURL(account, "search", "")
+	require.Error(t, err)
+	_, err = buildDeepseekFilesAnthropicURL(account, "files_get", "bad id/../x")
+	require.Error(t, err)
+}

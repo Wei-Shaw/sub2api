@@ -226,3 +226,68 @@ func TestCountTTSBillableChars(t *testing.T) {
 	// 混合：你好 = 4，" hi" = 3。
 	require.Equal(t, 7, countTTSBillableChars("你好 hi"))
 }
+
+func newDeepseekToolsAnthropicFilesAccount(baseURL string) *Account {
+	return &Account{
+		ID:          902,
+		Name:        "deepseek-anthropic-files",
+		Platform:    PlatformDeepseek,
+		Type:        AccountTypeAPIKey,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":      "sk-dstest",
+			"api_protocol": "adaptive",
+			"base_url":     "https://api.deepseek.com",
+			"api_base_urls": map[string]any{
+				"anthropic": baseURL,
+			},
+		},
+	}
+}
+
+func TestForwardDeepseekToolsRequest_AnthropicFilesPassthrough(t *testing.T) {
+	var gotPath, gotBeta, gotVersion, gotAuth string
+	var gotBody []byte
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotBeta = r.Header.Get("anthropic-beta")
+		gotVersion = r.Header.Get("anthropic-version")
+		gotAuth = r.Header.Get("Authorization")
+		gotBody, _ = io.ReadAll(r.Body)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"file-api-1","type":"file","size_bytes":70,"created_at":"2026-11-17T04:20:28.705+00:00","filename":"a.png","mime_type":"image/png"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	body := []byte("--b\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.png\"\r\nContent-Type: image/png\r\n\r\nPNG\r\n--b--\r\n")
+	c, rec := newDeepseekToolsTestContext(http.MethodPost, "/v1/files", body)
+	c.Request.Header.Set("anthropic-beta", "files-api-2025-04-14")
+	c.Request.Header.Set("anthropic-version", "2023-06-01")
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{}}
+	result, err := svc.ForwardDeepseekToolsRequest(context.Background(), c, newDeepseekToolsAnthropicFilesAccount(server.URL+"/anthropic"), "files_create", body, "multipart/form-data; boundary=b")
+	require.NoError(t, err)
+	require.Equal(t, "/anthropic/v1/files", gotPath, "anthropic-beta requests must go to the Anthropic compatible Files endpoint")
+	require.Equal(t, "files-api-2025-04-14", gotBeta)
+	require.Equal(t, "2023-06-01", gotVersion)
+	require.Equal(t, "Bearer sk-dstest", gotAuth)
+	require.Equal(t, body, gotBody)
+	require.Equal(t, `{"id":"file-api-1","type":"file","size_bytes":70,"created_at":"2026-11-17T04:20:28.705+00:00","filename":"a.png","mime_type":"image/png"}`, rec.Body.String(), "Anthropic shaped response must pass through unchanged")
+	require.Empty(t, result.Usage.Kind, "files endpoints are not billed")
+}
+
+func TestForwardDeepseekToolsRequest_FilesWithoutBetaStaysOpenAI(t *testing.T) {
+	var gotPath string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"id":"file-api-2","object":"file","bytes":70}`))
+	}))
+	t.Cleanup(server.Close)
+
+	body := []byte("--b\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.png\"\r\n\r\nPNG\r\n--b--\r\n")
+	c, _ := newDeepseekToolsTestContext(http.MethodPost, "/v1/files", body)
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{}}
+	_, err := svc.ForwardDeepseekToolsRequest(context.Background(), c, newDeepseekToolsTestAccount(server.URL), "files_create", body, "multipart/form-data; boundary=b")
+	require.NoError(t, err)
+	require.Equal(t, "/v1/files", gotPath, "requests without the Files beta header keep the OpenAI compatible path")
+}

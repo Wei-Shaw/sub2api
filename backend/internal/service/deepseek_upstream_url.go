@@ -64,6 +64,46 @@ func isValidDeepseekFileID(fileID string) bool {
 	return true
 }
 
+// buildDeepseekFilesAnthropicURL 构造 Anthropic 兼容 Files API 的上游 URL：
+// {anthropic_base}/v1/files[/{fileID}]。请求带 anthropic-beta：
+// files-api-2025-04-14 头时使用——官方该端点免 purpose 且返回 Anthropic
+// 形状（type/size_bytes/mime_type/字符串 created_at），与 OpenAI 兼容
+// /v1/files 强制 purpose + OpenAI 形状不同。base 优先取分协议
+// api_base_urls.anthropic（官方默认 https://api.deepseek.com/anthropic），
+// 缺失时回落单值 base_url，tools 系列不受本函数影响。
+func buildDeepseekFilesAnthropicURL(account *Account, endpoint string, fileID string) (string, error) {
+	switch endpoint {
+	case "files_create", "files_list", "files_get", "files_delete":
+	default:
+		return "", fmt.Errorf("endpoint %s does not support anthropic files url", endpoint)
+	}
+	base := ""
+	if account != nil {
+		base = strings.TrimSpace(account.GetAnthropicProtocolBaseURL())
+		if base == "" {
+			base = account.GetCredential("base_url")
+		}
+	}
+	if strings.TrimSpace(base) == "" {
+		base = deepseekDefaultToolsBaseURL()
+	}
+	base = normalizeDeepseekBaseURL(base)
+	if base == "" {
+		return "", fmt.Errorf("deepseek base URL is required")
+	}
+	switch endpoint {
+	case "files_create", "files_list":
+		return base + "/v1/files", nil
+	default:
+		fileID = strings.TrimSpace(fileID)
+		if !isValidDeepseekFileID(fileID) {
+			// 不回显原始输入，避免把它写进日志与错误响应。
+			return "", fmt.Errorf("invalid file id for deepseek tools url path")
+		}
+		return base + "/v1/files/" + fileID, nil
+	}
+}
+
 // buildDeepseekToolsURL 构造 DeepSeek 独立工具接口的上游 URL。
 // base_url 取自账号 credentials，为空时回退 provider profile 默认值；
 // endpoint 必须在白名单内，fileID 仅在 files_get/files_delete 时必填且需通过
