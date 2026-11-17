@@ -284,6 +284,10 @@ const (
 	proxyTLSHandshakeTimeout = 5 * time.Second
 	// clientTimeout 整体请求超时（含连接、发送、等待响应、读取 body）
 	clientTimeout = 10 * time.Second
+	// proxyIdleConnTimeout 空闲连接回收时间。NewClient 每次调用都会新建 Transport，
+	// 不设置时 IdleConnTimeout 为 0（永不超时），请求结束后的连接会一直留在无人引用的连接池里，
+	// 经代理访问时就表现为长期空闲、不释放的连接。
+	proxyIdleConnTimeout = 30 * time.Second
 )
 
 func NewClient(proxyURL string) (*Client, error) {
@@ -301,6 +305,9 @@ func NewClient(proxyURL string) (*Client, error) {
 				Timeout: proxyDialTimeout,
 			}).DialContext,
 			TLSHandshakeTimeout: proxyTLSHandshakeTimeout,
+			IdleConnTimeout:     proxyIdleConnTimeout,
+			MaxIdleConns:        4,
+			MaxIdleConnsPerHost: 2,
 		}
 		if err := proxyutil.ConfigureTransportProxy(transport, parsed); err != nil {
 			return nil, fmt.Errorf("configure proxy: %w", err)
