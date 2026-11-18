@@ -74,6 +74,7 @@ func TestApplyMonitorUpdate_SwitchToGrokAllowsResponsesMode(t *testing.T) {
 	existing := &ChannelMonitor{
 		Provider:        MonitorProviderOpenAI,
 		APIMode:         MonitorAPIModeChatCompletions,
+		Endpoint:        "https://api.openai.com/v1",
 		PrimaryModel:    "gpt-5",
 		IntervalSeconds: 60,
 	}
