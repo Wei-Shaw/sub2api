@@ -549,6 +549,11 @@ type ResponsesClientToolStreamRestorer struct {
 type responsesClientToolStreamCall struct {
 	kind string
 	name string
+	// clientName/clientNamespace 是回程要发给客户端的原始工具身份。namespace
+	// 内的 custom 子工具（如 functions.exec）在上游看到的是摊平名
+	// functions__exec，回程必须还原为 name=exec + namespace=functions。
+	clientName      string
+	clientNamespace string
 	// callID and itemID stay as the upstream sent them so later upstream
 	// events keep matching this call; clientItemID is what we emit.
 	callID       string
@@ -587,7 +592,7 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 				event.Item.Type = "custom_tool_call"
 				event.Item.Input = ""
 				event.Item.Arguments = ""
-				event.Item.Namespace = ""
+				event.Item.Name, event.Item.Namespace = call.clientName, call.clientNamespace
 			} else {
 				event.Item.Type = "tool_search_call"
 				event.Item.Name = ""
@@ -616,7 +621,7 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 				if input != "" {
 					emit(ResponsesStreamEvent{Type: "response.custom_tool_call_input.delta", OutputIndex: call.outputIdx, ItemID: call.clientItemID, Delta: input})
 				}
-				emit(ResponsesStreamEvent{Type: "response.custom_tool_call_input.done", OutputIndex: call.outputIdx, ItemID: call.clientItemID, CallID: call.callID, Name: call.name, Input: input})
+				emit(ResponsesStreamEvent{Type: "response.custom_tool_call_input.done", OutputIndex: call.outputIdx, ItemID: call.clientItemID, CallID: call.callID, Name: call.clientName, Input: input})
 			}
 			return out
 		}
@@ -627,7 +632,7 @@ func (r *ResponsesClientToolStreamRestorer) Restore(event ResponsesStreamEvent) 
 				event.Item.Type = "custom_tool_call"
 				event.Item.Input = extractCustomToolCallInput(call.arguments.String())
 				event.Item.Arguments = ""
-				event.Item.Namespace = ""
+				event.Item.Name, event.Item.Namespace = call.clientName, call.clientNamespace
 			} else {
 				event.Item.Type = "tool_search_call"
 				event.Item.Name = ""
@@ -805,13 +810,19 @@ func (r *ResponsesClientToolStreamRestorer) recordItem(event ResponsesStreamEven
 	}
 	call := r.calls[key]
 	if call == nil {
+		clientName, clientNamespace := name, ""
+		if namespaced, ok := r.adapter.NamespaceTools[name]; ok {
+			clientName, clientNamespace = namespaced.Name, namespaced.Namespace
+		}
 		call = &responsesClientToolStreamCall{
-			kind:         kind,
-			name:         name,
-			callID:       event.Item.CallID,
-			itemID:       event.Item.ID,
-			clientItemID: retypedResponsesToolCallItemID(event.Item.ID, responsesClientToolItemType(kind)),
-			outputIdx:    event.OutputIndex,
+			kind:            kind,
+			name:            name,
+			clientName:      clientName,
+			clientNamespace: clientNamespace,
+			callID:          event.Item.CallID,
+			itemID:          event.Item.ID,
+			clientItemID:    retypedResponsesToolCallItemID(event.Item.ID, responsesClientToolItemType(kind)),
+			outputIdx:       event.OutputIndex,
 		}
 		r.calls[key] = call
 		if call.callID != "" {
