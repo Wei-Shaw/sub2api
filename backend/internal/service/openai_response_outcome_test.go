@@ -426,6 +426,27 @@ func TestApplyOpenAITerminalUsageKeepsObservedProgressiveUsage(t *testing.T) {
 	require.Equal(t, OpenAIUsage{InputTokens: 41, OutputTokens: 10}, usage, "nonzero terminal is authoritative")
 }
 
+func TestRawChatCoalescedFlushFailurePreservesObservedUsage(t *testing.T) {
+	body := "data: {\"id\":\"c\",\"choices\":[{\"delta\":{\"content\":\"hi\"}}],\"usage\":{\"prompt_tokens\":42,\"completion_tokens\":7,\"total_tokens\":49}}\n\ndata: [DONE]\n\n"
+	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}}}
+	w := newDeliveryTestWriter()
+	w.flushErr = syscall.EPIPE
+	c := newDeliveryTestContext(t, context.Background(), w)
+
+	result, err := svc.streamRawChatCompletions(c, sseResponse(io.NopCloser(strings.NewReader(body))), &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, "m", "m", "m", nil, nil, time.Now(), 0)
+
+	deliveryErr, ok := AsOpenAIDeliveryError(err)
+	require.True(t, ok, "got %v", err)
+	require.Equal(t, ResponseOutcomeWriteFailed, deliveryErr.Outcome)
+	require.NotNil(t, result)
+	require.Equal(t, ResponseOutcomeWriteFailed, result.ResponseOutcome)
+	require.Equal(t, 42, result.Usage.InputTokens)
+	require.Equal(t, 7, result.Usage.OutputTokens)
+	require.True(t, result.ClientDisconnect)
+	var retry *UpstreamFailoverError
+	require.False(t, errors.As(err, &retry), "failed downstream flush must not retry a billed attempt")
+}
+
 func TestRawChatStreamShortWriteIsTypedDeliveryFailure(t *testing.T) {
 	pr, pw := io.Pipe()
 	go func() {

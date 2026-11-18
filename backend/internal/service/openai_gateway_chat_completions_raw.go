@@ -316,12 +316,12 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 	}
 	requestID := resp.Header.Get("x-request-id")
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
-	scanner := s.newUpstreamSSEScanner(resp.Body)
 
 	var usage OpenAIUsage
 	var firstTokenMs *int
 	clientDisconnected := false
 	clientOutputStarted := false
+	flushPending := false
 	pendingLines := make([]string, 0, 8)
 	refusalDetector := newOpenAIChatSilentRefusalDetector(requestBodyLen)
 	var terminal openAIRawStreamTerminalState
@@ -359,6 +359,15 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 		c.Writer.Flush()
 		return nil
 	}
+	flushToClient := func() {
+		if flushPending && !clientDisconnected && clientOutputStarted {
+			if err := flushRaw(); err != nil {
+				markClientGone(err)
+			}
+		}
+		flushPending = false
+	}
+	scanner := s.newUpstreamSSEScanner(&flushBeforeUpstreamRead{r: resp.Body, flush: flushToClient})
 	writePending := func() bool {
 		writeStreamHeaders()
 		for _, pending := range pendingLines {
@@ -413,15 +422,13 @@ func (s *OpenAIGatewayService) streamRawChatCompletions(
 
 		line = s.replaceModelInSSELine(line, upstreamModel, originalModel)
 		writeLine(line)
-		if !clientDisconnected && clientOutputStarted {
-			if ferr := flushRaw(); ferr != nil {
-				markClientGone(ferr)
-			}
-		}
+		// Flush coalesced output before the next upstream read, with delivery checks.
+		flushPending = true
 		if deliveryErr != nil {
 			break
 		}
 	}
+	flushToClient()
 
 	resultWithUsage := func() *OpenAIForwardResult {
 		return &OpenAIForwardResult{
