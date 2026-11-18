@@ -30,9 +30,13 @@ func TestAnthropicConverterOutputCacheFields(t *testing.T) {
 		{"empty usage", `,"usage":{}`, `,"usage":{}`, 0, 0},
 		{"read only", `,"usage":{"prompt_tokens":10,"prompt_tokens_details":{"cached_tokens":3}}`, `,"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":3}}`, 0, 3},
 		{"creation only", `,"usage":{"prompt_tokens":10,"prompt_tokens_details":{"cache_write_tokens":4}}`, `,"usage":{"input_tokens":10,"cache_creation_input_tokens":4}`, 4, 0},
+		{"zero write overrides creation alias", `,"usage":{"prompt_tokens":10,"prompt_tokens_details":{"cached_tokens":3,"cache_write_tokens":0,"cache_creation_tokens":4}}`, `,"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":3,"cache_write_tokens":0,"cache_creation_tokens":4}}`, 0, 3},
+		{"null Chat write overrides creation alias", `,"usage":{"prompt_tokens":10,"prompt_tokens_details":{"cached_tokens":3,"cache_write_tokens":null,"cache_creation_tokens":4}}`, `,"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":3,"cache_write_tokens":0,"cache_creation_tokens":4}}`, 0, 3},
+		{"negative write overrides creation alias", `,"usage":{"prompt_tokens":10,"prompt_tokens_details":{"cached_tokens":3,"cache_write_tokens":-2,"cache_creation_tokens":4}}`, `,"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":3,"cache_write_tokens":-2,"cache_creation_tokens":4}}`, 0, 3},
+		{"positive write overrides creation alias", `,"usage":{"prompt_tokens":10,"prompt_tokens_details":{"cached_tokens":3,"cache_write_tokens":2,"cache_creation_tokens":4}}`, `,"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":3,"cache_write_tokens":2,"cache_creation_tokens":4}}`, 2, 3},
 	} {
 		for _, route := range []string{"chat buffered", "chat terminal", "chat eof", "responses buffered", "responses terminal", "responses eof"} {
-			if strings.HasSuffix(route, "eof") && test.name != "missing usage" {
+			if route == "responses eof" && test.name != "missing usage" {
 				continue
 			}
 			t.Run(test.name+"/"+route, func(t *testing.T) {
@@ -53,24 +57,30 @@ func TestAnthropicConverterOutputCacheFields(t *testing.T) {
 				ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
 				response := &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(payload))}
 				service := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig()}
+				var result *OpenAIForwardResult
 				var err error
 				switch route {
 				case "chat buffered":
-					_, err = service.bufferChatCompletionsAsAnthropic(ctx, response, "gpt-5.4", "gpt-5.4", "gpt-5.4", nil, nil, time.Now())
+					result, err = service.bufferChatCompletionsAsAnthropic(ctx, response, "gpt-5.4", "gpt-5.4", "gpt-5.4", nil, nil, time.Now())
 				case "chat terminal", "chat eof":
-					_, err = service.streamChatCompletionsAsAnthropic(ctx, response, "gpt-5.4", "gpt-5.4", "gpt-5.4", nil, nil, time.Now())
+					result, err = service.streamChatCompletionsAsAnthropic(ctx, response, "gpt-5.4", "gpt-5.4", "gpt-5.4", nil, nil, time.Now())
 				case "responses buffered":
-					_, err = service.handleAnthropicBufferedStreamingResponse(response, ctx, rawChatCompletionsTestAccount(), "gpt-5.4", "gpt-5.4", "gpt-5.4", time.Now())
+					result, err = service.handleAnthropicBufferedStreamingResponse(response, ctx, rawChatCompletionsTestAccount(), "gpt-5.4", "gpt-5.4", "gpt-5.4", time.Now())
 				default:
-					_, err = service.handleAnthropicStreamingResponse(response, ctx, rawChatCompletionsTestAccount(), "gpt-5.4", "gpt-5.4", "gpt-5.4", time.Now())
+					result, err = service.handleAnthropicStreamingResponse(response, ctx, rawChatCompletionsTestAccount(), "gpt-5.4", "gpt-5.4", "gpt-5.4", time.Now())
 				}
 				if route == "responses eof" {
 					require.ErrorContains(t, err, "missing terminal event")
 				} else {
 					require.NoError(t, err)
 				}
+				require.NotNil(t, result)
+				require.EqualValues(t, test.creation, result.Usage.CacheCreationInputTokens)
+				require.EqualValues(t, test.read, result.Usage.CacheReadInputTokens)
+				require.EqualValues(t, test.creation, result.Usage.billingUsageTokens().CacheCreationTokens)
 				require.Equal(t, http.StatusOK, recorder.Code)
 				assertUsage := func(usage gjson.Result, creation, read int64) {
+					require.False(t, usage.Get("cache_creation").Exists())
 					for field, want := range map[string]int64{"cache_creation_input_tokens": creation, "cache_read_input_tokens": read} {
 						tokens := usage.Get(field)
 						require.True(t, tokens.Exists(), field)
@@ -109,6 +119,58 @@ func TestAnthropicConverterOutputCacheFields(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestResponsesTerminalUsageMatchesAnthropicOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, stream := range []bool{false, true} {
+		name := "buffered"
+		if stream {
+			name = "streaming"
+		}
+		t.Run(name, func(t *testing.T) {
+			payload := "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_cache\",\"model\":\"gpt-5.4\"}}\n\n" +
+				`data: {"type":"response.completed","usage":{"input_tokens":20,"output_tokens":4,"cache_creation_input_tokens":4,"input_tokens_details":{"cached_tokens":5}},"response":{"id":"resp_cache","status":"completed","output":[],"usage":{"input_tokens":10,"output_tokens":2,"cache_creation_input_tokens":1,"input_tokens_details":{"cached_tokens":2}}}}` + "\n\n"
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+			ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+			response := &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(payload))}
+			service := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig()}
+			var result *OpenAIForwardResult
+			var err error
+			if stream {
+				result, err = service.handleAnthropicStreamingResponse(response, ctx, rawChatCompletionsTestAccount(), "gpt-5.4", "gpt-5.4", "gpt-5.4", time.Now())
+			} else {
+				result, err = service.handleAnthropicBufferedStreamingResponse(response, ctx, rawChatCompletionsTestAccount(), "gpt-5.4", "gpt-5.4", "gpt-5.4", time.Now())
+			}
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, 10, result.Usage.InputTokens)
+			require.Equal(t, 2, result.Usage.OutputTokens)
+			require.Equal(t, 1, result.Usage.CacheCreationInputTokens)
+			require.Equal(t, 2, result.Usage.CacheReadInputTokens)
+			tokens := result.Usage.billingUsageTokens()
+			require.Equal(t, 7, tokens.InputTokens)
+			require.Equal(t, 1, tokens.CacheCreationTokens)
+			outputUsage := gjson.Get(recorder.Body.String(), "usage")
+			if stream {
+				for _, line := range strings.Split(recorder.Body.String(), "\n") {
+					if strings.HasPrefix(line, "data: ") {
+						event := gjson.Parse(strings.TrimPrefix(line, "data: "))
+						if event.Get("type").String() == "message_delta" {
+							outputUsage = event.Get("usage")
+						}
+					}
+				}
+			}
+			require.True(t, outputUsage.Exists())
+			require.EqualValues(t, tokens.InputTokens, outputUsage.Get("input_tokens").Int())
+			require.EqualValues(t, tokens.OutputTokens, outputUsage.Get("output_tokens").Int())
+			require.EqualValues(t, tokens.CacheCreationTokens, outputUsage.Get("cache_creation_input_tokens").Int())
+			require.EqualValues(t, tokens.CacheReadTokens, outputUsage.Get("cache_read_input_tokens").Int())
+			require.False(t, outputUsage.Get("cache_creation").Exists())
+		})
 	}
 }
 

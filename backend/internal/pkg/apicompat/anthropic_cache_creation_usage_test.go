@@ -2,10 +2,80 @@ package apicompat
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestChatCacheWritePresenceAcrossAnthropicConverters(t *testing.T) {
+	for _, test := range []struct {
+		name     string
+		details  string
+		creation int
+	}{
+		{"missing write falls back", `"cache_creation_tokens":4`, 4},
+		{"zero write is authoritative", `"cache_write_tokens":0,"cache_creation_tokens":4`, 0},
+		{"null write is authoritative", `"cache_write_tokens":null,"cache_creation_tokens":4`, 0},
+		{"negative write clamps", `"cache_write_tokens":-2,"cache_creation_tokens":4`, 0},
+		{"positive write wins", `"cache_write_tokens":2,"cache_creation_tokens":4`, 2},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var response ChatCompletionsResponse
+			payload := `{"id":"chat_cache","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":10,"completion_tokens":2,"prompt_tokens_details":{"cached_tokens":3,` + test.details + `}}}`
+			require.NoError(t, json.Unmarshal([]byte(payload), &response))
+			encoded, err := json.Marshal(response)
+			require.NoError(t, err)
+			require.NoError(t, json.Unmarshal(encoded, &response))
+			if strings.Contains(test.details, `"cache_write_tokens":0`) {
+				require.Contains(t, string(encoded), `"cache_write_tokens":0`)
+			}
+			assertUsage := func(usage AnthropicUsage) {
+				require.Equal(t, 7-test.creation, usage.InputTokens)
+				require.Equal(t, 2, usage.OutputTokens)
+				require.Equal(t, 3, usage.CacheReadInputTokens)
+				require.Equal(t, test.creation, usage.CacheCreationInputTokens)
+				require.True(t, usage.CacheCreationInputTokensPresent)
+				require.True(t, usage.CacheReadInputTokensPresent)
+				require.Nil(t, usage.CacheCreation)
+			}
+			assertUsage(ChatCompletionsResponseToAnthropic(&response, "claude-sonnet-4").Usage)
+			converted := ChatCompletionsResponseToResponses(&response, "claude-sonnet-4", nil, nil, false, nil)
+			encoded, err = json.Marshal(converted)
+			require.NoError(t, err)
+			var decoded ResponsesResponse
+			require.NoError(t, json.Unmarshal(encoded, &decoded))
+			assertUsage(ResponsesToAnthropic(&decoded, "claude-sonnet-4").Usage)
+			for _, adapter := range []bool{false, true} {
+				state := NewChatCompletionsToAnthropicStreamState("claude-sonnet-4")
+				var events []AnthropicStreamEvent
+				chunk := &ChatCompletionsChunk{ID: "chat_cache", Usage: response.Usage}
+				if adapter {
+					responsesState := NewChatCompletionsToResponsesStreamState("claude-sonnet-4")
+					anthropicState := NewResponsesEventToAnthropicState()
+					responseEvents := ChatCompletionsChunkToResponsesEvents(chunk, responsesState)
+					responseEvents = append(responseEvents, FinalizeChatCompletionsResponsesStream(responsesState)...)
+					for _, event := range responseEvents {
+						events = append(events, ResponsesEventToAnthropicEvents(&event, anthropicState)...)
+					}
+					events = append(events, FinalizeResponsesAnthropicStream(anthropicState)...)
+				} else {
+					events = ChatCompletionsChunkToAnthropicEvents(chunk, state)
+					events = append(events, FinalizeChatCompletionsAnthropicStream(state)...)
+				}
+				deltas := 0
+				for _, event := range events {
+					if event.Type == "message_delta" {
+						require.NotNil(t, event.Usage)
+						assertUsage(*event.Usage)
+						deltas++
+					}
+				}
+				require.Equal(t, 1, deltas)
+			}
+		})
+	}
+}
 
 func TestAnthropicCacheCreationAggregatePresence(t *testing.T) {
 	for _, test := range []struct {

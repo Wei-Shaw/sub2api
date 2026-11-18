@@ -522,17 +522,9 @@ func chatUsageToAnthropicUsage(usage *ChatUsage) AnthropicUsage {
 	}
 
 	cachedTokens := 0
-	cacheCreationTokens := 0
+	cacheCreationTokens := usage.PromptTokensDetails.cacheCreationInputTokens()
 	if usage.PromptTokensDetails != nil {
 		cachedTokens = usage.PromptTokensDetails.CachedTokens
-		// cache_write_tokens and cache_creation_tokens are alternate spellings of
-		// the same quantity, not additive; the double-conversion path
-		// (ChatUsageToResponsesUsage) prefers write and falls back to creation.
-		if usage.PromptTokensDetails.CacheWriteTokens > 0 {
-			cacheCreationTokens = usage.PromptTokensDetails.CacheWriteTokens
-		} else {
-			cacheCreationTokens = usage.PromptTokensDetails.CacheCreationTokens
-		}
 	}
 
 	inputTokens := usage.PromptTokens - cachedTokens - cacheCreationTokens
