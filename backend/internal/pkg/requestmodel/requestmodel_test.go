@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
+	"github.com/stretchr/testify/require"
 )
 
 func TestFromBodyJSONModel(t *testing.T) {
@@ -253,5 +254,62 @@ func TestFromBodyForRouteReturnsFirstCandidate(t *testing.T) {
 	got := FromBodyForRoute("", "application/json", []byte(`{"model":"first","model":"last"}`))
 	if got != "first" {
 		t.Fatalf("dispatch helper keeps gjson-first semantics, got %q", got)
+	}
+}
+
+func TestValidateBodyRejectsAmbiguousModelCarriers(t *testing.T) {
+	for _, tc := range []struct{ name, route, body, want string }{
+		{"duplicate", "/v1/responses", `{"model":"a","model":"b"}`, "model is specified more than once"},
+		{"same value", "/v1/responses", `{"model":"a","model":"a"}`, "model is specified more than once"},
+		{"case and null", "/v1/responses", `{"model":"a","MODEL":null}`, "model is specified more than once"},
+		{"escaped", "/v1/responses", `{"model":"a","\u006dodel":123}`, "model is specified more than once"},
+		{"nested", "/v1/responses", `{"model":"a","input":[{"model":"b","model":"c"}],"stream":true,"stream":false}`, ""},
+		{"live session", "/v1/live", `{"session":{"model":"a","Model":"b"}}`, "session.model is specified more than once"},
+		{"live carriers", "/backend-api/codex/realtime/calls", `{"session":{"model":"a"},"Session":null}`, "session is specified more than once"},
+		{"independent session", "/v1/responses", `{"model":"a","session":{"model":"b","model":"c"}}`, ""},
+		{"malformed left to endpoint", "/v1/responses", `{"model":`, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			err := ValidateBody(tc.route, "application/json", []byte(tc.body))
+			if tc.want == "" {
+				require.NoError(t, err)
+			} else {
+				require.EqualError(t, err, tc.want)
+			}
+		})
+	}
+}
+
+func TestValidateBodyMultipartModelAndSession(t *testing.T) {
+	for _, tc := range []struct {
+		name, route string
+		fields      [][2]string
+		want        string
+	}{
+		{"duplicate model", "/v1/images/edits", [][2]string{{"model", "a"}, {"Model", "b"}}, "model is specified more than once"},
+		{"duplicate session", "/v1/live", [][2]string{{"session", `{"model":"a"}`}, {"session", `{"model":"a"}`}}, "session is specified more than once"},
+		{"session model", "/v1/live", [][2]string{{"session", `{"model":"a","model":"b"}`}}, "session.model is specified more than once"},
+		{"multiple images", "/v1/images/edits", [][2]string{{"model", "a"}}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var body bytes.Buffer
+			w := multipart.NewWriter(&body)
+			for _, field := range tc.fields {
+				require.NoError(t, w.WriteField(field[0], field[1]))
+			}
+			for range 2 {
+				p, err := w.CreateFormFile("image", "a.png")
+				require.NoError(t, err)
+				_, err = p.Write([]byte(`{"model":"file data"}`))
+				require.NoError(t, err)
+			}
+			require.NoError(t, w.Close())
+			err := ValidateBody(tc.route, w.FormDataContentType(), body.Bytes())
+			if tc.want == "" {
+				require.NoError(t, err)
+			} else {
+				require.EqualError(t, err, tc.want)
+			}
+		})
 	}
 }
