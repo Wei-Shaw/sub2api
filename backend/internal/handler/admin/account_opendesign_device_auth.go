@@ -87,7 +87,7 @@ func (h *AccountHandler) GetOpenDesignDeviceAuth(c *gin.Context) {
 }
 
 // CancelOpenDesignDeviceAuth 取消设备授权会话。
-// DELETE /api/v1/admin/opendesign/device-auth/:sessionId
+// DELETE /api/v1/admin/accounts/opendesign/device-auth/:sessionId
 func (h *AccountHandler) CancelOpenDesignDeviceAuth(c *gin.Context) {
 	if !h.requireOpenDesignDeviceAuth(c) {
 		return
@@ -123,7 +123,7 @@ type openDesignAccountFromSessionRequest struct {
 }
 
 // CreateOpenDesignAccountFromSession 用已授权会话创建或更新 OpenDesign 账号。
-// POST /api/v1/admin/opendesign/accounts
+// POST /api/v1/admin/accounts/opendesign/accounts
 func (h *AccountHandler) CreateOpenDesignAccountFromSession(c *gin.Context) {
 	if !h.requireOpenDesignDeviceAuth(c) {
 		return
@@ -201,7 +201,9 @@ func (h *AccountHandler) upsertOpenDesignAccountFromSession(
 	if len(existingIDs) == 1 {
 		existingID := existingIDs[0]
 		// 合并而不是覆盖：UpdateAccount 的凭据语义是"非敏感键完全由入参决定"，
-		// 只传三键会把 model_mapping / api_base_urls / account_mode 等待清理掉。
+		// 只传三键会把 model_mapping / api_base_urls / account_mode 等配置清掉。
+		// 读-改-写之间若有人同时改了这些键，本次写入会以读到的值覆盖（同一账号
+		// 并发编辑是 last-write-wins，与普通 PUT 一致）。
 		existing, gerr := h.adminService.GetAccount(ctx, existingID)
 		if gerr != nil {
 			return nil, "", service.ErrOpenDesignDeviceAuthAccountInvalid.WithCause(gerr)

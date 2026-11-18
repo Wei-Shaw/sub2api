@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"github.com/tidwall/gjson"
 )
 
 // OpenDesign usage probing rides the shared CN provider quota framework. The
@@ -28,6 +26,16 @@ const (
 	openDesignUsageWindow5HSeconds = 18000
 	openDesignUsageWindow7DSeconds = 604800
 )
+
+// openDesignUsageSupported reports whether the account carries the control-plane
+// credential the funding-check probe needs. Periodic probing uses it to skip
+// accounts that were never authorized through the device flow.
+func (a *Account) openDesignUsageSupported() bool {
+	if a == nil || a.Platform != PlatformOpenDesign || a.Type != AccountTypeAPIKey {
+		return false
+	}
+	return strings.TrimSpace(a.GetCredential(OpenDesignUsageCredentialsKey)) != ""
+}
 
 // opendesignFundingCheckURL builds the funding-check endpoint from the account
 // base URL and the workspace id stored by device auth.
@@ -133,10 +141,8 @@ func parseOpenDesignUsageTiers(body []byte) (tiers []CNQuotaTier, planLevel stri
 	if len(payload.CodingPlan) == 0 {
 		return nil, "", false, fmt.Errorf("funding-check: response has no codingPlan field (upstream schema may have changed)")
 	}
-	balance := strings.TrimSpace(payload.BalanceUsd)
-
 	if strings.TrimSpace(string(payload.CodingPlan)) == "null" {
-		return nil, balance, true, nil
+		return nil, "", true, nil
 	}
 
 	var plan struct {
@@ -153,7 +159,7 @@ func parseOpenDesignUsageTiers(body []byte) (tiers []CNQuotaTier, planLevel stri
 		return nil, "", false, fmt.Errorf("funding-check: codingPlan has no eligible field (upstream schema may have changed)")
 	}
 	if !*plan.Eligible {
-		return nil, balance, true, nil
+		return nil, "", true, nil
 	}
 
 	tierName := ""
@@ -186,9 +192,4 @@ func parseOpenDesignUsageTiers(body []byte) (tiers []CNQuotaTier, planLevel stri
 		return nil, "", false, fmt.Errorf("funding-check: coding plan eligible but no usable usage window parsed")
 	}
 	return tiers, tierName, false, nil
-}
-
-// opendesignBalanceUSD extracts the balance string for display (may be empty).
-func opendesignBalanceUSD(body []byte) string {
-	return strings.TrimSpace(gjson.GetBytes(body, "balanceUsd").String())
 }

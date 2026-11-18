@@ -246,6 +246,7 @@ func (s *CNProviderBalanceCheckService) collectAccountProbeTargets() []accountPr
 	}{
 		{PlatformCommandCode, (*Account).commandCodeUsageSupported, s.checkCommandCode},
 		{PlatformCline, (*Account).clineAccountAPISupported, s.checkCline},
+		{PlatformOpenDesign, (*Account).openDesignUsageSupported, s.checkOpenDesignUsage},
 	} {
 		accounts, err := s.accountRepo.ListByPlatform(context.Background(), p.platform)
 		if err != nil {
@@ -278,6 +279,18 @@ func (s *CNProviderBalanceCheckService) checkCommandCode(ctx context.Context, ac
 		return cnBalanceNoChange
 	}
 	return s.applyBalanceResult(ctx, account, result.Balance, threshold)
+}
+
+// checkOpenDesignUsage 周期性刷新 OpenDesign 用量快照（funding-check）。
+// 停放/恢复由调度阈值评估统一读取快照判定，这里只负责让快照保持新鲜。
+func (s *CNProviderBalanceCheckService) checkOpenDesignUsage(ctx context.Context, account *Account, _ float64) cnBalanceCheckOutcome {
+	result, err := s.quotaService.QueryUsage(ctx, account.ID)
+	if err != nil {
+		log.Printf("[CNBalance] open_design usage account %d failed: %v", account.ID, err)
+	} else if result != nil && !result.Success && result.Error != "" {
+		log.Printf("[CNBalance] open_design usage account %d error: %s", account.ID, result.Error)
+	}
+	return cnBalanceNoChange
 }
 
 // checkCline 探测 Cline 窗口与积分；钱包冷却在探测中按结果设置或解除，不停整个账号。

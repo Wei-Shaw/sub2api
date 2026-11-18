@@ -362,6 +362,10 @@ func validateOpenDesignActivationURL(raw string) (string, error) {
 	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
 		return "", fmt.Errorf("activation url must be https")
 	}
+	// 显式端口只接受默认 443：厂商激活页固定在标准 HTTPS 端口。
+	if port := parsed.Port(); port != "" && port != "443" {
+		return "", fmt.Errorf("activation url must use the default https port")
+	}
 	host := strings.ToLower(parsed.Hostname())
 	if host != strings.TrimPrefix(openDesignActivationHostSuffix, ".") &&
 		!strings.HasSuffix(host, openDesignActivationHostSuffix) {

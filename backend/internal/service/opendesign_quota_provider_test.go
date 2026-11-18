@@ -55,11 +55,12 @@ func TestParseOpenDesignUsageTiers(t *testing.T) {
 func TestParseOpenDesignUsageTiersNoPlan(t *testing.T) {
 	t.Parallel()
 
-	tiers, balance, noPlan, err := parseOpenDesignUsageTiers([]byte(`{"balanceUsd":"3.5","codingPlan": null}`))
+	tiers, planLevel, noPlan, err := parseOpenDesignUsageTiers([]byte(`{"balanceUsd":"3.5","codingPlan": null}`))
 	require.NoError(t, err)
 	require.True(t, noPlan)
 	require.Empty(t, tiers)
-	require.Equal(t, "3.5", balance)
+	// 套餐名保持为空，不能把余额当成套餐名展示。
+	require.Empty(t, planLevel)
 
 	tiers, _, noPlan, err = parseOpenDesignUsageTiers([]byte(`{"codingPlan": {"eligible": false, "windows": []}}`))
 	require.NoError(t, err)
@@ -188,4 +189,37 @@ func TestOpenDesignSchedulingThresholdEvaluation(t *testing.T) {
 	// Threshold disabled (100): no pause.
 	decision = EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformOpenDesign: 100}, time.Now())
 	require.False(t, decision.ShouldPause)
+}
+
+// 调用方在 noPlan 分支依赖「空 tiers + 清窗口」把残留的 100% 快照抹掉，
+// 否则账号会被永久停调。这里直接固定这两个 helper 的组合语义。
+func TestOpenDesignNoPlanClearsUsageWindows(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	updates := cnQuotaExtraUpdates(PlatformOpenDesign, nil, now)
+	clearAbsentCNQuotaWindows(PlatformOpenDesign, nil, updates)
+
+	for _, suffix := range []string{
+		cnExtraSuffix5hUsed, cnExtraSuffix5hReset,
+		cnExtraSuffixWeeklyUsed, cnExtraSuffixWeeklyReset,
+		cnExtraSuffixMonthlyUsed, cnExtraSuffixMonthlyReset,
+	} {
+		value, ok := updates[cnExtraKey(PlatformOpenDesign, suffix)]
+		require.True(t, ok, "%s must be written", suffix)
+		require.Nil(t, value, "%s must be cleared", suffix)
+	}
+	require.NotNil(t, updates[cnExtraKey(PlatformOpenDesign, cnExtraSuffixUsageUpdated)])
+}
+
+// 激活链接只接受默认 HTTPS 端口（8443 之类的显式端口一律拒绝）。
+func TestOpenDesignActivationURLRejectsNonDefaultPort(t *testing.T) {
+	t.Parallel()
+
+	_, err := validateOpenDesignActivationURL("https://open-design.ai:8443/device")
+	require.Error(t, err)
+
+	ok, err := validateOpenDesignActivationURL("https://open-design.ai:443/device")
+	require.NoError(t, err)
+	require.Equal(t, "https://open-design.ai:443/device", ok)
 }

@@ -6112,7 +6112,7 @@ const finishOpenDesignAccountCreate = (
     return
   }
   appStore.showSuccess(t('admin.accounts.opendesign.oauth.created'))
-  // 新账号有 controlKey 后会进入用量探测（30 分钟一轮），这里一次性提示。
+  // 新账号拿到 controlKey 后会进入后台周期用量探测（默认约 10 分钟一轮），这里一次性提示。
   if (result.action === 'created') {
     appStore.showSuccess(t('admin.accounts.opendesign.oauth.probePending'))
   }
@@ -6241,17 +6241,6 @@ watch(openDesignAccountType, (type) => {
 // 否则卸载后计时器与在途请求仍可能建号。
 onBeforeUnmount(() => {
   void cancelOpenDesignAuth()
-})
-
-watch(isOpenDesignPlatform, (isOd) => {
-  if (!isOd) {
-    void cancelOpenDesignAuth()
-  }
-})
-watch(openDesignAccountType, (type) => {
-  if (type !== 'oauth') {
-    void cancelOpenDesignAuth()
-  }
 })
 
 // Methods
