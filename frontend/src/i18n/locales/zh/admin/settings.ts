@@ -455,8 +455,8 @@ export default {
         defaultSubscriptionsDuplicate: '默认订阅存在重复分组：{groupId}。每个分组只能出现一次。',
         subscriptionGroup: '订阅分组',
         subscriptionValidityDays: '有效期（天）',
-        defaultPlatformQuotas: '默认平台限额（注册时分配）',
-        defaultPlatformQuotasHint: '新用户注册时自动获得这里配置的限额；已有用户不受影响。留空 = 该平台该窗口不限制。',
+        defaultPlatformQuotas: '默认平台限额（创建用户时分配）',
+        defaultPlatformQuotasHint: '后台创建或自行注册的普通用户会自动获得这里配置的限额；已有用户不受影响。留空 = 该平台该窗口不限制。',
         platformQuotaNotice: '月限额为 30 天滚动窗口，非自然月',
       },
       platformQuota: {
