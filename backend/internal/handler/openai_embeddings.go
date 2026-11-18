@@ -21,6 +21,17 @@ import (
 // Embeddings handles the OpenAI-compatible Embeddings API.
 // POST /v1/embeddings
 func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
+	h.handleOpenAISyncJSON(c, service.OpenAIEndpointCapabilityEmbeddings)
+}
+
+// Decisions handles POST /v1/decisions without Responses/Codex transformations.
+func (h *OpenAIGatewayHandler) Decisions(c *gin.Context) {
+	h.handleOpenAISyncJSON(c, service.OpenAIEndpointCapabilityDecisions)
+}
+
+// Both native JSON endpoints share admission, scheduling, failover and billing.
+func (h *OpenAIGatewayHandler) handleOpenAISyncJSON(c *gin.Context, capability service.OpenAIEndpointCapability) {
+	operation := "openai_" + string(capability)
 	streamStarted := false
 	requestStart := time.Now()
 
@@ -37,7 +48,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	}
 	reqLog := requestLogger(
 		c,
-		"handler.openai_gateway.embeddings",
+		"handler.openai_gateway."+string(capability),
 		zap.Int64("user_id", subject.UserID),
 		zap.Int64("api_key_id", apiKey.ID),
 		zap.Any("group_id", apiKey.GroupID),
@@ -64,6 +75,12 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
+	if capability == service.OpenAIEndpointCapabilityDecisions {
+		if message := validateOpenAIDecisionsRequest(body); message != "" {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", message)
+			return
+		}
+	}
 
 	modelResult := gjson.GetBytes(body, "model")
 	if !modelResult.Exists() || modelResult.Type != gjson.String || strings.TrimSpace(modelResult.String()) == "" {
@@ -79,7 +96,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	reqLog = reqLog.With(zap.String("model", reqModel))
 	setOpsRequestContext(c, reqModel, false)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeSync))
-	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, "openai_embeddings", reqModel, body); decision != nil && !decision.AllowNextStage {
+	if decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, operation, reqModel, body); decision != nil && !decision.AllowNextStage {
 		h.openAISecurityAuditError(c, decision)
 		return
 	}
@@ -99,7 +116,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	}
 
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
-		reqLog.Info("openai_embeddings.billing_check_failed", zap.Error(err))
+		reqLog.Info(operation+".billing_check_failed", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
@@ -130,9 +147,9 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 	}
 	routingStart := time.Now()
 
-	// 分组利润控制：embeddings 文本入口请求级装门并固定 pricingAt。
-	embPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
-	c.Request = c.Request.WithContext(embPricingCtx)
+	// 同步 JSON 入口共用利润控制与请求级定价时刻。
+	pricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
+	c.Request = c.Request.WithContext(pricingCtx)
 
 	for {
 		selection, _, err := h.gatewayService.SelectAccountWithSchedulerForCapability(
@@ -143,17 +160,17 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 			forwardModel,
 			failedAccountIDs,
 			service.OpenAIUpstreamTransportHTTPSSE,
-			service.OpenAIEndpointCapabilityEmbeddings,
+			capability,
 			false,
 			false,
 			true,
 		)
 		if err != nil {
 			if failoverClientGone(c) {
-				reqLog.Info("openai_embeddings.account_select_aborted_client_disconnected", zap.Error(err))
+				reqLog.Info(operation+".account_select_aborted_client_disconnected", zap.Error(err))
 				return
 			}
-			reqLog.Warn("openai_embeddings.account_select_failed",
+			reqLog.Warn(operation+".account_select_failed",
 				zap.Error(err),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
@@ -210,6 +227,9 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 					accountReleaseFunc()
 				}
 			}()
+			if capability == service.OpenAIEndpointCapabilityDecisions {
+				return h.gatewayService.ForwardDecisions(c.Request.Context(), c, account, forwardBody, "")
+			}
 			return h.gatewayService.ForwardEmbeddings(c.Request.Context(), c, account, forwardBody, "")
 		}()
 
@@ -230,7 +250,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 				}
 				h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, reqModel, false, result), false, nil, err)
 				if failoverClientGone(c) {
-					reqLog.Info("openai_embeddings.failover_aborted_client_disconnected",
+					reqLog.Info(operation+".failover_aborted_client_disconnected",
 						zap.Int64("account_id", account.ID),
 						zap.Int("upstream_status", failoverErr.StatusCode),
 					)
@@ -244,7 +264,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 					return
 				}
 				switchCount++
-				reqLog.Warn("openai_embeddings.upstream_failover_switching",
+				reqLog.Warn(operation+".upstream_failover_switching",
 					zap.Int64("account_id", account.ID),
 					zap.Int("upstream_status", failoverErr.StatusCode),
 					zap.Int("switch_count", switchCount),
@@ -256,7 +276,7 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 			if c.Writer.Size() == writerSizeBeforeForward {
 				h.errorResponse(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
 			}
-			reqLog.Warn("openai_embeddings.forward_failed",
+			reqLog.Warn(operation+".forward_failed",
 				zap.Int64("account_id", account.ID),
 				zap.Error(err),
 			)
@@ -290,16 +310,16 @@ func (h *OpenAIGatewayHandler) Embeddings(c *gin.Context) {
 				PricingAt:          pricingAt,
 			}); err != nil {
 				logger.L().With(
-					zap.String("component", "handler.openai_gateway.embeddings"),
+					zap.String("component", "handler.openai_gateway."+string(capability)),
 					zap.Int64("user_id", subject.UserID),
 					zap.Int64("api_key_id", apiKey.ID),
 					zap.Any("group_id", apiKey.GroupID),
 					zap.String("model", reqModel),
 					zap.Int64("account_id", account.ID),
-				).Error("openai_embeddings.record_usage_failed", zap.Error(err))
+				).Error(operation+".record_usage_failed", zap.Error(err))
 			}
 		})
-		reqLog.Debug("openai_embeddings.request_completed",
+		reqLog.Debug(operation+".request_completed",
 			zap.Int64("account_id", account.ID),
 			zap.Int("switch_count", switchCount),
 		)

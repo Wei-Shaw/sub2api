@@ -84,6 +84,13 @@ func extractProtocolSegments(protocol string, document any) []promptSegment {
 	root, _ := document.(map[string]any)
 	protocol = strings.ToLower(strings.TrimSpace(protocol))
 	switch protocol {
+	case "openai_decisions":
+		// A decision evaluates the shared evidence together with every question.
+		// Keep them in one segment so latest-turn auditing also sees instructions,
+		// choices and rubrics. Image bytes/URLs are not text prompts.
+		texts := decisionPromptTexts(nil, root["questions"])
+		texts = decisionPromptTexts(texts, root["input"])
+		return userPromptSegments([]string{strings.Join(texts, "\n")})
 	case "openai_chat_completions", "openai_chat", "chat_completions":
 		return extractChatLikeSegments(root)
 	case "anthropic_messages", "claude_messages", "messages":
@@ -120,6 +127,36 @@ func extractProtocolSegments(protocol string, document any) []promptSegment {
 		}
 		return userPromptSegments(extractMediaPrompts(root))
 	}
+}
+
+func decisionPromptTexts(texts []string, value any) []string {
+	switch typed := value.(type) {
+	case string:
+		if text := strings.TrimSpace(typed); text != "" {
+			texts = append(texts, text)
+		}
+	case []any:
+		for _, item := range typed {
+			texts = decisionPromptTexts(texts, item)
+		}
+	case map[string]any:
+		switch stringValue(typed["type"]) {
+		case "input_image":
+			return texts
+		case "input_json":
+			// JSON content is evidence, even when its keys resemble protocol fields.
+			if data, err := json.Marshal(typed["data"]); err == nil {
+				texts = append(texts, string(data))
+			}
+			return texts
+		}
+		for _, key := range sortedJSONKeys(typed) {
+			if key != "type" && key != "role" && key != "prompt_cache_breakpoint" && key != "image_url" {
+				texts = decisionPromptTexts(texts, typed[key])
+			}
+		}
+	}
+	return texts
 }
 
 // extractSystemOneSegments collects every client-controlled text of a TypeSafe
