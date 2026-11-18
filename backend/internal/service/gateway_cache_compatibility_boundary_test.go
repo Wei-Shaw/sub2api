@@ -3,6 +3,7 @@
 package service
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -35,15 +36,21 @@ func TestAnthropicConverterOutputCacheFields(t *testing.T) {
 		{"negative write overrides creation alias", `,"usage":{"prompt_tokens":10,"prompt_tokens_details":{"cached_tokens":3,"cache_write_tokens":-2,"cache_creation_tokens":4}}`, `,"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":3,"cache_write_tokens":-2,"cache_creation_tokens":4}}`, 0, 3},
 		{"positive write overrides creation alias", `,"usage":{"prompt_tokens":10,"prompt_tokens_details":{"cached_tokens":3,"cache_write_tokens":2,"cache_creation_tokens":4}}`, `,"usage":{"input_tokens":10,"input_tokens_details":{"cached_tokens":3,"cache_write_tokens":2,"cache_creation_tokens":4}}`, 2, 3},
 	} {
-		for _, route := range []string{"chat buffered", "chat terminal", "chat eof", "responses buffered", "responses terminal", "responses eof"} {
-			if route == "responses eof" && test.name != "missing usage" {
+		for _, route := range []string{"chat buffered", "chat terminal", "chat eof", "responses buffered", "responses terminal", "responses eof before output", "responses eof after output"} {
+			responsesEOF := strings.HasPrefix(route, "responses eof")
+			beforeOutput := route == "responses eof before output"
+			if responsesEOF && test.name != "missing usage" {
 				continue
 			}
 			t.Run(test.name+"/"+route, func(t *testing.T) {
 				payload := `{"id":"chat_cache","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]` + test.chatUsage + `}`
 				if strings.HasPrefix(route, "responses") {
 					payload = "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_cache\",\"model\":\"gpt-5.4\"}}\n\n"
-					if !strings.HasSuffix(route, "eof") {
+					if beforeOutput {
+						payload = ""
+					} else if responsesEOF {
+						payload += `data: {"type":"response.output_text.delta","output_index":0,"content_index":0,"delta":"partial"}` + "\n\n"
+					} else {
 						payload += `data: {"type":"response.completed","response":{"id":"resp_cache","status":"completed","output":[]` + test.responsesUsage + `}}` + "\n\n"
 					}
 				} else if !strings.HasSuffix(route, "buffered") {
@@ -69,8 +76,16 @@ func TestAnthropicConverterOutputCacheFields(t *testing.T) {
 				default:
 					result, err = service.handleAnthropicStreamingResponse(response, ctx, rawChatCompletionsTestAccount(), "gpt-5.4", "gpt-5.4", "gpt-5.4", time.Now())
 				}
-				if route == "responses eof" {
+				var failoverErr *UpstreamFailoverError
+				if beforeOutput {
+					require.ErrorAs(t, err, &failoverErr)
+					require.Equal(t, http.StatusBadGateway, failoverErr.StatusCode)
+					require.Empty(t, recorder.Body.String())
+					require.False(t, ctx.Writer.Written())
+				} else if responsesEOF {
 					require.ErrorContains(t, err, "missing terminal event")
+					require.False(t, errors.As(err, &failoverErr))
+					require.True(t, ctx.Writer.Written())
 				} else {
 					require.NoError(t, err)
 				}
@@ -78,6 +93,10 @@ func TestAnthropicConverterOutputCacheFields(t *testing.T) {
 				require.EqualValues(t, test.creation, result.Usage.CacheCreationInputTokens)
 				require.EqualValues(t, test.read, result.Usage.CacheReadInputTokens)
 				require.EqualValues(t, test.creation, result.Usage.billingUsageTokens().CacheCreationTokens)
+				if responsesEOF {
+					require.Zero(t, result.Usage.InputTokens)
+					require.Zero(t, result.Usage.OutputTokens)
+				}
 				require.Equal(t, http.StatusOK, recorder.Code)
 				assertUsage := func(usage gjson.Result, creation, read int64) {
 					require.False(t, usage.Get("cache_creation").Exists())
@@ -92,13 +111,18 @@ func TestAnthropicConverterOutputCacheFields(t *testing.T) {
 					assertUsage(gjson.Get(recorder.Body.String(), "usage"), test.creation, test.read)
 					return
 				}
-				starts, deltas, stops := 0, 0, 0
+				starts, deltas, stops, contentDeltas := 0, 0, 0, 0
 				for _, line := range strings.Split(recorder.Body.String(), "\n") {
 					if !strings.HasPrefix(line, "data: ") {
 						continue
 					}
 					event := gjson.Parse(strings.TrimPrefix(line, "data: "))
 					switch event.Get("type").String() {
+					case "content_block_delta":
+						if responsesEOF {
+							require.Equal(t, "partial", event.Get("delta.text").String())
+						}
+						contentDeltas++
 					case "message_start":
 						assertUsage(event.Get("message.usage"), 0, 0)
 						starts++
@@ -109,8 +133,16 @@ func TestAnthropicConverterOutputCacheFields(t *testing.T) {
 						stops++
 					}
 				}
-				require.Equal(t, 1, starts)
-				if route == "responses eof" {
+				if beforeOutput {
+					require.Zero(t, starts)
+					require.Zero(t, contentDeltas)
+				} else {
+					require.Equal(t, 1, starts)
+					if responsesEOF {
+						require.Equal(t, 1, contentDeltas)
+					}
+				}
+				if responsesEOF {
 					require.Zero(t, deltas)
 					require.Zero(t, stops)
 				} else {
