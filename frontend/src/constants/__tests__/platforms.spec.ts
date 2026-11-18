@@ -13,7 +13,7 @@ import { platformLabel } from '@/utils/platformColors'
 import { normalizePlatformQuotasMap, sanitizePlatformQuotasMap } from '@/api/admin/settings'
 import { platformQuotaPlatforms } from '@/api/admin/users'
 
-// 改为读取平台清单之前的平台字面量，加上之后内置登记的 Command Code。
+// 改为读取平台清单之前的平台字面量，加上之后内置登记的 Command Code、Cline、Mistral。
 const concretePlatforms = [
   'anthropic',
   'openai',
@@ -27,7 +27,8 @@ const concretePlatforms = [
   'opencode_go',
   'typesafe',
   'command_code',
-  'cline'
+  'cline',
+  'mistral'
 ]
 
 describe('platform option catalogs', () => {
@@ -60,11 +61,11 @@ describe('platform catalog with a newly registered platform', () => {
     expect(listPlatformIds()).toEqual(concretePlatforms)
     expect(compositePrecedencePlatformIds()).toEqual([
       'anthropic', 'gemini', 'openai', 'antigravity', 'grok',
-      'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'typesafe', 'command_code', 'cline'
+      'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'typesafe', 'command_code', 'cline', 'mistral'
     ])
     expect(CONCRETE_PLATFORM_OPTIONS.map((option) => option.label)).toEqual([
       'Anthropic', 'OpenAI', 'Gemini', 'Antigravity', 'Grok',
-      'Kimi', 'Zhipu GLM', 'DeepSeek', 'MiniMax', 'OpenCode', 'TypeSafe / Jev', 'Command Code', 'Cline'
+      'Kimi', 'Zhipu GLM', 'DeepSeek', 'MiniMax', 'OpenCode', 'TypeSafe / Jev', 'Command Code', 'Cline', 'Mistral'
     ])
     expect(platformLabel('zhipu')).toBe('Zhipu GLM')
     expect(platformLabel('composite')).toBe('Composite')

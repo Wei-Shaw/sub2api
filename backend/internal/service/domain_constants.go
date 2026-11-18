@@ -52,6 +52,7 @@ const (
 	PlatformTypeSafe    = domain.PlatformTypeSafe
 	PlatformCommandCode = domain.PlatformCommandCode
 	PlatformCline       = domain.PlatformCline
+	PlatformMistral     = domain.PlatformMistral
 	PlatformComposite   = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
@@ -92,7 +93,13 @@ const (
 	DefaultCommandCodeBaseURL = "https://api.commandcode.ai/provider/v1"
 	// Cline API：只提供 Chat Completions（{base}/chat/completions）与模型列表。
 	DefaultClineBaseURL = "https://api.cline.bot/api/v1"
+	// Mistral La Plateforme：Chat Completions / Responses / models 共用 /v1 基址；
+	// 无 Anthropic 兼容端点（docs.mistral.ai 迁移指南：换 base_url 与模型名即可）。
+	DefaultMistralBaseURL = "https://api.mistral.ai/v1"
 )
+
+// DefaultMistralTestModel 是 Mistral 账号连接测试未指定模型时的默认模型。
+const DefaultMistralTestModel = "mistral-small-latest"
 
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
 // 与前端 credentialsBuilder.ts 中的预设保持一致。

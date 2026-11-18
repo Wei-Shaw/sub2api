@@ -698,7 +698,33 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     const labels = (testid: string) =>
       wrapper.get(`[data-testid="${testid}"]`).findAll('button').map(button => button.text().trim())
     expect(labels('platform-row-cn')).toEqual(['Kimi', 'Zhipu GLM', 'DeepSeek', 'MiniMax'])
-    expect(labels('platform-row-aggregators')).toEqual(['OpenCode', 'Command Code', 'Cline'])
+    expect(labels('platform-row-aggregators')).toEqual(['OpenCode', 'Command Code', 'Cline', 'Mistral'])
+  })
+
+  it('creates a Mistral account with the Chat Completions and Responses endpoints', async () => {
+    const wrapper = mountModal()
+    await wrapper.get('[data-testid="platform-button-mistral"]').trigger('click')
+    // Mistral La Plateforme 只有按量付费一种接入方式。
+    expect(wrapper.find('[data-testid="generic-account-mode"]').exists()).toBe(false)
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('mistral')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-mistral')
+
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    const payload = createAccountMock.mock.calls[0]?.[0]
+    expect(payload?.platform).toBe('mistral')
+    expect(payload?.credentials).toMatchObject({
+      account_mode: 'payg',
+      api_protocol: 'adaptive',
+      base_url: 'https://api.mistral.ai/v1',
+      api_base_urls: {
+        chat_completions: 'https://api.mistral.ai/v1',
+        responses: 'https://api.mistral.ai/v1'
+      },
+    })
+    expect(payload?.credentials).not.toHaveProperty('protocol_rules')
+    expect(payload?.credentials?.api_base_urls).not.toHaveProperty('anthropic')
   })
 
   it('creates a Cline account without an account type and with only the Chat Completions endpoint', async () => {

@@ -58,15 +58,15 @@ const legacyZenRules = [
 ]
 
 function legacyIsMultiProtocol(platform: string): boolean {
-  return ['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'command_code', 'cline'].includes(platform)
+  return ['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'command_code', 'cline', 'mistral'].includes(platform)
 }
 
 function legacySupportsResponses(platform: string): boolean {
-  return ['deepseek', 'kimi', 'minimax', 'opencode_go', 'command_code'].includes(platform)
+  return ['deepseek', 'kimi', 'minimax', 'opencode_go', 'command_code', 'mistral'].includes(platform)
 }
 
 function legacyHeaderOverride(platform: string, type: string): boolean {
-  if (['anthropic', 'openai', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'command_code', 'cline'].includes(platform)) {
+  if (['anthropic', 'openai', 'kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'command_code', 'cline', 'mistral'].includes(platform)) {
     return type === 'apikey'
   }
   if (platform === 'grok') return type === 'apikey' || type === 'oauth'
@@ -224,6 +224,27 @@ describe('credentialsBuilder built-in Command Code provider', () => {
     expect(cnBalanceCellVisible(account({ account_mode: 'payg' }, 'oauth'))).toBe(false)
     expect(cnQuotaCellVisible({ platform: 'deepseek', type: 'apikey', credentials: { account_mode: 'payg' } })).toBe(false)
     expect(cnBalanceCellVisible({ platform: 'zhipu', type: 'apikey', credentials: { account_mode: 'payg' } })).toBe(false)
+  })
+})
+
+describe('credentialsBuilder built-in Mistral provider', () => {
+  it('offers Chat Completions and native Responses, routes by inbound protocol', () => {
+    expect(isMultiProtocolApiKeyPlatform('mistral')).toBe(true)
+    expect(providerRoutesByModel('mistral')).toBe(false)
+    // La Plateforme 只有按量一种接入方式，原生 Responses 端点（OpenAI 同名 SSE 事件）。
+    expect(providerAccountModes('mistral')).toEqual(['payg'])
+    expect(defaultCNAdaptiveBaseUrls('mistral', 'payg')).toEqual({
+      chat_completions: 'https://api.mistral.ai/v1',
+      anthropic: '',
+      responses: 'https://api.mistral.ai/v1'
+    })
+    expect(providerNativeProtocols('mistral', 'payg')).toEqual(['chat_completions', 'responses'])
+    expect(defaultProviderProtocolRules('mistral', 'payg')).toEqual([])
+  })
+
+  it('never shows quota or balance cells: Mistral has no account usage API', () => {
+    expect(cnQuotaCellVisible({ platform: 'mistral', type: 'apikey', credentials: {} })).toBe(false)
+    expect(cnBalanceCellVisible({ platform: 'mistral', type: 'apikey', credentials: {} })).toBe(false)
   })
 })
 
