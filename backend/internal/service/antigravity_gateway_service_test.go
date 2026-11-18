@@ -1430,6 +1430,37 @@ func TestHandleGeminiStreamingResponse_EventSeparatorIsExactlyOneBlankLine(t *te
 	}
 }
 
+func TestHandleGeminiStreamingResponse_ForwardedCommentFrames(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := newAntigravityTestService(&config.Config{
+		Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize},
+	})
+	const first = `data: {"candidates":[{"content":{"role":"model","parts":[{"text":"first"}]}}]}` + "\n\n"
+	const second = `data: {"candidates":[{"content":{"role":"model","parts":[{"text":"second"}]}}]}` + "\n\n"
+	const comment = ": upstream"
+	const stream = first + comment + "\r\n\r\n" + second
+
+	for _, tc := range []struct {
+		name             string
+		userAgent        string
+		forwardedComment string
+	}{
+		{"js-genai", "google-genai-sdk/3.6.0 gl-node/v26.13.1", comment + "\n\n"},
+		{"go-genai", "google-genai-sdk/1.71.0 gl-go/go1.27.4", ""},
+		{"python-genai", "google-genai-sdk/1.20.0 gl-python/3.12.4", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			c, rec := newAntigravityCompatContext(http.MethodPost, "/v1beta/models/gemini-2.5-flash:streamGenerateContent", nil)
+			c.Request.Header.Set("User-Agent", tc.userAgent)
+			resp := &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(stream)), Header: http.Header{}}
+
+			_, err := svc.handleGeminiStreamingResponse(c, resp, time.Now())
+			require.NoError(t, err)
+			require.Equal(t, first+tc.forwardedComment+second, rec.Body.String())
+		})
+	}
+}
+
 func TestHandleGeminiStreamingResponse_ThoughtsTokenCount(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	svc := newAntigravityTestService(&config.Config{
