@@ -2,6 +2,7 @@ package apicompat
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -714,4 +715,100 @@ func TestResponsesClientToolStreamRestorer_RestoresAllTerminalEvents(t *testing.
 			require.False(t, gjson.GetBytes(restored[0], "response.output.0.arguments").Exists())
 		})
 	}
+}
+
+// namespace 内的 custom 子工具在原生 Responses 适配路径上会先摊平为顶层
+// custom，再降级为 function。回程必须同时还原成 custom_tool_call 和
+// namespace+name，否则模型调用 functions__exec 会以裸名返回，Codex 找不到工具。
+func TestResponsesClientTools_NamespaceCustomExecRoundTrip(t *testing.T) {
+	req := map[string]any{
+		"model": "gpt-5.5",
+		"tools": []any{
+			map[string]any{"type": "namespace", "name": "functions", "tools": []any{
+				map[string]any{"type": "custom", "name": "exec", "description": "run code"},
+				map[string]any{"type": "function", "name": "wait", "parameters": map[string]any{"type": "object"}},
+			}},
+		},
+		"input": []any{
+			map[string]any{"type": "message", "role": "user", "content": "run pwd"},
+		},
+	}
+
+	mapping, changed, err := AdaptResponsesClientTools(req)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Contains(t, mapping.NamespaceTools, "functions__exec")
+	require.Equal(t, ResponsesNamespaceName{Namespace: "functions", Name: "exec", Custom: true}, mapping.NamespaceTools["functions__exec"])
+	require.True(t, mapping.CustomTools["functions__exec"])
+
+	tools, ok := req["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, tools, 2)
+	for _, raw := range tools {
+		tool, ok := raw.(map[string]any)
+		require.True(t, ok)
+		require.Equal(t, "function", tool["type"])
+	}
+
+	payload := []byte(`{"type":"response.completed","response":{"output":[
+		{"type":"function_call","id":"fc_1","call_id":"call_1","name":"functions__exec","arguments":"{\"input\":\"pwd\"}"}
+	]}}`)
+	restored, changed, err := RestoreResponsesClientToolPayload(payload, mapping)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.JSONEq(t, `{"type":"response.completed","response":{"output":[
+		{"type":"custom_tool_call","id":"ctc_1","call_id":"call_1","name":"exec","namespace":"functions","input":"pwd"}
+	]}}`, string(restored))
+}
+
+// 流式回程：原生 Responses 适配后，上游的 function_call functions__exec 必须
+// 同时还原为 custom_tool_call 且带 namespace，Codex 才能路由到 functions.exec。
+func TestResponsesClientTools_NamespaceCustomExecStreamRoundTrip(t *testing.T) {
+	req := map[string]any{
+		"tools": []any{
+			map[string]any{"type": "namespace", "name": "functions", "tools": []any{
+				map[string]any{"type": "custom", "name": "exec", "description": "run code"},
+			}},
+		},
+	}
+	mapping, _, err := AdaptResponsesClientTools(req)
+	require.NoError(t, err)
+
+	restorer := NewResponsesClientToolStreamRestorer(mapping)
+	events := []string{
+		`{"type":"response.output_item.added","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"functions__exec","arguments":""}}`,
+		`{"type":"response.function_call_arguments.delta","output_index":0,"item_id":"fc_1","call_id":"call_1","name":"functions__exec","delta":"{\"input\":\"pwd\"}"}`,
+		`{"type":"response.function_call_arguments.done","output_index":0,"item_id":"fc_1","call_id":"call_1","name":"functions__exec","arguments":"{\"input\":\"pwd\"}"}`,
+		`{"type":"response.output_item.done","output_index":0,"item":{"type":"function_call","id":"fc_1","call_id":"call_1","name":"functions__exec","arguments":"{\"input\":\"pwd\"}"}}`,
+		`{"type":"response.completed","response":{"id":"resp_1","output":[{"type":"function_call","id":"fc_1","call_id":"call_1","name":"functions__exec","arguments":"{\"input\":\"pwd\"}"}]}}`,
+	}
+	var all []string
+	for _, payload := range events {
+		restored, _, err := restorer.RestoreEvent([]byte(payload))
+		require.NoError(t, err)
+		for _, item := range restored {
+			all = append(all, string(item))
+		}
+	}
+	joined := strings.Join(all, "\n")
+	require.Contains(t, joined, `"type":"custom_tool_call"`)
+	require.Contains(t, joined, `"namespace":"functions"`)
+	require.Contains(t, joined, `"name":"exec"`)
+	require.NotContains(t, joined, `"name":"functions__exec"`)
+
+	var doneFound bool
+	for _, payload := range all {
+		var event map[string]any
+		require.NoError(t, json.Unmarshal([]byte(payload), &event))
+		if event["type"] == "response.output_item.done" {
+			item, ok := event["item"].(map[string]any)
+			require.True(t, ok)
+			require.Equal(t, "custom_tool_call", item["type"])
+			require.Equal(t, "exec", item["name"])
+			require.Equal(t, "functions", item["namespace"])
+			require.Equal(t, "pwd", item["input"])
+			doneFound = true
+		}
+	}
+	require.True(t, doneFound)
 }
