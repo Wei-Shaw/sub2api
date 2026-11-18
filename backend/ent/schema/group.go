@@ -301,6 +301,10 @@ func (Group) Fields() []ent.Field {
 			SchemaType(map[string]string{dialect.Postgres: "jsonb"}).
 			Comment("OpenAI reasoning effort 自定义映射；可按模型精确名、前缀或后缀限定，先映射再应用上限"),
 
+		field.Bool("reasoning_effort_stepdown").
+			Default(false).
+			Comment("是否按上游模型实际支持的推理强度档位自适应降档；开启后越界档位降到支持列表内最高档，关闭则原样透传"),
+
 		// 分组利润控制（migration 192/193）：openai/anthropic/gemini/grok/antigravity
 		// 的 token 分组可启用，composite 分组不能直接启用。
 		field.Bool("profit_control_enabled").

@@ -916,6 +916,8 @@ export default {
         maxReasoningEffortOverLimitDowngrade: '超过上限时自动降档',
         maxReasoningEffortOverLimitDeny: '拒绝访问',
         maxReasoningEffortOverLimitHint: '设置上限后生效。自动降档会将超过上限的请求改写为上限值后转发；拒绝访问则直接返回错误。',
+        reasoningEffortStepdown: '按上游档位自适应降档',
+        reasoningEffortStepdownHint: '开启后，上游模型不支持的档位会自动降到支持列表内不超过请求的最高档（只降不升；缺省不传保持缺省）。关闭则按今日行为原样透传。',
         reasoningEffortMappings: '推理强度映射',
         reasoningEffortMappingsHint: '类型和模型均可留空，表示匹配全部模型。同一类型和模型下可添加多条请求值映射，例如前缀 gpt 同时将 high、xhigh 转到 medium。转发值可选拒绝，命中对应请求值时直接返回错误。精确优先于前后缀，更长前后缀优先。',
         addReasoningEffortMapping: '添加映射',

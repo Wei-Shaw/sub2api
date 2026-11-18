@@ -34,6 +34,10 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	clearOpenAIResponsesClientToolMapping(c)
 	clearOpenAIResponsesNamespaceNames(c)
 	setCodexToolNameReverse(c, nil)
+	// 自适应降档：分组开关开启时，按最终上游模型的支持列表降级越界 effort。
+	if steppedBody, stepped := applyReasoningEffortStepdownForAccount(ctx, c, account, account.GetMappedModel(gjson.GetBytes(body, "model").String()), body); stepped {
+		body = steppedBody
+	}
 	rememberOpenAIResponsesClientInstructions(c, body)
 	if _, err := s.prepareCodexAccountIdentitySource(ctx, c, account); err != nil {
 		return nil, err

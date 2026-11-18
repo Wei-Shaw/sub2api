@@ -1073,6 +1073,9 @@ func (s *adminServiceImpl) UpdateGroup(ctx context.Context, id int64, input *Upd
 		}
 		group.ReasoningEffortMappings = reasoningEffortMappings
 	}
+	if input.ReasoningEffortStepdown != nil {
+		group.ReasoningEffortStepdown = *input.ReasoningEffortStepdown
+	}
 	sanitizeGroupMessagesDispatchFields(group)
 	sanitizeGroupOpenAIFast(group)
 	if group.Platform != PlatformOpenAI && group.Platform != PlatformComposite {

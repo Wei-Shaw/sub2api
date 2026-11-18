@@ -353,6 +353,15 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		logger.LegacyPrintf("service.gateway", "Model mapping applied: %s -> %s (account: %s, source=%s)", originalModel, mappedModel, account.Name, mappingSource)
 	}
 
+	// 自适应降档：分组开关开启时，按最终上游模型的支持列表降级越界 effort。
+	// 挂载在全部映射解析之后，账号映射 / composite 路由 / 平台默认映射统一覆盖。
+	if steppedBody, stepped := applyReasoningEffortStepdownForAccount(ctx, c, account, mappedModel, body); stepped {
+		if err := replaceBody(steppedBody); err != nil {
+			return nil, err
+		}
+		body = steppedBody
+	}
+
 	if s.shouldInjectAnthropicCacheTTL1h(ctx, account) {
 		if err := replaceBody(injectAnthropicCacheControlTTL1h(body)); err != nil {
 			return nil, err
