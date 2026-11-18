@@ -155,11 +155,6 @@ func responsesStatusToChatFinishReason(status string, details *ResponsesIncomple
 // ResponsesEventToChatState tracks state for converting a sequence of Responses
 // SSE events into Chat Completions SSE chunks.
 type ResponsesEventToChatState struct {
-	// AnthropicReasoningDetails emits signed Anthropic thinking blocks as
-	// reasoning_details; see ResponsesToChatCompletionsOptions.
-	AnthropicReasoningDetails bool
-	NextReasoningIndex        int // next reasoning_details index to assign
-
 	ID                     string
 	Model                  string
 	Created                int64
@@ -179,6 +174,10 @@ type ResponsesEventToChatState struct {
 	// custom_tool_call that IsServerSideSearchCall then never becomes a tool
 	// call, because xAI runs it itself.
 	XAIServerSideSearch bool
+	// AnthropicReasoningDetails emits signed Anthropic thinking blocks as
+	// reasoning_details; see ResponsesToChatCompletionsOptions.
+	AnthropicReasoningDetails bool
+	NextReasoningIndex        int // next reasoning_details index to assign
 }
 
 // NewResponsesEventToChatState returns an initialised stream state.
