@@ -301,13 +301,7 @@ func TestCalculateCost_OpenAIGPT54LongContextAppliesWholeSessionMultipliers(t *t
 func TestCalculateCost_OpenAIGPT54LongContextMarkerRequiresActualCostIncrease(t *testing.T) {
 	svc := newTestBillingServiceWithOpenAILadderCatalog(t)
 
-	cost, err := svc.calculateCostWithServiceTierPolicy(
-		"gpt-5.4-2026-03-05",
-		UsageTokens{InputTokens: 300000},
-		0,
-		"",
-		true,
-	)
+	cost, err := svc.CalculateCost("gpt-5.4-2026-03-05", UsageTokens{InputTokens: 300000}, 0)
 
 	require.NoError(t, err)
 	require.Zero(t, cost.ActualCost)
