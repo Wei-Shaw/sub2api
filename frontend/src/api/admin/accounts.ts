@@ -1250,7 +1250,7 @@ export interface OpenDesignAccountFromSessionResult {
 }
 
 export async function createOpenDesignDeviceAuth(host?: string): Promise<OpenDesignDeviceAuthInitiate> {
-  const { data } = await apiClient.post<OpenDesignDeviceAuthInitiate>('/admin/opendesign/device-auth', {
+  const { data } = await apiClient.post<OpenDesignDeviceAuthInitiate>('/admin/accounts/opendesign/device-auth', {
     host: host ?? ''
   })
   return data
@@ -1258,20 +1258,20 @@ export async function createOpenDesignDeviceAuth(host?: string): Promise<OpenDes
 
 export async function getOpenDesignDeviceAuth(sessionId: string): Promise<OpenDesignDeviceAuthStatus> {
   const { data } = await apiClient.get<OpenDesignDeviceAuthStatus>(
-    `/admin/opendesign/device-auth/${encodeURIComponent(sessionId)}`
+    `/admin/accounts/opendesign/device-auth/${encodeURIComponent(sessionId)}`
   )
   return data
 }
 
 export async function cancelOpenDesignDeviceAuth(sessionId: string): Promise<void> {
-  await apiClient.delete(`/admin/opendesign/device-auth/${encodeURIComponent(sessionId)}`)
+  await apiClient.delete(`/admin/accounts/opendesign/device-auth/${encodeURIComponent(sessionId)}`)
 }
 
 export async function createOpenDesignAccountFromSession(
   payload: OpenDesignAccountFromSessionRequest
 ): Promise<OpenDesignAccountFromSessionResult> {
   const { data } = await apiClient.post<OpenDesignAccountFromSessionResult>(
-    '/admin/opendesign/accounts',
+    '/admin/accounts/opendesign/accounts',
     payload
   )
   return data

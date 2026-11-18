@@ -7,12 +7,14 @@ const {
   getOpenDesignDeviceAuthMock,
   cancelOpenDesignDeviceAuthMock,
   createOpenDesignAccountFromSessionMock,
+  updateAccountMock,
   showSuccessMock,
 } = vi.hoisted(() => ({
   createOpenDesignDeviceAuthMock: vi.fn(),
   getOpenDesignDeviceAuthMock: vi.fn(),
   cancelOpenDesignDeviceAuthMock: vi.fn(),
   createOpenDesignAccountFromSessionMock: vi.fn(),
+  updateAccountMock: vi.fn(),
   showSuccessMock: vi.fn(),
 }))
 
@@ -31,11 +33,9 @@ vi.mock('@/stores/auth', () => ({
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
-      update: vi.fn(),
+      update: updateAccountMock,
       checkMixedChannelRisk: vi.fn().mockResolvedValue({ has_risk: false }),
-      getOpenDesignUsage: vi.fn().mockResolvedValue({ account_id: 1, eligible: false, configured: true }),
-      refreshOpenDesignUsage: vi.fn(),
-      createOpenDesignDeviceAuth: createOpenDesignDeviceAuthMock,
+              createOpenDesignDeviceAuth: createOpenDesignDeviceAuthMock,
       getOpenDesignDeviceAuth: getOpenDesignDeviceAuthMock,
       cancelOpenDesignDeviceAuth: cancelOpenDesignDeviceAuthMock,
       createOpenDesignAccountFromSession: createOpenDesignAccountFromSessionMock,
@@ -72,10 +72,13 @@ function makeAccount(extra: Record<string, unknown> = {}) {
     platform: 'open_design',
     type: 'apikey',
     credentials: {
+      // 真实账号带的 runtime key（转发用）；control key 由后端脱敏，前端拿不到。
+      api_key: 'sk-amr-existing',
       base_url: 'https://amr-link.open-design.ai/v1',
       api_protocol: 'adaptive',
       opendesign_workspace_id: 'wstestworkspace01',
     },
+    credentials_status: { has_api_key: true },
     extra,
     status: 'active',
     schedulable: true,
@@ -102,8 +105,7 @@ function mountModal(account: ReturnType<typeof makeAccount>) {
         GroupSelector: true,
         QuotaLimitCard: true,
         ModelWhitelistSelector: true,
-        OpenDesignUsageCell: true,
-      },
+        },
     },
   })
 }
@@ -251,5 +253,38 @@ describe('EditAccountModal OpenDesign 重新授权', () => {
 
     expect(createOpenDesignAccountFromSessionMock).not.toHaveBeenCalled()
     expect(cancelOpenDesignDeviceAuthMock).toHaveBeenCalledWith('ods_reauth')
+  })
+
+  it('saves a manually entered control key and workspace', async () => {
+    updateAccountMock.mockResolvedValue({ id: 901, name: 'od', platform: 'open_design' })
+    const wrapper = mountModal(makeAccount())
+    await flushPromises()
+
+    await wrapper.get('[data-testid="opendesign-control-key"]').setValue('  vela_ctrl_manual  ')
+    await wrapper.get('[data-testid="opendesign-workspace-id"]').setValue('  ws-manual  ')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const payload = updateAccountMock.mock.calls[0][1] as { credentials: Record<string, unknown> }
+    expect(payload.credentials.opendesign_control_key).toBe('vela_ctrl_manual')
+    expect(payload.credentials.opendesign_workspace_id).toBe('ws-manual')
+    // 既有配置必须还在（不是整份覆盖）
+    expect(payload.credentials.api_protocol).toBe('adaptive')
+  })
+
+  it('omits the control key when the field is left blank', async () => {
+    updateAccountMock.mockResolvedValue({ id: 901, name: 'od', platform: 'open_design' })
+    const wrapper = mountModal(makeAccount())
+    await flushPromises()
+
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    const payload = updateAccountMock.mock.calls[0][1] as { credentials: Record<string, unknown> }
+    expect(payload.credentials).not.toHaveProperty('opendesign_control_key')
+    // workspace 已回填，因此会随保存提交
+    expect(payload.credentials.opendesign_workspace_id).toBe('wstestworkspace01')
   })
 })

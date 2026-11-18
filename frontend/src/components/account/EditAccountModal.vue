@@ -94,6 +94,7 @@
           <label class="input-label">{{ t('admin.accounts.opendesign.controlKey') }}</label>
           <input
             v-model="editOpenDesignControlKey"
+            data-testid="opendesign-control-key"
             type="password"
             class="input font-mono"
             placeholder="vela_ctrl_..."
@@ -104,6 +105,7 @@
           <label class="input-label">{{ t('admin.accounts.opendesign.workspaceId') }}</label>
           <input
             v-model="editOpenDesignWorkspaceId"
+            data-testid="opendesign-workspace-id"
             type="text"
             class="input font-mono"
             placeholder="c4r5rxzwut6brv20bsteftxg"
@@ -3443,6 +3445,7 @@
           form="edit-account-form"
           :disabled="submitting"
           class="btn btn-primary"
+          data-testid="account-save"
           data-tour="account-form-submit"
         >
           <svg
@@ -3758,6 +3761,10 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+// OpenDesign 控制面凭证（用量探测用）：control key 脱敏不可回填，留空即保持原值；
+// workspace 可直接回填。声明必须早于 syncFormFromAccount，否则 setup 期回填会踩 TDZ。
+const editOpenDesignControlKey = ref('')
+const editOpenDesignWorkspaceId = ref('')
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
 // account_mode 决定额度/余额监控路径，api_protocol 决定转发端点与格式；
@@ -4731,6 +4738,13 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   editVertexClientEmail.value = ''
   editVertexLocation.value = 'us-central1'
   editVertexApiKey.value = ''
+  // OpenDesign：workspace 可回填；control key 是后端脱敏字段，前端永远拿不到，
+  // 只能留空表示"保持原值"（服务端按敏感键保留）。
+  editOpenDesignControlKey.value = ''
+  editOpenDesignWorkspaceId.value =
+    newAccount.platform === 'open_design' && typeof credentials?.opendesign_workspace_id === 'string'
+      ? credentials.opendesign_workspace_id.trim()
+      : ''
   antigravityProjectId.value =
     newAccount.platform === 'antigravity' &&
     newAccount.type === 'oauth' &&
@@ -5794,6 +5808,18 @@ const handleSubmit = async () => {
         base_url: newBaseUrl
       }
 
+      // OpenDesign 控制面凭证：留空 = 保持原值（control key 已脱敏，无法回填）。
+      if (props.account.platform === 'open_design') {
+        const controlKey = editOpenDesignControlKey.value.trim()
+        if (controlKey) {
+          newCredentials.opendesign_control_key = controlKey
+        }
+        const workspaceId = editOpenDesignWorkspaceId.value.trim()
+        if (workspaceId) {
+          newCredentials.opendesign_workspace_id = workspaceId
+        }
+      }
+
       // 国产供应商：模式与协议写入凭据（决定额度/余额探测与转发端点/格式）。
       if (isCNApiKeyAccount.value) {
         newCredentials.account_mode = currentOpenCodeOrCNMode()
@@ -6547,8 +6573,6 @@ const handleMixedChannelConfirm = async () => {
 const handleMixedChannelCancel = () => {
   clearMixedChannelDialog()
 }
-const editOpenDesignControlKey = ref('')
-const editOpenDesignWorkspaceId = ref('')
 
 // ===== OpenDesign 重新授权（一键设备授权，2026-11-15） =====
 // 已有账号的「重新授权」：走同一设备授权流，成功后用 session 精确更新三键
@@ -6632,7 +6656,7 @@ const startOpenDesignReauth = async () => {
   odReauthStarting.value = true
   odReauthError.value = ''
   // 代次与目标账号都在任何 await 之前固定：等待旧会话 DELETE 期间若用户关闭弹窗或
-  // 切换账号，事件产生的新代次不会被本次启动误认为合法（第二轮复核高危 1）。
+  // 切换账号，事件产生的新代次不会被本次启动误认为合法。
   const previousSessionId = odReauthSessionId.value
   const targetAccountId = props.account.id
   invalidateOpenDesignReauthState()

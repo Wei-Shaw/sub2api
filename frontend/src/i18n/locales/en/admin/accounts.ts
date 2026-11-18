@@ -1758,13 +1758,6 @@ export default {
         estimatedTotalCost: 'Est. total ${cost}',
         estimatedTotalCostTooltip: 'Estimated total cost at 100% utilization, based on current window cost and utilization'
       },
-      opendesignUsage: {
-        opendesignNoPlan: 'OpenDesign has no eligible plan (usage windows unavailable)',
-        opendesignUnauthorized: 'OpenDesign control key rejected; re-collect via vela login',
-        opendesignPending: 'Awaiting usage probe',
-        opendesignNotConfigured: 'Probing not configured (no control-plane credential)',
-        opendesignFetchedAt: 'Data time {time}',
-      },
       opendesign: {
         controlKey: 'OpenDesign control key',
         controlKeyHint: 'From vela CLI device login (vela_ctrl_ prefix); empty = keep current. Without it the account still serves traffic, just without usage windows and pre-pause.',

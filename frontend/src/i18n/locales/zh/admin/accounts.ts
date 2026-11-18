@@ -555,13 +555,6 @@ export default {
         estimatedTotalCost: '预计总费用 ${cost}',
         estimatedTotalCostTooltip: '根据当前窗口费用和使用率估算达到 100% 使用率时的总费用'
       },
-      opendesignUsage: {
-        opendesignNoPlan: 'OpenDesign 无可用套餐（额度窗口不可用）',
-        opendesignUnauthorized: 'OpenDesign 凭证已失效，需重新采集（vela login）',
-        opendesignPending: '等待用量探测',
-        opendesignNotConfigured: '未配置探测（无控制面凭证）',
-        opendesignFetchedAt: '数据时间 {time}',
-      },
       opendesign: {
         controlKey: 'OpenDesign 控制面凭证（controlKey）',
         controlKeyHint: 'vela CLI 设备登录所得（vela_ctrl_ 开头）；空 = 保持不变。未配置时账号照常调度，仅无用量窗口与预停调。',

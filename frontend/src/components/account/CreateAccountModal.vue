@@ -5964,7 +5964,7 @@ const startOpenDesignAuth = async () => {
   odAuthStarting.value = true
   odAuthError.value = ''
   // 代次必须在任何 await 之前采样：并在每个 await 之后复核，否则「等待旧会话 DELETE
-  // 期间用户关闭/切换」产生的新代次会被误当作本次合法代次（第二轮复核高危 1）。
+  // 期间用户关闭/切换」产生的新代次会被误当作本次合法代次。
   const previousSessionId = odAuthSessionId.value
   invalidateOpenDesignAuthState()
   const generation = odAuthGeneration
@@ -6028,7 +6028,7 @@ const pollOpenDesignAuth = async () => {
       stopOpenDesignAuthTimers()
       odAuthState.value = 'authorized'
       odAuthEmail.value = status.email || ''
-      // 账号名留空时按授权邮箱回填（§4.2：以授权邮箱为准）
+      // 账号名留空时按授权邮箱回填
       if (!form.name.trim() && status.email) {
         form.name = `OpenDesign-go-${status.email}`
       }
@@ -6121,7 +6121,7 @@ const finishOpenDesignAccountCreate = (
 }
 
 // 建号的"同会话在飞"守卫：不能用全局 submitting 当闸门——否则「旧二次确认仍在飞」
-// 会吞掉用户关闭重开后新会话的自动建号（第四轮复核中等 1）。
+// 会吞掉用户关闭重开后新会话的自动建号。
 let odCreateInFlightSessionId: string | null = null
 
 // 统一的失败分流：会话已消费/过期/不存在 → 切 expired 终态给「重新发起授权」。
@@ -6166,7 +6166,7 @@ const handleOpenDesignAccountCreateFailure = (
           }
         } catch (retryError: any) {
           if (!handleOpenDesignAccountCreateFailure(retryError, confirmGeneration, sessionId, email)) {
-            // 普通失败也要给「重试建号」出口，不能只弹 toast（第四轮复核中等 2）
+            // 普通失败也要给「重试建号」出口，不能只弹 toast
             applyOpenDesignCreateFailedState(retryError, confirmGeneration)
           }
         }
@@ -6236,14 +6236,6 @@ watch(openDesignAccountType, (type) => {
     void cancelOpenDesignAuth()
   }
 })
-watch(
-  () => props.show,
-  (visible) => {
-    if (!visible) {
-      void cancelOpenDesignAuth()
-    }
-  }
-)
 
 // 路由离开会直接卸载整页（父页不会先把 show 置 false），必须在此同步作废会话，
 // 否则卸载后计时器与在途请求仍可能建号。

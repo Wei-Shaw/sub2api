@@ -589,12 +589,22 @@ function officialAccountAPISupported(account: CNUsageCellAccount, mode: string):
   }
 }
 
+/** OpenDesign 的用量探测需要设备授权取回的 control key。 */
+export function openDesignProbeConfigured(account: CNUsageCellAccount): boolean {
+  const credentials = (account as { credentials?: Record<string, unknown> }).credentials
+  const controlKey = credentials?.opendesign_control_key
+  return typeof controlKey === 'string' && controlKey.trim() !== ''
+}
+
 export function cnQuotaCellVisible(account: CNUsageCellAccount): boolean {
   const { platform } = account
   const mode = cnUsageCellAccountMode(account)
   if (platform === 'opencode_go') return mode !== 'zen'
   // Command Code、Cline：订阅窗口与积分由一次探测同时刷新。
   if (OFFICIAL_ACCOUNT_API_PLATFORMS.includes(platform)) return officialAccountAPISupported(account, mode)
+  // OpenDesign 的用量来自 CN 配额框架（funding-check），有 control key 即可展示；
+  // 无 control key 时探测必然失败，不展示空单元格。
+  if (platform === 'open_design') return openDesignProbeConfigured(account)
   return (platform === 'kimi' || platform === 'zhipu' || platform === 'minimax') && mode === 'coding'
 }
 
