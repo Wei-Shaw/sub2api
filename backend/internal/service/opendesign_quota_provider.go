@@ -9,27 +9,25 @@ import (
 	"time"
 )
 
-// OpenDesign usage probing rides the shared CN provider quota framework. The
-// data source is the vendor funding-check endpoint: one request returns the
-// Go-tier dual rolling windows (5h / 7d) in credits. Any parse failure or
-// non-2xx keeps the previous snapshot (fail-open) and never parks the account.
+// OpenDesign 的用量探测复用既有的 CN 配额框架。数据源是厂商的 funding-check
+// 接口：一次请求返回 Go 套餐的 5h / 7d 两个滚动窗口（单位为 credits）。
+// 解析失败或响应非 2xx 时保留上一份快照（fail-open），绝不因此停调账号。
 
 const (
-	// openDesignFundingCheckPath is appended to the account base URL.
+	// openDesignFundingCheckPath 追加在账号 base_url 之后。
 	openDesignFundingCheckPath = "/api/v1/workspaces/%s/billing/funding-check"
 
-	// DefaultOpenDesignAuthAPIBaseURL is the vendor console API host (device
-	// authorization, wallet lookup and the funding-check probe).
+	// DefaultOpenDesignAuthAPIBaseURL 是厂商控制面 API 主机（设备授权、钱包查询与
+	// funding-check 探测共用）。
 	DefaultOpenDesignAuthAPIBaseURL = "https://amr-api.open-design.ai"
 
-	// OpenDesign usage windows in seconds, as reported by funding-check.
+	// OpenDesign 用量窗口的秒数，与 funding-check 返回的 durationSeconds 对齐。
 	openDesignUsageWindow5HSeconds = 18000
 	openDesignUsageWindow7DSeconds = 604800
 )
 
-// openDesignUsageSupported reports whether the account carries the control-plane
-// credential the funding-check probe needs. Periodic probing uses it to skip
-// accounts that were never authorized through the device flow.
+// openDesignUsageSupported 报告账号是否带 funding-check 需要的控制面凭据。
+// 周期探测用它在收集阶段跳过从未走设备授权的账号（探测必然 401）。
 func (a *Account) openDesignUsageSupported() bool {
 	if a == nil || a.Platform != PlatformOpenDesign || a.Type != AccountTypeAPIKey {
 		return false
@@ -37,8 +35,8 @@ func (a *Account) openDesignUsageSupported() bool {
 	return strings.TrimSpace(a.GetCredential(OpenDesignUsageCredentialsKey)) != ""
 }
 
-// opendesignFundingCheckURL builds the funding-check endpoint from the account
-// base URL and the workspace id stored by device auth.
+// opendesignFundingCheckURL 用账号 base_url 与设备授权写入的 workspace id 拼出
+// funding-check 地址。
 func opendesignFundingCheckURL(baseURL, workspaceID string) (string, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	if !isValidOpenDesignWorkspaceID(workspaceID) {
@@ -55,8 +53,8 @@ func opendesignFundingCheckURL(baseURL, workspaceID string) (string, error) {
 	return parsed.String(), nil
 }
 
-// opendesignParseCredits accepts the string-or-number credits fields the
-// funding-check payload uses.
+// opendesignParseCredits 解析 credits 字段：上游把同一字段既可能写成字符串，
+// 也可能写成数字。
 func opendesignParseCredits(raw any) (int64, bool) {
 	switch v := raw.(type) {
 	case string:
@@ -76,9 +74,8 @@ func opendesignParseCredits(raw any) (int64, bool) {
 	}
 }
 
-// opendesignWindowName maps a funding-check window duration to the shared CN
-// window name. Unknown durations return ok=false so a future extra window is
-// ignored instead of failing the whole response.
+// opendesignWindowName 把 funding-check 的窗口时长映射成共享的 CN 窗口名。
+// 未知时长返回 ok=false：以后上游新增窗口时忽略它，而不是让整份响应失败。
 func opendesignWindowName(durationSeconds int) (string, bool) {
 	switch durationSeconds {
 	case openDesignUsageWindow5HSeconds:
@@ -90,10 +87,9 @@ func opendesignWindowName(durationSeconds int) (string, bool) {
 	}
 }
 
-// opendesignParseWindow validates one window entry and converts it to the
-// shared CN tier shape. A window whose duration matches but whose numbers or
-// reset time are unusable is a schema break: returning an error keeps the
-// previous snapshot instead of writing a mixed "new usage + old reset" one.
+// opendesignParseWindow 校验单个窗口并转换成共享的 CN 档位。
+// 时长匹配但数值或 reset 时间不可用时视为报文改版：返回错误以保留上一份快照，
+// 不能写出「新用量 + 旧重置时间」的混合快照。
 func opendesignParseWindow(raw map[string]any, window string) (CNQuotaTier, error) {
 	used, okUsed := opendesignParseCredits(raw["usedCredits"])
 	limit, okLimit := opendesignParseCredits(raw["limitCredits"])
@@ -119,17 +115,14 @@ func opendesignParseWindow(raw map[string]any, window string) (CNQuotaTier, erro
 	}, nil
 }
 
-// parseOpenDesignUsageTiers converts a funding-check response into CN quota
-// tiers.
+// parseOpenDesignUsageTiers 把 funding-check 响应转换成 CN 配额档位。
 //
-// A response that explicitly reports no coding plan (codingPlan null, or an
-// eligible field that is present and false) returns noPlan=true with no error:
-// the account simply has no plan, so the caller clears the usage windows
-// instead of keeping a stale "exhausted" snapshot that would park it forever.
+// 明确「没有 coding plan」（codingPlan 为 null，或 eligible 字段存在且为 false）
+// 返回 noPlan=true 且不报错：账号就是没套餐，调用方据此清空用量窗口，
+// 而不是保留一份「已耗尽」的陈旧快照把它永久停调。
 //
-// A missing codingPlan field, a missing eligible field or any unusable window
-// is an upstream schema change and returns an error, so the caller keeps the
-// previous snapshot rather than writing a bogus one.
+// 缺 codingPlan 字段、缺 eligible 字段、或任何窗口不可用，都视为上游报文改版
+// 并返回错误，让调用方保留上一份快照，而不是写一份假的。
 func parseOpenDesignUsageTiers(body []byte) (tiers []CNQuotaTier, planLevel string, noPlan bool, err error) {
 	var payload struct {
 		BalanceUsd string          `json:"balanceUsd"`
@@ -146,8 +139,8 @@ func parseOpenDesignUsageTiers(body []byte) (tiers []CNQuotaTier, planLevel stri
 	}
 
 	var plan struct {
-		// Pointer so "absent" and "explicitly false" stay distinguishable: an
-		// absent flag usually means the schema changed, not "no plan".
+		// 用指针区分「字段缺失」与「明确为 false」：缺字段通常意味着报文改版，
+		// 而不是「没有套餐」。
 		Eligible *bool            `json:"eligible"`
 		Tier     any              `json:"tier"`
 		Windows  []map[string]any `json:"windows"`

@@ -17,9 +17,8 @@ import (
 
 // OpenDesign 一键设备授权管理端接口测试。
 
-// openDesignTestPrefix mirrors the production mount point
-// (/api/v1/admin + /accounts). Registering the same constants the router uses
-// keeps the tests honest about the real URL shape.
+// openDesignTestPrefix 对应生产挂载点（/api/v1/admin + /accounts）。
+// 用与路由同一份常量注册，测试才会对真实 URL 形态保持诚实。
 const openDesignTestPrefix = "/api/v1/admin/accounts"
 
 func registerOpenDesignRoutes(handler *AccountHandler) *gin.Engine {

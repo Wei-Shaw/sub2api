@@ -33,10 +33,8 @@ import (
 // 不写日志、不进错误信息；会话被消费或取消后立即清空敏感字段。
 
 const (
-	// OpenDesignAuthSourceExtraKey 标记账号凭据来源（oauth / apikey），仅用于 UI 展示。
-	// OpenDesignUsageCredentialsKey / OpenDesignUsageWorkspaceKey are the probe
-	// credential slots in credentials. Device auth writes them; the CN provider
-	// quota probe reads them.
+	// OpenDesignUsageCredentialsKey / OpenDesignUsageWorkspaceKey 是 credentials 里
+	// 的两个探测凭据槽位：设备授权负责写入，CN 配额探测负责读取。
 	OpenDesignUsageCredentialsKey = "opendesign_control_key"
 	OpenDesignUsageWorkspaceKey   = "opendesign_workspace_id"
 	OpenDesignAuthSourceExtraKey  = "opendesign_auth_source"
@@ -128,8 +126,7 @@ type OpenDesignDeviceAuthService struct {
 }
 
 // NewOpenDesignDeviceAuthService 构造服务并启动过期会话清理循环。
-// ErrOpenDesignUsageUnavailable is returned when the optional OpenDesign
-// device-auth/usage wiring is not attached.
+// ErrOpenDesignUsageUnavailable 在没有装配 OpenDesign 设备授权/用量能力时返回。
 var ErrOpenDesignUsageUnavailable = infraerrors.ServiceUnavailable(
 	"OPEN_DESIGN_USAGE_UNAVAILABLE", "OpenDesign usage is unavailable",
 )
@@ -349,8 +346,7 @@ func (s *OpenDesignDeviceAuthService) InitiateDeviceAuth(ctx context.Context, ho
 	}, nil
 }
 
-// openDesignActivationHostSuffix is the vendor domain allowed for the
-// user-facing activation link.
+// openDesignActivationHostSuffix 是允许出现在激活链接里的厂商域名后缀。
 const openDesignActivationHostSuffix = ".open-design.ai"
 
 func validateOpenDesignActivationURL(raw string) (string, error) {
@@ -840,8 +836,8 @@ func (s *OpenDesignDeviceAuthService) AbortSessionConsumption(sessionID string) 
 	sess.Status = openDesignSessionStatusAuthorized
 }
 
-// isValidOpenDesignWorkspaceID constrains the workspace identifier carried in
-// device-auth sessions: lowercase letters and digits only, 3-64 chars.
+// isValidOpenDesignWorkspaceID 约束设备授权会话里的 workspace 标识：
+// 仅小写字母与数字，长度 3-64。
 func isValidOpenDesignWorkspaceID(id string) bool {
 	if len(id) < 3 || len(id) > 64 {
 		return false

@@ -6763,8 +6763,8 @@ const pollOpenDesignReauth = async () => {
     odReauthError.value = openDesignReauthErrorMessage(error, 'admin.accounts.opendesign.reauth.failedHint')
   }
 }
-// OpenDesign: drop any in-flight reauth session when the dialog closes or the
-// selected account changes, so credentials never land on the wrong account.
+// OpenDesign：关闭弹窗或切换账号时丢弃在途的重新授权会话，
+// 避免凭据被写到错误的账号上。
 watch(
   () => props.show,
   (show) => {

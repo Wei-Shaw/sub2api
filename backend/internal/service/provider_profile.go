@@ -226,10 +226,9 @@ var providerProfiles = map[string]*ProviderProfile{
 		Platform:    PlatformOpenDesign,
 		DefaultMode: AccountModePayG,
 		Routing:     ProviderRoutingByInbound,
-		// OpenDesign Go serves Chat Completions and native Responses from the same
-		// /v1 base URL, plus an Anthropic-compatible endpoint at the bare domain
-		// ({base}/v1/messages) accepting both x-api-key and Bearer auth. An
-		// adaptive account picks the endpoint by inbound protocol.
+		// OpenDesign Go 用同一个 /v1 基址同时提供 Chat Completions 与原生 Responses，
+		// 裸域另提供 Anthropic 兼容端点（{base}/v1/messages，x-api-key 与 Bearer
+		// 都接受）。自适应账号按入站协议选择端点。
 		Modes: map[string]ProviderEndpoints{
 			AccountModePayG: {
 				BaseURLs: map[string]string{

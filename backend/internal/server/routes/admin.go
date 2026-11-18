@@ -395,7 +395,7 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.GET("/:id/opencode-go-usage", h.Admin.Account.GetOpenCodeGoUsage)
 		accounts.PUT("/:id/opencode-go-usage/auto-refresh", h.Admin.Account.SetOpenCodeGoUsageAutoRefresh)
 
-		// OpenDesign one-click device authorization (OAuth credential pickup).
+		// OpenDesign 一键设备授权（用 OAuth 流程取凭据）。
 		accounts.POST(adminHandler.OpenDesignDeviceAuthRoute, h.Admin.Account.CreateOpenDesignDeviceAuth)
 		accounts.GET(adminHandler.OpenDesignDeviceAuthStatusRoute, h.Admin.Account.GetOpenDesignDeviceAuth)
 		accounts.DELETE(adminHandler.OpenDesignDeviceAuthStatusRoute, h.Admin.Account.CancelOpenDesignDeviceAuth)

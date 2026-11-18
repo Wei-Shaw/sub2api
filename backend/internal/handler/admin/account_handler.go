@@ -85,8 +85,8 @@ func (h *AccountHandler) SetOpenCodeGoUsageService(usage *service.OpenCodeGoUsag
 	h.opencodeGoUsage = usage
 }
 
-// SetOpenDesignDeviceAuthService attaches the optional OpenDesign device
-// authorization service (OAuth-based credential pickup for control/runtime keys).
+// SetOpenDesignDeviceAuthService 装配可选的 OpenDesign 设备授权服务
+// （用 OAuth 流程取回 control key / runtime key）。
 func (h *AccountHandler) SetOpenDesignDeviceAuthService(svc *service.OpenDesignDeviceAuthService) {
 	h.opendesignDeviceAuth = svc
 }

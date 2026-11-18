@@ -303,8 +303,8 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 		)
 		tiers, result.PlanLevel, noPlan, tierErr = parseOpenDesignUsageTiers(bodyBytes)
 		if tierErr != nil {
-			// Upstream schema change: keep the previous snapshot instead of
-			// writing a bogus empty one (mirrors the CN no-window guard).
+			// 上游报文改版：保留上一份快照，而不是写一份空的
+			// （与 CN 的无窗口守卫同一口径）。
 			result.Error = "open_design funding-check parse failed: " + tierErr.Error()
 			return result, nil
 		}

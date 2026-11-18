@@ -37,7 +37,7 @@ const (
 	PlatformCommandCode = "command_code"
 	// PlatformCline 是 Cline API（多模型聚合，OpenAI 兼容 Chat Completions；按量积分计费，
 	// 另有 ClinePass 订阅）。
-	PlatformCline     = "cline"
+	PlatformCline = "cline"
 	// PlatformOpenDesign 是 OpenDesign Go 平台（多模型聚合；一个 API Key 同时提供
 	// OpenAI 兼容 /v1（Chat Completions 与原生 Responses）与 Anthropic 兼容端点）。
 	PlatformOpenDesign = "open_design"

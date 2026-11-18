@@ -6,9 +6,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// OpenDesign Go registers one profile that serves Chat Completions and native
-// Responses from the same /v1 base URL plus an Anthropic-compatible endpoint at
-// the bare domain.
+// OpenDesign Go 只登记一份端点画像：同一 /v1 基址服务 Chat Completions 与原生
+// Responses，裸域另服务 Anthropic 兼容端点。
 func TestProviderProfileOpenDesign(t *testing.T) {
 	profile := LookupProviderProfile(PlatformOpenDesign)
 	require.NotNil(t, profile, "open_design must register a provider profile")
@@ -22,7 +21,7 @@ func TestProviderProfileOpenDesign(t *testing.T) {
 	require.Equal(t, DefaultOpenDesignAnthropicBaseURL, endpoints.BaseURLs[APIProtocolAnthropic])
 }
 
-// Adaptive accounts must resolve endpoints for every inbound protocol.
+// 自适应账号必须能为每一种入站协议解析出端点。
 func TestProviderProfileOpenDesignAdaptiveResolution(t *testing.T) {
 	profile := LookupProviderProfile(PlatformOpenDesign)
 	require.NotNil(t, profile)

@@ -4769,7 +4769,7 @@ function selectGenericMultiProtocolPlatform(platform: string) {
   resetAdaptiveBaseUrls(platform, accountMode.value)
   openCodeGoProtocolRules.value = cloneOpenCodeGoProtocolRules(defaultProviderProtocolRules(platform, accountMode.value))
   if (platform === 'open_design') {
-    // OpenDesign defaults to the OAuth flow: one approval yields control/runtime keys.
+    // OpenDesign 默认走 OAuth：批准一次即可拿到 control key 与 runtime key。
     openDesignAccountType.value = 'oauth'
   }
 }
@@ -5317,7 +5317,7 @@ const canExchangeCode = computed(() => {
 watch(
   () => props.show,
   (newVal) => {
-    // OpenDesign: cancel any in-flight device-auth session when the dialog closes.
+    // OpenDesign：弹窗关闭时取消在途的设备授权会话。
     if (newVal === false) {
       void cancelOpenDesignAuth()
     }
@@ -6746,8 +6746,8 @@ const handleSubmit = async () => {
     return
   }
 
-  // OpenDesign OAuth flow: the account is created by the device authorization
-  // flow itself, so a pending session just returns and an idle one starts it.
+  // OpenDesign 的 OAuth 路径：账号由设备授权流程本身创建，所以会话进行中直接返回，
+  // 空闲时才发起新的授权。
   if (isOpenDesignOAuthFlow.value) {
     if (odAuthState.value === 'pending') {
       return

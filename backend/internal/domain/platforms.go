@@ -48,9 +48,9 @@ var platformList = []PlatformSpec{
 	{ID: PlatformTypeSafe, DisplayName: "TypeSafe / Jev", Gateway: PlatformGatewayAnthropic, LiteLLMProvider: "typesafe"},
 	{ID: PlatformCommandCode, DisplayName: "Command Code", Gateway: PlatformGatewayOpenAI},
 	{ID: PlatformCline, DisplayName: "Cline", Gateway: PlatformGatewayOpenAI},
-	// OpenDesign Go: one API key serves an OpenAI-compatible endpoint (/v1, chat
-	// completions and native responses) and an Anthropic-compatible endpoint
-	// ({base}/v1/messages); the endpoints are registered in provider_profile.go.
+	// OpenDesign Go：同一把 API Key 同时提供 OpenAI 兼容端点（/v1，chat completions
+	// 与原生 responses）和 Anthropic 兼容端点（{base}/v1/messages），端点画像登记在
+	// provider_profile.go。
 	{ID: PlatformOpenDesign, DisplayName: "OpenDesign", Gateway: PlatformGatewayOpenAI},
 }
 

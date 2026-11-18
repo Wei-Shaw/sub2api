@@ -152,7 +152,7 @@ describe('UserPlatformQuotaModal', () => {
     })
     const w = await mountAndOpen()
     const inputs = w.findAll('input[type=number]')
-    // 14 platforms × 3 windows = 42 inputs
+    // 14 个平台 × 3 个窗口 = 42 个输入框
     expect(inputs.length).toBe(42)
     // 第一个 input 是 anthropic.daily = 10
     expect((inputs[0].element as HTMLInputElement).value).toBe('10')

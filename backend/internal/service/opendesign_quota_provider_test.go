@@ -51,9 +51,8 @@ func TestParseOpenDesignUsageTiers(t *testing.T) {
 	require.InDelta(t, 50.0, tiers[1].UsedPercent, 1e-9)
 }
 
-// A response that explicitly reports no coding plan must be a success, not the
-// shared "no recognized window" failure: the caller clears the windows so the
-// account neither stays parked nor loses its schedulability.
+// 明确「没有 coding plan」必须是成功结果，而不是共享层的「未识别窗口」错误：
+// 调用方据此清空窗口，账号既不会被继续停调，也不会丢掉可调度性。
 func TestParseOpenDesignUsageTiersNoPlan(t *testing.T) {
 	t.Parallel()
 
@@ -70,8 +69,7 @@ func TestParseOpenDesignUsageTiersNoPlan(t *testing.T) {
 	require.Empty(t, tiers)
 }
 
-// Schema breaks must error so the caller keeps the previous snapshot instead of
-// writing a bogus empty one.
+// 报文改版必须报错，好让调用方保留上一份快照，而不是写一份空的。
 func TestParseOpenDesignUsageTiersSchemaChange(t *testing.T) {
 	t.Parallel()
 
@@ -88,8 +86,8 @@ func TestParseOpenDesignUsageTiersSchemaChange(t *testing.T) {
 	require.Error(t, err, "only unknown-duration windows")
 }
 
-// A window whose duration matches but whose numbers or reset time are unusable
-// must fail the whole parse: a partial write would leave "new usage + old reset".
+// 时长匹配但数值或 reset 时间不可用的窗口必须让整次解析失败：
+// 部分成功会留下「新用量 + 旧重置时间」的混合快照。
 func TestParseOpenDesignUsageTiersRejectsBrokenWindow(t *testing.T) {
 	t.Parallel()
 
@@ -107,8 +105,7 @@ func TestParseOpenDesignUsageTiersRejectsBrokenWindow(t *testing.T) {
 	}
 }
 
-// Unknown window durations are ignored (forward compatible) as long as one known
-// window still parses.
+// 未知窗口时长直接忽略（向前兼容），只要还有一个已知窗口能解析出来。
 func TestParseOpenDesignUsageTiersIgnoresUnknownWindow(t *testing.T) {
 	t.Parallel()
 
@@ -161,7 +158,7 @@ func TestOpenDesignActivationURLValidation(t *testing.T) {
 func TestOpenDesignSchedulingThresholdEvaluation(t *testing.T) {
 	t.Parallel()
 
-	// Relative reset time keeps the fixture from expiring over time.
+	// reset 用相对当前时间的值，避免 fixture 随时间过期。
 	resetAt := time.Now().Add(7 * 24 * time.Hour).UTC().Format(time.RFC3339)
 	extra := map[string]any{
 		"open_design_5h_used_percent":     30.0,
@@ -177,18 +174,18 @@ func TestOpenDesignSchedulingThresholdEvaluation(t *testing.T) {
 		Extra:       extra,
 	}
 
-	// open_design must be an allowed platform and evaluate to a pause at 95.
+	// open_design 必须在允许名单里，并且在 95% 阈值下判定停调。
 	require.Contains(t, AllowedSchedulingThresholdPlatforms, PlatformOpenDesign)
 	decision := EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformOpenDesign: 95}, time.Now())
 	require.True(t, decision.ShouldPause, "weekly 96% must pause at threshold 95")
 	require.Equal(t, "weekly", decision.Window)
 	require.NotNil(t, decision.Until)
 
-	// Below threshold: no pause.
+	// 低于阈值：不停调。
 	decision = EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformOpenDesign: 99}, time.Now())
 	require.False(t, decision.ShouldPause)
 
-	// Threshold disabled (100): no pause.
+	// 阈值关闭（100）：不停调。
 	decision = EvaluateAccountSchedulingThreshold(account, map[string]int{PlatformOpenDesign: 100}, time.Now())
 	require.False(t, decision.ShouldPause)
 }
