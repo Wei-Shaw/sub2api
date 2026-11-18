@@ -40,7 +40,7 @@
         <div v-if="usageInfo.error" class="text-xs text-amber-600 dark:text-amber-400 truncate max-w-[200px]" :title="usageInfo.error">
           {{ usageInfo.error }}
         </div>
-        <AccountQuotaMatrix :columns="quotaColumns" />
+        <AccountQuotaMatrix :columns="quotaColumns" :desktop="isDesktopViewport" />
 
       </div>
 
@@ -99,7 +99,7 @@
           : 'admin.accounts.usageWindow.quotaRefreshFailedUnknown') }}
       </div>
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
-        <AccountQuotaMatrix :columns="quotaColumns" show-now-when-idle />
+        <AccountQuotaMatrix :columns="quotaColumns" :desktop="isDesktopViewport" show-now-when-idle />
         <div v-if="hasOpenAIQuotaObservation" class="text-[10px] text-gray-500 dark:text-gray-400">
           {{ t('admin.accounts.usageWindow.quotaObservedAt') }}
           <time v-if="usageInfo?.updated_at" :datetime="usageInfo.updated_at">
@@ -259,7 +259,7 @@
 
       <!-- Real 5-hour and weekly windows per quota group (retrieveUserQuotaSummary) -->
       <div v-else-if="quotaColumns.length" class="space-y-1">
-        <AccountQuotaMatrix :columns="quotaColumns" />
+        <AccountQuotaMatrix :columns="quotaColumns" :desktop="isDesktopViewport" />
         <div v-if="aiCreditsDisplay" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
           💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
         </div>
@@ -592,7 +592,7 @@
         </div>
         <!-- Gemini: show daily usage bars when available -->
         <div v-else-if="quotaColumns.length" class="space-y-1">
-          <AccountQuotaMatrix :columns="quotaColumns" />
+          <AccountQuotaMatrix :columns="quotaColumns" :desktop="isDesktopViewport" />
           <p class="mt-1 text-[9px] leading-tight text-gray-400 dark:text-gray-500 italic">
             * {{ t('admin.accounts.gemini.quotaPolicy.simulatedNote') || 'Simulated quota' }}
           </p>
@@ -1159,7 +1159,7 @@ const quotaColumns = computed<QuotaColumn[]>(() => {
         windows: Object.fromEntries(g.windows.map(w => [w.window === 'weekly' ? '7d' : w.window, w]))
       }))
     case 'openai':
-      return [{ key: 'shared', name: 'GPT / Codex', windows: {
+      return [{ key: 'shared', name: props.account.parent_account_id != null ? 'Spark' : 'GPT / Codex', windows: {
         '5h': usage.five_hour, '7d': usage.seven_day && { ...usage.seven_day, estimatedTotalCost: openAISevenDayEstimatedTotalCost.value }
       } }]
     case 'anthropic':

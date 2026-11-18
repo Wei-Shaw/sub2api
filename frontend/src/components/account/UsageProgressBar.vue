@@ -34,11 +34,11 @@
     </div>
 
     <!-- Progress bar row -->
-    <div class="flex items-center gap-1" :class="{ 'justify-end': matrix }">
+    <div class="flex items-center gap-1" :class="{ 'justify-end max-[374px]:flex-col max-[374px]:items-end max-[374px]:gap-0': matrix }">
       <span v-if="matrix" class="relative min-w-[3.25rem] overflow-hidden rounded bg-gray-100 px-1 text-center text-[10px] font-medium dark:bg-gray-700">
         <span v-if="remaining !== null" class="absolute inset-y-0 left-0 opacity-30" :class="barClass"
           :style="{ width: remaining + '%' }" />
-        <span class="relative">{{ remaining === null ? '—' : remaining + '%' }}</span>
+        <span class="relative" :class="remaining === null ? 'text-gray-400' : textClass">{{ remaining === null ? '—' : remaining + '%' }}</span>
       </span>
       <template v-else>
         <!-- Label badge (label-width: fixed = 定宽居中, auto = 限宽截断左对齐) -->
@@ -222,6 +222,8 @@ const formatResetTime = computed(() => {
   if (diffMs <= 0) {
     return props.utilization > 0 ? t('usage.resetPending') : t('usage.resetNow')
   }
+
+  if (props.matrix && diffMs < 60_000) return '<1m'
 
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
   const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))

@@ -40,16 +40,14 @@ export interface QuotaColumn {
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useMediaQuery } from '@vueuse/core'
 import { useI18n } from 'vue-i18n'
 import UsageProgressBar from './UsageProgressBar.vue'
 
-const props = defineProps<{ columns: QuotaColumn[]; showNowWhenIdle?: boolean }>()
+const props = defineProps<{ columns: QuotaColumn[]; desktop: boolean; showNowWhenIdle?: boolean }>()
 const { t } = useI18n()
-const desktop = useMediaQuery('(min-width: 768px)')
 const groups = computed(() => {
   const columns = props.columns.filter(col => Object.values(col.windows).some(Boolean))
-  if (desktop.value) return columns.length ? [columns] : []
+  if (props.desktop) return columns.length ? [columns] : []
   return Array.from({ length: Math.ceil(columns.length / 2) }, (_, i) => columns.slice(i * 2, i * 2 + 2))
 })
 function rows(columns: QuotaColumn[]) {

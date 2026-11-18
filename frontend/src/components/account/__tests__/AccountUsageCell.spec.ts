@@ -543,12 +543,17 @@ describe('AccountUsageCell', () => {
       global: { stubs: { OpenAIQuotaResetCell: true } }
     })
     await flushPromises()
+    expect(wrapper.get('thead th:last-child').text()).toBe('GPT / Codex')
     expect(wrapper.findAll('tbody td').map(td => td.text())).toEqual(['0%', '—'])
+    expect(wrapper.get('tbody td .text-red-600').text()).toBe('0%')
+    expect(wrapper.get('tbody tr:last-child td .text-gray-400').text()).toBe('—')
     await wrapper.setProps({ batchedUsage: {
       five_hour: { utilization: 21.5 }, seven_day: { utilization: 0 }
     } as AccountUsageInfo })
     expect(wrapper.findAll('tbody td')[0].text()).toBe('78.5%')
     expect(wrapper.findAll('tbody td')[1].text()).toContain('100%')
+    await wrapper.setProps({ account: { ...wrapper.props('account'), parent_account_id: 42 } })
+    expect(wrapper.get('thead th:last-child').text()).toBe('Spark')
     wrapper.unmount()
   })
 
