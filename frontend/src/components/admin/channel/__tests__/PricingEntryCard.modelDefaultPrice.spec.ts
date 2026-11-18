@@ -25,6 +25,7 @@ function createEntry(models: string[] = []): PricingFormEntry {
     cache_read_price: null,
     fast_multiplier: null,
     flex_multiplier: null,
+    ultrafast_multiplier: null,
     reasoning_effort_multipliers: null,
     image_input_price: null,
     image_output_price: null,
