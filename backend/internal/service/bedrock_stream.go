@@ -188,7 +188,8 @@ func (s *GatewayService) handleBedrockStreamingResponse(
 // extractBedrockChunkData 从 Bedrock EventStream payload 中提取 Claude SSE 事件数据
 // Bedrock payload 格式：{"bytes":"<base64-encoded-json>"}
 func extractBedrockChunkData(payload []byte) []byte {
-	b64 := gjson.GetBytes(payload, "bytes").String()
+	// 零拷贝读取：b64 只在本函数内解码，解码结果写入新 buffer。
+	b64 := parseRawJSONView(payload).Get("bytes").String()
 	if b64 == "" {
 		return nil
 	}

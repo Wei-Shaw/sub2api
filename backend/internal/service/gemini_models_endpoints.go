@@ -188,7 +188,8 @@ func (s *GeminiMessagesCompatService) ForwardListModels(ctx context.Context, acc
 }
 
 // ForwardGetModel 读取账号上游的单个模型信息，返回 AI Studio 格式的响应（GET /v1beta/models/{model}）。
-// Vertex 服务账号在该模型生成请求所用区域的模型列表中查找，找不到时返回 404；Vertex API Key 账号返回内置信息。
+// Vertex 服务账号在该模型生成请求所用区域的模型列表中查找，找不到时返回 404；该区域为多区域（us/eu）时
+// 查 global 列表，多区域可用性以 vertexModelLocations 为准。Vertex API Key 账号返回内置信息。
 func (s *GeminiMessagesCompatService) ForwardGetModel(ctx context.Context, account *Account, model string) (*UpstreamHTTPResult, error) {
 	if account == nil {
 		return nil, errors.New("account is nil")
@@ -200,7 +201,11 @@ func (s *GeminiMessagesCompatService) ForwardGetModel(ctx context.Context, accou
 		return geminiModelsJSONResult(http.StatusOK, gemini.FallbackModel(model))
 	}
 
-	modelIDs, failure, err := s.listVertexGeminiModels(ctx, account, account.VertexLocation(model))
+	location := account.VertexLocation(model)
+	if isVertexMultiRegion(location) {
+		location = vertexGlobalLocation
+	}
+	modelIDs, failure, err := s.listVertexGeminiModels(ctx, account, location)
 	if err != nil {
 		return nil, err
 	}

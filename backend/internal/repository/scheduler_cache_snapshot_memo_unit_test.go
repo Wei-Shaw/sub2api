@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -219,8 +220,10 @@ func memoEntryCount(cache *schedulerCache) int {
 	return len(cache.snapshotEntries)
 }
 
-func TestSchedulerCacheSnapshotMemoSecondReadOnlyFetchesTagsAndLastUsed(t *testing.T) {
+func TestSchedulerCacheSnapshotMemoRepeatReadsFetchTagsAndExpiredLastUsed(t *testing.T) {
 	cache, _, recorder := newSchedulerCacheMemoUnit(t, defaultSchedulerSnapshotWriteChunkSize)
+	clock := &memoTestClock{now: time.Date(2026, 10, 20, 8, 0, 0, 0, time.UTC)}
+	cache.now = clock.Now
 	bucket := memoTestBucket(101)
 	memoPublish(t, cache, bucket, memoTestAccount(1, "a"), memoTestAccount(2, "b"), memoTestAccount(3, "c"))
 
@@ -228,9 +231,17 @@ func TestSchedulerCacheSnapshotMemoSecondReadOnlyFetchesTagsAndLastUsed(t *testi
 	first := memoRead(t, cache, bucket)
 	require.Equal(t, 1, recorder.countPrefix("zrange "))
 	require.Equal(t, 1, recorder.countPrefix("mget "+schedulerAccountMetaPrefix))
+	require.Equal(t, 1, recorder.countPrefix("mget "+schedulerAccountLastUsedPrefix))
 
 	recorder.reset()
 	second := memoRead(t, cache, bucket)
+	require.Equal(t, []string{
+		"mget " + schedulerBucketKey(schedulerReadyPrefix, bucket),
+	}, recorder.recorded(), "last_used read within its max age is reused")
+
+	clock.Advance(schedulerLastUsedCacheMaxAge)
+	recorder.reset()
+	memoRead(t, cache, bucket)
 	require.Equal(t, []string{
 		"mget " + schedulerBucketKey(schedulerReadyPrefix, bucket),
 		"mget " + schedulerLastUsedKey("1"),
@@ -248,6 +259,8 @@ func TestSchedulerCacheSnapshotMemoSecondReadOnlyFetchesTagsAndLastUsed(t *testi
 func TestSchedulerCacheSnapshotMemoLastUsedIsFreshAndCopiesAreIndependent(t *testing.T) {
 	ctx := context.Background()
 	cache, _, recorder := newSchedulerCacheMemoUnit(t, defaultSchedulerSnapshotWriteChunkSize)
+	clock := &memoTestClock{now: time.Date(2026, 10, 20, 8, 0, 0, 0, time.UTC)}
+	cache.now = clock.Now
 	bucket := memoTestBucket(102)
 	embedded := time.Now().UTC().Truncate(time.Millisecond).Add(-time.Hour)
 	account := memoTestAccount(11, "a")
@@ -272,8 +285,9 @@ func TestSchedulerCacheSnapshotMemoLastUsedIsFreshAndCopiesAreIndependent(t *tes
 	second[0].Credentials = map[string]any{"model_mapping": map[string]any{"claude-sonnet": "replaced"}}
 	require.Equal(t, "replaced", second[0].GetMappedModel("claude-sonnet"))
 
-	// 删除 last_used 侧键（不改精简记录）：若母本曾被套用 last_used，这里会读到 latest。
+	// 删除 last_used 侧键（不改精简记录）并越过 last_used 复用时长：若母本曾被套用 last_used，这里会读到 latest。
 	require.NoError(t, cache.rdb.Del(ctx, schedulerLastUsedKey("11")).Err())
+	clock.Advance(schedulerLastUsedCacheMaxAge)
 	recorder.reset()
 	third := memoRead(t, cache, bucket)
 	require.Zero(t, recorder.countPrefix("zrange "))
@@ -660,6 +674,8 @@ func memoReadExpectHit(t *testing.T, cache *schedulerCache, recorder *schedulerC
 func TestSchedulerCacheSnapshotMemoPlatformRevisionScopesInvalidation(t *testing.T) {
 	ctx := context.Background()
 	cache, _, recorder := newSchedulerCacheMemoUnit(t, defaultSchedulerSnapshotWriteChunkSize)
+	clock := &memoTestClock{now: time.Date(2026, 10, 20, 8, 0, 0, 0, time.UTC)}
+	cache.now = clock.Now
 	geminiSingle := service.SchedulerBucket{GroupID: 201, Platform: service.PlatformGemini, Mode: service.SchedulerModeSingle}
 	gemini := memoTestAccountOn(service.PlatformGemini, 211, "gemini")
 	memoPublish(t, cache, geminiSingle, gemini)
@@ -672,7 +688,6 @@ func TestSchedulerCacheSnapshotMemoPlatformRevisionScopesInvalidation(t *testing
 	memoRead(t, cache, geminiSingle)
 	require.Equal(t, []string{
 		"mget " + schedulerBucketKey(schedulerReadyPrefix, geminiSingle),
-		"mget " + schedulerLastUsedKey("211"),
 	}, recorder.recorded(), "an Anthropic account write must not invalidate a Gemini bucket")
 
 	gemini.Name = "gemini-renamed"
@@ -844,8 +859,248 @@ func TestSchedulerCacheSnapshotMemoMaxAgeBoundsUnversionedWrites(t *testing.T) {
 	clock.Advance(schedulerSnapshotCacheMaxAge - time.Millisecond)
 	require.Equal(t, "old", memoRead(t, cache, bucket)[0].Name)
 
+	// 超过直接复用时长：本次仍返回旧条目，同时由后台加载刷新。
 	clock.Advance(time.Millisecond)
+	require.Equal(t, "old", memoRead(t, cache, bucket)[0].Name)
+	require.Eventually(t, func() bool {
+		accounts, hit, err := cache.GetSnapshot(ctx, bucket)
+		return err == nil && hit && accounts[0].Name == "new"
+	}, time.Second, 5*time.Millisecond)
+}
+
+func TestSchedulerCacheSnapshotMemoStaleGraceIsBounded(t *testing.T) {
+	ctx := context.Background()
+	cache, _, recorder := newSchedulerCacheMemoUnit(t, defaultSchedulerSnapshotWriteChunkSize)
+	clock := &memoTestClock{now: time.Date(2026, 10, 20, 8, 0, 0, 0, time.UTC)}
+	cache.now = clock.Now
+	bucket := memoTestBucket(127)
+	memoPublish(t, cache, bucket, memoTestAccount(152, "old"))
+	require.Equal(t, "old", memoRead(t, cache, bucket)[0].Name)
+
+	_, metaPayload, err := marshalSchedulerCacheAccount(memoTestAccount(152, "new"))
+	require.NoError(t, err)
+	require.NoError(t, cache.rdb.Set(ctx, schedulerAccountMetaKey("152"), metaPayload, 0).Err())
+
+	// 超过直接复用时长与宽限期之和后，读取等待加载结果。
+	clock.Advance(schedulerSnapshotCacheMaxAge + schedulerSnapshotCacheStaleGrace)
+	recorder.reset()
 	require.Equal(t, "new", memoRead(t, cache, bucket)[0].Name)
+	require.Equal(t, 1, recorder.countPrefix("zrange "))
+}
+
+func TestSchedulerCacheSnapshotMemoVersionChangeWaitsForReload(t *testing.T) {
+	ctx := context.Background()
+	cache, _, _ := newSchedulerCacheMemoUnit(t, defaultSchedulerSnapshotWriteChunkSize)
+	clock := &memoTestClock{now: time.Date(2026, 10, 20, 8, 0, 0, 0, time.UTC)}
+	cache.now = clock.Now
+	bucket := memoTestBucket(128)
+	account := memoTestAccount(153, "old")
+	memoPublish(t, cache, bucket, account)
+	require.Equal(t, "old", memoRead(t, cache, bucket)[0].Name)
+
+	// 条目已超过直接复用时长；修订号变化后不走宽限期，本次读取即看到新值。
+	clock.Advance(schedulerSnapshotCacheMaxAge)
+	account.Name = "new"
+	require.NoError(t, cache.SetAccount(ctx, &account))
+	require.Equal(t, "new", memoRead(t, cache, bucket)[0].Name)
+}
+
+// blockingZRangeHook 让 ZRANGE 停在 release 关闭之前。
+type blockingZRangeHook struct {
+	release chan struct{}
+}
+
+func (h *blockingZRangeHook) DialHook(next redis.DialHook) redis.DialHook { return next }
+
+func (h *blockingZRangeHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		if strings.EqualFold(cmd.Name(), "zrange") {
+			<-h.release
+		}
+		return next(ctx, cmd)
+	}
+}
+
+func (h *blockingZRangeHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
+}
+
+func TestSchedulerCacheSnapshotMemoConcurrentLoadsAreCoalesced(t *testing.T) {
+	ctx := context.Background()
+	cache, _, recorder := newSchedulerCacheMemoUnit(t, defaultSchedulerSnapshotWriteChunkSize)
+	bucket := memoTestBucket(129)
+	memoPublish(t, cache, bucket, memoTestAccount(154, "a"), memoTestAccount(155, "b"))
+	hook := &blockingZRangeHook{release: make(chan struct{})}
+	cache.rdb.AddHook(hook)
+	recorder.reset()
+
+	const readers = 16
+	results := make(chan error, readers)
+	for i := 0; i < readers; i++ {
+		go func() {
+			accounts, hit, err := cache.GetSnapshot(ctx, bucket)
+			if err == nil && (!hit || len(accounts) != 2) {
+				err = fmt.Errorf("hit=%v accounts=%d", hit, len(accounts))
+			}
+			results <- err
+		}()
+	}
+	readyKey := "mget " + schedulerBucketKey(schedulerReadyPrefix, bucket)
+	require.Eventually(t, func() bool { return recorder.countPrefix(readyKey) == readers }, time.Second, time.Millisecond)
+	close(hook.release)
+	for i := 0; i < readers; i++ {
+		require.NoError(t, <-results)
+	}
+	require.Equal(t, 1, recorder.countPrefix("zrange "))
+	require.Equal(t, 1, recorder.countPrefix("mget "+schedulerAccountMetaPrefix))
+}
+
+func TestSchedulerCacheSnapshotMemoCanceledWaiterDoesNotAbortSharedLoad(t *testing.T) {
+	cache, _, recorder := newSchedulerCacheMemoUnit(t, defaultSchedulerSnapshotWriteChunkSize)
+	bucket := memoTestBucket(130)
+	memoPublish(t, cache, bucket, memoTestAccount(156, "a"))
+	hook := &blockingZRangeHook{release: make(chan struct{})}
+	cache.rdb.AddHook(hook)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := cache.GetSnapshot(ctx, bucket)
+		done <- err
+	}()
+	require.Eventually(t, func() bool { return recorder.countPrefix("zrange ") == 1 }, time.Second, time.Millisecond)
+	cancel()
+	require.ErrorIs(t, <-done, context.Canceled)
+
+	close(hook.release)
+	require.Eventually(t, func() bool { return memoEntryCount(cache) == 1 }, time.Second, time.Millisecond)
+	require.Equal(t, []int64{156}, memoIDs(memoRead(t, cache, bucket)))
+}
+
+func TestSchedulerCacheSnapshotMemoReloadReusesUnchangedMasters(t *testing.T) {
+	ctx := context.Background()
+	cache, _, _ := newSchedulerCacheMemoUnit(t, defaultSchedulerSnapshotWriteChunkSize)
+	bucket := memoTestBucket(131)
+	changed := memoTestAccount(158, "b")
+	memoPublish(t, cache, bucket, memoTestAccount(157, "a"), changed, memoTestAccount(159, "c"))
+	memoRead(t, cache, bucket)
+	before := cache.lookupSnapshotEntry(bucket.String())
+	require.NotNil(t, before)
+
+	changed.Name = "b2"
+	require.NoError(t, cache.SetAccount(ctx, &changed))
+	got := memoRead(t, cache, bucket)
+	require.Equal(t, "b2", got[1].Name)
+	after := cache.lookupSnapshotEntry(bucket.String())
+	require.NotSame(t, before, after)
+	require.Same(t, before.accounts[0], after.accounts[0])
+	require.NotSame(t, before.accounts[1], after.accounts[1])
+	require.Same(t, before.accounts[2], after.accounts[2])
+	require.Equal(t, "b", before.accounts[1].Name, "reload must not modify the previous master")
+}
+
+// 服务层按该方法签名探测值切片读取。
+var _ interface {
+	GetSnapshotValues(ctx context.Context, bucket service.SchedulerBucket) ([]service.Account, bool, error)
+} = (*schedulerCache)(nil)
+
+func TestSchedulerCacheSnapshotMemoReloadRedecodesMastersAfterRuntimeMappingChange(t *testing.T) {
+	ctx := context.Background()
+	cache, _, _ := newSchedulerCacheMemoUnit(t, defaultSchedulerSnapshotWriteChunkSize)
+	bucket := memoTestBucket(134)
+	changed := memoTestAccount(167, "b")
+	memoPublish(t, cache, bucket, memoTestAccount(166, "a"), changed)
+	memoRead(t, cache, bucket)
+	before := cache.lookupSnapshotEntry(bucket.String())
+	require.True(t, before.accounts[0].SharedSnapshotCurrent())
+
+	xai.SetRuntimeModelMappingOptions(xai.RuntimeModelMappingOptions())
+	require.False(t, before.accounts[0].SharedSnapshotCurrent())
+	changed.Name = "b2"
+	require.NoError(t, cache.SetAccount(ctx, &changed))
+	memoRead(t, cache, bucket)
+	after := cache.lookupSnapshotEntry(bucket.String())
+	require.NotSame(t, before.accounts[0], after.accounts[0], "a master prepared under an older runtime mapping version is decoded again")
+	require.True(t, after.accounts[0].SharedSnapshotCurrent())
+}
+
+func TestSchedulerCacheSnapshotMemoStaleEntryStartsOneBackgroundReload(t *testing.T) {
+	ctx := context.Background()
+	cache, _, recorder := newSchedulerCacheMemoUnit(t, defaultSchedulerSnapshotWriteChunkSize)
+	clock := &memoTestClock{now: time.Date(2026, 10, 20, 8, 0, 0, 0, time.UTC)}
+	cache.now = clock.Now
+	bucket := memoTestBucket(135)
+	memoPublish(t, cache, bucket, memoTestAccount(168, "old"))
+	require.Equal(t, "old", memoRead(t, cache, bucket)[0].Name)
+	stale := cache.lookupSnapshotEntry(bucket.String())
+
+	_, metaPayload, err := marshalSchedulerCacheAccount(memoTestAccount(168, "new"))
+	require.NoError(t, err)
+	require.NoError(t, cache.rdb.Set(ctx, schedulerAccountMetaKey("168"), metaPayload, 0).Err())
+	hook := &blockingZRangeHook{release: make(chan struct{})}
+	cache.rdb.AddHook(hook)
+	clock.Advance(schedulerSnapshotCacheMaxAge)
+	recorder.reset()
+
+	for i := 0; i < 5; i++ {
+		require.Equal(t, "old", memoRead(t, cache, bucket)[0].Name)
+	}
+	require.True(t, stale.refreshing.Load())
+	require.Eventually(t, func() bool { return recorder.countPrefix("zrange ") == 1 }, time.Second, time.Millisecond)
+	close(hook.release)
+	require.Eventually(t, func() bool { return !stale.refreshing.Load() }, time.Second, time.Millisecond)
+	require.Equal(t, "new", memoRead(t, cache, bucket)[0].Name)
+	require.Equal(t, 1, recorder.countPrefix("zrange "))
+}
+
+func TestSchedulerCacheSnapshotMemoLastUsedWriteInvalidatesLocalCache(t *testing.T) {
+	ctx := context.Background()
+	cache, _, recorder := newSchedulerCacheMemoUnit(t, defaultSchedulerSnapshotWriteChunkSize)
+	clock := &memoTestClock{now: time.Date(2026, 10, 20, 8, 0, 0, 0, time.UTC)}
+	cache.now = clock.Now
+	bucket := memoTestBucket(132)
+	memoPublish(t, cache, bucket, memoTestAccount(160, "a"))
+	require.Nil(t, memoRead(t, cache, bucket)[0].LastUsedAt)
+
+	// 其它进程写入的 last_used 在复用时长内不可见。
+	usedAt := time.Date(2026, 10, 20, 7, 0, 0, 0, time.UTC)
+	require.NoError(t, cache.rdb.Set(ctx, schedulerLastUsedKey("160"), strconv.FormatInt(usedAt.UnixMilli(), 10), 0).Err())
+	require.Nil(t, memoRead(t, cache, bucket)[0].LastUsedAt)
+
+	// 本进程写入 last_used 后立即可见。
+	later := usedAt.Add(time.Minute)
+	require.NoError(t, cache.UpdateLastUsed(ctx, map[int64]time.Time{160: later}))
+	recorder.reset()
+	got := memoRead(t, cache, bucket)
+	require.Equal(t, later, *got[0].LastUsedAt)
+	require.Equal(t, 1, recorder.countPrefix("mget "+schedulerAccountLastUsedPrefix))
+	require.Zero(t, recorder.countPrefix("zrange "))
+}
+
+func TestSchedulerCacheSnapshotMemoChunkedMGetUsesOnePipeline(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	t.Cleanup(func() { _ = rdb.Close() })
+	recorder := &schedulerCacheCommandRecorder{}
+	rdb.AddHook(recorder)
+	cache, ok := newSchedulerCacheWithChunkSizes(rdb, 2, defaultSchedulerSnapshotWriteChunkSize).(*schedulerCache)
+	require.True(t, ok)
+	bucket := memoTestBucket(133)
+	accounts := make([]service.Account, 0, 5)
+	for id := int64(161); id <= 165; id++ {
+		accounts = append(accounts, memoTestAccount(id, strconv.FormatInt(id, 10)))
+	}
+	memoPublish(t, cache, bucket, accounts...)
+
+	recorder.reset()
+	got := memoRead(t, cache, bucket)
+	require.Equal(t, []int64{161, 162, 163, 164, 165}, memoIDs(got))
+	batches := recorder.pipelineBatches()
+	require.Len(t, batches, 2, "metadata and last_used each travel in one pipeline")
+	for _, batch := range batches {
+		require.Len(t, batch, 3)
+	}
+	require.Equal(t, 3, recorder.countPrefix("mget "+schedulerAccountMetaPrefix))
 }
 
 func TestSchedulerCacheSnapshotMemoEvictsLongIdleEntries(t *testing.T) {
