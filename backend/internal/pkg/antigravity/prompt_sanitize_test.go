@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewPromptRule(t *testing.T) {
@@ -125,16 +127,13 @@ func TestPromptSanitizerSanitizeRequestJSON(t *testing.T) {
 	if got := sanitizer.SanitizeRequestJSON(bare); got != 1 {
 		t.Fatalf("bare request replacement count = %d, want 1", got)
 	}
-	parts := bare["systemInstruction"].(map[string]any)["parts"].([]any)
-	if text := parts[0].(map[string]any)["text"].(string); text != "RFC-2119 keywords" {
-		t.Fatalf("systemInstruction text = %q", text)
-	}
+	require.Equal(t, map[string]any{
+		"parts": []any{map[string]any{"text": "RFC-2119 keywords"}},
+	}, bare["systemInstruction"])
 	// contents 不属于 systemInstruction，必须保持原样。
-	contents := bare["contents"].([]any)
-	userText := contents[0].(map[string]any)["parts"].([]any)[0].(map[string]any)["text"].(string)
-	if userText != "RFC 2119 in user content" {
-		t.Fatalf("contents should not be rewritten, got %q", userText)
-	}
+	require.Equal(t, []any{
+		map[string]any{"parts": []any{map[string]any{"text": "RFC 2119 in user content"}}},
+	}, bare["contents"])
 
 	wrapped := map[string]any{
 		"project": "p",

@@ -73,13 +73,13 @@ func resolveAntigravityPromptSanitizeSource() (key, payload, source string) {
 		}
 		return "none", "", ""
 	}
-	info, err := os.Stat(path)
+	info, err := os.Stat(path) //nolint:gosec // G703: 路径仅来自运维设置的规则文件环境变量，非请求输入
 	if err != nil {
 		return "file:" + path + ":missing", "", "file " + path
 	}
 	// 先 stat 再读取；读取失败（例如文件被并发删除）时用错误作为缓存键，
 	// 避免每个请求都重复读取与重复告警。
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // G703: 读取同一运维配置路径，非请求输入
 	if err != nil {
 		return fmt.Sprintf("file:%s:readerr:%v", path, err), "", "file " + path
 	}
