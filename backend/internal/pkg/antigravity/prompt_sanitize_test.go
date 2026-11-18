@@ -165,6 +165,41 @@ func mustRule(t *testing.T, name, pattern, replacement string) PromptRule {
 	return rule
 }
 
+func TestPromptSanitizerDSHFingerprintRules(t *testing.T) {
+	sanitizer := NewPromptSanitizer([]PromptRule{
+		mustRule(t, "dsh-harness-identity", `(?i)You are an AI agent powered by DeepSeek Harness\.`, "You are an AI agent powered by an agent runtime."),
+		mustRule(t, "dsh-harness-token", `(?i)\bDeepSeek Harness\b`, "agent runtime"),
+		mustRule(t, "browser-dom-context", `(?i)The browser provides no implicit DOM, route, or screenshot context\.`, "The browser provides no implicit DOM context."),
+	})
+
+	input := strings.Join([]string{
+		"You are an AI agent powered by DeepSeek Harness.",
+		"",
+		"The runtime context names the DeepSeek Harness implementation checkout.",
+		"",
+		"You are interacting with the user through the DeepSeek Harness Web GUI whose URL the runtime context names.",
+		"",
+		"The browser provides no implicit DOM, route, or screenshot context.",
+	}, "\n")
+
+	out, count := sanitizer.SanitizeText(input)
+	if count != 4 {
+		t.Fatalf("replacement count = %d, want 4 (identity + 2 tokens + browser sentence)", count)
+	}
+	if strings.Contains(out, "DeepSeek Harness") {
+		t.Fatalf("harness token left in output: %q", out)
+	}
+	if strings.Contains(out, "implicit DOM, route, or screenshot context") {
+		t.Fatalf("browser fingerprint sentence left in output: %q", out)
+	}
+	if !strings.Contains(out, "You are an AI agent powered by an agent runtime.") {
+		t.Fatalf("identity sentence not rewritten: %q", out)
+	}
+	if !strings.Contains(out, "The browser provides no implicit DOM context.") {
+		t.Fatalf("browser sentence not rewritten: %q", out)
+	}
+}
+
 func TestBuildSystemInstructionAppliesPromptSanitizer(t *testing.T) {
 	sanitizer := NewPromptSanitizer([]PromptRule{
 		mustRule(t, "rfc", `(?i)RFC\s+2119\s+keywords\s*:`, "RFC-2119 keywords:"),
