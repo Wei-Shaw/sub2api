@@ -1769,6 +1769,113 @@ func TestOpsCaptureWriter_TerminalMetadataSurvivesBodyCaptureTruncation(t *testi
 	require.Equal(t, "busy", state.terminalError.Message)
 }
 
+func TestOpsErrorLoggerMiddleware_TerminalFrameBetweenCaptureLimits(t *testing.T) {
+	const message = "Your input exceeds the context window of this model. Please adjust your input and try again."
+	payload := `{"type":"response.failed","padding":"` + strings.Repeat("x", opsCaptureWriterLimit) +
+		`","response":{"error":{"code":"context_length_exceeded","message":"` + message + `"}}}`
+	frame := "event: response.failed\ndata: " + payload + "\n\n"
+	require.Greater(t, len(frame), opsCaptureWriterLimit)
+	require.Less(t, len(frame), opsTerminalSSEFrameProbeLimit)
+
+	entry := logOpsTerminalFrame(t, func(c *gin.Context) { _, _ = c.Writer.WriteString(frame) })
+	require.Equal(t, http.StatusBadRequest, entry.StatusCode)
+	require.Equal(t, "invalid_request_error", entry.ErrorType)
+	require.Equal(t, message, entry.ErrorMessage)
+	require.NotNil(t, entry.UpstreamErrorMessage)
+	require.Equal(t, message, *entry.UpstreamErrorMessage)
+	require.NotNil(t, entry.UpstreamStatusCode)
+	require.Equal(t, http.StatusBadRequest, *entry.UpstreamStatusCode)
+}
+
+func TestOpsErrorLoggerMiddleware_TerminalFrameOverProbeLimitUsesForwardedRecord(t *testing.T) {
+	const message = "Your input exceeds the context window of this model. Please adjust your input and try again."
+	padding := strings.Repeat("x", 2*opsTerminalSSEFrameProbeLimit) + "past-capture-bound"
+	payload := `{"type":"response.failed","authorization":"Bearer must-not-persist","padding":"` + padding +
+		`","response":{"error":{"code":"context_length_exceeded","message":"` + message + `"}}}`
+	frame := "event: response.failed\ndata: " + payload + "\n\n"
+	require.Greater(t, len(frame), 2*opsTerminalSSEFrameProbeLimit)
+
+	entry := logOpsTerminalFrame(t, func(c *gin.Context) {
+		service.SetOpsForwardedTerminalFailure(c, "response.failed", []byte(payload))
+		_, _ = c.Writer.WriteString(frame)
+	})
+	require.Equal(t, http.StatusBadRequest, entry.StatusCode)
+	require.Equal(t, "invalid_request_error", entry.ErrorType)
+	require.Equal(t, message, entry.ErrorMessage)
+	require.NotNil(t, entry.UpstreamErrorMessage)
+	require.Equal(t, message, *entry.UpstreamErrorMessage)
+	require.NotNil(t, entry.UpstreamStatusCode)
+	require.Equal(t, http.StatusBadRequest, *entry.UpstreamStatusCode)
+	require.LessOrEqual(t, len(entry.ErrorBody), opsCaptureWriterLimit)
+	require.Contains(t, entry.ErrorBody, `"payload_truncated":true`)
+	require.NotContains(t, entry.ErrorBody, "past-capture-bound")
+	require.NotContains(t, entry.ErrorBody, "must-not-persist")
+	require.NotContains(t, entry.ErrorMessage, "must-not-persist")
+}
+
+func TestOpsErrorLoggerMiddleware_ForwardedRecordRequiresStructuredError(t *testing.T) {
+	const frame = "event: error\ndata: {\"type\":\"error\",\"code\":\"rate_limit_exceeded\",\"message\":\"try later\"}\n\n"
+	for _, tt := range []struct {
+		name      string
+		payload   string
+		status    int
+		errorType string
+		message   string
+	}{
+		{"structured", `{"response":{"error":{"code":"context_length_exceeded","message":"input too long"}}}`, http.StatusBadRequest, "invalid_request_error", "input too long"},
+		{"no error object", `{"response":{"status":"failed"}}`, http.StatusTooManyRequests, "rate_limit_error", "try later"},
+		{"raw text", "unstructured error", http.StatusTooManyRequests, "rate_limit_error", "try later"},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			entry := logOpsTerminalFrame(t, func(c *gin.Context) {
+				service.SetOpsForwardedTerminalFailure(c, "response.failed", []byte(tt.payload))
+				_, _ = c.Writer.WriteString(frame)
+			})
+			require.Equal(t, tt.status, entry.StatusCode)
+			require.Equal(t, tt.errorType, entry.ErrorType)
+			require.Equal(t, tt.message, entry.ErrorMessage)
+		})
+	}
+}
+
+func TestOpsErrorLoggerMiddleware_KeepsBodyResponseFailedOverDataOnlyProbeError(t *testing.T) {
+	const frame = "data: {\"type\":\"error\",\"code\":\"rate_limit_exceeded\",\"message\":\"try later\"}\n\n" +
+		"data: {\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"context_length_exceeded\",\"message\":\"input too long\"}}}\n\n"
+	entry := logOpsTerminalFrame(t, func(c *gin.Context) { _, _ = c.Writer.WriteString(frame) })
+	require.Equal(t, http.StatusBadRequest, entry.StatusCode)
+	require.Equal(t, "invalid_request_error", entry.ErrorType)
+	require.Equal(t, "input too long", entry.ErrorMessage)
+}
+
+func TestOpsErrorLoggerMiddleware_KeepsBodyErrorOverTruncatedProbeResponseFailed(t *testing.T) {
+	frame := "event: error\ndata: {\"type\":\"error\",\"code\":\"rate_limit_exceeded\",\"message\":\"try later\"}\n\n" +
+		": " + strings.Repeat("x", opsCaptureWriterLimit) + "\n\n" +
+		"event: response.failed\ndata: {\"padding\":\"" + strings.Repeat("x", opsTerminalSSEFrameProbeLimit) +
+		"\",\"response\":{\"error\":{\"code\":\"context_length_exceeded\",\"message\":\"input too long\"}}}\n\n"
+	entry := logOpsTerminalFrame(t, func(c *gin.Context) { _, _ = c.Writer.WriteString(frame) })
+	require.Equal(t, http.StatusTooManyRequests, entry.StatusCode)
+	require.Equal(t, "rate_limit_error", entry.ErrorType)
+	require.Equal(t, "try later", entry.ErrorMessage)
+}
+
+func logOpsTerminalFrame(t *testing.T, write gin.HandlerFunc) *service.OpsInsertErrorLogInput {
+	t.Helper()
+	setupOpsErrorLogTestQueue(t, 2)
+	gin.SetMode(gin.TestMode)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/responses", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+		write(c)
+	})
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	return (<-opsErrorLogQueue).entry
+}
+
 func TestOpsErrorLoggerMiddleware_LargeTerminalFrameUsesEventFallback(t *testing.T) {
 	setupOpsErrorLogTestQueue(t, 2)
 	gin.SetMode(gin.TestMode)
