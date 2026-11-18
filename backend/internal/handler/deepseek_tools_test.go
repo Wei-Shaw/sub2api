@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -245,4 +246,93 @@ func TestDeepseekToolsSkipsAccountWithoutToolsCapability(t *testing.T) {
 	router.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
 	require.Contains(t, rec.Body.String(), "No available DeepSeek accounts")
+}
+
+// deepseekToolsSlotCache 只实现账号槽位的抢/放，用于断言选号阶段抢到的槽位
+// 是否被归还（其余方法由内嵌接口占位，调用即 panic，便于暴露意外依赖）。
+type deepseekToolsSlotCache struct {
+	service.ConcurrencyCache
+	mu       sync.Mutex
+	held     map[string]struct{}
+	acquires int
+	releases int
+}
+
+func (c *deepseekToolsSlotCache) AcquireAccountSlot(_ context.Context, _ int64, maxConcurrency int, requestID string) (bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.held) >= maxConcurrency {
+		return false, nil
+	}
+	c.held[requestID] = struct{}{}
+	c.acquires++
+	return true, nil
+}
+
+func (c *deepseekToolsSlotCache) ReleaseAccountSlot(_ context.Context, _ int64, requestID string) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.releases++
+	delete(c.held, requestID)
+	return nil
+}
+
+func (c *deepseekToolsSlotCache) outstanding() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.held)
+}
+
+func (c *deepseekToolsSlotCache) releaseCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.releases
+}
+
+// 选号已抢到槽（Acquired=true），随后能力过滤判定该账号不支持工具端点，
+// 换号前必须归还槽位：请求仍以 503 收尾，但槽位不得滞留到 TTL 到期。
+func TestDeepseekToolsReleasesAccountSlotWhenCapabilityRejectsAccount(t *testing.T) {
+	account := service.Account{
+		ID:          951,
+		Platform:    service.PlatformDeepseek,
+		Type:        service.AccountTypeAPIKey,
+		Status:      service.StatusActive,
+		Schedulable: true,
+		Concurrency: 1,
+		Credentials: map[string]any{
+			"api_key":  "sk-test",
+			"base_url": "https://www.crazyhub.cn/v1",
+		},
+	}
+	require.False(t, account.SupportsOpenAIEndpointCapability(service.OpenAIEndpointCapabilityDeepseekTools),
+		"测试账号必须是「已选号但不支持工具端点」的中转账号")
+
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	t.Cleanup(billing.Stop)
+	slotCache := &deepseekToolsSlotCache{held: map[string]struct{}{}}
+	concurrencyService := service.NewConcurrencyService(slotCache)
+	gatewayService := service.NewOpenAIGatewayService(
+		deepseekToolsAccountRepo{accounts: []service.Account{account}},
+		nil, nil, nil, nil, nil, nil, cfg,
+		nil, concurrencyService, nil, nil, billing, nil, nil, nil, nil, nil, nil, nil, nil, nil,
+	)
+	h := &OpenAIGatewayHandler{
+		gatewayService:      gatewayService,
+		billingCacheService: billing,
+		apiKeyService:       &service.APIKeyService{},
+		concurrencyHelper:   &ConcurrencyHelper{concurrencyService: concurrencyService},
+		cfg:                 cfg,
+	}
+	router := newDeepseekToolsRouter(h, service.PlatformDeepseek, "search")
+	req := httptest.NewRequest(http.MethodPost, "/v1/tools/search", strings.NewReader(`{"query":"golang"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
+	require.Contains(t, rec.Body.String(), "No available DeepSeek accounts")
+	require.Equal(t, 1, slotCache.acquires, "选号应抢到一次账号槽")
+	require.Equal(t, 1, slotCache.releaseCount(), "能力过滤跳号前必须归还选号抢到的槽位")
+	require.Equal(t, 0, slotCache.outstanding(), "槽位不得滞留")
 }
