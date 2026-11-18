@@ -294,13 +294,8 @@ func validateStorageConfig(cfg storageConfig) error {
 		if ep.Protocol != ProtocolOpenAICompatible && ep.Protocol != ProtocolOpenAIDecisions {
 			return infraerrors.BadRequest("prompt_audit_invalid_endpoint_protocol", "审计节点协议仅支持 OpenAI 兼容（Qwen3Guard）或 OpenAI Decisions")
 		}
-		if ep.Protocol == ProtocolOpenAIDecisions {
-			if ep.InputLimit > MaxDecisionsInputLimit {
-				return infraerrors.BadRequest("prompt_audit_invalid_input_limit", fmt.Sprintf("OpenAI Decisions 节点输入上限不能超过 %d 个字符", MaxDecisionsInputLimit))
-			}
-			if !(ep.CategoryThreshold > 0 && ep.CategoryThreshold <= 1) {
-				return infraerrors.BadRequest("prompt_audit_invalid_category_threshold", "类别阈值必须大于 0 且不超过 1")
-			}
+		if ep.Protocol == ProtocolOpenAIDecisions && !(ep.CategoryThreshold > 0 && ep.CategoryThreshold <= 1) {
+			return infraerrors.BadRequest("prompt_audit_invalid_category_threshold", "类别阈值必须大于 0 且不超过 1")
 		}
 		if _, err := NormalizeBaseURL(ep.BaseURL); err != nil {
 			return err
@@ -308,8 +303,8 @@ func validateStorageConfig(cfg storageConfig) error {
 		if ep.TimeoutMS < MinTimeoutMS || ep.TimeoutMS > MaxTimeoutMS {
 			return infraerrors.BadRequest("prompt_audit_invalid_timeout", "审计节点超时超出允许范围")
 		}
-		if ep.InputLimit < MinInputLimit || ep.InputLimit > MaxInputLimit {
-			return infraerrors.BadRequest("prompt_audit_invalid_input_limit", "审计节点输入上限超出允许范围")
+		if err := validateInputLimit(ep.Protocol, ep.InputLimit); err != nil {
+			return err
 		}
 		if ep.Enabled {
 			enabled++
@@ -353,9 +348,22 @@ func validateUpdateConfigRequest(req UpdateConfigRequest) error {
 		if endpoint.TimeoutMS < MinTimeoutMS || endpoint.TimeoutMS > MaxTimeoutMS {
 			return infraerrors.BadRequest("prompt_audit_invalid_timeout", "审计节点超时超出允许范围")
 		}
-		if endpoint.InputLimit < MinInputLimit || endpoint.InputLimit > MaxInputLimit {
-			return infraerrors.BadRequest("prompt_audit_invalid_input_limit", "审计节点输入上限超出允许范围")
+		if err := validateInputLimit(strings.TrimSpace(endpoint.Protocol), endpoint.InputLimit); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// validateInputLimit checks a node's characters per request against its
+// protocol: a Decisions request carries far more text than a Qwen3Guard one.
+func validateInputLimit(protocol string, limit int) error {
+	maxLimit := MaxInputLimit
+	if protocol == ProtocolOpenAIDecisions {
+		maxLimit = MaxDecisionsInputLimit
+	}
+	if limit < MinInputLimit || limit > maxLimit {
+		return infraerrors.BadRequest("prompt_audit_invalid_input_limit", fmt.Sprintf("审计节点输入上限应在 %d 到 %d 个字符之间", MinInputLimit, maxLimit))
 	}
 	return nil
 }

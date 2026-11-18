@@ -5,13 +5,14 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"testing/quick"
 
 	"github.com/stretchr/testify/require"
 )
 
 // Digest of decisions_policy/ when the testdata responses were captured from the
 // live API. Update it together with the policy files and the captured responses.
-const validatedDecisionsPolicyDigest = "2eda03ec0e0f303490b42c6b48b2342a81fc11b2fbb5472ca1dc31360ae1e548"
+const validatedDecisionsPolicyDigest = "ef849ddd27ea80659ae7760f2d033617d3596b1eb515b6849fb8257966af09ce"
 
 func TestDecisionsPolicyMatchesValidatedPolicy(t *testing.T) {
 	policy := promptDecisionsPolicy
@@ -62,9 +63,12 @@ func TestDecisionsRealResponsesMapToGatewayActions(t *testing.T) {
 	require.Equal(t, ActionBlock, jailbreak.Action)
 	require.Greater(t, jailbreak.ScannerScores["jailbreak"], DefaultCategoryThreshold)
 
+	// This captured response refuses the non_violent_illegal_acts question.
 	violent := verdictFor(t, loadDecisionsFixture(t, "violent-explosive"), AllScannerIDs)
 	require.Equal(t, "Unsafe", violent.Safety)
 	require.Contains(t, violent.MatchedScanners, "violent")
+	require.Contains(t, violent.Categories, DecisionsRefusalCategory)
+	require.Equal(t, "refused: non_violent_illegal_acts", violent.ScannerEvidence[DecisionsRefusalCategory])
 	require.Equal(t, ActionBlock, violent.Action)
 
 	benign := verdictFor(t, loadDecisionsFixture(t, "benign-long-compaction-summary"), AllScannerIDs)
@@ -76,7 +80,7 @@ func TestDecisionsRealResponsesMapToGatewayActions(t *testing.T) {
 // Unsafe with categories that are all disabled warns instead of blocking,
 // the same rule ParseQwen3Guard applies.
 func TestDecisionsUnsafeOnlyDisabledCategoriesWarns(t *testing.T) {
-	result := verdictFor(t, loadDecisionsFixture(t, "violent-explosive"), []string{"pii"})
+	result := verdictFor(t, loadDecisionsFixture(t, "jailbreak-dan"), []string{"pii"})
 	require.Equal(t, "Unsafe", result.Safety)
 	require.Empty(t, result.MatchedScanners)
 	require.Equal(t, ActionWarn, result.Action)
@@ -181,10 +185,11 @@ func TestDecisionsEndpointConfigDefaultsAndLimits(t *testing.T) {
 	require.Equal(t, "https://api.openai.com/v1/decisions", url)
 
 	for name, raw := range map[string]string{
-		"input limit above input_json cap": `{"endpoints":[{"id":"d1","name":"D","protocol":"openai_decisions","base_url":"https://api.openai.com","input_limit":40001}]}`,
-		"threshold above one":              `{"endpoints":[{"id":"d1","name":"D","protocol":"openai_decisions","base_url":"https://api.openai.com","category_threshold":1.5}]}`,
-		"negative threshold":               `{"endpoints":[{"id":"d1","name":"D","protocol":"openai_decisions","base_url":"https://api.openai.com","category_threshold":-0.1}]}`,
-		"unknown protocol":                 `{"endpoints":[{"id":"d1","name":"D","protocol":"anthropic","base_url":"https://api.openai.com"}]}`,
+		"input limit above request cap":  `{"endpoints":[{"id":"d1","name":"D","protocol":"openai_decisions","base_url":"https://api.openai.com","input_limit":360001}]}`,
+		"qwen input limit above its cap": `{"endpoints":[{"id":"q1","name":"Q","base_url":"http://ollama:11434","input_limit":100001}]}`,
+		"threshold above one":            `{"endpoints":[{"id":"d1","name":"D","protocol":"openai_decisions","base_url":"https://api.openai.com","category_threshold":1.5}]}`,
+		"negative threshold":             `{"endpoints":[{"id":"d1","name":"D","protocol":"openai_decisions","base_url":"https://api.openai.com","category_threshold":-0.1}]}`,
+		"unknown protocol":               `{"endpoints":[{"id":"d1","name":"D","protocol":"anthropic","base_url":"https://api.openai.com"}]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
 			_, err := ParseStorageConfig(raw)
@@ -197,5 +202,96 @@ func TestDecisionsEndpointConfigDefaultsAndLimits(t *testing.T) {
 	require.Equal(t, ProtocolOpenAICompatible, qwen.Endpoints[0].Protocol)
 	require.Equal(t, DefaultGuardModel, qwen.Endpoints[0].Model)
 	require.Zero(t, qwen.Endpoints[0].CategoryThreshold)
-	require.True(t, strings.HasPrefix(promptDecisionsPolicy.CacheKey, "prompt-audit-2eda03ec"))
+	require.Equal(t, "prompt-audit-"+validatedDecisionsPolicyDigest[:32], promptDecisionsPolicy.CacheKey)
+}
+
+// PackPrioritizedText never loses or reorders text, keeps each chunk within the
+// limit, and marks every chunk that holds context with the priority separator.
+func TestPackPrioritizedTextProperties(t *testing.T) {
+	check := func(latest, context string, hasContext bool, limitSeed uint8) bool {
+		limit := int(limitSeed)%40 + 1
+		value := latest
+		if hasContext {
+			value = latest + promptAuditPrioritySeparator + context
+		}
+		chunks := PackPrioritizedText(value, limit)
+		var gotLatest, gotContext string
+		for _, chunk := range chunks {
+			before, after, found := strings.Cut(chunk, promptAuditPrioritySeparator)
+			if strings.Contains(after, promptAuditPrioritySeparator) {
+				return false
+			}
+			size := len([]rune(before)) + len([]rune(after))
+			if size == 0 || size > limit {
+				return false
+			}
+			if found {
+				if gotContext != "" && before != "" {
+					return false
+				}
+				gotLatest += before
+				gotContext += after
+			} else {
+				if gotContext != "" {
+					return false
+				}
+				gotLatest += before
+			}
+		}
+		if !hasContext {
+			context = ""
+		}
+		return gotLatest == latest && gotContext == context
+	}
+	clean := func(value string) string { return strings.ReplaceAll(value, "\x00", "") }
+	require.NoError(t, quick.Check(func(latest, context string, hasContext bool, limitSeed uint8) bool {
+		return check(clean(latest), clean(context), hasContext, limitSeed)
+	}, &quick.Config{MaxCount: 2000}))
+	require.Equal(t, []string{"ab", "c" + promptAuditPrioritySeparator + "d", promptAuditPrioritySeparator + "ef"},
+		PackPrioritizedText("abc"+promptAuditPrioritySeparator+"def", 2))
+}
+
+// One request carries the whole chunk: parts stay under the per-part size, keep
+// their section, and join back to the original text.
+func TestDecisionsRequestCarriesWholeChunkInParts(t *testing.T) {
+	latest := strings.Repeat("问", decisionsPartRunes+5)
+	context := strings.Repeat("c", 2*decisionsPartRunes+1)
+	body, err := promptDecisionsPolicy.requestBody(DefaultDecisionsModel, latest+promptAuditPrioritySeparator+context)
+	require.NoError(t, err)
+	var request struct {
+		Input []struct {
+			Role    string `json:"role"`
+			Content []struct {
+				Type string `json:"type"`
+				Data struct {
+					AuditTarget struct {
+						Section string `json:"section"`
+						Part    int    `json:"part"`
+						Parts   int    `json:"parts"`
+						Text    string `json:"text"`
+					} `json:"audit_target"`
+				} `json:"data"`
+			} `json:"content"`
+		} `json:"input"`
+	}
+	require.NoError(t, json.Unmarshal(body, &request))
+	require.Len(t, request.Input, 2)
+	parts := request.Input[1].Content
+	require.Len(t, parts, 5)
+	joined := map[string]string{}
+	for index, part := range parts {
+		target := part.Data.AuditTarget
+		require.Equal(t, "input_json", part.Type)
+		require.Equal(t, index+1, target.Part)
+		require.Equal(t, len(parts), target.Parts)
+		require.LessOrEqual(t, len([]rune(target.Text)), decisionsPartRunes)
+		encoded, err := json.Marshal(part.Data)
+		require.NoError(t, err)
+		require.Less(t, len(encoded), 256*1024)
+		joined[target.Section] += target.Text
+	}
+	require.Equal(t, latest, joined["latest_user_input"])
+	require.Equal(t, context, joined["earlier_context"])
+	require.Equal(t, "latest_user_input", parts[1].Data.AuditTarget.Section)
+	require.Equal(t, "earlier_context", parts[2].Data.AuditTarget.Section)
 }

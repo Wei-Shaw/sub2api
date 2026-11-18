@@ -26,6 +26,64 @@ func SplitRunes(value string, limit int) []string {
 	return chunks
 }
 
+// PackPrioritizedText cuts a prioritized scan text into chunks of at most limit
+// runes without separating the latest user input from its context. Unlike
+// SplitRunes it keeps promptAuditPrioritySeparator at the boundary, and a chunk
+// that holds only context starts with it, so the scanner can tell the sections
+// apart.
+func PackPrioritizedText(value string, limit int) []string {
+	if limit <= 0 {
+		return nil
+	}
+	latest, context, hasContext := strings.Cut(value, promptAuditPrioritySeparator)
+	var chunks, pieces []string
+	size := 0
+	flush := func() {
+		if size > 0 {
+			chunks = append(chunks, strings.Join(pieces, ""))
+		}
+		pieces = pieces[:0]
+		size = 0
+	}
+	write := func(runes []rune, contextSection bool) {
+		for len(runes) > 0 {
+			if size == limit {
+				flush()
+				if contextSection {
+					pieces = append(pieces, promptAuditPrioritySeparator)
+				}
+			}
+			take := min(limit-size, len(runes))
+			pieces = append(pieces, string(runes[:take]))
+			size += take
+			runes = runes[take:]
+		}
+	}
+	write([]rune(latest), false)
+	if hasContext {
+		if size == limit {
+			flush()
+		}
+		pieces = append(pieces, promptAuditPrioritySeparator)
+		write([]rune(context), true)
+	}
+	flush()
+	return chunks
+}
+
+// scanChunksFor picks how to cut the scan text: endpoints that all take whole
+// requests (Decisions) get the latest input and its context together; any
+// other endpoint keeps the latest input as its own first chunk.
+func scanChunksFor(value string, endpoints []ActiveEndpoint) []string {
+	limit := minimumInputLimit(endpoints)
+	for _, endpoint := range endpoints {
+		if endpoint.Protocol != ProtocolOpenAIDecisions {
+			return SplitRunes(value, limit)
+		}
+	}
+	return PackPrioritizedText(value, limit)
+}
+
 func AggregateResults(results []*NormalizedResult, latency time.Duration) (*NormalizedResult, error) {
 	if len(results) == 0 {
 		return nil, errors.New("prompt guard produced no complete result")

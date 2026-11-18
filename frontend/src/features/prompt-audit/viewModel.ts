@@ -11,8 +11,8 @@ export const DEFAULT_GUARD_MODEL = 'sileader/qwen3guard:0.6b'
 export const DEFAULT_DECISIONS_MODEL = 'gpt-6-luna'
 export const DEFAULT_DECISIONS_BASE_URL = 'https://api.openai.com'
 export const DEFAULT_CATEGORY_THRESHOLD = 0.5
-// The Decisions API caps input_json at 256 KiB; the backend enforces the same limit.
-export const MAX_DECISIONS_INPUT_LIMIT = 40000
+// Characters one Decisions request may carry; the backend enforces the same limit.
+export const MAX_DECISIONS_INPUT_LIMIT = 360000
 export const MAX_INPUT_LIMIT = 100000
 // Category the backend records when the Decisions model refused a question; it always blocks.
 export const DECISIONS_REFUSAL_CATEGORY = 'decisions_refusal'

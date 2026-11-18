@@ -20,9 +20,14 @@ const (
 	DefaultDecisionsModel    = "gpt-6-luna"
 	DefaultCategoryThreshold = 0.5
 	// The Decisions API caps an input_json part at 256 KiB of compact JSON.
-	// JSON escaping can expand one rune to six bytes (\u00XX), so 40000 runes
-	// stay below the cap for any text.
-	MaxDecisionsInputLimit = 40000
+	// JSON escaping can expand one rune to six bytes (\u00XX), so a part holds
+	// at most 40000 runes; one request carries as many parts as the text needs.
+	decisionsPartRunes = 40000
+	// MaxDecisionsInputLimit bounds the text of one Decisions request. Chinese
+	// text measured 0.72 tokens per character, so 360000 characters plus the
+	// policy stay under the 272K input tokens above which gpt-6-luna charges
+	// double; longer text is split into several concurrent requests.
+	MaxDecisionsInputLimit = 360000
 
 	decisionsScannerBackend = "openai-decisions"
 	// DecisionsRefusalCategory marks a result where the Decisions model refused
@@ -128,7 +133,28 @@ func loadDecisionsPolicy(rules, questionsJSON []byte) (*decisionsPolicy, error) 
 	return policy, nil
 }
 
-func (p *decisionsPolicy) requestBody(model, text string) ([]byte, error) {
+// requestBody sends the whole chunk in one request. A chunk built by
+// PackPrioritizedText marks where the latest user input ends with
+// promptAuditPrioritySeparator; text before it is the latest input and text
+// after it is earlier context. Each section is cut into input_json parts that
+// stay under the per-part size limit.
+func (p *decisionsPolicy) requestBody(model, chunk string) ([]byte, error) {
+	latest, context, _ := strings.Cut(chunk, promptAuditPrioritySeparator)
+	type section struct{ name, text string }
+	var pieces []section
+	for _, s := range []section{{"latest_user_input", latest}, {"earlier_context", context}} {
+		runes := []rune(s.text)
+		for start := 0; start < len(runes); start += decisionsPartRunes {
+			end := min(start+decisionsPartRunes, len(runes))
+			pieces = append(pieces, section{s.name, string(runes[start:end])})
+		}
+	}
+	parts := make([]any, 0, len(pieces))
+	for index, piece := range pieces {
+		parts = append(parts, map[string]any{"type": "input_json", "data": map[string]any{"audit_target": map[string]any{
+			"section": piece.name, "part": index + 1, "parts": len(pieces), "text": piece.text,
+		}}})
+	}
 	payload := map[string]any{
 		"model": model,
 		"input": []any{
@@ -139,11 +165,8 @@ func (p *decisionsPolicy) requestBody(model, text string) ([]byte, error) {
 					"prompt_cache_breakpoint": map[string]string{"mode": "explicit"},
 				}},
 			},
-			// The audited text sits in a data position so it cannot act as instructions.
-			map[string]any{
-				"role":    "user",
-				"content": []any{map[string]any{"type": "input_json", "data": map[string]any{"audit_target": map[string]string{"text": text}}}},
-			},
+			// The audited text sits in data positions so it cannot act as instructions.
+			map[string]any{"role": "user", "content": parts},
 		},
 		"questions":            p.Questions,
 		"prompt_cache_key":     p.CacheKey,
