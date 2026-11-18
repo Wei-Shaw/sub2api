@@ -91,7 +91,7 @@ import MonitorAvailabilityRow from './MonitorAvailabilityRow.vue'
 import MonitorTimeline from './MonitorTimeline.vue'
 import MonitorQuotaView from '@/components/common/MonitorQuotaView.vue'
 
-// 图标配色与 utils/platformColors.ts 的平台色对齐（新 4 家）。
+// 图标配色与 utils/platformColors.ts 的平台色对齐（新 4 家 + ollama_cloud）。
 const PROVIDER_TINT: Record<string, string> = {
   openai: 'text-emerald-600 dark:text-emerald-300',
   anthropic: 'text-orange-600 dark:text-orange-300',
@@ -102,6 +102,7 @@ const PROVIDER_TINT: Record<string, string> = {
   zhipu: 'text-indigo-600 dark:text-indigo-300',
   deepseek: 'text-teal-600 dark:text-teal-300',
   opencode_go: 'text-amber-700 dark:text-amber-300',
+  ollama_cloud: 'text-stone-600 dark:text-stone-300',
 }
 
 const props = defineProps<{

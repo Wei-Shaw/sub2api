@@ -201,7 +201,18 @@ func TestCompositeTargetPlatformMiddlewareRejectsOnlyOAuthAmbiguousOwnership(t *
 		t.Run(tc.name, func(t *testing.T) {
 			resolver := service.NewCompositeRouteResolver(nil)
 			resolver.SetModelOwnershipResolver(func(context.Context, int64, string) (service.CompositeModelOwnership, error) {
-				return service.CompositeModelOwnership{Ambiguous: true, OpenAIGatewayOAuthClaimed: tc.oauthClaimed}, nil
+				if tc.oauthClaimed {
+					// 遗留 Ambiguous 形态（无候选池）：含 OpenAI 网关族 OAuth 声明方时
+					// 入口必须拒绝，不能落到默认 Anthropic handler 后再按模型名猜平台。
+					return service.CompositeModelOwnership{Ambiguous: true, OpenAIGatewayOAuthClaimed: true}, nil
+				}
+				// composite 归属模型下 API Key 跨平台歧义是稳定候选池（Matched=true +
+				// CandidatePlatforms），由统一 OpenAI 兼容选择器解析平台，入口放行且
+				// 不在此解析单平台。
+				return service.CompositeModelOwnership{
+					Matched:            true,
+					CandidatePlatforms: []string{service.PlatformDeepseek, service.PlatformOpenAI},
+				}, nil
 			})
 			router := gin.New()
 			router.Use(gin.HandlerFunc(servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {

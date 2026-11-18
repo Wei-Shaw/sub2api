@@ -45,6 +45,9 @@ type ProviderProfile struct {
 	// ModelCatalog 表示上游 {Chat Completions 基址}/models 为每个模型给出
 	// supported_endpoints；按模型分流时据此判断模型支持哪些协议（见 model_protocol_catalog.go）。
 	ModelCatalog bool
+	// DefaultAPIProtocol 是账号未显式配置 api_protocol 时的上游协议；空值时按模型分流
+	// 的供应商为 adaptive，其余为 chat_completions。
+	DefaultAPIProtocol string
 }
 
 // providerDefaultTestModel 返回账号连接测试未指定模型时的默认模型；非多协议供应商或
@@ -209,6 +212,19 @@ var providerProfiles = map[string]*ProviderProfile{
 			},
 		},
 	},
+	PlatformOllamaCloud: {
+		Platform:    PlatformOllamaCloud,
+		DefaultMode: AccountModeOllamaLegacy,
+		Routing:     ProviderRoutingByInbound,
+		// 三种协议都有原生端点，未显式配置时按入站协议直通。
+		DefaultAPIProtocol: APIProtocolAdaptive,
+		// legacy（5h / 7d 滚动窗口）与 credits（月度美元信用池）共用同一 API Key 与端点，
+		// 区别只在额度语义（见 GetOllamaCloudAccountMode）。
+		Modes: map[string]ProviderEndpoints{
+			AccountModeOllamaLegacy:  ollamaCloudEndpoints,
+			AccountModeOllamaCredits: ollamaCloudEndpoints,
+		},
+	},
 	PlatformCline: {
 		Platform:         PlatformCline,
 		DefaultMode:      AccountModePayG,
@@ -220,6 +236,15 @@ var providerProfiles = map[string]*ProviderProfile{
 				BaseURLs: map[string]string{APIProtocolChatCompletions: DefaultClineBaseURL},
 			},
 		},
+	},
+}
+
+// ollamaCloudEndpoints 是 Ollama Cloud 各额度模式共用的官方端点（Responses 为 non-stateful）。
+var ollamaCloudEndpoints = ProviderEndpoints{
+	BaseURLs: map[string]string{
+		APIProtocolChatCompletions: DefaultOllamaCloudBaseURL,
+		APIProtocolResponses:       DefaultOllamaCloudBaseURL,
+		APIProtocolAnthropic:       DefaultOllamaCloudAnthropicBaseURL,
 	},
 }
 

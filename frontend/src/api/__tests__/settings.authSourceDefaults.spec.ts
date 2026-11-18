@@ -13,7 +13,7 @@ import { listPlatformIds } from "@/constants/platformCatalog";
 /** 与后端 AllowedQuotaPlatforms 一致的全部具体平台（平台清单）。 */
 const quotaPlatforms = [
   "anthropic", "openai", "gemini", "antigravity", "grok",
-  "kimi", "zhipu", "deepseek", "minimax", "opencode_go", "typesafe", "command_code", "cline",
+  "kimi", "zhipu", "deepseek", "minimax", "opencode_go", "typesafe", "command_code", "cline", "ollama_cloud",
 ];
 
 /** 全部平台全 null 的 map，用于断言归一化默认值 */
@@ -254,6 +254,39 @@ describe("normalizePlatformQuotasMap", () => {
     }
   });
 
+  it("预置 ollama_cloud 配额在 normalize 后保留（不再被旧 5 平台列表丢弃）", () => {
+    const result = normalizePlatformQuotasMap({
+      ollama_cloud: { daily: 3, weekly: 30, monthly: 300 },
+      kimi:         { daily: 1, weekly: null, monthly: null },
+      zhipu:        { daily: null, weekly: 2, monthly: null },
+      deepseek:     { daily: null, weekly: null, monthly: 4 },
+      minimax:      { daily: 0.5, weekly: null, monthly: null },
+      opencode_go:  { daily: null, weekly: null, monthly: null },
+    });
+    expect(result.ollama_cloud).toEqual({ daily: 3, weekly: 30, monthly: 300 });
+    expect(result.kimi).toEqual({ daily: 1, weekly: null, monthly: null });
+    expect(result.zhipu).toEqual({ daily: null, weekly: 2, monthly: null });
+    expect(result.deepseek).toEqual({ daily: null, weekly: null, monthly: 4 });
+    expect(result.minimax).toEqual({ daily: 0.5, weekly: null, monthly: null });
+    expect(result.opencode_go).toEqual({ daily: null, weekly: null, monthly: null });
+  });
+
+  it("保留未知平台 key（后端新加、前端未收录）", () => {
+    const result = normalizePlatformQuotasMap({
+      anthropic: { daily: 5, weekly: null, monthly: null },
+      some_future_platform: { daily: 7, weekly: 8, monthly: 9 },
+    } as DefaultPlatformQuotasMap);
+    expect(result.some_future_platform).toEqual({ daily: 7, weekly: 8, monthly: 9 });
+    expect(result.anthropic).toEqual({ daily: 5, weekly: null, monthly: null });
+  });
+
+  it("未知平台的非 number 值归一化为 null", () => {
+    const result = normalizePlatformQuotasMap({
+      some_future_platform: { daily: "50" as unknown as number, weekly: undefined as unknown as number, monthly: null },
+    } as DefaultPlatformQuotasMap);
+    expect(result.some_future_platform).toEqual({ daily: null, weekly: null, monthly: null });
+  });
+
   it("非 number 类型的值归一化为 null", () => {
     const result = normalizePlatformQuotasMap({
       anthropic: { daily: "50" as unknown as number, weekly: undefined as unknown as number, monthly: null },
@@ -292,6 +325,20 @@ describe("sanitizePlatformQuotasMap", () => {
     });
     expect(result.gemini?.daily).toBe(null);
     expect(result.gemini?.weekly).toBe(null);
+  });
+
+  it("预置 ollama_cloud 配额清洗后保留（提交 payload 不再丢行）", () => {
+    const result = sanitizePlatformQuotasMap({
+      ollama_cloud: { daily: 3, weekly: 0, monthly: null },
+    });
+    expect(result.ollama_cloud).toEqual({ daily: 3, weekly: 0, monthly: null });
+  });
+
+  it("保留未知平台 key 且同样清洗其值", () => {
+    const result = sanitizePlatformQuotasMap({
+      some_future_platform: { daily: 7, weekly: -3, monthly: "x" as unknown as number },
+    } as DefaultPlatformQuotasMap);
+    expect(result.some_future_platform).toEqual({ daily: 7, weekly: null, monthly: null });
   });
 
   it("缺失平台填充为全 null", () => {

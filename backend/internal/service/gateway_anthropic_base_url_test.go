@@ -49,11 +49,14 @@ func TestGatewayService_AdaptiveAnthropicBaseURLRouting(t *testing.T) {
 
 		req, _, err := svc.buildUpstreamRequest(context.Background(), c, account, body, "test-key", "apikey", "deepseek-chat", false, false)
 		require.NoError(t, err)
-		require.Equal(t, "https://anthropic.example.com/v1/messages?beta=true", req.URL.String())
+		// composite 语义：协议 base（GetAnthropicProtocolBaseURL 非空）的 Anthropic
+		// 端点按版本感知拼接且不附加 ?beta=true（第三方端点不接受该参数），与
+		// nativeAnthropicMessagesURL / anthropicProtocolEndpointURL 同一规则。
+		require.Equal(t, "https://anthropic.example.com/v1/messages", req.URL.String())
 
 		countReq, _, err := svc.buildCountTokensRequest(context.Background(), c, account, body, "test-key", "apikey", "deepseek-chat", false)
 		require.NoError(t, err)
-		require.Equal(t, "https://anthropic.example.com/v1/messages/count_tokens?beta=true", countReq.URL.String())
+		require.Equal(t, "https://anthropic.example.com/v1/messages/count_tokens", countReq.URL.String())
 	})
 
 	t.Run("missing anthropic base uses provider fallback", func(t *testing.T) {
@@ -62,7 +65,7 @@ func TestGatewayService_AdaptiveAnthropicBaseURLRouting(t *testing.T) {
 		})
 		req, _, err := svc.buildUpstreamRequest(context.Background(), gatewayAnthropicBaseURLContext(t), account, body, "test-key", "apikey", "deepseek-chat", false, false)
 		require.NoError(t, err)
-		require.Equal(t, "https://api.deepseek.com/anthropic/v1/messages?beta=true", req.URL.String())
+		require.Equal(t, "https://api.deepseek.com/anthropic/v1/messages", req.URL.String())
 	})
 
 	t.Run("ordinary anthropic api key keeps base_url fallback", func(t *testing.T) {
@@ -90,17 +93,17 @@ func TestGatewayService_AnthropicPassthroughAndCountTokensUseSelectedBase(t *tes
 
 	passthroughReq, wireBody, err := svc.buildUpstreamRequestAnthropicAPIKeyPassthrough(context.Background(), c, account, body, "test-key")
 	require.NoError(t, err)
-	require.Equal(t, "https://ollama.com/v1/messages?beta=true", passthroughReq.URL.String())
+	require.Equal(t, "https://ollama.com/v1/messages", passthroughReq.URL.String())
 	require.Equal(t, "Bearer test-key", passthroughReq.Header.Get("Authorization"))
 	require.Equal(t, int64(65535), gjson.GetBytes(wireBody, "max_tokens").Int())
 
 	countPassthroughReq, err := svc.buildCountTokensRequestAnthropicAPIKeyPassthrough(context.Background(), c, account, body, "test-key")
 	require.NoError(t, err)
-	require.Equal(t, "https://ollama.com/v1/messages/count_tokens?beta=true", countPassthroughReq.URL.String())
+	require.Equal(t, "https://ollama.com/v1/messages/count_tokens", countPassthroughReq.URL.String())
 	require.Equal(t, "Bearer test-key", countPassthroughReq.Header.Get("Authorization"))
 
 	countReq, _, err := svc.buildCountTokensRequest(context.Background(), c, account, body, "test-key", "apikey", "deepseek-v4-flash", false)
 	require.NoError(t, err)
-	require.Equal(t, "https://ollama.com/v1/messages/count_tokens?beta=true", countReq.URL.String())
+	require.Equal(t, "https://ollama.com/v1/messages/count_tokens", countReq.URL.String())
 	require.Equal(t, "Bearer test-key", countReq.Header.Get("Authorization"))
 }
