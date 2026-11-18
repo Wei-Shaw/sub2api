@@ -99,3 +99,14 @@ func TestRedactCredentials_AllKnownSensitiveKeys(t *testing.T) {
 		require.True(t, status["has_"+k], "key %s 应在 status 中标记为已配置", k)
 	}
 }
+
+func TestRedactCredentials_HidesOpenDesignControlKey(t *testing.T) {
+	out, _ := RedactCredentials(map[string]any{
+		"api_key":                 "sk-amr",
+		"opendesign_control_key":  "vela_ctrl_x",
+		"opendesign_workspace_id": "ws-1",
+	})
+	require.NotContains(t, out, "opendesign_control_key")
+	require.NotContains(t, out, "api_key")
+	require.Equal(t, "ws-1", out["opendesign_workspace_id"])
+}

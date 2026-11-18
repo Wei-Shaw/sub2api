@@ -15,7 +15,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// OpenDesign 一键设备授权管理端接口测试（2026-11-15 需求文档 §8 验收用例）。
+// OpenDesign 一键设备授权管理端接口测试。
+
+// openDesignTestPrefix mirrors the production mount point
+// (/api/v1/admin + /accounts). Registering the same constants the router uses
+// keeps the tests honest about the real URL shape.
+const openDesignTestPrefix = "/api/v1/admin/accounts"
+
+func registerOpenDesignRoutes(handler *AccountHandler) *gin.Engine {
+	router := gin.New()
+	accounts := router.Group(openDesignTestPrefix)
+	accounts.POST(OpenDesignDeviceAuthRoute, handler.CreateOpenDesignDeviceAuth)
+	accounts.GET(OpenDesignDeviceAuthStatusRoute, handler.GetOpenDesignDeviceAuth)
+	accounts.DELETE(OpenDesignDeviceAuthStatusRoute, handler.CancelOpenDesignDeviceAuth)
+	accounts.POST(OpenDesignAccountsRoute, handler.CreateOpenDesignAccountFromSession)
+	return router
+}
 
 type openDesignFakeUpstream struct {
 	authorized bool
@@ -65,11 +80,10 @@ func newOpenDesignTestHandler(t *testing.T, upstream *openDesignFakeUpstream) (*
 
 func authorizeOpenDesignSession(t *testing.T, handler *AccountHandler, upstream *openDesignFakeUpstream) string {
 	t.Helper()
-	router := gin.New()
-	router.POST("/opendesign/device-auth", handler.CreateOpenDesignDeviceAuth)
+	router := registerOpenDesignRoutes(handler)
 
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/opendesign/device-auth", bytes.NewBufferString(`{"host":"h"}`))
+	req := httptest.NewRequest(http.MethodPost, openDesignTestPrefix+"/opendesign/device-auth", bytes.NewBufferString(`{"host":"h"}`))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(recorder, req)
 	require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
@@ -84,7 +98,7 @@ func authorizeOpenDesignSession(t *testing.T, handler *AccountHandler, upstream 
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &created))
 	require.NotEmpty(t, created.Data.SessionID)
 	require.NotEmpty(t, created.Data.ActivationURL)
-	// 创建响应不得包含任何敏感凭据（§8 用例 1）
+	// 创建响应不得包含任何敏感凭据
 	body := recorder.Body.String()
 	for _, secret := range []string{"secret-1", "deviceSecret", "controlKey", "runtimeKey"} {
 		require.NotContains(t, body, secret)
@@ -93,9 +107,8 @@ func authorizeOpenDesignSession(t *testing.T, handler *AccountHandler, upstream 
 	// 用户在浏览器完成授权
 	upstream.authorized = true
 
-	statusRouter := gin.New()
-	statusRouter.GET("/opendesign/device-auth/:sessionId", handler.GetOpenDesignDeviceAuth)
-	statusReq := httptest.NewRequest(http.MethodGet, "/opendesign/device-auth/"+created.Data.SessionID, nil)
+	statusRouter := registerOpenDesignRoutes(handler)
+	statusReq := httptest.NewRequest(http.MethodGet, openDesignTestPrefix+"/opendesign/device-auth/"+created.Data.SessionID, nil)
 	statusRec := httptest.NewRecorder()
 	statusRouter.ServeHTTP(statusRec, statusReq)
 	require.Equal(t, http.StatusOK, statusRec.Code, statusRec.Body.String())
@@ -122,10 +135,9 @@ func TestOpenDesignDeviceAuthCreatesAPIKeyAccount(t *testing.T) {
 	handler, stub := newOpenDesignTestHandler(t, upstream)
 	sessionID := authorizeOpenDesignSession(t, handler, upstream)
 
-	router := gin.New()
-	router.POST("/opendesign/accounts", handler.CreateOpenDesignAccountFromSession)
+	router := registerOpenDesignRoutes(handler)
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/opendesign/accounts", bytes.NewBufferString(
+	req := httptest.NewRequest(http.MethodPost, openDesignTestPrefix+"/opendesign/accounts", bytes.NewBufferString(
 		`{"session_id":"`+sessionID+`","group_ids":[66],"priority":40}`,
 	))
 	req.Header.Set("Content-Type", "application/json")
@@ -149,13 +161,13 @@ func TestOpenDesignDeviceAuthCreatesAPIKeyAccount(t *testing.T) {
 	// 邮箱自动生成账号名
 	require.Equal(t, "OpenDesign-go-dev@example.com", input.Name)
 
-	// 响应里不得回显 controlKey / runtimeKey（§8 用例 5）
+	// 响应里不得回显 controlKey / runtimeKey
 	require.NotContains(t, recorder.Body.String(), "vela_ctrl_x")
 	require.NotContains(t, recorder.Body.String(), "sk-amr-x")
 
-	// 会话重放必须被拒（§8 用例 6）
+	// 会话重放必须被拒
 	replayRec := httptest.NewRecorder()
-	replayReq := httptest.NewRequest(http.MethodPost, "/opendesign/accounts", bytes.NewBufferString(
+	replayReq := httptest.NewRequest(http.MethodPost, openDesignTestPrefix+"/opendesign/accounts", bytes.NewBufferString(
 		`{"session_id":"`+sessionID+`"}`,
 	))
 	replayReq.Header.Set("Content-Type", "application/json")
@@ -182,17 +194,16 @@ func TestOpenDesignDeviceAuthUpdatesExistingAccountByEmail(t *testing.T) {
 	}}
 	sessionID := authorizeOpenDesignSession(t, handler, upstream)
 
-	router := gin.New()
-	router.POST("/opendesign/accounts", handler.CreateOpenDesignAccountFromSession)
+	router := registerOpenDesignRoutes(handler)
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/opendesign/accounts", bytes.NewBufferString(
+	req := httptest.NewRequest(http.MethodPost, openDesignTestPrefix+"/opendesign/accounts", bytes.NewBufferString(
 		`{"session_id":"`+sessionID+`"}`,
 	))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(recorder, req)
 
 	require.Equal(t, http.StatusCreated, recorder.Code, recorder.Body.String())
-	require.Empty(t, stub.createdAccounts, "同邮箱重复授权应更新而非新建（§6）")
+	require.Empty(t, stub.createdAccounts, "同邮箱重复授权应更新而非新建")
 	require.EqualValues(t, 1, stub.updateAccountCalls)
 	require.NotNil(t, stub.lastUpdateAccountInput)
 	// 精确更新三键 + email，不能整份覆盖 credentials
@@ -234,10 +245,9 @@ func TestOpenDesignDeviceAuthRejectsAmbiguousEmailMatch(t *testing.T) {
 	}
 	sessionID := authorizeOpenDesignSession(t, handler, upstream)
 
-	router := gin.New()
-	router.POST("/opendesign/accounts", handler.CreateOpenDesignAccountFromSession)
+	router := registerOpenDesignRoutes(handler)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/opendesign/accounts", bytes.NewBufferString(
+	req := httptest.NewRequest(http.MethodPost, openDesignTestPrefix+"/opendesign/accounts", bytes.NewBufferString(
 		`{"session_id":"`+sessionID+`"}`,
 	))
 	req.Header.Set("Content-Type", "application/json")
@@ -263,10 +273,9 @@ func TestOpenDesignDeviceAuthPassesSharedAccountFieldsOnCreate(t *testing.T) {
 	handler, stub := newOpenDesignTestHandler(t, upstream)
 	sessionID := authorizeOpenDesignSession(t, handler, upstream)
 
-	router := gin.New()
-	router.POST("/opendesign/accounts", handler.CreateOpenDesignAccountFromSession)
+	router := registerOpenDesignRoutes(handler)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/opendesign/accounts", bytes.NewBufferString(
+	req := httptest.NewRequest(http.MethodPost, openDesignTestPrefix+"/opendesign/accounts", bytes.NewBufferString(
 		`{"session_id":"`+sessionID+`","proxy_id":42,"rate_multiplier":0.5,"load_factor":20,`+
 			`"expires_at":1893456000,"auto_pause_on_expired":false}`,
 	))
@@ -288,17 +297,16 @@ func TestOpenDesignDeviceAuthPassesSharedAccountFieldsOnCreate(t *testing.T) {
 	require.False(t, *input.AutoPauseOnExpired)
 }
 
-// 创建路径的 proxy_id=0 是「无代理」，不能落成外键 0（第二轮复核低 1）。
+// 创建路径的 proxy_id=0 是「无代理」，不能落成外键 0。
 func TestOpenDesignDeviceAuthNormalizesZeroProxyOnCreate(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	upstream := &openDesignFakeUpstream{}
 	handler, stub := newOpenDesignTestHandler(t, upstream)
 	sessionID := authorizeOpenDesignSession(t, handler, upstream)
 
-	router := gin.New()
-	router.POST("/opendesign/accounts", handler.CreateOpenDesignAccountFromSession)
+	router := registerOpenDesignRoutes(handler)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/opendesign/accounts", bytes.NewBufferString(
+	req := httptest.NewRequest(http.MethodPost, openDesignTestPrefix+"/opendesign/accounts", bytes.NewBufferString(
 		`{"session_id":"`+sessionID+`","proxy_id":0,"rate_multiplier":0}`,
 	))
 	req.Header.Set("Content-Type", "application/json")
@@ -329,10 +337,9 @@ func TestOpenDesignDeviceAuthPrefersWorkspaceMatch(t *testing.T) {
 	}
 	sessionID := authorizeOpenDesignSession(t, handler, upstream)
 
-	router := gin.New()
-	router.POST("/opendesign/accounts", handler.CreateOpenDesignAccountFromSession)
+	router := registerOpenDesignRoutes(handler)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/opendesign/accounts", bytes.NewBufferString(
+	req := httptest.NewRequest(http.MethodPost, openDesignTestPrefix+"/opendesign/accounts", bytes.NewBufferString(
 		`{"session_id":"`+sessionID+`"}`,
 	))
 	req.Header.Set("Content-Type", "application/json")
@@ -358,10 +365,9 @@ func TestOpenDesignDeviceAuthNameFallbackOnlyWithoutStoredEmail(t *testing.T) {
 	}}
 	sessionID := authorizeOpenDesignSession(t, handler, upstream)
 
-	router := gin.New()
-	router.POST("/opendesign/accounts", handler.CreateOpenDesignAccountFromSession)
+	router := registerOpenDesignRoutes(handler)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/opendesign/accounts", bytes.NewBufferString(
+	req := httptest.NewRequest(http.MethodPost, openDesignTestPrefix+"/opendesign/accounts", bytes.NewBufferString(
 		`{"session_id":"`+sessionID+`"}`,
 	))
 	req.Header.Set("Content-Type", "application/json")
@@ -383,10 +389,9 @@ func TestOpenDesignDeviceAuthPassesMixedChannelConfirmationOnUpdate(t *testing.T
 	}}
 	sessionID := authorizeOpenDesignSession(t, handler, upstream)
 
-	router := gin.New()
-	router.POST("/opendesign/accounts", handler.CreateOpenDesignAccountFromSession)
+	router := registerOpenDesignRoutes(handler)
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/opendesign/accounts", bytes.NewBufferString(
+	req := httptest.NewRequest(http.MethodPost, openDesignTestPrefix+"/opendesign/accounts", bytes.NewBufferString(
 		`{"session_id":"`+sessionID+`","group_ids":[66],"confirm_mixed_channel":true}`,
 	))
 	req.Header.Set("Content-Type", "application/json")
@@ -403,12 +408,10 @@ func TestOpenDesignDeviceAuthRequiresAuthorizedSession(t *testing.T) {
 	upstream := &openDesignFakeUpstream{}
 	handler, stub := newOpenDesignTestHandler(t, upstream)
 
-	router := gin.New()
-	router.POST("/opendesign/device-auth", handler.CreateOpenDesignDeviceAuth)
-	router.POST("/opendesign/accounts", handler.CreateOpenDesignAccountFromSession)
+	router := registerOpenDesignRoutes(handler)
 
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/opendesign/device-auth", bytes.NewBufferString(`{"host":"h"}`))
+	req := httptest.NewRequest(http.MethodPost, openDesignTestPrefix+"/opendesign/device-auth", bytes.NewBufferString(`{"host":"h"}`))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(recorder, req)
 	require.Equal(t, http.StatusOK, recorder.Code)
@@ -421,7 +424,7 @@ func TestOpenDesignDeviceAuthRequiresAuthorizedSession(t *testing.T) {
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &created))
 
 	createRec := httptest.NewRecorder()
-	createReq := httptest.NewRequest(http.MethodPost, "/opendesign/accounts", bytes.NewBufferString(
+	createReq := httptest.NewRequest(http.MethodPost, openDesignTestPrefix+"/opendesign/accounts", bytes.NewBufferString(
 		`{"session_id":"`+created.Data.SessionID+`"}`,
 	))
 	createReq.Header.Set("Content-Type", "application/json")
@@ -441,19 +444,16 @@ func TestOpenDesignDeviceAuthUnknownSessionAndCancel(t *testing.T) {
 	upstream := &openDesignFakeUpstream{}
 	handler, _ := newOpenDesignTestHandler(t, upstream)
 
-	router := gin.New()
-	router.POST("/opendesign/device-auth", handler.CreateOpenDesignDeviceAuth)
-	router.GET("/opendesign/device-auth/:sessionId", handler.GetOpenDesignDeviceAuth)
-	router.DELETE("/opendesign/device-auth/:sessionId", handler.CancelOpenDesignDeviceAuth)
+	router := registerOpenDesignRoutes(handler)
 
 	// 不存在的会话 → 404（服务重启后前端拿 404，提示重新发起）
 	rec := httptest.NewRecorder()
-	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/opendesign/device-auth/ods_missing", nil))
+	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, openDesignTestPrefix+"/opendesign/device-auth/ods_missing", nil))
 	require.Equal(t, http.StatusNotFound, rec.Code)
 
-	// 取消后立即失效（§8 用例 8）
+	// 取消后立即失效
 	createRec := httptest.NewRecorder()
-	createReq := httptest.NewRequest(http.MethodPost, "/opendesign/device-auth", bytes.NewBufferString(`{}`))
+	createReq := httptest.NewRequest(http.MethodPost, openDesignTestPrefix+"/opendesign/device-auth", bytes.NewBufferString(`{}`))
 	createReq.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(createRec, createReq)
 	require.Equal(t, http.StatusOK, createRec.Code, createRec.Body.String())
@@ -466,11 +466,11 @@ func TestOpenDesignDeviceAuthUnknownSessionAndCancel(t *testing.T) {
 	require.NoError(t, json.Unmarshal(createRec.Body.Bytes(), &created))
 
 	delRec := httptest.NewRecorder()
-	router.ServeHTTP(delRec, httptest.NewRequest(http.MethodDelete, "/opendesign/device-auth/"+created.Data.SessionID, nil))
+	router.ServeHTTP(delRec, httptest.NewRequest(http.MethodDelete, openDesignTestPrefix+"/opendesign/device-auth/"+created.Data.SessionID, nil))
 	require.Equal(t, http.StatusOK, delRec.Code)
 
 	afterRec := httptest.NewRecorder()
-	router.ServeHTTP(afterRec, httptest.NewRequest(http.MethodGet, "/opendesign/device-auth/"+created.Data.SessionID, nil))
+	router.ServeHTTP(afterRec, httptest.NewRequest(http.MethodGet, openDesignTestPrefix+"/opendesign/device-auth/"+created.Data.SessionID, nil))
 	require.Equal(t, http.StatusNotFound, afterRec.Code)
 }
 
@@ -478,12 +478,57 @@ func TestOpenDesignDeviceAuthUnknownSessionAndCancel(t *testing.T) {
 func TestOpenDesignDeviceAuthRequiresService(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	handler := NewAccountHandler(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
-	router := gin.New()
-	router.POST("/opendesign/device-auth", handler.CreateOpenDesignDeviceAuth)
+	router := registerOpenDesignRoutes(handler)
 
 	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodPost, "/opendesign/device-auth", nil)
+	req := httptest.NewRequest(http.MethodPost, openDesignTestPrefix+"/opendesign/device-auth", nil)
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(rec, req)
 	require.NotEqual(t, http.StatusOK, rec.Code)
+}
+
+// 重新授权只应覆盖凭据相关的键：既有 model_mapping / 协议端点 / 账号模式必须原样保留
+// （UpdateAccount 的非敏感键语义是"完全由入参决定"，只传三键会把它们清空）。
+func TestOpenDesignReauthPreservesExistingCredentials(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := &openDesignFakeUpstream{}
+	handler, stub := newOpenDesignTestHandler(t, upstream)
+	stub.accounts = []service.Account{{
+		ID:       901,
+		Name:     "OpenDesign-go-dev@example.com",
+		Platform: service.PlatformOpenDesign,
+		Type:     service.AccountTypeAPIKey,
+	}}
+	existingCreds := map[string]any{
+		"base_url":      service.DefaultOpenDesignBaseURL,
+		"api_protocol":  service.APIProtocolAdaptive,
+		"account_mode":  service.AccountModePayG,
+		"model_mapping": map[string]any{"deepseek-v4-pro": "od-pro"},
+		"api_base_urls": map[string]any{service.APIProtocolAnthropic: service.DefaultOpenDesignAnthropicBaseURL},
+	}
+	stub.getAccountResult = &service.Account{
+		ID:          901,
+		Name:        "OpenDesign-go-dev@example.com",
+		Platform:    service.PlatformOpenDesign,
+		Type:        service.AccountTypeAPIKey,
+		Credentials: existingCreds,
+	}
+	sessionID := authorizeOpenDesignSession(t, handler, upstream)
+
+	router := registerOpenDesignRoutes(handler)
+	recorder := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodPost, openDesignTestPrefix+"/opendesign/accounts",
+		bytes.NewBufferString(`{"session_id":"`+sessionID+`"}`))
+	req.Header.Set("Content-Type", "application/json")
+	router.ServeHTTP(recorder, req)
+	require.Equal(t, http.StatusCreated, recorder.Code, recorder.Body.String())
+
+	require.NotNil(t, stub.lastUpdateAccountInput)
+	got := stub.lastUpdateAccountInput.Credentials
+	require.Equal(t, "sk-amr-x", got["api_key"])
+	require.Equal(t, "vela_ctrl_x", got[service.OpenDesignUsageCredentialsKey])
+	require.Equal(t, "wstestworkspace01", got[service.OpenDesignUsageWorkspaceKey])
+	for key, want := range existingCreds {
+		require.Equal(t, want, got[key], "re-auth must keep %s", key)
+	}
 }

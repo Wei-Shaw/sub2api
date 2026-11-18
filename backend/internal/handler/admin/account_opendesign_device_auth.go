@@ -16,18 +16,28 @@ import (
 
 // OpenDesign 一键设备授权（OAuth 取凭据）管理端接口。
 //
-// 路由（统一前缀 /api/v1/admin）：
+// 路由（统一前缀 /api/v1/admin/accounts）：
 //
-//	POST   /opendesign/device-auth              创建设备授权会话
-//	GET    /opendesign/device-auth/:sessionId   查询会话状态（后端节流轮询上游）
-//	DELETE /opendesign/device-auth/:sessionId   取消会话
-//	POST   /opendesign/accounts                 用已授权会话创建/更新账号
+//	POST   /opendesign/device-auth 创建设备授权会话
+//	GET    /opendesign/device-auth/:sessionId 查询会话状态（后端节流轮询上游）
+//	DELETE /opendesign/device-auth/:sessionId 取消会话
+//	POST   /opendesign/accounts 用已授权会话创建/更新账号
+//
+// 这四条路由未对受限管理密钥开放（ScopedAdminKeyAccounts 不转发），
+// adminaccess 目录里也就不登记，避免给出"已支持"的错误承诺。
 //
 // 硬约束：落库账号 type 恒为 apikey（探测判定与转发都依赖它），
 // UI 上的「OAuth」由 extra.opendesign_auth_source="oauth" 标识。
 // controlKey / runtimeKey / deviceSecret 全程不返回前端。
 
-const openDesignMaxAccountScanPageSize = 200
+const (
+	// 设备授权的路由片段：routes 与测试共用同一份常量，避免路径漂移。
+	OpenDesignDeviceAuthRoute       = "/opendesign/device-auth"
+	OpenDesignDeviceAuthStatusRoute = "/opendesign/device-auth/:sessionId"
+	OpenDesignAccountsRoute         = "/opendesign/accounts"
+
+	openDesignMaxAccountScanPageSize = 200
+)
 
 // openDesignDeviceAuthInitiateRequest 是创建设备授权会话的请求体。
 type openDesignDeviceAuthInitiateRequest struct {
@@ -35,7 +45,7 @@ type openDesignDeviceAuthInitiateRequest struct {
 }
 
 // CreateOpenDesignDeviceAuth 创建设备授权会话。
-// POST /api/v1/admin/opendesign/device-auth
+// POST /api/v1/admin/accounts/opendesign/device-auth
 func (h *AccountHandler) CreateOpenDesignDeviceAuth(c *gin.Context) {
 	if !h.requireOpenDesignDeviceAuth(c) {
 		return
@@ -57,7 +67,7 @@ func (h *AccountHandler) CreateOpenDesignDeviceAuth(c *gin.Context) {
 }
 
 // GetOpenDesignDeviceAuth 查询设备授权会话状态。
-// GET /api/v1/admin/opendesign/device-auth/:sessionId
+// GET /api/v1/admin/accounts/opendesign/device-auth/:sessionId
 func (h *AccountHandler) GetOpenDesignDeviceAuth(c *gin.Context) {
 	if !h.requireOpenDesignDeviceAuth(c) {
 		return
@@ -99,11 +109,11 @@ type openDesignAccountFromSessionRequest struct {
 	GroupIDs  []int64 `json:"group_ids"`
 	Priority  int     `json:"priority"`
 	// AccountID 为「重新授权已有账号」时的目标账号；不传则按授权身份匹配已有
-	// open_design 账号，匹配不到才新建（§6）。
+	// open_design 账号，匹配不到才新建。
 	AccountID   *int64 `json:"account_id"`
 	Concurrency *int   `json:"concurrency"`
 	// 以下为建号弹窗里可见的通用字段，必须一并落库，否则会出现
-	// 「界面选了代理/倍率/到期，账号却没用上」的静默偏差（2026-11-15 复核中等 3）。
+	// 「界面选了代理/倍率/到期，账号却没用上」的静默偏差。
 	ProxyID             *int64   `json:"proxy_id"`
 	RateMultiplier      *float64 `json:"rate_multiplier"`
 	LoadFactor          *int     `json:"load_factor"`
@@ -135,7 +145,7 @@ func (h *AccountHandler) CreateOpenDesignAccountFromSession(c *gin.Context) {
 
 	account, action, err := h.upsertOpenDesignAccountFromSession(ctx, &req, creds)
 	if err != nil {
-		// 落库失败：回滚会话到 authorized，允许直接重试（§3.2）。
+		// 落库失败：回滚会话到 authorized，允许直接重试。
 		h.opendesignDeviceAuth.AbortSessionConsumption(sessionID)
 		var mixedErr *service.MixedChannelError
 		if errors.As(err, &mixedErr) {
@@ -182,7 +192,7 @@ func (h *AccountHandler) upsertOpenDesignAccountFromSession(
 	}
 	if len(existingIDs) > 1 {
 		// 同一授权邮箱命中多个 open_design 账号：拒绝猜测，要求显式指定目标账号。
-		// 否则可能把新凭据写到错误账号并影响其现有流量（2026-11-15 复核高危 2）。
+		// 否则可能把新凭据写到错误账号并影响其现有流量。
 		return nil, "", service.ErrOpenDesignDeviceAuthAccountAmbiguous.WithMetadata(map[string]string{
 			"candidate_account_ids": joinInt64s(existingIDs),
 		})
@@ -190,12 +200,25 @@ func (h *AccountHandler) upsertOpenDesignAccountFromSession(
 
 	if len(existingIDs) == 1 {
 		existingID := existingIDs[0]
+		// 合并而不是覆盖：UpdateAccount 的凭据语义是"非敏感键完全由入参决定"，
+		// 只传三键会把 model_mapping / api_base_urls / account_mode 等待清理掉。
+		existing, gerr := h.adminService.GetAccount(ctx, existingID)
+		if gerr != nil {
+			return nil, "", service.ErrOpenDesignDeviceAuthAccountInvalid.WithCause(gerr)
+		}
+		mergedCredentials := make(map[string]any, len(existing.Credentials)+len(authCredentials))
+		for key, value := range existing.Credentials {
+			mergedCredentials[key] = value
+		}
+		for key, value := range authCredentials {
+			mergedCredentials[key] = value
+		}
 		updateInput := &service.UpdateAccountInput{
 			// 强制 apikey：OAuth 只是取凭据方式，账号类型不可漂移。
 			Type:        service.AccountTypeAPIKey,
-			Credentials: authCredentials,
+			Credentials: mergedCredentials,
 			// 重试时前端会带 confirm_mixed_channel，更新路径同样必须透传，
-			// 否则「同邮箱更新 + 绑定分组 + 混合渠道」会陷入重复 409（2026-11-15 复核中等 1）。
+			// 否则「同邮箱更新 + 绑定分组 + 混合渠道」会陷入重复 409。
 			SkipMixedChannelCheck: req.ConfirmMixedChannel,
 			ProxyID:               req.ProxyID,
 			RateMultiplier:        req.RateMultiplier,
@@ -203,6 +226,19 @@ func (h *AccountHandler) upsertOpenDesignAccountFromSession(
 			ExpiresAt:             req.ExpiresAt,
 			AutoPauseOnExpired:    req.AutoPauseOnExpired,
 		}
+		// 建号弹窗里填的名称/备注/优先级/并发在同身份命中时同样生效，
+		// 否则这些输入会被静默丢弃。
+		if name := strings.TrimSpace(req.Name); name != "" {
+			updateInput.Name = name
+		}
+		if notes := strings.TrimSpace(req.Notes); notes != "" {
+			updateInput.Notes = &notes
+		}
+		if req.Priority > 0 {
+			priority := req.Priority
+			updateInput.Priority = &priority
+		}
+		updateInput.Concurrency = req.Concurrency
 		if len(req.GroupIDs) > 0 {
 			groupIDs := req.GroupIDs
 			updateInput.GroupIDs = &groupIDs
@@ -289,10 +325,11 @@ func (h *AccountHandler) upsertOpenDesignAccountFromSession(
 // resolveOpenDesignAccountIDs 找出本次授权应更新哪些已有账号：
 //  1. 显式 account_id（重新授权按钮）——必须是 open_design 账号；
 //  2. 授权邮箱与既有 open_design 账号匹配：优先 credentials.email 精确相等；
-//     名称兜底仅在账号没有 credentials.email 时启用（§6）。
+//
+// 名称兜底仅在账号没有 credentials.email 时启用。
 //
 // 返回空 slice 表示需要新建；返回多个表示存在歧义，调用方必须拒绝并让用户显式指定，
-// 绝不能用「第一条命中」当默认决策（2026-11-15 复核高危 2）。
+// 绝不能用「第一条命中」当默认决策。
 func (h *AccountHandler) resolveOpenDesignAccountIDs(
 	ctx context.Context,
 	accountID *int64,
@@ -315,12 +352,18 @@ func (h *AccountHandler) resolveOpenDesignAccountIDs(
 		return nil, nil
 	}
 
-	// OpenDesign 账号量级很小（个位数），按平台整表扫描即可，避免依赖 search
-	// 只匹配名称的语义。
-	accounts, _, err := h.adminService.ListAccounts(ctx, 1, openDesignMaxAccountScanPageSize,
-		service.PlatformOpenDesign, "", "", "", 0, "", "id", "asc")
-	if err != nil {
-		return nil, err
+	// 按平台翻页扫描，避免依赖 search 只匹配名称的语义；不假设账号量级。
+	var accounts []service.Account
+	for page := 1; ; page++ {
+		pageAccounts, _, err := h.adminService.ListAccounts(ctx, page, openDesignMaxAccountScanPageSize,
+			service.PlatformOpenDesign, "", "", "", 0, "", "id", "asc")
+		if err != nil {
+			return nil, err
+		}
+		accounts = append(accounts, pageAccounts...)
+		if len(pageAccounts) < openDesignMaxAccountScanPageSize {
+			break
+		}
 	}
 
 	var byEmailExact []int64

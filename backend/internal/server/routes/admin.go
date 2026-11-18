@@ -3,6 +3,7 @@ package routes
 
 import (
 	"github.com/Wei-Shaw/sub2api/internal/handler"
+	adminHandler "github.com/Wei-Shaw/sub2api/internal/handler/admin"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -395,10 +396,10 @@ func registerAccountRoutes(admin *gin.RouterGroup, h *handler.Handlers, stepUpAu
 		accounts.PUT("/:id/opencode-go-usage/auto-refresh", h.Admin.Account.SetOpenCodeGoUsageAutoRefresh)
 
 		// OpenDesign one-click device authorization (OAuth credential pickup).
-		accounts.POST("/opendesign/device-auth", h.Admin.Account.CreateOpenDesignDeviceAuth)
-		accounts.GET("/opendesign/device-auth/:sessionId", h.Admin.Account.GetOpenDesignDeviceAuth)
-		accounts.DELETE("/opendesign/device-auth/:sessionId", h.Admin.Account.CancelOpenDesignDeviceAuth)
-		accounts.POST("/opendesign/accounts", h.Admin.Account.CreateOpenDesignAccountFromSession)
+		accounts.POST(adminHandler.OpenDesignDeviceAuthRoute, h.Admin.Account.CreateOpenDesignDeviceAuth)
+		accounts.GET(adminHandler.OpenDesignDeviceAuthStatusRoute, h.Admin.Account.GetOpenDesignDeviceAuth)
+		accounts.DELETE(adminHandler.OpenDesignDeviceAuthStatusRoute, h.Admin.Account.CancelOpenDesignDeviceAuth)
+		accounts.POST(adminHandler.OpenDesignAccountsRoute, h.Admin.Account.CreateOpenDesignAccountFromSession)
 		accounts.POST("/:id/opencode-go-usage/refresh", h.Admin.Account.RefreshOpenCodeGoUsage)
 		accounts.DELETE("/:id", h.Admin.Account.Delete)
 		accounts.POST("/:id/test", h.Admin.Account.Test)

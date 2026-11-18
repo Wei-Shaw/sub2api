@@ -414,6 +414,11 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	if input.Platform == PlatformTypeSafe && input.Type != AccountTypeAPIKey {
 		return nil, errors.New("typesafe accounts only support apikey credentials")
 	}
+	// OpenDesign 账号一律 apikey：OAuth 只是取凭据的方式（extra.opendesign_auth_source），
+	// 类型漂移会让用量探测与转发判定失配。
+	if input.Platform == PlatformOpenDesign && input.Type != AccountTypeAPIKey {
+		return nil, errors.New("open_design accounts only support apikey credentials")
+	}
 	// Probe/session state is system-managed. New accounts always start with automatic refresh disabled.
 	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
 	delete(accountExtra, UpstreamBillingRateSyncEnabledExtraKey)
@@ -583,6 +588,9 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	if account.Platform == PlatformTypeSafe && input.Type != "" && input.Type != AccountTypeAPIKey {
 		return nil, errors.New("typesafe accounts only support apikey credentials")
+	}
+	if account.Platform == PlatformOpenDesign && input.Type != "" && input.Type != AccountTypeAPIKey {
+		return nil, errors.New("open_design accounts only support apikey credentials")
 	}
 	var normalizedExtra map[string]any
 	if input.Extra != nil {

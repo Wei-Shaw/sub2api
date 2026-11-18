@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -38,7 +39,7 @@ const (
 	// quota probe reads them.
 	OpenDesignUsageCredentialsKey = "opendesign_control_key"
 	OpenDesignUsageWorkspaceKey   = "opendesign_workspace_id"
-	OpenDesignAuthSourceExtraKey = "opendesign_auth_source"
+	OpenDesignAuthSourceExtraKey  = "opendesign_auth_source"
 	// OpenDesignAuthSourceOAuth 表示凭据由一键设备授权取得。
 	OpenDesignAuthSourceOAuth = "oauth"
 
@@ -62,16 +63,16 @@ const (
 	openDesignSessionStatusDenied = "denied"
 
 	// openDesignUpstreamStatusApproved 是上游设备授权「已批准」状态。
-	// 实证（2026-11-16 生产旁路轮询）：授权成功后上游返回 approved，并在同一响应里
+	// 实证（实测）：授权成功后上游返回 approved，并在同一响应里
 	// 下发 controlKey / runtimeKey / controlKeyId / user；凭据被首个轮询领取后转为
 	// consumed。设计文档当时推测的 authorized 并不存在，只认 authorized 会把到手的
-	// 凭据当未知状态丢弃（2026-11-16 生产实弹故障根因）。
+	// 凭据当未知状态丢弃（实测：只认 approved 会把已下发凭据当未知状态丢弃）。
 	openDesignUpstreamStatusApproved = "approved"
 	// openDesignUpstreamStatusDenied 表示用户在浏览器拒绝了授权（RFC 8628 access_denied 同义）。
 	openDesignUpstreamStatusDenied = "denied"
 
 	// 以下 reason 为机器码，仅供前端映射中文提示；后端 message 保持英文用于日志排障，
-	// 不再直接展示给管理员（2026-11-16 反馈：不要显示看不懂的英文代码串）。
+	// 不再直接展示给管理员。
 	openDesignReasonDenied              = "denied"
 	openDesignReasonCredentialConsumed  = "credential_consumed"
 	openDesignReasonExpired             = "expired"
@@ -233,7 +234,7 @@ func (s *OpenDesignDeviceAuthService) statusSnapshot(sess *openDesignDeviceSessi
 		res.Reason = ""
 	}
 	// 过期是终态：无论此前遗留下什么故障原因，都统一按「已过期」呈现，
-	// 避免把 workspace/unavailable 的旧 reason 带到过期提示上（复核 L1）。
+	// 避免把 workspace/unavailable 的旧 reason 带到过期提示上。
 	if sess.Status == openDesignSessionStatusExpired {
 		res.Message = ""
 		res.Reason = openDesignReasonExpired
@@ -272,7 +273,7 @@ func (s *OpenDesignDeviceAuthService) InitiateDeviceAuth(ctx context.Context, ho
 	resp, err := s.httpClient.Do(httpReq)
 	elapsed := time.Since(startedAt)
 	if err != nil {
-		// 只记录状态与耗时，绝不记录 body / 凭据（§3.5）。
+		// 只记录状态与耗时，绝不记录 body / 凭据。
 		slog.Error("opendesign_device_auth.create_failed", "duration_ms", elapsed.Milliseconds(), "err", err)
 		return nil, ErrOpenDesignUpstreamError
 	}
@@ -304,6 +305,14 @@ func (s *OpenDesignDeviceAuthService) InitiateDeviceAuth(ctx context.Context, ho
 		return nil, ErrOpenDesignUpstreamError
 	}
 
+	// 激活链接会原样渲染成管理员可点击的 <a href>：只接受厂商域名下的 HTTPS 地址，
+	// 避免被篡改的上游响应把管理员带到任意站点。
+	activationURL, urlErr := validateOpenDesignActivationURL(payload.ActivationURL)
+	if urlErr != nil {
+		slog.Error("opendesign_device_auth.invalid_activation_url", "error", urlErr)
+		return nil, ErrOpenDesignUpstreamError
+	}
+
 	expiresAt := parseOpenDesignTimestamp(payload.ExpiresAt)
 	if expiresAt.IsZero() {
 		expiresAt = time.Now().Add(openDesignSessionDefaultTTL)
@@ -324,7 +333,7 @@ func (s *OpenDesignDeviceAuthService) InitiateDeviceAuth(ctx context.Context, ho
 		DeviceID:      payload.DeviceID,
 		DeviceSecret:  payload.DeviceSecret,
 		UserCode:      payload.UserCode,
-		ActivationURL: payload.ActivationURL,
+		ActivationURL: activationURL,
 		ExpiresAt:     expiresAt,
 		Status:        openDesignSessionStatusPending,
 		CreatedAt:     now,
@@ -334,10 +343,31 @@ func (s *OpenDesignDeviceAuthService) InitiateDeviceAuth(ctx context.Context, ho
 	return &OpenDesignDeviceAuthInitiateResult{
 		SessionID:           sessionID,
 		UserCode:            payload.UserCode,
-		ActivationURL:       payload.ActivationURL,
+		ActivationURL:       activationURL,
 		ExpiresAt:           expiresAt,
 		PollIntervalSeconds: pollInterval,
 	}, nil
+}
+
+// openDesignActivationHostSuffix is the vendor domain allowed for the
+// user-facing activation link.
+const openDesignActivationHostSuffix = ".open-design.ai"
+
+func validateOpenDesignActivationURL(raw string) (string, error) {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return "", fmt.Errorf("activation url is empty")
+	}
+	parsed, err := url.Parse(trimmed)
+	if err != nil || parsed.Scheme != "https" || parsed.Host == "" || parsed.User != nil {
+		return "", fmt.Errorf("activation url must be https")
+	}
+	host := strings.ToLower(parsed.Hostname())
+	if host != strings.TrimPrefix(openDesignActivationHostSuffix, ".") &&
+		!strings.HasSuffix(host, openDesignActivationHostSuffix) {
+		return "", fmt.Errorf("activation url host %q is not the vendor domain", host)
+	}
+	return trimmed, nil
 }
 
 func parseOpenDesignTimestamp(raw string) time.Time {
@@ -369,7 +399,7 @@ func clearOpenDesignSessionSecrets(sess *openDesignDeviceSession) {
 // 并发安全：上游 HTTP 在锁外执行，因此返回后必须重新确认「会话仍存在、仍是同一
 // 会话对象、状态仍处于可轮询态」才允许回写。否则一次慢轮询可能在会话被消费
 // （consumed）并抹除敏感值之后把 status/凭据写回去，让同一会话被二次消费
-// （2026-11-15 复核阻断 1）。
+// 。
 func (s *OpenDesignDeviceAuthService) GetSessionStatus(ctx context.Context, sessionID string) (*OpenDesignDeviceAuthStatusResult, error) {
 	s.mu.Lock()
 	sess, ok := s.sessions[sessionID]
@@ -403,7 +433,7 @@ func (s *OpenDesignDeviceAuthService) GetSessionStatus(ctx context.Context, sess
 	}
 
 	// 节流：距上次上游轮询不足 2 秒直接返回缓存状态，
-	// 避免多个管理员同时开弹窗把上游打爆（§3.3）。
+	// 避免多个管理员同时开弹窗把上游打爆。
 	if !sess.LastPollAt.IsZero() && now.Sub(sess.LastPollAt) < openDesignMinPollInterval {
 		res := s.statusSnapshot(sess)
 		s.mu.Unlock()
@@ -447,7 +477,7 @@ func (s *OpenDesignDeviceAuthService) GetSessionStatus(ctx context.Context, sess
 		if !s.isSessionPollable(sessionID, sess) {
 			return s.settlePoll(sessionID, sess, nil)
 		}
-		// 一次性凭据先落库、再补 workspace：wallet 临时失败不得导致凭据丢失（复核 H1）。
+		// 一次性凭据先落库、再补 workspace：wallet 临时失败不得导致凭据丢失。
 		if !s.saveIssuedCredentials(sessionID, sess, polled) {
 			return s.settlePoll(sessionID, sess, nil)
 		}
@@ -559,7 +589,7 @@ func (s *OpenDesignDeviceAuthService) saveIssuedCredentials(
 	}
 	// 成功路径**不清** PollInFlight：凭据已落库但 workspace 尚未就绪，
 	// 继续保持「有请求在飞」可让并发查询只回缓存，避免在补 workspace 期间
-	// 再次 poll token（复核第二轮）。in-flight 由 completeWorkspace 末尾的 settlePoll 统一清除。
+	// 再次 poll token。in-flight 由 completeWorkspace 末尾的 settlePoll 统一清除。
 	sess.ControlKey = polled.ControlKey
 	sess.RuntimeKey = polled.RuntimeKey
 	sess.Email = polled.Email
@@ -571,7 +601,7 @@ func (s *OpenDesignDeviceAuthService) saveIssuedCredentials(
 
 // completeWorkspace 用已落库的 controlKey 查询 workspaceId。
 // 失败时保持 pending：下一次查询走 resumeWorkspace 分支只重试 wallet，不再 poll token，
-// 因此本次已领取的一次性凭据不会丢失（复核 H1）。
+// 因此本次已领取的一次性凭据不会丢失。
 func (s *OpenDesignDeviceAuthService) completeWorkspace(
 	ctx context.Context,
 	sessionID string,
@@ -745,7 +775,7 @@ func (s *OpenDesignDeviceAuthService) CancelSession(sessionID string) {
 // BeginSessionConsumption 校验会话状态并「预占」它（置 consumed），
 // 返回本次落库需要的凭据。预占即防重放：并发第二次调用直接拿到
 // OPENDESIGN_SESSION_CONSUMED。落库成功后调用 FinalizeSessionConsumption，
-// 失败调用 AbortSessionConsumption 回滚到 authorized 允许重试（§3.2）。
+// 失败调用 AbortSessionConsumption 回滚到 authorized 允许重试。
 func (s *OpenDesignDeviceAuthService) BeginSessionConsumption(sessionID string) (*OpenDesignSessionCredentials, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -780,7 +810,7 @@ func (s *OpenDesignDeviceAuthService) BeginSessionConsumption(sessionID string) 
 	}, nil
 }
 
-// FinalizeSessionConsumption 在账号成功落库后立即抹掉内存中的敏感值（§3.5 第 3 条）。
+// FinalizeSessionConsumption 在账号成功落库后立即抹掉内存中的敏感值。
 func (s *OpenDesignDeviceAuthService) FinalizeSessionConsumption(sessionID string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

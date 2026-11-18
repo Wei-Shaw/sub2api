@@ -10,28 +10,24 @@ import (
 )
 
 // 以下为重构前各处手写的平台列表 / switch，作为平台清单派生结果的等价基准；
-// 重构后新登记的平台（Command Code、Cline、Ollama）按同类平台（OpenCode）的位置补入。
+// 重构后新登记的平台（Command Code、Cline）按同类平台（OpenCode）的位置补入。
 var (
 	legacyAllPlatforms = []string{
-		PlatformAnthropic, PlatformOpenAI, PlatformSeedance, PlatformGemini, PlatformAntigravity, PlatformGrok,
+		PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok,
 		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformTypeSafe,
 		PlatformCommandCode,
 		PlatformCline,
-		PlatformOllama,
 		PlatformOpenDesign,
 	}
 	legacySchedulerSnapshotPlatforms = []string{
-		PlatformAnthropic, PlatformGemini, PlatformSeedance, PlatformOpenAI, PlatformAntigravity, PlatformGrok,
+		PlatformAnthropic, PlatformGemini, PlatformOpenAI, PlatformAntigravity, PlatformGrok,
 		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformTypeSafe,
 		PlatformCommandCode,
 		PlatformCline,
-		PlatformOllama,
 		PlatformOpenDesign,
 	}
-	// AllowedQuotaPlatforms 剔除 AccountOnly 平台（ollama / open_design 不建分组）。
-	legacyQuotaPlatforms             = legacyAllPlatforms[:len(legacyAllPlatforms)-2]
 	legacyCompositeMatchingPlatforms = legacySchedulerSnapshotPlatforms
-	legacyMultiProtocolProviders     = []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformCommandCode, PlatformCline, PlatformOllama, PlatformOpenDesign}
+	legacyMultiProtocolProviders     = []string{PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformCommandCode, PlatformCline, PlatformOpenDesign}
 	platformProbeValues              = append(append([]string{}, legacyAllPlatforms...), PlatformComposite, "", "moonshot", "Kimi", "openai ", "glm", "bogus")
 	platformProbeAccountTypes        = []string{AccountTypeAPIKey, AccountTypeOAuth, AccountTypeSetupToken, AccountTypeUpstream, ""}
 )
@@ -45,12 +41,12 @@ func legacyIsCNProvider(platform string) bool {
 }
 
 func legacyIsOpenAICompatible(platform string) bool {
-	return platform == PlatformOpenAI || platform == PlatformSeedance || platform == PlatformGrok || legacyIsCNProvider(platform) || platform == PlatformOpenCodeGo || platform == PlatformCommandCode || platform == PlatformCline || platform == PlatformOllama || platform == PlatformOpenDesign
+	return platform == PlatformOpenAI || platform == PlatformGrok || legacyIsCNProvider(platform) || platform == PlatformOpenCodeGo || platform == PlatformCommandCode || platform == PlatformCline || platform == PlatformOpenDesign
 }
 
 func legacyNormalizeOpenAICompatiblePlatform(platform string) string {
 	switch platform {
-	case PlatformGrok, PlatformSeedance, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformCommandCode, PlatformCline, PlatformOllama, PlatformOpenDesign:
+	case PlatformGrok, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformCommandCode, PlatformCline, PlatformOpenDesign:
 		return platform
 	}
 	return PlatformOpenAI
@@ -61,9 +57,9 @@ func legacyIsUpstreamBillingProbeIdentity(platform, accountType string) bool {
 		return false
 	}
 	switch platform {
-	case PlatformOpenAI, PlatformSeedance, PlatformAnthropic, PlatformGemini, PlatformAntigravity, PlatformGrok,
+	case PlatformOpenAI, PlatformAnthropic, PlatformGemini, PlatformAntigravity, PlatformGrok,
 		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo,
-		PlatformTypeSafe, PlatformCommandCode, PlatformCline, PlatformOllama, PlatformOpenDesign:
+		PlatformTypeSafe, PlatformCommandCode, PlatformCline, PlatformOpenDesign:
 		return true
 	}
 	return false
@@ -71,7 +67,7 @@ func legacyIsUpstreamBillingProbeIdentity(platform, accountType string) bool {
 
 func legacyIsHeaderOverrideEligible(platform, accountType string) bool {
 	switch platform {
-	case PlatformAnthropic, PlatformOpenAI, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformCommandCode, PlatformCline, PlatformOllama, PlatformOpenDesign:
+	case PlatformAnthropic, PlatformOpenAI, PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformCommandCode, PlatformCline, PlatformOpenDesign:
 		return accountType == AccountTypeAPIKey
 	case PlatformGrok:
 		return accountType == AccountTypeAPIKey || accountType == AccountTypeOAuth
@@ -89,7 +85,7 @@ func legacyIsConcreteRequestPlatform(platform string) bool {
 }
 
 func TestPlatformListDerivedListsMatchLegacy(t *testing.T) {
-	require.Equal(t, legacyQuotaPlatforms, AllowedQuotaPlatforms)
+	require.Equal(t, legacyAllPlatforms, AllowedQuotaPlatforms)
 	require.Equal(t, legacySchedulerSnapshotPlatforms, schedulerSnapshotPlatforms())
 	require.Equal(t, legacyCompositeMatchingPlatforms, matchingPlatforms(PlatformComposite))
 	require.Equal(t, []string{PlatformKimi}, matchingPlatforms(PlatformKimi))
@@ -134,8 +130,8 @@ func TestProviderProfileAccountPredicatesMatchLegacy(t *testing.T) {
 	for _, platform := range platformProbeValues {
 		account := &Account{Platform: platform, Type: AccountTypeAPIKey}
 		// Cline 只有 Chat Completions 一个端点，按入站协议分流（其余入站转换）。
-		require.Equal(t, legacyIsCNProvider(platform) || platform == PlatformCline || platform == PlatformOllama || platform == PlatformOpenDesign, account.RoutesProtocolByInbound(), platform)
-		require.Equal(t, legacyIsCNProvider(platform) || platform == PlatformOpenCodeGo || platform == PlatformCommandCode || platform == PlatformCline || platform == PlatformOllama || platform == PlatformOpenDesign, account.IsMultiProtocolAPIKey(), platform)
+		require.Equal(t, legacyIsCNProvider(platform) || platform == PlatformCline || platform == PlatformOpenDesign, account.RoutesProtocolByInbound(), platform)
+		require.Equal(t, legacyIsCNProvider(platform) || platform == PlatformOpenCodeGo || platform == PlatformCommandCode || platform == PlatformCline || platform == PlatformOpenDesign, account.IsMultiProtocolAPIKey(), platform)
 	}
 	var nilAccount *Account
 	require.False(t, nilAccount.RoutesProtocolByInbound())

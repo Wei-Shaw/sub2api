@@ -55,7 +55,7 @@ const (
 	// PlatformOpenDesign 是 OpenDesign Go 平台（多协议聚合供应商，profile 见
 	// provider_profile.go；一个 API Key 同时提供 OpenAI 兼容 /v1 与 Anthropic 端点）。
 	PlatformOpenDesign = domain.PlatformOpenDesign
-	PlatformComposite   = domain.PlatformComposite
+	PlatformComposite  = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
 	PlatformKiro = "kiro"

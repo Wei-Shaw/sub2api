@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// OpenDesign 一键设备授权服务测试（2026-11-15 需求文档 §8 验收用例）。
+// OpenDesign 一键设备授权服务测试。
 
 func newOpenDesignAuthTestService(t *testing.T, handler http.Handler) (*OpenDesignDeviceAuthService, *httptest.Server) {
 	t.Helper()
@@ -213,7 +213,7 @@ func TestOpenDesignDeviceAuthConsumeIsOneShot(t *testing.T) {
 	require.Equal(t, "wstestworkspace01", creds.WorkspaceID)
 	require.Equal(t, "dev@example.com", creds.Email)
 
-	// 重放必拒（§8 用例 6）
+	// 重放必拒
 	_, err = svc.BeginSessionConsumption(created.SessionID)
 	require.ErrorIs(t, err, ErrOpenDesignSessionConsumed)
 
@@ -278,7 +278,7 @@ func TestOpenDesignDeviceAuthExpiredSession(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "expired", res.Status)
 
-	// 过期必须当场抹掉三类敏感值（第二轮复核低 2）
+	// 过期必须当场抹掉三类敏感值
 	svc.mu.Lock()
 	sess := svc.sessions[created.SessionID]
 	require.Empty(t, sess.ControlKey)
@@ -290,7 +290,7 @@ func TestOpenDesignDeviceAuthExpiredSession(t *testing.T) {
 	require.ErrorIs(t, err, ErrOpenDesignSessionExpired)
 }
 
-// 跨过期点返回的轮询结果不得写入 authorized（第二轮复核低 2）。
+// 跨过期点返回的轮询结果不得写入 authorized。
 func TestOpenDesignDeviceAuthSettleRejectsPollCrossingExpiry(t *testing.T) {
 	upstream := &gatedUpstream{started: make(chan struct{}), release: make(chan struct{})}
 	svc, _ := newOpenDesignAuthTestService(t, upstream)
@@ -332,7 +332,7 @@ func TestOpenDesignDeviceAuthWalletFailureStaysRecoverable(t *testing.T) {
 
 	res, err := svc.GetSessionStatus(ctx, created.SessionID)
 	require.NoError(t, err)
-	// wallet 失败不再判死：保持 pending，等待下次只补 wallet（复核 H1）
+	// wallet 失败不再判死：保持 pending，等待下次只补 wallet
 	require.Equal(t, openDesignSessionStatusPending, res.Status)
 	require.Equal(t, openDesignReasonWorkspaceReadFailed, res.Reason)
 
@@ -489,7 +489,7 @@ func (g *gatedUpstream) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// 反序并发回归（2026-11-15 复核阻断 1）：
+// 反序并发回归：
 // 一次慢轮询在会话已被消费并 finalize 之后返回 authorized，**不得**把 status / 敏感凭据
 // 写回会话，否则同一会话可被二次消费（重复建号）。
 func TestOpenDesignDeviceAuthLatePollCannotResurrectConsumedSession(t *testing.T) {

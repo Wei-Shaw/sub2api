@@ -68,89 +68,124 @@ func opendesignParseCredits(raw any) (int64, bool) {
 	}
 }
 
-// opendesignParseWindow validates one window entry against the expected
-// duration and converts it to the shared CN tier shape.
-func opendesignParseWindow(raw map[string]any, durationSeconds int, window string) (CNQuotaTier, bool) {
-	if v, ok := raw["durationSeconds"].(float64); !ok || int(v) != durationSeconds {
-		return CNQuotaTier{}, false
+// opendesignWindowName maps a funding-check window duration to the shared CN
+// window name. Unknown durations return ok=false so a future extra window is
+// ignored instead of failing the whole response.
+func opendesignWindowName(durationSeconds int) (string, bool) {
+	switch durationSeconds {
+	case openDesignUsageWindow5HSeconds:
+		return "5h", true
+	case openDesignUsageWindow7DSeconds:
+		return "weekly", true
+	default:
+		return "", false
 	}
+}
+
+// opendesignParseWindow validates one window entry and converts it to the
+// shared CN tier shape. A window whose duration matches but whose numbers or
+// reset time are unusable is a schema break: returning an error keeps the
+// previous snapshot instead of writing a mixed "new usage + old reset" one.
+func opendesignParseWindow(raw map[string]any, window string) (CNQuotaTier, error) {
 	used, okUsed := opendesignParseCredits(raw["usedCredits"])
 	limit, okLimit := opendesignParseCredits(raw["limitCredits"])
 	remaining, okRemaining := opendesignParseCredits(raw["remainingCredits"])
-	if !okUsed || !okLimit || !okRemaining || limit <= 0 || remaining < 0 || remaining > limit {
-		return CNQuotaTier{}, false
+	if !okUsed || !okLimit || !okRemaining {
+		return CNQuotaTier{}, fmt.Errorf("%s window has non-numeric credits", window)
 	}
-	_ = remaining
-	tier := CNQuotaTier{
+	if used < 0 || limit <= 0 || remaining < 0 || remaining > limit {
+		return CNQuotaTier{}, fmt.Errorf("%s window has out-of-range credits", window)
+	}
+	resetsAt, okReset := raw["resetsAt"].(string)
+	if !okReset {
+		return CNQuotaTier{}, fmt.Errorf("%s window has no resetsAt", window)
+	}
+	resetTime, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(resetsAt))
+	if err != nil {
+		return CNQuotaTier{}, fmt.Errorf("%s window has invalid resetsAt %q", window, resetsAt)
+	}
+	return CNQuotaTier{
 		Window:      window,
 		UsedPercent: float64(used) / float64(limit) * 100,
-	}
-	if resetsAt, ok := raw["resetsAt"].(string); ok {
-		if t, err := time.Parse(time.RFC3339Nano, resetsAt); err == nil {
-			tier.ResetAt = t.UTC().Format(time.RFC3339)
-		}
-	}
-	return tier, true
+		ResetAt:     resetTime.UTC().Format(time.RFC3339),
+	}, nil
 }
 
 // parseOpenDesignUsageTiers converts a funding-check response into CN quota
-// tiers. A response that explicitly reports no coding plan (codingPlan null or
-// eligible=false) yields an empty tier list with no error: the account simply
-// has no plan and stays schedulable. A missing codingPlan field or a malformed
-// one is an upstream schema change and returns an error so the caller keeps the
-// previous snapshot instead of writing a bogus "no usage" one.
-func parseOpenDesignUsageTiers(body []byte) ([]CNQuotaTier, string, error) {
-	var envelope map[string]json.RawMessage
-	if err := json.Unmarshal(body, &envelope); err != nil {
-		return nil, "", fmt.Errorf("decode funding-check: %w", err)
-	}
-	rawCodingPlan, hasCodingPlan := envelope["codingPlan"]
-	if !hasCodingPlan {
-		return nil, "", fmt.Errorf("funding-check: response has no codingPlan field (upstream schema may have changed)")
-	}
-
+// tiers.
+//
+// A response that explicitly reports no coding plan (codingPlan null, or an
+// eligible field that is present and false) returns noPlan=true with no error:
+// the account simply has no plan, so the caller clears the usage windows
+// instead of keeping a stale "exhausted" snapshot that would park it forever.
+//
+// A missing codingPlan field, a missing eligible field or any unusable window
+// is an upstream schema change and returns an error, so the caller keeps the
+// previous snapshot rather than writing a bogus one.
+func parseOpenDesignUsageTiers(body []byte) (tiers []CNQuotaTier, planLevel string, noPlan bool, err error) {
 	var payload struct {
 		BalanceUsd string          `json:"balanceUsd"`
 		CodingPlan json.RawMessage `json:"codingPlan"`
 	}
-	if err := json.Unmarshal(body, &payload); err != nil {
-		return nil, "", fmt.Errorf("decode funding-check: %w", err)
+	if decodeErr := json.Unmarshal(body, &payload); decodeErr != nil {
+		return nil, "", false, fmt.Errorf("decode funding-check: %w", decodeErr)
 	}
+	if len(payload.CodingPlan) == 0 {
+		return nil, "", false, fmt.Errorf("funding-check: response has no codingPlan field (upstream schema may have changed)")
+	}
+	balance := strings.TrimSpace(payload.BalanceUsd)
 
-	if strings.TrimSpace(string(rawCodingPlan)) == "null" {
-		return nil, payload.BalanceUsd, nil
+	if strings.TrimSpace(string(payload.CodingPlan)) == "null" {
+		return nil, balance, true, nil
 	}
 
 	var plan struct {
-		Eligible bool             `json:"eligible"`
+		// Pointer so "absent" and "explicitly false" stay distinguishable: an
+		// absent flag usually means the schema changed, not "no plan".
+		Eligible *bool            `json:"eligible"`
 		Tier     any              `json:"tier"`
 		Windows  []map[string]any `json:"windows"`
 	}
-	if err := json.Unmarshal(rawCodingPlan, &plan); err != nil {
-		return nil, "", fmt.Errorf("decode funding-check codingPlan: %w", err)
+	if decodeErr := json.Unmarshal(payload.CodingPlan, &plan); decodeErr != nil {
+		return nil, "", false, fmt.Errorf("decode funding-check codingPlan: %w", decodeErr)
 	}
-	if !plan.Eligible {
-		return nil, payload.BalanceUsd, nil
+	if plan.Eligible == nil {
+		return nil, "", false, fmt.Errorf("funding-check: codingPlan has no eligible field (upstream schema may have changed)")
 	}
-	tierName := ""
-	if tier, ok := plan.Tier.(string); ok {
-		tierName = tier
+	if !*plan.Eligible {
+		return nil, balance, true, nil
 	}
 
-	var tiers []CNQuotaTier
+	tierName := ""
+	if tier, ok := plan.Tier.(string); ok {
+		tierName = strings.TrimSpace(tier)
+	}
+
+	byWindow := make(map[string]CNQuotaTier, 2)
 	for _, raw := range plan.Windows {
-		if tier, ok := opendesignParseWindow(raw, openDesignUsageWindow5HSeconds, "5h"); ok {
-			tiers = append(tiers, tier)
+		duration, ok := raw["durationSeconds"].(float64)
+		if !ok {
+			return nil, "", false, fmt.Errorf("funding-check: window has no numeric durationSeconds")
+		}
+		window, known := opendesignWindowName(int(duration))
+		if !known {
 			continue
 		}
-		if tier, ok := opendesignParseWindow(raw, openDesignUsageWindow7DSeconds, "weekly"); ok {
+		tier, windowErr := opendesignParseWindow(raw, window)
+		if windowErr != nil {
+			return nil, "", false, windowErr
+		}
+		byWindow[window] = tier
+	}
+	for _, window := range []string{"5h", "weekly"} {
+		if tier, ok := byWindow[window]; ok {
 			tiers = append(tiers, tier)
 		}
 	}
 	if len(tiers) == 0 {
-		return nil, "", fmt.Errorf("funding-check: coding plan eligible but no usable usage window parsed")
+		return nil, "", false, fmt.Errorf("funding-check: coding plan eligible but no usable usage window parsed")
 	}
-	return tiers, tierName, nil
+	return tiers, tierName, false, nil
 }
 
 // opendesignBalanceUSD extracts the balance string for display (may be empty).

@@ -142,11 +142,17 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	if provider == PlatformCline {
 		return s.queryClineUsage(ctx, account)
 	}
-	if provider != PlatformKimi && provider != PlatformZhipu && provider != PlatformMiniMax && provider != PlatformOpenCodeGo {
-		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a kimi/zhipu/minimax coding plan or opencode go account")
+	if provider != PlatformKimi && provider != PlatformZhipu && provider != PlatformMiniMax &&
+		provider != PlatformOpenCodeGo && provider != PlatformOpenDesign {
+		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a kimi/zhipu/minimax coding plan, opencode go or open_design account")
 	}
 
+	// OpenDesign 的用量端点属于控制面，鉴权用设备授权取回的 control key；转发用的
+	// runtime api_key 在控制面上没有权限，混用会稳定 401。
 	apiKey := strings.TrimSpace(account.GetCNAPIKey())
+	if provider == PlatformOpenDesign {
+		apiKey = strings.TrimSpace(account.GetCredential(OpenDesignUsageCredentialsKey))
+	}
 	if apiKey == "" {
 		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NO_APIKEY", "account api_key is empty")
 	}
@@ -176,6 +182,16 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 		}
 	case PlatformMiniMax:
 		targetURL = minimaxQuotaURL(baseURL)
+		authHeader = "Bearer " + apiKey
+	case PlatformOpenDesign:
+		// 控制面基址与转发基址不同，固定走控制面主机；workspace 由设备授权写入。
+		fundingURL, urlErr := opendesignFundingCheckURL(
+			DefaultOpenDesignAuthAPIBaseURL,
+			account.GetCredential(OpenDesignUsageWorkspaceKey))
+		if urlErr != nil {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "CN_QUOTA_URL_INVALID", "open_design funding-check url: %v", urlErr)
+		}
+		targetURL = fundingURL
 		authHeader = "Bearer " + apiKey
 	}
 
@@ -254,16 +270,33 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 		tiers = parseOpenCodeGoUsageTiers(bodyBytes)
 		result.PlanLevel = "OpenCode Go"
 	case PlatformOpenDesign:
-		var tierErr error
-		tiers, result.PlanLevel, tierErr = parseOpenDesignUsageTiers(bodyBytes)
+		var (
+			tierErr error
+			noPlan  bool
+		)
+		tiers, result.PlanLevel, noPlan, tierErr = parseOpenDesignUsageTiers(bodyBytes)
 		if tierErr != nil {
 			// Upstream schema change: keep the previous snapshot instead of
 			// writing a bogus empty one (mirrors the CN no-window guard).
 			result.Error = "open_design funding-check parse failed: " + tierErr.Error()
 			return result, nil
 		}
-		if balance := opendesignBalanceUSD(bodyBytes); balance != "" {
-			result.PlanLevel = strings.TrimSpace(result.PlanLevel + " · balance " + balance)
+		if noPlan {
+			// 账号已无 coding plan：清空用量窗口，避免残留的 100% 快照把它永久停调。
+			result.Tiers = nil
+			result.Success = true
+			result.CredentialValid = true
+			if result.PlanLevel == "" {
+				result.PlanLevel = "no coding plan"
+			}
+			updates := cnQuotaExtraUpdates(provider, nil, now)
+			clearAbsentCNQuotaWindows(provider, nil, updates)
+			if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
+				slog.Warn("cn_quota_persist_failed", "account_id", account.ID, "provider", provider, "error", err)
+			} else {
+				result.Persisted = true
+			}
+			return result, nil
 		}
 	case PlatformZhipu:
 		tiers = parseZhipuTokenTiers(gjson.GetBytes(bodyBytes, "data"))
@@ -299,7 +332,8 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	updates := cnQuotaExtraUpdates(provider, tiers, now)
 	// 只对 5h/weekly/monthly 三档通吃的供应商清理缺席窗口；Command Code 与
 	// Cline 走各自的取舍（抓取失败时保留月度），不在这里处理。
-	if provider == PlatformKimi || provider == PlatformZhipu || provider == PlatformMiniMax || provider == PlatformOpenCodeGo {
+	if provider == PlatformKimi || provider == PlatformZhipu || provider == PlatformMiniMax ||
+		provider == PlatformOpenCodeGo || provider == PlatformOpenDesign {
 		clearAbsentCNQuotaWindows(provider, tiers, updates)
 	}
 	if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
