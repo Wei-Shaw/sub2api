@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func resetAntigravityPromptSanitizerCache(t *testing.T) {
@@ -154,6 +156,61 @@ func TestAntigravityPromptSanitizerMissingFile(t *testing.T) {
 	configureAntigravityPromptSanitize(t, "", "", filepath.Join(t.TempDir(), "missing.json"))
 	if sanitizer := antigravityPromptSanitizer(); sanitizer != nil {
 		t.Fatalf("expected nil sanitizer for missing file, got %+v", sanitizer)
+	}
+}
+
+func TestAntigravityPromptSanitizerBundledRules(t *testing.T) {
+	configureAntigravityPromptSanitize(t, "", "", "")
+	require.Nil(t, antigravityPromptSanitizer(), "bundled rules must be opt-in")
+
+	path := filepath.Join("..", "..", "resources", "antigravity", "prompt-sanitize-rules.json")
+	configureAntigravityPromptSanitize(t, "", "", path)
+	sanitizer := antigravityPromptSanitizer()
+	require.Equal(t, 11, sanitizer.RuleCount())
+
+	cases := []struct {
+		name  string
+		input string
+		want  string
+		count int
+	}{
+		{
+			name:  "RFC 2119 keywords and convention line",
+			input: "RFC 2119 keywords:\nRFC 2119: MUST, MAY",
+			want:  "RFC-2119 keywords:\nRFC-2119: MUST, MAY",
+			count: 2,
+		},
+		{
+			name:  "Hermes Agent",
+			input: "You are Hermes Agent, an intelligent AI assistant created by Nous Research.\nHermes Agent is by Nous Research.",
+			want:  "You are Hermes, an AI assistant.\nHermes is by the Hermes project.",
+			count: 3,
+		},
+		{
+			name:  "Pi",
+			input: "You are a coding assistant running inside pi, a coding agent harness.\nYou are running inside pi, a coding agent harness.",
+			want:  "You are an AI agent.\nYou are running inside a coding harness.",
+			count: 2,
+		},
+		{
+			name:  "Claude Code retains authorization requirement",
+			input: "Only assist with authorized testing. Dual-use security tools (example) require clear authorization context: approved use.",
+			want:  "Only assist with authorized testing. Tools with both offensive and defensive uses need a clear, authorized purpose.",
+			count: 1,
+		},
+		{
+			name:  "DeepSeek Harness",
+			input: "You are an AI agent powered by DeepSeek Harness.\nThe runtime is DeepSeek Harness.\nThe browser provides no implicit DOM, route, or screenshot context.",
+			want:  "You are an AI agent powered by an agent runtime.\nThe runtime is agent runtime.\nThe browser provides no implicit DOM context.",
+			count: 3,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			out, count := sanitizer.SanitizeText(tc.input)
+			require.Equal(t, tc.want, out)
+			require.Equal(t, tc.count, count)
+		})
 	}
 }
 
