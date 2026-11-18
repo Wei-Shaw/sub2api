@@ -97,7 +97,11 @@ type BillingCache interface {
 // ModelPricing 模型价格配置（per-token价格，与LiteLLM格式一致）
 type ModelPricing struct {
 	// UltrafastMultiplier is model-owned and independent of operator Fast pricing.
-	UltrafastMultiplier                float64
+	UltrafastMultiplier float64
+	// UltrafastMultiplierOverride 渠道显式 Ultrafast 倍率；nil 时沿用 UltrafastMultiplier。
+	// 与模型自带倍率分开存放：后者由 applyModelSpecificPricingPolicyEx 按请求时点重算，
+	// 不能覆盖运营者配置。
+	UltrafastMultiplierOverride        *float64
 	InputPricePerToken                 float64 // 每token输入价格 (USD)
 	InputPricePerTokenPriority         float64 // priority service tier 下每token输入价格 (USD)
 	ImageInputPricePerToken            float64 // 图片输入 token 价格 (USD)，用于多模态 embedding 等图文不同价场景；为 0 时回退到 InputPricePerToken
@@ -157,8 +161,13 @@ func serviceTierCostMultiplier(serviceTier string) float64 {
 
 func configuredServiceTierMultiplier(serviceTier string, pricing *ModelPricing) float64 {
 	if pricing != nil {
-		if normalizeBillingServiceTier(serviceTier) == OpenAIFastTierUltrafast && pricing.UltrafastMultiplier > 0 {
-			return pricing.UltrafastMultiplier
+		if normalizeBillingServiceTier(serviceTier) == OpenAIFastTierUltrafast {
+			if pricing.UltrafastMultiplierOverride != nil {
+				return *pricing.UltrafastMultiplierOverride
+			}
+			if pricing.UltrafastMultiplier > 0 {
+				return pricing.UltrafastMultiplier
+			}
 		}
 		switch normalizeBillingServiceTier(serviceTier) {
 		case "priority", "fast":
@@ -1629,6 +1638,7 @@ func (s *BillingService) GetModelPricingWithChannel(model string, channelPricing
 	applyChannelTokenPriceOverrides(pricing, channelPricing)
 	pricing.FastMultiplier = channelPricing.FastMultiplier
 	pricing.FlexMultiplier = channelPricing.FlexMultiplier
+	pricing.UltrafastMultiplierOverride = channelPricing.UltrafastMultiplier
 	pricing.ReasoningEffortMultipliers = maps.Clone(channelPricing.ReasoningEffortMultipliers)
 	applyChannelImagePriceOverrides(channelPricing, pricing)
 	return pricing, nil

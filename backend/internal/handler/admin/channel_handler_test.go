@@ -460,6 +460,7 @@ func TestPricingRequestToService_MultipliersGatedByFlag(t *testing.T) {
 		BillingMode:                "token",
 		FastMultiplier:             float64Ptr(2.5),
 		FlexMultiplier:             float64Ptr(0.5),
+		UltrafastMultiplier:        float64Ptr(4),
 		ReasoningEffortMultipliers: map[string]float64{"high": 1.5, "max": 3},
 		Intervals: []pricingIntervalRequest{{
 			MinTokens:            272000,
@@ -473,6 +474,7 @@ func TestPricingRequestToService_MultipliersGatedByFlag(t *testing.T) {
 	allowed := pricingRequestToService([]channelModelPricingRequest{req}, true)
 	require.Equal(t, float64Ptr(2.5), allowed[0].FastMultiplier)
 	require.Equal(t, float64Ptr(0.5), allowed[0].FlexMultiplier)
+	require.Equal(t, float64Ptr(4), allowed[0].UltrafastMultiplier)
 	require.Equal(t, req.ReasoningEffortMultipliers, allowed[0].ReasoningEffortMultipliers)
 	require.Equal(t, float64Ptr(2), allowed[0].Intervals[0].InputMultiplier)
 	require.Equal(t, float64Ptr(1.5), allowed[0].Intervals[0].OutputMultiplier)
@@ -482,6 +484,7 @@ func TestPricingRequestToService_MultipliersGatedByFlag(t *testing.T) {
 	dropped := pricingRequestToService([]channelModelPricingRequest{req}, false)
 	require.Nil(t, dropped[0].FastMultiplier)
 	require.Nil(t, dropped[0].FlexMultiplier)
+	require.Nil(t, dropped[0].UltrafastMultiplier)
 	require.Equal(t, req.ReasoningEffortMultipliers, dropped[0].ReasoningEffortMultipliers)
 	require.Nil(t, dropped[0].Intervals[0].InputMultiplier)
 	require.Nil(t, dropped[0].Intervals[0].OutputMultiplier)
@@ -489,6 +492,23 @@ func TestPricingRequestToService_MultipliersGatedByFlag(t *testing.T) {
 	require.Nil(t, dropped[0].Intervals[0].CacheReadMultiplier)
 	// 非倍率字段不受开关影响
 	require.Equal(t, 272000, dropped[0].Intervals[0].MinTokens)
+}
+
+func TestPricingRequestAndResponse_UltrafastMultiplier(t *testing.T) {
+	var req channelModelPricingRequest
+	require.NoError(t, json.Unmarshal([]byte(`{"models":["gpt-6.2-astra"],"fast_multiplier":2.5,"ultrafast_multiplier":4}`), &req))
+	pricing := pricingRequestToService([]channelModelPricingRequest{req}, true)
+	got := pricingToResponse(&pricing[0])
+	require.Equal(t, float64Ptr(4), got.UltrafastMultiplier)
+	data, err := json.Marshal(got)
+	require.NoError(t, err)
+	require.Contains(t, string(data), `"ultrafast_multiplier":4`)
+
+	// 留空保持 null，计费沿用模型自带 Ultrafast 倍率。
+	got = pricingToResponse(&service.ChannelModelPricing{})
+	data, err = json.Marshal(got)
+	require.NoError(t, err)
+	require.Contains(t, string(data), `"ultrafast_multiplier":null`)
 }
 
 func TestPricingToResponse_TimePricing(t *testing.T) {
