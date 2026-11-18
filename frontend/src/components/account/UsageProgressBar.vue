@@ -1,12 +1,11 @@
 <template>
-  <div v-if="!statsOnly || (windowStats && (windowStats.requests > 0 || windowStats.tokens > 0))">
+  <div>
     <!-- Window stats row (above progress bar) -->
     <div
       v-if="windowStats && (windowStats.requests > 0 || windowStats.tokens > 0)"
       class="mb-0.5 flex items-center"
     >
-      <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
-        <span v-if="statsOnly" class="font-medium">{{ label }}</span>
+      <div :class="{ 'flex-wrap justify-end': matrix }" class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
         <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
           {{ formatRequests }} req
         </span>
@@ -35,24 +34,31 @@
     </div>
 
     <!-- Progress bar row -->
-    <div v-if="!statsOnly" class="flex items-center gap-1">
-      <!-- Label badge (label-width: fixed = 定宽居中, auto = 限宽截断左对齐) -->
-      <span :class="[labelSizeClass, labelClass]">
-        {{ label }}
+    <div class="flex items-center gap-1" :class="{ 'justify-end': matrix }">
+      <span v-if="matrix" class="relative min-w-[3.25rem] overflow-hidden rounded bg-gray-100 px-1 text-center text-[10px] font-medium dark:bg-gray-700">
+        <span v-if="remaining !== null" class="absolute inset-y-0 left-0 opacity-30" :class="barClass"
+          :style="{ width: remaining + '%' }" />
+        <span class="relative">{{ remaining === null ? '—' : remaining + '%' }}</span>
       </span>
+      <template v-else>
+        <!-- Label badge (label-width: fixed = 定宽居中, auto = 限宽截断左对齐) -->
+        <span :class="[labelSizeClass, labelClass]">
+          {{ label }}
+        </span>
 
-      <!-- Progress bar container -->
-      <div class="h-1.5 w-8 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-        <div
-          :class="['h-full transition-all duration-300', barClass]"
-          :style="{ width: barWidth }"
-        ></div>
-      </div>
+        <!-- Progress bar container -->
+        <div class="h-1.5 w-8 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+          <div
+            :class="['h-full transition-all duration-300', barClass]"
+            :style="{ width: barWidth }"
+          ></div>
+        </div>
 
-      <!-- Percentage -->
-      <span :class="['w-[32px] shrink-0 text-right text-[10px] font-medium', textClass]">
-        {{ displayPercent }}
-      </span>
+        <!-- Percentage -->
+        <span :class="['w-[32px] shrink-0 text-right text-[10px] font-medium', textClass]">
+          {{ displayPercent }}
+        </span>
+      </template>
 
       <!-- Reset time -->
       <span v-if="shouldShowResetTime" class="shrink-0 text-[10px] text-gray-400">
@@ -71,14 +77,15 @@ import { formatCompactNumber } from '@/utils/format'
 
 const props = withDefaults(
   defineProps<{
-    statsOnly?: boolean
     label: string
     utilization: number // Percentage (0-100+)
+    utilizationUnknown?: boolean
     resetsAt?: string | null
     color: 'indigo' | 'emerald' | 'purple' | 'amber'
     windowStats?: WindowStats | null
     estimatedTotalCost?: number | null
     showNowWhenIdle?: boolean
+    matrix?: boolean
     remainingCapacity?: boolean
     /** fixed: 定宽居中徽章（账号页纵向对齐）；auto: 限宽截断左对齐（监控页组合标签） */
     labelWidth?: 'fixed' | 'auto'
@@ -98,16 +105,16 @@ const { pause: pauseClock, resume: resumeClock } = useIntervalFn(
   60_000,
   { immediate: false },
 )
-if (!props.statsOnly && props.resetsAt) resumeClock()
+if (props.resetsAt) resumeClock()
 const refreshClockWhenVisible = () => {
-  if (!props.statsOnly && !document.hidden && props.resetsAt) now.value = new Date()
+  if (!document.hidden && props.resetsAt) now.value = new Date()
 }
 onMounted(() => document.addEventListener('visibilitychange', refreshClockWhenVisible))
 onUnmounted(() => document.removeEventListener('visibilitychange', refreshClockWhenVisible))
 watch(
   () => props.resetsAt,
   (val) => {
-    if (!props.statsOnly && val) {
+    if (val) {
       now.value = new Date()
       resumeClock()
     } else {
@@ -134,6 +141,10 @@ const labelSizeClass = computed(() =>
     ? 'max-w-[72px] shrink-0 truncate rounded px-1 text-left text-[10px] font-medium'
     : 'w-[32px] shrink-0 rounded px-1 text-center text-[10px] font-medium'
 )
+
+// Matrix cells show what's left. Reset status still uses the reported utilization.
+const remaining = computed(() => props.utilizationUnknown || !Number.isFinite(props.utilization)
+  ? null : Math.round(Math.max(0, Math.min(100, 100 - props.utilization)) * 10) / 10)
 
 // Progress bar color based on utilization
 const barClass = computed(() => {
@@ -175,11 +186,13 @@ const textClass = computed(() => {
 
 // Bar width (capped at 100%)
 const barWidth = computed(() => {
+  if (props.utilizationUnknown) return '0%'
   return `${Math.min(Math.max(props.utilization, 0), 100)}%`
 })
 
 // Display percentage (cap at 999% for readability)
 const displayPercent = computed(() => {
+  if (props.utilizationUnknown) return '—'
   const percent = Math.round(
     props.remainingCapacity
       ? Math.min(Math.max(props.utilization, 0), 100)
@@ -189,6 +202,7 @@ const displayPercent = computed(() => {
 })
 
 const shouldShowResetTime = computed(() => {
+  if (props.utilizationUnknown || (props.matrix && remaining.value === null)) return false
   if (props.resetsAt) return true
   return Boolean(props.showNowWhenIdle && props.utilization <= 0)
 })

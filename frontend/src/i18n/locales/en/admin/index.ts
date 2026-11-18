@@ -1,4 +1,3 @@
-import quota from './quota'
 import overview from './overview'
 import channels from './channels'
 import accounts from './accounts'
@@ -10,7 +9,6 @@ import promptAudit from './promptAudit'
 import plugins from './plugins'
 
 export default {
-  quota,
   ...overview,
   ...channels,
   ...accounts,
