@@ -134,6 +134,33 @@ func (s *CNProviderQuotaService) QueryUsageForAccount(ctx context.Context, accou
 	}
 }
 
+// completeOpenDesignNoPlan 收尾一次「明确无 coding plan」的探测：清空 5h/weekly/
+// monthly 三个窗口与重置时间、刷新时间戳，账号保持可调度。
+//
+// 为什么必须清空：残留的 100% 快照会让阈值评估继续把账号停调，而账号其实已经没有
+// 套餐可用，停调没有任何收益。
+func (s *CNProviderQuotaService) completeOpenDesignNoPlan(
+	ctx context.Context,
+	account *Account,
+	result *CNProviderQuotaProbeResult,
+	now time.Time,
+) *CNProviderQuotaProbeResult {
+	result.Tiers = nil
+	result.Success = true
+	result.CredentialValid = true
+	if strings.TrimSpace(result.PlanLevel) == "" {
+		result.PlanLevel = "No coding plan"
+	}
+	updates := cnQuotaExtraUpdates(PlatformOpenDesign, nil, now)
+	clearAbsentCNQuotaWindows(PlatformOpenDesign, nil, updates)
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
+		slog.Warn("cn_quota_persist_failed", "account_id", account.ID, "provider", PlatformOpenDesign, "error", err)
+	} else {
+		result.Persisted = true
+	}
+	return result
+}
+
 func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, account *Account) (*CNProviderQuotaProbeResult, error) {
 	provider := account.GetCodingPlanProvider()
 	if provider == PlatformCommandCode {
@@ -282,21 +309,7 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 			return result, nil
 		}
 		if noPlan {
-			// 账号已无 coding plan：清空用量窗口，避免残留的 100% 快照把它永久停调。
-			result.Tiers = nil
-			result.Success = true
-			result.CredentialValid = true
-			if result.PlanLevel == "" {
-				result.PlanLevel = "no coding plan"
-			}
-			updates := cnQuotaExtraUpdates(provider, nil, now)
-			clearAbsentCNQuotaWindows(provider, nil, updates)
-			if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
-				slog.Warn("cn_quota_persist_failed", "account_id", account.ID, "provider", provider, "error", err)
-			} else {
-				result.Persisted = true
-			}
-			return result, nil
+			return s.completeOpenDesignNoPlan(ctx, account, result, now), nil
 		}
 	case PlatformZhipu:
 		tiers = parseZhipuTokenTiers(gjson.GetBytes(bodyBytes, "data"))

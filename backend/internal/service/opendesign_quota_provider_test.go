@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -191,25 +193,65 @@ func TestOpenDesignSchedulingThresholdEvaluation(t *testing.T) {
 	require.False(t, decision.ShouldPause)
 }
 
-// 调用方在 noPlan 分支依赖「空 tiers + 清窗口」把残留的 100% 快照抹掉，
-// 否则账号会被永久停调。这里直接固定这两个 helper 的组合语义。
-func TestOpenDesignNoPlanClearsUsageWindows(t *testing.T) {
+// fakeQuotaExtraRepo 只关心 UpdateExtra：用来断言探测分支真的落库了什么。
+type fakeQuotaExtraRepo struct {
+	AccountRepository
+	updates map[string]any
+	err     error
+}
+
+func (r *fakeQuotaExtraRepo) UpdateExtra(_ context.Context, _ int64, updates map[string]any) error {
+	r.updates = updates
+	return r.err
+}
+
+// 走真实调用方方法（queryUsageForAccount 的 noPlan 分支），而不是只测 helper：
+// 删掉分支、漏写 "No coding plan"、或没清窗口，这里都会红。
+func TestCompleteOpenDesignNoPlanClearsWindowsAndPersists(t *testing.T) {
 	t.Parallel()
 
-	now := time.Now()
-	updates := cnQuotaExtraUpdates(PlatformOpenDesign, nil, now)
-	clearAbsentCNQuotaWindows(PlatformOpenDesign, nil, updates)
+	repo := &fakeQuotaExtraRepo{}
+	svc := &CNProviderQuotaService{accountRepo: repo}
+	account := &Account{ID: 7, Platform: PlatformOpenDesign, Type: AccountTypeAPIKey, Status: StatusActive}
+
+	out := svc.completeOpenDesignNoPlan(context.Background(), account, &CNProviderQuotaProbeResult{}, time.Now())
+
+	require.True(t, out.Success)
+	require.True(t, out.Persisted)
+	require.Nil(t, out.Tiers)
+	require.Equal(t, "No coding plan", out.PlanLevel, "余额不得被当成套餐名")
 
 	for _, suffix := range []string{
 		cnExtraSuffix5hUsed, cnExtraSuffix5hReset,
 		cnExtraSuffixWeeklyUsed, cnExtraSuffixWeeklyReset,
 		cnExtraSuffixMonthlyUsed, cnExtraSuffixMonthlyReset,
 	} {
-		value, ok := updates[cnExtraKey(PlatformOpenDesign, suffix)]
+		value, ok := repo.updates[cnExtraKey(PlatformOpenDesign, suffix)]
 		require.True(t, ok, "%s must be written", suffix)
 		require.Nil(t, value, "%s must be cleared", suffix)
 	}
-	require.NotNil(t, updates[cnExtraKey(PlatformOpenDesign, cnExtraSuffixUsageUpdated)])
+	require.NotNil(t, repo.updates[cnExtraKey(PlatformOpenDesign, cnExtraSuffixUsageUpdated)])
+
+	// 已有套餐名（例如厂商返回的 tier）不应被覆盖成占位文案。
+	kept := svc.completeOpenDesignNoPlan(context.Background(), account,
+		&CNProviderQuotaProbeResult{PlanLevel: "pro"}, time.Now())
+	require.Equal(t, "pro", kept.PlanLevel)
+}
+
+// 落库失败时探测本身仍算成功，但必须标成未持久化（方便上层观察/重试）。
+func TestCompleteOpenDesignNoPlanReportsPersistFailure(t *testing.T) {
+	t.Parallel()
+
+	repo := &fakeQuotaExtraRepo{err: errors.New("db down")}
+	svc := &CNProviderQuotaService{accountRepo: repo}
+
+	out := svc.completeOpenDesignNoPlan(context.Background(),
+		&Account{ID: 8, Platform: PlatformOpenDesign, Type: AccountTypeAPIKey},
+		&CNProviderQuotaProbeResult{}, time.Now())
+
+	require.True(t, out.Success)
+	require.False(t, out.Persisted)
+	require.Nil(t, out.Tiers)
 }
 
 // 激活链接只接受默认 HTTPS 端口（8443 之类的显式端口一律拒绝）。
