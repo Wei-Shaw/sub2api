@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -1124,6 +1125,97 @@ func TestForwardAsChatCompletions_StreamContextWindowResponseFailedReturnsErrorW
 	require.Contains(t, rec.Header().Get("Content-Type"), "application/json")
 	require.Contains(t, rec.Body.String(), "input exceeds the context window")
 	require.NotContains(t, rec.Body.String(), "[DONE]")
+}
+
+func TestForwardAsChatCompletions_OverloadBeforeContentForSmallRequests(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, payload := range []string{
+		`{"type":"error","error":{"type":"server_is_overloaded","message":"try again later"}}`,
+		`{"type":"response.failed","response":{"error":{"code":"server_error","message":"try again later"}}}`,
+	} {
+		t.Run(payload, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			body := []byte(`{"model":"gpt-5.5","messages":[{"role":"user","content":"hello"}],"stream":true}`)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+			c.Request.Header.Set("Content-Type", "application/json")
+			upstreamBody := strings.Join([]string{
+				`data: {"type":"response.created","response":{"id":"resp_overloaded","model":"gpt-5.5","status":"in_progress","output":[]}}`, "",
+				`data: {"type":"response.in_progress","response":{"id":"resp_overloaded","status":"in_progress"}}`, "",
+				"data: " + payload, "", "",
+			}, "\n")
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+				Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+			}}
+			svc := &OpenAIGatewayService{httpUpstream: upstream}
+			account := &Account{
+				ID: 1, Name: "openai-oauth", Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1,
+				Credentials: map[string]any{"access_token": "oauth-token", "chatgpt_account_id": "chatgpt-acc"},
+			}
+			result, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, "", "gpt-5.5")
+			require.Nil(t, result)
+			var failoverErr *UpstreamFailoverError
+			require.ErrorAs(t, err, &failoverErr)
+			require.False(t, c.Writer.Written())
+			require.Empty(t, rec.Body.String())
+		})
+	}
+}
+
+func TestHandleChatStreamingResponse_BuffersRoleUntilContent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	synctest.Test(t, func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+		reader, writer := io.Pipe()
+		t.Cleanup(func() {
+			_ = reader.Close()
+			_ = writer.Close()
+		})
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+			Body:       reader,
+		}
+		cfg := &config.Config{Gateway: config.GatewayConfig{StreamKeepaliveInterval: 1}}
+		svc := &OpenAIGatewayService{cfg: cfg}
+		account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+		done := make(chan error, 1)
+		go func() {
+			_, err := svc.handleChatStreamingResponse(resp, c, account, "gpt-5.5", "gpt-5.5", "gpt-5.5", time.Now(), 128)
+			done <- err
+		}()
+
+		_, err := io.WriteString(writer, "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_role\",\"model\":\"gpt-5.5\"}}\n\n")
+		require.NoError(t, err)
+		synctest.Wait()
+		time.Sleep(2 * time.Second)
+		synctest.Wait()
+		require.False(t, c.Writer.Written(), "the role and transport keepalives must leave the response uncommitted")
+
+		_, err = io.WriteString(writer, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hello\"}\n\n")
+		require.NoError(t, err)
+		synctest.Wait()
+		time.Sleep(2 * time.Second)
+		synctest.Wait()
+
+		_, err = io.WriteString(writer, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_role\",\"status\":\"completed\"}}\n\n")
+		require.NoError(t, err)
+		require.NoError(t, writer.Close())
+		require.NoError(t, <-done)
+
+		output := rec.Body.String()
+		role := strings.Index(output, `"role":"assistant"`)
+		text := strings.Index(output, `"content":"hello"`)
+		heartbeat := strings.Index(output, "\n:\n\n")
+		require.GreaterOrEqual(t, role, 0)
+		require.Greater(t, text, role)
+		require.Greater(t, heartbeat, text, "keepalives resume once content is written")
+		require.Contains(t, output[heartbeat:], "data: [DONE]\n\n")
+	})
 }
 
 func TestForwardAsChatCompletions_StreamBareErrorAfterOutputDoesNotFailOver(t *testing.T) {

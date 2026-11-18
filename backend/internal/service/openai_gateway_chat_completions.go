@@ -1025,7 +1025,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					)
 					continue
 				}
-				if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
+				if !clientOutputStarted && (openAIStreamEventIsMetadata(event.Type) || !refusalDetector.ShouldReleaseClientOutput()) {
 					pendingSSE = append(pendingSSE, sse)
 					continue
 				}
@@ -1305,10 +1305,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			return resultWithUsage(), fmt.Errorf("stream data interval timeout")
 
 		case <-keepaliveCh:
-			if clientDisconnected {
-				continue
-			}
-			if refusalDetector.Enabled() && !clientOutputStarted {
+			if clientDisconnected || !clientOutputStarted {
 				continue
 			}
 			if time.Since(lastDataAt) < keepaliveInterval {

@@ -46,9 +46,8 @@ func compatStreamSideEffectsAccount() Account {
 }
 
 // compatStreamSideEffectsSSE builds an upstream responses stream that fails with errorEvent.
-// With outputFirst the error follows response.created and a text delta, so client output has
-// started (in practice response.created alone already starts it on both compat paths); without,
-// the error is the first event and the request can still fail over.
+// With outputFirst the error follows a text delta after response.created.
+// Otherwise the error is the first event and the request can still fail over.
 func compatStreamSideEffectsSSE(outputFirst bool, errorEvent string) string {
 	var lines []string
 	if outputFirst {

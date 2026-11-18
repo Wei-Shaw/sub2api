@@ -37,10 +37,6 @@ func newOpenAIChatSilentRefusalDetector(requestBodyLen int) *openAIChatSilentRef
 	}
 }
 
-func (d *openAIChatSilentRefusalDetector) Enabled() bool {
-	return d != nil && d.enabled
-}
-
 func (d *openAIChatSilentRefusalDetector) ObserveSSELine(line string) {
 	if d == nil || !d.enabled {
 		return
