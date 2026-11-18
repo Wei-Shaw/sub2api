@@ -234,6 +234,11 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 		// crazyhub 等第三方中转通常只有对话端点。已探测/兜底判定不支持的工具
 		// 账号直接跳过，换下一个（避免把请求发到必然 404 的上游）。
 		if !account.SupportsOpenAIEndpointCapability(service.OpenAIEndpointCapabilityDeepseekTools) {
+			// 选号阶段已抢到该账号的并发槽；这条路径不进入 forward，必须在此
+			// 归还，否则槽位滞留到 TTL 到期（每次换号泄漏一个）。
+			if selection.ReleaseFunc != nil {
+				selection.ReleaseFunc()
+			}
 			failed[account.ID] = struct{}{}
 			continue
 		}
