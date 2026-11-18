@@ -108,7 +108,7 @@ type outboxCleanupAccountRepo struct {
 	AccountRepository
 }
 
-func (r *outboxCleanupAccountRepo) ListSchedulableUngroupedByPlatform(context.Context, string) ([]Account, error) {
+func (r *outboxCleanupAccountRepo) ListModelAvailabilityCandidates(context.Context, *int64, []string, bool) ([]Account, error) {
 	return nil, nil
 }
 
