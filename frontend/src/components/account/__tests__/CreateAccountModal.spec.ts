@@ -14,6 +14,8 @@ const {
   showWarningMock,
   importCodexSessionMock,
   createOpenAICodexPATMock,
+  generateAntigravityAuthUrlMock,
+  exchangeAntigravityCodeMock,
   authIsSimpleMode,
 } = vi.hoisted(() => ({
   createAccountMock: vi.fn(),
@@ -22,6 +24,8 @@ const {
   showWarningMock: vi.fn(),
   importCodexSessionMock: vi.fn(),
   createOpenAICodexPATMock: vi.fn(),
+  generateAntigravityAuthUrlMock: vi.fn(),
+  exchangeAntigravityCodeMock: vi.fn(),
   authIsSimpleMode: { value: true },
 }))
 
@@ -50,6 +54,10 @@ vi.mock('@/api/admin', () => ({
       checkMixedChannelRisk: vi.fn().mockResolvedValue({ has_risk: false }),
       importCodexSession: importCodexSessionMock,
       createOpenAICodexPAT: createOpenAICodexPATMock,
+    },
+    antigravity: {
+      generateAuthUrl: generateAntigravityAuthUrlMock,
+      exchangeCode: exchangeAntigravityCodeMock,
     },
     settings: {
       getWebSearchEmulationConfig: vi.fn().mockResolvedValue({ enabled: false, providers: [] }),
@@ -90,12 +98,14 @@ const OAuthAuthorizationFlowStub = defineComponent({
     showCodexPatOption: Boolean,
     initialInputMethod: String,
   },
-  data: () => ({ inputMethod: 'manual' }),
-  emits: ['import-codex-session', 'import-codex-pat'],
+  data: () => ({ inputMethod: 'manual', authCode: '' }),
+  emits: ['import-codex-session', 'import-codex-pat', 'generate-url'],
   template: `
     <div>
       <button data-testid="import-codex-session" @click="$emit('import-codex-session', 'session-json')">session</button>
       <button data-testid="import-codex-pat" @click="$emit('import-codex-pat', 'pat-token')">pat</button>
+      <button data-testid="generate-oauth-url" @click="$emit('generate-url')">generate URL</button>
+      <input data-testid="oauth-code" v-model="authCode" />
     </div>
   `,
 })
@@ -931,6 +941,49 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await flushPromises()
 
     expect(createOpenAICodexPATMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBe(false)
+  })
+})
+
+describe('CreateAccountModal Google One OAuth', () => {
+  beforeEach(() => {
+    authIsSimpleMode.value = true
+    createAccountMock.mockReset().mockResolvedValue({ id: 42, platform: 'antigravity', type: 'oauth' })
+    generateAntigravityAuthUrlMock.mockReset().mockResolvedValue({
+      auth_url: 'https://example.test/auth', session_id: 'antigravity-session', state: 'oauth-state',
+    })
+    exchangeAntigravityCodeMock.mockReset()
+  })
+
+  it.each([[undefined, 'Pro'], ['Ultra', 'Ultra']])('uses Antigravity OAuth for plan %s', async (reportedPlan, expectedPlan) => {
+    exchangeAntigravityCodeMock.mockResolvedValue({ access_token: 'test-token', plan_type: reportedPlan })
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Gemini')
+    await selectButtonByText(wrapper, 'admin.accounts.gemini.accountType.oauthTitle')
+    expect(wrapper.findAll('button').some(button => button.text().includes('Google One'))).toBe(false)
+
+    await selectButtonByText(wrapper, 'Antigravity')
+    await selectButtonByText(wrapper, 'Google One')
+    expect(wrapper.text()).not.toContain('admin.accounts.modelRestriction')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Google One account')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    await wrapper.get('[data-testid="generate-oauth-url"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-testid="oauth-code"]').setValue('test-code')
+    await selectButtonByText(wrapper, 'admin.accounts.oauth.completeAuth')
+    await flushPromises()
+
+    expect(exchangeAntigravityCodeMock).toHaveBeenCalledWith({
+      code: 'test-code', session_id: 'antigravity-session', state: 'oauth-state',
+    })
+    expect(createAccountMock).toHaveBeenCalledWith(expect.objectContaining({
+      platform: 'antigravity', type: 'oauth',
+      credentials: expect.objectContaining({ access_token: 'test-token', plan_type: expectedPlan }),
+    }))
+    const payload = createAccountMock.mock.calls[0]?.[0]
+    expect(payload.credentials).not.toHaveProperty('model_mapping')
+    expect(payload.extra ?? {}).not.toHaveProperty('mixed_scheduling')
   })
 })
 
