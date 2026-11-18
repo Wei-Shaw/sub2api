@@ -512,6 +512,7 @@ export default {
         }
       },
       usageWindow: {
+        modelSnapshotUsed: '模型额度快照 · 已用比例',
         remainingQuota: '剩余额度',
         statsTitle: '5小时窗口用量统计',
         statsTitleDaily: '每日用量统计',

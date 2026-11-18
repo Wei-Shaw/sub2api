@@ -266,7 +266,8 @@
       </div>
 
       <!-- Usage data from API -->
-      <div v-else-if="hasAntigravityQuotaFromAPI" class="space-y-1">
+      <div v-else-if="hasAntigravityQuotaFromAPI" class="space-y-1" data-test="quota-model-snapshot">
+        <span class="text-[10px] text-gray-500">{{ t('admin.accounts.usageWindow.modelSnapshotUsed') }}</span>
         <!-- Gemini 3 Pro -->
         <UsageProgressBar
           v-if="antigravity3ProUsageFromAPI !== null"

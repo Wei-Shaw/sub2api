@@ -467,6 +467,7 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
+    expect(wrapper.get('[data-test="quota-model-snapshot"]').text()).toContain('admin.accounts.usageWindow.modelSnapshotUsed')
     expect(wrapper.text()).toContain('admin.accounts.usageWindow.gemini3Image|70|2026-03-01T09:00:00Z')
   })
 
