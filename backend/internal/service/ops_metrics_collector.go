@@ -39,6 +39,14 @@ const (
 
 var opsMetricsCollectorAdvisoryLockID = hashAdvisoryLockID(opsMetricsCollectorLeaderLockKey)
 
+func opsMetricsSuccessfulUsagePredicate(requestTypeColumn string) string {
+	return fmt.Sprintf("COALESCE(%s, 0) <> %d", requestTypeColumn, RequestTypeCyberBlocked)
+}
+
+func opsMetricsClientVisibleErrorPredicate(statusColumn, errorTypeColumn string) string {
+	return "(COALESCE(" + statusColumn + ", 0) >= 400 OR " + errorTypeColumn + " = 'cyber_policy')"
+}
+
 type opsSchedulableAccountLoadRepository interface {
 	ListSchedulableAccountLoads(ctx context.Context) ([]AccountWithConcurrency, error)
 }
@@ -446,7 +454,7 @@ type opsCollectedPercentiles struct {
 func (c *OpsMetricsCollector) queryUsageCounts(ctx context.Context, start, end time.Time) (successCount int64, tokenConsumed int64, err error) {
 	q := `
 SELECT
-  COALESCE(COUNT(*), 0) AS success_count,
+  COALESCE(COUNT(*) FILTER (WHERE ` + opsMetricsSuccessfulUsagePredicate("request_type") + `), 0) AS success_count,
   COALESCE(SUM(input_tokens + output_tokens + cache_creation_tokens + cache_read_tokens), 0) AS token_consumed
 FROM usage_logs
 WHERE created_at >= $1 AND created_at < $2`
@@ -473,6 +481,7 @@ SELECT
   MAX(duration_ms) AS max_ms
 FROM usage_logs
 WHERE created_at >= $1 AND created_at < $2
+  AND ` + opsMetricsSuccessfulUsagePredicate("request_type") + `
   AND duration_ms IS NOT NULL`
 
 		var p50, p90, p95, p99 sql.NullFloat64
@@ -506,6 +515,7 @@ SELECT
   MAX(first_token_ms) AS max_ms
 FROM usage_logs
 WHERE created_at >= $1 AND created_at < $2
+  AND ` + opsMetricsSuccessfulUsagePredicate("request_type") + `
   AND first_token_ms IS NOT NULL`
 
 		var p50, p90, p95, p99 sql.NullFloat64
@@ -540,11 +550,12 @@ func (c *OpsMetricsCollector) queryErrorCounts(ctx context.Context, start, end t
 	upstream529 int64,
 	err error,
 ) {
+	clientVisible := opsMetricsClientVisibleErrorPredicate("status_code", "error_type")
 	q := `
 SELECT
-  COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400), 0) AS error_total,
-  COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND is_business_limited), 0) AS business_limited,
-  COALESCE(COUNT(*) FILTER (WHERE COALESCE(status_code, 0) >= 400 AND NOT is_business_limited), 0) AS error_sla,
+  COALESCE(COUNT(*) FILTER (WHERE ` + clientVisible + `), 0) AS error_total,
+  COALESCE(COUNT(*) FILTER (WHERE ` + clientVisible + ` AND is_business_limited), 0) AS business_limited,
+  COALESCE(COUNT(*) FILTER (WHERE ` + clientVisible + ` AND NOT is_business_limited), 0) AS error_sla,
   COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) NOT IN (429, 529)), 0) AS upstream_excl,
   COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 429), 0) AS upstream_429,
   COALESCE(COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(upstream_status_code, status_code, 0) = 529), 0) AS upstream_529

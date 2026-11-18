@@ -17,6 +17,7 @@ func (r *opsRepository) UpsertHourlyMetrics(ctx context.Context, startTime, endT
 
 	start := startTime.UTC()
 	end := endTime.UTC()
+	successfulUsage := opsSuccessfulUsagePredicate("request_type")
 
 	// NOTE:
 	// - We aggregate usage_logs + ops_error_logs into ops_metrics_hourly.
@@ -35,6 +36,7 @@ WITH usage_base AS (
     ul.group_id AS group_id,
     ul.duration_ms AS duration_ms,
     ul.first_token_ms AS first_token_ms,
+    ul.request_type AS request_type,
     (ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens) AS tokens
   FROM usage_logs ul
   JOIN groups g ON g.id = ul.group_id
@@ -45,23 +47,23 @@ usage_agg AS (
     bucket_start,
     CASE WHEN GROUPING(platform) = 1 THEN NULL ELSE platform END AS platform,
     CASE WHEN GROUPING(group_id) = 1 THEN NULL ELSE group_id END AS group_id,
-    COUNT(*) AS success_count,
-    COUNT(*) FILTER (WHERE first_token_ms IS NOT NULL) AS ttft_sample_count,
+    COUNT(*) FILTER (WHERE ` + successfulUsage + `) AS success_count,
+    COUNT(*) FILTER (WHERE ` + successfulUsage + ` AND first_token_ms IS NOT NULL) AS ttft_sample_count,
     COALESCE(SUM(tokens), 0) AS token_consumed,
 
-    percentile_cont(0.50) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE duration_ms IS NOT NULL) AS duration_p50_ms,
-    percentile_cont(0.90) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE duration_ms IS NOT NULL) AS duration_p90_ms,
-    percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE duration_ms IS NOT NULL) AS duration_p95_ms,
-    percentile_cont(0.99) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE duration_ms IS NOT NULL) AS duration_p99_ms,
-    AVG(duration_ms) FILTER (WHERE duration_ms IS NOT NULL) AS duration_avg_ms,
-    MAX(duration_ms) AS duration_max_ms,
+    percentile_cont(0.50) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE ` + successfulUsage + ` AND duration_ms IS NOT NULL) AS duration_p50_ms,
+    percentile_cont(0.90) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE ` + successfulUsage + ` AND duration_ms IS NOT NULL) AS duration_p90_ms,
+    percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE ` + successfulUsage + ` AND duration_ms IS NOT NULL) AS duration_p95_ms,
+    percentile_cont(0.99) WITHIN GROUP (ORDER BY duration_ms) FILTER (WHERE ` + successfulUsage + ` AND duration_ms IS NOT NULL) AS duration_p99_ms,
+    AVG(duration_ms) FILTER (WHERE ` + successfulUsage + ` AND duration_ms IS NOT NULL) AS duration_avg_ms,
+    MAX(duration_ms) FILTER (WHERE ` + successfulUsage + `) AS duration_max_ms,
 
-    percentile_cont(0.50) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL) AS ttft_p50_ms,
-    percentile_cont(0.90) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL) AS ttft_p90_ms,
-    percentile_cont(0.95) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL) AS ttft_p95_ms,
-    percentile_cont(0.99) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL) AS ttft_p99_ms,
-    AVG(first_token_ms) FILTER (WHERE first_token_ms IS NOT NULL) AS ttft_avg_ms,
-    MAX(first_token_ms) AS ttft_max_ms
+    percentile_cont(0.50) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE ` + successfulUsage + ` AND first_token_ms IS NOT NULL) AS ttft_p50_ms,
+    percentile_cont(0.90) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE ` + successfulUsage + ` AND first_token_ms IS NOT NULL) AS ttft_p90_ms,
+    percentile_cont(0.95) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE ` + successfulUsage + ` AND first_token_ms IS NOT NULL) AS ttft_p95_ms,
+    percentile_cont(0.99) WITHIN GROUP (ORDER BY first_token_ms) FILTER (WHERE ` + successfulUsage + ` AND first_token_ms IS NOT NULL) AS ttft_p99_ms,
+    AVG(first_token_ms) FILTER (WHERE ` + successfulUsage + ` AND first_token_ms IS NOT NULL) AS ttft_avg_ms,
+    MAX(first_token_ms) FILTER (WHERE ` + successfulUsage + `) AS ttft_max_ms
   FROM usage_base
   GROUP BY GROUPING SETS (
     (bucket_start),
@@ -77,6 +79,7 @@ error_base AS (
     COALESCE(platform, 'unknown') AS platform,
     group_id AS group_id,
     is_business_limited AS is_business_limited,
+    error_type AS error_type,
     error_owner AS error_owner,
     status_code AS client_status_code,
     COALESCE(upstream_status_code, status_code, 0) AS effective_status_code
@@ -90,9 +93,9 @@ error_agg AS (
     bucket_start,
     CASE WHEN GROUPING(platform) = 1 THEN NULL ELSE platform END AS platform,
     CASE WHEN GROUPING(group_id) = 1 THEN NULL ELSE group_id END AS group_id,
-    COUNT(*) FILTER (WHERE COALESCE(client_status_code, 0) >= 400) AS error_count_total,
-    COUNT(*) FILTER (WHERE COALESCE(client_status_code, 0) >= 400 AND is_business_limited) AS business_limited_count,
-    COUNT(*) FILTER (WHERE COALESCE(client_status_code, 0) >= 400 AND NOT is_business_limited) AS error_count_sla,
+    COUNT(*) FILTER (WHERE ` + opsClientVisibleErrorPredicate("client_status_code", "error_type") + `) AS error_count_total,
+    COUNT(*) FILTER (WHERE ` + opsClientVisibleErrorPredicate("client_status_code", "error_type") + ` AND is_business_limited) AS business_limited_count,
+    COUNT(*) FILTER (WHERE ` + opsClientVisibleErrorPredicate("client_status_code", "error_type") + ` AND NOT is_business_limited) AS error_count_sla,
     COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(effective_status_code, 0) NOT IN (429, 529)) AS upstream_error_count_excl_429_529,
     COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(effective_status_code, 0) = 429) AS upstream_429_count,
     COUNT(*) FILTER (WHERE error_owner = 'provider' AND NOT is_business_limited AND COALESCE(effective_status_code, 0) = 529) AS upstream_529_count
