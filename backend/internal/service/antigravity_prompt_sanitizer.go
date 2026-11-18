@@ -9,12 +9,13 @@ import (
 	"sync"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	antigravityresources "github.com/Wei-Shaw/sub2api/resources/antigravity"
 )
 
 // Antigravity 的 Cloud Code Assist 上游会检查 systemInstruction 的字面指纹，
 // 命中后返回伪装成 429 的拒绝响应。下面的可配置改写规则在请求转发前把被
-// 标记的字面串替换成等价表达；规则可通过环境变量或 JSON 文件配置，
-// 文件规则支持热更新（无需重启进程）。
+// 标记的字面串替换成兼容表达。内置规则默认启用，可通过环境变量或 JSON
+// 文件覆盖；文件规则支持热更新（无需重启进程）。
 const (
 	antigravityPromptSanitizeEnabledEnv = "GATEWAY_ANTIGRAVITY_PROMPT_SANITIZE_ENABLED"
 	antigravityPromptSanitizeRulesEnv   = "GATEWAY_ANTIGRAVITY_PROMPT_SANITIZE_RULES"
@@ -42,8 +43,8 @@ var antigravityPromptSanitizerCache struct {
 
 // antigravityPromptSanitizer 返回当前配置的 systemInstruction 改写器。
 //
-// 配置优先级：ENABLED=false/0 时强制关闭；RULES 内联 JSON 优先；否则读取 FILE
-// 指向的 JSON 文件。文件按 size+mtime 作为缓存键，改动后下一次请求即生效。
+// 配置优先级：ENABLED=false/0 强制关闭；否则依次使用 RULES、FILE、内置规则。
+// 文件按 size+mtime 作为缓存键，改动后下一次请求即生效。
 func antigravityPromptSanitizer() *antigravity.PromptSanitizer {
 	key, payload, source := resolveAntigravityPromptSanitizeSource()
 	cache := &antigravityPromptSanitizerCache
@@ -68,10 +69,7 @@ func resolveAntigravityPromptSanitizeSource() (key, payload, source string) {
 	}
 	path := strings.TrimSpace(os.Getenv(antigravityPromptSanitizeFileEnv))
 	if path == "" {
-		if enabledRaw != "" {
-			return "enabled-but-empty", "", "no rules configured"
-		}
-		return "none", "", ""
+		return "bundled", antigravityresources.PromptSanitizeRules(), "bundled rules"
 	}
 	info, err := os.Stat(path) //nolint:gosec // G703: 路径仅来自运维设置的规则文件环境变量，非请求输入
 	if err != nil {
@@ -88,10 +86,6 @@ func resolveAntigravityPromptSanitizeSource() (key, payload, source string) {
 
 func parseAntigravityPromptSanitizer(payload, source string) *antigravity.PromptSanitizer {
 	if strings.TrimSpace(payload) == "" {
-		if source == "no rules configured" {
-			slog.Warn("antigravity_prompt_sanitize_no_rules",
-				"hint", "set "+antigravityPromptSanitizeRulesEnv+" or "+antigravityPromptSanitizeFileEnv)
-		}
 		return nil
 	}
 

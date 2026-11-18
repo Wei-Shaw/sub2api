@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/stretchr/testify/require"
 )
 
@@ -36,7 +37,8 @@ func testAntigravitySanitizeBody() []byte {
 }
 
 func TestAntigravityPromptSanitizerInlineRules(t *testing.T) {
-	configureAntigravityPromptSanitize(t, "", testAntigravitySanitizeRule, "")
+	path := filepath.Join("..", "..", "resources", "antigravity", "prompt-sanitize-rules.json")
+	configureAntigravityPromptSanitize(t, "", testAntigravitySanitizeRule, path)
 
 	sanitizer := antigravityPromptSanitizer()
 	if sanitizer == nil || sanitizer.RuleCount() != 1 {
@@ -70,6 +72,9 @@ func TestAntigravityPromptSanitizerInlineRules(t *testing.T) {
 }
 
 func TestAntigravityPromptSanitizerDisabled(t *testing.T) {
+	configureAntigravityPromptSanitize(t, "0", "", "")
+	require.Nil(t, antigravityPromptSanitizer(), "0 must disable bundled rules")
+
 	configureAntigravityPromptSanitize(t, "false", testAntigravitySanitizeRule, "")
 
 	if sanitizer := antigravityPromptSanitizer(); sanitizer != nil {
@@ -105,10 +110,10 @@ func TestAntigravityPromptSanitizerSkipsInvalidRules(t *testing.T) {
 	}
 }
 
-func TestAntigravityPromptSanitizerInvalidJSON(t *testing.T) {
-	configureAntigravityPromptSanitize(t, "", "{not-json", "")
-	if sanitizer := antigravityPromptSanitizer(); sanitizer != nil {
-		t.Fatalf("expected nil sanitizer for invalid JSON, got %+v", sanitizer)
+func TestAntigravityPromptSanitizerInvalidOrEmptyOverride(t *testing.T) {
+	for _, rules := range []string{"{not-json", "[]"} {
+		configureAntigravityPromptSanitize(t, "", rules, "")
+		require.Nil(t, antigravityPromptSanitizer(), "explicit rules %q must not fall back to bundled rules", rules)
 	}
 }
 
@@ -161,10 +166,6 @@ func TestAntigravityPromptSanitizerMissingFile(t *testing.T) {
 
 func TestAntigravityPromptSanitizerBundledRules(t *testing.T) {
 	configureAntigravityPromptSanitize(t, "", "", "")
-	require.Nil(t, antigravityPromptSanitizer(), "bundled rules must be opt-in")
-
-	path := filepath.Join("..", "..", "resources", "antigravity", "prompt-sanitize-rules.json")
-	configureAntigravityPromptSanitize(t, "", "", path)
 	sanitizer := antigravityPromptSanitizer()
 	require.Equal(t, 11, sanitizer.RuleCount())
 
@@ -212,6 +213,42 @@ func TestAntigravityPromptSanitizerBundledRules(t *testing.T) {
 			require.Equal(t, tc.count, count)
 		})
 	}
+}
+
+func TestAntigravityPromptSanitizerBundledRulesForwarding(t *testing.T) {
+	configureAntigravityPromptSanitize(t, "", "", "")
+	const original = "You are an AI agent powered by DeepSeek Harness."
+	const rewritten = "You are an AI agent powered by an agent runtime."
+	gateway := &AntigravityGatewayService{}
+	request := antigravity.GeminiRequest{
+		SystemInstruction: &antigravity.GeminiContent{Parts: []antigravity.GeminiPart{{Text: original}}},
+		Contents:          []antigravity.GeminiContent{{Role: "user", Parts: []antigravity.GeminiPart{{Text: original}}}},
+	}
+	input, err := json.Marshal(request)
+	require.NoError(t, err)
+	wire, err := gateway.wrapV1InternalRequest("project-1", "gemini-4-argon-high", input)
+	require.NoError(t, err)
+	var wrapped antigravity.V1InternalRequest
+	require.NoError(t, json.Unmarshal(wire, &wrapped))
+	require.NotNil(t, wrapped.Request.SystemInstruction)
+	require.Equal(t, []antigravity.GeminiPart{{Text: rewritten}}, wrapped.Request.SystemInstruction.Parts)
+	require.Equal(t, request.Contents, wrapped.Request.Contents)
+
+	opts := gateway.getClaudeTransformOptions(t.Context())
+	system, err := json.Marshal(original)
+	require.NoError(t, err)
+	claudeRequest := &antigravity.ClaudeRequest{
+		System:   system,
+		Messages: []antigravity.ClaudeMessage{{Role: "user", Content: system}},
+	}
+	wire, err = antigravity.TransformClaudeToGeminiWithOptions(claudeRequest, "project-1", "gemini-4-argon-high", opts)
+	require.NoError(t, err)
+	var claudeWrapped antigravity.V1InternalRequest
+	require.NoError(t, json.Unmarshal(wire, &claudeWrapped))
+	require.NotNil(t, claudeWrapped.Request.SystemInstruction)
+	require.Contains(t, claudeWrapped.Request.SystemInstruction.Parts, antigravity.GeminiPart{Text: rewritten})
+	require.NotContains(t, claudeWrapped.Request.SystemInstruction.Parts, antigravity.GeminiPart{Text: original})
+	require.Equal(t, request.Contents, claudeWrapped.Request.Contents)
 }
 
 func TestAntigravityPromptSanitizerNoSystemInstruction(t *testing.T) {

@@ -393,11 +393,11 @@ GEMINI_OAUTH_CLIENT_SECRET=GOCSPX-your-client-secret
 
 ## Antigravity System Prompt Replacements
 
-The [optional rules file](../backend/resources/antigravity/prompt-sanitize-rules.json) supports DeepSeek Harness (DSH), Hermes Agent, Pi, Claude Code, and RFC 2119 wording. The DSH rules cover the identity sentence, the harness name, and the browser-context sentence. Rules replace matching text in `systemInstruction` before forwarding; ordinary messages and tool fields are not rewritten.
+The [bundled rules](../backend/resources/antigravity/prompt-sanitize-rules.json) support DeepSeek Harness (DSH), Hermes Agent, Pi, Claude Code, and RFC 2119 wording. The DSH rules cover the identity sentence, the harness name, and the browser-context sentence. Rules replace matching text in `systemInstruction` before forwarding; ordinary messages and tool fields are not rewritten.
 
-The rules are off by default. To use them, set `GATEWAY_ANTIGRAVITY_PROMPT_SANITIZE_FILE` in the Sub2API process environment to the path of the file. In a Docker image built from this source, the file is at `/app/resources/antigravity/prompt-sanitize-rules.json`. For Compose, set this variable under `services.sub2api.environment` and recreate the service. To customize the rules, use an operator-managed file readable by the process; changes to its size or modification time take effect on the next request.
+The bundled rules are embedded in the binary and enabled by default. To use custom rules, set `GATEWAY_ANTIGRAVITY_PROMPT_SANITIZE_RULES` to inline JSON or set `GATEWAY_ANTIGRAVITY_PROMPT_SANITIZE_FILE` to a readable JSON file in the Sub2API process environment. Inline rules take precedence over the file. Custom rules replace the bundled rules; an empty or invalid custom rule set does not fall back to them.
 
-An inline JSON list in `GATEWAY_ANTIGRAVITY_PROMPT_SANITIZE_RULES` takes precedence over the file. Set `GATEWAY_ANTIGRAVITY_PROMPT_SANITIZE_ENABLED=false` to disable all replacements, including when a rule source is configured.
+For Compose, set these environment variables under `services.sub2api.environment` and recreate the service. Changes to a configured file's size or modification time take effect on the next request. Set `GATEWAY_ANTIGRAVITY_PROMPT_SANITIZE_ENABLED=false` or `0` to disable all replacements, including when a custom rule source is configured.
 
 ---
 
