@@ -957,10 +957,16 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			if account != nil && account.Platform == PlatformOpenAI &&
 				!openAIStreamClientOutputStarted(c, clientOutputStarted) && !eventShouldFlush {
 				_ = resp.Body.Close()
-				return resultWithUsage(), s.newOpenAIStreamFailoverErrorWithModel(
+				failoverErr := s.newOpenAIStreamFailoverErrorWithModel(
 					c, account, false, upstreamRequestID, nil,
 					"OpenAI upstream stream idle timeout before model output", mappedModel, resp.Header,
 				)
+				// Only keepalive comments can have reached the client. Joining the
+				// first-output failover budget also bounds the replay to one account
+				// switch, so one stalled request cannot walk the whole pool and apply
+				// HandleStreamTimeout to every account it touches.
+				failoverErr.SafeToFailoverAfterWrite = true
+				return resultWithUsage(), failoverErr
 			}
 			// Grok: short cool + account failover when no client-visible bytes
 			// were committed yet (pre-commit). After output started we keep the
