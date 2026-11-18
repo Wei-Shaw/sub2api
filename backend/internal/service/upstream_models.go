@@ -1721,7 +1721,7 @@ func normalizeCodexInputModalities(modalities []string) []string {
 	normalized := make([]string, 0, len(modalities))
 	for _, modality := range modalities {
 		modality = strings.ToLower(strings.TrimSpace(modality))
-		if modality != "text" && modality != "image" {
+		if modality != "text" && modality != "image" && modality != "audio" {
 			continue
 		}
 		if _, exists := seen[modality]; exists {
