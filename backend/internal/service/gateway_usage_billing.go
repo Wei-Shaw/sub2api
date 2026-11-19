@@ -88,6 +88,9 @@ type postUsageBillingParams struct {
 	// path that records only API-key 5h/1d/7d window usage. It must not trigger
 	// balance, subscription, account, platform, or lifetime-key-quota effects.
 	SimpleModeKeyRateLimitOnly bool
+	// PromptAuditCost is the prompt-audit fee billed with this request at its
+	// list price (no rate multiplier); it is already included in Cost.ActualCost.
+	PromptAuditCost float64
 }
 
 var ErrSimpleModeKeyRateLimitBillingUnavailable = errors.New("simple mode api key rate-limit billing unavailable")
@@ -331,7 +334,7 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 	// user-specific) rate multiplier consumes subscription quota at the expected
 	// speed. TotalCost remains the raw (pre-multiplier) value; downstream guards
 	// on "> 0" still correctly skip free subscriptions (RateMultiplier == 0).
-	if p.IsSubscriptionBill && p.Subscription != nil && p.Cost.TotalCost > 0 {
+	if p.IsSubscriptionBill && p.Subscription != nil && (p.Cost.TotalCost > 0 || p.PromptAuditCost > 0) {
 		cmd.SubscriptionID = &p.Subscription.ID
 		cmd.SubscriptionCost = p.Cost.ActualCost
 	} else if p.Cost.ActualCost > 0 {
@@ -358,6 +361,7 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 	if p == nil || deps == nil {
 		return false, nil
 	}
+	addPromptAuditCost(ctx, usageLog, p)
 
 	cmd := buildUsageBillingCommand(requestID, usageLog, p)
 	if cmd == nil || cmd.RequestID == "" || repo == nil {
@@ -394,6 +398,25 @@ func applyUsageBilling(ctx context.Context, requestID string, usageLog *UsageLog
 
 	finalizePostUsageBilling(billingCtx, p, deps, result)
 	return true, nil
+}
+
+// addPromptAuditCost folds the request's prompt-audit fee into its charge. The
+// fee is billed at list price, so it joins ActualCost (what the user pays) and
+// stays out of TotalCost, which also drives the upstream account's quota.
+func addPromptAuditCost(ctx context.Context, usageLog *UsageLog, p *postUsageBillingParams) {
+	if p.SimpleModeKeyRateLimitOnly || p.Cost == nil {
+		return
+	}
+	cost := promptAuditCostForBilling(ctx)
+	if cost <= 0 {
+		return
+	}
+	p.PromptAuditCost = cost
+	p.Cost.ActualCost += cost
+	if usageLog != nil {
+		usageLog.PromptAuditCost = cost
+		usageLog.ActualCost += cost
+	}
 }
 
 func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *billingDeps, result *UsageBillingApplyResult) {
@@ -894,6 +917,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 
 	if billingErr != nil {
 		usageLog.ActualCost = 0
+		usageLog.PromptAuditCost = 0
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
 		return billingErr
 	}

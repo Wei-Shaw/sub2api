@@ -30,6 +30,15 @@ const (
 	MaxDecisionsInputLimit = 360000
 
 	decisionsScannerBackend = "openai-decisions"
+
+	// gpt-6-luna list prices for /v1/decisions in USD per million input tokens
+	// (developers.openai.com/api/docs/guides/decisions, Pricing and availability;
+	// model page for the cache rates and the long-context rule). Output tokens
+	// are free. A request above 272K input tokens pays double for all input.
+	decisionsUncachedInputPrice   = 0.10
+	decisionsCachedInputPrice     = 0.01
+	decisionsCacheWriteInputPrice = 0.125
+	decisionsLongContextTokens    = 272000
 	// DecisionsRefusalCategory marks a result where the Decisions model refused
 	// at least one question; such a result always blocks.
 	DecisionsRefusalCategory = "decisions_refusal"
@@ -195,6 +204,7 @@ type decisionsAnswers struct {
 	Categories map[string]float64
 	// Refused lists questions the model refused, in policy order.
 	Refused []string
+	Usage   AuditUsage
 }
 
 // parseDecisionsResponse validates every answer. A missing or repeated answer
@@ -202,7 +212,15 @@ type decisionsAnswers struct {
 // answer that the caller turns into a block; it is never read as Safe.
 func (p *decisionsPolicy) parseDecisionsResponse(body []byte) (*decisionsAnswers, error) {
 	var response struct {
+		Model   string            `json:"model"`
 		Answers []decisionsAnswer `json:"answers"`
+		Usage   *struct {
+			InputTokens        int `json:"input_tokens"`
+			InputTokensDetails struct {
+				CachedTokens     int `json:"cached_tokens"`
+				CacheWriteTokens int `json:"cache_write_tokens"`
+			} `json:"input_tokens_details"`
+		} `json:"usage"`
 	}
 	if err := json.Unmarshal(body, &response); err != nil || response.Answers == nil {
 		return nil, errors.New("decisions response has no answers array")
@@ -228,7 +246,16 @@ func (p *decisionsPolicy) parseDecisionsResponse(body []byte) (*decisionsAnswers
 	if len(answers) != len(expected) {
 		return nil, fmt.Errorf("%d of %d questions answered", len(answers), len(expected))
 	}
-	result := &decisionsAnswers{Categories: make(map[string]float64, len(p.Categories))}
+	usage := response.Usage
+	if usage == nil || usage.InputTokens <= 0 || usage.InputTokensDetails.CachedTokens < 0 || usage.InputTokensDetails.CacheWriteTokens < 0 ||
+		usage.InputTokensDetails.CachedTokens+usage.InputTokensDetails.CacheWriteTokens > usage.InputTokens {
+		return nil, errors.New("decisions response usage missing or inconsistent")
+	}
+	result := &decisionsAnswers{Categories: make(map[string]float64, len(p.Categories)), Usage: AuditUsage{
+		Model: response.Model, InputTokens: usage.InputTokens,
+		CachedTokens: usage.InputTokensDetails.CachedTokens, CacheWriteTokens: usage.InputTokensDetails.CacheWriteTokens,
+	}}
+	result.Usage.CostUSD = decisionsCost(result.Usage)
 	for _, question := range p.Questions {
 		if answers[question.Name].Type == "refusal" {
 			result.Refused = append(result.Refused, question.Name)
@@ -251,6 +278,18 @@ func (p *decisionsPolicy) parseDecisionsResponse(body []byte) (*decisionsAnswers
 		result.Categories[category] = *probability
 	}
 	return result, nil
+}
+
+// decisionsCost prices one call. usage.input_tokens already includes the
+// cached and cache-write tokens.
+func decisionsCost(usage AuditUsage) float64 {
+	uncached := usage.InputTokens - usage.CachedTokens - usage.CacheWriteTokens
+	cost := (float64(uncached)*decisionsUncachedInputPrice + float64(usage.CachedTokens)*decisionsCachedInputPrice +
+		float64(usage.CacheWriteTokens)*decisionsCacheWriteInputPrice) / 1e6
+	if usage.InputTokens > decisionsLongContextTokens {
+		cost *= 2
+	}
+	return cost
 }
 
 func containsString(values []string, target string) bool {
@@ -293,6 +332,8 @@ func (s *OpenAICompatibleScanner) scanDecisions(ctx context.Context, endpoint Ac
 		threshold = DefaultCategoryThreshold
 	}
 	result := decisionsVerdict(answers, threshold, enabledScanners)
+	usage := answers.Usage
+	result.AuditUsage = &usage
 	result.ScannerBackend = decisionsScannerBackend
 	result.ScannerVersion = endpoint.Model + "@" + policy.Digest[:12]
 	result.PolicyID = policy.ID

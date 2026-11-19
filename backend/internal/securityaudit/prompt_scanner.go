@@ -138,6 +138,15 @@ func AggregateResults(results []*NormalizedResult, latency time.Duration) (*Norm
 		for _, category := range result.UnknownCategories {
 			unknown[category] = struct{}{}
 		}
+		if usage := result.AuditUsage; usage != nil {
+			if aggregated.AuditUsage == nil {
+				aggregated.AuditUsage = &AuditUsage{Model: usage.Model}
+			}
+			aggregated.AuditUsage.InputTokens += usage.InputTokens
+			aggregated.AuditUsage.CachedTokens += usage.CachedTokens
+			aggregated.AuditUsage.CacheWriteTokens += usage.CacheWriteTokens
+			aggregated.AuditUsage.CostUSD += usage.CostUSD
+		}
 	}
 	aggregated.Categories = orderedScannerKeys(categories)
 	aggregated.MatchedScanners = orderedScannerKeys(matched)

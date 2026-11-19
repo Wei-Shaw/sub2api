@@ -120,6 +120,16 @@ func (s PromptSnapshot) Redacted() PromptSnapshot {
 	return s
 }
 
+// AuditUsage is what the guard calls of one evaluation used and cost; the
+// gateway bills it to the user at list price.
+type AuditUsage struct {
+	Model            string  `json:"model"`
+	InputTokens      int     `json:"input_tokens"`
+	CachedTokens     int     `json:"cached_tokens"`
+	CacheWriteTokens int     `json:"cache_write_tokens"`
+	CostUSD          float64 `json:"cost_usd"`
+}
+
 type NormalizedResult struct {
 	Decision          EventDecision      `json:"decision"`
 	RiskLevel         RiskLevel          `json:"risk_level"`
@@ -137,6 +147,7 @@ type NormalizedResult struct {
 	ChunkTotal        int                `json:"chunk_total"`
 	LatencyMS         int                `json:"latency_ms"`
 	UnknownCategories []string           `json:"unknown_categories,omitempty"`
+	AuditUsage        *AuditUsage        `json:"audit_usage,omitempty"`
 }
 
 type PromptDecision struct {

@@ -295,3 +295,51 @@ func TestDecisionsRequestCarriesWholeChunkInParts(t *testing.T) {
 	require.Equal(t, "latest_user_input", parts[1].Data.AuditTarget.Section)
 	require.Equal(t, "earlier_context", parts[2].Data.AuditTarget.Section)
 }
+
+// The fee comes from the usage the API returned: uncached input at $0.10,
+// cache reads at $0.01 and cache writes at $0.125 per million tokens.
+func TestDecisionsUsagePricesRealResponse(t *testing.T) {
+	answers, err := promptDecisionsPolicy.parseDecisionsResponse(loadDecisionsFixture(t, "benign-long-compaction-summary"))
+	require.NoError(t, err)
+	usage := answers.Usage
+	require.Positive(t, usage.InputTokens)
+	uncached := usage.InputTokens - usage.CachedTokens - usage.CacheWriteTokens
+	want := (float64(uncached)*0.10 + float64(usage.CachedTokens)*0.01 + float64(usage.CacheWriteTokens)*0.125) / 1e6
+	require.InDelta(t, want, usage.CostUSD, 1e-15)
+
+	// Above 272K input tokens every input token is billed at twice the rate.
+	long := AuditUsage{InputTokens: 300000, CachedTokens: 2458}
+	require.InDelta(t, 2*(297542*0.10+2458*0.01)/1e6, decisionsCost(long), 1e-15)
+	require.InDelta(t, (272000*0.10)/1e6, decisionsCost(AuditUsage{InputTokens: 272000}), 1e-15)
+
+	_, err = promptDecisionsPolicy.parseDecisionsResponse(mutateDecisionsUsage(t, func(usage map[string]any) { delete(usage, "input_tokens") }))
+	require.Error(t, err)
+	_, err = promptDecisionsPolicy.parseDecisionsResponse(mutateDecisionsUsage(t, func(usage map[string]any) {
+		usage["input_tokens_details"] = map[string]any{"cached_tokens": 1e9, "cache_write_tokens": 0}
+	}))
+	require.Error(t, err)
+}
+
+func mutateDecisionsUsage(t *testing.T, mutate func(map[string]any)) []byte {
+	t.Helper()
+	var response map[string]any
+	require.NoError(t, json.Unmarshal(loadDecisionsFixture(t, "jailbreak-dan"), &response))
+	usage, ok := response["usage"].(map[string]any)
+	require.True(t, ok)
+	mutate(usage)
+	body, err := json.Marshal(response)
+	require.NoError(t, err)
+	return body
+}
+
+// A request audited in several chunks bills the sum of its calls.
+func TestAggregateResultsSumsAuditUsage(t *testing.T) {
+	first := verdictFor(t, loadDecisionsFixture(t, "benign-long-compaction-summary"), AllScannerIDs)
+	first.AuditUsage = &AuditUsage{Model: "gpt-6-luna", InputTokens: 5000, CachedTokens: 2458, CostUSD: 0.0003}
+	second := verdictFor(t, loadDecisionsFixture(t, "jailbreak-dan"), AllScannerIDs)
+	second.AuditUsage = &AuditUsage{Model: "gpt-6-luna", InputTokens: 4000, CachedTokens: 2458, CacheWriteTokens: 10, CostUSD: 0.0002}
+	aggregated, err := AggregateResults([]*NormalizedResult{first, second}, 0)
+	require.NoError(t, err)
+	require.Equal(t, ActionBlock, aggregated.Action)
+	require.Equal(t, &AuditUsage{Model: "gpt-6-luna", InputTokens: 9000, CachedTokens: 4916, CacheWriteTokens: 10, CostUSD: 0.0005}, aggregated.AuditUsage)
+}

@@ -273,9 +273,14 @@ func wrapUsageRecordTaskContext(parent context.Context, task service.UsageRecord
 		done = service.InflightReservationFromContext(parent).Acquire()
 	}
 	requestContext := usageRecordContext(parent, context.Background())
+	// Taken now, on the request goroutine, so the fee stays with this usage
+	// record even when the worker runs after the next WebSocket turn's audit.
+	// It is attached to the context the task runs on: usageRecordContext copies
+	// only the request IDs onto the worker context.
+	auditCost := service.PromptAuditChargeFromContext(parent).Take()
 	return func(ctx context.Context) {
 		defer done()
-		task(usageRecordContext(requestContext, ctx))
+		task(service.WithPromptAuditCost(usageRecordContext(requestContext, ctx), auditCost))
 	}, done
 }
 
