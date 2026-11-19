@@ -86,6 +86,43 @@ func TestBuildOpenAIAccountLoadPlan_ResetWeightIgnoresNilWindow(t *testing.T) {
 	require.Greater(t, scores[2], scores[1], "拥有活跃窗口的账号得分高于无窗口账号")
 }
 
+func TestBuildOpenAIAccountLoadPlan_HighAvailabilityOverridesHealthWeights(t *testing.T) {
+	accounts := []*Account{
+		{ID: 1, Priority: 0},
+		{ID: 2, Priority: 0},
+	}
+	loadMap := map[int64]*AccountLoadInfo{
+		1: {AccountID: 1},
+		2: {AccountID: 2},
+	}
+	legacyCfg := &config.Config{}
+	legacyCfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0.8
+	legacyCfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0.5
+	legacy := &defaultOpenAIAccountScheduler{
+		service: &OpenAIGatewayService{cfg: legacyCfg},
+		stats:   newOpenAIAccountRuntimeStats(),
+	}
+	legacy.stats.report(2, false, nil)
+	legacyPlan := legacy.buildOpenAIAccountLoadPlan(context.Background(), OpenAIAccountScheduleRequest{}, accounts, loadMap)
+
+	haCfg := &config.Config{}
+	haCfg.Gateway.OpenAIWS.SchedulerScoreWeights.ErrorRate = 0.8
+	haCfg.Gateway.OpenAIWS.SchedulerScoreWeights.TTFT = 0.5
+	haCfg.Gateway.OpenAIScheduler.Strategy = "high_availability"
+	haCfg.Gateway.OpenAIScheduler.HighAvailabilityErrorRateWeight = 4.0
+	haCfg.Gateway.OpenAIScheduler.HighAvailabilityTTFTWeight = 3.0
+	ha := &defaultOpenAIAccountScheduler{
+		service: &OpenAIGatewayService{cfg: haCfg},
+		stats:   newOpenAIAccountRuntimeStats(),
+	}
+	ha.stats.report(2, false, nil)
+	haPlan := ha.buildOpenAIAccountLoadPlan(context.Background(), OpenAIAccountScheduleRequest{}, accounts, loadMap)
+
+	legacyGap := openAIPlanScores(legacyPlan)[1] - openAIPlanScores(legacyPlan)[2]
+	haGap := openAIPlanScores(haPlan)[1] - openAIPlanScores(haPlan)[2]
+	require.Greater(t, haGap, legacyGap, "high_availability should penalize the unhealthy account more strongly")
+}
+
 func TestOpenAIQuotaHeadroomFactor_PrimaryUsedPercent(t *testing.T) {
 	now := time.Date(2026, 3, 11, 10, 0, 0, 0, time.UTC)
 	account := &Account{

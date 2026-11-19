@@ -76,6 +76,7 @@ func TestOpenAICacheWriteTTLRecordUsage(t *testing.T) {
 					usage = result.usage
 				}
 				require.NotNil(t, usage)
+				require.True(t, usage.Reported, "cache-write billing must preserve the explicit usage marker")
 				err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
 					Result: &OpenAIForwardResult{RequestID: "resp_ttl", Model: "gpt-6-luna", Usage: *usage, Stream: stream},
 					APIKey: &APIKey{ID: 1, GroupID: i64p(groupID), Group: &Group{ID: groupID, Platform: PlatformOpenAI, RateMultiplier: 0.5}},

@@ -92,7 +92,7 @@ func TestImageStreamTransportLimitEmitsErrorAndPreservesUsage(t *testing.T) {
 					}
 					require.ErrorIs(t, err, errSSETransportLimit)
 					require.True(t, body.closed.Load(), "transport-limit failures must release the upstream body")
-					wantUsage := OpenAIUsage{InputTokens: 11, OutputTokens: 7}
+					wantUsage := OpenAIUsage{Reported: route != "passthrough", InputTokens: 11, OutputTokens: 7}
 					if route == "direct" {
 						wantUsage.ImageOutputTokens = 7
 					}

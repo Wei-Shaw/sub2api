@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 28 // v28: group force_openai_ultrafast (OpenAI gateway reads it from ctx)
+const apiKeyAuthSnapshotVersion = 29 // v29: preserve HA scheduler and force_openai_ultrafast in auth group snapshots
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -439,6 +439,7 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 			ProfitMinMargin:                 apiKey.Group.ProfitMinMargin,
 			ProfitSafetyBuffer:              apiKey.Group.ProfitSafetyBuffer,
 			RequirePrivacySet:               apiKey.Group.RequirePrivacySet,
+			Scheduler:                       apiKey.Group.Scheduler,
 		}
 	}
 	return snapshot
@@ -545,6 +546,7 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 			ProfitMinMargin:                 snapshot.Group.ProfitMinMargin,
 			ProfitSafetyBuffer:              snapshot.Group.ProfitSafetyBuffer,
 			RequirePrivacySet:               snapshot.Group.RequirePrivacySet,
+			Scheduler:                       snapshot.Group.Scheduler,
 		}
 	}
 	s.compileAPIKeyIPRules(apiKey)
