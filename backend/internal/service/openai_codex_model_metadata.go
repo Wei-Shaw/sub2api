@@ -252,6 +252,11 @@ func groupCodexModelMetadata(
 			publicAlias = true
 		}
 		metadata, ok := account.GetUpstreamModelMetadata(lookupModel)
+		if lookupModel == modelID && upstreamModel == modelID {
+			if tierMetadata, matched := codexAntigravityTierMetadata(account, modelID); matched {
+				metadata, ok = tierMetadata, true
+			}
+		}
 		if !ok {
 			if explicitTargetsConflict {
 				return codexModelMetadataOverride{

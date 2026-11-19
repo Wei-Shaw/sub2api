@@ -66,7 +66,7 @@ func geminiThinkingParamForModel(model string) geminiThinkingParam {
 // 这类名字由上游按名字选档，不再叠加思考档位参数。
 func geminiModelNameCarriesThinkingTier(model string) bool {
 	name := strings.ToLower(strings.TrimSpace(model))
-	for _, suffix := range []string{"-minimal", "-low", "-medium", "-high", "-xhigh", "-max", "-tiered"} {
+	for _, suffix := range []string{"-minimal", "-low", "-medium", "-high", "-xhigh", "-max", "-tiered", "-sonar"} {
 		if strings.HasSuffix(name, suffix) {
 			return true
 		}
