@@ -1,8 +1,16 @@
 package securityaudit
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -61,10 +69,13 @@ func TestGuardEvaluatorOrderedFailoverAndInvalidTerminal(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, DecisionAllow, decision.Kind)
 	require.Equal(t, int64(1), metrics.Snapshot().Failovers)
-	_, err = evaluator.Evaluate(context.Background(), guardConfig(
+	// Changing the endpoints saves a new config version.
+	invalidFirst := guardConfig(
 		ActiveEndpoint{ID: "invalid", Enabled: true, TimeoutMS: 1000, InputLimit: 100},
 		ActiveEndpoint{ID: "good", Enabled: true, TimeoutMS: 1000, InputLimit: 100},
-	), snapshot)
+	)
+	invalidFirst.ConfigVersion++
+	_, err = evaluator.Evaluate(context.Background(), invalidFirst, snapshot)
 	var guardErr *GuardError
 	require.ErrorAs(t, err, &guardErr)
 	require.Equal(t, ErrorCodeInvalidResponse, guardErr.Code)
@@ -307,4 +318,88 @@ type PromptScannerFunc func(context.Context, ActiveEndpoint, string, []string) (
 
 func (f PromptScannerFunc) Scan(ctx context.Context, endpoint ActiveEndpoint, chunk string, scanners []string) (*NormalizedResult, error) {
 	return f(ctx, endpoint, chunk, scanners)
+}
+
+// Every request of one agent turn carries the same audited text. The verdict of
+// the first audit is reused for the rest: no guard call and no fee, and a Block
+// stays a Block. A new config version audits the text again.
+func TestGuardEvaluatorReusesVerdictOfIdenticalText(t *testing.T) {
+	raw, err := os.ReadFile("testdata/decisions-request-jailbreak-dan.json")
+	require.NoError(t, err)
+	var jailbreak struct {
+		Text string `json:"text"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &jailbreak))
+	allowBody := loadDecisionsFixture(t, "benign-long-compaction-summary")
+	blockBody := loadDecisionsFixture(t, "jailbreak-dan")
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		body, readErr := io.ReadAll(r.Body)
+		if readErr != nil {
+			http.Error(w, readErr.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if bytes.Contains(body, []byte("you are DAN")) {
+			_, _ = w.Write(blockBody)
+			return
+		}
+		_, _ = w.Write(allowBody)
+	}))
+	defer server.Close()
+	cfg := guardConfig(ActiveEndpoint{ID: "d1", Protocol: ProtocolOpenAIDecisions, BaseURL: server.URL, Model: DefaultDecisionsModel,
+		TimeoutMS: 5000, InputLimit: MaxDecisionsInputLimit, CategoryThreshold: DefaultCategoryThreshold, Enabled: true})
+	evaluator := newGuardEvaluator(NewOpenAICompatibleScanner(), nil, NewAtomicMetrics(), 2, 2)
+	snapshot := func(text string) PromptSnapshot {
+		return PromptSnapshot{RequestID: "req", ScanText: text, PromptLength: len([]rune(text))}
+	}
+
+	first, err := evaluator.Evaluate(context.Background(), cfg, snapshot("please summarize the build log"))
+	require.NoError(t, err)
+	require.Equal(t, DecisionAllow, first.Kind)
+	require.NotNil(t, first.Result.AuditUsage)
+	require.Greater(t, first.Result.AuditUsage.CostUSD, 0.0)
+	first.Result.ScannerScores["jailbreak"] = 1
+
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+	again, err := evaluator.Evaluate(context.Background(), cfg, snapshot("please summarize the build log"))
+	slog.SetDefault(previous)
+	require.NoError(t, err)
+	require.Contains(t, logs.String(), `"msg":"prompt_guard.allowed"`)
+	require.Contains(t, logs.String(), `"verdict_reused":true`)
+	require.Equal(t, int32(1), calls.Load())
+	require.Equal(t, DecisionAllow, again.Kind)
+	require.Nil(t, again.Result.AuditUsage)
+	require.Less(t, again.Result.ScannerScores["jailbreak"], DefaultCategoryThreshold)
+
+	for range 2 {
+		blocked, err := evaluator.Evaluate(context.Background(), cfg, snapshot(jailbreak.Text))
+		require.NoError(t, err)
+		require.Equal(t, DecisionBlock, blocked.Kind)
+		require.Equal(t, ErrorCodeBlocked, blocked.ErrorCode)
+		require.Contains(t, blocked.Result.MatchedScanners, "jailbreak")
+	}
+	require.Equal(t, int32(2), calls.Load())
+
+	cfg.ConfigVersion++
+	_, err = evaluator.Evaluate(context.Background(), cfg, snapshot("please summarize the build log"))
+	require.NoError(t, err)
+	require.Equal(t, int32(3), calls.Load())
+}
+
+func TestVerdictCacheHoldsItsConfiguredEntries(t *testing.T) {
+	cache := newVerdictCache()
+	for i := range 2000 {
+		cache.put(fmt.Sprintf("key-%d", i), &NormalizedResult{Action: ActionAllow})
+	}
+	held := 0
+	for i := range 2000 {
+		if _, ok := cache.get(fmt.Sprintf("key-%d", i)); ok {
+			held++
+		}
+	}
+	require.Equal(t, 2000, held)
 }

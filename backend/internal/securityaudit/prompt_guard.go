@@ -2,10 +2,18 @@ package securityaudit
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
+	"maps"
+	"slices"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/dgraph-io/ristretto"
 )
 
 // maxConcurrentChunks bounds how many chunks of one request are audited at the
@@ -13,16 +21,83 @@ import (
 // prompt must not take every slot of a node.
 const maxConcurrentChunks = 8
 
+const (
+	verdictCacheEntries = 10000
+	verdictCacheTTL     = 24 * time.Hour
+)
+
 type GuardEvaluator struct {
-	scanner PromptScanner
-	repo    JobRepository
-	metrics Metrics
-	clock   Clock
+	scanner  PromptScanner
+	repo     JobRepository
+	metrics  Metrics
+	clock    Clock
+	verdicts *verdictCache
 
 	global       chan struct{}
 	perNodeLimit int
 	nodeMu       sync.Mutex
 	nodes        map[string]chan struct{}
+}
+
+// verdictCache keeps the verdicts of recently audited texts. A verdict depends
+// only on the audited text and the config version. With latest-turn-only
+// blocking, every request of one agent turn carries the same audited text:
+// tool calls and their outputs add none, so the text changes only when the
+// user writes again. A reused verdict costs no guard call, so it carries no
+// AuditUsage and bills no fee.
+type verdictCache struct{ cache *ristretto.Cache }
+
+func newVerdictCache() *verdictCache {
+	// Each entry costs 1, so the internal per-item size must not count, or the
+	// cache would hold only MaxCost/57 entries.
+	cache, err := ristretto.NewCache(&ristretto.Config{
+		NumCounters: verdictCacheEntries * 10, MaxCost: verdictCacheEntries, BufferItems: 64,
+		IgnoreInternalCost: true,
+	})
+	if err != nil {
+		panic(err)
+	}
+	return &verdictCache{cache: cache}
+}
+
+func verdictCacheKey(configVersion int64, scanText string) string {
+	digest := sha256.Sum256([]byte(scanText))
+	return strconv.FormatInt(configVersion, 10) + ":" + hex.EncodeToString(digest[:])
+}
+
+// get returns a copy, so callers may change the result they are handed.
+func (c *verdictCache) get(key string) (*NormalizedResult, bool) {
+	value, ok := c.cache.Get(key)
+	if !ok {
+		return nil, false
+	}
+	result, isResult := value.(*NormalizedResult)
+	if !isResult {
+		panic(fmt.Sprintf("verdict cache holds %T", value))
+	}
+	return cloneNormalizedResult(result), true
+}
+
+func (c *verdictCache) put(key string, result *NormalizedResult) {
+	stored := cloneNormalizedResult(result)
+	stored.AuditUsage = nil
+	stored.LatencyMS = 0
+	c.cache.SetWithTTL(key, stored, 1, verdictCacheTTL)
+	c.cache.Wait()
+}
+
+func cloneNormalizedResult(result *NormalizedResult) *NormalizedResult {
+	clone := *result
+	clone.Categories = slices.Clone(result.Categories)
+	clone.MatchedScanners = slices.Clone(result.MatchedScanners)
+	clone.UnknownCategories = slices.Clone(result.UnknownCategories)
+	clone.ScannerScores = maps.Clone(result.ScannerScores)
+	clone.ScannerEvidence = maps.Clone(result.ScannerEvidence)
+	if result.AuditUsage != nil {
+		usage := *result.AuditUsage
+		clone.AuditUsage = &usage
+	}
+	return &clone
 }
 
 func NewGuardEvaluator(scanner PromptScanner, repo JobRepository, metrics Metrics) *GuardEvaluator {
@@ -36,7 +111,7 @@ func newGuardEvaluator(scanner PromptScanner, repo JobRepository, metrics Metric
 	if perNodeLimit < 1 {
 		perNodeLimit = 16
 	}
-	return &GuardEvaluator{scanner: scanner, repo: repo, metrics: metrics, clock: realClock{},
+	return &GuardEvaluator{scanner: scanner, repo: repo, metrics: metrics, clock: realClock{}, verdicts: newVerdictCache(),
 		global: make(chan struct{}, globalLimit), perNodeLimit: perNodeLimit, nodes: map[string]chan struct{}{}}
 }
 
@@ -59,6 +134,72 @@ func (g *GuardEvaluator) Evaluate(ctx context.Context, cfg ActiveConfig, snapsho
 		logGuardFailure(snapshot, cfg, DecisionUnavailable, ErrorCodeUnavailable, "", g.clock.Now().Sub(start))
 		return nil, &GuardError{Code: ErrorCodeUnavailable}
 	}
+	verdictKey := verdictCacheKey(cfg.ConfigVersion, snapshot.ScanText)
+	aggregated, reused := g.verdicts.get(verdictKey)
+	if reused {
+		aggregated.LatencyMS = int(g.clock.Now().Sub(start).Milliseconds())
+	} else {
+		var err error
+		aggregated, err = g.scan(ctx, cfg, endpoints, snapshot, baseFields, start)
+		if err != nil {
+			return nil, err
+		}
+		if aggregated == nil {
+			return &PromptDecision{Kind: DecisionAllow, AllowNextStage: true}, nil
+		}
+		g.verdicts.put(verdictKey, aggregated)
+	}
+	kind := DecisionAllow
+	if aggregated.Action == ActionWarn {
+		kind = DecisionFlag
+	}
+	if aggregated.Action == ActionBlock {
+		kind = DecisionBlock
+	}
+	decision := &PromptDecision{Kind: kind, Result: aggregated, AllowNextStage: kind == DecisionAllow || kind == DecisionFlag}
+	if kind == DecisionBlock {
+		decision.ErrorCode = ErrorCodeBlocked
+	}
+	if g.metrics != nil {
+		g.metrics.Observe(kind, g.clock.Now().Sub(start))
+	}
+	LogInfo(EventChunksAggregated, mergeLogFields(baseFields, map[string]any{
+		"decision":   kind,
+		"risk_level": aggregated.RiskLevel, "action": aggregated.Action, "chunk_total": aggregated.ChunkTotal,
+		"latency_ms": aggregated.LatencyMS, "guard_endpoint_id": aggregated.GuardEndpointID, "stage": snapshot.Stage,
+		"status": "completed", "verdict_reused": reused,
+	}))
+	if g.repo != nil {
+		if _, recordErr := g.repo.RecordBlocking(ctx, snapshot.Redacted(), cfg.ConfigVersion, aggregated, cfg.StorePassEvents); recordErr != nil {
+			if g.metrics != nil {
+				g.metrics.IncRecordFailed()
+			}
+			LogWarn(EventResultRecordFailed, mergeLogFields(baseFields, map[string]any{
+				"decision": kind, "error_code": "result_record_failed", "stage": snapshot.Stage,
+				"status": "failed",
+			}))
+		}
+	}
+	if kind == DecisionBlock {
+		LogWarn(EventGuardBlocked, mergeLogFields(baseFields, map[string]any{
+			"guard_endpoint_id": aggregated.GuardEndpointID,
+			"decision":          kind, "risk_level": aggregated.RiskLevel, "action": aggregated.Action, "chunk_total": aggregated.ChunkTotal,
+			"latency_ms": aggregated.LatencyMS, "status": "blocked", "error_code": ErrorCodeBlocked,
+			"stage": snapshot.Stage, "upstream_dispatched": false, "billing_preconsumed": false, "verdict_reused": reused,
+		}))
+	} else {
+		LogInfo(EventGuardAllowed, mergeLogFields(baseFields, map[string]any{
+			"decision": kind, "risk_level": aggregated.RiskLevel, "action": aggregated.Action,
+			"guard_endpoint_id": aggregated.GuardEndpointID, "chunk_total": aggregated.ChunkTotal,
+			"latency_ms": aggregated.LatencyMS, "stage": snapshot.Stage, "status": "allowed", "verdict_reused": reused,
+		}))
+	}
+	return decision, nil
+}
+
+// scan audits the snapshot's text on the endpoints and returns the verdict, or
+// nil when there is no text to audit. It logs and counts its own failures.
+func (g *GuardEvaluator) scan(ctx context.Context, cfg ActiveConfig, endpoints []ActiveEndpoint, snapshot PromptSnapshot, baseFields map[string]any, start time.Time) (*NormalizedResult, error) {
 	select {
 	case g.global <- struct{}{}:
 		defer func() { <-g.global }()
@@ -82,7 +223,7 @@ func (g *GuardEvaluator) Evaluate(ctx context.Context, cfg ActiveConfig, snapsho
 		if g.metrics != nil {
 			g.metrics.Observe(DecisionAllow, g.clock.Now().Sub(start))
 		}
-		return &PromptDecision{Kind: DecisionAllow, AllowNextStage: true}, nil
+		return nil, nil
 	}
 	LogInfo(EventEvaluationStarted, mergeLogFields(baseFields, map[string]any{"chunk_total": len(chunks), "status": "started"}))
 	chunkFields := func(index int, chunk string) map[string]any {
@@ -117,52 +258,7 @@ func (g *GuardEvaluator) Evaluate(ctx context.Context, cfg ActiveConfig, snapsho
 		return nil, &GuardError{Code: ErrorCodeInvalidResponse, Cause: err}
 	}
 	aggregated.ChunkTotal = len(chunks)
-	kind := DecisionAllow
-	if aggregated.Action == ActionWarn {
-		kind = DecisionFlag
-	}
-	if aggregated.Action == ActionBlock {
-		kind = DecisionBlock
-	}
-	decision := &PromptDecision{Kind: kind, Result: aggregated, AllowNextStage: kind == DecisionAllow || kind == DecisionFlag}
-	if kind == DecisionBlock {
-		decision.ErrorCode = ErrorCodeBlocked
-	}
-	if g.metrics != nil {
-		g.metrics.Observe(kind, g.clock.Now().Sub(start))
-	}
-	LogInfo(EventChunksAggregated, mergeLogFields(baseFields, map[string]any{
-		"decision":   kind,
-		"risk_level": aggregated.RiskLevel, "action": aggregated.Action, "chunk_total": aggregated.ChunkTotal,
-		"latency_ms": aggregated.LatencyMS, "guard_endpoint_id": aggregated.GuardEndpointID, "stage": snapshot.Stage,
-		"status": "completed",
-	}))
-	if g.repo != nil {
-		if _, recordErr := g.repo.RecordBlocking(ctx, snapshot.Redacted(), cfg.ConfigVersion, aggregated, cfg.StorePassEvents); recordErr != nil {
-			if g.metrics != nil {
-				g.metrics.IncRecordFailed()
-			}
-			LogWarn(EventResultRecordFailed, mergeLogFields(baseFields, map[string]any{
-				"decision": kind, "error_code": "result_record_failed", "stage": snapshot.Stage,
-				"status": "failed",
-			}))
-		}
-	}
-	if kind == DecisionBlock {
-		LogWarn(EventGuardBlocked, mergeLogFields(baseFields, map[string]any{
-			"guard_endpoint_id": aggregated.GuardEndpointID,
-			"decision":          kind, "risk_level": aggregated.RiskLevel, "action": aggregated.Action, "chunk_total": aggregated.ChunkTotal,
-			"latency_ms": aggregated.LatencyMS, "status": "blocked", "error_code": ErrorCodeBlocked,
-			"stage": snapshot.Stage, "upstream_dispatched": false, "billing_preconsumed": false,
-		}))
-	} else {
-		LogInfo(EventGuardAllowed, mergeLogFields(baseFields, map[string]any{
-			"decision": kind, "risk_level": aggregated.RiskLevel, "action": aggregated.Action,
-			"guard_endpoint_id": aggregated.GuardEndpointID, "chunk_total": aggregated.ChunkTotal,
-			"latency_ms": aggregated.LatencyMS, "stage": snapshot.Stage, "status": "allowed",
-		}))
-	}
-	return decision, nil
+	return aggregated, nil
 }
 
 // scanChunks audits the chunks concurrently, at most maxConcurrentChunks at a
