@@ -34,6 +34,8 @@ env:
 
 jobs:
   prepare:
+    # Fork 使用 custom-release.yml，避免同步标签或自有发布触发上游整套发布流程。
+    if: github.repository == 'Wei-Shaw/sub2api'
     runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.plan.outputs.sha }}

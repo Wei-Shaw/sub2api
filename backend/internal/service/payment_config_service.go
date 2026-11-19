@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -33,6 +34,10 @@ const (
 	SettingProductNameSuffix             = "PRODUCT_NAME_SUFFIX"
 	SettingHelpImageURL                  = "PAYMENT_HELP_IMAGE_URL"
 	SettingHelpText                      = "PAYMENT_HELP_TEXT"
+	SettingRechargePrimaryURL            = "RECHARGE_PRIMARY_URL"
+	SettingRechargeBackupURL             = "RECHARGE_BACKUP_URL"
+	SettingRechargePrimaryOrderURL       = "RECHARGE_PRIMARY_ORDER_URL"
+	SettingRechargeBackupOrderURL        = "RECHARGE_BACKUP_ORDER_URL"
 	SettingCancelRateLimitOn             = "CANCEL_RATE_LIMIT_ENABLED"
 	SettingCancelRateLimitMax            = "CANCEL_RATE_LIMIT_MAX"
 	SettingCancelWindowSize              = "CANCEL_RATE_LIMIT_WINDOW"
@@ -67,13 +72,17 @@ type PaymentConfig struct {
 	// RechargeBonusMode 阶梯模式：bonus（赠金）/ discount（折扣），已归一化。
 	RechargeBonusMode string `json:"recharge_bonus_mode"`
 	// RechargeBonusNotice 充值页展示的 Markdown 活动文案；空表示不展示。
-	RechargeBonusNotice  string `json:"recharge_bonus_notice"`
-	LoadBalanceStrategy  string `json:"load_balance_strategy"`
-	ProductNamePrefix    string `json:"product_name_prefix"`
-	ProductNameSuffix    string `json:"product_name_suffix"`
-	HelpImageURL         string `json:"help_image_url"`
-	HelpText             string `json:"help_text"`
-	StripePublishableKey string `json:"stripe_publishable_key,omitempty"`
+	RechargeBonusNotice     string `json:"recharge_bonus_notice"`
+	LoadBalanceStrategy     string `json:"load_balance_strategy"`
+	ProductNamePrefix       string `json:"product_name_prefix"`
+	ProductNameSuffix       string `json:"product_name_suffix"`
+	HelpImageURL            string `json:"help_image_url"`
+	HelpText                string `json:"help_text"`
+	RechargePrimaryURL      string `json:"recharge_primary_url"`
+	RechargeBackupURL       string `json:"recharge_backup_url"`
+	RechargePrimaryOrderURL string `json:"recharge_primary_order_url"`
+	RechargeBackupOrderURL  string `json:"recharge_backup_order_url"`
+	StripePublishableKey    string `json:"stripe_publishable_key,omitempty"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled bool   `json:"cancel_rate_limit_enabled"`
@@ -102,14 +111,18 @@ type UpdatePaymentConfigRequest struct {
 	SubscriptionUSDToCNYRate  *float64 `json:"subscription_usd_to_cny_rate"`
 	RechargeFeeRate           *float64 `json:"recharge_fee_rate"`
 	// RechargeBonusTiers nil 表示不更新；空切片表示清空阶梯。
-	RechargeBonusTiers  *[]RechargeBonusTier `json:"recharge_bonus_tiers"`
-	RechargeBonusMode   *string              `json:"recharge_bonus_mode"`
-	RechargeBonusNotice *string              `json:"recharge_bonus_notice"`
-	LoadBalanceStrategy *string              `json:"load_balance_strategy"`
-	ProductNamePrefix   *string              `json:"product_name_prefix"`
-	ProductNameSuffix   *string              `json:"product_name_suffix"`
-	HelpImageURL        *string              `json:"help_image_url"`
-	HelpText            *string              `json:"help_text"`
+	RechargeBonusTiers      *[]RechargeBonusTier `json:"recharge_bonus_tiers"`
+	RechargeBonusMode       *string              `json:"recharge_bonus_mode"`
+	RechargeBonusNotice     *string              `json:"recharge_bonus_notice"`
+	LoadBalanceStrategy     *string              `json:"load_balance_strategy"`
+	ProductNamePrefix       *string              `json:"product_name_prefix"`
+	ProductNameSuffix       *string              `json:"product_name_suffix"`
+	HelpImageURL            *string              `json:"help_image_url"`
+	HelpText                *string              `json:"help_text"`
+	RechargePrimaryURL      *string              `json:"recharge_primary_url"`
+	RechargeBackupURL       *string              `json:"recharge_backup_url"`
+	RechargePrimaryOrderURL *string              `json:"recharge_primary_order_url"`
+	RechargeBackupOrderURL  *string              `json:"recharge_backup_order_url"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled *bool   `json:"cancel_rate_limit_enabled"`
@@ -233,6 +246,8 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingRechargeBonusTiers, SettingRechargeBonusMode, SettingRechargeBonusNotice,
 		SettingProductNamePrefix, SettingProductNameSuffix,
 		SettingHelpImageURL, SettingHelpText,
+		SettingRechargePrimaryURL, SettingRechargeBackupURL,
+		SettingRechargePrimaryOrderURL, SettingRechargeBackupOrderURL,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
 		SettingCancelWindowSize, SettingCancelWindowUnit, SettingCancelWindowMode,
 		SettingAlipayForceQRCode, SettingAlipayMobilePrecreateDeepLink,
@@ -268,6 +283,10 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		ProductNameSuffix:         vals[SettingProductNameSuffix],
 		HelpImageURL:              vals[SettingHelpImageURL],
 		HelpText:                  vals[SettingHelpText],
+		RechargePrimaryURL:        vals[SettingRechargePrimaryURL],
+		RechargeBackupURL:         vals[SettingRechargeBackupURL],
+		RechargePrimaryOrderURL:   vals[SettingRechargePrimaryOrderURL],
+		RechargeBackupOrderURL:    vals[SettingRechargeBackupOrderURL],
 
 		CancelRateLimitEnabled: vals[SettingCancelRateLimitOn] == "true",
 		CancelRateLimitMax:     pcParseInt(vals[SettingCancelRateLimitMax], 10),
@@ -331,11 +350,42 @@ func (s *PaymentConfigService) getStripePublishableKey(ctx context.Context) stri
 	return cfg[payment.ConfigKeyPublishableKey]
 }
 
+// ValidateRechargeStoreURLs validates editable links before any settings are written.
+func ValidateRechargeStoreURLs(primary, backup, primaryOrders, backupOrders *string) error {
+	for _, field := range []struct {
+		value *string
+		name  string
+	}{
+		{primary, "recharge_primary_url"},
+		{backup, "recharge_backup_url"},
+		{primaryOrders, "recharge_primary_order_url"},
+		{backupOrders, "recharge_backup_order_url"},
+	} {
+		if field.value == nil {
+			continue
+		}
+		raw := strings.TrimSpace(*field.value)
+		if raw == "" {
+			continue
+		}
+		u, err := url.Parse(raw)
+		if err != nil || !u.IsAbs() || u.Hostname() == "" || u.User != nil ||
+			strings.ContainsAny(raw, "\r\n\t\\") || strings.Contains(raw, " ") ||
+			(!strings.EqualFold(u.Scheme, "https") && !strings.EqualFold(u.Scheme, "http")) {
+			return infraerrors.BadRequest("INVALID_RECHARGE_STORE_URL", field.name+" must be an absolute HTTP(S) URL without credentials")
+		}
+	}
+	return nil
+}
+
 // UpdatePaymentConfig updates the payment configuration settings.
 // NOTE: This function exceeds 30 lines because each field requires an independent
 // nil-check before serialisation — this is inherent to patch-style update patterns
 // and cannot be meaningfully decomposed without introducing unnecessary abstraction.
 func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req UpdatePaymentConfigRequest) error {
+	if err := ValidateRechargeStoreURLs(req.RechargePrimaryURL, req.RechargeBackupURL, req.RechargePrimaryOrderURL, req.RechargeBackupOrderURL); err != nil {
+		return err
+	}
 	if req.BalanceRechargeMultiplier != nil {
 		v := *req.BalanceRechargeMultiplier
 		if math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 {
@@ -429,6 +479,18 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 	}
 	if req.HelpText != nil {
 		m[SettingHelpText] = derefStr(req.HelpText)
+	}
+	if req.RechargePrimaryURL != nil {
+		m[SettingRechargePrimaryURL] = strings.TrimSpace(*req.RechargePrimaryURL)
+	}
+	if req.RechargeBackupURL != nil {
+		m[SettingRechargeBackupURL] = strings.TrimSpace(*req.RechargeBackupURL)
+	}
+	if req.RechargePrimaryOrderURL != nil {
+		m[SettingRechargePrimaryOrderURL] = strings.TrimSpace(*req.RechargePrimaryOrderURL)
+	}
+	if req.RechargeBackupOrderURL != nil {
+		m[SettingRechargeBackupOrderURL] = strings.TrimSpace(*req.RechargeBackupOrderURL)
 	}
 	if req.CancelRateLimitEnabled != nil {
 		m[SettingCancelRateLimitOn] = formatBoolOrEmpty(req.CancelRateLimitEnabled)

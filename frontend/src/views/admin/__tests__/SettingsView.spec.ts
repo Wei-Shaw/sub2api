@@ -766,6 +766,29 @@ describe("admin SettingsView payment visible method controls", () => {
     );
   });
 
+  it("loads and saves independent store links and guide while online payment is disabled", async () => {
+    const links = {
+      recharge_primary_url: "https://primary.example/shop",
+      recharge_backup_url: "https://backup.example/shop",
+      recharge_primary_order_url: "https://primary.example/#/orders",
+      recharge_backup_order_url: "https://backup.example/orders",
+    };
+    getSettings.mockResolvedValueOnce({ ...baseSettingsResponse, ...links, payment_enabled: false });
+    const wrapper = mountView();
+    await flushPromises();
+    await openPaymentTab(wrapper);
+    const inputIds = ["recharge-primary-url", "recharge-backup-url", "recharge-primary-order-url", "recharge-backup-order-url"];
+    for (const [index, expected] of Object.values(links).entries()) {
+      expect((wrapper.get("#" + inputIds[index]).element as HTMLInputElement).value).toBe(expected);
+    }
+    expect(wrapper.findAll("textarea").some(node => node.attributes("placeholder") === "admin.settings.payment.helpTextPlaceholder")).toBe(true);
+    await wrapper.get("#recharge-backup-url").setValue("");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({ ...links, recharge_backup_url: "" }));
+    wrapper.unmount();
+  });
+
   it("renders panel rate limit card and saves settings", async () => {
     getPanelRateLimitSettings.mockClear();
     updatePanelRateLimitSettings.mockClear();

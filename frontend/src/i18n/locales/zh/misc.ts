@@ -311,6 +311,21 @@ export default {
 
   // Payment System
   payment: {
+    rechargeCenter: {
+      title: '充值中心',
+      guide: '充值指南',
+      guidePurchase: '优先前往主充值店铺购买，主店铺不可用时可使用备用店铺。购买前请核对商品、金额和店铺说明。',
+      guideAfterPayment: '请保留付款凭证。付款后未到账时，请先核对订单状态，避免重复付款。',
+      primary: '主充值入口',
+      backup: '备用充值入口',
+      openStore: '前往店铺（新标签页）',
+      unavailable: '暂未开通',
+      configError: '暂时无法加载店铺链接。',
+      orderLookup: '对应店铺的订单查询',
+      primaryOrderLookup: '主店铺订单查询',
+      backupOrderLookup: '备用店铺订单查询',
+      orderHint: '订单查询会打开对应外部店铺的官方查询页面，请在该店铺查看订单状态。',
+    },
     title: '充值/订阅',
     amountLabel: '充值金额',
     paymentAmount: '支付金额',

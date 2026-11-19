@@ -153,6 +153,10 @@ func (h *PaymentHandler) GetCheckoutInfo(c *gin.Context) {
 		RechargeBonusMode:             cfg.RechargeBonusMode,
 		RechargeBonusNotice:           cfg.RechargeBonusNotice,
 		HelpText:                      cfg.HelpText,
+		RechargePrimaryURL:            cfg.RechargePrimaryURL,
+		RechargeBackupURL:             cfg.RechargeBackupURL,
+		RechargePrimaryOrderURL:       cfg.RechargePrimaryOrderURL,
+		RechargeBackupOrderURL:        cfg.RechargeBackupOrderURL,
 		HelpImageURL:                  cfg.HelpImageURL,
 		StripePublishableKey:          cfg.StripePublishableKey,
 		AlipayForceQRCode:             cfg.AlipayForceQRCode,
@@ -173,6 +177,10 @@ type checkoutInfoResponse struct {
 	RechargeBonusMode             string                          `json:"recharge_bonus_mode"`
 	RechargeBonusNotice           string                          `json:"recharge_bonus_notice"`
 	HelpText                      string                          `json:"help_text"`
+	RechargePrimaryURL            string                          `json:"recharge_primary_url"`
+	RechargeBackupURL             string                          `json:"recharge_backup_url"`
+	RechargePrimaryOrderURL       string                          `json:"recharge_primary_order_url"`
+	RechargeBackupOrderURL        string                          `json:"recharge_backup_order_url"`
 	HelpImageURL                  string                          `json:"help_image_url"`
 	StripePublishableKey          string                          `json:"stripe_publishable_key"`
 	AlipayForceQRCode             bool                            `json:"alipay_force_qrcode"`

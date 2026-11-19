@@ -44,6 +44,10 @@ export interface PaymentConfig {
   enabled_payment_types: PaymentType[]
   help_image_url: string
   help_text: string
+  recharge_primary_url: string
+  recharge_backup_url: string
+  recharge_primary_order_url: string
+  recharge_backup_order_url: string
   stripe_publishable_key: string
 }
 

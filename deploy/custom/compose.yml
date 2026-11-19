@@ -1,0 +1,42 @@
+# 继承上游服务配置；必须使用本目录的 .env，具体命令见 README.md。
+name: ${COMPOSE_PROJECT_NAME:-sub2api-custom}
+
+services:
+  sub2api:
+    extends:
+      file: ../docker-compose.yml
+      service: sub2api
+    image: ${SUB2API_IMAGE:-ghcr.io/wklong/sub2api}:${SUB2API_VERSION:?请设置自己的镜像版本}
+    container_name: ${COMPOSE_PROJECT_NAME:-sub2api-custom}-app
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?请设置固定的 JWT_SECRET}
+      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:?请设置固定的 TOTP_ENCRYPTION_KEY}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?请设置 REDIS_PASSWORD}
+
+  postgres:
+    extends:
+      file: ../docker-compose.yml
+      service: postgres
+    container_name: ${COMPOSE_PROJECT_NAME:-sub2api-custom}-postgres
+    image: ${POSTGRES_IMAGE:-docker.m.daocloud.io/library/postgres:18-alpine}
+
+  redis:
+    extends:
+      file: ../docker-compose.yml
+      service: redis
+    container_name: ${COMPOSE_PROJECT_NAME:-sub2api-custom}-redis
+    image: ${REDIS_IMAGE:-docker.m.daocloud.io/library/redis:8-alpine}
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?请设置 REDIS_PASSWORD}
+
+volumes:
+  sub2api_data:
+    driver: local
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  sub2api-network:
+    driver: bridge

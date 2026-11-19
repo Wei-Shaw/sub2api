@@ -1,0 +1,138 @@
+name: Custom Image Release
+
+on:
+  push:
+    tags:
+      - 'v*-custom.*'
+  # 从所选分支验证构建，不推送镜像；正式发布只能通过自有标签触发。
+  workflow_dispatch:
+
+concurrency:
+  group: custom-image-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  image:
+    if: github.repository == 'wklong/sub2api'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: 确定镜像和版本
+        id: release
+        shell: bash
+        env:
+          REPOSITORY: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          SOURCE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${REPOSITORY,,}"
+          publish=false
+          tag="sha-${SOURCE_SHA}"
+          version="0.0.0-dev.${SOURCE_SHA:0:12}"
+          if [[ "$EVENT_NAME" == push && "$REF_TYPE" == tag ]]; then
+            if [[ ! "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+-custom\.[1-9][0-9]*$ ]]; then
+              echo '::error::发布标签必须符合 vX.Y.Z-custom.N，N 为正整数'
+              exit 1
+            fi
+            publish=true
+            tag="$REF_NAME"
+            version="${REF_NAME#v}"
+          fi
+          {
+            echo "image=$image"
+            echo "tag=$tag"
+            echo "version=$version"
+            echo "publish=$publish"
+            echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: 确认发布提交已进入默认分支
+        if: steps.release.outputs.publish == 'true'
+        shell: bash
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          if ! git merge-base --is-ancestor HEAD "refs/remotes/origin/$DEFAULT_BRANCH"; then
+            echo '::error::发布标签必须指向已合并到默认分支的提交'
+            exit 1
+          fi
+
+      - name: 检查部署配置和脚本
+        shell: bash
+        run: |
+          set -euo pipefail
+          sh -n deploy/custom/deploy.sh
+          SUB2API_VERSION=v0.0.0-custom.1 \
+          POSTGRES_PASSWORD=ci-placeholder REDIS_PASSWORD=ci-placeholder \
+          JWT_SECRET=ci-placeholder TOTP_ENCRYPTION_KEY=ci-placeholder \
+            docker compose --env-file deploy/custom/.env.example \
+            -f deploy/custom/compose.yml config --quiet
+
+      - name: 设置 Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GitHub Container Registry
+        if: steps.release.outputs.publish == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 构建并按需发布镜像
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: ${{ steps.release.outputs.publish == 'true' }}
+          tags: |
+            ${{ steps.release.outputs.image }}:${{ steps.release.outputs.tag }}
+            ${{ steps.release.outputs.image }}:sha-${{ github.sha }}
+          build-args: |
+            NODE_IMAGE=node:24-alpine
+            GOLANG_IMAGE=golang:1.27.4-alpine
+            ALPINE_IMAGE=alpine:3.21
+            POSTGRES_IMAGE=postgres:18-alpine
+            VERSION=${{ steps.release.outputs.version }}
+            COMMIT=${{ github.sha }}
+            DATE=${{ steps.release.outputs.date }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ steps.release.outputs.version }}
+            org.opencontainers.image.created=${{ steps.release.outputs.date }}
+          cache-from: type=gha,scope=custom-amd64
+          cache-to: type=gha,mode=max,scope=custom-amd64
+
+      - name: 输出构建结果
+        shell: bash
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+          TAG: ${{ steps.release.outputs.tag }}
+          PUBLISHED: ${{ steps.release.outputs.publish }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          {
+            echo '### 自有镜像构建结果'
+            echo "镜像：\`$IMAGE:$TAG\`"
+            echo "已发布：$PUBLISHED"
+            echo "摘要：\`$DIGEST\`"
+          } >> "$GITHUB_STEP_SUMMARY"

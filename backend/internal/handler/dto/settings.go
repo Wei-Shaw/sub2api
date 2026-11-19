@@ -269,6 +269,10 @@ type SystemSettings struct {
 
 	// Payment configuration
 	PaymentEnabled                   bool     `json:"payment_enabled"`
+	RechargePrimaryURL               string   `json:"recharge_primary_url"`
+	RechargeBackupURL                string   `json:"recharge_backup_url"`
+	RechargePrimaryOrderURL          string   `json:"recharge_primary_order_url"`
+	RechargeBackupOrderURL           string   `json:"recharge_backup_order_url"`
 	PaymentMinAmount                 float64  `json:"payment_min_amount"`
 	PaymentMaxAmount                 float64  `json:"payment_max_amount"`
 	PaymentDailyLimit                float64  `json:"payment_daily_limit"`

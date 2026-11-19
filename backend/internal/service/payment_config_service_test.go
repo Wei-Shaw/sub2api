@@ -16,6 +16,68 @@ import (
 	_ "modernc.org/sqlite"
 )
 
+func TestValidateRechargeStoreURLs(t *testing.T) {
+	primary := " https://shop.example.com/store "
+	backup := ""
+	orderURL := "https://shop.example.com/#/orders?source=recharge"
+	if err := ValidateRechargeStoreURLs(&primary, &backup, &orderURL, nil); err != nil {
+		t.Fatalf("valid optional store URLs rejected: %v", err)
+	}
+
+	for _, invalid := range []string{
+		"//shop.example.com/store",
+		"javascript:alert(1)",
+		"https://user:pass@shop.example.com/store",
+		"https://shop.example.com/path with spaces",
+	} {
+		t.Run(invalid, func(t *testing.T) {
+			value := invalid
+			if err := ValidateRechargeStoreURLs(&value, nil, nil, nil); err == nil {
+				t.Fatalf("invalid store URL accepted: %q", invalid)
+			}
+		})
+	}
+}
+
+func TestRechargeStoreURLsRoundTrip(t *testing.T) {
+	repo := &paymentConfigSettingRepoStub{values: map[string]string{}}
+	svc := &PaymentConfigService{settingRepo: repo}
+	primary := " https://primary.example/shop "
+	backup := "https://backup.example/shop"
+	primaryOrders := "https://primary.example/#/orders"
+	backupOrders := "https://backup.example/orders"
+	err := svc.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{
+		RechargePrimaryURL: &primary, RechargeBackupURL: &backup,
+		RechargePrimaryOrderURL: &primaryOrders, RechargeBackupOrderURL: &backupOrders,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := svc.GetPaymentConfig(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RechargePrimaryURL != strings.TrimSpace(primary) || cfg.RechargeBackupURL != backup ||
+		cfg.RechargePrimaryOrderURL != primaryOrders || cfg.RechargeBackupOrderURL != backupOrders {
+		t.Fatalf("store configuration did not round trip: %+v", cfg)
+	}
+	empty := ""
+	if err := svc.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{RechargeBackupURL: &empty}); err != nil {
+		t.Fatal(err)
+	}
+	if repo.values[SettingRechargeBackupURL] != "" || repo.values[SettingRechargePrimaryURL] != strings.TrimSpace(primary) ||
+		repo.values[SettingRechargePrimaryOrderURL] != primaryOrders || repo.values[SettingRechargeBackupOrderURL] != backupOrders {
+		t.Fatal("clearing backup store changed unrelated links")
+	}
+	invalid := "javascript:alert(1)"
+	if err := svc.UpdatePaymentConfig(context.Background(), UpdatePaymentConfigRequest{RechargePrimaryOrderURL: &invalid}); err == nil {
+		t.Fatal("invalid order lookup URL accepted")
+	}
+	if repo.values[SettingRechargePrimaryOrderURL] != primaryOrders {
+		t.Fatal("invalid URL overwrote the previous configuration")
+	}
+}
+
 func TestPcParseFloat(t *testing.T) {
 	t.Parallel()
 

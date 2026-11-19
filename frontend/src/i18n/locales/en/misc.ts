@@ -287,6 +287,21 @@ export default {
 
   // Payment System
   payment: {
+    rechargeCenter: {
+      title: 'Recharge Center',
+      guide: 'Recharge guide',
+      guidePurchase: 'Use the primary store first, or the backup store if it is unavailable. Check the product, amount, and store instructions before paying.',
+      guideAfterPayment: 'Keep your payment receipt. If your balance has not updated, check the order status before paying again.',
+      primary: 'Primary recharge store',
+      backup: 'Backup recharge store',
+      openStore: 'Visit store (new tab)',
+      unavailable: 'Not available yet',
+      configError: 'Store links could not be loaded.',
+      orderLookup: 'Store order lookup',
+      primaryOrderLookup: 'Primary store orders',
+      backupOrderLookup: 'Backup store orders',
+      orderHint: 'Order lookup opens the official page for the selected external store.',
+    },
     title: 'Recharge / Subscription',
     amountLabel: 'Amount',
     paymentAmount: 'Payment Amount',

@@ -321,6 +321,10 @@ type UpdateSettingsRequest struct {
 	PaymentProductNameSuffix   *string                  `json:"payment_product_name_suffix"`
 	PaymentHelpImageURL        *string                  `json:"payment_help_image_url"`
 	PaymentHelpText            *string                  `json:"payment_help_text"`
+	RechargePrimaryURL         *string                  `json:"recharge_primary_url"`
+	RechargeBackupURL          *string                  `json:"recharge_backup_url"`
+	RechargePrimaryOrderURL    *string                  `json:"recharge_primary_order_url"`
+	RechargeBackupOrderURL     *string                  `json:"recharge_backup_order_url"`
 
 	// Cancel rate limit
 	PaymentCancelRateLimitEnabled *bool   `json:"payment_cancel_rate_limit_enabled"`
@@ -499,6 +503,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	var req UpdateSettingsRequest
 	if err := c.ShouldBindBodyWith(&req, binding.JSON); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
+		return
+	}
+	if err := service.ValidateRechargeStoreURLs(req.RechargePrimaryURL, req.RechargeBackupURL, req.RechargePrimaryOrderURL, req.RechargeBackupOrderURL); err != nil {
+		response.ErrorFrom(c, err)
 		return
 	}
 	auditReq := settingsAuditRequest(req)
@@ -2140,6 +2148,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 			ProductNameSuffix:             req.PaymentProductNameSuffix,
 			HelpImageURL:                  req.PaymentHelpImageURL,
 			HelpText:                      req.PaymentHelpText,
+			RechargePrimaryURL:            req.RechargePrimaryURL,
+			RechargeBackupURL:             req.RechargeBackupURL,
+			RechargePrimaryOrderURL:       req.RechargePrimaryOrderURL,
+			RechargeBackupOrderURL:        req.RechargeBackupOrderURL,
 			CancelRateLimitEnabled:        req.PaymentCancelRateLimitEnabled,
 			CancelRateLimitMax:            req.PaymentCancelRateLimitMax,
 			CancelRateLimitWindow:         req.PaymentCancelRateLimitWindow,
@@ -2422,6 +2434,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PaymentProductNameSuffix:                               updatedPaymentCfg.ProductNameSuffix,
 		PaymentHelpImageURL:                                    updatedPaymentCfg.HelpImageURL,
 		PaymentHelpText:                                        updatedPaymentCfg.HelpText,
+		RechargePrimaryURL:                                     updatedPaymentCfg.RechargePrimaryURL,
+		RechargeBackupURL:                                      updatedPaymentCfg.RechargeBackupURL,
+		RechargePrimaryOrderURL:                                updatedPaymentCfg.RechargePrimaryOrderURL,
+		RechargeBackupOrderURL:                                 updatedPaymentCfg.RechargeBackupOrderURL,
 		PaymentCancelRateLimitEnabled:                          updatedPaymentCfg.CancelRateLimitEnabled,
 		PaymentCancelRateLimitMax:                              updatedPaymentCfg.CancelRateLimitMax,
 		PaymentCancelRateLimitWindow:                           updatedPaymentCfg.CancelRateLimitWindow,
@@ -2496,7 +2512,9 @@ func hasPaymentFields(req UpdateSettingsRequest) bool {
 		req.PaymentRechargeBonusTiers != nil || req.PaymentRechargeBonusMode != nil || req.PaymentRechargeBonusNotice != nil ||
 		req.PaymentLoadBalanceStrat != nil || req.PaymentProductNamePrefix != nil ||
 		req.PaymentProductNameSuffix != nil || req.PaymentHelpImageURL != nil ||
-		req.PaymentHelpText != nil || req.PaymentCancelRateLimitEnabled != nil ||
+		req.PaymentHelpText != nil || req.RechargePrimaryURL != nil || req.RechargeBackupURL != nil ||
+		req.RechargePrimaryOrderURL != nil || req.RechargeBackupOrderURL != nil ||
+		req.PaymentCancelRateLimitEnabled != nil ||
 		req.PaymentCancelRateLimitMax != nil || req.PaymentCancelRateLimitWindow != nil ||
 		req.PaymentCancelRateLimitUnit != nil || req.PaymentCancelRateLimitMode != nil ||
 		req.PaymentAlipayForceQRCode != nil || req.PaymentAlipayMobilePrecreateDeepLink != nil

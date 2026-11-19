@@ -7880,6 +7880,63 @@
         <!-- Tab: Email -->
         <!-- Tab: Payment -->
         <div v-show="activeTab === 'payment'" class="space-y-6">
+          <section class="card p-6">
+            <h2 class="text-lg font-semibold text-gray-900 dark:text-white">
+              {{ t("payment.rechargeCenter.title") }}
+            </h2>
+            <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {{ t("admin.settings.payment.rechargeStoreHint") }}
+            </p>
+            <div class="mt-4 grid gap-4 sm:grid-cols-2">
+              <div>
+                <label for="recharge-primary-url" class="input-label">{{ t("admin.settings.payment.rechargePrimaryURL") }}</label>
+                <input id="recharge-primary-url" v-model.trim="form.recharge_primary_url" type="url" inputmode="url" autocomplete="url" class="input" placeholder="https://" />
+              </div>
+              <div>
+                <label for="recharge-backup-url" class="input-label">{{ t("admin.settings.payment.rechargeBackupURL") }}</label>
+                <input id="recharge-backup-url" v-model.trim="form.recharge_backup_url" type="url" inputmode="url" autocomplete="url" class="input" placeholder="https://" />
+              </div>
+              <div>
+                <label for="recharge-primary-order-url" class="input-label">{{ t("admin.settings.payment.rechargePrimaryOrderURL") }}</label>
+                <input id="recharge-primary-order-url" v-model.trim="form.recharge_primary_order_url" type="url" inputmode="url" autocomplete="url" class="input" placeholder="https://" />
+              </div>
+              <div>
+                <label for="recharge-backup-order-url" class="input-label">{{ t("admin.settings.payment.rechargeBackupOrderURL") }}</label>
+                <input id="recharge-backup-order-url" v-model.trim="form.recharge_backup_order_url" type="url" inputmode="url" autocomplete="url" class="input" placeholder="https://" />
+              </div>
+            </div>
+          </section>
+          <section class="card p-6">
+                <!-- Row 5: Help image + text -->
+                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div>
+                    <label class="input-label">{{
+                      t("admin.settings.payment.helpImage")
+                    }}</label>
+                    <ImageUpload
+                      v-model="form.payment_help_image_url"
+                      :upload-label="t('admin.settings.site.uploadImage')"
+                      :remove-label="t('admin.settings.site.remove')"
+                      :placeholder="
+                        t('admin.settings.payment.helpImagePlaceholder')
+                      "
+                    />
+                  </div>
+                  <div>
+                    <label class="input-label">{{
+                      t("admin.settings.payment.helpText")
+                    }}</label>
+                    <textarea
+                      v-model="form.payment_help_text"
+                      rows="3"
+                      class="input"
+                      :placeholder="
+                        t('admin.settings.payment.helpTextPlaceholder')
+                      "
+                    ></textarea>
+                  </div>
+                </div>
+          </section>
           <!-- Payment System Settings -->
           <div class="card">
             <div
@@ -8377,35 +8434,6 @@
                       </svg>
                     </a>
                   </p>
-                </div>
-                <!-- Row 5: Help image + text -->
-                <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                  <div>
-                    <label class="input-label">{{
-                      t("admin.settings.payment.helpImage")
-                    }}</label>
-                    <ImageUpload
-                      v-model="form.payment_help_image_url"
-                      :upload-label="t('admin.settings.site.uploadImage')"
-                      :remove-label="t('admin.settings.site.remove')"
-                      :placeholder="
-                        t('admin.settings.payment.helpImagePlaceholder')
-                      "
-                    />
-                  </div>
-                  <div>
-                    <label class="input-label">{{
-                      t("admin.settings.payment.helpText")
-                    }}</label>
-                    <textarea
-                      v-model="form.payment_help_text"
-                      rows="3"
-                      class="input"
-                      :placeholder="
-                        t('admin.settings.payment.helpTextPlaceholder')
-                      "
-                    ></textarea>
-                  </div>
                 </div>
               </template>
             </div>
@@ -9802,6 +9830,10 @@ const form = reactive<SettingsForm>({
   payment_enabled_types: [],
   payment_help_image_url: "",
   payment_help_text: "",
+  recharge_primary_url: "",
+  recharge_backup_url: "",
+  recharge_primary_order_url: "",
+  recharge_backup_order_url: "",
   payment_product_name_prefix: "",
   payment_product_name_suffix: "",
   payment_load_balance_strategy: "round-robin",
@@ -11694,6 +11726,10 @@ async function saveSettings() {
       payment_product_name_suffix: form.payment_product_name_suffix,
       payment_help_image_url: form.payment_help_image_url,
       payment_help_text: form.payment_help_text,
+      recharge_primary_url: form.recharge_primary_url,
+      recharge_backup_url: form.recharge_backup_url,
+      recharge_primary_order_url: form.recharge_primary_order_url,
+      recharge_backup_order_url: form.recharge_backup_order_url,
       payment_cancel_rate_limit_enabled: form.payment_cancel_rate_limit_enabled,
       payment_cancel_rate_limit_max:
         Number(form.payment_cancel_rate_limit_max) || 10,

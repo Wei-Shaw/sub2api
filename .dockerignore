@@ -83,3 +83,6 @@ deploy/redis_data/
 .claude/
 issues/
 CLAUDE.md
+
+# Custom deployment configuration stays outside the image build context.
+/deploy/custom/
