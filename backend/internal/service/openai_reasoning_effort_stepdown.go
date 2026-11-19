@@ -24,10 +24,14 @@ func WithReasoningEffortStepdown(ctx context.Context, enabled bool) context.Cont
 // Request.Context，保证 handler 绑定的值在转发路径可见。
 func reasoningEffortStepdownEnabled(ctx context.Context, c *gin.Context) bool {
 	if c != nil && c.Request != nil {
-		if enabled, ok := c.Request.Context().Value(reasoningEffortStepdownContextKey{}).(bool); ok {
-			return enabled
-		}
+		return ReasoningEffortStepdownFromContext(c.Request.Context())
 	}
+	return ReasoningEffortStepdownFromContext(ctx)
+}
+
+// ReasoningEffortStepdownFromContext 报告请求是否开启了自适应降档
+// （见 WithReasoningEffortStepdown）。未绑定一律视为关闭。
+func ReasoningEffortStepdownFromContext(ctx context.Context) bool {
 	if ctx == nil {
 		return false
 	}

@@ -23,6 +23,24 @@ func TestCompositeTargetPlatformAllowedResolvesKnownAllowedModel(t *testing.T) {
 	require.Equal(t, service.PlatformOpenAI, platform)
 }
 
+func TestApplyOpenAIReasoningEffortPolicyForRequestBindsStepdownToggle(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{"model":"gpt-6.2-terra","reasoning":{"effort":"max"}}`)
+	for _, enabled := range []bool{true, false} {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest("POST", "/v1/responses", nil)
+		apiKey := &service.APIKey{Group: &service.Group{
+			Platform:                service.PlatformOpenAI,
+			ReasoningEffortStepdown: enabled,
+		}}
+		_, _, err := applyOpenAIReasoningEffortPolicyForRequest(c, apiKey, body)
+		require.NoError(t, err)
+		require.Equal(t, enabled,
+			service.ReasoningEffortStepdownFromContext(c.Request.Context()),
+			"stepdown=%v", enabled)
+	}
+}
+
 func TestOpenAICompatibleTextTargetAllowsCompositeProviders(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
