@@ -6,7 +6,11 @@ const { getConfig } = vi.hoisted(() => ({ getConfig: vi.fn() }))
 vi.mock('@/api/payment', () => ({ paymentAPI: { getConfig } }))
 vi.mock('vue-i18n', async () => ({
   ...await vi.importActual<typeof import('vue-i18n')>('vue-i18n'),
-  useI18n: () => ({ t: (key: string) => key }),
+  useI18n: () => ({
+    t: (key: string, params?: { name: string }) => key === 'payment.rechargeCenter.openStore'
+      ? `前往 ${params?.name} 店铺`
+      : key,
+  }),
 }))
 
 const urls = {
@@ -35,6 +39,18 @@ describe('RechargeCenterView', () => {
       expect(link.attributes('rel')).toBe('noopener noreferrer')
     }
     expect(wrapper.find('form').exists()).toBe(false)
+  })
+
+  it.each([
+    ['https://catfk.com/shop/123', 'catfk.com'],
+    ['https://www.wzyp.cn/shop/456', 'wzyp.cn'],
+    ['https://shop.example:8443/product?name=FakeStore', 'shop.example'],
+  ])('uses the hostname from %s in the store button', async (url, name) => {
+    getConfig.mockResolvedValue({ data: { recharge_primary_url: url } })
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.get('a').text()).toBe(`前往 ${name} 店铺`)
+    expect(wrapper.get('a').attributes('href')).toBe(url)
   })
 
   it('disables absent and unsafe links and sanitizes the guide', async () => {
