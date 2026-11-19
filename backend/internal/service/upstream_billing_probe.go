@@ -159,20 +159,21 @@ func BuildUpstreamBillingRateSnapshotItems(accounts []Account) []UpstreamBilling
 }
 
 type upstreamBillingProbeResponse struct {
-	Object                  string   `json:"object"`
-	SchemaVersion           int      `json:"schema_version"`
-	BillingScope            string   `json:"billing_scope"`
-	GroupRateMultiplier     *float64 `json:"group_rate_multiplier"`
-	UserRateMultiplier      *float64 `json:"user_rate_multiplier"`
-	ResolvedRateMultiplier  *float64 `json:"resolved_rate_multiplier"`
-	PeakRateEnabled         *bool    `json:"peak_rate_enabled"`
-	PeakStart               *string  `json:"peak_start"`
-	PeakEnd                 *string  `json:"peak_end"`
-	PeakRateMultiplier      *float64 `json:"peak_rate_multiplier"`
-	AppliedPeakMultiplier   *float64 `json:"applied_peak_multiplier"`
-	EffectiveRateMultiplier *float64 `json:"effective_rate_multiplier"`
-	Timezone                *string  `json:"timezone"`
-	ObservedAt              string   `json:"observed_at"`
+	Object                  string          `json:"object"`
+	SchemaVersion           int             `json:"schema_version"`
+	BillingScope            string          `json:"billing_scope"`
+	GroupRateMultiplier     *float64        `json:"group_rate_multiplier"`
+	UserRateMultiplier      *float64        `json:"user_rate_multiplier"`
+	ResolvedRateMultiplier  *float64        `json:"resolved_rate_multiplier"`
+	PeakRateEnabled         *bool           `json:"peak_rate_enabled"`
+	PeakStart               *string         `json:"peak_start"`
+	PeakEnd                 *string         `json:"peak_end"`
+	PeakRateMultiplier      *float64        `json:"peak_rate_multiplier"`
+	AppliedPeakMultiplier   *float64        `json:"applied_peak_multiplier"`
+	EffectiveRateMultiplier *float64        `json:"effective_rate_multiplier"`
+	Timezone                *string         `json:"timezone"`
+	ObservedAt              string          `json:"observed_at"`
+	ModelPricing            json.RawMessage `json:"model_pricing"`
 }
 
 // GetUpstreamBillingProbeSettings returns defaults when the setting is absent.
@@ -611,6 +612,7 @@ func (s *UpstreamBillingProbeService) SetAccountEnabled(ctx context.Context, acc
 	updates := map[string]any{UpstreamBillingProbeEnabledExtraKey: enabled}
 	if !enabled {
 		updates[UpstreamBillingRateSyncEnabledExtraKey] = false
+		updates[UpstreamModelPricingSyncExtraKey] = false
 	}
 	return s.accountRepo.UpdateExtra(ctx, accountID, updates)
 }
@@ -670,6 +672,17 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	}
 	reqCtx := WithHTTPUpstreamProfile(req.Context(), profile)
 	req = req.WithContext(WithHTTPUpstreamRedirectsDisabled(reqCtx))
+	wantModelPricing := upstreamModelPricingSyncEnabled(account) && SupportsUpstreamModelPricingSync(account)
+	maxBodyBytes := int64(upstreamBillingProbeMaxBodyBytes)
+	if wantModelPricing {
+		query := req.URL.Query()
+		query.Set("include", "model_pricing")
+		if models := selectedUpstreamPricingModels(account); len(models) > 0 {
+			query.Set("models", strings.Join(models, ","))
+		}
+		req.URL.RawQuery = query.Encode()
+		maxBodyBytes = maxUpstreamPricingBytes
+	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	account.ApplyHeaderOverrides(req.Header)
@@ -685,11 +698,11 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, 0, "empty_response", 0)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	body, readErr := io.ReadAll(io.LimitReader(resp.Body, upstreamBillingProbeMaxBodyBytes+1))
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
 	if readErr != nil {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "response_read_failed", retryAfter(resp.Header, now))
 	}
-	if len(body) > upstreamBillingProbeMaxBodyBytes {
+	if int64(len(body)) > maxBodyBytes {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "response_too_large", retryAfter(resp.Header, now))
 	}
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
@@ -698,7 +711,7 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "http_error", retryAfter(resp.Header, now))
 	}
-	data, err := parseUpstreamBillingProbeResponse(body)
+	data, err := parseUpstreamBillingProbeResponseWithPricing(body, wantModelPricing)
 	if err != nil {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, resp.StatusCode, "invalid_response", retryAfter(resp.Header, now))
 	}
@@ -803,6 +816,10 @@ func (s *UpstreamBillingProbeService) updateSnapshot(
 }
 
 func parseUpstreamBillingProbeResponse(body []byte) (map[string]any, error) {
+	return parseUpstreamBillingProbeResponseWithPricing(body, false)
+}
+
+func parseUpstreamBillingProbeResponseWithPricing(body []byte, includeModelPricing bool) (map[string]any, error) {
 	var response upstreamBillingProbeResponse
 	if err := json.Unmarshal(body, &response); err != nil {
 		return nil, err
@@ -878,6 +895,11 @@ func parseUpstreamBillingProbeResponse(body []byte) (map[string]any, error) {
 	}
 	if !equalBillingMultiplier(*response.EffectiveRateMultiplier, *response.ResolvedRateMultiplier*appliedPeak) {
 		return nil, fmt.Errorf("inconsistent effective billing multiplier")
+	}
+	if includeModelPricing {
+		if modelPricing := parseUpstreamModelPricing(response.ModelPricing); len(modelPricing) > 0 {
+			data[UpstreamModelPricingDataKey] = modelPricing
+		}
 	}
 	return data, nil
 }

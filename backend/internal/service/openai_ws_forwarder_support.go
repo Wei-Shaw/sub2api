@@ -456,7 +456,7 @@ func (s *OpenAIGatewayService) SelectAccountByPreviousResponseID(
 ) (*AccountSelectionResult, error) {
 	// 分组利润控制：公共入口装门，保证不经 selectAccountWithScheduler
 	// 的调用方也无法绕过利润准入（scheduler 内部路径已在唯一调度入口装门）。
-	ctx = s.withOpenAIProfitControlGate(ctx, groupID)
+	ctx = s.WithUpstreamPricingModel(s.withOpenAIProfitControlGate(ctx, groupID), requestedModel, requireCompact)
 	return s.selectAccountByPreviousResponseIDForCapability(ctx, groupID, previousResponseID, requestedModel, excludedIDs, "", requireCompact)
 }
 

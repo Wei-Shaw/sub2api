@@ -106,6 +106,7 @@ func TestGatewayHandlerKeyBillingInfoUsesGroupRate(t *testing.T) {
 	require.NotContains(t, fields, "peak_rate_multiplier")
 	require.NotContains(t, fields, "applied_peak_multiplier")
 	require.NotContains(t, fields, "timezone")
+	require.NotContains(t, fields, "model_pricing")
 	require.NotContains(t, w.Body.String(), apiKey.Key)
 	require.NotContains(t, w.Body.String(), apiKey.Group.Name)
 }

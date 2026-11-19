@@ -2663,13 +2663,17 @@ func getDefaultGrokImagineVideoPrice(model string, resolution string) (float64, 
 	}
 }
 
-// openAIUltrafastMultiplier uses the request instant, including for delayed
-// settlement. March 1, 2027 00:00 Pacific is 08:00 UTC (before DST).
+// March 1, 2027 00:00 Pacific is 08:00 UTC (before DST).
+func openAIUltrafastDiscountEnd(model string) (time.Time, bool) {
+	return time.Date(2027, time.March, 1, 8, 0, 0, 0, time.UTC), openai.GPT62ModelID(model) != ""
+}
+
+// openAIUltrafastMultiplier uses the request instant, including for delayed settlement.
 func openAIUltrafastMultiplier(model string, at time.Time) float64 {
 	if at.IsZero() {
 		at = timezone.Now()
 	}
-	if openai.GPT62ModelID(model) != "" && at.Before(time.Date(2027, time.March, 1, 8, 0, 0, 0, time.UTC)) {
+	if end, ok := openAIUltrafastDiscountEnd(model); ok && at.Before(end) {
 		return 3
 	}
 	return 6

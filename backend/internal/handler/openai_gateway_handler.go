@@ -683,7 +683,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// 生图意图只影响能力路由与图片计费，不关门：混合 /v1/responses 请求的
 	// token 计费部分仍受利润门保护，独立图片/视频端点才在门外。
 	pricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
-	c.Request = c.Request.WithContext(pricingCtx)
+	c.Request = c.Request.WithContext(service.WithUpstreamPricingRoute(pricingCtx, clientRequestedModel(c, reqModel), channelMapping))
 
 	for {
 		// Streaming Forward intentionally detaches the upstream request so usage can
@@ -1327,7 +1327,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 
 	// 分组利润控制：Messages 文本入口同样请求级装门并固定 pricingAt。
 	msgPricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
-	c.Request = c.Request.WithContext(msgPricingCtx)
+	c.Request = c.Request.WithContext(service.WithUpstreamPricingRoute(msgPricingCtx, clientRequestedModel(c, reqModel), channelMappingMsg))
 
 	for {
 		if failoverClientGone(c) {
@@ -2873,7 +2873,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// 继续按建连时刻的谷价计费。生图意图只影响能力路由与图片计费，不关门。
 	// 建连时刻只用于选号/准入，不作为任何 turn 的计费定价时刻。
 	wsPricingCtx, _ := h.gatewayService.WithOpenAIRequestPricingContext(ctx, apiKey.GroupID)
-	ctx = wsPricingCtx
+	ctx = service.WithUpstreamPricingRoute(wsPricingCtx, reqModel, channelMappingWS)
 
 	for {
 		if ctx.Err() != nil {
@@ -3040,6 +3040,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		// turn 级定价：首轮回退到 TurnStarted 的所属 turn 时刻；后续 turn 由
 		// BeforeTurn 重新冻结 pricingAt 并按最新门复核当前账号。
 		var turnPricing openAIWSTurnPricing
+		var turnAccount atomic.Pointer[service.Account]
+		var turnModel atomic.Pointer[string]
 		// 后续 turn 的计费分组同样在 BeforeTurn 经认证缓存重取，使分组调价对
 		// 已打开的连接生效。
 		var turnBillingAPIKeys openAIWSTurnBillingAPIKeys
@@ -3079,6 +3081,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				if model == "" {
 					model = reqModel
 				}
+				turnModel.Store(&model)
 				// 分组级模型白名单：后续 turn 同样校验客户端模型（省略 model 时
 				// 沿用会话实际生效模型，含 session.update 轮换后的模型），不通过
 				// 则关闭整条连接，与推理强度 deny 一致。实际生效模型始终参与校验；
@@ -3132,13 +3135,43 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 无法中途换号）。本 turn 的准入与计费共用同一 pricingAt。
 				turnBillingCtx := turnBillingAPIKeys.begin(ctx, h.apiKeyService, turn, apiKey)
 				turnCtx, turnAt := h.gatewayService.WithOpenAITurnPricingContext(turnBillingCtx, apiKey.GroupID)
-				if _, vetoed, reason := h.gatewayService.ProfitControlVetoLatest(turnCtx, account); vetoed {
+				publicModel, forwardModel, mapping := reqModel, wsForwardModel, channelMappingWS
+				if turn > 1 {
+					if model := turnModel.Load(); model != nil {
+						publicModel = *model
+						forwardModel = publicModel
+						if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
+							forwardModel = wsRouteModel
+						}
+						// Native ingress already mapped this frame. Passthrough maps it
+						// after BeforeTurn, so resolve against the same connection group.
+						if snapshot := turnChannelMapping.Load(); snapshot != nil && snapshot.turn == turn {
+							mapping = snapshot.mapping
+						} else {
+							mapping, _ = h.gatewayService.ResolveChannelMappingAndRestrict(ctx, apiKey.GroupID, forwardModel)
+						}
+						forwardModel = openAIChannelForwardModel(mapping, forwardModel)
+					}
+				}
+				if imageIntent {
+					// Existing scalar gate remains enabled. Synchronized pricing for
+					// mixed image requests requires a token-only quote.
+					forwardModel = ""
+				}
+				turnCtx = service.WithUpstreamPricingRoute(turnCtx, publicModel, mapping)
+				turnCtx = h.gatewayService.WithUpstreamPricingModel(turnCtx, forwardModel, false)
+				latest, vetoed, reason := h.gatewayService.ProfitControlVetoLatest(turnCtx, account)
+				if vetoed {
 					reqLog.Info("openai.websocket_turn_profit_vetoed",
 						zap.Int("turn", turn),
 						zap.Int64("account_id", account.ID),
 						zap.String("reason", reason))
 					return service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "account is no longer eligible for this connection, please reconnect", nil)
 				}
+				if !service.CanReuseUpstreamPricingConnection(account, latest) {
+					return service.NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "account pricing configuration changed, please reconnect", nil)
+				}
+				turnAccount.Store(latest)
 				turnPricing.freeze(turnAt)
 				if turn == 1 {
 					return nil
@@ -3248,13 +3281,17 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				sessionID := service.ExtractClientSessionID(c)
 				turnRecordPricingAt := turnPricing.currentOr(turnStart)
 				turnBillingAPIKey := turnBillingAPIKeys.forTurn(turn, apiKey)
+				turnCostAccount := account
+				if latest := turnAccount.Load(); latest != nil {
+					turnCostAccount = latest
+				}
 				cyberBlocked := service.GetOpsCyberPolicy(c) != nil
 				h.submitOpenAIUsageRecordTask(ctx, result, func(taskCtx context.Context) {
 					if err := h.gatewayService.RecordUsage(taskCtx, &service.OpenAIRecordUsageInput{
 						Result:             result,
 						APIKey:             turnBillingAPIKey,
 						User:               apiKey.User,
-						Account:            account,
+						Account:            turnCostAccount,
 						Subscription:       subscription,
 						InboundEndpoint:    inboundEndpoint,
 						UpstreamEndpoint:   upstreamEndpoint,

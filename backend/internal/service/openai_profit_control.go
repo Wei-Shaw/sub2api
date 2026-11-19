@@ -78,8 +78,9 @@ const (
 
 	// 进入 openAISelectionFilterStats 的排除原因，全排除时出现在
 	// "no available accounts" 的内部统计摘要里（与 quota_auto_pause 等同通道）。
-	openAIProfitFilterReasonThreshold          = "profit_threshold"
-	openAIProfitFilterReasonInvalidAccountRate = "profit_invalid_account_rate"
+	openAIProfitFilterReasonThreshold                = "profit_threshold"
+	openAIProfitFilterReasonInvalidAccountRate       = "profit_invalid_account_rate"
+	openAIProfitFilterReasonUpstreamPriceUnavailable = "profit_upstream_price_unavailable"
 
 	// profitControlActivityLogInterval 是按分组采样输出累计计数的最小间隔。
 	profitControlActivityLogInterval = 5 * time.Minute
@@ -124,7 +125,9 @@ type openAIProfitControlGate struct {
 	// threshold = D(pricingAt) × (1 − margin − buffer)，账号倍率必须 <= 它。
 	threshold float64
 	// pricingAt 是本请求的统一定价时刻（D 侧）。
-	pricingAt time.Time
+	pricingAt    time.Time
+	billingGroup *Group
+	modelPricing *upstreamPricingAdmission
 }
 
 // WithOpenAIRequestPricingContext 在请求开始处装配请求级定价上下文：固定
@@ -262,10 +265,11 @@ func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Contex
 	deduction := group.ProfitMinMargin + group.ProfitSafetyBuffer
 	threshold := clampProfitControlThreshold(downstream * (1 - deduction))
 	return &openAIProfitControlGate{
-		groupID:   *groupID,
-		platform:  group.Platform,
-		threshold: threshold,
-		pricingAt: pricingAt,
+		groupID:      *groupID,
+		platform:     group.Platform,
+		threshold:    threshold,
+		pricingAt:    pricingAt,
+		billingGroup: billingGroup,
 	}
 }
 
@@ -303,6 +307,13 @@ func openAIProfitControlVetoReason(ctx context.Context, account *Account) (bool,
 	gate, _ := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate)
 	if gate == nil || account == nil {
 		return false, ""
+	}
+	if upstreamModelPricingSyncEnabled(account) {
+		reason := gate.upstreamModelPriceVetoReason(ctx, account)
+		if reason != "" {
+			openAIProfitControlObserverInstance.recordVeto(gate.groupID, gate.platform, gate.threshold, reason)
+		}
+		return reason != "", reason
 	}
 	if account.RateMultiplier == nil ||
 		math.IsNaN(*account.RateMultiplier) ||
@@ -382,11 +393,12 @@ func (s *OpenAIGatewayService) BindStickySessionAfterProfitAdmission(ctx context
 // 构成，不能当作精确的请求数或账号数。
 
 type openAIProfitControlGroupStats struct {
-	installs         atomic.Int64
-	vetoThreshold    atomic.Int64
-	vetoInvalidRate  atomic.Int64
-	refreshFailures  atomic.Int64
-	lastLogUnixMilli atomic.Int64
+	installs             atomic.Int64
+	vetoThreshold        atomic.Int64
+	vetoInvalidRate      atomic.Int64
+	vetoPriceUnavailable atomic.Int64
+	refreshFailures      atomic.Int64
+	lastLogUnixMilli     atomic.Int64
 }
 
 type openAIProfitControlObserver struct {
@@ -427,6 +439,8 @@ func (o *openAIProfitControlObserver) recordVeto(groupID int64, platform string,
 		s.vetoThreshold.Add(1)
 	case openAIProfitFilterReasonInvalidAccountRate:
 		s.vetoInvalidRate.Add(1)
+	case openAIProfitFilterReasonUpstreamPriceUnavailable:
+		s.vetoPriceUnavailable.Add(1)
 	}
 	o.maybeLog(groupID, platform, threshold, s)
 }
@@ -455,6 +469,7 @@ func (o *openAIProfitControlObserver) maybeLog(groupID int64, platform string, t
 		"installs_total", s.installs.Load(),
 		"veto_threshold_total", s.vetoThreshold.Load(),
 		"veto_invalid_account_rate_total", s.vetoInvalidRate.Load(),
+		"veto_upstream_price_unavailable_total", s.vetoPriceUnavailable.Load(),
 		"refresh_failure_total", s.refreshFailures.Load(),
 	)
 }
