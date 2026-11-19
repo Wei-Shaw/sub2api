@@ -601,7 +601,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	longContextBillingGate *bool,
 	modelLongContextExempt bool,
 	pricingAt time.Time,
-) (*CostBreakdown, error) {
+) (cost *CostBreakdown, err error) {
 	billingModel := firstUsageBillingModel(billingModels)
 	if result != nil && result.WebSearchCalls > 0 {
 		// Codex alpha/search 网页搜索按次计费：上游不返回 usage/token 字段，单价只取
@@ -610,6 +610,13 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		//（用户专属 > 分组 rate_multiplier > 系统默认），与分组表单的价格预览承诺一致。
 		return s.billingService.CalculateWebSearchCost(result.WebSearchCalls, webSearchPricePerCallFromAPIKey(apiKey), webSearchMultiplier), nil
 	}
+	defer func() {
+		if err == nil && cost != nil && result != nil && result.NativeWebSearchCalls > 0 {
+			search := s.billingService.CalculateWebSearchCost(result.NativeWebSearchCalls, webSearchPricePerCallFromAPIKey(apiKey), webSearchMultiplier)
+			cost.TotalCost += search.TotalCost
+			cost.ActualCost += search.ActualCost
+		}
+	}()
 	if isGrokVideoUsageResult(result, billingModels) {
 		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
 			return s.calculateOpenAIVideoCost(ctx, billingModel, apiKey, result, videoMultiplier), nil

@@ -366,6 +366,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 
 	usage := &OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
+	nativeSearch := newOpenAINativeWebSearchCounter(account)
 	var firstTokenMs *int
 	responseID := ""
 	var finalResponse []byte
@@ -420,6 +421,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		return &OpenAIForwardResult{
 			RequestID:                     responseID,
 			ResponseID:                    responseID,
+			NativeWebSearchCalls:          nativeSearch.Count(),
 			Usage:                         *usage,
 			Model:                         originalModel,
 			UpstreamModel:                 mappedModel,
@@ -665,6 +667,7 @@ readLoop:
 			parseOpenAIWSResponseUsageFromCompletedEvent(message, usage)
 		}
 		imageCounter.AddSSEData(message)
+		nativeSearch.Add(message)
 
 		if eventType == "error" || eventType == "response.failed" {
 			markOpenAICyberPolicyEvent(c, message, http.StatusOK, usage)

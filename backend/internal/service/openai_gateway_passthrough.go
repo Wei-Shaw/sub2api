@@ -356,6 +356,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var firstTokenMs *int
 	responseID := ""
 	imageCount := 0
+	nativeSearches := 0
 	var imageOutputSizes []string
 	for {
 		actualModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
@@ -468,6 +469,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			firstTokenMs = result.firstTokenMs
 			responseID = strings.TrimSpace(result.responseID)
 			imageCount = result.imageCount
+			nativeSearches = result.nativeSearches
 			imageOutputSizes = result.imageOutputSizes
 		} else {
 			result, handleErr := s.handleNonStreamingResponsePassthrough(ctx, resp, c, account, reqModel, upstreamPassthroughModel)
@@ -494,6 +496,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			usage = result.usage
 			responseID = strings.TrimSpace(result.responseID)
 			imageCount = result.imageCount
+			nativeSearches = result.nativeSearches
 			imageOutputSizes = result.imageOutputSizes
 		}
 		break
@@ -516,6 +519,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	forwardResult := &OpenAIForwardResult{
+		NativeWebSearchCalls:          nativeSearches,
 		RequestID:                     resp.Header.Get("x-request-id"),
 		UpstreamHeaders:               resp.Header,
 		ResponseID:                    responseID,
@@ -1010,10 +1014,12 @@ type openaiStreamingResultPassthrough struct {
 	firstTokenMs     *int
 	responseID       string
 	imageCount       int
+	nativeSearches   int
 	imageOutputSizes []string
 }
 
 type openaiNonStreamingResultPassthrough struct {
+	nativeSearches int
 	*OpenAIUsage
 	usage            *OpenAIUsage
 	responseID       string
@@ -1923,6 +1929,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 
 	usage := &OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
+	nativeSearch := newOpenAINativeWebSearchCounter(account)
 	var firstTokenMs *int
 	responseID := ""
 	ttftMode := s.openAITTFTMode(ctx)
@@ -2048,6 +2055,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			firstTokenMs:     firstTokenMs,
 			responseID:       responseID,
 			imageCount:       imageCounter.Count(),
+			nativeSearches:   nativeSearch.Count(),
 			imageOutputSizes: imageCounter.Sizes(),
 		}
 	}
@@ -2205,6 +2213,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				responseID = extractOpenAIResponseIDFromJSONBytes(dataBytes)
 			}
 			imageCounter.AddSSEData(dataBytes)
+			nativeSearch.Add([]byte(openAICompatPayloadWithEventType(string(dataBytes), eventType)))
 			if sanitizedData, sanitized := sanitizeOpenAIResponseFailedEventForClient(
 				dataBytes,
 				eventType,
@@ -2415,6 +2424,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		usage:            usage,
 		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
+		nativeSearches:   countOpenAINativeWebSearchCalls(account, body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
 	}, nil
 }
@@ -2501,6 +2511,7 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		usage:            usage,
 		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
+		nativeSearches:   countOpenAINativeWebSearchCalls(account, []byte(bodyText)),
 		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
 	}, nil
 }

@@ -299,7 +299,8 @@ type OpenAIForwardResult struct {
 	VideoDurationSeconds int
 	// WebSearchCalls 是 Codex alpha/search 网页搜索调用次数（每次成功请求为 1）。
 	// 上游不返回 usage 字段，>0 时走按次计费（分组单价 × 次数 × 倍率）。
-	WebSearchCalls int
+	WebSearchCalls       int
+	NativeWebSearchCalls int
 	// SearchCount is Grok-native web_search / tool search call count (per 1k pricing).
 	SearchCount int
 	// AudioUsage carries Voice billing units when present.

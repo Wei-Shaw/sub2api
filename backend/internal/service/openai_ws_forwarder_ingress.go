@@ -983,6 +983,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		responseID := ""
 		usage := OpenAIUsage{}
 		imageCounter := newOpenAIImageOutputCounter()
+		nativeSearch := newOpenAINativeWebSearchCounter(account)
 		var firstTokenMs *int
 		reqStream := openAIWSPayloadBoolFromRaw(payload, "stream", true)
 		turnPreviousResponseID := openAIWSPayloadStringFromRaw(payload, "previous_response_id")
@@ -1157,6 +1158,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				firstTokenMs = &ms
 			}
 			imageCounter.AddSSEData(upstreamMessage)
+			nativeSearch.Add(upstreamMessage)
 
 			if !clientDisconnected {
 				if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && bytes.Contains(upstreamMessage, mappedModelBytes) {
@@ -1239,6 +1241,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				imageCount := imageCounter.Count()
 				result := &OpenAIForwardResult{
 					RequestID:                     responseID,
+					NativeWebSearchCalls:          nativeSearch.Count(),
 					Usage:                         usage,
 					Model:                         originalModel,
 					UpstreamModel:                 mappedModel,

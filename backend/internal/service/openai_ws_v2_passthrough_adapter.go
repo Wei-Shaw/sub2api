@@ -1166,6 +1166,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if hooks != nil {
 		firstTurnStartedAt = hooks.InitialTurnStartedAt
 	}
+	nativeSearch := newOpenAINativeWebSearchCounter(account)
+	chargedNativeSearchCount := 0
 	failureAccountSideEffectsApplied := false
 	relayResult, relayExit := openaiwsv2.RunEntry(openaiwsv2.EntryInput{
 		Ctx:                ctx,
@@ -1199,13 +1201,16 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				)
 			},
 			OnTurnComplete: func(turn openaiwsv2.RelayTurnResult) {
+				nativeSearchCount := nativeSearch.Count() - chargedNativeSearchCount
+				chargedNativeSearchCount = nativeSearch.Count()
 				turnNo := int(completedTurns.Add(1))
 				if hooks != nil && hooks.TurnStarted != nil && !turn.StartedAt.IsZero() {
 					hooks.TurnStarted(turnNo, turn.StartedAt)
 				}
 				turnRequestModel, turnUpstreamModel := usageMeta.turnModels(turn.RequestModel)
 				turnResult := &OpenAIForwardResult{
-					RequestID: turn.RequestID,
+					RequestID:            turn.RequestID,
+					NativeWebSearchCalls: nativeSearchCount,
 					Usage: OpenAIUsage{
 						InputTokens:              turn.Usage.InputTokens,
 						ImageInputTokens:         turn.Usage.ImageInputTokens,
@@ -1284,6 +1289,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				if eventType == "response.created" {
 					failureAccountSideEffectsApplied = false
 				}
+				nativeSearch.Add(payload)
 				if (eventType == "error" || eventType == "response.failed") && markOpenAIWSV2PassthroughCyberPolicy(c, payload) {
 					return nil
 				}
@@ -1347,7 +1353,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 
 	resultRequestModel, resultUpstreamModel := usageMeta.turnModels(relayResult.RequestModel)
 	result := &OpenAIForwardResult{
-		RequestID: relayResult.RequestID,
+		RequestID:            relayResult.RequestID,
+		NativeWebSearchCalls: nativeSearch.Count() - chargedNativeSearchCount,
 		Usage: OpenAIUsage{
 			InputTokens:              relayResult.Usage.InputTokens,
 			ImageInputTokens:         relayResult.Usage.ImageInputTokens,
