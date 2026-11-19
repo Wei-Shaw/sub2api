@@ -8,6 +8,8 @@
 
 唯一生产主机：TmhHost，登录用 `ssh tmhhost`，2 vCPU / 约 4 GiB 内存 + 2 GiB swap，40 GB 根盘，Docker 29.x、compose v5。2026-11-10 从阿里云新加坡旧主机迁来；旧主机不再运行 Router/Studio，只临时把旧 DNS 缓存的流量转发过来。
 
+2026-11-19 起：生产主机公网 IP 从国内大陆直连不通，router、router2、studio 三个域名都开了 Cloudflare 代理（免费版：100 秒无响应断开，流式不受影响；单次上传 100MB）。`ssh tmhhost` 走 Tailscale；主机访问国内服务（微信支付等）经深圳机转发。详见私有仓库 `nana-fox/nanafox-ops` README。
+
 | 服务 | 域名 | 容器与宿主机回环端口 | 数据/配置 |
 |---|---|---|---|
 | Router v0.2.20 | router.nanafox.com | nanafox-router-formal-router，127.0.0.1:18083 → 8080 | 卷 nanafox-router-formal_routerdata |
