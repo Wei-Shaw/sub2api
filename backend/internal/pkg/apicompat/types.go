@@ -342,6 +342,10 @@ type ResponsesRequest struct {
 	ServiceTier        string              `json:"service_tier,omitempty"`
 	PromptCacheKey     string              `json:"prompt_cache_key,omitempty"`
 	PreviousResponseID string              `json:"previous_response_id,omitempty"`
+	// Stop 在 Chat Completions 里是原生字段，Responses 协议本身没有。这里保留原样
+	// （string 或 []string），仅在降级到 Chat Completions 时透传，避免客户端设的
+	// 停止序列在转换层被静默丢弃。
+	Stop json.RawMessage `json:"stop,omitempty"`
 }
 
 // ResponsesReasoning configures reasoning effort in the Responses API.
