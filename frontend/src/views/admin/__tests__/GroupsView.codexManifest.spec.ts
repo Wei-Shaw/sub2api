@@ -83,6 +83,7 @@ const sourceGroup = {
   monthly_limit_usd: null,
   long_context_pricing_enabled: true,
   force_openai_fast: false,
+  force_openai_ultrafast: false,
   free_openai_fast: false,
   model_pricing: [],
   profit_control_enabled: false,

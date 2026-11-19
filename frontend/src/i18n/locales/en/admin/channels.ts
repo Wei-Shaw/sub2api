@@ -150,6 +150,7 @@ export default {
         pricePlaceholder: 'Default',
         fastMultiplier: 'Fast Multiplier',
         flexMultiplier: 'Flex Multiplier',
+        ultrafastMultiplier: 'Ultrafast Multiplier',
         reasoningEffortMultipliers: 'Custom Reasoning Effort Multipliers (optional)',
         reasoningEffortMultipliersHint: 'Apply the multiplier for the final forwarded reasoning effort to the entire request cost and quota usage. Unconfigured levels use 1×. These multiply with other billing multipliers.',
         reasoningEffortMultiplierLabel: '{effort} reasoning effort multiplier',

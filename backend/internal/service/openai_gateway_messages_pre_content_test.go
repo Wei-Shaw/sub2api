@@ -211,3 +211,30 @@ func TestAnthropicTerminalFailureAfterPingPreservesSSEAndRequestResult(t *testin
 	_, marked := GetOpsStreamError(c)
 	require.True(t, marked)
 }
+
+// The nested terminal usage takes precedence without losing explicit-zero reporting.
+func TestAnthropicTerminalUsagePreservesReportedAndNestedPrecedence(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		payload  string
+		reported bool
+		input    int
+		output   int
+	}{
+		{"nested_wins", `{"type":"response.completed","usage":{"input_tokens":99,"output_tokens":88},"response":{"id":"resp_usage","status":"completed","output":[],"usage":{"input_tokens":3,"output_tokens":2}}}`, true, 3, 2},
+		{"explicit_zero", `{"type":"response.completed","response":{"id":"resp_usage","status":"completed","output":[],"usage":{"input_tokens":0,"output_tokens":0}}}`, true, 0, 0},
+		{"missing", `{"type":"response.completed","response":{"id":"resp_usage","status":"completed","output":[]}}`, false, 0, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			_, c, _ := newPreContentContext()
+			resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader("data: " + tc.payload + "\n\n"))}
+			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig()}
+			result, err := svc.handleAnthropicStreamingResponse(resp, c, rawChatCompletionsTestAccount(), "gpt-5.4", "gpt-5.4", "gpt-5.4", time.Now())
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, tc.reported, result.Usage.Reported)
+			require.Equal(t, tc.input, result.Usage.InputTokens)
+			require.Equal(t, tc.output, result.Usage.OutputTokens)
+		})
+	}
+}

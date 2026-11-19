@@ -15,6 +15,7 @@ func TestAPIKeyAuthSnapshotSchedulerRoundtrip(t *testing.T) {
 			svc := &APIKeyService{}
 			key := profitAuthTestAPIKey()
 			key.Group.Scheduler = cfg
+			key.Group.ForceOpenAIUltrafast = true
 			data, err := json.Marshal(&APIKeyAuthCacheEntry{Snapshot: svc.snapshotFromAPIKey(context.Background(), key)})
 			require.NoError(t, err)
 			var entry APIKeyAuthCacheEntry
@@ -24,13 +25,16 @@ func TestAPIKeyAuthSnapshotSchedulerRoundtrip(t *testing.T) {
 			require.True(t, used)
 			require.NotNil(t, got.Group)
 			require.Equal(t, cfg, got.Group.Scheduler)
+			require.True(t, got.Group.ForceOpenAIUltrafast)
 		})
 	}
 	svc := &APIKeyService{}
-	got, used, err := svc.applyAuthCacheEntry("legacy", &APIKeyAuthCacheEntry{Snapshot: &APIKeyAuthSnapshot{Version: 27}})
-	require.NoError(t, err)
-	require.False(t, used)
-	require.Nil(t, got)
+	for _, version := range []int{27, 28} {
+		got, used, err := svc.applyAuthCacheEntry("legacy", &APIKeyAuthCacheEntry{Snapshot: &APIKeyAuthSnapshot{Version: version}})
+		require.NoError(t, err)
+		require.False(t, used)
+		require.Nil(t, got)
+	}
 }
 
 func TestOpenAIGroupSchedulerConfigUsesMatchingAuthGroup(t *testing.T) {
