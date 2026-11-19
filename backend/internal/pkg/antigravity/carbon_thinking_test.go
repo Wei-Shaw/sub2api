@@ -66,3 +66,56 @@ func TestCarbonTransformUsesMappedModelForThinking(t *testing.T) {
 	require.NotContains(t, string(data), `thinkingBudget`)
 	require.NotContains(t, string(data), `stopSequences`)
 }
+
+func TestGemini4LevelModelsMapEffortToLevels(t *testing.T) {
+	for _, tc := range []struct {
+		model, body, level string
+	}{
+		{"gemini-4-neon", `{"output_config":{"effort":"medium"}}`, "medium"},
+		{"gemini-4-neon", `{"output_config":{"effort":"xhigh"}}`, "xhigh"},
+		{"gemini-4-neon", `{"output_config":{"effort":"max"}}`, "xhigh"},
+		{"gemini-4-neon", `{"thinking":{"type":"disabled"}}`, "low"},
+		{"gemini-4-hydrogen", `{"output_config":{"effort":"xhigh"}}`, "xhigh"},
+		{"gemini-4-hydrogen", `{"thinking":{"type":"enabled","budget_tokens":4096}}`, "medium"},
+		{"models/gemini-4-hydrogen", `{"output_config":{"effort":"low"}}`, "low"},
+		{"gemini-4-carbon", `{"output_config":{"effort":"xhigh"}}`, "high"},
+		{"gemini-4-carbon", `{"output_config":{"effort":"max"}}`, "high"},
+	} {
+		t.Run(tc.model+" "+tc.body, func(t *testing.T) {
+			var req ClaudeRequest
+			require.NoError(t, json.Unmarshal([]byte(tc.body), &req))
+			req.Model = tc.model
+			config := buildGenerationConfig(&req)
+			data, err := json.Marshal(config)
+			require.NoError(t, err)
+			require.NotContains(t, string(data), "thinkingBudget")
+			require.NotNil(t, config.ThinkingConfig)
+			require.Equal(t, tc.level, config.ThinkingConfig.ThinkingLevel)
+		})
+	}
+}
+
+func TestGemini4TieredIDsKeepUpstreamSelection(t *testing.T) {
+	for _, model := range []string{"gemini-4-neon-xhigh", "gemini-4-neon-high", "gemini-4-neon-medium", "gemini-4-neon-low", "gemini-4-hydrogen-xhigh", "gemini-4-hydrogen-high", "gemini-4-hydrogen-medium", "gemini-4-hydrogen-low"} {
+		cfg := buildGenerationConfig(&ClaudeRequest{Model: model, Thinking: &ThinkingConfig{Type: "adaptive"}, OutputConfig: &ClaudeOutputConfig{Effort: "low"}})
+		require.NotNil(t, cfg.ThinkingConfig, model)
+		require.True(t, cfg.ThinkingConfig.IncludeThoughts, model)
+		require.Empty(t, cfg.ThinkingConfig.ThinkingLevel, model)
+		require.Zero(t, cfg.ThinkingConfig.ThinkingBudget, model)
+		require.Nil(t, buildGenerationConfig(&ClaudeRequest{Model: model}).ThinkingConfig, model)
+	}
+	// Names that only share a prefix are not level models.
+	for _, model := range []string{"gemini-4-carbon-xhigh", "gemini-4-neon-max", "gemini-4-hydrogen-preview"} {
+		ok, _, _ := gemini4LevelModel(model)
+		require.False(t, ok, model)
+	}
+}
+
+func TestGemini4TransformUsesMappedModelForThinking(t *testing.T) {
+	req := &ClaudeRequest{Model: "client-alias", MaxTokens: 4096, Messages: []ClaudeMessage{{Role: "user", Content: json.RawMessage(`"hello"`)}}, OutputConfig: &ClaudeOutputConfig{Effort: "max"}}
+	data, err := TransformClaudeToGeminiWithOptions(req, "project", "gemini-4-neon", TransformOptions{})
+	require.NoError(t, err)
+	require.Contains(t, string(data), `"thinkingLevel":"xhigh"`)
+	require.NotContains(t, string(data), `thinkingBudget`)
+	require.NotContains(t, string(data), `stopSequences`)
+}
