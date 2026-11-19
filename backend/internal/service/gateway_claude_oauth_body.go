@@ -307,7 +307,8 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 	//   applyToolNameRewriteToBody 同步映射为假名
 	// - 其他形态（auto/any/none）原样透传
 	// 如果 body 里完全没有 tools（空数组），tool_choice 没意义时才删除
-	if !gjson.GetBytes(out, "tools").IsArray() || len(gjson.GetBytes(out, "tools").Array()) == 0 {
+	toolsResult := gjson.GetBytes(out, "tools")
+	if !toolsResult.IsArray() || !toolsResult.Get("0").Exists() {
 		if !isClaude55SignedThinkingModel(modelID) && gjson.GetBytes(out, "tool_choice").Exists() {
 			if next, ok := deleteJSONPathBytes(out, "tool_choice"); ok {
 				out = next
@@ -1059,9 +1060,37 @@ func collectCacheControlPaths(body []byte) (invalidThinking []cacheControlPath, 
 	return invalidThinking, messagePaths, toolPaths, systemPaths
 }
 
+var (
+	cacheControlKeyBytes   = []byte(`"cache_control"`)
+	thinkingBlockTypeBytes = []byte(`"thinking"`)
+	cacheTTL1hJSONBytes    = []byte(`"1h"`)
+	jsonUnicodeEscapeBytes = []byte(`\u`)
+)
+
 // enforceCacheControlLimit 让出站 cache_control 满足上游约束：
 // 先执行块数量限制，再修正 TTL 顺序。
+//
+// 大多数请求的 cache_control 块不超过 4 个、没有 thinking 块、也没有 1h TTL，
+// 此时两步都是 no-op。用字节级预检查跳过两次 collectCacheControlPaths 遍历。
+// 预检查只会多算（把请求送回原路径），不会漏判；含 \u 转义的 body 可能把
+// 键名或值写成转义形式，字节匹配看不到，因此直接走原路径。
 func enforceCacheControlLimit(body []byte) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	if bytes.Contains(body, jsonUnicodeEscapeBytes) {
+		return normalizeCacheControlTTLOrder(enforceCacheControlBlockLimit(body))
+	}
+	if !bytes.Contains(body, cacheControlKeyBytes) {
+		return body
+	}
+	if bytes.Count(body, cacheControlKeyBytes) <= maxCacheControlBlocks &&
+		!bytes.Contains(body, thinkingBlockTypeBytes) {
+		if !bytes.Contains(body, cacheTTL1hJSONBytes) {
+			return body
+		}
+		return normalizeCacheControlTTLOrder(body)
+	}
 	return normalizeCacheControlTTLOrder(enforceCacheControlBlockLimit(body))
 }
 

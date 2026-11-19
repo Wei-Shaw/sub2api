@@ -30,7 +30,7 @@ func TestNewUpstreamDialerHasBoundedTimeout(t *testing.T) {
 
 	require.Greater(t, dialer.Timeout, time.Duration(0), "建连超时必须有上限")
 	require.Equal(t, defaultUpstreamDialTimeout, dialer.Timeout)
-	require.Equal(t, defaultUpstreamDialKeepAlive, dialer.KeepAlive)
+	require.Equal(t, net.KeepAliveConfig{Enable: true, Idle: 15 * time.Second, Interval: 5 * time.Second, Count: 3}, dialer.KeepAliveConfig)
 }
 
 // 建连超时对 HTTP 代理同样生效：Transport.Proxy 走的仍是 DialContext，

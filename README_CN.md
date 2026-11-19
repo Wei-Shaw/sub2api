@@ -185,6 +185,11 @@
 <td><a href="https://massivetokens.com/signup?ref=SUB2API">Massive Tokens</a> 以批发价向企业和大用量开发者提供 Claude API。提供标准的 Anthropic Messages API，Claude Code、Sub2API、LiteLLM、One API 无需改代码即可接入。使用邀请码 SUB2API 注册，每次调用立减 5%；注册后加入 Telegram 群 @massivetokens (<a href="https://t.me/massivetokens">https://t.me/massivetokens</a>)，向管理员申请 $10 额度。</td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://www.dataeyes.vip/?promoter_code=9dkfv2r3"><img src="assets/partners/logos/DataEyesAI.png" alt="DataEyesAI" width="150"></a></td>
+<td><a href="https://www.dataeyes.vip/?promoter_code=9dkfv2r3">DataEyesAI</a> 是面向开发者与企业的一站式 AI API 服务平台，通过统一接口接入 OpenAI、Claude、Gemini 等主流模型，覆盖 AI 编程及文本、图像、音频、视频生成。支持 Claude Code、Codex 等主流 AI 编程工具，提供按量付费、实时用量与成本监控，以及 7×24 小时技术支持，让模型接入更便捷、开发成本更可控。新用户通过<a href="https://www.dataeyes.vip/?promoter_code=9dkfv2r3">此链接</a>注册，可领取使用额度，从代码开发到多模态创作，一站开启 AI 应用之旅！</td>
+</tr>
+
 </table>
 
 </details>
