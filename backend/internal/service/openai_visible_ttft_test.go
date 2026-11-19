@@ -98,7 +98,9 @@ func TestOpenAINativeMetadataAndKeepaliveDoNotDisarmFirstOutputTimeout(t *testin
 	var failoverErr *UpstreamFailoverError
 	require.ErrorAs(t, err, &failoverErr)
 	require.True(t, failoverErr.SafeToFailoverAfterWrite)
-	require.Empty(t, recorder.Body.String())
+	// Only the upstream keepalive event reaches the client; it is not output.
+	require.Equal(t, "data: {\"type\":\"keepalive\"}\n\n", recorder.Body.String())
+	require.Equal(t, -1, OpenAICompactKeepaliveAdjustedWrittenSize(c))
 	select {
 	case <-writerDone:
 	case <-time.After(time.Second):
