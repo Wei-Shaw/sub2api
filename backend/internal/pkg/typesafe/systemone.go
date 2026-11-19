@@ -22,7 +22,45 @@ var (
 	systemOneQuestionFields = []string{"type", "instructions", "criteria"}
 )
 
+// Command Code (https://commandcode.ai/docs/provider) serves Jev through its own
+// System One endpoint under model ids with a "typesafe/" prefix: "typesafe/jev"
+// and pinned releases such as "typesafe/jev-1.14.0". Its request and response
+// shapes are TypeSafe's.
+const (
+	CommandCodeJevModel       = "typesafe/jev"
+	commandCodeJevPinnedStart = "typesafe/jev-"
+)
+
+// IsCommandCodeJevModel reports whether model is a Command Code Jev id.
+func IsCommandCodeJevModel(model string) bool {
+	if model == CommandCodeJevModel {
+		return true
+	}
+	version, ok := strings.CutPrefix(model, commandCodeJevPinnedStart)
+	if !ok || version == "" {
+		return false
+	}
+	for _, r := range version {
+		if (r < '0' || r > '9') && r != '.' {
+			return false
+		}
+	}
+	return true
+}
+
+// ValidateSystemOneRequest validates a request for TypeSafe's own API, whose
+// only model is jev-latest.
 func ValidateSystemOneRequest(body []byte) (string, error) {
+	return validateSystemOneRequest(body, false)
+}
+
+// ValidateSystemOneRequestAnyUpstream also accepts Command Code's Jev ids. The
+// caller must still check that the selected upstream serves the returned model.
+func ValidateSystemOneRequestAnyUpstream(body []byte) (string, error) {
+	return validateSystemOneRequest(body, true)
+}
+
+func validateSystemOneRequest(body []byte, allowCommandCode bool) (string, error) {
 	var envelope systemOneEnvelope
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return "", errors.New("invalid JSON request")
@@ -38,7 +76,10 @@ func ValidateSystemOneRequest(body []byte) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if model != JevLatestModel {
+	if model != JevLatestModel && (!allowCommandCode || !IsCommandCodeJevModel(model)) {
+		if allowCommandCode {
+			return "", fmt.Errorf("model must be %s, %s or %s<version>", JevLatestModel, CommandCodeJevModel, commandCodeJevPinnedStart)
+		}
 		return "", fmt.Errorf("model must be %s", JevLatestModel)
 	}
 	if err := validateStringObjectOrArray(envelope.State, "state"); err != nil {
