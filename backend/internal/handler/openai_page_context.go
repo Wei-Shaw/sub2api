@@ -14,7 +14,7 @@ var codexSelectedPageName = regexp.MustCompile(`^codex_apps_selected_page_part_(
 // Codex injects external context as standalone outputs, without a model tool call.
 // Use the legacy user-message representation for HTTP Responses interoperability.
 func normalizeCodexUntrustedContext(body []byte) ([]byte, bool) {
-	if !mayContainCodexCallOutputCandidate(body, "codex_apps_open_page", "codex_apps_selected_page_part_", "browser_info", "goal_objective", "untrusted_context") || !hasUniqueJSONMembers(body) {
+	if !mayContainCodexCallOutputCandidate(body, "codex_apps_open_page", "codex_apps_selected_page_part_", "browser_info", "goal_objective", "untrusted_context", "untrusted_content") || !hasUniqueJSONMembers(body) {
 		return body, false
 	}
 	var request map[string]json.RawMessage
@@ -85,7 +85,7 @@ func normalizeCodexUntrustedContext(body []byte) ([]byte, bool) {
 
 func validCodexUntrustedContext(name, output string) bool {
 	switch name {
-	case "browser_info", "goal_objective", "untrusted_context":
+	case "browser_info", "goal_objective", "untrusted_context", "untrusted_content":
 		return strings.TrimSpace(output) != ""
 	default:
 		return validCodexPageContext(name, output)

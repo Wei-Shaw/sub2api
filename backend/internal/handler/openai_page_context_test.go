@@ -57,7 +57,7 @@ func TestNormalizeCodexPageContextFirstMessage(t *testing.T) {
 func TestNormalizeCodexAdditionalUntrustedContext(t *testing.T) {
 	// AdditionalContextToolOutput derives names from caller-provided context keys.
 	// Codex 0.169.0 enables this representation by default (openai/codex#60487).
-	for _, name := range []string{"browser_info", "goal_objective", "untrusted_context"} {
+	for _, name := range []string{"browser_info", "goal_objective", "untrusted_context", "untrusted_content"} {
 		t.Run(name, func(t *testing.T) {
 			output := "external context\nline two"
 			body := pageContextRequest(t, pageContextItem(name, output),
@@ -87,7 +87,7 @@ func TestNormalizeCodexAdditionalUntrustedContext(t *testing.T) {
 }
 
 func TestNormalizeCodexAdditionalUntrustedContextPreservesRealAndMalformedOutputs(t *testing.T) {
-	for _, name := range []string{"browser_info", "goal_objective", "untrusted_context"} {
+	for _, name := range []string{"browser_info", "goal_objective", "untrusted_context", "untrusted_content"} {
 		for _, override := range []map[string]any{
 			{"call_id": "call_real"},
 			{"call_id": nil},
@@ -138,7 +138,7 @@ func TestNormalizeCodexAdditionalUntrustedContextPreservesRealAndMalformedOutput
 }
 
 func TestNormalizeCodexAdditionalUntrustedContextBlankCallIDsAndMixedInput(t *testing.T) {
-	names := []string{"browser_info", "goal_objective", "untrusted_context"}
+	names := []string{"browser_info", "goal_objective", "untrusted_context", "untrusted_content"}
 	for _, callID := range []string{"", " \t\n"} {
 		items := make([]any, 0, len(names))
 		for _, name := range names {
@@ -158,7 +158,7 @@ func TestNormalizeCodexAdditionalUntrustedContextBlankCallIDsAndMixedInput(t *te
 }
 
 func TestNormalizeCodexAdditionalUntrustedContextRejectsDuplicateMembers(t *testing.T) {
-	for _, name := range []string{"browser_info", "goal_objective", "untrusted_context"} {
+	for _, name := range []string{"browser_info", "goal_objective", "untrusted_context", "untrusted_content"} {
 		for _, body := range []string{
 			`{"input":[{"type":"function_call_output","namespace":"agent","name":"` + name + `","call_id":"real","call_id":"","output":"context"}]}`,
 			`{"input":[{"type":"function_call_output","namespace":"agent","name":"` + name + `","output":"first","output":"second"}]}`,
