@@ -85,6 +85,12 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	if rejectSystemOneOnlyPlatform(c, apiKey, h.responsesErrorResponse) {
 		return
 	}
+	if cappedBody, changed, err := applyOpenAIReasoningEffortPolicyForRequest(c, apiKey, body); err != nil {
+		respondOpenAIReasoningEffortPolicyError(c, err, h.responsesErrorResponse)
+		return
+	} else if changed {
+		body = cappedBody
+	}
 	reqStream, ok := parseOpenAICompatibleStream(body)
 	if !ok {
 		h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", invalidStreamFieldTypeMessage)
@@ -373,6 +379,9 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				zap.Bool("upstream_error_response_already_written", upstreamErrorAlreadyCommunicated),
 				zap.Error(err),
 			)
+			// The response is already committed, so the client retries; send that
+			// retry through scheduling again instead of back to this account.
+			h.gatewayService.ReleaseStickySessionAfterCommittedNoContent(context.WithoutCancel(requestCtx), apiKey.GroupID, sessionHash, account.ID, err)
 			if result != nil {
 				submitForwardUsage(result)
 			}

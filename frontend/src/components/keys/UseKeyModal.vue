@@ -1410,6 +1410,11 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       }
     }
   }
+  const solAstraOptions = {
+    limit: { context: 1050000, output: 128000 },
+    options: { store: false },
+    variants: { low: {}, medium: {}, high: {}, xhigh: {}, max: {} }
+  }
   const openaiModels = {
     'gpt-6': {
       name: 'GPT-6 (Astra)',
@@ -1484,23 +1489,9 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       options: { store: false },
       variants: { none: {}, low: {}, medium: {}, high: {}, xhigh: {}, max: {} }
     },
-    'gpt-6.1-sol': {
-      name: 'GPT-6.1 Sol',
-      limit: {
-        context: 1050000,
-        output: 128000
-      },
-      options: {
-        store: false
-      },
-      variants: {
-        low: {},
-        medium: {},
-        high: {},
-        xhigh: {},
-        max: {}
-      }
-    },
+    'gpt-6.2-sol': { name: 'GPT-6.2 Sol', ...solAstraOptions },
+    'gpt-6.2-astra': { name: 'GPT-6.2 Astra', ...solAstraOptions },
+    'gpt-6.1-sol': { name: 'GPT-6.1 Sol', ...solAstraOptions },
     'gpt-6-sol': {
       name: 'GPT-6 Sol',
       limit: {
@@ -2002,7 +1993,34 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     provider[platform].models = geminiModels
   } else if (platform === 'anthropic') {
     provider[platform].npm = '@ai-sdk/anthropic'
+    // Mythos requires an eligible Anthropic account; configuration does not grant access.
     provider[platform].models = {
+      'claude-fable-5-2': {
+        name: 'Claude Fable 5.2',
+        limit: { context: 1000000, output: 128000 },
+        modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+        options: { thinking: { type: 'adaptive' }, effort: 'high' },
+        variants: {
+          low: { effort: 'low' },
+          medium: { effort: 'medium' },
+          high: { effort: 'high' },
+          xhigh: { effort: 'xhigh' },
+          max: { effort: 'max' }
+        }
+      },
+      'claude-mythos-5-2': {
+        name: 'Claude Mythos 5.2',
+        limit: { context: 1000000, output: 128000 },
+        modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+        options: { thinking: { type: 'adaptive' }, effort: 'high' },
+        variants: {
+          low: { effort: 'low' },
+          medium: { effort: 'medium' },
+          high: { effort: 'high' },
+          xhigh: { effort: 'xhigh' },
+          max: { effort: 'max' }
+        }
+      },
       'claude-opus-5-5': {
         name: 'Claude Opus 5.5',
         limit: { context: 1000000, output: 128000 },

@@ -481,7 +481,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 	}
 
 	if isClaudeCodexModel(modelID) {
-		if claude.IsOpus55(modelID) || claude.IsSonnet55(modelID) || claude.IsHaiku55(modelID) {
+		if claude.IsOpus55(modelID) || claude.IsSonnet55(modelID) || claude.IsHaiku55(modelID) || claude.IsFable52(modelID) || claude.IsMythos52(modelID) {
 			descriptor.ContextWindow = 1_000_000
 			descriptor.MaxContextWindow = 1_000_000
 		}
@@ -490,7 +490,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		descriptor.SupportsParallelToolCalls = true
 		if levels := configuredCodexClaudeReasoningLevels(modelID); len(levels) > 0 {
 			defaultReasoningLevel := claudeCodexDefaultReasoningLevel(levels)
-			if claude.IsSonnet55(modelID) {
+			if claude.IsSonnet55(modelID) || claude.IsFable52(modelID) || claude.IsMythos52(modelID) {
 				defaultReasoningLevel = "high"
 			}
 			descriptor.DefaultReasoningLevel = &defaultReasoningLevel
@@ -543,6 +543,22 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		// The October 12, 2026 Codex/Work default increased to 500k after
 		// the bundled official snapshot. Explicit upstream metadata still wins.
 		descriptor.ContextWindow = 500_000
+		// The two 6.2 descriptors now occupy the first two slots.
+		descriptor.Priority = 3
+	}
+	var metadata json.RawMessage
+	switch openai.GPT62ModelID(modelID) {
+	case "gpt-6.2-sol":
+		metadata = openai.CodexGPT62SolMetadata
+	case "gpt-6.2-astra":
+		metadata = openai.CodexGPT62AstraMetadata
+	}
+	if len(metadata) > 0 {
+		if err := json.Unmarshal(metadata, &descriptor); err != nil {
+			panic(err)
+		}
+		descriptor.Slug = modelID
+		descriptor.officialMetadata = metadata
 	}
 	if openai.IsGPT61TerraModelSpelling(modelID) {
 		// The Codex descriptor differs from the API model page: Codex offers
@@ -2093,6 +2109,8 @@ func CodexModelsManifestETag(body []byte) string {
 }
 
 var apiKeyCodexModelsWithoutResponsesLite = map[string]struct{}{
+	"gpt-6.2-sol":   {},
+	"gpt-6.2-astra": {},
 	"gpt-6.1-terra": {},
 	"gpt-6.1-sol":   {},
 	"gpt-6-astra":   {},
