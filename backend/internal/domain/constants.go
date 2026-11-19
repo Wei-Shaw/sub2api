@@ -178,9 +178,9 @@ var DefaultAntigravityModelMapping = map[string]string{
 	"gemini-3.8-flash-low":    "gemini-3.8-flash-low",
 	"gemini-3.8-flash-medium": "gemini-3.8-flash-medium",
 	"gemini-3.8-flash-tiered": "gemini-3.8-flash-tiered",
-	// Gemini 4 models. Antigravity serves them only under tiered IDs: the bare
-	// IDs answer 404 NOT_FOUND, so each bare ID maps to the level the
-	// Antigravity model selector defaults to (High).
+	// Gemini 4 models. Antigravity serves them only under tiered IDs (the bare
+	// IDs answer 404 NOT_FOUND). A bare ID maps to High here; the gateway then
+	// picks the tier from the request effort (antigravityLevelFamilies).
 	"gemini-4-argon":           "gemini-4-argon-high",
 	"gemini-4-argon-high":      "gemini-4-argon-high",
 	"gemini-4-argon-low":       "gemini-4-argon-low",
