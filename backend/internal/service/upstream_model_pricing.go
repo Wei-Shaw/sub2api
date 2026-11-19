@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"reflect"
 	"slices"
@@ -10,8 +11,9 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/typesafe"
 )
 
 const (
@@ -160,22 +162,92 @@ func upstreamPriceTier(tier string) string {
 	}
 }
 
-// buildUpstreamModelPrice samples the existing calculation on each piecewise
-// constant band. Keep operator schedules separate from unit prices so a cached
-// quote can still be used on either side of a time-of-day boundary.
+// buildUpstreamModelPrice samples the same unit prices used at settlement.
 func (s *BillingService) buildUpstreamModelPrice(input CostInput, freeFast bool) (UpstreamModelPrice, bool) {
 	if s == nil || input.Resolver == nil || input.Resolved == nil || input.PricingAt.IsZero() {
 		return UpstreamModelPrice{}, false
 	}
+	if input.Resolved.Mode == BillingModeToken && input.Resolved.Source == PricingSourceLiteLLM && isDeepSeekModel(input.Model) {
+		return s.buildDeepSeekUpstreamModelPrice(input, freeFast)
+	}
+	return s.sampleUpstreamModelPrice(input, freeFast)
+}
+
+// The built-in DeepSeek schedule normally scales the whole tariff. If an
+// override exempts individual meters, publish the exact current prices only
+// until the next transition. Applying a global factor would reprice overrides.
+func (s *BillingService) buildDeepSeekUpstreamModelPrice(input CostInput, freeFast bool) (UpstreamModelPrice, bool) {
+	at := input.PricingAt.In(deepseekPricingLocation)
+	day := time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, deepseekPricingLocation)
+	for day.Weekday() == time.Saturday || day.Weekday() == time.Sunday {
+		day = day.AddDate(0, 0, 1)
+	}
+	input.PricingAt = day
+	low, lowOK := s.sampleUpstreamModelPrice(input, freeFast)
+	input.PricingAt = day.Add(time.Duration(deepseekPeakHours[0][0]) * time.Hour)
+	high, highOK := s.sampleUpstreamModelPrice(input, freeFast)
+	if !lowOK || !highOK {
+		return UpstreamModelPrice{}, false
+	}
+	if uniformUpstreamPeakScale(low, high, 1) {
+		return low, true
+	}
+	if uniformUpstreamPeakScale(low, high, deepseekPeakRate) {
+		low.TimePricing = &ChannelTimePricing{Timezone: deepseekPricingLocation.String(), WeekdaysOnly: true}
+		for _, period := range deepseekPeakHours {
+			low.TimePricing.Periods = append(low.TimePricing.Periods, ChannelTimePricingPeriod{
+				StartTime: fmt.Sprintf("%02d:00", period[0]), EndTime: fmt.Sprintf("%02d:00", period[1]), Multiplier: deepseekPeakRate,
+			})
+		}
+		return low, true
+	}
+	quote := low
+	if deepseekPeakMultiplierAt(at) > 1 {
+		quote = high
+	}
+	for day = time.Date(at.Year(), at.Month(), at.Day(), 0, 0, 0, 0, deepseekPricingLocation); ; day = day.AddDate(0, 0, 1) {
+		if day.Weekday() == time.Saturday || day.Weekday() == time.Sunday {
+			continue
+		}
+		for _, period := range deepseekPeakHours {
+			for _, hour := range period {
+				if boundary := day.Add(time.Duration(hour) * time.Hour); boundary.After(at) {
+					quote.ValidBefore = &boundary
+					return quote, true
+				}
+			}
+		}
+	}
+}
+
+func uniformUpstreamPeakScale(low, high UpstreamModelPrice, scale float64) bool {
+	if len(low.Bands) != len(high.Bands) {
+		return false
+	}
+	for i, band := range low.Bands {
+		if !reflect.DeepEqual(band.ThroughContext, high.Bands[i].ThroughContext) {
+			return false
+		}
+		for tier, prices := range band.TokenPrices {
+			for meter, price := range prices {
+				expected, actual := price*scale, high.Bands[i].TokenPrices[tier][meter]
+				if priceExceeds(expected, actual) || priceExceeds(actual, expected) {
+					return false
+				}
+			}
+		}
+	}
+	return true
+}
+
+// Keep operator schedules separate from sampled prices so a cached quote is
+// usable on either side of a time-of-day boundary.
+func (s *BillingService) sampleUpstreamModelPrice(input CostInput, freeFast bool) (UpstreamModelPrice, bool) {
 	resolved := *input.Resolved
 	quote := UpstreamModelPrice{Mode: resolved.Mode}
 	var bounds []int
 	switch resolved.Mode {
 	case BillingModeToken:
-		// DeepSeek's calendar policy is different from a channel time schedule.
-		if resolved.Source == PricingSourceLiteLLM && isDeepSeekModel(input.Model) {
-			return quote, false
-		}
 		if input.LongContextBillingEnabled != nil && *input.LongContextBillingEnabled {
 			resolved.longContextPricingEnabled = true
 		}
@@ -325,16 +397,26 @@ func (p UpstreamModelPrice) baseCost(tokens UsageTokens, tier, effort string, at
 	return cost, cost >= 0 && !math.IsInf(cost, 0)
 }
 
-// SupportsUpstreamModelPricingSync limits the initial contract to OpenAI pool
-// accounts with a single base URL and key.
+// A snapshot represents one upstream key and billing endpoint. An adaptive
+// account can use it only if all selectable protocols resolve to that endpoint.
 func SupportsUpstreamModelPricingSync(account *Account) bool {
-	return account != nil && account.IsOpenAI() && account.Type == AccountTypeAPIKey && account.IsPoolMode() &&
-		!account.RoutesProtocolByInbound() && !account.IsShadow()
+	if !isUpstreamBillingProbeAccount(account) || !account.IsPoolMode() || account.IsShadow() {
+		return false
+	}
+	if !account.IsAdaptiveAPIProtocol() {
+		return true
+	}
+	endpoint := upstreamBillingEndpoint(account.GetCNProtocolBaseURL(APIProtocolChatCompletions))
+	for _, protocol := range []string{APIProtocolAnthropic, APIProtocolResponses} {
+		if account.providerSupportsProtocol(protocol) && upstreamBillingEndpoint(account.GetCNProtocolBaseURL(protocol)) != endpoint {
+			return false
+		}
+	}
+	return true
 }
 
 func upstreamModelPricingSyncEnabled(account *Account) bool {
-	return account != nil && account.IsOpenAI() && account.Type == AccountTypeAPIKey && account.IsPoolMode() &&
-		account.Extra[UpstreamModelPricingSyncExtraKey] == true
+	return isUpstreamBillingProbeAccount(account) && account.IsPoolMode() && account.Extra[UpstreamModelPricingSyncExtraKey] == true
 }
 
 // CanReuseUpstreamPricingConnection prevents a quote for refreshed credentials
@@ -352,13 +434,42 @@ func CanReuseUpstreamPricingConnection(connected, latest *Account) bool {
 }
 
 func selectedUpstreamPricingModels(account *Account) []string {
-	var models []string
-	for _, mapping := range []map[string]string{account.GetModelMapping(), account.GetCompactModelMapping()} {
-		for _, model := range mapping {
-			model = strings.TrimSpace(model)
-			if ValidUpstreamPricingModel(model) {
-				models = append(models, model)
+	// A passthrough API key can serve models outside model_mapping. Let the
+	// supplier return its bounded catalog for that key.
+	if account.IsOpenAIPassthroughEnabled() && !account.IsOpenAIPassthroughModelFilterEnabled() {
+		return nil
+	}
+	if account.Platform == PlatformTypeSafe {
+		return []string{typesafe.JevLatestModel}
+	}
+	mapping := account.GetModelMapping()
+	if len(mapping) == 0 {
+		if account.Platform == PlatformDeepseek {
+			return slices.Clone(deepseekServableModels)
+		}
+		return nil
+	}
+	models := make([]string, 0, len(mapping))
+	for model, target := range mapping {
+		model = strings.TrimSpace(model)
+		target = strings.TrimSpace(target)
+		if account.IsOpenAIPassthroughEnabled() && !shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
+			if !ValidUpstreamPricingModel(model) {
+				return nil // A wildcard filter needs the supplier's catalog.
 			}
+			target = model
+		}
+		if domain.UsesOpenAIGateway(account.Platform) {
+			target = normalizeOpenAIModelForUpstream(account, target)
+		}
+		if ValidUpstreamPricingModel(target) {
+			models = append(models, target)
+		}
+	}
+	for _, model := range account.GetCompactModelMapping() {
+		model = strings.TrimSpace(model)
+		if ValidUpstreamPricingModel(model) {
+			models = append(models, model)
 		}
 	}
 	slices.Sort(models)
@@ -424,7 +535,8 @@ func upstreamModelPriceAt(account *Account, model string, at, now time.Time) (Up
 // requested model agree on billing. An account selection that can change the
 // tariff cannot be represented by a single static quote.
 func (s *OpenAIGatewayService) ResolveKeyModelPricing(ctx context.Context, group *Group, models []string, at time.Time) *UpstreamModelPricingCatalog {
-	if s == nil || s.accountRepo == nil || s.resolver == nil || group == nil || group.Platform != PlatformOpenAI {
+	if s == nil || s.accountRepo == nil || s.resolver == nil || group == nil || !domain.UsesOpenAIGateway(group.Platform) ||
+		(group.Platform == PlatformOpenAI && (group.AllowMessagesDispatch || group.DefaultMappedModel != "")) {
 		return nil
 	}
 	// Rules that replace the requested service tier can make the same tier
@@ -438,13 +550,37 @@ func (s *OpenAIGatewayService) ResolveKeyModelPricing(ctx context.Context, group
 			return nil
 		}
 	}
-	accounts, err := s.accountRepo.ListByGroup(ctx, group.ID)
+	return resolveGroupModelPricing(ctx, s.accountRepo, s.channelService, group, models, at, s.resolveKeyModelPrice)
+}
+
+// ResolveKeyModelPricing returns the key's tariff for the shared gateway when
+// all routes for the model agree.
+func (s *GatewayService) ResolveKeyModelPricing(ctx context.Context, group *Group, models []string, at time.Time) *UpstreamModelPricingCatalog {
+	if s == nil || s.accountRepo == nil || s.resolver == nil || group == nil || !domain.IsConcretePlatform(group.Platform) ||
+		domain.UsesOpenAIGateway(group.Platform) || group.FallbackGroupID != nil || group.FallbackGroupIDOnInvalidRequest != nil {
+		return nil
+	}
+	return resolveGroupModelPricing(ctx, s.accountRepo, s.channelService, group, models, at, s.resolveSharedKeyModelPrice)
+}
+
+func resolveGroupModelPricing(ctx context.Context, repo AccountRepository, channels *ChannelService, group *Group, models []string, at time.Time,
+	resolveModel func(context.Context, *Group, []Account, string, time.Time) (UpstreamModelPrice, bool),
+) *UpstreamModelPricingCatalog {
+	accounts, err := repo.ListByGroup(ctx, group.ID)
 	if err != nil || len(accounts) > 128 {
 		return nil
 	}
+	ctx = context.WithValue(ctx, ctxkey.Group, group)
 	catalog := &UpstreamModelPricingCatalog{Version: 1, Currency: "USD", Models: make(map[string]UpstreamModelPrice)}
 	if len(models) == 0 {
-		models = defaultUpstreamPricingModels(group, accounts)
+		var channel *Channel
+		if channels != nil {
+			channel, err = channels.GetChannelForGroup(ctx, group.ID)
+			if err != nil {
+				return nil
+			}
+		}
+		models = defaultUpstreamPricingModels(group, channel, accounts)
 	}
 	// Budget the serialized catalog, excluding the small legacy key billing
 	// response. Stop before an oversized catalog would invalidate rate sync.
@@ -453,7 +589,7 @@ func (s *OpenAIGatewayService) ResolveKeyModelPricing(ctx context.Context, group
 		if !ValidUpstreamPricingModel(model) || !group.ModelAllowlist.Allows(model) {
 			continue
 		}
-		quote, ok := s.resolveKeyModelPrice(ctx, group, accounts, model, at)
+		quote, ok := resolveModel(ctx, group, accounts, model, at)
 		if !ok {
 			continue
 		}
@@ -471,21 +607,17 @@ func rewritesPricingTier(action string) bool {
 	return action == BetaPolicyActionFilter || action == OpenAIFastPolicyActionForcePriority
 }
 
-func defaultUpstreamPricingModels(group *Group, accounts []Account) []string {
-	var mapped, defaults []string
+func defaultUpstreamPricingModels(group *Group, channel *Channel, accounts []Account) []string {
+	var mapped []string
+	hasMatchingAccounts := false
 	for i := range accounts {
 		account := &accounts[i]
-		if !account.IsOpenAI() {
+		if account.Platform != group.Platform {
 			continue
 		}
+		hasMatchingAccounts = true
 		for model := range account.GetModelMapping() {
 			mapped = append(mapped, model)
-		}
-	}
-	for i := range accounts {
-		if accounts[i].IsOpenAI() && (len(accounts[i].GetModelMapping()) == 0 || accounts[i].IsOpenAIPassthroughEnabled()) {
-			defaults = openai.DefaultModelIDs()
-			break
 		}
 	}
 	slices.Sort(mapped)
@@ -493,7 +625,36 @@ func defaultUpstreamPricingModels(group *Group, accounts []Account) []string {
 	for _, pricing := range group.ModelPricing {
 		models = append(models, pricing.Models...)
 	}
-	models = append(models, defaults...)
+	if channel != nil {
+		for _, pricing := range channel.ModelPricing {
+			if pricing.Platform == group.Platform {
+				models = append(models, pricing.Models...)
+			}
+		}
+		var aliases []string
+		for model := range channel.ModelMapping[group.Platform] {
+			aliases = append(aliases, model)
+		}
+		slices.Sort(aliases)
+		models = append(models, aliases...)
+	}
+	if hasMatchingAccounts {
+		switch group.Platform {
+		case PlatformOpenAI:
+			// A generic OpenAI-compatible relay can also expose DeepSeek models.
+			models = append(models, deepseekServableModels...)
+			models = append(models, "deepseek-chat", "deepseek-reasoner")
+			models = append(models, defaultModelsListCandidateIDs(group.Platform)...)
+		case PlatformDeepseek:
+			models = append(models, deepseekServableModels...)
+		case PlatformKimi, PlatformZhipu, PlatformMiniMax, PlatformCommandCode, PlatformCline:
+			if profile := LookupProviderProfile(group.Platform); profile != nil {
+				models = append(models, profile.DefaultTestModel)
+			}
+		default:
+			models = append(models, defaultModelsListCandidateIDs(group.Platform)...)
+		}
+	}
 	seen := make(map[string]bool)
 	out := make([]string, 0, MaxUpstreamPricingModels)
 	for _, model := range models {
@@ -519,15 +680,15 @@ func (s *OpenAIGatewayService) resolveKeyModelPrice(ctx context.Context, group *
 	if mapping.Mapped && mapping.MappedModel != "" {
 		forwardModel = mapping.MappedModel
 	}
-	ctx = context.WithValue(ctx, ctxkey.Group, group)
 	// Different routes may bill by account mapping or toggle long-context
 	// pricing. Emit a single quote only if all matching routes agree.
 	for i := range accounts {
 		account := &accounts[i]
-		if !account.IsOpenAI() || !account.IsModelSupported(forwardModel) {
+		if account.Platform != group.Platform || (!account.IsModelSupported(forwardModel) &&
+			!(account.IsOpenAIPassthroughEnabled() && !account.IsOpenAIPassthroughModelFilterEnabled())) {
 			continue
 		}
-		if account.IsShadow() || account.RoutesProtocolByInbound() || account.IsOpenAIPassthroughEnabled() && account.IsOpenAIOAuthLike() {
+		if account.IsShadow() || account.IsOpenAIPassthroughEnabled() && account.IsOpenAIOAuthLike() {
 			return quote, false
 		}
 		billingModel, upstreamModel := resolveOpenAIForwardMappedModels(account, forwardModel, false)
@@ -539,6 +700,61 @@ func (s *OpenAIGatewayService) resolveKeyModelPrice(ctx context.Context, group *
 		quote, found = accountQuote, true
 	}
 	return quote, found
+}
+
+func (s *GatewayService) resolveSharedKeyModelPrice(ctx context.Context, group *Group, accounts []Account, model string, at time.Time) (UpstreamModelPrice, bool) {
+	var quote UpstreamModelPrice
+	found := false
+	mapping := s.ResolveChannelMapping(ctx, group.ID, model)
+	if mapping.BillingModelSource == BillingModelSourceResponse {
+		return quote, false
+	}
+	forwardModel := model
+	if mapping.Mapped && group.Platform != PlatformTypeSafe {
+		forwardModel = mapping.MappedModel
+	}
+	for i := range accounts {
+		account := &accounts[i]
+		mixed := (group.Platform == PlatformAnthropic || group.Platform == PlatformGemini) && account.Platform == PlatformAntigravity && account.IsMixedSchedulingEnabled()
+		if (account.Platform != group.Platform && !mixed) ||
+			!s.isModelSupportedByAccount(account, model) && !s.isModelSupportedByAccount(account, forwardModel) {
+			continue
+		}
+		// Gemini's Messages bridge forwards the original model. An exported
+		// tariff cannot represent an alternate route through that bridge.
+		if account.Type != AccountTypeAPIKey || account.IsShadow() ||
+			(group.Platform == PlatformGemini && (mixed || forwardModel != model)) {
+			return quote, false
+		}
+		billing, _ := s.sharedPricingModels(ctx, group, account, model, forwardModel, mapping)
+		accountQuote, ok := s.modelPriceForModel(ctx, group, billing, at)
+		if !ok || (found && !reflect.DeepEqual(quote, accountQuote)) {
+			return quote, false
+		}
+		quote, found = accountQuote, true
+	}
+	return quote, found
+}
+
+func (s *GatewayService) sharedPricingModels(ctx context.Context, group *Group, account *Account, model, forwardModel string, mapping ChannelMappingResult) (billing, sent string) {
+	sent = forwardModel
+	if account.Platform != PlatformTypeSafe {
+		sent = account.GetMappedModel(forwardModel)
+	}
+	key := &APIKey{GroupID: &group.ID, Group: group}
+	result := &ForwardResult{Model: forwardModel, UpstreamModel: sent}
+	return s.recordUsageBillingModel(ctx, key, result, mapping.ToUsageFields(model, sent)), sent
+}
+
+func (s *GatewayService) modelPriceForModel(ctx context.Context, group *Group, model string, at time.Time) (UpstreamModelPrice, bool) {
+	if s.resolver == nil || strings.TrimSpace(model) == "" {
+		return UpstreamModelPrice{}, false
+	}
+	resolved := s.resolver.Resolve(ctx, PricingInput{Model: model, GroupID: &group.ID, Group: group})
+	return s.billingService.buildUpstreamModelPrice(CostInput{
+		Ctx: ctx, Model: model, GroupID: &group.ID, Group: group,
+		Resolver: s.resolver, Resolved: resolved, PricingAt: at,
+	}, false)
 }
 
 func keyQuoteBillingModel(requested, mapped string, channel ChannelMappingResult) string {
@@ -563,7 +779,7 @@ func (s *OpenAIGatewayService) modelPriceForAccount(ctx context.Context, group *
 		DisableModelLongContextPricing: openAISubscriptionLongContextExempt(account, &OpenAIForwardResult{UpstreamModel: upstreamModel}),
 	}, group.FreeOpenAIFast)
 	quote.ForcedTier = openAIGroupForcedServiceTier(ctx, account, upstreamModel)
-	return quote, ok
+	return quote, ok && quote.valid()
 }
 
 func syncedOpenAIUsageCost(account *Account, result *OpenAIForwardResult, tokens UsageTokens, localMode string, tier ServiceTierBillingResolution, at time.Time) (base, rate float64, ok bool) {
@@ -571,15 +787,36 @@ func syncedOpenAIUsageCost(account *Account, result *OpenAIForwardResult, tokens
 		(result.ImageCount > 0 && localMode != string(BillingModeToken)) || !result.SucceededForScheduling() {
 		return 0, 0, false
 	}
-	model := upstreamSentModel(result.Model, result.UpstreamModel)
+	return syncedModelUsageCost(account, upstreamSentModel(result.Model, result.UpstreamModel), tokens,
+		tier, optionalStringValue(result.ReasoningEffort), result.ImageCount > 0, at)
+}
+
+func syncedGatewayUsageCost(account *Account, result *ForwardResult, tokens UsageTokens, localMode string, tier ServiceTierBillingResolution, at time.Time) (base, rate float64, ok bool) {
+	if result.AudioUsage != nil || result.SearchCount > 0 || result.CacheStorageTokenHours > 0 ||
+		(result.ImageCount > 0 && localMode != string(BillingModeToken)) {
+		return 0, 0, false
+	}
+	return syncedModelUsageCost(account, upstreamSentModel(result.Model, result.UpstreamModel), tokens,
+		tier, optionalStringValue(result.ReasoningEffort), result.ImageCount > 0, at)
+}
+
+func syncedModelUsageCost(account *Account, model string, tokens UsageTokens, tier ServiceTierBillingResolution, effort string, hasImages bool, at time.Time) (base, rate float64, ok bool) {
 	price, rate, ok := upstreamModelPriceAt(account, model, at, at)
-	if !ok || (result.ImageCount > 0 && price.Mode != BillingModeToken) {
+	if !ok || (hasImages && price.Mode != BillingModeToken) {
 		return 0, 0, false
 	}
 	billedTier := tier.Billing
 	if price.ForcedTier != "" {
 		billedTier = ResolveBillingServiceTier(price.ForcedTier, tier.Observed).Billing
 	}
-	base, ok = price.baseCost(tokens, billedTier, optionalStringValue(result.ReasoningEffort), at)
+	base, ok = price.baseCost(tokens, billedTier, effort, at)
 	return base, rate, ok
+}
+
+// Reports multiply the base cost by the rate; quotas use the absolute cost.
+func recordSyncedUpstreamAccountCost(log *UsageLog, base, rate float64) *float64 {
+	log.AccountStatsCost = &base
+	log.AccountRateMultiplier = &rate
+	charged := base * rate
+	return &charged
 }

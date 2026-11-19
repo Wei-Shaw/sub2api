@@ -1233,7 +1233,7 @@
           </div>
         </div>
 
-        <!-- 分组利润控制（五个平台 token 请求） -->
+        <!-- 分组利润控制（具体平台 token 请求） -->
         <div v-if="isProfitControlPlatform(createForm.platform)" class="border-t pt-4">
           <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
             <input
@@ -2900,7 +2900,7 @@
           </div>
         </div>
 
-        <!-- 分组利润控制（五个平台 token 请求） -->
+        <!-- 分组利润控制（具体平台 token 请求） -->
         <div v-if="isProfitControlPlatform(editForm.platform)" class="border-t pt-4">
           <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
             <input

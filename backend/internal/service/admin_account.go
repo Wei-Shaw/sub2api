@@ -672,7 +672,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		if requested, exists := normalizedExtra[UpstreamModelPricingSyncExtraKey]; exists {
 			enabled, ok := requested.(bool)
 			if !ok || (enabled && !SupportsUpstreamModelPricingSync(account)) {
-				return nil, infraerrors.BadRequest("INVALID_UPSTREAM_MODEL_PRICING_SYNC", "model pricing sync requires an OpenAI API key pool account with one upstream")
+				return nil, infraerrors.BadRequest("INVALID_UPSTREAM_MODEL_PRICING_SYNC", "model pricing sync requires an API key pool account with one upstream billing endpoint")
 			}
 			if enabled {
 				if requestedProbeEnabledUpdate != nil && !*requestedProbeEnabledUpdate {
@@ -1232,7 +1232,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 }
 
 func updatesUpstreamBillingProbeIdentity(credentials map[string]any) bool {
-	for _, key := range []string{"api_key", "base_url", credKeyHeaderOverrideEnabled, credKeyHeaderOverrides} {
+	for _, key := range []string{"api_key", "base_url", "api_base_urls", "api_protocol", "account_mode", credKeyHeaderOverrideEnabled, credKeyHeaderOverrides} {
 		if _, ok := credentials[key]; ok {
 			return true
 		}
@@ -1248,7 +1248,7 @@ func upstreamBillingProbeIdentity(account *Account) map[string]any {
 	if account.ProxyID != nil {
 		identity["proxy_id"] = *account.ProxyID
 	}
-	for _, key := range []string{"api_key", "base_url", credKeyHeaderOverrideEnabled, credKeyHeaderOverrides} {
+	for _, key := range []string{"api_key", "base_url", "api_base_urls", "api_protocol", "account_mode", credKeyHeaderOverrideEnabled, credKeyHeaderOverrides} {
 		if value, ok := account.Credentials[key]; ok {
 			identity[key] = value
 		}

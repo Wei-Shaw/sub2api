@@ -406,6 +406,9 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 	if channelMapping.Mapped {
 		modelName = channelMapping.MappedModel
 	}
+	if action != "countTokens" {
+		c.Request = c.Request.WithContext(service.WithGatewayUpstreamPricingRoute(c.Request.Context(), clientRequestedModel(c, reqModel), modelName, channelMapping, false))
+	}
 
 	// 引用显式缓存的请求只能发往持有该缓存的账号，且不参与会话粘性与换号。
 	cachedContentBinding, body, ok := h.resolveGeminiCachedContentBinding(c, reqLog, apiKey, modelName, body)
@@ -584,7 +587,11 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		if cachedContentExclusions != nil {
 			excludedAccountIDs = mergeAccountIDSets(cachedContentExclusions, fs.FailedAccountIDs)
 		}
-		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, modelName, excludedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
+		selectionCtx := c.Request.Context()
+		if fs.ForceCacheBilling {
+			selectionCtx = service.WithForceCacheBilling(selectionCtx)
+		}
+		selection, err := h.gatewayService.SelectAccountWithLoadAwareness(selectionCtx, apiKey.GroupID, sessionKey, modelName, excludedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
 		if err == nil && cachedContentBinding != nil && selection.Account.ID != cachedContentBinding.AccountID {
 			if selection.Acquired && selection.ReleaseFunc != nil {
 				selection.ReleaseFunc()

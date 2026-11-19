@@ -1996,7 +1996,7 @@
             />
           </div>
           <div
-            v-if="account?.platform === 'openai' && account.type === 'apikey' && poolModeEnabled"
+            v-if="canSyncUpstreamModelPricing"
             class="mt-3 flex items-center justify-between gap-3"
           >
             <div class="min-w-0">
@@ -3525,6 +3525,7 @@ import {
 } from '@/utils/format'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
+import { isKnownPlatform } from '@/constants/platformCatalog'
 import { supportsAccountQuota } from '@/utils/accountQuota'
 import { getAccountExpiryTimestamp } from '@/components/account/accountExpiry'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
@@ -4138,6 +4139,10 @@ const autoResetCredit7dThreshold = ref(100)
 const upstreamBillingAutoProbeEnabled = ref(false)
 const upstreamBillingRateSyncEnabled = ref(false)
 const upstreamModelPricingSyncEnabled = ref(false)
+const canSyncUpstreamModelPricing = computed(() =>
+  props.account?.type === 'apikey' && isKnownPlatform(props.account.platform) &&
+  poolModeEnabled.value && !isSparkShadow.value
+)
 const syncedUpstreamModelCount = computed(() => {
   const snapshot = props.account?.extra?.upstream_billing_probe as UpstreamBillingProbeSnapshot | undefined
   if (snapshot?.status !== 'ok' || !snapshot.fresh_until || Date.parse(snapshot.fresh_until) <= Date.now()) return 0
@@ -6410,9 +6415,8 @@ const handleSubmit = async () => {
         delete newExtra.upstream_billing_probe_enabled
         delete newExtra.upstream_billing_rate_sync_enabled
         delete newExtra.upstream_billing_model_pricing_sync_enabled
-        if (props.account.platform === 'openai' && (upstreamModelPricingSyncEnabled.value ||
-          props.account.extra?.upstream_billing_model_pricing_sync_enabled === true)) {
-          newExtra.upstream_billing_model_pricing_sync_enabled = poolModeEnabled.value && upstreamModelPricingSyncEnabled.value
+        if (upstreamModelPricingSyncEnabled.value || props.account.extra?.upstream_billing_model_pricing_sync_enabled === true) {
+          newExtra.upstream_billing_model_pricing_sync_enabled = canSyncUpstreamModelPricing.value && upstreamModelPricingSyncEnabled.value
         }
       }
       // Total quota

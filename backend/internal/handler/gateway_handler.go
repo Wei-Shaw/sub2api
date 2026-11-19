@@ -313,6 +313,13 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		platform = apiKey.Group.Platform
 	}
 	sessionKey := sessionHash
+	pricingForwardModel := reqModel
+	if channelMapping.Mapped && platform != service.PlatformGemini {
+		pricingForwardModel = channelMapping.MappedModel
+	}
+	c.Request = c.Request.WithContext(service.WithGatewayUpstreamPricingRoute(
+		c.Request.Context(), clientRequestedModel(c, reqModel), pricingForwardModel, channelMapping, platform == service.PlatformGemini,
+	))
 	if platform == service.PlatformGemini && sessionHash != "" {
 		sessionKey = "gemini:" + sessionHash
 	}
@@ -348,7 +355,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		c.Request = c.Request.WithContext(h.gatewayService.WithSingleAntigravityAccountGroupProbe(c.Request.Context(), apiKey.GroupID))
 
 		for {
-			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), apiKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
+			selectionCtx := c.Request.Context()
+			if fs.ForceCacheBilling {
+				selectionCtx = service.WithForceCacheBilling(selectionCtx)
+			}
+			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(selectionCtx, apiKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, "", int64(0)) // Gemini 不使用会话限制
 			if err != nil {
 				if failoverClientGone(c) {
 					reqLog.Info("gateway.account_select_aborted_client_disconnected", zap.Error(err))
@@ -680,7 +691,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				zap.Bool("has_bound_session", hasBoundSession),
 				zap.Int("failed_account_count", len(fs.FailedAccountIDs)),
 			)
-			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
+			selectionCtx := c.Request.Context()
+			if fs.ForceCacheBilling {
+				selectionCtx = service.WithForceCacheBilling(selectionCtx)
+			}
+			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(selectionCtx, currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
 			if err != nil {
 				if failoverClientGone(c) {
 					reqLog.Info("gateway.account_select_aborted_client_disconnected", zap.Error(err))
@@ -1044,6 +1059,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						}
 						// 兜底重试按"直接请求兜底分组"处理：清除强制平台，允许按分组平台调度
 						ctx := context.WithValue(c.Request.Context(), ctxkey.ForcePlatform, "")
+						ctx = service.WithGatewayTokenRequestBillingGroup(ctx, fallbackGroup)
 						c.Request = c.Request.WithContext(ctx)
 						currentAPIKey = fallbackAPIKey
 						currentSubscription = nil

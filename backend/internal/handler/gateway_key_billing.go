@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -62,7 +63,7 @@ func (h *GatewayHandler) KeyBillingInfo(c *gin.Context) {
 
 	now := timezone.Now()
 	response := buildKeyBillingInfo(apiKey, resolvedRate, now)
-	if c.Query("include") == "model_pricing" && apiKey.Group.Platform == service.PlatformOpenAI {
+	if c.Query("include") == "model_pricing" && domain.IsConcretePlatform(apiKey.Group.Platform) {
 		var models []string
 		if raw := c.Query("models"); raw != "" {
 			if len(raw) > service.MaxUpstreamPricingModels*161 || strings.Count(raw, ",") >= service.MaxUpstreamPricingModels {
@@ -79,7 +80,11 @@ func (h *GatewayHandler) KeyBillingInfo(c *gin.Context) {
 			slices.Sort(models)
 			models = slices.Compact(models)
 		}
-		response.ModelPricing = h.openAIGatewayService.ResolveKeyModelPricing(c.Request.Context(), apiKey.Group, models, now)
+		if domain.UsesOpenAIGateway(apiKey.Group.Platform) {
+			response.ModelPricing = h.openAIGatewayService.ResolveKeyModelPricing(c.Request.Context(), apiKey.Group, models, now)
+		} else {
+			response.ModelPricing = h.gatewayService.ResolveKeyModelPricing(c.Request.Context(), apiKey.Group, models, now)
+		}
 	}
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, response)
@@ -87,18 +92,16 @@ func (h *GatewayHandler) KeyBillingInfo(c *gin.Context) {
 
 func (h *GatewayHandler) resolveKeyBillingRate(c *gin.Context, apiKey *service.APIKey) (float64, bool) {
 	groupRate := apiKey.Group.RateMultiplier
-	switch apiKey.Group.Platform {
-	case service.PlatformOpenAI, service.PlatformGrok:
+	if domain.UsesOpenAIGateway(apiKey.Group.Platform) {
 		if h.openAIGatewayService == nil {
 			return 0, false
 		}
 		return h.openAIGatewayService.ResolveUserGroupRateMultiplier(c.Request.Context(), apiKey.UserID, *apiKey.GroupID, groupRate), true
-	default:
-		if h.gatewayService == nil {
-			return 0, false
-		}
-		return h.gatewayService.ResolveUserGroupRateMultiplier(c.Request.Context(), apiKey.UserID, *apiKey.GroupID, groupRate), true
 	}
+	if h.gatewayService == nil {
+		return 0, false
+	}
+	return h.gatewayService.ResolveUserGroupRateMultiplier(c.Request.Context(), apiKey.UserID, *apiKey.GroupID, groupRate), true
 }
 
 func buildKeyBillingInfo(apiKey *service.APIKey, resolvedRate float64, now time.Time) keyBillingInfoResponse {

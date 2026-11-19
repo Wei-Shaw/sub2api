@@ -1368,8 +1368,10 @@ describe('EditAccountModal', () => {
     expect(payload).not.toHaveProperty('rate_multiplier')
   })
 
-  it('allows pool model price sync independently from multiplier sync', async () => {
+  it.each(['openai', 'deepseek', 'anthropic'])('allows %s pool model price sync independently from multiplier sync', async (platform) => {
     const account = buildAccount()
+    account.platform = platform
+    if (platform === 'deepseek') account.credentials.api_protocol = 'chat_completions'
     account.credentials.pool_mode = true
     account.credentials.base_url = 'https://upstream.example/v1'
     updateAccountMock.mockReset()

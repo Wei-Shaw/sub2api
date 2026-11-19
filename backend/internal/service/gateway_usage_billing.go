@@ -793,7 +793,13 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	account := input.Account
 	subscription := input.Subscription
 	ApplyForwardImageBillingResolution(result)
-	logServiceTierBillingDowngrade("service.gateway", account, result.RequestID, ApplyForwardServiceTierBillingResolution(result))
+	tierResolution := ApplyForwardServiceTierBillingResolution(result)
+	logServiceTierBillingDowngrade("service.gateway", account, result.RequestID, tierResolution)
+	// Local cache-billing overrides do not change the usage returned by the upstream.
+	var upstreamTokens UsageTokens
+	if upstreamModelPricingSyncEnabled(account) {
+		upstreamTokens = result.Usage.billingUsageTokens()
+	}
 
 	// 强制缓存计费：将 input_tokens 转为 cache_read_input_tokens
 	// 用于粘性会话切换时的特殊计费处理
@@ -872,6 +878,12 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		addCacheStorageToAccountStatsCost(usageLog, cacheStorageCost)
 	}
 
+	var upstreamAccountCost *float64
+	if base, rate, ok := syncedGatewayUsageCost(account, result, upstreamTokens, cost.BillingMode, tierResolution, pricingAt); ok {
+		accountRateMultiplier = rate
+		upstreamAccountCost = recordSyncedUpstreamAccountCost(usageLog, base, rate)
+	}
+
 	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
@@ -900,6 +912,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		RequestPayloadHash:         resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
 		IsSubscriptionBill:         isSubscriptionBilling && !simpleModeKeyRateLimitOnly,
 		AccountRateMultiplier:      accountRateMultiplier,
+		AccountCost:                upstreamAccountCost,
 		APIKeyService:              input.APIKeyService,
 		Platform:                   quotaPlatform,
 		SimpleModeKeyRateLimitOnly: simpleModeKeyRateLimitOnly,

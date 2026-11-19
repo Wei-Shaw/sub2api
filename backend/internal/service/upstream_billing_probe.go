@@ -617,6 +617,10 @@ func (s *UpstreamBillingProbeService) SetAccountEnabled(ctx context.Context, acc
 	return s.accountRepo.UpdateExtra(ctx, accountID, updates)
 }
 
+func upstreamBillingEndpoint(baseURL string) string {
+	return buildOpenAIEndpointURL(baseURL, "/v1/sub2api/billing")
+}
+
 func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, account *Account, intervalMinutes int) (*UpstreamBillingProbeSnapshot, error) {
 	now := s.currentTime().UTC()
 	if s.accountTestService == nil || s.accountTestService.httpUpstream == nil {
@@ -628,8 +632,9 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	if apiKey == "" {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, 0, "missing_api_key", 0)
 	}
+	wantModelPricing := upstreamModelPricingSyncEnabled(account) && SupportsUpstreamModelPricingSync(account)
 	baseURL := account.GetCredential("base_url")
-	if account.RoutesProtocolByInbound() && account.IsAdaptiveAPIProtocol() {
+	if account.IsAdaptiveAPIProtocol() && (account.RoutesProtocolByInbound() || wantModelPricing) {
 		baseURL = account.GetCNProtocolBaseURL(APIProtocolChatCompletions)
 	}
 	if account.Platform == PlatformOpenAI {
@@ -658,7 +663,7 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 		}
 		proxyURL = account.Proxy.URL()
 	}
-	probeURL := buildOpenAIEndpointURL(normalizedBaseURL, "/v1/sub2api/billing")
+	probeURL := upstreamBillingEndpoint(normalizedBaseURL)
 	probeCtx, cancel := context.WithTimeout(ctx, upstreamBillingProbeRequestTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, probeURL, bytes.NewReader(nil))
@@ -672,7 +677,6 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	}
 	reqCtx := WithHTTPUpstreamProfile(req.Context(), profile)
 	req = req.WithContext(WithHTTPUpstreamRedirectsDisabled(reqCtx))
-	wantModelPricing := upstreamModelPricingSyncEnabled(account) && SupportsUpstreamModelPricingSync(account)
 	maxBodyBytes := int64(upstreamBillingProbeMaxBodyBytes)
 	if wantModelPricing {
 		query := req.URL.Query()
@@ -1065,6 +1069,8 @@ var upstreamBillingProbeOfficialAPIDomains = []string{
 	"kimi.com",
 	"bigmodel.cn",
 	"deepseek.com",
+	"minimaxi.com",
+	"minimax.io",
 	"opencode.ai",
 	"typesafe.ai",
 	"commandcode.ai",

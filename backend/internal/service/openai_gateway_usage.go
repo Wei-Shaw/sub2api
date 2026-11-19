@@ -507,12 +507,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 
 	var upstreamAccountCost *float64
 	if base, rate, ok := syncedOpenAIUsageCost(account, result, tokens, cost.BillingMode, tierResolution, pricingAt); ok {
-		// The reporting queries multiply AccountStatsCost by AccountRateMultiplier.
-		// Keep the upstream base and effective key rate separate to apply it once.
-		usageLog.AccountStatsCost = &base
 		accountRateMultiplier = rate
-		charged := base * rate
-		upstreamAccountCost = &charged
+		upstreamAccountCost = recordSyncedUpstreamAccountCost(usageLog, base, rate)
 	}
 
 	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)

@@ -12,8 +12,11 @@ import (
 type upstreamPricingRouteKey struct{}
 
 type upstreamPricingRoute struct {
-	publicModel string
-	mapping     ChannelMappingResult
+	publicModel  string
+	forwardModel string
+	mapping      ChannelMappingResult
+	// The Messages-to-Gemini bridge can use Antigravity's dynamic model variants.
+	antigravityGeminiBridge bool
 }
 
 // WithUpstreamPricingRoute preserves the customer's requested model and the
@@ -22,17 +25,31 @@ func WithUpstreamPricingRoute(ctx context.Context, publicModel string, mapping C
 	return context.WithValue(ctx, upstreamPricingRouteKey{}, upstreamPricingRoute{publicModel: publicModel, mapping: mapping})
 }
 
+// WithGatewayUpstreamPricingRoute records the exact model used by shared-gateway
+// forwarding, which can differ from the model passed to account selection.
+func WithGatewayUpstreamPricingRoute(ctx context.Context, publicModel, forwardModel string, mapping ChannelMappingResult, antigravityGeminiBridge bool) context.Context {
+	return context.WithValue(ctx, upstreamPricingRouteKey{}, upstreamPricingRoute{
+		publicModel: publicModel, forwardModel: forwardModel, mapping: mapping,
+		antigravityGeminiBridge: antigravityGeminiBridge,
+	})
+}
+
 type upstreamPricingAdmission struct {
-	gateway        *OpenAIGatewayService
-	group          *Group
-	forwardModel   string
-	requireCompact bool
-	quotes         sync.Map
+	openAI            *OpenAIGatewayService
+	gateway           *GatewayService
+	group             *Group
+	route             upstreamPricingRoute
+	forwardModel      string
+	requireCompact    bool
+	forceCacheBilling bool
+	quotes            sync.Map
 }
 
 type localAdmissionPriceKey struct {
-	model       string
-	longContext bool
+	model         string
+	upstreamModel string
+	longContext   bool
+	forcedTier    string
 }
 
 type localAdmissionPrice struct {
@@ -47,46 +64,77 @@ func (s *OpenAIGatewayService) WithUpstreamPricingModel(ctx context.Context, for
 	if gate == nil || gate.billingGroup == nil || s.resolver == nil || forwardModel == "" {
 		return ctx
 	}
+	route, _ := ctx.Value(upstreamPricingRouteKey{}).(upstreamPricingRoute)
 	bound := *gate
-	bound.modelPricing = &upstreamPricingAdmission{gateway: s, group: gate.billingGroup, forwardModel: forwardModel, requireCompact: requireCompact}
+	bound.modelPricing = &upstreamPricingAdmission{openAI: s, group: gate.billingGroup, route: route, forwardModel: forwardModel, requireCompact: requireCompact}
+	return context.WithValue(ctx, openAIProfitControlGateCtxKey{}, &bound)
+}
+
+func (s *GatewayService) withGatewayUpstreamPricingModel(ctx context.Context) context.Context {
+	gate, _ := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate)
+	route, ok := ctx.Value(upstreamPricingRouteKey{}).(upstreamPricingRoute)
+	if gate == nil || !ok || route.forwardModel == "" {
+		return ctx
+	}
+	bound := *gate
+	bound.modelPricing = &upstreamPricingAdmission{
+		gateway: s, group: gate.billingGroup, route: route, forwardModel: route.forwardModel,
+		forceCacheBilling: IsForceCacheBilling(ctx),
+	}
 	return context.WithValue(ctx, openAIProfitControlGateCtxKey{}, &bound)
 }
 
 func (gate *openAIProfitControlGate) upstreamModelPriceVetoReason(ctx context.Context, account *Account) string {
 	admission := gate.modelPricing
-	if admission == nil || admission.requireCompact {
+	if admission == nil || admission.group == nil || admission.requireCompact || admission.route.mapping.BillingModelSource == BillingModelSourceResponse {
 		return openAIProfitFilterReasonUpstreamPriceUnavailable
 	}
-	route, _ := ctx.Value(upstreamPricingRouteKey{}).(upstreamPricingRoute)
-	if route.mapping.BillingModelSource == BillingModelSourceResponse {
-		return openAIProfitFilterReasonUpstreamPriceUnavailable
-	}
-	mapped, sent := resolveOpenAIForwardMappedModels(account, admission.forwardModel, admission.requireCompact)
+	model, sent := admission.modelsForAccount(ctx, account)
 	upstream, rate, ok := upstreamModelPriceAt(account, sent, gate.pricingAt, timezone.Now())
 	if !ok {
 		return openAIProfitFilterReasonUpstreamPriceUnavailable
 	}
-	model := keyQuoteBillingModel(route.publicModel, mapped, route.mapping)
-	key := localAdmissionPriceKey{model: model, longContext: account.IsOpenAILongContextBillingEnabled()}
+	key := localAdmissionPriceKey{model: model, upstreamModel: sent}
+	if admission.openAI != nil {
+		key.longContext = account.IsOpenAILongContextBillingEnabled()
+		key.forcedTier = openAIGroupForcedServiceTier(ctx, account, sent)
+	}
 	value, ok := admission.quotes.Load(key)
 	if !ok {
-		price, valid := admission.gateway.modelPriceForAccount(ctx, admission.group, account, model, sent, gate.pricingAt)
+		var price UpstreamModelPrice
+		var valid bool
+		if admission.openAI != nil {
+			price, valid = admission.openAI.modelPriceForAccount(ctx, admission.group, account, model, sent, gate.pricingAt)
+		} else {
+			price, valid = admission.gateway.modelPriceForModel(ctx, admission.group, model, gate.pricingAt)
+		}
 		value, _ = admission.quotes.LoadOrStore(key, localAdmissionPrice{price: price, valid: valid})
 	}
 	downstream := value.(localAdmissionPrice)
 	if !downstream.valid || upstream.Mode != downstream.price.Mode {
 		return openAIProfitFilterReasonUpstreamPriceUnavailable
 	}
-	if !upstreamTariffFits(upstream, downstream.price, rate, gate.threshold, gate.pricingAt) {
+	if !upstreamTariffFits(upstream, downstream.price, rate, gate.threshold, gate.pricingAt, admission.forceCacheBilling) {
 		return openAIProfitFilterReasonThreshold
 	}
 	return ""
 }
 
+func (a *upstreamPricingAdmission) modelsForAccount(ctx context.Context, account *Account) (billing, sent string) {
+	if a.openAI != nil {
+		mapped, sent := resolveOpenAIForwardMappedModels(account, a.forwardModel, a.requireCompact)
+		return keyQuoteBillingModel(a.route.publicModel, mapped, a.route.mapping), sent
+	}
+	if a.route.antigravityGeminiBridge && account.Platform == PlatformAntigravity {
+		return "", ""
+	}
+	return a.gateway.sharedPricingModels(ctx, a.group, account, a.route.publicModel, a.forwardModel, a.route.mapping)
+}
+
 // Without knowing the token mix in advance, require that every meter fits the
 // margin in every overlapping band. Check the union of configured effort levels
 // and all settled service tiers, including possible upstream tier promotions.
-func upstreamTariffFits(upstream, downstream UpstreamModelPrice, rate, threshold float64, at time.Time) bool {
+func upstreamTariffFits(upstream, downstream UpstreamModelPrice, rate, threshold float64, at time.Time, forceCacheBilling bool) bool {
 	upRate := rate * upstream.TimePricing.MultiplierAt(at)
 	downRate := threshold * downstream.TimePricing.MultiplierAt(at)
 	for i, j := 0, 0; i < len(upstream.Bands) && j < len(downstream.Bands); {
@@ -112,7 +160,15 @@ func upstreamTariffFits(upstream, downstream UpstreamModelPrice, rate, threshold
 					if upstream.ForcedTier != "" {
 						upPrice = math.Max(upPrice, up.TokenPrices[upstream.ForcedTier][meter])
 					}
-					if priceExceeds(upPrice*upperRate, down.TokenPrices[tier][meter]*lowerRate) {
+					downMeter := meter
+					if forceCacheBilling && meter == "input" {
+						downMeter = "cache_read"
+					}
+					downPrice := down.TokenPrices[tier][downMeter]
+					if downstream.ForcedTier != "" {
+						downPrice = math.Min(downPrice, down.TokenPrices[downstream.ForcedTier][downMeter])
+					}
+					if priceExceeds(upPrice*upperRate, downPrice*lowerRate) {
 						return false
 					}
 				}

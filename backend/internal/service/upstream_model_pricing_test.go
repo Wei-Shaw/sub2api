@@ -5,11 +5,15 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,13 +27,23 @@ func (r upstreamPricingGroupAccounts) ListByGroup(_ context.Context, _ int64) ([
 }
 
 func TestUpstreamModelPricingRefreshGuardsMarginAndRecordsAccountCost(t *testing.T) {
+	for _, tc := range []struct{ platform, model string }{
+		{PlatformOpenAI, "gpt-5.1"},
+		{PlatformDeepseek, "deepseek-flash"},
+	} {
+		t.Run(tc.platform, func(t *testing.T) { testUpstreamModelPricingRefresh(t, tc.platform, tc.model) })
+	}
+}
+
+func testUpstreamModelPricingRefresh(t *testing.T, platform, model string) {
+	t.Helper()
 	ctx := context.Background()
 	now := time.Now()
-	model, alias := "gpt-5.1", "chat-alias"
-	providerGroup := &Group{ID: 31, Platform: PlatformOpenAI, RateMultiplier: 0.4}
+	const alias = "chat-alias"
+	providerGroup := &Group{ID: 31, Platform: platform, RateMultiplier: 0.4}
 	providerBilling := NewBillingService(&config.Config{}, nil)
 	provider := &OpenAIGatewayService{
-		accountRepo:    upstreamPricingGroupAccounts{accounts: []Account{{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}}},
+		accountRepo:    upstreamPricingGroupAccounts{accounts: []Account{{Platform: platform, Type: AccountTypeAPIKey}}},
 		billingService: providerBilling,
 		resolver:       newOpenAITokenImageChannelPricingResolverForTest(t, providerGroup.ID, model),
 	}
@@ -51,9 +65,10 @@ func TestUpstreamModelPricingRefreshGuardsMarginAndRecordsAccountCost(t *testing
 	high := response()
 
 	pool := &Account{
-		ID: 41, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive, RateMultiplier: f64p(0.4),
+		ID: 41, Platform: platform, Type: AccountTypeAPIKey, Status: StatusActive, RateMultiplier: f64p(0.6),
 		Credentials: map[string]any{
 			"pool_mode": true, "base_url": "https://upstream.example/v1", "api_key": "example-key",
+			"api_protocol":  APIProtocolChatCompletions,
 			"model_mapping": map[string]any{alias: model},
 		},
 		Extra: map[string]any{UpstreamBillingProbeEnabledExtraKey: true, UpstreamModelPricingSyncExtraKey: true, "quota_limit": 100.0},
@@ -62,16 +77,20 @@ func TestUpstreamModelPricingRefreshGuardsMarginAndRecordsAccountCost(t *testing
 	httpUpstream := &httpUpstreamRecorder{responses: []*http.Response{low, high}}
 	probe := newUpstreamBillingProbeTestService(repo, httpUpstream, &upstreamBillingProbeSettingRepo{})
 	probe.now = func() time.Time { return now }
-	group := &Group{ID: 32, Platform: PlatformOpenAI, RateMultiplier: 1, SubscriptionType: SubscriptionTypeStandard}
+	group := &Group{
+		ID: 32, Platform: platform, Status: StatusActive, Hydrated: true,
+		RateMultiplier: 1, SubscriptionType: SubscriptionTypeStandard,
+		ProfitControlEnabled: true, ProfitMinMargin: 0.2,
+	}
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	usageBilling := &openAIRecordUsageBillingRepoStub{}
 	downstream := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
 	downstream.resolver = newOpenAITokenImageChannelPricingResolverForTest(t, group.ID, model)
 	downstream.usageBillingRepo = usageBilling
-	gateCtx := context.WithValue(ctx, openAIProfitControlGateCtxKey{}, &openAIProfitControlGate{
-		billingGroup: group, groupID: group.ID, platform: group.Platform, pricingAt: now, threshold: 0.8,
-	})
-	gateCtx = downstream.WithUpstreamPricingModel(gateCtx, alias, false)
+	ctx = context.WithValue(ctx, ctxkey.Group, group)
+	ctx = context.WithValue(ctx, openAIPricingAtCtxKey{}, now)
+	gateCtx := downstream.WithUpstreamPricingModel(downstream.withOpenAIProfitControlGate(ctx, &group.ID), alias, false)
+	require.NotNil(t, gateCtx.Value(openAIProfitControlGateCtxKey{}))
 
 	vetoed, reason := openAIProfitControlVetoReason(gateCtx, pool)
 	require.True(t, vetoed)
@@ -99,7 +118,7 @@ func TestUpstreamModelPricingRefreshGuardsMarginAndRecordsAccountCost(t *testing
 	// A request allowed by a group without profit control still uses the
 	// synchronized purchase price for account quota and cost statistics.
 	err = downstream.RecordUsage(ctx, &OpenAIRecordUsageInput{
-		Result: &OpenAIForwardResult{RequestID: "price-sync-usage", Model: model, Usage: OpenAIUsage{InputTokens: 1000, OutputTokens: 500}},
+		Result: &OpenAIForwardResult{RequestID: "price-sync-usage", Model: alias, BillingModel: model, UpstreamModel: model, Usage: OpenAIUsage{InputTokens: 1000, OutputTokens: 500}},
 		APIKey: &APIKey{ID: 33, GroupID: &group.ID, Group: group}, User: &User{ID: 34}, Account: pool, PricingAt: now,
 	})
 	require.NoError(t, err)
@@ -182,4 +201,72 @@ func TestParseUpstreamModelPricingDiscardsInvalidPrices(t *testing.T) {
 	models := parseUpstreamModelPricing(raw)
 	require.Len(t, models, 1)
 	require.Contains(t, models, "good")
+}
+
+func TestUpstreamModelPricingSyncPoolEligibility(t *testing.T) {
+	for _, platform := range domain.ConcretePlatformIDs() {
+		t.Run(platform, func(t *testing.T) {
+			account := &Account{
+				Platform: platform, Type: AccountTypeAPIKey,
+				Credentials: map[string]any{"pool_mode": true, "api_protocol": APIProtocolChatCompletions},
+			}
+			require.True(t, SupportsUpstreamModelPricingSync(account))
+			account.Credentials["pool_mode"] = false
+			require.False(t, SupportsUpstreamModelPricingSync(account))
+			account.Credentials["pool_mode"] = true
+			account.Type = AccountTypeOAuth
+			require.False(t, SupportsUpstreamModelPricingSync(account))
+		})
+	}
+	urls := map[string]any{
+		APIProtocolChatCompletions: "https://relay.example/v1",
+		APIProtocolAnthropic:       "https://relay.example",
+		APIProtocolResponses:       "https://relay.example/v1/",
+	}
+	adaptive := &Account{
+		Platform: PlatformDeepseek, Type: AccountTypeAPIKey,
+		Credentials: map[string]any{"pool_mode": true, "api_protocol": APIProtocolAdaptive, "api_base_urls": urls},
+	}
+	require.True(t, SupportsUpstreamModelPricingSync(adaptive))
+	urls[APIProtocolAnthropic] = "https://relay.example/anthropic"
+	require.False(t, SupportsUpstreamModelPricingSync(adaptive))
+}
+
+func TestUpstreamModelPricingDeepSeekPeakAndOverrides(t *testing.T) {
+	local := func(day, hour int) time.Time {
+		return time.Date(2026, time.November, day, hour, 0, 0, 0, deepseekPricingLocation)
+	}
+	for _, withOverride := range []bool{false, true} {
+		cfg := &config.Config{}
+		var pricing *PricingService
+		if withOverride {
+			cfg.Pricing.DataDir = t.TempDir()
+			cfg.Pricing.OverrideFile = filepath.Join(cfg.Pricing.DataDir, "overrides.json")
+			pricing = &PricingService{cfg: cfg}
+			require.NoError(t, os.WriteFile(cfg.Pricing.OverrideFile, []byte(`{"deepseek-flash":{"input_cost_per_token":0.000002}}`), 0600))
+			require.NoError(t, os.WriteFile(pricing.getPricingFilePath(), []byte(`{"deepseek-flash":{"input_cost_per_token":0.00001,"output_cost_per_token":0.00002}}`), 0600))
+			require.NoError(t, pricing.loadPricingData(pricing.getPricingFilePath()))
+		}
+		billing := NewBillingService(cfg, pricing)
+		resolver := NewModelPricingResolver(nil, billing)
+		input := CostInput{
+			Ctx: context.Background(), Model: "deepseek-flash", Resolver: resolver, RateMultiplier: 1,
+			Tokens: UsageTokens{InputTokens: 1000, OutputTokens: 500, CacheReadTokens: 2000},
+		}
+		input.Resolved = resolver.Resolve(input.Ctx, PricingInput{Model: input.Model})
+		for _, at := range []time.Time{local(20, 18), local(22, 10), local(23, 8), local(23, 9), local(23, 12), local(23, 14)} {
+			input.PricingAt = at
+			quote, ok := billing.buildUpstreamModelPrice(input, false)
+			require.True(t, ok)
+			want, err := billing.CalculateCostUnified(input)
+			require.NoError(t, err)
+			got, valid := quote.baseCost(input.Tokens, "", "", at)
+			require.True(t, valid)
+			require.InDelta(t, want.TotalCost, got, 1e-12, "override=%t at=%s", withOverride, at)
+			if withOverride && at.Before(local(23, 9)) {
+				require.NotNil(t, quote.ValidBefore)
+				require.True(t, quote.ValidBefore.Equal(local(23, 9)))
+			}
+		}
+	}
 }

@@ -307,17 +307,25 @@ func isDeepSeekModel(model string) bool {
 // 01:00–04:00 与 06:00–10:00 UTC（半开区间），仅工作日；
 // 周末（北京时间周六/周日）全天低谷。北京时间用固定 +8 偏移（无夏令时）。
 func deepseekPeakMultiplierAt(now time.Time) float64 {
-	beijing := now.In(time.FixedZone("Asia/Shanghai", 8*3600))
+	beijing := now.In(deepseekPricingLocation)
 	switch beijing.Weekday() {
 	case time.Saturday, time.Sunday:
-		return 1.0
+		return 1
 	}
-	switch h := now.UTC().Hour(); {
-	case h >= 1 && h < 4, h >= 6 && h < 10:
-		return 2.0
+	for _, period := range deepseekPeakHours {
+		if hour := beijing.Hour(); hour >= period[0] && hour < period[1] {
+			return deepseekPeakRate
+		}
 	}
-	return 1.0
+	return 1
 }
+
+const deepseekPeakRate = 2.0
+
+var (
+	deepseekPricingLocation = time.FixedZone("Asia/Shanghai", 8*3600)
+	deepseekPeakHours       = [][2]int{{9, 12}, {14, 18}} // Beijing time
+)
 
 // isDeepSeekProModel 判断模型名是否归入 deepseek-v4-pro 档（含版本化名称，
 // 如 deepseek-v4-pro-0813）。

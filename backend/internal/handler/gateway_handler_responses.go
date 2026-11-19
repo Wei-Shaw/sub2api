@@ -113,6 +113,13 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 
 	// 解析渠道级模型映射
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(requestCtx, apiKey.GroupID, reqModel)
+	pricingForwardModel := reqModel
+	if channelMapping.Mapped {
+		pricingForwardModel = channelMapping.MappedModel
+	}
+	modelPricingCtx := service.WithGatewayUpstreamPricingRoute(requestCtx, clientRequestedModel(c, reqModel), pricingForwardModel, channelMapping, false)
+	requestCtx = modelPricingCtx
+	c.Request = c.Request.WithContext(requestCtx)
 
 	// Claude Code only restriction: /v1/responses is never a Claude Code
 	// endpoint. With a fallback group the request continues and account selection

@@ -15,7 +15,7 @@ package service
 //     apiKey 自身分组；composite 请求为父分组）做 ResolveUserGroupRateMultiplier
 //     （用户-分组覆盖 ?? 分组默认）× Group.PeakMultiplierAt(pricingAt)，绝不在
 //     用户有覆盖时退回分组默认；开关与 margin/buffer 则始终取被调度
-//     openai/grok 分组。
+//     由 OpenAI 网关处理的具体平台分组。
 //   - U（上游成本倍率）取 accounts.rate_multiplier。倍率可以由运营者手工维护，
 //     也可以由上游倍率探测同步写回；利润门不再耦合探测协议、新鲜度或账号类型。
 //     0 是合法的免费上游倍率；nil、负数、NaN、Inf 属于非法数据并保守拒绝。
@@ -67,6 +67,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
@@ -240,7 +241,7 @@ func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Contex
 		group = loaded
 	}
 	if group == nil || !group.ProfitControlEnabled ||
-		(group.Platform != PlatformOpenAI && group.Platform != PlatformGrok) {
+		!domain.UsesOpenAIGateway(group.Platform) {
 		return nil
 	}
 
@@ -308,7 +309,8 @@ func openAIProfitControlVetoReason(ctx context.Context, account *Account) (bool,
 	if gate == nil || account == nil {
 		return false, ""
 	}
-	if upstreamModelPricingSyncEnabled(account) {
+	// Shared storage and count-token requests have no model tariff in the contract.
+	if upstreamModelPricingSyncEnabled(account) && (gate.modelPricing != nil || domain.UsesOpenAIGateway(gate.platform)) {
 		reason := gate.upstreamModelPriceVetoReason(ctx, account)
 		if reason != "" {
 			openAIProfitControlObserverInstance.recordVeto(gate.groupID, gate.platform, gate.threshold, reason)
