@@ -2607,10 +2607,18 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 	// 必须在合成路由解析和上游模型映射之前执行。
 	// 与 HTTP 准入一致：帧内重复 model 键/大小写变体可能被上游按末值绑定，
 	// 全部候选值逐一校验，任一未命中即拒绝。
-	if blocked := blockedModelAllowlistCandidate(apiKey.Group, requestmodel.FromBodyCandidates("", "application/json", firstMessage)); blocked != "" {
+	firstModelCandidates := requestmodel.FromBodyCandidates("", "application/json", firstMessage)
+	if blocked := blockedModelAllowlistCandidate(apiKey.Group, firstModelCandidates); blocked != "" {
 		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
 		middleware2.MarkIngressRejected(c, middleware2.IngressRejectModelNotAllowed)
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, fmt.Sprintf("Model %q is not available for this group", blocked))
+		return
+	}
+	// 帧内重复 model 键/大小写变体取值不一致时，计费按首个值、上游可能按末值
+	// 绑定。与 HTTP 入口（RejectConflictingRequestFields）一致，对所有分组直接
+	// 拒绝；取值相同的重复键放行。放在白名单之后，白名单的拒绝原因保持不变。
+	if requestmodel.HasConflictingModels(firstModelCandidates) {
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "response.create payload declares model more than once with different values")
 		return
 	}
 	// Keep the client model in the frame for admission, response identity and usage.
@@ -3084,11 +3092,17 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 则关闭整条连接，与推理强度 deny 一致。实际生效模型始终参与校验；
 				// 帧内重复 model 键/大小写变体/嵌套 session.model 额外逐一校验，
 				// 防止候选集非空时掩盖被轮换掉的禁用模型。
-				candidates := append([]string{model}, requestmodel.FromBodyCandidates("", "application/json", payload)...)
+				frameModelCandidates := requestmodel.FromBodyCandidates("", "application/json", payload)
+				candidates := append([]string{model}, frameModelCandidates...)
 				if blocked := blockedModelAllowlistCandidate(apiKey.Group, candidates); blocked != "" {
 					service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalModelConfiguration)
 					middleware2.MarkIngressRejected(c, middleware2.IngressRejectModelNotAllowed)
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("Model %q is not available for this group", blocked), nil)
+				}
+				// 后续 turn 同首帧：帧内模型候选取值不一致时关闭连接，避免计费
+				// 模型与上游实际绑定的模型分叉。
+				if requestmodel.HasConflictingModels(frameModelCandidates) {
+					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "websocket request payload declares model more than once with different values", nil)
 				}
 				if decision := h.checkSecurityAuditStage(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, payload, "subsequent_turn"); decision != nil && !decision.AllowNextStage {
 					writeSecurityAuditWSError(ctx, wsConn, decision)
