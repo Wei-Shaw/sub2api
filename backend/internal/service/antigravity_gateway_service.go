@@ -294,7 +294,7 @@ func mapAntigravityModel(account *Account, requestedModel string) string {
 // getMappedModel 获取映射后的模型名
 // 完全依赖映射配置：账户映射（通配符）→ 默认映射兜底
 func (s *AntigravityGatewayService) getMappedModel(account *Account, requestedModel string) string {
-	return s.getMappedModelForThinkingLevel(account, requestedModel, "")
+	return s.getMappedModelForThinkingLevel(account, requestedModel, "", "")
 }
 
 // getMappedModelForThinkingLevel 在常规映射之前先把裸 Gemini 模型名
@@ -302,7 +302,12 @@ func (s *AntigravityGatewayService) getMappedModel(account *Account, requestedMo
 // Antigravity 目录只登记带后缀的变体，裸名直接转发会被上游以
 // 404 "Requested entity was not found." 拒绝，因此所有转发入口都必须经过这一步。
 // thinkingLevel 为空时按 high 兜底；调用方可按自身协议传入推导出的档位。
-func (s *AntigravityGatewayService) getMappedModelForThinkingLevel(account *Account, requestedModel string, thinkingLevel string) string {
+// familyLevel 是请求声明的思考档位（含 xhigh，空串表示未声明），用于
+// antigravityLevelFamilies 里只按档位区分上游 ID 的模型。
+func (s *AntigravityGatewayService) getMappedModelForThinkingLevel(account *Account, requestedModel string, thinkingLevel string, familyLevel string) string {
+	if mapped, ok := resolveAntigravityLevelFamily(account, requestedModel, familyLevel); ok {
+		return mapped
+	}
 	if mapped, ok := resolveGeminiThinkingVariantForLevel(account, requestedModel, thinkingLevel); ok {
 		return mapped
 	}
