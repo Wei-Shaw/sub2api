@@ -301,13 +301,7 @@ func TestCalculateCost_OpenAIGPT54LongContextAppliesWholeSessionMultipliers(t *t
 func TestCalculateCost_OpenAIGPT54LongContextMarkerRequiresActualCostIncrease(t *testing.T) {
 	svc := newTestBillingServiceWithOpenAILadderCatalog(t)
 
-	cost, err := svc.calculateCostWithServiceTierPolicy(
-		"gpt-5.4-2026-03-05",
-		UsageTokens{InputTokens: 300000},
-		0,
-		"",
-		true,
-	)
+	cost, err := svc.CalculateCost("gpt-5.4-2026-03-05", UsageTokens{InputTokens: 300000}, 0)
 
 	require.NoError(t, err)
 	require.Zero(t, cost.ActualCost)
@@ -844,6 +838,70 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 			expectedCacheRead: floatPtr(0.03e-6),
 		},
 
+		// ---- 硅基流动 Qwen3-Embedding 系列（纯文本向量化，仅输入计费）----
+		{
+			name:           "qwen3 embedding 8b vendor prefix",
+			model:          "Qwen/Qwen3-Embedding-8B",
+			expectedInput:  0.04e-6,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			name:           "qwen3 embedding 8b bare",
+			model:          "qwen3-embedding-8b",
+			expectedInput:  0.04e-6,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			name:           "qwen3 embedding 4b vendor prefix",
+			model:          "Qwen/Qwen3-Embedding-4B",
+			expectedInput:  0.02e-6,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			name:           "qwen3 embedding 0.6b vendor prefix",
+			model:          "Qwen/Qwen3-Embedding-0.6B",
+			expectedInput:  0.01e-6,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			name:           "qwen3 embedding 0.6b dash alias",
+			model:          "qwen3-embedding-0-6b",
+			expectedInput:  0.01e-6,
+			expectedOutput: floatPtr(0),
+		},
+
+		// ---- 硅基流动 Qwen3-Reranker 系列（文本重排序，仅输入计费）----
+		{
+			name:           "qwen3 reranker 8b vendor prefix",
+			model:          "Qwen/Qwen3-Reranker-8B",
+			expectedInput:  0.04e-6,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			name:           "qwen3 reranker 8b bare",
+			model:          "qwen3-reranker-8b",
+			expectedInput:  0.04e-6,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			name:           "qwen3 reranker 4b vendor prefix",
+			model:          "Qwen/Qwen3-Reranker-4B",
+			expectedInput:  0.02e-6,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			name:           "qwen3 reranker 0.6b vendor prefix",
+			model:          "Qwen/Qwen3-Reranker-0.6B",
+			expectedInput:  0.01e-6,
+			expectedOutput: floatPtr(0),
+		},
+		{
+			name:           "qwen3 reranker 0.6b dash alias",
+			model:          "qwen3-reranker-0-6b",
+			expectedInput:  0.01e-6,
+			expectedOutput: floatPtr(0),
+		},
+
 		// ---- 火山方舟 豆包 Embedding（多模态向量化）----
 		{
 			name:           "doubao embedding vision text rate",
@@ -859,6 +917,10 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 
 		// ---- 负向用例 ----
 		{name: "qwen unknown no fallback", model: "qwen-max", expectNilPricing: true},
+		// qwen3-embedding 仅白名单 8b / 4b / 0.6b 三个官方档位；未知档位不回退。
+		{name: "qwen3 embedding unknown size no fallback", model: "Qwen/Qwen3-Embedding-2B", expectNilPricing: true},
+		// qwen3-reranker 同样仅白名单 8b / 4b / 0.6b；qwen3-vl-reranker-8b 与 bge-reranker 不在白名单，不回退。
+		{name: "qwen3 reranker unknown size no fallback", model: "Qwen/Qwen3-Reranker-2B", expectNilPricing: true},
 		// doubao-pro / doubao-embedding（纯文本）不在白名单，不回退；仅 doubao-embedding-vision 显式命中。
 		{name: "doubao unknown no fallback", model: "doubao-pro", expectNilPricing: true},
 		{name: "doubao text embedding no fallback", model: "doubao-embedding-text-240515", expectNilPricing: true},
@@ -902,6 +964,58 @@ func TestGetFallbackPricing_FamilyMatching(t *testing.T) {
 				require.InDelta(t, *tt.expectedCacheRead, pricing.CacheReadPricePerToken, 1e-14,
 					"CacheReadPricePerToken mismatch for %s", tt.model)
 			}
+		})
+	}
+}
+
+// 硅基流动 Qwen3-Embedding 系列（纯文本向量化）：只按输入计费，输出价为 0。
+// 验证 GetModelPricing 能解出带厂商前缀 / 裸名 / 0.6B 连字符别名的拼法。
+func TestGetModelPricing_Qwen3EmbeddingFallback(t *testing.T) {
+	svc := newTestBillingService()
+
+	tests := []struct {
+		model string
+		input float64
+	}{
+		{model: "Qwen/Qwen3-Embedding-8B", input: 0.04e-6},
+		{model: "qwen3-embedding-8b", input: 0.04e-6},
+		{model: "Qwen/Qwen3-Embedding-4B", input: 0.02e-6},
+		{model: "Qwen/Qwen3-Embedding-0.6B", input: 0.01e-6},
+		{model: "qwen3-embedding-0-6b", input: 0.01e-6},
+	}
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			pricing, err := svc.GetModelPricing(tt.model)
+			require.NoError(t, err, "model %s should resolve fallback pricing", tt.model)
+			require.NotNil(t, pricing)
+			require.InDelta(t, tt.input, pricing.InputPricePerToken, 1e-12, "input rate for %s", tt.model)
+			require.Zero(t, pricing.OutputPricePerToken, "embedding has no output cost for %s", tt.model)
+		})
+	}
+}
+
+// 硅基流动 Qwen3-Reranker 系列（文本重排序）：只按输入计费，输出价为 0。
+// 验证 GetModelPricing 能解出带厂商前缀 / 裸名 / 0.6B 连字符别名的拼法。
+func TestGetModelPricing_Qwen3RerankerFallback(t *testing.T) {
+	svc := newTestBillingService()
+
+	tests := []struct {
+		model string
+		input float64
+	}{
+		{model: "Qwen/Qwen3-Reranker-8B", input: 0.04e-6},
+		{model: "qwen3-reranker-8b", input: 0.04e-6},
+		{model: "Qwen/Qwen3-Reranker-4B", input: 0.02e-6},
+		{model: "Qwen/Qwen3-Reranker-0.6B", input: 0.01e-6},
+		{model: "qwen3-reranker-0-6b", input: 0.01e-6},
+	}
+	for _, tt := range tests {
+		t.Run(tt.model, func(t *testing.T) {
+			pricing, err := svc.GetModelPricing(tt.model)
+			require.NoError(t, err, "model %s should resolve fallback pricing", tt.model)
+			require.NotNil(t, pricing)
+			require.InDelta(t, tt.input, pricing.InputPricePerToken, 1e-12, "input rate for %s", tt.model)
+			require.Zero(t, pricing.OutputPricePerToken, "rerank has no output cost for %s", tt.model)
 		})
 	}
 }
@@ -1504,6 +1618,35 @@ func TestNormalizeCacheCreationBreakdown_BillingSafetyInvariant(t *testing.T) {
 			got5m, got1h := normalizeCacheCreationBreakdown(tt.tokens)
 			require.Equal(t, tt.want5m, got5m)
 			require.Equal(t, tt.want1h, got1h)
+		})
+	}
+}
+
+func TestComputeCacheCreationCost_MissingDetailUses5mFallback(t *testing.T) {
+	svc := &BillingService{}
+	pricing := &ModelPricing{SupportsCacheBreakdown: true, CacheCreation5mPrice: 0.002, CacheCreation1hPrice: 0.004}
+	for _, test := range []struct {
+		name     string
+		tokens   UsageTokens
+		wantCost float64
+	}{
+		{"5m start then aggregate only delta", UsageTokens{CacheCreationTokens: 11000, CacheCreation5mTokens: 3000}, 22},
+		{"1h detail does not imply 1h remainder", UsageTokens{CacheCreationTokens: 11000, CacheCreation1hTokens: 3000}, 28},
+		{"mixed detail does not imply proportional remainder", UsageTokens{CacheCreationTokens: 11000, CacheCreation5mTokens: 1000, CacheCreation1hTokens: 2000}, 26},
+		{"zero details", UsageTokens{CacheCreationTokens: 11000}, 22},
+		{"negative detail", UsageTokens{CacheCreationTokens: 11000, CacheCreation5mTokens: -1, CacheCreation1hTokens: 3000}, 28},
+		{"ratio cap retained", UsageTokens{CacheCreationTokens: 100, CacheCreation5mTokens: 50, CacheCreation1hTokens: 200}, 0.36},
+		{"synthetic already normalized detail only", UsageTokens{CacheCreation5mTokens: 20, CacheCreation1hTokens: 30}, 0.16},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			before := test.tokens
+			for _, multiplier := range []float64{1, 2} {
+				require.InDelta(t, test.wantCost*multiplier, svc.computeCacheCreationCost(pricing, test.tokens, 0, multiplier), 1e-12)
+			}
+			require.Equal(t, before, test.tokens)
+			standard := *pricing
+			standard.SupportsCacheBreakdown = false
+			require.InDelta(t, float64(test.tokens.CacheCreationTokens)*0.003, svc.computeCacheCreationCost(&standard, test.tokens, 0.003, 1), 1e-12)
 		})
 	}
 }
@@ -2223,6 +2366,35 @@ func TestAstraUltrafastPricingUsesSixTimesStandard(t *testing.T) {
 	p, err := svc.GetModelPricing("gpt-6-sol")
 	require.NoError(t, err)
 	require.Equal(t, 2.0, configuredServiceTierMultiplier("ultrafast", p))
+}
+
+// 门控与计费共用同一判定：凡是分组会强制写入 ultrafast 的模型，都必须按 6x 计费。
+func TestOpenAIUltrafastGateMatchesBilling(t *testing.T) {
+	svc := newTestBillingService()
+	for _, tt := range []struct {
+		model string
+		want  float64
+	}{
+		{model: "gpt-6-astra", want: 6},
+		{model: "gpt-6.1-sol", want: 6},
+		{model: "gpt-6.1-sol-high", want: 6},
+		{model: "gpt-6.1-terra", want: 2},
+		{model: "gpt-6-sol", want: 2},
+		{model: "gpt-5.6-sol", want: 2},
+	} {
+		pricing, err := svc.GetModelPricing(tt.model)
+		require.NoError(t, err, tt.model)
+		require.Equal(t, tt.want, configuredServiceTierMultiplier(OpenAIFastTierUltrafast, pricing), tt.model)
+		require.Equal(t, tt.want == 6, openAIModelSupportsUltrafast(tt.model), tt.model)
+
+		// 渠道自定义价格与显式 Fast 倍率都不改变 Ultrafast 倍率。
+		custom, fast := 1e-6, 3.0
+		channelPricing, err := svc.GetModelPricingWithChannel(tt.model, &ChannelModelPricing{
+			InputPrice: &custom, OutputPrice: &custom, FastMultiplier: &fast,
+		})
+		require.NoError(t, err, tt.model)
+		require.Equal(t, tt.want, configuredServiceTierMultiplier(OpenAIFastTierUltrafast, channelPricing), tt.model)
+	}
 }
 
 func TestGPT61SolExplicitZeroCacheWriteAcrossTiers(t *testing.T) {

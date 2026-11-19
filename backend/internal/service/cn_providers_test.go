@@ -103,8 +103,84 @@ func TestParseKimiUsageTiers_LimitZero(t *testing.T) {
 	t.Parallel()
 	body := []byte(`{"limits":[{"detail":{"limit":0,"remaining":0,"resetTime":"2026-08-14T15:00:00Z"}}]}`)
 	tiers := parseKimiUsageTiers(body)
+	// limit=0 无法计算利用率：不能产出「已用 0%」的伪窗口（那会把额度耗尽
+	// 显示成完全没用），该条目应被跳过。
+	require.Len(t, tiers, 0)
+}
+
+// TestParseKimiUsageTiers_MonthlyPlan 新套餐形态（5h + 月度限额）：不再有顶层
+// usage，改由 usages.limit_5h / limit_month_total / limit_month_code 以
+// used_ratio（0-1）+ reset_time 上报。monthly 取两条月度键的较大用量 + 较早重置。
+func TestParseKimiUsageTiers_MonthlyPlan(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{
+		"limits": [{
+			"window": {"duration": 300, "timeUnit": "TIME_UNIT_MINUTE"},
+			"detail": {"limit": "100", "used": "10", "remaining": "90", "resetTime": "2026-11-13T16:10:29.523075Z"}
+		}],
+		"usages": {
+			"limit_5h": {"used_ratio": 0.0982, "reset_time": "2026-11-13T16:10:28Z"},
+			"limit_month_total": {"used_ratio": 0.6564, "reset_time": "2026-11-26T00:00:00Z"},
+			"limit_month_code": {"used_ratio": 0.6252, "reset_time": "2026-11-26T00:00:00Z"}
+		}
+	}`)
+	tiers := parseKimiUsageTiers(body)
+	require.Len(t, tiers, 2, "新套餐应为 5h + monthly，且不得产出已废弃的 weekly")
+
+	require.Equal(t, "5h", tiers[0].Window)
+	require.InDelta(t, 10.0, tiers[0].UsedPercent, 1e-9, "5h 用 limits[].detail 的绝对计数")
+	require.Equal(t, "2026-11-13T16:10:29Z", tiers[0].ResetAt)
+
+	require.Equal(t, "monthly", tiers[1].Window)
+	require.InDelta(t, 65.64, tiers[1].UsedPercent, 1e-9, "used_ratio 0-1 换算为百分比")
+	require.Equal(t, "2026-11-26T00:00:00Z", tiers[1].ResetAt)
+}
+
+// TestParseKimiUsageTiers_MonthlyPicksMaxUsage total/code 任一耗尽都会限流：
+// monthly 取较大用量；重置时间取较早者（先恢复额度，避免过度停调）。
+func TestParseKimiUsageTiers_MonthlyPicksMaxUsage(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{"usages":{
+		"limit_month_total":{"used_ratio":0.4,"reset_time":"2026-11-26T00:00:00Z"},
+		"limit_month_code":{"used_ratio":0.9,"reset_time":"2026-11-20T00:00:00Z"}}}`)
+	tiers := parseKimiUsageTiers(body)
 	require.Len(t, tiers, 1)
-	require.InDelta(t, 0.0, tiers[0].UsedPercent, 1e-9)
+	require.Equal(t, "monthly", tiers[0].Window)
+	require.InDelta(t, 90.0, tiers[0].UsedPercent, 1e-9)
+	// total 与 code 是两个独立限流窗口：reset 必须取较晚者，否则 code 先到期的
+	// 11-20 会让仍处于 40% 的 total 窗口提前放行。
+	require.Equal(t, "2026-11-26T00:00:00Z", tiers[0].ResetAt)
+
+	// 两窗口同为 100% 时也不得取更早的 reset。
+	bothFull := parseKimiUsageTiers([]byte(`{"usages":{
+		"limit_month_total":{"used_ratio":1,"reset_time":"2026-11-26T00:00:00Z"},
+		"limit_month_code":{"used_ratio":1,"reset_time":"2026-11-20T00:00:00Z"}}}`))
+	require.Len(t, bothFull, 1)
+	require.Equal(t, "2026-11-26T00:00:00Z", bothFull[0].ResetAt)
+
+	onlyCode := parseKimiUsageTiers([]byte(`{"usages":{"limit_month_code":{"used_ratio":0.5,"reset_time":"2026-11-20T00:00:00Z"}}}`))
+	require.Len(t, onlyCode, 1)
+	require.Equal(t, "monthly", onlyCode[0].Window)
+	require.InDelta(t, 50.0, onlyCode[0].UsedPercent, 1e-9)
+}
+
+// TestParseKimiUsageTiers_LegacyWithUsedRatio 老套餐（顶层 usage）同时携带
+// usages.limit_7d 时，weekly 以 used_ratio 为准、不重复产出 weekly 档。
+func TestParseKimiUsageTiers_LegacyWithUsedRatio(t *testing.T) {
+	t.Parallel()
+	body := []byte(`{
+		"usage": {"limit": "100", "remaining": "80", "resetTime": "2026-10-07T05:04:39.713183Z"},
+		"usages": {
+			"limit_5h": {"used_ratio": 0, "reset_time": "2026-10-04T11:04:38Z"},
+			"limit_7d": {"used_ratio": 0.203912, "reset_time": "2026-10-07T05:04:38Z"}
+		}
+	}`)
+	tiers := parseKimiUsageTiers(body)
+	require.Len(t, tiers, 2)
+	require.Equal(t, "5h", tiers[0].Window)
+	require.Equal(t, "weekly", tiers[1].Window)
+	require.InDelta(t, 20.3912, tiers[1].UsedPercent, 1e-9)
+	require.Equal(t, "2026-10-07T05:04:38Z", tiers[1].ResetAt)
 }
 
 // TestParseZhipuTokenTiers_UnitClassification 显式 unit（3=5h / 6=weekly）优先分类，
@@ -229,6 +305,107 @@ func TestCNQuotaExtraUpdates(t *testing.T) {
 	require.Equal(t, 60.0, updates["kimi_weekly_used_percent"])
 	require.Equal(t, "2026-08-18T00:00:00Z", updates["kimi_weekly_reset_at"])
 	require.Equal(t, now.Format(time.RFC3339), updates["kimi_usage_updated_at"])
+}
+
+// 缺席窗口必须显式写 nil：extra 走 JSONB 合并（`extra || $1`），只"不写"会保留
+// 旧值。Kimi 老套餐 → 新套餐（月度）切换后 weekly 不再上报，不清理就会把切换前
+// 的用量永久冻结在快照里（生产实测冻结 13 天）。
+func TestCNQuotaExtraUpdatesClearsAbsentWindows(t *testing.T) {
+	t.Parallel()
+	now := time.Date(2026, 11, 13, 0, 0, 0, 0, time.UTC)
+	tiers := []CNQuotaTier{
+		{Window: "5h", UsedPercent: 10, ResetAt: "2026-11-13T16:10:29Z"},
+		{Window: "monthly", UsedPercent: 65.64, ResetAt: "2026-11-26T00:00:00Z"},
+	}
+	updates := cnQuotaExtraUpdates(PlatformKimi, tiers, now)
+	clearAbsentCNQuotaWindows(PlatformKimi, tiers, updates)
+
+	value, present := updates["kimi_weekly_used_percent"]
+	require.True(t, present, "缺席的 weekly 必须显式出现在更新里")
+	require.Nil(t, value)
+	_, resetPresent := updates["kimi_weekly_reset_at"]
+	require.True(t, resetPresent)
+
+	require.Equal(t, 10.0, updates["kimi_5h_used_percent"])
+	require.Equal(t, 65.64, updates["kimi_monthly_used_percent"])
+	require.Equal(t, "2026-11-26T00:00:00Z", updates["kimi_monthly_reset_at"])
+}
+
+// TestParseKimiUsageTiers_RejectsMalformedWindows 受损/改版结构不得产出伪窗口。
+// 这类窗口一旦被当成有效快照落库，缺席清理会把其他窗口写成 nil，
+// 调度层看到「没有窗口」就会解除预停调。
+func TestParseKimiUsageTiers_RejectsMalformedWindows(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		body []byte
+	}{
+		"empty object":          {[]byte(`{}`)},
+		"empty detail":          {[]byte(`{"limits":[{"detail":{}}]}`)},
+		"limit zero":            {[]byte(`{"limits":[{"detail":{"limit":0,"remaining":0}}]}`)},
+		"remaining exceeds":     {[]byte(`{"limits":[{"detail":{"limit":100,"remaining":200}}]}`)},
+		"limit not a number":    {[]byte(`{"limits":[{"detail":{"limit":"abc","remaining":"1"}}]}`)},
+		"empty usage":           {[]byte(`{"usage":{}}`)},
+		"ratio out of range":    {[]byte(`{"usages":{"limit_5h":{"used_ratio":65}}}`)},
+		"ratio NaN":             {[]byte(`{"usages":{"limit_5h":{"used_ratio":"NaN"}}}`)},
+		"ratio negative":        {[]byte(`{"usages":{"limit_5h":{"used_ratio":-0.2}}}`)},
+		"renamed top level key": {[]byte(`{"limits_v2":[{"detail":{"limit":100,"remaining":50}}]}`)},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			tiers := parseKimiUsageTiers(tc.body)
+			require.Empty(t, tiers, "受损结构不得产出窗口：%s", string(tc.body))
+		})
+	}
+}
+
+// TestParseKimiUsageTiers_KeepsLegalEdgeValues 合法边界（0%、满额、单窗口、整数）不得被误伤。
+func TestParseKimiUsageTiers_KeepsLegalEdgeValues(t *testing.T) {
+	t.Parallel()
+	// remaining == limit → 合法的 0%。
+	tiers := parseKimiUsageTiers([]byte(`{"limits":[{"detail":{"limit":100,"remaining":100}}]}`))
+	require.Len(t, tiers, 1)
+	require.InDelta(t, 0.0, tiers[0].UsedPercent, 1e-9)
+
+	// remaining == 0 → 100%。
+	tiers = parseKimiUsageTiers([]byte(`{"limits":[{"detail":{"limit":100,"remaining":0}}]}`))
+	require.Len(t, tiers, 1)
+	require.InDelta(t, 100.0, tiers[0].UsedPercent, 1e-9)
+
+	// used_ratio == 0 / 1 同样合法。
+	tiers = parseKimiUsageTiers([]byte(`{"usages":{"limit_5h":{"used_ratio":0}}}`))
+	require.Len(t, tiers, 1)
+	require.InDelta(t, 0.0, tiers[0].UsedPercent, 1e-9)
+
+	tiers = parseKimiUsageTiers([]byte(`{"usages":{"limit_5h":{"used_ratio":1}}}`))
+	require.Len(t, tiers, 1)
+	require.InDelta(t, 100.0, tiers[0].UsedPercent, 1e-9)
+
+	// 首个 detail 坏、后续合法 → 采用首个有效条目。
+	tiers = parseKimiUsageTiers([]byte(`{"limits":[{"detail":{}},{"detail":{"limit":100,"remaining":60}}]}`))
+	require.Len(t, tiers, 1)
+	require.InDelta(t, 40.0, tiers[0].UsedPercent, 1e-9)
+}
+
+// TestParseZhipuTokenTiers_SkipsMissingPercentage percentage 缺失/非法不得伪造 0% 窗口。
+func TestParseZhipuTokenTiers_SkipsMissingPercentage(t *testing.T) {
+	t.Parallel()
+	cases := map[string]struct {
+		body      string
+		wantTiers int
+	}{
+		"missing percentage": {`{"limits":[{"type":"TOKENS_LIMIT","unit":3}]}`, 0},
+		"non numeric":        {`{"limits":[{"type":"TOKENS_LIMIT","unit":3,"percentage":"abc"}]}`, 0},
+		"negative":           {`{"limits":[{"type":"TOKENS_LIMIT","unit":3,"percentage":-5}]}`, 0},
+		"over 100":           {`{"limits":[{"type":"TOKENS_LIMIT","unit":3,"percentage":120}]}`, 0},
+		"legal zero":         {`{"limits":[{"type":"TOKENS_LIMIT","unit":3,"percentage":0}]}`, 1},
+		"legal five hour":    {`{"limits":[{"type":"TOKENS_LIMIT","unit":3,"percentage":42}]}`, 1},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			tiers := parseZhipuTokenTiers(gjson.Parse(tc.body))
+			require.Len(t, tiers, tc.wantTiers, "输入：%s", tc.body)
+		})
+	}
 }
 
 func TestParseOpenCodeGoUsageTiers(t *testing.T) {
