@@ -684,8 +684,8 @@ func (s *OpenAIGatewayService) resolveKeyModelPrice(ctx context.Context, group *
 	// pricing. Emit a single quote only if all matching routes agree.
 	for i := range accounts {
 		account := &accounts[i]
-		if account.Platform != group.Platform || (!account.IsModelSupported(forwardModel) &&
-			!(account.IsOpenAIPassthroughEnabled() && !account.IsOpenAIPassthroughModelFilterEnabled())) {
+		passthrough := account.IsOpenAIPassthroughEnabled() && !account.IsOpenAIPassthroughModelFilterEnabled()
+		if account.Platform != group.Platform || (!account.IsModelSupported(forwardModel) && !passthrough) {
 			continue
 		}
 		if account.IsShadow() || account.IsOpenAIPassthroughEnabled() && account.IsOpenAIOAuthLike() {

@@ -110,8 +110,8 @@ func (gate *openAIProfitControlGate) upstreamModelPriceVetoReason(ctx context.Co
 		}
 		value, _ = admission.quotes.LoadOrStore(key, localAdmissionPrice{price: price, valid: valid})
 	}
-	downstream := value.(localAdmissionPrice)
-	if !downstream.valid || upstream.Mode != downstream.price.Mode {
+	downstream, ok := value.(localAdmissionPrice)
+	if !ok || !downstream.valid || upstream.Mode != downstream.price.Mode {
 		return openAIProfitFilterReasonUpstreamPriceUnavailable
 	}
 	if !upstreamTariffFits(upstream, downstream.price, rate, gate.threshold, gate.pricingAt, admission.forceCacheBilling) {
