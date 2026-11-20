@@ -309,6 +309,65 @@ func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool 
 	}
 }
 
+const (
+	openAICodexInvalidPromptCode            = "invalid_prompt"
+	openAICodexInvalidPromptUsagePolicyText = "prompt was flagged as potentially violating our usage policy"
+)
+
+// isOpenAICodexInvalidPromptUsagePolicyFalsePositive recognizes the account-scoped
+// Codex false positive where every prompt (even "hello") is rejected for a model
+// family such as gpt-6. The response must carry OpenAI's exact usage-policy
+// sentence and either the structured invalid_prompt code/type or the
+// "Invalid prompt:" prefix; generic content-policy text, echoed request content,
+// and ordinary 400s never match.
+func isOpenAICodexInvalidPromptUsagePolicyFalsePositive(body []byte) bool {
+	if len(body) == 0 || !gjson.ValidBytes(body) {
+		return false
+	}
+	marker := ""
+	for _, path := range []string{"error.code", "response.error.code", "detail.code", "code"} {
+		if value := strings.TrimSpace(gjson.GetBytes(body, path).String()); value != "" {
+			marker = strings.ToLower(value)
+			break
+		}
+	}
+	if marker != openAICodexInvalidPromptCode {
+		for _, path := range []string{"error.type", "response.error.type", "type"} {
+			if value := strings.TrimSpace(gjson.GetBytes(body, path).String()); value != "" {
+				marker = strings.ToLower(value)
+				break
+			}
+		}
+	}
+	message := ""
+	for _, path := range []string{"error.message", "response.error.message", "detail", "message"} {
+		if value := strings.TrimSpace(gjson.GetBytes(body, path).String()); value != "" {
+			message = strings.ToLower(value)
+			break
+		}
+	}
+	if !strings.Contains(message, openAICodexInvalidPromptUsagePolicyText) {
+		return false
+	}
+	// Some intermediaries drop error.code/type; OpenAI's exact "Invalid prompt:"
+	// prefix still identifies this rejection without matching generic policy text.
+	return marker == openAICodexInvalidPromptCode || strings.HasPrefix(message, "invalid prompt:")
+}
+
+// isOpenAICodexInvalidPromptFalsePositive scopes the marker to Codex OAuth-like
+// accounts and the statuses this rejection is observed with. API-key content
+// rejections remain terminal so a real policy violation is never replayed across
+// the account pool.
+func isOpenAICodexInvalidPromptFalsePositive(account *Account, statusCode int, body []byte) bool {
+	if account == nil || account.Platform != PlatformOpenAI || !account.IsOpenAIOAuthLike() {
+		return false
+	}
+	if statusCode != http.StatusBadRequest && statusCode != http.StatusNotFound {
+		return false
+	}
+	return isOpenAICodexInvalidPromptUsagePolicyFalsePositive(body)
+}
+
 func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(account *Account, statusCode int, upstreamMsg string, upstreamBody []byte) bool {
 	// cyber_policy is request-scoped even when an intermediary wraps the
 	// provider response in a retryable 5xx status. Never punish or rotate the
@@ -318,6 +377,12 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(account *Acc
 	}
 	if isOpenAIContextWindowError(upstreamMsg, upstreamBody) {
 		return false
+	}
+	// Codex 的 gpt-6 系列偶发把正常提示词误判为 usage policy 违规（openai/codex#52846）。
+	// 这是账号/模型维度的问题，同账号重试必然复现，换号才有机会成功；但绝不能
+	// 把账号标记为不健康。
+	if isOpenAICodexInvalidPromptFalsePositive(account, statusCode, upstreamBody) {
+		return true
 	}
 	if isOpenAIHTTPUpstreamAccessStateError(statusCode, upstreamMsg, upstreamBody) {
 		return true

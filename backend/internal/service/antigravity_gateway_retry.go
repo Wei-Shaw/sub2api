@@ -584,6 +584,17 @@ urlFallbackLoop:
 					}, nil)
 				}
 
+				// 账号/模型不匹配的 404 不是账号健康问题：直接交给上层换号，
+				// 不让自定义错误码策略把它误记成账号或模型的限流/停用。
+				if s.isAntigravityAccountModelUnavailableError(resp.StatusCode, respBody) {
+					resp = &http.Response{
+						StatusCode: resp.StatusCode,
+						Header:     resp.Header.Clone(),
+						Body:       io.NopCloser(bytes.NewReader(respBody)),
+					}
+					break urlFallbackLoop
+				}
+
 				// ★ 统一入口：自定义错误码 + 临时不可调度
 				if handled, outStatus, policyErr := s.applyErrorPolicy(p, resp.StatusCode, resp.Header, respBody); handled {
 					if policyErr != nil {
@@ -784,6 +795,38 @@ func (s *AntigravityGatewayService) shouldFailoverUpstreamError(statusCode int) 
 	default:
 		return statusCode >= 500
 	}
+}
+
+// antigravityRequestedEntityNotFoundMessage 是 Antigravity 目录不包含请求模型时
+// 上游返回的确定性 404 文案。账号的模型映射通常由运营方维护，映射到某个账号
+// 未开通的模型时只有换号才能成功；它既不表示账号健康异常，也不代表请求体非法。
+const antigravityRequestedEntityNotFoundMessage = "requested entity was not found"
+
+// isAntigravityAccountModelUnavailableError 识别“当前账号不支持该模型”的窄 404。
+//
+// 只接受 404 且错误消息与 "Requested entity was not found." 完全一致（忽略大小写、
+// 首尾空白和句末标点），避免把上游 base_url 配错、路由不存在等真实 404 也当成换号
+// 信号。v1internal 的 response 包装会先解包再匹配。
+func (s *AntigravityGatewayService) isAntigravityAccountModelUnavailableError(statusCode int, body []byte) bool {
+	if statusCode != http.StatusNotFound {
+		return false
+	}
+	candidates := [][]byte{body}
+	if s != nil {
+		if unwrapped, err := s.unwrapV1InternalResponse(body); err == nil && !bytes.Equal(unwrapped, body) {
+			candidates = append(candidates, unwrapped)
+		}
+	}
+	for _, candidate := range candidates {
+		msg := strings.ToLower(strings.TrimSpace(extractAntigravityErrorMessage(candidate)))
+		if msg == "" && !json.Valid(candidate) {
+			msg = strings.ToLower(strings.TrimSpace(string(candidate)))
+		}
+		if strings.TrimRight(msg, ".! ") == antigravityRequestedEntityNotFoundMessage {
+			return true
+		}
+	}
+	return false
 }
 
 // isGoogleProjectConfigError 判断（已提取的小写）错误消息是否属于 Google 服务端配置类问题。
