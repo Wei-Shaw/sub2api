@@ -144,7 +144,7 @@ describe('admin DashboardView', () => {
   })
 
   it('uses last 24 hours as default dashboard range', async () => {
-    mount(DashboardView, {
+    const wrapper = mount(DashboardView, {
       global: {
         stubs: {
           AppLayout: { template: '<div><slot /></div>' },
@@ -160,6 +160,10 @@ describe('admin DashboardView', () => {
     })
 
     await flushPromises()
+
+    expect(wrapper.find('.admin-dashboard').exists()).toBe(true)
+    expect(wrapper.findAll('.dashboard-stat-card')).toHaveLength(8)
+    expect(wrapper.findAll('.dashboard-action')).toHaveLength(1)
 
     const now = new Date()
     const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000)

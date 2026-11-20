@@ -3,7 +3,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => ({ checkAuth: vi.fn(), isAuthenticated: false, isAdmin: false, isSimpleMode: false }) }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ siteName: 'Sub2API', backendModeEnabled: false, cachedPublicSettings: null }) }))
 vi.mock('@/stores/adminSettings', () => ({ useAdminSettingsStore: () => ({ customMenuItems: [] }) }))
-vi.mock('@/stores/adminCompliance', () => ({ useAdminComplianceStore: () => ({}) }))
 vi.mock('@/composables/useNavigationLoading', () => ({
   useNavigationLoadingState: () => ({ startNavigation: vi.fn(), endNavigation: vi.fn() })
 }))
