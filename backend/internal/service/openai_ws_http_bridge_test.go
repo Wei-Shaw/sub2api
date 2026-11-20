@@ -2164,6 +2164,15 @@ func TestOpenAIWSHTTPBridgeKeepsContinuationFramesOnHTTPWithoutPreviousResponseI
 		Schedulable: true,
 	}
 
+	var requestedEfforts []string
+	hooks := &OpenAIWSIngressHooks{
+		MaxReasoningEffort: "medium",
+		AfterTurn: func(_ int, result *OpenAIForwardResult, _ error) {
+			if result != nil {
+				requestedEfforts = append(requestedEfforts, optionalStringValue(result.RequestedReasoningEffort))
+			}
+		},
+	}
 	errCh := make(chan error, 1)
 	wsServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{CompressionMode: coderws.CompressionContextTakeover})
@@ -2192,7 +2201,7 @@ func TestOpenAIWSHTTPBridgeKeepsContinuationFramesOnHTTPWithoutPreviousResponseI
 		req.Header.Set("User-Agent", "codex_cli_rs/0.135.0")
 		ginCtx.Request = req
 
-		errCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "sk-test", firstMessage, nil)
+		errCh <- svc.ProxyResponsesWebSocketFromClient(r.Context(), ginCtx, conn, account, "sk-test", firstMessage, hooks)
 	}))
 	defer wsServer.Close()
 
@@ -2216,12 +2225,12 @@ func TestOpenAIWSHTTPBridgeKeepsContinuationFramesOnHTTPWithoutPreviousResponseI
 		return event
 	}
 
-	writeMessage(`{"type":"response.create","model":"gpt-5.1","stream":true,"input":"first"}`)
+	writeMessage(`{"type":"response.create","model":"gpt-5.1","stream":true,"reasoning":{"effort":"high"},"input":"first"}`)
 	firstTurnEvent := readMessage()
 	require.Equal(t, "response.completed", gjson.GetBytes(firstTurnEvent, "type").String())
 	require.Equal(t, "resp_bridge_first", gjson.GetBytes(firstTurnEvent, "response.id").String())
 
-	writeMessage(`{"type":"response.create","model":"gpt-5.1","stream":false,"previous_response_id":"resp_bridge_first","input":[{"type":"function_call_output","call_id":"call_bridge_1","output":"ok"}]}`)
+	writeMessage(`{"type":"response.create","model":"gpt-5.1","stream":false,"reasoning":{"effort":"xhigh"},"previous_response_id":"resp_bridge_first","input":[{"type":"function_call_output","call_id":"call_bridge_1","output":"ok"}]}`)
 	secondTurnEvent := readMessage()
 	require.Equal(t, "response.completed", gjson.GetBytes(secondTurnEvent, "type").String())
 	require.Equal(t, "resp_bridge_second", gjson.GetBytes(secondTurnEvent, "response.id").String())
@@ -2244,6 +2253,11 @@ func TestOpenAIWSHTTPBridgeKeepsContinuationFramesOnHTTPWithoutPreviousResponseI
 	require.Equal(t, "call_bridge_1", secondInput[1].Get("call_id").String())
 	require.Equal(t, "function_call_output", secondInput[2].Get("type").String())
 	require.Equal(t, "call_bridge_1", secondInput[2].Get("call_id").String())
+	// The bridge sends capped efforts while usage records each turn's own inbound selection.
+	for _, body := range upstream.bodies {
+		require.Equal(t, "medium", gjson.GetBytes(body, "reasoning.effort").String())
+	}
+	require.Equal(t, []string{"high", "xhigh"}, requestedEfforts)
 	require.Equal(t, 0, captureDialer.DialCount())
 	require.Empty(t, captureConn.writes)
 }

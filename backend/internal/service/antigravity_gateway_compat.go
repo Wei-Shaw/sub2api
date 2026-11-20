@@ -499,8 +499,9 @@ func (s *AntigravityGatewayService) handleAntigravityCompatHTTPError(
 	resp *http.Response,
 ) error {
 	body := s.readUpstreamErrorBody(resp)
-	s.handleUpstreamError(
+	s.handleUpstreamErrorAfterRetryLoop(
 		ctx,
+		c,
 		call.prefix,
 		account,
 		resp.StatusCode,
