@@ -1108,12 +1108,17 @@ func newOpenAIRequestView(body []byte) openAIRequestView {
 
 	view := openAIRequestView{body: body}
 	var seen uint8
-	// parseRawJSONView reads body without copying; view keeps body alive for extracted strings.
+	// parseRawJSONView reads body without copying, so extracted strings alias the
+	// body. They flow into usage logs and async tasks that outlive the request, so
+	// clone them; otherwise a multi-MB body stays alive after its budget is freed.
+	field := func(value gjson.Result) string {
+		return strings.Clone(strings.TrimSpace(value.String()))
+	}
 	parseRawJSONView(body).ForEach(func(key, value gjson.Result) bool {
 		switch key.Str {
 		case "model":
 			if seen&modelField == 0 {
-				view.Model = strings.TrimSpace(value.String())
+				view.Model = field(value)
 				seen |= modelField
 			}
 		case "stream":
@@ -1123,22 +1128,22 @@ func newOpenAIRequestView(body []byte) openAIRequestView {
 			}
 		case "prompt_cache_key":
 			if seen&promptCacheKeyField == 0 {
-				view.PromptCacheKey = strings.TrimSpace(value.String())
+				view.PromptCacheKey = field(value)
 				seen |= promptCacheKeyField
 			}
 		case "previous_response_id":
 			if seen&previousResponseIDField == 0 {
-				view.PreviousResponseID = strings.TrimSpace(value.String())
+				view.PreviousResponseID = field(value)
 				seen |= previousResponseIDField
 			}
 		case "service_tier":
 			if seen&serviceTierField == 0 {
-				view.ServiceTier = strings.TrimSpace(value.String())
+				view.ServiceTier = field(value)
 				seen |= serviceTierField
 			}
 		case "reasoning":
 			if seen&reasoningField == 0 {
-				view.ReasoningEffort = strings.TrimSpace(value.Get("effort").String())
+				view.ReasoningEffort = field(value.Get("effort"))
 				seen |= reasoningField
 			}
 		}
