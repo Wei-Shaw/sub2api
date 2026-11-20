@@ -385,6 +385,29 @@ func foldRune(r rune) rune {
 	return folded
 }
 
+// hasExtendedNameParam 报告 Content-Disposition 是否带 RFC 2231 扩展形式的字段名
+// 参数（name*=、name*0=、name*0*=）。Go 以扩展值优先，忽略扩展参数的上游读的是
+// name=，同一 part 会被读成两个不同的字段。filename* 是非 ASCII 文件名的合法写法，
+// 不在此列。
+func hasExtendedNameParam(disposition string) bool {
+	lower := strings.ToLower(disposition)
+	for i := 0; ; {
+		idx := strings.Index(lower[i:], "name*")
+		if idx < 0 {
+			return false
+		}
+		idx += i
+		start := idx
+		for start > 0 && (lower[start-1] == ' ' || lower[start-1] == '\t') {
+			start--
+		}
+		if start == 0 || lower[start-1] == ';' {
+			return true
+		}
+		i = idx + len("name*")
+	}
+}
+
 // isRepeatableMultipartField 报告表单字段是否按列表语义合法重复：以 [] 结尾的
 // 数组字段（如 timestamp_granularities[]）、多图输入（image、image[...]、
 // Grok 媒体的 image_url）。其余文本字段（model、n、size、quality、duration 等
@@ -396,8 +419,8 @@ func isRepeatableMultipartField(name string) bool {
 // multipartConflictingField 检查 multipart 表单：同名标量字段出现多次（文件与
 // 文本 part 合并计数，列表字段见 isRepeatableMultipartField）；名为 model /
 // session 的文件 part（网关 handler 跳过文件 part，宽容的上游可能当字段读）；
-// 没有可解析名字或带多个 Content-Disposition 头的 part（各解析器可能取不同的
-// 名字）；session 字段的 JSON 值内部按 JSON 规则检查。
+// 没有可解析名字、带多个 Content-Disposition 头或 RFC 2231 扩展字段名参数的 part
+// （各解析器可能取不同的名字）；session 字段的 JSON 值内部按 JSON 规则检查。
 //
 // parts 返回成功解析出的 part 数，供调用方判断请求体是否同时含 multipart 内容。
 func multipartConflictingField(contentType string, body []byte) (field string, conflict bool, parts int) {
@@ -418,7 +441,8 @@ func multipartConflictingField(contentType string, body []byte) (field string, c
 		}
 		parts++
 		name := strings.TrimSpace(part.FormName())
-		if name == "" || len(part.Header.Values("Content-Disposition")) > 1 {
+		dispositions := part.Header.Values("Content-Disposition")
+		if name == "" || len(dispositions) > 1 || hasExtendedNameParam(dispositions[0]) {
 			return "Content-Disposition", true, parts
 		}
 		isFile := part.FileName() != ""

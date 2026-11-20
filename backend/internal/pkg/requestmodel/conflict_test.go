@@ -349,6 +349,12 @@ func TestConflictingFieldMultipartPreambleAndMalformedParts(t *testing.T) {
 		{name: "无法解析名字的 part", want: "Content-Disposition", build: func() (string, []byte) {
 			return rawMultipart("", "Content-Disposition: form-data; name=\"a\"; name=\"model\"\r\n\r\ngpt-image-2")
 		}},
+		{name: "RFC 2231 扩展字段名", want: "Content-Disposition", build: func() (string, []byte) {
+			return rawMultipart("", "Content-Disposition: form-data; name=\"model\"; name*=UTF-8''prompt\r\n\r\ngpt-image-2")
+		}},
+		{name: "分段的扩展字段名", want: "Content-Disposition", build: func() (string, []byte) {
+			return rawMultipart("", "Content-Disposition: form-data; name=\"model\";name*0=\"pro\"; name*1=\"mpt\"\r\n\r\ngpt-image-2")
+		}},
 		{name: "两个 Content-Disposition 头", want: "Content-Disposition", build: func() (string, []byte) {
 			return rawMultipart("", "Content-Disposition: form-data; name=\"prompt\"\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\ngpt-image-2")
 		}},
@@ -365,4 +371,9 @@ func TestConflictingFieldMultipartPreambleAndMalformedParts(t *testing.T) {
 	contentType, body := rawMultipart("", textPart("model", "gpt-image-2"), textPart("prompt", "cat"))
 	_, conflict := ConflictingField(contentType, body)
 	require.False(t, conflict, "a well-formed form must pass")
+
+	// 非 ASCII 文件名的 filename* 写法是合法的，不能误拒。
+	contentType, body = rawMultipart("", textPart("model", "gpt-image-2"), "Content-Disposition: form-data; name=\"image\"; filename=\"a.png\"; filename*=UTF-8''%E5%9B%BE.png\r\nContent-Type: image/png\r\n\r\nPNG")
+	_, conflict = ConflictingField(contentType, body)
+	require.False(t, conflict, "filename* must not be treated as an extended field name")
 }
