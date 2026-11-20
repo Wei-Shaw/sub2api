@@ -1629,7 +1629,8 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshotWithRateLimit(ctx context.
 	}
 	accountID := account.ID
 	now := time.Now()
-	resetAt, hasActiveLimit := grokRateLimitResetAtForAccount(account, snapshot, now)
+	policy := s.grokRateLimitPolicy()
+	resetAt, hasActiveLimit := grokRateLimitResetAtForAccount(account, snapshot, now, policy)
 	if hasActiveLimit {
 		normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
 	}
@@ -1673,6 +1674,9 @@ func (s *OpenAIGatewayService) updateGrokUsageSnapshotWithRateLimit(ctx context.
 	// rate-limit state when the observed window is exhausted.
 	if installRateLimit && hasActiveLimit && !account.IsPoolMode() {
 		s.rateLimitGrok(stateCtx, account, resetAt)
+		if policy.manualRecovery && snapshot.StatusCode == http.StatusTooManyRequests {
+			s.pauseGrokAccountForManualRecovery(stateCtx, account)
+		}
 	} else if recovery {
 		clearGrokRateLimitAfterRecovery(stateCtx, s.accountRepo, account)
 	}
@@ -1728,7 +1732,7 @@ func normalizeGrokExhaustedWindowResets(snapshot *xai.QuotaSnapshot, resetAt, no
 	}
 }
 
-func grokRateLimitResetAt(snapshot *xai.QuotaSnapshot, now time.Time) (time.Time, bool) {
+func grokRateLimitResetAt(snapshot *xai.QuotaSnapshot, now time.Time, policy grokRateLimitPolicy) (time.Time, bool) {
 	if snapshot == nil {
 		return time.Time{}, false
 	}
@@ -1776,45 +1780,45 @@ func grokRateLimitResetAt(snapshot *xai.QuotaSnapshot, now time.Time) (time.Time
 		return time.Time{}, false
 	}
 	if exhausted || snapshot.StatusCode == http.StatusTooManyRequests {
-		return now.Add(grokRateLimitFallbackCooldown), true
+		return now.Add(policy.fallbackCooldown), true
 	}
 	return time.Time{}, false
 }
 
-func grokRateLimitResetAtForAccount(account *Account, snapshot *xai.QuotaSnapshot, now time.Time) (time.Time, bool) {
-	resetAt, limited := grokRateLimitResetAt(snapshot, now)
-	if !limited || !isGrokOAuthAccount(account) || snapshot == nil || snapshot.StatusCode != http.StatusTooManyRequests {
+func grokRateLimitResetAtForAccount(account *Account, snapshot *xai.QuotaSnapshot, now time.Time, policy grokRateLimitPolicy) (time.Time, bool) {
+	resetAt, limited := grokRateLimitResetAt(snapshot, now, policy)
+	if !limited || snapshot == nil || snapshot.StatusCode != http.StatusTooManyRequests {
 		return resetAt, limited
 	}
+	if policy.adaptiveBackoff && isGrokOAuthAccount(account) {
+		resetAt = grokAdaptiveRateLimitResetAt(account, resetAt, now, policy)
+	}
+	return policy.applyMinCooldown(resetAt, now), true
+}
+
+// grokAdaptiveRateLimitResetAt escalates a repeated OAuth 429 that arrives
+// within the quiet period after the previous cooldown ended.
+func grokAdaptiveRateLimitResetAt(account *Account, resetAt, now time.Time, policy grokRateLimitPolicy) time.Time {
 	if account.RateLimitedAt == nil || account.RateLimitResetAt == nil {
-		return resetAt, true
+		return resetAt
 	}
 	previousResetAt := *account.RateLimitResetAt
-	if previousResetAt.After(now) || now.Sub(previousResetAt) > grokRateLimitBackoffQuietPeriod {
-		return resetAt, true
+	if previousResetAt.After(now) || now.Sub(previousResetAt) > policy.backoffQuietPeriod {
+		return resetAt
 	}
 	previousCooldown := previousResetAt.Sub(*account.RateLimitedAt)
 	if previousCooldown <= 0 {
-		return resetAt, true
+		return resetAt
 	}
-
-	adaptiveCooldown := grokRateLimitRepeatCooldown
-	switch {
-	case previousCooldown >= grokRateLimitSustainedCooldown:
-		adaptiveCooldown = grokRateLimitMaxAdaptiveCooldown
-	case previousCooldown >= grokRateLimitRepeatCooldown:
-		adaptiveCooldown = grokRateLimitSustainedCooldown
-	}
-	adaptiveResetAt := now.Add(adaptiveCooldown)
-	if adaptiveResetAt.After(resetAt) {
+	if adaptiveResetAt := now.Add(policy.adaptiveCooldown(previousCooldown)); adaptiveResetAt.After(resetAt) {
 		resetAt = adaptiveResetAt
 	}
-	return resetAt, true
+	return resetAt
 }
 
-func normalizeGrokRateLimitResetAt(account *Account, resetAt, now time.Time) time.Time {
+func normalizeGrokRateLimitResetAt(account *Account, resetAt, now time.Time, policy grokRateLimitPolicy) time.Time {
 	if !resetAt.After(now) {
-		resetAt = now.Add(grokRateLimitFallbackCooldown)
+		resetAt = now.Add(policy.fallbackCooldown)
 	}
 	if account != nil && account.RateLimitResetAt != nil && account.RateLimitResetAt.After(resetAt) {
 		resetAt = *account.RateLimitResetAt
@@ -1853,11 +1857,11 @@ func clearGrokRateLimitAfterRecovery(ctx context.Context, repo AccountRepository
 	}
 }
 
-func persistGrokRateLimit(ctx context.Context, repo AccountRepository, account *Account, resetAt time.Time) {
+func persistGrokRateLimit(ctx context.Context, repo AccountRepository, account *Account, resetAt time.Time, policy grokRateLimitPolicy) {
 	if repo == nil || account == nil || account.ID <= 0 {
 		return
 	}
-	resetAt = normalizeGrokRateLimitResetAt(account, resetAt, time.Now())
+	resetAt = normalizeGrokRateLimitResetAt(account, resetAt, time.Now(), policy)
 	stateCtx, cancel := openAIAccountStateContext(ctx)
 	defer cancel()
 	var err error
@@ -1876,14 +1880,15 @@ func (s *OpenAIGatewayService) rateLimitGrok(ctx context.Context, account *Accou
 		return
 	}
 	now := time.Now()
-	resetAt = normalizeGrokRateLimitResetAt(account, resetAt, now)
+	policy := s.grokRateLimitPolicy()
+	resetAt = normalizeGrokRateLimitResetAt(account, resetAt, now, policy)
 
 	runtimeUntil := resetAt
 	if account.TempUnschedulableUntil != nil && account.TempUnschedulableUntil.After(runtimeUntil) {
 		runtimeUntil = *account.TempUnschedulableUntil
 	}
 	s.BlockAccountScheduling(account, runtimeUntil, "429")
-	persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
+	persistGrokRateLimit(ctx, s.accountRepo, account, resetAt, policy)
 
 	// Propagate a short team+model cool so sibling OAuth accounts on the same
 	// xAI team skip the hot model without waiting for each to hit 429 alone.
@@ -2038,7 +2043,7 @@ func (s *OpenAIGatewayService) handleGrokAccountUpstreamError(ctx context.Contex
 			// apply only a short probe cooldown. Never start a fabricated 24h window
 			// at the instant this error was received.
 			if decision.Class == GrokFailureFreeUsage {
-				if resetAt, limited := grokRateLimitResetAtForAccount(account, parseGrokQuotaSnapshot(headers, statusCode, now), now); limited && resetAt.After(now) {
+				if resetAt, limited := grokRateLimitResetAtForAccount(account, parseGrokQuotaSnapshot(headers, statusCode, now), now, s.grokRateLimitPolicy()); limited && resetAt.After(now) {
 					if decision.Model != "" && isGrokModelSpecificFreeUsage(strings.ToLower(decision.Reason), decision.Model) {
 						markGrokModelQuotaBlock(account.ID, decision.Model, resetAt)
 						return
