@@ -49,7 +49,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		return
 	}
 
-	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
+	body, jsonValid, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
 		if handleRequestBodyReadError(c, reqLog, err) {
 			return
@@ -63,7 +63,7 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		return
 	}
 
-	if !gjson.ValidBytes(body) {
+	if !jsonValid && !gjson.ValidBytes(body) {
 		logRequestBodyParseFailure(reqLog, body, nil)
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return

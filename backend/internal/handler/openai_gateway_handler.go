@@ -423,7 +423,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	}
 
 	// Read request body
-	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
+	body, jsonValid, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
 		if handleRequestBodyReadError(c, reqLog, err) {
 			return
@@ -465,7 +465,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	defer stopCompactKeepalive()
 
 	// 校验请求体 JSON 合法性
-	if !gjson.ValidBytes(body) {
+	if !jsonValid && !gjson.ValidBytes(body) {
 		logRequestBodyParseFailure(reqLog, body, nil)
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
@@ -1218,7 +1218,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
-	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
+	body, jsonValid, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
 		if handleRequestBodyReadError(c, reqLog, err) {
 			return
@@ -1232,7 +1232,7 @@ func (h *OpenAIGatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
-	if !gjson.ValidBytes(body) {
+	if !jsonValid && !gjson.ValidBytes(body) {
 		logRequestBodyParseFailure(reqLog, body, nil)
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return

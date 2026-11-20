@@ -40,7 +40,7 @@ func (h *OpenAIGatewayHandler) ResponsesInputTokens(c *gin.Context) {
 		return
 	}
 
-	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
+	body, jsonValid, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
 		if handleRequestBodyReadError(c, reqLog, err) {
 			return
@@ -49,7 +49,7 @@ func (h *OpenAIGatewayHandler) ResponsesInputTokens(c *gin.Context) {
 		h.errorResponse(c, status, "invalid_request_error", message)
 		return
 	}
-	if len(body) == 0 || !gjson.ValidBytes(body) {
+	if len(body) == 0 || (!jsonValid && !gjson.ValidBytes(body)) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return
 	}
@@ -133,7 +133,7 @@ func (h *OpenAIGatewayHandler) ResponsesInputTokens(c *gin.Context) {
 // The route middleware already authenticates the API key and resolves the
 // group; this handler intentionally does not select an account or check billing.
 func (h *OpenAIGatewayHandler) GrokCountTokens(c *gin.Context) {
-	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
+	body, _, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
 		bodyLog := requestLogger(c, "handler.openai_gateway.grok_count_tokens")
 		if handleRequestBodyReadError(c, bodyLog, err) {
@@ -204,7 +204,7 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 		return
 	}
 
-	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
+	body, _, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
 		if handleRequestBodyReadError(c, reqLog, err) {
 			return

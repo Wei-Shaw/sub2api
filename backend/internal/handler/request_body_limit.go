@@ -38,7 +38,13 @@ func buildBodyTooLargeMessage(limit int64) string {
 	return fmt.Sprintf("Request body too large, limit is %s", formatBodyLimit(limit))
 }
 
-func readLenientJSONRequestBodyWithPrealloc(req *http.Request, cfg *config.Config) ([]byte, error) {
+// readLenientJSONRequestBodyWithPrealloc 读取并归一化 JSON 请求体。
+//
+// jsonValid 表示返回的 body 已经通过严格 JSON 校验，调用方可以据此跳过自己的
+// 全量校验（与 gjson.ValidBytes 等价，见 httputil 的快速路径）。
+func readLenientJSONRequestBodyWithPrealloc(
+	req *http.Request, cfg *config.Config,
+) (body []byte, jsonValid bool, err error) {
 	return pkghttputil.ReadLenientJSONRequestBodyWithPrealloc(req, gatewayMaxBodySize(cfg))
 }
 

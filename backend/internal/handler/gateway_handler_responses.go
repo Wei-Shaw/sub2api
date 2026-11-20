@@ -45,7 +45,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	)
 
 	// Read request body
-	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
+	body, jsonValid, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
 		if handleRequestBodyReadError(c, reqLog, err) {
 			return
@@ -63,7 +63,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 	setOpsRequestContext(c, "", false)
 
 	// Validate JSON
-	if !gjson.ValidBytes(body) {
+	if !jsonValid && !gjson.ValidBytes(body) {
 		logRequestBodyParseFailure(reqLog, body, nil)
 		h.responsesErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
 		return

@@ -145,7 +145,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	defer h.maybeLogCompatibilityFallbackMetrics(reqLog)
 
 	// 读取请求体
-	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
+	body, _, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
 		if handleRequestBodyReadError(c, reqLog, err) {
 			return
@@ -2166,7 +2166,7 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 	defer h.maybeLogCompatibilityFallbackMetrics(reqLog)
 
 	// 读取请求体
-	body, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
+	body, _, err := readLenientJSONRequestBodyWithPrealloc(c.Request, h.cfg)
 	if err != nil {
 		if handleRequestBodyReadError(c, reqLog, err) {
 			return

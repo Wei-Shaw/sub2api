@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"compress/zlib"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -77,6 +78,8 @@ func ReadRequestBodyWithPrealloc(req *http.Request) ([]byte, error) {
 type requestBodyBuffer struct {
 	data    []byte
 	charged int64
+	// jsonValid 表示 data 已经通过严格 JSON 校验，调用方不必再校验一次。
+	jsonValid bool
 }
 
 func (b *requestBodyBuffer) release(ctx context.Context) {
@@ -210,19 +213,25 @@ func readRequestBodyChunksWithBudget(ctx context.Context, reader io.Reader, init
 
 // ReadLenientJSONRequestBodyWithPrealloc reads a request body and normalizes
 // JSON string control bytes before strict validation.
-func ReadLenientJSONRequestBodyWithPrealloc(req *http.Request, maxNormalizedBytes int64) ([]byte, error) {
+//
+// jsonValid reports that the returned body already passed strict JSON
+// validation, so a caller that would otherwise run its own full-body check can
+// skip it. Callers that do not use the hint simply discard it.
+func ReadLenientJSONRequestBodyWithPrealloc(
+	req *http.Request, maxNormalizedBytes int64,
+) (body []byte, jsonValid bool, err error) {
 	if req == nil {
-		return nil, nil
+		return nil, false, nil
 	}
-	body, err := readRequestBodyWithBudget(req)
+	raw, err := readRequestBodyWithBudget(req)
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
-	normalized, err := normalizeLenientJSONRequestBody(req.Context(), body.data, maxNormalizedBytes)
+	normalized, err := normalizeLenientJSONRequestBody(req.Context(), raw.data, maxNormalizedBytes)
 	if err != nil || normalized.charged > 0 {
-		body.release(req.Context())
+		raw.release(req.Context())
 	}
-	return normalized.data, err
+	return normalized.data, normalized.jsonValid, err
 }
 
 func decompressRequestBody(encoding string, raw []byte) ([]byte, error) {
@@ -277,9 +286,9 @@ func decompressRequestBodyWithBudget(ctx context.Context, encoding string, raw [
 
 // NormalizeLenientJSONRequestBody escapes raw control bytes that broken
 // OpenAI-compatible clients sometimes place inside JSON strings.
-func NormalizeLenientJSONRequestBody(body []byte, maxNormalizedBytes int64) ([]byte, error) {
-	normalized, err := normalizeLenientJSONRequestBody(context.Background(), body, maxNormalizedBytes)
-	return normalized.data, err
+func NormalizeLenientJSONRequestBody(body []byte, maxNormalizedBytes int64) (normalized []byte, jsonValid bool, err error) {
+	out, err := normalizeLenientJSONRequestBody(context.Background(), body, maxNormalizedBytes)
+	return out.data, out.jsonValid, err
 }
 
 func normalizeLenientJSONRequestBody(ctx context.Context, body []byte, maxNormalizedBytes int64) (requestBodyBuffer, error) {
@@ -296,6 +305,13 @@ func normalizeLenientJSONRequestBody(ctx context.Context, body []byte, maxNormal
 	}
 	if int64(len(body)) > maxNormalizedBytes {
 		return requestBodyBuffer{}, &http.MaxBytesError{Limit: maxNormalizedBytes}
+	}
+
+	// 严格合法的 JSON 里，字符串内不可能出现 0x00-0x1f；唯一会被归一化改写的合法
+	// 字节是 0x7f（JSON 允许它原样出现在字符串里）。两个条件都成立时，下面这趟
+	// 逐字节扫描没有任何事可做，直接原样返回并带上「已校验」的结论。
+	if bytes.IndexByte(body, 0x7f) < 0 && json.Valid(body) {
+		return requestBodyBuffer{data: body, jsonValid: true}, nil
 	}
 
 	normalizedSize := int64(len(body))

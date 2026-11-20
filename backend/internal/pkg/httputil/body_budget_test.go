@@ -169,7 +169,7 @@ func TestNormalizedRequestBodySharesMemoryBudget(t *testing.T) {
 	ctx, release := WithRequestBodyMemoryBudget(context.Background(), NewBodyMemoryBudget(600))
 	defer release()
 	req := httptest.NewRequest("POST", "/", bytes.NewReader(body)).WithContext(ctx)
-	if _, err := ReadLenientJSONRequestBodyWithPrealloc(req, 4096); !errors.Is(err, ErrRequestBodyMemoryBudget) {
+	if _, _, err := ReadLenientJSONRequestBodyWithPrealloc(req, 4096); !errors.Is(err, ErrRequestBodyMemoryBudget) {
 		t.Fatalf("normalization bypassed budget: %v", err)
 	}
 }
@@ -221,7 +221,7 @@ func TestRequestBodyMemoryBudgetRetainsOnlyFinalAllocation(t *testing.T) {
 				req := newRequestWithBody(t, raw, encoding).WithContext(ctx)
 				// Unknown length exercises chunk growth and its extra EOF probe.
 				req.ContentLength = -1
-				got, err := ReadLenientJSONRequestBodyWithPrealloc(req, 4<<20)
+				got, _, err := ReadLenientJSONRequestBodyWithPrealloc(req, 4<<20)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -373,7 +373,7 @@ func TestRequestBodyMemoryBudgetRefundsFailedOwnedBuffers(t *testing.T) {
 					return n, err
 				}))
 			}
-			got, err := ReadLenientJSONRequestBodyWithPrealloc(req, maxNormalized)
+			got, _, err := ReadLenientJSONRequestBodyWithPrealloc(req, maxNormalized)
 			if got != nil || err == nil || wantErr != nil && !errors.Is(err, wantErr) {
 				t.Fatalf("expected failed read (%v), got len=%d err=%v", wantErr, len(got), err)
 			}
@@ -395,13 +395,13 @@ func TestRequestBodyMemoryBudgetPreservesBorrowedPrereadAllocation(t *testing.T)
 		t.Fatal(err)
 	}
 	req.Body = NewPrereadBody(original)
-	if _, err := ReadLenientJSONRequestBodyWithPrealloc(req, 1); err == nil {
+	if _, _, err := ReadLenientJSONRequestBodyWithPrealloc(req, 1); err == nil {
 		t.Fatal("oversize preread body was accepted")
 	}
 	if used := requestBodyBudgetUsed(budget); used != int64(cap(original)) {
 		t.Fatalf("failed normalization refunded borrowed storage: %d", used)
 	}
-	normalized, err := ReadLenientJSONRequestBodyWithPrealloc(req, 4096)
+	normalized, _, err := ReadLenientJSONRequestBodyWithPrealloc(req, 4096)
 	if err != nil {
 		t.Fatal(err)
 	}
