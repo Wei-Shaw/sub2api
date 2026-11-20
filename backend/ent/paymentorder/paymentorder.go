@@ -52,6 +52,8 @@ const (
 	FieldSubscriptionGroupID = "subscription_group_id"
 	// FieldSubscriptionDays holds the string denoting the subscription_days field in the database.
 	FieldSubscriptionDays = "subscription_days"
+	// FieldSubscriptionPlanSnapshot holds the string denoting the subscription_plan_snapshot field in the database.
+	FieldSubscriptionPlanSnapshot = "subscription_plan_snapshot"
 	// FieldProviderInstanceID holds the string denoting the provider_instance_id field in the database.
 	FieldProviderInstanceID = "provider_instance_id"
 	// FieldProviderKey holds the string denoting the provider_key field in the database.
@@ -129,6 +131,7 @@ var Columns = []string{
 	FieldPlanID,
 	FieldSubscriptionGroupID,
 	FieldSubscriptionDays,
+	FieldSubscriptionPlanSnapshot,
 	FieldProviderInstanceID,
 	FieldProviderKey,
 	FieldProviderSnapshot,

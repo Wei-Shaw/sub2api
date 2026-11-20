@@ -18,12 +18,7 @@
         <span v-if="row.fee_rate > 0" class="ml-1 text-xs text-gray-400" :title="t('payment.orders.fee') + ': ' + row.fee_rate + '%'">
           ({{ t('payment.orders.fee') }} {{ row.fee_rate }}%)
         </span>
-        <div v-if="row.amount !== row.pay_amount || (row.bonus_amount ?? 0) > 0" class="text-xs text-gray-500">
-          {{ t('payment.orders.creditedAmount') }}: {{ creditedAmountSymbol }}{{ row.amount.toFixed(2) }}
-          <span v-if="(row.bonus_amount ?? 0) > 0" class="ml-1 text-amber-600 dark:text-amber-400">
-            ({{ t('payment.orders.bonusIncluded', { amount: creditedAmountSymbol + (row.bonus_amount ?? 0).toFixed(2) }) }})
-          </span>
-        </div>
+        <OrderAmountDetails :order="row" compact />
       </div>
     </template>
     <template #cell-payment_type="{ value }">
@@ -42,6 +37,7 @@
 </template>
 
 <script setup lang="ts">
+import OrderAmountDetails from '@/components/payment/OrderAmountDetails.vue'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { PaymentOrder } from '@/types/payment'
@@ -60,7 +56,6 @@ const props = defineProps<{
 
 function formatDate(dateStr: string) { return new Date(dateStr).toLocaleString() }
 
-const creditedAmountSymbol = currencySymbol('USD')
 
 function paymentAmountSymbol(order: PaymentOrder): string {
   return currencySymbol(order.currency)
