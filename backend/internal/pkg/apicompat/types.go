@@ -585,6 +585,10 @@ func (o *ResponsesOutput) UnmarshalJSON(data []byte) error {
 type WebSearchAction struct {
 	Type  string `json:"type,omitempty"`  // "search"
 	Query string `json:"query,omitempty"` // primary search query
+	// URL and Sources stay raw: a strictly typed value of an unexpected shape
+	// would fail decoding the whole terminal event that carries this call.
+	URL     json.RawMessage `json:"url,omitempty"` // open_page / find_in_page target
+	Sources json.RawMessage `json:"sources,omitempty"`
 }
 
 // ResponsesSummary is a summary text block inside a reasoning output.
