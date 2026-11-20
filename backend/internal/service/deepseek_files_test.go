@@ -105,7 +105,11 @@ func TestDeepseekFileUploadPurposePolicy(t *testing.T) {
 	ctx := context.Background()
 	for _, anthropic := range []bool{false, true} {
 		for _, enabled := range []bool{false, true} {
-			svc := &OpenAIGatewayService{cache: &testDeepseekFileCache{}, cfg: &config.Config{}}
+			svc := &OpenAIGatewayService{cache: &testDeepseekFileCache{}, cfg: &config.Config{},
+				httpUpstream: &deepseekToolsHTTPUpstream{handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+					_, _ = w.Write([]byte(`{"id":"file-1","object":"file","type":"file","page_count":3}`))
+				})},
+			}
 			svc.cfg.Gateway.AllowUnbilledDeepseekDocumentParsing = enabled
 			for _, purpose := range []string{"user_data", "text_recognition", "rich_layout_recognition"} {
 				body, ct := deepseekUploadForm(t, purpose)
@@ -117,6 +121,10 @@ func TestDeepseekFileUploadPurposePolicy(t *testing.T) {
 				if enabled || purpose == "user_data" {
 					require.NoError(t, err)
 					require.Equal(t, purpose, r.upload.purpose)
+					result, err := svc.ForwardDeepseekToolsRequest(ctx, c, newDeepseekToolsTestAccount("https://relay.test"), r)
+					require.NoError(t, err)
+					require.Equal(t, http.StatusOK, result.StatusCode)
+					require.Zero(t, result.Usage, "files upload must stay unbilled, purpose=%s", purpose)
 				} else {
 					require.Equal(t, 400, infraerrors.Code(err))
 					require.Contains(t, err.Error(), "/v1/tools/ocr")

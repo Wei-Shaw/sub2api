@@ -5,32 +5,25 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
 
-// DeepSeek 独立工具接口的计费量种类。
-const (
-	// DeepseekToolsUsagePerRequest 按次计费（search/fetch），Count 恒为 1。
-	DeepseekToolsUsagePerRequest = "per_request"
-	// DeepseekToolsUsageOCRPages OCR 页数，Count = 响应 pages 数组长度。
-	DeepseekToolsUsageOCRPages = "ocr_pages"
-	// DeepseekToolsUsageASRSeconds ASR 音频秒数，Count = duration_ms / 1000。
-	DeepseekToolsUsageASRSeconds = "asr_seconds"
-	// DeepseekToolsUsageTTSChars TTS 计费字符数（汉字等全宽字符算 2，其余算 1）。
-	DeepseekToolsUsageTTSChars = "tts_chars"
-)
-
-// DeepseekToolsUsage 是一次 DeepSeek 工具调用提取出的计费量。
-// service 层只负责提取，落账由 handler 完成；上游失败时 Kind 为空、Count 为 0。
+// DeepseekToolsUsage measures successful calls, pages, whole seconds or billing characters.
 type DeepseekToolsUsage struct {
-	Kind  string  `json:"kind"`
-	Count float64 `json:"count"`
+	Endpoint string
+	Units    int
+}
+
+func (u DeepseekToolsUsage) Model() string {
+	return "deepseek-tools-" + u.Endpoint
 }
 
 // DeepseekToolsForwardResult 是 ForwardDeepseekToolsRequest 的回执：
@@ -164,7 +157,7 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	success := resp.StatusCode >= 200 && resp.StatusCode < 400
+	success := resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices
 	// TTS 成功响应是音频流：逐头透传 + io.Copy，不做全量缓冲。
 	if endpoint == "tts" && success {
 		if err := writeDeepseekToolsContentResponse(c, resp); err != nil {
@@ -172,7 +165,7 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 		}
 		return &DeepseekToolsForwardResult{
 			StatusCode:      resp.StatusCode,
-			Usage:           extractDeepseekToolsUsage(endpoint, body, nil, true),
+			Usage:           extractDeepseekToolsUsage(endpoint, body, nil, resp.StatusCode),
 			UpstreamHeaders: resp.Header,
 		}, nil
 	}
@@ -181,7 +174,7 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 && (endpoint == "files_create" || endpoint == "files_delete") {
+	if success && (endpoint == "files_create" || endpoint == "files_delete") {
 		store, err := s.deepseekFileStore()
 		if err != nil {
 			return nil, err
@@ -206,7 +199,7 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 	writeGrokMediaResponse(c, resp, data, s.responseHeaderFilter)
 	return &DeepseekToolsForwardResult{
 		StatusCode:      resp.StatusCode,
-		Usage:           extractDeepseekToolsUsage(endpoint, body, data, success),
+		Usage:           extractDeepseekToolsUsage(endpoint, body, data, resp.StatusCode),
 		UpstreamHeaders: resp.Header,
 	}, nil
 }
@@ -240,77 +233,76 @@ func writeDeepseekToolsContentResponse(c *gin.Context, resp *http.Response) erro
 	return err
 }
 
-// extractDeepseekToolsUsage 从请求/响应中提取计费量，只提取、不落账。
-// success=false 时（上游错误）计费量安全置零。
-func extractDeepseekToolsUsage(endpoint string, reqBody, respBody []byte, success bool) DeepseekToolsUsage {
-	if !success {
+// Search, fetch and OCR require a completed HTTP 200 result. OCR can return
+// an error object after sending keepalive newlines and a 200 status.
+func extractDeepseekToolsUsage(endpoint string, reqBody, respBody []byte, status int) DeepseekToolsUsage {
+	if status < http.StatusOK || status >= http.StatusMultipleChoices || status == http.StatusNoContent || status == http.StatusResetContent {
 		return DeepseekToolsUsage{}
 	}
 	switch endpoint {
-	case "search", "fetch":
-		return DeepseekToolsUsage{Kind: DeepseekToolsUsagePerRequest, Count: 1}
-	case "ocr":
-		// 官方声明 usage 仅供参考，页数以 pages 数组长度为准。
-		return DeepseekToolsUsage{
-			Kind:  DeepseekToolsUsageOCRPages,
-			Count: float64(gjson.GetBytes(respBody, "pages.#").Int()),
+	case "tts":
+		text := gjson.GetBytes(reqBody, "text")
+		if !text.Exists() {
+			text = gjson.GetBytes(reqBody, "input")
+		}
+		if text.Type == gjson.String {
+			return DeepseekToolsUsage{Endpoint: endpoint, Units: countTTSBillableChars(text.Str)}
+		}
+		return DeepseekToolsUsage{}
+	case "search", "fetch", "ocr":
+		if status != http.StatusOK {
+			return DeepseekToolsUsage{}
 		}
 	case "asr":
-		return DeepseekToolsUsage{
-			Kind:  DeepseekToolsUsageASRSeconds,
-			Count: gjson.GetBytes(respBody, "duration_ms").Float() / 1000.0,
-		}
-	case "tts":
-		text := ""
-		for _, key := range []string{"text", "input"} {
-			if v := strings.TrimSpace(gjson.GetBytes(reqBody, key).String()); v != "" {
-				text = v
-				break
-			}
-		}
-		return DeepseekToolsUsage{
-			Kind:  DeepseekToolsUsageTTSChars,
-			Count: float64(countTTSBillableChars(text)),
-		}
 	default:
-		// files_* 不计费。
 		return DeepseekToolsUsage{}
 	}
+
+	if !gjson.ValidBytes(respBody) || gjson.GetBytes(respBody, "error").Type != gjson.Null {
+		return DeepseekToolsUsage{}
+	}
+	units := 0
+	switch endpoint {
+	case "search":
+		if results := gjson.GetBytes(respBody, "results"); results.IsArray() && results.Get("0").Exists() {
+			units = 1
+		}
+	case "fetch":
+		if content := gjson.GetBytes(respBody, "content"); content.Type == gjson.String && strings.TrimSpace(content.Str) != "" {
+			units = 1
+		}
+	case "ocr":
+		object := gjson.GetBytes(respBody, "object")
+		if object.Exists() && object.String() != "ocr.result" {
+			return DeepseekToolsUsage{}
+		}
+		if !object.Exists() && !gjson.GetBytes(respBody, "pages").IsArray() {
+			return DeepseekToolsUsage{}
+		}
+		if pages := gjson.GetBytes(respBody, "page_count"); pages.Exists() {
+			if pages.Type == gjson.Number && pages.Float() == float64(pages.Int()) {
+				units = int(pages.Int())
+			}
+		} else if pages := gjson.GetBytes(respBody, "pages"); pages.IsArray() {
+			units = int(pages.Get("#").Int())
+		}
+	case "asr":
+		if ms := gjson.GetBytes(respBody, "duration_ms"); ms.Type == gjson.Number {
+			units = int(math.Ceil(ms.Float() / 1000))
+		}
+	}
+	return DeepseekToolsUsage{Endpoint: endpoint, Units: max(0, units)}
 }
 
-// countTTSBillableChars 按 DeepSeek TTS 官方计费规则统计字符数：
-// 汉字等全宽字符算 2，其余字符算 1。
 func countTTSBillableChars(text string) int {
 	count := 0
 	for _, r := range text {
-		if isDeepseekWideRune(r) {
-			count += 2
-		} else {
+		count++
+		if unicode.Is(unicode.Han, r) {
 			count++
 		}
 	}
 	return count
-}
-
-// isDeepseekWideRune 判断是否为全宽字符（CJK 表意文字、假名、谚文、
-// 全角符号等），这类字符在 TTS 计费中算 2 个字符。
-func isDeepseekWideRune(r rune) bool {
-	switch {
-	case r >= 0x1100 && r <= 0x115F, // Hangul Jamo
-		r >= 0x2E80 && r <= 0x303F,   // CJK 部首、康熙部首、CJK 符号与标点
-		r >= 0x3040 && r <= 0x9FFF,   // 假名、CJK 统一表意文字
-		r >= 0xA000 && r <= 0xA4CF,   // 彝文
-		r >= 0xAC00 && r <= 0xD7A3,   // Hangul 音节
-		r >= 0xF900 && r <= 0xFAFF,   // CJK 兼容表意文字
-		r >= 0xFE30 && r <= 0xFE4F,   // CJK 兼容形式
-		r >= 0xFF00 && r <= 0xFF60,   // 全角 ASCII 与标点
-		r >= 0xFFE0 && r <= 0xFFE6,   // 全角符号
-		r >= 0x20000 && r <= 0x2FFFD, // CJK 扩展 B-F
-		r >= 0x30000 && r <= 0x3FFFD: // CJK 扩展 G-
-		return true
-	default:
-		return false
-	}
 }
 
 // deepseekFilesBetaHeader 是官方 Anthropic 兼容 Files API 的 beta 标志。

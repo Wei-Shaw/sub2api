@@ -14,6 +14,7 @@ import (
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
 
@@ -31,83 +32,23 @@ func (h *OpenAIGatewayHandler) bindDeepseekFileReferences(c *gin.Context, apiKey
 	return true
 }
 
-// deepseekToolsAudioMode 把 service 层提取的计费量种类映射到
-// BillingService.CalculateAudioCost 的 mode。
-func deepseekToolsAudioMode(kind string) string {
-	switch kind {
-	case service.DeepseekToolsUsageOCRPages:
-		return "deepseek_ocr"
-	case service.DeepseekToolsUsageASRSeconds:
-		return "deepseek_asr"
-	case service.DeepseekToolsUsageTTSChars:
-		return "deepseek_tts"
-	default:
-		return ""
-	}
-}
-
-// 在途预留的保守估值常量（真实用量上游成功后才落账，预留只防透支）：
-// OCR 按 ~10 页文档、ASR 按 ~10 分钟单段音频、TTS 按 ~2000 计费字符
-// （全宽字符算 2）估算。
-const (
-	deepseekToolsInflightOCRPages   = 10.0
-	deepseekToolsInflightASRSeconds = 600.0
-	deepseekToolsInflightTTSChars   = 2000.0
-)
-
-// deepseekToolsInflightEstimate 返回在途预留估算输入：
-// search/fetch 按次（PerRequest）、ocr/asr/tts 按音频类（Audio）保守估值；
-// files_* 是零成本辅助端点，不预留。
+// Only the five standalone tools reserve balance. Files, including opt-in
+// document parsing, have no gateway billing units.
 func deepseekToolsInflightEstimate(endpoint string) service.InflightEstimateRequest {
+	var units int
 	switch endpoint {
 	case "search", "fetch":
-		return service.InflightEstimateRequest{
-			Model:       "deepseek-tools-" + endpoint,
-			Kind:        service.InflightEstimatePerRequest,
-			SearchCalls: 1,
-		}
+		units = 1
 	case "ocr":
-		return service.InflightEstimateRequest{
-			Model: "deepseek-tools-ocr", Kind: service.InflightEstimateAudio,
-			AudioMode: "deepseek_ocr", AudioUnits: deepseekToolsInflightOCRPages,
-		}
+		units = 10 // pages
 	case "asr":
-		return service.InflightEstimateRequest{
-			Model: "deepseek-tools-asr", Kind: service.InflightEstimateAudio,
-			AudioMode: "deepseek_asr", AudioUnits: deepseekToolsInflightASRSeconds,
-		}
+		units = 600 // seconds
 	case "tts":
-		return service.InflightEstimateRequest{
-			Model: "deepseek-tools-tts", Kind: service.InflightEstimateAudio,
-			AudioMode: "deepseek_tts", AudioUnits: deepseekToolsInflightTTSChars,
-		}
+		units = 2000 // billing characters
 	default:
-		// files_create/files_list/files_get/files_delete：零成本，不预留。
 		return service.InflightEstimateRequest{}
 	}
-}
-
-// deepseekToolsBillingResult 把 service 提取的计费量折算成 usage 落账回执。
-// usage.Kind 为空（files_* 或上游失败）返回 nil，不产生任何计费。
-func deepseekToolsBillingResult(endpoint string, usage service.DeepseekToolsUsage, requestID string) *service.OpenAIForwardResult {
-	if usage.Kind == "" {
-		return nil
-	}
-	result := &service.OpenAIForwardResult{
-		RequestID: requestID,
-		Model:     "deepseek-tools-" + endpoint,
-	}
-	if usage.Kind == service.DeepseekToolsUsagePerRequest {
-		// search/fetch 按次：复用 SearchCount → CalculateSearchCost 通道
-		//（默认 ¥5/千次口径，分组 search_price_per_1k 可覆盖）。
-		result.SearchCount = int(usage.Count)
-		return result
-	}
-	if mode := deepseekToolsAudioMode(usage.Kind); mode != "" {
-		result.AudioUsage = &service.AudioUsage{Mode: mode, DurationOrUnits: usage.Count}
-		return result
-	}
-	return nil
+	return service.InflightEstimateRequest{DeepseekTool: &service.DeepseekToolsUsage{Endpoint: endpoint, Units: units}}
 }
 
 // deepseekToolsEndpointHasPrompt 报告端点请求体是否携带会被上游当作模型输入的
@@ -162,7 +103,7 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 		return
 	}
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
-	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
+	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.PlatformDeepseek); err != nil {
 		status, code, message, retryAfter := billingErrorDetails(err)
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
@@ -223,16 +164,18 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 		}
 	}
 	// 余额模式在途预留（与计费同口径估算；计费任务扣减余额缓存后才释放）。
-	inflightDone, inflightErr := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, deepseekToolsInflightEstimate(endpoint))
-	if inflightErr != nil {
-		status, code, message, retryAfter := billingErrorDetails(inflightErr)
-		if retryAfter > 0 {
-			c.Header("Retry-After", strconv.Itoa(retryAfter))
+	if estimate := deepseekToolsInflightEstimate(endpoint); estimate.DeepseekTool != nil {
+		inflightDone, inflightErr := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, estimate)
+		if inflightErr != nil {
+			status, code, message, retryAfter := billingErrorDetails(inflightErr)
+			if retryAfter > 0 {
+				c.Header("Retry-After", strconv.Itoa(retryAfter))
+			}
+			write(c, status, code, message)
+			return
 		}
-		write(c, status, code, message)
-		return
+		defer inflightDone()
 	}
-	defer inflightDone()
 
 	ctx := request.SchedulingContext(c.Request.Context())
 	reqLog := requestLogger(c, "handler.openai_gateway.deepseek_tools", zap.String("endpoint", endpoint))
@@ -293,7 +236,7 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 			return h.gatewayService.ForwardDeepseekToolsRequest(ctx, c, account, request)
 		}()
 		if forwardErr == nil {
-			h.recordDeepseekToolsUsage(c, apiKey, account, subscription, endpoint, body, result)
+			h.recordDeepseekToolsUsage(c, apiKey, account, subscription, body, result)
 			return
 		}
 		// 上游 HTTP 4xx/5xx 已由 service 透传给客户端，不 failover；只有网络层
@@ -319,36 +262,28 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 	}
 }
 
-// recordDeepseekToolsUsage 对成功调用落账：search/fetch 走 SearchCount（按次）、
-// ocr/asr/tts 走 AudioUsage（deepseek_ocr/deepseek_asr/deepseek_tts 默认价）；
-// files_* 辅助端点零成本，不记 usage log。
 func (h *OpenAIGatewayHandler) recordDeepseekToolsUsage(
 	c *gin.Context,
 	apiKey *service.APIKey,
 	account *service.Account,
 	subscription *service.UserSubscription,
-	endpoint string,
 	body []byte,
 	result *service.DeepseekToolsForwardResult,
 ) {
-	if h == nil || c == nil || apiKey == nil || account == nil || result == nil {
+	if h == nil || c == nil || apiKey == nil || account == nil || result == nil || result.Usage.Units <= 0 {
 		return
 	}
 	payloadHash := service.HashUsageRequestPayload(body)
-	if payloadHash == "" {
-		payloadHash = service.HashUsageRequestPayload([]byte(endpoint))
-	}
-	// files_*：零成本辅助端点（usage.Kind 为空），不落账。
-	billingResult := deepseekToolsBillingResult(endpoint, result.Usage, service.StableDeepseekToolsBillingRequestID(endpoint, payloadHash))
-	if billingResult == nil {
-		return
+	// One ID per invocation, retained if the resulting billing task is retried.
+	billingResult := &service.OpenAIForwardResult{
+		RequestID: "deepseek_tools:" + uuid.NewString(), Model: result.Usage.Model(),
+		DeepseekTool: &result.Usage, UpstreamHeaders: result.UpstreamHeaders,
 	}
 	userAgent := c.GetHeader("User-Agent")
 	clientIP := ip.GetClientIP(c)
 	sessionID := service.ExtractClientSessionID(c)
 	inboundEndpoint := GetInboundEndpoint(c)
 	upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
-	quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
 	channelUsageFields := clientRequestedUsageFields(c, service.ChannelMappingResult{}, billingResult.Model, "")
 	h.submitMandatoryUsageRecordTask(c.Request.Context(), func(ctx context.Context) {
 		if err := h.gatewayService.RecordUsage(ctx, &service.OpenAIRecordUsageInput{
@@ -363,7 +298,7 @@ func (h *OpenAIGatewayHandler) recordDeepseekToolsUsage(
 			IPAddress:          clientIP,
 			RequestPayloadHash: payloadHash,
 			APIKeyService:      h.apiKeyService,
-			QuotaPlatform:      quotaPlatform,
+			QuotaPlatform:      service.PlatformDeepseek,
 			SessionID:          sessionID,
 			ChannelUsageFields: channelUsageFields,
 		}); err != nil {
@@ -372,7 +307,7 @@ func (h *OpenAIGatewayHandler) recordDeepseekToolsUsage(
 				zap.Int64("user_id", apiKey.User.ID),
 				zap.Int64("api_key_id", apiKey.ID),
 				zap.Any("group_id", apiKey.GroupID),
-				zap.String("endpoint", endpoint),
+				zap.String("endpoint", result.Usage.Endpoint),
 				zap.Int64("account_id", account.ID),
 			).Error("deepseek_tools.record_usage_failed", zap.Error(err))
 		}

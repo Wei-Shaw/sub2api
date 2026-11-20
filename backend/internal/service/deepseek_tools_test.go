@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
@@ -74,7 +75,7 @@ func TestForwardDeepseekToolsRequest_SearchPassthrough(t *testing.T) {
 		gotBody, _ = io.ReadAll(r.Body)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(`{"result":[{"title":"doc"}]}`))
+		_, _ = w.Write([]byte(`{"results":[{"title":"doc"}]}`))
 	})
 
 	body := []byte(`{"query":"deepseek docs"}`)
@@ -86,11 +87,10 @@ func TestForwardDeepseekToolsRequest_SearchPassthrough(t *testing.T) {
 	require.Equal(t, http.MethodPost, gotMethod)
 	require.Equal(t, "/v1/tools/search", gotPath)
 	require.Equal(t, body, gotBody)
-	require.Equal(t, `{"result":[{"title":"doc"}]}`, rec.Body.String())
+	require.Equal(t, `{"results":[{"title":"doc"}]}`, rec.Body.String())
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
-	require.Equal(t, DeepseekToolsUsagePerRequest, result.Usage.Kind)
-	require.InDelta(t, 1, result.Usage.Count, 1e-9)
+	require.Equal(t, DeepseekToolsUsage{Endpoint: "search", Units: 1}, result.Usage)
 }
 
 func TestForwardDeepseekToolsRequest_MultipartBoundaryPreserved(t *testing.T) {
@@ -112,8 +112,7 @@ func TestForwardDeepseekToolsRequest_MultipartBoundaryPreserved(t *testing.T) {
 	require.Equal(t, multipartType, gotContentType, "boundary must reach upstream intact")
 	require.Equal(t, rawBody, string(gotBody))
 	// 页数以 pages 数组长度为准，usage 仅参考。
-	require.Equal(t, DeepseekToolsUsageOCRPages, result.Usage.Kind)
-	require.InDelta(t, 3, result.Usage.Count, 1e-9)
+	require.Equal(t, DeepseekToolsUsage{Endpoint: "ocr", Units: 3}, result.Usage)
 }
 
 func TestForwardDeepseekToolsRequest_OwnedGetDelete(t *testing.T) {
@@ -162,6 +161,7 @@ func TestForwardDeepseekToolsRequest_OwnedGetDelete(t *testing.T) {
 			result, err := forwardDeepseekToolsTest(svc, c, account, 1, endpoint, nil, "")
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, result.StatusCode)
+			require.Zero(t, result.Usage.Units)
 			require.Equal(t, method+" "+path, paths[count])
 		}
 		require.Empty(t, cache.files[1])
@@ -184,23 +184,20 @@ func TestForwardDeepseekToolsRequest_TTSStreamsBinary(t *testing.T) {
 	require.Equal(t, audio, rec.Body.Bytes(), "streamed audio bytes must match upstream")
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "audio/wav", rec.Header().Get("Content-Type"))
-	require.Equal(t, DeepseekToolsUsageTTSChars, result.Usage.Kind)
-	// 你好 = 2 汉字 × 2 + 空格 1 + world 5 = 10
-	require.InDelta(t, 10, result.Usage.Count, 1e-9)
+	require.Equal(t, DeepseekToolsUsage{Endpoint: "tts", Units: 10}, result.Usage)
 }
 
 func TestForwardDeepseekToolsRequest_ASRDurationToSeconds(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"text":"hi","duration_ms":9500}`))
+		_, _ = w.Write([]byte(`{"text":"hi","duration_ms":3200}`))
 	})
 
 	c, _ := newDeepseekToolsTestContext(http.MethodPost, "/v1/tools/asr", []byte(`{}`))
 	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{handler: handler}}
 	result, err := forwardDeepseekToolsTest(svc, c, newDeepseekToolsTestAccount("https://relay.test"), 0, "asr", []byte(`{}`), "application/json")
 	require.NoError(t, err)
-	require.Equal(t, DeepseekToolsUsageASRSeconds, result.Usage.Kind)
-	require.InDelta(t, 9.5, result.Usage.Count, 1e-9)
+	require.Equal(t, DeepseekToolsUsage{Endpoint: "asr", Units: 4}, result.Usage)
 }
 
 func TestForwardDeepseekToolsRequest_UpstreamErrorPassthroughZeroUsage(t *testing.T) {
@@ -218,8 +215,7 @@ func TestForwardDeepseekToolsRequest_UpstreamErrorPassthroughZeroUsage(t *testin
 	require.Equal(t, http.StatusBadRequest, result.StatusCode)
 	require.Equal(t, `{"error":{"message":"bad audio"}}`, rec.Body.String())
 	require.Equal(t, http.StatusBadRequest, rec.Code)
-	require.Empty(t, result.Usage.Kind, "billing must stay zero on upstream error")
-	require.InDelta(t, 0, result.Usage.Count, 1e-9)
+	require.Zero(t, result.Usage)
 }
 
 func TestForwardDeepseekToolsRequest_RejectsBadInput(t *testing.T) {
@@ -237,18 +233,155 @@ func TestForwardDeepseekToolsRequest_RejectsBadInput(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestDeepseekToolsBillableUnits(t *testing.T) {
+	for _, tc := range []struct {
+		name, endpoint string
+		status         int
+		request, reply string
+		units          int
+	}{
+		{"search counts a call", "search", 200, "", `{"results":[{},{}]}`, 1},
+		{"empty results", "search", 200, "", `{"results":[]}`, 0},
+		{"missing results", "search", 200, "", `{}`, 0},
+		{"non-array results", "search", 200, "", `{"results":{"0":{},"#":1}}`, 0},
+		{"incomplete result", "search", 200, "", `{"results":[{}]`, 0},
+		{"accepted search", "search", 202, "", `{"results":[{}]}`, 0},
+		{"fetch page", "fetch", 200, "", `{"content":" text "}`, 1},
+		{"fetch title only", "fetch", 200, "", `{"title":"Title"}`, 0},
+		{"fetch empty page", "fetch", 200, "", `{"content":" \n "}`, 0},
+		{"non-text content", "fetch", 200, "", `{"content":{}}`, 0},
+		{"partial page", "fetch", 206, "", `{"content":"text"}`, 0},
+		{"OCR result", "ocr", 200, "", "\n" + `{"object":"ocr.result","page_count":3}`, 3},
+		{"OCR pages fallback", "ocr", 200, "", `{"pages":[{},{}]}`, 2},
+		{"OCR empty result", "ocr", 200, "", `{"object":"ocr.result","pages":[]}`, 0},
+		{"OCR count is authoritative", "ocr", 200, "", `{"object":"ocr.result","page_count":0,"pages":[{}]}`, 0},
+		{"OCR error after keepalive", "ocr", 200, "", "\n\n" + `{"error":{"code":"gateway_timeout_error"},"page_count":5,"pages":[{}]}`, 0},
+		{"wrong OCR object", "ocr", 200, "", `{"object":"file","page_count":3}`, 0},
+		{"unrecognized envelope", "ocr", 200, "", `{"status":"failed","page_count":3}`, 0},
+		{"negative OCR pages", "ocr", 200, "", `{"object":"ocr.result","page_count":-1}`, 0},
+		{"accepted OCR", "ocr", 202, "", `{"object":"ocr.result","page_count":3}`, 0},
+		{"fraction of a second", "asr", 200, "", `{"duration_ms":1}`, 1},
+		{"whole seconds", "asr", 200, "", `{"duration_ms":3000}`, 3},
+		{"rounded seconds", "asr", 200, "", `{"duration_ms":3200}`, 4},
+		{"zero duration", "asr", 200, "", `{"duration_ms":0}`, 0},
+		{"missing duration", "asr", 200, "", `{}`, 0},
+		{"redirect with duration", "asr", 307, "", `{"duration_ms":1000}`, 0},
+		{"TTS sample", "tts", 200, `{"text":"你好，世界。Hello DeepSeek"}`, "", 24},
+		{"TTS preserves whitespace", "tts", 200, `{"text":" \t你\n "}`, "", 6},
+		{"TTS whitespace only", "tts", 200, `{"text":"  "}`, "", 2},
+		{"TTS empty", "tts", 200, `{"text":""}`, "", 0},
+		{"TTS redirect", "tts", 302, `{"text":"hi"}`, "", 0},
+		{"TTS no content", "tts", 204, `{"text":"hi"}`, "", 0},
+		{"TTS upstream error", "tts", 503, `{"text":"hi"}`, "", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			usage := extractDeepseekToolsUsage(tc.endpoint, []byte(tc.request), []byte(tc.reply), tc.status)
+			require.Equal(t, tc.units, usage.Units)
+			if tc.units > 0 {
+				require.Equal(t, tc.endpoint, usage.Endpoint)
+			}
+		})
+	}
+}
+
 func TestCountTTSBillableChars(t *testing.T) {
-	require.Equal(t, 0, countTTSBillableChars(""))
-	// ASCII 算 1。
-	require.Equal(t, 5, countTTSBillableChars("hello"))
-	// 汉字算 2。
-	require.Equal(t, 4, countTTSBillableChars("你好"))
-	// 假名算 2。
-	require.Equal(t, 10, countTTSBillableChars("こんにちは"))
-	// 全角标点算 2。
-	require.Equal(t, 4, countTTSBillableChars("。！"))
-	// 混合：你好 = 4，" hi" = 3。
-	require.Equal(t, 7, countTTSBillableChars("你好 hi"))
+	for text, want := range map[string]int{
+		"": 0, "A9 ": 3, "你好": 4, "𠀀": 2, "こんにちは": 5, "한글": 2,
+		"。！，": 3, "Ａ１": 2, "🙂": 1, "你好，世界。Hello DeepSeek": 24,
+	} {
+		require.Equal(t, want, countTTSBillableChars(text), "%q", text)
+	}
+}
+
+func TestDeepseekToolsPricing(t *testing.T) {
+	key := &APIKey{User: &User{ID: 1}, GroupID: groupIDPtr(), Group: &Group{
+		ID: *groupIDPtr(), Platform: PlatformDeepseek, RateMultiplier: 2, SearchPricePer1k: testPtrFloat64(999),
+	}}
+	billing := newTestBillingServiceForResolver()
+	for _, tc := range []struct {
+		endpoint       string
+		units          int
+		list, override float64
+	}{
+		{"search", 1, 0.75 / 1000, 0.03},
+		{"fetch", 1, 0.75 / 1000, 0.04},
+		{"ocr", 3, 0.225 / 1000, 0.05},
+		{"asr", 4, 0.116 / 3600, 0.06},
+		{"tts", 24, 0.45 / 10000, 0.07},
+	} {
+		u := DeepseekToolsUsage{Endpoint: tc.endpoint, Units: tc.units}
+		for _, pricing := range []struct {
+			name    string
+			channel *float64
+			units   int
+			want    float64
+		}{
+			{"USD list", nil, u.Units, float64(u.Units) * tc.list},
+			{"channel", &tc.override, u.Units, float64(u.Units) * tc.override},
+			{"free channel", testPtrFloat64(0), u.Units, 0},
+			{"zero units at list", nil, 0, 0},
+			{"zero units with channel", &tc.override, 0, 0},
+		} {
+			t.Run(tc.endpoint+"/"+pricing.name, func(t *testing.T) {
+				usage := DeepseekToolsUsage{Endpoint: tc.endpoint, Units: pricing.units}
+				svc := &OpenAIGatewayService{billingService: billing}
+				if pricing.channel != nil {
+					svc.resolver = newResolverWithChannelForPlatform(t, PlatformDeepseek, []ChannelModelPricing{{
+						Platform: PlatformDeepseek, Models: []string{usage.Model()},
+						BillingMode: BillingModePerRequest, PerRequestPrice: pricing.channel,
+					}})
+				}
+				result := &OpenAIForwardResult{Model: usage.Model(), DeepseekTool: &usage}
+				cost, err := svc.calculateOpenAIRecordUsageCost(t.Context(), result, key, []string{result.Model},
+					2, 2, 2, 2, UsageTokens{}, "", nil, false, time.Time{})
+				require.NoError(t, err)
+				require.Equal(t, string(BillingModePerRequest), cost.BillingMode)
+				require.InDelta(t, pricing.want, cost.TotalCost, 1e-12)
+				require.InDelta(t, 2*pricing.want, cost.ActualCost, 1e-12)
+				amount, priced := svc.EstimateInflightReservation(t.Context(), key, InflightEstimateRequest{DeepseekTool: &usage})
+				require.True(t, priced)
+				require.InDelta(t, cost.ActualCost, amount, 1e-12)
+			})
+		}
+	}
+}
+
+func TestGrokZeroTokenSearchUsesModelPricing(t *testing.T) {
+	key := &APIKey{GroupID: groupIDPtr(), Group: &Group{ID: *groupIDPtr(), Platform: PlatformGrok}}
+	result := &OpenAIForwardResult{Model: "grok-custom-search", SearchCount: 2}
+	svc := &OpenAIGatewayService{billingService: newTestBillingServiceForResolver()}
+	charge := func() (*CostBreakdown, error) {
+		return svc.calculateOpenAIRecordUsageCost(t.Context(), result, key, []string{result.Model},
+			1, 1, 1, 1, UsageTokens{}, "", nil, false, time.Time{})
+	}
+	svc.resolver = newResolverWithChannelForPlatform(t, PlatformGrok, []ChannelModelPricing{{
+		Platform: PlatformGrok, Models: []string{result.Model}, BillingMode: BillingModePerRequest, PerRequestPrice: testPtrFloat64(0.25),
+	}})
+	cost, err := charge()
+	require.NoError(t, err)
+	require.InDelta(t, 0.25+2*5.0/1000, cost.ActualCost, 1e-12)
+	result.Model = "unknown-unpriced-model"
+	_, err = charge()
+	require.ErrorIs(t, err, ErrModelPricingUnavailable)
+}
+
+func TestDeepseekToolsCompositeChannelPricing(t *testing.T) {
+	usage := DeepseekToolsUsage{Endpoint: "tts", Units: 24}
+	model := usage.Model()
+	resolver := newResolverWithChannelForPlatform(t, PlatformComposite, []ChannelModelPricing{
+		{Platform: PlatformOpenAI, Models: []string{model}, BillingMode: BillingModePerRequest, PerRequestPrice: testPtrFloat64(1)},
+		{Platform: PlatformDeepseek, Models: []string{model}, BillingMode: BillingModePerRequest, PerRequestPrice: testPtrFloat64(0.002)},
+	})
+	key := &APIKey{User: &User{ID: 1}, GroupID: groupIDPtr(), Group: &Group{ID: *groupIDPtr(), Platform: PlatformComposite, RateMultiplier: 1}}
+	gateway := &OpenAIGatewayService{billingService: resolver.billingService, resolver: resolver}
+	result := &OpenAIForwardResult{Model: model, DeepseekTool: &usage}
+	cost, err := gateway.calculateOpenAIRecordUsageCost(t.Context(), result, key, []string{model}, 1, 1, 1, 1,
+		UsageTokens{}, "", nil, false, time.Time{})
+	require.NoError(t, err)
+	require.InDelta(t, 0.048, cost.ActualCost, 1e-12)
+	estimate, priced := gateway.EstimateInflightReservation(t.Context(), key, InflightEstimateRequest{DeepseekTool: &usage})
+	require.True(t, priced)
+	require.InDelta(t, cost.ActualCost, estimate, 1e-12)
 }
 
 func newDeepseekToolsAnthropicFilesAccount(baseURL string) *Account {
@@ -299,7 +432,7 @@ func TestForwardDeepseekToolsRequest_AnthropicFilesPassthrough(t *testing.T) {
 	require.Equal(t, "Bearer sk-dstest", gotAuth)
 	require.Equal(t, body, gotBody)
 	require.Equal(t, `{"id":"file-api-1","type":"file","size_bytes":70,"created_at":"2026-11-17T04:20:28.705+00:00","filename":"a.png","mime_type":"image/png"}`, rec.Body.String(), "Anthropic shaped response must pass through unchanged")
-	require.Empty(t, result.Usage.Kind, "files endpoints are not billed")
+	require.Zero(t, result.Usage)
 
 	require.Zero(t, writtenBytesAtBind)
 	file := cache.files[7]["file-api-1"]

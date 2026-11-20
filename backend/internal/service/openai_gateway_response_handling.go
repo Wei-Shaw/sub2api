@@ -1636,19 +1636,6 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 		value.Get("input_tokens_details.image_tokens"),
 		value.Get("prompt_tokens_details.image_tokens"),
 	)
-	// DeepSeek usage.server_tool_use：tool_search / tool_fetch / tool_image_search
-	// 为按次计费计数（各 ¥5/千次，复用 SearchCount 的 CalculateSearchCost 通道）；
-	// web_search_requests / web_fetch_requests 仅展示不计费；全为 0 时上游省略
-	// 整个字段，保持零值即可。审核 token 明细 safety_tokens 已含在输出 token 中，
-	// 仅保留展示，不重复计费。
-	serverToolUseCalls := 0
-	if stu := value.Get("server_tool_use"); stu.Exists() {
-		serverToolUseCalls = int(stu.Get("tool_search").Int() + stu.Get("tool_fetch").Int() + stu.Get("tool_image_search").Int())
-	}
-	safetyTokens := max(int(firstPositiveGJSONInt(
-		value.Get("output_tokens_details.safety_tokens"),
-		value.Get("completion_tokens_details.safety_tokens"),
-	)), 0)
 	return OpenAIUsage{
 		InputTokens:                 int(inputTokens),
 		ImageInputTokens:            imageInputTokens,
@@ -1658,8 +1645,6 @@ func openAIUsageFromGJSON(value gjson.Result) (OpenAIUsage, bool) {
 		CacheCreation12hInputTokens: cache12h,
 		CacheReadInputTokens:        cacheReadTokens,
 		ImageOutputTokens:           int(imageOutputTokens),
-		ServerToolUseCalls:          serverToolUseCalls,
-		SafetyTokens:                safetyTokens,
 	}, true
 }
 

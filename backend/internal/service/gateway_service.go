@@ -685,16 +685,6 @@ type ClaudeUsage struct {
 	cacheCreationInputTokensFromDetails bool
 	promptTotalTokens                   int
 	promptTotalPresent                  bool
-
-	// ServerToolUseCalls 是 DeepSeek usage.server_tool_use 的按次计费工具调用数
-	// （tool_search + tool_fetch + tool_image_search 合计，各 ¥5/千次；
-	// web_search_requests / web_fetch_requests 仅展示不计费；全为 0 时上游省略
-	// 整个字段）。复用 SearchCount 的按次计费通道（CalculateSearchCost）。
-	ServerToolUseCalls int
-	// SafetyTokens 是审核产生的 token 明细（output_tokens_details.safety_tokens）。
-	// DeepSeek 口径：审核 token 按输出 token 计费且已含在 OutputTokens 中，
-	// 这里仅保留展示，不重复计费。
-	SafetyTokens int
 }
 
 // ForwardResult 转发结果
