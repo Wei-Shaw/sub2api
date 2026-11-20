@@ -242,3 +242,57 @@ func TestGeminiCompatForward_ClientDisconnectBeforeFinishBillsNoImage(t *testing
 	require.Zero(t, result.ImageCount)
 	require.Equal(t, 1290, result.Usage.OutputTokens)
 }
+
+func TestGeminiCompatForward_ClientDisconnectWithOnlyUsageStaysUnbilled(t *testing.T) {
+	reqBody := []byte(`{"model":"gemini-3-flash-preview","max_tokens":16,"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	for _, ending := range []struct{ name, json string }{
+		{"stop", `,"finishReason":"STOP"`},
+		{"other", `,"finishReason":"OTHER"`},
+		{"unfinished", ""},
+	} {
+		for _, usage := range []struct{ name, json string }{
+			{"input-and-output", `{"promptTokenCount":10,"candidatesTokenCount":5,"totalTokenCount":15}`},
+			{"input-only", `{"promptTokenCount":10,"totalTokenCount":10}`},
+		} {
+			t.Run(ending.name+"/"+usage.name, func(t *testing.T) {
+				sse := `data: {"candidates":[{"content":{"parts":[],"role":"model"}` + ending.json + `}],"usageMetadata":` + usage.json + "}\n\n"
+				svc, c, rec := newGeminiAbortingStreamService(t, "/v1/messages", reqBody, sse, true)
+
+				result, err := svc.Forward(context.Background(), c, geminiVertexAPIKeyTestAccount(""), reqBody)
+
+				require.ErrorIs(t, err, context.Canceled)
+				require.Nil(t, result, "usage metadata without deliverable content must not become a billable result")
+				require.False(t, c.Writer.Written(), "an empty aborted completion must not commit a response")
+				require.Empty(t, rec.Body.String())
+				require.Empty(t, c.Writer.Header().Get("Content-Type"))
+			})
+		}
+	}
+}
+
+func TestGeminiForwardAsChatCompletions_ClientDisconnectWithOnlyUsageStaysUnbilled(t *testing.T) {
+	reqBody := []byte(`{"model":"gemini-3-flash-preview","stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	for _, ending := range []struct{ name, json string }{
+		{"stop", `,"finishReason":"STOP"`},
+		{"other", `,"finishReason":"OTHER"`},
+		{"unfinished", ""},
+	} {
+		for _, usage := range []struct{ name, json string }{
+			{"input-and-output", `{"promptTokenCount":10,"candidatesTokenCount":5,"totalTokenCount":15}`},
+			{"input-only", `{"promptTokenCount":10,"totalTokenCount":10}`},
+		} {
+			t.Run(ending.name+"/"+usage.name, func(t *testing.T) {
+				sse := `data: {"candidates":[{"content":{"parts":[],"role":"model"}` + ending.json + `}],"usageMetadata":` + usage.json + "}\n\n"
+				svc, c, rec := newGeminiAbortingStreamService(t, "/v1/chat/completions", reqBody, sse, true)
+
+				result, err := svc.ForwardAsChatCompletions(context.Background(), c, geminiVertexAPIKeyTestAccount(""), reqBody)
+
+				require.ErrorIs(t, err, context.Canceled)
+				require.Nil(t, result, "usage metadata without deliverable content must not become a billable result")
+				require.False(t, c.Writer.Written(), "an empty aborted completion must not commit a response")
+				require.Empty(t, rec.Body.String())
+				require.Empty(t, c.Writer.Header().Get("Content-Type"))
+			})
+		}
+	}
+}
