@@ -29,6 +29,8 @@ export default {
     viewRelease: '查看发布',
     viewChangelog: '查看更新日志',
     refresh: '刷新',
+    managedMode: '由部署平台管理更新',
+    managedModeHint: '请通过 Docker 或托管平台更新容器镜像或部署源码。容器内替换二进制可能在重启后丢失或覆盖定制版本，因此不支持原地更新。回退也请通过同一部署平台完成。',
     sourceMode: '源码构建',
     sourceModeHint: '源码构建请使用 git pull 更新',
     updateNow: '立即更新',
