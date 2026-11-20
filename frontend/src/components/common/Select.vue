@@ -122,9 +122,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, onUnmounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import { useClickOutside } from '@/composables/useClickOutside'
+import { useEscapeKey } from '@/composables/useEscapeKey'
 
 const { t } = useI18n()
 
@@ -491,23 +493,34 @@ const scrollToFocused = () => {
   })
 }
 
-const handleClickOutside = (event: MouseEvent) => {
-  const target = event.target as HTMLElement
-  // Check if click is inside THIS specific instance's dropdown or trigger
-  const isInDropdown = !!target.closest(`.${instanceId}`)
-  const isInTrigger = containerRef.value?.contains(target)
+// 捕获阶段监听：BaseDialog 内容层的 @click.stop 会阻断冒泡，
+// 冒泡阶段的 document 监听在弹窗内永远收不到事件，下拉浮层关不掉。
+useClickOutside(
+  (event) => {
+    const target = event.target as HTMLElement | null
+    if (!target) return false
+    // Check if click is inside THIS specific instance's dropdown or trigger
+    const isInDropdown = !!target.closest(`.${instanceId}`)
+    const isInTrigger = !!containerRef.value?.contains(target)
+    return !isInDropdown && !isInTrigger
+  },
+  () => {
+    if (isOpen.value) isOpen.value = false
+  },
+  { enabled: () => isOpen.value },
+)
 
-  if (!isInDropdown && !isInTrigger && isOpen.value) {
+// 下拉展开时 Escape 优先收起下拉，并阻止事件冒泡到 BaseDialog
+//（否则会连整个弹窗一起关掉）。
+useEscapeKey(
+  () => {
     isOpen.value = false
-  }
-}
-
-onMounted(() => {
-  document.addEventListener('click', handleClickOutside)
-})
+    triggerRef.value?.focus()
+  },
+  { enabled: () => isOpen.value },
+)
 
 onUnmounted(() => {
-  document.removeEventListener('click', handleClickOutside)
   window.removeEventListener('scroll', updateTriggerRect, { capture: true })
   window.removeEventListener('resize', calculateDropdownPosition)
   if (remoteSearchTimer) {
