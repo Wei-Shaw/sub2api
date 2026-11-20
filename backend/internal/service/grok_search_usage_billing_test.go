@@ -27,6 +27,7 @@ const (
 	grokUsageDocumentDetails  = `{"document_search_calls":5}`
 	grokUsageUnrelatedDetails = `{"code_interpreter_calls":1,"file_search_calls":1,"mcp_calls":1,"x_posts_fetched":7,"x_users_fetched":2}`
 	grokFailedXSearchItemJSON = `{"type":"custom_tool_call","id":"ctc_4","call_id":"xs_999","name":"x_thread_fetch","input":"{}","status":"failed"}`
+	grokClientToolSearchJSON  = `{"type":"function_call","id":"fc_1","call_id":"call_client_search","name":"tool_search","arguments":"{}"}`
 )
 
 func grokUsageJSON(details string) string {
@@ -52,6 +53,7 @@ func grokUsageCases() []grokUsageCase {
 		{"all three fields", []string{grokXSearchItemJSON}, `{"web_search_calls":1,"x_search_calls":2,"document_search_calls":3}`, 6},
 		{"only unrelated classes: usage wins with zero", []string{grokXSearchItemJSON, grokASearchItemJSON}, grokUsageUnrelatedDetails, 0},
 		{"usage absent: items counted", []string{grokXSearchItemJSON, grokASearchItemJSON, grokClientToolJSON}, "", 2},
+		{"usage absent: client tool_search excluded", []string{grokXSearchItemJSON, grokASearchItemJSON, grokClientToolSearchJSON}, "", 2},
 		{"usage lower than items: failed call not billed", []string{grokXSearchItemJSON, grokFailedXSearchItemJSON}, `{"x_search_calls":1}`, 1},
 		{"usage zero, items present", []string{grokXSearchItemJSON}, `{"x_search_calls":0}`, 0},
 	}
