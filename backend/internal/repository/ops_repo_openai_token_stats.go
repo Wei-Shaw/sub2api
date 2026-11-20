@@ -39,12 +39,8 @@ WITH stats AS (
     ul.model AS model,
     COUNT(*)::bigint AS request_count,
     ROUND(
-      AVG(
-        CASE
-          WHEN ul.duration_ms > 0 AND ul.output_tokens > 0
-          THEN ul.output_tokens * 1000.0 / ul.duration_ms
-        END
-      )::numeric,
+      1000.0 * (SUM(ul.output_tokens) FILTER (WHERE ul.duration_ms > 0 AND ul.output_tokens > 0))
+      / (SUM(ul.duration_ms) FILTER (WHERE ul.duration_ms > 0 AND ul.output_tokens > 0)),
       2
     )::float8 AS avg_tokens_per_sec,
     ROUND(AVG(ul.first_token_ms)::numeric, 2)::float8 AS avg_first_token_ms,
