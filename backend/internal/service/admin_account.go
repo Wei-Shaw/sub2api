@@ -417,6 +417,7 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 	// Probe/session state is system-managed. New accounts always start with automatic refresh disabled.
 	delete(accountExtra, UpstreamBillingProbeEnabledExtraKey)
 	delete(accountExtra, UpstreamBillingRateSyncEnabledExtraKey)
+	delete(accountExtra, UpstreamModelPricingSyncExtraKey)
 	delete(accountExtra, UpstreamBillingProbeExtraKey)
 	delete(accountExtra, OllamaCloudUsageSessionExtraKey)
 	delete(accountExtra, OllamaCloudUsageAutoRefreshExtraKey)
@@ -668,6 +669,18 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	requestedProbeEnabledUpdate := input.ProbeEnabled
 	requestedRateSyncEnabledUpdate := input.RateSyncEnabled
 	if input.Extra != nil {
+		if requested, exists := normalizedExtra[UpstreamModelPricingSyncExtraKey]; exists {
+			enabled, ok := requested.(bool)
+			if !ok || (enabled && !SupportsUpstreamModelPricingSync(account)) {
+				return nil, infraerrors.BadRequest("INVALID_UPSTREAM_MODEL_PRICING_SYNC", "model pricing sync requires an API key pool account with one upstream billing endpoint")
+			}
+			if enabled {
+				if requestedProbeEnabledUpdate != nil && !*requestedProbeEnabledUpdate {
+					return nil, infraerrors.BadRequest("UPSTREAM_MODEL_PRICING_SYNC_REQUIRES_PROBE", "model pricing sync requires upstream billing probe")
+				}
+				requestedProbeEnabledUpdate = &enabled
+			}
+		}
 		requestedProbeEnabled, hasRequestedProbeEnabled := normalizedExtra[UpstreamBillingProbeEnabledExtraKey]
 		if hasRequestedProbeEnabled {
 			enabled, ok := requestedProbeEnabled.(bool)
@@ -937,6 +950,7 @@ func (s *adminServiceImpl) UpdateAccountExtra(ctx context.Context, id int64, upd
 	updates = stripOpenAIAutoResetCreditManagedExtra(updates, true)
 	delete(updates, UpstreamBillingProbeEnabledExtraKey)
 	delete(updates, UpstreamBillingRateSyncEnabledExtraKey)
+	delete(updates, UpstreamModelPricingSyncExtraKey)
 	delete(updates, UpstreamBillingProbeExtraKey)
 	delete(updates, OllamaCloudUsageSessionExtraKey)
 	delete(updates, OllamaCloudUsageAutoRefreshExtraKey)
@@ -966,6 +980,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	input.Extra = stripOpenAIAutoResetCreditManagedExtra(input.Extra, true)
 	delete(input.Extra, UpstreamBillingProbeEnabledExtraKey)
 	delete(input.Extra, UpstreamBillingRateSyncEnabledExtraKey)
+	delete(input.Extra, UpstreamModelPricingSyncExtraKey)
 	delete(input.Extra, UpstreamBillingProbeExtraKey)
 	delete(input.Extra, OllamaCloudUsageSessionExtraKey)
 	delete(input.Extra, OllamaCloudUsageAutoRefreshExtraKey)
@@ -1132,6 +1147,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 		repoUpdates.Extra[UpstreamBillingProbeEnabledExtraKey] = *input.ProbeEnabled
 		if !*input.ProbeEnabled {
 			repoUpdates.Extra[UpstreamBillingRateSyncEnabledExtraKey] = false
+			repoUpdates.Extra[UpstreamModelPricingSyncExtraKey] = false
 		}
 	}
 	if updatesUpstreamBillingProbeIdentity(input.Credentials) || input.ProxyID != nil {
@@ -1216,7 +1232,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 }
 
 func updatesUpstreamBillingProbeIdentity(credentials map[string]any) bool {
-	for _, key := range []string{"api_key", "base_url", credKeyHeaderOverrideEnabled, credKeyHeaderOverrides} {
+	for _, key := range []string{"api_key", "base_url", "api_base_urls", "api_protocol", "account_mode", credKeyHeaderOverrideEnabled, credKeyHeaderOverrides} {
 		if _, ok := credentials[key]; ok {
 			return true
 		}
@@ -1232,7 +1248,7 @@ func upstreamBillingProbeIdentity(account *Account) map[string]any {
 	if account.ProxyID != nil {
 		identity["proxy_id"] = *account.ProxyID
 	}
-	for _, key := range []string{"api_key", "base_url", credKeyHeaderOverrideEnabled, credKeyHeaderOverrides} {
+	for _, key := range []string{"api_key", "base_url", "api_base_urls", "api_protocol", "account_mode", credKeyHeaderOverrideEnabled, credKeyHeaderOverrides} {
 		if value, ok := account.Credentials[key]; ok {
 			identity[key] = value
 		}

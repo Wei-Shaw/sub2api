@@ -2,6 +2,8 @@
 // 后端按小数存 decimal(10,4)（0.30 = 30%），界面按百分比输入展示；
 // 固定 4 位小数精度，避免 0.3 * 100 = 30.000000000000004 之类的浮点尾数回显。
 
+import { isKnownPlatform } from "@/constants/platformCatalog";
+
 export const profitPercentToDecimal = (
   value: number | string | null | undefined,
 ): number => {
@@ -30,7 +32,7 @@ export type ProfitControlFormState = {
 };
 
 export const isProfitControlPlatform = (platform: string): boolean =>
-  ["openai", "anthropic", "gemini", "grok", "antigravity"].includes(platform);
+  isKnownPlatform(platform);
 
 // 提交前校验：margin/buffer 各自 ∈ [0,1)，且相加 < 1（否则阈值 <= 0，
 // 所有可核价账号都会被排除）。返回 null 表示通过，否则返回错误信息的 i18n key

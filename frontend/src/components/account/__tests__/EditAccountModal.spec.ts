@@ -1368,6 +1368,34 @@ describe('EditAccountModal', () => {
     expect(payload).not.toHaveProperty('rate_multiplier')
   })
 
+  it.each(['openai', 'deepseek', 'anthropic'])('allows %s pool model price sync independently from multiplier sync', async (platform) => {
+    const account = buildAccount()
+    account.platform = platform
+    if (platform === 'deepseek') account.credentials.api_protocol = 'chat_completions'
+    account.credentials.pool_mode = true
+    account.credentials.base_url = 'https://upstream.example/v1'
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const modelSync = wrapper.get('[data-testid="upstream-model-pricing-sync"]')
+    const probe = wrapper.get('[data-testid="upstream-billing-auto-probe"]')
+    const multiplierSync = wrapper.get('[data-testid="upstream-billing-rate-sync"]')
+    expect(modelSync.attributes('aria-checked')).toBe('false')
+
+    await modelSync.trigger('click')
+    expect(probe.attributes('aria-checked')).toBe('true')
+    expect(multiplierSync.attributes('aria-checked')).toBe('false')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    expect(payload?.upstream_billing_probe_enabled).toBe(true)
+    expect(payload?.upstream_billing_rate_sync_enabled).toBe(false)
+    expect(payload?.extra?.upstream_billing_model_pricing_sync_enabled).toBe(true)
+  })
+
   it('disabling probing also disables rate sync and restores manual rate editing', async () => {
     const account = buildAccount()
     account.extra = {

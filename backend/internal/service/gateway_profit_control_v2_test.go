@@ -4,10 +4,16 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/stretchr/testify/require"
 )
@@ -49,14 +55,8 @@ func gatewayProfitTestAccount(id int64, platform string, rate float64, groupID i
 	}
 }
 
-func TestGatewayProfitControlInstallsForFivePlatformsOnlyOnTokenRequests(t *testing.T) {
-	for _, platform := range []string{
-		PlatformOpenAI,
-		PlatformAnthropic,
-		PlatformGemini,
-		PlatformGrok,
-		PlatformAntigravity,
-	} {
+func TestGatewayProfitControlInstallsForConcretePlatformsOnlyOnTokenRequests(t *testing.T) {
+	for _, platform := range domain.ConcretePlatformIDs() {
 		t.Run(platform, func(t *testing.T) {
 			group := gatewayProfitTestGroup(101, platform)
 			groupID := group.ID
@@ -474,4 +474,81 @@ func (c *sentinelMissGatewayCache) GetSessionAccountID(ctx context.Context, grou
 		return id, nil
 	}
 	return 0, ErrStickySessionNotFound
+}
+
+func TestUpstreamModelPricingSharedGatewayChecksMarginAndRecordsUpstreamUsage(t *testing.T) {
+	const model, alias = "claude-sonnet-4", "client-model"
+	group := gatewayProfitTestGroup(701, PlatformAnthropic)
+	group.RateMultiplier = 1
+	group.ProfitMinMargin = 0.2
+	ctx := gatewayProfitTestContext(group)
+	at := GatewayTokenRequestPricingAtFromContext(ctx)
+	providerGroup := gatewayProfitTestGroup(702, PlatformAnthropic)
+	providerGroup.RateMultiplier = 0.4
+	pool := gatewayProfitTestAccount(703, PlatformAnthropic, 0.6, group.ID)
+	pool.Credentials = map[string]any{
+		"base_url": "https://relay.example/v1", "api_key": "fixture", "pool_mode": true,
+		"model_mapping": map[string]any{alias: model},
+	}
+	pool.Extra = map[string]any{
+		UpstreamBillingProbeEnabledExtraKey: true, UpstreamModelPricingSyncExtraKey: true, "quota_limit": 100.0,
+	}
+	provider := &GatewayService{
+		accountRepo:    upstreamPricingGroupAccounts{accounts: []Account{gatewayProfitTestAccount(704, PlatformAnthropic, 1, providerGroup.ID)}},
+		resolver:       newOpenAITokenImageChannelPricingResolverForTest(t, providerGroup.ID, model),
+		billingService: NewBillingService(&config.Config{}, nil),
+	}
+	catalog := provider.ResolveKeyModelPricing(ctx, providerGroup, []string{model}, at)
+	require.NotNil(t, catalog)
+	require.Contains(t, catalog.Models, model)
+	body, err := json.Marshal(map[string]any{
+		"object": "sub2api.key_billing", "schema_version": 1, "billing_scope": "token",
+		"group_rate_multiplier": 0.4, "resolved_rate_multiplier": 0.4, "effective_rate_multiplier": 0.4,
+		"peak_rate_enabled": false, "observed_at": at, "model_pricing": catalog,
+	})
+	require.NoError(t, err)
+	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{pool.ID: &pool}}
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(string(body)))}}}
+	probe := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+	probe.now = func() time.Time { return at }
+	usageLog := &openAIRecordUsageLogRepoStub{inserted: true}
+	usageBilling := &openAIRecordUsageBillingRepoStub{}
+	svc := newGatewayRecordUsageServiceWithBillingRepoForTest(usageLog, usageBilling, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+	svc.resolver = newOpenAITokenImageChannelPricingResolverForTest(t, group.ID, model)
+	priceCache, _ := svc.resolver.channelService.cache.Load().(*channelCache)
+	priceCache.pricingByGroupModel[channelModelKey{groupID: group.ID, model: model}].CacheReadPrice = f64p(0.2e-6)
+	ctx = WithGatewayUpstreamPricingRoute(ctx, alias, alias, ChannelMappingResult{}, false)
+	ctx = svc.withGatewayProfitControlGate(ctx, &group.ID)
+	normal := svc.withGatewayUpstreamPricingModel(ctx)
+	vetoed, reason := openAIProfitControlVetoReason(normal, &pool)
+	require.True(t, vetoed)
+	require.Equal(t, openAIProfitFilterReasonUpstreamPriceUnavailable, reason)
+
+	snapshot, err := probe.ProbeAccount(ctx, pool.ID)
+	require.NoError(t, err)
+	require.Equal(t, UpstreamBillingProbeStatusOK, snapshot.Status)
+	stored, err := repo.GetByID(ctx, pool.ID)
+	require.NoError(t, err)
+	vetoed, reason = openAIProfitControlVetoReason(normal, stored)
+	require.False(t, vetoed, "%s", reason)
+	forced := svc.withGatewayUpstreamPricingModel(WithForceCacheBilling(ctx))
+	vetoed, reason = openAIProfitControlVetoReason(forced, stored)
+	require.True(t, vetoed)
+	require.Equal(t, openAIProfitFilterReasonThreshold, reason)
+
+	// Without the admission gate, cache-billed input still costs the original upstream tariff.
+	err = svc.RecordUsage(ctx, &RecordUsageInput{
+		Result: &ForwardResult{RequestID: "synced-anthropic-prices", Model: alias, UpstreamModel: model, Usage: ClaudeUsage{InputTokens: 1000, OutputTokens: 500}},
+		APIKey: &APIKey{ID: 705, GroupID: &group.ID, Group: group}, User: &User{ID: 706}, Account: stored,
+		PricingAt: at, ForceCacheBilling: true,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, usageLog.lastLog)
+	require.NotNil(t, usageLog.lastLog.AccountStatsCost)
+	require.NotNil(t, usageLog.lastLog.AccountRateMultiplier)
+	require.InDelta(t, 1000*3e-6+500*15e-6, *usageLog.lastLog.AccountStatsCost, 1e-12)
+	require.InDelta(t, 0.4, *usageLog.lastLog.AccountRateMultiplier, 1e-12)
+	require.NotNil(t, usageBilling.lastCmd)
+	require.InDelta(t, (1000*3e-6+500*15e-6)*0.4, usageBilling.lastCmd.AccountQuotaCost, 1e-12)
+	require.InDelta(t, 1000*0.2e-6+500*15e-6, usageBilling.lastCmd.BalanceCost, 1e-12)
 }

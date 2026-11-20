@@ -86,18 +86,20 @@ func TestSchedulerMetadataAccountKeepsProArgonQuotaIsolation(t *testing.T) {
 
 func TestSchedulerMetadataAccountProjectsUpstreamBillingProbe(t *testing.T) {
 	lastError := strings.Repeat("upstream diagnostic ", 512)
+	prices := map[string]any{"example": map[string]any{"mode": "per_request"}}
 	probe := map[string]any{
 		"status": "ok",
 		"data": map[string]any{
-			"billing_scope":             "token",
-			"resolved_rate_multiplier":  0.03,
-			"peak_rate_enabled":         true,
-			"peak_start":                "09:00",
-			"peak_end":                  "18:00",
-			"peak_rate_multiplier":      2.0,
-			"timezone":                  "Asia/Shanghai",
-			"effective_rate_multiplier": 0.03,
-			"remote_diagnostic":         lastError,
+			"billing_scope":                     "token",
+			"resolved_rate_multiplier":          0.03,
+			"peak_rate_enabled":                 true,
+			"peak_start":                        "09:00",
+			"peak_end":                          "18:00",
+			"peak_rate_multiplier":              2.0,
+			"timezone":                          "Asia/Shanghai",
+			"effective_rate_multiplier":         0.03,
+			"remote_diagnostic":                 lastError,
+			service.UpstreamModelPricingDataKey: prices,
 		},
 		"received_at":   "2026-07-13T10:00:00Z",
 		"fresh_until":   "2026-07-13T11:00:00Z",
@@ -106,10 +108,13 @@ func TestSchedulerMetadataAccountProjectsUpstreamBillingProbe(t *testing.T) {
 		"last_error":    lastError,
 	}
 	account := service.Account{
-		ID: 42,
+		ID:          42,
+		Credentials: map[string]any{"pool_mode": true},
 		Extra: map[string]any{
-			"upstream_billing_probe": probe,
-			"unused_large_field":     "drop-me",
+			service.UpstreamBillingProbeEnabledExtraKey: true,
+			service.UpstreamModelPricingSyncExtraKey:    true,
+			"upstream_billing_probe":                    probe,
+			"unused_large_field":                        "drop-me",
 		},
 	}
 
@@ -127,6 +132,10 @@ func TestSchedulerMetadataAccountProjectsUpstreamBillingProbe(t *testing.T) {
 	require.NotContains(t, filtered, "last_error")
 	filteredData, ok := filtered["data"].(map[string]any)
 	require.True(t, ok)
+	require.Equal(t, true, metadata.Credentials["pool_mode"])
+	require.Equal(t, true, metadata.Extra[service.UpstreamBillingProbeEnabledExtraKey])
+	require.Equal(t, true, metadata.Extra[service.UpstreamModelPricingSyncExtraKey])
+	require.Equal(t, prices, filteredData[service.UpstreamModelPricingDataKey])
 	require.Equal(t, "token", filteredData["billing_scope"])
 	require.Equal(t, 0.03, filteredData["resolved_rate_multiplier"])
 	require.Equal(t, true, filteredData["peak_rate_enabled"])

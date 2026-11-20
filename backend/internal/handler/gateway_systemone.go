@@ -85,6 +85,7 @@ func (h *GatewayHandler) SystemOne(c *gin.Context) {
 	pricingCtx, pricingAt := service.WithGatewayTokenRequestPricing(c.Request.Context())
 	c.Request = c.Request.WithContext(pricingCtx)
 	channelMapping, _ := h.gatewayService.ResolveChannelMappingAndRestrict(c.Request.Context(), apiKey.GroupID, model)
+	c.Request = c.Request.WithContext(service.WithGatewayUpstreamPricingRoute(c.Request.Context(), clientRequestedModel(c, model), model, channelMapping, false))
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 
 	streamStarted := false
