@@ -70,6 +70,9 @@ type TestEvent struct {
 type AccountTestOptions struct {
 	ImageDataURL string
 	AudioDataURL string
+	// Conversation, when set, replaces the fixed probe prompt with a playground
+	// conversation on the protocols that can carry one.
+	Conversation *AccountTestConversation
 }
 
 func firstAccountTestOptions(opts []AccountTestOptions) AccountTestOptions {
@@ -363,6 +366,15 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	ctx := c.Request.Context()
 	testOpts := firstAccountTestOptions(opts)
 
+	if conversation := testOpts.Conversation; conversation != nil {
+		if err := conversation.Validate(); err != nil {
+			return s.sendErrorAndEnd(c, "Invalid conversation: "+err.Error())
+		}
+		bindAccountTestConversation(c, conversation)
+		// Probe paths without conversation support still get the latest message.
+		prompt = conversation.lastUserMessage()
+	}
+
 	// Get account
 	account, err := s.accountRepo.GetByID(ctx, accountID)
 	if err != nil {
@@ -564,6 +576,7 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create test payload")
 	}
+	applyAnthropicTestConversation(c, payload)
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event
@@ -642,6 +655,7 @@ func (s *AccountTestService) testClaudeVertexServiceAccountConnection(c *gin.Con
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create test payload")
 	}
+	applyAnthropicTestConversation(c, payload)
 	payloadBytes, _ := json.Marshal(payload)
 	vertexBody, err := buildVertexAnthropicRequestBody(payloadBytes)
 	if err != nil {
@@ -726,6 +740,7 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 		"max_tokens":  256,
 		"temperature": 1,
 	}
+	applyAnthropicTestConversation(c, bedrockPayload)
 	bedrockBody, _ := json.Marshal(bedrockPayload)
 
 	// Use non-streaming endpoint (response is standard Claude JSON)
@@ -891,6 +906,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 		upstreamTestModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
 	}
 	payload := createOpenAITestPayload(upstreamTestModelID, isOAuth)
+	applyResponsesTestConversation(c, payload, "developer", !isOAuth)
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event once. A task-invalid Agent Identity response may
@@ -2133,6 +2149,7 @@ func (s *AccountTestService) testOpenAIChatCompletionsConnection(
 	c.Writer.Flush()
 
 	payload := createOpenAIChatCompletionsTestPayload(testModelID, prompt)
+	applyChatCompletionsTestConversation(c, payload)
 	payloadBytes, _ := json.Marshal(payload)
 
 	s.sendEvent(c, TestEvent{Type: "test_start", Model: testModelID})
@@ -2418,7 +2435,7 @@ func (s *AccountTestService) testGeminiAccountConnection(c *gin.Context, account
 	c.Writer.Flush()
 
 	// Create test payload (Gemini format)
-	payload := createGeminiTestPayload(testModelID, prompt)
+	payload := applyGeminiTestConversation(c, testModelID, createGeminiTestPayload(testModelID, prompt))
 
 	// Build request based on account type
 	var req *http.Request
@@ -3287,6 +3304,11 @@ func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
 			if suppressCompletion, _ := suppress.(bool); suppressCompletion {
 				return
 			}
+		}
+		// The stream is open by now, so this is the one place every probe path
+		// passes where the playground can be told its conversation was not used.
+		if event.Success && accountTestConversationSkipped(c) {
+			s.sendEvent(c, TestEvent{Type: "status", Code: "conversation_not_applied", Text: AccountTestConversationNotAppliedNotice})
 		}
 	}
 	eventJSON, _ := json.Marshal(event)

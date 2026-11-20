@@ -549,6 +549,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/playground',
+    name: 'AdminPlayground',
+    component: () => import('@/views/admin/PlaygroundView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Playground',
+      titleKey: 'admin.playground.title',
+      descriptionKey: 'admin.playground.description'
+    }
+  },
+  {
     path: '/admin/plugins',
     name: 'AdminPlugins',
     component: () => import('@/views/admin/PluginsView.vue'),
