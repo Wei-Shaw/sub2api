@@ -76,4 +76,34 @@ describe('OpsErrorDetailModal', () => {
     expect(wrapper.findAll('pre')).toHaveLength(2)
     expect(wrapper.text()).not.toContain('admin.ops.errorDetail.payloads.upstream_detail')
   })
+
+  it('shows the requester alongside the account for a provider 400 in request details', async () => {
+    mocks.getRequestErrorDetail.mockResolvedValue({
+      id: 2,
+      created_at: '2026-11-20T00:00:00Z',
+      phase: 'upstream',
+      type: 'upstream_error',
+      error_owner: 'provider',
+      status_code: 400,
+      upstream_status_code: 400,
+      platform: 'openai',
+      account_name: 'test-provider-account',
+      user_id: 42,
+      user_email: 'requester@example.test'
+    })
+
+    const wrapper = shallowMount(OpsErrorDetailModal, {
+      props: { show: true, errorId: 2, errorType: 'request' },
+      global: {
+        stubs: {
+          BaseDialog: { template: '<div><slot /></div>' },
+          Icon: true
+        }
+      }
+    })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('test-provider-account')
+    expect(wrapper.text()).toContain('requester@example.test')
+  })
 })
