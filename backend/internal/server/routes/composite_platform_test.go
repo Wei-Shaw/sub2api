@@ -415,3 +415,83 @@ func TestCompositeLiveRouteDispatchesBySessionModelNotTopLevelAlias(t *testing.T
 
 	require.Equal(t, http.StatusNoContent, w.Code)
 }
+
+// A route that rewrites the model to a Claude 5.5 model also rewrites a
+// thinking mode that model rejects into the nearest one it accepts; a route
+// that keeps the client's model leaves thinking as the client sent it.
+func TestCompositeTargetPlatformMiddlewareAdaptsThinkingToRewrittenModel(t *testing.T) {
+	cases := []struct {
+		name          string
+		publicModel   string
+		upstreamModel string
+		thinking      string
+		wantThinking  string
+	}{
+		{
+			name:          "enabled becomes adaptive on opus 5.5",
+			publicModel:   "claude-sonnet-5",
+			upstreamModel: "claude-opus-5-5",
+			thinking:      `{"type":"enabled","budget_tokens":4096}`,
+			wantThinking:  `{"type":"adaptive"}`,
+		},
+		{
+			name:          "disabled becomes between_tools on sonnet 5.5",
+			publicModel:   "claude-sonnet-5",
+			upstreamModel: "claude-sonnet-5-5",
+			thinking:      `{"type":"disabled"}`,
+			wantThinking:  `{"type":"between_tools"}`,
+		},
+		{
+			name:          "model not rewritten keeps enabled",
+			publicModel:   "claude-opus-5-5",
+			upstreamModel: "claude-opus-5-5",
+			thinking:      `{"type":"enabled","budget_tokens":4096}`,
+			wantThinking:  `{"type":"enabled","budget_tokens":4096}`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			gin.SetMode(gin.TestMode)
+			router := gin.New()
+			resolver := service.NewCompositeRouteResolver(compositeRouteRepoStub{
+				routes: []service.CompositeModelRoute{{
+					ID:             1,
+					GroupID:        1,
+					PublicModel:    tc.publicModel,
+					MatchType:      service.CompositeRouteMatchExact,
+					TargetPlatform: service.PlatformAnthropic,
+					UpstreamModel:  tc.upstreamModel,
+					Endpoint:       service.CompositeRouteEndpointAny,
+					Priority:       100,
+					Enabled:        true,
+				}},
+			})
+			router.Use(gin.HandlerFunc(servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
+				groupID := int64(1)
+				c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{
+					GroupID: &groupID,
+					Group:   &service.Group{ID: groupID, Platform: service.PlatformComposite},
+				})
+				c.Next()
+			})))
+			router.Use(compositeTargetPlatformMiddleware(resolver))
+			router.POST("/v1/messages", func(c *gin.Context) {
+				body, err := io.ReadAll(c.Request.Body)
+				require.NoError(t, err)
+				require.JSONEq(t,
+					`{"model":"`+tc.upstreamModel+`","max_tokens":64,"thinking":`+tc.wantThinking+`,"messages":[]}`,
+					string(body))
+				c.Status(http.StatusNoContent)
+			})
+
+			req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(
+				`{"model":"`+tc.publicModel+`","max_tokens":64,"thinking":`+tc.thinking+`,"messages":[]}`))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusNoContent, w.Code)
+		})
+	}
+}
