@@ -34,7 +34,8 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	attempt int,
 	lastFailureReason string,
 	agentTaskRecoveryTried *bool,
-) (*OpenAIForwardResult, error) {
+) (forwardedResult *OpenAIForwardResult, returnErr error) {
+	defer func() { returnErr = finalizePrepaidWSError(c, returnErr) }()
 	if s == nil || account == nil {
 		return nil, wrapOpenAIWSFallback("invalid_state", errors.New("service or account is nil"))
 	}

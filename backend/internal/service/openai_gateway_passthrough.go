@@ -852,6 +852,9 @@ func (s *OpenAIGatewayService) handleFailoverErrorResponsePassthrough(
 	requestBody []byte,
 	responseBody []byte,
 ) error {
+	if isBytePlusPackDenial(resp) {
+		return forwardBytePlusPackDenial(c, resp, responseBody)
+	}
 	body := s.redactAgentIdentitySensitiveBody(ctx, account, responseBody)
 
 	upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(body))
@@ -902,6 +905,9 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 	requestBody []byte,
 	responseBody []byte,
 ) error {
+	if isBytePlusPackDenial(resp) {
+		return forwardBytePlusPackDenial(c, resp, responseBody)
+	}
 	MarkResponseCommitted(c)
 	body := s.redactAgentIdentitySensitiveBody(ctx, account, responseBody)
 
