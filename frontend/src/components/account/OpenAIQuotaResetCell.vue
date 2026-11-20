@@ -91,7 +91,7 @@
       >
         {{ autoResetStateLabel }}
         <span v-if="autoResetState.trigger_window" class="ml-1 tabular-nums">
-          {{ autoResetState.trigger_window }}
+          {{ autoResetState.trigger_window === 'expiry' ? t('admin.accounts.autoResetCredit.expiryTrigger') : autoResetState.trigger_window }}
         </span>
       </span>
       <span v-if="autoResetState.checked_at" class="text-gray-500 dark:text-gray-400">

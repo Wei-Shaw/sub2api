@@ -273,6 +273,7 @@ type openAIAutoResetAssessment struct {
 	utilization7d float64
 	threshold5h   float64
 	threshold7d   float64
+	expiryReached bool
 }
 
 func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accountID int64) error {
@@ -298,7 +299,10 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 	// 达到用卡阈值本应立即查询以便用卡；但 10 分钟内已确认无卡时，重查不会改变结论，
 	// 只会让调度热路径的通知把同一账号的上游额度接口打到十几秒一次。
 	needsQuery := openAIAutoResetSnapshotStale(account.Extra, now) ||
-		(assessment.resetReached && !openAIAutoResetNoCreditConfirmed(state, now))
+		(assessment.resetReached && !openAIAutoResetNoCreditConfirmed(state, now)) || assessment.expiryReached
+	if config.ExpiryEnabled && account.Extra[openaiQuotaResetCreditsKey] == nil && !openAIAutoResetNoCreditConfirmed(state, now) {
+		needsQuery = true
+	}
 	if assessment.pauseReached && !assessment.resetReached {
 		needsQuery = needsQuery || state == nil || state.Status == OpenAIAutoResetStatusChecking || state.Status == OpenAIAutoResetStatusFailed || openAIAutoResetStateStale(state, now)
 	}
@@ -306,14 +310,17 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 		needsQuery = false
 	}
 	if !needsQuery {
-		if !assessment.pauseReached && state != nil && state.TriggerWindow != "" {
+		if !assessment.pauseReached && state != nil && state.TriggerWindow != "" && !openAIAutoResetAttemptPending(state) {
 			state.TriggerWindow = ""
 			state.ErrorCode = ""
 			state.CheckedAt = now.UTC().Format(time.RFC3339)
-			if state.AvailableCount > 0 {
-				state.Status = OpenAIAutoResetStatusAvailable
-			} else {
-				state.Status = OpenAIAutoResetStatusNoCredit
+			// Keep completed attempts distinct from redemptions still in flight.
+			if state.Status != OpenAIAutoResetStatusSuccess {
+				if state.AvailableCount > 0 {
+					state.Status = OpenAIAutoResetStatusAvailable
+				} else {
+					state.Status = OpenAIAutoResetStatusNoCredit
+				}
 			}
 			return s.persistState(ctx, accountID, state)
 		}
@@ -326,7 +333,9 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 		AvailableCount: stateAvailableCount(state),
 		CheckedAt:      now.UTC().Format(time.RFC3339),
 	}
-	copyOpenAIAutoResetAttempt(checking, state)
+	if openAIAutoResetAttemptPending(state) {
+		copyOpenAIAutoResetAttempt(checking, state)
+	}
 	if err := s.persistState(ctx, accountID, checking); err != nil {
 		return err
 	}
@@ -348,12 +357,16 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 		return err
 	}
 	config = ResolveOpenAIAutoResetCreditConfig(account)
-	if !config.Enabled {
+	if !config.Enabled || !account.IsActive() || !account.Schedulable {
 		return nil
 	}
+	now = time.Now()
 	assessment = s.assessUsage(usage, account, config, now)
 	available := usage.RateLimitResetCredits.AvailableCount
-	if !assessment.resetReached {
+	if !assessment.resetReached && !assessment.expiryReached {
+		if openAIAutoResetAttemptPending(state) {
+			return nil
+		}
 		status := OpenAIAutoResetStatusNoCredit
 		if available > 0 {
 			status = OpenAIAutoResetStatusAvailable
@@ -366,6 +379,10 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 		})
 	}
 	if available <= 0 {
+		if openAIAutoResetAttemptPending(state) {
+			checking.AvailableCount = 0
+			return s.persistState(ctx, accountID, checking)
+		}
 		return s.persistState(ctx, accountID, &OpenAIAutoResetCreditState{
 			Status:         OpenAIAutoResetStatusNoCredit,
 			TriggerWindow:  assessment.triggerWindow,
@@ -378,17 +395,28 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 
 	cycleSeed := openAIAutoResetCycleSeed(usage)
 	cycleHash := shortOpenAIAutoResetHash(cycleSeed)
-	candidate, selectErr := selectOpenAIAutoResetCandidate(usage.autoResetCandidates, available, state, cycleHash)
+	candidate, selectErr := selectOpenAIAutoResetCandidate(usage.autoResetCandidates, available, state, cycleHash, now)
 	if selectErr != nil {
 		failed := checking
 		failed.AvailableCount = available
 		failed.TriggerWindow = assessment.triggerWindow
-		failed.AttemptCycleHash = cycleHash
+		if failed.AttemptCycleHash == "" {
+			failed.AttemptCycleHash = cycleHash
+		}
 		return s.failState(ctx, accountID, failed, infraerrors.Reason(selectErr), selectErr)
 	}
 	creditHash := shortOpenAIAutoResetHash(candidate.ID)
+	// A reset can move both quota windows; one card must still have one redemption identity.
+	if state != nil && state.AttemptCreditHash == creditHash && state.AttemptCycleHash != "" {
+		cycleHash = state.AttemptCycleHash // Preserve an in-flight redemption from an older version.
+	} else {
+		cycleHash = shortOpenAIAutoResetHash("credit:" + candidate.ID)
+	}
 	stableKey := fmt.Sprintf("oarc:%d:%s:%s", accountID, creditHash, cycleHash)
 	redeemRequestID := uuid.NewSHA1(uuid.NameSpaceURL, []byte(stableKey)).String()
+	if assessment.expiryReached && !assessment.resetReached {
+		assessment.triggerWindow = "expiry"
+	}
 	resetting := &OpenAIAutoResetCreditState{
 		Status:            OpenAIAutoResetStatusResetting,
 		TriggerWindow:     assessment.triggerWindow,
@@ -402,8 +430,27 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 	}
 
 	account, err = s.accountRepo.GetByID(ctx, accountID)
-	if err != nil || account == nil || !ResolveOpenAIAutoResetCreditConfig(account).Enabled {
+	if err != nil || account == nil {
 		return err
+	}
+	config = ResolveOpenAIAutoResetCreditConfig(account)
+	assessment = s.assessUsage(usage, account, config, time.Now())
+	if !config.Enabled || !account.IsActive() || !account.Schedulable || (!assessment.resetReached && !assessment.expiryReached) {
+		return nil
+	}
+	if assessment.expiryReached && !assessment.resetReached {
+		assessment.triggerWindow = "expiry"
+	}
+	expiresAt, _ := time.Parse(time.RFC3339, candidate.ExpiresAt)
+	if !expiresAt.After(time.Now()) {
+		return nil
+	}
+	if !assessment.resetReached && time.Until(expiresAt) > time.Duration(config.ExpiryMinutes)*time.Minute {
+		return nil
+	}
+	attemptTTL := time.Until(expiresAt) + 24*time.Hour
+	if attemptTTL < openAIAutoResetAttemptTTL {
+		attemptTTL = openAIAutoResetAttemptTTL
 	}
 	result, err := s.idempotency.Execute(ctx, IdempotencyExecuteOptions{
 		Scope:          "openai_auto_reset_credit",
@@ -416,7 +463,7 @@ func (s *OpenAIQuotaAutoResetService) evaluateAccount(ctx context.Context, accou
 			"credit_hash": creditHash,
 			"cycle_hash":  cycleHash,
 		},
-		TTL:        openAIAutoResetAttemptTTL,
+		TTL:        attemptTTL,
 		RequireKey: true,
 	}, func(execCtx context.Context) (any, error) {
 		resetResult, resetErr := s.quota.ResetCreditTargeted(execCtx, accountID, candidate.ID, redeemRequestID)
@@ -515,14 +562,20 @@ func decodeOpenAIAutoResetConsumeResult(value any) openAIAutoResetConsumeResult 
 func (s *OpenAIQuotaAutoResetService) assessExtra(account *Account, config OpenAIAutoResetCreditConfig, now time.Time) openAIAutoResetAssessment {
 	utilization5h, _ := resolveOpenAIQuotaUtilization(account.Extra, "5h", now)
 	utilization7d, _ := resolveOpenAIQuotaUtilization(account.Extra, "7d", now)
-	return s.buildAssessment(account, config, utilization5h, utilization7d)
+	assessment := s.buildAssessment(account, config, utilization5h, utilization7d)
+	assessment.expiryReached = openAIAutoResetExpiryReachedFromExtra(account.Extra, config, now)
+	return assessment
 }
 
 func (s *OpenAIQuotaAutoResetService) assessUsage(usage *OpenAIQuotaUsage, account *Account, config OpenAIAutoResetCreditConfig, now time.Time) openAIAutoResetAssessment {
 	updates := buildOpenAIAutoResetUsageUpdates(usage, now)
 	utilization5h := readOpenAIQuotaUsedPercent(updates, "5h") / 100
 	utilization7d := readOpenAIQuotaUsedPercent(updates, "7d") / 100
-	return s.buildAssessment(account, config, utilization5h, utilization7d)
+	assessment := s.buildAssessment(account, config, utilization5h, utilization7d)
+	if usage != nil {
+		assessment.expiryReached = openAIAutoResetExpiryReached(usage.RateLimitResetCredits, config, now)
+	}
+	return assessment
 }
 
 func (s *OpenAIQuotaAutoResetService) buildAssessment(account *Account, config OpenAIAutoResetCreditConfig, utilization5h, utilization7d float64) openAIAutoResetAssessment {
@@ -532,8 +585,8 @@ func (s *OpenAIQuotaAutoResetService) buildAssessment(account *Account, config O
 		threshold5h:   config.Threshold5h,
 		threshold7d:   config.Threshold7d,
 	}
-	reset5h := utilization5h >= config.Threshold5h
-	reset7d := utilization7d >= config.Threshold7d
+	reset5h := !config.Disabled5h && utilization5h >= config.Threshold5h
+	reset7d := !config.Disabled7d && utilization7d >= config.Threshold7d
 	assessment.resetReached = reset5h || reset7d
 	assessment.triggerWindow = joinOpenAIAutoResetWindows(reset5h, reset7d)
 
@@ -551,6 +604,38 @@ func (s *OpenAIQuotaAutoResetService) buildAssessment(account *Account, config O
 		assessment.triggerWindow = joinOpenAIAutoResetWindows(pauseReached5h, pauseReached7d)
 	}
 	return assessment
+}
+
+func openAIAutoResetExpiryReached(credits *OpenAIRateLimitResetCredits, config OpenAIAutoResetCreditConfig, now time.Time) bool {
+	if !config.ExpiryEnabled || credits == nil || credits.AvailableCount <= 0 {
+		return false
+	}
+	for _, credit := range credits.Credits {
+		expiresAt, err := time.Parse(time.RFC3339, credit.ExpiresAt)
+		if err == nil && expiresAt.After(now) && expiresAt.Sub(now) <= time.Duration(config.ExpiryMinutes)*time.Minute {
+			return true
+		}
+	}
+	return false
+}
+
+func openAIAutoResetExpiryReachedFromExtra(extra map[string]any, config OpenAIAutoResetCreditConfig, now time.Time) bool {
+	if !config.ExpiryEnabled || len(extra) == 0 {
+		return false
+	}
+	raw, ok := extra[openaiQuotaResetCreditsKey]
+	if !ok {
+		return false
+	}
+	encoded, err := json.Marshal(raw)
+	if err != nil {
+		return false
+	}
+	var credits OpenAIRateLimitResetCredits
+	if err := json.Unmarshal(encoded, &credits); err != nil {
+		return false
+	}
+	return openAIAutoResetExpiryReached(&credits, config, now)
 }
 
 func joinOpenAIAutoResetWindows(fiveHour, sevenDay bool) string {
@@ -604,7 +689,7 @@ func (s *OpenAIQuotaAutoResetService) persistFreshUsage(ctx context.Context, acc
 	return s.quota.CacheResetCreditsSnapshot(ctx, accountID, usage.RateLimitResetCredits)
 }
 
-func selectOpenAIAutoResetCandidate(candidates []openAIAutoResetCreditCandidate, available int, previous *OpenAIAutoResetCreditState, cycleHash string) (openAIAutoResetCreditCandidate, error) {
+func selectOpenAIAutoResetCandidate(candidates []openAIAutoResetCreditCandidate, available int, previous *OpenAIAutoResetCreditState, cycleHash string, now time.Time) (openAIAutoResetCreditCandidate, error) {
 	if available <= 0 {
 		return openAIAutoResetCreditCandidate{}, infraerrors.Conflict("OPENAI_AUTO_RESET_NO_CREDIT", "no reset credit is available")
 	}
@@ -628,21 +713,32 @@ func selectOpenAIAutoResetCandidate(candidates []openAIAutoResetCreditCandidate,
 		}
 		return left.Before(right)
 	})
-	if previous != nil && previous.AttemptCycleHash == cycleHash && previous.AttemptCreditHash != "" {
+	if openAIAutoResetAttemptPending(previous) {
 		for _, candidate := range sorted {
 			if shortOpenAIAutoResetHash(candidate.ID) == previous.AttemptCreditHash {
 				if strings.TrimSpace(candidate.ID) == "" {
 					break
 				}
-				return candidate, nil
+				expiresAt, _ := time.Parse(time.RFC3339, candidate.ExpiresAt)
+				if expiresAt.After(now) {
+					return candidate, nil
+				}
+				break
 			}
 		}
 		return openAIAutoResetCreditCandidate{}, infraerrors.Conflict("OPENAI_AUTO_RESET_ORIGINAL_CREDIT_UNAVAILABLE", "the original reset credit cannot be confirmed; refusing to switch credits")
 	}
-	if len(sorted) == 0 || strings.TrimSpace(sorted[0].ID) == "" {
-		return openAIAutoResetCreditCandidate{}, infraerrors.Conflict("OPENAI_AUTO_RESET_CREDIT_ID_MISSING", "the earliest reset credit has no official id")
+	for _, candidate := range sorted {
+		expiresAt, _ := time.Parse(time.RFC3339, candidate.ExpiresAt)
+		if !expiresAt.After(now) {
+			continue
+		}
+		if strings.TrimSpace(candidate.ID) == "" {
+			return openAIAutoResetCreditCandidate{}, infraerrors.Conflict("OPENAI_AUTO_RESET_CREDIT_ID_MISSING", "the earliest reset credit has no official id")
+		}
+		return candidate, nil
 	}
-	return sorted[0], nil
+	return openAIAutoResetCreditCandidate{}, infraerrors.Conflict("OPENAI_AUTO_RESET_NO_CREDIT", "no unexpired reset credit is available")
 }
 
 func openAIAutoResetCycleSeed(usage *OpenAIQuotaUsage) string {
@@ -740,6 +836,13 @@ func stateAvailableCount(state *OpenAIAutoResetCreditState) int {
 		return 0
 	}
 	return state.AvailableCount
+}
+
+func openAIAutoResetAttemptPending(state *OpenAIAutoResetCreditState) bool {
+	if state == nil || state.AttemptCreditHash == "" {
+		return false
+	}
+	return state.Status == OpenAIAutoResetStatusChecking || state.Status == OpenAIAutoResetStatusResetting || state.Status == OpenAIAutoResetStatusFailed
 }
 
 func copyOpenAIAutoResetAttempt(target, source *OpenAIAutoResetCreditState) {
