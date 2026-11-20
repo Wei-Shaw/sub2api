@@ -1,3 +1,4 @@
+import upstreamQuota from './upstreamQuota'
 import adminAccessKeys from './adminAccessKeys'
 import mcp from './mcp'
 import landing from './landing'
@@ -9,6 +10,7 @@ import admin from './admin'
 import misc from './misc'
 
 export default {
+  upstreamQuota,
   adminAccessKeys,
   mcp,
   ...landing,
