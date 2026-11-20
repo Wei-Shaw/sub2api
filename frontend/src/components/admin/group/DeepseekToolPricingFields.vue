@@ -25,11 +25,11 @@ import { useI18n } from 'vue-i18n'
 import { deepseekTools, matchesToolModel, setDeepseekToolPrice, type DeepseekToolPrices } from './deepseekToolPricing'
 
 const prices = defineModel<DeepseekToolPrices>({ required: true })
-const props = defineProps<{ genericPricing: { models: string[] }[] }>()
+const props = defineProps<{ genericPricing: { models: string[]; billing_mode: string }[] }>()
 const { t } = useI18n()
 const id = useId()
 const fields = computed(() => {
-  const patterns = props.genericPricing.flatMap(entry => entry.models)
+  const patterns = props.genericPricing.filter(entry => entry.billing_mode === 'per_request').flatMap(entry => entry.models)
   return deepseekTools.map(tool => {
     const unitPrice = prices.value[tool.id]?.per_request_price
     const rule = patterns.find(pattern => matchesToolModel(pattern, tool))

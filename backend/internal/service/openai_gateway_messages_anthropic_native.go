@@ -231,7 +231,7 @@ func (s *OpenAIGatewayService) buildNativeAnthropicUpstreamRequest(
 	payloads := append([][]byte{body}, sessionBodies...)
 	applyOpenCodeSessionHeader(c, account, targetURL, req.Header, payloads...)
 
-	return req, body, nil
+	return withDeepseekWireFiles(req, account, APIProtocolAnthropic, body), body, nil
 }
 
 // handleNativeAnthropicBufferedResponse 处理非流式原生 Anthropic 响应：

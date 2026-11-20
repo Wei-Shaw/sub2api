@@ -89,8 +89,40 @@ func TestDeepseekToolsIdenticalRequestsAndCompositeQuota(t *testing.T) {
 	require.Len(t, commands.commands, 2)
 }
 
+func TestDeepseekTTSHandlerReservesWhatItSettles(t *testing.T) {
+	cache := newHandlerInflightCache(5)
+	var reserved float64
+	up := &deepseekTestTransport{respond: func(_ *http.Request, _ int64) (*http.Response, error) {
+		cache.mu.Lock()
+		require.Len(t, cache.res, 1)
+		for _, v := range cache.res {
+			reserved = v
+		}
+		cache.mu.Unlock()
+		r := deepseekTestReply(200, strings.NewReader("audio"))
+		r.Header.Set("Content-Type", "audio/wav")
+		return r, nil
+	}}
+	h, _, billing := newDeepseekProxyHandler(t, 1, up, nil)
+	h.cfg.Billing.InflightReservation.Enabled = true
+	h.billingCacheService = service.NewBillingCacheService(cache, nil, nil, nil, nil, nil, h.cfg, nil)
+	t.Cleanup(h.billingCacheService.Stop)
+	for i, text := range []string{" x ", strings.Repeat("你", 5000)} {
+		c, rec := fileOwnerTestContext("POST", "/v1/tools/tts", `{"text":"`+text+`"}`, service.PlatformDeepseek, "", 7)
+		key, _ := middleware.GetAPIKeyFromContext(c)
+		key.Group.RateMultiplier = 2
+		h.DeepseekTools(c, "tts")
+		require.Equal(t, 200, rec.Code)
+		require.Len(t, billing.commands, i+1)
+		want := []float64{3, 10000}[i] * 2 * .45 / 10000
+		require.InDelta(t, want, reserved, 1e-12)
+		require.InDelta(t, reserved, billing.commands[i].BalanceCost, 1e-12)
+		require.Zero(t, cache.count())
+	}
+}
+
 func TestDeepseekFilesHaveNoReservation(t *testing.T) {
 	for _, endpoint := range []string{"files_create", "files_list", "files_get/file-1", "files_delete/file-1"} {
-		require.Zero(t, deepseekToolsInflightEstimate(endpoint), endpoint)
+		require.Zero(t, deepseekToolsInflightEstimate(endpoint, nil), endpoint)
 	}
 }

@@ -49,19 +49,11 @@ func FilterWebSearchHistoryBlocks(body []byte, mappedModel string, account *Acco
 	stripAll := ResolveThinkingProtocol(mappedModel) == ThinkingProtocolPassbackRequired
 	if account != nil {
 		base := account.GetAnthropicProtocolBaseURL()
-		switch {
-		case base != "":
-			// Use the Messages endpoint selected by the protocol profile, including
-			// an adaptive account's per-protocol origin.
-			stripAll = !isDeepseekOfficialHost(base)
-		case account.Platform == PlatformDeepseek:
-			stripAll = !isDeepseekOfficialHost(account.GetOpenAIBaseURL())
-		case account.Platform == PlatformAnthropic:
-			if isDeepseekOfficialHost(account.GetBaseURL()) {
-				stripAll = false
-			}
-		case account.Platform != "":
-			stripAll = true
+		if base == "" && account.Platform == PlatformAnthropic {
+			base = account.GetBaseURL()
+		}
+		if isDeepseekOfficialHost(base) {
+			stripAll = false
 		}
 	}
 

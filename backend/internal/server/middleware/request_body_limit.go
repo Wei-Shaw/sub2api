@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -34,9 +35,9 @@ func DeepseekToolsBodyLimit(textLimit, gatewayLimit int64) gin.HandlerFunc {
 		case "/v1/tools/tts":
 			limit = 64 << 10
 		case "/v1/tools/asr":
-			limit = 8 << 20
+			limit = service.DeepseekASRFileLimit + service.DeepseekMultipartOverhead
 		case "/v1/tools/ocr", "/v1/files":
-			limit = 100 << 20
+			limit = service.DeepseekDocumentFileLimit + service.DeepseekMultipartOverhead
 		default:
 			return
 		}

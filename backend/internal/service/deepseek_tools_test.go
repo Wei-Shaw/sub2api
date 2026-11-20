@@ -141,14 +141,14 @@ func TestForwardDeepseekToolsRequest_OwnedGetDelete(t *testing.T) {
 	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{handler: handler}, cache: cache}
 	const query = "?tag=one&tag=two&q=some%20text"
 	for _, format := range []string{"openai", "anthropic"} {
-		require.NoError(t, cache.SaveDeepseekFile(context.Background(), 1, DeepseekFile{ID: "file-abc_1", AccountID: account.ID}))
+		require.NoError(t, cache.SaveDeepseekFile(context.Background(), 1, DeepseekFile{ID: "file-abc_1", AccountID: account.ID, Origin: "https://relay.test"}))
 		for _, method := range []string{http.MethodGet, http.MethodDelete} {
 			endpoint := "files_get/file-abc_1"
 			if method == http.MethodDelete {
 				endpoint = "files_delete/file-abc_1"
 			}
 			c, _ := newDeepseekToolsTestContext(method, "/v1/files/file-abc_1"+query, nil)
-			path := "/v1/files/file-abc_1" + query
+			path := "/v1/files/file-abc_1"
 			if format == "anthropic" {
 				c.Request.Header.Set("anthropic-beta", deepseekFilesBetaHeader)
 				path = "/anthropic" + path

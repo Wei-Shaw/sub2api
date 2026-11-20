@@ -3,19 +3,25 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
 
-// DeepseekFile is the gateway's upload record. AccountID and Format are internal.
+// DeepseekFile is the gateway's upload record. AccountID, Origin and Format stay internal.
 type DeepseekFile struct {
 	ID        string
 	AccountID int64 `json:"account_id,string"`
 	Format    string
+	Origin    string
 	Filename  string
 	Bytes     int64
 	CreatedAt time.Time
@@ -26,8 +32,8 @@ type DeepseekFile struct {
 
 type DeepseekFileStore interface {
 	SaveDeepseekFile(ctx context.Context, userID int64, file DeepseekFile) error
-	DeepseekFileAccounts(ctx context.Context, userID int64, ids []string) (map[string]int64, error)
-	ListDeepseekFiles(ctx context.Context, userID int64) ([]DeepseekFile, error)
+	LookupDeepseekFiles(ctx context.Context, userID int64, ids []string) (map[string]DeepseekFile, error)
+	ListDeepseekFiles(ctx context.Context, userID int64, page DeepseekFilePage) ([]DeepseekFile, error)
 	DeleteDeepseekFile(ctx context.Context, userID, accountID int64, id string) error
 }
 
@@ -118,7 +124,7 @@ func deepseekFileIDs(body []byte, protocol string) []string {
 	if protocol == APIProtocolResponses {
 		field = "input"
 	}
-	eachFileField(gjson.ParseBytes(body), field, func(messages gjson.Result) {
+	eachFileField(parseRawJSONView(body), field, func(messages gjson.Result) {
 		eachFilePart(messages, func(message gjson.Result) {
 			eachFileField(message, "content", content)
 			if protocol == APIProtocolResponses {
@@ -130,55 +136,160 @@ func deepseekFileIDs(body []byte, protocol string) []string {
 	return ids
 }
 
-// DeepseekFileAccount returns zero for a request without references. Missing
-// and foreign records have the same response, including in mixed requests.
-func (s *OpenAIGatewayService) DeepseekFileAccount(ctx context.Context, userID int64, ids []string) (int64, error) {
-	if len(ids) == 0 {
-		return 0, nil
-	}
+type deepseekFileBinding struct {
+	accountID int64
+	origin    string
+}
+
+func lookupDeepseekFileBinding(ctx context.Context, cache GatewayCache, userID int64, ids []string) (deepseekFileBinding, error) {
+	var owner deepseekFileBinding
 	for _, id := range ids {
 		if userID <= 0 || !isValidDeepseekFileID(id) {
-			return 0, errDeepseekFileNotFound
+			return owner, errDeepseekFileNotFound
 		}
 	}
-	store, err := s.deepseekFileStore()
-	if err != nil {
-		return 0, err
+	store, ok := cache.(DeepseekFileStore)
+	if !ok {
+		return owner, errDeepseekFileStore
 	}
-	accounts, err := store.DeepseekFileAccounts(ctx, userID, ids)
+	files, err := store.LookupDeepseekFiles(ctx, userID, ids)
 	if err != nil {
-		return 0, errDeepseekFileStore.WithCause(err)
-	}
-	owner := accounts[ids[0]]
-	for _, id := range ids {
-		if accounts[id] <= 0 {
-			return 0, errDeepseekFileNotFound
-		}
+		return owner, errDeepseekFileStore.WithCause(err)
 	}
 	for _, id := range ids {
-		if accounts[id] != owner {
-			return 0, infraerrors.BadRequest("invalid_request_error", "Referenced files belong to different upstream accounts")
+		f := files[id]
+		if f.AccountID <= 0 || f.Origin == "" {
+			return deepseekFileBinding{}, errDeepseekFileNotFound
 		}
+	}
+	for _, id := range ids {
+		f := files[id]
+		binding := deepseekFileBinding{f.AccountID, f.Origin}
+		if owner.accountID != 0 && owner != binding {
+			return deepseekFileBinding{}, invalidFileRequest("Referenced files belong to different upstreams")
+		}
+		owner = binding
 	}
 	return owner, nil
 }
 
 type deepseekFileAccountKey struct{}
 
-// WithDeepseekFileReferences pins all scheduling attempts to the uploading
-// account after composite routing has resolved the request platform.
-func (s *OpenAIGatewayService) WithDeepseekFileReferences(ctx context.Context, platform, protocol string, userID int64, body []byte) (context.Context, error) {
-	if platform != PlatformDeepseek {
-		return ctx, nil
+type deepseekReferences struct {
+	userID  int64
+	ids     []string
+	binding deepseekFileBinding
+}
+type deepseekReferencesKey struct{}
+
+type deepseekDestinationError struct{ error }
+
+func writeDeepseekReferenceError(c *gin.Context, err error) error {
+	e := infraerrors.FromError(err)
+	write := writeResponsesError
+	switch path := c.Request.URL.Path; {
+	case strings.Contains(path, "/messages"):
+		write = writeAnthropicError
+	case strings.Contains(path, "/chat/completions"):
+		write = writeChatCompletionsError
 	}
-	id, err := s.DeepseekFileAccount(ctx, userID, deepseekFileIDs(body, protocol))
-	if err != nil {
-		if errors.Is(err, errDeepseekFileNotFound) {
-			return ctx, invalidFileRequest("Referenced file not found")
+	write(c, int(e.Code), e.Reason, e.Message)
+	MarkResponseCommitted(c)
+	return fmt.Errorf("%w: %w", errInvalidGatewayRequest, err)
+}
+
+// Ordinary Anthropic API-key accounts can be configured against DeepSeek too.
+// Inspect the final Messages body at request construction, including retries.
+func (s *GatewayService) verifyAnthropicDeepseekFiles(ctx context.Context, c *gin.Context, account *Account, dest *url.URL, body []byte) error {
+	if !isDeepseekOfficialHost(dest.String()) {
+		return nil
+	}
+	ids := deepseekFileIDs(body, APIProtocolAnthropic)
+	if len(ids) == 0 {
+		return nil
+	}
+	user, _ := ctx.Value(ctxkey.UserID).(int64)
+	ref := deepseekReferences{userID: user, ids: ids}
+	if err := verifyDeepseekFileDestination(context.WithValue(ctx, deepseekReferencesKey{}, ref), s.cache, account, dest); err != nil {
+		return writeDeepseekReferenceError(c, err)
+	}
+	return nil
+}
+
+func chatUsesResponsesShape(body []byte) bool {
+	return !gjson.GetBytes(body, "messages").Exists() && gjson.GetBytes(body, "input").Exists()
+}
+
+// Resolve the same history shape that forwarding will consume. Native input
+// takes precedence over an accompanying legacy Messages history.
+func (s *OpenAIGatewayService) PrepareDeepseekFileIngress(ctx context.Context, platform, protocol string, userID int64, body []byte) (context.Context, []byte, error) {
+	if protocol == APIProtocolResponses && gjson.GetBytes(body, "messages").Exists() {
+		if len(deepseekFileIDs(body, APIProtocolChatCompletions)) > 0 {
+			normalized, _, err := normalizeOpenAIResponsesLegacyIngressWithConfig(s.cfg, body)
+			if err != nil {
+				return ctx, body, invalidFileRequest("Invalid legacy Responses file input")
+			}
+			body = normalized
 		}
-		return ctx, err
 	}
-	return withDeepseekFileAccount(ctx, id), nil
+	if protocol == APIProtocolChatCompletions && chatUsesResponsesShape(body) {
+		protocol = APIProtocolResponses
+	}
+	ids := deepseekFileIDs(body, protocol)
+	if len(ids) == 0 {
+		return ctx, body, nil
+	}
+	ref := deepseekReferences{userID: userID, ids: ids}
+	if platform == PlatformDeepseek {
+		var err error
+		ref.binding, err = lookupDeepseekFileBinding(ctx, s.cache, userID, ids)
+		if err != nil {
+			return ctx, body, deepseekReferenceError(err)
+		}
+		ctx = withDeepseekFileAccount(ctx, ref.binding.accountID)
+	}
+	return context.WithValue(ctx, deepseekReferencesKey{}, ref), body, nil
+}
+
+func deepseekReferenceError(err error) error {
+	if errors.Is(err, errDeepseekFileNotFound) {
+		return invalidFileRequest("Referenced file not found")
+	}
+	return err
+}
+
+// Verify the final URL on each attempt. An OpenAI-platform mapping can also
+// serve the official DeepSeek endpoint.
+func withDeepseekWireFiles(req *http.Request, account *Account, protocol string, body []byte) *http.Request {
+	if account.Platform != PlatformDeepseek && !isDeepseekOfficialHost(req.URL.String()) {
+		return req
+	}
+	ids := deepseekFileIDs(body, protocol)
+	if len(ids) == 0 {
+		return req
+	}
+	ctx := req.Context()
+	ref, ok := ctx.Value(deepseekReferencesKey{}).(deepseekReferences)
+	if !ok {
+		ref.userID, _ = ctx.Value(ctxkey.UserID).(int64)
+	}
+	ref.ids = ids
+	return req.WithContext(context.WithValue(ctx, deepseekReferencesKey{}, ref))
+}
+
+func verifyDeepseekFileDestination(ctx context.Context, cache GatewayCache, account *Account, dest *url.URL) error {
+	ref, ok := ctx.Value(deepseekReferencesKey{}).(deepseekReferences)
+	if !ok || (account.Platform != PlatformDeepseek && !isDeepseekOfficialHost(dest.String())) {
+		return nil
+	}
+	owner, err := lookupDeepseekFileBinding(ctx, cache, ref.userID, ref.ids)
+	if err != nil {
+		return deepseekReferenceError(err)
+	}
+	if owner.accountID != account.ID || owner.origin != deepseekStorageOrigin(dest) {
+		return invalidFileRequest("Referenced file not found")
+	}
+	return nil
 }
 
 func withDeepseekFileAccount(ctx context.Context, accountID int64) context.Context {

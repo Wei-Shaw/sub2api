@@ -155,7 +155,7 @@ func TestDeepseekFileDeleteRetainsRecordUntilConfirmed(t *testing.T) {
 	ctx := context.Background()
 	cache := &testDeepseekFileCache{}
 	account := newDeepseekToolsTestAccount("https://relay.test")
-	require.NoError(t, cache.SaveDeepseekFile(ctx, 1, DeepseekFile{ID: "f", AccountID: account.ID}))
+	require.NoError(t, cache.SaveDeepseekFile(ctx, 1, DeepseekFile{ID: "f", AccountID: account.ID, Origin: "https://relay.test"}))
 	for _, tc := range []struct {
 		status    int
 		body      string
@@ -220,7 +220,7 @@ func TestDeepseekToolsQueryAndAllowlistBeforeSending(t *testing.T) {
 	require.Empty(t, received)
 	_, err = forwardDeepseekToolsTest(svc, c, account, 7, "search", []byte("{}"), "application/json")
 	require.NoError(t, err)
-	require.Equal(t, "https://relay.test/custom/v1/tools/search?configured=1&k=x%2By&k=z", received)
+	require.Equal(t, "https://relay.test/custom/v1/tools/search?configured=1", received)
 }
 
 func TestDeepseekFilesListDefaultLimits(t *testing.T) {

@@ -4483,8 +4483,9 @@ function updateGroupPricingEntry(
   index: number,
   entry: PricingFormEntry,
 ) {
-  if (form.platform === "deepseek") {
-    const oldModels = form.model_pricing[index].models;
+  if (form.platform === "deepseek" && entry.billing_mode === "per_request") {
+    const old = form.model_pricing[index];
+    const oldModels = old.billing_mode === entry.billing_mode ? old.models : [];
     const conflict = entry.models.find(pattern => !oldModels.includes(pattern) &&
       deepseekTools.some(tool => matchesToolModel(pattern, tool) &&
         (!pattern.trim().endsWith("*") || toolPrices[tool.id])));
@@ -4548,7 +4549,7 @@ const groupPricingToAPI = (
       time_pricing: null,
     }));
   if (platform === "deepseek") {
-    const patterns = entries.flatMap(entry => entry.models);
+    const patterns = entries.filter(entry => entry.billing_mode === 'per_request').flatMap(entry => entry.models);
     for (const tool of deepseekTools) {
       const price = toolPrices[tool.id];
       if (price && !patterns.some(pattern => matchesToolModel(pattern, tool))) {

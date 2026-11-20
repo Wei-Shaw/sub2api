@@ -150,7 +150,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	// Cursor compatibility: some clients send a Responses-shaped body to the
 	// /v1/chat/completions URL. Detect it before protocol routing so adaptive
 	// accounts never forward the body unchanged to a Chat Completions endpoint.
-	isResponsesShape := !gjson.GetBytes(body, "messages").Exists() && gjson.GetBytes(body, "input").Exists()
+	isResponsesShape := chatUsesResponsesShape(body)
 	inbound := APIProtocolChatCompletions
 	if isResponsesShape {
 		inbound = APIProtocolResponses
@@ -1374,6 +1374,11 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 // writeChatCompletionsError writes an error response in OpenAI Chat Completions format.
 func writeChatCompletionsError(c *gin.Context, statusCode int, errType, message string) {
 	MarkResponseCommitted(c)
+	if gatewayErrorStreamStarted(c) {
+		_, _ = fmt.Fprint(c.Writer, buildChatStreamErrorSSE(errType, message))
+		c.Writer.Flush()
+		return
+	}
 	c.JSON(statusCode, gin.H{
 		"error": gin.H{
 			"type":    errType,

@@ -336,6 +336,47 @@ type UserLoadInfo struct {
 	LoadRate           int // 0-100+ (percent)
 }
 
+type slotRenewalIntervalKey struct{}
+
+// WithDrainingSlotTTL enables renewal only for handlers that keep working
+// after their HTTP client disconnects.
+func WithDrainingSlotTTL(ctx context.Context, ttl time.Duration) context.Context {
+	if ttl <= 0 {
+		return ctx
+	}
+	return context.WithValue(ctx, slotRenewalIntervalKey{}, ttl/3)
+}
+
+func keepDrainingSlot(ctx context.Context, refresh func(context.Context) (bool, error), release func()) func() {
+	interval, _ := ctx.Value(slotRenewalIntervalKey{}).(time.Duration)
+	if interval <= 0 {
+		return release
+	}
+	lifetime, stop := context.WithCancel(context.WithoutCancel(ctx))
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-lifetime.Done():
+				return
+			case <-ticker.C:
+				attempt, cancel := context.WithTimeout(lifetime, min(interval, 5*time.Second))
+				acquired, err := refresh(attempt)
+				cancel()
+				if err != nil && lifetime.Err() == nil {
+					logger.LegacyPrintf("service.concurrency", "Failed to renew draining request slot: %v", err)
+				} else if err == nil && !acquired {
+					return
+				}
+			}
+		}
+	}()
+	return func() { stop(); <-done; release() }
+}
+
 // AcquireAccountSlot attempts to acquire a concurrency slot for an account.
 // If the account is at max concurrency, it waits until a slot is available or timeout.
 // Returns a release function that MUST be called when the request completes.
@@ -359,13 +400,15 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 	if acquired {
 		return &AcquireResult{
 			Acquired: true,
-			ReleaseFunc: func() {
+			ReleaseFunc: keepDrainingSlot(ctx, func(ctx context.Context) (bool, error) {
+				return s.cache.AcquireAccountSlot(ctx, accountID, maxConcurrency, requestID)
+			}, func() {
 				bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				if err := s.cache.ReleaseAccountSlot(bgCtx, accountID, requestID); err != nil {
 					logger.LegacyPrintf("service.concurrency", "Warning: failed to release account slot for %d (req=%s): %v", accountID, requestID, err)
 				}
-			},
+			}),
 		}, nil
 	}
 
@@ -398,13 +441,15 @@ func (s *ConcurrencyService) AcquireUserSlot(ctx context.Context, userID int64, 
 	if acquired {
 		return &AcquireResult{
 			Acquired: true,
-			ReleaseFunc: func() {
+			ReleaseFunc: keepDrainingSlot(ctx, func(ctx context.Context) (bool, error) {
+				return s.cache.AcquireUserSlot(ctx, userID, maxConcurrency, requestID)
+			}, func() {
 				bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 				defer cancel()
 				if err := s.cache.ReleaseUserSlot(bgCtx, userID, requestID); err != nil {
 					logger.LegacyPrintf("service.concurrency", "Warning: failed to release user slot for %d (req=%s): %v", userID, requestID, err)
 				}
-			},
+			}),
 		}, nil
 	}
 

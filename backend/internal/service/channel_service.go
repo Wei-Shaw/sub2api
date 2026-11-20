@@ -705,6 +705,10 @@ func validatePricingEntries(pricing []ChannelModelPricing) error {
 	if err := validateNoConflictingModels(pricing); err != nil {
 		return err
 	}
+	return validatePricingEntryFields(pricing)
+}
+
+func validatePricingEntryFields(pricing []ChannelModelPricing) error {
 	if err := validatePricingIntervals(pricing); err != nil {
 		return err
 	}
@@ -1143,9 +1147,10 @@ func (s *ChannelService) List(ctx context.Context, params pagination.PaginationP
 
 // modelEntry 表示一个模型模式条目（用于冲突检测）
 type modelEntry struct {
-	pattern  string // 原始模式（如 "claude-*" 或 "claude-opus-4"）
-	prefix   string // lowercase 前缀（通配符去掉 *，精确名保持原样）
-	wildcard bool
+	pattern   string // 原始模式（如 "claude-*" 或 "claude-opus-4"）
+	prefix    string // lowercase 前缀（通配符去掉 *，精确名保持原样）
+	wildcard  bool
+	groupMode BillingMode // Set only for DeepSeek group pricing validation.
 }
 
 // conflictsBetween 检查两个模型模式是否冲突
@@ -1188,10 +1193,21 @@ func toPricingModelEntry(pattern string) modelEntry {
 // validateNoConflictingModels 检查定价列表中是否有冲突模型模式（同一平台下）。
 // 冲突包括：精确重复、通配符之间的前缀包含、通配符与精确名的前缀匹配。
 func validateNoConflictingModels(pricingList []ChannelModelPricing) error {
+	return validatePricingModelPatterns(pricingList, "")
+}
+
+func validatePricingModelPatterns(pricingList []ChannelModelPricing, groupPlatform string) error {
 	byPlatform := make(map[string][]modelEntry)
 	for _, p := range pricingList {
 		for _, model := range p.Models {
-			byPlatform[p.Platform] = append(byPlatform[p.Platform], toPricingModelEntry(model))
+			entry := toPricingModelEntry(model)
+			if groupPlatform == PlatformDeepseek && p.Platform == groupPlatform {
+				entry.groupMode = p.BillingMode
+				if entry.groupMode == "" {
+					entry.groupMode = BillingModeToken
+				}
+			}
+			byPlatform[p.Platform] = append(byPlatform[p.Platform], entry)
 		}
 	}
 	for platform, entries := range byPlatform {
@@ -1200,6 +1216,21 @@ func validateNoConflictingModels(pricingList []ChannelModelPricing) error {
 		}
 	}
 	return nil
+}
+
+// Only standalone tool models can have overlapping token and per-unit cards.
+func separateDeepseekToolUnits(a, b modelEntry) bool {
+	if a.groupMode == BillingModeToken {
+		a, b = b, a
+	}
+	if a.groupMode != BillingModePerRequest || b.groupMode != BillingModeToken {
+		return false
+	}
+	narrower := a
+	if len(b.prefix) > len(a.prefix) || (len(b.prefix) == len(a.prefix) && !b.wildcard) {
+		narrower = b
+	}
+	return (narrower.wildcard && strings.HasPrefix(narrower.prefix, "deepseek-tools-")) || isDeepseekToolPricingPattern(narrower.prefix)
 }
 
 // validateNoConflictingMappings 检查模型映射中是否有冲突的源模式
@@ -1233,7 +1264,7 @@ func validatePricingIntervals(pricingList []ChannelModelPricing) error {
 func detectConflicts(entries []modelEntry, platform, errCode, label string) error {
 	for i := 0; i < len(entries); i++ {
 		for j := i + 1; j < len(entries); j++ {
-			if conflictsBetween(entries[i], entries[j]) {
+			if conflictsBetween(entries[i], entries[j]) && !separateDeepseekToolUnits(entries[i], entries[j]) {
 				return infraerrors.BadRequest(errCode,
 					fmt.Sprintf("%s '%s' and '%s' conflict in platform '%s': overlapping match range "+
 						"(model names are matched case-insensitively, so an existing entry already covers all case variants)",

@@ -2046,7 +2046,7 @@ func (a *Account) supportsDeepseekTools() bool {
 	}
 	baseURL, _ := deepseekToolsBase(a, false)
 	supported, _ := a.Extra[deepseekToolsSupportedExtraKey].(bool)
-	return isDeepseekOfficialHost(baseURL) || supported
+	return baseURL != "" && (isDeepseekOfficialHost(baseURL) || supported)
 }
 
 // isDeepseekOfficialHost 报告 base_url 是否指向 DeepSeek 官方域名

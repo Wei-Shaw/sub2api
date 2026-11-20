@@ -1,7 +1,9 @@
 package service
 
 import (
+	"crypto/sha256"
 	"fmt"
+	"net"
 	"net/url"
 	"strings"
 )
@@ -26,16 +28,64 @@ func isValidDeepseekFileID(fileID string) bool {
 // protocol. An implicit adaptive Anthropic profile default could point to a
 // different host than the account's custom Chat Completions endpoint.
 func deepseekToolsBase(account *Account, anthropic bool) (base string, deriveAnthropic bool) {
+	if account == nil {
+		return "", false
+	}
+	explicit := strings.TrimSpace(account.GetCredential("base_url"))
+	bases, _ := account.Credentials["api_base_urls"].(map[string]any)
+	if account.IsAdaptiveAPIProtocol() {
+		if anthropic {
+			if value, _ := bases[APIProtocolAnthropic].(string); strings.TrimSpace(value) != "" {
+				return strings.TrimSpace(value), false
+			}
+		}
+		if value, _ := bases[APIProtocolChatCompletions].(string); strings.TrimSpace(value) != "" {
+			explicit = strings.TrimSpace(value)
+		}
+	}
+	if explicit != "" {
+		return explicit, anthropic && !account.IsAnthropicProtocol()
+	}
+	// An implicit profile default is safe only when the credentials contain
+	// no third-party origin. Sparse adaptive profiles are valid API inputs.
+	for _, value := range bases {
+		if configured, ok := value.(string); ok && strings.TrimSpace(configured) != "" && !isDeepseekOfficialHost(configured) {
+			return "", false
+		}
+	}
 	if account.IsAnthropicProtocol() {
 		return account.GetAnthropicProtocolBaseURL(), false
 	}
-	if anthropic && account.IsAdaptiveAPIProtocol() {
-		bases, _ := account.Credentials["api_base_urls"].(map[string]any)
-		if explicit, _ := bases[APIProtocolAnthropic].(string); strings.TrimSpace(explicit) != "" {
-			return account.GetAnthropicProtocolBaseURL(), false
+	return account.GetOpenAIBaseURL(), anthropic
+}
+
+// Compare the storage namespace, including a relay's path prefix and configured
+// routing query, without storing credentials embedded in that query.
+func deepseekStorageOrigin(u *url.URL) string {
+	path := strings.TrimRight(u.EscapedPath(), "/")
+	if i := strings.LastIndex(path, "/files/"); i >= 0 && !strings.Contains(path[i+7:], "/") {
+		path = path[:i]
+	} else {
+		for _, suffix := range []string{"/chat/completions", "/responses", "/messages", "/files"} {
+			if strings.HasSuffix(path, suffix) {
+				path = strings.TrimSuffix(path, suffix)
+				break
+			}
 		}
 	}
-	return account.GetOpenAIBaseURL(), anthropic
+	path = strings.TrimSuffix(strings.TrimSuffix(path, "/v1"), "/anthropic")
+	host := strings.ToLower(u.Hostname())
+	port := u.Port()
+	if port != "" && !(port == "443" && u.Scheme == "https") && !(port == "80" && u.Scheme == "http") {
+		host = net.JoinHostPort(host, port)
+	} else if strings.Contains(host, ":") {
+		host = "[" + host + "]"
+	}
+	origin := strings.ToLower(u.Scheme) + "://" + host + path
+	if u.RawQuery != "" {
+		origin += fmt.Sprintf("?sha256=%x", sha256.Sum256([]byte(u.RawQuery)))
+	}
+	return origin
 }
 
 func buildDeepseekToolsURL(account *Account, endpoint, fileID string, anthropic bool, validate func(string) (string, error)) (*url.URL, error) {
@@ -57,6 +107,9 @@ func buildDeepseekToolsURL(account *Account, endpoint, fileID string, anthropic 
 		return nil, fmt.Errorf("unsupported deepseek tools endpoint: %s", endpoint)
 	}
 	base, deriveAnthropic := deepseekToolsBase(account, anthropic)
+	if base == "" {
+		return nil, fmt.Errorf("no unambiguous configured DeepSeek tools origin")
+	}
 	validated, err := validate(base)
 	if err != nil {
 		return nil, err

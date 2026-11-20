@@ -2346,6 +2346,16 @@ const (
 	defaultAudioSTTPricePerHour         = 0.10
 )
 
+func isDeepseekToolPricingPattern(pattern string) bool {
+	pattern = strings.ToLower(strings.TrimSpace(pattern))
+	for _, endpoint := range []string{"search", "fetch", "ocr", "asr", "tts"} {
+		if pattern == "deepseek-tools-"+endpoint {
+			return true
+		}
+	}
+	return false
+}
+
 // Standalone tools use DeepSeek's USD list prices. A configured per-request
 // price on the synthetic model is the price of one call, page, second or character.
 func (s *BillingService) calculateDeepseekToolCost(ctx context.Context, resolver *ModelPricingResolver, apiKey *APIKey, usage DeepseekToolsUsage, multiplier float64) (*CostBreakdown, error) {
@@ -2371,8 +2381,14 @@ func (s *BillingService) calculateDeepseekToolCost(ctx context.Context, resolver
 		model := usage.Model()
 		group := apiKey.Group
 		ctx = WithResolvedTargetPlatform(ctx, PlatformDeepseek)
-		resolved := resolver.Resolve(ctx, PricingInput{Model: model, GroupID: &group.ID, Group: group})
-		if resolved.Mode == BillingModePerRequest {
+		pricing := matchGroupModelPricingMode(group, model, BillingModePerRequest)
+		source := PricingSourceGroup
+		if pricing == nil {
+			pricing = resolver.lookupChannelPricingNormalized(ctx, group.ID, model)
+			source = PricingSourceChannel
+		}
+		if pricing != nil && pricing.BillingMode == BillingModePerRequest {
+			resolved := resolver.resolveConfiguredPricing(pricing, model, source)
 			return s.CalculateCostUnified(CostInput{
 				Ctx: ctx, Model: model, GroupID: &group.ID, Group: group,
 				RequestCount: usage.Units, SizeTier: "deepseek_" + usage.Endpoint,

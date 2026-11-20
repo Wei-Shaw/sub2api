@@ -2153,7 +2153,38 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForCapability(
 	if len(platformOverride) > 0 {
 		platform = platformOverride[0]
 	}
-	return s.selectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, "", requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+	selectAccount := func(ctx context.Context) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+		return s.selectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, "", requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+	}
+	selection, decision, err := selectAccount(ctx)
+	ref, hasRefs := ctx.Value(deepseekReferencesKey{}).(deepseekReferences)
+	if err != nil || !hasRefs || ref.binding.accountID != 0 || selection == nil || selection.Account == nil {
+		return selection, decision, err
+	}
+	account := selection.Account
+	if !account.IsOpenAIApiKey() || !isDeepseekOfficialHost(account.GetOpenAIBaseURL()) {
+		return selection, decision, nil
+	}
+	// Mixed OpenAI pools must still support ordinary OpenAI file IDs. Only
+	// repin once the actual candidate is a DeepSeek mapping and ownership is
+	// established. The final wire check handles unknown and foreign IDs.
+	owner, lookupErr := lookupDeepseekFileBinding(ctx, s.cache, ref.userID, ref.ids)
+	if lookupErr != nil || owner.accountID == account.ID {
+		return selection, decision, nil
+	}
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+	ref.binding = owner
+	ctx = context.WithValue(ctx, deepseekReferencesKey{}, ref)
+	pinned, decision, err := selectAccount(withDeepseekFileAccount(ctx, owner.accountID))
+	if err == nil && pinned != nil && pinned.Account != nil && !isDeepseekOfficialHost(pinned.Account.GetOpenAIBaseURL()) {
+		if pinned.ReleaseFunc != nil {
+			pinned.ReleaseFunc()
+		}
+		return nil, decision, ErrNoAvailableAccounts
+	}
+	return pinned, decision, err
 }
 
 func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
@@ -2388,7 +2419,7 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	decision := OpenAIAccountScheduleDecision{}
 	if owner, _ := ctx.Value(deepseekFileAccountKey{}).(int64); owner > 0 {
-		if platform != PlatformDeepseek || s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
+		if (platform != PlatformDeepseek && platform != PlatformOpenAI) || s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
 			return nil, decision, ErrNoAvailableAccounts
 		}
 		return s.selectPinnedOpenAIAccount(ctx, OpenAIAccountScheduleRequest{

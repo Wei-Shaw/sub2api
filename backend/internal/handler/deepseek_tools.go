@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
@@ -19,14 +20,15 @@ import (
 	"go.uber.org/zap"
 )
 
-func (h *OpenAIGatewayHandler) bindDeepseekFileReferences(c *gin.Context, apiKey *service.APIKey, protocol string, body []byte, write func(*gin.Context, int, string, string)) bool {
+func (h *OpenAIGatewayHandler) bindDeepseekFileReferences(c *gin.Context, apiKey *service.APIKey, protocol string, body *[]byte, write func(*gin.Context, int, string, string)) bool {
 	ctx := c.Request.Context()
-	next, err := h.gatewayService.WithDeepseekFileReferences(ctx, openAICompatibleRequestPlatform(ctx, apiKey), protocol, apiKey.UserID, body)
+	next, normalized, err := h.gatewayService.PrepareDeepseekFileIngress(ctx, openAICompatibleRequestPlatform(ctx, apiKey), protocol, apiKey.UserID, *body)
 	if err != nil {
 		e := infraerrors.FromError(err)
 		write(c, int(e.Code), e.Reason, e.Message)
 		return false
 	}
+	*body = normalized
 	if next != ctx {
 		c.Request = c.Request.WithContext(next)
 	}
@@ -35,7 +37,7 @@ func (h *OpenAIGatewayHandler) bindDeepseekFileReferences(c *gin.Context, apiKey
 
 // Only the five standalone tools reserve balance. Files, including opt-in
 // document parsing, have no gateway billing units.
-func deepseekToolsInflightEstimate(endpoint string) service.InflightEstimateRequest {
+func deepseekToolsInflightEstimate(endpoint string, body []byte) service.InflightEstimateRequest {
 	var units int
 	switch endpoint {
 	case "search", "fetch":
@@ -43,9 +45,9 @@ func deepseekToolsInflightEstimate(endpoint string) service.InflightEstimateRequ
 	case "ocr":
 		units = 10 // pages
 	case "asr":
-		units = 600 // seconds
+		units = 120 // maximum supported audio duration in seconds
 	case "tts":
-		units = 2000 // billing characters
+		units = service.DeepseekTTSBillingChars(body)
 	default:
 		return service.InflightEstimateRequest{}
 	}
@@ -113,8 +115,11 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 			h.handleStreamingAwareErrorWithCode(c, status, errType, code, message, false, false)
 		}
 	}
+	if (endpoint == "tts" || endpoint == "ocr") && h.cfg != nil {
+		c.Request = c.Request.WithContext(service.WithDrainingSlotTTL(c.Request.Context(), time.Duration(h.cfg.Gateway.ConcurrencySlotTTLMinutes)*time.Minute))
+	}
 	var started bool
-	userRelease, acquired := h.acquireOpenAIUserSlot(c, subject.UserID, subject.Concurrency, false, &started, reqLog, writeSlotError)
+	userRelease, acquired := h.acquireOpenAIUserSlot(c, subject.UserID, subject.Concurrency, false, &started, reqLog, writeSlotError, releaseSlotOnReturn)
 	if !acquired {
 		return
 	}
@@ -180,7 +185,7 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 		}
 	}
 	// 余额模式在途预留（与计费同口径估算；计费任务扣减余额缓存后才释放）。
-	if estimate := deepseekToolsInflightEstimate(endpoint); estimate.DeepseekTool != nil {
+	if estimate := deepseekToolsInflightEstimate(endpoint, body); estimate.DeepseekTool != nil {
 		inflightDone, inflightErr := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, estimate)
 		if inflightErr != nil {
 			status, code, message, retryAfter := billingErrorDetails(inflightErr)
@@ -214,7 +219,7 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 		if selectErr != nil || selection == nil || selection.Account == nil {
 			break
 		}
-		release, status := h.acquireOpenAIAccountSlot(c, apiKey.GroupID, "", selection, false, &started, reqLog, writeSlotError)
+		release, status := h.acquireOpenAIAccountSlot(c, apiKey.GroupID, "", selection, false, &started, reqLog, writeSlotError, releaseSlotOnReturn)
 		if status == openAISlotAcquireProfitVetoed {
 			failed[selection.Account.ID] = struct{}{}
 			continue

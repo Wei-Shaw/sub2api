@@ -44,13 +44,16 @@ func (u *fileOwnerTestUpstream) DoWithTLS(req *http.Request, proxy string, id in
 	return u.Do(req, proxy, id, n)
 }
 
-func fileOwnerTestHandler(t *testing.T, cache service.GatewayCache, platform string) (*OpenAIGatewayHandler, *fileOwnerTestUpstream) {
+func fileOwnerTestHandler(t *testing.T, cache service.GatewayCache, platform string, baseURL ...string) (*OpenAIGatewayHandler, *fileOwnerTestUpstream) {
 	t.Helper()
 	cfg := &config.Config{RunMode: config.RunModeSimple}
 	groupID := int64(163)
 	owner := service.Account{ID: 11, Platform: platform, Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true,
 		GroupIDs: []int64{groupID}, Priority: 99, Concurrency: 5,
 		Credentials: map[string]any{"api_key": "test", "api_protocol": "adaptive"},
+	}
+	if len(baseURL) > 0 {
+		owner.Credentials["base_url"] = baseURL[0]
 	}
 	other := owner
 	other.ID, other.Priority = 12, 1
@@ -82,7 +85,7 @@ func fileOwnerTestContext(method, path, body, groupPlatform, resolved string, us
 func TestDeepseekChatFileOwnerHandlers(t *testing.T) {
 	cache := testutil.NewRedisGatewayCache(t)
 	store := cache.(service.DeepseekFileStore)
-	require.NoError(t, store.SaveDeepseekFile(context.Background(), 7, service.DeepseekFile{ID: "own", AccountID: 11}))
+	require.NoError(t, store.SaveDeepseekFile(context.Background(), 7, service.DeepseekFile{ID: "own", AccountID: 11, Origin: service.DefaultDeepseekBaseURL}))
 	h, up := fileOwnerTestHandler(t, cache, service.PlatformDeepseek)
 	for _, tc := range []struct {
 		name, path, payload string
@@ -90,6 +93,8 @@ func TestDeepseekChatFileOwnerHandlers(t *testing.T) {
 	}{
 		{"messages", "/v1/messages", `"messages":[{"role":"user","content":[{"type":"document","source":{"type":"file","file_id":"own"}}]}]`, h.Messages},
 		{"chat", "/v1/chat/completions", `"messages":[{"role":"user","content":[{"type":"file","file_id":"own"}]}]`, h.ChatCompletions},
+		{"responses-shaped chat", "/v1/chat/completions", `"input":[{"role":"user","content":[{"type":"input_file","file_id":"own"}]}]`, h.ChatCompletions},
+		{"legacy responses", "/v1/responses", `"messages":[{"role":"user","content":[{"type":"file","file":{"file_id":"own"}}]}]`, h.Responses},
 		{"responses", "/v1/responses", `"input":[{"role":"user","content":[{"type":"input_file","file_id":"own"}]}]`, h.Responses},
 	} {
 		for _, group := range []string{service.PlatformDeepseek, service.PlatformComposite} {
@@ -146,7 +151,7 @@ func TestDeepseekFilesUserIsolation(t *testing.T) {
 	for _, beta := range []bool{false, true} {
 		for user, id := range map[int64]string{7: "own", 8: "foreign"} {
 			require.NoError(t, store.SaveDeepseekFile(context.Background(), user, service.DeepseekFile{
-				ID: id, AccountID: 11, Filename: id + ".png", Bytes: 18, CreatedAt: time.Now().UTC(), MIMEType: "image/png", Purpose: "user_data"}))
+				ID: id, AccountID: 11, Origin: service.DefaultDeepseekBaseURL, Filename: id + ".png", Bytes: 18, CreatedAt: time.Now().UTC(), MIMEType: "image/png", Purpose: "user_data"}))
 		}
 		request := func(method, id, endpoint string) *httptest.ResponseRecorder {
 			c, r := fileOwnerTestContext(method, "/v1/files"+id, "", service.PlatformDeepseek, "", 7)
@@ -185,7 +190,7 @@ func TestDeepseekFilesUserIsolation(t *testing.T) {
 			}
 			rec := request(method, "/own?keep=a&keep=b", "files_"+strings.ToLower(method)+"/own")
 			require.Equal(t, 200, rec.Code, rec.Body.String())
-			require.Contains(t, up.paths[len(up.paths)-1], "/v1/files/own?keep=a&keep=b")
+			require.Contains(t, up.paths[len(up.paths)-1], "/v1/files/own")
 		}
 		require.Equal(t, []int64{11, 11}, up.ids[before:])
 		require.Equal(t, 404, request("GET", "/own", "files_get/own").Code)
@@ -214,7 +219,7 @@ func TestDeepseekFilesDocumentUploadPolicyThroughHandler(t *testing.T) {
 			if enabled {
 				require.Equal(t, 200, r.Code, r.Body.String())
 				require.Equal(t, []int64{12}, up.ids, r.Body.String())
-				files, err := cache.(service.DeepseekFileStore).ListDeepseekFiles(context.Background(), 7)
+				files, err := cache.(service.DeepseekFileStore).ListDeepseekFiles(context.Background(), 7, service.DeepseekFilePage{Limit: 20})
 				require.NoError(t, err)
 				require.Len(t, files, 1)
 				require.Equal(t, "rich_layout_recognition", files[0].Purpose)
@@ -227,6 +232,37 @@ func TestDeepseekFilesDocumentUploadPolicyThroughHandler(t *testing.T) {
 				require.Equal(t, anthropic, gjson.GetBytes(r.Body.Bytes(), "type").Exists())
 				require.Contains(t, r.Body.String(), "/v1/tools/ocr")
 			}
+		}
+	}
+}
+
+type mappedFileStore struct {
+	stickyWritebackCache
+	service.DeepseekFileStore
+}
+
+func (*mappedFileStore) LookupDeepseekFiles(_ context.Context, userID int64, ids []string) (map[string]service.DeepseekFile, error) {
+	files := map[string]service.DeepseekFile{}
+	for _, id := range ids {
+		if userID == 7 && id == "own" {
+			files[id] = service.DeepseekFile{ID: id, AccountID: 11, Origin: service.DefaultDeepseekBaseURL, Format: "openai"}
+		}
+	}
+	return files, nil
+}
+
+func TestDeepseekMappedOpenAIFileOwnerHandler(t *testing.T) {
+	h, up := fileOwnerTestHandler(t, &mappedFileStore{}, service.PlatformOpenAI, service.DefaultDeepseekBaseURL)
+	body := `{"model":"deepseek-flash","messages":[{"role":"user","content":[{"type":"file","file":{"file_id":"own"}}]}]}`
+	for _, user := range []int64{8, 7} {
+		c, rec := fileOwnerTestContext("POST", "/v1/chat/completions", body, service.PlatformOpenAI, "", user)
+		h.ChatCompletions(c)
+		if user == 8 {
+			require.Equal(t, 400, rec.Code, rec.Body.String())
+			require.Empty(t, up.ids)
+		} else {
+			require.Equal(t, []int64{11}, up.ids, rec.Body.String())
+			require.Contains(t, up.bodies[0], "own")
 		}
 	}
 }

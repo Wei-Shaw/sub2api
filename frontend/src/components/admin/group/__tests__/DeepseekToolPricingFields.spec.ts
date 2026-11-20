@@ -14,9 +14,10 @@ describe('DeepseekToolPricingFields', () => {
       input_price: null, output_price: null, image_input_price: null, image_output_price: null,
       cache_write_price: null, cache_read_price: null, intervals: [], time_pricing: null,
     }
-    const { tools, generic } = splitDeepseekToolPrices('deepseek', [wildcard])
+    const tokenWildcard: ChannelModelPricing = { ...wildcard, models: ['deepseek-*'], billing_mode: 'token', per_request_price: null }
+    const { tools, generic } = splitDeepseekToolPrices('deepseek', [wildcard, tokenWildcard])
     expect(tools).toEqual({})
-    expect(generic).toEqual([wildcard])
+    expect(generic).toEqual([wildcard, tokenWildcard])
     const wrapper = mount(DeepseekToolPricingFields, {
       props: { modelValue: tools, genericPricing: generic },
       global: { plugins: [createI18n({ legacy: false, locale, messages: { en: { admin: en }, zh: { admin: zh } } })] },

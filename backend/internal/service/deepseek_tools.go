@@ -1,12 +1,15 @@
 package service
 
 import (
+	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"math"
+	"mime"
 	"net/http"
 	"strconv"
 	"strings"
@@ -38,16 +41,17 @@ type DeepseekToolsForwardResult struct {
 
 // A prepared request carries the verified file owner through scheduling and forwarding.
 type DeepseekToolsRequest struct {
-	endpoint, fileID       string
-	userID, ownerAccountID int64
-	anthropicFiles         bool
-	upload                 deepseekUploadMetadata
-	body                   []byte
-	contentType            string
+	endpoint, fileID string
+	userID           int64
+	owner            deepseekFileBinding
+	anthropicFiles   bool
+	upload           deepseekUploadMetadata
+	body             []byte
+	contentType      string
 }
 
 func (r *DeepseekToolsRequest) SchedulingContext(ctx context.Context) context.Context {
-	return withDeepseekFileAccount(ctx, r.ownerAccountID)
+	return withDeepseekFileAccount(ctx, r.owner.accountID)
 }
 
 func (s *OpenAIGatewayService) PrepareDeepseekToolsRequest(ctx context.Context, c *gin.Context, userID int64, endpoint string, body []byte, contentType string) (*DeepseekToolsRequest, error) {
@@ -56,11 +60,11 @@ func (s *OpenAIGatewayService) PrepareDeepseekToolsRequest(ctx context.Context, 
 		anthropicFiles: strings.HasPrefix(endpoint, "files_") && IsDeepseekFilesAnthropicRequest(c)}
 	switch endpoint {
 	case "files_get", "files_delete":
-		id, err := s.DeepseekFileAccount(ctx, userID, []string{fileID})
+		owner, err := lookupDeepseekFileBinding(ctx, s.cache, userID, []string{fileID})
 		if err != nil {
 			return nil, err
 		}
-		r.ownerAccountID = id
+		r.owner = owner
 	case "files_create":
 		if c != nil && c.Request != nil {
 			for _, purpose := range c.Request.URL.Query()["purpose"] {
@@ -77,7 +81,11 @@ func (s *OpenAIGatewayService) PrepareDeepseekToolsRequest(ctx context.Context, 
 			return nil, errDeepseekFileStore
 		}
 		r.upload = meta
-	case "search", "fetch", "ocr", "asr", "tts":
+	case "ocr", "asr":
+		if err := validateDeepseekMultipartSize(body, contentType, endpoint); err != nil {
+			return nil, err
+		}
+	case "search", "fetch", "tts":
 	default:
 		return nil, invalidFileRequest("Unsupported DeepSeek tools endpoint")
 	}
@@ -95,19 +103,16 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 		return nil, fmt.Errorf("DeepSeek tools request requires an uncommitted response writer")
 	}
 	endpoint, body, contentType := r.endpoint, r.body, r.contentType
-	if (endpoint == "files_get" || endpoint == "files_delete") && (r.ownerAccountID <= 0 || account.ID != r.ownerAccountID) {
-		return nil, errDeepseekFileNotFound
-	}
+
 	targetURL, err := buildDeepseekToolsURL(account, endpoint, r.fileID, r.anthropicFiles, s.validateUpstreamBaseURL)
 	if err != nil {
 		return nil, infraerrors.New(http.StatusBadGateway, "api_error", "Invalid DeepSeek upstream URL").WithCause(err)
 	}
-	if c != nil && c.Request != nil && c.Request.URL.RawQuery != "" {
-		if targetURL.RawQuery != "" {
-			targetURL.RawQuery += "&"
-		}
-		targetURL.RawQuery += c.Request.URL.RawQuery
+	if (endpoint == "files_get" || endpoint == "files_delete") && (account.ID != r.owner.accountID || r.owner.origin != deepseekStorageOrigin(targetURL)) {
+		return nil, errDeepseekFileNotFound
 	}
+	// These HTTP operations take their arguments in the body or path. Only
+	// the locally answered list endpoint accepts client query parameters.
 	apiKey, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
 		return nil, infraerrors.New(http.StatusBadGateway, "upstream_error", "Upstream authentication failed").WithCause(err)
@@ -129,6 +134,9 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 		drainTimeout = 180 * time.Second
 	case "tts":
 		drainTimeout = 30 * time.Minute
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
 	}
 	upstreamCtx, release := detachUpstreamContext(ctx, drainTimeout)
 	defer release()
@@ -169,13 +177,35 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 		// 网络层错误统一走既有 transport error 通道，供 handler 按需 failover。
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
-	defer func() { _ = resp.Body.Close() }()
+	originalBody := resp.Body
+	defer func() { _ = originalBody.Close() }()
 
+	if resp.StatusCode == http.StatusNotFound && endpoint == "files_delete" {
+		// A previous delete may have succeeded upstream before local cleanup failed.
+		data := s.readUpstreamErrorBody(resp)
+		if deepseekMissingFileResponse(data) {
+			store, err := s.deepseekFileStore()
+			if err != nil {
+				return nil, err
+			}
+			if err := deleteDeepseekFileRecord(upstreamCtx, store, r.userID, account.ID, r.fileID); err != nil {
+				return nil, errDeepseekFileStore.WithCause(err)
+			}
+			c.Status(http.StatusNoContent)
+			return &DeepseekToolsForwardResult{StatusCode: http.StatusNoContent}, nil
+		}
+		resp.Body = io.NopCloser(bytes.NewReader(data))
+	}
 	if resp.StatusCode >= 400 {
 		return nil, s.deepseekToolsUpstreamError(ctx, c, account, resp, endpoint)
 	}
 	success := resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices
-	if (endpoint == "tts" && success) || (endpoint == "ocr" && resp.StatusCode == http.StatusOK) {
+	if endpoint == "tts" && success {
+		if err := validateDeepseekAudioResponse(resp); err != nil {
+			return nil, err
+		}
+	}
+	if (endpoint == "tts" || endpoint == "ocr") && resp.StatusCode == http.StatusOK {
 		if endpoint == "ocr" {
 			writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 		}
@@ -205,6 +235,7 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 			if err != nil {
 				return nil, infraerrors.New(http.StatusBadGateway, "api_error", "Invalid upstream file metadata").WithCause(err)
 			}
+			file.Origin = deepseekStorageOrigin(targetURL)
 			if err := store.SaveDeepseekFile(upstreamCtx, r.userID, file); err != nil {
 				return nil, errDeepseekFileStore.WithCause(err)
 			}
@@ -212,7 +243,7 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 			if resp.StatusCode != http.StatusNoContent && !deepseekFileDeleted(data, r.fileID, r.anthropicFiles) {
 				return nil, infraerrors.New(http.StatusBadGateway, "api_error", "Upstream did not confirm file deletion")
 			}
-			if err := store.DeleteDeepseekFile(upstreamCtx, r.userID, account.ID, r.fileID); err != nil {
+			if err := deleteDeepseekFileRecord(upstreamCtx, store, r.userID, account.ID, r.fileID); err != nil {
 				return nil, errDeepseekFileStore.WithCause(err)
 			}
 		}
@@ -223,6 +254,22 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 		Usage:           extractDeepseekToolsUsage(endpoint, body, data, resp.StatusCode),
 		UpstreamHeaders: resp.Header,
 	}, nil
+}
+
+// The upstream deletion is final. Retry only the idempotent local operation.
+func deleteDeepseekFileRecord(ctx context.Context, store DeepseekFileStore, userID, accountID int64, fileID string) error {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 3*time.Second)
+	defer cancel()
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		if err = store.DeleteDeepseekFile(ctx, userID, accountID, fileID); err == nil {
+			return nil
+		}
+		if ctx.Err() != nil {
+			break
+		}
+	}
+	return err
 }
 
 func (s *OpenAIGatewayService) deepseekToolsUpstreamError(ctx context.Context, c *gin.Context, account *Account, resp *http.Response, endpoint string) error {
@@ -261,6 +308,65 @@ func (s *OpenAIGatewayService) deepseekToolsUpstreamError(ctx context.Context, c
 		clientMsg = "Upstream rejected the request"
 	}
 	return infraerrors.New(clientStatus, errType, sanitizeUpstreamErrorMessage(clientMsg))
+}
+
+func deepseekAudioError(data []byte) error {
+	message := sanitizeUpstreamErrorMessage(strings.TrimSpace(gjson.GetBytes(data, "error.message").String()))
+	if message == "" {
+		message = "DeepSeek did not return synthesized audio"
+	}
+	return infraerrors.New(http.StatusBadGateway, "upstream_error", message)
+}
+
+// A JSON decoder can consume a read error while probing raw PCM. Keep the
+// terminal error observable when the inspected bytes are replayed downstream.
+type deepseekAudioReader struct {
+	source io.Reader
+	err    error
+}
+
+func (r *deepseekAudioReader) Read(p []byte) (int, error) {
+	if r.err != nil {
+		return 0, r.err
+	}
+	n, err := r.source.Read(p)
+	r.err = err
+	return n, err
+}
+
+func validateDeepseekAudioResponse(resp *http.Response) error {
+	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	const maxError = 64 << 10
+	if resp.StatusCode != http.StatusOK || !strings.HasPrefix(mediaType, "audio/") {
+		data, _ := io.ReadAll(io.LimitReader(resp.Body, maxError))
+		return deepseekAudioError(data)
+	}
+	// Some relays retain the audio Content-Type on JSON errors. Probe only
+	// JSON-looking prefixes and replay all inspected bytes for genuine PCM.
+	reader := bufio.NewReader(&deepseekAudioReader{source: resp.Body})
+	resp.Body = io.NopCloser(reader)
+	for n := 1; n <= reader.Size(); n++ {
+		start, err := reader.Peek(n)
+		if err != nil {
+			return nil
+		} // Stream copying handles EOF and read failures.
+		switch start[n-1] {
+		case ' ', '\r', '\n', '\t':
+			continue
+		case '{':
+			var prefix bytes.Buffer
+			var envelope struct {
+				Error json.RawMessage `json:"error"`
+			}
+			probe := io.TeeReader(io.LimitReader(reader, maxError), &prefix)
+			if err := json.NewDecoder(probe).Decode(&envelope); err == nil && len(envelope.Error) != 0 && string(envelope.Error) != "null" {
+				return deepseekAudioError(prefix.Bytes())
+			}
+			resp.Body = io.NopCloser(io.MultiReader(&prefix, reader))
+		}
+		break
+	}
+	return nil
 }
 
 func streamDeepseekToolsResponse(c *gin.Context, resp *http.Response, endpoint string) []byte {
@@ -327,14 +433,10 @@ func extractDeepseekToolsUsage(endpoint string, reqBody, respBody []byte, status
 	}
 	switch endpoint {
 	case "tts":
-		text := gjson.GetBytes(reqBody, "text")
-		if !text.Exists() {
-			text = gjson.GetBytes(reqBody, "input")
+		if status != http.StatusOK {
+			return DeepseekToolsUsage{}
 		}
-		if text.Type == gjson.String {
-			return DeepseekToolsUsage{Endpoint: endpoint, Units: countTTSBillableChars(text.Str)}
-		}
-		return DeepseekToolsUsage{}
+		return DeepseekToolsUsage{Endpoint: endpoint, Units: DeepseekTTSBillingChars(reqBody)}
 	case "search", "fetch", "ocr":
 		if status != http.StatusOK {
 			return DeepseekToolsUsage{}
@@ -378,6 +480,18 @@ func extractDeepseekToolsUsage(endpoint string, reqBody, respBody []byte, status
 		}
 	}
 	return DeepseekToolsUsage{Endpoint: endpoint, Units: max(0, units)}
+}
+
+// DeepseekTTSBillingChars reads the exact text sent to the synthesis endpoint.
+func DeepseekTTSBillingChars(body []byte) int {
+	text := gjson.GetBytes(body, "text")
+	if !text.Exists() {
+		text = gjson.GetBytes(body, "input")
+	}
+	if text.Type != gjson.String {
+		return 0
+	}
+	return countTTSBillableChars(text.Str)
 }
 
 func countTTSBillableChars(text string) int {

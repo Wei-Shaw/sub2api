@@ -53,7 +53,8 @@ func TestFilterWebSearchHistoryBlocks_StripsEmulatedBlocksForAnthropicStrict(t *
 
 func TestFilterWebSearchHistoryBlocks_KeepsGenuineBlocksForAnthropicStrict(t *testing.T) {
 	body := []byte(genuineWebSearchBody)
-	out := FilterWebSearchHistoryBlocks(body, "claude-sonnet-4-6", nil)
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_protocol": APIProtocolAdaptive, "account_mode": "zen"}}
+	out := FilterWebSearchHistoryBlocks(body, "claude-sonnet-4-6", account)
 
 	require.Equal(t, string(body), string(out))
 }
@@ -156,7 +157,7 @@ func deepSeekToolsBody(history string) string {
 func TestFilterWebSearchHistoryBlocks_KeepsGenuineBlocksWhenDeepSeekToolsDeclared(t *testing.T) {
 	body := deepSeekToolsBody(deepSeekGenuineHistory)
 
-	out := FilterWebSearchHistoryBlocks([]byte(body), "deepseek-v4", &Account{Platform: PlatformDeepseek, Type: AccountTypeAPIKey})
+	out := FilterWebSearchHistoryBlocks([]byte(body), "deepseek-v4", &Account{Platform: PlatformDeepseek, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_protocol": APIProtocolAnthropic}})
 
 	// server_tool_use / web_search_tool_result must be passed back verbatim:
 	// the signature payload is context-necessary for the next turn.
@@ -167,7 +168,7 @@ func TestFilterWebSearchHistoryBlocks_KeepsGenuineBlocksWhenDeepSeekToolsDeclare
 
 func TestFilterWebSearchHistoryBlocks_DeepSeekKeepsHistoryWithoutToolsDeclaration(t *testing.T) {
 	// Official DeepSeek accepts signed history even when the next turn disables tools.
-	out := FilterWebSearchHistoryBlocks([]byte(genuineWebSearchBody), "deepseek-v4", &Account{Platform: PlatformDeepseek, Type: AccountTypeAPIKey})
+	out := FilterWebSearchHistoryBlocks([]byte(genuineWebSearchBody), "deepseek-v4", &Account{Platform: PlatformDeepseek, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_protocol": APIProtocolAnthropic}})
 
 	require.Equal(t, []byte(genuineWebSearchBody), out)
 }
@@ -182,7 +183,7 @@ func TestFilterWebSearchHistoryBlocks_DeepSeekToolsDeclaredStillStripsEmulatedBl
 		`{"role":"user","content":[{"type":"text","text":"thanks, continue"}]}`
 	body := deepSeekToolsBody(emulatedHistory)
 
-	out := FilterWebSearchHistoryBlocks([]byte(body), "deepseek-v4", &Account{Platform: PlatformDeepseek, Type: AccountTypeAPIKey})
+	out := FilterWebSearchHistoryBlocks([]byte(body), "deepseek-v4", &Account{Platform: PlatformDeepseek, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_protocol": APIProtocolAnthropic}})
 
 	// Emulation-synthesized blocks (srvtoolu_ws_ prefix) are still stripped.
 	require.Equal(t, []string{"text", "text", "text"}, collectContentTypes(t, out))

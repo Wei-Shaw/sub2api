@@ -704,7 +704,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
 	if err := applyMappedGPT55LiteCompatibility(req, account, body); err != nil {
 		return nil, err
 	}
-	return req, nil
+	return withDeepseekWireFiles(req, account, APIProtocolResponses, body), nil
 }
 
 func stripOpenAILegacyResponsesBeta(headers http.Header) {

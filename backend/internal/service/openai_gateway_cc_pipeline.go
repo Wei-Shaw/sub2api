@@ -268,6 +268,7 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
 	}
+	upstreamReq = withDeepseekWireFiles(upstreamReq, account, APIProtocolChatCompletions, body)
 	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 	if err != nil {
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
@@ -400,6 +401,9 @@ func (s *OpenAIGatewayService) readCCUpstreamJSONResponse(
 // writeOpenAIResponsesFallbackError 以 /v1/responses 回退路径的既有错误格式回写
 // （裸 error 对象；不调用 MarkResponseCommitted，与原内联写法保持一致）。
 func writeOpenAIResponsesFallbackError(c *gin.Context, statusCode int, errType, message string) {
+	if writeResponsesStreamError(c, errType, message) {
+		return
+	}
 	c.JSON(statusCode, gin.H{
 		"error": gin.H{
 			"type":    errType,

@@ -188,7 +188,7 @@ func TestDeepSeekHistoryForActualMessagesEndpoint(t *testing.T) {
 					mappedModel = "glm-4.7"
 				}
 				out := FilterWebSearchHistoryBlocks(body, mappedModel, account)
-				if platform != PlatformOpenAI && strings.Contains(base, "api.deepseek.com") {
+				if ResolveThinkingProtocol(mappedModel) != ThinkingProtocolPassbackRequired || (platform != PlatformOpenAI && strings.Contains(base, "api.deepseek.com")) {
 					require.Equal(t, body, out)
 				} else {
 					require.Equal(t, []string{"text"}, collectContentTypes(t, out))

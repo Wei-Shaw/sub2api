@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"io"
+	"mime/multipart"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,7 +15,9 @@ import (
 	"testing"
 	"time"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -28,8 +31,8 @@ func TestDeepseekToolsBodyLimits(t *testing.T) {
 		anthropic bool
 	}{
 		{"/v1/tools/search", textLimit, false}, {"/v1/tools/fetch", textLimit, false},
-		{"/v1/tools/tts", 64 << 10, false}, {"/v1/tools/asr", 8 << 20, false},
-		{"/v1/tools/ocr", 100 << 20, false}, {"/v1/files", 100 << 20, false}, {"/v1/files", 100 << 20, true},
+		{"/v1/tools/tts", 64 << 10, false}, {"/v1/tools/asr", 9 << 20, false},
+		{"/v1/tools/ocr", 101 << 20, false}, {"/v1/files", 101 << 20, false}, {"/v1/files", 101 << 20, true},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
 			r := gin.New()
@@ -154,3 +157,32 @@ func (l *deepseekPipeListener) Accept() (net.Conn, error) {
 }
 func (*deepseekPipeListener) Close() error   { return nil }
 func (*deepseekPipeListener) Addr() net.Addr { return &net.TCPAddr{} }
+
+func TestDeepseekASRMultipartRouteBoundary(t *testing.T) {
+	router := gin.New()
+	router.Use(DeepseekToolsBodyLimit(1024, 256<<20))
+	router.POST("/v1/tools/asr", func(c *gin.Context) {
+		body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+		require.NoError(t, err)
+		_, err = (&service.OpenAIGatewayService{}).PrepareDeepseekToolsRequest(c.Request.Context(), c, 1, "asr", body, c.GetHeader("Content-Type"))
+		c.Status(infraerrors.Code(err))
+	})
+	for _, extra := range []int{0, 1} {
+		var buf bytes.Buffer
+		m := multipart.NewWriter(&buf)
+		part, err := m.CreateFormFile("file", "speech.wav")
+		require.NoError(t, err)
+		_, err = part.Write(make([]byte, service.DeepseekASRFileLimit+extra))
+		require.NoError(t, err)
+		require.NoError(t, m.Close())
+		req := httptest.NewRequest("POST", "/v1/tools/asr", &buf)
+		req.Header.Set("Content-Type", m.FormDataContentType())
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if extra == 0 {
+			require.Equal(t, 200, rec.Code)
+		} else {
+			require.Equal(t, 413, rec.Code)
+		}
+	}
+}

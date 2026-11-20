@@ -17,6 +17,49 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+const (
+	DeepseekASRFileLimit      = 8 << 20
+	DeepseekDocumentFileLimit = 100 << 20
+	DeepseekMultipartOverhead = 1 << 20
+)
+
+func checkDeepseekFilePart(part *multipart.Part, limit int64) (int64, error) {
+	size, err := io.Copy(io.Discard, io.LimitReader(part, limit+1))
+	if err != nil {
+		return 0, invalidFileRequest("Invalid multipart file upload")
+	}
+	if size > limit {
+		return 0, infraerrors.New(413, "request_too_large", "File exceeds the DeepSeek file size limit")
+	}
+	return size, nil
+}
+
+func validateDeepseekMultipartSize(body []byte, contentType, endpoint string) error {
+	mediaType, params, err := mime.ParseMediaType(contentType)
+	if err != nil || mediaType != "multipart/form-data" {
+		return nil // The upstream validates the request format.
+	}
+	limit := int64(DeepseekDocumentFileLimit)
+	if endpoint == "asr" {
+		limit = DeepseekASRFileLimit
+	}
+	reader := multipart.NewReader(bytes.NewReader(body), params["boundary"])
+	for {
+		part, err := reader.NextRawPart()
+		if err == io.EOF {
+			return nil
+		}
+		if err != nil {
+			return invalidFileRequest("Invalid multipart file upload")
+		}
+		if part.FormName() == "file" {
+			if _, err := checkDeepseekFilePart(part, limit); err != nil {
+				return err
+			}
+		}
+	}
+}
+
 type deepseekUploadMetadata struct {
 	purpose  string
 	mimeType string
@@ -55,9 +98,9 @@ func (s *OpenAIGatewayService) deepseekUploadMetadata(body []byte, contentType s
 		switch part.FormName() {
 		case "file":
 			meta.filename = part.FileName()
-			meta.bytes, err = io.Copy(io.Discard, part)
+			meta.bytes, err = checkDeepseekFilePart(part, DeepseekDocumentFileLimit)
 			if err != nil {
-				return meta, invalidFileRequest("Invalid multipart file upload")
+				return meta, err
 			}
 			if t, _, err := mime.ParseMediaType(part.Header.Get("Content-Type")); err == nil {
 				meta.mimeType = t
@@ -128,6 +171,14 @@ func deepseekUploadedFile(data []byte, accountID int64, anthropic bool, upload d
 	return file, nil
 }
 
+func deepseekMissingFileResponse(data []byte) bool {
+	code := gjson.GetBytes(data, "error.code").String()
+	kind := gjson.GetBytes(data, "error.type").String()
+	message := strings.ToLower(gjson.GetBytes(data, "error.message").String())
+	return code == "file_not_found" || kind == "file_not_found" ||
+		(strings.Contains(message, "file") && (strings.Contains(message, "not found") || strings.Contains(message, "does not exist")))
+}
+
 func deepseekFileDeleted(data []byte, id string, anthropic bool) bool {
 	result := gjson.ParseBytes(data)
 	if result.Get("id").String() != id || result.Get("error").Exists() {
@@ -151,6 +202,16 @@ func (f DeepseekFile) publicMetadata(anthropic bool) map[string]any {
 	}
 	return obj
 }
+
+// ListDeepseekFiles reads up to Limit+1 live records in scan direction.
+// Before pages scan backwards and are reversed before returning to the client.
+type DeepseekFilePage struct {
+	Limit              int
+	Descending, Before bool
+	Cursor, Purpose    string
+}
+
+var ErrDeepseekFileCursor = errors.New("file list cursor not found")
 
 func (s *OpenAIGatewayService) ListDeepseekFiles(ctx context.Context, userID int64, rawQuery string, anthropic bool) (map[string]any, error) {
 	q, err := url.ParseQuery(rawQuery)
@@ -202,47 +263,26 @@ func (s *OpenAIGatewayService) ListDeepseekFiles(ctx context.Context, userID int
 	if err != nil {
 		return nil, err
 	}
-	files, err := store.ListDeepseekFiles(ctx, userID)
-	if err != nil {
-		return nil, errDeepseekFileStore.WithCause(err)
-	}
-	now := time.Now().Unix()
-	files = slices.DeleteFunc(files, func(f DeepseekFile) bool { return f.ExpiresAt != 0 && f.ExpiresAt <= now })
-	slices.SortFunc(files, func(a, b DeepseekFile) int {
-		cmp := a.CreatedAt.Compare(b.CreatedAt)
-		if cmp == 0 {
-			cmp = strings.Compare(a.ID, b.ID)
-		}
-		if desc {
-			return -cmp
-		}
-		return cmp
-	})
 	cursor := after
 	if before != "" {
 		cursor = before
 	}
-	if cursor != "" {
-		i := slices.IndexFunc(files, func(f DeepseekFile) bool { return f.ID == cursor })
-		if i < 0 {
-			return nil, invalidFileRequest("File list cursor not found")
-		}
-		if before != "" {
-			files = files[:i]
-		} else {
-			files = files[i+1:]
-		}
+	if cursor != "" && !isValidDeepseekFileID(cursor) {
+		return nil, invalidFileRequest("Invalid file list cursor")
 	}
-	if purpose := q.Get("purpose"); purpose != "" {
-		files = slices.DeleteFunc(files, func(f DeepseekFile) bool { return f.Purpose != purpose })
+	files, err := store.ListDeepseekFiles(ctx, userID, DeepseekFilePage{Limit: limit, Descending: desc, Before: before != "", Cursor: cursor, Purpose: q.Get("purpose")})
+	if errors.Is(err, ErrDeepseekFileCursor) {
+		return nil, invalidFileRequest("File list cursor not found")
+	}
+	if err != nil {
+		return nil, errDeepseekFileStore.WithCause(err)
 	}
 	hasMore := len(files) > limit
 	if hasMore {
-		if before != "" {
-			files = files[len(files)-limit:]
-		} else {
-			files = files[:limit]
-		}
+		files = files[:limit]
+	}
+	if before != "" {
+		slices.Reverse(files)
 	}
 	data := make([]map[string]any, 0, len(files))
 	for _, f := range files {

@@ -359,6 +359,29 @@ describe('GroupsView duplicate action', () => {
     wrapper.unmount()
   })
 
+  it('saves a dedicated tool price alongside a matching token wildcard', async () => {
+    const group = { ...sourceGroup, platform: 'deepseek', model_pricing: [
+      { platform: 'deepseek', models: ['deepseek-*'], billing_mode: 'token', input_price: 0.000001, intervals: [] },
+    ] }
+    listGroups.mockResolvedValue({ items: [group], total: 1, page: 1, page_size: 20, pages: 1 })
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'common.edit')!.trigger('click')
+    await flushPromises()
+    const form = wrapper.get('#edit-group-form')
+    const search = form.get<HTMLInputElement>('[name="deepseek-tools-search"]')
+    expect(search.element.disabled).toBe(false)
+    await search.setValue('2')
+    await form.trigger('submit')
+    await flushPromises()
+    const saved = vi.mocked(adminAPI.groups.update).mock.lastCall![1].model_pricing!
+    expect(saved.map(entry => [entry.models, entry.billing_mode])).toEqual([
+      [['deepseek-*'], 'token'], [['deepseek-tools-search'], 'per_request'],
+    ])
+    expect(saved[1].per_request_price).toBe(0.002)
+    wrapper.unmount()
+  })
+
   it('loads DeepSeek prices in list units and clears one tool without changing a shared model price', async () => {
     const rows = [
       { models: ['deepseek-tools-search', 'shared-model'], per_request_price: 0.002 },

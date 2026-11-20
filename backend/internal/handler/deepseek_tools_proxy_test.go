@@ -62,8 +62,8 @@ type deepseekProxyFileCache struct {
 	service.DeepseekFileStore
 }
 
-func (*deepseekProxyFileCache) DeepseekFileAccounts(context.Context, int64, []string) (map[string]int64, error) {
-	return map[string]int64{"owned": 1}, nil
+func (*deepseekProxyFileCache) LookupDeepseekFiles(context.Context, int64, []string) (map[string]service.DeepseekFile, error) {
+	return map[string]service.DeepseekFile{"owned": {AccountID: 1, Origin: service.DefaultDeepseekBaseURL}}, nil
 }
 
 func newDeepseekProxyHandler(t *testing.T, n int, up *deepseekTestTransport, slots *service.ConcurrencyService) (*OpenAIGatewayHandler, *deepseekPolicyRepo, *compatStreamUsageBillingRepo) {
@@ -132,7 +132,7 @@ func TestDeepseekToolsSingleErrorResponse(t *testing.T) {
 		name             string
 		accounts, status int
 	}{
-		{"exhausted", 5, 502}, {"token", 1, 502}, {"URL", 1, 502}, {"request build", 1, 502}, {"body read", 1, 502}, {"upstream 400", 1, 400}, {"invalid file ID", 0, 404},
+		{"exhausted", 5, 502}, {"token", 1, 502}, {"URL", 1, 502}, {"body read", 1, 502}, {"upstream 400", 1, 400}, {"invalid file ID", 0, 404},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			up := &deepseekTestTransport{respond: func(_ *http.Request, _ int64) (*http.Response, error) {
@@ -157,9 +157,7 @@ func TestDeepseekToolsSingleErrorResponse(t *testing.T) {
 				endpoint = "files_get/bad?id"
 			}
 			c, w := fileOwnerTestContext("POST", "/v1/tools/search", `{"query":"q"}`, service.PlatformDeepseek, "", 7)
-			if tc.name == "request build" {
-				c.Request.URL.RawQuery = "bad=\x01"
-			}
+
 			c.Request.Header.Set("anthropic-beta", "files-api-2025-04-14")
 			h.DeepseekTools(c, endpoint)
 			requireDeepseekError(t, w, tc.status, tc.name == "invalid file ID")
@@ -168,10 +166,7 @@ func TestDeepseekToolsSingleErrorResponse(t *testing.T) {
 			if tc.name == "exhausted" {
 				require.Len(t, up.accounts, 4)
 			}
-			if tc.name == "request build" {
-				require.Empty(t, up.accounts)
-				require.Contains(t, w.Body.String(), "Failed to build upstream request")
-			}
+
 		})
 	}
 }
@@ -284,6 +279,7 @@ func TestDeepseekToolsIncompleteTTSBody(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			up := &deepseekTestTransport{respond: func(*http.Request, int64) (*http.Response, error) {
 				r := deepseekTestReply(200, strings.NewReader(tc.body))
+				r.Header.Set("Content-Type", "audio/wav")
 				r.ContentLength = tc.length
 				return r, nil
 			}}
@@ -354,6 +350,7 @@ func TestDeepseekToolsStreamSettlement(t *testing.T) {
 		{"OCR client disconnect", "ocr", "\n", `{"object":"ocr.result","page_count":3}`, true, false, 3 * .225 / 1000},
 		{"TTS client disconnect", "tts", "PCM", "more audio", true, false, 4 * .45 / 10000},
 		{"TTS upstream abort", "tts", "PCM", "", false, true, 0},
+		{"TTS JSON-looking PCM abort", "tts", "{", "", false, true, 0},
 		{"TTS both disconnect", "tts", "PCM", "", true, true, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -366,16 +363,22 @@ func TestDeepseekToolsStreamSettlement(t *testing.T) {
 			if tc.disconnect {
 				c.Writer = &deepseekDisconnectWriter{ResponseWriter: c.Writer, cancel: cancel}
 			}
+			slots := &deepseekAdmissionCache{deepseekToolsSlotCache: deepseekToolsSlotCache{held: map[string]struct{}{}}}
+			c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 7, Concurrency: 1})
 			var reachedEnd bool
 			up := &deepseekTestTransport{respond: func(r *http.Request, _ int64) (*http.Response, error) {
 				body := io.MultiReader(deepseekReadFunc(func([]byte) (int, error) {
-					require.True(t, w.Flushed, "status must be flushed before reading the first byte")
+					if tc.endpoint == "ocr" {
+						require.True(t, w.Flushed, "OCR keepalives must not wait for a result")
+					}
 					return 0, io.EOF
 				}), strings.NewReader(tc.first), deepseekReadFunc(func([]byte) (int, error) {
 					require.NoError(t, r.Context().Err())
 					if tc.disconnect {
 						require.ErrorIs(t, ctx.Err(), context.Canceled)
-					} else {
+						require.Equal(t, 1, slots.outstanding())
+						require.Zero(t, slots.userReleased)
+					} else if tc.first != "{" {
 						require.Equal(t, tc.first, w.Body.String())
 					}
 					if tc.truncated {
@@ -383,9 +386,13 @@ func TestDeepseekToolsStreamSettlement(t *testing.T) {
 					}
 					return 0, io.EOF
 				}), strings.NewReader(tc.rest), deepseekReadFunc(func([]byte) (int, error) { reachedEnd = true; return 0, io.EOF }))
-				return deepseekTestReply(200, body), nil
+				response := deepseekTestReply(200, body)
+				if tc.endpoint == "tts" {
+					response.Header.Set("Content-Type", "audio/pcm")
+				}
+				return response, nil
 			}}
-			h, _, commands := newDeepseekProxyHandler(t, 2, up, nil)
+			h, _, commands := newDeepseekProxyHandler(t, 2, up, service.NewConcurrencyService(slots))
 			if tc.truncated {
 				require.PanicsWithValue(t, http.ErrAbortHandler, func() { h.DeepseekTools(c, tc.endpoint) })
 			} else {
@@ -393,6 +400,8 @@ func TestDeepseekToolsStreamSettlement(t *testing.T) {
 				require.True(t, reachedEnd)
 			}
 			require.Len(t, up.accounts, 1)
+			require.Zero(t, slots.outstanding())
+			require.Equal(t, 1, slots.userReleased)
 			if tc.disconnect {
 				require.Equal(t, 1, c.Writer.(*deepseekDisconnectWriter).writes)
 			} else {
@@ -411,3 +420,27 @@ func TestDeepseekToolsStreamSettlement(t *testing.T) {
 type deepseekReadFunc func([]byte) (int, error)
 
 func (f deepseekReadFunc) Read(p []byte) (int, error) { return f(p) }
+
+func TestDeepseekTTSRejectsNonAudioResults(t *testing.T) {
+	for _, tc := range []struct {
+		status      int
+		media, body string
+	}{
+		{202, "audio/wav", ""}, {204, "", ""}, {200, "application/json", `{"error":{"message":"synthesis rejected"}}`},
+		{200, "audio/wav", ` {"error":{"message":"synthesis rejected"}}`},
+	} {
+		up := &deepseekTestTransport{respond: func(*http.Request, int64) (*http.Response, error) {
+			r := deepseekTestReply(tc.status, strings.NewReader(tc.body))
+			r.Header.Set("Content-Type", tc.media)
+			return r, nil
+		}}
+		h, _, commands := newDeepseekProxyHandler(t, 1, up, nil)
+		c, w := fileOwnerTestContext("POST", "/v1/tools/tts", `{"text":"hello"}`, "deepseek", "", 7)
+		h.DeepseekTools(c, "tts")
+		requireDeepseekError(t, w, 502, false)
+		require.Empty(t, commands.commands)
+		if tc.body != "" {
+			require.Contains(t, w.Body.String(), "synthesis rejected")
+		}
+	}
+}

@@ -1495,7 +1495,8 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 // body would be unreadable to the client's SSE parser, so the error is written
 // as an SSE error event instead.
 func writeAnthropicError(c *gin.Context, statusCode int, errType, message string) {
-	if c.Writer.Written() && strings.HasPrefix(c.Writer.Header().Get("Content-Type"), "text/event-stream") {
+	if gatewayErrorStreamStarted(c) {
+		MarkResponseCommitted(c)
 		if _, err := fmt.Fprint(c.Writer, buildAnthropicStreamErrorSSE(errType, message)); err == nil {
 			c.Writer.Flush()
 		}

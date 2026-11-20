@@ -5,6 +5,8 @@ package service
 import (
 	"context"
 	"errors"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -37,20 +39,40 @@ func (c *testDeepseekFileCache) SaveDeepseekFile(_ context.Context, userID int64
 	return nil
 }
 
-func (c *testDeepseekFileCache) DeepseekFileAccounts(_ context.Context, userID int64, ids []string) (map[string]int64, error) {
-	accounts := make(map[string]int64)
+func (c *testDeepseekFileCache) LookupDeepseekFiles(_ context.Context, userID int64, ids []string) (map[string]DeepseekFile, error) {
+	files := make(map[string]DeepseekFile)
 	for _, id := range ids {
-		accounts[id] = c.files[userID][id].AccountID
-	}
-	return accounts, c.getErr
-}
-
-func (c *testDeepseekFileCache) ListDeepseekFiles(_ context.Context, userID int64) ([]DeepseekFile, error) {
-	var files []DeepseekFile
-	for _, file := range c.files[userID] {
-		files = append(files, file)
+		if f, ok := c.files[userID][id]; ok {
+			files[id] = f
+		}
 	}
 	return files, c.getErr
+}
+
+func (c *testDeepseekFileCache) ListDeepseekFiles(_ context.Context, userID int64, page DeepseekFilePage) ([]DeepseekFile, error) {
+	files := []DeepseekFile{}
+	cursor, found := c.files[userID][page.Cursor]
+	if page.Cursor != "" && !found {
+		return nil, ErrDeepseekFileCursor
+	}
+	desc := page.Descending != page.Before
+	compare := func(a, b DeepseekFile) int {
+		n := a.CreatedAt.Compare(b.CreatedAt)
+		if n == 0 {
+			n = strings.Compare(a.ID, b.ID)
+		}
+		if desc {
+			return -n
+		}
+		return n
+	}
+	for _, f := range c.files[userID] {
+		if (page.Purpose == "" || page.Purpose == f.Purpose) && (page.Cursor == "" || compare(f, cursor) > 0) && (f.ExpiresAt == 0 || f.ExpiresAt > time.Now().Unix()) {
+			files = append(files, f)
+		}
+	}
+	slices.SortFunc(files, compare)
+	return files[:min(len(files), page.Limit+1)], c.getErr
 }
 
 func (c *testDeepseekFileCache) DeleteDeepseekFile(_ context.Context, userID, accountID int64, id string) error {
@@ -135,7 +157,7 @@ func TestDeepseekFileReferencesPinEachProtocol(t *testing.T) {
 	other := owner
 	other.ID, other.Priority = 167, 1
 	cache := &testDeepseekFileCache{}
-	require.NoError(t, cache.SaveDeepseekFile(ctx, 1, DeepseekFile{ID: "f", AccountID: owner.ID}))
+	require.NoError(t, cache.SaveDeepseekFile(ctx, 1, DeepseekFile{ID: "f", AccountID: owner.ID, Origin: DefaultDeepseekBaseURL}))
 	svc := &OpenAIGatewayService{cfg: &config.Config{}, cache: cache,
 		accountRepo: schedulerTestOpenAIAccountRepo{accounts: []Account{owner, other}}}
 	selectAccount := func(ctx context.Context, failed map[int64]struct{}) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
@@ -154,7 +176,7 @@ func TestDeepseekFileReferencesPinEachProtocol(t *testing.T) {
 		{APIProtocolResponses, `{"input":[{"type":"function_call_output","output":[{"type":"input_image","file_id":"f"}]}]}`},
 	} {
 		t.Run(tt.protocol, func(t *testing.T) {
-			pinned, err := svc.WithDeepseekFileReferences(ctx, PlatformDeepseek, tt.protocol, 1, []byte(tt.body))
+			pinned, _, err := svc.PrepareDeepseekFileIngress(ctx, PlatformDeepseek, tt.protocol, 1, []byte(tt.body))
 			require.NoError(t, err)
 			got, decision, err := selectAccount(pinned, nil)
 			require.NoError(t, err)
@@ -163,7 +185,7 @@ func TestDeepseekFileReferencesPinEachProtocol(t *testing.T) {
 			got.ReleaseFunc()
 			_, _, err = selectAccount(pinned, map[int64]struct{}{owner.ID: {}})
 			require.ErrorIs(t, err, ErrNoAvailableAccounts)
-			_, err = svc.WithDeepseekFileReferences(ctx, PlatformDeepseek, tt.protocol, 2, []byte(tt.body))
+			_, _, err = svc.PrepareDeepseekFileIngress(ctx, PlatformDeepseek, tt.protocol, 2, []byte(tt.body))
 			require.Equal(t, 400, infraerrors.Code(err))
 		})
 	}
@@ -173,7 +195,7 @@ func TestDeepseekFileReferencesMixedOwnersAndStoreFailure(t *testing.T) {
 	ctx := context.Background()
 	cache := &testDeepseekFileCache{}
 	svc := &OpenAIGatewayService{cache: cache}
-	for _, f := range []DeepseekFile{{ID: "a", AccountID: 1}, {ID: "b", AccountID: 2}} {
+	for _, f := range []DeepseekFile{{ID: "a", AccountID: 1, Origin: DefaultDeepseekBaseURL}, {ID: "b", AccountID: 2, Origin: DefaultDeepseekBaseURL}} {
 		require.NoError(t, cache.SaveDeepseekFile(ctx, 1, f))
 	}
 	for _, tc := range []struct {
@@ -182,16 +204,16 @@ func TestDeepseekFileReferencesMixedOwnersAndStoreFailure(t *testing.T) {
 	}{
 		{[]string{"a", "b"}, 400}, {[]string{"a", "missing"}, 404},
 	} {
-		id, err := svc.DeepseekFileAccount(ctx, 1, tc.ids)
+		id, err := lookupDeepseekFileBinding(ctx, svc.cache, 1, tc.ids)
 		require.Equal(t, tc.status, infraerrors.Code(err))
 		require.Zero(t, id)
 	}
 	cache.getErr = errors.New("redis unavailable")
 	for _, cache := range []GatewayCache{cache, &schedulerTestGatewayCache{}, nil} {
 		svc.cache = cache
-		_, err := svc.DeepseekFileAccount(ctx, 1, []string{"a"})
+		_, err := lookupDeepseekFileBinding(ctx, svc.cache, 1, []string{"a"})
 		require.Equal(t, 503, infraerrors.Code(err))
-		_, err = svc.WithDeepseekFileReferences(ctx, PlatformDeepseek, APIProtocolChatCompletions, 1,
+		_, _, err = svc.PrepareDeepseekFileIngress(ctx, PlatformDeepseek, APIProtocolChatCompletions, 1,
 			[]byte(`{"messages":[{"content":[{"type":"file","file_data":"inline"}]}]}`))
 		require.NoError(t, err)
 	}
