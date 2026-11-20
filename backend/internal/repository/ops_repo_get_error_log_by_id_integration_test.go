@@ -31,18 +31,26 @@ func TestGetErrorLogByID_APIKeyPrefixAndUpstreamStatus(t *testing.T) {
 	require.Empty(t, plain.APIKeyPrefix)
 
 	validID, err := repo.InsertErrorLog(ctx, &service.OpsInsertErrorLogInput{
-		ErrorPhase:   "request",
-		ErrorType:    "api_error",
-		Severity:     "error",
-		StatusCode:   402,
-		CreatedAt:    time.Now(),
-		APIKeyPrefix: "sk-valid",
+		ErrorPhase:      "request",
+		ErrorType:       "api_error",
+		Severity:        "error",
+		StatusCode:      402,
+		CreatedAt:       time.Now(),
+		APIKeyPrefix:    "sk-valid",
+		ReasoningEffort: "unsupported-effort",
+		ServiceTier:     "priority",
 	})
 	require.NoError(t, err)
 
 	valid, err := repo.GetErrorLogByID(ctx, validID)
 	require.NoError(t, err)
 	require.Equal(t, "sk-valid", valid.APIKeyPrefix)
+	require.Equal(t, "unsupported-effort", valid.ReasoningEffort)
+	require.Equal(t, "priority", valid.ServiceTier)
+	list, err := repo.ListErrorLogs(ctx, &service.OpsErrorLogFilter{})
+	require.NoError(t, err)
+	require.Equal(t, "unsupported-effort", list.Errors[0].ReasoningEffort)
+	require.Equal(t, "priority", list.Errors[0].ServiceTier)
 
 	zero := 0
 	credentialFailureID, err := repo.InsertErrorLog(ctx, &service.OpsInsertErrorLogInput{

@@ -55,6 +55,8 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		return
 	}
 
+	service.SetOpsRequestParameters(c, body)
+
 	if len(body) == 0 {
 		h.chatCompletionsErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return

@@ -697,6 +697,8 @@ const errAllColumns = computed(() => [
   { key: 'account', label: t('admin.ops.errorLog.account') },
   { key: 'platform', label: t('admin.ops.errorLog.platform') },
   { key: 'model', label: t('admin.ops.errorLog.model') },
+  { key: 'reasoning_effort', label: t('usage.reasoningEffort') },
+  { key: 'service_tier', label: 'service_tier' },
   { key: 'endpoint', label: t('admin.ops.errorLog.endpoint') },
   { key: 'group', label: t('admin.ops.errorLog.group') },
   { key: 'type', label: t('admin.ops.errorLog.type') },

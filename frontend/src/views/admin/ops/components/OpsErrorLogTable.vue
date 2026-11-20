@@ -44,6 +44,14 @@
           <span class="text-sm text-gray-900 dark:text-white">{{ row.platform || '-' }}</span>
         </template>
 
+        <template #cell-reasoning_effort="{ row }">
+          <span class="text-sm text-gray-900 dark:text-white">{{ row.reasoning_effort || '-' }}</span>
+        </template>
+
+        <template #cell-service_tier="{ row }">
+          <span class="text-sm text-gray-900 dark:text-white">{{ row.service_tier || '-' }}</span>
+        </template>
+
         <template #cell-model="{ row }">
           <div v-if="hasModelMapping(row)" class="space-y-0.5 text-xs">
             <div class="break-all font-medium text-gray-900 dark:text-white">{{ row.requested_model }}</div>
@@ -202,6 +210,8 @@ const allColumns = computed<Column[]>(() => [
   { key: 'account', label: t('admin.ops.errorLog.account') },
   { key: 'platform', label: t('admin.ops.errorLog.platform') },
   { key: 'model', label: t('admin.ops.errorLog.model'), sortable: true },
+  { key: 'reasoning_effort', label: t('usage.reasoningEffort') },
+  { key: 'service_tier', label: 'service_tier' },
   { key: 'endpoint', label: t('admin.ops.errorLog.endpoint') },
   { key: 'group', label: t('admin.ops.errorLog.group') },
   { key: 'type', label: t('admin.ops.errorLog.type') },

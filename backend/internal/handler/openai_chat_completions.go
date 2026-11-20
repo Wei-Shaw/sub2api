@@ -58,6 +58,8 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		h.errorResponse(c, status, "invalid_request_error", message)
 		return
 	}
+	service.SetOpsRequestParameters(c, body)
+
 	if len(body) == 0 {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return

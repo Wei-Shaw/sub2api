@@ -14,6 +14,14 @@
         @sort="onSort"
         @rowClick="(row) => openDetail(row.id)"
       >
+        <template #cell-reasoning_effort="{ row }">
+          <span class="text-sm text-gray-900 dark:text-white">{{ row.reasoning_effort || '-' }}</span>
+        </template>
+
+        <template #cell-service_tier="{ row }">
+          <span class="text-sm text-gray-900 dark:text-white">{{ row.service_tier || '-' }}</span>
+        </template>
+
         <template #cell-model="{ row }">
           <span v-if="row.model" class="text-sm font-medium text-gray-900 dark:text-white">{{ row.model }}</span>
           <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
@@ -168,6 +176,8 @@ const { t } = useI18n()
 const allColumns = computed<Column[]>(() => [
   { key: 'key_name', label: t('usage.errors.keyName') },
   { key: 'model', label: t('usage.errors.model'), sortable: true },
+  { key: 'reasoning_effort', label: t('usage.reasoningEffort') },
+  { key: 'service_tier', label: 'service_tier' },
   { key: 'endpoint', label: t('usage.errors.endpoint') },
   { key: 'client_ip', label: 'IP' },
   { key: 'group', label: t('admin.usage.group') },
