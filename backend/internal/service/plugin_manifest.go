@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/pkg/modelcatalog"
 	"regexp"
 	"runtime"
 	"sort"
@@ -16,6 +17,7 @@ import (
 
 const (
 	PluginCapabilityOpenAIOAuthOutbound = "openai.oauth.outbound_transport.v1"
+	PluginCapabilityCodexModelCatalog   = modelcatalog.Capability
 	PluginStateDisabled                 = "disabled"
 	PluginStateStarting                 = "starting"
 	PluginStateEnabled                  = "enabled"
@@ -137,11 +139,18 @@ type PluginRepository interface {
 	MarkRuntimeHealthy(ctx context.Context, id int64, binarySHA256, configEncrypted string) error
 	UpdateState(ctx context.Context, id int64, state, lastError string, enabledAt *time.Time, expectedBinarySHA256, expectedState string) error
 	UpdateConfig(ctx context.Context, id int64, encrypted, expectedBinarySHA256 string) error
+	UpdateConfigIfCurrent(ctx context.Context, id int64, encrypted, expectedBinarySHA256, expectedConfigEncrypted string) error
 	UpdateBindingsAndState(ctx context.Context, pluginID int64, bindings []PluginBinding, state, lastError string, enabledAt *time.Time, expectedState, expectedBinarySHA256 string) error
 }
 
 func (m PluginManifest) RuntimeKey() string {
 	return runtime.GOOS + "-" + runtime.GOARCH
+}
+
+// Bridge 2 adds catalog inventory and draft operations only for catalog UIs.
+func (m PluginManifest) supportsUIBridge() bool {
+	return m.Requires.UIBridge == pluginv1.UIBridgeVersion ||
+		(m.Requires.UIBridge == 2 && len(m.Capabilities) == 1 && isCatalogPlugin(m))
 }
 
 func (m PluginManifest) Validate() error {
@@ -162,16 +171,21 @@ func (m PluginManifest) Validate() error {
 	}
 	if m.Requires.PluginProtocol != pluginv1.ProtocolVersion ||
 		m.Requires.TransportAPI != pluginv1.TransportAPIVersion ||
-		m.Requires.UIBridge != pluginv1.UIBridgeVersion {
+		!m.supportsUIBridge() {
 		return errors.New("插件协议、传输 API 或 UI Bridge 版本与当前宿主不兼容")
 	}
 	if len(m.Capabilities) == 0 {
 		return errors.New("插件必须声明至少一个能力")
 	}
 	for _, capability := range m.Capabilities {
-		if capability.ID != PluginCapabilityOpenAIOAuthOutbound || capability.Platform != PlatformOpenAI || capability.AccountType != AccountTypeOAuth {
-			return fmt.Errorf("初期仅支持能力 %s", PluginCapabilityOpenAIOAuthOutbound)
+		validTransport := capability.ID == PluginCapabilityOpenAIOAuthOutbound && capability.AccountType == AccountTypeOAuth
+		validCatalog := capability.ID == PluginCapabilityCodexModelCatalog && capability.AccountType == "catalog"
+		if capability.Platform != PlatformOpenAI || (!validTransport && !validCatalog) {
+			return fmt.Errorf("不支持的插件能力 %s", capability.ID)
 		}
+	}
+	if isCatalogPlugin(m) && len(m.Capabilities) != 1 {
+		return errors.New("模型目录能力必须由独立插件提供")
 	}
 	runtimeEntry, ok := m.Runtimes[m.RuntimeKey()]
 	if !ok || !safePluginRelativePath(runtimeEntry.Path) {

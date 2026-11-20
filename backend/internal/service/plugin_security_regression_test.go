@@ -60,7 +60,7 @@ func TestPluginUIAssetTokenCanBeResolvedByAnotherInstance(t *testing.T) {
 	first := &PluginManager{repo: repo, encryptor: pluginTokenEncryptor{}}
 	second := &PluginManager{repo: repo, encryptor: pluginTokenEncryptor{}}
 
-	token, expires, err := first.CreateUIAssetToken(context.Background(), 42, 30*time.Minute)
+	token, expires, _, err := first.CreateUIAssetToken(context.Background(), 42, 30*time.Minute)
 	require.NoError(t, err)
 	require.WithinDuration(t, time.Now().Add(30*time.Minute), expires, time.Second)
 
@@ -131,6 +131,18 @@ func (r *pluginConfigRepository) UpdateConfig(_ context.Context, _ int64, encryp
 		return ErrPluginStateChanged
 	}
 	r.encrypted = encrypted
+	return nil
+}
+
+func (r *pluginConfigRepository) UpdateConfigIfCurrent(_ context.Context, _ int64, encrypted, expectedBinarySHA256, expectedConfigEncrypted string) error {
+	if expectedBinarySHA256 != r.installation.BinarySHA256 {
+		return ErrPluginStateChanged
+	}
+	if expectedConfigEncrypted != r.installation.ConfigEncrypted {
+		return ErrPluginConfigChanged
+	}
+	r.encrypted = encrypted
+	r.installation.ConfigEncrypted = encrypted
 	return nil
 }
 

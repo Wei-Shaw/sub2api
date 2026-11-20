@@ -12,6 +12,7 @@ const {
   uploadPlugin,
   enablePlugin,
   savePluginConfig,
+  getPluginCatalog,
   createUISession,
   stepUpRun,
 } = vi.hoisted(() => ({
@@ -19,6 +20,7 @@ const {
   uploadPlugin: vi.fn(),
   enablePlugin: vi.fn(),
   savePluginConfig: vi.fn(),
+  getPluginCatalog: vi.fn(),
   createUISession: vi.fn(),
   stepUpRun: vi.fn((action: () => Promise<unknown>) => action()),
 }))
@@ -32,6 +34,8 @@ vi.mock('@/api/admin', () => ({
       disable: vi.fn(),
       remove: vi.fn(),
       getConfig: vi.fn().mockResolvedValue({}),
+      getConfigRevision: vi.fn().mockResolvedValue({ config: { models: [] }, revision: '"' + 'a'.repeat(64) + '"' }),
+      getCatalog: getPluginCatalog,
       saveConfig: savePluginConfig,
       test: vi.fn().mockResolvedValue({ success: true, message: 'ok', latency_ms: 1 }),
       createUISession,
@@ -40,6 +44,7 @@ vi.mock('@/api/admin', () => ({
 }))
 
 vi.mock('@/stores', () => ({
+  useAuthStore: () => ({ user: { id: 19 } }),
   useAppStore: () => ({
     showError: vi.fn(),
     showSuccess: vi.fn(),
@@ -115,6 +120,7 @@ const plugin = {
 
 function mountView() {
   return mount(PluginsView, {
+    attachTo: document.body,
     global: {
       stubs: {
         AppLayout: { template: '<div><slot /></div>' },
@@ -134,6 +140,7 @@ describe('管理员插件页二次验证', () => {
     uploadPlugin.mockResolvedValue(plugin)
     enablePlugin.mockResolvedValue(plugin)
     savePluginConfig.mockResolvedValue({ enabled: true })
+    getPluginCatalog.mockResolvedValue({ group_id: 2, groups: [{ id: 2, name: 'Group' }], models: [] })
     createUISession.mockResolvedValue({
       url: '/api/v1/plugin-ui/token/index.html#bridge_token=bridge',
       bridge_token: 'bridge',
@@ -153,6 +160,16 @@ describe('管理员插件页二次验证', () => {
 
     expect(stepUpRun).toHaveBeenCalledTimes(1)
     expect(enablePlugin).toHaveBeenCalledWith(7, 100, false)
+  })
+
+  it('模型目录插件不显示账号路由灰度控制', async () => {
+    listPlugins.mockResolvedValue([{ ...plugin, manifest: { ...plugin.manifest, capabilities: [{
+      id: 'openai.codex.model_catalog.v1', platform: 'openai', account_type: 'catalog',
+    }] } }])
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).not.toContain('admin.plugins.rollout')
   })
 
   it.each([7, 8])('keeps the latest session when reopening configuration for plugin %s', async (id) => {
@@ -223,5 +240,77 @@ describe('管理员插件页二次验证', () => {
 
     expect(stepUpRun).toHaveBeenCalledTimes(1)
     expect(uploadPlugin).toHaveBeenCalledTimes(1)
+  })
+
+  it('catalog plugins read only the public model inventory through the bridge', async () => {
+    listPlugins.mockResolvedValue([{ ...plugin, manifest: { ...plugin.manifest, capabilities: [{ id: 'openai.codex.model_catalog.v1', platform: 'openai', account_type: 'catalog' }] } }])
+    const wrapper = mountView(); await flushPromises()
+    await wrapper.findAll('button').find(item => item.text() === 'admin.plugins.configure')!.trigger('click')
+    await flushPromises(); const frame = wrapper.get('iframe').element as HTMLIFrameElement
+    await wrapper.get('iframe').trigger('load')
+    const post = vi.spyOn(frame.contentWindow!, 'postMessage')
+    window.dispatchEvent(new MessageEvent('message', { origin: 'null', source: frame.contentWindow, data: { source: 'sub2api-plugin-ui', bridge_token: 'bridge', type: 'catalog.load', request_id: 'catalog-read', group_id: 2 } }))
+    await flushPromises()
+    expect(getPluginCatalog).toHaveBeenCalledWith(7, 2)
+    expect(stepUpRun).not.toHaveBeenCalled()
+    expect(post).toHaveBeenCalledWith(expect.objectContaining({ ok: true, catalog: expect.objectContaining({ group_id: 2 }) }), '*')
+  })
+
+  it('does not expose catalog inventory to unrelated plugins', async () => {
+    const wrapper = mountView(); await flushPromises()
+    await wrapper.findAll('button').find(item => item.text() === 'admin.plugins.configure')!.trigger('click')
+    await flushPromises(); const frame = wrapper.get('iframe').element as HTMLIFrameElement
+    window.dispatchEvent(new MessageEvent('message', { origin: 'null', source: frame.contentWindow, data: { source: 'sub2api-plugin-ui', bridge_token: 'bridge', type: 'catalog.load', request_id: 'catalog-forbidden' } }))
+    await flushPromises(); expect(getPluginCatalog).not.toHaveBeenCalled()
+  })
+
+  it('passes the exact revision read by the editor through step-up to the guarded save', async () => {
+    const wrapper = mountView(); await flushPromises()
+    await wrapper.findAll('button').find(item => item.text() === 'admin.plugins.configure')!.trigger('click')
+    await flushPromises()
+    const frame = wrapper.get('iframe').element as HTMLIFrameElement
+    const post = vi.spyOn(frame.contentWindow!, 'postMessage')
+    const send = (type: string, args: Record<string, unknown>) => window.dispatchEvent(new MessageEvent('message', {
+      origin: 'null', source: frame.contentWindow, data: {
+        source: 'sub2api-plugin-ui', bridge_token: 'bridge', type, request_id: type, ...args,
+      },
+    }))
+    const revision = '"' + 'a'.repeat(64) + '"'
+    send('config.load', { with_revision: true }); await flushPromises()
+    expect(post).toHaveBeenLastCalledWith(expect.objectContaining({ ok: true, revision }), '*')
+    send('config.save', { config: { models: [] }, revision }); await flushPromises()
+    expect(savePluginConfig).toHaveBeenCalledWith(7, { models: [] }, revision)
+    expect(stepUpRun).toHaveBeenCalledOnce()
+  })
+
+  it.each([true, false])('isolates catalog drafts without publishing (catalog capability: %s)', async allowed => {
+    if (allowed) listPlugins.mockResolvedValue([{ ...plugin, manifest: { ...plugin.manifest, capabilities: [{ id: 'openai.codex.model_catalog.v1' }] } }])
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(item => item.text() === 'admin.plugins.configure')!.trigger('click')
+    await flushPromises()
+    const frame = wrapper.get('iframe').element as HTMLIFrameElement
+    await wrapper.get('iframe').trigger('load')
+    const post = vi.spyOn(frame.contentWindow!, 'postMessage')
+    const draft = { config: { models: [] } }
+    for (const [i, op] of ['save', 'load', 'clear', 'load'].entries()) {
+      window.dispatchEvent(new MessageEvent('message', { origin: 'null', source: frame.contentWindow, data: {
+        source: 'sub2api-plugin-ui', bridge_token: 'bridge', type: 'catalog.draft.' + op, request_id: 'draft-' + i, draft,
+      } }))
+      await flushPromises()
+      const expected = allowed && op === 'load' ? { draft: i === 1 ? draft : null } : {}
+      expect(post).toHaveBeenLastCalledWith(expect.objectContaining({ ok: allowed, ...expected }), '*')
+    }
+    expect(stepUpRun).not.toHaveBeenCalled()
+    expect(savePluginConfig).not.toHaveBeenCalled()
+  })
+
+  it('rejects invalid catalog group parameters before making an API request', async () => {
+    listPlugins.mockResolvedValue([{ ...plugin, manifest: { ...plugin.manifest, capabilities: [{ id: 'openai.codex.model_catalog.v1', platform: 'openai', account_type: 'catalog' }] } }])
+    const wrapper = mountView(); await flushPromises()
+    await wrapper.findAll('button').find(item => item.text() === 'admin.plugins.configure')!.trigger('click')
+    await flushPromises(); const frame = wrapper.get('iframe').element as HTMLIFrameElement
+    window.dispatchEvent(new MessageEvent('message', { origin: 'null', source: frame.contentWindow, data: { source: 'sub2api-plugin-ui', bridge_token: 'bridge', type: 'catalog.load', request_id: 'catalog-invalid', group_id: '../accounts' } }))
+    await flushPromises(); expect(getPluginCatalog).not.toHaveBeenCalled()
   })
 })

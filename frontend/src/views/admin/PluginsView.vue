@@ -211,7 +211,7 @@
               </p>
             </div>
 
-            <div class="md:col-span-2">
+            <div v-if="!isModelCatalogPlugin(plugin)" class="md:col-span-2">
               <label
                 class="flex items-center justify-between gap-4 text-xs font-medium text-gray-600 dark:text-gray-300"
               >
@@ -340,7 +340,7 @@ import {
   type PluginInstallation,
   type PluginUISession,
 } from "@/api/admin";
-import { useAppStore } from "@/stores";
+import { useAppStore, useAuthStore } from "@/stores";
 import AppLayout from "@/components/layout/AppLayout.vue";
 import BaseDialog from "@/components/common/BaseDialog.vue";
 import Icon from "@/components/icons/Icon.vue";
@@ -358,6 +358,10 @@ interface PluginBridgeMessage {
   type?: string;
   request_id?: string;
   config?: unknown;
+  revision?: unknown;
+  with_revision?: unknown;
+  draft?: unknown;
+  group_id?: unknown;
   height?: unknown;
   level?: unknown;
   message?: unknown;
@@ -443,6 +447,12 @@ function currentRollout(plugin: PluginInstallation): number {
     plugin.bindings.find(
       (binding) => binding.capability === "openai.oauth.outbound_transport.v1",
     )?.rollout_percent || 100
+  );
+}
+
+function isModelCatalogPlugin(plugin: PluginInstallation): boolean {
+  return plugin.manifest.capabilities.some(
+    (capability) => capability.id === "openai.codex.model_catalog.v1",
   );
 }
 
@@ -615,6 +625,10 @@ async function handleBridgeMessage(event: MessageEvent): Promise<void> {
 
   const requestID = typeof message.request_id === "string" ? message.request_id.trim() : "";
   const expectsResponse =
+    message.type === "catalog.load" ||
+    message.type === "catalog.draft.load" ||
+    message.type === "catalog.draft.save" ||
+    message.type === "catalog.draft.clear" ||
     message.type === "config.load" ||
     message.type === "config.save" ||
     message.type === "config.test" ||
@@ -630,8 +644,52 @@ async function handleBridgeMessage(event: MessageEvent): Promise<void> {
         uiLoading.value = false;
         break;
       case "config.load": {
+        if (message.with_revision === true) {
+          const snapshot = await adminAPI.plugins.getConfigRevision(configPlugin.value.id);
+          postBridgeResult(message, { ok: true, ...snapshot });
+          break;
+        }
         const config = await adminAPI.plugins.getConfig(configPlugin.value.id);
         postBridgeResult(message, { ok: true, config });
+        break;
+      }
+      case "catalog.load": {
+        if (!configPlugin.value.manifest.capabilities.some(capability => capability.id === "openai.codex.model_catalog.v1")) {
+          throw new Error(t("admin.plugins.bridgeRejected"));
+        }
+        const groupID = message.group_id;
+        if (groupID !== undefined && (typeof groupID !== "number" || !Number.isSafeInteger(groupID) || groupID <= 0)) {
+          throw new Error(t("admin.plugins.bridgeRejected"));
+        }
+        const catalog = await adminAPI.plugins.getCatalog(configPlugin.value.id, groupID as number | undefined);
+        postBridgeResult(message, { ok: true, catalog });
+        break;
+      }
+      case "catalog.draft.load":
+      case "catalog.draft.save":
+      case "catalog.draft.clear": {
+        const plugin = configPlugin.value;
+        const userID = useAuthStore().user?.id;
+        if (!userID || !plugin.manifest.capabilities.some(c => c.id === "openai.codex.model_catalog.v1")) {
+          throw new Error(t("admin.plugins.bridgeRejected"));
+        }
+        // The iframe has an opaque origin; keep drafts out of the live config API.
+        const key = `sub2api:catalog-draft:v1:${userID}:${plugin.id}:${plugin.plugin_key}`;
+        if (message.type === "catalog.draft.load") {
+          const raw = localStorage.getItem(key);
+          postBridgeResult(message, { ok: true, draft: raw === null ? null : JSON.parse(raw) });
+          break;
+        }
+        if (message.type === "catalog.draft.clear") {
+          localStorage.removeItem(key);
+        } else {
+          const draft = message.draft;
+          if (!draft || typeof draft !== "object" || Array.isArray(draft)) throw new Error(t("admin.plugins.bridgeRejected"));
+          const raw = JSON.stringify(draft);
+          if (raw.length > 3 * 1024 * 1024) throw new Error("目录草稿超过大小限制");
+          localStorage.setItem(key, raw);
+        }
+        postBridgeResult(message, { ok: true });
         break;
       }
       case "config.save": {
@@ -642,10 +700,15 @@ async function handleBridgeMessage(event: MessageEvent): Promise<void> {
         ) {
           throw new Error(t("admin.plugins.bridgeRejected"));
         }
+        const revision = message.revision;
+        if (revision !== undefined && (typeof revision !== "string" || !/^"[0-9a-f]{64}"$/.test(revision))) {
+          throw new Error(t("admin.plugins.bridgeRejected"));
+        }
         const config = await pluginStepUp.run(() =>
           adminAPI.plugins.saveConfig(
             configPlugin.value!.id,
             message.config as Record<string, unknown>,
+            typeof revision === "string" ? revision : undefined,
           ),
         );
         postBridgeResult(message, { ok: true, config });

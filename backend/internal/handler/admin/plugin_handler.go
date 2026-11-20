@@ -138,6 +138,8 @@ func (h *PluginHandler) GetConfig(c *gin.Context) {
 		response.ErrorFrom(c, err)
 		return
 	}
+	c.Header("ETag", service.PluginConfigETag(configJSON))
+	c.Header("Cache-Control", "no-store")
 	c.Data(http.StatusOK, "application/json; charset=utf-8", configJSON)
 }
 
@@ -162,12 +164,39 @@ func (h *PluginHandler) SaveConfig(c *gin.Context) {
 		response.BadRequest(c, "插件配置无法序列化")
 		return
 	}
-	saved, err := h.manager.SaveConfig(c.Request.Context(), id, raw)
+	saved, err := h.manager.SaveConfigIfCurrent(c.Request.Context(), id, raw, c.GetHeader("If-Match"))
+	if errors.Is(err, service.ErrPluginConfigChanged) {
+		response.Error(c, http.StatusPreconditionFailed, err.Error())
+		return
+	}
 	if err != nil {
 		response.BadRequest(c, err.Error())
 		return
 	}
 	c.Data(http.StatusOK, "application/json; charset=utf-8", saved)
+}
+
+// CatalogInventory returns only model descriptors and public group labels.
+func (h *PluginHandler) CatalogInventory(c *gin.Context) {
+	id, ok := pluginIDParam(c)
+	if !ok {
+		return
+	}
+	groupID := int64(0)
+	if raw := c.Query("group_id"); raw != "" {
+		var err error
+		groupID, err = strconv.ParseInt(raw, 10, 64)
+		if err != nil || groupID <= 0 {
+			response.BadRequest(c, "分组 ID 无效")
+			return
+		}
+	}
+	inventory, err := h.manager.CatalogInventory(c.Request.Context(), id, groupID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, inventory)
 }
 
 func (h *PluginHandler) Test(c *gin.Context) {
@@ -204,7 +233,7 @@ func (h *PluginHandler) CreateUISession(c *gin.Context) {
 	if !ok {
 		return
 	}
-	assetToken, expires, err := h.manager.CreateUIAssetToken(c.Request.Context(), id, pluginUISessionTTL)
+	assetToken, expires, bridgeVersion, err := h.manager.CreateUIAssetToken(c.Request.Context(), id, pluginUISessionTTL)
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -217,7 +246,7 @@ func (h *PluginHandler) CreateUISession(c *gin.Context) {
 	response.Success(c, gin.H{
 		"url":               fmt.Sprintf("/api/v1/plugin-ui/%s/index.html#bridge_token=%s", assetToken, bridgeToken),
 		"bridge_token":      bridgeToken,
-		"ui_bridge_version": 1,
+		"ui_bridge_version": bridgeVersion,
 		"expires_at":        expires,
 	})
 }

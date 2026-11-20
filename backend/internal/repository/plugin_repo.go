@@ -224,6 +224,25 @@ func (r *pluginRepository) UpdateConfig(ctx context.Context, id int64, encrypted
 	return nil
 }
 
+func (r *pluginRepository) UpdateConfigIfCurrent(ctx context.Context, id int64, encrypted, expectedBinarySHA256, expectedConfigEncrypted string) error {
+	result, err := r.db.ExecContext(ctx, `
+		UPDATE sub2api_plugin_installations
+		SET config_encrypted = $2, updated_at = NOW()
+		WHERE id = $1 AND binary_sha256 = $3 AND config_encrypted = $4
+	`, id, encrypted, expectedBinarySHA256, expectedConfigEncrypted)
+	if err != nil {
+		return err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if rows != 1 {
+		return service.ErrPluginConfigChanged
+	}
+	return nil
+}
+
 func (r *pluginRepository) UpdateBindingsAndState(
 	ctx context.Context,
 	pluginID int64,
