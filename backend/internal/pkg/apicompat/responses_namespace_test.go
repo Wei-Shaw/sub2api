@@ -162,3 +162,88 @@ func TestRestoreResponsesNamespaceCalls_RewritesLifecycleItems(t *testing.T) {
 		})
 	}
 }
+
+// Codex 0.15x 把核心执行工具 exec 声明为 namespace functions 下的 custom 子工具。
+// 原生 Responses 上游只接受顶层 custom 工具，因此摊平请求方向必须把它提升为
+// 顶层 custom，而不能像以前那样直接丢弃。若这里丢掉，模型看不到 exec，
+// 只能编造 wait 调用或把命令当正文输出。
+func TestFlattenResponsesNamespaces_PromotesCustomChildren(t *testing.T) {
+	req := map[string]any{
+		"tools": []any{
+			map[string]any{
+				"type": "namespace",
+				"name": "functions",
+				"tools": []any{
+					map[string]any{"type": "custom", "name": "exec", "description": "run code", "format": map[string]any{"type": "text"}},
+					map[string]any{"type": "function", "name": "wait", "parameters": map[string]any{"type": "object"}},
+					map[string]any{"type": "custom", "name": "apply_patch", "description": "patch"},
+				},
+			},
+		},
+		"input": []any{
+			map[string]any{"type": "custom_tool_call", "call_id": "call_1", "name": "exec", "namespace": "functions", "input": "pwd"},
+		},
+	}
+
+	names, changed, err := FlattenResponsesNamespaces(req)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, ResponsesNamespaceName{Namespace: "functions", Name: "exec", Custom: true}, names["functions__exec"])
+	require.Equal(t, ResponsesNamespaceName{Namespace: "functions", Name: "wait"}, names["functions__wait"])
+
+	tools, ok := req["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, tools, 3)
+	execTool, ok := tools[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "custom", execTool["type"])
+	require.Equal(t, "functions__exec", execTool["name"])
+	waitTool, ok := tools[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "function", waitTool["type"])
+	require.Equal(t, "functions__wait", waitTool["name"])
+	patchTool, ok := tools[2].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "custom", patchTool["type"])
+	require.Equal(t, "functions__apply_patch", patchTool["name"])
+
+	input, ok := req["input"].([]any)
+	require.True(t, ok)
+	call, ok := input[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "functions__exec", call["name"])
+	require.NotContains(t, call, "namespace")
+}
+
+// 回程还原必须把带 namespace 的 custom_tool_call 也还原成裸名 + namespace，
+// 否则 Codex 只按裸名找不到 functions.exec。
+func TestRestoreResponsesNamespaceCalls_RestoresCustomToolCalls(t *testing.T) {
+	payload := []byte(`{"type":"response.output_item.done","item":{"type":"custom_tool_call","id":"ctc_1","call_id":"call_1","name":"functions__exec","input":"pwd"}}`)
+	got, changed, err := RestoreResponsesNamespaceCalls(payload, map[string]ResponsesNamespaceName{
+		"functions__exec": {Namespace: "functions", Name: "exec", Custom: true},
+	})
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.JSONEq(t, `{"type":"response.output_item.done","item":{"type":"custom_tool_call","id":"ctc_1","call_id":"call_1","name":"exec","namespace":"functions","input":"pwd"}}`, string(got))
+}
+
+// 普通顶层 custom/function 工具不应被这条 namespace 逻辑触碰。
+func TestFlattenResponsesNamespaces_LeavesNonNamespaceCustomToolsAlone(t *testing.T) {
+	req := map[string]any{
+		"tools": []any{
+			map[string]any{"type": "custom", "name": "exec", "description": "top-level"},
+			map[string]any{"type": "function", "name": "plain"},
+		},
+	}
+
+	names, changed, err := FlattenResponsesNamespaces(req)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Empty(t, names)
+	tools, ok := req["tools"].([]any)
+	require.True(t, ok)
+	require.Len(t, tools, 2)
+	topCustom, _ := tools[0].(map[string]any)
+	require.Equal(t, "custom", topCustom["type"])
+	require.Equal(t, "exec", topCustom["name"])
+}
