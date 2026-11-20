@@ -123,8 +123,8 @@ func TestGPT56ExplicitZeroCacheWritePriceIsPreserved(t *testing.T) {
 		resolved := &ResolvedPricing{
 			Mode: BillingModeToken,
 			BasePricing: &ModelPricing{
-				InputPricePerToken:  5e-6,
-				OutputPricePerToken: 30e-6,
+				InputPricePerToken:  4e-6,
+				OutputPricePerToken: 20e-6,
 			},
 		}
 		resolver.applyTokenOverrides(&ChannelModelPricing{CacheWritePrice: &zero}, resolved)
