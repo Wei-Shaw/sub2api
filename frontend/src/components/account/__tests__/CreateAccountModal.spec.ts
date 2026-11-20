@@ -219,6 +219,28 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it('saves an explicit zero-duration temporary-unschedulable rule', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('zero duration account')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('test-api-key')
+    await wrapper.get('[data-testid="temp-unsched-toggle"]').trigger('click')
+    await selectButtonByText(wrapper, 'admin.accounts.tempUnschedulable.addRule')
+    const duration = wrapper.get('[data-testid="temp-unsched-duration"]')
+    expect(duration.attributes('min')).toBe('0')
+    await duration.setValue('0')
+    await wrapper.get('input[placeholder="admin.accounts.tempUnschedulable.errorCodePlaceholder"]').setValue('403')
+    await wrapper.get('input[placeholder="admin.accounts.tempUnschedulable.keywordsPlaceholder"]').setValue('service_tier_not_allowed')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock.mock.calls[0]?.[0]?.credentials.temp_unschedulable_rules).toEqual([
+      expect.objectContaining({ error_code: 403, keywords: ['service_tier_not_allowed'], duration_minutes: 0 })
+    ])
+    wrapper.unmount()
+  })
+
   it('can create a passthrough account with model filtering enabled', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'OpenAI')

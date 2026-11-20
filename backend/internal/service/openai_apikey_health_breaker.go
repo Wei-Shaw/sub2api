@@ -55,7 +55,7 @@ func (s *RateLimitService) ObserveOpenAIAPIKeyHealthFailure(ctx context.Context,
 		return false
 	}
 	statusCode, responseBody, eligible := classifyOpenAIAPIKeyHealthFailure(upstreamErr)
-	if !eligible {
+	if !eligible || shouldIgnoreTempUnschedulableError(account, statusCode, responseBody) {
 		return false
 	}
 	settings, err := s.settingService.GetOpenAIAPIKeyHealthBreakerSettings(ctx)
