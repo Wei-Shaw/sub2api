@@ -151,7 +151,7 @@ func groupModelAllowlistErrorWriter(c *gin.Context) GatewayErrorWriter {
 	switch {
 	case strings.HasPrefix(path, "/v1beta") || strings.HasPrefix(path, "/antigravity/v1beta"):
 		return GoogleErrorWriter
-	case strings.Contains(path, "/messages"):
+	case strings.Contains(path, "/messages"), path == "/v1/files" && service.IsDeepseekFilesAnthropicRequest(c):
 		return AnthropicErrorWriter
 	default:
 		return OpenAIErrorWriter

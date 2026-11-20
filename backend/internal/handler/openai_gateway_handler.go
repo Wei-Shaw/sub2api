@@ -2167,11 +2167,19 @@ func (h *OpenAIGatewayHandler) acquireResponsesUserSlot(
 	streamStarted *bool,
 	reqLog *zap.Logger,
 ) (func(), bool) {
+	return h.acquireOpenAIUserSlot(c, userID, userConcurrency, reqStream, streamStarted, reqLog, nil)
+}
+
+func (h *OpenAIGatewayHandler) acquireOpenAIUserSlot(c *gin.Context, userID int64, userConcurrency int, reqStream bool, streamStarted *bool, reqLog *zap.Logger, writeError openAISlotErrorWriter) (func(), bool) {
 	ctx := c.Request.Context()
 	userReleaseFunc, err := h.concurrencyHelper.AcquireUserSlotWithWait(c, userID, userConcurrency, reqStream, streamStarted)
 	if err != nil {
 		reqLog.Warn("openai.user_slot_acquire_failed", zap.Error(err))
-		h.handleConcurrencyError(c, err, "user", *streamStarted)
+		if writeError == nil {
+			h.handleConcurrencyError(c, err, "user", *streamStarted)
+		} else {
+			writeError(concurrencyErrorResponse(err, "user"))
+		}
 		return nil, false
 	}
 	return wrapReleaseOnDone(ctx, userReleaseFunc), true

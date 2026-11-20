@@ -34,7 +34,7 @@ func TestSupportsDeepseekTools(t *testing.T) {
 		{"adaptive relay with empty legacy base", &Account{Platform: PlatformDeepseek, Type: AccountTypeAPIKey,
 			Credentials: map[string]any{"api_protocol": "adaptive", "api_base_urls": map[string]any{"chat_completions": "https://relay.test"}}}, false},
 		{"probe true overrides third party", withExtra(thirdParty, map[string]any{deepseekToolsSupportedExtraKey: true}), true},
-		{"probe false overrides official", withExtra(official, map[string]any{deepseekToolsSupportedExtraKey: false}), false},
+		{"official host ignores stale probe", withExtra(official, map[string]any{deepseekToolsSupportedExtraKey: false}), true},
 		{"force_supported overrides third party", withExtra(thirdParty, map[string]any{deepseekToolsModeExtraKey: "force_supported"}), true},
 		{"force_unsupported overrides official", withExtra(official, map[string]any{deepseekToolsModeExtraKey: "force_unsupported"}), false},
 		{"non deepseek platform", &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{"base_url": "https://api.deepseek.com"}}, false},

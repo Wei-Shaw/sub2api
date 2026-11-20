@@ -15,6 +15,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/tidwall/gjson"
 	"go.uber.org/zap"
 )
 
@@ -64,18 +65,12 @@ func deepseekToolsEndpointHasPrompt(endpoint string) bool {
 
 // extractDeepseekToolsPromptText 提取请求体里的主文本字段供内容审计归一化。
 func extractDeepseekToolsPromptText(body []byte) string {
-	if len(body) == 0 {
-		return ""
-	}
-	var payload map[string]any
-	if err := json.Unmarshal(body, &payload); err != nil {
+	if !gjson.ValidBytes(body) {
 		return ""
 	}
 	for _, key := range []string{"query", "q", "text", "input", "prompt", "url"} {
-		if v, ok := payload[key]; ok {
-			if s, ok := v.(string); ok {
-				return strings.TrimSpace(s)
-			}
+		if v := gjson.GetBytes(body, key); v.Type == gjson.String {
+			return strings.TrimSpace(v.Str)
 		}
 	}
 	return ""
@@ -84,9 +79,10 @@ func extractDeepseekToolsPromptText(body []byte) string {
 // DeepseekTools 是 DeepSeek 独立工具接口的统一入口，endpoint 覆盖九端点：
 // search/fetch/ocr/asr/tts/files_create/files_list/files_get/files_delete
 // （files_get/files_delete 由路由层拼上 file id 后缀）。
-// 上游 HTTP 响应（含错误）已由 service 写回客户端；handler 只负责门禁、
-// 计费资格/在途预留、选号 failover 与落账。
 func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
+	if c.Writer.Written() || service.IsResponseCommitted(c) {
+		return
+	}
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	anthropicFiles := strings.HasPrefix(endpoint, "files_") && service.IsDeepseekFilesAnthropicRequest(c)
 	write := h.errorResponse
@@ -95,13 +91,37 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 	}
 	// composite 组放行：工具请求不带 model，无法经 compositeTarget 中间件解析，
 	// 交给调度器按 platformOverride=deepseek 选号（对齐 Grok video 先例）。
-	if !ok || apiKey.Group == nil || (apiKey.Group.Platform != service.PlatformDeepseek && apiKey.Group.Platform != service.PlatformComposite) {
+	if !ok || apiKey == nil || apiKey.Group == nil || (apiKey.Group.Platform != service.PlatformDeepseek && apiKey.Group.Platform != service.PlatformComposite) {
 		write(c, http.StatusNotFound, "not_found_error", "DeepSeek tools API is not supported for this platform")
 		return
 	}
-	if !h.ensureResponsesDependencies(c, nil) {
+	reqLog := requestLogger(c, "handler.openai_gateway.deepseek_tools", zap.String("endpoint", endpoint))
+	if missing := h.missingResponsesDependencies(); len(missing) > 0 {
+		reqLog.Error("openai.handler_dependencies_missing", zap.Strings("missing_dependencies", missing))
+		write(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable")
 		return
 	}
+	subject, ok := middleware2.GetAuthSubjectFromContext(c)
+	if !ok {
+		write(c, http.StatusInternalServerError, "api_error", "User context not found")
+		return
+	}
+	writeSlotError := func(status int, errType, code, message string) {
+		if anthropicFiles {
+			write(c, status, errType, message)
+		} else {
+			h.handleStreamingAwareErrorWithCode(c, status, errType, code, message, false, false)
+		}
+	}
+	var started bool
+	userRelease, acquired := h.acquireOpenAIUserSlot(c, subject.UserID, subject.Concurrency, false, &started, reqLog, writeSlotError)
+	if !acquired {
+		return
+	}
+	if userRelease != nil {
+		defer userRelease()
+	}
+	service.BindErrorPassthroughService(c, h.errorPassthroughService)
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.PlatformDeepseek); err != nil {
 		status, code, message, retryAfter := billingErrorDetails(err)
@@ -131,12 +151,10 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 			write(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 			return
 		}
-		bodyLog := requestLogger(c, "handler.openai_gateway.deepseek_tools", zap.String("endpoint", endpoint))
-		if handleRequestBodyReadError(c, bodyLog, err) {
+		if middleware2.RejectRequestBodyReadError(c, "handler.openai_gateway.deepseek_tools", err) {
 			return
 		}
-		status, message := requestBodyReadFailure(bodyLog, c.Request, err)
-		write(c, status, "invalid_request_error", message)
+		middleware2.AbortWithRequestBodyReadFailure(c, "handler.openai_gateway.deepseek_tools", err)
 		return
 	}
 	request, err := h.gatewayService.PrepareDeepseekToolsRequest(c.Request.Context(), c, apiKey.UserID, endpoint, body, c.GetHeader("Content-Type"))
@@ -148,8 +166,6 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 	// 文本类端点（search/fetch/tts）在调用上游前做内容审计；ocr/asr 处理的是
 	// 文档/音频（multipart，无模型文本提示），files_* 是纯文件管理，均不走审计。
 	if deepseekToolsEndpointHasPrompt(endpoint) {
-		subject, _ := middleware2.GetAuthSubjectFromContext(c)
-		reqLog := requestLogger(c, "handler.openai_gateway.deepseek_tools", zap.String("endpoint", endpoint))
 		auditBody := body
 		if input := extractDeepseekToolsPromptText(body); input != "" {
 			if b, marshalErr := json.Marshal(map[string]any{
@@ -178,11 +194,9 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 	}
 
 	ctx := request.SchedulingContext(c.Request.Context())
-	reqLog := requestLogger(c, "handler.openai_gateway.deepseek_tools", zap.String("endpoint", endpoint))
 	failed := map[int64]struct{}{}
 	var last *service.UpstreamFailoverError
 	for attempts := 0; attempts < 4; attempts++ {
-		// 能力位复用 ChatCompletions（工具端点与对话同账号池），platform 强制 Deepseek。
 		selection, _, selectErr := h.gatewayService.SelectAccountWithSchedulerForCapability(
 			ctx,
 			apiKey.GroupID,
@@ -191,75 +205,66 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 			"",
 			failed,
 			service.OpenAIUpstreamTransportHTTPSSE,
-			service.OpenAIEndpointCapabilityChatCompletions,
+			service.OpenAIEndpointCapabilityDeepseekTools,
 			false,
 			false,
 			false,
 			service.PlatformDeepseek,
 		)
 		if selectErr != nil || selection == nil || selection.Account == nil {
-			if last != nil {
-				h.handleFailoverExhausted(c, last, false)
-			} else {
-				write(c, http.StatusServiceUnavailable, "api_error", "No available DeepSeek accounts")
-			}
-			return
+			break
 		}
-		account := selection.Account
-		// 能力过滤：官方 DeepSeek 支持 /v1/tools/* 与 /v1/files*，ollama /
-		// crazyhub 等第三方中转通常只有对话端点。已探测/兜底判定不支持的工具
-		// 账号直接跳过，换下一个（避免把请求发到必然 404 的上游）。
-		if !account.SupportsOpenAIEndpointCapability(service.OpenAIEndpointCapabilityDeepseekTools) {
-			// 选号阶段已抢到该账号的并发槽；这条路径不进入 forward，必须在此
-			// 归还，否则槽位滞留到 TTL 到期（每次换号泄漏一个）。
-			if selection.ReleaseFunc != nil {
-				selection.ReleaseFunc()
-			}
-			failed[account.ID] = struct{}{}
-			continue
-		}
-		var started bool
-		release, status := h.acquireResponsesAccountSlot(c, apiKey.GroupID, "", selection, false, &started, reqLog)
+		release, status := h.acquireOpenAIAccountSlot(c, apiKey.GroupID, "", selection, false, &started, reqLog, writeSlotError)
 		if status == openAISlotAcquireProfitVetoed {
-			failed[account.ID] = struct{}{}
+			failed[selection.Account.ID] = struct{}{}
 			continue
 		}
 		if status != openAISlotAcquireOK {
-			if status == openAISlotAcquireFailed && len(failed) == 0 {
-				return
-			}
-			failed[account.ID] = struct{}{}
-			continue
+			return
 		}
+		account := selection.Account
+		setOpsSelectedAccount(c, account.ID, account.Platform)
 		result, forwardErr := func() (*service.DeepseekToolsForwardResult, error) {
-			defer release()
+			if release != nil {
+				defer release()
+			}
 			return h.gatewayService.ForwardDeepseekToolsRequest(ctx, c, account, request)
 		}()
 		if forwardErr == nil {
+			h.gatewayService.ReportOpenAIAccountScheduleResult(account, "", true, nil)
 			h.recordDeepseekToolsUsage(c, apiKey, account, subscription, body, result)
 			return
 		}
-		// 上游 HTTP 4xx/5xx 已由 service 透传给客户端，不 failover；只有网络层
-		// 错误（UpstreamFailoverError.ShouldRetryNextAccount）换号重试。
-		var failoverErr *service.UpstreamFailoverError
-		if errors.As(forwardErr, &failoverErr) && failoverErr.ShouldRetryNextAccount() {
-			failed[account.ID] = struct{}{}
-			last = failoverErr
-			continue
+		if c.Writer.Written() || service.IsResponseCommitted(c) {
+			return
 		}
-		if !c.Writer.Written() {
+		if !errors.As(forwardErr, &last) {
 			e := infraerrors.FromError(forwardErr)
-			code := e.Reason
-			if code == "" {
-				code = "api_error"
+			if e.Reason == "" {
+				write(c, http.StatusBadGateway, "upstream_error", "Upstream request failed")
+			} else {
+				write(c, int(e.Code), e.Reason, e.Message)
 			}
-			write(c, int(e.Code), code, e.Message)
+			return
 		}
+		h.gatewayService.ReportOpenAIAccountScheduleResult(account, "", false, nil, forwardErr)
+		if !last.ShouldRetryNextAccount() || ctx.Err() != nil {
+			break
+		}
+		h.gatewayService.RecordOpenAIAccountSwitch()
+		failed[account.ID] = struct{}{}
+	}
+	if last == nil {
+		markOpsRoutingCapacityLimited(c)
+		write(c, http.StatusServiceUnavailable, "api_error", "No available DeepSeek accounts")
 		return
 	}
-	if last != nil {
-		h.handleFailoverExhausted(c, last, false)
+	copyFailoverRetryAfter(c, last.ResponseHeaders)
+	status, errType, message := h.mapUpstreamError(last.StatusCode)
+	if last.ClientStatusCode > 0 && last.ClientMessage != "" {
+		status, message = last.ClientStatusCode, last.ClientMessage
 	}
+	write(c, status, errType, message)
 }
 
 func (h *OpenAIGatewayHandler) recordDeepseekToolsUsage(

@@ -202,6 +202,7 @@ func RegisterGatewayRoutes(
 	gateway.Use(opsErrorLogger)
 	gateway.Use(endpointNorm)
 	gateway.Use(gin.HandlerFunc(apiKeyAuth))
+	gateway.Use(middleware.DeepseekToolsBodyLimit(cfg.Gateway.TextMaxBodySize, cfg.Gateway.MaxBodySize))
 	gateway.GET("/sub2api/billing", h.Gateway.KeyBillingInfo)
 	gateway.Use(groupModelAllowlist)
 	gateway.Use(rejectConflictingFields)
@@ -355,7 +356,6 @@ func RegisterGatewayRoutes(
 
 		// DeepSeek 独立工具接口（DeepSeek 平台专属）：/v1/tools/* 与 /v1/files*。
 		// 与既有路由无冲突（蓝图 §1 已核）；只挂 /v1 组，不加根路径别名。
-		// OCR/ASR/files 上传可能是大 multipart，沿用组级 bodyLimit，不收紧 textBodyLimit。
 		deepseekToolsGate := func(handler gin.HandlerFunc) gin.HandlerFunc {
 			return func(c *gin.Context) {
 				if platform := getGroupPlatform(c); platform != service.PlatformDeepseek && platform != service.PlatformComposite {

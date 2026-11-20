@@ -11,12 +11,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func newDeepseekToolsProbeTestService(account Account, resp *http.Response) (*AccountTestService, *snapshotUpdateAccountRepo, *httpUpstreamRecorder) {
+type deepseekProbeTestRepo struct{ snapshotUpdateAccountRepo }
+
+func (r *deepseekProbeTestRepo) UpdateDeepseekToolsSupport(ctx context.Context, account *Account, supported *bool) error {
+	var marker any
+	if supported != nil {
+		marker = *supported
+	}
+	return r.UpdateExtra(ctx, account.ID, map[string]any{deepseekToolsSupportedExtraKey: marker})
+}
+
+func newDeepseekToolsProbeTestService(account Account, resp *http.Response) (*AccountTestService, *deepseekProbeTestRepo, *httpUpstreamRecorder) {
 	updateCalls := make(chan map[string]any, 1)
-	repo := &snapshotUpdateAccountRepo{
+	repo := &deepseekProbeTestRepo{snapshotUpdateAccountRepo{
 		stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
 		updateExtraCalls:      updateCalls,
-	}
+	}}
 	upstream := &httpUpstreamRecorder{resp: resp}
 	svc := &AccountTestService{
 		accountRepo:  repo,
@@ -85,8 +95,7 @@ func TestProbeDeepseekToolsSupportOfficialSkipsNetwork(t *testing.T) {
 	svc, repo, upstream := newDeepseekToolsProbeTestService(account, nil)
 	svc.ProbeDeepseekToolsSupport(context.Background(), account.ID)
 	require.Nil(t, upstream.lastReq, "official accounts must not spend a billed probe call")
-	updates := <-repo.updateExtraCalls
-	require.Equal(t, true, updates[deepseekToolsSupportedExtraKey])
+	require.Empty(t, repo.updateExtraCalls)
 }
 
 func TestProbeDeepseekToolsSupportSkipsForcedMode(t *testing.T) {
@@ -124,5 +133,6 @@ func TestProbeDeepseekToolsSupportServerErrorKeepsUnknown(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(`error`)),
 	})
 	svc.ProbeDeepseekToolsSupport(context.Background(), account.ID)
-	require.Len(t, repo.updateExtraCalls, 0, "5xx must not mark the account unsupported")
+	require.Len(t, repo.updateExtraCalls, 1)
+	require.Nil(t, (<-repo.updateExtraCalls)[deepseekToolsSupportedExtraKey])
 }

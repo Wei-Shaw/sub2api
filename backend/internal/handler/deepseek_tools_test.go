@@ -45,6 +45,7 @@ func newDeepseekToolsTestHandler(t *testing.T) *OpenAIGatewayHandler {
 func newDeepseekToolsRouter(h *OpenAIGatewayHandler, platform string, endpoint string) *gin.Engine {
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 1})
 		c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
 			Group: &service.Group{Platform: platform},
 			User:  &service.User{ID: 1},
@@ -209,9 +210,7 @@ func (c *deepseekToolsSlotCache) releaseCount() int {
 	return c.releases
 }
 
-// 选号已抢到槽（Acquired=true），随后能力过滤判定该账号不支持工具端点，
-// 换号前必须归还槽位：请求仍以 503 收尾，但槽位不得滞留到 TTL 到期。
-func TestDeepseekToolsReleasesAccountSlotWhenCapabilityRejectsAccount(t *testing.T) {
+func TestDeepseekToolsSchedulerFiltersBeforeSlotAcquisition(t *testing.T) {
 	account := service.Account{
 		ID:          951,
 		Platform:    service.PlatformDeepseek,
@@ -252,7 +251,7 @@ func TestDeepseekToolsReleasesAccountSlotWhenCapabilityRejectsAccount(t *testing
 
 	require.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
 	require.Contains(t, rec.Body.String(), "No available DeepSeek accounts")
-	require.Equal(t, 1, slotCache.acquires, "选号应抢到一次账号槽")
-	require.Equal(t, 1, slotCache.releaseCount(), "能力过滤跳号前必须归还选号抢到的槽位")
+	require.Zero(t, slotCache.acquires)
+	require.Zero(t, slotCache.releaseCount())
 	require.Equal(t, 0, slotCache.outstanding(), "槽位不得滞留")
 }

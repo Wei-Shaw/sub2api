@@ -3,12 +3,14 @@ package service
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"math"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 	"unicode"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -89,6 +91,9 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 	if account.Platform != PlatformDeepseek {
 		return nil, fmt.Errorf("account platform %s is not supported for deepseek tools", account.Platform)
 	}
+	if c == nil || c.Writer == nil || c.Writer.Written() || IsResponseCommitted(c) {
+		return nil, fmt.Errorf("DeepSeek tools request requires an uncommitted response writer")
+	}
 	endpoint, body, contentType := r.endpoint, r.body, r.contentType
 	if (endpoint == "files_get" || endpoint == "files_delete") && (r.ownerAccountID <= 0 || account.ID != r.ownerAccountID) {
 		return nil, errDeepseekFileNotFound
@@ -105,7 +110,7 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 	}
 	apiKey, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
-		return nil, err
+		return nil, infraerrors.New(http.StatusBadGateway, "upstream_error", "Upstream authentication failed").WithCause(err)
 	}
 
 	method := http.MethodPost
@@ -116,7 +121,16 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 		method = http.MethodDelete
 	}
 
-	upstreamCtx, release := detachUpstreamContext(ctx)
+	// A disconnected caller can still owe for a completed recognition or
+	// synthesis. Allow the documented maximum job duration for the drain.
+	var drainTimeout time.Duration
+	switch endpoint {
+	case "ocr":
+		drainTimeout = 180 * time.Second
+	case "tts":
+		drainTimeout = 30 * time.Minute
+	}
+	upstreamCtx, release := detachUpstreamContext(ctx, drainTimeout)
 	defer release()
 	var reader io.Reader
 	if method == http.MethodPost {
@@ -124,7 +138,7 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 	}
 	req, err := http.NewRequestWithContext(WithHTTPUpstreamRedirectsDisabled(upstreamCtx), method, targetURL.String(), reader)
 	if err != nil {
-		return nil, err
+		return nil, infraerrors.New(http.StatusBadGateway, "upstream_error", "Failed to build upstream request").WithCause(err)
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	if r.anthropicFiles {
@@ -157,22 +171,29 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 	}
 	defer func() { _ = resp.Body.Close() }()
 
+	if resp.StatusCode >= 400 {
+		return nil, s.deepseekToolsUpstreamError(ctx, c, account, resp, endpoint)
+	}
 	success := resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices
-	// TTS 成功响应是音频流：逐头透传 + io.Copy，不做全量缓冲。
-	if endpoint == "tts" && success {
-		if err := writeDeepseekToolsContentResponse(c, resp); err != nil {
-			return nil, err
+	if (endpoint == "tts" && success) || (endpoint == "ocr" && resp.StatusCode == http.StatusOK) {
+		if endpoint == "ocr" {
+			writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 		}
+		data := streamDeepseekToolsResponse(c, resp, endpoint)
 		return &DeepseekToolsForwardResult{
 			StatusCode:      resp.StatusCode,
-			Usage:           extractDeepseekToolsUsage(endpoint, body, nil, resp.StatusCode),
+			Usage:           extractDeepseekToolsUsage(endpoint, body, data, resp.StatusCode),
 			UpstreamHeaders: resp.Header,
 		}, nil
 	}
 
-	data, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+	data, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, nil)
 	if err != nil {
-		return nil, err
+		message := "Failed to read upstream response"
+		if errors.Is(err, ErrUpstreamResponseBodyTooLarge) {
+			message = "Upstream response too large"
+		}
+		return nil, infraerrors.New(http.StatusBadGateway, "upstream_error", message).WithCause(err)
 	}
 	if success && (endpoint == "files_create" || endpoint == "files_delete") {
 		store, err := s.deepseekFileStore()
@@ -204,12 +225,45 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 	}, nil
 }
 
-// writeDeepseekToolsContentResponse 以流式方式回写上游二进制响应
-// （TTS 音频），避免长音频（可达 30 分钟）全量缓冲在内存里。
-func writeDeepseekToolsContentResponse(c *gin.Context, resp *http.Response) error {
-	if c == nil || resp == nil || resp.Body == nil {
-		return fmt.Errorf("deepseek tools content response is incomplete")
+func (s *OpenAIGatewayService) deepseekToolsUpstreamError(ctx context.Context, c *gin.Context, account *Account, resp *http.Response, endpoint string) error {
+	body := s.readUpstreamErrorBody(resp)
+	msg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(body)))
+	status := resp.StatusCode
+	detail := ""
+	if s.cfg != nil && s.cfg.Gateway.LogUpstreamErrorBody {
+		maxBytes := s.cfg.Gateway.LogUpstreamErrorBodyMaxBytes
+		if maxBytes <= 0 {
+			maxBytes = 2048
+		}
+		detail = truncateString(string(body), maxBytes)
 	}
+	setOpsUpstreamError(c, status, msg, detail)
+	disable := s.handleOpenAIAccountUpstreamError(ctx, account, status, resp.Header, body, "deepseek-tools-"+endpoint)
+	clientStatus, errType, clientMsg, matched := applyErrorPassthroughRule(c, account.Platform, status, body, status, grokMediaErrorType(status), msg)
+	retry := !matched && account.ShouldHandleErrorCode(status) && (disable || s.shouldFailoverOpenAIUpstreamResponse(account, status, msg, body))
+	kind := "http_error"
+	if retry {
+		kind = "failover"
+	}
+	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
+		ProxyID: opsUpstreamProxyID(account), ProxyName: opsUpstreamProxyName(account),
+		Platform: account.Platform, AccountID: account.ID, AccountName: account.Name,
+		UpstreamStatusCode: status, UpstreamRequestID: resp.Header.Get("x-request-id"),
+		Kind: kind, Message: msg, Detail: detail,
+	})
+	if retry {
+		return newOpenAIUpstreamFailoverError(status, resp.Header, body, msg, false)
+	}
+	if !matched && !account.ShouldHandleErrorCode(status) {
+		return infraerrors.New(http.StatusBadGateway, "upstream_error", "Upstream gateway error")
+	}
+	if clientMsg == "" || (!matched && !gjson.ValidBytes(body)) {
+		clientMsg = "Upstream rejected the request"
+	}
+	return infraerrors.New(clientStatus, errType, sanitizeUpstreamErrorMessage(clientMsg))
+}
+
+func streamDeepseekToolsResponse(c *gin.Context, resp *http.Response, endpoint string) []byte {
 	for _, name := range []string{
 		"Content-Type",
 		"Content-Length",
@@ -221,16 +275,48 @@ func writeDeepseekToolsContentResponse(c *gin.Context, resp *http.Response) erro
 			c.Header(name, value)
 		}
 	}
-	if strings.TrimSpace(c.Writer.Header().Get("Content-Length")) == "" && resp.ContentLength >= 0 {
+	if strings.TrimSpace(c.Writer.Header().Get("Content-Length")) == "" && resp.ContentLength > 0 {
 		c.Header("Content-Length", strconv.FormatInt(resp.ContentLength, 10))
 	}
 	if strings.TrimSpace(c.Writer.Header().Get("Content-Type")) == "" {
-		c.Header("Content-Type", "application/octet-stream")
+		contentType := "application/octet-stream"
+		if endpoint == "ocr" {
+			contentType = "application/json"
+		}
+		c.Header("Content-Type", contentType)
 	}
 	c.Status(resp.StatusCode)
 	MarkResponseCommitted(c)
-	_, err := io.Copy(c.Writer, resp.Body)
-	return err
+	c.Writer.Flush()
+	downstream := &deepseekStreamWriter{writer: c.Writer}
+	var dest io.Writer = downstream
+	var capture deepseekOCRBillingCapture
+	if endpoint == "ocr" {
+		dest = io.MultiWriter(downstream, &capture)
+	}
+	n, err := io.Copy(dest, resp.Body)
+	if err != nil || (resp.ContentLength > 0 && n != resp.ContentLength) || (endpoint == "tts" && resp.StatusCode == http.StatusOK && n == 0) {
+		setOpsUpstreamError(c, http.StatusBadGateway, "Incomplete upstream "+endpoint+" response", "")
+		panic(http.ErrAbortHandler)
+	}
+	return capture.body
+}
+
+// Downstream write failures stop delivery, but the same upstream read must
+// continue to EOF to distinguish completed billable work from truncation.
+type deepseekStreamWriter struct {
+	writer gin.ResponseWriter
+}
+
+func (w *deepseekStreamWriter) Write(p []byte) (int, error) {
+	if w.writer != nil {
+		if n, err := w.writer.Write(p); err != nil || n != len(p) {
+			w.writer = nil
+		} else {
+			w.writer.Flush()
+		}
+	}
+	return len(p), nil
 }
 
 // Search, fetch and OCR require a completed HTTP 200 result. OCR can return

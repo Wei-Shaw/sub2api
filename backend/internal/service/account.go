@@ -2030,10 +2030,8 @@ const (
 )
 
 // supportsDeepseekTools 判定 platform=deepseek 账号是否可承接 DeepSeek 独立
-// 工具接口（/v1/tools/* 与 /v1/files*）。优先级：运维强制覆盖 > 探测标记 >
-// base_url host 兜底。官方 api.deepseek.com（含未配置 base_url 的默认值）
-// 兜底支持；第三方中转（ollama / crazyhub 等）默认不支持，探测确认支持后
-// 自动放行。
+// 工具接口（/v1/tools/* 与 /v1/files*）。运维强制覆盖优先；官方域名直接
+// 支持，第三方中转须有成功的 search 探测记录。
 func (a *Account) supportsDeepseekTools() bool {
 	if a == nil || a.Platform != PlatformDeepseek {
 		return false
@@ -2046,11 +2044,9 @@ func (a *Account) supportsDeepseekTools() bool {
 			return false
 		}
 	}
-	if supported, ok := a.Extra[deepseekToolsSupportedExtraKey].(bool); ok {
-		return supported
-	}
 	baseURL, _ := deepseekToolsBase(a, false)
-	return isDeepseekOfficialHost(baseURL)
+	supported, _ := a.Extra[deepseekToolsSupportedExtraKey].(bool)
+	return isDeepseekOfficialHost(baseURL) || supported
 }
 
 // isDeepseekOfficialHost 报告 base_url 是否指向 DeepSeek 官方域名

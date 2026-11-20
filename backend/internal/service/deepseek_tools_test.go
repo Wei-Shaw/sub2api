@@ -9,10 +9,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/model"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -200,7 +203,7 @@ func TestForwardDeepseekToolsRequest_ASRDurationToSeconds(t *testing.T) {
 	require.Equal(t, DeepseekToolsUsage{Endpoint: "asr", Units: 4}, result.Usage)
 }
 
-func TestForwardDeepseekToolsRequest_UpstreamErrorPassthroughZeroUsage(t *testing.T) {
+func TestForwardDeepseekToolsRequest_UpstreamClientError(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
@@ -209,13 +212,12 @@ func TestForwardDeepseekToolsRequest_UpstreamErrorPassthroughZeroUsage(t *testin
 
 	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{handler: handler}}
 
-	c, rec := newDeepseekToolsTestContext(http.MethodPost, "/v1/tools/asr", []byte(`{}`))
+	c, _ := newDeepseekToolsTestContext(http.MethodPost, "/v1/tools/asr", []byte(`{}`))
 	result, err := forwardDeepseekToolsTest(svc, c, newDeepseekToolsTestAccount("https://relay.test"), 0, "asr", []byte(`{}`), "application/json")
-	require.NoError(t, err, "error body is passed through, not turned into a transport error")
-	require.Equal(t, http.StatusBadRequest, result.StatusCode)
-	require.Equal(t, `{"error":{"message":"bad audio"}}`, rec.Body.String())
-	require.Equal(t, http.StatusBadRequest, rec.Code)
-	require.Zero(t, result.Usage)
+	require.Equal(t, http.StatusBadRequest, infraerrors.Code(err))
+	require.Equal(t, "bad audio", infraerrors.Message(err))
+	require.False(t, c.Writer.Written())
+	require.Nil(t, result)
 }
 
 func TestForwardDeepseekToolsRequest_RejectsBadInput(t *testing.T) {
@@ -231,6 +233,52 @@ func TestForwardDeepseekToolsRequest_RejectsBadInput(t *testing.T) {
 
 	_, err = forwardDeepseekToolsTest(svc, nil, &Account{Platform: PlatformDeepseek}, 0, "files_get/../etc", nil, "")
 	require.Error(t, err)
+}
+
+func TestProbeDeepseekToolsSupportClearsStaleMarker(t *testing.T) {
+	for _, tc := range []struct {
+		name, base, body string
+		status           int
+	}{
+		{"legacy official", "https://api.deepseek.com", "", 0},
+		{"HTML 200", "https://relay.test", "<html>login</html>", 200},
+		{"generic JSON", "https://relay.test", `{"ok":true}`, 200},
+		{"error with results", "https://relay.test", `{"results":[],"error":{}}`, 200},
+		{"truncated JSON", "https://relay.test", `{"results":[]`, 200},
+		{"inconclusive HTTP", "https://relay.test", "", 429},
+		{"invalid URL", "ftp://invalid", "", 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			account := newDeepseekToolsTestAccount(tc.base)
+			account.Extra = map[string]any{deepseekToolsSupportedExtraKey: true}
+			s, repo, up := newDeepseekToolsProbeTestService(*account, &http.Response{StatusCode: tc.status, Body: io.NopCloser(strings.NewReader(tc.body))})
+			s.ProbeDeepseekToolsSupport(context.Background(), account.ID)
+			require.Len(t, repo.updateExtraCalls, 1)
+			require.Equal(t, map[string]any{deepseekToolsSupportedExtraKey: nil}, <-repo.updateExtraCalls)
+			if tc.status == 0 {
+				require.Nil(t, up.lastReq)
+			}
+		})
+	}
+}
+
+func TestDeepseekToolsUpstreamPassthroughRule(t *testing.T) {
+	c, _ := newDeepseekToolsTestContext(http.MethodPost, "/v1/tools/search", nil)
+	rules := &ErrorPassthroughService{}
+	rule := newNonFailoverPassthroughRule(401, "revoked", 422, "Configured rejection")
+	rule.Platforms = []string{PlatformDeepseek}
+	rule.SkipMonitoring = true
+	rules.setLocalCache([]*model.ErrorPassthroughRule{rule})
+	BindErrorPassthroughService(c, rules)
+	repo := &compatStreamSideEffectsRepo{}
+	s := &OpenAIGatewayService{rateLimitService: NewRateLimitService(repo, nil, &config.Config{}, nil, nil)}
+	resp := &http.Response{StatusCode: 401, Body: io.NopCloser(strings.NewReader(`{"error":{"message":"revoked"}}`))}
+	err := s.deepseekToolsUpstreamError(context.Background(), c, newDeepseekToolsTestAccount("https://relay.test"), resp, "search")
+	require.Equal(t, 422, infraerrors.Code(err))
+	require.Equal(t, "Configured rejection", infraerrors.Message(err))
+	require.True(t, c.GetBool(OpsSkipPassthroughKey))
+	require.False(t, c.Writer.Written())
+	require.Len(t, repo.errorCalls, 1, "the rule must preserve account health handling")
 }
 
 func TestDeepseekToolsBillableUnits(t *testing.T) {

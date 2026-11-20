@@ -174,9 +174,16 @@ func TestDeepseekFileDeleteRetainsRecordUntilConfirmed(t *testing.T) {
 		})}}
 		c, _ := newDeepseekToolsTestContext("DELETE", "/v1/files/f", nil)
 		result, err := forwardDeepseekToolsTest(svc, c, account, 1, "files_delete/f", nil, "")
-		if tc.status == 200 {
+		switch tc.status {
+		case http.StatusNotFound:
+			require.Equal(t, tc.status, infraerrors.Code(err))
+		case http.StatusInternalServerError:
+			var retry *UpstreamFailoverError
+			require.ErrorAs(t, err, &retry)
+			require.Equal(t, tc.status, retry.StatusCode)
+		case http.StatusOK:
 			require.Equal(t, 502, infraerrors.Code(err))
-		} else {
+		default:
 			require.NoError(t, err)
 			require.Equal(t, tc.status, result.StatusCode)
 		}
