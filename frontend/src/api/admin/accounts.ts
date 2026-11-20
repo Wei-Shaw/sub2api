@@ -1202,7 +1202,79 @@ export const accountsAPI = {
   updateOpenCodeGoUsageSettings,
   getOpenCodeGoUsage,
   setOpenCodeGoUsageAutoRefresh,
-  refreshOpenCodeGoUsage
+  refreshOpenCodeGoUsage,
+  createOpenDesignDeviceAuth,
+  getOpenDesignDeviceAuth,
+  cancelOpenDesignDeviceAuth,
+  createOpenDesignAccountFromSession
+}
+
+export interface OpenDesignDeviceAuthInitiate {
+  sessionId: string
+  userCode: string
+  activationUrl: string
+  expiresAt: string
+  pollIntervalSeconds: number
+}
+
+export interface OpenDesignDeviceAuthStatus {
+  status: 'pending' | 'authorized' | 'expired' | 'failed' | 'consumed' | 'denied'
+  email?: string
+  workspaceId?: string
+  message?: string
+  /** 机器码：denied / credential_consumed / expired / workspace_read_failed / upstream_unavailable / unknown_status */
+  reason?: string
+}
+
+export interface OpenDesignAccountFromSessionRequest {
+  session_id: string
+  name?: string
+  notes?: string
+  group_ids?: number[]
+  priority?: number
+  concurrency?: number
+  /** 重新授权已有账号时指定目标账号；不传则按授权身份匹配（匹配不到才新建）。 */
+  account_id?: number
+  /** 建号弹窗里可见的通用字段，必须一并落库。 */
+  proxy_id?: number
+  rate_multiplier?: number
+  load_factor?: number
+  expires_at?: number
+  auto_pause_on_expired?: boolean
+  confirm_mixed_channel?: boolean
+}
+
+export interface OpenDesignAccountFromSessionResult {
+  action: 'created' | 'updated'
+  data: Account
+}
+
+export async function createOpenDesignDeviceAuth(host?: string): Promise<OpenDesignDeviceAuthInitiate> {
+  const { data } = await apiClient.post<OpenDesignDeviceAuthInitiate>('/admin/accounts/opendesign/device-auth', {
+    host: host ?? ''
+  })
+  return data
+}
+
+export async function getOpenDesignDeviceAuth(sessionId: string): Promise<OpenDesignDeviceAuthStatus> {
+  const { data } = await apiClient.get<OpenDesignDeviceAuthStatus>(
+    `/admin/accounts/opendesign/device-auth/${encodeURIComponent(sessionId)}`
+  )
+  return data
+}
+
+export async function cancelOpenDesignDeviceAuth(sessionId: string): Promise<void> {
+  await apiClient.delete(`/admin/accounts/opendesign/device-auth/${encodeURIComponent(sessionId)}`)
+}
+
+export async function createOpenDesignAccountFromSession(
+  payload: OpenDesignAccountFromSessionRequest
+): Promise<OpenDesignAccountFromSessionResult> {
+  const { data } = await apiClient.post<OpenDesignAccountFromSessionResult>(
+    '/admin/accounts/opendesign/accounts',
+    payload
+  )
+  return data
 }
 
 export default accountsAPI

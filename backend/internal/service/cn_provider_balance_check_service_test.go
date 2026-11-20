@@ -154,3 +154,40 @@ func TestAllCNBalancesBelowThreshold(t *testing.T) {
 	singleOK := &CNProviderBalanceResult{Balance: 10.0, Currency: "CNY"}
 	require.False(t, allCNBalancesBelowThreshold(singleOK, 5.0))
 }
+
+// OpenDesign 的用量快照由周期任务刷新：有 control key 的账号进探测队列，
+// 没走过设备授权的账号跳过（探测必然 401，白跑还刷失败日志）。
+func TestCNProviderBalanceCheckRunOnceProbesOpenDesign(t *testing.T) {
+	authorized := Account{ID: 21, Platform: PlatformOpenDesign, Type: AccountTypeAPIKey, Status: StatusActive,
+		Credentials: map[string]any{
+			"api_key":                     "sk-amr",
+			OpenDesignUsageCredentialsKey: "vela_ctrl_x",
+			OpenDesignUsageWorkspaceKey:   "ws-1",
+		}}
+	// 被阈值停调的账号也要保持快照新鲜，用于判定是否续停。
+	paused := Account{ID: 22, Platform: PlatformOpenDesign, Type: AccountTypeAPIKey, Status: StatusActive, Schedulable: false,
+		Credentials: map[string]any{
+			OpenDesignUsageCredentialsKey: "vela_ctrl_x",
+			OpenDesignUsageWorkspaceKey:   "ws-1",
+		}}
+	// 手工建的 API Key 账号没有 control key：不探测。
+	noControlKey := Account{ID: 23, Platform: PlatformOpenDesign, Type: AccountTypeAPIKey, Status: StatusActive,
+		Credentials: map[string]any{"api_key": "sk-amr"}}
+	// 非激活账号跳过。
+	inactive := Account{ID: 24, Platform: PlatformOpenDesign, Type: AccountTypeAPIKey, Status: StatusDisabled,
+		Credentials: map[string]any{OpenDesignUsageCredentialsKey: "vela_ctrl_x"}}
+
+	repo := &fakeCNCheckRepo{byPlatform: map[string][]Account{
+		PlatformOpenDesign: {authorized, paused, noControlKey, inactive},
+	}}
+	prober := &fakeCNQuotaProber{}
+	svc := &CNProviderBalanceCheckService{
+		accountRepo:  repo,
+		quotaService: prober,
+		cfg:          &config.Config{},
+	}
+
+	svc.runOnce()
+
+	require.ElementsMatch(t, []int64{21, 22}, prober.probed)
+}

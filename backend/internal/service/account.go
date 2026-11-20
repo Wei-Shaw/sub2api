@@ -1704,6 +1704,14 @@ func (a *Account) GetCodingPlanProvider() string {
 		}
 		return ""
 	}
+	if a.Platform == PlatformOpenDesign {
+		// OpenDesign 的用量探测只跑在带设备授权 control key 的 API Key 账号上：
+		// 只有普通 api_key 的账号没有探测数据源，直接排除（与 cline 的门控同口径）。
+		if a.Type == AccountTypeAPIKey && strings.TrimSpace(a.GetCredential(OpenDesignUsageCredentialsKey)) != "" {
+			return PlatformOpenDesign
+		}
+		return ""
+	}
 	if a.GetAccountMode() != AccountModeCoding {
 		return ""
 	}

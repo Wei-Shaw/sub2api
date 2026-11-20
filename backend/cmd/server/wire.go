@@ -130,6 +130,7 @@ func provideCleanup(
 	upstreamBillingProbe *service.UpstreamBillingProbeService,
 	ollamaCloudUsage *service.OllamaCloudUsageService,
 	opencodeGoUsage *service.OpenCodeGoUsageService,
+	openDesignDeviceAuth *service.OpenDesignDeviceAuthService,
 	auditLog *service.AuditLogService,
 	openAIAutoReset *service.OpenAIQuotaAutoResetService,
 	promptAudit *securityaudit.PromptService,
@@ -415,6 +416,12 @@ func provideCleanup(
 			{"OpenCodeGoUsageService", func() error {
 				if opencodeGoUsage != nil {
 					opencodeGoUsage.Stop()
+				}
+				return nil
+			}},
+			{"OpenDesignDeviceAuthService", func() error {
+				if openDesignDeviceAuth != nil {
+					openDesignDeviceAuth.Stop()
 				}
 				return nil
 			}},

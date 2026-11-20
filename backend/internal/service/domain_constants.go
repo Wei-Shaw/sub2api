@@ -52,7 +52,10 @@ const (
 	PlatformTypeSafe    = domain.PlatformTypeSafe
 	PlatformCommandCode = domain.PlatformCommandCode
 	PlatformCline       = domain.PlatformCline
-	PlatformComposite   = domain.PlatformComposite
+	// PlatformOpenDesign 是 OpenDesign Go 平台（多协议聚合供应商，profile 见
+	// provider_profile.go；一个 API Key 同时提供 OpenAI 兼容 /v1 与 Anthropic 端点）。
+	PlatformOpenDesign = domain.PlatformOpenDesign
+	PlatformComposite  = domain.PlatformComposite
 	// PlatformKiro is retained for unsupported-platform threshold tests and legacy
 	// account rows. Scheduling-threshold evaluation never pauses kiro accounts.
 	PlatformKiro = "kiro"
@@ -92,6 +95,10 @@ const (
 	DefaultCommandCodeBaseURL = "https://api.commandcode.ai/provider/v1"
 	// Cline API：只提供 Chat Completions（{base}/chat/completions）与模型列表。
 	DefaultClineBaseURL = "https://api.cline.bot/api/v1"
+	// OpenDesign Go：Chat Completions / 原生 Responses / models 均挂 /v1；
+	// Anthropic 兼容端点为裸域（{base}/v1/messages）。
+	DefaultOpenDesignBaseURL          = "https://amr-link.open-design.ai/v1"
+	DefaultOpenDesignAnthropicBaseURL = "https://amr-link.open-design.ai"
 )
 
 // 国产供应商 Anthropic 协议端点的默认 base_url（上游路径为 {base}/v1/messages）。
@@ -144,6 +151,7 @@ var AllowedSchedulingThresholdPlatforms = []string{
 	PlatformMiniMax,
 	PlatformOpenCodeGo,
 	PlatformCommandCode,
+	PlatformOpenDesign,
 }
 
 // IsAllowedQuotaPlatform 报告 s 是否为合法的 quota platform 标识。

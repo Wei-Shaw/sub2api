@@ -88,3 +88,19 @@ func TestIsSensitiveCredentialKey(t *testing.T) {
 	require.False(t, IsSensitiveCredentialKey(""))
 	require.False(t, IsSensitiveCredentialKey("model_mapping"))
 }
+
+// OpenDesign 的 control key 只用于用量探测：它必须是敏感键，否则会随账号响应
+// 明文回显，且一次不携带它的编辑 PUT 会把它从 credentials 里删掉。
+func TestSensitiveCredentialKeys_IncludesOpenDesignControlKey(t *testing.T) {
+	require.True(t, IsSensitiveCredentialKey("opendesign_control_key"))
+
+	merged := MergePreservingSensitiveCreds(
+		map[string]any{"opendesign_control_key": "vela_ctrl_old", "model_mapping": map[string]any{"a": "b"}},
+		map[string]any{"api_key": "sk-new"},
+	)
+	require.Equal(t, "vela_ctrl_old", merged["opendesign_control_key"], "partial PUT must not drop the control key")
+	require.Equal(t, "sk-new", merged["api_key"])
+	// 非敏感键完全由入参决定 —— 正因如此，重新授权必须先读出旧凭据再整份提交，
+	// 只传几个键会把 model_mapping 这类配置清掉（handler 侧的合并就是这么来的）。
+	require.NotContains(t, merged, "model_mapping")
+}

@@ -14,6 +14,7 @@ import { listPlatformIds } from "@/constants/platformCatalog";
 const quotaPlatforms = [
   "anthropic", "openai", "gemini", "antigravity", "grok",
   "kimi", "zhipu", "deepseek", "minimax", "opencode_go", "typesafe", "command_code", "cline",
+  "open_design",
 ];
 
 /** 全部平台全 null 的 map，用于断言归一化默认值 */

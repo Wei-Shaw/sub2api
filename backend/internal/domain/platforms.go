@@ -48,6 +48,10 @@ var platformList = []PlatformSpec{
 	{ID: PlatformTypeSafe, DisplayName: "TypeSafe / Jev", Gateway: PlatformGatewayAnthropic, LiteLLMProvider: "typesafe"},
 	{ID: PlatformCommandCode, DisplayName: "Command Code", Gateway: PlatformGatewayOpenAI},
 	{ID: PlatformCline, DisplayName: "Cline", Gateway: PlatformGatewayOpenAI},
+	// OpenDesign Go：同一把 API Key 同时提供 OpenAI 兼容端点（/v1，chat completions
+	// 与原生 responses）和 Anthropic 兼容端点（{base}/v1/messages），端点画像登记在
+	// provider_profile.go。
+	{ID: PlatformOpenDesign, DisplayName: "OpenDesign", Gateway: PlatformGatewayOpenAI},
 }
 
 var platformIndex = func() map[string]int {

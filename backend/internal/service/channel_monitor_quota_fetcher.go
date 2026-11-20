@@ -221,7 +221,9 @@ func (f *ChannelMonitorQuotaFetcher) fetchUncached(ctx context.Context, accountI
 			return f.fetchCNQuota(ctx, account, now)
 		}
 		return f.fetchCNBalance(ctx, account, now)
-	case domain.PlatformOpenCodeGo:
+	case domain.PlatformOpenCodeGo, domain.PlatformOpenDesign:
+		// OpenDesign 的用量同样来自 CN 配额框架（funding-check），
+		// 周期监控必须走同一条链路，否则会被当成海外平台读不到用量。
 		return f.fetchCNQuota(ctx, account, now)
 	default:
 		return f.fetchUsage(ctx, account, now)

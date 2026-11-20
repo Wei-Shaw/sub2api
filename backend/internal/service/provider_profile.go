@@ -221,6 +221,24 @@ var providerProfiles = map[string]*ProviderProfile{
 			},
 		},
 	},
+
+	PlatformOpenDesign: {
+		Platform:    PlatformOpenDesign,
+		DefaultMode: AccountModePayG,
+		Routing:     ProviderRoutingByInbound,
+		// OpenDesign Go 用同一个 /v1 基址同时提供 Chat Completions 与原生 Responses，
+		// 裸域另提供 Anthropic 兼容端点（{base}/v1/messages，x-api-key 与 Bearer
+		// 都接受）。自适应账号按入站协议选择端点。
+		Modes: map[string]ProviderEndpoints{
+			AccountModePayG: {
+				BaseURLs: map[string]string{
+					APIProtocolChatCompletions: DefaultOpenDesignBaseURL,
+					APIProtocolResponses:       DefaultOpenDesignBaseURL,
+					APIProtocolAnthropic:       DefaultOpenDesignAnthropicBaseURL,
+				},
+			},
+		},
+	},
 }
 
 // LookupProviderProfile 返回 platform 对应的多协议供应商 profile；非此类平台返回 nil。

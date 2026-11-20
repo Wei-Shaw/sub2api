@@ -28,6 +28,91 @@
 
       <!-- API Key fields (only for apikey type) -->
       <div v-if="account.type === 'apikey'" class="space-y-4">
+      <div v-if="account.platform === 'open_design' && account.type === 'apikey'" class="space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <span class="input-label mb-0">{{ t('admin.accounts.opendesign.authSource.label') }}</span>
+            <span
+              v-if="isOpenDesignOAuthAccount"
+              class="rounded bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+              data-testid="opendesign-oauth-badge"
+            >
+              {{ t('admin.accounts.opendesign.authSource.oauth') }}
+            </span>
+            <span
+              v-else
+              class="rounded bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-600 dark:bg-dark-600 dark:text-gray-300"
+            >
+              {{ t('admin.accounts.opendesign.authSource.apiKey') }}
+            </span>
+          </div>
+          <button
+            type="button"
+            class="btn btn-secondary btn-sm"
+            :disabled="odReauthStarting"
+            data-testid="opendesign-reauthorize"
+            @click="startOpenDesignReauth"
+          >
+            {{ t('admin.accounts.opendesign.reauth.button') }}
+          </button>
+        </div>
+
+        <div
+          v-if="odReauthState !== 'idle'"
+          class="space-y-2 rounded-lg border border-stone-200 bg-stone-50 p-3 dark:border-stone-700 dark:bg-stone-900/20"
+          data-testid="opendesign-reauth-panel"
+        >
+          <template v-if="odReauthState === 'pending'">
+            <p class="text-xs text-gray-600 dark:text-gray-400">
+              {{ t('admin.accounts.opendesign.reauth.userCode') }}
+              <span class="font-mono text-base font-bold tracking-widest" data-testid="opendesign-reauth-user-code">{{ odReauthUserCode }}</span>
+            </p>
+            <a
+              :href="odReauthActivationUrl"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="block break-all text-xs text-primary-600 hover:underline dark:text-primary-400"
+            >
+              {{ odReauthActivationUrl }}
+            </a>
+            <p class="text-xs text-gray-600 dark:text-gray-400">
+              {{ t('admin.accounts.opendesign.reauth.waiting') }}
+            </p>
+            <button type="button" class="btn btn-secondary btn-sm" @click="cancelOpenDesignReauth">
+              {{ t('common.cancel') }}
+            </button>
+          </template>
+          <p v-else-if="odReauthState === 'failed' || odReauthState === 'expired'" class="text-xs text-red-600 dark:text-red-400" data-testid="opendesign-reauth-error">
+            {{ odReauthError || t('admin.accounts.opendesign.reauth.failedHint') }}
+          </p>
+          <p v-else-if="odReauthState === 'authorized'" class="text-xs text-emerald-600 dark:text-emerald-400">
+            {{ t('admin.accounts.opendesign.reauth.success') }}
+          </p>
+        </div>
+
+        <div>
+          <label class="input-label">{{ t('admin.accounts.opendesign.controlKey') }}</label>
+          <input
+            v-model="editOpenDesignControlKey"
+            data-testid="opendesign-control-key"
+            type="password"
+            class="input font-mono"
+            placeholder="vela_ctrl_..."
+          />
+          <p class="input-hint">{{ t('admin.accounts.opendesign.controlKeyHint') }}</p>
+        </div>
+        <div>
+          <label class="input-label">{{ t('admin.accounts.opendesign.workspaceId') }}</label>
+          <input
+            v-model="editOpenDesignWorkspaceId"
+            data-testid="opendesign-workspace-id"
+            type="text"
+            class="input font-mono"
+            placeholder="c4r5rxzwut6brv20bsteftxg"
+          />
+          <p class="input-hint">{{ t('admin.accounts.opendesign.workspaceIdHint') }}</p>
+        </div>
+      </div>
         <div v-if="!isCNApiKeyAccount || editApiProtocol !== 'adaptive'">
           <label class="input-label">{{ t('admin.accounts.baseUrl') }}</label>
           <input
@@ -3360,6 +3445,7 @@
           form="edit-account-form"
           :disabled="submitting"
           class="btn btn-primary"
+          data-testid="account-save"
           data-tour="account-form-submit"
         >
           <svg
@@ -3675,6 +3761,10 @@ interface TempUnschedRuleForm {
 const submitting = ref(false)
 const editBaseUrl = ref('https://api.anthropic.com')
 const editApiKey = ref('')
+// OpenDesign 控制面凭证（用量探测用）：control key 脱敏不可回填，留空即保持原值；
+// workspace 可直接回填。声明必须早于 syncFormFromAccount，否则 setup 期回填会踩 TDZ。
+const editOpenDesignControlKey = ref('')
+const editOpenDesignWorkspaceId = ref('')
 
 // ── 国产供应商（Kimi / Zhipu / DeepSeek）account_mode / api_protocol 编辑 ──
 // account_mode 决定额度/余额监控路径，api_protocol 决定转发端点与格式；
@@ -4055,6 +4145,7 @@ watch(
 
 onBeforeUnmount(() => {
   resetGrokDiagnostics()
+  void cancelOpenDesignReauth()
 })
 
 // Grok Free OAuth accounts use client-tool prompt caching by default. Keep an
@@ -4647,6 +4738,13 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   editVertexClientEmail.value = ''
   editVertexLocation.value = 'us-central1'
   editVertexApiKey.value = ''
+  // OpenDesign：workspace 可回填；control key 是后端脱敏字段，前端永远拿不到，
+  // 只能留空表示"保持原值"（服务端按敏感键保留）。
+  editOpenDesignControlKey.value = ''
+  editOpenDesignWorkspaceId.value =
+    newAccount.platform === 'open_design' && typeof credentials?.opendesign_workspace_id === 'string'
+      ? credentials.opendesign_workspace_id.trim()
+      : ''
   antigravityProjectId.value =
     newAccount.platform === 'antigravity' &&
     newAccount.type === 'oauth' &&
@@ -5710,6 +5808,18 @@ const handleSubmit = async () => {
         base_url: newBaseUrl
       }
 
+      // OpenDesign 控制面凭证：留空 = 保持原值（control key 已脱敏，无法回填）。
+      if (props.account.platform === 'open_design') {
+        const controlKey = editOpenDesignControlKey.value.trim()
+        if (controlKey) {
+          newCredentials.opendesign_control_key = controlKey
+        }
+        const workspaceId = editOpenDesignWorkspaceId.value.trim()
+        if (workspaceId) {
+          newCredentials.opendesign_workspace_id = workspaceId
+        }
+      }
+
       // 国产供应商：模式与协议写入凭据（决定额度/余额探测与转发端点/格式）。
       if (isCNApiKeyAccount.value) {
         newCredentials.account_mode = currentOpenCodeOrCNMode()
@@ -6463,4 +6573,212 @@ const handleMixedChannelConfirm = async () => {
 const handleMixedChannelCancel = () => {
   clearMixedChannelDialog()
 }
+
+// ===== OpenDesign 重新授权（一键设备授权，2026-11-15） =====
+// 已有账号的「重新授权」：走同一设备授权流，成功后用 session 精确更新三键
+// （api_key / opendesign_control_key / opendesign_workspace_id，后端按 account_id 定位）。
+const isOpenDesignOAuthAccount = computed(
+  () => (props.account?.extra as Record<string, unknown> | undefined)?.opendesign_auth_source === 'oauth'
+)
+const odReauthState = ref<'idle' | 'pending' | 'authorized' | 'expired' | 'failed'>('idle')
+const odReauthStarting = ref(false)
+const odReauthSessionId = ref('')
+const odReauthUserCode = ref('')
+const odReauthActivationUrl = ref('')
+const odReauthError = ref('')
+
+// 与新建弹窗同源：后端 message 仅用于日志，界面按 reason 机器码/错误码显示中文。
+const OD_REAUTH_REASON_KEYS: Record<string, string> = {
+  denied: 'admin.accounts.opendesign.oauth.reason.denied',
+  credential_consumed: 'admin.accounts.opendesign.oauth.reason.credentialConsumed',
+  expired: 'admin.accounts.opendesign.oauth.reason.expired',
+  workspace_read_failed: 'admin.accounts.opendesign.oauth.reason.workspaceReadFailed',
+  upstream_unavailable: 'admin.accounts.opendesign.oauth.reason.upstreamUnavailable',
+}
+
+const openDesignReauthReasonText = (reason?: string): string =>
+  t(OD_REAUTH_REASON_KEYS[reason || ''] || 'admin.accounts.opendesign.oauth.reason.unknown')
+
+const openDesignReauthErrorMessage = (error: any, fallbackKey: string): string =>
+  extractApiErrorMessage(error, t(fallbackKey), {
+    OPENDESIGN_SESSION_NOT_FOUND: t('admin.accounts.opendesign.oauth.errorCodes.sessionNotFound'),
+    OPENDESIGN_SESSION_NOT_AUTHORIZED: t('admin.accounts.opendesign.oauth.errorCodes.notAuthorized'),
+    OPENDESIGN_SESSION_CONSUMED: t('admin.accounts.opendesign.oauth.errorCodes.sessionConsumed'),
+    OPENDESIGN_SESSION_EXPIRED: t('admin.accounts.opendesign.oauth.errorCodes.sessionExpired'),
+    OPENDESIGN_UPSTREAM_ERROR: t('admin.accounts.opendesign.oauth.errorCodes.upstream'),
+    OPENDESIGN_ACCOUNT_INVALID: t('admin.accounts.opendesign.oauth.errorCodes.accountInvalid'),
+    OPENDESIGN_ACCOUNT_AMBIGUOUS: t('admin.accounts.opendesign.oauth.errorCodes.accountAmbiguous'),
+  })
+let odReauthPollTimer: ReturnType<typeof setInterval> | null = null
+// 重新授权必须锁定发起时的目标账号：响应阶段不得复读可变的 props.account。
+const odReauthTargetAccountId = ref<number | null>(null)
+// 每次发起/取消都递增，await 之后校验，避免关闭弹窗或切换账号后仍写库。
+let odReauthGeneration = 0
+
+const isOdReauthGenerationCurrent = (generation: number) => generation === odReauthGeneration
+
+const stopOpenDesignReauthTimers = () => {
+  if (odReauthPollTimer) {
+    clearInterval(odReauthPollTimer)
+    odReauthPollTimer = null
+  }
+}
+
+// 作废所有在途请求；不触碰服务端会话。
+const invalidateOpenDesignReauthState = () => {
+  odReauthGeneration += 1
+  stopOpenDesignReauthTimers()
+  odReauthState.value = 'idle'
+  odReauthSessionId.value = ''
+  odReauthUserCode.value = ''
+  odReauthActivationUrl.value = ''
+  odReauthError.value = ''
+  odReauthTargetAccountId.value = null
+}
+
+const deleteOpenDesignReauthSession = async (sessionId: string) => {
+  if (!sessionId) return
+  try {
+    await adminAPI.accounts.cancelOpenDesignDeviceAuth(sessionId)
+  } catch {
+    // 忽略：后端 TTL 会清理
+  }
+}
+
+const cancelOpenDesignReauth = async () => {
+  const sessionId = odReauthSessionId.value
+  invalidateOpenDesignReauthState()
+  await deleteOpenDesignReauthSession(sessionId)
+}
+
+const startOpenDesignReauth = async () => {
+  if (!props.account || odReauthStarting.value) return
+  odReauthStarting.value = true
+  odReauthError.value = ''
+  // 代次与目标账号都在任何 await 之前固定：等待旧会话 DELETE 期间若用户关闭弹窗或
+  // 切换账号，事件产生的新代次不会被本次启动误认为合法。
+  const previousSessionId = odReauthSessionId.value
+  const targetAccountId = props.account.id
+  invalidateOpenDesignReauthState()
+  const generation = odReauthGeneration
+  const stillWanted = () =>
+    isOdReauthGenerationCurrent(generation) && props.show && props.account?.id === targetAccountId
+  try {
+    await deleteOpenDesignReauthSession(previousSessionId)
+    if (!stillWanted()) {
+      return
+    }
+    const result = await adminAPI.accounts.createOpenDesignDeviceAuth()
+    if (!stillWanted()) {
+      void deleteOpenDesignReauthSession(result.sessionId)
+      return
+    }
+    odReauthTargetAccountId.value = targetAccountId
+    odReauthSessionId.value = result.sessionId
+    odReauthUserCode.value = result.userCode
+    odReauthActivationUrl.value = result.activationUrl
+    odReauthState.value = 'pending'
+    const intervalMs = Math.max(2, result.pollIntervalSeconds || 2) * 1000
+    odReauthPollTimer = setInterval(() => { void pollOpenDesignReauth() }, intervalMs)
+  } catch (error: any) {
+    if (!isOdReauthGenerationCurrent(generation)) {
+      return
+    }
+    odReauthState.value = 'failed'
+    odReauthError.value = openDesignReauthErrorMessage(error, 'admin.accounts.opendesign.reauth.startFailed')
+  } finally {
+    odReauthStarting.value = false
+  }
+}
+
+const pollOpenDesignReauth = async () => {
+  const sessionId = odReauthSessionId.value
+  if (!sessionId || odReauthState.value !== 'pending') return
+  const generation = odReauthGeneration
+  const targetAccountId = odReauthTargetAccountId.value
+  try {
+    const status = await adminAPI.accounts.getOpenDesignDeviceAuth(sessionId)
+    if (
+      !isOdReauthGenerationCurrent(generation) ||
+      odReauthSessionId.value !== sessionId ||
+      targetAccountId == null ||
+      !props.show ||
+      props.account?.id !== targetAccountId
+    ) {
+      return
+    }
+    if (status.status === 'authorized') {
+      stopOpenDesignReauthTimers()
+      const result = await adminAPI.accounts.createOpenDesignAccountFromSession({
+        session_id: sessionId,
+        account_id: targetAccountId
+      })
+      if (
+        !isOdReauthGenerationCurrent(generation) ||
+        props.account?.id !== targetAccountId
+      ) {
+        console.warn('[opendesign] re-auth persisted after modal closed or account switched', {
+          sessionId,
+          action: result.action,
+          accountId: result.data?.id
+        })
+        emit('updated', result.data)
+        return
+      }
+      odReauthState.value = 'authorized'
+      appStore.showSuccess(t('admin.accounts.opendesign.reauth.success'))
+      emit('updated', result.data)
+      return
+    }
+    if (status.status === 'expired') {
+      stopOpenDesignReauthTimers()
+      odReauthState.value = 'expired'
+      odReauthError.value = openDesignReauthReasonText(status.reason || 'expired')
+      return
+    }
+    if (status.status === 'failed') {
+      stopOpenDesignReauthTimers()
+      odReauthState.value = 'failed'
+      odReauthError.value = status.reason
+        ? openDesignReauthReasonText(status.reason)
+        : t('admin.accounts.opendesign.reauth.failedHint')
+      return
+    }
+    if (status.status === 'consumed') {
+      stopOpenDesignReauthTimers()
+      odReauthState.value = 'failed'
+      odReauthError.value = openDesignReauthReasonText(status.reason || 'credential_consumed')
+    }
+    if (status.status === 'denied') {
+      stopOpenDesignReauthTimers()
+      odReauthState.value = 'failed'
+      odReauthError.value = openDesignReauthReasonText(status.reason || 'denied')
+    }
+  } catch (error: any) {
+    if (!isOdReauthGenerationCurrent(generation)) {
+      return
+    }
+    stopOpenDesignReauthTimers()
+    odReauthState.value = 'failed'
+    odReauthError.value = openDesignReauthErrorMessage(error, 'admin.accounts.opendesign.reauth.failedHint')
+  }
+}
+// OpenDesign：关闭弹窗或切换账号时丢弃在途的重新授权会话，
+// 避免凭据被写到错误的账号上。
+watch(
+  () => props.show,
+  (show) => {
+    if (!show) {
+      void cancelOpenDesignReauth()
+    }
+  }
+)
+watch(
+  () => props.account?.id,
+  (id, previous) => {
+    if (previous !== undefined && id !== previous) {
+      void cancelOpenDesignReauth()
+    }
+  }
+)
 </script>

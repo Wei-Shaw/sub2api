@@ -541,6 +541,8 @@ export interface CNUsageCellAccount {
   platform: string
   type: string
   credentials?: Record<string, unknown>
+  // 后端响应把敏感键剥离后，用 has_<key> 暴露存在性。
+  credentials_status?: Record<string, boolean>
 }
 
 // Command Code、Cline 的积分与用量接口只查官方主机上的 API Key 账号（与后端
@@ -589,12 +591,24 @@ function officialAccountAPISupported(account: CNUsageCellAccount, mode: string):
   }
 }
 
+/** OpenDesign 的用量探测需要设备授权取回的 control key。
+ *  响应里 control key 已被脱敏，存在性来自 credentials_status.has_<key>；
+ *  credentials 分支只服务于未脱敏的本地/预览数据。 */
+export function openDesignProbeConfigured(account: CNUsageCellAccount): boolean {
+  if (account.credentials_status?.has_opendesign_control_key === true) return true
+  const controlKey = account.credentials?.opendesign_control_key
+  return typeof controlKey === 'string' && controlKey.trim() !== ''
+}
+
 export function cnQuotaCellVisible(account: CNUsageCellAccount): boolean {
   const { platform } = account
   const mode = cnUsageCellAccountMode(account)
   if (platform === 'opencode_go') return mode !== 'zen'
   // Command Code、Cline：订阅窗口与积分由一次探测同时刷新。
   if (OFFICIAL_ACCOUNT_API_PLATFORMS.includes(platform)) return officialAccountAPISupported(account, mode)
+  // OpenDesign 的用量来自 CN 配额框架（funding-check），有 control key 即可展示；
+  // 无 control key 时探测必然失败，不展示空单元格。
+  if (platform === 'open_design') return openDesignProbeConfigured(account)
   return (platform === 'kimi' || platform === 'zhipu' || platform === 'minimax') && mode === 'coding'
 }
 

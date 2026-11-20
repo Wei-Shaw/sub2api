@@ -230,6 +230,9 @@ func (s *AccountService) Create(ctx context.Context, req CreateAccountRequest) (
 	if req.Platform == PlatformTypeSafe && req.Type != AccountTypeAPIKey {
 		return nil, errors.New("typesafe accounts only support apikey credentials")
 	}
+	if req.Platform == PlatformOpenDesign && req.Type != AccountTypeAPIKey {
+		return nil, errors.New("open_design accounts only support apikey credentials")
+	}
 	// 验证分组是否存在（如果指定了分组）
 	if len(req.GroupIDs) > 0 {
 		if err := s.validateGroupIDsExist(ctx, req.GroupIDs); err != nil {

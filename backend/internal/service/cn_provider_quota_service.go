@@ -134,6 +134,33 @@ func (s *CNProviderQuotaService) QueryUsageForAccount(ctx context.Context, accou
 	}
 }
 
+// completeOpenDesignNoPlan 收尾一次「明确无 coding plan」的探测：清空 5h/weekly/
+// monthly 三个窗口与重置时间、刷新时间戳，账号保持可调度。
+//
+// 为什么必须清空：残留的 100% 快照会让阈值评估继续把账号停调，而账号其实已经没有
+// 套餐可用，停调没有任何收益。
+func (s *CNProviderQuotaService) completeOpenDesignNoPlan(
+	ctx context.Context,
+	account *Account,
+	result *CNProviderQuotaProbeResult,
+	now time.Time,
+) *CNProviderQuotaProbeResult {
+	result.Tiers = nil
+	result.Success = true
+	result.CredentialValid = true
+	if strings.TrimSpace(result.PlanLevel) == "" {
+		result.PlanLevel = "No coding plan"
+	}
+	updates := cnQuotaExtraUpdates(PlatformOpenDesign, nil, now)
+	clearAbsentCNQuotaWindows(PlatformOpenDesign, nil, updates)
+	if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
+		slog.Warn("cn_quota_persist_failed", "account_id", account.ID, "provider", PlatformOpenDesign, "error", err)
+	} else {
+		result.Persisted = true
+	}
+	return result
+}
+
 func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, account *Account) (*CNProviderQuotaProbeResult, error) {
 	provider := account.GetCodingPlanProvider()
 	if provider == PlatformCommandCode {
@@ -142,11 +169,17 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	if provider == PlatformCline {
 		return s.queryClineUsage(ctx, account)
 	}
-	if provider != PlatformKimi && provider != PlatformZhipu && provider != PlatformMiniMax && provider != PlatformOpenCodeGo {
-		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a kimi/zhipu/minimax coding plan or opencode go account")
+	if provider != PlatformKimi && provider != PlatformZhipu && provider != PlatformMiniMax &&
+		provider != PlatformOpenCodeGo && provider != PlatformOpenDesign {
+		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "account is not a kimi/zhipu/minimax coding plan, opencode go or open_design account")
 	}
 
+	// OpenDesign 的用量端点属于控制面，鉴权用设备授权取回的 control key；转发用的
+	// runtime api_key 在控制面上没有权限，混用会稳定 401。
 	apiKey := strings.TrimSpace(account.GetCNAPIKey())
+	if provider == PlatformOpenDesign {
+		apiKey = strings.TrimSpace(account.GetCredential(OpenDesignUsageCredentialsKey))
+	}
 	if apiKey == "" {
 		return nil, infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NO_APIKEY", "account api_key is empty")
 	}
@@ -176,6 +209,16 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 		}
 	case PlatformMiniMax:
 		targetURL = minimaxQuotaURL(baseURL)
+		authHeader = "Bearer " + apiKey
+	case PlatformOpenDesign:
+		// 控制面基址与转发基址不同，固定走控制面主机；workspace 由设备授权写入。
+		fundingURL, urlErr := opendesignFundingCheckURL(
+			DefaultOpenDesignAuthAPIBaseURL,
+			account.GetCredential(OpenDesignUsageWorkspaceKey))
+		if urlErr != nil {
+			return nil, infraerrors.Newf(http.StatusBadRequest, "CN_QUOTA_URL_INVALID", "open_design funding-check url: %v", urlErr)
+		}
+		targetURL = fundingURL
 		authHeader = "Bearer " + apiKey
 	}
 
@@ -253,6 +296,21 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	case PlatformOpenCodeGo:
 		tiers = parseOpenCodeGoUsageTiers(bodyBytes)
 		result.PlanLevel = "OpenCode Go"
+	case PlatformOpenDesign:
+		var (
+			tierErr error
+			noPlan  bool
+		)
+		tiers, result.PlanLevel, noPlan, tierErr = parseOpenDesignUsageTiers(bodyBytes)
+		if tierErr != nil {
+			// 上游报文改版：保留上一份快照，而不是写一份空的
+			// （与 CN 的无窗口守卫同一口径）。
+			result.Error = "open_design funding-check parse failed: " + tierErr.Error()
+			return result, nil
+		}
+		if noPlan {
+			return s.completeOpenDesignNoPlan(ctx, account, result, now), nil
+		}
 	case PlatformZhipu:
 		tiers = parseZhipuTokenTiers(gjson.GetBytes(bodyBytes, "data"))
 		result.PlanLevel = strings.TrimSpace(gjson.GetBytes(bodyBytes, "data.level").String())
@@ -287,7 +345,8 @@ func (s *CNProviderQuotaService) queryUsageForAccount(ctx context.Context, accou
 	updates := cnQuotaExtraUpdates(provider, tiers, now)
 	// 只对 5h/weekly/monthly 三档通吃的供应商清理缺席窗口；Command Code 与
 	// Cline 走各自的取舍（抓取失败时保留月度），不在这里处理。
-	if provider == PlatformKimi || provider == PlatformZhipu || provider == PlatformMiniMax || provider == PlatformOpenCodeGo {
+	if provider == PlatformKimi || provider == PlatformZhipu || provider == PlatformMiniMax ||
+		provider == PlatformOpenCodeGo || provider == PlatformOpenDesign {
 		clearAbsentCNQuotaWindows(provider, tiers, updates)
 	}
 	if err := s.accountRepo.UpdateExtra(ctx, account.ID, updates); err != nil {
@@ -327,6 +386,12 @@ func validateCodingPlanAccount(account *Account) error {
 	if account.IsCline() {
 		if !account.clineAccountAPISupported() {
 			return infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "cline usage is only available for api key accounts on the official host")
+		}
+		return nil
+	}
+	if account.Platform == PlatformOpenDesign {
+		if account.Type != AccountTypeAPIKey || strings.TrimSpace(account.GetCredential(OpenDesignUsageCredentialsKey)) == "" {
+			return infraerrors.New(http.StatusBadRequest, "CN_QUOTA_NOT_CODING_PLAN", "open_design usage requires an api key account with a control key")
 		}
 		return nil
 	}
