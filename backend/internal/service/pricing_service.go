@@ -253,6 +253,9 @@ var (
 // Keep this provenance with the parsed card so billing never rereads the file.
 type tokenPriceOverrides struct {
 	input, output, cacheRead bool
+
+	flatAudioInput, flatAudioInputPriority         bool
+	flatAudioCacheRead, flatAudioCacheReadPriority bool
 }
 
 // LiteLLMModelPricing LiteLLM价格数据结构
@@ -280,6 +283,12 @@ type LiteLLMModelPricing struct {
 	OutputCostPerImageToken             float64 `json:"output_cost_per_image_token"` // 图片输出 token 价格
 	InputCostPerImageToken              float64 `json:"input_cost_per_image_token"`  // 图片输入 token 价格（如 gpt-image-2 图片编辑）
 	CacheReadInputImageTokenCost        float64 `json:"cache_read_input_image_token_cost"`
+
+	InputCostPerAudioToken               *float64 `json:"input_cost_per_audio_token,omitempty"`
+	InputCostPerAudioTokenPriority       *float64 `json:"input_cost_per_audio_token_priority,omitempty"`
+	CacheReadInputAudioTokenCost         *float64 `json:"cache_read_input_audio_token_cost,omitempty"`
+	CacheReadInputAudioTokenCostPriority *float64 `json:"cache_read_input_audio_token_cost_priority,omitempty"`
+
 	// CacheStorageCostPerTokenPerHour 显式上下文缓存存储单价（每 token 每小时，USD），一般由定价覆盖文件提供，
 	// 配置后优先于内置价（见 BillingService.CacheStoragePricePerTokenHour）。
 	CacheStorageCostPerTokenPerHour float64 `json:"cache_storage_cost_per_token_per_hour"`
@@ -319,6 +328,11 @@ type LiteLLMRawEntry struct {
 	InputCostPerImageToken              *float64 `json:"input_cost_per_image_token"`
 	CacheReadInputImageTokenCost        *float64 `json:"cache_read_input_image_token_cost"`
 	CacheStorageCostPerTokenPerHour     *float64 `json:"cache_storage_cost_per_token_per_hour"`
+
+	InputCostPerAudioToken               *float64 `json:"input_cost_per_audio_token"`
+	InputCostPerAudioTokenPriority       *float64 `json:"input_cost_per_audio_token_priority"`
+	CacheReadInputAudioTokenCost         *float64 `json:"cache_read_input_audio_token_cost"`
+	CacheReadInputAudioTokenCostPriority *float64 `json:"cache_read_input_audio_token_cost_priority"`
 }
 
 // PricingService 动态价格服务
@@ -743,13 +757,19 @@ func (s *PricingService) parsePricingData(body []byte) (map[string]*LiteLLMModel
 			continue
 		}
 
+		overrides := priceOverrides[modelName]
 		pricing := &LiteLLMModelPricing{
-			priceOverrides:        priceOverrides[modelName],
+			priceOverrides:        overrides,
 			LiteLLMProvider:       entry.LiteLLMProvider,
 			Mode:                  entry.Mode,
 			SupportsPromptCaching: entry.SupportsPromptCaching,
 			SupportsServiceTier:   entry.SupportsServiceTier,
 			TokenPricingAbsent:    entry.InputCostPerToken == nil && entry.OutputCostPerToken == nil,
+
+			InputCostPerAudioToken:               audioCatalogRate(entry.InputCostPerAudioToken, overrides.flatAudioInput),
+			InputCostPerAudioTokenPriority:       audioCatalogRate(entry.InputCostPerAudioTokenPriority, overrides.flatAudioInputPriority),
+			CacheReadInputAudioTokenCost:         audioCatalogRate(entry.CacheReadInputAudioTokenCost, overrides.flatAudioCacheRead),
+			CacheReadInputAudioTokenCostPriority: audioCatalogRate(entry.CacheReadInputAudioTokenCostPriority, overrides.flatAudioCacheReadPriority),
 		}
 
 		if entry.InputCostPerToken != nil {
@@ -1016,11 +1036,27 @@ func tokenPriceOverridesFromPatch(patch json.RawMessage) tokenPriceOverrides {
 		var rate *float64
 		return json.Unmarshal(fields[field], &rate) == nil && rate != nil && *rate >= 0
 	}
+	input := explicitRate("input_cost_per_token")
+	cacheRead := explicitRate("cache_read_input_token_cost")
 	return tokenPriceOverrides{
-		input:     explicitRate("input_cost_per_token"),
-		output:    explicitRate("output_cost_per_token"),
-		cacheRead: explicitRate("cache_read_input_token_cost"),
+		input:          input,
+		output:         explicitRate("output_cost_per_token"),
+		cacheRead:      cacheRead,
+		flatAudioInput: input && !explicitRate("input_cost_per_audio_token"),
+		flatAudioInputPriority: (input || explicitRate("input_cost_per_token_priority")) &&
+			!explicitRate("input_cost_per_audio_token_priority"),
+		flatAudioCacheRead: cacheRead && !explicitRate("cache_read_input_audio_token_cost"),
+		flatAudioCacheReadPriority: (cacheRead || explicitRate("cache_read_input_token_cost_priority")) &&
+			!explicitRate("cache_read_input_audio_token_cost_priority"),
 	}
+}
+
+// A flat operator rate covers all modalities unless the operator also sets an audio rate.
+func audioCatalogRate(rate *float64, flatOverride bool) *float64 {
+	if flatOverride || rate == nil || *rate < 0 {
+		return nil
+	}
+	return rate
 }
 
 // loadPricingOverrideEntries 读取 override 文件的原始条目。未配置返回 nil；
