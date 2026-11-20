@@ -563,6 +563,10 @@ func (s *AntigravityGatewayService) writeAntigravityCompatError(
 	errType string,
 	message string,
 ) error {
+	if isCommittedSSEStream(c) {
+		writeCommittedOpenAISSEError(c, status, errType, message)
+		return errors.New(message)
+	}
 	MarkResponseCommitted(c)
 	c.JSON(status, gin.H{
 		"error": gin.H{
@@ -582,7 +586,6 @@ func (s *AntigravityGatewayService) writeMappedAntigravityCompatError(
 	upstreamRequestID string,
 	body []byte,
 ) error {
-	MarkResponseCommitted(c)
 	message := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractAntigravityErrorMessage(body)))
 	setOpsUpstreamError(c, upstreamStatus, message, s.getUpstreamErrorDetail(body))
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -596,9 +599,16 @@ func (s *AntigravityGatewayService) writeMappedAntigravityCompatError(
 		Kind:               "http_error",
 		Message:            message,
 	})
-	c.JSON(mapUpstreamStatusCode(upstreamStatus), gin.H{
+	mappedStatus := mapUpstreamStatusCode(upstreamStatus)
+	clientMsg := getPassthroughOrDefault(message, "Upstream request failed")
+	if isCommittedSSEStream(c) {
+		writeCommittedOpenAISSEError(c, mappedStatus, "upstream_error", clientMsg)
+		return fmt.Errorf("upstream error: %d %s", upstreamStatus, message)
+	}
+	MarkResponseCommitted(c)
+	c.JSON(mappedStatus, gin.H{
 		"error": gin.H{
-			"message": getPassthroughOrDefault(message, "Upstream request failed"),
+			"message": clientMsg,
 			"type":    "upstream_error",
 			"param":   nil,
 			"code":    nil,

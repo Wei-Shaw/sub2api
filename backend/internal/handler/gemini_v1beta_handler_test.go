@@ -4,8 +4,10 @@ package handler
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
@@ -287,4 +289,49 @@ func TestGeminiV1BetaGetModel_CompositeAntigravityRoute(t *testing.T) {
 		(&GatewayHandler{}).GeminiV1BetaModels(c)
 		require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
 	})
+}
+
+func TestWriteGoogleStreamingErrorAndAbort_AbortsChunkedStreamThroughRecovery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	var postNextRan atomic.Bool
+	r := gin.New()
+	r.Use(middleware.Recovery())
+	r.Use(func(c *gin.Context) {
+		c.Next()
+		postNextRan.Store(true)
+	})
+	r.POST("/v1beta/models/gemini-2.5-pro:streamGenerateContent", func(c *gin.Context) {
+		c.Header("Content-Type", "text/event-stream; charset=utf-8")
+		c.Status(http.StatusOK)
+		_, _ = c.Writer.WriteString(`data: {"candidates":[{"content":{"parts":[{"text":"partial"}]}}]}` + "\n\n")
+		c.Writer.Flush()
+		writeGoogleStreamingErrorAndAbort(c, http.StatusBadGateway, "Upstream stream interrupted")
+	})
+	r.POST("/v1/chat/completions", func(c *gin.Context) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": gin.H{"message": "bad request"}})
+		abortTruncatedHTTPStream(c)
+	})
+
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	resp, err := http.Post(srv.URL+"/v1beta/models/gemini-2.5-pro:streamGenerateContent?alt=sse", "application/json", nil)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+
+	body, readErr := io.ReadAll(resp.Body)
+	require.ErrorIs(t, readErr, io.ErrUnexpectedEOF, "truncated HTTP/1.1 chunked stream must not close cleanly")
+	require.True(t, postNextRan.Load(), "inner middlewares (ops/access log) must complete before stream abort")
+	require.Contains(t, string(body), `"text":"partial"`)
+	require.Contains(t, string(body), `"message":"Upstream stream interrupted"`)
+	require.Contains(t, string(body), `"status":"INTERNAL"`)
+
+	// Complete JSON error responses must NOT be aborted.
+	jsonResp, err := http.Post(srv.URL+"/v1/chat/completions", "application/json", nil)
+	require.NoError(t, err)
+	defer func() { _ = jsonResp.Body.Close() }()
+	jsonBody, jsonReadErr := io.ReadAll(jsonResp.Body)
+	require.NoError(t, jsonReadErr)
+	require.Equal(t, http.StatusBadRequest, jsonResp.StatusCode)
+	require.Contains(t, string(jsonBody), `"bad request"`)
 }

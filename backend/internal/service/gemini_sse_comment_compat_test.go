@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"strings"
@@ -96,4 +97,189 @@ func TestAntigravityGeminiStreamSkipsCommentKeepaliveForGoGenai(t *testing.T) {
 	for _, event := range strings.Split(out, "\n\n") {
 		require.False(t, strings.HasPrefix(event, ":"), "go-genai must never receive an SSE comment event, got %q", event)
 	}
+}
+
+func TestGeminiCompatStreamsEmitKeepaliveAndRespectGoGenai(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &GeminiMessagesCompatService{
+		cfg: &config.Config{
+			Gateway: config.GatewayConfig{
+				MaxLineSize:             defaultMaxLineSize,
+				StreamKeepaliveInterval: 1,
+			},
+		},
+	}
+
+	testAccount := &Account{ID: 1, Platform: PlatformGemini, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+
+	t.Run("native keeps comment keepalive for ordinary clients", func(t *testing.T) {
+		c, rec := newAntigravityCompatContext(http.MethodPost, "/v1beta/models/gemini-2.5-pro:streamGenerateContent", nil)
+		c.Request.Header.Set("User-Agent", "ai-sdk/google")
+		pr, pw := io.Pipe()
+		resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: pr}
+		done := make(chan error, 1)
+		go func() {
+			_, err := svc.handleNativeStreamingResponse(c, resp, time.Now(), false, testAccount, "req-1")
+			done <- err
+		}()
+		time.Sleep(1200 * time.Millisecond)
+		_, _ = io.WriteString(pw, `data: {"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}]}`+"\n\n")
+		_ = pw.Close()
+		require.NoError(t, <-done)
+		_ = pr.Close()
+		require.Contains(t, rec.Body.String(), ":\n\n")
+		require.Contains(t, rec.Body.String(), `"text":"ok"`)
+	})
+
+	t.Run("native skips comment keepalive for go-genai", func(t *testing.T) {
+		c, rec := newAntigravityCompatContext(http.MethodPost, "/v1beta/models/gemini-2.5-pro:streamGenerateContent", nil)
+		c.Request.Header.Set("User-Agent", "google-genai-sdk/1.71.0 gl-go/go1.28")
+		pr, pw := io.Pipe()
+		resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: pr}
+		done := make(chan error, 1)
+		go func() {
+			_, err := svc.handleNativeStreamingResponse(c, resp, time.Now(), false, testAccount, "req-1")
+			done <- err
+		}()
+		time.Sleep(1200 * time.Millisecond)
+		_, _ = io.WriteString(pw, `data: {"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}]}`+"\n\n")
+		_ = pw.Close()
+		require.NoError(t, <-done)
+		_ = pr.Close()
+		require.NotContains(t, rec.Body.String(), ":\n\n")
+	})
+
+	t.Run("messages and chat compat emit keepalive and failover after keepalive on pre-output timeout", func(t *testing.T) {
+		timeoutSvc := &GeminiMessagesCompatService{
+			cfg: &config.Config{
+				Gateway: config.GatewayConfig{
+					MaxLineSize:               defaultMaxLineSize,
+					StreamKeepaliveInterval:   1,
+					StreamDataIntervalTimeout: 2,
+				},
+			},
+		}
+		for _, mode := range []string{"messages", "chat"} {
+			t.Run(mode, func(t *testing.T) {
+				c, rec := newAntigravityCompatContext(http.MethodPost, "/v1/"+mode, nil)
+				pr, pw := io.Pipe()
+				defer func() { _ = pw.Close(); _ = pr.Close() }()
+				resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: pr}
+				var err error
+				if mode == "messages" {
+					_, err = timeoutSvc.handleStreamingResponse(c, resp, time.Now(), "gemini-2.5-pro")
+					require.Contains(t, rec.Body.String(), "event: ping")
+				} else {
+					_, err = timeoutSvc.handleChatCompletionsStreamingResponseFromGemini(c, resp, time.Now(), "gemini-2.5-pro", false, false)
+					require.Contains(t, rec.Body.String(), ": ping\n\n")
+				}
+				var failoverErr *UpstreamFailoverError
+				require.ErrorAs(t, err, &failoverErr)
+				require.True(t, failoverErr.RetryableOnSameAccount)
+				require.True(t, failoverErr.SafeToFailoverAfterWrite)
+			})
+		}
+	})
+}
+
+func TestGeminiStreamPreOutputFailoverAndRefusalMapping(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	svc := &GeminiMessagesCompatService{
+		cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}},
+	}
+
+	for _, payload := range []string{
+		"",
+		`data: {"error":{"code":500,"message":"internal"}}` + "\n\n",
+		`data: {"candidates":[{"finishReason":"OTHER"}],"usageMetadata":{"promptTokenCount":12}}` + "\n\n",
+		`data: {"candidates":[{"content":{"parts":[{"thoughtSignature":"sig"}]},"finishReason":"MALFORMED_FUNCTION_CALL"}]}` + "\n\n",
+	} {
+		c, rec := newAntigravityCompatContext(http.MethodPost, "/v1/messages", nil)
+		resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(payload))}
+		_, err := svc.handleStreamingResponse(c, resp, time.Now(), "gemini-2.5-pro")
+		var failoverErr *UpstreamFailoverError
+		require.ErrorAs(t, err, &failoverErr, "payload=%q", payload)
+		require.Empty(t, rec.Body.String(), "must not commit message_start before valid content")
+
+		agSvc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+		agCtx, agRec := newAntigravityCompatContext(http.MethodPost, "/v1beta/models/gemini-3-pro:streamGenerateContent", nil)
+		agResp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(payload))}
+		_, agErr := agSvc.handleGeminiStreamingResponse(agCtx, agResp, time.Now())
+		require.ErrorAs(t, agErr, &failoverErr, "antigravity payload=%q", payload)
+		require.Empty(t, agRec.Body.String())
+
+		agClaudeCtx, agClaudeRec := newAntigravityCompatContext(http.MethodPost, "/v1/messages", nil)
+		agClaudeResp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(payload))}
+		_, agClaudeErr := agSvc.handleClaudeStreamingResponse(agClaudeCtx, agClaudeResp, time.Now(), "gemini-3-pro")
+		require.ErrorAs(t, agClaudeErr, &failoverErr, "antigravity claude payload=%q", payload)
+		require.Empty(t, agClaudeRec.Body.String())
+	}
+
+	// Malformed data forwarded after keepalive must NOT mark SafeToFailoverAfterWrite.
+	agKeepaliveSvc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize, StreamKeepaliveInterval: 1}, nil)
+	agDirtyCtx, agDirtyRec := newAntigravityCompatContext(http.MethodPost, "/v1beta/models/gemini-3-pro:streamGenerateContent", nil)
+	agDirtyCtx.Request.Header.Set("User-Agent", "ai-sdk/google")
+	pr, pw := io.Pipe()
+	done := make(chan error, 1)
+	go func() {
+		_, err := agKeepaliveSvc.handleGeminiStreamingResponse(agDirtyCtx, &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: pr}, time.Now())
+		done <- err
+	}()
+	time.Sleep(1200 * time.Millisecond)
+	_, _ = io.WriteString(pw, "data: not-json\n\n")
+	_ = pw.Close()
+	dirtyErr := <-done
+	_ = pr.Close()
+	var dirtyFailover *UpstreamFailoverError
+	require.ErrorAs(t, dirtyErr, &dirtyFailover)
+	require.False(t, dirtyFailover.SafeToFailoverAfterWrite)
+	require.Contains(t, agDirtyRec.Body.String(), "data: not-json")
+
+	// Committed SSE streams format subsequent non-retryable errors as SSE events rather than bare JSON.
+	sseErrCtx, sseErrRec := newAntigravityCompatContext(http.MethodPost, "/v1/messages", nil)
+	sseErrCtx.Header("Content-Type", "text/event-stream")
+	sseErrCtx.Status(http.StatusOK)
+	_, _ = io.WriteString(sseErrCtx.Writer, "event: ping\ndata: {\"type\":\"ping\"}\n\n")
+	_ = svc.writeGeminiMappedError(sseErrCtx, &Account{ID: 1, Platform: PlatformGemini}, http.StatusBadRequest, "req-2", []byte(`{"error":{"message":"invalid schema"}}`))
+	require.Contains(t, sseErrRec.Body.String(), "event: error\ndata: {\"error\":{\"message\":\"invalid schema\"")
+
+	// Content-filter finishReason (including LANGUAGE) maps to Claude "refusal" and OpenAI Chat "content_filter".
+	safetySSE := `data: {"candidates":[{"content":{"parts":[{"text":"blocked"}]},"finishReason":"LANGUAGE"}]}` + "\n\n"
+	msgCtx, msgRec := newAntigravityCompatContext(http.MethodPost, "/v1/messages", nil)
+	_, err := svc.handleStreamingResponse(msgCtx, &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(safetySSE))}, time.Now(), "gemini-2.5-pro")
+	require.NoError(t, err)
+	require.Contains(t, msgRec.Body.String(), `"stop_reason":"refusal"`)
+
+	ccCtx, ccRec := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", nil)
+	_, err = svc.handleChatCompletionsStreamingResponseFromGemini(ccCtx, &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(safetySSE))}, time.Now(), "gemini-2.5-pro", false, false)
+	require.NoError(t, err)
+	require.Contains(t, ccRec.Body.String(), `"finish_reason":"content_filter"`)
+}
+
+type profileCaptureUpstream struct {
+	HTTPUpstream
+	gotProfile HTTPUpstreamProfile
+}
+
+func (u *profileCaptureUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
+	u.gotProfile = HTTPUpstreamProfileFromContext(req.Context())
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}]}`)),
+	}, nil
+}
+
+func TestGeminiForwardUsesLongStreamHTTPUpstreamProfile(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	up := &profileCaptureUpstream{}
+	svc := &GeminiMessagesCompatService{
+		httpUpstream: up,
+		cfg:          &config.Config{},
+	}
+	testAccount := &Account{ID: 1, Platform: PlatformGemini, Type: AccountTypeAPIKey, Credentials: map[string]any{"api_key": "test-key"}}
+	c, _ := newAntigravityCompatContext(http.MethodPost, "/v1beta/models/gemini-2.5-flash:generateContent", nil)
+	_, err := svc.ForwardNative(context.Background(), c, testAccount, "gemini-2.5-flash", "generateContent", false, []byte(`{"contents":[{"parts":[{"text":"hi"}]}]}`))
+	require.NoError(t, err)
+	require.Equal(t, HTTPUpstreamProfileLongStream, up.gotProfile)
 }

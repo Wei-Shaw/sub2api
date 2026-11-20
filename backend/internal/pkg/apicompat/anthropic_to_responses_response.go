@@ -138,9 +138,10 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 	out.Output = outputs
 
 	// Map stop_reason → status
-	out.Status = anthropicStopReasonToResponsesStatus(AnthropicStopReasonString(resp.StopReason), resp.Content)
+	stopReason := AnthropicStopReasonString(resp.StopReason)
+	out.Status = anthropicStopReasonToResponsesStatus(stopReason, resp.Content)
 	if out.Status == "incomplete" {
-		out.IncompleteDetails = &ResponsesIncompleteDetails{Reason: "max_output_tokens"}
+		_, out.IncompleteDetails = anthropicResponsesStreamTerminalState(stopReason)
 	}
 
 	// Usage
@@ -169,7 +170,7 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 // anthropicStopReasonToResponsesStatus maps Anthropic stop_reason to Responses status.
 func anthropicStopReasonToResponsesStatus(stopReason string, blocks []AnthropicContentBlock) string {
 	switch stopReason {
-	case "max_tokens":
+	case "max_tokens", "refusal":
 		return "incomplete"
 	case "end_turn", "tool_use", "stop_sequence":
 		return "completed"
@@ -637,10 +638,14 @@ func anthToResHandleMessageStop(state *AnthropicEventToResponsesState) []Respons
 // --- helper functions ---
 
 func anthropicResponsesStreamTerminalState(stopReason string) (string, *ResponsesIncompleteDetails) {
-	if stopReason == "max_tokens" {
+	switch stopReason {
+	case "max_tokens":
 		return "incomplete", &ResponsesIncompleteDetails{Reason: "max_output_tokens"}
+	case "refusal":
+		return "incomplete", &ResponsesIncompleteDetails{Reason: "content_filter"}
+	default:
+		return "completed", nil
 	}
-	return "completed", nil
 }
 
 // seedToolArguments normalizes a tool_use content block's inline input into a

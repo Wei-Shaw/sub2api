@@ -108,6 +108,12 @@ func (p *StreamingProcessor) ProcessLine(line string) []byte {
 	}
 
 	geminiResp := &v1Resp.Response
+	if len(geminiResp.Candidates) == 0 && geminiResp.UsageMetadata == nil {
+		return nil
+	}
+	if !p.messageStartSent && isEmptyAbnormalGeminiTerminalResponse(geminiResp) {
+		return nil
+	}
 
 	var result bytes.Buffer
 
@@ -532,12 +538,7 @@ func (p *StreamingProcessor) emitFinish(finishReason string) []byte {
 	}
 
 	// 确定 stop_reason
-	stopReason := "end_turn"
-	if p.usedTool {
-		stopReason = "tool_use"
-	} else if finishReason == "MAX_TOKENS" {
-		stopReason = "max_tokens"
-	}
+	stopReason := mapGeminiFinishReasonToClaudeStopReason(finishReason, p.usedTool)
 
 	usage := ClaudeUsage{
 		InputTokens:          p.inputTokens,
@@ -583,4 +584,39 @@ func (p *StreamingProcessor) formatSSE(eventType string, data any) []byte {
 	}
 
 	return []byte(fmt.Sprintf("event: %s\ndata: %s\n\n", eventType, string(jsonData)))
+}
+
+func isEmptyAbnormalGeminiTerminalResponse(geminiResp *GeminiResponse) bool {
+	if geminiResp == nil || len(geminiResp.Candidates) == 0 {
+		return false
+	}
+	cand := geminiResp.Candidates[0]
+	switch strings.ToUpper(strings.TrimSpace(cand.FinishReason)) {
+	case "MALFORMED_FUNCTION_CALL", "MALFORMED_RESPONSE", "UNEXPECTED_TOOL_CALL", "TOO_MANY_TOOL_CALLS", "OTHER":
+	default:
+		return false
+	}
+	if cand.Content != nil {
+		for _, part := range cand.Content.Parts {
+			if part.Text != "" || part.FunctionCall != nil || part.InlineData != nil {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func mapGeminiFinishReasonToClaudeStopReason(finishReason string, usedTool bool) string {
+	if usedTool {
+		return "tool_use"
+	}
+	switch strings.ToUpper(strings.TrimSpace(finishReason)) {
+	case "MAX_TOKENS":
+		return "max_tokens"
+	case "SAFETY", "RECITATION", "LANGUAGE", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII",
+		"IMAGE_SAFETY", "IMAGE_PROHIBITED_CONTENT", "IMAGE_RECITATION":
+		return "refusal"
+	default:
+		return "end_turn"
+	}
 }

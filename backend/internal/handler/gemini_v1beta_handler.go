@@ -750,6 +750,7 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 			requestCtx = service.WithAccountSwitchCount(requestCtx, fs.SwitchCount, h.metadataBridgeEnabled())
 		}
 		sessionGroupID := derefGroupID(apiKey.GroupID)
+		writerSizeBeforeForward := c.Writer.Size()
 		if account.Platform == service.PlatformAntigravity && account.Type != service.AccountTypeAPIKey {
 			result, err = h.antigravityGatewayService.ForwardGemini(
 				requestCtx,
@@ -771,12 +772,16 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 		if err != nil {
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
+				if c.Writer.Size() != writerSizeBeforeForward && !failoverErr.SafeToFailoverAfterWrite {
+					h.handleGeminiFailoverExhausted(c, failoverErr)
+					return
+				}
 				failoverAction := fs.HandleFailoverError(c.Request.Context(), h.gatewayService, account.ID, account.Platform, account.GetPoolModeRetryCount(), failoverErr)
 				switch failoverAction {
 				case FailoverContinue:
 					continue
 				case FailoverExhausted:
-					if cachedContentBinding != nil {
+					if cachedContentBinding != nil && !c.Writer.Written() {
 						h.handleGeminiCachedContentFailoverExhausted(c, fs.LastFailoverErr)
 						return
 					}
@@ -790,6 +795,9 @@ func (h *GatewayHandler) GeminiV1BetaModels(c *gin.Context) {
 			// 转发层已写出错误响应；客户端断开时转发层不写，响应未提交则标记 499。
 			failoverClientGone(c)
 			reqLog.Error("gemini.forward_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+			if stream && middleware.IsCommittedEventStream(c) && (c.Request == nil || c.Request.Context().Err() == nil) {
+				writeGoogleStreamingErrorAndAbort(c, http.StatusBadGateway, "Upstream stream interrupted")
+			}
 			return
 		}
 
@@ -880,6 +888,10 @@ func parseGeminiModelAction(rest string) (model string, action string, err error
 
 func (h *GatewayHandler) handleGeminiFailoverExhausted(c *gin.Context, failoverErr *service.UpstreamFailoverError) {
 	if failoverErr == nil {
+		if middleware.IsCommittedEventStream(c) {
+			writeGoogleStreamingErrorAndAbort(c, http.StatusBadGateway, "Upstream request failed")
+			return
+		}
 		googleError(c, http.StatusBadGateway, "Upstream request failed")
 		return
 	}
@@ -906,6 +918,10 @@ func (h *GatewayHandler) handleGeminiFailoverExhausted(c *gin.Context, failoverE
 				c.Set(service.OpsSkipPassthroughKey, true)
 			}
 
+			if middleware.IsCommittedEventStream(c) {
+				writeGoogleStreamingErrorAndAbort(c, respCode, msg)
+				return
+			}
 			// 按透传规则改写的是上游错误，不登记本地错误类型。
 			googleErrorWithType(c, respCode, "", "", msg)
 			return
@@ -918,7 +934,40 @@ func (h *GatewayHandler) handleGeminiFailoverExhausted(c *gin.Context, failoverE
 
 	// 使用默认的错误映射
 	status, message := mapGeminiUpstreamError(statusCode)
+	if middleware.IsCommittedEventStream(c) {
+		writeGoogleStreamingErrorAndAbort(c, status, message)
+		return
+	}
 	googleError(c, status, message)
+}
+
+// abortTruncatedHTTPStream 标记已提交但未正常完结的 200 text/event-stream 流需要在中间件收尾后
+// 通过 http.ErrAbortHandler 中止底层传输，使 HTTP/1.1 不写出 0\r\n\r\n（HTTP/2 发送 RST_STREAM），
+// 同时保留 OpsErrorLoggerMiddleware 落库与访问日志，并避免对普通 JSON 错误响应误中止。
+func abortTruncatedHTTPStream(c *gin.Context) {
+	middleware.MarkAbortTruncatedStream(c)
+}
+
+func writeGoogleStreamingErrorAndAbort(c *gin.Context, status int, message string) {
+	if c == nil || c.Writer == nil {
+		return
+	}
+	if status <= 0 {
+		status = http.StatusBadGateway
+	}
+	if message == "" {
+		message = "Upstream stream interrupted"
+	}
+	service.MarkOpsStreamError(c, "upstream_error", message, status)
+	if !service.IsResponseCommitted(c) {
+		payload := `data: {"error":{"code":` + strconv.Itoa(status) + `,"message":` + strconv.Quote(message) + `,"status":` + strconv.Quote(googleapi.HTTPStatusToGoogleStatus(status)) + `}}` + "\n\n"
+		_, _ = c.Writer.WriteString(payload)
+		if flusher, ok := c.Writer.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		service.MarkResponseCommitted(c)
+	}
+	abortTruncatedHTTPStream(c)
 }
 
 func mapGeminiUpstreamError(statusCode int) (int, string) {

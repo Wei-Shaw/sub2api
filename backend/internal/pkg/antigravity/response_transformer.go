@@ -276,12 +276,7 @@ func (p *NonStreamingProcessor) buildResponse(geminiResp *GeminiResponse, respon
 		}
 	}
 
-	stopReason := "end_turn"
-	if p.hasToolCall {
-		stopReason = "tool_use"
-	} else if finishReason == "MAX_TOKENS" {
-		stopReason = "max_tokens"
-	}
+	stopReason := mapGeminiFinishReasonToClaudeStopReason(finishReason, p.hasToolCall)
 
 	// 注意：Gemini 的 promptTokenCount 包含 cachedContentTokenCount，
 	// 但 Claude 的 input_tokens 不包含 cache_read_input_tokens，需要减去。
