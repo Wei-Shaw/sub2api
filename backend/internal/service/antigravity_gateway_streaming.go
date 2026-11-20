@@ -1164,6 +1164,9 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 				}
 				cw.Write(claudeEvents)
 			}
+			if processor.TruncatedOnTurnBoundary() {
+				return &antigravityStreamResult{usage: finishUsage(), firstTokenMs: firstTokenMs, clientDisconnect: cw.Disconnected()}, nil
+			}
 
 		case <-intervalCh:
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))

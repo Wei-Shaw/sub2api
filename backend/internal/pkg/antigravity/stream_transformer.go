@@ -41,6 +41,10 @@ type StreamingProcessor struct {
 	cacheReadTokens   int
 	imageOutputTokens int
 	hasContent        bool
+
+	// Guard against Gemini failing to emit EOS and simulating a subsequent user turn.
+	turnGuard     turnBoundaryGuard
+	turnTruncated bool
 }
 
 // NewStreamingProcessor 创建流式响应处理器
@@ -128,11 +132,26 @@ func (p *StreamingProcessor) ProcessLine(line string) []byte {
 		p.imageOutputTokens = geminiResp.UsageMetadata.ImageOutputTokens()
 	}
 
+	// If an earlier chunk already truncated a leaked turn boundary, keep
+	// tracking usage above but emit no further content or finish events.
+	if p.turnTruncated {
+		return nil
+	}
+
 	// 处理 parts
 	if len(geminiResp.Candidates) > 0 && geminiResp.Candidates[0].Content != nil {
 		for _, part := range geminiResp.Candidates[0].Content.Parts {
 			_, _ = result.Write(p.processPart(&part))
+			if p.turnTruncated {
+				break
+			}
 		}
+	}
+
+	if p.turnTruncated {
+		log.Printf("[Antigravity] Truncated leaked turn boundary in stream for model %s", p.originalModel)
+		_, _ = result.Write(p.emitFinish("STOP"))
+		return result.Bytes()
 	}
 
 	if len(geminiResp.Candidates) > 0 {
@@ -191,6 +210,12 @@ func (p *StreamingProcessor) HasContent() bool {
 	return p.hasContent
 }
 
+// TruncatedOnTurnBoundary reports whether the stream was stopped early because
+// the upstream model leaked a subsequent turn boundary in assistant text.
+func (p *StreamingProcessor) TruncatedOnTurnBoundary() bool {
+	return p.turnTruncated
+}
+
 // emitMessageStart 发送 message_start 事件
 func (p *StreamingProcessor) emitMessageStart(v1Resp *V1InternalResponse) []byte {
 	if p.messageStartSent {
@@ -243,11 +268,17 @@ func (p *StreamingProcessor) emitMessageStart(v1Resp *V1InternalResponse) []byte
 
 // processPart 处理单个 part
 func (p *StreamingProcessor) processPart(part *GeminiPart) []byte {
+	if p.turnTruncated {
+		return nil
+	}
+
 	var result bytes.Buffer
 	signature := part.ThoughtSignature
 
 	// 1. FunctionCall 处理
 	if part.FunctionCall != nil {
+		_, _ = result.Write(p.flushPendingTurnText())
+
 		// 先处理 trailingSignature
 		if p.trailingSignature != "" {
 			_, _ = result.Write(p.endBlock())
@@ -296,6 +327,8 @@ func (p *StreamingProcessor) captureGrounding(grounding *GeminiGroundingMetadata
 func (p *StreamingProcessor) processThinking(text, signature string) []byte {
 	var result bytes.Buffer
 
+	_, _ = result.Write(p.flushPendingTurnText())
+
 	// 处理之前的 trailingSignature
 	if p.trailingSignature != "" {
 		_, _ = result.Write(p.endBlock())
@@ -327,6 +360,36 @@ func (p *StreamingProcessor) processThinking(text, signature string) []byte {
 	return result.Bytes()
 }
 
+// flushPendingTurnText emits any buffered candidate text held by turnGuard and
+// resets per-block line/fence state before leaving a text block.
+func (p *StreamingProcessor) flushPendingTurnText() []byte {
+	pending := p.turnGuard.FlushAndResetBlock()
+	if pending == "" {
+		return nil
+	}
+	return p.emitPlainText(pending)
+}
+
+func (p *StreamingProcessor) emitPlainText(text string) []byte {
+	var result bytes.Buffer
+	if p.trailingSignature != "" {
+		_, _ = result.Write(p.endBlock())
+		_, _ = result.Write(p.emitEmptyThinkingWithSignature(p.trailingSignature))
+		p.trailingSignature = ""
+	}
+	if p.blockType != BlockTypeText {
+		_, _ = result.Write(p.startBlock(BlockTypeText, map[string]any{
+			"type": "text",
+			"text": "",
+		}))
+	}
+	p.hasContent = true
+	_, _ = result.Write(p.emitDelta("text_delta", map[string]any{
+		"text": text,
+	}))
+	return result.Bytes()
+}
+
 // processText 处理普通 text
 func (p *StreamingProcessor) processText(text, signature string) []byte {
 	var result bytes.Buffer
@@ -339,6 +402,26 @@ func (p *StreamingProcessor) processText(text, signature string) []byte {
 		return nil
 	}
 
+	safe, triggered := p.turnGuard.Feed(text)
+	if triggered {
+		p.turnTruncated = true
+		if safe != "" {
+			_, _ = result.Write(p.emitPlainText(safe))
+		}
+		return result.Bytes()
+	}
+	if safe == "" {
+		if signature != "" {
+			p.trailingSignature = signature
+		}
+		return nil
+	}
+
+	// 普通 text (无签名)
+	if signature == "" {
+		return p.emitPlainText(safe)
+	}
+
 	// 处理之前的 trailingSignature
 	if p.trailingSignature != "" {
 		_, _ = result.Write(p.endBlock())
@@ -347,32 +430,16 @@ func (p *StreamingProcessor) processText(text, signature string) []byte {
 	}
 
 	// 非空 text 带签名 - 特殊处理
-	if signature != "" {
-		_, _ = result.Write(p.startBlock(BlockTypeText, map[string]any{
-			"type": "text",
-			"text": "",
-		}))
-		_, _ = result.Write(p.emitDelta("text_delta", map[string]any{
-			"text": text,
-		}))
-		_, _ = result.Write(p.endBlock())
-		_, _ = result.Write(p.emitEmptyThinkingWithSignature(signature))
-		return result.Bytes()
-	}
-
-	// 普通 text (无签名)
-	if p.blockType != BlockTypeText {
-		_, _ = result.Write(p.startBlock(BlockTypeText, map[string]any{
-			"type": "text",
-			"text": "",
-		}))
-	}
-
+	_, _ = result.Write(p.startBlock(BlockTypeText, map[string]any{
+		"type": "text",
+		"text": "",
+	}))
 	p.hasContent = true
 	_, _ = result.Write(p.emitDelta("text_delta", map[string]any{
-		"text": text,
+		"text": safe,
 	}))
-
+	_, _ = result.Write(p.endBlock())
+	_, _ = result.Write(p.emitEmptyThinkingWithSignature(signature))
 	return result.Bytes()
 }
 
@@ -504,6 +571,12 @@ func (p *StreamingProcessor) emitEmptyThinkingWithSignature(signature string) []
 // emitFinish 发送结束事件
 func (p *StreamingProcessor) emitFinish(finishReason string) []byte {
 	var result bytes.Buffer
+
+	if !p.turnTruncated {
+		_, _ = result.Write(p.flushPendingTurnText())
+	} else {
+		p.trailingSignature = ""
+	}
 
 	// 关闭最后一个块
 	_, _ = result.Write(p.endBlock())
