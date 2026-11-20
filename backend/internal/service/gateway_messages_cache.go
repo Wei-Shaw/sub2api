@@ -18,31 +18,44 @@ import (
 // 变成中间某条，cache_control 还挂着就导致"前缀签名变化"，破坏缓存命中。
 // 统一由代理重新打断点（addMessageCacheBreakpoints）才能在多轮间稳定。
 func stripMessageCacheControl(body []byte) []byte {
-	messages := gjson.GetBytes(body, "messages")
+	if len(body) == 0 {
+		return body
+	}
+	messages := parseRawJSONView(body).Get("messages")
 	if !messages.IsArray() {
 		return body
 	}
-	msgIdx := -1
+	edits := make([]jsonSpanEdit, 0, 4)
 	messages.ForEach(func(_, msg gjson.Result) bool {
-		msgIdx++
 		content := msg.Get("content")
 		if !content.IsArray() {
 			return true
 		}
-		blockIdx := -1
 		content.ForEach(func(_, block gjson.Result) bool {
-			blockIdx++
-			if !block.Get("cache_control").Exists() {
+			if !block.IsObject() || !block.Get("cache_control").Exists() {
 				return true
 			}
-			path := fmt.Sprintf("messages.%d.content.%d.cache_control", msgIdx, blockIdx)
-			if next, err := sjson.DeleteBytes(body, path); err == nil {
-				body = next
+			var decoded map[string]any
+			if err := json.Unmarshal([]byte(block.Raw), &decoded); err != nil {
+				return true
 			}
+			delete(decoded, "cache_control")
+			encoded, err := marshalOpenAIUpstreamJSON(decoded)
+			if err != nil {
+				return true
+			}
+			edits = append(edits, jsonSpanEdit{
+				start: block.Index,
+				end:   block.Index + len(block.Raw),
+				data:  encoded,
+			})
 			return true
 		})
 		return true
 	})
+	if out, ok := applyJSONSpanEdits(body, edits); ok {
+		return out
+	}
 	return body
 }
 

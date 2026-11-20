@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -243,11 +244,12 @@ func TestRequestBodyMemoryBudgetRetainsOnlyFinalAllocation(t *testing.T) {
 
 func TestRequestBodyMemoryBudgetReusesTransientCapacityWhileHandlersWait(t *testing.T) {
 	const bodySize = requestBodyReadMaxInitCap + 512
-	// Enough for two retained bodies plus the third body before concatenation.
-	// A third simultaneous final copy must still be rejected.
+	// A known Content-Length is read into one buffer, so a body no longer needs
+	// a second, equally large concatenation buffer. Three retained bodies fit the
+	// budget below and a fourth is rejected.
 	budget := NewBodyMemoryBudget(3*bodySize + 1)
 	payload := bytes.Repeat([]byte{'x'}, bodySize)
-	readDone := make(chan error, 2)
+	readDone := make(chan error, 3)
 	finish := make(chan struct{})
 	var handlers sync.WaitGroup
 	defer func() {
@@ -270,12 +272,12 @@ func TestRequestBodyMemoryBudgetReusesTransientCapacityWhileHandlersWait(t *test
 		// Keep the final body live for the entire waiting handler.
 		_, _ = w.Write(body[:1])
 	})
-	for range 2 {
+	for i := range 3 {
 		handlers.Go(func() {
 			recorder := httptest.NewRecorder()
 			handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(payload)))
 			if recorder.Code != http.StatusOK {
-				readDone <- errors.New("temporary allocations blocked a second held request")
+				readDone <- fmt.Errorf("body %d was blocked despite a single-allocation read", i+1)
 			}
 		})
 		select {
@@ -287,26 +289,26 @@ func TestRequestBodyMemoryBudgetReusesTransientCapacityWhileHandlersWait(t *test
 			t.Fatal("request did not finish reading")
 		}
 	}
-	if used := requestBodyBudgetUsed(budget); used != 2*bodySize {
-		t.Fatalf("waiting handlers retain %d bytes, want %d", used, 2*bodySize)
+	if used := requestBodyBudgetUsed(budget); used != 3*bodySize {
+		t.Fatalf("waiting handlers retain %d bytes, want %d", used, 3*bodySize)
 	}
-	thirdDone := make(chan *httptest.ResponseRecorder, 1)
+	fourthDone := make(chan *httptest.ResponseRecorder, 1)
 	handlers.Go(func() {
 		recorder := httptest.NewRecorder()
 		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(payload)))
-		thirdDone <- recorder
+		fourthDone <- recorder
 	})
 	select {
-	case recorder := <-thirdDone:
+	case recorder := <-fourthDone:
 		if recorder.Code != http.StatusServiceUnavailable {
-			t.Fatalf("third request escaped the transient peak budget: %d", recorder.Code)
+			t.Fatalf("fourth request escaped the peak budget: %d", recorder.Code)
 		}
 	case <-readDone:
-		t.Fatal("third request escaped the transient peak budget")
+		t.Fatal("fourth request escaped the peak budget")
 	case <-time.After(5 * time.Second):
-		t.Fatal("third request did not reject overload")
+		t.Fatal("fourth request did not reject overload")
 	}
-	if used := requestBodyBudgetUsed(budget); used != 2*bodySize {
+	if used := requestBodyBudgetUsed(budget); used != 3*bodySize {
 		t.Fatalf("failed request retained temporary storage: %d", used)
 	}
 }

@@ -532,30 +532,83 @@ type BufferedResponseAccumulator struct {
 	// custom_tool_call that IsServerSideSearchCall is then rebuilt as that item
 	// instead of as a client function_call.
 	XAIServerSideSearch bool
+
+	// limit bounds the bytes retained for reconstruction. Long responses can
+	// stream far more text than any terminal-event fallback needs, and this
+	// buffer is per in-flight request. Once the limit is exceeded the partial
+	// content is dropped and overflow stays set, so callers fall back to the
+	// terminal event (or the raw output items) instead of rebuilding output.
+	limit    int
+	buffered int
+	overflow bool
 }
+
+// defaultBufferedResponseOutputLimit caps reconstruction buffers at 4 MiB.
+// Outputs larger than this almost always carry their items on the terminal
+// event, which callers prefer anyway.
+const defaultBufferedResponseOutputLimit = 4 << 20
 
 // NewBufferedResponseAccumulator returns an initialised accumulator.
 func NewBufferedResponseAccumulator() *BufferedResponseAccumulator {
+	return NewBufferedResponseAccumulatorWithLimit(defaultBufferedResponseOutputLimit)
+}
+
+// NewBufferedResponseAccumulatorWithLimit returns an accumulator bounded to
+// limit bytes. A non-positive limit disables the bound.
+func NewBufferedResponseAccumulatorWithLimit(limit int) *BufferedResponseAccumulator {
 	return &BufferedResponseAccumulator{
 		outputIndexToFuncIdx: make(map[int]int),
+		limit:                limit,
 	}
 }
 
 // ProcessEvent inspects a single Responses SSE event and accumulates any
 // content it carries. Only delta events that contribute to the final output
 // are handled; all other event types are silently ignored.
+// reserveBytes accounts for content about to be retained. It returns false once
+// the buffer would exceed its limit; the accumulated content is dropped at that
+// point so the memory is released while the stream is still running.
+func (a *BufferedResponseAccumulator) reserveBytes(n int) bool {
+	if n <= 0 {
+		return true
+	}
+	if a.overflow {
+		return false
+	}
+	if a.limit > 0 && a.buffered+n > a.limit {
+		a.overflow = true
+		a.dropBuffered()
+		return false
+	}
+	a.buffered += n
+	return true
+}
+
+func (a *BufferedResponseAccumulator) dropBuffered() {
+	a.text.Reset()
+	a.refusal.Reset()
+	a.reasoning.Reset()
+	a.funcCalls = nil
+	clear(a.outputIndexToFuncIdx)
+}
+
 func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) {
 	switch event.Type {
 	case "response.output_text.delta":
-		if event.Delta != "" {
+		if event.Delta != "" && a.reserveBytes(len(event.Delta)) {
 			_, _ = a.text.WriteString(event.Delta)
 		}
 	case "response.refusal.delta":
-		if event.Delta != "" {
+		if event.Delta != "" && a.reserveBytes(len(event.Delta)) {
 			_, _ = a.refusal.WriteString(event.Delta)
 		}
 	case "response.output_item.added":
 		if event.Item != nil && (event.Item.Type == "function_call" || event.Item.Type == "custom_tool_call") {
+			itemSize := len(event.Item.CallID) + len(event.Item.Name) + len(event.Item.Namespace) +
+				len(event.Item.EncryptedFunctionArgs) + len(event.Item.EncryptedContent)
+			if !a.reserveBytes(itemSize) {
+				return
+			}
 			idx := len(a.funcCalls)
 			a.outputIndexToFuncIdx[event.OutputIndex] = idx
 			a.funcCalls = append(a.funcCalls, bufferedFuncCall{
@@ -570,7 +623,7 @@ func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) 
 		}
 	case "response.function_call_arguments.delta", "response.custom_tool_call_input.delta":
 		if event.Delta != "" {
-			if idx, ok := a.outputIndexToFuncIdx[event.OutputIndex]; ok {
+			if idx, ok := a.outputIndexToFuncIdx[event.OutputIndex]; ok && a.reserveBytes(len(event.Delta)) {
 				_, _ = a.funcCalls[idx].Args.WriteString(event.Delta)
 			}
 		}
@@ -581,26 +634,33 @@ func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) 
 		}
 		if completed != "" {
 			if idx, ok := a.outputIndexToFuncIdx[event.OutputIndex]; ok {
+				a.buffered -= a.funcCalls[idx].Args.Len()
 				a.funcCalls[idx].Args.Reset()
-				_, _ = a.funcCalls[idx].Args.WriteString(completed)
+				if a.reserveBytes(len(completed)) {
+					_, _ = a.funcCalls[idx].Args.WriteString(completed)
+				}
 			}
 		}
 	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
-		if event.Delta != "" {
+		if event.Delta != "" && a.reserveBytes(len(event.Delta)) {
 			_, _ = a.reasoning.WriteString(event.Delta)
 		}
 	}
 }
 
-// HasContent reports whether any content has been accumulated.
+// HasContent reports whether any content has been accumulated. It reports false
+// once the buffer overflowed, because the partial content was dropped.
 func (a *BufferedResponseAccumulator) HasContent() bool {
-	return a.text.Len() > 0 || a.refusal.Len() > 0 || len(a.funcCalls) > 0 || a.reasoning.Len() > 0
+	return !a.overflow && (a.text.Len() > 0 || a.refusal.Len() > 0 || len(a.funcCalls) > 0 || a.reasoning.Len() > 0)
 }
 
 // BuildOutput constructs a []ResponsesOutput from the accumulated delta
 // content. The order matches what ResponsesToChatCompletions expects:
 // reasoning → message → function_calls.
 func (a *BufferedResponseAccumulator) BuildOutput() []ResponsesOutput {
+	if a.overflow {
+		return nil
+	}
 	var out []ResponsesOutput
 
 	if a.reasoning.Len() > 0 {

@@ -162,27 +162,102 @@ func isOpenAIResponsesToolCallItemType(itemType string) bool {
 	return openAIResponsesToolCallItemTypes[strings.ToLower(strings.TrimSpace(itemType))]
 }
 
+// flattenOpenAIResponsesNamespaces rewrites only the bytes that actually change:
+// the tools array, namespace-qualified function_call items in input, and
+// tool_choice. Decoding the entire request (possibly hundreds of MB of Codex
+// history) into map[string]any just to flatten a handful of declarations used
+// to dominate memory on large requests.
 func flattenOpenAIResponsesNamespaces(c *gin.Context, body []byte) ([]byte, error) {
 	if !bytes.Contains(body, []byte(`"namespace"`)) {
 		return body, nil
 	}
-	var requestBody map[string]any
-	if err := json.Unmarshal(body, &requestBody); err != nil {
-		return body, fmt.Errorf("decode OpenAI namespace body: %w", err)
+	root := parseRawJSONView(body)
+	toolsResult := root.Get("tools")
+	if !toolsResult.IsArray() {
+		return body, nil
 	}
-	names, changed, err := apicompat.FlattenResponsesNamespacesExcept(requestBody, map[string]bool{"image_gen": true})
+	var tools []any
+	if err := json.Unmarshal([]byte(toolsResult.Raw), &tools); err != nil {
+		return body, fmt.Errorf("decode OpenAI namespace tools: %w", err)
+	}
+	preserved := map[string]bool{"image_gen": true}
+	names, flattened, changed, err := apicompat.FlattenResponsesNamespaceTools(tools, preserved)
 	if err != nil {
 		return body, err
 	}
 	if !changed {
 		return body, nil
 	}
-	rebuilt, err := marshalOpenAIUpstreamJSON(requestBody)
+	rebuiltTools, err := marshalOpenAIUpstreamJSON(flattened)
 	if err != nil {
-		return body, fmt.Errorf("encode OpenAI namespace body: %w", err)
+		return body, fmt.Errorf("encode OpenAI namespace tools: %w", err)
+	}
+	edits := make([]jsonSpanEdit, 0, 4)
+	edits = append(edits, jsonSpanEdit{
+		start: toolsResult.Index,
+		end:   toolsResult.Index + len(toolsResult.Raw),
+		data:  rebuiltTools,
+	})
+
+	// Responses input items are top-level objects, so one pass over the array
+	// covers every function_call the previous whole-body rewrite visited.
+	if input := root.Get("input"); input.IsArray() {
+		input.ForEach(func(_, item gjson.Result) bool {
+			if !item.IsObject() || strings.TrimSpace(item.Get("type").String()) != "function_call" {
+				return true
+			}
+			var decoded map[string]any
+			if err := json.Unmarshal([]byte(item.Raw), &decoded); err != nil {
+				return true
+			}
+			if !apicompat.RewriteResponsesNamespaceQualifiedCall(decoded, names) {
+				return true
+			}
+			encoded, err := marshalOpenAIUpstreamJSON(decoded)
+			if err != nil {
+				return true
+			}
+			edits = append(edits, jsonSpanEdit{
+				start: item.Index,
+				end:   item.Index + len(item.Raw),
+				data:  encoded,
+			})
+			return true
+		})
+	}
+
+	if choice := root.Get("tool_choice"); choice.IsObject() {
+		var decoded map[string]any
+		if err := json.Unmarshal([]byte(choice.Raw), &decoded); err == nil {
+			var replacement []byte
+			choiceNamespace, _ := decoded["name"].(string)
+			choiceNamespace = strings.TrimSpace(choiceNamespace)
+			choiceType, _ := decoded["type"].(string)
+			if strings.TrimSpace(choiceType) == "namespace" && !preserved[choiceNamespace] {
+				replacement = []byte(`"auto"`)
+			} else if apicompat.RewriteResponsesNamespaceQualifiedCall(decoded, names) {
+				if encoded, err := marshalOpenAIUpstreamJSON(decoded); err == nil {
+					replacement = encoded
+				}
+			}
+			if replacement != nil {
+				edits = append(edits, jsonSpanEdit{
+					start: choice.Index,
+					end:   choice.Index + len(choice.Raw),
+					data:  replacement,
+				})
+			}
+		}
+	}
+
+	out, ok := applyJSONSpanEdits(body, edits)
+	if !ok {
+		// The edit plan did not line up with the body; keep the original request
+		// rather than forwarding corrupted JSON.
+		return body, nil
 	}
 	setOpenAIResponsesNamespaceNames(c, names)
-	return rebuilt, nil
+	return out, nil
 }
 
 // stripOpenAIResponsesInputNamespaces removes namespace only from direct input
