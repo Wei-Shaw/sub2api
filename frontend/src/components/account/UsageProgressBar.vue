@@ -5,7 +5,7 @@
       v-if="windowStats && (windowStats.requests > 0 || windowStats.tokens > 0)"
       class="mb-0.5 flex items-center"
     >
-      <div class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
+      <div :class="{ 'flex-wrap justify-end': matrix }" class="flex items-center gap-1.5 text-[9px] text-gray-500 dark:text-gray-400">
         <span class="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800">
           {{ formatRequests }} req
         </span>
@@ -34,24 +34,31 @@
     </div>
 
     <!-- Progress bar row -->
-    <div class="flex items-center gap-1">
-      <!-- Label badge (label-width: fixed = 定宽居中, auto = 限宽截断左对齐) -->
-      <span :class="[labelSizeClass, labelClass]">
-        {{ label }}
+    <div class="flex items-center gap-1" :class="{ 'justify-end max-[374px]:flex-col max-[374px]:items-end max-[374px]:gap-0': matrix }">
+      <span v-if="matrix" class="relative min-w-[3.25rem] overflow-hidden rounded bg-gray-100 px-1 text-center text-[10px] font-medium dark:bg-gray-700">
+        <span v-if="remaining !== null" class="absolute inset-y-0 left-0 opacity-30" :class="barClass"
+          :style="{ width: remaining + '%' }" />
+        <span class="relative" :class="remaining === null ? 'text-gray-400' : textClass">{{ remaining === null ? '—' : remaining + '%' }}</span>
       </span>
+      <template v-else>
+        <!-- Label badge (label-width: fixed = 定宽居中, auto = 限宽截断左对齐) -->
+        <span :class="[labelSizeClass, labelClass]">
+          {{ label }}
+        </span>
 
-      <!-- Progress bar container -->
-      <div class="h-1.5 w-8 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
-        <div
-          :class="['h-full transition-all duration-300', barClass]"
-          :style="{ width: barWidth }"
-        ></div>
-      </div>
+        <!-- Progress bar container -->
+        <div class="h-1.5 w-8 shrink-0 overflow-hidden rounded-full bg-gray-200 dark:bg-gray-700">
+          <div
+            :class="['h-full transition-all duration-300', barClass]"
+            :style="{ width: barWidth }"
+          ></div>
+        </div>
 
-      <!-- Percentage -->
-      <span :class="['w-[32px] shrink-0 text-right text-[10px] font-medium', textClass]">
-        {{ displayPercent }}
-      </span>
+        <!-- Percentage -->
+        <span :class="['w-[32px] shrink-0 text-right text-[10px] font-medium', textClass]">
+          {{ displayPercent }}
+        </span>
+      </template>
 
       <!-- Reset time -->
       <span v-if="shouldShowResetTime" class="shrink-0 text-[10px] text-gray-400">
@@ -78,6 +85,7 @@ const props = withDefaults(
     windowStats?: WindowStats | null
     estimatedTotalCost?: number | null
     showNowWhenIdle?: boolean
+    matrix?: boolean
     remainingCapacity?: boolean
     /** fixed: 定宽居中徽章（账号页纵向对齐）；auto: 限宽截断左对齐（监控页组合标签） */
     labelWidth?: 'fixed' | 'auto'
@@ -133,6 +141,10 @@ const labelSizeClass = computed(() =>
     ? 'max-w-[72px] shrink-0 truncate rounded px-1 text-left text-[10px] font-medium'
     : 'w-[32px] shrink-0 rounded px-1 text-center text-[10px] font-medium'
 )
+
+// Matrix cells show what's left. Reset status still uses the reported utilization.
+const remaining = computed(() => props.utilizationUnknown || !Number.isFinite(props.utilization)
+  ? null : Math.round(Math.max(0, Math.min(100, 100 - props.utilization)) * 10) / 10)
 
 // Progress bar color based on utilization
 const barClass = computed(() => {
@@ -190,7 +202,7 @@ const displayPercent = computed(() => {
 })
 
 const shouldShowResetTime = computed(() => {
-  if (props.utilizationUnknown) return false
+  if (props.utilizationUnknown || (props.matrix && remaining.value === null)) return false
   if (props.resetsAt) return true
   return Boolean(props.showNowWhenIdle && props.utilization <= 0)
 })
@@ -210,6 +222,8 @@ const formatResetTime = computed(() => {
   if (diffMs <= 0) {
     return props.utilization > 0 ? t('usage.resetPending') : t('usage.resetNow')
   }
+
+  if (props.matrix && diffMs < 60_000) return '<1m'
 
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
   const diffMins = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))

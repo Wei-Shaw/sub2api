@@ -40,42 +40,7 @@
         <div v-if="usageInfo.error" class="text-xs text-amber-600 dark:text-amber-400 truncate max-w-[200px]" :title="usageInfo.error">
           {{ usageInfo.error }}
         </div>
-        <!-- 5h Window -->
-        <UsageProgressBar
-          v-if="usageInfo.five_hour"
-          label="5h"
-          :utilization="usageInfo.five_hour.utilization"
-          :resets-at="usageInfo.five_hour.resets_at"
-          :window-stats="usageInfo.five_hour.window_stats"
-          color="indigo"
-        />
-
-        <!-- 7d Window (OAuth only) -->
-        <UsageProgressBar
-          v-if="usageInfo.seven_day"
-          label="7d"
-          :utilization="usageInfo.seven_day.utilization"
-          :resets-at="usageInfo.seven_day.resets_at"
-          color="emerald"
-        />
-
-        <!-- 7d Sonnet Window (OAuth only) -->
-        <UsageProgressBar
-          v-if="usageInfo.seven_day_sonnet"
-          label="7d S"
-          :utilization="usageInfo.seven_day_sonnet.utilization"
-          :resets-at="usageInfo.seven_day_sonnet.resets_at"
-          color="purple"
-        />
-
-        <!-- 7d Fable Window (7d_oi) -->
-        <UsageProgressBar
-          v-if="usageInfo.seven_day_fable"
-          label="7d F"
-          :utilization="usageInfo.seven_day_fable.utilization"
-          :resets-at="usageInfo.seven_day_fable.resets_at"
-          color="amber"
-        />
+        <AccountQuotaMatrix :columns="quotaColumns" :desktop="isDesktopViewport" />
 
       </div>
 
@@ -134,27 +99,7 @@
           : 'admin.accounts.usageWindow.quotaRefreshFailedUnknown') }}
       </div>
       <div v-if="hasOpenAIUsageFallback" class="space-y-1">
-        <UsageProgressBar
-          v-if="usageInfo?.five_hour"
-          label="5h"
-          :utilization="usageInfo.five_hour.utilization"
-          :utilization-unknown="usageInfo.five_hour.utilization_unknown"
-          :resets-at="usageInfo.five_hour.resets_at"
-          :window-stats="usageInfo.five_hour.window_stats"
-          :show-now-when-idle="true"
-          color="indigo"
-        />
-        <UsageProgressBar
-          v-if="usageInfo?.seven_day"
-          label="7d"
-          :utilization="usageInfo.seven_day.utilization"
-          :utilization-unknown="usageInfo.seven_day.utilization_unknown"
-          :resets-at="usageInfo.seven_day.resets_at"
-          :window-stats="usageInfo.seven_day.window_stats"
-          :estimated-total-cost="openAISevenDayEstimatedTotalCost"
-          :show-now-when-idle="true"
-          color="emerald"
-        />
+        <AccountQuotaMatrix :columns="quotaColumns" :desktop="isDesktopViewport" show-now-when-idle />
         <div v-if="hasOpenAIQuotaObservation" class="text-[10px] text-gray-500 dark:text-gray-400">
           {{ t('admin.accounts.usageWindow.quotaObservedAt') }}
           <time v-if="usageInfo?.updated_at" :datetime="usageInfo.updated_at">
@@ -313,24 +258,16 @@
       </div>
 
       <!-- Real 5-hour and weekly windows per quota group (retrieveUserQuotaSummary) -->
-      <div v-else-if="antigravityQuotaGroupBars.length > 0" class="space-y-1">
-        <UsageProgressBar
-          v-for="bar in antigravityQuotaGroupBars"
-          :key="bar.key"
-          :label="bar.label"
-          :title="bar.title"
-          :utilization="bar.utilization"
-          :resets-at="bar.resetsAt"
-          :color="bar.color"
-        />
-
+      <div v-else-if="quotaColumns.length" class="space-y-1">
+        <AccountQuotaMatrix :columns="quotaColumns" :desktop="isDesktopViewport" />
         <div v-if="aiCreditsDisplay" class="mt-1 text-[10px] text-gray-500 dark:text-gray-400">
           💳 {{ t('admin.accounts.aiCreditsBalance') }}: {{ aiCreditsDisplay }}
         </div>
       </div>
 
       <!-- Usage data from API -->
-      <div v-else-if="hasAntigravityQuotaFromAPI" class="space-y-1">
+      <div v-else-if="hasAntigravityQuotaFromAPI" class="space-y-1" data-test="quota-model-snapshot">
+        <span class="text-[10px] text-gray-500">{{ t('admin.accounts.usageWindow.modelSnapshotUsed') }}</span>
         <!-- Gemini 3 Pro -->
         <UsageProgressBar
           v-if="antigravity3ProUsageFromAPI !== null"
@@ -654,16 +591,8 @@
           {{ error }}
         </div>
         <!-- Gemini: show daily usage bars when available -->
-        <div v-else-if="geminiUsageAvailable" class="space-y-1">
-          <UsageProgressBar
-            v-for="bar in geminiUsageBars"
-            :key="bar.key"
-            :label="bar.label"
-            :utilization="bar.utilization"
-            :resets-at="bar.resetsAt"
-            :window-stats="bar.windowStats"
-            :color="bar.color"
-          />
+        <div v-else-if="quotaColumns.length" class="space-y-1">
+          <AccountQuotaMatrix :columns="quotaColumns" :desktop="isDesktopViewport" />
           <p class="mt-1 text-[9px] leading-tight text-gray-400 dark:text-gray-500 italic">
             * {{ t('admin.accounts.gemini.quotaPolicy.simulatedNote') || 'Simulated quota' }}
           </p>
@@ -775,6 +704,7 @@ import { formatCompactNumber, formatDateTime } from '@/utils/format'
 import { isOfficialGeminiBaseUrl } from '@/utils/geminiExplicitCache'
 import { supportsAccountQuota } from '@/utils/accountQuota'
 import UsageProgressBar from './UsageProgressBar.vue'
+import AccountQuotaMatrix, { type QuotaColumn } from './AccountQuotaMatrix.vue'
 import AccountQuotaInfo from './AccountQuotaInfo.vue'
 import ClaudeResetCreditsCell from './ClaudeResetCreditsCell.vue'
 import OpenAIQuotaResetCell from './OpenAIQuotaResetCell.vue'
@@ -900,17 +830,6 @@ const showGeminiTodayStats = computed(() => {
   return isGeminiVertex.value
 })
 
-const geminiUsageAvailable = computed(() => {
-  return (
-    !!usageInfo.value?.gemini_shared_daily ||
-    !!usageInfo.value?.gemini_pro_daily ||
-    !!usageInfo.value?.gemini_flash_daily ||
-    !!usageInfo.value?.gemini_shared_minute ||
-    !!usageInfo.value?.gemini_pro_minute ||
-    !!usageInfo.value?.gemini_flash_minute
-  )
-})
-
 const hasOpenAIUsageFallback = computed(() => {
   if (props.account.platform !== 'openai' || props.account.type !== 'oauth') return false
   return !!usageInfo.value?.five_hour || !!usageInfo.value?.seven_day
@@ -956,42 +875,6 @@ interface AntigravityUsageResult {
   utilization: number
   resetTime: string | null
 }
-
-// ===== Antigravity quota groups (usageInfo.antigravity_quota_groups) =====
-// The summary reports each group's real 5-hour and weekly window. When present it replaces the
-// per-model bars below, which show only whichever window is tighter for each model.
-const antigravityQuotaGroupBars = computed(() => {
-  const groups = usageInfo.value?.antigravity_quota_groups
-  if (!groups || groups.length === 0) return []
-  const bars: Array<{
-    key: string
-    label: string
-    title: string
-    utilization: number
-    resetsAt: string | null
-    color: 'indigo' | 'emerald' | 'purple' | 'amber'
-  }> = []
-  for (const group of groups) {
-    // 'gemini' = Gemini models, 'gemini-argon-wtu' = the separate Argon quota of Pro plans,
-    // '3p' (or anything else) = Antigravity's Claude and GPT models.
-    const family = group.key === 'gemini' ? 'Gemini' : group.key.startsWith('gemini-argon') ? 'Argon' : 'Other'
-    for (const window of group.windows || []) {
-      const weekly = window.window === 'weekly'
-      const labelKey = `admin.accounts.usageWindow.antigravity${family}${weekly ? 'Weekly' : '5h'}`
-      const color: 'indigo' | 'emerald' | 'purple' | 'amber' =
-        family === 'Gemini' ? (weekly ? 'indigo' : 'emerald') : family === 'Argon' ? 'indigo' : weekly ? 'purple' : 'amber'
-      bars.push({
-        key: `${group.key}-${window.window}`,
-        label: t(labelKey),
-        title: group.name,
-        utilization: Math.round(window.utilization ?? 0),
-        resetsAt: window.resets_at ?? null,
-        color
-      })
-    }
-  }
-  return bars
-})
 
 // ===== Antigravity quota from API (usageInfo.antigravity_quota) =====
 
@@ -1263,59 +1146,40 @@ const geminiUsesSharedDaily = computed(() => {
   )
 })
 
-const geminiUsageBars = computed(() => {
-  if (props.account.platform !== 'gemini') return []
-  if (!usageInfo.value) return []
-
-  const bars: Array<{
-    key: string
-    label: string
-    utilization: number
-    resetsAt: string | null
-    windowStats?: WindowStats | null
-    color: 'indigo' | 'emerald'
-  }> = []
-
-  if (geminiUsesSharedDaily.value) {
-    const sharedDaily = usageInfo.value.gemini_shared_daily
-    if (sharedDaily) {
-      bars.push({
-        key: 'shared_daily',
-        label: '1d',
-        utilization: sharedDaily.utilization,
-        resetsAt: sharedDaily.resets_at,
-        windowStats: sharedDaily.window_stats,
-        color: 'indigo'
-      })
+// Only windows with an explicit period belong in the matrix. Model snapshots and
+// provider-specific balances keep their own units in the existing fallback views.
+const quotaColumns = computed<QuotaColumn[]>(() => {
+  const usage = usageInfo.value
+  if (!usage) return []
+  switch (props.account.platform) {
+    case 'antigravity':
+      return (usage.antigravity_quota_groups ?? []).filter(g => g.windows?.length).map(g => ({
+        key: g.key,
+        name: g.key === '3p' ? 'Claude / GPT' : g.key === 'gemini' ? 'Gemini' : g.name || g.key,
+        windows: Object.fromEntries(g.windows.map(w => [w.window === 'weekly' ? '7d' : w.window, w]))
+      }))
+    case 'openai':
+      return [{ key: 'shared', name: props.account.parent_account_id != null ? 'Spark' : 'GPT / Codex', windows: {
+        '5h': usage.five_hour, '7d': usage.seven_day && { ...usage.seven_day, estimatedTotalCost: openAISevenDayEstimatedTotalCost.value }
+      } }]
+    case 'anthropic':
+      return [
+        { key: 'shared', name: 'Claude', windows: { '5h': usage.five_hour, '7d': usage.seven_day } },
+        { key: 'sonnet', name: 'Sonnet', windows: { '7d': usage.seven_day_sonnet } },
+        { key: 'fable', name: 'Fable', windows: { '7d': usage.seven_day_fable } }
+      ]
+    case 'gemini': {
+      const columns: QuotaColumn[] = geminiUsesSharedDaily.value
+        ? [{ key: 'shared', name: 'Gemini', windows: { '1m': usage.gemini_shared_minute, '1d': usage.gemini_shared_daily } }]
+        : [
+          { key: 'pro', name: 'Pro', windows: { '1m': usage.gemini_pro_minute, '1d': usage.gemini_pro_daily } },
+          { key: 'flash', name: 'Flash', windows: { '1m': usage.gemini_flash_minute, '1d': usage.gemini_flash_daily } }
+        ]
+      return columns.filter(col => Object.values(col.windows).some(Boolean))
     }
-    return bars
+    default:
+      return []
   }
-
-  const pro = usageInfo.value.gemini_pro_daily
-  if (pro) {
-    bars.push({
-      key: 'pro_daily',
-      label: 'pro',
-      utilization: pro.utilization,
-      resetsAt: pro.resets_at,
-      windowStats: pro.window_stats,
-      color: 'indigo'
-      })
-  }
-
-  const flash = usageInfo.value.gemini_flash_daily
-  if (flash) {
-    bars.push({
-      key: 'flash_daily',
-      label: 'flash',
-      utilization: flash.utilization,
-      resetsAt: flash.resets_at,
-      windowStats: flash.window_stats,
-      color: 'emerald'
-    })
-  }
-
-  return bars
 })
 
 interface GrokQuotaBarInfo {
