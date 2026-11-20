@@ -28,10 +28,11 @@ import (
 //     after a backoff can plausibly succeed (or, in the empty-pool case, the
 //     operator may be in the middle of adding accounts).
 type noAccountErrorClassification struct {
-	Status        int
-	ErrType       string
-	Message       string
-	ModelNotFound bool // true when this is a 404 model_not_found classification
+	Status              int
+	ErrType             string
+	Message             string
+	ModelNotFound       bool // true when this is a 404 model_not_found classification
+	InsufficientBalance bool // true when every configured model-capable account is balance-blocked
 }
 
 var selectionModelRateLimitedPattern = regexp.MustCompile(`(?:model_rate_limited|rate_limited)=(\d+)`)
@@ -40,6 +41,10 @@ var selectionModelRateLimitedPattern = regexp.MustCompile(`(?:model_rate_limited
 // every model-capable account is temporarily rate limited.
 func classifySelectionFailureError(err error, fallback noAccountErrorClassification) noAccountErrorClassification {
 	if err == nil {
+		return fallback
+	}
+	// Preserve a balance diagnosis based on the complete configured pool.
+	if fallback.InsufficientBalance {
 		return fallback
 	}
 	// A 404 model_not_found fallback is authoritative and must not be downgraded
@@ -133,6 +138,10 @@ func classifyNoAccountError(
 			Message:       message,
 			ModelNotFound: true,
 		}
+	}
+	if result.HasModelSupport && result.AllModelSupportAccountsInsufficientBalance {
+		fallback.InsufficientBalance = true
+		fallback.Message = "All accounts configured for this model are temporarily unavailable due to insufficient upstream balance. Please contact the service administrator."
 	}
 	return fallback
 }
