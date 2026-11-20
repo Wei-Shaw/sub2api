@@ -30,6 +30,9 @@ import (
 //
 // Grok 在 Responses / Chat Completions 入口有专属链路，须在调用本函数前分流。
 func resolveUpstreamProtocol(account *Account, inbound, model string, catalog []string) string {
+	if account.IsOpenCodeFreeTier() {
+		return APIProtocolChatCompletions
+	}
 	if account.routesByModel() {
 		return account.resolveModelRoutedProtocolFor(model, inbound, catalog)
 	}
@@ -58,6 +61,9 @@ func (a *Account) resolveModelRoutedProtocol(model string) string {
 // 协议直接生效；否则取该模型支持的协议集合，入站协议在其中时同协议直通（省去一次
 // 协议转换），不在时走首选协议。
 func (a *Account) resolveModelRoutedProtocolFor(model, inbound string, catalog []string) string {
+	if a.IsOpenCodeFreeTier() {
+		return APIProtocolChatCompletions
+	}
 	switch proto := a.GetAPIProtocol(); proto {
 	case APIProtocolChatCompletions, APIProtocolAnthropic, APIProtocolResponses:
 		return proto
