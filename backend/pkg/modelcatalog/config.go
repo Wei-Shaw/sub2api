@@ -324,7 +324,8 @@ func (m Model) Matches(groupID int64, version string) bool {
 	return false
 }
 func rangesOverlap(a, b Model) bool {
-	return !(a.MaxClientVersion != "" && b.MinClientVersion != "" && CompareVersions(a.MaxClientVersion, b.MinClientVersion) < 0 || b.MaxClientVersion != "" && a.MinClientVersion != "" && CompareVersions(b.MaxClientVersion, a.MinClientVersion) < 0)
+	return (a.MaxClientVersion == "" || b.MinClientVersion == "" || CompareVersions(a.MaxClientVersion, b.MinClientVersion) >= 0) &&
+		(b.MaxClientVersion == "" || a.MinClientVersion == "" || CompareVersions(b.MaxClientVersion, a.MinClientVersion) >= 0)
 }
 
 // CompareVersions compares numeric release components; alpha suffixes use the

@@ -93,7 +93,9 @@ func TestPluginCatalogInventoryUsesExistingSourcesWithoutSecrets(t *testing.T) {
 	for _, model := range inventory.Models {
 		var descriptor map[string]any
 		require.NoError(t, json.Unmarshal(model.Descriptor, &descriptor))
-		sources[descriptor["slug"].(string)] = model.Source
+		slug, ok := descriptor["slug"].(string)
+		require.True(t, ok)
+		sources[slug] = model.Source
 		require.NotEmpty(t, descriptor["model_messages"])
 	}
 	require.Equal(t, "builtin", sources["gpt-6-sol"])
