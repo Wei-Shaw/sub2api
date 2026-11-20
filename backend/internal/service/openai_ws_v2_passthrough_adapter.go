@@ -1167,7 +1167,6 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		firstTurnStartedAt = hooks.InitialTurnStartedAt
 	}
 	nativeSearch := newOpenAINativeWebSearchCounter(account)
-	chargedNativeSearchCount := 0
 	failureAccountSideEffectsApplied := false
 	relayResult, relayExit := openaiwsv2.RunEntry(openaiwsv2.EntryInput{
 		Ctx:                ctx,
@@ -1201,8 +1200,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				)
 			},
 			OnTurnComplete: func(turn openaiwsv2.RelayTurnResult) {
-				nativeSearchCount := nativeSearch.Count() - chargedNativeSearchCount
-				chargedNativeSearchCount = nativeSearch.Count()
+				nativeSearchCount := nativeSearch.Settle(turn.RequestID)
 				turnNo := int(completedTurns.Add(1))
 				if hooks != nil && hooks.TurnStarted != nil && !turn.StartedAt.IsZero() {
 					hooks.TurnStarted(turnNo, turn.StartedAt)
@@ -1354,7 +1352,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	resultRequestModel, resultUpstreamModel := usageMeta.turnModels(relayResult.RequestModel)
 	result := &OpenAIForwardResult{
 		RequestID:            relayResult.RequestID,
-		NativeWebSearchCalls: nativeSearch.Count() - chargedNativeSearchCount,
+		NativeWebSearchCalls: nativeSearch.UnsettledCount(),
 		Usage: OpenAIUsage{
 			InputTokens:              relayResult.Usage.InputTokens,
 			ImageInputTokens:         relayResult.Usage.ImageInputTokens,

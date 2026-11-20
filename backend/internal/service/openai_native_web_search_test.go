@@ -29,8 +29,13 @@ func nativeSearchResponse(count int) string {
 func nativeSearchSSE(count int) string {
 	var body strings.Builder
 	for index := 0; index < count; index++ {
-		body.WriteString(fmt.Sprintf("event: response.output_item.done\ndata: {\"output_index\":%d,\"item\":{\"type\":\"web_search_call\",\"id\":\"ws_%d\",\"status\":\"completed\"}}\n\n", index+1, index))
-		body.WriteString(fmt.Sprintf("data: {\"type\":\"response.web_search_call.completed\",\"item_id\":\"ws_%d\"}\n\n", index))
+		itemDone := fmt.Sprintf("event: response.output_item.done\ndata: {\"output_index\":%d,\"item\":{\"type\":\"web_search_call\",\"status\":\"completed\"}}\n\n", index+1)
+		completed := fmt.Sprintf("data: {\"type\":\"response.web_search_call.completed\",\"item_id\":\"ws_%d\"}\n\n", index)
+		if index%2 == 0 {
+			body.WriteString(completed + itemDone)
+		} else {
+			body.WriteString(itemDone + completed)
+		}
 	}
 	body.WriteString("data: {\"type\":\"response.completed\",\"response\":" + nativeSearchResponse(count) + "}\n\n")
 	return body.String()
@@ -201,14 +206,19 @@ func TestNativeWebSearchWSPassthroughTurns(t *testing.T) {
 		}
 		requirePassthroughUpstreamWrite(t, upstream, 3*time.Second)
 		payload := strings.ReplaceAll(nativeSearchResponse(count), "resp_search", fmt.Sprintf("resp_turn_%d", turn))
-		payload = strings.ReplaceAll(payload, "ws_", fmt.Sprintf("ws_turn_%d_", turn))
 		done := `{"type":"response.completed","response":` + payload + `}`
-		itemDone := fmt.Sprintf(`{"type":"response.output_item.done","item":{"type":"web_search_call","id":"ws_turn_%d_0","status":"%s"}}`, turn, map[bool]string{true: "completed", false: "in_progress"}[count > 0])
+		upstream.Send(fmt.Sprintf(`{"type":"response.created","response":{"id":"resp_turn_%d"}}`, turn))
+		frames := 5
+		if count > 0 {
+			upstream.Send(`{"type":"response.web_search_call.completed","item_id":"ws_0"}`)
+			frames++
+		}
+		itemDone := fmt.Sprintf(`{"type":"response.output_item.done","output_index":1,"item":{"type":"web_search_call","status":"%s"}}`, map[bool]string{true: "completed", false: "in_progress"}[count > 0])
 		upstream.Send(itemDone)
 		upstream.Send(done)
 		upstream.Send(itemDone)
 		upstream.Send(done)
-		for frame := 0; frame < 4; frame++ {
+		for frame := 0; frame < frames; frame++ {
 			_, err := readPassthroughLifecycleFrame(t, client, 3*time.Second)
 			require.NoError(t, err)
 		}
