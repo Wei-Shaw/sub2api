@@ -211,13 +211,6 @@ func (c *schedulerTestGatewayCache) GetReasoningContent(_ context.Context, _ str
 	return "", ErrReasoningContentNotFound
 }
 
-func (c *schedulerTestGatewayCache) SetAnthropicFileOwner(_ context.Context, _ string, _ int64, _ int64, _ string, _ time.Duration) error {
-	return nil
-}
-func (c *schedulerTestGatewayCache) GetAnthropicFileOwner(_ context.Context, _ string) (int64, int64, string, bool, error) {
-	return 0, 0, "", false, nil
-}
-
 func newSchedulerTestOpenAIWSV2Config() *config.Config {
 	cfg := &config.Config{}
 	cfg.Gateway.OpenAIWS.Enabled = true

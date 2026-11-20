@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 )
@@ -40,35 +41,74 @@ type DeepseekToolsForwardResult struct {
 	UpstreamHeaders http.Header
 }
 
-// ForwardDeepseekToolsRequest 把 DeepSeek 独立工具接口的九个端点统一透传到上游：
-// search/fetch/ocr/asr/tts/files_create 为 POST（含 JSON 或 multipart body），
-// files_list/files_get 为 GET、files_delete 为 DELETE（无 body）。
-// 响应回写：TTS 成功响应为二进制音频，走流式回写避免长音频全量缓冲；
-// 其余端点（含上游错误体）经缓冲后按状态码 + Content-Type + 过滤响应头原样透传。
-// groupID 仅用于归属记录失败时的日志定位；userID 是 file_id 归属的用户维度，
-// 与分组无关：归属只对同一用户生效，避免成为跨用户的路由旁路。
-func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, c *gin.Context, account *Account, groupID *int64, userID int64, endpoint string, body []byte, contentType string) (*DeepseekToolsForwardResult, error) {
-	if s == nil || account == nil {
-		return nil, fmt.Errorf("deepseek tools service/account is required")
+// A prepared request carries the verified file owner through scheduling and forwarding.
+type DeepseekToolsRequest struct {
+	endpoint, fileID       string
+	userID, ownerAccountID int64
+	anthropicFiles         bool
+	upload                 deepseekUploadMetadata
+	body                   []byte
+	contentType            string
+}
+
+func (r *DeepseekToolsRequest) SchedulingContext(ctx context.Context) context.Context {
+	return withDeepseekFileAccount(ctx, r.ownerAccountID)
+}
+
+func (s *OpenAIGatewayService) PrepareDeepseekToolsRequest(ctx context.Context, c *gin.Context, userID int64, endpoint string, body []byte, contentType string) (*DeepseekToolsRequest, error) {
+	endpoint, fileID, _ := strings.Cut(endpoint, "/")
+	r := &DeepseekToolsRequest{endpoint: endpoint, fileID: fileID, userID: userID, body: body, contentType: contentType,
+		anthropicFiles: strings.HasPrefix(endpoint, "files_") && IsDeepseekFilesAnthropicRequest(c)}
+	switch endpoint {
+	case "files_get", "files_delete":
+		id, err := s.DeepseekFileAccount(ctx, userID, []string{fileID})
+		if err != nil {
+			return nil, err
+		}
+		r.ownerAccountID = id
+	case "files_create":
+		if c != nil && c.Request != nil {
+			for _, purpose := range c.Request.URL.Query()["purpose"] {
+				if err := s.checkDeepseekUploadPurpose(strings.TrimSpace(purpose)); err != nil {
+					return nil, err
+				}
+			}
+		}
+		meta, err := s.deepseekUploadMetadata(body, contentType)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := s.deepseekFileStore(); err != nil || userID <= 0 {
+			return nil, errDeepseekFileStore
+		}
+		r.upload = meta
+	case "search", "fetch", "ocr", "asr", "tts":
+	default:
+		return nil, invalidFileRequest("Unsupported DeepSeek tools endpoint")
+	}
+	return r, nil
+}
+
+func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, c *gin.Context, account *Account, r *DeepseekToolsRequest) (*DeepseekToolsForwardResult, error) {
+	if s == nil || account == nil || r == nil {
+		return nil, fmt.Errorf("deepseek tools service, account and request are required")
 	}
 	if account.Platform != PlatformDeepseek {
 		return nil, fmt.Errorf("account platform %s is not supported for deepseek tools", account.Platform)
 	}
-	endpoint, fileID := splitDeepseekToolsEndpoint(endpoint)
-	// Anthropic 兼容 Files 语义分流：请求带 anthropic-beta: files-api-2025-04-14
-	// （DSH 等按官方 Anthropic Files API 形状的客户端）时，files_* 转发到上游
-	// {anthropic_base}/v1/files——官方该端点免 purpose 且返回 Anthropic 形状；
-	// 否则维持 OpenAI 兼容 /v1/files（强制 purpose、OpenAI 形状）透传。
-	anthropicFiles := strings.HasPrefix(endpoint, "files_") && isDeepseekFilesAnthropicRequest(c)
-	var targetURL string
-	var err error
-	if anthropicFiles {
-		targetURL, err = buildDeepseekFilesAnthropicURL(account, endpoint, fileID)
-	} else {
-		targetURL, err = buildDeepseekToolsURL(account, endpoint, fileID)
+	endpoint, body, contentType := r.endpoint, r.body, r.contentType
+	if (endpoint == "files_get" || endpoint == "files_delete") && (r.ownerAccountID <= 0 || account.ID != r.ownerAccountID) {
+		return nil, errDeepseekFileNotFound
 	}
+	targetURL, err := buildDeepseekToolsURL(account, endpoint, r.fileID, r.anthropicFiles, s.validateUpstreamBaseURL)
 	if err != nil {
-		return nil, err
+		return nil, infraerrors.New(http.StatusBadGateway, "api_error", "Invalid DeepSeek upstream URL").WithCause(err)
+	}
+	if c != nil && c.Request != nil && c.Request.URL.RawQuery != "" {
+		if targetURL.RawQuery != "" {
+			targetURL.RawQuery += "&"
+		}
+		targetURL.RawQuery += c.Request.URL.RawQuery
 	}
 	apiKey, _, err := s.GetAccessToken(ctx, account)
 	if err != nil {
@@ -77,7 +117,7 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 
 	method := http.MethodPost
 	switch endpoint {
-	case "files_list", "files_get":
+	case "files_get":
 		method = http.MethodGet
 	case "files_delete":
 		method = http.MethodDelete
@@ -89,16 +129,16 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 	if method == http.MethodPost {
 		reader = bytes.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(upstreamCtx, method, targetURL, reader)
+	req, err := http.NewRequestWithContext(WithHTTPUpstreamRedirectsDisabled(upstreamCtx), method, targetURL.String(), reader)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
-	if anthropicFiles {
+	if r.anthropicFiles {
 		// 官方 /anthropic/v1/files 要求透传 anthropic-beta（files-api-2025-04-14），
 		// anthropic-version 一并保留以贴近客户端原始请求。
-		if beta := strings.TrimSpace(c.GetHeader("anthropic-beta")); beta != "" {
-			req.Header.Set("anthropic-beta", beta)
+		for _, beta := range c.Request.Header.Values("anthropic-beta") {
+			req.Header.Add("anthropic-beta", beta)
 		}
 		if version := strings.TrimSpace(c.GetHeader("anthropic-version")); version != "" {
 			req.Header.Set("anthropic-version", version)
@@ -141,10 +181,27 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 	if err != nil {
 		return nil, err
 	}
-	// 归属记录必须在响应 flush 之前写入，否则客户端拿到 file_id 后立即发起的
-	// /v1/messages 可能先于缓存写入到达。失败只记日志，不影响上传响应。
-	if anthropicFiles && endpoint == "files_create" && success {
-		s.recordAnthropicFileOwner(ctx, userID, account, groupID, data)
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 && (endpoint == "files_create" || endpoint == "files_delete") {
+		store, err := s.deepseekFileStore()
+		if err != nil {
+			return nil, err
+		}
+		if endpoint == "files_create" {
+			file, err := deepseekUploadedFile(data, account.ID, r.anthropicFiles, r.upload)
+			if err != nil {
+				return nil, infraerrors.New(http.StatusBadGateway, "api_error", "Invalid upstream file metadata").WithCause(err)
+			}
+			if err := store.SaveDeepseekFile(upstreamCtx, r.userID, file); err != nil {
+				return nil, errDeepseekFileStore.WithCause(err)
+			}
+		} else {
+			if resp.StatusCode != http.StatusNoContent && !deepseekFileDeleted(data, r.fileID, r.anthropicFiles) {
+				return nil, infraerrors.New(http.StatusBadGateway, "api_error", "Upstream did not confirm file deletion")
+			}
+			if err := store.DeleteDeepseekFile(upstreamCtx, r.userID, account.ID, r.fileID); err != nil {
+				return nil, errDeepseekFileStore.WithCause(err)
+			}
+		}
 	}
 	writeGrokMediaResponse(c, resp, data, s.responseHeaderFilter)
 	return &DeepseekToolsForwardResult{
@@ -152,18 +209,6 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 		Usage:           extractDeepseekToolsUsage(endpoint, body, data, success),
 		UpstreamHeaders: resp.Header,
 	}, nil
-}
-
-// splitDeepseekToolsEndpoint 拆出基础 endpoint 与可选的 file ID 后缀，
-// 例如 "files_get/file-abc" → ("files_get", "file-abc")。file ID 的合法性
-// 由 buildDeepseekToolsURL 的白名单校验兜底。
-func splitDeepseekToolsEndpoint(endpoint string) (string, string) {
-	endpoint = strings.Trim(strings.TrimSpace(endpoint), "/")
-	base, fileID, hasID := strings.Cut(endpoint, "/")
-	if hasID {
-		fileID = strings.Trim(fileID, "/")
-	}
-	return base, fileID
 }
 
 // writeDeepseekToolsContentResponse 以流式方式回写上游二进制响应
@@ -271,12 +316,17 @@ func isDeepseekWideRune(r rune) bool {
 // deepseekFilesBetaHeader 是官方 Anthropic 兼容 Files API 的 beta 标志。
 const deepseekFilesBetaHeader = "files-api-2025-04-14"
 
-// isDeepseekFilesAnthropicRequest 报告入站请求是否按 Anthropic 兼容 Files
-// 语义发起（带 anthropic-beta: files-api-2025-04-14 头）。该语义下官方
-// /anthropic/v1/files 免 purpose 且返回 Anthropic 形状。
-func isDeepseekFilesAnthropicRequest(c *gin.Context) bool {
-	if c == nil {
+// IsDeepseekFilesAnthropicRequest identifies the Anthropic Files API beta token.
+func IsDeepseekFilesAnthropicRequest(c *gin.Context) bool {
+	if c == nil || c.Request == nil {
 		return false
 	}
-	return strings.Contains(strings.ToLower(c.GetHeader("anthropic-beta")), deepseekFilesBetaHeader)
+	for _, value := range c.Request.Header.Values("anthropic-beta") {
+		for token := range strings.SplitSeq(value, ",") {
+			if strings.EqualFold(strings.TrimSpace(token), deepseekFilesBetaHeader) {
+				return true
+			}
+		}
+	}
+	return false
 }

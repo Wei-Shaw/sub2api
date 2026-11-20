@@ -1,8 +1,10 @@
+//go:build unit
+
 package handler
 
 import (
 	"context"
-	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,199 +12,221 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/Wei-Shaw/sub2api/internal/testutil"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
 
-type handlerFileOwnerEntry struct {
-	ownerUserID int64
-	accountID   int64
-	platform    string
+type fileOwnerTestUpstream struct {
+	status int
+	reply  string
+	ids    []int64
+	bodies []string
+	paths  []string
 }
 
-// handlerFileOwnerCache 只实现归属读写；其余 GatewayCache 方法由嵌入的 nil
-// 接口占位——拒绝路径不会调用它们，若误入选号会以 panic 暴露。
-type handlerFileOwnerCache struct {
-	service.GatewayCache
-	entries map[string]handlerFileOwnerEntry
-	getErr  error
-}
-
-func (c *handlerFileOwnerCache) SetAnthropicFileOwner(_ context.Context, _ string, _ int64, _ int64, _ string, _ time.Duration) error {
-	return nil
-}
-
-func (c *handlerFileOwnerCache) GetAnthropicFileOwner(_ context.Context, fileID string) (int64, int64, string, bool, error) {
-	if c.getErr != nil {
-		return 0, 0, "", false, c.getErr
+func (u *fileOwnerTestUpstream) Do(req *http.Request, _ string, accountID int64, _ int) (*http.Response, error) {
+	u.ids = append(u.ids, accountID)
+	u.paths = append(u.paths, req.URL.RequestURI())
+	var body []byte
+	if req.Body != nil {
+		body, _ = io.ReadAll(req.Body)
 	}
-	entry, ok := c.entries[fileID]
-	if !ok {
-		return 0, 0, "", false, nil
-	}
-	return entry.ownerUserID, entry.accountID, entry.platform, true, nil
+	u.bodies = append(u.bodies, string(body))
+	return &http.Response{StatusCode: u.status, Header: http.Header{"Content-Type": {"application/json"}},
+		Body: io.NopCloser(strings.NewReader(u.reply))}, nil
+}
+func (u *fileOwnerTestUpstream) DoWithTLS(req *http.Request, proxy string, id int64, n int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxy, id, n)
 }
 
-// recordingFileOwnerAccountRepo 记录是否有任何选号查询发生。
-type recordingFileOwnerAccountRepo struct {
-	service.AccountRepository
-	calls int
-}
-
-func (r *recordingFileOwnerAccountRepo) ListSchedulableByGroupID(context.Context, int64) ([]service.Account, error) {
-	r.calls++
-	return nil, nil
-}
-func (r *recordingFileOwnerAccountRepo) ListSchedulableByGroupIDAndPlatform(context.Context, int64, string) ([]service.Account, error) {
-	r.calls++
-	return nil, nil
-}
-func (r *recordingFileOwnerAccountRepo) ListSchedulableByPlatform(context.Context, string) ([]service.Account, error) {
-	r.calls++
-	return nil, nil
-}
-func (r *recordingFileOwnerAccountRepo) ListModelAvailabilityCandidates(context.Context, *int64, []string, bool) ([]service.Account, error) {
-	r.calls++
-	return nil, nil
-}
-
-func newFileOwnerMessagesHandler(t *testing.T, cache service.GatewayCache, repo service.AccountRepository) *OpenAIGatewayHandler {
+func fileOwnerTestHandler(t *testing.T, cache service.GatewayCache, platform string) (*OpenAIGatewayHandler, *fileOwnerTestUpstream) {
 	t.Helper()
 	cfg := &config.Config{RunMode: config.RunModeSimple}
+	groupID := int64(163)
+	owner := service.Account{ID: 11, Platform: platform, Type: service.AccountTypeAPIKey, Status: service.StatusActive, Schedulable: true,
+		GroupIDs: []int64{groupID}, Priority: 99, Concurrency: 5,
+		Credentials: map[string]any{"api_key": "test", "api_protocol": "adaptive"},
+	}
+	other := owner
+	other.ID, other.Priority = 12, 1
+	repo := &openAIWSFailoverHandlerAccountRepoStub{accounts: []service.Account{owner, other}}
 	billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 	t.Cleanup(billing.Stop)
-	gatewayService := service.NewOpenAIGatewayService(
-		repo, nil, nil, nil, nil, nil, cache, cfg,
-		nil, nil, nil, nil, billing, nil, nil, nil, nil, nil, nil, nil, nil, nil,
-	)
-	return &OpenAIGatewayHandler{
-		gatewayService:      gatewayService,
-		billingCacheService: billing,
-		apiKeyService:       &service.APIKeyService{},
-		concurrencyHelper:   &ConcurrencyHelper{concurrencyService: service.NewConcurrencyService(nil)},
-		cfg:                 cfg,
-	}
+	upstream := &fileOwnerTestUpstream{status: http.StatusBadRequest, reply: `{"error":{"type":"invalid_request_error","message":"upstream test reply"}}`}
+	gateway := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, cache, cfg, nil, nil,
+		service.NewBillingService(cfg, nil), nil, billing, upstream, nil, nil, nil, nil, nil, nil, nil, nil)
+	return &OpenAIGatewayHandler{gatewayService: gateway, billingCacheService: billing, apiKeyService: &service.APIKeyService{},
+		concurrencyHelper: NewConcurrencyHelper(service.NewConcurrencyService(nil), SSEPingFormatNone, time.Second), cfg: cfg}, upstream
 }
 
-func runFileOwnerMessagesRequest(t *testing.T, h *OpenAIGatewayHandler, userID int64, body string) *httptest.ResponseRecorder {
-	t.Helper()
-	groupID := int64(163)
+func fileOwnerTestContext(method, path, body, groupPlatform, resolved string, userID int64) (*gin.Context, *httptest.ResponseRecorder) {
 	rec := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(rec)
-	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+	c.Request = httptest.NewRequest(method, path, strings.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
-	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{
-		ID: 5101, UserID: userID, GroupID: &groupID,
-		Group: &service.Group{ID: groupID, Platform: service.PlatformDeepseek},
-		User:  &service.User{ID: userID},
-	})
-	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: userID, Concurrency: 1})
-	h.Messages(c)
-	return rec
+	if resolved != "" {
+		c.Request = c.Request.WithContext(service.WithResolvedTargetPlatform(c.Request.Context(), resolved))
+	}
+	groupID := int64(163)
+	c.Set(string(middleware.ContextKeyAPIKey), &service.APIKey{ID: 101, UserID: userID, GroupID: &groupID,
+		Group: &service.Group{ID: groupID, Platform: groupPlatform, AllowMessagesDispatch: true}, User: &service.User{ID: userID}})
+	c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: userID})
+	return c, rec
 }
 
-const fileOwnerOwnAndUnknownBody = `{"model":"deepseek-v3.2","max_tokens":16,"messages":[{"role":"user","content":[` +
-	`{"type":"image","source":{"type":"file","file_id":"file_own"}},` +
-	`{"type":"image","source":{"type":"file","file_id":"file_unknown"}}]}]}`
-
-const fileOwnerForeignBody = `{"model":"deepseek-v3.2","max_tokens":16,"messages":[{"role":"user","content":[` +
-	`{"type":"image","source":{"type":"file","file_id":"file_owned_by_other"}}]}]}`
-
-// TestOpenAIGatewayMessagesRejectsUnauthorizedFileOwnerBeforeScheduling 验证归属
-// 拒绝发生在任何选号之前：混合自有+未知 file 必须是 400，不得 pinned 后放行；
-// 他人的 file 是 403；缓存故障是 503。三种情况都不得触发账号选号查询。
-func TestOpenAIGatewayMessagesRejectsUnauthorizedFileOwnerBeforeScheduling(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	const requester = int64(6101)
-
-	tests := []struct {
-		name    string
-		cache   *handlerFileOwnerCache
-		body    string
-		status  int
-		errType string
-		message string
+func TestDeepseekChatFileOwnerHandlers(t *testing.T) {
+	cache := testutil.NewRedisGatewayCache(t)
+	store := cache.(service.DeepseekFileStore)
+	require.NoError(t, store.SaveDeepseekFile(context.Background(), 7, service.DeepseekFile{ID: "own", AccountID: 11}))
+	h, up := fileOwnerTestHandler(t, cache, service.PlatformDeepseek)
+	for _, tc := range []struct {
+		name, path, payload string
+		handler             gin.HandlerFunc
 	}{
-		{
-			name: "own plus unknown file is rejected as unknown",
-			cache: &handlerFileOwnerCache{entries: map[string]handlerFileOwnerEntry{
-				"file_own": {ownerUserID: requester, accountID: 163, platform: service.PlatformDeepseek},
-			}},
-			body:    fileOwnerOwnAndUnknownBody,
-			status:  http.StatusBadRequest,
-			errType: "invalid_request_error",
-			message: "file_id is not registered to this API key; re-upload the file",
-		},
-		{
-			name: "file owned by another user is forbidden",
-			cache: &handlerFileOwnerCache{entries: map[string]handlerFileOwnerEntry{
-				"file_owned_by_other": {ownerUserID: requester + 1, accountID: 163, platform: service.PlatformDeepseek},
-			}},
-			body:    fileOwnerForeignBody,
-			status:  http.StatusForbidden,
-			errType: "permission_error",
-			message: "file_id belongs to another user",
-		},
-		{
-			name:    "owner lookup failure is retryable",
-			cache:   &handlerFileOwnerCache{getErr: errors.New("redis down")},
-			body:    fileOwnerForeignBody,
-			status:  http.StatusServiceUnavailable,
-			errType: "api_error",
-			message: "file owner lookup is temporarily unavailable",
-		},
+		{"messages", "/v1/messages", `"messages":[{"role":"user","content":[{"type":"document","source":{"type":"file","file_id":"own"}}]}]`, h.Messages},
+		{"chat", "/v1/chat/completions", `"messages":[{"role":"user","content":[{"type":"file","file_id":"own"}]}]`, h.ChatCompletions},
+		{"responses", "/v1/responses", `"input":[{"role":"user","content":[{"type":"input_file","file_id":"own"}]}]`, h.Responses},
+	} {
+		for _, group := range []string{service.PlatformDeepseek, service.PlatformComposite} {
+			t.Run(tc.name+"/"+group, func(t *testing.T) {
+				before := len(up.ids)
+				for _, user := range []int64{8, 7} {
+					c, rec := fileOwnerTestContext("POST", tc.path, `{"model":"deepseek-flash","max_tokens":16,`+tc.payload+`}`, group, service.PlatformDeepseek, user)
+					c.Request.Header.Set("anthropic-beta", "files-api-2025-04-14")
+					tc.handler(c)
+					if user == 8 {
+						require.Equal(t, 400, rec.Code, rec.Body.String())
+						require.Len(t, up.ids, before)
+						require.Equal(t, "Referenced file not found", gjson.GetBytes(rec.Body.Bytes(), "error.message").String())
+					} else {
+						require.Equal(t, []int64{11}, up.ids[before:], rec.Body.String())
+						require.Contains(t, up.bodies[before], `"own"`)
+					}
+				}
+			})
+		}
 	}
+}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			repo := &recordingFileOwnerAccountRepo{}
-			h := newFileOwnerMessagesHandler(t, tt.cache, repo)
-			rec := runFileOwnerMessagesRequest(t, h, requester, tt.body)
-
-			require.Equal(t, tt.status, rec.Code, rec.Body.String())
-			require.Equal(t, tt.errType, gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
-			require.Contains(t, rec.Body.String(), tt.message)
-			require.Zero(t, repo.calls, "rejected file owner request must not reach account scheduling")
+func TestNonDeepseekMessagesFileBlocksFollowNormalDispatch(t *testing.T) {
+	cache := testutil.NewRedisGatewayCache(t)
+	for _, platform := range []string{service.PlatformKimi, service.PlatformZhipu, service.PlatformOpenAI, service.PlatformGrok} {
+		t.Run(platform, func(t *testing.T) {
+			h, up := fileOwnerTestHandler(t, cache, platform)
+			model := "test-model"
+			if platform == service.PlatformGrok {
+				model = "grok-4.3"
+			}
+			var baseline int
+			for i, content := range []string{`[{"type":"text","text":"hi"}]`, `[{"type":"text","text":"hi"},{"type":"image","source":{"type":"file","file_id":"unregistered"}}]`} {
+				c, rec := fileOwnerTestContext("POST", "/v1/messages", `{"model":"`+model+`","max_tokens":16,"messages":[{"role":"user","content":`+content+`}]}`, service.PlatformComposite, platform, 7)
+				h.Messages(c)
+				if i == 0 {
+					baseline = rec.Code
+				}
+				require.Equal(t, baseline, rec.Code, rec.Body.String())
+				require.NotContains(t, rec.Body.String(), "Referenced file")
+			}
+			require.Len(t, up.ids, 2)
+			require.Equal(t, up.ids[0], up.ids[1])
 		})
 	}
 }
 
-// TestRejectAnthropicMessagesFileOwner 验证判定到 HTTP 语义的映射：只有 pinned
-// 与 none 放行，其余判定都必须写出拒绝响应并阻断后续选号。
-func TestRejectAnthropicMessagesFileOwner(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	tests := []struct {
-		decision service.AnthropicFileOwnerDecision
-		rejected bool
-		status   int
-		errType  string
-		message  string
-	}{
-		{decision: service.AnthropicFileOwnerNone, rejected: false},
-		{decision: service.AnthropicFileOwnerPinned, rejected: false},
-		{decision: service.AnthropicFileOwnerForeign, rejected: true, status: http.StatusForbidden, errType: "permission_error", message: "file_id belongs to another user"},
-		{decision: service.AnthropicFileOwnerUnknown, rejected: true, status: http.StatusBadRequest, errType: "invalid_request_error", message: "file_id is not registered to this API key; re-upload the file"},
-		{decision: service.AnthropicFileOwnerConflict, rejected: true, status: http.StatusBadRequest, errType: "invalid_request_error", message: "file_ids resolve to different accounts; re-upload the files"},
-		{decision: service.AnthropicFileOwnerStoreError, rejected: true, status: http.StatusServiceUnavailable, errType: "api_error", message: "file owner lookup is temporarily unavailable"},
-	}
-
-	for _, tt := range tests {
-		rec := httptest.NewRecorder()
-		c, _ := gin.CreateTestContext(rec)
-		h := &OpenAIGatewayHandler{}
-		rejected := h.rejectAnthropicMessagesFileOwner(c, nil, 1, tt.decision, errors.New("redis down"), false)
-		require.Equal(t, tt.rejected, rejected, "decision=%d", tt.decision)
-		if !tt.rejected {
-			require.Equal(t, http.StatusOK, rec.Code)
-			require.Empty(t, rec.Body.String())
-			continue
+func TestDeepseekFilesUserIsolation(t *testing.T) {
+	cache := testutil.NewRedisGatewayCache(t)
+	store := cache.(service.DeepseekFileStore)
+	h, up := fileOwnerTestHandler(t, cache, service.PlatformDeepseek)
+	up.status = 200
+	for _, beta := range []bool{false, true} {
+		for user, id := range map[int64]string{7: "own", 8: "foreign"} {
+			require.NoError(t, store.SaveDeepseekFile(context.Background(), user, service.DeepseekFile{
+				ID: id, AccountID: 11, Filename: id + ".png", Bytes: 18, CreatedAt: time.Now().UTC(), MIMEType: "image/png", Purpose: "user_data"}))
 		}
-		require.Equal(t, tt.status, rec.Code)
-		require.Equal(t, tt.errType, gjson.GetBytes(rec.Body.Bytes(), "error.type").String())
-		require.Contains(t, rec.Body.String(), tt.message)
+		request := func(method, id, endpoint string) *httptest.ResponseRecorder {
+			c, r := fileOwnerTestContext(method, "/v1/files"+id, "", service.PlatformDeepseek, "", 7)
+			if beta {
+				c.Request.Header.Set("anthropic-beta", "files-api-2025-04-14")
+			}
+			h.DeepseekTools(c, endpoint)
+			return r
+		}
+		before := len(up.ids)
+		page := request("GET", "?limit=1", "files_list")
+		require.Equal(t, 200, page.Code, page.Body.String())
+		require.Equal(t, "own", gjson.GetBytes(page.Body.Bytes(), "data.0.id").String())
+		require.NotContains(t, page.Body.String(), "foreign")
+		require.NotContains(t, page.Body.String(), "AccountID")
+		for _, method := range []string{"GET", "DELETE"} {
+			endpoint := "files_" + strings.ToLower(method) + "/"
+			unknown := request(method, "/unknown", endpoint+"unknown")
+			foreign := request(method, "/foreign", endpoint+"foreign")
+			require.Equal(t, 404, foreign.Code, foreign.Body.String())
+			require.Equal(t, unknown.Body.String(), foreign.Body.String())
+			require.Equal(t, "not_found_error", gjson.GetBytes(foreign.Body.Bytes(), "error.type").String())
+			require.Equal(t, beta, gjson.GetBytes(foreign.Body.Bytes(), "type").Exists())
+		}
+		require.Len(t, up.ids, before)
+		for _, method := range []string{"GET", "DELETE"} {
+			up.reply = `{"id":"own","object":"file"}`
+			if beta {
+				up.reply = `{"id":"own","type":"file"}`
+			}
+			if method == http.MethodDelete {
+				up.reply = `{"id":"own","object":"file","deleted":true}`
+				if beta {
+					up.reply = `{"id":"own","type":"file_deleted"}`
+				}
+			}
+			rec := request(method, "/own?keep=a&keep=b", "files_"+strings.ToLower(method)+"/own")
+			require.Equal(t, 200, rec.Code, rec.Body.String())
+			require.Contains(t, up.paths[len(up.paths)-1], "/v1/files/own?keep=a&keep=b")
+		}
+		require.Equal(t, []int64{11, 11}, up.ids[before:])
+		require.Equal(t, 404, request("GET", "/own", "files_get/own").Code)
+		require.Equal(t, 0, int(gjson.GetBytes(request("GET", "", "files_list").Body.Bytes(), "data.#").Int()))
+	}
+}
+
+func TestDeepseekFilesDocumentUploadPolicyThroughHandler(t *testing.T) {
+	cache := testutil.NewRedisGatewayCache(t)
+	for _, anthropic := range []bool{false, true} {
+		for _, enabled := range []bool{false, true} {
+			h, up := fileOwnerTestHandler(t, cache, service.PlatformDeepseek)
+			h.cfg.Gateway.AllowUnbilledDeepseekDocumentParsing = enabled
+			up.status = http.StatusOK
+			up.reply = `{"id":"paid","object":"file","created_at":1800000000}`
+			if anthropic {
+				up.reply = `{"id":"paid","type":"file","created_at":"2026-11-20T00:00:00Z"}`
+			}
+			body := "--b\r\nContent-Disposition: form-data; name=\"purpose\"\r\n\r\nrich_layout_recognition\r\n--b\r\nContent-Disposition: form-data; name=\"file\"; filename=\"report.pdf\"\r\n\r\nPDF\r\n--b--\r\n"
+			c, r := fileOwnerTestContext("POST", "/v1/files", body, service.PlatformDeepseek, "", 7)
+			c.Request.Header.Set("Content-Type", "multipart/form-data; boundary=b")
+			if anthropic {
+				c.Request.Header.Set("anthropic-beta", "files-api-2025-04-14")
+			}
+			h.DeepseekTools(c, "files_create")
+			if enabled {
+				require.Equal(t, 200, r.Code, r.Body.String())
+				require.Equal(t, []int64{12}, up.ids, r.Body.String())
+				files, err := cache.(service.DeepseekFileStore).ListDeepseekFiles(context.Background(), 7)
+				require.NoError(t, err)
+				require.Len(t, files, 1)
+				require.Equal(t, "rich_layout_recognition", files[0].Purpose)
+				require.Equal(t, "report.pdf", files[0].Filename)
+				require.Equal(t, int64(3), files[0].Bytes)
+				require.Equal(t, body, up.bodies[0])
+			} else {
+				require.Empty(t, up.ids)
+				require.Equal(t, 400, r.Code, r.Body.String())
+				require.Equal(t, anthropic, gjson.GetBytes(r.Body.Bytes(), "type").Exists())
+				require.Contains(t, r.Body.String(), "/v1/tools/ocr")
+			}
+		}
 	}
 }

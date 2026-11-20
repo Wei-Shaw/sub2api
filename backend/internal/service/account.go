@@ -2049,10 +2049,7 @@ func (a *Account) supportsDeepseekTools() bool {
 	if supported, ok := a.Extra[deepseekToolsSupportedExtraKey].(bool); ok {
 		return supported
 	}
-	baseURL := strings.TrimSpace(a.GetCredential("base_url"))
-	if baseURL == "" {
-		return true
-	}
+	baseURL, _ := deepseekToolsBase(a, false)
 	return isDeepseekOfficialHost(baseURL)
 }
 

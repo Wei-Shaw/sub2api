@@ -360,7 +360,11 @@ func RegisterGatewayRoutes(
 			return func(c *gin.Context) {
 				if platform := getGroupPlatform(c); platform != service.PlatformDeepseek && platform != service.PlatformComposite {
 					service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
-					c.JSON(http.StatusNotFound, gin.H{"error": gin.H{"type": "not_found_error", "message": "DeepSeek tools API is not supported for this platform"}})
+					response := gin.H{"error": gin.H{"type": "not_found_error", "message": "DeepSeek tools API is not supported for this platform"}}
+					if strings.HasPrefix(c.FullPath(), "/v1/files") && service.IsDeepseekFilesAnthropicRequest(c) {
+						response["type"] = "error"
+					}
+					c.JSON(http.StatusNotFound, response)
 					return
 				}
 				handler(c)

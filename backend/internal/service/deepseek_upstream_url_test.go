@@ -1,162 +1,70 @@
+//go:build unit
+
 package service
 
 import (
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
 
-func TestBuildDeepseekToolsURL_Endpoints(t *testing.T) {
-	account := &Account{
-		Platform: PlatformDeepseek,
-		Type:     AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"base_url": "https://relay.example.com",
-		},
-	}
-	cases := []struct {
-		endpoint string
-		fileID   string
-		want     string
+func TestDeepseekToolsURLUsesProtocolOrigin(t *testing.T) {
+	for _, tc := range []struct {
+		name, protocol, legacy, chat, anthropic, wantBase, wantAnthropic string
 	}{
-		{"search", "", "https://relay.example.com/v1/tools/search"},
-		{"fetch", "", "https://relay.example.com/v1/tools/fetch"},
-		{"ocr", "", "https://relay.example.com/v1/tools/ocr"},
-		{"asr", "", "https://relay.example.com/v1/tools/asr"},
-		{"tts", "", "https://relay.example.com/v1/tools/tts"},
-		{"files_create", "", "https://relay.example.com/v1/files"},
-		{"files_list", "", "https://relay.example.com/v1/files"},
-		{"files_get", "file-abc_123", "https://relay.example.com/v1/files/file-abc_123"},
-		{"files_delete", "file-abc_123", "https://relay.example.com/v1/files/file-abc_123"},
-	}
-	for _, tc := range cases {
-		got, err := buildDeepseekToolsURL(account, tc.endpoint, tc.fileID)
-		require.NoError(t, err, "endpoint %s", tc.endpoint)
-		require.Equal(t, tc.want, got, "endpoint %s", tc.endpoint)
-	}
-}
-
-func TestBuildDeepseekToolsURL_EmptyBaseFallsBackToProfileDefault(t *testing.T) {
-	account := &Account{
-		Platform:    PlatformDeepseek,
-		Type:        AccountTypeAPIKey,
-		Credentials: map[string]any{},
-	}
-	got, err := buildDeepseekToolsURL(account, "search", "")
-	require.NoError(t, err)
-	require.Equal(t, DefaultDeepseekBaseURL+"/v1/tools/search", got)
-
-	profile := LookupProviderProfile(PlatformDeepseek)
-	require.NotNil(t, profile)
-	require.Equal(t, DefaultDeepseekBaseURL, profile.Modes[AccountModePayG].BaseURLs[APIProtocolChatCompletions])
-}
-
-func TestBuildDeepseekToolsURL_TrimsTrailingSlash(t *testing.T) {
-	account := &Account{
-		Platform: PlatformDeepseek,
-		Type:     AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"base_url": "https://relay.example.com/",
-		},
-	}
-	got, err := buildDeepseekToolsURL(account, "ocr", "")
-	require.NoError(t, err)
-	require.Equal(t, "https://relay.example.com/v1/tools/ocr", got)
-}
-
-func TestBuildDeepseekToolsURL_BaseWithV1SuffixNoDoubleV1(t *testing.T) {
-	account := &Account{
-		Platform: PlatformDeepseek,
-		Type:     AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"base_url": "https://relay.example.com/v1/",
-		},
-	}
-	got, err := buildDeepseekToolsURL(account, "search", "")
-	require.NoError(t, err)
-	require.Equal(t, "https://relay.example.com/v1/tools/search", got)
-
-	got, err = buildDeepseekToolsURL(account, "files_get", "file-1")
-	require.NoError(t, err)
-	require.Equal(t, "https://relay.example.com/v1/files/file-1", got)
-}
-
-func TestBuildDeepseekToolsURL_RejectsUnsupportedEndpoint(t *testing.T) {
-	account := &Account{Platform: PlatformDeepseek, Type: AccountTypeAPIKey}
-	_, err := buildDeepseekToolsURL(account, "unknown", "")
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "unsupported deepseek tools endpoint")
-}
-
-func TestBuildDeepseekToolsURL_RejectsInvalidFileID(t *testing.T) {
-	account := &Account{
-		Platform: PlatformDeepseek,
-		Type:     AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"base_url": "https://relay.example.com",
-		},
-	}
-	for _, bad := range []string{"", "file/../etc", "file id", "file%20id", "file/../../secret"} {
-		_, err := buildDeepseekToolsURL(account, "files_get", bad)
-		require.Error(t, err, "fileID %q", bad)
-		require.Contains(t, err.Error(), "invalid file id")
-
-		_, err = buildDeepseekToolsURL(account, "files_delete", bad)
-		require.Error(t, err, "fileID %q", bad)
+		{"default", "", "", "", "", DefaultDeepseekBaseURL, DefaultDeepseekBaseURL + "/anthropic"},
+		{"chat", APIProtocolChatCompletions, "https://relay.test/ds/v1/", "", "", "https://relay.test/ds", "https://relay.test/ds/anthropic"},
+		{"anthropic", APIProtocolAnthropic, "https://relay.test/ds/anthropic/v1", "", "", "https://relay.test/ds", "https://relay.test/ds/anthropic"},
+		{"custom anthropic root", APIProtocolAnthropic, "https://relay.test/custom", "", "", "https://relay.test/custom", "https://relay.test/custom"},
+		{"adaptive explicit", APIProtocolAdaptive, "https://stale.test", "https://chat.test/ds/v1", "https://messages.test/native", "https://chat.test/ds", "https://messages.test/native"},
+		{"adaptive chat only", APIProtocolAdaptive, "", "https://relay.test/prefix/v1/", "", "https://relay.test/prefix", "https://relay.test/prefix/anthropic"},
+		{"adaptive legacy only", APIProtocolAdaptive, "https://relay.test", "", "", "https://relay.test", "https://relay.test/anthropic"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			account := newDeepseekToolsTestAccount(tc.legacy)
+			account.Credentials["api_protocol"] = tc.protocol
+			account.Credentials["api_base_urls"] = map[string]any{APIProtocolChatCompletions: tc.chat, APIProtocolAnthropic: tc.anthropic}
+			for _, endpoint := range []string{"search", "fetch", "ocr", "asr", "tts", "files_create", "files_get", "files_delete"} {
+				path := "/v1/tools/" + endpoint
+				switch endpoint {
+				case "files_create":
+					path = "/v1/files"
+				case "files_get", "files_delete":
+					path = "/v1/files/file-abc_1"
+				}
+				svc := &OpenAIGatewayService{}
+				u, err := buildDeepseekToolsURL(account, endpoint, "file-abc_1", false, svc.validateUpstreamBaseURL)
+				require.NoError(t, err)
+				require.Equal(t, tc.wantBase+path, u.String())
+				if endpoint == "files_create" || endpoint == "files_get" || endpoint == "files_delete" {
+					u, err = buildDeepseekToolsURL(account, endpoint, "file-abc_1", true, svc.validateUpstreamBaseURL)
+					require.NoError(t, err)
+					require.Equal(t, tc.wantAnthropic+path, u.String())
+				}
+			}
+		})
 	}
 }
 
-func TestBuildDeepseekFilesAnthropicURL_UsesProtocolBase(t *testing.T) {
-	account := &Account{
-		Platform: PlatformDeepseek,
-		Type:     AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"api_protocol": "adaptive",
-			"base_url":     "https://api.deepseek.com",
-			"api_base_urls": map[string]any{
-				"anthropic":        "https://api.deepseek.com/anthropic",
-				"chat_completions": "https://api.deepseek.com",
-			},
-		},
+func TestDeepseekToolsURLValidation(t *testing.T) {
+	account := newDeepseekToolsTestAccount("https://relay.test")
+	svc := &OpenAIGatewayService{}
+	for _, id := range []string{"", "file/../etc", "file id", "file%20id", "file/other"} {
+		for _, anthropic := range []bool{false, true} {
+			_, err := buildDeepseekToolsURL(account, "files_delete", id, anthropic, svc.validateUpstreamBaseURL)
+			require.ErrorContains(t, err, "invalid file id")
+		}
 	}
-	cases := []struct {
-		endpoint string
-		fileID   string
-		want     string
-	}{
-		{"files_create", "", "https://api.deepseek.com/anthropic/v1/files"},
-		{"files_list", "", "https://api.deepseek.com/anthropic/v1/files"},
-		{"files_get", "file-abc_123", "https://api.deepseek.com/anthropic/v1/files/file-abc_123"},
-		{"files_delete", "file-abc_123", "https://api.deepseek.com/anthropic/v1/files/file-abc_123"},
+	for _, endpoint := range []string{"unknown", "files_list"} {
+		_, err := buildDeepseekToolsURL(account, endpoint, "", false, svc.validateUpstreamBaseURL)
+		require.ErrorContains(t, err, "unsupported")
 	}
-	for _, tc := range cases {
-		got, err := buildDeepseekFilesAnthropicURL(account, tc.endpoint, tc.fileID)
-		require.NoError(t, err, "endpoint %s", tc.endpoint)
-		require.Equal(t, tc.want, got, "endpoint %s", tc.endpoint)
+	svc.cfg = &config.Config{}
+	svc.cfg.Security.URLAllowlist.Enabled = true
+	svc.cfg.Security.URLAllowlist.UpstreamHosts = []string{"allowed.test"}
+	for _, anthropic := range []bool{false, true} {
+		_, err := buildDeepseekToolsURL(account, "files_create", "", anthropic, svc.validateUpstreamBaseURL)
+		require.ErrorContains(t, err, "host is not allowed")
 	}
-}
-
-func TestBuildDeepseekFilesAnthropicURL_FallsBackToBaseURL(t *testing.T) {
-	account := &Account{
-		Platform: PlatformDeepseek,
-		Type:     AccountTypeAPIKey,
-		Credentials: map[string]any{
-			"base_url": "https://relay.example.com",
-		},
-	}
-	got, err := buildDeepseekFilesAnthropicURL(account, "files_create", "")
-	require.NoError(t, err)
-	require.Equal(t, "https://relay.example.com/v1/files", got)
-}
-
-func TestBuildDeepseekFilesAnthropicURL_RejectsNonFilesEndpoint(t *testing.T) {
-	account := &Account{
-		Platform:    PlatformDeepseek,
-		Type:        AccountTypeAPIKey,
-		Credentials: map[string]any{"base_url": "https://relay.example.com"},
-	}
-	_, err := buildDeepseekFilesAnthropicURL(account, "search", "")
-	require.Error(t, err)
-	_, err = buildDeepseekFilesAnthropicURL(account, "files_get", "bad id/../x")
-	require.Error(t, err)
 }

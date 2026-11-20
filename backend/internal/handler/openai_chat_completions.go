@@ -80,6 +80,9 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Model is not supported by this OpenAI-compatible endpoint for composite groups")
 		return
 	}
+	if !h.bindDeepseekFileReferences(c, apiKey, service.APIProtocolChatCompletions, body, h.errorResponse) {
+		return
+	}
 	if cappedBody, changed, err := applyOpenAIReasoningEffortPolicyForRequest(c, apiKey, body); err != nil {
 		respondOpenAIReasoningEffortPolicyError(c, err, h.errorResponse)
 		return

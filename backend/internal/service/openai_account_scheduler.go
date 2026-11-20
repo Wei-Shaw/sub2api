@@ -494,6 +494,27 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	return selection, decision, nil
 }
 
+func (s *OpenAIGatewayService) selectPinnedOpenAIAccount(ctx context.Context, req OpenAIAccountScheduleRequest) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	decision := OpenAIAccountScheduleDecision{Layer: openAIAccountScheduleLayerSessionSticky}
+	if req.StickyAccountID <= 0 || strings.TrimSpace(req.SessionHash) == "" {
+		return nil, decision, ErrNoAvailableAccounts
+	}
+	req.PreserveStickyBinding = true
+	req.DisableStickyEscape = true
+	scheduler := &defaultOpenAIAccountScheduler{service: s}
+	selection, _, err := scheduler.selectBySessionHash(ctx, req)
+	if err != nil {
+		return nil, decision, err
+	}
+	if selection == nil || selection.Account == nil {
+		return nil, decision, ErrNoAvailableAccounts
+	}
+	decision.StickySessionHit = true
+	decision.SelectedAccountID = selection.Account.ID
+	decision.SelectedAccountType = selection.Account.Type
+	return selection, decision, nil
+}
+
 func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
@@ -2366,6 +2387,18 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	}
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	decision := OpenAIAccountScheduleDecision{}
+	if owner, _ := ctx.Value(deepseekFileAccountKey{}).(int64); owner > 0 {
+		if platform != PlatformDeepseek || s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
+			return nil, decision, ErrNoAvailableAccounts
+		}
+		return s.selectPinnedOpenAIAccount(ctx, OpenAIAccountScheduleRequest{
+			GroupID: groupID, Platform: platform, RequestedModel: requestedModel, ExcludedIDs: excludedIDs,
+			SessionHash: "deepseek-file:" + strconv.FormatInt(owner, 10), StickyAccountID: owner,
+			RequiredTransport: requiredTransport, RequiredCapability: requiredCapability, RequiredImageCapability: requiredImageCapability,
+			RequireCompact: requireCompact, RequirePrivacySet: s.openAIGroupRequiresPrivacySet(ctx, groupID),
+			UseUpstreamTokenCost: useUpstreamTokenCost,
+		})
+	}
 	preserveStickyBinding := preserveOpenAIGuardianParentBinding(ctx, sessionHash) || openAIImageSizeSpilloverPass(ctx)
 	guardianParentAccountID := int64(0)
 	if strings.TrimSpace(previousResponseID) == "" {

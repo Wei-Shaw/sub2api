@@ -50,7 +50,7 @@ func (s *AccountTestService) ProbeDeepseekToolsSupport(ctx context.Context, acco
 		// 强制覆盖优先，探测结果不可达，跳过（避免白跑一次计费调用）。
 		return
 	}
-	baseURL := strings.TrimSpace(account.GetCredential("base_url"))
+	baseURL, _ := deepseekToolsBase(account, false)
 	if baseURL == "" || isDeepseekOfficialHost(baseURL) {
 		s.persistDeepseekToolsSupport(ctx, account, true)
 		return
@@ -60,11 +60,7 @@ func (s *AccountTestService) ProbeDeepseekToolsSupport(ctx context.Context, acco
 		logger.LegacyPrintf("service.deepseek_probe", "probe_skip_no_apikey: account_id=%d", accountID)
 		return
 	}
-	if _, err := s.validateUpstreamBaseURL(baseURL); err != nil {
-		logger.LegacyPrintf("service.deepseek_probe", "probe_invalid_baseurl: account_id=%d base_url=%q err=%v", accountID, baseURL, err)
-		return
-	}
-	probeURL, err := buildDeepseekToolsURL(account, "search", "")
+	probeURL, err := buildDeepseekToolsURL(account, "search", "", false, s.validateUpstreamBaseURL)
 	if err != nil {
 		logger.LegacyPrintf("service.deepseek_probe", "probe_build_url_failed: account_id=%d err=%v", accountID, err)
 		return
@@ -73,7 +69,7 @@ func (s *AccountTestService) ProbeDeepseekToolsSupport(ctx context.Context, acco
 	probeCtx, cancel := context.WithTimeout(ctx, deepseekToolsProbeTimeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(probeCtx, http.MethodPost, probeURL, bytes.NewReader([]byte(deepseekToolsProbePayload)))
+	req, err := http.NewRequestWithContext(WithHTTPUpstreamRedirectsDisabled(probeCtx), http.MethodPost, probeURL.String(), bytes.NewReader([]byte(deepseekToolsProbePayload)))
 	if err != nil {
 		logger.LegacyPrintf("service.deepseek_probe", "probe_build_request_failed: account_id=%d err=%v", accountID, err)
 		return

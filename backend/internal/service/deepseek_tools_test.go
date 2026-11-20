@@ -1,3 +1,5 @@
+//go:build unit
+
 package service
 
 import (
@@ -15,16 +17,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// deepseekToolsHTTPUpstream 把请求真实转发到 httptest 假上游，
-// 模拟 s.httpUpstream.Do 的仓库既有构造方式。
-type deepseekToolsHTTPUpstream struct{}
+// Exercise the forwarded HTTP request without opening a network listener.
+type deepseekToolsHTTPUpstream struct{ handler http.Handler }
 
 func (u *deepseekToolsHTTPUpstream) Do(req *http.Request, _ string, _ int64, _ int) (*http.Response, error) {
-	return http.DefaultTransport.RoundTrip(req)
+	rec := httptest.NewRecorder()
+	if req.Body == nil {
+		req.Body = http.NoBody
+	}
+	u.handler.ServeHTTP(rec, req)
+	return rec.Result(), nil
 }
 
-func (u *deepseekToolsHTTPUpstream) DoWithTLS(req *http.Request, _ string, _ int64, _ int, _ *tlsfingerprint.Profile) (*http.Response, error) {
-	return http.DefaultTransport.RoundTrip(req)
+func (u *deepseekToolsHTTPUpstream) DoWithTLS(req *http.Request, proxy string, id int64, concurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return u.Do(req, proxy, id, concurrency)
 }
 
 func newDeepseekToolsTestAccount(baseURL string) *Account {
@@ -49,10 +55,19 @@ func newDeepseekToolsTestContext(method, path string, body []byte) (*gin.Context
 	return c, rec
 }
 
+func forwardDeepseekToolsTest(svc *OpenAIGatewayService, c *gin.Context, account *Account, userID int64, endpoint string, body []byte, contentType string) (*DeepseekToolsForwardResult, error) {
+	ctx := context.Background()
+	request, err := svc.PrepareDeepseekToolsRequest(ctx, c, userID, endpoint, body, contentType)
+	if err != nil {
+		return nil, err
+	}
+	return svc.ForwardDeepseekToolsRequest(request.SchedulingContext(ctx), c, account, request)
+}
+
 func TestForwardDeepseekToolsRequest_SearchPassthrough(t *testing.T) {
 	var gotAuth, gotMethod, gotPath string
 	var gotBody []byte
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotAuth = r.Header.Get("Authorization")
 		gotMethod = r.Method
 		gotPath = r.URL.Path
@@ -60,13 +75,12 @@ func TestForwardDeepseekToolsRequest_SearchPassthrough(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"result":[{"title":"doc"}]}`))
-	}))
-	t.Cleanup(server.Close)
+	})
 
 	body := []byte(`{"query":"deepseek docs"}`)
 	c, rec := newDeepseekToolsTestContext(http.MethodPost, "/v1/tools/search", body)
-	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{}}
-	result, err := svc.ForwardDeepseekToolsRequest(context.Background(), c, newDeepseekToolsTestAccount(server.URL), nil, 0, "search", body, "application/json")
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{handler: handler}}
+	result, err := forwardDeepseekToolsTest(svc, c, newDeepseekToolsTestAccount("https://relay.test"), 0, "search", body, "application/json")
 	require.NoError(t, err)
 	require.Equal(t, "Bearer sk-dstest", gotAuth)
 	require.Equal(t, http.MethodPost, gotMethod)
@@ -82,19 +96,18 @@ func TestForwardDeepseekToolsRequest_SearchPassthrough(t *testing.T) {
 func TestForwardDeepseekToolsRequest_MultipartBoundaryPreserved(t *testing.T) {
 	var gotContentType string
 	var gotBody []byte
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotContentType = r.Header.Get("Content-Type")
 		gotBody, _ = io.ReadAll(r.Body)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"pages":[{"text":"a"},{"text":"b"},{"text":"c"}],"usage":{"pages":99}}`))
-	}))
-	t.Cleanup(server.Close)
+	})
 
 	rawBody := "--dstestboundary\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.png\"\r\nContent-Type: image/png\r\n\r\nPNGDATA\r\n--dstestboundary--\r\n"
 	multipartType := "multipart/form-data; boundary=dstestboundary"
 	c, _ := newDeepseekToolsTestContext(http.MethodPost, "/v1/tools/ocr", []byte(rawBody))
-	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{}}
-	result, err := svc.ForwardDeepseekToolsRequest(context.Background(), c, newDeepseekToolsTestAccount(server.URL), nil, 0, "ocr", []byte(rawBody), multipartType)
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{handler: handler}}
+	result, err := forwardDeepseekToolsTest(svc, c, newDeepseekToolsTestAccount("https://relay.test"), 0, "ocr", []byte(rawBody), multipartType)
 	require.NoError(t, err)
 	require.Equal(t, multipartType, gotContentType, "boundary must reach upstream intact")
 	require.Equal(t, rawBody, string(gotBody))
@@ -103,57 +116,70 @@ func TestForwardDeepseekToolsRequest_MultipartBoundaryPreserved(t *testing.T) {
 	require.InDelta(t, 3, result.Usage.Count, 1e-9)
 }
 
-func TestForwardDeepseekToolsRequest_FilesGetDeleteNoBody(t *testing.T) {
-	var gotMethod, gotPath string
-	var gotBody []byte
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		gotMethod = r.Method
-		gotPath = r.URL.Path
-		gotBody, _ = io.ReadAll(r.Body)
+func TestForwardDeepseekToolsRequest_OwnedGetDelete(t *testing.T) {
+	var paths []string
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.Method+" "+r.URL.RequestURI())
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+		require.Empty(t, body)
 		w.Header().Set("Content-Type", "application/json")
+		if r.Method == http.MethodDelete {
+			if r.Header.Get("anthropic-beta") != "" {
+				_, _ = w.Write([]byte(`{"id":"file-abc_1","type":"file_deleted"}`))
+			} else {
+				_, _ = w.Write([]byte(`{"id":"file-abc_1","object":"file","deleted":true}`))
+			}
+			return
+		}
 		_, _ = w.Write([]byte(`{"id":"file-abc_1"}`))
-	}))
-	t.Cleanup(server.Close)
-
-	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{}}
-
-	c, _ := newDeepseekToolsTestContext(http.MethodGet, "/v1/files/file-abc_1", nil)
-	result, err := svc.ForwardDeepseekToolsRequest(context.Background(), c, newDeepseekToolsTestAccount(server.URL), nil, 0, "files_get/file-abc_1", nil, "")
-	require.NoError(t, err)
-	require.Equal(t, http.MethodGet, gotMethod)
-	require.Equal(t, "/v1/files/file-abc_1", gotPath)
-	require.Empty(t, gotBody)
-	require.Empty(t, result.Usage.Kind)
-	require.InDelta(t, 0, result.Usage.Count, 1e-9)
-
-	c, _ = newDeepseekToolsTestContext(http.MethodGet, "/v1/files", nil)
-	_, err = svc.ForwardDeepseekToolsRequest(context.Background(), c, newDeepseekToolsTestAccount(server.URL), nil, 0, "files_list", nil, "")
-	require.NoError(t, err)
-	require.Equal(t, http.MethodGet, gotMethod)
-	require.Equal(t, "/v1/files", gotPath)
-	require.Empty(t, gotBody)
-
-	c, _ = newDeepseekToolsTestContext(http.MethodDelete, "/v1/files/file-abc_1", nil)
-	_, err = svc.ForwardDeepseekToolsRequest(context.Background(), c, newDeepseekToolsTestAccount(server.URL), nil, 0, "files_delete/file-abc_1", nil, "")
-	require.NoError(t, err)
-	require.Equal(t, http.MethodDelete, gotMethod)
-	require.Equal(t, "/v1/files/file-abc_1", gotPath)
-	require.Empty(t, gotBody)
+	})
+	account := newDeepseekToolsTestAccount("https://relay.test")
+	cache := &testDeepseekFileCache{}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{handler: handler}, cache: cache}
+	const query = "?tag=one&tag=two&q=some%20text"
+	for _, format := range []string{"openai", "anthropic"} {
+		require.NoError(t, cache.SaveDeepseekFile(context.Background(), 1, DeepseekFile{ID: "file-abc_1", AccountID: account.ID}))
+		for _, method := range []string{http.MethodGet, http.MethodDelete} {
+			endpoint := "files_get/file-abc_1"
+			if method == http.MethodDelete {
+				endpoint = "files_delete/file-abc_1"
+			}
+			c, _ := newDeepseekToolsTestContext(method, "/v1/files/file-abc_1"+query, nil)
+			path := "/v1/files/file-abc_1" + query
+			if format == "anthropic" {
+				c.Request.Header.Set("anthropic-beta", deepseekFilesBetaHeader)
+				path = "/anthropic" + path
+			}
+			count := len(paths)
+			_, err := forwardDeepseekToolsTest(svc, c, account, 2, endpoint, nil, "")
+			require.ErrorIs(t, err, errDeepseekFileNotFound)
+			wrong := *account
+			wrong.ID++
+			_, err = forwardDeepseekToolsTest(svc, c, &wrong, 1, endpoint, nil, "")
+			require.ErrorIs(t, err, errDeepseekFileNotFound)
+			require.Len(t, paths, count)
+			result, err := forwardDeepseekToolsTest(svc, c, account, 1, endpoint, nil, "")
+			require.NoError(t, err)
+			require.Equal(t, http.StatusOK, result.StatusCode)
+			require.Equal(t, method+" "+path, paths[count])
+		}
+		require.Empty(t, cache.files[1])
+	}
 }
 
 func TestForwardDeepseekToolsRequest_TTSStreamsBinary(t *testing.T) {
 	audio := bytes.Repeat([]byte{0x01, 0x02, 0x03, 0xFF}, 512)
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "audio/wav")
 		w.Header().Set("Content-Length", strconv.Itoa(len(audio)))
 		_, _ = w.Write(audio)
-	}))
-	t.Cleanup(server.Close)
+	})
 
 	body := []byte(`{"text":"你好 world"}`)
 	c, rec := newDeepseekToolsTestContext(http.MethodPost, "/v1/tools/tts", body)
-	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{}}
-	result, err := svc.ForwardDeepseekToolsRequest(context.Background(), c, newDeepseekToolsTestAccount(server.URL), nil, 0, "tts", body, "application/json")
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{handler: handler}}
+	result, err := forwardDeepseekToolsTest(svc, c, newDeepseekToolsTestAccount("https://relay.test"), 0, "tts", body, "application/json")
 	require.NoError(t, err)
 	require.Equal(t, audio, rec.Body.Bytes(), "streamed audio bytes must match upstream")
 	require.Equal(t, http.StatusOK, rec.Code)
@@ -164,32 +190,30 @@ func TestForwardDeepseekToolsRequest_TTSStreamsBinary(t *testing.T) {
 }
 
 func TestForwardDeepseekToolsRequest_ASRDurationToSeconds(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"text":"hi","duration_ms":9500}`))
-	}))
-	t.Cleanup(server.Close)
+	})
 
 	c, _ := newDeepseekToolsTestContext(http.MethodPost, "/v1/tools/asr", []byte(`{}`))
-	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{}}
-	result, err := svc.ForwardDeepseekToolsRequest(context.Background(), c, newDeepseekToolsTestAccount(server.URL), nil, 0, "asr", []byte(`{}`), "application/json")
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{handler: handler}}
+	result, err := forwardDeepseekToolsTest(svc, c, newDeepseekToolsTestAccount("https://relay.test"), 0, "asr", []byte(`{}`), "application/json")
 	require.NoError(t, err)
 	require.Equal(t, DeepseekToolsUsageASRSeconds, result.Usage.Kind)
 	require.InDelta(t, 9.5, result.Usage.Count, 1e-9)
 }
 
 func TestForwardDeepseekToolsRequest_UpstreamErrorPassthroughZeroUsage(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"error":{"message":"bad audio"}}`))
-	}))
-	t.Cleanup(server.Close)
+	})
 
-	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{}}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{handler: handler}}
 
 	c, rec := newDeepseekToolsTestContext(http.MethodPost, "/v1/tools/asr", []byte(`{}`))
-	result, err := svc.ForwardDeepseekToolsRequest(context.Background(), c, newDeepseekToolsTestAccount(server.URL), nil, 0, "asr", []byte(`{}`), "application/json")
+	result, err := forwardDeepseekToolsTest(svc, c, newDeepseekToolsTestAccount("https://relay.test"), 0, "asr", []byte(`{}`), "application/json")
 	require.NoError(t, err, "error body is passed through, not turned into a transport error")
 	require.Equal(t, http.StatusBadRequest, result.StatusCode)
 	require.Equal(t, `{"error":{"message":"bad audio"}}`, rec.Body.String())
@@ -201,15 +225,15 @@ func TestForwardDeepseekToolsRequest_UpstreamErrorPassthroughZeroUsage(t *testin
 func TestForwardDeepseekToolsRequest_RejectsBadInput(t *testing.T) {
 	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{}}
 
-	_, err := svc.ForwardDeepseekToolsRequest(context.Background(), nil, &Account{Platform: PlatformOpenAI}, nil, 0, "search", nil, "")
+	_, err := forwardDeepseekToolsTest(svc, nil, &Account{Platform: PlatformOpenAI}, 0, "search", nil, "")
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not supported")
 
-	_, err = svc.ForwardDeepseekToolsRequest(context.Background(), nil, &Account{Platform: PlatformDeepseek}, nil, 0, "unknown", nil, "")
+	_, err = forwardDeepseekToolsTest(svc, nil, &Account{Platform: PlatformDeepseek}, 0, "unknown", nil, "")
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "unsupported")
+	require.Contains(t, err.Error(), "Unsupported")
 
-	_, err = svc.ForwardDeepseekToolsRequest(context.Background(), nil, &Account{Platform: PlatformDeepseek}, nil, 0, "files_get/../etc", nil, "")
+	_, err = forwardDeepseekToolsTest(svc, nil, &Account{Platform: PlatformDeepseek}, 0, "files_get/../etc", nil, "")
 	require.Error(t, err)
 }
 
@@ -248,7 +272,7 @@ func newDeepseekToolsAnthropicFilesAccount(baseURL string) *Account {
 func TestForwardDeepseekToolsRequest_AnthropicFilesPassthrough(t *testing.T) {
 	var gotPath, gotBeta, gotVersion, gotAuth string
 	var gotBody []byte
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		gotBeta = r.Header.Get("anthropic-beta")
 		gotVersion = r.Header.Get("anthropic-version")
@@ -256,19 +280,18 @@ func TestForwardDeepseekToolsRequest_AnthropicFilesPassthrough(t *testing.T) {
 		gotBody, _ = io.ReadAll(r.Body)
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"id":"file-api-1","type":"file","size_bytes":70,"created_at":"2026-11-17T04:20:28.705+00:00","filename":"a.png","mime_type":"image/png"}`))
-	}))
-	t.Cleanup(server.Close)
+	})
 
 	body := []byte("--b\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.png\"\r\nContent-Type: image/png\r\n\r\nPNG\r\n--b--\r\n")
 	c, rec := newDeepseekToolsTestContext(http.MethodPost, "/v1/files", body)
 	c.Request.Header.Set("anthropic-beta", "files-api-2025-04-14")
 	c.Request.Header.Set("anthropic-version", "2023-06-01")
-	cache := &fakeAnthropicFileOwnerCache{}
+	cache := &testDeepseekFileCache{}
 	writtenBytesAtBind := -1
-	cache.onSet = func() { writtenBytesAtBind = rec.Body.Len() }
-	account := newDeepseekToolsAnthropicFilesAccount(server.URL + "/anthropic")
-	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{}, cache: cache}
-	result, err := svc.ForwardDeepseekToolsRequest(context.Background(), c, account, nil, 7, "files_create", body, "multipart/form-data; boundary=b")
+	cache.onSave = func() { writtenBytesAtBind = rec.Body.Len() }
+	account := newDeepseekToolsAnthropicFilesAccount("https://relay.test/anthropic")
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{handler: handler}, cache: cache}
+	result, err := forwardDeepseekToolsTest(svc, c, account, 7, "files_create", body, "multipart/form-data; boundary=b")
 	require.NoError(t, err)
 	require.Equal(t, "/anthropic/v1/files", gotPath, "anthropic-beta requests must go to the Anthropic compatible Files endpoint")
 	require.Equal(t, "files-api-2025-04-14", gotBeta)
@@ -278,39 +301,33 @@ func TestForwardDeepseekToolsRequest_AnthropicFilesPassthrough(t *testing.T) {
 	require.Equal(t, `{"id":"file-api-1","type":"file","size_bytes":70,"created_at":"2026-11-17T04:20:28.705+00:00","filename":"a.png","mime_type":"image/png"}`, rec.Body.String(), "Anthropic shaped response must pass through unchanged")
 	require.Empty(t, result.Usage.Kind, "files endpoints are not billed")
 
-	// 归属必须在上传响应 flush 之前写入，否则紧随其后的 /v1/messages 可能查不到。
-	require.Equal(t, 0, writtenBytesAtBind, "owner must be recorded before the upload response is written")
-	require.Equal(t, fakeAnthropicFileOwnerEntry{ownerUserID: 7, accountID: account.ID, platform: PlatformDeepseek}, cache.owners["file-api-1"])
-	require.Equal(t, anthropicFileOwnerTTL, cache.ttls["file-api-1"])
-
-	// 归属按用户生效：上传用户解析命中；其他用户引用同一 file_id 被判为他人的文件。
-	fileBody := []byte(`{"messages":[{"role":"user","content":[{"type":"document","source":{"type":"file","file_id":"file-api-1"}}]}]}`)
-	ownerID, platform, decision, resolveErr := svc.ResolveAnthropicFileOwner(context.Background(), 7, fileBody)
-	require.NoError(t, resolveErr)
-	require.Equal(t, AnthropicFileOwnerPinned, decision)
-	require.Equal(t, account.ID, ownerID)
-	require.Equal(t, PlatformDeepseek, platform)
-	_, _, decision, resolveErr = svc.ResolveAnthropicFileOwner(context.Background(), 8, fileBody)
-	require.NoError(t, resolveErr)
-	require.Equal(t, AnthropicFileOwnerForeign, decision)
+	require.Zero(t, writtenBytesAtBind)
+	file := cache.files[7]["file-api-1"]
+	require.Equal(t, account.ID, file.AccountID)
+	require.Equal(t, "user_data", file.Purpose)
+	require.Equal(t, "image/png", file.MIMEType)
+	require.Equal(t, "anthropic", file.Format)
+	require.Equal(t, int64(70), file.Bytes)
+	require.Zero(t, file.ExpiresAt)
 }
 
 func TestForwardDeepseekToolsRequest_FilesWithoutBetaStaysOpenAI(t *testing.T) {
 	var gotPath string
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = w.Write([]byte(`{"id":"file-api-2","object":"file","bytes":70}`))
-	}))
-	t.Cleanup(server.Close)
+		_, _ = w.Write([]byte(`{"id":"file-api-2","object":"file","bytes":70,"created_at":1700000000,"expires_at":1700086400,"purpose":"user_data"}`))
+	})
 
 	body := []byte("--b\r\nContent-Disposition: form-data; name=\"file\"; filename=\"a.png\"\r\n\r\nPNG\r\n--b--\r\n")
 	c, _ := newDeepseekToolsTestContext(http.MethodPost, "/v1/files", body)
-	cache := &fakeAnthropicFileOwnerCache{}
-	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{}, cache: cache}
-	_, err := svc.ForwardDeepseekToolsRequest(context.Background(), c, newDeepseekToolsTestAccount(server.URL), nil, 7, "files_create", body, "multipart/form-data; boundary=b")
+	cache := &testDeepseekFileCache{}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: &deepseekToolsHTTPUpstream{handler: handler}, cache: cache}
+	_, err := forwardDeepseekToolsTest(svc, c, newDeepseekToolsTestAccount("https://relay.test"), 7, "files_create", body, "multipart/form-data; boundary=b")
 	require.NoError(t, err)
 	require.Equal(t, "/v1/files", gotPath, "requests without the Files beta header keep the OpenAI compatible path")
-	require.Zero(t, cache.setCall, "OpenAI shaped file responses must not create Anthropic owner bindings")
-	require.Empty(t, cache.owners)
+	file := cache.files[7]["file-api-2"]
+	require.Equal(t, int64(901), file.AccountID)
+	require.Equal(t, int64(1700086400), file.ExpiresAt)
+	require.Equal(t, "openai", file.Format)
 }

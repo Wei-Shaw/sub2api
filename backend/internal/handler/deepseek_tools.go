@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -15,6 +16,20 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.uber.org/zap"
 )
+
+func (h *OpenAIGatewayHandler) bindDeepseekFileReferences(c *gin.Context, apiKey *service.APIKey, protocol string, body []byte, write func(*gin.Context, int, string, string)) bool {
+	ctx := c.Request.Context()
+	next, err := h.gatewayService.WithDeepseekFileReferences(ctx, openAICompatibleRequestPlatform(ctx, apiKey), protocol, apiKey.UserID, body)
+	if err != nil {
+		e := infraerrors.FromError(err)
+		write(c, int(e.Code), e.Reason, e.Message)
+		return false
+	}
+	if next != ctx {
+		c.Request = c.Request.WithContext(next)
+	}
+	return true
+}
 
 // deepseekToolsAudioMode 把 service 层提取的计费量种类映射到
 // BillingService.CalculateAudioCost 的 mode。
@@ -132,10 +147,15 @@ func extractDeepseekToolsPromptText(body []byte) string {
 // 计费资格/在途预留、选号 failover 与落账。
 func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	anthropicFiles := strings.HasPrefix(endpoint, "files_") && service.IsDeepseekFilesAnthropicRequest(c)
+	write := h.errorResponse
+	if anthropicFiles {
+		write = h.anthropicErrorResponse
+	}
 	// composite 组放行：工具请求不带 model，无法经 compositeTarget 中间件解析，
 	// 交给调度器按 platformOverride=deepseek 选号（对齐 Grok video 先例）。
 	if !ok || apiKey.Group == nil || (apiKey.Group.Platform != service.PlatformDeepseek && apiKey.Group.Platform != service.PlatformComposite) {
-		h.errorResponse(c, http.StatusNotFound, "not_found_error", "DeepSeek tools API is not supported for this platform")
+		write(c, http.StatusNotFound, "not_found_error", "DeepSeek tools API is not supported for this platform")
 		return
 	}
 	if !h.ensureResponsesDependencies(c, nil) {
@@ -147,7 +167,18 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
 		}
-		h.errorResponse(c, status, code, message)
+		write(c, status, code, message)
+		return
+	}
+
+	if endpoint == "files_list" {
+		page, err := h.gatewayService.ListDeepseekFiles(c.Request.Context(), apiKey.UserID, c.Request.URL.RawQuery, anthropicFiles)
+		if err != nil {
+			e := infraerrors.FromError(err)
+			write(c, int(e.Code), e.Reason, e.Message)
+			return
+		}
+		c.JSON(http.StatusOK, page)
 		return
 	}
 
@@ -156,7 +187,7 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 	body, err := readGrokVoiceGatewayBody(c)
 	if err != nil {
 		if errors.Is(err, errGrokVoiceBodyRequired) {
-			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			write(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 			return
 		}
 		bodyLog := requestLogger(c, "handler.openai_gateway.deepseek_tools", zap.String("endpoint", endpoint))
@@ -164,7 +195,13 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 			return
 		}
 		status, message := requestBodyReadFailure(bodyLog, c.Request, err)
-		h.errorResponse(c, status, "invalid_request_error", message)
+		write(c, status, "invalid_request_error", message)
+		return
+	}
+	request, err := h.gatewayService.PrepareDeepseekToolsRequest(c.Request.Context(), c, apiKey.UserID, endpoint, body, c.GetHeader("Content-Type"))
+	if err != nil {
+		e := infraerrors.FromError(err)
+		write(c, int(e.Code), e.Reason, e.Message)
 		return
 	}
 	// 文本类端点（search/fetch/tts）在调用上游前做内容审计；ocr/asr 处理的是
@@ -192,23 +229,19 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 		if retryAfter > 0 {
 			c.Header("Retry-After", strconv.Itoa(retryAfter))
 		}
-		h.errorResponse(c, status, code, message)
+		write(c, status, code, message)
 		return
 	}
 	defer inflightDone()
 
-	contentType := c.GetHeader("Content-Type")
-	if strings.TrimSpace(contentType) == "" {
-		contentType = "application/json"
-	}
-
+	ctx := request.SchedulingContext(c.Request.Context())
 	reqLog := requestLogger(c, "handler.openai_gateway.deepseek_tools", zap.String("endpoint", endpoint))
 	failed := map[int64]struct{}{}
 	var last *service.UpstreamFailoverError
 	for attempts := 0; attempts < 4; attempts++ {
 		// 能力位复用 ChatCompletions（工具端点与对话同账号池），platform 强制 Deepseek。
 		selection, _, selectErr := h.gatewayService.SelectAccountWithSchedulerForCapability(
-			c.Request.Context(),
+			ctx,
 			apiKey.GroupID,
 			"",
 			"",
@@ -225,7 +258,7 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 			if last != nil {
 				h.handleFailoverExhausted(c, last, false)
 			} else {
-				h.errorResponse(c, http.StatusServiceUnavailable, "api_error", "No available DeepSeek accounts")
+				write(c, http.StatusServiceUnavailable, "api_error", "No available DeepSeek accounts")
 			}
 			return
 		}
@@ -257,7 +290,7 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 		}
 		result, forwardErr := func() (*service.DeepseekToolsForwardResult, error) {
 			defer release()
-			return h.gatewayService.ForwardDeepseekToolsRequest(c.Request.Context(), c, account, apiKey.GroupID, apiKey.UserID, endpoint, body, contentType)
+			return h.gatewayService.ForwardDeepseekToolsRequest(ctx, c, account, request)
 		}()
 		if forwardErr == nil {
 			h.recordDeepseekToolsUsage(c, apiKey, account, subscription, endpoint, body, result)
@@ -270,6 +303,14 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 			failed[account.ID] = struct{}{}
 			last = failoverErr
 			continue
+		}
+		if !c.Writer.Written() {
+			e := infraerrors.FromError(forwardErr)
+			code := e.Reason
+			if code == "" {
+				code = "api_error"
+			}
+			write(c, int(e.Code), code, e.Message)
 		}
 		return
 	}

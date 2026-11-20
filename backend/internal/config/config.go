@@ -1049,6 +1049,8 @@ const (
 
 // GatewayConfig API网关相关配置
 type GatewayConfig struct {
+	// DeepSeek charges per page at upload time and omits the page count. These uploads are unbilled by the gateway.
+	AllowUnbilledDeepseekDocumentParsing bool `mapstructure:"allow_unbilled_deepseek_document_parsing"`
 	// MinOutputTokens is the minimum max_output_tokens used when
 	// converting Chat Completions or Anthropic requests to Responses.
 	MinOutputTokens int `mapstructure:"min_output_tokens"`
@@ -2522,6 +2524,7 @@ func setDefaults() {
 	viper.SetDefault("gateway.openai_response_header_timeout", 0)
 	viper.SetDefault("gateway.disable_openai_transport_error_cooldown", false)
 	viper.SetDefault("gateway.grok_response_header_timeout", 120)
+	viper.SetDefault("gateway.allow_unbilled_deepseek_document_parsing", false)
 	viper.SetDefault("gateway.openai_first_output_timeout_seconds", 0)
 	viper.SetDefault("gateway.openai_high_effort_first_output_timeout_seconds", 0)
 	viper.SetDefault("gateway.log_upstream_error_body", true)

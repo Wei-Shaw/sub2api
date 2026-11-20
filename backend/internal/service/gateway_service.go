@@ -562,17 +562,6 @@ type GatewayCache interface {
 	// ErrReasoningContentNotFound，使 service 层无需依赖具体缓存实现即可
 	// 区分"未缓存"与真实读取失败。
 	GetReasoningContent(ctx context.Context, itemID string) (string, error)
-
-	// Anthropic file owner（/v1/files 上传账号归属）。
-	// SetAnthropicFileOwner 记录 Anthropic 形状 file_id 由哪个用户、哪个账号上传，
-	// 供同一用户的 /v1/messages 带 file 源时硬钉回同一上游（file_id 只在该上游
-	// 有效）。ownerUserID 一并保存，使解析方能区分"自己的文件"与"他人的文件"；
-	// ownerUserID<=0 表示无法确定归属用户，直接返回 nil 不写。
-	SetAnthropicFileOwner(ctx context.Context, fileID string, ownerUserID int64, accountID int64, platform string, ttl time.Duration) error
-	// GetAnthropicFileOwner 返回 file_id 的归属用户、归属账号与平台；未命中、
-	// 旧格式（值中无归属用户）或归属字段非法时返回 ok=false 且 err=nil，使
-	// service 层可区分"无归属"与真实读取失败。
-	GetAnthropicFileOwner(ctx context.Context, fileID string) (ownerUserID int64, accountID int64, platform string, ok bool, err error)
 }
 
 // GatewayStickySessionCompareCache is an optional GatewayCache capability. The

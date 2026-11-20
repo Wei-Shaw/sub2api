@@ -229,13 +229,6 @@ func (c *comboCacheAndStore) GetReasoningContent(_ context.Context, _ string) (s
 	return "", ErrReasoningContentNotFound
 }
 
-func (c *comboCacheAndStore) SetAnthropicFileOwner(_ context.Context, _ string, _ int64, _ int64, _ string, _ time.Duration) error {
-	return nil
-}
-func (c *comboCacheAndStore) GetAnthropicFileOwner(_ context.Context, _ string) (int64, int64, string, bool, error) {
-	return 0, 0, "", false, nil
-}
-
 func (c *comboCacheAndStore) SetCyberSessionBlocked(ctx context.Context, block CyberSessionBlock, ttl time.Duration) error {
 	return c.store.SetCyberSessionBlocked(ctx, block, ttl)
 }
