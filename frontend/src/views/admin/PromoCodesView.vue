@@ -17,7 +17,7 @@
             v-model="filters.status"
             :options="filterStatusOptions"
             class="w-36"
-            @change="loadCodes"
+            @change="handleStatusChange"
           />
 
           <!-- Right: Action buttons -->
@@ -570,6 +570,11 @@ const handlePageChange = (page: number) => {
 
 const handlePageSizeChange = (pageSize: number) => {
   pagination.page_size = pageSize
+  pagination.page = 1
+  loadCodes()
+}
+
+const handleStatusChange = () => {
   pagination.page = 1
   loadCodes()
 }
