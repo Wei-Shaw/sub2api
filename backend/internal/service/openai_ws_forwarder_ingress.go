@@ -581,6 +581,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		grokCacheSeedPayload := firstPayload.payloadRaw
 		var bridgeReplayInput []json.RawMessage
 		bridgeReplayInputExists := false
+		bridgeLastResponseID := ""
 		var bridgeAccountFailoverInput []json.RawMessage
 		bridgeAccountFailoverInputExists := false
 		for turn := 1; ; turn++ {
@@ -588,6 +589,15 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				if err := hooks.BeforeRequest(turn, currentBridgePayload.rawForHash, currentBridgePayload.originalModel); err != nil {
 					return err
 				}
+			}
+			// HTTP cannot resolve an opaque parent; only this connection's replay can.
+			if parent := currentBridgePayload.previousResponseID; parent != "" &&
+				(parent != bridgeLastResponseID || !bridgeReplayInputExists || len(bridgeReplayInput) == 0) {
+				return NewOpenAIWSClientCloseError(
+					coderws.StatusPolicyViolation,
+					"previous_response_id cannot be resolved on this connection; resend full input without previous_response_id",
+					nil,
+				)
 			}
 			if hooks != nil && hooks.BeforeTurn != nil {
 				if err := hooks.BeforeTurn(turn); err != nil {
@@ -742,6 +752,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				turnState = bridgeTurnState
 			}
 			responseID := strings.TrimSpace(result.RequestID)
+			bridgeLastResponseID = ""
+			if result.UpstreamTerminalEvent == "response.completed" || result.UpstreamTerminalEvent == "response.done" {
+				bridgeLastResponseID = responseID
+			}
 			if responseID != "" && stateStore != nil {
 				ttl := s.openAIWSResponseStickyTTL()
 				logOpenAIWSBindResponseAccountWarn(groupID, account.ID, responseID, stateStore.BindResponseAccount(ctx, groupID, responseID, account.ID, ttl))
