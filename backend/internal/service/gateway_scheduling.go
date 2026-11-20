@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	mathrand "math/rand"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -126,6 +127,19 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			"group_id", derefGroupID(groupID),
 			"model", requestedModel)
 		return nil, fmt.Errorf("%w supporting model: %s (channel pricing restriction)", ErrNoAvailableAccounts, requestedModel)
+	}
+
+	// 用户亲和（可选）：在粘性会话查询之前解析用户维度的绑定。开启后同一
+	// 池用户的所有请求收敛到同一上游账号，跨会话复用该账号的 prompt cache。
+	// User affinity (opt-in): resolve the user-scoped binding BEFORE the
+	// sticky-session lookup so all requests from the same pool user converge on
+	// one upstream account and reuse its prompt cache across sessions.
+	var affinityAccountID int64
+	if affinityKey := userAffinityCacheKey(cfg.UserAffinityEnabled, metadataUserID, sub2apiUserID); affinityKey != "" && s.cache != nil {
+		ctx = context.WithValue(ctx, userAffinityContextKey, userAffinityContext{key: affinityKey, groupID: derefGroupID(groupID)})
+		if accountID, err := s.cache.GetSessionAccountID(ctx, derefGroupID(groupID), affinityKey); err == nil && accountID > 0 {
+			affinityAccountID = accountID
+		}
 	}
 
 	var stickyAccountID int64
@@ -517,6 +531,57 @@ func (s *GatewayService) SelectAccountWithLoadAwareness(ctx context.Context, gro
 			}
 			// 路由列表中的账号都不可用（负载率 >= 100），继续到 Layer 2 回退
 			logger.LegacyPrintf("service.gateway", "[ModelRouting] All routed accounts unavailable for model=%s, falling back to normal selection", requestedModel)
+		}
+	}
+
+	// ============ Layer 1.4: 用户亲和（可选，优先于粘性会话） ============
+	// User affinity (opt-in): prefer the account already bound to this pool
+	// user so requests across the user's sessions reuse the same upstream
+	// prompt cache. Model routing (Layer 1) keeps precedence. On hit the
+	// per-session sticky binding is rebound to the affinity account so both
+	// bindings converge; if the affinity account is not schedulable, fall
+	// through to the normal layers and let the new selection rebind the key.
+	if affinityAccountID > 0 && !isExcluded(affinityAccountID) && s.cache != nil {
+		affinity, _ := userAffinityFromContext(ctx)
+		account, ok := accountByID[affinityAccountID]
+		if !ok {
+			// Bound account left the schedulable set (disabled/removed):
+			// drop the stale binding instead of re-checking it every request.
+			_ = s.cache.DeleteSessionAccountID(ctx, affinity.groupID, affinity.key)
+			slog.Debug("user_affinity.miss",
+				"account_id", affinityAccountID,
+				"reason", "account_not_schedulable",
+			)
+		} else if s.isAccountSchedulableForSelection(account) &&
+			s.isGatewayAccountProfitEligible(ctx, account) &&
+			s.isAccountAllowedForPlatform(account, platform, useMixed) &&
+			(requestedModel == "" || s.isModelSupportedByAccountWithContext(ctx, account, requestedModel)) &&
+			!isChannelRestricted(account) &&
+			s.isAccountSchedulableForModelSelection(ctx, account, requestedModel) &&
+			s.isAccountSchedulableForQuota(account) &&
+			s.isAccountSchedulableForWindowCost(ctx, account, true) &&
+			s.isAccountSchedulableForRPM(ctx, account, true) {
+			result, err := s.tryAcquireAccountSlot(ctx, affinityAccountID, account.Concurrency)
+			if err == nil && result.Acquired {
+				if !s.checkAndRegisterSession(ctx, account, sessionHash) {
+					result.ReleaseFunc() // 释放槽位，继续到后续调度层
+				} else {
+					_ = s.cache.RefreshSessionTTL(ctx, affinity.groupID, affinity.key, stickySessionTTL)
+					if sessionHash != "" {
+						_ = s.bindGatewayStickySessionDuringSelection(ctx, groupID, sessionHash, affinityAccountID)
+					}
+					slog.Debug("user_affinity.hit",
+						"account_id", affinityAccountID,
+						"session", shortSessionHash(sessionHash),
+					)
+					return s.newSelectionResult(ctx, account, true, result.ReleaseFunc, nil)
+				}
+			}
+		} else {
+			slog.Debug("user_affinity.miss",
+				"account_id", affinityAccountID,
+				"reason", "gate_check_failed",
+			)
 		}
 	}
 
@@ -1587,6 +1652,66 @@ func (s *GatewayService) hydrateSelectedAccount(ctx context.Context, account *Ac
 	return hydrated, nil
 }
 
+// userAffinityKeyPrefix namespaces user-affinity bindings stored through the
+// sticky-session cache machinery (Redis key: sticky_session:{groupID}:{key}).
+// Real session hashes are UUIDs or hex content digests, so the prefix cannot
+// collide with them.
+const userAffinityKeyPrefix = "uaff:"
+
+// userAffinityCacheKey resolves the per-user scheduling key for optional
+// user→account affinity. The authenticated sub2api user ID wins; otherwise
+// the DeviceID parsed from metadata.user_id identifies the client. Returns ""
+// when affinity is disabled or no stable user identity is available.
+func userAffinityCacheKey(enabled bool, metadataUserID string, sub2apiUserID int64) string {
+	if !enabled {
+		return ""
+	}
+	if sub2apiUserID > 0 {
+		return userAffinityKeyPrefix + "user:" + strconv.FormatInt(sub2apiUserID, 10)
+	}
+	if uid := ParseMetadataUserID(metadataUserID); uid != nil && uid.DeviceID != "" {
+		return userAffinityKeyPrefix + "device:" + uid.DeviceID
+	}
+	return ""
+}
+
+// userAffinityContext carries the resolved affinity key plus the resolved
+// group ID, so every acquired selection in this request rebinds the key.
+type userAffinityContext struct {
+	key     string
+	groupID int64
+}
+
+type userAffinityContextKeyType struct{}
+
+var userAffinityContextKey = userAffinityContextKeyType{}
+
+func userAffinityFromContext(ctx context.Context) (userAffinityContext, bool) {
+	affinity, ok := ctx.Value(userAffinityContextKey).(userAffinityContext)
+	return affinity, ok && affinity.key != ""
+}
+
+// bindUserAffinityAfterSelection records the finally selected account under
+// the caller's user-affinity key (present only when affinity is enabled), so
+// subsequent requests from the same pool user prefer the same upstream
+// account. Profit-gated requests skip the eager bind, mirroring
+// bindGatewayStickySessionDuringSelection.
+func (s *GatewayService) bindUserAffinityAfterSelection(ctx context.Context, accountID int64) {
+	affinity, ok := userAffinityFromContext(ctx)
+	if !ok || s.cache == nil || accountID <= 0 {
+		return
+	}
+	if gatewayProfitControlGateActive(ctx) {
+		return
+	}
+	if err := s.cache.SetSessionAccountID(ctx, affinity.groupID, affinity.key, accountID, stickySessionTTL); err != nil {
+		slog.Debug("user_affinity.bind_failed",
+			"key", affinity.key,
+			"account_id", accountID,
+			"error", err)
+	}
+}
+
 func (s *GatewayService) newSelectionResult(ctx context.Context, account *Account, acquired bool, release func(), waitPlan *AccountWaitPlan) (*AccountSelectionResult, error) {
 	hydrated, err := s.hydrateSelectedAccount(ctx, account)
 	if err != nil {
@@ -1596,6 +1721,9 @@ func (s *GatewayService) newSelectionResult(ctx context.Context, account *Accoun
 			release()
 		}
 		return nil, err
+	}
+	if acquired {
+		s.bindUserAffinityAfterSelection(ctx, hydrated.ID)
 	}
 	return attachSelectionProfitGate(ctx, &AccountSelectionResult{
 		Account:     hydrated,
