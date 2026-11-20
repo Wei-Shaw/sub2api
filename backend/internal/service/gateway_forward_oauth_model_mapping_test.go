@@ -1,0 +1,233 @@
+//go:build unit
+
+package service
+
+import (
+	"context"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
+)
+
+func TestGatewayService_Forward_AnthropicSetupTokenAppliesAccountModelMapping(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, tc := range []struct {
+		requested string
+		upstream  string
+	}{
+		{requested: "claude-opus-4-6", upstream: "claude-opus-4-7"},
+		{requested: "claude-sonnet-4-6", upstream: "claude-sonnet-4-6"},
+	} {
+		t.Run(tc.requested, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+
+			body := []byte(`{"model":"` + tc.requested + `","stream":false,"messages":[{"role":"user","content":[{"type":"text","text":"hello"}]}]}`)
+			parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), PlatformAnthropic)
+			require.NoError(t, err)
+
+			upstream := &anthropicHTTPUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"id":"msg_1","type":"message","role":"assistant","model":"` + tc.upstream + `","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":1,"output_tokens":1}}`)),
+			}}
+			svc := newForwardPartialUsageServiceForTest(upstream)
+			account := newAnthropicOAuthAccountForPartialUsageTest()
+			account.Type = AccountTypeSetupToken
+			account.Credentials["model_mapping"] = map[string]any{
+				"claude-opus-4-6":   "claude-opus-4-7",
+				"claude-sonnet-4-6": "claude-sonnet-4-6",
+			}
+
+			_, err = svc.Forward(context.Background(), c, account, parsed)
+			require.NoError(t, err)
+			require.Equal(t, tc.upstream, gjson.GetBytes(upstream.lastBody, "model").String())
+		})
+	}
+}
+
+func TestNativeClaude55ValidationUsesOAuthMappedModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, accountType := range []string{AccountTypeOAuth, AccountTypeSetupToken} {
+		for _, endpoint := range []string{"/v1/messages", "/v1/messages/count_tokens"} {
+			for _, mapping := range []struct {
+				name      string
+				requested string
+				target    string
+				reject    bool
+			}{
+				{"to_opus55", "claude-opus-4-8", "claude-opus-5-5", true},
+				{"short_id_to_opus55", "claude-opus-4-5", "claude-opus-5-5", true},
+				{"away_from_opus55", "claude-opus-5-5", "claude-opus-4-8", false},
+			} {
+				for _, param := range []struct {
+					name string
+					json string
+				}{
+					{"enabled_thinking", `"thinking":{"type":"enabled","budget_tokens":1024}`},
+					{"disabled_thinking", `"thinking":{"type":"disabled"}`},
+					{"forced_any", `"tool_choice":{"type":"any"}`},
+					{"forced_tool", `"tool_choice":{"type":"tool","name":"lookup"}`},
+				} {
+					t.Run(accountType+endpoint+"/"+mapping.name+"/"+param.name, func(t *testing.T) {
+						rec := httptest.NewRecorder()
+						c, _ := gin.CreateTestContext(rec)
+						c.Request = httptest.NewRequest(http.MethodPost, endpoint, nil)
+						body := []byte(`{"model":"` + mapping.requested + `","max_tokens":2048,"messages":[{"role":"user","content":"hello"}],"tools":[{"name":"lookup","description":"Look up a value","input_schema":{"type":"object","properties":{}}}],` + param.json + `}`)
+						parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), PlatformAnthropic)
+						require.NoError(t, err)
+
+						response := `{"id":"msg_1","type":"message","role":"assistant","model":"` + mapping.target + `","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":1,"output_tokens":1}}`
+						if endpoint == "/v1/messages/count_tokens" {
+							response = `{"input_tokens":1}`
+						}
+						upstream := &anthropicHTTPUpstreamRecorder{resp: &http.Response{
+							StatusCode: http.StatusOK,
+							Header:     http.Header{"Content-Type": []string{"application/json"}},
+							Body:       io.NopCloser(strings.NewReader(response)),
+						}}
+						svc := newForwardPartialUsageServiceForTest(upstream)
+						account := newAnthropicOAuthAccountForPartialUsageTest()
+						account.Type = accountType
+						account.Credentials["model_mapping"] = map[string]any{mapping.requested: mapping.target}
+
+						if endpoint == "/v1/messages/count_tokens" {
+							err = svc.ForwardCountTokens(context.Background(), c, account, parsed)
+						} else {
+							_, err = svc.Forward(context.Background(), c, account, parsed)
+						}
+						if mapping.reject {
+							require.Error(t, err)
+							require.Equal(t, http.StatusBadRequest, rec.Code)
+							require.Contains(t, rec.Body.String(), "invalid_request_error")
+							require.Nil(t, upstream.lastReq, "reject unsupported parameters before sending upstream")
+							return
+						}
+						require.NoError(t, err)
+						require.Equal(t, http.StatusOK, rec.Code)
+						require.NotNil(t, upstream.lastReq, "parameters accepted by the mapped target must be forwarded")
+						require.Equal(t, claude.NormalizeModelID(mapping.target), gjson.GetBytes(upstream.lastBody, "model").String())
+						for _, path := range []string{"thinking.type", "tool_choice.type"} {
+							if expected := gjson.GetBytes(body, path); expected.Exists() {
+								require.Equal(t, expected.String(), gjson.GetBytes(upstream.lastBody, path).String(), "preserve %s for the mapped target", path)
+							}
+						}
+					})
+				}
+			}
+		}
+	}
+}
+
+func TestNativeOAuthMimicryUsesResolvedModelOnce(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, accountType := range []string{AccountTypeOAuth, AccountTypeSetupToken} {
+		for _, endpoint := range []string{"/v1/messages", "/v1/messages/count_tokens"} {
+			for _, tc := range []struct {
+				name        string
+				requested   string
+				mapping     map[string]any
+				target      string
+				temperature bool
+			}{
+				{
+					name:      "short_id_to_opus55",
+					requested: "claude-opus-4-5",
+					mapping:   map[string]any{"claude-opus-4-5": "claude-opus-5-5"},
+					target:    "claude-opus-5-5",
+				},
+				{
+					name:      "no_chained_mapping",
+					requested: "public-opus",
+					mapping:   map[string]any{"public-opus": "claude-opus-5-5", "claude-opus-5-5": "claude-opus-4-8"},
+					target:    "claude-opus-5-5",
+				},
+				{
+					name:      "identity_mapping",
+					requested: "claude-opus-5-5",
+					mapping:   map[string]any{"claude-opus-5-5": "claude-opus-5-5"},
+					target:    "claude-opus-5-5",
+				},
+				{
+					name:      "wildcard_mapping",
+					requested: "public-opus-5",
+					mapping:   map[string]any{"public-opus-*": "claude-opus-5-5"},
+					target:    "claude-opus-5-5",
+				},
+				{
+					name:        "unmapped_short_id",
+					requested:   "claude-opus-4-5",
+					target:      "claude-opus-4-5-20251101",
+					temperature: true,
+				},
+				{
+					name:        "normalized_id_does_not_remap",
+					requested:   "claude-opus-4-5",
+					mapping:     map[string]any{"claude-opus-4-5-20251101": "claude-opus-5-5"},
+					target:      "claude-opus-4-5-20251101",
+					temperature: true,
+				},
+				{
+					name:        "away_from_opus55",
+					requested:   "claude-opus-5-5",
+					mapping:     map[string]any{"claude-opus-5-5": "claude-opus-4-8"},
+					target:      "claude-opus-4-8",
+					temperature: true,
+				},
+			} {
+				t.Run(accountType+endpoint+"/"+tc.name, func(t *testing.T) {
+					rec := httptest.NewRecorder()
+					c, _ := gin.CreateTestContext(rec)
+					c.Request = httptest.NewRequest(http.MethodPost, endpoint, nil)
+					body := []byte(`{"model":"` + tc.requested + `","messages":[{"role":"user","content":"hello"}]}`)
+					parsed, err := ParseGatewayRequest(NewRequestBodyRef(body), PlatformAnthropic)
+					require.NoError(t, err)
+					response := `{"id":"msg_1","type":"message","role":"assistant","model":"` + tc.target + `","content":[{"type":"text","text":"hi"}],"usage":{"input_tokens":1,"output_tokens":1}}`
+					if endpoint == "/v1/messages/count_tokens" {
+						response = `{"input_tokens":1}`
+					}
+					upstream := &anthropicHTTPUpstreamRecorder{resp: &http.Response{
+						StatusCode: http.StatusOK,
+						Header:     http.Header{"Content-Type": []string{"application/json"}},
+						Body:       io.NopCloser(strings.NewReader(response)),
+					}}
+					svc := newForwardPartialUsageServiceForTest(upstream)
+					account := newAnthropicOAuthAccountForPartialUsageTest()
+					account.Type = accountType
+					account.Credentials["model_mapping"] = tc.mapping
+					if endpoint == "/v1/messages/count_tokens" {
+						err = svc.ForwardCountTokens(context.Background(), c, account, parsed)
+					} else {
+						var result *ForwardResult
+						result, err = svc.Forward(context.Background(), c, account, parsed)
+						require.NoError(t, err)
+						require.NotNil(t, result)
+						require.Equal(t, tc.requested, result.Model, "billing and logging keep the client model")
+						require.Equal(t, tc.target, result.UpstreamModel)
+					}
+					require.NoError(t, err)
+					require.Equal(t, http.StatusOK, rec.Code)
+					require.NotNil(t, upstream.lastReq)
+					require.Equal(t, tc.target, gjson.GetBytes(upstream.lastBody, "model").String())
+					temperature := gjson.GetBytes(upstream.lastBody, "temperature")
+					// count_tokens strips all generation parameters, regardless of model.
+					wantTemperature := tc.temperature && endpoint == "/v1/messages"
+					require.Equal(t, wantTemperature, temperature.Exists(), "temperature default must follow the target model and endpoint")
+					if wantTemperature {
+						require.Equal(t, int64(1), temperature.Int())
+					}
+				})
+			}
+		}
+	}
+}
