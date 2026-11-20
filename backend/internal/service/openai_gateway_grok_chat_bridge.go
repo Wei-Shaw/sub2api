@@ -262,13 +262,22 @@ func grokChatFunctionDeclarationsBridgeable(raw json.RawMessage) (bool, string) 
 		if json.Unmarshal(declaration, &tool) != nil || tool == nil {
 			return false, "invalid_tool"
 		}
+		// The shared converter preserves bare hosted search declarations. Do
+		// not accept extra options here: web_search options are not represented
+		// by the typed Chat converter and would otherwise be silently lost.
+		var toolType string
+		if rawType, exists := tool["type"]; !exists || json.Unmarshal(rawType, &toolType) != nil {
+			return false, "unsupported_tool_type"
+		}
+		if len(tool) == 1 && (toolType == "web_search" || toolType == "x_search") {
+			continue
+		}
 		for field := range tool {
 			if field != "type" && field != "function" {
 				return false, "unsafe_tool_field_" + field
 			}
 		}
-		var toolType string
-		if rawType, exists := tool["type"]; !exists || json.Unmarshal(rawType, &toolType) != nil || toolType != "function" {
+		if toolType != "function" {
 			return false, "unsupported_tool_type"
 		}
 		functionRaw, exists := tool["function"]
@@ -532,12 +541,13 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	cacheIdentity := resolveGrokCacheIdentity(c, body, promptCacheKey, upstreamModel)
-	// Image inputs must go through the Responses bridge: the raw Chat
-	// Completions path cannot forward image_url parts to Grok's native vision
-	// for non-composer models, so they would be silently dropped. Route them to
-	// Responses even when no prompt-cache identity is available.
+	// Native search and image inputs require Responses even without a cache
+	// identity: raw Chat cannot execute hosted search or forward native vision
+	// for these models.
 	hasImageInput := openAIJSONValueMayContainImageInput(gjson.GetBytes(body, "messages"))
-	if !grokChatResponsesRuntimeEligible(upstreamModel, cacheIdentity) && (!hasImageInput || !grokChatResponsesBridgeModel(upstreamModel)) {
+	hasNativeSearch := gjson.GetBytes(body, `tools.#(type=="web_search")`).Exists() ||
+		gjson.GetBytes(body, `tools.#(type=="x_search")`).Exists()
+	if !grokChatResponsesRuntimeEligible(upstreamModel, cacheIdentity) && ((!hasImageInput && !hasNativeSearch) || !grokChatResponsesBridgeModel(upstreamModel)) {
 		return s.forwardAsRawChatCompletions(ctx, c, account, body, defaultMappedModel)
 	}
 
