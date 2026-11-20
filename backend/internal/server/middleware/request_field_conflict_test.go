@@ -114,13 +114,11 @@ func TestRejectConflictingRequestFieldsErrorFormats(t *testing.T) {
 	}
 }
 
-// 取值相同的重复字段、普通请求体和非对象请求体都放行，handler 读到的请求体
-// 与客户端发送的完全一致。
+// 普通请求体和非对象请求体都放行，handler 读到的请求体与客户端发送的完全一致。
 func TestRejectConflictingRequestFieldsPassesUnambiguousBodiesUnchanged(t *testing.T) {
 	for _, body := range []string{
 		`{"model":"gpt-5.4","input":"hi"}`,
-		`{"model":"gpt-5.4","input":"hi","model":"gpt-5.4"}`,
-		`{"model":"gpt-5.4","metadata":{"k":"1","k":"1"}}`,
+		`{"model":"gpt-5.4","metadata":{"k":"1","K":"1"}}`,
 		`not json`,
 		``,
 	} {
@@ -155,8 +153,8 @@ func TestRejectConflictingRequestFieldsMultipart(t *testing.T) {
 	if w := send("gpt-image-1", "gpt-image-1.5"); w.Code != http.StatusBadRequest {
 		t.Fatalf("conflicting multipart model fields must be rejected, got %d: %s", w.Code, w.Body.String())
 	}
-	if w := send("gpt-image-1", "gpt-image-1"); w.Code != http.StatusOK {
-		t.Fatalf("identical multipart model fields should pass, got %d: %s", w.Code, w.Body.String())
+	if w := send("gpt-image-1", "gpt-image-1"); w.Code != http.StatusBadRequest {
+		t.Fatalf("repeated multipart model fields must be rejected even when identical, got %d: %s", w.Code, w.Body.String())
 	}
 	if w := send("gpt-image-1"); w.Code != http.StatusOK {
 		t.Fatalf("single multipart model field should pass, got %d: %s", w.Code, w.Body.String())
@@ -210,7 +208,75 @@ func TestRejectConflictingRequestFieldsRequestBodyTooLargePassesThrough413(t *te
 	if w.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("expected 413, got %d: %s", w.Code, w.Body.String())
 	}
+	// 与 handler 读取失败时一致：Messages 入口用 Anthropic 格式，文案带上限。
+	if !strings.Contains(w.Body.String(), `"type":"error"`) || !strings.Contains(w.Body.String(), "Request body too large, limit is 64B") {
+		t.Fatalf("expected an Anthropic-shaped 413 naming the limit, got %s", w.Body.String())
+	}
 	if len(*handlerBodies) != 0 {
 		t.Fatalf("expected handler not to run, got %v", *handlerBodies)
+	}
+}
+
+// 取值相同的重复字段同样拒绝：网关的 sjson 改写（推理强度降级、模型映射、
+// fast policy 删除 service_tier）只改首个，改写后两者就会分叉。
+func TestRejectConflictingRequestFieldsRejectsIdenticalDuplicates(t *testing.T) {
+	for _, body := range []string{
+		`{"model":"gpt-5.4","input":"hi","model":"gpt-5.4"}`,
+		`{"model":"gpt-5.4","input":"hi","reasoning":{"effort":"xhigh","effort":"xhigh"}}`,
+		`{"model":"gpt-5.4","service_tier":"priority","input":"hi","service_tier":"priority"}`,
+	} {
+		router, handlerBodies := newRequestFieldConflictTestRouter(allowlistAPIKey(false))
+		w := doJSON(t, router, http.MethodPost, "/v1/responses", body)
+		if w.Code != http.StatusBadRequest || len(*handlerBodies) != 0 {
+			t.Fatalf("body %q must be rejected before the handler, got %d: %s", body, w.Code, w.Body.String())
+		}
+	}
+}
+
+// JSON handler 不看 Content-Type：把 JSON 请求体标成 multipart 不能绕过检查。
+func TestRejectConflictingRequestFieldsIgnoresMultipartLabelOnJSONBody(t *testing.T) {
+	for _, contentType := range []string{"multipart/form-data", "multipart/form-data; boundary=zzz", "text/plain"} {
+		router, handlerBodies := newRequestFieldConflictTestRouter(allowlistAPIKey(false))
+		req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"haiku","messages":[],"model":"opus"}`))
+		req.Header.Set("Content-Type", contentType)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusBadRequest || len(*handlerBodies) != 0 {
+			t.Fatalf("Content-Type %q must not bypass the check, got %d: %s", contentType, w.Code, w.Body.String())
+		}
+	}
+}
+
+// BOM 在这里剥掉后回填：合成路由与 handler 读到的是本层检查过的同一份字节。
+func TestRejectConflictingRequestFieldsStripsBOMForDownstream(t *testing.T) {
+	router, handlerBodies := newRequestFieldConflictTestRouter(allowlistAPIKey(false))
+	w := doJSON(t, router, http.MethodPost, "/v1/responses", "\xef\xbb\xbf"+`{"model":"gpt-5.4","input":"hi"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if len(*handlerBodies) != 1 || (*handlerBodies)[0] != `{"model":"gpt-5.4","input":"hi"}` {
+		t.Fatalf("handler must read the BOM-free body, got %q", *handlerBodies)
+	}
+
+	w = doJSON(t, router, http.MethodPost, "/v1/responses", "\xef\xbb\xbf"+`{"model":"a","input":"hi","model":"b"}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("BOM-prefixed duplicate must be rejected, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+func TestRejectConflictingRequestFieldsMarksIngressReject(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	var reason any
+	router.Use(func(c *gin.Context) {
+		c.Next()
+		reason, _ = c.Get(ingressRejectReasonContextKey)
+	})
+	router.Use(RejectConflictingRequestFields())
+	router.POST("/v1/responses", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	w := doJSON(t, router, http.MethodPost, "/v1/responses", `{"model":"a","model":"b"}`)
+	if w.Code != http.StatusBadRequest || reason != IngressRejectConflictingRequestFields {
+		t.Fatalf("expected 400 with ingress reason %q, got %d reason=%v", IngressRejectConflictingRequestFields, w.Code, reason)
 	}
 }

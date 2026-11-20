@@ -8,7 +8,11 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/handler"
+	servermiddleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -82,7 +86,7 @@ func TestGatewayRoutesRejectConflictingFieldsCoversGatewayRoutes(t *testing.T) {
 		router.ServeHTTP(w, req)
 
 		require.Equal(t, http.StatusBadRequest, w.Code, "POST %s should be rejected, got body: %s", tc.path, w.Body.String())
-		require.Contains(t, w.Body.String(), "more than once with different values", "POST %s", tc.path)
+		require.Contains(t, w.Body.String(), "more than once", "POST %s", tc.path)
 	}
 }
 
@@ -105,20 +109,80 @@ func TestGatewayRoutesRejectConflictingFieldsKeepsAllowlistResponse(t *testing.T
 
 	bothAllowed := send(`{"model":"gpt-5.4-nano","input":"hi","model":"gpt-5.4"}`)
 	require.Equal(t, http.StatusBadRequest, bothAllowed.Code, bothAllowed.Body.String())
-	require.Contains(t, bothAllowed.Body.String(), "more than once with different values")
+	require.Contains(t, bothAllowed.Body.String(), "more than once")
 }
 
-// 取值相同的重复 model 不算歧义，不会被这层拒绝。
-func TestGatewayRoutesRejectConflictingFieldsAllowsIdenticalDuplicates(t *testing.T) {
+// 取值相同的重复字段同样拒绝：网关的 sjson 改写只改首个，改写后两者就会分叉。
+func TestGatewayRoutesRejectConflictingFieldsRejectsIdenticalDuplicates(t *testing.T) {
 	router := newGatewayRoutesTestRouterWithGroup(allowlistGroup(service.PlatformOpenAI, false))
 
-	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.4","input":"hi","model":"gpt-5.4"}`))
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", strings.NewReader(`{"model":"gpt-5.4","input":"hi","reasoning":{"effort":"xhigh","effort":"xhigh"}}`))
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	require.NotContains(t, w.Body.String(), "more than once with different values",
-		"identical duplicates must pass the conflict check, got %d: %s", w.Code, w.Body.String())
+	require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), "reasoning.effort")
+}
+
+// 回归：Content-Type 标成 multipart 的 JSON 请求体，既不能绕过歧义检查，也不能
+// 绕过分组白名单（此前白名单按请求头只做 multipart 解析，拿不到模型就放行）。
+func TestGatewayRoutesMultipartLabelDoesNotBypassChecks(t *testing.T) {
+	send := func(group *service.Group, contentType, body string) *httptest.ResponseRecorder {
+		router := newGatewayRoutesTestRouterWithGroup(group)
+		req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body))
+		req.Header.Set("Content-Type", contentType)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+	for _, contentType := range []string{"multipart/form-data", "multipart/form-data; boundary=zzz"} {
+		w := send(allowlistGroup(service.PlatformAnthropic, false), contentType, `{"model":"claude-3-5-haiku-20241022","messages":[],"model":"claude-opus-4-8"}`)
+		require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+		require.Contains(t, w.Body.String(), "more than once")
+
+		w = send(allowlistGroup(service.PlatformAnthropic, true, "claude-3-5-haiku-20241022"), contentType, `{"model":"claude-opus-4-8","messages":[]}`)
+		require.Equal(t, http.StatusNotFound, w.Code, w.Body.String())
+		require.Contains(t, w.Body.String(), "not available for this group")
+	}
+}
+
+// 回归：带 UTF-8 BOM 的请求体（handler 宽容读取会剥掉 BOM）不能绕过分组白名单。
+func TestGatewayRoutesBOMDoesNotBypassAllowlist(t *testing.T) {
+	router := newGatewayRoutesTestRouterWithGroup(allowlistGroup(service.PlatformAnthropic, true, "claude-3-5-haiku-20241022"))
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader("\xef\xbb\xbf"+`{"model":"claude-opus-4-8","messages":[]}`))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+	require.Equal(t, http.StatusNotFound, w.Code, w.Body.String())
+	require.Contains(t, w.Body.String(), "not available for this group")
+}
+
+// 回归：纯文本入口的上限必须在分组中间件读体之前生效，否则中间件会先按通用
+// 上限把请求体整体读入并解析。超出文本上限的请求体直接 413，不会走到歧义检查。
+func TestGatewayRoutesTextBodyLimitAppliesBeforeGroupMiddleware(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	RegisterGatewayRoutes(
+		router,
+		&handler.Handlers{Gateway: &handler.GatewayHandler{}, OpenAIGateway: &handler.OpenAIGatewayHandler{}, AsyncImage: handler.NewAsyncImageHandler(nil, nil)},
+		servermiddleware.APIKeyAuthMiddleware(func(c *gin.Context) {
+			groupID := int64(1)
+			c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{GroupID: &groupID, Group: allowlistGroup(service.PlatformOpenAI, false)})
+			c.Next()
+		}),
+		nil, nil, nil, nil, nil,
+		&config.Config{Gateway: config.GatewayConfig{MaxBodySize: 1 << 20, TextMaxBodySize: 256}},
+	)
+	body := `{"model":"a","input":"` + strings.Repeat("x", 1024) + `","model":"b"}`
+	for _, path := range []string{"/v1/embeddings", "/v1/alpha/search", "/v1/systemone", "/backend-api/codex/alpha/search", "/embeddings", "/alpha/search"} {
+		req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusRequestEntityTooLarge, w.Code, "POST %s: %s", path, w.Body.String())
+		require.Contains(t, w.Body.String(), "limit is 256B", "POST %s", path)
+	}
 }
 
 // 嵌套字段取值不一致（reasoning.effort 参与计费倍率与分组推理强度上限、

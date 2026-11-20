@@ -2,262 +2,348 @@ package requestmodel
 
 import (
 	"bytes"
+	"hash/maphash"
+	"io"
+	"mime"
+	"mime/multipart"
 	"strconv"
 	"strings"
 	"unicode"
-	"unsafe"
-
-	"github.com/tidwall/gjson"
+	"unicode/utf16"
+	"unicode/utf8"
 )
 
-// utf8BOM 是部分客户端写在 JSON 文档前的 UTF-8 字节序标记。宽容读取会跳过它
-// 再解析对象，歧义检查也要看同一个对象。
+// utf8BOM 是部分客户端写在 JSON 文档前的 UTF-8 字节序标记。网关 handler 的宽容
+// 读取（httputil.ReadLenientJSONRequestBodyWithPrealloc）会先剥掉它再解析，
+// 准入与歧义检查必须看同一份字节。
 var utf8BOM = []byte{0xEF, 0xBB, 0xBF}
 
-// ConflictingField 返回请求体里第一个「重复声明且取值不一致」的字段名。
+// TrimUTF8BOM 去掉请求体开头的 UTF-8 BOM（与宽容读取的规则一致），否则原样返回。
+func TrimUTF8BOM(body []byte) []byte {
+	return bytes.TrimPrefix(body, utf8BOM)
+}
+
+// LooksLikeJSON 判断（已去 BOM 的）请求体首个非空白字节是否为 JSON 对象或数组。
 //
-// 网关读取 model、service_tier 等字段用的是 gjson（重复键取第一个、大小写
-// 敏感），而改写并转发请求体的路径会经过 encoding/json（重复键取最后一个，
-// 结构体绑定不区分大小写）。同名字段取值不一致时，准入、计费看到的值和上游
-// 实际收到的值会分叉：{"model":"便宜模型",...,"model":"贵模型"} 按便宜模型
-// 计费，转发的却是贵模型。调用方应在任何解析器读取字段之前拒绝这类请求。
+// 是否按 JSON 检查只看内容、不看 Content-Type：JSON handler 从不校验请求头，
+// 把 JSON 请求体标成 multipart/form-data 不能绕过检查。真正的 multipart 请求体
+// 以 "--boundary" 开头，不会被误判。
+func LooksLikeJSON(body []byte) bool {
+	for _, c := range body {
+		switch c {
+		case ' ', '\t', '\r', '\n':
+			continue
+		case '{', '[':
+			return true
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+// ConflictingField 返回请求体中第一个重复声明的字段路径。
+//
+// 网关读取 model、service_tier、reasoning.effort 等字段用的是 gjson（重复键取
+// 第一个、大小写敏感），sjson 改写（模型映射、推理强度降级、fast policy 删除
+// service_tier）也只改第一个；而改写并转发请求体的路径会经过 encoding/json
+// （解码到 map 时重复键取最后一个，绑定到结构体时键名大小写不敏感、取最后一个），
+// 上游解析器也可能取最后一个。同名字段一旦重复，准入、计费、策略看到的值和上游
+// 实际收到的值就可能分叉，例如 {"model":"便宜模型",...,"model":"贵模型"} 按便宜
+// 模型计费、转发贵模型。取值相同的重复同样拒绝：网关自己的 sjson 改写只动第一个，
+// 改写后两者就不再相同。调用方应在任何解析器读取字段之前拒绝这类请求。
 //
 // 判定范围：
-//   - JSON：顶层成员名在转义解码、大小写折叠后相同，且原始取值不同；顶层
-//     session 对象（Live 入口的模型所在位置）内部同理，字段名报告为
-//     session.<name>。
-//   - JSON 嵌套对象（任意深度，含数组元素）：成员名转义解码后完全相同且原始
-//     取值不同，字段名按路径报告（如 reasoning.effort、messages[0].role）。
-//     reasoning.effort 等嵌套字段同样参与计费倍率与分组策略，gjson 读首个、
-//     sjson 只改首个、重新编码保留末个的分叉与顶层一致。嵌套层不做大小写
-//     折叠：工具 JSON Schema 等用户数据里 id 与 ID 是合法的不同属性。
-//   - multipart：model / session 文本字段出现多次且取值不同；session 字段的
-//     JSON 值内部同理（含嵌套）。
+//   - JSON（按内容识别，见 LooksLikeJSON）：任意深度的对象（含数组元素）内，
+//     成员名经转义解码（无效 UTF-8 与孤立代理项按 encoding/json 替换为 U+FFFD）
+//     后按 encoding/json 结构体绑定的大小写折叠规则相同。用户自定义键空间
+//     （JSON Schema 的 properties/$defs、工具调用参数、metadata 等，见
+//     isFreeformMember）内只比较精确名字，因为 id 与 ID 在那里是合法的不同键。
+//     字段路径形如 reasoning.effort、messages[1].role。
+//   - multipart：同名非文件标量字段出现多次（列表字段见
+//     isRepeatableMultipartField）；session 字段的 JSON 值内部按 JSON 规则检查。
 //
-// 取值完全相同的重复字段不算歧义：任何解析器绑定到的值都一样，这与白名单
-// 准入对同值重复字段的放行保持一致。不是 JSON 对象也不是 multipart 的请求体
-// 返回 false，其合法性由各入口自己的解析器判断。
+// 扫描是一次线性遍历，键名以带随机种子的 64 位哈希判重，CPU 与内存都与请求体
+// 大小成线性关系；嵌套超过 maxConflictDepth 的部分只计括号不检查（encoding/json
+// 本身拒绝这种深度），其后的同层成员仍继续检查。
 func ConflictingField(contentType string, body []byte) (string, bool) {
+	if doc := TrimUTF8BOM(body); LooksLikeJSON(doc) {
+		return scanDuplicateMember(doc)
+	}
 	if isMultipartContentType(contentType) {
 		return multipartConflictingField(contentType, body)
 	}
-	return jsonConflictingField(body)
+	return "", false
 }
 
-// HasConflictingModels 判断模型候选集（见 FromBodyCandidates）里是否存在不同的
-// 取值。候选集覆盖重复键与大小写变体，取值不一致说明不同解析器会绑定到不同
-// 模型。
-func HasConflictingModels(candidates []string) bool {
-	for i := 1; i < len(candidates); i++ {
-		if candidates[i] != candidates[0] {
-			return true
-		}
-	}
-	return false
-}
-
-// jsonConflictingField 检查 JSON 对象的顶层成员，以及顶层 session 对象的成员。
-func jsonConflictingField(body []byte) (string, bool) {
-	body = bytes.TrimPrefix(body, utf8BOM)
-	if len(body) == 0 {
-		return "", false
-	}
-	// 零拷贝视图只在本次检查内使用；返回的字段名会单独复制。
-	root := gjson.Parse(*(*string)(unsafe.Pointer(&body)))
-	if !root.IsObject() {
-		return "", false
-	}
-	if name, ok := conflictingMember(root); ok {
-		return name, true
-	}
-	conflict := ""
-	root.ForEach(func(key, value gjson.Result) bool {
-		if !strings.EqualFold(key.String(), "session") || !value.IsObject() {
-			return true
-		}
-		if name, ok := conflictingMember(value); ok {
-			conflict = "session." + name
-			return false
-		}
-		return true
-	})
-	if conflict != "" {
-		return conflict, true
-	}
-	return nestedConflictingField(root, "")
-}
-
-// maxConflictDepth 与 encoding/json 的嵌套上限一致：更深的请求体下游解码必然
-// 失败，不再下钻，同时避免恶意深嵌套耗尽栈。
+// maxConflictDepth 与 encoding/json 的嵌套上限一致。
 const maxConflictDepth = 10000
 
-// conflictLinearScanLimit 以内的对象线性扫描判重，避免为每个小对象分配 map。
+// conflictLinearScanLimit 以内的对象线性比较哈希，超过后改用 map。
 const conflictLinearScanLimit = 16
 
-// nestedConflictingField 检查 object 各成员值内部（不含 object 自身这一层）的
-// 所有嵌套对象，返回第一个取值不一致的重复成员路径；prefix 为路径前缀。
-func nestedConflictingField(object gjson.Result, prefix string) (string, bool) {
-	w := conflictWalker{}
-	if prefix != "" {
-		w.push(prefix)
+// conflictHashSeed 每个进程随机生成：客户端无法构造哈希碰撞。碰撞只会让请求被
+// 误拒（fail closed），不会放过重复键。
+var conflictHashSeed = maphash.MakeSeed()
+
+type scanFrame struct {
+	object  bool
+	fold    bool // 是否按大小写折叠比较本对象的成员名
+	wantKey bool // object：下一个字符串是成员名
+	// 当前成员名在请求体中的原始范围（不含引号），用于路径与自由键判定。
+	keyStart, keyEnd int
+	keyEscaped       bool
+	index            int // array：当前元素下标
+	hashStart        int // object：本对象成员哈希在 scanner.hashes 中的起点
+	seen             map[uint64]struct{}
+}
+
+type duplicateScanner struct {
+	body   []byte
+	stack  []scanFrame
+	hashes []uint64
+	hash   maphash.Hash
+	runes  []byte
+}
+
+func scanDuplicateMember(body []byte) (string, bool) {
+	s := duplicateScanner{body: body}
+	s.hash.SetSeed(conflictHashSeed)
+	overflow := 0 // 超过 maxConflictDepth 后未闭合的括号数
+	for i := 0; i < len(body); {
+		switch c := body[i]; c {
+		case '{', '[':
+			if overflow > 0 || len(s.stack) >= maxConflictDepth {
+				overflow++
+			} else {
+				s.push(c == '{')
+			}
+			i++
+		case '}', ']':
+			if overflow > 0 {
+				overflow--
+			} else if n := len(s.stack); n > 0 {
+				if top := s.stack[n-1]; top.object {
+					s.hashes = s.hashes[:top.hashStart]
+				}
+				s.stack = s.stack[:n-1]
+			}
+			i++
+		case ',':
+			if n := len(s.stack); overflow == 0 && n > 0 {
+				if top := &s.stack[n-1]; top.object {
+					top.wantKey = true
+				} else {
+					top.index++
+				}
+			}
+			i++
+		case '"':
+			end, escaped := scanJSONString(body, i+1)
+			if n := len(s.stack); overflow == 0 && n > 0 && s.stack[n-1].object && s.stack[n-1].wantKey {
+				top := &s.stack[n-1]
+				top.wantKey = false
+				top.keyStart, top.keyEnd, top.keyEscaped = i+1, end, escaped
+				if s.repeated(top) {
+					return s.path(), true
+				}
+			}
+			i = end + 1
+		default:
+			i++
+		}
 	}
-	object.ForEach(func(key, value gjson.Result) bool {
-		if !value.IsObject() && !value.IsArray() {
+	return "", false
+}
+
+func (s *duplicateScanner) push(object bool) {
+	fold := true
+	if n := len(s.stack); n > 0 {
+		parent := &s.stack[n-1]
+		fold = parent.fold
+		if fold && parent.object && isFreeformMember(s.body[parent.keyStart:parent.keyEnd], n > 1) {
+			fold = false
+		}
+	}
+	s.stack = append(s.stack, scanFrame{object: object, fold: fold, wantKey: object, hashStart: len(s.hashes)})
+}
+
+// repeated 登记 top 的当前成员名，返回它是否与本对象中更早的成员重名。
+func (s *duplicateScanner) repeated(top *scanFrame) bool {
+	s.hash.Reset()
+	s.runes = appendMemberName(s.runes[:0], s.body[top.keyStart:top.keyEnd], top.keyEscaped, top.fold)
+	_, _ = s.hash.Write(s.runes)
+	sum := s.hash.Sum64()
+
+	if top.seen != nil {
+		if _, dup := top.seen[sum]; dup {
 			return true
 		}
-		w.push(key.String())
-		found := w.walk(value, 1)
-		w.pop()
-		return !found
-	})
-	return w.conflict, w.conflict != ""
-}
-
-type conflictMember struct {
-	name string
-	raw  string
-}
-
-// conflictPathSegment 是成员名或数组下标（index >= 0）；只在报告冲突时拼接成字符串。
-type conflictPathSegment struct {
-	name  string
-	index int
-}
-
-type conflictWalker struct {
-	path     []conflictPathSegment
-	members  []conflictMember
-	conflict string
-}
-
-func (w *conflictWalker) push(name string) {
-	w.path = append(w.path, conflictPathSegment{name: name, index: -1})
-}
-func (w *conflictWalker) pushIndex(index int) {
-	w.path = append(w.path, conflictPathSegment{index: index})
-}
-func (w *conflictWalker) pop() { w.path = w.path[:len(w.path)-1] }
-
-// walk 遍历 v；发现冲突时写入 w.conflict 并返回 true。
-func (w *conflictWalker) walk(v gjson.Result, depth int) bool {
-	if depth >= maxConflictDepth {
+		top.seen[sum] = struct{}{}
 		return false
 	}
-	if v.IsArray() {
-		index := 0
-		found := false
-		v.ForEach(func(_, item gjson.Result) bool {
-			if item.IsObject() || item.IsArray() {
-				w.pushIndex(index)
-				found = w.walk(item, depth+1)
-				w.pop()
-			}
-			index++
-			return !found
-		})
-		return found
-	}
-	if !v.IsObject() {
-		return false
-	}
-
-	start := len(w.members)
-	defer func() { w.members = w.members[:start] }()
-	var index map[string]string
-	found := false
-	v.ForEach(func(key, item gjson.Result) bool {
-		name := key.String()
-		if w.repeatsWithDifferentValue(start, &index, name, item.Raw) {
-			w.push(name)
-			w.conflict = joinConflictPath(w.path)
-			w.pop()
-			found = true
-			return false
-		}
-		// 子对象在返回前会把 w.members 截回原长度，本对象的成员保持连续。
-		w.members = append(w.members, conflictMember{name: name, raw: item.Raw})
-		if item.IsObject() || item.IsArray() {
-			w.push(name)
-			found = w.walk(item, depth+1)
-			w.pop()
-		}
-		return !found
-	})
-	return found
-}
-
-// repeatsWithDifferentValue 判断 name 是否与本对象（w.members[start:]）中更早
-// 的同名成员取值不同；成员较多时改用 map 索引。
-func (w *conflictWalker) repeatsWithDifferentValue(start int, index *map[string]string, name, raw string) bool {
-	if *index != nil {
-		first, repeated := (*index)[name]
-		if !repeated {
-			(*index)[name] = raw
-			return false
-		}
-		return first != raw
-	}
-	for _, seen := range w.members[start:] {
-		if seen.name == name {
-			return seen.raw != raw
+	for _, seen := range s.hashes[top.hashStart:] {
+		if seen == sum {
+			return true
 		}
 	}
-	if len(w.members)-start >= conflictLinearScanLimit {
-		*index = make(map[string]string, 2*conflictLinearScanLimit)
-		for _, seen := range w.members[start:] {
-			if _, ok := (*index)[seen.name]; !ok {
-				(*index)[seen.name] = seen.raw
-			}
+	s.hashes = append(s.hashes, sum)
+	if len(s.hashes)-top.hashStart > conflictLinearScanLimit {
+		// 子对象的哈希总在其闭合时截掉，本对象的哈希在切片末尾连续。
+		top.seen = make(map[uint64]struct{}, 4*conflictLinearScanLimit)
+		for _, seen := range s.hashes[top.hashStart:] {
+			top.seen[seen] = struct{}{}
 		}
-		(*index)[name] = raw
+		s.hashes = s.hashes[:top.hashStart]
 	}
 	return false
 }
 
-// joinConflictPath 把路径段拼成 a.b[0].c；结果是新分配的字符串，不引用请求体。
-func joinConflictPath(path []conflictPathSegment) string {
+// path 把当前栈拼成 a.b[0].c；结果是新分配的字符串，不引用请求体。
+func (s *duplicateScanner) path() string {
 	var b strings.Builder
-	for i, segment := range path {
-		if segment.index >= 0 {
+	for _, frame := range s.stack {
+		if !frame.object {
 			b.WriteByte('[')
-			b.WriteString(strconv.Itoa(segment.index))
+			b.WriteString(strconv.Itoa(frame.index))
 			b.WriteByte(']')
 			continue
 		}
-		if i > 0 {
+		if b.Len() > 0 {
 			b.WriteByte('.')
 		}
-		b.WriteString(segment.name)
+		b.Write(appendMemberName(nil, s.body[frame.keyStart:frame.keyEnd], frame.keyEscaped, false))
 	}
 	return b.String()
 }
 
-// conflictingMember 返回对象里第一个与更早的同名成员取值不同的成员名。
-// 成员名按 encoding/json 结构体绑定的规则比较：先解码转义，再做 Unicode
-// 简单大小写折叠，所以 model、MODEL 和 "\u006dodel" 是同一个名字。取值按原始
-// JSON 文本比较，写法不同的等价值（如 1 和 1.0）按不一致处理。
-func conflictingMember(object gjson.Result) (string, bool) {
-	seen := make(map[string]string)
-	conflict := ""
-	object.ForEach(func(key, value gjson.Result) bool {
-		folded := strings.Map(foldRune, key.String())
-		first, repeated := seen[folded]
-		if !repeated {
-			seen[folded] = value.Raw
+// freeformMembers 的值是用户自定义键空间：JSON Schema 的属性表与取值、工具调用
+// 参数、metadata。这些子树内的成员名只做精确比较。它们都不在网关计费/策略读取的
+// 字段路径上；input / response 只在非顶层时算（顶层 input 是 Responses 的输入
+// 列表，顶层 response 是 realtime response.create 的参数）。
+var freeformMembers = []string{
+	"properties", "patternProperties", "$defs", "definitions", "dependentSchemas",
+	"default", "const", "examples", "enum",
+	"metadata", "args", "arguments",
+}
+
+func isFreeformMember(name []byte, nested bool) bool {
+	for _, candidate := range freeformMembers {
+		if bytes.EqualFold(name, []byte(candidate)) {
 			return true
 		}
-		if first != value.Raw {
-			conflict = strings.Clone(key.String())
-			return false
+	}
+	return nested && (bytes.EqualFold(name, []byte("input")) || bytes.EqualFold(name, []byte("response")))
+}
+
+// scanJSONString 从字符串内容起点 i 找到闭合引号的下标（找不到返回 len(b)），
+// 并报告内容中是否含转义。
+func scanJSONString(b []byte, i int) (int, bool) {
+	escaped := false
+	for i < len(b) {
+		quote := bytes.IndexByte(b[i:], '"')
+		if quote < 0 {
+			return len(b), escaped
 		}
-		return true
-	})
-	return conflict, conflict != ""
+		backslash := bytes.IndexByte(b[i:i+quote], '\\')
+		if backslash < 0 {
+			return i + quote, escaped
+		}
+		escaped = true
+		i += backslash + 2
+	}
+	return len(b), escaped
+}
+
+// appendMemberName 把原始成员名按 encoding/json 的规则解码（转义、无效 UTF-8 与
+// 孤立代理项替换为 U+FFFD）后追加到 dst；fold 时逐字符做大小写折叠。
+func appendMemberName(dst, raw []byte, escaped, fold bool) []byte {
+	for i := 0; i < len(raw); {
+		var r rune
+		if raw[i] == '\\' && escaped && i+1 < len(raw) {
+			r, i = decodeJSONEscape(raw, i)
+		} else if raw[i] < utf8.RuneSelf {
+			r = rune(raw[i])
+			i++
+		} else {
+			var size int
+			r, size = utf8.DecodeRune(raw[i:])
+			i += size
+		}
+		if fold {
+			r = foldRune(r)
+		}
+		dst = utf8.AppendRune(dst, r)
+	}
+	return dst
+}
+
+// decodeJSONEscape 解码 raw[i] 处的转义序列，返回字符与下一个下标。
+func decodeJSONEscape(raw []byte, i int) (rune, int) {
+	switch raw[i+1] {
+	case 'b':
+		return '\b', i + 2
+	case 'f':
+		return '\f', i + 2
+	case 'n':
+		return '\n', i + 2
+	case 'r':
+		return '\r', i + 2
+	case 't':
+		return '\t', i + 2
+	case 'u':
+		r, ok := hex4(raw, i+2)
+		if !ok {
+			return rune(raw[i+1]), i + 2
+		}
+		if utf16.IsSurrogate(r) {
+			if i+11 < len(raw) && raw[i+6] == '\\' && raw[i+7] == 'u' {
+				if r2, ok := hex4(raw, i+8); ok {
+					if dec := utf16.DecodeRune(r, r2); dec != unicode.ReplacementChar {
+						return dec, i + 12
+					}
+				}
+			}
+			return unicode.ReplacementChar, i + 6
+		}
+		return r, i + 6
+	default:
+		return rune(raw[i+1]), i + 2
+	}
+}
+
+func hex4(raw []byte, i int) (rune, bool) {
+	if i+4 > len(raw) {
+		return 0, false
+	}
+	var r rune
+	for _, c := range raw[i : i+4] {
+		switch {
+		case '0' <= c && c <= '9':
+			c -= '0'
+		case 'a' <= c && c <= 'f':
+			c = c - 'a' + 10
+		case 'A' <= c && c <= 'F':
+			c = c - 'A' + 10
+		default:
+			return 0, false
+		}
+		r = r*16 + rune(c)
+	}
+	return r, true
 }
 
 // foldRune 返回 r 所在大小写折叠轨道上的固定代表，只有大小写不同的字符映射到
-// 同一个值。拉丁字母取小写，常见的小写字段名无需改写。
+// 同一个值（与 encoding/json 结构体字段的大小写不敏感匹配一致，覆盖 ſ、开尔文
+// 符号 K）。拉丁字母取小写。
 func foldRune(r rune) rune {
+	if r < utf8.RuneSelf {
+		// ASCII 字母的轨道代表就是其小写（k、s 的非 ASCII 成员都更大）。
+		if 'A' <= r && r <= 'Z' {
+			return r + 'a' - 'A'
+		}
+		return r
+	}
 	folded := r
 	for next := unicode.SimpleFold(r); next != r; next = unicode.SimpleFold(next) {
 		if next < folded {
@@ -270,27 +356,51 @@ func foldRune(r rune) rune {
 	return folded
 }
 
-// multipartConflictingField 检查 multipart 表单：model / session 文本字段多次
-// 出现且取值不同，或某个 session 字段的 JSON 值内部存在取值不一致的重复成员。
+// isRepeatableMultipartField 报告表单字段是否按列表语义合法重复：以 [] 结尾的
+// 数组字段（如 timestamp_granularities[]）、多图输入（image、image[...]、
+// Grok 媒体的 image_url）。其余文本字段（model、n、size、quality、duration 等
+// 计费/策略标量）出现多次即为歧义。
+func isRepeatableMultipartField(name string) bool {
+	return strings.HasSuffix(name, "[]") || name == "image" || name == "image_url" || strings.HasPrefix(name, "image[")
+}
+
+// multipartConflictingField 检查 multipart 表单：同名非文件标量字段出现多次
+// （见 isRepeatableMultipartField），或 session 字段的 JSON 值内部有重复成员。
 func multipartConflictingField(contentType string, body []byte) (string, bool) {
-	models, sessions := multipartModelCandidates(contentType, body)
-	if HasConflictingModels(models) {
-		return "model", true
+	_, params, err := mime.ParseMediaType(strings.TrimSpace(contentType))
+	if err != nil {
+		return "", false
 	}
-	if HasConflictingModels(sessions) {
-		return "session", true
+	boundary := strings.TrimSpace(params["boundary"])
+	if boundary == "" {
+		return "", false
 	}
-	for _, raw := range sessions {
-		session := gjson.Parse(raw)
-		if !session.IsObject() {
+	reader := multipart.NewReader(bytes.NewReader(body), boundary)
+	seen := make(map[string]struct{})
+	for {
+		part, err := reader.NextPart()
+		if err != nil {
+			return "", false
+		}
+		name := strings.TrimSpace(part.FormName())
+		if part.FileName() != "" || name == "" || isRepeatableMultipartField(name) {
 			continue
 		}
-		if name, ok := conflictingMember(session); ok {
-			return "session." + name, true
-		}
-		if name, ok := nestedConflictingField(session, "session"); ok {
+		if _, dup := seen[name]; dup {
 			return name, true
 		}
+		seen[name] = struct{}{}
+		if name != "session" {
+			continue
+		}
+		data, err := io.ReadAll(part)
+		if err != nil {
+			continue
+		}
+		if doc := TrimUTF8BOM(bytes.TrimSpace(data)); LooksLikeJSON(doc) {
+			if field, conflict := scanDuplicateMember(doc); conflict {
+				return "session." + field, true
+			}
+		}
 	}
-	return "", false
 }

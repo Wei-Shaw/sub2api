@@ -44,15 +44,17 @@ func IsLiveRequestRoute(routePath string) bool {
 // （为空回落 session 候选）。候选包含重复键、大小写变体的全部出现。
 func FromBodyCandidates(routePath, contentType string, body []byte) []string {
 	var topLevel, session []string
-	if isMultipartContentType(contentType) {
-		// 声明为 multipart 的请求体只做 multipart 解析——gjson 的部分扫描
+	if doc := TrimUTF8BOM(body); LooksLikeJSON(doc) {
+		// 按内容识别 JSON，不看 Content-Type：JSON handler 不校验请求头，且宽容
+		// 读取会剥掉 BOM，两者都不能成为绕过准入的手段。
+		topLevel = jsonModelCandidates(doc)
+		session = jsonSessionModelCandidates(doc)
+	} else if isMultipartContentType(contentType) {
+		// 真正的 multipart 请求体只做 multipart 解析——gjson 的部分扫描
 		// 会在 multipart 字节流里误匹配 session JSON 内的 model 字段。
 		models, sessions := multipartModelCandidates(contentType, body)
 		topLevel = models
 		session = sessionModelCandidates(sessions)
-	} else {
-		topLevel = jsonModelCandidates(body)
-		session = jsonSessionModelCandidates(body)
 	}
 
 	if IsLiveRequestRoute(routePath) {

@@ -6,7 +6,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-const wsModelConflictCloseReason = "more than once with different values"
+const wsModelConflictCloseReason = "more than once"
 
 // 没有开启白名单的分组：首帧里重复 model 键取值不一致（计费按第一个、上游可能
 // 按最后一个绑定）必须以 1008 关闭，帧不到达上游。
@@ -62,15 +62,29 @@ func TestOpenAIResponsesWebSocket_SubsequentTurnConflictingModelKeysRejectedWith
 	}
 }
 
-// 取值相同的重复 model 键不受影响，两个 turn 正常完成。
-func TestOpenAIResponsesWebSocket_IdenticalDuplicateModelKeysAllowedWithoutAllowlist(t *testing.T) {
-	got := runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
-		firstPayload:  `{"type":"response.create","model":"gpt-5.4","model":"gpt-5.4","stream":false}`,
-		secondPayload: `{"type":"response.create","model":"gpt-5.4","model":"gpt-5.4","stream":false}`,
-		group:         wsAllowlistGroup(false),
-	})
-	if len(got.clientEvents) != 2 {
-		t.Fatalf("expected two completed events, got %d", len(got.clientEvents))
+// 取值相同的重复键同样拒绝：网关的 sjson 改写（模型映射、推理强度降级）只改
+// 首个，改写后两者就会分叉。首帧与后续 turn 都要关闭连接。
+func TestOpenAIResponsesWebSocket_IdenticalDuplicateKeysRejectedWithoutAllowlist(t *testing.T) {
+	for _, mode := range []string{service.OpenAIWSIngressModePassthrough, service.OpenAIWSIngressModeDedicated} {
+		t.Run(mode+"/first_frame", func(t *testing.T) {
+			runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+				firstPayload:            `{"type":"response.create","model":"gpt-5.4","model":"gpt-5.4","stream":false}`,
+				group:                   wsAllowlistGroup(false),
+				ingressMode:             mode,
+				firstFrameCloseExpected: true,
+				closeReason:             `declares field "model" more than once`,
+			})
+		})
+		t.Run(mode+"/subsequent_turn", func(t *testing.T) {
+			runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+				firstPayload:            `{"type":"response.create","model":"gpt-5.4","stream":false}`,
+				secondPayload:           `{"type":"response.create","model":"gpt-5.4","reasoning":{"effort":"xhigh","effort":"xhigh"},"stream":false}`,
+				group:                   wsAllowlistGroup(false),
+				ingressMode:             mode,
+				secondTurnCloseExpected: true,
+				closeReason:             `declares field "reasoning.effort" more than once`,
+			})
+		})
 	}
 }
 

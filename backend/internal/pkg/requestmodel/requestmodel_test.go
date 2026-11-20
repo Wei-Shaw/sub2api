@@ -255,3 +255,30 @@ func TestFromBodyForRouteReturnsFirstCandidate(t *testing.T) {
 		t.Fatalf("dispatch helper keeps gjson-first semantics, got %q", got)
 	}
 }
+
+// 回归：JSON handler 不看 Content-Type、宽容读取会剥掉 BOM，准入候选必须与之
+// 一致，否则把请求体标成 multipart 或加 BOM 就能让白名单拿不到任何模型而放行。
+func TestFromBodyCandidatesFollowsWhatJSONHandlersParse(t *testing.T) {
+	body := []byte(`{"model":"claude-opus-4-8","messages":[]}`)
+	cases := []struct {
+		name        string
+		contentType string
+		body        []byte
+	}{
+		{name: "multipart 标签", contentType: "multipart/form-data; boundary=zzz", body: body},
+		{name: "无 boundary 的 multipart 标签", contentType: "multipart/form-data", body: body},
+		{name: "UTF-8 BOM", contentType: "application/json", body: append([]byte{0xEF, 0xBB, 0xBF}, body...)},
+		{name: "BOM 加 multipart 标签", contentType: "multipart/form-data", body: append([]byte{0xEF, 0xBB, 0xBF}, body...)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := FromBodyCandidates("/v1/messages", tc.contentType, tc.body)
+			if len(got) != 1 || got[0] != "claude-opus-4-8" {
+				t.Fatalf("candidates = %v, want [claude-opus-4-8]", got)
+			}
+			if route := FromBodyForRoute("/v1/messages", tc.contentType, tc.body); route != "claude-opus-4-8" {
+				t.Fatalf("route model = %q", route)
+			}
+		})
+	}
+}
