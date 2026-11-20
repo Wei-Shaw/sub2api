@@ -78,7 +78,7 @@
         </p>
       </div>
 
-      <div v-if="form.provider === PROVIDER_OPENAI && usesProbePart" class="rounded-lg border border-blue-100 bg-blue-50/50 p-3 dark:border-blue-500/20 dark:bg-blue-500/10">
+      <div v-if="monitorProviderSupportsResponses(form.provider) && usesProbePart" class="rounded-lg border border-blue-100 bg-blue-50/50 p-3 dark:border-blue-500/20 dark:bg-blue-500/10">
         <label class="input-label">{{ t('admin.channelMonitor.form.apiMode') }}</label>
         <div class="grid gap-3 sm:grid-cols-2">
           <button
@@ -262,6 +262,7 @@ import ProviderIcon from '@/components/user/monitor/ProviderIcon.vue'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
 import {
   PROVIDER_OPENAI,
+  monitorProviderSupportsResponses,
   PROVIDER_ANTHROPIC,
   PROVIDER_GEMINI,
   PROVIDER_GROK,
@@ -375,7 +376,7 @@ const templatesLoading = ref(false)
 const templateOptions = computed(() => {
   const items = templatesCache.value.filter((t) => {
     if (t.provider !== form.provider) return false
-    if (form.provider !== PROVIDER_OPENAI) return true
+    if (!monitorProviderSupportsResponses(form.provider)) return true
     return normalizeAPIMode(t.api_mode) === form.api_mode
   })
   return [
@@ -449,7 +450,7 @@ function apiModeButtonClass(mode: APIMode): string {
 }
 
 function templateOptionLabel(tpl: ChannelMonitorTemplate): string {
-  if (tpl.provider !== PROVIDER_OPENAI) return tpl.name
+  if (!monitorProviderSupportsResponses(tpl.provider)) return tpl.name
   const labelKey = normalizeAPIMode(tpl.api_mode) === API_MODE_RESPONSES
     ? 'admin.channelMonitor.form.apiModeResponses'
     : 'admin.channelMonitor.form.apiModeChatCompletions'
@@ -710,7 +711,7 @@ function selectProvider(provider: Provider) {
 watch(() => form.provider, () => {
   if (suppressFormWatchers) return
   form.api_key = ''
-  if (form.provider !== PROVIDER_OPENAI) {
+  if (!monitorProviderSupportsResponses(form.provider)) {
     form.api_mode = API_MODE_CHAT_COMPLETIONS
   }
   clearRequestSnapshot()
@@ -718,7 +719,7 @@ watch(() => form.provider, () => {
 
 watch(() => form.api_mode, () => {
   if (suppressFormWatchers) return
-  if (form.provider === PROVIDER_OPENAI) {
+  if (monitorProviderSupportsResponses(form.provider)) {
     clearRequestSnapshot()
   }
 }, { flush: 'sync' })
@@ -819,7 +820,7 @@ function buildPayload(): CreateParams {
   return {
     name: form.name.trim(),
     provider: form.provider,
-    api_mode: form.provider === PROVIDER_OPENAI ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
+    api_mode: monitorProviderSupportsResponses(form.provider) ? form.api_mode : API_MODE_CHAT_COMPLETIONS,
     check_mode: form.check_mode,
     account_id: usesQuotaMode.value ? form.account_id : null,
     endpoint: usesProbePart.value ? form.endpoint.trim() : '',

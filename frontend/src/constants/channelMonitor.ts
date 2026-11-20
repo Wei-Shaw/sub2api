@@ -37,6 +37,10 @@ export const CHECK_MODE_QUOTA_PROBE: CheckMode = 'quota_probe'
 export const API_MODE_CHAT_COMPLETIONS: APIMode = 'chat_completions'
 export const API_MODE_RESPONSES: APIMode = 'responses'
 
+export function monitorProviderSupportsResponses(provider?: Provider): boolean {
+  return provider === PROVIDER_OPENAI || provider === PROVIDER_GROK
+}
+
 export const PROVIDERS: readonly Provider[] = [
   PROVIDER_OPENAI,
   PROVIDER_ANTHROPIC,
