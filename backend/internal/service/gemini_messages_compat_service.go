@@ -3125,12 +3125,54 @@ func extractGeminiUsage(data []byte) *ClaudeUsage {
 	// 注意：Gemini 的 promptTokenCount 包含 cachedContentTokenCount，
 	// 但 Claude 的 input_tokens 不包含 cache_read_input_tokens，需要减去。
 	// prompt 被拦截时上游可能只报 cachedContentTokenCount，差值下限为 0。
-	return &ClaudeUsage{
+	result := &ClaudeUsage{
 		InputTokens:          max(prompt-cached, 0),
 		OutputTokens:         cand + thoughts,
 		CacheReadInputTokens: cached,
 		ImageOutputTokens:    imageTokens,
 	}
+	audioCached, cacheKnown := geminiAudioTokenCount(usage.Get("cacheTokensDetails"), cached)
+	if !cacheKnown {
+		return result
+	}
+	audioPrompt, promptKnown := geminiAudioTokenCount(usage.Get("promptTokensDetails"), prompt)
+	if promptKnown {
+		// The prompt includes cached tokens. Use each audio token in only one price bucket.
+		audioInput := audioPrompt - audioCached
+		if audioInput < 0 || audioInput > result.InputTokens {
+			return result
+		}
+		result.audioInputTokens = audioInput
+	}
+	result.audioCacheReadTokens = audioCached
+	return result
+}
+
+// geminiAudioTokenCount reports a modality split only when it accounts for the aggregate.
+func geminiAudioTokenCount(details gjson.Result, total int) (int, bool) {
+	if details.Type == gjson.Null {
+		return 0, total == 0
+	}
+	if total < 0 || !details.IsArray() {
+		return 0, false
+	}
+	audio, remaining := 0, total
+	valid := true
+	details.ForEach(func(_, detail gjson.Result) bool {
+		count := detail.Get("tokenCount")
+		modality := detail.Get("modality").String()
+		if modality == "" || count.Type != gjson.Number || count.Num < 0 || count.Num > float64(remaining) || count.Num != float64(count.Int()) {
+			valid = false
+			return false
+		}
+		tokens := int(count.Int())
+		remaining -= tokens
+		if modality == "AUDIO" {
+			audio += tokens
+		}
+		return true
+	})
+	return audio, valid && remaining == 0
 }
 
 func asInt(v any) (int, bool) {

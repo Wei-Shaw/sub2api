@@ -1989,6 +1989,8 @@
     "supports_web_search": true
   },
   "gemini-3-flash": {
+    "cache_read_input_audio_token_cost": 1e-07,
+    "cache_read_input_audio_token_cost_priority": 1.8e-07,
     "cache_read_input_token_cost": 5e-08,
     "cache_read_input_token_cost_priority": 9e-08,
     "input_cost_per_audio_token": 1e-06,
@@ -2046,6 +2048,8 @@
     "web_search_billing_unit": "per_query"
   },
   "gemini-3-flash-preview": {
+    "cache_read_input_audio_token_cost": 1e-07,
+    "cache_read_input_audio_token_cost_priority": 1.8e-07,
     "cache_read_input_token_cost": 5e-08,
     "cache_read_input_token_cost_priority": 9e-08,
     "input_cost_per_audio_token": 1e-06,
