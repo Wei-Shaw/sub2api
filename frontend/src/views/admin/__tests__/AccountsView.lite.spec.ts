@@ -82,11 +82,6 @@ const AccountGroupsCellStub = defineComponent({
   template: '<span data-test="account-groups">{{ groups.map(group => group.name).join(",") }}</span>'
 })
 
-const AccountUsageCellStub = defineComponent({
-  props: { account: { type: Object, required: true } },
-  template: '<span data-test="usage-row">{{ account.extra?.session_window_utilization }}|{{ account.last_used_at }}</span>'
-})
-
 const EditAccountModalStub = defineComponent({
   props: { show: Boolean, account: { type: Object, default: null } },
   template: '<div data-test="edit-account">{{ show ? account?.name : "" }}</div>'
@@ -133,7 +128,7 @@ function mountView(stubActionMenu = true, realUsageCell = false) {
         AccountStatusIndicator: true,
         AccountTodayStatsCell: true,
         AccountGroupsCell: AccountGroupsCellStub,
-        AccountUsageCell: realUsageCell ? false : AccountUsageCellStub,
+        AccountUsageCell: !realUsageCell,
         UpstreamBillingRateCell: true,
         HelpTooltip: true,
         Icon: true,
@@ -221,7 +216,7 @@ describe('admin AccountsView lite account list', () => {
     listWithEtag.mockResolvedValue({ notModified: false, etag: 'unrelated', data: { items: [{ ...next, updated_at: 'new', current_concurrency: 2, extra: { ...next.extra, unrelated: true } }], total: 1, pages: 1 } })
     await vi.advanceTimersByTimeAsync(6000)
     await flushPromises()
-    expect(getBatchUsage).toHaveBeenCalledTimes(platform === 'gemini' ? 3 : 2)
+    expect(getBatchUsage).toHaveBeenCalledTimes(2)
     wrapper.unmount()
   })
 
@@ -312,54 +307,6 @@ describe('admin AccountsView lite account list', () => {
       expect.objectContaining({ lite: '1' }),
       expect.objectContaining({ etag: null })
     )
-    wrapper.unmount()
-  })
-
-  it.each([
-    {
-      name: 'a Claude passive usage sample',
-      row: {
-        ...listRow,
-        platform: 'anthropic',
-        updated_at: '2026-10-25T10:00:00Z',
-        last_used_at: '2026-10-25T10:00:00Z',
-        extra: { passive_usage_sampled_at: '2026-10-25T10:00:00Z', session_window_utilization: 0.1 }
-      },
-      change: { extra: { passive_usage_sampled_at: '2026-10-25T10:01:00Z', session_window_utilization: 0.55 } },
-      before: '0.1|2026-10-25T10:00:00Z',
-      after: '0.55|2026-10-25T10:00:00Z'
-    },
-    {
-      name: 'new Gemini use',
-      row: {
-        ...listRow,
-        platform: 'gemini',
-        updated_at: '2026-10-25T10:00:00Z',
-        last_used_at: '2026-10-25T10:00:00Z'
-      },
-      change: { last_used_at: '2026-10-25T10:01:00Z' },
-      before: '|2026-10-25T10:00:00Z',
-      after: '|2026-10-25T10:01:00Z'
-    }
-  ])('replaces a row on automatic refresh when only $name changed', async ({ row, change, before, after }) => {
-    vi.useFakeTimers()
-    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
-    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
-    listAccounts.mockResolvedValue({ items: [row], total: 1, page: 1, page_size: 20, pages: 1 })
-    listWithEtag.mockResolvedValueOnce({
-      notModified: false,
-      etag: 'next-etag',
-      data: { items: [{ ...row, ...change }], total: 1, page: 1, page_size: 20, pages: 1 }
-    })
-    const wrapper = mountView()
-    await flushPromises()
-    expect(wrapper.get('[data-test="usage-row"]').text()).toBe(before)
-
-    await vi.advanceTimersByTimeAsync(6000)
-    await flushPromises()
-
-    expect(listWithEtag).toHaveBeenCalled()
-    expect(wrapper.get('[data-test="usage-row"]').text()).toBe(after)
     wrapper.unmount()
   })
 

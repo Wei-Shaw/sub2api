@@ -52,43 +52,6 @@ export const buildOpenAIUsageRefreshKey = (account: Pick<Account, 'id' | 'platfo
   ].map(normalizeUsageRefreshValue).join('|')
 }
 
-// Inputs of the passive /usage response: session window columns, header samples
-// in extra, and window stats from usage logs (signalled by last_used_at).
-export const buildAnthropicUsageRefreshKey = (account: Pick<Account, 'id' | 'platform' | 'type' | 'last_used_at' | 'session_window_start' | 'session_window_end' | 'session_window_status' | 'extra'>): string => {
-  if (account.platform !== 'anthropic' || (account.type !== 'oauth' && account.type !== 'setup-token')) {
-    return ''
-  }
-
-  const extra = account.extra ?? {}
-  return [
-    account.id,
-    account.last_used_at,
-    account.session_window_start,
-    account.session_window_end,
-    account.session_window_status,
-    extra.passive_usage_sampled_at,
-    extra.session_window_utilization,
-    extra.passive_usage_7d_utilization,
-    extra.passive_usage_7d_reset,
-    extra.passive_usage_7d_oi_utilization,
-    extra.passive_usage_7d_oi_reset
-  ].map(normalizeUsageRefreshValue).join('|')
-}
-
-// Gemini /usage counts usage logs against a tier derived from the account, so
-// new use (last_used_at) or an account edit (updated_at) changes it.
-export const buildGeminiUsageRefreshKey = (account: Pick<Account, 'id' | 'platform' | 'updated_at' | 'last_used_at'>): string => {
-  if (account.platform !== 'gemini') {
-    return ''
-  }
-
-  return [
-    account.id,
-    account.updated_at,
-    account.last_used_at
-  ].map(normalizeUsageRefreshValue).join('|')
-}
-
 export const buildGrokUsageRefreshKey = (account: Pick<Account, 'platform' | 'extra'>): string => {
   if (account.platform !== 'grok') {
     return ''
@@ -107,9 +70,37 @@ export const buildGrokUsageRefreshKey = (account: Pick<Account, 'platform' | 'ex
   ].join('|')
 }
 
-export const buildAccountUsageRefreshKey = (account: Pick<Account, 'id' | 'platform' | 'type' | 'updated_at' | 'last_used_at' | 'rate_limit_reset_at' | 'session_window_start' | 'session_window_end' | 'session_window_status' | 'extra'>): string => {
+export const buildAccountUsageRefreshKey = (account: Pick<Account, 'id' | 'platform' | 'type' | 'updated_at' | 'last_used_at' | 'rate_limit_reset_at' | 'session_window_start' | 'session_window_end' | 'session_window_status' | 'credentials' | 'extra'>): string => {
   if (account.platform === 'openai') return buildOpenAIUsageRefreshKey(account)
-  if (account.platform === 'anthropic') return buildAnthropicUsageRefreshKey(account)
-  if (account.platform === 'gemini') return buildGeminiUsageRefreshKey(account)
-  return ''
+
+  const isClaude = account.platform === 'anthropic' && (account.type === 'oauth' || account.type === 'setup-token')
+  if (!isClaude && account.platform !== 'gemini') return ''
+
+  const credentials = account.credentials ?? {}
+  const extra = account.extra ?? {}
+  return serializeSnapshotRefreshValue([
+    account.id,
+    account.platform,
+    account.type,
+    account.last_used_at ?? null,
+    account.session_window_start ?? null,
+    account.session_window_end ?? null,
+    ...(isClaude ? [
+      account.session_window_status ?? null,
+      extra.session_window_utilization ?? null,
+      extra.passive_usage_sampled_at ?? null,
+      extra.passive_usage_7d_utilization ?? null,
+      extra.passive_usage_7d_reset ?? null,
+      extra.passive_usage_7d_oi_utilization ?? null,
+      extra.passive_usage_7d_oi_reset ?? null
+    ] : [
+      // Gemini quota comes from the canonical tier of (oauth_type, tier_id); a
+      // legacy project_id alone makes the backend treat the account as code_assist.
+      // An API key on a third-party base_url has no tier, the official one does.
+      credentials.oauth_type ?? null,
+      credentials.project_id ?? null,
+      credentials.tier_id ?? null,
+      credentials.base_url ?? null
+    ])
+  ])
 }

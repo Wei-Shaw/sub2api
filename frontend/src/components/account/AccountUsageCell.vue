@@ -947,7 +947,6 @@ const openAISevenDayEstimatedTotalCost = computed(() =>
   estimateWindowTotalCost(usageInfo.value?.seven_day)
 )
 
-// Covers OpenAI, Claude and Gemini; '' for other platforms.
 const usageRefreshKey = computed(() => buildAccountUsageRefreshKey(props.account))
 
 const shouldAutoLoadUsageOnMount = computed(() => {
