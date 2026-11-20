@@ -374,8 +374,8 @@ function handleReplayGuide() {
 }
 
 function formatHeaderMoney(value: number) {
-  if (!Number.isFinite(value)) return '$0.00'
-  return `$${value.toFixed(2)}`
+  if (!Number.isFinite(value)) return '$0.000000'
+  return `$${value.toFixed(6)}`
 }
 
 function handleClickOutside(event: MouseEvent) {

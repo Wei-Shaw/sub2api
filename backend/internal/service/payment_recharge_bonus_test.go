@@ -136,8 +136,8 @@ func TestMatchRechargeBonusTier(t *testing.T) {
 func TestCalculateRechargeBonusRounding(t *testing.T) {
 	require.Equal(t, 20.0, calculateRechargeBonus(100, 20))
 	require.Equal(t, 120.0, addRechargeBonus(100, 20))
-	// 33.33 * 15% = 4.9995 → 5.00
-	require.Equal(t, 5.0, calculateRechargeBonus(33.33, 15))
+	// 33.33 * 15% = 4.9995 → 4.9995（六位小数精度，不再舍入到两位）
+	require.Equal(t, 4.9995, calculateRechargeBonus(33.33, 15))
 	require.Zero(t, calculateRechargeBonus(100, 0))
 	require.Zero(t, calculateRechargeBonus(0, 20))
 

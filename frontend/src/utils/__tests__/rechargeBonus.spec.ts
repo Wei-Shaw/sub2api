@@ -77,9 +77,9 @@ describe('rechargeBonus helpers', () => {
     expect(matchRechargeBonusTier([{ min_amount: 0.3, bonus_percent: 1 }], 0.1 + 0.2)).not.toBeNull()
   })
 
-  it('calculates bonus on the credited base with cent rounding', () => {
+  it('calculates bonus on the credited base with 6-decimal rounding', () => {
     expect(calculateRechargeBonus(100, 20)).toBe(20)
-    expect(calculateRechargeBonus(33.33, 15)).toBe(5)
+    expect(calculateRechargeBonus(33.33, 15)).toBe(4.9995)
     expect(calculateRechargeBonus(100, 0)).toBe(0)
   })
 
