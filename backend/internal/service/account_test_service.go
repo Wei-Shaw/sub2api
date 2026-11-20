@@ -1187,11 +1187,6 @@ func (s *AccountTestService) observeGrokTestResponse(ctx context.Context, accoun
 		clearGrokRateLimitAfterRecovery(ctx, s.accountRepo, account)
 	}
 	if s.accountRepo == nil || len(responseBody) == 0 {
-		if resp.StatusCode == http.StatusPaymentRequired && s.accountRepo != nil {
-			stateCtx, cancel := openAIAccountStateContext(ctx)
-			defer cancel()
-			_ = s.accountRepo.SetTempUnschedulable(stateCtx, account.ID, now.Add(30*time.Minute), "grok payment required")
-		}
 		return
 	}
 	if isGrokContentPolicyRejection(resp.StatusCode, responseBody) {
@@ -1218,6 +1213,9 @@ func (s *AccountTestService) observeGrokTestResponse(ctx context.Context, accoun
 	case http.StatusUnauthorized:
 		cooldown, reason = 10*time.Minute, "grok oauth token unauthorized"
 	case http.StatusPaymentRequired:
+		if isGrokUnrecognizedPaymentRequired(resp.StatusCode, responseBody) {
+			return
+		}
 		cooldown, reason = 30*time.Minute, "grok payment required"
 	case http.StatusForbidden:
 		cooldown, reason = 30*time.Minute, "grok entitlement or subscription tier denied"
@@ -1226,7 +1224,7 @@ func (s *AccountTestService) observeGrokTestResponse(ctx context.Context, accoun
 			cooldown, reason = 2*time.Minute, "grok upstream temporary error"
 		}
 	}
-	if decision.Class == GrokFailureBilling && cooldown == 0 {
+	if decision.Class == GrokFailureBilling && cooldown == 0 && !isGrokUnrecognizedPaymentRequired(resp.StatusCode, responseBody) {
 		cooldown, reason = 30*time.Minute, "grok payment required"
 	}
 	if cooldown > 0 {

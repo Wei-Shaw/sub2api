@@ -99,11 +99,11 @@ func classifyGrokUpstreamFailure(statusCode int, responseBody []byte, requestedM
 	// Billing / hard quota (not free-tier rolling).
 	// Cooldown stays at 30m to match the existing Grok 402/spending-limit
 	// handler (longer cools would change ops behavior without a settings knob).
-	if isGrokBillingQuotaText(low) || statusCode == http.StatusPaymentRequired {
+	// A bare 402 is not billing evidence: xAI returns an empty body for requests
+	// that a healthy paid account can still serve. Cooling on the status alone
+	// quarantines the failover chain.
+	if isGrokBillingQuotaText(low) || (statusCode == http.StatusPaymentRequired && grokPaymentBodyIdentifiesAccount(responseBody)) {
 		reason := firstNonEmpty(text, "billing quota")
-		if statusCode == http.StatusPaymentRequired && text == "" {
-			reason = "payment required"
-		}
 		return GrokUpstreamFailureDecision{
 			Class:          GrokFailureBilling,
 			Model:          model,
@@ -126,6 +126,20 @@ func classifyGrokUpstreamFailure(statusCode int, responseBody []byte, requestedM
 			ShouldFailover: true,
 			ShouldCooldown: false,
 			Reason:         firstNonEmpty(text, "grok response compatibility error"),
+		}
+	}
+
+	// A 402 whose body does not identify the account is request-scoped. xAI
+	// returns this for ordinary requests that healthy accounts can still serve;
+	// treating it as a payment failure cools every account on the failover
+	// chain. Return the error without rotating or quarantining the pool.
+	if isGrokUnrecognizedPaymentRequired(statusCode, responseBody) {
+		return GrokUpstreamFailureDecision{
+			Class:          GrokFailureCompatibility,
+			Model:          model,
+			ShouldFailover: false,
+			ShouldCooldown: false,
+			Reason:         firstNonEmpty(text, "unrecognized grok payment response"),
 		}
 	}
 
@@ -370,7 +384,8 @@ func isGrokBillingQuotaText(low string) bool {
 	if strings.Contains(low, "billing") && strings.Contains(low, "quota") {
 		return true
 	}
-	if strings.Contains(low, "payment") && (strings.Contains(low, "required") || strings.Contains(low, "fail")) {
+	if strings.Contains(low, "payment") && (strings.Contains(low, "required") || strings.Contains(low, "fail")) &&
+		!isGrokGenericPaymentStatusText(low) {
 		return true
 	}
 	if strings.Contains(low, "spending limit") || strings.Contains(low, "run out of credits") || strings.Contains(low, "out of credits") ||
@@ -426,6 +441,40 @@ func grokSameAccountRetryMetadata(account *Account, statusCode int, responseBody
 // marking them would hide healthy sibling credentials while the bounded
 // same-account retry is still in progress. Ordinary 429s and free-usage
 // exhaustion retain the existing quota/team isolation behavior.
+// isGrokUnrecognizedPaymentRequired is true for a 402 that carries no
+// recognized billing signal. Empty bodies and generic payloads belong here.
+// Explicit spending-limit, credit, and subscription-required evidence stays on
+// the account cooldown path.
+func isGrokUnrecognizedPaymentRequired(statusCode int, responseBody []byte) bool {
+	if statusCode != http.StatusPaymentRequired {
+		return false
+	}
+	return !grokPaymentBodyIdentifiesAccount(responseBody)
+}
+
+func grokPaymentBodyIdentifiesAccount(responseBody []byte) bool {
+	if isGrokSpendingLimitError(responseBody) {
+		return true
+	}
+	_, _, low := grokUpstreamErrorCorpus(http.StatusPaymentRequired, responseBody)
+	if isGrokGenericPaymentStatusText(low) {
+		return false
+	}
+	return isGrokBillingQuotaText(low)
+}
+
+func isGrokGenericPaymentStatusText(low string) bool {
+	normalized := strings.Join(strings.Fields(strings.ToLower(strings.TrimSpace(low))), " ")
+	switch normalized {
+	case "", "402", "402 payment required", "payment required", "http 402", "http 402 payment required":
+		return true
+	default:
+		return strings.Contains(normalized, "<html") && strings.Contains(normalized, "payment required") &&
+			!strings.Contains(normalized, "credit") && !strings.Contains(normalized, "subscription") &&
+			!strings.Contains(normalized, "billing") && !strings.Contains(normalized, "spending")
+	}
+}
+
 func shouldMarkGrokTeamModelRateLimit(statusCode int, responseBody []byte) bool {
 	decision := classifyGrokUpstreamFailure(statusCode, responseBody, "")
 	if decision.Class == GrokFailureModelCapacity {
