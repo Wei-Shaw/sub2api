@@ -25,6 +25,7 @@ const defaultMaxResults = 5
 
 // Provider type identifiers.
 const (
-	ProviderTypeBrave  = "brave"
-	ProviderTypeTavily = "tavily"
+	ProviderTypeBrave    = "brave"
+	ProviderTypeTavily   = "tavily"
+	ProviderTypeDeepSeek = "deepseek"
 )
