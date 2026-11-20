@@ -52,6 +52,13 @@ func TestValidateProviderRequest(t *testing.T) {
 			wantErr:        false,
 		},
 		{
+			name:           "valid creem provider",
+			providerKey:    payment.TypeCreem,
+			providerName:   "Creem Provider",
+			supportedTypes: payment.TypeCreem,
+			wantErr:        false,
+		},
+		{
 			name:           "valid alipay provider",
 			providerKey:    "alipay",
 			providerName:   "Alipay Direct",
@@ -260,6 +267,13 @@ func TestIsSensitiveProviderConfigField(t *testing.T) {
 		{payment.TypeAirwallex, "apiBase", false},
 		{payment.TypeAirwallex, "accountId", false},
 		{payment.TypeAirwallex, "currency", false},
+
+		// Creem
+		{payment.TypeCreem, "apiKey", true},
+		{payment.TypeCreem, "webhookSecret", true},
+		{payment.TypeCreem, "productId", false},
+		{payment.TypeCreem, "apiBase", false},
+		{payment.TypeCreem, "currency", false},
 
 		// Unknown provider: never sensitive
 		{"unknown", "secretKey", false},
