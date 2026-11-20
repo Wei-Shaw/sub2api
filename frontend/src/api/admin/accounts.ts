@@ -1134,7 +1134,36 @@ export async function refreshOpenCodeGoUsage(id: number): Promise<OpenCodeGoUsag
   return data
 }
 
+export interface AccountRenameItem {
+  account_id: number
+  old_name: string
+  new_name: string
+}
+
+export interface BulkAccountRenameRule {
+  account_ids: number[]
+  prefix: string
+  suffix: string
+  start_number: number
+  padding: number
+  continue_sequence: boolean
+}
+
+export async function previewAccountRenames(rule: BulkAccountRenameRule): Promise<{ items: AccountRenameItem[] }> {
+  const { data } = await apiClient.post<{ items: AccountRenameItem[] }>('/admin/accounts/bulk-rename/preview', rule)
+  return data
+}
+
+export async function applyAccountRenames(items: AccountRenameItem[], idempotencyKey: string): Promise<{ applied: number }> {
+  const { data } = await apiClient.post<{ applied: number }>('/admin/accounts/bulk-rename', { items }, {
+    headers: { 'Idempotency-Key': idempotencyKey }
+  })
+  return data
+}
+
 export const accountsAPI = {
+  previewAccountRenames,
+  applyAccountRenames,
   list,
   listWithEtag,
   getUpstreamBillingRatesWithEtag,
