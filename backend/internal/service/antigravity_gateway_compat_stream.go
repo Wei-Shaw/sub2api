@@ -395,6 +395,10 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithTiming(
 				if !session.hasMeaningfulData() && !writer.Disconnected() {
 					return handleAntigravityCompatEmptyStream(c, session)
 				}
+				if !session.processor.HasTerminalState() && !writer.Disconnected() {
+					writeAntigravityCompatStreamError(c, adapter, writer, "stream_incomplete")
+					return session.collectResult(false), errors.New("stream incomplete: missing finishReason")
+				}
 				return session.finish()
 			}
 			if event.err != nil {

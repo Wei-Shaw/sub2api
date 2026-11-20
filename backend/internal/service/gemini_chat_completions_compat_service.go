@@ -565,11 +565,17 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 	var firstTokenMs *int
 	firstChunk := true
 	finishReason := ""
+	sawPromptBlock := false
 	clientDisconnect := false
 	sawValidCandidate := false
 	keepaliveWritten := false
 	streamResult := func() *geminiStreamResult {
-		return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnect, finished: finishReason != ""}
+		return &geminiStreamResult{
+			usage:            &usage,
+			firstTokenMs:     firstTokenMs,
+			clientDisconnect: clientDisconnect,
+			finished:         isTerminalGeminiFinishReason(finishReason) || sawPromptBlock,
+		}
 	}
 
 	writeChatChunk := func(chunk apicompat.ChatCompletionsChunk) bool {
@@ -698,8 +704,11 @@ chatStreamLoop:
 								ms := int(time.Since(startTime).Milliseconds())
 								firstTokenMs = &ms
 							}
-							if fr := extractGeminiFinishReason(geminiResp); fr != "" {
+							if fr := extractGeminiFinishReason(geminiResp); isTerminalGeminiFinishReason(fr) {
 								finishReason = fr
+							}
+							if isGeminiPromptBlockedPayload(geminiResp) {
+								sawPromptBlock = true
 							}
 							if u := extractGeminiUsage(rawBytes); u != nil {
 								usage = *u
@@ -900,13 +909,28 @@ chatStreamLoop:
 	if clientDisconnect {
 		return streamResult(), nil
 	}
-	if !roleSent && !sawValidCandidate {
+	if !roleSent && !sawValidCandidate && !sawPromptBlock {
 		return nil, &UpstreamFailoverError{
 			StatusCode:               http.StatusBadGateway,
 			ResponseBody:             []byte(`{"error":"empty stream response from upstream"}`),
 			RetryableOnSameAccount:   true,
 			SafeToFailoverAfterWrite: keepaliveWritten,
 		}
+	}
+	if !isTerminalGeminiFinishReason(finishReason) && !sawPromptBlock {
+		if !roleSent {
+			return nil, &UpstreamFailoverError{
+				StatusCode:               http.StatusBadGateway,
+				ResponseBody:             []byte(`{"error":"upstream stream ended without finishReason"}`),
+				RetryableOnSameAccount:   true,
+				SafeToFailoverAfterWrite: keepaliveWritten,
+			}
+		}
+		writeCommittedOpenAISSEError(c, http.StatusBadGateway, "stream_incomplete", "Upstream stream ended without finishReason")
+		return nil, errors.New("stream incomplete: missing finishReason")
+	}
+	if sawPromptBlock && !isTerminalGeminiFinishReason(finishReason) {
+		finishReason = "SAFETY"
 	}
 	if ensureRoleStarted() {
 		return streamResult(), nil

@@ -27,6 +27,7 @@ type StreamingProcessor struct {
 	blockIndex        int
 	messageStartSent  bool
 	messageStopSent   bool
+	sawTerminalState  bool
 	usedTool          bool
 	pendingSignature  string
 	trailingSignature string
@@ -108,7 +109,7 @@ func (p *StreamingProcessor) ProcessLine(line string) []byte {
 	}
 
 	geminiResp := &v1Resp.Response
-	if len(geminiResp.Candidates) == 0 && geminiResp.UsageMetadata == nil {
+	if len(geminiResp.Candidates) == 0 && geminiResp.PromptFeedback == nil && geminiResp.UsageMetadata == nil {
 		return nil
 	}
 	if !p.messageStartSent && isEmptyAbnormalGeminiTerminalResponse(geminiResp) {
@@ -156,9 +157,13 @@ func (p *StreamingProcessor) ProcessLine(line string) []byte {
 				}
 			}
 		}
-		if finishReason != "" {
+		if isTerminalGeminiFinishReason(finishReason) {
+			p.sawTerminalState = true
 			_, _ = result.Write(p.emitFinish(finishReason))
 		}
+	} else if geminiResp.PromptFeedback != nil && isTerminalGeminiBlockReason(geminiResp.PromptFeedback.BlockReason) {
+		p.sawTerminalState = true
+		_, _ = result.Write(p.emitFinish("SAFETY"))
 	}
 
 	return result.Bytes()
@@ -195,6 +200,11 @@ func (p *StreamingProcessor) MessageStartSent() bool {
 // HasContent reports whether any substantive text, thinking, or tool calls were emitted.
 func (p *StreamingProcessor) HasContent() bool {
 	return p.hasContent
+}
+
+// HasTerminalState reports whether a non-empty Gemini finishReason or promptFeedback.blockReason arrived.
+func (p *StreamingProcessor) HasTerminalState() bool {
+	return p.sawTerminalState
 }
 
 // emitMessageStart 发送 message_start 事件
@@ -604,6 +614,16 @@ func isEmptyAbnormalGeminiTerminalResponse(geminiResp *GeminiResponse) bool {
 		}
 	}
 	return true
+}
+
+func isTerminalGeminiFinishReason(finishReason string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(finishReason))
+	return upper != "" && upper != "FINISH_REASON_UNSPECIFIED"
+}
+
+func isTerminalGeminiBlockReason(blockReason string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(blockReason))
+	return upper != "" && upper != "BLOCKED_REASON_UNSPECIFIED"
 }
 
 func mapGeminiFinishReasonToClaudeStopReason(finishReason string, usedTool bool) string {

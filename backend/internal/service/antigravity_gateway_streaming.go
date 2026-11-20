@@ -265,6 +265,7 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 
 	cw := newAntigravityClientWriter(c.Writer, flusher, "antigravity gemini")
 	sawMeaningfulEvent := false
+	sawTerminalState := false
 	upstreamDataWritten := false
 	keepaliveWritten := false
 
@@ -296,6 +297,18 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 						RetryableOnSameAccount:   true,
 						SafeToFailoverAfterWrite: keepaliveWritten && !upstreamDataWritten,
 					}
+				}
+				if !sawTerminalState && !cw.Disconnected() {
+					if !upstreamDataWritten {
+						return nil, &UpstreamFailoverError{
+							StatusCode:               http.StatusBadGateway,
+							ResponseBody:             []byte(`{"error":"upstream stream ended without finishReason"}`),
+							RetryableOnSameAccount:   true,
+							SafeToFailoverAfterWrite: keepaliveWritten,
+						}
+					}
+					sendErrorEvent("stream_incomplete")
+					return nil, errors.New("stream incomplete: missing finishReason")
 				}
 				return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: cw.Disconnected()}, nil
 			}
@@ -371,6 +384,9 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 							RetryableOnSameAccount:   true,
 							SafeToFailoverAfterWrite: keepaliveWritten && !upstreamDataWritten,
 						}
+					}
+					if isTerminalGeminiPayload(parsed) {
+						sawTerminalState = true
 					}
 					sawMeaningfulEvent = true
 				}
@@ -1251,12 +1267,7 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 				queueBudget.release(len(ev.line))
 			}
 			if !ok {
-				// 上游完成，发送结束事件
-				finalEvents, agUsage := processor.Finish()
-				if len(finalEvents) > 0 {
-					commitHeaders()
-					cw.Write(finalEvents)
-				} else if !processor.MessageStartSent() && !cw.Disconnected() {
+				if !processor.MessageStartSent() && !cw.Disconnected() {
 					// 整个流未收到任何可解析的上游数据（全部 SSE 行均无法被 JSON 解析），
 					// 触发 failover 在同账号重试，避免向客户端发出缺少 message_start 的残缺流
 					logger.LegacyPrintf("service.antigravity_gateway", "[antigravity-Claude-Stream] empty stream response (no valid events parsed), triggering failover")
@@ -1266,6 +1277,16 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 						RetryableOnSameAccount:   true,
 						SafeToFailoverAfterWrite: keepaliveWritten,
 					}
+				}
+				if !processor.HasTerminalState() && !cw.Disconnected() {
+					sendErrorEvent("stream_incomplete")
+					return nil, errors.New("stream incomplete: missing finishReason")
+				}
+				// 上游完成，发送结束事件
+				finalEvents, agUsage := processor.Finish()
+				if len(finalEvents) > 0 {
+					commitHeaders()
+					cw.Write(finalEvents)
 				}
 				return &antigravityStreamResult{usage: convertUsage(agUsage), firstTokenMs: firstTokenMs, clientDisconnect: cw.Disconnected()}, nil
 			}

@@ -529,7 +529,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 				wroteFallback := false
 				if !upstreamErrorAlreadyCommunicated {
-					wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
+					wroteFallback = h.ensureForwardErrorResponse(c, streamStarted || middleware2.IsCommittedEventStream(c))
 				}
 				forwardFailedFields := []zap.Field{
 					zap.Int64("account_id", account.ID),
@@ -550,6 +550,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					forwardFailedFields = append(forwardFailedFields, zap.Int64p("proxy_id", account.ProxyID))
 				}
 				reqLog.Error("gateway.forward_failed", forwardFailedFields...)
+				if streamStarted || middleware2.IsCommittedEventStream(c) {
+					abortTruncatedHTTPStream(c)
+				}
 				return
 			}
 
@@ -1074,7 +1077,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 				wroteFallback := false
 				if !upstreamErrorAlreadyCommunicated {
-					wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
+					wroteFallback = h.ensureForwardErrorResponse(c, streamStarted || middleware2.IsCommittedEventStream(c))
 				}
 				forwardFailedFields := []zap.Field{
 					zap.Int64("account_id", account.ID),
@@ -1102,6 +1105,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					submitForwardUsage(result)
 					// 上游已接受并计量本次会话（流中断），会话槽保持既有语义
 					upstreamServedSession = true
+				}
+				if streamStarted || middleware2.IsCommittedEventStream(c) {
+					abortTruncatedHTTPStream(c)
 				}
 				return
 			}

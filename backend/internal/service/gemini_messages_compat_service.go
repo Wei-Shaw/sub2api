@@ -2345,6 +2345,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 	var firstTokenMs *int
 	var usage ClaudeUsage
 	finishReason := ""
+	sawPromptBlock := false
 	sawToolUse := false
 	sawValidCandidate := false
 	keepaliveWritten := false
@@ -2355,6 +2356,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 			return
 		}
 		commitHeaders()
+		MarkOpsStreamError(c, errType, message, http.StatusBadGateway)
 		writeSSE(c.Writer, "error", map[string]any{
 			"type": "error",
 			"error": map[string]string{
@@ -2462,8 +2464,11 @@ streamLoop:
 				sawValidCandidate = true
 			}
 
-			if fr := extractGeminiFinishReason(geminiResp); fr != "" {
+			if fr := extractGeminiFinishReason(geminiResp); isTerminalGeminiFinishReason(fr) {
 				finishReason = fr
+			}
+			if isGeminiPromptBlockedPayload(geminiResp) {
+				sawPromptBlock = true
 			}
 
 			parts := extractGeminiParts(geminiResp)
@@ -2699,16 +2704,31 @@ streamLoop:
 			usage:            &usage,
 			firstTokenMs:     firstTokenMs,
 			clientDisconnect: true,
-			finished:         finishReason != "",
+			finished:         isTerminalGeminiFinishReason(finishReason) || sawPromptBlock,
 		}, nil
 	}
-	if !messageStartSent && !sawValidCandidate {
+	if !messageStartSent && !sawValidCandidate && !sawPromptBlock {
 		return nil, &UpstreamFailoverError{
 			StatusCode:               http.StatusBadGateway,
 			ResponseBody:             []byte(`{"error":"empty stream response from upstream"}`),
 			RetryableOnSameAccount:   true,
 			SafeToFailoverAfterWrite: keepaliveWritten,
 		}
+	}
+	if !isTerminalGeminiFinishReason(finishReason) && !sawPromptBlock {
+		if !messageStartSent {
+			return nil, &UpstreamFailoverError{
+				StatusCode:               http.StatusBadGateway,
+				ResponseBody:             []byte(`{"error":"upstream stream ended without finishReason"}`),
+				RetryableOnSameAccount:   true,
+				SafeToFailoverAfterWrite: keepaliveWritten,
+			}
+		}
+		sendStreamError("stream_incomplete", "Upstream stream ended without finishReason")
+		return nil, errors.New("stream incomplete: missing finishReason")
+	}
+	if sawPromptBlock && !isTerminalGeminiFinishReason(finishReason) {
+		finishReason = "SAFETY"
 	}
 	ensureMessageStart()
 
@@ -3312,7 +3332,7 @@ nativeLoop:
 						observer.ObserveGemini(rawBytes)
 						observeGeminiImageOutputs(c, rawBytes)
 
-						if gjson.GetBytes(rawBytes, "candidates.0.finishReason").String() != "" {
+						if isTerminalGeminiFinishReason(geminiPrimaryCandidate(rawBytes).Get("finishReason").String()) {
 							finished = true
 						}
 
@@ -3414,12 +3434,54 @@ nativeLoop:
 		}
 	}
 
+	if !clientDisconnect && sawDataEvent && !finished && best.Kind == geminiSignalNone {
+		if !upstreamBytesWritten {
+			return nil, &UpstreamFailoverError{
+				StatusCode:               http.StatusBadGateway,
+				ResponseBody:             []byte(`{"error":"upstream stream ended without finishReason"}`),
+				RetryableOnSameAccount:   true,
+				SafeToFailoverAfterWrite: keepaliveWritten,
+			}
+		}
+		writeCommittedGoogleSSEError(c, http.StatusBadGateway, "Upstream stream ended without finishReason")
+		return nil, errors.New("stream incomplete: missing finishReason")
+	}
+
 	if !clientDisconnect {
 		commitHeaders()
 	}
 	s.finalizeGeminiSSESignal(c, account, true, upstreamRequestID, best, sawDataEvent, fallback)
 
 	return &geminiNativeStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnect, finished: finished}, nil
+}
+
+func isTerminalGeminiFinishReason(finishReason string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(finishReason))
+	return upper != "" && upper != "FINISH_REASON_UNSPECIFIED"
+}
+
+func isGeminiPromptBlockedPayload(parsed map[string]any) bool {
+	if parsed == nil {
+		return false
+	}
+	pf, ok := parsed["promptFeedback"].(map[string]any)
+	if !ok {
+		return false
+	}
+	br, _ := pf["blockReason"].(string)
+	upper := strings.ToUpper(strings.TrimSpace(br))
+	return upper != "" && upper != "BLOCKED_REASON_UNSPECIFIED"
+}
+
+func isTerminalGeminiPayload(parsed map[string]any) bool {
+	if parsed == nil {
+		return false
+	}
+	if isTerminalGeminiFinishReason(extractGeminiFinishReason(parsed)) || isGeminiPromptBlockedPayload(parsed) {
+		return true
+	}
+	_, hasErr := parsed["error"].(map[string]any)
+	return hasErr
 }
 
 // unwrapGeminiResponse 解包 Gemini OAuth 响应中的 response 字段
