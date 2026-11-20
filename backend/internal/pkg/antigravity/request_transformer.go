@@ -47,6 +47,9 @@ type TransformOptions struct {
 	// 为空时使用默认模板（包含 [IDENTITY_PATCH] 及 SYSTEM_PROMPT_BEGIN 标记）。
 	IdentityPatch string
 	EnableMCPXML  bool
+	// PromptSanitizer 可选：在 systemInstruction 组装完成后做可配置的指纹改写，
+	// 规避上游对特定 systemInstruction 字面量的伪装 429。nil 表示不改写。
+	PromptSanitizer *PromptSanitizer
 }
 
 func DefaultTransformOptions() TransformOptions {
@@ -413,10 +416,14 @@ func buildSystemInstruction(system json.RawMessage, modelName string, opts Trans
 		return nil
 	}
 
-	return &GeminiContent{
+	content := &GeminiContent{
 		Role:  "user",
 		Parts: parts,
 	}
+	if opts.PromptSanitizer != nil {
+		opts.PromptSanitizer.SanitizeGeminiContent(content)
+	}
+	return content
 }
 
 // buildContents 构建 contents
