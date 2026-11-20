@@ -26,13 +26,25 @@ func (s *userGroupRateResolverRepoStub) GetByUserAndGroup(ctx context.Context, u
 }
 
 func TestNewUserGroupRateResolver_Defaults(t *testing.T) {
-	resolver := newUserGroupRateResolver(nil, nil, 0, nil, "")
+	resolver := newUserGroupRateResolver(&userGroupRateResolverRepoStub{}, nil, 0, nil, "")
 
 	require.NotNil(t, resolver)
 	require.NotNil(t, resolver.cache)
 	require.Equal(t, defaultUserGroupRateCacheTTL, resolver.cacheTTL)
 	require.NotNil(t, resolver.sf)
 	require.Equal(t, "service.gateway", resolver.logComponent)
+}
+
+func TestUserGroupRateResolverResolve_NoRepoDoesNotCreateCache(t *testing.T) {
+	resolver := newUserGroupRateResolver(nil, nil, time.Minute, nil, "service.test")
+	require.Nil(t, resolver.cache, "no cache janitor is needed when overrides cannot be loaded")
+	require.Equal(t, 1.4, resolver.Resolve(context.Background(), 101, 202, 1.4))
+
+	cache := gocache.New(time.Minute, 0)
+	cache.Set("101:202", 1.7, time.Minute)
+	resolver = newUserGroupRateResolver(nil, cache, time.Minute, nil, "service.test")
+	require.Same(t, cache, resolver.cache)
+	require.Equal(t, 1.7, resolver.Resolve(context.Background(), 101, 202, 1.4), "existing cached overrides still work without a repository")
 }
 
 func TestUserGroupRateResolverResolve_FallbackForNilResolverAndInvalidIDs(t *testing.T) {
