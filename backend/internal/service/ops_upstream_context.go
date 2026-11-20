@@ -242,7 +242,7 @@ type OpsForwardedTerminalFailure struct {
 
 // SetOpsForwardedTerminalFailure keeps the first forwarded failure, preferring response.failed over error.
 func SetOpsForwardedTerminalFailure(c *gin.Context, eventType string, payload []byte) {
-	if prior, ok := GetOpsForwardedTerminalFailure(c); ok && !(prior.EventType == "error" && eventType == "response.failed") {
+	if prior, ok := GetOpsForwardedTerminalFailure(c); ok && (prior.EventType != "error" || eventType != "response.failed") {
 		return
 	}
 	c.Set(opsForwardedTerminalFailureKey, OpsForwardedTerminalFailure{
