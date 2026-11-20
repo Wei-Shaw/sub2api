@@ -268,8 +268,9 @@ type UsageInfo struct {
 
 // ClaudeUsageWindow Anthropic /api/oauth/usage 返回的单个用量窗口
 type ClaudeUsageWindow struct {
-	Utilization float64 `json:"utilization"`
-	ResetsAt    string  `json:"resets_at"`
+	Utilization        float64 `json:"utilization"`
+	ResetsAt           string  `json:"resets_at"`
+	utilizationPresent bool
 }
 
 // ClaudeUsageResponse Anthropic API返回的usage结构
@@ -476,6 +477,8 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 					})
 					return nil, fetchErr
 				}
+				// Only this fresh HTTP observation may lift a model cooldown.
+				s.recoverAnthropicFableModelQuota(ctx, account, resp)
 				// 缓存成功响应
 				s.cache.apiCache.Store(accountID, &apiUsageCache{
 					response:  resp,
@@ -497,7 +500,6 @@ func (s *AccountUsageService) getUsageForAccount(ctx context.Context, account *A
 		s.addWindowStats(ctx, account, usage)
 
 		// 5. 将主动查询结果同步到被动缓存，下次 passive 加载即为最新值；
-		// 其中还会在上游明确给出已回落的 7d_oi 用量时撤销窗口耗尽写入的模型级限流。
 		s.syncActiveToPassive(ctx, account, usage)
 
 		// 6. 上游 usage API 目前不一定下发 Fable 7d 窗口；缺失时回填被动采样
@@ -730,9 +732,8 @@ func buildPassiveUsageWindow(extra map[string]any, utilKey, resetKey string) *Us
 // syncActiveToPassive 将主动查询的最新数据回写到 Extra 被动缓存，
 // 这样下次被动加载时能看到最新值。
 //
-// 主动查询是“重置卡生效后额度已恢复”最直接的观测点：这里在拿到 API 明确回报的
-// 7d_oi 用量后，顺手撤销窗口耗尽写入的模型级限流。回填被动采样发生在调用方，
-// 因此本函数的 usage.SevenDayFable 一定是上游返回值，不会把旧采样当成恢复依据。
+// This projection also runs for cached API responses. Cooldown recovery belongs
+// to the fresh-fetch boundary, before a response enters the API cache.
 func (s *AccountUsageService) syncActiveToPassive(ctx context.Context, account *Account, usage *UsageInfo) {
 	if account == nil {
 		return
@@ -771,9 +772,6 @@ func (s *AccountUsageService) syncActiveToPassive(ctx context.Context, account *
 		}
 	}
 
-	if usage.SevenDayFable != nil {
-		recoverAnthropicFableWindowLimit(ctx, s.accountRepo, account, usage.SevenDayFable.Utilization/100)
-	}
 }
 
 func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Account, force bool) (*UsageInfo, error) {
@@ -1820,25 +1818,7 @@ func (s *AccountUsageService) buildUsageInfo(resp *ClaudeUsageResponse, updatedA
 	}
 
 	// 7天Fable窗口（响应头 7d_oi 对应的窗口）
-	fable := resp.SevenDayOverageIncluded
-	if fable.ResetsAt == "" {
-		// 新版 usage 将模型周窗口放在 limits[]。仅投影无 surface 限定的
-		// Fable 周额度；percent 已是百分比，显式 0 也必须覆盖旧被动采样。
-		for _, limit := range resp.Limits {
-			if limit.Kind != "weekly_scoped" || limit.Group != "weekly" ||
-				limit.Scope.Model.DisplayName != "Fable" || limit.Percent == nil || *limit.Percent < 0 {
-				continue
-			}
-			if surface := bytes.TrimSpace(limit.Scope.Surface); len(surface) > 0 && !bytes.Equal(surface, []byte("null")) {
-				continue
-			}
-			if _, err := parseTime(limit.ResetsAt); err != nil {
-				continue
-			}
-			fable = ClaudeUsageWindow{Utilization: *limit.Percent, ResetsAt: limit.ResetsAt}
-			break
-		}
-	}
+	fable := resp.fableWindow()
 	if fable.ResetsAt != "" {
 		if fableReset, err := parseTime(fable.ResetsAt); err == nil {
 			info.SevenDayFable = &UsageProgress{

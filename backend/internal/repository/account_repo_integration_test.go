@@ -5,6 +5,9 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -1761,4 +1764,185 @@ func idsOfAccounts(accounts []service.Account) []int64 {
 		out = append(out, accounts[i].ID)
 	}
 	return out
+}
+
+func (s *AccountRepoSuite) TestActiveUsagePreservesNewModelLimit() {
+	for _, tc := range []struct{ name, newReason string }{
+		{"unchanged generation control", ""},
+		{"new credits restriction", "anthropic_fable_credits_required"},
+		{"new exhausted generation", "anthropic_7d_oi_window_exhausted"},
+	} {
+		s.Run(tc.name, func() {
+			reset := time.Now().Add(72 * time.Hour).UTC()
+			account := mustCreateAccount(s.T(), s.client, &service.Account{
+				Name: tc.name, Platform: service.PlatformAnthropic, Type: service.AccountTypeOAuth,
+				Status: service.StatusActive, Schedulable: true,
+				Credentials: map[string]any{"access_token": "test-token"},
+				Extra: map[string]any{"model_rate_limits": map[string]any{
+					"claude-fable-5": map[string]any{
+						"reason": "anthropic_7d_oi_window_exhausted", "rate_limit_reset_at": reset.Format(time.RFC3339),
+					},
+				}},
+			})
+			snapshot, err := s.repo.GetByID(s.ctx, account.ID)
+			s.Require().NoError(err)
+			writes := make(chan error, 1)
+			srv := newLocalTestServer(s.T(), http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				var err error
+				if tc.newReason != "" {
+					// Deterministic interleaving: after the account snapshot was
+					// read, another response arms a new persisted restriction.
+					err = s.repo.SetModelRateLimit(s.ctx, account.ID, "claude-fable-5", reset.Add(time.Hour), tc.newReason)
+				}
+				writes <- err
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = fmt.Fprintf(w, `{"seven_day_overage_included":{"utilization":0,"resets_at":%q}}`, reset.Format(time.RFC3339))
+			}))
+			defer srv.Close()
+			fetcher := &claudeUsageService{usageURL: srv.URL, allowPrivateHosts: true}
+			svc := service.NewAccountUsageService(s.repo, &claudeUsageWindowLogRepo{}, fetcher,
+				nil, nil, nil, nil, nil, service.NewUsageCache(), nil, nil)
+			usage, err := svc.GetUsageForAccount(s.ctx, snapshot)
+			s.Require().NoError(err)
+			s.Require().NoError(<-writes)
+			s.Require().Zero(usage.SevenDayFable.Utilization)
+			current, err := s.repo.GetByID(s.ctx, account.ID)
+			s.Require().NoError(err)
+			if tc.newReason == "" {
+				s.Require().Zero(current.GetModelRateLimitRemainingTime("claude-fable-5-2"))
+			} else {
+				s.T().Logf("persisted limits after recovery: %#v", current.Extra["model_rate_limits"])
+				s.Require().Positive(current.GetModelRateLimitRemainingTime("claude-fable-5-2"), "a newer persisted restriction must survive an older account snapshot")
+			}
+		})
+	}
+}
+
+func (s *AccountRepoSuite) modelRecoveryAccount() (*service.Account, json.RawMessage, map[string]any) {
+	reset := time.Now().Add(72 * time.Hour).UTC().Format(time.RFC3339)
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name: "fable-recovery", Platform: service.PlatformAnthropic, Type: service.AccountTypeOAuth,
+		Status: service.StatusActive, Schedulable: true,
+		Extra: map[string]any{
+			"model_rate_limits": map[string]any{
+				"claude-fable-5": map[string]any{
+					"reason": "anthropic_7d_oi_window_exhausted", "rate_limit_reset_at": reset,
+				},
+				"claude-sonnet-4-6": map[string]any{"rate_limit_reset_at": reset},
+			},
+			"unrelated":                       "preserved",
+			"passive_usage_7d_oi_utilization": 1.0,
+		},
+	})
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	expected, err := json.Marshal(got.Extra["model_rate_limits"].(map[string]any)["claude-fable-5"])
+	s.Require().NoError(err)
+	_, err = s.repo.sql.ExecContext(s.ctx, "TRUNCATE scheduler_outbox")
+	s.Require().NoError(err)
+	return got, expected, map[string]any{"passive_usage_7d_oi_utilization": 0.0}
+}
+
+func (s *AccountRepoSuite) TestRecoverModelRateLimitIfUnchanged_SyncsSnapshotAndOutbox() {
+	account, expected, updates := s.modelRecoveryAccount()
+	cache := &schedulerCacheRecorder{}
+	s.repo.schedulerCache = cache
+	changed, err := s.repo.RecoverModelRateLimitIfUnchanged(s.ctx, account.ID, "claude-fable-5", expected, account.UpdatedAt, updates)
+	s.Require().NoError(err)
+	s.Require().True(changed)
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Zero(got.GetModelRateLimitRemainingTime("claude-fable-5-2"))
+	s.Require().Positive(got.GetModelRateLimitRemainingTime("claude-sonnet-4-6"))
+	s.Require().Equal("preserved", got.Extra["unrelated"])
+	s.Require().Equal(0.0, got.Extra["passive_usage_7d_oi_utilization"])
+	s.Require().Len(cache.setAccounts, 1)
+	s.Require().Zero(cache.setAccounts[0].GetModelRateLimitRemainingTime("claude-fable-5-2"))
+	s.Require().Equal(0.0, cache.setAccounts[0].Extra["passive_usage_7d_oi_utilization"])
+	var count int
+	err = scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM scheduler_outbox WHERE account_id = $1 AND event_type = $2",
+		[]any{account.ID, service.SchedulerOutboxEventAccountChanged}, &count)
+	s.Require().NoError(err)
+	s.Require().Equal(1, count)
+
+	changed, err = s.repo.RecoverModelRateLimitIfUnchanged(s.ctx, account.ID, "claude-fable-5", expected, account.UpdatedAt, updates)
+	s.Require().NoError(err)
+	s.Require().False(changed, "an already removed generation must not publish another recovery")
+	err = scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM scheduler_outbox", nil, &count)
+	s.Require().NoError(err)
+	s.Require().Equal(1, count)
+}
+
+func (s *AccountRepoSuite) TestRecoverModelRateLimitIfUnchanged_PreservesNewRowVersion() {
+	account, expected, updates := s.modelRecoveryAccount()
+	// Simulate a writer that re-arms the same payload after the usage snapshot.
+	_, err := s.repo.sql.ExecContext(s.ctx, "UPDATE accounts SET updated_at = $1 WHERE id = $2", account.UpdatedAt.Add(time.Second), account.ID)
+	s.Require().NoError(err)
+	changed, err := s.repo.RecoverModelRateLimitIfUnchanged(s.ctx, account.ID, "claude-fable-5", expected, account.UpdatedAt, updates)
+	s.Require().NoError(err)
+	s.Require().False(changed)
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Positive(got.GetModelRateLimitRemainingTime("claude-fable-5-2"))
+	var count int
+	err = scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM scheduler_outbox", nil, &count)
+	s.Require().NoError(err)
+	s.Require().Zero(count)
+}
+
+func (s *AccountRepoSuite) TestRecoverModelRateLimitIfUnchanged_PreservesChangedEntry() {
+	account, expected, updates := s.modelRecoveryAccount()
+	// Entry comparison protects the targeted limit independently of the row
+	// version, including writers that only change the JSON document.
+	_, err := s.repo.sql.ExecContext(s.ctx, `UPDATE accounts SET extra = jsonb_set(extra,
+		'{model_rate_limits,claude-fable-5,reason}', '"anthropic_fable_credits_required"'::jsonb) WHERE id = $1`, account.ID)
+	s.Require().NoError(err)
+	changed, err := s.repo.RecoverModelRateLimitIfUnchanged(s.ctx, account.ID, "claude-fable-5", expected, account.UpdatedAt, updates)
+	s.Require().NoError(err)
+	s.Require().False(changed)
+	got, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Positive(got.GetModelRateLimitRemainingTime("claude-fable-5-2"))
+	var count int
+	err = scanSingleRow(s.ctx, s.repo.sql, "SELECT COUNT(*) FROM scheduler_outbox", nil, &count)
+	s.Require().NoError(err)
+	s.Require().Zero(count)
+}
+
+func (s *AccountRepoSuite) TestRecoverModelRateLimitIfUnchanged_OutboxFailureRollsBack() {
+	// Use autocommit: the operation itself must roll back, without the suite's outer transaction.
+	client := testEntClient(s.T())
+	repo := newAccountRepositoryWithSQL(client, integrationDB, nil)
+	reset := time.Now().Add(72 * time.Hour).UTC().Format(time.RFC3339)
+	created := mustCreateAccount(s.T(), client, &service.Account{
+		Name: "fable-recovery-rollback", Platform: service.PlatformAnthropic, Type: service.AccountTypeOAuth,
+		Status: service.StatusActive, Schedulable: true,
+		Extra: map[string]any{
+			"model_rate_limits": map[string]any{"claude-fable-5": map[string]any{
+				"reason": "anthropic_7d_oi_window_exhausted", "rate_limit_reset_at": reset,
+			}},
+			"passive_usage_7d_oi_utilization": 1.0,
+		},
+	})
+	defer func() { _, _ = integrationDB.ExecContext(s.ctx, "DELETE FROM accounts WHERE id = $1", created.ID) }()
+	account, err := repo.GetByID(s.ctx, created.ID)
+	s.Require().NoError(err)
+	expected, err := json.Marshal(account.Extra["model_rate_limits"].(map[string]any)["claude-fable-5"])
+	s.Require().NoError(err)
+	_, err = integrationDB.ExecContext(s.ctx, `CREATE FUNCTION reject_fable_recovery_event() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'injected outbox failure'; END; $$`)
+	s.Require().NoError(err)
+	defer func() { _, _ = integrationDB.ExecContext(s.ctx, "DROP FUNCTION reject_fable_recovery_event()") }()
+	_, err = integrationDB.ExecContext(s.ctx, fmt.Sprintf(`CREATE TRIGGER reject_fable_recovery_event BEFORE INSERT ON scheduler_outbox FOR EACH ROW WHEN (NEW.account_id = %d) EXECUTE FUNCTION reject_fable_recovery_event()`, account.ID))
+	s.Require().NoError(err)
+	defer func() {
+		_, _ = integrationDB.ExecContext(s.ctx, "DROP TRIGGER reject_fable_recovery_event ON scheduler_outbox")
+	}()
+	changed, err := repo.RecoverModelRateLimitIfUnchanged(s.ctx, account.ID, "claude-fable-5", expected, account.UpdatedAt, map[string]any{"passive_usage_7d_oi_utilization": 0.0})
+	s.Require().ErrorContains(err, "injected outbox failure")
+	s.Require().False(changed)
+	got, err := repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Positive(got.GetModelRateLimitRemainingTime("claude-fable-5-2"))
+	s.Require().Equal(1.0, got.Extra["passive_usage_7d_oi_utilization"])
+	s.Require().True(account.UpdatedAt.Equal(got.UpdatedAt))
 }

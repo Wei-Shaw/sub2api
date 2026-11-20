@@ -165,9 +165,9 @@ func TestPassiveUsageKeepsLimitWhenClearFails(t *testing.T) {
 		"写库失败时不能只改内存快照，否则本实例放行而调度快照仍拦截")
 }
 
-// 主动用量刷新（管理端「刷新额度」）是另一个观测点：上游 usage API 明确给出
-// 已回落的 7d_oi 用量时同样要撤销；API 没给这个窗口时保持原状。
-func TestSyncActiveToPassiveClearsExhaustedFableLimit(t *testing.T) {
+// Passive projection also receives cached API values. Only the fresh-fetch
+// boundary can establish the observation needed to lift a model cooldown.
+func TestSyncActiveToPassiveKeepsFableLimitWithoutFreshObservation(t *testing.T) {
 	ctx := context.Background()
 	repo := &fableRecoveryRepo{}
 	svc := &AccountUsageService{accountRepo: repo}
@@ -178,8 +178,8 @@ func TestSyncActiveToPassiveClearsExhaustedFableLimit(t *testing.T) {
 
 		svc.syncActiveToPassive(ctx, account, usage)
 
-		require.Equal(t, []string{anthropicFableRateLimitKey}, repo.clearedScopes)
-		require.False(t, account.isRateLimitActiveForKey(anthropicFableRateLimitKey))
+		require.Empty(t, repo.clearedScopes, "a projection of a potentially cached response cannot recover a cooldown")
+		require.True(t, account.isRateLimitActiveForKey(anthropicFableRateLimitKey))
 	})
 
 	t.Run("api omits the fable window", func(t *testing.T) {
