@@ -463,6 +463,16 @@ func (s *OpenAIGatewayService) newOpenAIAccountFailoverErrorWithClassificationHe
 		failoverErr.SameAccountRetryDeadline = s.openAIOAuth429RetryDeadline(account)
 		failoverErr.SameAccountRetryDelay = openAIOAuth429SameAccountRetryDelay(responseHeaders, failoverErr.SameAccountRetryDeadline)
 	}
+	if !shouldDisable && isOpenCodeCapacityRefused(account, statusCode, responseBody) {
+		// 非池模式同样先重试；每账号最多三次、每次最多等待 30 秒，耗尽后复用原有切号流程。
+		delay, allowed := openCodeCapacityRetryDelay(responseHeaders, responseBody)
+		failoverErr.RetryableOnSameAccount = allowed
+		failoverErr.RequestScopedTransient = true
+		failoverErr.SameAccountRetryDelay = delay
+		failoverErr.SameAccountRetryMax = openCodeCapacityRetryMax
+		// OpenCode 容量拒绝耗尽后保留上游 429，避免继承共享容量策略的 503 映射。
+		failoverErr.ClientStatusCode = statusCode
+	}
 	return failoverErr
 }
 

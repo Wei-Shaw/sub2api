@@ -1,0 +1,9 @@
+version: 1
+name: opencode-capacity-retry
+slug: opencode-capacity-retry
+protocol: http
+interceptRequests: true
+scenarios:
+  - name: default
+    path: ./default.js
+    default: true
