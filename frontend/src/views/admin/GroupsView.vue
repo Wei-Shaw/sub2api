@@ -1509,20 +1509,20 @@
           </div>
         </div>
 
-        <!-- Grok Voice 显式定价（仅 grok 平台） -->
+        <!-- Gemini grounding / Grok search and voice pricing -->
         <div
-          v-if="createForm.platform === 'grok'"
+          v-if="['gemini', 'grok'].includes(createForm.platform)"
           class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
         >
           <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            {{ t("admin.groups.explicitPricing.title") }}
+            {{ t(createForm.platform === "gemini" ? "admin.groups.geminiGroundingPricing.title" : "admin.groups.explicitPricing.title") }}
           </h4>
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
-            {{ t("admin.groups.explicitPricing.description") }}
+            {{ t(createForm.platform === "gemini" ? "admin.groups.geminiGroundingPricing.description" : "admin.groups.explicitPricing.description") }}
           </p>
           <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div>
-              <label class="input-label">{{ t("admin.groups.explicitPricing.searchPricePer1k") }}</label>
+              <label class="input-label">{{ t(createForm.platform === "gemini" ? "admin.groups.geminiGroundingPricing.price" : "admin.groups.explicitPricing.searchPricePer1k") }}</label>
               <input
                 v-model.number="createForm.search_price_per_1k"
                 type="number"
@@ -1533,7 +1533,7 @@
                 data-testid="create-search-price"
               />
             </div>
-            <div>
+            <div v-if="createForm.platform === 'grok'">
               <label class="input-label">{{ t("admin.groups.voicePricing.audioRealtimePerMin") }}</label>
               <input
                 v-model.number="createForm.audio_realtime_price_per_min"
@@ -1545,7 +1545,7 @@
                 data-testid="create-audio-realtime-price"
               />
             </div>
-            <div>
+            <div v-if="createForm.platform === 'grok'">
               <label class="input-label">{{ t("admin.groups.voicePricing.audioTtsPerMillionChars") }}</label>
               <input
                 v-model.number="createForm.audio_tts_price_per_million_chars"
@@ -1557,7 +1557,7 @@
                 data-testid="create-audio-tts-price"
               />
             </div>
-            <div>
+            <div v-if="createForm.platform === 'grok'">
               <label class="input-label">{{ t("admin.groups.voicePricing.audioSttPerHour") }}</label>
               <input
                 v-model.number="createForm.audio_stt_price_per_hour"
@@ -3186,20 +3186,20 @@
           </div>
         </div>
 
-        <!-- Grok Voice 显式定价（仅 grok 平台） -->
+        <!-- Gemini grounding / Grok search and voice pricing -->
         <div
-          v-if="editForm.platform === 'grok'"
+          v-if="['gemini', 'grok'].includes(editForm.platform)"
           class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
         >
           <h4 class="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-            {{ t("admin.groups.explicitPricing.title") }}
+            {{ t(editForm.platform === "gemini" ? "admin.groups.geminiGroundingPricing.title" : "admin.groups.explicitPricing.title") }}
           </h4>
           <p class="text-xs text-gray-500 dark:text-gray-400 mb-3">
-            {{ t("admin.groups.explicitPricing.description") }}
+            {{ t(editForm.platform === "gemini" ? "admin.groups.geminiGroundingPricing.description" : "admin.groups.explicitPricing.description") }}
           </p>
           <div class="grid grid-cols-1 gap-3 md:grid-cols-3">
             <div>
-              <label class="input-label">{{ t("admin.groups.explicitPricing.searchPricePer1k") }}</label>
+              <label class="input-label">{{ t(editForm.platform === "gemini" ? "admin.groups.geminiGroundingPricing.price" : "admin.groups.explicitPricing.searchPricePer1k") }}</label>
               <input
                 v-model.number="editForm.search_price_per_1k"
                 type="number"
@@ -3210,7 +3210,7 @@
                 data-testid="edit-search-price"
               />
             </div>
-            <div>
+            <div v-if="editForm.platform === 'grok'">
               <label class="input-label">{{ t("admin.groups.voicePricing.audioRealtimePerMin") }}</label>
               <input
                 v-model.number="editForm.audio_realtime_price_per_min"
@@ -3222,7 +3222,7 @@
                 data-testid="edit-audio-realtime-price"
               />
             </div>
-            <div>
+            <div v-if="editForm.platform === 'grok'">
               <label class="input-label">{{ t("admin.groups.voicePricing.audioTtsPerMillionChars") }}</label>
               <input
                 v-model.number="editForm.audio_tts_price_per_million_chars"
@@ -3234,7 +3234,7 @@
                 data-testid="edit-audio-tts-price"
               />
             </div>
-            <div>
+            <div v-if="editForm.platform === 'grok'">
               <label class="input-label">{{ t("admin.groups.voicePricing.audioSttPerHour") }}</label>
               <input
                 v-model.number="editForm.audio_stt_price_per_hour"

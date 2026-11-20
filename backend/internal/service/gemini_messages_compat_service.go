@@ -1556,9 +1556,15 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 	var firstTokenMs *int
 	clientDisconnect := false
 	streamFinished := false
+	var groundingQueries geminiGroundingQueries
+	var observeGrounding func([]byte)
+	if action != "countTokens" && account.Platform == PlatformGemini &&
+		configuredGeminiGroundingPrice(getAPIKeyFromContext(c)) != nil {
+		observeGrounding = groundingQueries.observe
+	}
 
 	if stream {
-		streamRes, err := s.handleNativeStreamingResponse(c, resp, startTime, isOAuth, account, requestID)
+		streamRes, err := s.handleNativeStreamingResponse(c, resp, startTime, isOAuth, account, requestID, observeGrounding)
 		if err != nil {
 			return nil, err
 		}
@@ -1570,6 +1576,9 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		if useUpstreamStream {
 			var best geminiResponseSignal
 			collected, usageObj, stats, err := collectGeminiSSEObserved(s.cfg, resp.Body, isOAuth, func(rawBytes []byte) {
+				if observeGrounding != nil {
+					observeGrounding(rawBytes)
+				}
 				if sig, ok := detectGeminiResponseSignal(rawBytes); ok && sig.Kind > best.Kind {
 					best = sig
 				}
@@ -1584,7 +1593,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 			c.Data(http.StatusOK, "application/json", b)
 			usage = usageObj
 		} else {
-			usageResp, err := s.handleNativeNonStreamingResponse(c, resp, isOAuth, account, requestID)
+			usageResp, err := s.handleNativeNonStreamingResponse(c, resp, isOAuth, account, requestID, observeGrounding)
 			if err != nil {
 				return nil, err
 			}
@@ -1605,14 +1614,21 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		imageCount = observedGeminiImageOutputs(c)
 	}
 
+	responseModel := observedUpstreamResponseModel(c)
+	modelConflict := observedUpstreamResponseModelConflict(c)
+	queryCount := len(groundingQueries)
+	if queryCount > 0 && (imageCount > 0 || modelConflict || !geminiPerQueryGrounding(firstNonEmptyString(responseModel, mappedModel))) {
+		queryCount = 0
+	}
+
 	return &ForwardResult{
 		RequestID:                     requestID,
 		UpstreamHeaders:               resp.Header,
 		Usage:                         *usage,
 		Model:                         originalModel,
 		UpstreamModel:                 mappedModel,
-		UpstreamResponseModel:         observedUpstreamResponseModel(c),
-		UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+		UpstreamResponseModel:         responseModel,
+		UpstreamResponseModelConflict: modelConflict,
 		Stream:                        stream,
 		ReasoningEffort:               extractGeminiReasoningEffortFromBody(body),
 		Duration:                      time.Since(startTime),
@@ -1622,6 +1638,7 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		ImageCount:                    imageCount,
 		ImageSize:                     imageSize,
 		ImageInputSize:                imageInputSize,
+		geminiGroundingQueryCount:     queryCount,
 		UpstreamPriceMultiplier:       VertexUpstreamPriceMultiplier(account, mappedModel, cachedContentLocation),
 	}, nil
 }
@@ -2823,7 +2840,7 @@ type UpstreamHTTPResult struct {
 	Body       []byte
 }
 
-func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Context, resp *http.Response, isOAuth bool, account *Account, upstreamRequestID string) (*ClaudeUsage, error) {
+func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Context, resp *http.Response, isOAuth bool, account *Account, upstreamRequestID string, observeGrounding func([]byte)) (*ClaudeUsage, error) {
 	if s.cfg != nil && s.cfg.Gateway.GeminiDebugResponseHeaders {
 		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========== Response Headers ==========")
 		for key, values := range resp.Header {
@@ -2850,6 +2867,9 @@ func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Co
 		observer = beginUpstreamResponseModelObservation(c)
 	}
 	observer.ObserveGemini(respBody)
+	if observeGrounding != nil {
+		observeGrounding(respBody)
+	}
 	observeGeminiImageOutputs(c, respBody)
 	if sig, ok := detectGeminiResponseSignalInBody(respBody); ok {
 		s.markGeminiResponseSignal(c, account, sig, false, upstreamRequestID)
@@ -2871,7 +2891,7 @@ func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Co
 	return &ClaudeUsage{}, nil
 }
 
-func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, isOAuth bool, account *Account, upstreamRequestID string) (*geminiNativeStreamResult, error) {
+func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time, isOAuth bool, account *Account, upstreamRequestID string, observeGrounding func([]byte)) (*geminiNativeStreamResult, error) {
 	if s.cfg != nil && s.cfg.Gateway.GeminiDebugResponseHeaders {
 		logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] ========== Streaming Response Headers ==========")
 		for key, values := range resp.Header {
@@ -2947,6 +2967,9 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 					}
 					if u := extractGeminiUsage(rawBytes); u != nil {
 						usage = u
+					}
+					if observeGrounding != nil {
+						observeGrounding(rawBytes)
 					}
 					observer.ObserveGemini(rawBytes)
 					observeGeminiImageOutputs(c, rawBytes)

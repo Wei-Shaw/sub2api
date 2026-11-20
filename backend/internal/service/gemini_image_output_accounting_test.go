@@ -239,7 +239,7 @@ func TestHandleNativeNonStreamingResponse_FeedsImageCounter(t *testing.T) {
 	}
 
 	svc := &GeminiMessagesCompatService{}
-	usage, err := svc.handleNativeNonStreamingResponse(c, resp, false, nil, "")
+	usage, err := svc.handleNativeNonStreamingResponse(c, resp, false, nil, "", nil)
 	require.NoError(t, err)
 	require.NotNil(t, usage)
 
@@ -258,7 +258,7 @@ func TestHandleNativeNonStreamingResponse_FileDataImageBilling(t *testing.T) {
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(strings.NewReader(body)),
 	}
-	_, err := (&GeminiMessagesCompatService{}).handleNativeNonStreamingResponse(c, resp, false, nil, "")
+	_, err := (&GeminiMessagesCompatService{}).handleNativeNonStreamingResponse(c, resp, false, nil, "", nil)
 	require.NoError(t, err)
 	const model = "gemini-nano-banana-2.1"
 	require.False(t, isImageGenerationModel(model))

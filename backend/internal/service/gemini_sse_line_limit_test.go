@@ -26,7 +26,7 @@ func TestGeminiStreamsRejectOversizedUpstreamLines(t *testing.T) {
 
 	run := map[string]func(c *gin.Context, resp *http.Response) error{
 		"native": func(c *gin.Context, resp *http.Response) error {
-			_, err := svc.handleNativeStreamingResponse(c, resp, time.Now(), false, &Account{ID: 1}, "")
+			_, err := svc.handleNativeStreamingResponse(c, resp, time.Now(), false, &Account{ID: 1}, "", nil)
 			return err
 		},
 		"messages": func(c *gin.Context, resp *http.Response) error {
