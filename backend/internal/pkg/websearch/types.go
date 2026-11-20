@@ -27,4 +27,5 @@ const defaultMaxResults = 5
 const (
 	ProviderTypeBrave  = "brave"
 	ProviderTypeTavily = "tavily"
+	ProviderTypeExa    = "exa"
 )

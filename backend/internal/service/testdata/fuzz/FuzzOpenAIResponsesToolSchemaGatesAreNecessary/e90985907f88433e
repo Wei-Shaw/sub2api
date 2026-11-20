@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("{\"tools\":[{\"parameters\":{\"properties\":{\"\":{\"pattern\":\"\\\\\"}}}}]}")

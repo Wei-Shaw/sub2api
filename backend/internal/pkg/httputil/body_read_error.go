@@ -3,6 +3,7 @@ package httputil
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -100,6 +101,24 @@ func DescribeRequestBodyReadFailure(req *http.Request, err error) RequestBodyRea
 		failure.Message = "Failed to read request body"
 	}
 	return failure
+}
+
+// ClientMessage returns the message shown to the client. A size-limit failure
+// names the limit so callers can tell which limit they hit.
+func (f RequestBodyReadFailure) ClientMessage() string {
+	if f.Kind == RequestBodyReadErrorMaxBytes {
+		return BodyTooLargeMessage(f.MaxBytesLimit)
+	}
+	return f.Message
+}
+
+// BodyTooLargeMessage formats the 413 message for a request body limit.
+func BodyTooLargeMessage(limit int64) string {
+	const mb = 1024 * 1024
+	if limit >= mb {
+		return fmt.Sprintf("Request body too large, limit is %dMB", limit/mb)
+	}
+	return fmt.Sprintf("Request body too large, limit is %dB", limit)
 }
 
 // LogFields returns diagnostics that never include request content or error

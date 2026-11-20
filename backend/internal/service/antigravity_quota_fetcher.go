@@ -57,8 +57,14 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 		return nil, fmt.Errorf("create antigravity client failed: %w", err)
 	}
 
-	// 调用 API 获取配额
-	modelsResp, modelsRaw, err := client.FetchAvailableModels(ctx, accessToken, projectID, resolveModelsListReadLimit(f.cfg))
+	baseURL := resolveAntigravityForwardBaseURL(account)
+	if baseURL == "" {
+		return nil, errors.New("no antigravity base url configured")
+	}
+
+	// Query the same endpoint that receives forwarded requests for this account (daily for
+	// paid tiers, prod otherwise), because Google accounts quota separately per endpoint.
+	modelsResp, modelsRaw, err := client.FetchAvailableModelsFromURL(ctx, baseURL, accessToken, projectID, resolveModelsListReadLimit(f.cfg))
 	if err != nil {
 		// 403 Forbidden: 不报错，返回 is_forbidden 标记
 		var forbiddenErr *antigravity.ForbiddenError
@@ -89,7 +95,7 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 
 	// The per-group 5-hour and weekly windows. Not on the critical path: without them the
 	// per-model figures above are shown as before.
-	if summary, err := client.RetrieveUserQuotaSummary(ctx, accessToken, projectID); err != nil {
+	if summary, err := client.RetrieveUserQuotaSummaryFromURL(ctx, baseURL, accessToken, projectID); err != nil {
 		slog.Warn("failed to fetch antigravity quota summary", "account_id", account.ID, "error", err)
 	} else {
 		usageInfo.AntigravityQuotaGroups = buildAntigravityQuotaGroups(summary)
