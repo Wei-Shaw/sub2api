@@ -562,6 +562,17 @@ type GatewayCache interface {
 	// ErrReasoningContentNotFound，使 service 层无需依赖具体缓存实现即可
 	// 区分"未缓存"与真实读取失败。
 	GetReasoningContent(ctx context.Context, itemID string) (string, error)
+
+	// Anthropic file owner（/v1/files 上传账号归属）。
+	// SetAnthropicFileOwner 记录 Anthropic 形状 file_id 由哪个用户、哪个账号上传，
+	// 供同一用户的 /v1/messages 带 file 源时硬钉回同一上游（file_id 只在该上游
+	// 有效）。ownerUserID 一并保存，使解析方能区分"自己的文件"与"他人的文件"；
+	// ownerUserID<=0 表示无法确定归属用户，直接返回 nil 不写。
+	SetAnthropicFileOwner(ctx context.Context, fileID string, ownerUserID int64, accountID int64, platform string, ttl time.Duration) error
+	// GetAnthropicFileOwner 返回 file_id 的归属用户、归属账号与平台；未命中、
+	// 旧格式（值中无归属用户）或归属字段非法时返回 ok=false 且 err=nil，使
+	// service 层可区分"无归属"与真实读取失败。
+	GetAnthropicFileOwner(ctx context.Context, fileID string) (ownerUserID int64, accountID int64, platform string, ok bool, err error)
 }
 
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil
@@ -668,6 +679,16 @@ type ClaudeUsage struct {
 	cacheCreationInputTokensFromDetails bool
 	promptTotalTokens                   int
 	promptTotalPresent                  bool
+
+	// ServerToolUseCalls 是 DeepSeek usage.server_tool_use 的按次计费工具调用数
+	// （tool_search + tool_fetch + tool_image_search 合计，各 ¥5/千次；
+	// web_search_requests / web_fetch_requests 仅展示不计费；全为 0 时上游省略
+	// 整个字段）。复用 SearchCount 的按次计费通道（CalculateSearchCost）。
+	ServerToolUseCalls int
+	// SafetyTokens 是审核产生的 token 明细（output_tokens_details.safety_tokens）。
+	// DeepSeek 口径：审核 token 按输出 token 计费且已含在 OutputTokens 中，
+	// 这里仅保留展示，不重复计费。
+	SafetyTokens int
 }
 
 // ForwardResult 转发结果

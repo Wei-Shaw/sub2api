@@ -235,6 +235,13 @@ func (c *openAIWSStateStoreTimeoutProbeCache) GetReasoningContent(_ context.Cont
 	return "", ErrReasoningContentNotFound
 }
 
+func (c *openAIWSStateStoreTimeoutProbeCache) SetAnthropicFileOwner(_ context.Context, _ string, _ int64, _ int64, _ string, _ time.Duration) error {
+	return nil
+}
+func (c *openAIWSStateStoreTimeoutProbeCache) GetAnthropicFileOwner(_ context.Context, _ string) (int64, int64, string, bool, error) {
+	return 0, 0, "", false, nil
+}
+
 func TestOpenAIWSStateStore_RedisOpsUseShortTimeout(t *testing.T) {
 	probe := &openAIWSStateStoreTimeoutProbeCache{}
 	store := NewOpenAIWSStateStore(probe)

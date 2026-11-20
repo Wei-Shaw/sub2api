@@ -15,6 +15,22 @@ const (
 	blockTypeWebSearchToolResult = "web_search_tool_result"
 )
 
+// DeepSeek's 2026-11-13+ Messages API exposes server-side tools declared by
+// the client in request body tools[] (type=deepseek_web_search /
+// deepseek_read_url). When those tools are declared, the upstream emits
+// server_tool_use / web_search_tool_result / web_fetch_tool_result blocks in
+// the response and REQUIRES them to be passed back verbatim in the next turn
+// (the encrypted signature payload is context-necessary). Stripping them
+// breaks multi-turn conversations. Other passback-required upstreams
+// (Kimi/GLM) never declare these DeepSeek tool types, so keying the exemption
+// on the declaration alone is safe and requires no extra model-name check:
+// the filter is body-scoped, and the tools array is the authoritative signal
+// of which API semantics the request was written against.
+var deepSeekServerToolTypes = map[string]struct{}{
+	"deepseek_web_search": {},
+	"deepseek_read_url":   {},
+}
+
 // Fast-path byte patterns: both block types only ever appear as quoted JSON
 // string values, so a raw substring check is a safe pre-filter regardless of
 // key/value spacing.
@@ -48,7 +64,12 @@ func FilterWebSearchHistoryBlocks(body []byte, mappedModel string) []byte {
 		return body
 	}
 
-	stripAll := ResolveThinkingProtocol(mappedModel) == ThinkingProtocolPassbackRequired
+	stripAll := ResolveThinkingProtocol(mappedModel) == ThinkingProtocolPassbackRequired &&
+		// New DeepSeek API: when the request declares DeepSeek server-side
+		// tools, genuine history blocks must pass through untouched (see
+		// deepSeekServerToolTypes). Emulation-synthesized blocks are still
+		// stripped below via the srvtoolu_ws_ ID prefix check.
+		!requestDeclaresDeepSeekServerTools(body)
 
 	jsonStr := *(*string)(unsafe.Pointer(&body))
 	msgsRes := gjson.Get(jsonStr, "messages")
@@ -135,4 +156,25 @@ func shouldStripWebSearchBlock(block map[string]any, stripAll bool) bool {
 	default:
 		return false
 	}
+}
+
+// requestDeclaresDeepSeekServerTools reports whether the request body's tools
+// array declares a DeepSeek server-side tool (deepseek_web_search /
+// deepseek_read_url). Such a declaration is the signal that the request
+// targets the new DeepSeek Messages API, where the upstream issues
+// server_tool_use / web_search_tool_result / web_fetch_tool_result blocks and
+// requires clients to pass them back verbatim on the next turn — so genuine
+// history blocks must not be stripped.
+func requestDeclaresDeepSeekServerTools(body []byte) bool {
+	jsonStr := *(*string)(unsafe.Pointer(&body))
+	tools := gjson.Get(jsonStr, "tools")
+	if !tools.Exists() || !tools.IsArray() {
+		return false
+	}
+	for _, tool := range tools.Array() {
+		if _, ok := deepSeekServerToolTypes[tool.Get("type").String()]; ok {
+			return true
+		}
+	}
+	return false
 }
