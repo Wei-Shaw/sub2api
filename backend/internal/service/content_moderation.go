@@ -34,12 +34,13 @@ const (
 	contentModerationAPIKeysModeAppend  = "append"
 	contentModerationAPIKeysModeReplace = "replace"
 
-	ContentModerationActionAllow        = "allow"
-	ContentModerationActionBlock        = "block"
-	ContentModerationActionHashBlock    = "hash_block"
-	ContentModerationActionKeywordBlock = "keyword_block"
-	ContentModerationActionError        = "error"
-	ContentModerationActionCyberPolicy  = "cyber_policy" // cyber_policy 硬阻断的风控日志 action（封号计数排除按此值过滤）
+	ContentModerationActionAllow         = "allow"
+	ContentModerationActionBlock         = "block"
+	ContentModerationActionHashBlock     = "hash_block"
+	ContentModerationActionKeywordBlock  = "keyword_block"
+	ContentModerationActionError         = "error"
+	ContentModerationActionCyberPolicy   = "cyber_policy"   // cyber_policy 硬阻断的风控日志 action（封号计数排除按此值过滤）
+	ContentModerationActionInvalidPrompt = "invalid_prompt" // invalid_prompt 上游 prompt 策略拦截的风控日志 action
 
 	contentModerationKeywordCategory = "keyword"
 
@@ -3035,9 +3036,10 @@ func maskSecretTail(secret string) string {
 	return strings.Repeat("*", 8) + secret[len(secret)-4:]
 }
 
-// CyberPolicyRecordInput 是一次 cyber_policy 硬阻断的风控记录入参。
+// CyberPolicyRecordInput 是一次上游 prompt 策略拦截的风控记录入参。
 type CyberPolicyRecordInput struct {
-	LogOnly         bool // Trusted platform user: retain evidence without penalties or notifications.
+	LogOnly         bool   // Trusted platform user: retain evidence without penalties or notifications.
+	Code            string // 上游 error.code：cyber_policy 或 invalid_prompt；空值按 cyber_policy 处理。
 	RequestID       string
 	UserID          int64
 	UserEmail       string
@@ -3054,7 +3056,14 @@ type CyberPolicyRecordInput struct {
 	UpstreamOutTok  int
 }
 
-// RecordCyberPolicyEvent 把一次 cyber_policy 硬阻断写入风控中心日志、计入违规计数、
+func contentModerationPolicyAction(code string) (action, category string) {
+	if strings.EqualFold(strings.TrimSpace(code), "invalid_prompt") {
+		return ContentModerationActionInvalidPrompt, "invalid_prompt"
+	}
+	return ContentModerationActionCyberPolicy, "cyber_policy"
+}
+
+// RecordCyberPolicyEvent 把一次上游 prompt 策略拦截写入风控中心日志、计入违规计数、
 // 并给用户发邮件。当前请求已由 gateway 透传给用户；本方法仅做事后记录/通知/计数。
 // 受 risk_control_enabled 总开关和内容审核 group/model scope 约束，
 // 不受内容审核 Enabled/Mode/sample 约束。
@@ -3090,6 +3099,7 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 	if in.UpstreamInTok > 0 || in.UpstreamOutTok > 0 {
 		errBody = fmt.Sprintf("%s\nupstream_usage=in:%d,out:%d", errBody, in.UpstreamInTok, in.UpstreamOutTok)
 	}
+	action, category := contentModerationPolicyAction(in.Code)
 	log := &ContentModerationLog{
 		RequestID:       in.RequestID,
 		UserID:          userID,
@@ -3102,9 +3112,9 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 		Provider:        "openai",
 		Model:           in.Model,
 		Mode:            "post_upstream",
-		Action:          ContentModerationActionCyberPolicy,
+		Action:          action,
 		Flagged:         true,
-		HighestCategory: "cyber_policy",
+		HighestCategory: category,
 		HighestScore:    1.0,
 		Error:           trimRunes(redactContentModerationSecrets(errBody), maxModerationExcerptRunes*4),
 		CreatedAt:       time.Now(),
@@ -3172,6 +3182,6 @@ func (s *ContentModerationService) sendCyberPolicyEmail(ctx context.Context, log
 		}
 		slog.Warn("template cyber policy email failed; falling back", "err", err.Error())
 	}
-	subject := fmt.Sprintf("[%s] 网络安全策略拦截 / Cyber Policy Notice", sanitizeEmailHeader(siteName))
+	subject := fmt.Sprintf("[%s] 上游安全策略拦截 / Upstream Policy Notice", sanitizeEmailHeader(siteName))
 	return s.emailService.SendEmail(ctx, log.UserEmail, subject, buildCyberPolicyNoticeEmailBody(siteName, log))
 }

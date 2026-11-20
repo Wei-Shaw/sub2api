@@ -1123,7 +1123,7 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 	NotificationEmailEventCyberPolicyNotice: {
 		Event:       NotificationEmailEventCyberPolicyNotice,
 		Label:       "Cyber policy notice",
-		Description: "Sent to users when an upstream request is blocked by cyber-security policy (cyber_policy).",
+		Description: "Sent to users when an upstream request is blocked by prompt policy (cyber_policy / invalid_prompt).",
 		Category:    "risk_control",
 		Optional:    false,
 		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),

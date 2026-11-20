@@ -526,6 +526,7 @@ export default {
         block: 'Blocked',
         keywordBlock: 'Keyword Blocked',
         cyberPolicy: 'Cyber policy',
+        invalidPrompt: 'Invalid prompt',
         error: 'Error',
       },
     },

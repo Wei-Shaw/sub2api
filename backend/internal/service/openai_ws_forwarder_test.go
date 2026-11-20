@@ -63,16 +63,16 @@ func TestIsOpenAIWSTokenEvent_TerminalEventsExcluded(t *testing.T) {
 //
 // 全量转发循环（forwardOpenAIWSV2 / sendAndRelay）依赖真实 WebSocket 连接，
 // 无法在单元测试中驱动。本测试通过直接调用转发循环内使用的两个函数
-// detectOpenAICyberPolicy + MarkOpsCyberPolicy，覆盖「从 response.failed 帧
+// detectOpenAIPolicyBlock + MarkOpsCyberPolicy，覆盖「从 response.failed 帧
 // 到 gin context 写入」的完整调用序列，等同于循环体内对应代码段的逻辑验证。
 // 全量 WS 端到端覆盖由后续集成测试（Task 12 handler 编排）承担。
 func TestOpenAIWSCyberPolicyMark_ResponseFailed(t *testing.T) {
 	// 构造一个真实的 response.failed 帧（cyber_policy 命中路径）。
 	payload := []byte(`{"type":"response.failed","response":{"id":"resp_abc","status":"failed","error":{"code":"cyber_policy","message":"Request blocked by content policy."}}}`)
 
-	// 验证 detectOpenAICyberPolicy 能从 response.error.code 路径识别。
-	hit, code, msg := detectOpenAICyberPolicy(payload)
-	require.True(t, hit, "detectOpenAICyberPolicy should return true for cyber_policy payload")
+	// 验证 detectOpenAIPolicyBlock 能从 response.error.code 路径识别。
+	hit, code, msg := detectOpenAIPolicyBlock(payload)
+	require.True(t, hit, "detectOpenAIPolicyBlock should return true for cyber_policy payload")
 	require.Equal(t, "cyber_policy", code)
 	require.Equal(t, "Request blocked by content policy.", msg)
 
@@ -107,8 +107,28 @@ func TestOpenAIWSCyberPolicyMark_ResponseFailed(t *testing.T) {
 func TestOpenAIWSCyberPolicyMark_NonCyberPayload(t *testing.T) {
 	payload := []byte(`{"type":"response.failed","response":{"id":"resp_xyz","status":"failed","error":{"code":"server_error","message":"Internal error"}}}`)
 
-	hit, _, _ := detectOpenAICyberPolicy(payload)
-	require.False(t, hit, "detectOpenAICyberPolicy should return false for non-cyber_policy error code")
+	hit, _, _ := detectOpenAIPolicyBlock(payload)
+	require.False(t, hit, "detectOpenAIPolicyBlock should return false for non-cyber_policy error code")
+}
+
+// TestOpenAIWSCyberPolicyMark_InvalidPromptResponseFailed 验证 WS 路径同样把
+// invalid_prompt 的 usage-policy 拦截写入风控标记，并保留上游 code。
+func TestOpenAIWSCyberPolicyMark_InvalidPromptResponseFailed(t *testing.T) {
+	payload := []byte(`{"type":"response.failed","response":{"id":"resp_def","status":"failed","error":{"code":"invalid_prompt","type":"invalid_request_error","message":"Invalid prompt: your prompt was flagged as potentially violating our usage policy."}}}`)
+
+	hit, code, msg := detectOpenAIPolicyBlock(payload)
+	require.True(t, hit)
+	require.Equal(t, "invalid_prompt", code)
+	require.Contains(t, msg, "usage policy")
+
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	require.True(t, markOpenAICyberPolicyEvent(c, payload, http.StatusOK, &OpenAIUsage{InputTokens: 11, OutputTokens: 2}))
+
+	mark := GetOpsCyberPolicy(c)
+	require.NotNil(t, mark)
+	require.Equal(t, "invalid_prompt", mark.Code)
+	require.Equal(t, 11, mark.UpstreamInTok)
+	require.Equal(t, 2, mark.UpstreamOutTok)
 }
 
 func TestOpenAIForwardResultSucceededForScheduling_TerminalEvents(t *testing.T) {
