@@ -55,6 +55,8 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 				Name:  item.Name,
 				Input: sanitizeAnthropicToolUseInput(item.Name, item.Arguments),
 			})
+		case "tool_search_call":
+			blocks = append(blocks, toolSearchCallToolUse(item))
 		case "web_search_call":
 			if item.Status != "completed" {
 				continue
@@ -639,6 +641,10 @@ func resToAnthHandleOutputItemDone(evt *ResponsesStreamEvent, state *ResponsesEv
 	// Handle web_search_call → synthesize server_tool_use + web_search_tool_result blocks.
 	if evt.Item.Type == "web_search_call" && evt.Item.Status == "completed" {
 		return resToAnthHandleWebSearchDone(evt, state)
+	}
+	// The native tool_search_call carries its arguments only on done.
+	if evt.Item.Type == "tool_search_call" {
+		return resToAnthHandleToolSearchDone(evt, state)
 	}
 
 	// Capture encrypted_content on reasoning item done (often only present here).

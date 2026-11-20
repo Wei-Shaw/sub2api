@@ -132,7 +132,7 @@ func collectOpenAIResponsesToolNameFields(reqBody map[string]any) []codexToolNam
 				continue
 			}
 			typ := strings.ToLower(strings.TrimSpace(firstNonEmptyString(item["type"])))
-			if typ == "additional_tools" {
+			if typ == "additional_tools" || typ == "tool_search_output" {
 				collectTools(item["tools"])
 			}
 			if typ == "function_call" {

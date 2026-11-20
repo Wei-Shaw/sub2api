@@ -172,6 +172,16 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		responsesReq.ServiceTier = "priority"
 	}
 
+	// 3c. ChatGPT/Codex accounts whose model supports tool_search get Claude
+	// Code's ToolSearch as the native protocol, keeping deferred tools out of
+	// the top-level tools.
+	if account.UsesOpenAICodexProtocol() && account.Platform != PlatformGrok &&
+		string(accountCodexToolCapabilities(account, upstreamModel)["supports_search_tool"]) == "true" {
+		if err := apicompat.ApplyNativeToolSearch(&anthropicReq, responsesReq); err != nil {
+			return nil, fmt.Errorf("apply native tool_search: %w", err)
+		}
+	}
+
 	responsesReq.Model = upstreamModel
 	if responsesReq.Reasoning != nil {
 		responsesReq.Reasoning.Effort = openAICompatAnthropicReasoningEffort(&anthropicReq, upstreamModel, responsesReq.Reasoning.Effort)
