@@ -185,6 +185,48 @@ func TestResponsesEventToAnthropicEvents_AppendsOnlySuffixMissingFromDeltas(t *t
 	requireAnthropicBlockLifecycle(t, events)
 }
 
+// A done payload that repeats text already delivered by deltas and then adds a
+// suffix is a second copy of the part, not evidence that the stream was
+// truncated. Grok's Responses stream does this: output_text.delta carries the
+// complete visible answer, and output_text.done repeats it with markup the
+// model appended only to the finished payload. Forwarding that suffix puts
+// text into the assistant message that was never streamed, and a client that
+// replays the message feeds it back on the next turn. The chat completions
+// bridge already ignores output_text.done, so the same upstream stays clean
+// there. A done payload that continues a partial delta is still recovered.
+func TestResponsesEventToAnthropicEvents_DoesNotAppendDoneSuffixAfterCompleteDeltas(t *testing.T) {
+	const answer = "看这次卡在哪："
+	events := feedResponsesEvents(
+		responsesCreated(),
+		&ResponsesStreamEvent{Type: "response.output_text.delta", Delta: answer},
+		&ResponsesStreamEvent{Type: "response.output_text.done", Text: answer + "\n</content>"},
+		&ResponsesStreamEvent{Type: "response.completed", Response: &ResponsesResponse{
+			Status: "completed",
+			Output: responsesMessageOutput(answer + "\n</content>"),
+		}},
+	)
+
+	assert.Equal(t, answer, collectAnthropicText(events))
+	requireAnthropicBlockLifecycle(t, events)
+}
+
+// The appended suffix is not always attached to punctuation. An answer that
+// ends on a version number is still complete, and the markup rides on its own
+// line in the finished payload. A delta cut inside a word has neither
+// property, so its continuation must still be recovered.
+func TestResponsesEventToAnthropicEvents_DoesNotAppendNewlineSuffixAfterDeltas(t *testing.T) {
+	const answer = "use API v1"
+	events := feedResponsesEvents(
+		responsesCreated(),
+		&ResponsesStreamEvent{Type: "response.output_text.delta", Delta: answer},
+		&ResponsesStreamEvent{Type: "response.output_text.done", Text: answer + "\n</content>"},
+		&ResponsesStreamEvent{Type: "response.completed", Response: &ResponsesResponse{Status: "completed"}},
+	)
+
+	assert.Equal(t, answer, collectAnthropicText(events))
+	requireAnthropicBlockLifecycle(t, events)
+}
+
 // Streamed text cannot be recalled, so a payload that contradicts what was
 // already delivered is left alone rather than appended.
 func TestResponsesEventToAnthropicEvents_IgnoresDonePayloadDivergingFromDeltas(t *testing.T) {
