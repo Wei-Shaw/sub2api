@@ -779,6 +779,7 @@ type UpstreamFailoverError struct {
 	SameAccountRetryDeadline time.Time     // 同账号重试截止时间；零值表示仅受 retryLimit 限制
 	SameAccountRetryMax      int           // 可选的错误级同账号重试上限，低于 handler 默认预算时优先采用
 	RequestScopedTransient   bool          // 故障因素与账号无关（如上游按客户端身份/模型容量降载）：可同账号重试，但不得据此对账号做临时封禁
+	EmptyStream              bool          // 上游返回 200 但流中没有任何内容；同一请求在两个账号上都如此时视为请求级问题
 	SafeToFailoverAfterWrite bool          // 仅写出 SSE 注释等非语义字节时，仍可在同一客户端流中切换账号
 	BoundUpstreamPassthrough bool          // 绑定显式缓存的请求在上游网关账号上收到的 429 / 5xx：反映持有缓存的上游账号状态，原样回写不走错误映射
 	Stage                    GatewayFailureStage
@@ -835,6 +836,11 @@ func (s *GatewayService) TempUnscheduleRetryableError(ctx context.Context, accou
 	// 请求级瞬时故障与账号健康无关：封禁只会把与故障无关的账号一并摘掉，
 	// 而故障因素（客户端身份、模型容量）在下一个账号上完全相同。
 	if failoverErr.RequestScopedTransient {
+		return
+	}
+	// An empty stream is request-scoped too: the request fails over, but the
+	// shared account is not taken offline for every other request.
+	if failoverErr.EmptyStream {
 		return
 	}
 	// 根据状态码选择封禁策略

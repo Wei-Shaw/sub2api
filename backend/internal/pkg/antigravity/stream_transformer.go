@@ -41,6 +41,7 @@ type StreamingProcessor struct {
 	cacheReadTokens   int
 	imageOutputTokens int
 	hasContent        bool
+	malformedCall     bool
 }
 
 // NewStreamingProcessor 创建流式响应处理器
@@ -143,6 +144,7 @@ func (p *StreamingProcessor) ProcessLine(line string) []byte {
 	if len(geminiResp.Candidates) > 0 {
 		finishReason := geminiResp.Candidates[0].FinishReason
 		if finishReason == "MALFORMED_FUNCTION_CALL" {
+			p.malformedCall = true
 			log.Printf("[Antigravity] MALFORMED_FUNCTION_CALL detected in stream for model %s", p.originalModel)
 			if geminiResp.Candidates[0].Content != nil {
 				if b, err := json.Marshal(geminiResp.Candidates[0].Content); err == nil {
@@ -189,6 +191,13 @@ func (p *StreamingProcessor) MessageStartSent() bool {
 // HasContent reports whether any substantive text, thinking, or tool calls were emitted.
 func (p *StreamingProcessor) HasContent() bool {
 	return p.hasContent
+}
+
+// SawMalformedFunctionCall reports whether the model ended a candidate with
+// MALFORMED_FUNCTION_CALL. That outcome depends on the request (its tools and
+// history), not on the account that served it.
+func (p *StreamingProcessor) SawMalformedFunctionCall() bool {
+	return p.malformedCall
 }
 
 // emitMessageStart 发送 message_start 事件
