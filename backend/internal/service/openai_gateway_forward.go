@@ -1057,6 +1057,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 
 	httpInvalidEncryptedContentRetryTried := false
 	compactModelFallbackRetried := false
+	httpOAuth401RecoveryTried := false
 	agentTaskRecoveryTried := false
 	rejectedFieldRetryState := openAIResponsesRejectedFieldRetryStateForRequest(c, body)
 	for {
@@ -1122,6 +1123,14 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			respBody := s.readUpstreamErrorBody(resp)
 			_ = resp.Body.Close()
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+
+			if !httpOAuth401RecoveryTried && resp.StatusCode == http.StatusUnauthorized {
+				httpOAuth401RecoveryTried = true
+				if nextToken, recovered := s.tryRefreshOpenAIHTTP401(ctx, account, resp.StatusCode, respBody, token); recovered {
+					token = nextToken
+					continue
+				}
+			}
 
 			upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 			upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
