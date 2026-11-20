@@ -1505,9 +1505,15 @@
             <span><span class="block text-sm text-gray-700 dark:text-gray-300">{{ t("admin.groups.modelPricing.longContext") }}</span><span class="block text-xs text-gray-500">{{ t("admin.groups.modelPricing.longContextHint") }}</span></span>
           </label>
           <div class="mt-3 space-y-2">
-            <PricingEntryCard v-for="(entry, index) in createForm.model_pricing" :key="index" :entry="entry" :platform="createForm.platform" hide-token-intervals @update="createForm.model_pricing[index] = $event" @remove="createForm.model_pricing.splice(index, 1)" />
+            <PricingEntryCard v-for="(entry, index) in createForm.model_pricing" :key="index" :entry="entry" :platform="createForm.platform" hide-token-intervals @update="updateGroupPricingEntry(createForm, createToolPrices, index, $event)" @remove="createForm.model_pricing.splice(index, 1)" />
           </div>
         </div>
+
+        <DeepseekToolPricingFields
+          v-if="createForm.platform === 'deepseek'"
+          v-model="createToolPrices"
+          :generic-pricing="createForm.model_pricing"
+        />
 
         <!-- Grok Voice 显式定价（仅 grok 平台） -->
         <div
@@ -3182,9 +3188,15 @@
             <span><span class="block text-sm text-gray-700 dark:text-gray-300">{{ t("admin.groups.modelPricing.longContext") }}</span><span class="block text-xs text-gray-500">{{ t("admin.groups.modelPricing.longContextHint") }}</span></span>
           </label>
           <div class="mt-3 space-y-2">
-            <PricingEntryCard v-for="(entry, index) in editForm.model_pricing" :key="index" :entry="entry" :platform="editForm.platform" hide-token-intervals @update="editForm.model_pricing[index] = $event" @remove="editForm.model_pricing.splice(index, 1)" />
+            <PricingEntryCard v-for="(entry, index) in editForm.model_pricing" :key="index" :entry="entry" :platform="editForm.platform" hide-token-intervals @update="updateGroupPricingEntry(editForm, editToolPrices, index, $event)" @remove="editForm.model_pricing.splice(index, 1)" />
           </div>
         </div>
+
+        <DeepseekToolPricingFields
+          v-if="editForm.platform === 'deepseek'"
+          v-model="editToolPrices"
+          :generic-pricing="editForm.model_pricing"
+        />
 
         <!-- Grok Voice 显式定价（仅 grok 平台） -->
         <div
@@ -4355,6 +4367,10 @@ import PlatformIcon from "@/components/common/PlatformIcon.vue";
 import { platformLabel } from "@/utils/platformColors";
 import Icon from "@/components/icons/Icon.vue";
 import GroupI18nField from "@/components/admin/group/GroupI18nField.vue";
+import DeepseekToolPricingFields from "@/components/admin/group/DeepseekToolPricingFields.vue";
+import {
+  deepseekTools, matchesToolModel, splitDeepseekToolPrices, type DeepseekToolPrices,
+} from "@/components/admin/group/deepseekToolPricing";
 import GroupRateMultipliersModal from "@/components/admin/group/GroupRateMultipliersModal.vue";
 import GroupRPMOverridesModal from "@/components/admin/group/GroupRPMOverridesModal.vue";
 import GroupCapacityBadge from "@/components/common/GroupCapacityBadge.vue";
@@ -4458,6 +4474,28 @@ const emptyGroupPricing = (): PricingFormEntry => ({
 const addGroupPricing = (entries: PricingFormEntry[]) =>
   entries.push(emptyGroupPricing());
 
+const createToolPrices = ref<DeepseekToolPrices>({});
+const editToolPrices = ref<DeepseekToolPrices>({});
+
+function updateGroupPricingEntry(
+  form: { platform: string; model_pricing: PricingFormEntry[] },
+  toolPrices: DeepseekToolPrices,
+  index: number,
+  entry: PricingFormEntry,
+) {
+  if (form.platform === "deepseek") {
+    const oldModels = form.model_pricing[index].models;
+    const conflict = entry.models.find(pattern => !oldModels.includes(pattern) &&
+      deepseekTools.some(tool => matchesToolModel(pattern, tool) &&
+        (!pattern.trim().endsWith("*") || toolPrices[tool.id])));
+    if (conflict) {
+      appStore.showError(t("admin.groups.deepseekToolPricing.conflict", { rule: conflict }));
+      return;
+    }
+  }
+  form.model_pricing[index] = entry;
+}
+
 const groupPricingFromAPI = (
   pricing: ChannelModelPricing[] | undefined,
 ): PricingFormEntry[] =>
@@ -4483,8 +4521,9 @@ const groupPricingFromAPI = (
 const groupPricingToAPI = (
   pricing: PricingFormEntry[],
   platform: string,
-): ChannelModelPricing[] =>
-  pricing
+  toolPrices: DeepseekToolPrices,
+): ChannelModelPricing[] => {
+  const entries: ChannelModelPricing[] = pricing
     .filter((entry) => entry.models.length > 0)
     .map((entry) => ({
       platform,
@@ -4508,6 +4547,17 @@ const groupPricingToAPI = (
           : formIntervalsToAPI(entry.intervals || []),
       time_pricing: null,
     }));
+  if (platform === "deepseek") {
+    const patterns = entries.flatMap(entry => entry.models);
+    for (const tool of deepseekTools) {
+      const price = toolPrices[tool.id];
+      if (price && !patterns.some(pattern => matchesToolModel(pattern, tool))) {
+        entries.push(price);
+      }
+    }
+  }
+  return entries;
+};
 
 const { t } = useI18n();
 const appStore = useAppStore();
@@ -5875,6 +5925,7 @@ const closeCreateModal = () => {
   createForm.force_openai_ultrafast = false;
   createForm.free_openai_fast = false;
   createForm.model_pricing = [];
+  createToolPrices.value = {};
   createForm.web_search_price_per_call = null;
   createForm.search_price_per_1k = null;
   createForm.audio_realtime_price_per_min = null;
@@ -6010,6 +6061,7 @@ const handleCreateGroup = async () => {
       model_pricing: groupPricingToAPI(
         createForm.model_pricing,
         createForm.platform,
+        createToolPrices.value,
       ),
       daily_limit_usd: normalizeOptionalLimit(
         createForm.daily_limit_usd as number | string | null,
@@ -6154,7 +6206,9 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.force_openai_fast = group.force_openai_fast ?? false;
   editForm.force_openai_ultrafast = group.force_openai_ultrafast ?? false;
   editForm.free_openai_fast = group.free_openai_fast ?? false;
-  editForm.model_pricing = groupPricingFromAPI(group.model_pricing);
+  const { generic, tools } = splitDeepseekToolPrices(group.platform, group.model_pricing ?? []);
+  editForm.model_pricing = groupPricingFromAPI(generic);
+  editToolPrices.value = tools;
   editForm.allow_image_generation = group.allow_image_generation ?? false;
   editForm.allow_batch_image_generation =
     group.allow_batch_image_generation ?? false;
@@ -6291,6 +6345,7 @@ const closeEditModal = () => {
   editForm.force_openai_ultrafast = false;
   editForm.free_openai_fast = false;
   editForm.model_pricing = [];
+  editToolPrices.value = {};
   editForm.web_search_price_per_call = null;
   editForm.search_price_per_1k = null;
   editForm.audio_realtime_price_per_min = null;
@@ -6360,6 +6415,7 @@ const handleUpdateGroup = async () => {
       model_pricing: groupPricingToAPI(
         editForm.model_pricing,
         editForm.platform,
+        editToolPrices.value,
       ),
       daily_limit_usd: normalizeOptionalLimit(
         editForm.daily_limit_usd as number | string | null,

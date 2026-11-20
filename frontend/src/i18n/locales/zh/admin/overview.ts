@@ -1106,6 +1106,18 @@ export default {
         searchPricePer1k: '搜索每千次价格（USD）',
         pricePlaceholder: '可选'
       },
+      deepseekToolPricing: {
+        title: 'DeepSeek 工具价格',
+        hint: '工具与模型使用相同的余额计价单位, 基准均为 USD 刊例价 (如 deepseek-flash 低谷未命中缓存的输入价为 $0.15/百万 token). 工具费与 token 费均乘以分组有效倍率. 留空沿用渠道价, 无渠道价时使用官方 USD 价. 填 0 表示免费. 每余额单位按 ¥1 销售的站点可参考 CNY 刊例价设置倍率.',
+        search: '联网搜索 (USD/1,000 次成功调用)',
+        fetch: '网页抓取 (USD/1,000 次成功调用)',
+        ocr: '文字识别 OCR (USD/1,000 页)',
+        tts: '语音合成 TTS (USD/10,000 计费字符)',
+        asr: '语音识别 ASR (USD/小时)',
+        reference: '官方刊例价 USD {usd} / CNY {cny}',
+        managedByRule: '由分组逐模型定价中的 {rule} 管理.',
+        conflict: '{rule} 与专用工具价格重叠. 请在 DeepSeek 工具价格中修改, 或缩小模型规则范围.'
+      },
       modelPricing: {
         title: '分组逐模型定价',
         description: '匹配模型后覆盖渠道和内置价格。长上下文阶梯沿用官方/预设价卡，无需再手填区间。音频可用按次层级配置 realtime、tts、stt。',

@@ -390,6 +390,85 @@ func TestNormalizeGroupModelPricing_NormalizesEmptyTimePricing(t *testing.T) {
 	require.Nil(t, pricing[0].TimePricing)
 }
 
+func TestAdminGroupDeepseekToolPrices_CreateUpdateAndBill(t *testing.T) {
+	ctx := t.Context()
+	repo := &groupRepoStubForAdmin{createID: 100}
+	admin := &adminServiceImpl{groupRepo: repo}
+	units := []DeepseekToolsUsage{{"search", 1}, {"fetch", 1}, {"ocr", 3}, {"tts", 24}, {"asr", 4}}
+	prices := []float64{0.001, 0.002, 0.003, 0.0004, 0.0005}
+	var groupPrices, channelPrices []ChannelModelPricing
+	for i, usage := range units {
+		entry := ChannelModelPricing{Platform: PlatformDeepseek, Models: []string{usage.Model()}, BillingMode: BillingModePerRequest}
+		entry.PerRequestPrice = &prices[i]
+		groupPrices = append(groupPrices, entry)
+		entry.PerRequestPrice = testPtrFloat64(0.5)
+		channelPrices = append(channelPrices, entry)
+	}
+	group, err := admin.CreateGroup(ctx, &CreateGroupInput{
+		Name: "DeepSeek tools", Platform: PlatformDeepseek, RateMultiplier: 2.5, ModelPricing: groupPrices,
+	})
+	require.NoError(t, err)
+	require.Equal(t, groupPrices, repo.created.ModelPricing)
+
+	logs := &openAIRecordUsageLogRepoStub{}
+	bills := &openAIRecordUsageBillingRepoStub{}
+	gateway := newOpenAIRecordUsageServiceForTest(logs, nil, nil, nil)
+	gateway.usageBillingRepo = bills
+	gateway.resolver = newResolverWithChannelForPlatform(t, PlatformDeepseek, channelPrices)
+	user := &User{ID: 7}
+	bill := func(group *Group, usage DeepseekToolsUsage, price float64) {
+		t.Helper()
+		key := &APIKey{ID: 1, User: user, GroupID: &group.ID, Group: group}
+		err := gateway.RecordUsage(ctx, &OpenAIRecordUsageInput{
+			Result: &OpenAIForwardResult{Model: usage.Model(), DeepseekTool: &usage},
+			APIKey: key, User: user, Account: &Account{ID: 8, Platform: PlatformDeepseek},
+			QuotaPlatform: PlatformDeepseek,
+		})
+		require.NoError(t, err)
+		total := price * float64(usage.Units)
+		require.InDelta(t, total, logs.lastLog.TotalCost, 1e-12)
+		require.Equal(t, group.RateMultiplier, logs.lastLog.RateMultiplier)
+		require.InDelta(t, total*group.RateMultiplier, bills.lastCmd.BalanceCost, 1e-12)
+	}
+	for i, usage := range units {
+		bill(group, usage, prices[i])
+	}
+
+	// Clearing search restores its channel price. An explicit zero makes fetch free.
+	updatedPrices := append([]ChannelModelPricing(nil), groupPrices[1:]...)
+	updatedPrices[0].PerRequestPrice = testPtrFloat64(0)
+	updatedPrices[1].PerRequestPrice = testPtrFloat64(0.02)
+	repo.getByID = repo.created
+	group, err = admin.UpdateGroup(ctx, group.ID, &UpdateGroupInput{ModelPricing: &updatedPrices})
+	require.NoError(t, err)
+	require.Equal(t, updatedPrices, repo.updated.ModelPricing)
+	repo.getByID = repo.updated
+	group, err = admin.GetGroup(ctx, group.ID)
+	require.NoError(t, err)
+	require.Equal(t, updatedPrices, group.ModelPricing)
+	for i, price := range []float64{0.5, 0, 0.02, prices[3], prices[4]} {
+		bill(group, units[i], price)
+	}
+}
+
+func TestAdminGroupDeepseekToolPrices_RejectNegative(t *testing.T) {
+	for _, endpoint := range []string{"search", "fetch", "ocr", "tts", "asr"} {
+		t.Run(endpoint, func(t *testing.T) {
+			repo := &groupRepoStubForAdmin{getByID: &Group{ID: 1, Platform: PlatformDeepseek}}
+			admin := &adminServiceImpl{groupRepo: repo}
+			pricing := []ChannelModelPricing{{
+				Models: []string{"deepseek-tools-" + endpoint}, BillingMode: BillingModePerRequest, PerRequestPrice: testPtrFloat64(-0.001),
+			}}
+			_, err := admin.CreateGroup(t.Context(), &CreateGroupInput{Name: "negative", Platform: PlatformDeepseek, RateMultiplier: 1, ModelPricing: pricing})
+			require.Equal(t, int32(http.StatusBadRequest), infraerrors.FromError(err).Code)
+			require.Nil(t, repo.created)
+			_, err = admin.UpdateGroup(t.Context(), 1, &UpdateGroupInput{ModelPricing: &pricing})
+			require.Equal(t, int32(http.StatusBadRequest), infraerrors.FromError(err).Code)
+			require.Nil(t, repo.updated)
+		})
+	}
+}
+
 type compositeRouteRepoStubForAdmin struct {
 	routes    []CompositeModelRoute
 	created   *CompositeModelRoute

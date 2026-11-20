@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AdminGroup } from '@/types'
 import GroupsView from '@/views/admin/GroupsView.vue'
 import { adminAPI } from '@/api/admin'
+import PricingEntryCard from '@/components/admin/channel/PricingEntryCard.vue'
 
 const {
   listGroups,
@@ -322,6 +323,99 @@ describe('GroupsView duplicate action', () => {
 
     expect(updateGroup).toHaveBeenCalledTimes(1)
     expect(showError).toHaveBeenCalledWith('group name already exists')
+    wrapper.unmount()
+  })
+
+  it('creates DeepSeek tool overrides in billing units only for the selected platform', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-tour="groups-create-btn"]').trigger('click')
+    const form = wrapper.get('#create-group-form')
+    const platform = wrapper.getComponent('[data-tour="group-form-platform"]')
+    const toolInputs = () => form.findAll<HTMLInputElement>('input[name^="deepseek-tools-"]')
+    expect(toolInputs()).toHaveLength(0)
+    platform.vm.$emit('update:modelValue', 'deepseek')
+    await flushPromises()
+    expect(toolInputs().map(input => input.attributes('placeholder'))).toEqual(['0.75', '0.75', '0.225', '0.45', '0.116'])
+    expect(toolInputs().every(input => input.element.value === '')).toBe(true)
+    await form.get('[data-tour="group-form-name"]').setValue('Tools')
+    for (const [i, amount] of ['2', '0', '1.5', '3', '0.36'].entries()) {
+      await toolInputs()[i].setValue(amount)
+    }
+    expect(wrapper.findAllComponents(PricingEntryCard)).toHaveLength(0)
+    platform.vm.$emit('update:modelValue', 'openai')
+    await flushPromises()
+    expect(toolInputs()).toHaveLength(0)
+    platform.vm.$emit('update:modelValue', 'deepseek')
+    await flushPromises()
+    await form.trigger('submit')
+    await flushPromises()
+    const payload = vi.mocked(adminAPI.groups.create).mock.lastCall![0]
+    expect(payload.model_pricing?.map(entry => [entry.models, entry.per_request_price])).toEqual([
+      [['deepseek-tools-search'], 2 / 1000], [['deepseek-tools-fetch'], 0], [['deepseek-tools-ocr'], 1.5 / 1000],
+      [['deepseek-tools-tts'], 3 / 10000], [['deepseek-tools-asr'], 0.36 / 3600],
+    ])
+    expect(payload.model_pricing?.every(entry => entry.platform === 'deepseek' && entry.billing_mode === 'per_request')).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('loads DeepSeek prices in list units and clears one tool without changing a shared model price', async () => {
+    const rows = [
+      { models: ['deepseek-tools-search', 'shared-model'], per_request_price: 0.002 },
+      { models: ['deepseek-tools-fetch'], per_request_price: 0 },
+      { models: ['deepseek-tools-ocr'], per_request_price: 0.0035 },
+      { models: ['deepseek-tools-tts'], per_request_price: 0.00045 },
+      { models: ['deepseek-tools-asr'], per_request_price: 0.116 / 3600 },
+    ].map(row => ({ ...row, platform: 'deepseek', billing_mode: 'per_request', intervals: [] }))
+    const group = { ...sourceGroup, platform: 'deepseek', model_pricing: rows }
+    listGroups.mockResolvedValue({ items: [group], total: 1, page: 1, page_size: 20, pages: 1 })
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text() === 'common.edit')!.trigger('click')
+    await flushPromises()
+    const form = wrapper.get('#edit-group-form')
+    const inputs = form.findAll<HTMLInputElement>('input[name^="deepseek-tools-"]')
+    expect(inputs.map(input => input.element.value)).toEqual(['2', '0', '3.5', '4.5', '0.116'])
+    const cards = wrapper.findAllComponents(PricingEntryCard)
+    expect(cards.map(card => card.props('entry').models)).toEqual([['shared-model']])
+    cards[0].vm.$emit('update', { ...cards[0].props('entry'), models: ['shared-model', 'deepseek-tools-search'] })
+    await flushPromises()
+    expect(showError).toHaveBeenCalledWith('admin.groups.deepseekToolPricing.conflict')
+    await inputs[0].setValue('')
+    await inputs[4].setValue('0.72')
+    await form.trigger('submit')
+    await flushPromises()
+    const saved = vi.mocked(adminAPI.groups.update).mock.lastCall![1].model_pricing
+    expect(saved?.map(entry => [entry.models, entry.per_request_price])).toEqual([
+      [['shared-model'], 0.002], [['deepseek-tools-fetch'], 0], [['deepseek-tools-ocr'], 0.0035],
+      [['deepseek-tools-tts'], 0.00045], [['deepseek-tools-asr'], 0.72 / 3600],
+    ])
+    wrapper.unmount()
+  })
+
+  it('saves only the active pricing rule after switching platforms during creation', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-tour="groups-create-btn"]').trigger('click')
+    const form = wrapper.get('#create-group-form')
+    await form.get('[data-tour="group-form-name"]').setValue('Switch')
+    const platform = wrapper.getComponent('[data-tour="group-form-platform"]')
+    platform.vm.$emit('update:modelValue', 'deepseek')
+    await flushPromises()
+    await form.get('[name="deepseek-tools-tts"]').setValue('3')
+    platform.vm.$emit('update:modelValue', 'openai')
+    await flushPromises()
+    await form.findAll('button').find(button => button.text() === 'admin.groups.modelPricing.add')!.trigger('click')
+    const card = wrapper.getComponent(PricingEntryCard)
+    card.vm.$emit('update', { ...card.props('entry'), models: ['deepseek-tools-t*'], billing_mode: 'per_request', per_request_price: 0.002 })
+    platform.vm.$emit('update:modelValue', 'deepseek')
+    await flushPromises()
+    expect(form.get<HTMLInputElement>('[name="deepseek-tools-tts"]').element.disabled).toBe(true)
+    await form.trigger('submit')
+    await flushPromises()
+    expect(vi.mocked(adminAPI.groups.create).mock.lastCall![0].model_pricing).toEqual([
+      expect.objectContaining({ models: ['deepseek-tools-t*'], per_request_price: 0.002 }),
+    ])
     wrapper.unmount()
   })
 
