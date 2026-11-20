@@ -77,3 +77,56 @@ func TestClient_RetrieveUserQuotaSummaryFromURL_Errors(t *testing.T) {
 		server.Close()
 	}
 }
+
+func TestClient_RetrieveUserQuotaSummaryWithURLs(t *testing.T) {
+	client := mustNewClient(t, "")
+
+	// 1. 空 URL 列表返回错误
+	if _, err := client.RetrieveUserQuotaSummaryWithURLs(context.Background(), nil, "tok", "proj"); err == nil {
+		t.Fatal("expected error for empty baseURLs")
+	}
+
+	// 2. 首选 URL 成功
+	var s1Calls, s2Calls int
+	s1 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s1Calls++
+		_, _ = w.Write([]byte(quotaSummaryBody))
+	}))
+	defer s1.Close()
+
+	s2 := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		s2Calls++
+		_, _ = w.Write([]byte(quotaSummaryBody))
+	}))
+	defer s2.Close()
+
+	summary, err := client.RetrieveUserQuotaSummaryWithURLs(context.Background(), []string{s1.URL, s2.URL}, "tok", "proj")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if summary == nil || len(summary.Groups) != 2 {
+		t.Fatalf("unexpected summary: %+v", summary)
+	}
+	if s1Calls != 1 || s2Calls != 0 {
+		t.Errorf("expected s1 called once and s2 not called, got s1=%d, s2=%d", s1Calls, s2Calls)
+	}
+
+	// 3. 首选 URL 失败回退到第二个 URL
+	s1Fail := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadGateway)
+		_, _ = w.Write([]byte(`{"error":"bad gateway"}`))
+	}))
+	defer s1Fail.Close()
+
+	s2Calls = 0
+	summary, err = client.RetrieveUserQuotaSummaryWithURLs(context.Background(), []string{s1Fail.URL, s2.URL}, "tok", "proj")
+	if err != nil {
+		t.Fatalf("fallback error: %v", err)
+	}
+	if summary == nil || len(summary.Groups) != 2 {
+		t.Fatalf("unexpected fallback summary: %+v", summary)
+	}
+	if s2Calls != 1 {
+		t.Errorf("expected s2 called once on fallback, got %d", s2Calls)
+	}
+}

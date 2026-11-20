@@ -57,8 +57,13 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 		return nil, fmt.Errorf("create antigravity client failed: %w", err)
 	}
 
+	baseURLs := resolveAntigravityForwardBaseURLs(account)
+	if len(baseURLs) == 0 {
+		baseURLs = antigravity.BaseURLs
+	}
+
 	// 调用 API 获取配额
-	modelsResp, modelsRaw, err := client.FetchAvailableModels(ctx, accessToken, projectID, resolveModelsListReadLimit(f.cfg))
+	modelsResp, modelsRaw, err := client.FetchAvailableModelsWithURLs(ctx, baseURLs, accessToken, projectID, resolveModelsListReadLimit(f.cfg))
 	if err != nil {
 		// 403 Forbidden: 不报错，返回 is_forbidden 标记
 		var forbiddenErr *antigravity.ForbiddenError
@@ -82,14 +87,14 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 	}
 
 	// 调用 LoadCodeAssist 获取订阅等级和 AI Credits 余额（非关键路径，失败不影响主流程）
-	tierRaw, tierNormalized, loadResp := f.fetchSubscriptionTier(ctx, client, accessToken)
+	tierRaw, tierNormalized, loadResp := f.fetchSubscriptionTier(ctx, client, baseURLs, accessToken)
 
 	// 转换为 UsageInfo
 	usageInfo := f.buildUsageInfo(modelsResp, tierRaw, tierNormalized, loadResp)
 
 	// The per-group 5-hour and weekly windows. Not on the critical path: without them the
 	// per-model figures above are shown as before.
-	if summary, err := client.RetrieveUserQuotaSummary(ctx, accessToken, projectID); err != nil {
+	if summary, err := client.RetrieveUserQuotaSummaryWithURLs(ctx, baseURLs, accessToken, projectID); err != nil {
 		slog.Warn("failed to fetch antigravity quota summary", "account_id", account.ID, "error", err)
 	} else {
 		usageInfo.AntigravityQuotaGroups = buildAntigravityQuotaGroups(summary)
@@ -103,8 +108,8 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 
 // fetchSubscriptionTier 获取账号订阅等级，失败返回空字符串。
 // 同时返回 LoadCodeAssistResponse，以便提取 AI Credits 余额。
-func (f *AntigravityQuotaFetcher) fetchSubscriptionTier(ctx context.Context, client *antigravity.Client, accessToken string) (raw, normalized string, loadResp *antigravity.LoadCodeAssistResponse) {
-	loadResp, _, err := client.LoadCodeAssist(ctx, accessToken)
+func (f *AntigravityQuotaFetcher) fetchSubscriptionTier(ctx context.Context, client *antigravity.Client, baseURLs []string, accessToken string) (raw, normalized string, loadResp *antigravity.LoadCodeAssistResponse) {
+	loadResp, _, err := client.LoadCodeAssistWithURLs(ctx, baseURLs, accessToken)
 	if err != nil {
 		slog.Warn("failed to fetch subscription tier", "error", err)
 		return "", "", nil

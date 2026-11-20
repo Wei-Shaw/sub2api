@@ -464,9 +464,21 @@ func (c *Client) GetUserInfo(ctx context.Context, accessToken string) (*UserInfo
 	return &userInfo, nil
 }
 
-// LoadCodeAssist 获取账户信息，返回解析后的结构体和原始 JSON
-// 支持 URL fallback：sandbox → daily → prod
+// LoadCodeAssist 获取账户信息，返回解析后的结构体和原始 JSON。
+// 默认端点顺序为 BaseURLs（prod -> daily）。
 func (c *Client) LoadCodeAssist(ctx context.Context, accessToken string) (*LoadCodeAssistResponse, map[string]any, error) {
+	return c.LoadCodeAssistWithURLs(ctx, BaseURLs, accessToken)
+}
+
+// LoadCodeAssistWithURLs 使用指定的有序端点队列获取账户信息，单个端点失败时依次回退。
+func (c *Client) LoadCodeAssistWithURLs(ctx context.Context, baseURLs []string, accessToken string) (*LoadCodeAssistResponse, map[string]any, error) {
+	if c == nil || c.httpClient == nil {
+		return nil, nil, errors.New("antigravity client is not configured")
+	}
+	if len(baseURLs) == 0 {
+		return nil, nil, errors.New("loadCodeAssist base URLs are required")
+	}
+
 	reqBody := LoadCodeAssistRequest{}
 	reqBody.Metadata.IDEType = "ANTIGRAVITY"
 	reqBody.Metadata.IDEVersion = GetUserAgentVersionForContext(ctx)
@@ -477,8 +489,7 @@ func (c *Client) LoadCodeAssist(ctx context.Context, accessToken string) (*LoadC
 		return nil, nil, fmt.Errorf("序列化请求失败: %w", err)
 	}
 
-	// 固定顺序：prod -> daily
-	availableURLs := BaseURLs
+	availableURLs := baseURLs
 
 	var lastErr error
 	for urlIdx, baseURL := range availableURLs {
@@ -671,8 +682,11 @@ type DeprecatedModelInfo struct {
 }
 
 // FetchAvailableModelsRequest fetchAvailableModels 请求
+//
+// project 为空时整体省略：Google One 个人账号可能没有 GCP project，
+// 官方 Antigravity 客户端在无 project 时发送 {} 而非 {"project":""}。
 type FetchAvailableModelsRequest struct {
-	Project string `json:"project"`
+	Project string `json:"project,omitempty"`
 }
 
 // FetchAvailableModelsResponse fetchAvailableModels 响应
@@ -685,6 +699,15 @@ type FetchAvailableModelsResponse struct {
 // 保留旧调用的 URL fallback：prod → daily。
 func (c *Client) FetchAvailableModels(ctx context.Context, accessToken, projectID string, bodyLimit int64) (*FetchAvailableModelsResponse, map[string]any, error) {
 	return c.fetchAvailableModels(ctx, BaseURLs, accessToken, projectID, bodyLimit, false)
+}
+
+// FetchAvailableModelsWithURLs 使用指定的有序端点队列获取可用模型与配额信息。
+// 单个端点失败（连接错误 / 408 / 404 / 429 / 5xx）时依次回退到下一个端点。
+func (c *Client) FetchAvailableModelsWithURLs(ctx context.Context, baseURLs []string, accessToken, projectID string, bodyLimit int64) (*FetchAvailableModelsResponse, map[string]any, error) {
+	if len(baseURLs) == 0 {
+		return nil, nil, errors.New("fetchAvailableModels base URLs are required")
+	}
+	return c.fetchAvailableModels(ctx, baseURLs, accessToken, projectID, bodyLimit, false)
 }
 
 // FetchAvailableModelsFromURL 获取指定端点的模型目录，不回退到其他端点。

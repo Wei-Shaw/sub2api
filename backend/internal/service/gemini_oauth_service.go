@@ -443,6 +443,10 @@ func (s *GeminiOAuthService) RefreshAccountGoogleOneTier(
 }
 
 func (s *GeminiOAuthService) ExchangeCode(ctx context.Context, input *GeminiExchangeCodeInput) (*GeminiTokenInfo, error) {
+	if input == nil {
+		return nil, fmt.Errorf("input cannot be nil")
+	}
+
 	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] ========== ExchangeCode START ==========")
 	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] SessionID: %s", input.SessionID)
 
