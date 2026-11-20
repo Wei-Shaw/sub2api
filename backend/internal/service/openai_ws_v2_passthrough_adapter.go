@@ -29,6 +29,14 @@ type openAIWSClientFrameConn struct {
 	// model identifier they supplied for the current turn.
 	restoreResponseModel func([]byte) []byte
 	restoreToolNames     func([]byte) []byte
+	// strictWire carries output-item state for the turn currently being
+	// relayed. It is touched only by WriteFrame and by markTurnCompleted, both
+	// of which the passthrough relay drives from the single
+	// runUpstreamToClient goroutine (WriteFrame via writeClient,
+	// markTurnCompleted via the AfterClientWrite hook), so it needs no locking.
+	// markTurnStarted deliberately does not touch it: that runs on the
+	// client-to-upstream goroutine and would race with the writer.
+	strictWire *openAIWSStrictWireNormalizer
 }
 
 // openAIWSPolicyEnforcingFrameConn wraps a client-side FrameConn and runs
@@ -626,6 +634,12 @@ func (c *openAIWSClientFrameConn) markTurnCompleted() {
 	if c == nil {
 		return
 	}
+	// A passthrough connection serves many turns. The terminal frame for this
+	// turn has now reached the client, and the next response.create has not
+	// been accepted yet, so this is the point where the remembered output
+	// items must be dropped. Without it turn N+1 would inherit turn N's item
+	// ids and content whenever the upstream reuses an output_index.
+	c.strictWire.reset()
 	c.waitingForNextTurn.Store(true)
 	select {
 	case c.interTurnStarted <- struct{}{}:
@@ -642,6 +656,11 @@ func (c *openAIWSClientFrameConn) WriteFrame(ctx context.Context, msgType coderw
 	}
 	if msgType == coderws.MessageText {
 		if normalized, changed := normalizeCompletedImageGenerationStatus(payload); changed {
+			payload = normalized
+		}
+		if normalized, changed, err := c.strictWire.normalize(payload); err != nil {
+			logOpenAIWSModeInfo("strict_wire_normalize_failed path=passthrough err=%v", err)
+		} else if changed {
 			payload = normalized
 		}
 		if c.restoreResponseModel != nil {
@@ -958,6 +977,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		controlCtx:           ctx,
 		interTurnIdleTimeout: s.openAIWSIngressInterTurnIdleTimeout(),
 		interTurnStarted:     make(chan struct{}, 1),
+		strictWire:           newOpenAIWSStrictWireNormalizer(),
 		restoreResponseModel: func(payload []byte) []byte {
 			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
 			if !openAIWSEventMayContainModel(eventType) {
