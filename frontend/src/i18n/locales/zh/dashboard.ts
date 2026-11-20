@@ -111,6 +111,9 @@ export default {
     copyToClipboard: '复制到剪贴板',
     copied: '已复制！',
     importToCcSwitch: '导入到 CCS',
+    aiSwitchImport: '导入到 AI Switch',
+    aiSwitchNotInstalled:
+      '未检测到 AI Switch 或其协议处理器未注册。请先安装 AI Switch 桌面端，或手动复制 API 密钥。',
     enable: '启用',
     disable: '禁用',
     nameLabel: '名称',
@@ -162,6 +165,7 @@ export default {
       copied: '已复制',
       note: '这些环境变量将在当前终端会话中生效。如需永久配置，请将其添加到 ~/.bashrc、~/.zshrc 或相应的配置文件中。',
       claudeSettingsHint: '用户级持久配置。此文件包含 API 密钥，请勿提交到项目仓库。',
+
       noGroupTitle: '请先分配分组',
       noGroupDescription:
         '此 API 密钥尚未分配分组，请先在密钥列表中点击分组列进行分配，然后才能查看使用配置。',
