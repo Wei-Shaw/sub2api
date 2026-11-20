@@ -42,6 +42,7 @@ func (s *OpenAIGatewayService) forwardChatCompletionsViaNativeAnthropic(
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
 	startTime := time.Now()
+	SetActualOpenAIUpstreamEndpoint(c, "/v1/messages")
 
 	// 1. Parse Chat Completions request
 	var ccReq apicompat.ChatCompletionsRequest
@@ -93,6 +94,7 @@ func (s *OpenAIGatewayService) forwardChatCompletionsViaNativeAnthropic(
 	if err != nil {
 		return nil, fmt.Errorf("marshal anthropic request: %w", err)
 	}
+	anthropicBody = withChatCompletionsMetadataUserID(body, anthropicBody)
 
 	// 与 /v1/messages 直通路径相同的 pre-filter。
 	anthropicBody = StripEmptyTextBlocks(anthropicBody)
@@ -278,14 +280,7 @@ func (s *OpenAIGatewayService) handleCCBufferedFromNativeAnthropic(
 		return nil, fmt.Errorf("upstream stream ended without response")
 	}
 
-	if usage.InputTokens > 0 || usage.OutputTokens > 0 {
-		finalResp.Usage = apicompat.AnthropicUsage{
-			InputTokens:              usage.InputTokens,
-			OutputTokens:             usage.OutputTokens,
-			CacheCreationInputTokens: usage.CacheCreationInputTokens,
-			CacheReadInputTokens:     usage.CacheReadInputTokens,
-		}
-	}
+	normalizeAnthropicEventUsageForResponses(&apicompat.AnthropicStreamEvent{Message: finalResp}, usage)
 
 	responsesResp := apicompat.AnthropicToResponsesResponse(finalResp)
 	ccResp := apicompat.ResponsesToChatCompletions(responsesResp, originalModel)
@@ -410,7 +405,7 @@ func (s *OpenAIGatewayService) handleCCStreamingFromNativeAnthropic(
 		if err != nil {
 			return false
 		}
-		out := string(reverseToolNamesIfPresent(c, []byte(sse)))
+		out := reverseToolNamesIfPresentString(c, sse)
 		if _, err := fmt.Fprint(c.Writer, out); err != nil {
 			clientDisconnected = true
 			return false

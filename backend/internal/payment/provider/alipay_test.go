@@ -480,6 +480,67 @@ func TestAlipayRefundRecordsOutRequestNoAsRefundID(t *testing.T) {
 	}
 }
 
+// out_request_no 必须跨重试稳定：支付宝把相同的 out_request_no 视为同一次退款请求。
+// 如果重试生成新的请求号，一次"网关已受理但返回错误"的重试会退两次。
+func TestAlipayRefundOutRequestNoIsStableAcrossRetries(t *testing.T) {
+	origRefund := alipayTradeRefund
+	t.Cleanup(func() { alipayTradeRefund = origRefund })
+
+	var outRequestNos []string
+	alipayTradeRefund = func(_ context.Context, _ *alipay.Client, param alipay.TradeRefund) (*alipay.TradeRefundRsp, error) {
+		outRequestNos = append(outRequestNos, param.OutRequestNo)
+		return &alipay.TradeRefundRsp{TradeNo: "2026101522001", FundChange: alipayFundChangeYes}, nil
+	}
+
+	provider := &Alipay{client: &alipay.Client{}}
+	req := payment.RefundRequest{OrderID: "sub2_7", Amount: "12.50", Reason: "r"}
+	for i := 0; i < 2; i++ {
+		if _, err := provider.Refund(context.Background(), req); err != nil {
+			t.Fatalf("Refund() error = %v", err)
+		}
+	}
+
+	if len(outRequestNos) != 2 {
+		t.Fatalf("got %d refund calls, want 2", len(outRequestNos))
+	}
+	if outRequestNos[0] != "sub2_7-refund-1250" {
+		t.Fatalf("out_request_no = %q, want sub2_7-refund-1250", outRequestNos[0])
+	}
+	if outRequestNos[0] != outRequestNos[1] {
+		t.Fatalf("out_request_no changed across retries: %q != %q", outRequestNos[0], outRequestNos[1])
+	}
+}
+
+// 模拟支付宝的幂等语义：相同的 out_request_no 只产生一笔真实退款。
+// 重试时如果请求号变了，钱会被退两次；稳定请求号下只退一次。
+func TestAlipayRefundRetryDoesNotDoubleRefund(t *testing.T) {
+	origRefund := alipayTradeRefund
+	t.Cleanup(func() { alipayTradeRefund = origRefund })
+
+	const refundCents = 1250
+	refundedCents := 0
+	seen := make(map[string]struct{})
+	alipayTradeRefund = func(_ context.Context, _ *alipay.Client, param alipay.TradeRefund) (*alipay.TradeRefundRsp, error) {
+		if _, ok := seen[param.OutRequestNo]; !ok {
+			seen[param.OutRequestNo] = struct{}{}
+			refundedCents += refundCents
+		}
+		return &alipay.TradeRefundRsp{TradeNo: "2026101522001", FundChange: alipayFundChangeYes}, nil
+	}
+
+	provider := &Alipay{client: &alipay.Client{}}
+	req := payment.RefundRequest{OrderID: "sub2_7", Amount: "12.50", Reason: "r"}
+	for i := 0; i < 2; i++ {
+		if _, err := provider.Refund(context.Background(), req); err != nil {
+			t.Fatalf("Refund() error = %v", err)
+		}
+	}
+
+	if refundedCents != refundCents {
+		t.Fatalf("retry refunded %d cents, want %d (one refund only)", refundedCents, refundCents)
+	}
+}
+
 func TestAlipayQueryRefundMapsStatus(t *testing.T) {
 	origQuery := alipayTradeFastPayRefundQuery
 	t.Cleanup(func() { alipayTradeFastPayRefundQuery = origQuery })

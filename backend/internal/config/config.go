@@ -1025,7 +1025,7 @@ type CircuitBreakerConfig struct {
 }
 
 type ConcurrencyConfig struct {
-	// PingInterval: 并发等待期间的 SSE ping 间隔（秒）
+	// PingInterval: 并发等待期间的 SSE ping 间隔（秒），0 禁用 ping
 	PingInterval int `mapstructure:"ping_interval"`
 }
 
@@ -3887,8 +3887,8 @@ func (c *Config) Validate() error {
 	if c.Ops.Cleanup.Enabled && strings.TrimSpace(c.Ops.Cleanup.Schedule) == "" {
 		return fmt.Errorf("ops.cleanup.schedule is required when ops.cleanup.enabled=true")
 	}
-	if c.Concurrency.PingInterval < 5 || c.Concurrency.PingInterval > 30 {
-		return fmt.Errorf("concurrency.ping_interval must be between 5-30 seconds")
+	if c.Concurrency.PingInterval != 0 && (c.Concurrency.PingInterval < 5 || c.Concurrency.PingInterval > 30) {
+		return fmt.Errorf("concurrency.ping_interval must be 0 (disabled) or between 5-30 seconds")
 	}
 	if c.Gateway.Grok.FreeQuotaSoftGateEnabled {
 		if c.Gateway.Grok.FreeQuotaTokenLimit <= 0 {
