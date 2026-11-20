@@ -100,6 +100,32 @@ describe('OidcCallbackView', () => {
     sessionStorage.clear()
   })
 
+  it('requires the browser-bound exchange for Feishu and ignores fragment access tokens', async () => {
+    window.location.hash = '#access_token=forged-token&refresh_token=forged-refresh&expires_in=3600'
+    exchangePendingOAuthCompletion.mockRejectedValue(new Error('No verified session'))
+    mount(OidcCallbackView, {
+      props: { provider: 'feishu' },
+      global: { stubs: { AuthLayout: { template: '<div><slot /></div>' }, Icon: true, RouterLink: true } }
+    })
+    await flushPromises()
+    expect(exchangePendingOAuthCompletion).toHaveBeenCalledTimes(1)
+    expect(setToken).not.toHaveBeenCalled()
+    expect(localStorage.getItem('refresh_token')).toBeNull()
+    expect(getPublicSettings).not.toHaveBeenCalled()
+  })
+
+  it('does not accept OIDC legacy invitation tokens on the Feishu callback', async () => {
+    window.location.hash = '#error=invitation_required&pending_oauth_token=forged-token'
+    const wrapper = mount(OidcCallbackView, {
+      props: { provider: 'feishu' },
+      global: { stubs: { AuthLayout: { template: '<div><slot /></div>' }, Icon: true, RouterLink: true } }
+    })
+    await flushPromises()
+    expect(wrapper.find('input[type="text"]').exists()).toBe(false)
+    expect(apiClientPost).not.toHaveBeenCalled()
+    expect(setToken).not.toHaveBeenCalled()
+  })
+
   it('accepts the legacy fragment token success callback without pending-session exchange', async () => {
     window.location.hash =
       '#access_token=legacy-access-token&refresh_token=legacy-refresh-token&expires_in=3600&token_type=Bearer&redirect=%2Flegacy-dashboard'

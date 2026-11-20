@@ -570,6 +570,7 @@ func userProfileBindingMap(identities service.UserIdentitySummarySet) map[string
 		"linuxdo":  identities.LinuxDo,
 		"oidc":     identities.OIDC,
 		"wechat":   identities.WeChat,
+		"feishu":   identities.Feishu,
 		"dingtalk": identities.DingTalk,
 	}
 }
