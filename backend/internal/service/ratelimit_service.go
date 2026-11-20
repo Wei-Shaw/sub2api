@@ -1047,6 +1047,19 @@ func (s *RateLimitService) handle403(ctx context.Context, account *Account, upst
 	if account.Platform == PlatformOpenAI || account.IsMultiProtocolAPIKey() {
 		return s.handleOpenAI403(ctx, account, upstreamMsg, responseBody)
 	}
+	// Grok：响应体里没有账号证据的 403（空 body、泛化的 permission-denied 拒答等）
+	// 描述的是这次请求，健康账号同样会复现。Grok 专用路径对它不换号之后，请求会落到
+	// 这里；直接 SetError 会把一次请求级拒绝变成账号永久禁用，再经二次 failover
+	// 逐个打掉整组账号。明确的停用/权限/凭据/额度证据，以及命中的临时不可调度规则，
+	// 不走这个分支。
+	if account.Platform == PlatformGrok && isGrokAccountNeutralForbidden(account, http.StatusForbidden, responseBody) {
+		slog.Warn(
+			"grok_403_unclassified_skips_account_penalty",
+			"account_id", account.ID,
+			"upstream_message", upstreamMsg,
+		)
+		return false
+	}
 	// 非 Antigravity 平台：保持原有行为
 	msg := buildForbiddenErrorMessage(
 		"Access forbidden (403):",
