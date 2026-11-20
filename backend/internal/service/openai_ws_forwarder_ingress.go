@@ -956,6 +956,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	var rejectedFieldRetryState *openAIResponsesRejectedFieldRetryState
+	nativeHistory := s.newOpenAIWSNativeHistory()
+	defer nativeHistory.close()
 	sendAndRelay := func(turn int, lease *openAIWSConnLease, payload []byte, payloadBytes int, originalModel string, imageBillingModel string, imageSizeTier string, imageInputSize string, requestedReasoningEffort *string) (*OpenAIForwardResult, error) {
 		responseModelObserver := &upstreamResponseModelObserver{}
 		if lease == nil {
@@ -1264,6 +1266,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					result.wsReplayInput = replayInput
 					result.wsReplayInputExists = true
 				}
+				if !clientDisconnected && nativeHistory.ready {
+					result.wsAccountFailoverReplayInput = openAIWSNativeCompletedOutput(upstreamMessage)
+				}
 				if imageCount > 0 {
 					result.ImageCount = imageCount
 					result.ImageSize = imageSizeTier
@@ -1277,6 +1282,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	currentPayload := firstPayload.payloadRaw
+	currentAccountIdentitySource := firstPayload.accountIdentitySourceRaw
 	// Admission hooks must see client model candidates before upstream mapping.
 	currentClientPayload := firstPayload.rawForHash
 	currentOriginalModel := firstPayload.originalModel
@@ -1344,13 +1350,18 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	turn := 1
 	defer func() {
 		var failoverErr *UpstreamFailoverError
-		if turn > 1 && errors.As(returnErr, &failoverErr) {
-			// Native ingress does not retain a complete conversation for account
-			// migration. A nil current-turn payload makes the handler close the
-			// client connection instead of replaying its original first message.
-			returnErr = newOpenAIWSCurrentTurnFailoverError(returnErr, nil)
+		if turn <= 1 || !errors.As(returnErr, &failoverErr) {
+			return
 		}
+		// Preserve the fail-closed boundary unless this exact turn is complete.
+		retryPayload, safe, buildErr := nativeHistory.retryPayload(currentAccountIdentitySource, currentOriginalModel)
+		if buildErr != nil || !safe {
+			retryPayload = nil
+			logOpenAIWSModeInfo("ingress_ws_current_turn_replay_unavailable account_id=%d turn=%d reason=%s", account.ID, turn, nativeHistory.reason)
+		}
+		returnErr = newOpenAIWSCurrentTurnFailoverError(returnErr, retryPayload)
 	}()
+	nativeHistoryBuilt := false
 	rejectedFieldRetryState = newOpenAIResponsesRejectedFieldRetryState(currentPayload)
 	turnRetry := 0
 	turnPrevRecoveryTried := false
@@ -1501,7 +1512,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if lastTurnReplayInputExists {
 				lastTurnReplayInput, _ = stripOpenAIInvalidEncryptedContentFromReplayItems(lastTurnReplayInput, invalidDigests)
 			}
+			nativeHistory.stripInvalid(invalidDigests)
 		}
+		originalPreviousResponseID := openAIWSPayloadStringFromRaw(currentPayload, "previous_response_id")
 		boundaryPayload, contextWindowBoundary, boundaryErr := normalizeOpenAIWSContextWindowBoundary(
 			currentPayload,
 			lastTurnWindowID,
@@ -1571,12 +1584,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				)
 			}
 		}
-		nextReplayInput, nextReplayInputExists, replayInputErr := buildOpenAIWSReplayInputSequence(
-			lastTurnReplayInput,
-			lastTurnReplayInputExists,
-			currentPayload,
-			currentPreviousResponseID != "",
-		)
+		currentItems, currentItemsExist, replayInputErr := openAIWSExtractNormalizedInputSequence(currentPayload)
 		currentTurnReplayInputComplete := replayInputErr == nil && (currentPreviousResponseID == "" ||
 			(lastTurnReplayInputComplete && currentPreviousResponseID == lastTurnResponseID))
 		if replayInputErr != nil {
@@ -1589,10 +1597,22 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			)
 			currentTurnReplayInput = nil
 			currentTurnReplayInputExists = false
+			nativeHistory.clear("invalid_input")
 		} else {
-			currentTurnReplayInput = nextReplayInput
-			currentTurnReplayInputExists = nextReplayInputExists
+			currentTurnReplayInput, currentTurnReplayInputExists = buildOpenAIWSReplayInputSequenceFromItems(
+				lastTurnReplayInput, lastTurnReplayInputExists, currentItems, currentItemsExist, currentPreviousResponseID != "",
+			)
+			if !nativeHistoryBuilt {
+				// A retry may have removed the anchor or rewritten input; preserve
+				// the complete snapshot captured from the original client turn.
+				if contextWindowBoundary.Changed && originalPreviousResponseID != "" {
+					nativeHistory.clear("window_continuation")
+				} else {
+					nativeHistory.prepare(currentItems, currentItemsExist, currentPreviousResponseID)
+				}
+			}
 		}
+		nativeHistoryBuilt = true
 		replayHasFunctionCallOutput := currentTurnReplayInputExists &&
 			openAIWSRawItemsHasFunctionCallOutput(currentTurnReplayInput)
 		hasFunctionCallOutput = hasFunctionCallOutput || replayHasFunctionCallOutput
@@ -1887,6 +1907,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		if result == nil {
 			return errors.New("websocket turn result is nil")
 		}
+		nativeHistory.commit(result)
 		responseID := strings.TrimSpace(result.RequestID)
 		lastTurnResponseID = responseID
 		if contextWindowBoundary.WindowID != "" {
@@ -2012,6 +2033,9 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			}
 		}
 		currentPayload = nextPayload.payloadRaw
+		currentAccountIdentitySource = nextPayload.accountIdentitySourceRaw
+		nativeHistoryBuilt = false
+		nativeHistory.ready = false
 		currentClientPayload = nextPayload.rawForHash
 		currentOriginalModel = nextPayload.originalModel
 		currentImageBillingModel = nextPayload.imageBillingModel

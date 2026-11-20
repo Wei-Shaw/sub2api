@@ -374,6 +374,13 @@ gateway:
     ingress_inter_turn_idle_timeout_seconds: 300
     # Limit live client WebSocket ingress sessions per API key across all instances. Set 0 to disable.
     max_ingress_connections_per_api_key: 64
+    # Native WS current-window history for safe later-turn account migration.
+    # Retained JSON bodies + item overhead only, not total process memory or transient buffers.
+    # Limits apply per connection only; aggregate history usage is not capped.
+    # Any zero limit disables migration caching; negative limits are invalid.
+    # On exhaustion, healthy streams continue; unsafe migration asks the client to reconnect.
+    native_replay_max_session_bytes: 67108864
+    native_replay_max_items: 32768
     # 全局总开关，默认 true；关闭时所有请求保持原有 HTTP/SSE 路由
     enabled: true
     # 按账号类型细分开关
