@@ -236,6 +236,12 @@ gateway:
   # Timeout for waiting upstream response headers (seconds)
   # 等待上游响应头超时时间（秒）
   response_header_timeout: 600
+  # Antigravity upstream first-byte timeout (seconds, 0=disabled; default 30)
+  # Covers response-header wait and the silent gap after headers before the first body byte.
+  # On expiry with no semantic bytes sent downstream, the request fails over to another account.
+  # Antigravity 上游首字节超时（秒，0=禁用；默认 30）
+  # 覆盖等待响应头以及响应头已返回但响应体尚无首字节的阶段；超时可切换账号。
+  antigravity_first_byte_timeout: 30
   # OpenAI/Codex upstream response header timeout (seconds, 0=disabled)
   # OpenAI/Codex 等待上游响应头超时时间（秒，0=禁用本地响应头超时）
   openai_response_header_timeout: 0

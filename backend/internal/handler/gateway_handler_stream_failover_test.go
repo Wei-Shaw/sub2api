@@ -120,3 +120,40 @@ func TestStreamWrittenGuard_NoByteWritten_GuardNotTriggered(t *testing.T) {
 	require.False(t, guardTriggered,
 		"未写入任何字节时，守卫条件必须为 false，应允许正常 failover 继续")
 }
+
+func TestGatewayForwardMayFailover_AllowsOnlyNonSemanticBytes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	sizeBeforeForward := c.Writer.Size()
+
+	_, err := c.Writer.Write([]byte(": ping\n\n"))
+	require.NoError(t, err)
+
+	require.True(t, gatewayForwardMayFailover(c, sizeBeforeForward, &service.UpstreamFailoverError{
+		SafeToFailoverAfterWrite: true,
+	}))
+	require.False(t, gatewayForwardMayFailover(c, sizeBeforeForward, &service.UpstreamFailoverError{}))
+
+	emptyWriter := httptest.NewRecorder()
+	emptyContext, _ := gin.CreateTestContext(emptyWriter)
+	require.True(t, gatewayForwardMayFailover(emptyContext, emptyContext.Writer.Size(), &service.UpstreamFailoverError{}))
+}
+
+func TestHandleFailoverExhausted_TreatsWrittenCommentAsStreamStarted(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	_, err := c.Writer.Write([]byte(": ping\n\n"))
+	require.NoError(t, err)
+
+	h := &GatewayHandler{}
+	h.handleFailoverExhausted(c, &service.UpstreamFailoverError{StatusCode: http.StatusGatewayTimeout}, service.PlatformAntigravity, false)
+
+	body := w.Body.String()
+	require.Contains(t, body, `data: {"type":"error"`)
+	require.Contains(t, body, `"upstream_error"`)
+	require.NotContains(t, body, `"code":"upstream_error"`)
+}

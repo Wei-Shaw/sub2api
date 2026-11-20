@@ -536,11 +536,15 @@ urlFallbackLoop:
 				return nil, err
 			}
 
-			resp, err = p.httpUpstream.Do(upstreamReq, p.proxyURL, p.account.ID, p.account.Concurrency)
+			resp, err = s.doAntigravityUpstreamRequest(p, upstreamReq)
 			if err == nil && resp == nil {
 				err = errors.New("upstream returned nil response")
 			}
 			if err != nil {
+				var failoverErr *UpstreamFailoverError
+				if errors.As(err, &failoverErr) {
+					return nil, err
+				}
 				safeErr := sanitizeUpstreamErrorMessage(err.Error())
 				appendOpsUpstreamError(p.c, OpsUpstreamErrorEvent{
 					ProxyID:            opsUpstreamProxyID(p.account),
