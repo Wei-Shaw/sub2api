@@ -220,20 +220,20 @@ func (s *duplicateScanner) repeated(top *scanFrame) bool {
 
 // path 把当前栈拼成 a.b[0].c；结果是新分配的字符串，不引用请求体。
 func (s *duplicateScanner) path() string {
-	var b strings.Builder
+	var out []byte
 	for _, frame := range s.stack {
 		if !frame.object {
-			b.WriteByte('[')
-			b.WriteString(strconv.Itoa(frame.index))
-			b.WriteByte(']')
+			out = append(out, '[')
+			out = strconv.AppendInt(out, int64(frame.index), 10)
+			out = append(out, ']')
 			continue
 		}
-		if b.Len() > 0 {
-			b.WriteByte('.')
+		if len(out) > 0 {
+			out = append(out, '.')
 		}
-		b.Write(appendMemberName(nil, s.body[frame.keyStart:frame.keyEnd], frame.keyEscaped, false))
+		out = appendMemberName(out, s.body[frame.keyStart:frame.keyEnd], frame.keyEscaped, false)
 	}
-	return b.String()
+	return string(out)
 }
 
 // freeformMembers 的值是用户自定义键空间：JSON Schema 的属性表与取值、工具调用

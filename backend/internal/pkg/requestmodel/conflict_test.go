@@ -153,7 +153,7 @@ func TestConflictingFieldReturnsIndependentCopy(t *testing.T) {
 
 func TestConflictingFieldManyMembersUsesIndex(t *testing.T) {
 	var b strings.Builder
-	b.WriteString(`{"model":"m","tool":{`)
+	_, _ = b.WriteString(`{"model":"m","tool":{`)
 	for i := 0; i < 100; i++ {
 		fmt.Fprintf(&b, `"k%d":%d,`, i, i)
 	}
@@ -185,15 +185,15 @@ func TestConflictingFieldDeepNestingIsLinear(t *testing.T) {
 // 64 位哈希 map 含扩容过程的累计分配约 6～7 倍，峰值约 2～3 倍。
 func TestConflictingFieldManyKeysMemoryIsBounded(t *testing.T) {
 	var b strings.Builder
-	b.WriteString(`{"x":{`)
+	_, _ = b.WriteString(`{"x":{`)
 	const keys = 1 << 20
 	for i := 0; i < keys; i++ {
 		if i > 0 {
-			b.WriteByte(',')
+			_ = b.WriteByte(',')
 		}
 		fmt.Fprintf(&b, `"%d":1`, i)
 	}
-	b.WriteString(`}}`)
+	_, _ = b.WriteString(`}}`)
 	body := []byte(b.String())
 
 	var before, after runtime.MemStats
@@ -280,21 +280,21 @@ func TestConflictingFieldMultipart(t *testing.T) {
 
 func BenchmarkConflictingField(b *testing.B) {
 	var sb strings.Builder
-	sb.WriteString(`{"model":"claude-sonnet-4-5","max_tokens":4096,"stream":true,"system":[{"type":"text","text":"sys"}],"tools":[`)
+	_, _ = sb.WriteString(`{"model":"claude-sonnet-4-5","max_tokens":4096,"stream":true,"system":[{"type":"text","text":"sys"}],"tools":[`)
 	for i := 0; i < 40; i++ {
 		if i > 0 {
-			sb.WriteString(",")
+			_, _ = sb.WriteString(",")
 		}
 		fmt.Fprintf(&sb, `{"name":"tool_%d","description":"%s","input_schema":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path"]}}`, i, strings.Repeat("d", 200))
 	}
-	sb.WriteString(`],"messages":[`)
+	_, _ = sb.WriteString(`],"messages":[`)
 	for i := 0; i < 200; i++ {
 		if i > 0 {
-			sb.WriteString(",")
+			_, _ = sb.WriteString(",")
 		}
 		fmt.Fprintf(&sb, `{"role":"user","content":[{"type":"text","text":"%s"}]}`, strings.Repeat("t", 1000))
 	}
-	sb.WriteString(`]}`)
+	_, _ = sb.WriteString(`]}`)
 	body := []byte(sb.String())
 	b.SetBytes(int64(len(body)))
 	b.ReportAllocs()
@@ -309,13 +309,13 @@ func BenchmarkConflictingField(b *testing.B) {
 // rawMultipart 用固定 boundary 拼出原始 multipart 请求体，便于构造畸形 part。
 func rawMultipart(preamble string, parts ...string) (string, []byte) {
 	var b strings.Builder
-	b.WriteString(preamble)
+	_, _ = b.WriteString(preamble)
 	for _, part := range parts {
-		b.WriteString("--BOUNDARY\r\n")
-		b.WriteString(part)
-		b.WriteString("\r\n")
+		_, _ = b.WriteString("--BOUNDARY\r\n")
+		_, _ = b.WriteString(part)
+		_, _ = b.WriteString("\r\n")
 	}
-	b.WriteString("--BOUNDARY--\r\n")
+	_, _ = b.WriteString("--BOUNDARY--\r\n")
 	return "multipart/form-data; boundary=BOUNDARY", []byte(b.String())
 }
 
