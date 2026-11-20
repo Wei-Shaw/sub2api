@@ -269,7 +269,7 @@ func (r *channelMonitorV2Repository) GetSnapshot(ctx context.Context, filter ser
 	if !admin {
 		cfg.UpdatedBy = nil
 	}
-	result := &service.ChannelMonitorV2Snapshot{Config: cfg, Coverage: *coverage, Metrics: metrics, Health: service.ChannelMonitorV2HealthForWithThresholds(metrics, cfg.HealthThresholds), Trend: []service.ChannelMonitorV2TrendPoint{}}
+	result := &service.ChannelMonitorV2Snapshot{Config: cfg, Coverage: *coverage, Metrics: metrics, Health: service.ChannelMonitorV2HealthForWithThresholds(metrics, cfg.HealthThresholds.ForRange(filter.Range)), Trend: []service.ChannelMonitorV2TrendPoint{}}
 	keys := make([]string, 0, len(byBucket))
 	for key := range byBucket {
 		keys = append(keys, key)
@@ -279,7 +279,7 @@ func (r *channelMonitorV2Repository) GetSnapshot(ctx context.Context, filter ser
 		bucket, _ := time.Parse(time.RFC3339Nano, key)
 		m := byBucket[key].metric(filter.Bucket.Minutes(), admin)
 		applyIgnoredErrors(&m, ignoredByBucket[key])
-		result.Trend = append(result.Trend, service.ChannelMonitorV2TrendPoint{BucketStart: bucket, Metrics: m, Health: service.ChannelMonitorV2HealthForWithThresholds(m, cfg.HealthThresholds)})
+		result.Trend = append(result.Trend, service.ChannelMonitorV2TrendPoint{BucketStart: bucket, Metrics: m, Health: service.ChannelMonitorV2HealthForWithThresholds(m, cfg.HealthThresholds.ForRange(filter.Range))})
 	}
 	return result, nil
 }
@@ -348,7 +348,7 @@ func (r *channelMonitorV2Repository) GetModels(ctx context.Context, filter servi
 		parts := strings.SplitN(key, "\x00", 2)
 		metrics := acc.metric(minutes, admin)
 		applyIgnoredErrors(&metrics, ignoredByPM[key])
-		items = append(items, service.ChannelMonitorV2ModelRow{Platform: parts[0], Model: parts[1], Metrics: metrics, Health: service.ChannelMonitorV2HealthForWithThresholds(metrics, cfg.HealthThresholds)})
+		items = append(items, service.ChannelMonitorV2ModelRow{Platform: parts[0], Model: parts[1], Metrics: metrics, Health: service.ChannelMonitorV2HealthForWithThresholds(metrics, cfg.HealthThresholds.ForRange(filter.Range))})
 	}
 	sort.Slice(items, func(i, j int) bool { return items[i].Metrics.RequestCount > items[j].Metrics.RequestCount })
 	return &service.ChannelMonitorV2List[service.ChannelMonitorV2ModelRow]{Coverage: *coverage, Items: items}, nil
@@ -458,7 +458,7 @@ func (r *channelMonitorV2Repository) GetMatrix(ctx context.Context, filter servi
 		}
 		metrics := acc.total.metric(minutes, admin)
 		applyIgnoredErrors(&metrics, ignoredByDim[key])
-		row := service.ChannelMonitorV2MatrixRow{Platform: key.platform, GroupName: acc.groupName, Model: key.model, Metrics: metrics, Health: service.ChannelMonitorV2HealthForWithThresholds(metrics, cfg.HealthThresholds), Buckets: []service.ChannelMonitorV2TrendPoint{}}
+		row := service.ChannelMonitorV2MatrixRow{Platform: key.platform, GroupName: acc.groupName, Model: key.model, Metrics: metrics, Health: service.ChannelMonitorV2HealthForWithThresholds(metrics, cfg.HealthThresholds.ForRange(filter.Range)), Buckets: []service.ChannelMonitorV2TrendPoint{}}
 		if key.groupID > 0 {
 			groupID := key.groupID
 			row.GroupID = &groupID
@@ -475,7 +475,7 @@ func (r *channelMonitorV2Repository) GetMatrix(ctx context.Context, filter servi
 			}
 			bucketMetrics := acc.buckets[bucketKey].metric(filter.Bucket.Minutes(), admin)
 			applyIgnoredErrors(&bucketMetrics, ignoredByDimBucket[key][bucketKey])
-			row.Buckets = append(row.Buckets, service.ChannelMonitorV2TrendPoint{BucketStart: bucketStart, Metrics: bucketMetrics, Health: service.ChannelMonitorV2HealthForWithThresholds(bucketMetrics, cfg.HealthThresholds)})
+			row.Buckets = append(row.Buckets, service.ChannelMonitorV2TrendPoint{BucketStart: bucketStart, Metrics: bucketMetrics, Health: service.ChannelMonitorV2HealthForWithThresholds(bucketMetrics, cfg.HealthThresholds.ForRange(filter.Range))})
 		}
 		result.Items = append(result.Items, row)
 	}

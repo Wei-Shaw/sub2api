@@ -217,6 +217,7 @@
           <h3 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('channelMonitorV2.settings.healthTitle') }}</h3>
           <p class="mt-0.5 text-xs text-gray-500 dark:text-dark-400">
             {{ t('channelMonitorV2.settings.healthHint') }}
+            {{ t('channelMonitorV2.settings.minimumSampleByRangeHint') }}
           </p>
         </div>
         <div class="grid grid-cols-1 gap-4 px-5 py-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -224,6 +225,12 @@
             <span class="input-label">{{ t('channelMonitorV2.settings.fields.minimumSample') }}</span>
             <input v-model.number="draft.health_thresholds.minimum_sample" class="input" type="number" min="1" max="10000" />
           </label>
+          <template v-if="draft.health_thresholds.minimum_sample_by_range">
+            <label v-for="window in sampleRanges" :key="window" class="block">
+              <span class="input-label">{{ t('channelMonitorV2.settings.fields.minimumSampleByRange.' + window) }}</span>
+              <input v-model.number="draft.health_thresholds.minimum_sample_by_range[window]" :data-sample-range="window" :placeholder="String(draft.health_thresholds.minimum_sample)" class="input" type="number" min="1" max="10000" />
+            </label>
+          </template>
           <label class="block">
             <span class="input-label">{{ t('channelMonitorV2.settings.fields.warningError') }}</span>
             <input v-model.number="warningErrorPercent" class="input" type="number" min="0" max="100" step="0.1" />
@@ -286,6 +293,7 @@ import { CONCRETE_PLATFORM_OPTIONS } from '@/constants/platforms'
 import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useAppStore } from '@/stores/app'
+import { sampleRanges, normalizeSampleMinimums } from './sampleMinimums'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { getChannelMonitorMode, isChannelMonitorV2Mode } from '@/utils/featureFlags'
 import {
@@ -337,6 +345,7 @@ const systemModeLabel = computed(() => {
 })
 const defaultThresholds = {
   minimum_sample: 50,
+  minimum_sample_by_range: {},
   warning_error_rate: 0.05,
   critical_error_rate: 0.20,
   target_ttft_ms: 3000,
@@ -432,7 +441,11 @@ function normalizeConfig(value: MonitorConfig): MonitorConfig {
   const ignored = value.ignored_error_categories
   return {
     ...value,
-    health_thresholds: { ...defaultThresholds, ...(value.health_thresholds || {}) },
+    health_thresholds: {
+      ...defaultThresholds,
+      ...(value.health_thresholds || {}),
+      minimum_sample_by_range: normalizeSampleMinimums(value.health_thresholds?.minimum_sample_by_range),
+    },
     // Preserve explicit empty arrays from the server (operator cleared all).
     ignored_error_categories: [
       ...(ignored == null ? [...defaultIgnoredErrorCategories] : ignored),
