@@ -304,6 +304,12 @@ export function providerHasModelCatalog(platform: string): boolean {
 /** 接入模式的展示名；未知模式原样显示。 */
 export function providerModeLabel(mode: string, t: (key: string) => string): string {
   switch (mode) {
+    case 'token_cn': return t('admin.accounts.qwenModes.tokenCn')
+    case 'token_sg': return t('admin.accounts.qwenModes.tokenSg')
+    case 'coding_cn': return t('admin.accounts.qwenModes.codingCn')
+    case 'coding_sg': return t('admin.accounts.qwenModes.codingSg')
+    case 'payg_cn': return t('admin.accounts.qwenModes.paygCn')
+    case 'payg_sg': return t('admin.accounts.qwenModes.paygSg')
     case 'payg':
       return t('admin.accounts.cnProviders.accountMode.payg')
     case 'coding':

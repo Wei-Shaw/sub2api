@@ -110,9 +110,9 @@ func TestProviderProfile_ProfilesMatchMultiProtocolPlatforms(t *testing.T) {
 
 	for _, platform := range []string{
 		PlatformAnthropic, PlatformOpenAI, PlatformGemini, PlatformAntigravity, PlatformGrok,
-		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformComposite, "",
+		PlatformKimi, PlatformZhipu, PlatformDeepseek, PlatformMiniMax, PlatformOpenCodeGo, PlatformQwen, PlatformComposite, "",
 	} {
-		want := IsCNProvider(platform) || platform == PlatformOpenCodeGo
+		want := IsCNProvider(platform) || platform == PlatformOpenCodeGo || platform == PlatformQwen
 		require.Equal(t, want, IsMultiProtocolAPIKeyProvider(platform), platform)
 		require.Equal(t, want, LookupProviderProfile(platform) != nil, platform)
 	}
