@@ -73,7 +73,20 @@ func (m *PluginManager) reconcileCatalog(ctx context.Context, installations []*P
 			continue
 		}
 		if enabled != nil {
+			m.mu.Lock()
+			stale := make([]*pluginRuntime, 0)
+			for id, runtime := range m.runtimes {
+				if isCatalogPlugin(runtime.installation.Manifest) {
+					if removed := m.removeRuntimeLocked(id); removed != nil {
+						stale = append(stale, removed)
+					}
+				}
+			}
 			m.catalog.Store(nil)
+			m.mu.Unlock()
+			for _, runtime := range stale {
+				runtime.drain(10 * time.Second)
+			}
 			return errors.New("存在多个启用的模型目录插件")
 		}
 		enabled = i
@@ -97,9 +110,6 @@ func (m *PluginManager) reconcileCatalog(ctx context.Context, installations []*P
 		m.catalog.Store(nil)
 		return nil
 	}
-	if enabled.State == PluginStateStarting && !m.startingStateExpired(enabled) {
-		return nil
-	}
 	if current != nil && !current.client.Exited() && current.installation.BinarySHA256 == enabled.BinarySHA256 && current.installation.ConfigEncrypted == enabled.ConfigEncrypted {
 		healthCtx, cancel := context.WithTimeout(ctx, pluginHealthTimeout)
 		err := current.checkHealth(healthCtx)
@@ -107,6 +117,16 @@ func (m *PluginManager) reconcileCatalog(ctx context.Context, installations []*P
 		if err == nil {
 			return nil
 		}
+	}
+	if enabled.State == PluginStateStarting && !m.startingStateExpired(enabled) {
+		m.mu.Lock()
+		stale := m.removeRuntimeLocked(enabled.ID)
+		m.catalog.Store(nil)
+		m.mu.Unlock()
+		if stale != nil {
+			stale.drain(10 * time.Second)
+		}
+		return nil
 	}
 	// Remove stale metadata before starting a replacement, including invalid
 	// cross-instance updates. Never serve an old descriptor for a new DB config.
@@ -167,6 +187,13 @@ func (m *PluginManager) catalogPolicy(groupID int64, version string) *catalogPol
 		return nil
 	}
 	return newCatalogPolicy(snapshot.config, groupID, version)
+}
+
+func (s *OpenAIGatewayService) pluginCatalogPolicy(groupID int64, version string) *catalogPolicy {
+	if s == nil || s.pluginManager == nil {
+		return nil
+	}
+	return s.pluginManager.catalogPolicy(groupID, version)
 }
 
 func newCatalogPolicy(c *modelcatalog.Config, groupID int64, version string) *catalogPolicy {
@@ -347,9 +374,7 @@ func (p *catalogPolicy) project(body []byte, codex bool, accounts []Account) ([]
 		return body, false, nil
 	}
 	if codex && p.explicit {
-		if _, ok := root["default_chat_model"]; ok {
-			delete(root, "default_chat_model")
-		}
+		delete(root, "default_chat_model")
 		if hintVisible {
 			root["default_chat_model"], _ = json.Marshal(p.selection.DefaultChatModel)
 		}
@@ -382,7 +407,7 @@ func (s *OpenAIGatewayService) FilterPluginCatalogModelIDs(ctx context.Context, 
 	if s == nil || group == nil || group.Platform != PlatformOpenAI {
 		return nil, false, nil
 	}
-	p := s.pluginManager.catalogPolicy(group.ID, "")
+	p := s.pluginCatalogPolicy(group.ID, "")
 	if p == nil || !p.restrictPlain {
 		return nil, false, nil
 	}

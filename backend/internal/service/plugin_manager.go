@@ -275,6 +275,7 @@ func (m *PluginManager) reconcileOnce(ctx context.Context) error {
 
 	installations, err := m.repo.List(ctx)
 	if err != nil {
+		m.catalog.Store(nil)
 		// 无法读取权威绑定状态时不能假设插件未启用，否则会把 OAuth 请求静默回落到旧直连路径。
 		m.publishUnavailableRoute(0, 100, "插件启用状态暂时无法读取")
 		return fmt.Errorf("读取插件启用状态: %w", err)

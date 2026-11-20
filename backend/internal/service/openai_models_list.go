@@ -314,7 +314,7 @@ func (s *OpenAIGatewayService) FetchPinnedOpenAIModelsList(ctx context.Context, 
 	models := make([]json.RawMessage, 0)
 	modelIDs := make([]string, 0)
 	byID := make(map[string]json.RawMessage)
-	p := s.pluginManager.catalogPolicy(group.ID, "")
+	p := s.pluginCatalogPolicy(group.ID, "")
 	imageCtx := WithOpenAIImagesEndpoint(WithOpenAIImageGenerationIntent(ctx))
 	for _, result := range results {
 		_, entries, err := modelCatalogEntries(result.response.Body, "data")

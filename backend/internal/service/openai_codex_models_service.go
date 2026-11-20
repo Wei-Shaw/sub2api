@@ -141,7 +141,7 @@ func (s *OpenAIGatewayService) BuildGroupConfiguredCodexModelsManifest(
 	if len(clientVersion) > 0 {
 		version = clientVersion[0]
 	}
-	policy := s.pluginManager.catalogPolicy(group.ID, version)
+	policy := s.pluginCatalogPolicy(group.ID, version)
 	configuredModels = policy.appendLegacyIDs(configuredModels, visible, group)
 	configuredModels = filterRetiredOpenAIModelIDs(catalog, configuredModels)
 	if len(configuredModels) == 0 {
@@ -216,7 +216,7 @@ func (s *OpenAIGatewayService) MergeGroupConfiguredCodexModels(
 	if len(clientVersion) > 0 {
 		version = clientVersion[0]
 	}
-	policy := s.pluginManager.catalogPolicy(group.ID, version)
+	policy := s.pluginCatalogPolicy(group.ID, version)
 	var configuredModels []string
 	if !group.CodexModelsManifestConfig.Enabled {
 		configuredModels = openAIConfiguredCodexModelIDsForGroup(visible, group)
