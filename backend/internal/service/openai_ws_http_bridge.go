@@ -470,6 +470,16 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		}
 		stageCodexFingerprintIDs(c, fpIDs)
 	}
+
+	// WS 桥把 Codex 帧转成一次响应请求打到上游；上游是 HTTP，不经过协议路由。
+	// Codex 0.166 的工具声明在 input[].additional_tools 里，而
+	// AdaptResponsesClientTools 只读顶层 tools —— 不提升的话上游一个工具都收
+	// 不到，模型只能吐 DSML 文本。按账号开关先提升，再走同一套降级/还原通道。
+	if account.CodexNamespaceToolsEnabled() {
+		if hoisted, changed, hoistErr := hoistCodexRuntimeTools(body); hoistErr == nil && changed {
+			body = hoisted
+		}
+	}
 	grokIntentSourceBody := append([]byte(nil), body...)
 	_, grokExplicitToolsField := openAIWSHTTPBridgeRawField(grokIntentSourceBody, "tools")
 	grokExplicitToolIntent := account.Platform == PlatformGrok && hasGrokResponsesToolIntent(grokIntentSourceBody)

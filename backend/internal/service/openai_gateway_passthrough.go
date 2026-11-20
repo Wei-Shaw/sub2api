@@ -229,6 +229,13 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		}
 	}
 
+	// Codex 0.166 的运行时工具在 input[].additional_tools / namespace 里，下面的
+	// 客户端工具适配只读顶层 tools；按账号开关先提升，再走同一套降级/还原通道。
+	if account != nil && account.CodexNamespaceToolsEnabled() && !isOpenAIResponsesCompactPath(c) {
+		if hoisted, changed, hoistErr := hoistCodexRuntimeTools(body); hoistErr == nil && changed {
+			body = hoisted
+		}
+	}
 	if account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey &&
 		!isOpenAIResponsesCompactPath(c) && needsOpenAIResponsesClientToolAdaptation(body) {
 		adaptedBody, mapping, adaptErr := adaptOpenAIResponsesClientTools(body)
