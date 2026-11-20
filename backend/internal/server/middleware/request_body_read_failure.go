@@ -9,13 +9,16 @@ import (
 
 // AbortWithRequestBodyReadFailure writes the shared response for a failed body
 // read in middleware that inspects the body before the handler. It applies the
-// same classification and payload-free diagnostics as the gateway handlers.
+// same classification, client message, protocol-shaped error body and
+// payload-free diagnostics as the gateway handlers, so a body read in
+// middleware fails exactly as it would in the handler.
 func AbortWithRequestBodyReadFailure(c *gin.Context, component string, err error) {
 	failure := httputil.DescribeRequestBodyReadFailure(c.Request, err)
 	if failure.Kind != httputil.RequestBodyReadErrorMaxBytes {
 		logRequestBodyReadFailure(c, component, failure)
 	}
-	c.AbortWithStatusJSON(failure.Status, gin.H{"error": gin.H{"type": "invalid_request_error", "message": failure.Message}})
+	writeGatewayInvalidRequest(c, failure.Status, failure.ClientMessage())
+	c.Abort()
 }
 
 func logRequestBodyReadFailure(c *gin.Context, component string, failure httputil.RequestBodyReadFailure) {
