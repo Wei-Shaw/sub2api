@@ -99,15 +99,21 @@ curl -X POST "${BASE}/api/v1/admin/users/123/balance" \
   }'
 ```
 
-### 4) 购买页 / 自定义页面 URL Query 透传（iframe / 新窗口一致）
-当 Sub2API 打开 `purchase_subscription_url` 或用户侧自定义页面 iframe URL 时，会统一追加：
-- `user_id`
-- `token`
-- `theme`（`light` / `dark`）
-- `lang`（例如 `zh` / `en`，用于向嵌入页传递当前界面语言）
-- `ui_mode`（固定 `embedded`）
+### 4) 自定义页面 URL Query 透传（iframe / 新窗口一致）
+自定义菜单页面默认仅追加展示和来源参数：`theme`、`lang`、`ui_mode=embedded`、`src_host`、`src_url`。
+`src_url` 仅包含来源页面的 origin 和路径，不包含 query 或 fragment，避免间接带出登录信息。
+默认不会追加当前登录账户的 `user_id` 或 `token`，已有菜单缺少新字段时也默认关闭，无需数据库迁移。
 
-示例：
+管理员可在「系统设置 → 自定义菜单页面」中，为每个页面独立选择：
+- `pass_user_id: true`：追加当前用户的 `user_id`。
+- `pass_auth_token: true`：追加当前登录账户的 `token`。
+
+依赖旧版自动透传的集成需要在升级后，逐页明确开启相应选项。iframe 与「新窗口打开」使用相同设置。
+关闭选项只停止自动追加 Sub2API 的对应信息，不会删除目标 URL 中手动配置的同名参数。
+
+**仅对可信集成启用登录 Token 透传。Token 可用于以当前账户身份访问 Sub2API（包括管理员账户），也可能留存在目标站点的网址日志中。**
+
+示例（两个选项均明确开启）：
 ```text
 https://pay.example.com/pay?user_id=123&token=<jwt>&theme=light&lang=zh&ui_mode=embedded
 ```
@@ -219,15 +225,21 @@ curl -X POST "${BASE}/api/v1/admin/users/123/balance" \
   }'
 ```
 
-### 4) Purchase / Custom Page URL query forwarding (iframe and new tab)
-When Sub2API opens `purchase_subscription_url` or a user-facing custom page iframe URL, it appends:
-- `user_id`
-- `token`
-- `theme` (`light` / `dark`)
-- `lang` (for example `zh` / `en`, used to pass the current UI language to the embedded page)
-- `ui_mode` (fixed: `embedded`)
+### 4) Custom page URL query forwarding (iframe and new tab)
+Custom menu pages append presentation and source context by default: `theme`, `lang`, `ui_mode=embedded`, `src_host`, and `src_url`.
+`src_url` includes only the source page's origin and path, without query parameters or fragments that could contain login information.
+The current account's `user_id` and `token` are **not** appended by default. Existing menus without the new fields also default to off; no database migration is needed.
 
-Example:
+In **System Settings → Custom Menu Pages**, administrators can opt in separately for each page:
+- `pass_user_id: true`: append the current user's `user_id`.
+- `pass_auth_token: true`: append the current account's login `token`.
+
+Integrations relying on the previous automatic forwarding must explicitly enable the required options after upgrading. The iframe and the open-in-new-tab link use the same settings.
+Disabling an option stops automatic Sub2API context forwarding; it does not remove same-named parameters manually configured in the destination URL.
+
+**Only enable login token forwarding for trusted integrations. The token grants access as the current account (including administrator accounts), and can be recorded in the destination's URL logs.**
+
+Example with both options explicitly enabled:
 ```text
 https://pay.example.com/pay?user_id=123&token=<jwt>&theme=light&lang=zh&ui_mode=embedded
 ```
