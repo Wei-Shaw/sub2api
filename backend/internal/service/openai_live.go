@@ -831,7 +831,7 @@ func (s *OpenAIGatewayService) finalizeLiveCall(record *LiveCallRecord) {
 	// TestFinalizeLiveCallIsIdempotentAndWritesZeroUsage 锁定）。
 	//
 	// 这是该会话唯一一次落库机会（MarkLiveCallClosed 已标记 first），失败即永久
-	// 丢失，因此走带日志与同步兜底的 writeUsageLogBestEffort（issue #3656）。
+	// 丢失，因此走 writeUsageLogBestEffort（issue #3656）：写入器对瞬时错误重试，放弃的行记数并打日志。
 	writeUsageLogBestEffort(context.Background(), s.usageLogRepo, &UsageLog{
 		UserID:           record.UserID,
 		APIKeyID:         record.APIKeyID,
