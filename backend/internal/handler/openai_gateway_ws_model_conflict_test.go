@@ -6,7 +6,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
-const wsModelConflictCloseReason = "declares model more than once with different values"
+const wsModelConflictCloseReason = "more than once with different values"
 
 // 没有开启白名单的分组：首帧里重复 model 键取值不一致（计费按第一个、上游可能
 // 按最后一个绑定）必须以 1008 关闭，帧不到达上游。
@@ -71,5 +71,31 @@ func TestOpenAIResponsesWebSocket_IdenticalDuplicateModelKeysAllowedWithoutAllow
 	})
 	if len(got.clientEvents) != 2 {
 		t.Fatalf("expected two completed events, got %d", len(got.clientEvents))
+	}
+}
+
+// 非 model 字段同样参与计费与策略：首帧 service_tier、后续 turn 嵌套的
+// reasoning.effort 取值不一致都必须关闭连接。
+func TestOpenAIResponsesWebSocket_ConflictingBillingFieldsRejected(t *testing.T) {
+	for _, mode := range []string{service.OpenAIWSIngressModePassthrough, service.OpenAIWSIngressModeDedicated} {
+		t.Run(mode+"/first_frame_service_tier", func(t *testing.T) {
+			runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+				firstPayload:            `{"type":"response.create","model":"gpt-5.4","service_tier":"flex","stream":false,"service_tier":"priority"}`,
+				group:                   wsAllowlistGroup(false),
+				ingressMode:             mode,
+				firstFrameCloseExpected: true,
+				closeReason:             `declares field "service_tier" more than once`,
+			})
+		})
+		t.Run(mode+"/subsequent_turn_reasoning_effort", func(t *testing.T) {
+			runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+				firstPayload:            `{"type":"response.create","model":"gpt-5.4","stream":false}`,
+				secondPayload:           `{"type":"response.create","model":"gpt-5.4","reasoning":{"effort":"low","effort":"xhigh"},"stream":false}`,
+				group:                   wsAllowlistGroup(false),
+				ingressMode:             mode,
+				secondTurnCloseExpected: true,
+				closeReason:             `declares field "reasoning.effort" more than once`,
+			})
+		})
 	}
 }

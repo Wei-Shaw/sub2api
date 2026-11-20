@@ -3,7 +3,9 @@ package requestmodel
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"mime/multipart"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -28,6 +30,13 @@ func TestConflictingFieldJSONReportsDisagreeingDuplicates(t *testing.T) {
 		{name: "session 内的 model", body: `{"sdp":"v=0","session":{"model":"gpt-live-a","model":"gpt-live-b"}}`, want: "session.model"},
 		{name: "前导空白", body: " \n" + `{"model":"a","model":"b"}`, want: "model"},
 		{name: "UTF-8 BOM", body: "\xef\xbb\xbf" + `{"model":"a","model":"b"}`, want: "model"},
+		{name: "嵌套 reasoning.effort 取值不同", body: `{"model":"gpt-5.4","reasoning":{"effort":"low","effort":"xhigh"},"input":"hi"}`, want: "reasoning.effort"},
+		{name: "嵌套 thinking.type 取值不同", body: `{"model":"m","thinking":{"type":"disabled","budget_tokens":1024,"type":"enabled"}}`, want: "thinking.type"},
+		{name: "嵌套对象里不一致的重复键", body: `{"model":"a","metadata":{"user_id":"1","user_id":"2"}}`, want: "metadata.user_id"},
+		{name: "数组元素里的重复键", body: `{"messages":[{"role":"user","content":"a"},{"role":"user","role":"assistant"}]}`, want: "messages[1].role"},
+		{name: "嵌套转义写法", body: `{"reasoning":{"effort":"low","\u0065ffort":"xhigh"}}`, want: "reasoning.effort"},
+		{name: "深层嵌套", body: `{"a":[[{"b":{"c":1,"c":2}}]]}`, want: "a[0][0].b.c"},
+		{name: "session 内嵌套", body: `{"session":{"audio":{"voice":"a","voice":"b"}}}`, want: "session.audio.voice"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -50,8 +59,10 @@ func TestConflictingFieldJSONAcceptsUnambiguousBodies(t *testing.T) {
 		{name: "取值相同的重复 model", body: `{"model":"gpt-5.4","input":"hi","model":"gpt-5.4"}`},
 		{name: "取值相同的大小写变体", body: `{"model":"gpt-5.4","Model":"gpt-5.4"}`},
 		{name: "session 内取值相同的重复 model", body: `{"session":{"model":"a","model":"a"}}`},
-		{name: "只有嵌套对象里有不一致的重复键", body: `{"model":"a","metadata":{"user_id":"1","user_id":"2"}}`},
-		{name: "数组元素里的重复键", body: `{"messages":[{"role":"user","role":"assistant"}]}`},
+		{name: "嵌套对象里取值相同的重复键", body: `{"model":"a","metadata":{"user_id":"1","user_id":"1"}}`},
+		{name: "嵌套层大小写不同的键是不同属性", body: `{"tools":[{"input_schema":{"properties":{"id":{"type":"string"},"ID":{"type":"integer"}}}}]}`},
+		{name: "兄弟对象里的同名键", body: `{"a":{"x":1},"b":{"x":2},"c":[{"x":1},{"x":2}]}`},
+		{name: "父子对象同名键", body: `{"model":"m","metadata":{"model":"other"}}`},
 		{name: "顶层数组", body: `[{"model":"a"},{"model":"b"}]`},
 		{name: "字符串值里出现字段名", body: `{"model":"a","input":"{\\"model\\":\\"b\\"}"}`},
 	}
@@ -149,6 +160,71 @@ func TestConflictingFieldMultipart(t *testing.T) {
 		_, conflict := ConflictingField(contentType, body)
 		require.False(t, conflict)
 	})
+}
+
+func TestConflictingFieldManyNestedMembersUsesIndex(t *testing.T) {
+	var b strings.Builder
+	b.WriteString(`{"model":"m","tool":{`)
+	for i := 0; i < 100; i++ {
+		fmt.Fprintf(&b, `"k%d":%d,`, i, i)
+	}
+	body := b.String()
+
+	got, conflict := ConflictingField("application/json", []byte(body+`"k3":0}}`))
+	require.True(t, conflict)
+	require.Equal(t, "tool.k3", got)
+
+	_, conflict = ConflictingField("application/json", []byte(body+`"k3":3}}`))
+	require.False(t, conflict, "identical duplicate past the linear-scan limit must pass")
+
+	_, conflict = ConflictingField("application/json", []byte(body+`"k100":0}}`))
+	require.False(t, conflict)
+}
+
+func TestConflictingFieldDeepNestingDoesNotOverflow(t *testing.T) {
+	depth := maxConflictDepth + 50
+	objects := `{"a":` + strings.Repeat(`{"a":`, depth) + "1" + strings.Repeat("}", depth) + `}`
+	_, conflict := ConflictingField("application/json", []byte(objects))
+	require.False(t, conflict)
+
+	arrays := `{"a":` + strings.Repeat("[", depth) + strings.Repeat("]", depth) + `}`
+	_, conflict = ConflictingField("application/json", []byte(arrays))
+	require.False(t, conflict)
+}
+
+func TestConflictingFieldMultipartNestedSession(t *testing.T) {
+	contentType, body := multipartBody(t, [2]string{"sdp", "v=0"}, [2]string{"session", `{"model":"a","audio":{"voice":"x","voice":"y"}}`})
+	got, conflict := ConflictingField(contentType, body)
+	require.True(t, conflict)
+	require.Equal(t, "session.audio.voice", got)
+}
+
+func BenchmarkConflictingField(b *testing.B) {
+	var sb strings.Builder
+	sb.WriteString(`{"model":"claude-sonnet-4-5","max_tokens":4096,"stream":true,"system":[{"type":"text","text":"sys"}],"tools":[`)
+	for i := 0; i < 40; i++ {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		fmt.Fprintf(&sb, `{"name":"tool_%d","description":"%s","input_schema":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path"]}}`, i, strings.Repeat("d", 200))
+	}
+	sb.WriteString(`],"messages":[`)
+	for i := 0; i < 200; i++ {
+		if i > 0 {
+			sb.WriteString(",")
+		}
+		fmt.Fprintf(&sb, `{"role":"user","content":[{"type":"text","text":"%s"}]}`, strings.Repeat("t", 1000))
+	}
+	sb.WriteString(`]}`)
+	body := []byte(sb.String())
+	b.SetBytes(int64(len(body)))
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if _, conflict := ConflictingField("application/json", body); conflict {
+			b.Fatal("unexpected conflict")
+		}
+	}
 }
 
 func TestHasConflictingModels(t *testing.T) {

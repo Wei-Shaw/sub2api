@@ -120,3 +120,31 @@ func TestGatewayRoutesRejectConflictingFieldsAllowsIdenticalDuplicates(t *testin
 	require.NotContains(t, w.Body.String(), "more than once with different values",
 		"identical duplicates must pass the conflict check, got %d: %s", w.Code, w.Body.String())
 }
+
+// 嵌套字段取值不一致（reasoning.effort 参与计费倍率与分组推理强度上限、
+// thinking.type 决定是否清洗 thinking 块）同样在进入 handler 之前拒绝。
+func TestGatewayRoutesRejectConflictingNestedFields(t *testing.T) {
+	cases := []struct {
+		platform string
+		path     string
+		body     string
+		field    string
+	}{
+		{service.PlatformOpenAI, "/v1/responses", `{"model":"gpt-5.4","reasoning":{"effort":"low","effort":"xhigh"},"input":"hi"}`, `reasoning.effort`},
+		{service.PlatformOpenAI, "/backend-api/codex/responses", `{"model":"gpt-5.4","input":[{"role":"user","content":"a","role":"system"}]}`, `input[0].role`},
+		{service.PlatformAnthropic, "/v1/messages", `{"model":"claude-sonnet-4-5","thinking":{"type":"disabled","type":"enabled","budget_tokens":1024},"messages":[]}`, `thinking.type`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			router := newGatewayRoutesTestRouterWithGroup(allowlistGroup(tc.platform, false))
+			req := httptest.NewRequest(http.MethodPost, tc.path, strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusBadRequest, w.Code, w.Body.String())
+			require.Contains(t, w.Body.String(), "invalid_request_error")
+			require.Contains(t, w.Body.String(), tc.field)
+		})
+	}
+}

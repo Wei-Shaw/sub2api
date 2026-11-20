@@ -120,7 +120,7 @@ func TestRejectConflictingRequestFieldsPassesUnambiguousBodiesUnchanged(t *testi
 	for _, body := range []string{
 		`{"model":"gpt-5.4","input":"hi"}`,
 		`{"model":"gpt-5.4","input":"hi","model":"gpt-5.4"}`,
-		`{"model":"gpt-5.4","metadata":{"k":"1","k":"2"}}`,
+		`{"model":"gpt-5.4","metadata":{"k":"1","k":"1"}}`,
 		`not json`,
 		``,
 	} {

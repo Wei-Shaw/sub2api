@@ -2614,11 +2614,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, fmt.Sprintf("Model %q is not available for this group", blocked))
 		return
 	}
-	// 帧内重复 model 键/大小写变体取值不一致时，计费按首个值、上游可能按末值
-	// 绑定。与 HTTP 入口（RejectConflictingRequestFields）一致，对所有分组直接
-	// 拒绝；取值相同的重复键放行。放在白名单之后，白名单的拒绝原因保持不变。
-	if requestmodel.HasConflictingModels(firstModelCandidates) {
-		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "response.create payload declares model more than once with different values")
+	// 帧内重复字段（model、service_tier、reasoning.effort 等，含大小写变体与
+	// 嵌套对象）取值不一致时，计费/策略按首个值、上游可能按末值绑定。与 HTTP
+	// 入口（RejectConflictingRequestFields）同一规则，对所有分组直接拒绝；取值
+	// 相同的重复键放行。放在白名单之后，白名单的拒绝原因保持不变。
+	if field, conflict := requestmodel.ConflictingField("application/json", firstMessage); conflict {
+		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, fmt.Sprintf("response.create payload declares field %.64q more than once with different values", field))
 		return
 	}
 	// Keep the client model in the frame for admission, response identity and usage.
@@ -3099,10 +3100,10 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					middleware2.MarkIngressRejected(c, middleware2.IngressRejectModelNotAllowed)
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("Model %q is not available for this group", blocked), nil)
 				}
-				// 后续 turn 同首帧：帧内模型候选取值不一致时关闭连接，避免计费
-				// 模型与上游实际绑定的模型分叉。
-				if requestmodel.HasConflictingModels(frameModelCandidates) {
-					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "websocket request payload declares model more than once with different values", nil)
+				// 后续 turn 同首帧：帧内重复字段取值不一致时关闭连接，避免计费/
+				// 策略读到的值与上游实际绑定的值分叉。
+				if field, conflict := requestmodel.ConflictingField("application/json", payload); conflict {
+					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("websocket request payload declares field %.64q more than once with different values", field), nil)
 				}
 				if decision := h.checkSecurityAuditStage(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIResponses, model, payload, "subsequent_turn"); decision != nil && !decision.AllowNextStage {
 					writeSecurityAuditWSError(ctx, wsConn, decision)

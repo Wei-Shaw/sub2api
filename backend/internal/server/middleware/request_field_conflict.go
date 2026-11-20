@@ -26,7 +26,7 @@ import (
 //     不是 JSON 对象也不是 multipart 的请求体放行，交给 handler 自己校验。
 //   - 拒绝：按入口协议格式返回 400，请求不会进入合成路由、调度和计费。
 //
-// Responses WebSocket 的帧不经过这里，由 ResponsesWebSocket 逐帧检查模型候选。
+// Responses WebSocket 的帧不经过这里，由 ResponsesWebSocket 对每一帧执行同一规则。
 func RejectConflictingRequestFields() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		if c.Request == nil || c.Request.Body == nil {
