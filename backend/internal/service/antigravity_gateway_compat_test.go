@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -460,12 +461,14 @@ func TestAntigravityCompatOAuthUsesNativeTokenAndRoute(t *testing.T) {
 			var authorization string
 			var upstreamPath string
 			var upstreamAlt string
+			var upstreamUA string
 			upstream := &queuedHTTPUpstreamStub{
 				responses: []*http.Response{antigravityCompatSuccessResponse()},
 				onCall: func(req *http.Request, _ *queuedHTTPUpstreamStub) {
 					authorization = req.Header.Get("Authorization")
 					upstreamPath = req.URL.Path
 					upstreamAlt = req.URL.Query().Get("alt")
+					upstreamUA = req.Header.Get("User-Agent")
 				},
 			}
 			svc := newAntigravityCompatService(
@@ -481,6 +484,9 @@ func TestAntigravityCompatOAuthUsesNativeTokenAndRoute(t *testing.T) {
 			require.Equal(t, "Bearer fresh-oauth-token", authorization)
 			require.Equal(t, "/v1internal:streamGenerateContent", upstreamPath)
 			require.Equal(t, "sse", upstreamAlt)
+			require.Contains(t, upstreamUA, "(aidev_client; os_type=darwin; arch=arm64; cl="+antigravity.OfficialHubChangelist+")")
+			require.Len(t, upstream.requestBodies, 1)
+			require.Regexp(t, `^agent/[0-9a-f]{16}/[0-9]+/[0-9a-f]{8}/0$`, gjson.GetBytes(upstream.requestBodies[0], "requestId").String())
 			require.Equal(t, "request-3757", result.RequestID)
 			require.Equal(t, 8, result.Usage.InputTokens)
 			require.Equal(t, 3, result.Usage.OutputTokens)
@@ -568,7 +574,7 @@ func TestBuildAntigravityCompatGeminiBody_ConfiguresMixedToolInvocations(t *test
 		t.Run(tt.name, func(t *testing.T) {
 			claudeBody := []byte(`{"messages":[{"role":"user","content":"hello"}],"tools":` + tt.tools + `}`)
 			claudeBody = bytes.ReplaceAll(claudeBody, []byte{92}, nil)
-			body, err := svc.buildAntigravityCompatGeminiBody(context.Background(), claudeBody, nil, "project-1", "gemini-2.5-flash")
+			body, err := svc.buildAntigravityCompatGeminiBody(context.Background(), claudeBody, nil, "project-1", "gemini-2.5-flash", antigravity.ThoughtSignatureScope{})
 			require.NoError(t, err)
 
 			var wrapped map[string]any
@@ -985,6 +991,63 @@ func TestAntigravityCompatChatStreamMapsToolCallAndUsage(t *testing.T) {
 	require.Contains(t, recorder.Body.String(), `"finish_reason":"tool_calls"`)
 	require.Contains(t, recorder.Body.String(), `"prompt_tokens":8`)
 	require.Equal(t, 1, strings.Count(recorder.Body.String(), "data: [DONE]"))
+}
+
+func TestAntigravityCompatReplaysToolThoughtSignature(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, protocol := range []string{"chat/completions", "responses"} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/stream=%t", protocol, stream), func(t *testing.T) {
+				const model = "gemini-3.1-pro-high"
+				toolID := "call_scoped_thought_signature"
+				if stream {
+					toolID = "read-unprefixed-id"
+				}
+				toolStream := `data: {"response":{"candidates":[{"content":{"role":"model","parts":[{"functionCall":{"name":"read","id":"` + toolID + `","args":{"id":1}},"thoughtSignature":"signed-tool-state"}]},"finishReason":"STOP"}]}}` + "\n\n"
+				upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{
+					{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(toolStream))},
+					antigravityCompatSuccessResponse(), antigravityCompatSuccessResponse(),
+				}}
+				svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
+				account := newAntigravityCompatAccount(AccountTypeOAuth)
+				forward := svc.ForwardAsChatCompletions
+				first := `"messages":[{"role":"user","content":"read a record"}]`
+				next := `"messages":[{"role":"user","content":"read a record"},` +
+					`{"role":"assistant","tool_calls":[{"id":"` + toolID + `","type":"function","function":{"name":"read","arguments":"{\"id\":1}"}}]},` +
+					`{"role":"tool","tool_call_id":"` + toolID + `","content":"record"}]`
+				if protocol == "responses" {
+					forward = svc.ForwardAsResponses
+					first = `"input":"read a record"`
+					next = `"input":[{"type":"message","role":"user","content":"read a record"},` +
+						`{"type":"function_call","call_id":"` + toolID + `","name":"read","arguments":"{\"id\":1}"},` +
+						`{"type":"function_call_output","call_id":"` + toolID + `","output":"record"}]`
+				}
+				keyID := int64(19023)
+				if protocol == "responses" {
+					keyID++
+				}
+				if stream {
+					keyID += 2
+				}
+				send := func(input string, apiKeyID int64) string {
+					body := []byte(fmt.Sprintf(`{"model":%q,"stream":%t,%s}`, model, stream, input))
+					c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/"+protocol, body)
+					parsed := &ParsedRequest{SessionContext: &SessionContext{APIKeyID: apiKeyID}}
+					_, err := forward(c.Request.Context(), c, account, body, parsed)
+					require.NoError(t, err)
+					require.Equal(t, http.StatusOK, recorder.Code)
+					return recorder.Body.String()
+				}
+				require.Contains(t, send(first, keyID), toolID)
+				send(next, keyID)
+				send(next, keyID+100)
+				require.Len(t, upstream.requestBodies, 3)
+				require.Contains(t, string(upstream.requestBodies[1]), `"thoughtSignature":"signed-tool-state"`)
+				require.NotContains(t, string(upstream.requestBodies[2]), "signed-tool-state")
+				require.Contains(t, string(upstream.requestBodies[2]), geminiDummyThoughtSignature)
+			})
+		}
+	}
 }
 
 func TestAntigravityCompatFirstEventTimeoutTriggersFailover(t *testing.T) {
