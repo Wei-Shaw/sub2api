@@ -117,12 +117,21 @@ func TestUsageLog_GetStatsWithFilters_AggregatesAndEndpoints(t *testing.T) {
 	inboundEndpoint := "/v1/messages"
 	upstreamEndpoint := "/v1/responses"
 	for i := 0; i < 3; i++ {
+		var userAgent *string
+		if i > 0 {
+			value := ""
+			if i == 2 {
+				value = "codex-tui/0.147.0-alpha.4 (Windows)"
+			}
+			userAgent = &value
+		}
 		_, err := repo.Create(ctx, &service.UsageLog{
 			UserID: user.ID, APIKeyID: apiKey.ID, AccountID: account.ID,
 			Model: "claude-3", InputTokens: 2, OutputTokens: 3,
 			CacheCreationTokens: 4, CacheReadTokens: 5,
 			TotalCost: 0.5, ActualCost: 0.4, CreatedAt: now,
 			InboundEndpoint: &inboundEndpoint, UpstreamEndpoint: &upstreamEndpoint,
+			UserAgent: userAgent,
 		})
 		require.NoError(t, err)
 	}
@@ -143,4 +152,16 @@ func TestUsageLog_GetStatsWithFilters_AggregatesAndEndpoints(t *testing.T) {
 	require.NotEmpty(t, stats.Endpoints)
 	require.NotEmpty(t, stats.UpstreamEndpoints)
 	require.NotEmpty(t, stats.EndpointPaths)
+
+	// 开启 UA 后总计及三个端点分组必须逐项一致，NULL 和空字符串合并为“未提供”。
+	withUA, err := repo.GetStatsWithFilters(ctx, usagestats.UsageLogFilters{
+		UserID: user.ID, StartTime: &start, EndTime: &end, IncludeUserAgents: true,
+	})
+	require.NoError(t, err)
+	require.ElementsMatch(t, []usagestats.UserAgentStat{
+		{UserAgent: "", Requests: 2},
+		{UserAgent: "codex-tui/0.147.0-alpha.4 (Windows)", Requests: 1},
+	}, withUA.UserAgents)
+	withUA.UserAgents = nil
+	require.Equal(t, stats, withUA)
 }
