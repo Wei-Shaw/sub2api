@@ -41,13 +41,16 @@ export default {
       deliveryTotals: '累计入队 {enqueued} · 丢弃 {dropped} · 处理 {processed} · 失败 {failed}',
     },
     metrics: { total: '总计', allowed: '放行', flagged: '标记', blocked: '阻止', unavailable: '不可用', timeouts: '超时', failovers: '故障切换' },
+    decisionsRefusal: '审核模型拒答',
     pool: {
-      title: '审计池', description: '按顺序使用启用的 OpenAI 兼容节点；探测由服务端真实网络环境发起。',
+      title: '审计池', description: '按顺序使用启用的审计节点（Qwen3Guard 或 OpenAI Decisions）；探测由服务端真实网络环境发起。',
       add: '新增节点', edit: '编辑节点', empty: '尚未配置审计节点。', node: '节点', model: '模型', limits: '超时 / 单片上限', credential: '凭据与探测',
       configured: 'API Key 已配置', missing: '未配置 API Key', invalid: 'API Key 无法解密，请重新输入', probe: '连接测试', probing: '探测中…',
       probeProgress: '配置校验 ✓ · 请求已发送 · 等待服务响应…', probeResult: '配置校验 ✓ · 请求 ✓ · HTTP {http} · {status} · {latency} ms',
       name: '节点名称', id: '稳定节点 ID', baseUrl: 'Base URL', apiKey: 'API Key', keepSecret: '留空以保留已保存的 API Key', reenterSecret: '已保存的 API Key 无法解密（加密密钥已变更），请重新输入',
       secretHint: '明文只在本次编辑内存中存在；保存成功后会立即清除。', clearSecret: '显式清除已保存的 API Key', timeout: '总超时（毫秒）', inputLimit: '单片 Unicode 字符上限',
+      protocol: '协议', protocolQwen: 'OpenAI 兼容（Qwen3Guard 文本输出）', protocolDecisions: 'OpenAI Decisions（/v1/decisions）',
+      categoryThreshold: '类别阈值', categoryThresholdHint: '某一类别的判定概率达到该值即算命中，取值 0–1，默认 0.5。',
       toggleNode: '切换节点 {name}', deleteConfirm: '从草稿中删除节点“{name}”？保存配置后生效。',
     },
     policy: {

@@ -4,8 +4,14 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 )
+
+// maxConcurrentChunks bounds how many chunks of one request are audited at the
+// same time. The per-node bulkheads are shared by all requests, so one long
+// prompt must not take every slot of a node.
+const maxConcurrentChunks = 8
 
 type GuardEvaluator struct {
 	scanner PromptScanner
@@ -71,7 +77,7 @@ func (g *GuardEvaluator) Evaluate(ctx context.Context, cfg ActiveConfig, snapsho
 	evalCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 	inputLimit := minimumInputLimit(endpoints)
-	chunks := SplitRunes(snapshot.ScanText, inputLimit)
+	chunks := scanChunksFor(snapshot.ScanText, endpoints)
 	if len(chunks) == 0 {
 		if g.metrics != nil {
 			g.metrics.Observe(DecisionAllow, g.clock.Now().Sub(start))
@@ -79,47 +85,28 @@ func (g *GuardEvaluator) Evaluate(ctx context.Context, cfg ActiveConfig, snapsho
 		return &PromptDecision{Kind: DecisionAllow, AllowNextStage: true}, nil
 	}
 	LogInfo(EventEvaluationStarted, mergeLogFields(baseFields, map[string]any{"chunk_total": len(chunks), "status": "started"}))
-	results := make([]*NormalizedResult, 0, len(chunks))
-	for index, chunk := range chunks {
-		chunkStarted := g.clock.Now()
-		LogInfo(EventChunkStarted, mergeLogFields(baseFields, map[string]any{
+	chunkFields := func(index int, chunk string) map[string]any {
+		return mergeLogFields(baseFields, map[string]any{
 			"chunk_index": index + 1, "chunk_total": len(chunks),
 			"chunk_chars": len([]rune(chunk)), "input_chars": snapshot.PromptLength, "input_limit": inputLimit,
-			"status": "started",
-		}))
-		result, err := g.scanChunk(evalCtx, cfg, endpoints, chunk)
-		if err != nil {
-			code := guardErrorCode(err)
-			LogWarn(EventChunkFailed, mergeLogFields(baseFields, map[string]any{
-				"chunk_index": index + 1, "chunk_total": len(chunks),
-				"chunk_chars": len([]rune(chunk)), "input_chars": snapshot.PromptLength, "input_limit": inputLimit,
-				"latency_ms": g.clock.Now().Sub(chunkStarted).Milliseconds(), "error_code": code, "status": "failed",
-			}))
-			kind := DecisionUnavailable
-			if code == ErrorCodeInvalidResponse {
-				kind = DecisionInvalid
-			}
-			if g.metrics != nil {
-				g.metrics.Observe(kind, g.clock.Now().Sub(start))
-				var guardErr *GuardError
-				if errors.As(err, &guardErr) && guardErr.Timeout {
-					g.metrics.IncTimeout()
-				}
-			}
-			logGuardFailure(snapshot, cfg, kind, code, "", g.clock.Now().Sub(start))
-			return nil, err
+		})
+	}
+	results, err := g.scanChunks(evalCtx, cfg, endpoints, chunks, chunkFields)
+	if err != nil {
+		code := guardErrorCode(err)
+		kind := DecisionUnavailable
+		if code == ErrorCodeInvalidResponse {
+			kind = DecisionInvalid
 		}
-		result.ChunkTotal = len(chunks)
-		results = append(results, result)
-		LogInfo(EventChunkCompleted, mergeLogFields(baseFields, map[string]any{
-			"chunk_index": index + 1, "chunk_total": len(chunks),
-			"chunk_chars": len([]rune(chunk)), "input_chars": snapshot.PromptLength, "input_limit": inputLimit,
-			"guard_endpoint_id": result.GuardEndpointID, "action": result.Action,
-			"latency_ms": g.clock.Now().Sub(chunkStarted).Milliseconds(), "status": "completed",
-		}))
-		if result.Action == ActionBlock {
-			break
+		if g.metrics != nil {
+			g.metrics.Observe(kind, g.clock.Now().Sub(start))
+			var guardErr *GuardError
+			if errors.As(err, &guardErr) && guardErr.Timeout {
+				g.metrics.IncTimeout()
+			}
 		}
+		logGuardFailure(snapshot, cfg, kind, code, "", g.clock.Now().Sub(start))
+		return nil, err
 	}
 	aggregated, err := AggregateResults(results, g.clock.Now().Sub(start))
 	if err != nil {
@@ -176,6 +163,85 @@ func (g *GuardEvaluator) Evaluate(ctx context.Context, cfg ActiveConfig, snapsho
 		}))
 	}
 	return decision, nil
+}
+
+// scanChunks audits the chunks concurrently, at most maxConcurrentChunks at a
+// time, all under ctx, so a long prompt costs about one round trip per
+// maxConcurrentChunks chunks instead of one per chunk. A Block result cancels
+// the chunks still running and wins over failures: the request is denied either
+// way and Block is the real verdict. Otherwise any failed or unscanned chunk
+// fails the evaluation, because a partial result never allows.
+func (g *GuardEvaluator) scanChunks(ctx context.Context, cfg ActiveConfig, endpoints []ActiveEndpoint, chunks []string, chunkFields func(index int, chunk string) map[string]any) ([]*NormalizedResult, error) {
+	scanCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	results := make([]*NormalizedResult, len(chunks))
+	var (
+		next     atomic.Int64
+		blocked  atomic.Bool
+		failMu   sync.Mutex
+		firstErr error
+		wg       sync.WaitGroup
+	)
+	for range min(maxConcurrentChunks, len(chunks)) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				index := int(next.Add(1) - 1)
+				if index >= len(chunks) || scanCtx.Err() != nil {
+					return
+				}
+				chunk := chunks[index]
+				chunkStarted := g.clock.Now()
+				LogInfo(EventChunkStarted, mergeLogFields(chunkFields(index, chunk), map[string]any{"status": "started"}))
+				result, err := g.scanChunk(scanCtx, cfg, endpoints, chunk)
+				if err != nil {
+					if blocked.Load() {
+						return
+					}
+					LogWarn(EventChunkFailed, mergeLogFields(chunkFields(index, chunk), map[string]any{
+						"latency_ms": g.clock.Now().Sub(chunkStarted).Milliseconds(), "error_code": guardErrorCode(err), "status": "failed",
+					}))
+					failMu.Lock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					failMu.Unlock()
+					cancel()
+					return
+				}
+				result.ChunkTotal = len(chunks)
+				results[index] = result
+				LogInfo(EventChunkCompleted, mergeLogFields(chunkFields(index, chunk), map[string]any{
+					"guard_endpoint_id": result.GuardEndpointID, "action": result.Action,
+					"latency_ms": g.clock.Now().Sub(chunkStarted).Milliseconds(), "status": "completed",
+				}))
+				if result.Action == ActionBlock {
+					blocked.Store(true)
+					cancel()
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	completed := make([]*NormalizedResult, 0, len(chunks))
+	for _, result := range results {
+		if result != nil {
+			completed = append(completed, result)
+		}
+	}
+	if blocked.Load() {
+		return completed, nil
+	}
+	if firstErr != nil {
+		return nil, firstErr
+	}
+	if len(completed) != len(chunks) {
+		// The deadline or the caller ended the evaluation between chunks.
+		return nil, &GuardError{Code: ErrorCodeUnavailable, Retryable: true, Timeout: errors.Is(ctx.Err(), context.DeadlineExceeded), Cause: ctx.Err()}
+	}
+	return completed, nil
 }
 
 func logGuardFailure(snapshot PromptSnapshot, cfg ActiveConfig, kind DecisionKind, code, guardEndpointID string, latency time.Duration) {

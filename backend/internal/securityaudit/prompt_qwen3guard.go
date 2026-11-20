@@ -122,10 +122,6 @@ func ParseQwen3Guard(content string, enabledScanners []string) (*NormalizedResul
 	if categoryLine == "" {
 		return nil, &GuardError{Code: ErrorCodeInvalidResponse}
 	}
-	enabled := make(map[string]struct{}, len(enabledScanners))
-	for _, scanner := range enabledScanners {
-		enabled[NormalizeCategory(scanner)] = struct{}{}
-	}
 	known := map[string]struct{}{}
 	unknown := map[string]struct{}{}
 	for _, raw := range strings.Split(categoryLine, ",") {
@@ -140,8 +136,35 @@ func ParseQwen3Guard(content string, enabledScanners []string) (*NormalizedResul
 			unknown[unknownCategoryID(category)] = struct{}{}
 		}
 	}
-	knownList := orderedScannerKeys(known)
-	unknownList := sortedKeys(unknown)
+	levelScore := 0.0
+	switch safety {
+	case "Controversial":
+		levelScore = 0.5
+	case "Unsafe":
+		levelScore = 1
+	}
+	result := classifyGuardVerdict(safety, orderedScannerKeys(known), sortedKeys(unknown), enabledScanners,
+		func(string) float64 { return levelScore })
+	result.ScannerBackend = "qwen3guard-openai"
+	result.ScannerVersion = "qwen3guard"
+	result.PolicyID = "priority"
+	result.PolicyVersion = 1
+	return result, nil
+}
+
+// classifyGuardVerdict maps a Safe/Controversial/Unsafe level and the detected
+// categories to the gateway action. Every guard protocol shares these rules.
+func classifyGuardVerdict(safety string, knownList, unknownList, enabledScanners []string, score func(category string) float64) *NormalizedResult {
+	enabled := make(map[string]struct{}, len(enabledScanners))
+	for _, scanner := range enabledScanners {
+		enabled[NormalizeCategory(scanner)] = struct{}{}
+	}
+	if knownList == nil {
+		knownList = []string{}
+	}
+	if unknownList == nil {
+		unknownList = []string{}
+	}
 	matched := make([]string, 0, len(knownList))
 	for _, category := range knownList {
 		if _, ok := enabled[category]; ok {
@@ -151,17 +174,12 @@ func ParseQwen3Guard(content string, enabledScanners []string) (*NormalizedResul
 	result := &NormalizedResult{
 		Safety: safety, Categories: knownList, MatchedScanners: matched, UnknownCategories: unknownList,
 		ScannerScores: map[string]float64{}, ScannerEvidence: map[string]string{},
-		ScannerBackend: "qwen3guard-openai", ScannerVersion: "qwen3guard",
-		PolicyID: "priority", PolicyVersion: 1,
 		Decision: EventPass, RiskLevel: RiskLow, Action: ActionAllow,
 	}
-	score := 0.0
 	if safety == "Controversial" {
-		score = 0.5
 		result.Decision, result.RiskLevel, result.Action = EventFlag, RiskMedium, ActionWarn
 	}
 	if safety == "Unsafe" {
-		score = 1
 		if len(matched) > 0 || len(unknownList) > 0 || len(knownList) == 0 {
 			result.Decision, result.RiskLevel, result.Action = EventCritical, RiskCritical, ActionBlock
 		} else {
@@ -169,13 +187,13 @@ func ParseQwen3Guard(content string, enabledScanners []string) (*NormalizedResul
 		}
 	}
 	for _, category := range matched {
-		result.ScannerScores[category] = score
+		result.ScannerScores[category] = score(category)
 		result.ScannerEvidence[category] = ScannerCatalog[category].Label
 		if safety == "Controversial" && isElevatedControversial(category) {
 			result.Decision, result.RiskLevel, result.Action = EventCritical, RiskCritical, ActionBlock
 		}
 	}
-	return result, nil
+	return result
 }
 
 func unknownCategoryID(value string) string {
@@ -193,11 +211,16 @@ type OpenAICompatibleScanner struct {
 
 func NewOpenAICompatibleScanner() *OpenAICompatibleScanner { return &OpenAICompatibleScanner{} }
 
+// Scan dispatches on the endpoint protocol: Qwen3Guard text verdicts over
+// /v1/chat/completions, or typed answers from the OpenAI Decisions API.
 func (s *OpenAICompatibleScanner) Scan(ctx context.Context, endpoint ActiveEndpoint, chunk string, enabledScanners []string) (*NormalizedResult, error) {
-	client, err := s.clientFor(endpoint)
-	if err != nil {
-		return nil, &GuardError{Code: ErrorCodeUnavailable, Cause: err}
+	if endpoint.Protocol == ProtocolOpenAIDecisions {
+		return s.scanDecisions(ctx, endpoint, chunk, enabledScanners)
 	}
+	return s.scanQwen3Guard(ctx, endpoint, chunk, enabledScanners)
+}
+
+func (s *OpenAICompatibleScanner) scanQwen3Guard(ctx context.Context, endpoint ActiveEndpoint, chunk string, enabledScanners []string) (*NormalizedResult, error) {
 	requestURL, err := ChatCompletionsURL(endpoint.BaseURL)
 	if err != nil {
 		return nil, &GuardError{Code: ErrorCodeUnavailable, Cause: err}
@@ -212,6 +235,30 @@ func (s *OpenAICompatibleScanner) Scan(ctx context.Context, endpoint ActiveEndpo
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, &GuardError{Code: ErrorCodeInvalidResponse, Cause: err}
+	}
+	responseBody, err := s.postJSON(ctx, endpoint, requestURL, body)
+	if err != nil {
+		return nil, err
+	}
+	content, err := extractOpenAIContent(responseBody)
+	if err != nil {
+		return nil, &GuardError{Code: ErrorCodeInvalidResponse, Cause: err}
+	}
+	result, err := ParseQwen3Guard(content, enabledScanners)
+	if err != nil {
+		return nil, err
+	}
+	result.GuardEndpointID = endpoint.ID
+	result.ScannerVersion = endpoint.Model
+	return result, nil
+}
+
+// postJSON sends one guard request bound to ctx, so the evaluation deadline
+// cancels in-flight I/O, and returns the bounded 2xx response body.
+func (s *OpenAICompatibleScanner) postJSON(ctx context.Context, endpoint ActiveEndpoint, requestURL string, body []byte) ([]byte, error) {
+	client, err := s.clientFor(endpoint)
+	if err != nil {
+		return nil, &GuardError{Code: ErrorCodeUnavailable, Cause: err}
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, bytes.NewReader(body))
 	if err != nil {
@@ -235,25 +282,14 @@ func (s *OpenAICompatibleScanner) Scan(ctx context.Context, endpoint ActiveEndpo
 		retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
 		return nil, &GuardError{Code: ErrorCodeUnavailable, HTTPStatus: resp.StatusCode, Retryable: retryable}
 	}
-	limited := io.LimitReader(resp.Body, maxGuardResponseBytes+1)
-	responseBody, err := io.ReadAll(limited)
+	responseBody, err := io.ReadAll(io.LimitReader(resp.Body, maxGuardResponseBytes+1))
 	if err != nil {
 		return nil, &GuardError{Code: ErrorCodeUnavailable, Retryable: true, Cause: err}
 	}
 	if int64(len(responseBody)) > maxGuardResponseBytes {
 		return nil, &GuardError{Code: ErrorCodeInvalidResponse}
 	}
-	content, err := extractOpenAIContent(responseBody)
-	if err != nil {
-		return nil, &GuardError{Code: ErrorCodeInvalidResponse, Cause: err}
-	}
-	result, err := ParseQwen3Guard(content, enabledScanners)
-	if err != nil {
-		return nil, err
-	}
-	result.GuardEndpointID = endpoint.ID
-	result.ScannerVersion = endpoint.Model
-	return result, nil
+	return responseBody, nil
 }
 
 func (s *OpenAICompatibleScanner) clientFor(endpoint ActiveEndpoint) (*http.Client, error) {

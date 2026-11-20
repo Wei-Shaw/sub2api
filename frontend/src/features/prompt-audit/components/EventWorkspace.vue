@@ -108,7 +108,7 @@ import { computed, defineComponent, h, reactive, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Pagination from '@/components/common/Pagination.vue'
 import type { PromptAuditEvent, PromptEventFilters } from '../types'
-import { cloneData, emptyEventFilters, SCANNER_CATALOG } from '../viewModel'
+import { cloneData, DECISIONS_REFUSAL_CATEGORY, emptyEventFilters, SCANNER_CATALOG } from '../viewModel'
 
 const props = defineProps<{
   events: PromptAuditEvent[]; total: number; page: number; pageSize: number
@@ -198,6 +198,7 @@ function translateRiskLevel(riskLevel: string): string {
   return RISK_LEVELS.has(riskLevel) ? t(`admin.promptAudit.riskLevels.${riskLevel}`) : riskLevel
 }
 function translateCategory(category: string): string {
+  if (category === DECISIONS_REFUSAL_CATEGORY) return t('admin.promptAudit.decisionsRefusal')
   return SCANNER_CATALOG.some((scanner) => scanner.id === category)
     ? t(`admin.promptAudit.scanners.${category}`)
     : category

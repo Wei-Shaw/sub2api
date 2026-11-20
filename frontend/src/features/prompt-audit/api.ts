@@ -31,12 +31,13 @@ export async function probeEndpoint(endpoint: PromptAuditEndpointDraft): Promise
     endpoint: {
       id: endpoint.id,
       name: endpoint.name,
-      protocol: 'openai_compatible',
+      protocol: endpoint.protocol,
       base_url: endpoint.base_url,
       model: endpoint.model,
       token: endpoint.token || undefined,
       timeout_ms: endpoint.timeout_ms,
       input_limit: endpoint.input_limit,
+      category_threshold: endpoint.category_threshold,
       enabled: endpoint.enabled,
     },
   })

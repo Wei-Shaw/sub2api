@@ -12,6 +12,18 @@ func BuildIssueSummaries(result NormalizedResult) []IssueSummary {
 	}
 	summaries := make([]IssueSummary, 0, len(resultCategories)+len(result.UnknownCategories))
 	for _, category := range resultCategories {
+		if category == DecisionsRefusalCategory {
+			evidence := RedactPreview(result.ScannerEvidence[category], 160)
+			digest := sha256.Sum256([]byte(category + ":" + evidence))
+			summaries = append(summaries, IssueSummary{
+				Category: category, ScannerID: category, Title: "审核模型拒答",
+				Description: "OpenAI Decisions 拒绝回答审核问题，按阻止处理", Severity: string(RiskCritical),
+				SeverityLabel: riskLabelZH(RiskCritical), Action: string(ActionBlock),
+				ActionLabel: actionLabelZH(ActionBlock), Code: "prompt_audit_" + category,
+				Score: 1, Evidence: evidence, EvidenceHash: hex.EncodeToString(digest[:]),
+			})
+			continue
+		}
 		definition, ok := ScannerCatalog[category]
 		if !ok {
 			continue

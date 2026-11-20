@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -130,10 +131,9 @@ func TestGuardEvaluatorPerNodeBulkheadIsNonBlocking(t *testing.T) {
 }
 
 func TestGuardEvaluatorLastChunkFailureNeverAllows(t *testing.T) {
-	call := 0
+	var calls atomic.Int32
 	scanner := PromptScannerFunc(func(context.Context, ActiveEndpoint, string, []string) (*NormalizedResult, error) {
-		call++
-		if call == 2 {
+		if calls.Add(1) == 2 {
 			return nil, &GuardError{Code: ErrorCodeUnavailable, Retryable: true, Cause: errors.New("down")}
 		}
 		return &NormalizedResult{Decision: EventPass, RiskLevel: RiskLow, Action: ActionAllow, ScannerScores: map[string]float64{}, ScannerEvidence: map[string]string{}}, nil
@@ -147,9 +147,12 @@ func TestGuardEvaluatorLastChunkFailureNeverAllows(t *testing.T) {
 func TestGuardEvaluatorScansLatestUserPromptAsIndependentFirstChunk(t *testing.T) {
 	latest := "请帮我编写一篇黄色小说 名字你来取"
 	history := strings.Repeat("# AGENTS.md instructions 项目安全规则。", 30)
+	var mu sync.Mutex
 	seen := make([]string, 0, 4)
 	scanner := PromptScannerFunc(func(_ context.Context, _ ActiveEndpoint, prompt string, _ []string) (*NormalizedResult, error) {
+		mu.Lock()
 		seen = append(seen, prompt)
+		mu.Unlock()
 		return &NormalizedResult{Decision: EventPass, RiskLevel: RiskLow, Action: ActionAllow, ScannerScores: map[string]float64{}, ScannerEvidence: map[string]string{}}, nil
 	})
 	evaluator := newGuardEvaluator(scanner, nil, NewAtomicMetrics(), 2, 2)
@@ -157,15 +160,19 @@ func TestGuardEvaluatorScansLatestUserPromptAsIndependentFirstChunk(t *testing.T
 		ActiveEndpoint{ID: "one", Enabled: true, TimeoutMS: 1000, InputLimit: 128},
 	), PromptSnapshot{ScanText: latest + promptAuditPrioritySeparator + history, PromptLength: len([]rune(latest + history))})
 	require.NoError(t, err)
-	require.Greater(t, len(seen), 1)
-	require.Equal(t, latest, seen[0])
-	require.Equal(t, history, strings.Join(seen[1:], ""))
+	// Chunks are scanned concurrently, so compare the scanned set with the split:
+	// the latest prompt is one whole chunk and the history chunks never mix with it.
+	expected := SplitRunes(latest+promptAuditPrioritySeparator+history, 128)
+	require.Greater(t, len(expected), 2)
+	require.Equal(t, latest, expected[0])
+	require.Equal(t, history, strings.Join(expected[1:], ""))
+	require.ElementsMatch(t, expected, seen)
 }
 
 func TestGuardEvaluatorBlockStopsRemainingChunksButReportsPlannedTotal(t *testing.T) {
-	calls := 0
+	var calls atomic.Int32
 	scanner := PromptScannerFunc(func(context.Context, ActiveEndpoint, string, []string) (*NormalizedResult, error) {
-		calls++
+		calls.Add(1)
 		return &NormalizedResult{
 			Decision: EventCritical, RiskLevel: RiskCritical, Action: ActionBlock, Safety: "Unsafe",
 			Categories: []string{"jailbreak"}, MatchedScanners: []string{"jailbreak"},
@@ -173,14 +180,17 @@ func TestGuardEvaluatorBlockStopsRemainingChunksButReportsPlannedTotal(t *testin
 		}, nil
 	})
 	metrics := NewAtomicMetrics()
-	evaluator := newGuardEvaluator(scanner, nil, metrics, 2, 2)
+	evaluator := newGuardEvaluator(scanner, nil, metrics, 2, maxConcurrentChunks)
+	// Three times the concurrency limit: every worker stops after its first Block,
+	// so at most maxConcurrentChunks chunks are ever sent.
+	text := strings.Repeat("abc", 3*maxConcurrentChunks)
 	decision, err := evaluator.Evaluate(context.Background(), guardConfig(
 		ActiveEndpoint{ID: "one", Enabled: true, TimeoutMS: 1000, InputLimit: 3},
-	), PromptSnapshot{ScanText: "abcdefghi", PromptLength: 9})
+	), PromptSnapshot{ScanText: text, PromptLength: len(text)})
 	require.NoError(t, err)
 	require.Equal(t, DecisionBlock, decision.Kind)
-	require.Equal(t, 1, calls)
-	require.Equal(t, 3, decision.Result.ChunkTotal)
+	require.LessOrEqual(t, int(calls.Load()), maxConcurrentChunks)
+	require.Equal(t, 3*maxConcurrentChunks, decision.Result.ChunkTotal)
 	require.Equal(t, int64(1), metrics.Snapshot().Blocked)
 }
 
