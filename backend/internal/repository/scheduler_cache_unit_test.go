@@ -276,7 +276,6 @@ func TestMarshalSchedulerCacheAccountKeepsEncodingJSONWireFormat(t *testing.T) {
 			Credentials: map[string]any{},
 			Extra:       map[string]any{},
 			GroupIDs:    []int64{},
-			Groups:      []*service.Group{},
 		}},
 		{name: "nested maps and escaping", account: service.Account{
 			ID:          803,
@@ -1178,6 +1177,33 @@ func TestBuildSchedulerMetadataAccount_KeepsOpenAIPassthroughForModelGate(t *tes
 			require.Equal(t, map[string]any{"gpt-5.5": "gpt-5.5"}, restored.Credentials["model_mapping"])
 		})
 	}
+}
+
+// 透传账号显式开启"按模型筛选"后，候选过滤同样读的是本投影；裁掉
+// openai_passthrough_model_filter 会让账号在选号阶段退回"透传放行全部模型"，
+// 而模型列表等读完整账号的路径仍按白名单收窄，两边口径分裂。
+func TestBuildSchedulerMetadataAccount_KeepsOpenAIPassthroughModelFilter(t *testing.T) {
+	account := service.Account{
+		ID:       8748,
+		Platform: service.PlatformOpenAI,
+		Type:     service.AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"model_mapping": map[string]any{"qwen3.8-max": "qwen3.8-max"},
+			"api_key":       "drop-me",
+		},
+		Extra: map[string]any{"openai_passthrough": true, "openai_passthrough_model_filter": true},
+	}
+	require.False(t, account.IsModelSupported("gpt-6.1-sol"), "前置条件：开启筛选的透传账号应拒绝白名单外模型")
+
+	payload, err := json.Marshal(buildSchedulerMetadataAccount(account))
+	require.NoError(t, err)
+	var restored service.Account
+	require.NoError(t, json.Unmarshal(payload, &restored))
+
+	require.Equal(t, true, restored.Extra["openai_passthrough_model_filter"])
+	require.True(t, restored.IsOpenAIPassthroughModelFilterEnabled())
+	require.False(t, restored.IsModelSupported("gpt-6.1-sol"))
+	require.True(t, restored.IsModelSupported("qwen3.8-max"))
 }
 
 // 调度投影必须保留账号的 RPM 配置。

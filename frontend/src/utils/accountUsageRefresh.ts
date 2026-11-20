@@ -106,3 +106,10 @@ export const buildGrokUsageRefreshKey = (account: Pick<Account, 'platform' | 'ex
     serializeSnapshotRefreshValue(legacyQuotaFallback)
   ].join('|')
 }
+
+export const buildAccountUsageRefreshKey = (account: Pick<Account, 'id' | 'platform' | 'type' | 'updated_at' | 'last_used_at' | 'rate_limit_reset_at' | 'session_window_start' | 'session_window_end' | 'session_window_status' | 'extra'>): string => {
+  if (account.platform === 'openai') return buildOpenAIUsageRefreshKey(account)
+  if (account.platform === 'anthropic') return buildAnthropicUsageRefreshKey(account)
+  if (account.platform === 'gemini') return buildGeminiUsageRefreshKey(account)
+  return ''
+}

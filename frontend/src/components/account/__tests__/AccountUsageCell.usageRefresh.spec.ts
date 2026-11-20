@@ -145,7 +145,7 @@ describe('AccountUsageCell usage refresh on row updates', () => {
     await wrapper.setProps({ account: sampledClaudeAccount(4102, '2026-10-25T10:01:00Z', 0.55) })
     await flushPromises()
     expect(requestBatchedUsage).toHaveBeenCalledTimes(2)
-    expect(requestBatchedUsage).toHaveBeenLastCalledWith(expect.objectContaining({ id: 4102 }), { force: true })
+    expect(requestBatchedUsage).toHaveBeenLastCalledWith(expect.objectContaining({ id: 4102 }), undefined)
     expect(getUsage).not.toHaveBeenCalled()
   })
 

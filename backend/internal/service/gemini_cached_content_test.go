@@ -387,6 +387,99 @@ func TestGeminiCachedContentStoragePricingAndSurcharge(t *testing.T) {
 	require.InDelta(t, storage*1.5, storageOnly.ActualCost, 1e-12)
 }
 
+// Scenario: 上游端点价格倍数只放大 token 费用，显式缓存存储费按原价叠加。
+func TestUpstreamPriceMultiplierScalesTokenCostOnly(t *testing.T) {
+	pricing := &PricingService{}
+	data, err := pricing.parsePricingData([]byte(`{"gemini-3.7-flash":{"litellm_provider":"gemini","input_cost_per_token":0.00000075,
+		"output_cost_per_token":0.00000375,"cache_read_input_token_cost":0.000000075,"cache_storage_cost_per_token_per_hour":0.000001}}`))
+	require.NoError(t, err)
+	pricing.pricingData = data
+	gateway := &GatewayService{billingService: NewBillingService(&config.Config{}, pricing)}
+	groupID := int64(3)
+	apiKey := &APIKey{GroupID: &groupID, Group: &Group{ID: groupID, Hydrated: true}}
+
+	const (
+		inputTokens  = 10000
+		outputTokens = 1000
+		cacheTokens  = 5000
+		tokenHours   = 20000.0
+	)
+	baseInput := inputTokens * 0.00000075
+	baseOutput := outputTokens * 0.00000375
+	baseCacheRead := cacheTokens * 0.000000075
+	storage := tokenHours * 0.000001
+
+	cost := gateway.calculateRecordUsageCost(context.Background(), &ForwardResult{
+		Model:                   "gemini-3.7-flash",
+		Usage:                   ClaudeUsage{InputTokens: inputTokens, OutputTokens: outputTokens, CacheReadInputTokens: cacheTokens},
+		CacheStorageTokenHours:  tokenHours,
+		UpstreamPriceMultiplier: 1.1,
+	}, apiKey, "gemini-3.7-flash", 2, 2, time.Now())
+	require.InDelta(t, baseInput*1.1, cost.InputCost, 1e-12)
+	require.InDelta(t, baseOutput*1.1, cost.OutputCost, 1e-12)
+	require.InDelta(t, baseCacheRead*1.1, cost.CacheReadCost, 1e-12)
+	tokenTotal := (baseInput + baseOutput + baseCacheRead) * 1.1
+	require.InDelta(t, tokenTotal+storage, cost.TotalCost, 1e-12)
+	require.InDelta(t, (tokenTotal+storage)*2, cost.ActualCost, 1e-12)
+
+	unset := gateway.calculateRecordUsageCost(context.Background(), &ForwardResult{
+		Model: "gemini-3.7-flash",
+		Usage: ClaudeUsage{InputTokens: inputTokens, OutputTokens: outputTokens, CacheReadInputTokens: cacheTokens},
+	}, apiKey, "gemini-3.7-flash", 1, 1, time.Now())
+	require.InDelta(t, baseInput+baseOutput+baseCacheRead, unset.TotalCost, 1e-12)
+
+	storageOnly := gateway.calculateRecordUsageCost(context.Background(), &ForwardResult{
+		Model:                   "gemini-3.7-flash",
+		CacheStorageTokenHours:  tokenHours,
+		UpstreamPriceMultiplier: 1.1,
+	}, apiKey, "gemini-3.7-flash", 1, 1, time.Now())
+	require.InDelta(t, storage, storageOnly.TotalCost, 1e-12)
+}
+
+// 管理员配置的分组价/渠道价是最终价，多区域端点倍数只作用于默认模型价。
+func TestUpstreamPriceMultiplierSkipsConfiguredPricing(t *testing.T) {
+	pricing := &PricingService{}
+	data, err := pricing.parsePricingData([]byte(`{"gemini-3.7-flash":{"litellm_provider":"gemini","input_cost_per_token":0.00000075,
+		"output_cost_per_token":0.00000375,"cache_read_input_token_cost":0.000000075}}`))
+	require.NoError(t, err)
+	pricing.pricingData = data
+	billing := NewBillingService(&config.Config{}, pricing)
+	gateway := &GatewayService{billingService: billing, resolver: NewModelPricingResolver(nil, billing)}
+
+	const (
+		inputTokens  = 10000
+		outputTokens = 1000
+	)
+	usage := ClaudeUsage{InputTokens: inputTokens, OutputTokens: outputTokens}
+	groupInput, groupOutput := 0.000002, 0.000008
+	groupID := int64(5)
+	configured := &APIKey{GroupID: &groupID, Group: &Group{ID: groupID, Hydrated: true, ModelPricing: []ChannelModelPricing{{
+		Models: []string{"gemini-3.7-flash"}, BillingMode: BillingModeToken, InputPrice: &groupInput, OutputPrice: &groupOutput,
+	}}}}
+	cost := gateway.calculateRecordUsageCost(context.Background(), &ForwardResult{
+		Model: "gemini-3.7-flash", Usage: usage, UpstreamPriceMultiplier: 1.1,
+	}, configured, "gemini-3.7-flash", 1, 1, time.Now())
+	require.InDelta(t, inputTokens*groupInput+outputTokens*groupOutput, cost.TotalCost, 1e-12)
+
+	defaultGroupID := int64(6)
+	defaultPriced := &APIKey{GroupID: &defaultGroupID, Group: &Group{ID: defaultGroupID, Hydrated: true}}
+	cost = gateway.calculateRecordUsageCost(context.Background(), &ForwardResult{
+		Model: "gemini-3.7-flash", Usage: usage, UpstreamPriceMultiplier: 1.1,
+	}, defaultPriced, "gemini-3.7-flash", 1, 1, time.Now())
+	require.InDelta(t, (inputTokens*0.00000075+outputTokens*0.00000375)*1.1, cost.TotalCost, 1e-12)
+}
+
+func TestApplyUpstreamPriceFactorTokenModeOnly(t *testing.T) {
+	result := &ForwardResult{UpstreamPriceMultiplier: 1.1}
+	for mode, want := range map[string]float64{"": 1.1, string(BillingModeToken): 1.1, string(BillingModePerRequest): 1, string(BillingModeImage): 1} {
+		cost := &CostBreakdown{InputCost: 1, TotalCost: 1, ActualCost: 1, BillingMode: mode}
+		applyUpstreamPriceFactor(cost, result)
+		require.InDelta(t, want, cost.TotalCost, 1e-12, mode)
+		require.InDelta(t, want, cost.ActualCost, 1e-12, mode)
+	}
+	applyUpstreamPriceFactor(nil, result)
+}
+
 func TestGeminiCachedContentStorageCostInAccountStats(t *testing.T) {
 	const (
 		model       = "gemini-3.8-flash"

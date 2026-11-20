@@ -182,6 +182,11 @@ Please read the following carefully before using this project:
 <td><a href="https://massivetokens.com/signup?ref=SUB2API">Massive Tokens</a> supplies Claude API access at wholesale per-token prices to businesses and high-volume developers. It serves the standard Anthropic Messages API, so it works with Claude Code, Sub2API, LiteLLM and One API without code changes. Sign up with code SUB2API for 5% off every call, then join our Telegram group @massivetokens (<a href="https://t.me/massivetokens">https://t.me/massivetokens</a>) and ask an admin for $10 in credits.</td>
 </tr>
 
+<tr>
+<td width="180"><a href="https://www.dataeyes.vip/?promoter_code=9dkfv2r3"><img src="assets/partners/logos/DataEyesAI.png" alt="DataEyesAI" width="150"></a></td>
+<td><a href="https://www.dataeyes.vip/?promoter_code=9dkfv2r3">DataEyesAI</a> is an all-in-one AI API platform for developers and businesses, offering unified access to leading models including OpenAI, Claude, and Gemini for AI coding and text, image, audio, and video generation. It supports popular AI coding tools such as Claude Code and Codex, with pay-as-you-go pricing, real-time usage and cost monitoring, and 24/7 technical support to simplify model integration and keep development costs under control. New users can sign up through <a href="https://www.dataeyes.vip/?promoter_code=9dkfv2r3">this link</a> to claim usage credits. From coding to multimodal creation, start your AI journey in one place!</td>
+</tr>
+
 </table>
 
 </details>

@@ -97,6 +97,13 @@ type apiUsageCache struct {
 type windowStatsCache struct {
 	stats     *WindowStats
 	timestamp time.Time
+	startTime time.Time
+}
+
+// Separate quota windows while keeping at most two cached entries per account.
+type windowStatsCacheKey struct {
+	accountID int64
+	duration  time.Duration
 }
 
 // antigravityUsageCache 缓存 Antigravity 额度数据
@@ -119,7 +126,7 @@ const (
 // UsageCache 封装账户使用量相关的缓存
 type UsageCache struct {
 	apiCache          sync.Map           // accountID -> *apiUsageCache
-	windowStatsCache  sync.Map           // accountID -> *windowStatsCache
+	windowStatsCache  sync.Map           // windowStatsCacheKey -> *windowStatsCache
 	antigravityCache  sync.Map           // accountID -> *antigravityUsageCache
 	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
@@ -147,12 +154,13 @@ type WindowStats struct {
 
 // UsageProgress 使用量进度
 type UsageProgress struct {
-	Utilization      float64      `json:"utilization"`            // 使用率百分比 (0-100+，100表示100%)
-	ResetsAt         *time.Time   `json:"resets_at"`              // 重置时间
-	RemainingSeconds int          `json:"remaining_seconds"`      // 距重置剩余秒数
-	WindowStats      *WindowStats `json:"window_stats,omitempty"` // 窗口期统计（从窗口开始到当前的使用量）
-	UsedRequests     int64        `json:"used_requests,omitempty"`
-	LimitRequests    int64        `json:"limit_requests,omitempty"`
+	Utilization        float64      `json:"utilization"`                   // 使用率百分比 (0-100+，100表示100%)
+	UtilizationUnknown bool         `json:"utilization_unknown,omitempty"` // 仅有本地统计，上游使用率未知
+	ResetsAt           *time.Time   `json:"resets_at"`                     // 重置时间
+	RemainingSeconds   int          `json:"remaining_seconds"`             // 距重置剩余秒数
+	WindowStats        *WindowStats `json:"window_stats,omitempty"`        // 窗口期统计（从窗口开始到当前的使用量）
+	UsedRequests       int64        `json:"used_requests,omitempty"`
+	LimitRequests      int64        `json:"limit_requests,omitempty"`
 }
 
 // AntigravityQuotaGroup is a group of Antigravity models that share their quota windows.
@@ -777,7 +785,7 @@ func (s *AccountUsageService) syncActiveToPassive(ctx context.Context, account *
 
 func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Account, force bool) (*UsageInfo, error) {
 	now := time.Now()
-	usage := &UsageInfo{UpdatedAt: &now}
+	usage := &UsageInfo{Source: "passive"}
 
 	if account == nil {
 		return usage, nil
@@ -794,10 +802,11 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 					if account.IsShadow() {
 						updates = buildCodexSparkWindowExtraUpdates(quotaUsage, now)
 					}
-					if len(updates) > 0 {
+					if hasOpenAIQuotaObservation(updates) {
 						mergeAccountExtra(account, updates)
 						s.persistOpenAICodexProbeSnapshotContext(ctx, account.ID, updates)
 						applyExtraToUsage(usage, account.Extra, now)
+						usage.Source = "active"
 					}
 				}
 			}
@@ -808,27 +817,29 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 			// Extra keys and immediately reflected in the returned UsageInfo.
 			if s.openAIQuotaService != nil {
 				if quotaUsage, err := s.openAIQuotaService.QueryUsage(WithScopedAdminAccountOperation(ctx, "accounts.usage.read"), account.ID); err == nil {
-					if updates := buildCodexSparkWindowExtraUpdates(quotaUsage, now); len(updates) > 0 {
+					if updates := buildCodexSparkWindowExtraUpdates(quotaUsage, now); hasOpenAIQuotaObservation(updates) {
 						mergeAccountExtra(account, updates)
 						s.persistOpenAICodexProbeSnapshotContext(ctx, account.ID, updates)
 						if account.ParentAccountID != nil && adminaccess.RestrictedFromContext(ctx) == nil {
 							notifyOpenAIAutoReset(*account.ParentAccountID)
 						}
-						if usage.UpdatedAt == nil {
-							usage.UpdatedAt = &now
-						}
 						applyExtraToUsage(usage, account.Extra, now)
+						usage.Source = "active"
 					}
 				}
 			}
 		} else {
-			if updates, err := s.probeOpenAICodexSnapshot(ctx, account); err == nil && len(updates) > 0 {
+			if updates, err := s.probeOpenAICodexSnapshot(ctx, account); err == nil && hasOpenAIQuotaObservation(updates) {
 				mergeAccountExtra(account, updates)
-				if usage.UpdatedAt == nil {
-					usage.UpdatedAt = &now
-				}
 				applyExtraToUsage(usage, account.Extra, now)
+				usage.Source = "active"
 			}
+		}
+		if usage.Source != "active" {
+			// Keep the last observation available, but never turn a failed probe
+			// (or a response without quota data) into a fresh successful read.
+			usage.ErrorCode = errorCodeQuotaRefreshFailed
+			usage.Error = "Unable to refresh OpenAI quota; displayed values may be from an earlier observation"
 		}
 	}
 
@@ -838,14 +849,14 @@ func (s *AccountUsageService) getOpenAIUsage(ctx context.Context, account *Accou
 
 	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, codexWindowStatsStart(usage.FiveHour, 5*time.Hour, now)); err == nil {
 		if usage.FiveHour == nil {
-			usage.FiveHour = &UsageProgress{Utilization: 0}
+			usage.FiveHour = &UsageProgress{UtilizationUnknown: true}
 		}
 		usage.FiveHour.WindowStats = windowStatsFromAccountStats(stats)
 	}
 
 	if stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, codexWindowStatsStart(usage.SevenDay, 7*24*time.Hour, now)); err == nil {
 		if usage.SevenDay == nil {
-			usage.SevenDay = &UsageProgress{Utilization: 0}
+			usage.SevenDay = &UsageProgress{UtilizationUnknown: true}
 		}
 		usage.SevenDay.WindowStats = windowStatsFromAccountStats(stats)
 	}
@@ -988,7 +999,7 @@ func (s *AccountUsageService) probeOpenAICodexSnapshot(ctx context.Context, acco
 	if err != nil {
 		return nil, err
 	}
-	if len(updates) > 0 {
+	if hasOpenAIQuotaObservation(updates) {
 		s.persistOpenAICodexProbeSnapshotContext(ctx, account.ID, updates)
 		return updates, nil
 	}
@@ -1051,12 +1062,30 @@ func applyExtraToUsage(usage *UsageInfo, extra map[string]any, now time.Time) {
 	if usage == nil {
 		return
 	}
+	// updated_at is the upstream observation time, not the time the UI read
+	// this cache. Legacy snapshots without a timestamp have unknown freshness.
+	usage.UpdatedAt = nil
+	if raw, ok := extra["codex_usage_updated_at"]; ok {
+		if observedAt, err := parseTime(fmt.Sprint(raw)); err == nil && !observedAt.IsZero() {
+			usage.UpdatedAt = &observedAt
+		}
+	}
 	if progress := buildCodexUsageProgressFromExtra(extra, "5h", now); progress != nil {
 		usage.FiveHour = progress
 	}
 	if progress := buildCodexUsageProgressFromExtra(extra, "7d", now); progress != nil {
 		usage.SevenDay = progress
 	}
+}
+
+// errorCodeQuotaRefreshFailed 标记 OpenAI OAuth 额度主动刷新失败：返回值仍是上次
+// 观测（或未知），只说明额度数据可能陈旧，不代表账号不可用。
+const errorCodeQuotaRefreshFailed = "quota_refresh_failed"
+
+func hasOpenAIQuotaObservation(updates map[string]any) bool {
+	_, has5h := updates["codex_5h_used_percent"]
+	_, has7d := updates["codex_7d_used_percent"]
+	return has5h || has7d
 }
 
 func (s *AccountUsageService) getGeminiUsage(ctx context.Context, account *Account) (*UsageInfo, error) {
@@ -1439,49 +1468,60 @@ func enrichUsageWithAccountError(info *UsageInfo, account *Account) {
 // addWindowStats 为 usage 数据添加窗口期统计
 // 使用独立缓存（1 分钟），与 API 缓存分离
 func (s *AccountUsageService) addWindowStats(ctx context.Context, account *Account, usage *UsageInfo) {
-	// 修复：即使 FiveHour 为 nil，也要尝试获取统计数据
-	// 因为 SevenDay/SevenDaySonnet/SevenDayFable 可能需要
-	if usage.FiveHour == nil && usage.SevenDay == nil && usage.SevenDaySonnet == nil && usage.SevenDayFable == nil {
+	if s.usageLogRepo == nil || usage == nil {
 		return
 	}
 
-	// 检查窗口统计缓存（1 分钟）
-	var windowStats *WindowStats
-	if cached, ok := s.cache.windowStatsCache.Load(account.ID); ok {
-		if cache, ok := cached.(*windowStatsCache); ok && time.Since(cache.timestamp) < windowStatsCacheTTL {
-			windowStats = cache.stats
+	now := time.Now()
+	for _, window := range []struct {
+		progress *UsageProgress
+		duration time.Duration
+	}{
+		{usage.FiveHour, 5 * time.Hour},
+		{usage.SevenDay, 7 * 24 * time.Hour},
+	} {
+		if window.progress == nil {
+			continue
 		}
-	}
 
-	// 如果没有缓存，从数据库查询
-	if windowStats == nil {
-		// 使用统一的窗口开始时间计算逻辑（考虑窗口过期情况）
 		startTime := account.GetCurrentWindowStartTime()
+		if supportsAnthropicPassiveUsage(account) {
+			// Only pair local costs with a known, current upstream quota window.
+			// A rolling lookback or expired sample would produce a misleading estimate.
+			if window.progress.ResetsAt == nil || !now.Before(*window.progress.ResetsAt) {
+				continue
+			}
+			startTime = window.progress.ResetsAt.Add(-window.duration)
+			if startTime.After(now) {
+				continue
+			}
+		} else if window.duration != 5*time.Hour {
+			continue
+		}
+
+		key := windowStatsCacheKey{accountID: account.ID, duration: window.duration}
+		if cached, ok := s.cache.windowStatsCache.Load(key); ok {
+			if cache, ok := cached.(*windowStatsCache); ok && cache.startTime.Equal(startTime) && now.Sub(cache.timestamp) < windowStatsCacheTTL {
+				window.progress.WindowStats = cache.stats
+				continue
+			}
+		}
 
 		stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, startTime)
 		if err != nil {
 			log.Printf("Failed to get window stats for account %d: %v", account.ID, err)
-			return
+			continue
 		}
-
-		windowStats = &WindowStats{
-			Requests:     stats.Requests,
-			Tokens:       stats.Tokens,
-			Cost:         stats.Cost,
-			StandardCost: stats.StandardCost,
-			UserCost:     stats.UserCost,
+		if stats == nil {
+			continue
 		}
-
-		// 缓存窗口统计（1 分钟）
-		s.cache.windowStatsCache.Store(account.ID, &windowStatsCache{
+		windowStats := windowStatsFromAccountStats(stats)
+		window.progress.WindowStats = windowStats
+		s.cache.windowStatsCache.Store(key, &windowStatsCache{
 			stats:     windowStats,
-			timestamp: time.Now(),
+			timestamp: now,
+			startTime: startTime,
 		})
-	}
-
-	// 为 FiveHour 添加 WindowStats（5h 窗口统计）
-	if usage.FiveHour != nil {
-		usage.FiveHour.WindowStats = windowStats
 	}
 }
 
