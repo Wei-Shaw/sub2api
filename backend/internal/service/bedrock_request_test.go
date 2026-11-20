@@ -844,6 +844,26 @@ func TestSanitizeBedrockThinking(t *testing.T) {
 		assert.False(t, gjson.GetBytes(result, "thinking.budget_tokens").Exists())
 	})
 
+	t.Run("adaptive-only models convert enabled to adaptive", func(t *testing.T) {
+		for _, modelID := range []string{
+			"anthropic.claude-haiku-5-5",
+			"global.anthropic.claude-haiku-5-5",
+			"us.anthropic.claude-sonnet-5-v1",
+			"anthropic.claude-mythos-5",
+		} {
+			input := `{"thinking":{"type":"enabled","budget_tokens":16000,"display":"summarized"},"messages":[]}`
+			result := sanitizeBedrockThinking([]byte(input), modelID)
+			assert.JSONEq(t, `{"thinking":{"type":"adaptive","display":"summarized"},"messages":[]}`, string(result), modelID)
+			assert.NoError(t, validateClaude55Request(result, modelID), modelID)
+		}
+	})
+
+	t.Run("haiku 5.5 keeps disabled unchanged", func(t *testing.T) {
+		input := `{"thinking":{"type":"disabled"},"messages":[]}`
+		result := sanitizeBedrockThinking([]byte(input), "anthropic.claude-haiku-5-5")
+		assert.JSONEq(t, input, string(result))
+	})
+
 	t.Run("opus 4.7 keeps adaptive unchanged", func(t *testing.T) {
 		input := `{"thinking":{"type":"adaptive"},"messages":[]}`
 		result := sanitizeBedrockThinking([]byte(input), "us.anthropic.claude-opus-4-7-v1")
