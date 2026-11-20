@@ -12,6 +12,32 @@
     </div>
 
     <div v-else class="space-y-6 p-6">
+      <!-- Tabs: detail / trace -->
+      <div class="flex items-center gap-1 border-b border-gray-200 dark:border-dark-700" role="tablist" data-testid="error-detail-tabs">
+        <button
+          v-for="tab in detailTabs"
+          :key="tab.key"
+          type="button"
+          role="tab"
+          :aria-selected="activeTab === tab.key"
+          :disabled="tab.disabled"
+          :title="tab.disabled ? t('admin.traceRequest.tabTraceDisabled') : ''"
+          :data-testid="`error-detail-tab-${tab.key}`"
+          :class="[
+            '-mb-px border-b-2 px-4 py-2 text-sm font-bold transition-colors disabled:cursor-not-allowed disabled:opacity-50',
+            activeTab === tab.key
+              ? 'border-primary-600 text-primary-700 dark:border-primary-400 dark:text-primary-300'
+              : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'
+          ]"
+          @click="activeTab = tab.key"
+        >
+          {{ tab.label }}
+        </button>
+      </div>
+
+      <RequestTraceTimeline v-if="activeTab === 'trace'" :request-id="traceRequestId" />
+
+      <template v-if="activeTab === 'detail'">
       <!-- Summary -->
       <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
@@ -210,6 +236,7 @@
           </div>
         </div>
       </div>
+      </template>
     </div>
     <template v-if="backToList" #footer>
       <button
@@ -233,6 +260,7 @@ import { useAppStore } from '@/stores'
 import { opsAPI, type OpsErrorDetail } from '@/api/admin/ops'
 import { formatDateTime } from '@/utils/format'
 import { resolveUpstreamPayload } from '../utils/errorDetailResponse'
+import RequestTraceTimeline from './trace/RequestTraceTimeline.vue'
 
 interface Props {
   show: boolean
@@ -258,6 +286,15 @@ const detail = ref<OpsErrorDetail | null>(null)
 const showUpstreamList = computed(() => props.errorType === 'request')
 
 const requestId = computed(() => detail.value?.request_id || detail.value?.client_request_id || '')
+
+type DetailTab = 'detail' | 'trace'
+const activeTab = ref<DetailTab>('detail')
+// 追溯只按网关 request_id 查询（upstream_attempts.request_id），client_request_id 查不到
+const traceRequestId = computed(() => detail.value?.request_id || '')
+const detailTabs = computed(() => [
+  { key: 'detail' as const, label: t('admin.traceRequest.tabDetail'), disabled: false },
+  { key: 'trace' as const, label: t('admin.traceRequest.tabTrace'), disabled: !traceRequestId.value }
+])
 
 type DiagnosticPayloadKey = 'client' | 'upstream_message' | 'upstream_detail' | 'upstream_events'
 
@@ -406,6 +443,7 @@ async function fetchDetail(id: number) {
 watch(
   () => [props.show, props.errorId] as const,
   ([show, id]) => {
+    activeTab.value = 'detail'
     if (!show) {
       detail.value = null
       return

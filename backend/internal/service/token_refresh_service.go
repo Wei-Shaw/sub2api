@@ -184,8 +184,13 @@ func (s *TokenRefreshService) SetAccountRuntimeBlocker(blocker AccountRuntimeBlo
 	s.runtimeBlocker = blocker
 }
 
-func (s *TokenRefreshService) notifyAccountSchedulingBlocked(account *Account, until time.Time, reason string) {
-	if s == nil || s.runtimeBlocker == nil || account == nil {
+func (s *TokenRefreshService) notifyAccountSchedulingBlocked(ctx context.Context, account *Account, until time.Time, reason string) {
+	if s == nil || account == nil {
+		return
+	}
+	// 账号追溯：状态变更旁路写入 account_status_events（异步、失败只记日志）。
+	EmitAccountStatusEvent(accountStatusEventFromBlocking(ctx, account, until, reason, "refresh"))
+	if s.runtimeBlocker == nil {
 		return
 	}
 	s.runtimeBlocker.BlockAccountScheduling(account, until, reason)
@@ -987,7 +992,7 @@ func (s *TokenRefreshService) refreshWithRetryWithRateGate(
 			errorMsg := "Token refresh failed (non-retryable): " + logredact.RedactText(err.Error())
 			isGrokOAuth := account.IsGrokOAuth()
 			if !isGrokOAuth {
-				s.notifyAccountSchedulingBlocked(account, time.Time{}, "token_refresh_non_retryable")
+				s.notifyAccountSchedulingBlocked(ctx, account, time.Time{}, "token_refresh_non_retryable")
 			}
 			s.clearAntigravityForceTokenRefresh(ctx, account, "non_retryable")
 			persistentlyBlocked := false
@@ -1026,7 +1031,7 @@ func (s *TokenRefreshService) refreshWithRetryWithRateGate(
 					}
 				}
 			} else if isGrokOAuth && persistentlyBlocked {
-				s.notifyAccountSchedulingBlocked(account, time.Time{}, "token_refresh_non_retryable")
+				s.notifyAccountSchedulingBlocked(ctx, account, time.Time{}, "token_refresh_non_retryable")
 			}
 			cacheInvalidationFailed := false
 			if account.Type == AccountTypeOAuth && (!isGrokOAuth || persistentlyBlocked) {
@@ -1114,7 +1119,7 @@ func (s *TokenRefreshService) refreshWithRetryWithRateGate(
 			slog.Info("token_refresh.grok_temp_unschedulable_skipped_stale_credentials", "account_id", account.ID)
 			return errRefreshSkipped
 		} else {
-			s.notifyAccountSchedulingBlocked(account, until, "token_refresh_retry_exhausted")
+			s.notifyAccountSchedulingBlocked(ctx, account, until, "token_refresh_retry_exhausted")
 			slog.Info("token_refresh.temp_unschedulable_set",
 				"account_id", account.ID,
 				"until", until.Format(time.RFC3339),
@@ -1123,7 +1128,7 @@ func (s *TokenRefreshService) refreshWithRetryWithRateGate(
 		return lastErr
 	}
 
-	s.notifyAccountSchedulingBlocked(account, until, "token_refresh_retry_exhausted")
+	s.notifyAccountSchedulingBlocked(ctx, account, until, "token_refresh_retry_exhausted")
 	if setErr := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, reason); setErr != nil {
 		slog.Warn("token_refresh.set_temp_unschedulable_failed",
 			"account_id", account.ID,

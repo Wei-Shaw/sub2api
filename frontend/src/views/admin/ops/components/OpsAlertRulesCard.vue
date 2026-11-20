@@ -226,6 +226,23 @@ const metricDefinitions = computed(() => {
       unit: '%'
     },
     {
+      type: 'account_failure_rate_1h',
+      group: 'account',
+      label: t('admin.ops.alertRules.metrics.accountFailureRate1h'),
+      description: t('admin.ops.alertRules.metricDescriptions.accountFailureRate1h'),
+      recommendedOperator: '>',
+      recommendedThreshold: 50,
+      unit: '%'
+    },
+    {
+      type: 'account_expiring_soon_count',
+      group: 'account',
+      label: t('admin.ops.alertRules.metrics.accountExpiringSoonCount'),
+      description: t('admin.ops.alertRules.metricDescriptions.accountExpiringSoonCount'),
+      recommendedOperator: '>',
+      recommendedThreshold: 0
+    },
+    {
       type: 'account_temp_unscheduled_count',
       group: 'account',
       label: t('admin.ops.alertRules.metrics.accountTempUnscheduledCount'),

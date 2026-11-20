@@ -57,7 +57,7 @@ func (s *RateLimitService) maybeHandleOpenAITeamLinkedError(ctx context.Context,
 	}
 	// 先全部进程内熔断（微秒级生效），再逐个落库，避免后面的账户等待前面的 DB 写入。
 	for _, acc := range targets {
-		s.notifyAccountSchedulingBlocked(acc, time.Time{}, openAITeamLinkedErrorBlockReason)
+		s.notifyAccountSchedulingBlocked(ctx, acc, time.Time{}, openAITeamLinkedErrorBlockReason)
 	}
 	errorMsg := fmt.Sprintf("Workspace deactivated (402): team-linked error triggered by account #%d", account.ID)
 	marked := 0

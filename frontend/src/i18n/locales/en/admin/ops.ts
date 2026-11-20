@@ -519,6 +519,8 @@ export default {
           accountRateLimitedCount: 'Rate-limited Accounts',
           accountErrorCount: 'Error Accounts (excluding temporarily unschedulable)',
           accountErrorRatio: 'Error Account Ratio (%)',
+          accountFailureRate1h: 'Worst Account Failure Rate (%)',
+          accountExpiringSoonCount: 'Accounts Needing Renewal',
           accountTempUnscheduledCount: 'Temporarily Unschedulable Accounts',
           overloadAccountCount: 'Overloaded Accounts'
         },
@@ -537,6 +539,8 @@ export default {
           accountRateLimitedCount: 'Number of rate-limited accounts within the window.',
           accountErrorCount: 'Number of error accounts within the window (excluding temporarily unschedulable).',
           accountErrorRatio: 'Error account ratio within the window (0-100).',
+          accountFailureRate1h: 'Failure rate of the worst account within the window (0-100). Accounts with fewer than 5 attempts are ignored; the alert names the account and its top failure kind.',
+          accountExpiringSoonCount: 'Accounts expiring within 72 hours, or already expired but still schedulable.',
           accountTempUnscheduledCount: 'Number of accounts currently temporarily unschedulable (e.g. proxy/credential failure auto-eviction).',
           overloadAccountCount: 'Number of overloaded accounts within the window.'
         },
