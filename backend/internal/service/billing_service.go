@@ -124,6 +124,12 @@ type ModelPricing struct {
 	ImageOutputPricePerToken           float64            // 图片输出 token 价格 (USD)
 	ImageOutputPriceExplicit           bool               // 是否由渠道定价显式设定（为 true 时即使 == 0 也不回退）
 	CacheCreation12hPricePerToken      *float64           // OpenAI 12h writes; nil preserves the generic price on existing operator cards.
+
+	// A nil audio rate uses the corresponding ordinary input or cache-read rate.
+	AudioInputPricePerToken             *float64
+	AudioInputPricePerTokenPriority     *float64
+	AudioCacheReadPricePerToken         *float64
+	AudioCacheReadPricePerTokenPriority *float64
 }
 
 func normalizeBillingServiceTier(serviceTier string) string {
@@ -204,11 +210,13 @@ type UsageTokens struct {
 	CacheCreation30mTokens int
 	CacheCreation12hTokens int
 	ImageOutputTokens      int
+	AudioInputTokens       int
+	AudioCacheReadTokens   int
 }
 
 // CostBreakdown 费用明细
 type CostBreakdown struct {
-	InputCost                 float64 // 文本输入费用（不含图片输入，图片输入单独记入 ImageInputCost）
+	InputCost                 float64 // 输入费用（不含单独记录的图片输入费用）
 	ImageInputCost            float64 // 图片输入 token 费用（如 gpt-image-2 图片编辑）
 	OutputCost                float64
 	ImageOutputCost           float64
@@ -1600,6 +1608,11 @@ func (s *BillingService) getModelPricingAt(model string, pricingAt time.Time) (*
 				ImageInputPricePerToken:       litellmPricing.InputCostPerImageToken,
 				ImageCacheReadPricePerToken:   litellmPricing.CacheReadInputImageTokenCost,
 				ImageOutputPricePerToken:      litellmPricing.OutputCostPerImageToken,
+
+				AudioInputPricePerToken:             litellmPricing.InputCostPerAudioToken,
+				AudioInputPricePerTokenPriority:     litellmPricing.InputCostPerAudioTokenPriority,
+				AudioCacheReadPricePerToken:         litellmPricing.CacheReadInputAudioTokenCost,
+				AudioCacheReadPricePerTokenPriority: litellmPricing.CacheReadInputAudioTokenCostPriority,
 			}, true, pricingAt), nil
 		}
 	}
@@ -1658,6 +1671,8 @@ func applyChannelTokenPriceOverrides(pricing *ModelPricing, channelPricing *Chan
 		priority := channelTierOverridePrice(pricing.InputPricePerToken, pricing.InputPricePerTokenPriority, *channelPricing.InputPrice)
 		pricing.InputPricePerToken = *channelPricing.InputPrice
 		pricing.InputPricePerTokenPriority = priority
+		pricing.AudioInputPricePerToken = nil
+		pricing.AudioInputPricePerTokenPriority = nil
 	}
 	if channelPricing.OutputPrice != nil {
 		priority := channelTierOverridePrice(pricing.OutputPricePerToken, pricing.OutputPricePerTokenPriority, *channelPricing.OutputPrice)
@@ -1690,6 +1705,8 @@ func applyChannelTokenPriceOverrides(pricing *ModelPricing, channelPricing *Chan
 		priority := channelTierOverridePrice(pricing.CacheReadPricePerToken, pricing.CacheReadPricePerTokenPriority, *channelPricing.CacheReadPrice)
 		pricing.CacheReadPricePerToken = *channelPricing.CacheReadPrice
 		pricing.CacheReadPricePerTokenPriority = priority
+		pricing.AudioCacheReadPricePerToken = nil
+		pricing.AudioCacheReadPricePerTokenPriority = nil
 	}
 }
 
@@ -1844,20 +1861,29 @@ func (s *BillingService) computeTokenBreakdown(
 	inputPrice := pricing.InputPricePerToken
 	outputPrice := pricing.OutputPricePerToken
 	cacheReadPrice := pricing.CacheReadPricePerToken
+	audioInputPrice := pricing.AudioInputPricePerToken
+	audioCacheReadPrice := pricing.AudioCacheReadPricePerToken
 	cacheCreationPrice := pricing.CacheCreationPricePerToken
 	cacheCreationPricing := pricing
 	cacheCreationMultiplier := 1.0
+	longCtxInputMultiplier := 1.0
 	tierMultiplier := 1.0
 
 	if usePriorityServiceTierPricing(serviceTier, pricing) {
 		if pricing.InputPricePerTokenPriority > 0 {
 			inputPrice = pricing.InputPricePerTokenPriority
 		}
+		if pricing.InputPricePerTokenPriority > 0 || pricing.AudioInputPricePerTokenPriority != nil {
+			audioInputPrice = pricing.AudioInputPricePerTokenPriority
+		}
 		if pricing.OutputPricePerTokenPriority > 0 {
 			outputPrice = pricing.OutputPricePerTokenPriority
 		}
 		if pricing.CacheReadPricePerTokenPriority > 0 {
 			cacheReadPrice = pricing.CacheReadPricePerTokenPriority
+		}
+		if pricing.CacheReadPricePerTokenPriority > 0 || pricing.AudioCacheReadPricePerTokenPriority != nil {
+			audioCacheReadPrice = pricing.AudioCacheReadPricePerTokenPriority
 		}
 		if pricing.CacheCreationPricePerTokenPriority > 0 {
 			cacheCreationPrice = pricing.CacheCreationPricePerTokenPriority
@@ -1885,7 +1911,7 @@ func (s *BillingService) computeTokenBreakdown(
 		baselineCost = s.computeTokenBreakdown(pricing, tokens, rateMultiplier, serviceTier, false)
 		// 倍率 ≤0 表示该项未配置（目录/覆写条目可能只写了 input 或 output 一侧），
 		// 按 1 计而不是乘 0：乘 0 会把超阈值请求的对应分项算成免费。
-		longCtxInputMultiplier := longContextMultiplierOrOne(pricing.LongContextInputMultiplier)
+		longCtxInputMultiplier = longContextMultiplierOrOne(pricing.LongContextInputMultiplier)
 		inputPrice *= longCtxInputMultiplier
 		outputPrice *= longContextMultiplierOrOne(pricing.LongContextOutputMultiplier)
 		// 缓存读取本质上是输入侧的复用，应与 input 一同应用长上下文倍率；
@@ -1899,13 +1925,13 @@ func (s *BillingService) computeTokenBreakdown(
 
 	bd := &CostBreakdown{}
 	// 分离图片输入 token 与文本输入 token（多模态 embedding、图片编辑等图文不同价场景）。
-	// InputCost 仅计文本输入，图片输入费用单独记入 ImageInputCost，便于对账；总额不变。
-	// ImageInputTokens 为 0 时（绝大多数 chat/vision 流量）走原始单价路径，行为不变。
+	// 图片输入费用单独记入 ImageInputCost，其余模态（含音频）计入 InputCost。
+	nonImageInputTokens := tokens.InputTokens
 	if tokens.ImageInputTokens > 0 {
 		imageInputTokens := tokens.ImageInputTokens
-		textInputTokens := tokens.InputTokens - imageInputTokens
-		if textInputTokens < 0 {
-			textInputTokens = 0
+		nonImageInputTokens -= imageInputTokens
+		if nonImageInputTokens < 0 {
+			nonImageInputTokens = 0
 			imageInputTokens = tokens.InputTokens
 		}
 		imageInputPrice := pricing.ImageInputPricePerToken
@@ -1913,10 +1939,12 @@ func (s *BillingService) computeTokenBreakdown(
 			// 未配置图片输入档时回退到文本 input 价（已含 priority / 长上下文调整）
 			imageInputPrice = inputPrice
 		}
-		bd.InputCost = float64(textInputTokens) * inputPrice
 		bd.ImageInputCost = float64(imageInputTokens) * imageInputPrice
-	} else {
-		bd.InputCost = float64(tokens.InputTokens) * inputPrice
+	}
+	bd.InputCost = float64(nonImageInputTokens) * inputPrice
+	if audio := min(tokens.AudioInputTokens, nonImageInputTokens); audio > 0 && audioInputPrice != nil {
+		audioPrice := *audioInputPrice * longCtxInputMultiplier
+		bd.InputCost = float64(nonImageInputTokens-audio)*inputPrice + float64(audio)*audioPrice
 	}
 
 	// 分离图片输出 token 与文本输出 token
@@ -1938,10 +1966,18 @@ func (s *BillingService) computeTokenBreakdown(
 	// 缓存创建费用
 	bd.CacheCreationCost = s.computeCacheCreationCost(cacheCreationPricing, tokens, cacheCreationPrice, cacheCreationMultiplier)
 
-	bd.CacheReadCost = float64(tokens.CacheReadTokens) * cacheReadPrice
+	nonImageCacheReadTokens := tokens.CacheReadTokens
+	imageCacheReadCost := 0.0
 	if imageCached := min(max(tokens.ImageCacheReadTokens, 0), max(tokens.CacheReadTokens, 0)); imageCached > 0 && pricing.ImageCacheReadPricePerToken > 0 {
-		bd.CacheReadCost = float64(tokens.CacheReadTokens-imageCached)*cacheReadPrice + float64(imageCached)*pricing.ImageCacheReadPricePerToken
+		nonImageCacheReadTokens -= imageCached
+		imageCacheReadCost = float64(imageCached) * pricing.ImageCacheReadPricePerToken
 	}
+	cacheReadCost := float64(nonImageCacheReadTokens) * cacheReadPrice
+	if audio := min(tokens.AudioCacheReadTokens, nonImageCacheReadTokens); audio > 0 && audioCacheReadPrice != nil {
+		audioPrice := *audioCacheReadPrice * longCtxInputMultiplier
+		cacheReadCost = float64(nonImageCacheReadTokens-audio)*cacheReadPrice + float64(audio)*audioPrice
+	}
+	bd.CacheReadCost = cacheReadCost + imageCacheReadCost
 
 	if tierMultiplier != 1.0 {
 		bd.InputCost *= tierMultiplier
