@@ -39,7 +39,12 @@ const (
 const (
 	// defaultMaxPendingOrders and defaultOrderTimeoutMin are defined in
 	// payment_config_service.go alongside other payment configuration defaults.
-	paymentGraceMinutes = 5
+
+	// paymentRecoveryWindow 订单关闭（过期/取消）后仍接受上游支付确认并自动入账的时间窗。
+	// 从订单自身的 expires_at 起算，覆盖过期任务执行间隔与渠道回调/主动查单的延迟；
+	// 超出后只记 PAYMENT_AFTER_EXPIRY / PAYMENT_AFTER_CANCEL 审计并转人工处理，
+	// 避免一张按旧价格快照下单的关闭订单被无限期复活。
+	paymentRecoveryWindow = 30 * time.Minute
 
 	defaultPageSize    = 20
 	maxPageSize        = 100

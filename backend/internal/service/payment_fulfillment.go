@@ -178,15 +178,17 @@ func expectedNotificationProviderKey(registry *payment.Registry, orderPaymentTyp
 func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, tradeNo string, paid float64, pk string) error {
 	previousStatus := o.Status
 	now := time.Now()
-	grace := now.Add(-paymentGraceMinutes * time.Minute)
 	c, err := s.entClient.PaymentOrder.Update().Where(
 		paymentorder.IDEQ(o.ID),
 		paymentorder.Or(
 			paymentorder.StatusEQ(OrderStatusPending),
-			paymentorder.StatusEQ(OrderStatusCancelled),
+			// 关闭（过期/取消）的订单仍可能收到上游支付确认：只允许在恢复窗口内入账。
+			// 窗口按订单自身的 expires_at 计算，不用 updated_at——主动查单会先写
+			// payment_trade_no，那次写入会把 updated_at 刷新为当下，用它判断等于
+			// 允许任意早的过期订单在查单后复活并按旧金额履约。
 			paymentorder.And(
-				paymentorder.StatusEQ(OrderStatusExpired),
-				paymentorder.UpdatedAtGTE(grace),
+				paymentorder.StatusIn(OrderStatusCancelled, OrderStatusExpired),
+				paymentorder.ExpiresAtGTE(now.Add(-paymentRecoveryWindow)),
 			),
 		),
 	).SetStatus(OrderStatusPaid).SetPayAmount(paid).SetPaymentTradeNo(tradeNo).SetPaidAt(now).ClearFailedAt().ClearFailedReason().Save(ctx)
@@ -225,16 +227,31 @@ func (s *PaymentService) alreadyProcessed(ctx context.Context, o *dbent.PaymentO
 	case OrderStatusFailed, OrderStatusPaid, OrderStatusRecharging:
 		return s.executeFulfillment(ctx, o.ID)
 	case OrderStatusExpired:
-		slog.Warn("webhook payment success for expired order beyond grace period",
+		s.writeAuditLog(ctx, o.ID, "PAYMENT_AFTER_EXPIRY", "system", map[string]any{
+			"status":      cur.Status,
+			"expiresAt":   cur.ExpiresAt,
+			"updatedAt":   cur.UpdatedAt,
+			"recoveryEnd": cur.ExpiresAt.Add(paymentRecoveryWindow),
+			"reason":      "payment arrived after order expiry recovery window",
+		})
+		slog.Warn("payment success for expired order beyond recovery window, awaiting manual handling",
 			"orderID", o.ID,
-			"status", cur.Status,
+			"expiresAt", cur.ExpiresAt,
 			"updatedAt", cur.UpdatedAt,
 		)
-		s.writeAuditLog(ctx, o.ID, "PAYMENT_AFTER_EXPIRY", "system", map[string]any{
-			"status":    cur.Status,
-			"updatedAt": cur.UpdatedAt,
-			"reason":    "payment arrived after expiry grace period",
+		return nil
+	case OrderStatusCancelled:
+		s.writeAuditLog(ctx, o.ID, "PAYMENT_AFTER_CANCEL", "system", map[string]any{
+			"status":      cur.Status,
+			"expiresAt":   cur.ExpiresAt,
+			"updatedAt":   cur.UpdatedAt,
+			"recoveryEnd": cur.ExpiresAt.Add(paymentRecoveryWindow),
+			"reason":      "payment arrived after order cancel recovery window",
 		})
+		slog.Warn("payment success for cancelled order beyond recovery window, awaiting manual handling",
+			"orderID", o.ID,
+			"expiresAt", cur.ExpiresAt,
+		)
 		return nil
 	default:
 		return nil
