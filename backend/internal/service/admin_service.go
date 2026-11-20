@@ -22,6 +22,10 @@ type AdminService interface {
 	UpdateUserBalance(ctx context.Context, userID int64, balance float64, operation string, notes string) (*User, error)
 	BatchUpdateConcurrency(ctx context.Context, userIDs []int64, value int, mode string) (int, error)
 	BatchUpdateLimits(ctx context.Context, userIDs []int64, concurrency, rpmLimit *int) (int, error)
+	// FindActiveUsersByBlacklistedEmails 按收件箱身份查找命中给定邮箱的未禁用普通用户。
+	FindActiveUsersByBlacklistedEmails(ctx context.Context, emails []string) ([]User, error)
+	// BatchDisableUsers 批量禁用普通用户，返回实际禁用的人数。
+	BatchDisableUsers(ctx context.Context, userIDs []int64) (int, error)
 	GetUserAPIKeys(ctx context.Context, userID int64, page, pageSize int, sortBy, sortOrder string) ([]APIKey, int64, error)
 	GetUserUsageStats(ctx context.Context, userID int64, period string) (any, error)
 	GetUserRPMStatus(ctx context.Context, userID int64) (*UserRPMStatus, error)
@@ -248,6 +252,7 @@ type CreateGroupInput struct {
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration         bool
 	AllowBatchImageGeneration    bool
+	ImageCountBilling            bool
 	ImageRateIndependent         bool
 	ImageRateMultiplier          *float64
 	BatchImageDiscountMultiplier *float64
@@ -289,6 +294,7 @@ type CreateGroupInput struct {
 	AllowMessagesDispatch       bool
 	AllowLive                   bool
 	ForceOpenAIFast             bool
+	ForceOpenAIUltrafast        bool
 	FreeOpenAIFast              bool
 	DefaultMappedModel          string
 	RequireOAuthOnly            bool
@@ -330,6 +336,7 @@ type UpdateGroupInput struct {
 	// 图片生成计费配置（仅 antigravity 平台使用）
 	AllowImageGeneration         *bool
 	AllowBatchImageGeneration    *bool
+	ImageCountBilling            *bool
 	ImageRateIndependent         *bool
 	ImageRateMultiplier          *float64
 	BatchImageDiscountMultiplier *float64
@@ -371,6 +378,7 @@ type UpdateGroupInput struct {
 	AllowMessagesDispatch       *bool
 	AllowLive                   *bool
 	ForceOpenAIFast             *bool
+	ForceOpenAIUltrafast        *bool
 	FreeOpenAIFast              *bool
 	DefaultMappedModel          *string
 	RequireOAuthOnly            *bool
@@ -396,6 +404,7 @@ type UpdateGroupInput struct {
 }
 
 type CreateAccountInput struct {
+	ProxyMode          string // 受限写入在验权后选择代理。
 	Name               string
 	Notes              *string
 	Platform           string
@@ -428,6 +437,7 @@ type ShadowOptions struct {
 }
 
 type UpdateAccountInput struct {
+	ProxyMode             string // 受限写入在验权后选择代理。
 	Name                  string
 	Notes                 *string
 	Type                  string // Account type: oauth, setup-token, apikey

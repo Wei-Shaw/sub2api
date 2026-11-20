@@ -90,6 +90,57 @@ func TestProbeOpenAIAPIKeyResponsesSupportCNProviders(t *testing.T) {
 	}
 }
 
+func TestProbeOpenAIAPIKeyResponsesSupportSkipsForcedModes(t *testing.T) {
+	cases := []struct {
+		name      string
+		mode      any
+		wantProbe bool
+	}{
+		{name: "force_responses skips probe", mode: string(openai_compat.ResponsesSupportModeForceResponses), wantProbe: false},
+		{name: "force_chat_completions skips probe", mode: string(openai_compat.ResponsesSupportModeForceChatCompletions), wantProbe: false},
+		{name: "auto probes", mode: string(openai_compat.ResponsesSupportModeAuto), wantProbe: true},
+		{name: "invalid mode falls back to auto and probes", mode: "bogus", wantProbe: true},
+		{name: "non-string mode falls back to auto and probes", mode: nil, wantProbe: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			updateCalls := make(chan map[string]any, 1)
+			account := Account{
+				ID:          301,
+				Platform:    PlatformOpenAI,
+				Type:        AccountTypeAPIKey,
+				Concurrency: 1,
+				Credentials: map[string]any{"api_key": "sk-test", "base_url": "https://compat-upstream.example/v1"},
+				Extra:       map[string]any{openai_compat.ExtraKeyResponsesMode: tc.mode},
+			}
+			repo := &snapshotUpdateAccountRepo{
+				stubOpenAIAccountRepo: stubOpenAIAccountRepo{accounts: []Account{account}},
+				updateExtraCalls:      updateCalls,
+			}
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Header:     make(http.Header),
+				Body:       io.NopCloser(strings.NewReader(`{"output":[{"type":"function_call","name":"probe_ping"}]}`)),
+			}}
+			svc := &AccountTestService{
+				accountRepo:  repo,
+				httpUpstream: upstream,
+				cfg:          &config.Config{Security: config.SecurityConfig{URLAllowlist: config.URLAllowlistConfig{Enabled: false}}},
+			}
+
+			svc.ProbeOpenAIAPIKeyResponsesSupport(context.Background(), account.ID)
+
+			if !tc.wantProbe {
+				require.Nil(t, upstream.lastReq)
+				require.Empty(t, updateCalls)
+				return
+			}
+			require.NotNil(t, upstream.lastReq)
+			require.Equal(t, true, (<-updateCalls)[openai_compat.ExtraKeyResponsesSupported])
+		})
+	}
+}
+
 func TestDecideResponsesProbeSupport(t *testing.T) {
 	fnCall := []byte(`{"output":[{"type":"reasoning"},{"type":"function_call","name":"probe_ping"}]}`)
 	reasoningOnly := []byte(`{"output":[{"type":"reasoning"}]}`)

@@ -29,9 +29,8 @@ func GroupModelAllowlistFromDomain(cfg domain.GroupModelAllowlist) GroupModelAll
 }
 
 // supplementUnmappedOpenAIModels ensures a partial mapping catalog does not
-// hide models from unmapped or passthrough OpenAI accounts (passthrough routing
-// ignores model_mapping, so it serves the same default set as an unmapped
-// account). An empty catalog is left unchanged so callers retain their existing
+// hide models from unmapped or unrestricted passthrough OpenAI accounts.
+// An empty catalog is left unchanged so callers retain their existing
 // discovery fallback.
 func supplementUnmappedOpenAIModels(accounts []Account, models []string) []string {
 	if len(models) == 0 {
@@ -39,7 +38,8 @@ func supplementUnmappedOpenAIModels(accounts []Account, models []string) []strin
 	}
 	for i := range accounts {
 		account := &accounts[i]
-		if account.Platform == PlatformOpenAI && (account.IsOpenAIPassthroughEnabled() || len(account.GetModelMapping()) == 0) {
+		unrestrictedPassthrough := account.IsOpenAIPassthroughEnabled() && !account.IsOpenAIPassthroughModelFilterEnabled()
+		if account.Platform == PlatformOpenAI && (unrestrictedPassthrough || len(account.GetModelMapping()) == 0) {
 			return dedupeAndSortModelIDs(slices.Concat(models, openai.DefaultModelIDs()))
 		}
 	}

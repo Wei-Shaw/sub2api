@@ -12,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -98,4 +99,171 @@ func TestGeminiForwardAsChatCompletions_VertexAPIKeyUsesAPIKeyHeader(t *testing.
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Equal(t, "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-3-flash-preview:generateContent", httpStub.lastReq.URL.String())
 	requireVertexAPIKeyAuth(t, httpStub.lastReq)
+}
+
+type geminiVertex429SequenceUpstream struct {
+	responses []*http.Response
+	calls     int
+}
+
+func (s *geminiVertex429SequenceUpstream) Do(req *http.Request, proxyURL string, accountID int64, accountConcurrency int) (*http.Response, error) {
+	resp := s.responses[min(s.calls, len(s.responses)-1)]
+	s.calls++
+	return resp, nil
+}
+
+func (s *geminiVertex429SequenceUpstream) DoWithTLS(req *http.Request, proxyURL string, accountID int64, accountConcurrency int, _ *tlsfingerprint.Profile) (*http.Response, error) {
+	return s.Do(req, proxyURL, accountID, accountConcurrency)
+}
+
+// Vertex 共享容量不足的 429 在同一账号上退避重试，成功后账号状态不变；绑定显式缓存的请求同样如此。
+func TestGeminiForwardNative_VertexSharedCapacity429RetriesSameAccountWithoutCooldown(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	sharedCapacity := `{"error":{"code":429,"message":"Resource exhausted. Please try again later.","status":"RESOURCE_EXHAUSTED"}}`
+	tests := []struct {
+		name string
+		ctx  context.Context
+	}{
+		{name: "unbound", ctx: context.Background()},
+		{name: "bound_cached_content", ctx: WithGeminiCachedContentBound(context.Background())},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := &geminiVertex429SequenceUpstream{responses: []*http.Response{
+				{
+					StatusCode: http.StatusTooManyRequests,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(sharedCapacity)),
+				},
+				{
+					StatusCode: http.StatusOK,
+					Header:     http.Header{"Content-Type": []string{"application/json"}},
+					Body:       io.NopCloser(strings.NewReader(geminiVertexAPIKeyTestResponse)),
+				},
+			}}
+			repo := &geminiBoundCacheRateLimitRepo{}
+			svc := &GeminiMessagesCompatService{
+				httpUpstream:     upstream,
+				cfg:              &config.Config{Gateway: config.GatewayConfig{MaxSameAccountRetriesGemini: 1}},
+				accountRepo:      repo,
+				rateLimitService: NewRateLimitService(repo, nil, &config.Config{}, nil, nil),
+			}
+			c, rec := newGeminiNativeTestContext(t)
+
+			result, err := svc.ForwardNative(tt.ctx, c, geminiVertexAPIKeyTestAccount("my-project"),
+				"gemini-3.7-flash", "generateContent", false, []byte(`{"contents":[{"role":"user","parts":[{"text":"hi"}]}]}`))
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, http.StatusOK, rec.Code)
+			require.Equal(t, 2, upstream.calls, "429 后在同一账号上重试")
+			require.Zero(t, repo.rateLimitedCalls, "不写账号级限流")
+			require.Zero(t, repo.tempCalls)
+			require.Zero(t, repo.setErrCalls)
+			require.Empty(t, repo.modelRateLimitCalls)
+		})
+	}
+}
+
+// Scenario: 多区域账号按模型支持的区域发送，不支持的模型走 global；引用显式缓存时按缓存所在区域发送；
+// 无 project_id 的 API Key 账号始终走 Express 全局端点。
+func TestGeminiForwardNative_VertexMultiRegionAccountRoutesByModelAndCachedContent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const contents = `"contents":[{"role":"user","parts":[{"text":"hi"}]}]`
+	cases := []struct {
+		name      string
+		projectID string
+		location  string
+		model     string
+		body      string
+		want      string
+		wantPrice float64
+	}{
+		{
+			name:      "supported model uses multi-region endpoint",
+			projectID: "my-project",
+			location:  "us",
+			model:     "gemini-3.7-flash",
+			body:      `{` + contents + `}`,
+			want:      "https://aiplatform.us.rep.googleapis.com/v1/projects/my-project/locations/us/publishers/google/models/gemini-3.7-flash:generateContent",
+			wantPrice: 1.1,
+		},
+		{
+			name:      "unsupported model falls back to global",
+			projectID: "my-project",
+			location:  "us",
+			model:     "gemini-3.1-pro-preview",
+			body:      `{` + contents + `}`,
+			want:      "https://aiplatform.googleapis.com/v1/projects/my-project/locations/global/publishers/google/models/gemini-3.1-pro-preview:generateContent",
+			wantPrice: 1,
+		},
+		{
+			name:      "global cached content on multi-region account stays on global",
+			projectID: "my-project",
+			location:  "us",
+			model:     "gemini-3.7-flash",
+			body:      `{"cachedContent":"projects/my-project/locations/global/cachedContents/42",` + contents + `}`,
+			want:      "https://aiplatform.googleapis.com/v1/projects/my-project/locations/global/publishers/google/models/gemini-3.7-flash:generateContent",
+			wantPrice: 1,
+		},
+		{
+			name:      "multi-region cached content on global account uses its region",
+			projectID: "my-project",
+			location:  "global",
+			model:     "gemini-3.7-flash",
+			body:      `{"cachedContent":"projects/my-project/locations/us/cachedContents/42",` + contents + `}`,
+			want:      "https://aiplatform.us.rep.googleapis.com/v1/projects/my-project/locations/us/publishers/google/models/gemini-3.7-flash:generateContent",
+			wantPrice: 1.1,
+		},
+		{
+			name:      "express mode ignores cached content region",
+			location:  "us",
+			model:     "gemini-3.7-flash",
+			body:      `{"cachedContent":"projects/my-project/locations/us/cachedContents/42",` + contents + `}`,
+			want:      "https://aiplatform.googleapis.com/v1/publishers/google/models/gemini-3.7-flash:generateContent",
+			wantPrice: 1,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			svc, httpStub := newGeminiVertexAPIKeyTestService()
+			c, _ := newGeminiNativeTestContext(t)
+			account := geminiVertexAPIKeyTestAccount(tc.projectID)
+			account.Credentials["location"] = tc.location
+
+			result, err := svc.ForwardNative(context.Background(), c, account, tc.model, "generateContent", false, []byte(tc.body))
+			require.NoError(t, err)
+			require.Equal(t, 1, httpStub.calls)
+			require.Equal(t, tc.want, httpStub.lastReq.URL.String())
+			require.InDelta(t, tc.wantPrice, result.UpstreamPriceMultiplier, 1e-12)
+		})
+	}
+}
+
+// Scenario: Claude 兼容与 Chat 兼容入口经多区域账号发往 us 端点时，转发结果带多区域价格倍数。
+func TestGeminiCompatForwards_VertexMultiRegionSetsUpstreamPriceMultiplier(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const want = "https://aiplatform.us.rep.googleapis.com/v1/projects/my-project/locations/us/publishers/google/models/gemini-3.7-flash:generateContent"
+	usAccount := func() *Account {
+		account := geminiVertexAPIKeyTestAccount("my-project")
+		account.Credentials["location"] = "us"
+		return account
+	}
+
+	svc, httpStub := newGeminiVertexAPIKeyTestService()
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/messages", nil)
+	result, err := svc.Forward(context.Background(), c, usAccount(),
+		[]byte(`{"model":"gemini-3.7-flash","max_tokens":16,"messages":[{"role":"user","content":"hello"}]}`))
+	require.NoError(t, err)
+	require.Equal(t, want, httpStub.lastReq.URL.String())
+	require.InDelta(t, 1.1, result.UpstreamPriceMultiplier, 1e-12)
+
+	svc, httpStub = newGeminiVertexAPIKeyTestService()
+	body := []byte(`{"model":"gemini-3.7-flash","messages":[{"role":"user","content":"hi"}]}`)
+	c, _ = gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	result, err = svc.ForwardAsChatCompletions(context.Background(), c, usAccount(), body)
+	require.NoError(t, err)
+	require.Equal(t, want, httpStub.lastReq.URL.String())
+	require.InDelta(t, 1.1, result.UpstreamPriceMultiplier, 1e-12)
 }

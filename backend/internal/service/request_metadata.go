@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"sync"
 	"sync/atomic"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
@@ -10,6 +11,15 @@ import (
 type requestMetadataContextKey struct{}
 
 var requestMetadataKey = requestMetadataContextKey{}
+
+type singleAccountRetryProbeContextKey struct{}
+
+// singleAccountRetryProbe 在首次需要时判定是否进入单账号退避重试模式，同一请求内至多判定一次。
+type singleAccountRetryProbe struct {
+	once   sync.Once
+	check  func(ctx context.Context) bool
+	result bool
+}
 
 type RequestMetadata struct {
 	IsMaxTokensOneHaikuRequest *bool
@@ -105,6 +115,29 @@ func WithSingleAccountRetry(ctx context.Context, value bool, bridgeOldKeys bool)
 	}, func(base context.Context) context.Context {
 		return context.WithValue(base, ctxkey.SingleAccountRetry, value)
 	})
+}
+
+// WithSingleAccountRetryProbe 挂载单账号退避重试的延迟判定；显式设置的 SingleAccountRetry 标记优先于它。
+func WithSingleAccountRetryProbe(ctx context.Context, check func(ctx context.Context) bool) context.Context {
+	if ctx == nil || check == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, singleAccountRetryProbeContextKey{}, &singleAccountRetryProbe{check: check})
+}
+
+func singleAccountRetryProbeResult(ctx context.Context) bool {
+	if ctx == nil {
+		return false
+	}
+	probe, _ := ctx.Value(singleAccountRetryProbeContextKey{}).(*singleAccountRetryProbe)
+	if probe == nil {
+		return false
+	}
+	// 判定结果在整个请求内复用，不能因调用时 ctx 已取消而被记成 false。
+	probe.once.Do(func() {
+		probe.result = probe.check(context.WithoutCancel(ctx))
+	})
+	return probe.result
 }
 
 func WithAccountSwitchCount(ctx context.Context, value int, bridgeOldKeys bool) context.Context {

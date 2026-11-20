@@ -15,6 +15,7 @@ func TestDefaultModels_ContainsNewAndLegacyImageModels(t *testing.T) {
 	}
 
 	requiredIDs := []string{
+		"gemini-4-carbon",
 		"claude-fable-5-1",
 		"claude-fable-5",
 		"claude-opus-4-8",
@@ -39,6 +40,15 @@ func TestDefaultModels_ContainsNewAndLegacyImageModels(t *testing.T) {
 		"gemini-3.8-flash-low",
 		"gemini-3.8-flash-medium",
 		"gemini-3.8-flash-tiered",
+		"gemini-4-argon-high",
+		"gemini-4-argon-low",
+		"gemini-4-argon-medium",
+		"claude-opus-5-5-high",
+		"claude-opus-5-5-low",
+		"claude-opus-5-5-medium",
+		"claude-sonnet-5-5-high",
+		"claude-sonnet-5-5-low",
+		"claude-sonnet-5-5-medium",
 	}
 
 	for _, id := range requiredIDs {
@@ -65,5 +75,28 @@ func TestClaudeContentItem_ThinkingAlwaysHasSignature(t *testing.T) {
 	}
 	if got, want := string(data), `{"type":"text","text":"hi"}`; got != want {
 		t.Fatalf("text block = %s, want %s", got, want)
+	}
+}
+
+func TestIsGeminiReasoningModel_IncludesProAgent(t *testing.T) {
+	t.Parallel()
+
+	if !IsGeminiReasoningModel("gemini-4-carbon") {
+		t.Fatal("expected Carbon to be recognized as a Gemini reasoning model")
+	}
+	if !IsGeminiReasoningModel("gemini-pro-agent") {
+		t.Fatal("expected gemini-pro-agent to be recognized as a Gemini reasoning model")
+	}
+	if !IsGeminiReasoningModel("gemini-3.8-flash-high") {
+		t.Fatal("expected gemini-3.8-flash-high to be recognized as a Gemini reasoning model")
+	}
+	if !IsGeminiReasoningModel("gemini-4-argon") {
+		t.Fatal("expected gemini-4-argon to be recognized as a Gemini reasoning model")
+	}
+	if !IsGeminiReasoningModel("gemini-4-argon-high") {
+		t.Fatal("expected gemini-4-argon-high to be recognized as a Gemini reasoning model")
+	}
+	if IsGeminiReasoningModel("gemini-2.5-flash") {
+		t.Fatal("did not expect gemini-2.5-flash to be recognized as a Gemini reasoning model")
 	}
 }

@@ -20,6 +20,7 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 		Type:  "message",
 		Role:  "assistant",
 		Model: model,
+		Usage: anthropicUsageFromResponsesUsage(nil),
 	}
 
 	var blocks []AnthropicContentBlock
@@ -27,19 +28,14 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 	for _, item := range resp.Output {
 		switch item.Type {
 		case "reasoning":
-			summaryText := ""
-			for _, s := range item.Summary {
-				if s.Type == "summary_text" && s.Text != "" {
-					summaryText += s.Text
-				}
-			}
+			reasoningText := responsesReasoningText(item)
 			// Always surface encrypted_content as thinking.signature so Claude
 			// Code / multi-turn clients can send it back. Signature-only
 			// thinking blocks are valid when the model omits a visible summary.
-			if summaryText != "" || strings.TrimSpace(item.EncryptedContent) != "" {
+			if reasoningText != "" || strings.TrimSpace(item.EncryptedContent) != "" {
 				blocks = append(blocks, AnthropicContentBlock{
 					Type:      "thinking",
-					Thinking:  summaryText,
+					Thinking:  reasoningText,
 					Signature: item.EncryptedContent,
 				})
 			}
@@ -97,7 +93,7 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 
 func anthropicUsageFromResponsesUsage(usage *ResponsesUsage) AnthropicUsage {
 	if usage == nil {
-		return AnthropicUsage{}
+		return AnthropicUsage{CacheCreationInputTokensPresent: true, CacheReadInputTokensPresent: true}
 	}
 
 	cachedTokens := 0
@@ -111,10 +107,12 @@ func anthropicUsageFromResponsesUsage(usage *ResponsesUsage) AnthropicUsage {
 	}
 
 	return AnthropicUsage{
-		InputTokens:              inputTokens,
-		OutputTokens:             usage.OutputTokens,
-		CacheReadInputTokens:     cachedTokens,
-		CacheCreationInputTokens: usage.CacheCreationInputTokens,
+		InputTokens:                     inputTokens,
+		OutputTokens:                    usage.OutputTokens,
+		CacheReadInputTokens:            cachedTokens,
+		CacheCreationInputTokens:        usage.CacheCreationInputTokens,
+		CacheCreationInputTokensPresent: true,
+		CacheReadInputTokensPresent:     true,
 	}
 }
 
@@ -182,16 +180,23 @@ type ResponsesEventToAnthropicState struct {
 	MessageStartSent bool
 	MessageStopSent  bool
 
-	ContentBlockIndex   int
-	ContentBlockOpen    bool
-	CurrentBlockType    string // "text" | "thinking" | "tool_use"
-	CurrentToolName     string
-	CurrentToolArgs     string
-	CurrentToolHadDelta bool
+	ContentBlockIndex         int
+	ContentBlockOpen          bool
+	CurrentBlockType          string // "text" | "thinking" | "tool_use"
+	CurrentToolName           string
+	CurrentToolArgs           string
+	CurrentToolHadDelta       bool
+	currentToolArgsBuffer     *strings.Builder
+	currentToolArgsValidation *streamStringBytes
 	// PendingThinkingSignature is filled from reasoning.encrypted_content and
 	// emitted as signature_delta before the thinking block is closed.
 	PendingThinkingSignature string
 	HasToolCall              bool
+
+	// XAIServerSideSearch is set by callers whose upstream is xAI. A
+	// custom_tool_call that IsServerSideSearchCall then never becomes a tool_use
+	// block, because xAI runs it itself.
+	XAIServerSideSearch bool
 
 	// OutputIndexToBlockIdx maps Responses output_index → Anthropic content block index.
 	OutputIndexToBlockIdx map[int]int
@@ -285,10 +290,12 @@ func FinalizeResponsesAnthropicStream(state *ResponsesEventToAnthropicState) []A
 				StopReason: stopReason,
 			},
 			Usage: &AnthropicUsage{
-				InputTokens:              state.InputTokens,
-				OutputTokens:             state.OutputTokens,
-				CacheReadInputTokens:     state.CacheReadInputTokens,
-				CacheCreationInputTokens: state.CacheCreationInputTokens,
+				InputTokens:                     state.InputTokens,
+				OutputTokens:                    state.OutputTokens,
+				CacheReadInputTokens:            state.CacheReadInputTokens,
+				CacheCreationInputTokens:        state.CacheCreationInputTokens,
+				CacheCreationInputTokensPresent: true,
+				CacheReadInputTokensPresent:     true,
 			},
 		},
 		AnthropicStreamEvent{Type: "message_stop"},
@@ -336,8 +343,10 @@ func resToAnthHandleCreated(evt *ResponsesStreamEvent, state *ResponsesEventToAn
 			Model:      state.Model,
 			StopReason: nil,
 			Usage: AnthropicUsage{
-				InputTokens:  0,
-				OutputTokens: 0,
+				InputTokens:                     0,
+				OutputTokens:                    0,
+				CacheCreationInputTokensPresent: true,
+				CacheReadInputTokensPresent:     true,
 			},
 		},
 	}}
@@ -352,6 +361,9 @@ func resToAnthHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesE
 	// function_call 与 custom_tool_call（custom/freeform 工具，如新版 apply_patch）
 	// 同样映射为 Anthropic 的 tool_use 块。
 	case "function_call", "custom_tool_call":
+		if state.XAIServerSideSearch && IsServerSideSearchCall(evt.Item.Type, evt.Item.CallID) {
+			return nil
+		}
 		var events []AnthropicStreamEvent
 		events = append(events, closeCurrentBlock(state)...)
 
@@ -361,6 +373,8 @@ func resToAnthHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesE
 		state.CurrentBlockType = "tool_use"
 		state.CurrentToolName = evt.Item.Name
 		state.CurrentToolArgs = ""
+		state.currentToolArgsBuffer = nil
+		state.currentToolArgsValidation = nil
 		state.CurrentToolHadDelta = false
 		state.HasToolCall = true
 
@@ -501,8 +515,9 @@ func resToAnthHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEve
 	}
 
 	if state.CurrentBlockType == "tool_use" && state.CurrentToolName == "Read" {
-		state.CurrentToolArgs += evt.Delta
-		if state.CurrentToolHadDelta || !json.Valid([]byte(state.CurrentToolArgs)) {
+		previousArgs := state.CurrentToolArgs
+		state.CurrentToolArgs = appendStreamString(&state.currentToolArgsBuffer, state.CurrentToolArgs, evt.Delta)
+		if state.CurrentToolHadDelta || !json.Valid(appendStreamStringBytes(&state.currentToolArgsValidation, previousArgs, state.CurrentToolArgs, evt.Delta)) {
 			return nil
 		}
 
@@ -768,10 +783,12 @@ func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventTo
 				StopReason: stopReason,
 			},
 			Usage: &AnthropicUsage{
-				InputTokens:              state.InputTokens,
-				OutputTokens:             state.OutputTokens,
-				CacheReadInputTokens:     state.CacheReadInputTokens,
-				CacheCreationInputTokens: state.CacheCreationInputTokens,
+				InputTokens:                     state.InputTokens,
+				OutputTokens:                    state.OutputTokens,
+				CacheReadInputTokens:            state.CacheReadInputTokens,
+				CacheCreationInputTokens:        state.CacheCreationInputTokens,
+				CacheCreationInputTokensPresent: true,
+				CacheReadInputTokensPresent:     true,
 			},
 		},
 		AnthropicStreamEvent{Type: "message_stop"},
@@ -805,6 +822,8 @@ func closeCurrentBlock(state *ResponsesEventToAnthropicState) []AnthropicStreamE
 	state.ContentBlockIndex++
 	state.CurrentToolName = ""
 	state.CurrentToolArgs = ""
+	state.currentToolArgsBuffer = nil
+	state.currentToolArgsValidation = nil
 	state.CurrentToolHadDelta = false
 	events = append(events, AnthropicStreamEvent{
 		Type:  "content_block_stop",

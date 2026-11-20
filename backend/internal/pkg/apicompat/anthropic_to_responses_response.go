@@ -29,6 +29,23 @@ func encodeAnthropicThinking(block AnthropicContentBlock) string {
 	return anthropicThinkingEnvelopePrefix + base64.RawStdEncoding.EncodeToString(payload)
 }
 
+func anthropicCacheCreationInputTokens(usage AnthropicUsage) int {
+	if usage.CacheCreationInputTokens > 0 {
+		return max(usage.CacheCreationInputTokens, 0)
+	}
+	if usage.CacheCreation != nil && (usage.CacheCreation.Ephemeral5mInputTokens != nil || usage.CacheCreation.Ephemeral1hInputTokens != nil) {
+		cacheCreationTokens := 0
+		if usage.CacheCreation.Ephemeral5mInputTokens != nil {
+			cacheCreationTokens += max(*usage.CacheCreation.Ephemeral5mInputTokens, 0)
+		}
+		if usage.CacheCreation.Ephemeral1hInputTokens != nil {
+			cacheCreationTokens += max(*usage.CacheCreation.Ephemeral1hInputTokens, 0)
+		}
+		return cacheCreationTokens
+	}
+	return max(usage.CacheCreationInputTokens, 0)
+}
+
 // AnthropicToResponsesResponse converts an Anthropic Messages response into a
 // Responses API response. This is the reverse of ResponsesToAnthropic and
 // enables Anthropic upstream responses to be returned in OpenAI Responses format.
@@ -53,7 +70,7 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 	for _, block := range resp.Content {
 		switch block.Type {
 		case "thinking", "redacted_thinking":
-			if (claude.IsOpus55(resp.Model) || claude.IsSonnet55(resp.Model) || claude.IsHaiku55(resp.Model)) && (block.Signature != "" || block.Data != "") {
+			if (claude.IsOpus55(resp.Model) || claude.IsSonnet55(resp.Model) || claude.IsHaiku55(resp.Model) || claude.IsFable52(resp.Model) || claude.IsMythos52(resp.Model)) && (block.Signature != "" || block.Data != "") {
 				item := ResponsesOutput{Type: "reasoning", ID: generateItemID(), EncryptedContent: encodeAnthropicThinking(block)}
 				if block.Thinking != "" {
 					item.Summary = []ResponsesSummary{{Type: "summary_text", Text: block.Thinking}}
@@ -72,7 +89,7 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 				})
 			}
 		case "text":
-			if (claude.IsOpus55(resp.Model) || claude.IsSonnet55(resp.Model) || claude.IsHaiku55(resp.Model)) && block.Text != "" {
+			if (claude.IsOpus55(resp.Model) || claude.IsSonnet55(resp.Model) || claude.IsHaiku55(resp.Model) || claude.IsFable52(resp.Model) || claude.IsMythos52(resp.Model)) && block.Text != "" {
 				outputs = append(outputs, ResponsesOutput{Type: "message", ID: generateItemID(), Role: "assistant", Status: "completed", Content: []ResponsesContentPart{{Type: "output_text", Text: block.Text}}})
 				continue
 			}
@@ -130,14 +147,15 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 	// Anthropic's input_tokens excludes cache_read/cache_creation, while OpenAI
 	// Responses' input_tokens is the total including cached tokens. Add them back
 	// when converting so downstream consumers see OpenAI semantics.
+	cacheCreationTokens := anthropicCacheCreationInputTokens(resp.Usage)
 	totalInputTokens := resp.Usage.InputTokens +
 		resp.Usage.CacheReadInputTokens +
-		resp.Usage.CacheCreationInputTokens
+		cacheCreationTokens
 	out.Usage = &ResponsesUsage{
 		InputTokens:              totalInputTokens,
 		OutputTokens:             resp.Usage.OutputTokens,
 		TotalTokens:              totalInputTokens + resp.Usage.OutputTokens,
-		CacheCreationInputTokens: resp.Usage.CacheCreationInputTokens,
+		CacheCreationInputTokens: cacheCreationTokens,
 	}
 	if resp.Usage.CacheReadInputTokens > 0 {
 		out.Usage.InputTokensDetails = &ResponsesInputTokensDetails{
@@ -198,6 +216,10 @@ type AnthropicEventToResponsesState struct {
 	CurrentSummary             string                 // reasoning
 	CurrentThinking            AnthropicContentBlock
 	PreserveThinkingSignatures bool
+	textAccumBuffer            *strings.Builder
+	currentArgsBuffer          *strings.Builder
+	currentSummaryBuffer       *strings.Builder
+	currentSignatureBuffer     *strings.Builder
 
 	// PendingToolInput holds tool arguments that arrived complete on
 	// content_block_start instead of as input_json_delta. It is only consumed at
@@ -218,6 +240,10 @@ type AnthropicEventToResponsesState struct {
 	OutputTokens             int
 	CacheReadInputTokens     int
 	CacheCreationInputTokens int
+	CacheCreation            AnthropicCacheCreation
+
+	cacheCreationInputTokensPresent     bool
+	cacheCreationInputTokensFromDetails bool
 
 	StopReason string
 }
@@ -226,6 +252,28 @@ type AnthropicEventToResponsesState struct {
 func NewAnthropicEventToResponsesState() *AnthropicEventToResponsesState {
 	return &AnthropicEventToResponsesState{
 		Created: time.Now().Unix(),
+	}
+}
+
+func (state *AnthropicEventToResponsesState) mergeCacheCreationUsage(usage AnthropicUsage) {
+	if usage.HasCacheCreationInputTokens() && (usage.CacheCreationInputTokens > 0 || state.CacheCreationInputTokens <= 0) {
+		state.CacheCreationInputTokens = max(usage.CacheCreationInputTokens, 0)
+		state.cacheCreationInputTokensPresent = true
+		state.cacheCreationInputTokensFromDetails = false
+	}
+	if usage.CacheCreation != nil {
+		if usage.CacheCreation.Ephemeral5mInputTokens != nil {
+			tokens := max(*usage.CacheCreation.Ephemeral5mInputTokens, 0)
+			state.CacheCreation.Ephemeral5mInputTokens = &tokens
+		}
+		if usage.CacheCreation.Ephemeral1hInputTokens != nil {
+			tokens := max(*usage.CacheCreation.Ephemeral1hInputTokens, 0)
+			state.CacheCreation.Ephemeral1hInputTokens = &tokens
+		}
+	}
+	if (!state.cacheCreationInputTokensPresent || state.cacheCreationInputTokensFromDetails || state.CacheCreationInputTokens <= 0) && (state.CacheCreation.Ephemeral5mInputTokens != nil || state.CacheCreation.Ephemeral1hInputTokens != nil) {
+		state.CacheCreationInputTokens = anthropicCacheCreationInputTokens(AnthropicUsage{CacheCreation: &state.CacheCreation})
+		state.cacheCreationInputTokensFromDetails = true
 	}
 }
 
@@ -285,7 +333,7 @@ func ResponsesEventToSSE(evt ResponsesStreamEvent) (string, error) {
 func anthToResHandleMessageStart(evt *AnthropicStreamEvent, state *AnthropicEventToResponsesState) []ResponsesStreamEvent {
 	if evt.Message != nil {
 		state.ResponseID = evt.Message.ID
-		state.PreserveThinkingSignatures = state.PreserveThinkingSignatures || claude.IsOpus55(evt.Message.Model) || claude.IsSonnet55(evt.Message.Model) || claude.IsHaiku55(evt.Message.Model)
+		state.PreserveThinkingSignatures = state.PreserveThinkingSignatures || claude.IsOpus55(evt.Message.Model) || claude.IsSonnet55(evt.Message.Model) || claude.IsHaiku55(evt.Message.Model) || claude.IsFable52(evt.Message.Model) || claude.IsMythos52(evt.Message.Model)
 		if state.Model == "" {
 			state.Model = evt.Message.Model
 		}
@@ -295,9 +343,7 @@ func anthToResHandleMessageStart(evt *AnthropicStreamEvent, state *AnthropicEven
 		if evt.Message.Usage.CacheReadInputTokens > 0 {
 			state.CacheReadInputTokens = evt.Message.Usage.CacheReadInputTokens
 		}
-		if evt.Message.Usage.CacheCreationInputTokens > 0 {
-			state.CacheCreationInputTokens = evt.Message.Usage.CacheCreationInputTokens
-		}
+		state.mergeCacheCreationUsage(evt.Message.Usage)
 	}
 
 	if state.CreatedSent {
@@ -332,6 +378,8 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 		state.CurrentItemType = "reasoning"
 		state.CurrentThinking = *evt.ContentBlock
 		state.CurrentSummary = evt.ContentBlock.Thinking
+		state.currentSummaryBuffer = nil
+		state.currentSignatureBuffer = nil
 		state.ContentIndex = 0
 
 		events = append(events, makeResponsesEvent(state, "response.output_item.added", &ResponsesStreamEvent{
@@ -380,6 +428,7 @@ func anthToResHandleContentBlockStart(evt *AnthropicStreamEvent, state *Anthropi
 			Part:         &ResponsesContentPart{Type: "output_text", Text: ""},
 		}))
 		state.TextAccum = ""
+		state.textAccumBuffer = nil
 
 	case "tool_use":
 		// Close previous item if any
@@ -421,7 +470,7 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 		if evt.Delta.Text == "" {
 			return nil
 		}
-		state.TextAccum += evt.Delta.Text
+		state.TextAccum = appendStreamString(&state.textAccumBuffer, state.TextAccum, evt.Delta.Text)
 		return []ResponsesStreamEvent{makeResponsesEvent(state, "response.output_text.delta", &ResponsesStreamEvent{
 			OutputIndex:  state.OutputIndex,
 			ContentIndex: state.ContentIndex,
@@ -433,7 +482,7 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 		if evt.Delta.Thinking == "" {
 			return nil
 		}
-		state.CurrentSummary += evt.Delta.Thinking
+		state.CurrentSummary = appendStreamString(&state.currentSummaryBuffer, state.CurrentSummary, evt.Delta.Thinking)
 		return []ResponsesStreamEvent{makeResponsesEvent(state, "response.reasoning_summary_text.delta", &ResponsesStreamEvent{
 			OutputIndex:  state.OutputIndex,
 			SummaryIndex: 0,
@@ -448,7 +497,7 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 		// A real delta supersedes whatever content_block_start carried; keeping
 		// both would splice two complete JSON documents together.
 		state.PendingToolInput = ""
-		state.CurrentArgs += evt.Delta.PartialJSON
+		state.CurrentArgs = appendStreamString(&state.currentArgsBuffer, state.CurrentArgs, evt.Delta.PartialJSON)
 		return []ResponsesStreamEvent{makeResponsesEvent(state, "response.function_call_arguments.delta", &ResponsesStreamEvent{
 			OutputIndex: state.OutputIndex,
 			Delta:       evt.Delta.PartialJSON,
@@ -460,7 +509,7 @@ func anthToResHandleContentBlockDelta(evt *AnthropicStreamEvent, state *Anthropi
 	case "signature_delta":
 		// Keep signatures in the opaque bridge envelope, never in visible text.
 		if state.PreserveThinkingSignatures {
-			state.CurrentThinking.Signature += evt.Delta.Signature
+			state.CurrentThinking.Signature = appendStreamString(&state.currentSignatureBuffer, state.CurrentThinking.Signature, evt.Delta.Signature)
 		}
 		return nil
 	}
@@ -489,6 +538,7 @@ func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *Anthropic
 		// the done event below still repeats exactly what the deltas streamed.
 		if state.CurrentArgs == "" && state.PendingToolInput != "" {
 			state.CurrentArgs = state.PendingToolInput
+			state.currentArgsBuffer = nil
 			events = append(events, makeResponsesEvent(state, "response.function_call_arguments.delta", &ResponsesStreamEvent{
 				OutputIndex: state.OutputIndex,
 				Delta:       state.PendingToolInput,
@@ -521,6 +571,7 @@ func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *Anthropic
 		// item itself stays open since more blocks may follow.
 		text := state.TextAccum
 		state.TextAccum = ""
+		state.textAccumBuffer = nil
 		contentIndex := state.ContentIndex
 		state.CurrentContent = append(state.CurrentContent, ResponsesContentPart{Type: "output_text", Text: text})
 		// 关掉一个 part 就推进 content_index：上面那句注释说的「item 保持打开，
@@ -551,16 +602,16 @@ func anthToResHandleContentBlockStop(evt *AnthropicStreamEvent, state *Anthropic
 
 func anthToResHandleMessageDelta(evt *AnthropicStreamEvent, state *AnthropicEventToResponsesState) []ResponsesStreamEvent {
 	if evt.Usage != nil {
-		state.OutputTokens = evt.Usage.OutputTokens
+		if evt.Usage.OutputTokens > 0 {
+			state.OutputTokens = evt.Usage.OutputTokens
+		}
 		if evt.Usage.InputTokens > 0 {
 			state.InputTokens = evt.Usage.InputTokens
 		}
 		if evt.Usage.CacheReadInputTokens > 0 {
 			state.CacheReadInputTokens = evt.Usage.CacheReadInputTokens
 		}
-		if evt.Usage.CacheCreationInputTokens > 0 {
-			state.CacheCreationInputTokens = evt.Usage.CacheCreationInputTokens
-		}
+		state.mergeCacheCreationUsage(*evt.Usage)
 	}
 	if evt.Delta != nil && evt.Delta.StopReason != "" {
 		state.StopReason = evt.Delta.StopReason
@@ -648,10 +699,14 @@ func closeCurrentResponsesItem(state *AnthropicEventToResponsesState) []Response
 	state.CurrentName = ""
 	state.CurrentContent = nil
 	state.CurrentArgs = ""
+	state.currentArgsBuffer = nil
 	state.PendingToolInput = ""
 	state.CurrentSummary = ""
+	state.currentSummaryBuffer = nil
 	state.CurrentThinking = AnthropicContentBlock{}
+	state.currentSignatureBuffer = nil
 	state.TextAccum = ""
+	state.textAccumBuffer = nil
 	state.OutputIndex++
 	state.ContentIndex = 0
 

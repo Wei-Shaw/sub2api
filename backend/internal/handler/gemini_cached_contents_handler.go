@@ -65,11 +65,12 @@ func (h *GatewayHandler) geminiCachedContentsPreamble(c *gin.Context, component 
 func readGeminiCachedContentBody(c *gin.Context) ([]byte, bool) {
 	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
 	if err != nil {
-		if maxErr, ok := extractMaxBytesError(err); ok {
-			googleError(c, http.StatusRequestEntityTooLarge, buildBodyTooLargeMessage(maxErr.Limit))
+		bodyLog := requestLogger(c, "handler.gemini_cached_contents")
+		if handleRequestBodyReadError(c, bodyLog, err) {
 			return nil, false
 		}
-		googleError(c, http.StatusBadRequest, "Failed to read request body")
+		status, message := requestBodyReadFailure(bodyLog, c.Request, err)
+		googleErrorWithType(c, status, "invalid_request_error", "", message)
 		return nil, false
 	}
 	if len(body) == 0 {
@@ -274,6 +275,7 @@ func (h *GatewayHandler) GeminiCachedContentsCreate(c *gin.Context) {
 			Result: &service.ForwardResult{
 				Model: modelName, UpstreamModel: mappedModel,
 				Usage: service.ClaudeUsage{InputTokens: int(tokens)}, CacheStorageTokenHours: storageTokenHours,
+				UpstreamPriceMultiplier: service.VertexUpstreamPriceMultiplier(account, mappedModel, ""),
 			},
 			APIKey: apiKey, User: apiKey.User, Subscription: subscription, PricingAt: pricingAt, ChannelUsageFields: usageFields,
 		})
@@ -673,15 +675,17 @@ func (h *GatewayHandler) submitGeminiCachedContentUsage(
 	if inputTokens <= 0 && storageTokenHours <= 0 {
 		return
 	}
+	priceMultiplier := service.VertexUpstreamPriceMultiplier(account, upstreamModel, "")
 	if upstreamModel == model {
 		upstreamModel = ""
 	}
 	result := &service.ForwardResult{
-		RequestID:              requestID,
-		Model:                  model,
-		UpstreamModel:          upstreamModel,
-		Usage:                  service.ClaudeUsage{InputTokens: inputTokens},
-		CacheStorageTokenHours: storageTokenHours,
+		RequestID:               requestID,
+		Model:                   model,
+		UpstreamModel:           upstreamModel,
+		Usage:                   service.ClaudeUsage{InputTokens: inputTokens},
+		CacheStorageTokenHours:  storageTokenHours,
+		UpstreamPriceMultiplier: priceMultiplier,
 	}
 	inboundEndpoint := GetInboundEndpoint(c)
 	upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)

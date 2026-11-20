@@ -161,11 +161,24 @@ func standardOpenAIModelsBody(body []byte, fromManifest bool) ([]byte, error) {
 	}{Object: "list", Data: models})
 }
 
-// projectAccountModelsBody applies the same public-name mapping to both model
-// representations while retaining the source entry's metadata. It never changes
-// the shared response and never synthesizes models absent from this account.
+// projectAccountModelsBody projects upstream entries to public names before
+// checking their routing eligibility. Applying account mappings to source IDs
+// would interpret upstream names as aliases and can retain retired targets or
+// discard metadata needed by a valid replacement alias.
 func projectAccountModelsBody(body []byte, account *Account, group *Group, codex bool) ([]byte, error) {
-	if account.IsOpenAIPassthroughEnabled() || len(account.GetModelMapping()) == 0 {
+	projected, err := projectAccountModelAliases(body, account, group, codex)
+	if err != nil {
+		return nil, err
+	}
+	filtered, _, err := filterRetiredOpenAIPublicModelsBody(projected, []Account{*account}, codex)
+	return filtered, err
+}
+
+// projectAccountModelAliases retains the source entry's metadata, never changes
+// the shared response, and never synthesizes models absent from this account.
+func projectAccountModelAliases(body []byte, account *Account, group *Group, codex bool) ([]byte, error) {
+	passthrough := account.IsOpenAIPassthroughEnabled()
+	if (passthrough && !account.IsOpenAIPassthroughModelFilterEnabled()) || len(account.GetModelMapping()) == 0 {
 		return body, nil
 	}
 	field, idField := "data", "id"
@@ -225,6 +238,10 @@ func projectAccountModelsBody(body []byte, account *Account, group *Group, codex
 			continue
 		}
 		target, matched := account.ResolveMappedModel(id)
+		if passthrough {
+			// Filtering changes eligibility, never the upstream/public model name.
+			target, matched = id, account.IsModelSupported(id)
+		}
 		raw, available := byID[strings.TrimSpace(target)]
 		if (!matched && !account.modelMappingAdmitsUnlisted()) || !available {
 			continue

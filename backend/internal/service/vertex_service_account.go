@@ -39,6 +39,9 @@ var (
 	vertexAnthropicAlreadyDatedIDPattern = regexp.MustCompile(`^.+@[0-9]{8}$`)
 )
 
+// vertexServiceAccountTokenURL 是换取 SA access token 的端点，测试中替换为本地服务。
+var vertexServiceAccountTokenURL = vertexDefaultTokenURL
+
 type vertexServiceAccountKey struct {
 	Type         string `json:"type"`
 	ProjectID    string `json:"project_id"`
@@ -81,6 +84,8 @@ func (a *Account) VertexProjectID() string {
 	return ""
 }
 
+// VertexLocation 返回模型请求使用的区域：vertex_model_locations 显式指定优先；否则取账号区域，
+// Gemini 账号区域为多区域（us/eu）时按 vertexModelLocations 判断模型是否支持，不支持的走 global。
 func (a *Account) VertexLocation(model string) string {
 	if a == nil {
 		return vertexDefaultLocation
@@ -92,6 +97,15 @@ func (a *Account) VertexLocation(model string) string {
 			}
 		}
 	}
+	location := a.vertexAccountLocation()
+	if a.Platform != PlatformGemini {
+		return location
+	}
+	return resolveVertexModelLocation(location, model)
+}
+
+// vertexAccountLocation 返回账号配置的区域，未配置时为 vertexDefaultLocation。
+func (a *Account) vertexAccountLocation() string {
 	if v := strings.TrimSpace(a.GetCredential("location")); v != "" {
 		return v
 	}
@@ -138,7 +152,7 @@ func parseVertexServiceAccountJSON(raw []byte) (*vertexServiceAccountKey, error)
 		return nil, errors.New("service account json missing project_id")
 	}
 	// Always use the well-known Google token endpoint to prevent SSRF via crafted token_uri.
-	key.TokenURI = vertexDefaultTokenURL
+	key.TokenURI = vertexServiceAccountTokenURL
 	return &key, nil
 }
 
@@ -277,7 +291,12 @@ func exchangeVertexServiceAccountToken(ctx context.Context, key *vertexServiceAc
 		if msg == "" {
 			msg = string(bytes.TrimSpace(body))
 		}
-		return "", 0, fmt.Errorf("service account token request returned %d: %s", resp.StatusCode, msg)
+		return "", 0, &vertexTokenRequestError{
+			StatusCode:  resp.StatusCode,
+			Code:        strings.TrimSpace(parsed.Error),
+			Description: strings.TrimSpace(parsed.ErrorDesc),
+			Message:     msg,
+		}
 	}
 	if strings.TrimSpace(parsed.AccessToken) == "" {
 		return "", 0, errors.New("service account token response missing access_token")
@@ -292,13 +311,42 @@ func exchangeVertexServiceAccountToken(ctx context.Context, key *vertexServiceAc
 	return parsed.AccessToken, ttl, nil
 }
 
+// vertexTokenRequestError 是 token 端点对换取 SA access token 请求返回的非 2xx 响应。
+type vertexTokenRequestError struct {
+	StatusCode  int
+	Code        string // 响应的 error 字段，如 invalid_grant
+	Description string // 响应的 error_description 字段
+	Message     string
+}
+
+func (e *vertexTokenRequestError) Error() string {
+	return fmt.Sprintf("service account token request returned %d: %s", e.StatusCode, e.Message)
+}
+
+// vertexServiceAccountNotFoundError 识别 SA 已不存在：token 端点返回
+// 400 {"error":"invalid_grant","error_description":"Invalid grant: account not found"}。
+// 该凭据再也换不到 token，账号需要人工更换凭据。
+func vertexServiceAccountNotFoundError(err error) (*vertexTokenRequestError, bool) {
+	var tokenErr *vertexTokenRequestError
+	if !errors.As(err, &tokenErr) {
+		return nil, false
+	}
+	if tokenErr.StatusCode != http.StatusBadRequest || tokenErr.Code != "invalid_grant" ||
+		!strings.Contains(strings.ToLower(tokenErr.Description), "account not found") {
+		return nil, false
+	}
+	return tokenErr, true
+}
+
 // buildVertexGeminiAccountURL 按账号构造 Vertex Gemini 请求地址：未配置 project_id 的 API Key 账号
-// 走 Express mode 全局端点，其余账号走项目级端点。
-func buildVertexGeminiAccountURL(account *Account, model, action string, stream bool) (string, error) {
+// 走 Express mode 全局端点，其余账号走项目级端点。cachedContentLocation 是请求引用的显式缓存所在区域，
+// 非空时按该区域发送（缓存只能在其所在区域的端点上引用），为空时按 VertexLocation 选区域。
+func buildVertexGeminiAccountURL(account *Account, model, action string, stream bool, cachedContentLocation string) (string, error) {
 	if account.IsVertexAPIKey() && account.VertexProjectID() == "" {
 		return buildVertexGeminiExpressURL(model, action, stream)
 	}
-	return buildVertexGeminiURL(account.VertexProjectID(), account.VertexLocation(model), model, action, stream)
+	location := vertexGeminiRequestLocation(account, model, cachedContentLocation)
+	return buildVertexGeminiURL(account.VertexProjectID(), location, model, action, stream)
 }
 
 // buildVertexGeminiExpressURL 构造不带项目与区域的全局端点地址，仅 API Key 认证可用。
@@ -369,10 +417,7 @@ func buildVertexGeminiURL(projectID, location, model, action string, stream bool
 	if err := validateVertexGeminiAction(action); err != nil {
 		return "", err
 	}
-	host := fmt.Sprintf("%s-aiplatform.googleapis.com", location)
-	if location == "global" {
-		host = vertexGlobalHost
-	}
+	host := vertexAPIHost(location)
 	u := fmt.Sprintf(
 		"https://%s/v1/projects/%s/locations/%s/publishers/google/models/%s:%s",
 		host,
@@ -407,10 +452,7 @@ func buildVertexAnthropicURL(projectID, location, model string, stream bool) (st
 	if stream {
 		action = "streamRawPredict"
 	}
-	host := fmt.Sprintf("%s-aiplatform.googleapis.com", location)
-	if location == "global" {
-		host = "aiplatform.googleapis.com"
-	}
+	host := vertexAPIHost(location)
 	escapedModel := strings.ReplaceAll(url.PathEscape(model), "%40", "@")
 	return fmt.Sprintf(
 		"https://%s/v1/projects/%s/locations/%s/publishers/anthropic/models/%s:%s",

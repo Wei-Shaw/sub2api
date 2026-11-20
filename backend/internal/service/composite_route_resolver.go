@@ -5,7 +5,33 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 )
+
+const (
+	// CompositeRouteReasonAmbiguous marks a model whose explicit account
+	// mappings span several provider platforms.
+	CompositeRouteReasonAmbiguous = "model is exposed by multiple provider platforms"
+	// CompositeRouteReasonOAuthAmbiguous is the ambiguous case where a claimant
+	// holds an OAuth / setup-token credential that only the OpenAI gateway can
+	// carry, and the model-name fallback would also pick an OpenAI-gateway
+	// platform. The unresolved request would land in the Anthropic gateway
+	// handler and select those credentials, so this group misconfiguration must
+	// be rejected instead of guessing a platform from the model name.
+	CompositeRouteReasonOAuthAmbiguous = "model is exposed by multiple provider platforms including OAuth accounts"
+)
+
+// OAuthAmbiguous reports whether the request must be rejected because the
+// cross-platform ownership involves OpenAI-gateway OAuth credentials.
+func (d CompositeRouteDecision) OAuthAmbiguous() bool {
+	return !d.Matched && d.Reason == CompositeRouteReasonOAuthAmbiguous
+}
+
+// AmbiguousMessage is the client-facing rejection for an OAuthAmbiguous decision.
+func (d CompositeRouteDecision) AmbiguousMessage() string {
+	return fmt.Sprintf("Model %q is mapped on multiple provider platforms in this group; configure an explicit composite route", d.PublicModel)
+}
 
 type CompositeRouteResolver struct {
 	repo                   CompositeModelRouteRepository
@@ -113,7 +139,12 @@ func (r *CompositeRouteResolver) Resolve(ctx context.Context, groupID int64, mod
 				return decision, fmt.Errorf("resolve account model ownership: %w", err)
 			}
 		} else if ownership.Ambiguous {
-			decision.Reason = "model is exposed by multiple provider platforms"
+			decision.Reason = CompositeRouteReasonAmbiguous
+			// 未解析的请求由下游 handler 按模型名前缀兜底选平台；只有兜底落在
+			// OpenAI 网关族时，OpenAI 网关 OAuth 声明方才会被误送进 Anthropic 管线。
+			if guessed, ok := DetectModelPlatform(model); ok && ownership.OpenAIGatewayOAuthClaimed && domain.UsesOpenAIGateway(guessed) {
+				decision.Reason = CompositeRouteReasonOAuthAmbiguous
+			}
 			return decision, nil
 		} else if ownership.Matched {
 			platform := strings.TrimSpace(ownership.TargetPlatform)
