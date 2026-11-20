@@ -67,6 +67,7 @@
           value-key="id"
           label-key="display_name"
           :placeholder="loadingModels ? t('common.loading') + '...' : t('admin.accounts.selectTestModel')"
+          searchable
         />
       </div>
 
