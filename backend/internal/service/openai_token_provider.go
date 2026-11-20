@@ -145,8 +145,12 @@ func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Accou
 	// 1) Try cache first.
 	if p.tokenCache != nil {
 		if token, err := p.tokenCache.GetAccessToken(ctx, cacheKey); err == nil && strings.TrimSpace(token) != "" {
-			slog.Debug("openai_token_cache_hit", "account_id", account.ID)
-			return token, nil
+			// Cached tokens must still satisfy the shared expiry rule.
+			if !needsOpenAIOAuthTokenRefresh(account, openAITokenRefreshSkew) ||
+				(account.GetOpenAITokenExpiresAt() == nil && strings.TrimSpace(account.GetOpenAIRefreshToken()) == "") {
+				slog.Debug("openai_token_cache_hit", "account_id", account.ID)
+				return token, nil
+			}
 		} else if err != nil {
 			slog.Warn("openai_token_cache_get_failed", "account_id", account.ID, "error", err)
 		}
@@ -155,8 +159,8 @@ func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Accou
 	slog.Debug("openai_token_cache_miss", "account_id", account.ID)
 
 	// 2) Refresh if needed (pre-expiry skew).
-	expiresAt := account.GetCredentialAsTime("expires_at")
-	needsRefresh := !account.IsOpenAIPersonalAccessToken() && (expiresAt == nil || time.Until(*expiresAt) <= openAITokenRefreshSkew)
+	expiresAt := account.GetOpenAITokenExpiresAt()
+	needsRefresh := needsOpenAIOAuthTokenRefresh(account, openAITokenRefreshSkew)
 	if needsRefresh && strings.TrimSpace(account.GetOpenAIRefreshToken()) == "" {
 		if expiresAt != nil && !time.Now().Before(*expiresAt) {
 			const reason = "openai access_token expired and refresh_token is missing"
@@ -197,10 +201,10 @@ func (p *OpenAITokenProvider) GetAccessToken(ctx context.Context, account *Accou
 		} else if result.Refreshed {
 			p.metrics.refreshSuccess.Add(1)
 			account = result.Account
-			expiresAt = account.GetCredentialAsTime("expires_at")
+			expiresAt = account.GetOpenAITokenExpiresAt()
 		} else {
 			account = result.Account
-			expiresAt = account.GetCredentialAsTime("expires_at")
+			expiresAt = account.GetOpenAITokenExpiresAt()
 		}
 	} else if needsRefresh && p.tokenCache != nil {
 		// Backward-compatible test path when refreshAPI is not injected.
@@ -304,6 +308,119 @@ func (p *OpenAITokenProvider) disableAccountMissingRefreshToken(account *Account
 		"account_id", account.ID,
 		"reason", reason,
 	)
+}
+
+type openAIRejectedTokenExecutor struct {
+	OAuthRefreshExecutor
+	expected      *Account
+	rejectedToken string
+}
+
+func (e openAIRejectedTokenExecutor) CanRefresh(account *Account) bool {
+	return sameOpenAIOAuthRecoveryAccount(account, e.expected) && e.OAuthRefreshExecutor.CanRefresh(account)
+}
+
+func (e openAIRejectedTokenExecutor) NeedsRefresh(account *Account, _ time.Duration) bool {
+	// A late 401 must reuse the durable winner rather than rotate it again.
+	return strings.TrimSpace(account.GetOpenAIAccessToken()) == e.rejectedToken
+}
+
+func sameOpenAIOAuthRecoveryAccount(account, expected *Account) bool {
+	if account == nil || expected == nil || account.ID != expected.ID ||
+		!account.IsActive() || !account.IsOpenAIOAuth() || account.IsOpenAIPersonalAccessToken() ||
+		account.IsOpenAIAgentIdentity() || strings.TrimSpace(account.GetOpenAIRefreshToken()) == "" {
+		return false
+	}
+	if account.ProxyID == nil || expected.ProxyID == nil {
+		return account.ProxyID == nil && expected.ProxyID == nil
+	}
+	return *account.ProxyID == *expected.ProxyID
+}
+
+func (p *OpenAITokenProvider) refreshRejectedAccessToken(ctx context.Context, account *Account, rejectedToken string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	rejectedToken = strings.TrimSpace(rejectedToken)
+	if p == nil || p.refreshAPI == nil || p.executor == nil || p.accountRepo == nil ||
+		rejectedToken == "" || !sameOpenAIOAuthRecoveryAccount(account, account) {
+		return "", errors.New("openai oauth 401 recovery is unavailable")
+	}
+	expected := snapshotOAuthRefreshAccount(account)
+	executor := openAIRejectedTokenExecutor{OAuthRefreshExecutor: p.executor, expected: expected, rejectedToken: rejectedToken}
+	p.ensureMetrics()
+	p.metrics.refreshRequests.Add(1)
+	p.metrics.touchNow()
+	result, err := p.refreshAPI.RefreshIfNeeded(withOAuthRefreshRequestPath(ctx), account, executor, 0)
+	if err != nil {
+		p.metrics.refreshFailure.Add(1)
+		return "", err
+	}
+	// A reused winner may bypass the executor's cancellation check.
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	fresh := result.Account
+	if result.LockHeld {
+		p.metrics.lockContention.Add(1)
+		// Never accept the rejected token still in cache as the lock winner.
+		fresh, err = p.waitForOpenAI401Rotation(ctx, expected, rejectedToken)
+		if err != nil {
+			return "", err
+		}
+	} else if result.Refreshed {
+		p.metrics.refreshSuccess.Add(1)
+	}
+	if !sameOpenAIOAuthRecoveryAccount(fresh, expected) {
+		return "", errors.New("openai oauth account changed during 401 recovery")
+	}
+	token := strings.TrimSpace(fresh.GetOpenAIAccessToken())
+	if token == "" || token == rejectedToken {
+		return "", errors.New("openai oauth refresh did not replace the rejected token")
+	}
+	if p.tokenCache != nil {
+		if err := p.tokenCache.DeleteAccessToken(ctx, OpenAITokenCacheKey(expected)); err != nil {
+			return "", errors.New("openai oauth cache invalidation failed after 401 recovery")
+		}
+	}
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	return token, nil
+}
+
+func (p *OpenAITokenProvider) waitForOpenAI401Rotation(ctx context.Context, expected *Account, rejectedToken string) (*Account, error) {
+	wait := openAILockInitialWait
+	for i := 0; i < openAILockMaxAttempts; i++ {
+		fresh, err := p.accountRepo.GetByID(ctx, expected.ID)
+		if err != nil {
+			return nil, err
+		}
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		if !sameOpenAIOAuthRecoveryAccount(fresh, expected) {
+			return nil, errors.New("openai oauth account changed while waiting for refresh")
+		}
+		if token := strings.TrimSpace(fresh.GetOpenAIAccessToken()); token != "" && token != rejectedToken {
+			return fresh, nil
+		}
+		if i == openAILockMaxAttempts-1 {
+			break
+		}
+		timer := time.NewTimer(jitterLockWait(wait))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, ctx.Err()
+		case <-timer.C:
+		}
+		wait *= 2
+		if wait > openAILockMaxWait {
+			wait = openAILockMaxWait
+		}
+	}
+	return nil, errors.New("openai oauth refresh lock winner has not replaced the rejected token")
 }
 
 func (p *OpenAITokenProvider) waitForTokenAfterLockRace(ctx context.Context, cacheKey string) (string, error) {
