@@ -22,7 +22,7 @@
         "tested_sub2api_versions": { "type": "array", "items": { "type": "string" }, "uniqueItems": true },
         "plugin_protocol": { "const": 1 },
         "transport_api": { "const": 1 },
-        "ui_bridge": { "const": 1 }
+        "ui_bridge": { "enum": [1, 2] }
       }
     },
     "capabilities": {
@@ -33,10 +33,14 @@
         "additionalProperties": false,
         "required": ["id", "platform", "account_type"],
         "properties": {
-          "id": { "const": "openai.oauth.outbound_transport.v1" },
+          "id": { "enum": ["openai.oauth.outbound_transport.v1", "openai.codex.model_catalog.v1"] },
           "platform": { "const": "openai" },
-          "account_type": { "const": "oauth" }
-        }
+          "account_type": { "enum": ["oauth", "catalog"] }
+        },
+        "oneOf": [
+          {"properties": {"id": {"const": "openai.oauth.outbound_transport.v1"}, "account_type": {"const": "oauth"}}},
+          {"properties": {"id": {"const": "openai.codex.model_catalog.v1"}, "account_type": {"const": "catalog"}}}
+        ]
       }
     },
     "runtimes": {

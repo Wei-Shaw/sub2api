@@ -314,6 +314,8 @@ func (s *OpenAIGatewayService) FetchPinnedOpenAIModelsList(ctx context.Context, 
 	models := make([]json.RawMessage, 0)
 	modelIDs := make([]string, 0)
 	byID := make(map[string]json.RawMessage)
+	p := s.pluginCatalogPolicy(group.ID, "")
+	imageCtx := WithOpenAIImagesEndpoint(WithOpenAIImageGenerationIntent(ctx))
 	for _, result := range results {
 		_, entries, err := modelCatalogEntries(result.response.Body, "data")
 		if err != nil {
@@ -325,6 +327,11 @@ func (s *OpenAIGatewayService) FetchPinnedOpenAIModelsList(ctx context.Context, 
 			}
 			if err := json.Unmarshal(raw, &model); err != nil {
 				return nil, nil, err
+			}
+			if p != nil {
+				if _, published := p.plainImageRank[model.ID]; published && !p.allowsImageAccount(imageCtx, group, result.account, model.ID) {
+					continue
+				}
 			}
 			if _, exists := byID[model.ID]; !exists {
 				byID[model.ID] = raw
@@ -342,6 +349,16 @@ func (s *OpenAIGatewayService) FetchPinnedOpenAIModelsList(ctx context.Context, 
 	}{Object: "list", Data: models})
 	if err != nil {
 		return nil, nil, err
+	}
+	if p != nil && p.restrictPlain {
+		accounts := make([]Account, 0, len(results))
+		for _, result := range results {
+			accounts = append(accounts, *result.account)
+		}
+		body, _, err = p.project(body, false, accounts)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	response := &OpenAIModelsResponse{Body: body, ETag: codexModelsManifestBodyETag(body)}
 	return openAIModelsResponseForClient(response, ifNoneMatch), results[0].account, nil

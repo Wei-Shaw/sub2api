@@ -126,6 +126,7 @@ func (s *OpenAIGatewayService) BuildGroupConfiguredCodexModelsManifest(
 	ctx context.Context,
 	group *Group,
 	ifNoneMatch string,
+	clientVersion ...string,
 ) (*OpenAIModelsResponse, bool, error) {
 	if s == nil || s.accountRepo == nil || group == nil || group.Platform != PlatformOpenAI {
 		return nil, false, nil
@@ -136,8 +137,22 @@ func (s *OpenAIGatewayService) BuildGroupConfiguredCodexModelsManifest(
 		return nil, false, fmt.Errorf("load group configured Codex models: %w", err)
 	}
 	configuredModels := openAIConfiguredCodexModelIDsForGroup(visible, group)
+	version := ""
+	if len(clientVersion) > 0 {
+		version = clientVersion[0]
+	}
+	policy := s.pluginCatalogPolicy(group.ID, version)
+	configuredModels = policy.appendLegacyIDs(configuredModels, visible, group)
+	configuredModels = filterRetiredOpenAIModelIDs(catalog, configuredModels)
 	if len(configuredModels) == 0 {
-		return nil, false, nil
+		if policy == nil || !policy.explicit || (len(visible) != 0 && (policy.selection == nil || len(policy.rank) != 0)) {
+			return nil, false, nil
+		}
+	}
+	if policy != nil && policy.explicit {
+		configuredModels = slices.DeleteFunc(configuredModels, func(id string) bool {
+			return !catalogAccountAllows(visible, group, id)
+		})
 	}
 
 	body, err := buildCodexModelsManifestForAccounts(
@@ -160,6 +175,10 @@ func (s *OpenAIGatewayService) BuildGroupConfiguredCodexModelsManifest(
 	if err != nil {
 		return nil, false, fmt.Errorf("build group configured Codex models: %w", err)
 	}
+	body, _, err = policy.project(body, true, catalog)
+	if err != nil {
+		return nil, false, err
+	}
 	manifest := &OpenAIModelsResponse{
 		Body: body,
 		ETag: codexModelsManifestBodyETag(body),
@@ -180,6 +199,7 @@ func (s *OpenAIGatewayService) MergeGroupConfiguredCodexModels(
 	group *Group,
 	manifest *OpenAIModelsResponse,
 	ifNoneMatch string,
+	clientVersion ...string,
 ) error {
 	if s == nil || s.accountRepo == nil || group == nil || manifest == nil || manifest.NotModified {
 		return nil
@@ -192,9 +212,20 @@ func (s *OpenAIGatewayService) MergeGroupConfiguredCodexModels(
 	if err != nil {
 		return fmt.Errorf("load group configured Codex models: %w", err)
 	}
+	version := ""
+	if len(clientVersion) > 0 {
+		version = clientVersion[0]
+	}
+	policy := s.pluginCatalogPolicy(group.ID, version)
 	var configuredModels []string
 	if !group.CodexModelsManifestConfig.Enabled {
 		configuredModels = openAIConfiguredCodexModelIDsForGroup(visible, group)
+		configuredModels = policy.appendLegacyIDs(configuredModels, visible, group)
+		if policy != nil && policy.explicit {
+			configuredModels = slices.DeleteFunc(configuredModels, func(id string) bool {
+				return !catalogAccountAllows(visible, group, id)
+			})
+		}
 	}
 	body, changed, err := mergeConfiguredCodexModelsManifest(
 		manifest.Body,
@@ -217,6 +248,11 @@ func (s *OpenAIGatewayService) MergeGroupConfiguredCodexModels(
 		return fmt.Errorf("filter retired Codex models: %w", err)
 	}
 	body = filtered
+	body, overlaid, err := policy.project(body, true, accounts)
+	if err != nil {
+		return err
+	}
+	changed = changed || overlaid
 	if changed || retired {
 		manifest.Body = body
 		manifest.ETag = codexModelsManifestBodyETag(body)

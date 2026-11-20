@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/pkg/modelcatalog"
 	pluginv1 "github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1"
 )
 
@@ -60,6 +61,9 @@ type PluginManager struct {
 	reconcileCancel    context.CancelFunc
 	reconcileDone      chan struct{}
 	route              atomic.Pointer[pluginRoute]
+	catalog            atomic.Pointer[pluginCatalogSnapshot]
+	catalogAccounts    AccountRepository
+	catalogGroups      GroupRepository
 }
 
 func NewPluginManager(repo PluginRepository, encryptor SecretEncryptor, cfg *config.Config, hostInfo PluginHostInfo, kvStore PluginKVStore) *PluginManager {
@@ -131,6 +135,7 @@ func (m *PluginManager) Stop() {
 	}
 	m.runtimes = make(map[int64]*pluginRuntime)
 	m.route.Store(nil)
+	m.catalog.Store(nil)
 	m.started = false
 	m.mu.Unlock()
 	m.operationMu.Unlock()
@@ -189,7 +194,7 @@ func (m *PluginManager) Install(ctx context.Context, reader io.Reader, installed
 	}
 	var previous *PluginInstallation
 	if existing, getErr := m.repo.GetByKey(ctx, packageInfo.PluginKey); getErr == nil {
-		if existing.State == PluginStateEnabled || hasEnabledOpenAIBinding(existing.Bindings) {
+		if existing.State == PluginStateEnabled || hasEnabledOpenAIBinding(existing.Bindings) || hasEnabledCatalogBinding(existing.Bindings) {
 			cleanupErr := m.cleanupInstallationFiles(packageInfo)
 			return nil, errors.Join(errors.New("请先停用当前插件，再上传同 ID 的新版本"), cleanupErr)
 		}
@@ -270,11 +275,15 @@ func (m *PluginManager) reconcileOnce(ctx context.Context) error {
 
 	installations, err := m.repo.List(ctx)
 	if err != nil {
+		m.catalog.Store(nil)
 		// 无法读取权威绑定状态时不能假设插件未启用，否则会把 OAuth 请求静默回落到旧直连路径。
 		m.publishUnavailableRoute(0, 100, "插件启用状态暂时无法读取")
 		return fmt.Errorf("读取插件启用状态: %w", err)
 	}
 	m.cleanupStaleLocalInstallations(installations)
+	if err := m.reconcileCatalog(ctx, installations); err != nil {
+		slog.Warn("plugin_catalog_reconcile_failed", "error", err)
+	}
 	var enabled *PluginInstallation
 	for _, installation := range installations {
 		if !hasEnabledOpenAIBinding(installation.Bindings) {
@@ -370,6 +379,9 @@ func (m *PluginManager) reconcileOnce(ctx context.Context) error {
 	m.mu.Lock()
 	stale := make([]*pluginRuntime, 0, len(m.runtimes))
 	for id, candidate := range m.runtimes {
+		if isCatalogPlugin(candidate.installation.Manifest) {
+			continue
+		}
 		if candidate != runtime {
 			candidate.draining.Store(true)
 			stale = append(stale, candidate)
@@ -407,6 +419,9 @@ func (m *PluginManager) detachAllRuntimes() []*pluginRuntime {
 	defer m.mu.Unlock()
 	runtimes := make([]*pluginRuntime, 0, len(m.runtimes))
 	for id, runtime := range m.runtimes {
+		if isCatalogPlugin(runtime.installation.Manifest) {
+			continue
+		}
 		runtime.draining.Store(true)
 		runtimes = append(runtimes, runtime)
 		delete(m.runtimes, id)
@@ -419,6 +434,9 @@ func (m *PluginManager) publishUnavailableRoute(pluginID int64, rollout int, mes
 	m.mu.Lock()
 	stale := make([]*pluginRuntime, 0, len(m.runtimes))
 	for id, runtime := range m.runtimes {
+		if isCatalogPlugin(runtime.installation.Manifest) {
+			continue
+		}
 		runtime.draining.Store(true)
 		stale = append(stale, runtime)
 		delete(m.runtimes, id)
@@ -564,10 +582,25 @@ func (m *PluginManager) Enable(ctx context.Context, id int64, acceptUntested boo
 	if err != nil {
 		return nil, err
 	}
-	if active := m.route.Load(); active != nil && active.pluginID != id {
+	catalogPlugin := isCatalogPlugin(installation.Manifest)
+	if catalogPlugin && rolloutPercent != 100 {
+		return nil, errors.New("catalog plugins require 100 percent rollout")
+	}
+	if catalogPlugin {
+		installations, err := m.repo.List(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, other := range installations {
+			if other != nil && other.ID != id && hasEnabledCatalogBinding(other.Bindings) {
+				return nil, errors.New("another model catalog plugin is already enabled")
+			}
+		}
+	}
+	if active := m.route.Load(); !catalogPlugin && active != nil && active.pluginID != id {
 		return nil, errors.New("OpenAI OAuth 出站能力已有启用插件，请先停用当前插件")
 	}
-	if installation.State == PluginStateEnabled && hasEnabledOpenAIBinding(installation.Bindings) {
+	if installation.State == PluginStateEnabled && (hasEnabledOpenAIBinding(installation.Bindings) || hasEnabledCatalogBinding(installation.Bindings)) {
 		installation.Compatibility = EvaluatePluginCompatibility(installation.Manifest, m.hostInfo)
 		m.mu.Lock()
 		runtime := m.runtimes[id]
@@ -664,7 +697,7 @@ func (m *PluginManager) Delete(ctx context.Context, id int64) error {
 		m.mu.Unlock()
 		return err
 	}
-	if installation.State == PluginStateEnabled || hasEnabledOpenAIBinding(installation.Bindings) {
+	if installation.State == PluginStateEnabled || hasEnabledOpenAIBinding(installation.Bindings) || hasEnabledCatalogBinding(installation.Bindings) {
 		m.mu.Unlock()
 		return errors.New("请先停用插件，再执行卸载")
 	}
@@ -695,6 +728,16 @@ func (m *PluginManager) GetConfig(ctx context.Context, id int64) (json.RawMessag
 }
 
 func (m *PluginManager) SaveConfig(ctx context.Context, id int64, raw json.RawMessage) (json.RawMessage, error) {
+	return m.SaveConfigIfCurrent(ctx, id, raw, "")
+}
+
+var ErrPluginConfigChanged = errors.New("plugin config changed while it was being edited")
+
+func PluginConfigETag(raw json.RawMessage) string {
+	return fmt.Sprintf(`"%x"`, sha256.Sum256(raw))
+}
+
+func (m *PluginManager) SaveConfigIfCurrent(ctx context.Context, id int64, raw json.RawMessage, expectedETag string) (json.RawMessage, error) {
 	m.operationMu.Lock()
 	defer m.operationMu.Unlock()
 	if len(raw) == 0 || len(raw) > pluginConfigMaxBytes || !json.Valid(raw) {
@@ -708,8 +751,15 @@ func (m *PluginManager) SaveConfig(ctx context.Context, id int64, raw json.RawMe
 	if err != nil {
 		return nil, err
 	}
+	if expectedETag != "" && PluginConfigETag(previousConfig) != expectedETag {
+		return nil, ErrPluginConfigChanged
+	}
 	var normalized any
-	if err := json.Unmarshal(raw, &normalized); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	if isCatalogPlugin(installation.Manifest) {
+		decoder.UseNumber()
+	}
+	if err := decoder.Decode(&normalized); err != nil {
 		return nil, err
 	}
 	if normalized == nil {
@@ -746,6 +796,14 @@ func (m *PluginManager) SaveConfig(ctx context.Context, id int64, raw json.RawMe
 			return nil, err
 		}
 	}
+	if isCatalogPlugin(installation.Manifest) {
+		if _, err := modelcatalog.Parse(canonical); err != nil {
+			if !temporary {
+				err = errors.Join(err, m.restoreRuntimeConfig(id, runtime, previousConfig))
+			}
+			return nil, err
+		}
+	}
 	encrypted, err := m.encryptor.Encrypt(string(canonical))
 	if err != nil {
 		if !temporary {
@@ -753,14 +811,28 @@ func (m *PluginManager) SaveConfig(ctx context.Context, id int64, raw json.RawMe
 		}
 		return nil, fmt.Errorf("加密插件配置: %w", err)
 	}
-	if err := m.repo.UpdateConfig(ctx, id, encrypted, installation.BinarySHA256); err != nil {
+	var updateErr error
+	if expectedETag != "" {
+		updateErr = m.repo.UpdateConfigIfCurrent(ctx, id, encrypted, installation.BinarySHA256, installation.ConfigEncrypted)
+	} else {
+		updateErr = m.repo.UpdateConfig(ctx, id, encrypted, installation.BinarySHA256)
+	}
+	if updateErr != nil {
 		if !temporary {
-			err = errors.Join(err, m.restoreRuntimeConfig(id, runtime, previousConfig))
+			if errors.Is(updateErr, ErrPluginConfigChanged) {
+				updateErr = errors.Join(updateErr, m.restoreCurrentPluginConfig(ctx, id, runtime))
+			} else {
+				updateErr = errors.Join(updateErr, m.restoreRuntimeConfig(id, runtime, previousConfig))
+			}
 		}
-		return nil, err
+		return nil, updateErr
 	}
 	if !temporary {
 		runtime.installation.ConfigEncrypted = encrypted
+		if isCatalogPlugin(installation.Manifest) && hasEnabledCatalogBinding(installation.Bindings) {
+			catalog, _ := modelcatalog.Parse(canonical)
+			m.catalog.Store(&pluginCatalogSnapshot{pluginID: id, config: catalog})
+		}
 	}
 	return canonical, nil
 }
@@ -772,12 +844,42 @@ func (m *PluginManager) restoreRuntimeConfig(id int64, runtime *pluginRuntime, p
 	rollbackCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	if err := runtime.validateAndApplyConfig(rollbackCtx, previous); err != nil {
+		if catalog := m.catalog.Load(); catalog != nil && catalog.pluginID == id {
+			m.catalog.Store(nil)
+		}
 		route := m.route.Load()
 		if route != nil && route.pluginID == id && route.runtime == runtime {
 			stateErr := m.markRuntimeUnavailable(route, "插件配置回滚失败: "+err.Error())
 			return errors.Join(err, stateErr)
 		}
 		return err
+	}
+	return nil
+}
+
+func (m *PluginManager) restoreCurrentPluginConfig(ctx context.Context, id int64, runtime *pluginRuntime) error {
+	latest, err := m.repo.GetByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	configJSON, err := m.decryptConfig(latest)
+	if err != nil {
+		return err
+	}
+	if err := m.restoreRuntimeConfig(id, runtime, configJSON); err != nil {
+		return err
+	}
+	runtime.installation.ConfigEncrypted = latest.ConfigEncrypted
+	if isCatalogPlugin(latest.Manifest) {
+		if hasEnabledCatalogBinding(latest.Bindings) {
+			catalog, err := modelcatalog.Parse(configJSON)
+			if err != nil {
+				return err
+			}
+			m.catalog.Store(&pluginCatalogSnapshot{pluginID: id, config: catalog})
+		} else if current := m.catalog.Load(); current != nil && current.pluginID == id {
+			m.catalog.Store(nil)
+		}
 	}
 	return nil
 }
@@ -846,24 +948,25 @@ type pluginUIAssetClaims struct {
 }
 
 // CreateUIAssetToken 创建可跨实例校验的短时能力令牌，令牌不包含管理员凭据。
-func (m *PluginManager) CreateUIAssetToken(ctx context.Context, id int64, ttl time.Duration) (string, time.Time, error) {
+func (m *PluginManager) CreateUIAssetToken(ctx context.Context, id int64, ttl time.Duration) (string, time.Time, int, error) {
 	if ttl <= 0 || ttl > time.Hour {
-		return "", time.Time{}, errors.New("插件 UI 会话有效期无效")
+		return "", time.Time{}, 0, errors.New("插件 UI 会话有效期无效")
 	}
-	if _, err := m.repo.GetByID(ctx, id); err != nil {
-		return "", time.Time{}, err
+	installation, err := m.repo.GetByID(ctx, id)
+	if err != nil {
+		return "", time.Time{}, 0, err
 	}
 	expires := time.Now().Add(ttl)
 	raw, err := json.Marshal(pluginUIAssetClaims{Version: 1, PluginID: id, Expires: expires.Unix()})
 	if err != nil {
-		return "", time.Time{}, err
+		return "", time.Time{}, 0, err
 	}
 	// 加用途前缀，避免复用同一 AES-GCM 密钥的其他密文被当作 UI 能力令牌。
 	encrypted, err := m.encryptor.Encrypt(pluginUITokenPrefix + string(raw))
 	if err != nil {
-		return "", time.Time{}, fmt.Errorf("加密插件 UI 会话: %w", err)
+		return "", time.Time{}, 0, fmt.Errorf("加密插件 UI 会话: %w", err)
 	}
-	return base64.RawURLEncoding.EncodeToString([]byte(encrypted)), expires, nil
+	return base64.RawURLEncoding.EncodeToString([]byte(encrypted)), expires, installation.Manifest.Requires.UIBridge, nil
 }
 
 func (m *PluginManager) ResolveUIAssetToken(token string) (int64, error) {
@@ -1014,6 +1117,9 @@ func (m *PluginManager) prepareRuntime(ctx context.Context, installation *Plugin
 		return nil, err
 	}
 	configJSON, err := m.decryptConfig(installation)
+	if err == nil && isCatalogPlugin(installation.Manifest) {
+		_, err = modelcatalog.Parse(configJSON)
+	}
 	if err == nil && validateConfig {
 		applyCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 		err = runtime.validateAndApplyConfig(applyCtx, configJSON)
@@ -1031,6 +1137,12 @@ func (m *PluginManager) publishRuntimeLocked(installation *PluginInstallation, r
 		old.kill()
 	}
 	m.runtimes[installation.ID] = runtime
+	if isCatalogPlugin(installation.Manifest) {
+		raw, _ := m.decryptConfig(installation)
+		catalog, _ := modelcatalog.Parse(raw)
+		m.catalog.Store(&pluginCatalogSnapshot{pluginID: installation.ID, config: catalog})
+		return
+	}
 	m.route.Store(&pluginRoute{
 		pluginID:       installation.ID,
 		runtime:        runtime,
@@ -1100,6 +1212,9 @@ func (m *PluginManager) removeRuntimeLocked(id int64) *pluginRuntime {
 	delete(m.runtimes, id)
 	if route := m.route.Load(); route != nil && route.pluginID == id {
 		m.route.Store(nil)
+	}
+	if catalog := m.catalog.Load(); catalog != nil && catalog.pluginID == id {
+		m.catalog.Store(nil)
 	}
 	return runtime
 }
