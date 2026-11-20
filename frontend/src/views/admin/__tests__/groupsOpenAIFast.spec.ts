@@ -25,7 +25,8 @@ describe("groupsOpenAIFast", () => {
     for (const locale of [zh, en]) {
       expect(locale.groups.openaiFast).toMatchObject({
         forceUltrafast: expect.stringContaining("ultrafast"),
-        ultrafastHint: expect.stringContaining("service_tier=ultrafast"),
+        // v0.2.23 起 ultrafastHint 改为 GPT-6.2 档位说明，不再含 service_tier=ultrafast 字样
+        ultrafastHint: expect.stringContaining("Ultra Fast"),
       });
       expect(locale.groups.openaiFast.ultrafastHint).toContain("GPT-6 Astra");
       expect(locale.groups.openaiFast.ultrafastHint).toContain("GPT-6.1 Sol");
