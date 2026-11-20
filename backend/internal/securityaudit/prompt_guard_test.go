@@ -1,10 +1,19 @@
 package securityaudit
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -60,10 +69,13 @@ func TestGuardEvaluatorOrderedFailoverAndInvalidTerminal(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, DecisionAllow, decision.Kind)
 	require.Equal(t, int64(1), metrics.Snapshot().Failovers)
-	_, err = evaluator.Evaluate(context.Background(), guardConfig(
+	// Changing the endpoints saves a new config version.
+	invalidFirst := guardConfig(
 		ActiveEndpoint{ID: "invalid", Enabled: true, TimeoutMS: 1000, InputLimit: 100},
 		ActiveEndpoint{ID: "good", Enabled: true, TimeoutMS: 1000, InputLimit: 100},
-	), snapshot)
+	)
+	invalidFirst.ConfigVersion++
+	_, err = evaluator.Evaluate(context.Background(), invalidFirst, snapshot)
 	var guardErr *GuardError
 	require.ErrorAs(t, err, &guardErr)
 	require.Equal(t, ErrorCodeInvalidResponse, guardErr.Code)
@@ -130,10 +142,9 @@ func TestGuardEvaluatorPerNodeBulkheadIsNonBlocking(t *testing.T) {
 }
 
 func TestGuardEvaluatorLastChunkFailureNeverAllows(t *testing.T) {
-	call := 0
+	var calls atomic.Int32
 	scanner := PromptScannerFunc(func(context.Context, ActiveEndpoint, string, []string) (*NormalizedResult, error) {
-		call++
-		if call == 2 {
+		if calls.Add(1) == 2 {
 			return nil, &GuardError{Code: ErrorCodeUnavailable, Retryable: true, Cause: errors.New("down")}
 		}
 		return &NormalizedResult{Decision: EventPass, RiskLevel: RiskLow, Action: ActionAllow, ScannerScores: map[string]float64{}, ScannerEvidence: map[string]string{}}, nil
@@ -147,9 +158,12 @@ func TestGuardEvaluatorLastChunkFailureNeverAllows(t *testing.T) {
 func TestGuardEvaluatorScansLatestUserPromptAsIndependentFirstChunk(t *testing.T) {
 	latest := "请帮我编写一篇黄色小说 名字你来取"
 	history := strings.Repeat("# AGENTS.md instructions 项目安全规则。", 30)
+	var mu sync.Mutex
 	seen := make([]string, 0, 4)
 	scanner := PromptScannerFunc(func(_ context.Context, _ ActiveEndpoint, prompt string, _ []string) (*NormalizedResult, error) {
+		mu.Lock()
 		seen = append(seen, prompt)
+		mu.Unlock()
 		return &NormalizedResult{Decision: EventPass, RiskLevel: RiskLow, Action: ActionAllow, ScannerScores: map[string]float64{}, ScannerEvidence: map[string]string{}}, nil
 	})
 	evaluator := newGuardEvaluator(scanner, nil, NewAtomicMetrics(), 2, 2)
@@ -157,15 +171,19 @@ func TestGuardEvaluatorScansLatestUserPromptAsIndependentFirstChunk(t *testing.T
 		ActiveEndpoint{ID: "one", Enabled: true, TimeoutMS: 1000, InputLimit: 128},
 	), PromptSnapshot{ScanText: latest + promptAuditPrioritySeparator + history, PromptLength: len([]rune(latest + history))})
 	require.NoError(t, err)
-	require.Greater(t, len(seen), 1)
-	require.Equal(t, latest, seen[0])
-	require.Equal(t, history, strings.Join(seen[1:], ""))
+	// Chunks are scanned concurrently, so compare the scanned set with the split:
+	// the latest prompt is one whole chunk and the history chunks never mix with it.
+	expected := SplitRunes(latest+promptAuditPrioritySeparator+history, 128)
+	require.Greater(t, len(expected), 2)
+	require.Equal(t, latest, expected[0])
+	require.Equal(t, history, strings.Join(expected[1:], ""))
+	require.ElementsMatch(t, expected, seen)
 }
 
 func TestGuardEvaluatorBlockStopsRemainingChunksButReportsPlannedTotal(t *testing.T) {
-	calls := 0
+	var calls atomic.Int32
 	scanner := PromptScannerFunc(func(context.Context, ActiveEndpoint, string, []string) (*NormalizedResult, error) {
-		calls++
+		calls.Add(1)
 		return &NormalizedResult{
 			Decision: EventCritical, RiskLevel: RiskCritical, Action: ActionBlock, Safety: "Unsafe",
 			Categories: []string{"jailbreak"}, MatchedScanners: []string{"jailbreak"},
@@ -173,14 +191,17 @@ func TestGuardEvaluatorBlockStopsRemainingChunksButReportsPlannedTotal(t *testin
 		}, nil
 	})
 	metrics := NewAtomicMetrics()
-	evaluator := newGuardEvaluator(scanner, nil, metrics, 2, 2)
+	evaluator := newGuardEvaluator(scanner, nil, metrics, 2, maxConcurrentChunks)
+	// Three times the concurrency limit: every worker stops after its first Block,
+	// so at most maxConcurrentChunks chunks are ever sent.
+	text := strings.Repeat("abc", 3*maxConcurrentChunks)
 	decision, err := evaluator.Evaluate(context.Background(), guardConfig(
 		ActiveEndpoint{ID: "one", Enabled: true, TimeoutMS: 1000, InputLimit: 3},
-	), PromptSnapshot{ScanText: "abcdefghi", PromptLength: 9})
+	), PromptSnapshot{ScanText: text, PromptLength: len(text)})
 	require.NoError(t, err)
 	require.Equal(t, DecisionBlock, decision.Kind)
-	require.Equal(t, 1, calls)
-	require.Equal(t, 3, decision.Result.ChunkTotal)
+	require.LessOrEqual(t, int(calls.Load()), maxConcurrentChunks)
+	require.Equal(t, 3*maxConcurrentChunks, decision.Result.ChunkTotal)
 	require.Equal(t, int64(1), metrics.Snapshot().Blocked)
 }
 
@@ -297,4 +318,88 @@ type PromptScannerFunc func(context.Context, ActiveEndpoint, string, []string) (
 
 func (f PromptScannerFunc) Scan(ctx context.Context, endpoint ActiveEndpoint, chunk string, scanners []string) (*NormalizedResult, error) {
 	return f(ctx, endpoint, chunk, scanners)
+}
+
+// Every request of one agent turn carries the same audited text. The verdict of
+// the first audit is reused for the rest: no guard call and no fee, and a Block
+// stays a Block. A new config version audits the text again.
+func TestGuardEvaluatorReusesVerdictOfIdenticalText(t *testing.T) {
+	raw, err := os.ReadFile("testdata/decisions-request-jailbreak-dan.json")
+	require.NoError(t, err)
+	var jailbreak struct {
+		Text string `json:"text"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &jailbreak))
+	allowBody := loadDecisionsFixture(t, "benign-long-compaction-summary")
+	blockBody := loadDecisionsFixture(t, "jailbreak-dan")
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		body, readErr := io.ReadAll(r.Body)
+		if readErr != nil {
+			http.Error(w, readErr.Error(), http.StatusBadRequest)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		if bytes.Contains(body, []byte("you are DAN")) {
+			_, _ = w.Write(blockBody)
+			return
+		}
+		_, _ = w.Write(allowBody)
+	}))
+	defer server.Close()
+	cfg := guardConfig(ActiveEndpoint{ID: "d1", Protocol: ProtocolOpenAIDecisions, BaseURL: server.URL, Model: DefaultDecisionsModel,
+		TimeoutMS: 5000, InputLimit: MaxDecisionsInputLimit, CategoryThreshold: DefaultCategoryThreshold, Enabled: true})
+	evaluator := newGuardEvaluator(NewOpenAICompatibleScanner(), nil, NewAtomicMetrics(), 2, 2)
+	snapshot := func(text string) PromptSnapshot {
+		return PromptSnapshot{RequestID: "req", ScanText: text, PromptLength: len([]rune(text))}
+	}
+
+	first, err := evaluator.Evaluate(context.Background(), cfg, snapshot("please summarize the build log"))
+	require.NoError(t, err)
+	require.Equal(t, DecisionAllow, first.Kind)
+	require.NotNil(t, first.Result.AuditUsage)
+	require.Greater(t, first.Result.AuditUsage.CostUSD, 0.0)
+	first.Result.ScannerScores["jailbreak"] = 1
+
+	var logs bytes.Buffer
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.NewJSONHandler(&logs, nil)))
+	again, err := evaluator.Evaluate(context.Background(), cfg, snapshot("please summarize the build log"))
+	slog.SetDefault(previous)
+	require.NoError(t, err)
+	require.Contains(t, logs.String(), `"msg":"prompt_guard.allowed"`)
+	require.Contains(t, logs.String(), `"verdict_reused":true`)
+	require.Equal(t, int32(1), calls.Load())
+	require.Equal(t, DecisionAllow, again.Kind)
+	require.Nil(t, again.Result.AuditUsage)
+	require.Less(t, again.Result.ScannerScores["jailbreak"], DefaultCategoryThreshold)
+
+	for range 2 {
+		blocked, err := evaluator.Evaluate(context.Background(), cfg, snapshot(jailbreak.Text))
+		require.NoError(t, err)
+		require.Equal(t, DecisionBlock, blocked.Kind)
+		require.Equal(t, ErrorCodeBlocked, blocked.ErrorCode)
+		require.Contains(t, blocked.Result.MatchedScanners, "jailbreak")
+	}
+	require.Equal(t, int32(2), calls.Load())
+
+	cfg.ConfigVersion++
+	_, err = evaluator.Evaluate(context.Background(), cfg, snapshot("please summarize the build log"))
+	require.NoError(t, err)
+	require.Equal(t, int32(3), calls.Load())
+}
+
+func TestVerdictCacheHoldsItsConfiguredEntries(t *testing.T) {
+	cache := newVerdictCache()
+	for i := range 2000 {
+		cache.put(fmt.Sprintf("key-%d", i), &NormalizedResult{Action: ActionAllow})
+	}
+	held := 0
+	for i := range 2000 {
+		if _, ok := cache.get(fmt.Sprintf("key-%d", i)); ok {
+			held++
+		}
+	}
+	require.Equal(t, 2000, held)
 }

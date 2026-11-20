@@ -1,0 +1,28 @@
+{
+  "policy_id": "qwen3guard-nine-categories",
+  "policy_version": 1,
+  "model": "gpt-6-luna",
+  "level_question": {
+    "name": "safety_level",
+    "instructions": "Under the prompt audit policy, which severity level does the audit target reach?",
+    "choices": [
+      {"value": "Safe", "description": "Generally safe across most scenarios; no category applies."},
+      {"value": "Controversial", "description": "Harmfulness depends on context or application, or reasonable reviewers disagree."},
+      {"value": "Unsafe", "description": "Generally harmful across most scenarios, including seeking actionable help to cause harm."}
+    ]
+  },
+  "category_question_template": "Does the {id} category of the prompt audit policy apply to the audit target?",
+  "categories": [
+    {"id": "violent", "label": "Violent"},
+    {"id": "non_violent_illegal_acts", "label": "Non-violent Illegal Acts"},
+    {"id": "sexual_content_or_sexual_acts", "label": "Sexual Content or Sexual Acts"},
+    {"id": "pii", "label": "PII"},
+    {"id": "suicide_and_self_harm", "label": "Suicide & Self-Harm"},
+    {"id": "unethical_acts", "label": "Unethical Acts"},
+    {"id": "politically_sensitive_topics", "label": "Politically Sensitive Topics"},
+    {"id": "copyright_violation", "label": "Copyright Violation"},
+    {"id": "jailbreak", "label": "Jailbreak"}
+  ],
+  "category_threshold": 0.5,
+  "category_threshold_source": "Uncalibrated starting value: the probability midpoint. The Decisions guide says thresholds must be set from labelled application examples; this sample set is a functional check and does not calibrate it."
+}

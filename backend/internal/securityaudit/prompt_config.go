@@ -60,7 +60,9 @@ type StorageEndpoint struct {
 	TokenCiphertext string `json:"token_ciphertext,omitempty"`
 	TimeoutMS       int    `json:"timeout_ms"`
 	InputLimit      int    `json:"input_limit"`
-	Enabled         bool   `json:"enabled"`
+	// CategoryThreshold is the Decisions category probability that counts as a hit.
+	CategoryThreshold float64 `json:"category_threshold,omitempty"`
+	Enabled           bool    `json:"enabled"`
 }
 
 type storageConfig struct {
@@ -82,15 +84,16 @@ type storageConfig struct {
 }
 
 type ActiveEndpoint struct {
-	ID         string
-	Name       string
-	Protocol   string
-	BaseURL    string
-	Model      string
-	Token      string
-	TimeoutMS  int
-	InputLimit int
-	Enabled    bool
+	ID                string
+	Name              string
+	Protocol          string
+	BaseURL           string
+	Model             string
+	Token             string
+	TimeoutMS         int
+	InputLimit        int
+	CategoryThreshold float64
+	Enabled           bool
 	// TokenInvalid marks an endpoint whose persisted token ciphertext cannot be
 	// decrypted with the current encryption key (key changed or auto-generated
 	// on restart). The endpoint is kept visible for admins but excluded from
@@ -118,16 +121,17 @@ type ActiveConfig struct {
 }
 
 type PublicEndpoint struct {
-	ID          string `json:"id"`
-	Name        string `json:"name"`
-	Protocol    string `json:"protocol"`
-	BaseURL     string `json:"base_url"`
-	Model       string `json:"model"`
-	TimeoutMS   int    `json:"timeout_ms"`
-	InputLimit  int    `json:"input_limit"`
-	Enabled     bool   `json:"enabled"`
-	HasToken    bool   `json:"has_token"`
-	TokenStatus string `json:"token_status"`
+	ID                string  `json:"id"`
+	Name              string  `json:"name"`
+	Protocol          string  `json:"protocol"`
+	BaseURL           string  `json:"base_url"`
+	Model             string  `json:"model"`
+	TimeoutMS         int     `json:"timeout_ms"`
+	InputLimit        int     `json:"input_limit"`
+	CategoryThreshold float64 `json:"category_threshold"`
+	Enabled           bool    `json:"enabled"`
+	HasToken          bool    `json:"has_token"`
+	TokenStatus       string  `json:"token_status"`
 }
 
 type PublicConfig struct {
@@ -150,16 +154,17 @@ type PublicConfig struct {
 }
 
 type UpdateEndpoint struct {
-	ID         string `json:"id" binding:"required"`
-	Name       string `json:"name" binding:"required"`
-	Protocol   string `json:"protocol"`
-	BaseURL    string `json:"base_url" binding:"required"`
-	Model      string `json:"model"`
-	Token      string `json:"token,omitempty"`
-	ClearToken bool   `json:"clear_token"`
-	TimeoutMS  int    `json:"timeout_ms"`
-	InputLimit int    `json:"input_limit"`
-	Enabled    bool   `json:"enabled"`
+	ID                string  `json:"id" binding:"required"`
+	Name              string  `json:"name" binding:"required"`
+	Protocol          string  `json:"protocol"`
+	BaseURL           string  `json:"base_url" binding:"required"`
+	Model             string  `json:"model"`
+	Token             string  `json:"token,omitempty"`
+	ClearToken        bool    `json:"clear_token"`
+	TimeoutMS         int     `json:"timeout_ms"`
+	InputLimit        int     `json:"input_limit"`
+	CategoryThreshold float64 `json:"category_threshold"`
+	Enabled           bool    `json:"enabled"`
 }
 
 type UpdateConfigRequest struct {
@@ -238,12 +243,15 @@ func normalizeStorageConfig(cfg *storageConfig) {
 		ep.Name = strings.TrimSpace(ep.Name)
 		ep.Protocol = strings.TrimSpace(ep.Protocol)
 		if ep.Protocol == "" {
-			ep.Protocol = "openai_compatible"
+			ep.Protocol = ProtocolOpenAICompatible
 		}
 		ep.BaseURL = strings.TrimSpace(ep.BaseURL)
 		ep.Model = strings.TrimSpace(ep.Model)
 		if ep.Model == "" {
-			ep.Model = DefaultGuardModel
+			ep.Model = defaultModelForProtocol(ep.Protocol)
+		}
+		if ep.Protocol == ProtocolOpenAIDecisions && ep.CategoryThreshold == 0 {
+			ep.CategoryThreshold = DefaultCategoryThreshold
 		}
 		if ep.TimeoutMS == 0 {
 			ep.TimeoutMS = DefaultTimeoutMS
@@ -283,8 +291,11 @@ func validateStorageConfig(cfg storageConfig) error {
 			return infraerrors.BadRequest("prompt_audit_duplicate_endpoint", "审计节点 ID 不能重复")
 		}
 		seen[ep.ID] = struct{}{}
-		if ep.Protocol != "openai_compatible" {
-			return infraerrors.BadRequest("prompt_audit_invalid_endpoint_protocol", "审计节点仅支持 OpenAI 兼容协议")
+		if ep.Protocol != ProtocolOpenAICompatible && ep.Protocol != ProtocolOpenAIDecisions {
+			return infraerrors.BadRequest("prompt_audit_invalid_endpoint_protocol", "审计节点协议仅支持 OpenAI 兼容（Qwen3Guard）或 OpenAI Decisions")
+		}
+		if ep.Protocol == ProtocolOpenAIDecisions && !(ep.CategoryThreshold > 0 && ep.CategoryThreshold <= 1) {
+			return infraerrors.BadRequest("prompt_audit_invalid_category_threshold", "类别阈值必须大于 0 且不超过 1")
 		}
 		if _, err := NormalizeBaseURL(ep.BaseURL); err != nil {
 			return err
@@ -292,8 +303,8 @@ func validateStorageConfig(cfg storageConfig) error {
 		if ep.TimeoutMS < MinTimeoutMS || ep.TimeoutMS > MaxTimeoutMS {
 			return infraerrors.BadRequest("prompt_audit_invalid_timeout", "审计节点超时超出允许范围")
 		}
-		if ep.InputLimit < MinInputLimit || ep.InputLimit > MaxInputLimit {
-			return infraerrors.BadRequest("prompt_audit_invalid_input_limit", "审计节点输入上限超出允许范围")
+		if err := validateInputLimit(ep.Protocol, ep.InputLimit); err != nil {
+			return err
 		}
 		if ep.Enabled {
 			enabled++
@@ -337,9 +348,22 @@ func validateUpdateConfigRequest(req UpdateConfigRequest) error {
 		if endpoint.TimeoutMS < MinTimeoutMS || endpoint.TimeoutMS > MaxTimeoutMS {
 			return infraerrors.BadRequest("prompt_audit_invalid_timeout", "审计节点超时超出允许范围")
 		}
-		if endpoint.InputLimit < MinInputLimit || endpoint.InputLimit > MaxInputLimit {
-			return infraerrors.BadRequest("prompt_audit_invalid_input_limit", "审计节点输入上限超出允许范围")
+		if err := validateInputLimit(strings.TrimSpace(endpoint.Protocol), endpoint.InputLimit); err != nil {
+			return err
 		}
+	}
+	return nil
+}
+
+// validateInputLimit checks a node's characters per request against its
+// protocol: a Decisions request carries far more text than a Qwen3Guard one.
+func validateInputLimit(protocol string, limit int) error {
+	maxLimit := MaxInputLimit
+	if protocol == ProtocolOpenAIDecisions {
+		maxLimit = MaxDecisionsInputLimit
+	}
+	if limit < MinInputLimit || limit > maxLimit {
+		return infraerrors.BadRequest("prompt_audit_invalid_input_limit", fmt.Sprintf("审计节点输入上限应在 %d 到 %d 个字符之间", MinInputLimit, maxLimit))
 	}
 	return nil
 }
@@ -406,7 +430,7 @@ func PublicFromStorage(cfg storageConfig, riskControlEnabled bool, invalidTokenE
 		}
 		endpoints = append(endpoints, PublicEndpoint{
 			ID: ep.ID, Name: ep.Name, Protocol: ep.Protocol, BaseURL: ep.BaseURL,
-			Model: ep.Model, TimeoutMS: ep.TimeoutMS, InputLimit: ep.InputLimit,
+			Model: ep.Model, TimeoutMS: ep.TimeoutMS, InputLimit: ep.InputLimit, CategoryThreshold: ep.CategoryThreshold,
 			Enabled: ep.Enabled, HasToken: hasToken, TokenStatus: status,
 		})
 	}
@@ -451,7 +475,7 @@ func ActiveFromStorage(cfg storageConfig, riskControlEnabled bool, encryptor Sec
 		}
 		active.Endpoints = append(active.Endpoints, ActiveEndpoint{
 			ID: ep.ID, Name: ep.Name, Protocol: ep.Protocol, BaseURL: ep.BaseURL, Model: ep.Model,
-			Token: token, TimeoutMS: ep.TimeoutMS, InputLimit: ep.InputLimit,
+			Token: token, TimeoutMS: ep.TimeoutMS, InputLimit: ep.InputLimit, CategoryThreshold: ep.CategoryThreshold,
 			Enabled: ep.Enabled && !tokenInvalid, TokenInvalid: tokenInvalid,
 		})
 	}
@@ -509,4 +533,11 @@ func canonicalScannerIDs(values []string) []string {
 		}
 	}
 	return result
+}
+
+func defaultModelForProtocol(protocol string) string {
+	if protocol == ProtocolOpenAIDecisions {
+		return DefaultDecisionsModel
+	}
+	return DefaultGuardModel
 }

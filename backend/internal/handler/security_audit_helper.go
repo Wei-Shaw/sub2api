@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"crypto/sha256"
 	"net/http"
 	"strings"
@@ -48,24 +49,93 @@ func (h *GatewayHandler) checkSecurityAudit(c *gin.Context, reqLog *zap.Logger, 
 	if h == nil {
 		return nil
 	}
-	return runSecurityAudit(c, reqLog, h.securityAuditCoordinator, h.contentModerationService, apiKey, subject, protocol, model, body, "http")
+	return runSecurityAudit(c, reqLog, h.securityAuditCoordinator, h.contentModerationService, h.promptAuditFeeSettler(c, reqLog, apiKey), apiKey, subject, protocol, model, body, "http")
 }
 
 func (h *OpenAIGatewayHandler) checkSecurityAudit(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol, model string, body []byte) *securityaudit.Decision {
 	if h == nil {
 		return nil
 	}
-	return runSecurityAudit(c, reqLog, h.securityAuditCoordinator, h.contentModerationService, apiKey, subject, protocol, model, body, "http")
+	return runSecurityAudit(c, reqLog, h.securityAuditCoordinator, h.contentModerationService, h.promptAuditFeeSettler(c, reqLog, apiKey), apiKey, subject, protocol, model, body, "http")
 }
 
 func (h *OpenAIGatewayHandler) checkSecurityAuditStage(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol, model string, body []byte, stage string) *securityaudit.Decision {
 	if h == nil {
 		return nil
 	}
-	return runSecurityAudit(c, reqLog, h.securityAuditCoordinator, h.contentModerationService, apiKey, subject, protocol, model, body, stage)
+	return runSecurityAudit(c, reqLog, h.securityAuditCoordinator, h.contentModerationService, h.promptAuditFeeSettler(c, reqLog, apiKey), apiKey, subject, protocol, model, body, stage)
 }
 
-func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securityaudit.Coordinator, legacy *service.ContentModerationService, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol, model string, body []byte, stage string) *securityaudit.Decision {
+// promptAuditFeeSettler bills the fee of an audit that just ran (a replayed
+// WebSocket decision made no guard call and is not billed again).
+type promptAuditFeeSettler func(request securityaudit.Request, decision securityaudit.Decision)
+
+type promptAuditFeeCharger func(context.Context, service.PromptAuditFeeChargeInput) error
+
+func (h *GatewayHandler) promptAuditFeeSettler(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey) promptAuditFeeSettler {
+	var charger promptAuditFeeCharger
+	if h.gatewayService != nil {
+		charger = h.gatewayService.ChargePromptAuditFee
+	}
+	return func(request securityaudit.Request, decision securityaudit.Decision) {
+		settlePromptAuditFee(c, reqLog, apiKey, h.apiKeyService, charger, request, decision)
+	}
+}
+
+func (h *OpenAIGatewayHandler) promptAuditFeeSettler(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey) promptAuditFeeSettler {
+	var charger promptAuditFeeCharger
+	if h.gatewayService != nil {
+		charger = h.gatewayService.ChargePromptAuditFee
+	}
+	return func(request securityaudit.Request, decision securityaudit.Decision) {
+		settlePromptAuditFee(c, reqLog, apiKey, h.apiKeyService, charger, request, decision)
+	}
+}
+
+// settlePromptAuditFee bills the guard's cost to the user at list price. An
+// allowed request carries the fee to its usage record through the request's
+// PromptAuditCharge, which bills it by itself when the request ends without a
+// usage record; a request the audit stops is charged right away.
+func settlePromptAuditFee(c *gin.Context, reqLog *zap.Logger, apiKey *service.APIKey, apiKeyService service.APIKeyQuotaUpdater, charger promptAuditFeeCharger, request securityaudit.Request, decision securityaudit.Decision) {
+	if decision.Prompt == nil || decision.Prompt.Result == nil || decision.Prompt.Result.AuditUsage == nil {
+		return
+	}
+	cost := decision.Prompt.Result.AuditUsage.CostUSD
+	if cost <= 0 {
+		return
+	}
+	ctx := c.Request.Context()
+	charge := service.PromptAuditChargeFromContext(ctx)
+	var chargeFee func(context.Context, float64) error
+	if charger != nil && apiKey != nil {
+		subscription, _ := middleware2.GetSubscriptionFromContext(c)
+		platform := service.QuotaPlatform(ctx, apiKey)
+		chargeFee = func(ctx context.Context, cost float64) error {
+			return charger(ctx, service.PromptAuditFeeChargeInput{
+				RequestID: request.RequestID, Charge: charge, Cost: cost, APIKey: apiKey, User: apiKey.User,
+				Subscription: subscription, APIKeyService: apiKeyService, Platform: platform,
+			})
+		}
+	}
+	if decision.AllowNextStage {
+		if charge == nil {
+			if reqLog != nil {
+				reqLog.Error("security_audit.fee_without_request_charge", zap.String("request_id", request.RequestID), zap.Float64("cost", cost))
+			}
+			return
+		}
+		charge.Add(cost, chargeFee)
+		return
+	}
+	if chargeFee == nil {
+		return
+	}
+	if err := chargeFee(ctx, cost); err != nil && reqLog != nil {
+		reqLog.Error("security_audit.blocked_fee_charge_failed", zap.String("request_id", request.RequestID), zap.Float64("cost", cost), zap.Error(err))
+	}
+}
+
+func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securityaudit.Coordinator, legacy *service.ContentModerationService, settle promptAuditFeeSettler, apiKey *service.APIKey, subject middleware2.AuthSubject, protocol, model string, body []byte, stage string) *securityaudit.Decision {
 	if c == nil || c.Request == nil {
 		return nil
 	}
@@ -108,6 +178,9 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 			}
 			logSecurityAuditStart(reqLog, request, len(body), false)
 			decision := coordinator.Check(c.Request.Context(), request)
+			if settle != nil {
+				settle(request, decision)
+			}
 			if decision.Kind == securityaudit.DecisionAllow {
 				c.Set(securityAuditWSDedupeContextKey, securityAuditWSDedupeEntry{
 					stage: request.Stage, turn: turnNo, bodyHash: bodyHash, decision: decision,
@@ -119,6 +192,9 @@ func runSecurityAudit(c *gin.Context, reqLog *zap.Logger, coordinator *securitya
 	}
 	logSecurityAuditStart(reqLog, request, len(body), false)
 	decision := coordinator.Check(c.Request.Context(), request)
+	if settle != nil {
+		settle(request, decision)
+	}
 	if decision.AllowNextStage && cacheCompletion {
 		c.Set(securityAuditCompletedContextKey, true)
 	}

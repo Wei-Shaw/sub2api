@@ -80,7 +80,7 @@ import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import type { PromptAuditEvent, PromptIssueSummary } from '../types'
-import { SCANNER_CATALOG } from '../viewModel'
+import { DECISIONS_REFUSAL_CATEGORY, SCANNER_CATALOG } from '../viewModel'
 
 const props = defineProps<{ show: boolean; event: PromptAuditEvent | null; loading: boolean }>()
 defineEmits<{ (event: 'close'): void }>()
@@ -103,6 +103,7 @@ function formatDecisionAction(decision: string, action: string): string {
   return `${decisionLabel} · ${actionLabel}`
 }
 function translateCategory(category: string): string {
+  if (category === DECISIONS_REFUSAL_CATEGORY) return t('admin.promptAudit.decisionsRefusal')
   return SCANNER_CATALOG.some((scanner) => scanner.id === category)
     ? t(`admin.promptAudit.scanners.${category}`)
     : category

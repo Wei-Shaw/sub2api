@@ -56,6 +56,7 @@
           <div class="min-w-0 xl:block">
             <p class="mb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 xl:hidden">{{ t('admin.promptAudit.pool.model') }}</p>
             <p class="truncate text-sm font-medium text-gray-700 dark:text-dark-200" :title="endpoint.model">{{ endpoint.model }}</p>
+            <p class="mt-0.5 truncate text-[11px] text-gray-500 dark:text-dark-400">{{ protocolLabel(endpoint) }}</p>
           </div>
 
           <div>
@@ -103,6 +104,13 @@
           <input v-model="editing.id" class="input w-full" required :disabled="editingIndex >= 0" :aria-label="t('admin.promptAudit.pool.id')" />
         </label>
         <label class="space-y-1 text-sm text-gray-700 dark:text-dark-200 sm:col-span-2">
+          <span>{{ t('admin.promptAudit.pool.protocol') }}</span>
+          <select :value="editing.protocol" class="input w-full" data-test="endpoint-protocol" :aria-label="t('admin.promptAudit.pool.protocol')" @change="changeProtocol(($event.target as HTMLSelectElement).value as PromptAuditProtocol)">
+            <option value="openai_compatible">{{ t('admin.promptAudit.pool.protocolQwen') }}</option>
+            <option value="openai_decisions">{{ t('admin.promptAudit.pool.protocolDecisions') }}</option>
+          </select>
+        </label>
+        <label class="space-y-1 text-sm text-gray-700 dark:text-dark-200 sm:col-span-2">
           <span>{{ t('admin.promptAudit.pool.baseUrl') }}</span>
           <input v-model="editing.base_url" class="input w-full" required inputmode="url" :aria-label="t('admin.promptAudit.pool.baseUrl')" />
         </label>
@@ -125,7 +133,12 @@
         </label>
         <label class="space-y-1 text-sm text-gray-700 dark:text-dark-200">
           <span>{{ t('admin.promptAudit.pool.inputLimit') }}</span>
-          <input v-model.number="editing.input_limit" class="input w-full" type="number" min="128" max="100000" required :aria-label="t('admin.promptAudit.pool.inputLimit')" />
+          <input v-model.number="editing.input_limit" class="input w-full" type="number" min="128" :max="maxInputLimitForProtocol(editing.protocol)" required :aria-label="t('admin.promptAudit.pool.inputLimit')" />
+        </label>
+        <label v-if="editing.protocol === 'openai_decisions'" class="space-y-1 text-sm text-gray-700 dark:text-dark-200 sm:col-span-2">
+          <span>{{ t('admin.promptAudit.pool.categoryThreshold') }}</span>
+          <input v-model.number="editing.category_threshold" class="input w-full" type="number" min="0.01" max="1" step="0.01" required data-test="endpoint-category-threshold" :aria-label="t('admin.promptAudit.pool.categoryThreshold')" />
+          <span class="block text-xs text-gray-500 dark:text-dark-400">{{ t('admin.promptAudit.pool.categoryThresholdHint') }}</span>
         </label>
       </form>
       <template #footer>
@@ -142,8 +155,15 @@
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
-import type { PromptAuditEndpointDraft, PromptProbeResult } from '../types'
-import { cloneData, createDefaultEndpoint } from '../viewModel'
+import type { PromptAuditEndpointDraft, PromptAuditProtocol, PromptProbeResult } from '../types'
+import {
+  cloneData,
+  createDefaultEndpoint,
+  DEFAULT_CATEGORY_THRESHOLD,
+  DEFAULT_DECISIONS_BASE_URL,
+  defaultModelForProtocol,
+  maxInputLimitForProtocol,
+} from '../viewModel'
 
 const props = defineProps<{
   endpoints: PromptAuditEndpointDraft[]
@@ -165,6 +185,22 @@ function openCreate() {
 function openEdit(endpoint: PromptAuditEndpointDraft) {
   editingIndex.value = props.endpoints.findIndex((item) => item.id === endpoint.id)
   editing.value = cloneData(endpoint)
+}
+function protocolLabel(endpoint: PromptAuditEndpointDraft): string {
+  return endpoint.protocol === 'openai_decisions' ? t('admin.promptAudit.pool.protocolDecisions') : t('admin.promptAudit.pool.protocolQwen')
+}
+// Switching protocol replaces values that were still the previous protocol's defaults.
+function changeProtocol(protocol: PromptAuditProtocol) {
+  const current = editing.value
+  if (!current || current.protocol === protocol) return
+  const blankDraft = createDefaultEndpoint()
+  if (!current.model.trim() || current.model === defaultModelForProtocol(current.protocol)) current.model = defaultModelForProtocol(protocol)
+  if (protocol === 'openai_decisions') {
+    if (!current.base_url.trim() || current.base_url === blankDraft.base_url) current.base_url = DEFAULT_DECISIONS_BASE_URL
+    if (!(current.category_threshold > 0)) current.category_threshold = DEFAULT_CATEGORY_THRESHOLD
+    current.input_limit = Math.min(current.input_limit, maxInputLimitForProtocol(protocol))
+  }
+  current.protocol = protocol
 }
 function closeEditor() {
   editing.value = null
