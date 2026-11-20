@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"strconv"
@@ -45,6 +46,8 @@ const (
 	OpsStreamErrorKey  = "ops_stream_error"
 	OpsStreamErrorsKey = "ops_stream_errors"
 	OpsStreamTurnKey   = "ops_stream_turn"
+
+	opsForwardedTerminalFailureKey = "ops_forwarded_terminal_failure"
 
 	// Client-side configuration denials should remain visible in ops_error_logs,
 	// but should be excluded from SLA/error-rate calculations.
@@ -229,6 +232,29 @@ func BeginOpsStreamTurn(c *gin.Context, turn int) {
 	c.Set(OpsUpstreamStatusCodeKey, 0)
 	c.Set(OpsUpstreamErrorMessageKey, "")
 	c.Set(OpsUpstreamErrorDetailKey, "")
+}
+
+// OpsForwardedTerminalFailure holds the final upstream SSE failure forwarded over HTTP.
+type OpsForwardedTerminalFailure struct {
+	EventType string
+	Payload   []byte
+}
+
+// SetOpsForwardedTerminalFailure keeps the first forwarded failure, preferring response.failed over error.
+func SetOpsForwardedTerminalFailure(c *gin.Context, eventType string, payload []byte) {
+	if prior, ok := GetOpsForwardedTerminalFailure(c); ok && (prior.EventType != "error" || eventType != "response.failed") {
+		return
+	}
+	c.Set(opsForwardedTerminalFailureKey, OpsForwardedTerminalFailure{
+		EventType: eventType,
+		Payload:   bytes.Clone(payload),
+	})
+}
+
+func GetOpsForwardedTerminalFailure(c *gin.Context) (OpsForwardedTerminalFailure, bool) {
+	value, _ := c.Get(opsForwardedTerminalFailureKey)
+	failure, ok := value.(OpsForwardedTerminalFailure)
+	return failure, ok
 }
 
 // MarkOpsStreamError 记录一次就地 SSE 错误，供 ops 日志采集。

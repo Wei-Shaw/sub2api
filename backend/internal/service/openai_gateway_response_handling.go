@@ -143,6 +143,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		}
 		return int64(bufferedWriter.Buffered())
 	}
+	var pendingTerminalEventType, pendingTerminalData string
 	flushBuffered := func() error {
 		if firstOutputStage != nil && !firstOutputStage.closed {
 			if err := firstOutputStage.CommitTo(w); err != nil {
@@ -154,6 +155,10 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			}
 		}
 		flusher.Flush()
+		if pendingTerminalEventType != "" {
+			SetOpsForwardedTerminalFailure(c, pendingTerminalEventType, []byte(pendingTerminalData))
+			pendingTerminalEventType, pendingTerminalData = "", ""
+		}
 		return nil
 	}
 
@@ -765,6 +770,11 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 					handlePendingWriteError(err)
 				} else {
 					eventInProgress = true
+					if stageFirstOutput && forceFlushFailedEvent {
+						// Wait for the staged event to reach the client before recording it.
+						pendingTerminalEventType = eventType
+						pendingTerminalData, _ = extractOpenAISSEDataLine(line)
+					}
 				}
 			}
 
