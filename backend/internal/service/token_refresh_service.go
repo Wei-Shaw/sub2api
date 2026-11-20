@@ -1196,6 +1196,8 @@ func (s *TokenRefreshService) postRefreshActions(ctx context.Context, account *A
 		}
 	}
 	s.postRefreshStateSync(ctx, account)
+	// 刷新成功是恢复信号：若账号此前因错误被系统自动暂停，恢复其调度
+	resumeSchedulingAfterRecovery(ctx, s.accountRepo, account.ID, "token_refresh_success")
 	// OpenAI OAuth: 刷新成功后，检查是否已设置 privacy_mode，未设置则尝试关闭训练数据共享
 	s.ensureOpenAIPrivacy(ctx, account)
 	// Antigravity OAuth: 刷新成功后，检查是否已设置 privacy_mode，未设置则调用 setUserSettings
