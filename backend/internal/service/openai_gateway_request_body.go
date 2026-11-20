@@ -1869,6 +1869,24 @@ func normalizeOpenAIPassthroughOAuthBody(body []byte, compact bool) ([]byte, boo
 		}
 	}
 
+	if !compact {
+		// Legacy compatibility bridges emitted generic item_* reasoning IDs,
+		// which the Codex backend rejects. Clear only invalid reasoning IDs;
+		// passthrough must preserve native rs_* IDs and all other item fields.
+		for i, item := range gjson.GetBytes(normalized, "input").Array() {
+			id := item.Get("id")
+			if item.Get("type").String() != "reasoning" || !id.Exists() || strings.HasPrefix(id.String(), "rs_") {
+				continue
+			}
+			next, err := sjson.DeleteBytes(normalized, fmt.Sprintf("input.%d.id", i))
+			if err != nil {
+				return body, false, fmt.Errorf("normalize passthrough body delete reasoning id: %w", err)
+			}
+			normalized = next
+			changed = true
+		}
+	}
+
 	if compact {
 		if store := gjson.GetBytes(normalized, "store"); store.Exists() {
 			next, err := sjson.DeleteBytes(normalized, "store")
