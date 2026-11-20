@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
@@ -75,6 +76,23 @@ func TestAntigravityResponsesParallelToolResultImagesKeepFunctionResponsesContig
  {"type":"function_call_output","call_id":"call_cmd_3","output":"done"}
  ]}`)
 			wire := toolImageCompatWire(t, raw, model)
+			if strings.HasPrefix(model, "gemini-") {
+				// Gemini rejects a turn whose parts continue past the last
+				// functionResponse ("Requests ending with a model turn are not
+				// supported."), so tool-result images move to the following user
+				// turn and each turn keeps its functionResponses contiguous.
+				frParts := gjson.GetBytes(wire, "request.contents.1.parts").Array()
+				require.Len(t, frParts, 3)
+				require.Equal(t, "view_image", frParts[0].Get("functionResponse.name").String())
+				require.Equal(t, "view_image", frParts[1].Get("functionResponse.name").String())
+				require.Equal(t, "exec_command", frParts[2].Get("functionResponse.name").String())
+				imageParts := gjson.GetBytes(wire, "request.contents.2.parts").Array()
+				require.Len(t, imageParts, 2)
+				require.Equal(t, "user", gjson.GetBytes(wire, "request.contents.2.role").String())
+				require.Equal(t, "AQID", imageParts[0].Get("inlineData.data").String())
+				require.Equal(t, "BAUG", imageParts[1].Get("inlineData.data").String())
+				return
+			}
 			parts := gjson.GetBytes(wire, "request.contents.1.parts").Array()
 			require.Len(t, parts, 5)
 			require.Equal(t, "view_image", parts[0].Get("functionResponse.name").String())

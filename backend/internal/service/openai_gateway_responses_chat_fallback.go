@@ -84,6 +84,10 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	// 国产模型默认 effort 补充：需要 mappedModel 判定，推迟到 billingModel 算出之后。
 	reasoningEffort = ApplyThinkingEnabledFallback(reasoningEffort, body, billingModel)
 	chatReq.Model = upstreamModel
+	if openai.GPT62ModelID(upstreamModel) != "" {
+		chatReq.Temperature = nil
+		chatReq.TopP = nil
+	}
 	if clientStream {
 		chatReq.StreamOptions = &apicompat.ChatStreamOptions{IncludeUsage: true}
 	}
@@ -501,8 +505,8 @@ func ensureDeepSeekChatReasoningPlaceholders(account *Account, body []byte) []by
 	if !messages.IsArray() {
 		return body
 	}
-	updated := body
-	changed := false
+	var edits []jsonObjectStringFieldEdit
+	var indexes []int
 	for i, msg := range messages.Array() {
 		if strings.TrimSpace(msg.Get("role").String()) != "assistant" {
 			continue
@@ -510,15 +514,23 @@ func ensureDeepSeekChatReasoningPlaceholders(account *Account, body []byte) []by
 		if msg.Get("reasoning_content").String() != "" {
 			continue
 		}
+		edits = append(edits, jsonObjectStringFieldEdit{object: msg, value: deepSeekChatReasoningPlaceholderText})
+		indexes = append(indexes, i)
+	}
+	if len(edits) == 0 {
+		return body
+	}
+	if updated, ok := setStringFieldInJSONObjects(body, "reasoning_content", edits); ok {
+		return updated
+	}
+	// 无法可靠定位时逐条改写（输出相同，只是每条都复制一次请求体）。
+	updated := body
+	for _, i := range indexes {
 		next, err := sjson.SetBytes(updated, "messages."+strconv.Itoa(i)+".reasoning_content", deepSeekChatReasoningPlaceholderText)
 		if err != nil {
 			return body
 		}
 		updated = next
-		changed = true
-	}
-	if !changed {
-		return body
 	}
 	return updated
 }

@@ -203,9 +203,9 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 	if s.settingService.cfg != nil && s.settingService.cfg.Gateway.StreamKeepaliveInterval > 0 {
 		keepaliveInterval = time.Duration(s.settingService.cfg.Gateway.StreamKeepaliveInterval) * time.Second
 	}
-	// go-genai / python-genai 不会忽略 SSE 注释行，收到 ":\n\n" 会直接把整个流判成
-	// invalid stream chunk 而中断（Antigravity CLI 在用 go-genai）。对这类客户端宁可不发心跳。
-	if keepaliveInterval > 0 && downstreamRejectsSSEComments(c) {
+	// go-genai / python-genai 收到 SSE 注释会中断流。
+	rejectComments := downstreamRejectsSSEComments(c)
+	if rejectComments {
 		keepaliveInterval = 0
 	}
 	var keepaliveTicker *time.Ticker
@@ -232,6 +232,7 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 		flusher.Flush()
 	}
 
+	var needsEventSeparator bool
 	for {
 		select {
 		case ev, ok := <-events:
@@ -260,6 +261,7 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 			s.observeAntigravityGeminiSSELine(c, line)
 			trimmed := strings.TrimRight(line, "\r\n")
 			if strings.HasPrefix(trimmed, "data:") {
+				needsEventSeparator = false
 				payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
 				if payload == "" || payload == "[DONE]" {
 					cw.Fprintf("%s\n", line)
@@ -302,15 +304,20 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 				continue
 			}
 
-			// 上游每个 data 事件后面跟一个空行作为事件分隔。上面已经把 data 行写成
-			// "data: ...\n\n"，若再把这个空行透传出去，事件之间就会变成 "\n\n\n"。
-			// google-genai 的 Go SDK（Antigravity CLI 在用）按 "\n\n" 切事件，多出的
-			// "\n" 会粘到下一个事件开头，前缀变成 "\ndata" 而被判成 invalid stream chunk。
+			// 保留透传帧的空行。重写的 data 帧已带分隔符，重复空行会破坏部分客户端的解析。
 			if trimmed == "" {
+				if needsEventSeparator {
+					cw.Fprintf("\n")
+					needsEventSeparator = false
+				}
+				continue
+			}
+			if rejectComments && strings.HasPrefix(trimmed, ":") {
 				continue
 			}
 
 			cw.Fprintf("%s\n", line)
+			needsEventSeparator = true
 
 		case <-intervalCh:
 			lastRead := time.Unix(0, atomic.LoadInt64(&lastReadAt))
@@ -337,6 +344,7 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 				logger.LegacyPrintf("service.antigravity_gateway", "Client disconnected during keepalive ping (antigravity gemini), continuing to drain upstream for billing")
 				continue
 			}
+			needsEventSeparator = false
 		}
 	}
 }

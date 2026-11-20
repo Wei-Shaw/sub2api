@@ -276,7 +276,6 @@ func TestMarshalSchedulerCacheAccountKeepsEncodingJSONWireFormat(t *testing.T) {
 			Credentials: map[string]any{},
 			Extra:       map[string]any{},
 			GroupIDs:    []int64{},
-			Groups:      []*service.Group{},
 		}},
 		{name: "nested maps and escaping", account: service.Account{
 			ID:          803,
