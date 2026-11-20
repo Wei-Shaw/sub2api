@@ -18,9 +18,20 @@ var claudeResetGrantIDPattern = regexp.MustCompile(`^[a-z0-9_-]{1,40}$`)
 
 const claudeResetUsageURL = "https://api.anthropic.com/api/oauth/usage?cedar_ember=1&skip_spend=1"
 
+// Reset kinds, named and decided as Claude Code's /limit-reset decides them.
+const (
+	ClaudeResetKindSession = "session"
+	ClaudeResetKindWeekly  = "weekly"
+	ClaudeResetKindFull    = "full"
+	ClaudeResetKindFable   = "fable"
+)
+
+var claudeResetKinds = map[string]bool{ClaudeResetKindSession: true, ClaudeResetKindWeekly: true, ClaudeResetKindFull: true, ClaudeResetKindFable: true}
+
 // ClaudeResetCredit is deliberately free of upstream grant and organization IDs.
 type ClaudeResetCredit struct {
 	Label            string             `json:"label"`
+	Kind             string             `json:"kind"`
 	ResetsLeft       int                `json:"resets_left"`
 	StartsAt         *time.Time         `json:"starts_at,omitempty"`
 	ExpiresAt        *time.Time         `json:"expires_at,omitempty"`
@@ -28,7 +39,10 @@ type ClaudeResetCredit struct {
 	PercentUsed      map[string]float64 `json:"percent_used"`
 	Blocking         []string           `json:"blocking"`
 	UseRequiresLimit bool               `json:"use_requires_limit"`
-	Redeemable       bool               `json:"redeemable"`
+	// NothingToReset: every window the grant clears is at 0%, so spending it now
+	// would refill nothing (Claude shows "no usage to reset right now").
+	NothingToReset bool `json:"nothing_to_reset"`
+	Redeemable     bool `json:"redeemable"`
 }
 
 type ClaudeResetCredits struct {
@@ -43,6 +57,8 @@ type ClaudeResetCredits struct {
 type claudeResetGrant struct {
 	ID               string             `json:"id"`
 	Label            string             `json:"label"`
+	Type             string             `json:"type"`
+	GivesBackWeekly  bool               `json:"gives_back_weekly"`
 	ResetsLeft       int                `json:"resets_left"`
 	StartsAt         *time.Time         `json:"starts_at"`
 	EndsAt           *time.Time         `json:"ends_at"`
@@ -197,24 +213,73 @@ func projectClaudeResetCredits(b *claudeResetBlock, now time.Time) *ClaudeResetC
 		r.CooldownUntil = b.CooldownUntil
 	}
 	r.WeeklyResetsAt = b.WeeklyResetsAt
+	selected := map[string]string{}
+	for kind := range claudeResetKinds {
+		if g := claudeResetSelectGrant(b, kind, now); g != nil {
+			selected[kind] = g.ID
+		}
+	}
 	for _, g := range b.Grants {
 		if !claudeResetGrantHeld(g, now) {
 			continue
 		}
 		requires := g.UseRequiresLimit == nil || *g.UseRequiresLimit
-		usable := claudeResetGrantRedeemable(b, g, now)
+		kind := claudeResetGrantKind(g)
+		usable := selected[kind] == g.ID
 		used := map[string]float64{}
 		for k, v := range g.PercentUsed {
 			if v >= 0 && v <= 100 {
 				used[k] = v
 			}
 		}
-		r.Credits = append(r.Credits, ClaudeResetCredit{Label: g.Label, ResetsLeft: g.ResetsLeft, StartsAt: g.StartsAt, ExpiresAt: g.EndsAt, Clears: g.Clears, PercentUsed: used, Blocking: g.Blocking, UseRequiresLimit: requires, Redeemable: usable})
+		r.Credits = append(r.Credits, ClaudeResetCredit{Label: g.Label, Kind: kind, ResetsLeft: g.ResetsLeft, StartsAt: g.StartsAt, ExpiresAt: g.EndsAt, Clears: g.Clears, PercentUsed: used, Blocking: g.Blocking, UseRequiresLimit: requires, NothingToReset: claudeResetGrantNothingToReset(g), Redeemable: usable})
 		if usable {
 			r.AvailableCount += g.ResetsLeft
 		}
 	}
 	return r
+}
+
+// claudeResetGrantKind follows Claude Code: a grant that gives back the week's Fable
+// use is a Fable reset whatever its type says (the Fable launch grant reports
+// "full"), then the type, then the windows it clears.
+func claudeResetGrantKind(g claudeResetGrant) string {
+	if g.GivesBackWeekly {
+		return ClaudeResetKindFable
+	}
+	if claudeResetKinds[g.Type] && g.Type != ClaudeResetKindFable {
+		return g.Type
+	}
+	fiveHour, other := false, false
+	for _, w := range g.Clears {
+		if w == "five_hour" {
+			fiveHour = true
+		} else {
+			other = true
+		}
+	}
+	switch {
+	case fiveHour && other:
+		return ClaudeResetKindFull
+	case fiveHour:
+		return ClaudeResetKindSession
+	default:
+		return ClaudeResetKindWeekly
+	}
+}
+
+// claudeResetGrantNothingToReset is true only when upstream reports 0% for every
+// window the grant clears; a missing reading never blocks.
+func claudeResetGrantNothingToReset(g claudeResetGrant) bool {
+	if len(g.Clears) == 0 {
+		return false
+	}
+	for _, w := range g.Clears {
+		if v, ok := g.PercentUsed[w]; !ok || v > 0 {
+			return false
+		}
+	}
+	return true
 }
 
 // claudeResetGrantHeld reports whether a grant is a live, well-formed credit.
@@ -223,14 +288,54 @@ func claudeResetGrantHeld(g claudeResetGrant, now time.Time) bool {
 		(g.StartsAt == nil || !now.Before(*g.StartsAt)) && (g.EndsAt == nil || now.Before(*g.EndsAt))
 }
 
-// claudeResetGrantRedeemable is the single gate shared by the query projection and
-// redemption: only the upstream next grant, usable now, unblocked, outside cooldown,
-// and with its at-limit requirement satisfied.
-func claudeResetGrantRedeemable(b *claudeResetBlock, g claudeResetGrant, now time.Time) bool {
+// claudeResetGrantUsable is the per-grant gate shared by the query projection and
+// redemption: usable now, unblocked, outside cooldown, with its at-limit
+// requirement satisfied and something to reset.
+func claudeResetGrantUsable(b *claudeResetBlock, g claudeResetGrant, now time.Time) bool {
 	if b == nil || !claudeResetGrantHeld(g, now) {
 		return false
 	}
 	requires := g.UseRequiresLimit == nil || *g.UseRequiresLimit
-	return b.Eligible && g.UsableNow && g.ID == b.NextGrantID && (!requires || b.AtLimit) && len(g.Blocking) == 0 &&
-		(b.CooldownUntil == nil || !now.Before(*b.CooldownUntil))
+	return b.Eligible && g.UsableNow && (!requires || b.AtLimit) && len(g.Blocking) == 0 &&
+		(b.CooldownUntil == nil || !now.Before(*b.CooldownUntil)) && !claudeResetGrantNothingToReset(g)
+}
+
+// claudeResetSelectGrant picks the grant a redemption of kind would spend. An empty
+// kind means only the upstream next grant. For a kind, the upstream next grant
+// wins when it is of that kind, otherwise the earliest-expiring usable one.
+func claudeResetSelectGrant(b *claudeResetBlock, kind string, now time.Time) *claudeResetGrant {
+	if b == nil {
+		return nil
+	}
+	var pick *claudeResetGrant
+	for i := range b.Grants {
+		g := &b.Grants[i]
+		if !claudeResetGrantUsable(b, *g, now) {
+			continue
+		}
+		if kind == "" {
+			if g.ID == b.NextGrantID {
+				return g
+			}
+			continue
+		}
+		if claudeResetGrantKind(*g) != kind {
+			continue
+		}
+		if g.ID == b.NextGrantID {
+			return g
+		}
+		if pick == nil || claudeResetEndsBefore(g.EndsAt, pick.EndsAt) {
+			pick = g
+		}
+	}
+	return pick
+}
+
+// claudeResetEndsBefore orders by expiry; a grant without one sorts last.
+func claudeResetEndsBefore(a, b *time.Time) bool {
+	if a == nil {
+		return false
+	}
+	return b == nil || a.Before(*b)
 }

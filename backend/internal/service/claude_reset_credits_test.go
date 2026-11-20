@@ -60,7 +60,7 @@ func TestClaudeResetEligibilityFailClosed(t *testing.T) {
 	future := now.Add(time.Hour)
 	no := false
 	base := claudeResetGrant{ID: "grant", ResetsLeft: 1, UsableNow: true, UseRequiresLimit: &no, Clears: []string{"five_hour"}}
-	for _, name := range []string{"paused", "expired", "future", "cooldown", "requires-limit", "blocking", "ineligible", "spent", "not-next"} {
+	for _, name := range []string{"paused", "expired", "future", "cooldown", "requires-limit", "blocking", "ineligible", "spent", "not-next", "nothing-to-reset"} {
 		t.Run(name, func(t *testing.T) {
 			g := base
 			b := &claudeResetBlock{Eligible: true, NextGrantID: g.ID}
@@ -82,7 +82,17 @@ func TestClaudeResetEligibilityFailClosed(t *testing.T) {
 			case "spent":
 				g.ResetsLeft = 0
 			case "not-next":
+				// Another grant of the same kind is the upstream next one; only it is redeemable.
 				b.NextGrantID = "other"
+				other := base
+				other.ID = "other"
+				b.Grants = []claudeResetGrant{g, other}
+				r := projectClaudeResetCredits(b, now)
+				require.Equal(t, 1, r.AvailableCount)
+				require.False(t, r.Credits[0].Redeemable)
+				return
+			case "nothing-to-reset":
+				g.PercentUsed = map[string]float64{"five_hour": 0}
 			}
 			b.Grants = []claudeResetGrant{g}
 			r := projectClaudeResetCredits(b, now)
