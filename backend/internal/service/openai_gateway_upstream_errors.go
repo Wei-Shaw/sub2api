@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -827,6 +828,15 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 // compatErrorWriter is the signature for format-specific error writers used by
 // the compat paths (Chat Completions and Anthropic Messages).
 type compatErrorWriter func(c *gin.Context, statusCode int, errType, message string)
+
+var errInvalidGatewayRequest = errors.New("invalid client request")
+
+// Mark local request errors at the point of decoding or validation. Upstream
+// JSON and transport errors may have the same underlying Go error type.
+func rejectGatewayRequest(c *gin.Context, writeError compatErrorWriter, message string, cause error) error {
+	writeError(c, http.StatusBadRequest, "invalid_request_error", message)
+	return fmt.Errorf("%w: %w", errInvalidGatewayRequest, cause)
+}
 
 // handleCompatErrorResponse is the shared non-failover error handler for the
 // Chat Completions and Anthropic Messages compat paths. It mirrors the logic of

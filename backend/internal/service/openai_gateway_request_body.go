@@ -1644,7 +1644,9 @@ func normalizeOpenAIResponsesWebSocketCompatibilityBody(body []byte, account *Ac
 }
 
 func normalizeOpenAIResponsesWebSocketCompatibilityBodyWithConfig(cfg *config.Config, body []byte, account *Account, responsesLite bool) ([]byte, bool, error) {
-	return normalizeOpenAIResponsesCompatibilityBodyWithOptions(body, account, openAIResponsesCompatibilityOptions{Config: cfg, ResponsesLite: responsesLite})
+	filtered := filterDeepSeekRequest(body, account)
+	out, changed, err := normalizeOpenAIResponsesCompatibilityBodyWithOptions(filtered, account, openAIResponsesCompatibilityOptions{Config: cfg, ResponsesLite: responsesLite})
+	return out, changed || !bytes.Equal(filtered, body), err
 }
 
 type openAIResponsesCompatibilityOptions struct {

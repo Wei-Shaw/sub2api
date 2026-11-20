@@ -108,6 +108,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	defaultMappedModel string,
 	compatPromptCacheTenantIsolated bool,
 ) (*OpenAIForwardResult, error) {
+	body = filterDeepSeekRequest(body, account)
 	rememberOpenCodeInboundBody(c, body)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
@@ -174,9 +175,9 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		return s.forwardChatCompletionsViaNativeAnthropic(ctx, c, account, body, defaultMappedModel)
 	case APIProtocolChatCompletions:
 		if convertResponsesShape {
-			chatBody, err := s.convertResponsesShapedChatBody(body)
+			chatBody, err := s.convertResponsesShapedChatBody(body, account)
 			if err != nil {
-				return nil, err
+				return nil, rejectGatewayRequest(c, writeChatCompletionsError, err.Error(), err)
 			}
 			return s.forwardAsRawChatCompletions(ctx, c, account, chatBody, defaultMappedModel)
 		}
@@ -191,10 +192,11 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	// 1. Parse Chat Completions request
 	var chatReq apicompat.ChatCompletionsRequest
 	if err := parseChatRequestForBridge(body, account.Platform, &chatReq); err != nil {
+		message := "Failed to parse request body"
 		if account.Platform == PlatformKimi {
-			writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			message = err.Error()
 		}
-		return nil, fmt.Errorf("parse chat completions request: %w", err)
+		return nil, rejectGatewayRequest(c, writeChatCompletionsError, message, fmt.Errorf("parse chat completions request: %w", err))
 	}
 	originalModel := chatReq.Model
 	clientStream := chatReq.Stream
@@ -204,8 +206,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	if err := validateGPT61CompatRequest(body, upstreamModel); err != nil {
-		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return nil, err
+		return nil, rejectGatewayRequest(c, writeChatCompletionsError, err.Error(), err)
 	}
 
 	promptCacheKey = strings.TrimSpace(promptCacheKey)
@@ -271,7 +272,7 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		chatReq.Model = upstreamModel
 		responsesReq, err = chatCompletionsToResponses(s.cfg, &chatReq)
 		if err != nil {
-			return nil, fmt.Errorf("convert chat completions to responses: %w", err)
+			return nil, rejectGatewayRequest(c, writeChatCompletionsError, err.Error(), fmt.Errorf("convert chat completions to responses: %w", err))
 		}
 		responsesReq.Model = upstreamModel
 		normalizeResponsesRequestServiceTier(responsesReq)

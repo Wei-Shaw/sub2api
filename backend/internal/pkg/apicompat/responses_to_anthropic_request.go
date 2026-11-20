@@ -25,11 +25,12 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 	}
 
 	out := &AnthropicRequest{
-		Model:       req.Model,
-		Messages:    messages,
-		Temperature: req.Temperature,
-		TopP:        req.TopP,
-		Stream:      req.Stream,
+		DeepSeekRequestFields: req.DeepSeekRequestFields.objects(),
+		Model:                 req.Model,
+		Messages:              messages,
+		Temperature:           req.Temperature,
+		TopP:                  req.TopP,
+		Stream:                req.Stream,
 	}
 
 	if len(system) > 0 {
@@ -728,6 +729,12 @@ func convertResponsesToAnthropicTools(tools []ResponsesTool) []AnthropicTool {
 	var out []AnthropicTool
 	for _, t := range tools {
 		switch t.Type {
+		case "deepseek_web_search", "deepseek_read_url":
+			name := t.Name
+			if name == "" {
+				name = t.Type // Messages requires a name for a server tool.
+			}
+			out = append(out, AnthropicTool{Type: t.Type, Name: name, deepSeekDeclaration: t.deepSeekDeclaration})
 		case "web_search", "google_search", "web_search_20250305":
 			out = append(out, AnthropicTool{
 				Type: "web_search_20250305",

@@ -20,6 +20,7 @@ import (
 
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+	body = filterDeepSeekRequest(body, account)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
@@ -69,7 +70,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 	legacyIngressBody, legacyIngressChanged, legacyIngressErr := normalizeOpenAIResponsesLegacyIngressWithConfig(s.cfg, body)
 	if legacyIngressErr != nil {
-		return nil, legacyIngressErr
+		return nil, rejectGatewayRequest(c, writeResponsesError, legacyIngressErr.Error(), legacyIngressErr)
 	}
 	if legacyIngressChanged {
 		body = legacyIngressBody
@@ -321,7 +322,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if reqBody == nil {
 			decoded, decodeErr := requestView.Decode(c)
 			if decodeErr != nil {
-				return decodeErr
+				return rejectGatewayRequest(c, writeResponsesError, "Failed to parse request body", decodeErr)
 			}
 			reqBody = decoded
 		}
@@ -337,7 +338,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		decoded, decodeErr := requestView.Decode(c)
 		if decodeErr != nil {
-			return nil, decodeErr
+			return nil, rejectGatewayRequest(c, writeResponsesError, "Failed to parse request body", decodeErr)
 		}
 		reqBody = decoded
 		return reqBody, nil

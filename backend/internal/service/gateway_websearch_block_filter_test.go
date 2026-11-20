@@ -42,7 +42,7 @@ func collectContentTypes(t *testing.T, body []byte) []string {
 }
 
 func TestFilterWebSearchHistoryBlocks_StripsEmulatedBlocksForAnthropicStrict(t *testing.T) {
-	out := FilterWebSearchHistoryBlocks([]byte(emulatedWebSearchBody), "claude-sonnet-4-6")
+	out := FilterWebSearchHistoryBlocks([]byte(emulatedWebSearchBody), "claude-sonnet-4-6", nil)
 
 	require.Equal(t, []string{"text", "text", "text"}, collectContentTypes(t, out))
 	// The emulated text summary must survive so the search context is preserved.
@@ -53,7 +53,7 @@ func TestFilterWebSearchHistoryBlocks_StripsEmulatedBlocksForAnthropicStrict(t *
 
 func TestFilterWebSearchHistoryBlocks_KeepsGenuineBlocksForAnthropicStrict(t *testing.T) {
 	body := []byte(genuineWebSearchBody)
-	out := FilterWebSearchHistoryBlocks(body, "claude-sonnet-4-6")
+	out := FilterWebSearchHistoryBlocks(body, "claude-sonnet-4-6", nil)
 
 	require.Equal(t, string(body), string(out))
 }
@@ -61,7 +61,7 @@ func TestFilterWebSearchHistoryBlocks_KeepsGenuineBlocksForAnthropicStrict(t *te
 func TestFilterWebSearchHistoryBlocks_StripsAllBlocksForPassbackRequired(t *testing.T) {
 	// GLM only accepts text/thinking/image/tool_use/tool_result and rejects
 	// server_tool_use with 400, so genuine blocks must be stripped as well.
-	out := FilterWebSearchHistoryBlocks([]byte(genuineWebSearchBody), "glm-4.7")
+	out := FilterWebSearchHistoryBlocks([]byte(genuineWebSearchBody), "glm-4.7", nil)
 
 	require.Equal(t, []string{"text", "text"}, collectContentTypes(t, out))
 	require.NotContains(t, string(out), "server_tool_use")
@@ -70,7 +70,7 @@ func TestFilterWebSearchHistoryBlocks_StripsAllBlocksForPassbackRequired(t *test
 }
 
 func TestFilterWebSearchHistoryBlocks_StripsEmulatedBlocksForUnknownModel(t *testing.T) {
-	out := FilterWebSearchHistoryBlocks([]byte(emulatedWebSearchBody), "totally-unknown-model")
+	out := FilterWebSearchHistoryBlocks([]byte(emulatedWebSearchBody), "totally-unknown-model", nil)
 
 	require.Equal(t, []string{"text", "text", "text"}, collectContentTypes(t, out))
 	require.NotContains(t, string(out), "srvtoolu_ws_")
@@ -78,14 +78,14 @@ func TestFilterWebSearchHistoryBlocks_StripsEmulatedBlocksForUnknownModel(t *tes
 
 func TestFilterWebSearchHistoryBlocks_KeepsGenuineBlocksForUnknownModel(t *testing.T) {
 	body := []byte(genuineWebSearchBody)
-	out := FilterWebSearchHistoryBlocks(body, "totally-unknown-model")
+	out := FilterWebSearchHistoryBlocks(body, "totally-unknown-model", nil)
 
 	require.Equal(t, string(body), string(out))
 }
 
 func TestFilterWebSearchHistoryBlocks_NoWebSearchBlocksFastPath(t *testing.T) {
 	body := []byte(`{"model":"claude-sonnet-4-6","messages":[{"role":"user","content":[{"type":"text","text":"hi"}]}]}`)
-	out := FilterWebSearchHistoryBlocks(body, "claude-sonnet-4-6")
+	out := FilterWebSearchHistoryBlocks(body, "claude-sonnet-4-6", nil)
 
 	require.Equal(t, string(body), string(out))
 }
@@ -97,7 +97,7 @@ func TestFilterWebSearchHistoryBlocks_EmptiedMessageGetsPlaceholder(t *testing.T
 		`{"type":"server_tool_use","id":"srvtoolu_01X","name":"web_search","input":{"query":"q"}},` +
 		`{"type":"web_search_tool_result","tool_use_id":"srvtoolu_01X","content":[]}]}]}`)
 
-	out := FilterWebSearchHistoryBlocks(body, "glm-4.7")
+	out := FilterWebSearchHistoryBlocks(body, "glm-4.7", nil)
 
 	msgs := gjson.GetBytes(out, "messages").Array()
 	require.Len(t, msgs, 2)
@@ -114,14 +114,14 @@ func TestFilterWebSearchHistoryBlocks_StringContentUntouched(t *testing.T) {
 	body := []byte(`{"model":"claude-sonnet-4-6","messages":[` +
 		`{"role":"user","content":"please explain \"server_tool_use\" blocks"}]}`)
 
-	out := FilterWebSearchHistoryBlocks(body, "claude-sonnet-4-6")
+	out := FilterWebSearchHistoryBlocks(body, "claude-sonnet-4-6", nil)
 
 	require.Equal(t, string(body), string(out))
 }
 
 func TestFilterWebSearchHistoryBlocks_InvalidMessagesUnchanged(t *testing.T) {
 	body := []byte(`{"model":"claude-sonnet-4-6","messages":"server_tool_use"}`)
-	out := FilterWebSearchHistoryBlocks(body, "claude-sonnet-4-6")
+	out := FilterWebSearchHistoryBlocks(body, "claude-sonnet-4-6", nil)
 
 	require.Equal(t, string(body), string(out))
 }
@@ -134,7 +134,7 @@ func TestFilterWebSearchHistoryBlocks_PreservesOtherToolBlocks(t *testing.T) {
 		`{"type":"text","text":"result"}]},` +
 		`{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01A","content":"sunny"}]}]}`)
 
-	out := FilterWebSearchHistoryBlocks(body, "glm-4.7")
+	out := FilterWebSearchHistoryBlocks(body, "glm-4.7", nil)
 
 	require.Equal(t, []string{"tool_use", "text", "tool_result"}, collectContentTypes(t, out))
 }
@@ -156,7 +156,7 @@ func deepSeekToolsBody(history string) string {
 func TestFilterWebSearchHistoryBlocks_KeepsGenuineBlocksWhenDeepSeekToolsDeclared(t *testing.T) {
 	body := deepSeekToolsBody(deepSeekGenuineHistory)
 
-	out := FilterWebSearchHistoryBlocks([]byte(body), "deepseek-v4")
+	out := FilterWebSearchHistoryBlocks([]byte(body), "deepseek-v4", &Account{Platform: PlatformDeepseek, Type: AccountTypeAPIKey})
 
 	// server_tool_use / web_search_tool_result must be passed back verbatim:
 	// the signature payload is context-necessary for the next turn.
@@ -165,11 +165,11 @@ func TestFilterWebSearchHistoryBlocks_KeepsGenuineBlocksWhenDeepSeekToolsDeclare
 	require.True(t, gjson.ValidBytes(out))
 }
 
-func TestFilterWebSearchHistoryBlocks_DeepSeekPassbackRequiredStillStripsWithoutToolsDeclaration(t *testing.T) {
-	// No tools declaration: pre-existing behavior must be preserved.
-	out := FilterWebSearchHistoryBlocks([]byte(genuineWebSearchBody), "deepseek-v4")
+func TestFilterWebSearchHistoryBlocks_DeepSeekKeepsHistoryWithoutToolsDeclaration(t *testing.T) {
+	// Official DeepSeek accepts signed history even when the next turn disables tools.
+	out := FilterWebSearchHistoryBlocks([]byte(genuineWebSearchBody), "deepseek-v4", &Account{Platform: PlatformDeepseek, Type: AccountTypeAPIKey})
 
-	require.Equal(t, []string{"text", "text"}, collectContentTypes(t, out))
+	require.Equal(t, []byte(genuineWebSearchBody), out)
 }
 
 func TestFilterWebSearchHistoryBlocks_DeepSeekToolsDeclaredStillStripsEmulatedBlocks(t *testing.T) {
@@ -182,7 +182,7 @@ func TestFilterWebSearchHistoryBlocks_DeepSeekToolsDeclaredStillStripsEmulatedBl
 		`{"role":"user","content":[{"type":"text","text":"thanks, continue"}]}`
 	body := deepSeekToolsBody(emulatedHistory)
 
-	out := FilterWebSearchHistoryBlocks([]byte(body), "deepseek-v4")
+	out := FilterWebSearchHistoryBlocks([]byte(body), "deepseek-v4", &Account{Platform: PlatformDeepseek, Type: AccountTypeAPIKey})
 
 	// Emulation-synthesized blocks (srvtoolu_ws_ prefix) are still stripped.
 	require.Equal(t, []string{"text", "text", "text"}, collectContentTypes(t, out))
@@ -197,7 +197,7 @@ func TestFilterWebSearchHistoryBlocks_OtherToolsDeclarationDoesNotExemptPassback
 		`{"type":"server_tool_use","id":"srvtoolu_01ABCDEF","name":"web_search","input":{"query":"weather"}},` +
 		`{"type":"text","text":"summary"}]}]}`
 
-	out := FilterWebSearchHistoryBlocks([]byte(body), "glm-4.7")
+	out := FilterWebSearchHistoryBlocks([]byte(body), "glm-4.7", nil)
 
 	require.Equal(t, []string{"text"}, collectContentTypes(t, out))
 }

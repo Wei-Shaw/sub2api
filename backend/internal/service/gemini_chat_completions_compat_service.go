@@ -28,6 +28,7 @@ func (s *GeminiMessagesCompatService) ForwardAsChatCompletions(
 	account *Account,
 	body []byte,
 ) (*ForwardResult, error) {
+	body = filterDeepSeekRequest(body, account)
 	startTime := time.Now()
 
 	var ccReq apicompat.ChatCompletionsRequest

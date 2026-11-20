@@ -15,6 +15,7 @@ import (
 
 // AnthropicRequest is the request body for POST /v1/messages.
 type AnthropicRequest struct {
+	DeepSeekRequestFields
 	Model       string             `json:"model"`
 	MaxTokens   int                `json:"max_tokens"`
 	System      json.RawMessage    `json:"system,omitempty"` // string or []AnthropicContentBlock
@@ -121,11 +122,12 @@ type AnthropicImageSource struct {
 
 // AnthropicTool describes a tool available to the model.
 type AnthropicTool struct {
-	Type         string                 `json:"type,omitempty"` // e.g. "web_search_20250305" for server tools
-	Name         string                 `json:"name"`
-	Description  string                 `json:"description,omitempty"`
-	InputSchema  json.RawMessage        `json:"input_schema,omitempty"` // JSON Schema object
-	CacheControl *AnthropicCacheControl `json:"cache_control,omitempty"`
+	deepSeekDeclaration json.RawMessage
+	Type                string                 `json:"type,omitempty"` // e.g. "web_search_20250305" for server tools
+	Name                string                 `json:"name"`
+	Description         string                 `json:"description,omitempty"`
+	InputSchema         json.RawMessage        `json:"input_schema,omitempty"` // JSON Schema object
+	CacheControl        *AnthropicCacheControl `json:"cache_control,omitempty"`
 	// DeferLoading marks a tool Claude Code reveals through ToolSearch.
 	DeferLoading bool `json:"defer_loading,omitempty"`
 }
@@ -338,6 +340,7 @@ type AnthropicDelta struct {
 
 // ResponsesRequest is the request body for POST /v1/responses.
 type ResponsesRequest struct {
+	DeepSeekRequestFields
 	PromptCacheOptions json.RawMessage     `json:"prompt_cache_options,omitempty"`
 	Model              string              `json:"model"`
 	Instructions       string              `json:"instructions,omitempty"`
@@ -360,22 +363,22 @@ type ResponsesRequest struct {
 	// （string 或 []string），仅在降级到 Chat Completions 时透传，避免客户端设的
 	// 停止序列在转换层被静默丢弃。
 	Stop json.RawMessage `json:"stop,omitempty"`
-
-	// DeepSeek extension fields, passed through verbatim.
-	SafetyCheck *SafetyCheckParam `json:"safety_check,omitempty"`
-	Title       *TitleParam       `json:"title,omitempty"`
 }
 
-// SafetyCheckParam is the DeepSeek extension field enabling content safety
-// review: {"level":"low"} (default) | {"level":"high"}.
-type SafetyCheckParam struct {
-	Level string `json:"level"` // "low" | "high"
+// DeepSeekRequestFields have the same object representation in all three protocols.
+type DeepSeekRequestFields struct {
+	SafetyCheck json.RawMessage `json:"safety_check,omitempty"`
+	Title       json.RawMessage `json:"title,omitempty"`
 }
 
-// TitleParam is the DeepSeek extension field requesting a conversation title:
-// {"enabled":true}.
-type TitleParam struct {
-	Enabled bool `json:"enabled"`
+func (f DeepSeekRequestFields) objects() DeepSeekRequestFields {
+	if raw := bytes.TrimSpace(f.Title); len(raw) == 0 || raw[0] != '{' {
+		f.Title = nil
+	}
+	if raw := bytes.TrimSpace(f.SafetyCheck); len(raw) == 0 || raw[0] != '{' {
+		f.SafetyCheck = nil
+	}
+	return f
 }
 
 // ResponsesReasoning configures reasoning effort in the Responses API.
@@ -456,11 +459,12 @@ type ResponsesContentPart struct {
 
 // ResponsesTool describes a tool in the Responses API.
 type ResponsesTool struct {
-	Type        string          `json:"type"` // "function" | "custom" | "web_search" | "x_search" | "local_shell" etc.
-	Name        string          `json:"name,omitempty"`
-	Description string          `json:"description,omitempty"`
-	Parameters  json.RawMessage `json:"parameters,omitempty"`
-	Strict      *bool           `json:"strict,omitempty"`
+	deepSeekDeclaration json.RawMessage
+	Type                string          `json:"type"` // "function" | "custom" | "web_search" | "x_search" | "local_shell" etc.
+	Name                string          `json:"name,omitempty"`
+	Description         string          `json:"description,omitempty"`
+	Parameters          json.RawMessage `json:"parameters,omitempty"`
+	Strict              *bool           `json:"strict,omitempty"`
 	// type=tool_search: "client" means the caller executes the search.
 	Execution string `json:"execution,omitempty"`
 
@@ -490,6 +494,7 @@ func (t *ResponsesTool) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	*t = ResponsesTool(a)
+	t.deepSeekDeclaration = deepSeekToolDeclaration(t.Type, data)
 	return nil
 }
 
@@ -801,6 +806,7 @@ type ResponsesStreamEvent struct {
 
 // ChatCompletionsRequest is the request body for POST /v1/chat/completions.
 type ChatCompletionsRequest struct {
+	DeepSeekRequestFields
 	PromptCacheOptions  json.RawMessage    `json:"prompt_cache_options,omitempty"`
 	Model               string             `json:"model"`
 	Messages            []ChatMessage      `json:"messages"`
@@ -822,10 +828,6 @@ type ChatCompletionsRequest struct {
 	// Legacy function calling (deprecated but still supported)
 	Functions    []ChatFunction  `json:"functions,omitempty"`
 	FunctionCall json.RawMessage `json:"function_call,omitempty"`
-
-	// DeepSeek extension fields, passed through verbatim.
-	SafetyCheck *SafetyCheckParam `json:"safety_check,omitempty"`
-	Title       *TitleParam       `json:"title,omitempty"`
 }
 
 // ChatStreamOptions configures streaming behavior.
@@ -842,6 +844,7 @@ type ChatMessage struct {
 	Reasoning        string          `json:"reasoning,omitempty"`
 	Name             string          `json:"name,omitempty"`
 	ToolCalls        []ChatToolCall  `json:"tool_calls,omitempty"`
+	ServerToolCalls  json.RawMessage `json:"server_tool_calls,omitempty"`
 	ToolCallID       string          `json:"tool_call_id,omitempty"`
 
 	// Legacy function calling
@@ -872,8 +875,9 @@ type ChatFile struct {
 
 // ChatTool describes a tool available to the model.
 type ChatTool struct {
-	Type     string        `json:"type"` // "function" | "web_search" | "code_execution" | "x_search" | "deepseek_web_search" | "deepseek_read_url"
-	Function *ChatFunction `json:"function,omitempty"`
+	deepSeekDeclaration json.RawMessage
+	Type                string        `json:"type"` // "function" | "web_search" | "code_execution" | "x_search" | "deepseek_web_search" | "deepseek_read_url"
+	Function            *ChatFunction `json:"function,omitempty"`
 	// Name is the tool name for name-carrying server tools such as the DeepSeek
 	// extensions ("deepseek_web_search" / "deepseek_read_url").
 	Name string `json:"name,omitempty"`

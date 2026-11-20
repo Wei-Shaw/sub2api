@@ -33,6 +33,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	promptCacheKey string,
 	defaultMappedModel string,
 ) (*OpenAIForwardResult, error) {
+	body = filterDeepSeekRequest(body, account)
 	// 工具 Schema 清洗必须先于所有分流：下游每条路径（原生 Anthropic 直通、
 	// Chat Completions 转换、Responses 转换）都会把 tools 原样带给上游，而
 	// xAI / Moonshot 等严格校验方会因 input_schema 里的 required:null 或
@@ -87,7 +88,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	// 1. Parse Anthropic request
 	var anthropicReq apicompat.AnthropicRequest
 	if err := json.Unmarshal(body, &anthropicReq); err != nil {
-		return nil, fmt.Errorf("parse anthropic request: %w", err)
+		return nil, rejectGatewayRequest(c, writeAnthropicError, "Failed to parse request body", fmt.Errorf("parse anthropic request: %w", err))
 	}
 	anthropicDigestReq := cloneAnthropicRequestForDigest(&anthropicReq)
 	originalModel := anthropicReq.Model
@@ -99,8 +100,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	billingModel := resolveOpenAIForwardModel(account, normalizedModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	if err := validateGPT61RawEffort(body, upstreamModel); err != nil {
-		writeAnthropicError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return nil, err
+		return nil, rejectGatewayRequest(c, writeAnthropicError, err.Error(), err)
 	}
 	promptCacheKey = strings.TrimSpace(promptCacheKey)
 	apiKeyID := getAPIKeyIDFromContext(c)
@@ -159,7 +159,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		DeferReasoningEffortValidation: true,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("convert anthropic to responses: %w", err)
+		return nil, rejectGatewayRequest(c, writeAnthropicError, err.Error(), fmt.Errorf("convert anthropic to responses: %w", err))
 	}
 
 	// Upstream always uses streaming (upstream may not support sync mode).

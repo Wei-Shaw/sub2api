@@ -13,30 +13,16 @@ import (
 const (
 	blockTypeServerToolUse       = "server_tool_use"
 	blockTypeWebSearchToolResult = "web_search_tool_result"
+	blockTypeWebFetchToolResult  = "web_fetch_tool_result"
 )
 
-// DeepSeek's 2026-11-13+ Messages API exposes server-side tools declared by
-// the client in request body tools[] (type=deepseek_web_search /
-// deepseek_read_url). When those tools are declared, the upstream emits
-// server_tool_use / web_search_tool_result / web_fetch_tool_result blocks in
-// the response and REQUIRES them to be passed back verbatim in the next turn
-// (the encrypted signature payload is context-necessary). Stripping them
-// breaks multi-turn conversations. Other passback-required upstreams
-// (Kimi/GLM) never declare these DeepSeek tool types, so keying the exemption
-// on the declaration alone is safe and requires no extra model-name check:
-// the filter is body-scoped, and the tools array is the authoritative signal
-// of which API semantics the request was written against.
-var deepSeekServerToolTypes = map[string]struct{}{
-	"deepseek_web_search": {},
-	"deepseek_read_url":   {},
-}
-
-// Fast-path byte patterns: both block types only ever appear as quoted JSON
+// Fast-path byte patterns: block types appear as quoted JSON
 // string values, so a raw substring check is a safe pre-filter regardless of
 // key/value spacing.
 var (
 	patternServerToolUse       = []byte(`"server_tool_use"`)
 	patternWebSearchToolResult = []byte(`"web_search_tool_result"`)
+	patternWebFetchToolResult  = []byte(`"web_fetch_tool_result"`)
 )
 
 // FilterWebSearchHistoryBlocks removes web-search content blocks from
@@ -48,28 +34,36 @@ var (
 //     No upstream ever issued them, so clients replaying the conversation
 //     (e.g. Claude Code) poison every follow-up request. They are stripped
 //     for all upstreams.
-//  2. For passback-required upstreams (DeepSeek/Kimi/GLM …, see
-//     ResolveThinkingProtocol) all server_tool_use / web_search_tool_result
-//     blocks are stripped: these upstreams only accept
-//     text/thinking/image/tool_use/tool_result and reject anything else with
-//     400 "invalid value: `server_tool_use`". anthropic-strict and unknown
-//     upstreams keep genuine blocks untouched.
+//  2. Official DeepSeek accepts genuine history even without tool declarations.
+//     Other passback-required upstreams reject server-tool calls and results.
 //
 // The emulated assistant turn always carries a trailing text summary, so the
 // search context survives the strip. A message whose content would become
 // empty gets a placeholder text block (mirroring FilterThinkingBlocksForRetry).
 // Returns the original body unchanged when nothing needs stripping.
-func FilterWebSearchHistoryBlocks(body []byte, mappedModel string) []byte {
-	if !bytes.Contains(body, patternServerToolUse) && !bytes.Contains(body, patternWebSearchToolResult) {
+func FilterWebSearchHistoryBlocks(body []byte, mappedModel string, account *Account) []byte {
+	if !bytes.Contains(body, patternServerToolUse) && !bytes.Contains(body, patternWebSearchToolResult) && !bytes.Contains(body, patternWebFetchToolResult) {
 		return body
 	}
 
-	stripAll := ResolveThinkingProtocol(mappedModel) == ThinkingProtocolPassbackRequired &&
-		// New DeepSeek API: when the request declares DeepSeek server-side
-		// tools, genuine history blocks must pass through untouched (see
-		// deepSeekServerToolTypes). Emulation-synthesized blocks are still
-		// stripped below via the srvtoolu_ws_ ID prefix check.
-		!requestDeclaresDeepSeekServerTools(body)
+	stripAll := ResolveThinkingProtocol(mappedModel) == ThinkingProtocolPassbackRequired
+	if account != nil {
+		base := account.GetAnthropicProtocolBaseURL()
+		switch {
+		case base != "":
+			// Use the Messages endpoint selected by the protocol profile, including
+			// an adaptive account's per-protocol origin.
+			stripAll = !isDeepseekOfficialHost(base)
+		case account.Platform == PlatformDeepseek:
+			stripAll = !isDeepseekOfficialHost(account.GetOpenAIBaseURL())
+		case account.Platform == PlatformAnthropic:
+			if isDeepseekOfficialHost(account.GetBaseURL()) {
+				stripAll = false
+			}
+		case account.Platform != "":
+			stripAll = true
+		}
+	}
 
 	jsonStr := *(*string)(unsafe.Pointer(&body))
 	msgsRes := gjson.Get(jsonStr, "messages")
@@ -147,7 +141,7 @@ func shouldStripWebSearchBlock(block map[string]any, stripAll bool) bool {
 		}
 		id, _ := block["id"].(string)
 		return strings.HasPrefix(id, webSearchToolUseIDPrefix)
-	case blockTypeWebSearchToolResult:
+	case blockTypeWebSearchToolResult, blockTypeWebFetchToolResult:
 		if stripAll {
 			return true
 		}
@@ -156,25 +150,4 @@ func shouldStripWebSearchBlock(block map[string]any, stripAll bool) bool {
 	default:
 		return false
 	}
-}
-
-// requestDeclaresDeepSeekServerTools reports whether the request body's tools
-// array declares a DeepSeek server-side tool (deepseek_web_search /
-// deepseek_read_url). Such a declaration is the signal that the request
-// targets the new DeepSeek Messages API, where the upstream issues
-// server_tool_use / web_search_tool_result / web_fetch_tool_result blocks and
-// requires clients to pass them back verbatim on the next turn — so genuine
-// history blocks must not be stripped.
-func requestDeclaresDeepSeekServerTools(body []byte) bool {
-	jsonStr := *(*string)(unsafe.Pointer(&body))
-	tools := gjson.Get(jsonStr, "tools")
-	if !tools.Exists() || !tools.IsArray() {
-		return false
-	}
-	for _, tool := range tools.Array() {
-		if _, ok := deepSeekServerToolTypes[tool.Get("type").String()]; ok {
-			return true
-		}
-	}
-	return false
 }

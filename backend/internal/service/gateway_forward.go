@@ -125,6 +125,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		return nil, fmt.Errorf("parse request: empty request")
 	}
 	// API-key mappings and OAuth native IDs are resolved before mimicry.
+	if body := filterDeepSeekRequest(parsed.Body.Bytes(), account); !bytes.Equal(body, parsed.Body.Bytes()) {
+		if err := parsed.ReplaceBody(body); err != nil {
+			return nil, err
+		}
+	}
 	validationModel := parsed.Model
 	if account != nil {
 		if account.IsBedrock() {
@@ -387,7 +392,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	// (emulation-synthesized server_tool_use / web_search_tool_result always;
 	// genuine ones additionally for passback-required upstreams). See
 	// FilterWebSearchHistoryBlocks. reqModel 此时已是映射后的模型 ID。
-	if err := replaceBody(FilterWebSearchHistoryBlocks(body, reqModel)); err != nil {
+	if err := replaceBody(FilterWebSearchHistoryBlocks(body, reqModel, account)); err != nil {
 		return nil, err
 	}
 	// Pre-filter: remove thinking blocks with missing/invalid signatures before forwarding.

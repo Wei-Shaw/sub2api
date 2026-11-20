@@ -38,18 +38,15 @@ func ChatCompletionsToResponsesWithMinOutputTokens(req *ChatCompletionsRequest, 
 	}
 
 	out := &ResponsesRequest{
-		Model:              req.Model,
-		Instructions:       req.Instructions,
-		Input:              inputJSON,
-		Stream:             true, // upstream always streams
-		Include:            []string{"reasoning.encrypted_content"},
-		ServiceTier:        req.ServiceTier,
-		PromptCacheOptions: req.PromptCacheOptions,
-		ParallelToolCalls:  req.ParallelToolCalls,
-		// DeepSeek extension fields pass through verbatim (same shape in both
-		// protocols); nil stays nil so no zero-value fields are emitted.
-		SafetyCheck: req.SafetyCheck,
-		Title:       req.Title,
+		Model:                 req.Model,
+		Instructions:          req.Instructions,
+		Input:                 inputJSON,
+		Stream:                true, // upstream always streams
+		Include:               []string{"reasoning.encrypted_content"},
+		ServiceTier:           req.ServiceTier,
+		PromptCacheOptions:    req.PromptCacheOptions,
+		ParallelToolCalls:     req.ParallelToolCalls,
+		DeepSeekRequestFields: req.DeepSeekRequestFields.objects(),
 	}
 
 	// Reasoning models (gpt-5.x) do not accept sampling parameters.
@@ -537,12 +534,8 @@ func convertChatToolsToResponses(tools []ChatTool, functions []ChatFunction) []R
 		}
 		// DeepSeek server tools keep their declaration shape in the Responses
 		// protocol: {"type":"deepseek_web_search","name":"deepseek_web_search"}.
-		if toolType == "deepseek_web_search" || toolType == "deepseek_read_url" {
-			name := strings.TrimSpace(t.Name)
-			if name == "" {
-				name = toolType
-			}
-			out = append(out, ResponsesTool{Type: toolType, Name: name})
+		if IsDeepSeekWebTool(t.Type) {
+			out = append(out, ResponsesTool{Type: t.Type, Name: t.Name, deepSeekDeclaration: t.deepSeekDeclaration})
 			continue
 		}
 		if t.Type != "function" || t.Function == nil {

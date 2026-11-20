@@ -56,9 +56,10 @@ func AnthropicToChatCompletionsRequestWithMinOutputTokens(req *AnthropicRequest,
 	}
 
 	out := &ChatCompletionsRequest{
-		Model:    req.Model,
-		Messages: messages,
-		Stream:   req.Stream,
+		DeepSeekRequestFields: req.DeepSeekRequestFields.objects(),
+		Model:                 req.Model,
+		Messages:              messages,
+		Stream:                req.Stream,
 	}
 
 	// Sampling params: reasoning models (gpt-5.x) reject temperature/top_p.
@@ -330,6 +331,10 @@ func anthropicThinkingToReasoningContent(blocks []AnthropicContentBlock, hasTool
 func anthropicToolsToChatTools(tools []AnthropicTool) []ChatTool {
 	var out []ChatTool
 	for _, t := range tools {
+		if IsDeepSeekWebTool(t.Type) {
+			out = append(out, ChatTool{Type: t.Type, Name: t.Name, deepSeekDeclaration: t.deepSeekDeclaration})
+			continue
+		}
 		if strings.HasPrefix(t.Type, "web_search") {
 			continue
 		}

@@ -47,10 +47,11 @@ func AnthropicToResponsesWithOptions(req *AnthropicRequest, options AnthropicToR
 	}
 
 	out := &ResponsesRequest{
-		Model:   req.Model,
-		Input:   inputJSON,
-		Stream:  req.Stream,
-		Include: []string{"reasoning.encrypted_content"},
+		DeepSeekRequestFields: req.DeepSeekRequestFields.objects(),
+		Model:                 req.Model,
+		Input:                 inputJSON,
+		Stream:                req.Stream,
+		Include:               []string{"reasoning.encrypted_content"},
 	}
 
 	// Reasoning models (gpt-5.x) served via the Responses API do not accept
@@ -495,6 +496,10 @@ func mapAnthropicEffortToResponses(effort string) string {
 func convertAnthropicToolsToResponses(tools []AnthropicTool) []ResponsesTool {
 	var out []ResponsesTool
 	for _, t := range tools {
+		if IsDeepSeekWebTool(t.Type) {
+			out = append(out, ResponsesTool{Type: t.Type, Name: t.Name, deepSeekDeclaration: t.deepSeekDeclaration})
+			continue
+		}
 		// Anthropic server tools like "web_search_20250305" → OpenAI {"type":"web_search"}
 		if strings.HasPrefix(t.Type, "web_search") {
 			out = append(out, ResponsesTool{Type: "web_search"})

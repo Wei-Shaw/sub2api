@@ -2589,7 +2589,7 @@ func (s *OpenAIGatewayService) isOpenAIAccountTransportCompatible(account *Accou
 }
 
 func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Account, model string, success bool, firstTokenMs *int, observedErr ...error) bool {
-	if account == nil {
+	if account == nil || (!success && len(observedErr) > 0 && errors.Is(observedErr[0], errInvalidGatewayRequest)) {
 		return false
 	}
 	accountID := account.ID

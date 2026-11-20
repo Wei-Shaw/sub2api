@@ -12,10 +12,9 @@ import (
 // Completions and Responses, so conversion must pass them through verbatim.
 func TestChatCompletionsToResponses_DeepSeekExtensions(t *testing.T) {
 	req := &ChatCompletionsRequest{
-		Model:       "deepseek-flash",
-		Messages:    []ChatMessage{{Role: "user", Content: json.RawMessage(`"DeepSeek V4.1 有哪些更新？"`)}},
-		SafetyCheck: &SafetyCheckParam{Level: "high"},
-		Title:       &TitleParam{Enabled: true},
+		Model:                 "deepseek-flash",
+		Messages:              []ChatMessage{{Role: "user", Content: json.RawMessage(`"DeepSeek V4.1 有哪些更新？"`)}},
+		DeepSeekRequestFields: DeepSeekRequestFields{SafetyCheck: json.RawMessage(`{"level":"high"}`), Title: json.RawMessage(`{"enabled":true}`)},
 		Tools: []ChatTool{
 			{Type: "deepseek_web_search", Name: "deepseek_web_search"},
 			{Type: "deepseek_read_url", Name: "deepseek_read_url"},
@@ -29,8 +28,8 @@ func TestChatCompletionsToResponses_DeepSeekExtensions(t *testing.T) {
 	resp, err := ChatCompletionsToResponses(req)
 	require.NoError(t, err)
 
-	require.Equal(t, &SafetyCheckParam{Level: "high"}, resp.SafetyCheck)
-	require.Equal(t, &TitleParam{Enabled: true}, resp.Title)
+	require.Equal(t, json.RawMessage(`{"level":"high"}`), resp.SafetyCheck)
+	require.Equal(t, json.RawMessage(`{"enabled":true}`), resp.Title)
 	require.Len(t, resp.Tools, 3)
 	require.Equal(t, ResponsesTool{Type: "deepseek_web_search", Name: "deepseek_web_search"}, resp.Tools[0])
 	require.Equal(t, ResponsesTool{Type: "deepseek_read_url", Name: "deepseek_read_url"}, resp.Tools[1])
@@ -70,10 +69,9 @@ func TestChatCompletionsToResponses_NoDeepSeekExtensionsOmitted(t *testing.T) {
 // symmetric passthrough for the extension fields and server tools.
 func TestResponsesToChatCompletionsRequest_DeepSeekExtensions(t *testing.T) {
 	req := &ResponsesRequest{
-		Model:       "deepseek-flash",
-		Input:       json.RawMessage(`"DeepSeek V4.1 有哪些更新？"`),
-		SafetyCheck: &SafetyCheckParam{Level: "high"},
-		Title:       &TitleParam{Enabled: true},
+		Model:                 "deepseek-flash",
+		Input:                 json.RawMessage(`"DeepSeek V4.1 有哪些更新？"`),
+		DeepSeekRequestFields: DeepSeekRequestFields{SafetyCheck: json.RawMessage(`{"level":"high"}`), Title: json.RawMessage(`{"enabled":true}`)},
 		Tools: []ResponsesTool{
 			{Type: "deepseek_web_search", Name: "deepseek_web_search"},
 			{Type: "deepseek_read_url"},
@@ -83,10 +81,10 @@ func TestResponsesToChatCompletionsRequest_DeepSeekExtensions(t *testing.T) {
 	out, err := ResponsesToChatCompletionsRequest(req)
 	require.NoError(t, err)
 
-	require.Equal(t, &SafetyCheckParam{Level: "high"}, out.SafetyCheck)
-	require.Equal(t, &TitleParam{Enabled: true}, out.Title)
+	require.Equal(t, json.RawMessage(`{"level":"high"}`), out.SafetyCheck)
+	require.Equal(t, json.RawMessage(`{"enabled":true}`), out.Title)
 	require.Len(t, out.Tools, 2)
 	require.Equal(t, ChatTool{Type: "deepseek_web_search", Name: "deepseek_web_search"}, out.Tools[0])
-	// Missing name falls back to the tool type.
-	require.Equal(t, ChatTool{Type: "deepseek_read_url", Name: "deepseek_read_url"}, out.Tools[1])
+	// Chat accepts a type-only server tool declaration.
+	require.Equal(t, ChatTool{Type: "deepseek_read_url"}, out.Tools[1])
 }
