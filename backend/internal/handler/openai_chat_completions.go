@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
@@ -60,6 +61,14 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 	}
 	if len(body) == 0 {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
+		return
+	}
+	// Chat Completions is converted to a Responses request: admit that
+	// transform peak before decoding, like Responses itself.
+	if err := pkghttputil.ReserveJSONProcessingMemory(c.Request.Context(), body); err != nil {
+		if !handleRequestBodyReadError(c, reqLog, err) {
+			c.Abort()
+		}
 		return
 	}
 
