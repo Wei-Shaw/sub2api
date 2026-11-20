@@ -412,7 +412,22 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	instructions := gjson.GetBytes(body, "instructions")
 	instructionsEmpty := !instructions.Exists() || instructions.Type != gjson.String || strings.TrimSpace(instructions.String()) == ""
 	if instructionsEmpty && account.UsesOpenAICodexProtocol() && !compatMessagesBridge && !nativeCNResponses {
-		markPatchSet("instructions", defaultCodexSynthInstructions(upstreamModel))
+		if !isCompactRequest && openai.GPT62ModelID(upstreamModel) != "" {
+			decoded, decodeErr := ensureReqBody()
+			if decodeErr != nil {
+				return nil, decodeErr
+			}
+			// Resolve legacy prompt/input aliases before inserting a prefix, so
+			// the later OAuth pass cannot mistake our default for caller input.
+			if normalizeOpenAIOAuthResponsesCompatibilityFields(decoded) {
+				markDecodedModified()
+			}
+			if applyGPT62DefaultInstructions(decoded, upstreamModel) {
+				markDecodedModified()
+			}
+		} else {
+			markPatchSet("instructions", defaultCodexSynthInstructions(upstreamModel))
+		}
 	}
 	if billingModel != requestedModel {
 		logger.LegacyPrintf("service.openai_gateway", "[OpenAI] Model mapping applied: %s -> %s (account: %s, isCodexCLI: %v)", requestedModel, billingModel, account.Name, isCodexCLI)

@@ -301,18 +301,23 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 		}
 	}
 
-	// ChatGPT internal Codex endpoint does not accept role:"system".
-	// Mirror its text into instructions because Codex OAuth requires it. Some
-	// callers must also keep the guidance in input as developer (notably
-	// Responses JSON object mode), while Chat Completions compatibility can
-	// omit text-only messages after promoting them losslessly.
-	if extractSystemMessagesFromInput(reqBody, opts.OmitPromotedSystemMessagesFromInput) {
-		result.Modified = true
-	}
-
-	// instructions 处理逻辑：根据是否是 Codex CLI 分别调用不同方法
-	if !opts.SkipDefaultInstructions && applyInstructions(reqBody, opts.IsCodexCLI) {
-		result.Modified = true
+	cacheableInstructions := !opts.IsCompact && openai.GPT62ModelID(normalizedModel) != ""
+	if cacheableInstructions {
+		if normalizeGPT62SystemMessages(reqBody) {
+			result.Modified = true
+		}
+		if !opts.SkipDefaultInstructions && applyGPT62DefaultInstructions(reqBody, normalizedModel) {
+			result.Modified = true
+		}
+	} else {
+		// Older Codex endpoints retain their system-to-instructions promotion.
+		// GPT-6.2 keeps this guidance in input so multi-turn prefixes can cache.
+		if extractSystemMessagesFromInput(reqBody, opts.OmitPromotedSystemMessagesFromInput) {
+			result.Modified = true
+		}
+		if !opts.SkipDefaultInstructions && applyInstructions(reqBody, opts.IsCodexCLI) {
+			result.Modified = true
+		}
 	}
 	if isCodexSparkModel(normalizedModel) && applyCodexSparkImageUnsupportedInstructions(reqBody) {
 		result.Modified = true
