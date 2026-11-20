@@ -1221,8 +1221,55 @@ func normalizeCacheControlTTLOrder(body []byte) []byte {
 
 // injectAnthropicCacheControlTTL1h 将已有 ephemeral cache_control 块的 ttl 强制写为 1h。
 // 仅修改已经存在的 cache_control，不新增缓存断点。
+//
+// Claude Code compaction requests are written at 5m instead: the conversation is
+// replaced by the summary afterwards, so nothing reads the extra tokens again,
+// and a 5m breakpoint still reads the prefix the main thread wrote at 1h.
 func injectAnthropicCacheControlTTL1h(body []byte) []byte {
+	if isClaudeCodeCompactionRequest(body) {
+		return forceEphemeralCacheControlTTL(body, cacheTTLTarget5m)
+	}
 	return forceEphemeralCacheControlTTL(body, cacheTTLTarget1h)
+}
+
+// claudeCodeCompactPreamble opens the compact prompt of Claude Code 2.1.282 in
+// its full, partial-from and partial-up-to variants, and no other prompt it sends.
+const claudeCodeCompactPreamble = "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.\n\n"
+
+// isClaudeCodeCompactionRequest reports whether the last user message is a compact
+// prompt. When auto-compaction fires during a tool loop the prompt arrives as a text
+// block merged into the user message that carries the tool_result.
+func isClaudeCodeCompactionRequest(body []byte) bool {
+	return claudeLastUserTextHasPrefix(body, claudeCodeCompactPreamble)
+}
+
+// claudeLastUserTextHasPrefix reports whether a text block (or the string content) of
+// the last user message starts with any of prefixes.
+func claudeLastUserTextHasPrefix(body []byte, prefixes ...string) bool {
+	hasPrefix := func(s string) bool {
+		for _, p := range prefixes {
+			if strings.HasPrefix(s, p) {
+				return true
+			}
+		}
+		return false
+	}
+	var last gjson.Result
+	gjson.GetBytes(body, "messages").ForEach(func(_, msg gjson.Result) bool {
+		if msg.Get("role").String() == "user" {
+			last = msg.Get("content")
+		}
+		return true
+	})
+	if last.Type == gjson.String {
+		return hasPrefix(last.Str)
+	}
+	found := false
+	last.ForEach(func(_, block gjson.Result) bool {
+		found = block.Get("type").String() == "text" && hasPrefix(block.Get("text").String())
+		return !found
+	})
+	return found
 }
 
 func forceEphemeralCacheControlTTL(body []byte, ttl string) []byte {
