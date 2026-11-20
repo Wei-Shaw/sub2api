@@ -53,6 +53,7 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 		account,
 		claudeReq.Model,
 		geminiThinkingLevelFromClaudeThinking(claudeReq.Thinking),
+		antigravityFamilyLevelFromClaudeBody(body, claudeReq.Thinking),
 	)
 	if mappedModel == "" {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)

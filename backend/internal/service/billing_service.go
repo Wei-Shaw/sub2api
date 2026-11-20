@@ -563,6 +563,15 @@ func (s *BillingService) initFallbackPricing() {
 		SupportsCacheBreakdown: false,
 	}
 
+	// Gemini 4 Neon (Google AI pricing: $3 input / $15 output / $0.15 cached
+	// input per MTok; Priority is 1.8x). One rate covers every prompt length.
+	s.fallbackPrices["gemini-4-neon"] = pricingWithPriorityMultiplier(&ModelPricing{
+		InputPricePerToken:     3e-6,
+		OutputPricePerToken:    15e-6,
+		CacheReadPricePerToken: 0.15e-6,
+		SupportsCacheBreakdown: false,
+	}, 1.8)
+
 	// Gemini 4 Hydrogen (Google AI pricing: $1.50 input / $7.50 output /
 	// $0.075 cached input per MTok; Priority is 1.8x). One rate covers every
 	// prompt length.
@@ -1249,6 +1258,9 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	}
 	if strings.Contains(modelLower, "gemini-4-hydrogen") {
 		return s.fallbackPrices["gemini-4-hydrogen"]
+	}
+	if strings.Contains(modelLower, "gemini-4-neon") {
+		return s.fallbackPrices["gemini-4-neon"]
 	}
 
 	// DeepSeek 系列：官方模型 V4 Pro/Flash（含 vision-exp）按各自价卡；

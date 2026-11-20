@@ -199,9 +199,9 @@ func TestGetMappedModelResolvesBareGeminiModelForAllEntrypoints(t *testing.T) {
 
 	t.Run("caller supplied level wins", func(t *testing.T) {
 		require.Equal(t, "gemini-3.8-flash-low",
-			svc.getMappedModelForThinkingLevel(account, "gemini-3.8-flash", "low"))
+			svc.getMappedModelForThinkingLevel(account, "gemini-3.8-flash", "low", ""))
 		require.Equal(t, "gemini-3.8-flash-medium",
-			svc.getMappedModelForThinkingLevel(account, "gemini-3.8-flash", "medium"))
+			svc.getMappedModelForThinkingLevel(account, "gemini-3.8-flash", "medium", ""))
 	})
 
 	t.Run("models/ prefix is handled", func(t *testing.T) {
