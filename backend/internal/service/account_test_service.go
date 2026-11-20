@@ -70,6 +70,10 @@ type TestEvent struct {
 type AccountTestOptions struct {
 	ImageDataURL string
 	AudioDataURL string
+	// PlainAPIKey sends the Anthropic api_key connectivity test as a plain
+	// JSON client request (no Claude Code mimicry: no CC UA / x-stainless-*
+	// headers, no CC system prompt, no metadata.user_id, no anthropic-beta).
+	PlainAPIKey bool
 }
 
 func firstAccountTestOptions(opts []AccountTestOptions) AccountTestOptions {
@@ -312,6 +316,29 @@ func generateSessionString() (string, error) {
 	return FormatMetadataUserID(hex64, "", sessionUUID, uaVersion), nil
 }
 
+// createPlainTestPayload creates a minimal API-key style test request payload.
+// No Claude Code mimicry: no CC system prompt, no metadata.user_id, no
+// cache_control breakpoints. Fits accounts that authenticate with plain API
+// keys, where upstream does not gate by client identity.
+func createPlainTestPayload(modelID string) (map[string]any, error) {
+	return map[string]any{
+		"model": modelID,
+		"messages": []map[string]any{
+			{
+				"role": "user",
+				"content": []map[string]any{
+					{
+						"type": "text",
+						"text": "hi",
+					},
+				},
+			},
+		},
+		"max_tokens": 1024,
+		"stream":     true,
+	}, nil
+}
+
 // createTestPayload creates a Claude Code style test request payload
 func createTestPayload(modelID string) (map[string]any, error) {
 	sessionID, err := generateSessionString()
@@ -386,21 +413,22 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 
 	// Route to platform-specific test method
 	// 按入站协议分流的多协议供应商（国产厂商等）：按账号协议选测试路径。
+	plainAPIKey := testOpts.PlainAPIKey
 	if account.RoutesProtocolByInbound() {
 		switch account.GetAPIProtocol() {
 		case APIProtocolAdaptive:
-			return s.testCNProviderAdaptiveConnection(c, account, modelID, prompt)
+			return s.testCNProviderAdaptiveConnection(c, account, modelID, prompt, plainAPIKey)
 		case APIProtocolResponses:
-			return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
+			return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode), plainAPIKey)
 		case APIProtocolChatCompletions:
 			return s.testCNProviderChatCompletionsConnection(c, account, modelID, prompt)
 		case APIProtocolAnthropic:
-			return s.testCNProviderAnthropicConnection(c, account, modelID)
+			return s.testCNProviderAnthropicConnection(c, account, modelID, plainAPIKey)
 		}
 	}
 
 	if account.IsOpenAI() {
-		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode))
+		return s.testOpenAIAccountConnection(c, account, modelID, prompt, normalizeAccountTestMode(mode), plainAPIKey)
 	}
 
 	if account.IsGemini() {
@@ -417,14 +445,14 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 
 	// 按模型分流的多模型聚合平台（OpenCode、Command Code 等）。
 	if account.routesByModel() {
-		return s.testModelRoutedAccountConnection(c, account, modelID, prompt)
+		return s.testModelRoutedAccountConnection(c, account, modelID, prompt, plainAPIKey)
 	}
 
 	if account.IsTypeSafe() {
 		return s.testTypeSafeAccountConnection(c, account, prompt)
 	}
 
-	return s.testClaudeAccountConnection(c, account, modelID)
+	return s.testClaudeAccountConnection(c, account, modelID, testOpts.PlainAPIKey)
 }
 
 // testModelRoutedAccountConnection probes the native endpoint for the selected
@@ -435,7 +463,7 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 // overrides that catalog. Falling through to the generic Claude tester used
 // credentials.base_url + /v1/messages?beta=true, which 404s as HTML on
 // https://opencode.ai/zen/go/v1/v1/messages.
-func (s *AccountTestService) testModelRoutedAccountConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
+func (s *AccountTestService) testModelRoutedAccountConnection(c *gin.Context, account *Account, modelID string, prompt string, plainAPIKey bool) error {
 	testModelID := strings.TrimSpace(modelID)
 	if testModelID == "" {
 		testModelID = account.providerDefaultTestModel()
@@ -454,7 +482,7 @@ func (s *AccountTestService) testModelRoutedAccountConnection(c *gin.Context, ac
 	}
 	switch protocol {
 	case APIProtocolAnthropic:
-		return s.testCNProviderAnthropicConnection(c, account, testModelID)
+		return s.testCNProviderAnthropicConnection(c, account, testModelID, plainAPIKey)
 	case APIProtocolResponses:
 		return s.testModelRoutedResponsesConnection(c, account, testModelID)
 	default:
@@ -501,7 +529,8 @@ func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Cont
 }
 
 // testClaudeAccountConnection tests an Anthropic Claude account's connection
-func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account *Account, modelID string) error {
+// plainAPIKey 在 api_key 账号上改用朴素 JSON 客户端请求（无 CC 伪装）。
+func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account *Account, modelID string, plainAPIKey bool) error {
 	ctx := c.Request.Context()
 
 	// Determine the model to use
@@ -559,8 +588,17 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	c.Writer.Header().Set("X-Accel-Buffering", "no")
 	c.Writer.Flush()
 
-	// Create Claude Code style payload (same for all account types)
-	payload, err := createTestPayload(testModelID)
+	// 朴素模式仅对 api_key 账号生效；OAuth / service_account 保持 CC 伪装。
+	plainRequest := plainAPIKey && account.Type == AccountTypeAPIKey
+
+	// Create payload (plain JSON for plain mode, Claude Code style otherwise)
+	var payload map[string]any
+	var err error
+	if plainRequest {
+		payload, err = createPlainTestPayload(testModelID)
+	} else {
+		payload, err = createTestPayload(testModelID)
+	}
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Failed to create test payload")
 	}
@@ -578,15 +616,23 @@ func (s *AccountTestService) testClaudeAccountConnection(c *gin.Context, account
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("anthropic-version", "2023-06-01")
 
-	// Apply Claude Code client headers
-	for key, value := range claude.DefaultHeaders() {
-		req.Header.Set(key, value)
+	// Apply Claude Code client headers (skipped in plain mode)
+	if !plainRequest {
+		for key, value := range claude.DefaultHeaders() {
+			req.Header.Set(key, value)
+		}
+	} else {
+		// 朴素模式仍显式设置 UA，避免 Go 默认补 Go-http-client/1.1。
+		req.Header.Set("User-Agent", "sub2api-connectivity-test/1.0")
 	}
 
 	// Set authentication header
 	if account.IsOAuth() {
 		req.Header.Set("anthropic-beta", claude.DefaultBetaHeader)
 		req.Header.Set("Authorization", "Bearer "+authToken)
+	} else if plainRequest {
+		// 朴素模式不携带 anthropic-beta（无 claude-code / oauth token）
+		setAnthropicAPIKeyAuthHeader(req.Header, account, authToken, account.GetBaseURL())
 	} else {
 		req.Header.Set("anthropic-beta", claude.APIKeyBetaHeader)
 		// Ollama Cloud Anthropic 兼容端点按实际 base_url 强制 Bearer，
@@ -797,9 +843,12 @@ func (s *AccountTestService) testBedrockAccountConnection(c *gin.Context, ctx co
 }
 
 // testOpenAIAccountConnection tests an OpenAI account's connection
-func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account *Account, modelID string, prompt string, mode string) error {
+func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account *Account, modelID string, prompt string, mode string, plainAPIKey bool) error {
 	ctx := c.Request.Context()
 	mode = normalizeAccountTestMode(mode)
+
+	// 朴素模式仅对 api_key 账号生效；OAuth 保持 Codex 身份探测。
+	plainRequest := plainAPIKey && account.Type == AccountTypeAPIKey
 
 	// Default to openai.DefaultTestModel for OpenAI testing
 	testModelID := modelID
@@ -886,11 +935,15 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	// Create OpenAI Responses API payload. OAuth accounts use ChatGPT Codex
 	// upstream and must apply the same model normalization as real forwarding.
+	// Plain API-key mode drops Codex instructions to send a minimal client request.
 	upstreamTestModelID := testModelID
 	if isOAuth {
 		upstreamTestModelID = normalizeOpenAIModelForUpstream(credentialAccount, testModelID)
 	}
 	payload := createOpenAITestPayload(upstreamTestModelID, isOAuth)
+	if plainRequest {
+		delete(payload, "instructions")
+	}
 	payloadBytes, _ := json.Marshal(payload)
 
 	// Send test_start event once. A task-invalid Agent Identity response may
@@ -907,7 +960,10 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 
 	// Set common headers
 	req.Header.Set("Content-Type", "application/json")
-	if !isOAuth {
+	if !isOAuth && plainRequest {
+		// 朴素模式：不带 Codex 探测头，显式设 UA 避免 Go 默认补 Go-http-client/1.1。
+		req.Header.Set("User-Agent", "sub2api-connectivity-test/1.0")
+	} else if !isOAuth {
 		applyOpenAICodexProbeHeaders(req.Header)
 	}
 	if credentialAccount.IsOpenAIAgentIdentity() {
@@ -973,7 +1029,7 @@ func (s *AccountTestService) testOpenAIAccountConnection(c *gin.Context, account
 				return s.sendErrorAndEnd(c, fmt.Sprintf("Agent Identity task recovery failed: %s", err.Error()))
 			}
 			c.Request = c.Request.WithContext(markAgentIdentityTaskRecoveryTried(ctx))
-			return s.testOpenAIAccountConnection(c, account, modelID, prompt, mode)
+			return s.testOpenAIAccountConnection(c, account, modelID, prompt, mode, plainAPIKey)
 		}
 		if resp.StatusCode == http.StatusTooManyRequests {
 			s.reconcileOpenAI429State(ctx, account, resp.Header, body)
@@ -2470,7 +2526,7 @@ func (s *AccountTestService) routeAntigravityTest(c *gin.Context, account *Accou
 		if strings.HasPrefix(modelID, "gemini-") {
 			return s.testGeminiAccountConnection(c, account, modelID, prompt)
 		}
-		return s.testClaudeAccountConnection(c, account, modelID)
+		return s.testClaudeAccountConnection(c, account, modelID, false)
 	}
 	return s.testAntigravityAccountConnection(c, account, modelID, prompt)
 }

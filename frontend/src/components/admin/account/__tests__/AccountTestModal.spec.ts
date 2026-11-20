@@ -220,4 +220,31 @@ describe('AccountTestModal', () => {
       mode: 'compact'
     })
   })
+
+  it.each([
+    ['apikey', true, { plain_api_key: true }],
+    ['apikey', false, {}],
+    ['oauth', true, {}]
+  ])('%s 账号勾选朴素请求=%s 时按需携带 plain_api_key', async (type, checked, extra) => {
+    getAvailableModels.mockResolvedValue([{ id: 'claude-sonnet-4-5', display_name: 'Sonnet' }])
+    global.fetch = vi.fn().mockResolvedValue(
+      createStreamResponse(['data: {"type":"test_complete","success":true}\n'])
+    ) as any
+
+    const wrapper = mountModal({ id: 7, name: 'A', platform: 'anthropic', type, status: 'active' })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    ;(wrapper.vm as any).selectedModelId = 'claude-sonnet-4-5'
+    ;(wrapper.vm as any).plainAPIKey = checked
+    await (wrapper.vm as any).startTest()
+    await flushPromises()
+
+    const [, request] = (global.fetch as any).mock.calls[0]
+    expect(JSON.parse(request.body)).toEqual({
+      model_id: 'claude-sonnet-4-5',
+      prompt: '',
+      ...extra
+    })
+  })
 })
