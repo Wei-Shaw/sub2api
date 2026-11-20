@@ -682,6 +682,15 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	}
 
 	if finalResponse == nil {
+		if account != nil && !c.Writer.Written() && !IsResponseCommitted(c) {
+			// The buffered attempt has not reached the client. A relay may end
+			// deterministically (for example after an unrecognized error frame),
+			// so permit at most one same-account replay and do not punish the key.
+			failoverErr := s.newOpenAIStreamFailoverErrorWithModel(c, account, false, requestID, nil, "Upstream stream ended without a terminal response event", upstreamModel, resp.Header)
+			failoverErr.Scope = GatewayFailureScopeProvider
+			failoverErr.SameAccountRetryMax = 1
+			return nil, failoverErr
+		}
 		writeChatCompletionsError(c, http.StatusBadGateway, "api_error", "Upstream stream ended without a terminal response event")
 		return nil, fmt.Errorf("upstream stream ended without terminal event")
 	}
