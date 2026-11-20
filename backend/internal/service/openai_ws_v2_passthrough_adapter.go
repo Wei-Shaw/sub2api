@@ -650,6 +650,9 @@ func (c *openAIWSClientFrameConn) WriteFrame(ctx context.Context, msgType coderw
 		if c.restoreToolNames != nil {
 			payload = c.restoreToolNames(payload)
 		}
+		if rewritten, changed := sanitizeOpenAICapacityShedErrorCodeForClient(payload); changed {
+			payload = rewritten
+		}
 	}
 	return c.conn.Write(ctx, msgType, payload)
 }

@@ -49,6 +49,9 @@ func TestGeminiTextDeltaMatchesLegacy(t *testing.T) {
 }
 
 func TestGeminiTextDeltaIncrementalAllocationsStayLinear(t *testing.T) {
+	if runAllocationTestInSubprocess(t) {
+		return
+	}
 	chunk := strings.Repeat("x", 100)
 	const chunks = 2000
 	allocs := testing.AllocsPerRun(5, func() {
