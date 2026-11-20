@@ -882,8 +882,12 @@ func (s *AntigravityGatewayService) setAntigravityModelRateLimits(ctx context.Co
 	if account == nil || repo == nil {
 		return false
 	}
-	keys := antigravityModelRateLimitKeys(account, modelName)
-	if len(keys) == 0 {
+	return s.setAntigravityModelRateLimitKeys(ctx, repo, account, antigravityModelRateLimitKeys(account, modelName), prefix, statusCode, resetAt, afterSmartRetry)
+}
+
+// setAntigravityModelRateLimitKeys 写入指定的限流 key，并同步到调度快照。
+func (s *AntigravityGatewayService) setAntigravityModelRateLimitKeys(ctx context.Context, repo AccountRepository, account *Account, keys []string, prefix string, statusCode int, resetAt time.Time, afterSmartRetry bool) bool {
+	if account == nil || repo == nil || len(keys) == 0 {
 		return false
 	}
 
@@ -1248,11 +1252,18 @@ func (s *AntigravityGatewayService) handleUpstreamError(
 		}
 		if modelKey != "" {
 			ra := s.resolveResetTime(resetAt, defaultDur)
-			if !s.setAntigravityModelRateLimits(ctx, s.accountRepo, account, modelKey, prefix, statusCode, ra, false) {
+			keys := antigravityModelRateLimitKeys(account, modelKey)
+			if resetAt == nil && len(keys) > 1 {
+				// 没有 quotaResetDelay / RetryInfo 的裸 429 不能说明共享的 Gemini 配额已耗尽：
+				// 上游对按内容拒绝的请求也返回同样的响应体（#8824）。此时只冷却失败的模型
+				// （keys[0]），不写入 antigravity:gemini 家族 key，避免同账号其他模型一起不可调度。
+				keys = keys[:1]
+			}
+			if !s.setAntigravityModelRateLimitKeys(ctx, s.accountRepo, account, keys, prefix, statusCode, ra, false) {
 				logger.LegacyPrintf("service.antigravity_gateway", "%s status=429 model_rate_limit_set_failed model=%s", prefix, modelKey)
 			} else {
-				logger.LegacyPrintf("service.antigravity_gateway", "%s status=429 model_rate_limited model=%s account=%d reset_at=%v reset_in=%v",
-					prefix, modelKey, account.ID, ra.Format("15:04:05"), time.Until(ra).Truncate(time.Second))
+				logger.LegacyPrintf("service.antigravity_gateway", "%s status=429 model_rate_limited model=%s keys=%s account=%d reset_at=%v reset_in=%v",
+					prefix, modelKey, strings.Join(keys, ","), account.ID, ra.Format("15:04:05"), time.Until(ra).Truncate(time.Second))
 			}
 			return nil
 		}
