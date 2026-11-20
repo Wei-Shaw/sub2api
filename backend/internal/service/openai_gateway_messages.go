@@ -1135,6 +1135,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 		}
 		if countSearch {
 			searchCount += countGrokNativeSearchCallsInSSEDataDedup([]byte(payload), streamSearchSeen)
+			searchCount = grokSearchCountWithTerminalUsage(searchCount, []byte(payload))
 		}
 
 		var event apicompat.ResponsesStreamEvent
