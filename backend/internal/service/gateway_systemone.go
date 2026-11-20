@@ -47,6 +47,12 @@ func (s *GatewayService) ForwardSystemOne(ctx context.Context, c *gin.Context, a
 	if err != nil {
 		return nil, err
 	}
+	// TypeSafe requires a per-request opt-in for images: https://docs.typesafe.ai/images.
+	if c != nil && c.Request != nil {
+		if value := c.GetHeader("TypeSafe-Danger-Zone-Images"); value != "" {
+			req.Header.Set("TypeSafe-Danger-Zone-Images", value)
+		}
+	}
 	upstreamURL := req.URL.Scheme + "://" + req.URL.Host + req.URL.Path
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
