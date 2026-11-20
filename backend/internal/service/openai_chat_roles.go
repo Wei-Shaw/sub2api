@@ -14,7 +14,7 @@ func requiresSystemChatRole(account *Account, targetURL, upstreamModel string) b
 		return false
 	}
 	switch account.Platform {
-	case PlatformDeepseek, PlatformKimi, PlatformZhipu:
+	case PlatformDeepseek, PlatformKimi, PlatformZhipu, PlatformMistral:
 		return true
 	}
 	// OpenCode multiplexes providers: only its DeepSeek models require system.
@@ -29,7 +29,7 @@ func requiresSystemChatRole(account *Account, targetURL, upstreamModel string) b
 		return false
 	}
 	switch strings.ToLower(u.Hostname()) {
-	case "api.deepseek.com", "api.kimi.com", "api.moonshot.cn", "api.moonshot.ai", "open.bigmodel.cn", "api.z.ai":
+	case "api.deepseek.com", "api.kimi.com", "api.moonshot.cn", "api.moonshot.ai", "open.bigmodel.cn", "api.z.ai", "api.mistral.ai":
 		return true
 	}
 	return false

@@ -1043,6 +1043,7 @@ var upstreamBillingProbeOfficialAPIDomains = []string{
 	"kimi.com",
 	"bigmodel.cn",
 	"deepseek.com",
+	"mistral.ai",
 	"opencode.ai",
 	"typesafe.ai",
 	"commandcode.ai",

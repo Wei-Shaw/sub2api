@@ -37,7 +37,11 @@ const (
 	PlatformCommandCode = "command_code"
 	// PlatformCline 是 Cline API（多模型聚合，OpenAI 兼容 Chat Completions；按量积分计费，
 	// 另有 ClinePass 订阅）。
-	PlatformCline     = "cline"
+	PlatformCline = "cline"
+	// PlatformMistral 是 Mistral La Plateforme（https://api.mistral.ai/v1）：
+	// OpenAI 兼容的 Chat Completions 与 Responses 端点，API Key 按量计费，
+	// 无公开余额端点，不提供 Anthropic 兼容端点。
+	PlatformMistral   = "mistral"
 	PlatformComposite = "composite"
 )
 
