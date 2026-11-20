@@ -495,23 +495,29 @@ func (s *GeminiMessagesCompatService) validateUpstreamBaseURL(raw string) (strin
 	return normalized, nil
 }
 
-// AntigravityGeminiModelIDs returns the effective Gemini mappings of schedulable
+// AntigravityGeminiModelIDs returns the catalog Gemini mappings of schedulable
 // Antigravity accounts. Mixed routes must additionally respect the account opt-in.
+// A nil result means no eligible account; an empty slice means its catalog is empty.
 func (s *GeminiMessagesCompatService) AntigravityGeminiModelIDs(ctx context.Context, groupID *int64, requireMixed bool) ([]string, error) {
 	accounts, err := s.listSchedulableAccountsOnce(ctx, groupID, PlatformAntigravity, false)
 	if err != nil {
 		return nil, err
 	}
 	seen := make(map[string]struct{})
+	hasAccount := false
 	for _, account := range accounts {
 		if account.Platform != PlatformAntigravity || (requireMixed && !account.IsMixedSchedulingEnabled()) {
 			continue
 		}
-		for model := range account.GetModelMapping() {
+		hasAccount = true
+		for model := range account.modelMappingForListing() {
 			if isAntigravityGeminiModel(model) {
 				seen[model] = struct{}{}
 			}
 		}
+	}
+	if !hasAccount {
+		return nil, nil
 	}
 	models := make([]string, 0, len(seen))
 	for model := range seen {

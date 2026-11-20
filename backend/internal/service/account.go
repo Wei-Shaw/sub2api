@@ -623,6 +623,17 @@ func stringMappingFromRaw(raw any) map[string]string {
 	}
 }
 
+// modelMappingForListing keeps runtime Antigravity routing aliases out of an
+// explicitly configured catalog. Unconfigured accounts still use their defaults.
+func (a *Account) modelMappingForListing() map[string]string {
+	if a.Platform == domain.PlatformAntigravity {
+		if mapping := stringMappingFromRaw(a.Credentials["model_mapping"]); len(mapping) > 0 {
+			return mapping
+		}
+	}
+	return a.GetModelMapping()
+}
+
 func (a *Account) GetModelMapping() map[string]string {
 	runtimeVersion := xai.RuntimeModelMappingVersion()
 	credentialsPtr := mapPtr(a.Credentials)
