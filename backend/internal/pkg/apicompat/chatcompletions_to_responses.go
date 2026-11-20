@@ -3,6 +3,7 @@ package apicompat
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
@@ -18,16 +19,32 @@ type chatMessageContent struct {
 // true. store is always false and reasoning.encrypted_content is always
 // included so that the response translator has full context.
 func ChatCompletionsToResponses(req *ChatCompletionsRequest) (*ResponsesRequest, error) {
-	return ChatCompletionsToResponsesWithMinOutputTokens(req, DefaultMinMaxOutputTokens)
+	return ChatCompletionsToResponsesWithOptions(req, ChatCompletionsToResponsesOptions{MinOutputTokens: DefaultMinMaxOutputTokens})
 }
 
 // ChatCompletionsToResponsesWithMinOutputTokens converts a Chat Completions
 // request using the supplied max_output_tokens floor.
 func ChatCompletionsToResponsesWithMinOutputTokens(req *ChatCompletionsRequest, minOutputTokens int) (*ResponsesRequest, error) {
+	return ChatCompletionsToResponsesWithOptions(req, ChatCompletionsToResponsesOptions{MinOutputTokens: minOutputTokens})
+}
+
+// ChatCompletionsToResponsesOptions carries upstream-dependent conversion choices.
+type ChatCompletionsToResponsesOptions struct {
+	// MinOutputTokens is the max_output_tokens floor.
+	MinOutputTokens int
+	// ReplayAnthropicThinking replays anthropic-claude-v1 reasoning_details as
+	// signed thinking envelopes. Set it only for a model that
+	// ResponsesToAnthropicRequest keeps them for: otherwise the envelopes are
+	// dropped and the <thinking> text they would have replaced is lost.
+	ReplayAnthropicThinking bool
+}
+
+// ChatCompletionsToResponsesWithOptions is ChatCompletionsToResponses with opts applied.
+func ChatCompletionsToResponsesWithOptions(req *ChatCompletionsRequest, opts ChatCompletionsToResponsesOptions) (*ResponsesRequest, error) {
 	if err := openai.ValidateGPT61ReasoningEffort(req.Model, req.ReasoningEffort); err != nil {
 		return nil, err
 	}
-	input, err := convertChatMessagesToResponsesInput(req.Messages)
+	input, err := convertChatMessagesToResponsesInput(req.Messages, opts.ReplayAnthropicThinking)
 	if err != nil {
 		return nil, err
 	}
@@ -68,8 +85,8 @@ func ChatCompletionsToResponsesWithMinOutputTokens(req *ChatCompletionsRequest, 
 	}
 	if maxTokens > 0 {
 		v := maxTokens
-		if v < minOutputTokens {
-			v = minOutputTokens
+		if v < opts.MinOutputTokens {
+			v = opts.MinOutputTokens
 		}
 		out.MaxOutputTokens = &v
 	}
@@ -112,7 +129,7 @@ func ChatCompletionsToResponsesWithMinOutputTokens(req *ChatCompletionsRequest, 
 
 // convertChatMessagesToResponsesInput converts the Chat Completions messages
 // array into a Responses API input items array.
-func convertChatMessagesToResponsesInput(msgs []ChatMessage) ([]ResponsesInputItem, error) {
+func convertChatMessagesToResponsesInput(msgs []ChatMessage, replayAnthropicThinking bool) ([]ResponsesInputItem, error) {
 	var out []ResponsesInputItem
 	legacyIDs := legacyFunctionCallIDs{msgs: msgs}
 	for _, m := range msgs {
@@ -126,7 +143,7 @@ func convertChatMessagesToResponsesInput(msgs []ChatMessage) ([]ResponsesInputIt
 		case m.Role == "function" && m.ToolCallID == "":
 			m.ToolCallID = legacyIDs.claim(m.Name)
 		}
-		items, err := chatMessageToResponsesItems(m)
+		items, err := chatMessageToResponsesItems(m, replayAnthropicThinking)
 		if err != nil {
 			return nil, err
 		}
@@ -189,14 +206,14 @@ func (ids *legacyFunctionCallIDs) claim(name string) string {
 
 // chatMessageToResponsesItems converts a single ChatMessage into one or more
 // ResponsesInputItem values.
-func chatMessageToResponsesItems(m ChatMessage) ([]ResponsesInputItem, error) {
+func chatMessageToResponsesItems(m ChatMessage, replayAnthropicThinking bool) ([]ResponsesInputItem, error) {
 	switch m.Role {
 	case "system", "developer":
 		return chatSystemToResponses(m)
 	case "user":
 		return chatUserToResponses(m)
 	case "assistant":
-		return chatAssistantToResponses(m)
+		return chatAssistantToResponses(m, replayAnthropicThinking)
 	case "tool":
 		return chatToolToResponses(m)
 	case "function":
@@ -239,11 +256,15 @@ func chatUserToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 // text content and tool_calls, the text is emitted as an assistant message
 // first, then each tool_call becomes a function_call item. If the content is
 // empty/nil and there are tool_calls, only function_call items are emitted.
-func chatAssistantToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
+func chatAssistantToResponses(m ChatMessage, replayAnthropicThinking bool) ([]ResponsesInputItem, error) {
 	var items []ResponsesInputItem
+	if replayAnthropicThinking {
+		items = anthropicReasoningDetailsToResponsesItems(m.ReasoningDetails)
+	}
 	content := ""
 
-	if m.ReasoningContent != "" {
+	// Replayed signed thinking supersedes the plain-text reasoning copy.
+	if m.ReasoningContent != "" && len(items) == 0 {
 		content = "<thinking>" + m.ReasoningContent + "</thinking>"
 	}
 
@@ -285,6 +306,38 @@ func chatAssistantToResponses(m ChatMessage) ([]ResponsesInputItem, error) {
 	}
 
 	return items, nil
+}
+
+// anthropicReasoningDetailsToResponsesItems turns the anthropic-claude-v1
+// reasoning.encrypted entries this bridge wrote back into the reasoning items
+// that ResponsesToAnthropicRequest decodes into thinking blocks. The field is
+// decoded entry by entry: a value or entry that does not decode is ignored.
+func anthropicReasoningDetailsToResponsesItems(raw json.RawMessage) []ResponsesInputItem {
+	var entries []json.RawMessage
+	if len(raw) == 0 || json.Unmarshal(raw, &entries) != nil {
+		return nil
+	}
+	var kept []ChatReasoningDetail
+	for _, entry := range entries {
+		var d ChatReasoningDetail
+		if json.Unmarshal(entry, &d) != nil || d.Format != anthropicReasoningDetailFormat || d.Type != "reasoning.encrypted" {
+			continue
+		}
+		if !strings.HasPrefix(d.Data, anthropicThinkingEnvelopePrefix) {
+			continue
+		}
+		if _, err := decodeAnthropicThinking(d.Data); err != nil {
+			continue
+		}
+		kept = append(kept, d)
+	}
+	sort.SliceStable(kept, func(i, j int) bool { return kept[i].Index < kept[j].Index })
+
+	var items []ResponsesInputItem
+	for _, d := range kept {
+		items = append(items, ResponsesInputItem{Type: "reasoning", EncryptedContent: d.Data})
+	}
+	return items
 }
 
 // parseAssistantContent returns assistant content as plain text.

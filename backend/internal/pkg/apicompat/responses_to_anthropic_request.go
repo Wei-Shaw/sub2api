@@ -1,7 +1,6 @@
 package apicompat
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -252,16 +251,9 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 			// Only decode marked Anthropic bridge envelopes, not arbitrary
 			// OpenAI ciphertext. The upstream remains responsible for signature validation.
 			if preserveThinking && strings.HasPrefix(item.EncryptedContent, anthropicThinkingEnvelopePrefix) {
-				raw, err := base64.RawStdEncoding.DecodeString(strings.TrimPrefix(item.EncryptedContent, anthropicThinkingEnvelopePrefix))
+				block, err := decodeAnthropicThinking(item.EncryptedContent)
 				if err != nil {
-					return nil, nil, fmt.Errorf("invalid Anthropic thinking envelope: %w", err)
-				}
-				var block AnthropicContentBlock
-				if err := json.Unmarshal(raw, &block); err != nil {
-					return nil, nil, fmt.Errorf("invalid Anthropic thinking block: %w", err)
-				}
-				if (block.Type != "thinking" || block.Signature == "") && (block.Type != "redacted_thinking" || block.Data == "") {
-					return nil, nil, fmt.Errorf("invalid Anthropic signed thinking block")
+					return nil, nil, err
 				}
 				content, err := json.Marshal([]AnthropicContentBlock{block})
 				if err != nil {

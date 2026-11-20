@@ -46,6 +46,23 @@ func anthropicCacheCreationInputTokens(usage AnthropicUsage) int {
 	return max(usage.CacheCreationInputTokens, 0)
 }
 
+// decodeAnthropicThinking reverses encodeAnthropicThinking. The caller checks
+// the envelope prefix; signature validity stays with the upstream.
+func decodeAnthropicThinking(encrypted string) (AnthropicContentBlock, error) {
+	raw, err := base64.RawStdEncoding.DecodeString(strings.TrimPrefix(encrypted, anthropicThinkingEnvelopePrefix))
+	if err != nil {
+		return AnthropicContentBlock{}, fmt.Errorf("invalid Anthropic thinking envelope: %w", err)
+	}
+	var block AnthropicContentBlock
+	if err := json.Unmarshal(raw, &block); err != nil {
+		return AnthropicContentBlock{}, fmt.Errorf("invalid Anthropic thinking block: %w", err)
+	}
+	if (block.Type != "thinking" || block.Signature == "") && (block.Type != "redacted_thinking" || block.Data == "") {
+		return AnthropicContentBlock{}, fmt.Errorf("invalid Anthropic signed thinking block")
+	}
+	return block, nil
+}
+
 // AnthropicToResponsesResponse converts an Anthropic Messages response into a
 // Responses API response. This is the reverse of ResponsesToAnthropic and
 // enables Anthropic upstream responses to be returned in OpenAI Responses format.

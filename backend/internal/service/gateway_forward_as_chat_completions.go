@@ -43,12 +43,6 @@ func (s *GatewayService) ForwardAsChatCompletions(
 	originalModel := ccReq.Model
 	clientStream := ccReq.Stream
 
-	// 2. Convert CC → Responses → Anthropic (chained conversion)
-	responsesReq, err := chatCompletionsToResponses(s.cfg, &ccReq)
-	if err != nil {
-		return nil, fmt.Errorf("convert chat completions to responses: %w", err)
-	}
-
 	// Resolve the final upstream model before model-specific conversion.
 	mappedModel := originalModel
 	if account.Type == AccountTypeAPIKey || account.Type == AccountTypeServiceAccount {
@@ -65,6 +59,16 @@ func (s *GatewayService) ForwardAsChatCompletions(
 			mappedModel = normalized
 		}
 	}
+
+	// 2. Convert CC → Responses → Anthropic (chained conversion)
+	responsesReq, err := apicompat.ChatCompletionsToResponsesWithOptions(&ccReq, apicompat.ChatCompletionsToResponsesOptions{
+		MinOutputTokens:         configuredMinOutputTokens(s.cfg),
+		ReplayAnthropicThinking: isClaude55SignedThinkingModel(mappedModel),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("convert chat completions to responses: %w", err)
+	}
+
 	if err := validateClaude55Request(body, mappedModel); err != nil {
 		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
@@ -321,6 +325,8 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 					finalResp.Content[idx].Text += event.Delta.Text
 				case "thinking_delta":
 					finalResp.Content[idx].Thinking += event.Delta.Thinking
+				case "signature_delta":
+					finalResp.Content[idx].Signature += event.Delta.Signature
 				case "input_json_delta":
 					finalResp.Content[idx].Input = appendRawJSON(finalResp.Content[idx].Input, event.Delta.PartialJSON)
 				}
@@ -360,8 +366,13 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 	normalizeAnthropicEventUsageForResponses(&apicompat.AnthropicStreamEvent{Message: finalResp}, usage)
 
 	// Chain: Anthropic → Responses → Chat Completions
+	if isClaude55SignedThinkingModel(mappedModel) {
+		finalResp.Model = mappedModel
+	}
 	responsesResp := apicompat.AnthropicToResponsesResponse(finalResp)
-	ccResp := apicompat.ResponsesToChatCompletions(responsesResp, originalModel)
+	ccResp := apicompat.ResponsesToChatCompletionsWithOptions(responsesResp, originalModel, apicompat.ResponsesToChatCompletionsOptions{
+		AnthropicReasoningDetails: isClaude55SignedThinkingModel(mappedModel),
+	})
 
 	if s.responseHeaderFilter != nil {
 		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -421,8 +432,10 @@ func (s *GatewayService) handleCCStreamingFromAnthropic(
 	// Use Anthropic→Responses state machine, then convert Responses→CC
 	anthState := apicompat.NewAnthropicEventToResponsesState()
 	anthState.Model = originalModel
+	anthState.PreserveThinkingSignatures = isClaude55SignedThinkingModel(mappedModel)
 	ccState := apicompat.NewResponsesEventToChatState()
 	ccState.Model = originalModel
+	ccState.AnthropicReasoningDetails = isClaude55SignedThinkingModel(mappedModel)
 
 	var usage ClaudeUsage
 	var firstTokenMs *int
