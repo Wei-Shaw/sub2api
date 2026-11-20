@@ -248,7 +248,7 @@ func (s *TokenRefreshService) ReconcileGrokOAuth(ctx context.Context, input Grok
 				result.Skipped++
 				break
 			}
-			s.notifyAccountSchedulingBlocked(account, time.Time{}, "grok_oauth_reconcile_invalid")
+			s.notifyAccountSchedulingBlocked(ctx, account, time.Time{}, "grok_oauth_reconcile_invalid")
 			account.Status = StatusError
 			account.Schedulable = false
 			cacheInvalidationFailed := s.cacheInvalidator == nil

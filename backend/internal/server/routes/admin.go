@@ -243,6 +243,12 @@ func registerOpsRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		// Error logs (legacy)
 		ops.GET("/errors", h.Admin.Ops.GetErrorLogs)
 		ops.GET("/errors/:id", h.Admin.Ops.GetErrorLogByID)
+
+		// Account traceability & subscription ledger
+		ops.GET("/trace/:request_id", h.Admin.Ops.GetRequestTrace)
+		ops.GET("/accounts/:id/trace", h.Admin.Ops.GetAccountTrace)
+		ops.GET("/accounts/:id/ledger", h.Admin.Ops.GetAccountLedger)
+		ops.GET("/expiring-accounts", h.Admin.Ops.ListExpiringAccounts)
 		ops.PUT("/errors/:id/resolve", h.Admin.Ops.UpdateErrorResolution)
 
 		// Request errors (client-visible failures)

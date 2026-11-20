@@ -17,6 +17,94 @@ type OpsHandler struct {
 	opsService *service.OpsService
 }
 
+// GetRequestTrace 按 request_id 返回一次请求的完整追溯视图。
+//
+// GET /api/v1/admin/ops/trace/:request_id
+//
+// 用户报错时通常只能给一个 request_id（响应头里的 X-Request-Id 或客户端日志），
+// 这个接口把它翻译成：打到了哪些上游账号、每一跳什么结果、最终是否成功，
+// 以及过程中账号状态有没有变化。
+func (h *OpsHandler) GetRequestTrace(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	requestID := strings.TrimSpace(c.Param("request_id"))
+	if requestID == "" {
+		response.BadRequest(c, "Invalid request id")
+		return
+	}
+	trace, err := h.opsService.GetRequestTrace(c.Request.Context(), requestID)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, trace)
+}
+
+// GetAccountTrace 按账号返回时间窗内的上游尝试、调度态事件与台账变化。
+//
+// GET /api/v1/admin/ops/accounts/:id/trace?hours=24&limit=50
+func (h *OpsHandler) GetAccountTrace(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	accountID, err := strconv.ParseInt(strings.TrimSpace(c.Param("id")), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "Invalid account id")
+		return
+	}
+	hours, _ := strconv.Atoi(strings.TrimSpace(c.Query("hours")))
+	limit, _ := strconv.Atoi(strings.TrimSpace(c.Query("limit")))
+	trace, err := h.opsService.GetAccountTrace(c.Request.Context(), accountID, hours, limit)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, trace)
+}
+
+// GetAccountLedger 返回账号的完整订阅台账（开通、续费、到期、凭据/套餐/额度变化）。
+//
+// GET /api/v1/admin/ops/accounts/:id/ledger?limit=100
+func (h *OpsHandler) GetAccountLedger(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	accountID, err := strconv.ParseInt(strings.TrimSpace(c.Param("id")), 10, 64)
+	if err != nil || accountID <= 0 {
+		response.BadRequest(c, "Invalid account id")
+		return
+	}
+	limit, _ := strconv.Atoi(strings.TrimSpace(c.Query("limit")))
+	ledger, err := h.opsService.GetAccountLedger(c.Request.Context(), accountID, limit)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, ledger)
+}
+
+// ListExpiringAccounts 返回 days 天内到期（含已到期）的账号，用于续费巡检。
+//
+// GET /api/v1/admin/ops/expiring-accounts?days=7&limit=100
+func (h *OpsHandler) ListExpiringAccounts(c *gin.Context) {
+	if h.opsService == nil {
+		response.Error(c, http.StatusServiceUnavailable, "Ops service not available")
+		return
+	}
+	days, _ := strconv.Atoi(strings.TrimSpace(c.Query("days")))
+	limit, _ := strconv.Atoi(strings.TrimSpace(c.Query("limit")))
+	items, err := h.opsService.ListExpiringAccounts(c.Request.Context(), days, limit)
+	if err != nil {
+		response.ErrorFrom(c, err)
+		return
+	}
+	response.Success(c, items)
+}
+
 // GetErrorLogByID returns ops error log detail.
 // GET /api/v1/admin/ops/errors/:id
 func (h *OpsHandler) GetErrorLogByID(c *gin.Context) {
