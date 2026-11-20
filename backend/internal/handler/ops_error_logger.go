@@ -1183,6 +1183,10 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 			}
 		}
 
+		if strings.TrimSpace(parsed.Message) == "" {
+			// A client that left gets no body; keep the delivery/consumption audit.
+			parsed.Message = c.GetString(service.OpsDeliveryAuditKey)
+		}
 		// Google 格式错误体没有 type 字段：按网关回写时登记的错误类型补齐。
 		if errType, code := service.OpsLocalErrorType(c); errType != "" && !parsed.StreamFailure &&
 			(parsed.ErrorType == "" || parsed.ErrorType == "api_error") {
