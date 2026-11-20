@@ -53,7 +53,17 @@ func ResponsesToAnthropic(resp *ResponsesResponse, model string) *AnthropicRespo
 				Type:  "tool_use",
 				ID:    fromResponsesCallID(item.CallID),
 				Name:  item.Name,
-				Input: sanitizeAnthropicToolUseInput(item.Name, item.Arguments),
+				Input: anthropicToolUseInput(item.Type, item.Name, item.Arguments),
+			})
+		case "custom_tool_call":
+			if !resp.RenderCustomToolCalls || (resp.XAIServerSideSearch && IsServerSideSearchCall(item.Type, item.CallID)) {
+				continue
+			}
+			blocks = append(blocks, AnthropicContentBlock{
+				Type:  "tool_use",
+				ID:    fromResponsesCallID(item.CallID),
+				Name:  item.Name,
+				Input: anthropicToolUseInput(item.Type, item.Name, item.Input),
 			})
 		case "tool_search_call":
 			blocks = append(blocks, toolSearchCallToolUse(item))
@@ -144,6 +154,26 @@ func containsAnthropicToolUseBlock(blocks []AnthropicContentBlock) bool {
 		}
 	}
 	return false
+}
+
+// anthropicToolUseInput returns the input of a non-streaming tool_use block,
+// which must be a JSON object. An object is kept as it is. A function_call whose
+// arguments are not an object (truncated by max_output_tokens, or empty) gets {};
+// a custom_tool_call's free-form input is wrapped in the same {"input": ...}
+// shape that downgrades a custom tool to a function tool, so that
+// extractCustomToolCallInput gives the text back; an empty custom input is {} as
+// it is in the streamed tool_use.
+func anthropicToolUseInput(itemType, name, raw string) json.RawMessage {
+	if trimmed := strings.TrimSpace(raw); strings.HasPrefix(trimmed, "{") && json.Valid([]byte(trimmed)) {
+		return sanitizeAnthropicToolUseInput(name, raw)
+	}
+	if itemType == "custom_tool_call" && raw != "" {
+		wrapped, err := json.Marshal(map[string]string{"input": raw})
+		if err == nil {
+			return wrapped
+		}
+	}
+	return json.RawMessage("{}")
 }
 
 func sanitizeAnthropicToolUseInput(name string, raw string) json.RawMessage {

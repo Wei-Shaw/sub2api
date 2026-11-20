@@ -484,6 +484,16 @@ type ResponsesResponse struct {
 
 	// Error is present when status="failed"
 	Error *ResponsesError `json:"error,omitempty"`
+
+	// RenderCustomToolCalls is set on an output rebuilt from stream events, where
+	// the accumulator has always handed custom_tool_call items to the converters
+	// as tool calls. An output the upstream delivered keeps them unrendered.
+	RenderCustomToolCalls bool `json:"-"`
+
+	// XAIServerSideSearch is set with RenderCustomToolCalls when the upstream is
+	// xAI. A custom_tool_call that IsServerSideSearchCall then stays in the
+	// output but is not rendered as a tool call, because xAI runs it itself.
+	XAIServerSideSearch bool `json:"-"`
 }
 
 // ResponsesError describes an error in a failed response.
