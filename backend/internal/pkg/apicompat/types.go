@@ -402,13 +402,20 @@ func (i *ResponsesInputItem) UnmarshalJSON(data []byte) error {
 	type alias ResponsesInputItem
 	var wire struct {
 		*alias
-		Output json.RawMessage `json:"output"`
+		Arguments json.RawMessage `json:"arguments"`
+		Output    json.RawMessage `json:"output"`
 	}
 
 	*i = ResponsesInputItem{}
 	wire.alias = (*alias)(i)
 	if err := json.Unmarshal(data, &wire); err != nil {
 		return err
+	}
+
+	if args := bytes.TrimSpace(wire.Arguments); len(args) > 0 && !bytes.Equal(args, []byte("null")) {
+		if err := json.Unmarshal(args, &i.Arguments); err != nil {
+			i.Arguments = string(args)
+		}
 	}
 
 	output := bytes.TrimSpace(wire.Output)
