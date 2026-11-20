@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/tidwall/gjson"
 )
 
 // Gemini 原生请求（/v1beta/models/{model}:generateContent 等）经 Antigravity 账号转发时，
@@ -21,7 +22,7 @@ import (
 // 选中的后缀在映射表里不存在时按 high → medium → low → tiered 的顺序降级到存在的变体。
 // 显式映射（裸名本身在 model_mapping 里）始终优先，行为与现在完全一致。
 
-var geminiThinkingVariantSuffixes = []string{"-low", "-medium", "-high", "-tiered"}
+var geminiThinkingVariantSuffixes = []string{"-low", "-medium", "-high", "-xhigh", "-tiered", "-sonar"}
 
 const (
 	geminiThinkingBudgetLowMax    = 1024
@@ -95,6 +96,10 @@ func geminiThinkingLevelFromClaudeBody(claudeBody []byte, thinking *antigravity.
 	case "medium":
 		return "medium"
 	case "high":
+		switch strings.ToLower(strings.TrimSpace(gjson.GetBytes(claudeBody, "output_config.effort").String())) {
+		case "xhigh", "max":
+			return "xhigh"
+		}
 		return "high"
 	default:
 		return geminiThinkingLevelFromClaudeThinking(thinking)
@@ -161,9 +166,15 @@ func resolveGeminiThinkingVariantForLevel(account *Account, requestedModel strin
 		preferred = "high"
 	}
 	order := []string{preferred}
+	if preferred == "xhigh" {
+		order = append(order, "tiered-xhigh")
+	}
 	for _, level := range []string{"high", "medium", "low", "tiered"} {
 		if level != preferred {
 			order = append(order, level)
+		}
+		if level == "high" {
+			order = append(order, "tiered-high")
 		}
 	}
 	for _, level := range order {

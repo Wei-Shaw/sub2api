@@ -909,6 +909,9 @@ func (s *GatewayService) BuildCodexModelsManifestForGroup(
 			compositeRoutesAvailable = false
 		}
 	}
+	if strings.TrimSpace(platformOverride) == "" && compositeRoutesAvailable {
+		modelIDs = foldCodexAntigravityGeminiTiers(effectivePlatform, modelIDs, catalog, group, compositeRoutes)
+	}
 	return buildCodexModelsManifestForAccounts(
 		effectivePlatform,
 		modelIDs,
