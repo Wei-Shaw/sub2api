@@ -212,3 +212,27 @@ func TestGatewayRoutesRejectConflictingNestedFields(t *testing.T) {
 		})
 	}
 }
+
+// 回归：multipart handler 跳过首个 boundary 之前的前导内容。前导内容是 JSON 时，
+// 白名单必须看到表单里的 model，表单里的重复标量字段也必须被拒绝。
+func TestGatewayRoutesMultipartJSONPreambleDoesNotBypassChecks(t *testing.T) {
+	part := func(name, value string) string {
+		return "--B\r\nContent-Disposition: form-data; name=\"" + name + "\"\r\n\r\n" + value + "\r\n"
+	}
+	send := func(group *service.Group, body string) *httptest.ResponseRecorder {
+		router := newGatewayRoutesTestRouterWithGroup(group)
+		req := httptest.NewRequest(http.MethodPost, "/v1/images/edits", strings.NewReader(body))
+		req.Header.Set("Content-Type", "multipart/form-data; boundary=B")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		return w
+	}
+
+	blocked := send(allowlistGroup(service.PlatformOpenAI, true, "gpt-image-1-mini"), "{}\r\n"+part("model", "gpt-image-2")+part("prompt", "cat")+"--B--\r\n")
+	require.Equal(t, http.StatusNotFound, blocked.Code, blocked.Body.String())
+	require.Contains(t, blocked.Body.String(), "gpt-image-2")
+
+	repeated := send(allowlistGroup(service.PlatformOpenAI, false), "{}\r\n"+part("model", "gpt-image-2")+part("n", "8")+part("n", "1")+"--B--\r\n")
+	require.Equal(t, http.StatusBadRequest, repeated.Code, repeated.Body.String())
+	require.Contains(t, repeated.Body.String(), `\"n\"`)
+}

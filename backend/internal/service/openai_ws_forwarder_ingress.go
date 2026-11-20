@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -235,6 +236,11 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		if !gjson.ValidBytes(trimmed) {
 			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", errors.New("invalid json"))
+		}
+		// 帧内重复字段会让这里 gjson 读到的首个值与后续重编码/上游读到的值分叉
+		// （GHSA-p3r4-jcm3-2hph），在读取任何字段之前拒绝。
+		if field, conflict := requestmodel.ConflictingField("application/json", trimmed); conflict {
+			return openAIWSClientPayload{}, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("websocket request payload declares field %.64q more than once", field), nil)
 		}
 
 		values := gjson.GetManyBytes(trimmed, "type", "model", "prompt_cache_key", "previous_response_id")

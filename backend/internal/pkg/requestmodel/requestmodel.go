@@ -46,15 +46,17 @@ func FromBodyCandidates(routePath, contentType string, body []byte) []string {
 	var topLevel, session []string
 	if doc := TrimUTF8BOM(body); LooksLikeJSON(doc) {
 		// 按内容识别 JSON，不看 Content-Type：JSON handler 不校验请求头，且宽容
-		// 读取会剥掉 BOM，两者都不能成为绕过准入的手段。
+		// 读取会剥掉 BOM，两者都不能成为绕过准入的手段。gjson 只读首个顶层值。
 		topLevel = jsonModelCandidates(doc)
 		session = jsonSessionModelCandidates(doc)
-	} else if isMultipartContentType(contentType) {
-		// 真正的 multipart 请求体只做 multipart 解析——gjson 的部分扫描
-		// 会在 multipart 字节流里误匹配 session JSON 内的 model 字段。
+	}
+	if isMultipartContentType(contentType) {
+		// multipart handler 跳过首个 boundary 之前的前导内容（可以是任意 JSON），
+		// 所以两种解读的候选都要收集。只有声明为 multipart 时才按 multipart 解析，
+		// 不对非 multipart 字节流做 gjson 部分扫描。
 		models, sessions := multipartModelCandidates(contentType, body)
-		topLevel = models
-		session = sessionModelCandidates(sessions)
+		topLevel = append(topLevel, models...)
+		session = append(session, sessionModelCandidates(sessions)...)
 	}
 
 	if IsLiveRequestRoute(routePath) {

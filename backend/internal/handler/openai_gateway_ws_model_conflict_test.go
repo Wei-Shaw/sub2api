@@ -113,3 +113,16 @@ func TestOpenAIResponsesWebSocket_ConflictingBillingFieldsRejected(t *testing.T)
 		})
 	}
 }
+
+// passthrough 原样转发 session.update 等非 response.create 事件：帧内重复字段
+// 同样必须关闭连接，不能到达上游。
+func TestOpenAIResponsesWebSocket_PassthroughSessionUpdateDuplicateRejected(t *testing.T) {
+	runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+		firstPayload:          `{"type":"response.create","model":"gpt-5.4","stream":false}`,
+		midPayload:            `{"type":"session.update","session":{"model":"gpt-5.4","model":"gpt-4.1"}}`,
+		group:                 wsAllowlistGroup(false),
+		ingressMode:           service.OpenAIWSIngressModePassthrough,
+		midFrameCloseExpected: true,
+		closeReason:           `declares field "session.model" more than once`,
+	})
+}

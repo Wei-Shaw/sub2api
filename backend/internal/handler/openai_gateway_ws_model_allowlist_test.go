@@ -127,6 +127,8 @@ func TestOpenAIResponsesWebSocket_FirstFrameCaseVariantModelKeyRejected(t *testi
 // 后续 turn 含重复 model 键（首个在白名单、末个不在）：拒绝并关闭连接。
 func TestOpenAIResponsesWebSocket_SubsequentTurnDuplicateModelKeysRejected(t *testing.T) {
 	for _, mode := range []string{service.OpenAIWSIngressModePassthrough, service.OpenAIWSIngressModeDedicated} {
+		// 两种模式都在读取任何字段之前先做字段歧义检查（帧必须在兼容归一化等
+		// 重编码之前拦截），所以由歧义检查而不是白名单关闭连接，帧不到达上游。
 		t.Run(mode, func(t *testing.T) {
 			runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
 				firstPayload:            `{"type":"response.create","model":"gpt-5.4","stream":false}`,
@@ -134,6 +136,7 @@ func TestOpenAIResponsesWebSocket_SubsequentTurnDuplicateModelKeysRejected(t *te
 				group:                   wsAllowlistGroup(true, "gpt-5.4"),
 				ingressMode:             mode,
 				secondTurnCloseExpected: true,
+				closeReason:             `declares field "model" more than once`,
 			})
 		})
 	}

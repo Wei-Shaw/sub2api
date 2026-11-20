@@ -47,6 +47,8 @@ func TestConflictingFieldJSONReportsDuplicates(t *testing.T) {
 		{name: "深层嵌套", body: `{"a":[[{"b":{"c":1,"c":2}}]]}`, want: "a[0][0].b.c"},
 		{name: "session 内嵌套", body: `{"session":{"audio":{"voice":"a","voice":"b"}}}`, want: "session.audio.voice"},
 		{name: "自由键空间内的精确重复", body: `{"tools":[{"input_schema":{"properties":{"id":{},"id":{}}}}]}`, want: "tools[0].input_schema.properties.id"},
+		{name: "metadata 大小写变体（Antigravity 结构体绑定）", body: `{"metadata":{"user_id":"A","USER_ID":"B"}}`, want: "metadata.USER_ID"},
+		{name: "前导控制字节（gjson 当空白跳过）", body: "\x0b{\"model\":\"a\",\"model\":\"b\"}", want: "model"},
 		{name: "顶层 input 仍做折叠", body: `{"input":[{"role":"user","Role":"system","content":"x"}]}`, want: "input[0].Role"},
 		{name: "超深子树之后的同层重复", body: `{"model":"a","x":` + strings.Repeat("[", maxConflictDepth+5) + strings.Repeat("]", maxConflictDepth+5) + `,"model":"b"}`, want: "model"},
 	}
@@ -73,7 +75,11 @@ func TestConflictingFieldJSONAcceptsUnambiguousBodies(t *testing.T) {
 		{name: "schema 属性大小写不同", body: `{"tools":[{"input_schema":{"type":"object","properties":{"id":{"type":"string"},"ID":{"type":"integer"}}}}]}`},
 		{name: "tool_use 参数大小写不同", body: `{"messages":[{"role":"assistant","content":[{"type":"tool_use","id":"t","name":"f","input":{"path":"a","Path":"b"}}]}]}`},
 		{name: "Gemini 函数参数与返回大小写不同", body: `{"contents":[{"parts":[{"functionCall":{"name":"f","args":{"k":1,"K":2}}},{"functionResponse":{"name":"f","response":{"v":1,"V":2}}}]}]}`},
-		{name: "metadata 大小写不同", body: `{"metadata":{"user_id":"1","USER_ID":"2"}}`},
+		{name: "提示词模板变量大小写不同", body: `{"prompt":{"id":"p","variables":{"name":"a","Name":"b"}}}`},
+		{name: "MCP 请求头大小写不同", body: `{"tools":[{"type":"mcp","headers":{"Authorization":"a","authorization":"b"}}]}`},
+		{name: "dependentRequired 大小写不同", body: `{"s":{"dependentRequired":{"a":[],"A":[]}}}`},
+		{name: "转义写法的自由键名", body: `{"tools":[{"input_schema":{"prop\u0065rties":{"id":{},"ID":{}}}}]}`},
+		{name: "只读首个顶层值", body: `{"model":"a"}{"model":"a","model":"b"}`},
 		{name: "字符串值里出现字段名", body: `{"model":"a","input":"{\"model\":\"b\",\"model\":\"c\"}"}`},
 		{name: "字符串里的括号与逗号", body: `{"a":"{[,\"]}","b":"\\","c":1}`},
 		{name: "顶层数组里的不同对象", body: `[{"model":"a"},{"model":"b"}]`},
@@ -199,6 +205,28 @@ func TestConflictingFieldManyKeysMemoryIsBounded(t *testing.T) {
 	require.Less(t, after.TotalAlloc-before.TotalAlloc, uint64(8*len(body)))
 }
 
+// 回归：字符串扫描对转义数量是线性的（此前每个转义都会重扫到字符串末尾，
+// 20 万个 \n 约 0.56 s）。
+func TestConflictingFieldManyEscapesIsLinear(t *testing.T) {
+	body := []byte(`{"model":"m","input":"` + strings.Repeat(`\n`, 1<<20) + `\\","model":"x"}`)
+	start := time.Now()
+	got, conflict := ConflictingField("application/json", body)
+	require.Less(t, time.Since(start), 100*time.Millisecond)
+	require.True(t, conflict)
+	require.Equal(t, "model", got)
+
+	for _, tricky := range []string{
+		`{"a":"\\","a":1}`,
+		`{"a":"x\\\"y","a":1}`,
+		`{"a":"\\\\\\\\","a":1}`,
+		`{"a":"\"","a":1}`,
+	} {
+		got, conflict := ConflictingField("application/json", []byte(tricky))
+		require.True(t, conflict, tricky)
+		require.Equal(t, "a", got, tricky)
+	}
+}
+
 func multipartBody(t *testing.T, fields ...[2]string) (string, []byte) {
 	t.Helper()
 	var body bytes.Buffer
@@ -276,4 +304,65 @@ func BenchmarkConflictingField(b *testing.B) {
 			b.Fatal("unexpected conflict")
 		}
 	}
+}
+
+// rawMultipart 用固定 boundary 拼出原始 multipart 请求体，便于构造畸形 part。
+func rawMultipart(preamble string, parts ...string) (string, []byte) {
+	var b strings.Builder
+	b.WriteString(preamble)
+	for _, part := range parts {
+		b.WriteString("--BOUNDARY\r\n")
+		b.WriteString(part)
+		b.WriteString("\r\n")
+	}
+	b.WriteString("--BOUNDARY--\r\n")
+	return "multipart/form-data; boundary=BOUNDARY", []byte(b.String())
+}
+
+func textPart(name, value string) string {
+	return "Content-Disposition: form-data; name=\"" + name + "\"\r\n\r\n" + value
+}
+
+// 回归：multipart handler 跳过首个 boundary 之前的前导内容；前导内容是 JSON 时
+// 不能让请求体只被当成 JSON 检查，也不能让 JSON 与表单两种解读并存。
+func TestConflictingFieldMultipartPreambleAndMalformedParts(t *testing.T) {
+	cases := []struct {
+		name  string
+		build func() (string, []byte)
+		want  string
+	}{
+		{name: "JSON 前导内容后的重复 n", want: "n", build: func() (string, []byte) {
+			return rawMultipart("{}\r\n", textPart("model", "gpt-image-2"), textPart("n", "8"), textPart("n", "1"))
+		}},
+		{name: "JSON 前导内容与表单 model 并存", want: "Content-Type", build: func() (string, []byte) {
+			return rawMultipart(`{"model":"gpt-image-1-mini"}`+"\r\n", textPart("model", "gpt-image-2"))
+		}},
+		{name: "数组前导内容", want: "Content-Type", build: func() (string, []byte) {
+			return rawMultipart("[]\r\n", textPart("model", "gpt-image-2"))
+		}},
+		{name: "名为 model 的文件 part", want: "model", build: func() (string, []byte) {
+			return rawMultipart("", "Content-Disposition: form-data; name=\"model\"; filename=\"m.txt\"\r\n\r\ngpt-image-2")
+		}},
+		{name: "文件与文本同名", want: "size", build: func() (string, []byte) {
+			return rawMultipart("", textPart("size", "1024x1024"), "Content-Disposition: form-data; name=\"size\"; filename=\"s\"\r\n\r\n1536x1024")
+		}},
+		{name: "无法解析名字的 part", want: "Content-Disposition", build: func() (string, []byte) {
+			return rawMultipart("", "Content-Disposition: form-data; name=\"a\"; name=\"model\"\r\n\r\ngpt-image-2")
+		}},
+		{name: "两个 Content-Disposition 头", want: "Content-Disposition", build: func() (string, []byte) {
+			return rawMultipart("", "Content-Disposition: form-data; name=\"prompt\"\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\ngpt-image-2")
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			contentType, body := tc.build()
+			got, conflict := ConflictingField(contentType, body)
+			require.True(t, conflict)
+			require.Equal(t, tc.want, got)
+		})
+	}
+
+	contentType, body := rawMultipart("", textPart("model", "gpt-image-2"), textPart("prompt", "cat"))
+	_, conflict := ConflictingField(contentType, body)
+	require.False(t, conflict, "a well-formed form must pass")
 }

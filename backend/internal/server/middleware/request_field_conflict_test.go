@@ -118,7 +118,7 @@ func TestRejectConflictingRequestFieldsErrorFormats(t *testing.T) {
 func TestRejectConflictingRequestFieldsPassesUnambiguousBodiesUnchanged(t *testing.T) {
 	for _, body := range []string{
 		`{"model":"gpt-5.4","input":"hi"}`,
-		`{"model":"gpt-5.4","metadata":{"k":"1","K":"1"}}`,
+		`{"model":"gpt-5.4","prompt":{"id":"p","variables":{"k":"1","K":"1"}}}`,
 		`not json`,
 		``,
 	} {

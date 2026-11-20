@@ -282,3 +282,13 @@ func TestFromBodyCandidatesFollowsWhatJSONHandlersParse(t *testing.T) {
 		})
 	}
 }
+
+// 回归：multipart handler 跳过首个 boundary 之前的前导内容，前导内容是 JSON 时
+// 白名单必须同时看到表单里的 model，不能只取 JSON 解读。
+func TestFromBodyCandidatesMultipartWithJSONPreamble(t *testing.T) {
+	body := []byte("{}\r\n--B\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\ngpt-image-2\r\n--B--\r\n")
+	got := FromBodyCandidates("/v1/images/edits", "multipart/form-data; boundary=B", body)
+	if len(got) != 1 || got[0] != "gpt-image-2" {
+		t.Fatalf("candidates = %v, want [gpt-image-2]", got)
+	}
+}
