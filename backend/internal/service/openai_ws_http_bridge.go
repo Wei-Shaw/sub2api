@@ -848,7 +848,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				errMessage = "upstream error event"
 			}
 			statusCode := openAIStreamFailureStatus(upstreamMessage, errMessage)
-			shouldFailover := openAIStreamFailedEventShouldFailover(upstreamMessage, errMessage)
+			shouldFailover := openAIStreamFailedEventShouldFailoverForAccount(c, account, upstreamMessage, errMessage)
 			if eventType == "error" {
 				errCodeRaw, errTypeRaw, _ := parseOpenAIWSErrorEventFields(upstreamMessage)
 				shouldFailover = openAIStreamErrorEventShouldFailover(upstreamMessage, errMessage)
