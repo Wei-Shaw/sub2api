@@ -48,6 +48,50 @@ func TestForwardResponses_ChatFallbackPreservesProvidedStartTime(t *testing.T) {
 	}
 }
 
+func TestForwardResponses_CNGLMFinalCeiling(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, test := range []struct {
+		name, platform, model, effort, ceiling, action, want string
+		denied                                               bool
+	}{
+		{name: "53 native low", platform: PlatformZhipu, model: "glm-5.3", effort: "medium", ceiling: "medium", want: "low"},
+		{name: "older native high", platform: PlatformKimi, model: "glm-4.6", effort: "xhigh", ceiling: "xhigh", want: "high"},
+		{name: "older no tier", platform: PlatformZhipu, model: "glm-4.6", effort: "medium", ceiling: "medium", denied: true},
+		{name: "deny normalized upgrade", platform: PlatformKimi, model: "glm-5.3", effort: "medium", ceiling: "medium", action: "deny", denied: true},
+		{name: "disabled", platform: PlatformZhipu, model: "glm-4.6", effort: "none", ceiling: "low", want: "none"},
+		{name: "OpenAI unchanged", platform: PlatformOpenAI, model: "glm-4.6", effort: "medium", ceiling: "medium", want: "medium"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			body := []byte(fmt.Sprintf(`{"model":%q,"input":"hello","reasoning":{"effort":%q}}`, test.model, test.effort))
+			ctx := WithOpenAIReasoningEffortPolicy(context.Background(), test.ceiling, nil, test.action)
+			account := forceChatResponsesFallbackAccount()
+			account.Platform = test.platform
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}},
+				Body: io.NopCloser(strings.NewReader(`{"id":"chatcmpl_policy","choices":[{"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1}}`)),
+			}}
+			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+			ginContext := adaptiveProtocolTestContext("/v1/responses", body)
+			result, err := svc.forwardResponsesViaRawChatCompletions(ctx, ginContext, account, body, time.Now())
+			if test.denied {
+				var denied *ReasoningEffortOverLimitError
+				require.ErrorAs(t, err, &denied)
+				require.Equal(t, test.effort, denied.Requested)
+				require.Equal(t, test.ceiling, denied.Max)
+				require.Equal(t, http.StatusForbidden, ginContext.Writer.Status())
+				require.Nil(t, result)
+				require.Empty(t, upstream.requests)
+				return
+			}
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Len(t, upstream.requests, 1)
+			require.Equal(t, test.want, gjson.GetBytes(upstream.lastBody, "reasoning_effort").String())
+			require.Equal(t, test.want, optionalStringValue(result.ReasoningEffort))
+		})
+	}
+}
+
 func TestForwardResponses_ForceChatCompletionsRoutesNonStreamingToChatCompletions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
