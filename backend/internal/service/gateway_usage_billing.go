@@ -1076,12 +1076,21 @@ func (s *GatewayService) calculateRecordUsageCost(
 			applyUpstreamPriceFactor(tokenCost, result)
 		}
 	}
-	if result.SearchCount > 0 {
-		price := groupSearchPricePer1kFromAPIKey(apiKey)
-		if price != nil && *price == 0 {
-			logger.LegacyPrintf("service.gateway", "[Billing] search_price_per_1k explicit 0; search free group_model=%s count=%d", billingModel, result.SearchCount)
+	searchCount := result.SearchCount
+	var price *float64
+	if searchCount > 0 {
+		price = groupSearchPricePer1kFromAPIKey(apiKey)
+	} else if result.geminiGroundingQueryCount > 0 {
+		price = configuredGeminiGroundingPrice(apiKey)
+		if price != nil {
+			searchCount = result.geminiGroundingQueryCount
 		}
-		searchCost := s.billingService.CalculateSearchCost(result.SearchCount, price, multiplier)
+	}
+	if searchCount > 0 {
+		if price != nil && *price == 0 {
+			logger.LegacyPrintf("service.gateway", "[Billing] search_price_per_1k explicit 0; search free group_model=%s count=%d", billingModel, searchCount)
+		}
+		searchCost := s.billingService.CalculateSearchCost(searchCount, price, multiplier)
 		if searchCost != nil && (searchCost.TotalCost > 0 || searchCost.ActualCost > 0) {
 			if tokenCost == nil {
 				return searchCost

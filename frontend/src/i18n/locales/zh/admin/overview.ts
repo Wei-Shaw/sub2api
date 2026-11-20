@@ -1106,6 +1106,11 @@ export default {
         searchPricePer1k: '搜索每千次价格（USD）',
         pricePlaceholder: '可选'
       },
+      geminiGroundingPricing: {
+        title: 'Gemini Google Search 搜索定价',
+        description: '为 Gemini 3 及以上原生文本响应中返回的去重 Google Search 查询叠加费用。留空或填 0 可关闭这项收费。',
+        price: '每千条搜索查询价格（USD）'
+      },
       modelPricing: {
         title: '分组逐模型定价',
         description: '匹配模型后覆盖渠道和内置价格。长上下文阶梯沿用官方/预设价卡，无需再手填区间。音频可用按次层级配置 realtime、tts、stt。',
