@@ -945,6 +945,90 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 	return apiKey, nil
 }
 
+// BulkResetAPIKeyQuotaResult 汇总"一键重置额度"的执行结果。
+type BulkResetAPIKeyQuotaResult struct {
+	// Matched 名下设置了额度限制（quota > 0）的 Key 数量
+	Matched int `json:"matched"`
+	// Reset 实际重置成功的数量
+	Reset int `json:"reset"`
+	// Skipped 未设置额度限制（quota = 0，即无限额度）而跳过的数量
+	Skipped int `json:"skipped"`
+	// Failed 重置失败的数量
+	Failed int `json:"failed"`
+	// ResetKeyIDs / FailedKeyIDs 便于前端做局部刷新与二次重试
+	ResetKeyIDs  []int64 `json:"reset_key_ids"`
+	FailedKeyIDs []int64 `json:"failed_key_ids"`
+}
+
+// ResetQuotaUsageAll 重置该用户下所有"设置了额度限制"的 API Key 的已用额度。
+//
+// 仅处理 quota > 0 的 Key：quota = 0 表示无限制，本来就没有可重置的额度。
+// 重置后若状态为 quota_exhausted，同时把状态恢复为 active——否则额度虽然归零，
+// Key 仍会因状态不可用而继续拒绝请求，用户会以为"重置没生效"。
+// includeRateLimitUsage 为 true 时，额外清空 5h/1d/7d 限速用量与窗口起点。
+//
+// 逐个 Key 走 repo.Update 只写声明列，避免整行回写把计费热路径刚累计的
+// quota_used / usage_* 用旧快照覆盖。
+func (s *APIKeyService) ResetQuotaUsageAll(ctx context.Context, userID int64, includeRateLimitUsage bool) (*BulkResetAPIKeyQuotaResult, error) {
+	if userID <= 0 {
+		return nil, ErrInsufficientPerms
+	}
+	lister, ok := s.apiKeyRepo.(apiKeyAllByUserIDLister)
+	if !ok {
+		return nil, fmt.Errorf("reset api key quota: repository does not support unpaginated api key listing")
+	}
+	keys, err := lister.ListAllByUserID(ctx, userID, APIKeyListFilters{})
+	if err != nil {
+		return nil, fmt.Errorf("list api keys: %w", err)
+	}
+
+	result := &BulkResetAPIKeyQuotaResult{
+		ResetKeyIDs:  make([]int64, 0, len(keys)),
+		FailedKeyIDs: make([]int64, 0),
+	}
+	for i := range keys {
+		key := &keys[i]
+		if key.Quota <= 0 {
+			// 未勾选额度限制的 Key 不动，避免"无限制"被误当成"已用 0"
+			result.Skipped++
+			continue
+		}
+		result.Matched++
+
+		fields := APIKeyUpdateFields{QuotaUsed: true}
+		key.QuotaUsed = 0
+		if key.Status == StatusAPIKeyQuotaExhausted {
+			key.Status = StatusActive
+			fields.Status = true
+		}
+		if includeRateLimitUsage {
+			key.Usage5h = 0
+			key.Usage1d = 0
+			key.Usage7d = 0
+			key.Window5hStart = nil
+			key.Window1dStart = nil
+			key.Window7dStart = nil
+			fields.RateLimitUsage = true
+		}
+
+		if err := s.apiKeyRepo.Update(ctx, key, fields); err != nil {
+			result.Failed++
+			result.FailedKeyIDs = append(result.FailedKeyIDs, key.ID)
+			continue
+		}
+
+		result.Reset++
+		result.ResetKeyIDs = append(result.ResetKeyIDs, key.ID)
+		// 认证缓存里带着 quota_used / status，必须逐 Key 失效，否则网关还会用旧值判额度
+		s.InvalidateAuthCacheByKey(ctx, key.Key)
+		if includeRateLimitUsage && s.rateLimitCacheInvalid != nil {
+			_ = s.rateLimitCacheInvalid.InvalidateAPIKeyRateLimit(ctx, key.ID)
+		}
+	}
+
+	return result, nil
+}
+
 // Delete 删除API Key
 func (s *APIKeyService) Delete(ctx context.Context, id int64, userID int64) error {
 	key, ownerID, err := s.apiKeyRepo.GetKeyAndOwnerID(ctx, id)
