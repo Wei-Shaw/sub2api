@@ -36,7 +36,7 @@ func ClassifyChannelMonitorV2Error(input ChannelMonitorV2ErrorInput) string {
 	if channelMonitorV2ContainsAny(text, "group not allowed", "group_not_allowed", "group access") {
 		return "group_access"
 	}
-	if channelMonitorV2ContainsAny(text, "run out of credits", "insufficient balance", "insufficient quota", "subscription", "quota exceeded", "billing hard limit") {
+	if channelMonitorV2ContainsAny(text, "run out of credits", "insufficient balance", "insufficient account balance", "insufficient quota", "subscription", "quota exceeded", "billing hard limit") {
 		return "quota_or_balance"
 	}
 	if channelMonitorV2ContainsAny(text, "no available accounts", "no healthy account", "no healthy upstream account", "failover budget exhausted", "account pool") {
