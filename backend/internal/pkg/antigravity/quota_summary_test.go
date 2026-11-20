@@ -5,8 +5,10 @@ package antigravity
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -75,5 +77,27 @@ func TestClient_RetrieveUserQuotaSummaryFromURL_Errors(t *testing.T) {
 			t.Errorf("status %d body %q must be an error", tc.status, tc.body)
 		}
 		server.Close()
+	}
+}
+
+type hostRecorder struct{ hosts []string }
+
+func (h *hostRecorder) RoundTrip(r *http.Request) (*http.Response, error) {
+	h.hosts = append(h.hosts, r.URL.Host)
+	return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Request: r,
+		Body: io.NopCloser(strings.NewReader(quotaSummaryBody))}, nil
+}
+
+// The summary must come from the generation endpoint (daily) first: on 2026-11-06 prod kept a
+// stale Gemini window for two Ultra accounts while daily matched the Antigravity app.
+func TestClient_RetrieveUserQuotaSummary_DailyFirst(t *testing.T) {
+	rec := &hostRecorder{}
+	client := mustNewClient(t, "")
+	client.httpClient = &http.Client{Transport: rec}
+	if _, err := client.RetrieveUserQuotaSummary(context.Background(), "tok", "proj"); err != nil {
+		t.Fatalf("summary: %v", err)
+	}
+	if len(rec.hosts) != 1 || rec.hosts[0] != "daily-cloudcode-pa.googleapis.com" {
+		t.Fatalf("expected a single daily read, got %v", rec.hosts)
 	}
 }
