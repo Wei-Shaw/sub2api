@@ -1936,7 +1936,34 @@ func extractOpenAIReasoningEffortFromBody(body []byte, modelCandidates ...string
 	return &value
 }
 
+const responsesConfigurationUpdate = "configuration_update"
+
+// Responses clients can keep the top-level effort fixed for prompt caching.
+// Each input update takes effect from its position until another sets effort.
+func latestResponsesInputEffort(body []byte) string {
+	if !bytes.Contains(body, []byte(responsesConfigurationUpdate)) && !JSONMayEscapePlainASCII(body) {
+		return ""
+	}
+	input := parseRawJSONView(body).Get("input")
+	if !input.IsArray() {
+		return ""
+	}
+	var latest string
+	input.ForEach(func(_, item gjson.Result) bool {
+		if item.Get("type").Str == responsesConfigurationUpdate {
+			if effort := strings.TrimSpace(item.Get("reasoning.effort").Str); effort != "" {
+				latest = effort
+			}
+		}
+		return true
+	})
+	return latest
+}
+
 func explicitRequestedReasoningEffortFromBody(body []byte) string {
+	if latest := latestResponsesInputEffort(body); latest != "" {
+		return latest
+	}
 	raw := strings.TrimSpace(gjson.GetBytes(body, "reasoning.effort").String())
 	if raw == "" {
 		raw = strings.TrimSpace(gjson.GetBytes(body, "reasoning_effort").String())
@@ -1953,11 +1980,7 @@ func explicitRequestedReasoningEffortFromBody(body []byte) string {
 // later persist "xhigh".
 func CanonicalRequestedReasoningEffort(body []byte, modelCandidates ...string) *string {
 	if raw := explicitRequestedReasoningEffortFromBody(body); raw != "" {
-		canonical := NormalizeMaxReasoningEffort(raw)
-		if canonical == "" {
-			return nil
-		}
-		return &canonical
+		return optionalTrimmedStringPtr(normalizeReasoningEffortMappingSource(raw))
 	}
 	for _, model := range modelCandidates {
 		if value := canonicalReasoningEffortFromModelSuffix(model); value != "" {
@@ -2781,12 +2804,19 @@ func CanonicalRequestedReasoningEffortFromReqBody(reqBody map[string]any, modelC
 			raw = strings.TrimSpace(effort)
 		}
 	}
-	if raw != "" {
-		canonical := NormalizeMaxReasoningEffort(raw)
-		if canonical == "" {
-			return nil
+	items, _ := reqBody["input"].([]any)
+	for i := len(items) - 1; i >= 0; i-- {
+		item, _ := items[i].(map[string]any)
+		if item["type"] == responsesConfigurationUpdate {
+			reasoning, _ := item["reasoning"].(map[string]any)
+			if effort, _ := reasoning["effort"].(string); strings.TrimSpace(effort) != "" {
+				raw = effort
+				break
+			}
 		}
-		return &canonical
+	}
+	if raw != "" {
+		return optionalTrimmedStringPtr(normalizeReasoningEffortMappingSource(raw))
 	}
 	return CanonicalRequestedReasoningEffort(nil, modelCandidates...)
 }
