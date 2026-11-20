@@ -1,6 +1,12 @@
 package service
 
-import "net/http"
+import (
+	"bytes"
+	"context"
+	"io"
+	"net/http"
+	"strings"
+)
 
 func (s *OpenAIGatewayService) SetPluginManager(manager *PluginManager) {
 	s.pluginManager = manager
@@ -26,6 +32,61 @@ func (s *AccountTestService) doOpenAIAccountTestUpstream(
 	account *Account,
 	useTLSFallback bool,
 ) (*http.Response, error) {
+	response, err := s.doOpenAIAccountTestUpstreamOnce(request, proxyURL, account, useTLSFallback)
+	if err != nil || response.StatusCode != http.StatusUnauthorized {
+		return response, err
+	}
+	body, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
+	_ = response.Body.Close()
+	response.Body = io.NopCloser(bytes.NewReader(body))
+	if err != nil || !recoverableOpenAI401(body) || s.openaiGatewayService == nil ||
+		s.openaiGatewayService.openAITokenProvider == nil || request.GetBody == nil {
+		return response, nil
+	}
+	owner := account
+	if account.IsCredentialShadow() {
+		owner, err = resolveCredentialAccount(request.Context(), s.accountRepo, account)
+		if err != nil || owner == nil || !sameProxy(account, owner) {
+			return response, nil
+		}
+	}
+	rejected := strings.TrimPrefix(request.Header.Get("Authorization"), "Bearer ")
+	fresh, refreshErr := s.openaiGatewayService.openAITokenProvider.refreshRejectedAccessToken(request.Context(), owner, rejected, true)
+	if refreshErr != nil {
+		if refreshErr.Error() == openAIReauthorizationRequired {
+			_ = response.Body.Close()
+			return nil, refreshErr
+		}
+		return response, nil
+	}
+	retry := request.Clone(request.Context())
+	retry.Body, err = request.GetBody()
+	if err != nil {
+		return response, nil
+	}
+	retry.Header.Set("Authorization", "Bearer "+fresh.GetOpenAIAccessToken())
+	setOpenAIChatGPTAccountHeaders(retry.Header, fresh)
+	_ = response.Body.Close()
+	// Reuse the exact payload and transport. No generation has been accepted;
+	// a second 401 returns to the ordinary probe error path without recursion.
+	retried, err := s.doOpenAIAccountTestUpstreamOnce(retry, proxyURL, account, useTLSFallback)
+	if err == nil && retried.StatusCode == http.StatusUnauthorized {
+		body, readErr := io.ReadAll(io.LimitReader(retried.Body, 2<<20))
+		_ = retried.Body.Close()
+		retried.Body = io.NopCloser(bytes.NewReader(body))
+		if readErr == nil {
+			s.handleOpenAIAccountTest401(request.Context(), fresh, body)
+		}
+	}
+	return retried, err
+}
+
+func (s *AccountTestService) doOpenAIAccountTestUpstreamOnce(
+	request *http.Request,
+	proxyURL string,
+	account *Account,
+	useTLSFallback bool,
+) (*http.Response, error) {
 	if s.pluginManager != nil {
 		response, handled, err := s.pluginManager.RoundTripOpenAIOAuth(request.Context(), request, proxyURL, account)
 		if handled {
@@ -42,4 +103,31 @@ func (s *AccountTestService) doOpenAIAccountTestUpstream(
 		)
 	}
 	return s.httpUpstream.Do(request, proxyURL, account.ID, account.Concurrency)
+}
+
+func (s *AccountTestService) handleOpenAIAccountTest401(ctx context.Context, account *Account, body []byte) {
+	if s.accountRepo == nil {
+		return
+	}
+	owner := account
+	if account.IsCredentialShadow() {
+		var err error
+		owner, err = resolveCredentialAccount(ctx, s.accountRepo, account)
+		if err != nil || owner == nil {
+			return
+		}
+	}
+	if owner.IsOpenAIOAuth() {
+		if recoverableOpenAI401(body) && strings.TrimSpace(owner.GetOpenAIRefreshToken()) != "" &&
+			!owner.IsOpenAIPersonalAccessToken() && !owner.IsOpenAIAgentIdentity() {
+			// Keep active accounts eligible for background refresh and the next
+			// scheduled probe. Never clear an existing error on a failed probe.
+			return
+		}
+		if repo, ok := s.accountRepo.(OpenAIOAuthRecoveryRepository); ok {
+			_, _ = repo.SetOpenAIOAuthRecoveryStateIfUnchanged(ctx, owner, openAIReauthorizationRequired)
+			return
+		}
+	}
+	_ = s.accountRepo.SetError(ctx, owner.ID, "Authentication failed (401): "+string(body))
 }

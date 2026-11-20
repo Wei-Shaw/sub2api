@@ -1658,6 +1658,18 @@ func (r *accountRepository) UpdateGrokOAuthCredentialsIfUnchanged(
 	expectedProxyID *int64,
 	credentials map[string]any,
 ) (bool, error) {
+	return r.updateOAuthCredentialsIfUnchanged(ctx, id, service.PlatformGrok, expectedCredentials, expectedProxyID, credentials)
+}
+
+func (r *accountRepository) UpdateOpenAIOAuthCredentialsIfUnchanged(
+	ctx context.Context, id int64, expectedCredentials map[string]any, expectedProxyID *int64, credentials map[string]any,
+) (bool, error) {
+	return r.updateOAuthCredentialsIfUnchanged(ctx, id, service.PlatformOpenAI, expectedCredentials, expectedProxyID, credentials)
+}
+
+func (r *accountRepository) updateOAuthCredentialsIfUnchanged(
+	ctx context.Context, id int64, platform string, expectedCredentials map[string]any, expectedProxyID *int64, credentials map[string]any,
+) (bool, error) {
 	if r == nil || r.sql == nil {
 		return false, errors.New("account repository SQL executor is not configured")
 	}
@@ -1687,7 +1699,7 @@ func (r *accountRepository) UpdateGrokOAuthCredentialsIfUnchanged(
 	`,
 		string(credentialsJSON),
 		id,
-		service.PlatformGrok,
+		platform,
 		service.AccountTypeOAuth,
 		string(expectedJSON),
 		expectedProxyID,
@@ -1704,6 +1716,45 @@ func (r *accountRepository) UpdateGrokOAuthCredentialsIfUnchanged(
 		return false, nil
 	}
 	r.syncSchedulerAccountSnapshotDetached(ctx, id)
+	return true, nil
+}
+
+// An empty message recovers a successfully tested legacy authentication error.
+// Compare state as well as credentials so a late probe cannot undo an admin edit.
+func (r *accountRepository) SetOpenAIOAuthRecoveryStateIfUnchanged(ctx context.Context, expected *service.Account, message string) (bool, error) {
+	credentials, err := json.Marshal(normalizeJSONMap(expected.Credentials))
+	if err != nil {
+		return false, err
+	}
+	status := service.StatusError
+	if message == "" {
+		status = service.StatusActive
+	}
+	result, err := r.sql.ExecContext(ctx, `
+		WITH updated AS (
+			UPDATE accounts AS a
+			SET status = $1, error_message = $2, schedulable = $3, updated_at = NOW()
+			WHERE a.id = $4 AND a.deleted_at IS NULL
+				AND a.platform = $5 AND a.type = $6
+				AND a.credentials = $7::jsonb
+				AND a.proxy_id IS NOT DISTINCT FROM $8
+				AND a.status = $9 AND COALESCE(a.error_message, '') = $10
+				AND a.schedulable = $11
+			RETURNING a.id
+		)
+		INSERT INTO scheduler_outbox (event_type, account_id, group_id, payload)
+		SELECT $12, updated.id, NULL, NULL FROM updated
+	`, status, message, message == "", expected.ID, service.PlatformOpenAI, service.AccountTypeOAuth,
+		string(credentials), expected.ProxyID, expected.Status, expected.ErrorMessage, expected.Schedulable,
+		service.SchedulerOutboxEventAccountChanged)
+	if err != nil {
+		return false, err
+	}
+	rows, err := result.RowsAffected()
+	if err != nil || rows == 0 {
+		return false, err
+	}
+	r.syncSchedulerAccountSnapshotDetached(ctx, expected.ID)
 	return true, nil
 }
 

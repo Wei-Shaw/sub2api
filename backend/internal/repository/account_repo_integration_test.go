@@ -1348,6 +1348,65 @@ func (s *AccountRepoSuite) TestUpdateGrokOAuthCredentialsIfUnchanged_SkipsConcur
 	s.Require().Zero(outboxCount)
 }
 
+func (s *AccountRepoSuite) TestOpenAIOAuthRecovery_StaleWritesAndSuccessfulRecovery() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name: "openai-recovery-cas", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Status: service.StatusError, Schedulable: false,
+		ErrorMessage: `Authentication failed (401): {"error":{"code":"token_expired"}}`,
+		Credentials:  map[string]any{"access_token": "old", "refresh_token": "old-refresh"},
+	})
+	s.Require().NoError(s.repo.SetSchedulable(s.ctx, account.ID, false))
+	observed, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	replacement := map[string]any{"access_token": "new", "refresh_token": "new-refresh", "_token_version": int64(2)}
+	applied, err := s.repo.UpdateOpenAIOAuthCredentialsIfUnchanged(s.ctx, account.ID, observed.Credentials, observed.ProxyID, replacement)
+	s.Require().NoError(err)
+	s.Require().True(applied)
+
+	// Neither a stale rotation nor a late permanent failure may clobber it.
+	applied, err = s.repo.UpdateOpenAIOAuthCredentialsIfUnchanged(s.ctx, account.ID, observed.Credentials, observed.ProxyID, observed.Credentials)
+	s.Require().NoError(err)
+	s.Require().False(applied)
+	applied, err = s.repo.SetOpenAIOAuthRecoveryStateIfUnchanged(s.ctx, observed, "reauthorization required")
+	s.Require().NoError(err)
+	s.Require().False(applied)
+
+	fresh, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.StatusError, fresh.Status)
+	s.Require().False(fresh.Schedulable, "rotation alone must not resume scheduling")
+	applied, err = s.repo.SetOpenAIOAuthRecoveryStateIfUnchanged(s.ctx, fresh, "")
+	s.Require().NoError(err)
+	s.Require().True(applied)
+	recovered, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().Equal(service.StatusActive, recovered.Status)
+	s.Require().True(recovered.Schedulable)
+	s.Require().Empty(recovered.ErrorMessage)
+	s.Require().Equal("new-refresh", recovered.GetOpenAIRefreshToken())
+}
+
+func (s *AccountRepoSuite) TestOpenAIOAuthRecovery_AdminStateAndOutboxFailure() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name: "openai-recovery-admin", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
+		Status: service.StatusActive, Schedulable: true,
+		Credentials: map[string]any{"access_token": "old", "refresh_token": "refresh"},
+	})
+	observed, err := s.repo.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	s.Require().NoError(s.repo.SetSchedulable(s.ctx, account.ID, false))
+	applied, err := s.repo.SetOpenAIOAuthRecoveryStateIfUnchanged(s.ctx, observed, "")
+	s.Require().NoError(err)
+	s.Require().False(applied, "a late successful probe must preserve an admin pause")
+
+	// The scheduler invalidation and rotation must commit atomically.
+	s.repo.sql = &failAtomicSchedulerOutboxSQLExecutor{sqlExecutor: s.repo.sql}
+	applied, err = s.repo.UpdateOpenAIOAuthCredentialsIfUnchanged(s.ctx, account.ID, observed.Credentials, observed.ProxyID,
+		map[string]any{"access_token": "new", "refresh_token": "rotated"})
+	s.Require().Error(err)
+	s.Require().False(applied)
+}
+
 func (s *AccountRepoSuite) TestGrokOAuthConditionalMutation_DetachesBoundedSnapshotSync() {
 	account := mustCreateAccount(s.T(), s.client, &service.Account{
 		Name:        "grok-conditional-detached-sync",
