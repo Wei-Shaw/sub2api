@@ -2199,3 +2199,59 @@ func TestFilterCodexInput_PreservesReasoningInMixedInput(t *testing.T) {
 		})
 	}
 }
+
+func TestApplyCodexOAuthTransform_DefaultInstructionsOption(t *testing.T) {
+	newBody := func(instructions any) map[string]any {
+		body := map[string]any{
+			"model": "gpt-5.2",
+			"input": []any{map[string]any{"type": "message", "role": "user", "content": "hi"}},
+		}
+		if instructions != nil {
+			body["instructions"] = instructions
+		}
+		return body
+	}
+
+	t.Run("empty instructions use configured default", func(t *testing.T) {
+		for _, empty := range []any{nil, "", "   "} {
+			body := newBody(empty)
+			result := applyCodexOAuthTransformWithOptions(body, codexOAuthTransformOptions{DefaultInstructions: "Be brief."})
+			require.True(t, result.Modified)
+			require.Equal(t, "Be brief.", body["instructions"])
+		}
+	})
+
+	t.Run("configured default is trimmed", func(t *testing.T) {
+		body := newBody("")
+		applyCodexOAuthTransformWithOptions(body, codexOAuthTransformOptions{DefaultInstructions: "  Be brief.\n"})
+		require.Equal(t, "Be brief.", body["instructions"])
+	})
+
+	t.Run("unset keeps codex prompt", func(t *testing.T) {
+		body := newBody("")
+		applyCodexOAuthTransformWithOptions(body, codexOAuthTransformOptions{})
+		require.Equal(t, defaultCodexSynthInstructions("gpt-5.2"), body["instructions"])
+	})
+
+	t.Run("blank default keeps codex prompt", func(t *testing.T) {
+		body := newBody("")
+		applyCodexOAuthTransformWithOptions(body, codexOAuthTransformOptions{DefaultInstructions: "  \t "})
+		require.Equal(t, defaultCodexSynthInstructions("gpt-5.2"), body["instructions"])
+	})
+
+	t.Run("existing instructions unchanged", func(t *testing.T) {
+		body := newBody("client instructions")
+		applyCodexOAuthTransformWithOptions(body, codexOAuthTransformOptions{DefaultInstructions: "Be brief."})
+		require.Equal(t, "client instructions", body["instructions"])
+	})
+
+	t.Run("skip default instructions wins", func(t *testing.T) {
+		body := newBody("")
+		applyCodexOAuthTransformWithOptions(body, codexOAuthTransformOptions{
+			SkipDefaultInstructions: true,
+			DefaultInstructions:     "Be brief.",
+		})
+		require.NotEqual(t, "Be brief.", body["instructions"])
+		require.NotEqual(t, defaultCodexSynthInstructions("gpt-5.2"), body["instructions"])
+	})
+}
