@@ -1111,6 +1111,11 @@ type GatewayConfig struct {
 	// ForcedCodexInstructionsTemplateFile: 服务端强制附加到 Codex 顶层 instructions 的模板文件路径。
 	// 模板渲染后会直接覆盖最终 instructions；若需要保留客户端 system 转换结果，请在模板中显式引用 {{ .ExistingInstructions }}。
 	ForcedCodexInstructionsTemplateFile string `mapstructure:"forced_codex_instructions_template_file"`
+	// CodexDefaultInstructions: Codex OAuth 请求的 instructions 为空时使用的默认值（opt-in）。
+	// 默认为空，保持现有行为（填充完整 Codex CLI 基础提示词，约 5k 输入 token）。
+	// 设置后以该值代替，可大幅降低非编码请求的输入 token。客户端已携带 instructions 时不受影响。
+	// When set, replaces the built-in Codex base prompt for requests with empty instructions.
+	CodexDefaultInstructions string `mapstructure:"codex_default_instructions"`
 	// ForcedCodexInstructionsTemplate: 启动时从模板文件读取并缓存的模板内容。
 	// 该字段不直接参与配置反序列化，仅用于请求热路径避免重复读盘。
 	ForcedCodexInstructionsTemplate string `mapstructure:"-"`
@@ -2035,6 +2040,7 @@ func load(allowMissingJWTSecret bool) (*Config, error) {
 	cfg.Log.StacktraceLevel = strings.ToLower(strings.TrimSpace(cfg.Log.StacktraceLevel))
 	cfg.Log.Output.FilePath = strings.TrimSpace(cfg.Log.Output.FilePath)
 	cfg.Gateway.ForcedCodexInstructionsTemplateFile = strings.TrimSpace(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
+	cfg.Gateway.CodexDefaultInstructions = strings.TrimSpace(cfg.Gateway.CodexDefaultInstructions)
 	if cfg.Gateway.ForcedCodexInstructionsTemplateFile != "" {
 		content, err := os.ReadFile(cfg.Gateway.ForcedCodexInstructionsTemplateFile)
 		if err != nil {
@@ -2751,6 +2757,7 @@ func setDefaults() {
 // unmarshal, exactly as before.
 func setEnvReachableDefaults() {
 	viper.SetDefault("gateway.forced_codex_instructions_template_file", "")
+	viper.SetDefault("gateway.codex_default_instructions", "")
 	viper.SetDefault("gateway.session_idle_timeout_minutes", 0)
 	viper.SetDefault("gateway.user_message_queue.mode", "")
 	viper.SetDefault("update.proxy_url", "")

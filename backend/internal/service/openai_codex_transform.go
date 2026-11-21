@@ -99,6 +99,7 @@ type codexOAuthTransformOptions struct {
 	IsCodexCLI                          bool
 	IsCompact                           bool
 	SkipDefaultInstructions             bool
+	DefaultInstructions                 string // 非空时替代内置 Codex 基础提示词，仅填充空 instructions
 	PreserveToolCallIDs                 bool
 	OmitPromotedSystemMessagesFromInput bool
 	// ResponsesLite selects where an injected hosted tool is declared.
@@ -311,7 +312,7 @@ func applyCodexOAuthTransformWithOptions(reqBody map[string]any, opts codexOAuth
 	}
 
 	// instructions 处理逻辑：根据是否是 Codex CLI 分别调用不同方法
-	if !opts.SkipDefaultInstructions && applyInstructions(reqBody, opts.IsCodexCLI) {
+	if !opts.SkipDefaultInstructions && applyInstructions(reqBody, opts.IsCodexCLI, opts.DefaultInstructions) {
 		result.Modified = true
 	}
 	if isCodexSparkModel(normalizedModel) && applyCodexSparkImageUnsupportedInstructions(reqBody) {
@@ -1507,10 +1508,23 @@ func applyCodexClientMetadata(reqBody map[string]any, account *Account) bool {
 	}
 }
 
+// codexDefaultInstructions 返回 gateway.codex_default_instructions 配置值；未配置或 cfg 为 nil 时返回空串。
+func (s *OpenAIGatewayService) codexDefaultInstructions() string {
+	if s == nil || s.cfg == nil {
+		return ""
+	}
+	return s.cfg.Gateway.CodexDefaultInstructions
+}
+
 // applyInstructions 处理 instructions 字段：仅在 instructions 为空时填充默认值。
-func applyInstructions(reqBody map[string]any, isCodexCLI bool) bool {
+// defaultInstructions 非空（去除空白后）时作为填充值，否则使用内置 Codex 基础提示词。
+func applyInstructions(reqBody map[string]any, isCodexCLI bool, defaultInstructions string) bool {
 	if !isInstructionsEmpty(reqBody) {
 		return false
+	}
+	if override := strings.TrimSpace(defaultInstructions); override != "" {
+		reqBody["instructions"] = override
+		return true
 	}
 	model, _ := reqBody["model"].(string)
 	reqBody["instructions"] = defaultCodexSynthInstructions(model)

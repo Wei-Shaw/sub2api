@@ -347,6 +347,11 @@ gateway:
   # Docker 用户可将宿主机文件挂载到 /app/data/codex-instructions.md.tmpl，
   # 然后把本字段指向该路径。
   forced_codex_instructions_template_file: ""
+  # Optional default instructions for Codex OAuth requests whose instructions are empty.
+  # When set, replaces the built-in Codex CLI base prompt (about 5k input tokens).
+  # Requests that already carry instructions are never changed. Env: GATEWAY_CODEX_DEFAULT_INSTRUCTIONS
+  # 可选：Codex OAuth 请求 instructions 为空时使用的默认值，设置后替代内置 Codex CLI 基础提示词。
+  # codex_default_instructions: ""
   # OpenAI 透传模式是否放行客户端超时头（如 x-stainless-timeout）
   # 默认 false：过滤超时头，降低上游提前断流风险。
   openai_passthrough_allow_timeout_headers: false
