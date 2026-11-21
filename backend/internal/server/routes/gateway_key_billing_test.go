@@ -41,7 +41,7 @@ type keyBillingRouteGroupRepo struct {
 }
 
 func (r *keyBillingRouteGroupRepo) GetByIDLite(_ context.Context, id int64) (*service.Group, error) {
-	if id != r.group.ID {
+	if r.group == nil || id != r.group.ID {
 		return nil, service.ErrGroupNotFound
 	}
 	return r.group, nil
@@ -56,7 +56,7 @@ func (r *keyBillingRouteRateRepo) GetRPMOverrideByUserAndGroup(context.Context, 
 	return nil, nil
 }
 
-func newKeyBillingRouteTestRouter(runMode string) (*gin.Engine, *keyBillingRouteRateRepo, string) {
+func newKeyBillingRouteTestRouter(runMode string, groups service.GroupRepository) (*gin.Engine, *keyBillingRouteRateRepo, string) {
 	gin.SetMode(gin.TestMode)
 	group := &service.Group{
 		ID:               42,
@@ -87,8 +87,11 @@ func newKeyBillingRouteTestRouter(runMode string) (*gin.Engine, *keyBillingRoute
 	}
 	cfg := &config.Config{RunMode: runMode}
 	rateRepo := &keyBillingRouteRateRepo{}
+	if groups == nil {
+		groups = &keyBillingRouteGroupRepo{group: group}
+	}
 	apiKeyService := service.NewAPIKeyService(
-		&keyBillingRouteAPIKeyRepo{apiKey: apiKey}, nil, &keyBillingRouteGroupRepo{group: group}, nil, rateRepo, nil, cfg,
+		&keyBillingRouteAPIKeyRepo{apiKey: apiKey}, nil, groups, nil, rateRepo, nil, cfg,
 	)
 	gatewayService := service.NewGatewayService(
 		nil, nil, nil, nil, nil, nil, rateRepo, nil, cfg, nil, nil, nil, nil, nil,
@@ -135,7 +138,7 @@ func TestGatewayRoutesKeyBillingInfoPathIsRegistered(t *testing.T) {
 
 func TestGatewayRoutesKeyBillingInfoEndToEnd(t *testing.T) {
 	t.Run("missing credentials", func(t *testing.T) {
-		router, rateRepo, _ := newKeyBillingRouteTestRouter(config.RunModeStandard)
+		router, rateRepo, _ := newKeyBillingRouteTestRouter(config.RunModeStandard, nil)
 		w := httptest.NewRecorder()
 
 		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/v1/sub2api/billing", nil))
@@ -147,7 +150,7 @@ func TestGatewayRoutesKeyBillingInfoEndToEnd(t *testing.T) {
 	})
 
 	t.Run("standard mode", func(t *testing.T) {
-		router, rateRepo, key := newKeyBillingRouteTestRouter(config.RunModeStandard)
+		router, rateRepo, key := newKeyBillingRouteTestRouter(config.RunModeStandard, nil)
 		req := httptest.NewRequest(http.MethodGet, "/v1/sub2api/billing", nil)
 		req.Header.Set("Authorization", "Bearer "+key)
 		w := httptest.NewRecorder()
@@ -168,7 +171,7 @@ func TestGatewayRoutesKeyBillingInfoEndToEnd(t *testing.T) {
 	})
 
 	t.Run("requested group belongs to the calling key", func(t *testing.T) {
-		router, _, key := newKeyBillingRouteTestRouter(config.RunModeStandard)
+		router, _, key := newKeyBillingRouteTestRouter(config.RunModeStandard, nil)
 		req := httptest.NewRequest(http.MethodGet, "/v1/sub2api/billing?include=group&group_id=99", nil)
 		req.Header.Set("x-api-key", key)
 		req.Header.Set("Accept-Language", "en")
@@ -185,8 +188,21 @@ func TestGatewayRoutesKeyBillingInfoEndToEnd(t *testing.T) {
 		require.NotContains(t, w.Body.String(), key)
 	})
 
+	t.Run("optional group lookup failure preserves billing rates", func(t *testing.T) {
+		router, _, key := newKeyBillingRouteTestRouter(config.RunModeStandard, &keyBillingRouteGroupRepo{})
+		req := httptest.NewRequest(http.MethodGet, "/v1/sub2api/billing?include=group", nil)
+		req.Header.Set("x-api-key", key)
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusOK, w.Code)
+		var body map[string]any
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		require.Equal(t, 0.75, body["effective_rate_multiplier"])
+		require.NotContains(t, body, "group_name")
+	})
+
 	t.Run("simple mode", func(t *testing.T) {
-		router, rateRepo, key := newKeyBillingRouteTestRouter(config.RunModeSimple)
+		router, rateRepo, key := newKeyBillingRouteTestRouter(config.RunModeSimple, nil)
 		req := httptest.NewRequest(http.MethodGet, "/v1/sub2api/billing", nil)
 		req.Header.Set("x-api-key", key)
 		w := httptest.NewRecorder()

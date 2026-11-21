@@ -336,6 +336,8 @@ export default {
         }
       },
       upstreamBilling: {
+        autoSyncGroup: 'Auto-sync upstream group name and notes',
+        autoSyncGroupHint: 'A successful probe replaces the local name and notes with any text the upstream provides. Account rate sync is controlled separately.',
         syncGroup: 'Sync upstream group name and notes',
         saveGroup: 'Sync and save upstream group name and notes',
         groupCredentials: 'Enter the upstream URL and API key. Re-enter the key after changing the URL or proxy.',

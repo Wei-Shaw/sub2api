@@ -241,6 +241,26 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     wrapper.unmount()
   })
 
+  it('creates an API key account with group sync only after opt-in', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'OpenAI')
+    await selectButtonByText(wrapper, 'API Key')
+    await wrapper.get('[data-tour="account-form-name"]').setValue('local')
+    await wrapper.get('form input[type="password"]').setValue('synthetic-key')
+    const group = wrapper.get('[data-testid="upstream-billing-group-sync"]')
+    const probe = wrapper.get('[data-testid="upstream-billing-auto-probe"]')
+    expect(group.attributes('aria-checked')).toBe('false')
+    await probe.trigger('click')
+    await group.trigger('click')
+    expect(probe.attributes('aria-checked')).toBe('true')
+    await wrapper.get('#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      upstream_billing_group_sync_enabled: true, upstream_billing_probe_enabled: true
+    })
+    wrapper.unmount()
+  })
+
   it('can create a passthrough account with model filtering enabled', async () => {
     const wrapper = mountModal()
     await selectButtonByText(wrapper, 'OpenAI')

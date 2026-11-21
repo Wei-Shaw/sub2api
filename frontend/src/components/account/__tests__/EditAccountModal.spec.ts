@@ -1361,6 +1361,26 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.upstream_billing_probe_enabled).toBe(true)
   })
 
+  it('opts into group sync independently and clears it when probing stops', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    const group = wrapper.get('[data-testid="upstream-billing-group-sync"]')
+    const probe = wrapper.get('[data-testid="upstream-billing-auto-probe"]')
+    const rate = wrapper.get('[data-testid="upstream-billing-rate-sync"]')
+    expect(group.attributes('aria-checked')).toBe('false')
+    await group.trigger('click')
+    expect(probe.attributes('aria-checked')).toBe('true')
+    expect(rate.attributes('aria-checked')).toBe('false')
+    await wrapper.get('form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.lastCall?.[1]).toMatchObject({
+      upstream_billing_group_sync_enabled: true, upstream_billing_rate_sync_enabled: false
+    })
+    await probe.trigger('click')
+    expect(group.attributes('aria-checked')).toBe('false')
+    wrapper.unmount()
+  })
+
   it('enabling rate sync also enables probing and stops submitting a manual rate', async () => {
     const account = buildAccount()
     updateAccountMock.mockReset()

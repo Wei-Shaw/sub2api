@@ -182,6 +182,8 @@ export default {
         }
       },
       upstreamBilling: {
+        autoSyncGroup: '自动同步上游分组名称与备注',
+        autoSyncGroupHint: '成功探测后，上游提供的名称和描述会覆盖本地名称与备注。账号倍率由单独的开关控制。',
         syncGroup: '同步上游分组名称与备注',
         saveGroup: '同步并保存上游分组名称与备注',
         groupCredentials: '请填写上游地址和 API Key。更换地址或代理后需重新输入密钥。',

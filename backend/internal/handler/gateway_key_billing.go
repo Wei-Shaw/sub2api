@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -62,10 +63,10 @@ func (h *GatewayHandler) KeyBillingInfo(c *gin.Context) {
 	if c.Query("include") == "group" {
 		group, err := h.apiKeyService.GetBillingGroupInfo(c.Request.Context(), *apiKey.GroupID, c.GetHeader("Accept-Language"))
 		if err != nil {
-			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Billing information is unavailable")
-			return
+			slog.WarnContext(c.Request.Context(), "billing group display text unavailable", "group_id", *apiKey.GroupID, "error", err)
+		} else {
+			info.BillingGroupInfo = group
 		}
-		info.BillingGroupInfo = group
 	}
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, info)
