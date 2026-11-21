@@ -204,6 +204,49 @@ func (s *UserSubscription) MonthlyResetTime() *time.Time {
 	return &t
 }
 
+// WithUsageWindowsAdvancedAt returns a copy of s whose usage windows have been
+// advanced exactly as CheckAndResetWindows would advance them at now: the daily
+// window moves to the current calendar-day boundary, weekly/monthly windows move
+// by whole periods without crossing ExpiresAt, and the usage of every advanced
+// window is zeroed. Windows that are not activated stay nil. It never writes,
+// so read-only views (e.g. GET /v1/usage) can report what billing would enforce
+// even when the lazy reset has not been persisted yet because nothing has been
+// charged since the window expired.
+func (s *UserSubscription) WithUsageWindowsAdvancedAt(now time.Time) *UserSubscription {
+	advanced := *s
+	if windowStart, ok := s.automaticDailyWindowStartAt(now); ok {
+		advanced.DailyWindowStart = &windowStart
+		advanced.DailyUsageUSD = 0
+	}
+	if windowStart, ok := s.automaticWindowStartAt(s.WeeklyWindowStart, 7*24*time.Hour, now); ok {
+		advanced.WeeklyWindowStart = &windowStart
+		advanced.WeeklyUsageUSD = 0
+	}
+	if windowStart, ok := s.automaticWindowStartAt(s.MonthlyWindowStart, 30*24*time.Hour, now); ok {
+		advanced.MonthlyWindowStart = &windowStart
+		advanced.MonthlyUsageUSD = 0
+	}
+	return &advanced
+}
+
+// UsageWindowResetTimes returns when each activated usage window next resets:
+// DailyResetTime/WeeklyResetTime/MonthlyResetTime clamped to ExpiresAt, because
+// windows never advance past the subscription expiry (see automaticWindowStartAt
+// and the one-time daily quota). A nil value means the window is not activated.
+// Call it on WithUsageWindowsAdvancedAt's result so a stale window reports the
+// reset of the period that is current at that moment.
+func (s *UserSubscription) UsageWindowResetTimes() (daily, weekly, monthly *time.Time) {
+	return s.clampToExpiry(s.DailyResetTime()), s.clampToExpiry(s.WeeklyResetTime()), s.clampToExpiry(s.MonthlyResetTime())
+}
+
+func (s *UserSubscription) clampToExpiry(t *time.Time) *time.Time {
+	if t == nil || s.ExpiresAt.IsZero() || !t.After(s.ExpiresAt) {
+		return t
+	}
+	expiresAt := s.ExpiresAt
+	return &expiresAt
+}
+
 func (s *UserSubscription) CheckDailyLimit(group *Group, additionalCost float64) bool {
 	if !group.HasDailyLimit() {
 		return true
