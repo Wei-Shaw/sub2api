@@ -377,7 +377,7 @@
             class="rounded-lg border border-blue-300 bg-white/80 p-4 dark:border-blue-600 dark:bg-gray-800/80"
           >
             <p class="mb-3 text-sm text-blue-700 dark:text-blue-300">
-              {{ t(isAgentIdentityInput ? 'admin.accounts.oauth.openai.agentIdentityDesc' : 'admin.accounts.oauth.openai.codexSessionDesc') }}
+              {{ t(codexSessionTextKey('Desc')) }}
             </p>
 
             <div class="mb-4">
@@ -397,7 +397,7 @@
                 v-model="codexSessionInput"
                 rows="8"
                 class="input w-full resize-y font-mono text-sm"
-                :placeholder="t(isAgentIdentityInput ? 'admin.accounts.oauth.openai.agentIdentityPlaceholder' : 'admin.accounts.oauth.openai.codexSessionPlaceholder')"
+                :placeholder="t(codexSessionTextKey('Placeholder'))"
                 spellcheck="false"
               ></textarea>
               <p class="mt-1 text-xs text-blue-600 dark:text-blue-400">
@@ -444,7 +444,7 @@
               {{
                 loading
                   ? t('admin.accounts.oauth.openai.validating')
-                  : t('admin.accounts.oauth.openai.codexSessionImportAndCreate')
+                  : t(reauth ? 'admin.accounts.oauth.openai.codexSessionReauthSubmit' : 'admin.accounts.oauth.openai.codexSessionImportAndCreate')
               }}
             </button>
           </div>
@@ -918,6 +918,8 @@ interface Props {
   showSessionTokenOption?: boolean
   showAccessTokenOption?: boolean
   showCodexSessionImportOption?: boolean
+  /** Re-authorizing an existing account: codex session import updates it instead of creating accounts. */
+  reauth?: boolean
   showAgentIdentityOption?: boolean
   showCodexPatOption?: boolean
   showSsoOption?: boolean
@@ -949,6 +951,7 @@ const props = withDefaults(defineProps<Props>(), {
   showSessionTokenOption: false,
   showAccessTokenOption: false,
   showCodexSessionImportOption: false,
+  reauth: false,
   showAgentIdentityOption: false,
   showCodexPatOption: false,
   showSsoOption: false,
@@ -1014,6 +1017,10 @@ const oauthImportantNotice = computed(() => {
 // Local state
 const inputMethod = ref<AuthInputMethod>(props.initialInputMethod)
 const isAgentIdentityInput = computed(() => inputMethod.value === 'agent_identity')
+const codexSessionTextKey = (key: string) => {
+  if (isAgentIdentityInput.value) return `admin.accounts.oauth.openai.agentIdentity${key}`
+  return `admin.accounts.oauth.openai.codexSession${props.reauth ? 'Reauth' : ''}${key}`
+}
 const authCodeInput = ref('')
 const sessionKeyInput = ref('')
 const refreshTokenInput = ref('')
