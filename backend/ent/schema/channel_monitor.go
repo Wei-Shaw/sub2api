@@ -52,6 +52,13 @@ func (ChannelMonitor) Fields() []ent.Field {
 		field.Int64("account_id").
 			Optional().
 			Nillable(),
+		// group_id: 配额模式的组级数据源，聚合组内全部 active 账号的额度。
+		// 与 account_id 互斥（SQL 迁移的 CHECK 约束在库层兜底）：一个账号额度
+		// 耗尽不代表渠道不可用，账号多的分组需要聚合口径。
+		// 同样是普通字段而非 edge（FK 由 SQL 迁移管理），分组删除时数据库置空。
+		field.Int64("group_id").
+			Optional().
+			Nillable(),
 		field.String("api_mode").
 			Default("chat_completions").
 			MaxLen(32).
@@ -133,5 +140,6 @@ func (ChannelMonitor) Indexes() []ent.Index {
 		index.Fields("group_name"),
 		index.Fields("template_id"),
 		index.Fields("account_id"),
+		index.Fields("group_id"),
 	}
 }
