@@ -74,6 +74,7 @@ func (h *ProxyHandler) ExportData(c *gin.Context) {
 			Port:            p.Port,
 			Username:        p.Username,
 			Password:        p.Password,
+			ConsoleURL:      p.ConsoleURL,
 			Status:          p.Status,
 			ExpiresAt:       expiresAt,
 			FallbackMode:    p.FallbackMode,
@@ -177,6 +178,7 @@ func (h *ProxyHandler) ImportData(c *gin.Context) {
 					BackupProxyID:  existingBackupProxyID,
 					ClearBackupID:  existingBackupProxyID == nil,
 					ExpiryWarnDays: &item.ExpiryWarnDays,
+					ConsoleURL:     trimOptionalString(&item.ConsoleURL),
 					// 保留已存在代理的网络配置字段
 					Name:     existing.Name,
 					Protocol: existing.Protocol,
@@ -234,6 +236,7 @@ func (h *ProxyHandler) ImportData(c *gin.Context) {
 			FallbackMode:   fallbackMode,
 			BackupProxyID:  backupProxyID,
 			ExpiryWarnDays: item.ExpiryWarnDays,
+			ConsoleURL:     item.ConsoleURL,
 		})
 		if err != nil {
 			result.ProxyFailed++
@@ -262,6 +265,7 @@ func (h *ProxyHandler) ImportData(c *gin.Context) {
 				BackupProxyID:  backupProxyID,
 				ClearBackupID:  backupProxyID == nil,
 				ExpiryWarnDays: &item.ExpiryWarnDays,
+				ConsoleURL:     trimOptionalString(&item.ConsoleURL),
 				Name:           created.Name,
 				Protocol:       created.Protocol,
 				Host:           created.Host,

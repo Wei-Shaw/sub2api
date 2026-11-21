@@ -58,3 +58,32 @@ func TestProxyHandlerUpdatePreservesFieldPresence(t *testing.T) {
 		})
 	}
 }
+
+func TestProxyHandlerUpdatePreservesConsoleURLPresence(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, tc := range []struct {
+		name string
+		body string
+		want *string
+	}{
+		{name: "omitted", body: `{"status":"inactive"}`},
+		{name: "value", body: `{"console_url":" http://proxy.example.com/ui/ "}`, want: stringPointer("http://proxy.example.com/ui/")},
+		{name: "clear", body: `{"console_url":""}`, want: stringPointer("")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := &proxyPartialUpdateService{}
+			router := gin.New()
+			router.PUT("/proxies/:id", NewProxyHandler(svc).Update)
+			w := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPut, "/proxies/9", strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			router.ServeHTTP(w, req)
+			require.Equal(t, http.StatusOK, w.Code, w.Body.String())
+			require.Equal(t, tc.want, svc.input.ConsoleURL)
+		})
+	}
+}
+
+func stringPointer(value string) *string {
+	return &value
+}

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -71,6 +73,10 @@ func (s *adminServiceImpl) CreateProxy(ctx context.Context, input *CreateProxyIn
 	if input.ExpiryWarnDays < 0 {
 		return nil, infraerrors.BadRequest("PROXY_WARN_DAYS_INVALID", "expiry_warn_days must be >= 0")
 	}
+	consoleURL, err := normalizeProxyConsoleURL(input.ConsoleURL)
+	if err != nil {
+		return nil, err
+	}
 
 	proxy := &Proxy{
 		Name:           input.Name,
@@ -79,6 +85,7 @@ func (s *adminServiceImpl) CreateProxy(ctx context.Context, input *CreateProxyIn
 		Port:           input.Port,
 		Username:       input.Username,
 		Password:       input.Password,
+		ConsoleURL:     consoleURL,
 		Status:         StatusActive,
 		ExpiresAt:      input.ExpiresAt,
 		FallbackMode:   mode,
@@ -121,6 +128,13 @@ func (s *adminServiceImpl) UpdateProxy(ctx context.Context, id int64, input *Upd
 	if input.ExpiryWarnDays != nil && *input.ExpiryWarnDays < 0 {
 		return nil, infraerrors.BadRequest("PROXY_WARN_DAYS_INVALID", "expiry_warn_days must be >= 0")
 	}
+	if input.ConsoleURL != nil {
+		consoleURL, err := normalizeProxyConsoleURL(*input.ConsoleURL)
+		if err != nil {
+			return nil, err
+		}
+		proxy.ConsoleURL = consoleURL
+	}
 
 	if input.Name != "" {
 		proxy.Name = input.Name
@@ -156,6 +170,21 @@ func (s *adminServiceImpl) UpdateProxy(ctx context.Context, id int64, input *Upd
 		return nil, err
 	}
 	return proxy, nil
+}
+
+func normalizeProxyConsoleURL(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", infraerrors.BadRequest("PROXY_CONSOLE_URL_INVALID", "proxy console URL must be an absolute HTTP or HTTPS URL")
+	}
+	if parsed.User != nil || parsed.Query().Has("secret") {
+		return "", infraerrors.BadRequest("PROXY_CONSOLE_URL_SECRET_FORBIDDEN", "proxy console URL must not contain credentials or a secret")
+	}
+	return parsed.String(), nil
 }
 
 func (s *adminServiceImpl) DeleteProxy(ctx context.Context, id int64) error {
