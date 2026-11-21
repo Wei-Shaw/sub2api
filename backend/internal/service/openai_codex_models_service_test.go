@@ -86,6 +86,26 @@ type splitCodexModelsAccountRepo struct {
 	all         map[int64][]Account
 }
 
+func TestConfiguredCodexModelsKeepTemporarilyUnavailableAliases(t *testing.T) {
+	const groupID int64 = 7802
+	account := newCodexCatalogMappedAccount(1, "upstream-coder", "Configured Coder", []string{"low", "high"}, []string{"text"}, 128_000, true, nil)
+	until := time.Now().Add(time.Hour)
+	account.TempUnschedulableUntil = &until
+	repo := splitCodexModelsAccountRepo{catalog: map[int64][]Account{groupID: {account}}}
+	svc := &OpenAIGatewayService{accountRepo: repo}
+	group := &Group{ID: groupID, Platform: PlatformOpenAI}
+	manifest, configured, err := svc.BuildGroupConfiguredCodexModelsManifest(context.Background(), group, "")
+	require.NoError(t, err)
+	require.True(t, configured)
+	require.NotNil(t, manifest)
+	models := decodeCodexManifestModels(t, manifest.Body)
+	require.Len(t, models, 1)
+	require.Equal(t, "my-coder", models[0]["slug"])
+	require.Equal(t, "my-coder", models[0]["display_name"])
+	require.EqualValues(t, 128_000, models[0]["context_window"])
+	require.Equal(t, []string{"low", "high"}, effortsFromManifestModel(t, models[0]))
+}
+
 func (r splitCodexModelsAccountRepo) ListSchedulableByGroupID(_ context.Context, groupID int64) ([]Account, error) {
 	return append([]Account(nil), r.schedulable[groupID]...), nil
 }
@@ -1321,8 +1341,7 @@ func TestBuildGroupConfiguredCodexModelsManifestExpandsSelectedModelCoveredByWil
 	require.NotContains(t, string(manifest.Body), "gpt-*")
 }
 
-// Scenario: OpenAI 配置目录对仅因瞬态状态退出当前调度池的账号取能力交集，
-// 且不发布其独有模型。持久 schedulable 仍为 true。
+// Scenario: transient scheduling blocks preserve model membership and capability intersection.
 func TestBuildGroupConfiguredCodexModelsManifestIntersectsTransientlyUnschedulableMappedAccounts(t *testing.T) {
 	t.Parallel()
 
@@ -1360,12 +1379,19 @@ func TestBuildGroupConfiguredCodexModelsManifestIntersectsTransientlyUnschedulab
 	require.NoError(t, err)
 	require.True(t, configured)
 	models := decodeCodexManifestModels(t, manifest.Body)
-	require.Len(t, models, 1)
-	require.Equal(t, "my-coder", models[0]["slug"])
-	require.Equal(t, "my-coder", models[0]["display_name"])
-	require.Equal(t, []string{"low", "medium", "high"}, effortsFromManifestModel(t, models[0]))
-	require.Equal(t, []any{"text"}, models[0]["input_modalities"])
-	require.EqualValues(t, 272_000, models[0]["context_window"])
+	require.Len(t, models, 2)
+	bySlug := make(map[string]map[string]any, len(models))
+	for _, model := range models {
+		slug, ok := model["slug"].(string)
+		require.True(t, ok)
+		bySlug[slug] = model
+	}
+	require.Contains(t, bySlug, "exclusive-model")
+	require.Equal(t, []string{"high"}, effortsFromManifestModel(t, bySlug["exclusive-model"]))
+	require.Equal(t, "my-coder", bySlug["my-coder"]["display_name"])
+	require.Equal(t, []string{"low", "medium", "high"}, effortsFromManifestModel(t, bySlug["my-coder"]))
+	require.Equal(t, []any{"text"}, bySlug["my-coder"]["input_modalities"])
+	require.EqualValues(t, 272_000, bySlug["my-coder"]["context_window"])
 }
 
 // Scenario: 管理员持久禁用的账号不能继续收窄 Codex 能力目录。
