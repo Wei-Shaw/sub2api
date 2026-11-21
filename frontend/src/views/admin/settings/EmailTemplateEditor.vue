@@ -230,7 +230,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { adminAPI } from "@/api";
 import type {
@@ -328,6 +328,8 @@ const placeholders = ref<string[]>([]);
 const previewSubject = ref("");
 const previewHtml = ref("");
 const initializingSelection = ref(false);
+let previewRequestId = 0;
+onBeforeUnmount(() => { previewRequestId++; });
 
 interface EventDisplayMeta {
   label: string;
@@ -600,6 +602,7 @@ function applyTemplate(template: {
 async function loadTemplate() {
   if (!selectedEvent.value || !selectedLocale.value) return;
   loadingTemplate.value = true;
+  previewRequestId++;
   try {
     const template = await adminAPI.settings.getEmailTemplate(
       selectedEvent.value,
@@ -660,7 +663,9 @@ async function saveTemplate() {
 }
 
 async function refreshPreview() {
+  const requestId = ++previewRequestId;
   if (!canPreview.value) {
+    previewing.value = false;
     previewSubject.value = "";
     previewHtml.value = "";
     return;
@@ -673,12 +678,14 @@ async function refreshPreview() {
       subject: subject.value,
       html: html.value,
     });
+    if (requestId !== previewRequestId) return;
     previewSubject.value = preview.subject;
     previewHtml.value = preview.html;
   } catch (err: unknown) {
+    if (requestId !== previewRequestId) return;
     appStore.showError(extractApiErrorMessage(err, t("common.error")));
   } finally {
-    previewing.value = false;
+    if (requestId === previewRequestId) previewing.value = false;
   }
 }
 
