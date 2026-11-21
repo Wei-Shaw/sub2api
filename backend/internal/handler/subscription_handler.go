@@ -154,14 +154,14 @@ func (h *SubscriptionHandler) GetSummary(c *gin.Context) {
 		// Add group info if preloaded
 		if sub.Group != nil {
 			item.GroupName = sub.Group.I18n.LocalizeName(c.GetHeader("Accept-Language"), sub.Group.Name)
-			if sub.Group.DailyLimitUSD != nil {
-				item.DailyLimitUSD = *sub.Group.DailyLimitUSD
+			if limit := sub.EffectiveDailyLimitUSD(sub.Group); limit != nil {
+				item.DailyLimitUSD = *limit
 			}
-			if sub.Group.WeeklyLimitUSD != nil {
-				item.WeeklyLimitUSD = *sub.Group.WeeklyLimitUSD
+			if limit := sub.EffectiveWeeklyLimitUSD(sub.Group); limit != nil {
+				item.WeeklyLimitUSD = *limit
 			}
-			if sub.Group.MonthlyLimitUSD != nil {
-				item.MonthlyLimitUSD = *sub.Group.MonthlyLimitUSD
+			if limit := sub.EffectiveMonthlyLimitUSD(sub.Group); limit != nil {
+				item.MonthlyLimitUSD = *limit
 			}
 		}
 
