@@ -470,7 +470,7 @@ func normalizePositiveInt64IDs(ids []int64) []int64 {
 	return out
 }
 
-// GetBatchUserUsageStats gets today and total actual_cost for multiple users within a time range.
+// GetBatchUserUsageStats gets today and total usage for multiple users within a time range.
 // If startTime is zero, defaults to 30 days ago.
 func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs []int64, startTime, endTime time.Time) (map[int64]*BatchUserUsageStats, error) {
 	result := make(map[int64]*BatchUserUsageStats)
@@ -498,7 +498,11 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 			ul.user_id,
 			` + usageLogEffectivePlatformExpr + ` as platform,
 			COALESCE(SUM(ul.actual_cost) FILTER (WHERE ul.created_at >= $2 AND ul.created_at < $3), 0) as total_cost,
-			COALESCE(SUM(ul.actual_cost) FILTER (WHERE ul.created_at >= $4), 0) as today_cost
+			COALESCE(SUM(ul.actual_cost) FILTER (WHERE ul.created_at >= $4), 0) as today_cost,
+			COUNT(*) FILTER (WHERE ul.created_at >= $2 AND ul.created_at < $3) as total_requests,
+			COUNT(*) FILTER (WHERE ul.created_at >= $4) as today_requests,
+			COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens) FILTER (WHERE ul.created_at >= $2 AND ul.created_at < $3), 0) as total_tokens,
+			COALESCE(SUM(ul.input_tokens + ul.output_tokens + ul.cache_creation_tokens + ul.cache_read_tokens) FILTER (WHERE ul.created_at >= $4), 0) as today_tokens
 		FROM usage_logs ul
 		LEFT JOIN groups g ON g.id = ul.group_id
 		LEFT JOIN accounts a ON a.id = ul.account_id
@@ -517,7 +521,8 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 		var platform sql.NullString
 		var total float64
 		var todayTotal float64
-		if err := rows.Scan(&userID, &platform, &total, &todayTotal); err != nil {
+		var totalRequests, todayRequests, totalTokens, todayTokens int64
+		if err := rows.Scan(&userID, &platform, &total, &todayTotal, &totalRequests, &todayRequests, &totalTokens, &todayTokens); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
@@ -527,6 +532,10 @@ func (r *usageLogRepository) GetBatchUserUsageStats(ctx context.Context, userIDs
 		}
 		stats.TotalActualCost += total
 		stats.TodayActualCost += todayTotal
+		stats.TotalRequests += totalRequests
+		stats.TodayRequests += todayRequests
+		stats.TotalTokens += totalTokens
+		stats.TodayTokens += todayTokens
 		if platform.Valid && platform.String != "" {
 			stats.ByPlatform = append(stats.ByPlatform, PlatformUsage{
 				Platform:        platform.String,
