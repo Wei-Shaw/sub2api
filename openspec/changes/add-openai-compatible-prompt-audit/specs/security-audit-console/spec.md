@@ -111,6 +111,7 @@
 - **THEN** 页面 MUST 展示脱敏预览、审计摘要、结构化返回、具体风险摘要和技术信息
 - **THEN** 页面 MUST 提供 request ID、prompt Hash、scanner、策略、节点、配置版本、分片数和耗时
 - **THEN** 页面 MUST 不展示完整提示词或节点 API Key
+- **THEN** 事件详情 MUST 不依赖任何存储原文的列，完整提示词只存在于服务端短 TTL 载荷
 
 #### Scenario: 复核用户身份和具体风险
 - **WHEN** 事件拥有用户名、用户邮箱、API Key 名称和一个或多个风险分类
