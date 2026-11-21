@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
+
 	"github.com/tidwall/gjson"
 )
 
@@ -32,9 +34,10 @@ func ImageGenerationPermissionMessage() string {
 	return imageGenerationPermissionMessage
 }
 
-// GroupAllowsImageGeneration preserves ungrouped-key behavior and enforces the flag when a group is present.
-func GroupAllowsImageGeneration(group *Group) bool {
-	return group == nil || group.AllowImageGeneration
+// GroupAllowsImageGeneration ignores the group permission in simple mode, where
+// the setting is unavailable. Standard mode retains the flag and ungrouped-key behavior.
+func GroupAllowsImageGeneration(cfg *config.Config, group *Group) bool {
+	return (cfg != nil && cfg.RunMode == config.RunModeSimple) || group == nil || group.AllowImageGeneration
 }
 
 var (
