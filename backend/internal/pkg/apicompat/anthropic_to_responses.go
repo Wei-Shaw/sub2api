@@ -334,6 +334,7 @@ func anthropicAssistantToResponses(raw json.RawMessage) ([]ResponsesInputItem, e
 		items = append(items, ResponsesInputItem{
 			Type:             "reasoning",
 			EncryptedContent: sig,
+			Summary:          json.RawMessage("[]"),
 		})
 	}
 
