@@ -16,6 +16,7 @@ import (
 
 const (
 	PluginCapabilityOpenAIOAuthOutbound = "openai.oauth.outbound_transport.v1"
+	PluginCapabilityAnthropicOAuthPatch = "anthropic.oauth.request_patch.v1"
 	PluginStateDisabled                 = "disabled"
 	PluginStateStarting                 = "starting"
 	PluginStateEnabled                  = "enabled"
@@ -168,10 +169,13 @@ func (m PluginManifest) Validate() error {
 	if len(m.Capabilities) == 0 {
 		return errors.New("插件必须声明至少一个能力")
 	}
+	seen := make(map[string]bool, len(m.Capabilities))
 	for _, capability := range m.Capabilities {
-		if capability.ID != PluginCapabilityOpenAIOAuthOutbound || capability.Platform != PlatformOpenAI || capability.AccountType != AccountTypeOAuth {
-			return fmt.Errorf("初期仅支持能力 %s", PluginCapabilityOpenAIOAuthOutbound)
+		platform, supported := pluginCapabilityPlatform(capability.ID)
+		if !supported || capability.Platform != platform || capability.AccountType != AccountTypeOAuth || seen[capability.ID] {
+			return fmt.Errorf("插件能力声明不受支持或重复: %s", capability.ID)
 		}
+		seen[capability.ID] = true
 	}
 	runtimeEntry, ok := m.Runtimes[m.RuntimeKey()]
 	if !ok || !safePluginRelativePath(runtimeEntry.Path) {

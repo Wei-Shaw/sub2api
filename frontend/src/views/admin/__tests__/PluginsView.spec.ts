@@ -155,6 +155,23 @@ describe('管理员插件页二次验证', () => {
     expect(enablePlugin).toHaveBeenCalledWith(7, 100, false)
   })
 
+  it('仅 Claude 能力的插件显示自身灰度并按该比例启用', async () => {
+    const capability = { id: 'anthropic.oauth.request_patch.v1', platform: 'anthropic', account_type: 'oauth' }
+    listPlugins.mockResolvedValue([{
+      ...plugin,
+      manifest: { ...plugin.manifest, capabilities: [capability] },
+      bindings: [{ ...plugin.bindings[0], capability: capability.id, platform: 'anthropic', rollout_percent: 35 }],
+    }])
+    const wrapper = mountView()
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('admin.plugins.anthropicPatch')
+    expect((wrapper.get('input[type="range"]').element as HTMLInputElement).value).toBe('35')
+    await wrapper.findAll('button').find(item => item.text() === 'admin.plugins.enable')!.trigger('click')
+    await flushPromises()
+    expect(enablePlugin).toHaveBeenCalledWith(7, 35, false)
+  })
+
   it.each([7, 8])('keeps the latest session when reopening configuration for plugin %s', async (id) => {
     let resolveOld!: (session: PluginUISession) => void
     createUISession.mockReturnValueOnce(new Promise<PluginUISession>((resolve) => { resolveOld = resolve }))
