@@ -3,7 +3,7 @@
  * Handles user login, registration, and logout operations
  */
 
-import { apiClient } from './client'
+import { apiClient, type AuthRequestConfig } from './client'
 import { refreshAuthTokens, type RefreshTokenResponse } from './tokenRefresh'
 export type { RefreshTokenResponse } from './tokenRefresh'
 import type {
@@ -192,8 +192,8 @@ export async function register(userData: RegisterRequest): Promise<AuthResponse>
  * Get current authenticated user
  * @returns User profile data
  */
-export async function getCurrentUser() {
-  return apiClient.get<CurrentUserResponse>('/auth/me')
+export async function getCurrentUser(options?: AuthRequestConfig) {
+  return apiClient.get<CurrentUserResponse>('/auth/me', options)
 }
 
 /**
