@@ -93,6 +93,35 @@ func (a *antigravityResponsesStreamAdapter) Finalize(writer *antigravityClientWr
 
 func (a *antigravityResponsesStreamAdapter) WriteError(writer *antigravityClientWriter, reason string) {
 	writer.Fprintf("event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"upstream_error\",\"message\":%q}}\n\n", reason)
+	respID := a.anthropicState.ResponseID
+	if respID == "" {
+		respID = "resp_failed"
+	}
+	created := a.anthropicState.Created
+	if created == 0 {
+		created = time.Now().Unix()
+	}
+	seq := a.anthropicState.SequenceNumber
+	a.anthropicState.SequenceNumber++
+	failedPayload, err := json.Marshal(map[string]any{
+		"type":            "response.failed",
+		"sequence_number": seq,
+		"response": map[string]any{
+			"id":         respID,
+			"object":     "response",
+			"created_at": created,
+			"model":      a.anthropicState.Model,
+			"status":     "failed",
+			"output":     []any{},
+			"error": map[string]string{
+				"code":    "server_error",
+				"message": reason,
+			},
+		},
+	})
+	if err == nil {
+		writer.Fprintf("event: response.failed\ndata: %s\n\n", failedPayload)
+	}
 }
 
 func (a *antigravityResponsesStreamAdapter) emitResponseEvent(event apicompat.ResponsesStreamEvent, writer *antigravityClientWriter) {
@@ -258,7 +287,8 @@ func isMeaningfulAntigravityCompatEvent(event *apicompat.AnthropicStreamEvent) b
 		delta := event.Delta
 		return delta.Text != "" ||
 			delta.PartialJSON != "" ||
-			delta.Thinking != ""
+			delta.Thinking != "" ||
+			delta.StopReason == "refusal"
 	}
 	return false
 }
@@ -394,6 +424,10 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithTiming(
 			if !open {
 				if !session.hasMeaningfulData() && !writer.Disconnected() {
 					return handleAntigravityCompatEmptyStream(c, session)
+				}
+				if !session.processor.HasTerminalState() && !writer.Disconnected() {
+					writeAntigravityCompatStreamError(c, adapter, writer, "stream_incomplete")
+					return session.collectResult(false), errors.New("stream incomplete: missing finishReason")
 				}
 				return session.finish()
 			}

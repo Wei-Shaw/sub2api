@@ -212,7 +212,7 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 
 				fallbackWrapped, err := s.wrapV1InternalRequest(projectID, fallbackModel, injectedBody)
 				if err == nil {
-					fallbackReq, err := antigravity.NewAPIRequest(ctx, upstreamAction, accessToken, fallbackWrapped)
+					fallbackReq, err := antigravity.NewAPIRequest(WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileLongStream), upstreamAction, accessToken, fallbackWrapped)
 					if err == nil {
 						fallbackResp, err := s.httpUpstream.Do(fallbackReq, proxyURL, account.ID, account.Concurrency)
 						if err == nil && fallbackResp.StatusCode < 400 {
@@ -409,9 +409,18 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 			Detail:             upstreamDetail,
 		})
 		logger.LegacyPrintf("service.antigravity_gateway", "[antigravity-Forward] upstream error status=%d body=%s", resp.StatusCode, truncateForLog(unwrappedForOps, 500))
-		MarkResponseCommitted(c)
-		// 原始上游错误体仅保留在 ops 日志中；返回客户端的错误体需脱敏，避免泄露账号池身份（项目号/服务账号等）
-		c.Data(resp.StatusCode, "application/json", buildAntigravityClientErrorBody(resp.StatusCode, unwrappedForOps))
+		clientErrBody := buildAntigravityClientErrorBody(resp.StatusCode, unwrappedForOps)
+		if isCommittedSSEStream(c) {
+			clientMsg := strings.TrimSpace(extractUpstreamErrorMessage(clientErrBody))
+			if clientMsg == "" {
+				clientMsg = "Upstream request failed"
+			}
+			writeCommittedGoogleSSEError(c, resp.StatusCode, clientMsg)
+		} else {
+			MarkResponseCommitted(c)
+			// 原始上游错误体仅保留在 ops 日志中；返回客户端的错误体需脱敏，避免泄露账号池身份（项目号/服务账号等）
+			c.Data(resp.StatusCode, "application/json", clientErrBody)
+		}
 		return nil, fmt.Errorf("antigravity upstream error: %d", resp.StatusCode)
 	}
 

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -81,6 +82,7 @@ func (s *GeminiMessagesCompatService) forwardClaudeBodyAsChatCompletions(
 	includeUsage bool,
 	startTime time.Time,
 ) (*ForwardResult, error) {
+	ctx = WithHTTPUpstreamProfile(ctx, HTTPUpstreamProfileLongStream)
 	var req struct {
 		Model  string `json:"model"`
 		Stream bool   `json:"stream"`
@@ -532,18 +534,25 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 	isOAuth bool,
 	includeUsage bool,
 ) (*geminiStreamResult, error) {
-	if s.responseHeaderFilter != nil {
-		responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
-	}
-	c.Writer.Header().Set("Content-Type", "text/event-stream")
-	c.Writer.Header().Set("Cache-Control", "no-cache")
-	c.Writer.Header().Set("Connection", "keep-alive")
-	c.Writer.Header().Set("X-Accel-Buffering", "no")
-	c.Writer.WriteHeader(http.StatusOK)
-
 	flusher, ok := c.Writer.(http.Flusher)
 	if !ok {
 		return nil, errors.New("streaming not supported")
+	}
+
+	headersCommitted := false
+	commitHeaders := func() {
+		if headersCommitted {
+			return
+		}
+		headersCommitted = true
+		if s.responseHeaderFilter != nil {
+			responseheaders.WriteFilteredHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
+		}
+		c.Writer.Header().Set("Content-Type", "text/event-stream")
+		c.Writer.Header().Set("Cache-Control", "no-cache")
+		c.Writer.Header().Set("Connection", "keep-alive")
+		c.Writer.Header().Set("X-Accel-Buffering", "no")
+		c.Writer.WriteHeader(http.StatusOK)
 	}
 
 	anthState := apicompat.NewAnthropicEventToResponsesState()
@@ -556,9 +565,17 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 	var firstTokenMs *int
 	firstChunk := true
 	finishReason := ""
+	sawPromptBlock := false
 	clientDisconnect := false
+	sawValidCandidate := false
+	keepaliveWritten := false
 	streamResult := func() *geminiStreamResult {
-		return &geminiStreamResult{usage: &usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnect, finished: finishReason != ""}
+		return &geminiStreamResult{
+			usage:            &usage,
+			firstTokenMs:     firstTokenMs,
+			clientDisconnect: clientDisconnect,
+			finished:         isTerminalGeminiFinishReason(finishReason) || sawPromptBlock,
+		}
 	}
 
 	writeChatChunk := func(chunk apicompat.ChatCompletionsChunk) bool {
@@ -566,6 +583,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 		if err != nil {
 			return false
 		}
+		commitHeaders()
 		if _, err := io.WriteString(c.Writer, sse); err != nil {
 			clientDisconnect = true
 			return true
@@ -583,24 +601,31 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 				}
 			}
 		}
-		flusher.Flush()
+		if headersCommitted {
+			flusher.Flush()
+		}
 		return false
 	}
 
 	messageID := generateAnthropicMsgID()
-	if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
-		Type: "message_start",
-		Message: &apicompat.AnthropicResponse{
-			ID:         messageID,
-			Type:       "message",
-			Role:       "assistant",
-			Model:      originalModel,
-			Content:    []apicompat.AnthropicContentBlock{},
-			StopReason: nil, // JSON null
-			Usage:      apicompat.AnthropicUsage{},
-		},
-	}) {
-		return streamResult(), nil
+	roleSent := false
+	ensureRoleStarted := func() bool {
+		if roleSent {
+			return false
+		}
+		roleSent = true
+		return emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
+			Type: "message_start",
+			Message: &apicompat.AnthropicResponse{
+				ID:         messageID,
+				Type:       "message",
+				Role:       "assistant",
+				Model:      originalModel,
+				Content:    []apicompat.AnthropicContentBlock{},
+				StopReason: nil, // JSON null
+				Usage:      apicompat.AnthropicUsage{},
+			},
+		})
 	}
 
 	sawToolUse := false
@@ -635,156 +660,189 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 		return disconnected
 	}
 
-	reader := newBoundedSSELineReader(resp.Body, s.cfg)
+	stream := newGeminiSSEAsyncReader(s.cfg, resp.Body, true)
+	defer stream.Close()
+	lastDataAt := time.Now()
+
+chatStreamLoop:
 	for {
-		line, err := reader.ReadLineString()
-		if len(line) > 0 {
-			trimmed := strings.TrimRight(line, "\r\n")
-			if strings.HasPrefix(trimmed, "data:") {
-				payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
-				if payload != "" && payload != "[DONE]" {
-					rawBytes := []byte(payload)
-					if isOAuth {
-						if innerBytes, uwErr := unwrapGeminiResponse(rawBytes); uwErr == nil {
-							rawBytes = innerBytes
-						}
-					}
-
-					var geminiResp map[string]any
-					if err := json.Unmarshal(rawBytes, &geminiResp); err == nil {
-						if firstChunk {
-							firstChunk = false
-							ms := int(time.Since(startTime).Milliseconds())
-							firstTokenMs = &ms
-						}
-						if fr := extractGeminiFinishReason(geminiResp); fr != "" {
-							finishReason = fr
-						}
-						if u := extractGeminiUsage(rawBytes); u != nil {
-							usage = *u
-						}
-
-						for _, part := range extractGeminiParts(geminiResp) {
-							if text, ok := part["text"].(string); ok && isGeminiThoughtPart(part) {
-								delta := seenThought.next(text)
-								if delta == "" {
-									continue
-								}
-								if openToolIndex >= 0 {
-									if closeOpenTool() {
-										return streamResult(), nil
-									}
-								}
-								if openBlockType != "thinking" {
-									if closeOpenBlock() {
-										return streamResult(), nil
-									}
-									idx := nextBlockIndex
-									nextBlockIndex++
-									openBlockIndex = idx
-									openBlockType = "thinking"
-									if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
-										Type:         "content_block_start",
-										Index:        &idx,
-										ContentBlock: &apicompat.AnthropicContentBlock{Type: "thinking"},
-									}) {
-										return streamResult(), nil
-									}
-								}
-								if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
-									Type:  "content_block_delta",
-									Delta: &apicompat.AnthropicDelta{Type: "thinking_delta", Thinking: delta},
-								}) {
-									return streamResult(), nil
-								}
-								continue
+		select {
+		case ev, ok := <-stream.events:
+			if !ok {
+				break chatStreamLoop
+			}
+			stream.Release(ev)
+			line, err := ev.line, ev.err
+			if len(line) > 0 && (err == nil || errors.Is(err, io.EOF)) {
+				lastDataAt = time.Now()
+				trimmed := strings.TrimRight(line, "\r\n")
+				if strings.HasPrefix(trimmed, "data:") {
+					payload := strings.TrimSpace(strings.TrimPrefix(trimmed, "data:"))
+					if payload != "" && payload != "[DONE]" {
+						rawBytes := []byte(payload)
+						if isOAuth {
+							if innerBytes, uwErr := unwrapGeminiResponse(rawBytes); uwErr == nil {
+								rawBytes = innerBytes
 							}
-							if text, ok := part["text"].(string); ok && text != "" {
-								if openToolIndex >= 0 {
-									if closeOpenTool() {
-										return streamResult(), nil
-									}
+						}
+
+						var geminiResp map[string]any
+						if unmarshalErr := json.Unmarshal(rawBytes, &geminiResp); unmarshalErr == nil {
+							if !roleSent && !clientDisconnect {
+								decision := classifyEmptyGeminiTerminalChunk(rawBytes, geminiResp, keepaliveWritten)
+								if decision.failoverErr != nil {
+									return nil, decision.failoverErr
 								}
-								delta := seenText.next(text)
-								if delta == "" {
-									continue
+								if decision.clientStatus > 0 {
+									return nil, s.writeChatCompletionsError(c, decision.clientStatus, geminiSignalOpsErrorType(decision.clientStatus), decision.clientMsg)
 								}
-								if openBlockType != "text" {
-									if closeOpenBlock() {
-										return streamResult(), nil
-									}
-									idx := nextBlockIndex
-									nextBlockIndex++
-									openBlockIndex = idx
-									openBlockType = "text"
-									if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
-										Type:  "content_block_start",
-										Index: &idx,
-										ContentBlock: &apicompat.AnthropicContentBlock{
-											Type: "text",
-											Text: "",
-										},
-									}) {
-										return streamResult(), nil
-									}
-								}
-								if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
-									Type: "content_block_delta",
-									Delta: &apicompat.AnthropicDelta{
-										Type: "text_delta",
-										Text: delta,
-									},
-								}) {
-									return streamResult(), nil
-								}
-								continue
+							}
+							if cands, hasCands := geminiResp["candidates"].([]any); hasCands && len(cands) > 0 {
+								sawValidCandidate = true
+							}
+							if firstChunk {
+								firstChunk = false
+								ms := int(time.Since(startTime).Milliseconds())
+								firstTokenMs = &ms
+							}
+							if fr := extractGeminiFinishReason(geminiResp); isTerminalGeminiFinishReason(fr) {
+								finishReason = fr
+							}
+							if isGeminiPromptBlockedPayload(geminiResp) {
+								sawPromptBlock = true
+							}
+							if u := extractGeminiUsage(rawBytes); u != nil {
+								usage = *u
 							}
 
-							if fc, ok := part["functionCall"].(map[string]any); ok && fc != nil {
-								name, _ := fc["name"].(string)
-								if strings.TrimSpace(name) == "" {
-									name = "tool"
-								}
-								if closeOpenBlock() {
+							parts := extractGeminiParts(geminiResp)
+							if len(parts) > 0 && !clientDisconnect {
+								if ensureRoleStarted() {
 									return streamResult(), nil
 								}
-								argsJSONText := geminiToolCallArgsJSON(fc["args"])
-								if openToolIndex >= 0 && toolBoundary.startsNewBlock(openToolName, seenToolJSON.seen.String(), argsJSONText, fc) {
-									if closeOpenTool() {
-										return streamResult(), nil
+							}
+							for _, part := range parts {
+								if text, ok := part["text"].(string); ok && isGeminiThoughtPart(part) {
+									delta := seenThought.next(text)
+									if delta == "" {
+										continue
 									}
-								}
-								if openToolIndex < 0 {
-									idx := nextBlockIndex
-									nextBlockIndex++
-									openToolIndex = idx
-									openToolName = name
-									sawToolUse = true
+									if openToolIndex >= 0 {
+										if closeOpenTool() {
+											return streamResult(), nil
+										}
+									}
+									if openBlockType != "thinking" {
+										if closeOpenBlock() {
+											return streamResult(), nil
+										}
+										idx := nextBlockIndex
+										nextBlockIndex++
+										openBlockIndex = idx
+										openBlockType = "thinking"
+										if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
+											Type:         "content_block_start",
+											Index:        &idx,
+											ContentBlock: &apicompat.AnthropicContentBlock{Type: "thinking"},
+										}) {
+											return streamResult(), nil
+										}
+									}
 									if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
-										Type:  "content_block_start",
-										Index: &idx,
-										ContentBlock: &apicompat.AnthropicContentBlock{
-											Type:  "tool_use",
-											ID:    "toolu_" + randomHex(8),
-											Name:  name,
-											Input: json.RawMessage(`{}`),
-										},
+										Type:  "content_block_delta",
+										Delta: &apicompat.AnthropicDelta{Type: "thinking_delta", Thinking: delta},
 									}) {
 										return streamResult(), nil
 									}
+									continue
 								}
-
-								delta := seenToolJSON.next(argsJSONText)
-								toolBoundary.observe(fc)
-								if delta != "" {
+								if text, ok := part["text"].(string); ok && text != "" {
+									if openToolIndex >= 0 {
+										if closeOpenTool() {
+											return streamResult(), nil
+										}
+									}
+									delta := seenText.next(text)
+									if delta == "" {
+										continue
+									}
+									if openBlockType != "text" {
+										if closeOpenBlock() {
+											return streamResult(), nil
+										}
+										idx := nextBlockIndex
+										nextBlockIndex++
+										openBlockIndex = idx
+										openBlockType = "text"
+										if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
+											Type:  "content_block_start",
+											Index: &idx,
+											ContentBlock: &apicompat.AnthropicContentBlock{
+												Type: "text",
+												Text: "",
+											},
+										}) {
+											return streamResult(), nil
+										}
+									}
 									if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
 										Type: "content_block_delta",
 										Delta: &apicompat.AnthropicDelta{
-											Type:        "input_json_delta",
-											PartialJSON: delta,
+											Type: "text_delta",
+											Text: delta,
 										},
 									}) {
 										return streamResult(), nil
+									}
+									continue
+								}
+
+								if fc, ok := part["functionCall"].(map[string]any); ok && fc != nil {
+									name, _ := fc["name"].(string)
+									if strings.TrimSpace(name) == "" {
+										name = "tool"
+									}
+									if closeOpenBlock() {
+										return streamResult(), nil
+									}
+									argsJSONText := geminiToolCallArgsJSON(fc["args"])
+									if openToolIndex >= 0 && toolBoundary.startsNewBlock(openToolName, seenToolJSON.seen.String(), argsJSONText, fc) {
+										if closeOpenTool() {
+											return streamResult(), nil
+										}
+									}
+									if openToolIndex < 0 {
+										idx := nextBlockIndex
+										nextBlockIndex++
+										openToolIndex = idx
+										openToolName = name
+										sawToolUse = true
+										if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
+											Type:  "content_block_start",
+											Index: &idx,
+											ContentBlock: &apicompat.AnthropicContentBlock{
+												Type:  "tool_use",
+												ID:    "toolu_" + randomHex(8),
+												Name:  name,
+												Input: json.RawMessage(`{}`),
+											},
+										}) {
+											return streamResult(), nil
+										}
+									}
+
+									delta := seenToolJSON.next(argsJSONText)
+									toolBoundary.observe(fc)
+									if delta != "" {
+										if emitAnthropicEvent(&apicompat.AnthropicStreamEvent{
+											Type: "content_block_delta",
+											Delta: &apicompat.AnthropicDelta{
+												Type:        "input_json_delta",
+												PartialJSON: delta,
+											},
+										}) {
+											return streamResult(), nil
+										}
 									}
 								}
 							}
@@ -792,19 +850,91 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 					}
 				}
 			}
-		}
 
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			if geminiStreamAbortedWithBillableOutput(c, err, &usage) {
-				logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] Client disconnected during chat completions stream, billing collected usage: %v", err)
+			if errors.Is(err, io.EOF) {
+				break chatStreamLoop
+			}
+			if err != nil {
+				if clientDisconnect || geminiStreamAbortedWithBillableOutput(c, err, &usage) {
+					logger.LegacyPrintf("service.gemini_messages_compat", "[GeminiAPI] Client disconnected during chat completions stream, billing collected usage: %v", err)
+					clientDisconnect = true
+					return streamResult(), nil
+				}
+				if !errors.Is(err, bufio.ErrTooLong) && !roleSent {
+					return nil, &UpstreamFailoverError{
+						StatusCode:               http.StatusBadGateway,
+						ResponseBody:             []byte(fmt.Sprintf(`{"error":%q}`, err.Error())),
+						RetryableOnSameAccount:   true,
+						SafeToFailoverAfterWrite: keepaliveWritten,
+					}
+				}
+				return nil, fmt.Errorf("stream read error: %w", err)
+			}
+
+		case <-stream.idleCh:
+			if !stream.IdleExpired() {
+				continue
+			}
+			if clientDisconnect || (c.Request != nil && c.Request.Context().Err() != nil) {
 				clientDisconnect = true
 				return streamResult(), nil
 			}
-			return nil, fmt.Errorf("stream read error: %w", err)
+			if !roleSent {
+				return nil, &UpstreamFailoverError{
+					StatusCode:               http.StatusGatewayTimeout,
+					ResponseBody:             []byte(`{"error":"stream data interval timeout"}`),
+					RetryableOnSameAccount:   true,
+					SafeToFailoverAfterWrite: keepaliveWritten,
+				}
+			}
+			return nil, errors.New("stream data interval timeout")
+
+		case <-stream.keepaliveCh:
+			if clientDisconnect || (c.Request != nil && c.Request.Context().Err() != nil) {
+				clientDisconnect = true
+				continue
+			}
+			if time.Since(lastDataAt) < stream.keepalive {
+				continue
+			}
+			commitHeaders()
+			if _, wErr := io.WriteString(c.Writer, ": ping\n\n"); wErr != nil {
+				clientDisconnect = true
+				continue
+			}
+			flusher.Flush()
+			keepaliveWritten = true
 		}
+	}
+
+	if clientDisconnect {
+		return streamResult(), nil
+	}
+	if !roleSent && !sawValidCandidate && !sawPromptBlock {
+		return nil, &UpstreamFailoverError{
+			StatusCode:               http.StatusBadGateway,
+			ResponseBody:             []byte(`{"error":"empty stream response from upstream"}`),
+			RetryableOnSameAccount:   true,
+			SafeToFailoverAfterWrite: keepaliveWritten,
+		}
+	}
+	if !isTerminalGeminiFinishReason(finishReason) && !sawPromptBlock {
+		if !roleSent {
+			return nil, &UpstreamFailoverError{
+				StatusCode:               http.StatusBadGateway,
+				ResponseBody:             []byte(`{"error":"upstream stream ended without finishReason"}`),
+				RetryableOnSameAccount:   true,
+				SafeToFailoverAfterWrite: keepaliveWritten,
+			}
+		}
+		writeCommittedOpenAISSEError(c, http.StatusBadGateway, "stream_incomplete", "Upstream stream ended without finishReason")
+		return nil, errors.New("stream incomplete: missing finishReason")
+	}
+	if sawPromptBlock && !isTerminalGeminiFinishReason(finishReason) {
+		finishReason = "SAFETY"
+	}
+	if ensureRoleStarted() {
+		return streamResult(), nil
 	}
 
 	if closeOpenBlock() {
@@ -957,6 +1087,11 @@ func (s *GeminiMessagesCompatService) writeGeminiChatCompletionsMappedError(
 }
 
 func (s *GeminiMessagesCompatService) writeChatCompletionsError(c *gin.Context, status int, errType, message string) error {
+	if isCommittedSSEStream(c) {
+		writeCommittedOpenAISSEError(c, status, errType, message)
+		return fmt.Errorf("%s", message)
+	}
+	MarkResponseCommitted(c)
 	c.JSON(status, gin.H{
 		"error": gin.H{
 			"type":    errType,

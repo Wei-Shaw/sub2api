@@ -145,12 +145,17 @@ type V1InternalResponse struct {
 	ModelVersion string         `json:"modelVersion,omitempty"`
 }
 
+type GeminiPromptFeedback struct {
+	BlockReason string `json:"blockReason,omitempty"`
+}
+
 // GeminiResponse Gemini 响应
 type GeminiResponse struct {
-	Candidates    []GeminiCandidate    `json:"candidates,omitempty"`
-	UsageMetadata *GeminiUsageMetadata `json:"usageMetadata,omitempty"`
-	ResponseID    string               `json:"responseId,omitempty"`
-	ModelVersion  string               `json:"modelVersion,omitempty"`
+	Candidates     []GeminiCandidate     `json:"candidates,omitempty"`
+	PromptFeedback *GeminiPromptFeedback `json:"promptFeedback,omitempty"`
+	UsageMetadata  *GeminiUsageMetadata  `json:"usageMetadata,omitempty"`
+	ResponseID     string                `json:"responseId,omitempty"`
+	ModelVersion   string                `json:"modelVersion,omitempty"`
 }
 
 // GeminiCandidate Gemini 候选响应

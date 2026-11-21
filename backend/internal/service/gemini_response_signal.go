@@ -96,9 +96,7 @@ func detectGeminiResponseSignal(payload []byte) (geminiResponseSignal, bool) {
 	}
 
 	blockReason := strings.ToUpper(strings.TrimSpace(gjson.GetBytes(payload, "promptFeedback.blockReason").String()))
-	switch blockReason {
-	case "", "BLOCKED_REASON_UNSPECIFIED":
-	default:
+	if isTerminalGeminiBlockReason(blockReason) {
 		return geminiResponseSignal{
 			Kind:    geminiSignalPromptBlocked,
 			Reason:  blockReason,
@@ -201,6 +199,17 @@ func isGeminiEmptyResponseObject(item gjson.Result) bool {
 	}
 	candidates := item.Get("candidates")
 	return candidates.IsArray() && len(candidates.Array()) == 0 && !item.Get("promptFeedback").Exists()
+}
+
+// isTerminalGeminiBlockReason 判定 promptFeedback.blockReason 是否构成有效拦截终态。
+// Google v1beta Discovery Schema 定义默认值为 BLOCK_REASON_UNSPECIFIED，同时兼容 BLOCKED_REASON_UNSPECIFIED。
+func isTerminalGeminiBlockReason(blockReason string) bool {
+	switch strings.ToUpper(strings.TrimSpace(blockReason)) {
+	case "", "BLOCK_REASON_UNSPECIFIED", "BLOCKED_REASON_UNSPECIFIED":
+		return false
+	default:
+		return true
+	}
 }
 
 // isGeminiContentFilterFinishReason 的集合与 gemini-cli 遥测的 CONTENT_FILTER 归类一致，并纳入同语义的图片枚举。

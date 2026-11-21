@@ -1436,7 +1436,7 @@ func TestHandleGeminiStreamingResponse_ForwardedCommentFrames(t *testing.T) {
 		Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize},
 	})
 	const first = `data: {"candidates":[{"content":{"role":"model","parts":[{"text":"first"}]}}]}` + "\n\n"
-	const second = `data: {"candidates":[{"content":{"role":"model","parts":[{"text":"second"}]}}]}` + "\n\n"
+	const second = `data: {"candidates":[{"content":{"role":"model","parts":[{"text":"second"}]},"finishReason":"STOP"}]}` + "\n\n"
 	const comment = ": upstream"
 	const stream = first + comment + "\r\n\r\n" + second
 

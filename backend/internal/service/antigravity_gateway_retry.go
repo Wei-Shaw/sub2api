@@ -503,6 +503,7 @@ func (s *AntigravityGatewayService) antigravityRetryLoop(p antigravityRetryLoopP
 	if baseURL == "" {
 		return nil, errors.New("no antigravity forward base url configured")
 	}
+	p.ctx = WithHTTPUpstreamProfile(p.ctx, HTTPUpstreamProfileLongStream)
 	availableURLs := []string{baseURL}
 
 	var resp *http.Response
