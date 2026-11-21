@@ -634,6 +634,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	state.Model = originalModel
 	state.PreserveThinkingSignatures = isClaude55SignedThinkingModel(mappedModel)
 	clientToolRestorer := apicompat.NewResponsesClientToolStreamRestorer(clientToolMapping)
+	toolNameRestorer := newToolNameStreamRestorer(toolNameRewriteFromContext(c))
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
@@ -763,24 +764,37 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			continue
 		}
 
-		var event apicompat.AnthropicStreamEvent
-		if err := json.Unmarshal([]byte(payload), &event); err != nil {
-			logger.L().Warn("forward_as_responses stream: failed to parse event",
-				zap.Error(err),
-				zap.String("request_id", requestID),
-				zap.String("event_type", eventType),
-			)
-			continue
+		var restored [2][]byte
+		n := 1
+		if toolNameRestorer == nil {
+			restored[0] = streamEventBytes(payload)
+		} else {
+			n = toolNameRestorer.restoreInto(streamEventBytes(payload), &restored)
 		}
+		for _, payload := range restored[:n] {
+			var event apicompat.AnthropicStreamEvent
+			if err := json.Unmarshal(payload, &event); err != nil {
+				logger.L().Warn("forward_as_responses stream: failed to parse event",
+					zap.Error(err),
+					zap.String("request_id", requestID),
+					zap.String("event_type", eventType),
+				)
+				continue
+			}
 
-		observer.ObserveAnthropic([]byte(payload))
-		stream.observe(&event, payload)
+			observer.ObserveAnthropic(payload)
+			stream.observe(&event, string(payload))
+			if stream.upstreamErrType != "" {
+				break
+			}
+			processEvent(&event)
+		}
 		if stream.upstreamErrType != "" {
 			break
 		}
-		processEvent(&event)
 	}
 
+	flushToolNameCarry(c, c.Writer.Size() != writerSizeBeforeStream, toolNameRestorer, processEvent)
 	return finalizeStream()
 }
 
