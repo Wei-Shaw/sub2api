@@ -161,4 +161,13 @@ func TestIsMigrationChecksumCompatible(t *testing.T) {
 		)
 		require.False(t, ok)
 	})
+
+	t.Run("231早期分支checksum兼容快速迁移修复版", func(t *testing.T) {
+		ok := isMigrationChecksumCompatible(
+			"231_affiliate_rebate_sources.sql",
+			"ceb508efbf81877a891a95fe6688cb3287462c2552e1a5c8a8254be9328d6806",
+			"835825077e002997764e59c4a3ce026e9e36d7a328671b7983cce94c4fb9fc94",
+		)
+		require.True(t, ok)
+	})
 }
