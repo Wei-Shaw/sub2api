@@ -12,7 +12,15 @@
       class="space-y-5"
     >
       <div>
-        <label class="input-label">{{ t('common.name') }}</label>
+        <div class="mb-1 flex flex-wrap items-center justify-between gap-2">
+          <label class="input-label mb-0">{{ t('common.name') }}</label>
+          <UpstreamGroupSyncButton
+            v-if="account.type === 'apikey' || (account.platform === 'antigravity' && account.type === 'upstream')"
+            v-model:name="form.name"
+            v-model:notes="form.notes"
+            :source="upstreamGroupSource"
+          />
+        </div>
         <input v-model="form.name" type="text" required class="input" data-tour="edit-account-form-name" />
       </div>
       <div>
@@ -3430,6 +3438,7 @@ import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
+import UpstreamGroupSyncButton from '@/components/account/UpstreamGroupSyncButton.vue'
 import OpenAIImageSizeTiersField from '@/components/account/OpenAIImageSizeTiersField.vue'
 import {
   OPENAI_IMAGE_SIZE_TIERS,
@@ -4537,6 +4546,25 @@ const handleUpstreamBillingRateSyncChange = (enabled: boolean) => {
   }
 }
 
+const billingBaseUrl = computed(() => (
+  isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive'
+    ? editAdaptiveBaseUrls.value.chat_completions
+    : editBaseUrl.value
+).trim())
+const savedBillingBaseUrl = ref('')
+const upstreamGroupSource = computed(() => {
+  const account = props.account
+  if (!account) return null
+  const apiKey = editApiKey.value.trim()
+  if (apiKey && billingBaseUrl.value) {
+    return { platform: account.platform, base_url: billingBaseUrl.value, api_key: apiKey, proxy_id: form.proxy_id }
+  }
+  if (billingBaseUrl.value === savedBillingBaseUrl.value && form.proxy_id === account.proxy_id && !apiKey) {
+    return { account_id: account.id }
+  }
+  return null
+})
+
 const handleUpstreamBillingAutoProbeChange = (enabled: boolean) => {
   upstreamBillingAutoProbeEnabled.value = enabled
   if (!enabled) {
@@ -5057,6 +5085,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     selectedErrorCodes.value = []
   }
   editApiKey.value = ''
+  savedBillingBaseUrl.value = billingBaseUrl.value
 }
 
 async function loadTLSProfiles() {

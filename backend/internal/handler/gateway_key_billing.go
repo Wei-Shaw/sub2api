@@ -14,6 +14,7 @@ import (
 const keyBillingInfoSchemaVersion = 1
 
 type keyBillingInfoResponse struct {
+	*service.BillingGroupInfo
 	Object                  string    `json:"object"`
 	SchemaVersion           int       `json:"schema_version"`
 	BillingScope            string    `json:"billing_scope"`
@@ -31,7 +32,7 @@ type keyBillingInfoResponse struct {
 }
 
 // KeyBillingInfo returns the token billing multiplier effective for the authenticated API key.
-// GET /v1/sub2api/billing
+// GET /v1/sub2api/billing (include=group also returns the group's display name and description).
 func (h *GatewayHandler) KeyBillingInfo(c *gin.Context) {
 	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
 	if !ok {
@@ -57,8 +58,17 @@ func (h *GatewayHandler) KeyBillingInfo(c *gin.Context) {
 		return
 	}
 
+	info := buildKeyBillingInfo(apiKey, resolvedRate, timezone.Now())
+	if c.Query("include") == "group" {
+		group, err := h.apiKeyService.GetBillingGroupInfo(c.Request.Context(), *apiKey.GroupID, c.GetHeader("Accept-Language"))
+		if err != nil {
+			h.errorResponse(c, http.StatusInternalServerError, "api_error", "Billing information is unavailable")
+			return
+		}
+		info.BillingGroupInfo = group
+	}
 	c.Header("Cache-Control", "no-store")
-	c.JSON(http.StatusOK, buildKeyBillingInfo(apiKey, resolvedRate, timezone.Now()))
+	c.JSON(http.StatusOK, info)
 }
 
 func (h *GatewayHandler) resolveKeyBillingRate(c *gin.Context, apiKey *service.APIKey) (float64, bool) {

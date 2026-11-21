@@ -35,6 +35,18 @@ type keyBillingRouteRateRepo struct {
 	lookupCalls int
 }
 
+type keyBillingRouteGroupRepo struct {
+	service.GroupRepository
+	group *service.Group
+}
+
+func (r *keyBillingRouteGroupRepo) GetByIDLite(_ context.Context, id int64) (*service.Group, error) {
+	if id != r.group.ID {
+		return nil, service.ErrGroupNotFound
+	}
+	return r.group, nil
+}
+
 func (r *keyBillingRouteRateRepo) GetByUserAndGroup(context.Context, int64, int64) (*float64, error) {
 	r.lookupCalls++
 	return nil, nil
@@ -48,6 +60,9 @@ func newKeyBillingRouteTestRouter(runMode string) (*gin.Engine, *keyBillingRoute
 	gin.SetMode(gin.TestMode)
 	group := &service.Group{
 		ID:               42,
+		Name:             "标准分组",
+		Description:      "共享账号",
+		I18n:             service.GroupI18n{"en": {Name: "Standard"}},
 		Status:           service.StatusActive,
 		Hydrated:         true,
 		Platform:         service.PlatformOpenAI,
@@ -73,7 +88,7 @@ func newKeyBillingRouteTestRouter(runMode string) (*gin.Engine, *keyBillingRoute
 	cfg := &config.Config{RunMode: runMode}
 	rateRepo := &keyBillingRouteRateRepo{}
 	apiKeyService := service.NewAPIKeyService(
-		&keyBillingRouteAPIKeyRepo{apiKey: apiKey}, nil, nil, nil, rateRepo, nil, cfg,
+		&keyBillingRouteAPIKeyRepo{apiKey: apiKey}, nil, &keyBillingRouteGroupRepo{group: group}, nil, rateRepo, nil, cfg,
 	)
 	gatewayService := service.NewGatewayService(
 		nil, nil, nil, nil, nil, nil, rateRepo, nil, cfg, nil, nil, nil, nil, nil,
@@ -146,8 +161,28 @@ func TestGatewayRoutesKeyBillingInfoEndToEnd(t *testing.T) {
 		var body map[string]any
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
 		require.Equal(t, "sub2api.key_billing", body["object"])
+		require.NotContains(t, body, "group_name")
+		require.NotContains(t, body, "group_description")
 		require.Equal(t, 0.75, body["effective_rate_multiplier"])
 		require.Equal(t, 1, rateRepo.lookupCalls)
+	})
+
+	t.Run("requested group belongs to the calling key", func(t *testing.T) {
+		router, _, key := newKeyBillingRouteTestRouter(config.RunModeStandard)
+		req := httptest.NewRequest(http.MethodGet, "/v1/sub2api/billing?include=group&group_id=99", nil)
+		req.Header.Set("x-api-key", key)
+		req.Header.Set("Accept-Language", "en")
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+		var body map[string]any
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		require.Equal(t, "Standard", body["group_name"])
+		require.Equal(t, "共享账号", body["group_description"])
+		require.Equal(t, 0.75, body["group_rate_multiplier"])
+		require.NotContains(t, body, "group_id")
+		require.NotContains(t, w.Body.String(), key)
 	})
 
 	t.Run("simple mode", func(t *testing.T) {
