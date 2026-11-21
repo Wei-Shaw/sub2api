@@ -685,6 +685,7 @@ export default {
     },
     table: {
       model: '模型',
+      copyModelId: '复制模型 ID {model}',
       input: '输入',
       output: '输出',
       cache: '缓存',
