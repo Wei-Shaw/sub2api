@@ -1,5 +1,22 @@
 export default {
     accounts: {
+      grokReset: {
+        title: 'Grok 重置卡',
+        sessionLabel: 'Grok 网页 SSO',
+        sessionHint: '填写要重置的 Grok 账号的网页 SSO。所选 Sub2API 账号（{account}）仅提供代理，兑换针对所填写的网页登录账号生效。',
+        sessionPrivacy: '仅用于本次查询与兑换，不会保存；关闭窗口即清空。',
+        query: '查询重置卡',
+        empty: '当前没有可用的重置卡。',
+        expires: '到期时间：{time}',
+        redeem: '使用重置卡',
+        confirm: '确认兑换',
+        confirmMessage: '将消耗到期时间为 {time} 的重置卡，并重置所填写的 Grok 网页账号的本周用量。',
+        success: '重置卡已兑换，额度更新可能稍有延迟。请刷新额度，必要时恢复账号状态。',
+        queryFailed: '查询失败，请检查网页 SSO 和账号代理，或前往官方使用量页面。',
+        redeemUnknown: '未能确认兑换结果。卡片可能已使用，请重新查询后再操作。',
+        queryAgain: '此卡已过期，请重新查询重置卡。',
+        openOfficial: '打开 Grok 使用量页面',
+      },
       title: '账号管理',
       description: '管理 AI 平台账号和 Cookie',
       createAccount: '添加账号',

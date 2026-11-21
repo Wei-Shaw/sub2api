@@ -1,5 +1,22 @@
 export default {
     accounts: {
+      grokReset: {
+        title: 'Grok reset cards',
+        sessionLabel: 'Grok Web SSO',
+        sessionHint: 'Use the Web SSO of the Grok account you want to reset. The selected Sub2API account ({account}) supplies only the proxy; redemption applies to the supplied Web session.',
+        sessionPrivacy: 'Used only for this query and redemption. It is not saved; closing this dialog clears it.',
+        query: 'Query reset cards',
+        empty: 'No reset cards are currently available.',
+        expires: 'Expires {time}',
+        redeem: 'Use reset card',
+        confirm: 'Confirm redemption',
+        confirmMessage: 'This consumes the card expiring {time} and resets the weekly usage of the supplied Grok Web session.',
+        success: 'Reset redeemed. Usage may take a moment to update. Refresh quota and recover the account state if needed.',
+        queryFailed: 'Could not query cards. Check the Web SSO and account proxy, or use the official usage page.',
+        redeemUnknown: 'Redemption was not confirmed. Query the cards again before retrying; the card may already have been used.',
+        queryAgain: 'This card has expired. Query the cards again.',
+        openOfficial: 'Open Grok usage',
+      },
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',
