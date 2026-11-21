@@ -182,6 +182,43 @@ func TestNativeWebSearchCost(t *testing.T) {
 	}
 }
 
+func TestNativeWebSearchResponseModelBillingKeepsBaseline(t *testing.T) {
+	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+	userRepo := &openAIRecordUsageUserRepoStub{}
+	svc := newOpenAIRecordUsageServiceForTest(usageRepo, userRepo, &openAIRecordUsageSubRepoStub{}, nil)
+	tokens := UsageTokens{InputTokens: 20, OutputTokens: 10}
+	cheaper, pricier, _, pricierCost := orderedResponseBillingModels(t, svc.billingService, tokens, openAICheapFixtureModel, openAIPriceyFixtureModel)
+	const searchCalls = 3
+	searchCost := svc.billingService.CalculateWebSearchCost(searchCalls, nil, 1.1)
+
+	err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+		Result: &OpenAIForwardResult{
+			RequestID:             "openai_response_model_native_search_surcharge",
+			Model:                 pricier,
+			UpstreamModel:         pricier,
+			UpstreamResponseModel: cheaper,
+			NativeWebSearchCalls:  searchCalls,
+			Usage:                 OpenAIUsage{InputTokens: 20, OutputTokens: 10},
+			Duration:              time.Second,
+		},
+		APIKey:  &APIKey{ID: 10},
+		User:    &User{ID: 20},
+		Account: &Account{ID: 30, Platform: PlatformOpenAI},
+		ChannelUsageFields: ChannelUsageFields{
+			ChannelID:          9,
+			OriginalModel:      pricier,
+			ChannelMappedModel: pricier,
+			BillingModelSource: BillingModelSourceResponse,
+		},
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, usageRepo.lastLog)
+	want := pricierCost.ActualCost + searchCost.ActualCost
+	require.InDelta(t, want, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, want, userRepo.lastAmount, 1e-12)
+}
+
 func TestNativeWebSearchWSPassthroughTurns(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	controlCtx, cancel := context.WithCancelCause(context.Background())

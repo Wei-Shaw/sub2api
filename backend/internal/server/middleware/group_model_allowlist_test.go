@@ -141,8 +141,9 @@ func TestGroupModelAllowlistRequestBodyTooLargePassesThrough413(t *testing.T) {
 	if w.Code != http.StatusRequestEntityTooLarge {
 		t.Fatalf("expected 413, got %d: %s", w.Code, w.Body.String())
 	}
-	if !strings.Contains(w.Body.String(), "Request body is too large") {
-		t.Fatalf("expected too-large message, got %s", w.Body.String())
+	// 与 handler 读取失败时一致：Messages 入口用 Anthropic 格式，文案带上限。
+	if !strings.Contains(w.Body.String(), "Request body too large, limit is 64B") || !strings.Contains(w.Body.String(), `"type":"error"`) {
+		t.Fatalf("expected Anthropic-shaped too-large message, got %s", w.Body.String())
 	}
 	if len(*calls) != 0 {
 		t.Fatalf("expected handler not to run, got %v", *calls)

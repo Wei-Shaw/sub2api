@@ -13,6 +13,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	openaiwsv2 "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
@@ -980,6 +981,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
 				return payload, nil, nil
 			}
+			// passthrough 原样转发 session.update 等所有客户端事件；任何帧内的重复
+			// 字段都会让网关（gjson 取首个、sjson 只改首个）与上游读到不同的值
+			// （GHSA-p3r4-jcm3-2hph），在读取任何字段之前拒绝。
+			if field, conflict := requestmodel.ConflictingField("application/json", payload); conflict {
+				return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("websocket request payload declares field %.64q more than once", field), nil)
+			}
 			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
 			isResponseCreate := eventType == "response.create"
 			responseCreateAt := time.Time{}
@@ -1469,7 +1476,22 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		if hooks.TurnStarted != nil {
 			hooks.TurnStarted(turnCount+1, time.Now().Add(-result.Duration))
 		}
-		hooks.AfterTurn(turnCount+1, nil, turnErr)
+		var partialResult *OpenAIForwardResult
+		if nativeSearchCount := nativeSearch.UnsettledCount(); nativeSearchCount > 0 {
+			partialResult = &OpenAIForwardResult{
+				NativeWebSearchCalls:     nativeSearchCount,
+				Model:                    resultRequestModel,
+				UpstreamModel:            openAIWSDifferentModel(resultRequestModel, resultUpstreamModel),
+				ServiceTier:              usageMeta.serviceTier.Load(),
+				ReasoningEffort:          usageMeta.reasoningEffort.Load(),
+				RequestedReasoningEffort: usageMeta.requestedReasoningEffort.Load(),
+				Stream:                   true,
+				OpenAIWSMode:             true,
+				ResponseHeaders:          cloneHeader(handshakeHeaders),
+				Duration:                 relayResult.Duration,
+			}
+		}
+		hooks.AfterTurn(turnCount+1, partialResult, turnErr)
 	}
 	return turnErr
 }
