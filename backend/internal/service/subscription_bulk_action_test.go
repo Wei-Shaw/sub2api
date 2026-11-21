@@ -70,6 +70,21 @@ func (r *bulkActionSubscriptionRepo) ResetUsageWindows(_ context.Context, id int
 	return nil
 }
 
+func (r *bulkActionSubscriptionRepo) SetQuotaWindows(_ context.Context, id int64, daily, weekly, monthly *time.Time) error {
+	sub := r.subscriptions[id]
+	if daily != nil {
+		sub.DailyWindowStart = daily
+	}
+	if weekly != nil {
+		sub.WeeklyWindowStart = weekly
+	}
+	if monthly != nil {
+		sub.MonthlyWindowStart = monthly
+	}
+	r.mutated(id)
+	return nil
+}
+
 func (r *bulkActionSubscriptionRepo) Delete(_ context.Context, id int64) error {
 	now := time.Now()
 	r.subscriptions[id].DeletedAt = &now
@@ -158,6 +173,7 @@ func TestBulkSubscriptionAction_ValidatesBeforeAnyRepositoryAccess(t *testing.T)
 		"large adjustment": {SubscriptionIDs: []int64{1}, Action: "extend", Days: MaxValidityDays + 1},
 		"small adjustment": {SubscriptionIDs: []int64{1}, Action: "extend", Days: -MaxValidityDays - 1},
 		"no reset windows": {SubscriptionIDs: []int64{1}, Action: "reset_quota"},
+		"no quota windows": {SubscriptionIDs: []int64{1}, Action: "set_quota_windows"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			// A nil repository would panic if validation allowed any execution.
