@@ -149,6 +149,10 @@ func (s *refreshTokenCacheStub) DeleteTokenFamily(context.Context, string) error
 	return nil
 }
 
+func (s *refreshTokenCacheStub) ConsumeRefreshToken(context.Context, string) (*RefreshTokenData, error) {
+	return nil, ErrRefreshTokenNotFound
+}
+
 func (s *refreshTokenCacheStub) AddToUserTokenSet(context.Context, int64, string, time.Duration) error {
 	return nil
 }

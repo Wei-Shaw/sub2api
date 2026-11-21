@@ -302,7 +302,7 @@ func isOpenAIContextWindowError(upstreamMsg string, upstreamBody []byte) bool {
 
 func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool {
 	switch statusCode {
-	case 401, 402, 403, 405, 429, 529:
+	case 401, 402, 403, 405, http.StatusRequestTimeout, 429, 529:
 		return true
 	default:
 		return statusCode >= 500
@@ -455,6 +455,10 @@ func (s *OpenAIGatewayService) newOpenAIAccountFailoverErrorWithClassificationHe
 		upstreamMsg,
 		retryableOnSameAccount || oauth429Retry,
 	)
+	if shouldDisable && account != nil && account.Platform == PlatformOpenAI && failoverErr.RequestScopedTransient {
+		// A configured model cooldown takes precedence over capacity-shed replay.
+		failoverErr.RetryableOnSameAccount = false
+	}
 	if oauth429Retry {
 		failoverErr.SameAccountRetryDeadline = s.openAIOAuth429RetryDeadline(account)
 		failoverErr.SameAccountRetryDelay = openAIOAuth429SameAccountRetryDelay(responseHeaders, failoverErr.SameAccountRetryDeadline)

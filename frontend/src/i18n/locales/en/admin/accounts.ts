@@ -504,6 +504,8 @@ export default {
       testConnection: 'Test Connection',
       reAuthorize: 'Re-Authorize',
       refreshToken: 'Refresh Token',
+      refreshTokenHint: 'Tokens are refreshed automatically in the background. Frequent manual refreshes can race the automatic refresh and invalidate the token, pausing the account.',
+      refreshTokenFrequentWarning: 'Less than a minute since the last manual refresh: frequent refreshes can race the background auto-refresh and invalidate the token. Only retry when necessary.',
       noAccountsYet: 'No accounts yet',
       createFirstAccount: 'Create your first account to start using AI services.',
       tokenRefreshed: 'Token refreshed successfully',
@@ -644,6 +646,9 @@ export default {
         oauthPassthrough: 'Auto passthrough (auth only)',
         oauthPassthroughDesc:
           'When enabled, this OpenAI account uses automatic passthrough: the gateway forwards request/response as-is and only swaps auth, while keeping billing/concurrency/audit and necessary safety filtering.',
+        passthroughModelFilter: 'Filter passthrough accounts by model',
+        passthroughModelFilterDesc:
+          'Use the account model whitelist and mapping source names to select this account. Mapping targets do not rename passthrough requests. An empty list allows all models. Disabled by default.',
         flattenNamespaces: 'Flatten Codex namespace tools (compatibility)',
         flattenNamespacesDesc:
           'Disabled by default: Codex namespace tool declarations are forwarded as-is on /responses, which is what the ChatGPT Codex backend expects. Enable only when this OAuth account is routed to a relay that rejects namespace tools — flattening renames them to namespace__tool, which breaks models that address collaboration tools as functions.<namespace>.<tool>. Compaction requests always flatten regardless of this switch.',
@@ -753,7 +758,7 @@ export default {
         testMode: 'Test mode',
         testModeDefault: 'Default request',
         testModeCompact: 'Compact probe',
-        modelRestrictionDisabledByPassthrough: 'Automatic passthrough is enabled: model whitelist/mapping will not take effect.',
+        modelRestrictionDisabledByPassthrough: 'Automatic passthrough ignores model restrictions by default. Enable "Filter passthrough accounts by model" to use them for account selection only.',
       },
       grok: {
         baseUrlHint: 'Grok OAuth accounts forward to the official xAI API base URL.',
@@ -857,6 +862,7 @@ export default {
       enterCustomModelName: 'Enter custom model name',
       addModel: 'Add',
       modelExists: 'Model already exists',
+      modelWildcardNotSupported: 'Wildcards are not supported in the model whitelist. Enter an exact model name.',
       modelMappingConflict: 'A mapping already exists for {from} → {to}. Modify or remove it under Model Mapping before adding this whitelist model',
       modelCount: '{count} models',
       poolMode: 'Pool Mode',
@@ -1747,6 +1753,10 @@ export default {
         grokLastHeadersSeen: 'Headers {time}',
         passiveSampled: 'Passive',
         activeQuery: 'Query',
+        quotaRefreshFailedCached: 'Refresh failed. Showing a previous observation; remaining quota is unconfirmed.',
+        quotaRefreshFailedUnknown: 'Refresh failed. Current quota is unknown.',
+        quotaObservedAt: 'Quota observed: ',
+        quotaObservationUnknown: 'Unknown (cached)',
         estimatedTotalCost: 'Est. total ${cost}',
         estimatedTotalCostTooltip: 'Estimated total cost at 100% utilization, based on current window cost and utilization'
       },
