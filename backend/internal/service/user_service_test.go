@@ -92,6 +92,94 @@ func (m *mockUserSettingRepo) Delete(context.Context, string) error {
 	panic("unexpected Delete call")
 }
 
+func TestSaveNotificationEmailLocaleNormalizesAndOverwrites(t *testing.T) {
+	ctx := context.Background()
+	repo := newNotificationEmailMemorySettingRepo()
+	svc := NewUserService(nil, repo, nil, nil)
+	key := notificationEmailLocaleUserKeyPrefix + "42"
+
+	require.NoError(t, repo.Set(ctx, key, "en"))
+	require.NoError(t, svc.SaveNotificationEmailLocale(ctx, 42, "zh-CN,zh;q=0.9"))
+	value, err := repo.GetValue(ctx, key)
+	require.NoError(t, err)
+	require.Equal(t, "zh", value)
+}
+
+func TestSaveNotificationEmailLocaleIgnoresMissingLocale(t *testing.T) {
+	ctx := context.Background()
+	repo := newNotificationEmailMemorySettingRepo()
+	svc := NewUserService(nil, repo, nil, nil)
+
+	require.NoError(t, svc.SaveNotificationEmailLocale(ctx, 42, ""))
+	_, err := repo.GetValue(ctx, notificationEmailLocaleUserKeyPrefix+"42")
+	require.ErrorIs(t, err, ErrSettingNotFound)
+}
+
+func TestInitializeNotificationEmailLocaleOnlyWritesMissingPreference(t *testing.T) {
+	ctx := context.Background()
+	repo := newNotificationEmailMemorySettingRepo()
+	svc := NewUserService(nil, repo, nil, nil)
+	key := notificationEmailLocaleUserKeyPrefix + "42"
+
+	initialized, err := svc.InitializeNotificationEmailLocale(ctx, 42, "zh-CN,zh;q=0.9")
+	require.NoError(t, err)
+	require.True(t, initialized)
+	value, err := repo.GetValue(ctx, key)
+	require.NoError(t, err)
+	require.Equal(t, "zh", value)
+
+	initialized, err = svc.InitializeNotificationEmailLocale(ctx, 42, "en")
+	require.NoError(t, err)
+	require.False(t, initialized)
+	value, err = repo.GetValue(ctx, key)
+	require.NoError(t, err)
+	require.Equal(t, "zh", value)
+}
+
+type notificationEmailLocaleInitRepo struct {
+	SettingRepository
+	getCalls atomic.Int32
+	setCalls atomic.Int32
+}
+
+func (r *notificationEmailLocaleInitRepo) GetValue(context.Context, string) (string, error) {
+	r.getCalls.Add(1)
+	time.Sleep(20 * time.Millisecond)
+	return "", ErrSettingNotFound
+}
+
+func (r *notificationEmailLocaleInitRepo) Set(context.Context, string, string) error {
+	r.setCalls.Add(1)
+	return nil
+}
+
+func TestInitializeNotificationEmailLocaleCoalescesLocalConcurrentRequests(t *testing.T) {
+	repo := &notificationEmailLocaleInitRepo{}
+	svc := NewUserService(nil, repo, nil, nil)
+	start := make(chan struct{})
+	errCh := make(chan error, 8)
+	var wg sync.WaitGroup
+
+	for range 8 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			_, err := svc.InitializeNotificationEmailLocale(context.Background(), 42, "zh")
+			errCh <- err
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+	require.EqualValues(t, 1, repo.getCalls.Load())
+	require.EqualValues(t, 1, repo.setCalls.Load())
+}
+
 func (m *mockUserRepo) Create(context.Context, *User) error                    { return nil }
 func (m *mockUserRepo) CreateWithEmailAliasGuard(context.Context, *User) error { return nil }
 func (m *mockUserRepo) GetByID(ctx context.Context, _ int64) (*User, error) {
