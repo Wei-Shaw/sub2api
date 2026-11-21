@@ -409,3 +409,104 @@ func TestGeminiStreamTerminalStateMatrix(t *testing.T) {
 		})
 	}
 }
+
+func TestGeminiPromptFeedbackTerminalMatrix(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	geminiSvc := &GeminiMessagesCompatService{
+		cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}},
+	}
+	agSvc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+
+	neutralInputs := map[string]string{
+		"empty_prompt_feedback":      `data: {"promptFeedback":{},"usageMetadata":{"promptTokenCount":6}}` + "\n\n",
+		"block_reason_unspecified":   `data: {"promptFeedback":{"blockReason":"BLOCK_REASON_UNSPECIFIED"},"usageMetadata":{"promptTokenCount":6}}` + "\n\n",
+		"blocked_reason_unspecified": `data: {"promptFeedback":{"blockReason":"BLOCKED_REASON_UNSPECIFIED"},"usageMetadata":{"promptTokenCount":6}}` + "\n\n",
+	}
+	safetyBlockSSE := `data: {"promptFeedback":{"blockReason":"SAFETY"},"usageMetadata":{"promptTokenCount":9}}` + "\n\n"
+
+	type entrypoint struct {
+		name               string
+		path               string
+		run                func(c *gin.Context, body io.ReadCloser) error
+		wantRefusalMarkers []string
+	}
+	entrypoints := []entrypoint{
+		{
+			name: "gemini_messages",
+			path: "/v1/messages",
+			run: func(c *gin.Context, body io.ReadCloser) error {
+				_, err := geminiSvc.handleStreamingResponse(c, &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: body}, time.Now(), "gemini-2.5-pro")
+				return err
+			},
+			wantRefusalMarkers: []string{`"stop_reason":"refusal"`, "event: message_stop"},
+		},
+		{
+			name: "gemini_chat_completions",
+			path: "/v1/chat/completions",
+			run: func(c *gin.Context, body io.ReadCloser) error {
+				_, err := geminiSvc.handleChatCompletionsStreamingResponseFromGemini(c, &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: body}, time.Now(), "gemini-2.5-pro", false, false)
+				return err
+			},
+			wantRefusalMarkers: []string{`"finish_reason":"content_filter"`, "data: [DONE]"},
+		},
+		{
+			name: "antigravity_messages",
+			path: "/v1/messages",
+			run: func(c *gin.Context, body io.ReadCloser) error {
+				_, err := agSvc.handleClaudeStreamingResponse(c, &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: body}, time.Now(), "gemini-3-pro")
+				return err
+			},
+			wantRefusalMarkers: []string{`"stop_reason":"refusal"`, "event: message_stop"},
+		},
+		{
+			name: "antigravity_chat_completions",
+			path: "/v1/chat/completions",
+			run: func(c *gin.Context, body io.ReadCloser) error {
+				_, err := agSvc.handleChatCompletionsStreamingFromAntigravity(c, &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: body}, time.Now(), "gemini-3-pro", false)
+				return err
+			},
+			wantRefusalMarkers: []string{`"finish_reason":"content_filter"`, "data: [DONE]"},
+		},
+		{
+			name: "antigravity_responses",
+			path: "/v1/responses",
+			run: func(c *gin.Context, body io.ReadCloser) error {
+				_, err := agSvc.handleResponsesStreamingFromAntigravity(c, &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: body}, time.Now(), "gemini-3-pro")
+				return err
+			},
+			wantRefusalMarkers: []string{"event: response.incomplete", `"reason":"content_filter"`},
+		},
+		{
+			name: "antigravity_v1beta",
+			path: "/v1beta/models/gemini-3-pro:streamGenerateContent",
+			run: func(c *gin.Context, body io.ReadCloser) error {
+				_, err := agSvc.handleGeminiStreamingResponse(c, &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: body}, time.Now())
+				return err
+			},
+			wantRefusalMarkers: []string{`"blockReason":"SAFETY"`},
+		},
+	}
+
+	for _, ep := range entrypoints {
+		for inputName, sse := range neutralInputs {
+			t.Run(ep.name+"/"+inputName+"_fails_over_before_first_write", func(t *testing.T) {
+				c, rec := newAntigravityCompatContext(http.MethodPost, ep.path, nil)
+				err := ep.run(c, io.NopCloser(strings.NewReader(sse)))
+				var failoverErr *UpstreamFailoverError
+				require.ErrorAs(t, err, &failoverErr)
+				require.True(t, failoverErr.RetryableOnSameAccount)
+				require.Empty(t, rec.Body.String())
+			})
+		}
+
+		t.Run(ep.name+"/safety_block_completes_cleanly", func(t *testing.T) {
+			c, rec := newAntigravityCompatContext(http.MethodPost, ep.path, nil)
+			err := ep.run(c, io.NopCloser(strings.NewReader(safetyBlockSSE)))
+			require.NoError(t, err)
+			out := rec.Body.String()
+			for _, marker := range ep.wantRefusalMarkers {
+				require.Contains(t, out, marker)
+			}
+		})
+	}
+}

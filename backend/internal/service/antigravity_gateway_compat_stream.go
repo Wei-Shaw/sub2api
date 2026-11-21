@@ -258,7 +258,8 @@ func isMeaningfulAntigravityCompatEvent(event *apicompat.AnthropicStreamEvent) b
 		delta := event.Delta
 		return delta.Text != "" ||
 			delta.PartialJSON != "" ||
-			delta.Thinking != ""
+			delta.Thinking != "" ||
+			delta.StopReason == "refusal"
 	}
 	return false
 }

@@ -109,21 +109,7 @@ func (p *StreamingProcessor) ProcessLine(line string) []byte {
 	}
 
 	geminiResp := &v1Resp.Response
-	if len(geminiResp.Candidates) == 0 && geminiResp.PromptFeedback == nil && geminiResp.UsageMetadata == nil {
-		return nil
-	}
-	if !p.messageStartSent && isEmptyAbnormalGeminiTerminalResponse(geminiResp) {
-		return nil
-	}
-
-	var result bytes.Buffer
-
-	// 发送 message_start
-	if !p.messageStartSent {
-		_, _ = result.Write(p.emitMessageStart(&v1Resp))
-	}
-
-	// 更新 usage
+	// 更新 usage（即使当前帧不含候选内容，也保留已上报的 token 统计）
 	// 注意：Gemini 的 promptTokenCount 包含 cachedContentTokenCount，
 	// 但 Claude 的 input_tokens 不包含 cache_read_input_tokens，需要减去。
 	// prompt 被拦截时上游可能只报 cachedContentTokenCount，差值下限为 0。
@@ -133,6 +119,18 @@ func (p *StreamingProcessor) ProcessLine(line string) []byte {
 		p.outputTokens = geminiResp.UsageMetadata.CandidatesTokenCount + geminiResp.UsageMetadata.ThoughtsTokenCount
 		p.cacheReadTokens = cached
 		p.imageOutputTokens = geminiResp.UsageMetadata.ImageOutputTokens()
+	}
+
+	hasTerminalPromptBlock := geminiResp.PromptFeedback != nil && isTerminalGeminiBlockReason(geminiResp.PromptFeedback.BlockReason)
+	if !p.messageStartSent && !geminiResponseShouldStartClaudeMessage(geminiResp, hasTerminalPromptBlock) {
+		return nil
+	}
+
+	var result bytes.Buffer
+
+	// 发送 message_start
+	if !p.messageStartSent {
+		_, _ = result.Write(p.emitMessageStart(&v1Resp))
 	}
 
 	// 处理 parts
@@ -616,14 +614,35 @@ func isEmptyAbnormalGeminiTerminalResponse(geminiResp *GeminiResponse) bool {
 	return true
 }
 
+func geminiResponseShouldStartClaudeMessage(geminiResp *GeminiResponse, hasTerminalPromptBlock bool) bool {
+	if geminiResp == nil {
+		return false
+	}
+	if hasTerminalPromptBlock {
+		return true
+	}
+	if len(geminiResp.Candidates) == 0 || isEmptyAbnormalGeminiTerminalResponse(geminiResp) {
+		return false
+	}
+	cand := geminiResp.Candidates[0]
+	if isTerminalGeminiFinishReason(cand.FinishReason) || cand.GroundingMetadata != nil {
+		return true
+	}
+	return cand.Content != nil && len(cand.Content.Parts) > 0
+}
+
 func isTerminalGeminiFinishReason(finishReason string) bool {
 	upper := strings.ToUpper(strings.TrimSpace(finishReason))
 	return upper != "" && upper != "FINISH_REASON_UNSPECIFIED"
 }
 
 func isTerminalGeminiBlockReason(blockReason string) bool {
-	upper := strings.ToUpper(strings.TrimSpace(blockReason))
-	return upper != "" && upper != "BLOCKED_REASON_UNSPECIFIED"
+	switch strings.ToUpper(strings.TrimSpace(blockReason)) {
+	case "", "BLOCK_REASON_UNSPECIFIED", "BLOCKED_REASON_UNSPECIFIED":
+		return false
+	default:
+		return true
+	}
 }
 
 func mapGeminiFinishReasonToClaudeStopReason(finishReason string, usedTool bool) string {

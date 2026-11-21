@@ -3469,8 +3469,7 @@ func isGeminiPromptBlockedPayload(parsed map[string]any) bool {
 		return false
 	}
 	br, _ := pf["blockReason"].(string)
-	upper := strings.ToUpper(strings.TrimSpace(br))
-	return upper != "" && upper != "BLOCKED_REASON_UNSPECIFIED"
+	return isTerminalGeminiBlockReason(br)
 }
 
 func isTerminalGeminiPayload(parsed map[string]any) bool {
@@ -3548,7 +3547,11 @@ func convertGeminiToClaudeMessage(geminiResp map[string]any, originalModel strin
 		}
 	}
 
-	stopReason := mapGeminiFinishReasonToClaudeStopReason(extractGeminiFinishReason(geminiResp))
+	finishReason := extractGeminiFinishReason(geminiResp)
+	if !isTerminalGeminiFinishReason(finishReason) && isGeminiPromptBlockedPayload(geminiResp) {
+		finishReason = "SAFETY"
+	}
+	stopReason := mapGeminiFinishReasonToClaudeStopReason(finishReason)
 	if sawToolUse {
 		stopReason = "tool_use"
 	}

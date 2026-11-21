@@ -274,6 +274,8 @@ func (p *NonStreamingProcessor) buildResponse(geminiResp *GeminiResponse, respon
 				}
 			}
 		}
+	} else if geminiResp.PromptFeedback != nil && isTerminalGeminiBlockReason(geminiResp.PromptFeedback.BlockReason) {
+		finishReason = "SAFETY"
 	}
 
 	stopReason := mapGeminiFinishReasonToClaudeStopReason(finishReason, p.hasToolCall)

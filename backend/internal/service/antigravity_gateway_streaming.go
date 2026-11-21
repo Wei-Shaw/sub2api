@@ -388,6 +388,9 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 					if isTerminalGeminiPayload(parsed) {
 						sawTerminalState = true
 					}
+					if cands, hasCands := parsed["candidates"].([]any); (!hasCands || len(cands) == 0) && !isTerminalGeminiPayload(parsed) && !sawMeaningfulEvent {
+						continue
+					}
 					sawMeaningfulEvent = true
 				}
 
