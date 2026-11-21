@@ -313,6 +313,30 @@ func extractUpstreamErrorMessage(body []byte) string {
 	return gjson.GetBytes(body, "message").String()
 }
 
+// extractOpenAIHTTPUpstreamError recognizes both regular JSON error envelopes and
+// response.failed SSE payloads returned with a non-2xx HTTP status. The latter
+// nests the provider code under response.error and must enter the same recovery
+// paths as a top-level error envelope.
+func extractOpenAIHTTPUpstreamError(body []byte) (message, code string) {
+	message = strings.TrimSpace(extractUpstreamErrorMessage(body))
+	code = strings.TrimSpace(extractUpstreamErrorCode(body))
+
+	_, terminalPayload, ok := extractOpenAISSETerminalEvent(string(body))
+	if ok {
+		if terminalMessage := strings.TrimSpace(extractOpenAISSEErrorMessage(terminalPayload)); terminalMessage != "" {
+			message = terminalMessage
+		}
+		for _, path := range []string{"response.error.code", "error.code"} {
+			if terminalCode := strings.TrimSpace(gjson.GetBytes(terminalPayload, path).String()); terminalCode != "" {
+				code = terminalCode
+				break
+			}
+		}
+	}
+
+	return sanitizeUpstreamErrorMessage(message), code
+}
+
 func extractUpstreamErrorCode(body []byte) string {
 	if code := strings.TrimSpace(gjson.GetBytes(body, "error.code").String()); code != "" {
 		return code
