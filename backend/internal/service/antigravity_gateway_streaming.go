@@ -114,28 +114,47 @@ func handleStreamReadError(err error, clientDisconnected bool, prefix string) (d
 	return false, false
 }
 
-func isRetryableEmptyGeminiTerminalChunk(parsed map[string]any) bool {
+type emptyGeminiTerminalDecision struct {
+	failoverErr  *UpstreamFailoverError
+	clientStatus int
+	clientMsg    string
+}
+
+func classifyEmptyGeminiTerminalChunk(rawBytes []byte, parsed map[string]any, keepaliveWritten bool) emptyGeminiTerminalDecision {
 	if parsed == nil {
-		return false
+		return emptyGeminiTerminalDecision{}
 	}
-	if _, hasErr := parsed["error"]; hasErr {
-		if cands, ok := parsed["candidates"].([]any); !ok || len(cands) == 0 {
-			return true
+	if _, hasErr := parsed["error"]; hasErr && extractGeminiPrimaryCandidateMap(parsed) == nil {
+		status := http.StatusBadGateway
+		msg := "Upstream request failed"
+		if sig, ok := detectGeminiResponseSignal(rawBytes); ok && sig.Kind == geminiSignalError {
+			status = sig.Status
+			msg = sig.Message
+		}
+		if status == 401 || status == 403 || status == 429 || status == 529 || status >= 500 {
+			return emptyGeminiTerminalDecision{
+				failoverErr: &UpstreamFailoverError{
+					StatusCode:               status,
+					ResponseBody:             rawBytes,
+					RetryableOnSameAccount:   status >= 500,
+					SafeToFailoverAfterWrite: keepaliveWritten,
+				},
+			}
+		}
+		return emptyGeminiTerminalDecision{
+			clientStatus: status,
+			clientMsg:    sanitizeUpstreamErrorMessage(msg),
 		}
 	}
-	cands, ok := parsed["candidates"].([]any)
-	if !ok || len(cands) == 0 {
-		return false
-	}
-	cand, ok := cands[0].(map[string]any)
-	if !ok {
-		return false
+	cand := extractGeminiPrimaryCandidateMap(parsed)
+	if cand == nil {
+		return emptyGeminiTerminalDecision{}
 	}
 	fr, _ := cand["finishReason"].(string)
 	switch strings.ToUpper(strings.TrimSpace(fr)) {
 	case "MALFORMED_FUNCTION_CALL", "MALFORMED_RESPONSE", "UNEXPECTED_TOOL_CALL", "TOO_MANY_TOOL_CALLS", "OTHER":
 	default:
-		return false
+		return emptyGeminiTerminalDecision{}
 	}
 	content, _ := cand["content"].(map[string]any)
 	parts, _ := content["parts"].([]any)
@@ -145,13 +164,21 @@ func isRetryableEmptyGeminiTerminalChunk(parsed map[string]any) bool {
 			continue
 		}
 		if text, _ := part["text"].(string); text != "" {
-			return false
+			return emptyGeminiTerminalDecision{}
 		}
 		if part["functionCall"] != nil || part["inlineData"] != nil {
-			return false
+			return emptyGeminiTerminalDecision{}
 		}
 	}
-	return true
+	return emptyGeminiTerminalDecision{
+		failoverErr: &UpstreamFailoverError{
+			StatusCode:               http.StatusBadGateway,
+			ResponseBody:             rawBytes,
+			RetryableOnSameAccount:   true,
+			RequestScopedTransient:   true,
+			SafeToFailoverAfterWrite: keepaliveWritten,
+		},
+	}
 }
 
 func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context, resp *http.Response, startTime time.Time) (*antigravityStreamResult, error) {
@@ -268,6 +295,19 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 	sawTerminalState := false
 	upstreamDataWritten := false
 	keepaliveWritten := false
+	var pendingPayloads []string
+
+	flushPendingPayloads := func() {
+		if len(pendingPayloads) == 0 {
+			return
+		}
+		commitHeaders()
+		for _, p := range pendingPayloads {
+			cw.Fprintf("data: %s\n\n", p)
+			upstreamDataWritten = true
+		}
+		pendingPayloads = nil
+	}
 
 	// 仅发送一次错误事件，避免多次写入导致协议混乱
 	errorEventSent := false
@@ -299,14 +339,6 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 					}
 				}
 				if !sawTerminalState && !cw.Disconnected() {
-					if !upstreamDataWritten {
-						return nil, &UpstreamFailoverError{
-							StatusCode:               http.StatusBadGateway,
-							ResponseBody:             []byte(`{"error":"upstream stream ended without finishReason"}`),
-							RetryableOnSameAccount:   true,
-							SafeToFailoverAfterWrite: keepaliveWritten,
-						}
-					}
 					sendErrorEvent("stream_incomplete")
 					return nil, errors.New("stream incomplete: missing finishReason")
 				}
@@ -377,18 +409,16 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 							}
 						}
 					}
-					if !sawMeaningfulEvent && !upstreamDataWritten && !cw.Disconnected() && isRetryableEmptyGeminiTerminalChunk(parsed) {
-						return nil, &UpstreamFailoverError{
-							StatusCode:               http.StatusBadGateway,
-							ResponseBody:             inner,
-							RetryableOnSameAccount:   true,
-							SafeToFailoverAfterWrite: keepaliveWritten && !upstreamDataWritten,
+					if !sawMeaningfulEvent && !upstreamDataWritten && !cw.Disconnected() {
+						if decision := classifyEmptyGeminiTerminalChunk(inner, parsed, keepaliveWritten); decision.failoverErr != nil {
+							return nil, decision.failoverErr
 						}
 					}
 					if isTerminalGeminiPayload(parsed) {
 						sawTerminalState = true
 					}
 					if cands, hasCands := parsed["candidates"].([]any); (!hasCands || len(cands) == 0) && !isTerminalGeminiPayload(parsed) && !sawMeaningfulEvent {
+						pendingPayloads = append(pendingPayloads, payload)
 						continue
 					}
 					sawMeaningfulEvent = true
@@ -400,6 +430,7 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 				}
 
 				commitHeaders()
+				flushPendingPayloads()
 				cw.Fprintf("data: %s\n\n", payload)
 				upstreamDataWritten = true
 				continue
@@ -1039,7 +1070,7 @@ func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, 
 				// 收集所有 parts（text、thinking、functionCall、inlineData 等）
 				collectedParts = append(collectedParts, parts...)
 			}
-			if len(parts) > 0 || strings.TrimSpace(extractGeminiFinishReason(parsed)) != "" {
+			if len(parts) > 0 || strings.TrimSpace(extractGeminiFinishReason(parsed)) != "" || isGeminiPromptBlockedPayload(parsed) {
 				meaningfulResponse = true
 				if firstTokenMs == nil {
 					ms := int(time.Since(startTime).Milliseconds())

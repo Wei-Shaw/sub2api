@@ -93,6 +93,35 @@ func (a *antigravityResponsesStreamAdapter) Finalize(writer *antigravityClientWr
 
 func (a *antigravityResponsesStreamAdapter) WriteError(writer *antigravityClientWriter, reason string) {
 	writer.Fprintf("event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"upstream_error\",\"message\":%q}}\n\n", reason)
+	respID := a.anthropicState.ResponseID
+	if respID == "" {
+		respID = "resp_failed"
+	}
+	created := a.anthropicState.Created
+	if created == 0 {
+		created = time.Now().Unix()
+	}
+	seq := a.anthropicState.SequenceNumber
+	a.anthropicState.SequenceNumber++
+	failedPayload, err := json.Marshal(map[string]any{
+		"type":            "response.failed",
+		"sequence_number": seq,
+		"response": map[string]any{
+			"id":         respID,
+			"object":     "response",
+			"created_at": created,
+			"model":      a.anthropicState.Model,
+			"status":     "failed",
+			"output":     []any{},
+			"error": map[string]string{
+				"code":    "server_error",
+				"message": reason,
+			},
+		},
+	})
+	if err == nil {
+		writer.Fprintf("event: response.failed\ndata: %s\n\n", failedPayload)
+	}
 }
 
 func (a *antigravityResponsesStreamAdapter) emitResponseEvent(event apicompat.ResponsesStreamEvent, writer *antigravityClientWriter) {

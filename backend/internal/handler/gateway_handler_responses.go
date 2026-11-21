@@ -357,7 +357,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
 				// Can't failover if streaming content already sent
-				if c.Writer.Size() != writerSizeBeforeForward {
+				if c.Writer.Size() != writerSizeBeforeForward && !failoverErr.SafeToFailoverAfterWrite {
 					h.handleResponsesFailoverExhausted(c, failoverErr, true)
 					return
 				}
@@ -366,7 +366,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 				case FailoverContinue:
 					continue
 				case FailoverExhausted:
-					h.handleResponsesFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
+					h.handleResponsesFailoverExhausted(c, fs.LastFailoverErr, streamStarted || middleware2.IsCommittedEventStream(c))
 					return
 				case FailoverCanceled:
 					failoverClientGone(c)
@@ -376,7 +376,7 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 			wroteFallback := false
 			if !upstreamErrorAlreadyCommunicated {
-				wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
+				wroteFallback = h.ensureForwardErrorResponse(c, streamStarted || middleware2.IsCommittedEventStream(c))
 			}
 			reqLog.Error("gateway.responses.forward_failed",
 				zap.Int64("account_id", account.ID),
@@ -389,6 +389,9 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 			h.gatewayService.ReleaseStickySessionAfterCommittedNoContent(context.WithoutCancel(requestCtx), apiKey.GroupID, sessionHash, account.ID, err)
 			if result != nil {
 				submitForwardUsage(result)
+			}
+			if streamStarted || middleware2.IsCommittedEventStream(c) {
+				abortTruncatedHTTPStream(c)
 			}
 			return
 		}

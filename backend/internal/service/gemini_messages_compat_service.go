@@ -2452,12 +2452,13 @@ streamLoop:
 				}
 				continue
 			}
-			if !messageStartSent && !clientDisconnected && isRetryableEmptyGeminiTerminalChunk(geminiResp) {
-				return nil, &UpstreamFailoverError{
-					StatusCode:               http.StatusBadGateway,
-					ResponseBody:             unwrappedBytes,
-					RetryableOnSameAccount:   true,
-					SafeToFailoverAfterWrite: keepaliveWritten,
+			if !messageStartSent && !clientDisconnected {
+				decision := classifyEmptyGeminiTerminalChunk(unwrappedBytes, geminiResp, keepaliveWritten)
+				if decision.failoverErr != nil {
+					return nil, decision.failoverErr
+				}
+				if decision.clientStatus > 0 {
+					return nil, s.writeClaudeError(c, decision.clientStatus, geminiSignalOpsErrorType(decision.clientStatus), decision.clientMsg)
 				}
 			}
 			if cands, hasCands := geminiResp["candidates"].([]any); hasCands && len(cands) > 0 {
@@ -3435,14 +3436,6 @@ nativeLoop:
 	}
 
 	if !clientDisconnect && sawDataEvent && !finished && best.Kind == geminiSignalNone {
-		if !upstreamBytesWritten {
-			return nil, &UpstreamFailoverError{
-				StatusCode:               http.StatusBadGateway,
-				ResponseBody:             []byte(`{"error":"upstream stream ended without finishReason"}`),
-				RetryableOnSameAccount:   true,
-				SafeToFailoverAfterWrite: keepaliveWritten,
-			}
-		}
 		writeCommittedGoogleSSEError(c, http.StatusBadGateway, "Upstream stream ended without finishReason")
 		return nil, errors.New("stream incomplete: missing finishReason")
 	}
@@ -3880,12 +3873,36 @@ func ensureGeminiFunctionCallThoughtSignatures(body []byte) []byte {
 	return b
 }
 
-func extractGeminiFinishReason(geminiResp map[string]any) string {
-	if candidates, ok := geminiResp["candidates"].([]any); ok && len(candidates) > 0 {
-		if cand, ok := candidates[0].(map[string]any); ok {
-			if fr, ok := cand["finishReason"].(string); ok {
-				return fr
+func extractGeminiPrimaryCandidateMap(geminiResp map[string]any) map[string]any {
+	candidates, ok := geminiResp["candidates"].([]any)
+	if !ok || len(candidates) == 0 {
+		return nil
+	}
+	for _, rawCand := range candidates {
+		cand, ok := rawCand.(map[string]any)
+		if !ok {
+			continue
+		}
+		switch idx := cand["index"].(type) {
+		case nil:
+			return cand
+		case float64:
+			if int(idx) == 0 {
+				return cand
 			}
+		case int:
+			if idx == 0 {
+				return cand
+			}
+		}
+	}
+	return nil
+}
+
+func extractGeminiFinishReason(geminiResp map[string]any) string {
+	if cand := extractGeminiPrimaryCandidateMap(geminiResp); cand != nil {
+		if fr, ok := cand["finishReason"].(string); ok {
+			return fr
 		}
 	}
 	return ""

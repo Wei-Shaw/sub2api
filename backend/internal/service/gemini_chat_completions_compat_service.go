@@ -688,12 +688,13 @@ chatStreamLoop:
 
 						var geminiResp map[string]any
 						if unmarshalErr := json.Unmarshal(rawBytes, &geminiResp); unmarshalErr == nil {
-							if !roleSent && !clientDisconnect && isRetryableEmptyGeminiTerminalChunk(geminiResp) {
-								return nil, &UpstreamFailoverError{
-									StatusCode:               http.StatusBadGateway,
-									ResponseBody:             rawBytes,
-									RetryableOnSameAccount:   true,
-									SafeToFailoverAfterWrite: keepaliveWritten,
+							if !roleSent && !clientDisconnect {
+								decision := classifyEmptyGeminiTerminalChunk(rawBytes, geminiResp, keepaliveWritten)
+								if decision.failoverErr != nil {
+									return nil, decision.failoverErr
+								}
+								if decision.clientStatus > 0 {
+									return nil, s.writeChatCompletionsError(c, decision.clientStatus, geminiSignalOpsErrorType(decision.clientStatus), decision.clientMsg)
 								}
 							}
 							if cands, hasCands := geminiResp["candidates"].([]any); hasCands && len(cands) > 0 {

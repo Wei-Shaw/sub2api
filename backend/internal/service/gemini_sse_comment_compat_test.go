@@ -510,3 +510,72 @@ func TestGeminiPromptFeedbackTerminalMatrix(t *testing.T) {
 		})
 	}
 }
+
+func TestGeminiReviewedBranchEdgeCases(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	geminiSvc := &GeminiMessagesCompatService{
+		cfg: &config.Config{Gateway: config.GatewayConfig{MaxLineSize: defaultMaxLineSize}},
+	}
+	agSvc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, nil)
+
+	t.Run("abnormal empty finishReason sets RequestScopedTransient while 400 envelope returns client error", func(t *testing.T) {
+		c1, _ := newAntigravityCompatContext(http.MethodPost, "/v1/messages", nil)
+		_, err := geminiSvc.handleStreamingResponse(
+			c1,
+			&http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`data: {"candidates":[{"finishReason":"UNEXPECTED_TOOL_CALL"}]}` + "\n\n"))},
+			time.Now(),
+			"gemini-2.5-pro",
+		)
+		var failoverErr *UpstreamFailoverError
+		require.ErrorAs(t, err, &failoverErr)
+		require.True(t, failoverErr.RequestScopedTransient)
+
+		c2, rec2 := newAntigravityCompatContext(http.MethodPost, "/v1/messages", nil)
+		_, err2 := geminiSvc.handleStreamingResponse(
+			c2,
+			&http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`data: {"error":{"code":400,"message":"bad tool schema","status":"INVALID_ARGUMENT"}}` + "\n\n"))},
+			time.Now(),
+			"gemini-2.5-pro",
+		)
+		require.Error(t, err2)
+		var unexpectedFailover *UpstreamFailoverError
+		require.NotErrorAs(t, err2, &unexpectedFailover)
+		require.Equal(t, http.StatusBadRequest, rec2.Code)
+	})
+
+	t.Run("antigravity nonstream collectClaudeStreamResponse preserves promptFeedback safety refusal", func(t *testing.T) {
+		c, rec := newAntigravityCompatContext(http.MethodPost, "/v1/messages", nil)
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{},
+			Body:       io.NopCloser(strings.NewReader(`data: {"promptFeedback":{"blockReason":"SAFETY"},"usageMetadata":{"promptTokenCount":7}}` + "\n\n")),
+		}
+		_, err := agSvc.handleClaudeStreamToNonStreaming(c, resp, time.Now(), "gemini-3-pro")
+		require.NoError(t, err)
+		require.Equal(t, http.StatusOK, rec.Code)
+		require.Contains(t, rec.Body.String(), `"stop_reason":"refusal"`)
+	})
+
+	t.Run("antigravity responses incomplete stream emits response.failed terminal event", func(t *testing.T) {
+		c, rec := newAntigravityCompatContext(http.MethodPost, "/v1/responses", nil)
+		resp := &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{},
+			Body:       io.NopCloser(strings.NewReader(`data: {"candidates":[{"content":{"parts":[{"text":"partial"}]}}]}` + "\n\n")),
+		}
+		_, err := agSvc.handleResponsesStreamingFromAntigravity(c, resp, time.Now(), "gemini-3-pro")
+		require.Error(t, err)
+		require.Contains(t, rec.Body.String(), "event: response.failed")
+	})
+
+	t.Run("antigravity v1beta replays leading metadata frames and selects index 0 primary candidate", func(t *testing.T) {
+		c, rec := newAntigravityCompatContext(http.MethodPost, "/v1beta/models/gemini-3-pro:streamGenerateContent", nil)
+		sse := `data: {"promptFeedback":{"safetyRatings":[{"category":"HARM_CATEGORY_HARASSMENT","probability":"NEGLIGIBLE"}]}}` + "\n\n" +
+			`data: {"candidates":[{"index":1,"content":{"parts":[{"text":"alt"}]}},{"index":0,"content":{"parts":[{"text":"main"}]},"finishReason":"STOP"}]}` + "\n\n"
+		_, err := agSvc.handleGeminiStreamingResponse(c, &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(sse))}, time.Now())
+		require.NoError(t, err)
+		out := rec.Body.String()
+		require.Contains(t, out, "HARM_CATEGORY_HARASSMENT")
+		require.Contains(t, out, `"text":"main"`)
+	})
+}
