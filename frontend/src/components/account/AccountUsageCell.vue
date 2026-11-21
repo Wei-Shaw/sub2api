@@ -825,6 +825,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const desktopViewportQuery = '(min-width: 768px)'
+const canUseMatchMedia = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+const getIsDesktopViewport = () => canUseMatchMedia() ? window.matchMedia(desktopViewportQuery).matches : true
 
 const unmounted = ref(false)
 onBeforeUnmount(() => { unmounted.value = true })
@@ -837,9 +839,7 @@ watch(usageInfo, (usage) => {
   if (usage) emit('usage-loaded', usage)
 })
 const rootRef = ref<HTMLElement | null>(null)
-const isDesktopViewport = ref(
-  typeof window === 'undefined' ? true : window.matchMedia(desktopViewportQuery).matches
-)
+const isDesktopViewport = ref(getIsDesktopViewport())
 const hasEnteredViewport = ref(false)
 const pendingAutoLoad = ref(false)
 const pendingAutoLoadSource = ref<'passive' | 'active' | undefined>(undefined)
@@ -1782,7 +1782,7 @@ const formatKeyUserCost = computed(() => {
 })
 
 onMounted(() => {
-  if (typeof window !== 'undefined') {
+  if (canUseMatchMedia()) {
     desktopViewportMediaQuery = window.matchMedia(desktopViewportQuery)
     isDesktopViewport.value = desktopViewportMediaQuery.matches
     desktopViewportListener = (event: MediaQueryListEvent) => {
