@@ -13,10 +13,12 @@ type CustomMenuItem struct {
 	Label          string `json:"label"`
 	IconSVG        string `json:"icon_svg"`
 	URL            string `json:"url"`
+	URI            string `json:"uri,omitempty"`
 	PageSlug       string `json:"page_slug,omitempty"`
 	Visibility     string `json:"visibility"` // "user" or "admin"
 	SortOrder      int    `json:"sort_order"`
 	HideOpenButton bool   `json:"hide_open_button,omitempty"`
+	OpenInNewTab   bool   `json:"open_in_new_tab,omitempty"`
 }
 
 // CustomEndpoint represents an admin-configured API endpoint for quick copy.
