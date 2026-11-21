@@ -89,8 +89,9 @@ describe('GroupI18nField', () => {
 
     expect(menuItems(wrapper).map((item) => [item.attributes('data-locale'), item.text()])).toEqual([
       ['default', 'admin.groups.i18nField.default'],
-      ['en', 'admin.groups.i18nField.edit:English'],
-      ['zh', 'admin.groups.i18nField.add:中文']
+      ['en', 'admin.groups.i18nField.edit:🇺🇸 English'],
+      ['zh', 'admin.groups.i18nField.add:🇨🇳 中文'],
+      ['zh-HK', 'admin.groups.i18nField.add:🇭🇰 中文']
     ])
   })
 
@@ -104,7 +105,7 @@ describe('GroupI18nField', () => {
     const input = wrapper.get('input')
     expect(input.element.value).toBe('Standard')
     expect(document.activeElement).toBe(input.element)
-    expect(trigger(wrapper).text()).toBe('English')
+    expect(trigger(wrapper).text()).toBe('🇺🇸 English')
 
     await input.setValue('Standard v2')
 
@@ -121,7 +122,7 @@ describe('GroupI18nField', () => {
     await choose(wrapper, 'en')
     const input = wrapper.get('input')
     expect(input.element.value).toBe('')
-    expect(input.attributes('placeholder')).toBe('admin.groups.i18nField.placeholder:English')
+    expect(input.attributes('placeholder')).toBe('admin.groups.i18nField.placeholder:🇺🇸 English')
 
     await input.setValue('Standard')
 
@@ -187,7 +188,7 @@ describe('GroupI18nField', () => {
   it('closes the menu when clicking elsewhere', async () => {
     const { wrapper } = mountField({ text: '标准', i18n: {} })
     await trigger(wrapper).trigger('click')
-    expect(menuItems(wrapper)).toHaveLength(3)
+    expect(menuItems(wrapper)).toHaveLength(4)
 
     document.body.click()
     await wrapper.vm.$nextTick()
