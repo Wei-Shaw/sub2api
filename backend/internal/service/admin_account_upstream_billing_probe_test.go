@@ -28,9 +28,7 @@ type accountBillingSettingsAdminRepo struct {
 func (r *accountBillingSettingsAdminRepo) UpdateWithAccountBillingSettings(
 	_ context.Context,
 	account *Account,
-	probeEnabled *bool,
-	rateSyncEnabled *bool,
-	rateMultiplier *float64,
+	settings AccountBillingSettingsUpdate,
 ) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -45,15 +43,15 @@ func (r *accountBillingSettingsAdminRepo) UpdateWithAccountBillingSettings(
 	if updated.Extra == nil {
 		updated.Extra = make(map[string]any)
 	}
-	if probeEnabled != nil {
-		updated.Extra[UpstreamBillingProbeEnabledExtraKey] = *probeEnabled
+	if settings.ProbeEnabled != nil {
+		updated.Extra[UpstreamBillingProbeEnabledExtraKey] = *settings.ProbeEnabled
 	}
-	if rateSyncEnabled != nil {
-		updated.Extra[UpstreamBillingRateSyncEnabledExtraKey] = *rateSyncEnabled
+	if settings.RateSyncEnabled != nil {
+		updated.Extra[UpstreamBillingRateSyncEnabledExtraKey] = *settings.RateSyncEnabled
 	}
 	switch {
-	case rateMultiplier != nil:
-		value := *rateMultiplier
+	case settings.RateMultiplier != nil:
+		value := *settings.RateMultiplier
 		updated.RateMultiplier = &value
 		r.lastExplicitRate = &value
 	case r.concurrentRate != nil:
@@ -912,4 +910,24 @@ func TestCreateAccountDropsOpenCodeGoManagedKeys(t *testing.T) {
 	require.NotContains(t, created.Extra, OpenCodeGoUsageAutoRefreshExtraKey)
 	require.NotContains(t, created.Extra, OpenCodeGoUsageSnapshotExtraKey)
 	require.Equal(t, "value", created.Extra["custom"])
+}
+
+func TestCreateAccountGroupSyncIsExplicitAndEnablesOnlyTheProbe(t *testing.T) {
+	enabled, disabled := true, false
+	input := &CreateAccountInput{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	account, err := buildAccountForCreate(input, map[string]any{UpstreamBillingGroupSyncEnabledExtraKey: true})
+	require.NoError(t, err)
+	require.NotContains(t, account.Extra, UpstreamBillingGroupSyncEnabledExtraKey)
+	input.GroupSyncEnabled = &enabled
+	account, err = buildAccountForCreate(input, nil)
+	require.NoError(t, err)
+	require.True(t, upstreamBillingProbeEnabled(account))
+	require.Equal(t, true, account.Extra[UpstreamBillingGroupSyncEnabledExtraKey])
+	require.False(t, upstreamBillingRateSyncEnabled(account))
+	copyExtra, err := duplicateAccountExtra(account.Extra)
+	require.NoError(t, err)
+	require.NotContains(t, copyExtra, UpstreamBillingGroupSyncEnabledExtraKey)
+	input.ProbeEnabled = &disabled
+	_, err = buildAccountForCreate(input, nil)
+	require.ErrorIs(t, err, ErrUpstreamBillingGroupSyncRequiresProbe)
 }

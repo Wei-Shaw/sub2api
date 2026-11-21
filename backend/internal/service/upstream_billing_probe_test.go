@@ -115,6 +115,7 @@ func (r *upstreamBillingProbeAccountRepo) UpdateUpstreamBillingProbeSnapshot(
 	expected *Account,
 	snapshot *UpstreamBillingProbeSnapshot,
 	rateMultiplier *float64,
+	group BillingGroupInfo,
 ) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -126,6 +127,12 @@ func (r *upstreamBillingProbeAccountRepo) UpdateUpstreamBillingProbeSnapshot(
 		account.Extra = make(map[string]any)
 	}
 	account.Extra[UpstreamBillingProbeExtraKey] = snapshot
+	if group.Name != "" {
+		account.Name = group.Name
+	}
+	if group.Description != "" {
+		account.Notes = &group.Description
+	}
 	if snapshot.Status == UpstreamBillingProbeStatusOK &&
 		rateMultiplier != nil &&
 		upstreamBillingRateSyncEnabled(account) {
@@ -1301,4 +1308,45 @@ func TestUpstreamBillingProbeLeaderLockCoversStaggeredInstancesInCadenceWindow(t
 	staggered.SetLeaderLock(cache, nil)
 	require.NoError(t, staggered.RunDue(context.Background()))
 	require.Equal(t, int64(1), upstream.calls.Load(), "a staggered instance must not start a second batch inside the cadence window")
+}
+
+func TestUpstreamBillingGroupSyncSharesOneProbeAndPreservesLocalFields(t *testing.T) {
+	for _, tt := range []struct {
+		name                        string
+		groupSync, rateSync         bool
+		fields, wantName, wantNotes string
+		wantRate                    float64
+	}{
+		{"group only", true, false, `"group_name":"Pro","group_description":"shared"`, "Pro", "shared", 1},
+		{"both with blank notes", true, true, `"group_name":"Pro","group_description":"  "`, "Pro", "local notes", 0.5},
+		{"invalid name", true, true, `"group_name":12,"group_description":"shared"`, "local", "shared", 0.5},
+		{"old upstream", true, true, `"unrelated":true`, "local", "local notes", 0.5},
+		{"rate only", false, true, `"group_name":"Pro","group_description":"shared"`, "local", "local notes", 0.5},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			rate, notes := 1.0, "local notes"
+			account := &Account{
+				ID: 17, Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Status: StatusActive,
+				Name: "local", Notes: &notes, RateMultiplier: &rate,
+				Credentials: map[string]any{"api_key": "key", "base_url": "https://upstream.example"},
+				Extra: map[string]any{
+					UpstreamBillingProbeEnabledExtraKey:     true,
+					UpstreamBillingGroupSyncEnabledExtraKey: tt.groupSync,
+					UpstreamBillingRateSyncEnabledExtraKey:  tt.rateSync,
+				},
+			}
+			body := `{"object":"sub2api.key_billing","schema_version":1,"billing_scope":"token","group_rate_multiplier":0.5,"resolved_rate_multiplier":0.5,"effective_rate_multiplier":0.5,"peak_rate_enabled":false,"observed_at":"2026-07-13T01:00:00Z",` + tt.fields + "}"
+			upstream := &httpUpstreamRecorder{resp: &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body))}}
+			repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{account.ID: account}}
+			svc := newUpstreamBillingProbeTestService(repo, upstream, &upstreamBillingProbeSettingRepo{})
+			snapshot, err := svc.probeScheduledAccount(context.Background(), account.ID, 30)
+			require.NoError(t, err)
+			require.Equal(t, UpstreamBillingProbeStatusOK, snapshot.Status)
+			require.Len(t, upstream.requests, 1)
+			require.Equal(t, tt.groupSync, upstream.lastReq.URL.Query().Get("include") == "group")
+			require.Equal(t, tt.wantName, account.Name)
+			require.Equal(t, tt.wantNotes, *account.Notes)
+			require.Equal(t, tt.wantRate, *account.RateMultiplier)
+		})
+	}
 }
