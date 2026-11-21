@@ -366,6 +366,10 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		ContactInfo:                            settings[SettingKeyContactInfo],
 		DocURL:                                 settings[SettingKeyDocURL],
 		HomeContent:                            settings[SettingKeyHomeContent],
+		FooterIcpNumber:                        settings[SettingKeyFooterIcpNumber],
+		FooterIcpURL:                           settings[SettingKeyFooterIcpURL],
+		FooterPsbNumber:                        settings[SettingKeyFooterPsbNumber],
+		FooterPsbURL:                           settings[SettingKeyFooterPsbURL],
 		CompactHomeEnabled:                     settings[SettingKeyCompactHomeEnabled] == "true",
 		HideCcsImportButton:                    settings[SettingKeyHideCcsImportButton] == "true",
 		PurchaseSubscriptionEnabled:            settings[SettingKeyPurchaseSubscriptionEnabled] == "true",
@@ -971,6 +975,18 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 	}
 	if result.AccountQuotaNotifyEmails == nil {
 		result.AccountQuotaNotifyEmails = []NotifyEmailEntry{}
+	}
+
+	// 账号上游余额不足提醒
+	result.AccountBalanceLowNotifyEnabled = settings[SettingKeyAccountBalanceLowNotifyEnabled] == "true"
+	if v, err := strconv.ParseFloat(settings[SettingKeyAccountBalanceLowNotifyThreshold], 64); err == nil && v >= 0 {
+		result.AccountBalanceLowNotifyThreshold = v
+	}
+	if raw := strings.TrimSpace(settings[SettingKeyAccountBalanceLowNotifyEmails]); raw != "" {
+		result.AccountBalanceLowNotifyEmails = ParseNotifyEmails(raw)
+	}
+	if result.AccountBalanceLowNotifyEmails == nil {
+		result.AccountBalanceLowNotifyEmails = []NotifyEmailEntry{}
 	}
 
 	// 系统层默认 platform quota（修复 Bug B：parseSettings 不填充导致回显恒为 nil）

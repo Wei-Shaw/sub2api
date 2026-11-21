@@ -160,6 +160,10 @@ type UpdateSettingsRequest struct {
 	ContactInfo                 string                `json:"contact_info"`
 	DocURL                      string                `json:"doc_url"`
 	HomeContent                 string                `json:"home_content"`
+	FooterIcpNumber             string                `json:"footer_icp_number"`
+	FooterIcpURL                string                `json:"footer_icp_url"`
+	FooterPsbNumber             string                `json:"footer_psb_number"`
+	FooterPsbURL                string                `json:"footer_psb_url"`
 	CompactHomeEnabled          bool                  `json:"compact_home_enabled"`
 	HideCcsImportButton         bool                  `json:"hide_ccs_import_button"`
 	PurchaseSubscriptionEnabled *bool                 `json:"purchase_subscription_enabled"`
@@ -299,6 +303,9 @@ type UpdateSettingsRequest struct {
 	SubscriptionExpiryNotifyEnabled *bool                   `json:"subscription_expiry_notify_enabled"`
 	AccountQuotaNotifyEnabled       *bool                   `json:"account_quota_notify_enabled"`
 	AccountQuotaNotifyEmails        *[]dto.NotifyEmailEntry `json:"account_quota_notify_emails"`
+	AccountBalanceLowNotifyEnabled   *bool                   `json:"account_balance_low_notify_enabled"`
+	AccountBalanceLowNotifyThreshold *float64                `json:"account_balance_low_notify_threshold"`
+	AccountBalanceLowNotifyEmails    *[]dto.NotifyEmailEntry `json:"account_balance_low_notify_emails"`
 
 	// Payment configuration (integrated into settings, full replace)
 	PaymentEnabled                   *bool    `json:"payment_enabled"`
@@ -1647,6 +1654,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ContactInfo:                            req.ContactInfo,
 		DocURL:                                 req.DocURL,
 		HomeContent:                            req.HomeContent,
+		FooterIcpNumber:                        req.FooterIcpNumber,
+		FooterIcpURL:                           req.FooterIcpURL,
+		FooterPsbNumber:                        req.FooterPsbNumber,
+		FooterPsbURL:                           req.FooterPsbURL,
 		CompactHomeEnabled:                     req.CompactHomeEnabled,
 		HideCcsImportButton:                    req.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:            purchaseEnabled,
@@ -1917,6 +1928,24 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 				return dto.NotifyEmailEntriesToService(*req.AccountQuotaNotifyEmails)
 			}
 			return previousSettings.AccountQuotaNotifyEmails
+		}(),
+		AccountBalanceLowNotifyEnabled: func() bool {
+			if req.AccountBalanceLowNotifyEnabled != nil {
+				return *req.AccountBalanceLowNotifyEnabled
+			}
+			return previousSettings.AccountBalanceLowNotifyEnabled
+		}(),
+		AccountBalanceLowNotifyThreshold: func() float64 {
+			if req.AccountBalanceLowNotifyThreshold != nil {
+				return *req.AccountBalanceLowNotifyThreshold
+			}
+			return previousSettings.AccountBalanceLowNotifyThreshold
+		}(),
+		AccountBalanceLowNotifyEmails: func() []service.NotifyEmailEntry {
+			if req.AccountBalanceLowNotifyEmails != nil {
+				return dto.NotifyEmailEntriesToService(*req.AccountBalanceLowNotifyEmails)
+			}
+			return previousSettings.AccountBalanceLowNotifyEmails
 		}(),
 		ChannelMonitorEnabled: func() bool {
 			if req.ChannelMonitorEnabled != nil {
@@ -2311,6 +2340,10 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		ContactInfo:                                            updatedSettings.ContactInfo,
 		DocURL:                                                 updatedSettings.DocURL,
 		HomeContent:                                            updatedSettings.HomeContent,
+		FooterIcpNumber:                                        updatedSettings.FooterIcpNumber,
+		FooterIcpURL:                                           updatedSettings.FooterIcpURL,
+		FooterPsbNumber:                                        updatedSettings.FooterPsbNumber,
+		FooterPsbURL:                                           updatedSettings.FooterPsbURL,
 		CompactHomeEnabled:                                     updatedSettings.CompactHomeEnabled,
 		HideCcsImportButton:                                    updatedSettings.HideCcsImportButton,
 		PurchaseSubscriptionEnabled:                            updatedSettings.PurchaseSubscriptionEnabled,
@@ -2403,6 +2436,9 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		SubscriptionExpiryNotifyEnabled:                        updatedSettings.SubscriptionExpiryNotifyEnabled,
 		AccountQuotaNotifyEnabled:                              updatedSettings.AccountQuotaNotifyEnabled,
 		AccountQuotaNotifyEmails:                               dto.NotifyEmailEntriesFromService(updatedSettings.AccountQuotaNotifyEmails),
+		AccountBalanceLowNotifyEnabled:                         updatedSettings.AccountBalanceLowNotifyEnabled,
+		AccountBalanceLowNotifyThreshold:                       updatedSettings.AccountBalanceLowNotifyThreshold,
+		AccountBalanceLowNotifyEmails:                          dto.NotifyEmailEntriesFromService(updatedSettings.AccountBalanceLowNotifyEmails),
 		PaymentEnabled:                                         updatedPaymentCfg.Enabled,
 		PaymentMinAmount:                                       updatedPaymentCfg.MinAmount,
 		PaymentMaxAmount:                                       updatedPaymentCfg.MaxAmount,

@@ -343,6 +343,10 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeyContactInfo] = settings.ContactInfo
 	updates[SettingKeyDocURL] = settings.DocURL
 	updates[SettingKeyHomeContent] = settings.HomeContent
+	updates[SettingKeyFooterIcpNumber] = strings.TrimSpace(settings.FooterIcpNumber)
+	updates[SettingKeyFooterIcpURL] = strings.TrimSpace(settings.FooterIcpURL)
+	updates[SettingKeyFooterPsbNumber] = strings.TrimSpace(settings.FooterPsbNumber)
+	updates[SettingKeyFooterPsbURL] = strings.TrimSpace(settings.FooterPsbURL)
 	updates[SettingKeyCompactHomeEnabled] = strconv.FormatBool(settings.CompactHomeEnabled)
 	updates[SettingKeyHideCcsImportButton] = strconv.FormatBool(settings.HideCcsImportButton)
 	updates[SettingKeyPurchaseSubscriptionEnabled] = strconv.FormatBool(settings.PurchaseSubscriptionEnabled)
@@ -533,6 +537,9 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 	updates[SettingKeySubscriptionExpiryNotifyEnabled] = strconv.FormatBool(settings.SubscriptionExpiryNotifyEnabled)
 	updates[SettingKeyAccountQuotaNotifyEnabled] = strconv.FormatBool(settings.AccountQuotaNotifyEnabled)
 	updates[SettingKeyAccountQuotaNotifyEmails] = MarshalNotifyEmails(settings.AccountQuotaNotifyEmails)
+	updates[SettingKeyAccountBalanceLowNotifyEnabled] = strconv.FormatBool(settings.AccountBalanceLowNotifyEnabled)
+	updates[SettingKeyAccountBalanceLowNotifyThreshold] = strconv.FormatFloat(settings.AccountBalanceLowNotifyThreshold, 'f', 8, 64)
+	updates[SettingKeyAccountBalanceLowNotifyEmails] = MarshalNotifyEmails(settings.AccountBalanceLowNotifyEmails)
 
 	// 系统全局 platform quota：整体替换语义（null/缺省 = 不限制）。
 	if settings.DefaultPlatformQuotas != nil {

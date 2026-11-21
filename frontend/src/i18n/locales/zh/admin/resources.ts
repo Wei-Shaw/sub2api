@@ -370,6 +370,35 @@ export default {
       failedToDelete: '删除兑换码失败'
     },
 
+    // Tickets
+    tickets: {
+      title: '工单管理',
+      description: '查看并回复用户工单',
+      searchPlaceholder: '搜索标题/用户...',
+      empty: '暂无工单',
+      messages: '条消息',
+      reply: '发送回复',
+      replyPlaceholder: '输入管理员回复...',
+      closeTicket: '关闭工单',
+      reopen: '重新打开',
+      closedHint: '该工单已关闭',
+      admin: '管理员',
+      user: '用户',
+      statusAll: '全部状态',
+      columns: {
+        subject: '标题',
+        user: '用户',
+        status: '状态',
+        updatedAt: '更新时间'
+      },
+      status: {
+        open: '待处理',
+        waiting_admin: '等待管理员',
+        answered: '已回复',
+        closed: '已关闭'
+      }
+    },
+
     // Announcements
     announcements: {
       title: '公告管理',

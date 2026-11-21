@@ -316,8 +316,11 @@ func ProvideCNProviderBalanceService(
 	proxyRepo ProxyRepository,
 	httpUpstream HTTPUpstream,
 	cfg *config.Config,
+	balanceNotify *BalanceNotifyService,
 ) *CNProviderBalanceService {
-	return NewCNProviderBalanceService(accountRepo, proxyRepo, httpUpstream, cfg)
+	svc := NewCNProviderBalanceService(accountRepo, proxyRepo, httpUpstream, cfg)
+	svc.SetBalanceNotifyService(balanceNotify)
+	return svc
 }
 
 // ProvideCNProviderBalanceCheckService 构造并启动周期余额/额度检测任务。
@@ -881,6 +884,7 @@ var ProviderSet = wire.NewSet(
 	NewBillingService,
 	ProvideBillingCacheService,
 	NewAnnouncementService,
+	ProvideTicketService,
 	NewAdminService,
 	NewGatewayService,
 	NewOpenAIGatewayService,

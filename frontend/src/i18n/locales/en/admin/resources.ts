@@ -373,6 +373,35 @@ export default {
       failedToUpdate: 'Failed to update redeem code'
     },
 
+    // Tickets
+    tickets: {
+      title: 'Support Tickets',
+      description: 'Review and reply to user tickets',
+      searchPlaceholder: 'Search subject/user...',
+      empty: 'No tickets',
+      messages: 'messages',
+      reply: 'Send Reply',
+      replyPlaceholder: 'Write an admin reply...',
+      closeTicket: 'Close Ticket',
+      reopen: 'Reopen',
+      closedHint: 'This ticket is closed',
+      admin: 'Admin',
+      user: 'User',
+      statusAll: 'All statuses',
+      columns: {
+        subject: 'Subject',
+        user: 'User',
+        status: 'Status',
+        updatedAt: 'Updated'
+      },
+      status: {
+        open: 'Open',
+        waiting_admin: 'Waiting for admin',
+        answered: 'Answered',
+        closed: 'Closed'
+      }
+    },
+
     // Announcements
     announcements: {
       title: 'Announcements',

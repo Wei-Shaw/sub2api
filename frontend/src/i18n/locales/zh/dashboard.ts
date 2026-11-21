@@ -418,6 +418,7 @@ export default {
     cacheHit: '缓存命中',
     cacheCreate: '缓存创建',
     cacheHitRate: '缓存命中率',
+    cacheHitRateHint: '缓存命中 Token ÷（输入 + 缓存创建 + 缓存命中），与渠道监控缓存率口径一致。',
     inputTokenPrice: '输入单价',
     outputTokenPrice: '输出单价',
     perMillionTokens: '/ 1M Token',

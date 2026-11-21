@@ -605,6 +605,36 @@ export function cnBalanceCellVisible(account: CNUsageCellAccount): boolean {
   return (platform === 'kimi' || platform === 'deepseek') && mode !== 'coding'
 }
 
+export const BALANCE_PROBE_SOURCE_CREDENTIAL_KEY = 'balance_probe_source'
+export type BalanceProbeSource = 'sub2api' | 'newapi' | ''
+
+export function normalizeBalanceProbeSource(raw: unknown): BalanceProbeSource {
+  if (typeof raw !== 'string') return ''
+  const value = raw.trim().toLowerCase()
+  if (value === 'sub2api' || value === 'newapi') return value
+  return ''
+}
+
+/** Read configured Sub2API/NewAPI balance probe source from an account. */
+export function accountBalanceProbeSource(
+  account: { credentials?: Record<string, unknown> | null } | null | undefined
+): BalanceProbeSource {
+  return normalizeBalanceProbeSource(account?.credentials?.[BALANCE_PROBE_SOURCE_CREDENTIAL_KEY])
+}
+
+export function applyBalanceProbeSource(
+  credentials: Record<string, unknown>,
+  source: BalanceProbeSource | string,
+  mode: 'create' | 'edit'
+): void {
+  const normalized = normalizeBalanceProbeSource(source)
+  if (normalized) {
+    credentials[BALANCE_PROBE_SOURCE_CREDENTIAL_KEY] = normalized
+  } else if (mode === 'edit') {
+    delete credentials[BALANCE_PROBE_SOURCE_CREDENTIAL_KEY]
+  }
+}
+
 /**
  * 将请求头覆写写入 credentials。
  * create 模式：关闭时不写入任何字段；edit 模式：关闭时删除字段（全量替换语义）。

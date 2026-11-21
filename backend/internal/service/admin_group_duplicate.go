@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"strconv"
 	"strings"
 	"time"
@@ -56,13 +57,17 @@ func cloneGroupValuePointer[T any](value *T) *T {
 	return &cloned
 }
 
-func cloneGroupModelRouting(value map[string][]int64) map[string][]int64 {
+func cloneGroupModelRouting(value domain.ModelRoutingMap) domain.ModelRoutingMap {
 	if value == nil {
 		return nil
 	}
-	cloned := make(map[string][]int64, len(value))
-	for model, accountIDs := range value {
-		cloned[model] = append([]int64(nil), accountIDs...)
+	cloned := make(domain.ModelRoutingMap, len(value))
+	for model, rule := range value {
+		accounts := append([]domain.ModelRoutingAccountRef(nil), rule.Accounts...)
+		cloned[model] = domain.ModelRoutingRule{
+			MaxConcurrency: rule.MaxConcurrency,
+			Accounts:       accounts,
+		}
 	}
 	return cloned
 }

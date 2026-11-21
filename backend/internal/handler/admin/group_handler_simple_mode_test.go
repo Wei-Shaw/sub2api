@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"bytes"
 	"encoding/json"
 	"net/http"
@@ -153,7 +154,7 @@ func TestGroupHandlerSimpleModeResponseUsesFieldAllowlist(t *testing.T) {
 		ModelPricing:              []service.ChannelModelPricing{{Models: []string{"claude"}}},
 		AllowBatchImageGeneration: true, VideoPrice720P: float64PtrForSimpleModeTest(2),
 		WebSearchPricePerCall: float64PtrForSimpleModeTest(3), AudioRealtimePricePerMin: float64PtrForSimpleModeTest(4),
-		ModelRouting: map[string][]int64{"claude": {2}},
+		ModelRouting: domain.LegacyModelRouting(map[string][]int64{"claude": {2}}),
 	}}
 	r := newSimpleModeGroupRouter(svc)
 	res := httptest.NewRecorder()

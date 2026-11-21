@@ -130,6 +130,7 @@ function mountView(stubActionMenu = true, realUsageCell = false) {
         AccountGroupsCell: AccountGroupsCellStub,
         AccountUsageCell: !realUsageCell,
         UpstreamBillingRateCell: true,
+        UpstreamBalanceCell: true,
         HelpTooltip: true,
         Icon: true,
         Teleport: stubActionMenu

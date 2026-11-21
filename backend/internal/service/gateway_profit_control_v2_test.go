@@ -3,6 +3,7 @@
 package service
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"context"
 	"errors"
 	"testing"
@@ -188,7 +189,7 @@ func TestGatewayProfitControlLegacyMixedAndRoutedSelection(t *testing.T) {
 	t.Run("mixed routing filters the routed account", func(t *testing.T) {
 		group := gatewayProfitTestGroup(112, PlatformAnthropic)
 		group.ModelRoutingEnabled = true
-		group.ModelRouting = map[string][]int64{"claude-test": {2, 1}}
+		group.ModelRouting = domain.LegacyModelRouting(map[string][]int64{"claude-test": {2, 1}})
 		cheap := gatewayProfitTestAccount(1, PlatformAntigravity, 0.2, group.ID)
 		cheap.Extra = map[string]any{"mixed_scheduling": true}
 		cheap.Credentials = map[string]any{"model_mapping": map[string]any{"claude-test": "claude-test"}}

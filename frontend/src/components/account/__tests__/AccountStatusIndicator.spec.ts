@@ -251,4 +251,38 @@ describe('AccountStatusIndicator', () => {
     // AICredits 积分耗尽状态应显示
     expect(wrapper.text()).toContain('admin.accounts.status.creditsExhausted')
   })
+
+  it('错误账号的完整 error_message 通过 body tooltip 展示，不被表格裁切', async () => {
+    const fullError =
+      'Access forbidden. Your organization has been restricted from using this model. Please contact support.'
+    const wrapper = mount(AccountStatusIndicator, {
+      props: {
+        account: makeAccount({
+          status: 'error',
+          error_message: fullError,
+          schedulable: false
+        })
+      },
+      attachTo: document.body,
+      global: {
+        stubs: {
+          Icon: true
+        }
+      }
+    })
+
+    expect(wrapper.text()).toContain('admin.accounts.status.error')
+    const trigger = wrapper.find('button[aria-label="admin.accounts.status.error"]')
+    expect(trigger.exists()).toBe(true)
+    await trigger.trigger('mouseenter')
+    await wrapper.vm.$nextTick()
+
+    const tooltip = document.body.querySelector('[data-testid="account-error-tooltip"]') as HTMLElement | null
+    expect(tooltip).not.toBeNull()
+    expect(tooltip?.textContent).toContain(fullError)
+    expect(tooltip?.className).toContain('fixed')
+    expect(tooltip?.className).toContain('z-[99999]')
+
+    wrapper.unmount()
+  })
 })

@@ -3,6 +3,7 @@
 package server_test
 
 import (
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"bytes"
 	"context"
 	"errors"
@@ -331,9 +332,9 @@ func TestAPIContracts(t *testing.T) {
 						ProfitMinMargin:      0.3,
 						ProfitSafetyBuffer:   0.05,
 						ModelRoutingEnabled:  true,
-						ModelRouting: map[string][]int64{
+						ModelRouting: domain.LegacyModelRouting(map[string][]int64{
 							"claude-3-*": []int64{101, 102},
-						},
+						}),
 						AccountCount: 2,
 						CreatedAt:    deps.now,
 						UpdatedAt:    deps.now,
