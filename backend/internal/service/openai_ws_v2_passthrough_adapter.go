@@ -1173,6 +1173,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	if hooks != nil {
 		firstTurnStartedAt = hooks.InitialTurnStartedAt
 	}
+	nativeSearch := newOpenAINativeWebSearchCounter(account)
 	failureAccountSideEffectsApplied := false
 	relayResult, relayExit := openaiwsv2.RunEntry(openaiwsv2.EntryInput{
 		Ctx:                ctx,
@@ -1206,13 +1207,15 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				)
 			},
 			OnTurnComplete: func(turn openaiwsv2.RelayTurnResult) {
+				nativeSearchCount := nativeSearch.Settle(turn.RequestID)
 				turnNo := int(completedTurns.Add(1))
 				if hooks != nil && hooks.TurnStarted != nil && !turn.StartedAt.IsZero() {
 					hooks.TurnStarted(turnNo, turn.StartedAt)
 				}
 				turnRequestModel, turnUpstreamModel := usageMeta.turnModels(turn.RequestModel)
 				turnResult := &OpenAIForwardResult{
-					RequestID: turn.RequestID,
+					RequestID:            turn.RequestID,
+					NativeWebSearchCalls: nativeSearchCount,
 					Usage: OpenAIUsage{
 						InputTokens:              turn.Usage.InputTokens,
 						ImageInputTokens:         turn.Usage.ImageInputTokens,
@@ -1291,6 +1294,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				if eventType == "response.created" {
 					failureAccountSideEffectsApplied = false
 				}
+				nativeSearch.Add(payload)
 				if (eventType == "error" || eventType == "response.failed") && markOpenAIWSV2PassthroughCyberPolicy(c, payload) {
 					return nil
 				}
@@ -1354,7 +1358,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 
 	resultRequestModel, resultUpstreamModel := usageMeta.turnModels(relayResult.RequestModel)
 	result := &OpenAIForwardResult{
-		RequestID: relayResult.RequestID,
+		RequestID:            relayResult.RequestID,
+		NativeWebSearchCalls: nativeSearch.UnsettledCount(),
 		Usage: OpenAIUsage{
 			InputTokens:              relayResult.Usage.InputTokens,
 			ImageInputTokens:         relayResult.Usage.ImageInputTokens,
@@ -1471,7 +1476,22 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		if hooks.TurnStarted != nil {
 			hooks.TurnStarted(turnCount+1, time.Now().Add(-result.Duration))
 		}
-		hooks.AfterTurn(turnCount+1, nil, turnErr)
+		var partialResult *OpenAIForwardResult
+		if nativeSearchCount := nativeSearch.UnsettledCount(); nativeSearchCount > 0 {
+			partialResult = &OpenAIForwardResult{
+				NativeWebSearchCalls:     nativeSearchCount,
+				Model:                    resultRequestModel,
+				UpstreamModel:            openAIWSDifferentModel(resultRequestModel, resultUpstreamModel),
+				ServiceTier:              usageMeta.serviceTier.Load(),
+				ReasoningEffort:          usageMeta.reasoningEffort.Load(),
+				RequestedReasoningEffort: usageMeta.requestedReasoningEffort.Load(),
+				Stream:                   true,
+				OpenAIWSMode:             true,
+				ResponseHeaders:          cloneHeader(handshakeHeaders),
+				Duration:                 relayResult.Duration,
+			}
+		}
+		hooks.AfterTurn(turnCount+1, partialResult, turnErr)
 	}
 	return turnErr
 }

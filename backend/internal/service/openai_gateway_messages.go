@@ -628,7 +628,8 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
-	finalResponse, usage, acc, prior, err := s.readOpenAICompatBufferedTerminal(resp, c, account, "openai messages buffered", requestID)
+	nativeSearch := newOpenAINativeWebSearchCounter(account)
+	finalResponse, usage, acc, prior, err := s.readOpenAICompatBufferedTerminal(resp, c, account, "openai messages buffered", requestID, nativeSearch)
 	if err != nil {
 		var readErr *openAICompatBufferedReadError
 		if errors.As(err, &readErr) && readErr != nil {
@@ -704,6 +705,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	c.JSON(http.StatusOK, anthropicResp)
 
 	result := &OpenAIForwardResult{
+		NativeWebSearchCalls:          nativeSearch.Count(),
 		RequestID:                     requestID,
 		UpstreamHeaders:               resp.Header,
 		ResponseID:                    finalResponse.ID,
@@ -848,6 +850,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 	account *Account,
 	logPrefix string,
 	requestID string,
+	nativeSearch *openAINativeWebSearchCounter,
 ) (*apicompat.ResponsesResponse, OpenAIUsage, *apicompat.BufferedResponseAccumulator, openAICompatPriorModelAudit, error) {
 	acc := apicompat.NewBufferedResponseAccumulator()
 	acc.XAIServerSideSearch = account != nil && account.IsGrok()
@@ -940,6 +943,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 				if frame, ok := parser.Finish(); ok {
 					payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
 					payload = string(restoreCodexToolNamesFromContext(c, []byte(payload)))
+					nativeSearch.Add([]byte(payload))
 					outputSlots.Observe([]byte(payload))
 					var event apicompat.ResponsesStreamEvent
 					if err := json.Unmarshal([]byte(payload), &event); err == nil {
@@ -983,6 +987,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 			}
 			payload := openAICompatPayloadWithEventType(frame.Data, frame.EventType)
 			payload = string(restoreCodexToolNamesFromContext(c, []byte(payload)))
+			nativeSearch.Add([]byte(payload))
 			outputSlots.Observe([]byte(payload))
 
 			var event apicompat.ResponsesStreamEvent
@@ -1052,6 +1057,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	var streamFailoverErr error
 	var streamNonFailoverErr error
 	terminalEventType := ""
+	nativeSearch := newOpenAINativeWebSearchCounter(account)
 	searchCount := 0
 	streamSearchSeen := make(map[string]struct{})
 	countSearch := account != nil && account.IsGrok()
@@ -1094,6 +1100,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			FirstTokenMs:                  firstTokenMs,
 			ClientDisconnect:              clientDisconnected,
 		}
+		out.NativeWebSearchCalls = nativeSearch.Count()
 		if searchCount > 0 {
 			out.SearchCount = searchCount
 		}
@@ -1136,6 +1143,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
 		}
+		nativeSearch.Add([]byte(payload))
 		if countSearch {
 			searchCount += countGrokNativeSearchCallsInSSEDataDedup([]byte(payload), streamSearchSeen)
 			searchCount = grokSearchCountWithTerminalUsage(searchCount, []byte(payload))

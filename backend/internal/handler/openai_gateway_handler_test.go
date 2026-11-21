@@ -1931,6 +1931,7 @@ func newOpenAIWSHandlerTestServer(t *testing.T, h *OpenAIGatewayHandler, subject
 }
 
 type openAIResponsesWSUsageLogCase struct {
+	abnormalSearchTurn     int
 	simpleModeRejectAtRead int64
 	compositeResolver      *service.CompositeRouteResolver
 	accountPlatform        string
@@ -3021,6 +3022,23 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 				}
 			}
 
+			if turn == tc.abnormalSearchTurn {
+				for _, frame := range []string{
+					`{"type":"response.created","response":{"id":"resp_search_aborted"}}`,
+					`{"type":"response.web_search_call.completed","item_id":"ws_completed"}`,
+				} {
+					writeCtx, cancelWrite := context.WithTimeout(r.Context(), 3*time.Second)
+					writeErr := conn.Write(writeCtx, coderws.MessageText, []byte(frame))
+					cancelWrite()
+					if writeErr != nil {
+						upstreamErrCh <- writeErr
+						return
+					}
+				}
+				upstreamErrCh <- nil
+				return
+			}
+
 			response := fmt.Sprintf(
 				`{"type":"response.completed","response":{"id":"resp_usage_e2e_%d","model":%q,"usage":{"input_tokens":2,"output_tokens":1}}}`,
 				turn,
@@ -3224,7 +3242,24 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	}
 
 	clientEvents := make([][]byte, 0, turnCount)
+	readTurn := 0
 	readCompleted := func() {
+		readTurn++
+		if readTurn == tc.abnormalSearchTurn {
+			for _, eventType := range []string{"response.created", "response.web_search_call.completed"} {
+				readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+				_, event, readErr := clientConn.Read(readCtx)
+				cancelRead()
+				require.NoError(t, readErr)
+				require.Equal(t, eventType, gjson.GetBytes(event, "type").String())
+				clientEvents = append(clientEvents, append([]byte(nil), event...))
+			}
+			readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
+			_, _, readErr := clientConn.Read(readCtx)
+			cancelRead()
+			require.Error(t, readErr)
+			return
+		}
 		readCtx, cancelRead := context.WithTimeout(context.Background(), 3*time.Second)
 		_, event, readErr := clientConn.Read(readCtx)
 		cancelRead()

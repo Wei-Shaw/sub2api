@@ -717,7 +717,8 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
 
-	finalResponse, usage, acc, priorModels, err := s.readOpenAICompatBufferedTerminal(resp, c, account, "openai chat_completions buffered", requestID)
+	nativeSearch := newOpenAINativeWebSearchCounter(account)
+	finalResponse, usage, acc, priorModels, err := s.readOpenAICompatBufferedTerminal(resp, c, account, "openai chat_completions buffered", requestID, nativeSearch)
 	if err != nil {
 		return nil, s.newOpenAICompatBufferedReadFailoverError(c, account, resp, requestID, err)
 	}
@@ -799,6 +800,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	c.JSON(http.StatusOK, chatResp)
 
 	result := &OpenAIForwardResult{
+		NativeWebSearchCalls:          nativeSearch.Count(),
 		RequestID:                     requestID,
 		UpstreamHeaders:               resp.Header,
 		Usage:                         usage,
@@ -896,6 +898,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	var streamNonFailoverErr error
 	terminalEventType := ""
 	// Grok chat bridge reuses Responses SSE; count native search tools for surcharge.
+	nativeSearch := newOpenAINativeWebSearchCounter(account)
 	searchCount := 0
 	streamSearchSeen := make(map[string]struct{})
 	countSearch := account != nil && account.IsGrok()
@@ -935,6 +938,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
 		}
+		out.NativeWebSearchCalls = nativeSearch.Count()
 		if searchCount > 0 {
 			out.SearchCount = searchCount
 		}
@@ -948,6 +952,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
 		}
+		nativeSearch.Add([]byte(payload))
 		if countSearch {
 			searchCount += countGrokNativeSearchCallsInSSEDataDedup([]byte(payload), streamSearchSeen)
 			searchCount = grokSearchCountWithTerminalUsage(searchCount, []byte(payload))
