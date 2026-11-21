@@ -50,6 +50,7 @@ export interface PaymentConfig {
 export interface MethodLimit {
   currency?: string
   display_name?: string
+  icon?: string
   daily_limit: number
   daily_used: number
   daily_remaining: number
