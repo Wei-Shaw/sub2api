@@ -498,6 +498,7 @@ type RectifierSettings struct {
 	Enabled                  bool     `json:"enabled"`
 	ThinkingSignatureEnabled bool     `json:"thinking_signature_enabled"`
 	ThinkingBudgetEnabled    bool     `json:"thinking_budget_enabled"`
+	MaxTokensEnabled         bool     `json:"max_tokens_enabled"`
 	APIKeySignatureEnabled   bool     `json:"apikey_signature_enabled"`
 	APIKeySignaturePatterns  []string `json:"apikey_signature_patterns"`
 }
