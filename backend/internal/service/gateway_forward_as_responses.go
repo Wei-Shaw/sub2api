@@ -118,7 +118,10 @@ func (s *GatewayService) ForwardAsResponses(
 		anthropicBody = s.applyClaudeCodeOAuthMimicryToBody(ctx, c, account, anthropicBody, anthropicReq.System, mappedModel)
 	}
 
-	// 7. Enforce cache_control block limit
+	// 7. 注入随对话前进的缓存断点并强制执行 cache_control 块数量限制。
+	// Responses 客户端（Codex 等）本身不带 cache_control，不注入断点的话
+	// 只有上游自己打在 tools 上的固定前缀会被缓存写一次，后续轮次永远只读不写。
+	anthropicBody = applyResponsesAnthropicCacheBreakpoints(anthropicBody, mappedModel)
 	anthropicBody = enforceCacheControlLimit(anthropicBody)
 
 	// 8. Get access token
