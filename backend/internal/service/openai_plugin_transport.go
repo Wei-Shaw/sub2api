@@ -6,9 +6,18 @@ func (s *OpenAIGatewayService) SetPluginManager(manager *PluginManager) {
 	s.pluginManager = manager
 }
 
-// doOpenAIUpstream 只在 OpenAI OAuth 能力绑定已启用时把真实请求交给插件。
-// 插件返回标准 http.Response，响应解析、错误映射、SSE 和计费仍由现有核心链处理。
+// doOpenAIUpstream sends the request and, for an OpenAI OAuth 401, refreshes the token and resends once.
 func (s *OpenAIGatewayService) doOpenAIUpstream(request *http.Request, proxyURL string, account *Account) (*http.Response, error) {
+	response, err := s.roundTripOpenAIUpstream(request, proxyURL, account)
+	if err == nil && response != nil && response.StatusCode == http.StatusUnauthorized {
+		return s.retryOpenAIOAuth401(request, proxyURL, account, response)
+	}
+	return response, err
+}
+
+// roundTripOpenAIUpstream 只在 OpenAI OAuth 能力绑定已启用时把真实请求交给插件。
+// 插件返回标准 http.Response，响应解析、错误映射、SSE 和计费仍由现有核心链处理。
+func (s *OpenAIGatewayService) roundTripOpenAIUpstream(request *http.Request, proxyURL string, account *Account) (*http.Response, error) {
 	if s.pluginManager != nil {
 		response, handled, err := s.pluginManager.RoundTripOpenAIOAuth(request.Context(), request, proxyURL, account)
 		if handled {

@@ -6,8 +6,11 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
+
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -85,6 +88,10 @@ type OpenAITokenProvider struct {
 	refreshAPI         *OAuthRefreshAPI
 	executor           OAuthRefreshExecutor
 	refreshPolicy      ProviderRefreshPolicy
+	// One refresh attempt per credential account, proxy and rejected token.
+	refreshFlights singleflight.Group
+	// Credential account ID -> access token this provider minted on a 401.
+	mintedAccessTokens sync.Map
 }
 
 func NewOpenAITokenProvider(
