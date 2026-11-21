@@ -81,6 +81,7 @@ const props = withDefaults(
     remainingCapacity?: boolean
     /** fixed: 定宽居中徽章（账号页纵向对齐）；auto: 限宽截断左对齐（监控页组合标签） */
     labelWidth?: 'fixed' | 'auto'
+    precisePercent?: boolean
   }>(),
   { labelWidth: 'fixed' }
 )
@@ -131,7 +132,7 @@ const labelClass = computed(() => {
 const labelSizeClass = computed(() =>
   props.labelWidth === 'auto'
     ? 'max-w-[72px] shrink-0 truncate rounded px-1 text-left text-[10px] font-medium'
-    : 'w-[32px] shrink-0 rounded px-1 text-center text-[10px] font-medium'
+    : 'min-w-[32px] shrink-0 whitespace-nowrap rounded px-1 text-center text-[10px] font-medium'
 )
 
 // Progress bar color based on utilization
@@ -181,6 +182,9 @@ const barWidth = computed(() => {
 // Display percentage (cap at 999% for readability)
 const displayPercent = computed(() => {
   if (props.utilizationUnknown) return '—'
+  if (props.precisePercent && props.utilization > 0 && props.utilization < 100) {
+    return props.utilization < 0.01 ? '<0.01%' : `${props.utilization.toFixed(2)}%`
+  }
   const percent = Math.round(
     props.remainingCapacity
       ? Math.min(Math.max(props.utilization, 0), 100)
