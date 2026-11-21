@@ -166,9 +166,11 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 		}
 		if selected == nil || selected.Account == nil {
 			if attempt == 0 {
+				markOpsRoutingCapacityLimited(c)
+				recordNoAvailableAccountsReasonForOps(c, noAvailableAccountsReasonNoAccount)
 				c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{
 					"type":    "scheduling_error",
-					"message": "No available accounts",
+					"message": noAvailableAccountsClientMessage,
 				}})
 				return
 			}
@@ -216,9 +218,11 @@ func (h *GatewayHandler) WebSearch(c *gin.Context) {
 		return
 	}
 	if account == nil {
+		markOpsRoutingCapacityLimited(c)
+		recordNoAvailableAccountsReasonForOps(c, noAvailableAccountsReasonNoAccount)
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": gin.H{
 			"type":    "scheduling_error",
-			"message": "No available accounts",
+			"message": noAvailableAccountsClientMessage,
 		}})
 		return
 	}
