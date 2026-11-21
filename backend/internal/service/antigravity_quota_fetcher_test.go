@@ -606,7 +606,7 @@ func TestFetchQuota_QueriesForwardEndpoint(t *testing.T) {
 		planType        string
 		envOverride     string
 		wantDaily       bool
-		wantUtilization int
+		wantUtilization float64
 		wantGroupUtil   float64
 	}{
 		{
