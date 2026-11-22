@@ -147,3 +147,37 @@ func TestCodexPoolQuotaIndependentWindowAndResetCredits(t *testing.T) {
 	require.True(t, admissible)
 	require.True(t, got.IsZero(), "a model-specific quota cannot affect another model")
 }
+
+func TestCodexPoolQuotaGuardianAffinityIsNotExclusive(t *testing.T) {
+	now := time.Now()
+	parent := quotaTestAccount(1, now, now.Add(time.Hour), now.Add(time.Hour), true)
+	other := Account{ID: 2, Platform: PlatformOpenAI, Status: StatusActive, Type: AccountTypeOAuth, Schedulable: true}
+	repo := &codexPoolQuotaAccounts{accounts: []Account{parent, other}}
+	s := &OpenAIGatewayService{
+		accountRepo: repo,
+		cache:       &stubGatewayCache{sessionBindings: map[string]int64{"openai:guardian-parent-session": parent.ID}},
+	}
+	groupID := int64(5)
+	ctx := context.WithValue(context.Background(), openAIGuardianParentAffinityContextKey{}, openAIGuardianParentAffinity{currentSessionHash: "guardian-parent-session"})
+	require.Equal(t, parent.ID, s.resolveOpenAIGuardianParentAccountID(ctx, &groupID))
+	require.True(t, s.EarliestCodexPoolQuotaReset(ctx, CodexPoolQuotaRequest{GroupID: &groupID, Model: "gpt-5.1", Transport: OpenAIUpstreamTransportAny}).IsZero())
+}
+
+func TestCodexPoolQuotaIgnoresQuarantinedProxies(t *testing.T) {
+	now := time.Now()
+	early := now.Add(time.Hour)
+	late := now.Add(2 * time.Hour)
+	proxyID := int64(42)
+	quarantined := quotaTestAccount(1, now, early, early, true)
+	quarantined.ProxyID = &proxyID
+	availableViaQuarantinedProxy := Account{ID: 2, Platform: PlatformOpenAI, Status: StatusActive, Type: AccountTypeOAuth, Schedulable: true, ProxyID: &proxyID}
+	eligible := quotaTestAccount(3, now, late, late, true)
+	s := &OpenAIGatewayService{accountRepo: &codexPoolQuotaAccounts{accounts: []Account{quarantined, availableViaQuarantinedProxy, eligible}}}
+	s.openaiProxyStreamCircuit = newOpenAIProxyStreamCircuit(openAIProxyStreamCircuitSettings{
+		failureThreshold: 1, failureWindow: time.Minute, quarantineTTL: 10 * time.Minute, maxEntries: 16,
+	})
+	s.openaiProxyStreamCircuit.recordFailure(proxyID, now)
+	groupID := int64(5)
+	reset := s.EarliestCodexPoolQuotaReset(context.Background(), CodexPoolQuotaRequest{GroupID: &groupID, Model: "gpt-5.1", Transport: OpenAIUpstreamTransportAny})
+	require.True(t, reset.Equal(late), "got %v, want %v", reset, late)
+}

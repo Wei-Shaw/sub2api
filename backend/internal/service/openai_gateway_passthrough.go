@@ -18,6 +18,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
@@ -1047,19 +1048,6 @@ func openAIStreamClientOutputStarted(c *gin.Context, localStarted bool) bool {
 	return OpenAICompactKeepaliveAdjustedWrittenSize(c) >= 0
 }
 
-// Lifecycle metadata and transport heartbeats are not model output.
-func openAIStreamEventIsMetadata(eventType string) bool {
-	switch strings.TrimSpace(eventType) {
-	// Queuing and moderation metadata do not commit model output or disarm the
-	// first-output timeout; a following overload must remain safe to retry.
-	case "response.created", "response.queued", "response.in_progress", "response.metadata",
-		"codex.rate_limits", "codex.response.metadata", "keepalive":
-		return true
-	default:
-		return false
-	}
-}
-
 func openAIStreamAddedEventStartsClientOutput(payload []byte, eventType string) bool {
 	if len(payload) == 0 || !gjson.ValidBytes(payload) {
 		return true
@@ -1171,7 +1159,7 @@ func openAIStreamDataStartsClientOutput(data, eventType string) bool {
 		value := gjson.Get(trimmed, field)
 		return value.Type != gjson.String || value.String() != ""
 	}
-	return !openAIStreamEventIsMetadata(eventType)
+	return !openai.IsResponsesMetadataEvent(eventType)
 }
 
 func openAIStreamItemHasVisibleOutput(item gjson.Result) bool {
@@ -1249,7 +1237,7 @@ func openAIStreamDataStartsSemanticTTFT(data, eventType string) bool {
 		payload := []byte(trimmed)
 		return !openAIStreamFailedEventShouldFailover(payload, extractOpenAISSEErrorMessage(payload))
 	default:
-		return !openAIStreamEventIsMetadata(eventType)
+		return !openai.IsResponsesMetadataEvent(eventType)
 	}
 }
 

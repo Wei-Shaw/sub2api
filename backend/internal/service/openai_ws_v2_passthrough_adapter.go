@@ -903,8 +903,8 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		)
 		s.handleOpenAIWSDialTransientFailure(ctx, account, capturedSessionModel, dialErr)
 		if statusCode == http.StatusTooManyRequests {
-			s.persistOpenAIWSRateLimitSignal(ctx, account, handshakeHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(err.Error()), capturedSessionModel)
-			return s.newOpenAIWSRateLimitFailoverError(account, handshakeHeaders, nil, err.Error())
+			s.persistOpenAIWSHandshakeRateLimit(ctx, account, dialErr, capturedSessionModel)
+			return s.newOpenAIWSRateLimitFailoverError(account, handshakeHeaders, responseBody, err.Error())
 		}
 		return s.mapOpenAIWSPassthroughDialError(err, statusCode, handshakeHeaders)
 	}
@@ -1283,7 +1283,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				_ = clientConn.Close(status, reason)
 				_ = clientConn.CloseNow()
 			},
-			BeforeWriteClient: func(msgType coderws.MessageType, payload []byte, wroteDownstream bool) error {
+			BeforeWriteClient: func(msgType coderws.MessageType, payload []byte, output openaiwsv2.TurnOutput) error {
 				if msgType != coderws.MessageText {
 					return nil
 				}
@@ -1295,17 +1295,30 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					return nil
 				}
 				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(payload)
-				isPreOutputRateLimit := eventType == "error" && !wroteDownstream && isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw)
-				if (eventType == "error" || eventType == "response.failed") && !failureAccountSideEffectsApplied && !isPreOutputRateLimit {
-					failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, account, capturedSessionModel, handshakeHeaders, payload)
-				}
-				if eventType != "error" {
+				isRateLimit := eventType == "error" && isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw)
+				if !isRateLimit || output == openaiwsv2.TurnOutputSemantic {
+					if (eventType == "error" || eventType == "response.failed") && !failureAccountSideEffectsApplied {
+						failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, account, capturedSessionModel, handshakeHeaders, payload)
+					}
 					return nil
 				}
-				if wroteDownstream || !isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw) {
+				_, currentUpstreamModel := usageMeta.turnModels(capturedSessionModel)
+				if output != openaiwsv2.TurnOutputNone && !failureAccountSideEffectsApplied {
+					failureAccountSideEffectsApplied = s.handleOpenAIWSFailureAccountSideEffects(ctx, account, currentUpstreamModel, handshakeHeaders, payload)
+				}
+				if !failureAccountSideEffectsApplied || output == openaiwsv2.TurnOutputNone {
+					s.persistOpenAIWSEventRateLimit(ctx, account, handshakeHeaders, payload, errCodeRaw, errTypeRaw, errMsgRaw, currentUpstreamModel)
+				}
+				failureAccountSideEffectsApplied = true
+				completed := completedTurns.Load()
+				if (completed > 0 || output != openaiwsv2.TurnOutputNone) && hooks != nil && hooks.OnQuotaFailure != nil {
+					if written, _ := hooks.OnQuotaFailure(int(completed) + 1); written {
+						return NewOpenAIWSClientCloseError(coderws.StatusNormalClosure, "", nil)
+					}
+				}
+				if output != openaiwsv2.TurnOutputNone {
 					return nil
 				}
-				s.persistOpenAIWSRateLimitSignal(ctx, account, handshakeHeaders, payload, errCodeRaw, errTypeRaw, errMsgRaw, capturedSessionModel)
 				logOpenAIWSV2Passthrough(
 					"relay_rate_limit_failover account_id=%d err_code=%s err_type=%s err_message=%s",
 					account.ID,
@@ -1313,10 +1326,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					truncateOpenAIWSLogValue(errTypeRaw, openAIWSLogValueMaxLen),
 					truncateOpenAIWSLogValue(errMsgRaw, openAIWSLogValueMaxLen),
 				)
-				if completed := completedTurns.Load(); completed > 0 {
-					if hooks != nil && hooks.OnLaterQuotaFailure != nil && hooks.OnLaterQuotaFailure(int(completed)+1) {
-						return NewOpenAIWSClientCloseError(coderws.StatusNormalClosure, "", nil)
-					}
+				if completed > 0 {
 					return NewOpenAIWSClientCloseError(
 						coderws.StatusTryAgainLater,
 						"upstream rate limit exceeded; please reconnect",

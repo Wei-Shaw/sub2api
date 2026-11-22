@@ -579,3 +579,65 @@ func TestOpenAIWSRateLimitFailoverError_OAuthKeepsSameAccountDeadline(t *testing
 	require.True(t, apiKeyErr.SameAccountRetryDeadline.IsZero())
 	require.Zero(t, apiKeyErr.SameAccountRetryDelay)
 }
+
+type codexQuotaUpgradeTestDialer struct {
+	url string
+}
+
+func (d codexQuotaUpgradeTestDialer) Dial(ctx context.Context, _ string, headers http.Header, _ string) (openAIWSClientConn, int, http.Header, error) {
+	return newDefaultOpenAIWSClientDialer().Dial(ctx, d.url, headers, "")
+}
+
+type codexQuotaUpgradeTestRepo struct {
+	openAIWSRateLimitSignalRepo
+	reset    time.Time
+	explicit bool
+}
+
+func (r *codexQuotaUpgradeTestRepo) SetCodexQuotaRateLimited(_ context.Context, _ int64, _ time.Time, reset time.Time, explicit bool) error {
+	r.reset, r.explicit = reset, explicit
+	return nil
+}
+
+func TestCodexPoolQuotaPersistsRejectedWebSocketUpgradeBody(t *testing.T) {
+	reset := time.Now().Add(time.Hour).UTC().Truncate(time.Second)
+	body := `{"error":{"type":"usage_limit_reached","resets_at":` + strconv.FormatInt(reset.Unix(), 10) + `}}`
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, body)
+	}))
+	defer upstream.Close()
+	dialer := codexQuotaUpgradeTestDialer{url: "ws" + strings.TrimPrefix(upstream.URL, "http")}
+	for _, mode := range []string{OpenAIWSIngressModeCtxPool, OpenAIWSIngressModePassthrough} {
+		t.Run(mode, func(t *testing.T) {
+			cfg := passthroughLifecycleConfig()
+			cfg.Gateway.OpenAIWS.OAuthEnabled = true
+			svc := newPassthroughLifecycleService(cfg, nil)
+			svc.openaiWSPassthroughDialer = dialer
+			svc.openaiWSPool = newOpenAIWSConnPool(cfg)
+			svc.openaiWSPool.setClientDialerForTest(dialer)
+			account := passthroughLifecycleAccount()
+			account.Type = AccountTypeOAuth
+			account.Extra = map[string]any{"openai_oauth_responses_websockets_v2_mode": mode}
+			repo := &codexQuotaUpgradeTestRepo{}
+			svc.accountRepo = repo
+			svc.rateLimitService = NewRateLimitService(repo, nil, cfg, nil, nil)
+			server, serverErr := startPassthroughLifecycleServer(t, context.Background(), svc, account)
+			defer server.Close()
+			conn := dialPassthroughLifecycleClient(t, server)
+			defer conn.CloseNow()
+			select {
+			case err := <-serverErr:
+				var failover *UpstreamFailoverError
+				require.ErrorAs(t, err, &failover)
+				require.Equal(t, http.StatusTooManyRequests, failover.StatusCode)
+				require.JSONEq(t, body, string(failover.ResponseBody))
+				require.True(t, repo.explicit)
+				require.True(t, repo.reset.Equal(reset), "got %v, want %v", repo.reset, reset)
+			case <-time.After(5 * time.Second):
+				t.Fatal("rejected upgrade did not finish")
+			}
+		})
+	}
+}

@@ -1053,7 +1053,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 			if time.Since(lastDownstreamWriteAt) < keepaliveInterval {
 				continue
 			}
-			if stageFirstOutput && deferCodexPoolQuotaHTTPCommit(c) {
+			if stageFirstOutput && !w.Written() && deferCodexPoolQuotaHTTPCommit(c) {
 				continue
 			}
 			if stageFirstOutput {

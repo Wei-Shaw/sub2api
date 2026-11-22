@@ -722,9 +722,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 						return fmt.Errorf("build websocket current-turn failover payload: %w", retryPayloadErr)
 					}
 					if !retrySafe {
-						if failoverErr.StatusCode == http.StatusTooManyRequests && hooks != nil &&
-							hooks.OnLaterQuotaFailure != nil && hooks.OnLaterQuotaFailure(turn) {
-							return NewOpenAIWSClientCloseError(coderws.StatusNormalClosure, "", nil)
+						if failoverErr.StatusCode == http.StatusTooManyRequests && hooks != nil && hooks.OnQuotaFailure != nil {
+							if written, _ := hooks.OnQuotaFailure(turn); written {
+								return NewOpenAIWSClientCloseError(coderws.StatusNormalClosure, "", nil)
+							}
 						}
 						retryPayload = nil
 					}
@@ -923,8 +924,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			)
 			var dialErr *openAIWSDialError
 			if errors.As(acquireErr, &dialErr) && dialErr != nil && dialErr.StatusCode == http.StatusTooManyRequests {
-				s.persistOpenAIWSRateLimitSignal(ctx, account, dialErr.ResponseHeaders, nil, "rate_limit_exceeded", "rate_limit_error", strings.TrimSpace(acquireErr.Error()), canonicalModel)
-				return nil, s.newOpenAIWSRateLimitFailoverError(account, dialErr.ResponseHeaders, nil, acquireErr.Error())
+				s.persistOpenAIWSHandshakeRateLimit(ctx, account, dialErr, canonicalModel)
+				return nil, s.newOpenAIWSRateLimitFailoverError(account, dialErr.ResponseHeaders, dialErr.ResponseBody, acquireErr.Error())
 			}
 			if errors.Is(acquireErr, errOpenAIWSPreferredConnUnavailable) {
 				return nil, NewOpenAIWSClientCloseError(
@@ -979,6 +980,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		}
 		turnStart := time.Now()
 		wroteDownstream := false
+		wroteSemanticOutput := false
 		if err := lease.WriteJSONWithContextTimeout(ctx, json.RawMessage(payload), s.openAIWSWriteTimeout()); err != nil {
 			return nil, wrapOpenAIWSIngressTurnError(
 				"write_upstream",
@@ -1085,7 +1087,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 						}
 					}
 				}
-				s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), upstreamMessage, errCodeRaw, errTypeRaw, errMsgRaw, mappedModel)
+				s.persistOpenAIWSEventRateLimit(ctx, account, lease.HandshakeHeaders(), upstreamMessage, errCodeRaw, errTypeRaw, errMsgRaw, mappedModel)
 				fallbackReason, _ := classifyOpenAIWSErrorEventFromRaw(errCodeRaw, errTypeRaw, errMsgRaw)
 				if fallbackReason == openAIWSFallbackReasonInvalidEncryptedContent {
 					// 记录被上游拒绝的密文摘要；错误照旧透传，下一轮进场时按摘要预剥离。
@@ -1155,15 +1157,24 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 						false,
 					)
 				}
-				if !wroteDownstream && isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw) {
-					lease.MarkBroken()
-					if turn > 1 && hooks != nil && hooks.OnLaterQuotaFailure != nil {
-						if hooks.OnLaterQuotaFailure(turn) {
+				if !wroteSemanticOutput && isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw) {
+					// Metadata permits a terminal error, but any downstream frame
+					// prevents replaying this request on another upstream connection.
+					if (turn > 1 || wroteDownstream) && hooks != nil && hooks.OnQuotaFailure != nil {
+						written, enabled := hooks.OnQuotaFailure(turn)
+						if written {
+							lease.MarkBroken()
 							return nil, NewOpenAIWSClientCloseError(coderws.StatusNormalClosure, "", nil)
 						}
-						return nil, NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "upstream rate limit exceeded; please reconnect", nil)
+						if enabled && !wroteDownstream {
+							lease.MarkBroken()
+							return nil, NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "upstream rate limit exceeded; please reconnect", nil)
+						}
 					}
-					return nil, s.newOpenAIWSRateLimitFailoverError(account, lease.HandshakeHeaders(), upstreamMessage, errMsgRaw)
+					if !wroteDownstream {
+						lease.MarkBroken()
+						return nil, s.newOpenAIWSRateLimitFailoverError(account, lease.HandshakeHeaders(), upstreamMessage, errMsgRaw)
+					}
 				}
 			}
 			isTokenEvent := isOpenAIWSTokenEvent(eventType)
@@ -1228,6 +1239,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 					}
 				} else {
 					wroteDownstream = true
+					wroteSemanticOutput = wroteSemanticOutput || !openai.IsResponsesMetadataEvent(eventType)
 					markOpenAIWSClientVisibleFailure(c, eventType, upstreamMessage)
 				}
 			}

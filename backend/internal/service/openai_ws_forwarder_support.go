@@ -132,7 +132,7 @@ func (s *OpenAIGatewayService) performOpenAIWSGeneratePrewarm(
 		if eventType == "error" {
 			errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(message)
 			prewarmModel, _ := reqBody["model"].(string)
-			s.persistOpenAIWSRateLimitSignal(ctx, account, lease.HandshakeHeaders(), message, errCodeRaw, errTypeRaw, errMsgRaw, prewarmModel)
+			s.persistOpenAIWSEventRateLimit(ctx, account, lease.HandshakeHeaders(), message, errCodeRaw, errTypeRaw, errMsgRaw, prewarmModel)
 			errMsg := strings.TrimSpace(errMsgRaw)
 			if errMsg == "" {
 				errMsg = "OpenAI websocket prewarm error"
@@ -687,7 +687,7 @@ func isOpenAIWSRateLimitError(codeRaw, errTypeRaw, msgRaw string) bool {
 	return false
 }
 
-func (s *OpenAIGatewayService) persistOpenAIWSRateLimitSignal(ctx context.Context, account *Account, headers http.Header, responseBody []byte, codeRaw, errTypeRaw, msgRaw string, canonicalModel ...string) {
+func (s *OpenAIGatewayService) persistOpenAIWSEventRateLimit(ctx context.Context, account *Account, headers http.Header, responseBody []byte, codeRaw, errTypeRaw, msgRaw string, canonicalModel ...string) {
 	if s == nil || s.rateLimitService == nil || account == nil || account.Platform != PlatformOpenAI {
 		return
 	}
@@ -698,13 +698,16 @@ func (s *OpenAIGatewayService) persistOpenAIWSRateLimitSignal(ctx context.Contex
 	if model == "" {
 		model = firstNonEmpty(gjson.GetBytes(responseBody, "model").String(), gjson.GetBytes(responseBody, "response.model").String())
 	}
-	// 非空 responseBody 表示已建立连接后收到的语义错误事件；握手响应头
-	// 可能只是成功连接时的全局快照，不能用于普通模型的 429 账号级限流。
-	// 实际拨号 HTTP 429 使用 nil responseBody，必须保留响应头。
-	if len(responseBody) > 0 {
-		headers = openAIWSSemantic429Headers(account, model, headers)
+	s.handleOpenAIAccountUpstreamError(ctx, account, http.StatusTooManyRequests, openAIWSSemantic429Headers(account, model, headers), responseBody, model)
+}
+
+// A rejected upgrade is an HTTP response. Its headers and body both belong to
+// the 429, unlike headers from a successful upgrade followed by a WS error.
+func (s *OpenAIGatewayService) persistOpenAIWSHandshakeRateLimit(ctx context.Context, account *Account, err *openAIWSDialError, model string) {
+	if s == nil || s.rateLimitService == nil || account == nil || account.Platform != PlatformOpenAI || err == nil || err.StatusCode != http.StatusTooManyRequests {
+		return
 	}
-	s.handleOpenAIAccountUpstreamError(ctx, account, http.StatusTooManyRequests, headers, responseBody, model)
+	s.handleOpenAIAccountUpstreamError(ctx, account, err.StatusCode, err.ResponseHeaders, err.ResponseBody, model)
 }
 
 func openAIWSSemantic429Headers(account *Account, model string, headers http.Header) http.Header {

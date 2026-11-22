@@ -53,9 +53,6 @@ func (s *OpenAIGatewayService) EarliestCodexPoolQuotaReset(ctx context.Context, 
 			return time.Time{}
 		}
 	}
-	if pinnedAccountID == 0 && req.PreviousResponseID == "" {
-		pinnedAccountID = s.resolveOpenAIGuardianParentAccountID(ctx, req.GroupID)
-	}
 	accounts, err := s.accountRepo.ListModelAvailabilityCandidates(ctx, groupID, []string{PlatformOpenAI}, includeGrouped)
 	if err != nil {
 		return time.Time{}
@@ -75,6 +72,7 @@ func (s *OpenAIGatewayService) EarliestCodexPoolQuotaReset(ctx context.Context, 
 			s.openAIGroupRequiresPrivacySet(ctx, req.GroupID) && !account.IsPrivacySet() ||
 			!s.isOpenAIAccountTransportCompatible(account, req.Transport) ||
 			!parentHealthyForShadow(account, s.parentAccountLookup(ctx)) ||
+			s.isOpenAIProxyStreamQuarantined(ctx, account) ||
 			checkUpstream && s.isUpstreamModelRestrictedByChannel(ctx, *req.GroupID, account, req.Model, false) {
 			continue
 		}

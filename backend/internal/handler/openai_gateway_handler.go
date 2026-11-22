@@ -2869,19 +2869,23 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		requiredCapability = service.OpenAIEndpointCapabilityResponses
 	}
 
-	poolQuotaWS := codexPoolQuotaEnabled(apiKey) && requestPlatform == service.PlatformOpenAI
+	supportsPoolQuotaWS := requestPlatform == service.PlatformOpenAI
+	poolQuotaKey := apiKey
 	var replayQuotaRoute *service.CodexPoolQuotaRequest
-	writePoolQuotaWS := func() bool {
-		if !poolQuotaWS {
-			return false
+	poolQuotaRequest := func() service.CodexPoolQuotaRequest {
+		if replayQuotaRoute != nil {
+			return *replayQuotaRoute
 		}
-		req := service.CodexPoolQuotaRequest{
+		return service.CodexPoolQuotaRequest{
 			GroupID: apiKey.GroupID, Model: wsForwardModel, PreviousResponseID: previousResponseID,
 			PreviousResponseCanMove: previousResponseCanMove, Transport: requiredTransport, Capability: requiredCapability,
 		}
-		if replayQuotaRoute != nil {
-			req = *replayQuotaRoute
+	}
+	writePoolQuotaWS := func() bool {
+		if !supportsPoolQuotaWS || !codexPoolQuotaEnabled(poolQuotaKey) {
+			return false
 		}
+		req := poolQuotaRequest()
 		req.FailedAccounts = failedAccountIDs
 		if !h.writeCodexPoolQuotaWS(ctx, c, wsConn, req) {
 			return false
@@ -3162,8 +3166,13 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 则关闭整条连接，与推理强度 deny 一致。实际生效模型始终参与校验；
 				// 帧内重复 model 键/大小写变体/嵌套 session.model 额外逐一校验，
 				// 防止候选集非空时掩盖被轮换掉的禁用模型。
-				if poolQuotaWS {
-					coverage := service.AnalyzeToolCallOutputContextCoverageBytes(payload)
+				if supportsPoolQuotaWS {
+					previous := strings.TrimSpace(gjson.GetBytes(payload, "previous_response_id").String())
+					canMove := true
+					if previous != "" {
+						coverage := service.AnalyzeToolCallOutputContextCoverageBytes(payload)
+						canMove = !coverage.HasFunctionCallOutput || coverage.ContextCoversAllCallIDs
+					}
 					quotaModel := model
 					if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
 						quotaModel = wsRouteModel
@@ -3173,10 +3182,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					}
 					capability := openAIResponsesRequiredCapabilityForRequest(service.IsExplicitImageGenerationIntent("/v1/responses", model, payload), false, requestPlatform)
 					quotaRoute.Store(&quotaTurnRoute{turn: turn, req: service.CodexPoolQuotaRequest{
-						GroupID: apiKey.GroupID, Model: quotaModel, PreviousResponseID: strings.TrimSpace(gjson.GetBytes(payload, "previous_response_id").String()),
-						PreviousResponseCanMove: !coverage.HasFunctionCallOutput || coverage.ContextCoversAllCallIDs,
+						GroupID: apiKey.GroupID, Model: quotaModel, PreviousResponseID: previous,
+						PreviousResponseCanMove: canMove,
 						Transport:               requiredTransport, Capability: capability,
-						FailedAccounts: map[int64]struct{}{account.ID: {}},
 					}})
 				}
 				frameModelCandidates := requestmodel.FromBodyCandidates("", "application/json", payload)
@@ -3393,15 +3401,28 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		// 说明该会话链不属于本次调度到的账号，原样转发会触发上游会话链鉴权失败（“鉴权失败，请检查 API Key”）。
 		// 故剥离首包里的 previous_response_id，改用首包内 input 重建上下文；带 function_call_output 的
 		// 工具续链无法重建，保持原样。仅作用于首轮首包，后续 turn 的续链由 WS 转发层既有逻辑处理。
-		if poolQuotaWS {
-			hooks.OnLaterQuotaFailure = func(turn int) bool {
-				route := quotaRoute.Load()
-				turnKey := turnBillingAPIKeys.forTurn(turn, apiKey)
-				if route == nil || route.turn != turn || !codexPoolQuotaEnabled(turnKey) {
-					return false
+		if supportsPoolQuotaWS {
+			hooks.OnQuotaFailure = func(turn int) (bool, bool) {
+				turnKey := turnBillingAPIKeys.forTurn(turn, poolQuotaKey)
+				if !codexPoolQuotaEnabled(turnKey) {
+					return false, false
+				}
+				req := poolQuotaRequest()
+				if turn > 1 {
+					route := quotaRoute.Load()
+					if route == nil || route.turn != turn {
+						return false, true
+					}
+					req = route.req
+				}
+				req.FailedAccounts = map[int64]struct{}{account.ID: {}}
+				if turn == 1 {
+					for id := range failedAccountIDs {
+						req.FailedAccounts[id] = struct{}{}
+					}
 				}
 				turnCtx, _ := h.gatewayService.WithOpenAITurnPricingContext(withOpenAIWSTurnBillingGroup(ctx, turnKey), apiKey.GroupID)
-				return h.writeCodexPoolQuotaWS(turnCtx, c, wsConn, route.req)
+				return h.writeCodexPoolQuotaWS(turnCtx, c, wsConn, req), true
 			}
 		}
 		if previousResponseID != "" && !scheduleDecision.StickyPreviousHit && previousResponseCanMove {
@@ -3445,6 +3466,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 						req := route.req
 						req.PreviousResponseID = ""
 						replayQuotaRoute = &req
+						poolQuotaKey = turnBillingAPIKeys.forTurn(route.turn, poolQuotaKey)
 					}
 					reqLog.Warn("openai.websocket_current_turn_failover_retry",
 						zap.Int64("account_id", account.ID),
