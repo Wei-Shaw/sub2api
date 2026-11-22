@@ -24,7 +24,7 @@ import (
 )
 
 func TestGrokImageEditLocalValidationSyncAndAsync(t *testing.T) {
-	enableGrokMediaValidationTestScheduler(t)
+	service.EnableOpenAIAdvancedSchedulerForTest(t)
 	for _, oauth := range []bool{false, true} {
 		for _, async := range []bool{false, true} {
 			for _, format := range []string{"json", "multipart"} {
@@ -130,7 +130,7 @@ func grokImageEditLimitBody(t *testing.T, format string, count int) ([]byte, str
 }
 
 func TestGrokImageEditInternalAndRetryableErrorsRemainUpstreamErrors(t *testing.T) {
-	enableGrokMediaValidationTestScheduler(t)
+	service.EnableOpenAIAdvancedSchedulerForTest(t)
 	for _, retryable := range []bool{false, true} {
 		t.Run(fmt.Sprintf("retryable=%t", retryable), func(t *testing.T) {
 			h, slots, _, upstream := newGrokMediaSlotHandler(t, false, false)
@@ -164,25 +164,8 @@ func TestGrokImageEditInternalAndRetryableErrorsRemainUpstreamErrors(t *testing.
 	}
 }
 
-type grokMediaValidationSettingsRepo struct {
-	service.SettingRepository
-}
-
 func (grokMediaSlotRepo) SetTempUnschedulable(context.Context, int64, time.Time, string) error {
 	return nil
-}
-
-func (*grokMediaValidationSettingsRepo) SetMultiple(context.Context, map[string]string) error {
-	return nil
-}
-
-func enableGrokMediaValidationTestScheduler(t *testing.T) {
-	t.Helper()
-	settings := service.NewSettingService(&grokMediaValidationSettingsRepo{}, nil)
-	require.NoError(t, settings.UpdateSettings(context.Background(), &service.SystemSettings{OpenAIAdvancedSchedulerEnabled: true}))
-	t.Cleanup(func() {
-		require.NoError(t, settings.UpdateSettings(context.Background(), &service.SystemSettings{}))
-	})
 }
 
 func TestGrokImagesPreservesUpstreamErrorOnSyncAndAsyncRoutes(t *testing.T) {
