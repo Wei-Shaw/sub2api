@@ -952,6 +952,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 	}
 
 	completedTurns := atomic.Int32{}
+	var quotaRouteIndependent atomic.Bool
 	turnLifecycle := newOpenAIWSPassthroughTurnLifecycle(true)
 	var acceptedTurnStartedAt atomic.Pointer[time.Time]
 	clientFrameConn := &openAIWSClientFrameConn{
@@ -1119,6 +1120,9 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			//     service_tier 时按 default 处理，billing 应如实反映。
 			if policyErr == nil && blocked == nil && isResponseCreate {
 				usageMeta.updateFromResponseCreate(out, model, requestModelForThisFrame)
+				if hooks != nil && hooks.OnQuotaFailure != nil {
+					quotaRouteIndependent.Store(openAIWSQuotaRouteIndependent(out))
+				}
 				_, actualModel := usageMeta.turnModels(requestModelForThisFrame)
 				SetOpsUpstreamModel(c, actualModel)
 				responseCreateAtCopy := responseCreateAt
@@ -1312,8 +1316,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				failureAccountSideEffectsApplied = true
 				completed := completedTurns.Load()
 				if (completed > 0 || output != openaiwsv2.TurnOutputNone) && hooks != nil && hooks.OnQuotaFailure != nil {
-					if written, _ := hooks.OnQuotaFailure(int(completed) + 1); written {
+					written, enabled := hooks.OnQuotaFailure(int(completed)+1, completed > 0 && quotaRouteIndependent.Load())
+					if written {
 						return NewOpenAIWSClientCloseError(coderws.StatusNormalClosure, "", nil)
+					}
+					if enabled && output != openaiwsv2.TurnOutputNone {
+						return NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "upstream rate limit exceeded; please reconnect", nil)
 					}
 				}
 				if output != openaiwsv2.TurnOutputNone {

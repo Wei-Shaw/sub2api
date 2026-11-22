@@ -122,27 +122,31 @@ func (s *OpenAIGatewayService) codexQuotaCandidateReset(ctx context.Context, acc
 		return time.Time{}, false
 	}
 
-	paused, decision := evaluateOpenAIAccountQuotaPause(ctx, account, false)
-	if paused && decision.reason != "" && !openAIAutoResetNoCreditConfirmed(openAIAutoResetStateFromExtra(account.Extra), now) {
-		// A reset may be evaluated or redeemed before the natural window ends.
-		return time.Time{}, false
-	}
-	if paused {
+	for decision := range openAIAccountQuotaPauseDecisions(ctx, account, now) {
+		if decision.reason != "" && !openAIAutoResetNoCreditConfirmed(openAIAutoResetStateFromExtra(account.Extra), now) {
+			// A reset may be evaluated or redeemed before the natural window ends.
+			return time.Time{}, false
+		}
 		windowReset := codexPausedWindowReset(account, decision.window, decision.utilization, now)
 		if windowReset.IsZero() {
 			return time.Time{}, false
 		}
 		reset = laterQuotaReset(reset, windowReset)
 	}
-	if decision := EvaluateAccountSchedulingThreshold(account, thresholds, now); thresholds != nil && decision.ShouldPause {
-		windowReset := codexPausedWindowReset(account, decision.Window, decision.UsedPercent, now)
-		if windowReset.IsZero() {
-			return time.Time{}, false
-		}
-		reset = laterQuotaReset(reset, windowReset)
-		if IsAccountSchedulingThresholdReason(remaining.TempUnschedulableReason) &&
-			remaining.TempUnschedulableUntil != nil && !remaining.TempUnschedulableUntil.After(reset) {
-			remaining.TempUnschedulableUntil = nil
+	if threshold, ok := resolveEffectiveAccountSchedulingThreshold(account, thresholds, PlatformOpenAI); thresholds != nil && ok && threshold < 100 {
+		for _, candidate := range openAIThresholdCandidates(account, now) {
+			if !candidateMatchesThreshold(candidate, threshold, now) {
+				continue
+			}
+			windowReset := codexPausedWindowReset(account, candidate.window, candidate.usedPercent/100, now)
+			if windowReset.IsZero() {
+				return time.Time{}, false
+			}
+			reset = laterQuotaReset(reset, windowReset)
+			if IsAccountSchedulingThresholdReason(remaining.TempUnschedulableReason) &&
+				remaining.TempUnschedulableUntil != nil && !remaining.TempUnschedulableUntil.After(reset) {
+				remaining.TempUnschedulableUntil = nil
+			}
 		}
 	}
 	if openAICompatibleAccountEligibilityFailureReasonWithQuotaPause(ctx, &remaining, PlatformOpenAI, req.Model, false, req.Capability, false) != "" {
@@ -165,7 +169,7 @@ func (s *OpenAIGatewayService) codexQuotaCandidateReset(ctx context.Context, acc
 	if (!isCodexSparkModel(account.GetMappedModel(req.Model)) || account.IsShadow()) &&
 		openAICodexSnapshotIdentityTrusted(account) && !codexAccountHasSpendableCredits(account) {
 		for _, window := range []string{"5h", "7d"} {
-			if utilization, ok := resolveOpenAIQuotaUtilization(account.Extra, window, now); ok && utilization >= 100 {
+			if utilization, ok := resolveOpenAIQuotaUtilization(account.Extra, window, now); ok && utilization >= 1 {
 				windowReset := codexPausedWindowReset(account, window, utilization, now)
 				if windowReset.IsZero() {
 					return time.Time{}, false
@@ -180,8 +184,8 @@ func (s *OpenAIGatewayService) codexQuotaCandidateReset(ctx context.Context, acc
 	return reset, false
 }
 
-func codexPausedWindowReset(account *Account, window string, utilization float64, now time.Time) time.Time {
-	if utilization < 100 || !openAICodexSnapshotIdentityTrusted(account) || codexAccountHasSpendableCredits(account) {
+func codexPausedWindowReset(account *Account, window string, utilizationRatio float64, now time.Time) time.Time {
+	if utilizationRatio < 1 || !openAICodexSnapshotIdentityTrusted(account) || codexAccountHasSpendableCredits(account) {
 		return time.Time{}
 	}
 	if reset, ok := openAICodexWindowResetAt(account.Extra, window); ok && reset.After(now) {
@@ -306,6 +310,15 @@ func (s *RateLimitService) setOpenAICodexRateLimited(ctx context.Context, accoun
 		return repo.SetCodexQuotaRateLimited(ctx, account.ID, cooldown, reset, explicit)
 	}
 	return s.accountRepo.SetRateLimited(ctx, account.ID, cooldown)
+}
+
+// A continuation tied to upstream state cannot establish pool availability.
+func openAIWSQuotaRouteIndependent(payload []byte) bool {
+	if len(payload) == 0 || openAIWSPayloadStringFromRaw(payload, "previous_response_id") != "" {
+		return false
+	}
+	coverage := AnalyzeToolCallOutputContextCoverageBytes(payload)
+	return !coverage.HasFunctionCallOutput || coverage.ContextCoversAllCallIDs
 }
 
 type codexPoolQuotaHTTPKey struct{}

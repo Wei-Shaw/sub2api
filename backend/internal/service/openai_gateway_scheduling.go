@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"iter"
 	"log/slog"
 	"sort"
 	"strconv"
@@ -535,71 +536,71 @@ func grokQuotaSnapshotStaleForPause(snapshot *xai.QuotaSnapshot, now time.Time) 
 }
 
 func shouldAutoPauseOpenAIAccountByQuota(ctx context.Context, account *Account) (bool, openAIQuotaAutoPauseDecision) {
-	return evaluateOpenAIAccountQuotaPause(ctx, account, true)
-}
-
-func evaluateOpenAIAccountQuotaPause(ctx context.Context, account *Account, notify bool) (bool, openAIQuotaAutoPauseDecision) {
-	if account == nil || !account.IsOpenAI() {
-		return false, openAIQuotaAutoPauseDecision{}
-	}
-	// 自动用卡有独立阈值：达到消费阈值时必须先退出调度；仅达到普通暂停阈值时，
-	// 只有新鲜状态明确存在可用卡才继续放行到消费阈值。
-	if config := ResolveOpenAIAutoResetCreditConfig(account); config.Enabled {
-		now := time.Now()
-		utilization5h, has5h := resolveOpenAIQuotaUtilization(account.Extra, "5h", now)
-		utilization7d, has7d := resolveOpenAIQuotaUtilization(account.Extra, "7d", now)
-		if has5h && utilization5h >= config.Threshold5h {
-			if notify {
-				notifyOpenAIAutoResetFromScheduler(account.ID)
-			}
-			return true, openAIQuotaAutoPauseDecision{window: "5h", threshold: config.Threshold5h, utilization: utilization5h, reason: "quota_auto_reset_pending_5h"}
+	for decision := range openAIAccountQuotaPauseDecisions(ctx, account, time.Now()) {
+		if decision.reason != "" {
+			notifyOpenAIAutoResetFromScheduler(account.ID)
 		}
-		if has7d && utilization7d >= config.Threshold7d {
-			if notify {
-				notifyOpenAIAutoResetFromScheduler(account.ID)
-			}
-			return true, openAIQuotaAutoPauseDecision{window: "7d", threshold: config.Threshold7d, utilization: utilization7d, reason: "quota_auto_reset_pending_7d"}
-		}
-
-		disabled5h := resolveAccountExtraBool(account.Extra, "auto_pause_5h_disabled")
-		disabled7d := resolveAccountExtraBool(account.Extra, "auto_pause_7d_disabled")
-		pause5h, pause7d := resolveOpenAIQuotaAutoPauseThresholds(ctx, account)
-		pauseReached5h := !disabled5h && pause5h > 0 && has5h && utilization5h >= pause5h
-		pauseReached7d := !disabled7d && pause7d > 0 && has7d && utilization7d >= pause7d
-		if pauseReached5h || pauseReached7d {
-			state := openAIAutoResetStateFromExtra(account.Extra)
-			if state != nil && state.Status == OpenAIAutoResetStatusAvailable && state.AvailableCount > 0 && !openAIAutoResetStateStale(state, now) {
-				return false, openAIQuotaAutoPauseDecision{}
-			}
-			if notify {
-				notifyOpenAIAutoResetFromScheduler(account.ID)
-			}
-			if pauseReached5h {
-				return true, openAIQuotaAutoPauseDecision{window: "5h", threshold: pause5h, utilization: utilization5h, reason: "quota_auto_reset_credit_check_5h"}
-			}
-			return true, openAIQuotaAutoPauseDecision{window: "7d", threshold: pause7d, utilization: utilization7d, reason: "quota_auto_reset_credit_check_7d"}
-		}
-	}
-	// Per-account explicit-disable flags must take precedence over the global default.
-	// Without these, leaving the account threshold blank means "use global default",
-	// so an admin has no way to exempt a single account from auto-pause once a global
-	// default exists. The disable flag is per-window so an account can opt out of
-	// only 5h or only 7d auto-pause.
-	disabled5h := resolveAccountExtraBool(account.Extra, "auto_pause_5h_disabled")
-	disabled7d := resolveAccountExtraBool(account.Extra, "auto_pause_7d_disabled")
-	threshold5h, threshold7d := resolveOpenAIQuotaAutoPauseThresholds(ctx, account)
-	now := time.Now()
-	if !disabled5h && threshold5h > 0 {
-		if utilization, ok := resolveOpenAIQuotaUtilization(account.Extra, "5h", now); ok && utilization >= threshold5h {
-			return true, openAIQuotaAutoPauseDecision{window: "5h", threshold: threshold5h, utilization: utilization}
-		}
-	}
-	if !disabled7d && threshold7d > 0 {
-		if utilization, ok := resolveOpenAIQuotaUtilization(account.Extra, "7d", now); ok && utilization >= threshold7d {
-			return true, openAIQuotaAutoPauseDecision{window: "7d", threshold: threshold7d, utilization: utilization}
-		}
+		return true, decision
 	}
 	return false, openAIQuotaAutoPauseDecision{}
+}
+
+// openAIAccountQuotaPauseDecisions yields blockers in scheduler priority order.
+func openAIAccountQuotaPauseDecisions(ctx context.Context, account *Account, now time.Time) iter.Seq[openAIQuotaAutoPauseDecision] {
+	return func(yield func(openAIQuotaAutoPauseDecision) bool) {
+		if account == nil || !account.IsOpenAI() {
+			return
+		}
+		config := ResolveOpenAIAutoResetCreditConfig(account)
+		pause5h, pause7d := resolveOpenAIQuotaAutoPauseThresholds(ctx, account)
+		windows := [...]struct {
+			name           string
+			pauseThreshold float64
+			resetThreshold float64
+			resetPending   bool
+		}{
+			{name: "5h", pauseThreshold: pause5h, resetThreshold: config.Threshold5h},
+			{name: "7d", pauseThreshold: pause7d, resetThreshold: config.Threshold7d},
+		}
+		// Automatic credit redemption has priority over ordinary quota pauses.
+		if config.Enabled {
+			for i := range windows {
+				window := &windows[i]
+				utilization, ok := resolveOpenAIQuotaUtilization(account.Extra, window.name, now)
+				if ok && utilization >= window.resetThreshold {
+					window.resetPending = true
+					if !yield(openAIQuotaAutoPauseDecision{
+						window: window.name, threshold: window.resetThreshold, utilization: utilization,
+						reason: "quota_auto_reset_pending_" + window.name,
+					}) {
+						return
+					}
+				}
+			}
+		}
+		for _, window := range windows {
+			// An explicit disable takes precedence over the global pause threshold.
+			if window.resetPending || window.pauseThreshold <= 0 ||
+				resolveAccountExtraBool(account.Extra, "auto_pause_"+window.name+"_disabled") {
+				continue
+			}
+			utilization, ok := resolveOpenAIQuotaUtilization(account.Extra, window.name, now)
+			if !(ok && utilization >= window.pauseThreshold) {
+				continue
+			}
+			decision := openAIQuotaAutoPauseDecision{window: window.name, threshold: window.pauseThreshold, utilization: utilization}
+			if config.Enabled {
+				state := openAIAutoResetStateFromExtra(account.Extra)
+				if state != nil && state.Status == OpenAIAutoResetStatusAvailable && state.AvailableCount > 0 && !openAIAutoResetStateStale(state, now) {
+					return
+				}
+				decision.reason = "quota_auto_reset_credit_check_" + window.name
+			}
+			if !yield(decision) {
+				return
+			}
+		}
+	}
 }
 
 // resolveAccountExtraBool reads a bool-like value from account extra, tolerating

@@ -72,6 +72,61 @@ func TestCodexPoolQuotaReset(t *testing.T) {
 	}
 }
 
+func TestCodexPoolQuotaUsageSnapshots(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	short, long := now.Add(time.Hour), now.Add(24*time.Hour)
+	groupID := int64(5)
+	for _, tc := range []struct {
+		name        string
+		used5h      string
+		used7d      string
+		pause5h     float64
+		pause7d     float64
+		thresholds  map[string]int
+		hasCooldown bool
+		want        time.Time
+	}{
+		{name: "5h exhausted by snapshot alone", used5h: "100", used7d: "50", pause5h: 1, want: short},
+		{name: "both windows exhausted by snapshots alone", used5h: "100", used7d: "100", pause5h: 1, pause7d: 1, want: long},
+		{name: "7d exhaustion outlasts recorded 5h cooldown", used5h: "100", used7d: "100", hasCooldown: true, want: long},
+		{name: "early 7d pause with 5h exhaustion", used5h: "100", used7d: "95", pause5h: 1, pause7d: 0.9},
+		{name: "usage just below exhaustion", used5h: "99.99", used7d: "50", pause5h: 0.95},
+		{name: "scheduling threshold uses percentages", used5h: "100", used7d: "50", thresholds: map[string]int{PlatformOpenAI: 90}, want: short},
+		{name: "early 5h scheduling threshold with later 7d exhaustion", used5h: "95", used7d: "100", thresholds: map[string]int{PlatformOpenAI: 90}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			snapshot := ParseCodexRateLimitHeaders(http.Header{
+				"X-Codex-Primary-Used-Percent": {tc.used5h}, "X-Codex-Primary-Window-Minutes": {"300"},
+				"X-Codex-Primary-Reset-After-Seconds": {"3600"},
+				"X-Codex-Secondary-Used-Percent":      {tc.used7d}, "X-Codex-Secondary-Window-Minutes": {"10080"},
+				"X-Codex-Secondary-Reset-After-Seconds": {"86400"},
+			})
+			require.NotNil(t, snapshot)
+			account := Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Status: StatusActive, Schedulable: true}
+			if tc.hasCooldown {
+				account = quotaTestAccount(1, now, short, short, true)
+			}
+			extra := buildCodexUsageExtraUpdates(snapshot, now)
+			if tc.hasCooldown {
+				extra[OpenAICodexQuotaCooldownExtraKey] = account.Extra[OpenAICodexQuotaCooldownExtraKey]
+			}
+			extra["auto_pause_5h_threshold"] = tc.pause5h
+			extra["auto_pause_7d_threshold"] = tc.pause7d
+			account.Extra = extra
+			s := &OpenAIGatewayService{accountRepo: &codexPoolQuotaAccounts{accounts: []Account{account}}}
+			req := CodexPoolQuotaRequest{GroupID: &groupID, Model: "gpt-5.1", Transport: OpenAIUpstreamTransportAny}
+			if tc.thresholds != nil {
+				got, admissible := s.codexQuotaCandidateReset(context.Background(), &account, req, tc.thresholds, now)
+				require.False(t, admissible)
+				require.True(t, got.Equal(tc.want), "got %v, want %v", got, tc.want)
+				return
+			}
+			got := s.EarliestCodexPoolQuotaReset(context.Background(), req)
+			require.True(t, got.Equal(tc.want), "got %v, want %v", got, tc.want)
+		})
+	}
+}
+
 func TestCodexPoolQuotaProof(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	short, long := now.Add(30*time.Minute), now.Add(time.Hour)

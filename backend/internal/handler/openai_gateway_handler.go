@@ -461,8 +461,10 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// body-signal compact：上游 unary 等待期间向下游发 SSE 注释行心跳，防止
 	// 反向代理空闲超时掐断长压缩连接（#3887）。首拍延迟一个心跳间隔，快速
 	// 失败仍走 JSON+状态码链路；未标记客户端流式或间隔为 0 时是 no-op。
+	// HTTP continuations can only use API-key accounts.
 	poolQuotaHTTP := codexPoolQuotaEnabled(apiKey) && isBareOpenAIResponsesPath(c) &&
-		openAICompatibleRequestPlatform(c.Request.Context(), apiKey) == service.PlatformOpenAI
+		openAICompatibleRequestPlatform(c.Request.Context(), apiKey) == service.PlatformOpenAI &&
+		strings.TrimSpace(gjson.GetBytes(body, "previous_response_id").String()) == ""
 	if poolQuotaHTTP {
 		c.Request = c.Request.WithContext(service.WithCodexPoolQuotaHTTP(c.Request.Context()))
 	}
@@ -691,8 +693,8 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	c.Request = c.Request.WithContext(pricingCtx)
 
 	writePoolQuota := func(failover *service.UpstreamFailoverError) bool {
-		return poolQuotaHTTP && h.writeCodexPoolQuotaHTTP(c, service.CodexPoolQuotaRequest{
-			GroupID: apiKey.GroupID, Model: forwardModel, PreviousResponseID: previousResponseID,
+		return poolQuotaHTTP && previousResponseID == "" && h.writeCodexPoolQuotaHTTP(c, service.CodexPoolQuotaRequest{
+			GroupID: apiKey.GroupID, Model: forwardModel,
 			Transport: service.OpenAIUpstreamTransportAny, Capability: requiredCapability, FailedAccounts: failedAccountIDs,
 		}, failover)
 	}
@@ -2871,18 +2873,15 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 	supportsPoolQuotaWS := requestPlatform == service.PlatformOpenAI
 	poolQuotaKey := apiKey
-	var replayQuotaRoute *service.CodexPoolQuotaRequest
+	poolQuotaRouteMatchesSelection := true
 	poolQuotaRequest := func() service.CodexPoolQuotaRequest {
-		if replayQuotaRoute != nil {
-			return *replayQuotaRoute
-		}
 		return service.CodexPoolQuotaRequest{
 			GroupID: apiKey.GroupID, Model: wsForwardModel, PreviousResponseID: previousResponseID,
 			PreviousResponseCanMove: previousResponseCanMove, Transport: requiredTransport, Capability: requiredCapability,
 		}
 	}
 	writePoolQuotaWS := func() bool {
-		if !supportsPoolQuotaWS || !codexPoolQuotaEnabled(poolQuotaKey) {
+		if !supportsPoolQuotaWS || !poolQuotaRouteMatchesSelection || !codexPoolQuotaEnabled(poolQuotaKey) {
 			return false
 		}
 		req := poolQuotaRequest()
@@ -3167,12 +3166,6 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 帧内重复 model 键/大小写变体/嵌套 session.model 额外逐一校验，
 				// 防止候选集非空时掩盖被轮换掉的禁用模型。
 				if supportsPoolQuotaWS {
-					previous := strings.TrimSpace(gjson.GetBytes(payload, "previous_response_id").String())
-					canMove := true
-					if previous != "" {
-						coverage := service.AnalyzeToolCallOutputContextCoverageBytes(payload)
-						canMove = !coverage.HasFunctionCallOutput || coverage.ContextCoversAllCallIDs
-					}
 					quotaModel := model
 					if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
 						quotaModel = wsRouteModel
@@ -3182,9 +3175,8 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 					}
 					capability := openAIResponsesRequiredCapabilityForRequest(service.IsExplicitImageGenerationIntent("/v1/responses", model, payload), false, requestPlatform)
 					quotaRoute.Store(&quotaTurnRoute{turn: turn, req: service.CodexPoolQuotaRequest{
-						GroupID: apiKey.GroupID, Model: quotaModel, PreviousResponseID: previous,
-						PreviousResponseCanMove: canMove,
-						Transport:               requiredTransport, Capability: capability,
+						GroupID: apiKey.GroupID, Model: quotaModel,
+						Transport: requiredTransport, Capability: capability,
 					}})
 				}
 				frameModelCandidates := requestmodel.FromBodyCandidates("", "application/json", payload)
@@ -3402,7 +3394,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		// 故剥离首包里的 previous_response_id，改用首包内 input 重建上下文；带 function_call_output 的
 		// 工具续链无法重建，保持原样。仅作用于首轮首包，后续 turn 的续链由 WS 转发层既有逻辑处理。
 		if supportsPoolQuotaWS {
-			hooks.OnQuotaFailure = func(turn int) (bool, bool) {
+			hooks.OnQuotaFailure = func(turn int, independent bool) (bool, bool) {
 				turnKey := turnBillingAPIKeys.forTurn(turn, poolQuotaKey)
 				if !codexPoolQuotaEnabled(turnKey) {
 					return false, false
@@ -3410,10 +3402,12 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				req := poolQuotaRequest()
 				if turn > 1 {
 					route := quotaRoute.Load()
-					if route == nil || route.turn != turn {
+					if !independent || route == nil || route.turn != turn {
 						return false, true
 					}
 					req = route.req
+				} else if !poolQuotaRouteMatchesSelection {
+					return false, true
 				}
 				req.FailedAccounts = map[int64]struct{}{account.ID: {}}
 				if turn == 1 {
@@ -3462,10 +3456,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				wsAttemptMessage = nextAttemptMessage
 				if retryCurrentTurn {
 					previousResponseID = ""
-					if route := quotaRoute.Load(); route != nil {
-						req := route.req
-						req.PreviousResponseID = ""
-						replayQuotaRoute = &req
+					// Bridge replay keeps the connection's original scheduler model and
+					// capability. Diagnose only when they also match the replayed turn.
+					route := quotaRoute.Load()
+					poolQuotaRouteMatchesSelection = route != nil && route.req.Model == wsForwardModel && route.req.Capability == requiredCapability
+					if route != nil {
 						poolQuotaKey = turnBillingAPIKeys.forTurn(route.turn, poolQuotaKey)
 					}
 					reqLog.Warn("openai.websocket_current_turn_failover_retry",

@@ -115,11 +115,12 @@ func TestCodexPoolQuotaResponses(t *testing.T) {
 			cfg.Gateway.OpenAIWS.IngressModeDefault = service.OpenAIWSIngressModePassthrough
 			repo := &codexQuotaHandlerRepo{candidates: []service.Account{{
 				ID: 1, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Status: service.StatusActive, Schedulable: true,
-				RateLimitedAt: &now, RateLimitResetAt: &reset, Extra: map[string]any{
+				Extra: map[string]any{
 					"openai_oauth_responses_websockets_v2_mode": service.OpenAIWSIngressModePassthrough,
-					service.OpenAICodexQuotaCooldownExtraKey: map[string]any{
-						"limited_at": now.Format(time.RFC3339Nano), "cooldown_until": reset.Format(time.RFC3339Nano), "reset_at": reset.Format(time.RFC3339Nano), "explicit": true,
-					},
+					"auto_pause_5h_threshold":                   1.0,
+					"codex_usage_updated_at":                    now.Format(time.RFC3339),
+					"codex_5h_used_percent":                     100.0,
+					"codex_5h_reset_at":                         reset.Format(time.RFC3339),
 				},
 			}}}
 			billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
@@ -137,13 +138,17 @@ func TestCodexPoolQuotaResponses(t *testing.T) {
 			groupID := int64(42)
 			key := &service.APIKey{ID: 7, GroupID: &groupID, User: &service.User{ID: 8, Status: service.StatusActive},
 				Group: &service.Group{ID: groupID, Status: service.StatusActive, Platform: service.PlatformOpenAI, CodexPoolQuotaErrorEnabled: enabled}}
-			router := gin.New()
-			router.Use(func(c *gin.Context) {
-				c.Set(string(middleware.ContextKeyAPIKey), key)
-				c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 8, Concurrency: 1})
-			})
-			router.POST("/v1/responses", h.Responses)
-			router.GET("/v1/responses", h.ResponsesWebSocket)
+			newRouter := func(h *OpenAIGatewayHandler) *gin.Engine {
+				router := gin.New()
+				router.Use(func(c *gin.Context) {
+					c.Set(string(middleware.ContextKeyAPIKey), key)
+					c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 8, Concurrency: 1})
+				})
+				router.POST("/v1/responses", h.Responses)
+				router.GET("/v1/responses", h.ResponsesWebSocket)
+				return router
+			}
+			router := newRouter(h)
 			srv := httptest.NewServer(router)
 			defer srv.Close()
 
@@ -226,35 +231,69 @@ func TestCodexPoolQuotaResponses(t *testing.T) {
 			}
 
 			if enabled {
-				repo.mu.Lock()
-				repo.candidates = []service.Account{{
-					ID: 1, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Status: service.StatusActive, Schedulable: true, Concurrency: 1,
-					Credentials: map[string]any{"access_token": "mock-token"},
-					Extra:       map[string]any{"openai_oauth_responses_websockets_v2_mode": service.OpenAIWSIngressModeHTTPBridge},
-				}}
-				repo.mu.Unlock()
-				// A new gateway instance drops runtime-only cooldowns while using
-				// the same HTTP bridge and account repository.
-				upstream.calls.Store(0)
-				upstream.successfulFirst.Store(true)
-				h.gatewayService = service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
-					service.NewBillingService(cfg, nil), rateLimit, billing, upstream, &service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil)
-				turnCtx, cancelTurns := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancelTurns()
-				bridge, _, err := coderws.Dial(turnCtx, "ws"+strings.TrimPrefix(srv.URL, "http")+"/v1/responses", nil)
-				require.NoError(t, err)
-				defer bridge.CloseNow()
-				request := []byte(`{"type":"response.create","model":"gpt-5.1","instructions":"Be helpful.","input":[{"type":"message","role":"user","content":"hello"}]}`)
-				require.NoError(t, bridge.Write(turnCtx, coderws.MessageText, request))
-				_, frame, err := bridge.Read(turnCtx)
-				require.NoError(t, err)
-				require.Equal(t, "response.completed", gjson.GetBytes(frame, "type").String(), string(frame))
-				require.NoError(t, bridge.Write(turnCtx, coderws.MessageText, request))
-				_, frame, err = bridge.Read(turnCtx)
-				require.NoError(t, err)
-				require.Equal(t, int64(429), gjson.GetBytes(frame, "status").Int(), string(frame))
-				require.Equal(t, reset.Unix(), gjson.GetBytes(frame, "error.resets_at").Int())
-				require.Equal(t, int32(2), upstream.calls.Load())
+				for _, tc := range []struct {
+					name  string
+					model string
+				}{
+					{name: "same_model", model: "gpt-5.1"},
+					{name: "changed_model", model: "gpt-5.2"},
+				} {
+					t.Run("http_bridge_"+tc.name, func(t *testing.T) {
+						repo.mu.Lock()
+						repo.candidates = []service.Account{{
+							ID: 1, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Status: service.StatusActive, Schedulable: true, Concurrency: 1,
+							Credentials: map[string]any{"access_token": "mock-token"},
+							Extra:       map[string]any{"openai_oauth_responses_websockets_v2_mode": service.OpenAIWSIngressModeHTTPBridge},
+						}}
+						repo.mu.Unlock()
+						// Use a fresh gateway so runtime cooldowns from other cases do not carry over.
+						upstream := &codexQuotaHTTPUpstream{reset: reset}
+						upstream.successfulFirst.Store(true)
+						bridgeHandler := *h
+						gateway := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
+							service.NewBillingService(cfg, nil), rateLimit, billing, upstream, &service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil)
+						bridgeHandler.gatewayService = gateway
+						router := newRouter(&bridgeHandler)
+						bridgeServer := httptest.NewServer(router)
+						defer bridgeServer.Close()
+						turnCtx, cancelTurns := context.WithTimeout(context.Background(), 5*time.Second)
+						defer cancelTurns()
+						bridge, _, err := coderws.Dial(turnCtx, "ws"+strings.TrimPrefix(bridgeServer.URL, "http")+"/v1/responses", nil)
+						require.NoError(t, err)
+						defer bridge.CloseNow()
+						request := `{"type":"response.create","model":"%s","instructions":"Be helpful.","input":[{"type":"message","role":"user","content":"hello"}]}`
+						require.NoError(t, bridge.Write(turnCtx, coderws.MessageText, []byte(fmt.Sprintf(request, "gpt-5.1"))))
+						_, frame, err := bridge.Read(turnCtx)
+						require.NoError(t, err)
+						require.Equal(t, "response.completed", gjson.GetBytes(frame, "type").String(), string(frame))
+						require.NoError(t, bridge.Write(turnCtx, coderws.MessageText, []byte(fmt.Sprintf(request, tc.model))))
+						_, frame, err = bridge.Read(turnCtx)
+						require.Equal(t, int32(2), upstream.calls.Load())
+						if tc.model != "gpt-5.1" {
+							require.Equal(t, coderws.StatusTryAgainLater, coderws.CloseStatus(err), string(frame))
+							return
+						}
+						require.NoError(t, err)
+						require.Equal(t, int64(429), gjson.GetBytes(frame, "status").Int(), string(frame))
+						require.Equal(t, reset.Unix(), gjson.GetBytes(frame, "error.resets_at").Int())
+						_, _, err = bridge.Read(turnCtx)
+						require.Equal(t, coderws.StatusNormalClosure, coderws.CloseStatus(err))
+
+						const responseID = "resp_quota_test"
+						require.Equal(t, reset, gateway.EarliestCodexPoolQuotaReset(turnCtx, service.CodexPoolQuotaRequest{
+							GroupID: &groupID, Model: tc.model, PreviousResponseID: responseID, Transport: service.OpenAIUpstreamTransportAny,
+						}).UTC(), "the OAuth account is bound to this response and has a known quota reset")
+						require.NoError(t, gateway.BindOpenAIHTTPResponseOwner(turnCtx, groupID, responseID, key.User.ID, key.ID))
+						rec := httptest.NewRecorder()
+						req := httptest.NewRequest(http.MethodPost, "/v1/responses",
+							strings.NewReader(`{"model":"gpt-5.1","previous_response_id":"resp_quota_test","input":"continue","stream":true}`))
+						req.Header.Set("Content-Type", "application/json")
+						router.ServeHTTP(rec, req)
+						require.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
+						require.False(t, gjson.GetBytes(rec.Body.Bytes(), "error.resets_at").Exists())
+						require.Equal(t, int32(2), upstream.calls.Load())
+					})
+				}
 			}
 
 		})
@@ -292,10 +331,13 @@ func TestCodexPoolQuotaNativeWebSocketRefreshesSettingsAfterMetadata(t *testing.
 		for _, scenario := range []struct {
 			name                                   string
 			initiallyEnabled, laterEnabled, output bool
+			healthyBackup, toolContinuation        bool
 		}{
 			{name: "enable_on_existing_connection", laterEnabled: true},
 			{name: "disable_on_existing_connection", initiallyEnabled: true},
 			{name: "preserve_error_after_semantic_output", initiallyEnabled: true, laterEnabled: true, output: true},
+			{name: "reconnect_when_backup_is_healthy", laterEnabled: true, healthyBackup: true},
+			{name: "reconnect_when_tool_turn_depends_on_upstream_state", laterEnabled: true, toolContinuation: true},
 		} {
 			t.Run(mode+"/"+scenario.name, func(t *testing.T) {
 				ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
@@ -304,6 +346,7 @@ func TestCodexPoolQuotaNativeWebSocketRefreshesSettingsAfterMetadata(t *testing.
 				reset := now.Add(2 * time.Hour)
 				upstreamReset := reset.Add(time.Hour)
 				var upstreamRequests atomic.Int32
+				var inferredContinuation atomic.Bool
 				upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 					conn, err := coderws.Accept(w, r, &coderws.AcceptOptions{CompressionMode: coderws.CompressionContextTakeover})
 					if err != nil {
@@ -314,10 +357,13 @@ func TestCodexPoolQuotaNativeWebSocketRefreshesSettingsAfterMetadata(t *testing.
 						{`{"type":"response.completed","response":{"id":"resp_first","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`},
 						{`{"type":"codex.rate_limits"}`, `{"type":"response.created","response":{"id":"resp_second","model":"gpt-5.1"}}`},
 					} {
-						if _, _, err := conn.Read(ctx); err != nil {
+						_, request, err := conn.Read(ctx)
+						if err != nil {
 							return
 						}
-						upstreamRequests.Add(1)
+						if upstreamRequests.Add(1) == 2 {
+							inferredContinuation.Store(gjson.GetBytes(request, "previous_response_id").String() == "resp_first")
+						}
 						for _, frame := range frames {
 							if err := conn.Write(ctx, coderws.MessageText, []byte(frame)); err != nil {
 								return
@@ -352,6 +398,11 @@ func TestCodexPoolQuotaNativeWebSocketRefreshesSettingsAfterMetadata(t *testing.
 						},
 					},
 				}}
+				if scenario.healthyBackup {
+					repo.candidates[1].RateLimitedAt = nil
+					repo.candidates[1].RateLimitResetAt = nil
+					repo.candidates[1].Priority = 10
+				}
 				cfg := &config.Config{RunMode: config.RunModeSimple}
 				cfg.Security.URLAllowlist.AllowInsecureHTTP = true
 				cfg.Gateway.OpenAIWS.Enabled = true
@@ -389,23 +440,36 @@ func TestCodexPoolQuotaNativeWebSocketRefreshesSettingsAfterMetadata(t *testing.
 				conn, _, err := coderws.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http")+"/v1/responses", nil)
 				require.NoError(t, err)
 				defer conn.CloseNow()
-				request := []byte(`{"type":"response.create","model":"gpt-5.1","input":[{"type":"message","role":"user","content":"hello"}]}`)
+				request := []byte(`{"type":"response.create","model":"gpt-5.1","store":false,"input":[{"type":"message","role":"user","content":"hello"}]}`)
 				require.NoError(t, conn.Write(ctx, coderws.MessageText, request))
 				_, frame, err := conn.Read(ctx)
 				require.NoError(t, err)
 				require.Equal(t, "response.completed", gjson.GetBytes(frame, "type").String())
 				keys.enabled.Store(scenario.laterEnabled)
+				if scenario.toolContinuation {
+					request = []byte(`{"type":"response.create","model":"gpt-5.1","store":false,"input":[{"type":"function_call_output","call_id":"call_tool","output":"ok"}]}`)
+				}
 				require.NoError(t, conn.Write(ctx, coderws.MessageText, request))
 				events := []string{"codex.rate_limits", "response.created"}
 				if scenario.output {
 					events = append(events, "response.output_text.delta")
 				}
-				for _, event := range append(events, "error") {
+				expectReconnect := scenario.healthyBackup || scenario.toolContinuation
+				if !expectReconnect {
+					events = append(events, "error")
+				}
+				for _, event := range events {
 					_, frame, err = conn.Read(ctx)
 					require.NoError(t, err)
 					require.Equal(t, event, gjson.GetBytes(frame, "type").String())
 				}
-				if scenario.laterEnabled && !scenario.output {
+				if expectReconnect {
+					_, frame, err = conn.Read(ctx)
+					require.Equal(t, coderws.StatusTryAgainLater, coderws.CloseStatus(err), string(frame))
+					if scenario.toolContinuation && mode == service.OpenAIWSIngressModeCtxPool {
+						require.True(t, inferredContinuation.Load(), "ctx_pool must test the inferred continuation")
+					}
+				} else if scenario.laterEnabled && !scenario.output {
 					require.Equal(t, "usage_limit_reached", gjson.GetBytes(frame, "error.type").String(), string(frame))
 					require.Equal(t, reset.Unix(), gjson.GetBytes(frame, "error.resets_at").Int())
 					_, _, err := conn.Read(ctx)
