@@ -461,6 +461,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	// body-signal compact：上游 unary 等待期间向下游发 SSE 注释行心跳，防止
 	// 反向代理空闲超时掐断长压缩连接（#3887）。首拍延迟一个心跳间隔，快速
 	// 失败仍走 JSON+状态码链路；未标记客户端流式或间隔为 0 时是 no-op。
+	poolQuotaHTTP := codexPoolQuotaEnabled(apiKey) && isBareOpenAIResponsesPath(c) &&
+		openAICompatibleRequestPlatform(c.Request.Context(), apiKey) == service.PlatformOpenAI
+	if poolQuotaHTTP {
+		c.Request = c.Request.WithContext(service.WithCodexPoolQuotaHTTP(c.Request.Context()))
+	}
 	stopCompactKeepalive := service.StartOpenAICompactSSEKeepalive(c, h.openAICompactKeepaliveInterval())
 	defer stopCompactKeepalive()
 
@@ -611,7 +616,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	service.SetOpsLatencyMs(c, service.OpsAuthLatencyMsKey, time.Since(requestStart).Milliseconds())
 	routingStart := time.Now()
 
-	userReleaseFunc, acquired := h.acquireResponsesUserSlot(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted, reqLog)
+	userReleaseFunc, acquired := h.acquireResponsesUserSlot(c, subject.UserID, subject.Concurrency, reqStream && !poolQuotaHTTP, &streamStarted, reqLog)
 	if !acquired {
 		return
 	}
@@ -685,6 +690,13 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	pricingCtx, pricingAt := h.gatewayService.WithOpenAIRequestPricingContext(c.Request.Context(), apiKey.GroupID)
 	c.Request = c.Request.WithContext(pricingCtx)
 
+	writePoolQuota := func(failover *service.UpstreamFailoverError) bool {
+		return poolQuotaHTTP && h.writeCodexPoolQuotaHTTP(c, service.CodexPoolQuotaRequest{
+			GroupID: apiKey.GroupID, Model: forwardModel, PreviousResponseID: previousResponseID,
+			Transport: service.OpenAIUpstreamTransportAny, Capability: requiredCapability, FailedAccounts: failedAccountIDs,
+		}, failover)
+	}
+
 	for {
 		// Streaming Forward intentionally detaches the upstream request so usage can
 		// be drained after a disconnect. Re-check the client context before every
@@ -733,9 +745,15 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, requestPlatform)
 				cls = classifySelectionFailureError(err, cls)
 				if !cls.ModelNotFound {
+					if errors.Is(err, service.ErrNoAvailableAccounts) && writePoolQuota(nil) {
+						return
+					}
 					markOpsRoutingCapacityLimitedIfNoAvailable(c, err)
 				}
 				h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
+				return
+			}
+			if errors.Is(err, service.ErrNoAvailableAccounts) && writePoolQuota(lastFailoverErr) {
 				return
 			}
 			if lastFailoverErr != nil {
@@ -748,6 +766,9 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		if selection == nil || selection.Account == nil {
 			cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, reqModel, reqModel, requestPlatform)
 			if !cls.ModelNotFound {
+				if writePoolQuota(lastFailoverErr) {
+					return
+				}
 				markOpsRoutingCapacityLimited(c)
 			}
 			h.handleStreamingAwareError(c, cls.Status, cls.ErrType, cls.Message, streamStarted)
@@ -793,7 +814,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 		reqLog.Debug("openai.account_selected", zap.Int64("account_id", account.ID), zap.String("account_name", account.Name))
 		setOpsSelectedAccount(c, account.ID, account.Platform)
 
-		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream, &streamStarted, reqLog)
+		accountReleaseFunc, slotResult := h.acquireResponsesAccountSlot(c, apiKey.GroupID, sessionHash, selection, reqStream && !poolQuotaHTTP, &streamStarted, reqLog)
 		if slotResult == openAISlotAcquireProfitVetoed {
 			// 利润终检否决：排除该账号重新选号，全池耗尽由下一轮选号报错；
 			// 否决次数达上限则直接终止，避免排队抢槽后才终检的延迟放大。
@@ -969,11 +990,17 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 					failedAccountIDs[account.ID] = struct{}{}
 					lastFailoverErr = failoverErr
 					if switchCount >= maxAccountSwitches {
+						if writePoolQuota(failoverErr) {
+							return
+						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
 					switchCount++
 					if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
+						if writePoolQuota(failoverErr) {
+							return
+						}
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
@@ -2834,6 +2861,34 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			return true
 		}
 	}
+	// 与 HTTP Responses 路径保持一致：生图意图请求要求账号支持 Responses API（#4417）。
+	// WSv2 传输本身已隐含 Responses 支持，此处为防御性对齐。
+	// 使用 IsExplicitImageGenerationIntent 排除被动 namespace 声明（#4476）。
+	requiredCapability := service.OpenAIEndpointCapabilityChatCompletions
+	if service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, firstMessage) && requestPlatform == service.PlatformOpenAI {
+		requiredCapability = service.OpenAIEndpointCapabilityResponses
+	}
+
+	poolQuotaWS := codexPoolQuotaEnabled(apiKey) && requestPlatform == service.PlatformOpenAI
+	var replayQuotaRoute *service.CodexPoolQuotaRequest
+	writePoolQuotaWS := func() bool {
+		if !poolQuotaWS {
+			return false
+		}
+		req := service.CodexPoolQuotaRequest{
+			GroupID: apiKey.GroupID, Model: wsForwardModel, PreviousResponseID: previousResponseID,
+			PreviousResponseCanMove: previousResponseCanMove, Transport: requiredTransport, Capability: requiredCapability,
+		}
+		if replayQuotaRoute != nil {
+			req = *replayQuotaRoute
+		}
+		req.FailedAccounts = failedAccountIDs
+		if !h.writeCodexPoolQuotaWS(ctx, c, wsConn, req) {
+			return false
+		}
+		closeOpenAIClientWS(wsConn, coderws.StatusNormalClosure, "")
+		return true
+	}
 	handleWSFailover := func(account *service.Account, failoverErr *service.UpstreamFailoverError) bool {
 		if ctx.Err() != nil {
 			return false
@@ -2853,11 +2908,17 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		failedAccountIDs[account.ID] = struct{}{}
 		lastFailoverErr = failoverErr
 		if switchCount >= maxAccountSwitches {
+			if writePoolQuotaWS() {
+				return false
+			}
 			closeOpenAIWSFailoverExhausted(c, wsConn, failoverErr)
 			return false
 		}
 		switchCount++
 		if h.gatewayService.ShouldStopOpenAIOAuth429Failover(account, failoverErr.StatusCode, switchCount, &oauth429FailoverState) {
+			if writePoolQuotaWS() {
+				return false
+			}
 			closeOpenAIWSFailoverExhausted(c, wsConn, failoverErr)
 			return false
 		}
@@ -2871,14 +2932,6 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			return false
 		}
 		return ensureUserSlotHeld()
-	}
-
-	// 与 HTTP Responses 路径保持一致：生图意图请求要求账号支持 Responses API（#4417）。
-	// WSv2 传输本身已隐含 Responses 支持，此处为防御性对齐。
-	// 使用 IsExplicitImageGenerationIntent 排除被动 namespace 声明（#4476）。
-	requiredCapability := service.OpenAIEndpointCapabilityChatCompletions
-	if service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, firstMessage) && requestPlatform == service.PlatformOpenAI {
-		requiredCapability = service.OpenAIEndpointCapabilityResponses
 	}
 
 	// 分组利润控制：WS 桥按连接装配定价上下文并装门（选号与抢槽共用该
@@ -2913,6 +2966,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				zap.Error(openAICompatibleSelectionErrorForLog(err, requestPlatform)),
 				zap.Int("excluded_account_count", len(failedAccountIDs)),
 			)
+			if errors.Is(err, service.ErrNoAvailableAccounts) && writePoolQuotaWS() {
+				return
+			}
 			if lastFailoverErr != nil {
 				closeOpenAIWSFailoverExhausted(c, wsConn, lastFailoverErr)
 			} else {
@@ -2921,6 +2977,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			return
 		}
 		if selection == nil || selection.Account == nil {
+			if writePoolQuotaWS() {
+				return
+			}
 			if lastFailoverErr != nil {
 				closeOpenAIWSFailoverExhausted(c, wsConn, lastFailoverErr)
 			} else {
@@ -3062,6 +3121,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "billing check failed")
 			return
 		}
+		type quotaTurnRoute struct {
+			turn int
+			req  service.CodexPoolQuotaRequest
+		}
+		var quotaRoute atomic.Pointer[quotaTurnRoute]
 		hooks := &service.OpenAIWSIngressHooks{
 			ClientLifecycleContext:      clientLifecycleCtx,
 			InitialRequestModel:         reqModel,
@@ -3098,6 +3162,23 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				// 则关闭整条连接，与推理强度 deny 一致。实际生效模型始终参与校验；
 				// 帧内重复 model 键/大小写变体/嵌套 session.model 额外逐一校验，
 				// 防止候选集非空时掩盖被轮换掉的禁用模型。
+				if poolQuotaWS {
+					coverage := service.AnalyzeToolCallOutputContextCoverageBytes(payload)
+					quotaModel := model
+					if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
+						quotaModel = wsRouteModel
+					}
+					if mapped := turnChannelMapping.Load(); mapped != nil && mapped.turn == turn && mapped.mapping.MappedModel != "" {
+						quotaModel = mapped.mapping.MappedModel
+					}
+					capability := openAIResponsesRequiredCapabilityForRequest(service.IsExplicitImageGenerationIntent("/v1/responses", model, payload), false, requestPlatform)
+					quotaRoute.Store(&quotaTurnRoute{turn: turn, req: service.CodexPoolQuotaRequest{
+						GroupID: apiKey.GroupID, Model: quotaModel, PreviousResponseID: strings.TrimSpace(gjson.GetBytes(payload, "previous_response_id").String()),
+						PreviousResponseCanMove: !coverage.HasFunctionCallOutput || coverage.ContextCoversAllCallIDs,
+						Transport:               requiredTransport, Capability: capability,
+						FailedAccounts: map[int64]struct{}{account.ID: {}},
+					}})
+				}
 				frameModelCandidates := requestmodel.FromBodyCandidates("", "application/json", payload)
 				candidates := append([]string{model}, frameModelCandidates...)
 				if blocked := blockedModelAllowlistCandidate(apiKey.Group, candidates); blocked != "" {
@@ -3139,6 +3220,14 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				if turn > 1 && !mappedModelUnchanged && !account.IsModelSupported(model) && !account.IsModelSupported(mapping.MappedModel) {
 					return "", newOpenAIWSUnsupportedModelSwitchError(mapping.MappedModel)
+				}
+				if route := quotaRoute.Load(); route != nil && route.turn == turn {
+					next := *route
+					next.req.Model = mapping.MappedModel
+					if next.req.Model == "" {
+						next.req.Model = routeModel
+					}
+					quotaRoute.Store(&next)
 				}
 				turnChannelMapping.Store(&openAIWSTurnChannelMappingSnapshot{turn: turn, mapping: mapping})
 				return mapping.MappedModel, nil
@@ -3304,6 +3393,17 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		// 说明该会话链不属于本次调度到的账号，原样转发会触发上游会话链鉴权失败（“鉴权失败，请检查 API Key”）。
 		// 故剥离首包里的 previous_response_id，改用首包内 input 重建上下文；带 function_call_output 的
 		// 工具续链无法重建，保持原样。仅作用于首轮首包，后续 turn 的续链由 WS 转发层既有逻辑处理。
+		if poolQuotaWS {
+			hooks.OnLaterQuotaFailure = func(turn int) bool {
+				route := quotaRoute.Load()
+				turnKey := turnBillingAPIKeys.forTurn(turn, apiKey)
+				if route == nil || route.turn != turn || !codexPoolQuotaEnabled(turnKey) {
+					return false
+				}
+				turnCtx, _ := h.gatewayService.WithOpenAITurnPricingContext(withOpenAIWSTurnBillingGroup(ctx, turnKey), apiKey.GroupID)
+				return h.writeCodexPoolQuotaWS(turnCtx, c, wsConn, route.req)
+			}
+		}
 		if previousResponseID != "" && !scheduleDecision.StickyPreviousHit && previousResponseCanMove {
 			wsFirstMessage = service.RemovePreviousResponseIDFromBody(wsFirstMessage)
 			reqLog.Debug("openai.websocket_previous_response_id_stripped_cross_group",
@@ -3341,6 +3441,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				wsAttemptMessage = nextAttemptMessage
 				if retryCurrentTurn {
 					previousResponseID = ""
+					if route := quotaRoute.Load(); route != nil {
+						req := route.req
+						req.PreviousResponseID = ""
+						replayQuotaRoute = &req
+					}
 					reqLog.Warn("openai.websocket_current_turn_failover_retry",
 						zap.Int64("account_id", account.ID),
 						zap.Int("upstream_status", failoverErr.StatusCode),

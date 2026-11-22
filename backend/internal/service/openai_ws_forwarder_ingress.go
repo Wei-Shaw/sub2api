@@ -722,6 +722,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 						return fmt.Errorf("build websocket current-turn failover payload: %w", retryPayloadErr)
 					}
 					if !retrySafe {
+						if failoverErr.StatusCode == http.StatusTooManyRequests && hooks != nil &&
+							hooks.OnLaterQuotaFailure != nil && hooks.OnLaterQuotaFailure(turn) {
+							return NewOpenAIWSClientCloseError(coderws.StatusNormalClosure, "", nil)
+						}
 						retryPayload = nil
 					}
 					return newOpenAIWSCurrentTurnFailoverError(bridgeErr, retryPayload)
@@ -1153,6 +1157,12 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 				if !wroteDownstream && isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw) {
 					lease.MarkBroken()
+					if turn > 1 && hooks != nil && hooks.OnLaterQuotaFailure != nil {
+						if hooks.OnLaterQuotaFailure(turn) {
+							return nil, NewOpenAIWSClientCloseError(coderws.StatusNormalClosure, "", nil)
+						}
+						return nil, NewOpenAIWSClientCloseError(coderws.StatusTryAgainLater, "upstream rate limit exceeded; please reconnect", nil)
+					}
 					return nil, s.newOpenAIWSRateLimitFailoverError(account, lease.HandshakeHeaders(), upstreamMessage, errMsgRaw)
 				}
 			}

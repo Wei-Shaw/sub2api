@@ -1313,7 +1313,10 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 					truncateOpenAIWSLogValue(errTypeRaw, openAIWSLogValueMaxLen),
 					truncateOpenAIWSLogValue(errMsgRaw, openAIWSLogValueMaxLen),
 				)
-				if completedTurns.Load() > 0 {
+				if completed := completedTurns.Load(); completed > 0 {
+					if hooks != nil && hooks.OnLaterQuotaFailure != nil && hooks.OnLaterQuotaFailure(int(completed)+1) {
+						return NewOpenAIWSClientCloseError(coderws.StatusNormalClosure, "", nil)
+					}
 					return NewOpenAIWSClientCloseError(
 						coderws.StatusTryAgainLater,
 						"upstream rate limit exceeded; please reconnect",

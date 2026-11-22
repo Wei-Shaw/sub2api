@@ -295,6 +295,7 @@ type CreateGroupInput struct {
 	AllowLive                   bool
 	ForceOpenAIFast             bool
 	ForceOpenAIUltrafast        bool
+	CodexPoolQuotaErrorEnabled  bool
 	FreeOpenAIFast              bool
 	DefaultMappedModel          string
 	RequireOAuthOnly            bool
@@ -379,6 +380,7 @@ type UpdateGroupInput struct {
 	AllowLive                   *bool
 	ForceOpenAIFast             *bool
 	ForceOpenAIUltrafast        *bool
+	CodexPoolQuotaErrorEnabled  *bool
 	FreeOpenAIFast              *bool
 	DefaultMappedModel          *string
 	RequireOAuthOnly            *bool

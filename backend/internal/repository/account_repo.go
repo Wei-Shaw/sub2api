@@ -2389,6 +2389,32 @@ func (r *accountRepository) SetRateLimited(ctx context.Context, id int64, resetA
 	return nil
 }
 
+// SetCodexQuotaRateLimited writes the evidence and its scheduling generation
+// together, without replacing unrelated extra fields.
+func (r *accountRepository) SetCodexQuotaRateLimited(ctx context.Context, id int64, cooldown, reset time.Time, explicit bool) error {
+	observed := time.Now().UTC().Truncate(time.Microsecond)
+	cooldown = cooldown.UTC().Truncate(time.Microsecond)
+	evidence, err := json.Marshal(map[string]any{
+		"limited_at": observed, "cooldown_until": cooldown, "reset_at": reset.UTC(), "explicit": explicit,
+	})
+	if err != nil {
+		return err
+	}
+	_, err = clientFromContext(ctx, r.client).ExecContext(ctx, `
+		UPDATE accounts
+		SET rate_limited_at = $2, rate_limit_reset_at = $3, updated_at = $2,
+		    extra = COALESCE(extra, '{}'::jsonb) || jsonb_build_object($4::text, $5::jsonb)
+		WHERE id = $1 AND deleted_at IS NULL`, id, observed, cooldown, service.OpenAICodexQuotaCooldownExtraKey, string(evidence))
+	if err != nil {
+		return err
+	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue Codex quota cooldown failed: account=%d err=%v", id, err)
+	}
+	r.syncSchedulerAccountSnapshot(ctx, id)
+	return nil
+}
+
 // SetRateLimitedIfLater atomically extends an account-level rate limit. Grok
 // requests may finish concurrently, so an older response must not overwrite a
 // later reset boundary observed by another request or instance.

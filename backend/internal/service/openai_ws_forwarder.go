@@ -267,6 +267,9 @@ type OpenAIWSIngressHooks struct {
 	// that must be written into the upstream response.create frame.
 	MapRequestModel func(turn int, originalModel string) (string, error)
 	AfterTurn       func(turn int, result *OpenAIForwardResult, turnErr error)
+	// OnLaterQuotaFailure can write a terminal quota event before the relay
+	// closes a reused connection whose current turn has produced no output.
+	OnLaterQuotaFailure func(turn int) bool
 }
 
 func (s *OpenAIGatewayService) getOpenAIWSConnPool() *openAIWSConnPool {

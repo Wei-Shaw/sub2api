@@ -752,6 +752,20 @@ func (_c *GroupCreate) SetNillableForceOpenaiUltrafast(v *bool) *GroupCreate {
 	return _c
 }
 
+// SetOpenaiCodexPoolQuotaErrorEnabled sets the "openai_codex_pool_quota_error_enabled" field.
+func (_c *GroupCreate) SetOpenaiCodexPoolQuotaErrorEnabled(v bool) *GroupCreate {
+	_c.mutation.SetOpenaiCodexPoolQuotaErrorEnabled(v)
+	return _c
+}
+
+// SetNillableOpenaiCodexPoolQuotaErrorEnabled sets the "openai_codex_pool_quota_error_enabled" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableOpenaiCodexPoolQuotaErrorEnabled(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetOpenaiCodexPoolQuotaErrorEnabled(*v)
+	}
+	return _c
+}
+
 // SetFreeOpenaiFast sets the "free_openai_fast" field.
 func (_c *GroupCreate) SetFreeOpenaiFast(v bool) *GroupCreate {
 	_c.mutation.SetFreeOpenaiFast(v)
@@ -1201,6 +1215,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultForceOpenaiUltrafast
 		_c.mutation.SetForceOpenaiUltrafast(v)
 	}
+	if _, ok := _c.mutation.OpenaiCodexPoolQuotaErrorEnabled(); !ok {
+		v := group.DefaultOpenaiCodexPoolQuotaErrorEnabled
+		_c.mutation.SetOpenaiCodexPoolQuotaErrorEnabled(v)
+	}
 	if _, ok := _c.mutation.FreeOpenaiFast(); !ok {
 		v := group.DefaultFreeOpenaiFast
 		_c.mutation.SetFreeOpenaiFast(v)
@@ -1415,6 +1433,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ForceOpenaiUltrafast(); !ok {
 		return &ValidationError{Name: "force_openai_ultrafast", err: errors.New(`ent: missing required field "Group.force_openai_ultrafast"`)}
+	}
+	if _, ok := _c.mutation.OpenaiCodexPoolQuotaErrorEnabled(); !ok {
+		return &ValidationError{Name: "openai_codex_pool_quota_error_enabled", err: errors.New(`ent: missing required field "Group.openai_codex_pool_quota_error_enabled"`)}
 	}
 	if _, ok := _c.mutation.FreeOpenaiFast(); !ok {
 		return &ValidationError{Name: "free_openai_fast", err: errors.New(`ent: missing required field "Group.free_openai_fast"`)}
@@ -1719,6 +1740,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ForceOpenaiUltrafast(); ok {
 		_spec.SetField(group.FieldForceOpenaiUltrafast, field.TypeBool, value)
 		_node.ForceOpenaiUltrafast = value
+	}
+	if value, ok := _c.mutation.OpenaiCodexPoolQuotaErrorEnabled(); ok {
+		_spec.SetField(group.FieldOpenaiCodexPoolQuotaErrorEnabled, field.TypeBool, value)
+		_node.OpenaiCodexPoolQuotaErrorEnabled = value
 	}
 	if value, ok := _c.mutation.FreeOpenaiFast(); ok {
 		_spec.SetField(group.FieldFreeOpenaiFast, field.TypeBool, value)
@@ -2835,6 +2860,18 @@ func (u *GroupUpsert) SetForceOpenaiUltrafast(v bool) *GroupUpsert {
 // UpdateForceOpenaiUltrafast sets the "force_openai_ultrafast" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateForceOpenaiUltrafast() *GroupUpsert {
 	u.SetExcluded(group.FieldForceOpenaiUltrafast)
+	return u
+}
+
+// SetOpenaiCodexPoolQuotaErrorEnabled sets the "openai_codex_pool_quota_error_enabled" field.
+func (u *GroupUpsert) SetOpenaiCodexPoolQuotaErrorEnabled(v bool) *GroupUpsert {
+	u.Set(group.FieldOpenaiCodexPoolQuotaErrorEnabled, v)
+	return u
+}
+
+// UpdateOpenaiCodexPoolQuotaErrorEnabled sets the "openai_codex_pool_quota_error_enabled" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateOpenaiCodexPoolQuotaErrorEnabled() *GroupUpsert {
+	u.SetExcluded(group.FieldOpenaiCodexPoolQuotaErrorEnabled)
 	return u
 }
 
@@ -4126,6 +4163,20 @@ func (u *GroupUpsertOne) SetForceOpenaiUltrafast(v bool) *GroupUpsertOne {
 func (u *GroupUpsertOne) UpdateForceOpenaiUltrafast() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateForceOpenaiUltrafast()
+	})
+}
+
+// SetOpenaiCodexPoolQuotaErrorEnabled sets the "openai_codex_pool_quota_error_enabled" field.
+func (u *GroupUpsertOne) SetOpenaiCodexPoolQuotaErrorEnabled(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetOpenaiCodexPoolQuotaErrorEnabled(v)
+	})
+}
+
+// UpdateOpenaiCodexPoolQuotaErrorEnabled sets the "openai_codex_pool_quota_error_enabled" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateOpenaiCodexPoolQuotaErrorEnabled() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateOpenaiCodexPoolQuotaErrorEnabled()
 	})
 }
 
@@ -5614,6 +5665,20 @@ func (u *GroupUpsertBulk) SetForceOpenaiUltrafast(v bool) *GroupUpsertBulk {
 func (u *GroupUpsertBulk) UpdateForceOpenaiUltrafast() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateForceOpenaiUltrafast()
+	})
+}
+
+// SetOpenaiCodexPoolQuotaErrorEnabled sets the "openai_codex_pool_quota_error_enabled" field.
+func (u *GroupUpsertBulk) SetOpenaiCodexPoolQuotaErrorEnabled(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetOpenaiCodexPoolQuotaErrorEnabled(v)
+	})
+}
+
+// UpdateOpenaiCodexPoolQuotaErrorEnabled sets the "openai_codex_pool_quota_error_enabled" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateOpenaiCodexPoolQuotaErrorEnabled() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateOpenaiCodexPoolQuotaErrorEnabled()
 	})
 }
 

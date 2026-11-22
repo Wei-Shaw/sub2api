@@ -1267,6 +1267,10 @@ export default {
         unsupportedMessage: '当前 Sub2API 服务端无法生成 Live 所需的设备证明，即使开启也不能使用。是否仍然开启？',
         enableAnyway: '仍然开启'
       },
+      codexPoolQuotaError: {
+        label: '向 Codex 返回额度恢复时间',
+        hint: '账号池不可用时，向 Codex 返回最早已知的额度恢复时间。等待账号或首个响应时，HTTP 流式心跳可能延后。',
+      },
       openaiFast: {
         title: 'OpenAI Fast 模式',
         force: '强制使用 Fast（priority）',
