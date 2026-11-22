@@ -796,8 +796,13 @@ func (t *threadStreamTransform) apply(event threadSSEEvent, payload map[string]a
 	if kind == "message_start" {
 		usage, _ = message["usage"].(map[string]any)
 	}
-	if t.override && usage != nil && (kind == "message_start" || kind == "message_delta") {
-		changed = rewriteCacheCreationJSON(usage, t.overrideTarget) || changed
+	if kind == "message_start" || kind == "message_delta" {
+		if !t.opts.passthrough {
+			changed = reconcileCachedTokens(usage)
+		}
+		if t.override && usage != nil {
+			changed = rewriteCacheCreationJSON(usage, t.overrideTarget) || changed
+		}
 	}
 	if model, ok := message["model"].(string); ok {
 		if !t.opts.passthrough && t.opts.originalModel != t.opts.mappedModel && model == t.opts.mappedModel {

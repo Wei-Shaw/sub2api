@@ -253,6 +253,7 @@ type messageThreadAttempt struct {
 	// one snapshot; policyLoaded tells an unconfigured policy from none read.
 	policy       *BetaPolicySettings
 	policyLoaded bool
+	countRPM     bool // from the account row admitted for this attempt
 	sealed       bool
 	rewritten    bool
 	next         MessageThreadBinding

@@ -139,8 +139,15 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	//   5) 透传白名单 / fingerprint / mimic header / 写入 finalBeta
 	policyFilterSet := s.getBetaPolicyFilterSet(ctx, c, account, modelID)
 	effectiveDropSet := mergeDropSets(policyFilterSet)
+	thread := threadFrom(ctx)
+	betaHeaders := clientHeaders
+	if thread != nil {
+		// Use the same complete beta set as the client's thread fingerprint,
+		// before the builder applies its policy and account overrides.
+		betaHeaders = http.Header{"Anthropic-Beta": {anthropicBetaHeader(clientHeaders)}}
+	}
 	finalBetaHeader, finalBetaShouldSet := s.computeFinalAnthropicBeta(
-		tokenType, mimicClaudeCode, modelID, clientHeaders, body, effectiveDropSet,
+		tokenType, mimicClaudeCode, modelID, betaHeaders, body, effectiveDropSet,
 	)
 
 	// 账号覆写了 anthropic-beta 时，覆写值即最终上游值（由下方 ApplyHeaderOverrides 写入）：
@@ -148,7 +155,6 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
 		finalBetaHeader, finalBetaShouldSet = beta, true
 	}
-	thread := threadFrom(ctx)
 	if thread != nil {
 		resolved, resolveErr := thread.resolveBeta(finalBetaHeader, effectiveDropSet)
 		if resolveErr != nil {

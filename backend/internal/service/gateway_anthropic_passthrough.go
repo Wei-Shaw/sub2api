@@ -318,15 +318,19 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	// 能力维度 body sanitize：透传路径上 anthropic-beta header 原样透传客户端值，
 	// 依此决定是否保留 body 中的 context_management。避免“客户端 body 带字段但
 	// header 忘记带 beta token”的客户端 bug 在透传场景下让上游 400。
+	thread := threadFrom(ctx)
 	clientBeta := ""
 	if c != nil && c.Request != nil {
-		clientBeta = getHeaderRaw(c.Request.Header, "anthropic-beta")
+		if thread != nil {
+			clientBeta = anthropicBetaHeader(c.Request.Header)
+		} else {
+			clientBeta = getHeaderRaw(c.Request.Header, "anthropic-beta")
+		}
 	}
 	// 账号覆写了 anthropic-beta 时，覆写值即最终上游值：净化以覆写值为准
 	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
 		clientBeta = beta
 	}
-	thread := threadFrom(ctx)
 	if thread != nil {
 		policy := s.evaluateBetaPolicy(ctx, clientBeta, account, thread.attempt.forwardModel)
 		if policy.blockErr != nil {

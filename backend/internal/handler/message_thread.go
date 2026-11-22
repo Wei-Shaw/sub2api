@@ -107,12 +107,15 @@ func messageThreadSelectionError(thread *service.MessageThread, err error, skipp
 		}
 		return service.NewMessageThreadUnavailableError()
 	}
-	if skippedIncapable && errors.Is(err, service.ErrNoAvailableAccounts) {
-		return service.ErrMessageThreadNoCapableAccount
-	}
-	if thread.LimitDenied() && !upstreamFailed && errors.Is(err, service.ErrNoAvailableAccounts) {
-		// Every account that could serve the request is at a limit.
-		return service.NewMessageThreadNoRoomError()
+	if !upstreamFailed && errors.Is(err, service.ErrNoAvailableAccounts) {
+		if thread.LimitDenied() {
+			// A capable account was temporarily full, even if we also
+			// skipped an account that does not support threads.
+			return service.NewMessageThreadNoRoomError()
+		}
+		if skippedIncapable {
+			return service.ErrMessageThreadNoCapableAccount
+		}
 	}
 	return nil
 }

@@ -479,6 +479,7 @@ type threadHarnessOptions struct {
 	productionHTTP bool
 	// productionSessions uses the real session limit cache on the test Redis.
 	productionSessions bool
+	productionRPM      bool // use the RPM adapter on the same miniredis clock
 	// noSessionStore builds the gateway without a session limit store.
 	noSessionStore bool
 	// noRPMStore and noWindowCostState build it without those stores.
@@ -556,6 +557,9 @@ func newThreadHarnessWith(t *testing.T, kind string, options threadHarnessOption
 		h.costs.fail.Store(true)
 	}
 	var rpm service.RPMCache = h.rpm
+	if options.productionRPM {
+		rpm = repository.NewRPMCache(kv)
+	}
 	if options.noRPMStore {
 		rpm = nil
 	}
@@ -572,16 +576,17 @@ func newThreadHarnessWith(t *testing.T, kind string, options threadHarnessOption
 }
 
 type threadTurn struct {
-	previous string
-	stream   bool
-	noThread bool
-	model    string
-	beta     *string
-	extra    string
-	messages string
-	omitDefs bool // create without system and tools
-	plain    bool // send as an ordinary SDK client, whatever the harness kind
-	failAt   int  // the client connection breaks at this write (1-based)
+	previous  string
+	stream    bool
+	noThread  bool
+	model     string
+	beta      *string
+	betaLines []string
+	extra     string
+	messages  string
+	omitDefs  bool // create without system and tools
+	plain     bool // send as an ordinary SDK client, whatever the harness kind
+	failAt    int  // the client connection breaks at this write (1-based)
 	// fixed replaces the harness's fixed fields for this request; tools
 	// replaces the declared tools of a create request.
 	fixed     *string
@@ -697,6 +702,9 @@ func (h *threadHarness) send(turn threadTurn) *httptest.ResponseRecorder {
 	}
 	if beta != "" {
 		c.Request.Header.Set("Anthropic-Beta", beta)
+	}
+	for _, line := range turn.betaLines {
+		c.Request.Header.Add("Anthropic-Beta", line)
 	}
 	userID, keyID, groupID := h.userID, h.keyID, h.group.ID
 	if turn.userID != 0 {

@@ -1608,17 +1608,22 @@ func (s *GatewayService) replaceModelInResponseBody(body []byte, fromModel, toMo
 // reconcileCachedTokens 兼容 Kimi 等上游：
 // 将 OpenAI 风格的 cached_tokens 映射到 Claude 标准的 cache_read_input_tokens
 func reconcileCachedTokens(usage map[string]any) bool {
-	if usage == nil {
+	if positiveUsageNumber(usage["cache_read_input_tokens"]) || !positiveUsageNumber(usage["cached_tokens"]) {
 		return false
 	}
-	cacheRead, _ := usage["cache_read_input_tokens"].(float64)
-	if cacheRead > 0 {
-		return false // 已有标准字段，无需处理
-	}
-	cached, _ := usage["cached_tokens"].(float64)
-	if cached <= 0 {
-		return false
-	}
-	usage["cache_read_input_tokens"] = cached
+	// Preserve the incoming JSON number rather than rounding it on output.
+	usage["cache_read_input_tokens"] = usage["cached_tokens"]
 	return true
+}
+
+func positiveUsageNumber(value any) bool {
+	switch n := value.(type) {
+	case float64: // ordinary stream decoder
+		return n > 0
+	case json.Number: // thread stream decoder
+		f, err := n.Float64()
+		return err == nil && f > 0
+	default:
+		return false
+	}
 }

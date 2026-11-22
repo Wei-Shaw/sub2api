@@ -142,11 +142,28 @@ func (s *GatewayService) admitThreadSession(ctx context.Context, account *Accoun
 // depended on could not be read.
 func (t *MessageThread) AdmissionFault() bool { return t != nil && t.admissionFault }
 
+// CountRPMOnSuccess uses the row admitted immediately before a thread was
+// sent. Ordinary requests keep using the selected account, as before.
+func (t *MessageThread) CountRPMOnSuccess(selected *Account) bool {
+	if t != nil {
+		return t.attempt.countRPM
+	}
+	return accountRPMEnabled(selected)
+}
+
+func accountRPMEnabled(account *Account) bool {
+	return account != nil && account.IsAnthropicOAuthOrSetupToken() && account.GetBaseRPM() > 0
+}
+
 // registerThreadSessionForSend is the last admission step. RegisterSession
 // atomically creates or refreshes a session, but grants no release rights.
 func (s *GatewayService) registerThreadSessionForSend(ctx context.Context, t *MessageThread, account *Account) error {
 	admission, err := s.admitThreadSession(ctx, account, t.session)
-	return t.limitDecision(account, "sessions", admission, err)
+	if err := t.limitDecision(account, "sessions", admission, err); err != nil {
+		return err
+	}
+	t.attempt.countRPM = accountRPMEnabled(account)
+	return nil
 }
 
 // threadZoneAdmission turns the zone of a soft limit into an answer. reserved
@@ -171,7 +188,7 @@ func threadZoneAdmission(zone WindowCostSchedulability, reserved bool) limitAdmi
 // soft nature of the limit: nothing is locked between this read and the
 // increment that follows a served request.
 func (s *GatewayService) admitThreadRPM(ctx context.Context, account *Account, reserved bool) (limitAdmission, error) {
-	if account == nil || !account.IsAnthropicOAuthOrSetupToken() || account.GetBaseRPM() <= 0 {
+	if !accountRPMEnabled(account) {
 		return limitNotConfigured, nil
 	}
 	if s.rpmCache == nil {
