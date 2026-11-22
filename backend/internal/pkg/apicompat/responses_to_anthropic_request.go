@@ -234,6 +234,15 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 				Content: blockJSON,
 			})
 
+		case len(item.outputRaw) == 0 && isCodexAgentContextOutput(item.Type, item.Namespace, item.CallID, item.Name):
+			// Agent context pairs with no tool_use; an empty tool_use_id would be
+			// rejected or dropped as an orphan, so keep it as user text in place.
+			blockJSON, _ := json.Marshal([]AnthropicContentBlock{{Type: "text", Text: codexAgentContextText(item.Name, item.Output)}})
+			messages = append(messages, AnthropicMessage{
+				Role:    "user",
+				Content: blockJSON,
+			})
+
 		case item.Type == "function_call_output":
 			// function_call_output → user message with tool_result block
 			contentJSON := responsesFunctionOutputToAnthropicContent(item)

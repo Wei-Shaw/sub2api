@@ -1789,7 +1789,9 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 			copied = true
 		}
 
-		if isCodexToolCallItemType(typ) {
+		// Agent context is not a call result: deriving call_id from its id would
+		// turn it into an orphan output that cleanup drops or the upstream rejects.
+		if isCodexToolCallItemType(typ) && !isCodexAgentContextOutputMap(m) {
 			callID, ok := m["call_id"].(string)
 			if !ok || strings.TrimSpace(callID) == "" {
 				if id, ok := m["id"].(string); ok && strings.TrimSpace(id) != "" {

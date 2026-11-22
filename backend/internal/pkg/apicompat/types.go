@@ -383,6 +383,8 @@ type ResponsesInputItem struct {
 	Name      string `json:"name,omitempty"`
 	Arguments string `json:"arguments,omitempty"`
 	ID        string `json:"id,omitempty"`
+	// Codex agent context outputs live in the "agent" namespace without call_id.
+	Namespace string `json:"namespace,omitempty"`
 
 	// type=function_call_output
 	Output    string `json:"output,omitempty"`

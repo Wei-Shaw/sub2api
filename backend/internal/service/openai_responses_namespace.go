@@ -204,6 +204,15 @@ func flattenOpenAIResponsesNamespaces(c *gin.Context, body []byte) ([]byte, erro
 // namespace，让 Codex 调用能按上游要求原样回传；判定见
 // shouldKeepOpenAIResponsesToolCallNamespaces。
 func stripOpenAIResponsesInputNamespaces(body []byte, keepToolCallNamespaces bool) ([]byte, error) {
+	return stripOpenAIResponsesInputNamespacesKeeping(body, keepToolCallNamespaces, false)
+}
+
+// stripOpenAIResponsesInputNamespacesKeeping also keeps the namespace of Codex
+// agent context outputs when keepAgentContext is set. Without "agent" such an
+// item is an orphan function_call_output with no call_id, which Responses
+// upstreams reject; only the compact endpoint, whose schema has no
+// input[].namespace, needs it removed (together with the item id, see below).
+func stripOpenAIResponsesInputNamespacesKeeping(body []byte, keepToolCallNamespaces, keepAgentContext bool) ([]byte, error) {
 	if !bytes.Contains(body, openAIResponsesNamespaceFieldBytes) {
 		return body, nil
 	}
@@ -223,10 +232,17 @@ func stripOpenAIResponsesInputNamespaces(body []byte, keepToolCallNamespaces boo
 	var stripErr error
 	input.ForEach(func(_, item gjson.Result) bool {
 		if !item.IsObject() || !item.Get("namespace").Exists() ||
-			(keepToolCallNamespaces && isOpenAIResponsesToolCallItemType(item.Get("type").String())) {
+			(keepToolCallNamespaces && isOpenAIResponsesToolCallItemType(item.Get("type").String())) ||
+			(keepAgentContext && isCodexAgentContextOutput(item)) {
 			return true
 		}
 		itemBody, err := sjson.Delete(item.Raw, "namespace")
+		if err == nil && !keepAgentContext && isCodexAgentContextOutput(item) && item.Get("id").Exists() {
+			// Without its namespace the compact endpoint sees a standalone named
+			// output; its id would otherwise be promoted to a call_id that pairs
+			// with nothing and gets the context dropped as an orphan.
+			itemBody, err = sjson.Delete(itemBody, "id")
+		}
 		if err != nil {
 			stripErr = err
 			return false
