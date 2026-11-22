@@ -11,7 +11,6 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
-	"github.com/tidwall/gjson"
 )
 
 const (
@@ -75,10 +74,10 @@ func (s *OpenAIGatewayService) EarliestCodexPoolQuotaReset(ctx context.Context, 
 			!s.isOpenAIAccountTransportCompatible(account, req.Transport) ||
 			explicitImageTier && !account.SupportsOpenAIImageSizeTier(imageTier) ||
 			!parentHealthyForShadow(account, s.parentAccountLookup(ctx)) ||
-			s.isOpenAIProxyStreamQuarantined(ctx, account) ||
 			checkUpstream && s.isUpstreamModelRestrictedByChannel(ctx, *req.GroupID, account, req.Model, false) {
 			continue
 		}
+		// The scheduler retries with proxy quarantine bypassed when no account is available.
 		reset, admissible := s.codexQuotaCandidateReset(ctx, account, req, thresholds, now)
 		_, failed := req.FailedAccounts[account.ID]
 		if admissible && !failed {
@@ -254,21 +253,15 @@ func codexQuota429Reset(account *Account, headers http.Header, body []byte, now 
 	if !isOpenAIOAuthAccount(account) || account.IsShadow() {
 		return time.Time{}, false
 	}
-	typ := gjson.GetBytes(body, "error.type").String()
-	if typ == "" {
-		typ = gjson.GetBytes(body, "response.error.type").String()
-		if typ != "" {
-			body = []byte(gjson.GetBytes(body, "response").Raw)
-		}
-	}
+	errObj := openAIErrorObject(body)
+	typ := errObj.Get("type").String()
 	explicit := typ == "usage_limit_reached"
 	var reset time.Time
 	if explicit {
 		if unix := parseOpenAIRateLimitResetTime(body); unix != nil && time.Unix(*unix, 0).After(now) && *unix <= 253402300799 {
 			reset = time.Unix(*unix, 0)
 		}
-	} else if typ != "" ||
-		firstNonEmpty(gjson.GetBytes(body, "error.code").String(), gjson.GetBytes(body, "response.error.code").String()) != "" ||
+	} else if typ != "" || errObj.Get("code").String() != "" ||
 		codexAccountHasSpendableCredits(account) || codexHeadersHaveSpendableCredits(headers) {
 		return time.Time{}, false
 	}

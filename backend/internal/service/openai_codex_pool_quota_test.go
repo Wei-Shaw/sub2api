@@ -283,7 +283,7 @@ func TestCodexPoolQuotaGuardianAffinityIsNotExclusive(t *testing.T) {
 	require.True(t, s.EarliestCodexPoolQuotaReset(ctx, CodexPoolQuotaRequest{GroupID: &groupID, Model: "gpt-5.1", Transport: OpenAIUpstreamTransportAny}).IsZero())
 }
 
-func TestCodexPoolQuotaIgnoresQuarantinedProxies(t *testing.T) {
+func TestCodexPoolQuotaIncludesProxyQuarantineFailOpen(t *testing.T) {
 	now := time.Now()
 	early := now.Add(time.Hour)
 	late := now.Add(2 * time.Hour)
@@ -294,10 +294,19 @@ func TestCodexPoolQuotaIgnoresQuarantinedProxies(t *testing.T) {
 	eligible := quotaTestAccount(3, now, late, late, true)
 	s := &OpenAIGatewayService{accountRepo: &codexPoolQuotaAccounts{accounts: []Account{quarantined, availableViaQuarantinedProxy, eligible}}}
 	s.openaiProxyStreamCircuit = newOpenAIProxyStreamCircuit(openAIProxyStreamCircuitSettings{
-		failureThreshold: 1, failureWindow: time.Minute, quarantineTTL: 10 * time.Minute, maxEntries: 16,
+		failureThreshold: 1, failureWindow: time.Minute, quarantineTTL: 3 * time.Hour, maxEntries: 16,
 	})
 	s.openaiProxyStreamCircuit.recordFailure(proxyID, now)
+	ctx := context.Background()
+	require.True(t, s.isOpenAIProxyStreamQuarantined(ctx, &availableViaQuarantinedProxy))
+
 	groupID := int64(5)
-	reset := s.EarliestCodexPoolQuotaReset(context.Background(), CodexPoolQuotaRequest{GroupID: &groupID, Model: "gpt-5.1", Transport: OpenAIUpstreamTransportAny})
-	require.True(t, reset.Equal(late), "got %v, want %v", reset, late)
+	req := CodexPoolQuotaRequest{GroupID: &groupID, Model: "gpt-5.1", Transport: OpenAIUpstreamTransportAny,
+		FailedAccounts: map[int64]struct{}{eligible.ID: {}},
+	}
+	require.True(t, s.EarliestCodexPoolQuotaReset(ctx, req).IsZero(), "the untried account remains available through fail-open")
+
+	req.FailedAccounts[availableViaQuarantinedProxy.ID] = struct{}{}
+	reset := s.EarliestCodexPoolQuotaReset(ctx, req)
+	require.True(t, reset.Equal(early), "got %v, want %v", reset, early)
 }

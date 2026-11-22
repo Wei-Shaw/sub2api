@@ -1052,12 +1052,15 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if openAIWSMessageShouldParseUsage(eventType, upstreamMessage) {
 				parseOpenAIWSResponseUsageFromCompletedEvent(upstreamMessage, &usage)
 			}
+			var errCodeRaw, errTypeRaw, errMsgRaw string
+			isRateLimit := false
 			if eventType == "error" || eventType == "response.failed" {
 				markOpenAICyberPolicyEvent(c, upstreamMessage, http.StatusOK, &usage)
+				errCodeRaw, errTypeRaw, errMsgRaw = parseOpenAIWSErrorEventFields(upstreamMessage)
+				isRateLimit = isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw)
 			}
 			if eventType == "error" {
 				s.handleOpenAIWSErrorEventTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), upstreamMessage)
-				errCodeRaw, errTypeRaw, errMsgRaw := parseOpenAIWSErrorEventFields(upstreamMessage)
 				statusCode := openAIWSRejectedFieldRetryHTTPStatus(upstreamMessage)
 				if !wroteDownstream && statusCode == http.StatusBadRequest && rejectedFieldRetryState != nil {
 					retryBody, retryReason, changed, retryErr := normalizeOpenAIResponsesRejectedFieldRetryBody(
@@ -1082,7 +1085,6 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 						}
 					}
 				}
-				s.persistOpenAIWSEventRateLimit(ctx, account, lease.HandshakeHeaders(), upstreamMessage, errCodeRaw, errTypeRaw, errMsgRaw, mappedModel)
 				fallbackReason, _ := classifyOpenAIWSErrorEventFromRaw(errCodeRaw, errTypeRaw, errMsgRaw)
 				if fallbackReason == openAIWSFallbackReasonInvalidEncryptedContent {
 					// 记录被上游拒绝的密文摘要；错误照旧透传，下一轮进场时按摘要预剥离。
@@ -1152,7 +1154,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 						false,
 					)
 				}
-				if !wroteSemanticOutput && isOpenAIWSRateLimitError(errCodeRaw, errTypeRaw, errMsgRaw) {
+			}
+			if isRateLimit {
+				s.persistOpenAIWSEventRateLimit(ctx, account, lease.HandshakeHeaders(), upstreamMessage, errCodeRaw, errTypeRaw, errMsgRaw, mappedModel)
+				if !wroteSemanticOutput {
 					// Metadata permits a terminal error, but any downstream frame
 					// prevents replaying this request on another upstream connection.
 					if (turn > 1 || wroteDownstream) && hooks != nil && hooks.OnQuotaFailure != nil {
@@ -1203,9 +1208,8 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				// ctx_pool 的 ingress 直写路径是唯一漏掉的一条 —— 同一个上游降载
 				// 事件在这里会让会话就地终止，切到 http_bridge 却能正常退避重试。
 				//
-				// 必须写进独立变量而不是原地改 upstreamMessage：下面的
-				// markOpenAIWSClientVisibleFailure 与 handleOpenAIWSTerminalTransientFailure
-				// 仍要按未改写的原始 payload 判定账号状态，这正是
+				// 必须写进独立变量而不是原地改 upstreamMessage：下面记录客户端可见故障
+				// 和处理终止事件时仍要使用未改写的原始 payload，这正是
 				// sanitizeOpenAICapacityShedErrorCodeForClient 注释里写明的前提。
 				clientMessage := upstreamMessage
 				if eventType == "error" || eventType == "response.failed" {
@@ -1239,7 +1243,10 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				}
 			}
 			if isTerminalEvent {
-				terminalEvent := s.handleOpenAIWSTerminalTransientFailure(ctx, account, mappedModel, lease.HandshakeHeaders(), upstreamMessage)
+				terminalEvent := normalizeOpenAIWSTerminalEvent(eventType)
+				if terminalEvent == "response.failed" && !isRateLimit {
+					s.handleOpenAIWSFailureAccountSideEffects(ctx, account, mappedModel, lease.HandshakeHeaders(), upstreamMessage)
+				}
 				// 客户端已断连时，上游连接的 session 状态不可信，标记 broken 避免回池复用。
 				if clientDisconnected {
 					lease.MarkBroken()

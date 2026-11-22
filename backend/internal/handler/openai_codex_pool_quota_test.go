@@ -106,7 +106,7 @@ func (u *codexQuotaHTTPUpstream) Do(_ *http.Request, _ string, id int64, _ int) 
 				"Retry-After":                           {"60"},
 				"X-Request-Id":                          {"upstream-request"},
 			},
-			Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`data: {"type":"error","status":429,"error":{"type":"usage_limit_reached","message":"The usage limit has been reached","resets_at":%d}}`, reset.Unix()) + "\n\n")),
+			Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`data: {"type":"response.failed","response":{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached","resets_at":%d}}}`, reset.Unix()) + "\n\n")),
 		}, nil
 	}
 	return &http.Response{
@@ -268,6 +268,12 @@ func TestCodexPoolQuotaResponses(t *testing.T) {
 					require.Equal(t, http.StatusTooManyRequests, rec.Code, rec.Body.String())
 					require.Equal(t, reset.Unix(), gjson.GetBytes(rec.Body.Bytes(), "error.resets_at").Int(), rec.Body.String())
 					require.Equal(t, int32(2), upstream.calls.Load())
+					for _, id := range []int64{1, 2} {
+						account, err := repo.GetByID(req.Context(), id)
+						require.NoError(t, err)
+						require.NotNil(t, account.RateLimitResetAt)
+						require.Equal(t, reset.Add(time.Duration(id-1)*time.Hour), account.RateLimitResetAt.UTC())
+					}
 					headers := rec.Result().Header
 					require.Equal(t, "application/json; charset=utf-8", headers.Get("Content-Type"))
 					require.Equal(t, "no-store", headers.Get("Cache-Control"))
@@ -387,12 +393,17 @@ func TestCodexPoolQuotaNativeWebSocketRefreshesSettingsAfterMetadata(t *testing.
 			name                                   string
 			initiallyEnabled, laterEnabled, output bool
 			healthyBackup, toolContinuation        bool
+			nestedFailure, firstTurn               bool
 		}{
 			{name: "enable_on_existing_connection", laterEnabled: true},
 			{name: "disable_on_existing_connection", initiallyEnabled: true},
 			{name: "preserve_error_after_semantic_output", initiallyEnabled: true, laterEnabled: true, output: true},
 			{name: "reconnect_when_backup_is_healthy", laterEnabled: true, healthyBackup: true},
 			{name: "reconnect_when_tool_turn_depends_on_upstream_state", laterEnabled: true, toolContinuation: true},
+			{name: "diagnose_response_failed", laterEnabled: true, nestedFailure: true},
+			{name: "diagnose_response_failed_on_first_turn", initiallyEnabled: true, nestedFailure: true, firstTurn: true},
+			{name: "forward_response_failed_when_disabled", initiallyEnabled: true, nestedFailure: true},
+			{name: "preserve_response_failed_after_semantic_output", initiallyEnabled: true, laterEnabled: true, output: true, nestedFailure: true},
 		} {
 			t.Run(mode+"/"+scenario.name, func(t *testing.T) {
 				ctx, cancel := context.WithTimeout(context.Background(), 8*time.Second)
@@ -408,10 +419,14 @@ func TestCodexPoolQuotaNativeWebSocketRefreshesSettingsAfterMetadata(t *testing.
 						return
 					}
 					defer func() { _ = conn.CloseNow() }()
-					for _, frames := range [][]string{
+					turnFrames := [][]string{
 						{`{"type":"response.completed","response":{"id":"resp_first","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`},
 						{`{"type":"codex.rate_limits"}`, `{"type":"response.created","response":{"id":"resp_second","model":"gpt-5.1"}}`},
-					} {
+					}
+					if scenario.firstTurn {
+						turnFrames = [][]string{nil}
+					}
+					for _, frames := range turnFrames {
 						_, request, err := conn.Read(ctx)
 						if err != nil {
 							return
@@ -430,7 +445,12 @@ func TestCodexPoolQuotaNativeWebSocketRefreshesSettingsAfterMetadata(t *testing.
 							return
 						}
 					}
-					_ = conn.Write(ctx, coderws.MessageText, []byte(fmt.Sprintf(`{"type":"error","status":429,"error":{"type":"usage_limit_reached","message":"The usage limit has been reached","resets_at":%d}}`, upstreamReset.Unix())))
+					upstreamError := fmt.Sprintf(`{"type":"usage_limit_reached","message":"The usage limit has been reached","resets_at":%d}`, upstreamReset.Unix())
+					failureFrame := `{"type":"error","status":429,"error":` + upstreamError + `}`
+					if scenario.nestedFailure {
+						failureFrame = `{"type":"response.failed","response":{"id":"resp_second","error":` + upstreamError + `}}`
+					}
+					_ = conn.Write(ctx, coderws.MessageText, []byte(failureFrame))
 					_, _, _ = conn.Read(ctx)
 				}))
 				defer upstream.Close()
@@ -499,6 +519,15 @@ func TestCodexPoolQuotaNativeWebSocketRefreshesSettingsAfterMetadata(t *testing.
 				require.NoError(t, conn.Write(ctx, coderws.MessageText, request))
 				_, frame, err := conn.Read(ctx)
 				require.NoError(t, err)
+				if scenario.firstTurn {
+					require.Equal(t, "error", gjson.GetBytes(frame, "type").String(), string(frame))
+					require.Equal(t, int64(429), gjson.GetBytes(frame, "status").Int(), string(frame))
+					require.Equal(t, reset.Unix(), gjson.GetBytes(frame, "error.resets_at").Int(), string(frame))
+					_, _, err := conn.Read(ctx)
+					require.Equal(t, coderws.StatusNormalClosure, coderws.CloseStatus(err))
+					require.Equal(t, int32(1), upstreamRequests.Load())
+					return
+				}
 				require.Equal(t, "response.completed", gjson.GetBytes(frame, "type").String())
 				keys.enabled.Store(scenario.laterEnabled)
 				if scenario.toolContinuation {
@@ -510,8 +539,15 @@ func TestCodexPoolQuotaNativeWebSocketRefreshesSettingsAfterMetadata(t *testing.
 					events = append(events, "response.output_text.delta")
 				}
 				expectReconnect := scenario.healthyBackup || scenario.toolContinuation
+				expectPoolQuota := scenario.laterEnabled && !scenario.output && !expectReconnect
+				errorPath := "error"
 				if !expectReconnect {
-					events = append(events, "error")
+					if scenario.nestedFailure && !expectPoolQuota {
+						events = append(events, "response.failed")
+						errorPath = "response.error"
+					} else {
+						events = append(events, "error")
+					}
 				}
 				for _, event := range events {
 					_, frame, err = conn.Read(ctx)
@@ -524,13 +560,14 @@ func TestCodexPoolQuotaNativeWebSocketRefreshesSettingsAfterMetadata(t *testing.
 					if scenario.toolContinuation && mode == service.OpenAIWSIngressModeCtxPool {
 						require.True(t, inferredContinuation.Load(), "ctx_pool must test the inferred continuation")
 					}
-				} else if scenario.laterEnabled && !scenario.output {
+				} else if expectPoolQuota {
+					require.Equal(t, int64(429), gjson.GetBytes(frame, "status").Int(), string(frame))
 					require.Equal(t, "usage_limit_reached", gjson.GetBytes(frame, "error.type").String(), string(frame))
 					require.Equal(t, reset.Unix(), gjson.GetBytes(frame, "error.resets_at").Int())
 					_, _, err := conn.Read(ctx)
 					require.Equal(t, coderws.StatusNormalClosure, coderws.CloseStatus(err))
 				} else {
-					require.Equal(t, upstreamReset.Unix(), gjson.GetBytes(frame, "error.resets_at").Int(), string(frame))
+					require.Equal(t, upstreamReset.Unix(), gjson.GetBytes(frame, errorPath+".resets_at").Int(), string(frame))
 				}
 				require.Equal(t, int32(2), upstreamRequests.Load(), "metadata must not permit replay")
 			})
