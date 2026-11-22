@@ -9,27 +9,37 @@ import (
 )
 
 func TestOpenAIResponsesWebSocketNativeSearchAbnormalCloseBilling(t *testing.T) {
-	for _, turn := range []int{1, 2} {
-		t.Run(fmt.Sprintf("turn=%d", turn), func(t *testing.T) {
-			testCase := openAIResponsesWSUsageLogCase{
-				firstPayload:       `{"type":"response.create","model":"gpt-5.4","stream":true}`,
-				ingressMode:        service.OpenAIWSIngressModePassthrough,
-				abnormalSearchTurn: turn,
-			}
-			if turn == 2 {
-				testCase.secondPayload = testCase.firstPayload
-			}
-			got := runOpenAIResponsesWebSocketUsageLogCase(t, testCase)
-			require.Len(t, got.logs, turn)
-			partial := got.logs[turn-1]
-			require.Zero(t, partial.InputTokens)
-			require.Zero(t, partial.OutputTokens)
-			require.Zero(t, partial.CacheCreationTokens)
-			require.Zero(t, partial.CacheReadTokens)
-			require.InDelta(t, 0.01, partial.TotalCost, 1e-12)
-			if turn == 2 {
-				require.Equal(t, 2, got.logs[0].InputTokens)
-				require.Equal(t, 1, got.logs[0].OutputTokens)
+	for _, mode := range []string{
+		service.OpenAIWSIngressModePassthrough,
+		service.OpenAIWSIngressModeCtxPool,
+		service.OpenAIWSIngressModeShared,
+		service.OpenAIWSIngressModeDedicated,
+	} {
+		t.Run(mode, func(t *testing.T) {
+			for _, turn := range []int{1, 2} {
+				t.Run(fmt.Sprintf("turn=%d", turn), func(t *testing.T) {
+					testCase := openAIResponsesWSUsageLogCase{
+						firstPayload:       `{"type":"response.create","model":"gpt-5.4","stream":true}`,
+						ingressMode:        mode,
+						abnormalSearchTurn: turn,
+					}
+					if turn == 2 {
+						testCase.secondPayload = testCase.firstPayload
+					}
+					got := runOpenAIResponsesWebSocketUsageLogCase(t, testCase)
+					require.Len(t, got.logs, turn)
+					partial := got.logs[turn-1]
+					require.Zero(t, partial.InputTokens)
+					require.Zero(t, partial.OutputTokens)
+					require.Zero(t, partial.CacheCreationTokens)
+					require.Zero(t, partial.CacheReadTokens)
+					require.InDelta(t, 0.01, partial.TotalCost, 1e-12)
+					if turn == 2 {
+						require.Equal(t, 2, got.logs[0].InputTokens)
+						require.Equal(t, 1, got.logs[0].OutputTokens)
+						require.InDelta(t, 0.01+got.logs[0].InputCost+got.logs[0].OutputCost, got.logs[0].TotalCost, 1e-12)
+					}
+				})
 			}
 		})
 	}

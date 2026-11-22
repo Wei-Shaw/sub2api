@@ -3044,6 +3044,13 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 				turn,
 				gjson.GetBytes(payload, "model").String(),
 			)
+			if tc.abnormalSearchTurn > turn {
+				response, err = sjson.SetRaw(response, "response.output", `[{"type":"web_search_call","id":"ws_settled","status":"completed"}]`)
+				if err != nil {
+					upstreamErrCh <- err
+					return
+				}
+			}
 			writeCtx, cancelWrite := context.WithTimeout(r.Context(), 3*time.Second)
 			writeErr := conn.Write(writeCtx, coderws.MessageText, []byte(response))
 			cancelWrite()

@@ -1027,7 +1027,20 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			upstreamMessage, readErr := lease.ReadMessageWithContextTimeout(ctx, s.openAIWSReadTimeout())
 			if readErr != nil {
 				lease.MarkBroken()
-				return nil, wrapOpenAIWSIngressTurnError(
+				var result *OpenAIForwardResult
+				if searchCalls := nativeSearch.UnsettledCount(); searchCalls > 0 {
+					result = &OpenAIForwardResult{
+						NativeWebSearchCalls:     searchCalls,
+						Model:                    originalModel,
+						UpstreamModel:            mappedModel,
+						RequestedReasoningEffort: requestedReasoningEffort,
+						Stream:                   reqStream,
+						OpenAIWSMode:             true,
+						ResponseHeaders:          lease.HandshakeHeaders(),
+						Duration:                 time.Since(turnStart),
+					}
+				}
+				return result, wrapOpenAIWSIngressTurnError(
 					"read_upstream",
 					fmt.Errorf("read upstream websocket event: %w", readErr),
 					wroteDownstream,
@@ -1879,7 +1892,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if recoverIngressPrevResponseNotFound(relayErr, turn, connID) {
 				continue
 			}
-			if retryIngressTurn(relayErr, turn, connID) {
+			if (result == nil || result.NativeWebSearchCalls <= 0) && retryIngressTurn(relayErr, turn, connID) {
 				continue
 			}
 			finalErr := relayErr
@@ -1887,7 +1900,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				finalErr = unwrapped
 			}
 			if hooks != nil && hooks.AfterTurn != nil {
-				hooks.AfterTurn(turn, nil, finalErr)
+				hooks.AfterTurn(turn, result, finalErr)
 			}
 			sessionLease.MarkBroken()
 			return finalErr
