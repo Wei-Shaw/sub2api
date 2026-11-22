@@ -3,6 +3,8 @@ package handler
 import (
 	"encoding/json"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -14,6 +16,11 @@ import (
 
 func pageContextItem(name, output string) map[string]any {
 	return map[string]any{"type": "function_call_output", "id": "fco_page", "namespace": "agent", "name": name, "output": output}
+}
+
+// A real tool result that lost its call_id; Codex reserves the agent namespace for context.
+func toolResultWithoutCallID(name, output string) map[string]any {
+	return map[string]any{"type": "function_call_output", "id": "fco_tool", "name": name, "output": output}
 }
 
 func pageContextRequest(t *testing.T, items ...any) []byte {
@@ -54,7 +61,177 @@ func TestNormalizeCodexPageContextFirstMessage(t *testing.T) {
 	require.Equal(t, got, again)
 }
 
-var codexTextContextNamesForTest = []string{"browser_info", "goal_objective", "untrusted_context", "untrusted_content", "ide_context", "proposed_plan"}
+var codexTextContextNamesForTest = []string{"browser_info", "terminal_info", "goal_objective", "untrusted_context", "untrusted_content", "ide_context", "proposed_plan"}
+
+func TestNormalizeCodexTerminalInfoIssue8991(t *testing.T) {
+	body := []byte(`{"model":"deepseek-flash","input":[{"type":"function_call_output","namespace":"agent","name":"terminal_info","output":"retest context"}]}`)
+	h := &OpenAIGatewayHandler{}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	require.False(t, h.validateFunctionCallOutputRequest(c, body, zap.NewNop()))
+	require.Equal(t, 400, w.Code)
+	require.Contains(t, w.Body.String(), "function_call_output requires call_id")
+
+	got, changed := normalizeCodexUntrustedContext(body)
+	require.True(t, changed)
+	require.JSONEq(t, `{"model":"deepseek-flash","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"<external_terminal_info>retest context</external_terminal_info>"}]}]}`, string(got))
+	w = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(w)
+	require.True(t, h.validateFunctionCallOutputRequest(c, got, zap.NewNop()))
+	require.False(t, c.Writer.Written())
+}
+
+func TestNormalizeCodexTerminalInfoBoundaries(t *testing.T) {
+	for _, testCase := range []struct {
+		name  string
+		key   string
+		value any
+	}{
+		{"call id with surrounding whitespace", "call_id", " call_real "},
+		{"boolean call id", "call_id", false},
+		{"array call id", "call_id", []any{}},
+		{"object call id", "call_id", map[string]any{}},
+		{"namespace whitespace", "namespace", " agent "},
+		{"namespace case", "namespace", "Agent"},
+		{"boolean output", "output", false},
+		{"numeric output", "output", 42},
+		{"object output", "output", map[string]any{"text": "context"}},
+		{"name with dash", "name", "terminal-info"},
+		{"name with space", "name", "terminal info"},
+		{"empty name", "name", ""},
+		{"other type", "type", "custom_tool_call_output"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			item := pageContextItem("terminal_info", "retest context")
+			item[testCase.key] = testCase.value
+			body := pageContextRequest(t, item)
+			got, changed := normalizeCodexUntrustedContext(body)
+			require.False(t, changed)
+			require.Equal(t, body, got)
+		})
+	}
+	for _, body := range []string{
+		`{"input":[{"type":"function_call_output","namespace":"other","namespace":"agent","name":"terminal_info","output":"context"}]}`,
+		`{"input":[{"type":"function_call_output","namespace":"agent","name":"read_file","name":"terminal_info","output":"context"}]}`,
+		`{"input":[],"input":[{"type":"function_call_output","namespace":"agent","name":"terminal_info","output":"context"}]}`,
+		`{"input":[{"type":"function_call_output","namespace":"agent","name":"terminal_info","output":"context"}]} trailing`,
+	} {
+		got, changed := normalizeCodexUntrustedContext([]byte(body))
+		require.False(t, changed)
+		require.Equal(t, body, string(got))
+	}
+}
+
+func TestNormalizeCodexTerminalInfoEscapedName(t *testing.T) {
+	body := []byte(`{"input":[{"type":"function_call_output","namespace":"agent","name":"terminal_\u0069nfo","output":"  context\n\t"}]}`)
+	got, changed := normalizeCodexUntrustedContext(body)
+	require.True(t, changed)
+	require.Equal(t, "<external_terminal_info>  context\n\t</external_terminal_info>", gjson.GetBytes(got, "input.0.content.0.text").String())
+}
+
+func TestNormalizeCodexTerminalInfoPreservesUnrelatedResults(t *testing.T) {
+	body := pageContextRequest(t,
+		pageContextItem("terminal_info", "retest context"),
+		map[string]any{"type": "function_call_output", "namespace": "agent", "name": "terminal_info", "call_id": "call_real", "output": "real result"},
+		toolResultWithoutCallID("read_file", "unrelated result"))
+	got, changed := normalizeCodexUntrustedContext(body)
+	require.True(t, changed)
+	require.Equal(t, "message", gjson.GetBytes(got, "input.0.type").String())
+	for _, path := range []string{"input.1", "input.2"} {
+		require.JSONEq(t, gjson.GetBytes(body, path).Raw, gjson.GetBytes(got, path).Raw)
+	}
+	h := &OpenAIGatewayHandler{}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	require.False(t, h.validateFunctionCallOutputRequest(c, got, zap.NewNop()))
+	require.Equal(t, 400, w.Code)
+	require.Contains(t, w.Body.String(), "function_call_output requires call_id")
+}
+
+// Codex Desktop browser_tabs (Sub2API #8999) and any future additional context
+// key reach HTTP as agent outputs without call_id; none may be rejected.
+func TestNormalizeCodexStandaloneAgentContext(t *testing.T) {
+	tabs := "\n<in-app-browser-context source=\"ambient-ui-state\">\n# In app browser\n- Example: https://example.com/\n</in-app-browser-context>"
+	body := []byte(`{"model":"gpt-5","tools":[{"type":"function","name":"exec_command","parameters":{}}],"input":[` +
+		`{"type":"message","role":"user","content":"open it"},` +
+		`{"type":"function_call","name":"exec_command","call_id":"call_real","arguments":"{}"},` +
+		`{"type":"function_call_output","call_id":"call_real","output":"done"},` +
+		`{"type":"function_call_output","id":"fco_tabs","namespace":"agent","name":"browser_tabs","output":` + strconv.Quote(tabs) + `},` +
+		`{"type":"function_call_output","namespace":"agent","name":"Some_Future_Source_2","output":"future context"},` +
+		`{"type":"message","role":"user","content":"continue"}]}`)
+	// Without paired tool history the HTTP preflight rejects the first turn.
+	first := pageContextRequest(t, pageContextItem("browser_tabs", tabs), map[string]any{"role": "user", "content": "open it"})
+	h := &OpenAIGatewayHandler{}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	require.False(t, h.validateFunctionCallOutputRequest(c, first, zap.NewNop()))
+	require.Equal(t, 400, w.Code)
+	require.Contains(t, w.Body.String(), "function_call_output requires call_id")
+	normalizedFirst, changed := normalizeCodexUntrustedContext(first)
+	require.True(t, changed)
+	w = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(w)
+	require.True(t, h.validateFunctionCallOutputRequest(c, normalizedFirst, zap.NewNop()), w.Body.String())
+	require.False(t, c.Writer.Written())
+
+	got, changed := normalizeCodexUntrustedContext(body)
+	require.True(t, changed)
+	require.False(t, service.ValidateFunctionCallOutputContextBytes(got).HasFunctionCallOutputMissingCallID)
+	for _, index := range []string{"tools", "input.0", "input.1", "input.2", "input.5"} {
+		require.JSONEq(t, gjson.GetBytes(body, index).Raw, gjson.GetBytes(got, index).Raw)
+	}
+	require.Equal(t, "user", gjson.GetBytes(got, "input.3.role").String())
+	require.False(t, gjson.GetBytes(got, "input.3.id").Exists())
+	require.Equal(t, "<external_browser_tabs>"+tabs+"</external_browser_tabs>", gjson.GetBytes(got, "input.3.content.0.text").String())
+	require.Equal(t, "<external_Some_Future_Source_2>future context</external_Some_Future_Source_2>", gjson.GetBytes(got, "input.4.content.0.text").String())
+	again, changed := normalizeCodexUntrustedContext(got)
+	require.False(t, changed)
+	require.Equal(t, got, again)
+}
+
+func TestNormalizeCodexStandaloneAgentContextNameBoundaries(t *testing.T) {
+	for name, want := range map[string]bool{
+		strings.Repeat("a", 128): true,
+		"UPPER_lower_09":         true,
+		strings.Repeat("a", 129): false,
+		"has-dash":               false,
+		"has space":              false,
+		"has.dot":                false,
+		"tag>":                   false,
+		"":                       false,
+	} {
+		body := pageContextRequest(t, pageContextItem(name, "context"))
+		got, changed := normalizeCodexUntrustedContext(body)
+		require.Equal(t, want, changed, "name=%q", name)
+		if !want {
+			require.Equal(t, body, got)
+		}
+	}
+	for _, output := range []string{"", " \n\t"} {
+		body := pageContextRequest(t, pageContextItem("browser_tabs", output))
+		_, changed := normalizeCodexUntrustedContext(body)
+		require.False(t, changed)
+	}
+}
+
+// The cheap probe must let every standalone agent output through and skip the rest.
+func TestNormalizeCodexStandaloneAgentContextProbe(t *testing.T) {
+	for body, want := range map[string]bool{
+		`{"input":[{"type":"function_call_output","namespace":"agent","name":"x","output":"c"}]}`:                     true,
+		`{"input":[{"type":"function_call_output","namespace":"agent","name":"x","call_id":"","output":"c"}]}`:        true,
+		`{"input":[{"type":"function_call_output","namespace":"agent","name":"x","call_id":"call_1","output":"c"}]}`:  false,
+		`{"input":[{"type":"function_call_output","name":"agent","output":"c"}]}`:                                     false,
+		`{"input":[{"type":"function_call_output","call_id":"call_1","output":"agent"}]}`:                             false,
+		`{"tools":[{"name":"function_call_output","namespace":"agent"}],"input":[{"role":"user","content":"agent"}]}`: false,
+		`{"input":[{"type":"function_call_output","namespace":"\u0061gent","name":"x","output":"c"}]}`:                true,
+	} {
+		got, changed := normalizeCodexUntrustedContext([]byte(body))
+		require.Equal(t, want, changed, body)
+		if !want {
+			require.Equal(t, body, string(got))
+		}
+	}
+}
 
 func TestNormalizeCodexAdditionalUntrustedContext(t *testing.T) {
 	for _, name := range codexTextContextNamesForTest {
@@ -124,7 +301,7 @@ func TestNormalizeCodexAdditionalUntrustedContextPreservesRealAndMalformedOutput
 	}
 	// Recognized external context cannot make an unrelated tool result valid.
 	body := pageContextRequest(t, pageContextItem("browser_info", "tab"),
-		pageContextItem("read_file", "result"))
+		toolResultWithoutCallID("read_file", "result"))
 	got, changed := normalizeCodexUntrustedContext(body)
 	require.True(t, changed)
 	h := &OpenAIGatewayHandler{}
@@ -219,7 +396,7 @@ func TestNormalizeCodexPageContextPreservesHistoryAndToolValidation(t *testing.T
 		require.JSONEq(t, gjson.GetBytes(body, index).Raw, gjson.GetBytes(got, index).Raw)
 	}
 
-	badTool := pageContextItem("read_file", "result")
+	badTool := toolResultWithoutCallID("read_file", "result")
 	body = pageContextRequest(t, pageContextItem("codex_apps_open_page", `{"page_id":null}`), badTool)
 	got, changed = normalizeCodexUntrustedContext(body)
 	require.True(t, changed)
@@ -261,7 +438,6 @@ func TestNormalizeCodexPageContextRejectsUnrelatedOrMalformedItems(t *testing.T)
 		{"null call id", "call_id", nil},
 		{"other namespace", "namespace", "codex_app"},
 		{"missing namespace", "namespace", ""},
-		{"other tool", "name", "read_file"},
 		{"other type", "type", "custom_tool_call_output"},
 		{"not JSON", "output", "some text"},
 		{"not snapshot", "output", `{"other":null}`},

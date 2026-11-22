@@ -7,6 +7,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/tidwall/gjson"
 )
 
 var codexSelectedPageName = regexp.MustCompile(`^codex_apps_selected_page_part_([1-9][0-9]*)_of_([1-9][0-9]*)$`)
@@ -14,10 +17,7 @@ var codexSelectedPageName = regexp.MustCompile(`^codex_apps_selected_page_part_(
 // Codex injects external context as standalone outputs, without a model tool call.
 // Use the legacy user-message representation for HTTP Responses interoperability.
 func normalizeCodexUntrustedContext(body []byte) ([]byte, bool) {
-	if !mayContainCodexCallOutputCandidate(body,
-		"codex_apps_open_page", "codex_apps_selected_page_part_",
-		"browser_info", "goal_objective", "untrusted_context", "untrusted_content", "ide_context", "proposed_plan",
-	) || !hasUniqueJSONMembers(body) {
+	if !mayContainCodexStandaloneContext(body) || !hasUniqueJSONMembers(body) {
 		return body, false
 	}
 	var request map[string]json.RawMessage
@@ -87,18 +87,54 @@ func normalizeCodexUntrustedContext(body []byte) ([]byte, bool) {
 	return encoded, true
 }
 
+// Codex emits every additional context source (terminal_info, browser_tabs, ...)
+// as an agent-namespace output without call_id, named from the source key with
+// only ASCII letters, digits and underscores (at most 128). Accept that shape
+// instead of chasing an allowlist of names clients keep extending.
+var codexContextName = regexp.MustCompile(`^[A-Za-z0-9_]{1,128}$`)
+
+// mayContainCodexStandaloneContext is a zero-copy probe for an input item of type
+// function_call_output in the agent namespace without a call_id, so ordinary tool
+// history never pays for the full uniqueness scan and decode.
+func mayContainCodexStandaloneContext(body []byte) bool {
+	if !service.JSONMayEscapePlainASCII(body) &&
+		(!bytes.Contains(body, []byte("function_call_output")) || !bytes.Contains(body, []byte("agent"))) {
+		return false
+	}
+	input := gjson.GetBytes(body, "input")
+	if !input.IsArray() {
+		return false
+	}
+	found := false
+	input.ForEach(func(_, item gjson.Result) bool {
+		if !item.IsObject() || item.Get("type").String() != "function_call_output" || item.Get("namespace").String() != "agent" {
+			return true
+		}
+		callID := item.Get("call_id")
+		if !callID.Exists() || (callID.Type == gjson.String && strings.TrimSpace(callID.String()) == "") {
+			found = true
+			return false
+		}
+		return true
+	})
+	return found
+}
+
 func validCodexUntrustedContext(name, output string) bool {
 	switch name {
-	case "browser_info", "goal_objective", "untrusted_context", "ide_context":
-		return strings.TrimSpace(output) != ""
 	case "untrusted_content":
 		// Codex's fallback for an unnamed context source can carry any text, including an empty value.
 		return true
 	case "proposed_plan":
 		// Codex splits an approved plan by byte length, so a chunk can be all whitespace.
 		return output != ""
-	default:
+	case "codex_apps_open_page":
 		return validCodexPageContext(name, output)
+	default:
+		if codexSelectedPageName.MatchString(name) {
+			return validCodexPageContext(name, output)
+		}
+		return codexContextName.MatchString(name) && strings.TrimSpace(output) != ""
 	}
 }
 
