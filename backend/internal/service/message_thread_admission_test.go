@@ -179,8 +179,9 @@ func TestMessageThreadSessionAdmission(t *testing.T) {
 			require.Equal(t, tc.asked, tc.store.calls, name)
 		}
 
-		// The continue request's own registration.
-		admitErr := svc.AdmitMessageThreadSession(ctx, tc.account, tc.session)
+		// The continue request's final registration.
+		thread := &MessageThread{session: tc.session, parent: &MessageThreadBinding{}}
+		admitErr := svc.registerThreadSessionForSend(ctx, thread, tc.account)
 		switch tc.want {
 		case limitDenied:
 			require.Equal(t, "thread_not_found", threadTestError(t, admitErr).Code, name)
@@ -191,12 +192,16 @@ func TestMessageThreadSessionAdmission(t *testing.T) {
 			require.NoError(t, admitErr, name)
 		}
 
-		// The scheduler's check: with a thread it is that same answer, and a
-		// failure is remembered; without one it is what it always was.
-		thread := &MessageThread{}
-		usable := svc.checkAndRegisterSession(thread.Context(ctx), tc.account, tc.session)
-		require.Equal(t, tc.want == limitAllowed || tc.want == limitNotConfigured, usable, name)
-		require.Equal(t, tc.want == limitUnavailable, thread.AdmissionFault(), name)
+		// Selection must not create or refresh a slot. Only the final
+		// thread admission above can grant a send. Ordinary traffic retains
+		// its eager check and its existing store-error behavior.
+		if tc.store != nil {
+			tc.store.calls = 0
+		}
+		require.True(t, svc.checkAndRegisterSession(thread.Context(ctx), tc.account, tc.session), name)
+		if tc.store != nil {
+			require.Zero(t, tc.store.calls, name)
+		}
 		require.Equal(t, tc.want != limitDenied, svc.checkAndRegisterSession(ctx, tc.account, tc.session), "%s: a request without a thread", name)
 	}
 }

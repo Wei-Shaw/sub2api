@@ -1488,9 +1488,10 @@ func (s *GatewayService) IncrementAccountRPM(ctx context.Context, accountID int6
 // sessionID: 会话标识符（使用粘性会话的 hash）
 // 返回 true 表示允许（在限制内或会话已存在），false 表示拒绝（超出限制且是新会话）
 func (s *GatewayService) checkAndRegisterSession(ctx context.Context, account *Account, sessionID string) bool {
-	// A message thread request does not take a failing store for room.
-	if thread := threadFrom(ctx); thread != nil {
-		return s.admitThreadSessionInScheduler(ctx, thread, account, sessionID)
+	// Thread session admission happens on the final request, after the wait
+	// and route checks. Do not register or refresh a slot during selection.
+	if threadFrom(ctx) != nil {
+		return true
 	}
 	// 只检查 Anthropic OAuth/SetupToken 账号
 	if !account.IsAnthropicOAuthOrSetupToken() {

@@ -700,6 +700,13 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	// 须立即释放本次会话注册——上游从未真正服务该会话，继续占槽会让 max_sessions
 	// 受限的账号被失败请求的 session hash 卡满整个空闲窗口，后续新会话全部被拒。
 	// 成功请求保持既有空闲超时语义（会话按最后活动时间过期）。
+	// RegisterSession cannot distinguish a new slot from a shared one. Thread
+	// requests let slots expire at the existing idle deadline, even on failure.
+	releaseOrdinarySession := func(account *service.Account) {
+		if thread == nil {
+			h.gatewayService.ReleaseAccountSession(context.Background(), account, sessionKey)
+		}
+	}
 	sessionSlotAccounts := make(map[int64]*service.Account)
 	upstreamServedSession := false
 	defer func() {
@@ -708,7 +715,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		}
 		// 客户端可能已断开、请求 ctx 已取消，用独立 ctx 执行释放
 		for _, acc := range sessionSlotAccounts {
-			h.gatewayService.ReleaseAccountSession(context.Background(), acc, sessionKey)
+			releaseOrdinarySession(acc)
 		}
 	}()
 
@@ -800,16 +807,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				// it can serve a thread at all, and for a continue request whether
 				// it still is the upstream identity the thread was created with.
 				threadErr := h.gatewayService.CheckMessageThreadAccount(c.Request.Context(), thread, account, currentAPIKey.GroupID)
-				if threadErr == nil && thread.IsContinue() {
-					// No room under the account's session limit ends the thread
-					// here; a limit that cannot be evaluated is a failure.
-					threadErr = h.gatewayService.AdmitMessageThreadSession(c.Request.Context(), account, sessionKey)
-				}
 				if threadErr != nil {
 					if selection.Acquired && selection.ReleaseFunc != nil {
 						selection.ReleaseFunc()
 					}
-					h.gatewayService.ReleaseAccountSession(c.Request.Context(), account, sessionKey)
 					if !thread.IsContinue() && service.IsMessageThreadAccountIncapable(threadErr) {
 						threadAccountSkipped = true
 						fs.FailedAccountIDs[account.ID] = struct{}{}
@@ -818,18 +819,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					if !thread.IsContinue() && service.IsMessageThreadAccountPassedOver(threadErr) {
 						// This account's limit has no room, or could not be
 						// evaluated. Nothing was sent; another account may do.
-						delete(sessionSlotAccounts, account.ID)
 						fs.FailedAccountIDs[account.ID] = struct{}{}
 						continue
 					}
 					writeMessageThreadError(c, threadErr)
 					return
-				}
-				if thread.IsContinue() {
-					// The session slot was just registered for this request. From
-					// here on a request that fails before the upstream served it,
-					// in a queue included, gives the slot back.
-					sessionSlotAccounts[account.ID] = account
 				}
 			}
 
@@ -913,7 +907,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				reqLog.Debug("gateway.account_slot_profit_vetoed", zap.Int64("account_id", account.ID), zap.String("reason", reason))
 				if thread.IsContinue() {
 					// The only account that holds the thread may not be used now.
-					h.gatewayService.ReleaseAccountSession(c.Request.Context(), account, sessionKey)
 					writeMessageThreadError(c, service.NewMessageThreadNotFoundError())
 					return
 				}
@@ -924,7 +917,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					return
 				}
 				// 尝试被否决（从未转发），立即释放该账号的会话注册
-				h.gatewayService.ReleaseAccountSession(context.Background(), account, sessionKey)
+				releaseOrdinarySession(account)
 				delete(sessionSlotAccounts, account.ID)
 				continue
 			}
@@ -937,7 +930,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					if accountReleaseFunc != nil {
 						accountReleaseFunc()
 					}
-					h.gatewayService.ReleaseAccountSession(c.Request.Context(), account, sessionKey)
 					if !thread.IsContinue() && service.IsMessageThreadAccountIncapable(threadErr) {
 						threadAccountSkipped = true
 						fs.FailedAccountIDs[account.ID] = struct{}{}
@@ -946,7 +938,6 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					if !thread.IsContinue() && service.IsMessageThreadAccountPassedOver(threadErr) {
 						// This account's limit has no room, or could not be
 						// evaluated. Nothing was sent; another account may do.
-						delete(sessionSlotAccounts, account.ID)
 						fs.FailedAccountIDs[account.ID] = struct{}{}
 						continue
 					}
@@ -955,7 +946,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				}
 			}
 			// 记录本请求注册过会话槽的账号（profit 准入后账号已定）
-			sessionSlotAccounts[account.ID] = account
+			if thread == nil {
+				sessionSlotAccounts[account.ID] = account
+			}
 			// 等待路径保持既有 eager 绑定（无门时 helper 直接绑定）；调度器已
 			// 抢槽的直达路径无门时由选号内部绑定，这里只在门下补准入后绑定。
 			if selection.ProfitGateActive() || !selection.Acquired {
@@ -1129,6 +1122,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 			if err != nil {
 				if thread != nil {
+					// A create may pass over an account during final admission.
+					if !thread.IsContinue() && result == nil && service.IsMessageThreadAccountPassedOver(err) {
+						fs.FailedAccountIDs[account.ID] = struct{}{}
+						continue
+					}
 					var threadErr *service.MessageThreadError
 					if errors.As(err, &threadErr) {
 						// A thread error is the answer: it is never retried on
@@ -1216,7 +1214,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 						retryWithFallback = true
 						// 原分组账号已确定性失败（prompt too long），先释放其会话注册再走兜底分组
 						for _, acc := range sessionSlotAccounts {
-							h.gatewayService.ReleaseAccountSession(context.Background(), acc, sessionKey)
+							releaseOrdinarySession(acc)
 						}
 						sessionSlotAccounts = make(map[int64]*service.Account)
 						break
@@ -1235,7 +1233,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					switch action {
 					case FailoverContinue:
 						// 本次尝试已确定性失败，立即释放该账号的会话注册
-						h.gatewayService.ReleaseAccountSession(context.Background(), account, sessionKey)
+						releaseOrdinarySession(account)
 						delete(sessionSlotAccounts, account.ID)
 						continue
 					case FailoverExhausted:

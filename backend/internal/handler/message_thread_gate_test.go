@@ -199,9 +199,8 @@ func TestMessageThreadKeepsItsReservedZone(t *testing.T) {
 	}
 }
 
-// A continue request registers its session on the bound account before it
-// waits for a slot. When it is never served, a registration it created is
-// given back at once; one that was already there is not its to release.
+// A full account queue must neither remove a previously served slot nor
+// register a new one for a continuation that never leaves the queue.
 func TestMessageThreadReleasesItsSessionSlotWhenNotServed(t *testing.T) {
 	h := newThreadHarnessWith(t, "oauth-cli", threadHarnessOptions{productionSessions: true})
 	h.accountA.Extra["max_sessions"], h.accountA.Extra["session_idle_timeout_minutes"] = 1, 1
@@ -230,8 +229,8 @@ func TestMessageThreadReleasesItsSessionSlotWhenNotServed(t *testing.T) {
 	notServed()
 	require.Equal(t, 1, active())
 
-	// The registration has idled out while the thread is still alive. Now the
-	// request registers the session itself, and gives it back.
+	// The previous registration has expired. A rejected wait does not
+	// register a fresh session.
 	h.db.SetTime(time.Now().Add(2 * time.Minute))
 	require.Zero(t, active())
 	notServed()

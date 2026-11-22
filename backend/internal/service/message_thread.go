@@ -915,6 +915,9 @@ func (s *GatewayService) sealMessageThread(ctx context.Context, account *Account
 	wire := threadWireDigest(body)
 	shortTTL, longTTL := threadCacheTTLs(body)
 	if !t.IsContinue() {
+		if err := s.registerThreadSessionForSend(ctx, t, account); err != nil {
+			return err
+		}
 		next := MessageThreadBinding{
 			AccountID:   account.ID,
 			Identity:    identity,
@@ -1020,7 +1023,10 @@ func (s *GatewayService) verifyMessageThreadRoute(ctx context.Context, t *Messag
 	}
 	// The snapshot used during selection may predate a newly enabled or
 	// tightened limit. Use the current row and the existing soft counters.
-	return s.admitMessageThreadLimits(ctx, t, latest)
+	if err := s.admitMessageThreadLimits(ctx, t, latest); err != nil {
+		return err
+	}
+	return s.registerThreadSessionForSend(ctx, t, latest)
 }
 
 // isAccountInThreadPool applies the pool rule the scheduler used for the

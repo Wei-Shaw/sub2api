@@ -138,42 +138,15 @@ func (s *GatewayService) admitThreadSession(ctx context.Context, account *Accoun
 	return limitAllowed, nil
 }
 
-// admitThreadSessionInScheduler is the scheduler's session check for a thread
-// request. The scheduler only asks whether the account may be used; a store
-// failure makes the account unusable for this request and is remembered, so
-// that a selection that ends without an account is reported as a failure and
-// not as a full group.
-func (s *GatewayService) admitThreadSessionInScheduler(ctx context.Context, t *MessageThread, account *Account, sessionID string) bool {
-	admission, err := s.admitThreadSession(ctx, account, sessionID)
-	if admission == limitUnavailable {
-		slog.Warn("message_thread.session_limit_unavailable", "account_id", account.ID, "error", err)
-		t.admissionFault = true
-		return false
-	}
-	return admission != limitDenied
-}
-
 // AdmissionFault reports that a store an admission decision of this request
 // depended on could not be read.
 func (t *MessageThread) AdmissionFault() bool { return t != nil && t.admissionFault }
 
-// AdmitMessageThreadSession counts a continue request against the bound
-// account's session limit under the thread's session key. The scheduler does
-// this for other requests together with sticky routing, which a continue
-// request stays out of. No room means the thread cannot go on here; a store
-// that cannot say is a failure.
-func (s *GatewayService) AdmitMessageThreadSession(ctx context.Context, account *Account, session string) error {
-	admission, err := s.admitThreadSession(ctx, account, session)
-	switch admission {
-	case limitDenied:
-		return threadNotFoundError()
-	case limitUnavailable:
-		slog.Warn("message_thread.session_limit_unavailable", "account_id", account.ID, "error", err)
-		e := threadStorageError()
-		e.Message = "thread: the account's session limit is temporarily unavailable. Retry, or send the full conversation without thread."
-		return e
-	}
-	return nil
+// registerThreadSessionForSend is the last admission step. RegisterSession
+// atomically creates or refreshes a session, but grants no release rights.
+func (s *GatewayService) registerThreadSessionForSend(ctx context.Context, t *MessageThread, account *Account) error {
+	admission, err := s.admitThreadSession(ctx, account, t.session)
+	return t.limitDecision(account, "sessions", admission, err)
 }
 
 // threadZoneAdmission turns the zone of a soft limit into an answer. reserved
@@ -269,23 +242,30 @@ func (s *GatewayService) admitMessageThreadLimits(ctx context.Context, t *Messag
 		{"rpm", s.admitThreadRPM},
 	} {
 		admission, err := limit.admit(ctx, account, reserved)
-		switch admission {
-		case limitDenied:
-			if t.IsContinue() {
-				return threadNotFoundError()
-			}
-			t.limitDenied = true
-			return threadAccountPassedOverError()
-		case limitUnavailable:
-			slog.Warn("message_thread.limit_unavailable", "limit", limit.name, "account_id", account.ID, "error", err)
-			if t.IsContinue() {
-				e := threadStorageError()
-				e.Message = "thread: a limit of the account that holds this thread is temporarily unavailable. Retry, or send the full conversation without thread."
-				return e
-			}
-			t.admissionFault = true
-			return threadAccountPassedOverError()
+		if decision := t.limitDecision(account, limit.name, admission, err); decision != nil {
+			return decision
 		}
+	}
+	return nil
+}
+
+func (t *MessageThread) limitDecision(account *Account, name string, admission limitAdmission, err error) error {
+	switch admission {
+	case limitDenied:
+		if t.IsContinue() {
+			return threadNotFoundError()
+		}
+		t.limitDenied = true
+		return threadAccountPassedOverError()
+	case limitUnavailable:
+		slog.Warn("message_thread.limit_unavailable", "limit", name, "account_id", account.ID, "error", err)
+		if t.IsContinue() {
+			e := threadStorageError()
+			e.Message = "thread: a limit of the account that holds this thread is temporarily unavailable. Retry, or send the full conversation without thread."
+			return e
+		}
+		t.admissionFault = true
+		return threadAccountPassedOverError()
 	}
 	return nil
 }
