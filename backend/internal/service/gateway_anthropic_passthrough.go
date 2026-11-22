@@ -120,9 +120,13 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 			})
 		}
 
+		if threadErr := s.relayMessageThreadUpstreamError(ctx, c, resp); threadErr != nil {
+			_ = resp.Body.Close()
+			return nil, threadErr
+		}
 		// 透传分支禁止 400 请求体降级重试（该重试会改写请求体）
 		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
-			if attempt < maxRetryAttempts {
+			if attempt < maxRetryAttempts && !threadFrom(ctx).IsContinue() {
 				elapsed := time.Since(retryStart)
 				if elapsed >= maxRetryElapsed {
 					break
@@ -253,6 +257,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	var usage *ClaudeUsage
 	var firstTokenMs *int
 	var clientDisconnect bool
+	var nonStreamErr error
 	if input.RequestStream {
 		streamResult, err := s.handleStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account, input.StartTime, input.RequestModel)
 		if err != nil {
@@ -267,9 +272,9 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		firstTokenMs = streamResult.firstTokenMs
 		clientDisconnect = streamResult.clientDisconnect
 	} else {
-		usage, err = s.handleNonStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account)
-		if err != nil {
-			return nil, err
+		usage, nonStreamErr = s.handleNonStreamingResponseAnthropicAPIKeyPassthrough(ctx, resp, c, account)
+		if nonStreamErr != nil && !usage.hasObservedTokens() {
+			return nil, nonStreamErr
 		}
 	}
 	if usage == nil {
@@ -289,7 +294,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 		Duration:                      time.Since(input.StartTime),
 		FirstTokenMs:                  firstTokenMs,
 		ClientDisconnect:              clientDisconnect,
-	}, nil
+	}, nonStreamErr
 }
 
 func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
@@ -320,6 +325,19 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	// 账号覆写了 anthropic-beta 时，覆写值即最终上游值：净化以覆写值为准
 	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
 		clientBeta = beta
+	}
+	thread := threadFrom(ctx)
+	if thread != nil {
+		policy := s.evaluateBetaPolicy(ctx, clientBeta, account, thread.attempt.forwardModel)
+		if policy.blockErr != nil {
+			return nil, nil, policy.blockErr
+		}
+		resolved, err := thread.resolveBeta(clientBeta, policy.filterSet)
+		if err != nil {
+			return nil, nil, err
+		}
+		clientBeta = filterSonnet55ToolsetBeta(resolved, body, gjson.GetBytes(body, "model").String())
+		ctx = WithHTTPUpstreamRedirectsDisabled(ctx)
 	}
 	if sanitized, changed := sanitizeAnthropicBodyForBetaTokens(body, clientBeta); changed {
 		body = sanitized
@@ -366,6 +384,13 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	// 账号级请求头覆写（最终生效，覆盖上面所有来源的同名头）
 	account.ApplyHeaderOverrides(req.Header)
 	filterSonnet55ToolsetBetaHeader(req.Header, body, gjson.GetBytes(body, "model").String())
+	if thread != nil {
+		deleteHeaderAllForms(req.Header, "anthropic-beta")
+		setHeaderRaw(req.Header, "anthropic-beta", clientBeta)
+		if err := s.sealMessageThread(ctx, account, req, body, token, false); err != nil {
+			return nil, nil, err
+		}
+	}
 
 	return req, body, nil
 }
@@ -408,6 +433,11 @@ func (s *GatewayService) handleStreamingResponseAnthropicAPIKeyPassthrough(
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		return nil, errors.New("streaming not supported")
+	}
+
+	// See handleStreamingResponse: a message thread has its own reader.
+	if thread := threadFrom(ctx); thread != nil {
+		return s.streamMessageThreadResponse(ctx, thread, resp, c, account, startTime, threadStreamOptions{passthrough: true, timeoutModel: model})
 	}
 
 	usage := &ClaudeUsage{}
@@ -819,15 +849,16 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 		s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 	}
 
-	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, anthropicTooLargeError)
-	if err != nil {
-		return nil, err
+	body, deliveryErr := s.readNativeMessageBody(ctx, resp.Body, c)
+	if deliveryErr != nil && body == nil {
+		return nil, deliveryErr
 	}
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
 	}
 	observer.ObserveAnthropic(body)
+	upstreamBody := body
 
 	if resp.StatusCode >= http.StatusOK && resp.StatusCode < http.StatusMultipleChoices {
 		var raw json.RawMessage
@@ -838,19 +869,28 @@ func (s *GatewayService) handleNonStreamingResponseAnthropicAPIKeyPassthrough(
 
 	usage := parseClaudeUsageFromResponseBody(body)
 	if IsForceCacheBilling(ctx) && usage.InputTokens > 0 {
+		var err error
 		body, err = classifyAnthropicResponseInputAsCacheRead(body, usage)
 		if err != nil {
 			return nil, err
 		}
 	}
 
+	if deliveryErr != nil {
+		return usage, deliveryErr
+	}
+	if err := threadFrom(ctx).observeJSON(c.Request.Context(), upstreamBody, usage); err != nil {
+		return usage, err
+	}
 	writeAnthropicPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
 	contentType := strings.TrimSpace(resp.Header.Get("Content-Type"))
 	if contentType == "" {
 		contentType = "application/json"
 	}
 	body = restoreCompositeClientModel(ctx, body)
-	body = reverseToolNamesIfPresent(c, body)
+	if threadFrom(ctx) == nil {
+		body = reverseToolNamesIfPresent(c, body)
+	}
 	c.Data(resp.StatusCode, contentType, body)
 	return usage, nil
 }

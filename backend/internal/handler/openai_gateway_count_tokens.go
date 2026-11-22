@@ -143,6 +143,9 @@ func (h *OpenAIGatewayHandler) GrokCountTokens(c *gin.Context) {
 		h.anthropicErrorResponse(c, status, "invalid_request_error", message)
 		return
 	}
+	if rejectCountTokensThread(c, body) {
+		return
+	}
 	if len(body) == 0 {
 		h.anthropicErrorResponse(c, http.StatusBadRequest, "invalid_request_error", "Request body is empty")
 		return
@@ -211,6 +214,9 @@ func (h *OpenAIGatewayHandler) CountTokens(c *gin.Context) {
 		}
 		status, message := requestBodyReadFailure(reqLog, c.Request, err)
 		h.anthropicErrorResponse(c, status, "invalid_request_error", message)
+		return
+	}
+	if rejectCountTokensThread(c, body) {
 		return
 	}
 	if len(body) == 0 {

@@ -779,6 +779,13 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		return nil, errors.New("streaming not supported")
 	}
 
+	// The response of a message thread has its own reader: completion, usage
+	// and client output are all taken from one decoding of the stream.
+	if thread := threadFrom(ctx); thread != nil {
+		return s.streamMessageThreadResponse(ctx, thread, resp, c, account, startTime,
+			threadStreamOptions{originalModel: originalModel, mappedModel: mappedModel, timeoutModel: originalModel})
+	}
+
 	usage := &ClaudeUsage{}
 	var firstTokenMs *int
 	scanner := bufio.NewScanner(resp.Body)
@@ -1503,15 +1510,16 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 	// 更新5h窗口状态
 	s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
 
-	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, anthropicTooLargeError)
-	if err != nil {
-		return nil, err
+	body, deliveryErr := s.readNativeMessageBody(ctx, resp.Body, c)
+	if deliveryErr != nil && body == nil {
+		return nil, deliveryErr
 	}
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
 	}
 	observer.ObserveAnthropic(body)
+	upstreamBody := body
 
 	// 解析usage
 	var response struct {
@@ -1552,6 +1560,13 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 		}
 	}
 
+	if deliveryErr != nil {
+		return &response.Usage, deliveryErr
+	}
+	if err := threadFrom(ctx).observeJSON(c.Request.Context(), upstreamBody, &response.Usage); err != nil {
+		return &response.Usage, err
+	}
+
 	// 如果有模型映射，替换响应中的model字段
 	if originalModel != mappedModel {
 		body = s.replaceModelInResponseBody(body, mappedModel, originalModel)
@@ -1567,7 +1582,9 @@ func (s *GatewayService) handleNonStreamingResponse(ctx context.Context, resp *h
 		}
 	}
 
-	body = reverseToolNamesIfPresent(c, body)
+	if threadFrom(ctx) == nil {
+		body = reverseToolNamesIfPresent(c, body)
+	}
 
 	// 写入响应
 	c.Data(resp.StatusCode, contentType, body)

@@ -162,6 +162,8 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	setOpsRequestContext(c, "", false)
 
+	// The model name as it arrived, before the parser normalizes it.
+	threadRawModel := messageThreadRawModel(body)
 	bodyRef := service.NewRequestBodyRef(body)
 	parsedReq, err := service.ParseGatewayRequest(bodyRef, domain.PlatformAnthropic)
 	if err != nil {
@@ -174,6 +176,19 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	reqStream := parsedReq.Stream
 	bindRequestedReasoningEffort(c, body, reqModel)
 	ensureCompositeTargetPlatform(c, apiKey, reqModel)
+	// A message thread is resolved before any queue, scheduler or upstream call:
+	// an unknown previous_message_id is answered here, and a route that would
+	// convert the request to another protocol is refused rather than answered
+	// without the conversation.
+	thread, err := h.gatewayService.PrepareMessageThread(c.Request.Context(), body, c.Request.Header, threadRawModel,
+		subject.UserID, apiKey.ID, apiKey.GroupID, messageThreadNativePlatform(messagesTargetPlatform(c, apiKey)))
+	if err != nil {
+		writeMessageThreadError(c, err)
+		return
+	}
+	if thread != nil {
+		c.Request = c.Request.WithContext(thread.Context(c.Request.Context()))
+	}
 	if policyBody, changed, err := applyAnthropicReasoningEffortPolicyForRequest(c, apiKey, body); err != nil {
 		respondOpenAIReasoningEffortPolicyError(c, err, h.errorResponse)
 		return
@@ -201,6 +216,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 
 	// 检查是否为 Claude Code 客户端，设置到 context 中（复用已解析请求，避免二次反序列化）。
 	SetClaudeCodeClientContext(c, body, parsedReq)
+	// A continue request cannot repeat the system prompt that Claude Code
+	// validation looks at. The thread keeps the prompt its create request was
+	// validated with, so only that check is inherited.
+	if thread.InheritsClaudeCode() && !service.IsClaudeCodeClient(c.Request.Context()) {
+		SetClaudeCodeThreadContinueContext(c, body, parsedReq)
+	}
 	isClaudeCodeClient := service.IsClaudeCodeClient(c.Request.Context())
 
 	// 版本检查：仅对 Claude Code 客户端，拒绝低于最低版本的请求
@@ -238,6 +259,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		return
 	}
 
+	// A queued stream normally gets keepalive pings, which commit HTTP 200. A
+	// thread request waits silently instead: the upstream may still answer with
+	// a thread error whose status and body the client has to receive unchanged.
+	queueStream := reqStream && thread == nil
 	// Track if we've started streaming (for error handling)
 	streamStarted := false
 
@@ -250,7 +275,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 
 	// 1. 首先获取用户并发槽位
-	userReleaseFunc, err := h.concurrencyHelper.AcquireUserSlotWithWait(c, subject.UserID, subject.Concurrency, reqStream, &streamStarted)
+	userReleaseFunc, err := h.concurrencyHelper.AcquireUserSlotWithWait(c, subject.UserID, subject.Concurrency, queueStream, &streamStarted)
 	if err != nil {
 		reqLog.Warn("gateway.user_slot_acquire_failed", zap.Error(err))
 		h.handleConcurrencyError(c, err, "user", streamStarted)
@@ -274,7 +299,11 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 	}
 
 	// 余额模式在途预留：防止并发请求在预检时看到同一份余额而集体透支。
-	inflightRelease, err := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, tokenInflightEstimate(reqModel, body))
+	// A continue request is billed for the whole conversation the upstream
+	// holds, not for its few new messages; reserve for the measured context.
+	inflightEstimate := tokenInflightEstimate(reqModel, body)
+	inflightEstimate.PreviousContextTokens = thread.PreviousTokens()
+	inflightRelease, err := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, inflightEstimate)
 	if err != nil {
 		reqLog.Info("gateway.inflight_reservation_rejected", zap.Error(err))
 		status, code, message, retryAfter := billingErrorDetails(err)
@@ -296,6 +325,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		APIKeyID:  apiKey.ID,
 	}
 	sessionHash := h.gatewayService.GenerateSessionHash(parsedReq)
+	if thread != nil {
+		// One thread is one session: the short body of a continue request would
+		// otherwise count as a new session against the account on every turn.
+		sessionHash = thread.SessionHash(sessionHash)
+		// Only a create request whose own system prompt was validated lets later
+		// turns inherit that check; a probe exception does not.
+		strictClaudeCode := !thread.IsContinue() && isClaudeCodeClient && claudeCodeSystemStrictlyValidated(c, body, parsedReq)
+		thread.SetRequestContext(sessionHash, reqModel, strictClaudeCode)
+	}
 
 	// [DEBUG-STICKY] 打印会话 hash 生成结果
 	reqLog.Info("sticky.session_hash_generated",
@@ -317,10 +355,22 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		sessionKey = "gemini:" + sessionHash
 	}
 
+	// A continue request is routed by its thread binding. The sticky mapping of
+	// the same session key belongs to ordinary traffic and may point at another
+	// account, so the thread neither reads, refreshes, clears nor rewrites it.
+	// sessionKey still counts the thread against the account's session limit.
+	stickyKey := sessionKey
+	if thread.IsContinue() {
+		stickyKey = ""
+	}
+
 	// 查询粘性会话绑定的账号 ID
 	var sessionBoundAccountID int64
-	if sessionKey != "" {
+	if stickyKey != "" {
 		sessionBoundAccountID, _ = h.gatewayService.GetCachedSessionAccountID(c.Request.Context(), apiKey.GroupID, sessionKey)
+		// A thread created by a session that is bound to an account is one of
+		// that account's sessions when its limits are evaluated.
+		thread.SetStickyAccount(sessionBoundAccountID)
 		// [DEBUG-STICKY] 打印粘性会话查询结果
 		reqLog.Info("sticky.cache_lookup",
 			zap.String("session_key", sessionKey),
@@ -338,7 +388,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		reqLog.Info("sticky.no_session_key", zap.String("session_hash", sessionHash))
 	}
 	// 判断是否真的绑定了粘性会话：有 sessionKey 且已经绑定到某个账号
-	hasBoundSession := sessionKey != "" && sessionBoundAccountID > 0
+	hasBoundSession := stickyKey != "" && sessionBoundAccountID > 0
 
 	if platform == service.PlatformGemini {
 		fs := NewFailoverState(h.maxAccountSwitchesGemini, hasBoundSession)
@@ -662,6 +712,9 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 		}
 	}()
 
+	// threadAccountSkipped records that a create request passed over an account
+	// that cannot serve message threads.
+	threadAccountSkipped := false
 	for {
 		fs := NewFailoverState(h.maxAccountSwitches, hasBoundSession)
 		retryWithFallback := false
@@ -680,10 +733,15 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				zap.Bool("has_bound_session", hasBoundSession),
 				zap.Int("failed_account_count", len(fs.FailedAccountIDs)),
 			)
-			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, sessionKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
+			selection, err := h.gatewayService.SelectAccountWithLoadAwareness(c.Request.Context(), currentAPIKey.GroupID, stickyKey, reqModel, fs.FailedAccountIDs, parsedReq.MetadataUserID, subject.UserID)
 			if err != nil {
 				if failoverClientGone(c) {
 					reqLog.Info("gateway.account_select_aborted_client_disconnected", zap.Error(err))
+					return
+				}
+				if threadErr := messageThreadSelectionError(thread, err, threadAccountSkipped && fs.LastFailoverErr == nil, fs.LastFailoverErr != nil); threadErr != nil {
+					reqLog.Info("gateway.message_thread_select_rejected", zap.Error(err))
+					writeMessageThreadError(c, threadErr)
 					return
 				}
 				if len(fs.FailedAccountIDs) == 0 {
@@ -737,8 +795,48 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				zap.Bool("sticky_honored", sessionBoundAccountID > 0 && sessionBoundAccountID == account.ID),
 			)
 
+			if thread != nil {
+				// Decide on the hydrated account before waiting for it: whether
+				// it can serve a thread at all, and for a continue request whether
+				// it still is the upstream identity the thread was created with.
+				threadErr := h.gatewayService.CheckMessageThreadAccount(c.Request.Context(), thread, account, currentAPIKey.GroupID)
+				if threadErr == nil && thread.IsContinue() {
+					// No room under the account's session limit ends the thread
+					// here; a limit that cannot be evaluated is a failure.
+					threadErr = h.gatewayService.AdmitMessageThreadSession(c.Request.Context(), account, sessionKey)
+				}
+				if threadErr != nil {
+					if selection.Acquired && selection.ReleaseFunc != nil {
+						selection.ReleaseFunc()
+					}
+					h.gatewayService.ReleaseAccountSession(c.Request.Context(), account, sessionKey)
+					if !thread.IsContinue() && service.IsMessageThreadAccountIncapable(threadErr) {
+						threadAccountSkipped = true
+						fs.FailedAccountIDs[account.ID] = struct{}{}
+						continue
+					}
+					if !thread.IsContinue() && service.IsMessageThreadAccountPassedOver(threadErr) {
+						// This account's limit has no room, or could not be
+						// evaluated. Nothing was sent; another account may do.
+						delete(sessionSlotAccounts, account.ID)
+						fs.FailedAccountIDs[account.ID] = struct{}{}
+						continue
+					}
+					writeMessageThreadError(c, threadErr)
+					return
+				}
+				if thread.IsContinue() {
+					// The session slot was just registered for this request. From
+					// here on a request that fails before the upstream served it,
+					// in a queue included, gives the slot back.
+					sessionSlotAccounts[account.ID] = account
+				}
+			}
+
 			// 检查请求拦截（预热请求、SUGGESTION MODE等）
-			if account.IsInterceptWarmupEnabled() {
+			// A thread request is never answered with a canned response: the
+			// client would be told 200 for a thread no upstream holds.
+			if thread == nil && account.IsInterceptWarmupEnabled() {
 				interceptType := detectInterceptType(body, reqModel, parsedReq.MaxTokens, isClaudeCodeClient)
 				if interceptType != InterceptTypeNone {
 					if selection.Acquired && selection.ReleaseFunc != nil {
@@ -793,7 +891,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					account.ID,
 					selection.WaitPlan.MaxConcurrency,
 					selection.WaitPlan.Timeout,
-					reqStream,
+					queueStream,
 					&streamStarted,
 				)
 				if err != nil {
@@ -813,6 +911,12 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 					accountReleaseFunc()
 				}
 				reqLog.Debug("gateway.account_slot_profit_vetoed", zap.Int64("account_id", account.ID), zap.String("reason", reason))
+				if thread.IsContinue() {
+					// The only account that holds the thread may not be used now.
+					h.gatewayService.ReleaseAccountSession(c.Request.Context(), account, sessionKey)
+					writeMessageThreadError(c, service.NewMessageThreadNotFoundError())
+					return
+				}
 				if fs.RecordProfitVeto(account.ID) == FailoverExhausted {
 					reqLog.Warn("gateway.profit_veto_attempts_exhausted", zap.Int("profit_veto_count", fs.ProfitVetoCount()))
 					markOpsRoutingCapacityLimited(c)
@@ -826,12 +930,36 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 			account = latest
 			selection.Account = latest
+			if thread != nil {
+				// The admission check may have refreshed the account; it must
+				// still pass after any wait.
+				if threadErr := h.gatewayService.CheckMessageThreadAccount(admissionCtx, thread, account, currentAPIKey.GroupID); threadErr != nil {
+					if accountReleaseFunc != nil {
+						accountReleaseFunc()
+					}
+					h.gatewayService.ReleaseAccountSession(c.Request.Context(), account, sessionKey)
+					if !thread.IsContinue() && service.IsMessageThreadAccountIncapable(threadErr) {
+						threadAccountSkipped = true
+						fs.FailedAccountIDs[account.ID] = struct{}{}
+						continue
+					}
+					if !thread.IsContinue() && service.IsMessageThreadAccountPassedOver(threadErr) {
+						// This account's limit has no room, or could not be
+						// evaluated. Nothing was sent; another account may do.
+						delete(sessionSlotAccounts, account.ID)
+						fs.FailedAccountIDs[account.ID] = struct{}{}
+						continue
+					}
+					writeMessageThreadError(c, threadErr)
+					return
+				}
+			}
 			// 记录本请求注册过会话槽的账号（profit 准入后账号已定）
 			sessionSlotAccounts[account.ID] = account
 			// 等待路径保持既有 eager 绑定（无门时 helper 直接绑定）；调度器已
 			// 抢槽的直达路径无门时由选号内部绑定，这里只在门下补准入后绑定。
 			if selection.ProfitGateActive() || !selection.Acquired {
-				if err := h.gatewayService.BindStickySessionAfterProfitAdmission(admissionCtx, currentAPIKey.GroupID, sessionKey, account.ID); err != nil {
+				if err := h.gatewayService.BindStickySessionAfterProfitAdmission(admissionCtx, currentAPIKey.GroupID, stickyKey, account.ID); err != nil {
 					reqLog.Warn("gateway.bind_sticky_session_after_profit_admission_failed", zap.Int64("account_id", account.ID), zap.Error(err))
 				}
 			}
@@ -847,7 +975,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				// 串行模式：获取锁 + RPM 延迟 + 释放（当前行为不变）
 				baseRPM := account.GetBaseRPM()
 				release, qErr := h.userMsgQueueHelper.AcquireWithWait(
-					c, account.ID, baseRPM, reqStream, &streamStarted,
+					c, account.ID, baseRPM, queueStream, &streamStarted,
 					h.cfg.Gateway.UserMessageQueue.WaitTimeout(),
 					reqLog,
 				)
@@ -865,7 +993,7 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 				// 软性限速：仅施加 RPM 自适应延迟，不阻塞并发
 				baseRPM := account.GetBaseRPM()
 				if tErr := h.userMsgQueueHelper.ThrottleWithPing(
-					c, account.ID, baseRPM, reqStream, &streamStarted,
+					c, account.ID, baseRPM, queueStream, &streamStarted,
 					h.cfg.Gateway.UserMessageQueue.WaitTimeout(),
 					reqLog,
 				); tErr != nil {
@@ -1000,6 +1128,43 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			}
 
 			if err != nil {
+				if thread != nil {
+					var threadErr *service.MessageThreadError
+					if errors.As(err, &threadErr) {
+						// A thread error is the answer: it is never retried on
+						// another account, and an upstream one was relayed as is.
+						reqLog.Info("gateway.message_thread_rejected",
+							zap.Int64("account_id", account.ID),
+							zap.String("error_code", threadErr.Code),
+							zap.Bool("upstream", threadErr.Written),
+						)
+						if !threadErr.Written {
+							writeMessageThreadError(c, threadErr)
+						}
+						// Not publishable does not mean unmetered. Forward only supplies
+						// this result if the upstream reported usage before the failure.
+						if result != nil {
+							submitForwardUsage(result)
+							upstreamServedSession = true
+						}
+						return
+					}
+					var failoverErr *service.UpstreamFailoverError
+					if errors.As(err, &failoverErr) && (thread.IsContinue() || result != nil) {
+						// A continue request lives on this account only: its new
+						// messages are not sent to another one, the client decides.
+						// A result means output already reached the client, so no
+						// request can move either; what the upstream metered before
+						// it failed is settled once.
+						reqLog.Warn("gateway.message_thread_upstream_failed", zap.Int64("account_id", account.ID), zap.Error(err))
+						h.handleFailoverExhausted(c, failoverErr, account.Platform, streamStarted || c.Writer.Size() != writerSizeBeforeForward)
+						if result != nil {
+							submitForwardUsage(result)
+							upstreamServedSession = true
+						}
+						return
+					}
+				}
 				// Beta policy block: return 400 immediately, no failover
 				var betaBlockedErr *service.BetaBlockedError
 				if errors.As(err, &betaBlockedErr) {
@@ -1130,10 +1295,10 @@ func (h *GatewayHandler) Messages(c *gin.Context) {
 			// - 选中账号与粘性账号一致：刷新 TTL
 			// - 粘性账号因负载/RPM 被跳过、选中了其他账号：不覆盖原绑定，
 			//   下次请求粘性账号恢复后仍可命中
-			if sessionKey != "" && (sessionBoundAccountID == 0 || sessionBoundAccountID == account.ID) {
+			if stickyKey != "" && (sessionBoundAccountID == 0 || sessionBoundAccountID == account.ID) {
 				// Forward has completed; finish the bounded write even if the client disconnects.
 				bindCtx, cancelBind := context.WithTimeout(context.WithoutCancel(c.Request.Context()), 5*time.Second)
-				bindErr := h.gatewayService.BindStickySession(bindCtx, currentAPIKey.GroupID, sessionKey, account.ID)
+				bindErr := h.gatewayService.BindStickySession(bindCtx, currentAPIKey.GroupID, stickyKey, account.ID)
 				cancelBind()
 				if bindErr != nil {
 					reqLog.Warn("gateway.bind_sticky_session_failed", zap.Int64("account_id", account.ID), zap.Error(bindErr))
@@ -2207,6 +2372,9 @@ func (h *GatewayHandler) CountTokens(c *gin.Context) {
 		return
 	}
 	body = parsedReq.Body.Bytes()
+	if rejectCountTokensThread(c, body) {
+		return
+	}
 	// count_tokens 走 messages 严格校验时，复用已解析请求，避免二次反序列化。
 	SetClaudeCodeClientContext(c, body, parsedReq)
 	ensureCompositeTargetPlatform(c, apiKey, parsedReq.Model)

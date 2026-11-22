@@ -371,8 +371,10 @@ const (
 type InflightEstimateRequest struct {
 	Model     string
 	BodyBytes int
-	MaxTokens int
-	Kind      InflightEstimateKind
+	// Already measured server-held history, in addition to the bounded estimate for this request.
+	PreviousContextTokens int
+	MaxTokens             int
+	Kind                  InflightEstimateKind
 	// Units 按次/按张数量（<=0 视为 1）。
 	Units int
 	// SearchCalls 叠加的搜索次数（按分组 search_price_per_1k 计）。
@@ -556,6 +558,7 @@ func (d inflightEstimateDeps) estimateOne(ctx context.Context, apiKey *APIKey, m
 	}
 
 	inputTokens, outputTokens := tokenCounts(cfg, req.BodyBytes, req.MaxTokens)
+	inputTokens += req.PreviousContextTokens
 	tokenCost := func() float64 {
 		var pricing *ModelPricing
 		if resolved != nil && (resolved.Mode == BillingModeToken || resolved.Mode == "") && d.resolver != nil {

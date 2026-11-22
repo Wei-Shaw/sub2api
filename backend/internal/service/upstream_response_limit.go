@@ -33,6 +33,11 @@ func readUpstreamResponseBodyLimited(reader io.Reader, maxBytes int64) ([]byte, 
 
 	body, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))
 	if err != nil {
+		// Only the thread path inspects a failed read for metering. Never
+		// expose more than the bound, even if the last read also failed.
+		if int64(len(body)) <= maxBytes {
+			return body, err
+		}
 		return nil, err
 	}
 	if int64(len(body)) > maxBytes {
