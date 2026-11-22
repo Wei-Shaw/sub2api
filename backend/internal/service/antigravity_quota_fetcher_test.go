@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
@@ -554,4 +555,157 @@ func TestExtractValidationURL(t *testing.T) {
 			require.Equal(t, tt.expected, got)
 		})
 	}
+}
+
+func TestFetchQuota_QueriesForwardEndpoint(t *testing.T) {
+	newQuotaServer := func(t *testing.T, remaining float64, hits *[]string) *httptest.Server {
+		t.Helper()
+		return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			*hits = append(*hits, r.URL.Path)
+			w.Header().Set("Content-Type", "application/json")
+			remainingText := strconv.FormatFloat(remaining, 'f', -1, 64)
+			switch r.URL.Path {
+			case "/v1internal:fetchAvailableModels":
+				_, _ = w.Write([]byte(`{"models":{"gemini-3-flash":{"quotaInfo":{"remainingFraction":` + remainingText + `,"resetTime":"2026-11-20T09:00:00Z"}}}}`))
+			case "/v1internal:retrieveUserQuotaSummary":
+				_, _ = w.Write([]byte(`{"groups":[{"displayName":"Gemini Models","buckets":[{"bucketId":"gemini-5h","window":"5h","remainingFraction":` + remainingText + `,"resetTime":"2026-11-20T09:00:00Z"}]}]}`))
+			case "/v1internal:loadCodeAssist":
+				_, _ = w.Write([]byte(`{"paidTier":{"id":"g1-ultra-tier"}}`))
+			default:
+				http.NotFound(w, r)
+			}
+		}))
+	}
+
+	tests := []struct {
+		name            string
+		planType        string
+		envOverride     string
+		wantDaily       bool
+		wantUtilization int
+		wantGroupUtil   float64
+	}{
+		{
+			name:            "paid Ultra account queries daily endpoint",
+			planType:        "Ultra",
+			wantDaily:       true,
+			wantUtilization: 75,
+			wantGroupUtil:   75,
+		},
+		{
+			name:            "paid Pro account queries daily endpoint",
+			planType:        "Pro",
+			wantDaily:       true,
+			wantUtilization: 75,
+			wantGroupUtil:   75,
+		},
+		{
+			name:            "free account queries prod endpoint",
+			planType:        "Free",
+			wantDaily:       false,
+			wantUtilization: 25,
+			wantGroupUtil:   25,
+		},
+		{
+			name:            "env override daily routes free account to daily",
+			planType:        "Free",
+			envOverride:     "daily",
+			wantDaily:       true,
+			wantUtilization: 75,
+			wantGroupUtil:   75,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv(antigravityForwardBaseURLEnv, tt.envOverride)
+
+			var prodHits, dailyHits []string
+			prodServer := newQuotaServer(t, 0.75, &prodHits)
+			defer prodServer.Close()
+			dailyServer := newQuotaServer(t, 0.25, &dailyHits)
+			defer dailyServer.Close()
+
+			oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
+			oldAvailability := antigravity.DefaultURLAvailability
+			t.Cleanup(func() {
+				antigravity.BaseURLs = oldBaseURLs
+				antigravity.DefaultURLAvailability = oldAvailability
+			})
+			antigravity.BaseURLs = []string{prodServer.URL, dailyServer.URL}
+			antigravity.DefaultURLAvailability = antigravity.NewURLAvailability(time.Minute)
+
+			fetcher := NewAntigravityQuotaFetcher(nil, &config.Config{})
+			res, err := fetcher.FetchQuota(context.Background(), &Account{
+				ID:       80,
+				Platform: PlatformAntigravity,
+				Type:     AccountTypeOAuth,
+				Credentials: map[string]any{
+					"access_token": "token",
+					"project_id":   "project",
+					"plan_type":    tt.planType,
+				},
+			}, "")
+			require.NoError(t, err)
+			require.NotNil(t, res)
+			require.NotNil(t, res.UsageInfo)
+			require.Equal(t, tt.wantUtilization, res.UsageInfo.AntigravityQuota["gemini-3-flash"].Utilization)
+			require.Len(t, res.UsageInfo.AntigravityQuotaGroups, 1)
+			require.InDelta(t, tt.wantGroupUtil, res.UsageInfo.AntigravityQuotaGroups[0].Windows[0].Utilization, 0.001)
+
+			if tt.wantDaily {
+				require.Contains(t, dailyHits, "/v1internal:fetchAvailableModels")
+				require.Contains(t, dailyHits, "/v1internal:retrieveUserQuotaSummary")
+				require.NotContains(t, prodHits, "/v1internal:fetchAvailableModels")
+				require.NotContains(t, prodHits, "/v1internal:retrieveUserQuotaSummary")
+			} else {
+				require.Contains(t, prodHits, "/v1internal:fetchAvailableModels")
+				require.Contains(t, prodHits, "/v1internal:retrieveUserQuotaSummary")
+				require.NotContains(t, dailyHits, "/v1internal:fetchAvailableModels")
+				require.NotContains(t, dailyHits, "/v1internal:retrieveUserQuotaSummary")
+			}
+		})
+	}
+}
+
+func TestFetchQuota_PaidAccountDoesNotFallbackToProdQuotaOnDailyFailure(t *testing.T) {
+	t.Setenv(antigravityForwardBaseURLEnv, "")
+
+	var prodQuotaHits int
+	prodServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/v1internal:fetchAvailableModels" || r.URL.Path == "/v1internal:retrieveUserQuotaSummary" {
+			prodQuotaHits++
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"models":{"gemini-3-flash":{"quotaInfo":{"remainingFraction":1}}}}`))
+	}))
+	defer prodServer.Close()
+
+	dailyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "upstream failure", http.StatusInternalServerError)
+	}))
+	defer dailyServer.Close()
+
+	oldBaseURLs := append([]string(nil), antigravity.BaseURLs...)
+	oldAvailability := antigravity.DefaultURLAvailability
+	t.Cleanup(func() {
+		antigravity.BaseURLs = oldBaseURLs
+		antigravity.DefaultURLAvailability = oldAvailability
+	})
+	antigravity.BaseURLs = []string{prodServer.URL, dailyServer.URL}
+	antigravity.DefaultURLAvailability = antigravity.NewURLAvailability(time.Minute)
+
+	fetcher := NewAntigravityQuotaFetcher(nil, &config.Config{})
+	_, err := fetcher.FetchQuota(context.Background(), &Account{
+		ID:       77,
+		Platform: PlatformAntigravity,
+		Type:     AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token": "token",
+			"project_id":   "project",
+			"plan_type":    "Ultra",
+		},
+	}, "")
+	require.Error(t, err)
+	require.Zero(t, prodQuotaHits, "paid account quota query must not silently fall back to prod")
 }

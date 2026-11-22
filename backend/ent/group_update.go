@@ -373,6 +373,20 @@ func (_u *GroupUpdate) SetNillableAllowBatchImageGeneration(v *bool) *GroupUpdat
 	return _u
 }
 
+// SetImageCountBilling sets the "image_count_billing" field.
+func (_u *GroupUpdate) SetImageCountBilling(v bool) *GroupUpdate {
+	_u.mutation.SetImageCountBilling(v)
+	return _u
+}
+
+// SetNillableImageCountBilling sets the "image_count_billing" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableImageCountBilling(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetImageCountBilling(*v)
+	}
+	return _u
+}
+
 // SetImageRateIndependent sets the "image_rate_independent" field.
 func (_u *GroupUpdate) SetImageRateIndependent(v bool) *GroupUpdate {
 	_u.mutation.SetImageRateIndependent(v)
@@ -1005,6 +1019,20 @@ func (_u *GroupUpdate) SetForceOpenaiFast(v bool) *GroupUpdate {
 func (_u *GroupUpdate) SetNillableForceOpenaiFast(v *bool) *GroupUpdate {
 	if v != nil {
 		_u.SetForceOpenaiFast(*v)
+	}
+	return _u
+}
+
+// SetForceOpenaiUltrafast sets the "force_openai_ultrafast" field.
+func (_u *GroupUpdate) SetForceOpenaiUltrafast(v bool) *GroupUpdate {
+	_u.mutation.SetForceOpenaiUltrafast(v)
+	return _u
+}
+
+// SetNillableForceOpenaiUltrafast sets the "force_openai_ultrafast" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableForceOpenaiUltrafast(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetForceOpenaiUltrafast(*v)
 	}
 	return _u
 }
@@ -1665,6 +1693,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.AllowBatchImageGeneration(); ok {
 		_spec.SetField(group.FieldAllowBatchImageGeneration, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.ImageCountBilling(); ok {
+		_spec.SetField(group.FieldImageCountBilling, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
 	}
@@ -1869,6 +1900,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.ForceOpenaiFast(); ok {
 		_spec.SetField(group.FieldForceOpenaiFast, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ForceOpenaiUltrafast(); ok {
+		_spec.SetField(group.FieldForceOpenaiUltrafast, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.FreeOpenaiFast(); ok {
 		_spec.SetField(group.FieldFreeOpenaiFast, field.TypeBool, value)
@@ -2576,6 +2610,20 @@ func (_u *GroupUpdateOne) SetNillableAllowBatchImageGeneration(v *bool) *GroupUp
 	return _u
 }
 
+// SetImageCountBilling sets the "image_count_billing" field.
+func (_u *GroupUpdateOne) SetImageCountBilling(v bool) *GroupUpdateOne {
+	_u.mutation.SetImageCountBilling(v)
+	return _u
+}
+
+// SetNillableImageCountBilling sets the "image_count_billing" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableImageCountBilling(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetImageCountBilling(*v)
+	}
+	return _u
+}
+
 // SetImageRateIndependent sets the "image_rate_independent" field.
 func (_u *GroupUpdateOne) SetImageRateIndependent(v bool) *GroupUpdateOne {
 	_u.mutation.SetImageRateIndependent(v)
@@ -3208,6 +3256,20 @@ func (_u *GroupUpdateOne) SetForceOpenaiFast(v bool) *GroupUpdateOne {
 func (_u *GroupUpdateOne) SetNillableForceOpenaiFast(v *bool) *GroupUpdateOne {
 	if v != nil {
 		_u.SetForceOpenaiFast(*v)
+	}
+	return _u
+}
+
+// SetForceOpenaiUltrafast sets the "force_openai_ultrafast" field.
+func (_u *GroupUpdateOne) SetForceOpenaiUltrafast(v bool) *GroupUpdateOne {
+	_u.mutation.SetForceOpenaiUltrafast(v)
+	return _u
+}
+
+// SetNillableForceOpenaiUltrafast sets the "force_openai_ultrafast" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableForceOpenaiUltrafast(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetForceOpenaiUltrafast(*v)
 	}
 	return _u
 }
@@ -3898,6 +3960,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	if value, ok := _u.mutation.AllowBatchImageGeneration(); ok {
 		_spec.SetField(group.FieldAllowBatchImageGeneration, field.TypeBool, value)
 	}
+	if value, ok := _u.mutation.ImageCountBilling(); ok {
+		_spec.SetField(group.FieldImageCountBilling, field.TypeBool, value)
+	}
 	if value, ok := _u.mutation.ImageRateIndependent(); ok {
 		_spec.SetField(group.FieldImageRateIndependent, field.TypeBool, value)
 	}
@@ -4102,6 +4167,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.ForceOpenaiFast(); ok {
 		_spec.SetField(group.FieldForceOpenaiFast, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.ForceOpenaiUltrafast(); ok {
+		_spec.SetField(group.FieldForceOpenaiUltrafast, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.FreeOpenaiFast(); ok {
 		_spec.SetField(group.FieldFreeOpenaiFast, field.TypeBool, value)

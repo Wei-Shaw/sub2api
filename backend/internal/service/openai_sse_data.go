@@ -29,6 +29,7 @@ func (a *openAISSEDataAccumulator) Flush(fn func([]byte)) {
 		return
 	}
 	emitOpenAISSEDataPayloads(a.lines, fn)
+	clear(a.lines)
 	a.lines = a.lines[:0]
 }
 

@@ -277,7 +277,7 @@ func geminiCachedContentBoundFromContext(ctx context.Context) bool {
 }
 
 // isGeminiBoundCacheUpstreamPassthrough 判断绑定缓存的请求在上游网关账号上收到的错误是否只反映
-// 上游持有缓存的那个账号的状态（429 / 5xx），不应据此限流或重试本账号。
+// 上游持有缓存的那个账号的状态（429 / 5xx），不应据此限流或封禁本账号。
 func isGeminiBoundCacheUpstreamPassthrough(ctx context.Context, account *Account, statusCode int) bool {
 	if statusCode != http.StatusTooManyRequests && statusCode < http.StatusInternalServerError {
 		return false
@@ -329,6 +329,20 @@ func FindGeminiCachedContentReference(body []byte) (*GeminiCachedContentReferenc
 		ref.Paths = append(ref.Paths, path)
 	}
 	return ref, nil
+}
+
+// geminiCachedContentLocationInBody 返回请求体引用的 Vertex 显式缓存所在区域；未引用 Vertex 缓存时返回空串。
+func geminiCachedContentLocationInBody(body []byte) string {
+	if !bytes.Contains(body, []byte("/cachedContents/")) {
+		return ""
+	}
+	for _, path := range geminiCachedContentReferencePaths {
+		name := strings.TrimSpace(gjson.GetBytes(body, path).String())
+		if m := geminiCachedContentVertexName.FindStringSubmatch(name); m != nil {
+			return m[1]
+		}
+	}
+	return ""
 }
 
 // checkGeminiCachedContentReferenceKeys 拒绝对象中重复出现的 uniqueKeys 与 snake_case 写法的缓存引用键。
@@ -1151,7 +1165,7 @@ func geminiCachedContentCollectionURL(account *Account, base, mappedModel string
 			return "", fmt.Errorf("invalid vertex location: %s", location)
 		}
 		return fmt.Sprintf("https://%s/v1/projects/%s/locations/%s/cachedContents",
-			geminiCachedContentVertexHost(location), url.PathEscape(projectID), url.PathEscape(location)), nil
+			vertexAPIHost(location), url.PathEscape(projectID), url.PathEscape(location)), nil
 	default:
 		return "", fmt.Errorf("account type %s does not support explicit context caching", account.Type)
 	}
@@ -1173,17 +1187,10 @@ func geminiCachedContentResourceURL(account *Account, base, upstreamName string)
 		if m == nil {
 			return "", fmt.Errorf("invalid upstream cached content name: %s", upstreamName)
 		}
-		return fmt.Sprintf("https://%s/v1/%s", geminiCachedContentVertexHost(m[1]), upstreamName), nil
+		return fmt.Sprintf("https://%s/v1/%s", vertexAPIHost(m[1]), upstreamName), nil
 	default:
 		return "", fmt.Errorf("account type %s does not support explicit context caching", account.Type)
 	}
-}
-
-func geminiCachedContentVertexHost(location string) string {
-	if location == "global" {
-		return "aiplatform.googleapis.com"
-	}
-	return location + "-aiplatform.googleapis.com"
 }
 
 // GeminiCachedContentView 返回客户端可见的缓存元数据。

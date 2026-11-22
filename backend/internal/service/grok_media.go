@@ -33,8 +33,16 @@ const (
 	GrokMediaEndpointVideoContent      GrokMediaEndpoint = "video_content"
 
 	// Official xAI Imagine image-edit limit.
-	grokMediaMaxEditSourceImages = 3
+	grokMediaMaxEditSourceImages = 5
 )
+
+type GrokMediaInputValidationError struct {
+	Reason string
+}
+
+func (e *GrokMediaInputValidationError) Error() string {
+	return e.Reason
+}
 
 func (e GrokMediaEndpoint) RequiresRequestBody() bool {
 	return !e.IsVideoLookupRequest()
@@ -231,7 +239,9 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			_ = part.Close()
 			continue
 		}
-		data, err := io.ReadAll(io.LimitReader(part, openAIImageMaxUploadPartSize))
+		// The body is already bounded by the request body limit; truncating a part
+		// here would forward a corrupt image upstream.
+		data, err := io.ReadAll(part)
 		_ = part.Close()
 		if err != nil {
 			return
@@ -786,6 +796,7 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 		UpstreamModel:        upstreamModel,
 		ResponseHeaders:      resp.Header.Clone(),
 		Duration:             time.Since(startTime),
+		ImageEndpoint:        usage.ImageCount > 0,
 		ImageCount:           usage.ImageCount,
 		ImageSize:            usage.ImageSize,
 		ImageInputSize:       usage.ImageInputSize,
@@ -1003,7 +1014,7 @@ func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conten
 		images = append(images, grokMediaImageObject(dataURL))
 	}
 	if len(images) > grokMediaMaxEditSourceImages {
-		return nil, "", fmt.Errorf("a maximum of %d source images is supported for image edits", grokMediaMaxEditSourceImages)
+		return nil, "", &GrokMediaInputValidationError{Reason: fmt.Sprintf("a maximum of %d source images is supported for image edits", grokMediaMaxEditSourceImages)}
 	}
 	if len(images) > 0 {
 		payload["image"] = images[0]
@@ -1034,7 +1045,7 @@ func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conten
 func normalizeGrokMediaJSONImageRefs(body []byte) ([]byte, error) {
 	info := ParseGrokMediaRequest("application/json", body)
 	if len(info.InputImageURLs) > grokMediaMaxEditSourceImages {
-		return nil, fmt.Errorf("a maximum of %d source images is supported for image edits", grokMediaMaxEditSourceImages)
+		return nil, &GrokMediaInputValidationError{Reason: fmt.Sprintf("a maximum of %d source images is supported for image edits", grokMediaMaxEditSourceImages)}
 	}
 	out := body
 	var err error
@@ -1263,7 +1274,7 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 	// Reconcile readiness before configurable passthrough branches can return;
 	// otherwise a Grok 429 can remain schedulable.
 	s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)
-	upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(extractUpstreamErrorMessage(body)))
+	upstreamMsg := sanitizeUpstreamErrorMessage(strings.TrimSpace(grokUpstreamErrorMessage(body)))
 	if upstreamMsg == "" {
 		upstreamMsg = fmt.Sprintf("xAI upstream returned status %d", resp.StatusCode)
 	}
@@ -1292,11 +1303,11 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 			Detail:             upstreamDetail,
 		})
 		MarkResponseCommitted(c)
-		writeGrokMediaErrorResponse(c, http.StatusForbidden, "invalid_request_error", clientMsg)
+		writeGrokMediaErrorResponse(c, http.StatusForbidden, "invalid_request_error", clientMsg, grokUpstreamErrorCode(body))
 		return nil, fmt.Errorf("grok content policy rejection: %s", clientMsg)
 	}
 
-	if status, errType, errMsg, matched := applyErrorPassthroughRule(
+	if status, errType, errMsg, matched := applyErrorPassthroughRuleWithMessage(
 		c,
 		account.Platform,
 		resp.StatusCode,
@@ -1304,9 +1315,10 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 		http.StatusBadGateway,
 		"upstream_error",
 		"Upstream request failed",
+		grokUpstreamErrorMessage,
 	); matched {
 		MarkResponseCommitted(c)
-		writeGrokMediaErrorResponse(c, status, errType, errMsg)
+		writeGrokMediaErrorResponse(c, status, errType, errMsg, "")
 		return nil, fmt.Errorf("upstream error: %d (passthrough rule matched) message=%s", resp.StatusCode, upstreamMsg)
 	}
 
@@ -1324,7 +1336,7 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 			Detail:             upstreamDetail,
 		})
 		MarkResponseCommitted(c)
-		writeGrokMediaErrorResponse(c, http.StatusInternalServerError, "upstream_error", "Upstream gateway error")
+		writeGrokMediaErrorResponse(c, http.StatusInternalServerError, "upstream_error", "Upstream gateway error", "")
 		return nil, fmt.Errorf("upstream error: %d (not in custom error codes) message=%s", resp.StatusCode, upstreamMsg)
 	}
 
@@ -1359,7 +1371,7 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 	}
 
 	MarkResponseCommitted(c)
-	writeGrokMediaErrorResponse(c, resp.StatusCode, grokMediaErrorType(resp.StatusCode), upstreamMsg)
+	writeGrokMediaErrorResponse(c, resp.StatusCode, grokMediaErrorType(resp.StatusCode), upstreamMsg, grokUpstreamErrorCode(body))
 	return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 }
 
@@ -1376,16 +1388,18 @@ func grokMediaErrorType(statusCode int) string {
 	}
 }
 
-func writeGrokMediaErrorResponse(c *gin.Context, statusCode int, errType, message string) {
+func writeGrokMediaErrorResponse(c *gin.Context, statusCode int, errType, message, code string) {
 	if c == nil || c.Writer == nil || c.Writer.Written() {
 		return
 	}
-	c.JSON(statusCode, gin.H{
-		"error": gin.H{
-			"type":    strings.TrimSpace(errType),
-			"message": strings.TrimSpace(message),
-		},
-	})
+	payload := gin.H{
+		"type":    strings.TrimSpace(errType),
+		"message": sanitizeUpstreamErrorMessage(strings.TrimSpace(message)),
+	}
+	if code = sanitizeUpstreamErrorMessage(strings.TrimSpace(code)); code != "" {
+		payload["code"] = code
+	}
+	c.JSON(statusCode, gin.H{"error": payload})
 }
 
 func writeGrokMediaResponse(c *gin.Context, resp *http.Response, body []byte, filter *responseheaders.CompiledHeaderFilter) {

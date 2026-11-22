@@ -243,6 +243,45 @@ func TestBedrockEventStreamDecoder(t *testing.T) {
 	})
 }
 
+func TestBedrockEventStreamDecoderRejectsUntrustedLengths(t *testing.T) {
+	// Only the prelude is sent: the decoder must reject the declared lengths
+	// before allocating or reading the frame body.
+	prelude := func(totalLen, headersLen uint32) []byte {
+		var buf bytes.Buffer
+		_ = binary.Write(&buf, binary.BigEndian, totalLen)
+		_ = binary.Write(&buf, binary.BigEndian, headersLen)
+		_ = binary.Write(&buf, binary.BigEndian, crc32.Checksum(buf.Bytes(), crc32.MakeTable(crc32.IEEE)))
+		return buf.Bytes()
+	}
+	for _, tc := range []struct {
+		name       string
+		totalLen   uint32
+		headersLen uint32
+	}{
+		{name: "payload over protocol limit", totalLen: 16 + bedrockEventStreamMaxPayloadLength + 1},
+		{name: "maximum total length", totalLen: ^uint32(0)},
+		{name: "headers beyond frame", totalLen: 64, headersLen: 49},
+		{name: "headers over protocol limit", totalLen: 16 + bedrockEventStreamMaxHeadersLength + 1, headersLen: bedrockEventStreamMaxHeadersLength + 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			decoder := newBedrockEventStreamDecoder(bytes.NewReader(prelude(tc.totalLen, tc.headersLen)))
+			_, err := decoder.Decode()
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "invalid eventstream frame")
+		})
+	}
+
+	t.Run("headers filling the frame are accepted", func(t *testing.T) {
+		var frame bytes.Buffer
+		_, _ = frame.Write(prelude(16+4, 4))
+		_, _ = frame.Write([]byte{0, 0, 0, 0}) // empty-name, unknown-type header bytes
+		_ = binary.Write(&frame, binary.BigEndian, crc32.Checksum(frame.Bytes(), crc32.MakeTable(crc32.IEEE)))
+		decoder := newBedrockEventStreamDecoder(bytes.NewReader(frame.Bytes()))
+		_, err := decoder.Decode()
+		assert.Equal(t, io.EOF, err)
+	})
+}
+
 func TestBuildBedrockURL(t *testing.T) {
 	t.Run("stream URL with colon in model ID", func(t *testing.T) {
 		url := BuildBedrockURL("us-east-1", "us.anthropic.claude-opus-4-5-20251101-v1:0", true)
