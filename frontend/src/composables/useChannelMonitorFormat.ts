@@ -11,6 +11,10 @@
  */
 
 import { useI18n } from 'vue-i18n'
+import { computed, onMounted } from 'vue'
+import { getActivePinia } from 'pinia'
+import { useAppStore } from '@/stores/app'
+import { firstTokenSeverity, LATENCY_TEXT_CLASSES, normalizeFirstTokenThresholds } from '@/utils/latencyHealth'
 import type { CheckMode, MonitorStatus, Provider } from '@/api/admin/channelMonitor'
 import {
   PROVIDER_OPENAI,
@@ -47,13 +51,40 @@ export interface AvailabilityRow {
 
 export function useChannelMonitorFormat() {
   const { t } = useI18n()
+  const appStore = getActivePinia() ? useAppStore() : undefined
+  const thresholds = computed(() => normalizeFirstTokenThresholds(
+    appStore?.cachedPublicSettings?.first_token_thresholds_ms
+      ?? (typeof window !== 'undefined' ? window.__APP_CONFIG__?.first_token_thresholds_ms : undefined),
+  ))
+  onMounted(() => { void appStore?.fetchPublicSettings?.(true) })
 
-  function statusLabel(s: MonitorStatus | ''): string {
+  function latencySeverity(ms: number | null | undefined) {
+    return ms == null || !Number.isFinite(ms) ? undefined : firstTokenSeverity(ms, thresholds.value)
+  }
+
+  function latencyTextClass(ms: number | null | undefined): string {
+    const severity = latencySeverity(ms)
+    return severity ? LATENCY_TEXT_CLASSES[severity] : 'text-gray-400 dark:text-gray-500'
+  }
+
+  function displayStatus(s: MonitorStatus | '', ms?: number | null): MonitorStatus | '' {
+    const severity = latencySeverity(ms)
+    return s === STATUS_OPERATIONAL && severity && severity !== 'good' ? STATUS_DEGRADED : s
+  }
+
+  function statusLabel(s: MonitorStatus | '', ms?: number | null): string {
+    s = displayStatus(s, ms)
     if (!s) return t('monitorCommon.status.unknown')
     return t(`monitorCommon.status.${s}`)
   }
 
-  function statusBadgeClass(s: MonitorStatus | ''): string {
+  function statusBadgeClass(s: MonitorStatus | '', ms?: number | null): string {
+    const severity = latencySeverity(ms)
+    if ((s === STATUS_OPERATIONAL || s === STATUS_DEGRADED) && severity && severity !== 'good') {
+      if (severity === 'critical') return 'bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300'
+      if (severity === 'slow') return 'bg-orange-100 text-orange-700 dark:bg-orange-500/15 dark:text-orange-300'
+      return 'bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300'
+    }
     switch (s) {
       case STATUS_OPERATIONAL:
         return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300'
@@ -225,6 +256,9 @@ export function useChannelMonitorFormat() {
   }
 
   return {
+    displayStatus,
+    latencySeverity,
+    latencyTextClass,
     statusLabel,
     statusBadgeClass,
     providerLabel,

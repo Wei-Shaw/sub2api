@@ -2,11 +2,11 @@ export default {
     settings: {
       latencyThresholds: {
         title: 'First-token latency color thresholds',
-        description: 'Set when first-token numbers and bars change color in usage logs. Saved thresholds apply to all administrators.',
+        description: 'Set latency colors for first-token numbers and bars in usage logs and active channel monitor results.',
         warn: 'Yellow starts at (seconds)',
         slow: 'Orange starts at (seconds)',
         critical: 'Red starts at (seconds)',
-        hint: 'Values below yellow are green. Each color starts at its threshold. Decimals are supported; defaults are 10 / 30 / 60 seconds.',
+        hint: 'Values below yellow are green. Active monitors use the full check duration; failures and quota warnings retain their status. Defaults are 10 / 30 / 60 seconds.',
         invalid: 'First-token thresholds must be positive, ordered as yellow < orange < red, with millisecond precision.',
       },
       title: 'System Settings',

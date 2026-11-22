@@ -19,11 +19,11 @@
         <div class="flex items-center gap-2">
           <span
             class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px]"
-            :class="statusBadgeClass(r.status)"
+            :class="statusBadgeClass(r.status, r.latency_ms)"
           >
-            {{ statusLabel(r.status) }}
+            {{ statusLabel(r.status, r.latency_ms) }}
           </span>
-          <span class="text-xs text-gray-500 dark:text-gray-400">{{ formatLatency(r.latency_ms) }} ms</span>
+          <span class="text-xs" :class="latencyTextClass(r.latency_ms)">{{ formatLatency(r.latency_ms) }} ms</span>
         </div>
       </div>
     </div>
@@ -54,5 +54,5 @@ defineEmits<{
 }>()
 
 const { t } = useI18n()
-const { statusLabel, statusBadgeClass, formatLatency, formatMonitorModel } = useChannelMonitorFormat()
+const { statusLabel, statusBadgeClass, latencyTextClass, formatLatency, formatMonitorModel } = useChannelMonitorFormat()
 </script>

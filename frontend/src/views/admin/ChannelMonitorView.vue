@@ -93,7 +93,7 @@
           </template>
 
           <template #cell-latency="{ row }">
-            <span class="text-sm text-gray-900 dark:text-gray-100">{{ formatLatency(row.primary_latency_ms) }}</span>
+            <span class="text-sm" :class="latencyTextClass(row.primary_latency_ms)">{{ formatLatency(row.primary_latency_ms) }}</span>
           </template>
 
           <template #cell-enabled="{ row }">
@@ -211,6 +211,7 @@ const {
   checkModeLabel,
   checkModeBadgeClass,
   formatLatency,
+  latencyTextClass,
   formatAvailability,
 } = useChannelMonitorFormat()
 

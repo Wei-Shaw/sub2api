@@ -34,16 +34,16 @@
             <td class="py-2 pr-3">
               <span
                 class="inline-flex items-center rounded-full px-2 py-0.5 text-[11px]"
-                :class="statusBadgeClass(m.latest_status)"
+                :class="statusBadgeClass(m.latest_status, m.latest_latency_ms)"
               >
-                {{ statusLabel(m.latest_status) }}
+                {{ statusLabel(m.latest_status, m.latest_latency_ms) }}
               </span>
             </td>
-            <td class="py-2 pr-3 text-gray-700 dark:text-gray-300">{{ formatLatency(m.latest_latency_ms) }}</td>
+            <td class="py-2 pr-3" :class="latencyTextClass(m.latest_latency_ms)">{{ formatLatency(m.latest_latency_ms) }}</td>
             <td class="py-2 pr-3 text-gray-700 dark:text-gray-300">{{ formatPercent(m.availability_7d) }}</td>
             <td class="py-2 pr-3 text-gray-700 dark:text-gray-300">{{ formatPercent(m.availability_15d) }}</td>
             <td class="py-2 pr-3 text-gray-700 dark:text-gray-300">{{ formatPercent(m.availability_30d) }}</td>
-            <td class="py-2 pr-3 text-gray-700 dark:text-gray-300">{{ formatLatency(m.avg_latency_7d_ms) }}</td>
+            <td class="py-2 pr-3" :class="latencyTextClass(m.avg_latency_7d_ms)">{{ formatLatency(m.avg_latency_7d_ms) }}</td>
           </tr>
         </tbody>
       </table>
@@ -83,7 +83,7 @@ defineEmits<{
 
 const { t } = useI18n()
 const appStore = useAppStore()
-const { statusLabel, statusBadgeClass, formatLatency, formatPercent, formatMonitorModel } = useChannelMonitorFormat()
+const { statusLabel, statusBadgeClass, latencyTextClass, formatLatency, formatPercent, formatMonitorModel } = useChannelMonitorFormat()
 
 const detail = ref<UserMonitorDetail | null>(null)
 const loading = ref(false)

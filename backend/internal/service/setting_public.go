@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
@@ -434,6 +435,7 @@ type ChannelMonitorRuntime struct {
 	Enabled                bool
 	Mode                   string // ChannelMonitorModeV1 or ChannelMonitorModeV2
 	DefaultIntervalSeconds int
+	DegradedThresholdMS    int // Successful active probes become degraded at this latency.
 	// HideThroughput: when true, user-facing V2 APIs omit RPM/TPM scale signals.
 	HideThroughput bool
 	// ShowQuota: when true, user-facing monitor views keep the quota/balance
@@ -473,6 +475,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 		SettingKeyChannelMonitorHideThroughput,
 		SettingKeyChannelMonitorShowQuota,
 		SettingKeyChannelMonitorHideUserRanking,
+		SettingKeyFirstTokenThresholdsMS,
 	})
 	if err != nil {
 		return ChannelMonitorRuntime{
@@ -482,6 +485,10 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 			HideThroughput:         true,
 		}
 	}
+	degradedThresholdMS := int(monitorDegradedThreshold / time.Millisecond)
+	if raw := vals[SettingKeyFirstTokenThresholdsMS]; strings.TrimSpace(raw) != "" {
+		degradedThresholdMS = parseFirstTokenThresholds(raw).Warn
+	}
 	return ChannelMonitorRuntime{
 		Enabled:                !isFalseSettingValue(vals[SettingKeyChannelMonitorEnabled]),
 		Mode:                   normalizeChannelMonitorMode(vals[SettingKeyChannelMonitorMode]),
@@ -489,6 +496,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 		HideThroughput:         !isFalseSettingValue(vals[SettingKeyChannelMonitorHideThroughput]),
 		ShowQuota:              vals[SettingKeyChannelMonitorShowQuota] == "true",
 		HideUserRanking:        isTrueSettingValue(vals[SettingKeyChannelMonitorHideUserRanking]),
+		DegradedThresholdMS:    degradedThresholdMS,
 	}
 }
 

@@ -37,9 +37,9 @@
       </div>
       <span
         class="px-2.5 py-1 rounded-full text-xs font-semibold flex-shrink-0"
-        :class="statusBadgeClass(item.primary_status)"
+        :class="statusBadgeClass(item.primary_status, item.primary_latency_ms)"
       >
-        {{ statusLabel(item.primary_status) }}
+        {{ statusLabel(item.primary_status, item.primary_latency_ms) }}
       </span>
     </div>
 
@@ -48,6 +48,7 @@
       primary-icon="bolt"
       :primary-label="t('monitorCommon.dialogLatency')"
       :primary-value="formatLatency(item.primary_latency_ms)"
+      :primary-value-class="latencyTextClass(item.primary_latency_ms)"
       primary-unit="ms"
       secondary-icon="globe"
       :secondary-label="t('monitorCommon.endpointPing')"
@@ -122,6 +123,7 @@ const {
   providerLabel,
   providerBadgeClass,
   formatLatency,
+  latencyTextClass,
   formatMonitorModel,
 } = useChannelMonitorFormat()
 
