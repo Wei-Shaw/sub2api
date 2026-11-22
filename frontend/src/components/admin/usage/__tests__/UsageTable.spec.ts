@@ -180,6 +180,7 @@ describe('admin UsageTable tooltip', () => {
   })
 
   beforeEach(() => {
+    delete window.__APP_CONFIG__
     locale = 'en'
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
       x: 0,
@@ -192,6 +193,23 @@ describe('admin UsageTable tooltip', () => {
       height: 20,
       toJSON: () => ({}),
     } as DOMRect)
+  })
+
+  it('uses configured first-token colors for both the number and gradient bar', () => {
+    window.__APP_CONFIG__ = {
+      first_token_thresholds_ms: { warn: 1500, slow: 5000, critical: 12_000 },
+    } as NonNullable<Window['__APP_CONFIG__']>
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [{ ...baseImageRow, first_token_ms: 1500, duration_ms: 2000 }],
+        columns: [{ key: 'latency', label: 'Latency' }],
+      },
+      global: { stubs: { DataTable: DataTableStub, EmptyState: true, Icon: true, Teleport: true } },
+    })
+    expect(wrapper.find('.text-amber-600').text()).toBe('1.50s')
+    expect(wrapper.find('.from-amber-400').exists()).toBe(true)
+    expect(wrapper.find('.to-emerald-500').exists()).toBe(true)
+    wrapper.unmount()
   })
 
   it.each([

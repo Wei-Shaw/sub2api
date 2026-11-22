@@ -162,6 +162,7 @@ type SystemSettings struct {
 	PurchaseSubscriptionURL     string
 	TableDefaultPageSize        int
 	TablePageSizeOptions        []int
+	FirstTokenThresholdsMS      FirstTokenThresholds
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 
@@ -365,6 +366,7 @@ type PublicSettings struct {
 	PurchaseSubscriptionURL     string
 	TableDefaultPageSize        int
 	TablePageSizeOptions        []int
+	FirstTokenThresholdsMS      FirstTokenThresholds
 	CustomMenuItems             string // JSON array of custom menu items
 	CustomEndpoints             string // JSON array of custom endpoints
 

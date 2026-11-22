@@ -208,6 +208,12 @@ export interface LoginAgreementDocument {
   content_md: string
 }
 
+export interface FirstTokenThresholds {
+  warn: number
+  slow: number
+  critical: number
+}
+
 export interface PublicSettings {
   registration_enabled: boolean
   email_verify_enabled: boolean
@@ -245,6 +251,7 @@ export interface PublicSettings {
   risk_control_enabled: boolean
   table_default_page_size: number
   table_page_size_options: number[]
+  first_token_thresholds_ms?: FirstTokenThresholds
   custom_menu_items: CustomMenuItem[]
   custom_endpoints: CustomEndpoint[]
   linuxdo_oauth_enabled: boolean

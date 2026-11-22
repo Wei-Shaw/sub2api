@@ -1,5 +1,14 @@
 export default {
     settings: {
+      latencyThresholds: {
+        title: '首字延迟颜色阈值',
+        description: '设置使用记录中首字数字和色条的变色阈值，保存后对所有管理员生效。',
+        warn: '黄色起始值（秒）',
+        slow: '橙色起始值（秒）',
+        critical: '红色起始值（秒）',
+        hint: '低于黄色阈值显示绿色；达到阈值时变为对应颜色。支持小数，默认 10 / 30 / 60 秒。',
+        invalid: '首字延迟阈值必须为正数，且黄色 < 橙色 < 红色，精确到毫秒。',
+      },
       title: '系统设置',
       description: '管理注册、邮箱验证、默认值和 SMTP 设置',
       tabs: {

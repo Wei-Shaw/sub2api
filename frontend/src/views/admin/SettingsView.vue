@@ -6481,6 +6481,8 @@
                 </div>
               </div>
 
+              <FirstTokenThresholdSettings v-model="form.first_token_thresholds_ms" />
+
               <!-- Custom Endpoints -->
               <div>
                 <label
@@ -9014,6 +9016,8 @@ import {
   stepUpBlockReason,
 } from "@/composables/useStepUp";
 import AdminAccessKeysSettings from "@/components/admin/settings/AdminAccessKeysSettings.vue";
+import FirstTokenThresholdSettings from "@/components/admin/settings/FirstTokenThresholdSettings.vue";
+import { FIRST_TOKEN_THRESHOLDS_MS, isValidFirstTokenThresholds, normalizeFirstTokenThresholds } from "@/utils/latencyHealth";
 import TotpStepUpDialog from "@/components/auth/TotpStepUpDialog.vue";
 import { affiliatesAPI, type AffiliateAdminEntry, type SimpleUser as AffiliateSimpleUser } from "@/api/admin/affiliates";
 import { extractApiErrorMessage, extractI18nErrorMessage } from "@/utils/apiError";
@@ -9684,6 +9688,7 @@ type SettingsForm = Omit<
   | "wechat_connect_mobile_enabled"
   | "openai_oauth_scheduling_rate_multiplier"
 > & {
+  first_token_thresholds_ms: NonNullable<SystemSettings["first_token_thresholds_ms"]>;
   /** Form always binds a concrete boolean (SystemSettings marks this optional). */
   channel_monitor_hide_throughput: boolean;
   channel_monitor_show_quota: boolean;
@@ -9815,6 +9820,7 @@ const form = reactive<SettingsForm>({
   payment_alipay_mobile_precreate_deep_link: false,
   table_default_page_size: tablePageSizeDefault,
   table_page_size_options: [10, 20, 50, 100],
+  first_token_thresholds_ms: { ...FIRST_TOKEN_THRESHOLDS_MS },
   custom_menu_items: [] as Array<{
     id: string;
     label: string;
@@ -11081,6 +11087,7 @@ async function loadSettings() {
     form.account_scheduling_thresholds = normalizeAccountSchedulingThresholdsMap(
       settings.account_scheduling_thresholds,
     );
+    form.first_token_thresholds_ms = normalizeFirstTokenThresholds(settings.first_token_thresholds_ms);
     form.backend_mode_enabled = settings.backend_mode_enabled;
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
@@ -11286,6 +11293,11 @@ const siteBillingModeHint = computed(() =>
 async function saveSettings() {
   saving.value = true;
   try {
+    if (!isValidFirstTokenThresholds(form.first_token_thresholds_ms)) {
+      appStore.showError(t("admin.settings.latencyThresholds.invalid"));
+      return;
+    }
+
     const normalizedTableDefaultPageSize = Math.floor(
       Number(form.table_default_page_size),
     );
@@ -11492,6 +11504,7 @@ async function saveSettings() {
       hide_ccs_import_button: form.hide_ccs_import_button,
       table_default_page_size: form.table_default_page_size,
       table_page_size_options: form.table_page_size_options,
+      first_token_thresholds_ms: { ...form.first_token_thresholds_ms },
       custom_menu_items: form.custom_menu_items,
       custom_endpoints: form.custom_endpoints,
       frontend_url: form.frontend_url,

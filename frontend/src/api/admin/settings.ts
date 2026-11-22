@@ -9,6 +9,7 @@ import type {
   AccountPlatform,
   CustomEndpoint,
   CustomMenuItem,
+  FirstTokenThresholds,
   LoginAgreementDocument,
   NotifyEmailEntry,
 } from "@/types";
@@ -492,6 +493,7 @@ export interface SystemSettings {
   hide_ccs_import_button: boolean;
   table_default_page_size: number;
   table_page_size_options: number[];
+  first_token_thresholds_ms?: FirstTokenThresholds;
   backend_mode_enabled: boolean;
   custom_menu_items: CustomMenuItem[];
   custom_endpoints: CustomEndpoint[];
@@ -844,6 +846,7 @@ export interface UpdateSettingsRequest {
   hide_ccs_import_button?: boolean;
   table_default_page_size?: number;
   table_page_size_options?: number[];
+  first_token_thresholds_ms?: FirstTokenThresholds;
   backend_mode_enabled?: boolean;
   custom_menu_items?: CustomMenuItem[];
   custom_endpoints?: CustomEndpoint[];

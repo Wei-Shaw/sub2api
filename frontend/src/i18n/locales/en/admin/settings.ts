@@ -1,5 +1,14 @@
 export default {
     settings: {
+      latencyThresholds: {
+        title: 'First-token latency color thresholds',
+        description: 'Set when first-token numbers and bars change color in usage logs. Saved thresholds apply to all administrators.',
+        warn: 'Yellow starts at (seconds)',
+        slow: 'Orange starts at (seconds)',
+        critical: 'Red starts at (seconds)',
+        hint: 'Values below yellow are green. Each color starts at its threshold. Decimals are supported; defaults are 10 / 30 / 60 seconds.',
+        invalid: 'First-token thresholds must be positive, ordered as yellow < orange < red, with millisecond precision.',
+      },
       title: 'System Settings',
       description: 'Manage registration, email verification, default values, and SMTP settings',
       tabs: {
