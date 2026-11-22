@@ -64,6 +64,8 @@ func (s *OpenAIGatewayService) EarliestCodexPoolQuotaReset(ctx context.Context, 
 	if s.rateLimitService != nil && s.rateLimitService.settingService != nil {
 		thresholds = s.rateLimitService.settingService.GetAccountSchedulingThresholds(ctx)
 	}
+	imageSize, _ := openAIImageSizeRoutingFromContext(ctx)
+	imageTier, explicitImageTier := ClassifyImageBillingTier(imageSize)
 	now := time.Now()
 	var earliest time.Time
 	for i := range accounts {
@@ -71,6 +73,7 @@ func (s *OpenAIGatewayService) EarliestCodexPoolQuotaReset(ctx context.Context, 
 		if pinnedAccountID != 0 && account.ID != pinnedAccountID ||
 			s.openAIGroupRequiresPrivacySet(ctx, req.GroupID) && !account.IsPrivacySet() ||
 			!s.isOpenAIAccountTransportCompatible(account, req.Transport) ||
+			explicitImageTier && !account.SupportsOpenAIImageSizeTier(imageTier) ||
 			!parentHealthyForShadow(account, s.parentAccountLookup(ctx)) ||
 			s.isOpenAIProxyStreamQuarantined(ctx, account) ||
 			checkUpstream && s.isUpstreamModelRestrictedByChannel(ctx, *req.GroupID, account, req.Model, false) {
@@ -114,7 +117,8 @@ func (s *OpenAIGatewayService) codexQuotaCandidateReset(ctx context.Context, acc
 		}
 	}
 	if until, ok := s.openaiAccountRuntimeBlockUntil.Load(account.ID); ok {
-		if deadline, ok := until.(time.Time); ok && deadline.After(now) && deadline.Truncate(time.Microsecond).After(reset) {
+		if deadline, ok := until.(time.Time); ok && deadline.After(now) &&
+			deadline.Truncate(time.Microsecond).After(reset) && accountPersistedSchedulingCooldownActive(account) {
 			return time.Time{}, false
 		}
 	}

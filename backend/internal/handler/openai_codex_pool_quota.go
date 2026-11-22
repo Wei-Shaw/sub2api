@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -44,9 +45,16 @@ func (h *OpenAIGatewayHandler) writeCodexPoolQuotaHTTP(c *gin.Context, req servi
 	headers := c.Writer.Header()
 	headers.Set("Content-Type", "application/json; charset=utf-8")
 	headers.Set("Cache-Control", "no-store")
-	headers.Del("Content-Length")
-	headers.Del("Retry-After")
-	headers.Del("X-Accel-Buffering")
+	// An upstream SSE attempt may already have staged its account headers.
+	for key := range headers {
+		name := strings.ToLower(key)
+		switch {
+		case name == "content-length", name == "retry-after", name == "x-accel-buffering",
+			strings.HasPrefix(name, "x-codex-"), strings.HasPrefix(name, "x-ratelimit-"),
+			strings.HasPrefix(name, "x-rate-limit-"), name == "ratelimit", strings.HasPrefix(name, "ratelimit-"):
+			delete(headers, key)
+		}
+	}
 	c.JSON(http.StatusTooManyRequests, gin.H{"error": codexPoolQuotaBody(reset)})
 	return true
 }

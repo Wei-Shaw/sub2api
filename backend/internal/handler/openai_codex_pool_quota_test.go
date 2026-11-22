@@ -77,9 +77,10 @@ func (r *codexQuotaHandlerRepo) SetCodexQuotaRateLimited(_ context.Context, id i
 
 type codexQuotaHTTPUpstream struct {
 	service.HTTPUpstream
-	reset           time.Time
-	calls           atomic.Int32
-	successfulFirst atomic.Bool
+	reset            time.Time
+	calls            atomic.Int32
+	successfulFirst  atomic.Bool
+	streamingFailure bool
 }
 
 func (u *codexQuotaHTTPUpstream) Do(_ *http.Request, _ string, id int64, _ int) (*http.Response, error) {
@@ -90,6 +91,24 @@ func (u *codexQuotaHTTPUpstream) Do(_ *http.Request, _ string, id int64, _ int) 
 		}, nil
 	}
 	reset := u.reset.Add(time.Duration(id-1) * time.Hour)
+	if u.streamingFailure {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header: http.Header{
+				"Content-Type":                          {"text/event-stream"},
+				"X-Codex-Primary-Used-Percent":          {"100"},
+				"X-Codex-Secondary-Used-Percent":        {"92"},
+				"X-Codex-Primary-Reset-After-Seconds":   {"3600"},
+				"X-Codex-Secondary-Reset-After-Seconds": {"7200"},
+				"X-Codex-Turn-State":                    {"upstream-turn-state"},
+				"X-Ratelimit-Remaining-Requests":        {"0"},
+				"X-Ratelimit-Reset-Requests":            {"60s"},
+				"Retry-After":                           {"60"},
+				"X-Request-Id":                          {"upstream-request"},
+			},
+			Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`data: {"type":"error","status":429,"error":{"type":"usage_limit_reached","message":"The usage limit has been reached","resets_at":%d}}`, reset.Unix()) + "\n\n")),
+		}, nil
+	}
 	return &http.Response{
 		StatusCode: http.StatusTooManyRequests, Header: http.Header{"Content-Type": {"application/json"}},
 		Body: io.NopCloser(strings.NewReader(fmt.Sprintf(`{"error":{"type":"usage_limit_reached","message":"The usage limit has been reached","resets_at":%d}}`, reset.Unix()))),
@@ -125,7 +144,7 @@ func TestCodexPoolQuotaResponses(t *testing.T) {
 			}}}
 			billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 			t.Cleanup(billing.Stop)
-			upstream := &codexQuotaHTTPUpstream{reset: reset}
+			upstream := &codexQuotaHTTPUpstream{reset: reset, streamingFailure: true}
 			rateLimit := service.NewRateLimitService(repo, nil, cfg, nil, nil)
 			gateway := service.NewOpenAIGatewayService(repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
 				service.NewBillingService(cfg, nil), rateLimit, billing, upstream, &service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil)
@@ -137,7 +156,7 @@ func TestCodexPoolQuotaResponses(t *testing.T) {
 				service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg), nil, nil, nil, nil, cfg)
 			groupID := int64(42)
 			key := &service.APIKey{ID: 7, GroupID: &groupID, User: &service.User{ID: 8, Status: service.StatusActive},
-				Group: &service.Group{ID: groupID, Status: service.StatusActive, Platform: service.PlatformOpenAI, CodexPoolQuotaErrorEnabled: enabled}}
+				Group: &service.Group{ID: groupID, Status: service.StatusActive, Platform: service.PlatformOpenAI, AllowImageGeneration: true, CodexPoolQuotaErrorEnabled: enabled}}
 			newRouter := func(h *OpenAIGatewayHandler) *gin.Engine {
 				router := gin.New()
 				router.Use(func(c *gin.Context) {
@@ -172,7 +191,7 @@ func TestCodexPoolQuotaResponses(t *testing.T) {
 			defer cancel()
 			conn, _, err := coderws.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http")+"/v1/responses", nil)
 			require.NoError(t, err)
-			defer conn.CloseNow()
+			defer func() { _ = conn.CloseNow() }()
 			require.NoError(t, conn.Write(ctx, coderws.MessageText, []byte(`{"type":"response.create","model":"gpt-5.1","input":[{"role":"user","content":"hello"}]}`)))
 			_, payload, err := conn.Read(ctx)
 			if enabled {
@@ -193,7 +212,7 @@ func TestCodexPoolQuotaResponses(t *testing.T) {
 						dir := t.TempDir()
 						ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 						defer cancel()
-						cmd := exec.CommandContext(ctx, binary, "exec", "--json", "--skip-git-repo-check", "--ephemeral",
+						cmd := exec.CommandContext(ctx, binary, "exec", "--json", "--skip-git-repo-check", "--ephemeral", // #nosec G702 -- The test operator selects the local CLI executable.
 							"-c", `model_provider="quota_test"`, "-c", `model="gpt-6.1-sol"`,
 							"-c", `model_providers.quota_test.name="Quota test"`,
 							"-c", `model_providers.quota_test.env_key="POOL_TEST_KEY"`,
@@ -210,6 +229,28 @@ func TestCodexPoolQuotaResponses(t *testing.T) {
 			}
 
 			if enabled {
+				t.Run("explicit_image_size", func(t *testing.T) {
+					repo.mu.Lock()
+					limited := repo.candidates[0]
+					limited.Extra[service.AccountExtraOpenAIImageSizeTiers] = []string{"4K"}
+					repo.candidates = []service.Account{
+						limited,
+						{ID: 2, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Status: service.StatusActive, Schedulable: true,
+							Extra: map[string]any{service.AccountExtraOpenAIImageSizeTiers: []string{"1K"}}},
+					}
+					repo.mu.Unlock()
+					req := httptest.NewRequest(http.MethodPost, "/v1/responses",
+						strings.NewReader(`{"model":"gpt-5.1","input":"draw a cat","tools":[{"type":"image_generation","size":"3840x2160"}]}`))
+					req.Header.Set("Content-Type", "application/json")
+					rec := httptest.NewRecorder()
+					router.ServeHTTP(rec, req)
+					require.Equal(t, http.StatusTooManyRequests, rec.Code, rec.Body.String())
+					require.Equal(t, reset.Unix(), gjson.GetBytes(rec.Body.Bytes(), "error.resets_at").Int())
+					require.Zero(t, upstream.calls.Load())
+				})
+			}
+
+			if enabled {
 				repo.mu.Lock()
 				repo.candidates = []service.Account{
 					{ID: 1, Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth, Status: service.StatusActive, Schedulable: true, Concurrency: 1,
@@ -218,7 +259,7 @@ func TestCodexPoolQuotaResponses(t *testing.T) {
 						Credentials: map[string]any{"access_token": "mock-token"}, Extra: map[string]any{"openai_passthrough": true}},
 				}
 				repo.mu.Unlock()
-				for range 2 {
+				for attempt := range 2 {
 					req := httptest.NewRequest(http.MethodPost, "/v1/responses",
 						strings.NewReader(`{"model":"gpt-5.1","instructions":"Be helpful.","input":[{"role":"user","content":"hello"}],"stream":true}`))
 					req.Header.Set("Content-Type", "application/json")
@@ -227,6 +268,20 @@ func TestCodexPoolQuotaResponses(t *testing.T) {
 					require.Equal(t, http.StatusTooManyRequests, rec.Code, rec.Body.String())
 					require.Equal(t, reset.Unix(), gjson.GetBytes(rec.Body.Bytes(), "error.resets_at").Int(), rec.Body.String())
 					require.Equal(t, int32(2), upstream.calls.Load())
+					headers := rec.Result().Header
+					require.Equal(t, "application/json; charset=utf-8", headers.Get("Content-Type"))
+					require.Equal(t, "no-store", headers.Get("Cache-Control"))
+					if attempt == 0 {
+						require.Equal(t, "upstream-request", headers.Get("X-Request-Id"), "the SSE attempt staged upstream headers")
+					}
+					for _, name := range []string{
+						"X-Codex-Primary-Used-Percent", "X-Codex-Secondary-Used-Percent",
+						"X-Codex-Primary-Reset-After-Seconds", "X-Codex-Secondary-Reset-After-Seconds",
+						"X-Codex-Turn-State", "X-Ratelimit-Remaining-Requests", "X-Ratelimit-Reset-Requests",
+						"Retry-After", "X-Accel-Buffering",
+					} {
+						require.Empty(t, headers.Values(name), "%s leaked into pool quota response", name)
+					}
 				}
 			}
 
@@ -260,7 +315,7 @@ func TestCodexPoolQuotaResponses(t *testing.T) {
 						defer cancelTurns()
 						bridge, _, err := coderws.Dial(turnCtx, "ws"+strings.TrimPrefix(bridgeServer.URL, "http")+"/v1/responses", nil)
 						require.NoError(t, err)
-						defer bridge.CloseNow()
+						defer func() { _ = bridge.CloseNow() }()
 						request := `{"type":"response.create","model":"%s","instructions":"Be helpful.","input":[{"type":"message","role":"user","content":"hello"}]}`
 						require.NoError(t, bridge.Write(turnCtx, coderws.MessageText, []byte(fmt.Sprintf(request, "gpt-5.1"))))
 						_, frame, err := bridge.Read(turnCtx)
@@ -352,7 +407,7 @@ func TestCodexPoolQuotaNativeWebSocketRefreshesSettingsAfterMetadata(t *testing.
 					if err != nil {
 						return
 					}
-					defer conn.CloseNow()
+					defer func() { _ = conn.CloseNow() }()
 					for _, frames := range [][]string{
 						{`{"type":"response.completed","response":{"id":"resp_first","model":"gpt-5.1","usage":{"input_tokens":1,"output_tokens":1}}}`},
 						{`{"type":"codex.rate_limits"}`, `{"type":"response.created","response":{"id":"resp_second","model":"gpt-5.1"}}`},
@@ -439,7 +494,7 @@ func TestCodexPoolQuotaNativeWebSocketRefreshesSettingsAfterMetadata(t *testing.
 				defer srv.Close()
 				conn, _, err := coderws.Dial(ctx, "ws"+strings.TrimPrefix(srv.URL, "http")+"/v1/responses", nil)
 				require.NoError(t, err)
-				defer conn.CloseNow()
+				defer func() { _ = conn.CloseNow() }()
 				request := []byte(`{"type":"response.create","model":"gpt-5.1","store":false,"input":[{"type":"message","role":"user","content":"hello"}]}`)
 				require.NoError(t, conn.Write(ctx, coderws.MessageText, request))
 				_, frame, err := conn.Read(ctx)

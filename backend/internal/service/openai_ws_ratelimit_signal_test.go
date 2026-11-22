@@ -626,7 +626,7 @@ func TestCodexPoolQuotaPersistsRejectedWebSocketUpgradeBody(t *testing.T) {
 			server, serverErr := startPassthroughLifecycleServer(t, context.Background(), svc, account)
 			defer server.Close()
 			conn := dialPassthroughLifecycleClient(t, server)
-			defer conn.CloseNow()
+			defer func() { _ = conn.CloseNow() }()
 			select {
 			case err := <-serverErr:
 				var failover *UpstreamFailoverError

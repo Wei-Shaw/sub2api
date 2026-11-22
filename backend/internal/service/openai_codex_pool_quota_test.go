@@ -72,6 +72,71 @@ func TestCodexPoolQuotaReset(t *testing.T) {
 	}
 }
 
+func TestCodexPoolQuotaFiltersExplicitImageSize(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	early, late := now.Add(time.Hour), now.Add(2*time.Hour)
+	lowTier := quotaTestAccount(1, now, early, early, true)
+	lowTier.Extra[AccountExtraOpenAIImageSizeTiers] = []any{"1K"}
+	highTier := quotaTestAccount(2, now, late, late, true)
+	highTier.Extra[AccountExtraOpenAIImageSizeTiers] = []any{"4K"}
+	groupID := int64(5)
+	req := CodexPoolQuotaRequest{GroupID: &groupID, Model: "gpt-5.1", Transport: OpenAIUpstreamTransportAny}
+	for _, tc := range []struct {
+		name      string
+		size      string
+		lowUsable bool
+		want      time.Time
+	}{
+		{name: "4K ignores earlier 1K reset", size: "3840x2160", want: late},
+		{name: "4K ignores available 1K account", size: "3840x2160", lowUsable: true, want: late},
+		{name: "auto can use either tier", size: "auto", want: early},
+		{name: "unspecified text request can use either tier", want: early},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			first := lowTier
+			if tc.lowUsable {
+				first.RateLimitedAt, first.RateLimitResetAt = nil, nil
+			}
+			s := &OpenAIGatewayService{accountRepo: &codexPoolQuotaAccounts{accounts: []Account{first, highTier}}}
+			ctx := context.Background()
+			if tc.size != "" {
+				ctx = WithOpenAIImageSizeRouting(ctx, tc.size)
+			}
+			got := s.EarliestCodexPoolQuotaReset(ctx, req)
+			require.True(t, got.Equal(tc.want), "got %v, want %v", got, tc.want)
+		})
+	}
+}
+
+func TestCodexPoolQuotaUsesPersistedCooldownForRuntimeBlock(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	past, early, late, localDeadline := now.Add(-time.Minute), now.Add(time.Hour), now.Add(2*time.Hour), now.Add(3*time.Hour)
+	groupID := int64(5)
+	req := CodexPoolQuotaRequest{GroupID: &groupID, Model: "gpt-5.1", Transport: OpenAIUpstreamTransportAny}
+	for _, tc := range []struct {
+		name     string
+		cooldown *time.Time
+		want     time.Time
+	}{
+		{name: "persisted cooldown cleared"},
+		{name: "persisted cooldown expired", cooldown: &past},
+		{name: "active persisted cooldown keeps the longer runtime block", cooldown: &early, want: late},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			first := quotaTestAccount(1, now, early, early, true)
+			first.RateLimitResetAt = tc.cooldown
+			second := quotaTestAccount(2, now, late, late, true)
+			s := &OpenAIGatewayService{accountRepo: &codexPoolQuotaAccounts{accounts: []Account{first, second}}}
+			s.BlockAccountScheduling(&first, localDeadline, "quota cooldown")
+			got := s.EarliestCodexPoolQuotaReset(context.Background(), req)
+			require.True(t, got.Equal(tc.want), "got %v, want %v", got, tc.want)
+			stored, ok := s.openaiAccountRuntimeBlockUntil.Load(first.ID)
+			require.True(t, ok, "diagnosis is read-only")
+			require.Equal(t, localDeadline, stored)
+		})
+	}
+}
+
 func TestCodexPoolQuotaUsageSnapshots(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	short, long := now.Add(time.Hour), now.Add(24*time.Hour)
