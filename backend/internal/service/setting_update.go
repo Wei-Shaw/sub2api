@@ -357,6 +357,17 @@ func (s *SettingService) buildSystemSettingsUpdates(ctx context.Context, setting
 		return nil, fmt.Errorf("marshal table page size options: %w", err)
 	}
 	updates[SettingKeyTablePageSizeOptions] = string(tablePageSizeOptionsJSON)
+	if settings.FirstTokenThresholdsMS == (FirstTokenThresholds{}) {
+		settings.FirstTokenThresholdsMS = DefaultFirstTokenThresholds()
+	}
+	if !settings.FirstTokenThresholdsMS.Valid() {
+		return nil, infraerrors.BadRequest("INVALID_FIRST_TOKEN_THRESHOLDS", "First-token thresholds must be positive milliseconds ordered as yellow < orange < red")
+	}
+	firstTokenThresholdsJSON, err := json.Marshal(settings.FirstTokenThresholdsMS)
+	if err != nil {
+		return nil, fmt.Errorf("marshal first-token thresholds: %w", err)
+	}
+	updates[SettingKeyFirstTokenThresholdsMS] = string(firstTokenThresholdsJSON)
 	updates[SettingKeyCustomMenuItems] = settings.CustomMenuItems
 	updates[SettingKeyCustomEndpoints] = settings.CustomEndpoints
 
