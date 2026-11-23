@@ -1644,6 +1644,14 @@ func normalizeOpenAIResponsesWebSocketCompatibilityBody(body []byte, account *Ac
 }
 
 func normalizeOpenAIResponsesWebSocketCompatibilityBodyWithConfig(cfg *config.Config, body []byte, account *Account, responsesLite bool) ([]byte, bool, error) {
+	if strings.TrimSpace(gjson.GetBytes(body, "type").String()) == "session.update" {
+		if account != nil && account.Platform == PlatformDeepseek {
+			return body, false, nil
+		}
+		// An explicit empty list clears tools from the previous session state.
+		filtered := stripDeepSeekTools(body, "session.tools", gjson.GetBytes(body, "session.tools"), false)
+		return filtered, !bytes.Equal(filtered, body), nil
+	}
 	filtered := filterDeepSeekRequest(body, account)
 	out, changed, err := normalizeOpenAIResponsesCompatibilityBodyWithOptions(filtered, account, openAIResponsesCompatibilityOptions{Config: cfg, ResponsesLite: responsesLite})
 	return out, changed || !bytes.Equal(filtered, body), err

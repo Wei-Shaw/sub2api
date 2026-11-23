@@ -25,7 +25,7 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 	}
 
 	out := &AnthropicRequest{
-		DeepSeekRequestFields: req.DeepSeekRequestFields.objects(),
+		DeepSeekRequestFields: req.objects(),
 		Model:                 req.Model,
 		Messages:              messages,
 		Temperature:           req.Temperature,

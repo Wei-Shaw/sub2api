@@ -65,7 +65,7 @@ func ResponsesToChatCompletionsRequestWithOptions(req *ResponsesRequest, opts *R
 		ServiceTier:           req.ServiceTier,
 		ParallelToolCalls:     req.ParallelToolCalls,
 		Stop:                  req.Stop,
-		DeepSeekRequestFields: req.DeepSeekRequestFields.objects(),
+		DeepSeekRequestFields: req.objects(),
 	}
 	if req.Reasoning != nil {
 		out.ReasoningEffort = req.Reasoning.Effort

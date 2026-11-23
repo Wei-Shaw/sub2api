@@ -47,7 +47,7 @@ func AnthropicToResponsesWithOptions(req *AnthropicRequest, options AnthropicToR
 	}
 
 	out := &ResponsesRequest{
-		DeepSeekRequestFields: req.DeepSeekRequestFields.objects(),
+		DeepSeekRequestFields: req.objects(),
 		Model:                 req.Model,
 		Input:                 inputJSON,
 		Stream:                req.Stream,

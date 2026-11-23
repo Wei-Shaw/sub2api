@@ -45,6 +45,41 @@ func TestDeepSeekRequestFieldDecoding(t *testing.T) {
 	}
 }
 
+func TestDeepSeekToolDeclarationDecoding(t *testing.T) {
+	for _, typ := range []string{"deepseek_web_search", "deepseek_read_url"} {
+		decl := fmt.Sprintf(`{"type":%q,"name":"alias","execution":{"mode":"remote"},"defer_loading":"later","function":false}`, typ)
+		wire := []byte(`{"model":"test","messages":[{"role":"user","content":"hi"}],"input":"hi","tools":[` + decl + `]}`)
+		var responses ResponsesRequest
+		var messages AnthropicRequest
+		var chat ChatCompletionsRequest
+		require.NoError(t, json.Unmarshal(wire, &responses))
+		require.NoError(t, json.Unmarshal(wire, &messages))
+		require.NoError(t, json.Unmarshal(wire, &chat))
+		fromResponses, err := ResponsesToChatCompletionsRequest(&responses)
+		require.NoError(t, err)
+		fromMessages, err := AnthropicToChatCompletionsRequest(&messages)
+		require.NoError(t, err)
+		fromChat, err := ChatCompletionsToResponses(&chat)
+		require.NoError(t, err)
+		for _, tools := range []any{fromResponses.Tools, fromMessages.Tools, fromChat.Tools} {
+			raw, err := json.Marshal(tools)
+			require.NoError(t, err)
+			require.JSONEq(t, "["+decl+"]", string(raw))
+		}
+	}
+	for _, tc := range []struct {
+		tool any
+		decl string
+	}{
+		{new(ResponsesTool), `{"type":"function","execution":{}}`},
+		{new(AnthropicTool), `{"name":"lookup","defer_loading":"later"}`},
+		{new(ChatTool), `{"type":"function","function":false}`},
+	} {
+		var typeErr *json.UnmarshalTypeError
+		require.ErrorAs(t, json.Unmarshal([]byte(tc.decl), tc.tool), &typeErr)
+	}
+}
+
 func TestDeepSeekChatWebHistory(t *testing.T) {
 	const input = `[
 		{"role":"user","content":"read these"},

@@ -241,6 +241,60 @@ func TestDeepSeekRequestExtensionScopes(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestDeepSeekKimiSystemTools(t *testing.T) {
+	const function = `{"type":"function","function":{"name":"lookup","parameters":{"type":"object"}}}`
+	const clean = `{"model":"test-model","messages":[
+		{"role":"system","tools":[` + function + `]},
+		{"role":"system","content":"instructions"},
+		{"role":"user","content":"describe deepseek_web_search"}]}`
+	const mixed = `{"model":"test-model","messages":[
+		{"role":"system","tools":[{"type":"deepseek_web_search"}]},
+		{"role":"system","tools":[{"type":"deepseek_read_url"},` + function + `]},
+		{"role":"system","tools":[{"type":"deepseek_read_url"}],"content":"instructions"},
+		{"role":"system","tools":[{"type":"deepseek_read_url"}],"content":null},
+		{"role":"user","content":"describe deepseek_web_search"}]}`
+	account := structuredInputRetryTestAccount()
+	account.Platform = PlatformKimi
+	require.JSONEq(t, clean, string(filterDeepSeekRequest([]byte(mixed), account)))
+	require.Equal(t, clean, string(filterDeepSeekRequest([]byte(clean), account)))
+	require.Equal(t, mixed, string(filterDeepSeekRequest([]byte(mixed), &Account{Platform: PlatformDeepseek})))
+	for _, protocol := range []string{APIProtocolChatCompletions, APIProtocolResponses, APIProtocolAnthropic} {
+		t.Run(protocol, func(t *testing.T) {
+			account.Credentials["api_protocol"] = protocol
+			out := captureExtensionRequest(t, account, "chat/completions", []byte(mixed))
+			baseline := captureExtensionRequest(t, account, "chat/completions", []byte(clean))
+			require.JSONEq(t, string(baseline), string(out))
+			require.Contains(t, string(out), "lookup")
+		})
+	}
+}
+
+func TestDeepSeekWebSocketSessionTools(t *testing.T) {
+	const mixed = `{"type":"session.update","session":{"model":"test","tools":[{"type":"deepseek_web_search"},{"type":"function","name":"lookup"}]}}`
+	const only = `{"type":"session.update","session":{"tools":[{"type":"deepseek_read_url"}]}}`
+	const ordinary = `{ "type":"session.update", "session":{"tools":[{ "type":"function", "name":"deepseek_read_url" }]} }`
+	for _, tc := range []struct {
+		frame, platform, tools string
+		changed                bool
+	}{
+		{mixed, PlatformOpenAI, `[{"type":"function","name":"lookup"}]`, true},
+		{only, PlatformOpenAI, "[]", true},
+		{mixed, PlatformDeepseek, "", false},
+		{ordinary, PlatformOpenAI, "", false},
+	} {
+		out, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBodyWithConfig(nil, []byte(tc.frame), &Account{Platform: tc.platform}, false)
+		require.NoError(t, err)
+		require.Equal(t, tc.changed, changed)
+		if changed {
+			want, err := sjson.SetRaw(tc.frame, "session.tools", tc.tools)
+			require.NoError(t, err)
+			require.JSONEq(t, want, string(out))
+		} else {
+			require.Equal(t, tc.frame, string(out))
+		}
+	}
+}
+
 func TestClientDecodeErrorSkipsAccountSchedule(t *testing.T) {
 	s := &OpenAIGatewayService{cfg: structuredInputRetryTestConfig()}
 	account := structuredInputRetryTestAccount()

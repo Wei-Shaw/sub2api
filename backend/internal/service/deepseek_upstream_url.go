@@ -76,7 +76,8 @@ func deepseekStorageOrigin(u *url.URL) string {
 	path = strings.TrimSuffix(strings.TrimSuffix(path, "/v1"), "/anthropic")
 	host := strings.ToLower(u.Hostname())
 	port := u.Port()
-	if port != "" && !(port == "443" && u.Scheme == "https") && !(port == "80" && u.Scheme == "http") {
+	defaultPort := (port == "443" && u.Scheme == "https") || (port == "80" && u.Scheme == "http")
+	if port != "" && !defaultPort {
 		host = net.JoinHostPort(host, port)
 	} else if strings.Contains(host, ":") {
 		host = "[" + host + "]"

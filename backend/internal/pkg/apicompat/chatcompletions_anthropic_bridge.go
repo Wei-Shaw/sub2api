@@ -56,7 +56,7 @@ func AnthropicToChatCompletionsRequestWithMinOutputTokens(req *AnthropicRequest,
 	}
 
 	out := &ChatCompletionsRequest{
-		DeepSeekRequestFields: req.DeepSeekRequestFields.objects(),
+		DeepSeekRequestFields: req.objects(),
 		Model:                 req.Model,
 		Messages:              messages,
 		Stream:                req.Stream,

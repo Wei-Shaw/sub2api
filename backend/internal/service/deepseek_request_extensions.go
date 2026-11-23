@@ -27,6 +27,10 @@ func filterDeepSeekRequest(body []byte, account *Account) []byte {
 			if !deepseek {
 				body = stripDeepSeekTools(body, field, value, true)
 			}
+		case "messages":
+			if !deepseek && value.IsArray() && mayContainDeepSeekTool(value.Raw) {
+				body = stripDeepSeekSystemTools(body, field, value)
+			}
 		case "input":
 			// Codex can declare tools inside input as well as at the top level.
 			if !deepseek && value.IsArray() && mayContainDeepSeekTool(value.Raw) {
@@ -41,6 +45,57 @@ func filterDeepSeekRequest(body []byte, account *Account) []byte {
 		}
 		return true
 	})
+	return body
+}
+
+func stripDeepSeekSystemTools(body []byte, path string, messages gjson.Result) []byte {
+	// Collect edits from the original array so removing a tools-only message
+	// cannot shift the index of another system message.
+	items := messages.Array()
+	changed := false
+	for i, msg := range items {
+		if !mayContainDeepSeekTool(msg.Raw) {
+			continue
+		}
+		var role, content, tools gjson.Result
+		var toolsKey string
+		msg.ForEach(func(k, v gjson.Result) bool {
+			switch strings.ToLower(k.String()) {
+			case "role":
+				role = v
+			case "content":
+				content = v
+			case "tools":
+				toolsKey, tools = k.String(), v
+			}
+			return true
+		})
+		if role.String() != "system" || !tools.IsArray() || !mayContainDeepSeekTool(tools.Raw) {
+			continue
+		}
+		raw := []byte(msg.Raw)
+		filtered := stripDeepSeekTools(raw, toolsKey, tools, true)
+		if bytes.Equal(raw, filtered) {
+			continue
+		}
+		changed = true
+		emptyContent := content.Type == gjson.Null || content.Raw == `""` || (content.IsArray() && !gjsonArrayHasElements(content))
+		if emptyContent && !gjson.GetBytes(filtered, toolsKey).Exists() {
+			items[i].Raw = ""
+		} else {
+			items[i].Raw = string(filtered)
+		}
+	}
+	if !changed {
+		return body
+	}
+	kept := make([]json.RawMessage, 0, len(items))
+	for _, msg := range items {
+		if msg.Raw != "" {
+			kept = append(kept, json.RawMessage(msg.Raw))
+		}
+	}
+	body, _ = sjson.SetBytes(body, path, kept)
 	return body
 }
 

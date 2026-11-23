@@ -25,7 +25,7 @@ func (c *deepseekOCRBillingCapture) Write(p []byte) (int, error) {
 			// Validate escapes and control characters even in discarded text.
 			switch {
 			case c.hexLeft > 0:
-				if !(b >= '0' && b <= '9' || b >= 'a' && b <= 'f' || b >= 'A' && b <= 'F') {
+				if (b < '0' || b > '9') && (b < 'a' || b > 'f') && (b < 'A' || b > 'F') {
 					c.invalid = true
 				}
 				c.hexLeft--

@@ -97,7 +97,7 @@ func requireDeepseekError(t *testing.T, w *httptest.ResponseRecorder, status int
 }
 
 func TestDeepseekToolsHTTPFailover(t *testing.T) {
-	for _, status := range []int{401, 402, 403, 429, 500, 503} {
+	for _, status := range []int{401, 402, 403, 408, 429, 500, 503} {
 		t.Run(strconv.Itoa(status), func(t *testing.T) {
 			up := &deepseekTestTransport{respond: func(_ *http.Request, id int64) (*http.Response, error) {
 				if id == 1 {
@@ -124,6 +124,64 @@ func TestDeepseekToolsHTTPFailover(t *testing.T) {
 			require.Equal(t, "test-upstream", events[0].UpstreamRequestID)
 			require.Equal(t, "failover", events[0].Kind)
 		})
+	}
+}
+
+func TestDeepseekToolsRequestRefusals(t *testing.T) {
+	for _, tc := range []struct {
+		endpoint string
+		status   int
+	}{
+		{"search", 400}, {"fetch", 403}, {"fetch", 404}, {"ocr", 413},
+		{"asr", 400}, {"tts", 422}, {"files_get/owned", 404},
+	} {
+		t.Run(tc.endpoint+"/"+strconv.Itoa(tc.status), func(t *testing.T) {
+			up := &deepseekTestTransport{respond: func(*http.Request, int64) (*http.Response, error) {
+				return deepseekTestReply(tc.status, strings.NewReader(`{"error":{"message":"rejected https://example.test/?key=private"}}`)), nil
+			}}
+			h, repo, commands := newDeepseekProxyHandler(t, 2, up, nil)
+			c, w := fileOwnerTestContext("POST", "/v1/tools/"+tc.endpoint, `{"query":"q"}`, service.PlatformDeepseek, "", 7)
+			if tc.endpoint == "tts" {
+				// Account error-code preferences must not mask a request-level refusal.
+				repo.accounts[0].Credentials["custom_error_codes_enabled"] = true
+				repo.accounts[0].Credentials["custom_error_codes"] = []any{float64(500)}
+			}
+			if tc.endpoint == "files_get/owned" {
+				c, w = fileOwnerTestContext("GET", "/v1/files/owned", "", service.PlatformDeepseek, "", 7)
+			}
+			h.DeepseekTools(c, tc.endpoint)
+			requireDeepseekError(t, w, tc.status, false)
+			require.Equal(t, "rejected https://example.test/?key=***", gjson.GetBytes(w.Body.Bytes(), "error.message").String())
+			require.Equal(t, []int64{1}, up.accounts)
+			require.Empty(t, repo.disabled)
+			require.Empty(t, repo.rateLimitedIDs)
+			require.Empty(t, commands.commands)
+			events := c.MustGet(service.OpsUpstreamErrorsKey).([]*service.OpsUpstreamErrorEvent)
+			require.Len(t, events, 1)
+			require.Equal(t, "http_error", events[0].Kind)
+		})
+	}
+}
+
+func TestDeepseekToolsExhaustedClientStatus(t *testing.T) {
+	for _, tc := range []struct {
+		status        int
+		body, message string
+	}{
+		{408, `{"error":{"message":"upload timed out https://example.test/?key=private"}}`, "upload timed out https://example.test/?key=***"},
+		{408, "internal diagnostics", http.StatusText(408)},
+		{429, `{"error":{"message":"upload quota reached"}}`, "upload quota reached"},
+	} {
+		up := &deepseekTestTransport{respond: func(*http.Request, int64) (*http.Response, error) {
+			return deepseekTestReply(tc.status, strings.NewReader(tc.body)), nil
+		}}
+		h, _, _ := newDeepseekProxyHandler(t, 2, up, nil)
+		c, w := fileOwnerTestContext("POST", "/v1/tools/ocr", "upload", service.PlatformDeepseek, "", 7)
+		h.DeepseekTools(c, "ocr")
+		requireDeepseekError(t, w, tc.status, false)
+		require.Equal(t, []int64{1, 2}, up.accounts)
+		require.Equal(t, tc.message, gjson.GetBytes(w.Body.Bytes(), "error.message").String())
+		require.Equal(t, "10", w.Header().Get("Retry-After"))
 	}
 }
 

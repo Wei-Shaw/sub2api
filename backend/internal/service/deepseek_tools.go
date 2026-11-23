@@ -285,9 +285,16 @@ func (s *OpenAIGatewayService) deepseekToolsUpstreamError(ctx context.Context, c
 		detail = truncateString(string(body), maxBytes)
 	}
 	setOpsUpstreamError(c, status, msg, detail)
-	disable := s.handleOpenAIAccountUpstreamError(ctx, account, status, resp.Header, body, "deepseek-tools-"+endpoint)
 	clientStatus, errType, clientMsg, matched := applyErrorPassthroughRule(c, account.Platform, status, body, status, grokMediaErrorType(status), msg)
-	retry := !matched && account.ShouldHandleErrorCode(status) && (disable || s.shouldFailoverOpenAIUpstreamResponse(account, status, msg, body))
+	// Fetch 403 is a URL policy refusal. Other request errors (including
+	// invalid inputs, missing files and oversized uploads) also apply to every account.
+	fetchPolicyRefusal := endpoint == "fetch" && status == http.StatusForbidden
+	accountError := s.shouldFailoverUpstreamError(status) && !fetchPolicyRefusal
+	retry := false
+	if accountError {
+		disable := s.handleOpenAIAccountUpstreamError(ctx, account, status, resp.Header, body, "deepseek-tools-"+endpoint)
+		retry = !matched && account.ShouldHandleErrorCode(status) && (disable || s.shouldFailoverOpenAIUpstreamResponse(account, status, msg, body))
+	}
 	kind := "http_error"
 	if retry {
 		kind = "failover"
@@ -299,9 +306,17 @@ func (s *OpenAIGatewayService) deepseekToolsUpstreamError(ctx context.Context, c
 		Kind: kind, Message: msg, Detail: detail,
 	})
 	if retry {
-		return newOpenAIUpstreamFailoverError(status, resp.Header, body, msg, false)
+		failover := newOpenAIUpstreamFailoverError(status, resp.Header, body, msg, false)
+		if status == http.StatusRequestTimeout || (status == http.StatusTooManyRequests && failover.ClientStatusCode == 0) {
+			failover.ClientStatusCode = status
+			failover.ClientMessage = http.StatusText(status)
+			if msg != "" && gjson.ValidBytes(body) {
+				failover.ClientMessage = msg
+			}
+		}
+		return failover
 	}
-	if !matched && !account.ShouldHandleErrorCode(status) {
+	if accountError && !matched && !account.ShouldHandleErrorCode(status) {
 		return infraerrors.New(http.StatusBadGateway, "upstream_error", "Upstream gateway error")
 	}
 	if clientMsg == "" || (!matched && !gjson.ValidBytes(body)) {

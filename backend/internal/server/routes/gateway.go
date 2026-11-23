@@ -204,6 +204,7 @@ func RegisterGatewayRoutes(
 	gateway.Use(gin.HandlerFunc(apiKeyAuth))
 	gateway.Use(middleware.DeepseekToolsBodyLimit(cfg.Gateway.TextMaxBodySize, cfg.Gateway.MaxBodySize))
 	gateway.GET("/sub2api/billing", h.Gateway.KeyBillingInfo)
+	gateway.Use(h.OpenAIGateway.AdmitDeepseekUpload)
 	gateway.Use(groupModelAllowlist)
 	gateway.Use(rejectConflictingFields)
 	gateway.Use(compositeTarget)

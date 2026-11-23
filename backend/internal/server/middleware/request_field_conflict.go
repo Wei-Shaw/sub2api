@@ -7,6 +7,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -79,13 +80,18 @@ func writeGatewayInvalidRequest(c *gin.Context, status int, message string) {
 	if c.Request != nil && c.Request.URL != nil {
 		path = c.Request.URL.Path
 	}
+	anthropicFiles := path == "/v1/files" && service.IsDeepseekFilesAnthropicRequest(c)
 	switch {
 	case strings.HasPrefix(path, "/v1beta") || strings.HasPrefix(path, "/antigravity/v1beta"):
 		GoogleErrorWriter(c, status, message)
-	case strings.Contains(path, "/messages"):
+	case strings.Contains(path, "/messages"), anthropicFiles:
+		errType := "invalid_request_error"
+		if anthropicFiles && status == http.StatusRequestEntityTooLarge {
+			errType = "request_too_large"
+		}
 		c.JSON(status, gin.H{
 			"type":  "error",
-			"error": gin.H{"type": "invalid_request_error", "message": message},
+			"error": gin.H{"type": errType, "message": message},
 		})
 	default:
 		c.JSON(status, gin.H{

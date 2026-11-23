@@ -488,13 +488,16 @@ func (t *ResponsesTool) UnmarshalJSON(data []byte) error {
 		*t = ResponsesTool{Type: "custom", Name: name}
 		return nil
 	}
+	if typ, name, decl := deepSeekToolDeclaration(data); decl != nil {
+		*t = ResponsesTool{Type: typ, Name: name, deepSeekDeclaration: decl}
+		return nil
+	}
 	type alias ResponsesTool
 	var a alias
 	if err := json.Unmarshal(data, &a); err != nil {
 		return err
 	}
 	*t = ResponsesTool(a)
-	t.deepSeekDeclaration = deepSeekToolDeclaration(t.Type, data)
 	return nil
 }
 

@@ -263,22 +263,31 @@ func TestProbeDeepseekToolsSupportClearsStaleMarker(t *testing.T) {
 }
 
 func TestDeepseekToolsUpstreamPassthroughRule(t *testing.T) {
-	c, _ := newDeepseekToolsTestContext(http.MethodPost, "/v1/tools/search", nil)
-	rules := &ErrorPassthroughService{}
-	rule := newNonFailoverPassthroughRule(401, "revoked", 422, "Configured rejection")
-	rule.Platforms = []string{PlatformDeepseek}
-	rule.SkipMonitoring = true
-	rules.setLocalCache([]*model.ErrorPassthroughRule{rule})
-	BindErrorPassthroughService(c, rules)
-	repo := &compatStreamSideEffectsRepo{}
-	s := &OpenAIGatewayService{rateLimitService: NewRateLimitService(repo, nil, &config.Config{}, nil, nil)}
-	resp := &http.Response{StatusCode: 401, Body: io.NopCloser(strings.NewReader(`{"error":{"message":"revoked"}}`))}
-	err := s.deepseekToolsUpstreamError(context.Background(), c, newDeepseekToolsTestAccount("https://relay.test"), resp, "search")
-	require.Equal(t, 422, infraerrors.Code(err))
-	require.Equal(t, "Configured rejection", infraerrors.Message(err))
-	require.True(t, c.GetBool(OpsSkipPassthroughKey))
-	require.False(t, c.Writer.Written())
-	require.Len(t, repo.errorCalls, 1, "the rule must preserve account health handling")
+	for _, tc := range []struct {
+		endpoint              string
+		status, accountErrors int
+	}{
+		{"search", 401, 1}, {"fetch", 403, 0},
+	} {
+		t.Run(tc.endpoint, func(t *testing.T) {
+			c, _ := newDeepseekToolsTestContext(http.MethodPost, "/v1/tools/"+tc.endpoint, nil)
+			rules := &ErrorPassthroughService{}
+			rule := newNonFailoverPassthroughRule(tc.status, "rejected", 422, "Configured rejection")
+			rule.Platforms = []string{PlatformDeepseek}
+			rule.SkipMonitoring = true
+			rules.setLocalCache([]*model.ErrorPassthroughRule{rule})
+			BindErrorPassthroughService(c, rules)
+			repo := &compatStreamSideEffectsRepo{}
+			s := &OpenAIGatewayService{rateLimitService: NewRateLimitService(repo, nil, &config.Config{}, nil, nil)}
+			resp := &http.Response{StatusCode: tc.status, Body: io.NopCloser(strings.NewReader(`{"error":{"message":"rejected"}}`))}
+			err := s.deepseekToolsUpstreamError(context.Background(), c, newDeepseekToolsTestAccount("https://relay.test"), resp, tc.endpoint)
+			require.Equal(t, 422, infraerrors.Code(err))
+			require.Equal(t, "Configured rejection", infraerrors.Message(err))
+			require.True(t, c.GetBool(OpsSkipPassthroughKey))
+			require.False(t, c.Writer.Written())
+			require.Len(t, repo.errorCalls, tc.accountErrors)
+		})
+	}
 }
 
 func TestDeepseekToolsBillableUnits(t *testing.T) {

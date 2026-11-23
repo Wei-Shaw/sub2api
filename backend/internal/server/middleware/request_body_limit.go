@@ -33,7 +33,7 @@ func DeepseekToolsBodyLimit(textLimit, gatewayLimit int64) gin.HandlerFunc {
 		case "/v1/tools/search", "/v1/tools/fetch":
 			limit = textLimit
 		case "/v1/tools/tts":
-			limit = 64 << 10
+			limit = min(textLimit, 64<<10)
 		case "/v1/tools/asr":
 			limit = service.DeepseekASRFileLimit + service.DeepseekMultipartOverhead
 		case "/v1/tools/ocr", "/v1/files":

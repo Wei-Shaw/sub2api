@@ -78,54 +78,95 @@ func extractDeepseekToolsPromptText(body []byte) string {
 	return ""
 }
 
-// DeepseekTools 是 DeepSeek 独立工具接口的统一入口，endpoint 覆盖九端点：
-// search/fetch/ocr/asr/tts/files_create/files_list/files_get/files_delete
-// （files_get/files_delete 由路由层拼上 file id 后缀）。
-func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
-	if c.Writer.Written() || service.IsResponseCommitted(c) {
+const deepseekUploadSlotKey = "deepseek_upload_user_slot"
+
+// AdmitDeepseekUpload holds the user slot across all middleware that may buffer the upload.
+func (h *OpenAIGatewayHandler) AdmitDeepseekUpload(c *gin.Context) {
+	if c.Request.Method != http.MethodPost {
 		return
 	}
-	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
-	anthropicFiles := strings.HasPrefix(endpoint, "files_") && service.IsDeepseekFilesAnthropicRequest(c)
-	write := h.errorResponse
-	if anthropicFiles {
-		write = h.anthropicErrorResponse
+	var endpoint string
+	switch c.FullPath() {
+	case "/v1/files":
+		endpoint = "files_create"
+	case "/v1/tools/ocr":
+		endpoint = "ocr"
+	case "/v1/tools/asr":
+		endpoint = "asr"
+	default:
+		return
 	}
+	release, acquired := h.acquireDeepseekToolsUserSlot(c, endpoint)
+	if !acquired {
+		c.Abort()
+		return
+	}
+	if release != nil {
+		defer release()
+	}
+	c.Set(deepseekUploadSlotKey, true)
+	c.Next()
+}
+
+func (h *OpenAIGatewayHandler) deepseekToolsErrorWriters(c *gin.Context, endpoint string) (func(*gin.Context, int, string, string), openAISlotErrorWriter) {
+	write := h.errorResponse
+	if strings.HasPrefix(endpoint, "files_") && service.IsDeepseekFilesAnthropicRequest(c) {
+		write = h.anthropicErrorResponse
+		return write, func(status int, errType, code, message string) { write(c, status, errType, message) }
+	}
+	return write, func(status int, errType, code, message string) {
+		h.handleStreamingAwareErrorWithCode(c, status, errType, code, message, false, false)
+	}
+}
+
+func (h *OpenAIGatewayHandler) acquireDeepseekToolsUserSlot(c *gin.Context, endpoint string) (func(), bool) {
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	write, writeSlotError := h.deepseekToolsErrorWriters(c, endpoint)
 	// composite 组放行：工具请求不带 model，无法经 compositeTarget 中间件解析，
 	// 交给调度器按 platformOverride=deepseek 选号（对齐 Grok video 先例）。
 	if !ok || apiKey == nil || apiKey.Group == nil || (apiKey.Group.Platform != service.PlatformDeepseek && apiKey.Group.Platform != service.PlatformComposite) {
+		service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)
 		write(c, http.StatusNotFound, "not_found_error", "DeepSeek tools API is not supported for this platform")
-		return
+		return nil, false
 	}
 	reqLog := requestLogger(c, "handler.openai_gateway.deepseek_tools", zap.String("endpoint", endpoint))
 	if missing := h.missingResponsesDependencies(); len(missing) > 0 {
 		reqLog.Error("openai.handler_dependencies_missing", zap.Strings("missing_dependencies", missing))
 		write(c, http.StatusServiceUnavailable, "api_error", "Service temporarily unavailable")
-		return
+		return nil, false
 	}
 	subject, ok := middleware2.GetAuthSubjectFromContext(c)
 	if !ok {
 		write(c, http.StatusInternalServerError, "api_error", "User context not found")
-		return
-	}
-	writeSlotError := func(status int, errType, code, message string) {
-		if anthropicFiles {
-			write(c, status, errType, message)
-		} else {
-			h.handleStreamingAwareErrorWithCode(c, status, errType, code, message, false, false)
-		}
+		return nil, false
 	}
 	if (endpoint == "tts" || endpoint == "ocr") && h.cfg != nil {
 		c.Request = c.Request.WithContext(service.WithDrainingSlotTTL(c.Request.Context(), time.Duration(h.cfg.Gateway.ConcurrencySlotTTLMinutes)*time.Minute))
 	}
 	var started bool
-	userRelease, acquired := h.acquireOpenAIUserSlot(c, subject.UserID, subject.Concurrency, false, &started, reqLog, writeSlotError, releaseSlotOnReturn)
-	if !acquired {
+	return h.acquireOpenAIUserSlot(c, subject.UserID, subject.Concurrency, false, &started, reqLog, writeSlotError, releaseSlotOnReturn)
+}
+
+// DeepseekTools serves the standalone tools and Files endpoints.
+func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
+	if c.Writer.Written() || service.IsResponseCommitted(c) {
 		return
 	}
-	if userRelease != nil {
-		defer userRelease()
+	if !c.GetBool(deepseekUploadSlotKey) {
+		release, acquired := h.acquireDeepseekToolsUserSlot(c, endpoint)
+		if !acquired {
+			return
+		}
+		if release != nil {
+			defer release()
+		}
 	}
+	apiKey, _ := middleware2.GetAPIKeyFromContext(c)
+	subject, _ := middleware2.GetAuthSubjectFromContext(c)
+	write, writeSlotError := h.deepseekToolsErrorWriters(c, endpoint)
+	reqLog := requestLogger(c, "handler.openai_gateway.deepseek_tools", zap.String("endpoint", endpoint))
+	anthropicFiles := strings.HasPrefix(endpoint, "files_") && service.IsDeepseekFilesAnthropicRequest(c)
+	var started bool
 	service.BindErrorPassthroughService(c, h.errorPassthroughService)
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 	if err := h.billingCacheService.CheckBillingEligibility(c.Request.Context(), apiKey.User, apiKey, apiKey.Group, subscription, service.PlatformDeepseek); err != nil {

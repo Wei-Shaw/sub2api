@@ -31,7 +31,7 @@ func TestDeepseekToolsBodyLimits(t *testing.T) {
 		anthropic bool
 	}{
 		{"/v1/tools/search", textLimit, false}, {"/v1/tools/fetch", textLimit, false},
-		{"/v1/tools/tts", 64 << 10, false}, {"/v1/tools/asr", 9 << 20, false},
+		{"/v1/tools/tts", textLimit, false}, {"/v1/tools/asr", 9 << 20, false},
 		{"/v1/tools/ocr", 101 << 20, false}, {"/v1/files", 101 << 20, false}, {"/v1/files", 101 << 20, true},
 	} {
 		t.Run(tc.path, func(t *testing.T) {
@@ -68,17 +68,20 @@ func (b unreadDeepseekBody) Read([]byte) (int, error) {
 func (unreadDeepseekBody) Close() error { return nil }
 
 func TestDeepseekToolsChunkedAndDecodedLimits(t *testing.T) {
-	const limit = 64 << 10
 	for _, tc := range []struct {
-		name, path string
-		gzip, beta bool
+		name, path       string
+		textLimit, limit int
+		gzip, beta       bool
 	}{
-		{"chunked TTS", "/v1/tools/tts", false, false}, {"compressed TTS", "/v1/tools/tts", true, false},
-		{"chunked Files under tighter gateway limit", "/v1/files", false, true},
+		{"chunked TTS", "/v1/tools/tts", 1024, 1024, false, false},
+		{"compressed TTS", "/v1/tools/tts", 1024, 1024, true, false},
+		{"chunked TTS at fixed cap", "/v1/tools/tts", 128 << 10, 64 << 10, false, false},
+		{"compressed TTS at fixed cap", "/v1/tools/tts", 128 << 10, 64 << 10, true, false},
+		{"chunked Files under tighter gateway limit", "/v1/files", 1024, 256 << 10, false, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r := gin.New()
-			r.Use(DeepseekToolsBodyLimit(1024, limit))
+			r.Use(DeepseekToolsBodyLimit(int64(tc.textLimit), 256<<10))
 			r.POST(tc.path, func(c *gin.Context) {
 				_, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
 				if err != nil {
@@ -87,7 +90,7 @@ func TestDeepseekToolsChunkedAndDecodedLimits(t *testing.T) {
 				}
 				c.Status(204)
 			})
-			for _, n := range []int{limit, limit + 1} {
+			for _, n := range []int{tc.limit, tc.limit + 1} {
 				var data bytes.Buffer
 				if tc.gzip {
 					w := gzip.NewWriter(&data)
@@ -107,7 +110,7 @@ func TestDeepseekToolsChunkedAndDecodedLimits(t *testing.T) {
 				}
 				w := httptest.NewRecorder()
 				r.ServeHTTP(w, req)
-				if n == limit {
+				if n == tc.limit {
 					require.Equal(t, 204, w.Code)
 					continue
 				}

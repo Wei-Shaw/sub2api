@@ -187,21 +187,15 @@ func (c *gatewayCache) ListDeepseekFiles(ctx context.Context, userID int64, page
 	reverse := page.Descending != page.Before
 	for len(files) <= page.Limit {
 		n := page.Limit + 1 - len(files)
-		opts := &redis.ZRangeBy{Min: "-", Max: "+", Count: int64(n)}
-		if bound != "" {
-			if reverse {
-				opts.Max = "(" + bound
-			} else {
-				opts.Min = "(" + bound
-			}
-		}
-		var members []string
-		var err error
+		args := redis.ZRangeArgs{Key: order, Start: "-", Stop: "+", ByLex: true, Rev: reverse, Count: int64(n)}
 		if reverse {
-			members, err = c.rdb.ZRevRangeByLex(ctx, order, opts).Result()
-		} else {
-			members, err = c.rdb.ZRangeByLex(ctx, order, opts).Result()
+			// ZRANGE ... BYLEX REV takes the upper bound first.
+			args.Start, args.Stop = "+", "-"
 		}
+		if bound != "" {
+			args.Start = "(" + bound
+		}
+		members, err := c.rdb.ZRangeArgs(ctx, args).Result()
 		if err != nil {
 			return nil, err
 		}

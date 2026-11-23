@@ -46,7 +46,7 @@ func ChatCompletionsToResponsesWithMinOutputTokens(req *ChatCompletionsRequest, 
 		ServiceTier:           req.ServiceTier,
 		PromptCacheOptions:    req.PromptCacheOptions,
 		ParallelToolCalls:     req.ParallelToolCalls,
-		DeepSeekRequestFields: req.DeepSeekRequestFields.objects(),
+		DeepSeekRequestFields: req.objects(),
 	}
 
 	// Reasoning models (gpt-5.x) do not accept sampling parameters.

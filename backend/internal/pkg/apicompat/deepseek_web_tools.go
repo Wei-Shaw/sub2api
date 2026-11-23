@@ -54,20 +54,25 @@ func deepSeekChatWebCall(item map[string]json.RawMessage) *chatServerToolCall {
 
 // Keep the provider's complete declaration across protocols, including fields
 // unknown to the gateway. Ordinary tools continue to use their protocol DTO.
-func deepSeekToolDeclaration(typ string, raw []byte) json.RawMessage {
-	if IsDeepSeekWebTool(typ) {
-		return bytes.Clone(raw)
+func deepSeekToolDeclaration(raw []byte) (typ, name string, declaration json.RawMessage) {
+	var header struct {
+		Type string          `json:"type"`
+		Name json.RawMessage `json:"name"`
 	}
-	return nil
+	if json.Unmarshal(raw, &header) == nil && IsDeepSeekWebTool(header.Type) {
+		return header.Type, rawString(header.Name), bytes.Clone(raw)
+	}
+	return "", "", nil
 }
 
 func (t *ChatTool) UnmarshalJSON(raw []byte) error {
-	type wire ChatTool
-	if err := json.Unmarshal(raw, (*wire)(t)); err != nil {
-		return err
+	if typ, name, decl := deepSeekToolDeclaration(raw); decl != nil {
+		*t = ChatTool{Type: typ, Name: name, deepSeekDeclaration: decl}
+		return nil
 	}
-	t.deepSeekDeclaration = deepSeekToolDeclaration(t.Type, raw)
-	return nil
+	type wire ChatTool
+	t.deepSeekDeclaration = nil
+	return json.Unmarshal(raw, (*wire)(t))
 }
 
 func (t ChatTool) MarshalJSON() ([]byte, error) {
@@ -87,12 +92,13 @@ func (t ResponsesTool) MarshalJSON() ([]byte, error) {
 }
 
 func (t *AnthropicTool) UnmarshalJSON(raw []byte) error {
-	type wire AnthropicTool
-	if err := json.Unmarshal(raw, (*wire)(t)); err != nil {
-		return err
+	if typ, name, decl := deepSeekToolDeclaration(raw); decl != nil {
+		*t = AnthropicTool{Type: typ, Name: name, deepSeekDeclaration: decl}
+		return nil
 	}
-	t.deepSeekDeclaration = deepSeekToolDeclaration(t.Type, raw)
-	return nil
+	type wire AnthropicTool
+	t.deepSeekDeclaration = nil
+	return json.Unmarshal(raw, (*wire)(t))
 }
 
 func (t AnthropicTool) MarshalJSON() ([]byte, error) {
