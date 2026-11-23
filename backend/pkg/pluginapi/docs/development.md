@@ -2,7 +2,7 @@
 
 ## 稳定边界
 
-当前宿主只支持 `openai.oauth.outbound_transport.v1`。插件负责建立实际上游 HTTP/TLS 连接，Sub2API 负责账号选择、OAuth Token 生命周期、下游协议、响应解析、SSE、错误映射、用量统计和计费。
+`openai.oauth.outbound_transport.v1` 继续负责 HTTP/TLS 连接。可选的 [`openai.oauth.ws_identity.v1`](../README.md#可选原生-responses-websocket-身份改写) 只在原生 WS 返回身份字段差异，连接仍由宿主持有。账号选择、OAuth Token 生命周期、下游协议、响应解析、SSE、错误映射、用量统计和计费均由 Sub2API 负责。
 
 插件不应修改 API Key 路径，也不应自行刷新或持久化 OAuth Token。
 

@@ -1760,6 +1760,10 @@ func TestOpenAIChannelForwardModelForScheduler(t *testing.T) {
 }
 
 func TestShouldReportOpenAIWSProxyAccountFailure(t *testing.T) {
+	t.Run("local identity plugin failure does not penalize account", func(t *testing.T) {
+		err := service.NewOpenAIWSClientCloseError(coderws.StatusInternalError, "local rewrite failed", service.ErrOpenAIWSIdentityRewrite)
+		require.False(t, shouldReportOpenAIWSProxyAccountFailure(fmt.Errorf("wrapped ingress turn: %w", err)))
+	})
 	t.Run("unsupported client model switch does not penalize account", func(t *testing.T) {
 		err := fmt.Errorf("wrapped ingress turn: %w", newOpenAIWSUnsupportedModelSwitchError("gpt-unsupported"))
 		require.False(t, shouldReportOpenAIWSProxyAccountFailure(err))

@@ -15,14 +15,15 @@ import (
 )
 
 const (
-	PluginCapabilityOpenAIOAuthOutbound = "openai.oauth.outbound_transport.v1"
-	PluginStateDisabled                 = "disabled"
-	PluginStateStarting                 = "starting"
-	PluginStateEnabled                  = "enabled"
-	PluginStateError                    = "error"
-	PluginStateIncompatible             = "incompatible"
-	PluginSignatureTrusted              = "trusted"
-	PluginSignatureUnsigned             = "unsigned"
+	PluginCapabilityOpenAIOAuthOutbound   = "openai.oauth.outbound_transport.v1"
+	PluginCapabilityOpenAIOAuthWSIdentity = "openai.oauth.ws_identity.v1"
+	PluginStateDisabled                   = "disabled"
+	PluginStateStarting                   = "starting"
+	PluginStateEnabled                    = "enabled"
+	PluginStateError                      = "error"
+	PluginStateIncompatible               = "incompatible"
+	PluginSignatureTrusted                = "trusted"
+	PluginSignatureUnsigned               = "unsigned"
 )
 
 var pluginIDPattern = regexp.MustCompile(`^[a-z0-9]+(?:[._-][a-z0-9]+)+$`)
@@ -168,10 +169,18 @@ func (m PluginManifest) Validate() error {
 	if len(m.Capabilities) == 0 {
 		return errors.New("插件必须声明至少一个能力")
 	}
+	seenCapabilities := make(map[string]bool, len(m.Capabilities))
 	for _, capability := range m.Capabilities {
-		if capability.ID != PluginCapabilityOpenAIOAuthOutbound || capability.Platform != PlatformOpenAI || capability.AccountType != AccountTypeOAuth {
-			return fmt.Errorf("初期仅支持能力 %s", PluginCapabilityOpenAIOAuthOutbound)
+		if (capability.ID != PluginCapabilityOpenAIOAuthOutbound && capability.ID != PluginCapabilityOpenAIOAuthWSIdentity) || capability.Platform != PlatformOpenAI || capability.AccountType != AccountTypeOAuth {
+			return fmt.Errorf("不支持插件能力 %q", capability.ID)
 		}
+		if seenCapabilities[capability.ID] {
+			return fmt.Errorf("插件能力重复: %q", capability.ID)
+		}
+		seenCapabilities[capability.ID] = true
+	}
+	if !seenCapabilities[PluginCapabilityOpenAIOAuthOutbound] {
+		return fmt.Errorf("插件必须声明能力 %s", PluginCapabilityOpenAIOAuthOutbound)
 	}
 	runtimeEntry, ok := m.Runtimes[m.RuntimeKey()]
 	if !ok || !safePluginRelativePath(runtimeEntry.Path) {

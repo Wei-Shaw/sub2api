@@ -116,9 +116,21 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 	}
 
 	wsDecision := s.getOpenAIWSProtocolResolver().Resolve(account)
-	forceHTTPBridge := account.Platform == PlatformGrok ||
-		(s.pluginManager != nil && s.pluginManager.ShouldRouteOpenAIOAuth(account))
-	modeRouterV2Enabled := s != nil && s.cfg != nil && s.cfg.Gateway.OpenAIWS.ModeRouterV2Enabled
+	pluginRoute := s.pluginManager.openAIOAuthRoute(account)
+	forceHTTPBridge := account.Platform == PlatformGrok || pluginRoute != nil
+	modeRouterV2Enabled := s.cfg != nil && s.cfg.Gateway.OpenAIWS.ModeRouterV2Enabled
+	var wsIdentity *openAIWSIdentitySession
+	// The companion can replace the HTTP plugin only on a connection that would
+	// otherwise already use the native passthrough path.
+	if modeRouterV2Enabled && pluginRoute != nil && s.cfg.Plugins.OpenAIWSIdentityEnabled &&
+		wsDecision.Transport == OpenAIUpstreamTransportResponsesWebsocketV2 &&
+		account.ResolveOpenAIResponsesWebSocketV2Mode(s.cfg.Gateway.OpenAIWS.IngressModeDefault) == OpenAIWSIngressModePassthrough &&
+		!s.shouldBridgeOpenAIWSPassthroughFirstMessage(account, firstClientMessage) {
+		wsIdentity = newOpenAIWSIdentitySession(s.cfg, pluginRoute, account.ID, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
+		if wsIdentity != nil {
+			forceHTTPBridge = false
+		}
+	}
 	ingressMode := OpenAIWSIngressModeCtxPool
 	if modeRouterV2Enabled && !forceHTTPBridge {
 		ingressMode = account.ResolveOpenAIResponsesWebSocketV2Mode(s.cfg.Gateway.OpenAIWS.IngressModeDefault)
@@ -150,6 +162,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				firstClientMessage,
 				hooks,
 				wsDecision,
+				wsIdentity,
 			)
 		case OpenAIWSIngressModeHTTPBridge:
 			forceHTTPBridge = true

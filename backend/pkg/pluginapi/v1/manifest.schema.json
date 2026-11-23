@@ -28,12 +28,15 @@
     "capabilities": {
       "type": "array",
       "minItems": 1,
+      "maxItems": 2,
+      "uniqueItems": true,
+      "contains": { "properties": { "id": { "const": "openai.oauth.outbound_transport.v1" } }, "required": ["id"] },
       "items": {
         "type": "object",
         "additionalProperties": false,
         "required": ["id", "platform", "account_type"],
         "properties": {
-          "id": { "const": "openai.oauth.outbound_transport.v1" },
+          "id": { "enum": ["openai.oauth.outbound_transport.v1", "openai.oauth.ws_identity.v1"] },
           "platform": { "const": "openai" },
           "account_type": { "const": "oauth" }
         }

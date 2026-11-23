@@ -21,14 +21,24 @@
 
 ## 初期能力边界
 
-当前只接受 `openai.oauth.outbound_transport.v1`：
+`openai.oauth.outbound_transport.v1` 是 HTTP 传输能力：
 
 - 仅匹配 `platform=openai` 且 `account_type=oauth` 的上游 HTTP 请求。
 - API Key 账号、其他 provider、OAuth 登录与 Token 刷新流程不进入插件。
 - 插件建立真实的上游 HTTP/TLS 连接并返回原始 HTTP 响应。
-- 命中插件的 OAuth WebSocket 账号会使用 Sub2API 现有 HTTP Bridge，不直接建立上游 WebSocket，避免绕过 v1 HTTP 插件协议。
+- 默认情况下，命中插件的 OAuth WebSocket 账号仍使用现有 HTTP Bridge，避免绕过 v1 HTTP 插件。
 - Sub2API 继续负责响应状态处理、SSE 解析、错误映射、用量统计、计费和下游输出。
 - 灰度比例以账号 ID 稳定分桶，未命中的 OAuth 账号继续使用原有内置路径。
+
+## 可选：原生 Responses WebSocket 身份改写
+
+`openai.oauth.ws_identity.v1` 是同一已安装 HTTP 传输插件的可选伴随能力，不单独配置灰度。清单和 `GetInfo` 均须声明它；插件通过 `pluginv1.Serve` 同时实现 `WSIdentityPluginServer`，无需更改 `TransportPlugin` 的接口或版本。宿主管理员必须显式设置 `plugins.openai_ws_identity_enabled: true`（默认为 false）。该能力复用 HTTP 插件的账号灰度，只对已满足现有原生 Responses WS v2 独占 `passthrough` 条件的 OpenAI OAuth 连接生效。没有已隔离身份的账号、显式 HTTP、大首包桥接和普通 HTTP 请求不变。
+
+- 拨号前，宿主一次提供已处理的握手与首个 `response.create` 身份字段；后续调用仅包含当前 `response.create`。消息不包含 OAuth 凭据、原始请求头、输入正文或整份 turn metadata。
+- 插件只能返回输入中允许字段的稀疏替换，不能新增／删除字段或接管网络。宿主保留现有隔离、鉴权、模型／服务档位、计费、终态与关闭。重复出现的会话／线程映射在连接内保持稳定，轮次 ID 不取握手值覆盖后续帧。
+- 插件超时、非法替换、运行进程停用或配置代次变更时，宿主拒绝未发出的操作，不自动换身份、切 HTTP 或重放。已建立的连接不会迁移到另一插件进程；配置更新后需要客户端重连。每次调用预算 1 秒，字段字符串限 1024 字节，RPC 消息限 64 KiB。错误日志不应带身份值或正文。
+
+契约见 [ws_identity.proto](v1/ws_identity.proto)。此能力不新增 HostService 权限或观测 RPC，沿用宿主原生 WS 的出站／用量事件。
 
 ## 宿主服务（HostService）
 

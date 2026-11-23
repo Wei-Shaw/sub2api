@@ -171,12 +171,13 @@ func (c *MCPConfig) Validate() error {
 // PluginConfig 控制管理员手动上传的本地进程插件。
 // 默认不包含插件，也不允许安装未签名插件；TrustedPublishers 用于追加第三方发布者。
 type PluginConfig struct {
-	DataDir              string            `mapstructure:"data_dir"`
-	AllowUnsigned        bool              `mapstructure:"allow_unsigned"`
-	TrustedPublishers    map[string]string `mapstructure:"trusted_publishers"`
-	MaxUploadBytes       int64             `mapstructure:"max_upload_bytes"`
-	MaxUncompressedBytes int64             `mapstructure:"max_uncompressed_bytes"`
-	StartTimeoutSeconds  int               `mapstructure:"start_timeout_seconds"`
+	DataDir                 string            `mapstructure:"data_dir"`
+	AllowUnsigned           bool              `mapstructure:"allow_unsigned"`
+	OpenAIWSIdentityEnabled bool              `mapstructure:"openai_ws_identity_enabled"`
+	TrustedPublishers       map[string]string `mapstructure:"trusted_publishers"`
+	MaxUploadBytes          int64             `mapstructure:"max_upload_bytes"`
+	MaxUncompressedBytes    int64             `mapstructure:"max_uncompressed_bytes"`
+	StartTimeoutSeconds     int               `mapstructure:"start_timeout_seconds"`
 }
 
 type LogConfig struct {
@@ -2450,6 +2451,7 @@ func setDefaults() {
 	// 本地进程插件。插件必须由管理员手动上传，项目默认不携带任何插件能力。
 	viper.SetDefault("plugins.data_dir", "")
 	viper.SetDefault("plugins.allow_unsigned", false)
+	viper.SetDefault("plugins.openai_ws_identity_enabled", false)
 	viper.SetDefault("plugins.trusted_publishers", map[string]string{})
 	viper.SetDefault("plugins.max_upload_bytes", int64(128*1024*1024))
 	viper.SetDefault("plugins.max_uncompressed_bytes", int64(256*1024*1024))
