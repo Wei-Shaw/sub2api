@@ -281,3 +281,117 @@ func TestStripOpenAIResponsesInputNamespacesKeepsToolCallNamespaces(t *testing.T
 		require.False(t, gjson.GetBytes(strippedAll, "input."+strconv.Itoa(index)+".namespace").Exists())
 	}
 }
+
+func TestShouldKeepOpenAIResponsesExternalMessageNamespaces(t *testing.T) {
+	oauth := &Account{Platform: PlatformOpenAI, Type: AccountTypeOAuth}
+	apiKey := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}
+	setupToken := &Account{Platform: PlatformOpenAI, Type: AccountTypeSetupToken}
+	grokOAuth := &Account{Platform: PlatformGrok, Type: AccountTypeOAuth}
+	flattenOAuth := &Account{
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeOAuth,
+		Extra:    map[string]any{"openai_responses_flatten_namespaces": true},
+	}
+
+	tests := []struct {
+		name               string
+		account            *Account
+		transport          OpenAIUpstreamTransport
+		passthroughEnabled bool
+		compactPath        bool
+		want               bool
+	}{
+		{name: "oauth_http_keeps", account: oauth, transport: OpenAIUpstreamTransportHTTPSSE, want: true},
+		{name: "oauth_http_passthrough_keeps", account: oauth, transport: OpenAIUpstreamTransportHTTPSSE, passthroughEnabled: true, want: true},
+		{name: "oauth_compact_strips", account: oauth, transport: OpenAIUpstreamTransportHTTPSSE, compactPath: true, want: false},
+		{name: "oauth_flatten_enabled_strips", account: flattenOAuth, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
+		{name: "apikey_http_keeps", account: apiKey, transport: OpenAIUpstreamTransportHTTPSSE, want: true},
+		{name: "apikey_compact_strips", account: apiKey, transport: OpenAIUpstreamTransportHTTPSSE, compactPath: true, want: false},
+		{name: "setup_token_keeps", account: setupToken, transport: OpenAIUpstreamTransportHTTPSSE, want: true},
+		{name: "grok_oauth_strips", account: grokOAuth, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
+		{name: "nil_account_strips", account: nil, transport: OpenAIUpstreamTransportHTTPSSE, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, shouldKeepOpenAIResponsesExternalMessageNamespaces(
+				tt.account, tt.transport, tt.passthroughEnabled, tt.compactPath,
+			))
+		})
+	}
+}
+
+func TestStripOpenAIResponsesInputNamespacesKeepsCodexExternalMessages(t *testing.T) {
+	body := []byte(`{
+		"input":[
+			{"type":"function_call_output","id":"fco_1","namespace":"codex_app","name":"automation_update","output":"<heartbeat/>"},
+			{"type":"function_call_output","id":"fco_2","call_id":"","namespace":"agent","name":"browser_tabs","output":"tabs"},
+			{"type":"function_call_output","id":"fco_3","call_id":"   ","namespace":"agent","name":"terminal_info","output":"tty"},
+			{"type":"function_call_output","call_id":"call_1","namespace":"codex_app","name":"exec","output":"ok"},
+			{"type":"function_call_output","namespace":"leftover","output":"ok"},
+			{"type":"function_call_output","call_id":null,"namespace":"agent","name":"browser_tabs","output":"bad"},
+			{"type":"function_call_output","call_id":42,"namespace":"agent","name":"browser_tabs","output":"bad"},
+			{"type":"function_call_output","namespace":"","name":"browser_tabs","output":"bad"},
+			{"type":"function_call_output","namespace":"agent","name":"","output":"bad"},
+			{"type":"function_call","namespace":"collaboration","name":"spawn_agent","call_id":"call_2","arguments":"{}"},
+			{"type":"message","namespace":"leftover","role":"user","content":"hi"}
+		]
+	}`)
+
+	// 仅保留 ExternalMessage（模拟 API Key 未声明 namespace 工具时）：
+	// 前 3 个合法 ExternalMessage 保留 namespace，其余全部清理（含普通 tool output 和未声明工具的 function_call）。
+	got, err := stripOpenAIResponsesInputNamespacesWithOptions(body, openAIResponsesInputNamespaceStripOptions{
+		keepToolCallNamespaces:        false,
+		keepExternalMessageNamespaces: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "codex_app", gjson.GetBytes(got, "input.0.namespace").String())
+	require.Equal(t, "agent", gjson.GetBytes(got, "input.1.namespace").String())
+	require.Equal(t, "agent", gjson.GetBytes(got, "input.2.namespace").String())
+	for index := 3; index <= 10; index++ {
+		require.False(t, gjson.GetBytes(got, "input."+strconv.Itoa(index)+".namespace").Exists(), "input.%d", index)
+	}
+
+	// 同时保留工具调用项与 ExternalMessage：input.9 的 function_call 也保留 namespace。
+	gotBoth, err := stripOpenAIResponsesInputNamespacesWithOptions(body, openAIResponsesInputNamespaceStripOptions{
+		keepToolCallNamespaces:        true,
+		keepExternalMessageNamespaces: true,
+	})
+	require.NoError(t, err)
+	require.Equal(t, "codex_app", gjson.GetBytes(gotBoth, "input.0.namespace").String())
+	require.Equal(t, "agent", gjson.GetBytes(gotBoth, "input.1.namespace").String())
+	require.Equal(t, "agent", gjson.GetBytes(gotBoth, "input.2.namespace").String())
+	require.Equal(t, "collaboration", gjson.GetBytes(gotBoth, "input.9.namespace").String())
+	for _, index := range []int{3, 4, 5, 6, 7, 8, 10} {
+		require.False(t, gjson.GetBytes(gotBoth, "input."+strconv.Itoa(index)+".namespace").Exists(), "input.%d", index)
+	}
+
+	// 关闭保留（compact / flatten 模式）：所有项包括 ExternalMessage 均清理。
+	gotNone, err := stripOpenAIResponsesInputNamespacesWithOptions(body, openAIResponsesInputNamespaceStripOptions{})
+	require.NoError(t, err)
+	for index := 0; index <= 10; index++ {
+		require.False(t, gjson.GetBytes(gotNone, "input."+strconv.Itoa(index)+".namespace").Exists(), "input.%d", index)
+	}
+
+	// 重复键走私防护：任意关键字段（type/call_id/name/namespace）重复时不得豁免清理。
+	smuggled := []struct {
+		name string
+		item string
+	}{
+		{"duplicate_call_id", `{"type":"function_call_output","call_id":"","call_id":"call_real","namespace":"leftover","name":"exec","output":"ok"}`},
+		{"duplicate_type", `{"type":"function_call_output","type":"message","namespace":"leftover","name":"x","role":"user","content":"hi"}`},
+		{"duplicate_namespace", `{"type":"function_call_output","namespace":"agent","namespace":null,"name":"browser_tabs","output":"ok"}`},
+		{"duplicate_name", `{"type":"function_call_output","name":"browser_tabs","name":"","namespace":"leftover","output":"ok"}`},
+	}
+	for _, tc := range smuggled {
+		t.Run(tc.name, func(t *testing.T) {
+			require.False(t, isCodexExternalMessageOutputItem(gjson.Parse(tc.item)))
+			req := []byte(`{"input":[` + tc.item + `]}`)
+			stripped, err := stripOpenAIResponsesInputNamespacesWithOptions(req, openAIResponsesInputNamespaceStripOptions{
+				keepToolCallNamespaces:        true,
+				keepExternalMessageNamespaces: true,
+			})
+			require.NoError(t, err)
+			require.NotEqual(t, string(req), string(stripped), "smuggled duplicate-key item must not be exempted")
+		})
+	}
+}

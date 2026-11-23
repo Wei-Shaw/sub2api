@@ -1790,20 +1790,22 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 		}
 
 		if isCodexToolCallItemType(typ) {
-			callID, ok := m["call_id"].(string)
-			if !ok || strings.TrimSpace(callID) == "" {
-				if id, ok := m["id"].(string); ok && strings.TrimSpace(id) != "" {
-					callID = id
-					ensureCopy()
-					newItem["call_id"] = callID
+			if !isCodexExternalMessageOutputMap(m, typ) {
+				callID, ok := m["call_id"].(string)
+				if !ok || strings.TrimSpace(callID) == "" {
+					if id, ok := m["id"].(string); ok && strings.TrimSpace(id) != "" {
+						callID = id
+						ensureCopy()
+						newItem["call_id"] = callID
+					}
 				}
-			}
 
-			if callID != "" {
-				fixedCallID := fixCallIDPrefix(callID)
-				if fixedCallID != callID {
-					ensureCopy()
-					newItem["call_id"] = fixedCallID
+				if callID != "" {
+					fixedCallID := fixCallIDPrefix(callID)
+					if fixedCallID != callID {
+						ensureCopy()
+						newItem["call_id"] = fixedCallID
+					}
 				}
 			}
 		}
@@ -1850,6 +1852,24 @@ func filterCodexInputWithOptions(input []any, opts codexInputFilterOptions) []an
 		filtered = append(filtered, newItem)
 	}
 	return filtered
+}
+
+// isCodexExternalMessageOutputMap 识别 Codex ExternalMessage 形态的 standalone
+// function_call_output（无 call_id 或空白 call_id，且带有非空字符串 name）。
+// 这类项不是工具调用回执，不能把其 id 提升为 call_id，否则 OAuth 路径的孤儿清理会把它静默丢弃，
+// WSv2 路径也会因伪造出无对应 function_call 的 call_id 触发上游 400。
+func isCodexExternalMessageOutputMap(item map[string]any, typ string) bool {
+	if !strings.EqualFold(strings.TrimSpace(typ), "function_call_output") {
+		return false
+	}
+	if callIDVal, exists := item["call_id"]; exists {
+		callID, ok := callIDVal.(string)
+		if !ok || strings.TrimSpace(callID) != "" {
+			return false
+		}
+	}
+	name, ok := item["name"].(string)
+	return ok && strings.TrimSpace(name) != ""
 }
 
 func isCodexToolCallItemType(typ string) bool {
