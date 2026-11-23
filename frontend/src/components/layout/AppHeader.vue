@@ -265,6 +265,7 @@ import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, isFeatureFlagEnabled } from '@/utils/featureFlags'
 import { resolveRouteMetaKeys } from '@/router/title'
 import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
+import { resolveExclusiveOIDCEndSessionURL } from '@/utils/oidcExclusive'
 
 const router = useRouter()
 const route = useRoute()
@@ -359,13 +360,32 @@ function closeDropdown() {
 
 async function handleLogout() {
   closeDropdown()
+  let logoutEndSession: { end_session_url?: string; id_token_hint?: string } | undefined
   try {
-    await authStore.logout()
+    logoutEndSession = await authStore.logout()
   } catch (error) {
     // Ignore logout errors - still redirect to login
     console.error('Logout error:', error)
   }
-  await router.push('/login')
+  let endSessionURL: string | null = null
+  if (logoutEndSession?.end_session_url && logoutEndSession?.id_token_hint) {
+    try {
+      const target = new URL(logoutEndSession.end_session_url)
+      target.searchParams.set('id_token_hint', logoutEndSession.id_token_hint)
+      target.searchParams.set('post_logout_redirect_uri', `${window.location.origin}/`)
+      endSessionURL = target.toString()
+    } catch (error) {
+      console.error('Invalid end-session URL:', error)
+    }
+  }
+  if (!endSessionURL) {
+    endSessionURL = resolveExclusiveOIDCEndSessionURL(appStore.cachedPublicSettings)
+  }
+  if (endSessionURL) {
+    window.location.href = endSessionURL
+    return
+  }
+  await router.push({ path: '/login', query: { logged_out: '1' } })
 }
 
 function handleReplayGuide() {

@@ -201,19 +201,28 @@ export async function getCurrentUser() {
  * Clears authentication token and user data from localStorage
  * Optionally revokes the refresh token on the server
  */
-export async function logout(): Promise<void> {
+export interface LogoutEndSession {
+  message?: string
+  end_session_url?: string
+  id_token_hint?: string
+}
+
+export async function logout(): Promise<LogoutEndSession | undefined> {
   const refreshToken = getRefreshToken()
+  let endSession: LogoutEndSession | undefined
 
   // Try to revoke the refresh token on the server
   if (refreshToken) {
     try {
-      await apiClient.post('/auth/logout', { refresh_token: refreshToken })
+      const res = await apiClient.post('/auth/logout', { refresh_token: refreshToken })
+      endSession = (res?.data ?? undefined) as LogoutEndSession | undefined
     } catch {
       // Ignore errors - we still want to clear local state
     }
   }
 
   clearAuthToken()
+  return endSession
 }
 
 /**

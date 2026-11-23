@@ -413,10 +413,11 @@ export const useAuthStore = defineStore('auth', () => {
    * User logout
    * Clears all authentication state and persisted data
    */
-  async function logout(): Promise<void> {
+  async function logout(): Promise<{ end_session_url?: string; id_token_hint?: string } | undefined> {
+    let endSession: { end_session_url?: string; id_token_hint?: string } | undefined
     try {
-      // Call API logout (revokes refresh token on server)
-      await authAPI.logout()
+      // Call API logout (revokes refresh token on server); carries OIDC end-session params when present
+      endSession = await authAPI.logout()
     } catch (err) {
       // 服务端吊销失败（网络/5xx/超时）不应阻止本地登出，否则用户点了退出仍处于登录态。
       console.warn('Logout API call failed, clearing local session anyway', err)
@@ -424,6 +425,7 @@ export const useAuthStore = defineStore('auth', () => {
       // Always clear local state (tokens, user data, refresh timers)
       clearAuth()
     }
+    return endSession
   }
 
   /**

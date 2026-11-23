@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"crypto/subtle"
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/response"
@@ -88,6 +89,64 @@ func BackendModeAuthGuard(settingService *service.SettingService) gin.HandlerFun
 			return
 		}
 		response.Forbidden(c, "Backend mode is active. Registration and self-service auth flows are disabled.")
+		c.Abort()
+	}
+}
+
+// ServiceLoginTokenAllowed reports whether the request carries the configured
+// machine-to-machine login exemption token. Empty server-side configuration
+// fail-closes the exemption.
+func ServiceLoginTokenAllowed(c *gin.Context, settingService *service.SettingService) bool {
+	if settingService == nil {
+		return false
+	}
+	want := settingService.OIDCServiceLoginToken()
+	if want == "" {
+		return false
+	}
+	got := strings.TrimSpace(c.GetHeader("X-Service-Login-Token"))
+	return got != "" && subtle.ConstantTimeCompare([]byte(got), []byte(want)) == 1
+}
+
+func oidcExclusiveBlocksAuthPath(path string) bool {
+	path = strings.ToLower(strings.TrimSpace(path))
+	for _, suffix := range []string{
+		"/auth/register",
+		"/auth/login",
+		"/auth/login/2fa",
+		"/auth/passkey/login/begin",
+		"/auth/passkey/login/finish",
+	} {
+		if strings.HasSuffix(path, suffix) {
+			return true
+		}
+	}
+
+	if !strings.Contains(path, "/auth/oauth/") {
+		return false
+	}
+	return !strings.Contains(path, "/auth/oauth/oidc/") &&
+		!strings.Contains(path, "/auth/oauth/pending/") &&
+		!strings.Contains(path, "/auth/oauth/wechat/payment/")
+}
+
+// OIDCExclusiveAuthGuard blocks every non-OIDC authentication flow that can
+// establish a session while preserving logout, refresh, and OIDC continuation.
+func OIDCExclusiveAuthGuard(settingService *service.SettingService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if settingService == nil || !settingService.IsOIDCExclusiveModeEnabled(c.Request.Context()) {
+			c.Next()
+			return
+		}
+		if ServiceLoginTokenAllowed(c, settingService) {
+			c.Next()
+			return
+		}
+		if !oidcExclusiveBlocksAuthPath(c.Request.URL.Path) {
+			c.Next()
+			return
+		}
+		response.Forbidden(c, "OIDC login is required")
 		c.Abort()
 	}
 }
