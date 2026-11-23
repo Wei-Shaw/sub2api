@@ -48,6 +48,27 @@ const BaseDialogStub = defineComponent({
   template: '<div v-if="show"><slot /><slot name="footer" /></div>'
 })
 
+// Render the common Select as a native <select> so setValue/element.value
+// assertions keep working; forwards $attrs (data-testid, class, disabled).
+const SelectStub = defineComponent({
+  props: {
+    modelValue: { type: [String, Number, Boolean, null], default: '' },
+    options: { type: Array, default: () => [] }
+  },
+  emits: ['update:modelValue'],
+  template: `
+    <select
+      v-bind="$attrs"
+      :value="modelValue"
+      @change="$emit('update:modelValue', $event.target.value)"
+    >
+      <option v-for="option in options" :key="option.value" :value="option.value" :disabled="option.disabled">
+        {{ option.label }}
+      </option>
+    </select>
+  `
+})
+
 const account = (platform = 'grok', type = 'oauth', extra: Record<string, unknown> = {}) => ({
   id: 12, name: 'Grok', notes: '', platform, type,
   credentials: { expires_at: '2027-01-01T00:00:00Z', token_type: 'Bearer' },
@@ -60,7 +81,7 @@ function mountModal(value = account()) {
   return mount(EditAccountModal, {
     props: { show: true, account: value, proxies: [], groups: [] },
     global: { stubs: {
-      BaseDialog: BaseDialogStub, Select: true, Icon: true, ProxySelector: true,
+      BaseDialog: BaseDialogStub, Select: SelectStub, Icon: true, ProxySelector: true,
       GroupSelector: true, ModelWhitelistSelector: true
     } }
   })

@@ -754,16 +754,13 @@
               {{ t('admin.accounts.grokMediaEligibility.hint') }}
             </p>
           </div>
-          <select
+          <Select
             v-model="grokMediaEligibilityMode"
             class="input"
             data-testid="grok-media-eligibility-mode"
             :disabled="grokMediaEligibilityLoading"
-          >
-            <option value="auto">{{ t('admin.accounts.grokMediaEligibility.auto') }}</option>
-            <option value="enabled">{{ t('admin.accounts.grokMediaEligibility.enabled') }}</option>
-            <option value="disabled">{{ t('admin.accounts.grokMediaEligibility.disabled') }}</option>
-          </select>
+            :options="grokMediaEligibilityModeOptions"
+          />
           <p v-if="grokMediaEligibilityLoading" class="text-xs text-gray-500 dark:text-gray-400">
             {{ t('admin.accounts.grokMediaEligibility.loading') }}
           </p>
@@ -3427,7 +3424,7 @@ import type {
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
-import Select from '@/components/common/Select.vue'
+import Select, { type SelectOption } from '@/components/common/Select.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import UpstreamRequestIdHeaderField from '@/components/account/UpstreamRequestIdHeaderField.vue'
 import OpenAIImageSizeTiersField from '@/components/account/OpenAIImageSizeTiersField.vue'
@@ -4069,6 +4066,13 @@ const grokMediaEligibilityState = ref<GrokMediaEligibilityState | null>(null)
 const grokMediaEligibilityLoading = ref(false)
 const grokMediaEligibilityError = ref('')
 let grokMediaEligibilityRequestVersion = 0
+
+// Grok 媒体资格模式下拉（common/Select）
+const grokMediaEligibilityModeOptions = computed<SelectOption[]>(() => [
+  { value: 'auto', label: t('admin.accounts.grokMediaEligibility.auto') },
+  { value: 'enabled', label: t('admin.accounts.grokMediaEligibility.enabled') },
+  { value: 'disabled', label: t('admin.accounts.grokMediaEligibility.disabled') },
+])
 
 const modeFromGrokMediaExtra = (extra: Record<string, unknown> | undefined): GrokMediaEligibilityMode => {
   if (extra?.grok_media_eligible === true) return 'enabled'

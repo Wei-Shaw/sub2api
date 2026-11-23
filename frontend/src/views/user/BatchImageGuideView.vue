@@ -553,12 +553,12 @@
 
           <div class="md:col-span-2">
             <label class="input-label">API Key</label>
-            <select v-model.number="form.apiKeyId" class="input" :disabled="loadingKeys">
-              <option :value="0">{{ loadingKeys ? t('batchImage.create.loadingKeys') : t('batchImage.create.selectKeyPlaceholder') }}</option>
-              <option v-for="key in geminiApiKeys" :key="key.id" :value="key.id">
-                {{ key.name }} · {{ key.group?.name || 'Gemini' }}
-              </option>
-            </select>
+            <Select
+              v-model="form.apiKeyId"
+              class="input"
+              :options="batchApiKeyOptions"
+              :disabled="loadingKeys"
+            />
             <p v-if="!loadingKeys && geminiApiKeys.length === 0" class="input-hint text-amber-600 dark:text-amber-400">
               {{ t('batchImage.create.noKeysHint') }}
             </p>
@@ -566,13 +566,13 @@
 
           <div>
             <label class="input-label">{{ t('batchImage.create.model') }}</label>
-            <select v-model="form.model" class="input" :disabled="loadingModels || availableBatchImageModels.length === 0">
-              <option v-if="loadingModels" value="">{{ batchImageText('loadingModels') }}</option>
-              <option v-else-if="availableBatchImageModels.length === 0" value="">{{ batchImageText('noModels') }}</option>
-              <option v-for="model in availableBatchImageModels" :key="model.value" :value="model.value">
-                {{ model.label }}
-              </option>
-            </select>
+            <Select
+              v-model="form.model"
+              class="input"
+              :options="batchModelOptions"
+              :disabled="loadingModels || availableBatchImageModels.length === 0"
+              :placeholder="batchModelPlaceholder"
+            />
             <p v-if="modelLoadError" class="input-hint text-amber-600 dark:text-amber-400">
               {{ modelLoadError }}
             </p>
@@ -591,11 +591,7 @@
 
           <div>
             <label class="input-label">{{ t('batchImage.create.outputFormat') }}</label>
-            <select v-model="form.responseMimeType" class="input">
-              <option value="image/png">PNG</option>
-              <option value="image/jpeg">JPEG</option>
-              <option value="image/webp">WebP</option>
-            </select>
+            <Select v-model="form.responseMimeType" class="input" :options="responseMimeTypeOptions" />
           </div>
 
           <div>
@@ -954,6 +950,33 @@ const filteredApiKeys = computed(() => {
   if (!selectedFilterID) return geminiApiKeys.value
   return geminiApiKeys.value.filter(key => key.id === selectedFilterID)
 })
+
+// 创建表单的 API Key 下拉（common/Select）：value 0 表示未选择，label 随加载状态切换
+const batchApiKeyOptions = computed<SelectOption[]>(() => [
+  { value: 0, label: loadingKeys.value ? t('batchImage.create.loadingKeys') : t('batchImage.create.selectKeyPlaceholder') },
+  ...geminiApiKeys.value.map(key => ({
+    value: key.id,
+    label: `${key.name} · ${key.group?.name || 'Gemini'}`,
+  })),
+])
+
+// 模型下拉（common/Select）：未加载/无模型时用 placeholder 表达原空 value option
+const batchModelOptions = computed<SelectOption[]>(() =>
+  availableBatchImageModels.value.map(model => ({ value: model.value, label: model.label })),
+)
+
+const batchModelPlaceholder = computed(() => {
+  if (loadingModels.value) return batchImageText('loadingModels')
+  if (availableBatchImageModels.value.length === 0) return batchImageText('noModels')
+  return t('common.selectOption')
+})
+
+// 输出格式下拉（common/Select）
+const responseMimeTypeOptions: SelectOption[] = [
+  { value: 'image/png', label: 'PNG' },
+  { value: 'image/jpeg', label: 'JPEG' },
+  { value: 'image/webp', label: 'WebP' },
+]
 
 const apiKeyFilterOptions = computed<SelectOption[]>(() => [
   { value: '', label: t('batchImage.filters.allApiKeys') },

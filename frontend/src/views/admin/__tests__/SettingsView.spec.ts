@@ -301,7 +301,7 @@ const SelectStub = defineComponent({
     },
   },
   emits: ["update:modelValue", "change"],
-  setup(props, { emit }) {
+  setup(props, { emit, attrs }) {
     const onChange = (event: Event) => {
       const target = event.target as HTMLSelectElement;
       emit("update:modelValue", target.value);
@@ -319,6 +319,9 @@ const SelectStub = defineComponent({
           class: "select-stub",
           value: props.modelValue ?? "",
           "data-placeholder": props.placeholder,
+          // Forward pass-through attrs (id, data-testid, aria-label, class, ...)
+          // so tests can address a specific Select by its original hooks.
+          ...attrs,
           onChange,
         },
         (props.options as Array<Record<string, unknown>>).map((option) =>

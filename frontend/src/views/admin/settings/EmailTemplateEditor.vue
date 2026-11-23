@@ -56,39 +56,23 @@
             <label class="input-label" for="email-template-event">
               {{ t("admin.settings.emailTemplates.event") }}
             </label>
-            <select
+            <Select
               id="email-template-event"
               v-model="selectedEvent"
-              class="input"
+              :options="eventDisplayOptions"
               :disabled="loadingTemplate || eventOptions.length === 0"
-            >
-              <option
-                v-for="option in eventOptions"
-                :key="option.value"
-                :value="option.value"
-              >
-                {{ formatEventOptionLabel(option) }}
-              </option>
-            </select>
+            />
           </div>
           <div>
             <label class="input-label" for="email-template-locale">
               {{ t("admin.settings.emailTemplates.locale") }}
             </label>
-            <select
+            <Select
               id="email-template-locale"
               v-model="selectedLocale"
-              class="input"
+              :options="localeDisplayOptions"
               :disabled="loadingTemplate || localeOptions.length === 0"
-            >
-              <option
-                v-for="localeOption in localeOptions"
-                :key="localeOption"
-                :value="localeOption"
-              >
-                {{ formatLocale(localeOption) }}
-              </option>
-            </select>
+            />
           </div>
         </div>
 
@@ -233,6 +217,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { adminAPI } from "@/api";
+import Select from "@/components/common/Select.vue";
 import type {
   EmailTemplateEventOption,
   EmailTemplateOption,
@@ -496,6 +481,21 @@ function formatEventOptionLabel(option: EmailTemplateOption): string {
   if (!meta) return option.label || option.value;
   return meta.label;
 }
+
+// Select 组件所需的展示选项（label 随语言即时刷新，与原 v-for option 一致）
+const eventDisplayOptions = computed(() =>
+  eventOptions.value.map((option) => ({
+    value: option.value,
+    label: formatEventOptionLabel(option),
+  })),
+);
+
+const localeDisplayOptions = computed(() =>
+  localeOptions.value.map((localeOption) => ({
+    value: localeOption,
+    label: formatLocale(localeOption),
+  })),
+);
 
 function formatCategory(category: string): string {
   const normalized = category.trim().toLowerCase();
