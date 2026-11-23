@@ -138,6 +138,28 @@ const ModelWhitelistSelectorStub = defineComponent({
   >models</button>`,
 })
 
+// Render the common Select as a native <select> so setValue/element.value
+// assertions keep working; forwards $attrs (data-testid, class, ...).
+const SelectStub = defineComponent({
+  name: 'SelectStub',
+  props: {
+    modelValue: { type: [String, Number, Boolean, null], default: '' },
+    options: { type: Array, default: () => [] }
+  },
+  emits: ['update:modelValue'],
+  template: `
+    <select
+      v-bind="$attrs"
+      :value="modelValue"
+      @change="$emit('update:modelValue', $event.target.value)"
+    >
+      <option v-for="option in options" :key="option.value" :value="option.value" :disabled="option.disabled">
+        {{ option.label }}
+      </option>
+    </select>
+  `
+})
+
 function mountModal(groups: any[] = []) {
   return mount(CreateAccountModal, {
     props: { show: true, proxies: [], groups },
@@ -146,7 +168,7 @@ function mountModal(groups: any[] = []) {
         BaseDialog: BaseDialogStub,
         OAuthAuthorizationFlow: OAuthAuthorizationFlowStub,
         ConfirmDialog: true,
-        Select: true,
+        Select: SelectStub,
         Icon: true,
         PlatformIcon: true,
         ProxySelector: true,

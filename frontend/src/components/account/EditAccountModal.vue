@@ -2413,10 +2413,7 @@
               {{ t('admin.accounts.anthropic.apiKeyAuthSchemeDesc') }}
             </p>
           </div>
-          <select v-model="anthropicAPIKeyAuthScheme" class="input w-52 text-sm">
-            <option value="x_api_key">{{ t('admin.accounts.anthropic.apiKeyAuthSchemeXApiKey') }}</option>
-            <option value="authorization_bearer">{{ t('admin.accounts.anthropic.apiKeyAuthSchemeBearer') }}</option>
-          </select>
+          <Select v-model="anthropicAPIKeyAuthScheme" class="w-52 text-sm" :options="anthropicAPIKeyAuthSchemeOptions" />
         </div>
       </div>
 
@@ -2432,11 +2429,7 @@
               {{ t('admin.accounts.anthropic.webSearchEmulationDesc') }}
             </p>
           </div>
-          <select v-model="webSearchEmulationMode" class="input w-24 text-sm">
-            <option value="default">{{ t('admin.accounts.anthropic.webSearchDefault') }}</option>
-            <option value="enabled">{{ t('admin.accounts.anthropic.webSearchEnabled') }}</option>
-            <option value="disabled">{{ t('admin.accounts.anthropic.webSearchDisabled') }}</option>
-          </select>
+          <Select v-model="webSearchEmulationMode" class="w-24 text-sm" :options="webSearchEmulationModeOptions" />
         </div>
       </div>
 
@@ -3160,11 +3153,7 @@
           </div>
           <!-- Profile selector -->
           <div v-if="tlsFingerprintEnabled" class="mt-3">
-            <select v-model="tlsFingerprintProfileId" class="input">
-              <option :value="null">{{ t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') }}</option>
-              <option v-if="tlsFingerprintProfiles.length > 0" :value="-1">{{ t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }}</option>
-              <option v-for="p in tlsFingerprintProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
-            </select>
+            <Select v-model="tlsFingerprintProfileId" :options="tlsFingerprintProfileOptions" />
           </div>
         </div>
 
@@ -3222,13 +3211,11 @@
           </div>
           <div v-if="cacheTTLOverrideEnabled" class="mt-3">
             <label class="input-label text-xs">{{ t('admin.accounts.quotaControl.cacheTTLOverride.target') }}</label>
-            <select
+            <Select
               v-model="cacheTTLOverrideTarget"
-              class="mt-1 block w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm shadow-sm focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-dark-500 dark:bg-dark-700 dark:text-white"
-            >
-              <option value="5m">5m</option>
-              <option value="1h">1h</option>
-            </select>
+              class="mt-1 block w-full"
+              :options="cacheTTLOverrideTargetOptions"
+            />
             <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
               {{ t('admin.accounts.quotaControl.cacheTTLOverride.targetHint') }}
             </p>
@@ -4073,6 +4060,34 @@ const grokMediaEligibilityModeOptions = computed<SelectOption[]>(() => [
   { value: 'enabled', label: t('admin.accounts.grokMediaEligibility.enabled') },
   { value: 'disabled', label: t('admin.accounts.grokMediaEligibility.disabled') },
 ])
+
+// Anthropic API Key 鉴权方式下拉
+const anthropicAPIKeyAuthSchemeOptions = computed<SelectOption[]>(() => [
+  { value: 'x_api_key', label: t('admin.accounts.anthropic.apiKeyAuthSchemeXApiKey') },
+  { value: 'authorization_bearer', label: t('admin.accounts.anthropic.apiKeyAuthSchemeBearer') },
+])
+
+// Web Search 模拟模式下拉
+const webSearchEmulationModeOptions = computed<SelectOption[]>(() => [
+  { value: 'default', label: t('admin.accounts.anthropic.webSearchDefault') },
+  { value: 'enabled', label: t('admin.accounts.anthropic.webSearchEnabled') },
+  { value: 'disabled', label: t('admin.accounts.anthropic.webSearchDisabled') },
+])
+
+// TLS 指纹 Profile 下拉（null=默认；-1=随机；其余为具体 Profile）
+const tlsFingerprintProfileOptions = computed<SelectOption[]>(() => [
+  { value: null, label: t('admin.accounts.quotaControl.tlsFingerprint.defaultProfile') },
+  ...(tlsFingerprintProfiles.value.length > 0
+    ? [{ value: -1, label: t('admin.accounts.quotaControl.tlsFingerprint.randomProfile') }]
+    : []),
+  ...tlsFingerprintProfiles.value.map(p => ({ value: p.id, label: p.name })),
+])
+
+// Cache TTL 覆写目标下拉
+const cacheTTLOverrideTargetOptions: SelectOption[] = [
+  { value: '5m', label: '5m' },
+  { value: '1h', label: '1h' },
+]
 
 const modeFromGrokMediaExtra = (extra: Record<string, unknown> | undefined): GrokMediaEligibilityMode => {
   if (extra?.grok_media_eligible === true) return 'enabled'

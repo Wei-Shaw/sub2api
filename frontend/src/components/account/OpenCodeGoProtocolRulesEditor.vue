@@ -21,16 +21,13 @@
             :placeholder="t('admin.accounts.opencodeGo.protocolRules.patternPlaceholder')"
             :data-testid="`opencode-go-protocol-pattern-${index}`"
           />
-          <select
-            :value="row.protocol"
-            class="input w-44 shrink-0"
+          <Select
+            :model-value="row.protocol"
+            class="w-44 shrink-0"
             :data-testid="`opencode-go-protocol-select-${index}`"
-            @change="setPrimaryProtocol(row, ($event.target as HTMLSelectElement).value as CnNativeApiProtocol)"
-          >
-            <option v-for="option in protocolOptions" :key="option.value" :value="option.value">
-              {{ t(`admin.accounts.cnProviders.apiProtocol.${option.labelKey}`) }}
-            </option>
-          </select>
+            :options="protocolSelectOptions"
+            @update:model-value="value => setPrimaryProtocol(row, value as CnNativeApiProtocol)"
+          />
           <button
             type="button"
             class="rounded-lg p-2 text-red-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20"
@@ -85,6 +82,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
+import Select from '@/components/common/Select.vue'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
 import {
   cloneOpenCodeGoProtocolRules,
@@ -139,6 +137,14 @@ const protocolOptions = computed(() => {
 })
 
 const hasModelCatalog = computed(() => providerHasModelCatalog(props.platform))
+
+// Select 组件所需的展示选项（带 i18n label）
+const protocolSelectOptions = computed(() =>
+  protocolOptions.value.map(option => ({
+    value: option.value,
+    label: t(`admin.accounts.cnProviders.apiProtocol.${option.labelKey}`),
+  })),
+)
 
 // 规则的协议集合：首选协议 + 也支持的协议；入站协议在集合中时同协议直通。
 const hasExtraProtocol = (row: OpenCodeGoProtocolRule, protocol: CnNativeApiProtocol) =>

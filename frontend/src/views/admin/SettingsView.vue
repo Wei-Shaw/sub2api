@@ -6809,14 +6809,11 @@
                     >
                       {{ t("admin.settings.customMenu.visibility") }}
                     </label>
-                    <select v-model="item.visibility" class="input text-sm">
-                      <option value="user">
-                        {{ t("admin.settings.customMenu.visibilityUser") }}
-                      </option>
-                      <option value="admin">
-                        {{ t("admin.settings.customMenu.visibilityAdmin") }}
-                      </option>
-                    </select>
+                    <Select
+                      v-model="item.visibility"
+                      class="text-sm"
+                      :options="customMenuVisibilityOptions"
+                    />
                   </div>
 
                   <!-- URL (full width) -->
@@ -9219,6 +9216,12 @@ const grokBaseUrlModeOptions = computed<SelectOption[]>(() => [
 const openaiTtftModeOptions = computed<SelectOption[]>(() => [
   { value: "semantic", label: t("admin.settings.gatewayForwarding.openaiTTFTModeSemantic") },
   { value: "visible", label: t("admin.settings.gatewayForwarding.openaiTTFTModeVisible") },
+]);
+
+// 自定义菜单可见性下拉
+const customMenuVisibilityOptions = computed<SelectOption[]>(() => [
+  { value: "user", label: t("admin.settings.customMenu.visibilityUser") },
+  { value: "admin", label: t("admin.settings.customMenu.visibilityAdmin") },
 ]);
 
 // Rectifier 状态
