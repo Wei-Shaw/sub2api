@@ -171,13 +171,31 @@ func (c *MCPConfig) Validate() error {
 // PluginConfig 控制管理员手动上传的本地进程插件。
 // 默认不包含插件，也不允许安装未签名插件；TrustedPublishers 用于追加第三方发布者。
 type PluginConfig struct {
-	DataDir                 string            `mapstructure:"data_dir"`
-	AllowUnsigned           bool              `mapstructure:"allow_unsigned"`
-	OpenAIWSIdentityEnabled bool              `mapstructure:"openai_ws_identity_enabled"`
-	TrustedPublishers       map[string]string `mapstructure:"trusted_publishers"`
-	MaxUploadBytes          int64             `mapstructure:"max_upload_bytes"`
-	MaxUncompressedBytes    int64             `mapstructure:"max_uncompressed_bytes"`
-	StartTimeoutSeconds     int               `mapstructure:"start_timeout_seconds"`
+	DataDir                         string            `mapstructure:"data_dir"`
+	AllowUnsigned                   bool              `mapstructure:"allow_unsigned"`
+	OpenAIWSIdentityEnabled         bool              `mapstructure:"openai_ws_identity_enabled"`
+	OpenAIWSIdentityCanaryAccountID int64             `mapstructure:"openai_ws_identity_canary_account_id"`
+	OpenAIWSIdentityCanaryAPIKeyID  int64             `mapstructure:"openai_ws_identity_canary_api_key_id"`
+	TrustedPublishers               map[string]string `mapstructure:"trusted_publishers"`
+	MaxUploadBytes                  int64             `mapstructure:"max_upload_bytes"`
+	MaxUncompressedBytes            int64             `mapstructure:"max_uncompressed_bytes"`
+	StartTimeoutSeconds             int               `mapstructure:"start_timeout_seconds"`
+}
+
+// AllowsOpenAIWSIdentity applies the optional canary scope to the selected account
+// and authenticated API key. It does not change the HTTP plugin binding.
+func (c PluginConfig) AllowsOpenAIWSIdentity(accountID, apiKeyID int64) bool {
+	if !c.OpenAIWSIdentityEnabled || accountID <= 0 || apiKeyID <= 0 {
+		return false
+	}
+	if !c.hasOpenAIWSIdentityCanary() {
+		return true
+	}
+	return accountID == c.OpenAIWSIdentityCanaryAccountID && apiKeyID == c.OpenAIWSIdentityCanaryAPIKeyID
+}
+
+func (c PluginConfig) hasOpenAIWSIdentityCanary() bool {
+	return c.OpenAIWSIdentityCanaryAccountID != 0 || c.OpenAIWSIdentityCanaryAPIKeyID != 0
 }
 
 type LogConfig struct {
@@ -2452,6 +2470,8 @@ func setDefaults() {
 	viper.SetDefault("plugins.data_dir", "")
 	viper.SetDefault("plugins.allow_unsigned", false)
 	viper.SetDefault("plugins.openai_ws_identity_enabled", false)
+	viper.SetDefault("plugins.openai_ws_identity_canary_account_id", int64(0))
+	viper.SetDefault("plugins.openai_ws_identity_canary_api_key_id", int64(0))
 	viper.SetDefault("plugins.trusted_publishers", map[string]string{})
 	viper.SetDefault("plugins.max_upload_bytes", int64(128*1024*1024))
 	viper.SetDefault("plugins.max_uncompressed_bytes", int64(256*1024*1024))
@@ -2830,6 +2850,9 @@ func (c *Config) Validate() error {
 		return fmt.Errorf("security.proxy_probe.urls: %w", err)
 	}
 	c.Security.ProxyProbe.URLs = proxyProbeURLs
+	if c.Plugins.hasOpenAIWSIdentityCanary() && (c.Plugins.OpenAIWSIdentityCanaryAccountID <= 0 || c.Plugins.OpenAIWSIdentityCanaryAPIKeyID <= 0) {
+		return fmt.Errorf("plugins.openai_ws_identity_canary_account_id and plugins.openai_ws_identity_canary_api_key_id must both be positive when a canary scope is set")
+	}
 	if c.Plugins.MaxUploadBytes <= 0 || c.Plugins.MaxUploadBytes > 1024*1024*1024 {
 		return fmt.Errorf("plugins.max_upload_bytes must be between 1 and 1073741824")
 	}

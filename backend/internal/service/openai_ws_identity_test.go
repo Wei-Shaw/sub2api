@@ -313,6 +313,52 @@ func TestResponsesWSIdentity_PreservesLegacyBridge(t *testing.T) {
 	}
 }
 
+func TestResponsesWSIdentity_CanaryScopeKeepsOtherRequestsOnHTTPBridge(t *testing.T) {
+	for _, tc := range []struct {
+		name             string
+		account, key     int64
+		flag, wantNative bool
+	}{
+		{"selected pair", 901, 101, true, true},
+		{"other key on the selected account", 901, 102, true, false},
+		{"same key on a different account", 902, 101, true, false},
+		{"flag off with retained scope", 901, 101, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fixture := newWSIdentityWireFixture(t)
+			fixture.account.ID = tc.account
+			fixture.cfg.Plugins.OpenAIWSIdentityEnabled = tc.flag
+			fixture.cfg.Plugins.OpenAIWSIdentityCanaryAccountID = 901
+			fixture.cfg.Plugins.OpenAIWSIdentityCanaryAPIKeyID = 101
+			var calls atomic.Int32
+			_, legacy := fixture.addPlugin(wsIdentityRPCFunc(func(context.Context, *pluginv1.RewriteWSIdentityRequest) (*pluginv1.RewriteWSIdentityResponse, error) {
+				calls.Add(1)
+				return &pluginv1.RewriteWSIdentityResponse{}, nil
+			}), 100)
+			client, done := fixture.startForKey(t, tc.key)
+			if !tc.wantNative {
+				require.Error(t, waitWSIdentityFixtureValue(t, done))
+				require.EqualValues(t, 1, legacy.calls.Load())
+				require.Zero(t, calls.Load())
+				require.Empty(t, fixture.handshakes)
+				return
+			}
+			requireWSIdentityCompletion(t, client, "resp_native_1")
+			_ = waitWSIdentityFixtureValue(t, fixture.handshakes)
+			_ = waitWSIdentityFixtureValue(t, fixture.frames)
+			require.NoError(t, client.Write(t.Context(), coderws.MessageText, []byte(wsIdentityContinuation)))
+			requireWSIdentityCompletion(t, client, "resp_native_2")
+			frame := waitWSIdentityFixtureValue(t, fixture.frames)
+			require.Equal(t, "resp_native_1", gjson.GetBytes(frame, "previous_response_id").String())
+			require.Empty(t, fixture.handshakes)
+			require.EqualValues(t, 2, calls.Load())
+			require.Zero(t, legacy.calls.Load())
+			_ = client.Close(coderws.StatusNormalClosure, "done")
+			_ = waitWSIdentityFixtureValue(t, done)
+		})
+	}
+}
+
 func TestResponsesWSIdentity_ReceivesHostScopedMetadata(t *testing.T) {
 	seen := map[string]bool{}
 	for _, scope := range []struct {

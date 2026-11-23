@@ -61,7 +61,7 @@ type openAIWSIdentitySession struct {
 }
 
 func newOpenAIWSIdentitySession(cfg *config.Config, route *pluginRoute, accountID int64, identitySource *Account, apiKeyID int64) *openAIWSIdentitySession {
-	if cfg == nil || !cfg.Plugins.OpenAIWSIdentityEnabled || route == nil || route.runtime == nil || route.runtime.wsIdentity == nil || apiKeyID <= 0 || codexAccountIdentityNamespace(identitySource) == "" {
+	if cfg == nil || !cfg.Plugins.AllowsOpenAIWSIdentity(accountID, apiKeyID) || route == nil || route.runtime == nil || route.runtime.wsIdentity == nil || codexAccountIdentityNamespace(identitySource) == "" {
 		return nil
 	}
 	return &openAIWSIdentitySession{runtime: route.runtime, accountID: accountID, identitySource: identitySource, apiKeyID: apiKeyID, id: uuid.NewString(), epoch: route.runtime.wsConfigEpoch.Load()}
