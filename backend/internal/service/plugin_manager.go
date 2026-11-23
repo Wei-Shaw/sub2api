@@ -981,11 +981,18 @@ func (m *PluginManager) RoundTripOpenAIOAuth(ctx context.Context, request *http.
 // ShouldRouteOpenAIOAuth 判断该账号是否命中当前 OpenAI OAuth 插件绑定。
 // WebSocket 入口用它把命中的账号切换到 HTTP Bridge，避免绕过 v1 HTTP 插件协议。
 func (m *PluginManager) ShouldRouteOpenAIOAuth(account *Account) bool {
+	return m.openAIOAuthRoute(account) != nil
+}
+
+func (m *PluginManager) openAIOAuthRoute(account *Account) *pluginRoute {
 	if m == nil || account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
-		return false
+		return nil
 	}
 	route := m.route.Load()
-	return route != nil && route.rolloutPercent > 0 && int(stablePluginBucket(account.ID)) < route.rolloutPercent
+	if route == nil || route.rolloutPercent <= 0 || int(stablePluginBucket(account.ID)) >= route.rolloutPercent {
+		return nil
+	}
+	return route
 }
 
 func (m *PluginManager) markRuntimeUnavailable(failedRoute *pluginRoute, message string) error {
