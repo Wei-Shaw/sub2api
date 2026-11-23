@@ -44,6 +44,11 @@
           </div>
         </template>
 
+        <template #cell-username="{ row }">
+          <span v-if="row.user?.username?.trim()" class="text-sm text-gray-900 dark:text-white">{{ row.user.username.trim() }}</span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
         <template #cell-api_key="{ row }">
           <span class="text-sm text-gray-900 dark:text-white">{{ row.api_key?.name || '-' }}</span>
         </template>
