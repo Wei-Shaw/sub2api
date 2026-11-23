@@ -767,6 +767,19 @@ export default {
         sub2apiNote: '对应对方用量明细的请求ID列',
         official: '{platform} 官方 API'
       },
+      requestZstd: {
+        label: '压缩请求体（zstd）',
+        hint: '压缩发往该上游的大型 JSON 请求。请先在「测试连接」中确认上游支持 zstd。保存后约 15 秒生效。',
+        testOption: '压缩请求体（zstd）',
+        testOptionHint: '勾选后测试上游是否支持 zstd，取消勾选可对比原始请求。',
+        testSending: '本次测试的请求体会用 zstd 压缩后发送',
+        attempt: '请求体已压缩：{raw} → {wire} 字节（{host}）',
+        supported: '上游能接收 zstd 压缩的请求体，可以在账号设置里打开「压缩请求体」',
+        supportedEnabled: '上游能接收 zstd 压缩的请求体（这个账号已打开「压缩请求体」）',
+        failed: '压缩测试失败。请取消勾选再测一次，确认上游支持后再启用。',
+        failedEnabled: '压缩测试失败，且该账号已开启压缩。如果取消勾选后测试成功，请在账号设置中关闭压缩。',
+        noAttempt: '本次测试没有发出可以压缩的请求体，无法判断上游是否支持'
+      },
       // OpenAI specific hints
       openai: {
         baseUrlHint: '留空使用官方 OpenAI API',

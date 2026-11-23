@@ -336,6 +336,41 @@ describe('EditAccountModal', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it('turns the request body compression switch on and off, keeping other extra keys', async () => {
+    const account = { ...buildAccount(), extra: { runtime_marker: 42 } }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+
+    const untouched = mountModal(account)
+    expect(untouched.get('[data-testid="upstream-request-zstd"]').attributes('aria-checked')).toBe('false')
+    await untouched.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.upstream_request_zstd).toBeUndefined()
+    untouched.unmount()
+
+    updateAccountMock.mockClear()
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="upstream-request-zstd"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject({ upstream_request_zstd: true, runtime_marker: 42 })
+    wrapper.unmount()
+
+    updateAccountMock.mockClear()
+    const enabled = { ...account, extra: { upstream_request_zstd: true, runtime_marker: 42 } }
+    const off = mountModal(enabled)
+    expect(off.get('[data-testid="upstream-request-zstd"]').attributes('aria-checked')).toBe('true')
+    await off.get('[data-testid="upstream-request-zstd"]').trigger('click')
+    await off.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('upstream_request_zstd')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra.runtime_marker).toBe(42)
+    off.unmount()
+  })
+
+  it('hides the request body compression switch for OAuth accounts', async () => {
+    const wrapper = mountModal({ ...buildAccount(), type: 'oauth' })
+    expect(wrapper.find('[data-testid="upstream-request-zstd"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it.each(['apikey', 'oauth'])('can opt a passthrough %s account into model filtering without changing groups', async (type) => {
     const account = buildAccount()
     account.type = type

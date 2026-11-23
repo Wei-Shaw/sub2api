@@ -57,12 +57,13 @@ type TestEvent struct {
 	Code     string `json:"code,omitempty"`
 	ImageURL string `json:"image_url,omitempty"`
 	// AudioURL / VideoURL are data: or https URLs for in-browser media players.
-	AudioURL string `json:"audio_url,omitempty"`
-	VideoURL string `json:"video_url,omitempty"`
-	MimeType string `json:"mime_type,omitempty"`
-	Data     any    `json:"data,omitempty"`
-	Success  bool   `json:"success,omitempty"`
-	Error    string `json:"error,omitempty"`
+	AudioURL           string                     `json:"audio_url,omitempty"`
+	VideoURL           string                     `json:"video_url,omitempty"`
+	MimeType           string                     `json:"mime_type,omitempty"`
+	Data               any                        `json:"data,omitempty"`
+	Success            bool                       `json:"success,omitempty"`
+	Error              string                     `json:"error,omitempty"`
+	RequestCompression *upstreamRequestZstdReport `json:"request_compression,omitempty"`
 }
 
 // AccountTestOptions carries optional media for admin connectivity tests.
@@ -70,6 +71,8 @@ type TestEvent struct {
 type AccountTestOptions struct {
 	ImageDataURL string
 	AudioDataURL string
+	// nil follows the saved settings. An explicit value tests that encoding for this request only.
+	CompressRequestBody *bool
 }
 
 func firstAccountTestOptions(opts []AccountTestOptions) AccountTestOptions {
@@ -372,6 +375,12 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
 	bindAccountTestPlatform(c, account)
+	if account.Type == AccountTypeAPIKey && testOpts.CompressRequestBody != nil {
+		original := c.Request
+		probe := &UpstreamRequestZstdProbe{Compress: *testOpts.CompressRequestBody, accountEnabled: account.IsUpstreamRequestZstdEnabled()}
+		c.Request = original.WithContext(WithUpstreamRequestZstdProbe(original.Context(), probe))
+		defer func() { c.Request = original }()
+	}
 
 	// Synthetic UI load-test accounts exercise the real SSE parsing and modal
 	// interactions, but intentionally do not send their placeholder credentials
@@ -3296,6 +3305,11 @@ func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
 			if suppressCompletion, _ := suppress.(bool); suppressCompletion {
 				return
 			}
+		}
+	}
+	if c.Request != nil && (event.Type == "test_complete" || event.Type == "error") {
+		if probe := UpstreamRequestZstdProbeFromContext(c.Request.Context()); probe != nil && probe.Compress {
+			event.RequestCompression = probe.report()
 		}
 	}
 	eventJSON, _ := json.Marshal(event)

@@ -765,6 +765,17 @@ func TestLoadOpenAIProxyStreamCircuitFromEnv(t *testing.T) {
 	require.Equal(t, 420, cfg.Gateway.OpenAIProxyStreamCircuit.TTLSeconds)
 }
 
+func TestLoadUpstreamZstdRequestHosts(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.Empty(t, cfg.Gateway.UpstreamZstdRequestHosts)
+	t.Setenv("GATEWAY_UPSTREAM_ZSTD_REQUEST_HOSTS", "relay.example, relay2.example")
+	cfg, err = Load()
+	require.NoError(t, err)
+	require.Equal(t, []string{"relay.example", "relay2.example"}, cfg.Gateway.UpstreamZstdRequestHosts)
+}
+
 func TestLoadOpenAIHTTP2DisabledFromEnv(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	t.Setenv("GATEWAY_OPENAI_HTTP2_ENABLED", "false")
