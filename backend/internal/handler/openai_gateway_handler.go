@@ -1739,7 +1739,10 @@ func normalizeCodexAutomationBootstrap(body []byte) ([]byte, bool) {
 	if !mayContainCodexCallOutputCandidate(body, "automation_update") {
 		return body, false
 	}
-	return normalizeCodexCallOutputBootstrap(body, isCodexAutomationCandidate, false)
+	// 定时任务复用已有长对话时，会在历史调用上下文之后追加 automation_update heartbeat，
+	// 也可能携带 previous_response_id；它仍是客户端注入的触发消息而非历史工具调用的结果，
+	// 因此允许它与可明确配对的历史上下文共存。
+	return normalizeCodexCallOutputBootstrap(body, isCodexAutomationCandidate, true)
 }
 
 // mayContainCodexCallOutputCandidate is a necessary condition for a bootstrap
@@ -1796,8 +1799,8 @@ func normalizeCodexCallOutputBootstrap(body []byte, isCandidate func(map[string]
 
 	// Responses built-ins follow the *_call / *_call_output naming convention,
 	// so classify by the wire type shape instead of maintaining an incomplete
-	// allowlist. Delegation may coexist with historical anchors only when their
-	// IDs make them unambiguous; automation retains the bootstrap-only boundary.
+	// allowlist. Delegation and automation may coexist with historical anchors
+	// only when their IDs make them unambiguous.
 	for _, raw := range input {
 		item, ok := raw.(map[string]any)
 		if !ok {
@@ -1805,15 +1808,28 @@ func normalizeCodexCallOutputBootstrap(body []byte, isCandidate func(map[string]
 		}
 		typ := stringField(item, "type")
 		if isCandidate(item) {
-			callIDValue, exists := item["call_id"]
-			callID, isString := callIDValue.(string)
-			if exists && (!isString || strings.TrimSpace(callID) != "") {
+			if !hasMissingOrBlankCallID(item) {
 				return body, false
 			}
 			continue
 		}
+		if allowHistoricalContext && isCodexCoexistingStandaloneOutput(item) {
+			continue
+		}
 		if typ == "item_reference" {
 			if allowHistoricalContext && strings.TrimSpace(stringField(item, "id")) != "" {
+				continue
+			}
+			return body, false
+		}
+		if isResponsesServerSideCallType(typ) {
+			if allowHistoricalContext {
+				continue
+			}
+			return body, false
+		}
+		if typ == "tool_search_call" {
+			if allowHistoricalContext && (strings.TrimSpace(stringField(item, "call_id")) != "" || strings.TrimSpace(stringField(item, "id")) != "") {
 				continue
 			}
 			return body, false
@@ -1914,6 +1930,48 @@ func isResponsesCallOutputType(typ string) bool {
 	return strings.HasSuffix(typ, "_call_output") || typ == "tool_search_output"
 }
 
+// isResponsesServerSideCallType 识别服务端托管的 Responses *_call 历史项。
+// 这类项不与客户端 *_call_output 配对，协议上不带 call_id（且 store=false 回放可能无 id）。
+func isResponsesServerSideCallType(typ string) bool {
+	switch typ {
+	case "web_search_call", "x_search_call", "file_search_call", "code_interpreter_call", "image_generation_call", "mcp_call":
+		return true
+	default:
+		return false
+	}
+}
+
+func hasMissingOrBlankCallID(item map[string]any) bool {
+	callIDValue, exists := item["call_id"]
+	if !exists {
+		return true
+	}
+	callID, isString := callIDValue.(string)
+	return isString && strings.TrimSpace(callID) == ""
+}
+
+// isCodexCoexistingStandaloneOutput 允许同一请求中的合法兄弟 Codex ExternalMessage 共存：
+//  1. automation_update 与 delegation（create_thread/send_message_to_thread）可共存，避免两步归一化互相死锁；
+//  2. namespace=="agent" 的 standalone 环境上下文（如 browser_tabs/terminal_info）与 codex_app 任务触发独立，
+//     不应阻断 automation/delegation 归一化。
+//
+// 注意：不放行 codex_app/codex_tui 下畸形的非候选输出，保留原有拒绝语义。
+func isCodexCoexistingStandaloneOutput(item map[string]any) bool {
+	if !hasMissingOrBlankCallID(item) {
+		return false
+	}
+	if isCodexAutomationCandidate(item) || isCodexDelegationCandidate(item) {
+		return true
+	}
+	if stringField(item, "type") != "function_call_output" ||
+		stringField(item, "namespace") != "agent" ||
+		strings.TrimSpace(stringField(item, "name")) == "" {
+		return false
+	}
+	_, ok := item["output"].(string)
+	return ok
+}
+
 func isCodexDelegationCandidate(item map[string]any) bool {
 	if stringField(item, "type") != "function_call_output" ||
 		!isCodexDelegationTool(stringField(item, "namespace"), stringField(item, "name")) {
@@ -2008,77 +2066,107 @@ func validCodexAutomationLastRun(value string) bool {
 	return err == nil && runAt.UnixMilli() == epochMillis
 }
 
+// validCodexAutomationHeartbeat 校验 Codex Desktop 生成的 <heartbeat> 触发信封。
+// Codex Desktop 通过字符串拼接写入 <instructions> 正文，不会对用户 prompt 中的
+// `&`、`<OrderNo>` 等字符做 XML 转义，因此外层标签仍按精确字面量严格校验，
+// 而 <instructions>...</instructions> 内部作为原始文本提取。
 func validCodexAutomationHeartbeat(value string) bool {
-	decoder := xml.NewDecoder(strings.NewReader(value))
-	var rootSeen, automationIDSeen bool
-	var childName string
-	var childText bytes.Buffer
-	fields := make(map[string]string)
-	depth := 0
+	rest := strings.TrimSpace(value)
+	if !strings.HasPrefix(rest, "<heartbeat>") || !strings.HasSuffix(rest, "</heartbeat>") {
+		return false
+	}
+	inner := rest[len("<heartbeat>") : len(rest)-len("</heartbeat>")]
+
+	fields := make(map[string]string, 3)
 	for {
-		token, err := decoder.Token()
-		if err == io.EOF {
-			id := fields["automation_id"]
-			timestamp, hasTime := fields["current_time_iso"]
-			instructions, hasInstructions := fields["instructions"]
-			if hasTime != hasInstructions {
-				return false
-			}
-			if hasTime {
-				if _, err := time.Parse(time.RFC3339Nano, timestamp); err != nil || strings.TrimSpace(instructions) == "" {
-					return false
-				}
-			}
-			return rootSeen && automationIDSeen && depth == 0 &&
-				strings.TrimSpace(id) == id && validCodexAutomationID(id)
+		inner = strings.TrimSpace(inner)
+		if inner == "" {
+			break
 		}
-		if err != nil {
+		var tagName, closeTag string
+		switch {
+		case strings.HasPrefix(inner, "<automation_id>"):
+			tagName, closeTag = "automation_id", "</automation_id>"
+		case strings.HasPrefix(inner, "<current_time_iso>"):
+			tagName, closeTag = "current_time_iso", "</current_time_iso>"
+		case strings.HasPrefix(inner, "<instructions>"):
+			tagName, closeTag = "instructions", "</instructions>"
+		default:
 			return false
 		}
-		switch current := token.(type) {
-		case xml.StartElement:
-			depth++
-			if current.Name.Space != "" || len(current.Attr) != 0 || depth > 2 {
-				return false
-			}
-			if depth == 1 {
-				if rootSeen || current.Name.Local != "heartbeat" {
-					return false
-				}
-				rootSeen = true
-			} else {
-				childName = current.Name.Local
-				switch childName {
-				case "automation_id", "current_time_iso", "instructions":
-				default:
-					return false
-				}
-				if _, duplicate := fields[childName]; duplicate {
-					return false
-				}
-				childText.Reset()
-			}
-		case xml.EndElement:
-			if current.Name.Space != "" {
-				return false
-			}
-			if depth == 2 {
-				fields[childName] = childText.String()
-				automationIDSeen = automationIDSeen || childName == "automation_id"
-			}
-			depth--
-			if depth < 0 {
-				return false
-			}
-		case xml.CharData:
-			if depth == 2 {
-				_, _ = childText.Write(current)
-			} else if len(bytes.TrimSpace(current)) != 0 {
-				return false
-			}
-		case xml.Comment, xml.ProcInst, xml.Directive:
+		if _, duplicate := fields[tagName]; duplicate {
 			return false
 		}
+		inner = inner[len("<")+len(tagName)+len(">"):]
+		var end int
+		if tagName == "instructions" {
+			end = findHeartbeatInstructionsEnd(inner, fields)
+		} else {
+			end = strings.Index(inner, closeTag)
+		}
+		if end < 0 {
+			return false
+		}
+		fields[tagName] = inner[:end]
+		inner = inner[end+len(closeTag):]
+	}
+
+	id, hasID := fields["automation_id"]
+	if !hasID || strings.TrimSpace(id) != id || !validCodexAutomationID(id) {
+		return false
+	}
+	timestamp, hasTime := fields["current_time_iso"]
+	instructions, hasInstructions := fields["instructions"]
+	if hasTime != hasInstructions {
+		return false
+	}
+	if hasTime {
+		if strings.TrimSpace(timestamp) != timestamp {
+			return false
+		}
+		if _, err := time.Parse(time.RFC3339Nano, timestamp); err != nil {
+			return false
+		}
+		if strings.TrimSpace(instructions) == "" || strings.Contains(instructions, "</heartbeat>") {
+			return false
+		}
+	}
+	return true
+}
+
+// findHeartbeatInstructionsEnd 寻找与当前 <instructions> 配对的结束标签偏移。
+// 允许正文内包含字面量 `</instructions>`，仅当其后（跳过空白）紧跟信封结尾或尚未出现的
+// 合法兄弟标签（`<automation_id>` / `<current_time_iso>`）时才视为结束边界；
+// 若其后紧跟重复标签，直接返回 -1 拒绝。
+func findHeartbeatInstructionsEnd(inner string, fields map[string]string) int {
+	const closeTag = "</instructions>"
+	offset := 0
+	for {
+		rel := strings.Index(inner[offset:], closeTag)
+		if rel < 0 {
+			return -1
+		}
+		end := offset + rel
+		after := strings.TrimSpace(inner[end+len(closeTag):])
+		if after == "" {
+			return end
+		}
+		if strings.HasPrefix(after, "<instructions>") {
+			return -1
+		}
+		if strings.HasPrefix(after, "<automation_id>") {
+			if _, seen := fields["automation_id"]; !seen {
+				return end
+			}
+			return -1
+		}
+		if strings.HasPrefix(after, "<current_time_iso>") {
+			if _, seen := fields["current_time_iso"]; !seen {
+				return end
+			}
+			return -1
+		}
+		offset = end + len(closeTag)
 	}
 }
 
