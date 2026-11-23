@@ -37,7 +37,7 @@ watch([siteName, reducedMotion], () => {
 const siteLogo = computed(() => sanitizeUrl(settings.value?.site_logo || appStore.siteLogo || '', { allowRelative: true, allowDataUrl: true }))
 const docsBase = computed(() => appStore.docUrl || settings.value?.doc_url)
 const docsUrl = computed(() => resolveDocsUrl(docsBase.value, '', locale.value))
-const docsConfigToolUrl = computed(() => resolveDocsUrl(docsBase.value, 'config-tool', locale.value))
+const docsConfigToolUrl = computed(() => resolveDocsUrl(docsBase.value, '', locale.value))
 const docsFaqUrl = computed(() => resolveDocsUrl(docsBase.value, 'faq', locale.value))
 const registrationEnabled = computed(() => appStore.publicSettingsLoaded && settings.value?.registration_enabled === true)
 const modelPlazaEnabled = computed(() => appStore.publicSettingsLoaded && resolveFeatureFlag(settings.value, FeatureFlags.modelPlaza))
