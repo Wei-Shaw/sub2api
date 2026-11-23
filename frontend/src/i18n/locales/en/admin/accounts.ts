@@ -639,6 +639,19 @@ export default {
         sub2apiNote: 'Matches the request ID column of its usage log',
         official: '{platform} official API'
       },
+      requestZstd: {
+        label: 'Compress request body (zstd)',
+        hint: 'Compress large JSON requests to this upstream. First verify support in Test Connection. Changes take effect in about 15 seconds.',
+        testOption: 'Compress request body (zstd)',
+        testOptionHint: 'Check to test zstd support. Uncheck to compare with an uncompressed request.',
+        testSending: 'The test request body will be sent compressed with zstd',
+        attempt: 'Request body compressed: {raw} → {wire} bytes ({host})',
+        supported: 'The upstream accepts zstd-compressed request bodies. You can turn on "Compress request body" in the account settings.',
+        supportedEnabled: 'The upstream accepts zstd-compressed request bodies ("Compress request body" is already on for this account).',
+        failed: 'The compressed test failed. Run it again with compression unchecked before enabling it.',
+        failedEnabled: 'The compressed test failed and this account has compression enabled. If the uncompressed test succeeds, turn compression off in the account settings.',
+        noAttempt: 'This test sent no request body that could be compressed, so it cannot tell whether the upstream supports it.'
+      },
       // OpenAI specific hints
       openai: {
         baseUrlHint: 'Leave default for official OpenAI API',

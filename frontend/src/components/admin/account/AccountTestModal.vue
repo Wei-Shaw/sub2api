@@ -81,6 +81,24 @@
         />
       </div>
 
+      <div v-if="supportsRequestZstdTest" class="space-y-1">
+        <label class="flex cursor-pointer items-center gap-2">
+          <input
+            v-model="compressRequestBody"
+            data-testid="account-test-compress-request-body"
+            type="checkbox"
+            class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-dark-500"
+            :disabled="status === 'connecting'"
+          />
+          <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+            {{ t('admin.accounts.requestZstd.testOption') }}
+          </span>
+        </label>
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.requestZstd.testOptionHint') }}
+        </p>
+      </div>
+
       <div v-if="supportsPromptInput" class="space-y-1.5">
         <TextArea
           v-model="testPrompt"
@@ -423,6 +441,8 @@ const uploadAudioName = ref('')
 const imageFileInput = ref<HTMLInputElement | null>(null)
 const audioFileInput = ref<HTMLInputElement | null>(null)
 const isOpenAIAccount = computed(() => props.account?.platform === 'openai')
+const compressRequestBody = ref(false)
+const supportsRequestZstdTest = computed(() => props.account?.type === 'apikey')
 const isGrokAccount = computed(() => props.account?.platform === 'grok')
 const openAITestModeOptions = computed(() => [
   { value: 'default', label: t('admin.accounts.openai.testModeDefault') },
@@ -740,6 +760,7 @@ watch(
       testPrompt.value = ''
       testMode.value = 'default'
       grokTestMode.value = 'text'
+      compressRequestBody.value = false
       resetState()
       await loadAvailableModels()
       if (isGrokAccount.value) {
@@ -837,6 +858,10 @@ const startTest = async () => {
       grokTestModeOptions.value.find((o) => o.value === grokTestMode.value)?.label || grokTestMode.value
     addLine(t('admin.accounts.grok.selectedTestMode', { mode: modeLabel }), 'text-gray-400')
   }
+  const sendCompressed = supportsRequestZstdTest.value && compressRequestBody.value
+  if (sendCompressed) {
+    addLine(t('admin.accounts.requestZstd.testSending'), 'text-gray-400')
+  }
   addLine('', 'text-gray-300')
 
   abortStream()
@@ -850,12 +875,16 @@ const startTest = async () => {
       mode?: string
       image_data_url?: string
       audio_data_url?: string
+      compress_request_body?: boolean
     } = {
       model_id: showModelSelect.value ? selectedModelId.value : '',
       prompt: supportsPromptInput.value ? testPrompt.value.trim() : ''
     }
     if (isOpenAIAccount.value) {
       requestBody.mode = testMode.value
+    }
+    if (supportsRequestZstdTest.value) {
+      requestBody.compress_request_body = sendCompressed
     }
     if (isGrokAccount.value) {
       // Always send explicit Grok mode. search/tts/stt/realtime are standalone
@@ -948,6 +977,7 @@ const handleEvent = (event: {
   audio_url?: string
   video_url?: string
   mime_type?: string
+  request_compression?: RequestCompressionReport
 }) => {
   switch (event.type) {
     case 'test_start':
@@ -1044,6 +1074,49 @@ const handleEvent = (event: {
         streamingContent.value = ''
       }
       break
+
+  }
+  if (event.request_compression && (event.type === 'test_complete' || event.type === 'error')) {
+    reportRequestCompression(event.request_compression)
+  }
+}
+
+interface RequestCompressionReport {
+  attempts?: { host: string; raw_bytes: number; wire_bytes: number }[]
+  account_enabled?: boolean
+}
+
+const reportRequestCompression = (report: RequestCompressionReport) => {
+  const attempts = Array.isArray(report.attempts) ? report.attempts : []
+  addLine('', 'text-gray-300')
+  if (attempts.length === 0) {
+    addLine(t('admin.accounts.requestZstd.noAttempt'), 'text-yellow-400')
+    return
+  }
+  for (const attempt of attempts) {
+    addLine(
+      t('admin.accounts.requestZstd.attempt', {
+        raw: attempt.raw_bytes,
+        wire: attempt.wire_bytes,
+        host: attempt.host
+      }),
+      'text-cyan-300'
+    )
+  }
+  if (status.value === 'success') {
+    addLine(
+      report.account_enabled
+        ? t('admin.accounts.requestZstd.supportedEnabled')
+        : t('admin.accounts.requestZstd.supported'),
+      'text-green-400'
+    )
+  } else if (status.value === 'error') {
+    addLine(
+      report.account_enabled
+        ? t('admin.accounts.requestZstd.failedEnabled')
+        : t('admin.accounts.requestZstd.failed'),
+      'text-yellow-400'
+    )
   }
 }
 

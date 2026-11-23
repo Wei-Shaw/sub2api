@@ -467,6 +467,12 @@ gateway:
     sticky_escape_ttft_ms: 15000
     # 错误率 EWMA 超过该阈值时跳过 sticky，默认 0.5，仅在明显降级时触发
     sticky_escape_error_rate: 0.5
+  # Exact hostnames of relays that accept Content-Encoding: zstd (all ports).
+  # Empty by default. Individual API key accounts can also opt in under Edit Account.
+  # Test support in Test Connection first. Ordinary JSON requests between 16 KiB and
+  # 64 MiB are compressed only when this saves at least 10% of the body size.
+  upstream_zstd_request_hosts: []
+
   # OpenAI HTTP upstream protocol strategy.
   # OpenAI HTTP 上游协议策略（默认 HTTP/2；代理明确不兼容时可临时回退 HTTP/1.1）。
   openai_http2:

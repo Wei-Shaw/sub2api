@@ -140,7 +140,8 @@ describe('AccountTestModal', () => {
     const [, request] = (global.fetch as any).mock.calls[0]
     expect(JSON.parse(request.body)).toEqual({
       model_id: 'gemini-3.1-flash-image',
-      prompt: 'draw a tiny orange cat astronaut'
+      prompt: 'draw a tiny orange cat astronaut',
+      compress_request_body: false
     })
 
     const preview = wrapper.find('img[alt="test-image-1"]')
@@ -218,6 +219,82 @@ describe('AccountTestModal', () => {
       model_id: 'gpt-5.4',
       prompt: '',
       mode: 'compact'
+    })
+    // OAuth 账号没有「压缩请求体」选项，也不会带这个字段。
+    expect(wrapper.find('[data-testid="account-test-compress-request-body"]').exists()).toBe(false)
+    expect(JSON.parse(request.body)).not.toHaveProperty('compress_request_body')
+  })
+
+  describe('压缩请求体测试', () => {
+    const apiKeyAccount = {
+      id: 7,
+      name: 'Example relay',
+      platform: 'deepseek',
+      type: 'apikey',
+      status: 'active'
+    }
+
+    async function runCompressedTest(lines: string[]) {
+      getAvailableModels.mockResolvedValue([{ id: 'deepseek-v4.1-flash', display_name: 'DeepSeek V4.1 Flash' }])
+      global.fetch = vi.fn().mockResolvedValue(createStreamResponse(lines)) as any
+      const wrapper = mountModal(apiKeyAccount)
+      await wrapper.setProps({ show: true })
+      await flushPromises()
+      await wrapper.find('[data-testid="account-test-compress-request-body"]').setValue(true)
+      await (wrapper.vm as any).startTest()
+      await flushPromises()
+      return wrapper
+    }
+
+    it('勾选后请求带 compress_request_body，通过时提示可以打开开关', async () => {
+      const wrapper = await runCompressedTest([
+        'data: {"type":"test_start","model":"deepseek-v4.1-flash"}\n',
+        'data: {"type":"test_complete","success":true,"request_compression":{"account_enabled":false,"attempts":[{"host":"relay.example","raw_bytes":812,"wire_bytes":640}]}}\n'
+      ])
+
+      const [, request] = (global.fetch as any).mock.calls[0]
+      expect(JSON.parse(request.body)).toMatchObject({ compress_request_body: true })
+      const text = wrapper.text()
+      expect(text).toContain('admin.accounts.requestZstd.testSending')
+      expect(text).toContain('admin.accounts.requestZstd.attempt')
+      expect(text).toContain('admin.accounts.requestZstd.supported')
+      expect(text).not.toContain('admin.accounts.requestZstd.failed')
+    })
+
+    it('压缩后失败、且账号已打开开关时提示去关掉', async () => {
+      const wrapper = await runCompressedTest([
+        'data: {"type":"error","error":"API returned 400: invalid character","request_compression":{"account_enabled":true,"attempts":[{"host":"api.example.com","raw_bytes":812,"wire_bytes":640}]}}\n'
+      ])
+
+      const text = wrapper.text()
+      expect(text).toContain('admin.accounts.requestZstd.failedEnabled')
+      expect(text).not.toContain('admin.accounts.requestZstd.supported')
+    })
+
+    it('一个请求体都没压到时提示无法判断', async () => {
+      const wrapper = await runCompressedTest([
+        'data: {"type":"test_complete","success":true,"request_compression":{"account_enabled":false,"attempts":[]}}\n'
+      ])
+
+      const text = wrapper.text()
+      expect(text).toContain('admin.accounts.requestZstd.noAttempt')
+      expect(text).not.toContain('admin.accounts.requestZstd.supported')
+    })
+
+    it('不勾选时显式测试原始请求体', async () => {
+      getAvailableModels.mockResolvedValue([{ id: 'deepseek-v4.1-flash', display_name: 'DeepSeek V4.1 Flash' }])
+      global.fetch = vi.fn().mockResolvedValue(
+        createStreamResponse(['data: {"type":"test_complete","success":true}\n'])
+      ) as any
+      const wrapper = mountModal(apiKeyAccount)
+      await wrapper.setProps({ show: true })
+      await flushPromises()
+      expect(wrapper.find('[data-testid="account-test-compress-request-body"]').exists()).toBe(true)
+      await (wrapper.vm as any).startTest()
+      await flushPromises()
+
+      const [, request] = (global.fetch as any).mock.calls[0]
+      expect(JSON.parse(request.body)).toHaveProperty('compress_request_body', false)
     })
   })
 })

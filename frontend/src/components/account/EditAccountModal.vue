@@ -1926,6 +1926,18 @@
         <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
       </div>
 
+      <div v-if="account.type === 'apikey'" class="flex items-center justify-between gap-4">
+        <div>
+          <label class="input-label mb-0">{{ t('admin.accounts.requestZstd.label') }}</label>
+          <p class="input-hint">{{ t('admin.accounts.requestZstd.hint') }}</p>
+        </div>
+        <Toggle
+          v-model="upstreamRequestZstd"
+          data-testid="upstream-request-zstd"
+          :aria-label="t('admin.accounts.requestZstd.label')"
+        />
+      </div>
+
       <UpstreamRequestIdHeaderField
         v-model="upstreamRequestIdHeader"
         :platform="account.platform"
@@ -4114,6 +4126,7 @@ const upstreamBillingAutoProbeEnabled = ref(false)
 const upstreamBillingRateSyncEnabled = ref(false)
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 // 上游ID：直接上游声明请求标识的响应头名，留空不记录。
+const upstreamRequestZstd = ref(false)
 const upstreamRequestIdHeader = ref('')
 const readUpstreamRequestIdHeader = (extra: unknown): string => {
   const value = (extra as Record<string, unknown> | undefined)?.upstream_request_id_header
@@ -4660,6 +4673,7 @@ const syncFormFromAccount = (newAccount: Account | null) => {
 	const extra = newAccount.extra as Record<string, unknown> | undefined
 	mixedScheduling.value = extra?.mixed_scheduling === true
 	allowOverages.value = extra?.allow_overages === true
+	upstreamRequestZstd.value = extra?.upstream_request_zstd === true
 	upstreamRequestIdHeader.value = readUpstreamRequestIdHeader(extra)
 	openAIImagesUrlToB64JsonEnabled.value = extra?.images_url_to_b64_json === true
 	openAIImageSizeTiers.value = readOpenAIImageSizeTiers(extra)
@@ -6415,6 +6429,16 @@ const handleSubmit = async () => {
       }
       // Quota notify config
       writeQuotaNotifyToExtra(newExtra, 'update')
+      updatePayload.extra = newExtra
+    }
+
+    if (props.account.type === 'apikey' && upstreamRequestZstd.value !== (props.account.extra?.upstream_request_zstd === true)) {
+      const newExtra: Record<string, unknown> = { ...(updatePayload.extra || props.account.extra || {}) }
+      if (upstreamRequestZstd.value) {
+        newExtra.upstream_request_zstd = true
+      } else {
+        delete newExtra.upstream_request_zstd
+      }
       updatePayload.extra = newExtra
     }
 
