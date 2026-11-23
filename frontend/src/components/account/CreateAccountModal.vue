@@ -1075,18 +1075,21 @@
             <Select
               v-if="geminiOAuthType === 'google_one'"
               v-model="geminiTierGoogleOne"
+              :aria-label="t('admin.accounts.gemini.tier.label')"
               :options="geminiTierGoogleOneOptions"
             />
 
             <Select
               v-else-if="geminiOAuthType === 'code_assist'"
               v-model="geminiTierGcp"
+              :aria-label="t('admin.accounts.gemini.tier.label')"
               :options="geminiTierGcpOptions"
             />
 
             <Select
               v-else
               v-model="geminiTierAIStudio"
+              :aria-label="t('admin.accounts.gemini.tier.label')"
               :options="geminiTierAIStudioOptions"
             />
           </div>
@@ -1572,7 +1575,7 @@
         <!-- Gemini API Key tier selection -->
         <div v-if="form.platform === 'gemini' && isOfficialGeminiBaseUrl(apiKeyBaseUrl)">
           <label class="input-label">{{ t('admin.accounts.gemini.tier.label') }}</label>
-          <Select v-model="geminiTierAIStudio" data-testid="gemini-apikey-tier" :options="geminiTierAIStudioOptions" />
+          <Select v-model="geminiTierAIStudio" :aria-label="t('admin.accounts.gemini.tier.label')" data-testid="gemini-apikey-tier" :options="geminiTierAIStudioOptions" />
           <p class="input-hint">{{ t('admin.accounts.gemini.tier.aiStudioHint') }}</p>
         </div>
 
@@ -2091,7 +2094,7 @@
         <!-- Shared: Region -->
         <div>
           <label class="input-label">{{ t('admin.accounts.bedrockRegion') }}</label>
-          <Select v-model="bedrockRegion" :options="bedrockRegionSelectOptions" />
+          <Select v-model="bedrockRegion" :aria-label="t('admin.accounts.bedrockRegion')" :options="bedrockRegionSelectOptions" />
           <p class="input-hint">{{ t('admin.accounts.bedrockRegionHint') }}</p>
         </div>
 
@@ -3066,7 +3069,7 @@
           </div>
           <!-- Profile selector -->
           <div v-if="tlsFingerprintEnabled" class="mt-3">
-            <Select v-model="tlsFingerprintProfileId" :options="tlsFingerprintProfileOptions" />
+            <Select v-model="tlsFingerprintProfileId" :aria-label="t('admin.accounts.quotaControl.tlsFingerprint.label')" :options="tlsFingerprintProfileOptions" />
           </div>
         </div>
 
@@ -3126,6 +3129,7 @@
             <label class="input-label text-xs">{{ t('admin.accounts.quotaControl.cacheTTLOverride.target') }}</label>
             <Select
               v-model="cacheTTLOverrideTarget"
+              :aria-label="t('admin.accounts.quotaControl.cacheTTLOverride.target')"
               class="mt-1 block w-full"
               :options="cacheTTLOverrideTargetOptions"
             />
@@ -3371,7 +3375,7 @@
               {{ t('admin.accounts.anthropic.apiKeyAuthSchemeDesc') }}
             </p>
           </div>
-          <Select v-model="anthropicAPIKeyAuthScheme" class="w-52 text-sm" :options="anthropicAPIKeyAuthSchemeOptions" />
+          <Select v-model="anthropicAPIKeyAuthScheme" :aria-label="t('admin.accounts.anthropic.apiKeyAuthScheme')" class="w-52 text-sm" :options="anthropicAPIKeyAuthSchemeOptions" />
         </div>
       </div>
 
@@ -3387,7 +3391,7 @@
               {{ t('admin.accounts.anthropic.webSearchEmulationDesc') }}
             </p>
           </div>
-          <Select v-model="webSearchEmulationMode" class="w-24 text-sm" :options="webSearchEmulationModeOptions" />
+          <Select v-model="webSearchEmulationMode" :aria-label="t('admin.accounts.anthropic.webSearchEmulation')" class="w-24 text-sm" :options="webSearchEmulationModeOptions" />
         </div>
       </div>
 

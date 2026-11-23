@@ -23,6 +23,7 @@
           />
           <Select
             :model-value="row.protocol"
+            :aria-label="t('admin.accounts.cnProviders.apiProtocol.title')"
             class="w-44 shrink-0"
             :data-testid="`opencode-go-protocol-select-${index}`"
             :options="protocolSelectOptions"

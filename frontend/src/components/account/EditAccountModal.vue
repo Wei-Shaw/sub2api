@@ -756,6 +756,7 @@
           </div>
           <Select
             v-model="grokMediaEligibilityMode"
+            :aria-label="t('admin.accounts.grokMediaEligibility.title')"
             class="input"
             data-testid="grok-media-eligibility-mode"
             :disabled="grokMediaEligibilityLoading"
@@ -2413,7 +2414,7 @@
               {{ t('admin.accounts.anthropic.apiKeyAuthSchemeDesc') }}
             </p>
           </div>
-          <Select v-model="anthropicAPIKeyAuthScheme" class="w-52 text-sm" :options="anthropicAPIKeyAuthSchemeOptions" />
+          <Select v-model="anthropicAPIKeyAuthScheme" :aria-label="t('admin.accounts.anthropic.apiKeyAuthScheme')" class="w-52 text-sm" :options="anthropicAPIKeyAuthSchemeOptions" />
         </div>
       </div>
 
@@ -2429,7 +2430,7 @@
               {{ t('admin.accounts.anthropic.webSearchEmulationDesc') }}
             </p>
           </div>
-          <Select v-model="webSearchEmulationMode" class="w-24 text-sm" :options="webSearchEmulationModeOptions" />
+          <Select v-model="webSearchEmulationMode" :aria-label="t('admin.accounts.anthropic.webSearchEmulation')" class="w-24 text-sm" :options="webSearchEmulationModeOptions" />
         </div>
       </div>
 
@@ -3153,7 +3154,7 @@
           </div>
           <!-- Profile selector -->
           <div v-if="tlsFingerprintEnabled" class="mt-3">
-            <Select v-model="tlsFingerprintProfileId" :options="tlsFingerprintProfileOptions" />
+            <Select v-model="tlsFingerprintProfileId" :aria-label="t('admin.accounts.quotaControl.tlsFingerprint.label')" :options="tlsFingerprintProfileOptions" />
           </div>
         </div>
 
@@ -3213,6 +3214,7 @@
             <label class="input-label text-xs">{{ t('admin.accounts.quotaControl.cacheTTLOverride.target') }}</label>
             <Select
               v-model="cacheTTLOverrideTarget"
+              :aria-label="t('admin.accounts.quotaControl.cacheTTLOverride.target')"
               class="mt-1 block w-full"
               :options="cacheTTLOverrideTargetOptions"
             />

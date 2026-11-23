@@ -27,7 +27,7 @@
       </div>
       <div>
         <label class="input-label">{{ t('admin.users.form.roleLabel') }}</label>
-        <Select v-model="form.role" :options="roleOptions" />
+        <Select v-model="form.role" :aria-label="t('admin.users.form.roleLabel')" :options="roleOptions" />
       </div>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>

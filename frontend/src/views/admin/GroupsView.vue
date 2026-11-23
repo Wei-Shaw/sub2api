@@ -581,6 +581,7 @@
           <!-- 分组选择下拉 -->
           <Select
             :model-value="null"
+            :aria-label="t('admin.groups.copyAccounts.title')"
             :options="copyAccountsGroupOptionsForCreate"
             :placeholder="t('admin.groups.copyAccounts.selectPlaceholder')"
             @update:model-value="onCopyAccountsGroupPicked"
@@ -2223,6 +2224,7 @@
           <!-- 分组选择下拉 -->
           <Select
             :model-value="null"
+            :aria-label="t('admin.groups.copyAccounts.title')"
             :options="copyAccountsGroupOptionsForEditSelect"
             :placeholder="t('admin.groups.copyAccounts.selectPlaceholder')"
             @update:model-value="onCopyAccountsGroupPickedForEdit"

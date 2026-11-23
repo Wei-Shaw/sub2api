@@ -555,6 +555,7 @@
             <label class="input-label">API Key</label>
             <Select
               v-model="form.apiKeyId"
+              aria-label="API Key"
               class="input"
               :options="batchApiKeyOptions"
               :disabled="loadingKeys"
@@ -568,6 +569,7 @@
             <label class="input-label">{{ t('batchImage.create.model') }}</label>
             <Select
               v-model="form.model"
+              :aria-label="t('batchImage.create.model')"
               class="input"
               :options="batchModelOptions"
               :disabled="loadingModels || availableBatchImageModels.length === 0"
@@ -591,7 +593,7 @@
 
           <div>
             <label class="input-label">{{ t('batchImage.create.outputFormat') }}</label>
-            <Select v-model="form.responseMimeType" class="input" :options="responseMimeTypeOptions" />
+            <Select v-model="form.responseMimeType" :aria-label="t('batchImage.create.outputFormat')" class="input" :options="responseMimeTypeOptions" />
           </div>
 
           <div>

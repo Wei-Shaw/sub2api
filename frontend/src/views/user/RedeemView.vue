@@ -341,6 +341,7 @@
               {{ t('pagination.perPage') }}
               <Select
                 :model-value="historyPageSize"
+                :aria-label="t('pagination.perPage')"
                 class="w-20"
                 :options="historyPageSizeOptions"
                 :disabled="loadingHistory || submitting"

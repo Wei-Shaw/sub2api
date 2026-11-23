@@ -423,6 +423,7 @@
                     </label>
                     <Select
                       v-model="streamTimeoutForm.action"
+                      :aria-label="t('admin.settings.streamTimeout.action')"
                       class="w-64"
                       :options="streamTimeoutActionOptions"
                     />
@@ -3632,6 +3633,7 @@
                     </label>
                     <Select
                       v-model="form.oidc_connect_token_auth_method"
+                      :aria-label="t('admin.settings.oidc.tokenAuthMethod')"
                       class="font-mono text-sm"
                       :options="oidcTokenAuthMethodOptions"
                     />
@@ -4509,6 +4511,7 @@
                   >
                     <Select
                       v-model="row.type"
+                      :aria-label="t('admin.settings.gatewayForwarding.codexFingerprintSignals')"
                       class="w-32 shrink-0 text-sm"
                       :options="codexFpTypeOptions"
                     />
@@ -5282,6 +5285,7 @@
                   <Select
                     id="grok-default-base-url-mode"
                     v-model="form.grok_default_base_url_mode"
+                    :aria-label="t('admin.settings.gatewayForwarding.grokDefaultBaseURLMode')"
                     class="mt-2 w-full"
                     data-testid="grok-default-base-url-mode"
                     :options="grokBaseUrlModeOptions"
@@ -5302,6 +5306,7 @@
                 <Select
                   id="openai-ttft-mode"
                   v-model="form.openai_ttft_mode"
+                  :aria-label="t('admin.settings.gatewayForwarding.openaiTTFTMode')"
                   class="mt-2 w-full"
                   data-testid="openai-ttft-mode"
                   :options="openaiTtftModeOptions"
@@ -6811,6 +6816,7 @@
                     </label>
                     <Select
                       v-model="item.visibility"
+                      :aria-label="t('admin.settings.customMenu.visibility')"
                       class="text-sm"
                       :options="customMenuVisibilityOptions"
                     />
