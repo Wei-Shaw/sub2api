@@ -45,6 +45,14 @@ describe('Select keyboard focus', () => {
     expect(wrapper.emitted('update:modelValue')).toBeUndefined()
   })
 
+  it.each([true, false])('moves keyboard focus back to the trigger after Tab closes the dropdown (searchable=%s)', async (searchable) => {
+    await open(searchable)
+    await press('Tab')
+    expect(wrapper.get('button').attributes('aria-expanded')).toBe('false')
+    expect(document.activeElement).toBe(wrapper.get('button').element)
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+  })
+
   it('keeps focus in the search input when search is enabled', async () => {
     await open(true)
     expect(document.activeElement).toBe(document.querySelector('.select-search-input'))

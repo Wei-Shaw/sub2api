@@ -61,6 +61,7 @@
               v-model="selectedEvent"
               :options="eventDisplayOptions"
               :disabled="loadingTemplate || eventOptions.length === 0"
+              :aria-label="t('admin.settings.emailTemplates.event')"
             />
           </div>
           <div>
@@ -72,6 +73,7 @@
               v-model="selectedLocale"
               :options="localeDisplayOptions"
               :disabled="loadingTemplate || localeOptions.length === 0"
+              :aria-label="t('admin.settings.emailTemplates.locale')"
             />
           </div>
         </div>
