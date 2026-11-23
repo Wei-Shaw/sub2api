@@ -98,19 +98,21 @@ type BillingCache interface {
 type ModelPricing struct {
 	// UltrafastMultiplier is model-owned and independent of operator Fast pricing.
 	UltrafastMultiplier                float64
-	InputPricePerToken                 float64            // 每token输入价格 (USD)
-	InputPricePerTokenPriority         float64            // priority service tier 下每token输入价格 (USD)
-	ImageInputPricePerToken            float64            // 图片输入 token 价格 (USD)，用于多模态 embedding 等图文不同价场景；为 0 时回退到 InputPricePerToken
-	ImageCacheReadPricePerToken        float64            // 图片缓存输入价格；无独立价格时沿用缓存读取价
-	OutputPricePerToken                float64            // 每token输出价格 (USD)
-	OutputPricePerTokenPriority        float64            // priority service tier 下每token输出价格 (USD)
-	CacheCreationPricePerToken         float64            // 缓存创建每token价格 (USD)
-	CacheCreationPricePerTokenPriority float64            // priority service tier 下缓存创建每token价格 (USD)
-	CacheCreationPriceExplicit         bool               // 是否由渠道/区间定价显式设定（为 true 时即使 == 0 也不回退）
+	InputPricePerToken                 float64 // 每token输入价格 (USD)
+	InputPricePerTokenPriority         float64 // priority service tier 下每token输入价格 (USD)
+	ImageInputPricePerToken            float64 // 图片输入 token 价格 (USD)，用于多模态 embedding 等图文不同价场景；为 0 时回退到 InputPricePerToken
+	ImageCacheReadPricePerToken        float64 // 图片缓存输入价格；无独立价格时沿用缓存读取价
+	OutputPricePerToken                float64 // 每token输出价格 (USD)
+	OutputPricePerTokenPriority        float64 // priority service tier 下每token输出价格 (USD)
+	CacheCreationPricePerToken         float64 // 缓存创建每token价格 (USD)
+	CacheCreationPricePerTokenPriority float64 // priority service tier 下缓存创建每token价格 (USD)
+	CacheCreationPriceExplicit         bool    // 是否由渠道/区间定价显式设定（为 true 时即使 == 0 也不回退）
+	priceOverrides                     tokenPriceOverrides
 	CacheReadPricePerToken             float64            // 缓存读取每token价格 (USD)
 	CacheReadPricePerTokenPriority     float64            // priority service tier 下缓存读取每token价格 (USD)
 	FastMultiplier                     *float64           // 渠道显式 Fast/priority 倍率；nil 时沿用模型目录行为
 	FlexMultiplier                     *float64           // 渠道显式 Flex 倍率；nil 时沿用默认行为
+	UltrafastMultiplierOverride        *float64           // 渠道显式 Ultra Fast 倍率；nil 时沿用模型默认倍率
 	ReasoningEffortMultipliers         map[string]float64 // 最终转发的推理等级对应的计费倍率；未配置的等级按 1 倍计费
 	CacheCreation5mPrice               float64            // 5分钟缓存创建每token价格 (USD)
 	CacheCreation1hPrice               float64            // 1小时缓存创建每token价格 (USD)
@@ -121,6 +123,7 @@ type ModelPricing struct {
 	LongContextOutputMultiplier        float64            // 长上下文整次会话输出倍率
 	ImageOutputPricePerToken           float64            // 图片输出 token 价格 (USD)
 	ImageOutputPriceExplicit           bool               // 是否由渠道定价显式设定（为 true 时即使 == 0 也不回退）
+	CacheCreation12hPricePerToken      *float64           // OpenAI 12h writes; nil preserves the generic price on existing operator cards.
 }
 
 func normalizeBillingServiceTier(serviceTier string) string {
@@ -155,10 +158,14 @@ func serviceTierCostMultiplier(serviceTier string) float64 {
 
 func configuredServiceTierMultiplier(serviceTier string, pricing *ModelPricing) float64 {
 	if pricing != nil {
-		if normalizeBillingServiceTier(serviceTier) == OpenAIFastTierUltrafast && pricing.UltrafastMultiplier > 0 {
-			return pricing.UltrafastMultiplier
-		}
 		switch normalizeBillingServiceTier(serviceTier) {
+		case OpenAIFastTierUltrafast:
+			if pricing.UltrafastMultiplierOverride != nil {
+				return *pricing.UltrafastMultiplierOverride
+			}
+			if pricing.UltrafastMultiplier > 0 {
+				return pricing.UltrafastMultiplier
+			}
 		case "priority", "fast":
 			if pricing.FastMultiplier != nil {
 				return *pricing.FastMultiplier
@@ -186,15 +193,17 @@ func pricingWithPriorityMultiplier(base *ModelPricing, multiplier float64) *Mode
 
 // UsageTokens 使用的token数量
 type UsageTokens struct {
-	InputTokens           int
-	ImageInputTokens      int
-	ImageCacheReadTokens  int
-	OutputTokens          int
-	CacheCreationTokens   int
-	CacheReadTokens       int
-	CacheCreation5mTokens int
-	CacheCreation1hTokens int
-	ImageOutputTokens     int
+	InputTokens            int
+	ImageInputTokens       int
+	ImageCacheReadTokens   int
+	OutputTokens           int
+	CacheCreationTokens    int
+	CacheReadTokens        int
+	CacheCreation5mTokens  int
+	CacheCreation1hTokens  int
+	CacheCreation30mTokens int
+	CacheCreation12hTokens int
+	ImageOutputTokens      int
 }
 
 // CostBreakdown 费用明细
@@ -423,7 +432,7 @@ func (s *BillingService) initFallbackPricing() {
 		InputPricePerToken:         2e-6,
 		OutputPricePerToken:        10e-6,
 		CacheCreationPricePerToken: 2.5e-6,
-		CacheReadPricePerToken:     0.2e-6,
+		CacheReadPricePerToken:     0.1e-6,
 		CacheCreation5mPrice:       2.5e-6,
 		CacheCreation1hPrice:       4e-6,
 		SupportsCacheBreakdown:     true,
@@ -442,7 +451,19 @@ func (s *BillingService) initFallbackPricing() {
 		LongContextInputMultiplier:  5,
 		LongContextOutputMultiplier: 5,
 	}
-	// Claude Fable 5.x uses the same input/output and cache-write prices, while
+	for _, model := range []string{"claude-fable-5-2", "claude-mythos-5-2"} {
+		p := claude52FallbackPricing
+		s.fallbackPrices[model] = &ModelPricing{
+			InputPricePerToken:         p.InputCostPerToken,
+			OutputPricePerToken:        p.OutputCostPerToken,
+			CacheCreationPricePerToken: p.CacheCreationInputTokenCost,
+			CacheCreation5mPrice:       p.CacheCreationInputTokenCost,
+			CacheCreation1hPrice:       p.CacheCreationInputTokenCostAbove1hr,
+			CacheReadPricePerToken:     p.CacheReadInputTokenCost,
+			SupportsCacheBreakdown:     true,
+		}
+	}
+	// Claude Fable 5.0 and 5.1 use the same input/output and cache-write prices, while
 	// Fable 5.1 reduces cache reads from $1 to $0.25 per MTok.
 	s.fallbackPrices["claude-fable-5"] = &ModelPricing{
 		InputPricePerToken:         10e-6,
@@ -520,6 +541,19 @@ func (s *BillingService) initFallbackPricing() {
 		SupportsCacheBreakdown: false,
 	}
 
+	// Gemini 4 Carbon: introductory Google AI rates through 2026-11-30.
+	// From 2026-12-01 the published $2/$10/$0.10 per MTok rates double
+	// to $4/$20/$0.20. Only implicit caching is supported (no storage fee).
+	s.fallbackPrices["gemini-4-carbon"] = &ModelPricing{
+		InputPricePerToken:             2e-6,
+		OutputPricePerToken:            10e-6,
+		CacheReadPricePerToken:         0.1e-6,
+		InputPricePerTokenPriority:     3.6e-6,
+		OutputPricePerTokenPriority:    18e-6,
+		CacheReadPricePerTokenPriority: 0.18e-6,
+		SupportsCacheBreakdown:         false,
+	}
+
 	// Gemini 4 Argon Cyber Permissive (Vertex AI pricing: $4 input / $20 output /
 	// $0.20 cached input per MTok). The Gemini 4 Argon promotion does not apply.
 	s.fallbackPrices["gemini-4-argon-cyber-permissive"] = &ModelPricing{
@@ -528,6 +562,16 @@ func (s *BillingService) initFallbackPricing() {
 		CacheReadPricePerToken: 0.2e-6,
 		SupportsCacheBreakdown: false,
 	}
+
+	// Gemini 4 Hydrogen (Google AI pricing: $1.50 input / $7.50 output /
+	// $0.075 cached input per MTok; Priority is 1.8x). One rate covers every
+	// prompt length.
+	s.fallbackPrices["gemini-4-hydrogen"] = pricingWithPriorityMultiplier(&ModelPricing{
+		InputPricePerToken:     1.5e-6,
+		OutputPricePerToken:    7.5e-6,
+		CacheReadPricePerToken: 0.075e-6,
+		SupportsCacheBreakdown: false,
+	}, 1.8)
 
 	// OpenAI GPT-5.4（业务指定价格）
 	s.fallbackPrices["gpt-5.4"] = &ModelPricing{
@@ -574,7 +618,7 @@ func (s *BillingService) initFallbackPricing() {
 		LongContextOutputMultiplier:        1.5,
 	}
 
-	// GPT-6 Sol/Luna official rates, 2026-09-22.
+	// GPT-6.1 Terra official rates, 2026-10-26.
 	s.fallbackPrices["gpt-6.1-terra"] = &ModelPricing{
 		InputPricePerToken:                 1e-6,
 		InputPricePerTokenPriority:         2e-6,
@@ -584,6 +628,21 @@ func (s *BillingService) initFallbackPricing() {
 		CacheCreationPricePerTokenPriority: 2.5e-6,
 		CacheReadPricePerToken:             0.05e-6,
 		CacheReadPricePerTokenPriority:     0.1e-6,
+		CacheCreationPriceExplicit:         true,
+		LongContextInputThreshold:          272_000,
+		LongContextInputMultiplier:         2,
+		LongContextOutputMultiplier:        1.5,
+	}
+	// GPT-6 Sol/Luna official rates, 2026-09-22.
+	s.fallbackPrices["gpt-6.2-astra"] = &ModelPricing{
+		InputPricePerToken:                 8e-6,
+		InputPricePerTokenPriority:         16e-6,
+		OutputPricePerToken:                40e-6,
+		OutputPricePerTokenPriority:        80e-6,
+		CacheCreationPricePerToken:         10e-6,
+		CacheCreationPricePerTokenPriority: 20e-6,
+		CacheReadPricePerToken:             0.4e-6,
+		CacheReadPricePerTokenPriority:     0.8e-6,
 		CacheCreationPriceExplicit:         true,
 		LongContextInputThreshold:          272_000,
 		LongContextInputMultiplier:         2,
@@ -603,6 +662,9 @@ func (s *BillingService) initFallbackPricing() {
 		LongContextInputMultiplier:         2,
 		LongContextOutputMultiplier:        1.5,
 	}
+	// GPT-6.2 Sol shares the static token rates of 6.1 Sol. Request-specific
+	// tier policies are applied to a copy after resolving the model.
+	s.fallbackPrices["gpt-6.2-sol"] = s.fallbackPrices["gpt-6.1-sol"]
 	s.fallbackPrices["gpt-6-sol"] = &ModelPricing{
 		InputPricePerToken:                 2e-6,
 		InputPricePerTokenPriority:         4e-6,
@@ -926,6 +988,52 @@ func (s *BillingService) initFallbackPricing() {
 		SupportsCacheBreakdown: false,
 	}
 
+	// ---- 硅基流动 Qwen3-Embedding 系列（纯文本向量化）----
+	// /v1/embeddings 只按输入计费，无 output，OutputPricePerToken 置 0。
+	// 国际站 USD 官方价（https://www.siliconflow.com/models/qwen3-embedding-8b 及同站
+	// 4B / 0.6B 模型页，2026-09-23 读取）：8B $0.04/MTok、4B $0.02/MTok、0.6B $0.01/MTok，
+	// ×1e-6 换算为 USD per token。
+	// 国内站 CNY 参考价（https://www.siliconflow.cn/pricing）：8B ¥0.28/MTok、
+	// 4B ¥0.14/MTok、0.6B ¥0.07/MTok，输出 ¥0。
+	s.fallbackPrices["qwen3-embedding-8b"] = &ModelPricing{
+		InputPricePerToken:     0.04e-6, // $0.04/MTok
+		OutputPricePerToken:    0,
+		SupportsCacheBreakdown: false,
+	}
+	s.fallbackPrices["qwen3-embedding-4b"] = &ModelPricing{
+		InputPricePerToken:     0.02e-6, // $0.02/MTok
+		OutputPricePerToken:    0,
+		SupportsCacheBreakdown: false,
+	}
+	s.fallbackPrices["qwen3-embedding-0.6b"] = &ModelPricing{
+		InputPricePerToken:     0.01e-6, // $0.01/MTok
+		OutputPricePerToken:    0,
+		SupportsCacheBreakdown: false,
+	}
+
+	// ---- 硅基流动 Qwen3-Reranker 系列（文本重排序）----
+	// /v1/rerank 仅按输入计费，无 output，OutputPricePerToken 置 0。
+	// 国际站 USD 官方价（https://www.siliconflow.com/models?q=Reranker，2026-09-25 读取）：
+	// 8B $0.04/MTok、0.6B $0.01/MTok；4B 国际站未上架，取国内站 ¥0.14/MTok 按家族
+	// 隐含汇率（¥7≈$1，与 8B / 0.6B 两档一致）折算 $0.02/MTok，×1e-6 换算为 USD per token。
+	// 国内站 CNY 参考价（https://www.siliconflow.cn/models?q=reranker）：
+	// 8B ¥0.28/MTok、4B ¥0.14/MTok、0.6B ¥0.07/MTok，输出 ¥0。
+	s.fallbackPrices["qwen3-reranker-8b"] = &ModelPricing{
+		InputPricePerToken:     0.04e-6, // $0.04/MTok
+		OutputPricePerToken:    0,
+		SupportsCacheBreakdown: false,
+	}
+	s.fallbackPrices["qwen3-reranker-4b"] = &ModelPricing{
+		InputPricePerToken:     0.02e-6, // $0.02/MTok（国内站 ¥0.14 折算）
+		OutputPricePerToken:    0,
+		SupportsCacheBreakdown: false,
+	}
+	s.fallbackPrices["qwen3-reranker-0.6b"] = &ModelPricing{
+		InputPricePerToken:     0.01e-6, // $0.01/MTok
+		OutputPricePerToken:    0,
+		SupportsCacheBreakdown: false,
+	}
+
 	// ---- 火山方舟 豆包 Embedding（多模态向量化）----
 	// doubao-embedding-vision 图文向量化：上游 usage 回传 prompt_tokens_details.{text_tokens,image_tokens}，
 	// 按量付费官方价 文本 ¥0.7/MTok、图片 ¥1.8/MTok；汇率口径 ÷7.14（与本表其他国产模型一致，¥1≈$0.14）。
@@ -1048,11 +1156,25 @@ func (s *BillingService) initFallbackPricing() {
 // getFallbackPricing 根据模型系列获取回退价格
 func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	modelLower := normalizeAntigravityClaudeTierAlias(strings.ToLower(model))
+	if modelLower == "gpt-image-2.6-flare" || modelLower == "gpt-image-2.6-sunburst" {
+		p := openAIGPTImage25FallbackPricing
+		return &ModelPricing{
+			InputPricePerToken: p.InputCostPerToken, CacheReadPricePerToken: p.CacheReadInputTokenCost,
+			ImageInputPricePerToken: p.InputCostPerImageToken, ImageCacheReadPricePerToken: p.CacheReadInputImageTokenCost,
+			ImageOutputPricePerToken: p.OutputCostPerImageToken,
+		}
+	}
 	if modelLower == "jev-latest" {
 		return s.fallbackPrices["jev-latest"]
 	}
 
 	// 按模型系列匹配
+	if claude.IsFable52(modelLower) {
+		return s.fallbackPrices["claude-fable-5-2"]
+	}
+	if claude.IsMythos52(modelLower) {
+		return s.fallbackPrices["claude-mythos-5-2"]
+	}
 	if isClaudeFable51Model(modelLower) {
 		return s.fallbackPrices["claude-fable-5-1"]
 	}
@@ -1115,12 +1237,18 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	if strings.Contains(modelLower, "gemini-3.8-flash") || strings.Contains(modelLower, "gemini-3-8-flash") {
 		return s.fallbackPrices["gemini-3.8-flash"]
 	}
+	if normalizeGeminiThinkingTierAlias(lastSegment(strings.TrimSpace(modelLower))) == "gemini-4-carbon" {
+		return s.fallbackPrices["gemini-4-carbon"]
+	}
 	// Cyber 变体不享受 Gemini 4 Argon 的优惠价，必须先于 "gemini-4-argon" 判。
 	if strings.Contains(modelLower, "gemini-4-argon-cyber") {
 		return s.fallbackPrices["gemini-4-argon-cyber-permissive"]
 	}
 	if strings.Contains(modelLower, "gemini-4-argon") {
 		return s.fallbackPrices["gemini-4-argon"]
+	}
+	if strings.Contains(modelLower, "gemini-4-hydrogen") {
+		return s.fallbackPrices["gemini-4-hydrogen"]
 	}
 
 	// DeepSeek 系列：官方模型 V4 Pro/Flash（含 vision-exp）按各自价卡；
@@ -1244,6 +1372,33 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 		return s.fallbackPrices["minimax-m2"]
 	}
 
+	// 硅基流动 Qwen3-Embedding 系列（纯文本向量化）。
+	// most-specific-first：8b → 4b → 0.6b。仅白名单这三个已知档位，未知档位
+	//（如 qwen3-embedding-2b）不回退，符合本表「未知型号不猜测计价」的语义。
+	if strings.Contains(modelLower, "qwen3-embedding-8b") {
+		return s.fallbackPrices["qwen3-embedding-8b"]
+	}
+	if strings.Contains(modelLower, "qwen3-embedding-4b") {
+		return s.fallbackPrices["qwen3-embedding-4b"]
+	}
+	if strings.Contains(modelLower, "qwen3-embedding-0.6b") || strings.Contains(modelLower, "qwen3-embedding-0-6b") {
+		return s.fallbackPrices["qwen3-embedding-0.6b"]
+	}
+
+	// 硅基流动 Qwen3-Reranker 系列（文本重排序）。
+	// most-specific-first：8b → 4b → 0.6b。仅白名单这三个已知档位，未知档位
+	//（如 qwen3-reranker-2b）不回退；qwen3-vl-reranker-8b 不含 qwen3-reranker-8b
+	// 子串，不会被误命中。
+	if strings.Contains(modelLower, "qwen3-reranker-8b") {
+		return s.fallbackPrices["qwen3-reranker-8b"]
+	}
+	if strings.Contains(modelLower, "qwen3-reranker-4b") {
+		return s.fallbackPrices["qwen3-reranker-4b"]
+	}
+	if strings.Contains(modelLower, "qwen3-reranker-0.6b") || strings.Contains(modelLower, "qwen3-reranker-0-6b") {
+		return s.fallbackPrices["qwen3-reranker-0.6b"]
+	}
+
 	// 火山方舟 豆包 Embedding（多模态向量化）。
 	// most-specific-first：放在未来任何 doubao-embedding / doubao 宽匹配之前。
 	// 覆盖带版本后缀的别名（如 doubao-embedding-vision-251215）。
@@ -1254,7 +1409,7 @@ func (s *BillingService) getFallbackPricing(model string) *ModelPricing {
 	// OpenAI（GPT-5 / Codex 族）：仅匹配已知型号，避免未知 OpenAI 型号误计价。
 	if normalized := normalizeKnownOpenAICodexModel(modelLower); normalized != "" {
 		switch normalized {
-		case "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna":
+		case "gpt-6.2-sol", "gpt-6.2-astra", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna":
 			return s.fallbackPrices[normalized]
 		case "gpt-6-astra":
 			return s.fallbackPrices["gpt-6-astra"]
@@ -1424,11 +1579,12 @@ func (s *BillingService) getModelPricingAt(model string, pricingAt time.Time) (*
 			price1h := litellmPricing.CacheCreationInputTokenCostAbove1hr
 			enableBreakdown := price1h > 0 && price1h > price5m
 			return s.applyModelSpecificPricingPolicyEx(model, &ModelPricing{
+				priceOverrides:                     litellmPricing.priceOverrides,
 				InputPricePerToken:                 litellmPricing.InputCostPerToken,
 				InputPricePerTokenPriority:         litellmPricing.InputCostPerTokenPriority,
 				OutputPricePerToken:                litellmPricing.OutputCostPerToken,
 				OutputPricePerTokenPriority:        litellmPricing.OutputCostPerTokenPriority,
-				CacheCreationPriceExplicit:         (openai.IsGPT6SolOrLunaModelSpelling(model) || openai.IsGPT61SolModelSpelling(model) || openai.IsGPT61TerraModelSpelling(model)) && litellmPricing.CacheCreationInputTokenCostExplicit,
+				CacheCreationPriceExplicit:         (openai.IsGPT6SolOrLunaModelSpelling(model) || openai.IsGPT61SolModelSpelling(model) || openai.IsGPT61TerraModelSpelling(model) || openai.GPT62ModelID(model) != "") && litellmPricing.CacheCreationInputTokenCostExplicit,
 				CacheCreationPricePerToken:         litellmPricing.CacheCreationInputTokenCost,
 				CacheCreationPricePerTokenPriority: litellmPricing.CacheCreationInputTokenCostPriority,
 				CacheReadPricePerToken:             litellmPricing.CacheReadInputTokenCost,
@@ -1478,6 +1634,7 @@ func (s *BillingService) GetModelPricingWithChannel(model string, channelPricing
 	applyChannelTokenPriceOverrides(pricing, channelPricing)
 	pricing.FastMultiplier = channelPricing.FastMultiplier
 	pricing.FlexMultiplier = channelPricing.FlexMultiplier
+	pricing.UltrafastMultiplierOverride = channelPricing.UltrafastMultiplier
 	pricing.ReasoningEffortMultipliers = maps.Clone(channelPricing.ReasoningEffortMultipliers)
 	applyChannelImagePriceOverrides(channelPricing, pricing)
 	return pricing, nil
@@ -1523,6 +1680,12 @@ func applyChannelTokenPriceOverrides(pricing *ModelPricing, channelPricing *Chan
 		pricing.CacheCreation1hPrice = *channelPricing.CacheWrite1hPrice
 		pricing.SupportsCacheBreakdown = true
 	}
+	if channelPricing.CacheWrite12hPrice != nil {
+		pricing.CacheCreation12hPricePerToken = channelPricing.CacheWrite12hPrice
+	} else if channelPricing.CacheWritePrice != nil {
+		// An existing flat operator price remains flat until 12h is configured.
+		pricing.CacheCreation12hPricePerToken = nil
+	}
 	if channelPricing.CacheReadPrice != nil {
 		priority := channelTierOverridePrice(pricing.CacheReadPricePerToken, pricing.CacheReadPricePerTokenPriority, *channelPricing.CacheReadPrice)
 		pricing.CacheReadPricePerToken = *channelPricing.CacheReadPrice
@@ -1562,7 +1725,7 @@ func (s *BillingService) CalculateCostUnified(input CostInput) (*CostBreakdown, 
 		if input.LongContextBillingEnabled != nil {
 			applyLongContextBilling = *input.LongContextBillingEnabled
 		}
-		pricing, err := s.GetModelPricing(input.Model)
+		pricing, err := s.getModelPricingAt(input.Model, input.PricingAt)
 		if err != nil {
 			return nil, err
 		}
@@ -1640,13 +1803,19 @@ func (s *BillingService) calculateTokenCost(resolved *ResolvedPricing, input Cos
 	// DeepSeek 模型默认价卡按官方峰谷口径调整：高峰时段（01:00–04:00 与
 	// 06:00–10:00 UTC，仅工作日；北京时间周末全天低谷）按 2× 低谷价计费。
 	// 仅作用于默认价卡（Source=LiteLLM，无分组/渠道自定义定价）——分组/渠道
-	// 自定义定价保持运营者语义，不叠加。先克隆再乘，避免污染共享 fallbackPrices 指针。
+	// 自定义定价及 override_file 显式覆盖的字段不叠加。先克隆再乘，避免污染共享价卡。
 	if resolved.Source == PricingSourceLiteLLM && isDeepSeekModel(input.Model) {
 		if mult := deepseekPeakMultiplierAt(pricingAt); mult > 1 {
 			cloned := *pricing
-			cloned.InputPricePerToken *= mult
-			cloned.OutputPricePerToken *= mult
-			cloned.CacheReadPricePerToken *= mult
+			if !cloned.priceOverrides.input {
+				cloned.InputPricePerToken *= mult
+			}
+			if !cloned.priceOverrides.output {
+				cloned.OutputPricePerToken *= mult
+			}
+			if !cloned.priceOverrides.cacheRead {
+				cloned.CacheReadPricePerToken *= mult
+			}
 			pricing = &cloned
 		}
 	}
@@ -1676,6 +1845,7 @@ func (s *BillingService) computeTokenBreakdown(
 	outputPrice := pricing.OutputPricePerToken
 	cacheReadPrice := pricing.CacheReadPricePerToken
 	cacheCreationPrice := pricing.CacheCreationPricePerToken
+	cacheCreationPricing := pricing
 	cacheCreationMultiplier := 1.0
 	tierMultiplier := 1.0
 
@@ -1691,6 +1861,19 @@ func (s *BillingService) computeTokenBreakdown(
 		}
 		if pricing.CacheCreationPricePerTokenPriority > 0 {
 			cacheCreationPrice = pricing.CacheCreationPricePerTokenPriority
+		}
+		if pricing.CacheCreation12hPricePerToken != nil {
+			// Free short writes and free ordinary input have no usable catalog ratio.
+			ratio := configuredServiceTierMultiplier(serviceTier, pricing)
+			if pricing.CacheCreationPricePerToken > 0 {
+				ratio = cacheCreationPrice / pricing.CacheCreationPricePerToken
+			} else if pricing.InputPricePerToken > 0 {
+				ratio = inputPrice / pricing.InputPricePerToken
+			}
+			cloned := *pricing
+			price := *pricing.CacheCreation12hPricePerToken * ratio
+			cloned.CacheCreation12hPricePerToken = &price
+			cacheCreationPricing = &cloned
 		}
 	} else {
 		tierMultiplier = configuredServiceTierMultiplier(serviceTier, pricing)
@@ -1753,7 +1936,7 @@ func (s *BillingService) computeTokenBreakdown(
 	}
 
 	// 缓存创建费用
-	bd.CacheCreationCost = s.computeCacheCreationCost(pricing, tokens, cacheCreationPrice, cacheCreationMultiplier)
+	bd.CacheCreationCost = s.computeCacheCreationCost(cacheCreationPricing, tokens, cacheCreationPrice, cacheCreationMultiplier)
 
 	bd.CacheReadCost = float64(tokens.CacheReadTokens) * cacheReadPrice
 	if imageCached := min(max(tokens.ImageCacheReadTokens, 0), max(tokens.CacheReadTokens, 0)); imageCached > 0 && pricing.ImageCacheReadPricePerToken > 0 {
@@ -1777,19 +1960,41 @@ func (s *BillingService) computeTokenBreakdown(
 	return bd
 }
 
-// computeCacheCreationCost 计算缓存创建费用（支持 5m/1h 分类或标准计费）。
+// computeCacheCreationCost handles OpenAI 30m/12h, Anthropic 5m/1h, or aggregate writes.
 // multiplier 用于长上下文等场景下的整体价格缩放（普通调用传 1.0 即可）。
 func (s *BillingService) computeCacheCreationCost(pricing *ModelPricing, tokens UsageTokens, price, multiplier float64) float64 {
+	if cost, ok := openAICacheCreationTTLCost(tokens, price, pricing.CacheCreation12hPricePerToken); ok {
+		return cost * multiplier
+	}
 	if pricing.SupportsCacheBreakdown && (pricing.CacheCreation5mPrice > 0 || pricing.CacheCreation1hPrice > 0) {
-		cacheCreation5mTokens, cacheCreation1hTokens := normalizeCacheCreationBreakdown(tokens)
-		if cacheCreation5mTokens == 0 && cacheCreation1hTokens == 0 && tokens.CacheCreationTokens > 0 {
-			// API 未返回 ephemeral 明细，回退到全部按 5m 单价计费
-			return float64(tokens.CacheCreationTokens) * pricing.CacheCreation5mPrice * multiplier
-		}
+		cacheCreation5mTokens, cacheCreation1hTokens := allocateCacheCreationBillingTokens(tokens)
 		return float64(cacheCreation5mTokens)*pricing.CacheCreation5mPrice*multiplier +
 			float64(cacheCreation1hTokens)*pricing.CacheCreation1hPrice*multiplier
 	}
 	return float64(tokens.CacheCreationTokens) * price * multiplier
+}
+
+func allocateCacheCreationBillingTokens(tokens UsageTokens) (int, int) {
+	cacheCreation5mTokens, cacheCreation1hTokens := normalizeCacheCreationBreakdown(tokens)
+	if tokens.CacheCreationTokens > 0 {
+		cacheCreation5mTokens += tokens.CacheCreationTokens - cacheCreation5mTokens - cacheCreation1hTokens
+	}
+	return cacheCreation5mTokens, cacheCreation1hTokens
+}
+
+// OpenAI's two write buckets are disjoint and exhaustive. Do not add the
+// aggregate again or reuse the Anthropic 5m/1h buckets. Invalid or unknown
+// breakdowns fall back to the aggregate's existing price.
+func openAICacheCreationTTLCost(tokens UsageTokens, shortPrice float64, longPrice *float64) (float64, bool) {
+	a, b := tokens.CacheCreation30mTokens, tokens.CacheCreation12hTokens
+	if tokens.CacheCreationTokens <= 0 || a < 0 || b < 0 || a > tokens.CacheCreationTokens || b != tokens.CacheCreationTokens-a {
+		return 0, false
+	}
+	p := shortPrice
+	if longPrice != nil {
+		p = *longPrice
+	}
+	return float64(a)*shortPrice + float64(b)*p, true
 }
 
 // normalizeCacheCreationBreakdown caps contradictory 5m/1h details at an explicitly
@@ -1863,16 +2068,6 @@ func (s *BillingService) CalculateCostWithServiceTier(model string, tokens Usage
 	return s.calculateCostInternal(model, tokens, rateMultiplier, serviceTier, nil)
 }
 
-func (s *BillingService) calculateCostWithServiceTierPolicy(
-	model string,
-	tokens UsageTokens,
-	rateMultiplier float64,
-	serviceTier string,
-	longContextBillingEnabled bool,
-) (*CostBreakdown, error) {
-	return s.calculateCostInternalWithPolicy(model, tokens, rateMultiplier, serviceTier, nil, longContextBillingEnabled)
-}
-
 func (s *BillingService) calculateCostInternal(model string, tokens UsageTokens, rateMultiplier float64, serviceTier string, channelPricing *ChannelModelPricing) (*CostBreakdown, error) {
 	return s.calculateCostInternalWithPolicy(model, tokens, rateMultiplier, serviceTier, channelPricing, true)
 }
@@ -1911,14 +2106,14 @@ func (s *BillingService) applyModelSpecificPricingPolicy(model string, pricing *
 
 // applyModelSpecificPricingPolicyEx 与 applyModelSpecificPricingPolicy 相同，
 // 但由调用方控制是否强制 DeepSeek 官方价（forceDeepSeekRates）。
-// 保留计费时点参数以兼容现有调用；模型价卡不再按日期切换。
+// GPT-6.2 Ultrafast 按请求时点计算。
 // calculateTokenCost 对分组/渠道自定义定价（Source 非 LiteLLM）传 false：
 // 强制覆盖会把运营者配置的售价盖回官方价，违反自定义定价语义。
 func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing *ModelPricing, forceDeepSeekRates bool, pricingAt time.Time) *ModelPricing {
 	if pricing == nil {
 		return nil
 	}
-	// DeepSeek 模型：无论 JSON/远端价格表给什么价，一律强制官方低谷价
+	// DeepSeek 模型：目录/回退数据使用官方低谷价；override_file 显式覆盖的字段保留。
 	// （Flash 三档为 2026-09-10 官方降价后口径）。这是覆盖远端旧价的关键——远端
 	// 仓库不可改，生产会先拉到旧价，必须在此兜底修正；克隆后再覆盖，避免污染
 	// 共享 fallbackPrices 指针。
@@ -1929,21 +2124,23 @@ func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing
 	// 对默认价卡另行叠加（分组/渠道自定义定价不叠加）。
 	if forceDeepSeekRates && isDeepSeekModel(model) {
 		cloned := *pricing
+		inputPrice, outputPrice, cacheReadPrice := deepseekFlashOffPeakInputPrice, deepseekFlashOffPeakOutputPrice, deepseekFlashOffPeakCacheRead
 		if isDeepSeekProModel(model) {
-			cloned.InputPricePerToken = deepseekProOffPeakInputPrice
-			cloned.OutputPricePerToken = deepseekProOffPeakOutputPrice
-			cloned.CacheReadPricePerToken = deepseekProOffPeakCacheRead
-		} else {
-			// deepseek-flash（= V4.1-Flash）、deepseek-v4-flash /
-			// deepseek-v4-flash-vision-exp 与其余 deepseek-* 共用 flash 价。
-			cloned.InputPricePerToken = deepseekFlashOffPeakInputPrice
-			cloned.OutputPricePerToken = deepseekFlashOffPeakOutputPrice
-			cloned.CacheReadPricePerToken = deepseekFlashOffPeakCacheRead
+			inputPrice, outputPrice, cacheReadPrice = deepseekProOffPeakInputPrice, deepseekProOffPeakOutputPrice, deepseekProOffPeakCacheRead
+		}
+		if !cloned.priceOverrides.input {
+			cloned.InputPricePerToken = inputPrice
+		}
+		if !cloned.priceOverrides.output {
+			cloned.OutputPricePerToken = outputPrice
+		}
+		if !cloned.priceOverrides.cacheRead {
+			cloned.CacheReadPricePerToken = cacheReadPrice
 		}
 		return &cloned
 	}
 	normalized := normalizeKnownOpenAICodexModel(model)
-	usesCacheWritePremium := isOpenAIGPT56Model(normalized) || (openai.IsGPT6SolOrLunaModelSpelling(normalized) || openai.IsGPT61SolModelSpelling(normalized) || openai.IsGPT61TerraModelSpelling(normalized))
+	usesCacheWritePremium := isOpenAIGPT56Model(normalized) || isOpenAIGPT6AstraModel(normalized) || (openai.IsGPT6SolOrLunaModelSpelling(normalized) || openai.IsGPT61SolModelSpelling(normalized) || openai.IsGPT61TerraModelSpelling(normalized) || openai.GPT62ModelID(normalized) != "")
 	needsCacheCreationPolicy := usesCacheWritePremium && !pricing.CacheCreationPriceExplicit && (pricing.CacheCreationPricePerToken <= 0 ||
 		(pricing.InputPricePerTokenPriority > 0 && pricing.CacheCreationPricePerTokenPriority <= 0))
 	fastRatio := openAIModelFastPricingRatio(normalized)
@@ -1952,8 +2149,8 @@ func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing
 		return pricing
 	}
 	cloned := *pricing
-	if isOpenAIGPT6AstraModel(normalized) {
-		cloned.UltrafastMultiplier = 6
+	if openAIModelSupportsUltrafast(normalized) {
+		cloned.UltrafastMultiplier = openAIUltrafastMultiplier(normalized, pricingAt)
 	}
 	if needsOpus55FastMultiplier {
 		multiplier := 2.0
@@ -1967,9 +2164,13 @@ func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing
 			cloned.CacheCreationPricePerTokenPriority = cloned.InputPricePerTokenPriority * 1.25
 		}
 	}
+	if usesCacheWritePremium && cloned.CacheCreation12hPricePerToken == nil && (forceDeepSeekRates || !cloned.CacheCreationPriceExplicit) {
+		price := cloned.InputPricePerToken * 2.5
+		cloned.CacheCreation12hPricePerToken = &price
+	}
 	if fastRatio > 0 {
 		enforceOpenAIFastPricingRatio(&cloned, fastRatio)
-		if (openai.IsGPT6SolOrLunaModelSpelling(normalized) || openai.IsGPT61SolModelSpelling(normalized) || openai.IsGPT61TerraModelSpelling(normalized)) && cloned.CacheCreationPriceExplicit {
+		if (openai.IsGPT6SolOrLunaModelSpelling(normalized) || openai.IsGPT61SolModelSpelling(normalized) || openai.IsGPT61TerraModelSpelling(normalized) || openai.GPT62ModelID(normalized) != "") && cloned.CacheCreationPriceExplicit {
 			cloned.CacheCreationPricePerTokenPriority = cloned.CacheCreationPricePerToken * fastRatio
 		}
 	}
@@ -1981,7 +2182,7 @@ func (s *BillingService) applyModelSpecificPricingPolicyEx(model string, pricing
 // 档的模型（如 gpt-5.5-pro、gpt-5.4-mini/nano）返回 0。
 func openAIModelFastPricingRatio(normalized string) float64 {
 	switch normalized {
-	case "gpt-5.4", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna":
+	case "gpt-5.4", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-6-astra", "gpt-6.2-sol", "gpt-6.2-astra", "gpt-6.1-terra", "gpt-6.1-sol", "gpt-6-sol", "gpt-6-luna":
 		return 2.0
 	case "gpt-5.5":
 		return 2.5
@@ -2460,4 +2661,16 @@ func getDefaultGrokImagineVideoPrice(model string, resolution string) (float64, 
 	default:
 		return 0, false
 	}
+}
+
+// openAIUltrafastMultiplier uses the request instant, including for delayed
+// settlement. March 1, 2027 00:00 Pacific is 08:00 UTC (before DST).
+func openAIUltrafastMultiplier(model string, at time.Time) float64 {
+	if at.IsZero() {
+		at = timezone.Now()
+	}
+	if openai.GPT62ModelID(model) != "" && at.Before(time.Date(2027, time.March, 1, 8, 0, 0, 0, time.UTC)) {
+		return 3
+	}
+	return 6
 }

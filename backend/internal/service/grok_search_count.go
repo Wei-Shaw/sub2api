@@ -4,16 +4,26 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/tidwall/gjson"
 )
 
 // countGrokNativeSearchCallsFromJSONBytes counts completed native search tool
 // calls in a Responses-style JSON body (output array or nested response.output).
 // Counts: web_search_call, x_search_call, tool_search_call, and function_call
-// named tool_search / web_search / x_search.
+// named tool_search / web_search / x_search, and custom_tool_call items the xAI
+// server runs itself (apicompat.IsServerSideSearchCall: call_id xs_ / as_).
+//
+// When usage.server_side_tool_usage_details is present, xAI's reported success
+// counts replace the item count (see grokSearchCountFromUsage).
 func countGrokNativeSearchCallsFromJSONBytes(body []byte) int {
 	if len(body) == 0 || !gjson.ValidBytes(body) {
 		return 0
+	}
+	for _, path := range []string{"response.usage", "usage"} {
+		if n, ok := grokSearchCountFromUsage(gjson.GetBytes(body, path)); ok {
+			return n
+		}
 	}
 	// Responses envelopes normally expose either top-level output (JSON mode)
 	// or response.output (terminal SSE payload). Compatibility layers can retain
@@ -33,7 +43,44 @@ func countGrokNativeSearchCallsFromSSEBody(body string) int {
 	total := 0
 	forEachOpenAISSEDataPayload(body, func(data []byte) {
 		total += countGrokNativeSearchCallsInSSEDataDedup(data, seen)
+		total = grokSearchCountWithTerminalUsage(total, data)
 	})
+	return total
+}
+
+// grokSearchCountFromUsage reads xAI's per-class success counts from a usage
+// object. xAI documents these counts as what determines billing for per-call
+// tools (https://docs.x.ai/developers/tools/tool-usage-details#server-side-tool-calls-vs-tool-usage).
+// Only the classes the item counter also counts are read: web_search_calls
+// (web_search_call items), x_search_calls (xs_ custom_tool_call items) and
+// document_search_calls (as_ custom_tool_call items). Other classes and the
+// X Search item counts (x_posts_fetched, x_users_fetched) are not read. ok is
+// false when server_side_tool_usage_details is absent, so callers keep the
+// item count.
+func grokSearchCountFromUsage(usage gjson.Result) (int, bool) {
+	details := usage.Get("server_side_tool_usage_details")
+	if !details.IsObject() {
+		return 0, false
+	}
+	total := details.Get("web_search_calls").Int() +
+		details.Get("x_search_calls").Int() +
+		details.Get("document_search_calls").Int()
+	if total < 0 {
+		total = 0
+	}
+	return int(total), true
+}
+
+// grokSearchCountWithTerminalUsage returns xAI's usage-reported count when data
+// is a terminal stream event carrying server_side_tool_usage_details (the
+// request total per the xAI X Search docs), else keeps the running total.
+func grokSearchCountWithTerminalUsage(total int, data []byte) int {
+	switch strings.TrimSpace(gjson.GetBytes(data, "type").String()) {
+	case "response.completed", "response.incomplete", "response.done":
+		if n, ok := grokSearchCountFromUsage(gjson.GetBytes(data, "response.usage")); ok {
+			return n
+		}
+	}
 	return total
 }
 
@@ -225,6 +272,9 @@ func isGrokNativeSearchOutputItem(item gjson.Result) bool {
 	case "web_search_call", "x_search_call", "tool_search_call":
 		return true
 	case "function_call", "custom_tool_call":
+		if apicompat.IsServerSideSearchCall(itemType, item.Get("call_id").String()) {
+			return true
+		}
 		name := strings.ToLower(strings.TrimSpace(item.Get("name").String()))
 		return name == "web_search" || name == "x_search" || name == "tool_search"
 	default:

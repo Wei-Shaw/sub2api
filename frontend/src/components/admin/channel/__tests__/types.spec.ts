@@ -42,6 +42,14 @@ describe('reasoning effort multipliers', () => {
 })
 
 describe('interval multiplier conversion', () => {
+  it('round-trips independent OpenAI TTL prices and explicit zero', () => {
+    const form = [makeInterval({ cache_write_price: 0, cache_write_12h_price: '1.625' })]
+    const serialized = formIntervalsToAPI(form)
+    expect(serialized[0]).toMatchObject({ cache_write_price: 0, cache_write_12h_price: 0.000001625 })
+    expect(apiIntervalsToForm(serialized)[0]).toMatchObject({ cache_write_price: 0, cache_write_12h_price: 1.625 })
+    expect(validateIntervals([makeInterval({ cache_write_12h_price: -1 })], 'token', t)).toContain('negativePrice')
+  })
+
   it('preserves component multipliers without MTok conversion', () => {
     const form = apiIntervalsToForm([{
       min_tokens: 272000,

@@ -336,6 +336,44 @@ describe('EditAccountModal', () => {
 
   afterEach(() => vi.useRealTimers())
 
+  it.each(['apikey', 'oauth'])('can opt a passthrough %s account into model filtering without changing groups', async (type) => {
+    const account = buildAccount()
+    account.type = type
+    account.extra = { openai_passthrough: true }
+    account.group_ids = [17]
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+
+    expect(wrapper.findComponent(ModelWhitelistSelectorStub).exists()).toBe(false)
+    await wrapper.get('[data-testid="edit-openai-passthrough-model-filter"]').setValue(true)
+    await wrapper.get('[data-testid="rewrite-to-snapshot"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    expect(payload.extra.openai_passthrough).toBe(true)
+    expect(payload.extra.openai_passthrough_model_filter).toBe(true)
+    expect(payload.credentials.model_mapping).toEqual({ 'gpt-5.2-2025-12-11': 'gpt-5.2-2025-12-11' })
+    expect(payload.group_ids).toEqual([17])
+    wrapper.unmount()
+  })
+
+  it('loads the saved model filter and removes it when passthrough is disabled', async () => {
+    const account = buildAccount()
+    account.extra = { openai_passthrough: true, openai_passthrough_model_filter: true }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+
+    expect(wrapper.get<HTMLInputElement>('[data-testid="edit-openai-passthrough-model-filter"]').element.checked).toBe(true)
+    expect(wrapper.findComponent(ModelWhitelistSelectorStub).exists()).toBe(true)
+    await wrapper.get('[data-testid="edit-openai-passthrough-toggle"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('openai_passthrough_model_filter')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials.model_mapping).toEqual(account.credentials.model_mapping)
+    wrapper.unmount()
+  })
+
   it('passes existing non-identity mappings to the whitelist selector and preserves them on save', async () => {
     const account = buildAccount()
     account.credentials.model_mapping = { 'gpt-5.2': 'gpt-5.2', 'gpt-latest': 'deepseek-chat' }
@@ -1038,6 +1076,41 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toBeDefined()
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('images_url_to_b64_json')
+  })
+
+  it('writes restricted image size tiers into extra', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="openai-image-size-tier-1K"]').setValue(false)
+    await wrapper.get('[data-testid="openai-image-size-tier-2K"]').setValue(false)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra?.openai_image_size_tiers).toEqual(['4K'])
+  })
+
+  it('removes image size tiers from extra when every tier is selected again', async () => {
+    const account = buildAccount()
+    account.extra = { openai_image_size_tiers: ['1K', '2K'] }
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+
+    const wrapper = mountModal(account)
+    const tier4K = wrapper.get('[data-testid="openai-image-size-tier-4K"]')
+    expect((tier4K.element as HTMLInputElement).checked).toBe(false)
+    await tier4K.setValue(true)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toBeDefined()
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('openai_image_size_tiers')
   })
 
   it('hides the Codex namespace flatten toggle for non-OAuth OpenAI accounts', async () => {

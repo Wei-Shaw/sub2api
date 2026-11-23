@@ -163,7 +163,7 @@ const TablePageLayoutStub = {
 
 const DataTableStub = {
   name: 'DataTable',
-  props: { columns: Array, data: Array, selectedKeys: Array, selectable: Boolean },
+  props: { columns: Array, data: Array, selectedKeys: Array, selectable: Boolean, loading: Boolean },
   emits: ['sort', 'update:selectedKeys'],
   template: `
     <div>
@@ -183,6 +183,9 @@ const DataTableStub = {
         <slot name="cell-actions" :row="row" />
         <div data-test="current-concurrency">
           <slot name="cell-current_concurrency" :value="row.current_concurrency" :row="row" />
+        </div>
+        <div data-test="usage">
+          <slot name="cell-usage" :row="row" />
         </div>
         <div
           v-if="columns.some((col) => col.key === 'last_used_ip')"
@@ -881,6 +884,36 @@ describe('user KeysView column settings', () => {
       expect(plaza.exists()).toBe(true)
       expect(plaza.props('initialGroupId')).toBe(2)
       expect(plaza.props('embedded')).toBe(true)
+    })
+  })
+
+  describe('usage stats loading', () => {
+    it('renders the key list without waiting for slow usage stats', async () => {
+      let resolveUsage!: (value: { stats: Record<string, unknown> }) => void
+      getDashboardApiKeysUsage.mockReturnValue(new Promise((resolve) => { resolveUsage = resolve }))
+      const wrapper = await mountView()
+
+      const table = wrapper.findComponent({ name: 'DataTable' })
+      expect(table.props('loading')).toBe(false)
+      expect(table.props('data')).toHaveLength(1)
+      expect(wrapper.find('[data-test="usage-pending"]').exists()).toBe(true)
+
+      resolveUsage({
+        stats: { 1: { api_key_id: 1, today_actual_cost: 0.5, total_actual_cost: 12.25 } },
+      })
+      await flushPromises()
+      expect(wrapper.find('[data-test="usage-pending"]').exists()).toBe(false)
+      expect(wrapper.get('[data-test="usage"]').text()).toContain('$12.2500')
+    })
+
+    it('stops showing usage placeholders when the usage request fails', async () => {
+      const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+      getDashboardApiKeysUsage.mockRejectedValue(new Error('timeout'))
+      const wrapper = await mountView()
+
+      expect(wrapper.find('[data-test="usage-pending"]').exists()).toBe(false)
+      expect(wrapper.get('[data-test="usage"]').text()).toContain('$0.0000')
+      consoleError.mockRestore()
     })
   })
 })

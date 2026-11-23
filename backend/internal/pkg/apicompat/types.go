@@ -80,6 +80,9 @@ type AnthropicContentBlock struct {
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 	Content   json.RawMessage `json:"content,omitempty"` // string or []AnthropicContentBlock
 	IsError   bool            `json:"is_error,omitempty"`
+
+	// type=tool_reference (inside a ToolSearch tool_result)
+	ToolName string `json:"tool_name,omitempty"`
 }
 
 func (b AnthropicContentBlock) MarshalJSON() ([]byte, error) {
@@ -122,6 +125,8 @@ type AnthropicTool struct {
 	Description  string                 `json:"description,omitempty"`
 	InputSchema  json.RawMessage        `json:"input_schema,omitempty"` // JSON Schema object
 	CacheControl *AnthropicCacheControl `json:"cache_control,omitempty"`
+	// DeferLoading marks a tool Claude Code reveals through ToolSearch.
+	DeferLoading bool `json:"defer_loading,omitempty"`
 }
 
 // AnthropicCacheControl 对应 Anthropic API 的 cache_control 字段。
@@ -163,15 +168,50 @@ func AnthropicStopReasonString(p *string) string {
 // AnthropicPromptTokensDetails holds OpenAI-compatible prompt token details
 // occasionally included by Anthropic-compatible providers.
 type AnthropicPromptTokensDetails struct {
-	CachedTokens int `json:"cached_tokens,omitempty"`
+	CachedTokens        int  `json:"cached_tokens,omitempty"`
+	CachedTokensPresent bool `json:"-"`
+}
+
+func (details *AnthropicPromptTokensDetails) UnmarshalJSON(data []byte) error {
+	var decoded struct {
+		CachedTokens *int `json:"cached_tokens"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*details = AnthropicPromptTokensDetails{}
+	if decoded.CachedTokens != nil {
+		details.CachedTokens = *decoded.CachedTokens
+		details.CachedTokensPresent = true
+	}
+	return nil
+}
+
+func (details AnthropicPromptTokensDetails) MarshalJSON() ([]byte, error) {
+	var cachedTokens *int
+	if details.CachedTokensPresent || details.CachedTokens != 0 {
+		cachedTokens = &details.CachedTokens
+	}
+	return json.Marshal(struct {
+		CachedTokens *int `json:"cached_tokens,omitempty"`
+	}{CachedTokens: cachedTokens})
+}
+
+// AnthropicCacheCreation holds Anthropic's cache creation TTL breakdown.
+// Pointers preserve the distinction between an omitted field and an explicit
+// zero in streaming usage events.
+type AnthropicCacheCreation struct {
+	Ephemeral5mInputTokens *int `json:"ephemeral_5m_input_tokens,omitempty"`
+	Ephemeral1hInputTokens *int `json:"ephemeral_1h_input_tokens,omitempty"`
 }
 
 // AnthropicUsage holds token counts in Anthropic format.
 type AnthropicUsage struct {
-	InputTokens              int `json:"input_tokens"`
-	OutputTokens             int `json:"output_tokens"`
-	CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
-	CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+	InputTokens              int                     `json:"input_tokens"`
+	OutputTokens             int                     `json:"output_tokens"`
+	CacheCreationInputTokens int                     `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     int                     `json:"cache_read_input_tokens"`
+	CacheCreation            *AnthropicCacheCreation `json:"cache_creation,omitempty"`
 	// Anthropic-compatible providers can also expose their native OpenAI-style
 	// total/cache fields. Preserve them so callers can normalize provider totals
 	// into Anthropic's mutually-exclusive billing buckets.
@@ -180,6 +220,64 @@ type AnthropicUsage struct {
 	PromptTokensDetails   *AnthropicPromptTokensDetails `json:"prompt_tokens_details,omitempty"`
 	PromptCacheHitTokens  *int                          `json:"prompt_cache_hit_tokens,omitempty"`
 	PromptCacheMissTokens *int                          `json:"prompt_cache_miss_tokens,omitempty"`
+
+	// Presence distinguishes explicit zero from missing/null; TTL details remain raw.
+	CacheCreationInputTokensPresent bool `json:"-"`
+	CacheReadInputTokensPresent     bool `json:"-"`
+	CachedTokensPresent             bool `json:"-"`
+}
+
+func (usage *AnthropicUsage) UnmarshalJSON(data []byte) error {
+	type usageAlias AnthropicUsage
+	var decoded struct {
+		usageAlias
+		CacheCreationInputTokens *int `json:"cache_creation_input_tokens"`
+		CacheReadInputTokens     *int `json:"cache_read_input_tokens"`
+		CachedTokens             *int `json:"cached_tokens"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*usage = AnthropicUsage(decoded.usageAlias)
+	if decoded.CacheCreationInputTokens != nil {
+		usage.CacheCreationInputTokens = *decoded.CacheCreationInputTokens
+		usage.CacheCreationInputTokensPresent = true
+	}
+	if decoded.CacheReadInputTokens != nil {
+		usage.CacheReadInputTokens = *decoded.CacheReadInputTokens
+		usage.CacheReadInputTokensPresent = true
+	}
+	if decoded.CachedTokens != nil {
+		usage.CachedTokens = *decoded.CachedTokens
+		usage.CachedTokensPresent = true
+	}
+	return nil
+}
+
+func (usage AnthropicUsage) HasCacheCreationInputTokens() bool {
+	return usage.CacheCreationInputTokensPresent || usage.CacheCreationInputTokens != 0
+}
+
+// MarshalJSON preserves aggregate presence and raw TTL details without deriving totals.
+func (usage AnthropicUsage) MarshalJSON() ([]byte, error) {
+	type usageAlias AnthropicUsage
+	var aggregate *int
+	if usage.HasCacheCreationInputTokens() {
+		aggregate = &usage.CacheCreationInputTokens
+	}
+	var cacheReadTokens, cachedTokens *int
+	if usage.CacheReadInputTokensPresent || usage.CacheReadInputTokens != 0 {
+		cacheReadTokens = &usage.CacheReadInputTokens
+	}
+	if usage.CachedTokensPresent || usage.CachedTokens != 0 {
+		cachedTokens = &usage.CachedTokens
+	}
+	return json.Marshal(struct {
+		usageAlias
+		CacheCreationInputTokens *int `json:"cache_creation_input_tokens,omitempty"`
+		CacheReadInputTokens     *int `json:"cache_read_input_tokens,omitempty"`
+		CachedTokens             *int `json:"cached_tokens,omitempty"`
+	}{usageAlias: usageAlias(usage), CacheCreationInputTokens: aggregate, CacheReadInputTokens: cacheReadTokens, CachedTokens: cachedTokens})
 }
 
 // ---------------------------------------------------------------------------
@@ -249,6 +347,10 @@ type ResponsesRequest struct {
 	ServiceTier        string              `json:"service_tier,omitempty"`
 	PromptCacheKey     string              `json:"prompt_cache_key,omitempty"`
 	PreviousResponseID string              `json:"previous_response_id,omitempty"`
+	// Stop 在 Chat Completions 里是原生字段，Responses 协议本身没有。这里保留原样
+	// （string 或 []string），仅在降级到 Chat Completions 时透传，避免客户端设的
+	// 停止序列在转换层被静默丢弃。
+	Stop json.RawMessage `json:"stop,omitempty"`
 }
 
 // ResponsesReasoning configures reasoning effort in the Responses API.
@@ -334,6 +436,8 @@ type ResponsesTool struct {
 	Description string          `json:"description,omitempty"`
 	Parameters  json.RawMessage `json:"parameters,omitempty"`
 	Strict      *bool           `json:"strict,omitempty"`
+	// type=tool_search: "client" means the caller executes the search.
+	Execution string `json:"execution,omitempty"`
 
 	// type=namespace 的子工具列表（tools 与 children 二选一，语义相同）。
 	Tools    []ResponsesTool `json:"tools,omitempty"`
@@ -384,6 +488,16 @@ type ResponsesResponse struct {
 
 	// Error is present when status="failed"
 	Error *ResponsesError `json:"error,omitempty"`
+
+	// RenderCustomToolCalls is set on an output rebuilt from stream events, where
+	// the accumulator has always handed custom_tool_call items to the converters
+	// as tool calls. An output the upstream delivered keeps them unrendered.
+	RenderCustomToolCalls bool `json:"-"`
+
+	// XAIServerSideSearch is set with RenderCustomToolCalls when the upstream is
+	// xAI. A custom_tool_call that IsServerSideSearchCall then stays in the
+	// output but is not rendered as a tool call, because xAI runs it itself.
+	XAIServerSideSearch bool `json:"-"`
 }
 
 // ResponsesError describes an error in a failed response.
@@ -417,6 +531,9 @@ type ResponsesOutput struct {
 	Arguments string `json:"arguments,omitempty"`
 	// 来源为 namespace 子工具时的归属命名空间（codex 按 namespace+name 路由该调用）。
 	Namespace string `json:"namespace,omitempty"`
+	// Preserve the upstream encryption marker, including explicit null/[];
+	// omitting it can make sealed arguments appear to be plaintext.
+	EncryptedFunctionArgs json.RawMessage `json:"encrypted_function_args,omitempty"`
 
 	// type=custom_tool_call（custom/freeform 工具，input 为自由文本）
 	Input string `json:"input,omitempty"`
@@ -425,26 +542,14 @@ type ResponsesOutput struct {
 	Action *WebSearchAction `json:"action,omitempty"`
 }
 
-// MarshalJSON 处理 tool_search_call 项的线上形态（复用 CallID/Arguments 字段）：
-// execution 固定为 "client"（codex 的必填字段，非 client 的调用会被静默忽略），
-// arguments 是 JSON 对象而非 function_call 语义下的字符串。其余类型走默认结构体
-// 序列化，输出逐字节不变。
+// MarshalJSON keeps message and tool_search_call items consistent with their
+// streamed representation. Other output types retain their default encoding.
 func (o ResponsesOutput) MarshalJSON() ([]byte, error) {
+	if o.Type == "message" || o.Type == "tool_search_call" {
+		return json.Marshal(responsesItemWire(&o))
+	}
 	type responsesOutputAlias ResponsesOutput
-	if o.Type != "tool_search_call" {
-		return json.Marshal(responsesOutputAlias(o))
-	}
-	m := map[string]any{
-		"type":      o.Type,
-		"id":        o.ID,
-		"call_id":   o.CallID,
-		"execution": "client",
-		"arguments": toolSearchCallArgumentsJSON(o.Arguments),
-	}
-	if o.Status != "" {
-		m["status"] = o.Status
-	}
-	return json.Marshal(m)
+	return json.Marshal(responsesOutputAlias(o))
 }
 
 // UnmarshalJSON accepts both the Responses function-call string form and the
@@ -501,6 +606,10 @@ func (o *ResponsesOutput) UnmarshalJSON(data []byte) error {
 type WebSearchAction struct {
 	Type  string `json:"type,omitempty"`  // "search"
 	Query string `json:"query,omitempty"` // primary search query
+	// URL and Sources stay raw: a strictly typed value of an unexpected shape
+	// would fail decoding the whole terminal event that carries this call.
+	URL     json.RawMessage `json:"url,omitempty"` // open_page / find_in_page target
+	Sources json.RawMessage `json:"sources,omitempty"`
 }
 
 // ResponsesSummary is a summary text block inside a reasoning output.
@@ -519,6 +628,10 @@ type ResponsesUsage struct {
 	// Optional detailed breakdown
 	InputTokensDetails  *ResponsesInputTokensDetails  `json:"input_tokens_details,omitempty"`
 	OutputTokensDetails *ResponsesOutputTokensDetails `json:"output_tokens_details,omitempty"`
+
+	// ServerSideToolUsageDetails is xAI's per-class success count object,
+	// kept raw so Grok search counting can read it from a decoded response.
+	ServerSideToolUsageDetails json.RawMessage `json:"server_side_tool_usage_details,omitempty"`
 }
 
 func (u *ResponsesUsage) UnmarshalJSON(data []byte) error {
@@ -811,6 +924,48 @@ type ChatTokenDetails struct {
 	ReasoningTokens          int `json:"reasoning_tokens,omitempty"`
 	AcceptedPredictionTokens int `json:"accepted_prediction_tokens,omitempty"`
 	RejectedPredictionTokens int `json:"rejected_prediction_tokens,omitempty"`
+	cacheWriteTokensPresent  bool
+}
+
+func (details *ChatTokenDetails) UnmarshalJSON(data []byte) error {
+	type detailsAlias ChatTokenDetails
+	var decoded struct {
+		detailsAlias
+		CacheWriteTokens json.RawMessage `json:"cache_write_tokens"`
+	}
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return err
+	}
+	*details = ChatTokenDetails(decoded.detailsAlias)
+	if len(decoded.CacheWriteTokens) != 0 {
+		if err := json.Unmarshal(decoded.CacheWriteTokens, &details.CacheWriteTokens); err != nil {
+			return err
+		}
+		details.cacheWriteTokensPresent = true
+	}
+	return nil
+}
+
+func (details ChatTokenDetails) MarshalJSON() ([]byte, error) {
+	type detailsAlias ChatTokenDetails
+	var cacheWriteTokens *int
+	if details.cacheWriteTokensPresent || details.CacheWriteTokens != 0 {
+		cacheWriteTokens = &details.CacheWriteTokens
+	}
+	return json.Marshal(struct {
+		detailsAlias
+		CacheWriteTokens *int `json:"cache_write_tokens,omitempty"`
+	}{detailsAlias: detailsAlias(details), CacheWriteTokens: cacheWriteTokens})
+}
+
+func (details *ChatTokenDetails) cacheCreationInputTokens() int {
+	if details == nil {
+		return 0
+	}
+	if details.cacheWriteTokensPresent || details.CacheWriteTokens > 0 {
+		return max(details.CacheWriteTokens, 0)
+	}
+	return max(details.CacheCreationTokens, 0)
 }
 
 // ChatCompletionsChunk is a single streaming chunk from POST /v1/chat/completions.

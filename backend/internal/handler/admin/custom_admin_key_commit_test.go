@@ -40,7 +40,7 @@ type scopedCommitAccounts struct {
 	fail bool
 }
 
-func (*scopedCommitAccounts) ScopedAdminList(context.Context, pagination.PaginationParams, string, string, string, string) ([]service.Account, int64, error) {
+func (*scopedCommitAccounts) ScopedAdminList(context.Context, pagination.PaginationParams, string, string, string, string, int64) ([]service.Account, int64, error) {
 	panic("不应查询列表")
 }
 func (s *scopedCommitAccounts) ScopedAdminWrite(_ context.Context, id int64, _ string, _ map[string]json.RawMessage, _ func(context.Context, *service.Account) (*service.Account, error)) (*service.Account, error) {

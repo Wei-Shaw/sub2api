@@ -13,6 +13,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/requestmodel"
 	openaiwsv2 "github.com/Wei-Shaw/sub2api/internal/service/openai_ws_v2"
 	coderws "github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
@@ -761,7 +762,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			firstClientMessage = aliasedBody
 		}
 	}
-	accountScopedFirst, accountScoped, scopeErr := applyCodexAccountIdentityClientMetadataRaw(firstClientMessage, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
+	accountScopedFirst, accountScoped, scopeErr := applyCodexAccountIdentityClientMetadataRaw(firstClientMessage, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c), codexClientSessionID(c))
 	if scopeErr != nil {
 		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket identity metadata", scopeErr)
 	}
@@ -980,6 +981,12 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			if msgType != coderws.MessageText && msgType != coderws.MessageBinary {
 				return payload, nil, nil
 			}
+			// passthrough 原样转发 session.update 等所有客户端事件；任何帧内的重复
+			// 字段都会让网关（gjson 取首个、sjson 只改首个）与上游读到不同的值
+			// （GHSA-p3r4-jcm3-2hph），在读取任何字段之前拒绝。
+			if field, conflict := requestmodel.ConflictingField("application/json", payload); conflict {
+				return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, fmt.Sprintf("websocket request payload declares field %.64q more than once", field), nil)
+			}
 			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
 			isResponseCreate := eventType == "response.create"
 			responseCreateAt := time.Time{}
@@ -1015,7 +1022,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				}
 			}
 			if isResponseCreate || eventType == "session.update" {
-				accountScopedPayload, accountScoped, scopeErr := applyCodexAccountIdentityClientMetadataRaw(payload, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
+				accountScopedPayload, accountScoped, scopeErr := applyCodexAccountIdentityClientMetadataRaw(payload, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c), codexClientSessionID(c))
 				if scopeErr != nil {
 					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket identity metadata", scopeErr)
 				}
@@ -1175,6 +1182,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 		Options: openaiwsv2.RelayOptions{
 			WriteTimeout:       s.openAIWSWriteTimeout(),
 			FirstTurnStartedAt: firstTurnStartedAt,
+			IsFirstTokenEvent:  openAIWSFirstTokenEventFunc(s.openAITTFTMode(ctx)),
 			TakeNextTurnStartedAt: func() time.Time {
 				startedAt := acceptedTurnStartedAt.Swap(nil)
 				if startedAt == nil {
@@ -1570,6 +1578,18 @@ func relayErrorText(err error) string {
 		return ""
 	}
 	return err.Error()
+}
+
+// openAIWSFirstTokenEventFunc applies the configured TTFT mode to WebSocket
+// events so they report first-token time on the same basis as SSE streams.
+// codex.* frames are WebSocket-only out-of-band events, not model output.
+func openAIWSFirstTokenEventFunc(mode string) func(eventType string, message []byte) bool {
+	return func(eventType string, message []byte) bool {
+		if strings.HasPrefix(strings.TrimSpace(eventType), "codex.") {
+			return false
+		}
+		return openAIStreamDataStartsTTFT(string(message), eventType, false, mode)
+	}
 }
 
 func openAIWSFirstTokenMsForLog(firstTokenMs *int) int {

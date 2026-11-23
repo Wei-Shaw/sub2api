@@ -1,4 +1,4 @@
--- 249_upstream_price_monitor.sql
+-- 253_upstream_price_monitor.sql
 -- TeamoRouter 上游价格巡检：单例配置 + 执行记录 + 明细
 
 CREATE TABLE IF NOT EXISTS upstream_price_monitor_configs (
