@@ -360,6 +360,13 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 			s.handleCustomErrorCode(ctx, account, statusCode, extractUpstreamErrorMessage(responseBody))
 			return true
 		}
+		// 智谱模型级过载（1305）以 529 返回时，语义是「该模型当前访问量过大」，
+		// 不是账号过载：只把该模型在账号上短冷却，绝不写账号级 overload_until。
+		// 模型名缺失或写库失败时 fail-open（仅 failover），不升级成账号级长冷却。
+		if account.Platform == PlatformZhipu && cnProviderResponseIndicatesModelOverload(responseBody) {
+			s.handleZhipuModelOverload(ctx, account, firstRequestedModel(requestedModel), statusCode)
+			return false
+		}
 		s.handle529(ctx, account)
 		return false
 	}
@@ -582,7 +589,7 @@ func (s *RateLimitService) HandleUpstreamError(ctx context.Context, account *Acc
 		)
 		shouldDisable = s.handle403(ctx, account, upstreamMsg, responseBody)
 	case 429:
-		s.handle429(ctx, account, headers, responseBody)
+		s.handle429(ctx, account, headers, responseBody, requestedModel...)
 		shouldDisable = false
 	case 529:
 		// Handled after pool/custom-code policy gates above.
@@ -1243,8 +1250,10 @@ func (s *RateLimitService) handleCustomErrorCode(ctx context.Context, account *A
 }
 
 // handle429 处理429限流错误
-// 解析响应头获取重置时间，标记账号为限流状态
-func (s *RateLimitService) handle429(ctx context.Context, account *Account, headers http.Header, responseBody []byte) {
+// 解析响应头获取重置时间，标记账号为限流状态。
+// requestedModel 是实际发往上游的模型名，仅用于国产供应商的模型级冷却
+// （智谱 1305 模型过载），其余平台忽略该参数。
+func (s *RateLimitService) handle429(ctx context.Context, account *Account, headers http.Header, responseBody []byte, requestedModel ...string) {
 	// OpenAI OAuth stays on the same account for the gateway's bounded retry
 	// window. Persisting a rate-limit reset on the first 429 would make the next
 	// retry ineligible and silently turn same-account recovery into a switch.
@@ -1277,7 +1286,7 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 	// 国产供应商（kimi/zhipu/deepseek）的 429 走专用可恢复路径：余额不足 → 临时停调，
 	// Coding Plan 窗口耗尽 → 冷却到快照重置点。未命中则继续默认 429 逻辑。
 	if account.IsCNProvider() || account.IsOpenCodeGo() {
-		if s.applyCNProviderReactive429(ctx, account, headers, responseBody) {
+		if s.applyCNProviderReactive429(ctx, account, headers, responseBody, firstRequestedModel(requestedModel)) {
 			return
 		}
 	}
