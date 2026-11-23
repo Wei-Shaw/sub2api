@@ -15,6 +15,52 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestAnthropicModelRegistryBaseURLAndProvider(t *testing.T) {
+	registry := map[string]modelsDevProvider{
+		"anthropic": {Models: map[string]modelsDevModel{"claude-test": {}}},
+		"gateway":   {ID: "gateway", API: "https://gateway.example/v1", Models: map[string]modelsDevModel{"custom": {}}},
+	}
+	for _, accountType := range []string{AccountTypeOAuth, AccountTypeSetupToken, AccountTypeAPIKey} {
+		for _, test := range []struct {
+			name, credential, wantURL, wantProvider string
+		}{
+			{"default", "", "https://api.anthropic.com", "anthropic"},
+			{"blank", " \t ", "https://api.anthropic.com", "anthropic"},
+			{"official", " https://api.anthropic.com/v1/ ", "https://api.anthropic.com/v1/", "anthropic"},
+			{"custom", " https://gateway.example/v1 ", "https://gateway.example/v1", "gateway"},
+			{"unknown", "https://unknown.example/v1", "https://unknown.example/v1", ""},
+		} {
+			t.Run(accountType+"/"+test.name, func(t *testing.T) {
+				account := &Account{Platform: PlatformAnthropic, Type: accountType,
+					Credentials: map[string]any{"base_url": test.credential}}
+				baseURL := upstreamModelRegistryBaseURL(account)
+				require.Equal(t, test.wantURL, baseURL)
+				provider, ok := matchModelsDevProvider(registry, baseURL)
+				require.Equal(t, test.wantProvider != "", ok)
+				require.Equal(t, test.wantProvider, provider.ID)
+			})
+		}
+	}
+}
+
+func TestFetchModelsDevMetadataAnthropicOAuthAndSetupToken(t *testing.T) {
+	for _, accountType := range []string{AccountTypeOAuth, AccountTypeSetupToken} {
+		t.Run(accountType, func(t *testing.T) {
+			upstream := &httpUpstreamRecorder{responses: []*http.Response{{
+				StatusCode: http.StatusOK,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"anthropic":{"models":{"claude-test":{"id":"claude-test","limit":{"context":1000000}}}}}`)),
+			}}}
+			svc := &AccountTestService{httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+			metadata, err := svc.fetchModelsDevMetadata(context.Background(), &Account{
+				Platform: PlatformAnthropic, Type: accountType,
+			}, []string{"claude-test"})
+			require.NoError(t, err)
+			require.Equal(t, int64(1_000_000), metadata["claude-test"].ContextWindow)
+		})
+	}
+}
+
 type upstreamModelMetadataRepoStub struct {
 	AccountRepository
 	accountID int64

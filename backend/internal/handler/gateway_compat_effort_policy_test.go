@@ -14,6 +14,7 @@ import (
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/tlsfingerprint"
 	middleware "github.com/Wei-Shaw/sub2api/internal/server/middleware"
@@ -22,6 +23,43 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestOpenAIResponsesUsageReportsConfigurationUpdateEffort(t *testing.T) {
+	const input = `[{"role":"user","content":"hello"},{"type":"configuration_update","reasoning":{"effort":"high"}}]`
+	const body = `{"model":"gpt-6.1-sol","input":` + input + `,"reasoning":{"effort":"medium"}}`
+	upstream := newAstraProCapturedUpstream(&http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"resp_effort","model":"gpt-6.1-sol","status":"completed","output":[],"usage":{"input_tokens":10,"output_tokens":1}}`)),
+	})
+	account := service.Account{
+		ID: 1, Platform: service.PlatformOpenAI, Type: service.AccountTypeAPIKey,
+		Status: service.StatusActive, Schedulable: true, Credentials: map[string]any{"api_key": "test-key"},
+	}
+	usageRepo := &openAIWSUsageHandlerUsageLogRepoStub{created: make(chan *service.UsageLog, 1)}
+	cfg := &config.Config{RunMode: config.RunModeSimple}
+	billing := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
+	t.Cleanup(billing.Stop)
+	gateway := service.NewOpenAIGatewayService(
+		&openAIWSUsageHandlerAccountRepoStub{account: account}, usageRepo, nil, nil, nil, nil, nil, cfg,
+		nil, nil, service.NewBillingService(cfg, nil), nil, billing, upstream, &service.DeferredService{},
+		nil, nil, nil, nil, nil, nil, nil,
+	)
+	h := NewOpenAIGatewayHandler(gateway, service.NewConcurrencyService(nil), billing,
+		service.NewAPIKeyService(nil, nil, nil, nil, nil, nil, cfg), nil, nil, nil, nil, cfg)
+	c, rec := newAstraProFailoverContext(t, body)
+	h.Responses(c)
+
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	_, _, bodies := upstream.snapshot()
+	require.Len(t, bodies, 1)
+	require.Equal(t, "medium", gjson.GetBytes(bodies[0], "reasoning.effort").String())
+	require.JSONEq(t, input, gjson.GetBytes(bodies[0], "input").Raw)
+	require.Len(t, usageRepo.created, 1)
+	log := dto.UsageLogFromService(<-usageRepo.created)
+	require.NotNil(t, log.ReasoningEffort)
+	require.Equal(t, "high", *log.ReasoningEffort)
+}
 
 type compatEffortPolicyUpstream struct {
 	service.HTTPUpstream
