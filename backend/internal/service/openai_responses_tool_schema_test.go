@@ -2,9 +2,12 @@ package service
 
 import (
 	"encoding/json"
+	"os"
+	"os/exec"
 	"strconv"
 	"testing"
 
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
@@ -407,6 +410,257 @@ func TestSanitizeOpenAIResponsesToolSchemaPatterns_RemovesLookaroundOnly(t *test
 	require.Equal(t, "^[a-z]+$", gjson.GetBytes(sanitized, "tools.0.parameters.properties.id.pattern").String())
 }
 
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_DropsPythonRegexIncompatiblePatterns(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","name":"search","parameters":{"type":"object","properties":{
+		"unicode":{"type":"string","pattern":"^\\p{L}+$"},
+		"unknownEscape":{"type":"string","pattern":"^\\R+$"},
+		"named":{"type":"string","pattern":"^(?<word>[a-z]+)$"},
+		"namedSingle":{"type":"string","pattern":"^(?'word'[a-z]+)$"},
+		"pythonNamed":{"type":"string","pattern":"^(?P<word>[a-z]+)$"},
+		"escapedLiteral":{"type":"string","pattern":"^\\\\p{L}+$"},
+		"digits":{"type":"string","pattern":"^\\d+$"}
+	}}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+	require.NoError(t, err)
+	require.True(t, changed)
+	for _, name := range []string{"unicode", "unknownEscape", "named", "namedSingle"} {
+		require.False(t, gjson.GetBytes(sanitized, "tools.0.parameters.properties."+name+".pattern").Exists(), name)
+	}
+	require.Equal(t, `^(?P<word>[a-z]+)$`, gjson.GetBytes(sanitized, "tools.0.parameters.properties.pythonNamed.pattern").String())
+	require.Equal(t, `^\\p{L}+$`, gjson.GetBytes(sanitized, "tools.0.parameters.properties.escapedLiteral.pattern").String())
+	require.Equal(t, `^\d+$`, gjson.GetBytes(sanitized, "tools.0.parameters.properties.digits.pattern").String())
+	require.True(t, json.Valid(sanitized))
+}
+
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_DropsUnicodePropertyEscape(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","name":"search","parameters":{"type":"object","properties":{"word":{"type":"string","pattern":"^\\p{L}+$"}}}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(sanitized, "tools.0.parameters.properties.word.pattern").Exists())
+}
+
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_DropsUnsupportedPatternProperties(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","name":"search","parameters":{"type":"object","patternProperties":{
+		"^\\p{L}+$":{"type":"string","pattern":"(?=nested)"},
+		"^(?<word>[a-z]+)$":{"type":"number"},
+		"^[a-z]+$":{"type":"string","pattern":"(?=nested)"},
+		"^\\\\p{L}+$":{"type":"boolean"}
+	}}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+
+	require.NoError(t, err)
+	require.True(t, changed)
+	var doc struct {
+		Tools []struct {
+			Parameters struct {
+				PatternProperties map[string]struct {
+					Type    string  `json:"type"`
+					Pattern *string `json:"pattern"`
+				} `json:"patternProperties"`
+			} `json:"parameters"`
+		} `json:"tools"`
+	}
+	require.NoError(t, json.Unmarshal(sanitized, &doc))
+	properties := doc.Tools[0].Parameters.PatternProperties
+	require.NotContains(t, properties, `^\p{L}+$`)
+	require.NotContains(t, properties, `^(?<word>[a-z]+)$`)
+	valid := properties[`^[a-z]+$`]
+	require.Equal(t, "string", valid.Type)
+	require.Nil(t, valid.Pattern)
+	escaped := properties[`^\\p{L}+$`]
+	require.Equal(t, "boolean", escaped.Type)
+	require.True(t, json.Valid(sanitized))
+}
+
+func requireJSONSchemaAdmits(t *testing.T, schemaJSON, instanceJSON string) {
+	t.Helper()
+	var schema jsonschema.Schema
+	require.NoError(t, json.Unmarshal([]byte(schemaJSON), &schema))
+	resolved, err := schema.Resolve(nil)
+	require.NoError(t, err)
+	var instance any
+	require.NoError(t, json.Unmarshal([]byte(instanceJSON), &instance))
+	require.NoError(t, resolved.Validate(instance), "schema %s must admit %s", schemaJSON, instanceJSON)
+}
+
+// patternProperties 与 additionalProperties 共同校验对象键。删除一个 Python re
+// 不接受的 patternProperties 键后，原本匹配该模式的参数键会变成 additional
+// property；对象若仍是 additionalProperties:false，合法调用会被上游拒绝。
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_ReopensClosedObjectAfterDroppedPattern(t *testing.T) {
+	tests := []struct {
+		name       string
+		body       string
+		schemaPath string
+		instance   string
+	}{
+		{
+			name:       "additionalProperties after patternProperties",
+			body:       `{"tools":[{"type":"function","name":"t","parameters":{"type":"object","patternProperties":{"^\\p{L}+$":{"type":"string"}},"additionalProperties":false}}]}`,
+			schemaPath: "tools.0.parameters",
+			instance:   `{"abc":"value"}`,
+		},
+		{
+			name:       "additionalProperties before patternProperties",
+			body:       `{"tools":[{"type":"function","name":"t","parameters":{"type":"object","additionalProperties":false,"patternProperties":{"^\\p{L}+$":{"type":"string"}}}}]}`,
+			schemaPath: "tools.0.parameters",
+			instance:   `{"abc":"value"}`,
+		},
+		{
+			name:       "nested dictionary argument",
+			body:       `{"tools":[{"type":"function","name":"t","parameters":{"type":"object","properties":{"labels":{"type":"object","patternProperties":{"^\\p{L}+$":{"type":"string"}},"additionalProperties":false}}}}]}`,
+			schemaPath: "tools.0.parameters",
+			instance:   `{"labels":{"abc":"value"}}`,
+		},
+		{
+			name:       "additionalProperties schema",
+			body:       `{"tools":[{"type":"function","name":"t","parameters":{"type":"object","patternProperties":{"^\\p{L}+$":{"type":"string"}},"additionalProperties":{"type":"integer"}}}]}`,
+			schemaPath: "tools.0.parameters",
+			instance:   `{"abc":"value","123":5}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns([]byte(tt.body))
+			require.NoError(t, err)
+			require.True(t, changed)
+			require.NotContains(t, string(sanitized), `\p{L}`)
+			require.NotEqual(t, "false", gjson.GetBytes(sanitized, tt.schemaPath+".additionalProperties").Raw)
+			require.True(t, json.Valid(sanitized))
+			requireJSONSchemaAdmits(t, gjson.GetBytes(sanitized, tt.schemaPath).Raw, tt.instance)
+		})
+	}
+}
+
+// 未删除 patternProperties 键时不得放宽封闭对象；只删除其值内部的 pattern
+// 也不能改写 additionalProperties:false。
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_KeepsAdditionalPropertiesSchemaWhenNoPatternKeyDropped(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","name":"t","parameters":{"type":"object","patternProperties":{"^[a-z]+$":{"type":"string"}},"additionalProperties":{"type":"integer"}}}]}`)
+
+	sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns(body)
+
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Equal(t, "integer", gjson.GetBytes(sanitized, "tools.0.parameters.additionalProperties.type").String())
+	require.True(t, json.Valid(sanitized))
+}
+
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_KeepsClosedObjectWhenNoPatternKeyDropped(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    string
+		changed bool
+	}{
+		{
+			name:    "supported pattern key",
+			body:    `{"tools":[{"type":"function","name":"t","parameters":{"type":"object","patternProperties":{"^[a-z]+$":{"type":"string"}},"additionalProperties":false}}]}`,
+			changed: false,
+		},
+		{
+			name:    "unsupported pattern inside pattern value",
+			body:    `{"tools":[{"type":"function","name":"t","parameters":{"type":"object","patternProperties":{"^[a-z]+$":{"type":"string","pattern":"(?=x)"}},"additionalProperties":false}}]}`,
+			changed: true,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sanitized, changed, err := sanitizeOpenAIResponsesToolSchemaPatterns([]byte(tt.body))
+			require.NoError(t, err)
+			require.Equal(t, tt.changed, changed)
+			require.Equal(t, "false", gjson.GetBytes(sanitized, "tools.0.parameters.additionalProperties").Raw)
+			requireJSONSchemaAdmits(t, gjson.GetBytes(sanitized, "tools.0.parameters").Raw, `{"abc":"value"}`)
+		})
+	}
+}
+
+// 外层补丁（additionalProperties 整体改写为 true、整条删除 patternProperties
+// 键）覆盖内层补丁时，内层补丁无意义，不得让整次清洗以 overlapping patches
+// 失败（否则请求在本地就以 502 结束，连原样转发都做不到）。
+func TestSanitizeOpenAIResponsesToolSchemaPatterns_EnclosingEditSupersedesNestedEdits(t *testing.T) {
+	tests := []struct {
+		name     string
+		body     string
+		instance string
+	}{
+		{
+			name:     "reopened additionalProperties schema contains unsupported pattern",
+			body:     `{"tools":[{"type":"function","name":"t","parameters":{"type":"object","patternProperties":{"^\\p{L}+$":{"type":"string"}},"additionalProperties":{"type":"string","pattern":"^\\p{N}+$"}}}]}`,
+			instance: `{"abc":"value","1":"x"}`,
+		},
+		{
+			name:     "reopened additionalProperties schema contains its own reopen",
+			body:     `{"tools":[{"type":"function","name":"t","parameters":{"type":"object","patternProperties":{"^\\p{L}+$":{"type":"string"}},"additionalProperties":{"type":"object","patternProperties":{"^\\p{N}+$":{"type":"string"}},"additionalProperties":false}}}]}`,
+			instance: `{"abc":"value","1":{"2":"x"}}`,
+		},
+		{
+			name:     "dropped patternProperties value contains a reopen",
+			body:     `{"tools":[{"type":"function","name":"t","parameters":{"type":"object","patternProperties":{"^\\p{L}+$":{"type":"object","patternProperties":{"^\\p{N}+$":{"type":"string"}},"additionalProperties":false}}}}]}`,
+			instance: `{"abc":{"1":"x"}}`,
+		},
+		{
+			name:     "anthropic input_schema",
+			body:     `{"tools":[{"name":"t","input_schema":{"type":"object","patternProperties":{"^\\p{L}+$":{"type":"string"}},"additionalProperties":{"type":"string","pattern":"(?<n>\\d+)"}}}]}`,
+			instance: `{"abc":"value"}`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sanitized, changed, err := sanitizeOpenAIResponsesToolSchemasForPlatform([]byte(tt.body), PlatformOpenAI)
+			require.NoError(t, err)
+			require.True(t, changed)
+			require.True(t, json.Valid(sanitized))
+			require.NotContains(t, string(sanitized), `\p{`)
+			require.NotContains(t, string(sanitized), `(?<`)
+			schema := gjson.GetBytes(sanitized, "tools.0.parameters")
+			if !schema.Exists() {
+				schema = gjson.GetBytes(sanitized, "tools.0.input_schema")
+			}
+			require.NotEqual(t, "false", schema.Get("additionalProperties").Raw)
+			requireJSONSchemaAdmits(t, schema.Raw, tt.instance)
+		})
+	}
+}
+
+// 包含关系以外的重叠仍须报错；零宽插入与同起点删除须同时生效。
+func TestApplyOpenAIResponsesToolSchemaEdits_ContainmentOrdering(t *testing.T) {
+	body := []byte(`{"required":null,"anyOf":[]}`)
+	out, changed, err := applyOpenAIResponsesToolSchemaEdits(body, []openAIResponsesToolSchemaEdit{
+		{start: 1, end: 17, replacement: ""},
+		{start: 1, end: 1, replacement: `"type":"object",`},
+	})
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, `{"type":"object","anyOf":[]}`, string(out))
+
+	_, _, err = applyOpenAIResponsesToolSchemaEdits([]byte(`{"a":1,"b":2}`), []openAIResponsesToolSchemaEdit{
+		{start: 5, end: 9, replacement: "x"},
+		{start: 7, end: 12, replacement: ""},
+	})
+	require.ErrorContains(t, err, "overlapping patches")
+}
+
+// 评审复现路径：API Key 与 OAuth 账号都经过 WebSocket 兼容归一化。
+func TestOpenAIResponsesToolSchemaPlatformGate_ReopensClosedObject(t *testing.T) {
+	body := []byte(`{"tools":[{"type":"function","name":"t","parameters":{"type":"object","patternProperties":{"^\\p{L}+$":{"type":"string"}},"additionalProperties":false}}]}`)
+
+	for _, accountType := range []string{AccountTypeAPIKey, AccountTypeOAuth} {
+		t.Run(accountType, func(t *testing.T) {
+			normalized, changed, err := normalizeOpenAIResponsesWebSocketCompatibilityBody(body, &Account{
+				Platform: PlatformOpenAI,
+				Type:     accountType,
+			}, false)
+			require.NoError(t, err)
+			require.True(t, changed)
+			require.NotEqual(t, "false", gjson.GetBytes(normalized, "tools.0.parameters.additionalProperties").Raw)
+			requireJSONSchemaAdmits(t, gjson.GetBytes(normalized, "tools.0.parameters").Raw, `{"abc":"value"}`)
+		})
+	}
+}
+
 func TestSanitizeOpenAIResponsesToolSchemaPatterns_PreservesRawDocumentRepresentation(t *testing.T) {
 	body := []byte("{\n \"number\":1e+999,\n \"tools\":[{\"parameters\":{\"pattern\":\"(?=drop)\", \"description\":\"\\u003ctag\\u003e\", \"type\":\"string\"}}],\n \"tail\":-0.00\n}")
 	want := []byte("{\n \"number\":1e+999,\n \"tools\":[{\"parameters\":{ \"description\":\"\\u003ctag\\u003e\", \"type\":\"string\"}}],\n \"tail\":-0.00\n}")
@@ -587,6 +841,17 @@ func buildToolSchemaNullTypeBody(t *testing.T, hits int) []byte {
 // 构造请求可以塞进百万级命中，会被放大成 TB 级 memcpy。这里用分配次数锁死该行为：
 // 命中数放大 500 倍，分配次数不得随之增长。
 func TestSanitizeOpenAIResponsesToolParameterTypes_RewriteCountIndependentOfHits(t *testing.T) {
+	const isolatedAllocEnv = "SUB2API_TOOL_SCHEMA_ALLOC_ISOLATED"
+	if os.Getenv(isolatedAllocEnv) != "1" {
+		executable, err := os.Executable()
+		require.NoError(t, err)
+		command := exec.Command(executable, "-test.run=^"+t.Name()+"$", "-test.count=1", "-test.timeout=1m")
+		command.Env = append(os.Environ(), isolatedAllocEnv+"=1")
+		output, err := command.CombinedOutput()
+		require.NoError(t, err, "isolated allocation guard failed:\n%s", output)
+		return
+	}
+
 	small := buildToolSchemaNullTypeBody(t, 4)
 	large := buildToolSchemaNullTypeBody(t, 2000)
 
@@ -598,8 +863,6 @@ func TestSanitizeOpenAIResponsesToolParameterTypes_RewriteCountIndependentOfHits
 	})
 
 	// 命中切片扩容是对数级，留出充裕余量；线性写法在这里会是 2000 量级。
-	// 干净环境实测 large 约 17 allocs，200 是 10 倍余量，同时容忍 CI 慢 pod 上
-	// 包内后台 goroutine（日志/ticker）对进程级 Mallocs 的噪声污染。
 	require.Less(t, largeAllocs, 200.0,
 		"分配次数随命中数线性增长，说明退回了逐路径全量重写 (small=%v large=%v)", smallAllocs, largeAllocs)
 

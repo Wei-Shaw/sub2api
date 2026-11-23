@@ -6,7 +6,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -206,6 +209,115 @@ func TestExecuteRefundUsesActualAvailableBalanceDeduction(t *testing.T) {
 		Only(ctx)
 	require.NoError(t, err)
 	require.Contains(t, audit.Detail, `"balanceDeducted":25`)
+}
+
+func TestExecuteEasyPayRefundSuccessCode(t *testing.T) {
+	for _, tc := range []struct {
+		name, configuredCode, responseCode string
+		amount                             float64
+		wantSuccess                        bool
+	}{
+		{name: "zero success full", configuredCode: "0", responseCode: "0", amount: 100, wantSuccess: true},
+		{name: "zero success partial", configuredCode: "0", responseCode: "0", amount: 40, wantSuccess: true},
+		{name: "default one success", responseCode: "1", amount: 100, wantSuccess: true},
+		{name: "default zero failure", responseCode: "0", amount: 100},
+		{name: "zero protocol one failure", configuredCode: "0", responseCode: "1", amount: 100},
+		{name: "zero protocol negative failure", configuredCode: "0", responseCode: "-1", amount: 100},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := context.Background()
+			client := newPaymentConfigServiceTestClient(t)
+			var calls atomic.Int32
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				if r.URL.Path != "/api.php" || r.URL.Query().Get("act") != "refund" || r.FormValue("out_trade_no") != "refund_protocol_order" {
+					t.Errorf("unexpected refund request: %s", r.URL)
+					w.WriteHeader(http.StatusBadRequest)
+					return
+				}
+				_, _ = fmt.Fprintf(w, `{"code":%s,"msg":"gateway result"}`, tc.responseCode)
+			}))
+			defer server.Close()
+			user, err := client.User.Create().SetEmail("refund-protocol@example.com").
+				SetPasswordHash("hash").SetUsername("refund-protocol").Save(ctx)
+			require.NoError(t, err)
+			inst, err := client.PaymentProviderInstance.Create().SetProviderKey(payment.TypeEasyPay).
+				SetName("refund-protocol").SetConfig("{}").SetSupportedTypes("wxpay").
+				SetEnabled(true).SetRefundEnabled(true).Save(ctx)
+			require.NoError(t, err)
+			order, err := client.PaymentOrder.Create().
+				SetUserID(user.ID).SetUserEmail(user.Email).SetUserName(user.Username).
+				SetAmount(100).SetPayAmount(100).SetFeeRate(0).
+				SetRechargeCode("REFUND-PROTOCOL").SetOutTradeNo("refund_protocol_order").
+				SetPaymentType(payment.TypeWxpay).SetPaymentTradeNo("trade-protocol").
+				SetOrderType(payment.OrderTypeBalance).SetStatus(OrderStatusCompleted).
+				SetExpiresAt(time.Now().Add(time.Hour)).SetPaidAt(time.Now()).
+				SetClientIP("127.0.0.1").SetSrcHost("api.example.com").
+				SetProviderInstanceID(strconv.FormatInt(inst.ID, 10)).Save(ctx)
+			require.NoError(t, err)
+			balance := 200.0
+			repo := &mockUserRepo{
+				getByIDUser: &User{Balance: balance},
+				deductAvailableBalanceFn: func(_ context.Context, id int64, amount float64) (float64, error) {
+					require.Equal(t, user.ID, id)
+					balance -= amount
+					return amount, nil
+				},
+				updateBalanceFn: func(_ context.Context, id int64, amount float64) error {
+					require.Equal(t, user.ID, id)
+					balance += amount
+					return nil
+				},
+			}
+			svc := &PaymentService{entClient: client, userRepo: repo, loadBalancer: &easyPayRefundLoadBalancer{
+				config: map[string]string{
+					"pid": "1001", "pkey": "test-key", "apiBase": server.URL,
+					"notifyUrl": "https://site.example/notify", "returnUrl": "https://site.example/return",
+					"refundSuccessCode": tc.configuredCode,
+				},
+			}}
+			plan, early, err := svc.PrepareRefund(ctx, order.ID, tc.amount, "protocol regression", false, true)
+			require.NoError(t, err)
+			require.Nil(t, early)
+			result, err := svc.ExecuteRefund(ctx, plan)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			require.Equal(t, tc.wantSuccess, result.Success)
+			require.Equal(t, int32(1), calls.Load(), "do not retry a refund based on a different success code")
+			stored, err := client.PaymentOrder.Get(ctx, order.ID)
+			require.NoError(t, err)
+			wantStatus := OrderStatusCompleted
+			if tc.wantSuccess {
+				wantStatus = OrderStatusRefunded
+				if tc.amount < order.Amount {
+					wantStatus = OrderStatusPartiallyRefunded
+				}
+				require.Equal(t, tc.amount, stored.RefundAmount)
+				require.NotNil(t, stored.RefundAt)
+				require.Equal(t, 200-tc.amount, balance)
+			} else {
+				require.Zero(t, stored.RefundAmount)
+				require.Nil(t, stored.RefundAt)
+				require.Equal(t, 200.0, balance)
+			}
+			require.Equal(t, wantStatus, stored.Status)
+			failed, err := client.PaymentAuditLog.Query().Where(
+				paymentauditlog.OrderIDEQ(strconv.FormatInt(order.ID, 10)),
+				paymentauditlog.ActionEQ("REFUND_GATEWAY_FAILED"),
+			).Exist(ctx)
+			require.NoError(t, err)
+			require.Equal(t, !tc.wantSuccess, failed)
+		})
+	}
+}
+
+type easyPayRefundLoadBalancer struct {
+	captureLoadBalancer
+	config map[string]string
+}
+
+func (lb *easyPayRefundLoadBalancer) GetInstanceConfig(context.Context, int64) (map[string]string, error) {
+	return lb.config, nil
 }
 
 func TestGwRefundRejectsAlipayMerchantIdentitySnapshotMismatch(t *testing.T) {

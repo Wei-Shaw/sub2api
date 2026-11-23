@@ -127,6 +127,8 @@ func TestOpenAIResponsesWebSocket_FirstFrameCaseVariantModelKeyRejected(t *testi
 // 后续 turn 含重复 model 键（首个在白名单、末个不在）：拒绝并关闭连接。
 func TestOpenAIResponsesWebSocket_SubsequentTurnDuplicateModelKeysRejected(t *testing.T) {
 	for _, mode := range []string{service.OpenAIWSIngressModePassthrough, service.OpenAIWSIngressModeDedicated} {
+		// 两种模式都在读取任何字段之前先做字段歧义检查（帧必须在兼容归一化等
+		// 重编码之前拦截），所以由歧义检查而不是白名单关闭连接，帧不到达上游。
 		t.Run(mode, func(t *testing.T) {
 			runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
 				firstPayload:            `{"type":"response.create","model":"gpt-5.4","stream":false}`,
@@ -134,21 +136,21 @@ func TestOpenAIResponsesWebSocket_SubsequentTurnDuplicateModelKeysRejected(t *te
 				group:                   wsAllowlistGroup(true, "gpt-5.4"),
 				ingressMode:             mode,
 				secondTurnCloseExpected: true,
+				closeReason:             `declares field "model" more than once`,
 			})
 		})
 	}
 }
 
-// 重复但同值的 model 键不误伤，连接正常完成两个 turn。
-func TestOpenAIResponsesWebSocket_DuplicateIdenticalModelKeysAllowed(t *testing.T) {
-	got := runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
-		firstPayload:  `{"type":"response.create","model":"gpt-5.4","model":"gpt-5.4","stream":false}`,
-		secondPayload: `{"type":"response.create","model":"gpt-5.4","stream":false}`,
-		group:         wsAllowlistGroup(true, "gpt-5.4"),
+// 重复但同值的 model 键：白名单本身放行（两个候选都在名单内），但字段歧义检查
+// 拒绝——网关的 sjson 模型改写只改首个，改写后两者就会分叉（GHSA-p3r4-jcm3-2hph）。
+func TestOpenAIResponsesWebSocket_DuplicateIdenticalModelKeysRejected(t *testing.T) {
+	runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+		firstPayload:            `{"type":"response.create","model":"gpt-5.4","model":"gpt-5.4","stream":false}`,
+		group:                   wsAllowlistGroup(true, "gpt-5.4"),
+		firstFrameCloseExpected: true,
+		closeReason:             `declares field "model" more than once`,
 	})
-	if len(got.clientEvents) != 2 {
-		t.Fatalf("expected two completed events, got %d", len(got.clientEvents))
-	}
 }
 
 // session.update 轮换绕过：首帧用白名单内模型建立会话，session.update 把会话

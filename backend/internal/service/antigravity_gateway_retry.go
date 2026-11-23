@@ -642,8 +642,12 @@ urlFallbackLoop:
 						continue
 					}
 
-					// 重试用尽，标记账户限流
-					p.handleError(p.ctx, p.prefix, p.account, resp.StatusCode, resp.Header, respBody, p.requestedModel, p.groupID, p.sessionHash, p.isStickySession)
+					// 重试用尽，标记账户限流（无原因的 429 每个请求最多冷却一个账号）
+					if isBareAntigravity429(resp.StatusCode, respBody) && !claimBare429Cooldown(p.c, p.account.ID) {
+						logger.LegacyPrintf("service.antigravity_gateway", "%s status=%d bare_429_cooldown_skipped account=%d (this request already cooled another account; the request is the likely cause)", p.prefix, resp.StatusCode, p.account.ID)
+					} else {
+						p.handleError(p.ctx, p.prefix, p.account, resp.StatusCode, resp.Header, respBody, p.requestedModel, p.groupID, p.sessionHash, p.isStickySession)
+					}
 					logger.LegacyPrintf("service.antigravity_gateway", "%s status=%d rate_limited base_url=%s body=%s", p.prefix, resp.StatusCode, baseURL, truncateForLog(respBody, 200))
 					resp = &http.Response{
 						StatusCode: resp.StatusCode,
@@ -686,7 +690,7 @@ urlFallbackLoop:
 
 				// INTERNAL 500 渐进惩罚：3 次重试全部命中特定 500 时递增计数器并惩罚
 				if allAttemptsInternal500 && isAntigravityInternalServerError(resp.StatusCode, respBody) {
-					s.handleInternal500RetryExhausted(p.ctx, p.prefix, p.account)
+					s.handleInternal500ForModel(p.ctx, p.prefix, p.account, resolveFinalAntigravityModelKey(p.ctx, p.account, p.requestedModel))
 				}
 
 				// 其他 4xx 错误或重试用尽，直接返回
@@ -882,7 +886,7 @@ func (s *AntigravityGatewayService) setAntigravityModelRateLimits(ctx context.Co
 	if account == nil || repo == nil {
 		return false
 	}
-	keys := antigravityModelRateLimitKeys(modelName)
+	keys := antigravityModelRateLimitKeys(account, modelName)
 	if len(keys) == 0 {
 		return false
 	}

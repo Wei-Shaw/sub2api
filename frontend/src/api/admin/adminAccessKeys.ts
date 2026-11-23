@@ -8,9 +8,10 @@ export interface AccessRule {
   account_types: string[]
   platforms: string[]
 }
-export interface AccessPolicy { rules: AccessRule[]; global_permissions: string[] }
+export interface AccessPolicy { full_access?: boolean; rules: AccessRule[]; global_permissions: string[] }
 export interface Permission { id: string; label: string; category: string; scope: 'account' | 'group' | 'global' }
 export interface AdminKeyInput {
+  confirm_full_access?: boolean
   name: string
   description: string
   enabled: boolean

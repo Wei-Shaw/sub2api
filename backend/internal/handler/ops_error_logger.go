@@ -2343,8 +2343,7 @@ func isOpsLocalBusinessLimitError(code string, msg string) bool {
 		(strings.Contains(msg, "beta feature ") && strings.Contains(msg, " is not allowed")) ||
 		(strings.Contains(msg, "openai service_tier=") && strings.Contains(msg, " is not allowed for model")) ||
 		strings.Contains(msg, "this account only allows codex official clients") ||
-		strings.Contains(msg, "openai wsv1 is temporarily unsupported") ||
-		strings.Contains(msg, "openai codex passthrough requires a non-empty instructions field")
+		strings.Contains(msg, "openai wsv1 is temporarily unsupported")
 }
 
 func hasOpsUpstreamErrorContext(c *gin.Context) bool {

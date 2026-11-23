@@ -33,6 +33,12 @@ func TestOpenAISubscriptionLongContextExempt(t *testing.T) {
 		{name: "API账号", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, result: &OpenAIForwardResult{Model: "gpt-6.1-sol"}},
 		{name: "其他平台", account: &Account{Platform: PlatformGrok, Type: AccountTypeOAuth}, result: &OpenAIForwardResult{Model: "gpt-6.1-sol"}},
 		{name: "订阅访问令牌", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeSetupToken}, result: &OpenAIForwardResult{Model: "gpt-6.1-sol"}, want: true},
+		{name: "Terra订阅", account: oauth, result: &OpenAIForwardResult{Model: "gpt-6.1-terra"}, want: true},
+		{name: "Terra别名", account: oauth, result: &OpenAIForwardResult{Model: "openai/GPT_6.1_TERRA-none"}, want: true},
+		{name: "映射到Terra", account: oauth, result: &OpenAIForwardResult{Model: "custom", UpstreamModel: "gpt-6.1-terra"}, want: true},
+		{name: "Terra映射离开", account: oauth, result: &OpenAIForwardResult{Model: "gpt-6.1-terra", UpstreamModel: "gpt-5.6-terra"}},
+		{name: "Terra API账号", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}, result: &OpenAIForwardResult{Model: "gpt-6.1-terra"}},
+		{name: "Terra订阅访问令牌", account: &Account{Platform: PlatformOpenAI, Type: AccountTypeSetupToken}, result: &OpenAIForwardResult{Model: "gpt-6.1-terra"}, want: true},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			require.Equal(t, tt.want, openAISubscriptionLongContextExempt(tt.account, tt.result))
@@ -235,4 +241,38 @@ func TestOpenAIGatewayServiceRecordUsage_GPT61SolExemptionSurvivesRepricing(t *t
 	require.False(t, usageRepo.lastLog.LongContextBillingApplied)
 	require.NotNil(t, usageRepo.lastLog.AccountStatsCost)
 	require.InDelta(t, standardCost*2, *usageRepo.lastLog.AccountStatsCost, 1e-12)
+}
+
+func TestOpenAIGatewayServiceRecordUsage_GPT61TerraLongContextBoundary(t *testing.T) {
+	for _, totalInput := range []int{271999, 272000, 272001} {
+		for _, accountType := range []string{AccountTypeOAuth, AccountTypeSetupToken, AccountTypeAPIKey} {
+			for _, tier := range []string{"", "priority"} {
+				t.Run(fmt.Sprintf("%s/%d/%s", accountType, totalInput, tier), func(t *testing.T) {
+					usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+					svc := newOpenAIRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{}, nil)
+					err := svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+						Result: &OpenAIForwardResult{RequestID: "terra-boundary", Model: "gpt-6.1-terra", ServiceTier: &tier, Duration: time.Second,
+							Usage: OpenAIUsage{InputTokens: totalInput, OutputTokens: 1000}},
+						APIKey: openAIRecordUsageAPIKeyWithGroup(svc, 1, true), User: &User{ID: 2},
+						Account: &Account{ID: 3, Platform: PlatformOpenAI, Type: accountType,
+							Extra: map[string]any{openAILongContextBillingEnabledKey: true}},
+					})
+					require.NoError(t, err)
+					wantLong := accountType == AccountTypeAPIKey && totalInput > 272000
+					wantInput, wantOutput := float64(totalInput)*1e-6, 1000*5e-6
+					if wantLong {
+						wantInput *= 2
+						wantOutput *= 1.5
+					}
+					if tier == "priority" {
+						wantInput *= 2
+						wantOutput *= 2
+					}
+					require.Equal(t, wantLong, usageRepo.lastLog.LongContextBillingApplied)
+					require.InDelta(t, wantInput, usageRepo.lastLog.InputCost, 1e-12)
+					require.InDelta(t, wantOutput, usageRepo.lastLog.OutputCost, 1e-12)
+				})
+			}
+		}
+	}
 }

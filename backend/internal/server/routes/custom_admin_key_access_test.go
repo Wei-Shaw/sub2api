@@ -76,7 +76,7 @@ func (*scopedRouteAccounts) GetAccount(_ context.Context, id int64) (*service.Ac
 	}
 	return a, nil
 }
-func (s *scopedRouteAccounts) ScopedAdminList(context.Context, pagination.PaginationParams, string, string, string, string) ([]service.Account, int64, error) {
+func (s *scopedRouteAccounts) ScopedAdminList(context.Context, pagination.PaginationParams, string, string, string, string, int64) ([]service.Account, int64, error) {
 	s.t.Fatal("本测试中列表必须在权限准入阶段被拒绝")
 	return nil, 0, nil
 }

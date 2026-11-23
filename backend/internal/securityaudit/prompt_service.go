@@ -42,6 +42,7 @@ func NewPromptService(
 	enqueuer := NewEnqueuer(config, repo, payload, metrics)
 	evaluator := NewGuardEvaluator(scanner, repo, metrics)
 	runner := NewRunner(config, repo, payload, scanner, metrics)
+	enqueuer.notify = runner.Notify
 	return &PromptService{
 		config: config, repo: repo, payload: payload, scanner: scanner, metrics: metrics,
 		enqueuer: enqueuer, evaluator: evaluator, runner: runner, clock: realClock{},
@@ -109,6 +110,21 @@ func (s *PromptService) EffectiveMode() Mode {
 
 func (s *PromptService) Enqueue(_ context.Context, req Request) error {
 	if s == nil || s.enqueuer == nil || s.EffectiveMode() != ModeAsync {
+		return nil
+	}
+	// Enqueuer rechecks configuration before persistence. Check it here too so
+	// requests outside the audit scope never copy their potentially large body.
+	cfg, ok := s.config.Active()
+	if !ok || cfg.EffectiveMode() != ModeAsync {
+		return nil
+	}
+	if !cfg.IncludesGroup(req.GroupID) {
+		LogInfo(EventEnqueueSkipped, mergeLogFields(requestLogFields(req), map[string]any{"config_version": cfg.ConfigVersion, "status": "skipped", "error_code": "group_out_of_scope"}))
+		return nil
+	}
+	if len(cfg.EnabledEndpoints()) == 0 {
+		s.enqueuer.recordDropped()
+		LogWarn(EventEnqueueDropped, mergeLogFields(requestLogFields(req), map[string]any{"config_version": cfg.ConfigVersion, "status": "dropped", "error_code": "no_enabled_endpoint"}))
 		return nil
 	}
 	select {

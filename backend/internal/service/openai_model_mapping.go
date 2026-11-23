@@ -25,11 +25,12 @@ func resolveOpenAIForwardModel(account *Account, requestedModel, messagesDispatc
 // Codex 上游不可能服务这些模型：转发阶段 normalizeOpenAIModelForUpstream
 // 对未知模型原样透传，上游必然返回不可重试的 400。
 //
-// 采用保守黑名单而非 Codex 模型白名单：未知/自定义别名保持「允许」，
-// 以兼容渠道级模型映射等「账号选定之后才改写模型名」的部署方式
-// （调度过滤看到的是改写前的原始模型名）。前缀分类的先例见
+// 采用保守黑名单而非 Codex 模型白名单：未知/自定义别名保持「允许」。
+// 渠道级模型映射不受影响：各 OpenAI 入口都按渠道映射后的模型名调度，
+// 把 claude-* 等别名映射到 gpt-5.x 的渠道照常落到 OAuth 账号。前缀分类的先例见
 // ResolveThinkingProtocol（thinking_protocol.go）。
 var openAIOAuthForeignModelPrefixes = []string{
+	"claude-",
 	"deepseek-",
 	"glm-",
 	"kimi-",

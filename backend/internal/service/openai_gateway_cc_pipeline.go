@@ -31,6 +31,22 @@ import (
 // （GLM effort 归一化、fast policy、Grok 分支、ClientDisconnect 语义等）仍留在
 // 调用方，属于有意保留的行为差异，不在此强行统一。
 
+// flushBeforeUpstreamRead 在扫描器向上游读取新数据之前调用 flush。
+//
+// bufio.Scanner 只在缓冲里没有完整行时才调用 Read，所以 flush 恰好发生在
+// "要等上游下一批数据"之前：已经到达的行不会被延后写给客户端，而同一次读取里
+// 到达的多行（data 行与事件间空行、一次到达的多个事件）合并成一次 flush，
+// 不再每行一次写系统调用。
+type flushBeforeUpstreamRead struct {
+	r     io.Reader
+	flush func()
+}
+
+func (f *flushBeforeUpstreamRead) Read(p []byte) (int, error) {
+	f.flush()
+	return f.r.Read(p)
+}
+
 // newUpstreamSSEScanner 构造读取上游 SSE 流的行扫描器，按配置放大单行上限。
 func (s *OpenAIGatewayService) newUpstreamSSEScanner(r io.Reader) *bufio.Scanner {
 	scanner := bufio.NewScanner(r)
@@ -39,6 +55,7 @@ func (s *OpenAIGatewayService) newUpstreamSSEScanner(r io.Reader) *bufio.Scanner
 		maxLineSize = s.cfg.Gateway.MaxLineSize
 	}
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
+	scanner.Split(newBoundedSSESplit(s.cfg, maxLineSize, nil))
 	return scanner
 }
 

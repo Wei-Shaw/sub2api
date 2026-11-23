@@ -178,21 +178,24 @@ func TestRejectIfCyberSessionBlocked_FailOpen(t *testing.T) {
 	require.False(t, h2.rejectIfCyberSessionBlocked(c, key, []byte(`{}`), "gpt-5", cyberBlockFormatResponses), "nil gateway service → pass")
 }
 
-func TestBuildCyberSessionBlockWritePlanCombinesExplicitAndTranscriptKeys(t *testing.T) {
+func TestBuildCyberSessionBlockCombinesExplicitAndTranscriptKeys(t *testing.T) {
 	body := []byte(`{"messages":[{"role":"user","content":"setup"},{"role":"assistant","content":"ready"},{"role":"user","content":"trigger"}]}`)
 	c := newTestGinContext()
 	c.Request = httptest.NewRequest("POST", "/openai/v1/responses", strings.NewReader(string(body)))
 	c.Request.RemoteAddr = "203.0.113.44:12345"
 	c.Request.Header.Set("User-Agent", "client/1.2.3")
 
-	plan := buildCyberSessionBlockWritePlan(7, c, body)
-	require.Len(t, plan.keys, 2)
-	require.NotEmpty(t, plan.scopeKey)
+	block := buildCyberSessionBlock(7, c, body)
+	require.Len(t, block.Keys, 2)
+	require.Equal(t, []int{3, 2}, block.TranscriptLengths)
+	require.Equal(t, int64(7), block.APIKeyID)
+	require.NotEmpty(t, block.ScopeKey)
 
 	c.Request.Header.Set("session_id", "sess-explicit")
-	plan = buildCyberSessionBlockWritePlan(7, c, body)
-	require.Len(t, plan.keys, 3)
-	require.NotEmpty(t, plan.scopeKey)
+	block = buildCyberSessionBlock(7, c, body)
+	require.Len(t, block.Keys, 3)
+	require.Equal(t, []int{3, 2}, block.TranscriptLengths)
+	require.NotEmpty(t, block.ScopeKey)
 }
 
 // TestRecordCyberPolicyIfMarked_BlockKeyPlumbed verifies the 6th param is

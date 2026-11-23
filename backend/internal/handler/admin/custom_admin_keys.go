@@ -50,6 +50,7 @@ func (h *SettingHandler) CreateScopedAdminKey(c *gin.Context) {
 		response.ErrorFrom(c, e)
 		return
 	}
+	middleware.SetAuditExtra(c, map[string]any{"admin_key_id": item.ID, "full_access": item.Policy.FullAccess})
 	response.Success(c, gin.H{"key": key, "item": item})
 }
 func (h *SettingHandler) UpdateScopedAdminKey(c *gin.Context) {
@@ -66,6 +67,7 @@ func (h *SettingHandler) UpdateScopedAdminKey(c *gin.Context) {
 		response.ErrorFrom(c, e)
 		return
 	}
+	middleware.SetAuditExtra(c, map[string]any{"admin_key_id": item.ID, "full_access_before": item.PreviousFullAccess, "full_access": item.Policy.FullAccess})
 	response.Success(c, item)
 }
 func (h *SettingHandler) RotateScopedAdminKey(c *gin.Context) {
@@ -77,6 +79,7 @@ func (h *SettingHandler) RotateScopedAdminKey(c *gin.Context) {
 		response.ErrorFrom(c, e)
 		return
 	}
+	middleware.SetAuditExtra(c, map[string]any{"admin_key_id": item.ID, "full_access": item.Policy.FullAccess})
 	response.Success(c, gin.H{"key": key, "item": item})
 }
 func (h *SettingHandler) RevokeScopedAdminKey(c *gin.Context) {
