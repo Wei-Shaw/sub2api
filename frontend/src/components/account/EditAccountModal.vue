@@ -1576,6 +1576,13 @@
             <p class="text-xs text-purple-700 dark:text-purple-400">{{ t('admin.accounts.mapRequestModels') }}</p>
           </div>
 
+          <AntigravityLiveModelCatalogField
+            v-if="account.type === 'oauth'"
+            :model-value="antigravityLiveModelMapping"
+            :catalog="antigravityLiveCatalog"
+            @update:model-value="setAntigravityLiveModelMapping"
+          />
+
           <div class="mb-3 flex flex-wrap gap-2">
             <button
               type="button"
@@ -3455,6 +3462,14 @@ import {
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
+import AntigravityLiveModelCatalogField from '@/components/account/AntigravityLiveModelCatalogField.vue'
+import {
+  applyAntigravityModelMappingMode,
+  isAntigravityLiveModelMapping,
+  normalizeAntigravityCatalogIds,
+  readAntigravityModelCatalog,
+  type AntigravityModelCatalog
+} from '@/components/account/antigravityLiveModelCatalog'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,
@@ -3519,7 +3534,8 @@ import {
   commonErrorCodes,
   buildModelMappingObject,
   splitModelMappingObject,
-  isValidWildcardPattern
+  isValidWildcardPattern,
+  fetchAntigravityDefaultMappings
 } from '@/composables/useModelWhitelist'
 
 interface Props {
@@ -4125,6 +4141,21 @@ const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist'
 const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
 const isSyncingAntigravityUpstream = ref(false)
+const antigravityLiveModelMapping = ref(false)
+const antigravityLiveCatalog = ref<AntigravityModelCatalog | null>(null)
+
+// Turning the live list on drops rows copied from the default table: in live mode
+// every row is an override that wins over the catalog, so stale defaults would
+// keep pointing at retired models. Custom rows stay as overrides.
+const setAntigravityLiveModelMapping = async (live: boolean) => {
+  antigravityLiveModelMapping.value = live
+  if (!live) return
+  const defaults = new Map((await fetchAntigravityDefaultMappings()).map((mapping) => [mapping.from, mapping.to]))
+  if (!antigravityLiveModelMapping.value) return
+  antigravityModelMappings.value = antigravityModelMappings.value.filter(
+    (mapping) => defaults.get(mapping.from.trim()) !== mapping.to.trim()
+  )
+}
 const tempUnschedEnabled = ref(false)
 const accountSchedulingThresholdOverrideEnabled = ref(false)
 const accountSchedulingThresholdOverrideValue = ref(100)
@@ -4811,6 +4842,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     // Antigravity 始终使用映射模式
     antigravityModelRestrictionMode.value = 'mapping'
     antigravityWhitelistModels.value = []
+    antigravityLiveModelMapping.value = newAccount.type === 'oauth' && isAntigravityLiveModelMapping(credentials)
+    antigravityLiveCatalog.value = readAntigravityModelCatalog(newAccount.extra as Record<string, unknown> | undefined)
 
     // 从 model_mapping 读取映射配置
     const rawAgMapping = credentials?.model_mapping as Record<string, string> | undefined
@@ -4834,6 +4867,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     antigravityModelRestrictionMode.value = 'mapping'
     antigravityWhitelistModels.value = []
     antigravityModelMappings.value = []
+    antigravityLiveModelMapping.value = false
+    antigravityLiveCatalog.value = null
   }
 
   // Load quota control settings (Anthropic OAuth/SetupToken only)
@@ -5134,6 +5169,15 @@ const syncAntigravityUpstreamModels = async () => {
     const upstreamModels = result.models.map((model) => model.trim()).filter(Boolean)
     if (upstreamModels.length === 0) {
       appStore.showInfo(t('admin.accounts.syncUpstreamModelsEmpty'))
+      return
+    }
+
+    // Live mode reads the synced catalog directly; copying it into the rows would
+    // turn every tiered ID into an override.
+    if (props.account.type === 'oauth' && antigravityLiveModelMapping.value) {
+      const models = normalizeAntigravityCatalogIds(upstreamModels)
+      antigravityLiveCatalog.value = { models, syncedAt: new Date().toISOString() }
+      appStore.showSuccess(t('admin.accounts.antigravityLiveCatalogSynced', { count: models.length }))
       return
     }
 
@@ -6091,6 +6135,7 @@ const handleSubmit = async () => {
       if (antigravityModelMapping) {
         newCredentials.model_mapping = antigravityModelMapping
       }
+      applyAntigravityModelMappingMode(newCredentials, props.account.type === 'oauth' && antigravityLiveModelMapping.value)
 
       updatePayload.credentials = newCredentials
     }

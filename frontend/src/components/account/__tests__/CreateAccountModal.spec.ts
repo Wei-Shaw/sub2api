@@ -1079,3 +1079,35 @@ describe('CreateAccountModal Vertex API key auth', () => {
     expect(wrapper.find('[data-testid="vertex-api-key-input"]').exists()).toBe(false)
   })
 })
+
+describe('CreateAccountModal Antigravity live model list', () => {
+  beforeEach(() => {
+    createAccountMock.mockReset()
+  })
+
+  const mappingRowCount = (wrapper: ReturnType<typeof mountModal>) =>
+    wrapper.findAll('input').filter((input) => input.attributes('placeholder') === 'admin.accounts.requestModel').length
+
+  it('defaults new OAuth accounts to the live list with empty override rows', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Antigravity')
+    await flushPromises()
+
+    const toggle = wrapper.get('[data-testid="antigravity-live-model-mapping-toggle"]')
+    expect(toggle.attributes('aria-checked')).toBe('true')
+    expect(wrapper.find('[data-testid="antigravity-live-models-pending"]').exists()).toBe(true)
+    expect(mappingRowCount(wrapper)).toBe(0)
+
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-checked')).toBe('false')
+    expect(wrapper.find('[data-testid="antigravity-live-models-pending"]').exists()).toBe(false)
+  })
+
+  it('hides the switch for Antigravity API-key accounts', async () => {
+    const wrapper = mountModal()
+    await selectButtonByText(wrapper, 'Antigravity')
+    await selectButtonByText(wrapper, 'admin.accounts.types.antigravityApikey')
+
+    expect(wrapper.find('[data-testid="antigravity-live-model-mapping"]').exists()).toBe(false)
+  })
+})

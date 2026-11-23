@@ -39,6 +39,36 @@ func TestFilterSchedulerCredentialsKeepsGeminiExplicitCacheKeys(t *testing.T) {
 	require.NotContains(t, filtered, "service_account_json")
 }
 
+func TestSchedulerMetadataAccountKeepsAntigravityLiveModelMapping(t *testing.T) {
+	account := service.Account{
+		ID:       31,
+		Platform: service.PlatformAntigravity,
+		Type:     service.AccountTypeOAuth,
+		Credentials: map[string]any{
+			"access_token":  "secret-access-token",
+			"model_mapping": map[string]any{"claude-haiku-4-5": "claude-sonnet-5-5"},
+			service.AntigravityModelMappingModeCredentialKey: service.AntigravityModelMappingModeLive,
+		},
+		Extra: map[string]any{
+			service.AntigravityModelCatalogExtraKey: map[string]any{
+				"models":    []any{"claude-sonnet-5-5-high", "claude-sonnet-5-5-low", "gemini-3-flash"},
+				"synced_at": "2026-11-23T10:00:00Z",
+			},
+		},
+	}
+
+	metadata := buildSchedulerMetadataAccount(account)
+
+	require.Empty(t, metadata.GetCredential("access_token"))
+	require.True(t, metadata.IsAntigravityLiveModelMapping())
+	require.Equal(t, account.GetModelMapping(), metadata.GetModelMapping())
+	require.Equal(t, map[string]string{
+		"claude-haiku-4-5":  "claude-sonnet-5-5",
+		"claude-sonnet-5-5": "claude-sonnet-5-5-high",
+		"gemini-3-flash":    "gemini-3-flash",
+	}, metadata.GetModelMapping())
+}
+
 func TestSchedulerMetadataAccountKeepsOpenAISubscriptionIdentity(t *testing.T) {
 	account := service.Account{
 		ID:       24,

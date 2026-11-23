@@ -202,22 +202,54 @@ var antigravityLevelFamilies = map[string][]string{
 // ID for level ("" when the request states no effort, which selects high).
 // A level the model lacks falls back to high. The account must list the bare
 // name; a mapping that aliases it to another model is honoured unchanged.
+//
+// A live-mode account with a saved catalog takes its families from that catalog
+// instead of antigravityLevelFamilies, and also resolves an alias whose target is
+// a bare family base (claude-haiku-4-5 -> claude-sonnet-5-5), because the catalog
+// has no bare ID to forward.
 func resolveAntigravityLevelFamily(account *Account, requestedModel string, level string) (string, bool) {
 	model := strings.TrimSpace(strings.TrimPrefix(requestedModel, "models/"))
-	levels, ok := antigravityLevelFamilies[model]
-	if !ok {
+	families, live := account.antigravityLiveLevelFamilies()
+	if !live {
+		families = antigravityLevelFamilies
+	}
+	levels, isFamily := families[model]
+	if !isFamily && !live {
 		return "", false
 	}
 	mapped := mapAntigravityModel(account, model)
-	if mapped == "" || (mapped != model && !strings.HasPrefix(mapped, model+"-")) {
+	if isFamily && antigravityMappedWithinFamily(model, mapped, levels, live) {
+		return pickAntigravityFamilyLevel(model, levels, level), true
+	}
+	if !live {
 		return "", false
 	}
-	for _, candidate := range levels {
-		if candidate == level {
-			return model + "-" + level, true
+	if targetLevels, ok := families[mapped]; ok {
+		return pickAntigravityFamilyLevel(mapped, targetLevels, level), true
+	}
+	return "", false
+}
+
+// antigravityMappedWithinFamily reports whether mapped still names the family
+// model, so the request effort picks the tier. In live mode only the bare name and
+// its level IDs count: a pin to another catalog model that shares the prefix
+// (gemini-3.8-flash -> gemini-3.8-flash-tiered) is an alias and is honoured.
+func antigravityMappedWithinFamily(model, mapped string, levels []string, live bool) bool {
+	if mapped == "" {
+		return false
+	}
+	if mapped == model {
+		return true
+	}
+	if !live {
+		return strings.HasPrefix(mapped, model+"-")
+	}
+	for _, level := range levels {
+		if mapped == model+"-"+level {
+			return true
 		}
 	}
-	return model + "-high", true
+	return false
 }
 
 // antigravityLevelFromEffort normalizes a client effort to a family level.

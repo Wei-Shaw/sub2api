@@ -1966,3 +1966,82 @@ func TestGatewayModels_CompositeCodexRouteLookupErrorKeepsFallback(t *testing.T)
 		})
 	}
 }
+
+// A live-mode antigravity account lists the bare names derived from its saved
+// upstream catalog and none of the tiered IDs behind them.
+func TestGatewayModels_AntigravityLiveCatalogListsBareNames(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	liveAccount := service.Account{
+		ID:       1,
+		Platform: service.PlatformAntigravity,
+		Type:     service.AccountTypeOAuth,
+		Extra: map[string]any{
+			"mixed_scheduling": true,
+			service.AntigravityModelCatalogExtraKey: map[string]any{
+				"models": []any{
+					"claude-opus-5-5-high", "claude-opus-5-5-low", "claude-opus-5-5-medium",
+					"gemini-3-flash",
+					"gemini-3.8-flash-high", "gemini-3.8-flash-low", "gemini-3.8-flash-medium", "gemini-3.8-flash-tiered",
+					"gemini-4-neon-high", "gemini-4-neon-low", "gemini-4-neon-medium", "gemini-4-neon-xhigh",
+					"gpt-oss-120b-medium",
+				},
+				"synced_at": "2026-11-23T10:00:00Z",
+			},
+		},
+		Credentials: map[string]any{
+			service.AntigravityModelMappingModeCredentialKey: service.AntigravityModelMappingModeLive,
+		},
+	}
+
+	listModels := func(t *testing.T, groupPlatform string, codex bool) []string {
+		t.Helper()
+		groupID := int64(77)
+		h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{
+			byGroup: map[int64][]service.Account{groupID: {liveAccount}},
+		})
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		target := "/v1/models"
+		if codex {
+			target = "/models?client_version=0.147.0"
+		}
+		c.Request = httptest.NewRequest(http.MethodGet, target, nil)
+		c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+			Group: &service.Group{ID: groupID, Platform: groupPlatform},
+		})
+		if codex {
+			h.CodexModels(c)
+			require.Equal(t, http.StatusOK, rec.Code)
+			var got codexModelsResponseForTest
+			require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+			return codexModelSlugsForTest(got.Models)
+		}
+		h.Models(c)
+		require.Equal(t, http.StatusOK, rec.Code)
+		var got gatewayModelsResponseForTest
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &got))
+		return modelIDsForTest(got.Data)
+	}
+
+	t.Run("antigravity group", func(t *testing.T) {
+		require.ElementsMatch(t, []string{
+			"claude-opus-5-5", "gemini-3-flash", "gemini-3.8-flash", "gemini-3.8-flash-tiered", "gemini-4-neon", "gpt-oss-120b-medium",
+		}, listModels(t, service.PlatformAntigravity, false))
+	})
+
+	t.Run("gemini group through mixed scheduling", func(t *testing.T) {
+		require.ElementsMatch(t, []string{
+			"gemini-3-flash", "gemini-3.8-flash", "gemini-3.8-flash-tiered", "gemini-4-neon",
+		}, listModels(t, service.PlatformGemini, false))
+	})
+
+	t.Run("codex catalog on a gemini group", func(t *testing.T) {
+		slugs := listModels(t, service.PlatformGemini, true)
+		require.Contains(t, slugs, "gemini-4-neon")
+		require.Contains(t, slugs, "gemini-3.8-flash")
+		for _, slug := range slugs {
+			require.NotRegexp(t, `-(low|medium|high|xhigh)$`, slug)
+		}
+	})
+}

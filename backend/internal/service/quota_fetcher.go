@@ -16,4 +16,7 @@ type QuotaFetcher interface {
 type QuotaResult struct {
 	UsageInfo *UsageInfo     // 转换后的使用信息
 	Raw       map[string]any // 原始响应，可存入 account.Extra
+	// AntigravityModelCatalog is the callable model catalog read from the same
+	// response; the caller persists it on the account.
+	AntigravityModelCatalog *AntigravityModelCatalog
 }

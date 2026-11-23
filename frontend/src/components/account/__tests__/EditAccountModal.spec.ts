@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import {
   BUILTIN_PLATFORM_CATALOG,
   resetPlatformCatalog,
@@ -60,6 +60,7 @@ vi.mock('vue-i18n', async () => {
 })
 
 import EditAccountModal from '../EditAccountModal.vue'
+import { getAntigravityDefaultModelMapping } from '@/api/admin/accounts'
 
 const BaseDialogStub = defineComponent({
   name: 'BaseDialog',
@@ -1921,6 +1922,98 @@ describe('EditAccountModal', () => {
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials).not.toHaveProperty(
       'antigravity_project_id'
     )
+  })
+
+  function buildLiveAntigravityAccount(extra: Record<string, unknown>) {
+    const account = buildAntigravityAccount('configured-project')
+    account.credentials = {
+      antigravity_project_id: 'configured-project',
+      model_mapping_mode: 'live',
+      model_mapping: { 'claude-haiku-4-5': 'claude-sonnet-5-5' }
+    }
+    account.extra = extra
+    return account
+  }
+
+  async function submitAntigravity(account: any, beforeSubmit?: (wrapper: any) => Promise<void>) {
+    updateAccountMock.mockReset()
+    checkMixedChannelRiskMock.mockReset()
+    checkMixedChannelRiskMock.mockResolvedValue({ has_risk: false })
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    if (beforeSubmit) await beforeSubmit(wrapper)
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock).toHaveBeenCalledTimes(1)
+    return updateAccountMock.mock.calls[0]?.[1]?.credentials
+  }
+
+  it('keeps an Antigravity account without the live mode on the static mapping', async () => {
+    const account = buildAntigravityAccount('configured-project')
+    const credentials = await submitAntigravity(account, async (wrapper) => {
+      const toggle = wrapper.get('[data-testid="antigravity-live-model-mapping-toggle"]')
+      expect(toggle.attributes('aria-checked')).toBe('false')
+      expect(wrapper.find('[data-testid="antigravity-live-models"]').exists()).toBe(false)
+    })
+    expect(credentials).not.toHaveProperty('model_mapping_mode')
+    expect(credentials?.model_mapping).toEqual({ 'gemini-2.5-flash': 'gemini-2.5-flash' })
+  })
+
+  it('shows the names derived from the saved catalog and submits the live mode with overrides', async () => {
+    const account = buildLiveAntigravityAccount({
+      antigravity_model_catalog: {
+        models: ['gemini-3-flash', 'gemini-4-neon-high', 'gemini-4-neon-low', 'gemini-4-neon-xhigh'],
+        synced_at: '2026-11-23T10:00:00Z'
+      }
+    })
+    const credentials = await submitAntigravity(account, async (wrapper) => {
+      expect(wrapper.get('[data-testid="antigravity-live-model-mapping-toggle"]').attributes('aria-checked')).toBe('true')
+      const names = wrapper.findAll('[data-testid="antigravity-live-models"] span').map((node: any) => node.text())
+      expect(names).toEqual(['gemini-3-flash', 'gemini-4-neon'])
+    })
+    expect(credentials?.model_mapping_mode).toBe('live')
+    expect(credentials?.model_mapping).toEqual({ 'claude-haiku-4-5': 'claude-sonnet-5-5' })
+  })
+
+  it('shows the first-sync hint for a live account without a catalog', async () => {
+    const account = buildLiveAntigravityAccount({})
+    updateAccountMock.mockReset()
+    const wrapper = mountModal(account)
+    expect(wrapper.find('[data-testid="antigravity-live-models-pending"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="antigravity-live-models"]').exists()).toBe(false)
+  })
+
+  it('drops rows copied from the default table when the switch is turned on', async () => {
+    vi.mocked(getAntigravityDefaultModelMapping).mockResolvedValue({
+      'claude-sonnet-4-6': 'claude-sonnet-4-6',
+      'claude-haiku-4-5': 'claude-sonnet-4-6',
+      'gemini-3-pro-high': 'gemini-3-pro-high'
+    })
+    const account = buildAntigravityAccount('configured-project')
+    account.credentials.model_mapping = {
+      'claude-sonnet-4-6': 'claude-sonnet-4-6',
+      'gemini-3-pro-high': 'gemini-3-pro-high',
+      // Same key as a default entry with another target: a custom alias.
+      'claude-haiku-4-5': 'claude-sonnet-5-5',
+      'team-alias': 'gemini-4-neon'
+    }
+    const credentials = await submitAntigravity(account, async (wrapper) => {
+      await wrapper.get('[data-testid="antigravity-live-model-mapping-toggle"]').trigger('click')
+      await flushPromises()
+    })
+    expect(credentials?.model_mapping_mode).toBe('live')
+    expect(credentials?.model_mapping).toEqual({
+      'claude-haiku-4-5': 'claude-sonnet-5-5',
+      'team-alias': 'gemini-4-neon'
+    })
+  })
+
+  it('removes the live mode when the switch is turned off', async () => {
+    const account = buildLiveAntigravityAccount({})
+    const credentials = await submitAntigravity(account, async (wrapper) => {
+      await wrapper.get('[data-testid="antigravity-live-model-mapping-toggle"]').trigger('click')
+    })
+    expect(credentials).not.toHaveProperty('model_mapping_mode')
+    expect(credentials?.model_mapping).toEqual({ 'claude-haiku-4-5': 'claude-sonnet-5-5' })
   })
 })
 
