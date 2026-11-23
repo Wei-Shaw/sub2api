@@ -52,6 +52,7 @@ type wsIdentityStableKey struct{ kind, original string }
 
 type openAIWSIdentitySession struct {
 	runtime        *pluginRuntime
+	client         pluginv1.WSIdentityPluginClient
 	accountID      int64
 	identitySource *Account
 	apiKeyID       int64
@@ -61,10 +62,14 @@ type openAIWSIdentitySession struct {
 }
 
 func newOpenAIWSIdentitySession(cfg *config.Config, route *pluginRoute, accountID int64, identitySource *Account, apiKeyID int64) *openAIWSIdentitySession {
-	if cfg == nil || !cfg.Plugins.AllowsOpenAIWSIdentity(accountID, apiKeyID) || route == nil || route.runtime == nil || route.runtime.wsIdentity == nil || codexAccountIdentityNamespace(identitySource) == "" {
+	if cfg == nil || !cfg.Plugins.AllowsOpenAIWSIdentity(accountID, apiKeyID) || route == nil || route.runtime == nil || codexAccountIdentityNamespace(identitySource) == "" {
 		return nil
 	}
-	return &openAIWSIdentitySession{runtime: route.runtime, accountID: accountID, identitySource: identitySource, apiKeyID: apiKeyID, id: uuid.NewString(), epoch: route.runtime.wsConfigEpoch.Load()}
+	client, epoch := route.runtime.nativeWSIdentity(cfg.Plugins.OpenAIWSIdentityCompanionConfigured())
+	if client == nil {
+		return nil
+	}
+	return &openAIWSIdentitySession{runtime: route.runtime, client: client, accountID: accountID, identitySource: identitySource, apiKeyID: apiKeyID, id: uuid.NewString(), epoch: epoch}
 }
 
 func validWSIdentityValue(value string) bool {
@@ -279,7 +284,7 @@ func (s *openAIWSIdentitySession) rewrite(ctx context.Context, headers http.Head
 	defer cancel()
 	s.scopeLineage(handshake)
 	s.scopeLineage(frame)
-	result, err := s.runtime.wsIdentity.RewriteWSIdentity(rpcCtx, &pluginv1.RewriteWSIdentityRequest{
+	result, err := s.client.RewriteWSIdentity(rpcCtx, &pluginv1.RewriteWSIdentityRequest{
 		AccountId: s.accountID, ConnectionId: s.id, Handshake: handshake, ResponseCreate: frame,
 	}, grpc.MaxCallSendMsgSize(wsIdentityMaxRPCBytes), grpc.MaxCallRecvMsgSize(wsIdentityMaxRPCBytes))
 	if err != nil || result == nil || s.runtime.wsConfigEpoch.Load() != s.epoch {

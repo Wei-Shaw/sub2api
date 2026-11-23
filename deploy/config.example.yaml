@@ -1120,6 +1120,11 @@ plugins:
   # 原生 WS 灰度须同时填写上游账号和已鉴权 Key 的正整数 ID；不改 HTTP 插件绑定。
   openai_ws_identity_canary_account_id: 0
   openai_ws_identity_canary_api_key_id: 0
+  # Candidate-local signed archive, pinned by SHA-256. Leave both empty unless testing the exact pair above.
+  # The companion never replaces the registered HTTP plugin or receives host account services.
+  # 仅候选 App 本地读取；不会替换共享登记的 HTTP 插件或取得宿主账号服务。
+  openai_ws_identity_companion_package: ""
+  openai_ws_identity_companion_sha256: ""
   # Additional Ed25519 public keys indexed by signature.json key_id.
   # OpenAI Transport's public key is built in; this map only adds third-party publishers.
   # 以 signature.json 中 key_id 为索引的额外 Ed25519 公钥。

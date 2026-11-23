@@ -30,6 +30,7 @@ type pluginRuntime struct {
 	client        *hcplugin.Client
 	api           pluginv1.TransportPluginClient
 	wsIdentity    pluginv1.WSIdentityPluginClient
+	wsCompanion   *wsIdentityCompanion // Immutable after publication.
 	wsConfigEpoch atomic.Uint64
 	inFlight      atomic.Int64
 	draining      atomic.Bool
@@ -195,7 +196,7 @@ func (r *pluginRuntime) validateAndApplyNormalizedConfig(ctx context.Context, co
 	if err != nil {
 		return nil, fmt.Errorf("序列化插件规范化配置: %w", err)
 	}
-	if r.wsIdentity != nil {
+	if r.wsIdentity != nil || r.wsCompanion != nil {
 		// Odd while plugin config is being applied; old WS sessions never adopt a new config.
 		r.wsConfigEpoch.Add(1)
 		defer r.wsConfigEpoch.Add(1)
@@ -281,7 +282,13 @@ func (r *pluginRuntime) drain(timeout time.Duration) {
 }
 
 func (r *pluginRuntime) kill() {
-	if r != nil && r.client != nil {
+	if r == nil {
+		return
+	}
+	if r.wsCompanion != nil {
+		r.wsCompanion.close()
+	}
+	if r.client != nil {
 		r.client.Kill()
 	}
 }

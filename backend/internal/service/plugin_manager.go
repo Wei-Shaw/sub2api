@@ -1021,14 +1021,24 @@ func (m *PluginManager) prepareRuntime(ctx context.Context, installation *Plugin
 		return nil, err
 	}
 	configJSON, err := m.decryptConfig(installation)
+	var normalized []byte
 	if err == nil && validateConfig {
 		applyCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-		err = runtime.validateAndApplyConfig(applyCtx, configJSON)
+		normalized, err = runtime.validateAndApplyNormalizedConfig(applyCtx, configJSON)
 		cancel()
 	}
 	if err != nil {
 		runtime.kill()
 		return nil, err
+	}
+	if validateConfig && m.cfg.Plugins.OpenAIWSIdentityEnabled && m.cfg.Plugins.OpenAIWSIdentityCompanionConfigured() {
+		companion, err := m.prepareWSIdentityCompanion(ctx, runtime, configJSON, normalized)
+		if err != nil {
+			slog.Warn("ws_identity_companion_unavailable", "reason", err.Error())
+		} else {
+			runtime.wsCompanion = companion
+			slog.Info("ws_identity_companion_ready", "package_sha256", m.cfg.Plugins.OpenAIWSIdentityCompanionSHA256)
+		}
 	}
 	return runtime, nil
 }
