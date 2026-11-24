@@ -12,7 +12,16 @@ describe('Codex models API', () => {
 
   it('builds the authenticated Codex manifest endpoint from the public API base', () => {
     expect(buildCodexModelsManifestUrl('https://example.com/api/v1/')).toBe(
-      'https://example.com/api/v1/models?client_version=0.158.0'
+      'https://example.com/api/v1/models?format=codex'
+    )
+  })
+
+  it('preserves explicit client negotiation without requiring it for downloads', () => {
+    expect(buildCodexModelsManifestUrl('https://example.com/v1', '0.200.1')).toBe(
+      'https://example.com/v1/models?client_version=0.200.1'
+    )
+    expect(buildCodexModelsManifestUrl('https://example.com/v1', '')).toBe(
+      'https://example.com/v1/models?format=codex'
     )
   })
 
@@ -59,7 +68,7 @@ describe('Codex models API', () => {
     const result = await fetchCodexModelsManifest('https://example.com/v1', 'sk-user-test')
 
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://example.com/v1/models?client_version=0.158.0',
+      'https://example.com/v1/models?format=codex',
       expect.objectContaining({
         headers: {
           Accept: 'application/json',
@@ -85,6 +94,15 @@ describe('Codex models API', () => {
 
     await expect(fetchCodexModelsManifest('https://example.com/v1', 'sk-user-test'))
       .rejects.toThrow('valid manifest')
+  })
+
+  it('rejects an upstream error instead of downloading a synthetic catalog', async () => {
+    const text = vi.fn()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status: 502, text }))
+
+    await expect(fetchCodexModelsManifest('https://example.com/api/v1', 'sk-test'))
+      .rejects.toThrow('status 502')
+    expect(text).not.toHaveBeenCalled()
   })
 
   it('measures UTF-8 response bytes before formatting the downloadable catalog', async () => {

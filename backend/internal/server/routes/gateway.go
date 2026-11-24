@@ -83,7 +83,9 @@ func RegisterGatewayRoutes(
 		dispatchCodexModelsGateway(c, h.OpenAIGateway.CodexModels, h.Gateway.CodexModels)
 	}
 	modelsHandler := func(c *gin.Context) {
-		if c.Query("client_version") != "" {
+		// The download UI selects the manifest format without pinning a client
+		// version; the service then uses its automatically maintained identity.
+		if c.Query("format") == "codex" || c.Query("client_version") != "" {
 			codexModelsHandler(c)
 			return
 		}
@@ -222,8 +224,9 @@ func RegisterGatewayRoutes(
 		// locally, and Anthropic-compatible platforms retain their existing path.
 		gateway.POST("/messages/count_tokens", countTokensHandler)
 		// Codex CLI / Codex app refresh their model picker from the provider's
-		// /models endpoint with a client_version query and expect the ChatGPT
-		// Codex manifest format; other clients keep the OpenAI-style list.
+		// /models endpoint with client_version (client negotiation) or
+		// format=codex (automatic download catalog). Other clients keep the
+		// OpenAI-style list.
 		gateway.GET("/models", modelsHandler)
 		// Single-model discovery never selects the Codex client_version manifest.
 		gateway.GET("/models/:model", h.Gateway.Models)
