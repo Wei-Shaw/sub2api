@@ -72,6 +72,16 @@ func WithHeaderOverrideRequestScope(ctx context.Context, userID, apiKeyID int64,
 	return context.WithValue(ctx, headerOverrideScopeKey{}, scope)
 }
 
+// withoutHeaderOverrideRequestScope 去掉 ctx 中的入站用户身份。
+// 用于结果会被跨用户缓存/共享的上游请求（模型列表等）：这类请求不代表某个用户的
+// 推理流量，不上报身份；同时避免逐用户/逐请求的头把按请求头分桶的缓存打散。
+func withoutHeaderOverrideRequestScope(ctx context.Context) context.Context {
+	if headerOverrideScopeFromContext(ctx) == nil {
+		return ctx
+	}
+	return context.WithValue(ctx, headerOverrideScopeKey{}, (*HeaderOverrideRequestScope)(nil))
+}
+
 func headerOverrideScopeFromContext(ctx context.Context) *HeaderOverrideRequestScope {
 	if ctx == nil {
 		return nil
@@ -172,27 +182,46 @@ func validateHeaderOverrideTemplate(lowerName, value string) error {
 		"header %q has a malformed variable placeholder", lowerName)
 }
 
+// headerOverrideRedactedLiteral 在可记录形态中代替模板的固定文本。
+const headerOverrideRedactedLiteral = "…"
+
 // expandHeaderOverrideTemplate 用本次请求的身份替换模板中的变量。
-// 任一变量无法解析、或结果不是合法的请求头值时返回 ("", false)，调用方必须整条不发送。
-func expandHeaderOverrideTemplate(ctx context.Context, value string) (string, bool) {
+// 任一变量无法解析、或结果不是合法的请求头值时 ok 为 false，调用方必须整条不发送。
+//
+// loggable 是可写入错误记录的形态，固定文本可能是中转密钥（如 "sk-xxx-{{user_id}}"），
+// 不得进入日志：
+//   - 模板只有变量时，loggable 就是实际发送的值；
+//   - 混有固定文本时，固定文本替换为 "…"，变量写成 name=value 以便辨认。
+func expandHeaderOverrideTemplate(ctx context.Context, value string) (expanded, loggable string, ok bool) {
 	scope := headerOverrideScopeFromContext(ctx)
-	var b strings.Builder
-	ok := walkHeaderOverrideTemplate(value, func(s string) { _, _ = b.WriteString(s) }, func(name string) bool {
+	var sent, tagged strings.Builder
+	hasLiteral := false
+	ok = walkHeaderOverrideTemplate(value, func(literal string) {
+		_, _ = sent.WriteString(literal)
+		if strings.TrimSpace(literal) != "" {
+			hasLiteral = true
+			_, _ = tagged.WriteString(headerOverrideRedactedLiteral)
+		}
+	}, func(name string) bool {
 		resolved := resolveHeaderOverrideVariable(ctx, scope, name)
 		if resolved == "" {
 			return false
 		}
-		_, _ = b.WriteString(resolved)
+		_, _ = sent.WriteString(resolved)
+		_, _ = tagged.WriteString(name + "=" + resolved)
 		return true
 	})
 	if !ok {
-		return "", false
+		return "", "", false
 	}
-	expanded := strings.TrimSpace(b.String())
+	expanded = strings.TrimSpace(sent.String())
 	if expanded == "" || len(expanded) > maxHeaderOverrideValueLength || !httpguts.ValidHeaderFieldValue(expanded) {
-		return "", false
+		return "", "", false
 	}
-	return expanded, true
+	if !hasLiteral {
+		return expanded, expanded, true
+	}
+	return expanded, tagged.String(), true
 }
 
 func resolveHeaderOverrideVariable(ctx context.Context, scope *HeaderOverrideRequestScope, name string) string {
@@ -219,10 +248,32 @@ func resolveHeaderOverrideVariable(ctx context.Context, scope *HeaderOverrideReq
 			return ""
 		}
 		requestID, _ := ctx.Value(ctxkey.RequestID).(string)
-		return strings.TrimSpace(requestID)
+		return sanitizeHeaderOverrideRequestID(requestID)
 	default:
 		return ""
 	}
+}
+
+const maxHeaderOverrideRequestIDLength = 128
+
+// sanitizeHeaderOverrideRequestID 约束代入模板的请求 ID。
+// 请求 ID 可由客户端通过 X-Request-ID 自带，是变量里唯一受客户端控制的内容：
+// 原样代入组合模板（如 "u={{user_id}};r={{request_id}}"）会让客户端借分隔符伪造
+// 其它身份字段。因此只保留 [A-Za-z0-9._-]，其余字符替换为 "_" 并限长；
+// 不直接丢弃整条请求头，否则客户端可借此让上报头消失。
+func sanitizeHeaderOverrideRequestID(requestID string) string {
+	requestID = strings.TrimSpace(requestID)
+	if len(requestID) > maxHeaderOverrideRequestIDLength {
+		requestID = requestID[:maxHeaderOverrideRequestIDLength]
+	}
+	return strings.Map(func(r rune) rune {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '.', r == '_', r == '-':
+			return r
+		default:
+			return '_'
+		}
+	}, requestID)
 }
 
 // supportsHeaderOverrideVariables 报告账号是否允许解析覆写变量：仅 api_key 账号。

@@ -938,7 +938,7 @@ export default {
           user_id: { label: 'User ID', desc: 'The gateway user who sent the request' },
           api_key_id: { label: 'API Key ID', desc: 'The key used for this request; tells apart multiple keys of one user' },
           group_id: { label: 'Group ID', desc: 'The group bound to the key; the header is not sent when no group is bound' },
-          request_id: { label: 'Request ID', desc: 'Same as the "Request ID" in error records, for direct cross-checking' }
+          request_id: { label: 'Request ID', desc: 'Same as the "Request ID" in error records, for direct cross-checking; characters other than letters, digits and . _ - become underscores' }
         },
         variableNotes: {
           unresolved: 'When a value is unavailable (connection tests, model sync and other background requests without a user), the whole header is not sent, and a same-named header from the client is not passed through either.',

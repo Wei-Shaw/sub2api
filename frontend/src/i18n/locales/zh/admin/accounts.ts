@@ -1050,7 +1050,7 @@ export default {
           user_id: { label: '用户 ID', desc: '发起请求的网关用户' },
           api_key_id: { label: 'API Key ID', desc: '本次请求使用的 Key，同一用户多把 Key 时可区分' },
           group_id: { label: '分组 ID', desc: 'Key 绑定的分组；未绑定分组时该请求头不发送' },
-          request_id: { label: '请求 ID', desc: '与错误记录里的「请求 ID」一致，可直接对账' }
+          request_id: { label: '请求 ID', desc: '与错误记录里的「请求 ID」一致，可直接对账；字母数字和 . _ - 以外的字符会替换为下划线' }
         },
         variableNotes: {
           unresolved: '取不到值时（测试连接、模型同步等没有用户的后台请求）整条请求头不发送，也不会沿用客户端自带的同名头。',

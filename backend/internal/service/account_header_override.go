@@ -203,12 +203,12 @@ func (a *Account) ApplyHeaderOverrides(ctx context.Context, h http.Header) {
 			if !a.supportsHeaderOverrideVariables() {
 				continue
 			}
-			expanded, ok := expandHeaderOverrideTemplate(ctx, value)
+			expanded, loggable, ok := expandHeaderOverrideTemplate(ctx, value)
 			if !ok {
 				continue
 			}
 			value = expanded
-			headerOverrideScopeFromContext(ctx).record(a.ID, name, value)
+			headerOverrideScopeFromContext(ctx).record(a.ID, name, loggable)
 		}
 		h[resolveWireCasing(name)] = []string{value}
 	}
@@ -265,6 +265,11 @@ func NormalizeHeaderOverrideCredentials(credentials map[string]any) error {
 		if lowerName == "" {
 			continue // 丢弃完全为空的占位行
 		}
+		// 变量语法只在保存路径校验：应用路径必须保留模板不合法的存量条目，
+		// 由 ApplyHeaderOverrides 按"解析失败"处理（删除同名头且不发送）。
+		if err := validateHeaderOverrideTemplate(lowerName, value); err != nil {
+			return err
+		}
 		if _, dup := normalized[lowerName]; dup {
 			return infraerrors.Newf(http.StatusBadRequest, "INVALID_HEADER_OVERRIDE",
 				"duplicate header name %q (matching is case-insensitive)", lowerName)
@@ -307,9 +312,6 @@ func normalizeHeaderOverrideEntry(name, value string) (string, string, error) {
 	if !httpguts.ValidHeaderFieldValue(value) {
 		return "", "", infraerrors.Newf(http.StatusBadRequest, "INVALID_HEADER_OVERRIDE",
 			"header %q has an invalid value", lowerName)
-	}
-	if err := validateHeaderOverrideTemplate(lowerName, value); err != nil {
-		return "", "", err
 	}
 	return lowerName, value, nil
 }

@@ -268,11 +268,12 @@ const insertVariable = async (variable: HeaderOverrideVariable) => {
   const row = focusedValueRow
   const input = focusedValueInput
   if (!row || !input || document.activeElement !== input || !props.rows.includes(row)) {
-    // 没有正在编辑的值输入框：新增一行，带上建议的请求头名
-    emit('update:rows', [
-      ...props.rows,
-      { name: HEADER_OVERRIDE_VARIABLE_SUGGESTED_NAMES[variable], value: token }
-    ])
+    // 没有正在编辑的值输入框：新增一行，带上建议的请求头名。
+    // 建议名已被占用时：同值视为已添加（连点不产生重名行），否则留空名称由管理员自行命名。
+    const suggested = HEADER_OVERRIDE_VARIABLE_SUGGESTED_NAMES[variable]
+    const existing = props.rows.find((item) => item.name.trim().toLowerCase() === suggested)
+    if (existing?.value.trim() === token) return
+    emit('update:rows', [...props.rows, { name: existing ? '' : suggested, value: token }])
     return
   }
   const current = row.value

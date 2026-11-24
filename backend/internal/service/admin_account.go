@@ -673,14 +673,16 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		if err := NormalizeHeaderOverrideCredentials(account.Credentials); err != nil {
 			return nil, err
 		}
-		if err := ValidateHeaderOverrideVariableUsage(account.Type, account.Credentials); err != nil {
-			return nil, err
-		}
 		if err := NormalizeProtocolRulesCredentials(account.Credentials); err != nil {
 			return nil, err
 		}
 		// Strip SSO/password residue that must never sit next to OAuth tokens.
 		account.Credentials = SanitizeStoredCredentials(account.Platform, account.Credentials)
+	}
+	// 放在 credentials 分支之外：只改账号类型（不带 credentials）的更新同样要拦，
+	// 否则 api_key 账号改成 OAuth 后会把带变量的覆写值留在 OAuth 账号上。
+	if err := ValidateHeaderOverrideVariableUsage(account.Type, account.Credentials); err != nil {
+		return nil, err
 	}
 	// Extra 使用 map：需要区分“未提供(nil)”与“显式清空({})”。
 	// 关闭配额限制时前端会删除 quota_* 键并提交 extra:{}，此时也必须落库。

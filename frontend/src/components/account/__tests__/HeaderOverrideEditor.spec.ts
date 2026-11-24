@@ -29,6 +29,20 @@ describe('HeaderOverrideEditor', () => {
     const { wrapper, rows } = mountEditor([])
     await wrapper.get('[data-testid="header-override-variable-user_id"]').trigger('click')
     expect(rows.value).toEqual([{ name: 'x-gateway-user-id', value: '{{user_id}}' }])
+
+    // 连点同一个变量不产生重名行
+    await wrapper.get('[data-testid="header-override-variable-user_id"]').trigger('click')
+    expect(rows.value).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('leaves the name empty when the suggested name is taken by another value', async () => {
+    const { wrapper, rows } = mountEditor([{ name: 'X-Gateway-User-Id', value: 'fixed' }])
+    await wrapper.get('[data-testid="header-override-variable-user_id"]').trigger('click')
+    expect(rows.value).toEqual([
+      { name: 'X-Gateway-User-Id', value: 'fixed' },
+      { name: '', value: '{{user_id}}' }
+    ])
     wrapper.unmount()
   })
 
