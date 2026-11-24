@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -370,6 +371,59 @@ func TestBuildSchedulerMetadataAccount_KeepsGrokMediaEligibility(t *testing.T) {
 		require.Equal(t, "billing_forbidden", reason)
 		require.NotNil(t, got.Extra["grok_billing_snapshot"])
 	})
+}
+
+func TestBuildSchedulerMetadataAccount_ProjectsGrokSubscriptionTier(t *testing.T) {
+	jwt := func(tier int) string {
+		return "e30." + base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"tier":%d}`, tier))) + ".signature"
+	}
+
+	cases := []struct {
+		name         string
+		platform     string
+		token        string
+		saved        string
+		wantTier     string
+		wantEligible bool
+	}{
+		{"paid_live_jwt", service.PlatformGrok, jwt(7), "free", "supergrok_plus", true},
+		{"paid_saved_tier", service.PlatformGrok, "", "supergrok_plus", "supergrok_plus", true},
+		{"live_free_downgrade", service.PlatformGrok, jwt(0), "supergrok_plus", "free", false},
+		{"live_basic_downgrade", service.PlatformGrok, jwt(2), "supergrok_plus", "x_basic", false},
+		{"unclassified_billing", service.PlatformGrok, "", "", "", false},
+		{"malformed_token_fallback", service.PlatformGrok, "invalid", "supergrok_plus", "supergrok_plus", true},
+		{"other_platform_unchanged", service.PlatformOpenAI, jwt(7), "supergrok_plus", "", false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			account := service.Account{
+				Platform: tc.platform,
+				Type:     service.AccountTypeOAuth,
+				Credentials: map[string]any{
+					"access_token":      tc.token,
+					"refresh_token":     "never-copy",
+					"subscription_tier": tc.saved,
+				},
+				Extra: map[string]any{
+					"grok_billing_snapshot": map[string]any{
+						"status_code":         200,
+						"monthly_limit_cents": 0,
+					},
+				},
+			}
+
+			meta := buildSchedulerMetadataAccount(account)
+
+			require.Equal(t, tc.wantTier, meta.GetCredential("subscription_tier"))
+			require.NotContains(t, meta.Credentials, "access_token")
+			require.NotContains(t, meta.Credentials, "refresh_token")
+
+			eligible, _ := meta.GrokMediaGenerationEligibility()
+			require.Equal(t, tc.wantEligible, eligible)
+			require.Equal(t, tc.saved, account.GetCredential("subscription_tier"), "projection must not mutate original credentials")
+		})
+	}
 }
 
 func TestBuildSchedulerMetadataAccount_KeepsSlimGroupMembership(t *testing.T) {
