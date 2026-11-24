@@ -12,6 +12,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -892,29 +893,58 @@ func sanitizeOpenAIPassthroughClientErrorText(account *Account, text string) str
 	return replaceCaseInsensitive(sanitized, host, "[upstream]")
 }
 
+// replaceCaseInsensitive 把 input 中所有大小写不敏感匹配 target 的片段替换为
+// replacement。
+//
+// 必须直接在原始字节上匹配：strings.ToLower 会改变字节长度（"Ⱥ" 2→3 字节、
+// Kelvin 符号 "K" 3→1 字节、非法 UTF-8 单字节→3 字节 U+FFFD），用小写串的下标
+// 去切原串会越界 panic 或漏掉 target。正则的 (?i) 在原串上逐 rune 折叠匹配，
+// 不存在下标错位。
+//
+// target 无法编译为模式（如含非法 UTF-8）时返回空串：调用方会回退到通用文案，
+// 宁可丢弃整段文本，也不把未脱敏的内容写给客户端。
 func replaceCaseInsensitive(input, target, replacement string) string {
 	if input == "" || target == "" {
 		return input
 	}
-	lowerInput := strings.ToLower(input)
-	lowerTarget := strings.ToLower(target)
-	if !strings.Contains(lowerInput, lowerTarget) {
-		return input
+	pattern, err := regexp.Compile("(?i)" + regexp.QuoteMeta(target))
+	if err != nil {
+		return ""
 	}
-	var b strings.Builder
-	b.Grow(len(input))
-	start := 0
-	for {
-		idx := strings.Index(lowerInput[start:], lowerTarget)
-		if idx < 0 {
-			b.WriteString(input[start:])
-			break
-		}
-		b.WriteString(input[start : start+idx])
-		b.WriteString(replacement)
-		start += idx + len(lowerTarget)
+	return pattern.ReplaceAllLiteralString(input, replacement)
+}
+
+// openAIPassthroughClientErrorFieldMaxBytes 限制透出的 error.type/code/param
+// 单字段长度。三者都是短标识符，超长只可能是上游在夹带其它内容。
+const openAIPassthroughClientErrorFieldMaxBytes = 256
+
+// openAIPassthroughClientErrorField 提取允许写给客户端的标量错误字段。
+// gjson 对对象/数组的 String() 返回整段原始 JSON，直接透出等于把上游任意
+// 扩展字段塞进 type/code/param，因此只接受字符串与数字（部分上游的 code 为
+// 数字），并在脱敏后做长度上限校验，超限即丢弃。
+func openAIPassthroughClientErrorField(account *Account, value gjson.Result) string {
+	if value.Type != gjson.String && value.Type != gjson.Number {
+		return ""
 	}
-	return b.String()
+	field := sanitizeOpenAIPassthroughClientErrorText(account, value.String())
+	if len(field) > openAIPassthroughClientErrorFieldMaxBytes {
+		return ""
+	}
+	return field
+}
+
+// openAIPassthroughClientErrorCode 返回允许写给客户端的 error.code。
+// error.code 缺失时沿用 extractUpstreamErrorCode 对"message 内嵌 JSON"形态的
+// 兼容提取；error.code 存在但不是标量时不回退，直接视为无 code。
+func openAIPassthroughClientErrorCode(account *Account, body []byte) string {
+	if code := gjson.GetBytes(body, "error.code"); code.Exists() && code.Type != gjson.Null {
+		return openAIPassthroughClientErrorField(account, code)
+	}
+	code := sanitizeOpenAIPassthroughClientErrorText(account, extractUpstreamErrorCode(body))
+	if len(code) > openAIPassthroughClientErrorFieldMaxBytes || strings.HasPrefix(code, "{") || strings.HasPrefix(code, "[") {
+		return ""
+	}
+	return code
 }
 
 // writeOpenAIPassthroughStructuredErrorEnvelope 在净化后的 OpenAI 错误信封内
@@ -933,7 +963,7 @@ func writeOpenAIPassthroughStructuredErrorEnvelope(
 	if c == nil {
 		return
 	}
-	errType := sanitizeOpenAIPassthroughClientErrorText(account, gjson.GetBytes(body, "error.type").String())
+	errType := openAIPassthroughClientErrorField(account, gjson.GetBytes(body, "error.type"))
 	if errType == "" {
 		errType = fallbackType
 	}
@@ -941,10 +971,11 @@ func writeOpenAIPassthroughStructuredErrorEnvelope(
 		errType = "upstream_error"
 	}
 	errorPayload := gin.H{"type": errType}
-	if code := sanitizeOpenAIPassthroughClientErrorText(account, extractUpstreamErrorCode(body)); code != "" {
+	code := openAIPassthroughClientErrorCode(account, body)
+	if code != "" {
 		errorPayload["code"] = code
 	}
-	if param := sanitizeOpenAIPassthroughClientErrorText(account, gjson.GetBytes(body, "error.param").String()); param != "" {
+	if param := openAIPassthroughClientErrorField(account, gjson.GetBytes(body, "error.param")); param != "" {
 		errorPayload["param"] = param
 	}
 	message := sanitizeOpenAIPassthroughClientErrorText(account, upstreamMsg)
@@ -955,6 +986,15 @@ func writeOpenAIPassthroughStructuredErrorEnvelope(
 		message = "Upstream request failed"
 	}
 	errorPayload["message"] = message
+
+	// compact 心跳已把响应头提交为 200 时，错误只能以 response.failed 终止事件
+	// 回传。通用桥接会把 code 固定为 upstream_error，这里直接带上结构化 code，
+	// 否则本函数要保留的 error.code 恰好在 compact 流上丢失。
+	if (downstreamStatus < 200 || downstreamStatus >= 300) &&
+		openAICompactClientWantsStream(c) && StopOpenAICompactSSEKeepaliveCommitted(c) {
+		writeOpenAICompactSSEFailureWithCode(c, downstreamStatus, code, message)
+		return
+	}
 
 	payload, _ := json.Marshal(gin.H{"error": errorPayload})
 	if writeOpenAICompactSSEBridge(c, downstreamStatus, payload) {
@@ -1092,6 +1132,14 @@ func (s *OpenAIGatewayService) handleErrorResponsePassthrough(
 				c, status, resp.Header, body, account, errType, errMsg, "Upstream request failed",
 			)
 		} else {
+			// 管理员自定义文案原样输出；未配置自定义文案时 errMsg 是上游原始消息，
+			// 必须与其它分支一样脱敏（query 凭据、账号凭据、上游主机名）。
+			if rule == nil || rule.CustomMessage == nil {
+				errMsg = sanitizeOpenAIPassthroughClientErrorText(account, errMsg)
+				if errMsg == "" {
+					errMsg = "Upstream request failed"
+				}
+			}
 			writeOpenAIPassthroughErrorEnvelope(c, status, resp.Header, errMsg)
 		}
 		return fmt.Errorf("upstream error: %d (passthrough rule matched)", resp.StatusCode)
