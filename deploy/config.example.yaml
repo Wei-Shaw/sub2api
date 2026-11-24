@@ -523,6 +523,11 @@ gateway:
   # Concurrency slot expiration time (minutes)
   # 并发槽位过期时间（分钟）
   concurrency_slot_ttl_minutes: 30
+  # On Antigravity Gemini Chat Completions and Responses streams, let the upstream decide
+  # whether to return thought summaries. Long silent thinking periods may hit the stream timeout.
+  # 让上游决定是否返回思考摘要。长时间没有数据的思考阶段可能触发流超时。
+  # Env: GATEWAY_ANTIGRAVITY_GEMINI_OMIT_INCLUDE_THOUGHTS
+  antigravity_gemini_omit_include_thoughts: false
   # Stream data interval timeout (seconds), 0=disable
   # 流数据间隔超时（秒），0=禁用
   stream_data_interval_timeout: 180

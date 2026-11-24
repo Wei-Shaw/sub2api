@@ -1416,6 +1416,25 @@ func TestAntigravityCompatGeminiThinkingConfig(t *testing.T) {
 		require.True(t, cfg.Get("includeThoughts").Bool(), "thinkingConfig=%s", cfg.Raw)
 	})
 
+	t.Run("streaming chat can omit includeThoughts and keep the requested effort", func(t *testing.T) {
+		reply := antigravityCompatSuccessResponse()
+		reply.Body = io.NopCloser(strings.NewReader(`data: {"response":{"candidates":[{"content":{"parts":[{"thought":true,"text":"summary"},{"text":"answer"}]},"finishReason":"STOP"}]}}` + "\n\n"))
+		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{reply}}
+		svc := newAntigravityCompatService(config.GatewayConfig{AntigravityGeminiOmitIncludeThoughts: true}, upstream)
+		account := newAntigravityCompatAccount(AccountTypeOAuth)
+		account.Credentials["model_mapping"] = map[string]any{"gemini-3.5-flash": "gemini-3.5-flash"}
+		body := []byte(`{"model":"gemini-3.5-flash","reasoning_effort":"medium","stream":true,"messages":[{"role":"user","content":"hello"}]}`)
+		c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", body)
+		_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, nil)
+		require.NoError(t, err)
+		require.Len(t, upstream.requestBodies, 1)
+		cfg := gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.thinkingConfig")
+		require.False(t, cfg.Get("includeThoughts").Exists())
+		require.Equal(t, "medium", cfg.Get("thinkingLevel").String())
+		require.Contains(t, recorder.Body.String(), `"reasoning_content":"summary"`)
+		require.Contains(t, recorder.Body.String(), `"content":"answer"`)
+	})
+
 	t.Run("non-streaming responses do not force includeThoughts", func(t *testing.T) {
 		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{antigravityCompatSuccessResponse()}}
 		svc := newAntigravityCompatService(config.GatewayConfig{MaxLineSize: defaultMaxLineSize}, upstream)
