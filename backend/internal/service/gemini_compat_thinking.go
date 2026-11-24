@@ -233,6 +233,26 @@ func normalizeGeminiThinkingTierToken(raw string) string {
 	}
 }
 
+// normalizeAntigravityGeminiThinkingConfigBytes 对 JSON 字节串执行
+// normalizeAntigravityGeminiThinkingConfig，仅在确实发生修改时重新序列化。
+func normalizeAntigravityGeminiThinkingConfigBytes(body []byte, upstreamModel string) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body
+	}
+	if !normalizeAntigravityGeminiThinkingConfig(payload, upstreamModel) {
+		return body
+	}
+	marshaled, err := json.Marshal(payload)
+	if err != nil {
+		return body
+	}
+	return marshaled
+}
+
 // normalizeAntigravityGeminiThinkingConfig 在发往 Antigravity v1internal 上游前，
 // 按目标模型 upstreamModel 的能力契约归一化请求体中的 generationConfig.thinkingConfig：
 //   - 非 Gemini 模型：不处理。

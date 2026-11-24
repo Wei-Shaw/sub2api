@@ -714,9 +714,6 @@ func (s *AntigravityGatewayService) wrapV1InternalRequest(projectID, model strin
 	if err := json.Unmarshal(originalBody, &request); err != nil {
 		return nil, fmt.Errorf("解析请求体失败: %w", err)
 	}
-	if reqMap, ok := request.(map[string]any); ok {
-		normalizeAntigravityGeminiThinkingConfig(reqMap, model)
-	}
 	projectID = strings.TrimSpace(projectID)
 	if projectID == "" {
 		return nil, errAntigravityProjectIDRequired

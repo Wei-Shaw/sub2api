@@ -372,8 +372,7 @@ func TestGeminiMessagesForward_SignatureRetryKeepsClientThinkingParams(t *testin
 	require.Equal(t, "low", optionalStringValue(result.ReasoningEffort))
 }
 
-func TestWrapV1InternalRequest_NormalizesGeminiThinkingConfig(t *testing.T) {
-	svc := &AntigravityGatewayService{}
+func TestNormalizeAntigravityGeminiThinkingConfigBytes(t *testing.T) {
 	budget := func(v int64) *int64 { return &v }
 
 	tests := []struct {
@@ -455,14 +454,13 @@ func TestWrapV1InternalRequest_NormalizesGeminiThinkingConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			wrapped, err := svc.wrapV1InternalRequest("proj-1", tt.model, []byte(tt.body))
-			require.NoError(t, err)
-			cfg := gjson.GetBytes(wrapped, "request.generationConfig.thinkingConfig")
+			normalized := normalizeAntigravityGeminiThinkingConfigBytes([]byte(tt.body), tt.model)
+			cfg := gjson.GetBytes(normalized, "generationConfig.thinkingConfig")
 			if tt.wantNoConfig {
 				require.False(t, cfg.Exists(), "unexpected thinkingConfig: %s", cfg.Raw)
 				return
 			}
-			require.True(t, cfg.Exists(), "expected thinkingConfig in %s", string(wrapped))
+			require.True(t, cfg.Exists(), "expected thinkingConfig in %s", string(normalized))
 			require.Equal(t, tt.wantLevel, cfg.Get("thinkingLevel").String(), cfg.Raw)
 			if tt.wantBudget != nil {
 				require.True(t, cfg.Get("thinkingBudget").Exists(), cfg.Raw)
@@ -476,8 +474,7 @@ func TestWrapV1InternalRequest_NormalizesGeminiThinkingConfig(t *testing.T) {
 
 	t.Run("snake_case generation_config thinking_level is also stripped on tier suffix", func(t *testing.T) {
 		body := `{"contents":[],"generation_config":{"thinking_config":{"thinking_level":"MINIMAL"}}}`
-		wrapped, err := svc.wrapV1InternalRequest("proj-1", "gemini-4-argon-medium", []byte(body))
-		require.NoError(t, err)
-		require.False(t, gjson.GetBytes(wrapped, "request.generation_config.thinking_config").Exists(), string(wrapped))
+		normalized := normalizeAntigravityGeminiThinkingConfigBytes([]byte(body), "gemini-4-argon-medium")
+		require.False(t, gjson.GetBytes(normalized, "generation_config.thinking_config").Exists(), string(normalized))
 	})
 }
