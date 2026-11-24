@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/model"
@@ -336,8 +335,6 @@ func TestOpenAIGatewayService_APIKeyPassthrough_ContextWindowPreservesCodeAndCom
 	})
 }
 
-var _ = time.Second
-
 // forwardOpenAIPassthroughErrorForTest 让透传账号收到给定的上游错误响应，返回写给客户端的结果。
 func forwardOpenAIPassthroughErrorForTest(t *testing.T, c *gin.Context, upstreamStatus int, upstreamBody string, credentials map[string]any) {
 	t.Helper()
@@ -475,6 +472,12 @@ func TestOpenAIGatewayService_APIKeyPassthrough_StructuredErrorHardening(t *test
 		require.Equal(t, "", openAIPassthroughClientErrorCode(nil, []byte(`{"error":{"code":true}}`)))
 		require.Equal(t, "inner_code", openAIPassthroughClientErrorCode(nil, []byte(`{"error":{"message":"{\"error\":{\"code\":\"inner_code\"}}"}}`)))
 		require.Equal(t, "", openAIPassthroughClientErrorCode(nil, []byte(`{"error":{"message":"{\"error\":{\"code\":{\"k\":\"v\"}}}"}}`)))
+		// error.code 为空白字符串时与分类逻辑一致，回退到 message 内嵌 JSON 的 code。
+		require.Equal(t, "inner_code", openAIPassthroughClientErrorCode(nil, []byte(`{"error":{"code":"","message":"{\"error\":{\"code\":\"inner_code\"}}"}}`)))
+		require.Equal(t, "inner_code", openAIPassthroughClientErrorCode(nil, []byte(`{"error":{"code":"  ","message":"{\"error\":{\"code\":\"inner_code\"}}"}}`)))
+		require.Equal(t, "inner_code", openAIPassthroughClientErrorCode(nil, []byte(`{"error":{"code":null,"message":"{\"error\":{\"code\":\"inner_code\"}}"}}`)))
+		// error.code 是非标量时不回退。
+		require.Equal(t, "", openAIPassthroughClientErrorCode(nil, []byte(`{"error":{"code":{"k":"v"},"message":"{\"error\":{\"code\":\"inner_code\"}}"}}`)))
 	})
 
 	t.Run("ordinary 400 that merely mentions invalid_encrypted_content stays sanitized", func(t *testing.T) {
@@ -536,4 +539,46 @@ func TestOpenAIGatewayService_APIKeyPassthrough_RuleWithoutCustomMessageSanitize
 		require.Equal(t, http.StatusBadRequest, rec.Code)
 		require.Equal(t, custom, gjson.Get(rec.Body.String(), "error.message").String())
 	})
+}
+
+// Codex 把 server_is_overloaded / slow_down 判为致命错误并终止会话，写进
+// response.failed 前必须改写为可重试的错误码；其它上游 code 原样保留。
+func TestOpenAIGatewayService_APIKeyPassthrough_CompactFailedRewritesCapacityShedCode(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for upstreamCode, wantCode := range map[string]string{
+		"server_is_overloaded": openAICapacityShedRetryableClientCode,
+		"slow_down":            openAICapacityShedRetryableClientCode,
+		"SERVER_IS_OVERLOADED": openAICapacityShedRetryableClientCode,
+		"rate_limit_exceeded":  "rate_limit_exceeded",
+	} {
+		t.Run(upstreamCode, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses/compact", bytes.NewReader(nil))
+			MarkOpenAICompactClientStream(c)
+			stop := StartOpenAICompactSSEKeepalive(c, keepaliveTestInterval)
+			defer stop()
+			waitForKeepaliveBeats()
+
+			ruleSvc := &ErrorPassthroughService{}
+			ruleSvc.setLocalCache([]*model.ErrorPassthroughRule{{
+				ID: 1, Name: "openai-400-body", Enabled: true, Priority: 1,
+				ErrorCodes: []int{http.StatusBadRequest}, MatchMode: model.MatchModeAny,
+				Platforms: []string{PlatformOpenAI}, PassthroughCode: true, PassthroughBody: true,
+			}})
+			BindErrorPassthroughService(c, ruleSvc)
+
+			forwardOpenAIPassthroughErrorForTest(t, c, http.StatusBadRequest,
+				`{"error":{"message":"Selected model is at capacity.","type":"server_error","code":"`+upstreamCode+`"}}`,
+				map[string]any{"api_key": "sk-test"})
+
+			require.Equal(t, http.StatusOK, rec.Code)
+			events := parseCompactBridgeSSE(t, stripKeepaliveComments(rec.Body.String()))
+			require.Len(t, events, 1)
+			require.Equal(t, "response.failed", events[0][0])
+			require.Equal(t, wantCode, gjson.Get(events[0][1], "response.error.code").String())
+			require.Contains(t, gjson.Get(events[0][1], "response.error.message").String(), "at capacity")
+		})
+	}
 }

@@ -934,17 +934,21 @@ func openAIPassthroughClientErrorField(account *Account, value gjson.Result) str
 }
 
 // openAIPassthroughClientErrorCode 返回允许写给客户端的 error.code。
-// error.code 缺失时沿用 extractUpstreamErrorCode 对"message 内嵌 JSON"形态的
-// 兼容提取；error.code 存在但不是标量时不回退，直接视为无 code。
+// error.code 缺失、为 null 或为空白字符串时，沿用 extractUpstreamErrorCode 对
+// "message 内嵌 JSON"形态的兼容提取（与错误分类看到的 code 保持一致）；
+// error.code 是对象、数组或布尔值时不回退，直接视为无 code。
 func openAIPassthroughClientErrorCode(account *Account, body []byte) string {
-	if code := gjson.GetBytes(body, "error.code"); code.Exists() && code.Type != gjson.Null {
+	code := gjson.GetBytes(body, "error.code")
+	blank := !code.Exists() || code.Type == gjson.Null ||
+		(code.Type == gjson.String && strings.TrimSpace(code.Str) == "")
+	if !blank {
 		return openAIPassthroughClientErrorField(account, code)
 	}
-	code := sanitizeOpenAIPassthroughClientErrorText(account, extractUpstreamErrorCode(body))
-	if len(code) > openAIPassthroughClientErrorFieldMaxBytes || strings.HasPrefix(code, "{") || strings.HasPrefix(code, "[") {
+	inner := sanitizeOpenAIPassthroughClientErrorText(account, extractUpstreamErrorCode(body))
+	if len(inner) > openAIPassthroughClientErrorFieldMaxBytes || strings.HasPrefix(inner, "{") || strings.HasPrefix(inner, "[") {
 		return ""
 	}
-	return code
+	return inner
 }
 
 // writeOpenAIPassthroughStructuredErrorEnvelope 在净化后的 OpenAI 错误信封内
