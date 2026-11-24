@@ -1012,6 +1012,17 @@ func (s *GatewayService) resolvePlatform(ctx context.Context, groupID *int64, gr
 }
 
 func (s *GatewayService) listSchedulableAccounts(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) {
+	accounts, mixed, err := s.listGatewayAccountCandidates(ctx, groupID, platform, hasForcePlatform)
+	if err != nil || threadFrom(ctx) == nil {
+		return accounts, mixed, err
+	}
+	// A message thread narrows the candidates only; every scheduling rule
+	// below still decides whether a remaining account may be used.
+	accounts, err = s.filterMessageThreadCandidates(ctx, accounts)
+	return accounts, mixed, err
+}
+
+func (s *GatewayService) listGatewayAccountCandidates(ctx context.Context, groupID *int64, platform string, hasForcePlatform bool) ([]Account, bool, error) {
 	if s.schedulerSnapshot != nil {
 		accounts, useMixed, err := s.schedulerSnapshot.ListSchedulableAccounts(ctx, groupID, platform, hasForcePlatform)
 		if err == nil {
@@ -1383,7 +1394,7 @@ checkSchedulability:
 	case WindowCostSchedulable:
 		return true
 	case WindowCostStickyOnly:
-		return isSticky
+		return isSticky || isThreadBoundAccount(ctx, account)
 	case WindowCostNotSchedulable:
 		return false
 	}
@@ -1453,7 +1464,7 @@ func (s *GatewayService) isAccountSchedulableForRPM(ctx context.Context, account
 	case WindowCostSchedulable:
 		return true
 	case WindowCostStickyOnly:
-		return isSticky
+		return isSticky || isThreadBoundAccount(ctx, account)
 	case WindowCostNotSchedulable:
 		return false
 	}
@@ -1477,6 +1488,11 @@ func (s *GatewayService) IncrementAccountRPM(ctx context.Context, accountID int6
 // sessionID: 会话标识符（使用粘性会话的 hash）
 // 返回 true 表示允许（在限制内或会话已存在），false 表示拒绝（超出限制且是新会话）
 func (s *GatewayService) checkAndRegisterSession(ctx context.Context, account *Account, sessionID string) bool {
+	// Thread session admission happens on the final request, after the wait
+	// and route checks. Do not register or refresh a slot during selection.
+	if threadFrom(ctx) != nil {
+		return true
+	}
 	// 只检查 Anthropic OAuth/SetupToken 账号
 	if !account.IsAnthropicOAuthOrSetupToken() {
 		return true
@@ -1537,6 +1553,11 @@ func (s *GatewayService) getSchedulableAccount(ctx context.Context, accountID in
 		return account, err
 	}
 	if s.isAccountBlockedBySchedulingThreshold(ctx, account) {
+		return nil, nil
+	}
+	// A sticky lookup must not hand a message thread to an account the
+	// candidate list would have excluded.
+	if !s.isMessageThreadCandidate(threadFrom(ctx), account) {
 		return nil, nil
 	}
 	// Sticky / non-list selection must honor free soft-gate (same as listSchedulableAccounts).

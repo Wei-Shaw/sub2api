@@ -139,14 +139,29 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	//   5) 透传白名单 / fingerprint / mimic header / 写入 finalBeta
 	policyFilterSet := s.getBetaPolicyFilterSet(ctx, c, account, modelID)
 	effectiveDropSet := mergeDropSets(policyFilterSet)
+	thread := threadFrom(ctx)
+	betaHeaders := clientHeaders
+	if thread != nil {
+		// Use the same complete beta set as the client's thread fingerprint,
+		// before the builder applies its policy and account overrides.
+		betaHeaders = http.Header{"Anthropic-Beta": {anthropicBetaHeader(clientHeaders)}}
+	}
 	finalBetaHeader, finalBetaShouldSet := s.computeFinalAnthropicBeta(
-		tokenType, mimicClaudeCode, modelID, clientHeaders, body, effectiveDropSet,
+		tokenType, mimicClaudeCode, modelID, betaHeaders, body, effectiveDropSet,
 	)
 
 	// 账号覆写了 anthropic-beta 时，覆写值即最终上游值（由下方 ApplyHeaderOverrides 写入）：
 	// body 能力净化必须以覆写值为准，否则 header/body 不对称会被上游 400。
 	if beta, ok := account.HeaderOverrideValue("anthropic-beta"); ok {
 		finalBetaHeader, finalBetaShouldSet = beta, true
+	}
+	if thread != nil {
+		resolved, resolveErr := thread.resolveBeta(finalBetaHeader, effectiveDropSet)
+		if resolveErr != nil {
+			return nil, nil, resolveErr
+		}
+		finalBetaHeader, finalBetaShouldSet = resolved, true
+		ctx = WithHTTPUpstreamRedirectsDisabled(ctx)
 	}
 	finalBetaHeader = filterSonnet55ToolsetBeta(finalBetaHeader, body, modelID)
 
@@ -234,6 +249,10 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	// 放在所有 header 逻辑之后，确保配置值对同名头拥有最终决定权。
 	account.ApplyHeaderOverrides(req.Header)
 	filterSonnet55ToolsetBetaHeader(req.Header, body, modelID)
+	if thread != nil {
+		deleteHeaderAllForms(req.Header, "anthropic-beta")
+		setHeaderRaw(req.Header, "anthropic-beta", finalBetaHeader)
+	}
 
 	// === DEBUG: 打印上游转发请求（headers + body 摘要），与 CLIENT_ORIGINAL 对比 ===
 	s.debugLogGatewaySnapshot("UPSTREAM_FORWARD", req.Header, body, map[string]string{
@@ -254,6 +273,9 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
 	}
 
+	if err := s.sealMessageThread(ctx, account, req, body, token, tokenType == "oauth" && mimicClaudeCode); err != nil {
+		return nil, nil, err
+	}
 	return req, body, nil
 }
 
@@ -733,10 +755,7 @@ type betaPolicyResult struct {
 
 // evaluateBetaPolicy loads settings once and evaluates all rules against the given request.
 func (s *GatewayService) evaluateBetaPolicy(ctx context.Context, betaHeader string, account *Account, model string) betaPolicyResult {
-	if s.settingService == nil {
-		return betaPolicyResult{}
-	}
-	settings, err := s.settingService.GetBetaPolicySettings(ctx)
+	settings, err := s.betaPolicySettings(ctx)
 	if err != nil || settings == nil {
 		return betaPolicyResult{}
 	}
@@ -915,10 +934,10 @@ func (s *GatewayService) resolveBedrockBetaTokensForRequest(
 // checkBetaPolicyBlockForTokens 检查 token 列表中是否有被管理员 block 规则命中的 token。
 // 用于补充 evaluateBetaPolicy 对 header 的检查，覆盖 body 自动注入的 token。
 func (s *GatewayService) checkBetaPolicyBlockForTokens(ctx context.Context, tokens []string, account *Account, model string) *BetaBlockedError {
-	if s.settingService == nil || len(tokens) == 0 {
+	if len(tokens) == 0 {
 		return nil
 	}
-	settings, err := s.settingService.GetBetaPolicySettings(ctx)
+	settings, err := s.betaPolicySettings(ctx)
 	if err != nil || settings == nil {
 		return nil
 	}

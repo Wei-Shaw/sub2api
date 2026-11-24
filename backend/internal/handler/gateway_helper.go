@@ -45,6 +45,33 @@ var claudeCodeValidator = service.NewClaudeCodeValidator()
 // SetClaudeCodeClientContext 检查请求是否来自 Claude Code 客户端，并设置到 context 中
 // 返回更新后的 context
 func SetClaudeCodeClientContext(c *gin.Context, body []byte, parsedReq *service.ParsedRequest) {
+	setClaudeCodeClientContext(c, body, parsedReq, false)
+}
+
+// SetClaudeCodeThreadContinueContext classifies a message-thread continue
+// request of a thread that a validated Claude Code request created. The
+// request cannot repeat the system prompt, so that one check is taken from the
+// thread; the request still has to pass every other check itself.
+func SetClaudeCodeThreadContinueContext(c *gin.Context, body []byte, parsedReq *service.ParsedRequest) {
+	setClaudeCodeClientContext(c, body, parsedReq, true)
+}
+
+// claudeCodeSystemStrictlyValidated reports whether this /v1/messages request
+// itself carries a validated Claude Code system prompt, as opposed to being
+// admitted as a one-token probe. Only such a request lets the continue
+// requests of its message thread inherit the system prompt check.
+func claudeCodeSystemStrictlyValidated(c *gin.Context, body []byte, parsedReq *service.ParsedRequest) bool {
+	if c == nil || c.Request == nil || !claudeCodeValidator.ValidateUserAgent(c.GetHeader("User-Agent")) {
+		return false
+	}
+	bodyMap := claudeCodeBodyMapFromParsedRequest(parsedReq)
+	if bodyMap == nil && len(body) > 0 {
+		_ = json.Unmarshal(body, &bodyMap)
+	}
+	return claudeCodeValidator.ValidateStrict(c.Request, bodyMap)
+}
+
+func setClaudeCodeClientContext(c *gin.Context, body []byte, parsedReq *service.ParsedRequest, threadContinue bool) {
 	if c == nil || c.Request == nil {
 		return
 	}
@@ -66,7 +93,11 @@ func SetClaudeCodeClientContext(c *gin.Context, body []byte, parsedReq *service.
 		if bodyMap == nil && len(body) > 0 {
 			_ = json.Unmarshal(body, &bodyMap)
 		}
-		isClaudeCode = claudeCodeValidator.Validate(c.Request, bodyMap)
+		if threadContinue {
+			isClaudeCode = claudeCodeValidator.ValidateThreadContinue(c.Request, bodyMap)
+		} else {
+			isClaudeCode = claudeCodeValidator.Validate(c.Request, bodyMap)
+		}
 	}
 
 	// 更新 request context

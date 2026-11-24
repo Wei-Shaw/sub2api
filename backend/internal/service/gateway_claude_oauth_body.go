@@ -44,6 +44,9 @@ func (s *GatewayService) replaceModelInBody(body []byte, newModel string) []byte
 type claudeOAuthNormalizeOptions struct {
 	injectMetadata bool
 	metadataUserID string
+	// A continuation uses the tool declarations held by the upstream.
+	threadContinue bool
+	threadHadTools bool
 }
 
 // sanitizeSystemText rewrites only the fixed OpenCode identity sentence (if present).
@@ -246,7 +249,7 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 	}
 
 	// 确保 tools 字段存在（即使为空数组）
-	if !gjson.GetBytes(out, "tools").Exists() {
+	if !opts.threadContinue && !gjson.GetBytes(out, "tools").Exists() {
 		if next, ok := setJSONRawBytes(out, "tools", []byte("[]")); ok {
 			out = next
 			modified = true
@@ -308,7 +311,11 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 	// - 其他形态（auto/any/none）原样透传
 	// 如果 body 里完全没有 tools（空数组），tool_choice 没意义时才删除
 	toolsResult := gjson.GetBytes(out, "tools")
-	if !toolsResult.IsArray() || !toolsResult.Get("0").Exists() {
+	hasTools := toolsResult.IsArray() && toolsResult.Get("0").Exists()
+	if opts.threadContinue {
+		hasTools = opts.threadHadTools
+	}
+	if !hasTools {
 		if !isClaude55SignedThinkingModel(modelID) && gjson.GetBytes(out, "tool_choice").Exists() {
 			if next, ok := deleteJSONPathBytes(out, "tool_choice"); ok {
 				out = next
@@ -1105,6 +1112,13 @@ func enforceCacheControlLimit(body []byte) []byte {
 // enforceCacheControlBlockLimit 强制执行 cache_control 块数量限制（最多 4 个）
 // 超限时优先移除工具断点，再移除 messages 断点，最后才移除 system 断点。
 func enforceCacheControlBlockLimit(body []byte) []byte {
+	return enforceCacheControlBlockLimitN(body, maxCacheControlBlocks)
+}
+
+// enforceCacheControlBlockLimitN applies the same removal order to a caller
+// supplied limit. A message thread has fewer than four slots left when it also
+// counts a top-level cache_control or the breakpoints of its create request.
+func enforceCacheControlBlockLimitN(body []byte, limit int) []byte {
 	if len(body) == 0 {
 		return body
 	}
@@ -1128,7 +1142,7 @@ func enforceCacheControlBlockLimit(body []byte) []byte {
 	}
 
 	count := len(messagePaths) + len(toolPaths) + len(systemPaths)
-	if count <= maxCacheControlBlocks {
+	if count <= limit {
 		if modified {
 			return out
 		}
@@ -1136,7 +1150,7 @@ func enforceCacheControlBlockLimit(body []byte) []byte {
 	}
 
 	// 超限：优先从 tools 中移除，再从 messages 中移除，最后才从 system 中移除。
-	remaining := count - maxCacheControlBlocks
+	remaining := count - limit
 	for i := len(toolPaths) - 1; i >= 0 && remaining > 0; i-- {
 		path := toolPaths[i]
 		if !gjson.GetBytes(out, path).Exists() {

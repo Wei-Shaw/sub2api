@@ -82,6 +82,26 @@ func NewClaudeCodeValidator() *ClaudeCodeValidator {
 //	        - anthropic-version header 检查
 //	        - metadata.user_id 格式验证
 func (v *ClaudeCodeValidator) Validate(r *http.Request, body map[string]any) bool {
+	return v.validate(r, body, true, true)
+}
+
+// ValidateStrict is Validate without the probe exceptions of step 3: the
+// request itself carries a Claude Code system prompt and passes every other
+// check. A request admitted only as a one-token probe is not strictly valid.
+func (v *ClaudeCodeValidator) ValidateStrict(r *http.Request, body map[string]any) bool {
+	return v.validate(r, body, true, false)
+}
+
+// ValidateThreadContinue validates a message-thread continue request of a
+// thread whose create request passed ValidateStrict. A continue request cannot
+// carry a system prompt (the upstream rejects one), and the thread's system
+// prompt is the one already validated; every other check still applies to this
+// request, and no probe exception does.
+func (v *ClaudeCodeValidator) ValidateThreadContinue(r *http.Request, body map[string]any) bool {
+	return v.validate(r, body, false, false)
+}
+
+func (v *ClaudeCodeValidator) validate(r *http.Request, body map[string]any, requireSystemPrompt, allowProbe bool) bool {
 	// Step 1: User-Agent 检查
 	ua := r.Header.Get("User-Agent")
 	if !claudeCodeUAPattern.MatchString(ua) {
@@ -101,20 +121,20 @@ func (v *ClaudeCodeValidator) Validate(r *http.Request, body map[string]any) boo
 
 	// Step 3: 检查 max_tokens=1 + haiku 探测请求绕过
 	// 这类请求用于 Claude Code 验证 API 连通性，不携带 system prompt
-	if isMaxTokensOneHaiku, ok := IsMaxTokensOneHaikuRequestFromContext(r.Context()); ok && isMaxTokensOneHaiku {
+	if isMaxTokensOneHaiku, ok := IsMaxTokensOneHaikuRequestFromContext(r.Context()); allowProbe && ok && isMaxTokensOneHaiku {
 		return true // 绕过 system prompt 检查，UA 已在 Step 1 验证
 	}
 	// 探测请求并不总是打到 haiku：CLI 切换模型、刷新上下文用量时会向当前模型发
 	// max_tokens=1 的轻量请求，同样不携带 system。UA 已过 Step 1，且 1 个输出 token
 	// 对滥用者没有价值，故按请求体放行，不再限定模型名。
-	if isMaxTokensOneBody(body) {
+	if allowProbe && isMaxTokensOneBody(body) {
 		return true
 	}
 
 	// Step 4: messages 路径，进行严格验证
 
 	// 4.1 检查 system prompt 相似度
-	if !v.hasClaudeCodeSystemPrompt(body) {
+	if requireSystemPrompt && !v.hasClaudeCodeSystemPrompt(body) {
 		return false
 	}
 

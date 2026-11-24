@@ -141,6 +141,19 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			return nil, err
 		}
 	}
+	thread := threadFrom(ctx)
+	if thread != nil {
+		thread.beginAttempt(parsed.Model)
+		if err := s.checkMessageThreadCapability(ctx, thread, account, parsed.GroupID); err != nil {
+			return nil, err
+		}
+		if err := s.loadMessageThreadPolicy(ctx, thread); err != nil {
+			return nil, err
+		}
+		if policy := s.evaluateBetaPolicy(ctx, anthropicBetaHeader(c.Request.Header), account, parsed.Model); policy.blockErr != nil {
+			return nil, policy.blockErr
+		}
+	}
 	// Anthropic Fast is requested with speed=fast rather than OpenAI's
 	// service_tier. Attach it at this shared boundary so passthrough, OAuth and
 	// partial-stream results all use the same billing and usage-log path.
@@ -155,6 +168,12 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 	// Web Search 模拟：纯 web_search 请求时，直接调用搜索 API 构造响应
 	if account != nil && s.shouldEmulateWebSearch(ctx, account, parsed.GroupID, parsed.Body.Bytes()) {
+		// The emulated answer is produced locally: no upstream would hold the
+		// thread, and the client would be told 200 for a thread that does not
+		// exist. Say so instead.
+		if thread != nil {
+			return nil, threadUnsupportedError("this request is answered by web search emulation on this route, which cannot create or continue a message thread. Send it without thread.", "tools")
+		}
 		return s.handleWebSearchEmulation(ctx, c, account, parsed)
 	}
 
@@ -242,6 +261,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	}
 
 	shouldMimicClaudeCode := account.IsOAuth() && !isClaudeCode
+	threadContinue := thread.IsContinue()
+	if threadContinue && shouldMimicClaudeCode != thread.parent.Mimic {
+		return nil, threadNotFoundError()
+	}
 
 	if shouldMimicClaudeCode {
 		// 与 Parrot 对齐：OAuth 账号无条件重写 system（即使客户端已发了 Claude Code
@@ -251,13 +274,17 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		// Parrot 的 transform_request 从不检查客户端 system 内容，直接覆盖。
 		systemRaw, _ := parsed.SystemValue()
 		systemPromptInjectionEnabled, systemPrompt, systemPromptBlocks := s.claudeOAuthSystemPromptInjectionSettings(ctx)
-		if systemPromptInjectionEnabled {
+		if systemPromptInjectionEnabled && !threadContinue {
 			if err := replaceBody(rewriteSystemForNonClaudeCodeWithPromptBlocks(body, systemRaw, systemPrompt, systemPromptBlocks)); err != nil {
 				return nil, err
 			}
 		}
 
 		normalizeOpts := claudeOAuthNormalizeOptions{}
+		if threadContinue {
+			normalizeOpts.threadContinue = true
+			normalizeOpts.threadHadTools = thread.parent.HadTools
+		}
 		if s.identityService != nil && c != nil {
 			fp, err := s.identityService.GetOrCreateFingerprint(ctx, account.ID, c.Request.Header)
 			if err == nil && fp != nil {
@@ -284,7 +311,13 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		if err := replaceBody(s.rewriteMessageCacheControlIfEnabled(ctx, body)); err != nil {
 			return nil, err
 		}
-		if rw := buildToolNameRewriteFromBody(body); rw != nil {
+		// Tool declarations live upstream after creation. Keep the client names on
+		// every thread turn; request-local name rewrites cannot span a thread.
+		if thread != nil {
+			if err := replaceBody(applyToolsLastCacheBreakpoint(body)); err != nil {
+				return nil, err
+			}
+		} else if rw := buildToolNameRewriteFromBody(body); rw != nil {
 			if err := replaceBody(applyToolNameRewriteToBody(body, rw)); err != nil {
 				return nil, err
 			}
@@ -312,7 +345,14 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	if err := replaceBody(enforceCacheControlLimit(body)); err != nil {
 		return nil, err
 	}
-
+	// The rewrite above adds breakpoints of its own; keep them and the client's
+	// within what the upstream allows on a thread. A request the gateway did not
+	// add breakpoints to is left for the upstream to judge.
+	if thread != nil && shouldMimicClaudeCode {
+		if err := replaceBody(thread.enforceCacheControl(body)); err != nil {
+			return nil, err
+		}
+	}
 	// 应用模型映射：
 	// - APIKey 账号：使用账号级别的显式映射（如果配置），否则透传原始模型名
 	// - OAuth/SetupToken 账号：使用 Anthropic 标准映射（短ID → 长ID）
@@ -441,7 +481,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			})
 		}
 
-		if resp.StatusCode == http.StatusUnauthorized && !retriedRotatedToken &&
+		// A thread is bound to the credential it was created with, so a continue
+		// request is never repeated with another token.
+		if resp.StatusCode == http.StatusUnauthorized && !retriedRotatedToken && !threadContinue &&
 			attempt < maxRetryAttempts && time.Since(retryStart) < maxRetryElapsed {
 			if rotatedToken := s.rotatedClaudeAccessToken(ctx, account, token); rotatedToken != "" {
 				_ = resp.Body.Close()
@@ -451,13 +493,18 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 			}
 		}
 
+		if threadErr := s.relayMessageThreadUpstreamError(ctx, c, resp); threadErr != nil {
+			_ = resp.Body.Close()
+			return nil, threadErr
+		}
 		// 优先检测thinking block签名错误（400）并重试一次
-		if resp.StatusCode == 400 {
+		if resp.StatusCode == 400 && !threadContinue {
 			respBody, readErr := s.readUpstreamErrorBody(resp)
 			if readErr == nil {
 				_ = resp.Body.Close()
 
 				if s.shouldRectifySignatureError(ctx, account, respBody, reqModel) {
+					thread.markRewritten()
 					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 						ProxyID:            opsUpstreamProxyID(account),
 						ProxyName:          opsUpstreamProxyName(account),
@@ -506,6 +553,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 					if buildErr == nil {
 						retryResp, retryErr := s.httpUpstream.DoWithTLS(retryReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
 						if retryErr == nil {
+							if threadErr := s.relayMessageThreadUpstreamError(ctx, c, retryResp); threadErr != nil {
+								_ = retryResp.Body.Close()
+								return nil, threadErr
+							}
 							if retryResp.StatusCode < 400 {
 								// 重试请求被上游接受后同步 ParsedRequest，保证 usage/日志看到真实请求体。
 								lastWireBody = retryWireBody
@@ -549,6 +600,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 									if buildErr2 == nil {
 										retryResp2, retryErr2 := s.httpUpstream.DoWithTLS(retryReq2, proxyURL, account.ID, account.Concurrency, tlsProfile)
 										if retryErr2 == nil {
+											if threadErr := s.relayMessageThreadUpstreamError(ctx, c, retryResp2); threadErr != nil {
+												_ = retryResp2.Body.Close()
+												return nil, threadErr
+											}
 											if retryResp2.StatusCode < 400 {
 												// 二阶段工具块降级成功时也必须更新当前 body。
 												lastWireBody = retryWireBody2
@@ -625,6 +680,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 					rectifiedBody, applied := RectifyThinkingBudget(body)
 					if applied && time.Since(retryStart) < maxRetryElapsed {
+						thread.markRewritten()
 						logger.LegacyPrintf("service.gateway", "Account %d: detected budget_tokens constraint error, retrying with rectified budget (budget_tokens=%d, max_tokens=%d)", account.ID, BudgetRectifyBudgetTokens, BudgetRectifyMaxTokens)
 						budgetRetryCtx, releaseBudgetRetryCtx := detachStreamUpstreamContext(ctx, reqStream)
 						budgetRetryReq, budgetWireBody, buildErr := s.buildUpstreamRequest(budgetRetryCtx, c, account, rectifiedBody, token, tokenType, reqModel, reqStream, shouldMimicClaudeCode)
@@ -632,6 +688,10 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 						if buildErr == nil {
 							budgetRetryResp, retryErr := s.httpUpstream.DoWithTLS(budgetRetryReq, proxyURL, account.ID, account.Concurrency, tlsProfile)
 							if retryErr == nil {
+								if threadErr := s.relayMessageThreadUpstreamError(ctx, c, budgetRetryResp); threadErr != nil {
+									_ = budgetRetryResp.Body.Close()
+									return nil, threadErr
+								}
 								if budgetRetryResp.StatusCode < 400 {
 									// budget 修正请求成功后，ParsedRequest 也要描述被接受的修正版。
 									lastWireBody = budgetWireBody
@@ -658,8 +718,11 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		}
 
 		// 检查是否需要通用重试（排除400，因为400已经在上面特殊处理过了）
+		// A continue request is sent once. The upstream may already have taken
+		// the turn when it fails, so the gateway does not guess; the client
+		// replays the conversation it owns.
 		if resp.StatusCode >= 400 && resp.StatusCode != 400 && s.shouldRetryUpstreamError(account, resp.StatusCode) {
-			if attempt < maxRetryAttempts {
+			if attempt < maxRetryAttempts && !threadContinue {
 				elapsed := time.Since(retryStart)
 				if elapsed >= maxRetryElapsed {
 					break
@@ -859,13 +922,37 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 	var usage *ClaudeUsage
 	var firstTokenMs *int
 	var clientDisconnect bool
+	var nonStreamErr error
 	if reqStream {
 		writerSizeBeforeStream := c.Writer.Size()
 		streamResult, err := s.handleStreamingResponse(ctx, resp, c, account, startTime, originalModel, reqModel, shouldMimicClaudeCode)
 		if err != nil {
 			var sseErr *sseStreamErrorEventError
 			if errors.As(err, &sseErr) {
-				return nil, s.sseStreamErrorEventFailover(ctx, c, account, resp, sseErr.RawData, reqModel, c.Writer.Size() != writerSizeBeforeStream)
+				outputStarted := c.Writer.Size() != writerSizeBeforeStream
+				failoverErr := s.sseStreamErrorEventFailover(ctx, c, account, resp, sseErr.RawData, reqModel, outputStarted)
+				// Once output has reached the client the request cannot move to
+				// another account, so what the upstream metered before the error
+				// is this request's usage. Returned for a thread request, whose
+				// handler settles it; the no-result invariant of a failover error
+				// that may still be retried is unchanged.
+				if thread != nil && outputStarted && streamResult != nil && streamResult.usage.hasObservedTokens() {
+					return &ForwardResult{
+						RequestID:                     resp.Header.Get("x-request-id"),
+						UpstreamHeaders:               resp.Header,
+						Usage:                         *streamResult.usage,
+						Model:                         originalModel,
+						UpstreamModel:                 mappedModel,
+						UpstreamResponseModel:         observedUpstreamResponseModel(c),
+						UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+						UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
+						Stream:                        true,
+						Duration:                      time.Since(startTime),
+						FirstTokenMs:                  streamResult.firstTokenMs,
+						ClientDisconnect:              streamResult.clientDisconnect,
+					}, failoverErr
+				}
+				return nil, failoverErr
 			}
 			// 流中断（缺失 terminal 事件、读错误、数据间隔超时等）时保留已观测到的
 			// usage 与错误一起返回，handler 在错误处理完成后照常提交 usage 记录。
@@ -878,9 +965,9 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		firstTokenMs = streamResult.firstTokenMs
 		clientDisconnect = streamResult.clientDisconnect
 	} else {
-		usage, err = s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, reqModel)
-		if err != nil {
-			return nil, err
+		usage, nonStreamErr = s.handleNonStreamingResponse(ctx, resp, c, account, originalModel, reqModel)
+		if nonStreamErr != nil && !usage.hasObservedTokens() {
+			return nil, nonStreamErr
 		}
 	}
 
@@ -897,7 +984,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 		Duration:                      time.Since(startTime),
 		FirstTokenMs:                  firstTokenMs,
 		ClientDisconnect:              clientDisconnect,
-	}, nil
+	}, nonStreamErr
 }
 
 func anthropicSpeedModel(parsed *ParsedRequest, result *ForwardResult) string {
