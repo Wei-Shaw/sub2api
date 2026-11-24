@@ -321,6 +321,19 @@ gateway:
   # 默认 false：保持纯文本 Codex 请求不被改写；客户端显式提供 image_generation tool 时，
   # 仍会在分组允许图片生成的情况下正常转发。
   codex_image_generation_bridge_enabled: false
+  # Extra model-name prefixes accepted by /v1/images/generations and /v1/images/edits.
+  # 扩展 `/v1/images/*` 放行的模型名前缀（内置只有 gpt-image-*、grok-imagine*、gemini-*-image*）。
+  #
+  # Matching is a case-insensitive prefix match; an entry may be a vendor prefix
+  # ("gemini-nano-banana-") or a full model name ("image2-pro"). Listed models are
+  # treated like the built-in compatible families: routed as-is to api_key accounts.
+  # 条目按前缀（不区分大小写）匹配，可写厂商前缀或完整模型名；命中的模型与内置的
+  # gemini-*-image* 同等对待，只允许 api_key 账号承接，原样转发给上游。
+  # Default empty keeps the built-in whitelist only. Env: GATEWAY_OPENAI_IMAGES_EXTRA_MODEL_PREFIXES
+  # 默认空 = 只放行内置三族；环境变量 GATEWAY_OPENAI_IMAGES_EXTRA_MODEL_PREFIXES（逗号分隔）等效。
+  #   openai_images_extra_model_prefixes:
+  #     - gemini-nano-banana-
+  openai_images_extra_model_prefixes: []
   # Optional: template file used to build the final top-level Codex `instructions`.
   # 可选：用于构建最终 Codex 顶层 `instructions` 的模板文件路径。
   #
