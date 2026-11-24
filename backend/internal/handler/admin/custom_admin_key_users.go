@@ -12,7 +12,7 @@ import (
 // adminUserResponse 对受限密钥使用字段白名单，避免完整管理员 DTO 新增字段时隐式扩大授权。
 // 订阅及用量由各自的独立接口提供，用户资料接口不嵌入这些关联数据。
 func adminUserResponse(c *gin.Context, user *service.User) any {
-	principal := adminaccess.FromContext(c.Request.Context())
+	principal := adminaccess.RestrictedFromContext(c.Request.Context())
 	if principal == nil {
 		return dto.UserFromServiceAdmin(user)
 	}

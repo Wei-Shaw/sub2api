@@ -18,7 +18,7 @@ import (
 
 // ScopedAdminAccounts 只提供受限管理密钥需要的窄接口。
 type ScopedAdminAccounts interface {
-	ScopedAdminList(context.Context, pagination.PaginationParams, string, string, string, string) ([]Account, int64, error)
+	ScopedAdminList(context.Context, pagination.PaginationParams, string, string, string, string, int64) ([]Account, int64, error)
 	ScopedAdminWrite(context.Context, int64, string, map[string]json.RawMessage, func(context.Context, *Account) (*Account, error)) (*Account, error)
 }
 
@@ -45,6 +45,21 @@ func scopedAccountFieldPermissions(fields map[string]json.RawMessage, create boo
 			permission = "accounts.schedule"
 		case "proxy_id", "proxy_mode", "random_proxy":
 			permission = "accounts.network"
+		case "rate_multiplier":
+			var rate float64
+			if string(raw) == "null" || json.Unmarshal(raw, &rate) != nil || rate < 0 {
+				return nil, infraerrors.BadRequest("SCOPED_ACCOUNT_RATE", "账户倍率无效")
+			}
+			permission = "accounts.rate.write"
+		case "extra":
+			if !create {
+				return nil, infraerrors.BadRequest("SCOPED_ACCOUNT_FIELD", "仅创建支持身份与连接选项")
+			}
+			if err := validateScopedOpenAIOptions(raw); err != nil {
+				return nil, err
+			}
+			permissions = append(permissions, "accounts.options.write")
+			continue
 		case "group_ids":
 			permission = "accounts.groups"
 		case "platform", "type":
@@ -58,6 +73,23 @@ func scopedAccountFieldPermissions(fields map[string]json.RawMessage, create boo
 				return nil, infraerrors.BadRequest("SCOPED_ACCOUNT_CREDENTIALS", "凭证格式无效")
 			}
 			for name, value := range credentials {
+				if name == "expires_at" {
+					var expires int64
+					if string(value) == "null" || json.Unmarshal(value, &expires) != nil || expires < 0 {
+						return nil, infraerrors.BadRequest("SCOPED_ACCOUNT_CREDENTIALS", "凭证到期时间无效")
+					}
+					permissions = append(permissions, "accounts.credentials")
+					continue
+				}
+				if slices.Contains([]string{"email", "chatgpt_account_id", "chatgpt_user_id", "organization_id", "plan_type", "subscription_expires_at", "client_id"}, name) {
+					var text string
+					if json.Unmarshal(value, &text) != nil || len(text) > 4096 {
+						return nil, infraerrors.BadRequest("SCOPED_ACCOUNT_CREDENTIALS", "身份字段格式无效")
+					}
+					permissions = append(permissions, "accounts.credentials")
+					continue
+				}
+
 				// 白名单与映射共用 model_mapping，只授予模型配置写入权限。
 				if name == "model_mapping" {
 					var mapping map[string]json.RawMessage
@@ -90,7 +122,7 @@ func scopedAccountFieldPermissions(fields map[string]json.RawMessage, create boo
 		default:
 			return nil, infraerrors.BadRequest("SCOPED_ACCOUNT_FIELD", "请求包含不开放的账户字段")
 		}
-		if !create || permission == "accounts.schedule" || permission == "accounts.network" {
+		if !create || permission == "accounts.schedule" || permission == "accounts.network" || permission == "accounts.rate.write" {
 			permissions = append(permissions, permission)
 		} else if key == "status" || key == "schedulable" {
 			return nil, infraerrors.BadRequest("SCOPED_ACCOUNT_INPUT", "创建不支持状态字段")
@@ -99,14 +131,14 @@ func scopedAccountFieldPermissions(fields map[string]json.RawMessage, create boo
 	return permissions, nil
 }
 
-func (s *adminServiceImpl) ScopedAdminList(ctx context.Context, p pagination.PaginationParams, platform, kind, status, search string) ([]Account, int64, error) {
+func (s *adminServiceImpl) ScopedAdminList(ctx context.Context, p pagination.PaginationParams, platform, kind, status, search string, groupID int64) ([]Account, int64, error) {
 	repo, ok := s.accountRepo.(interface {
-		ScopedAdminList(context.Context, pagination.PaginationParams, string, string, string, string) ([]Account, int64, error)
+		ScopedAdminList(context.Context, pagination.PaginationParams, string, string, string, string, int64) ([]Account, int64, error)
 	})
 	if !ok {
 		return nil, 0, fmt.Errorf("受限账户查询不可用")
 	}
-	return repo.ScopedAdminList(ctx, p, platform, kind, status, search)
+	return repo.ScopedAdminList(ctx, p, platform, kind, status, search, groupID)
 }
 
 func (s *adminServiceImpl) ScopedAdminWrite(ctx context.Context, id int64, action string, fields map[string]json.RawMessage, run func(context.Context, *Account) (*Account, error)) (*Account, error) {
@@ -123,20 +155,22 @@ func (s *adminServiceImpl) ScopedAdminWrite(ctx context.Context, id int64, actio
 	}
 	if id == 0 {
 		var input struct {
-			ProxyID     *int64         `json:"proxy_id"`
-			ProxyMode   string         `json:"proxy_mode"`
-			RandomProxy bool           `json:"random_proxy"`
-			Name        string         `json:"name"`
-			Notes       *string        `json:"notes"`
-			Platform    string         `json:"platform"`
-			Type        string         `json:"type"`
-			Credentials map[string]any `json:"credentials"`
-			GroupIDs    []int64        `json:"group_ids"`
-			Concurrency int            `json:"concurrency"`
-			Priority    int            `json:"priority"`
-			LoadFactor  *int           `json:"load_factor"`
-			ExpiresAt   *int64         `json:"expires_at"`
-			AutoPause   *bool          `json:"auto_pause_on_expired"`
+			ProxyID        *int64         `json:"proxy_id"`
+			ProxyMode      string         `json:"proxy_mode"`
+			RandomProxy    bool           `json:"random_proxy"`
+			Name           string         `json:"name"`
+			Notes          *string        `json:"notes"`
+			Extra          map[string]any `json:"extra"`
+			Platform       string         `json:"platform"`
+			Type           string         `json:"type"`
+			Credentials    map[string]any `json:"credentials"`
+			RateMultiplier *float64       `json:"rate_multiplier"`
+			GroupIDs       []int64        `json:"group_ids"`
+			Concurrency    int            `json:"concurrency"`
+			Priority       int            `json:"priority"`
+			LoadFactor     *int           `json:"load_factor"`
+			ExpiresAt      *int64         `json:"expires_at"`
+			AutoPause      *bool          `json:"auto_pause_on_expired"`
 		}
 		body, _ := json.Marshal(fields)
 		if err = json.Unmarshal(body, &input); err != nil {
@@ -151,6 +185,11 @@ func (s *adminServiceImpl) ScopedAdminWrite(ctx context.Context, id int64, actio
 		if !slices.Contains(domain.ConcretePlatformIDs(), input.Platform) || input.Concurrency < 0 || input.Priority < 0 {
 			return nil, infraerrors.BadRequest("SCOPED_ACCOUNT_INPUT", "创建参数无效")
 		}
+		if input.Extra != nil && (input.Platform != PlatformOpenAI || input.Type != AccountTypeOAuth) {
+			return nil, infraerrors.BadRequest("SCOPED_ACCOUNT_OPTIONS", "这些选项仅适用于 OpenAI OAuth")
+		}
+		// 隐私结果只能由服务端确认；空字符串同样会让 Ensure 跳过，必须删除键。
+		delete(input.Extra, "privacy_mode")
 		resource := adminaccess.Account{Type: input.Type, Platform: input.Platform, GroupIDs: input.GroupIDs}
 		if input.Type == "" || input.Platform == "" || !principal.Policy.AllowsAccount("accounts.create", resource) {
 			return nil, infraerrors.Forbidden("SCOPED_ACCOUNT_FORBIDDEN", "创建范围未授权")
@@ -170,7 +209,7 @@ func (s *adminServiceImpl) ScopedAdminWrite(ctx context.Context, id int64, actio
 		if e != nil {
 			return nil, e
 		}
-		return s.scopedAdminCreateTransaction(ctx, &CreateAccountInput{ProxyID: input.ProxyID, ProxyMode: proxyMode, Name: input.Name, Notes: input.Notes, Platform: input.Platform, Type: input.Type, Credentials: input.Credentials, GroupIDs: input.GroupIDs, Concurrency: input.Concurrency, Priority: input.Priority, LoadFactor: input.LoadFactor, ExpiresAt: input.ExpiresAt, AutoPauseOnExpired: input.AutoPause, SkipDefaultGroupBind: true})
+		return s.scopedAdminCreateTransaction(ctx, &CreateAccountInput{ProxyID: input.ProxyID, ProxyMode: proxyMode, Name: input.Name, Notes: input.Notes, Platform: input.Platform, Type: input.Type, Credentials: input.Credentials, Extra: input.Extra, RateMultiplier: input.RateMultiplier, GroupIDs: input.GroupIDs, Concurrency: input.Concurrency, Priority: input.Priority, LoadFactor: input.LoadFactor, ExpiresAt: input.ExpiresAt, AutoPauseOnExpired: input.AutoPause, SkipDefaultGroupBind: true})
 	}
 	result, err := s.scopedAdminTransaction(ctx, id, action == "accounts.delete", func(txctx context.Context) (*Account, error) {
 		a, e := s.accountRepo.GetByID(txctx, id)
@@ -221,20 +260,21 @@ func (s *adminServiceImpl) ScopedAdminWrite(ctx context.Context, id int64, actio
 			return s.ClearAccountError(txctx, id)
 		}
 		var input struct {
-			ProxyID     *int64         `json:"proxy_id"`
-			ProxyMode   string         `json:"proxy_mode"`
-			RandomProxy bool           `json:"random_proxy"`
-			Name        string         `json:"name"`
-			Notes       *string        `json:"notes"`
-			Credentials map[string]any `json:"credentials"`
-			Concurrency *int           `json:"concurrency"`
-			Priority    *int           `json:"priority"`
-			LoadFactor  *int           `json:"load_factor"`
-			Status      string         `json:"status"`
-			GroupIDs    *[]int64       `json:"group_ids"`
-			ExpiresAt   *int64         `json:"expires_at"`
-			AutoPause   *bool          `json:"auto_pause_on_expired"`
-			Schedulable *bool          `json:"schedulable"`
+			ProxyID        *int64         `json:"proxy_id"`
+			ProxyMode      string         `json:"proxy_mode"`
+			RandomProxy    bool           `json:"random_proxy"`
+			Name           string         `json:"name"`
+			Notes          *string        `json:"notes"`
+			Credentials    map[string]any `json:"credentials"`
+			RateMultiplier *float64       `json:"rate_multiplier"`
+			Concurrency    *int           `json:"concurrency"`
+			Priority       *int           `json:"priority"`
+			LoadFactor     *int           `json:"load_factor"`
+			Status         string         `json:"status"`
+			GroupIDs       *[]int64       `json:"group_ids"`
+			ExpiresAt      *int64         `json:"expires_at"`
+			AutoPause      *bool          `json:"auto_pause_on_expired"`
+			Schedulable    *bool          `json:"schedulable"`
 		}
 		body, _ := json.Marshal(fields)
 		if e = json.Unmarshal(body, &input); e != nil {
@@ -264,7 +304,7 @@ func (s *adminServiceImpl) ScopedAdminWrite(ctx context.Context, id int64, actio
 			maps.Copy(merged, input.Credentials)
 			input.Credentials = merged
 		}
-		updated, e := s.UpdateAccount(txctx, id, &UpdateAccountInput{ProxyID: input.ProxyID, Name: input.Name, Notes: input.Notes, Credentials: input.Credentials, Concurrency: input.Concurrency, Priority: input.Priority, LoadFactor: input.LoadFactor, Status: input.Status, GroupIDs: input.GroupIDs, ExpiresAt: input.ExpiresAt, AutoPauseOnExpired: input.AutoPause})
+		updated, e := s.UpdateAccount(txctx, id, &UpdateAccountInput{ProxyID: input.ProxyID, Name: input.Name, Notes: input.Notes, Credentials: input.Credentials, RateMultiplier: input.RateMultiplier, Concurrency: input.Concurrency, Priority: input.Priority, LoadFactor: input.LoadFactor, Status: input.Status, GroupIDs: input.GroupIDs, ExpiresAt: input.ExpiresAt, AutoPauseOnExpired: input.AutoPause})
 		if e != nil {
 			return nil, e
 		}
