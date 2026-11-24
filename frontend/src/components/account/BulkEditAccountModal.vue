@@ -739,6 +739,7 @@
 
             <HeaderOverrideEditor
               :rows="headerOverrideRows"
+              :allow-variables="headerOverrideAllowVariables"
               @update:rows="headerOverrideRows = $event"
             />
           </div>
@@ -1739,6 +1740,12 @@ const enableBaseUrl = ref(false)
 const enableModelRestriction = ref(false)
 const enableCustomErrorCodes = ref(false)
 const enableInterceptWarmup = ref(false)
+// 身份上报变量仅 api_key 账号可用：所选账号里只要混有其它类型就不开放
+const headerOverrideAllowVariables = computed(
+  () =>
+    targetSelectedTypes.value.length > 0 &&
+    targetSelectedTypes.value.every((type) => type === 'apikey')
+)
 const enableHeaderOverride = ref(false)
 const enableProxy = ref(false)
 const enableConcurrency = ref(false)
@@ -2359,7 +2366,9 @@ const handleSubmit = async () => {
       appStore.showError(t('admin.accounts.headerOverride.bulkEmptyRows'))
       return
     }
-    const headerError = validateHeaderOverrideRows(headerOverrideRows.value)
+    const headerError = validateHeaderOverrideRows(headerOverrideRows.value, {
+      allowVariables: headerOverrideAllowVariables.value
+    })
     if (headerError) {
       appStore.showError(t(`admin.accounts.headerOverride.${headerError}`))
       return
