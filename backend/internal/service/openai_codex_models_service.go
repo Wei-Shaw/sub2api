@@ -1783,7 +1783,8 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 	headers := make(http.Header)
 	if useAPIKeyUpstream {
 		headers.Set("Authorization", "Bearer "+authToken)
-		credAccount.ApplyHeaderOverrides(headers)
+		// 清单按请求头分桶缓存并跨用户共享：不携带用户身份。
+		credAccount.ApplyHeaderOverrides(withoutHeaderOverrideRequestScope(ctx), headers)
 	} else {
 		authHeaders, authErr := s.buildOpenAIAuthenticationHeaders(ctx, credAccount, authToken)
 		if authErr != nil {

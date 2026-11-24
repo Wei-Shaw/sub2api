@@ -1038,7 +1038,25 @@ export default {
         blockedName: '该请求头不允许覆写（认证头与连接控制头由系统管理）',
         duplicateName: '存在重复的请求头名称（匹配不区分大小写）',
         invalidValue: '请求头值不合法（不允许控制字符，长度不超过 8192）',
-        tooManyEntries: '请求头覆写条目过多（最多 64 条）'
+        tooManyEntries: '请求头覆写条目过多（最多 64 条）',
+        invalidVariable: '变量写法不正确：请从下方「身份上报变量」中选择，不支持其它变量名',
+        variableNotAllowed: 'OAuth 账号不支持身份上报变量，请删除该行或改为固定值',
+        removeRow: '删除该请求头',
+        previewLabel: '发送示例',
+        variablesTitle: '身份上报变量',
+        variablesHint: '把网关内的用户身份随请求头报给上游，方便逐层定位到具体用户。光标在某个值输入框内时点击变量会插入到光标处，否则新增一行。',
+        variablesUnavailable: 'OAuth 账号不支持身份上报变量：订阅上游不会收到网关内的用户身份，这里只能填写固定值。',
+        variables: {
+          user_id: { label: '用户 ID', desc: '发起请求的网关用户' },
+          api_key_id: { label: 'API Key ID', desc: '本次请求使用的 Key，同一用户多把 Key 时可区分' },
+          group_id: { label: '分组 ID', desc: 'Key 绑定的分组；未绑定分组时该请求头不发送' },
+          request_id: { label: '请求 ID', desc: '与错误记录里的「请求 ID」一致，可直接对账；字母数字和 . _ - 以外的字符会替换为下划线' }
+        },
+        variableNotes: {
+          unresolved: '取不到值时（测试连接、模型同步等没有用户的后台请求）整条请求头不发送，也不会沿用客户端自带的同名头。',
+          apiKeyOnly: '仅对 API Key 账号生效，OAuth 账号永远不会上报。',
+          websocket: 'OpenAI WebSocket 模式下握手头按连接发送：含请求 ID 的请求头不发送，不同上报身份的请求不会共用上游连接。'
+        }
       },
       grokModelDiagnostics: {
         title: '模型目录诊断',

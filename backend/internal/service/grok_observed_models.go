@@ -152,7 +152,7 @@ func (s *GrokQuotaService) prepareGrokObservedModelsRequest(ctx context.Context,
 			}
 		}
 	}
-	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyHeaderOverrides(req.Context(), req.Header)
 
 	proxyURL := ""
 	if s.proxyRepo != nil && account.ProxyID != nil {

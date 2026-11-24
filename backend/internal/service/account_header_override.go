@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
@@ -164,16 +165,24 @@ func resolveHeaderOverrides(raw map[string]string) map[string]string {
 
 // HeaderOverrideValue 返回指定 header（小写名）的生效覆写值。
 // 供转发链路在 header 写入前感知覆写结果（如 anthropic-beta 需要参与 body 净化）。
+// 含变量的覆写值在此视为未覆写：它的最终值逐请求变化，不能当静态值参与 body 净化。
 func (a *Account) HeaderOverrideValue(lowerName string) (string, bool) {
 	value, ok := a.GetHeaderOverrides()[lowerName]
-	return value, ok
+	if !ok || headerOverrideHasVariable(value) {
+		return "", false
+	}
+	return value, true
 }
 
 // ApplyHeaderOverrides 将账号配置的请求头覆写应用到出站请求头。
 // 对每个覆写条目：先删除所有大小写变体（转发链路会以 wire casing 直接写入 map，
 // 可能存在非 canonical key），再按已知 wire casing 写入，避免产生重复头。
 // 账号未启用或不符合条件时为 no-op，可安全地在 OAuth/api_key 共用的构建器中调用。
-func (a *Account) ApplyHeaderOverrides(h http.Header) {
+//
+// 覆写值含变量（{{user_id}} 等）时用 ctx 中的入站请求身份替换；规则见
+// account_header_override_vars.go：非 api_key 账号、或变量取不到值时，该请求头
+// 整条不发送（既有同名头照样删除，客户端无法伪造上报头）。
+func (a *Account) ApplyHeaderOverrides(ctx context.Context, h http.Header) {
 	if h == nil {
 		return
 	}
@@ -189,6 +198,17 @@ func (a *Account) ApplyHeaderOverrides(h http.Header) {
 			if strings.EqualFold(existing, name) {
 				delete(h, existing)
 			}
+		}
+		if headerOverrideHasVariable(value) {
+			if !a.supportsHeaderOverrideVariables() {
+				continue
+			}
+			expanded, loggable, ok := expandHeaderOverrideTemplate(ctx, value)
+			if !ok {
+				continue
+			}
+			value = expanded
+			headerOverrideScopeFromContext(ctx).record(a.ID, name, loggable)
 		}
 		h[resolveWireCasing(name)] = []string{value}
 	}
@@ -244,6 +264,11 @@ func NormalizeHeaderOverrideCredentials(credentials map[string]any) error {
 		}
 		if lowerName == "" {
 			continue // 丢弃完全为空的占位行
+		}
+		// 变量语法只在保存路径校验：应用路径必须保留模板不合法的存量条目，
+		// 由 ApplyHeaderOverrides 按"解析失败"处理（删除同名头且不发送）。
+		if err := validateHeaderOverrideTemplate(lowerName, value); err != nil {
+			return err
 		}
 		if _, dup := normalized[lowerName]; dup {
 			return infraerrors.Newf(http.StatusBadRequest, "INVALID_HEADER_OVERRIDE",
