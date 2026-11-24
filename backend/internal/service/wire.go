@@ -339,6 +339,17 @@ func ProvideCNProviderBalanceCheckService(
 	return svc
 }
 
+// ProvideAntigravityQuotaRecoveryService creates and starts AntigravityQuotaRecoveryService.
+func ProvideAntigravityQuotaRecoveryService(
+	accountRepo AccountRepository,
+	proxyRepo ProxyRepository,
+	fetcher *AntigravityQuotaFetcher,
+) *AntigravityQuotaRecoveryService {
+	svc := NewAntigravityQuotaRecoveryService(accountRepo, proxyRepo, fetcher, antigravityQuotaRecoveryInterval)
+	svc.Start()
+	return svc
+}
+
 // ProvideGeminiTokenProvider creates GeminiTokenProvider with OAuthRefreshAPI injection
 func ProvideGeminiTokenProvider(
 	accountRepo AccountRepository,
@@ -915,6 +926,7 @@ var ProviderSet = wire.NewSet(
 	ProvideCNProviderQuotaService,
 	ProvideCNProviderBalanceService,
 	ProvideCNProviderBalanceCheckService,
+	ProvideAntigravityQuotaRecoveryService,
 	ProvideClaudeTokenProvider,
 	NewAntigravityGatewayService,
 	ProvideRateLimitService,
