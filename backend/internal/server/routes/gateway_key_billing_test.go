@@ -188,6 +188,35 @@ func TestGatewayRoutesKeyBillingInfoEndToEnd(t *testing.T) {
 		require.NotContains(t, w.Body.String(), key)
 	})
 
+	t.Run("include accepts a list of sections", func(t *testing.T) {
+		for query, wantGroup := range map[string]bool{
+			"include=group,model_pricing":         true,
+			"include=model_pricing,%20group":      true,
+			"include=model_pricing&include=group": true,
+			"include=group&include=model_pricing": true,
+			"include=model_pricing":               false,
+			"include=groups":                      false,
+			"include=":                            false,
+		} {
+			router, _, key := newKeyBillingRouteTestRouter(config.RunModeStandard, nil)
+			req := httptest.NewRequest(http.MethodGet, "/v1/sub2api/billing?"+query, nil)
+			req.Header.Set("x-api-key", key)
+			req.Header.Set("Accept-Language", "en")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, http.StatusOK, w.Code, query)
+			var body map[string]any
+			require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body), query)
+			require.Equal(t, 0.75, body["effective_rate_multiplier"], query)
+			if wantGroup {
+				require.Equal(t, "Standard", body["group_name"], query)
+			} else {
+				require.NotContains(t, body, "group_name", query)
+			}
+		}
+	})
+
 	t.Run("optional group lookup failure preserves billing rates", func(t *testing.T) {
 		router, _, key := newKeyBillingRouteTestRouter(config.RunModeStandard, &keyBillingRouteGroupRepo{})
 		req := httptest.NewRequest(http.MethodGet, "/v1/sub2api/billing?include=group", nil)

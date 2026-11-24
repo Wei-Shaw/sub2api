@@ -3,6 +3,7 @@ package handler
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -60,7 +61,7 @@ func (h *GatewayHandler) KeyBillingInfo(c *gin.Context) {
 	}
 
 	info := buildKeyBillingInfo(apiKey, resolvedRate, timezone.Now())
-	if c.Query("include") == "group" {
+	if keyBillingIncludes(c, "group") {
 		group, err := h.apiKeyService.GetBillingGroupInfo(c.Request.Context(), *apiKey.GroupID, c.GetHeader("Accept-Language"))
 		if err != nil {
 			slog.WarnContext(c.Request.Context(), "billing group display text unavailable", "group_id", *apiKey.GroupID, "error", err)
@@ -70,6 +71,22 @@ func (h *GatewayHandler) KeyBillingInfo(c *gin.Context) {
 	}
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, info)
+}
+
+// keyBillingIncludes reports whether the caller asked for an optional response section.
+// include is a comma-separated list and may be repeated, so a client can request several
+// sections in one call (include=group,other or include=group&include=other); unknown sections
+// are ignored. An exact-match comparison would stop returning the group as soon as a second
+// section exists.
+func keyBillingIncludes(c *gin.Context, section string) bool {
+	for _, value := range c.QueryArray("include") {
+		for _, item := range strings.Split(value, ",") {
+			if strings.TrimSpace(item) == section {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (h *GatewayHandler) resolveKeyBillingRate(c *gin.Context, apiKey *service.APIKey) (float64, bool) {

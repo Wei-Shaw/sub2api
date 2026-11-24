@@ -1322,6 +1322,16 @@ func TestUpstreamBillingGroupSyncSharesOneProbeAndPreservesLocalFields(t *testin
 		{"invalid name", true, true, `"group_name":12,"group_description":"shared"`, "local", "shared", 0.5},
 		{"old upstream", true, true, `"unrelated":true`, "local", "local notes", 0.5},
 		{"rate only", false, true, `"group_name":"Pro","group_description":"shared"`, "local", "local notes", 0.5},
+		// 上游文字与快照、倍率在同一条 UPDATE 里写库：PostgreSQL 会拒绝的内容必须只丢弃该字段，
+		// 倍率与另一个字段照常同步。
+		{"invalid utf8 name", true, true, `"group_name":"A` + "\xff" + `B","group_description":"shared"`, "local", "shared", 0.5},
+		{"invalid utf8 notes", true, true, `"group_name":"Pro","group_description":"bad ` + "\xc3" + `"`, "Pro", "local notes", 0.5},
+		{"nul in name", true, true, `"group_name":"Pro\u0000","group_description":"shared"`, "local", "shared", 0.5},
+		{"control character in name", true, true, `"group_name":"Pro\nGroup","group_description":"shared"`, "local", "shared", 0.5},
+		{"escape sequence in notes", true, true, `"group_name":"Pro","group_description":"a\u001b[31mb"`, "Pro", "local notes", 0.5},
+		{"multiline notes", true, true, `"group_name":"Pro","group_description":"line one\n\tline two"`, "Pro", "line one\n\tline two", 0.5},
+		{"name over 100 bytes", true, true, `"group_name":"` + strings.Repeat("组", 34) + `","group_description":"shared"`, "local", "shared", 0.5},
+		{"name at 100 bytes", true, true, `"group_name":"` + strings.Repeat("a", 100) + `","group_description":"shared"`, strings.Repeat("a", 100), "shared", 0.5},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			rate, notes := 1.0, "local notes"
@@ -1349,4 +1359,17 @@ func TestUpstreamBillingGroupSyncSharesOneProbeAndPreservesLocalFields(t *testin
 			require.Equal(t, tt.wantRate, *account.RateMultiplier)
 		})
 	}
+}
+
+func TestUpstreamBillingGroupInfoNeverReturnsTextPostgresRejects(t *testing.T) {
+	for _, raw := range []string{
+		"A\xffB", "\xff", "\xc3", "\xe2\x82", "ok\x00", "\xed\xa0\x80",
+	} {
+		body := []byte(`{"group_name":"` + raw + `","group_description":"` + raw + `"}`)
+		got := upstreamBillingGroupInfo(body)
+		require.Empty(t, got.Name, "%q", raw)
+		require.Empty(t, got.Description, "%q", raw)
+	}
+	got := upstreamBillingGroupInfo([]byte(`{"group_name":"  标准组 🚀 ","group_description":"支持推理模型\r\n第二行"}`))
+	require.Equal(t, BillingGroupInfo{Name: "标准组 🚀", Description: "支持推理模型\r\n第二行"}, got)
 }

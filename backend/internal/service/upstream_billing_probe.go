@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -747,19 +749,35 @@ func (s *UpstreamBillingProbeService) PreviewGroup(ctx context.Context, account 
 }
 
 // Treat each optional text field independently so an invalid field cannot block rate updates.
+//
+// The text comes from a remote upstream and is written to accounts.name / accounts.notes in the
+// same UPDATE as the probe snapshot and the synced rate. Anything PostgreSQL would reject must be
+// dropped here: a rejected parameter fails the whole statement, the snapshot is never stored, and
+// the account is retried every scheduler tick instead of at its probe interval.
 func upstreamBillingGroupInfo(body []byte) BillingGroupInfo {
-	text := func(key string) string {
+	text := func(key string, multiline bool) string {
 		value := gjson.GetBytes(body, key)
-		if value.Type != gjson.String || strings.ContainsRune(value.Str, 0) {
+		// gjson returns unescaped strings as raw bytes, so invalid UTF-8 reaches us unchanged
+		// even though encoding/json accepted the body. PostgreSQL rejects it (SQLSTATE 22021).
+		if value.Type != gjson.String || !utf8.ValidString(value.Str) {
 			return ""
+		}
+		// Control characters (NUL included, which PostgreSQL text cannot store) have no place in
+		// display text. Notes may span lines; the name is a single line.
+		for _, r := range value.Str {
+			if unicode.IsControl(r) && (!multiline || (r != '\n' && r != '\r' && r != '\t')) {
+				return ""
+			}
 		}
 		return strings.TrimSpace(value.Str)
 	}
-	name := text("group_name")
-	if len(name) > 100 { // accounts.name uses Ent MaxLen(100).
+	name := text("group_name", false)
+	// accounts.name uses Ent MaxLen(100), which counts bytes. A longer name would be accepted by
+	// the VARCHAR(100) column but then fail validation on every later Ent update of the account.
+	if len(name) > 100 {
 		name = ""
 	}
-	return BillingGroupInfo{Name: name, Description: text("group_description")}
+	return BillingGroupInfo{Name: name, Description: text("group_description", true)}
 }
 
 func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, account *Account, intervalMinutes int) (*UpstreamBillingProbeSnapshot, error) {
