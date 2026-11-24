@@ -543,6 +543,13 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 			continue
 		case "function_call_output", "custom_tool_call_output", "tool_search_output":
 			outputRaw := bytesTrimSpace(item["output"])
+			if callIDRaw := bytesTrimSpace(item["call_id"]); (len(callIDRaw) == 0 || callIDRaw[0] == '"') && len(outputRaw) > 0 && outputRaw[0] == '"' &&
+				isCodexAgentContextOutput(itemType, rawString(item["namespace"]), rawString(item["call_id"]), rawString(item["name"])) {
+				content, _ := json.Marshal(codexAgentContextText(rawString(item["name"]), rawString(outputRaw)))
+				messages = append(messages, ChatMessage{Role: "user", Content: content})
+				pendingReasoning = ""
+				continue
+			}
 			if itemType == "tool_search_output" && (len(outputRaw) == 0 || string(outputRaw) == "null") {
 				// Newer clients return discoveries in tools[] without a separate
 				// output field. Keep that useful result in Chat tool history.
