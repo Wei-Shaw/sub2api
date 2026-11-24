@@ -3,7 +3,6 @@ package apicompat
 import (
 	"encoding/json"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 )
@@ -109,6 +108,9 @@ func AnthropicToChatCompletionsRequestWithMinOutputTokens(req *AnthropicRequest,
 	out.ReasoningEffort = anthropicReasoningEffort(req)
 
 	parallelToolCalls := true
+	if len(out.ToolChoice) > 0 {
+		parallelToolCalls = anthropicParallelToolCalls(req.ToolChoice)
+	}
 	out.ParallelToolCalls = &parallelToolCalls
 
 	return out, nil
@@ -546,6 +548,16 @@ func chatUsageToAnthropicUsage(usage *ChatUsage) AnthropicUsage {
 // Streaming: ChatCompletionsChunk → []AnthropicStreamEvent (stateful converter)
 // ---------------------------------------------------------------------------
 
+type ccPendingToolCall struct {
+	Index      int
+	CallID     string
+	Name       string
+	NameSeen   bool
+	Announced  bool
+	Closed     bool
+	ArgsBuffer strings.Builder
+}
+
 // ChatCompletionsToAnthropicStreamState tracks state while converting Chat
 // Completions SSE chunks directly into Anthropic SSE events. It collapses the
 // ChatCompletionsToResponsesStreamState + ResponsesEventToAnthropicState pair
@@ -562,12 +574,14 @@ type ChatCompletionsToAnthropicStreamState struct {
 	CurrentToolHadDelta bool
 	HasToolCall         bool
 
-	// Tool calls keyed by the upstream tool_call index. The Anthropic block
-	// index is assigned when the tool block is announced (content_block_start),
-	// which is deferred until the tool's name has arrived. Argument fragments
-	// and the call ID seen before the name are buffered and flushed with the
-	// announcement; tools whose name never arrives are announced with an empty
-	// name at finalize so their arguments are not lost.
+	// Tool calls keyed by the upstream tool_call index. Anthropic SSE requires
+	// sequential content_block lifecycles: at most one tool_use block stays open
+	// and streams live deltas, while sibling parallel tool_calls announced
+	// upfront or interleaved across chunks buffer their call ID, name, and
+	// argument fragments until the active block finishes.
+	activeToolIdx     *int
+	toolOrder         []int
+	pendingTools      map[int]*ccPendingToolCall
 	toolBlockIndex    map[int]int
 	toolAnnounced     map[int]bool
 	toolName          map[int]string
@@ -597,6 +611,7 @@ func NewChatCompletionsToAnthropicStreamState(model string) *ChatCompletionsToAn
 		ResponseID:        generateResponsesID(),
 		Model:             model,
 		Created:           time.Now().Unix(),
+		pendingTools:      make(map[int]*ccPendingToolCall),
 		toolBlockIndex:    make(map[int]int),
 		toolAnnounced:     make(map[int]bool),
 		toolName:          make(map[int]string),
@@ -670,7 +685,8 @@ func ChatCompletionsChunkToAnthropicEvents(
 }
 
 // FinalizeChatCompletionsAnthropicStream emits terminal Anthropic events
-// (close open blocks + message_delta + message_stop) when the stream ends.
+// (close open blocks + flush queued parallel tools + message_delta + message_stop)
+// when the stream ends.
 func FinalizeChatCompletionsAnthropicStream(state *ChatCompletionsToAnthropicStreamState) []AnthropicStreamEvent {
 	if state == nil || state.MessageStopSent {
 		return nil
@@ -681,23 +697,10 @@ func FinalizeChatCompletionsAnthropicStream(state *ChatCompletionsToAnthropicStr
 		events = append(events, ensureCCAnthropicMessageStart(state)...)
 	}
 
-	// Announce tools whose name never arrived so their buffered arguments are
-	// not silently dropped. The double-conversion path announced these
-	// immediately with an empty name; the deferred announcement keeps that data
-	// preservation while still delivering correct names when they do arrive.
-	if len(state.pendingToolCallID) > 0 {
-		idxs := make([]int, 0, len(state.pendingToolCallID))
-		for idx := range state.pendingToolCallID {
-			idxs = append(idxs, idx)
-		}
-		sort.Ints(idxs)
-		for _, idx := range idxs {
-			callID := state.pendingToolCallID[idx]
-			events = append(events, closeCCAnthropicBlock(state)...)
-			events = append(events, announceCCAnthropicToolBlock(state, idx, callID, "")...)
-		}
+	if state.ContentBlockOpen && state.CurrentBlockType != "tool_use" {
+		events = append(events, closeCCAnthropicBlock(state)...)
 	}
-
+	events = append(events, flushCCAnthropicToolBlocks(state, true)...)
 	events = append(events, closeCCAnthropicBlock(state)...)
 
 	stopReason := ccFinishReasonToAnthropicStopReason(state.FinishReason, state.HasToolCall)
@@ -748,7 +751,8 @@ func ensureCCAnthropicThinkingBlock(state *ChatCompletionsToAnthropicStreamState
 	if state.ContentBlockOpen && state.CurrentBlockType == "thinking" {
 		return nil
 	}
-	events := closeCCAnthropicBlock(state)
+	events := flushCCAnthropicToolBlocks(state, true)
+	events = append(events, closeCCAnthropicBlock(state)...)
 	idx := state.ContentBlockIndex
 	state.ContentBlockOpen = true
 	state.CurrentBlockType = "thinking"
@@ -768,7 +772,8 @@ func ensureCCAnthropicTextBlock(state *ChatCompletionsToAnthropicStreamState) []
 	if state.ContentBlockOpen && state.CurrentBlockType == "text" {
 		return nil
 	}
-	events := closeCCAnthropicBlock(state)
+	events := flushCCAnthropicToolBlocks(state, true)
+	events = append(events, closeCCAnthropicBlock(state)...)
 	idx := state.ContentBlockIndex
 	state.ContentBlockOpen = true
 	state.CurrentBlockType = "text"
@@ -783,11 +788,79 @@ func ensureCCAnthropicTextBlock(state *ChatCompletionsToAnthropicStreamState) []
 	return events
 }
 
-// handleCCAnthropicToolCall processes one upstream tool_call delta. The
-// content_block_start for a tool is deferred until its name has arrived (some
-// upstreams stream id/arguments before the name); argument fragments seen
-// before the announcement are buffered and flushed with it, later fragments
-// stream as input_json_delta on the tool's block.
+func ensureCCPendingToolCall(state *ChatCompletionsToAnthropicStreamState, idx int) *ccPendingToolCall {
+	if state.pendingTools == nil {
+		state.pendingTools = make(map[int]*ccPendingToolCall)
+	}
+	if state.toolBlockIndex == nil {
+		state.toolBlockIndex = make(map[int]int)
+	}
+	if state.toolAnnounced == nil {
+		state.toolAnnounced = make(map[int]bool)
+	}
+	if state.toolName == nil {
+		state.toolName = make(map[int]string)
+	}
+	if state.pendingToolCallID == nil {
+		state.pendingToolCallID = make(map[int]string)
+	}
+	if state.pendingToolArgs == nil {
+		state.pendingToolArgs = make(map[int]*strings.Builder)
+	}
+	if tool, ok := state.pendingTools[idx]; ok {
+		return tool
+	}
+	tool := &ccPendingToolCall{Index: idx}
+	state.pendingTools[idx] = tool
+	state.toolOrder = append(state.toolOrder, idx)
+	state.toolAnnounced[idx] = false
+	return tool
+}
+
+// flushCCAnthropicToolBlocks advances the sequential Anthropic tool_use queue.
+// When force is false, it opens the head-of-queue unclosed tool block once its
+// name is known while keeping sibling parallel tools buffered. When force is
+// true (stream finalize or transition back to non-tool blocks), it closes the
+// active tool block and emits/closes every remaining buffered tool block in
+// toolOrder (using an empty name if a tool's name never arrived).
+func flushCCAnthropicToolBlocks(state *ChatCompletionsToAnthropicStreamState, force bool) []AnthropicStreamEvent {
+	var events []AnthropicStreamEvent
+	if !force {
+		if state.activeToolIdx != nil || state.ContentBlockOpen {
+			return nil
+		}
+		for _, candidateIdx := range state.toolOrder {
+			candidate := state.pendingTools[candidateIdx]
+			if candidate != nil && !candidate.Closed {
+				if candidate.NameSeen {
+					events = append(events, announceCCAnthropicToolBlock(state, candidateIdx, candidate.CallID, candidate.Name)...)
+				}
+				break
+			}
+		}
+		return events
+	}
+
+	if state.ContentBlockOpen && state.CurrentBlockType == "tool_use" {
+		events = append(events, closeCCAnthropicBlock(state)...)
+	}
+	for _, idx := range state.toolOrder {
+		tool := state.pendingTools[idx]
+		if tool == nil || tool.Closed {
+			continue
+		}
+		if !tool.Announced {
+			events = append(events, announceCCAnthropicToolBlock(state, idx, tool.CallID, tool.Name)...)
+		}
+		events = append(events, closeCCAnthropicBlock(state)...)
+	}
+	return events
+}
+
+// handleCCAnthropicToolCall processes one upstream tool_call delta. At most one
+// tool_use block is kept open at a time so parallel tool announcements or
+// interleaved argument chunks never close an incomplete tool block early or
+// emit deltas against an already-closed block index.
 func handleCCAnthropicToolCall(state *ChatCompletionsToAnthropicStreamState, toolCall *ChatToolCall) []AnthropicStreamEvent {
 	idx := 0
 	if toolCall.Index != nil {
@@ -795,36 +868,35 @@ func handleCCAnthropicToolCall(state *ChatCompletionsToAnthropicStreamState, too
 	}
 
 	var events []AnthropicStreamEvent
-
-	if _, seen := state.toolAnnounced[idx]; !seen {
-		// New tool call: it ends whatever block is currently streaming.
+	if state.ContentBlockOpen && state.CurrentBlockType != "tool_use" {
 		events = append(events, closeCCAnthropicBlock(state)...)
-		state.HasToolCall = true
+	}
+	state.HasToolCall = true
 
-		callID := toolCall.ID
-		if callID == "" {
-			callID = generateItemID()
-		}
-		if name := toolCall.Function.Name; name != "" {
-			events = append(events, announceCCAnthropicToolBlock(state, idx, callID, name)...)
-		} else {
-			state.toolAnnounced[idx] = false
-			state.pendingToolCallID[idx] = callID
-		}
-	} else if !state.toolAnnounced[idx] && toolCall.Function.Name != "" {
-		// Deferred announcement: the name has arrived.
-		callID := state.pendingToolCallID[idx]
-		if toolCall.ID != "" {
-			callID = toolCall.ID
-		}
-		events = append(events, closeCCAnthropicBlock(state)...)
-		events = append(events, announceCCAnthropicToolBlock(state, idx, callID, toolCall.Function.Name)...)
+	tool := ensureCCPendingToolCall(state, idx)
+	if tool.Closed {
+		return events
 	}
 
-	// Argument fragment → input_json_delta on the tool's block once announced,
-	// buffered until the deferred announcement otherwise.
+	if toolCall.ID != "" {
+		tool.CallID = toolCall.ID
+	} else if tool.CallID == "" {
+		tool.CallID = generateItemID()
+	}
+	if !tool.Announced {
+		state.pendingToolCallID[idx] = tool.CallID
+	}
+
+	if toolCall.Function.Name != "" {
+		tool.Name = toolCall.Function.Name
+		tool.NameSeen = true
+		state.toolName[idx] = tool.Name
+	}
+
+	events = append(events, flushCCAnthropicToolBlocks(state, false)...)
+
 	if toolCall.Function.Arguments != "" {
-		if state.toolAnnounced[idx] {
+		if state.activeToolIdx != nil && *state.activeToolIdx == idx && tool.Announced {
 			blockIdx := state.toolBlockIndex[idx]
 			if state.ContentBlockOpen && blockIdx == state.ContentBlockIndex {
 				state.CurrentToolHadDelta = true
@@ -838,6 +910,7 @@ func handleCCAnthropicToolCall(state *ChatCompletionsToAnthropicStreamState, too
 				},
 			})
 		} else {
+			_, _ = tool.ArgsBuffer.WriteString(toolCall.Function.Arguments)
 			buffer := state.pendingToolArgs[idx]
 			if buffer == nil {
 				buffer = &strings.Builder{}
@@ -852,8 +925,9 @@ func handleCCAnthropicToolCall(state *ChatCompletionsToAnthropicStreamState, too
 
 // announceCCAnthropicToolBlock assigns the next Anthropic block index to the
 // tool, emits its content_block_start, and flushes any argument fragments
-// buffered while the announcement was deferred.
+// buffered while the announcement was deferred or queued.
 func announceCCAnthropicToolBlock(state *ChatCompletionsToAnthropicStreamState, idx int, callID, name string) []AnthropicStreamEvent {
+	tool := ensureCCPendingToolCall(state, idx)
 	blockIdx := state.ContentBlockIndex
 	state.toolBlockIndex[idx] = blockIdx
 	state.toolAnnounced[idx] = true
@@ -862,6 +936,9 @@ func announceCCAnthropicToolBlock(state *ChatCompletionsToAnthropicStreamState, 
 	state.CurrentToolHadDelta = false
 	state.ContentBlockOpen = true
 	state.CurrentBlockType = "tool_use"
+	activeIdx := idx
+	state.activeToolIdx = &activeIdx
+	tool.Announced = true
 	delete(state.pendingToolCallID, idx)
 
 	events := []AnthropicStreamEvent{{
@@ -874,8 +951,9 @@ func announceCCAnthropicToolBlock(state *ChatCompletionsToAnthropicStreamState, 
 			Input: json.RawMessage("{}"),
 		},
 	}}
-	if buffer := state.pendingToolArgs[idx]; buffer != nil && buffer.Len() > 0 {
-		pending := buffer.String()
+	if tool.ArgsBuffer.Len() > 0 {
+		pending := tool.ArgsBuffer.String()
+		tool.ArgsBuffer.Reset()
 		delete(state.pendingToolArgs, idx)
 		state.CurrentToolHadDelta = true
 		events = append(events, AnthropicStreamEvent{
@@ -931,6 +1009,12 @@ func closeCCAnthropicBlock(state *ChatCompletionsToAnthropicStreamState) []Anthr
 				PartialJSON: "{}",
 			},
 		})
+	}
+	if state.CurrentBlockType == "tool_use" && state.activeToolIdx != nil {
+		if tool := state.pendingTools[*state.activeToolIdx]; tool != nil {
+			tool.Closed = true
+		}
+		state.activeToolIdx = nil
 	}
 	state.ContentBlockOpen = false
 	state.ContentBlockIndex++

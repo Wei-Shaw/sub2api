@@ -208,24 +208,48 @@ type responsesTextPart struct {
 	ContentIndex int
 }
 
+type pendingToolBlock struct {
+	OutputIndex int
+	CallID      string
+	Name        string
+	ItemType    string
+
+	BufferedArgs     string
+	FinalArgs        string
+	bufferedBuilder  *strings.Builder
+	finalArgsBuilder *strings.Builder
+
+	ArgsDone    bool
+	EmittedArgs string
+	Started     bool
+	Closed      bool
+}
+
 // ResponsesEventToAnthropicState tracks state for converting a sequence of
 // Responses SSE events directly into Anthropic SSE events.
 type ResponsesEventToAnthropicState struct {
 	MessageStartSent bool
 	MessageStopSent  bool
 
-	ContentBlockIndex         int
-	ContentBlockOpen          bool
-	CurrentBlockType          string // "text" | "thinking" | "tool_use"
-	CurrentToolName           string
-	CurrentToolArgs           string
-	CurrentToolHadDelta       bool
-	currentToolArgsBuffer     *strings.Builder
-	currentToolArgsValidation *streamStringBytes
+	ContentBlockIndex          int
+	ContentBlockOpen           bool
+	CurrentBlockType           string // "text" | "thinking" | "tool_use"
+	CurrentBlockOutputIndex    int
+	CurrentBlockHasOutputIndex bool
+	CurrentToolName            string
+	CurrentToolArgs            string
+	CurrentToolHadDelta        bool
+	currentToolArgsBuffer      *strings.Builder
+	currentToolArgsValidation  *streamStringBytes
 	// PendingThinkingSignature is filled from reasoning.encrypted_content and
 	// emitted as signature_delta before the thinking block is closed.
 	PendingThinkingSignature string
 	HasToolCall              bool
+
+	ActiveToolOutputIndex *int
+	PendingTools          map[int]*pendingToolBlock
+	ToolOrder             []int
+	ignoredToolOutputs    map[int]bool
 
 	// XAIServerSideSearch is set by callers whose upstream is xAI. A
 	// custom_tool_call that IsServerSideSearchCall then never becomes a tool_use
@@ -256,6 +280,8 @@ type ResponsesEventToAnthropicState struct {
 func NewResponsesEventToAnthropicState() *ResponsesEventToAnthropicState {
 	return &ResponsesEventToAnthropicState{
 		OutputIndexToBlockIdx: make(map[int]int),
+		PendingTools:          make(map[int]*pendingToolBlock),
+		ignoredToolOutputs:    make(map[int]bool),
 		textByPart:            make(map[responsesTextPart]*strings.Builder),
 		Created:               time.Now().Unix(),
 	}
@@ -280,7 +306,8 @@ func ResponsesEventToAnthropicEvents(
 		// custom/freeform 工具的输入增量与 function_call 参数增量同形。
 		"response.custom_tool_call_input.delta":
 		return resToAnthHandleFuncArgsDelta(evt, state)
-	case "response.function_call_arguments.done":
+	case "response.function_call_arguments.done",
+		"response.custom_tool_call_input.done":
 		return resToAnthHandleFuncArgsDone(evt, state)
 	case "response.output_item.done":
 		return resToAnthHandleOutputItemDone(evt, state)
@@ -310,6 +337,10 @@ func FinalizeResponsesAnthropicStream(state *ResponsesEventToAnthropicState) []A
 	}
 
 	var events []AnthropicStreamEvent
+	if state.ContentBlockOpen && state.CurrentBlockType != "tool_use" {
+		events = append(events, closeCurrentBlock(state)...)
+	}
+	events = append(events, flushPendingToolBlocks(state, true)...)
 	events = append(events, closeCurrentBlock(state)...)
 
 	stopReason := "end_turn"
@@ -396,6 +427,31 @@ func resToAnthHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesE
 	// 同样映射为 Anthropic 的 tool_use 块。
 	case "function_call", "custom_tool_call":
 		if state.XAIServerSideSearch && IsServerSideSearchCall(evt.Item.Type, evt.Item.CallID) {
+			if state.ignoredToolOutputs == nil {
+				state.ignoredToolOutputs = make(map[int]bool)
+			}
+			state.ignoredToolOutputs[evt.OutputIndex] = true
+			return nil
+		}
+		var events []AnthropicStreamEvent
+		if state.ContentBlockOpen && state.CurrentBlockType != "tool_use" {
+			events = append(events, closeCurrentBlock(state)...)
+		}
+
+		tool := ensurePendingToolBlock(state, evt.OutputIndex)
+		tool.CallID = evt.Item.CallID
+		tool.Name = evt.Item.Name
+		tool.ItemType = evt.Item.Type
+		if evt.Item.Type == "custom_tool_call" && evt.Item.Input != "" {
+			tool.FinalArgs = evt.Item.Input
+		}
+		state.HasToolCall = true
+
+		events = append(events, flushPendingToolBlocks(state, false)...)
+		return events
+
+	case "reasoning":
+		if state.ContentBlockOpen && state.CurrentBlockType == "tool_use" {
 			return nil
 		}
 		var events []AnthropicStreamEvent
@@ -404,34 +460,9 @@ func resToAnthHandleOutputItemAdded(evt *ResponsesStreamEvent, state *ResponsesE
 		idx := state.ContentBlockIndex
 		state.OutputIndexToBlockIdx[evt.OutputIndex] = idx
 		state.ContentBlockOpen = true
-		state.CurrentBlockType = "tool_use"
-		state.CurrentToolName = evt.Item.Name
-		state.CurrentToolArgs = ""
-		state.currentToolArgsBuffer = nil
-		state.currentToolArgsValidation = nil
-		state.CurrentToolHadDelta = false
-		state.HasToolCall = true
-
-		events = append(events, AnthropicStreamEvent{
-			Type:  "content_block_start",
-			Index: &idx,
-			ContentBlock: &AnthropicContentBlock{
-				Type:  "tool_use",
-				ID:    fromResponsesCallID(evt.Item.CallID),
-				Name:  evt.Item.Name,
-				Input: json.RawMessage("{}"),
-			},
-		})
-		return events
-
-	case "reasoning":
-		var events []AnthropicStreamEvent
-		events = append(events, closeCurrentBlock(state)...)
-
-		idx := state.ContentBlockIndex
-		state.OutputIndexToBlockIdx[evt.OutputIndex] = idx
-		state.ContentBlockOpen = true
 		state.CurrentBlockType = "thinking"
+		state.CurrentBlockOutputIndex = evt.OutputIndex
+		state.CurrentBlockHasOutputIndex = true
 		state.PendingThinkingSignature = strings.TrimSpace(evt.Item.EncryptedContent)
 
 		events = append(events, AnthropicStreamEvent{
@@ -470,11 +501,14 @@ func resToAnthEmitText(text string, part responsesTextPart, state *ResponsesEven
 	var events []AnthropicStreamEvent
 
 	if !state.ContentBlockOpen || state.CurrentBlockType != "text" {
+		events = append(events, flushPendingToolBlocks(state, true)...)
 		events = append(events, closeCurrentBlock(state)...)
 
 		idx := state.ContentBlockIndex
 		state.ContentBlockOpen = true
 		state.CurrentBlockType = "text"
+		state.CurrentBlockOutputIndex = part.OutputIndex
+		state.CurrentBlockHasOutputIndex = true
 
 		events = append(events, AnthropicStreamEvent{
 			Type:  "content_block_start",
@@ -536,26 +570,220 @@ func resToAnthHandleTextDone(evt *ResponsesStreamEvent, state *ResponsesEventToA
 	if state.MessageStopSent {
 		// The message is already terminated; a late payload cannot be delivered
 		// without emitting a content block after message_stop.
-		return resToAnthHandleBlockDone(state)
+		return resToAnthHandleBlockDone(evt, state, "text")
 	}
 
 	events := resToAnthRecoverText(evt.Text, resToAnthTextPartOf(evt), state)
-	return append(events, resToAnthHandleBlockDone(state)...)
+	return append(events, resToAnthHandleBlockDone(evt, state, "text")...)
 }
 
-func resToAnthHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
-	if evt.Delta == "" {
-		return nil
+func ensurePendingToolBlock(state *ResponsesEventToAnthropicState, outputIndex int) *pendingToolBlock {
+	if state.PendingTools == nil {
+		state.PendingTools = make(map[int]*pendingToolBlock)
+	}
+	if tool, ok := state.PendingTools[outputIndex]; ok {
+		return tool
+	}
+	tool := &pendingToolBlock{OutputIndex: outputIndex}
+	state.PendingTools[outputIndex] = tool
+	state.ToolOrder = append(state.ToolOrder, outputIndex)
+	return tool
+}
+
+func findPendingToolBlock(
+	state *ResponsesEventToAnthropicState,
+	outputIndex int,
+	callID string,
+) *pendingToolBlock {
+	if tool := state.PendingTools[outputIndex]; tool != nil &&
+		(callID == "" || tool.CallID == "" || tool.CallID == callID) {
+		return tool
+	}
+	if callID != "" {
+		for _, queuedOutputIndex := range state.ToolOrder {
+			tool := state.PendingTools[queuedOutputIndex]
+			if tool != nil && tool.CallID == callID {
+				return tool
+			}
+		}
+	}
+	if tool := state.PendingTools[outputIndex]; tool != nil {
+		return tool
+	}
+	if callID == "" && state.ActiveToolOutputIndex != nil {
+		return state.PendingTools[*state.ActiveToolOutputIndex]
+	}
+	return nil
+}
+
+// flushPendingToolBlocks maintains at most one active Anthropic tool_use block.
+// Sibling parallel tools announced while the active tool is still streaming its
+// arguments remain queued in PendingTools and are emitted sequentially once the
+// active block finishes, preventing premature empty-input closes and deltas on
+// already-closed blocks.
+func flushPendingToolBlocks(
+	state *ResponsesEventToAnthropicState,
+	force bool,
+) []AnthropicStreamEvent {
+	var events []AnthropicStreamEvent
+
+	if force {
+		for _, outputIndex := range state.ToolOrder {
+			if tool := state.PendingTools[outputIndex]; tool != nil && !tool.Closed {
+				tool.ArgsDone = true
+			}
+		}
 	}
 
-	if state.CurrentBlockType == "tool_use" && state.CurrentToolName == "Read" {
-		previousArgs := state.CurrentToolArgs
-		state.CurrentToolArgs = appendStreamString(&state.currentToolArgsBuffer, state.CurrentToolArgs, evt.Delta)
-		if state.CurrentToolHadDelta || !json.Valid(appendStreamStringBytes(&state.currentToolArgsValidation, previousArgs, state.CurrentToolArgs, evt.Delta)) {
-			return nil
+	for {
+		if state.ActiveToolOutputIndex != nil {
+			tool := state.PendingTools[*state.ActiveToolOutputIndex]
+			if tool == nil || tool.Closed {
+				state.ActiveToolOutputIndex = nil
+				continue
+			}
+
+			blockIdx, ok := state.OutputIndexToBlockIdx[tool.OutputIndex]
+			if !ok {
+				return events
+			}
+
+			if !state.CurrentToolHadDelta {
+				if state.CurrentToolName == "Read" {
+					raw := state.CurrentToolArgs
+					if tool.ArgsDone && tool.FinalArgs != "" {
+						raw = tool.FinalArgs
+						state.CurrentToolArgs = raw
+					} else if raw == "" {
+						raw = tool.BufferedArgs
+						state.CurrentToolArgs = raw
+					}
+					if raw != "" {
+						valid := tool.ArgsDone || json.Valid(appendStreamStringBytes(&state.currentToolArgsValidation, "", raw, raw))
+						if valid {
+							sanitized := sanitizeAnthropicToolUseInput(state.CurrentToolName, raw)
+							if len(sanitized) > 0 && (json.Valid([]byte(raw)) || tool.ArgsDone) {
+								events = append(events, AnthropicStreamEvent{
+									Type:  "content_block_delta",
+									Index: &blockIdx,
+									Delta: &AnthropicDelta{
+										Type:        "input_json_delta",
+										PartialJSON: string(sanitized),
+									},
+								})
+								state.CurrentToolHadDelta = true
+								tool.EmittedArgs = raw
+							}
+						}
+					}
+				} else {
+					raw := tool.BufferedArgs
+					if tool.ArgsDone && tool.FinalArgs != "" {
+						raw = tool.FinalArgs
+					} else if raw == "" && tool.ArgsDone {
+						raw = state.CurrentToolArgs
+					}
+					if raw != "" {
+						events = append(events, AnthropicStreamEvent{
+							Type:  "content_block_delta",
+							Index: &blockIdx,
+							Delta: &AnthropicDelta{
+								Type:        "input_json_delta",
+								PartialJSON: raw,
+							},
+						})
+						state.CurrentToolArgs = raw
+						tool.EmittedArgs = raw
+						state.CurrentToolHadDelta = true
+					}
+				}
+			} else if state.CurrentToolName != "Read" && tool.ArgsDone && tool.FinalArgs != "" {
+				delivered := state.CurrentToolArgs
+				if len(tool.FinalArgs) > len(delivered) && strings.HasPrefix(tool.FinalArgs, delivered) {
+					tail := tool.FinalArgs[len(delivered):]
+					events = append(events, AnthropicStreamEvent{
+						Type:  "content_block_delta",
+						Index: &blockIdx,
+						Delta: &AnthropicDelta{
+							Type:        "input_json_delta",
+							PartialJSON: tail,
+						},
+					})
+					state.CurrentToolArgs = tool.FinalArgs
+					tool.EmittedArgs = tool.FinalArgs
+				}
+			}
+			tool.BufferedArgs = ""
+			tool.bufferedBuilder = nil
+
+			if !tool.ArgsDone {
+				return events
+			}
+
+			events = append(events, closeCurrentBlock(state)...)
+			continue
 		}
 
-		blockIdx, ok := state.OutputIndexToBlockIdx[evt.OutputIndex]
+		if state.ContentBlockOpen {
+			return events
+		}
+
+		var next *pendingToolBlock
+		for _, outputIndex := range state.ToolOrder {
+			tool := state.PendingTools[outputIndex]
+			if tool != nil && !tool.Started && !tool.Closed {
+				next = tool
+				break
+			}
+		}
+		if next == nil {
+			return events
+		}
+
+		idx := state.ContentBlockIndex
+		state.OutputIndexToBlockIdx[next.OutputIndex] = idx
+		state.ContentBlockOpen = true
+		state.CurrentBlockType = "tool_use"
+		state.CurrentBlockOutputIndex = next.OutputIndex
+		state.CurrentBlockHasOutputIndex = true
+		state.CurrentToolName = next.Name
+		state.CurrentToolArgs = next.FinalArgs
+		state.currentToolArgsBuffer = nil
+		state.currentToolArgsValidation = nil
+		state.CurrentToolHadDelta = false
+		activeOutputIndex := next.OutputIndex
+		state.ActiveToolOutputIndex = &activeOutputIndex
+		next.Started = true
+
+		events = append(events, AnthropicStreamEvent{
+			Type:  "content_block_start",
+			Index: &idx,
+			ContentBlock: &AnthropicContentBlock{
+				Type:  "tool_use",
+				ID:    fromResponsesCallID(next.CallID),
+				Name:  next.Name,
+				Input: json.RawMessage("{}"),
+			},
+		})
+	}
+}
+
+func resToAnthEmitActiveToolDelta(
+	evt *ResponsesStreamEvent,
+	state *ResponsesEventToAnthropicState,
+	outputIndex int,
+) []AnthropicStreamEvent {
+	previousArgs := state.CurrentToolArgs
+	state.CurrentToolArgs = appendStreamString(&state.currentToolArgsBuffer, state.CurrentToolArgs, evt.Delta)
+
+	if state.CurrentToolName == "Read" {
+		if state.CurrentToolHadDelta {
+			return nil
+		}
+		if !json.Valid(appendStreamStringBytes(&state.currentToolArgsValidation, previousArgs, state.CurrentToolArgs, evt.Delta)) {
+			return nil
+		}
+		blockIdx, ok := state.OutputIndexToBlockIdx[outputIndex]
 		if !ok {
 			return nil
 		}
@@ -571,15 +799,11 @@ func resToAnthHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEve
 		}}
 	}
 
-	if state.CurrentBlockType == "tool_use" {
-		state.CurrentToolHadDelta = true
-	}
-
-	blockIdx, ok := state.OutputIndexToBlockIdx[evt.OutputIndex]
+	blockIdx, ok := state.OutputIndexToBlockIdx[outputIndex]
 	if !ok {
 		return nil
 	}
-
+	state.CurrentToolHadDelta = true
 	return []AnthropicStreamEvent{{
 		Type:  "content_block_delta",
 		Index: &blockIdx,
@@ -590,54 +814,122 @@ func resToAnthHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEve
 	}}
 }
 
-func resToAnthHandleFuncArgsDone(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
-	if !state.ContentBlockOpen {
+func resToAnthHandleFuncArgsDelta(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
+	if evt.Delta == "" || state.ignoredToolOutputs[evt.OutputIndex] {
 		return nil
 	}
-	if state.CurrentBlockType != "tool_use" {
-		return resToAnthHandleBlockDone(state)
+
+	// Fast path for the active tool block (and legacy white-box tests that
+	// initialize state fields directly without PendingTools): mutate only value
+	// fields on *state so shallow struct copies remain isolated.
+	if state.CurrentBlockType == "tool_use" &&
+		((state.ActiveToolOutputIndex == nil && len(state.PendingTools) == 0) ||
+			(state.ContentBlockOpen && state.ActiveToolOutputIndex != nil && *state.ActiveToolOutputIndex == evt.OutputIndex)) {
+		return resToAnthEmitActiveToolDelta(evt, state, evt.OutputIndex)
+	}
+
+	tool := findPendingToolBlock(state, evt.OutputIndex, evt.CallID)
+	if tool == nil {
+		tool = ensurePendingToolBlock(state, evt.OutputIndex)
+		tool.CallID = evt.CallID
+		tool.Name = evt.Name
+		state.HasToolCall = true
+	}
+	if tool.Closed {
+		return nil
+	}
+	if state.ActiveToolOutputIndex != nil && *state.ActiveToolOutputIndex == tool.OutputIndex && tool.Started {
+		return resToAnthEmitActiveToolDelta(evt, state, tool.OutputIndex)
+	}
+
+	tool.FinalArgs = appendStreamString(&tool.finalArgsBuilder, tool.FinalArgs, evt.Delta)
+	tool.BufferedArgs = appendStreamString(&tool.bufferedBuilder, tool.BufferedArgs, evt.Delta)
+	return flushPendingToolBlocks(state, false)
+}
+
+func resToAnthHandleFuncArgsDone(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
+	if state.ignoredToolOutputs[evt.OutputIndex] {
+		return nil
+	}
+
+	if state.ActiveToolOutputIndex == nil && len(state.PendingTools) == 0 {
+		if !state.ContentBlockOpen {
+			return nil
+		}
+		if state.CurrentBlockType != "tool_use" {
+			return resToAnthHandleBlockDone(evt, state, state.CurrentBlockType)
+		}
+		raw := evt.Arguments
+		if raw == "" {
+			raw = evt.Input
+		}
+		if raw == "" {
+			raw = state.CurrentToolArgs
+		}
+		if raw == "" || state.CurrentToolHadDelta {
+			return closeCurrentBlock(state)
+		}
+		if state.CurrentToolName == "Read" {
+			sanitized := sanitizeAnthropicToolUseInput(state.CurrentToolName, raw)
+			if len(sanitized) == 0 {
+				return closeCurrentBlock(state)
+			}
+			raw = string(sanitized)
+		}
+		blockIdx, ok := state.OutputIndexToBlockIdx[evt.OutputIndex]
+		if !ok {
+			blockIdx = state.ContentBlockIndex
+		}
+		if !state.ContentBlockOpen || blockIdx != state.ContentBlockIndex {
+			return nil
+		}
+		events := []AnthropicStreamEvent{{
+			Type:  "content_block_delta",
+			Index: &blockIdx,
+			Delta: &AnthropicDelta{
+				Type:        "input_json_delta",
+				PartialJSON: raw,
+			},
+		}}
+		return append(events, closeCurrentBlock(state)...)
+	}
+
+	tool := findPendingToolBlock(state, evt.OutputIndex, evt.CallID)
+	if tool == nil {
+		if !state.ContentBlockOpen {
+			return nil
+		}
+		if state.CurrentBlockType != "tool_use" {
+			return resToAnthHandleBlockDone(evt, state, state.CurrentBlockType)
+		}
+		tool = ensurePendingToolBlock(state, evt.OutputIndex)
+		tool.CallID = evt.CallID
+		tool.Name = evt.Name
+		state.HasToolCall = true
+	}
+	if tool.Closed {
+		return nil
 	}
 
 	raw := evt.Arguments
 	if raw == "" {
-		raw = state.CurrentToolArgs
+		raw = evt.Input
 	}
-	if raw == "" || state.CurrentToolHadDelta {
-		return closeCurrentBlock(state)
+	if raw != "" {
+		tool.FinalArgs = raw
+		tool.finalArgsBuilder = nil
 	}
-	if state.CurrentToolName == "Read" {
-		sanitized := sanitizeAnthropicToolUseInput(state.CurrentToolName, raw)
-		if len(sanitized) == 0 {
-			return closeCurrentBlock(state)
-		}
-		raw = string(sanitized)
-	}
-
-	// 从事件的 OutputIndex 解析正确的 block index，与 resToAnthHandleFuncArgsDelta 对齐
-	blockIdx, ok := state.OutputIndexToBlockIdx[evt.OutputIndex]
-	if !ok {
-		blockIdx = state.ContentBlockIndex
-	}
-
-	// 如果 block 已关闭（ContentBlockIndex 已越过它），说明 arguments 已通过 delta 流式发完，不再补发
-	if !state.ContentBlockOpen || blockIdx != state.ContentBlockIndex {
-		return nil
-	}
-
-	events := []AnthropicStreamEvent{{
-		Type:  "content_block_delta",
-		Index: &blockIdx,
-		Delta: &AnthropicDelta{
-			Type:        "input_json_delta",
-			PartialJSON: raw,
-		},
-	}}
-	events = append(events, closeCurrentBlock(state)...)
-	return events
+	tool.ArgsDone = true
+	return flushPendingToolBlocks(state, false)
 }
 
 func resToAnthHandleReasoningDelta(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
 	if evt.Delta == "" {
+		return nil
+	}
+	if !state.ContentBlockOpen ||
+		state.CurrentBlockType != "thinking" ||
+		(state.CurrentBlockHasOutputIndex && state.CurrentBlockOutputIndex != evt.OutputIndex) {
 		return nil
 	}
 
@@ -656,8 +948,18 @@ func resToAnthHandleReasoningDelta(evt *ResponsesStreamEvent, state *ResponsesEv
 	}}
 }
 
-func resToAnthHandleBlockDone(state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
+func resToAnthHandleBlockDone(
+	evt *ResponsesStreamEvent,
+	state *ResponsesEventToAnthropicState,
+	expectedBlockType string,
+) []AnthropicStreamEvent {
 	if !state.ContentBlockOpen {
+		return nil
+	}
+	if expectedBlockType != "" && state.CurrentBlockType != expectedBlockType {
+		return nil
+	}
+	if evt != nil && state.CurrentBlockHasOutputIndex && state.CurrentBlockOutputIndex != evt.OutputIndex {
 		return nil
 	}
 	return closeCurrentBlock(state)
@@ -677,16 +979,47 @@ func resToAnthHandleOutputItemDone(evt *ResponsesStreamEvent, state *ResponsesEv
 		return resToAnthHandleToolSearchDone(evt, state)
 	}
 
+	if evt.Item.Type == "function_call" || evt.Item.Type == "custom_tool_call" {
+		if state.ignoredToolOutputs[evt.OutputIndex] || (state.XAIServerSideSearch && IsServerSideSearchCall(evt.Item.Type, evt.Item.CallID)) {
+			return nil
+		}
+		tool := findPendingToolBlock(state, evt.OutputIndex, evt.Item.CallID)
+		if tool == nil {
+			tool = ensurePendingToolBlock(state, evt.OutputIndex)
+		}
+		if evt.Item.CallID != "" {
+			tool.CallID = evt.Item.CallID
+		}
+		if evt.Item.Name != "" {
+			tool.Name = evt.Item.Name
+		}
+		if evt.Item.Type != "" {
+			tool.ItemType = evt.Item.Type
+		}
+		raw := evt.Item.Arguments
+		if raw == "" {
+			raw = evt.Item.Input
+		}
+		if raw != "" {
+			tool.FinalArgs = raw
+			tool.finalArgsBuilder = nil
+		}
+		tool.ArgsDone = true
+		state.HasToolCall = true
+		return flushPendingToolBlocks(state, false)
+	}
+
 	// Capture encrypted_content on reasoning item done (often only present here).
 	if evt.Item.Type == "reasoning" {
 		if sig := strings.TrimSpace(evt.Item.EncryptedContent); sig != "" {
 			state.PendingThinkingSignature = sig
 		}
+		return resToAnthHandleBlockDone(evt, state, "thinking")
+	}
+	if evt.Item.Type == "message" {
+		return resToAnthHandleBlockDone(evt, state, "text")
 	}
 
-	if state.ContentBlockOpen {
-		return closeCurrentBlock(state)
-	}
 	return nil
 }
 
@@ -695,6 +1028,9 @@ func resToAnthHandleOutputItemDone(evt *ResponsesStreamEvent, state *ResponsesEv
 // This allows Claude Code to count the searches performed.
 func resToAnthHandleWebSearchDone(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
 	var events []AnthropicStreamEvent
+	if state.ContentBlockOpen && state.CurrentBlockType == "tool_use" {
+		events = append(events, flushPendingToolBlocks(state, false)...)
+	}
 	events = append(events, closeCurrentBlock(state)...)
 
 	toolUseID := "srvtoolu_" + evt.Item.ID
@@ -774,12 +1110,63 @@ func resToAnthRecoverTerminalText(evt *ResponsesStreamEvent, state *ResponsesEve
 	return events
 }
 
+func hydratePendingToolsFromCompletedResponse(
+	state *ResponsesEventToAnthropicState,
+	resp *ResponsesResponse,
+) {
+	if resp == nil {
+		return
+	}
+	for outputIndex, item := range resp.Output {
+		if item.Type != "function_call" && item.Type != "custom_tool_call" {
+			continue
+		}
+		if state.ignoredToolOutputs[outputIndex] || (state.XAIServerSideSearch && IsServerSideSearchCall(item.Type, item.CallID)) {
+			continue
+		}
+		tool := findPendingToolBlock(state, outputIndex, item.CallID)
+		if tool == nil {
+			if item.Type == "custom_tool_call" && !resp.RenderCustomToolCalls {
+				continue
+			}
+			tool = ensurePendingToolBlock(state, outputIndex)
+		}
+		if item.CallID != "" {
+			tool.CallID = item.CallID
+		}
+		if item.Name != "" {
+			tool.Name = item.Name
+		}
+		if item.Type != "" {
+			tool.ItemType = item.Type
+		}
+		raw := item.Arguments
+		if raw == "" {
+			raw = item.Input
+		}
+		if raw != "" {
+			tool.FinalArgs = raw
+			tool.finalArgsBuilder = nil
+		}
+		tool.ArgsDone = true
+		state.HasToolCall = true
+	}
+}
+
 func resToAnthHandleCompleted(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
 	if state.MessageStopSent {
 		return nil
 	}
 
 	var events []AnthropicStreamEvent
+	hydratePendingToolsFromCompletedResponse(state, evt.Response)
+	if state.ContentBlockOpen && state.CurrentBlockType != "tool_use" {
+		events = append(events, closeCurrentBlock(state)...)
+	}
+	if state.ActiveToolOutputIndex == nil {
+		events = append(events, resToAnthRecoverTerminalText(evt, state)...)
+	}
+	events = append(events, flushPendingToolBlocks(state, true)...)
 	events = append(events, closeCurrentBlock(state)...)
 	events = append(events, resToAnthRecoverTerminalText(evt, state)...)
 
@@ -853,8 +1240,17 @@ func closeCurrentBlock(state *ResponsesEventToAnthropicState) []AnthropicStreamE
 		}
 		state.PendingThinkingSignature = ""
 	}
+	if state.CurrentBlockType == "tool_use" && state.ActiveToolOutputIndex != nil {
+		if tool := state.PendingTools[*state.ActiveToolOutputIndex]; tool != nil {
+			tool.Closed = true
+		}
+		state.ActiveToolOutputIndex = nil
+	}
 	state.ContentBlockOpen = false
 	state.ContentBlockIndex++
+	state.CurrentBlockType = ""
+	state.CurrentBlockOutputIndex = 0
+	state.CurrentBlockHasOutputIndex = false
 	state.CurrentToolName = ""
 	state.CurrentToolArgs = ""
 	state.currentToolArgsBuffer = nil
