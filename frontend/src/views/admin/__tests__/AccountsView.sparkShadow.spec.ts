@@ -45,7 +45,7 @@ vi.mock('@/api/admin', () => ({
       batchRefresh: vi.fn(),
       toggleSchedulable: vi.fn()
     },
-    proxies: { getAll: getAllProxies },
+    proxies: { getAllWithCount: getAllProxies },
     groups: { getAll: getAllGroups }
   }
 }))
@@ -341,7 +341,7 @@ describe('admin AccountsView — 账号行展示', () => {
     const tooltip = wrapper.findComponent(HelpTooltip)
     expect(tooltip.props('content')).toBe('https://relay.example.com')
     expect(tooltip.props('widthClass')).toBe('w-max max-w-sm break-all')
-    expect(tooltip.classes()).toEqual(expect.arrayContaining(['self-start']))
+    expect(tooltip.classes()).toEqual(expect.arrayContaining(['inline-flex', 'items-center', 'align-middle', '-ml-1']))
     expect(wrapper.text()).toContain('oauth-account')
     expect(wrapper.text()).toContain('invalid-url')
 
