@@ -371,3 +371,113 @@ func TestGeminiMessagesForward_SignatureRetryKeepsClientThinkingParams(t *testin
 	}
 	require.Equal(t, "low", optionalStringValue(result.ReasoningEffort))
 }
+
+func TestWrapV1InternalRequest_NormalizesGeminiThinkingConfig(t *testing.T) {
+	svc := &AntigravityGatewayService{}
+	budget := func(v int64) *int64 { return &v }
+
+	tests := []struct {
+		name         string
+		model        string
+		body         string
+		wantLevel    string
+		wantBudget   *int64
+		wantThoughts bool
+		wantNoConfig bool
+	}{
+		{
+			name:         "tier suffix strips standalone MINIMAL and drops empty thinkingConfig",
+			model:        "gemini-4-argon-medium",
+			body:         `{"contents":[],"generationConfig":{"thinkingConfig":{"thinkingLevel":"MINIMAL"}}}`,
+			wantNoConfig: true,
+		},
+		{
+			name:         "tier suffix strips thinkingLevel but preserves includeThoughts",
+			model:        "gemini-4-argon-low",
+			body:         `{"contents":[],"generationConfig":{"thinkingConfig":{"thinkingLevel":"MINIMAL","includeThoughts":true}}}`,
+			wantThoughts: true,
+		},
+		{
+			name:       "tier suffix preserves thinkingBudget",
+			model:      "gemini-4-argon-high",
+			body:       `{"contents":[],"generationConfig":{"thinkingConfig":{"thinkingBudget":1000}}}`,
+			wantBudget: budget(1000),
+		},
+		{
+			name:      "bare non-flash gemini-4 clamps MINIMAL to low",
+			model:     "gemini-4-argon",
+			body:      `{"contents":[],"generationConfig":{"thinkingConfig":{"thinkingLevel":"MINIMAL"}}}`,
+			wantLevel: "low",
+		},
+		{
+			name:      "bare flash gemini keeps MINIMAL",
+			model:     "gemini-3.8-flash",
+			body:      `{"contents":[],"generationConfig":{"thinkingConfig":{"thinkingLevel":"MINIMAL"}}}`,
+			wantLevel: "MINIMAL",
+		},
+		{
+			name:      "bare non-verified gemini-4 clamps MEDIUM to high",
+			model:     "gemini-4-argon",
+			body:      `{"contents":[],"generationConfig":{"thinkingConfig":{"thinkingLevel":"MEDIUM"}}}`,
+			wantLevel: "high",
+		},
+		{
+			name:      "bare gemini-4-carbon keeps MEDIUM",
+			model:     "gemini-4-carbon",
+			body:      `{"contents":[],"generationConfig":{"thinkingConfig":{"thinkingLevel":"MEDIUM"}}}`,
+			wantLevel: "MEDIUM",
+		},
+		{
+			name:       "gemini 2.5 pro converts MINIMAL thinkingLevel to min budget",
+			model:      "gemini-2.5-pro",
+			body:       `{"contents":[],"generationConfig":{"thinkingConfig":{"thinkingLevel":"MINIMAL"}}}`,
+			wantBudget: budget(128),
+		},
+		{
+			name:       "gemini 2.5 flash converts MINIMAL thinkingLevel to zero budget",
+			model:      "gemini-2.5-flash",
+			body:       `{"contents":[],"generationConfig":{"thinkingConfig":{"thinkingLevel":"MINIMAL"}}}`,
+			wantBudget: budget(0),
+		},
+		{
+			name:         "gemini 2.0 removes thinkingLevel",
+			model:        "gemini-2.0-flash",
+			body:         `{"contents":[],"generationConfig":{"thinkingConfig":{"thinkingLevel":"MINIMAL"}}}`,
+			wantNoConfig: true,
+		},
+		{
+			name:      "non-gemini model is untouched",
+			model:     "claude-sonnet-5-5",
+			body:      `{"contents":[],"generationConfig":{"thinkingConfig":{"thinkingLevel":"MINIMAL"}}}`,
+			wantLevel: "MINIMAL",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			wrapped, err := svc.wrapV1InternalRequest("proj-1", tt.model, []byte(tt.body))
+			require.NoError(t, err)
+			cfg := gjson.GetBytes(wrapped, "request.generationConfig.thinkingConfig")
+			if tt.wantNoConfig {
+				require.False(t, cfg.Exists(), "unexpected thinkingConfig: %s", cfg.Raw)
+				return
+			}
+			require.True(t, cfg.Exists(), "expected thinkingConfig in %s", string(wrapped))
+			require.Equal(t, tt.wantLevel, cfg.Get("thinkingLevel").String(), cfg.Raw)
+			if tt.wantBudget != nil {
+				require.True(t, cfg.Get("thinkingBudget").Exists(), cfg.Raw)
+				require.Equal(t, *tt.wantBudget, cfg.Get("thinkingBudget").Int(), cfg.Raw)
+			} else {
+				require.False(t, cfg.Get("thinkingBudget").Exists(), cfg.Raw)
+			}
+			require.Equal(t, tt.wantThoughts, cfg.Get("includeThoughts").Bool(), cfg.Raw)
+		})
+	}
+
+	t.Run("snake_case generation_config thinking_level is also stripped on tier suffix", func(t *testing.T) {
+		body := `{"contents":[],"generation_config":{"thinking_config":{"thinking_level":"MINIMAL"}}}`
+		wrapped, err := svc.wrapV1InternalRequest("proj-1", "gemini-4-argon-medium", []byte(body))
+		require.NoError(t, err)
+		require.False(t, gjson.GetBytes(wrapped, "request.generation_config.thinking_config").Exists(), string(wrapped))
+	})
+}
