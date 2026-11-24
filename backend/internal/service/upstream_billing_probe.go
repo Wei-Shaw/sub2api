@@ -762,14 +762,16 @@ func upstreamBillingGroupInfo(body []byte) BillingGroupInfo {
 		if value.Type != gjson.String || !utf8.ValidString(value.Str) {
 			return ""
 		}
-		// Control characters (NUL included, which PostgreSQL text cannot store) have no place in
-		// display text. Notes may span lines; the name is a single line.
-		for _, r := range value.Str {
+		// Trim first: surrounding whitespace (a trailing newline, say) is not a reason to drop the
+		// field. Control characters that remain (NUL included, which PostgreSQL text cannot
+		// store) have no place in display text. Notes may span lines; the name is a single line.
+		trimmed := strings.TrimSpace(value.Str)
+		for _, r := range trimmed {
 			if unicode.IsControl(r) && (!multiline || (r != '\n' && r != '\r' && r != '\t')) {
 				return ""
 			}
 		}
-		return strings.TrimSpace(value.Str)
+		return trimmed
 	}
 	name := text("group_name", false)
 	// accounts.name uses Ent MaxLen(100), which counts bytes. A longer name would be accepted by

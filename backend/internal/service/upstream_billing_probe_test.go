@@ -1328,6 +1328,7 @@ func TestUpstreamBillingGroupSyncSharesOneProbeAndPreservesLocalFields(t *testin
 		{"invalid utf8 notes", true, true, `"group_name":"Pro","group_description":"bad ` + "\xc3" + `"`, "Pro", "local notes", 0.5},
 		{"nul in name", true, true, `"group_name":"Pro\u0000","group_description":"shared"`, "local", "shared", 0.5},
 		{"control character in name", true, true, `"group_name":"Pro\nGroup","group_description":"shared"`, "local", "shared", 0.5},
+		{"surrounding whitespace is trimmed", true, true, `"group_name":"\t Pro\n","group_description":"\n shared \r\n"`, "Pro", "shared", 0.5},
 		{"escape sequence in notes", true, true, `"group_name":"Pro","group_description":"a\u001b[31mb"`, "Pro", "local notes", 0.5},
 		{"multiline notes", true, true, `"group_name":"Pro","group_description":"line one\n\tline two"`, "Pro", "line one\n\tline two", 0.5},
 		{"name over 100 bytes", true, true, `"group_name":"` + strings.Repeat("组", 34) + `","group_description":"shared"`, "local", "shared", 0.5},
