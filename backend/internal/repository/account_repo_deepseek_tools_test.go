@@ -28,10 +28,10 @@ func TestDeepseekToolsAccountEditUsesLockedBase(t *testing.T) {
 			defer client.Close()
 			mock.ExpectQuery(`(?s)CASE WHEN platform = 'deepseek'.*credentials -> 'base_url' IS DISTINCT FROM \$4::jsonb -> 'base_url'.*credentials -> 'api_base_urls' IS DISTINCT FROM.*FOR NO KEY UPDATE`).
 				WillReturnRows(sqlmock.NewRows(openCodeGoMergeMockColumns()).
-					AddRow(false, false, true, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil, tc.stored))
+					AddRow(false, false, true, nil, nil, nil, nil, nil, nil, false, nil, nil, nil, nil, nil, tc.stored))
 			account := &service.Account{ID: 7, Platform: service.PlatformDeepseek, Type: service.AccountTypeAPIKey,
 				Credentials: map[string]any{"base_url": "https://relay.test"}, Extra: map[string]any{"deepseek_tools_supported": true, "deepseek_tools_mode": "auto"}}
-			extra, err := lockAndMergeAccountProbeExtra(context.Background(), client, account, nil, nil)
+			extra, err := lockAndMergeAccountProbeExtra(context.Background(), client, account, service.AccountBillingSettingsUpdate{})
 			require.NoError(t, err)
 			marker, exists := extra["deepseek_tools_supported"]
 			require.Equal(t, tc.stored != nil, exists)

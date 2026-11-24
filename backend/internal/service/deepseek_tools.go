@@ -166,7 +166,7 @@ func (s *OpenAIGatewayService) ForwardDeepseekToolsRequest(ctx context.Context, 
 		// multipart 时必须保留原 boundary，body 已由 handler 原样读入。
 		req.Header.Set("Content-Type", contentType)
 	}
-	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyHeaderOverrides(req.Context(), req.Header)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {

@@ -83,7 +83,7 @@ func (s *AccountTestService) probeDeepseekSearch(ctx context.Context, account *A
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Accept", "application/json")
 	// 账号级请求头覆写：探测与真实转发保持一致的最终头。
-	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyHeaderOverrides(req.Context(), req.Header)
 
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
