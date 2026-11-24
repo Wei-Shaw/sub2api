@@ -386,6 +386,24 @@ func TestAPIKeyAuthSetsGroupContext(t *testing.T) {
 			c.JSON(http.StatusInternalServerError, gin.H{"ok": false})
 			return
 		}
+		// 请求头覆写变量的身份来源：认证后的 context 能解析出 user/key/group
+		account := &service.Account{
+			ID:       1,
+			Platform: service.PlatformAnthropic,
+			Type:     service.AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"header_override_enabled": true,
+				"header_overrides": map[string]any{
+					"x-identity": "{{user_id}}/{{api_key_id}}/{{group_id}}",
+				},
+			},
+		}
+		upstreamHeaders := http.Header{}
+		account.ApplyHeaderOverrides(c.Request.Context(), upstreamHeaders)
+		if got := upstreamHeaders["x-identity"]; len(got) != 1 || got[0] != "7/100/101" {
+			c.JSON(http.StatusInternalServerError, gin.H{"ok": false, "identity": got})
+			return
+		}
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
 
@@ -394,7 +412,7 @@ func TestAPIKeyAuthSetsGroupContext(t *testing.T) {
 	req.Header.Set("x-api-key", apiKey.Key)
 	router.ServeHTTP(w, req)
 
-	require.Equal(t, http.StatusOK, w.Code)
+	require.Equal(t, http.StatusOK, w.Code, w.Body.String())
 }
 
 func TestAPIKeyAuthRejectsExclusiveGroupWhenUserNoLongerAllowed(t *testing.T) {

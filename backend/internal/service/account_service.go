@@ -136,17 +136,16 @@ type AccountDuplicateRepository interface {
 	CreateWithAccountGroups(ctx context.Context, account *Account, groups []AccountGroup) error
 }
 
-// AccountBillingSettingsRepository applies an admin edit without overwriting a
-// rate_multiplier that a successful upstream probe synchronized after the edit
-// form was loaded. A nil rateMultiplier means the request did not edit it.
+// AccountBillingSettingsUpdate carries explicit edits to fields shared with the billing probe.
+// Omitted fields retain the values in the locked row.
+type AccountBillingSettingsUpdate struct {
+	ProbeEnabled, RateSyncEnabled, GroupSyncEnabled *bool
+	RateMultiplier                                  *float64
+	SetName, SetNotes                               bool
+}
+
 type AccountBillingSettingsRepository interface {
-	UpdateWithAccountBillingSettings(
-		ctx context.Context,
-		account *Account,
-		probeEnabled *bool,
-		rateSyncEnabled *bool,
-		rateMultiplier *float64,
-	) error
+	UpdateWithAccountBillingSettings(context.Context, *Account, AccountBillingSettingsUpdate) error
 }
 
 // AdminAccountRepository makes the account-duplication write capability an explicit

@@ -110,38 +110,120 @@ function utf8ByteLength(value: string): number {
   return HEADER_TEXT_ENCODER.encode(value).length
 }
 
+// ---------- 请求头覆写变量（与后端 account_header_override_vars.go 保持一致） ----------
+
+/** 可用变量名：转发时替换为本次请求的网关身份，仅 api_key 账号解析 */
+export const HEADER_OVERRIDE_VARIABLES = ['user_id', 'api_key_id', 'group_id', 'request_id'] as const
+export type HeaderOverrideVariable = (typeof HEADER_OVERRIDE_VARIABLES)[number]
+
+const HEADER_OVERRIDE_VARIABLE_OPEN = '{{'
+const HEADER_OVERRIDE_VARIABLE_CLOSE = '}}'
+const HEADER_OVERRIDE_VARIABLE_SET: ReadonlySet<string> = new Set(HEADER_OVERRIDE_VARIABLES)
+
+/** 变量在覆写值中的写法。花括号会被 vue-i18n 当作插值解析，因此只在代码里拼接。 */
+export function headerOverrideVariableToken(name: HeaderOverrideVariable): string {
+  return `${HEADER_OVERRIDE_VARIABLE_OPEN}${name}${HEADER_OVERRIDE_VARIABLE_CLOSE}`
+}
+
+/** 插入变量时建议的请求头名（值留给管理员按上游约定修改） */
+export const HEADER_OVERRIDE_VARIABLE_SUGGESTED_NAMES: Record<HeaderOverrideVariable, string> = {
+  user_id: 'x-gateway-user-id',
+  api_key_id: 'x-gateway-api-key-id',
+  group_id: 'x-gateway-group-id',
+  request_id: 'x-gateway-request-id'
+}
+
+export function headerOverrideHasVariable(value: string): boolean {
+  return value.includes(HEADER_OVERRIDE_VARIABLE_OPEN)
+}
+
+export type HeaderOverrideTemplatePart =
+  | { kind: 'literal'; text: string }
+  | { kind: 'variable'; name: HeaderOverrideVariable }
+
 /**
- * 校验请求头覆写行，返回首个错误的 i18n key（无错误返回 null）。
- * 名称为空但值非空 → invalidName；名称非法 → invalidName；
- * 禁止覆写 → blockedName；大小写不敏感重名 → duplicateName；
- * 值含控制字符或超长 → invalidValue；条目过多 → tooManyEntries。
+ * 解析覆写值模板。任何 "{{" 都必须构成完整且已知的变量（名称两侧允许空白），
+ * 否则返回 null —— 与后端保存校验同一规则，拼错的变量名不会被静默当成字面量。
  */
-export function validateHeaderOverrideRows(
-  rows: HeaderOverrideRow[]
-): 'invalidName' | 'blockedName' | 'duplicateName' | 'invalidValue' | 'tooManyEntries' | null {
+export function parseHeaderOverrideTemplate(value: string): HeaderOverrideTemplatePart[] | null {
+  const parts: HeaderOverrideTemplatePart[] = []
+  let rest = value
+  for (;;) {
+    const open = rest.indexOf(HEADER_OVERRIDE_VARIABLE_OPEN)
+    if (open < 0) {
+      if (rest) parts.push({ kind: 'literal', text: rest })
+      return parts
+    }
+    if (open > 0) parts.push({ kind: 'literal', text: rest.slice(0, open) })
+    rest = rest.slice(open + HEADER_OVERRIDE_VARIABLE_OPEN.length)
+    const close = rest.indexOf(HEADER_OVERRIDE_VARIABLE_CLOSE)
+    if (close < 0) return null
+    const name = rest.slice(0, close).trim()
+    if (!HEADER_OVERRIDE_VARIABLE_SET.has(name)) return null
+    parts.push({ kind: 'variable', name: name as HeaderOverrideVariable })
+    rest = rest.slice(close + HEADER_OVERRIDE_VARIABLE_CLOSE.length)
+  }
+}
+
+export type HeaderOverrideRowError =
+  | 'invalidName'
+  | 'blockedName'
+  | 'duplicateName'
+  | 'invalidValue'
+  | 'invalidVariable'
+  | 'variableNotAllowed'
+
+export interface HeaderOverrideValidationOptions {
+  /** 账号是否允许使用变量（仅 api_key 账号；OAuth 账号不会把网关身份发给上游） */
+  allowVariables?: boolean
+}
+
+/**
+ * 逐行校验，返回与 rows 等长的错误数组（无错误为 null）。
+ * 名称为空但值非空 / 名称非法 → invalidName；禁止覆写 → blockedName；
+ * 大小写不敏感重名 → duplicateName（后出现的行）；值含控制字符或超长 → invalidValue；
+ * 变量写法或变量名不对 → invalidVariable；账号类型不支持变量 → variableNotAllowed。
+ */
+export function getHeaderOverrideRowErrors(
+  rows: HeaderOverrideRow[],
+  options: HeaderOverrideValidationOptions = {}
+): Array<HeaderOverrideRowError | null> {
+  const allowVariables = options.allowVariables ?? true
   const seen = new Set<string>()
-  for (const row of rows) {
+  return rows.map((row) => {
     const name = row.name.trim()
     const value = row.value.trim()
-    if (!name) {
-      if (value) return 'invalidName'
-      continue
-    }
+    if (!name) return value ? 'invalidName' : null
     if (!isValidHeaderOverrideName(name) || name.length > HEADER_OVERRIDE_MAX_NAME_LENGTH) {
       return 'invalidName'
     }
     const lower = name.toLowerCase()
     if (HEADER_OVERRIDE_BLOCKED_NAMES.has(lower)) return 'blockedName'
     if (seen.has(lower)) return 'duplicateName'
+    seen.add(lower)
     if (
       HEADER_VALUE_INVALID_PATTERN.test(value) ||
       utf8ByteLength(value) > HEADER_OVERRIDE_MAX_VALUE_LENGTH
     ) {
       return 'invalidValue'
     }
-    seen.add(lower)
-  }
-  if (seen.size > HEADER_OVERRIDE_MAX_ENTRIES) return 'tooManyEntries'
+    if (headerOverrideHasVariable(value)) {
+      if (!allowVariables) return 'variableNotAllowed'
+      if (parseHeaderOverrideTemplate(value) === null) return 'invalidVariable'
+    }
+    return null
+  })
+}
+
+/** 校验请求头覆写行，返回首个错误的 i18n key（无错误返回 null）。 */
+export function validateHeaderOverrideRows(
+  rows: HeaderOverrideRow[],
+  options: HeaderOverrideValidationOptions = {}
+): HeaderOverrideRowError | 'tooManyEntries' | null {
+  const firstError = getHeaderOverrideRowErrors(rows, options).find((error) => error !== null)
+  if (firstError) return firstError
+  const named = rows.filter((row) => row.name.trim()).length
+  if (named > HEADER_OVERRIDE_MAX_ENTRIES) return 'tooManyEntries'
   return null
 }
 
