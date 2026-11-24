@@ -41,6 +41,31 @@ func TestOpenAIVisibleOutputClassification(t *testing.T) {
 	}
 }
 
+func TestOpenAIVisibleTextClassification(t *testing.T) {
+	tests := []struct {
+		name      string
+		data      string
+		eventType string
+		want      bool
+	}{
+		{name: "text delta", data: `{"type":"response.output_text.delta","delta":"answer"}`, want: true},
+		{name: "whitespace delta", data: `{"type":"response.output_text.delta","delta":"  "}`, want: false},
+		{name: "refusal text", data: `{"type":"response.refusal.delta","delta":"cannot help"}`, want: true},
+		{name: "audio transcript", data: `{"type":"response.audio_transcript.delta","delta":"spoken words"}`, want: true},
+		{name: "reasoning is not visible text", data: `{"type":"response.reasoning_text.delta","delta":"thinking"}`, want: false},
+		{name: "tool args are not visible text", data: `{"type":"response.function_call_arguments.delta","delta":"{}"}`, want: false},
+		{name: "image is not visible text", data: `{"type":"response.image_generation_call.partial_image","partial_image_b64":"abc"}`, want: false},
+		{name: "completed response text", data: `{"type":"response.completed","response":{"output":[{"type":"message","content":[{"type":"output_text","text":"answer"}]}]}}`, want: true},
+		{name: "chat completion text", data: `{"choices":[{"delta":{"content":"answer"}}]}`, want: true},
+		{name: "event name fallback", data: `{"delta":"answer"}`, eventType: "response.output_text.delta", want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, openAIStreamDataStartsVisibleText(tt.data, tt.eventType))
+		})
+	}
+}
+
 func TestOpenAIResponsesTTFTStartsAtVisibleOutput(t *testing.T) {
 	for _, passthrough := range []bool{false, true} {
 		name := "native"
@@ -52,6 +77,8 @@ func TestOpenAIResponsesTTFTStartsAtVisibleOutput(t *testing.T) {
 				`{"type":"response.output_text.delta","delta":"test output"}`)
 			require.NotNil(t, result.firstTokenMs)
 			require.GreaterOrEqual(t, *result.firstTokenMs, 100)
+			require.NotNil(t, result.firstVisibleTextMs)
+			require.GreaterOrEqual(t, *result.firstVisibleTextMs, 100)
 		})
 	}
 }
@@ -67,6 +94,7 @@ func TestOpenAIResponsesTTFTStartsAtCompletedImage(t *testing.T) {
 				`{"type":"response.output_item.done","item":{"id":"item_test","type":"image_generation_call","result":"dGVzdA=="}}`)
 			require.NotNil(t, result.firstTokenMs)
 			require.GreaterOrEqual(t, *result.firstTokenMs, 100)
+			require.Nil(t, result.firstVisibleTextMs, "image output must not count as visible text")
 		})
 	}
 }
@@ -119,6 +147,8 @@ func TestOpenAIResponsesTTFTDefaultsToSemanticOutput(t *testing.T) {
 				`{"type":"response.output_text.delta","delta":"test output"}`)
 			require.NotNil(t, result.firstTokenMs)
 			require.Less(t, *result.firstTokenMs, 100)
+			require.NotNil(t, result.firstVisibleTextMs)
+			require.GreaterOrEqual(t, *result.firstVisibleTextMs, 100)
 		})
 	}
 }
@@ -163,7 +193,10 @@ func runSyntheticVisibleTTFTStream(t *testing.T, passthrough bool, visibleDelay 
 		var passthroughResult *openaiStreamingResultPassthrough
 		passthroughResult, err = svc.handleStreamingResponsePassthrough(context.Background(), resp, c, account, started, "test-model", "test-model")
 		if passthroughResult != nil {
-			result = &openaiStreamingResult{firstTokenMs: passthroughResult.firstTokenMs}
+			result = &openaiStreamingResult{
+				firstTokenMs:       passthroughResult.firstTokenMs,
+				firstVisibleTextMs: passthroughResult.firstVisibleTextMs,
+			}
 		}
 	} else {
 		result, err = svc.handleStreamingResponse(context.Background(), resp, c, account, started, "test-model", "test-model")

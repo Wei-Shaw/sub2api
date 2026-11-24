@@ -1628,6 +1628,10 @@ func (r *stubApiKeyRepo) GetByKey(ctx context.Context, key string) (*service.API
 	return nil, errors.New("not implemented")
 }
 
+func (r *stubApiKeyRepo) GetModerationState(ctx context.Context, id, userID int64) (service.APIKeyModerationState, error) {
+	return service.APIKeyModerationState{UserStatus: service.StatusActive}, nil
+}
+
 func (r *stubApiKeyRepo) GetByKeyForAuth(ctx context.Context, key string) (*service.APIKey, error) {
 	return r.GetByKey(ctx, key)
 }

@@ -31,6 +31,12 @@ const (
 	FieldGroupID = "group_id"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldModerationLockedAt holds the string denoting the moderation_locked_at field in the database.
+	FieldModerationLockedAt = "moderation_locked_at"
+	// FieldModerationLockedUntil holds the string denoting the moderation_locked_until field in the database.
+	FieldModerationLockedUntil = "moderation_locked_until"
+	// FieldModerationLastUnlockedAt holds the string denoting the moderation_last_unlocked_at field in the database.
+	FieldModerationLastUnlockedAt = "moderation_last_unlocked_at"
 	// FieldLastUsedAt holds the string denoting the last_used_at field in the database.
 	FieldLastUsedAt = "last_used_at"
 	// FieldIPWhitelist holds the string denoting the ip_whitelist field in the database.
@@ -103,6 +109,9 @@ var Columns = []string{
 	FieldName,
 	FieldGroupID,
 	FieldStatus,
+	FieldModerationLockedAt,
+	FieldModerationLockedUntil,
+	FieldModerationLastUnlockedAt,
 	FieldLastUsedAt,
 	FieldIPWhitelist,
 	FieldIPBlacklist,
@@ -216,6 +225,21 @@ func ByGroupID(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByModerationLockedAt orders the results by the moderation_locked_at field.
+func ByModerationLockedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldModerationLockedAt, opts...).ToFunc()
+}
+
+// ByModerationLockedUntil orders the results by the moderation_locked_until field.
+func ByModerationLockedUntil(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldModerationLockedUntil, opts...).ToFunc()
+}
+
+// ByModerationLastUnlockedAt orders the results by the moderation_last_unlocked_at field.
+func ByModerationLastUnlockedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldModerationLastUnlockedAt, opts...).ToFunc()
 }
 
 // ByLastUsedAt orders the results by the last_used_at field.

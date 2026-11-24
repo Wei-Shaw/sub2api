@@ -185,6 +185,61 @@ func (_u *UserUpdate) SetNillableStatus(v *string) *UserUpdate {
 	return _u
 }
 
+// SetModerationPenaltyScope sets the "moderation_penalty_scope" field.
+func (_u *UserUpdate) SetModerationPenaltyScope(v string) *UserUpdate {
+	_u.mutation.SetModerationPenaltyScope(v)
+	return _u
+}
+
+// SetNillableModerationPenaltyScope sets the "moderation_penalty_scope" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableModerationPenaltyScope(v *string) *UserUpdate {
+	if v != nil {
+		_u.SetModerationPenaltyScope(*v)
+	}
+	return _u
+}
+
+// SetModerationKeyLockMinutes sets the "moderation_key_lock_minutes" field.
+func (_u *UserUpdate) SetModerationKeyLockMinutes(v int) *UserUpdate {
+	_u.mutation.ResetModerationKeyLockMinutes()
+	_u.mutation.SetModerationKeyLockMinutes(v)
+	return _u
+}
+
+// SetNillableModerationKeyLockMinutes sets the "moderation_key_lock_minutes" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableModerationKeyLockMinutes(v *int) *UserUpdate {
+	if v != nil {
+		_u.SetModerationKeyLockMinutes(*v)
+	}
+	return _u
+}
+
+// AddModerationKeyLockMinutes adds value to the "moderation_key_lock_minutes" field.
+func (_u *UserUpdate) AddModerationKeyLockMinutes(v int) *UserUpdate {
+	_u.mutation.AddModerationKeyLockMinutes(v)
+	return _u
+}
+
+// SetModerationScopeChangedAt sets the "moderation_scope_changed_at" field.
+func (_u *UserUpdate) SetModerationScopeChangedAt(v time.Time) *UserUpdate {
+	_u.mutation.SetModerationScopeChangedAt(v)
+	return _u
+}
+
+// SetNillableModerationScopeChangedAt sets the "moderation_scope_changed_at" field if the given value is not nil.
+func (_u *UserUpdate) SetNillableModerationScopeChangedAt(v *time.Time) *UserUpdate {
+	if v != nil {
+		_u.SetModerationScopeChangedAt(*v)
+	}
+	return _u
+}
+
+// ClearModerationScopeChangedAt clears the value of the "moderation_scope_changed_at" field.
+func (_u *UserUpdate) ClearModerationScopeChangedAt() *UserUpdate {
+	_u.mutation.ClearModerationScopeChangedAt()
+	return _u
+}
+
 // SetUsername sets the "username" field.
 func (_u *UserUpdate) SetUsername(v string) *UserUpdate {
 	_u.mutation.SetUsername(v)
@@ -983,6 +1038,16 @@ func (_u *UserUpdate) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "User.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ModerationPenaltyScope(); ok {
+		if err := user.ModerationPenaltyScopeValidator(v); err != nil {
+			return &ValidationError{Name: "moderation_penalty_scope", err: fmt.Errorf(`ent: validator failed for field "User.moderation_penalty_scope": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ModerationKeyLockMinutes(); ok {
+		if err := user.ModerationKeyLockMinutesValidator(v); err != nil {
+			return &ValidationError{Name: "moderation_key_lock_minutes", err: fmt.Errorf(`ent: validator failed for field "User.moderation_key_lock_minutes": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Username(); ok {
 		if err := user.UsernameValidator(v); err != nil {
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "User.username": %w`, err)}
@@ -1046,6 +1111,21 @@ func (_u *UserUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ModerationPenaltyScope(); ok {
+		_spec.SetField(user.FieldModerationPenaltyScope, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ModerationKeyLockMinutes(); ok {
+		_spec.SetField(user.FieldModerationKeyLockMinutes, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedModerationKeyLockMinutes(); ok {
+		_spec.AddField(user.FieldModerationKeyLockMinutes, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ModerationScopeChangedAt(); ok {
+		_spec.SetField(user.FieldModerationScopeChangedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ModerationScopeChangedAtCleared() {
+		_spec.ClearField(user.FieldModerationScopeChangedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.Username(); ok {
 		_spec.SetField(user.FieldUsername, field.TypeString, value)
@@ -1878,6 +1958,61 @@ func (_u *UserUpdateOne) SetNillableStatus(v *string) *UserUpdateOne {
 	return _u
 }
 
+// SetModerationPenaltyScope sets the "moderation_penalty_scope" field.
+func (_u *UserUpdateOne) SetModerationPenaltyScope(v string) *UserUpdateOne {
+	_u.mutation.SetModerationPenaltyScope(v)
+	return _u
+}
+
+// SetNillableModerationPenaltyScope sets the "moderation_penalty_scope" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableModerationPenaltyScope(v *string) *UserUpdateOne {
+	if v != nil {
+		_u.SetModerationPenaltyScope(*v)
+	}
+	return _u
+}
+
+// SetModerationKeyLockMinutes sets the "moderation_key_lock_minutes" field.
+func (_u *UserUpdateOne) SetModerationKeyLockMinutes(v int) *UserUpdateOne {
+	_u.mutation.ResetModerationKeyLockMinutes()
+	_u.mutation.SetModerationKeyLockMinutes(v)
+	return _u
+}
+
+// SetNillableModerationKeyLockMinutes sets the "moderation_key_lock_minutes" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableModerationKeyLockMinutes(v *int) *UserUpdateOne {
+	if v != nil {
+		_u.SetModerationKeyLockMinutes(*v)
+	}
+	return _u
+}
+
+// AddModerationKeyLockMinutes adds value to the "moderation_key_lock_minutes" field.
+func (_u *UserUpdateOne) AddModerationKeyLockMinutes(v int) *UserUpdateOne {
+	_u.mutation.AddModerationKeyLockMinutes(v)
+	return _u
+}
+
+// SetModerationScopeChangedAt sets the "moderation_scope_changed_at" field.
+func (_u *UserUpdateOne) SetModerationScopeChangedAt(v time.Time) *UserUpdateOne {
+	_u.mutation.SetModerationScopeChangedAt(v)
+	return _u
+}
+
+// SetNillableModerationScopeChangedAt sets the "moderation_scope_changed_at" field if the given value is not nil.
+func (_u *UserUpdateOne) SetNillableModerationScopeChangedAt(v *time.Time) *UserUpdateOne {
+	if v != nil {
+		_u.SetModerationScopeChangedAt(*v)
+	}
+	return _u
+}
+
+// ClearModerationScopeChangedAt clears the value of the "moderation_scope_changed_at" field.
+func (_u *UserUpdateOne) ClearModerationScopeChangedAt() *UserUpdateOne {
+	_u.mutation.ClearModerationScopeChangedAt()
+	return _u
+}
+
 // SetUsername sets the "username" field.
 func (_u *UserUpdateOne) SetUsername(v string) *UserUpdateOne {
 	_u.mutation.SetUsername(v)
@@ -2689,6 +2824,16 @@ func (_u *UserUpdateOne) check() error {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "User.status": %w`, err)}
 		}
 	}
+	if v, ok := _u.mutation.ModerationPenaltyScope(); ok {
+		if err := user.ModerationPenaltyScopeValidator(v); err != nil {
+			return &ValidationError{Name: "moderation_penalty_scope", err: fmt.Errorf(`ent: validator failed for field "User.moderation_penalty_scope": %w`, err)}
+		}
+	}
+	if v, ok := _u.mutation.ModerationKeyLockMinutes(); ok {
+		if err := user.ModerationKeyLockMinutesValidator(v); err != nil {
+			return &ValidationError{Name: "moderation_key_lock_minutes", err: fmt.Errorf(`ent: validator failed for field "User.moderation_key_lock_minutes": %w`, err)}
+		}
+	}
 	if v, ok := _u.mutation.Username(); ok {
 		if err := user.UsernameValidator(v); err != nil {
 			return &ValidationError{Name: "username", err: fmt.Errorf(`ent: validator failed for field "User.username": %w`, err)}
@@ -2769,6 +2914,21 @@ func (_u *UserUpdateOne) sqlSave(ctx context.Context) (_node *User, err error) {
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ModerationPenaltyScope(); ok {
+		_spec.SetField(user.FieldModerationPenaltyScope, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ModerationKeyLockMinutes(); ok {
+		_spec.SetField(user.FieldModerationKeyLockMinutes, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.AddedModerationKeyLockMinutes(); ok {
+		_spec.AddField(user.FieldModerationKeyLockMinutes, field.TypeInt, value)
+	}
+	if value, ok := _u.mutation.ModerationScopeChangedAt(); ok {
+		_spec.SetField(user.FieldModerationScopeChangedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ModerationScopeChangedAtCleared() {
+		_spec.ClearField(user.FieldModerationScopeChangedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.Username(); ok {
 		_spec.SetField(user.FieldUsername, field.TypeString, value)

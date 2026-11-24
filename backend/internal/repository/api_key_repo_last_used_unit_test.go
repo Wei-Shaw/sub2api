@@ -209,6 +209,34 @@ func TestAPIKeyRepository_UpdateLastUsedDeletedKey(t *testing.T) {
 	require.ErrorIs(t, err, service.ErrAPIKeyNotFound)
 }
 
+func TestAPIKeyRepository_DeleteModerationLockSQLite(t *testing.T) {
+	repo, client := newAPIKeyRepoSQLite(t)
+	ctx := context.Background()
+	user := mustCreateAPIKeyRepoUser(t, ctx, client, "moderation-delete@test.com")
+	for _, tc := range []struct {
+		name   string
+		remove func(context.Context, int64) error
+	}{
+		{"delete", repo.Delete},
+		{"delete_with_audit", repo.DeleteWithAudit},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			key := &service.APIKey{UserID: user.ID, Key: "sk-moderation-" + tc.name, Name: tc.name, Status: service.StatusActive}
+			require.NoError(t, repo.Create(ctx, key))
+			now := time.Now().UTC()
+			update := client.APIKey.UpdateOneID
+			require.NoError(t, update(key.ID).SetModerationLockedAt(now.Add(-time.Hour)).Exec(ctx))
+			require.ErrorIs(t, tc.remove(ctx, key.ID), service.ErrAPIKeyModerationLocked)
+			require.NoError(t, update(key.ID).SetModerationLockedUntil(now.Add(time.Minute)).Exec(ctx))
+			require.ErrorIs(t, tc.remove(ctx, key.ID), service.ErrAPIKeyModerationLocked)
+			require.NoError(t, update(key.ID).SetModerationLockedUntil(now.Add(-time.Minute)).Exec(ctx))
+			require.NoError(t, tc.remove(ctx, key.ID))
+			_, err := repo.GetByID(ctx, key.ID)
+			require.ErrorIs(t, err, service.ErrAPIKeyNotFound)
+		})
+	}
+}
+
 func TestAPIKeyRepository_UpdateLastUsedDBError(t *testing.T) {
 	repo, client := newAPIKeyRepoSQLite(t)
 	ctx := context.Background()

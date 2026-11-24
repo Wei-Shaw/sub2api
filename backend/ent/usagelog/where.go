@@ -235,6 +235,11 @@ func FirstTokenMs(v int) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldFirstTokenMs, v))
 }
 
+// FirstVisibleTextMs applies equality check predicate on the "first_visible_text_ms" field. It's identical to FirstVisibleTextMsEQ.
+func FirstVisibleTextMs(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldFirstVisibleTextMs, v))
+}
+
 // UserAgent applies equality check predicate on the "user_agent" field. It's identical to UserAgentEQ.
 func UserAgent(v string) predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldEQ(FieldUserAgent, v))
@@ -1873,6 +1878,56 @@ func FirstTokenMsIsNil() predicate.UsageLog {
 // FirstTokenMsNotNil applies the NotNil predicate on the "first_token_ms" field.
 func FirstTokenMsNotNil() predicate.UsageLog {
 	return predicate.UsageLog(sql.FieldNotNull(FieldFirstTokenMs))
+}
+
+// FirstVisibleTextMsEQ applies the EQ predicate on the "first_visible_text_ms" field.
+func FirstVisibleTextMsEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldEQ(FieldFirstVisibleTextMs, v))
+}
+
+// FirstVisibleTextMsNEQ applies the NEQ predicate on the "first_visible_text_ms" field.
+func FirstVisibleTextMsNEQ(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNEQ(FieldFirstVisibleTextMs, v))
+}
+
+// FirstVisibleTextMsIn applies the In predicate on the "first_visible_text_ms" field.
+func FirstVisibleTextMsIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIn(FieldFirstVisibleTextMs, vs...))
+}
+
+// FirstVisibleTextMsNotIn applies the NotIn predicate on the "first_visible_text_ms" field.
+func FirstVisibleTextMsNotIn(vs ...int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotIn(FieldFirstVisibleTextMs, vs...))
+}
+
+// FirstVisibleTextMsGT applies the GT predicate on the "first_visible_text_ms" field.
+func FirstVisibleTextMsGT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGT(FieldFirstVisibleTextMs, v))
+}
+
+// FirstVisibleTextMsGTE applies the GTE predicate on the "first_visible_text_ms" field.
+func FirstVisibleTextMsGTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldGTE(FieldFirstVisibleTextMs, v))
+}
+
+// FirstVisibleTextMsLT applies the LT predicate on the "first_visible_text_ms" field.
+func FirstVisibleTextMsLT(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLT(FieldFirstVisibleTextMs, v))
+}
+
+// FirstVisibleTextMsLTE applies the LTE predicate on the "first_visible_text_ms" field.
+func FirstVisibleTextMsLTE(v int) predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldLTE(FieldFirstVisibleTextMs, v))
+}
+
+// FirstVisibleTextMsIsNil applies the IsNil predicate on the "first_visible_text_ms" field.
+func FirstVisibleTextMsIsNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldIsNull(FieldFirstVisibleTextMs))
+}
+
+// FirstVisibleTextMsNotNil applies the NotNil predicate on the "first_visible_text_ms" field.
+func FirstVisibleTextMsNotNil() predicate.UsageLog {
+	return predicate.UsageLog(sql.FieldNotNull(FieldFirstVisibleTextMs))
 }
 
 // UserAgentEQ applies the EQ predicate on the "user_agent" field.

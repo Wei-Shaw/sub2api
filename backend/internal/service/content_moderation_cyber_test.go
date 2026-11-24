@@ -41,8 +41,11 @@ func (r *cyberOrderingTestRepo) ListLogs(ctx context.Context, filter ContentMode
 	return nil, nil, nil
 }
 
-func (r *cyberOrderingTestRepo) CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time, excludeCyberPolicy bool) (int, error) {
-	return 0, nil
+func (r *cyberOrderingTestRepo) RecordHit(ctx context.Context, log *ContentModerationLog, rules ModerationPenaltyRules) (ModerationWriteResult, error) {
+	return ModerationWriteResult{Inserted: true}, r.CreateLog(ctx, log)
+}
+func (r *cyberOrderingTestRepo) UnlockModerationKey(context.Context, int64, int64, int64) (string, error) {
+	panic("unexpected unlock")
 }
 
 func (r *cyberOrderingTestRepo) CleanupExpiredLogs(ctx context.Context, hitBefore time.Time, nonHitBefore time.Time) (*ContentModerationCleanupResult, error) {
@@ -157,6 +160,30 @@ func TestRecordCyberPolicyEvent_WritesLogWhenEnabled(t *testing.T) {
 		"Error should mention flagged or cyber_policy")
 }
 
+func TestRecordCyberPolicyEvent_TrustedUsersOnlyWriteAudit(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		allowlist string
+		logOnly   bool
+	}{
+		{"trusted at request time", "", true},
+		{"trusted at recording time", "19", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &banCountArgsTestRepo{}
+			svc := NewContentModerationService(&contentModerationTestSettingRepo{values: map[string]string{
+				SettingKeyRiskControlEnabled: "true", SettingKeyCyberPolicyUserAllowlist: tc.allowlist,
+			}}, repo, nil, nil, nil, nil, nil, nil)
+			svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{UserID: 19, APIKeyID: 3, LogOnly: tc.logOnly})
+			require.Empty(t, repo.snapshotCountCalls())
+			logs := repo.snapshotLogs()
+			require.Len(t, logs, 1)
+			require.Equal(t, ContentModerationModeCyberLogOnly, logs[0].Mode)
+			require.False(t, logs[0].EmailSent)
+		})
+	}
+}
+
 func TestRecordCyberPolicyEvent_RespectsContentModerationScope(t *testing.T) {
 	groupID := int64(7)
 	tests := []struct {
@@ -203,17 +230,18 @@ func TestRecordCyberPolicyEvent_RespectsContentModerationScope(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			repo := &banCountArgsTestRepo{}
-			userRepo := &contentModerationTestUserRepo{user: &User{ID: 1, Role: RoleUser, Status: StatusActive}}
+			repo.penalty = ModerationPenaltyUserDisabled
+			invalidator := &contentModerationTestAuthCacheInvalidator{}
 			svc := NewContentModerationService(
 				&contentModerationTestSettingRepo{values: map[string]string{
 					SettingKeyRiskControlEnabled:      "true",
 					SettingKeyContentModerationConfig: tt.config,
 				}},
-				repo, nil, nil, userRepo, nil, nil, nil,
+				repo, nil, nil, nil, nil, invalidator, nil,
 			)
 
 			svc.RecordCyberPolicyEvent(context.Background(), CyberPolicyRecordInput{
-				UserID:  1,
+				UserID: 1, APIKeyID: 17,
 				GroupID: tt.groupID,
 				Model:   tt.model,
 			})
@@ -224,11 +252,14 @@ func TestRecordCyberPolicyEvent_RespectsContentModerationScope(t *testing.T) {
 				require.Equal(t, tt.wantCalls, repo.snapshotCountCalls())
 			}
 			require.Len(t, repo.snapshotLogs(), tt.wantLogs)
-			require.Equal(t, tt.wantBanned, userRepo.user.Status == StatusDisabled)
+
 			if tt.wantBanned {
-				require.Len(t, userRepo.updated, 1)
+				log := repo.snapshotLogs()[0]
+				require.Equal(t, int64(17), *log.APIKeyID)
+				require.Equal(t, ModerationPenaltyUserDisabled, log.PenaltyAction)
+				require.Equal(t, []int64{1}, invalidator.userIDs)
 			} else {
-				require.Empty(t, userRepo.updated)
+				require.Empty(t, invalidator.userIDs)
 			}
 		})
 	}
@@ -348,11 +379,11 @@ type banCountArgsTestRepo struct {
 	countCalls []bool
 }
 
-func (r *banCountArgsTestRepo) CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time, excludeCyberPolicy bool) (int, error) {
+func (r *banCountArgsTestRepo) RecordHit(ctx context.Context, log *ContentModerationLog, rules ModerationPenaltyRules) (ModerationWriteResult, error) {
 	r.argsMu.Lock()
-	r.countCalls = append(r.countCalls, excludeCyberPolicy)
+	r.countCalls = append(r.countCalls, rules.ExcludeCyber)
 	r.argsMu.Unlock()
-	return r.contentModerationTestRepo.CountFlaggedByUserSince(ctx, userID, since, excludeCyberPolicy)
+	return r.contentModerationTestRepo.RecordHit(ctx, log, rules)
 }
 
 func (r *banCountArgsTestRepo) snapshotCountCalls() []bool {
@@ -363,7 +394,7 @@ func (r *banCountArgsTestRepo) snapshotCountCalls() []bool {
 	return out
 }
 
-func TestApplyFlaggedAccountSideEffects_PassesExcludeCyberFlag(t *testing.T) {
+func TestRecordModerationHit_PassesExcludeCyberFlag(t *testing.T) {
 	repo := &banCountArgsTestRepo{}
 	svc := NewContentModerationService(
 		&contentModerationTestSettingRepo{values: map[string]string{}},
@@ -373,10 +404,10 @@ func TestApplyFlaggedAccountSideEffects_PassesExcludeCyberFlag(t *testing.T) {
 
 	cfgExclude := defaultContentModerationConfig()
 	cfgExclude.CyberPolicyExcludeFromBanCount = true
-	svc.applyFlaggedAccountSideEffects(context.Background(), cfgExclude, &ContentModerationLog{Flagged: true, UserID: &userID})
+	svc.recordModerationHit(context.Background(), cfgExclude, &ContentModerationLog{Flagged: true, UserID: &userID})
 
 	cfgDefault := defaultContentModerationConfig() // 默认 false
-	svc.applyFlaggedAccountSideEffects(context.Background(), cfgDefault, &ContentModerationLog{Flagged: true, UserID: &userID})
+	svc.recordModerationHit(context.Background(), cfgDefault, &ContentModerationLog{Flagged: true, UserID: &userID})
 
 	require.Equal(t, []bool{true, false}, repo.snapshotCountCalls(),
 		"applyFlaggedAccountSideEffects 必须把 cfg.CyberPolicyExcludeFromBanCount 透传给 COUNT 查询")
@@ -401,7 +432,7 @@ func TestRecordCyberPolicyEvent_ExcludeFromBanCount_SkipsBanJudgment(t *testing.
 		UpstreamStatus:  400,
 	})
 
-	require.Empty(t, repo.snapshotCountCalls(), "开关开时不得执行封号计数查询")
+	require.Equal(t, []bool{true}, repo.snapshotCountCalls(), "store the event under the current scope without applying a cyber penalty")
 	logs := repo.snapshotLogs()
 	require.Len(t, logs, 1, "风控日志必须照记")
 	require.True(t, logs[0].Flagged, "日志仍标记 Flagged=true（列表可见可筛）")

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -229,6 +230,21 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 		return nil, infraerrors.BadRequest("ADMIN_DISABLE_FORBIDDEN", "cannot disable admin user; change the role to user first")
 	}
 
+	if scope := input.ModerationPenaltyScope; scope != nil {
+		if *scope != ModerationScopeUser && *scope != ModerationScopeAPIKey {
+			return nil, infraerrors.BadRequest("INVALID_MODERATION_SCOPE", "unknown moderation penalty scope")
+		}
+	}
+	if input.ModerationPenaltyScope != nil || input.ModerationKeyLockMinutes != nil {
+		if user.IsAdmin() || input.Role == RoleAdmin {
+			return nil, infraerrors.BadRequest("ADMIN_MODERATION_SCOPE_FORBIDDEN", "only regular users have a configurable moderation penalty scope")
+		}
+	}
+	if minutes := input.ModerationKeyLockMinutes; minutes != nil {
+		if *minutes < 0 || *minutes > math.MaxInt32 {
+			return nil, infraerrors.BadRequest("INVALID_MODERATION_LOCK_MINUTES", "key lock duration must be a non-negative 32-bit integer in minutes")
+		}
+	}
 	oldConcurrency := user.Concurrency
 	oldStatus := user.Status
 	oldRole := user.Role
@@ -238,6 +254,16 @@ func (s *adminServiceImpl) UpdateUser(ctx context.Context, id int64, input *Upda
 	// fields 与下面的 input.X 判空条件一一对应：管理员没提交的列不写回，
 	// 避免这份快照回滚并发的扣费、状态变更或批量限额调整。
 	var fields UserUpdateFields
+	if input.ModerationKeyLockMinutes != nil {
+		user.ModerationKeyLockMinutes = *input.ModerationKeyLockMinutes
+		fields.ModerationKeyLockMinutes = true
+		fields.ModerationScopeActorID = input.ActorAdminID
+	}
+	if input.ModerationPenaltyScope != nil {
+		user.ModerationPenaltyScope = *input.ModerationPenaltyScope
+		fields.ModerationPenaltyScope = true
+		fields.ModerationScopeActorID = input.ActorAdminID
+	}
 
 	if input.Email != "" {
 		user.Email = input.Email

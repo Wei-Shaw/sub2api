@@ -20,6 +20,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/google/uuid"
+
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httpclient"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -317,6 +319,8 @@ type ContentModerationModelFilter struct {
 }
 
 type ContentModerationCheckInput struct {
+	eventID            string
+	occurredAt         time.Time
 	riskControlLogOnly bool // Captured at admission and retained by asynchronous tasks.
 	RequestID          string
 	UserID             int64
@@ -396,7 +400,34 @@ type ContentModerationDecision struct {
 	Action          string             `json:"action"`
 }
 
+const (
+	ModerationScopeUser           = "user"
+	ModerationScopeAPIKey         = "api_key"
+	ModerationPenaltyUserDisabled = "user_disabled"
+	ModerationPenaltyKeyLocked    = "api_key_locked"
+)
+
+// ModerationWriteResult is returned only after commit. Credential is used solely to evict its cache entry.
+type ModerationWriteResult struct {
+	Inserted        bool
+	InvalidationKey string `json:"-"`
+}
+
+type ModerationPenaltyRules struct {
+	AutoBan      bool
+	Threshold    int
+	Window       time.Duration
+	ExcludeCyber bool
+}
+
 type ContentModerationLog struct {
+	EventID            string     `json:"-"`
+	OccurredAt         time.Time  `json:"occurred_at"`
+	PenaltyScope       string     `json:"penalty_scope,omitempty"`
+	PenaltyAction      string     `json:"penalty_action,omitempty"`
+	PenaltyLockedUntil *time.Time `json:"penalty_locked_until,omitempty"`
+	APIKeyLocked       bool       `json:"api_key_locked"` // current state for the recovery button, not the historical action
+
 	EngineMeta        *ContentModerationEngineMeta `json:"engine_meta,omitempty"`
 	ID                int64                        `json:"id"`
 	RequestID         string                       `json:"request_id"`
@@ -494,9 +525,8 @@ type ContentModerationClearHashesResult struct {
 type ContentModerationRepository interface {
 	CreateLog(ctx context.Context, log *ContentModerationLog) error
 	ListLogs(ctx context.Context, filter ContentModerationLogFilter) ([]ContentModerationLog, *pagination.PaginationResult, error)
-	// CountFlaggedByUserSince 统计窗口内计入封号的违规次数（排除 hash_block；
-	// excludeCyberPolicy 为 true 时额外排除 cyber_policy 行）。
-	CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time, excludeCyberPolicy bool) (int, error)
+	RecordHit(ctx context.Context, log *ContentModerationLog, rules ModerationPenaltyRules) (ModerationWriteResult, error)
+	UnlockModerationKey(ctx context.Context, userID, keyID, actorID int64) (invalidationKey string, err error)
 	CleanupExpiredLogs(ctx context.Context, hitBefore time.Time, nonHitBefore time.Time) (*ContentModerationCleanupResult, error)
 	// UpdateLogEmailSent 回写邮件发送结果（F7：CreateLog 先行后补 EmailSent）。
 	UpdateLogEmailSent(ctx context.Context, id int64, sent bool) error
@@ -852,6 +882,7 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 			"protocol", input.Protocol)
 		return allow, nil
 	}
+	input.eventID, input.occurredAt = uuid.NewString(), time.Now().UTC()
 	_, input.riskControlLogOnly = runtimeSnapshot.allowlistedUsers[input.UserID]
 	// Keep audit evidence while ensuring all local rejection paths allow trusted users.
 	defer func() {
@@ -1919,6 +1950,7 @@ func (s *ContentModerationService) buildLog(input ContentModerationCheckInput, c
 		action = ContentModerationActionAllow
 	}
 	return &ContentModerationLog{
+		EventID: input.eventID, OccurredAt: input.occurredAt,
 		RequestID:         input.RequestID,
 		UserID:            userID,
 		UserEmail:         input.UserEmail,
@@ -1955,60 +1987,60 @@ func (s *ContentModerationService) persistContentModerationLog(ctx context.Conte
 			slog.Warn("content_moderation.record_hash_failed", "user_id", contentModerationEmailUserID(log), "endpoint", log.Endpoint, "error", err)
 		}
 	}
-	autoBanJustApplied := false
-	if applySideEffects {
-		autoBanJustApplied = s.applyFlaggedAccountSideEffects(ctx, cfg, log)
-		s.sendFlaggedNotificationSideEffects(ctx, cfg, log, autoBanJustApplied)
+	if s.repo == nil {
+		return
 	}
-	if s.repo != nil {
+	if !applySideEffects {
 		if err := s.repo.CreateLog(ctx, log); err != nil {
-			slog.Warn("content_moderation.create_log_failed", "user_id", contentModerationEmailUserID(log), "endpoint", log.Endpoint, "action", log.Action, "error", err)
-			return
+			slog.Warn("content_moderation.create_log_failed", "event_id", log.EventID, "error", err)
+		}
+		return
+	}
+	if !s.recordModerationHit(ctx, cfg, log) {
+		return
+	}
+	s.sendFlaggedNotificationSideEffects(ctx, cfg, log, log.PenaltyAction != "")
+	if log.EmailSent {
+		if err := s.repo.UpdateLogEmailSent(ctx, log.ID, true); err != nil {
+			slog.Warn("content_moderation.update_email_sent_failed", "log_id", log.ID, "error", err)
 		}
 	}
 }
 
-func (s *ContentModerationService) applyFlaggedAccountSideEffects(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog) bool {
-	if s == nil || cfg == nil || log == nil || !log.Flagged || log.UserID == nil || *log.UserID <= 0 {
+// Both local and upstream detections use the same durable decision. Do not substitute a user ban on error.
+func (s *ContentModerationService) recordModerationHit(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog) bool {
+	rules := ModerationPenaltyRules{AutoBan: cfg.AutoBanEnabled, Threshold: cfg.BanThreshold,
+		Window: time.Duration(cfg.ViolationWindowHours) * time.Hour, ExcludeCyber: cfg.CyberPolicyExcludeFromBanCount}
+	result, err := s.repo.RecordHit(ctx, log, rules)
+	if err != nil {
+		slog.Warn("content_moderation.penalty_transaction_failed", "event_id", log.EventID, "user_id", contentModerationEmailUserID(log), "error", err)
 		return false
 	}
-	count := 1
-	if s.repo != nil && cfg.ViolationWindowHours > 0 {
-		since := time.Now().Add(-time.Duration(cfg.ViolationWindowHours) * time.Hour)
-		if n, err := s.repo.CountFlaggedByUserSince(ctx, *log.UserID, since, cfg.CyberPolicyExcludeFromBanCount); err == nil {
-			count = n + 1
+	if result.Inserted && s.authCacheInvalidator != nil {
+		switch log.PenaltyAction {
+		case ModerationPenaltyUserDisabled:
+			s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, *log.UserID)
+		case ModerationPenaltyKeyLocked:
+			s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, result.InvalidationKey)
 		}
 	}
-	log.ViolationCount = count
-	autoBanJustApplied := false
-	if cfg.AutoBanEnabled && cfg.BanThreshold > 0 && count >= cfg.BanThreshold && s.userRepo != nil {
-		user, err := s.userRepo.GetByID(ctx, *log.UserID)
-		if err != nil {
-			slog.Warn("content_moderation.ban_get_user_failed", "user_id", *log.UserID, "error", err)
-			return false
-		}
-		if user.IsAdmin() {
-			slog.Warn("content_moderation.autoban_skipped_admin", "user_id", *log.UserID, "role", user.Role, "count", count, "threshold", cfg.BanThreshold)
-			// TODO: Disable the triggering API key instead when API key mutation is available here.
-			return false
-		}
-		if user.Status != StatusDisabled {
-			user.Status = StatusDisabled
-			if err := s.userRepo.Update(ctx, user, UserUpdateFields{Status: true}); err != nil {
-				slog.Warn("content_moderation.ban_update_user_failed", "user_id", *log.UserID, "error", err)
-				return false
-			}
-			if s.authCacheInvalidator != nil {
-				s.authCacheInvalidator.InvalidateAuthCacheByUserID(ctx, *log.UserID)
-			}
-			autoBanJustApplied = true
-		}
-		log.AutoBanned = true
-	}
-	return autoBanJustApplied
+	// Stale events and unverifiable ownership are audit-only. Do not send a
+	// warning using the default account-ban wording for unscoped evidence.
+	return result.Inserted && log.PenaltyScope != ""
 }
 
-func (s *ContentModerationService) sendFlaggedNotificationSideEffects(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog, autoBanJustApplied bool) {
+func (s *ContentModerationService) UnlockModerationKey(ctx context.Context, userID, keyID, actorID int64) (bool, error) {
+	key, err := s.repo.UnlockModerationKey(ctx, userID, keyID, actorID)
+	if err != nil {
+		return false, err
+	}
+	if key != "" && s.authCacheInvalidator != nil {
+		s.authCacheInvalidator.InvalidateAuthCacheByKey(ctx, key)
+	}
+	return key != "", nil
+}
+
+func (s *ContentModerationService) sendFlaggedNotificationSideEffects(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog, penaltyJustApplied bool) {
 	if s == nil || cfg == nil || log == nil || !log.Flagged {
 		return
 	}
@@ -2018,14 +2050,14 @@ func (s *ContentModerationService) sendFlaggedNotificationSideEffects(ctx contex
 	emailSent := false
 	if cfg.EmailOnHit {
 		if err := s.sendViolationEmail(ctx, cfg, log); err != nil {
-			slog.Warn("content_moderation.email_failed", "user_id", *log.UserID, "email", log.UserEmail, "error", err)
+			slog.Warn("content_moderation.email_failed", "user_id", contentModerationEmailUserID(log), "email", log.UserEmail, "error", err)
 		} else {
 			emailSent = true
 		}
 	}
-	if autoBanJustApplied {
-		if err := s.sendAccountDisabledEmail(ctx, cfg, log); err != nil {
-			slog.Warn("content_moderation.ban_email_failed", "user_id", *log.UserID, "email", log.UserEmail, "error", err)
+	if penaltyJustApplied {
+		if err := s.sendPenaltyEmail(ctx, cfg, log); err != nil {
+			slog.Warn("content_moderation.ban_email_failed", "user_id", contentModerationEmailUserID(log), "email", log.UserEmail, "error", err)
 		} else {
 			emailSent = true
 		}
@@ -2034,6 +2066,9 @@ func (s *ContentModerationService) sendFlaggedNotificationSideEffects(ctx contex
 }
 
 func (s *ContentModerationService) sendViolationEmail(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog) error {
+	if log.PenaltyScope == ModerationScopeAPIKey {
+		return s.sendModerationKeyEmail(ctx, cfg, log, false)
+	}
 	siteName := s.siteName(ctx)
 	if s.emailService.notificationEmailService != nil {
 		if err := s.emailService.notificationEmailService.Send(ctx, NotificationEmailSendInput{
@@ -2056,6 +2091,13 @@ func (s *ContentModerationService) sendViolationEmail(ctx context.Context, cfg *
 	subject := fmt.Sprintf("[%s] 账户风控提醒 / Risk Control Notice", sanitizeEmailHeader(siteName))
 	body := buildContentModerationViolationEmailBody(siteName, log, cfg)
 	return s.emailService.SendEmail(ctx, log.UserEmail, subject, body)
+}
+
+func (s *ContentModerationService) sendPenaltyEmail(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog) error {
+	if log.PenaltyAction == ModerationPenaltyKeyLocked {
+		return s.sendModerationKeyEmail(ctx, cfg, log, true)
+	}
+	return s.sendAccountDisabledEmail(ctx, cfg, log)
 }
 
 func (s *ContentModerationService) sendAccountDisabledEmail(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog) error {
@@ -2107,7 +2149,9 @@ func contentModerationEmailVariables(log *ContentModerationLog, cfg *ContentMode
 		"ban_threshold":       "0",
 	}
 	if log != nil {
-		if !log.CreatedAt.IsZero() {
+		if !log.OccurredAt.IsZero() {
+			variables["triggered_at"] = log.OccurredAt.UTC().Format(time.RFC3339)
+		} else if !log.CreatedAt.IsZero() {
 			variables["triggered_at"] = log.CreatedAt.UTC().Format(time.RFC3339)
 		}
 		if strings.TrimSpace(log.GroupName) != "" {
@@ -3037,6 +3081,8 @@ func maskSecretTail(secret string) string {
 
 // CyberPolicyRecordInput 是一次 cyber_policy 硬阻断的风控记录入参。
 type CyberPolicyRecordInput struct {
+	EventID         string // Server generated, never a client request ID.
+	OccurredAt      time.Time
 	LogOnly         bool // Trusted platform user: retain evidence without penalties or notifications.
 	RequestID       string
 	UserID          int64
@@ -3090,7 +3136,14 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 	if in.UpstreamInTok > 0 || in.UpstreamOutTok > 0 {
 		errBody = fmt.Sprintf("%s\nupstream_usage=in:%d,out:%d", errBody, in.UpstreamInTok, in.UpstreamOutTok)
 	}
+	if in.EventID == "" {
+		in.EventID = uuid.NewString()
+	}
+	if in.OccurredAt.IsZero() {
+		in.OccurredAt = time.Now().UTC()
+	}
 	log := &ContentModerationLog{
+		EventID: in.EventID, OccurredAt: in.OccurredAt,
 		RequestID:       in.RequestID,
 		UserID:          userID,
 		UserEmail:       in.UserEmail,
@@ -3109,37 +3162,33 @@ func (s *ContentModerationService) RecordCyberPolicyEvent(ctx context.Context, i
 		Error:           trimRunes(redactContentModerationSecrets(errBody), maxModerationExcerptRunes*4),
 		CreatedAt:       time.Now(),
 	}
-	// 开关开时 cyber_policy 不参与封号计数：当次不判定（此处跳过），
-	// 历史行由 CountFlaggedByUserSince 的 excludeCyberPolicy 排除。
-	autoBanned := false
-	if in.LogOnly {
+	_, trusted := runtimeSnapshot.allowlistedUsers[in.UserID]
+	if in.LogOnly || trusted {
 		log.Mode = ContentModerationModeCyberLogOnly
+		if err := s.repo.CreateLog(ctx, log); err != nil {
+			slog.Warn("content_moderation.cyber_create_log_failed", "event_id", log.EventID, "error", err)
+		}
+		return
 	}
-	if !in.LogOnly && !cfg.CyberPolicyExcludeFromBanCount {
-		autoBanned = s.applyFlaggedAccountSideEffects(ctx, cfg, log)
-	}
-	log.EmailSent = false
-	logPersisted := true
-	if err := s.repo.CreateLog(ctx, log); err != nil {
-		logPersisted = false
-		slog.Warn("content_moderation.cyber_create_log_failed", "user_id", in.UserID, "error", err)
+	if !s.recordModerationHit(ctx, cfg, log) {
+		return
 	}
 	emailSent := false
-	if !in.LogOnly && s.emailService != nil && strings.TrimSpace(log.UserEmail) != "" {
+	if s.emailService != nil && strings.TrimSpace(log.UserEmail) != "" {
 		if err := s.sendCyberPolicyEmail(ctx, log); err != nil {
 			slog.Warn("content_moderation.cyber_email_failed", "user_id", in.UserID, "error", err)
 		} else {
 			emailSent = true
 		}
-		if autoBanned {
-			if err := s.sendAccountDisabledEmail(ctx, cfg, log); err != nil {
+		if log.PenaltyAction != "" {
+			if err := s.sendPenaltyEmail(ctx, cfg, log); err != nil {
 				slog.Warn("content_moderation.cyber_ban_email_failed", "user_id", in.UserID, "error", err)
 			} else {
 				emailSent = true
 			}
 		}
 	}
-	if logPersisted && emailSent {
+	if emailSent {
 		if err := s.repo.UpdateLogEmailSent(ctx, log.ID, true); err != nil {
 			slog.Warn("content_moderation.cyber_update_email_sent_failed", "log_id", log.ID, "error", err)
 		}

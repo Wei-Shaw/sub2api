@@ -491,6 +491,20 @@ func (_c *UsageLogCreate) SetNillableFirstTokenMs(v *int) *UsageLogCreate {
 	return _c
 }
 
+// SetFirstVisibleTextMs sets the "first_visible_text_ms" field.
+func (_c *UsageLogCreate) SetFirstVisibleTextMs(v int) *UsageLogCreate {
+	_c.mutation.SetFirstVisibleTextMs(v)
+	return _c
+}
+
+// SetNillableFirstVisibleTextMs sets the "first_visible_text_ms" field if the given value is not nil.
+func (_c *UsageLogCreate) SetNillableFirstVisibleTextMs(v *int) *UsageLogCreate {
+	if v != nil {
+		_c.SetFirstVisibleTextMs(*v)
+	}
+	return _c
+}
+
 // SetUserAgent sets the "user_agent" field.
 func (_c *UsageLogCreate) SetUserAgent(v string) *UsageLogCreate {
 	_c.mutation.SetUserAgent(v)
@@ -1132,6 +1146,10 @@ func (_c *UsageLogCreate) createSpec() (*UsageLog, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.FirstTokenMs(); ok {
 		_spec.SetField(usagelog.FieldFirstTokenMs, field.TypeInt, value)
 		_node.FirstTokenMs = &value
+	}
+	if value, ok := _c.mutation.FirstVisibleTextMs(); ok {
+		_spec.SetField(usagelog.FieldFirstVisibleTextMs, field.TypeInt, value)
+		_node.FirstVisibleTextMs = &value
 	}
 	if value, ok := _c.mutation.UserAgent(); ok {
 		_spec.SetField(usagelog.FieldUserAgent, field.TypeString, value)
@@ -1949,6 +1967,30 @@ func (u *UsageLogUpsert) AddFirstTokenMs(v int) *UsageLogUpsert {
 // ClearFirstTokenMs clears the value of the "first_token_ms" field.
 func (u *UsageLogUpsert) ClearFirstTokenMs() *UsageLogUpsert {
 	u.SetNull(usagelog.FieldFirstTokenMs)
+	return u
+}
+
+// SetFirstVisibleTextMs sets the "first_visible_text_ms" field.
+func (u *UsageLogUpsert) SetFirstVisibleTextMs(v int) *UsageLogUpsert {
+	u.Set(usagelog.FieldFirstVisibleTextMs, v)
+	return u
+}
+
+// UpdateFirstVisibleTextMs sets the "first_visible_text_ms" field to the value that was provided on create.
+func (u *UsageLogUpsert) UpdateFirstVisibleTextMs() *UsageLogUpsert {
+	u.SetExcluded(usagelog.FieldFirstVisibleTextMs)
+	return u
+}
+
+// AddFirstVisibleTextMs adds v to the "first_visible_text_ms" field.
+func (u *UsageLogUpsert) AddFirstVisibleTextMs(v int) *UsageLogUpsert {
+	u.Add(usagelog.FieldFirstVisibleTextMs, v)
+	return u
+}
+
+// ClearFirstVisibleTextMs clears the value of the "first_visible_text_ms" field.
+func (u *UsageLogUpsert) ClearFirstVisibleTextMs() *UsageLogUpsert {
+	u.SetNull(usagelog.FieldFirstVisibleTextMs)
 	return u
 }
 
@@ -2945,6 +2987,34 @@ func (u *UsageLogUpsertOne) UpdateFirstTokenMs() *UsageLogUpsertOne {
 func (u *UsageLogUpsertOne) ClearFirstTokenMs() *UsageLogUpsertOne {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearFirstTokenMs()
+	})
+}
+
+// SetFirstVisibleTextMs sets the "first_visible_text_ms" field.
+func (u *UsageLogUpsertOne) SetFirstVisibleTextMs(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetFirstVisibleTextMs(v)
+	})
+}
+
+// AddFirstVisibleTextMs adds v to the "first_visible_text_ms" field.
+func (u *UsageLogUpsertOne) AddFirstVisibleTextMs(v int) *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddFirstVisibleTextMs(v)
+	})
+}
+
+// UpdateFirstVisibleTextMs sets the "first_visible_text_ms" field to the value that was provided on create.
+func (u *UsageLogUpsertOne) UpdateFirstVisibleTextMs() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateFirstVisibleTextMs()
+	})
+}
+
+// ClearFirstVisibleTextMs clears the value of the "first_visible_text_ms" field.
+func (u *UsageLogUpsertOne) ClearFirstVisibleTextMs() *UsageLogUpsertOne {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearFirstVisibleTextMs()
 	})
 }
 
@@ -4143,6 +4213,34 @@ func (u *UsageLogUpsertBulk) UpdateFirstTokenMs() *UsageLogUpsertBulk {
 func (u *UsageLogUpsertBulk) ClearFirstTokenMs() *UsageLogUpsertBulk {
 	return u.Update(func(s *UsageLogUpsert) {
 		s.ClearFirstTokenMs()
+	})
+}
+
+// SetFirstVisibleTextMs sets the "first_visible_text_ms" field.
+func (u *UsageLogUpsertBulk) SetFirstVisibleTextMs(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.SetFirstVisibleTextMs(v)
+	})
+}
+
+// AddFirstVisibleTextMs adds v to the "first_visible_text_ms" field.
+func (u *UsageLogUpsertBulk) AddFirstVisibleTextMs(v int) *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.AddFirstVisibleTextMs(v)
+	})
+}
+
+// UpdateFirstVisibleTextMs sets the "first_visible_text_ms" field to the value that was provided on create.
+func (u *UsageLogUpsertBulk) UpdateFirstVisibleTextMs() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.UpdateFirstVisibleTextMs()
+	})
+}
+
+// ClearFirstVisibleTextMs clears the value of the "first_visible_text_ms" field.
+func (u *UsageLogUpsertBulk) ClearFirstVisibleTextMs() *UsageLogUpsertBulk {
+	return u.Update(func(s *UsageLogUpsert) {
+		s.ClearFirstVisibleTextMs()
 	})
 }
 

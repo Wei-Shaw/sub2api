@@ -29,6 +29,8 @@ const (
 	NotificationEmailEventBalanceRechargeSuccess      = "balance.recharge_success"
 	NotificationEmailEventAccountQuotaAlert           = "account.quota_alert"
 	NotificationEmailEventContentModerationViolation  = "content_moderation.violation_notice"
+	NotificationEmailEventModerationKeyNotice         = "content_moderation.key_notice"
+	NotificationEmailEventModerationKeyLocked         = "content_moderation.key_locked"
 	NotificationEmailEventContentModerationDisabled   = "content_moderation.account_disabled"
 	NotificationEmailEventCyberPolicyNotice           = "content_moderation.cyber_policy_notice"
 	NotificationEmailEventOpsAlert                    = "ops.alert"
@@ -928,6 +930,9 @@ func notificationEmailSampleVariables(locale string) map[string]string {
 			"moderation_score":    "0.982",
 			"violation_count":     "2",
 			"ban_threshold":       "3",
+			"api_key_id":          "42",
+			"lock_release_en":     "Contact an administrator to unlock it.",
+			"lock_release_zh":     "如需解锁，请联系管理员。",
 			"rule_name":           "错误率过高",
 			"severity":            "critical",
 			"alert_status":        "firing",
@@ -976,6 +981,9 @@ func notificationEmailSampleVariables(locale string) map[string]string {
 		"moderation_score":    "0.982",
 		"violation_count":     "2",
 		"ban_threshold":       "3",
+		"api_key_id":          "42",
+		"lock_release_en":     "Contact an administrator to unlock it.",
+		"lock_release_zh":     "如需解锁，请联系管理员。",
 		"rule_name":           "High error rate",
 		"severity":            "critical",
 		"alert_status":        "firing",
@@ -1031,6 +1039,7 @@ var notificationEmailEventOrder = []string{
 	NotificationEmailEventAccountQuotaAlert,
 	NotificationEmailEventContentModerationViolation,
 	NotificationEmailEventContentModerationDisabled,
+	NotificationEmailEventModerationKeyNotice, NotificationEmailEventModerationKeyLocked,
 	NotificationEmailEventCyberPolicyNotice,
 	NotificationEmailEventOpsAlert,
 	NotificationEmailEventOpsScheduledReport,
@@ -1110,6 +1119,14 @@ var notificationEmailEventDefinitions = map[string]NotificationEmailEventInfo{
 		Optional:    false,
 		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...),
 			"triggered_at", "group_name", "moderation_category", "moderation_score", "violation_count", "ban_threshold"),
+	},
+	NotificationEmailEventModerationKeyNotice: {
+		Event: NotificationEmailEventModerationKeyNotice, Label: "API key risk control notice", Description: "Sent for counted violations under per-key moderation.", Category: "risk_control",
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...), "api_key_id", "violation_count", "ban_threshold"),
+	},
+	NotificationEmailEventModerationKeyLocked: {
+		Event: NotificationEmailEventModerationKeyLocked, Label: "API key locked", Description: "Sent only when risk control locks the offending API key.", Category: "risk_control",
+		Placeholders: append(append([]string{}, notificationEmailCommonPlaceholders...), "api_key_id", "violation_count", "ban_threshold", "lock_release_en", "lock_release_zh"),
 	},
 	NotificationEmailEventContentModerationDisabled: {
 		Event:       NotificationEmailEventContentModerationDisabled,
@@ -1347,6 +1364,14 @@ var notificationEmailOfficialTemplates = map[string]map[string]notificationEmail
 </table>
 <p>请检查请求内容，避免后续服务受到影响。</p>`),
 		},
+	},
+	NotificationEmailEventModerationKeyNotice: {
+		notificationEmailDefaultLocale: {Subject: "[{{site_name}}] API key risk notice", HTML: notificationEmailCard("#b91c1c", "API key risk notice", `<p>API key #{{api_key_id}} has {{violation_count}} of {{ban_threshold}} violations in the current window. Only this key is counted.</p>`)},
+		notificationEmailLocaleChinese: {Subject: "[{{site_name}}] API Key 风控提醒", HTML: notificationEmailCard("#b91c1c", "API Key 风控提醒", `<p>本周期 API Key #{{api_key_id}} 已累计 {{violation_count}} / {{ban_threshold}} 次命中。其他 Key 单独计数。</p>`)},
+	},
+	NotificationEmailEventModerationKeyLocked: {
+		notificationEmailDefaultLocale: {Subject: "[{{site_name}}] API key locked", HTML: notificationEmailCard("#b91c1c", "API key locked", `<p>Risk control locked API key #{{api_key_id}}. You can still use your account and other active keys. {{lock_release_en}}</p>`)},
+		notificationEmailLocaleChinese: {Subject: "[{{site_name}}] API Key 已锁定", HTML: notificationEmailCard("#b91c1c", "API Key 已锁定", `<p>风控已锁定 API Key #{{api_key_id}}。您仍可登录并使用其他可用 Key。{{lock_release_zh}}</p>`)},
 	},
 	NotificationEmailEventContentModerationDisabled: {
 		notificationEmailDefaultLocale: {

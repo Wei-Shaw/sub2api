@@ -92,6 +92,10 @@ func (s *quotaBaseAPIKeyRepoStub) GetKeyAndOwnerID(context.Context, int64) (stri
 func (s *quotaBaseAPIKeyRepoStub) GetByKey(context.Context, string) (*APIKey, error) {
 	panic("unexpected GetByKey call")
 }
+func (s *quotaBaseAPIKeyRepoStub) GetModerationState(ctx context.Context, id, userID int64) (APIKeyModerationState, error) {
+	return APIKeyModerationState{UserStatus: StatusActive}, nil
+}
+
 func (s *quotaBaseAPIKeyRepoStub) GetByKeyForAuth(context.Context, string) (*APIKey, error) {
 	panic("unexpected GetByKeyForAuth call")
 }

@@ -95,17 +95,20 @@ type UserListFilters struct {
 // 注意这里没有 balance / total_recharged：余额只能经由 AdjustBalance、
 // SetBalance、UpdateBalance、DeductBalance 等原子接口修改，Update 永远不碰它们。
 type UserUpdateFields struct {
-	Email        bool
-	Username     bool
-	Notes        bool
-	PasswordHash bool
-	Role         bool
-	Status       bool
-	Concurrency  bool
-	RPMLimit     bool
-	SignupSource bool
-	LastLoginAt  bool
-	LastActiveAt bool
+	ModerationPenaltyScope   bool
+	ModerationKeyLockMinutes bool
+	ModerationScopeActorID   int64
+	Email                    bool
+	Username                 bool
+	Notes                    bool
+	PasswordHash             bool
+	Role                     bool
+	Status                   bool
+	Concurrency              bool
+	RPMLimit                 bool
+	SignupSource             bool
+	LastLoginAt              bool
+	LastActiveAt             bool
 	// BalanceNotifySettings 覆盖 balance_notify_enabled / _threshold_type / _threshold。
 	BalanceNotifySettings bool
 	// BalanceNotifyExtraEmails 与上一项分开，避免"改通知阈值"覆盖并发的"加通知邮箱"。

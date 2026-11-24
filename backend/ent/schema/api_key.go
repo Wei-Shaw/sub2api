@@ -47,6 +47,9 @@ func (APIKey) Fields() []ent.Field {
 		field.String("status").
 			MaxLen(20).
 			Default(domain.StatusActive),
+		field.Time("moderation_locked_at").Optional().Nillable(),
+		field.Time("moderation_locked_until").Optional().Nillable(),
+		field.Time("moderation_last_unlocked_at").Optional().Nillable(),
 		field.Time("last_used_at").
 			Optional().
 			Nillable().

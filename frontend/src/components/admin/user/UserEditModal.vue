@@ -66,6 +66,30 @@
         />
         <p class="input-hint">{{ t('admin.users.form.rpmLimitHint') }}</p>
       </div>
+      <fieldset v-if="user.role === 'user' && form.role === 'user'" class="space-y-2">
+        <legend class="input-label">{{ t('admin.users.penaltyScope') }}</legend>
+        <label v-for="option in penaltyOptions" :key="option.value" class="flex items-start gap-2 text-sm">
+          <input v-model="form.penalty_scope" type="radio" name="moderation-scope" :value="option.value" class="mt-1" />
+          <span>{{ t(option.label) }}<span class="block input-hint">{{ t(option.hint) }}</span></span>
+        </label>
+        <fieldset v-if="form.penalty_scope === 'api_key'" class="ml-5 space-y-2 border-l border-gray-200 pl-4 dark:border-dark-600">
+          <legend class="input-label">{{ t('admin.users.keyLockDuration') }}</legend>
+          <label class="flex items-center gap-2 text-sm">
+            <input v-model="form.lockMode" type="radio" name="key-lock-duration" value="permanent" />
+            {{ t('admin.users.keyLockPermanent') }}
+          </label>
+          <label class="flex items-center gap-2 text-sm">
+            <input v-model="form.lockMode" type="radio" name="key-lock-duration" value="timed" />
+            {{ t('admin.users.keyLockTimed') }}
+          </label>
+          <div v-if="form.lockMode === 'timed'">
+            <label for="key-lock-minutes" class="input-label">{{ t('admin.users.keyLockMinutes') }}</label>
+            <input id="key-lock-minutes" v-model.number="form.lockMinutes" type="number" min="1" :max="maxLockMinutes" step="1" required class="input max-w-32" />
+          </div>
+          <p class="input-hint">{{ t('admin.users.keyLockDurationHint') }}</p>
+        </fieldset>
+        <p v-if="form.penalty_scope !== (user.moderation_penalty_scope ?? 'user')" class="input-hint" role="status">{{ t('admin.users.penaltyChangeHint') }}</p>
+      </fieldset>
       <UserAttributeForm v-model="form.customAttributes" :user-id="user?.id" />
     </form>
     <template #footer>
@@ -88,7 +112,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { useClipboard } from '@/composables/useClipboard'
 import { adminAPI } from '@/api/admin'
-import type { AdminUser, UserAttributeValuesMap } from '@/types'
+import type { AdminUser, ModerationPenaltyScope, UpdateUserRequest, UserAttributeValuesMap } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import UserAttributeForm from '@/components/user/UserAttributeForm.vue'
@@ -105,20 +129,32 @@ const roleOptions = computed(() => [
   { value: 'user', label: t('admin.users.roles.user') },
   { value: 'admin', label: t('admin.users.roles.admin') }
 ])
+const penaltyOptions = [
+  { value: 'user', label: 'admin.users.penaltyUser', hint: 'admin.users.penaltyUserHint' },
+  { value: 'api_key', label: 'admin.users.penaltyKey', hint: 'admin.users.penaltyKeyHint' },
+] as const
+const defaultTimedLockMinutes = 10
+const maxLockMinutes = 2147483647
 const form = reactive({
   email: '',
   password: '',
   username: '',
   notes: '',
   role: 'user' as AdminUser['role'],
+  penalty_scope: 'user' as ModerationPenaltyScope,
+  lockMode: 'permanent' as 'permanent' | 'timed',
+  lockMinutes: defaultTimedLockMinutes as number | '',
   concurrency: 1,
   rpm_limit: 0,
   customAttributes: {} as UserAttributeValuesMap
 })
 
-watch(() => props.user, (u) => {
-  if (u) {
-    Object.assign(form, { email: u.email, password: '', username: u.username || '', notes: u.notes || '', role: u.role || 'user', concurrency: u.concurrency, rpm_limit: u.rpm_limit ?? 0, customAttributes: {} })
+watch([() => props.show, () => props.user], ([show, u]) => {
+  if (show && u) {
+    const savedMinutes = u.moderation_key_lock_minutes ?? 0
+    form.lockMode = savedMinutes > 0 ? 'timed' : 'permanent'
+    form.lockMinutes = savedMinutes > 0 ? savedMinutes : defaultTimedLockMinutes
+    Object.assign(form, { email: u.email, password: '', username: u.username || '', notes: u.notes || '', role: u.role || 'user', penalty_scope: u.moderation_penalty_scope ?? 'user', concurrency: u.concurrency, rpm_limit: u.rpm_limit ?? 0, customAttributes: {} })
     passwordCopied.value = false
   }
 }, { immediate: true })
@@ -146,10 +182,24 @@ const handleUpdateUser = async () => {
     appStore.showError(t('admin.users.concurrencyNonNegative'))
     return
   }
+  const canEditPolicy = props.user.role === 'user' && form.role === 'user'
+  const perKey = canEditPolicy && form.penalty_scope === 'api_key'
+  const timed = perKey && form.lockMode === 'timed'
+  const lockMinutes = timed ? Number(form.lockMinutes) : 0
+  if (timed && (!Number.isInteger(lockMinutes) || lockMinutes < 1 || lockMinutes > maxLockMinutes)) {
+    appStore.showError(t('admin.users.keyLockMinutesInvalid'))
+    return
+  }
   const userId = props.user.id
   submitting.value = true
   try {
-    const data: any = { email: form.email, username: form.username, notes: form.notes, role: form.role, concurrency: form.concurrency, rpm_limit: form.rpm_limit }
+    const data: UpdateUserRequest = { email: form.email, username: form.username, notes: form.notes, role: form.role, concurrency: form.concurrency, rpm_limit: form.rpm_limit }
+    if (canEditPolicy && form.penalty_scope !== (props.user.moderation_penalty_scope ?? 'user')) {
+      data.moderation_penalty_scope = form.penalty_scope
+    }
+    if (perKey && lockMinutes !== (props.user.moderation_key_lock_minutes ?? 0)) {
+      data.moderation_key_lock_minutes = lockMinutes
+    }
     if (form.password.trim()) data.password = form.password.trim()
     // 提升为管理员属敏感操作：后端返回 STEP_UP_REQUIRED 时弹 TOTP 验证并重试
     await stepUp.run(() => adminAPI.users.update(userId, data))

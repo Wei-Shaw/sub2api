@@ -14,7 +14,7 @@ import (
 	"github.com/dgraph-io/ristretto"
 )
 
-const apiKeyAuthSnapshotVersion = 28 // v28: group force_openai_ultrafast (OpenAI gateway reads it from ctx)
+const apiKeyAuthSnapshotVersion = 29 // v29: independent moderation lock and last unlock boundary
 
 type apiKeyAuthCacheConfig struct {
 	l1Size        int
@@ -295,24 +295,36 @@ func (s *APIKeyService) lookupAPIKeyForAuth(ctx context.Context, key string) (*A
 	if s == nil || s.apiKeyRepo == nil {
 		return nil, ErrAPIKeyNotFound
 	}
+	if err := s.acquireAuthLookup(ctx); err != nil {
+		return nil, err
+	}
+	defer s.releaseAuthLookup()
+	return s.apiKeyRepo.GetByKeyForAuth(ctx, key)
+}
+
+// Bound both full credential lookups and lightweight checks on positive cache hits.
+func (s *APIKeyService) acquireAuthLookup(ctx context.Context) error {
 	if s.authLookupSlots == nil {
-		return s.apiKeyRepo.GetByKeyForAuth(ctx, key)
+		return nil
 	}
 	s.authLookupTotal.Add(1)
 	select {
 	case s.authLookupSlots <- struct{}{}:
 		s.authLookupInFlight.Add(1)
-		defer func() {
-			s.authLookupInFlight.Add(-1)
-			<-s.authLookupSlots
-		}()
+		return nil
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return ctx.Err()
 	default:
 		s.authLookupRejected.Add(1)
-		return nil, ErrAPIKeyAuthOverloaded
+		return ErrAPIKeyAuthOverloaded
 	}
-	return s.apiKeyRepo.GetByKeyForAuth(ctx, key)
+}
+func (s *APIKeyService) releaseAuthLookup() {
+	if s.authLookupSlots == nil {
+		return
+	}
+	s.authLookupInFlight.Add(-1)
+	<-s.authLookupSlots
 }
 
 func (s *APIKeyService) applyAuthCacheEntry(key string, entry *APIKeyAuthCacheEntry) (*APIKey, bool, error) {
@@ -336,20 +348,22 @@ func (s *APIKeyService) snapshotFromAPIKey(ctx context.Context, apiKey *APIKey) 
 		return nil
 	}
 	snapshot := &APIKeyAuthSnapshot{
-		Version:     apiKeyAuthSnapshotVersion,
-		APIKeyID:    apiKey.ID,
-		UserID:      apiKey.UserID,
-		GroupID:     apiKey.GroupID,
-		Name:        apiKey.Name,
-		Status:      apiKey.Status,
-		IPWhitelist: apiKey.IPWhitelist,
-		IPBlacklist: apiKey.IPBlacklist,
-		Quota:       apiKey.Quota,
-		QuotaUsed:   apiKey.QuotaUsed,
-		ExpiresAt:   apiKey.ExpiresAt,
-		RateLimit5h: apiKey.RateLimit5h,
-		RateLimit1d: apiKey.RateLimit1d,
-		RateLimit7d: apiKey.RateLimit7d,
+		Version:                  apiKeyAuthSnapshotVersion,
+		APIKeyID:                 apiKey.ID,
+		UserID:                   apiKey.UserID,
+		GroupID:                  apiKey.GroupID,
+		Name:                     apiKey.Name,
+		Status:                   apiKey.Status,
+		ModerationLockedAt:       apiKey.ModerationLockedAt,
+		ModerationLastUnlockedAt: apiKey.ModerationLastUnlockedAt,
+		IPWhitelist:              apiKey.IPWhitelist,
+		IPBlacklist:              apiKey.IPBlacklist,
+		Quota:                    apiKey.Quota,
+		QuotaUsed:                apiKey.QuotaUsed,
+		ExpiresAt:                apiKey.ExpiresAt,
+		RateLimit5h:              apiKey.RateLimit5h,
+		RateLimit1d:              apiKey.RateLimit1d,
+		RateLimit7d:              apiKey.RateLimit7d,
 		User: APIKeyAuthUserSnapshot{
 			ID:                         apiKey.User.ID,
 			Status:                     apiKey.User.Status,
@@ -449,20 +463,22 @@ func (s *APIKeyService) snapshotToAPIKey(key string, snapshot *APIKeyAuthSnapsho
 		return nil
 	}
 	apiKey := &APIKey{
-		ID:          snapshot.APIKeyID,
-		UserID:      snapshot.UserID,
-		GroupID:     snapshot.GroupID,
-		Key:         key,
-		Name:        snapshot.Name,
-		Status:      snapshot.Status,
-		IPWhitelist: snapshot.IPWhitelist,
-		IPBlacklist: snapshot.IPBlacklist,
-		Quota:       snapshot.Quota,
-		QuotaUsed:   snapshot.QuotaUsed,
-		ExpiresAt:   snapshot.ExpiresAt,
-		RateLimit5h: snapshot.RateLimit5h,
-		RateLimit1d: snapshot.RateLimit1d,
-		RateLimit7d: snapshot.RateLimit7d,
+		ID:                       snapshot.APIKeyID,
+		UserID:                   snapshot.UserID,
+		GroupID:                  snapshot.GroupID,
+		Key:                      key,
+		Name:                     snapshot.Name,
+		Status:                   snapshot.Status,
+		ModerationLockedAt:       snapshot.ModerationLockedAt,
+		ModerationLastUnlockedAt: snapshot.ModerationLastUnlockedAt,
+		IPWhitelist:              snapshot.IPWhitelist,
+		IPBlacklist:              snapshot.IPBlacklist,
+		Quota:                    snapshot.Quota,
+		QuotaUsed:                snapshot.QuotaUsed,
+		ExpiresAt:                snapshot.ExpiresAt,
+		RateLimit5h:              snapshot.RateLimit5h,
+		RateLimit1d:              snapshot.RateLimit1d,
+		RateLimit7d:              snapshot.RateLimit7d,
 		User: &User{
 			ID:                          snapshot.User.ID,
 			Status:                      snapshot.User.Status,

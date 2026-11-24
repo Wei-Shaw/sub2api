@@ -41,6 +41,8 @@ type User struct {
 // AdminUser 是管理员接口使用的 user DTO（包含敏感/内部字段）。
 // 注意：普通用户接口不得返回 notes 等管理员备注信息。
 type AdminUser struct {
+	ModerationPenaltyScope   string `json:"moderation_penalty_scope"`
+	ModerationKeyLockMinutes int    `json:"moderation_key_lock_minutes,omitempty"`
 	User
 
 	Notes      string     `json:"notes"`
@@ -54,21 +56,23 @@ type AdminUser struct {
 }
 
 type APIKey struct {
-	ID          int64      `json:"id"`
-	UserID      int64      `json:"user_id"`
-	Key         string     `json:"key"`
-	Name        string     `json:"name"`
-	GroupID     *int64     `json:"group_id"`
-	Status      string     `json:"status"`
-	IPWhitelist []string   `json:"ip_whitelist"`
-	IPBlacklist []string   `json:"ip_blacklist"`
-	LastUsedAt  *time.Time `json:"last_used_at"`
-	LastUsedIP  *string    `json:"last_used_ip"`
-	Quota       float64    `json:"quota"`      // Quota limit in USD (0 = unlimited)
-	QuotaUsed   float64    `json:"quota_used"` // Used quota amount in USD
-	ExpiresAt   *time.Time `json:"expires_at"` // Expiration time (nil = never expires)
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	ModerationLockedAt    *time.Time `json:"moderation_locked_at,omitempty"`
+	ModerationLockedUntil *time.Time `json:"moderation_locked_until,omitempty"`
+	ID                    int64      `json:"id"`
+	UserID                int64      `json:"user_id"`
+	Key                   string     `json:"key"`
+	Name                  string     `json:"name"`
+	GroupID               *int64     `json:"group_id"`
+	Status                string     `json:"status"`
+	IPWhitelist           []string   `json:"ip_whitelist"`
+	IPBlacklist           []string   `json:"ip_blacklist"`
+	LastUsedAt            *time.Time `json:"last_used_at"`
+	LastUsedIP            *string    `json:"last_used_ip"`
+	Quota                 float64    `json:"quota"`      // Quota limit in USD (0 = unlimited)
+	QuotaUsed             float64    `json:"quota_used"` // Used quota amount in USD
+	ExpiresAt             *time.Time `json:"expires_at"` // Expiration time (nil = never expires)
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
 	// CurrentConcurrency is the real-time active request count for this API key.
 	CurrentConcurrency int `json:"current_concurrency"`
 
@@ -644,6 +648,7 @@ type UsageLog struct {
 	NativeCompactionV2 bool `json:"native_compaction_v2"`
 	DurationMs         *int `json:"duration_ms"`
 	FirstTokenMs       *int `json:"first_token_ms"`
+	FirstVisibleTextMs *int `json:"first_visible_text_ms"`
 
 	// 图片生成字段
 	ImageCount         int            `json:"image_count"`

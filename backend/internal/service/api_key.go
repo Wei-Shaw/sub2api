@@ -27,15 +27,34 @@ func IsWindowExpired(windowStart *time.Time, duration time.Duration) bool {
 	return windowStart == nil || time.Since(*windowStart) >= duration
 }
 
+// APIKeyModerationState is read from the primary database as one snapshot.
+type APIKeyModerationState struct {
+	LockedAt       *time.Time
+	LastUnlockedAt *time.Time
+	UserStatus     string
+}
+
+// SameUnlockCycle reports whether the snapshot was taken in the current unlock cycle.
+func (s APIKeyModerationState) SameUnlockCycle(key *APIKey) bool {
+	snapshotTime := key.ModerationLastUnlockedAt
+	if snapshotTime == nil || s.LastUnlockedAt == nil {
+		return snapshotTime == s.LastUnlockedAt
+	}
+	return snapshotTime.Equal(*s.LastUnlockedAt)
+}
+
 type APIKey struct {
-	ID          int64
-	UserID      int64
-	Key         string
-	Name        string
-	GroupID     *int64
-	Status      string
-	IPWhitelist []string
-	IPBlacklist []string
+	ID                       int64
+	UserID                   int64
+	Key                      string
+	Name                     string
+	GroupID                  *int64
+	Status                   string
+	ModerationLockedAt       *time.Time
+	ModerationLockedUntil    *time.Time
+	ModerationLastUnlockedAt *time.Time `json:"-"`
+	IPWhitelist              []string
+	IPBlacklist              []string
 	// 预编译的 IP 规则，用于认证热路径避免重复 ParseIP/ParseCIDR。
 	CompiledIPWhitelist *ip.CompiledIPRules `json:"-"`
 	CompiledIPBlacklist *ip.CompiledIPRules `json:"-"`
@@ -65,7 +84,7 @@ type APIKey struct {
 }
 
 func (k *APIKey) IsActive() bool {
-	return k.Status == StatusActive
+	return k.ModerationLockedAt == nil && k.Status == StatusActive
 }
 
 // HasRateLimits returns true if any rate limit window is configured

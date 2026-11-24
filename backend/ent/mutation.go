@@ -108,51 +108,54 @@ const (
 // APIKeyMutation represents an operation that mutates the APIKey nodes in the graph.
 type APIKeyMutation struct {
 	config
-	op                 Op
-	typ                string
-	id                 *int64
-	created_at         *time.Time
-	updated_at         *time.Time
-	deleted_at         *time.Time
-	key                *string
-	name               *string
-	status             *string
-	last_used_at       *time.Time
-	ip_whitelist       *[]string
-	appendip_whitelist []string
-	ip_blacklist       *[]string
-	appendip_blacklist []string
-	quota              *float64
-	addquota           *float64
-	quota_used         *float64
-	addquota_used      *float64
-	expires_at         *time.Time
-	rate_limit_5h      *float64
-	addrate_limit_5h   *float64
-	rate_limit_1d      *float64
-	addrate_limit_1d   *float64
-	rate_limit_7d      *float64
-	addrate_limit_7d   *float64
-	usage_5h           *float64
-	addusage_5h        *float64
-	usage_1d           *float64
-	addusage_1d        *float64
-	usage_7d           *float64
-	addusage_7d        *float64
-	window_5h_start    *time.Time
-	window_1d_start    *time.Time
-	window_7d_start    *time.Time
-	clearedFields      map[string]struct{}
-	user               *int64
-	cleareduser        bool
-	group              *int64
-	clearedgroup       bool
-	usage_logs         map[int64]struct{}
-	removedusage_logs  map[int64]struct{}
-	clearedusage_logs  bool
-	done               bool
-	oldValue           func(context.Context) (*APIKey, error)
-	predicates         []predicate.APIKey
+	op                          Op
+	typ                         string
+	id                          *int64
+	created_at                  *time.Time
+	updated_at                  *time.Time
+	deleted_at                  *time.Time
+	key                         *string
+	name                        *string
+	status                      *string
+	moderation_locked_at        *time.Time
+	moderation_locked_until     *time.Time
+	moderation_last_unlocked_at *time.Time
+	last_used_at                *time.Time
+	ip_whitelist                *[]string
+	appendip_whitelist          []string
+	ip_blacklist                *[]string
+	appendip_blacklist          []string
+	quota                       *float64
+	addquota                    *float64
+	quota_used                  *float64
+	addquota_used               *float64
+	expires_at                  *time.Time
+	rate_limit_5h               *float64
+	addrate_limit_5h            *float64
+	rate_limit_1d               *float64
+	addrate_limit_1d            *float64
+	rate_limit_7d               *float64
+	addrate_limit_7d            *float64
+	usage_5h                    *float64
+	addusage_5h                 *float64
+	usage_1d                    *float64
+	addusage_1d                 *float64
+	usage_7d                    *float64
+	addusage_7d                 *float64
+	window_5h_start             *time.Time
+	window_1d_start             *time.Time
+	window_7d_start             *time.Time
+	clearedFields               map[string]struct{}
+	user                        *int64
+	cleareduser                 bool
+	group                       *int64
+	clearedgroup                bool
+	usage_logs                  map[int64]struct{}
+	removedusage_logs           map[int64]struct{}
+	clearedusage_logs           bool
+	done                        bool
+	oldValue                    func(context.Context) (*APIKey, error)
+	predicates                  []predicate.APIKey
 }
 
 var _ ent.Mutation = (*APIKeyMutation)(nil)
@@ -565,6 +568,153 @@ func (m *APIKeyMutation) OldStatus(ctx context.Context) (v string, err error) {
 // ResetStatus resets all changes to the "status" field.
 func (m *APIKeyMutation) ResetStatus() {
 	m.status = nil
+}
+
+// SetModerationLockedAt sets the "moderation_locked_at" field.
+func (m *APIKeyMutation) SetModerationLockedAt(t time.Time) {
+	m.moderation_locked_at = &t
+}
+
+// ModerationLockedAt returns the value of the "moderation_locked_at" field in the mutation.
+func (m *APIKeyMutation) ModerationLockedAt() (r time.Time, exists bool) {
+	v := m.moderation_locked_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModerationLockedAt returns the old "moderation_locked_at" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldModerationLockedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModerationLockedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModerationLockedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModerationLockedAt: %w", err)
+	}
+	return oldValue.ModerationLockedAt, nil
+}
+
+// ClearModerationLockedAt clears the value of the "moderation_locked_at" field.
+func (m *APIKeyMutation) ClearModerationLockedAt() {
+	m.moderation_locked_at = nil
+	m.clearedFields[apikey.FieldModerationLockedAt] = struct{}{}
+}
+
+// ModerationLockedAtCleared returns if the "moderation_locked_at" field was cleared in this mutation.
+func (m *APIKeyMutation) ModerationLockedAtCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldModerationLockedAt]
+	return ok
+}
+
+// ResetModerationLockedAt resets all changes to the "moderation_locked_at" field.
+func (m *APIKeyMutation) ResetModerationLockedAt() {
+	m.moderation_locked_at = nil
+	delete(m.clearedFields, apikey.FieldModerationLockedAt)
+}
+
+// SetModerationLockedUntil sets the "moderation_locked_until" field.
+func (m *APIKeyMutation) SetModerationLockedUntil(t time.Time) {
+	m.moderation_locked_until = &t
+}
+
+// ModerationLockedUntil returns the value of the "moderation_locked_until" field in the mutation.
+func (m *APIKeyMutation) ModerationLockedUntil() (r time.Time, exists bool) {
+	v := m.moderation_locked_until
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModerationLockedUntil returns the old "moderation_locked_until" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldModerationLockedUntil(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModerationLockedUntil is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModerationLockedUntil requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModerationLockedUntil: %w", err)
+	}
+	return oldValue.ModerationLockedUntil, nil
+}
+
+// ClearModerationLockedUntil clears the value of the "moderation_locked_until" field.
+func (m *APIKeyMutation) ClearModerationLockedUntil() {
+	m.moderation_locked_until = nil
+	m.clearedFields[apikey.FieldModerationLockedUntil] = struct{}{}
+}
+
+// ModerationLockedUntilCleared returns if the "moderation_locked_until" field was cleared in this mutation.
+func (m *APIKeyMutation) ModerationLockedUntilCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldModerationLockedUntil]
+	return ok
+}
+
+// ResetModerationLockedUntil resets all changes to the "moderation_locked_until" field.
+func (m *APIKeyMutation) ResetModerationLockedUntil() {
+	m.moderation_locked_until = nil
+	delete(m.clearedFields, apikey.FieldModerationLockedUntil)
+}
+
+// SetModerationLastUnlockedAt sets the "moderation_last_unlocked_at" field.
+func (m *APIKeyMutation) SetModerationLastUnlockedAt(t time.Time) {
+	m.moderation_last_unlocked_at = &t
+}
+
+// ModerationLastUnlockedAt returns the value of the "moderation_last_unlocked_at" field in the mutation.
+func (m *APIKeyMutation) ModerationLastUnlockedAt() (r time.Time, exists bool) {
+	v := m.moderation_last_unlocked_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModerationLastUnlockedAt returns the old "moderation_last_unlocked_at" field's value of the APIKey entity.
+// If the APIKey object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *APIKeyMutation) OldModerationLastUnlockedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModerationLastUnlockedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModerationLastUnlockedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModerationLastUnlockedAt: %w", err)
+	}
+	return oldValue.ModerationLastUnlockedAt, nil
+}
+
+// ClearModerationLastUnlockedAt clears the value of the "moderation_last_unlocked_at" field.
+func (m *APIKeyMutation) ClearModerationLastUnlockedAt() {
+	m.moderation_last_unlocked_at = nil
+	m.clearedFields[apikey.FieldModerationLastUnlockedAt] = struct{}{}
+}
+
+// ModerationLastUnlockedAtCleared returns if the "moderation_last_unlocked_at" field was cleared in this mutation.
+func (m *APIKeyMutation) ModerationLastUnlockedAtCleared() bool {
+	_, ok := m.clearedFields[apikey.FieldModerationLastUnlockedAt]
+	return ok
+}
+
+// ResetModerationLastUnlockedAt resets all changes to the "moderation_last_unlocked_at" field.
+func (m *APIKeyMutation) ResetModerationLastUnlockedAt() {
+	m.moderation_last_unlocked_at = nil
+	delete(m.clearedFields, apikey.FieldModerationLastUnlockedAt)
 }
 
 // SetLastUsedAt sets the "last_used_at" field.
@@ -1532,7 +1682,7 @@ func (m *APIKeyMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *APIKeyMutation) Fields() []string {
-	fields := make([]string, 0, 23)
+	fields := make([]string, 0, 26)
 	if m.created_at != nil {
 		fields = append(fields, apikey.FieldCreatedAt)
 	}
@@ -1556,6 +1706,15 @@ func (m *APIKeyMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, apikey.FieldStatus)
+	}
+	if m.moderation_locked_at != nil {
+		fields = append(fields, apikey.FieldModerationLockedAt)
+	}
+	if m.moderation_locked_until != nil {
+		fields = append(fields, apikey.FieldModerationLockedUntil)
+	}
+	if m.moderation_last_unlocked_at != nil {
+		fields = append(fields, apikey.FieldModerationLastUnlockedAt)
 	}
 	if m.last_used_at != nil {
 		fields = append(fields, apikey.FieldLastUsedAt)
@@ -1626,6 +1785,12 @@ func (m *APIKeyMutation) Field(name string) (ent.Value, bool) {
 		return m.GroupID()
 	case apikey.FieldStatus:
 		return m.Status()
+	case apikey.FieldModerationLockedAt:
+		return m.ModerationLockedAt()
+	case apikey.FieldModerationLockedUntil:
+		return m.ModerationLockedUntil()
+	case apikey.FieldModerationLastUnlockedAt:
+		return m.ModerationLastUnlockedAt()
 	case apikey.FieldLastUsedAt:
 		return m.LastUsedAt()
 	case apikey.FieldIPWhitelist:
@@ -1681,6 +1846,12 @@ func (m *APIKeyMutation) OldField(ctx context.Context, name string) (ent.Value, 
 		return m.OldGroupID(ctx)
 	case apikey.FieldStatus:
 		return m.OldStatus(ctx)
+	case apikey.FieldModerationLockedAt:
+		return m.OldModerationLockedAt(ctx)
+	case apikey.FieldModerationLockedUntil:
+		return m.OldModerationLockedUntil(ctx)
+	case apikey.FieldModerationLastUnlockedAt:
+		return m.OldModerationLastUnlockedAt(ctx)
 	case apikey.FieldLastUsedAt:
 		return m.OldLastUsedAt(ctx)
 	case apikey.FieldIPWhitelist:
@@ -1775,6 +1946,27 @@ func (m *APIKeyMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case apikey.FieldModerationLockedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModerationLockedAt(v)
+		return nil
+	case apikey.FieldModerationLockedUntil:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModerationLockedUntil(v)
+		return nil
+	case apikey.FieldModerationLastUnlockedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModerationLastUnlockedAt(v)
 		return nil
 	case apikey.FieldLastUsedAt:
 		v, ok := value.(time.Time)
@@ -2016,6 +2208,15 @@ func (m *APIKeyMutation) ClearedFields() []string {
 	if m.FieldCleared(apikey.FieldGroupID) {
 		fields = append(fields, apikey.FieldGroupID)
 	}
+	if m.FieldCleared(apikey.FieldModerationLockedAt) {
+		fields = append(fields, apikey.FieldModerationLockedAt)
+	}
+	if m.FieldCleared(apikey.FieldModerationLockedUntil) {
+		fields = append(fields, apikey.FieldModerationLockedUntil)
+	}
+	if m.FieldCleared(apikey.FieldModerationLastUnlockedAt) {
+		fields = append(fields, apikey.FieldModerationLastUnlockedAt)
+	}
 	if m.FieldCleared(apikey.FieldLastUsedAt) {
 		fields = append(fields, apikey.FieldLastUsedAt)
 	}
@@ -2056,6 +2257,15 @@ func (m *APIKeyMutation) ClearField(name string) error {
 		return nil
 	case apikey.FieldGroupID:
 		m.ClearGroupID()
+		return nil
+	case apikey.FieldModerationLockedAt:
+		m.ClearModerationLockedAt()
+		return nil
+	case apikey.FieldModerationLockedUntil:
+		m.ClearModerationLockedUntil()
+		return nil
+	case apikey.FieldModerationLastUnlockedAt:
+		m.ClearModerationLastUnlockedAt()
 		return nil
 	case apikey.FieldLastUsedAt:
 		m.ClearLastUsedAt()
@@ -2109,6 +2319,15 @@ func (m *APIKeyMutation) ResetField(name string) error {
 		return nil
 	case apikey.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case apikey.FieldModerationLockedAt:
+		m.ResetModerationLockedAt()
+		return nil
+	case apikey.FieldModerationLockedUntil:
+		m.ResetModerationLockedUntil()
+		return nil
+	case apikey.FieldModerationLastUnlockedAt:
+		m.ResetModerationLastUnlockedAt()
 		return nil
 	case apikey.FieldLastUsedAt:
 		m.ResetLastUsedAt()
@@ -44830,6 +45049,8 @@ type UsageLogMutation struct {
 	addduration_ms               *int
 	first_token_ms               *int
 	addfirst_token_ms            *int
+	first_visible_text_ms        *int
+	addfirst_visible_text_ms     *int
 	user_agent                   *string
 	ip_address                   *string
 	image_count                  *int
@@ -46829,6 +47050,76 @@ func (m *UsageLogMutation) ResetFirstTokenMs() {
 	delete(m.clearedFields, usagelog.FieldFirstTokenMs)
 }
 
+// SetFirstVisibleTextMs sets the "first_visible_text_ms" field.
+func (m *UsageLogMutation) SetFirstVisibleTextMs(i int) {
+	m.first_visible_text_ms = &i
+	m.addfirst_visible_text_ms = nil
+}
+
+// FirstVisibleTextMs returns the value of the "first_visible_text_ms" field in the mutation.
+func (m *UsageLogMutation) FirstVisibleTextMs() (r int, exists bool) {
+	v := m.first_visible_text_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldFirstVisibleTextMs returns the old "first_visible_text_ms" field's value of the UsageLog entity.
+// If the UsageLog object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UsageLogMutation) OldFirstVisibleTextMs(ctx context.Context) (v *int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldFirstVisibleTextMs is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldFirstVisibleTextMs requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldFirstVisibleTextMs: %w", err)
+	}
+	return oldValue.FirstVisibleTextMs, nil
+}
+
+// AddFirstVisibleTextMs adds i to the "first_visible_text_ms" field.
+func (m *UsageLogMutation) AddFirstVisibleTextMs(i int) {
+	if m.addfirst_visible_text_ms != nil {
+		*m.addfirst_visible_text_ms += i
+	} else {
+		m.addfirst_visible_text_ms = &i
+	}
+}
+
+// AddedFirstVisibleTextMs returns the value that was added to the "first_visible_text_ms" field in this mutation.
+func (m *UsageLogMutation) AddedFirstVisibleTextMs() (r int, exists bool) {
+	v := m.addfirst_visible_text_ms
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ClearFirstVisibleTextMs clears the value of the "first_visible_text_ms" field.
+func (m *UsageLogMutation) ClearFirstVisibleTextMs() {
+	m.first_visible_text_ms = nil
+	m.addfirst_visible_text_ms = nil
+	m.clearedFields[usagelog.FieldFirstVisibleTextMs] = struct{}{}
+}
+
+// FirstVisibleTextMsCleared returns if the "first_visible_text_ms" field was cleared in this mutation.
+func (m *UsageLogMutation) FirstVisibleTextMsCleared() bool {
+	_, ok := m.clearedFields[usagelog.FieldFirstVisibleTextMs]
+	return ok
+}
+
+// ResetFirstVisibleTextMs resets all changes to the "first_visible_text_ms" field.
+func (m *UsageLogMutation) ResetFirstVisibleTextMs() {
+	m.first_visible_text_ms = nil
+	m.addfirst_visible_text_ms = nil
+	delete(m.clearedFields, usagelog.FieldFirstVisibleTextMs)
+}
+
 // SetUserAgent sets the "user_agent" field.
 func (m *UsageLogMutation) SetUserAgent(s string) {
 	m.user_agent = &s
@@ -47644,7 +47935,7 @@ func (m *UsageLogMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UsageLogMutation) Fields() []string {
-	fields := make([]string, 0, 49)
+	fields := make([]string, 0, 50)
 	if m.user != nil {
 		fields = append(fields, usagelog.FieldUserID)
 	}
@@ -47752,6 +48043,9 @@ func (m *UsageLogMutation) Fields() []string {
 	}
 	if m.first_token_ms != nil {
 		fields = append(fields, usagelog.FieldFirstTokenMs)
+	}
+	if m.first_visible_text_ms != nil {
+		fields = append(fields, usagelog.FieldFirstVisibleTextMs)
 	}
 	if m.user_agent != nil {
 		fields = append(fields, usagelog.FieldUserAgent)
@@ -47872,6 +48166,8 @@ func (m *UsageLogMutation) Field(name string) (ent.Value, bool) {
 		return m.DurationMs()
 	case usagelog.FieldFirstTokenMs:
 		return m.FirstTokenMs()
+	case usagelog.FieldFirstVisibleTextMs:
+		return m.FirstVisibleTextMs()
 	case usagelog.FieldUserAgent:
 		return m.UserAgent()
 	case usagelog.FieldIPAddress:
@@ -47979,6 +48275,8 @@ func (m *UsageLogMutation) OldField(ctx context.Context, name string) (ent.Value
 		return m.OldDurationMs(ctx)
 	case usagelog.FieldFirstTokenMs:
 		return m.OldFirstTokenMs(ctx)
+	case usagelog.FieldFirstVisibleTextMs:
+		return m.OldFirstVisibleTextMs(ctx)
 	case usagelog.FieldUserAgent:
 		return m.OldUserAgent(ctx)
 	case usagelog.FieldIPAddress:
@@ -48266,6 +48564,13 @@ func (m *UsageLogMutation) SetField(name string, value ent.Value) error {
 		}
 		m.SetFirstTokenMs(v)
 		return nil
+	case usagelog.FieldFirstVisibleTextMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetFirstVisibleTextMs(v)
+		return nil
 	case usagelog.FieldUserAgent:
 		v, ok := value.(string)
 		if !ok {
@@ -48425,6 +48730,9 @@ func (m *UsageLogMutation) AddedFields() []string {
 	if m.addfirst_token_ms != nil {
 		fields = append(fields, usagelog.FieldFirstTokenMs)
 	}
+	if m.addfirst_visible_text_ms != nil {
+		fields = append(fields, usagelog.FieldFirstVisibleTextMs)
+	}
 	if m.addimage_count != nil {
 		fields = append(fields, usagelog.FieldImageCount)
 	}
@@ -48482,6 +48790,8 @@ func (m *UsageLogMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedDurationMs()
 	case usagelog.FieldFirstTokenMs:
 		return m.AddedFirstTokenMs()
+	case usagelog.FieldFirstVisibleTextMs:
+		return m.AddedFirstVisibleTextMs()
 	case usagelog.FieldImageCount:
 		return m.AddedImageCount()
 	case usagelog.FieldVideoCount:
@@ -48637,6 +48947,13 @@ func (m *UsageLogMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddFirstTokenMs(v)
 		return nil
+	case usagelog.FieldFirstVisibleTextMs:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddFirstVisibleTextMs(v)
+		return nil
 	case usagelog.FieldImageCount:
 		v, ok := value.(int)
 		if !ok {
@@ -48704,6 +49021,9 @@ func (m *UsageLogMutation) ClearedFields() []string {
 	}
 	if m.FieldCleared(usagelog.FieldFirstTokenMs) {
 		fields = append(fields, usagelog.FieldFirstTokenMs)
+	}
+	if m.FieldCleared(usagelog.FieldFirstVisibleTextMs) {
+		fields = append(fields, usagelog.FieldFirstVisibleTextMs)
 	}
 	if m.FieldCleared(usagelog.FieldUserAgent) {
 		fields = append(fields, usagelog.FieldUserAgent)
@@ -48784,6 +49104,9 @@ func (m *UsageLogMutation) ClearField(name string) error {
 		return nil
 	case usagelog.FieldFirstTokenMs:
 		m.ClearFirstTokenMs()
+		return nil
+	case usagelog.FieldFirstVisibleTextMs:
+		m.ClearFirstVisibleTextMs()
 		return nil
 	case usagelog.FieldUserAgent:
 		m.ClearUserAgent()
@@ -48927,6 +49250,9 @@ func (m *UsageLogMutation) ResetField(name string) error {
 		return nil
 	case usagelog.FieldFirstTokenMs:
 		m.ResetFirstTokenMs()
+		return nil
+	case usagelog.FieldFirstVisibleTextMs:
+		m.ResetFirstVisibleTextMs()
 		return nil
 	case usagelog.FieldUserAgent:
 		m.ResetUserAgent()
@@ -49120,83 +49446,87 @@ func (m *UsageLogMutation) ResetEdge(name string) error {
 // UserMutation represents an operation that mutates the User nodes in the graph.
 type UserMutation struct {
 	config
-	op                            Op
-	typ                           string
-	id                            *int64
-	created_at                    *time.Time
-	updated_at                    *time.Time
-	deleted_at                    *time.Time
-	email                         *string
-	password_hash                 *string
-	role                          *string
-	balance                       *float64
-	addbalance                    *float64
-	frozen_balance                *float64
-	addfrozen_balance             *float64
-	concurrency                   *int
-	addconcurrency                *int
-	status                        *string
-	username                      *string
-	notes                         *string
-	totp_secret_encrypted         *string
-	totp_enabled                  *bool
-	totp_enabled_at               *time.Time
-	signup_source                 *string
-	last_login_at                 *time.Time
-	last_active_at                *time.Time
-	restrict_public_groups        *bool
-	balance_notify_enabled        *bool
-	balance_notify_threshold_type *string
-	balance_notify_threshold      *float64
-	addbalance_notify_threshold   *float64
-	balance_notify_extra_emails   *string
-	total_recharged               *float64
-	addtotal_recharged            *float64
-	rpm_limit                     *int
-	addrpm_limit                  *int
-	clearedFields                 map[string]struct{}
-	api_keys                      map[int64]struct{}
-	removedapi_keys               map[int64]struct{}
-	clearedapi_keys               bool
-	redeem_codes                  map[int64]struct{}
-	removedredeem_codes           map[int64]struct{}
-	clearedredeem_codes           bool
-	subscriptions                 map[int64]struct{}
-	removedsubscriptions          map[int64]struct{}
-	clearedsubscriptions          bool
-	assigned_subscriptions        map[int64]struct{}
-	removedassigned_subscriptions map[int64]struct{}
-	clearedassigned_subscriptions bool
-	announcement_reads            map[int64]struct{}
-	removedannouncement_reads     map[int64]struct{}
-	clearedannouncement_reads     bool
-	allowed_groups                map[int64]struct{}
-	removedallowed_groups         map[int64]struct{}
-	clearedallowed_groups         bool
-	usage_logs                    map[int64]struct{}
-	removedusage_logs             map[int64]struct{}
-	clearedusage_logs             bool
-	attribute_values              map[int64]struct{}
-	removedattribute_values       map[int64]struct{}
-	clearedattribute_values       bool
-	promo_code_usages             map[int64]struct{}
-	removedpromo_code_usages      map[int64]struct{}
-	clearedpromo_code_usages      bool
-	payment_orders                map[int64]struct{}
-	removedpayment_orders         map[int64]struct{}
-	clearedpayment_orders         bool
-	auth_identities               map[int64]struct{}
-	removedauth_identities        map[int64]struct{}
-	clearedauth_identities        bool
-	pending_auth_sessions         map[int64]struct{}
-	removedpending_auth_sessions  map[int64]struct{}
-	clearedpending_auth_sessions  bool
-	platform_quotas               map[int64]struct{}
-	removedplatform_quotas        map[int64]struct{}
-	clearedplatform_quotas        bool
-	done                          bool
-	oldValue                      func(context.Context) (*User, error)
-	predicates                    []predicate.User
+	op                             Op
+	typ                            string
+	id                             *int64
+	created_at                     *time.Time
+	updated_at                     *time.Time
+	deleted_at                     *time.Time
+	email                          *string
+	password_hash                  *string
+	role                           *string
+	balance                        *float64
+	addbalance                     *float64
+	frozen_balance                 *float64
+	addfrozen_balance              *float64
+	concurrency                    *int
+	addconcurrency                 *int
+	status                         *string
+	moderation_penalty_scope       *string
+	moderation_key_lock_minutes    *int
+	addmoderation_key_lock_minutes *int
+	moderation_scope_changed_at    *time.Time
+	username                       *string
+	notes                          *string
+	totp_secret_encrypted          *string
+	totp_enabled                   *bool
+	totp_enabled_at                *time.Time
+	signup_source                  *string
+	last_login_at                  *time.Time
+	last_active_at                 *time.Time
+	restrict_public_groups         *bool
+	balance_notify_enabled         *bool
+	balance_notify_threshold_type  *string
+	balance_notify_threshold       *float64
+	addbalance_notify_threshold    *float64
+	balance_notify_extra_emails    *string
+	total_recharged                *float64
+	addtotal_recharged             *float64
+	rpm_limit                      *int
+	addrpm_limit                   *int
+	clearedFields                  map[string]struct{}
+	api_keys                       map[int64]struct{}
+	removedapi_keys                map[int64]struct{}
+	clearedapi_keys                bool
+	redeem_codes                   map[int64]struct{}
+	removedredeem_codes            map[int64]struct{}
+	clearedredeem_codes            bool
+	subscriptions                  map[int64]struct{}
+	removedsubscriptions           map[int64]struct{}
+	clearedsubscriptions           bool
+	assigned_subscriptions         map[int64]struct{}
+	removedassigned_subscriptions  map[int64]struct{}
+	clearedassigned_subscriptions  bool
+	announcement_reads             map[int64]struct{}
+	removedannouncement_reads      map[int64]struct{}
+	clearedannouncement_reads      bool
+	allowed_groups                 map[int64]struct{}
+	removedallowed_groups          map[int64]struct{}
+	clearedallowed_groups          bool
+	usage_logs                     map[int64]struct{}
+	removedusage_logs              map[int64]struct{}
+	clearedusage_logs              bool
+	attribute_values               map[int64]struct{}
+	removedattribute_values        map[int64]struct{}
+	clearedattribute_values        bool
+	promo_code_usages              map[int64]struct{}
+	removedpromo_code_usages       map[int64]struct{}
+	clearedpromo_code_usages       bool
+	payment_orders                 map[int64]struct{}
+	removedpayment_orders          map[int64]struct{}
+	clearedpayment_orders          bool
+	auth_identities                map[int64]struct{}
+	removedauth_identities         map[int64]struct{}
+	clearedauth_identities         bool
+	pending_auth_sessions          map[int64]struct{}
+	removedpending_auth_sessions   map[int64]struct{}
+	clearedpending_auth_sessions   bool
+	platform_quotas                map[int64]struct{}
+	removedplatform_quotas         map[int64]struct{}
+	clearedplatform_quotas         bool
+	done                           bool
+	oldValue                       func(context.Context) (*User, error)
+	predicates                     []predicate.User
 }
 
 var _ ent.Mutation = (*UserMutation)(nil)
@@ -49728,6 +50058,147 @@ func (m *UserMutation) OldStatus(ctx context.Context) (v string, err error) {
 // ResetStatus resets all changes to the "status" field.
 func (m *UserMutation) ResetStatus() {
 	m.status = nil
+}
+
+// SetModerationPenaltyScope sets the "moderation_penalty_scope" field.
+func (m *UserMutation) SetModerationPenaltyScope(s string) {
+	m.moderation_penalty_scope = &s
+}
+
+// ModerationPenaltyScope returns the value of the "moderation_penalty_scope" field in the mutation.
+func (m *UserMutation) ModerationPenaltyScope() (r string, exists bool) {
+	v := m.moderation_penalty_scope
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModerationPenaltyScope returns the old "moderation_penalty_scope" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldModerationPenaltyScope(ctx context.Context) (v string, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModerationPenaltyScope is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModerationPenaltyScope requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModerationPenaltyScope: %w", err)
+	}
+	return oldValue.ModerationPenaltyScope, nil
+}
+
+// ResetModerationPenaltyScope resets all changes to the "moderation_penalty_scope" field.
+func (m *UserMutation) ResetModerationPenaltyScope() {
+	m.moderation_penalty_scope = nil
+}
+
+// SetModerationKeyLockMinutes sets the "moderation_key_lock_minutes" field.
+func (m *UserMutation) SetModerationKeyLockMinutes(i int) {
+	m.moderation_key_lock_minutes = &i
+	m.addmoderation_key_lock_minutes = nil
+}
+
+// ModerationKeyLockMinutes returns the value of the "moderation_key_lock_minutes" field in the mutation.
+func (m *UserMutation) ModerationKeyLockMinutes() (r int, exists bool) {
+	v := m.moderation_key_lock_minutes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModerationKeyLockMinutes returns the old "moderation_key_lock_minutes" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldModerationKeyLockMinutes(ctx context.Context) (v int, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModerationKeyLockMinutes is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModerationKeyLockMinutes requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModerationKeyLockMinutes: %w", err)
+	}
+	return oldValue.ModerationKeyLockMinutes, nil
+}
+
+// AddModerationKeyLockMinutes adds i to the "moderation_key_lock_minutes" field.
+func (m *UserMutation) AddModerationKeyLockMinutes(i int) {
+	if m.addmoderation_key_lock_minutes != nil {
+		*m.addmoderation_key_lock_minutes += i
+	} else {
+		m.addmoderation_key_lock_minutes = &i
+	}
+}
+
+// AddedModerationKeyLockMinutes returns the value that was added to the "moderation_key_lock_minutes" field in this mutation.
+func (m *UserMutation) AddedModerationKeyLockMinutes() (r int, exists bool) {
+	v := m.addmoderation_key_lock_minutes
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetModerationKeyLockMinutes resets all changes to the "moderation_key_lock_minutes" field.
+func (m *UserMutation) ResetModerationKeyLockMinutes() {
+	m.moderation_key_lock_minutes = nil
+	m.addmoderation_key_lock_minutes = nil
+}
+
+// SetModerationScopeChangedAt sets the "moderation_scope_changed_at" field.
+func (m *UserMutation) SetModerationScopeChangedAt(t time.Time) {
+	m.moderation_scope_changed_at = &t
+}
+
+// ModerationScopeChangedAt returns the value of the "moderation_scope_changed_at" field in the mutation.
+func (m *UserMutation) ModerationScopeChangedAt() (r time.Time, exists bool) {
+	v := m.moderation_scope_changed_at
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldModerationScopeChangedAt returns the old "moderation_scope_changed_at" field's value of the User entity.
+// If the User object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *UserMutation) OldModerationScopeChangedAt(ctx context.Context) (v *time.Time, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldModerationScopeChangedAt is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldModerationScopeChangedAt requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldModerationScopeChangedAt: %w", err)
+	}
+	return oldValue.ModerationScopeChangedAt, nil
+}
+
+// ClearModerationScopeChangedAt clears the value of the "moderation_scope_changed_at" field.
+func (m *UserMutation) ClearModerationScopeChangedAt() {
+	m.moderation_scope_changed_at = nil
+	m.clearedFields[user.FieldModerationScopeChangedAt] = struct{}{}
+}
+
+// ModerationScopeChangedAtCleared returns if the "moderation_scope_changed_at" field was cleared in this mutation.
+func (m *UserMutation) ModerationScopeChangedAtCleared() bool {
+	_, ok := m.clearedFields[user.FieldModerationScopeChangedAt]
+	return ok
+}
+
+// ResetModerationScopeChangedAt resets all changes to the "moderation_scope_changed_at" field.
+func (m *UserMutation) ResetModerationScopeChangedAt() {
+	m.moderation_scope_changed_at = nil
+	delete(m.clearedFields, user.FieldModerationScopeChangedAt)
 }
 
 // SetUsername sets the "username" field.
@@ -51132,7 +51603,7 @@ func (m *UserMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *UserMutation) Fields() []string {
-	fields := make([]string, 0, 25)
+	fields := make([]string, 0, 28)
 	if m.created_at != nil {
 		fields = append(fields, user.FieldCreatedAt)
 	}
@@ -51162,6 +51633,15 @@ func (m *UserMutation) Fields() []string {
 	}
 	if m.status != nil {
 		fields = append(fields, user.FieldStatus)
+	}
+	if m.moderation_penalty_scope != nil {
+		fields = append(fields, user.FieldModerationPenaltyScope)
+	}
+	if m.moderation_key_lock_minutes != nil {
+		fields = append(fields, user.FieldModerationKeyLockMinutes)
+	}
+	if m.moderation_scope_changed_at != nil {
+		fields = append(fields, user.FieldModerationScopeChangedAt)
 	}
 	if m.username != nil {
 		fields = append(fields, user.FieldUsername)
@@ -51236,6 +51716,12 @@ func (m *UserMutation) Field(name string) (ent.Value, bool) {
 		return m.Concurrency()
 	case user.FieldStatus:
 		return m.Status()
+	case user.FieldModerationPenaltyScope:
+		return m.ModerationPenaltyScope()
+	case user.FieldModerationKeyLockMinutes:
+		return m.ModerationKeyLockMinutes()
+	case user.FieldModerationScopeChangedAt:
+		return m.ModerationScopeChangedAt()
 	case user.FieldUsername:
 		return m.Username()
 	case user.FieldNotes:
@@ -51295,6 +51781,12 @@ func (m *UserMutation) OldField(ctx context.Context, name string) (ent.Value, er
 		return m.OldConcurrency(ctx)
 	case user.FieldStatus:
 		return m.OldStatus(ctx)
+	case user.FieldModerationPenaltyScope:
+		return m.OldModerationPenaltyScope(ctx)
+	case user.FieldModerationKeyLockMinutes:
+		return m.OldModerationKeyLockMinutes(ctx)
+	case user.FieldModerationScopeChangedAt:
+		return m.OldModerationScopeChangedAt(ctx)
 	case user.FieldUsername:
 		return m.OldUsername(ctx)
 	case user.FieldNotes:
@@ -51403,6 +51895,27 @@ func (m *UserMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetStatus(v)
+		return nil
+	case user.FieldModerationPenaltyScope:
+		v, ok := value.(string)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModerationPenaltyScope(v)
+		return nil
+	case user.FieldModerationKeyLockMinutes:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModerationKeyLockMinutes(v)
+		return nil
+	case user.FieldModerationScopeChangedAt:
+		v, ok := value.(time.Time)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetModerationScopeChangedAt(v)
 		return nil
 	case user.FieldUsername:
 		v, ok := value.(string)
@@ -51526,6 +52039,9 @@ func (m *UserMutation) AddedFields() []string {
 	if m.addconcurrency != nil {
 		fields = append(fields, user.FieldConcurrency)
 	}
+	if m.addmoderation_key_lock_minutes != nil {
+		fields = append(fields, user.FieldModerationKeyLockMinutes)
+	}
 	if m.addbalance_notify_threshold != nil {
 		fields = append(fields, user.FieldBalanceNotifyThreshold)
 	}
@@ -51549,6 +52065,8 @@ func (m *UserMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedFrozenBalance()
 	case user.FieldConcurrency:
 		return m.AddedConcurrency()
+	case user.FieldModerationKeyLockMinutes:
+		return m.AddedModerationKeyLockMinutes()
 	case user.FieldBalanceNotifyThreshold:
 		return m.AddedBalanceNotifyThreshold()
 	case user.FieldTotalRecharged:
@@ -51585,6 +52103,13 @@ func (m *UserMutation) AddField(name string, value ent.Value) error {
 		}
 		m.AddConcurrency(v)
 		return nil
+	case user.FieldModerationKeyLockMinutes:
+		v, ok := value.(int)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddModerationKeyLockMinutes(v)
+		return nil
 	case user.FieldBalanceNotifyThreshold:
 		v, ok := value.(float64)
 		if !ok {
@@ -51617,6 +52142,9 @@ func (m *UserMutation) ClearedFields() []string {
 	if m.FieldCleared(user.FieldDeletedAt) {
 		fields = append(fields, user.FieldDeletedAt)
 	}
+	if m.FieldCleared(user.FieldModerationScopeChangedAt) {
+		fields = append(fields, user.FieldModerationScopeChangedAt)
+	}
 	if m.FieldCleared(user.FieldTotpSecretEncrypted) {
 		fields = append(fields, user.FieldTotpSecretEncrypted)
 	}
@@ -51648,6 +52176,9 @@ func (m *UserMutation) ClearField(name string) error {
 	switch name {
 	case user.FieldDeletedAt:
 		m.ClearDeletedAt()
+		return nil
+	case user.FieldModerationScopeChangedAt:
+		m.ClearModerationScopeChangedAt()
 		return nil
 	case user.FieldTotpSecretEncrypted:
 		m.ClearTotpSecretEncrypted()
@@ -51701,6 +52232,15 @@ func (m *UserMutation) ResetField(name string) error {
 		return nil
 	case user.FieldStatus:
 		m.ResetStatus()
+		return nil
+	case user.FieldModerationPenaltyScope:
+		m.ResetModerationPenaltyScope()
+		return nil
+	case user.FieldModerationKeyLockMinutes:
+		m.ResetModerationKeyLockMinutes()
+		return nil
+	case user.FieldModerationScopeChangedAt:
+		m.ResetModerationScopeChangedAt()
 		return nil
 	case user.FieldUsername:
 		m.ResetUsername()

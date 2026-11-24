@@ -572,6 +572,7 @@ func TestAPIContracts(t *testing.T) {
 						Stream:                true,
 						DurationMs:            ptr(100),
 						FirstTokenMs:          ptr(50),
+						FirstVisibleTextMs:    ptr(75),
 						CreatedAt:             deps.now,
 					},
 				})
@@ -616,6 +617,7 @@ func TestAPIContracts(t *testing.T) {
 							"stream": true,
 							"duration_ms": 100,
 							"first_token_ms": 50,
+							"first_visible_text_ms": 75,
 							"image_count": 0,
 							"image_size": null,
 							"image_input_size": null,
@@ -2393,6 +2395,10 @@ func (r *stubApiKeyRepo) GetByKey(ctx context.Context, key string) (*service.API
 	}
 	clone := *found
 	return &clone, nil
+}
+
+func (r *stubApiKeyRepo) GetModerationState(ctx context.Context, id, userID int64) (service.APIKeyModerationState, error) {
+	return service.APIKeyModerationState{UserStatus: service.StatusActive}, nil
 }
 
 func (r *stubApiKeyRepo) GetByKeyForAuth(ctx context.Context, key string) (*service.APIKey, error) {

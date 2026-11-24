@@ -95,6 +95,21 @@ func Status(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldStatus, v))
 }
 
+// ModerationLockedAt applies equality check predicate on the "moderation_locked_at" field. It's identical to ModerationLockedAtEQ.
+func ModerationLockedAt(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldModerationLockedAt, v))
+}
+
+// ModerationLockedUntil applies equality check predicate on the "moderation_locked_until" field. It's identical to ModerationLockedUntilEQ.
+func ModerationLockedUntil(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldModerationLockedUntil, v))
+}
+
+// ModerationLastUnlockedAt applies equality check predicate on the "moderation_last_unlocked_at" field. It's identical to ModerationLastUnlockedAtEQ.
+func ModerationLastUnlockedAt(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldModerationLastUnlockedAt, v))
+}
+
 // LastUsedAt applies equality check predicate on the "last_used_at" field. It's identical to LastUsedAtEQ.
 func LastUsedAt(v time.Time) predicate.APIKey {
 	return predicate.APIKey(sql.FieldEQ(FieldLastUsedAt, v))
@@ -533,6 +548,156 @@ func StatusEqualFold(v string) predicate.APIKey {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.APIKey {
 	return predicate.APIKey(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// ModerationLockedAtEQ applies the EQ predicate on the "moderation_locked_at" field.
+func ModerationLockedAtEQ(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldModerationLockedAt, v))
+}
+
+// ModerationLockedAtNEQ applies the NEQ predicate on the "moderation_locked_at" field.
+func ModerationLockedAtNEQ(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldModerationLockedAt, v))
+}
+
+// ModerationLockedAtIn applies the In predicate on the "moderation_locked_at" field.
+func ModerationLockedAtIn(vs ...time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldModerationLockedAt, vs...))
+}
+
+// ModerationLockedAtNotIn applies the NotIn predicate on the "moderation_locked_at" field.
+func ModerationLockedAtNotIn(vs ...time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldModerationLockedAt, vs...))
+}
+
+// ModerationLockedAtGT applies the GT predicate on the "moderation_locked_at" field.
+func ModerationLockedAtGT(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldModerationLockedAt, v))
+}
+
+// ModerationLockedAtGTE applies the GTE predicate on the "moderation_locked_at" field.
+func ModerationLockedAtGTE(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldModerationLockedAt, v))
+}
+
+// ModerationLockedAtLT applies the LT predicate on the "moderation_locked_at" field.
+func ModerationLockedAtLT(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldModerationLockedAt, v))
+}
+
+// ModerationLockedAtLTE applies the LTE predicate on the "moderation_locked_at" field.
+func ModerationLockedAtLTE(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldModerationLockedAt, v))
+}
+
+// ModerationLockedAtIsNil applies the IsNil predicate on the "moderation_locked_at" field.
+func ModerationLockedAtIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldModerationLockedAt))
+}
+
+// ModerationLockedAtNotNil applies the NotNil predicate on the "moderation_locked_at" field.
+func ModerationLockedAtNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldModerationLockedAt))
+}
+
+// ModerationLockedUntilEQ applies the EQ predicate on the "moderation_locked_until" field.
+func ModerationLockedUntilEQ(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldModerationLockedUntil, v))
+}
+
+// ModerationLockedUntilNEQ applies the NEQ predicate on the "moderation_locked_until" field.
+func ModerationLockedUntilNEQ(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldModerationLockedUntil, v))
+}
+
+// ModerationLockedUntilIn applies the In predicate on the "moderation_locked_until" field.
+func ModerationLockedUntilIn(vs ...time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldModerationLockedUntil, vs...))
+}
+
+// ModerationLockedUntilNotIn applies the NotIn predicate on the "moderation_locked_until" field.
+func ModerationLockedUntilNotIn(vs ...time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldModerationLockedUntil, vs...))
+}
+
+// ModerationLockedUntilGT applies the GT predicate on the "moderation_locked_until" field.
+func ModerationLockedUntilGT(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldModerationLockedUntil, v))
+}
+
+// ModerationLockedUntilGTE applies the GTE predicate on the "moderation_locked_until" field.
+func ModerationLockedUntilGTE(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldModerationLockedUntil, v))
+}
+
+// ModerationLockedUntilLT applies the LT predicate on the "moderation_locked_until" field.
+func ModerationLockedUntilLT(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldModerationLockedUntil, v))
+}
+
+// ModerationLockedUntilLTE applies the LTE predicate on the "moderation_locked_until" field.
+func ModerationLockedUntilLTE(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldModerationLockedUntil, v))
+}
+
+// ModerationLockedUntilIsNil applies the IsNil predicate on the "moderation_locked_until" field.
+func ModerationLockedUntilIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldModerationLockedUntil))
+}
+
+// ModerationLockedUntilNotNil applies the NotNil predicate on the "moderation_locked_until" field.
+func ModerationLockedUntilNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldModerationLockedUntil))
+}
+
+// ModerationLastUnlockedAtEQ applies the EQ predicate on the "moderation_last_unlocked_at" field.
+func ModerationLastUnlockedAtEQ(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldEQ(FieldModerationLastUnlockedAt, v))
+}
+
+// ModerationLastUnlockedAtNEQ applies the NEQ predicate on the "moderation_last_unlocked_at" field.
+func ModerationLastUnlockedAtNEQ(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNEQ(FieldModerationLastUnlockedAt, v))
+}
+
+// ModerationLastUnlockedAtIn applies the In predicate on the "moderation_last_unlocked_at" field.
+func ModerationLastUnlockedAtIn(vs ...time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldIn(FieldModerationLastUnlockedAt, vs...))
+}
+
+// ModerationLastUnlockedAtNotIn applies the NotIn predicate on the "moderation_last_unlocked_at" field.
+func ModerationLastUnlockedAtNotIn(vs ...time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotIn(FieldModerationLastUnlockedAt, vs...))
+}
+
+// ModerationLastUnlockedAtGT applies the GT predicate on the "moderation_last_unlocked_at" field.
+func ModerationLastUnlockedAtGT(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGT(FieldModerationLastUnlockedAt, v))
+}
+
+// ModerationLastUnlockedAtGTE applies the GTE predicate on the "moderation_last_unlocked_at" field.
+func ModerationLastUnlockedAtGTE(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldGTE(FieldModerationLastUnlockedAt, v))
+}
+
+// ModerationLastUnlockedAtLT applies the LT predicate on the "moderation_last_unlocked_at" field.
+func ModerationLastUnlockedAtLT(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLT(FieldModerationLastUnlockedAt, v))
+}
+
+// ModerationLastUnlockedAtLTE applies the LTE predicate on the "moderation_last_unlocked_at" field.
+func ModerationLastUnlockedAtLTE(v time.Time) predicate.APIKey {
+	return predicate.APIKey(sql.FieldLTE(FieldModerationLastUnlockedAt, v))
+}
+
+// ModerationLastUnlockedAtIsNil applies the IsNil predicate on the "moderation_last_unlocked_at" field.
+func ModerationLastUnlockedAtIsNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldIsNull(FieldModerationLastUnlockedAt))
+}
+
+// ModerationLastUnlockedAtNotNil applies the NotNil predicate on the "moderation_last_unlocked_at" field.
+func ModerationLastUnlockedAtNotNil() predicate.APIKey {
+	return predicate.APIKey(sql.FieldNotNull(FieldModerationLastUnlockedAt))
 }
 
 // LastUsedAtEQ applies the EQ predicate on the "last_used_at" field.

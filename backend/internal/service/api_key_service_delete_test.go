@@ -78,6 +78,10 @@ func (s *apiKeyRepoStub) GetByKey(ctx context.Context, key string) (*APIKey, err
 	panic("unexpected GetByKey call")
 }
 
+func (s *apiKeyRepoStub) GetModerationState(ctx context.Context, id, userID int64) (APIKeyModerationState, error) {
+	return APIKeyModerationState{UserStatus: StatusActive}, nil
+}
+
 func (s *apiKeyRepoStub) GetByKeyForAuth(ctx context.Context, key string) (*APIKey, error) {
 	panic("unexpected GetByKeyForAuth call")
 }

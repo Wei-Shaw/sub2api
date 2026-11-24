@@ -282,6 +282,7 @@ type OpenAIForwardResult struct {
 	ResponseHeaders       http.Header
 	Duration              time.Duration
 	FirstTokenMs          *int
+	FirstVisibleTextMs    *int
 	ClientDisconnect      bool
 	ImageCount            int
 	// ImageEndpoint 标记请求来自专用图片端点；分组 image_count_billing 开关

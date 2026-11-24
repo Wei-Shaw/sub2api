@@ -13,7 +13,9 @@
         <div v-for="key in apiKeys" :key="key.id" class="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-600 dark:bg-dark-800">
           <div class="flex items-start justify-between">
             <div class="min-w-0 flex-1">
-              <div class="mb-1 flex items-center gap-2"><span class="font-medium text-gray-900 dark:text-white">{{ key.name }}</span><span :class="['badge text-xs', key.status === 'active' ? 'badge-success' : 'badge-danger']">{{ key.status }}</span></div>
+              <div class="mb-1 flex items-center gap-2"><span class="font-medium text-gray-900 dark:text-white">{{ key.name }}</span><span :class="['badge text-xs', !key.moderation_locked_at && key.status === 'active' ? 'badge-success' : 'badge-danger']">{{ key.moderation_locked_at ? t('admin.riskControl.keyLocked') : key.status }}</span></div>
+              <p v-if="key.moderation_locked_at && key.moderation_locked_until" class="mb-1 text-xs text-gray-500 dark:text-dark-400">{{ t('keys.moderationLockedUntil', { time: formatDateTime(key.moderation_locked_until) }) }}</p>
+              <button v-if="key.moderation_locked_at" type="button" class="btn btn-secondary mb-1 px-2 py-1 text-xs" :disabled="unlockingKeyID !== null" @click="unlockKey(key)">{{ t('admin.riskControl.unlockKey') }}</button>
               <p class="truncate font-mono text-sm text-gray-500">{{ key.key.substring(0, 20) }}...{{ key.key.substring(key.key.length - 8) }}</p>
             </div>
           </div>
@@ -111,6 +113,7 @@ import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { adminAPI } from '@/api/admin'
 import { formatDateTime } from '@/utils/format'
+import { useModerationLockRefresh } from '@/composables/useModerationLockRefresh'
 import type { AdminUser, AdminGroup, ApiKey } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import GroupBadge from '@/components/common/GroupBadge.vue'
@@ -121,6 +124,18 @@ const emit = defineEmits(['close'])
 const { t } = useI18n()
 const appStore = useAppStore()
 
+const unlockingKeyID = ref<number | null>(null)
+async function unlockKey(key: ApiKey) {
+  if (!props.user || unlockingKeyID.value !== null || !window.confirm(t('admin.riskControl.unlockConfirm', { id: key.id }))) return
+  unlockingKeyID.value = key.id
+  try {
+    await adminAPI.riskControl.unlockKey(props.user.id, key.id)
+    key.moderation_locked_at = null
+    key.moderation_locked_until = null
+    appStore.showSuccess(t('admin.riskControl.unlockSuccess'))
+  } catch { appStore.showError(t('admin.riskControl.unlockFailed')) }
+  finally { unlockingKeyID.value = null }
+}
 const apiKeys = ref<ApiKey[]>([])
 const allGroups = ref<AdminGroup[]>([])
 const loading = ref(false)
@@ -154,12 +169,14 @@ watch(() => [props.show, props.user?.id] as const, ([show], _, onCleanup) => {
   }
 })
 
-const load = async () => {
+const load = async (background = false) => {
   if (!props.user) return
   const version = ++requestVersion
-  apiKeys.value = []
-  loading.value = true
-  groupButtonRefs.value.clear()
+  if (!background) {
+    apiKeys.value = []
+    loading.value = true
+    groupButtonRefs.value.clear()
+  }
   try {
     const res = await adminAPI.users.getUserApiKeys(props.user.id)
     if (version === requestVersion) apiKeys.value = res.items || []
@@ -170,6 +187,8 @@ const load = async () => {
     if (version === requestVersion) loading.value = false
   }
 }
+
+useModerationLockRefresh(() => props.show ? apiKeys.value : [], () => load(true))
 
 const loadGroups = async () => {
   try {

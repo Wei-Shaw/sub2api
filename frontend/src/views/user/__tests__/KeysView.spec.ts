@@ -165,7 +165,7 @@ const DataTableStub = {
       <button data-test="sort-current-concurrency" @click="$emit('sort', 'current_concurrency', 'asc')">
         Sort Current Concurrency
       </button>
-      <div v-for="row in data" :key="row.id">
+      <div v-for="row in data" :key="row.id" :data-test="'key-row-' + row.id">
         <div
           v-if="columns.some((col) => col.key === 'id')"
           data-test="key-id"
@@ -173,7 +173,8 @@ const DataTableStub = {
           <slot name="cell-id" :value="row.id" :row="row" />
         </div>
         <slot name="cell-name" :value="row.name" :row="row" />
-        <slot name="cell-actions" :row="row" />
+        <slot v-if="columns.some((col) => col.key === 'status')" name="cell-status" :value="row.status" :row="row" />
+        <div data-test="key-actions"><slot name="cell-actions" :row="row" /></div>
         <div data-test="current-concurrency">
           <slot name="cell-current_concurrency" :value="row.current_concurrency" :row="row" />
         </div>
@@ -334,6 +335,38 @@ describe('user KeysView column settings', () => {
     await wrapper.get('#key-form').trigger('submit')
     await flushPromises()
     expect(updateKey).toHaveBeenNthCalledWith(2, key.id, expect.objectContaining({ name: 'Unsaved name', status: formStatus }))
+    wrapper.unmount()
+  })
+
+  it('shows the automatic release time for a timed key lock', async () => {
+    const key = { ...createApiKey(), moderation_locked_at: new Date().toISOString(), moderation_locked_until: new Date(Date.now() + 600_000).toISOString() }
+    listKeys.mockResolvedValueOnce({ items: [key], total: 1, page: 1, page_size: 20, pages: 1 })
+    const wrapper = await mountView()
+    const row = wrapper.get('[data-test="key-row-1"]')
+    expect(row.text()).toContain('keys.moderationLockedUntil')
+    expect(row.find('[title="keys.moderationLockedHint"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('shows the moderation lock and hides status and delete actions only on the locked key', async () => {
+    const lockedKey = { ...createApiKey(), moderation_locked_at: '2026-11-24T00:00:00Z' }
+    const healthyKey = { ...createApiKey(), id: 2, name: 'healthy-key' }
+    listKeys.mockResolvedValueOnce({ items: [lockedKey, healthyKey], total: 2, page: 1, page_size: 20, pages: 1 })
+    const wrapper = await mountView()
+
+    const locked = wrapper.get('[data-test="key-row-1"]')
+    expect(locked.get('[title="keys.moderationLockedHint"]').text()).toBe('keys.moderationLocked')
+    const lockedActions = locked.get('[data-test="key-actions"]').text()
+    expect(lockedActions).not.toContain('keys.enable')
+    expect(lockedActions).not.toContain('keys.disable')
+    expect(lockedActions).not.toContain('common.delete')
+
+    const healthy = wrapper.get('[data-test="key-row-2"]')
+    expect(healthy.text()).toContain('Active')
+    expect(healthy.find('[title="keys.moderationLockedHint"]').exists()).toBe(false)
+    const healthyActions = healthy.get('[data-test="key-actions"]').text()
+    expect(healthyActions).toContain('keys.disable')
+    expect(healthyActions).toContain('common.delete')
     wrapper.unmount()
   })
 

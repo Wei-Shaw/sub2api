@@ -158,6 +158,48 @@ func (_c *UserCreate) SetNillableStatus(v *string) *UserCreate {
 	return _c
 }
 
+// SetModerationPenaltyScope sets the "moderation_penalty_scope" field.
+func (_c *UserCreate) SetModerationPenaltyScope(v string) *UserCreate {
+	_c.mutation.SetModerationPenaltyScope(v)
+	return _c
+}
+
+// SetNillableModerationPenaltyScope sets the "moderation_penalty_scope" field if the given value is not nil.
+func (_c *UserCreate) SetNillableModerationPenaltyScope(v *string) *UserCreate {
+	if v != nil {
+		_c.SetModerationPenaltyScope(*v)
+	}
+	return _c
+}
+
+// SetModerationKeyLockMinutes sets the "moderation_key_lock_minutes" field.
+func (_c *UserCreate) SetModerationKeyLockMinutes(v int) *UserCreate {
+	_c.mutation.SetModerationKeyLockMinutes(v)
+	return _c
+}
+
+// SetNillableModerationKeyLockMinutes sets the "moderation_key_lock_minutes" field if the given value is not nil.
+func (_c *UserCreate) SetNillableModerationKeyLockMinutes(v *int) *UserCreate {
+	if v != nil {
+		_c.SetModerationKeyLockMinutes(*v)
+	}
+	return _c
+}
+
+// SetModerationScopeChangedAt sets the "moderation_scope_changed_at" field.
+func (_c *UserCreate) SetModerationScopeChangedAt(v time.Time) *UserCreate {
+	_c.mutation.SetModerationScopeChangedAt(v)
+	return _c
+}
+
+// SetNillableModerationScopeChangedAt sets the "moderation_scope_changed_at" field if the given value is not nil.
+func (_c *UserCreate) SetNillableModerationScopeChangedAt(v *time.Time) *UserCreate {
+	if v != nil {
+		_c.SetModerationScopeChangedAt(*v)
+	}
+	return _c
+}
+
 // SetUsername sets the "username" field.
 func (_c *UserCreate) SetUsername(v string) *UserCreate {
 	_c.mutation.SetUsername(v)
@@ -634,6 +676,14 @@ func (_c *UserCreate) defaults() error {
 		v := user.DefaultStatus
 		_c.mutation.SetStatus(v)
 	}
+	if _, ok := _c.mutation.ModerationPenaltyScope(); !ok {
+		v := user.DefaultModerationPenaltyScope
+		_c.mutation.SetModerationPenaltyScope(v)
+	}
+	if _, ok := _c.mutation.ModerationKeyLockMinutes(); !ok {
+		v := user.DefaultModerationKeyLockMinutes
+		_c.mutation.SetModerationKeyLockMinutes(v)
+	}
 	if _, ok := _c.mutation.Username(); !ok {
 		v := user.DefaultUsername
 		_c.mutation.SetUsername(v)
@@ -724,6 +774,22 @@ func (_c *UserCreate) check() error {
 	if v, ok := _c.mutation.Status(); ok {
 		if err := user.StatusValidator(v); err != nil {
 			return &ValidationError{Name: "status", err: fmt.Errorf(`ent: validator failed for field "User.status": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ModerationPenaltyScope(); !ok {
+		return &ValidationError{Name: "moderation_penalty_scope", err: errors.New(`ent: missing required field "User.moderation_penalty_scope"`)}
+	}
+	if v, ok := _c.mutation.ModerationPenaltyScope(); ok {
+		if err := user.ModerationPenaltyScopeValidator(v); err != nil {
+			return &ValidationError{Name: "moderation_penalty_scope", err: fmt.Errorf(`ent: validator failed for field "User.moderation_penalty_scope": %w`, err)}
+		}
+	}
+	if _, ok := _c.mutation.ModerationKeyLockMinutes(); !ok {
+		return &ValidationError{Name: "moderation_key_lock_minutes", err: errors.New(`ent: missing required field "User.moderation_key_lock_minutes"`)}
+	}
+	if v, ok := _c.mutation.ModerationKeyLockMinutes(); ok {
+		if err := user.ModerationKeyLockMinutesValidator(v); err != nil {
+			return &ValidationError{Name: "moderation_key_lock_minutes", err: fmt.Errorf(`ent: validator failed for field "User.moderation_key_lock_minutes": %w`, err)}
 		}
 	}
 	if _, ok := _c.mutation.Username(); !ok {
@@ -832,6 +898,18 @@ func (_c *UserCreate) createSpec() (*User, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(user.FieldStatus, field.TypeString, value)
 		_node.Status = value
+	}
+	if value, ok := _c.mutation.ModerationPenaltyScope(); ok {
+		_spec.SetField(user.FieldModerationPenaltyScope, field.TypeString, value)
+		_node.ModerationPenaltyScope = value
+	}
+	if value, ok := _c.mutation.ModerationKeyLockMinutes(); ok {
+		_spec.SetField(user.FieldModerationKeyLockMinutes, field.TypeInt, value)
+		_node.ModerationKeyLockMinutes = value
+	}
+	if value, ok := _c.mutation.ModerationScopeChangedAt(); ok {
+		_spec.SetField(user.FieldModerationScopeChangedAt, field.TypeTime, value)
+		_node.ModerationScopeChangedAt = &value
 	}
 	if value, ok := _c.mutation.Username(); ok {
 		_spec.SetField(user.FieldUsername, field.TypeString, value)
@@ -1289,6 +1367,54 @@ func (u *UserUpsert) UpdateStatus() *UserUpsert {
 	return u
 }
 
+// SetModerationPenaltyScope sets the "moderation_penalty_scope" field.
+func (u *UserUpsert) SetModerationPenaltyScope(v string) *UserUpsert {
+	u.Set(user.FieldModerationPenaltyScope, v)
+	return u
+}
+
+// UpdateModerationPenaltyScope sets the "moderation_penalty_scope" field to the value that was provided on create.
+func (u *UserUpsert) UpdateModerationPenaltyScope() *UserUpsert {
+	u.SetExcluded(user.FieldModerationPenaltyScope)
+	return u
+}
+
+// SetModerationKeyLockMinutes sets the "moderation_key_lock_minutes" field.
+func (u *UserUpsert) SetModerationKeyLockMinutes(v int) *UserUpsert {
+	u.Set(user.FieldModerationKeyLockMinutes, v)
+	return u
+}
+
+// UpdateModerationKeyLockMinutes sets the "moderation_key_lock_minutes" field to the value that was provided on create.
+func (u *UserUpsert) UpdateModerationKeyLockMinutes() *UserUpsert {
+	u.SetExcluded(user.FieldModerationKeyLockMinutes)
+	return u
+}
+
+// AddModerationKeyLockMinutes adds v to the "moderation_key_lock_minutes" field.
+func (u *UserUpsert) AddModerationKeyLockMinutes(v int) *UserUpsert {
+	u.Add(user.FieldModerationKeyLockMinutes, v)
+	return u
+}
+
+// SetModerationScopeChangedAt sets the "moderation_scope_changed_at" field.
+func (u *UserUpsert) SetModerationScopeChangedAt(v time.Time) *UserUpsert {
+	u.Set(user.FieldModerationScopeChangedAt, v)
+	return u
+}
+
+// UpdateModerationScopeChangedAt sets the "moderation_scope_changed_at" field to the value that was provided on create.
+func (u *UserUpsert) UpdateModerationScopeChangedAt() *UserUpsert {
+	u.SetExcluded(user.FieldModerationScopeChangedAt)
+	return u
+}
+
+// ClearModerationScopeChangedAt clears the value of the "moderation_scope_changed_at" field.
+func (u *UserUpsert) ClearModerationScopeChangedAt() *UserUpsert {
+	u.SetNull(user.FieldModerationScopeChangedAt)
+	return u
+}
+
 // SetUsername sets the "username" field.
 func (u *UserUpsert) SetUsername(v string) *UserUpsert {
 	u.Set(user.FieldUsername, v)
@@ -1713,6 +1839,62 @@ func (u *UserUpsertOne) SetStatus(v string) *UserUpsertOne {
 func (u *UserUpsertOne) UpdateStatus() *UserUpsertOne {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetModerationPenaltyScope sets the "moderation_penalty_scope" field.
+func (u *UserUpsertOne) SetModerationPenaltyScope(v string) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetModerationPenaltyScope(v)
+	})
+}
+
+// UpdateModerationPenaltyScope sets the "moderation_penalty_scope" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateModerationPenaltyScope() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateModerationPenaltyScope()
+	})
+}
+
+// SetModerationKeyLockMinutes sets the "moderation_key_lock_minutes" field.
+func (u *UserUpsertOne) SetModerationKeyLockMinutes(v int) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetModerationKeyLockMinutes(v)
+	})
+}
+
+// AddModerationKeyLockMinutes adds v to the "moderation_key_lock_minutes" field.
+func (u *UserUpsertOne) AddModerationKeyLockMinutes(v int) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.AddModerationKeyLockMinutes(v)
+	})
+}
+
+// UpdateModerationKeyLockMinutes sets the "moderation_key_lock_minutes" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateModerationKeyLockMinutes() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateModerationKeyLockMinutes()
+	})
+}
+
+// SetModerationScopeChangedAt sets the "moderation_scope_changed_at" field.
+func (u *UserUpsertOne) SetModerationScopeChangedAt(v time.Time) *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.SetModerationScopeChangedAt(v)
+	})
+}
+
+// UpdateModerationScopeChangedAt sets the "moderation_scope_changed_at" field to the value that was provided on create.
+func (u *UserUpsertOne) UpdateModerationScopeChangedAt() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateModerationScopeChangedAt()
+	})
+}
+
+// ClearModerationScopeChangedAt clears the value of the "moderation_scope_changed_at" field.
+func (u *UserUpsertOne) ClearModerationScopeChangedAt() *UserUpsertOne {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearModerationScopeChangedAt()
 	})
 }
 
@@ -2344,6 +2526,62 @@ func (u *UserUpsertBulk) SetStatus(v string) *UserUpsertBulk {
 func (u *UserUpsertBulk) UpdateStatus() *UserUpsertBulk {
 	return u.Update(func(s *UserUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetModerationPenaltyScope sets the "moderation_penalty_scope" field.
+func (u *UserUpsertBulk) SetModerationPenaltyScope(v string) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetModerationPenaltyScope(v)
+	})
+}
+
+// UpdateModerationPenaltyScope sets the "moderation_penalty_scope" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateModerationPenaltyScope() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateModerationPenaltyScope()
+	})
+}
+
+// SetModerationKeyLockMinutes sets the "moderation_key_lock_minutes" field.
+func (u *UserUpsertBulk) SetModerationKeyLockMinutes(v int) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetModerationKeyLockMinutes(v)
+	})
+}
+
+// AddModerationKeyLockMinutes adds v to the "moderation_key_lock_minutes" field.
+func (u *UserUpsertBulk) AddModerationKeyLockMinutes(v int) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.AddModerationKeyLockMinutes(v)
+	})
+}
+
+// UpdateModerationKeyLockMinutes sets the "moderation_key_lock_minutes" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateModerationKeyLockMinutes() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateModerationKeyLockMinutes()
+	})
+}
+
+// SetModerationScopeChangedAt sets the "moderation_scope_changed_at" field.
+func (u *UserUpsertBulk) SetModerationScopeChangedAt(v time.Time) *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.SetModerationScopeChangedAt(v)
+	})
+}
+
+// UpdateModerationScopeChangedAt sets the "moderation_scope_changed_at" field to the value that was provided on create.
+func (u *UserUpsertBulk) UpdateModerationScopeChangedAt() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.UpdateModerationScopeChangedAt()
+	})
+}
+
+// ClearModerationScopeChangedAt clears the value of the "moderation_scope_changed_at" field.
+func (u *UserUpsertBulk) ClearModerationScopeChangedAt() *UserUpsertBulk {
+	return u.Update(func(s *UserUpsert) {
+		s.ClearModerationScopeChangedAt()
 	})
 }
 

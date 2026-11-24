@@ -101,7 +101,11 @@ export interface User {
   deleted_at?: string | null
 }
 
+export type ModerationPenaltyScope = 'user' | 'api_key'
+
 export interface AdminUser extends User {
+  moderation_penalty_scope?: ModerationPenaltyScope
+  moderation_key_lock_minutes?: number
   // 管理员备注（普通用户接口不返回）
   notes: string
   last_used_at?: string | null
@@ -747,6 +751,8 @@ export interface CompositeRouteDecision {
 }
 
 export interface ApiKey {
+  moderation_locked_at?: string | null
+  moderation_locked_until?: string | null
   id: number
   user_id: number
   key: string
@@ -1865,6 +1871,7 @@ export interface UsageLog {
   native_compaction_v2: boolean
   duration_ms: number | null
   first_token_ms: number | null
+  first_visible_text_ms?: number | null
 
   // 图片生成字段
   image_count: number
@@ -2164,6 +2171,8 @@ export interface ApiKeyUsageTrendPoint {
 // ==================== Admin User Management ====================
 
 export interface UpdateUserRequest {
+  moderation_penalty_scope?: ModerationPenaltyScope
+  moderation_key_lock_minutes?: number
   email?: string
   password?: string
   username?: string

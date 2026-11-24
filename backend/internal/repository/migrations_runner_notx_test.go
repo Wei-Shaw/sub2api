@@ -232,6 +232,28 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_usage_logs_effective_upstream_model_
 	require.NoError(t, mock.ExpectationsWereMet())
 }
 
+func TestModerationPenaltyMigrationRepairsOnlyInvalidIndexes(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+	for _, index := range []struct {
+		name    string
+		invalid bool
+	}{
+		{"idx_moderation_event_id", true},
+		{"idx_moderation_key_hits", false},
+		{"idx_moderation_user_hits", true},
+	} {
+		mock.ExpectQuery(`SELECT EXISTS \(`).WithArgs(index.name).
+			WillReturnRows(sqlmock.NewRows([]string{"exists"}).AddRow(index.invalid))
+		if index.invalid {
+			mock.ExpectExec("DROP INDEX CONCURRENTLY IF EXISTS " + index.name).WillReturnResult(sqlmock.NewResult(0, 0))
+		}
+	}
+	require.NoError(t, prepareNonTransactionalMigration(context.Background(), db, moderationPenaltyIndexesMigration))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 func TestApplyMigrationsFS_PaymentOrdersOutTradeNoUniqueMigration_FailsFastOnDuplicatePrecheck(t *testing.T) {
 	db, mock, err := sqlmock.New()
 	require.NoError(t, err)

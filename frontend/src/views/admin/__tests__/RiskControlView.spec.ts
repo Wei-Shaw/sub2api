@@ -11,6 +11,8 @@ const {
   updateConfig,
   getStatus,
   listLogs,
+  unlockKey,
+  unbanUser,
   getGroups,
   getProxies,
   testAPIKeys,
@@ -21,6 +23,8 @@ const {
   updateConfig: vi.fn(),
   getStatus: vi.fn(),
   listLogs: vi.fn(),
+  unlockKey: vi.fn(),
+  unbanUser: vi.fn(),
   getGroups: vi.fn(),
   getProxies: vi.fn(),
   testAPIKeys: vi.fn(),
@@ -38,7 +42,8 @@ vi.mock('@/api/admin', () => ({
       testAPIKeys,
       deleteFlaggedHash: vi.fn(),
       clearFlaggedHashes: vi.fn(),
-      unbanUser: vi.fn(),
+      unlockKey,
+      unbanUser,
     },
     groups: {
       getAll: getGroups,
@@ -198,6 +203,8 @@ describe('admin RiskControlView', () => {
     updateConfig.mockReset()
     getStatus.mockReset()
     listLogs.mockReset()
+    unlockKey.mockReset()
+    unbanUser.mockReset()
     getGroups.mockReset()
     showError.mockReset()
     showSuccess.mockReset()
@@ -218,6 +225,40 @@ describe('admin RiskControlView', () => {
       api_key_masks: [],
       api_key_statuses: [],
     }))
+  })
+
+  it('offers separate recovery actions for a locked key and a banned account', async () => {
+    const base = { flagged: true, action: 'block', created_at: '2026-11-01T00:00:00Z', violation_count: 2 }
+    const items = [
+      { ...base, id: 1, user_id: 7, api_key_id: 11, api_key_name: 'locked key', penalty_scope: 'api_key', penalty_action: 'api_key_locked', api_key_locked: true },
+      { ...base, id: 2, user_id: 8, api_key_id: 12, api_key_name: 'banned account key', penalty_scope: 'user', penalty_action: 'user_disabled', auto_banned: true, user_status: 'disabled' },
+      { ...base, id: 3, user_id: 7, api_key_id: 13, api_key_name: 'recovered key', penalty_scope: 'api_key', penalty_action: 'api_key_locked', penalty_locked_until: '2026-11-01T00:10:00Z', api_key_locked: false },
+    ]
+    listLogs.mockResolvedValue({ items, total: items.length, page: 1, page_size: 20, pages: 1 })
+    unlockKey.mockResolvedValue({ user_id: 7, api_key_id: 11, unlocked: true })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mount(RiskControlView, { global: { stubs: { AppLayout: AppLayoutStub, BaseDialog: BaseDialogStub, Icon: true, Select: true, Toggle: true, Pagination: true, ProxySelector: true } } })
+    try {
+      await flushPromises()
+      const rows = wrapper.findAll('tbody tr')
+      expect(rows).toHaveLength(3)
+      expect(rows[0].text()).toContain('admin.riskControl.unlockKey')
+      expect(rows[0].text()).not.toContain('admin.riskControl.unbanUser')
+      expect(rows[1].text()).toContain('admin.riskControl.unbanUser')
+      expect(rows[1].text()).not.toContain('admin.riskControl.unlockKey')
+      expect(rows[2].text()).not.toContain('admin.riskControl.unlockKey')
+      expect(rows[2].text()).toContain('admin.riskControl.keyLockScheduledEnd')
+      await findButtonByText(wrapper, 'admin.riskControl.unlockKey').trigger('click')
+      await flushPromises()
+      expect(unlockKey).toHaveBeenCalledTimes(1)
+      expect(unlockKey).toHaveBeenCalledWith(7, 11)
+      expect(unbanUser).not.toHaveBeenCalled()
+      expect(rows[0].text()).not.toContain('admin.riskControl.unlockKey')
+      expect(rows[0].text()).toContain('admin.riskControl.keyLocked')
+    } finally {
+      confirm.mockRestore()
+      wrapper.unmount()
+    }
   })
 
   it.each(['openai', 'typesafe'] as const)('shows the selected draft engine keys while %s remains active', async (activeEngine) => {

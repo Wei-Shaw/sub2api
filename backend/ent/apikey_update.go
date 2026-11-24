@@ -134,6 +134,66 @@ func (_u *APIKeyUpdate) SetNillableStatus(v *string) *APIKeyUpdate {
 	return _u
 }
 
+// SetModerationLockedAt sets the "moderation_locked_at" field.
+func (_u *APIKeyUpdate) SetModerationLockedAt(v time.Time) *APIKeyUpdate {
+	_u.mutation.SetModerationLockedAt(v)
+	return _u
+}
+
+// SetNillableModerationLockedAt sets the "moderation_locked_at" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableModerationLockedAt(v *time.Time) *APIKeyUpdate {
+	if v != nil {
+		_u.SetModerationLockedAt(*v)
+	}
+	return _u
+}
+
+// ClearModerationLockedAt clears the value of the "moderation_locked_at" field.
+func (_u *APIKeyUpdate) ClearModerationLockedAt() *APIKeyUpdate {
+	_u.mutation.ClearModerationLockedAt()
+	return _u
+}
+
+// SetModerationLockedUntil sets the "moderation_locked_until" field.
+func (_u *APIKeyUpdate) SetModerationLockedUntil(v time.Time) *APIKeyUpdate {
+	_u.mutation.SetModerationLockedUntil(v)
+	return _u
+}
+
+// SetNillableModerationLockedUntil sets the "moderation_locked_until" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableModerationLockedUntil(v *time.Time) *APIKeyUpdate {
+	if v != nil {
+		_u.SetModerationLockedUntil(*v)
+	}
+	return _u
+}
+
+// ClearModerationLockedUntil clears the value of the "moderation_locked_until" field.
+func (_u *APIKeyUpdate) ClearModerationLockedUntil() *APIKeyUpdate {
+	_u.mutation.ClearModerationLockedUntil()
+	return _u
+}
+
+// SetModerationLastUnlockedAt sets the "moderation_last_unlocked_at" field.
+func (_u *APIKeyUpdate) SetModerationLastUnlockedAt(v time.Time) *APIKeyUpdate {
+	_u.mutation.SetModerationLastUnlockedAt(v)
+	return _u
+}
+
+// SetNillableModerationLastUnlockedAt sets the "moderation_last_unlocked_at" field if the given value is not nil.
+func (_u *APIKeyUpdate) SetNillableModerationLastUnlockedAt(v *time.Time) *APIKeyUpdate {
+	if v != nil {
+		_u.SetModerationLastUnlockedAt(*v)
+	}
+	return _u
+}
+
+// ClearModerationLastUnlockedAt clears the value of the "moderation_last_unlocked_at" field.
+func (_u *APIKeyUpdate) ClearModerationLastUnlockedAt() *APIKeyUpdate {
+	_u.mutation.ClearModerationLastUnlockedAt()
+	return _u
+}
+
 // SetLastUsedAt sets the "last_used_at" field.
 func (_u *APIKeyUpdate) SetLastUsedAt(v time.Time) *APIKeyUpdate {
 	_u.mutation.SetLastUsedAt(v)
@@ -596,6 +656,24 @@ func (_u *APIKeyUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
 	}
+	if value, ok := _u.mutation.ModerationLockedAt(); ok {
+		_spec.SetField(apikey.FieldModerationLockedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ModerationLockedAtCleared() {
+		_spec.ClearField(apikey.FieldModerationLockedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ModerationLockedUntil(); ok {
+		_spec.SetField(apikey.FieldModerationLockedUntil, field.TypeTime, value)
+	}
+	if _u.mutation.ModerationLockedUntilCleared() {
+		_spec.ClearField(apikey.FieldModerationLockedUntil, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ModerationLastUnlockedAt(); ok {
+		_spec.SetField(apikey.FieldModerationLastUnlockedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ModerationLastUnlockedAtCleared() {
+		_spec.ClearField(apikey.FieldModerationLastUnlockedAt, field.TypeTime)
+	}
 	if value, ok := _u.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
 	}
@@ -918,6 +996,66 @@ func (_u *APIKeyUpdateOne) SetNillableStatus(v *string) *APIKeyUpdateOne {
 	if v != nil {
 		_u.SetStatus(*v)
 	}
+	return _u
+}
+
+// SetModerationLockedAt sets the "moderation_locked_at" field.
+func (_u *APIKeyUpdateOne) SetModerationLockedAt(v time.Time) *APIKeyUpdateOne {
+	_u.mutation.SetModerationLockedAt(v)
+	return _u
+}
+
+// SetNillableModerationLockedAt sets the "moderation_locked_at" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableModerationLockedAt(v *time.Time) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetModerationLockedAt(*v)
+	}
+	return _u
+}
+
+// ClearModerationLockedAt clears the value of the "moderation_locked_at" field.
+func (_u *APIKeyUpdateOne) ClearModerationLockedAt() *APIKeyUpdateOne {
+	_u.mutation.ClearModerationLockedAt()
+	return _u
+}
+
+// SetModerationLockedUntil sets the "moderation_locked_until" field.
+func (_u *APIKeyUpdateOne) SetModerationLockedUntil(v time.Time) *APIKeyUpdateOne {
+	_u.mutation.SetModerationLockedUntil(v)
+	return _u
+}
+
+// SetNillableModerationLockedUntil sets the "moderation_locked_until" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableModerationLockedUntil(v *time.Time) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetModerationLockedUntil(*v)
+	}
+	return _u
+}
+
+// ClearModerationLockedUntil clears the value of the "moderation_locked_until" field.
+func (_u *APIKeyUpdateOne) ClearModerationLockedUntil() *APIKeyUpdateOne {
+	_u.mutation.ClearModerationLockedUntil()
+	return _u
+}
+
+// SetModerationLastUnlockedAt sets the "moderation_last_unlocked_at" field.
+func (_u *APIKeyUpdateOne) SetModerationLastUnlockedAt(v time.Time) *APIKeyUpdateOne {
+	_u.mutation.SetModerationLastUnlockedAt(v)
+	return _u
+}
+
+// SetNillableModerationLastUnlockedAt sets the "moderation_last_unlocked_at" field if the given value is not nil.
+func (_u *APIKeyUpdateOne) SetNillableModerationLastUnlockedAt(v *time.Time) *APIKeyUpdateOne {
+	if v != nil {
+		_u.SetModerationLastUnlockedAt(*v)
+	}
+	return _u
+}
+
+// ClearModerationLastUnlockedAt clears the value of the "moderation_last_unlocked_at" field.
+func (_u *APIKeyUpdateOne) ClearModerationLastUnlockedAt() *APIKeyUpdateOne {
+	_u.mutation.ClearModerationLastUnlockedAt()
 	return _u
 }
 
@@ -1412,6 +1550,24 @@ func (_u *APIKeyUpdateOne) sqlSave(ctx context.Context) (_node *APIKey, err erro
 	}
 	if value, ok := _u.mutation.Status(); ok {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
+	}
+	if value, ok := _u.mutation.ModerationLockedAt(); ok {
+		_spec.SetField(apikey.FieldModerationLockedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ModerationLockedAtCleared() {
+		_spec.ClearField(apikey.FieldModerationLockedAt, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ModerationLockedUntil(); ok {
+		_spec.SetField(apikey.FieldModerationLockedUntil, field.TypeTime, value)
+	}
+	if _u.mutation.ModerationLockedUntilCleared() {
+		_spec.ClearField(apikey.FieldModerationLockedUntil, field.TypeTime)
+	}
+	if value, ok := _u.mutation.ModerationLastUnlockedAt(); ok {
+		_spec.SetField(apikey.FieldModerationLastUnlockedAt, field.TypeTime, value)
+	}
+	if _u.mutation.ModerationLastUnlockedAtCleared() {
+		_spec.ClearField(apikey.FieldModerationLastUnlockedAt, field.TypeTime)
 	}
 	if value, ok := _u.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)

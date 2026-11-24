@@ -3,15 +3,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import UserApiKeysModal from '../UserApiKeysModal.vue'
 import type { AdminUser } from '@/types'
 
-const { getKeys } = vi.hoisted(() => ({ getKeys: vi.fn() }))
+const { getKeys, unlockKey } = vi.hoisted(() => ({ getKeys: vi.fn(), unlockKey: vi.fn() }))
 vi.mock('@/api/admin', () => ({ adminAPI: {
-  users: { getUserApiKeys: getKeys }, groups: { getAll: vi.fn().mockResolvedValue([]) },
+  riskControl: { unlockKey }, users: { getUserApiKeys: getKeys }, groups: { getAll: vi.fn().mockResolvedValue([]) },
 } }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError: vi.fn(), showSuccess: vi.fn() }) }))
 vi.mock('@/utils/format', () => ({ formatDateTime: (value: string) => value }))
-vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string, args?: { time?: string }) => args?.time ? `${key} ${args.time}` : key }) }))
 enableAutoUnmount(afterEach)
-beforeEach(() => { getKeys.mockReset(); vi.spyOn(console, 'error').mockImplementation(() => {}) })
+beforeEach(() => { getKeys.mockReset(); unlockKey.mockReset(); vi.spyOn(console, 'error').mockImplementation(() => {}) })
 afterEach(() => vi.restoreAllMocks())
 function deferred() {
   let resolve!: (value: unknown) => void
@@ -38,6 +38,53 @@ async function switchUser(wrapper: Awaited<ReturnType<typeof open>>) {
 }
 
 describe('user API key loading', () => {
+  it('confirms recovery for the locked key and preserves its underlying status', async () => {
+    const locked = { ...keys(10, 'locked key').items[0], status: 'disabled', moderation_locked_at: '2026-11-01T00:00:00Z' }
+    getKeys.mockResolvedValue({ items: [locked, ...keys(11, 'healthy key').items] })
+    unlockKey.mockResolvedValue({ user_id: 1, api_key_id: 10, unlocked: true })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+    const wrapper = await open()
+    await flushPromises()
+    const buttons = () => wrapper.findAll('button').filter(button => button.text() === 'admin.riskControl.unlockKey')
+    expect(buttons()).toHaveLength(1)
+    await buttons()[0].trigger('click')
+    expect(confirm).toHaveBeenCalledOnce()
+    expect(unlockKey).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('admin.riskControl.keyLocked')
+    await buttons()[0].trigger('click')
+    await flushPromises()
+    expect(unlockKey).toHaveBeenCalledTimes(1)
+    expect(unlockKey).toHaveBeenCalledWith(1, 10)
+    expect(buttons()).toHaveLength(0)
+    expect(wrapper.text()).toContain('disabled')
+    expect(wrapper.text()).toContain('healthy key')
+  })
+
+  it('refreshes a timed lock at its deadline and displays the underlying key status', async () => {
+    vi.useFakeTimers()
+    const start = '2026-11-24T00:00:00.000Z'
+    const due = '2026-11-24T00:10:00.000Z'
+    vi.setSystemTime(new Date(start))
+    const key = { ...keys(10, 'timed key').items[0], status: 'disabled' }
+    getKeys.mockResolvedValueOnce({ items: [{ ...key, moderation_locked_at: start, moderation_locked_until: due }] })
+      .mockResolvedValueOnce({ items: [key] })
+    try {
+      const wrapper = await open()
+      await flushPromises()
+      expect(wrapper.text()).toContain(`keys.moderationLockedUntil ${due}`)
+      await vi.advanceTimersByTimeAsync(599_999)
+      expect(getKeys).toHaveBeenCalledTimes(1)
+      await vi.advanceTimersByTimeAsync(100)
+      await flushPromises()
+      expect(getKeys).toHaveBeenCalledTimes(2)
+      expect(wrapper.text()).not.toContain('admin.riskControl.unlockKey')
+      expect(wrapper.text()).toContain('disabled')
+      expect(unlockKey).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('does not display the previous user keys when the next load fails', async () => {
     getKeys.mockResolvedValueOnce(keys(1, 'first-user-key')).mockRejectedValueOnce(new Error('unavailable'))
     const wrapper = await open(); await flushPromises()

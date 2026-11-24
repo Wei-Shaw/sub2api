@@ -36,6 +36,12 @@ type APIKey struct {
 	GroupID *int64 `json:"group_id,omitempty"`
 	// Status holds the value of the "status" field.
 	Status string `json:"status,omitempty"`
+	// ModerationLockedAt holds the value of the "moderation_locked_at" field.
+	ModerationLockedAt *time.Time `json:"moderation_locked_at,omitempty"`
+	// ModerationLockedUntil holds the value of the "moderation_locked_until" field.
+	ModerationLockedUntil *time.Time `json:"moderation_locked_until,omitempty"`
+	// ModerationLastUnlockedAt holds the value of the "moderation_last_unlocked_at" field.
+	ModerationLastUnlockedAt *time.Time `json:"moderation_last_unlocked_at,omitempty"`
 	// Last usage time of this API key
 	LastUsedAt *time.Time `json:"last_used_at,omitempty"`
 	// Allowed IPs/CIDRs, e.g. ["192.168.1.100", "10.0.0.0/8"]
@@ -129,7 +135,7 @@ func (*APIKey) scanValues(columns []string) ([]any, error) {
 			values[i] = new(sql.NullInt64)
 		case apikey.FieldKey, apikey.FieldName, apikey.FieldStatus:
 			values[i] = new(sql.NullString)
-		case apikey.FieldCreatedAt, apikey.FieldUpdatedAt, apikey.FieldDeletedAt, apikey.FieldLastUsedAt, apikey.FieldExpiresAt, apikey.FieldWindow5hStart, apikey.FieldWindow1dStart, apikey.FieldWindow7dStart:
+		case apikey.FieldCreatedAt, apikey.FieldUpdatedAt, apikey.FieldDeletedAt, apikey.FieldModerationLockedAt, apikey.FieldModerationLockedUntil, apikey.FieldModerationLastUnlockedAt, apikey.FieldLastUsedAt, apikey.FieldExpiresAt, apikey.FieldWindow5hStart, apikey.FieldWindow1dStart, apikey.FieldWindow7dStart:
 			values[i] = new(sql.NullTime)
 		default:
 			values[i] = new(sql.UnknownType)
@@ -201,6 +207,27 @@ func (_m *APIKey) assignValues(columns []string, values []any) error {
 				return fmt.Errorf("unexpected type %T for field status", values[i])
 			} else if value.Valid {
 				_m.Status = value.String
+			}
+		case apikey.FieldModerationLockedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field moderation_locked_at", values[i])
+			} else if value.Valid {
+				_m.ModerationLockedAt = new(time.Time)
+				*_m.ModerationLockedAt = value.Time
+			}
+		case apikey.FieldModerationLockedUntil:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field moderation_locked_until", values[i])
+			} else if value.Valid {
+				_m.ModerationLockedUntil = new(time.Time)
+				*_m.ModerationLockedUntil = value.Time
+			}
+		case apikey.FieldModerationLastUnlockedAt:
+			if value, ok := values[i].(*sql.NullTime); !ok {
+				return fmt.Errorf("unexpected type %T for field moderation_last_unlocked_at", values[i])
+			} else if value.Valid {
+				_m.ModerationLastUnlockedAt = new(time.Time)
+				*_m.ModerationLastUnlockedAt = value.Time
 			}
 		case apikey.FieldLastUsedAt:
 			if value, ok := values[i].(*sql.NullTime); !ok {
@@ -379,6 +406,21 @@ func (_m *APIKey) String() string {
 	builder.WriteString(", ")
 	builder.WriteString("status=")
 	builder.WriteString(_m.Status)
+	builder.WriteString(", ")
+	if v := _m.ModerationLockedAt; v != nil {
+		builder.WriteString("moderation_locked_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.ModerationLockedUntil; v != nil {
+		builder.WriteString("moderation_locked_until=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
+	builder.WriteString(", ")
+	if v := _m.ModerationLastUnlockedAt; v != nil {
+		builder.WriteString("moderation_last_unlocked_at=")
+		builder.WriteString(v.Format(time.ANSIC))
+	}
 	builder.WriteString(", ")
 	if v := _m.LastUsedAt; v != nil {
 		builder.WriteString("last_used_at=")

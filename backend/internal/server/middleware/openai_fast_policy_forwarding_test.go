@@ -154,6 +154,10 @@ type openAIFastPolicyForwardingAPIKeyRepo struct {
 	apiKeys map[string]*service.APIKey
 }
 
+func (r *openAIFastPolicyForwardingAPIKeyRepo) GetModerationState(ctx context.Context, id, userID int64) (service.APIKeyModerationState, error) {
+	return service.APIKeyModerationState{UserStatus: service.StatusActive}, nil
+}
+
 func (r *openAIFastPolicyForwardingAPIKeyRepo) GetByKeyForAuth(_ context.Context, key string) (*service.APIKey, error) {
 	apiKey, ok := r.apiKeys[key]
 	if !ok {

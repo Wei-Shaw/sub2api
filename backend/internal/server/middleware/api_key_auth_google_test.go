@@ -103,6 +103,10 @@ func (f fakeAPIKeyRepo) GetByKey(ctx context.Context, key string) (*service.APIK
 	}
 	return f.getByKey(ctx, key)
 }
+func (f fakeAPIKeyRepo) GetModerationState(ctx context.Context, id, userID int64) (service.APIKeyModerationState, error) {
+	return service.APIKeyModerationState{UserStatus: service.StatusActive}, nil
+}
+
 func (f fakeAPIKeyRepo) GetByKeyForAuth(ctx context.Context, key string) (*service.APIKey, error) {
 	return f.GetByKey(ctx, key)
 }

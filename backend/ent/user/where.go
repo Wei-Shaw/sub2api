@@ -105,6 +105,21 @@ func Status(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldStatus, v))
 }
 
+// ModerationPenaltyScope applies equality check predicate on the "moderation_penalty_scope" field. It's identical to ModerationPenaltyScopeEQ.
+func ModerationPenaltyScope(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldModerationPenaltyScope, v))
+}
+
+// ModerationKeyLockMinutes applies equality check predicate on the "moderation_key_lock_minutes" field. It's identical to ModerationKeyLockMinutesEQ.
+func ModerationKeyLockMinutes(v int) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldModerationKeyLockMinutes, v))
+}
+
+// ModerationScopeChangedAt applies equality check predicate on the "moderation_scope_changed_at" field. It's identical to ModerationScopeChangedAtEQ.
+func ModerationScopeChangedAt(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldModerationScopeChangedAt, v))
+}
+
 // Username applies equality check predicate on the "username" field. It's identical to UsernameEQ.
 func Username(v string) predicate.User {
 	return predicate.User(sql.FieldEQ(FieldUsername, v))
@@ -688,6 +703,161 @@ func StatusEqualFold(v string) predicate.User {
 // StatusContainsFold applies the ContainsFold predicate on the "status" field.
 func StatusContainsFold(v string) predicate.User {
 	return predicate.User(sql.FieldContainsFold(FieldStatus, v))
+}
+
+// ModerationPenaltyScopeEQ applies the EQ predicate on the "moderation_penalty_scope" field.
+func ModerationPenaltyScopeEQ(v string) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldModerationPenaltyScope, v))
+}
+
+// ModerationPenaltyScopeNEQ applies the NEQ predicate on the "moderation_penalty_scope" field.
+func ModerationPenaltyScopeNEQ(v string) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldModerationPenaltyScope, v))
+}
+
+// ModerationPenaltyScopeIn applies the In predicate on the "moderation_penalty_scope" field.
+func ModerationPenaltyScopeIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldIn(FieldModerationPenaltyScope, vs...))
+}
+
+// ModerationPenaltyScopeNotIn applies the NotIn predicate on the "moderation_penalty_scope" field.
+func ModerationPenaltyScopeNotIn(vs ...string) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldModerationPenaltyScope, vs...))
+}
+
+// ModerationPenaltyScopeGT applies the GT predicate on the "moderation_penalty_scope" field.
+func ModerationPenaltyScopeGT(v string) predicate.User {
+	return predicate.User(sql.FieldGT(FieldModerationPenaltyScope, v))
+}
+
+// ModerationPenaltyScopeGTE applies the GTE predicate on the "moderation_penalty_scope" field.
+func ModerationPenaltyScopeGTE(v string) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldModerationPenaltyScope, v))
+}
+
+// ModerationPenaltyScopeLT applies the LT predicate on the "moderation_penalty_scope" field.
+func ModerationPenaltyScopeLT(v string) predicate.User {
+	return predicate.User(sql.FieldLT(FieldModerationPenaltyScope, v))
+}
+
+// ModerationPenaltyScopeLTE applies the LTE predicate on the "moderation_penalty_scope" field.
+func ModerationPenaltyScopeLTE(v string) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldModerationPenaltyScope, v))
+}
+
+// ModerationPenaltyScopeContains applies the Contains predicate on the "moderation_penalty_scope" field.
+func ModerationPenaltyScopeContains(v string) predicate.User {
+	return predicate.User(sql.FieldContains(FieldModerationPenaltyScope, v))
+}
+
+// ModerationPenaltyScopeHasPrefix applies the HasPrefix predicate on the "moderation_penalty_scope" field.
+func ModerationPenaltyScopeHasPrefix(v string) predicate.User {
+	return predicate.User(sql.FieldHasPrefix(FieldModerationPenaltyScope, v))
+}
+
+// ModerationPenaltyScopeHasSuffix applies the HasSuffix predicate on the "moderation_penalty_scope" field.
+func ModerationPenaltyScopeHasSuffix(v string) predicate.User {
+	return predicate.User(sql.FieldHasSuffix(FieldModerationPenaltyScope, v))
+}
+
+// ModerationPenaltyScopeEqualFold applies the EqualFold predicate on the "moderation_penalty_scope" field.
+func ModerationPenaltyScopeEqualFold(v string) predicate.User {
+	return predicate.User(sql.FieldEqualFold(FieldModerationPenaltyScope, v))
+}
+
+// ModerationPenaltyScopeContainsFold applies the ContainsFold predicate on the "moderation_penalty_scope" field.
+func ModerationPenaltyScopeContainsFold(v string) predicate.User {
+	return predicate.User(sql.FieldContainsFold(FieldModerationPenaltyScope, v))
+}
+
+// ModerationKeyLockMinutesEQ applies the EQ predicate on the "moderation_key_lock_minutes" field.
+func ModerationKeyLockMinutesEQ(v int) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldModerationKeyLockMinutes, v))
+}
+
+// ModerationKeyLockMinutesNEQ applies the NEQ predicate on the "moderation_key_lock_minutes" field.
+func ModerationKeyLockMinutesNEQ(v int) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldModerationKeyLockMinutes, v))
+}
+
+// ModerationKeyLockMinutesIn applies the In predicate on the "moderation_key_lock_minutes" field.
+func ModerationKeyLockMinutesIn(vs ...int) predicate.User {
+	return predicate.User(sql.FieldIn(FieldModerationKeyLockMinutes, vs...))
+}
+
+// ModerationKeyLockMinutesNotIn applies the NotIn predicate on the "moderation_key_lock_minutes" field.
+func ModerationKeyLockMinutesNotIn(vs ...int) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldModerationKeyLockMinutes, vs...))
+}
+
+// ModerationKeyLockMinutesGT applies the GT predicate on the "moderation_key_lock_minutes" field.
+func ModerationKeyLockMinutesGT(v int) predicate.User {
+	return predicate.User(sql.FieldGT(FieldModerationKeyLockMinutes, v))
+}
+
+// ModerationKeyLockMinutesGTE applies the GTE predicate on the "moderation_key_lock_minutes" field.
+func ModerationKeyLockMinutesGTE(v int) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldModerationKeyLockMinutes, v))
+}
+
+// ModerationKeyLockMinutesLT applies the LT predicate on the "moderation_key_lock_minutes" field.
+func ModerationKeyLockMinutesLT(v int) predicate.User {
+	return predicate.User(sql.FieldLT(FieldModerationKeyLockMinutes, v))
+}
+
+// ModerationKeyLockMinutesLTE applies the LTE predicate on the "moderation_key_lock_minutes" field.
+func ModerationKeyLockMinutesLTE(v int) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldModerationKeyLockMinutes, v))
+}
+
+// ModerationScopeChangedAtEQ applies the EQ predicate on the "moderation_scope_changed_at" field.
+func ModerationScopeChangedAtEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldEQ(FieldModerationScopeChangedAt, v))
+}
+
+// ModerationScopeChangedAtNEQ applies the NEQ predicate on the "moderation_scope_changed_at" field.
+func ModerationScopeChangedAtNEQ(v time.Time) predicate.User {
+	return predicate.User(sql.FieldNEQ(FieldModerationScopeChangedAt, v))
+}
+
+// ModerationScopeChangedAtIn applies the In predicate on the "moderation_scope_changed_at" field.
+func ModerationScopeChangedAtIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldIn(FieldModerationScopeChangedAt, vs...))
+}
+
+// ModerationScopeChangedAtNotIn applies the NotIn predicate on the "moderation_scope_changed_at" field.
+func ModerationScopeChangedAtNotIn(vs ...time.Time) predicate.User {
+	return predicate.User(sql.FieldNotIn(FieldModerationScopeChangedAt, vs...))
+}
+
+// ModerationScopeChangedAtGT applies the GT predicate on the "moderation_scope_changed_at" field.
+func ModerationScopeChangedAtGT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGT(FieldModerationScopeChangedAt, v))
+}
+
+// ModerationScopeChangedAtGTE applies the GTE predicate on the "moderation_scope_changed_at" field.
+func ModerationScopeChangedAtGTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldGTE(FieldModerationScopeChangedAt, v))
+}
+
+// ModerationScopeChangedAtLT applies the LT predicate on the "moderation_scope_changed_at" field.
+func ModerationScopeChangedAtLT(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLT(FieldModerationScopeChangedAt, v))
+}
+
+// ModerationScopeChangedAtLTE applies the LTE predicate on the "moderation_scope_changed_at" field.
+func ModerationScopeChangedAtLTE(v time.Time) predicate.User {
+	return predicate.User(sql.FieldLTE(FieldModerationScopeChangedAt, v))
+}
+
+// ModerationScopeChangedAtIsNil applies the IsNil predicate on the "moderation_scope_changed_at" field.
+func ModerationScopeChangedAtIsNil() predicate.User {
+	return predicate.User(sql.FieldIsNull(FieldModerationScopeChangedAt))
+}
+
+// ModerationScopeChangedAtNotNil applies the NotNil predicate on the "moderation_scope_changed_at" field.
+func ModerationScopeChangedAtNotNil() predicate.User {
+	return predicate.User(sql.FieldNotNull(FieldModerationScopeChangedAt))
 }
 
 // UsernameEQ applies the EQ predicate on the "username" field.
