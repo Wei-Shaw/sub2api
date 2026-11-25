@@ -72,7 +72,7 @@ func (s *BytePlusPrepaidService) account(ctx context.Context, id int64) (*Accoun
 		return nil, "", "", packguard.ErrInvalid
 	}
 	headers := http.Header{"Authorization": []string{"Bearer " + key}}
-	a.ApplyHeaderOverrides(headers)
+	a.ApplyHeaderOverrides(ctx, headers)
 	parts := strings.Fields(headers.Get("Authorization"))
 	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") || parts[1] != key {
 		return nil, "", "", packguard.ErrInvalid
@@ -171,7 +171,7 @@ func (s *BytePlusPrepaidService) Reconcile(ctx context.Context, id int64, reserv
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
 	req.Header.Set("Accept", "application/json")
-	a.ApplyHeaderOverrides(req.Header)
+	a.ApplyHeaderOverrides(req.Context(), req.Header)
 	proxy := ""
 	if a.ProxyID != nil && a.Proxy != nil {
 		proxy = a.Proxy.URL()
