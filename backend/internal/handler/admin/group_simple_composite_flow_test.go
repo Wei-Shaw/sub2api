@@ -142,7 +142,7 @@ func TestSimpleCompositeHTTPFlowPreservesBasicGroups(t *testing.T) {
 	groups := &simpleFlowGroups{rows: map[int64]*service.Group{}}
 	routes := &simpleFlowRoutes{rows: map[int64]*service.CompositeModelRoute{}}
 	resolver := service.NewCompositeRouteResolver(routes)
-	svc := service.NewAdminService(cfg, nil, groups, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, routes, resolver, nil)
+	svc := service.NewAdminService(cfg, nil, groups, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, routes, resolver, nil, nil)
 	h := admin.NewGroupHandlerWithConfig(svc, nil, nil, cfg)
 	keys := &simpleFlowKeys{}
 	keyService := service.NewAPIKeyService(keys, &simpleFlowUsers{}, groups, &simpleFlowSubscriptions{}, nil, nil, cfg)
