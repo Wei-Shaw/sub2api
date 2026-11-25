@@ -874,6 +874,83 @@ func TestBuildCodexModelsManifestForGroupUsesDeepSeekVisionCapabilities(t *testi
 	}
 }
 
+func TestBuildCodexModelsManifestForGroupUsesDeclaredImageInputModels(t *testing.T) {
+	t.Parallel()
+
+	const model = "deepseek-v4.1-flash"
+	newAccount := func(id int64, declared []any, syncedModalities []string) Account {
+		account := Account{
+			ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"base_url":      "http://vllm.internal:8000",
+				"model_mapping": map[string]any{model: model},
+			},
+		}
+		if declared != nil {
+			account.Extra = map[string]any{ImageInputModelsExtraKey: declared}
+		}
+		if syncedModalities != nil {
+			account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+				model: {ID: model, InputModalities: syncedModalities},
+			}})
+		}
+		return account
+	}
+
+	tests := []struct {
+		name       string
+		accounts   []Account
+		modalities []any
+	}{
+		{
+			name:       "undeclared self-hosted model",
+			accounts:   []Account{newAccount(1, nil, nil)},
+			modalities: []any{"text"},
+		},
+		{
+			name:       "declared self-hosted model",
+			accounts:   []Account{newAccount(1, []any{model}, nil)},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name:       "declaration ignores case",
+			accounts:   []Account{newAccount(1, []any{"DeepSeek-V4.1-Flash"}, nil)},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name:       "declaration overrides synced text-only metadata",
+			accounts:   []Account{newAccount(1, []any{model}, []string{"text"})},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name:       "another model declared",
+			accounts:   []Account{newAccount(1, []any{"qwen3-vl"}, nil)},
+			modalities: []any{"text"},
+		},
+		{
+			name:       "an undeclared account in the pool keeps text only",
+			accounts:   []Account{newAccount(1, []any{model}, nil), newAccount(2, nil, nil)},
+			modalities: []any{"text"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			const groupID int64 = 791
+			svc := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{
+				groupID: tt.accounts,
+			}}}
+			body, err := svc.BuildCodexModelsManifestForGroup(context.Background(),
+				&Group{ID: groupID, Platform: PlatformOpenAI}, "", []string{model})
+			require.NoError(t, err)
+			models := decodeCodexManifestModels(t, body)
+			require.Len(t, models, 1)
+			require.Equal(t, tt.modalities, models[0]["input_modalities"])
+		})
+	}
+}
+
 func TestBuildCodexModelsManifestForGroupPrefersSyncedOpenAIImageCapabilities(t *testing.T) {
 	t.Parallel()
 

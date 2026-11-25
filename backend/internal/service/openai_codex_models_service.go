@@ -1316,12 +1316,38 @@ func codexExplicitModelMappingClaims(account Account, modelID string) bool {
 	return mapped != ""
 }
 
+// ImageInputModelsExtraKey is an optional account extra key, set through the
+// admin account API, that lists upstream model IDs accepting image input.
+// It covers models that neither the upstream model list nor models.dev
+// describes, such as multimodal models served by vLLM or SGLang. Declared
+// models advertise image input ahead of synced metadata and name fallbacks.
+const ImageInputModelsExtraKey = "image_input_models"
+
+// accountDeclaresImageInputModel reports whether the account lists
+// upstreamModel under ImageInputModelsExtraKey, ignoring case.
+func accountDeclaresImageInputModel(account *Account, upstreamModel string) bool {
+	model := strings.TrimSpace(upstreamModel)
+	if account == nil || account.Extra == nil || model == "" {
+		return false
+	}
+	declared, _ := account.Extra[ImageInputModelsExtraKey].([]any)
+	for _, value := range declared {
+		if name, ok := value.(string); ok && strings.EqualFold(strings.TrimSpace(name), model) {
+			return true
+		}
+	}
+	return false
+}
+
 func accountCodexModelSupportsImageInput(account *Account, upstreamModel string) bool {
 	if account == nil {
 		return false
 	}
 	switch account.Platform {
 	case PlatformOpenAI, PlatformDeepseek, PlatformOpenCodeGo:
+		if accountDeclaresImageInputModel(account, upstreamModel) {
+			return true
+		}
 		if metadata, ok := account.GetUpstreamModelMetadata(upstreamModel); ok {
 			if modalities := normalizeCodexInputModalities(metadata.InputModalities); len(modalities) > 0 {
 				// Official GPT-6 Astra metadata briefly shipped with a stale
