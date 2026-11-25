@@ -267,7 +267,7 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     await selectButtonByText(wrapper, 'API Key')
     await wrapper.get('form#create-account-form input[type="text"]').setValue('filtered passthrough')
     await wrapper.get('form#create-account-form input[type="password"]').setValue('synthetic-key')
-    await wrapper.get('[data-testid="create-openai-passthrough-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="create-openai-responses-forward-mode"]').setValue('passthrough')
     await wrapper.get('[data-testid="create-openai-passthrough-model-filter"]').setValue(true)
     wrapper.getComponent(ModelWhitelistSelectorStub).vm.$emit('update:modelValue', ['qwen3.8-max'])
     await wrapper.get('form#create-account-form').trigger('submit.prevent')

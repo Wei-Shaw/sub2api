@@ -391,7 +391,7 @@ describe('EditAccountModal', () => {
 
     expect(wrapper.get<HTMLInputElement>('[data-testid="edit-openai-passthrough-model-filter"]').element.checked).toBe(true)
     expect(wrapper.findComponent(ModelWhitelistSelectorStub).exists()).toBe(true)
-    await wrapper.get('[data-testid="edit-openai-passthrough-toggle"]').trigger('click')
+    await wrapper.get('[data-testid="edit-openai-responses-forward-mode"]').setValue('normal')
     await wrapper.get('form#edit-account-form').trigger('submit.prevent')
     expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('openai_passthrough_model_filter')
     expect(updateAccountMock.mock.calls[0]?.[1]?.credentials.model_mapping).toEqual(account.credentials.model_mapping)
