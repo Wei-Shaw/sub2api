@@ -664,7 +664,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		markPatchSet("max_output_tokens", clampedCap)
 	}
 	if wsDecision.Transport != OpenAIUpstreamTransportResponsesWebsocketV2 &&
-		!account.IsOpenAIApiKey() && gjson.GetBytes(body, "previous_response_id").Exists() {
+		!account.IsOpenAIApiKey() && !nativeCNResponses && gjson.GetBytes(body, "previous_response_id").Exists() {
 		markPatchDelete("previous_response_id")
 	}
 	if openAIRequestBodyMayContainEmptyBase64InputImage(body) {
@@ -1429,8 +1429,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	}
 	targetURL = appendOpenAIResponsesRequestPathSuffix(targetURL, openAIResponsesRequestPathSuffix(c))
 
-	// DeepSeek / Kimi 原生 Responses 端点为无状态实现：强制 store=false、清除
-	// previous_response_id，避免携带状态字段被上游拒绝。
+	// 适配 CN Responses 媒体格式，保留客户端的状态存储参数。
 	body = normalizeDeepSeekResponsesRequestBody(account, body)
 
 	req, err := http.NewRequestWithContext(ctx, "POST", targetURL, bytes.NewReader(body))

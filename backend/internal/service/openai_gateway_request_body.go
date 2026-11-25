@@ -131,9 +131,8 @@ func deleteOpenAIResponsesNoneReasoningEffortFromObject(account *Account, body m
 	}
 }
 
-// normalizeDeepSeekResponsesRequestBody 适配无状态 CN Responses 端点：
-// 强制 store=false 并清除 previous_response_id（DeepSeek / Kimi 官方
-// Responses 均不支持服务端状态存储，携带这些字段会被拒绝）。
+// normalizeDeepSeekResponsesRequestBody 适配 CN Responses 的工具输出媒体，
+// 保留客户端的 store / previous_response_id，由用户决定是否使用上游状态存储。
 //
 // DeepSeek 另需把兼容格式的图片输入归一化为官方 image_url 字段；openai
 // 平台但 base_url 指向 api.deepseek.com 的映射账号同样走这条出站改写。
@@ -142,23 +141,13 @@ func normalizeDeepSeekResponsesRequestBody(account *Account, body []byte) []byte
 	if account == nil {
 		return body
 	}
-	applyStateless := account.UsesNativeCNResponses()
+	applyCNResponses := account.UsesNativeCNResponses()
 	applyImages := shouldAliasDeepSeekResponsesInputImages(account)
-	if !applyStateless && !applyImages {
+	if !applyCNResponses && !applyImages {
 		return body
 	}
 
 	normalized := body
-	if applyStateless {
-		patched, err := sjson.SetBytes(normalized, "store", false)
-		if err != nil {
-			return body
-		}
-		normalized = patched
-		if stripped, err := sjson.DeleteBytes(normalized, "previous_response_id"); err == nil {
-			normalized = stripped
-		}
-	}
 
 	var requestBody map[string]any
 	if err := decodeOpenAIJSONUseNumber(normalized, &requestBody); err != nil {

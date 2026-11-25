@@ -1043,8 +1043,7 @@ func TestBuildOpenAIResponsesURLForPlatform(t *testing.T) {
 	require.Equal(t, "https://api.kimi.com/coding/v1/responses", buildOpenAIResponsesURLForPlatform(PlatformKimi, "https://api.kimi.com/coding/v1"))
 }
 
-// TestNormalizeDeepSeekResponsesRequestBody 无状态适配：强制 store=false、
-// 清除 previous_response_id；非原生 CN Responses 协议原样返回。
+// TestNormalizeDeepSeekResponsesRequestBody 保留客户端状态参数，同时适配工具输出媒体。
 func TestNormalizeDeepSeekResponsesRequestBody(t *testing.T) {
 	t.Parallel()
 
@@ -1054,8 +1053,8 @@ func TestNormalizeDeepSeekResponsesRequestBody(t *testing.T) {
 	}
 	body := []byte(`{"model":"deepseek-v4-pro","store":true,"previous_response_id":"resp_123","input":"hi"}`)
 	normalized := normalizeDeepSeekResponsesRequestBody(deepseekResponses, body)
-	require.False(t, gjson.GetBytes(normalized, "store").Bool())
-	require.False(t, gjson.GetBytes(normalized, "previous_response_id").Exists())
+	require.True(t, gjson.GetBytes(normalized, "store").Bool())
+	require.Equal(t, "resp_123", gjson.GetBytes(normalized, "previous_response_id").String())
 	require.Equal(t, "deepseek-v4-pro", gjson.GetBytes(normalized, "model").String())
 
 	deepseekAdaptive := &Account{
@@ -1063,12 +1062,12 @@ func TestNormalizeDeepSeekResponsesRequestBody(t *testing.T) {
 		Credentials: map[string]any{"api_protocol": APIProtocolAdaptive},
 	}
 	adaptiveNormalized := normalizeDeepSeekResponsesRequestBody(deepseekAdaptive, body)
-	require.False(t, gjson.GetBytes(adaptiveNormalized, "store").Bool())
-	require.False(t, gjson.GetBytes(adaptiveNormalized, "previous_response_id").Exists())
+	require.True(t, gjson.GetBytes(adaptiveNormalized, "store").Bool())
+	require.Equal(t, "resp_123", gjson.GetBytes(adaptiveNormalized, "previous_response_id").String())
 
 	mediaBody := []byte(`{"model":"deepseek-v4.1-flash","store":true,"input":[{"type":"function_call","call_id":"call_image","name":"view_image","arguments":"{}"},{"type":"function_call_output","call_id":"call_image","output":[{"type":"input_image","image_url":"data:image/png;base64,AQID"}]}]}`)
 	mediaNormalized := normalizeDeepSeekResponsesRequestBody(deepseekResponses, mediaBody)
-	require.False(t, gjson.GetBytes(mediaNormalized, "store").Bool())
+	require.True(t, gjson.GetBytes(mediaNormalized, "store").Bool())
 	require.Equal(t, gjson.String, gjson.GetBytes(mediaNormalized, "input.1.output").Type)
 	require.NotContains(t, gjson.GetBytes(mediaNormalized, "input.1.output").String(), "data:image/png")
 	require.Equal(t, "message", gjson.GetBytes(mediaNormalized, "input.2.type").String())
@@ -1085,16 +1084,16 @@ func TestNormalizeDeepSeekResponsesRequestBody(t *testing.T) {
 		Credentials: map[string]any{"api_protocol": APIProtocolResponses},
 	}
 	kimiNormalized := normalizeDeepSeekResponsesRequestBody(kimiResponses, body)
-	require.False(t, gjson.GetBytes(kimiNormalized, "store").Bool())
-	require.False(t, gjson.GetBytes(kimiNormalized, "previous_response_id").Exists())
+	require.True(t, gjson.GetBytes(kimiNormalized, "store").Bool())
+	require.Equal(t, "resp_123", gjson.GetBytes(kimiNormalized, "previous_response_id").String())
 
 	kimiCodingAdaptive := &Account{
 		Platform: PlatformKimi, Type: AccountTypeAPIKey,
 		Credentials: map[string]any{"api_protocol": APIProtocolAdaptive, "account_mode": AccountModeCoding},
 	}
 	kimiCodingNormalized := normalizeDeepSeekResponsesRequestBody(kimiCodingAdaptive, body)
-	require.False(t, gjson.GetBytes(kimiCodingNormalized, "store").Bool())
-	require.False(t, gjson.GetBytes(kimiCodingNormalized, "previous_response_id").Exists())
+	require.True(t, gjson.GetBytes(kimiCodingNormalized, "store").Bool())
+	require.Equal(t, "resp_123", gjson.GetBytes(kimiCodingNormalized, "previous_response_id").String())
 
 	// openai 账号原样返回
 	openai := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey}

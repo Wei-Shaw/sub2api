@@ -114,6 +114,38 @@ func TestAdaptiveProtocolRoutesResponsesShapedChatToNativeResponses(t *testing.T
 	require.False(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
 }
 
+func TestAdaptiveProtocolResponsesPreservesClientStateParameters(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, platform := range []string{PlatformDeepseek, PlatformKimi, PlatformMiniMax} {
+		for _, state := range []struct {
+			name   string
+			fields string
+		}{
+			{name: "store true with continuation", fields: `,"store":true,"previous_response_id":"resp_previous"`},
+			{name: "store false", fields: `,"store":false`},
+			{name: "continuation without store", fields: `,"previous_response_id":"resp_previous"`},
+			{name: "omitted"},
+		} {
+			t.Run(platform+"/"+state.name, func(t *testing.T) {
+				body := []byte(`{"model":"test-model","input":"hello","stream":false` + state.fields + `}`)
+				upstream := &httpUpstreamRecorder{err: errors.New("stop after capture")}
+				svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+				account := adaptiveProtocolTestAccount(platform, map[string]any{
+					APIProtocolResponses: "http://responses.example/v1/responses",
+				})
+
+				_, err := svc.Forward(context.Background(), adaptiveProtocolTestContext("/v1/responses", body), account, body)
+				require.Error(t, err)
+				require.NotNil(t, upstream.lastReq)
+				require.Equal(t, "http://responses.example/v1/responses", upstream.lastReq.URL.String())
+				for _, field := range []string{"store", "previous_response_id"} {
+					require.Equal(t, gjson.GetBytes(body, field).Raw, gjson.GetBytes(upstream.lastBody, field).Raw, field)
+				}
+			})
+		}
+	}
+}
+
 func TestAdaptiveProtocolConvertsResponsesShapedChatForChatOnlyProvider(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	body := []byte(`{"model":"glm-4.7","input":"hello","max_output_tokens":32,"stream":false}`)
@@ -181,8 +213,8 @@ func TestAdaptiveProtocolRoutesKimiResponsesToNativeResponses(t *testing.T) {
 	require.Equal(t, "http://responses.example/v1/responses", upstream.lastReq.URL.String())
 	require.True(t, gjson.GetBytes(upstream.lastBody, "input").Exists())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "messages").Exists())
-	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Bool())
-	require.False(t, gjson.GetBytes(upstream.lastBody, "previous_response_id").Exists())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "store").Bool())
+	require.Equal(t, "resp_old", gjson.GetBytes(upstream.lastBody, "previous_response_id").String())
 }
 
 func TestAdaptiveProtocolRoutesKimiCodingResponsesToNativeResponses(t *testing.T) {
@@ -217,8 +249,8 @@ func TestAdaptiveProtocolRoutesDeepSeekResponsesToNativeResponses(t *testing.T) 
 	_, err := svc.Forward(context.Background(), adaptiveProtocolTestContext("/v1/responses", body), account, body)
 	require.Error(t, err)
 	require.Equal(t, "http://responses.example/responses", upstream.lastReq.URL.String())
-	require.False(t, gjson.GetBytes(upstream.lastBody, "store").Bool())
-	require.False(t, gjson.GetBytes(upstream.lastBody, "previous_response_id").Exists())
+	require.True(t, gjson.GetBytes(upstream.lastBody, "store").Bool())
+	require.Equal(t, "resp_old", gjson.GetBytes(upstream.lastBody, "previous_response_id").String())
 	require.Equal(t, int64(32), gjson.GetBytes(upstream.lastBody, "max_output_tokens").Int())
 	require.False(t, gjson.GetBytes(upstream.lastBody, "instructions").Exists())
 }
