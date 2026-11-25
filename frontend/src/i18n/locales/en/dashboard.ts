@@ -372,6 +372,7 @@ export default {
     model: 'Model',
     requestedModel: 'Requested',
     upstreamModel: 'Upstream',
+    responseModel: 'Actual response model',
 	  sentUpstreamModel: 'Sent upstream',
 	  upstreamResponseModel: 'Upstream response',
 	  upstreamModelMismatch: 'Response model mismatch',
