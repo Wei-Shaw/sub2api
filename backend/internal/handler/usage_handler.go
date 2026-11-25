@@ -95,11 +95,11 @@ func (h *UsageHandler) userUsageLogs(c *gin.Context, records []service.UsageLog)
 	acceptLanguage := c.GetHeader("Accept-Language")
 	out := make([]dto.UsageLog, 0, len(records))
 	for i := range records {
-		item := dto.UsageLogFromService(&records[i])
+		item := dto.UsageLogFromService(&records[i]).Localized(acceptLanguage)
 		if records[i].ChannelID != nil && exposed[*records[i].ChannelID] {
 			item.ApplyResponseModel(&records[i])
 		}
-		out = append(out, *item.Localized(acceptLanguage))
+		out = append(out, *item)
 	}
 	return out
 }
