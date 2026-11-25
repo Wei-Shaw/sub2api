@@ -152,7 +152,7 @@ func TestNormalizeOllamaCloudChatCompletionsRequest(t *testing.T) {
 	require.False(t, gjson.GetBytes(out, "messages.0.reasoning").Exists())
 }
 
-func TestApplyOllamaCloudRawChatCompletionsLeavesForeignAccountsUnchanged(t *testing.T) {
+func TestApplyRawChatCompletionsReasoningCompatLeavesForeignAccountsUnchanged(t *testing.T) {
 	t.Parallel()
 
 	reqBody := []byte(`{"messages":[{"role":"assistant","reasoning_content":"prev","content":""}]}`)
@@ -174,9 +174,9 @@ func TestApplyOllamaCloudRawChatCompletionsLeavesForeignAccountsUnchanged(t *tes
 	}
 
 	for _, account := range []*Account{official, opencode} {
-		require.Equal(t, reqBody, applyOllamaCloudRawChatCompletionsRequest(account, reqBody))
-		require.Equal(t, respBody, applyOllamaCloudRawChatCompletionsResponse(account, respBody))
-		require.Equal(t, sseLine, applyOllamaCloudRawChatCompletionsSSELine(account, sseLine))
+		require.Equal(t, reqBody, applyRawChatCompletionsReasoningCompatRequest(account, reqBody))
+		require.Equal(t, respBody, applyRawChatCompletionsReasoningCompatResponse(account, respBody))
+		require.Equal(t, sseLine, applyRawChatCompletionsReasoningCompatSSELine(account, sseLine))
 	}
 }
 
@@ -190,6 +190,57 @@ func TestNormalizeOllamaCloudChatCompletionsSSELine(t *testing.T) {
 	require.Equal(t, "abc", gjson.Get(payload, "choices.0.delta.reasoning").String())
 	require.Equal(t, "abc", gjson.Get(payload, "choices.0.delta.reasoning_content").String())
 	require.Equal(t, "data: [DONE]", normalizeOllamaCloudChatCompletionsSSELine("data: [DONE]"))
+}
+
+func selfHostedRawChatCompletionsTestAccount(extra map[string]any) *Account {
+	account := rawChatCompletionsTestAccount()
+	account.Name = "vLLM"
+	account.Credentials["base_url"] = "http://vllm.internal:8000"
+	account.Extra = map[string]any{
+		openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceChatCompletions),
+	}
+	for key, value := range extra {
+		account.Extra[key] = value
+	}
+	return account
+}
+
+func TestRawChatCompletionsReasoningCompatOptIn(t *testing.T) {
+	t.Parallel()
+
+	reqBody := []byte(`{"messages":[{"role":"assistant","reasoning_content":"prev","content":""}]}`)
+	respBody := []byte(`{"choices":[{"message":{"role":"assistant","reasoning":"abc","content":"done"}}]}`)
+	sseLine := `data: {"choices":[{"delta":{"reasoning":"abc"}}]}`
+
+	t.Run("opted in", func(t *testing.T) {
+		t.Parallel()
+		account := selfHostedRawChatCompletionsTestAccount(map[string]any{OpenAIChatReasoningContentExtraKey: true})
+		require.True(t, rawChatCompletionsReasoningCompatEnabled(account))
+		require.Equal(t, "prev", gjson.GetBytes(applyRawChatCompletionsReasoningCompatRequest(account, reqBody), "messages.0.reasoning").String())
+		resp := applyRawChatCompletionsReasoningCompatResponse(account, respBody)
+		require.Equal(t, "abc", gjson.GetBytes(resp, "choices.0.message.reasoning").String())
+		require.Equal(t, "abc", gjson.GetBytes(resp, "choices.0.message.reasoning_content").String())
+		line := applyRawChatCompletionsReasoningCompatSSELine(account, sseLine)
+		require.Equal(t, "abc", gjson.Get(strings.TrimPrefix(line, "data: "), "choices.0.delta.reasoning_content").String())
+	})
+
+	oauth := selfHostedRawChatCompletionsTestAccount(map[string]any{OpenAIChatReasoningContentExtraKey: true})
+	oauth.Type = AccountTypeOAuth
+	disabled := map[string]*Account{
+		"not opted in":     selfHostedRawChatCompletionsTestAccount(nil),
+		"explicitly false": selfHostedRawChatCompletionsTestAccount(map[string]any{OpenAIChatReasoningContentExtraKey: false}),
+		"string value":     selfHostedRawChatCompletionsTestAccount(map[string]any{OpenAIChatReasoningContentExtraKey: "true"}),
+		"OAuth account":    oauth,
+	}
+	for name, account := range disabled {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			require.False(t, rawChatCompletionsReasoningCompatEnabled(account))
+			require.Equal(t, reqBody, applyRawChatCompletionsReasoningCompatRequest(account, reqBody))
+			require.Equal(t, respBody, applyRawChatCompletionsReasoningCompatResponse(account, respBody))
+			require.Equal(t, sseLine, applyRawChatCompletionsReasoningCompatSSELine(account, sseLine))
+		})
+	}
 }
 
 func TestForwardAsRawChatCompletions_OllamaCloudReasoningAliasStreaming(t *testing.T) {
@@ -266,4 +317,48 @@ func TestForwardAsRawChatCompletions_OllamaCloudThinkingAliasNonStreaming(t *tes
 	require.Equal(t, "abc", gjson.Get(rec.Body.String(), "choices.0.message.reasoning_content").String())
 	require.Equal(t, "final answer", gjson.Get(rec.Body.String(), "choices.0.message.content").String())
 	require.Equal(t, int64(4), gjson.Get(rec.Body.String(), "usage.completion_tokens_details.reasoning_tokens").Int())
+}
+
+func TestForwardAsRawChatCompletions_OptInReasoningContentStreaming(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"deepseek-v4.1-flash","messages":[{"role":"user","content":"hello"}],"stream":true}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_vllm","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl_vllm","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"reasoning":"abc"},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl_vllm","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"content":"final answer"},"finish_reason":"stop"}]}`,
+		"",
+		`data: {"id":"chatcmpl_vllm","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[],"usage":{"prompt_tokens":3,"completion_tokens":5,"total_tokens":8}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_vllm_reasoning_stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+	}
+
+	account := selfHostedRawChatCompletionsTestAccount(map[string]any{OpenAIChatReasoningContentExtraKey: true})
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 3, result.Usage.InputTokens)
+	require.Equal(t, 5, result.Usage.OutputTokens)
+	require.Contains(t, rec.Body.String(), `"reasoning":"abc"`)
+	require.Contains(t, rec.Body.String(), `"reasoning_content":"abc"`)
+	require.Contains(t, rec.Body.String(), `"content":"final answer"`)
+	require.Contains(t, rec.Body.String(), "data: [DONE]")
 }
