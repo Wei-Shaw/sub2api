@@ -206,7 +206,7 @@ func (s *OpenAIGatewayService) buildOpenAIStrictResponsesRequest(
 	// Keep the observed response bytes and Content-Encoding in agreement. Go's
 	// transport otherwise adds gzip automatically and transparently decodes it.
 	req.Header.Set("Accept-Encoding", "identity")
-	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyHeaderOverrides(req.Context(), req.Header)
 	return req, nil
 }
 
