@@ -532,3 +532,50 @@ func TestOpenCodeSessionIsNotForwardedToOtherUpstreams(t *testing.T) {
 		})
 	}
 }
+
+func TestNormalizeOpenCodeUserAgentVersion(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "valid semver", input: "1.19.6", want: "1.19.6"},
+		{name: "trims surrounding spaces", input: "  1.19.6  ", want: "1.19.6"},
+		{name: "rejects two segments", input: "1.19", want: ""},
+		{name: "rejects four segments", input: "1.19.6.1", want: ""},
+		{name: "rejects prefixed value", input: "opencode/1.19.6", want: ""},
+		{name: "rejects non-numeric", input: "latest", want: ""},
+		{name: "rejects empty", input: "   ", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, NormalizeOpenCodeUserAgentVersion(tt.input))
+		})
+	}
+}
+
+func TestResolveOpenCodeUserAgentVersion(t *testing.T) {
+	tests := []struct {
+		name     string
+		envValue string
+		want     string
+	}{
+		{name: "env override wins", envValue: "1.20.0", want: "1.20.0"},
+		{name: "invalid env falls back to default", envValue: "not-a-version", want: defaultOpenCodeUserAgentVersion},
+		{name: "empty env falls back to default", envValue: "", want: defaultOpenCodeUserAgentVersion},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, resolveOpenCodeUserAgentVersion(tt.envValue))
+		})
+	}
+}
+
+func TestDefaultOpenCodeUpstreamUserAgentMatchesClientFormat(t *testing.T) {
+	// 上游按 opencode/<version> 识别客户端；无论默认值还是环境变量覆盖，
+	// 出站 UA 都必须保持该格式。
+	require.Regexp(t, `^opencode/\d+\.\d+\.\d+$`, openCodeUpstreamUserAgent)
+	require.Regexp(t, `^\d+\.\d+\.\d+$`, defaultOpenCodeUserAgentVersion)
+}
