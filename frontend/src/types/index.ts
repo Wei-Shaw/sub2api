@@ -986,6 +986,7 @@ export interface Proxy {
   quality_grade?: string
   quality_summary?: string
   quality_checked?: number
+  latency_checked_at?: string
   expires_at: string | null
   fallback_mode: 'none' | 'proxy' | 'direct'
   backup_proxy_id?: number | null
@@ -1019,6 +1020,8 @@ export interface ProxyQualityCheckResult {
   exit_ip?: string
   country?: string
   country_code?: string
+  region?: string
+  city?: string
   base_latency_ms?: number
   passed_count: number
   warn_count: number
