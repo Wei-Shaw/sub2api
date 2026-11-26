@@ -24,6 +24,14 @@ func resolveUpstreamResponseReadLimit(cfg *config.Config) int64 {
 }
 
 func readUpstreamResponseBodyLimited(reader io.Reader, maxBytes int64) ([]byte, error) {
+	body, err := readUpstreamResponseBodyLimitedWithPartial(reader, maxBytes)
+	if err != nil {
+		return nil, err
+	}
+	return body, nil
+}
+
+func readUpstreamResponseBodyLimitedWithPartial(reader io.Reader, maxBytes int64) ([]byte, error) {
 	if reader == nil {
 		return nil, errors.New("response body is nil")
 	}
@@ -33,10 +41,10 @@ func readUpstreamResponseBodyLimited(reader io.Reader, maxBytes int64) ([]byte, 
 
 	body, err := io.ReadAll(io.LimitReader(reader, maxBytes+1))
 	if err != nil {
-		return nil, err
+		return body, err
 	}
 	if int64(len(body)) > maxBytes {
-		return nil, fmt.Errorf("%w: limit=%d", ErrUpstreamResponseBodyTooLarge, maxBytes)
+		return body[:maxBytes], fmt.Errorf("%w: limit=%d", ErrUpstreamResponseBodyTooLarge, maxBytes)
 	}
 	return body, nil
 }

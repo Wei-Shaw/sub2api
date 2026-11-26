@@ -545,11 +545,13 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		result, handleErr = s.handleAnthropicBufferedStreamingResponse(resp, c, account, originalModel, billingModel, upstreamModel, startTime)
 	}
 
-	// cyber_policy：标记已设、error 已按 Anthropic 格式发给客户端。丢弃 result、返回哨兵，
-	// 使 handler 落入 tokens=0 免费用量行（对齐 /v1/responses），不计费、不 failover。
+	// cyber_policy 错误沿专用路径结算，已完成搜索的部分结果须保留。
 	if GetOpsCyberPolicy(c) != nil {
 		if handleErr == nil {
 			handleErr = errOpenAICyberPolicyForwarded
+		}
+		if result != nil && result.NativeWebSearchCalls > 0 {
+			return result, handleErr
 		}
 		return nil, handleErr
 	}
@@ -625,11 +627,31 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	billingModel string,
 	upstreamModel string,
 	startTime time.Time,
-) (*OpenAIForwardResult, error) {
+) (forwardResult *OpenAIForwardResult, forwardErr error) {
 	requestID := resp.Header.Get("x-request-id")
 
 	nativeSearch := newOpenAINativeWebSearchCounter(account)
 	finalResponse, usage, acc, prior, err := s.readOpenAICompatBufferedTerminal(resp, c, account, "openai messages buffered", requestID, nativeSearch)
+	defer func() {
+		if forwardErr != nil && forwardResult == nil && nativeSearch.Count() > 0 {
+			forwardResult = &OpenAIForwardResult{
+				NativeWebSearchCalls:          nativeSearch.Count(),
+				RequestID:                     requestID,
+				UpstreamHeaders:               resp.Header,
+				Usage:                         usage,
+				Model:                         originalModel,
+				BillingModel:                  billingModel,
+				UpstreamModel:                 upstreamModel,
+				UpstreamResponseModel:         observedUpstreamResponseModel(c),
+				UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+				UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
+				Duration:                      time.Since(startTime),
+			}
+			if finalResponse != nil {
+				forwardResult.ResponseID = finalResponse.ID
+			}
+		}
+	}()
 	if err != nil {
 		var readErr *openAICompatBufferedReadError
 		if errors.As(err, &readErr) && readErr != nil {

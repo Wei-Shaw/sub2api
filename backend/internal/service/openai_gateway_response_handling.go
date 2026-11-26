@@ -527,6 +527,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 			dataBytes := []byte(data)
 			eventType := effectiveOpenAISSEEventType(dataBytes, pendingSSEEventType)
+			nativeSearch.Add([]byte(openAICompatPayloadWithEventType(string(dataBytes), eventType)))
 			if keepaliveEventDirect || forwardsKeepaliveDirect(eventType) {
 				keepaliveEventDirect = true
 				eventInProgress = true
@@ -663,7 +664,6 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				line = "data: " + data
 			}
 			imageCounter.AddSSEData(dataBytes)
-			nativeSearch.Add([]byte(openAICompatPayloadWithEventType(string(dataBytes), eventType)))
 			searchCounter += countGrokNativeSearchCallsInSSEDataDedup(dataBytes, streamSearchSeen)
 			searchCounter = grokSearchCountWithTerminalUsage(searchCounter, dataBytes)
 
@@ -1713,8 +1713,22 @@ func openAICacheCreationTTLTokensFromUsage(value gjson.Result, aggregate int) (i
 	return 0, 0
 }
 
-func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (*openaiNonStreamingResult, error) {
-	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, resp *http.Response, c *gin.Context, account *Account, originalModel, mappedModel string) (forwardResult *openaiNonStreamingResult, forwardErr error) {
+	body, err := s.readOpenAIResponseBody(resp, c, account)
+	upstreamBody := body
+	defer func() {
+		if forwardErr != nil && forwardResult == nil {
+			if searches := countOpenAINativeWebSearchCalls(account, upstreamBody); searches > 0 {
+				usage := s.nativeSearchPartialUsage(upstreamBody)
+				forwardResult = &openaiNonStreamingResult{
+					OpenAIUsage:    usage,
+					usage:          usage,
+					responseID:     extractOpenAIResponseIDFromJSONBytes(upstreamBody),
+					nativeSearches: searches,
+				}
+			}
+		}
+	}()
 	if err != nil {
 		return nil, err
 	}
@@ -1765,6 +1779,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponse(ctx context.Context, r
 		return nil, fmt.Errorf("parse response: invalid json response")
 	}
 	usage := &usageValue
+	if err := s.nativeSearchFailedResponseError(resp, c, account, body); err != nil {
+		return nil, err
+	}
 	logOpenAISuccessMissingUsage(ctx, c, account, resp, usage, "json", false)
 
 	// Replace model in response if needed
@@ -1837,6 +1854,9 @@ func bodyHasSSEFraming(body []byte) bool {
 func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Context, account *Account, body []byte, originalModel, mappedModel string) (*openaiNonStreamingResult, error) {
 	bodyText := string(body)
 	terminalType, terminalPayload, terminalOK := extractOpenAISSETerminalEvent(bodyText)
+	if !terminalOK && countOpenAINativeWebSearchCalls(account, body) > 0 {
+		return nil, s.writeOpenAINonStreamingProtocolError(resp, c, "Upstream stream ended without a terminal response event")
+	}
 	if terminalOK && (terminalType == "response.failed" || terminalType == "error") {
 		msg := extractOpenAISSEErrorMessage(terminalPayload)
 		if msg == "" {

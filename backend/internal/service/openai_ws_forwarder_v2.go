@@ -34,7 +34,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	attempt int,
 	lastFailureReason string,
 	agentTaskRecoveryTried *bool,
-) (*OpenAIForwardResult, error) {
+) (forwardResult *OpenAIForwardResult, forwardErr error) {
 	if s == nil || account == nil {
 		return nil, wrapOpenAIWSFallback("invalid_state", errors.New("service or account is nil"))
 	}
@@ -422,6 +422,8 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			RequestID:                     responseID,
 			ResponseID:                    responseID,
 			NativeWebSearchCalls:          nativeSearch.Count(),
+			ImageCount:                    imageCounter.Count(),
+			ImageOutputSizes:              imageCounter.Sizes(),
 			Usage:                         *usage,
 			Model:                         originalModel,
 			UpstreamModel:                 mappedModel,
@@ -439,6 +441,11 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			ClientDisconnect:              clientDisconnected,
 		}
 	}
+	defer func() {
+		if forwardErr != nil && forwardResult == nil && nativeSearch.Count() > 0 {
+			forwardResult = resultWithUsage()
+		}
+	}()
 
 	var flusher http.Flusher
 	if reqStream {
