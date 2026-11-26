@@ -172,22 +172,24 @@ func TestNativeAnthropicPassthroughNormalizesGLM53Thinking(t *testing.T) {
 		{name: "output effort wins over thinking", preference: `"thinking":{"type":"adaptive"},"output_config":{"effort":"low"},`, wantEffort: "low"},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			body := []byte(fmt.Sprintf(`{"model":"glm-5.3","max_tokens":32,"stream":%t,%s"messages":[{"role":"user","content":"hi"}]}`, tt.stream, tt.preference))
-			response := nativeAnthropicBufferedResponse()
-			if tt.stream {
-				response = nativeAnthropicStreamResponse()
-			}
-			upstream := &httpUpstreamRecorder{resp: response}
-			svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+	for _, model := range []string{"glm-5.3", "glm-5.4"} {
+		for _, tt := range tests {
+			t.Run(model+"/"+tt.name, func(t *testing.T) {
+				body := []byte(fmt.Sprintf(`{"model":%q,"max_tokens":32,"stream":%t,%s"messages":[{"role":"user","content":"hi"}]}`, model, tt.stream, tt.preference))
+				response := nativeAnthropicBufferedResponse()
+				if tt.stream {
+					response = nativeAnthropicStreamResponse()
+				}
+				upstream := &httpUpstreamRecorder{resp: response}
+				svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
 
-			_, err := svc.ForwardAsAnthropic(context.Background(),
-				adaptiveProtocolTestContext("/v1/messages", body), nativeAnthropicGLMTestAccount(), body, "", "")
-			require.NoError(t, err)
-			require.Equal(t, "enabled", gjson.GetBytes(upstream.lastBody, "thinking.type").String())
-			require.Equal(t, tt.wantEffort, gjson.GetBytes(upstream.lastBody, "output_config.effort").String())
-		})
+				_, err := svc.ForwardAsAnthropic(context.Background(),
+					adaptiveProtocolTestContext("/v1/messages", body), nativeAnthropicGLMTestAccount(), body, "", "")
+				require.NoError(t, err)
+				require.Equal(t, "enabled", gjson.GetBytes(upstream.lastBody, "thinking.type").String())
+				require.Equal(t, tt.wantEffort, gjson.GetBytes(upstream.lastBody, "output_config.effort").String())
+			})
+		}
 	}
 }
 
