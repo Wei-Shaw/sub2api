@@ -14,6 +14,11 @@ import (
 
 const openAIResponsesNamespaceNamesContextKey = "openai_responses_namespace_names"
 
+// openAIResponsesNamespaceFieldBytes 是入口预检查用的字面量。带引号可避免匹配到
+// 正文里的普通单词；键写成 unicode 转义时无法字节匹配，那条路径不会进入清理逻辑，
+// 与改动前一致。
+var openAIResponsesNamespaceFieldBytes = []byte(`"namespace"`)
+
 // shouldFlattenOpenAIResponsesNamespaces 判定原生 Responses 转发前是否摊平
 // Codex namespace 工具。
 //
@@ -120,6 +125,7 @@ func hasOpenAIResponsesNamespaceToolDeclaration(body []byte) bool {
 		return found
 	}
 
+	// 与 stripOpenAIResponsesInputNamespaces 同理：input 可能很大，用零拷贝视图取值。
 	root := parseRawJSONView(body)
 	if hasNamespaceTool(root.Get("tools")) {
 		return true
@@ -163,7 +169,7 @@ func isOpenAIResponsesToolCallItemType(itemType string) bool {
 }
 
 func flattenOpenAIResponsesNamespaces(c *gin.Context, body []byte) ([]byte, error) {
-	if !bytes.Contains(body, []byte(`"namespace"`)) {
+	if !bytes.Contains(body, openAIResponsesNamespaceFieldBytes) {
 		return body, nil
 	}
 	var requestBody map[string]any
@@ -190,22 +196,28 @@ func flattenOpenAIResponsesNamespaces(c *gin.Context, body []byte) ([]byte, erro
 // untouched. Rebuilding the input array once keeps this linear for long
 // histories and avoids decoding JSON numbers through float64.
 //
+// 读取走 parseRawJSONView（零拷贝 string 视图）而不是 gjson.GetBytes：后者会把
+// input 数组物化成一份拷贝，而这个函数在 Codex 流量上几乎每个请求都会进来
+// （tools 里就有 namespace 声明，入口预检查必然放行），未改动时那份拷贝纯属浪费。
+//
 // keepToolCallNamespaces 保留工具调用项（function_call / custom_tool_call 等）上的
 // namespace，让 Codex 调用能按上游要求原样回传；判定见
 // shouldKeepOpenAIResponsesToolCallNamespaces。
 func stripOpenAIResponsesInputNamespaces(body []byte, keepToolCallNamespaces bool) ([]byte, error) {
-	if !bytes.Contains(body, []byte(`"namespace"`)) {
+	if !bytes.Contains(body, openAIResponsesNamespaceFieldBytes) {
 		return body, nil
 	}
-	// Zero-copy view: input.Raw aliases body and is only read below; the
-	// rebuilt array is written into a fresh buffer.
 	input := parseRawJSONView(body).Get("input")
 	if !input.IsArray() {
 		return body, nil
 	}
+	// inputStart/inputEnd 是 input 数组在 body 里的字节区间。
+	inputStart := input.Index
+	inputEnd := inputStart + len(input.Raw)
 
-	var rebuilt bytes.Buffer
-	changed := false
+	// 输出缓冲只在首次真正改写时分配，容量按整个 body 预留，prefix + 改写后的数组 +
+	// suffix 一次写完，不再额外走一遍 sjson.SetRawBytes（那会再拷一份完整 body）。
+	var out []byte
 	// Offsets below are relative to input.Raw, not the full request body.
 	copyFrom := 0
 	var stripErr error
@@ -214,35 +226,30 @@ func stripOpenAIResponsesInputNamespaces(body []byte, keepToolCallNamespaces boo
 			(keepToolCallNamespaces && isOpenAIResponsesToolCallItemType(item.Get("type").String())) {
 			return true
 		}
-		itemBody, err := sjson.DeleteBytes([]byte(item.Raw), "namespace")
+		itemBody, err := sjson.Delete(item.Raw, "namespace")
 		if err != nil {
 			stripErr = err
 			return false
 		}
-		if !changed {
-			// Allocate only on the first change; copy unchanged spans without
-			// traversing their items again or converting them to byte slices.
-			rebuilt.Grow(len(input.Raw))
-			changed = true
+		if out == nil {
+			out = make([]byte, 0, len(body))
+			out = append(out, body[:inputStart]...)
 		}
 		itemStart := item.Index - input.Index
-		_, _ = rebuilt.WriteString(input.Raw[copyFrom:itemStart])
-		_, _ = rebuilt.Write(itemBody)
+		out = append(out, input.Raw[copyFrom:itemStart]...)
+		out = append(out, itemBody...)
 		copyFrom = itemStart + len(item.Raw)
 		return true
 	})
 	if stripErr != nil {
 		return body, fmt.Errorf("delete OpenAI input namespace: %w", stripErr)
 	}
-	if !changed {
+	if out == nil {
 		return body, nil
 	}
-	_, _ = rebuilt.WriteString(input.Raw[copyFrom:])
-	stripped, err := sjson.SetRawBytes(body, "input", rebuilt.Bytes())
-	if err != nil {
-		return body, fmt.Errorf("replace OpenAI input after namespace deletion: %w", err)
-	}
-	return stripped, nil
+	out = append(out, input.Raw[copyFrom:]...)
+	out = append(out, body[inputEnd:]...)
+	return out, nil
 }
 
 func setOpenAIResponsesNamespaceNames(c *gin.Context, names map[string]apicompat.ResponsesNamespaceName) {

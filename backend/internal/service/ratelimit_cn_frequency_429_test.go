@@ -15,6 +15,9 @@ import (
 // 智谱 GLM Coding Plan 实测 429 文案：额度充裕时的「限频」。
 const zhipuFrequencyLimitedBody = `{"error":{"code":"1302","message":"您的账户已达到速率限制，请您控制请求频率"}}`
 
+// 智谱错误码 1305 实测 429 文案：平台服务过载，与账号额度无关。
+const zhipuOverloadLimitedBody = `{"error":{"code":"1305","message":"该模型当前访问量过大，请您稍后再试"}}`
+
 // newZhipuCodingPlanAccount 构造一个智谱 Coding Plan 账号，Extra 带 5h/weekly
 // 用量与重置快照（与 CNProviderQuotaService 写入的键一致）。
 func newZhipuCodingPlanAccount(h5Used, weeklyUsed float64, resetIn time.Duration) *Account {
@@ -59,6 +62,23 @@ func TestHandleUpstreamError_ZhipuFrequency429UsesShortCooldown(t *testing.T) {
 	require.WithinDuration(t, time.Now().Add(defaultRateLimit429CooldownSeconds*time.Second),
 		repo.lastRateLimitedAt, 30*time.Second,
 		"frequency 429 must cool down seconds, not to the 5h window reset")
+}
+
+// 智谱平台过载（1305「该模型当前访问量过大，请您稍后再试」）与账号额度无关，
+// 也应走秒级 429 兜底，而不是冷却到 5h 窗口结束。
+func TestHandleUpstreamError_ZhipuOverload1305UsesShortCooldown(t *testing.T) {
+	repo := &rateLimitAccountRepoStub{}
+	service := NewRateLimitService(repo, nil, &config.Config{}, nil, nil)
+	account := newZhipuCodingPlanAccount(12, 4, 4*time.Hour)
+
+	runZhipu429(service, account, zhipuOverloadLimitedBody)
+
+	require.Equal(t, 0, repo.setErrorCalls, "a platform overload 429 must never SetError")
+	require.Equal(t, 1, repo.rateLimitedCalls)
+	require.Equal(t, account.ID, repo.lastRateLimitedID)
+	require.WithinDuration(t, time.Now().Add(defaultRateLimit429CooldownSeconds*time.Second),
+		repo.lastRateLimitedAt, 30*time.Second,
+		"platform overload 429 must cool down seconds, not to the 5h window reset")
 }
 
 // 快照显示窗口已耗尽时，即使文案是限频，也仍然冷却到窗口重置点（护栏）。

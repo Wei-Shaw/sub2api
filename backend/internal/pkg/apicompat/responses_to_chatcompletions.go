@@ -70,6 +70,18 @@ func ResponsesToChatCompletionsWithOptions(resp *ResponsesResponse, model string
 					Arguments: item.Arguments,
 				},
 			})
+		case "custom_tool_call":
+			if !resp.RenderCustomToolCalls || (resp.XAIServerSideSearch && IsServerSideSearchCall(item.Type, item.CallID)) {
+				continue
+			}
+			toolCalls = append(toolCalls, ChatToolCall{
+				ID:   item.CallID,
+				Type: "function",
+				Function: ChatFunctionCall{
+					Name:      item.Name,
+					Arguments: item.Input,
+				},
+			})
 		case "reasoning":
 			reasoningText += responsesReasoningText(item)
 			if opts.AnthropicReasoningDetails {
@@ -584,6 +596,9 @@ type bufferedFuncCall struct {
 // so that non-streaming handlers can reconstruct output when the terminal event
 // (response.completed / response.done) carries an empty output array.
 type BufferedResponseAccumulator struct {
+	// tool_search_call items arrive complete on output_item.done.
+	toolSearchCalls []ResponsesOutput
+
 	text                 strings.Builder
 	refusal              strings.Builder
 	reasoning            strings.Builder
@@ -647,6 +662,10 @@ func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) 
 				_, _ = a.funcCalls[idx].Args.WriteString(completed)
 			}
 		}
+	case "response.output_item.done":
+		if event.Item != nil && event.Item.Type == "tool_search_call" {
+			a.toolSearchCalls = append(a.toolSearchCalls, *event.Item)
+		}
 	case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
 		if event.Delta != "" {
 			_, _ = a.reasoning.WriteString(event.Delta)
@@ -656,7 +675,7 @@ func (a *BufferedResponseAccumulator) ProcessEvent(event *ResponsesStreamEvent) 
 
 // HasContent reports whether any content has been accumulated.
 func (a *BufferedResponseAccumulator) HasContent() bool {
-	return a.text.Len() > 0 || a.refusal.Len() > 0 || len(a.funcCalls) > 0 || a.reasoning.Len() > 0
+	return a.text.Len() > 0 || a.refusal.Len() > 0 || len(a.funcCalls) > 0 || len(a.toolSearchCalls) > 0 || a.reasoning.Len() > 0
 }
 
 // BuildOutput constructs a []ResponsesOutput from the accumulated delta
@@ -710,6 +729,7 @@ func (a *BufferedResponseAccumulator) BuildOutput() []ResponsesOutput {
 			Arguments:             a.funcCalls[i].Args.String(),
 		})
 	}
+	out = append(out, a.toolSearchCalls...)
 
 	return out
 }

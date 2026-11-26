@@ -195,6 +195,24 @@
                   formatTokens(stats.summary.today?.tokens || 0)
                 }}</span>
               </div>
+              <div
+                v-if="stats.summary.today_upstream_errors != null"
+                class="flex items-center justify-between"
+                data-testid="today-upstream-errors"
+              >
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{
+                  t('admin.accounts.stats.upstreamErrors')
+                }}</span>
+                <span
+                  :class="[
+                    'text-sm font-semibold',
+                    stats.summary.today_upstream_errors > 0
+                      ? 'text-red-600 dark:text-red-400'
+                      : 'text-gray-900 dark:text-white'
+                  ]"
+                  >{{ formatNumber(stats.summary.today_upstream_errors) }}</span
+                >
+              </div>
             </div>
           </div>
 
@@ -345,6 +363,18 @@
                 <span class="text-sm font-semibold text-gray-900 dark:text-white"
                   >{{ stats.summary.actual_days_used }} / {{ stats.summary.days }}</span
                 >
+              </div>
+              <div
+                v-if="stats.summary.total_upstream_errors != null"
+                class="flex items-center justify-between"
+                data-testid="total-upstream-errors"
+              >
+                <span class="text-xs text-gray-500 dark:text-gray-400">{{
+                  t('admin.accounts.stats.totalUpstreamErrors')
+                }}</span>
+                <span class="text-sm font-semibold text-gray-900 dark:text-white">{{
+                  formatNumber(stats.summary.total_upstream_errors)
+                }}</span>
               </div>
             </div>
           </div>
@@ -510,6 +540,22 @@ const chartColors = computed(() => ({
 const trendChartData = computed(() => {
   if (!stats.value?.history?.length) return null
 
+  // 运维监控关闭时后端不下发 upstream_errors，此时不画这条线。
+  const hasUpstreamErrors = stats.value.summary.total_upstream_errors != null
+  const upstreamErrorDatasets = hasUpstreamErrors
+    ? [
+        {
+          label: t('admin.accounts.stats.upstreamErrors'),
+          data: stats.value.history.map((h) => h.upstream_errors ?? 0),
+          borderColor: '#ef4444',
+          backgroundColor: 'rgba(239, 68, 68, 0.1)',
+          fill: false,
+          tension: 0.3,
+          yAxisID: 'y1'
+        }
+      ]
+    : []
+
   return {
     labels: stats.value.history.map((h) => h.label),
     datasets: [
@@ -540,7 +586,8 @@ const trendChartData = computed(() => {
         fill: false,
         tension: 0.3,
         yAxisID: 'y1'
-      }
+      },
+      ...upstreamErrorDatasets
     ]
   }
 })
