@@ -391,6 +391,16 @@ GEMINI_OAUTH_CLIENT_SECRET=GOCSPX-your-client-secret
 
 ---
 
+## Antigravity System Prompt Replacements
+
+The [bundled rules](../backend/resources/antigravity/prompt-sanitize-rules.json) support DeepSeek Harness (DSH), Hermes Agent, Pi, Claude Code, and RFC 2119 wording. The DSH rules cover the identity sentence, the harness name, and the browser-context sentence. Rules replace matching text in `systemInstruction` before forwarding; ordinary messages and tool fields are not rewritten.
+
+The bundled rules are embedded in the binary and enabled by default. To use custom rules, set `GATEWAY_ANTIGRAVITY_PROMPT_SANITIZE_RULES` to inline JSON or set `GATEWAY_ANTIGRAVITY_PROMPT_SANITIZE_FILE` to a readable JSON file in the Sub2API process environment. Inline rules take precedence over the file. Custom rules replace the bundled rules; an empty or invalid custom rule set does not fall back to them.
+
+For Compose, set these environment variables under `services.sub2api.environment` and recreate the service. Changes to a configured file's size or modification time take effect on the next request. Set `GATEWAY_ANTIGRAVITY_PROMPT_SANITIZE_ENABLED=false` or `0` to disable all replacements, including when a custom rule source is configured.
+
+---
+
 ## Binary Installation
 
 For production servers using systemd.

@@ -551,6 +551,7 @@ func (s *AntigravityGatewayService) buildClaudeTestRequest(projectID, mappedMode
 
 func (s *AntigravityGatewayService) getClaudeTransformOptions(ctx context.Context) antigravity.TransformOptions {
 	opts := antigravity.DefaultTransformOptions()
+	opts.PromptSanitizer = antigravityPromptSanitizer()
 	if s.settingService == nil {
 		return opts
 	}
@@ -713,6 +714,14 @@ func (s *AntigravityGatewayService) wrapV1InternalRequest(projectID, model strin
 	var request any
 	if err := json.Unmarshal(originalBody, &request); err != nil {
 		return nil, fmt.Errorf("解析请求体失败: %w", err)
+	}
+	// 上游会对 systemInstruction 的字面量做指纹匹配并返回伪装 429，命中规则时改写。
+	// 这里复用上面已有的 unmarshal 结果，不引入额外 JSON 解析开销。
+	if sanitizer := antigravityPromptSanitizer(); sanitizer.Enabled() {
+		if replaced := sanitizer.SanitizeRequestJSON(request); replaced > 0 {
+			logger.LegacyPrintf("service.antigravity_gateway",
+				"antigravity prompt sanitize: rewrote %d systemInstruction occurrence(s) model=%s", replaced, model)
+		}
 	}
 	projectID = strings.TrimSpace(projectID)
 	if projectID == "" {
