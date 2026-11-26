@@ -604,6 +604,11 @@ type UsageLog struct {
 	AccountID int64  `json:"account_id"`
 	RequestID string `json:"request_id"`
 	Model     string `json:"model"`
+	// ResponseModel is the final model that actually answered the request. It is
+	// only populated for regular users when the record's channel enables
+	// features_config.expose_response_model and it differs from Model. The
+	// intermediate mapping chain is never exposed.
+	ResponseModel *string `json:"response_model,omitempty"`
 	// ServiceTier records the OpenAI service tier used for billing, e.g. "priority" / "flex".
 	ServiceTier *string `json:"service_tier,omitempty"`
 	// ReasoningEffort is the client-requested effort (mapping-hidden, like Model).

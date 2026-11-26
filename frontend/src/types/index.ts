@@ -1836,6 +1836,8 @@ export interface UsageLog {
   account_id: number | null
   request_id: string
   model: string
+  /** Final response model; only present for user rows when the channel enables expose_response_model. */
+  response_model?: string | null
   service_tier?: string | null
   reasoning_effort?: string | null
   inbound_endpoint?: string | null
