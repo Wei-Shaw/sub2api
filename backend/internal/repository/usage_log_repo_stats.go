@@ -387,6 +387,81 @@ func (r *usageLogRepository) GetAccountWindowStatsBatch(ctx context.Context, acc
 	return result, nil
 }
 
+// accountUpstreamErrorPredicate 与运维看板的上游错误口径一致（不区分 429/529）。
+// ops_error_logs 每个请求一行，account_id 为最终（或最后失败的）账号，故障转移中间尝试不单独计入。
+const accountUpstreamErrorPredicate = `error_owner = 'provider' AND NOT is_business_limited`
+
+// GetAccountUpstreamErrorCountsBatch 批量统计多个账号自 startTime 起的上游错误次数。
+// 未命中的账号返回 0。
+func (r *usageLogRepository) GetAccountUpstreamErrorCountsBatch(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]int64, error) {
+	result := make(map[int64]int64, len(accountIDs))
+	if len(accountIDs) == 0 {
+		return result, nil
+	}
+
+	query := `
+		SELECT account_id, COUNT(*)
+		FROM ops_error_logs
+		WHERE account_id = ANY($1) AND created_at >= $2
+			AND ` + accountUpstreamErrorPredicate + `
+		GROUP BY account_id
+	`
+	rows, err := r.sql.QueryContext(ctx, query, pq.Array(accountIDs), startTime)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var accountID, count int64
+		if err := rows.Scan(&accountID, &count); err != nil {
+			return nil, err
+		}
+		result[accountID] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for _, accountID := range accountIDs {
+		if _, ok := result[accountID]; !ok {
+			result[accountID] = 0
+		}
+	}
+	return result, nil
+}
+
+// GetAccountDailyUpstreamErrorCounts 按日统计账号在 [startTime, endTime) 内的上游错误次数，key 为 YYYY-MM-DD。
+// 日期分组口径与 GetAccountUsageStats 保持一致。
+func (r *usageLogRepository) GetAccountDailyUpstreamErrorCounts(ctx context.Context, accountID int64, startTime, endTime time.Time) (map[string]int64, error) {
+	query := `
+		SELECT TO_CHAR(created_at, 'YYYY-MM-DD') as date, COUNT(*)
+		FROM ops_error_logs
+		WHERE account_id = $1 AND created_at >= $2 AND created_at < $3
+			AND ` + accountUpstreamErrorPredicate + `
+		GROUP BY date
+	`
+	rows, err := r.sql.QueryContext(ctx, query, accountID, startTime, endTime)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	result := make(map[string]int64)
+	for rows.Next() {
+		var date string
+		var count int64
+		if err := rows.Scan(&date, &count); err != nil {
+			return nil, err
+		}
+		result[date] = count
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // GetGeminiUsageTotalsBatch 批量聚合 Gemini 账号在窗口内的 Pro/Flash 请求与用量。
 // 模型分类规则与 service.geminiModelClassFromName 一致：model 包含 flash/lite 视为 flash，其余视为 pro。
 func (r *usageLogRepository) GetGeminiUsageTotalsBatch(ctx context.Context, accountIDs []int64, startTime, endTime time.Time) (map[int64]service.GeminiUsageTotals, error) {
