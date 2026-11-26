@@ -9,16 +9,33 @@ vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 enableAutoUnmount(afterEach)
 beforeEach(() => { vi.clearAllMocks() })
 
-async function openSelector() {
+async function openSelector(accountCounts?: number[]) {
   const wrapper = mount(ProxySelector, {
     props: { modelValue: null, proxies: [1, 2].map(id => ({
-      id, name: `Proxy ${id}`, host: 'localhost', port: 8080, protocol: 'http'
+      id, name: `Proxy ${id}`, host: 'localhost', port: 8080, protocol: 'http',
+      account_count: accountCounts?.[id - 1]
     } as Proxy)) },
     global: { stubs: { Icon: true } }
   })
   await wrapper.get('.select-trigger').trigger('click')
   return wrapper
 }
+
+describe('proxy account counts', () => {
+  it('displays zero and nonzero counts in dropdown options', async () => {
+    const wrapper = await openSelector([0, 7])
+    const options = wrapper.findAll('.select-option').slice(1)
+
+    expect(options[0].get('.bg-gray-100').text()).toBe('0')
+    expect(options[1].get('.bg-gray-100').text()).toBe('7')
+  })
+
+  it('does not display a count when it is unavailable', async () => {
+    const wrapper = await openSelector()
+
+    expect(wrapper.findAll('.select-option .bg-gray-100')).toHaveLength(0)
+  })
+})
 
 describe('proxy connection tests', () => {
   it('does not restart an individual test when a batch is started', async () => {
