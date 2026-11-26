@@ -28,6 +28,9 @@ import type {
   UpstreamBillingRatesResponse,
   OllamaCloudUsageSettings,
   OllamaCloudUsageState,
+  OpenDesignUsageState,
+  OpenDesignDevicePrompt,
+  OpenDesignDeviceStatus,
   GrokMediaEligibilityMode,
   GrokMediaEligibilityState,
   GrokModelDiagnostics,
@@ -1075,6 +1078,34 @@ export async function probeUpstreamBillingBatch(accountIds: number[]): Promise<U
   return data.results
 }
 
+export async function bindOpenDesignUsage(id: number, token: string): Promise<OpenDesignUsageState> {
+  const { data } = await apiClient.put<OpenDesignUsageState>(`/admin/accounts/${id}/opendesign-usage/session`, {
+    token
+  })
+  return data
+}
+
+export async function startOpenDesignDeviceAuthorization(id: number, signal: AbortSignal): Promise<OpenDesignDevicePrompt> {
+  const { data } = await apiClient.post<OpenDesignDevicePrompt>(`/admin/accounts/${id}/opendesign-usage/device/start`, undefined, { signal })
+  return data
+}
+
+export async function pollOpenDesignDeviceAuthorization(id: number, attemptId: string, signal: AbortSignal): Promise<OpenDesignDeviceStatus> {
+  const { data } = await apiClient.post<OpenDesignDeviceStatus>(`/admin/accounts/${id}/opendesign-usage/device/poll`, {
+    attempt_id: attemptId
+  }, { signal })
+  return data
+}
+
+export async function refreshOpenDesignUsage(id: number): Promise<OpenDesignUsageState> {
+  const { data } = await apiClient.post<OpenDesignUsageState>(`/admin/accounts/${id}/opendesign-usage/refresh`)
+  return data
+}
+
+export async function unbindOpenDesignUsage(id: number): Promise<void> {
+  await apiClient.delete(`/admin/accounts/${id}/opendesign-usage/session`)
+}
+
 export async function getOllamaCloudUsageSettings(): Promise<OllamaCloudUsageSettings> {
   const { data } = await apiClient.get<OllamaCloudUsageSettings>('/admin/accounts/ollama-cloud-usage/settings')
   return data
@@ -1210,6 +1241,11 @@ export const accountsAPI = {
   previewUpstreamGroup,
   probeUpstreamBillingBatch,
   getOllamaCloudUsageSettings,
+  bindOpenDesignUsage,
+  startOpenDesignDeviceAuthorization,
+  pollOpenDesignDeviceAuthorization,
+  refreshOpenDesignUsage,
+  unbindOpenDesignUsage,
   updateOllamaCloudUsageSettings,
   getOllamaCloudUsage,
   saveOllamaCloudUsageSession,

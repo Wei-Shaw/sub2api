@@ -737,6 +737,8 @@ func lockAndMergeAccountProbeExtra(
 
 	extra := copyJSONMap(normalizeJSONMap(account.Extra))
 	for _, key := range []string{
+		service.OpenDesignUsageExtraKey,
+		service.ZhipuResetCardsExtraKey,
 		service.UpstreamBillingProbeEnabledExtraKey,
 		service.UpstreamBillingRateSyncEnabledExtraKey,
 		service.UpstreamBillingGroupSyncEnabledExtraKey,
@@ -748,6 +750,22 @@ func lockAndMergeAccountProbeExtra(
 		service.OpenCodeGoUsageSnapshotExtraKey,
 	} {
 		delete(extra, key)
+	}
+	var managedAuthorizationKey string
+	if service.IsOpenDesignUsageAccount(account) {
+		managedAuthorizationKey = service.OpenDesignUsageExtraKey
+	} else if service.IsZhipuResetCardsAccount(account) {
+		managedAuthorizationKey = service.ZhipuResetCardsExtraKey
+	}
+	if identityUnchanged && managedAuthorizationKey != "" {
+		if err := rows.Close(); err != nil {
+			return nil, err
+		}
+		if value, present, err := readLockedManagedAuthorization(ctx, client, account.ID, managedAuthorizationKey); err != nil {
+			return nil, err
+		} else if present {
+			extra[managedAuthorizationKey] = value
+		}
 	}
 	probeAccount := service.IsUpstreamBillingProbeIdentity(account.Platform, account.Type)
 	probeEnabled := false
@@ -950,7 +968,7 @@ func (r *accountRepository) UpdateCredentials(ctx context.Context, id int64, cre
 				-- 身份变化，丢弃 stale 快照。
 				WHEN type = 'apikey'
 					AND credentials IS DISTINCT FROM $1::jsonb
-				THEN COALESCE(extra, '{}'::jsonb) - 'upstream_billing_probe'
+				THEN COALESCE(extra, '{}'::jsonb) - 'upstream_billing_probe' - 'opendesign_usage_binding'
 				ELSE extra
 			END,
 			updated_at = NOW()
@@ -3286,7 +3304,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 				" AND COALESCE(btrim("+credentialPlaceholder+"::jsonb ->> 'account_mode') <> 'zen', true) IS NOT TRUE")
 	}
 
-	if len(updates.Extra) > 0 || len(ollamaGroupIdentityChanges) > 0 || len(opencodeGroupIdentityChanges) > 0 || ollamaProxyIdentityChanged != "" || updates.EnsureCodexFingerprintSeed {
+	if len(updates.Extra) > 0 || credentialPlaceholder != "" || ollamaProxyIdentityChanged != "" || updates.EnsureCodexFingerprintSeed {
 		extraExpression := "COALESCE(extra, '{}'::jsonb)"
 		if len(updates.Extra) > 0 {
 			payload, err := json.Marshal(updates.Extra)
@@ -3347,6 +3365,17 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 			}
 		}
 		caseBranches := make([]string, 0, 4)
+		openDesignChanges := make([]string, 0, 2)
+		if credentialPlaceholder != "" {
+			openDesignChanges = append(openDesignChanges, "credentials IS DISTINCT FROM (COALESCE(credentials, '{}'::jsonb) || "+credentialPlaceholder+"::jsonb)")
+		}
+		if ollamaProxyIdentityChanged != "" {
+			openDesignChanges = append(openDesignChanges, ollamaProxyIdentityChanged)
+		}
+		if len(openDesignChanges) > 0 {
+			caseBranches = append(caseBranches, " WHEN platform = 'opendesign' AND ("+
+				joinClauses(openDesignChanges, " OR ")+") THEN ("+extraExpression+") - 'opendesign_usage_binding'")
+		}
 		if opencodeGroupIdentityChanged != "" {
 			caseBranches = append(caseBranches,
 				" WHEN "+opencodeGroupIdentityChanged+" THEN ("+extraExpression+") - 'opencode_go_usage_auto_refresh' - 'opencode_go_usage_snapshot'")

@@ -1,16 +1,25 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import AccountUsageCell from '../AccountUsageCell.vue'
+import OpenDesignUsageSettings from '../OpenDesignUsageSettings.vue'
 import type { Account, AccountUsageInfo } from '@/types'
 
-const { getUsage } = vi.hoisted(() => ({
-  getUsage: vi.fn()
+const { getUsage, refreshOpenDesignUsage, bindOpenDesignUsage, startDevice, pollDevice } = vi.hoisted(() => ({
+  getUsage: vi.fn(),
+  refreshOpenDesignUsage: vi.fn(),
+  bindOpenDesignUsage: vi.fn(),
+  startDevice: vi.fn(),
+  pollDevice: vi.fn()
 }))
 
 vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
-      getUsage
+      getUsage,
+      refreshOpenDesignUsage,
+      bindOpenDesignUsage,
+      startOpenDesignDeviceAuthorization: startDevice,
+      pollOpenDesignDeviceAuthorization: pollDevice
     }
   }
 }))
@@ -477,6 +486,162 @@ describe('AccountUsageCell', () => {
     expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(false)
     // 用量单元格已渲染时不再叠加 `-` 占位符
     expect(wrapper.text()).not.toContain('-')
+  })
+
+  it('OpenDesign Cloud Key 展示本地统计和限额，不探测上游额度', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({
+          id: 32,
+          platform: 'opendesign',
+          type: 'apikey',
+          quota_daily_limit: 10,
+          quota_daily_used: 3
+        }),
+        todayStats: {
+          requests: 37,
+          tokens: 6_400_000,
+          cost: 6.09,
+          standard_cost: 6.09,
+          user_cost: 6.09
+        }
+      },
+      global: {
+        stubs: {
+          ...cnUsageCellStubs,
+          UsageProgressBar: {
+            props: ['label', 'utilization'],
+            template: '<div data-test="local-quota">{{ label }}|{{ utilization }}</div>'
+          }
+        }
+      }
+    })
+
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('37 req')
+    expect(wrapper.text()).toContain('6.4M')
+    expect(wrapper.text()).toContain('A $6.09')
+    expect(wrapper.text()).toContain('U $6.09')
+    expect(wrapper.findAll('[data-test="local-quota"]').map(bar => bar.text())).toEqual(['1d|30'])
+    expect(wrapper.find('[data-test="cn-quota-cell"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="cn-balance-cell"]').exists()).toBe(false)
+    expect(getUsage).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('OpenDesign 仅用 Control Key 绑定，完成后清空输入框', async () => {
+    const state = { workspace_id: 'resolved', status: 'ok' }
+    bindOpenDesignUsage.mockResolvedValue(state)
+    const wrapper = mount(OpenDesignUsageSettings, {
+      props: { account: makeAccount({ id: 32, platform: 'opendesign', type: 'apikey' }) }
+    })
+    expect(wrapper.findAll('input')).toHaveLength(1)
+    const input = wrapper.get<HTMLInputElement>('input[type="password"]')
+    await input.setValue('vela_ctrl_fixture')
+    await wrapper.get('[data-test="opendesign-bind-token"]').trigger('click')
+    await flushPromises()
+    expect(bindOpenDesignUsage).toHaveBeenCalledWith(32, 'vela_ctrl_fixture')
+    expect(wrapper.emitted('updated')).toEqual([[state]])
+    expect(input.element.value).toBe('')
+    wrapper.unmount()
+    bindOpenDesignUsage.mockReset()
+  })
+
+  it('OpenDesign 官方批准后自动绑定，无需提交手动 Key', async () => {
+    vi.useFakeTimers()
+    const prompt = {
+      attempt_id: 'attempt-fixture',
+      activate_url: 'https://open-design.ai/cloud/cli/activate?deviceId=device_123&userCode=ABC123',
+      user_code: 'ABC123',
+      expires_at: new Date(Date.now() + 60_000).toISOString(),
+      poll_interval: 2
+    }
+    const usage = { workspace_id: 'resolved', status: 'ok' }
+    startDevice.mockResolvedValue(prompt)
+    pollDevice.mockResolvedValueOnce({ status: 'pending' }).mockResolvedValueOnce({ status: 'bound', usage })
+    const wrapper = mount(OpenDesignUsageSettings, {
+      props: { account: makeAccount({ id: 32, platform: 'opendesign', type: 'apikey' }) }
+    })
+    try {
+      await wrapper.get('[data-test="opendesign-start-device"]').trigger('click')
+      await vi.advanceTimersByTimeAsync(0)
+      expect(wrapper.get('a').attributes('href')).toBe(prompt.activate_url)
+      expect(wrapper.get('a').attributes('rel')).toBe('noopener noreferrer')
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(wrapper.emitted('updated')).toBeUndefined()
+      await vi.advanceTimersByTimeAsync(2000)
+      expect(pollDevice).toHaveBeenLastCalledWith(32, prompt.attempt_id, expect.any(AbortSignal))
+      expect(wrapper.emitted('updated')).toEqual([[usage]])
+      expect(bindOpenDesignUsage).not.toHaveBeenCalled()
+    } finally {
+      wrapper.unmount()
+      vi.useRealTimers()
+      startDevice.mockReset()
+      pollDevice.mockReset()
+    }
+  })
+
+  it('OpenDesign 将剩余额度换算为已用百分比，保留重置时间和手动刷新', async () => {
+    const state: NonNullable<Account['opendesign_usage']> = {
+      workspace_id: 'fixture',
+      status: 'ok',
+      snapshot: {
+        fetched_at: '2026-11-24T12:00:00Z',
+        five_hour: { remaining_percent: 100, resets_at: '2026-11-24T15:00:00Z' },
+        seven_day: { remaining_percent: 70, resets_at: '2026-11-30T12:00:00Z' },
+        balance_usd: '1.0000'
+      }
+    }
+    const expired = { ...state, status: 'unauthorized' as const }
+    let finishRefresh!: (value: typeof expired) => void
+    refreshOpenDesignUsage.mockImplementationOnce(() => new Promise(resolve => { finishRefresh = resolve }))
+    const account = makeAccount({ id: 32, platform: 'opendesign', type: 'apikey', opendesign_usage: state })
+    const wrapper = mount(AccountUsageCell, {
+      props: { account, todayStats: { requests: 37, tokens: 100, cost: 1, standard_cost: 1 } },
+      global: {
+        stubs: {
+          UsageProgressBar: {
+            props: { label: String, utilization: Number, resetsAt: String, color: String, remainingCapacity: Boolean },
+            template: '<div data-test="upstream-window">{{ label }}|{{ utilization }}|{{ resetsAt }}|{{ color }}|{{ remainingCapacity }}</div>'
+          }
+        }
+      }
+    })
+
+    expect(wrapper.findAll('[data-test="upstream-window"]').map(bar => bar.text())).toEqual([
+      '5h|0|2026-11-24T15:00:00Z|indigo|false', '7d|30|2026-11-30T12:00:00Z|emerald|false'
+    ])
+    expect(wrapper.text()).not.toContain('admin.accounts.opendesignUsage.remaining')
+    expect(wrapper.text().indexOf('37 req')).toBeLessThan(wrapper.text().indexOf('5h|0'))
+    const query = wrapper.get<HTMLButtonElement>('[data-testid="opendesign-usage-query"]')
+    expect(query.text()).toBe('admin.accounts.usageWindow.activeQuery')
+    expect(wrapper.text().indexOf('7d|30')).toBeLessThan(wrapper.text().indexOf(query.text()))
+    expect(refreshOpenDesignUsage).not.toHaveBeenCalled()
+    await query.trigger('click')
+    expect(query.element.disabled).toBe(true)
+    expect(query.get('svg').classes()).toContain('animate-spin')
+    await query.trigger('click')
+    expect(refreshOpenDesignUsage).toHaveBeenCalledTimes(1)
+    finishRefresh(expired)
+    await flushPromises()
+    expect(query.element.disabled).toBe(false)
+    expect(refreshOpenDesignUsage).toHaveBeenCalledWith(32)
+    expect(wrapper.emitted('account-updated')?.[0]).toEqual([{ ...account, opendesign_usage: expired }])
+    await wrapper.setProps({ account: { ...account, opendesign_usage: expired } })
+    expect(wrapper.get('[role="status"]').text()).toBe('admin.accounts.opendesignUsage.unauthorized')
+    expect(wrapper.get('[role="status"]').classes()).toContain('bg-amber-100')
+    expect(wrapper.findAll('[data-test="upstream-window"]')).toHaveLength(2)
+
+    await wrapper.setProps({ account })
+    refreshOpenDesignUsage.mockRejectedValueOnce(new Error('network error'))
+    await query.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[role="status"]').text()).toBe('admin.accounts.opendesignUsage.failed')
+    expect(wrapper.get('[role="status"]').classes()).toContain('bg-red-100')
+    expect(wrapper.findAll('[data-test="upstream-window"]')).toHaveLength(2)
+    wrapper.unmount()
+    refreshOpenDesignUsage.mockReset()
   })
 
   it('Command Code 账号渲染额度与积分余额单元格', async () => {

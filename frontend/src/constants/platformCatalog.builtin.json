@@ -278,6 +278,26 @@
           }
         ]
       }
+    },
+    {
+      "id": "opendesign",
+      "display_name": "OpenDesign Cloud",
+      "gateway": "openai",
+      "cn_provider": false,
+      "multi_protocol": {
+        "default_mode": "payg",
+        "routing": "by_inbound",
+        "modes": [
+          {
+            "mode": "payg",
+            "base_urls": {
+              "anthropic": "https://amr-link.open-design.ai",
+              "chat_completions": "https://amr-link.open-design.ai/v1",
+              "responses": "https://amr-link.open-design.ai/v1"
+            }
+          }
+        ]
+      }
     }
   ],
   "composite_precedence": [
@@ -293,6 +313,7 @@
     "opencode_go",
     "typesafe",
     "command_code",
-    "cline"
+    "cline",
+    "opendesign"
   ]
 }

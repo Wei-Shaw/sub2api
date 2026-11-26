@@ -1672,6 +1672,11 @@ func (a *Account) GetOpenAIFormatBaseURL() string {
 	if a == nil || !a.IsAnthropicProtocol() {
 		return a.GetOpenAIBaseURL()
 	}
+	// OpenDesign 的模型目录与 Messages 共用基址；保留账号配置的地址，
+	// 避免同步模型时把自定义上游的 Key 发送给官方端点。
+	if a.Platform == PlatformOpenDesign {
+		return a.GetOpenAIBaseURL()
+	}
 	if baseURL := a.defaultProviderBaseURL(APIProtocolChatCompletions); baseURL != "" {
 		return baseURL
 	}

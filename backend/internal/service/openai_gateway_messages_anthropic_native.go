@@ -146,12 +146,17 @@ func (s *OpenAIGatewayService) nativeAnthropicTargetURL(account *Account) (strin
 
 // nativeAnthropicMessagesURL 由已校验的 Anthropic 协议基址拼出 messages 端点，转发与
 // 连接测试共用。按模型分流的聚合平台（OpenCode、Command Code 等）的基址可能沿用带 /v1
-// 的 Chat Completions 基址，用版本感知拼接避免 /v1/v1/messages；其余供应商朴素拼接。
+// 的 Chat Completions 基址；OpenDesign 也共用同一主机和版本路径。
+// 这些平台用版本感知拼接避免 /v1/v1/messages。
 func nativeAnthropicMessagesURL(account *Account, validatedBaseURL string) string {
-	if account.routesByModel() {
+	if usesVersionAwareNativeAnthropicURL(account) {
 		return buildOpenAIEndpointURL(validatedBaseURL, "/v1/messages")
 	}
 	return strings.TrimRight(validatedBaseURL, "/") + "/v1/messages"
+}
+
+func usesVersionAwareNativeAnthropicURL(account *Account) bool {
+	return account != nil && (account.routesByModel() || account.Platform == PlatformOpenDesign)
 }
 
 func resolveMappedUpstreamModel(account *Account, body []byte, defaultMappedModel string) string {

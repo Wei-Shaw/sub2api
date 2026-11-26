@@ -68,7 +68,7 @@ func (s *AccountTestService) testCNProviderAdaptiveAnthropicConnection(c *gin.Co
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid adaptive Anthropic base URL: %s", err.Error()))
 	}
-	apiURL := strings.TrimRight(baseURL, "/") + "/v1/messages"
+	apiURL := nativeAnthropicMessagesURL(account, baseURL)
 
 	payload, err := createTestPayload(testModelID)
 	if err != nil {
@@ -231,6 +231,9 @@ func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, a
 
 	testModelID := strings.TrimSpace(modelID)
 	if testModelID == "" {
+		testModelID = account.providerDefaultTestModel()
+	}
+	if testModelID == "" {
 		testModelID = claude.DefaultTestModel
 	}
 	testModelID = account.GetMappedModel(testModelID)
@@ -244,7 +247,7 @@ func (s *AccountTestService) testCNProviderAnthropicConnection(c *gin.Context, a
 	if err != nil {
 		return s.sendErrorAndEnd(c, fmt.Sprintf("Invalid Anthropic base URL: %s", err.Error()))
 	}
-	if hint := cnAnthropicBaseURLMisconfigHint(baseURL, account.routesByModel()); hint != "" {
+	if hint := cnAnthropicBaseURLMisconfigHint(baseURL, usesVersionAwareNativeAnthropicURL(account)); hint != "" {
 		return s.sendErrorAndEnd(c, hint)
 	}
 	apiURL := nativeAnthropicMessagesURL(account, baseURL)

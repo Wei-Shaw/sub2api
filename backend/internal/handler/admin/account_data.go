@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"strconv"
 	"strings"
 	"time"
@@ -205,7 +206,7 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			Platform:           acc.Platform,
 			Type:               acc.Type,
 			Credentials:        acc.Credentials,
-			Extra:              acc.Extra,
+			Extra:              exportAccountExtra(acc.Extra),
 			ProxyKey:           proxyKey,
 			Concurrency:        acc.Concurrency,
 			Priority:           acc.Priority,
@@ -223,6 +224,18 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 	}
 
 	response.Success(c, payload)
+}
+
+func exportAccountExtra(extra map[string]any) map[string]any {
+	_, hasOpenDesign := extra[service.OpenDesignUsageExtraKey]
+	_, hasZhipu := extra[service.ZhipuResetCardsExtraKey]
+	if !hasOpenDesign && !hasZhipu {
+		return extra
+	}
+	out := maps.Clone(extra)
+	delete(out, service.OpenDesignUsageExtraKey)
+	delete(out, service.ZhipuResetCardsExtraKey)
+	return out
 }
 
 func (h *AccountHandler) ImportData(c *gin.Context) {

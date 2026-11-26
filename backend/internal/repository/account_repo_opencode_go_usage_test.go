@@ -314,20 +314,19 @@ func TestBulkUpdateOpenCodeGoEligiblePredicateIncludesBaseURL(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEmpty(t, exec.execQueries)
 	query := normalizeSQLWhitespace(exec.execQueries[0])
-	// 第一个 WHEN 分支是 OpenCode 快照失效分支（代理变化），其 eligible 判定必须
-	// 包含 opencode base URL 正则，使 OpenAI+Ollama 行无法命中该分支。
-	caseStart := strings.Index(query, "CASE")
-	firstThen := strings.Index(query, "THEN")
-	require.NotEqual(t, -1, caseStart)
-	require.NotEqual(t, -1, firstThen)
-	require.Less(t, caseStart, firstThen)
-	firstWhen := query[caseStart:firstThen]
-	// 第一个 WHEN 分支是 OpenCode 快照失效分支（代理变化），其 eligible 判定必须
-	// 覆盖 opencode_go 平台与挂载白名单的 opencode 基址，使 Ollama 行无法命中。
-	require.Contains(t, firstWhen, "platform = 'opencode_go'")
-	require.Contains(t, firstWhen, "[oO][pP][eE][nN][cC][oO][dD][eE]")
-	require.Contains(t, firstWhen, "credentials ->> 'base_url'")
-	require.NotContains(t, firstWhen, "[oO][lL][lL][aA][mM][aA]")
+	// Locate the WHEN that clears the OpenCode snapshot, even if another
+	// provider's branch comes first. It must not match OpenAI+Ollama accounts.
+	snapshotRemoval := strings.Index(query, " - 'opencode_go_usage_snapshot'")
+	require.NotEqual(t, -1, snapshotRemoval)
+	thenStart := strings.LastIndex(query[:snapshotRemoval], " THEN ")
+	require.NotEqual(t, -1, thenStart)
+	whenStart := strings.LastIndex(query[:thenStart], " WHEN ")
+	require.NotEqual(t, -1, whenStart)
+	opencodeWhen := query[whenStart:thenStart]
+	require.Contains(t, opencodeWhen, "platform = 'opencode_go'")
+	require.Contains(t, opencodeWhen, "[oO][pP][eE][nN][cC][oO][dD][eE]")
+	require.Contains(t, opencodeWhen, "credentials ->> 'base_url'")
+	require.NotContains(t, opencodeWhen, "[oO][lL][lL][aA][mM][aA]")
 }
 
 // F3 延伸：BulkUpdate 的 opencode base_url 变化子句同样必须 NULL-safe——新 base_url

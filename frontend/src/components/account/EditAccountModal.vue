@@ -2304,6 +2304,19 @@
         :account="account"
         @updated="handleOllamaCloudUsageUpdated"
       />
+      <OpenDesignUsageSettings
+        v-if="account?.platform === 'opendesign' && account.type === 'apikey' && !account.parent_account_id"
+        :key="account.id"
+        :account="account"
+        @updated="state => account && emit('updated', { ...account, opendesign_usage: state })"
+      />
+      <ZhipuResetCardsSettings
+        v-if="show && account?.platform === 'zhipu' && account.type === 'apikey' && !account.parent_account_id &&
+          account.credentials?.account_mode === 'coding' && !account.credentials?.zhipu_organization && !account.credentials?.zhipu_project"
+        :key="account.id"
+        :account-id="account.id"
+        @binding-changed="bound => account && emit('updated', { ...account, zhipu_reset_cards_bound: bound })"
+      />
 
       <section
         v-if="account?.opencode_go_usage?.eligible"
@@ -3471,6 +3484,8 @@ import {
 import OpenCodeGoProtocolRulesEditor from '@/components/account/OpenCodeGoProtocolRulesEditor.vue'
 import HeaderOverrideEditor from '@/components/account/HeaderOverrideEditor.vue'
 import OllamaCloudUsageSettings from '@/components/account/OllamaCloudUsageSettings.vue'
+import OpenDesignUsageSettings from '@/components/account/OpenDesignUsageSettings.vue'
+import ZhipuResetCardsSettings from '@/components/account/ZhipuResetCardsSettings.vue'
 import {
   applyAntigravityProjectID,
   applyHeaderOverride,

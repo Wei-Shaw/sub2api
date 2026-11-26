@@ -18,6 +18,15 @@ Composite groups can route to these concrete account platforms:
 - Zhipu GLM
 - DeepSeek
 - MiniMax
+- OpenCode Go / Zen
+- TypeSafe
+- Command Code
+- Cline
+- OpenDesign Cloud (`opendesign`)
+
+The supported platforms and account protocol defaults are derived from the
+backend platform catalog and provider profiles. The frontend ships a matching
+built-in catalog.
 
 The selected concrete platform is used for account selection, user platform
 quota checks, post-usage billing, ops error platform attribution, channel
@@ -86,6 +95,26 @@ Composite routing detects common public model IDs and provider-prefixed IDs:
 
 Unknown or ambiguous model names fail closed with a client error instead of
 guessing a provider.
+
+To route a model to OpenDesign Cloud through a composite group, create an
+explicit route targeting `opendesign`. Use an OpenDesign Cloud workspace API
+key for the upstream account. The account supports Chat Completions,
+Responses, and Messages over HTTP.
+
+To show upstream usage, edit the OpenDesign account and open **OpenDesign
+upstream usage**. Select **Authorize OpenDesign**, then open the official
+authorization page. Check the displayed code and approve with the intended
+OpenDesign account. Leave the Sub2API editor open until binding completes.
+Sub2API identifies the workspace, verifies access, and encrypts the Control Key.
+It never receives your password or replaces the inference API key. A stable
+server encryption key is required. If device authorization is unavailable, you
+can still bind a `vela_ctrl_…` Control Key manually. Pending authorizations
+expire and must be restarted if the serving instance restarts.
+
+The account list shows the available 5-hour and 7-day windows, reset times,
+and pay-as-you-go balance. Refresh is manual and stays pinned to the workspace
+and member resolved at binding. Existing Cookie bindings keep working. You
+can rebind or remove usage access without changing inference settings.
 
 ## Admin Workflows
 

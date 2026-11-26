@@ -740,7 +740,32 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
     const labels = (testid: string) =>
       wrapper.get(`[data-testid="${testid}"]`).findAll('button').map(button => button.text().trim())
     expect(labels('platform-row-cn')).toEqual(['Kimi', 'Zhipu GLM', 'DeepSeek', 'MiniMax'])
-    expect(labels('platform-row-aggregators')).toEqual(['OpenCode', 'Command Code', 'Cline'])
+    expect(labels('platform-row-aggregators')).toEqual(['OpenCode', 'Command Code', 'Cline', 'OpenDesign Cloud'])
+  })
+
+  it('creates an OpenDesign Cloud API key account with all three native endpoints', async () => {
+    const wrapper = mountModal()
+    await wrapper.get('[data-testid="platform-button-opendesign"]').trigger('click')
+    expect(wrapper.find('[data-testid="generic-account-mode"]').exists()).toBe(false)
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('OpenDesign Cloud')
+    await wrapper.get('form#create-account-form input[type="password"]').setValue('sk-amr-test')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await flushPromises()
+
+    expect(createAccountMock.mock.calls[0]?.[0]).toMatchObject({
+      platform: 'opendesign',
+      type: 'apikey',
+      credentials: {
+        api_key: 'sk-amr-test',
+        api_protocol: 'adaptive',
+        base_url: 'https://amr-link.open-design.ai/v1',
+        api_base_urls: {
+          chat_completions: 'https://amr-link.open-design.ai/v1',
+          responses: 'https://amr-link.open-design.ai/v1',
+          anthropic: 'https://amr-link.open-design.ai'
+        }
+      }
+    })
   })
 
   it('creates a Cline account without an account type and with only the Chat Completions endpoint', async () => {

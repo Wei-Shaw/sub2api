@@ -152,9 +152,9 @@ func TestPasskeyLoginAuditUsesCanonicalLoginActionAndOmitsCredentialBody(t *test
 	require.Contains(t, auditBodyOmittedRoutes, route)
 }
 
-// Ollama 会话保存的请求体整体就是浏览器 Cookie 明文，键级脱敏清单曾漏掉裸键
+// 上游会话保存的请求体包含浏览器 Cookie 明文，键级脱敏清单曾漏掉裸键
 // "session"，必须走整体不入库路径，防止会话凭证长期留存在 audit_logs。
-func TestOllamaCloudUsageSessionRouteOmitsAuditBody(t *testing.T) {
+func TestUpstreamUsageSessionRoutesOmitAuditBody(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	require.Contains(t, auditBodyOmittedRoutes, "PUT /api/v1/admin/accounts/:id/ollama-cloud-usage/session")
 
@@ -172,6 +172,9 @@ func TestOllamaCloudUsageSessionRouteOmitsAuditBody(t *testing.T) {
 	router.PUT("/api/v1/admin/accounts/:id/ollama-cloud-usage/session", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"ok": true})
 	})
+	router.PUT("/api/v1/admin/accounts/:id/opendesign-usage/session", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"ok": true})
+	})
 
 	request := httptest.NewRequest(http.MethodPut, "/api/v1/admin/accounts/7/ollama-cloud-usage/session",
 		bytes.NewBufferString(`{"session":"wos-session=audit-canary-cookie; __Secure-authjs.session-token.0=audit-canary-shard"}`))
@@ -179,14 +182,23 @@ func TestOllamaCloudUsageSessionRouteOmitsAuditBody(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
 	require.Equal(t, http.StatusOK, recorder.Code)
+
+	request = httptest.NewRequest(http.MethodPut, "/api/v1/admin/accounts/7/opendesign-usage/session",
+		bytes.NewBufferString(`{"workspace_id":"fixture","session":"test.session_token=audit-canary-cookie"}`))
+	request.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	require.Equal(t, http.StatusOK, recorder.Code)
 	auditService.Stop()
 
 	repository.mu.Lock()
 	logs := append([]*service.AuditLog(nil), repository.logs...)
 	repository.mu.Unlock()
-	require.Len(t, logs, 1)
-	require.Equal(t, "<credential-bearing body omitted>", logs[0].RequestBody)
-	require.NotContains(t, logs[0].RequestBody, "audit-canary")
+	require.Len(t, logs, 2)
+	for _, entry := range logs {
+		require.Equal(t, "<credential-bearing body omitted>", entry.RequestBody)
+		require.NotContains(t, entry.RequestBody, "audit-canary")
+	}
 }
 
 // MCP OAuth 是机器凭证：只读工具同样可以批量读取邮箱等数据，必须全部入审计并带上 grant。

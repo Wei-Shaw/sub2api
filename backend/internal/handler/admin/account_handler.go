@@ -67,6 +67,8 @@ type AccountHandler struct {
 	grokImportProber        grokImportProber
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
+	openDesignUsage         *service.OpenDesignUsageService
+	zhipuResetCards         *service.ZhipuResetCardsService
 	cfg                     *config.Config
 	opencodeGoUsage         *service.OpenCodeGoUsageService
 }
@@ -78,6 +80,16 @@ func (h *AccountHandler) SetUpstreamBillingProbeService(probe *service.UpstreamB
 
 func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUsageService) {
 	h.ollamaCloudUsage = usage
+}
+
+// SetOpenDesignUsageService 注入独立的上游用量服务。
+func (h *AccountHandler) SetOpenDesignUsageService(usage *service.OpenDesignUsageService) {
+	h.openDesignUsage = usage
+}
+
+// SetZhipuResetCardsService 注入独立的 GLM 重置卡服务。
+func (h *AccountHandler) SetZhipuResetCardsService(cards *service.ZhipuResetCardsService) {
+	h.zhipuResetCards = cards
 }
 
 func (h *AccountHandler) SetOpenCodeGoUsageService(usage *service.OpenCodeGoUsageService) {
@@ -2823,8 +2835,8 @@ func (h *AccountHandler) GetAvailableModels(c *gin.Context) {
 }
 
 func (h *AccountHandler) respondAvailableModels(c *gin.Context, account *service.Account) {
-	// Handle OpenAI accounts
-	if account.IsOpenAI() {
+	// OpenDesign 与 OpenAI 共用标准模型发现；失败时各自使用本地候选模型。
+	if account.IsOpenAI() || account.Platform == service.PlatformOpenDesign {
 		// Prefer the shared, account-keyed upstream catalog. If discovery fails,
 		// retain the legacy local catalog below so the test dialog remains usable.
 		if h.accountTestService != nil {
@@ -2839,9 +2851,14 @@ func (h *AccountHandler) respondAvailableModels(c *gin.Context, account *service
 			return
 		}
 
+		defaultModels := openai.DefaultModels
+		if account.Platform == service.PlatformOpenDesign {
+			id := service.DefaultOpenDesignTestModel
+			defaultModels = []openai.Model{{ID: id, Object: "model", Type: "model", DisplayName: id}}
+		}
 		mapping := account.GetModelMapping()
 		if len(mapping) == 0 {
-			response.Success(c, openai.DefaultModels)
+			response.Success(c, defaultModels)
 			return
 		}
 
@@ -2849,7 +2866,7 @@ func (h *AccountHandler) respondAvailableModels(c *gin.Context, account *service
 		var models []openai.Model
 		for requestedModel := range mapping {
 			var found bool
-			for _, dm := range openai.DefaultModels {
+			for _, dm := range defaultModels {
 				if dm.ID == requestedModel {
 					models = append(models, dm)
 					found = true
