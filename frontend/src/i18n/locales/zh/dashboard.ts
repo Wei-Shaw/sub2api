@@ -377,6 +377,7 @@ export default {
     model: '模型',
     requestedModel: '请求',
     upstreamModel: '上游',
+    responseModel: '实际响应模型',
 	  sentUpstreamModel: '发往上游',
 	  upstreamResponseModel: '上游响应',
 	  upstreamModelMismatch: '上游响应模型不一致',

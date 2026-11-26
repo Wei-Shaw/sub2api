@@ -108,7 +108,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	// 独立 Ollama Cloud token 钩子；chatReq.Model 已是模型映射后的 upstreamModel。
 	// reasoning 归一化与 raw 路径同序：先归一化 request（历史 assistant 消息的
 	// reasoning_content → reasoning）再 clamp max_tokens。
-	chatBody = applyOllamaCloudRawChatCompletionsRequest(account, upstreamModel, chatBody)
+	chatBody = applyRawChatCompletionsReasoningCompatRequest(account, upstreamModel, chatBody)
 	chatBody = clampOllamaCloudUpstreamMaxTokens(account, chatBody)
 	// Keep the final outbound tier for usage-time reconciliation. A policy
 	// filter that removes the field therefore leaves this nil.

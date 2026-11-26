@@ -10,7 +10,14 @@ import (
 
 // Ollama Cloud 的 OpenAI 兼容 /v1/chat/completions 把思维放在 reasoning / thinking，
 // 而 DeepSeek/OpenAI 客户端只认 reasoning_content。仅在 raw CC 直转路径上做 wire JSON
-// 双向补齐，不改 CC↔Responses / Anthropic / Grok 桥。
+// 双向补齐，不改 CC↔Responses / Anthropic / Grok 桥。vLLM、SGLang 等自托管上游同样
+// 返回 reasoning，其 OpenAI API Key 账号可通过 OpenAIChatReasoningContentExtraKey 启用
+// 同一套补齐。
+
+// OpenAIChatReasoningContentExtraKey 是账号 extra 中的可选开关，通过 admin 账号更新 API
+// 的 extra 字段设置。为 true 时，OpenAI API Key 账号在 raw CC 直转路径上启用与 Ollama
+// Cloud 相同的 reasoning 字段补齐。
+const OpenAIChatReasoningContentExtraKey = "openai_chat_reasoning_content"
 
 // isOllamaCloudDeepSeekUpstream 判断本次出站是否命中 Ollama Cloud 上托管的
 // DeepSeek 模型：出站 base_url 是 Ollama Cloud（GetOpenAIBaseURL，与
@@ -28,24 +35,35 @@ func isOllamaCloudDeepSeekUpstream(account *Account, upstreamModel string) bool 
 	return isDeepSeekModel(upstreamModel)
 }
 
-// applyOllamaCloudRawChatCompletionsRequest 只做 Ollama Cloud reasoning 归一化；
+// rawChatCompletionsReasoningCompatEnabled 判定 raw CC 直转是否补齐 reasoning 字段：
+// Ollama Cloud 上托管的 DeepSeek 模型默认启用（按出站 endpoint + 模型判定，见
+// isOllamaCloudDeepSeekUpstream），其余 OpenAI API Key 账号按 OpenAIChatReasoningContentExtraKey 开启。
+func rawChatCompletionsReasoningCompatEnabled(account *Account, upstreamModel string) bool {
+	if isOllamaCloudDeepSeekUpstream(account, upstreamModel) {
+		return true
+	}
+	return account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey &&
+		account.getExtraBool(OpenAIChatReasoningContentExtraKey)
+}
+
+// applyRawChatCompletionsReasoningCompatRequest 只做 reasoning 归一化；
 // max_tokens clamp 已解耦到独立钩子 clampOllamaCloudUpstreamMaxTokens，由出站方依次调用。
-func applyOllamaCloudRawChatCompletionsRequest(account *Account, upstreamModel string, body []byte) []byte {
-	if !isOllamaCloudDeepSeekUpstream(account, upstreamModel) || len(body) == 0 {
+func applyRawChatCompletionsReasoningCompatRequest(account *Account, upstreamModel string, body []byte) []byte {
+	if !rawChatCompletionsReasoningCompatEnabled(account, upstreamModel) || len(body) == 0 {
 		return body
 	}
 	return normalizeOllamaCloudChatCompletionsRequest(body)
 }
 
-func applyOllamaCloudRawChatCompletionsResponse(account *Account, upstreamModel string, body []byte) []byte {
-	if !isOllamaCloudDeepSeekUpstream(account, upstreamModel) || len(body) == 0 {
+func applyRawChatCompletionsReasoningCompatResponse(account *Account, upstreamModel string, body []byte) []byte {
+	if !rawChatCompletionsReasoningCompatEnabled(account, upstreamModel) || len(body) == 0 {
 		return body
 	}
 	return normalizeOllamaCloudChatCompletionsResponseJSON(body)
 }
 
-func applyOllamaCloudRawChatCompletionsSSELine(account *Account, upstreamModel string, line string) string {
-	if !isOllamaCloudDeepSeekUpstream(account, upstreamModel) || line == "" {
+func applyRawChatCompletionsReasoningCompatSSELine(account *Account, upstreamModel string, line string) string {
+	if !rawChatCompletionsReasoningCompatEnabled(account, upstreamModel) || line == "" {
 		return line
 	}
 	return normalizeOllamaCloudChatCompletionsSSELine(line)

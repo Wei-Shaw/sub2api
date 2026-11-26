@@ -122,7 +122,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	// 与 raw 路径同序——先归一化 request（历史 assistant 消息
 	// reasoning_content → reasoning）、再 clamp max_tokens（>65535 → 65535）。
 	// 官方 DeepSeek/glm 等未命中时字节级透传。
-	chatBody = applyOllamaCloudRawChatCompletionsRequest(account, upstreamModel, chatBody)
+	chatBody = applyRawChatCompletionsReasoningCompatRequest(account, upstreamModel, chatBody)
 	chatBody = clampOllamaCloudUpstreamMaxTokens(account, chatBody)
 
 	logger.L().Debug("openai messages: forwarding via raw chat completions",

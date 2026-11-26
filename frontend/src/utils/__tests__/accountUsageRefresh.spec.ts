@@ -18,6 +18,17 @@ describe('buildAccountUsageRefreshKey', () => {
     expect(buildAccountUsageRefreshKey({ ...base, last_used_at: 'new' })).not.toBe(buildAccountUsageRefreshKey(base))
   })
 
+  it('tracks the Gemini quota tier and ignores other credential keys', () => {
+    const base = { id: 1, platform: 'gemini', type: 'oauth', credentials: { oauth_type: 'google_one', tier_id: 'google_ai_pro' } } as any
+    expect(buildAccountUsageRefreshKey({ ...base, credentials: { ...base.credentials, tier_id: 'google_ai_ultra' } })).not.toBe(buildAccountUsageRefreshKey(base))
+    expect(buildAccountUsageRefreshKey({ ...base, credentials: { ...base.credentials, oauth_type: 'ai_studio' } })).not.toBe(buildAccountUsageRefreshKey(base))
+    const legacy = { id: 1, platform: 'gemini', type: 'oauth', credentials: {} } as any
+    expect(buildAccountUsageRefreshKey({ ...legacy, credentials: { project_id: 'p-1' } })).not.toBe(buildAccountUsageRefreshKey(legacy))
+    expect(buildAccountUsageRefreshKey({ ...base, credentials: { ...base.credentials, client_id: 'other', expires_at: '999' } })).toBe(buildAccountUsageRefreshKey(base))
+    const apiKey = { id: 1, platform: 'gemini', type: 'apikey', credentials: { base_url: 'https://relay.example' } } as any
+    expect(buildAccountUsageRefreshKey({ ...apiKey, credentials: { ...apiKey.credentials, base_url: 'https://generativelanguage.googleapis.com' } })).not.toBe(buildAccountUsageRefreshKey(apiKey))
+  })
+
   it('retains OpenAI keys and excludes unsupported platforms/types', () => {
     const base = { id: 1, platform: 'openai', type: 'oauth', extra: {} } as any
     expect(buildAccountUsageRefreshKey(base)).toBe(buildOpenAIUsageRefreshKey(base))

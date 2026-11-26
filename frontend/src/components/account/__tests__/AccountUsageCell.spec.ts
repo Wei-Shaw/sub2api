@@ -134,6 +134,61 @@ describe('AccountUsageCell', () => {
     wrapper.unmount()
   })
 
+  it('refetches Gemini usage when the account quota tier changes', async () => {
+    const account = makeAccount({ id: 98210, platform: 'gemini', type: 'oauth', credentials: { oauth_type: 'google_one', tier_id: 'google_ai_pro' } })
+    getUsage.mockResolvedValue({ gemini_shared_daily: { utilization: 31 } })
+    const wrapper = mount(AccountUsageCell, { props: { account } })
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledTimes(1)
+    expect(getUsage).toHaveBeenLastCalledWith(account.id)
+    await wrapper.setProps({ account: { ...account, credentials: { ...account.credentials, tier_id: 'google_ai_ultra' } } })
+    await flushPromises()
+    expect(getUsage).toHaveBeenCalledTimes(2)
+    expect(getUsage).toHaveBeenLastCalledWith(account.id)
+    wrapper.unmount()
+  })
+
+  it.each([false, true])('sends one usage request when a relay Gemini base_url becomes the official one (batch %s)', async (batch) => {
+    const requestBatchedUsage = vi.fn()
+    const relayAccount = (baseUrl: string) => makeAccount({
+      id: 98220,
+      platform: 'gemini',
+      type: 'apikey',
+      credentials: { base_url: baseUrl, tier_id: 'aistudio_free' }
+    })
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: relayAccount('https://relay.example'), ...(batch ? { requestBatchedUsage } : {}) }
+    })
+    const calls = () => (batch ? requestBatchedUsage.mock.calls.length : getUsage.mock.calls.length)
+    await flushPromises()
+    const before = calls()
+    await wrapper.setProps({ account: relayAccount('https://generativelanguage.googleapis.com') })
+    await flushPromises()
+    expect(calls() - before).toBe(1)
+    if (!batch) expect(getUsage).toHaveBeenLastCalledWith(98220)
+    wrapper.unmount()
+  })
+
+  it.each([false, true])('sends no usage request when one relay Gemini base_url becomes another (batch %s)', async (batch) => {
+    const requestBatchedUsage = vi.fn()
+    const relayAccount = (baseUrl: string) => makeAccount({
+      id: 98230,
+      platform: 'gemini',
+      type: 'apikey',
+      credentials: { base_url: baseUrl, tier_id: 'aistudio_free' }
+    })
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: relayAccount('https://relay.example'), ...(batch ? { requestBatchedUsage } : {}) }
+    })
+    const calls = () => (batch ? requestBatchedUsage.mock.calls.length : getUsage.mock.calls.length)
+    await flushPromises()
+    const before = calls()
+    await wrapper.setProps({ account: relayAccount('https://relay2.example') })
+    await flushPromises()
+    expect(calls()).toBe(before)
+    wrapper.unmount()
+  })
+
   it.each(['anthropic', 'gemini'] as const)('asks the desktop batch manager to refresh %s without force', async (platform) => {
     const account = makeAccount({ id: 98301, platform, extra: {} })
     const requestBatchedUsage = vi.fn()

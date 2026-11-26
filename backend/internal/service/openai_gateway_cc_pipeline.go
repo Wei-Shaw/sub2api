@@ -271,7 +271,7 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 
 	// 账号级请求头覆写：放在所有内置默认头（含 Grok CLI 身份头）之后应用，
 	// 使配置值获得除共享传输层强制头之外的最高优先级。
-	account.ApplyHeaderOverrides(upstreamReq.Header)
+	account.ApplyHeaderOverrides(upstreamReq.Context(), upstreamReq.Header)
 	applyOpenCodeSessionHeader(c, account, targetURL, upstreamReq.Header, body)
 
 	proxyURL := ""
@@ -322,7 +322,7 @@ func (s *OpenAIGatewayService) scanCCStream(
 		line := scanner.Text()
 		// Ollama Cloud DeepSeek 出站：在解析成 chunk 之前把 reasoning/thinking 归一化
 		// 成 reasoning_content，让协议转换器看到与官方 DeepSeek 完全一致的形态。
-		line = applyOllamaCloudRawChatCompletionsSSELine(account, upstreamModel, line)
+		line = applyRawChatCompletionsReasoningCompatSSELine(account, upstreamModel, line)
 		payload, ok := extractOpenAISSEDataLine(line)
 		if !ok {
 			continue
@@ -402,7 +402,7 @@ func (s *OpenAIGatewayService) readCCUpstreamJSONResponse(
 	// Ollama Cloud DeepSeek 出站：在解析成结构体之前把 message/delta 里的
 	// reasoning/thinking 归一化成 reasoning_content，让协议转换器看到与官方
 	// DeepSeek 完全一致的形态。
-	respBody = applyOllamaCloudRawChatCompletionsResponse(account, upstreamModel, respBody)
+	respBody = applyRawChatCompletionsReasoningCompatResponse(account, upstreamModel, respBody)
 
 	var ccResp apicompat.ChatCompletionsResponse
 	if err := json.Unmarshal(respBody, &ccResp); err != nil {

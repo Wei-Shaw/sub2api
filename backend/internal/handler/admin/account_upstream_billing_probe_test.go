@@ -20,8 +20,23 @@ func setupUpstreamBillingProbeRouter() *gin.Engine {
 	router := gin.New()
 	router.GET("/admin/accounts/upstream-billing-probe/settings", handler.GetUpstreamBillingProbeSettings)
 	router.POST("/admin/accounts/upstream-billing-probe/batch", handler.ProbeUpstreamBillingBatch)
+	router.POST("/admin/accounts/upstream-billing-probe/group-preview", handler.PreviewUpstreamGroup)
 	router.PUT("/admin/accounts/:id/upstream-billing-probe", handler.SetUpstreamBillingProbeEnabled)
 	return router
+}
+
+func TestAccountHandlerUpstreamBillingGroupPreviewKeepsStoredCredentialsBound(t *testing.T) {
+	router := setupUpstreamBillingProbeRouter()
+	for _, body := range []string{
+		`{"account_id":7,"base_url":"https://different.example"}`,
+		`{"account_id":7,"proxy_id":8}`,
+	} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodPost, "/admin/accounts/upstream-billing-probe/group-preview", bytes.NewBufferString(body))
+		req.Header.Set("Content-Type", "application/json")
+		router.ServeHTTP(w, req)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+	}
 }
 
 func TestAccountHandlerGetUpstreamBillingProbeSettingsReturnsDefaults(t *testing.T) {

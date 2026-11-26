@@ -143,7 +143,7 @@ func TestApplyOllamaCloudRawChatCompletionsRequestClampsMaxTokens(t *testing.T) 
 	// Ollama Cloud 账号：reasoning 钩子命中（ollama.com + deepseek-chat），但 body
 	// 无可归一化的 reasoning 结构，字节级原样；max_tokens 不再由 reasoning 钩子 clamp。
 	ollama := ollamaCloudRawChatCompletionsTestAccount()
-	require.Equal(t, string(body), string(applyOllamaCloudRawChatCompletionsRequest(ollama, "deepseek-chat", body)))
+	require.Equal(t, string(body), string(applyRawChatCompletionsReasoningCompatRequest(ollama, "deepseek-chat", body)))
 	// 独立 token 钩子接续 clamp 到既有默认 cap。
 	require.JSONEq(t, `{"model":"deepseek-chat","max_tokens":65535}`,
 		string(clampOllamaCloudUpstreamMaxTokens(ollama, body)))
@@ -154,7 +154,7 @@ func TestApplyOllamaCloudRawChatCompletionsRequestClampsMaxTokens(t *testing.T) 
 	official.Extra = map[string]any{
 		openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceChatCompletions),
 	}
-	require.Equal(t, body, applyOllamaCloudRawChatCompletionsRequest(official, "deepseek-chat", body))
+	require.Equal(t, body, applyRawChatCompletionsReasoningCompatRequest(official, "deepseek-chat", body))
 	require.Equal(t, string(body), string(clampOllamaCloudUpstreamMaxTokens(official, body)))
 
 	// ollama.com 但无 force_chat_completions：reasoning 钩子按新判据命中（判定不看
@@ -162,13 +162,13 @@ func TestApplyOllamaCloudRawChatCompletionsRequestClampsMaxTokens(t *testing.T) 
 	// 判定仍 clamp（DeepSeek 覆盖不依赖 responses_mode extra）。
 	noForce := ollamaCloudRawChatCompletionsTestAccount()
 	noForce.Extra = nil
-	require.Equal(t, body, applyOllamaCloudRawChatCompletionsRequest(noForce, "deepseek-chat", body))
+	require.Equal(t, body, applyRawChatCompletionsReasoningCompatRequest(noForce, "deepseek-chat", body))
 	require.JSONEq(t, `{"model":"deepseek-chat","max_tokens":65535}`,
 		string(clampOllamaCloudUpstreamMaxTokens(noForce, body)))
 
 	// 空 body → 原样返回。
-	require.Equal(t, []byte(nil), applyOllamaCloudRawChatCompletionsRequest(ollama, "deepseek-chat", nil))
-	require.Equal(t, []byte{}, applyOllamaCloudRawChatCompletionsRequest(ollama, "deepseek-chat", []byte{}))
+	require.Equal(t, []byte(nil), applyRawChatCompletionsReasoningCompatRequest(ollama, "deepseek-chat", nil))
+	require.Equal(t, []byte{}, applyRawChatCompletionsReasoningCompatRequest(ollama, "deepseek-chat", []byte{}))
 }
 
 // ollamaUpstreamTestAccount 构造挂在实际 ollama.com 上游的 APIKey 账号。平台标签

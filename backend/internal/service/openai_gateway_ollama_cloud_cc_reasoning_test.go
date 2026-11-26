@@ -100,7 +100,7 @@ func TestNormalizeOllamaCloudChatCompletionsRequest(t *testing.T) {
 	require.False(t, gjson.GetBytes(out, "messages.0.reasoning").Exists())
 }
 
-func TestApplyOllamaCloudRawChatCompletionsLeavesForeignAccountsUnchanged(t *testing.T) {
+func TestApplyRawChatCompletionsReasoningCompatLeavesForeignAccountsUnchanged(t *testing.T) {
 	t.Parallel()
 
 	reqBody := []byte(`{"messages":[{"role":"assistant","reasoning_content":"prev","content":""}]}`)
@@ -124,9 +124,9 @@ func TestApplyOllamaCloudRawChatCompletionsLeavesForeignAccountsUnchanged(t *tes
 	for _, account := range []*Account{official, opencode} {
 		// 出站 base_url 都不是 ollama.com，即使模型是 DeepSeek 系、即使带残留
 		// usage extra，reasoning 归一化门控不命中，字节级不变。
-		require.Equal(t, reqBody, applyOllamaCloudRawChatCompletionsRequest(account, "deepseek-v4-flash", reqBody))
-		require.Equal(t, respBody, applyOllamaCloudRawChatCompletionsResponse(account, "deepseek-v4-flash", respBody))
-		require.Equal(t, sseLine, applyOllamaCloudRawChatCompletionsSSELine(account, "deepseek-v4-flash", sseLine))
+		require.Equal(t, reqBody, applyRawChatCompletionsReasoningCompatRequest(account, "deepseek-v4-flash", reqBody))
+		require.Equal(t, respBody, applyRawChatCompletionsReasoningCompatResponse(account, "deepseek-v4-flash", respBody))
+		require.Equal(t, sseLine, applyRawChatCompletionsReasoningCompatSSELine(account, "deepseek-v4-flash", sseLine))
 	}
 }
 
@@ -140,6 +140,57 @@ func TestNormalizeOllamaCloudChatCompletionsSSELine(t *testing.T) {
 	require.Equal(t, "abc", gjson.Get(payload, "choices.0.delta.reasoning").String())
 	require.Equal(t, "abc", gjson.Get(payload, "choices.0.delta.reasoning_content").String())
 	require.Equal(t, "data: [DONE]", normalizeOllamaCloudChatCompletionsSSELine("data: [DONE]"))
+}
+
+func selfHostedRawChatCompletionsTestAccount(extra map[string]any) *Account {
+	account := rawChatCompletionsTestAccount()
+	account.Name = "vLLM"
+	account.Credentials["base_url"] = "http://vllm.internal:8000"
+	account.Extra = map[string]any{
+		openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceChatCompletions),
+	}
+	for key, value := range extra {
+		account.Extra[key] = value
+	}
+	return account
+}
+
+func TestRawChatCompletionsReasoningCompatOptIn(t *testing.T) {
+	t.Parallel()
+
+	reqBody := []byte(`{"messages":[{"role":"assistant","reasoning_content":"prev","content":""}]}`)
+	respBody := []byte(`{"choices":[{"message":{"role":"assistant","reasoning":"abc","content":"done"}}]}`)
+	sseLine := `data: {"choices":[{"delta":{"reasoning":"abc"}}]}`
+
+	t.Run("opted in", func(t *testing.T) {
+		t.Parallel()
+		account := selfHostedRawChatCompletionsTestAccount(map[string]any{OpenAIChatReasoningContentExtraKey: true})
+		require.True(t, rawChatCompletionsReasoningCompatEnabled(account, "deepseek-v4.1-flash"))
+		require.Equal(t, "prev", gjson.GetBytes(applyRawChatCompletionsReasoningCompatRequest(account, "deepseek-v4.1-flash", reqBody), "messages.0.reasoning").String())
+		resp := applyRawChatCompletionsReasoningCompatResponse(account, "deepseek-v4.1-flash", respBody)
+		require.Equal(t, "abc", gjson.GetBytes(resp, "choices.0.message.reasoning").String())
+		require.Equal(t, "abc", gjson.GetBytes(resp, "choices.0.message.reasoning_content").String())
+		line := applyRawChatCompletionsReasoningCompatSSELine(account, "deepseek-v4.1-flash", sseLine)
+		require.Equal(t, "abc", gjson.Get(strings.TrimPrefix(line, "data: "), "choices.0.delta.reasoning_content").String())
+	})
+
+	oauth := selfHostedRawChatCompletionsTestAccount(map[string]any{OpenAIChatReasoningContentExtraKey: true})
+	oauth.Type = AccountTypeOAuth
+	disabled := map[string]*Account{
+		"not opted in":     selfHostedRawChatCompletionsTestAccount(nil),
+		"explicitly false": selfHostedRawChatCompletionsTestAccount(map[string]any{OpenAIChatReasoningContentExtraKey: false}),
+		"string value":     selfHostedRawChatCompletionsTestAccount(map[string]any{OpenAIChatReasoningContentExtraKey: "true"}),
+		"OAuth account":    oauth,
+	}
+	for name, account := range disabled {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			require.False(t, rawChatCompletionsReasoningCompatEnabled(account, "deepseek-v4.1-flash"))
+			require.Equal(t, reqBody, applyRawChatCompletionsReasoningCompatRequest(account, "deepseek-v4.1-flash", reqBody))
+			require.Equal(t, respBody, applyRawChatCompletionsReasoningCompatResponse(account, "deepseek-v4.1-flash", respBody))
+			require.Equal(t, sseLine, applyRawChatCompletionsReasoningCompatSSELine(account, "deepseek-v4.1-flash", sseLine))
+		})
+	}
 }
 
 func TestForwardAsRawChatCompletions_OllamaCloudReasoningAliasStreaming(t *testing.T) {
@@ -260,15 +311,15 @@ func TestApplyOllamaCloudRawChatCompletionsByUpstream(t *testing.T) {
 	t.Run("deepseek platform ollama account + deepseek model is normalized", func(t *testing.T) {
 		t.Parallel()
 		account := ollamaUpstreamTestAccount(PlatformDeepseek, 401)
-		normalizedReq := applyOllamaCloudRawChatCompletionsRequest(account, "deepseek-v4-flash", reqBody)
+		normalizedReq := applyRawChatCompletionsReasoningCompatRequest(account, "deepseek-v4-flash", reqBody)
 		require.Equal(t, "prev", gjson.GetBytes(normalizedReq, "messages.0.reasoning").String())
 		require.Equal(t, "prev", gjson.GetBytes(normalizedReq, "messages.0.reasoning_content").String())
 
-		normalizedResp := applyOllamaCloudRawChatCompletionsResponse(account, "deepseek-v4-flash", respBody)
+		normalizedResp := applyRawChatCompletionsReasoningCompatResponse(account, "deepseek-v4-flash", respBody)
 		require.Equal(t, "abc", gjson.GetBytes(normalizedResp, "choices.0.delta.reasoning").String())
 		require.Equal(t, "abc", gjson.GetBytes(normalizedResp, "choices.0.delta.reasoning_content").String())
 
-		normalizedLine := applyOllamaCloudRawChatCompletionsSSELine(account, "deepseek-v4-flash", sseLine)
+		normalizedLine := applyRawChatCompletionsReasoningCompatSSELine(account, "deepseek-v4-flash", sseLine)
 		require.True(t, strings.HasPrefix(normalizedLine, "data: "))
 		payload := strings.TrimPrefix(normalizedLine, "data: ")
 		require.Equal(t, "abc", gjson.Get(payload, "choices.0.delta.reasoning").String())
@@ -278,16 +329,60 @@ func TestApplyOllamaCloudRawChatCompletionsByUpstream(t *testing.T) {
 	t.Run("official deepseek account is byte-identical", func(t *testing.T) {
 		t.Parallel()
 		official := officialDeepSeekTestAccount(402)
-		require.Equal(t, reqBody, applyOllamaCloudRawChatCompletionsRequest(official, "deepseek-v4-flash", reqBody))
-		require.Equal(t, respBody, applyOllamaCloudRawChatCompletionsResponse(official, "deepseek-v4-flash", respBody))
-		require.Equal(t, sseLine, applyOllamaCloudRawChatCompletionsSSELine(official, "deepseek-v4-flash", sseLine))
+		require.Equal(t, reqBody, applyRawChatCompletionsReasoningCompatRequest(official, "deepseek-v4-flash", reqBody))
+		require.Equal(t, respBody, applyRawChatCompletionsReasoningCompatResponse(official, "deepseek-v4-flash", respBody))
+		require.Equal(t, sseLine, applyRawChatCompletionsReasoningCompatSSELine(official, "deepseek-v4-flash", sseLine))
 	})
 
 	t.Run("ollama account with non-deepseek model is byte-identical", func(t *testing.T) {
 		t.Parallel()
 		account := ollamaUpstreamTestAccount(PlatformDeepseek, 403)
-		require.Equal(t, reqBody, applyOllamaCloudRawChatCompletionsRequest(account, "glm-5.3-flash", reqBody))
-		require.Equal(t, respBody, applyOllamaCloudRawChatCompletionsResponse(account, "glm-5.3-flash", respBody))
-		require.Equal(t, sseLine, applyOllamaCloudRawChatCompletionsSSELine(account, "glm-5.3-flash", sseLine))
+		require.Equal(t, reqBody, applyRawChatCompletionsReasoningCompatRequest(account, "glm-5.3-flash", reqBody))
+		require.Equal(t, respBody, applyRawChatCompletionsReasoningCompatResponse(account, "glm-5.3-flash", respBody))
+		require.Equal(t, sseLine, applyRawChatCompletionsReasoningCompatSSELine(account, "glm-5.3-flash", sseLine))
 	})
+}
+
+func TestForwardAsRawChatCompletions_OptInReasoningContentStreaming(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	body := []byte(`{"model":"deepseek-v4.1-flash","messages":[{"role":"user","content":"hello"}],"stream":true}`)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", bytes.NewReader(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	upstreamBody := strings.Join([]string{
+		`data: {"id":"chatcmpl_vllm","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"role":"assistant"},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl_vllm","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"reasoning":"abc"},"finish_reason":null}]}`,
+		"",
+		`data: {"id":"chatcmpl_vllm","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"content":"final answer"},"finish_reason":"stop"}]}`,
+		"",
+		`data: {"id":"chatcmpl_vllm","object":"chat.completion.chunk","model":"deepseek-v4.1-flash","choices":[],"usage":{"prompt_tokens":3,"completion_tokens":5,"total_tokens":8}}`,
+		"",
+		"data: [DONE]",
+		"",
+	}, "\n")
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}, "x-request-id": []string{"rid_vllm_reasoning_stream"}},
+		Body:       io.NopCloser(strings.NewReader(upstreamBody)),
+	}}
+
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		httpUpstream: upstream,
+	}
+
+	account := selfHostedRawChatCompletionsTestAccount(map[string]any{OpenAIChatReasoningContentExtraKey: true})
+	result, err := svc.forwardAsRawChatCompletions(context.Background(), c, account, body, "")
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Equal(t, 3, result.Usage.InputTokens)
+	require.Equal(t, 5, result.Usage.OutputTokens)
+	require.Contains(t, rec.Body.String(), `"reasoning":"abc"`)
+	require.Contains(t, rec.Body.String(), `"reasoning_content":"abc"`)
+	require.Contains(t, rec.Body.String(), `"content":"final answer"`)
+	require.Contains(t, rec.Body.String(), "data: [DONE]")
 }
