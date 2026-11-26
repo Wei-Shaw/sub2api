@@ -816,6 +816,9 @@ func TestBuildCodexModelsManifestForGroupUsesDeepSeekVisionCapabilities(t *testi
 		return account
 	}
 
+	customResponses := newAccount(1, PlatformCommandCode, "deepseek-v4.1-flash", nil)
+	customResponses.Credentials["api_base_urls"] = map[string]any{APIProtocolResponses: "https://example.test/v1"}
+
 	tests := []struct {
 		name       string
 		platform   string
@@ -835,6 +838,36 @@ func TestBuildCodexModelsManifestForGroupUsesDeepSeekVisionCapabilities(t *testi
 		{
 			name: "Composite DeepSeek alias", platform: PlatformComposite,
 			accounts:   []Account{newAccount(1, PlatformDeepseek, visionModel, nil)},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name: "Command Code bare ID", platform: PlatformCommandCode,
+			accounts:   []Account{newAccount(1, PlatformCommandCode, "deepseek-v4.1-flash", nil)},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name: "Composite Command Code mapping", platform: PlatformComposite,
+			accounts:   []Account{newAccount(1, PlatformCommandCode, "deepseek/deepseek-v4.1-flash", nil)},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name: "Command Code with a custom Responses endpoint", platform: PlatformCommandCode,
+			accounts:   []Account{customResponses},
+			modalities: []any{"text"},
+		},
+		{
+			name: "Command Code text-only override", platform: PlatformCommandCode,
+			accounts:   []Account{newAccount(1, PlatformCommandCode, "deepseek/deepseek-v4.1-flash", []string{"text"})},
+			modalities: []any{"text"},
+		},
+		{
+			name: "Command Code unknown model", platform: PlatformCommandCode,
+			accounts:   []Account{newAccount(1, PlatformCommandCode, "unknown-model", nil)},
+			modalities: []any{"text"},
+		},
+		{
+			name: "Command Code explicit vision metadata", platform: PlatformCommandCode,
+			accounts:   []Account{newAccount(1, PlatformCommandCode, "other-model", []string{"text", "image"})},
 			modalities: []any{"text", "image"},
 		},
 		{
@@ -1206,6 +1239,7 @@ func TestBuildCodexModelsManifestForGroupLoadsAccountsOnce(t *testing.T) {
 	require.Contains(t, repo.platforms, PlatformDeepseek)
 	require.Contains(t, repo.platforms, PlatformMiniMax)
 	require.Contains(t, repo.platforms, PlatformOpenCodeGo)
+	require.Contains(t, repo.platforms, PlatformCommandCode)
 	require.NotContains(t, repo.platforms, PlatformComposite)
 }
 

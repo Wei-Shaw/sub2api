@@ -1193,16 +1193,24 @@ func TestExtractGeminiUsage(t *testing.T) {
 			wantNil: true,
 		},
 		{
-			// gjson 对 null 返回 Exists()=true，因此函数不会返回 nil，
-			// 而是返回全零的 ClaudeUsage。
-			name:    "null usageMetadata — gjson Exists 为 true",
+			name:    "null usageMetadata",
 			input:   `{"usageMetadata":null}`,
-			wantNil: false,
-			wantUsage: &ClaudeUsage{
-				InputTokens:          0,
-				OutputTokens:         0,
-				CacheReadInputTokens: 0,
-			},
+			wantNil: true,
+		},
+		{
+			name:    "空 usageMetadata",
+			input:   `{"usageMetadata":{}}`,
+			wantNil: true,
+		},
+		{
+			name:    "只有 null 字段和辅助元数据",
+			input:   `{"usageMetadata":{"promptTokenCount":null,"trafficType":"ON_DEMAND","candidatesTokensDetails":[]}}`,
+			wantNil: true,
+		},
+		{
+			name:      "只有图片 Token 明细",
+			input:     `{"usageMetadata":{"candidatesTokensDetails":[{"modality":"IMAGE","tokenCount":12}]}}`,
+			wantUsage: &ClaudeUsage{ImageOutputTokens: 12},
 		},
 		{
 			name:    "零值字段",
@@ -1237,11 +1245,63 @@ func TestExtractGeminiUsage(t *testing.T) {
 			if got.CacheReadInputTokens != tt.wantUsage.CacheReadInputTokens {
 				t.Errorf("CacheReadInputTokens: 期望 %d，实际 %d", tt.wantUsage.CacheReadInputTokens, got.CacheReadInputTokens)
 			}
+			require.Equal(t, tt.wantUsage.ImageOutputTokens, got.ImageOutputTokens)
 			// Gemini usageMetadata 只有 cachedContentTokenCount（缓存命中），没有缓存写入
 			// 的 token 类别：cache_creation_input_tokens 恒为 0，计费侧不会产生缓存创建分项。
 			if got.CacheCreationInputTokens != 0 {
 				t.Errorf("CacheCreationInputTokens: 期望 0，实际 %d", got.CacheCreationInputTokens)
 			}
+		})
+	}
+}
+
+func TestGeminiStreamsRetainUsageAfterEmptyMetadata(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	const model = "gemini-2.5-flash"
+	const measured = `data: {"candidates":[{"content":{"parts":[{"text":"ok"}]},"finishReason":"STOP"}],"usageMetadata":{"promptTokenCount":13,"cachedContentTokenCount":3,"candidatesTokenCount":4,"thoughtsTokenCount":1}}` + "\n\n"
+	want := ClaudeUsage{InputTokens: 10, OutputTokens: 5, CacheReadInputTokens: 3}
+
+	for _, trailer := range []struct{ name, payload string }{
+		{"empty object", `{"usageMetadata":{}}`},
+		{"null", `{"usageMetadata":null}`},
+	} {
+		t.Run(trailer.name, func(t *testing.T) {
+			stream := measured + "data: " + trailer.payload + "\n\ndata: [DONE]\n\n"
+			newResponse := func() *http.Response {
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(stream))}
+			}
+			newContext := func(rec *httptest.ResponseRecorder) *gin.Context {
+				c, _ := gin.CreateTestContext(rec)
+				c.Request = httptest.NewRequest(http.MethodPost, "/", nil)
+				return c
+			}
+			svc := &GeminiMessagesCompatService{}
+
+			t.Run("Chat Completions", func(t *testing.T) {
+				rec := httptest.NewRecorder()
+				result, err := svc.handleChatCompletionsStreamingResponseFromGemini(newContext(rec), newResponse(), time.Now(), model, false, true)
+				require.NoError(t, err)
+				require.Equal(t, &want, result.usage)
+				require.Contains(t, rec.Body.String(), "data: [DONE]")
+			})
+			t.Run("Messages", func(t *testing.T) {
+				result, err := svc.handleStreamingResponse(newContext(httptest.NewRecorder()), newResponse(), time.Now(), model)
+				require.NoError(t, err)
+				require.Equal(t, &want, result.usage)
+			})
+			t.Run("Gemini native", func(t *testing.T) {
+				rec := httptest.NewRecorder()
+				result, err := svc.handleNativeStreamingResponse(newContext(rec), newResponse(), time.Now(), false, nil, "")
+				require.NoError(t, err)
+				require.Equal(t, &want, result.usage)
+				require.Equal(t, stream, rec.Body.String())
+			})
+			t.Run("collected stream", func(t *testing.T) {
+				_, usage, err := collectGeminiSSE(nil, strings.NewReader(stream), false)
+				require.NoError(t, err)
+				require.Equal(t, &want, usage)
+			})
 		})
 	}
 }

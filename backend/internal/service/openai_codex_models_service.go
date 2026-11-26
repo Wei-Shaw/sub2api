@@ -259,6 +259,7 @@ func loadCodexGroupCatalogAccounts(ctx context.Context, repo AccountRepository, 
 			PlatformDeepseek,
 			PlatformMiniMax,
 			PlatformOpenCodeGo,
+			PlatformCommandCode,
 		},
 		false,
 	)
@@ -455,7 +456,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 	}
 
 	if isDeepSeekCodexModel(modelID) {
-		defaultReasoningLevel := "high"
+		defaultReasoningLevel := deepSeekDefaultReasoningEffort
 		descriptor.DisplayName = deepSeekCodexDisplayName(modelID)
 		descriptor.Description = "DeepSeek coding and reasoning model routed through Sub2API."
 		descriptor.DefaultReasoningLevel = &defaultReasoningLevel
@@ -789,6 +790,10 @@ func deepSeekCodexDisplayName(modelID string) string {
 		return modelID
 	}
 }
+
+// deepSeekDefaultReasoningEffort is the default level of DeepSeek's
+// low/high/max reasoning scale.
+const deepSeekDefaultReasoningEffort = "high"
 
 func isDeepSeekCodexModel(modelID string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelID)), "deepseek-")
@@ -1182,7 +1187,9 @@ func groupCodexModelSupportsImageInput(
 			return false
 		}
 	}
-	if platform != PlatformOpenAI && platform != PlatformGrok && platform != PlatformDeepseek && platform != PlatformOpenCodeGo {
+	switch platform {
+	case PlatformOpenAI, PlatformGrok, PlatformDeepseek, PlatformOpenCodeGo, PlatformCommandCode:
+	default:
 		return false
 	}
 
@@ -1344,7 +1351,7 @@ func accountCodexModelSupportsImageInput(account *Account, upstreamModel string)
 		return false
 	}
 	switch account.Platform {
-	case PlatformOpenAI, PlatformDeepseek, PlatformOpenCodeGo:
+	case PlatformOpenAI, PlatformDeepseek, PlatformOpenCodeGo, PlatformCommandCode:
 		if accountDeclaresImageInputModel(account, upstreamModel) {
 			return true
 		}
@@ -1359,6 +1366,14 @@ func accountCodexModelSupportsImageInput(account *Account, upstreamModel string)
 				}
 				return stringSliceContains(modalities, "image")
 			}
+		}
+		if account.IsCommandCode() {
+			// Only infer capabilities for the provider's own endpoints when a
+			// synced model has no input modalities.
+			model := strings.TrimPrefix(strings.TrimSpace(upstreamModel), "deepseek/")
+			return model == "deepseek-v4.1-flash" &&
+				strings.TrimRight(account.GetOpenAIBaseURL(), "/") == DefaultCommandCodeBaseURL &&
+				strings.TrimRight(account.GetCNProtocolBaseURL(APIProtocolResponses), "/") == DefaultCommandCodeBaseURL
 		}
 		if strings.EqualFold(strings.TrimSpace(upstreamModel), "deepseek-v4-flash-vision-exp") {
 			return account.Type == AccountTypeAPIKey

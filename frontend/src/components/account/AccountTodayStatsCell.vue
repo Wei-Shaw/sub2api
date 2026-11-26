@@ -46,6 +46,25 @@
           formatCurrency(props.stats.user_cost)
         }}</span>
       </div>
+      <!-- Upstream errors (absent when ops monitoring is disabled) -->
+      <div
+        v-if="props.stats.upstream_errors != null"
+        class="flex items-center gap-1"
+        data-testid="today-upstream-errors"
+      >
+        <span class="text-gray-500 dark:text-gray-400"
+          >{{ t('admin.accounts.stats.upstreamErrors') }}:</span
+        >
+        <span
+          :class="[
+            'font-medium',
+            props.stats.upstream_errors > 0
+              ? 'text-red-600 dark:text-red-400'
+              : 'text-gray-700 dark:text-gray-300'
+          ]"
+          >{{ formatNumber(props.stats.upstream_errors) }}</span
+        >
+      </div>
     </div>
 
     <!-- No data -->

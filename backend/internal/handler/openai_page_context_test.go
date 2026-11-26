@@ -54,7 +54,92 @@ func TestNormalizeCodexPageContextFirstMessage(t *testing.T) {
 	require.Equal(t, got, again)
 }
 
-var codexTextContextNamesForTest = []string{"browser_info", "goal_objective", "untrusted_context", "untrusted_content", "ide_context", "proposed_plan"}
+var codexTextContextNamesForTest = []string{"browser_info", "terminal_info", "goal_objective", "untrusted_context", "untrusted_content", "ide_context", "proposed_plan"}
+
+func TestNormalizeCodexTerminalInfoIssue8991(t *testing.T) {
+	body := []byte(`{"model":"deepseek-flash","input":[{"type":"function_call_output","namespace":"agent","name":"terminal_info","output":"retest context"}]}`)
+	h := &OpenAIGatewayHandler{}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	require.False(t, h.validateFunctionCallOutputRequest(c, body, zap.NewNop()))
+	require.Equal(t, 400, w.Code)
+	require.Contains(t, w.Body.String(), "function_call_output requires call_id")
+
+	got, changed := normalizeCodexUntrustedContext(body)
+	require.True(t, changed)
+	require.JSONEq(t, `{"model":"deepseek-flash","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"<external_terminal_info>retest context</external_terminal_info>"}]}]}`, string(got))
+	w = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(w)
+	require.True(t, h.validateFunctionCallOutputRequest(c, got, zap.NewNop()))
+	require.False(t, c.Writer.Written())
+}
+
+func TestNormalizeCodexTerminalInfoBoundaries(t *testing.T) {
+	for _, testCase := range []struct {
+		name  string
+		key   string
+		value any
+	}{
+		{"call id with surrounding whitespace", "call_id", " call_real "},
+		{"boolean call id", "call_id", false},
+		{"array call id", "call_id", []any{}},
+		{"object call id", "call_id", map[string]any{}},
+		{"namespace whitespace", "namespace", " agent "},
+		{"namespace case", "namespace", "Agent"},
+		{"boolean output", "output", false},
+		{"numeric output", "output", 42},
+		{"object output", "output", map[string]any{"text": "context"}},
+		{"name prefix", "name", "terminal_info_extra"},
+		{"name case", "name", "Terminal_info"},
+		{"unknown context", "name", "arbitrary_context"},
+		{"other type", "type", "custom_tool_call_output"},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			item := pageContextItem("terminal_info", "retest context")
+			item[testCase.key] = testCase.value
+			body := pageContextRequest(t, item)
+			got, changed := normalizeCodexUntrustedContext(body)
+			require.False(t, changed)
+			require.Equal(t, body, got)
+		})
+	}
+	for _, body := range []string{
+		`{"input":[{"type":"function_call_output","namespace":"other","namespace":"agent","name":"terminal_info","output":"context"}]}`,
+		`{"input":[{"type":"function_call_output","namespace":"agent","name":"read_file","name":"terminal_info","output":"context"}]}`,
+		`{"input":[],"input":[{"type":"function_call_output","namespace":"agent","name":"terminal_info","output":"context"}]}`,
+		`{"input":[{"type":"function_call_output","namespace":"agent","name":"terminal_info","output":"context"}]} trailing`,
+	} {
+		got, changed := normalizeCodexUntrustedContext([]byte(body))
+		require.False(t, changed)
+		require.Equal(t, body, string(got))
+	}
+}
+
+func TestNormalizeCodexTerminalInfoEscapedName(t *testing.T) {
+	body := []byte(`{"input":[{"type":"function_call_output","namespace":"agent","name":"terminal_\u0069nfo","output":"  context\n\t"}]}`)
+	got, changed := normalizeCodexUntrustedContext(body)
+	require.True(t, changed)
+	require.Equal(t, "<external_terminal_info>  context\n\t</external_terminal_info>", gjson.GetBytes(got, "input.0.content.0.text").String())
+}
+
+func TestNormalizeCodexTerminalInfoPreservesUnrelatedResults(t *testing.T) {
+	body := pageContextRequest(t,
+		pageContextItem("terminal_info", "retest context"),
+		map[string]any{"type": "function_call_output", "namespace": "agent", "name": "terminal_info", "call_id": "call_real", "output": "real result"},
+		pageContextItem("read_file", "unrelated result"))
+	got, changed := normalizeCodexUntrustedContext(body)
+	require.True(t, changed)
+	require.Equal(t, "message", gjson.GetBytes(got, "input.0.type").String())
+	for _, path := range []string{"input.1", "input.2"} {
+		require.JSONEq(t, gjson.GetBytes(body, path).Raw, gjson.GetBytes(got, path).Raw)
+	}
+	h := &OpenAIGatewayHandler{}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	require.False(t, h.validateFunctionCallOutputRequest(c, got, zap.NewNop()))
+	require.Equal(t, 400, w.Code)
+	require.Contains(t, w.Body.String(), "function_call_output requires call_id")
+}
 
 func TestNormalizeCodexAdditionalUntrustedContext(t *testing.T) {
 	for _, name := range codexTextContextNamesForTest {

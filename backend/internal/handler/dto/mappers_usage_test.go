@@ -332,3 +332,69 @@ func TestUsageLogFromService_PreservesHistoricalMissingImageSize(t *testing.T) {
 func f64Ptr(value float64) *float64 {
 	return &value
 }
+
+func TestUsageLogApplyResponseModel(t *testing.T) {
+	t.Parallel()
+
+	strPtr := func(s string) *string { return &s }
+
+	cases := []struct {
+		name string
+		log  service.UsageLog
+		want *string
+	}{
+		{
+			name: "prefers upstream response model and hides mapping chain",
+			log: service.UsageLog{
+				Model:                 "claude-sonnet-4-5",
+				RequestedModel:        "claude-sonnet-4-5",
+				UpstreamModel:         strPtr("mid-model"),
+				UpstreamResponseModel: strPtr("final-model-20260101"),
+				ModelMappingChain:     strPtr("claude-sonnet-4-5→mid-model→final-model"),
+			},
+			want: strPtr("final-model-20260101"),
+		},
+		{
+			name: "falls back to upstream model",
+			log: service.UsageLog{
+				Model:          "gpt-5",
+				RequestedModel: "gpt-5",
+				UpstreamModel:  strPtr("gpt-5-mini"),
+			},
+			want: strPtr("gpt-5-mini"),
+		},
+		{
+			name: "falls back to billing model when requested differs",
+			log: service.UsageLog{
+				Model:          "gpt-5-mini",
+				RequestedModel: "gpt-5",
+			},
+			want: strPtr("gpt-5-mini"),
+		},
+		{
+			name: "omitted when final equals requested",
+			log: service.UsageLog{
+				Model:                 "gpt-5",
+				RequestedModel:        "gpt-5",
+				UpstreamResponseModel: strPtr(" gpt-5 "),
+			},
+			want: nil,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			out := UsageLogFromService(&tc.log)
+			require.Nil(t, out.ResponseModel, "response_model must be opt-in")
+
+			out.ApplyResponseModel(&tc.log)
+			require.Equal(t, tc.want, out.ResponseModel)
+
+			raw, err := json.Marshal(out)
+			require.NoError(t, err)
+			require.NotContains(t, string(raw), "model_mapping_chain")
+			require.NotContains(t, string(raw), "upstream_model")
+		})
+	}
+}

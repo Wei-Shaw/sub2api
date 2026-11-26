@@ -28,17 +28,22 @@
           </div>
         </div>
 
-        <div class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
+        <div
+          v-if="!isUpstreamError(detail) || (errorType !== 'upstream' && (detail.user_email || detail.user_id != null))"
+          class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900"
+        >
           <div class="text-xs font-bold uppercase tracking-wider text-gray-400">
-            {{ isUpstreamError(detail) ? t('admin.ops.errorDetail.account') : t('admin.ops.errorDetail.user') }}
+            {{ t('admin.ops.errorDetail.user') }}
           </div>
           <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
-            <template v-if="isUpstreamError(detail)">
-              {{ detail.account_name || (detail.account_id != null ? String(detail.account_id) : '—') }}
-            </template>
-            <template v-else>
-              {{ detail.user_email || (detail.user_id != null ? String(detail.user_id) : '—') }}
-            </template>
+            {{ detail.user_email || (detail.user_id != null ? String(detail.user_id) : '—') }}
+          </div>
+        </div>
+
+        <div v-if="isUpstreamError(detail)" class="rounded-xl bg-gray-50 p-4 dark:bg-dark-900">
+          <div class="text-xs font-bold uppercase tracking-wider text-gray-400">{{ t('admin.ops.errorDetail.account') }}</div>
+          <div class="mt-1 text-sm font-medium text-gray-900 dark:text-white">
+            {{ detail.account_name || (detail.account_id != null ? String(detail.account_id) : '—') }}
           </div>
         </div>
 

@@ -153,6 +153,52 @@ func TestMessagesEffortPolicyHTTP(t *testing.T) {
 	}
 }
 
+func TestMessagesDeepSeekDefaultEffort(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	const model = "deepseek-v4.1-flash"
+	for _, chat := range []bool{false, true} {
+		for _, test := range []struct {
+			name       string
+			preference string
+			want       string
+		}{
+			{name: "omitted uses DeepSeek default", want: "high"},
+			{name: "enabled thinking uses DeepSeek default", preference: `,"thinking":{"type":"enabled","budget_tokens":1024}`, want: "high"},
+			{name: "adaptive thinking uses DeepSeek default", preference: `,"thinking":{"type":"adaptive"}`, want: "high"},
+			{name: "explicit low preserved", preference: `,"output_config":{"effort":"low"}`, want: "low"},
+			{name: "explicit medium preserved", preference: `,"output_config":{"effort":"medium"}`, want: "medium"},
+			{name: "explicit max preserved", preference: `,"output_config":{"effort":"max"}`, want: "max"},
+		} {
+			t.Run(fmt.Sprintf("chat=%t/%s", chat, test.name), func(t *testing.T) {
+				account := rawGPT56ResponsesAPIKeyAccount(model, model)
+				endpoint, effortPath := "/responses", "reasoning.effort"
+				response := openAICompatSSECompletedResponse("resp_effort", model)
+				if chat {
+					account.Extra = map[string]any{openai_compat.ExtraKeyResponsesMode: string(openai_compat.ResponsesSupportModeForceChatCompletions)}
+					endpoint, effortPath = "/chat/completions", "reasoning_effort"
+					payload := `{"id":"chat_effort","model":"` + model + `","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":2}}`
+					response = &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(payload))}
+				}
+				upstream := &httpUpstreamRecorder{resp: response}
+				svc := &OpenAIGatewayService{cfg: rawChatCompletionsTestConfig(), httpUpstream: upstream}
+				body := fmt.Sprintf(`{"model":%q,"max_tokens":1024,"messages":[{"role":"user","content":"Hello"}]%s}`, model, test.preference)
+				var forwardErr error
+				router := gin.New()
+				router.POST("/v1/messages", func(c *gin.Context) {
+					ctx := WithOpenAIReasoningEffortPolicyForMessages(c.Request.Context(), []byte(body), "", nil, "")
+					_, forwardErr = svc.ForwardAsAnthropic(ctx, c, account, []byte(body), "", "")
+				})
+				recorder := httptest.NewRecorder()
+				router.ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body)))
+				require.NoError(t, forwardErr)
+				require.Equal(t, http.StatusOK, recorder.Code, recorder.Body.String())
+				require.True(t, strings.HasSuffix(upstream.lastReq.URL.Path, endpoint), upstream.lastReq.URL.String())
+				require.Equal(t, test.want, gjson.GetBytes(upstream.lastBody, effortPath).String())
+			})
+		}
+	}
+}
+
 func TestMessagesRawEffortValidation(t *testing.T) {
 	for _, test := range []struct {
 		body string
