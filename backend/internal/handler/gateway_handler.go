@@ -1660,7 +1660,9 @@ func (h *GatewayHandler) Usage(c *gin.Context) {
 	var modelStats any
 	if h.usageService != nil {
 		if stats, err := h.usageService.GetAPIKeyModelStats(ctx, apiKey.ID, startTime, endTime); err == nil && len(stats) > 0 {
-			modelStats = stats
+			// Same user-facing shape as /usage/dashboard/models: never expose
+			// account_cost (our upstream cost) to API key holders.
+			modelStats = userModelStatsFromUsageStats(stats)
 		}
 	}
 
