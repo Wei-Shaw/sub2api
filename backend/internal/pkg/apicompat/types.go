@@ -80,6 +80,9 @@ type AnthropicContentBlock struct {
 	ToolUseID string          `json:"tool_use_id,omitempty"`
 	Content   json.RawMessage `json:"content,omitempty"` // string or []AnthropicContentBlock
 	IsError   bool            `json:"is_error,omitempty"`
+
+	// type=tool_reference (inside a ToolSearch tool_result)
+	ToolName string `json:"tool_name,omitempty"`
 }
 
 func (b AnthropicContentBlock) MarshalJSON() ([]byte, error) {
@@ -122,6 +125,8 @@ type AnthropicTool struct {
 	Description  string                 `json:"description,omitempty"`
 	InputSchema  json.RawMessage        `json:"input_schema,omitempty"` // JSON Schema object
 	CacheControl *AnthropicCacheControl `json:"cache_control,omitempty"`
+	// DeferLoading marks a tool Claude Code reveals through ToolSearch.
+	DeferLoading bool `json:"defer_loading,omitempty"`
 }
 
 // AnthropicCacheControl 对应 Anthropic API 的 cache_control 字段。
@@ -342,6 +347,10 @@ type ResponsesRequest struct {
 	ServiceTier        string              `json:"service_tier,omitempty"`
 	PromptCacheKey     string              `json:"prompt_cache_key,omitempty"`
 	PreviousResponseID string              `json:"previous_response_id,omitempty"`
+	// Stop 在 Chat Completions 里是原生字段，Responses 协议本身没有。这里保留原样
+	// （string 或 []string），仅在降级到 Chat Completions 时透传，避免客户端设的
+	// 停止序列在转换层被静默丢弃。
+	Stop json.RawMessage `json:"stop,omitempty"`
 }
 
 // ResponsesReasoning configures reasoning effort in the Responses API.
@@ -427,6 +436,8 @@ type ResponsesTool struct {
 	Description string          `json:"description,omitempty"`
 	Parameters  json.RawMessage `json:"parameters,omitempty"`
 	Strict      *bool           `json:"strict,omitempty"`
+	// type=tool_search: "client" means the caller executes the search.
+	Execution string `json:"execution,omitempty"`
 
 	// type=namespace 的子工具列表（tools 与 children 二选一，语义相同）。
 	Tools    []ResponsesTool `json:"tools,omitempty"`
@@ -477,6 +488,16 @@ type ResponsesResponse struct {
 
 	// Error is present when status="failed"
 	Error *ResponsesError `json:"error,omitempty"`
+
+	// RenderCustomToolCalls is set on an output rebuilt from stream events, where
+	// the accumulator has always handed custom_tool_call items to the converters
+	// as tool calls. An output the upstream delivered keeps them unrendered.
+	RenderCustomToolCalls bool `json:"-"`
+
+	// XAIServerSideSearch is set with RenderCustomToolCalls when the upstream is
+	// xAI. A custom_tool_call that IsServerSideSearchCall then stays in the
+	// output but is not rendered as a tool call, because xAI runs it itself.
+	XAIServerSideSearch bool `json:"-"`
 }
 
 // ResponsesError describes an error in a failed response.
@@ -585,6 +606,10 @@ func (o *ResponsesOutput) UnmarshalJSON(data []byte) error {
 type WebSearchAction struct {
 	Type  string `json:"type,omitempty"`  // "search"
 	Query string `json:"query,omitempty"` // primary search query
+	// URL and Sources stay raw: a strictly typed value of an unexpected shape
+	// would fail decoding the whole terminal event that carries this call.
+	URL     json.RawMessage `json:"url,omitempty"` // open_page / find_in_page target
+	Sources json.RawMessage `json:"sources,omitempty"`
 }
 
 // ResponsesSummary is a summary text block inside a reasoning output.
@@ -603,6 +628,10 @@ type ResponsesUsage struct {
 	// Optional detailed breakdown
 	InputTokensDetails  *ResponsesInputTokensDetails  `json:"input_tokens_details,omitempty"`
 	OutputTokensDetails *ResponsesOutputTokensDetails `json:"output_tokens_details,omitempty"`
+
+	// ServerSideToolUsageDetails is xAI's per-class success count object,
+	// kept raw so Grok search counting can read it from a decoded response.
+	ServerSideToolUsageDetails json.RawMessage `json:"server_side_tool_usage_details,omitempty"`
 }
 
 func (u *ResponsesUsage) UnmarshalJSON(data []byte) error {

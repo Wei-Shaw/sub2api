@@ -55,6 +55,7 @@ func testUpstreamModelPricingRefresh(t *testing.T, platform, model string) {
 			"object": "sub2api.key_billing", "schema_version": 1, "billing_scope": "token",
 			"group_rate_multiplier": 0.4, "resolved_rate_multiplier": 0.4, "effective_rate_multiplier": 0.4,
 			"peak_rate_enabled": false, "observed_at": now, "model_pricing": catalog,
+			"group_name": "Upstream group", "group_description": "Upstream group notes",
 		})
 		require.NoError(t, err)
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(string(body)))}
@@ -71,7 +72,12 @@ func testUpstreamModelPricingRefresh(t *testing.T, platform, model string) {
 			"api_protocol":  APIProtocolChatCompletions,
 			"model_mapping": map[string]any{alias: model},
 		},
-		Extra: map[string]any{UpstreamBillingProbeEnabledExtraKey: true, UpstreamModelPricingSyncExtraKey: true, "quota_limit": 100.0},
+		Extra: map[string]any{
+			UpstreamBillingProbeEnabledExtraKey:     true,
+			UpstreamBillingGroupSyncEnabledExtraKey: true,
+			UpstreamModelPricingSyncExtraKey:        true,
+			"quota_limit":                           100.0,
+		},
 	}
 	repo := &upstreamBillingProbeAccountRepo{accounts: map[int64]*Account{pool.ID: pool}}
 	httpUpstream := &httpUpstreamRecorder{responses: []*http.Response{low, high}}
@@ -98,10 +104,13 @@ func testUpstreamModelPricingRefresh(t *testing.T, platform, model string) {
 	first, err := probe.ProbeAccount(ctx, pool.ID)
 	require.NoError(t, err)
 	require.Equal(t, UpstreamBillingProbeStatusOK, first.Status)
-	require.Equal(t, "model_pricing", httpUpstream.lastReq.URL.Query().Get("include"))
+	require.Equal(t, []string{"group", "model_pricing"}, httpUpstream.lastReq.URL.Query()["include"])
 	require.Equal(t, model, httpUpstream.lastReq.URL.Query().Get("models"))
 	pool, err = repo.GetByID(ctx, pool.ID)
 	require.NoError(t, err)
+	require.Equal(t, "Upstream group", pool.Name)
+	require.NotNil(t, pool.Notes)
+	require.Equal(t, "Upstream group notes", *pool.Notes)
 	vetoed, reason = openAIProfitControlVetoReason(gateCtx, pool)
 	require.False(t, vetoed, "%s", reason)
 

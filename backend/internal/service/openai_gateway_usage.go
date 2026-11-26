@@ -476,14 +476,13 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		billingMode := string(BillingModeToken)
 		usageLog.BillingMode = &billingMode
 	}
-	// 添加 UserAgent
-	if input.UserAgent != "" {
-		usageLog.UserAgent = &input.UserAgent
+	// 添加 UserAgent / IPAddress。取副本地址：指向 input 字段会让整个 input（含 Result
+	// 及其引用的请求体）随异步写入的 usageLog 一直存活。
+	if userAgent := input.UserAgent; userAgent != "" {
+		usageLog.UserAgent = &userAgent
 	}
-
-	// 添加 IPAddress
-	if input.IPAddress != "" {
-		usageLog.IPAddress = &input.IPAddress
+	if ipAddress := input.IPAddress; ipAddress != "" {
+		usageLog.IPAddress = &ipAddress
 	}
 
 	// 添加 SessionID（客户端显式会话标识；缺失/无效时保持 nil）

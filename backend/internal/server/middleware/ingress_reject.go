@@ -29,6 +29,8 @@ const (
 	IngressRejectInvalidAuthRateLimited IngressRejectReason = "invalid_auth_rate_limited"
 	IngressRejectAPIKeyAuthOverloaded   IngressRejectReason = "api_key_auth_overloaded"
 	IngressRejectModelNotAllowed        IngressRejectReason = "model_not_allowed"
+	// IngressRejectConflictingRequestFields：请求体同名字段重复声明（GHSA-p3r4-jcm3-2hph）。
+	IngressRejectConflictingRequestFields IngressRejectReason = "conflicting_request_fields"
 )
 
 const ingressRejectReasonContextKey = "ingress_reject_reason"
