@@ -35,6 +35,7 @@ func TestDetectGeminiResponseSignal(t *testing.T) {
 		{name: "NO_IMAGE is a normal stop", payload: `{"candidates":[{"finishReason":"NO_IMAGE"}]}`, wantHit: false},
 		{name: "unknown future finishReason is a normal stop", payload: `{"candidates":[{"finishReason":"SOME_NEW_REASON"}]}`, wantHit: false},
 		{name: "countTokens body", payload: `{"totalTokens":12}`, wantHit: false},
+		{name: "BLOCK_REASON_UNSPECIFIED is not a block", payload: `{"promptFeedback":{"blockReason":"BLOCK_REASON_UNSPECIFIED"}}`, wantHit: false},
 		{name: "BLOCKED_REASON_UNSPECIFIED is not a block", payload: `{"promptFeedback":{"blockReason":"BLOCKED_REASON_UNSPECIFIED"}}`, wantHit: false},
 		{name: "secondary candidate is ignored", payload: `{"candidates":[{"index":1,"finishReason":"SAFETY"}]}`, wantHit: false},
 		{name: "error as string is not an envelope", payload: `{"error":"plain"}`, wantHit: false},

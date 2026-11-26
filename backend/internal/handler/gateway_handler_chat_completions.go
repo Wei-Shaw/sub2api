@@ -371,7 +371,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		if err != nil {
 			var failoverErr *service.UpstreamFailoverError
 			if errors.As(err, &failoverErr) {
-				if c.Writer.Size() != writerSizeBeforeForward {
+				if c.Writer.Size() != writerSizeBeforeForward && !failoverErr.SafeToFailoverAfterWrite {
 					h.handleCCFailoverExhausted(c, failoverErr, true)
 					return
 				}
@@ -380,7 +380,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 				case FailoverContinue:
 					continue
 				case FailoverExhausted:
-					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, streamStarted)
+					h.handleCCFailoverExhausted(c, fs.LastFailoverErr, streamStarted || middleware2.IsCommittedEventStream(c))
 					return
 				case FailoverCanceled:
 					failoverClientGone(c)
@@ -390,7 +390,7 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			upstreamErrorAlreadyCommunicated := gatewayForwardErrorAlreadyCommunicated(c, writerSizeBeforeForward, err)
 			wroteFallback := false
 			if !upstreamErrorAlreadyCommunicated {
-				wroteFallback = h.ensureForwardErrorResponse(c, streamStarted)
+				wroteFallback = h.ensureForwardErrorResponse(c, streamStarted || middleware2.IsCommittedEventStream(c))
 			}
 			reqLog.Error("gateway.cc.forward_failed",
 				zap.Int64("account_id", account.ID),
@@ -401,6 +401,9 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 			h.gatewayService.ReleaseStickySessionAfterCommittedNoContent(context.WithoutCancel(c.Request.Context()), apiKey.GroupID, selectionSessionHash, account.ID, err)
 			if result != nil {
 				submitForwardUsage(result)
+			}
+			if streamStarted || middleware2.IsCommittedEventStream(c) {
+				abortTruncatedHTTPStream(c)
 			}
 			return
 		}
@@ -424,6 +427,8 @@ func (h *GatewayHandler) chatCompletionsErrorResponse(c *gin.Context, status int
 // handleCCFailoverExhausted writes a failover-exhausted error in CC format.
 func (h *GatewayHandler) handleCCFailoverExhausted(c *gin.Context, lastErr *service.UpstreamFailoverError, streamStarted bool) {
 	if streamStarted {
+		h.ensureForwardErrorResponse(c, true)
+		abortTruncatedHTTPStream(c)
 		return
 	}
 	if lastErr != nil {
