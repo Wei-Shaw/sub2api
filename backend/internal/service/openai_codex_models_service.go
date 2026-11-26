@@ -456,7 +456,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 	}
 
 	if isDeepSeekCodexModel(modelID) {
-		defaultReasoningLevel := "high"
+		defaultReasoningLevel := deepSeekDefaultReasoningEffort
 		descriptor.DisplayName = deepSeekCodexDisplayName(modelID)
 		descriptor.Description = "DeepSeek coding and reasoning model routed through Sub2API."
 		descriptor.DefaultReasoningLevel = &defaultReasoningLevel
@@ -790,6 +790,10 @@ func deepSeekCodexDisplayName(modelID string) string {
 		return modelID
 	}
 }
+
+// deepSeekDefaultReasoningEffort is the default level of DeepSeek's
+// low/high/max reasoning scale.
+const deepSeekDefaultReasoningEffort = "high"
 
 func isDeepSeekCodexModel(modelID string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelID)), "deepseek-")
