@@ -58,10 +58,7 @@ func (s *GatewayService) ForwardSystemOne(ctx context.Context, c *gin.Context, a
 		return nil, err
 	}
 	upstreamURL := req.URL.Scheme + "://" + req.URL.Host + req.URL.Path
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
+	proxyURL := AccountProxyURLFailClosed(account)
 	SetOpsUpstreamModel(c, upstreamModel)
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {

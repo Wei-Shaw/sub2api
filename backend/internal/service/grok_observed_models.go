@@ -155,10 +155,8 @@ func (s *GrokQuotaService) prepareGrokObservedModelsRequest(ctx context.Context,
 	account.ApplyHeaderOverrides(req.Context(), req.Header)
 
 	proxyURL := ""
-	if s.proxyRepo != nil && account.ProxyID != nil {
-		if p, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && p != nil {
-			proxyURL = p.URL()
-		}
+	if account.ProxyID != nil {
+		proxyURL = ResolveProxyIDURLFailClosed(ctx, s.proxyRepo, account.ID, account.ProxyID)
 	}
 	if s.httpUpstream == nil {
 		return nil, "", nil

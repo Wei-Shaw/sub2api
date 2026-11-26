@@ -98,10 +98,7 @@ func (s *OAuthService) generateAuthURLWithScope(ctx context.Context, scope strin
 	// Get proxy URL if specified
 	var proxyURL string
 	if proxyID != nil {
-		proxy, err := s.proxyRepo.GetByID(ctx, *proxyID)
-		if err == nil && proxy != nil {
-			proxyURL = proxy.URL()
-		}
+		proxyURL = ResolveProxyIDURLFailClosed(ctx, s.proxyRepo, 0, proxyID)
 	}
 
 	// Store session
@@ -154,10 +151,7 @@ func (s *OAuthService) ExchangeCode(ctx context.Context, input *ExchangeCodeInpu
 	// Get proxy URL
 	proxyURL := session.ProxyURL
 	if input.ProxyID != nil {
-		proxy, err := s.proxyRepo.GetByID(ctx, *input.ProxyID)
-		if err == nil && proxy != nil {
-			proxyURL = proxy.URL()
-		}
+		proxyURL = ResolveProxyIDURLFailClosed(ctx, s.proxyRepo, 0, input.ProxyID)
 	}
 
 	// Determine if this is a setup token (scope is inference only)
@@ -187,10 +181,7 @@ func (s *OAuthService) CookieAuth(ctx context.Context, input *CookieAuthInput) (
 	// Get proxy URL if specified
 	var proxyURL string
 	if input.ProxyID != nil {
-		proxy, err := s.proxyRepo.GetByID(ctx, *input.ProxyID)
-		if err == nil && proxy != nil {
-			proxyURL = proxy.URL()
-		}
+		proxyURL = ResolveProxyIDURLFailClosed(ctx, s.proxyRepo, 0, input.ProxyID)
 	}
 
 	// Determine scope and if this is a setup token
@@ -311,10 +302,7 @@ func (s *OAuthService) RefreshAccountToken(ctx context.Context, account *Account
 
 	var proxyURL string
 	if account.ProxyID != nil {
-		proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID)
-		if err == nil && proxy != nil {
-			proxyURL = proxy.URL()
-		}
+		proxyURL = ResolveProxyIDURLFailClosed(ctx, s.proxyRepo, account.ID, account.ProxyID)
 	}
 
 	return s.RefreshToken(ctx, refreshToken, proxyURL)

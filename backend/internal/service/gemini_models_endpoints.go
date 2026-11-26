@@ -307,10 +307,7 @@ func (s *GeminiMessagesCompatService) listVertexGeminiModels(ctx context.Context
 
 // doGeminiModelsGET 发送模型接口请求并读取响应。响应体上限取 gateway.models_list_read_max_bytes，超出时报错；响应头按配置过滤。
 func (s *GeminiMessagesCompatService) doGeminiModelsGET(req *http.Request, account *Account) (*UpstreamHTTPResult, error) {
-	var proxyURL string
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
+	proxyURL := AccountProxyURLFailClosed(account)
 
 	resp, err := s.httpUpstream.Do(req, proxyURL, account.ID, account.Concurrency)
 	if err != nil {

@@ -264,10 +264,7 @@ func (s *OpenAIGatewayService) sendCCUpstreamRequest(
 	account.ApplyHeaderOverrides(upstreamReq.Context(), upstreamReq.Header)
 	applyOpenCodeSessionHeader(c, account, targetURL, upstreamReq.Header, body)
 
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
+	proxyURL := AccountProxyURLFailClosed(account)
 	resp, err := s.doOpenAIUpstream(upstreamReq, proxyURL, account)
 	if err != nil {
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)

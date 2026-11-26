@@ -128,10 +128,7 @@ func (s *GatewayService) ForwardAsResponses(
 	}
 
 	// 9. Get proxy URL
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
+	proxyURL := AccountProxyURLFailClosed(account)
 
 	// 10. Build and send the request, recovering a concurrent token rotation once.
 	var upstreamReq *http.Request

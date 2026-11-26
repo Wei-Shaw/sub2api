@@ -155,7 +155,8 @@ func TestVertexServiceAccountProxyURL(t *testing.T) {
 
 	require.Equal(t, "http://proxy.example.com:8080", vertexServiceAccountProxyURL(account))
 	require.Empty(t, vertexServiceAccountProxyURL(&Account{Proxy: account.Proxy}))
-	require.Empty(t, vertexServiceAccountProxyURL(&Account{ProxyID: &proxyID}))
+	// Bound proxy that failed to load must fail closed, never fall back to direct.
+	require.Equal(t, FailClosedProxyURL, vertexServiceAccountProxyURL(&Account{ProxyID: &proxyID}))
 }
 
 func TestVertexServiceAccountHTTPClientRecordsDependency(t *testing.T) {

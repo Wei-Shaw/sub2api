@@ -520,13 +520,10 @@ func (s *OpenAIQuotaService) prepareUpstreamCall(ctx context.Context, accountID 
 	// when Proxy isn't pre-populated (defensive — e.g. callers that built
 	// the Account by hand).
 	if account.ProxyID != nil {
-		switch {
-		case account.Proxy != nil:
-			proxyURL = account.Proxy.URL()
-		case s.proxyRepo != nil:
-			if proxy, perr := s.proxyRepo.GetByID(ctx, *account.ProxyID); perr == nil && proxy != nil {
-				proxyURL = proxy.URL()
-			}
+		if account.Proxy != nil && account.Proxy.ID == *account.ProxyID {
+			proxyURL = AccountProxyURLFailClosed(account)
+		} else {
+			proxyURL = ResolveAccountProxyURLFailClosed(ctx, s.proxyRepo, account)
 		}
 	}
 

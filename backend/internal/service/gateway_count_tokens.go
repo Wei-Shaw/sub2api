@@ -160,9 +160,9 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 
 	// 获取代理URL（自定义 base URL 模式下，proxy 通过 buildCustomRelayURL 作为查询参数传递）
 	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
+	if account.ProxyID != nil {
 		if !account.IsCustomBaseURLEnabled() || account.GetCustomBaseURL() == "" {
-			proxyURL = account.Proxy.URL()
+			proxyURL = AccountProxyURLFailClosed(account)
 		}
 	}
 
@@ -288,10 +288,7 @@ func (s *GatewayService) forwardCountTokensAnthropicAPIKeyPassthrough(ctx contex
 		return err
 	}
 
-	proxyURL := ""
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
+	proxyURL := AccountProxyURLFailClosed(account)
 
 	resp, err := s.httpUpstream.DoWithTLS(upstreamReq, proxyURL, account.ID, account.Concurrency, s.tlsFPProfileService.ResolveTLSProfile(account))
 	if err != nil {
