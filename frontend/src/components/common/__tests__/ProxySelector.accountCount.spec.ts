@@ -1,34 +1,27 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { enableAutoUnmount, mount, type VueWrapper } from '@vue/test-utils'
+import { createI18n } from 'vue-i18n'
 import ProxySelector from '../ProxySelector.vue'
 import enResources from '@/i18n/locales/en/admin/resources'
 import zhResources from '@/i18n/locales/zh/admin/resources'
 import type { Proxy } from '@/types'
 
 vi.mock('@/api/admin', () => ({ adminAPI: { proxies: { testProxy: vi.fn() } } }))
-// vitest resolves vue-i18n to the runtime-only build, which cannot compile raw
-// locale strings. Resolve keys against the real locale files instead and apply
-// vue-i18n's two-choice plural rule ("one | other": 1 -> first, else second).
-const { locale } = vi.hoisted(() => ({ locale: { current: 'zh' as 'zh' | 'en' } }))
-vi.mock('vue-i18n', () => ({
-  useI18n: () => ({
-    t: (key: string, plural?: number): string => {
-      const messages = locale.current === 'zh' ? zhResources : enResources
-      const value = key.split('.').slice(1).reduce<unknown>(
-        (node: unknown, part: string) => (node as Record<string, unknown> | undefined)?.[part],
-        { proxies: messages.proxies }
-      )
-      if (typeof value !== 'string') return key
-      const choices = value.split('|').map((choice: string) => choice.trim())
-      const message = typeof plural === 'number' && choices.length === 2 ? choices[plural === 1 ? 0 : 1] : value
-      return typeof plural === 'number' ? message.replace(/\{(count|n)\}/g, String(plural)) : message
-    }
-  })
-}))
 enableAutoUnmount(afterEach)
 
-async function openSelector(lang: 'zh' | 'en', accountCounts: Array<number | undefined>): Promise<VueWrapper> {
-  locale.current = lang
+async function openSelector(locale: 'zh' | 'en', accountCounts: Array<number | undefined>): Promise<VueWrapper> {
+  // Real vue-i18n with the real locale files: pluralization and interpolation
+  // are exercised exactly as in the app.
+  const i18n = createI18n({
+    legacy: false,
+    locale,
+    missingWarn: false,
+    fallbackWarn: false,
+    messages: {
+      en: { admin: { proxies: enResources.proxies } },
+      zh: { admin: { proxies: zhResources.proxies } }
+    }
+  })
   const proxies: Proxy[] = accountCounts.map((count: number | undefined, i: number) => ({
     id: i + 1,
     name: `Proxy ${i + 1}`,
@@ -42,7 +35,7 @@ async function openSelector(lang: 'zh' | 'en', accountCounts: Array<number | und
   } as Proxy))
   const wrapper = mount(ProxySelector, {
     props: { modelValue: null, proxies },
-    global: { stubs: { Icon: true } }
+    global: { plugins: [i18n], stubs: { Icon: true } }
   })
   await wrapper.get('.select-trigger').trigger('click')
   return wrapper
@@ -63,9 +56,9 @@ describe('ProxySelector account counts', () => {
     expect(rows[1].get('[data-test="proxy-account-count"]').attributes('title')).toBe('当前绑定此代理的账号数')
 
     // The badge sits on the right: after the name/address block, before the test button.
-    const children = rows[1].element.children
-    const badgeIndex = Array.from(children).findIndex((el: Element) => el.getAttribute('data-test') === 'proxy-account-count')
-    const testButtonIndex = Array.from(children).findIndex((el: Element) => el.classList.contains('test-btn'))
+    const children = Array.from(rows[1].element.children)
+    const badgeIndex = children.findIndex((el: Element) => el.getAttribute('data-test') === 'proxy-account-count')
+    const testButtonIndex = children.findIndex((el: Element) => el.classList.contains('test-btn'))
     expect(badgeIndex).toBeGreaterThan(0)
     expect(testButtonIndex).toBe(badgeIndex + 1)
   })
@@ -75,6 +68,7 @@ describe('ProxySelector account counts', () => {
     const texts = proxyRows(wrapper).map((row) => row.get('[data-test="proxy-account-count"]').text())
 
     expect(texts).toEqual(['0 accounts', '1 account', '3 accounts'])
+    expect(proxyRows(wrapper)[0].get('[data-test="proxy-account-count"]').attributes('title')).toBe('Accounts currently using this proxy')
   })
 
   it('omits the badge when the list was loaded without counts', async () => {
