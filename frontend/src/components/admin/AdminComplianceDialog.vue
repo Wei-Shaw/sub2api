@@ -106,6 +106,7 @@ import Input from '@/components/common/Input.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useAdminComplianceStore, useAppStore, useAuthStore } from '@/stores'
 import { getLocale } from '@/i18n'
+import { resolveExclusiveOIDCEndSessionURL } from '@/utils/oidcExclusive'
 import zhDocument from '../../../../docs/legal/admin-compliance.zh.md?raw'
 import enDocument from '../../../../docs/legal/admin-compliance.en.md?raw'
 
@@ -179,7 +180,8 @@ async function submit(): Promise<void> {
 
 async function logout(): Promise<void> {
   await authStore.logout()
-  window.location.href = '/login'
+  window.location.href =
+    resolveExclusiveOIDCEndSessionURL(appStore.cachedPublicSettings) || '/login?logged_out=1'
 }
 </script>
 

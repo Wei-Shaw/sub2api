@@ -1,6 +1,8 @@
 package handler
 
 import (
+	"log/slog"
+	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
@@ -378,6 +380,7 @@ func (h *AuthHandler) OIDCOAuthCallback(c *gin.Context) {
 		ProviderKey:     issuer,
 		ProviderSubject: subject,
 	}
+	h.storeOIDCIDToken(c.Request.Context(), identityRef, tokenResp.IDToken)
 	upstreamClaims := map[string]any{
 		"email":             email,
 		"username":          username,
@@ -1293,4 +1296,36 @@ func (h *AuthHandler) tryOIDCVerifiedEmailFastPath(
 	clearOAuthPendingBrowserCookie(c, isRequestHTTPS(c))
 	redirectWithFragment(c, frontendCallback, fragment)
 	return true
+}
+
+// storeOIDCIDToken records the latest id_token on the OIDC auth identity
+// (auth_identities.metadata) so logout can attach an id_token_hint for a
+// confirmation-free SSO end-session. Best-effort: never blocks the login.
+func (h *AuthHandler) storeOIDCIDToken(ctx context.Context, identity service.PendingAuthIdentityKey, idToken string) {
+	idToken = strings.TrimSpace(idToken)
+	if idToken == "" {
+		return
+	}
+	client := h.entClient()
+	if client == nil {
+		return
+	}
+	record, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.ProviderTypeEQ(strings.TrimSpace(identity.ProviderType)),
+			authidentity.ProviderKeyEQ(strings.TrimSpace(identity.ProviderKey)),
+			authidentity.ProviderSubjectEQ(strings.TrimSpace(identity.ProviderSubject)),
+		).
+		Only(ctx)
+	if err != nil {
+		return
+	}
+	metadata := make(map[string]any, len(record.Metadata)+1)
+	for k, v := range record.Metadata {
+		metadata[k] = v
+	}
+	metadata["id_token"] = idToken
+	if err := client.AuthIdentity.UpdateOneID(record.ID).SetMetadata(metadata).Exec(ctx); err != nil {
+		slog.Debug("failed to persist oidc id_token", "error", err)
+	}
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Wei-Shaw/sub2api/ent/authidentity"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/handler/dto"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
@@ -174,9 +175,33 @@ func (h *AuthHandler) isBackendModeEnabled(ctx context.Context) bool {
 	return h.settingSvc.IsBackendModeEnabled(ctx)
 }
 
+func (h *AuthHandler) rejectLocalAuthInOIDCExclusiveMode(c *gin.Context) bool {
+	if h == nil || !h.isOIDCExclusiveModeEnabled(c.Request.Context()) {
+		return false
+	}
+	if middleware2.ServiceLoginTokenAllowed(c, h.settingSvc) {
+		return false
+	}
+	response.Forbidden(c, "OIDC login is required")
+	return true
+}
+
+func (h *AuthHandler) isOIDCExclusiveModeEnabled(ctx context.Context) bool {
+	if h == nil {
+		return false
+	}
+	if h.settingSvc != nil {
+		return h.settingSvc.IsOIDCExclusiveModeEnabled(ctx)
+	}
+	return h.cfg != nil && h.cfg.OIDC.Enabled && h.cfg.OIDC.Exclusive
+}
+
 // Register handles user registration
 // POST /api/v1/auth/register
 func (h *AuthHandler) Register(c *gin.Context) {
+	if h.rejectLocalAuthInOIDCExclusiveMode(c) {
+		return
+	}
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
@@ -237,6 +262,9 @@ func (h *AuthHandler) SendVerifyCode(c *gin.Context) {
 // Login handles user login
 // POST /api/v1/auth/login
 func (h *AuthHandler) Login(c *gin.Context) {
+	if h.rejectLocalAuthInOIDCExclusiveMode(c) {
+		return
+	}
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		response.BadRequest(c, "Invalid request: "+err.Error())
@@ -717,6 +745,9 @@ type LogoutRequest struct {
 // LogoutResponse 登出响应
 type LogoutResponse struct {
 	Message string `json:"message"`
+	// OIDC end-session params (exclusive mode): one-click SSO sign-out
+	EndSessionURL string `json:"end_session_url,omitempty"`
+	IDTokenHint   string `json:"id_token_hint,omitempty"`
 }
 
 // Logout 用户登出
@@ -736,9 +767,9 @@ func (h *AuthHandler) Logout(c *gin.Context) {
 	h.consumePendingOAuthSessionOnLogout(c)
 	clearOAuthLogoutCookies(c)
 
-	response.Success(c, LogoutResponse{
-		Message: "Logged out successfully",
-	})
+	resp := LogoutResponse{Message: "Logged out successfully"}
+	h.attachOIDCEndSession(c, &resp)
+	response.Success(c, resp)
 }
 
 // RevokeAllSessionsResponse 撤销所有会话响应
@@ -764,4 +795,47 @@ func (h *AuthHandler) RevokeAllSessions(c *gin.Context) {
 	response.Success(c, RevokeAllSessionsResponse{
 		Message: "All sessions have been revoked. Please log in again.",
 	})
+}
+
+// attachOIDCEndSession enriches the logout response with the provider
+// end-session URL and the persisted id_token hint, enabling a confirmation-free
+// SSO sign-out when exclusive OIDC mode is active. Best-effort by design:
+// any lookup failure simply falls back to the plain end-session redirect.
+func (h *AuthHandler) attachOIDCEndSession(c *gin.Context, resp *LogoutResponse) {
+	if h == nil || h.settingSvc == nil || h.cfg == nil || h.authService == nil {
+		return
+	}
+	endSessionURL := strings.TrimSpace(h.cfg.OIDC.EndSessionURL)
+	if endSessionURL == "" || !h.settingSvc.IsOIDCExclusiveModeEnabled(c.Request.Context()) {
+		return
+	}
+	authz := c.GetHeader("Authorization")
+	if !strings.HasPrefix(authz, "Bearer ") {
+		return
+	}
+	claims, err := h.authService.ValidateToken(strings.TrimSpace(strings.TrimPrefix(authz, "Bearer ")))
+	if err != nil || claims == nil || claims.UserID <= 0 {
+		return
+	}
+	client := h.entClient()
+	if client == nil {
+		return
+	}
+	identities, err := client.AuthIdentity.Query().
+		Where(
+			authidentity.UserIDEQ(claims.UserID),
+			authidentity.ProviderTypeEQ("oidc"),
+		).
+		All(c.Request.Context())
+	if err != nil {
+		slog.Debug("failed to query oidc identity for end-session", "error", err)
+		return
+	}
+	for _, identity := range identities {
+		if hint, _ := identity.Metadata["id_token"].(string); strings.TrimSpace(hint) != "" {
+			resp.EndSessionURL = endSessionURL
+			resp.IDTokenHint = strings.TrimSpace(hint)
+			return
+		}
+	}
 }
