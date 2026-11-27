@@ -16,24 +16,68 @@ const ContentModerationActionImageSafety = "image_safety"
 //
 // 只认 400：上游安全拒绝（如 "Your request was rejected by the safety system"）
 // 与 Responses 生图兜底合成的 content_policy_violation 都是 400；其余状态码
-// 描述的是账号/上游故障而不是用户内容。带 error.param 的 400 是参数校验错误
-// （例如 images 接口自身的 moderation 参数取值非法），即便文案含 moderation
-// 也不是内容拒绝，一律排除。
+// 描述的是账号/上游故障而不是用户内容。
+//
+// 判定顺序：
+//  1. 明确的安全类 error.code 直接认定（包括 Azure 带 param=prompt 的
+//     content_filter）；response.incomplete 只有在 content_filter/moderation
+//     原因下才会是 400，同样认定。
+//  2. 只能看文案时更保守：带 error.param 的 400 是参数校验错误，排除；文案
+//     是"未知/不支持的参数"之类时排除；关键词表不含单独的 "moderation"——
+//     images 接口自身有 moderation 参数，兼容上游常回
+//     "Unrecognized request argument supplied: moderation" 且 param 为 null。
+//     误报会留存无辜用户的提示词，宁可漏记也不误记。
 func IsOpenAIImagesSafetyRefusal(err *OpenAIImagesUpstreamError) bool {
 	if err == nil || err.StatusCode != http.StatusBadRequest {
 		return false
 	}
+	code := strings.ToLower(strings.TrimSpace(err.Code))
+	if code == "response_incomplete" ||
+		code == "moderation_blocked" ||
+		code == "contentfilter" ||
+		strings.Contains(code, "content_filter") ||
+		strings.Contains(code, "content_policy") ||
+		strings.Contains(code, "policy_violation") ||
+		strings.Contains(code, "safety_violation") ||
+		strings.Contains(code, "responsibleaipolicyviolation") {
+		return true
+	}
 	if strings.TrimSpace(err.Param) != "" {
 		return false
 	}
-	code := strings.ToLower(strings.TrimSpace(err.Code))
-	if code == "moderation_blocked" ||
-		strings.Contains(code, "content_policy") ||
-		strings.Contains(code, "policy_violation") ||
-		strings.Contains(code, "safety_violation") {
-		return true
+	return isImageSafetyRefusalMessage(err.Message)
+}
+
+var imageSafetyParameterErrorMarkers = []string{
+	"unrecognized request argument",
+	"unknown parameter",
+	"unsupported parameter",
+	"unexpected parameter",
+	"invalid parameter",
+	"invalid value",
+	"unrecognized parameter",
+}
+
+var imageSafetyRefusalMarkers = []string{
+	"safety system", "safety policy", "safety violation",
+	"content policy", "content_policy", "content filter", "content_filter",
+	"content management policy", "moderation_blocked",
+	"安全系统", "安全策略", "安全政策", "内容政策", "内容审核", "违规内容", "不适合生成",
+}
+
+func isImageSafetyRefusalMessage(message string) bool {
+	lower := strings.ToLower(message)
+	for _, marker := range imageSafetyParameterErrorMarkers {
+		if strings.Contains(lower, marker) {
+			return false
+		}
 	}
-	return isOpenAIImagesContentPolicyRefusal(err.Message)
+	for _, marker := range imageSafetyRefusalMarkers {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 // ImageSafetyRecordInput 是一次图像上游安全拒绝的风控记录入参。

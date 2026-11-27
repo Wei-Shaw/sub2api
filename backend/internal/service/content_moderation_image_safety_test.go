@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 func TestIsOpenAIImagesSafetyRefusal(t *testing.T) {
@@ -54,6 +55,46 @@ func TestIsOpenAIImagesSafetyRefusal(t *testing.T) {
 		{
 			name: "safety wording on non-400 status",
 			err:  &OpenAIImagesUpstreamError{StatusCode: http.StatusBadGateway, Message: safetyMsg},
+			want: false,
+		},
+		{
+			name: "azure: unrecognized moderation argument with null param",
+			err:  openAIImagesUpstreamErrorFromHTTP(http.StatusBadRequest, nil, []byte(`{"error":{"message":"Unrecognized request argument supplied: moderation","type":"invalid_request_error","param":null,"code":null}}`)),
+			want: false,
+		},
+		{
+			name: "unknown moderation parameter without param field",
+			err:  openAIImagesUpstreamErrorFromHTTP(http.StatusBadRequest, nil, []byte(`{"error":{"message":"Unknown parameter: 'moderation'."}}`)),
+			want: false,
+		},
+		{
+			name: "error passthrough rewrite drops param and code",
+			err:  &OpenAIImagesUpstreamError{StatusCode: http.StatusBadRequest, ErrorType: "upstream_error", Message: "Invalid moderation setting for this model"},
+			want: false,
+		},
+		{
+			name: "azure content filter with param prompt",
+			err:  openAIImagesUpstreamErrorFromHTTP(http.StatusBadRequest, nil, []byte(`{"error":{"message":"The response was filtered due to the prompt triggering Azure OpenAI's content management policy.","type":null,"param":"prompt","code":"content_filter"}}`)),
+			want: true,
+		},
+		{
+			name: "azure contentFilter code",
+			err:  openAIImagesUpstreamErrorFromHTTP(http.StatusBadRequest, nil, []byte(`{"error":{"code":"contentFilter","message":"Your task failed as a result of our safety system."}}`)),
+			want: true,
+		},
+		{
+			name: "response.incomplete moderation reason",
+			err:  openAIImagesIncompleteUpstreamError(gjson.Parse(`{"id":"resp_1","incomplete_details":{"reason":"moderation"}}`)),
+			want: true,
+		},
+		{
+			name: "response.incomplete max_output_tokens is retryable, not safety",
+			err:  openAIImagesIncompleteUpstreamError(gjson.Parse(`{"id":"resp_1","incomplete_details":{"reason":"max_output_tokens"}}`)),
+			want: false,
+		},
+		{
+			name: "safety wording with param set is excluded on the message path",
+			err:  &OpenAIImagesUpstreamError{StatusCode: http.StatusBadRequest, Param: "size", Message: "content policy for size values"},
 			want: false,
 		},
 		{
