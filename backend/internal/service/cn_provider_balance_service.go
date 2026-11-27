@@ -300,14 +300,11 @@ func (s *CNProviderBalanceService) resolveProxyURL(ctx context.Context, account 
 	if account == nil || account.ProxyID == nil {
 		return ""
 	}
-	if account.Proxy != nil && account.Proxy.ID == *account.ProxyID {
-		return AccountProxyURLFailClosed(account)
-	}
 	var repo ProxyRepository
 	if s != nil {
 		repo = s.proxyRepo
 	}
-	return ResolveAccountProxyURLFailClosed(ctx, repo, account)
+	return LoadAccountProxyURLFailClosed(ctx, repo, account)
 }
 
 // cnBalanceURL 解析账号的余额端点。

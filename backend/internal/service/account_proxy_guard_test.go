@@ -76,3 +76,26 @@ func TestFailClosedProxyURLIsUsableProxy(t *testing.T) {
 		t.Fatal("sentinel must not be empty")
 	}
 }
+
+func TestLoadAccountProxyURLFailClosedCachesProxy(t *testing.T) {
+	id := int64(2)
+	acc := &Account{ID: 24, ProxyID: &id}
+	repo := &guardProxyRepoStub{proxy: &Proxy{ID: id, Protocol: "socks5h", Host: "proxy.internal", Port: 1080}}
+
+	for i := 0; i < 2; i++ {
+		if got := LoadAccountProxyURLFailClosed(context.Background(), repo, acc); got != "socks5h://proxy.internal:1080" {
+			t.Fatalf("call %d: got %q", i, got)
+		}
+	}
+	if repo.calls != 1 {
+		t.Fatalf("expected proxy to be cached after first lookup, got %d repo calls", repo.calls)
+	}
+
+	failing := &guardProxyRepoStub{err: errors.New("db down")}
+	if got := LoadAccountProxyURLFailClosed(context.Background(), failing, &Account{ID: 1, ProxyID: &id}); got != FailClosedProxyURL {
+		t.Fatalf("lookup error: got %q, want fail-closed", got)
+	}
+	if failing.calls != 1 {
+		t.Fatalf("lookup error: expected a single repo call, got %d", failing.calls)
+	}
+}

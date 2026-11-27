@@ -527,14 +527,11 @@ func (s *GrokQuotaService) resolveProxyURL(ctx context.Context, account *Account
 	if account == nil || account.ProxyID == nil {
 		return ""
 	}
-	if account.Proxy != nil && account.Proxy.ID == *account.ProxyID {
-		return AccountProxyURLFailClosed(account)
-	}
 	var repo ProxyRepository
 	if s != nil {
 		repo = s.proxyRepo
 	}
-	return ResolveAccountProxyURLFailClosed(ctx, repo, account)
+	return LoadAccountProxyURLFailClosed(ctx, repo, account)
 }
 
 func (s *GrokQuotaService) loadGrokOAuthAccount(ctx context.Context, accountID int64) (*Account, error) {

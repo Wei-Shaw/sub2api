@@ -79,3 +79,30 @@ func ResolveProxyIDURLFailClosed(ctx context.Context, repo ProxyRepository, acco
 		"reason", "no proxy repository; refusing direct connection")
 	return FailClosedProxyURL
 }
+
+// LoadAccountProxyURLFailClosed uses account.Proxy when it is already loaded
+// and usable; otherwise it loads the proxy from repo and caches it on
+// account.Proxy so later lookups in the same request skip the DB. A lookup
+// failure yields FailClosedProxyURL, never "".
+func LoadAccountProxyURLFailClosed(ctx context.Context, repo ProxyRepository, account *Account) string {
+	if account == nil || account.ProxyID == nil {
+		return ""
+	}
+	if account.Proxy != nil && (account.Proxy.ID == 0 || account.Proxy.ID == *account.ProxyID) {
+		return AccountProxyURLFailClosed(account)
+	}
+	if repo == nil {
+		return ResolveAccountProxyURLFailClosed(ctx, nil, account)
+	}
+	p, err := repo.GetByID(ctx, *account.ProxyID)
+	if err == nil && p != nil && strings.TrimSpace(p.Host) != "" {
+		account.Proxy = p
+		return AccountProxyURLFailClosed(account)
+	}
+	slog.Error("account_proxy_fail_closed",
+		"account_id", account.ID,
+		"proxy_id", *account.ProxyID,
+		"reason", "bound proxy lookup failed; refusing direct connection",
+		"error", err)
+	return FailClosedProxyURL
+}
