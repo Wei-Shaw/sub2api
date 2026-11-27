@@ -112,7 +112,7 @@ function mountView(stubActionMenu = true, realUsageCell = false) {
         AppLayout: { template: '<div><slot /></div>' },
         TablePageLayout: { template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>' },
         DataTable: DataTableStub,
-        AccountTableActions: { template: `<div><button data-test="manual-refresh" @click="$emit('refresh')">refresh</button><slot name="after" /></div>` },
+        AccountTableActions: { template: `<div><button data-test="manual-refresh" @click="$emit('refresh')">refresh</button><button data-test="open-create" @click="$emit('create')">create</button><slot name="after" /></div>` },
         AccountTableFilters: true,
         AccountBulkActionsBar: true,
         Pagination: true,
@@ -200,6 +200,90 @@ describe('admin AccountsView lite account list', () => {
     expect(getAllProxies).toHaveBeenCalledTimes(1)
     expect(wrapper.findComponent({ name: 'CreateAccountModal' }).props('proxies')).toEqual(proxies)
     expect(wrapper.findComponent(EditAccountModalStub).props('proxies')).toEqual(proxies)
+    wrapper.unmount()
+  })
+
+  it('reloads proxy account counts each time the create dialog opens and keeps them on failure', async () => {
+    const initial = [{ id: 2, name: 'Shared proxy', account_count: 7 }]
+    const refreshed = [{ id: 2, name: 'Shared proxy', account_count: 8 }]
+    getAllProxies.mockResolvedValueOnce(initial).mockResolvedValueOnce(refreshed).mockRejectedValueOnce(new Error('offline'))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const wrapper = mountView()
+    await flushPromises()
+    const createModal = () => wrapper.findComponent({ name: 'CreateAccountModal' })
+    expect(createModal().props('proxies')).toEqual(initial)
+
+    await wrapper.get('[data-test="open-create"]').trigger('click')
+    await flushPromises()
+    expect(getAllProxies).toHaveBeenCalledTimes(2)
+    expect(createModal().props('proxies')).toEqual(refreshed)
+
+    createModal().vm.$emit('close')
+    await flushPromises()
+    expect(getAllProxies).toHaveBeenCalledTimes(2)
+
+    await wrapper.get('[data-test="open-create"]').trigger('click')
+    await flushPromises()
+    expect(getAllProxies).toHaveBeenCalledTimes(3)
+    expect(createModal().props('proxies')).toEqual(refreshed)
+    wrapper.unmount()
+  })
+
+  it('applies an older proxy response when a newer refresh fails, but never lets it overwrite a newer one', async () => {
+    type ProxyList = Array<{ id: number; name: string; account_count: number }>
+    const deferred = () => {
+      let resolve!: (value: ProxyList) => void
+      let reject!: (reason: Error) => void
+      const promise = new Promise<ProxyList>((res, rej) => { resolve = res; reject = rej })
+      return { promise, resolve, reject }
+    }
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const createModal = (wrapper: ReturnType<typeof mountView>) => wrapper.findComponent({ name: 'CreateAccountModal' })
+
+    // Mount request is slow; the dialog-open request fails first.
+    const mountLoad = deferred()
+    const openLoad = deferred()
+    getAllProxies.mockReturnValueOnce(mountLoad.promise).mockReturnValueOnce(openLoad.promise)
+    let wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="open-create"]').trigger('click')
+    openLoad.reject(new Error('offline'))
+    await flushPromises()
+    mountLoad.resolve([{ id: 1, name: 'Shared proxy', account_count: 3 }])
+    await flushPromises()
+    expect(createModal(wrapper).props('proxies')).toEqual([{ id: 1, name: 'Shared proxy', account_count: 3 }])
+    wrapper.unmount()
+
+    // Mount request is slow; the dialog-open request succeeds first with newer counts.
+    const slowMount = deferred()
+    const fastOpen = deferred()
+    getAllProxies.mockReset().mockReturnValueOnce(slowMount.promise).mockReturnValueOnce(fastOpen.promise)
+    wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="open-create"]').trigger('click')
+    fastOpen.resolve([{ id: 1, name: 'Shared proxy', account_count: 4 }])
+    await flushPromises()
+    slowMount.resolve([{ id: 1, name: 'Shared proxy', account_count: 3 }])
+    await flushPromises()
+    expect(createModal(wrapper).props('proxies')).toEqual([{ id: 1, name: 'Shared proxy', account_count: 4 }])
+    wrapper.unmount()
+  })
+
+  it('refreshes proxy account counts after accounts are created while the dialog stays open', async () => {
+    const before = [{ id: 2, name: 'Shared proxy', account_count: 7 }]
+    const after = [{ id: 2, name: 'Shared proxy', account_count: 9 }]
+    getAllProxies.mockResolvedValueOnce(before).mockResolvedValueOnce(before).mockResolvedValueOnce(after)
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="open-create"]').trigger('click')
+    await flushPromises()
+    const createModal = wrapper.findComponent({ name: 'CreateAccountModal' })
+    expect(createModal.props('proxies')).toEqual(before)
+
+    createModal.vm.$emit('created')
+    await flushPromises()
+    expect(getAllProxies).toHaveBeenCalledTimes(3)
+    expect(createModal.props('proxies')).toEqual(after)
     wrapper.unmount()
   })
 

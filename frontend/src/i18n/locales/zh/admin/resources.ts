@@ -112,6 +112,8 @@ export default {
       allProtocols: '全部协议',
       allStatus: '全部状态',
       searchProxies: '搜索代理...',
+      selectorAccountCount: '{count} 个账号',
+      selectorAccountCountTitle: '当前绑定此代理的账号数',
       protocols: {
         http: 'HTTP',
         https: 'HTTPS',

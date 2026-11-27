@@ -76,6 +76,8 @@ export default {
       copyProxyUrl: 'Copy Proxy URL',
       urlCopied: 'Proxy URL copied',
       searchProxies: 'Search proxies...',
+      selectorAccountCount: '{count} account | {count} accounts',
+      selectorAccountCountTitle: 'Accounts currently using this proxy',
       allProtocols: 'All Protocols',
       allStatus: 'All Status',
       protocols: {
