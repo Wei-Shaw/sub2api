@@ -1,11 +1,13 @@
 package service
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -109,6 +111,9 @@ func TestWriteOpenAICompactSSEBridge_AfterKeepaliveCommitAppendsEvents(t *testin
 // 收尾（Codex 将其作为终止事件处理），并标记流内错误供 ops 采集。
 func TestWriteOpenAICompactSSEBridge_AfterKeepaliveCommitFailureEmitsFailedEvent(t *testing.T) {
 	c, rec := newCompactBridgeTestContext(t, true)
+	c.Request = c.Request.WithContext(WithOpenAIForwardModel(
+		context.WithValue(c.Request.Context(), ctxkey.Model, "grok-build-0.1"), "grok-4.5", true,
+	))
 	stop := StartOpenAICompactSSEKeepalive(c, keepaliveTestInterval)
 	defer stop()
 	waitForKeepaliveBeats()
@@ -119,6 +124,7 @@ func TestWriteOpenAICompactSSEBridge_AfterKeepaliveCommitFailureEmitsFailedEvent
 	require.Len(t, events, 1)
 	require.Equal(t, "response.failed", events[0][0])
 	require.Equal(t, "failed", gjson.Get(events[0][1], "response.status").String())
+	require.Equal(t, "grok-build-0.1", gjson.Get(events[0][1], "response.model").String())
 	require.Contains(t, gjson.Get(events[0][1], "response.error.message").String(), "upstream exploded")
 	require.NotEmpty(t, gjson.Get(events[0][1], "response.id").String())
 
@@ -259,6 +265,19 @@ func TestOpenAICompactKeepaliveWriter_DelegatesWhenReady(t *testing.T) {
 	require.True(t, w.Written())
 	require.Equal(t, "ok", rec.Header().Get("X-Test"))
 	require.Equal(t, "ready", rec.Body.String())
+}
+
+func TestWriteOpenAICompactSSEFailureWithCode_ReportsCompositePublicModel(t *testing.T) {
+	c, rec := newCompactBridgeTestContext(t, true)
+	ctx := context.WithValue(c.Request.Context(), ctxkey.Model, "upstream-model")
+	c.Request = c.Request.WithContext(WithCompositeRouteDecision(ctx, CompositeRouteDecision{
+		Matched: true, PublicModel: "public-alias", UpstreamModel: "upstream-model",
+	}))
+
+	writeOpenAICompactSSEFailureWithCode(c, http.StatusBadGateway, "upstream_error", "boom")
+	events := parseCompactBridgeSSE(t, rec.Body.String())
+	require.Len(t, events, 1)
+	require.Equal(t, "public-alias", gjson.Get(events[0][1], "response.model").String())
 }
 
 // fast policy block 在心跳提交后必须降级为 response.failed 终止事件。
