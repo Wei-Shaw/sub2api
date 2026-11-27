@@ -2,10 +2,8 @@ package service
 
 import (
 	"encoding/json"
-	"fmt"
+	"sort"
 	"strings"
-
-	"github.com/tidwall/sjson"
 )
 
 const openAIResponsesInputTextMaxChars = 10000000
@@ -159,14 +157,35 @@ func sanitizeStrictHTTPResponsesBody(body []byte) ([]byte, bool, error) {
 	if !changed {
 		return body, false, nil
 	}
-	raw, err := json.Marshal(repaired)
-	if err != nil {
-		return body, false, fmt.Errorf("encode repaired Responses input: %w", err)
+	// Marshal of RawMessage compacts its bytes. Assemble the repaired array
+	// directly so provider-owned input items retain their original JSON.
+	rawArray := []byte{'['}
+	for i, item := range repaired {
+		if i > 0 {
+			rawArray = append(rawArray, ',')
+		}
+		rawArray = append(rawArray, item...)
 	}
-	next, err := sjson.SetRawBytes(body, "input", raw)
-	if err != nil {
-		return body, false, err
+	envelope["input"] = append(rawArray, ']')
+	// Rebuild unique top-level keys from encoding/json's last-key-wins view.
+	// Patching the first matching key would leave a later duplicate input intact.
+	keys := make([]string, 0, len(envelope))
+	for key := range envelope {
+		keys = append(keys, key)
 	}
+	sort.Strings(keys)
+	next := []byte{'{'}
+	for i, key := range keys {
+		if i > 0 {
+			next = append(next, ',')
+		}
+		encodedKey, _ := json.Marshal(key)
+		next = append(next, encodedKey...)
+		next = append(next, ':')
+		next = append(next, envelope[key]...)
+	}
+	next = append(next, '}')
+	var err error
 	next, _, err = NormalizeCompactionTriggerInputOrder(next)
 	return next, err == nil, err
 }
