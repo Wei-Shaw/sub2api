@@ -192,3 +192,28 @@ func TestExtractContentModerationInput_ResponsesLastIsAssistantSkipped(t *testin
 	require.Empty(t, input.Text)
 	require.Empty(t, input.Images)
 }
+
+// Anthropic URL image sources are forwarded upstream unchanged (including to the
+// OpenAI Responses bridge), so moderation must collect them like base64 images.
+func TestExtractContentModerationInput_AnthropicURLImageSources(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		url   string
+		image string
+	}{
+		{name: "https", url: "https://example.com/a.png", image: "https://example.com/a.png"},
+		{name: "data_uri", url: "data:image/png;base64,QUJDRA==", image: "data:image/png;base64,QUJDRA=="},
+		{name: "unsupported_scheme", url: "file:///etc/passwd"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte(`{"messages":[{"role":"user","content":[{"type":"text","text":"describe"},{"type":"image","source":{"type":"url","url":"` + tc.url + `"}}]}]}`)
+			input := ExtractContentModerationInput(ContentModerationProtocolAnthropicMessages, body)
+			require.Equal(t, "describe", input.Text)
+			if tc.image == "" {
+				require.Empty(t, input.Images)
+				return
+			}
+			require.Equal(t, []string{tc.image}, input.Images)
+		})
+	}
+}

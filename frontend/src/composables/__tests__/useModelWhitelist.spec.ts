@@ -8,6 +8,15 @@ import { buildModelMappingObject, claudeModels, getModelsByPlatform, getPresetMa
 import { BUILTIN_PLATFORM_CATALOG, resetPlatformCatalog, setPlatformCatalog } from '@/constants/platformCatalog'
 
 describe('useModelWhitelist', () => {
+  it('Kimi Coding Plan model options include exact K3.1 IDs', () => {
+    for (const platform of ['kimi', 'moonshot']) {
+      const models = getModelsByPlatform(platform)
+      expect(models).toContain('k3.1-pro')
+      expect(models).toContain('k3.1-pro-highspeed')
+      expect(models).not.toContain('k3.1')
+    }
+  })
+
   // ollama_cloud 与后端同源静态表（backend/internal/service/ollama_cloud_models.go
   // DefaultOllamaCloudModelIDs()，/v1/models 实测目录）——集合必须与后端一致，
   // 两侧各有测试钉住（对侧：ollama_cloud_models_test.go），改任一侧须同步另一侧。

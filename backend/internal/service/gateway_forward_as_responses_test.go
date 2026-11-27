@@ -670,3 +670,32 @@ func TestClaude55BridgeUsesMappedModelBeforeThinkingConversion(t *testing.T) {
 		}
 	}
 }
+
+func TestHandleResponsesBufferedStreamingResponse_ThinkingTokensBecomeReasoningTokens(t *testing.T) {
+	t.Parallel()
+	gin.SetMode(gin.TestMode)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+
+	resp := &http.Response{
+		Header: http.Header{"x-request-id": []string{"rid_buffered_thinking"}},
+		Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+			`event: message_start`,
+			`data: {"type":"message_start","message":{"id":"msg_t","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4.5","stop_reason":"","usage":{"input_tokens":12,"output_tokens":1}}}`,
+			``,
+			`event: content_block_start`,
+			`data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":"hello"}}`,
+			``,
+			`event: message_delta`,
+			`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":120,"output_tokens_details":{"thinking_tokens":40}}}`,
+			``,
+		}, "\n"))),
+	}
+
+	result, err := (&GatewayService{}).handleResponsesBufferedStreamingResponse(resp, c, "claude-sonnet-4.5", "claude-sonnet-4.5", nil, time.Now(), apicompat.ResponsesClientToolMapping{})
+	require.NoError(t, err)
+	require.Equal(t, 120, result.Usage.OutputTokens)
+	require.Equal(t, int64(120), gjson.Get(rec.Body.String(), "usage.output_tokens").Int())
+	require.Equal(t, int64(40), gjson.Get(rec.Body.String(), "usage.output_tokens_details.reasoning_tokens").Int())
+}

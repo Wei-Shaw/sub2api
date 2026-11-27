@@ -4,16 +4,65 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestAnthropicBridgesSampleSubscriptionWindows(t *testing.T) {
+	for _, endpoint := range []string{"chat/completions", "responses"} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/stream=%t", endpoint, stream), func(t *testing.T) {
+				fiveReset := time.Now().Add(time.Hour).Truncate(time.Second)
+				weekReset := fiveReset.Add(24 * time.Hour).Unix()
+				headers := make(http.Header)
+				headers.Set("anthropic-ratelimit-unified-5h-status", "allowed")
+				headers.Set("anthropic-ratelimit-unified-5h-reset", strconv.FormatInt(fiveReset.Unix(), 10))
+				headers.Set("anthropic-ratelimit-unified-5h-utilization", "0.23")
+				headers.Set("anthropic-ratelimit-unified-7d-reset", strconv.FormatInt(weekReset, 10))
+				headers.Set("anthropic-ratelimit-unified-7d-utilization", "0.41")
+				upstream := &anthropicHTTPUpstreamRecorder{resp: &http.Response{
+					StatusCode: http.StatusOK, Header: headers,
+					Body: io.NopCloser(strings.NewReader(namespaceToolAnthropicStream())),
+				}}
+				repo := &sessionWindowMockRepo{}
+				svc := &GatewayService{cfg: &config.Config{}, httpUpstream: upstream, rateLimitService: newRateLimitServiceForTest(repo)}
+				account := &Account{ID: 42, Platform: PlatformAnthropic, Type: AccountTypeSetupToken, Credentials: map[string]any{"access_token": "test-token"}}
+				body := fmt.Sprintf(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hello"}],"stream":%t}`, stream)
+				if endpoint == "responses" {
+					body = fmt.Sprintf(`{"model":"claude-sonnet-4-5","input":"hello","stream":%t}`, stream)
+				}
+				c, _ := gin.CreateTestContext(httptest.NewRecorder())
+				c.Request = httptest.NewRequest(http.MethodPost, "/v1/"+endpoint, strings.NewReader(body))
+				var err error
+				if endpoint == "responses" {
+					_, err = svc.ForwardAsResponses(c.Request.Context(), c, account, []byte(body), nil)
+				} else {
+					_, err = svc.ForwardAsChatCompletions(c.Request.Context(), c, account, []byte(body), nil)
+				}
+				require.NoError(t, err)
+				require.Len(t, repo.sessionWindowCalls, 1)
+				require.Equal(t, fiveReset.Unix(), repo.sessionWindowCalls[0].End.Unix())
+				require.NotEmpty(t, repo.updateExtraCalls)
+				sample := repo.updateExtraCalls[len(repo.updateExtraCalls)-1]
+				require.Equal(t, account.ID, sample.ID)
+				require.Equal(t, 0.23, sample.Updates["session_window_utilization"])
+				require.Equal(t, 0.41, sample.Updates["passive_usage_7d_utilization"])
+				require.Equal(t, weekReset, sample.Updates["passive_usage_7d_reset"])
+				require.NotEmpty(t, sample.Updates["passive_usage_sampled_at"])
+			})
+		}
+	}
+}
 
 func TestHandleCCBufferedFromAnthropic_ToolArgumentsAreValidJSON(t *testing.T) {
 	t.Parallel()
@@ -248,4 +297,90 @@ func TestHandleCCStreamingFromAnthropic_PreservesMessageStartCacheUsageAndReason
 	require.NotNil(t, result.ReasoningEffort)
 	require.Equal(t, "medium", *result.ReasoningEffort)
 	require.Contains(t, rec.Body.String(), `[DONE]`)
+}
+
+// Anthropic 在 usage.output_tokens_details.thinking_tokens 单列思考 token（output_tokens 的子集），
+// 转成 Chat Completions 后应出现在 completion_tokens_details.reasoning_tokens，计费用的 output_tokens 不变。
+func TestHandleCCFromAnthropic_ThinkingTokensBecomeReasoningTokens(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	upstream := func() *http.Response {
+		return &http.Response{
+			Header: http.Header{"x-request-id": []string{"rid_cc_thinking"}},
+			Body: io.NopCloser(strings.NewReader(strings.Join([]string{
+				`event: message_start`,
+				`data: {"type":"message_start","message":{"id":"msg_t","type":"message","role":"assistant","content":[],"model":"claude-sonnet-4.5","stop_reason":"","usage":{"input_tokens":12,"output_tokens":1}}}`,
+				``,
+				`event: content_block_start`,
+				`data: {"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":"","signature":""}}`,
+				``,
+				`event: content_block_delta`,
+				`data: {"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"brief summary"}}`,
+				``,
+				`event: content_block_stop`,
+				`data: {"type":"content_block_stop","index":0}`,
+				``,
+				`event: content_block_start`,
+				`data: {"type":"content_block_start","index":1,"content_block":{"type":"text","text":"hello"}}`,
+				``,
+				`event: content_block_stop`,
+				`data: {"type":"content_block_stop","index":1}`,
+				``,
+				`event: message_delta`,
+				`data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":120,"output_tokens_details":{"thinking_tokens":40}}}`,
+				``,
+				`event: message_stop`,
+				`data: {"type":"message_stop"}`,
+				``,
+			}, "\n"))),
+		}
+	}
+
+	t.Run("buffered", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		result, err := (&GatewayService{}).handleCCBufferedFromAnthropic(upstream(), c, "claude-sonnet-4.5", "claude-sonnet-4.5", nil, time.Now())
+		require.NoError(t, err)
+		require.Equal(t, 120, result.Usage.OutputTokens)
+
+		var body struct {
+			Usage struct {
+				CompletionTokens        int `json:"completion_tokens"`
+				CompletionTokensDetails struct {
+					ReasoningTokens int `json:"reasoning_tokens"`
+				} `json:"completion_tokens_details"`
+			} `json:"usage"`
+		}
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+		require.Equal(t, 120, body.Usage.CompletionTokens)
+		require.Equal(t, 40, body.Usage.CompletionTokensDetails.ReasoningTokens)
+	})
+
+	t.Run("streaming", func(t *testing.T) {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		result, err := (&GatewayService{}).handleCCStreamingFromAnthropic(upstream(), c, "claude-sonnet-4.5", "claude-sonnet-4.5", nil, time.Now())
+		require.NoError(t, err)
+		require.Equal(t, 120, result.Usage.OutputTokens)
+
+		usageChunks := 0
+		for _, line := range strings.Split(rec.Body.String(), "\n") {
+			payload, ok := strings.CutPrefix(line, "data: ")
+			if !ok || payload == "[DONE]" || !strings.Contains(payload, `"usage":{`) {
+				continue
+			}
+			var chunk struct {
+				Usage struct {
+					CompletionTokens        int `json:"completion_tokens"`
+					CompletionTokensDetails struct {
+						ReasoningTokens int `json:"reasoning_tokens"`
+					} `json:"completion_tokens_details"`
+				} `json:"usage"`
+			}
+			require.NoError(t, json.Unmarshal([]byte(payload), &chunk))
+			require.Equal(t, 120, chunk.Usage.CompletionTokens)
+			require.Equal(t, 40, chunk.Usage.CompletionTokensDetails.ReasoningTokens)
+			usageChunks++
+		}
+		require.Equal(t, 1, usageChunks)
+	})
 }
