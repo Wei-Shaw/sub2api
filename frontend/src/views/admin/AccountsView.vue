@@ -622,6 +622,25 @@ const showTest = ref(false)
 const showStats = ref(false)
 const showErrorPassthrough = ref(false)
 const showTLSFingerprintProfiles = ref(false)
+
+// Proxy account counts change whenever accounts are created, deleted, imported
+// or rebound, so reload them each time a proxy-picking dialog opens. The
+// sequence guard drops responses that arrive after a newer request; a failed
+// refresh keeps the previous list so the selector never goes empty.
+let proxiesLoadSeq = 0
+const loadProxies = async (): Promise<void> => {
+  const seq = ++proxiesLoadSeq
+  try {
+    const list: AccountProxy[] = await adminAPI.proxies.getAllWithCount()
+    if (seq === proxiesLoadSeq) proxies.value = list
+  } catch (error: unknown) {
+    console.error('Failed to load proxies:', error)
+  }
+}
+watch([showCreate, showEdit, showBulkEdit], (open: boolean[], wasOpen: boolean[] | undefined) => {
+  if (open.some((isOpen: boolean, i: number) => isOpen && !wasOpen?.[i])) void loadProxies()
+})
+
 const edAcc = ref<Account | null>(null)
 const tempUnschedAcc = ref<Account | null>(null)
 const deletingAcc = ref<Account | null>(null)
@@ -2621,15 +2640,10 @@ onMounted(async () => {
 
   load()
   loadUpstreamBillingProbeGlobalState()
-  const [proxiesResult, groupsResult] = await Promise.allSettled([
-    adminAPI.proxies.getAllWithCount(),
+  const [, groupsResult] = await Promise.allSettled([
+    loadProxies(),
     adminAPI.groups.getAll()
   ])
-  if (proxiesResult.status === 'fulfilled') {
-    proxies.value = proxiesResult.value
-  } else {
-    console.error('Failed to load proxies:', proxiesResult.reason)
-  }
   if (groupsResult.status === 'fulfilled') {
     groups.value = groupsResult.value
   } else {

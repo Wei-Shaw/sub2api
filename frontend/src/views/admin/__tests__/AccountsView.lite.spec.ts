@@ -112,7 +112,7 @@ function mountView(stubActionMenu = true, realUsageCell = false) {
         AppLayout: { template: '<div><slot /></div>' },
         TablePageLayout: { template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>' },
         DataTable: DataTableStub,
-        AccountTableActions: { template: `<div><button data-test="manual-refresh" @click="$emit('refresh')">refresh</button><slot name="after" /></div>` },
+        AccountTableActions: { template: `<div><button data-test="manual-refresh" @click="$emit('refresh')">refresh</button><button data-test="open-create" @click="$emit('create')">create</button><slot name="after" /></div>` },
         AccountTableFilters: true,
         AccountBulkActionsBar: true,
         Pagination: true,
@@ -200,6 +200,32 @@ describe('admin AccountsView lite account list', () => {
     expect(getAllProxies).toHaveBeenCalledTimes(1)
     expect(wrapper.findComponent({ name: 'CreateAccountModal' }).props('proxies')).toEqual(proxies)
     expect(wrapper.findComponent(EditAccountModalStub).props('proxies')).toEqual(proxies)
+    wrapper.unmount()
+  })
+
+  it('reloads proxy account counts each time the create dialog opens and keeps them on failure', async () => {
+    const initial = [{ id: 2, name: 'Shared proxy', account_count: 7 }]
+    const refreshed = [{ id: 2, name: 'Shared proxy', account_count: 8 }]
+    getAllProxies.mockResolvedValueOnce(initial).mockResolvedValueOnce(refreshed).mockRejectedValueOnce(new Error('offline'))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    const wrapper = mountView()
+    await flushPromises()
+    const createModal = () => wrapper.findComponent({ name: 'CreateAccountModal' })
+    expect(createModal().props('proxies')).toEqual(initial)
+
+    await wrapper.get('[data-test="open-create"]').trigger('click')
+    await flushPromises()
+    expect(getAllProxies).toHaveBeenCalledTimes(2)
+    expect(createModal().props('proxies')).toEqual(refreshed)
+
+    createModal().vm.$emit('close')
+    await flushPromises()
+    expect(getAllProxies).toHaveBeenCalledTimes(2)
+
+    await wrapper.get('[data-test="open-create"]').trigger('click')
+    await flushPromises()
+    expect(getAllProxies).toHaveBeenCalledTimes(3)
+    expect(createModal().props('proxies')).toEqual(refreshed)
     wrapper.unmount()
   })
 
