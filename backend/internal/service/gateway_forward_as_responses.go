@@ -208,6 +208,10 @@ func (s *GatewayService) ForwardAsResponses(
 		return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 	}
 
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 && s.rateLimitService != nil && account.IsAnthropicOAuthOrSetupToken() {
+		s.rateLimitService.UpdateSessionWindow(ctx, account, resp.Header)
+	}
+
 	// 13. Handle normal response (convert Anthropic → Responses)
 	var result *ForwardResult
 	var handleErr error
