@@ -186,13 +186,14 @@ describe('UsageProgressBar', () => {
     expect(mountAt(90).get('.h-1\\.5 + span').classes()).toContain('text-red-600')
   })
 
-  it('labelWidth 默认 fixed：标签保持定宽居中，百分比列不变', () => {
+  it('labelWidth 默认 fixed：标签保持最小宽度且不换行，百分比列不变', () => {
     const wrapper = mount(UsageProgressBar, {
       props: { label: '5h', utilization: 30, color: 'indigo' }
     })
 
     const label = wrapper.get('.gap-1 > span')
-    expect(label.classes()).toContain('w-[32px]')
+    expect(label.classes()).toContain('min-w-[32px]')
+    expect(label.classes()).toContain('whitespace-nowrap')
     expect(label.classes()).toContain('text-center')
     expect(label.classes()).not.toContain('max-w-[72px]')
 
