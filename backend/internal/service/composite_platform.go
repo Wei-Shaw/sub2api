@@ -51,6 +51,18 @@ func WithCompositeRouteDecision(ctx context.Context, decision CompositeRouteDeci
 	return ctx
 }
 
+// RewriteCompositeRequestModel puts a composite route's upstream model into the
+// request body at modelPath. The client chose its thinking mode for the model
+// it asked for, so a mode the upstream model rejects becomes the nearest mode
+// it accepts. The body is returned unchanged when it cannot be rewritten.
+func RewriteCompositeRequestModel(body []byte, modelPath, upstreamModel string) []byte {
+	rewritten, err := sjson.SetBytes(body, modelPath, upstreamModel)
+	if err != nil {
+		return body
+	}
+	return adaptThinkingToClaude55(rewritten, upstreamModel)
+}
+
 func ResolvedUpstreamModelFromContext(ctx context.Context) (string, bool) {
 	if ctx == nil {
 		return "", false

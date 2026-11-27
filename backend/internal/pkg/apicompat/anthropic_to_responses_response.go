@@ -162,8 +162,22 @@ func AnthropicToResponsesResponse(resp *AnthropicResponse) *ResponsesResponse {
 			CachedTokens: resp.Usage.CacheReadInputTokens,
 		}
 	}
+	if details := resp.Usage.OutputTokensDetails; details != nil {
+		out.Usage.OutputTokensDetails = responsesReasoningTokensDetails(details.ThinkingTokens, resp.Usage.OutputTokens)
+	}
 
 	return out
+}
+
+// responsesReasoningTokensDetails reports Anthropic thinking tokens as
+// Responses reasoning_tokens, bounded by the output total they belong to.
+// Returns nil when there is nothing to report.
+func responsesReasoningTokensDetails(thinkingTokens, outputTokens int) *ResponsesOutputTokensDetails {
+	reasoningTokens := min(max(thinkingTokens, 0), max(outputTokens, 0))
+	if reasoningTokens == 0 {
+		return nil
+	}
+	return &ResponsesOutputTokensDetails{ReasoningTokens: reasoningTokens}
 }
 
 // anthropicStopReasonToResponsesStatus maps Anthropic stop_reason to Responses status.
@@ -238,6 +252,7 @@ type AnthropicEventToResponsesState struct {
 	// emitting the OpenAI Responses usage.
 	InputTokens              int
 	OutputTokens             int
+	ReasoningTokens          int // output_tokens_details.thinking_tokens; a reported value (even 0) replaces the previous one
 	CacheReadInputTokens     int
 	CacheCreationInputTokens int
 	CacheCreation            AnthropicCacheCreation
@@ -342,6 +357,9 @@ func anthToResHandleMessageStart(evt *AnthropicStreamEvent, state *AnthropicEven
 		}
 		if evt.Message.Usage.CacheReadInputTokens > 0 {
 			state.CacheReadInputTokens = evt.Message.Usage.CacheReadInputTokens
+		}
+		if details := evt.Message.Usage.OutputTokensDetails; details != nil {
+			state.ReasoningTokens = details.ThinkingTokens
 		}
 		state.mergeCacheCreationUsage(evt.Message.Usage)
 	}
@@ -611,6 +629,9 @@ func anthToResHandleMessageDelta(evt *AnthropicStreamEvent, state *AnthropicEven
 		if evt.Usage.CacheReadInputTokens > 0 {
 			state.CacheReadInputTokens = evt.Usage.CacheReadInputTokens
 		}
+		if details := evt.Usage.OutputTokensDetails; details != nil {
+			state.ReasoningTokens = details.ThinkingTokens
+		}
 		state.mergeCacheCreationUsage(*evt.Usage)
 	}
 	if evt.Delta != nil && evt.Delta.StopReason != "" {
@@ -755,6 +776,7 @@ func makeResponsesCompletedEvent(
 			CachedTokens: state.CacheReadInputTokens,
 		}
 	}
+	usage.OutputTokensDetails = responsesReasoningTokensDetails(state.ReasoningTokens, state.OutputTokens)
 
 	eventType := "response.completed"
 	if status == "incomplete" {

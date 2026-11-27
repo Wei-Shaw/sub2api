@@ -440,6 +440,47 @@ describe('admin UsageTable tooltip', () => {
     expect(text).toContain('claude-sonnet-4-20250514')
   })
 
+  it.each([
+    ['shows', 'gpt-5.5-2026-01-01', true],
+    ['hides', null, false],
+  ])('%s the actual response model for user rows', (_label, responseModel, visible) => {
+    const row = {
+      request_id: 'req-user-model-1',
+      model: 'gpt-5.5',
+      response_model: responseModel,
+      actual_cost: 0,
+      total_cost: 0,
+      rate_multiplier: 1,
+      input_cost: 0,
+      output_cost: 0,
+      cache_creation_cost: 0,
+      cache_read_cost: 0,
+      input_tokens: 0,
+      output_tokens: 0,
+    }
+
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [row],
+        loading: false,
+        columns: [],
+        showAccountBilling: false,
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStub,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    const text = wrapper.text()
+    expect(text).toContain('gpt-5.5')
+    expect(text.includes('↳gpt-5.5-2026-01-01') || text.includes('↳ gpt-5.5-2026-01-01')).toBe(visible)
+  })
+
   it('shows requested and forwarded reasoning effort separately when they differ', () => {
     const wrapper = mount(UsageTable, {
       props: {
@@ -932,5 +973,44 @@ describe('admin UsageTable deleted-user badge', () => {
 
     expect(wrapper.text()).not.toContain('Deleted')
     expect(wrapper.text()).toContain('active@test.com')
+  })
+})
+
+describe('admin UsageTable username column', () => {
+  const DataTableStubWithUsername = {
+    props: ['data'],
+    template: `
+      <div>
+        <div v-for="row in data" :key="row.request_id" :data-request-id="row.request_id">
+          <slot name="cell-username" :row="row" />
+        </div>
+      </div>
+    `,
+  }
+
+  it('renders trimmed username when present and falls back to "-" when empty or missing', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          { ...baseImageRow, request_id: 'req-with-username', user_id: 1, user: { id: 1, email: 'alice@test.com', username: '  Alice  ' } },
+          { ...baseImageRow, request_id: 'req-empty-username', user_id: 2, user: { id: 2, email: 'bob@test.com', username: '   ' } },
+          { ...baseImageRow, request_id: 'req-no-user', user_id: 3 },
+        ],
+        loading: false,
+        columns: [{ key: 'username', label: 'Username' }],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStubWithUsername,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.get('[data-request-id="req-with-username"]').text()).toBe('Alice')
+    expect(wrapper.get('[data-request-id="req-empty-username"]').text()).toBe('-')
+    expect(wrapper.get('[data-request-id="req-no-user"]').text()).toBe('-')
   })
 })

@@ -41,18 +41,12 @@
         <p v-if="authStore.user?.email" class="break-all text-sm text-gray-600 dark:text-gray-300">{{ t('mcp.signedInAs', { email: authStore.user.email }) }}</p>
         <div>
           <label for="mcp-consent-scope" class="input-label">{{ t('mcp.scope') }}</label>
-          <select id="mcp-consent-scope" v-model="scope" class="input" :disabled="submitting" aria-describedby="mcp-scope-hint">
-            <option value="user">{{ t('mcp.userScope') }}</option>
-            <option v-if="authStore.isAdmin" value="admin">{{ t('mcp.adminScope') }}</option>
-          </select>
+          <Select id="mcp-consent-scope" :model-value="scope" :options="scopeOptions" :disabled="submitting" aria-describedby="mcp-scope-hint" @update:model-value="setScope" />
           <p id="mcp-scope-hint" class="mt-2 text-xs text-gray-500 dark:text-gray-400">{{ scope === 'admin' ? t('mcp.adminScopeHint') : t('mcp.userScopeHint') }}</p>
         </div>
         <div>
           <label for="mcp-consent-permissions" class="input-label">{{ t('mcp.permissions') }}</label>
-          <select id="mcp-consent-permissions" v-model="readOnly" class="input" :disabled="submitting" aria-describedby="mcp-permissions-hint">
-            <option :value="true">{{ t('mcp.readOnly') }}</option>
-            <option :value="false">{{ t('mcp.readWrite') }}</option>
-          </select>
+          <Select id="mcp-consent-permissions" :model-value="readOnly" :options="permissionOptions" :disabled="submitting" aria-describedby="mcp-permissions-hint" @update:model-value="setReadOnly" />
           <p id="mcp-permissions-hint" class="mt-2 text-xs" :class="readOnly ? 'text-gray-500 dark:text-gray-400' : 'text-amber-700 dark:text-amber-400'">{{ readOnly ? t('mcp.readOnlyHint') : t('mcp.readWriteHint') }}</p>
           <p v-if="scope === 'admin' && !readOnly" data-testid="admin-write-hint" class="mt-1 text-xs text-amber-700 dark:text-amber-400">{{ t('mcp.adminWriteHint') }}</p>
         </div>
@@ -73,6 +67,7 @@ import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { mcpAPI, type MCPAccessScope, type MCPAuthorization, type MCPConsent } from '@/api/mcp'
 import TotpStepUpDialog from '@/components/auth/TotpStepUpDialog.vue'
+import Select from '@/components/common/Select.vue'
 import { Icon } from '@/components/icons'
 import { isStepUpBlocked, isStepUpCancelled, stepUpBlockReason, useStepUp } from '@/composables/useStepUp'
 import { useAuthStore } from '@/stores/auth'
@@ -91,6 +86,24 @@ const readOnly = ref(true)
 let authorization: MCPAuthorization | null = null
 let generation = 0
 const redirectOrigin = computed(() => consent.value ? new URL(consent.value.redirect_uri).origin : '')
+
+const scopeOptions = computed(() => [
+  { value: 'user', label: t('mcp.userScope') },
+  ...(authStore.isAdmin ? [{ value: 'admin', label: t('mcp.adminScope') }] : [])
+])
+
+const permissionOptions = computed(() => [
+  { value: true, label: t('mcp.readOnly') },
+  { value: false, label: t('mcp.readWrite') }
+])
+
+function setScope(value: string | number | boolean | null): void {
+  scope.value = value === 'admin' ? 'admin' : 'user'
+}
+
+function setReadOnly(value: string | number | boolean | null): void {
+  readOnly.value = value !== false
+}
 
 function errorMessage(error: unknown, fallback: string): string {
   const message = (error as { message?: unknown } | null)?.message

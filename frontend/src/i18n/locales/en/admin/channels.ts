@@ -205,6 +205,8 @@ export default {
         noGroupsMatch: 'No groups match your search',
         restrictModels: 'Restrict Models',
         restrictModelsHint: 'When enabled, only models in the pricing list are allowed. Others will be rejected.',
+        exposeResponseModel: 'Show Actual Model to Users',
+        exposeResponseModelHint: 'When enabled, users can see both the requested model and the actual response model in their usage records (the intermediate mapping chain stays hidden).',
         defaultPerRequestPrice: 'Default per-request price (fallback when no tier matches)',
         defaultImagePrice: 'Default image price (fallback when no tier matches)',
         defaultVideoPrice: 'Default video price per second (fallback when no tier matches)',

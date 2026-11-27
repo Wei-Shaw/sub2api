@@ -3,6 +3,8 @@ package service
 import (
 	"net/http"
 	"net/url"
+	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -15,14 +17,49 @@ const (
 	openCodeSessionHeader         = "X-OpenCode-Session"
 	openCodeInboundBodyContextKey = "opencode_inbound_body"
 
+	// openCodeUserAgentVersionEnv 是 OpenCode 客户端 User-Agent 版本号的环境变量名。
+	openCodeUserAgentVersionEnv = "OPENCODE_USER_AGENT_VERSION"
+
+	// defaultOpenCodeUserAgentVersion 是内置的默认客户端版本号，跟随
+	// opencode-ai npm 包（sst/opencode）的最新发布。
+	defaultOpenCodeUserAgentVersion = "1.19.6"
+)
+
+var (
+	openCodeUserAgentVersionPattern = regexp.MustCompile(`^\d+\.\d+\.\d+$`)
+
 	// openCodeUpstreamUserAgent 是发往官方 OpenCode 上游的规范 User-Agent。
 	// opencode.ai 前置 Cloudflare 按客户端 UA 签名做 bot 拦截：Python-urllib 等
 	// 编程库 UA 会被 CF error code 1010 拒绝并返回 403。网关透传白名单放行
 	// user-agent，客户端自报身份原样到达上游会命中 WAF；该 403 再被计入账号
 	// 凭证类 strike，健康账号因此被自动禁用。取值沿用真实 opencode 客户端的
-	// UA 格式（opencode/<version>）。
-	openCodeUpstreamUserAgent = "opencode/1.0.0"
+	// UA 格式（opencode/<version>），版本号可通过 OPENCODE_USER_AGENT_VERSION 覆盖。
+	openCodeUpstreamUserAgent = "opencode/" + defaultOpenCodeUserAgentVersion
 )
+
+func init() {
+	openCodeUpstreamUserAgent = "opencode/" + resolveOpenCodeUserAgentVersion(os.Getenv(openCodeUserAgentVersionEnv))
+}
+
+// resolveOpenCodeUserAgentVersion 返回当前生效的客户端版本号：合法的
+// OPENCODE_USER_AGENT_VERSION 优先，否则回退内置默认版本。
+func resolveOpenCodeUserAgentVersion(envValue string) string {
+	if version := NormalizeOpenCodeUserAgentVersion(envValue); version != "" {
+		return version
+	}
+	return defaultOpenCodeUserAgentVersion
+}
+
+// NormalizeOpenCodeUserAgentVersion 校验并归一化 OpenCode User-Agent 版本号。
+// 只接受三段数字 semver（与真实 opencode 客户端版本格式一致），非法值返回空串，
+// 调用方据此回退内置默认版本。
+func NormalizeOpenCodeUserAgentVersion(version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" || !openCodeUserAgentVersionPattern.MatchString(version) {
+		return ""
+	}
+	return version
+}
 
 // rememberOpenCodeInboundBody keeps the client request body so protocol
 // conversion (Responses↔Anthropic↔Chat Completions) can still recover
