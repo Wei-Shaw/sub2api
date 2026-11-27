@@ -4,7 +4,7 @@ import { flushPromises, mount } from '@vue/test-utils'
 import type { DOMWrapper, VueWrapper } from '@vue/test-utils'
 
 import RiskControlView from '../RiskControlView.vue'
-import type { ContentModerationAPIKeyStatus, ContentModerationConfig, UpdateContentModerationConfig } from '@/api/admin/riskControl'
+import type { ContentModerationAPIKeyStatus, ContentModerationConfig, ContentModerationLog, UpdateContentModerationConfig } from '@/api/admin/riskControl'
 
 const {
   getConfig,
@@ -255,6 +255,27 @@ describe('admin RiskControlView', () => {
     expect(keyPanel().text()).not.toContain(profiles[otherEngine].api_key_statuses[0].masked)
     expect(updateConfig).not.toHaveBeenCalled()
     wrapper.unmount()
+  })
+
+  it('renders image safety rejections as log-only hits, not audit errors', async () => {
+    const row: ContentModerationLog = {
+      engine_meta: null, id: 1, request_id: 'req-1', user_id: 100, user_email: 'u@example.com',
+      api_key_id: 9, api_key_name: 'key', group_id: 7, group_name: 'img', endpoint: '/v1/images/generations',
+      provider: 'openai', model: 'gpt-image-2', mode: 'risk_control_log_only', action: 'image_safety', flagged: true,
+      highest_category: 'image_safety', highest_score: 1, matched_keyword: '', category_scores: {}, threshold_snapshot: {},
+      input_excerpt: 'draw something', upstream_latency_ms: null,
+      error: 'upstream_status=400\nYour request was rejected by the safety system.',
+      violation_count: 0, auto_banned: false, email_sent: false, user_status: 'active', queue_delay_ms: null,
+      created_at: '2026-11-27T00:00:00Z',
+    }
+    listLogs.mockResolvedValue({ items: [row], total: 1, page: 1, page_size: 20, pages: 1 })
+    const wrapper = mount(RiskControlView, { global: { stubs: { AppLayout: AppLayoutStub, BaseDialog: BaseDialogStub, Icon: true, Select: true, Toggle: true, Pagination: true, ModelWhitelistSelector: ModelWhitelistSelectorStub, ProxySelector: true } } })
+    await flushPromises()
+
+    const badge = wrapper.findAll('span.rounded-md').find((el) => el.text() === 'admin.riskControl.action.imageSafety')
+    expect(badge).toBeDefined()
+    expect(badge!.classes()).toContain('bg-pink-100')
+    expect(badge!.classes()).not.toContain('bg-amber-100')
   })
 
   it('shows an empty key panel for an unconfigured draft engine', async () => {

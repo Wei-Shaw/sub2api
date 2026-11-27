@@ -113,9 +113,10 @@ func (b AnthropicContentBlock) MarshalJSON() ([]byte, error) {
 
 // AnthropicImageSource describes the source data for an image content block.
 type AnthropicImageSource struct {
-	Type      string `json:"type"` // "base64"
+	Type      string `json:"type"` // "base64" or "url"
 	MediaType string `json:"media_type"`
 	Data      string `json:"data"`
+	URL       string `json:"url,omitempty"`
 }
 
 // AnthropicTool describes a tool available to the model.
@@ -205,6 +206,11 @@ type AnthropicCacheCreation struct {
 	Ephemeral1hInputTokens *int `json:"ephemeral_1h_input_tokens,omitempty"`
 }
 
+// AnthropicOutputTokensDetails is Anthropic's usage.output_tokens_details.
+type AnthropicOutputTokensDetails struct {
+	ThinkingTokens int `json:"thinking_tokens"`
+}
+
 // AnthropicUsage holds token counts in Anthropic format.
 type AnthropicUsage struct {
 	InputTokens              int                     `json:"input_tokens"`
@@ -212,6 +218,9 @@ type AnthropicUsage struct {
 	CacheCreationInputTokens int                     `json:"cache_creation_input_tokens"`
 	CacheReadInputTokens     int                     `json:"cache_read_input_tokens"`
 	CacheCreation            *AnthropicCacheCreation `json:"cache_creation,omitempty"`
+	// OutputTokensDetails breaks output_tokens down. thinking_tokens is a
+	// subset of output_tokens, which stays the billed total.
+	OutputTokensDetails *AnthropicOutputTokensDetails `json:"output_tokens_details,omitempty"`
 	// Anthropic-compatible providers can also expose their native OpenAI-style
 	// total/cache fields. Preserve them so callers can normalize provider totals
 	// into Anthropic's mutually-exclusive billing buckets.

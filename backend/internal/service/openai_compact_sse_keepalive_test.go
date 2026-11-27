@@ -1,11 +1,14 @@
 package service
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -108,6 +111,9 @@ func TestWriteOpenAICompactSSEBridge_AfterKeepaliveCommitAppendsEvents(t *testin
 // 收尾（Codex 将其作为终止事件处理），并标记流内错误供 ops 采集。
 func TestWriteOpenAICompactSSEBridge_AfterKeepaliveCommitFailureEmitsFailedEvent(t *testing.T) {
 	c, rec := newCompactBridgeTestContext(t, true)
+	c.Request = c.Request.WithContext(WithOpenAIForwardModel(
+		context.WithValue(c.Request.Context(), ctxkey.Model, "grok-build-0.1"), "grok-4.5", true,
+	))
 	stop := StartOpenAICompactSSEKeepalive(c, keepaliveTestInterval)
 	defer stop()
 	waitForKeepaliveBeats()
@@ -118,6 +124,7 @@ func TestWriteOpenAICompactSSEBridge_AfterKeepaliveCommitFailureEmitsFailedEvent
 	require.Len(t, events, 1)
 	require.Equal(t, "response.failed", events[0][0])
 	require.Equal(t, "failed", gjson.Get(events[0][1], "response.status").String())
+	require.Equal(t, "grok-build-0.1", gjson.Get(events[0][1], "response.model").String())
 	require.Contains(t, gjson.Get(events[0][1], "response.error.message").String(), "upstream exploded")
 	require.NotEmpty(t, gjson.Get(events[0][1], "response.id").String())
 
@@ -260,6 +267,19 @@ func TestOpenAICompactKeepaliveWriter_DelegatesWhenReady(t *testing.T) {
 	require.Equal(t, "ready", rec.Body.String())
 }
 
+func TestWriteOpenAICompactSSEFailureWithCode_ReportsCompositePublicModel(t *testing.T) {
+	c, rec := newCompactBridgeTestContext(t, true)
+	ctx := context.WithValue(c.Request.Context(), ctxkey.Model, "upstream-model")
+	c.Request = c.Request.WithContext(WithCompositeRouteDecision(ctx, CompositeRouteDecision{
+		Matched: true, PublicModel: "public-alias", UpstreamModel: "upstream-model",
+	}))
+
+	writeOpenAICompactSSEFailureWithCode(c, http.StatusBadGateway, "upstream_error", "boom")
+	events := parseCompactBridgeSSE(t, rec.Body.String())
+	require.Len(t, events, 1)
+	require.Equal(t, "public-alias", gjson.Get(events[0][1], "response.model").String())
+}
+
 // fast policy block 在心跳提交后必须降级为 response.failed 终止事件。
 func TestWriteOpenAIFastPolicyBlockedResponse_AfterKeepaliveCommit(t *testing.T) {
 	c, rec := newCompactBridgeTestContext(t, true)
@@ -322,4 +342,89 @@ func TestWriteOpenAIFastPolicyBlockedResponse_BeforeKeepaliveCommit(t *testing.T
 
 	require.Equal(t, http.StatusForbidden, rec.Code)
 	require.Equal(t, "permission_error", gjson.Get(rec.Body.String(), "error.type").String())
+}
+
+// keepaliveInstance 取出当前请求上的心跳器；测试用 time.Hour 间隔启动并手动
+// beat，不依赖 goroutine 调度时序。
+func keepaliveInstance(t *testing.T, c *gin.Context) *openAICompactSSEKeepalive {
+	t.Helper()
+	value, ok := c.Get(openAICompactSSEKeepaliveKey)
+	require.True(t, ok)
+	k, ok := value.(*openAICompactSSEKeepalive)
+	require.True(t, ok)
+	require.NotNil(t, k)
+	return k
+}
+
+// 透传路径每次尝试都会新建心跳器：上一次尝试的注释字节仍在底层 writer 的
+// Size 里，必须跨实例累计扣除，否则下一次尝试会把旧心跳误判为语义输出。
+func TestOpenAICompactKeepaliveAdjustedWrittenSize_CumulativeAcrossRestarts(t *testing.T) {
+	c, rec := newCompactBridgeTestContext(t, true)
+
+	stop := startOpenAISSEKeepalive(c, time.Hour)
+	require.True(t, keepaliveInstance(t, c).beat())
+	stop()
+	require.Equal(t, -1, OpenAICompactKeepaliveAdjustedWrittenSize(c), "仅心跳时必须归一化为未写出")
+	require.Contains(t, rec.Body.String(), ": keepalive")
+
+	stop = startOpenAISSEKeepalive(c, time.Hour)
+	require.Equal(t, -1, OpenAICompactKeepaliveAdjustedWrittenSize(c), "新实例尚未心跳时，旧实例的心跳字节也必须扣除")
+	require.False(t, openAIStreamClientOutputStarted(c, false))
+	require.True(t, keepaliveInstance(t, c).beat())
+	require.Equal(t, -1, OpenAICompactKeepaliveAdjustedWrittenSize(c), "两次尝试的心跳字节必须全部扣除")
+
+	_, err := c.Writer.Write([]byte("real-output"))
+	require.NoError(t, err)
+	stop()
+	require.Equal(t, len("real-output"), OpenAICompactKeepaliveAdjustedWrittenSize(c), "语义输出仍须被识别")
+	require.True(t, openAIStreamClientOutputStarted(c, false))
+}
+
+// 上一次尝试的心跳已把响应头提交为 200 时，即使当前实例从未心跳，
+// committed 判定也必须为真，写回方才会降级为流内终止事件。
+func TestStopOpenAICompactSSEKeepaliveCommitted_PreviousAttemptCommitted(t *testing.T) {
+	c, rec := newCompactBridgeTestContext(t, true)
+
+	stop := startOpenAISSEKeepalive(c, time.Hour)
+	require.True(t, keepaliveInstance(t, c).beat())
+	stop()
+
+	stop = startOpenAISSEKeepalive(c, time.Hour)
+	defer stop()
+	require.True(t, StopOpenAICompactSSEKeepaliveCommitted(c))
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+// 单次心跳器从未心跳时仍报告未提交（既有行为不变）。
+func TestStopOpenAICompactSSEKeepaliveCommitted_RestartWithoutBeats(t *testing.T) {
+	c, rec := newCompactBridgeTestContext(t, true)
+
+	stop := startOpenAISSEKeepalive(c, time.Hour)
+	stop()
+	stop = startOpenAISSEKeepalive(c, time.Hour)
+	defer stop()
+	require.False(t, StopOpenAICompactSSEKeepaliveCommitted(c))
+	require.Equal(t, -1, OpenAICompactKeepaliveAdjustedWrittenSize(c))
+	require.Zero(t, rec.Body.Len())
+}
+
+// 外层心跳活跃时再启动内层心跳：两者共享同一累计计数，内层停止后外层已写的
+// 注释不能被重新算成语义输出。
+func TestOpenAICompactKeepaliveAdjustedWrittenSize_NestedKeepalives(t *testing.T) {
+	c, rec := newCompactBridgeTestContext(t, true)
+
+	stopOuter := StartOpenAICompactSSEKeepalive(c, time.Hour)
+	outer := keepaliveInstance(t, c)
+	require.True(t, outer.beat())
+	stopInner := startOpenAISSEKeepalive(c, time.Hour)
+	require.True(t, keepaliveInstance(t, c).beat())
+	stopInner()
+	stopOuter()
+
+	require.Equal(t, -1, OpenAICompactKeepaliveAdjustedWrittenSize(c), "嵌套心跳的注释字节必须全部扣除")
+	require.Equal(t, 2, strings.Count(rec.Body.String(), ": keepalive\n\n"))
+
+	_, err := c.Writer.Write([]byte("real-output"))
+	require.NoError(t, err)
+	require.Equal(t, len("real-output"), OpenAICompactKeepaliveAdjustedWrittenSize(c))
 }

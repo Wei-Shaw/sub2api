@@ -292,6 +292,7 @@ func (h *OpenAIGatewayHandler) Images(c *gin.Context) {
 						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, requestModel, false, result), false, nil, err)
 					} else {
 						h.gatewayService.ReportOpenAIAccountScheduleResult(account, openAIAccountScheduleModel(c, account, requestModel, false, result), true, nil)
+						h.recordOpenAIImagesSafetyRefusal(c, apiKey, account, clientRequestModel, parsed.Prompt, imageUpstreamErr)
 					}
 					logEvent := "openai.images.upstream_user_error"
 					if retryableServerError {

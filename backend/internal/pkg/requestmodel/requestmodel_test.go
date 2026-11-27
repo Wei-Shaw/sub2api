@@ -5,11 +5,34 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 )
+
+func TestFromBodyCandidatesRetainsOnlyModelValues(t *testing.T) {
+	runtime.GC()
+	var before runtime.MemStats
+	runtime.ReadMemStats(&before)
+	models := func() []string {
+		body := []byte(`{"model":"public-model","session":{"model":"live-model"},"input":"` + strings.Repeat("x", 16<<20) + `"}`)
+		return FromBodyCandidates("", "application/json", body)
+	}()
+	runtime.GC()
+	var after runtime.MemStats
+	runtime.ReadMemStats(&after)
+	retained := int64(after.HeapAlloc) - int64(before.HeapAlloc)
+	if len(models) != 1 || models[0] != "public-model" {
+		t.Fatalf("model candidates = %q", models)
+	}
+	if retained > 2<<20 {
+		t.Fatalf("model candidates retain %d bytes of the large request", retained)
+	}
+	runtime.KeepAlive(models)
+}
 
 func TestFromBodyJSONModel(t *testing.T) {
 	if got := FromBody("application/json", []byte(`{"model":"gpt-5.4"}`)); got != "gpt-5.4" {

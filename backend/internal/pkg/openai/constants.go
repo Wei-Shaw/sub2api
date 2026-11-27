@@ -68,9 +68,10 @@ const CodexUsageProbeModel = "codex-auto-review"
 //go:embed instructions.txt
 var DefaultInstructions string
 
-// instructionsGPT51 / instructionsGPT52 / instructionsGPT55 / instructionsGPT6Astra
-// 为对应非 codex 模型的真实 Codex 编码 agent base prompt，用于模型感知的 instructions 选择。
-// GPT-5.5 同时作为 GPT-5 系列的 fallback（覆盖 5.3 / 5.4 等未单独维护 prompt 的版本）。
+// instructionsGPT51 / instructionsGPT52 / instructionsGPT55 / instructionsGPT56 /
+// instructionsGPT6Astra / instructionsGPT6Sol / instructionsGPT6Luna are official
+// Codex base prompts synced from openai/codex rust-v0.172.0 for model-aware
+// default instruction selection. GPT-5.5 remains the fallback for unpinned models.
 //
 //go:embed instructions_gpt5_1.txt
 var instructionsGPT51 string
@@ -81,12 +82,20 @@ var instructionsGPT52 string
 //go:embed instructions_gpt5_5.txt
 var instructionsGPT55 string
 
-// Source: openai/codex codex-rs/models-manager/models.json at 121f91fd5d9d.
-//
+//go:embed instructions_gpt5_6.txt
+var instructionsGPT56 string
+
 //go:embed instructions_gpt6_astra.txt
 var instructionsGPT6Astra string
 
-// GPT-6.2 descriptors from the 2026-11-17 Codex models response, client 0.169.0.
+//go:embed instructions_gpt6_sol.txt
+var instructionsGPT6Sol string
+
+//go:embed instructions_gpt6_luna.txt
+var instructionsGPT6Luna string
+
+// GPT-6.2 descriptors preserve catalog metadata from the 2026-11-17 Codex models
+// response while syncing instructions_template to openai/codex rust-v0.172.0.
 //
 //go:embed codex_gpt62_sol.json
 var CodexGPT62SolMetadata []byte
@@ -94,15 +103,12 @@ var CodexGPT62SolMetadata []byte
 //go:embed codex_gpt62_astra.json
 var CodexGPT62AstraMetadata []byte
 
-// CodexGPT61SolMetadata is the complete official descriptor from openai/codex
-// b1e72963c3b71a9265a551e54beff078384efed9, codex-rs/models-manager/models.json.
+// CodexGPT61SolMetadata / CodexGPT61TerraMetadata are official descriptors from
+// openai/codex with instructions_template synced to rust-v0.172.0.
 //
 //go:embed codex_gpt61_sol.json
 var CodexGPT61SolMetadata []byte
 
-// CodexGPT61TerraMetadata is the complete official descriptor from openai/codex
-// 126a0ee92ed2c5e73cd8a8f7e37563e8527552d7, codex-rs/models-manager/models.json.
-//
 //go:embed codex_gpt61_terra.json
 var CodexGPT61TerraMetadata []byte
 
@@ -170,16 +176,17 @@ func CanonicalizeOpenAIModelAliasSpelling(model string) string {
 	return normalized
 }
 
-// CodexBaseInstructionsForModel 按模型返回最匹配的真实 Codex base instructions：
-//   - gpt-6.1-sol / gpt-6.1-terra → 各自官方 Codex 描述中的 instructions_template
-//   - gpt-6 / gpt-6-astra（含供应商前缀与日期变体）→ GPT-6 Astra prompt
-//   - 含 "codex" 的模型（gpt-5-codex / gpt-5.x-codex / codex-max / spark 等）→ GPT-5-Codex prompt
-//   - gpt-5.5 系非 codex 模型 → GPT-5.5 prompt
-//   - gpt-5.2 系非 codex 模型 → GPT-5.2 prompt
-//   - gpt-5.1 系非 codex 模型 → GPT-5.1 prompt
-//   - 其它（含 gpt-5.3 / gpt-5.4 / 裸 gpt-5 / 未知模型）→ 回退到最新版本（当前 GPT-5.5）
-//
-// 任一专用 prompt 意外为空时回退链最终落到 DefaultInstructions，保证返回非空。
+// CodexBaseInstructionsForModel returns the bundled official Codex base prompt
+// matching the model family (synced from openai/codex rust-v0.172.0):
+//   - gpt-6.2-sol / gpt-6.2-astra -> GPT-6.2 instructions_template
+//   - gpt-6.1-sol / gpt-6.1-terra -> GPT-6.1 instructions_template
+//   - gpt-6-sol / gpt-6-luna -> GPT-6 Sol / Luna prompt
+//   - gpt-6 / gpt-6-astra -> GPT-6 Astra prompt
+//   - *codex* models -> GPT-5-Codex prompt
+//   - gpt-5.6* models -> GPT-5.6 prompt
+//   - gpt-5.5* -> GPT-5.5 prompt
+//   - gpt-5.2* / gpt-5.1* -> GPT-5.2 / GPT-5.1 prompt
+//   - others -> fallback to latestCodexInstructions (GPT-5.5)
 func CodexBaseInstructionsForModel(model string) string {
 	canonical := CanonicalizeOpenAIModelAliasSpelling(model)
 	switch {
@@ -191,12 +198,27 @@ func CodexBaseInstructionsForModel(model string) string {
 		return codexInstructionsTemplate(CodexGPT61SolMetadata)
 	case IsGPT61TerraModelSpelling(canonical):
 		return codexInstructionsTemplate(CodexGPT61TerraMetadata)
+	case IsGPT6SolOrLunaModelSpelling(canonical):
+		if canonical == "gpt-6-sol" || strings.HasPrefix(canonical, "gpt-6-sol-") {
+			if v := strings.TrimSpace(instructionsGPT6Sol); v != "" {
+				return instructionsGPT6Sol
+			}
+		}
+		if canonical == "gpt-6-luna" || strings.HasPrefix(canonical, "gpt-6-luna-") {
+			if v := strings.TrimSpace(instructionsGPT6Luna); v != "" {
+				return instructionsGPT6Luna
+			}
+		}
 	case canonical == "gpt-6" || canonical == "gpt-6-astra" || strings.HasPrefix(canonical, "gpt-6-astra-"):
 		if v := strings.TrimSpace(instructionsGPT6Astra); v != "" {
 			return instructionsGPT6Astra
 		}
 	case strings.Contains(canonical, "codex"):
 		return DefaultInstructions
+	case strings.HasPrefix(canonical, "gpt-5.6"):
+		if v := strings.TrimSpace(instructionsGPT56); v != "" {
+			return instructionsGPT56
+		}
 	case strings.HasPrefix(canonical, "gpt-5.5"):
 		return latestCodexInstructions()
 	case strings.HasPrefix(canonical, "gpt-5.2"):

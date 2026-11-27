@@ -301,6 +301,7 @@ var systemIdentityOpeners = []*regexp.Regexp{
 	regexp.MustCompile(`(?i)^[ \t\r\n]*You are a Claude agent, built on Anthropic'?s Claude Agent SDK\.?`),
 	regexp.MustCompile(`(?i)^[ \t\r\n]*You are Claude Code, Anthropic'?s official CLI for Claude\.?`),
 	regexp.MustCompile(`(?i)^[ \t\r\n]*You are Codex,? (?:a coding agent |an agent )?based on GPT-[0-9]+(?:\.[0-9]+)*(?:-[a-z0-9]+)*\.?`),
+	regexp.MustCompile(`(?i)^[ \t\r\n]*You are Codex, a coding agent\.`),
 	regexp.MustCompile(`(?i)^[ \t\r\n]*You are GPT-[0-9]+(?:\.[0-9]+)*(?:-[a-z0-9]+)* running in the Codex CLI\.?`),
 }
 
@@ -505,6 +506,7 @@ func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDu
 	}
 
 	var toolMediaParts []GeminiPart
+	var toolResults []GeminiPart
 	for _, block := range blocks {
 		switch block.Type {
 		case "text":
@@ -595,13 +597,14 @@ func buildParts(content json.RawMessage, toolIDToName map[string]string, allowDu
 			} else {
 				toolMediaParts = append(toolMediaParts, media...)
 			}
-			parts = append(parts, GeminiPart{FunctionResponse: response})
+			toolResults = append(toolResults, GeminiPart{FunctionResponse: response})
 		}
 	}
 
 	parts = append(parts, toolMediaParts...)
 
-	return parts, strippedThinking, nil
+	// Interleaved notices must not split a parallel tool-result batch.
+	return append(toolResults, parts...), strippedThinking, nil
 }
 
 // parseToolResultContent 解析 tool_result 的 content
