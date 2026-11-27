@@ -313,7 +313,7 @@ func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(account *Acc
 	// cyber_policy is request-scoped even when an intermediary wraps the
 	// provider response in a retryable 5xx status. Never punish or rotate the
 	// selected credential for it.
-	if hit, _, _ := detectOpenAICyberPolicy(upstreamBody); hit {
+	if hit, _, _ := detectOpenAIPolicyBlock(upstreamBody); hit {
 		return false
 	}
 	if isOpenAIContextWindowError(upstreamMsg, upstreamBody) {
@@ -592,10 +592,10 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	body := s.readUpstreamErrorBody(resp)
 	body = s.redactAgentIdentitySensitiveBody(ctx, account, body)
 
-	// cyber_policy 硬阻断：透传上游原始错误体给客户端（不重包成通用 502），不冷却账号。
-	// 当前请求恒透传（需求1）；标记供 handler 事后写风控/邮件。400 cyber 不可 failover
-	// （shouldFailoverUpstreamError(400)=false），故走到此处即可安全早返回。
-	if hit, code, cyberMsg := detectOpenAICyberPolicy(body); hit {
+	// 上游 prompt 策略拦截（cyber_policy / invalid_prompt）：透传上游原始错误体给客户端
+	// （不重包成通用 502），不冷却账号。当前请求恒透传（需求1）；标记供 handler 事后写风控/邮件。
+	// 400 策略拦截不可 failover（shouldFailoverUpstreamError(400)=false），故走到此处即可安全早返回。
+	if hit, code, cyberMsg := detectOpenAIPolicyBlock(body); hit {
 		MarkOpsCyberPolicy(c, CyberPolicyMark{
 			Code:           code,
 			Message:        cyberMsg,
@@ -610,9 +610,9 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		}
 		c.Data(resp.StatusCode, contentType, body)
 		if cyberMsg == "" {
-			return nil, fmt.Errorf("openai cyber_policy: %d", resp.StatusCode)
+			return nil, fmt.Errorf("openai %s: %d", code, resp.StatusCode)
 		}
-		return nil, fmt.Errorf("openai cyber_policy: %s", cyberMsg)
+		return nil, fmt.Errorf("openai %s: %s", code, cyberMsg)
 	}
 	if account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(resp.StatusCode, body) {
 		clientMsg := grokContentPolicyClientMessage(body)
@@ -843,11 +843,11 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	body := s.readUpstreamErrorBody(resp)
 	body = s.redactAgentIdentitySensitiveBody(context.Background(), account, body)
 
-	// cyber_policy：兼容路径（Chat Completions / Anthropic）以各自格式回写错误，
-	// 不原样透传 responses 格式的 cyber body（否则对下游格式不合法）。cyber 是上游网络
-	// 安全策略拦截，不冷却账号，故标记后直接以兼容格式回写错误并返回，跳过下方
+	// 上游 prompt 策略拦截：兼容路径（Chat Completions / Anthropic）以各自格式回写错误，
+	// 不原样透传 responses 格式的原始 body（否则对下游格式不合法）。策略拦截不冷却账号，
+	// 故标记后直接以兼容格式回写错误并返回，跳过下方
 	// handleOpenAIAccountUpstreamError（避免自定义 temp-unschedulable 规则误冷却）。
-	if hit, code, cyberMsg := detectOpenAICyberPolicy(body); hit {
+	if hit, code, cyberMsg := detectOpenAIPolicyBlock(body); hit {
 		MarkOpsCyberPolicy(c, CyberPolicyMark{
 			Code:           code,
 			Message:        cyberMsg,
@@ -861,9 +861,9 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 		}
 		writeError(c, resp.StatusCode, "invalid_request_error", clientMsg)
 		if cyberMsg == "" {
-			return nil, fmt.Errorf("openai cyber_policy: %d", resp.StatusCode)
+			return nil, fmt.Errorf("openai %s: %d", code, resp.StatusCode)
 		}
-		return nil, fmt.Errorf("openai cyber_policy: %s", cyberMsg)
+		return nil, fmt.Errorf("openai %s: %s", code, cyberMsg)
 	}
 	if account != nil && account.Platform == PlatformGrok && isGrokContentPolicyRejection(resp.StatusCode, body) {
 		clientMsg := grokContentPolicyClientMessage(body)
