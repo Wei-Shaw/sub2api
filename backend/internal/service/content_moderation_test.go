@@ -1,11 +1,10 @@
 package service
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
+
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -77,8 +76,11 @@ func (r *contentModerationTestSettingRepo) Delete(ctx context.Context, key strin
 }
 
 type contentModerationTestRepo struct {
-	mu   sync.Mutex
-	logs []ContentModerationLog
+	penalty   string
+	duplicate bool
+	hitErr    error
+	mu        sync.Mutex
+	logs      []ContentModerationLog
 }
 
 func (r *contentModerationTestRepo) CreateLog(ctx context.Context, log *ContentModerationLog) error {
@@ -88,6 +90,30 @@ func (r *contentModerationTestRepo) CreateLog(ctx context.Context, log *ContentM
 		r.logs = append(r.logs, *log)
 	}
 	return nil
+}
+
+func (r *contentModerationTestRepo) RecordHit(ctx context.Context, log *ContentModerationLog, rules ModerationPenaltyRules) (ModerationWriteResult, error) {
+	if r.hitErr != nil || r.duplicate {
+		return ModerationWriteResult{}, r.hitErr
+	}
+	if log.UserID != nil && !(log.Action == ContentModerationActionCyberPolicy && rules.ExcludeCyber) {
+		n, err := r.CountFlaggedByUserSince(ctx, *log.UserID, time.Now().Add(-rules.Window), rules.ExcludeCyber)
+		if err != nil {
+			return ModerationWriteResult{}, err
+		}
+		log.ViolationCount = n + 1
+	}
+	if log.UserID != nil && log.APIKeyID != nil {
+		log.PenaltyScope = ModerationScopeUser
+	}
+	if r.penalty == ModerationPenaltyKeyLocked {
+		log.PenaltyScope = ModerationScopeAPIKey
+	}
+	log.PenaltyAction, log.AutoBanned = r.penalty, r.penalty == ModerationPenaltyUserDisabled
+	return ModerationWriteResult{Inserted: true, InvalidationKey: "fixture-key"}, r.CreateLog(ctx, log)
+}
+func (r *contentModerationTestRepo) UnlockModerationKey(ctx context.Context, userID, keyID, actor int64) (string, error) {
+	panic("unexpected unlock")
 }
 
 func (r *contentModerationTestRepo) ListLogs(ctx context.Context, filter ContentModerationLogFilter) ([]ContentModerationLog, *pagination.PaginationResult, error) {
@@ -310,10 +336,12 @@ func (r *contentModerationTestUserRepo) GetByIDIncludeDeleted(ctx context.Contex
 }
 
 type contentModerationTestAuthCacheInvalidator struct {
+	keys    []string
 	userIDs []int64
 }
 
 func (i *contentModerationTestAuthCacheInvalidator) InvalidateAuthCacheByKey(ctx context.Context, key string) {
+	i.keys = append(i.keys, key)
 }
 
 func (i *contentModerationTestAuthCacheInvalidator) InvalidateAuthCacheByUserID(ctx context.Context, userID int64) {
@@ -1527,81 +1555,31 @@ func TestContentModerationCheck_HashBlockLogsDoNotIncreaseNextViolationCount(t *
 	require.Equal(t, 1, logs[1].ViolationCount)
 }
 
-func TestContentModerationAutoBanSkipsAdminAccount(t *testing.T) {
-	var slogOutput bytes.Buffer
-	previousLogger := slog.Default()
-	slog.SetDefault(slog.New(slog.NewTextHandler(&slogOutput, nil)))
-	t.Cleanup(func() {
-		slog.SetDefault(previousLogger)
-	})
-
-	cfg := defaultContentModerationConfig()
-	cfg.BanThreshold = 2
-	cfg.ViolationWindowHours = 24
-
-	userID := int64(1001)
-	repo := &contentModerationTestRepo{}
-	require.NoError(t, repo.CreateLog(context.Background(), newContentModerationFlaggedLog(userID)))
-	userRepo := &contentModerationTestUserRepo{user: &User{ID: userID, Role: RoleAdmin, Status: StatusActive}}
-	invalidator := &contentModerationTestAuthCacheInvalidator{}
-	svc := NewContentModerationService(nil, repo, nil, nil, userRepo, nil, invalidator, nil)
-
-	svc.persistContentModerationLog(context.Background(), cfg, newContentModerationFlaggedLog(userID), "", false, true)
-
-	logs := requireContentModerationLogCount(t, repo, 2)
-	require.Equal(t, 2, logs[1].ViolationCount)
-	require.False(t, logs[1].AutoBanned)
-	require.Equal(t, StatusActive, userRepo.user.Status)
-	require.Empty(t, userRepo.updated)
-	require.Empty(t, invalidator.userIDs)
-	require.Contains(t, slogOutput.String(), "content_moderation.autoban_skipped_admin")
-	require.Contains(t, slogOutput.String(), "user_id=1001")
-	require.Contains(t, slogOutput.String(), "role=admin")
-	require.Contains(t, slogOutput.String(), "count=2")
-	require.Contains(t, slogOutput.String(), "threshold=2")
-}
-
-func TestContentModerationAutoBanDisablesRegularUserAtThreshold(t *testing.T) {
-	cfg := defaultContentModerationConfig()
-	cfg.BanThreshold = 2
-	cfg.ViolationWindowHours = 24
-
-	userID := int64(1001)
-	repo := &contentModerationTestRepo{}
-	require.NoError(t, repo.CreateLog(context.Background(), newContentModerationFlaggedLog(userID)))
-	userRepo := &contentModerationTestUserRepo{user: &User{ID: userID, Role: RoleUser, Status: StatusActive}}
-	invalidator := &contentModerationTestAuthCacheInvalidator{}
-	svc := NewContentModerationService(nil, repo, nil, nil, userRepo, nil, invalidator, nil)
-
-	svc.persistContentModerationLog(context.Background(), cfg, newContentModerationFlaggedLog(userID), "", false, true)
-
-	logs := requireContentModerationLogCount(t, repo, 2)
-	require.Equal(t, 2, logs[1].ViolationCount)
-	require.True(t, logs[1].AutoBanned)
-	require.Len(t, userRepo.updated, 1)
-	require.Equal(t, StatusDisabled, userRepo.user.Status)
-	require.Equal(t, []int64{userID}, invalidator.userIDs)
-}
-
-func TestContentModerationAdminBelowBanThresholdRecordsViolationOnly(t *testing.T) {
-	cfg := defaultContentModerationConfig()
-	cfg.BanThreshold = 2
-	cfg.ViolationWindowHours = 24
-
-	userID := int64(1001)
-	repo := &contentModerationTestRepo{}
-	userRepo := &contentModerationTestUserRepo{user: &User{ID: userID, Role: RoleAdmin, Status: StatusActive}}
-	invalidator := &contentModerationTestAuthCacheInvalidator{}
-	svc := NewContentModerationService(nil, repo, nil, nil, userRepo, nil, invalidator, nil)
-
-	svc.persistContentModerationLog(context.Background(), cfg, newContentModerationFlaggedLog(userID), "", false, true)
-
-	logs := requireContentModerationLogCount(t, repo, 1)
-	require.Equal(t, 1, logs[0].ViolationCount)
-	require.False(t, logs[0].AutoBanned)
-	require.Equal(t, StatusActive, userRepo.user.Status)
-	require.Empty(t, userRepo.updated)
-	require.Empty(t, invalidator.userIDs)
+// The actual decisions and transitions (including admin protection) are exercised
+// against PostgreSQL in moderation_penalty_integration_test.go. Here the service
+// must invalidate exactly the object from the committed transaction, never on error/replay.
+func TestContentModerationCommittedPenaltySideEffects(t *testing.T) {
+	for _, tc := range []struct {
+		name, action string
+		duplicate    bool
+		err          error
+		users        []int64
+		keys         []string
+	}{
+		{name: "user", action: ModerationPenaltyUserDisabled, users: []int64{1001}},
+		{name: "key", action: ModerationPenaltyKeyLocked, keys: []string{"fixture-key"}},
+		{name: "audit only"}, {name: "duplicate", action: ModerationPenaltyKeyLocked, duplicate: true},
+		{name: "transaction failed", action: ModerationPenaltyUserDisabled, err: fmt.Errorf("rollback")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &contentModerationTestRepo{penalty: tc.action, duplicate: tc.duplicate, hitErr: tc.err}
+			invalidator := &contentModerationTestAuthCacheInvalidator{}
+			svc := NewContentModerationService(nil, repo, nil, nil, nil, nil, invalidator, nil)
+			svc.persistContentModerationLog(context.Background(), defaultContentModerationConfig(), newContentModerationFlaggedLog(1001), "", false, true)
+			require.Equal(t, tc.users, invalidator.userIDs)
+			require.Equal(t, tc.keys, invalidator.keys)
+		})
+	}
 }
 
 func newContentModerationFlaggedLog(userID int64) *ContentModerationLog {
@@ -1776,6 +1754,19 @@ func TestContentModerationCheck_AsyncFlaggedWritesRedisHashCache(t *testing.T) {
 	require.False(t, decision.Blocked)
 	requireRecordedHashCount(t, hashCache, 1)
 	requireContentModerationLogCount(t, repo, 1)
+}
+
+func TestModerationKeyReleaseText(t *testing.T) {
+	en, zh := moderationKeyReleaseText(nil)
+	require.Contains(t, en, "administrator")
+	require.Contains(t, zh, "管理员")
+	deadline := time.Date(2026, 11, 24, 2, 10, 0, 0, time.FixedZone("UTC+8", 8*60*60))
+	en, zh = moderationKeyReleaseText(&deadline)
+	for _, text := range []string{en, zh} {
+		require.Contains(t, text, "2026-11-23 18:10:00 UTC")
+	}
+	require.Contains(t, en, "automatically")
+	require.Contains(t, zh, "自动解除")
 }
 
 func TestBuildContentModerationAccountDisabledEmailBody_ContainsBanDetails(t *testing.T) {

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -26,11 +27,12 @@ const (
 // wsGroupPricingAPIKeyRepoStub 只实现认证查询与按分组列 Key（认证缓存失效用）。
 type wsGroupPricingAPIKeyRepoStub struct {
 	service.APIKeyRepository
-	mu      sync.Mutex
-	apiKey  service.APIKey
-	group   service.Group
-	err     error
-	lookups int
+	mu       sync.Mutex
+	apiKey   service.APIKey
+	group    service.Group
+	err      error
+	stateErr error
+	lookups  int
 }
 
 func newWSGroupPricingAPIKeyRepoStub(rate float64) *wsGroupPricingAPIKeyRepoStub {
@@ -53,6 +55,15 @@ func newWSGroupPricingAPIKeyRepoStub(rate float64) *wsGroupPricingAPIKeyRepoStub
 			Hydrated:       true,
 		},
 	}
+}
+
+func (s *wsGroupPricingAPIKeyRepoStub) GetModerationState(ctx context.Context, id, userID int64) (service.APIKeyModerationState, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if id != s.apiKey.ID || userID != s.apiKey.UserID {
+		return service.APIKeyModerationState{}, service.ErrAPIKeyNotFound
+	}
+	return service.APIKeyModerationState{LockedAt: s.apiKey.ModerationLockedAt, LastUnlockedAt: s.apiKey.ModerationLastUnlockedAt, UserStatus: s.apiKey.User.Status}, s.stateErr
 }
 
 func (s *wsGroupPricingAPIKeyRepoStub) GetByKeyForAuth(ctx context.Context, key string) (*service.APIKey, error) {
@@ -92,8 +103,44 @@ func (s *wsGroupPricingAPIKeyRepoStub) lookupCount() int {
 	return s.lookups
 }
 
+func newWSFixtureKeyService(id, userID int64) *service.APIKeyService {
+	repo := newWSGroupPricingAPIKeyRepoStub(1)
+	repo.apiKey.ID, repo.apiKey.UserID, repo.apiKey.User.ID = id, userID, userID
+	return newWSGroupPricingAPIKeyService(repo)
+}
+
 func newWSGroupPricingAPIKeyService(repo *wsGroupPricingAPIKeyRepoStub) *service.APIKeyService {
 	return service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, &config.Config{})
+}
+
+func TestOpenAIResponsesWebSocket_ModerationRechecksNextRequest(t *testing.T) {
+	for _, mode := range []string{service.OpenAIWSIngressModePassthrough, service.OpenAIWSIngressModeCtxPool} {
+		for _, tc := range []struct {
+			name, reason string
+			status       coderws.StatusCode
+			change       func(*wsGroupPricingAPIKeyRepoStub)
+		}{
+			{"key lock", "API_KEY_DISABLED", coderws.StatusPolicyViolation, func(r *wsGroupPricingAPIKeyRepoStub) { now := time.Now(); r.apiKey.ModerationLockedAt = &now }},
+			{"lock and unlock between turns", "API key authorization changed; reconnect", coderws.StatusPolicyViolation, func(r *wsGroupPricingAPIKeyRepoStub) { now := time.Now(); r.apiKey.ModerationLastUnlockedAt = &now }},
+			{"owner disabled", "USER_INACTIVE", coderws.StatusPolicyViolation, func(r *wsGroupPricingAPIKeyRepoStub) { r.apiKey.User.Status = service.StatusDisabled }},
+			{"unknown", "cannot verify API key", coderws.StatusInternalError, func(r *wsGroupPricingAPIKeyRepoStub) { r.stateErr = errors.New("database unavailable") }},
+		} {
+			t.Run(mode+"/"+tc.name, func(t *testing.T) {
+				repo := newWSGroupPricingAPIKeyRepoStub(1)
+				runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
+					firstPayload: wsGroupPricingFirst, secondPayload: wsGroupPricingSecond, ingressMode: mode,
+					apiKeyService: newWSGroupPricingAPIKeyService(repo), apiKeyCredential: wsGroupPricingKey,
+					afterFirstUpstreamRequest: func(*service.ChannelService) error {
+						repo.mu.Lock()
+						defer repo.mu.Unlock()
+						tc.change(repo)
+						return nil
+					},
+					secondTurnCloseExpected: true, closeStatus: tc.status, closeReason: tc.reason,
+				})
+			})
+		}
+	}
 }
 
 func TestOpenAIResponsesWebSocket_GroupRateChangeAppliesToNextTurn(t *testing.T) {

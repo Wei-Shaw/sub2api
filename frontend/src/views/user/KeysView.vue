@@ -369,8 +369,12 @@
             <span v-else class="text-sm text-gray-400 dark:text-dark-500">{{ t('keys.noExpiration') }}</span>
           </template>
 
-          <template #cell-status="{ value }">
-            <span :class="[
+          <template #cell-status="{ value, row }">
+            <div v-if="row.moderation_locked_at">
+              <span class="badge badge-danger" :title="row.moderation_locked_until ? undefined : t('keys.moderationLockedHint')">{{ t('keys.moderationLocked') }}</span>
+              <div v-if="row.moderation_locked_until" class="mt-1 text-xs text-gray-500 dark:text-dark-400">{{ t('keys.moderationLockedUntil', { time: formatDateTime(row.moderation_locked_until) }) }}</div>
+            </div>
+            <span v-else :class="[
               'badge',
               value === 'active' ? 'badge-success' :
               value === 'quota_exhausted' ? 'badge-warning' :
@@ -420,6 +424,7 @@
               </button>
               <!-- Toggle Status Button -->
               <button
+                v-if="!row.moderation_locked_at"
                 @click="toggleKeyStatus(row)"
                 :class="[
                   'flex flex-col items-center gap-0.5 rounded-lg p-1.5 transition-colors',
@@ -442,6 +447,7 @@
               </button>
               <!-- Delete Button -->
               <button
+                v-if="!row.moderation_locked_at"
                 @click="confirmDelete(row)"
                 class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 dark:hover:text-red-400"
               >
@@ -1236,6 +1242,7 @@ import BulkEditKeysModal from '@/components/keys/BulkEditKeysModal.vue'
 import type { Column } from '@/components/common/types'
 import type { BatchApiKeyUsageStats } from '@/api/usage'
 import { formatDateTime } from '@/utils/format'
+import { useModerationLockRefresh } from '@/composables/useModerationLockRefresh'
 import { maskApiKey } from '@/utils/maskApiKey'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import { platformBadgeLightClass } from '@/utils/platformColors'
@@ -1640,6 +1647,8 @@ const loadApiKeys = async () => {
     }
   }
 }
+
+useModerationLockRefresh(() => apiKeys.value, loadApiKeys)
 
 const loadUsageStats = async (keyIds: number[], signal: AbortSignal) => {
   try {

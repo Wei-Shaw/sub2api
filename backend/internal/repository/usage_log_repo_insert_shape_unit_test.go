@@ -70,15 +70,17 @@ func requireStaticInsertMatchesArgTypes(t *testing.T, query string) {
 // 直接手写 $1..$N 的 INSERT 路径，防止加列后漏补占位符只在集成测试才暴露。
 func TestUsageLogStaticInsertShape_PlaceholdersMatchArgTypes(t *testing.T) {
 	upstreamRequestID := "20260902080329-oneapi"
+	firstVisibleTextMs := 420
 	log := &service.UsageLog{
-		UserID:            1,
-		APIKeyID:          2,
-		AccountID:         3,
-		RequestID:         "client:insert-shape",
-		UpstreamRequestID: &upstreamRequestID,
-		Model:             "claude-3",
-		InputTokens:       10,
-		CreatedAt:         time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC),
+		UserID:             1,
+		APIKeyID:           2,
+		AccountID:          3,
+		RequestID:          "client:insert-shape",
+		UpstreamRequestID:  &upstreamRequestID,
+		FirstVisibleTextMs: &firstVisibleTextMs,
+		Model:              "claude-3",
+		InputTokens:        10,
+		CreatedAt:          time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC),
 	}
 	prepared := prepareUsageLogInsert(log)
 	args := anySliceToDriverValues(prepared.args)
@@ -115,6 +117,26 @@ func TestUsageLogStaticInsertShape_PlaceholdersMatchArgTypes(t *testing.T) {
 	})
 }
 
+func TestPrepareUsageLogInsert_FirstVisibleTextMsArgWiring(t *testing.T) {
+	value := 275
+	prepared := prepareUsageLogInsert(&service.UsageLog{
+		UserID: 1, APIKeyID: 2, AccountID: 3, RequestID: "visible-text", Model: "gpt-5",
+		FirstVisibleTextMs: &value, CreatedAt: time.Now().UTC(),
+	})
+	idx := len(prepared.args) - 2
+	arg, ok := prepared.args[idx].(sql.NullInt64)
+	require.True(t, ok)
+	require.True(t, arg.Valid)
+	require.EqualValues(t, value, arg.Int64)
+	require.Equal(t, "integer", usageLogInsertArgTypes[idx])
+	require.Contains(t, usageLogSelectColumns, "first_visible_text_ms")
+
+	absent := prepareUsageLogInsert(&service.UsageLog{UserID: 1, APIKeyID: 2, RequestID: "visible-text-null", Model: "gpt-5"})
+	nullArg, ok := absent.args[idx].(sql.NullInt64)
+	require.True(t, ok)
+	require.False(t, nullArg.Valid)
+}
+
 // TestPrepareUsageLogInsert_UpstreamRequestIDArgWiring 把 upstream_request_id 钉在
 // session_id 之前，与参数类型表保持同位；缺失时落 NULL 而不是空串。
 func TestPrepareUsageLogInsert_UpstreamRequestIDArgWiring(t *testing.T) {
@@ -129,7 +151,7 @@ func TestPrepareUsageLogInsert_UpstreamRequestIDArgWiring(t *testing.T) {
 	})
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
 
-	idx := len(prepared.args) - 6
+	idx := len(prepared.args) - 7
 	arg, ok := prepared.args[idx].(sql.NullString)
 	require.True(t, ok, "upstream_request_id arg should be sql.NullString, got %T", prepared.args[idx])
 	require.True(t, arg.Valid)

@@ -113,6 +113,48 @@ func (_c *APIKeyCreate) SetNillableStatus(v *string) *APIKeyCreate {
 	return _c
 }
 
+// SetModerationLockedAt sets the "moderation_locked_at" field.
+func (_c *APIKeyCreate) SetModerationLockedAt(v time.Time) *APIKeyCreate {
+	_c.mutation.SetModerationLockedAt(v)
+	return _c
+}
+
+// SetNillableModerationLockedAt sets the "moderation_locked_at" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableModerationLockedAt(v *time.Time) *APIKeyCreate {
+	if v != nil {
+		_c.SetModerationLockedAt(*v)
+	}
+	return _c
+}
+
+// SetModerationLockedUntil sets the "moderation_locked_until" field.
+func (_c *APIKeyCreate) SetModerationLockedUntil(v time.Time) *APIKeyCreate {
+	_c.mutation.SetModerationLockedUntil(v)
+	return _c
+}
+
+// SetNillableModerationLockedUntil sets the "moderation_locked_until" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableModerationLockedUntil(v *time.Time) *APIKeyCreate {
+	if v != nil {
+		_c.SetModerationLockedUntil(*v)
+	}
+	return _c
+}
+
+// SetModerationLastUnlockedAt sets the "moderation_last_unlocked_at" field.
+func (_c *APIKeyCreate) SetModerationLastUnlockedAt(v time.Time) *APIKeyCreate {
+	_c.mutation.SetModerationLastUnlockedAt(v)
+	return _c
+}
+
+// SetNillableModerationLastUnlockedAt sets the "moderation_last_unlocked_at" field if the given value is not nil.
+func (_c *APIKeyCreate) SetNillableModerationLastUnlockedAt(v *time.Time) *APIKeyCreate {
+	if v != nil {
+		_c.SetModerationLastUnlockedAt(*v)
+	}
+	return _c
+}
+
 // SetLastUsedAt sets the "last_used_at" field.
 func (_c *APIKeyCreate) SetLastUsedAt(v time.Time) *APIKeyCreate {
 	_c.mutation.SetLastUsedAt(v)
@@ -535,6 +577,18 @@ func (_c *APIKeyCreate) createSpec() (*APIKey, *sqlgraph.CreateSpec) {
 		_spec.SetField(apikey.FieldStatus, field.TypeString, value)
 		_node.Status = value
 	}
+	if value, ok := _c.mutation.ModerationLockedAt(); ok {
+		_spec.SetField(apikey.FieldModerationLockedAt, field.TypeTime, value)
+		_node.ModerationLockedAt = &value
+	}
+	if value, ok := _c.mutation.ModerationLockedUntil(); ok {
+		_spec.SetField(apikey.FieldModerationLockedUntil, field.TypeTime, value)
+		_node.ModerationLockedUntil = &value
+	}
+	if value, ok := _c.mutation.ModerationLastUnlockedAt(); ok {
+		_spec.SetField(apikey.FieldModerationLastUnlockedAt, field.TypeTime, value)
+		_node.ModerationLastUnlockedAt = &value
+	}
 	if value, ok := _c.mutation.LastUsedAt(); ok {
 		_spec.SetField(apikey.FieldLastUsedAt, field.TypeTime, value)
 		_node.LastUsedAt = &value
@@ -790,6 +844,60 @@ func (u *APIKeyUpsert) SetStatus(v string) *APIKeyUpsert {
 // UpdateStatus sets the "status" field to the value that was provided on create.
 func (u *APIKeyUpsert) UpdateStatus() *APIKeyUpsert {
 	u.SetExcluded(apikey.FieldStatus)
+	return u
+}
+
+// SetModerationLockedAt sets the "moderation_locked_at" field.
+func (u *APIKeyUpsert) SetModerationLockedAt(v time.Time) *APIKeyUpsert {
+	u.Set(apikey.FieldModerationLockedAt, v)
+	return u
+}
+
+// UpdateModerationLockedAt sets the "moderation_locked_at" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateModerationLockedAt() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldModerationLockedAt)
+	return u
+}
+
+// ClearModerationLockedAt clears the value of the "moderation_locked_at" field.
+func (u *APIKeyUpsert) ClearModerationLockedAt() *APIKeyUpsert {
+	u.SetNull(apikey.FieldModerationLockedAt)
+	return u
+}
+
+// SetModerationLockedUntil sets the "moderation_locked_until" field.
+func (u *APIKeyUpsert) SetModerationLockedUntil(v time.Time) *APIKeyUpsert {
+	u.Set(apikey.FieldModerationLockedUntil, v)
+	return u
+}
+
+// UpdateModerationLockedUntil sets the "moderation_locked_until" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateModerationLockedUntil() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldModerationLockedUntil)
+	return u
+}
+
+// ClearModerationLockedUntil clears the value of the "moderation_locked_until" field.
+func (u *APIKeyUpsert) ClearModerationLockedUntil() *APIKeyUpsert {
+	u.SetNull(apikey.FieldModerationLockedUntil)
+	return u
+}
+
+// SetModerationLastUnlockedAt sets the "moderation_last_unlocked_at" field.
+func (u *APIKeyUpsert) SetModerationLastUnlockedAt(v time.Time) *APIKeyUpsert {
+	u.Set(apikey.FieldModerationLastUnlockedAt, v)
+	return u
+}
+
+// UpdateModerationLastUnlockedAt sets the "moderation_last_unlocked_at" field to the value that was provided on create.
+func (u *APIKeyUpsert) UpdateModerationLastUnlockedAt() *APIKeyUpsert {
+	u.SetExcluded(apikey.FieldModerationLastUnlockedAt)
+	return u
+}
+
+// ClearModerationLastUnlockedAt clears the value of the "moderation_last_unlocked_at" field.
+func (u *APIKeyUpsert) ClearModerationLastUnlockedAt() *APIKeyUpsert {
+	u.SetNull(apikey.FieldModerationLastUnlockedAt)
 	return u
 }
 
@@ -1217,6 +1325,69 @@ func (u *APIKeyUpsertOne) SetStatus(v string) *APIKeyUpsertOne {
 func (u *APIKeyUpsertOne) UpdateStatus() *APIKeyUpsertOne {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetModerationLockedAt sets the "moderation_locked_at" field.
+func (u *APIKeyUpsertOne) SetModerationLockedAt(v time.Time) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetModerationLockedAt(v)
+	})
+}
+
+// UpdateModerationLockedAt sets the "moderation_locked_at" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateModerationLockedAt() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateModerationLockedAt()
+	})
+}
+
+// ClearModerationLockedAt clears the value of the "moderation_locked_at" field.
+func (u *APIKeyUpsertOne) ClearModerationLockedAt() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearModerationLockedAt()
+	})
+}
+
+// SetModerationLockedUntil sets the "moderation_locked_until" field.
+func (u *APIKeyUpsertOne) SetModerationLockedUntil(v time.Time) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetModerationLockedUntil(v)
+	})
+}
+
+// UpdateModerationLockedUntil sets the "moderation_locked_until" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateModerationLockedUntil() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateModerationLockedUntil()
+	})
+}
+
+// ClearModerationLockedUntil clears the value of the "moderation_locked_until" field.
+func (u *APIKeyUpsertOne) ClearModerationLockedUntil() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearModerationLockedUntil()
+	})
+}
+
+// SetModerationLastUnlockedAt sets the "moderation_last_unlocked_at" field.
+func (u *APIKeyUpsertOne) SetModerationLastUnlockedAt(v time.Time) *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetModerationLastUnlockedAt(v)
+	})
+}
+
+// UpdateModerationLastUnlockedAt sets the "moderation_last_unlocked_at" field to the value that was provided on create.
+func (u *APIKeyUpsertOne) UpdateModerationLastUnlockedAt() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateModerationLastUnlockedAt()
+	})
+}
+
+// ClearModerationLastUnlockedAt clears the value of the "moderation_last_unlocked_at" field.
+func (u *APIKeyUpsertOne) ClearModerationLastUnlockedAt() *APIKeyUpsertOne {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearModerationLastUnlockedAt()
 	})
 }
 
@@ -1855,6 +2026,69 @@ func (u *APIKeyUpsertBulk) SetStatus(v string) *APIKeyUpsertBulk {
 func (u *APIKeyUpsertBulk) UpdateStatus() *APIKeyUpsertBulk {
 	return u.Update(func(s *APIKeyUpsert) {
 		s.UpdateStatus()
+	})
+}
+
+// SetModerationLockedAt sets the "moderation_locked_at" field.
+func (u *APIKeyUpsertBulk) SetModerationLockedAt(v time.Time) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetModerationLockedAt(v)
+	})
+}
+
+// UpdateModerationLockedAt sets the "moderation_locked_at" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateModerationLockedAt() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateModerationLockedAt()
+	})
+}
+
+// ClearModerationLockedAt clears the value of the "moderation_locked_at" field.
+func (u *APIKeyUpsertBulk) ClearModerationLockedAt() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearModerationLockedAt()
+	})
+}
+
+// SetModerationLockedUntil sets the "moderation_locked_until" field.
+func (u *APIKeyUpsertBulk) SetModerationLockedUntil(v time.Time) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetModerationLockedUntil(v)
+	})
+}
+
+// UpdateModerationLockedUntil sets the "moderation_locked_until" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateModerationLockedUntil() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateModerationLockedUntil()
+	})
+}
+
+// ClearModerationLockedUntil clears the value of the "moderation_locked_until" field.
+func (u *APIKeyUpsertBulk) ClearModerationLockedUntil() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearModerationLockedUntil()
+	})
+}
+
+// SetModerationLastUnlockedAt sets the "moderation_last_unlocked_at" field.
+func (u *APIKeyUpsertBulk) SetModerationLastUnlockedAt(v time.Time) *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.SetModerationLastUnlockedAt(v)
+	})
+}
+
+// UpdateModerationLastUnlockedAt sets the "moderation_last_unlocked_at" field to the value that was provided on create.
+func (u *APIKeyUpsertBulk) UpdateModerationLastUnlockedAt() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.UpdateModerationLastUnlockedAt()
+	})
+}
+
+// ClearModerationLastUnlockedAt clears the value of the "moderation_last_unlocked_at" field.
+func (u *APIKeyUpsertBulk) ClearModerationLastUnlockedAt() *APIKeyUpsertBulk {
+	return u.Update(func(s *APIKeyUpsert) {
+		s.ClearModerationLastUnlockedAt()
 	})
 }
 

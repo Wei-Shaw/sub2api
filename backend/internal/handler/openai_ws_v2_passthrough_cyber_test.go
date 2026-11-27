@@ -89,7 +89,7 @@ func newOpenAIWSPassthroughHandlerHarness(t *testing.T, upstreamURL string, sett
 	h := &OpenAIGatewayHandler{
 		gatewayService:           gatewaySvc,
 		billingCacheService:      billingCacheSvc,
-		apiKeyService:            &service.APIKeyService{},
+		apiKeyService:            newWSFixtureKeyService(1851, 1751),
 		contentModerationService: moderationSvc,
 		concurrencyHelper:        NewConcurrencyHelper(service.NewConcurrencyService(concurrencyCache), SSEPingFormatNone, time.Second),
 	}

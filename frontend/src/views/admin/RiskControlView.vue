@@ -311,7 +311,7 @@
                       <div>{{ row.user_email || '-' }}</div>
                       <div v-if="row.user_id" class="text-xs text-gray-400">UID {{ row.user_id }}</div>
                     </td>
-                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">{{ row.api_key_name || '-' }}</td>
+                    <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">{{ row.api_key_name || (row.api_key_id ? `#${row.api_key_id}` : '-') }}</td>
                     <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
                       <div>{{ row.endpoint || '-' }}</div>
                       <div class="text-xs text-gray-400">{{ row.provider || '-' }} / {{ row.model || '-' }}</div>
@@ -329,11 +329,19 @@
                       </div>
                     </td>
                     <td class="whitespace-nowrap px-5 py-4 text-sm text-gray-700 dark:text-gray-300">
-                      <div>{{ violationCountText(row) }}</div>
+                      <div>{{ violationCountText(row) }}<span v-if="row.violation_count && row.penalty_scope" class="ml-1 text-xs text-gray-500">{{ t(row.penalty_scope === 'api_key' ? 'admin.riskControl.keyScope' : 'admin.riskControl.userScope') }}</span></div>
                       <div class="text-xs text-gray-400">
                         {{ row.email_sent ? t('admin.riskControl.emailSent') : t('admin.riskControl.emailNotSent') }}
-                        <span v-if="row.auto_banned"> / {{ t('admin.riskControl.autoBanned') }}</span>
+                        <span v-if="row.penalty_action === 'api_key_locked'"> / {{ t('admin.riskControl.keyLocked') }}</span>
+                        <span v-else-if="row.auto_banned"> / {{ t('admin.riskControl.autoBanned') }}</span>
                       </div>
+                      <div v-if="row.penalty_locked_until" class="text-xs text-gray-500 dark:text-gray-400">
+                        {{ t('admin.riskControl.keyLockScheduledEnd', { time: formatDateTime(row.penalty_locked_until) }) }}
+                      </div>
+                      <button v-if="row.penalty_action === 'api_key_locked' && row.api_key_locked && row.user_id && row.api_key_id"
+                        class="btn btn-secondary mt-2 px-2 py-1 text-xs" type="button" :disabled="unlockingKeyID !== null" @click="unlockKey(row)">
+                        {{ unlockingKeyID === row.api_key_id ? t('common.processing') : t('admin.riskControl.unlockKey') }}
+                      </button>
                       <button
                         v-if="canUnbanRow(row)"
                         type="button"
@@ -1235,6 +1243,7 @@ const logsLoading = ref(false)
 const statusLoading = ref(false)
 const apiKeyTesting = ref(false)
 const hashActionLoading = ref(false)
+const unlockingKeyID = ref<number | null>(null)
 const unbanningUserID = ref<number | null>(null)
 const settingsOpen = ref(false)
 const activeSettingsTab = ref<SettingsTab>('basic')
@@ -1983,6 +1992,19 @@ function openInputDetail(row: ContentModerationLog) {
 
 function closeInputDetail() {
   inputDetailRow.value = null
+}
+
+async function unlockKey(row: ContentModerationLog) {
+  if (!row.user_id || !row.api_key_id || unlockingKeyID.value !== null) return
+  if (!window.confirm(t('admin.riskControl.unlockConfirm', { id: row.api_key_id }))) return
+  unlockingKeyID.value = row.api_key_id
+  try {
+    const result = await adminAPI.riskControl.unlockKey(row.user_id, row.api_key_id)
+    logs.value = logs.value.map(item => item.api_key_id === result.api_key_id && item.user_id === result.user_id ? { ...item, api_key_locked: false } : item)
+    appStore.showSuccess(t('admin.riskControl.unlockSuccess'))
+  } catch (err: unknown) {
+    appStore.showError(extractApiErrorMessage(err, t('admin.riskControl.unlockFailed')))
+  } finally { unlockingKeyID.value = null }
 }
 
 async function unbanUser(row: ContentModerationLog) {

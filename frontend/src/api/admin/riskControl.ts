@@ -210,6 +210,11 @@ export interface ContentModerationLog {
   upstream_latency_ms: number | null
   error: string
   violation_count: number
+  penalty_scope?: 'user' | 'api_key'
+  penalty_action?: 'user_disabled' | 'api_key_locked'
+  penalty_locked_until?: string | null
+  api_key_locked?: boolean
+  occurred_at?: string
   auto_banned: boolean
   email_sent: boolean
   user_status: string
@@ -294,6 +299,13 @@ export async function unbanUser(userID: number): Promise<ContentModerationUnbanU
   return data
 }
 
+export async function unlockKey(userID: number, keyID: number) {
+  const { data } = await apiClient.post<{ user_id: number; api_key_id: number; unlocked: boolean }>(
+    `/admin/risk-control/users/${userID}/api-keys/${keyID}/unlock`
+  )
+  return data
+}
+
 export async function deleteFlaggedHash(inputHash: string): Promise<DeleteFlaggedHashResponse> {
   const { data } = await apiClient.delete<DeleteFlaggedHashResponse>('/admin/risk-control/hashes', {
     data: { input_hash: inputHash },
@@ -313,6 +325,7 @@ export const riskControlAPI = {
   testAPIKeys,
   listLogs,
   unbanUser,
+  unlockKey,
   deleteFlaggedHash,
   clearFlaggedHashes,
 }

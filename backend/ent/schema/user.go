@@ -58,6 +58,10 @@ func (User) Fields() []ent.Field {
 			MaxLen(20).
 			Default(domain.StatusActive),
 
+		field.String("moderation_penalty_scope").MaxLen(16).Default("user"),
+		field.Int("moderation_key_lock_minutes").NonNegative().Default(0),
+		field.Time("moderation_scope_changed_at").Optional().Nillable(),
+
 		// Optional profile fields (added later; default '' in DB migration)
 		field.String("username").
 			MaxLen(100).

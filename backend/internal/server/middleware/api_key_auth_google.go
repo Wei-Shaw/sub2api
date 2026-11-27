@@ -84,9 +84,9 @@ func APIKeyAuthWithSubscriptionGoogle(apiKeyService *service.APIKeyService, subs
 
 		// disabled / 未知状态 → 无条件拦截（expired 和 quota_exhausted 留给计费阶段，
 		// 与主中间件 api_key_auth.go 保持一致）。
-		if !apiKey.IsActive() &&
+		if apiKey.ModerationLockedAt != nil || (!apiKey.IsActive() &&
 			apiKey.Status != service.StatusAPIKeyExpired &&
-			apiKey.Status != service.StatusAPIKeyQuotaExhausted {
+			apiKey.Status != service.StatusAPIKeyQuotaExhausted) {
 			MarkIngressRejected(c, IngressRejectAPIKeyDisabled)
 			abortWithGoogleError(c, 401, "API key is disabled")
 			return

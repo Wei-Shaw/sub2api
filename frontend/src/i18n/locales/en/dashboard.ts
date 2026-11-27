@@ -66,6 +66,9 @@ export default {
 
   // API Keys
   keys: {
+    moderationLocked: 'Risk-control lock',
+    moderationLockedUntil: 'Risk-control lock ends at {time}.',
+    moderationLockedHint: 'Only an administrator can remove this lock.',
     title: 'API Keys',
     description: 'Manage your API keys and access tokens',
     searchPlaceholder: 'Search name or key...',
@@ -395,6 +398,7 @@ export default {
     duration: 'Duration',
     latency: 'Latency',
     latencyFirstToken: 'First',
+    latencyFirstVisibleText: 'First visible text',
     latencyDuration: 'Total',
     outputTps: 'Output TPS',
     outputTpsHint: 'Output tokens divided by total duration, including first-token wait, in tok/s. Output tokens may include reasoning tokens.',

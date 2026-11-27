@@ -18,6 +18,7 @@ import (
 )
 
 type authRepoStub struct {
+	moderationState   func(context.Context, int64, int64) (APIKeyModerationState, error)
 	getByKeyForAuth   func(ctx context.Context, key string) (*APIKey, error)
 	listKeysByUserID  func(ctx context.Context, userID int64) ([]string, error)
 	listKeysByGroupID func(ctx context.Context, groupID int64) ([]string, error)
@@ -37,6 +38,13 @@ func (s *authRepoStub) GetKeyAndOwnerID(ctx context.Context, id int64) (string, 
 
 func (s *authRepoStub) GetByKey(ctx context.Context, key string) (*APIKey, error) {
 	panic("unexpected GetByKey call")
+}
+
+func (s *authRepoStub) GetModerationState(ctx context.Context, id, userID int64) (APIKeyModerationState, error) {
+	if s.moderationState != nil {
+		return s.moderationState(ctx, id, userID)
+	}
+	return APIKeyModerationState{UserStatus: StatusActive}, nil
 }
 
 func (s *authRepoStub) GetByKeyForAuth(ctx context.Context, key string) (*APIKey, error) {
@@ -656,8 +664,14 @@ func TestAPIKeyService_AuthLookupBulkheadRejectsExcessMisses(t *testing.T) {
 
 func TestAPIKeyService_GetByKey_SingleflightCollapses(t *testing.T) {
 	var calls int32
+	locked := time.Now()
 	cache := &authCacheStub{}
 	repo := &authRepoStub{
+		// Model the primary state after the shared credential read, but before
+		// its result is returned to callers that joined the in-flight lookup.
+		moderationState: func(context.Context, int64, int64) (APIKeyModerationState, error) {
+			return APIKeyModerationState{LockedAt: &locked, UserStatus: StatusActive}, nil
+		},
 		getByKeyForAuth: func(ctx context.Context, key string) (*APIKey, error) {
 			atomic.AddInt32(&calls, 1)
 			time.Sleep(50 * time.Millisecond)
@@ -685,20 +699,21 @@ func TestAPIKeyService_GetByKey_SingleflightCollapses(t *testing.T) {
 	start := make(chan struct{})
 	wg := sync.WaitGroup{}
 	errs := make([]error, 5)
+	results := make([]*APIKey, len(errs))
 	for i := 0; i < 5; i++ {
 		wg.Add(1)
 		go func(idx int) {
 			defer wg.Done()
 			<-start
-			_, err := svc.GetByKey(context.Background(), "k1")
-			errs[idx] = err
+			results[idx], errs[idx] = svc.GetByKey(context.Background(), "k1")
 		}(i)
 	}
 	close(start)
 	wg.Wait()
 
-	for _, err := range errs {
+	for i, err := range errs {
 		require.NoError(t, err)
+		require.Equal(t, &locked, results[i].ModerationLockedAt)
 	}
 	require.Equal(t, int32(1), atomic.LoadInt32(&calls))
 }

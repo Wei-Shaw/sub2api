@@ -22,6 +22,10 @@ type keyBillingRouteAPIKeyRepo struct {
 	apiKey *service.APIKey
 }
 
+func (r *keyBillingRouteAPIKeyRepo) GetModerationState(ctx context.Context, id, userID int64) (service.APIKeyModerationState, error) {
+	return service.APIKeyModerationState{UserStatus: service.StatusActive}, nil
+}
+
 func (r *keyBillingRouteAPIKeyRepo) GetByKeyForAuth(_ context.Context, key string) (*service.APIKey, error) {
 	if r.apiKey == nil || key != r.apiKey.Key {
 		return nil, service.ErrAPIKeyNotFound

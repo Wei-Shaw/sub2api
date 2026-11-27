@@ -356,6 +356,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var resp *http.Response
 	var usage *OpenAIUsage
 	var firstTokenMs *int
+	var firstVisibleTextMs *int
 	responseID := ""
 	imageCount := 0
 	var imageOutputSizes []string
@@ -468,6 +469,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 			}
 			usage = result.usage
 			firstTokenMs = result.firstTokenMs
+			firstVisibleTextMs = result.firstVisibleTextMs
 			responseID = strings.TrimSpace(result.responseID)
 			imageCount = result.imageCount
 			imageOutputSizes = result.imageOutputSizes
@@ -533,6 +535,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		OpenAIWSMode:                  false,
 		Duration:                      time.Since(startTime),
 		FirstTokenMs:                  firstTokenMs,
+		FirstVisibleTextMs:            firstVisibleTextMs,
 	}
 	if imageCount > 0 {
 		forwardResult.ImageCount = imageCount
@@ -1225,11 +1228,12 @@ func collectOpenAIPassthroughTimeoutHeaders(h http.Header) []string {
 }
 
 type openaiStreamingResultPassthrough struct {
-	usage            *OpenAIUsage
-	firstTokenMs     *int
-	responseID       string
-	imageCount       int
-	imageOutputSizes []string
+	usage              *OpenAIUsage
+	firstTokenMs       *int
+	firstVisibleTextMs *int
+	responseID         string
+	imageCount         int
+	imageOutputSizes   []string
 }
 
 type openaiNonStreamingResultPassthrough struct {
@@ -1445,6 +1449,63 @@ func openAIStreamDataStartsVisibleOutput(data, eventType string) bool {
 			if openAIStreamItemHasVisibleOutput(item) {
 				return true
 			}
+		}
+	}
+	return false
+}
+
+func openAIStreamDataStartsVisibleText(data, eventType string) bool {
+	trimmed := strings.TrimSpace(data)
+	if trimmed == "" || trimmed == "[DONE]" || !gjson.Valid(trimmed) {
+		return false
+	}
+	eventType = strings.TrimSpace(eventType)
+	if eventType == "" {
+		eventType = strings.TrimSpace(gjson.Get(trimmed, "type").String())
+	}
+	switch eventType {
+	case "response.output_text.delta", "response.refusal.delta", "response.audio_transcript.delta":
+		return openAIStreamJSONHasText(gjson.Get(trimmed, "delta"))
+	case "response.output_text.done":
+		return openAIStreamJSONHasText(gjson.Get(trimmed, "text"))
+	case "response.refusal.done":
+		return openAIStreamJSONHasText(gjson.Get(trimmed, "refusal")) || openAIStreamJSONHasText(gjson.Get(trimmed, "text"))
+	case "response.audio_transcript.done":
+		return openAIStreamJSONHasText(gjson.Get(trimmed, "transcript")) || openAIStreamJSONHasText(gjson.Get(trimmed, "text"))
+	case "response.content_part.added", "response.content_part.done":
+		return openAIStreamContentPartsHaveVisibleText([]gjson.Result{gjson.Get(trimmed, "part")})
+	case "response.output_item.added", "response.output_item.done":
+		return openAIStreamContentPartsHaveVisibleText(gjson.Get(trimmed, "item.content").Array())
+	case "response.completed", "response.done":
+		for _, item := range gjson.Get(trimmed, "response.output").Array() {
+			if openAIStreamContentPartsHaveVisibleText(item.Get("content").Array()) {
+				return true
+			}
+		}
+		return false
+	}
+	content := gjson.Get(trimmed, "choices.0.delta.content")
+	if openAIStreamJSONHasText(content) {
+		return true
+	}
+	for _, part := range content.Array() {
+		if openAIStreamJSONHasText(part.Get("text")) {
+			return true
+		}
+	}
+	return false
+}
+
+func openAIStreamJSONHasText(value gjson.Result) bool {
+	return value.Type == gjson.String && strings.TrimSpace(value.String()) != ""
+}
+
+func openAIStreamContentPartsHaveVisibleText(parts []gjson.Result) bool {
+	for _, part := range parts {
+		kind := strings.TrimSpace(part.Get("type").String())
+		if (kind == "output_text" || kind == "refusal" || kind == "audio_transcript") &&
+			(openAIStreamJSONHasText(part.Get("text")) || openAIStreamJSONHasText(part.Get("transcript"))) {
+			return true
 		}
 	}
 	return false
@@ -2143,6 +2204,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	usage := &OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
 	var firstTokenMs *int
+	var firstVisibleTextMs *int
 	responseID := ""
 	ttftMode := s.openAITTFTMode(ctx)
 	clientDisconnected := false
@@ -2263,11 +2325,12 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
 		return &openaiStreamingResultPassthrough{
-			usage:            usage,
-			firstTokenMs:     firstTokenMs,
-			responseID:       responseID,
-			imageCount:       imageCounter.Count(),
-			imageOutputSizes: imageCounter.Sizes(),
+			usage:              usage,
+			firstTokenMs:       firstTokenMs,
+			firstVisibleTextMs: firstVisibleTextMs,
+			responseID:         responseID,
+			imageCount:         imageCounter.Count(),
+			imageOutputSizes:   imageCounter.Sizes(),
 		}
 	}
 
@@ -2434,6 +2497,10 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				line = "data: " + string(sanitizedData)
 			}
 			lineStartsClientOutput = forceFlushFailedEvent || openAIStreamDataStartsClientOutput(trimmedData, eventType)
+			if firstVisibleTextMs == nil && openAIStreamDataStartsVisibleText(trimmedData, eventType) {
+				ms := int(time.Since(startTime).Milliseconds())
+				firstVisibleTextMs = &ms
+			}
 			if lineStartsClientOutput && trimmedData != "[DONE]" && !openAIStreamEventTypeIsTerminal(eventType) {
 				semanticOutputSeen = true
 			}

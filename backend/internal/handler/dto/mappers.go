@@ -68,12 +68,18 @@ func UserFromServiceAdmin(u *service.User) *AdminUser {
 	if base == nil {
 		return nil
 	}
+	scope := u.ModerationPenaltyScope
+	if scope == "" {
+		scope = service.ModerationScopeUser
+	}
 	return &AdminUser{
-		User:                 *base,
-		Notes:                u.Notes,
-		LastUsedAt:           u.LastUsedAt,
-		GroupRates:           u.GroupRates,
-		RestrictPublicGroups: u.RestrictPublicGroups,
+		ModerationPenaltyScope:   scope,
+		ModerationKeyLockMinutes: u.ModerationKeyLockMinutes,
+		User:                     *base,
+		Notes:                    u.Notes,
+		LastUsedAt:               u.LastUsedAt,
+		GroupRates:               u.GroupRates,
+		RestrictPublicGroups:     u.RestrictPublicGroups,
 	}
 }
 
@@ -109,6 +115,9 @@ func APIKeyFromService(k *service.APIKey) *APIKey {
 		Window7dStart:      k.Window7dStart,
 		User:               UserFromServiceShallow(k.User),
 		Group:              GroupFromServiceShallow(k.Group),
+	}
+	if k.ModerationLockedAt != nil && (k.ModerationLockedUntil == nil || k.ModerationLockedUntil.After(time.Now())) {
+		out.ModerationLockedAt, out.ModerationLockedUntil = k.ModerationLockedAt, k.ModerationLockedUntil
 	}
 	if k.Window5hStart != nil && !service.IsWindowExpired(k.Window5hStart, service.RateLimitWindow5h) {
 		t := k.Window5hStart.Add(service.RateLimitWindow5h)
@@ -729,6 +738,7 @@ func usageLogFromServiceUser(l *service.UsageLog) UsageLog {
 		NativeCompactionV2:        l.NativeCompactionV2,
 		DurationMs:                l.DurationMs,
 		FirstTokenMs:              l.FirstTokenMs,
+		FirstVisibleTextMs:        l.FirstVisibleTextMs,
 		ImageCount:                l.ImageCount,
 		ImageSize:                 l.ImageSize,
 		ImageInputSize:            l.ImageInputSize,

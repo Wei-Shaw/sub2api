@@ -161,6 +161,10 @@ func (s *apiKeyRepoStubForGroupUpdate) GetKeyAndOwnerID(context.Context, int64) 
 func (s *apiKeyRepoStubForGroupUpdate) GetByKey(context.Context, string) (*APIKey, error) {
 	panic("unexpected")
 }
+func (s *apiKeyRepoStubForGroupUpdate) GetModerationState(ctx context.Context, id, userID int64) (APIKeyModerationState, error) {
+	return APIKeyModerationState{UserStatus: StatusActive}, nil
+}
+
 func (s *apiKeyRepoStubForGroupUpdate) GetByKeyForAuth(context.Context, string) (*APIKey, error) {
 	panic("unexpected")
 }

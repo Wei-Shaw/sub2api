@@ -77,10 +77,12 @@ type ChangePasswordRequest struct {
 
 // UpdateProfileRequest represents the update profile request payload
 type UpdateProfileRequest struct {
-	Username               *string  `json:"username"`
-	AvatarURL              *string  `json:"avatar_url"`
-	BalanceNotifyEnabled   *bool    `json:"balance_notify_enabled"`
-	BalanceNotifyThreshold *float64 `json:"balance_notify_threshold"`
+	AdminOnlyKeyLockMinutes  *int     `json:"moderation_key_lock_minutes"`
+	AdminOnlyModerationScope *string  `json:"moderation_penalty_scope"` // reject, never forwarded to the profile service
+	Username                 *string  `json:"username"`
+	AvatarURL                *string  `json:"avatar_url"`
+	BalanceNotifyEnabled     *bool    `json:"balance_notify_enabled"`
+	BalanceNotifyThreshold   *float64 `json:"balance_notify_threshold"`
 }
 
 type userProfileResponse struct {
@@ -173,6 +175,10 @@ func (h *UserHandler) UpdateProfile(c *gin.Context) {
 		return
 	}
 
+	if req.AdminOnlyModerationScope != nil || req.AdminOnlyKeyLockMinutes != nil {
+		response.Forbidden(c, "Only administrators can change the moderation penalty scope")
+		return
+	}
 	svcReq := service.UpdateProfileRequest{
 		Username:               req.Username,
 		AvatarURL:              req.AvatarURL,

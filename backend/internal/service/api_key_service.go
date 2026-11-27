@@ -25,16 +25,17 @@ import (
 )
 
 var (
-	ErrAPIKeyNotFound       = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
-	ErrGroupNotAllowed      = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
-	ErrAPIKeyExists         = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
-	ErrAPIKeyTooShort       = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
-	ErrAPIKeyInvalidChars   = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
-	ErrAPIKeyRateLimited    = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
-	ErrAPIKeyCreateLimited  = infraerrors.TooManyRequests("API_KEY_CREATE_RATE_LIMITED", "too many api keys created recently, please try again later")
-	ErrAPIKeyCountExceeded  = infraerrors.Forbidden("API_KEY_COUNT_EXCEEDED", "api key count limit reached, please delete unused keys first")
-	ErrAPIKeyAuthOverloaded = infraerrors.ServiceUnavailable("API_KEY_AUTH_OVERLOADED", "api key authentication is temporarily overloaded")
-	ErrInvalidIPPattern     = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
+	ErrAPIKeyModerationLocked = infraerrors.Forbidden("API_KEY_MODERATION_LOCKED", "API key is locked by risk control; contact an administrator")
+	ErrAPIKeyNotFound         = infraerrors.NotFound("API_KEY_NOT_FOUND", "api key not found")
+	ErrGroupNotAllowed        = infraerrors.Forbidden("GROUP_NOT_ALLOWED", "user is not allowed to bind this group")
+	ErrAPIKeyExists           = infraerrors.Conflict("API_KEY_EXISTS", "api key already exists")
+	ErrAPIKeyTooShort         = infraerrors.BadRequest("API_KEY_TOO_SHORT", "api key must be at least 16 characters")
+	ErrAPIKeyInvalidChars     = infraerrors.BadRequest("API_KEY_INVALID_CHARS", "api key can only contain letters, numbers, underscores, and hyphens")
+	ErrAPIKeyRateLimited      = infraerrors.TooManyRequests("API_KEY_RATE_LIMITED", "too many failed attempts, please try again later")
+	ErrAPIKeyCreateLimited    = infraerrors.TooManyRequests("API_KEY_CREATE_RATE_LIMITED", "too many api keys created recently, please try again later")
+	ErrAPIKeyCountExceeded    = infraerrors.Forbidden("API_KEY_COUNT_EXCEEDED", "api key count limit reached, please delete unused keys first")
+	ErrAPIKeyAuthOverloaded   = infraerrors.ServiceUnavailable("API_KEY_AUTH_OVERLOADED", "api key authentication is temporarily overloaded")
+	ErrInvalidIPPattern       = infraerrors.BadRequest("INVALID_IP_PATTERN", "invalid IP or CIDR pattern")
 	// ErrAPIKeyExpired        = infraerrors.Forbidden("API_KEY_EXPIRED", "api key has expired")
 	ErrAPIKeyExpired = infraerrors.Forbidden("API_KEY_EXPIRED", "api key 已过期")
 	// ErrAPIKeyQuotaExhausted = infraerrors.TooManyRequests("API_KEY_QUOTA_EXHAUSTED", "api key quota exhausted")
@@ -94,6 +95,7 @@ type APIKeyRepository interface {
 	GetByKey(ctx context.Context, key string) (*APIKey, error)
 	// GetByKeyForAuth 认证专用查询，返回最小字段集
 	GetByKeyForAuth(ctx context.Context, key string) (*APIKey, error)
+	GetModerationState(ctx context.Context, id, userID int64) (APIKeyModerationState, error)
 	// Update 只写 fields 中显式声明的列，其余列保持库中当前值。
 	Update(ctx context.Context, key *APIKey, fields APIKeyUpdateFields) error
 	Delete(ctx context.Context, id int64) error
@@ -734,6 +736,18 @@ func (s *APIKeyService) GetByID(ctx context.Context, id int64) (*APIKey, error) 
 	return apiKey, nil
 }
 
+// GetModerationState never authorizes from a cached lock or cached owner status.
+func (s *APIKeyService) GetModerationState(ctx context.Context, id, userID int64) (APIKeyModerationState, error) {
+	if s == nil || s.apiKeyRepo == nil {
+		return APIKeyModerationState{}, ErrAPIKeyAuthOverloaded
+	}
+	if err := s.acquireAuthLookup(ctx); err != nil {
+		return APIKeyModerationState{}, err
+	}
+	defer s.releaseAuthLookup()
+	return s.apiKeyRepo.GetModerationState(ctx, id, userID)
+}
+
 // GetByKey 根据Key字符串获取API Key（用于认证）
 func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, error) {
 	// 非 UTF-8 的 key 不可能存在（生成和自定义的 key 都是 ASCII），且 Postgres 会以
@@ -748,47 +762,65 @@ func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, erro
 			if err != nil {
 				return nil, fmt.Errorf("get api key: %w", err)
 			}
-			s.compileAPIKeyIPRules(apiKey)
-			return apiKey, nil
+			return s.recheckAuthSnapshot(ctx, apiKey, cacheKey)
 		}
 	}
 
+	var entry *APIKeyAuthCacheEntry
+	var err error
+	var shared bool
 	if s.authCfg.singleflight {
-		value, err, _ := s.authGroup.Do(cacheKey, func() (any, error) {
+		var value any
+		value, err, shared = s.authGroup.Do(cacheKey, func() (any, error) {
 			return s.loadAuthCacheEntry(ctx, key, cacheKey)
 		})
-		if err != nil {
-			return nil, err
-		}
-		entry, _ := value.(*APIKeyAuthCacheEntry)
-		if apiKey, used, err := s.applyAuthCacheEntry(key, entry); used {
-			if err != nil {
-				return nil, fmt.Errorf("get api key: %w", err)
-			}
-			s.compileAPIKeyIPRules(apiKey)
-			return apiKey, nil
-		}
+		entry, _ = value.(*APIKeyAuthCacheEntry)
 	} else {
-		entry, err := s.loadAuthCacheEntry(ctx, key, cacheKey)
-		if err != nil {
-			return nil, err
-		}
-		if apiKey, used, err := s.applyAuthCacheEntry(key, entry); used {
-			if err != nil {
-				return nil, fmt.Errorf("get api key: %w", err)
-			}
-			s.compileAPIKeyIPRules(apiKey)
-			return apiKey, nil
-		}
+		entry, err = s.loadAuthCacheEntry(ctx, key, cacheKey)
 	}
+	if err != nil {
+		return nil, err
+	}
+	apiKey, err := s.materializeFreshAuthEntry(key, entry)
+	if err != nil {
+		return nil, err
+	}
+	if shared {
+		// A joining request can start after the leader read the database.
+		return s.recheckAuthSnapshot(ctx, apiKey, cacheKey)
+	}
+	return apiKey, nil
+}
 
-	apiKey, err := s.lookupAPIKeyForAuth(ctx, key)
+// loadAuthCacheEntry returns a current-version snapshot or an explicit miss.
+func (s *APIKeyService) materializeFreshAuthEntry(key string, entry *APIKeyAuthCacheEntry) (*APIKey, error) {
+	apiKey, used, err := s.applyAuthCacheEntry(key, entry)
 	if err != nil {
 		return nil, fmt.Errorf("get api key: %w", err)
 	}
-	apiKey.Key = key
-	s.compileAPIKeyIPRules(apiKey)
+	if !used {
+		return nil, ErrAPIKeyNotFound
+	}
 	return apiKey, nil
+}
+
+func (s *APIKeyService) recheckAuthSnapshot(ctx context.Context, key *APIKey, cacheKey string) (*APIKey, error) {
+	state, err := s.GetModerationState(ctx, key.ID, key.UserID)
+	if err != nil {
+		return nil, err
+	}
+	key.ModerationLockedAt = state.LockedAt
+	key.User.Status = state.UserStatus
+	if state.LockedAt != nil || state.UserStatus != StatusActive || state.SameUnlockCycle(key) {
+		return key, nil
+	}
+	// An unlock may span changes to ordinary restrictions. Reload the full key,
+	// even when this instance missed both invalidations. Bypass older in-flight reads.
+	entry, err := s.loadAuthCacheEntry(ctx, key.Key, cacheKey)
+	if err != nil {
+		return nil, err
+	}
+	return s.materializeFreshAuthEntry(key.Key, entry)
 }
 
 // Update 更新API Key
@@ -806,6 +838,18 @@ func (s *APIKeyService) Update(ctx context.Context, id int64, userID int64, req 
 		return nil, ErrInsufficientPerms
 	}
 
+	if apiKey.ModerationLockedAt != nil && req.Status != nil && *req.Status == StatusActive {
+		if apiKey.ModerationLockedUntil == nil {
+			return nil, ErrAPIKeyModerationLocked
+		}
+		state, err := s.GetModerationState(ctx, id, userID)
+		if err != nil {
+			return nil, err
+		}
+		if state.LockedAt != nil {
+			return nil, ErrAPIKeyModerationLocked
+		}
+	}
 	// 验证 IP 白名单格式
 	if req.IPWhitelist != nil && len(*req.IPWhitelist) > 0 {
 		if invalid := ip.ValidateIPPatterns(*req.IPWhitelist); len(invalid) > 0 {

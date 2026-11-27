@@ -104,6 +104,7 @@ func TestUsageLogRepositoryCreateSyncRequestTypeAndLegacyFields(t *testing.T) {
 			log.NativeCompactionV2,
 			log.CacheCreation30mTokens,
 			log.CacheCreation12hTokens,
+			sqlmock.AnyArg(), // first_visible_text_ms
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(99), createdAt))
@@ -201,6 +202,7 @@ func TestUsageLogRepositoryCreate_PersistsServiceTier(t *testing.T) {
 			log.NativeCompactionV2,
 			log.CacheCreation30mTokens,
 			log.CacheCreation12hTokens,
+			sqlmock.AnyArg(), // first_visible_text_ms
 			createdAt,
 		).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(int64(100), createdAt))
@@ -282,8 +284,8 @@ func TestPrepareUsageLogInsert_PersistsNativeCompactionV2WithoutChangingRequestT
 	prepared := prepareUsageLogInsert(log)
 
 	require.Len(t, prepared.args, len(usageLogInsertArgTypes))
-	require.Equal(t, "boolean", usageLogInsertArgTypes[len(usageLogInsertArgTypes)-4])
-	require.Equal(t, true, prepared.args[len(prepared.args)-4])
+	require.Equal(t, "boolean", usageLogInsertArgTypes[len(usageLogInsertArgTypes)-5])
+	require.Equal(t, true, prepared.args[len(prepared.args)-5])
 	require.Equal(t, int16(service.RequestTypeStream), prepared.args[30])
 	require.Equal(t, service.RequestTypeStream, log.RequestType)
 	require.True(t, log.Stream)
@@ -963,9 +965,10 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			sql.NullFloat64{},
 			sql.NullString{}, // upstream_request_id
 			sql.NullString{},
-			false, // native_compaction_v2
-			0,     // cache_creation_30m_tokens
-			0,     // cache_creation_12h_tokens
+			false,                                  // native_compaction_v2
+			0,                                      // cache_creation_30m_tokens
+			0,                                      // cache_creation_12h_tokens
+			sql.NullInt64{Valid: true, Int64: 420}, // first_visible_text_ms
 			now,
 		}})
 		require.NoError(t, err)
@@ -979,6 +982,8 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 		require.NotNil(t, log.ImageSizeSource)
 		require.Equal(t, "output", *log.ImageSizeSource)
 		require.Equal(t, map[string]int{"4K": 2}, log.ImageSizeBreakdown)
+		require.NotNil(t, log.FirstVisibleTextMs)
+		require.Equal(t, 420, *log.FirstVisibleTextMs)
 	})
 
 	t.Run("request_type_ws_v2_overrides_legacy", func(t *testing.T) {
@@ -1048,6 +1053,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			false,             // native_compaction_v2
 			0,                 // cache_creation_30m_tokens
 			0,                 // cache_creation_12h_tokens
+			sql.NullInt64{},   // first_visible_text_ms
 			now,
 		}})
 		require.NoError(t, err)
@@ -1113,6 +1119,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			true,              // native_compaction_v2
 			0,                 // cache_creation_30m_tokens
 			0,                 // cache_creation_12h_tokens
+			sql.NullInt64{},   // first_visible_text_ms
 			now,
 		}})
 		require.NoError(t, err)
@@ -1179,6 +1186,7 @@ func TestScanUsageLogRequestTypeAndLegacyFallback(t *testing.T) {
 			false,             // native_compaction_v2
 			0,                 // cache_creation_30m_tokens
 			0,                 // cache_creation_12h_tokens
+			sql.NullInt64{},   // first_visible_text_ms
 			now,
 		}})
 		require.NoError(t, err)

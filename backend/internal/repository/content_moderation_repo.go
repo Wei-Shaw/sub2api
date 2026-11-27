@@ -4,9 +4,12 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -24,19 +27,38 @@ func (r *contentModerationRepository) CreateLog(ctx context.Context, log *servic
 	if log == nil {
 		return nil
 	}
+	ensureModerationEvent(log)
+	_, err := insertModerationLog(ctx, r.db, log)
+	return err
+}
+
+func ensureModerationEvent(log *service.ContentModerationLog) {
+	if log.EventID == "" {
+		log.EventID = uuid.NewString()
+	}
+	if log.OccurredAt.IsZero() {
+		log.OccurredAt = time.Now().UTC()
+	}
+}
+
+type moderationRowQuerier interface {
+	QueryRowContext(context.Context, string, ...any) *sql.Row
+}
+
+func insertModerationLog(ctx context.Context, db moderationRowQuerier, log *service.ContentModerationLog) (bool, error) {
 	categoryScores, err := json.Marshal(log.CategoryScores)
 	if err != nil {
-		return fmt.Errorf("marshal moderation category scores: %w", err)
+		return false, fmt.Errorf("marshal moderation category scores: %w", err)
 	}
 	thresholdSnapshot, err := json.Marshal(log.ThresholdSnapshot)
 	if err != nil {
-		return fmt.Errorf("marshal moderation thresholds: %w", err)
+		return false, fmt.Errorf("marshal moderation thresholds: %w", err)
 	}
 	var engineMeta any
 	if log.EngineMeta != nil {
 		raw, err := json.Marshal(log.EngineMeta)
 		if err != nil {
-			return fmt.Errorf("marshal moderation engine metadata: %w", err)
+			return false, fmt.Errorf("marshal moderation engine metadata: %w", err)
 		}
 		engineMeta = string(raw)
 	}
@@ -56,27 +78,30 @@ func (r *contentModerationRepository) CreateLog(ctx context.Context, log *servic
 	if log.UpstreamLatencyMS != nil {
 		latency = *log.UpstreamLatencyMS
 	}
-	err = r.db.QueryRowContext(ctx, `
+	err = db.QueryRowContext(ctx, `
 INSERT INTO content_moderation_logs (
     request_id, user_id, user_email, api_key_id, api_key_name, group_id, group_name,
     endpoint, provider, model, mode, action, flagged, highest_category, highest_score,
     category_scores, threshold_snapshot, input_excerpt, upstream_latency_ms, error,
-    violation_count, auto_banned, email_sent, queue_delay_ms, matched_keyword, engine_meta
+    violation_count, auto_banned, email_sent, queue_delay_ms, matched_keyword, engine_meta, event_id, occurred_at, penalty_scope, created_at
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7,
     $8, $9, $10, $11, $12, $13, $14, $15,
     $16::jsonb, $17::jsonb, $18, $19, $20,
-    $21, $22, $23, $24, $25, $26::jsonb
-) RETURNING id, created_at`,
+    $21, $22, $23, $24, $25, $26::jsonb, $27, $28, NULLIF($29,''), clock_timestamp()
+) ON CONFLICT (event_id) WHERE event_id IS NOT NULL DO NOTHING RETURNING id, created_at`,
 		log.RequestID, userID, log.UserEmail, apiKeyID, log.APIKeyName, groupID, log.GroupName,
 		log.Endpoint, log.Provider, log.Model, log.Mode, log.Action, log.Flagged, log.HighestCategory, log.HighestScore,
 		string(categoryScores), string(thresholdSnapshot), log.InputExcerpt, latency, log.Error,
-		log.ViolationCount, log.AutoBanned, log.EmailSent, nullableIntPtr(log.QueueDelayMS), log.MatchedKeyword, engineMeta,
+		log.ViolationCount, log.AutoBanned, log.EmailSent, nullableIntPtr(log.QueueDelayMS), log.MatchedKeyword, engineMeta, log.EventID, log.OccurredAt, log.PenaltyScope,
 	).Scan(&log.ID, &log.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	} // already committed
 	if err != nil {
-		return fmt.Errorf("insert content moderation log: %w", err)
+		return false, fmt.Errorf("insert content moderation log: %w", err)
 	}
-	return nil
+	return true, nil
 }
 
 func (r *contentModerationRepository) ListLogs(ctx context.Context, filter service.ContentModerationLogFilter) ([]service.ContentModerationLog, *pagination.PaginationResult, error) {
@@ -105,9 +130,12 @@ SELECT
     l.id, l.request_id, l.user_id, l.user_email, l.api_key_id, l.api_key_name, l.group_id, l.group_name,
     l.endpoint, l.provider, l.model, l.mode, l.action, l.flagged, l.highest_category, l.highest_score,
     l.category_scores, l.threshold_snapshot, l.input_excerpt, l.upstream_latency_ms, l.error,
-    l.violation_count, l.auto_banned, l.email_sent, COALESCE(u.status, ''), l.queue_delay_ms, l.matched_keyword, l.created_at, l.engine_meta
+    l.violation_count, l.auto_banned, l.email_sent, COALESCE(u.status, ''), l.queue_delay_ms, l.matched_keyword, l.created_at, l.engine_meta,
+    COALESCE(l.occurred_at, l.created_at), COALESCE(l.penalty_scope, CASE WHEN l.event_id IS NULL AND l.violation_count > 0 THEN 'user' ELSE '' END),
+    COALESCE(l.penalty_action, CASE WHEN l.auto_banned THEN 'user_disabled' ELSE '' END), (`+effectiveKeyLockSQL+`) IS NOT NULL, l.penalty_locked_until
 FROM content_moderation_logs l
-LEFT JOIN users u ON u.id = l.user_id `+whereSQL+`
+LEFT JOIN users u ON u.id = l.user_id
+LEFT JOIN api_keys k ON k.id = l.api_key_id AND k.user_id = l.user_id AND k.deleted_at IS NULL `+whereSQL+`
 ORDER BY l.created_at DESC, l.id DESC
 LIMIT $`+fmt.Sprint(len(queryArgs)-1)+` OFFSET $`+fmt.Sprint(len(queryArgs)),
 		queryArgs...,
@@ -151,7 +179,7 @@ LIMIT $`+fmt.Sprint(len(queryArgs)-1)+` OFFSET $`+fmt.Sprint(len(queryArgs)),
 			&queueDelay,
 			&item.MatchedKeyword,
 			&item.CreatedAt,
-			&engineRaw,
+			&engineRaw, &item.OccurredAt, &item.PenaltyScope, &item.PenaltyAction, &item.APIKeyLocked, &item.PenaltyLockedUntil,
 		); err != nil {
 			return nil, nil, fmt.Errorf("scan content moderation log: %w", err)
 		}
@@ -190,37 +218,6 @@ LIMIT $`+fmt.Sprint(len(queryArgs)-1)+` OFFSET $`+fmt.Sprint(len(queryArgs)),
 		return nil, nil, fmt.Errorf("iterate content moderation logs: %w", err)
 	}
 	return items, paginationResultFromTotal(total, params), nil
-}
-
-func (r *contentModerationRepository) CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time, excludeCyberPolicy bool) (int, error) {
-	if userID <= 0 {
-		return 0, nil
-	}
-	// SQL 中的 'cyber_policy' 字面量须与 service.ContentModerationActionCyberPolicy 保持一致。
-	// 'cyber_log_only' matches service.ContentModerationModeCyberLogOnly; these
-	// events remain evidence but never become penalties after allowlist removal.
-	var count int
-	err := r.db.QueryRowContext(ctx, `
-WITH last_auto_ban AS (
-    SELECT MAX(created_at) AS at
-    FROM content_moderation_logs
-    WHERE user_id = $1 AND auto_banned = TRUE
-)
-SELECT COUNT(*)
-FROM content_moderation_logs
-WHERE user_id = $1
-  AND flagged = TRUE
-  AND action <> 'hash_block'
-  AND mode <> 'cyber_log_only'
-  AND mode <> 'risk_control_log_only'
-  AND ($3::bool IS FALSE OR action <> 'cyber_policy')
-  AND created_at >= $2
-  AND created_at > COALESCE((SELECT at FROM last_auto_ban), '-infinity'::timestamptz)
-`, userID, since, excludeCyberPolicy).Scan(&count)
-	if err != nil {
-		return 0, fmt.Errorf("count user content moderation flagged logs: %w", err)
-	}
-	return count, nil
 }
 
 func (r *contentModerationRepository) UpdateLogEmailSent(ctx context.Context, id int64, sent bool) error {

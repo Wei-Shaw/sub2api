@@ -35,6 +35,12 @@ const (
 	FieldConcurrency = "concurrency"
 	// FieldStatus holds the string denoting the status field in the database.
 	FieldStatus = "status"
+	// FieldModerationPenaltyScope holds the string denoting the moderation_penalty_scope field in the database.
+	FieldModerationPenaltyScope = "moderation_penalty_scope"
+	// FieldModerationKeyLockMinutes holds the string denoting the moderation_key_lock_minutes field in the database.
+	FieldModerationKeyLockMinutes = "moderation_key_lock_minutes"
+	// FieldModerationScopeChangedAt holds the string denoting the moderation_scope_changed_at field in the database.
+	FieldModerationScopeChangedAt = "moderation_scope_changed_at"
 	// FieldUsername holds the string denoting the username field in the database.
 	FieldUsername = "username"
 	// FieldNotes holds the string denoting the notes field in the database.
@@ -206,6 +212,9 @@ var Columns = []string{
 	FieldFrozenBalance,
 	FieldConcurrency,
 	FieldStatus,
+	FieldModerationPenaltyScope,
+	FieldModerationKeyLockMinutes,
+	FieldModerationScopeChangedAt,
 	FieldUsername,
 	FieldNotes,
 	FieldTotpSecretEncrypted,
@@ -271,6 +280,14 @@ var (
 	DefaultStatus string
 	// StatusValidator is a validator for the "status" field. It is called by the builders before save.
 	StatusValidator func(string) error
+	// DefaultModerationPenaltyScope holds the default value on creation for the "moderation_penalty_scope" field.
+	DefaultModerationPenaltyScope string
+	// ModerationPenaltyScopeValidator is a validator for the "moderation_penalty_scope" field. It is called by the builders before save.
+	ModerationPenaltyScopeValidator func(string) error
+	// DefaultModerationKeyLockMinutes holds the default value on creation for the "moderation_key_lock_minutes" field.
+	DefaultModerationKeyLockMinutes int
+	// ModerationKeyLockMinutesValidator is a validator for the "moderation_key_lock_minutes" field. It is called by the builders before save.
+	ModerationKeyLockMinutesValidator func(int) error
 	// DefaultUsername holds the default value on creation for the "username" field.
 	DefaultUsername string
 	// UsernameValidator is a validator for the "username" field. It is called by the builders before save.
@@ -353,6 +370,21 @@ func ByConcurrency(opts ...sql.OrderTermOption) OrderOption {
 // ByStatus orders the results by the status field.
 func ByStatus(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldStatus, opts...).ToFunc()
+}
+
+// ByModerationPenaltyScope orders the results by the moderation_penalty_scope field.
+func ByModerationPenaltyScope(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldModerationPenaltyScope, opts...).ToFunc()
+}
+
+// ByModerationKeyLockMinutes orders the results by the moderation_key_lock_minutes field.
+func ByModerationKeyLockMinutes(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldModerationKeyLockMinutes, opts...).ToFunc()
+}
+
+// ByModerationScopeChangedAt orders the results by the moderation_scope_changed_at field.
+func ByModerationScopeChangedAt(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldModerationScopeChangedAt, opts...).ToFunc()
 }
 
 // ByUsername orders the results by the username field.

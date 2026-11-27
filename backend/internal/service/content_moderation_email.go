@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"html"
 	"strings"
@@ -152,4 +153,35 @@ func buildCyberPolicyNoticeEmailBody(siteName string, log *ContentModerationLog)
 		html.EscapeString(defaultContentModerationString(log.Error, "-")),
 		html.EscapeString(siteName),
 	)
+}
+
+func moderationKeyReleaseText(until *time.Time) (en, zh string) {
+	if until == nil {
+		return "Contact an administrator to unlock it.", "如需解锁，请联系管理员。"
+	}
+	deadline := until.UTC().Format("2006-01-02 15:04:05 MST")
+	return "The risk-control lock ends automatically at " + deadline + ".", "风控锁将于 " + deadline + " 自动解除。"
+}
+
+// Only the database ID is used in notices, never any portion of the credential.
+func (s *ContentModerationService) sendModerationKeyEmail(ctx context.Context, cfg *ContentModerationConfig, log *ContentModerationLog, locked bool) error {
+	if log.APIKeyID == nil {
+		return fmt.Errorf("missing API key ID for moderation notice")
+	}
+	event, subject := NotificationEmailEventModerationKeyNotice, "API Key 风控提醒 / API key risk notice"
+	body := fmt.Sprintf("<p>本周期 API Key #%d 已累计 %d / %d 次命中。其他 Key 单独计数。</p>", *log.APIKeyID, log.ViolationCount, cfg.BanThreshold)
+	vars := contentModerationEmailVariables(log, cfg)
+	vars["api_key_id"] = fmt.Sprint(*log.APIKeyID)
+	if locked {
+		vars["lock_release_en"], vars["lock_release_zh"] = moderationKeyReleaseText(log.PenaltyLockedUntil)
+		event, subject = NotificationEmailEventModerationKeyLocked, "API Key 已锁定 / API key locked"
+		body = fmt.Sprintf("<p>风控已锁定 API Key #%d。您的账户和其他 Key 可继续使用。%s</p>", *log.APIKeyID, vars["lock_release_zh"])
+	}
+	if templates := s.emailService.notificationEmailService; templates != nil {
+		err := templates.Send(ctx, NotificationEmailSendInput{Event: event, RecipientEmail: log.UserEmail, RecipientName: emailRecipientName(log.UserEmail), UserID: contentModerationEmailUserID(log), SourceType: "content_moderation", SourceID: contentModerationEmailSourceID(log), Variables: vars})
+		if err == nil || !shouldFallbackNotificationEmail(err) {
+			return err
+		}
+	}
+	return s.emailService.SendEmail(ctx, log.UserEmail, fmt.Sprintf("[%s] %s", sanitizeEmailHeader(s.siteName(ctx)), subject), body)
 }

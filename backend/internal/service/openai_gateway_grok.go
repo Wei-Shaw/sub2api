@@ -209,6 +209,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 
 	var usage *OpenAIUsage
 	var firstTokenMs *int
+	var firstVisibleTextMs *int
 	responseID := ""
 	searchCount := 0
 	imageCount := 0
@@ -228,6 +229,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		}
 		usage = streamResult.usage
 		firstTokenMs = streamResult.firstTokenMs
+		firstVisibleTextMs = streamResult.firstVisibleTextMs
 		responseID = strings.TrimSpace(streamResult.responseID)
 		searchCount = streamResult.searchCount
 		imageCount = streamResult.imageCount
@@ -263,6 +265,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		ResponseHeaders:               resp.Header.Clone(),
 		Duration:                      time.Since(startTime),
 		FirstTokenMs:                  firstTokenMs,
+		FirstVisibleTextMs:            firstVisibleTextMs,
 	}
 	// Propagate search/image counters from the shared Responses handler — without
 	// this, stream/JSON counting runs but search_price_per_1k / image bills never apply.

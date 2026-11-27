@@ -2212,6 +2212,30 @@ func (p *openAIWSTurnPricing) currentOr(fallback time.Time) time.Time {
 	return fallback
 }
 
+// An open connection is not an authorization lease. Verify the same authenticated
+// key after waiting for its first frame and before every subsequent request.
+func checkWSModerationState(ctx context.Context, keys *service.APIKeyService, key *service.APIKey) (coderws.StatusCode, string, error) {
+	state, err := keys.GetModerationState(ctx, key.ID, key.UserID)
+	if errors.Is(err, service.ErrAPIKeyNotFound) {
+		return coderws.StatusPolicyViolation, "API_KEY_DISABLED", err
+	}
+	if err != nil {
+		return coderws.StatusInternalError, "cannot verify API key", err
+	}
+	if state.LockedAt != nil {
+		return coderws.StatusPolicyViolation, "API_KEY_DISABLED", nil
+	}
+	if state.UserStatus != service.StatusActive {
+		return coderws.StatusPolicyViolation, "USER_INACTIVE", nil
+	}
+	// A connection idle throughout a lock and unlock needs a new handshake so
+	// IP, status, expiry and billing restrictions are evaluated together again.
+	if !state.SameUnlockCycle(key) {
+		return coderws.StatusPolicyViolation, "API key authorization changed; reconnect", nil
+	}
+	return 0, "", nil
+}
+
 // openAIWSTurnAPIKeyLookup 是后续 turn 重取 API Key 认证快照的入口
 // （APIKeyService.GetByKey：经 L1/L2 认证缓存，未命中才回源）。
 type openAIWSTurnAPIKeyLookup interface {
@@ -2590,6 +2614,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 			zap.Duration("read_timeout", firstMessageTimeout),
 		)
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "missing first response.create message")
+		return
+	}
+	if code, reason, err := checkWSModerationState(ctx, h.apiKeyService, apiKey); code != 0 {
+		reqLog.Warn("openai.websocket_first_request_auth_rejected", zap.String("reason", reason), zap.Error(err))
+		closeOpenAIClientWS(wsConn, code, reason)
 		return
 	}
 	firstTurnStartedAt := time.Now()
@@ -3082,6 +3111,9 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 				}
 				if turn == 1 {
 					return nil
+				}
+				if code, reason, err := checkWSModerationState(ctx, h.apiKeyService, apiKey); code != 0 {
+					return service.NewOpenAIWSClientCloseError(code, reason, err)
 				}
 				if !gjson.ValidBytes(payload) {
 					return service.NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket request payload", errors.New("invalid json"))
@@ -4568,6 +4600,7 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 		ClientIP:        clientIPStr,
 		CreatedAt:       time.Now(),
 	}
+	moderationEventID := uuid.NewString()
 	cyberLogOnly := h.cyberPolicyLogOnly(c, apiKey)
 	if gwSvc != nil && apiKey != nil && !cyberLogOnly {
 		block := buildCyberSessionBlock(apiKey.ID, c, cyberBlockBody)
@@ -4582,6 +4615,7 @@ func (h *OpenAIGatewayHandler) recordCyberPolicyIfMarked(c *gin.Context, apiKey 
 		defer cancel()
 		if cmSvc != nil {
 			cmSvc.RecordCyberPolicyEvent(ctx, service.CyberPolicyRecordInput{
+				EventID: moderationEventID, OccurredAt: opsMeta.CreatedAt,
 				LogOnly:         cyberLogOnly,
 				RequestID:       requestID,
 				UserID:          userID,

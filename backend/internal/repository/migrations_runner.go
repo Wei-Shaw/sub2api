@@ -66,6 +66,7 @@ const usageLogsUpstreamRequestIDIndexMigration = "233_add_usage_log_upstream_req
 const usageLogsUpstreamRequestIDIndex = "idx_usage_logs_upstream_request_id"
 const usageLogsAPIKeyCostIndexMigration = "249_add_usage_logs_api_key_cost_index_notx.sql"
 const usageLogsAPIKeyCostIndex = "idx_usage_logs_api_key_created_cost"
+const moderationPenaltyIndexesMigration = "254_moderation_penalty_indexes_notx.sql"
 
 type migrationChecksumCompatibilityRule struct {
 	fileChecksum       string
@@ -313,6 +314,13 @@ func prepareNonTransactionalMigration(ctx context.Context, db migrationConnectio
 		return dropInvalidIndexIfPresent(ctx, db, usageLogsUpstreamRequestIDIndex)
 	case usageLogsAPIKeyCostIndexMigration:
 		return dropInvalidIndexIfPresent(ctx, db, usageLogsAPIKeyCostIndex)
+	case moderationPenaltyIndexesMigration:
+		for _, indexName := range []string{"idx_moderation_event_id", "idx_moderation_key_hits", "idx_moderation_user_hits"} {
+			if err := dropInvalidIndexIfPresent(ctx, db, indexName); err != nil {
+				return err
+			}
+		}
+		return nil
 	default:
 		return nil
 	}

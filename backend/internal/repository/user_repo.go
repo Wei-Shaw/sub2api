@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +21,7 @@ import (
 	dbuser "github.com/Wei-Shaw/sub2api/ent/user"
 	"github.com/Wei-Shaw/sub2api/ent/userallowedgroup"
 	"github.com/Wei-Shaw/sub2api/ent/usersubscription"
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
@@ -286,13 +288,51 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User, field
 		}
 	}
 
-	existing, err := clientFromContext(txCtx, txClient).User.Get(txCtx, userIn.ID)
+	q := clientFromContext(txCtx, txClient).User.Query().Where(dbuser.IDEQ(userIn.ID))
+	if fields.ModerationPenaltyScope || fields.ModerationKeyLockMinutes {
+		q = q.ForUpdate()
+	}
+	existing, err := q.Only(txCtx)
 	if err != nil {
 		return translatePersistenceError(err, service.ErrUserNotFound, nil)
 	}
 	oldEmail := existing.Email
 
 	updateOp := txClient.User.UpdateOneID(userIn.ID)
+	if fields.ModerationPenaltyScope || fields.ModerationKeyLockMinutes {
+		if existing.Role == service.RoleAdmin || (fields.Role && userIn.Role == service.RoleAdmin) {
+			return infraerrors.BadRequest("ADMIN_MODERATION_SCOPE_FORBIDDEN", "only regular users have a configurable moderation penalty scope")
+		}
+		scope := existing.ModerationPenaltyScope
+		if fields.ModerationPenaltyScope {
+			scope = userIn.ModerationPenaltyScope
+		}
+		// Resolve partial updates under the same row lock as penalties and competing policy edits.
+		minutes := existing.ModerationKeyLockMinutes
+		if fields.ModerationKeyLockMinutes {
+			minutes = userIn.ModerationKeyLockMinutes
+			if scope != service.ModerationScopeAPIKey && minutes != 0 {
+				return infraerrors.BadRequest("INVALID_MODERATION_LOCK_SCOPE", "a timed lock requires per-key moderation")
+			}
+		}
+		if scope != service.ModerationScopeAPIKey {
+			minutes = 0
+		}
+		if minutes != existing.ModerationKeyLockMinutes {
+			updateOp = updateOp.SetModerationKeyLockMinutes(minutes)
+			if _, err := txClient.ExecContext(txCtx, `INSERT INTO moderation_admin_actions(actor_id,user_id,action,old_value,new_value)
+				VALUES ($1,$2,'change_lock_minutes',$3,$4)`, fields.ModerationScopeActorID, userIn.ID, strconv.Itoa(existing.ModerationKeyLockMinutes), strconv.Itoa(minutes)); err != nil {
+				return err
+			}
+		}
+		if existing.ModerationPenaltyScope != scope {
+			updateOp = updateOp.SetModerationPenaltyScope(userIn.ModerationPenaltyScope).SetModerationScopeChangedAt(time.Now().UTC())
+			if _, err := txClient.ExecContext(txCtx, `INSERT INTO moderation_admin_actions(actor_id,user_id,action,old_value,new_value)
+				VALUES ($1,$2,'change_scope',$3,$4)`, fields.ModerationScopeActorID, userIn.ID, existing.ModerationPenaltyScope, userIn.ModerationPenaltyScope); err != nil {
+				return err
+			}
+		}
+	}
 	if fields.Email {
 		updateOp = updateOp.SetEmail(userIn.Email)
 	}
@@ -376,6 +416,8 @@ func (r *userRepository) Update(ctx context.Context, userIn *service.User, field
 	}
 
 	userIn.UpdatedAt = updated.UpdatedAt
+	userIn.ModerationPenaltyScope = updated.ModerationPenaltyScope
+	userIn.ModerationKeyLockMinutes = updated.ModerationKeyLockMinutes
 	return nil
 }
 

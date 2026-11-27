@@ -127,8 +127,17 @@ func (r *apiKeyRepository) GetByKey(ctx context.Context, key string) (*service.A
 	return apiKeyEntityToService(m), nil
 }
 
-func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*service.APIKey, error) {
-	m, err := r.activeQuery().
+func (r *apiKeyRepository) GetModerationState(ctx context.Context, id, userID int64) (service.APIKeyModerationState, error) {
+	var state service.APIKeyModerationState
+	const query = `SELECT ` + effectiveKeyLockSQL + `, ` + keyUnlockBoundarySQL + `, u.status FROM api_keys k
+		JOIN users u ON u.id=k.user_id AND u.deleted_at IS NULL
+		WHERE k.id=$1 AND k.user_id=$2 AND k.deleted_at IS NULL`
+	err := scanSingleRow(ctx, r.sql, query, []any{id, userID}, &state.LockedAt, &state.LastUnlockedAt, &state.UserStatus)
+	return state, translatePersistenceError(err, service.ErrAPIKeyNotFound, nil)
+}
+
+func (r *apiKeyRepository) authKeyQuery(key string) *dbent.APIKeyQuery {
+	return r.activeQuery().
 		Where(apikey.KeyEQ(key)).
 		Select(
 			apikey.FieldID,
@@ -136,6 +145,9 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 			apikey.FieldGroupID,
 			apikey.FieldName,
 			apikey.FieldStatus,
+			apikey.FieldModerationLockedAt,
+			apikey.FieldModerationLockedUntil,
+			apikey.FieldModerationLastUnlockedAt,
 			apikey.FieldIPWhitelist,
 			apikey.FieldIPBlacklist,
 			apikey.FieldQuota,
@@ -235,8 +247,21 @@ func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*se
 				// OpenAI 选号从 ctx 分组读取隐私门，漏选会放行未设置隐私的账号。
 				group.FieldRequirePrivacySet,
 			)
-		}).
-		Only(ctx)
+		})
+}
+
+func (r *apiKeyRepository) GetByKeyForAuth(ctx context.Context, key string) (*service.APIKey, error) {
+	m, err := r.authKeyQuery(key).Only(ctx)
+	if err == nil && m.ModerationLockedUntil != nil {
+		// Materialize a due unlock before reading ordinary key restrictions. The condition is
+		// rechecked under PostgreSQL's row lock if another gateway or an admin acts concurrently.
+		_, err = r.sql.ExecContext(ctx, `UPDATE api_keys SET moderation_last_unlocked_at=moderation_locked_until,
+			moderation_locked_at=NULL, moderation_locked_until=NULL, updated_at=clock_timestamp()
+			WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL AND moderation_locked_until <= statement_timestamp()`, m.ID, m.UserID)
+		if err == nil {
+			m, err = r.authKeyQuery(key).Only(ctx)
+		}
+	}
 	if err != nil {
 		if dbent.IsNotFound(err) {
 			return nil, service.ErrAPIKeyNotFound
@@ -348,12 +373,23 @@ func (r *apiKeyRepository) Update(ctx context.Context, key *service.APIKey, fiel
 	return nil
 }
 
+// Use the statement clock in PostgreSQL so a transaction opened before expiry can still delete a due key.
+func keyCanBeDeletedSQL(dialectName string) string {
+	now := "CURRENT_TIMESTAMP"
+	if dialectName == dialect.Postgres {
+		now = "statement_timestamp()"
+	}
+	return "(moderation_locked_at IS NULL OR moderation_locked_until <= " + now + ")"
+}
+
 func (r *apiKeyRepository) Delete(ctx context.Context, id int64) error {
 	// 存在唯一键约束 生成tombstone key 用来释放原key，长度远小于 128，满足 schema 限制
 	tombstoneKey := fmt.Sprintf("__deleted__%d__%d", id, time.Now().UnixNano())
 	// 显式软删除：避免依赖 Hook 行为，确保 deleted_at 一定被设置。
 	affected, err := r.client.APIKey.Update().
-		Where(apikey.IDEQ(id), apikey.DeletedAtIsNil()).
+		Where(apikey.IDEQ(id), apikey.DeletedAtIsNil(), func(s *entsql.Selector) {
+			s.Where(entsql.ExprP(keyCanBeDeletedSQL(s.Dialect())))
+		}).
 		SetKey(tombstoneKey).
 		SetDeletedAt(time.Now()).
 		Save(ctx)
@@ -364,16 +400,7 @@ func (r *apiKeyRepository) Delete(ctx context.Context, id int64) error {
 		return err
 	}
 	if affected == 0 {
-		exists, err := r.client.APIKey.Query().
-			Where(apikey.IDEQ(id)).
-			Exist(mixins.SkipSoftDelete(ctx))
-		if err != nil {
-			return err
-		}
-		if exists {
-			return nil
-		}
-		return service.ErrAPIKeyNotFound
+		return moderationDeleteMiss(ctx, r.client, id)
 	}
 	return nil
 }
@@ -411,8 +438,8 @@ func (r *apiKeyRepository) DeleteWithAudit(ctx context.Context, id int64) error 
 func (r *apiKeyRepository) deleteWithTombstone(ctx context.Context, exec *dbent.Client, id int64, tombstoneKey string) error {
 	res, err := exec.ExecContext(ctx, `
 		UPDATE api_keys
-		SET key = $1, deleted_at = NOW(), updated_at = NOW()
-		WHERE id = $2 AND deleted_at IS NULL`, tombstoneKey, id)
+		SET key = $1, deleted_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $2 AND deleted_at IS NULL AND `+keyCanBeDeletedSQL(exec.Driver().Dialect()), tombstoneKey, id)
 	if err != nil {
 		return err
 	}
@@ -422,18 +449,20 @@ func (r *apiKeyRepository) deleteWithTombstone(ctx context.Context, exec *dbent.
 	}
 	if affected == 0 {
 		// 并发/重复删除:记录已存在(已软删)则幂等返回 nil(defer 回滚空事务),否则 NotFound。
-		exists, existErr := r.client.APIKey.Query().
-			Where(apikey.IDEQ(id)).
-			Exist(mixins.SkipSoftDelete(ctx))
-		if existErr != nil {
-			return existErr
-		}
-		if exists {
-			return nil
-		}
-		return service.ErrAPIKeyNotFound
+		return moderationDeleteMiss(ctx, exec, id)
 	}
 	return nil
+}
+
+func moderationDeleteMiss(ctx context.Context, client *dbent.Client, id int64) error {
+	k, err := client.APIKey.Query().Where(apikey.IDEQ(id)).Select(apikey.FieldDeletedAt, apikey.FieldModerationLockedAt).Only(mixins.SkipSoftDelete(ctx))
+	if err != nil {
+		return translatePersistenceError(err, service.ErrAPIKeyNotFound, nil)
+	}
+	if k.DeletedAt != nil {
+		return nil
+	} // idempotent repeated deletion
+	return service.ErrAPIKeyModerationLocked
 }
 
 func (r *apiKeyRepository) apiKeyListByUserIDQuery(userID int64, filters service.APIKeyListFilters) *dbent.APIKeyQuery {
@@ -888,29 +917,32 @@ func apiKeyEntityToService(m *dbent.APIKey) *service.APIKey {
 		return nil
 	}
 	out := &service.APIKey{
-		ID:            m.ID,
-		UserID:        m.UserID,
-		Key:           m.Key,
-		Name:          m.Name,
-		Status:        m.Status,
-		IPWhitelist:   m.IPWhitelist,
-		IPBlacklist:   m.IPBlacklist,
-		LastUsedAt:    m.LastUsedAt,
-		CreatedAt:     m.CreatedAt,
-		UpdatedAt:     m.UpdatedAt,
-		GroupID:       m.GroupID,
-		Quota:         m.Quota,
-		QuotaUsed:     m.QuotaUsed,
-		ExpiresAt:     m.ExpiresAt,
-		RateLimit5h:   m.RateLimit5h,
-		RateLimit1d:   m.RateLimit1d,
-		RateLimit7d:   m.RateLimit7d,
-		Usage5h:       m.Usage5h,
-		Usage1d:       m.Usage1d,
-		Usage7d:       m.Usage7d,
-		Window5hStart: m.Window5hStart,
-		Window1dStart: m.Window1dStart,
-		Window7dStart: m.Window7dStart,
+		ID:                       m.ID,
+		UserID:                   m.UserID,
+		Key:                      m.Key,
+		Name:                     m.Name,
+		Status:                   m.Status,
+		ModerationLockedAt:       m.ModerationLockedAt,
+		ModerationLockedUntil:    m.ModerationLockedUntil,
+		ModerationLastUnlockedAt: m.ModerationLastUnlockedAt,
+		IPWhitelist:              m.IPWhitelist,
+		IPBlacklist:              m.IPBlacklist,
+		LastUsedAt:               m.LastUsedAt,
+		CreatedAt:                m.CreatedAt,
+		UpdatedAt:                m.UpdatedAt,
+		GroupID:                  m.GroupID,
+		Quota:                    m.Quota,
+		QuotaUsed:                m.QuotaUsed,
+		ExpiresAt:                m.ExpiresAt,
+		RateLimit5h:              m.RateLimit5h,
+		RateLimit1d:              m.RateLimit1d,
+		RateLimit7d:              m.RateLimit7d,
+		Usage5h:                  m.Usage5h,
+		Usage1d:                  m.Usage1d,
+		Usage7d:                  m.Usage7d,
+		Window5hStart:            m.Window5hStart,
+		Window1dStart:            m.Window1dStart,
+		Window7dStart:            m.Window7dStart,
 	}
 	if m.Edges.User != nil {
 		out.User = userEntityToService(m.Edges.User)
@@ -944,6 +976,8 @@ func userEntityToService(u *dbent.User) *service.User {
 		FrozenBalance:              u.FrozenBalance,
 		Concurrency:                u.Concurrency,
 		Status:                     u.Status,
+		ModerationPenaltyScope:     u.ModerationPenaltyScope,
+		ModerationKeyLockMinutes:   u.ModerationKeyLockMinutes,
 		SignupSource:               u.SignupSource,
 		LastLoginAt:                u.LastLoginAt,
 		LastActiveAt:               u.LastActiveAt,

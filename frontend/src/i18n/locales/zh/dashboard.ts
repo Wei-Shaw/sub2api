@@ -66,6 +66,9 @@ export default {
 
   // API Keys
   keys: {
+    moderationLocked: '风控锁定',
+    moderationLockedUntil: '风控锁将于 {time} 自动解除。',
+    moderationLockedHint: '只有管理员能解除此 Key 的风控锁。',
     title: 'API 密钥',
     description: '管理您的 API 密钥和访问令牌',
     searchPlaceholder: '搜索名称或Key...',
@@ -400,6 +403,7 @@ export default {
     duration: '耗时',
     latency: '延迟',
     latencyFirstToken: '首字',
+    latencyFirstVisibleText: '首个可见文字',
     latencyDuration: '总耗时',
     outputTps: '输出 TPS',
     outputTpsHint: '输出 Token ÷ 总耗时（包含首字等待），单位 tok/s。输出 Token 可能包含推理 Token。',

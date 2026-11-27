@@ -1352,8 +1352,11 @@ func (r *contentModerationHandlerTestRepo) ListLogs(ctx context.Context, filter 
 	return nil, nil, nil
 }
 
-func (r *contentModerationHandlerTestRepo) CountFlaggedByUserSince(ctx context.Context, userID int64, since time.Time, excludeCyberPolicy bool) (int, error) {
-	return 0, nil
+func (r *contentModerationHandlerTestRepo) RecordHit(ctx context.Context, log *service.ContentModerationLog, rules service.ModerationPenaltyRules) (service.ModerationWriteResult, error) {
+	return service.ModerationWriteResult{Inserted: true}, r.CreateLog(ctx, log)
+}
+func (r *contentModerationHandlerTestRepo) UnlockModerationKey(context.Context, int64, int64, int64) (string, error) {
+	panic("unexpected unlock")
 }
 
 func (r *contentModerationHandlerTestRepo) CleanupExpiredLogs(ctx context.Context, hitBefore time.Time, nonHitBefore time.Time) (*service.ContentModerationCleanupResult, error) {
@@ -1418,7 +1421,7 @@ func TestOpenAIResponsesWebSocket_ContentModerationBlocksFirstFrame(t *testing.T
 	h := &OpenAIGatewayHandler{
 		gatewayService:           &service.OpenAIGatewayService{},
 		billingCacheService:      &service.BillingCacheService{},
-		apiKeyService:            &service.APIKeyService{},
+		apiKeyService:            newWSFixtureKeyService(101, 1),
 		contentModerationService: moderationSvc,
 		concurrencyHelper:        NewConcurrencyHelper(service.NewConcurrencyService(&concurrencyCacheMock{}), SSEPingFormatNone, time.Second),
 	}
@@ -1907,7 +1910,7 @@ func newOpenAIHandlerForPreviousResponseIDValidation(t *testing.T, cache *concur
 	return &OpenAIGatewayHandler{
 		gatewayService:      &service.OpenAIGatewayService{},
 		billingCacheService: &service.BillingCacheService{},
-		apiKeyService:       &service.APIKeyService{},
+		apiKeyService:       newWSFixtureKeyService(101, 1),
 		concurrencyHelper:   NewConcurrencyHelper(service.NewConcurrencyService(cache), SSEPingFormatNone, time.Second),
 	}
 }
@@ -1917,6 +1920,7 @@ func newOpenAIWSHandlerTestServer(t *testing.T, h *OpenAIGatewayHandler, subject
 	groupID := int64(2)
 	apiKey := &service.APIKey{
 		ID:      101,
+		UserID:  subject.UserID,
 		GroupID: &groupID,
 		User:    &service.User{ID: subject.UserID},
 	}
@@ -2668,13 +2672,14 @@ func runOpenAIResponsesWebSocketUsageLimitCase(t *testing.T, mode string, follow
 	h := &OpenAIGatewayHandler{
 		gatewayService:      gatewaySvc,
 		billingCacheService: billingCacheSvc,
-		apiKeyService:       &service.APIKeyService{},
+		apiKeyService:       newWSFixtureKeyService(1802, 1702),
 		concurrencyHelper:   NewConcurrencyHelper(service.NewConcurrencyService(cache), SSEPingFormatNone, time.Second),
 		maxAccountSwitches:  3,
 	}
 
 	apiKey := &service.APIKey{
 		ID:      1802,
+		UserID:  1702,
 		GroupID: &groupID,
 		User:    &service.User{ID: 1702, Status: service.StatusActive},
 		Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive},
@@ -2888,13 +2893,14 @@ func TestOpenAIResponsesWebSocket_FirstOutputTimeoutWithoutDownstreamReusesClien
 	h := &OpenAIGatewayHandler{
 		gatewayService:      gatewaySvc,
 		billingCacheService: billingCacheSvc,
-		apiKeyService:       &service.APIKeyService{},
+		apiKeyService:       newWSFixtureKeyService(1812, 1712),
 		concurrencyHelper:   NewConcurrencyHelper(service.NewConcurrencyService(cache), SSEPingFormatNone, time.Second),
 		maxAccountSwitches:  3,
 	}
 
 	apiKey := &service.APIKey{
 		ID:      1812,
+		UserID:  1712,
 		GroupID: &groupID,
 		User:    &service.User{ID: 1712, Status: service.StatusActive},
 		Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive},
@@ -3140,12 +3146,13 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		compositeResolver:   tc.compositeResolver,
 		gatewayService:      gatewaySvc,
 		billingCacheService: billingCacheSvc,
-		apiKeyService:       &service.APIKeyService{},
+		apiKeyService:       newWSFixtureKeyService(1801, 1701),
 		concurrencyHelper:   NewConcurrencyHelper(service.NewConcurrencyService(cache), SSEPingFormatNone, time.Second),
 	}
 
 	apiKey := &service.APIKey{
 		ID:      1801,
+		UserID:  1701,
 		GroupID: &groupID,
 		User:    &service.User{ID: 1701, Status: service.StatusActive},
 	}
