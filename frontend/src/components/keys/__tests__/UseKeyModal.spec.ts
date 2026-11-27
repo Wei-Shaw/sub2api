@@ -13,6 +13,10 @@ vi.mock('vue-i18n', () => ({
   })
 }))
 
+vi.mock('@/api/admin/accounts', () => ({
+  getAntigravityDefaultModelMapping: vi.fn()
+}))
+
 vi.mock('@/composables/useClipboard', () => ({
   useClipboard: () => ({
     copyToClipboard: copyToClipboardMock
@@ -24,6 +28,7 @@ vi.mock('file-saver', () => ({
 }))
 
 import UseKeyModal from '../UseKeyModal.vue'
+import { getModelsByPlatform } from '@/composables/useModelWhitelist'
 
 function readBlobAsText(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -803,7 +808,7 @@ describe('UseKeyModal', () => {
     })
   })
 
-  it('renders Claude Fable 5 OpenCode config with adaptive thinking', async () => {
+  it('renders Antigravity OpenCode combined and single-provider configs with canonical models', async () => {
     const wrapper = mount(UseKeyModal, {
       props: {
         show: true,
@@ -831,25 +836,92 @@ describe('UseKeyModal', () => {
     await opencodeTab!.trigger('click')
     await nextTick()
 
-    const claudeConfig = wrapper.findAll('pre code')
-      .map((code) => code.text())
-      .find((content) => content.includes('"antigravity-claude"'))
+    const codeBlocks = wrapper.findAll('pre code').map((code) => code.text())
+    expect(codeBlocks).toHaveLength(3)
+    expect(wrapper.text()).toContain('keys.useKeyModal.opencode.combinedHint')
+    expect(wrapper.text()).toContain('opencode.json (Claude only)')
+    expect(wrapper.text()).toContain('opencode.json (Gemini only)')
 
-    expect(claudeConfig).toBeDefined()
-    const parsed = JSON.parse(claudeConfig!)
-    expect(parsed.provider['antigravity-claude'].models).not.toHaveProperty('claude-fable-5-2')
-    expect(parsed.provider['antigravity-claude'].models).not.toHaveProperty('claude-mythos-5-2')
-    const fable51 = parsed.provider['antigravity-claude'].models['claude-fable-5-1']
-    const fable = parsed.provider['antigravity-claude'].models['claude-fable-5']
+    // First block is the ready-to-use combined opencode.json so copying card 1 never drops a provider.
+    const combinedConfig = JSON.parse(codeBlocks[0]!)
+    expect(Object.keys(combinedConfig)).toEqual(['provider', '$schema'])
+    expect(combinedConfig.$schema).toBe('https://opencode.ai/config.json')
+    expect(Object.keys(combinedConfig.provider)).toEqual(['antigravity-claude', 'antigravity-gemini'])
 
-    expect(fable51.name).toBe('Claude Fable 5.1')
-    expect(fable51.limit).toEqual({ context: 1048576, output: 128000 })
-    expect(fable51.options.thinking).toEqual({ type: 'adaptive' })
-    expect(fable51.options.thinking).not.toHaveProperty('budgetTokens')
-    expect(fable.name).toBe('Claude Fable 5')
-    expect(fable.limit).toEqual({ context: 1048576, output: 128000 })
-    expect(fable.options.thinking).toEqual({ type: 'adaptive' })
-    expect(fable.options.thinking).not.toHaveProperty('budgetTokens')
+    const standaloneClaudeRaw = codeBlocks.find((content) => {
+      const parsed = JSON.parse(content)
+      return Object.keys(parsed.provider || {}).join(',') === 'antigravity-claude'
+    })
+    const standaloneGeminiRaw = codeBlocks.find((content) => {
+      const parsed = JSON.parse(content)
+      return Object.keys(parsed.provider || {}).join(',') === 'antigravity-gemini'
+    })
+    expect(standaloneClaudeRaw).toBeDefined()
+    expect(standaloneGeminiRaw).toBeDefined()
+
+    const claudeConfig = JSON.parse(standaloneClaudeRaw!)
+    const geminiConfig = JSON.parse(standaloneGeminiRaw!)
+    expect(Object.keys(claudeConfig)).toEqual(['provider', '$schema'])
+    expect(Object.keys(geminiConfig)).toEqual(['provider', '$schema'])
+
+    const claudeModels = claudeConfig.provider['antigravity-claude'].models
+    // Mythos / Fable 5.2 eligibility invariant on Antigravity
+    expect(claudeModels).not.toHaveProperty('claude-fable-5-2')
+    expect(claudeModels).not.toHaveProperty('claude-mythos-5-2')
+    // Claude 5.5 canonical tier models
+    expect(claudeModels['claude-opus-5-5-high']).toEqual({
+      name: 'Claude Opus 5.5 (High)',
+      limit: { context: 1000000, output: 128000 },
+      modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+      options: { thinking: { type: 'adaptive' } }
+    })
+    expect(claudeModels['claude-opus-5-5-medium'].name).toBe('Claude Opus 5.5 (Medium)')
+    expect(claudeModels['claude-sonnet-5-5-high'].name).toBe('Claude Sonnet 5.5 (High)')
+    expect(claudeModels['claude-sonnet-5-5-medium']).toEqual({
+      name: 'Claude Sonnet 5.5 (Medium)',
+      limit: { context: 1000000, output: 128000 },
+      modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+      options: { thinking: { type: 'adaptive' } }
+    })
+    // Preserved legacy Claude models
+    expect(claudeModels['claude-fable-5-1'].name).toBe('Claude Fable 5.1')
+    expect(claudeModels['claude-fable-5-1'].limit).toEqual({ context: 1048576, output: 128000 })
+    expect(claudeModels['claude-fable-5-1'].options.thinking).toEqual({ type: 'adaptive' })
+    expect(claudeModels['claude-fable-5'].name).toBe('Claude Fable 5')
+    expect(claudeModels['claude-opus-4-6-thinking'].name).toBe('Claude 4.6 Opus (Thinking)')
+    expect(claudeModels['claude-sonnet-4-6'].name).toBe('Claude 4.6 Sonnet')
+
+    const geminiModels = geminiConfig.provider['antigravity-gemini'].models
+    // Bare alias must not be used; every advertised ID must be canonical for whitelist mode too.
+    expect(geminiModels).not.toHaveProperty('gemini-4-argon')
+    expect(geminiModels['gemini-4-argon-high'].name).toBe('Gemini 4 Argon (High)')
+    expect(geminiModels['gemini-4-hydrogen-high']).toEqual({
+      name: 'Gemini 4 Hydrogen (High)',
+      limit: { context: 1048576, output: 65536 },
+      modalities: { input: ['text', 'image', 'pdf'], output: ['text'] },
+      options: { thinking: { budgetTokens: 24576, type: 'enabled' } }
+    })
+    expect(geminiModels['gemini-4-neon-high'].name).toBe('Gemini 4 Neon (High)')
+    expect(geminiModels['gemini-4-carbon'].name).toBe('Gemini 4 Carbon')
+    // Preserved image generation models
+    expect(geminiModels['gemini-2.5-flash-image'].modalities).toEqual({
+      input: ['text', 'image'],
+      output: ['image']
+    })
+    expect(geminiModels['gemini-3.1-flash-image'].modalities).toEqual({
+      input: ['text', 'image'],
+      output: ['image']
+    })
+
+    // Combined snippet matches standalone providers identically
+    expect(combinedConfig.provider['antigravity-claude']).toEqual(claudeConfig.provider['antigravity-claude'])
+    expect(combinedConfig.provider['antigravity-gemini']).toEqual(geminiConfig.provider['antigravity-gemini'])
+
+    // Cross-file invariant: every advertised Antigravity OpenCode model exists in the Antigravity whitelist
+    const antigravityWhitelist = new Set(getModelsByPlatform('antigravity'))
+    for (const modelId of [...Object.keys(claudeModels), ...Object.keys(geminiModels)]) {
+      expect(antigravityWhitelist.has(modelId)).toBe(true)
+    }
   })
 
   // Scenario: API Key users can load a routed catalog remotely or download it for older clients.
