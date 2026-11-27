@@ -528,6 +528,7 @@ export default {
         block: 'Blocked',
         keywordBlock: 'Keyword Blocked',
         cyberPolicy: 'Cyber policy',
+        imageSafety: 'Image safety rejection',
         error: 'Error',
       },
     },

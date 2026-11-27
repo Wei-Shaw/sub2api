@@ -528,6 +528,7 @@ export default {
         block: '拦截',
         keywordBlock: '关键词拦截',
         cyberPolicy: '网络安全策略',
+        imageSafety: '生图安全拒绝',
         error: '异常',
       },
     },
