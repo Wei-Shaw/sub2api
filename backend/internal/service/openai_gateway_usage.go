@@ -281,13 +281,17 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	// + responseModelBillingAdoptable。任一条件不满足都静默回落基线，即开启本模式前的
 	// 既有行为。响应模型与基线同名时直接跳过：重算必然同价，白跑一次定价解析。
 	baselineBillingModel := firstUsageBillingModel(billingModels)
-	if responseModel := responseModelBillingDeclaration(
+	responseModel := responseModelBillingDeclaration(
 		input.BillingModelSource,
 		result.UpstreamResponseModel,
 		result.UpstreamResponseModelConflict,
 		result.ImageCount > 0 || result.VideoCount > 0 || result.WebSearchCalls > 0 ||
 			result.AudioUsage != nil || result.SearchCount > 0,
-	); responseModel != "" && !strings.EqualFold(responseModel, baselineBillingModel) {
+	)
+	acceptedResponseModel := ""
+	if strings.EqualFold(responseModel, baselineBillingModel) {
+		acceptedResponseModel = responseModel
+	} else if responseModel != "" {
 		if identified, responseChannelPriced := s.hasIdentifiedOpenAIResponsePricing(ctx, responseModel, apiKey); identified {
 			responseModels := s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, usageBillingModelCandidates(responseModel))
 			responseCost, responseErr := s.calculateOpenAIRecordUsageCost(
@@ -303,6 +307,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 					baselineBillingModel, responseModel, cost, responseCost)
 				billingModels = responseModels
 				cost = responseCost
+				acceptedResponseModel = responseModel
 			}
 		}
 	}
@@ -495,10 +500,10 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.SubscriptionID = &subscription.ID
 	}
 
-	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
+	// 按渠道计费基准匹配账号自定义成本。
 	if apiKey.GroupID != nil {
 		applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
-			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
+			account.ID, *apiKey.GroupID, input.ChannelUsageFields, acceptedResponseModel,
 			tokens, cost.TotalCost, pricingAt,
 			accountStatsLongContextPricingEnabled(longContextBillingGate) && !modelLongContextExempt, 1,
 		)

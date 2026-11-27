@@ -804,7 +804,7 @@ func TestResolveAccountStatsCost_DeepSeekPricingPriority(t *testing.T) {
 				groupID = 99
 			}
 			cost := resolveAccountStatsCost(context.Background(), cs, newTestBillingService(),
-				1, groupID, "deepseek-v4-flash", UsageTokens{InputTokens: 1000}, 1, 0.75, "", peak, true, 1)
+				1, groupID, "deepseek-v4-flash", "deepseek-v4-flash", UsageTokens{InputTokens: 1000}, 1, 0.75, "", peak, true, 1)
 			if tt.noChannel {
 				require.Nil(t, cost)
 				return
@@ -824,7 +824,7 @@ func TestResolveAccountStatsCost_NilChannelService(t *testing.T) {
 		context.Background(),
 		nil, // channelService is nil
 		newTestBillingServiceWithPrices(map[string]*ModelPricing{}),
-		1, 1, "claude-sonnet-4",
+		1, 1, "claude-sonnet-4", "claude-sonnet-4",
 		UsageTokens{InputTokens: 100}, 1, 0.5, "", time.Time{}, true, 1,
 	)
 	require.Nil(t, result)
@@ -840,7 +840,7 @@ func TestResolveAccountStatsCost_EmptyUpstreamModel(t *testing.T) {
 		context.Background(),
 		cs,
 		newTestBillingServiceWithPrices(map[string]*ModelPricing{}),
-		1, 1, "", // empty upstream model
+		1, 1, "", "", // empty upstream model
 		UsageTokens{InputTokens: 100}, 1, 0.5, "", time.Time{}, true, 1,
 	)
 	require.Nil(t, result)
@@ -857,7 +857,7 @@ func TestResolveAccountStatsCost_GetChannelForGroupReturnsNil(t *testing.T) {
 		context.Background(),
 		cs,
 		newTestBillingServiceWithPrices(map[string]*ModelPricing{}),
-		1, 99, "claude-sonnet-4", // groupID 99 has no channel
+		1, 99, "claude-sonnet-4", "claude-sonnet-4", // groupID 99 has no channel
 		UsageTokens{InputTokens: 100}, 1, 0.5, "", time.Time{}, true, 1,
 	)
 	require.Nil(t, result)
@@ -888,7 +888,7 @@ func TestResolveAccountStatsCost_HitsCustomRule(t *testing.T) {
 	result := resolveAccountStatsCost(
 		context.Background(),
 		cs, nil, // billingService not needed when custom rule hits
-		1, 10, "claude-sonnet-4",
+		1, 10, "claude-sonnet-4", "claude-sonnet-4",
 		tokens, 1, 999.0, "priority", time.Time{}, true, 1, // 自定义账号价格不叠加服务层级倍率
 	)
 	require.NotNil(t, result)
@@ -910,7 +910,7 @@ func TestResolveAccountStatsCost_ApplyPricingToAccountStats_UsesTotalCost(t *tes
 	result := resolveAccountStatsCost(
 		context.Background(),
 		cs, nil,
-		1, 10, "claude-sonnet-4",
+		1, 10, "claude-sonnet-4", "claude-sonnet-4",
 		tokens, 1, 0.75, "priority", time.Time{}, true, 1, // 已完成用户计费，不再重复应用服务层级倍率
 	)
 	require.NotNil(t, result)
@@ -928,7 +928,7 @@ func TestResolveAccountStatsCost_ApplyPricingToAccountStats_ZeroTotalCost_Return
 	result := resolveAccountStatsCost(
 		context.Background(),
 		cs, nil,
-		1, 10, "claude-sonnet-4",
+		1, 10, "claude-sonnet-4", "claude-sonnet-4",
 		UsageTokens{}, 1, 0.0, "", time.Time{}, true, 1, // totalCost = 0
 	)
 	require.Nil(t, result)
@@ -939,7 +939,11 @@ func TestResolveAccountStatsCost_FallsBackToLiteLLM(t *testing.T) {
 		ID:                         1,
 		Status:                     StatusActive,
 		ApplyPricingToAccountStats: false, // not enabled
-		// No custom rules
+		// The configured rule model is an alias. A rule for the upstream ID must not intercept the catalog fallback.
+		AccountStatsPricingRules: []AccountStatsPricingRule{{
+			GroupIDs: []int64{10},
+			Pricing:  []ChannelModelPricing{{Models: []string{"claude-sonnet-4"}, InputPrice: testPtrFloat64(99)}},
+		}},
 	}
 	cs := newTestChannelServiceForStats(t, channel, 10, "anthropic")
 
@@ -955,7 +959,7 @@ func TestResolveAccountStatsCost_FallsBackToLiteLLM(t *testing.T) {
 	result := resolveAccountStatsCost(
 		context.Background(),
 		cs, bs,
-		1, 10, "claude-sonnet-4",
+		1, 10, "private-unpriced-alias", "claude-sonnet-4",
 		tokens, 1, 999.0, "", time.Time{}, true, 1, // totalCost ignored
 	)
 	require.NotNil(t, result)
@@ -971,12 +975,12 @@ func TestResolveAccountStatsCost_UpstreamPriceFactorScalesModelFilePricingOnly(t
 	tokens := UsageTokens{InputTokens: 100, OutputTokens: 50}
 
 	modelFile := newTestChannelServiceForStats(t, &Channel{ID: 1, Status: StatusActive}, 10, "anthropic")
-	result := resolveAccountStatsCost(context.Background(), modelFile, bs, 1, 10, "claude-sonnet-4", tokens, 1, 999.0, "", time.Time{}, true, 1.1)
+	result := resolveAccountStatsCost(context.Background(), modelFile, bs, 1, 10, "claude-sonnet-4", "claude-sonnet-4", tokens, 1, 999.0, "", time.Time{}, true, 1.1)
 	require.NotNil(t, result)
 	require.InDelta(t, 0.22, *result, 1e-12)
 
 	applyPricing := newTestChannelServiceForStats(t, &Channel{ID: 1, Status: StatusActive, ApplyPricingToAccountStats: true}, 10, "anthropic")
-	result = resolveAccountStatsCost(context.Background(), applyPricing, bs, 1, 10, "claude-sonnet-4", tokens, 1, 0.75, "", time.Time{}, true, 1.1)
+	result = resolveAccountStatsCost(context.Background(), applyPricing, bs, 1, 10, "claude-sonnet-4", "claude-sonnet-4", tokens, 1, 0.75, "", time.Time{}, true, 1.1)
 	require.NotNil(t, result)
 	require.InDelta(t, 0.75, *result, 1e-12)
 }
@@ -993,7 +997,7 @@ func TestResolveAccountStatsCost_FallbackHonorsAnthropicFast(t *testing.T) {
 
 	result := resolveAccountStatsCost(
 		context.Background(), cs, bs,
-		1, 10, "claude-opus-5",
+		1, 10, "claude-opus-5", "claude-opus-5",
 		UsageTokens{InputTokens: 1_000_000, OutputTokens: 1_000_000},
 		1, 0, "fast", time.Time{}, true, 1,
 	)
@@ -1013,7 +1017,7 @@ func TestResolveAccountStatsCost_Gemini36FlashTierUsesFallbackPricing(t *testing
 	result := resolveAccountStatsCost(
 		context.Background(),
 		cs, bs,
-		1, 10, "gemini-3.6-flash-low",
+		1, 10, "gemini-3.6-flash-low", "gemini-3.6-flash-low",
 		UsageTokens{InputTokens: 1_000_000, OutputTokens: 1_000_000, CacheReadTokens: 1_000_000}, 1, 0, "", time.Time{}, true, 1,
 	)
 	require.NotNil(t, result)
@@ -1037,7 +1041,7 @@ func TestResolveAccountStatsCost_AllMiss_ReturnsNil(t *testing.T) {
 	result := resolveAccountStatsCost(
 		context.Background(),
 		cs, bs,
-		1, 10, "totally-unknown-model",
+		1, 10, "totally-unknown-model", "totally-unknown-model",
 		tokens, 1, 0.0, "", time.Time{}, true, 1,
 	)
 	require.Nil(t, result)
@@ -1054,7 +1058,7 @@ func TestResolveAccountStatsCost_NilBillingService_SkipsLiteLLM(t *testing.T) {
 	result := resolveAccountStatsCost(
 		context.Background(),
 		cs, nil, // billingService is nil
-		1, 10, "claude-sonnet-4",
+		1, 10, "claude-sonnet-4", "claude-sonnet-4",
 		UsageTokens{InputTokens: 100}, 1, 0.0, "", time.Time{}, true, 1,
 	)
 	require.Nil(t, result)
@@ -1087,12 +1091,84 @@ func TestResolveAccountStatsCost_CustomRulePriorityOverApplyPricing(t *testing.T
 	result := resolveAccountStatsCost(
 		context.Background(),
 		cs, nil,
-		1, 10, "claude-sonnet-4",
+		1, 10, "claude-sonnet-4", "claude-sonnet-4",
 		tokens, 1, 99.0, "", time.Time{}, true, 1, // totalCost = 99.0 (would be used if ApplyPricing wins)
 	)
 	require.NotNil(t, result)
 	// Custom rule: 100*0.05 = 5.0 (NOT 99.0 from totalCost)
 	require.InDelta(t, 5.0, *result, 1e-12)
+}
+
+func TestRecordUsage_CustomAccountCostFollowsChannelBillingModelSource(t *testing.T) {
+	const requested = "public-alias"
+	const mapped = "channel-alias"
+	for _, platform := range []string{PlatformOpenAI, PlatformAnthropic} {
+		t.Run(platform, func(t *testing.T) {
+			sent, response := openAIPriceyFixtureModel, openAICheapFixtureModel
+			if platform == PlatformAnthropic {
+				sent, response = anthropicPriceyFixtureModel, anthropicCheapFixtureModel
+			}
+			for _, tc := range []struct {
+				name     string
+				source   string
+				conflict bool
+				wantCost float64
+			}{
+				{"requested", BillingModelSourceRequested, false, 1},
+				{"mapped", BillingModelSourceChannelMapped, false, 2},
+				{"sent", BillingModelSourceUpstream, false, 3},
+				{"no_source_metadata", "", false, 3},
+				{"accepted_response", BillingModelSourceResponse, false, 4},
+				{"conflicting_response", BillingModelSourceResponse, true, 3},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					rule := AccountStatsPricingRule{GroupIDs: []int64{10}}
+					for i, model := range []string{requested, mapped, sent, response} {
+						rule.Pricing = append(rule.Pricing, ChannelModelPricing{
+							Models: []string{model}, BillingMode: BillingModePerRequest, PerRequestPrice: testPtrFloat64(float64(i + 1)),
+						})
+					}
+					cs := newTestChannelServiceForStats(t, &Channel{
+						ID: 1, Status: StatusActive, BillingModelSource: tc.source, AccountStatsPricingRules: []AccountStatsPricingRule{rule},
+					}, 10, platform)
+					fields := ChannelMappingResult{ChannelID: 1, Mapped: true, MappedModel: mapped, BillingModelSource: tc.source}.ToUsageFields(requested, sent)
+					repo := &openAIRecordUsageLogRepoStub{inserted: true}
+					userRepo := &openAIRecordUsageUserRepoStub{}
+					subRepo := &openAIRecordUsageSubRepoStub{}
+					apiKey := &APIKey{ID: 100, GroupID: i64p(10), Group: &Group{ID: 10, Platform: platform, RateMultiplier: 1}}
+					user := &User{ID: 200}
+					account := &Account{ID: 300, Platform: platform}
+					var err error
+					if platform == PlatformOpenAI {
+						svc := newOpenAIRecordUsageServiceForTest(repo, userRepo, subRepo, nil)
+						svc.channelService = cs
+						err = svc.RecordUsage(context.Background(), &OpenAIRecordUsageInput{
+							ChannelUsageFields: fields, APIKey: apiKey, User: user, Account: account,
+							Result: &OpenAIForwardResult{
+								Model: sent, UpstreamModel: sent, UpstreamResponseModel: response, UpstreamResponseModelConflict: tc.conflict,
+								Usage: OpenAIUsage{InputTokens: 100},
+							},
+						})
+					} else {
+						svc := newGatewayRecordUsageServiceForTest(repo, userRepo, subRepo)
+						svc.channelService = cs
+						err = svc.RecordUsage(context.Background(), &RecordUsageInput{
+							ChannelUsageFields: fields, APIKey: apiKey, User: user, Account: account,
+							Result: &ForwardResult{
+								Model: sent, UpstreamModel: sent, UpstreamResponseModel: response, UpstreamResponseModelConflict: tc.conflict,
+								Usage: ClaudeUsage{InputTokens: 100},
+							},
+						})
+					}
+					require.NoError(t, err)
+					require.NotNil(t, repo.lastLog)
+					require.NotNil(t, repo.lastLog.AccountStatsCost)
+					require.Equal(t, tc.wantCost, *repo.lastLog.AccountStatsCost)
+					require.Less(t, repo.lastLog.ActualCost, 1.0)
+				})
+			}
+		})
+	}
 }
 
 func TestApplyAccountStatsCost_UsesUsageLogServiceTier(t *testing.T) {
@@ -1111,11 +1187,11 @@ func TestApplyAccountStatsCost_UsesUsageLogServiceTier(t *testing.T) {
 		},
 	})
 	serviceTier := "priority"
-	usageLog := &UsageLog{ServiceTier: &serviceTier}
+	usageLog := &UsageLog{Model: "gpt-5.6-sol", ServiceTier: &serviceTier}
 
 	applyAccountStatsCost(
 		context.Background(), usageLog, cs, bs,
-		1, 10, "gpt-5.6-sol", "gpt-5.6-sol",
+		1, 10, ChannelUsageFields{}, "",
 		UsageTokens{InputTokens: 100, OutputTokens: 50}, 999, time.Time{}, true, 1,
 	)
 
@@ -1162,9 +1238,9 @@ func TestApplyAccountStatsCost_LongContextFollowsAccountGate(t *testing.T) {
 		{name: "no_gate_priority", tier: "priority", wantCost: 0.466},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			usageLog := &UsageLog{ServiceTier: &tt.tier}
+			usageLog := &UsageLog{Model: "gpt-5.6-sol", ServiceTier: &tt.tier}
 			applyAccountStatsCost(context.Background(), usageLog, cs, bs,
-				1, 10, "gpt-5.6-sol", "gpt-5.6-sol", tokens, 999, time.Time{},
+				1, 10, ChannelUsageFields{}, "", tokens, 999, time.Time{},
 				accountStatsLongContextPricingEnabled(tt.gate), 1)
 			require.NotNil(t, usageLog.AccountStatsCost)
 			require.InDelta(t, tt.wantCost, *usageLog.AccountStatsCost, 1e-12)
