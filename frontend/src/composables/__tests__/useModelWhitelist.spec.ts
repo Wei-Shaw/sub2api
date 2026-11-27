@@ -1,13 +1,72 @@
 import { describe, expect, it, vi } from 'vitest'
+import { reactive } from 'vue'
 
 vi.mock('@/api/admin/accounts', () => ({
   getAntigravityDefaultModelMapping: vi.fn()
 }))
 
-import { buildModelMappingObject, getModelsByPlatform, getPresetMappingsByPlatform, splitModelMappingObject } from '../useModelWhitelist'
+import { buildModelMappingObject, getModelsByPlatform, getPresetMappingsByPlatform, removeModelMappingEntry, splitModelMappingObject } from '../useModelWhitelist'
 import { BUILTIN_PLATFORM_CATALOG, resetPlatformCatalog, setPlatformCatalog } from '@/constants/platformCatalog'
 
 describe('useModelWhitelist', () => {
+  it('keeps persisted provenance out of enumerable fields and JSON', () => {
+    const { modelMappings } = splitModelMappingObject({ A: 'C' })
+    expect(Object.keys(modelMappings[0])).toEqual(['from', 'to'])
+    expect(JSON.stringify(modelMappings)).toBe('[{"from":"A","to":"C"}]')
+  })
+
+  it.each(['', '   ', 'new-*'])('retains the original source after editing a loaded source to %j', (from) => {
+    const state = reactive(splitModelMappingObject({ A: 'C' }))
+    state.modelMappings[0].from = from
+    removeModelMappingEntry(state.modelMappings, 0, state.allowedModels)
+    expect(state.allowedModels).toEqual(['A'])
+  })
+
+  it.each(['', '   ', 'target-*', '*target'])('does not whitelist a cancelled invalid draft with target %j', (to) => {
+    const state = splitModelMappingObject({ B: 'B' })
+    state.modelMappings.push({ from: 'A', to })
+    removeModelMappingEntry(state.modelMappings, 0, state.allowedModels)
+    expect(buildModelMappingObject('combined', state.allowedModels, state.modelMappings)).toEqual({ B: 'B' })
+  })
+
+  it.each(['', '   ', 'target-*'])('retains a loaded source after changing its target to %j', (to) => {
+    const state = reactive(splitModelMappingObject({ A: 'C', B: 'B' }))
+    state.modelMappings[0].to = to
+    removeModelMappingEntry(state.modelMappings, 0, state.allowedModels)
+    expect(buildModelMappingObject('combined', state.allowedModels, state.modelMappings)).toEqual({ A: 'A', B: 'B' })
+    expect(buildModelMappingObject('mapping', state.allowedModels, state.modelMappings)).toBeNull()
+  })
+
+  it('does not transfer loaded provenance to a replacement draft or another account', () => {
+    const state = reactive(splitModelMappingObject({ A: 'C', B: 'B' }))
+    removeModelMappingEntry(state.modelMappings, 0, state.allowedModels)
+    state.allowedModels.splice(state.allowedModels.indexOf('A'), 1)
+    state.modelMappings.push({ from: 'A', to: '' })
+    removeModelMappingEntry(state.modelMappings, 0, state.allowedModels)
+    expect(state.allowedModels).toEqual(['B'])
+    const other = splitModelMappingObject({ B: 'B' })
+    other.modelMappings.push({ from: 'A', to: '' })
+    removeModelMappingEntry(other.modelMappings, 0, other.allowedModels)
+    expect(other.allowedModels).toEqual(['B'])
+  })
+
+  it('preserves the remaining same-source rewrite when deleting an edited loaded row', () => {
+    const state = splitModelMappingObject({ A: 'C' })
+    state.modelMappings[0].to = ''
+    state.modelMappings.push({ from: 'A', to: 'D' })
+    removeModelMappingEntry(state.modelMappings, 0, state.allowedModels)
+    expect(buildModelMappingObject('combined', state.allowedModels, state.modelMappings)).toEqual({ A: 'D' })
+    expect(JSON.stringify(state.modelMappings)).toBe('[{"from":"A","to":"D"}]')
+  })
+
+  it('restores only the persisted source when both inputs of a loaded row were edited to an invalid draft', () => {
+    const state = splitModelMappingObject({ A: 'C' })
+    state.modelMappings[0].from = 'new-model'
+    state.modelMappings[0].to = ''
+    removeModelMappingEntry(state.modelMappings, 0, state.allowedModels)
+    expect(state.allowedModels).toEqual(['A'])
+  })
+
   it('平台清单中没有内置模型列表的多协议供应商不预填白名单', () => {
     setPlatformCatalog({
       ...BUILTIN_PLATFORM_CATALOG,
@@ -301,6 +360,66 @@ describe('useModelWhitelist', () => {
     expect(parsed).toEqual({
       allowedModels: ['gpt-5.4'],
       modelMappings: [{ from: 'gpt-latest', to: 'gpt-5.4' }]
+    })
+  })
+
+  it('deleting a collapsed rewrite keeps the source as a whitelist identity', () => {
+    const saved = buildModelMappingObject(
+      'combined',
+      ['gpt-5.6-sol'],
+      [{ from: 'gpt-5.6-sol', to: 'gpt-6.1-sol' }]
+    )
+    expect(saved).toEqual({ 'gpt-5.6-sol': 'gpt-6.1-sol' })
+
+    const reopened = splitModelMappingObject(saved)
+    expect(reopened).toEqual({
+      allowedModels: [],
+      modelMappings: [{ from: 'gpt-5.6-sol', to: 'gpt-6.1-sol' }]
+    })
+
+    removeModelMappingEntry(reopened.modelMappings, 0, reopened.allowedModels)
+
+    expect(reopened.modelMappings).toEqual([])
+    expect(reopened.allowedModels).toEqual(['gpt-5.6-sol'])
+    expect(buildModelMappingObject('combined', reopened.allowedModels, reopened.modelMappings)).toEqual({
+      'gpt-5.6-sol': 'gpt-5.6-sol'
+    })
+  })
+
+  it('deleting one rewrite restores only that source and keeps the other mapping', () => {
+    const allowedModels = ['gpt-5.4']
+    const modelMappings = [
+      { from: 'gpt-5.6-sol', to: 'gpt-6.1-sol' },
+      { from: 'gpt-latest', to: 'gpt-5.4' }
+    ]
+
+    removeModelMappingEntry(modelMappings, 0, allowedModels)
+
+    expect(allowedModels).toEqual(['gpt-5.4', 'gpt-5.6-sol'])
+    expect(modelMappings).toEqual([{ from: 'gpt-latest', to: 'gpt-5.4' }])
+    expect(buildModelMappingObject('combined', allowedModels, modelMappings)).toEqual({
+      'gpt-5.4': 'gpt-5.4',
+      'gpt-5.6-sol': 'gpt-5.6-sol',
+      'gpt-latest': 'gpt-5.4'
+    })
+  })
+
+  it('does not duplicate a source that is already whitelisted, and skips blank or wildcard sources', () => {
+    const allowedModels = [' gpt-5.6-sol ']
+    const modelMappings = [
+      { from: 'gpt-5.6-sol', to: 'gpt-6.1-sol' },
+      { from: '  ', to: 'gpt-6.1-sol' },
+      { from: 'claude-*', to: 'claude-sonnet-4-6' }
+    ]
+
+    removeModelMappingEntry(modelMappings, 0, allowedModels)
+    removeModelMappingEntry(modelMappings, 0, allowedModels)
+    removeModelMappingEntry(modelMappings, 0, allowedModels)
+
+    expect(allowedModels).toEqual([' gpt-5.6-sol '])
+    expect(modelMappings).toEqual([])
+    expect(buildModelMappingObject('combined', ['gpt-5.6-sol'], [])).toEqual({
+      'gpt-5.6-sol': 'gpt-5.6-sol'
     })
   })
 })
