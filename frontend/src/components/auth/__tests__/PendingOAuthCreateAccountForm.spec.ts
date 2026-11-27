@@ -169,33 +169,47 @@ describe('PendingOAuthCreateAccountForm', () => {
     expect(wrapper.text()).toContain('auth.alreadyHaveAccount')
   })
 
-  it('hides email verification controls when public settings disable email verification', async () => {
+  // 后端 createPendingOAuthAccount → RegisterOAuthEmailAccount 无条件校验本地邮箱验证码，
+  // 与全局 email_verify_enabled 无关（#9103）。关闭全局邮箱验证时，表单仍须提供发码入口并提交验证码，
+  // 否则用户只能拿到 EMAIL_VERIFY_REQUIRED 且无从补救。
+  it('keeps email verification controls when public settings disable email verification', async () => {
     getPublicSettings.mockResolvedValue({
       email_verify_enabled: false,
       turnstile_enabled: false,
       turnstile_site_key: ''
     })
+    sendPendingOAuthVerifyCode.mockResolvedValue({ countdown: 60 })
 
     const wrapper = mount(PendingOAuthCreateAccountForm, {
       props: {
-        testIdPrefix: 'linuxdo',
+        providerName: 'WeChat',
+        testIdPrefix: 'wechat',
         initialEmail: 'prefill@example.com',
         isSubmitting: false
       }
     })
 
     await flushPromises()
-    await wrapper.get('[data-testid="linuxdo-create-account-password"]').setValue('secret-123')
+    expect(wrapper.find('[data-testid="wechat-create-account-verify-code"]').exists()).toBe(true)
+    const sendButton = wrapper.find('[data-testid="wechat-create-account-send-code"]')
+    expect(sendButton.exists()).toBe(true)
+    expect(wrapper.text()).toContain('auth.verificationCodeHint')
+
+    await sendButton.trigger('click')
+    await flushPromises()
+    expect(sendPendingOAuthVerifyCode).toHaveBeenCalledTimes(1)
+    expect(sendPendingOAuthVerifyCode.mock.calls[0]?.[0]).toMatchObject({ email: 'prefill@example.com' })
+
+    await wrapper.get('[data-testid="wechat-create-account-password"]').setValue('secret-123')
+    await wrapper.get('[data-testid="wechat-create-account-verify-code"]').setValue(' 135790 ')
     await wrapper.get('form').trigger('submit.prevent')
 
-    expect(wrapper.find('[data-testid="linuxdo-create-account-verify-code"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="linuxdo-create-account-send-code"]').exists()).toBe(false)
     expect(wrapper.emitted('submit')).toEqual([
       [
         {
           email: 'prefill@example.com',
           password: 'secret-123',
-          verifyCode: ''
+          verifyCode: '135790'
         }
       ]
     ])
