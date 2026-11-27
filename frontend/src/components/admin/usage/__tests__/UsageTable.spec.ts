@@ -975,3 +975,42 @@ describe('admin UsageTable deleted-user badge', () => {
     expect(wrapper.text()).toContain('active@test.com')
   })
 })
+
+describe('admin UsageTable username column', () => {
+  const DataTableStubWithUsername = {
+    props: ['data'],
+    template: `
+      <div>
+        <div v-for="row in data" :key="row.request_id" :data-request-id="row.request_id">
+          <slot name="cell-username" :row="row" />
+        </div>
+      </div>
+    `,
+  }
+
+  it('renders trimmed username when present and falls back to "-" when empty or missing', () => {
+    const wrapper = mount(UsageTable, {
+      props: {
+        data: [
+          { ...baseImageRow, request_id: 'req-with-username', user_id: 1, user: { id: 1, email: 'alice@test.com', username: '  Alice  ' } },
+          { ...baseImageRow, request_id: 'req-empty-username', user_id: 2, user: { id: 2, email: 'bob@test.com', username: '   ' } },
+          { ...baseImageRow, request_id: 'req-no-user', user_id: 3 },
+        ],
+        loading: false,
+        columns: [{ key: 'username', label: 'Username' }],
+      },
+      global: {
+        stubs: {
+          DataTable: DataTableStubWithUsername,
+          EmptyState: true,
+          Icon: true,
+          Teleport: true,
+        },
+      },
+    })
+
+    expect(wrapper.get('[data-request-id="req-with-username"]').text()).toBe('Alice')
+    expect(wrapper.get('[data-request-id="req-empty-username"]').text()).toBe('-')
+    expect(wrapper.get('[data-request-id="req-no-user"]').text()).toBe('-')
+  })
+})

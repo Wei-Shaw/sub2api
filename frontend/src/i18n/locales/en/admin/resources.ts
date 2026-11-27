@@ -519,6 +519,7 @@ export default {
       searchAccountPlaceholder: 'Search account by name...',
       selectedUser: 'Selected',
       user: 'User',
+      username: 'Username',
       account: 'Account',
       group: 'Group',
       requestId: 'Request ID',
