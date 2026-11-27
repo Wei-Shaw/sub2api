@@ -17,9 +17,10 @@ import (
 )
 
 // Exercise the gateway boundaries, not just the effort normalizer: model
-// mapping must happen before model-specific effort handling. The fixture
-// accepts none so this test can verify that disabled thinking reaches upstream
-// unchanged; real K3.1 accounts reject it rather than silently enabling it.
+// mapping must happen before model-specific effort handling. On the Responses
+// path none is the Codex catalog placeholder and is stripped for compatible
+// upstreams, exactly like every other Kimi model, so clients that still hold
+// the previous none-only catalog keep working with K3.1's default effort.
 func TestKimiK31MappedReasoningAcrossProtocols(t *testing.T) {
 	for _, model := range []string{"k3.1-pro", "k3.1-pro-highspeed"} {
 		for _, protocol := range []string{"responses", "chat/completions", "messages"} {
@@ -66,6 +67,10 @@ func TestKimiK31MappedReasoningAcrossProtocols(t *testing.T) {
 					require.NotNil(t, upstream.lastReq)
 					require.Equal(t, "/v1/responses", upstream.lastReq.URL.Path)
 					require.Equal(t, model, gjson.GetBytes(upstream.lastBody, "model").String())
+					if protocol == "responses" && effort == "none" {
+						require.False(t, gjson.GetBytes(upstream.lastBody, "reasoning.effort").Exists())
+						return
+					}
 					require.Equal(t, effort, gjson.GetBytes(upstream.lastBody, "reasoning.effort").String())
 				})
 			}
@@ -73,7 +78,7 @@ func TestKimiK31MappedReasoningAcrossProtocols(t *testing.T) {
 	}
 }
 
-func TestKimiK31NoneSurvivesBothRequestFilters(t *testing.T) {
+func TestKimiK31NoneFollowsCompatibleUpstreamFilters(t *testing.T) {
 	for _, model := range []string{"k3.1-pro", "k3.1-pro-highspeed"} {
 		for _, requested := range []string{model, "public-kimi"} {
 			t.Run(model+"/"+requested, func(t *testing.T) {
@@ -83,11 +88,9 @@ func TestKimiK31NoneSurvivesBothRequestFilters(t *testing.T) {
 				require.NoError(t, err)
 				filtered, err := filterOpenAIResponsesNoneReasoningEffortForAccount(account, payload)
 				require.NoError(t, err)
-				require.JSONEq(t, string(payload), string(filtered))
+				require.JSONEq(t, `{"model":"`+requested+`"}`, string(filtered))
 				deleteOpenAIResponsesNoneReasoningEffortFromObject(account, body)
-				filtered, err = json.Marshal(body)
-				require.NoError(t, err)
-				require.JSONEq(t, string(payload), string(filtered))
+				require.Equal(t, map[string]any{"model": requested}, body)
 			})
 		}
 	}
