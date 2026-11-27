@@ -345,6 +345,10 @@ func mergeAnthropicUsage(dst *ClaudeUsage, src apicompat.AnthropicUsage) {
 	if src.OutputTokens > 0 {
 		dst.OutputTokens = src.OutputTokens
 	}
+	if src.OutputTokensDetails != nil {
+		dst.thinkingTokens = src.OutputTokensDetails.ThinkingTokens
+		dst.thinkingTokensPresent = true
+	}
 }
 
 func normalizeAnthropicPromptTotal(usage *ClaudeUsage, promptTokens int, promptCacheMissTokens *int) {
@@ -418,6 +422,9 @@ func normalizeAnthropicEventUsageForResponses(event *apicompat.AnthropicStreamEv
 		dst.CacheCreationInputTokens = usage.CacheCreationInputTokens
 		dst.CacheCreationInputTokensPresent = true
 		dst.CacheCreation = nil
+		if usage.thinkingTokensPresent {
+			dst.OutputTokensDetails = &apicompat.AnthropicOutputTokensDetails{ThinkingTokens: usage.thinkingTokens}
+		}
 	}
 	normalize(event.Usage)
 	if event.Message != nil {
