@@ -211,6 +211,11 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 					sessionHash:     "", // Forward 方法没有 sessionHash，由上层处理粘性会话清除
 				})
 				if retryErr != nil {
+					// 重试命中账号级限流/配额耗尽时，循环返回切换信号：与 Gemini 路径一致转为 failover，
+					// 不能吞掉后把原始 400 返回给客户端。
+					if failoverErr := antigravityRetrySwitchToFailover(c, account, retryErr); failoverErr != nil {
+						return nil, failoverErr
+					}
 					appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 						ProxyID:            opsUpstreamProxyID(account),
 						ProxyName:          opsUpstreamProxyName(account),
@@ -355,6 +360,9 @@ func (s *AntigravityGatewayService) Forward(ctx context.Context, c *gin.Context,
 								}
 							}
 						} else {
+							if failoverErr := antigravityRetrySwitchToFailover(c, account, retryErr); failoverErr != nil {
+								return nil, failoverErr
+							}
 							logger.LegacyPrintf("service.antigravity_gateway", "Antigravity account %d: budget rectifier retry failed: %v", account.ID, retryErr)
 						}
 					}

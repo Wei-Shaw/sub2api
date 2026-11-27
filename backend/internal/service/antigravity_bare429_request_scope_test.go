@@ -112,12 +112,17 @@ func TestAntigravityRetryLoop_Bare429_OtherRequestStillCools(t *testing.T) {
 }
 
 // A 429 that says when it resets is Google's statement about the account and is
-// applied on every account, as before.
+// applied on every account, as before. A QUOTA_EXHAUSTED 429 now cools the account
+// and switches away at once (no same-account retries), so the loop returns the
+// switch signal instead of the 429 response.
 func TestAntigravityRetryLoop_429WithResetDelay_CoolsEveryAccount(t *testing.T) {
 	setupBare429Test(t)
 	c := newBare429TestContext()
-	body := `{"error":{"code":429,"message":"You have exhausted your capacity on this model. Your quota will reset after 2h.","status":"RESOURCE_EXHAUSTED","details":[{"@type":"type.googleapis.com/google.rpc.ErrorInfo","reason":"QUOTA_EXHAUSTED","metadata":{"quotaResetDelay":"2h0m0s"}}]}}`
 
-	require.True(t, runBare429Loop(t, c, bare429Account(13), body))
-	require.True(t, runBare429Loop(t, c, bare429Account(6), body))
+	for _, id := range []int64{13, 6} {
+		out := runQuotaExhaustedLoop(t, c, bare429Account(id), quotaExhaustedAntigravity429Body, nil)
+		_, ok := IsAntigravityAccountSwitchError(out.err)
+		require.True(t, ok, "account %d: %v", id, out.err)
+		require.Equal(t, 1, out.cooled, "account %d is cooled", id)
+	}
 }
