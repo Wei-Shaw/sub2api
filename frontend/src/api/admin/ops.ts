@@ -23,6 +23,8 @@ export type OpsUpstreamErrorEvent = {
   kind?: string
   message?: string
   detail?: string
+  /** 本次尝试实际发给上游的身份上报请求头（请求头覆写变量生成），键为小写头名 */
+  reported_headers?: Record<string, string>
 }
 
 export interface OpsDashboardOverview {

@@ -562,6 +562,7 @@ func ProxyWithAccountCountFromService(p *service.ProxyWithAccountCount) *ProxyWi
 		QualityGrade:   p.QualityGrade,
 		QualitySummary: p.QualitySummary,
 		QualityChecked: p.QualityChecked,
+		LatencyChecked: p.LatencyChecked,
 	}
 }
 
@@ -607,6 +608,7 @@ func ProxyWithAccountCountFromServiceAdmin(p *service.ProxyWithAccountCount) *Ad
 		QualityGrade:   p.QualityGrade,
 		QualitySummary: p.QualitySummary,
 		QualityChecked: p.QualityChecked,
+		LatencyChecked: p.LatencyChecked,
 	}
 }
 
@@ -759,6 +761,28 @@ func UsageLogFromService(l *service.UsageLog) *UsageLog {
 	}
 	u := usageLogFromServiceUser(l)
 	return &u
+}
+
+// ApplyResponseModel fills ResponseModel with the final response model of l
+// (upstream_response_model → upstream_model → model). It is left empty when the
+// final model equals the client-facing requested model, so users only ever see
+// "requested model" and "final response model", never the mapping chain.
+func (u *UsageLog) ApplyResponseModel(l *service.UsageLog) {
+	if u == nil || l == nil {
+		return
+	}
+	final := strings.TrimSpace(derefString(l.UpstreamResponseModel))
+	if final == "" {
+		final = strings.TrimSpace(derefString(l.UpstreamModel))
+	}
+	if final == "" {
+		final = strings.TrimSpace(l.Model)
+	}
+	if final == "" || final == u.Model {
+		u.ResponseModel = nil
+		return
+	}
+	u.ResponseModel = &final
 }
 
 // UsageLogFromServiceAdmin converts a service UsageLog to DTO for admin users.

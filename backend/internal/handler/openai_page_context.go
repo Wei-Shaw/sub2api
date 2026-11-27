@@ -16,7 +16,7 @@ var codexSelectedPageName = regexp.MustCompile(`^codex_apps_selected_page_part_(
 func normalizeCodexUntrustedContext(body []byte) ([]byte, bool) {
 	if !mayContainCodexCallOutputCandidate(body,
 		"codex_apps_open_page", "codex_apps_selected_page_part_",
-		"browser_info", "browser_tabs", "goal_objective", "untrusted_context", "untrusted_content", "ide_context", "proposed_plan",
+		"browser_info", "browser_tabs", "terminal_info", "goal_objective", "untrusted_context", "untrusted_content", "ide_context", "proposed_plan",
 	) || !hasUniqueJSONMembers(body) {
 		return body, false
 	}
@@ -94,7 +94,7 @@ func validCodexUntrustedContext(name, output string) bool {
 		payload, ok := strings.CutPrefix(strings.TrimSpace(output), `<in-app-browser-context source="ambient-ui-state">`)
 		payload, closed := strings.CutSuffix(payload, "</in-app-browser-context>")
 		return ok && closed && strings.TrimSpace(payload) != ""
-	case "browser_info", "goal_objective", "untrusted_context", "ide_context":
+	case "browser_info", "terminal_info", "goal_objective", "untrusted_context", "ide_context":
 		return strings.TrimSpace(output) != ""
 	case "untrusted_content":
 		// Codex's fallback for an unnamed context source can carry any text, including an empty value.

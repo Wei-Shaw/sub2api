@@ -322,7 +322,11 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 			return nil, err
 		}
 		body = ensureGeminiFunctionCallThoughtSignatures(body)
-		body = applyGeminiCompatThinkingConfig(body, claudeBody, mappedModel, claudeRequest != nil && claudeRequest.Stream)
+		includeThoughts := claudeRequest != nil && claudeRequest.Stream
+		if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.AntigravityGeminiOmitIncludeThoughts {
+			includeThoughts = false
+		}
+		body = applyGeminiCompatThinkingConfig(body, claudeBody, mappedModel, includeThoughts)
 		body, err = injectIdentityPatchToGeminiRequest(body)
 		if err != nil {
 			return nil, err

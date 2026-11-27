@@ -135,7 +135,15 @@ func openAICompatAnthropicReasoningEffort(req *apicompat.AnthropicRequest, upstr
 	if convertedEffort == "none" {
 		return convertedEffort
 	}
-	if req == nil || req.OutputConfig == nil || !strings.EqualFold(strings.TrimSpace(req.OutputConfig.Effort), "max") {
+	if req == nil || req.OutputConfig == nil || strings.TrimSpace(req.OutputConfig.Effort) == "" {
+		// Without a client preference the bridge sends medium. DeepSeek's scale
+		// is low/high/max and has no medium, so send DeepSeek's default instead.
+		if convertedEffort == "medium" && isDeepSeekCodexModel(upstreamModel) {
+			return deepSeekDefaultReasoningEffort
+		}
+		return convertedEffort
+	}
+	if !strings.EqualFold(strings.TrimSpace(req.OutputConfig.Effort), "max") {
 		return convertedEffort
 	}
 	if normalized := normalizeOpenAIReasoningEffortForModel(req.OutputConfig.Effort, upstreamModel); normalized != "" {

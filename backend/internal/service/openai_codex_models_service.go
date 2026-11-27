@@ -259,6 +259,7 @@ func loadCodexGroupCatalogAccounts(ctx context.Context, repo AccountRepository, 
 			PlatformDeepseek,
 			PlatformMiniMax,
 			PlatformOpenCodeGo,
+			PlatformCommandCode,
 		},
 		false,
 	)
@@ -455,7 +456,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 	}
 
 	if isDeepSeekCodexModel(modelID) {
-		defaultReasoningLevel := "high"
+		defaultReasoningLevel := deepSeekDefaultReasoningEffort
 		descriptor.DisplayName = deepSeekCodexDisplayName(modelID)
 		descriptor.Description = "DeepSeek coding and reasoning model routed through Sub2API."
 		descriptor.DefaultReasoningLevel = &defaultReasoningLevel
@@ -789,6 +790,10 @@ func deepSeekCodexDisplayName(modelID string) string {
 		return modelID
 	}
 }
+
+// deepSeekDefaultReasoningEffort is the default level of DeepSeek's
+// low/high/max reasoning scale.
+const deepSeekDefaultReasoningEffort = "high"
 
 func isDeepSeekCodexModel(modelID string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelID)), "deepseek-")
@@ -1182,7 +1187,9 @@ func groupCodexModelSupportsImageInput(
 			return false
 		}
 	}
-	if platform != PlatformOpenAI && platform != PlatformGrok && platform != PlatformDeepseek && platform != PlatformOpenCodeGo {
+	switch platform {
+	case PlatformOpenAI, PlatformGrok, PlatformDeepseek, PlatformOpenCodeGo, PlatformCommandCode:
+	default:
 		return false
 	}
 
@@ -1316,12 +1323,38 @@ func codexExplicitModelMappingClaims(account Account, modelID string) bool {
 	return mapped != ""
 }
 
+// ImageInputModelsExtraKey is an optional account extra key, set through the
+// admin account API, that lists upstream model IDs accepting image input.
+// It covers models that neither the upstream model list nor models.dev
+// describes, such as multimodal models served by vLLM or SGLang. Declared
+// models advertise image input ahead of synced metadata and name fallbacks.
+const ImageInputModelsExtraKey = "image_input_models"
+
+// accountDeclaresImageInputModel reports whether the account lists
+// upstreamModel under ImageInputModelsExtraKey, ignoring case.
+func accountDeclaresImageInputModel(account *Account, upstreamModel string) bool {
+	model := strings.TrimSpace(upstreamModel)
+	if account == nil || account.Extra == nil || model == "" {
+		return false
+	}
+	declared, _ := account.Extra[ImageInputModelsExtraKey].([]any)
+	for _, value := range declared {
+		if name, ok := value.(string); ok && strings.EqualFold(strings.TrimSpace(name), model) {
+			return true
+		}
+	}
+	return false
+}
+
 func accountCodexModelSupportsImageInput(account *Account, upstreamModel string) bool {
 	if account == nil {
 		return false
 	}
 	switch account.Platform {
-	case PlatformOpenAI, PlatformDeepseek, PlatformOpenCodeGo:
+	case PlatformOpenAI, PlatformDeepseek, PlatformOpenCodeGo, PlatformCommandCode:
+		if accountDeclaresImageInputModel(account, upstreamModel) {
+			return true
+		}
 		if metadata, ok := account.GetUpstreamModelMetadata(upstreamModel); ok {
 			if modalities := normalizeCodexInputModalities(metadata.InputModalities); len(modalities) > 0 {
 				// Official GPT-6 Astra metadata briefly shipped with a stale
@@ -1333,6 +1366,14 @@ func accountCodexModelSupportsImageInput(account *Account, upstreamModel string)
 				}
 				return stringSliceContains(modalities, "image")
 			}
+		}
+		if account.IsCommandCode() {
+			// Only infer capabilities for the provider's own endpoints when a
+			// synced model has no input modalities.
+			model := strings.TrimPrefix(strings.TrimSpace(upstreamModel), "deepseek/")
+			return model == "deepseek-v4.1-flash" &&
+				strings.TrimRight(account.GetOpenAIBaseURL(), "/") == DefaultCommandCodeBaseURL &&
+				strings.TrimRight(account.GetCNProtocolBaseURL(APIProtocolResponses), "/") == DefaultCommandCodeBaseURL
 		}
 		if strings.EqualFold(strings.TrimSpace(upstreamModel), "deepseek-v4-flash-vision-exp") {
 			return account.Type == AccountTypeAPIKey
@@ -1783,7 +1824,8 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 	headers := make(http.Header)
 	if useAPIKeyUpstream {
 		headers.Set("Authorization", "Bearer "+authToken)
-		credAccount.ApplyHeaderOverrides(headers)
+		// 清单按请求头分桶缓存并跨用户共享：不携带用户身份。
+		credAccount.ApplyHeaderOverrides(withoutHeaderOverrideRequestScope(ctx), headers)
 	} else {
 		authHeaders, authErr := s.buildOpenAIAuthenticationHeaders(ctx, credAccount, authToken)
 		if authErr != nil {

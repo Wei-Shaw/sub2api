@@ -521,7 +521,10 @@ type ContentModerationService struct {
 	emailService             *EmailService
 	httpClient               *http.Client
 	moderationProxyCache     atomic.Pointer[moderationProxyURLCacheEntry]
+	asyncQueueMu             sync.RWMutex
 	asyncQueue               chan contentModerationTask
+	asyncWake                chan struct{}
+	asyncQueueLazy           bool
 	workerCount              int
 	apiKeyCursor             atomic.Uint64
 	asyncActive              atomic.Int64
@@ -605,7 +608,8 @@ func NewContentModerationService(
 		emailService:         emailService,
 		httpClient:           servertiming.InstrumentClient(nil),
 		workerCount:          maxContentModerationWorkerCount,
-		asyncQueue:           make(chan contentModerationTask, maxContentModerationQueueSize),
+		asyncQueueLazy:       true,
+		asyncWake:            make(chan struct{}),
 		keyHealth:            make(map[string]*contentModerationKeyHealth),
 	}
 	if settingRepo != nil && repo != nil {
@@ -1064,7 +1068,7 @@ func (s *ContentModerationService) Check(ctx context.Context, input ContentModer
 			"group_id", contentModerationLogGroupID(input.GroupID),
 			"endpoint", input.Endpoint,
 			"protocol", input.Protocol,
-			"queue_len", len(s.asyncQueue))
+			"queue_len", len(s.asyncQueueOf()))
 		s.enqueueAsync(input, cfg, content, hashText)
 		return allow, nil
 	}
@@ -1187,17 +1191,133 @@ func (s *ContentModerationService) recordPreBlockSyncMetric(latencyMS int, actio
 	}
 }
 
-func (s *ContentModerationService) enqueueAsync(input ContentModerationCheckInput, cfg *ContentModerationConfig, content ContentModerationInput, hashText string) {
-	if s == nil || s.asyncQueue == nil {
+// contentModerationInitialQueueCapacity is the starting depth of the worker
+// queue. The queue grows on demand up to the configured QueueSize, so a service
+// that never sees a burst does not reserve the whole configured depth.
+const contentModerationInitialQueueCapacity = 64
+
+// asyncQueueOf returns the current worker queue without allocating it. Callers
+// that only inspect len/cap (status, logging) use this so reading the queue
+// never forces the backing array into existence.
+func (s *ContentModerationService) asyncQueueOf() chan contentModerationTask {
+	if s == nil {
+		return nil
+	}
+	s.asyncQueueMu.RLock()
+	queue := s.asyncQueue
+	s.asyncQueueMu.RUnlock()
+	return queue
+}
+
+// queueDropThreshold reports how many pending tasks the configuration allows.
+// This is the threshold the enqueue paths have always compared len() against.
+func queueDropThreshold(cfg *ContentModerationConfig) int {
+	threshold := defaultContentModerationQueueSize
+	if cfg != nil && cfg.QueueSize > 0 {
+		threshold = cfg.QueueSize
+	}
+	if threshold > maxContentModerationQueueSize {
+		threshold = maxContentModerationQueueSize
+	}
+	if threshold < 1 {
+		threshold = 1
+	}
+	return threshold
+}
+
+// wakeWorkersLocked broadcasts to every waiting worker that the queue object
+// changed (grown or replaced). Closing the channel wakes all current waiters;
+// a fresh channel is installed for the next round. Callers must hold
+// asyncQueueMu for writing.
+func (s *ContentModerationService) wakeWorkersLocked() {
+	if s.asyncWake == nil {
+		s.asyncWake = make(chan struct{})
 		return
 	}
-	queueSize := defaultContentModerationQueueSize
-	if cfg != nil && cfg.QueueSize > 0 {
-		queueSize = cfg.QueueSize
+	close(s.asyncWake)
+	s.asyncWake = make(chan struct{})
+}
+
+// growAsyncQueueLocked doubles the channel capacity, capped at the configured
+// drop threshold, and moves the pending tasks across. Callers must hold
+// asyncQueueMu for writing.
+func (s *ContentModerationService) growAsyncQueueLocked(threshold int) {
+	current := s.asyncQueue
+	next := cap(current) * 2
+	if next < contentModerationInitialQueueCapacity {
+		next = contentModerationInitialQueueCapacity
 	}
-	if len(s.asyncQueue) >= queueSize {
-		slog.Warn("content_moderation.async_queue_full", "user_id", input.UserID, "endpoint", input.Endpoint, "queue_size", queueSize)
-		s.asyncDropped.Add(1)
+	if next > threshold {
+		next = threshold
+	}
+	if next <= cap(current) {
+		return
+	}
+	grown := make(chan contentModerationTask, next)
+	for {
+		select {
+		case task := <-current:
+			grown <- task
+		default:
+			s.asyncQueue = grown
+			s.wakeWorkersLocked()
+			return
+		}
+	}
+}
+
+// queueDisabled reports whether this service can never accept asynchronous
+// work. A zero-value ContentModerationService has no queue and no lazy flag, so
+// enqueues are ignored exactly as they were before the queue became lazy: no
+// warning, no drop counter.
+func (s *ContentModerationService) queueDisabled() bool {
+	if s == nil {
+		return true
+	}
+	s.asyncQueueMu.RLock()
+	defer s.asyncQueueMu.RUnlock()
+	return s.asyncQueue == nil && !s.asyncQueueLazy
+}
+
+// enqueueTask appends one task when the queue is below the configured threshold.
+// A zero-value ContentModerationService keeps the historical behaviour of
+// silently ignoring enqueues (its channel was never initialised); services built
+// by NewContentModerationService allocate their channel on first use and grow it
+// on demand.
+func (s *ContentModerationService) enqueueTask(cfg *ContentModerationConfig, task contentModerationTask) (bool, int) {
+	if s == nil {
+		return false, 0
+	}
+	threshold := queueDropThreshold(cfg)
+	s.asyncQueueMu.Lock()
+	defer s.asyncQueueMu.Unlock()
+	if s.asyncQueue == nil {
+		if !s.asyncQueueLazy {
+			return false, threshold
+		}
+		initial := contentModerationInitialQueueCapacity
+		if initial > threshold {
+			initial = threshold
+		}
+		s.asyncQueue = make(chan contentModerationTask, initial)
+		s.wakeWorkersLocked()
+	}
+	if len(s.asyncQueue) >= threshold {
+		return false, threshold
+	}
+	if len(s.asyncQueue) >= cap(s.asyncQueue) {
+		s.growAsyncQueueLocked(threshold)
+	}
+	select {
+	case s.asyncQueue <- task:
+		return true, threshold
+	default:
+		return false, threshold
+	}
+}
+
+func (s *ContentModerationService) enqueueAsync(input ContentModerationCheckInput, cfg *ContentModerationConfig, content ContentModerationInput, hashText string) {
+	if s.queueDisabled() {
 		return
 	}
 	task := contentModerationTask{
@@ -1206,33 +1326,20 @@ func (s *ContentModerationService) enqueueAsync(input ContentModerationCheckInpu
 		inputHash:  hashText,
 		enqueuedAt: time.Now(),
 	}
-	select {
-	case s.asyncQueue <- task:
+	accepted, queueSize := s.enqueueTask(cfg, task)
+	if accepted {
 		s.asyncEnqueued.Add(1)
-	default:
-		slog.Warn("content_moderation.async_queue_full", "user_id", input.UserID, "endpoint", input.Endpoint)
-		s.asyncDropped.Add(1)
+		return
 	}
+	slog.Warn("content_moderation.async_queue_full", "user_id", input.UserID, "endpoint", input.Endpoint, "queue_size", queueSize)
+	s.asyncDropped.Add(1)
 }
 
 func (s *ContentModerationService) enqueueRecord(input ContentModerationCheckInput, cfg *ContentModerationConfig, log *ContentModerationLog, inputHash string, recordHash bool, applySideEffects bool) {
-	if s == nil || s.asyncQueue == nil || log == nil {
+	if log == nil || s.queueDisabled() {
 		return
 	}
-	queueSize := defaultContentModerationQueueSize
-	if cfg != nil && cfg.QueueSize > 0 {
-		queueSize = cfg.QueueSize
-	}
-	if len(s.asyncQueue) >= queueSize {
-		slog.Warn("content_moderation.record_queue_full",
-			"user_id", input.UserID,
-			"endpoint", input.Endpoint,
-			"action", log.Action,
-			"queue_size", queueSize)
-		s.asyncDropped.Add(1)
-		return
-	}
-	task := contentModerationTask{
+	accepted, queueSize := s.enqueueTask(cfg, contentModerationTask{
 		input:            input,
 		inputHash:        inputHash,
 		log:              log,
@@ -1240,17 +1347,17 @@ func (s *ContentModerationService) enqueueRecord(input ContentModerationCheckInp
 		recordHash:       recordHash,
 		applySideEffects: applySideEffects,
 		enqueuedAt:       time.Now(),
-	}
-	select {
-	case s.asyncQueue <- task:
+	})
+	if accepted {
 		s.asyncEnqueued.Add(1)
-	default:
-		slog.Warn("content_moderation.record_queue_full",
-			"user_id", input.UserID,
-			"endpoint", input.Endpoint,
-			"action", log.Action)
-		s.asyncDropped.Add(1)
+		return
 	}
+	slog.Warn("content_moderation.record_queue_full",
+		"user_id", input.UserID,
+		"endpoint", input.Endpoint,
+		"action", log.Action,
+		"queue_size", queueSize)
+	s.asyncDropped.Add(1)
 }
 
 func (s *ContentModerationService) worker(id int) {
@@ -1308,21 +1415,48 @@ func (s *ContentModerationService) worker(id int) {
 
 func (s *ContentModerationService) dequeueAsyncTask(ctx context.Context, idleWait time.Duration) (contentModerationTask, bool) {
 	var zero contentModerationTask
-	if s == nil || s.asyncQueue == nil {
+	if s == nil {
 		return zero, false
 	}
 	if idleWait <= 0 {
 		idleWait = time.Second
 	}
-	timer := time.NewTimer(idleWait)
-	defer timer.Stop()
-	select {
-	case task, ok := <-s.asyncQueue:
-		return task, ok
-	case <-ctx.Done():
-		return zero, false
-	case <-timer.C:
-		return zero, false
+	for {
+		timer := time.NewTimer(idleWait)
+		s.asyncQueueMu.RLock()
+		queue := s.asyncQueue
+		wake := s.asyncWake
+		s.asyncQueueMu.RUnlock()
+
+		if queue == nil {
+			// Nothing was enqueued yet. Wait for the first enqueue instead of
+			// spinning; the timer keeps shutdown paths bounded.
+			select {
+			case <-wake:
+				timer.Stop()
+				continue
+			case <-ctx.Done():
+				timer.Stop()
+				return zero, false
+			case <-timer.C:
+				return zero, false
+			}
+		}
+
+		select {
+		case task, ok := <-queue:
+			timer.Stop()
+			return task, ok
+		case <-wake:
+			// The queue object was created, grown or replaced; re-read it.
+			timer.Stop()
+			continue
+		case <-ctx.Done():
+			timer.Stop()
+			return zero, false
+		case <-timer.C:
+			return zero, false
+		}
 	}
 }
 
@@ -1427,8 +1561,8 @@ func (s *ContentModerationService) GetStatus(ctx context.Context) (*ContentModer
 		preBlockAvgLatency = s.preBlockLatencyTotalMS.Load() / preBlockChecked
 	}
 	queueLength := 0
-	if s.asyncQueue != nil {
-		queueLength = len(s.asyncQueue)
+	if queue := s.asyncQueueOf(); queue != nil {
+		queueLength = len(queue)
 	}
 	queueUsage := 0.0
 	if cfg.QueueSize > 0 {
