@@ -327,7 +327,8 @@ describe('admin UsageTable tooltip', () => {
       const top = Number(style.match(/top:\s*([\d.]+)px/)?.[1])
       expect(left).toBe(340 - 8 - 260)
       expect(left + 260).toBeLessThanOrEqual(375)
-      expect(top).toBe(108)
+      // 与图标垂直居中（108 - 100），再夹到视口上边距 8
+      expect(top).toBe(8)
     } finally {
       wrapper.unmount()
       rectSpy.mockRestore()

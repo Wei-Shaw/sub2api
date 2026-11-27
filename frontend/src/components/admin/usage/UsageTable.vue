@@ -331,7 +331,7 @@
     <div
       v-if="tokenTooltipVisible"
       ref="tokenTooltipEl"
-      class="fixed z-[9999] pointer-events-none -translate-y-1/2"
+      class="fixed z-[9999] pointer-events-none"
       :style="{
         left: tokenTooltipPosition.x + 'px',
         top: tokenTooltipPosition.y + 'px'
@@ -425,7 +425,7 @@
     <div
       v-if="tooltipVisible"
       ref="tooltipEl"
-      class="fixed z-[9999] pointer-events-none -translate-y-1/2"
+      class="fixed z-[9999] pointer-events-none"
       :style="{
         left: tooltipPosition.x + 'px',
         top: tooltipPosition.y + 'px'
@@ -564,6 +564,7 @@ import { computed, nextTick, ref, type Ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
 import { formatDateTime, formatReasoningEffort, reasoningEffortValuesEqual } from '@/utils/format'
+import { getTooltipPosition } from '@/utils/floatingPanel'
 import { formatCacheTokens, formatMultiplier } from '@/utils/formatters'
 import { formatTokenPricePerMillion } from '@/utils/usagePricing'
 import { getUsageServiceTierLabel } from '@/utils/usageServiceTier'
@@ -765,27 +766,25 @@ const formatDuration = (ms: number | null | undefined): string => {
   return `${Math.floor(totalSec / 3600)}h ${Math.floor((totalSec % 3600) / 60)}m`
 }
 
-// 浮层默认放在图标右侧；右侧放不下时翻到左侧，两侧都放不下（手机窄屏）就贴视口右边缘；上下也夹在视口内
-const TOOLTIP_GAP = 8
+// 浮层默认放在图标右侧，放不下时翻到左侧或贴视口边缘（见 getTooltipPosition）
 const placeTooltip = async (
   rect: DOMRect,
   tipEl: Ref<HTMLElement | null>,
   position: Ref<{ x: number; y: number }>
 ) => {
-  position.value = { x: rect.right + TOOLTIP_GAP, y: rect.top + rect.height / 2 }
+  // 先放在左上角渲染，测量时宽度不受右侧剩余空间挤压
+  position.value = { x: 0, y: 0 }
   await nextTick()
   if (!tipEl.value) return
   const { width, height } = tipEl.value.getBoundingClientRect()
-  const viewportWidth = document.documentElement.clientWidth || window.innerWidth
-  const viewportHeight = window.innerHeight
-  let x = position.value.x
-  if (x + width > viewportWidth - TOOLTIP_GAP) {
-    x = rect.left - TOOLTIP_GAP - width
-    if (x < TOOLTIP_GAP) x = Math.max(TOOLTIP_GAP, viewportWidth - TOOLTIP_GAP - width)
-  }
-  const halfHeight = height / 2
-  const y = Math.max(TOOLTIP_GAP + halfHeight, Math.min(position.value.y, viewportHeight - TOOLTIP_GAP - halfHeight))
-  position.value = { x, y }
+  const { left, top } = getTooltipPosition(
+    rect,
+    { width, height },
+    document.documentElement.clientWidth || window.innerWidth,
+    window.innerHeight,
+    'right'
+  )
+  position.value = { x: left, y: top }
 }
 
 // Cost tooltip functions
