@@ -725,7 +725,9 @@ type adminServiceImpl struct {
 	affiliateService     adminRechargeAffiliateAccruer
 	compositeRouteRepo   CompositeModelRouteRepository
 	compositeResolver    *CompositeRouteResolver
-
+	// B2-③ 保存期无价门禁用：ollama_cloud 账号保存时断言可出站模型名全部可定价。
+	// 生产 wire 注入；直接构造 struct 的单测可为 nil（门禁对 nil 跳过）。
+	billingService        *BillingService
 	userPlatformQuotaRepo UserPlatformQuotaRepository
 	// 分组平台变更后用来失效渠道缓存；可为 nil（缓存会在 TTL 到期后自然重建）
 	channelCacheInvalidator ChannelCacheInvalidator
@@ -770,6 +772,7 @@ func NewAdminService(
 	compositeRouteRepo CompositeModelRouteRepository,
 	compositeResolver *CompositeRouteResolver,
 	channelCacheInvalidator ChannelCacheInvalidator,
+	billingService *BillingService,
 	userPlatformQuotaRepo UserPlatformQuotaRepository,
 ) AdminService {
 	return &adminServiceImpl{
@@ -799,6 +802,7 @@ func NewAdminService(
 		affiliateService:     affiliateService,
 		compositeRouteRepo:   compositeRouteRepo,
 		compositeResolver:    compositeResolver,
+		billingService:       billingService,
 
 		channelCacheInvalidator: channelCacheInvalidator,
 		userPlatformQuotaRepo:   userPlatformQuotaRepo,

@@ -171,7 +171,7 @@ func TestAdminService_CreateUser_SnapshotsDefaultPlatformQuotas(t *testing.T) {
 		SettingKeyAuthSourceDefaultEmailGrantOnSignup: "true",
 		SettingKeyAuthSourcePlatformQuotas("email"):   `{"openai":{"daily":3}}`,
 	}}, &config.Config{})
-	svc := NewAdminService(nil, users, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, settings, nil, nil, nil, nil, nil, nil, nil, nil, quotas)
+	svc := NewAdminService(nil, users, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, settings, nil, nil, nil, nil, nil, nil, nil, nil, nil, quotas)
 
 	user, err := svc.CreateUser(context.Background(), &CreateUserInput{
 		Email:    "quota-defaults@example.test",

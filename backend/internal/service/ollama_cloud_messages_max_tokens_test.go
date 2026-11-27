@@ -87,14 +87,16 @@ func TestBuildUpstreamRequest_ClampsOllamaCloudDeepSeekMaxTokens(t *testing.T) {
 		require.Equal(t, int64(256000), gjson.GetBytes(wire, "max_tokens").Int())
 	})
 
-	t.Run("non deepseek model untouched", func(t *testing.T) {
+	// D1′ 后 host 命中即钳制：非 DeepSeek 模型同样 clamp（此前该用例钉住
+	// 「仅 DeepSeek 系 clamp」的旧行为，上游对 >65535 一律 400 与模型无关）。
+	t.Run("non deepseek model is clamped too", func(t *testing.T) {
 		nonDeepSeek := messagesClampBody("k3-256k", 256000)
 		_, wire, err := svc.buildUpstreamRequest(
 			context.Background(), c, account, nonDeepSeek, "sk-test", "api_key",
 			"k3-256k", false, false,
 		)
 		require.NoError(t, err)
-		require.Equal(t, int64(256000), gjson.GetBytes(wire, "max_tokens").Int())
+		require.Equal(t, int64(65535), gjson.GetBytes(wire, "max_tokens").Int())
 	})
 
 	t.Run("at cap and extra cap zero untouched", func(t *testing.T) {
@@ -229,8 +231,8 @@ func TestBuildNativeAnthropicUpstreamRequest_ClampsOllamaCloudDeepSeekMaxTokens(
 		require.Equal(t, int64(256000), gjson.GetBytes(wireBody, "max_tokens").Int())
 	})
 
-	// 非 DeepSeek 模型（映射后出站 model）不变。
-	t.Run("non deepseek model untouched", func(t *testing.T) {
+	// 非 DeepSeek 模型（映射后出站 model）按 host 判定同样 clamp（D1′）。
+	t.Run("non deepseek model is clamped too", func(t *testing.T) {
 		account := messagesClampOllamaAccount(425, PlatformDeepseek)
 		account.Credentials["api_protocol"] = APIProtocolAnthropic
 		nonDeepSeek := messagesClampBody("glm-4.7", 256000)
@@ -240,7 +242,7 @@ func TestBuildNativeAnthropicUpstreamRequest_ClampsOllamaCloudDeepSeekMaxTokens(
 			context.Background(), c, account, nonDeepSeek, "sk-test", targetURL,
 		)
 		require.NoError(t, err)
-		require.Equal(t, int64(256000), gjson.GetBytes(wireBody, "max_tokens").Int())
+		require.Equal(t, int64(65535), gjson.GetBytes(wireBody, "max_tokens").Int())
 	})
 }
 

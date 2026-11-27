@@ -4,7 +4,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
@@ -20,44 +19,27 @@ import (
 // Cloud 相同的 reasoning 字段补齐。
 const OpenAIChatReasoningContentExtraKey = "openai_chat_reasoning_content"
 
-func isOllamaCloudRawChatCompletionsAccount(account *Account) bool {
-	if account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeAPIKey {
+// isOllamaCloudDeepSeekUpstream 判断本次出站是否命中 Ollama Cloud 上托管的
+// DeepSeek 模型：出站 base_url 是 Ollama Cloud（GetOpenAIBaseURL，与
+// clampOllamaCloudUpstreamMaxTokens 的取值一致）且映射后的出站模型是 DeepSeek 系。
+// 不看 platform / account.Type / responses-mode，不读 usage extra；同一分组内
+// 官方 DeepSeek 账号（api.deepseek.com）不命中，保持字节级透传。后续其它出站
+// 路径复用同一判定。nil account / 空模型返回 false。
+func isOllamaCloudDeepSeekUpstream(account *Account, upstreamModel string) bool {
+	if account == nil {
 		return false
 	}
-	mode, _ := account.Extra[openai_compat.ExtraKeyResponsesMode].(string)
-	if openai_compat.NormalizeResponsesSupportMode(mode) != openai_compat.ResponsesSupportModeForceChatCompletions {
+	if !isOllamaCloudOutboundBaseURL(account.GetOpenAIBaseURL()) {
 		return false
 	}
-	if accountHasOllamaCloudUsageExtra(account) {
-		return true
-	}
-	if account.Credentials == nil {
-		return false
-	}
-	baseURL, _ := account.Credentials["base_url"].(string)
-	return isOllamaCloudBaseURL(baseURL)
-}
-
-func accountHasOllamaCloudUsageExtra(account *Account) bool {
-	if account == nil || account.Extra == nil {
-		return false
-	}
-	for _, key := range []string{
-		OllamaCloudUsageSessionExtraKey,
-		OllamaCloudUsageAutoRefreshExtraKey,
-		OllamaCloudUsageSnapshotExtraKey,
-	} {
-		if _, ok := account.Extra[key]; ok {
-			return true
-		}
-	}
-	return false
+	return isDeepSeekModel(upstreamModel)
 }
 
 // rawChatCompletionsReasoningCompatEnabled 判定 raw CC 直转是否补齐 reasoning 字段：
-// Ollama Cloud 账号默认启用，其余 OpenAI API Key 账号按 OpenAIChatReasoningContentExtraKey 开启。
-func rawChatCompletionsReasoningCompatEnabled(account *Account) bool {
-	if isOllamaCloudRawChatCompletionsAccount(account) {
+// Ollama Cloud 上托管的 DeepSeek 模型默认启用（按出站 endpoint + 模型判定，见
+// isOllamaCloudDeepSeekUpstream），其余 OpenAI API Key 账号按 OpenAIChatReasoningContentExtraKey 开启。
+func rawChatCompletionsReasoningCompatEnabled(account *Account, upstreamModel string) bool {
+	if isOllamaCloudDeepSeekUpstream(account, upstreamModel) {
 		return true
 	}
 	return account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey &&
@@ -66,22 +48,22 @@ func rawChatCompletionsReasoningCompatEnabled(account *Account) bool {
 
 // applyRawChatCompletionsReasoningCompatRequest 只做 reasoning 归一化；
 // max_tokens clamp 已解耦到独立钩子 clampOllamaCloudUpstreamMaxTokens，由出站方依次调用。
-func applyRawChatCompletionsReasoningCompatRequest(account *Account, body []byte) []byte {
-	if !rawChatCompletionsReasoningCompatEnabled(account) || len(body) == 0 {
+func applyRawChatCompletionsReasoningCompatRequest(account *Account, upstreamModel string, body []byte) []byte {
+	if !rawChatCompletionsReasoningCompatEnabled(account, upstreamModel) || len(body) == 0 {
 		return body
 	}
 	return normalizeOllamaCloudChatCompletionsRequest(body)
 }
 
-func applyRawChatCompletionsReasoningCompatResponse(account *Account, body []byte) []byte {
-	if !rawChatCompletionsReasoningCompatEnabled(account) || len(body) == 0 {
+func applyRawChatCompletionsReasoningCompatResponse(account *Account, upstreamModel string, body []byte) []byte {
+	if !rawChatCompletionsReasoningCompatEnabled(account, upstreamModel) || len(body) == 0 {
 		return body
 	}
 	return normalizeOllamaCloudChatCompletionsResponseJSON(body)
 }
 
-func applyRawChatCompletionsReasoningCompatSSELine(account *Account, line string) string {
-	if !rawChatCompletionsReasoningCompatEnabled(account) || line == "" {
+func applyRawChatCompletionsReasoningCompatSSELine(account *Account, upstreamModel string, line string) string {
+	if !rawChatCompletionsReasoningCompatEnabled(account, upstreamModel) || line == "" {
 		return line
 	}
 	return normalizeOllamaCloudChatCompletionsSSELine(line)

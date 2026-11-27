@@ -230,6 +230,54 @@ func TestGatewayServiceRecordUsage_GeminiFlashThinkingTierUsesCatalogPrice(t *te
 	}
 }
 
+// composite 跨族池里 CN / Ollama Cloud 账号经 generic 链转发：请求名（claude-*）只是
+// 入站别名，计费须按实际转发的托管模型，且未显式定价的 claude-* 不得按 Claude 价计；
+// anthropic 账号仍按请求模型计费。
+func TestGatewayServiceRecordUsage_HostedModelAccountsBillByUpstreamModel(t *testing.T) {
+	pricing := map[string]*LiteLLMModelPricing{
+		"claude-sonnet-4-5": {InputCostPerToken: 3e-6, OutputCostPerToken: 15e-6},
+		"glm-5.3":           {InputCostPerToken: 1e-6, OutputCostPerToken: 2e-6},
+	}
+	cases := []struct {
+		name          string
+		account       *Account
+		upstreamModel string
+		wantCost      float64
+	}{
+		{"ollama_cloud mapped", &Account{ID: 701, Platform: PlatformOllamaCloud, Type: AccountTypeAPIKey}, "glm-5.3", 1000*1e-6 + 100*2e-6},
+		{"cn provider mapped", &Account{ID: 702, Platform: PlatformZhipu, Type: AccountTypeAPIKey}, "glm-5.3", 1000*1e-6 + 100*2e-6},
+		{"cn provider unmapped claude", &Account{ID: 703, Platform: PlatformKimi, Type: AccountTypeAPIKey}, "claude-sonnet-4-5", 0},
+		{"anthropic keeps requested model", &Account{ID: 704, Platform: PlatformAnthropic, Type: AccountTypeAPIKey}, "glm-5.3", 1000*3e-6 + 100*15e-6},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
+			svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
+			svc.billingService = NewBillingService(svc.cfg, &PricingService{pricingData: pricing})
+			svc.resolver = NewModelPricingResolver(nil, svc.billingService)
+			group := &Group{ID: 28, Platform: PlatformComposite, RateMultiplier: 1}
+
+			err := svc.RecordUsage(context.Background(), &RecordUsageInput{
+				Result: &ForwardResult{
+					RequestID:     "hosted_model_billing",
+					Model:         "claude-sonnet-4-5",
+					UpstreamModel: tc.upstreamModel,
+					Usage:         ClaudeUsage{InputTokens: 1000, OutputTokens: 100},
+					Duration:      time.Second,
+				},
+				APIKey:  &APIKey{ID: 501, GroupID: &group.ID, Group: group},
+				User:    &User{ID: 601},
+				Account: tc.account,
+			})
+
+			require.NoError(t, err)
+			require.NotNil(t, usageRepo.lastLog)
+			require.Equal(t, "claude-sonnet-4-5", usageRepo.lastLog.RequestedModel)
+			require.InDelta(t, tc.wantCost, usageRepo.lastLog.TotalCost, 1e-12)
+		})
+	}
+}
+
 func TestGatewayServiceRecordUsage_PreservesChannelMappedUpstreamModel(t *testing.T) {
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
 	svc := newGatewayRecordUsageServiceForTest(usageRepo, &openAIRecordUsageUserRepoStub{}, &openAIRecordUsageSubRepoStub{})
