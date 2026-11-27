@@ -85,7 +85,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 
 	chatReq, err := apicompat.ResponsesToChatCompletionsRequestWithOptions(&responsesReq, &apicompat.ResponsesToChatOptions{
 		ReasoningContentByID:   s.reasoningContentByID,
-		PreserveWebToolHistory: account.Platform == PlatformDeepseek,
+		PreserveWebToolHistory: preservesDeepSeekWebToolHistory(account),
 	})
 	if err != nil {
 		return nil, rejectGatewayRequest(c, writeOpenAIResponsesFallbackError, err.Error(), fmt.Errorf("convert responses to chat completions: %w", err))

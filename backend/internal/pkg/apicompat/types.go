@@ -861,6 +861,7 @@ type ChatContentPart struct {
 	Text                  string          `json:"text,omitempty"`
 	ImageURL              *ChatImageURL   `json:"image_url,omitempty"`
 	File                  *ChatFile       `json:"file,omitempty"`
+	FileID                string          `json:"file_id,omitempty"`
 }
 
 // ChatImageURL contains the URL for an image content part.

@@ -216,14 +216,23 @@ func (s *GatewayService) verifyAnthropicDeepseekFiles(ctx context.Context, c *gi
 	return nil
 }
 
+func hasTopLevelJSONField(body []byte, name string) bool {
+	found := false
+	parseRawJSONView(body).ForEach(func(key, _ gjson.Result) bool {
+		found = strings.EqualFold(key.String(), name)
+		return !found
+	})
+	return found
+}
+
 func chatUsesResponsesShape(body []byte) bool {
-	return !gjson.GetBytes(body, "messages").Exists() && gjson.GetBytes(body, "input").Exists()
+	return !hasTopLevelJSONField(body, "messages") && hasTopLevelJSONField(body, "input")
 }
 
 // Resolve the same history shape that forwarding will consume. Native input
 // takes precedence over an accompanying legacy Messages history.
 func (s *OpenAIGatewayService) PrepareDeepseekFileIngress(ctx context.Context, platform, protocol string, userID int64, body []byte) (context.Context, []byte, error) {
-	if protocol == APIProtocolResponses && gjson.GetBytes(body, "messages").Exists() {
+	if protocol == APIProtocolResponses && hasTopLevelJSONField(body, "messages") {
 		if len(deepseekFileIDs(body, APIProtocolChatCompletions)) > 0 {
 			normalized, _, err := normalizeOpenAIResponsesLegacyIngressWithConfig(s.cfg, body)
 			if err != nil {

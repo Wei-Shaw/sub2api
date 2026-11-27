@@ -380,9 +380,10 @@ func TestDeepseekToolsOwnedFileErrors(t *testing.T) {
 }
 
 func TestDeepseekToolsAuditPrompt(t *testing.T) {
-	require.Equal(t, "你好", extractDeepseekToolsPromptText([]byte(`{"query":" \u4f60\u597d ","text":"unused"}`)))
-	require.Equal(t, "example", extractDeepseekToolsPromptText([]byte(`{"query":false,"url":" example "}`)))
-	require.Empty(t, extractDeepseekToolsPromptText([]byte(`{"text":"unterminated"`)))
+	require.Equal(t, "你好\n原始问题", extractDeepseekToolsPromptText("search", []byte(`{"query":" \u4f60\u597d ","ori_question":" 原始问题 ","text":"unused"}`)))
+	require.Equal(t, "hello tts", extractDeepseekToolsPromptText("tts", []byte(`{"query":"ignored","text":" hello tts "}`)))
+	require.Equal(t, "https://example.com", extractDeepseekToolsPromptText("fetch", []byte(`{"query":"ignored","url":" https://example.com "}`)))
+	require.Empty(t, extractDeepseekToolsPromptText("tts", []byte(`{"text":"unterminated"`)))
 }
 
 type deepseekDisconnectWriter struct {

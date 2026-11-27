@@ -473,6 +473,12 @@ func convertChatContentPartsToResponses(parts []ChatContentPart) []ResponsesCont
 					FileData:              p.File.FileData,
 					FileID:                p.File.FileID,
 				})
+			} else if p.FileID != "" {
+				responseParts = append(responseParts, ResponsesContentPart{
+					PromptCacheBreakpoint: p.PromptCacheBreakpoint,
+					Type:                  "input_file",
+					FileID:                p.FileID,
+				})
 			}
 		}
 	}

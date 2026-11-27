@@ -11,7 +11,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -326,4 +328,79 @@ func TestClientDecodeErrorSkipsAccountSchedule(t *testing.T) {
 	require.Error(t, upstreamErr)
 	s.ReportOpenAIAccountScheduleResult(account, "", false, nil, upstreamErr)
 	require.Equal(t, 1, s.openaiAccountStats.size())
+}
+
+func TestDeepSeekStrippedToolsDoNotTriggerSolChatFailover(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	body := []byte(`{
+		"model":"gpt-6.1-sol",
+		"input":[
+			{"Type":"additional_tools","Tools":[{"type":"deepseek_web_search","name":"deepseek_web_search"}]},
+			{"role":"user","content":"hello"}
+		],
+		"tools":[{"type":"namespace","name":"ds_only","Tools":[{"type":"deepseek_read_url","name":"deepseek_read_url"}]}]
+	}`)
+	account := forceChatResponsesFallbackAccount()
+	filtered := filterDeepSeekRequest(body, account)
+	require.False(t, gjson.GetBytes(filtered, "tools").Exists(), "emptied namespace and tools array should be removed: %s", filtered)
+	require.Equal(t, "[]", gjson.GetBytes(filtered, "input.0.Tools").Raw)
+
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", bytes.NewReader(filtered))
+	up := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": {"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"id":"chatcmpl-1","object":"chat.completion","model":"gpt-6.1-sol","choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)),
+	}}
+	svc := &OpenAIGatewayService{
+		cfg:          rawChatCompletionsTestConfig(),
+		accountRepo:  &accountRepoStub{},
+		httpUpstream: up,
+	}
+	res, err := svc.forwardResponsesViaRawChatCompletions(context.Background(), c, account, filtered, time.Now())
+	require.NoError(t, err)
+	require.NotNil(t, res)
+	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestPreservesDeepSeekWebToolHistoryForOfficialOpenAIHost(t *testing.T) {
+	openAIDeepSeek := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"base_url": "https://api.deepseek.com/v1"},
+	}
+	openAIRelay := &Account{
+		Platform:    PlatformOpenAI,
+		Type:        AccountTypeAPIKey,
+		Credentials: map[string]any{"base_url": "https://api.openai.com/v1"},
+	}
+	require.True(t, preservesDeepSeekWebToolHistory(openAIDeepSeek))
+	require.True(t, preservesDeepSeekWebToolHistory(&Account{Platform: PlatformDeepseek}))
+	require.False(t, preservesDeepSeekWebToolHistory(openAIRelay))
+}
+
+func TestWriteResponsesStreamErrorIncludesPublicModel(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	ctx := context.WithValue(req.Context(), ctxkey.Model, "upstream-model")
+	ctx = WithCompositeRouteDecision(ctx, CompositeRouteDecision{
+		Matched:       true,
+		PublicModel:   "public-alias",
+		UpstreamModel: "upstream-model",
+	})
+	c.Request = req.WithContext(ctx)
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	_, _ = c.Writer.WriteString(": keepalive\n\n")
+	c.Writer.Flush()
+
+	writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", "bad input")
+
+	events := parseCompactBridgeSSE(t, strings.TrimPrefix(rec.Body.String(), ": keepalive\n\n"))
+	require.Len(t, events, 1)
+	require.Equal(t, "response.failed", events[0][0])
+	require.Equal(t, "public-alias", gjson.Get(events[0][1], "response.model").String())
+	require.Equal(t, "bad input", gjson.Get(events[0][1], "response.error.message").String())
 }

@@ -128,7 +128,7 @@ func (s *OpenAIGatewayService) convertResponsesShapedChatBody(body []byte, accou
 		&responsesReq,
 		&apicompat.ResponsesToChatOptions{
 			ReasoningContentByID:   s.reasoningContentByID,
-			PreserveWebToolHistory: account.Platform == PlatformDeepseek,
+			PreserveWebToolHistory: preservesDeepSeekWebToolHistory(account),
 		},
 	)
 	if err != nil {

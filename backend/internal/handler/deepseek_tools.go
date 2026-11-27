@@ -65,17 +65,31 @@ func deepseekToolsEndpointHasPrompt(endpoint string) bool {
 	}
 }
 
-// extractDeepseekToolsPromptText 提取请求体里的主文本字段供内容审计归一化。
-func extractDeepseekToolsPromptText(body []byte) string {
+// extractDeepseekToolsPromptText 提取请求体里的文本字段供内容审计归一化。
+func extractDeepseekToolsPromptText(endpoint string, body []byte) string {
 	if !gjson.ValidBytes(body) {
 		return ""
 	}
-	for _, key := range []string{"query", "q", "text", "input", "prompt", "url"} {
+	var keys []string
+	switch endpoint {
+	case "search":
+		keys = []string{"query", "ori_question", "q"}
+	case "tts":
+		keys = []string{"text", "input"}
+	case "fetch":
+		keys = []string{"url"}
+	default:
+		keys = []string{"query", "q", "text", "input", "prompt", "url"}
+	}
+	var parts []string
+	for _, key := range keys {
 		if v := gjson.GetBytes(body, key); v.Type == gjson.String {
-			return strings.TrimSpace(v.Str)
+			if s := strings.TrimSpace(v.Str); s != "" {
+				parts = append(parts, s)
+			}
 		}
 	}
-	return ""
+	return strings.Join(parts, "\n")
 }
 
 const deepseekUploadSlotKey = "deepseek_upload_user_slot"
@@ -213,7 +227,7 @@ func (h *OpenAIGatewayHandler) DeepseekTools(c *gin.Context, endpoint string) {
 	// 文档/音频（multipart，无模型文本提示），files_* 是纯文件管理，均不走审计。
 	if deepseekToolsEndpointHasPrompt(endpoint) {
 		auditBody := body
-		if input := extractDeepseekToolsPromptText(body); input != "" {
+		if input := extractDeepseekToolsPromptText(endpoint, body); input != "" {
 			if b, marshalErr := json.Marshal(map[string]any{
 				"messages": []map[string]any{{"role": "user", "content": input}},
 			}); marshalErr == nil {

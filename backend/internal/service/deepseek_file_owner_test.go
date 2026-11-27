@@ -278,3 +278,26 @@ func TestDeepseekFileOwnerUnavailable(t *testing.T) {
 		})
 	}
 }
+
+func TestPrepareDeepseekFileIngressLegacyResponsesFlatFileID(t *testing.T) {
+	store := &testDeepseekFileCache{}
+	require.NoError(t, store.SaveDeepseekFile(context.Background(), 7, DeepseekFile{
+		ID:        "file-owned-1",
+		AccountID: 42,
+		Origin:    "https://api.deepseek.com",
+	}))
+	svc := &OpenAIGatewayService{
+		cfg:   &config.Config{},
+		cache: store,
+	}
+
+	ownedBody := []byte(`{"model":"deepseek-chat","messages":[{"role":"user","content":[{"type":"file","file_id":"file-owned-1"},{"type":"text","text":"summarize"}]}]}`)
+	ctx, normalized, err := svc.PrepareDeepseekFileIngress(context.Background(), PlatformDeepseek, APIProtocolResponses, 7, ownedBody)
+	require.NoError(t, err)
+	require.Equal(t, []string{"file-owned-1"}, deepseekFileIDs(normalized, APIProtocolResponses))
+	require.Equal(t, int64(42), ctx.Value(deepseekFileAccountKey{}))
+
+	foreignBody := []byte(`{"model":"deepseek-chat","messages":[{"role":"user","content":[{"type":"file","file_id":"file-foreign-9"},{"type":"text","text":"summarize"}]}]}`)
+	_, _, err = svc.PrepareDeepseekFileIngress(context.Background(), PlatformDeepseek, APIProtocolResponses, 7, foreignBody)
+	require.Error(t, err)
+}
