@@ -1,11 +1,11 @@
 package service
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -61,14 +61,14 @@ func NormalizeOpenCodeUserAgentVersion(version string) string {
 	return version
 }
 
-// rememberOpenCodeInboundBody keeps the client request body so protocol
-// conversion (Responses↔Anthropic↔Chat Completions) can still recover
-// prompt_cache_key / metadata.user_id after those fields are dropped.
+// 协议转换前保存会话提示，使转换后的请求仍能使用原始会话身份。
+// 提示只包含已校验的会话标识，请求中的文本和图片随原请求释放。
 func rememberOpenCodeInboundBody(c *gin.Context, body []byte) {
 	if c == nil || len(body) == 0 {
 		return
 	}
-	c.Set(openCodeInboundBodyContextKey, body)
+	sessionID := sanitizeSessionID(openCodeSessionIDFromPayload(body))
+	c.Set(openCodeInboundBodyContextKey, openCodeSessionHintBody(sessionID))
 }
 
 func openCodeInboundBodies(c *gin.Context) [][]byte {
@@ -241,7 +241,14 @@ func openCodeSessionHintBody(promptCacheKey string) []byte {
 	if key == "" {
 		return nil
 	}
-	return []byte(`{"prompt_cache_key":` + strconv.Quote(key) + `}`)
+	// strconv.Quote emits Go escapes such as \U000f0001 that are not JSON, so a
+	// reader would truncate the id at that rune; json.Marshal escapes every
+	// string into valid JSON.
+	encoded, err := json.Marshal(key)
+	if err != nil {
+		return nil
+	}
+	return []byte(`{"prompt_cache_key":` + string(encoded) + `}`)
 }
 
 func existingOpenCodeSessionHeader(headers http.Header) string {
