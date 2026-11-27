@@ -2,9 +2,14 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"fmt"
+	"os"
+	"os/exec"
+	"regexp"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
@@ -19,6 +24,21 @@ func compactionMemoryRequestBody(imageBytes int, final bool) []byte {
 }
 
 func TestCompactionNormalizationLargeTriggerRequestAllocations(t *testing.T) {
+	// TotalAlloc counts allocations across the process, including background
+	// goroutines left by other service tests. Measure only this case in a child.
+	const childEnv = "SUB2API_COMPACTION_ALLOC_TEST_CHILD"
+	if os.Getenv(childEnv) != "1" {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		executable, err := os.Executable()
+		require.NoError(t, err)
+		cmd := exec.CommandContext(ctx, executable, "-test.run=^"+regexp.QuoteMeta(t.Name())+"$", "-test.count=1")
+		cmd.Env = append(os.Environ(), childEnv+"=1")
+		output, err := cmd.CombinedOutput()
+		require.NoError(t, err, "isolated allocation test failed:\n%s", output)
+		return
+	}
+
 	for _, final := range []bool{true, false} {
 		t.Run(fmt.Sprintf("already_final=%v", final), func(t *testing.T) {
 			body := compactionMemoryRequestBody(2<<20, final)

@@ -1,11 +1,11 @@
 package service
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"os"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -241,7 +241,14 @@ func openCodeSessionHintBody(promptCacheKey string) []byte {
 	if key == "" {
 		return nil
 	}
-	return []byte(`{"prompt_cache_key":` + strconv.Quote(key) + `}`)
+	// strconv.Quote emits Go escapes such as \U000f0001 that are not JSON, so a
+	// reader would truncate the id at that rune; json.Marshal escapes every
+	// string into valid JSON.
+	encoded, err := json.Marshal(key)
+	if err != nil {
+		return nil
+	}
+	return []byte(`{"prompt_cache_key":` + string(encoded) + `}`)
 }
 
 func existingOpenCodeSessionHeader(headers http.Header) string {

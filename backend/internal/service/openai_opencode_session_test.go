@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -603,4 +604,20 @@ func TestDefaultOpenCodeUpstreamUserAgentMatchesClientFormat(t *testing.T) {
 	// 出站 UA 都必须保持该格式。
 	require.Regexp(t, `^opencode/\d+\.\d+\.\d+$`, openCodeUpstreamUserAgent)
 	require.Regexp(t, `^\d+\.\d+\.\d+$`, defaultOpenCodeUserAgentVersion)
+}
+
+func TestOpenCodeSessionHintBodyKeepsSupplementaryPlaneRunes(t *testing.T) {
+	for _, sessionID := range []string{
+		"sess\U000f0001",
+		"tag\U000e0041z",
+		"flag-\U0001F3F4\U000E0067\U000E0062\U000E0065\U000E006E\U000E0067\U000E007F",
+		`quote"back\slash<&>`,
+	} {
+		t.Run(sessionID, func(t *testing.T) {
+			hint := openCodeSessionHintBody(sessionID)
+			require.True(t, json.Valid(hint), "hint must be valid JSON: %s", hint)
+			require.Equal(t, sessionID, openCodeSessionIDFromPayload(hint))
+		})
+	}
+	require.Nil(t, openCodeSessionHintBody("   "))
 }
