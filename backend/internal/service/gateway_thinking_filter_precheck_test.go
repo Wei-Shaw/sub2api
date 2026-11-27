@@ -2,11 +2,14 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/stretchr/testify/require"
@@ -77,18 +80,18 @@ func signedThinkingHistoryBody() []byte {
 }
 
 func TestFilterThinkingBlocksSignedHistorySkipsDecode(t *testing.T) {
-	// AllocsPerRun reads process-wide counters. Background workers from other
-	// service tests can otherwise make unchanged signed history fail this check.
-	const isolatedEnv = "SUB2API_TEST_SIGNED_HISTORY_ALLOCS"
-	if os.Getenv(isolatedEnv) != "1" {
-		binary, err := os.Executable()
+	// AllocsPerRun counts allocations across the process, including background
+	// goroutines left by other service tests. Measure only this case in a child.
+	const childEnv = "SUB2API_THINKING_FILTER_ALLOC_TEST_CHILD"
+	if os.Getenv(childEnv) != "1" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		executable, err := os.Executable()
 		require.NoError(t, err)
-		cmd := exec.CommandContext(t.Context(), binary,
-			"-test.run=^TestFilterThinkingBlocksSignedHistorySkipsDecode$",
-			"-test.count=1", "-test.timeout=30s")
-		cmd.Env = append(os.Environ(), isolatedEnv+"=1")
+		cmd := exec.CommandContext(ctx, executable, "-test.run=^"+regexp.QuoteMeta(t.Name())+"$", "-test.count=1")
+		cmd.Env = append(os.Environ(), childEnv+"=1")
 		output, err := cmd.CombinedOutput()
-		require.NoError(t, err, "%s", output)
+		require.NoError(t, err, "isolated allocation test failed:\n%s", output)
 		return
 	}
 

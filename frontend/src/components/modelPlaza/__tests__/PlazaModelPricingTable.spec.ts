@@ -3,6 +3,14 @@ import { mount } from '@vue/test-utils'
 import PlazaModelPricingTable from '../PlazaModelPricingTable.vue'
 import type { PlazaModel } from '@/api/modelPlaza'
 
+const { copyToClipboard } = vi.hoisted(() => ({
+  copyToClipboard: vi.fn().mockResolvedValue(true)
+}))
+
+vi.mock('@/composables/useClipboard', () => ({
+  useClipboard: () => ({ copyToClipboard })
+}))
+
 vi.mock('vue-i18n', async () => {
   const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
   return {
@@ -58,6 +66,47 @@ function mountTable(
 }
 
 describe('PlazaModelPricingTable', () => {
+  it('copies the exact model ID from the clicked pricing row', async () => {
+    const model = tokenModel({
+      name: 'provider/Model-v2',
+      time_pricing: {
+        timezone: 'Asia/Shanghai',
+        periods: [{ start_time: '09:00', end_time: '12:00', multiplier: 0.5 }]
+      }
+    })
+    const wrapper = mountTable([tokenModel(), model], 1)
+    const rows = wrapper.findAll('tbody tr').filter(row => row.text().includes(model.name))
+    expect(rows).toHaveLength(2)
+
+    for (const row of rows) {
+      const button = row.get('button[aria-label="modelPlaza.table.copyModelId"]')
+      await button.trigger('click')
+    }
+
+    expect(copyToClipboard.mock.calls).toEqual([[model.name], [model.name]])
+    wrapper.unmount()
+  })
+
+  it.each([false, true])('shows independent 12h prices without a 1h label (intervals=%s)', (intervals) => {
+    const model = tokenModel({ name: 'gpt-6-luna', platform: 'openai' })
+    model.pricing!.cache_write_price = null
+    model.pricing!.cache_write_12h_price = 2e-6
+    model.pricing!.cache_read_price = null
+    model.official_pricing = { input_price: 1e-6, output_price: 5e-6, cache_write_price: null, cache_write_12h_price: 4e-6, cache_read_price: null }
+    if (intervals) {
+      model.pricing!.intervals = [{ min_tokens: 0, max_tokens: null, input_price: null, output_price: null, cache_write_price: null, cache_write_12h_price: 2e-6, cache_read_price: null, per_request_price: null }]
+      model.official_pricing.intervals = [{ min_tokens: 0, max_tokens: null, input_price: 1e-6, output_price: 5e-6, cache_write_price: null, cache_write_12h_price: 4e-6, cache_read_price: null, per_request_price: null }]
+    }
+    const wrapper = mountTable([model], 0.5)
+    try {
+      expect(wrapper.text()).toContain('(12h $1.00)')
+      expect(wrapper.text()).toContain('(12h $4.00)')
+      expect(wrapper.text()).not.toContain('(1h')
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
   it.each([
     { enabled: true, multiplier: 1, userRate: 0.05, expected: 1 },
     { enabled: true, multiplier: 0.5, userRate: null, expected: 0.5 },

@@ -118,6 +118,42 @@ func TestUpstreamBillingProbeGrokAccountPersistsSnapshot(t *testing.T) {
 	require.Equal(t, UpstreamBillingProbeStatusOK, persisted.Status)
 }
 
+func TestUpstreamBillingGroupPreview(t *testing.T) {
+	for _, tt := range []struct {
+		name, platform, accountType string
+		fields                      string
+		want                        BillingGroupInfo
+	}{
+		{
+			name: "group details", platform: PlatformGemini, accountType: AccountTypeAPIKey,
+			fields: `,"group_name":"标准组","group_description":"支持推理模型"`,
+			want:   BillingGroupInfo{Name: "标准组", Description: "支持推理模型"},
+		},
+		{
+			name: "existing relay account", platform: PlatformAntigravity, accountType: AccountTypeUpstream,
+			fields: `,"group_name":"Relay"`, want: BillingGroupInfo{Name: "Relay"},
+		},
+		{name: "older upstream", platform: PlatformOpenAI, accountType: AccountTypeAPIKey},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			upstream := &httpUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK,
+				Body:       io.NopCloser(strings.NewReader(`{"object":"sub2api.key_billing","schema_version":1,"billing_scope":"token"` + tt.fields + `}`)),
+			}}
+			// The create form has no persisted account or probe settings.
+			svc := newUpstreamBillingProbeTestService(nil, upstream, nil)
+			account := &Account{Platform: tt.platform, Type: tt.accountType, Credentials: map[string]any{
+				"api_key": "preview-key", "base_url": "https://relay.example/v1",
+			}}
+			got, err := svc.PreviewGroup(context.Background(), account)
+			require.NoError(t, err)
+			require.Equal(t, tt.want, *got)
+			require.Equal(t, "https://relay.example/v1/sub2api/billing?include=group", upstream.lastReq.URL.String())
+			require.Equal(t, "Bearer preview-key", upstream.lastReq.Header.Get("Authorization"))
+		})
+	}
+}
+
 // 非 OpenAI 平台没有自定义 base_url 时，上游是各自官方 API，必无
 // /v1/sub2api/billing：不发请求，直接落 unsupported。
 func TestUpstreamBillingProbeNonOpenAIWithoutBaseURLIsUnsupportedWithoutRequest(t *testing.T) {

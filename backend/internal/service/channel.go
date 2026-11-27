@@ -97,9 +97,11 @@ type ChannelModelPricing struct {
 	OutputPrice                *float64            `json:"output_price"`
 	CacheWritePrice            *float64            `json:"cache_write_price"`
 	CacheWrite1hPrice          *float64            `json:"cache_write_1h_price"`
+	CacheWrite12hPrice         *float64            `json:"cache_write_12h_price"`
 	CacheReadPrice             *float64            `json:"cache_read_price"`
 	FastMultiplier             *float64            `json:"fast_multiplier"`
 	FlexMultiplier             *float64            `json:"flex_multiplier"`
+	UltrafastMultiplier        *float64            `json:"ultrafast_multiplier"`
 	ReasoningEffortMultipliers map[string]float64  `json:"reasoning_effort_multipliers,omitempty"`
 	ImageInputPrice            *float64            `json:"image_input_price"`
 	ImageOutputPrice           *float64            `json:"image_output_price"`
@@ -135,6 +137,7 @@ type PricingInterval struct {
 	OutputPrice          *float64  `json:"output_price"`
 	CacheWritePrice      *float64  `json:"cache_write_price"`
 	CacheWrite1hPrice    *float64  `json:"cache_write_1h_price"`
+	CacheWrite12hPrice   *float64  `json:"cache_write_12h_price"`
 	CacheReadPrice       *float64  `json:"cache_read_price"`
 	InputMultiplier      *float64  `json:"input_multiplier"`
 	OutputMultiplier     *float64  `json:"output_multiplier"`
@@ -309,6 +312,20 @@ func (c *Channel) IsBedrockCCCompatEnabled(platform string) bool {
 	return ok && enabled
 }
 
+// featureKeyExposeResponseModel is the Channel.FeaturesConfig key that lets
+// regular users see the final upstream response model in their usage records.
+const featureKeyExposeResponseModel = "expose_response_model"
+
+// IsResponseModelExposed 返回该渠道是否允许普通用户在使用记录中看到实际响应模型。
+// 默认关闭；仅暴露请求模型与最终响应模型，不暴露中间映射链。
+func (c *Channel) IsResponseModelExposed() bool {
+	if c == nil || c.FeaturesConfig == nil {
+		return false
+	}
+	enabled, ok := c.FeaturesConfig[featureKeyExposeResponseModel].(bool)
+	return ok && enabled
+}
+
 // deepCopyFeaturesConfig creates a deep copy of FeaturesConfig to prevent cache pollution.
 func deepCopyFeaturesConfig(src map[string]any) map[string]any {
 	dst := make(map[string]any, len(src))
@@ -383,6 +400,7 @@ func validateIntervalPrices(iv *PricingInterval, idx int) error {
 		{"output_price", iv.OutputPrice},
 		{"cache_write_price", iv.CacheWritePrice},
 		{"cache_write_1h_price", iv.CacheWrite1hPrice},
+		{"cache_write_12h_price", iv.CacheWrite12hPrice},
 		{"cache_read_price", iv.CacheReadPrice},
 		{"per_request_price", iv.PerRequestPrice},
 	}

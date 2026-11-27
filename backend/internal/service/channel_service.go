@@ -507,6 +507,28 @@ func (s *ChannelService) GetChannelForGroup(ctx context.Context, groupID int64) 
 	return ch.Clone(), nil
 }
 
+// ResponseModelExposedChannels 返回给定渠道 ID 中开启了"向用户显示实际响应模型"的集合。
+// 只读取内存缓存（与网关热路径共用），不会产生额外的数据库查询。
+func (s *ChannelService) ResponseModelExposedChannels(ctx context.Context, ids []int64) map[int64]bool {
+	if s == nil || len(ids) == 0 {
+		return nil
+	}
+	cache, err := s.loadCache(ctx)
+	if err != nil || cache == nil {
+		return nil
+	}
+	var out map[int64]bool
+	for _, id := range ids {
+		if ch, ok := cache.byID[id]; ok && ch.IsResponseModelExposed() {
+			if out == nil {
+				out = make(map[int64]bool, len(ids))
+			}
+			out[id] = true
+		}
+	}
+	return out
+}
+
 // GetGroupPlatform 获取分组的平台标识（从缓存）
 func (s *ChannelService) GetGroupPlatform(ctx context.Context, groupID int64) string {
 	cache, err := s.loadCache(ctx)
@@ -787,6 +809,7 @@ func checkPricesNotNegative(p ChannelModelPricing) error {
 		{"output_price", p.OutputPrice},
 		{"cache_write_price", p.CacheWritePrice},
 		{"cache_write_1h_price", p.CacheWrite1hPrice},
+		{"cache_write_12h_price", p.CacheWrite12hPrice},
 		{"cache_read_price", p.CacheReadPrice},
 		{"image_input_price", p.ImageInputPrice},
 		{"image_output_price", p.ImageOutputPrice},
@@ -803,6 +826,7 @@ func checkPricesNotNegative(p ChannelModelPricing) error {
 	}{
 		{"fast_multiplier", p.FastMultiplier},
 		{"flex_multiplier", p.FlexMultiplier},
+		{"ultrafast_multiplier", p.UltrafastMultiplier},
 	} {
 		if c.val != nil && *c.val <= 0 {
 			return infraerrors.BadRequest("INVALID_MULTIPLIER", fmt.Sprintf("%s must be > 0", c.field))
@@ -814,7 +838,7 @@ func checkPricesNotNegative(p ChannelModelPricing) error {
 func checkIntervalsHavePrices(p ChannelModelPricing) error {
 	for _, iv := range p.Intervals {
 		if iv.InputPrice == nil && iv.OutputPrice == nil &&
-			iv.CacheWritePrice == nil && iv.CacheWrite1hPrice == nil && iv.CacheReadPrice == nil &&
+			iv.CacheWritePrice == nil && iv.CacheWrite1hPrice == nil && iv.CacheWrite12hPrice == nil && iv.CacheReadPrice == nil &&
 			iv.PerRequestPrice == nil && iv.InputMultiplier == nil &&
 			iv.OutputMultiplier == nil && iv.CacheWriteMultiplier == nil &&
 			iv.CacheReadMultiplier == nil {

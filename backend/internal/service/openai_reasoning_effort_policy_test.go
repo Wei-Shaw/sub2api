@@ -2,12 +2,37 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/stretchr/testify/require"
 	"github.com/tidwall/gjson"
 )
+
+func TestGLMReasoningEffortPolicyPreservesNoneAndMinimal(t *testing.T) {
+	for _, model := range []string{"glm-5.2", "glm-5.3"} {
+		for _, field := range []string{`"reasoning":{"effort":"%s"}`, `"reasoning_effort":"%s"`} {
+			for _, effort := range []string{"none", "minimal"} {
+				for _, ceiling := range []string{"minimal", "low"} {
+					for _, overLimit := range []string{ReasoningEffortOverLimitDowngrade, ReasoningEffortOverLimitDeny} {
+						t.Run(model+"/"+field+"/"+effort+"/"+ceiling+"/"+overLimit, func(t *testing.T) {
+							body := []byte(fmt.Sprintf(`{"model":%q,`+field+`}`, model, effort))
+							ctx := WithOpenAIReasoningEffortPolicy(context.Background(), ceiling, nil, overLimit)
+							normalized, normalizationChanged := NormalizeGLMOpenAIReasoningEffort(body, model)
+							require.False(t, normalizationChanged)
+							got, changed, err := ApplyOpenAIReasoningEffortPolicyFromContext(ctx, normalized)
+							require.NoError(t, err)
+							require.False(t, changed)
+							require.Equal(t, body, got)
+						})
+					}
+				}
+			}
+		}
+	}
+}
 
 func TestCanonicalRequestedReasoningEffort(t *testing.T) {
 	t.Parallel()
@@ -25,6 +50,36 @@ func TestCanonicalRequestedReasoningEffort(t *testing.T) {
 	require.Equal(t, "high", *claude)
 
 	require.Nil(t, CanonicalRequestedReasoningEffort([]byte(`{"model":"gpt-5.4"}`), "gpt-5.4"))
+}
+
+func TestCanonicalRequestedReasoningEffortFromConfigurationUpdates(t *testing.T) {
+	for _, tc := range []struct {
+		name, input, want string
+	}{
+		{"current turn", `[{"role":"user","content":"hi"},{"type":"configuration_update","reasoning":{"effort":"high"}}]`, "high"},
+		{"history and partial updates", `[{"type":"configuration_update","reasoning":{"effort":"high"}},{"type":"configuration_update","reasoning":{"effort":"MAX"}},{"type":"configuration_update","text":{"verbosity":"low"}},{"role":"user","content":"next"}]`, "max"},
+		{"thinking off", `[{"type":"configuration_update","reasoning":{"effort":"none"}}]`, "none"},
+		{"escaped type", `[{"type":"configuration\u005fupdate","reasoning":{"effort":"low"}}]`, "low"},
+		{"no effort selected", `[{"type":"configuration_update","text":{"verbosity":"low"}}]`, "medium"},
+		{"non-string effort", `[{"type":"configuration_update","reasoning":{"effort":123}}]`, "medium"},
+		{"nested in message", `[{"role":"user","content":[{"type":"configuration_update","reasoning":{"effort":"low"}}]}]`, "medium"},
+		{"non-array input", `{"item":{"type":"configuration_update","reasoning":{"effort":"low"}}}`, "medium"},
+		{"unknown explicit effort", `[{"type":"configuration_update","reasoning":{"effort":"unknown"}}]`, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := []byte(`{"model":"gpt-6.1-sol","reasoning":{"effort":"medium"},"input":` + tc.input + `}`)
+			var parsed map[string]any
+			require.NoError(t, json.Unmarshal(body, &parsed))
+			for _, got := range []*string{CanonicalRequestedReasoningEffort(body), CanonicalRequestedReasoningEffortFromReqBody(parsed)} {
+				if tc.want == "" {
+					require.Nil(t, got)
+				} else {
+					require.NotNil(t, got)
+					require.Equal(t, tc.want, *got)
+				}
+			}
+		})
+	}
 }
 
 func TestRequestedReasoningEffortContext(t *testing.T) {

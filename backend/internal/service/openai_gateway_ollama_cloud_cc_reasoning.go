@@ -11,7 +11,14 @@ import (
 
 // Ollama Cloud 的 OpenAI 兼容 /v1/chat/completions 把思维放在 reasoning / thinking，
 // 而 DeepSeek/OpenAI 客户端只认 reasoning_content。仅在 raw CC 直转路径上做 wire JSON
-// 双向补齐，不改 CC↔Responses / Anthropic / Grok 桥。
+// 双向补齐，不改 CC↔Responses / Anthropic / Grok 桥。vLLM、SGLang 等自托管上游同样
+// 返回 reasoning，其 OpenAI API Key 账号可通过 OpenAIChatReasoningContentExtraKey 启用
+// 同一套补齐。
+
+// OpenAIChatReasoningContentExtraKey 是账号 extra 中的可选开关，通过 admin 账号更新 API
+// 的 extra 字段设置。为 true 时，OpenAI API Key 账号在 raw CC 直转路径上启用与 Ollama
+// Cloud 相同的 reasoning 字段补齐。
+const OpenAIChatReasoningContentExtraKey = "openai_chat_reasoning_content"
 
 func isOllamaCloudRawChatCompletionsAccount(account *Account) bool {
 	if account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeAPIKey {
@@ -47,24 +54,34 @@ func accountHasOllamaCloudUsageExtra(account *Account) bool {
 	return false
 }
 
-// applyOllamaCloudRawChatCompletionsRequest 只做 Ollama Cloud reasoning 归一化；
+// rawChatCompletionsReasoningCompatEnabled 判定 raw CC 直转是否补齐 reasoning 字段：
+// Ollama Cloud 账号默认启用，其余 OpenAI API Key 账号按 OpenAIChatReasoningContentExtraKey 开启。
+func rawChatCompletionsReasoningCompatEnabled(account *Account) bool {
+	if isOllamaCloudRawChatCompletionsAccount(account) {
+		return true
+	}
+	return account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey &&
+		account.getExtraBool(OpenAIChatReasoningContentExtraKey)
+}
+
+// applyRawChatCompletionsReasoningCompatRequest 只做 reasoning 归一化；
 // max_tokens clamp 已解耦到独立钩子 clampOllamaCloudUpstreamMaxTokens，由出站方依次调用。
-func applyOllamaCloudRawChatCompletionsRequest(account *Account, body []byte) []byte {
-	if !isOllamaCloudRawChatCompletionsAccount(account) || len(body) == 0 {
+func applyRawChatCompletionsReasoningCompatRequest(account *Account, body []byte) []byte {
+	if !rawChatCompletionsReasoningCompatEnabled(account) || len(body) == 0 {
 		return body
 	}
 	return normalizeOllamaCloudChatCompletionsRequest(body)
 }
 
-func applyOllamaCloudRawChatCompletionsResponse(account *Account, body []byte) []byte {
-	if !isOllamaCloudRawChatCompletionsAccount(account) || len(body) == 0 {
+func applyRawChatCompletionsReasoningCompatResponse(account *Account, body []byte) []byte {
+	if !rawChatCompletionsReasoningCompatEnabled(account) || len(body) == 0 {
 		return body
 	}
 	return normalizeOllamaCloudChatCompletionsResponseJSON(body)
 }
 
-func applyOllamaCloudRawChatCompletionsSSELine(account *Account, line string) string {
-	if !isOllamaCloudRawChatCompletionsAccount(account) || line == "" {
+func applyRawChatCompletionsReasoningCompatSSELine(account *Account, line string) string {
+	if !rawChatCompletionsReasoningCompatEnabled(account) || line == "" {
 		return line
 	}
 	return normalizeOllamaCloudChatCompletionsSSELine(line)
@@ -78,8 +95,8 @@ func normalizeOllamaCloudChatCompletionsRequest(body []byte) []byte {
 	if !messages.IsArray() {
 		return body
 	}
-	updated := body
-	changed := false
+	var edits []jsonObjectStringFieldEdit
+	var indexes []int
 	for i, msg := range messages.Array() {
 		if msg.Get("role").String() != "assistant" {
 			continue
@@ -94,15 +111,23 @@ func normalizeOllamaCloudChatCompletionsRequest(body []byte) []byte {
 		if _, has := jsonNonEmptyString(msg.Get("thinking")); has {
 			continue
 		}
-		next, err := sjson.SetBytes(updated, "messages."+strconv.Itoa(i)+".reasoning", reasoningContent)
+		edits = append(edits, jsonObjectStringFieldEdit{object: msg, value: reasoningContent})
+		indexes = append(indexes, i)
+	}
+	if len(edits) == 0 {
+		return body
+	}
+	if updated, ok := setStringFieldInJSONObjects(body, "reasoning", edits); ok {
+		return updated
+	}
+	// 无法可靠定位时逐条改写（输出相同，只是每条都复制一次请求体）。
+	updated := body
+	for k, i := range indexes {
+		next, err := sjson.SetBytes(updated, "messages."+strconv.Itoa(i)+".reasoning", edits[k].value)
 		if err != nil {
 			return body
 		}
 		updated = next
-		changed = true
-	}
-	if !changed {
-		return body
 	}
 	return updated
 }

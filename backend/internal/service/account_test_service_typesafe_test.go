@@ -60,6 +60,18 @@ func TestTypeSafeAccountTestSendsNativeSystemOneRequest(t *testing.T) {
 	require.Zero(t, repo.errorCalls)
 }
 
+func TestTypeSafeAccountTestAppliesAccountModelMapping(t *testing.T) {
+	svc, repo, requests, c, rec := newTypeSafeAccountTestFixture(t, http.StatusOK, `{"answers":{"connection_test":{"type":"noul"}}}`)
+	repo.account.Credentials["model_mapping"] = map[string]any{"jev-latest": "decision-model-preview"}
+
+	require.NoError(t, svc.TestAccountConnection(c, 31, "ignored-client-model", "custom state", AccountTestModeDefault))
+	require.Len(t, *requests, 1)
+	body, err := io.ReadAll((*requests)[0].Body)
+	require.NoError(t, err)
+	require.JSONEq(t, `{"model":"decision-model-preview","state":"custom state","questions":{"connection_test":{"type":"noul","instructions":"Is this text a connection test?"}}}`, string(body))
+	require.Contains(t, rec.Body.String(), `"type":"test_start","model":"decision-model-preview"`)
+}
+
 func TestTypeSafeAccountTestMarksRejectedKey(t *testing.T) {
 	for _, status := range []int{http.StatusUnauthorized, http.StatusForbidden} {
 		t.Run(http.StatusText(status), func(t *testing.T) {

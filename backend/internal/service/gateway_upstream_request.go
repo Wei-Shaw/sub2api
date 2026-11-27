@@ -232,7 +232,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 
 	// 账号级请求头覆写（仅 anthropic/openai api_key 账号启用时生效；OAuth 路径 no-op）。
 	// 放在所有 header 逻辑之后，确保配置值对同名头拥有最终决定权。
-	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyHeaderOverrides(req.Context(), req.Header)
 	filterSonnet55ToolsetBetaHeader(req.Header, body, modelID)
 
 	// === DEBUG: 打印上游转发请求（headers + body 摘要），与 CLIENT_ORIGINAL 对比 ===
@@ -248,7 +248,7 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 	// Always capture a compact fingerprint line for later error diagnostics.
 	// We only print it when needed (or when the explicit debug flag is enabled).
 	if c != nil && tokenType == "oauth" {
-		c.Set(claudeMimicDebugInfoKey, buildClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode))
+		c.Set(claudeMimicDebugInfoKey, newClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode))
 	}
 	if s.debugClaudeMimicEnabled() {
 		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
@@ -441,7 +441,7 @@ func (s *GatewayService) getBetaHeader(modelID string, clientBetaHeader string) 
 
 func requestNeedsBetaFeatures(body []byte) bool {
 	tools := gjson.GetBytes(body, "tools")
-	if tools.Exists() && tools.IsArray() && len(tools.Array()) > 0 {
+	if tools.Exists() && tools.IsArray() && tools.Get("0").Exists() {
 		return true
 	}
 	thinkingType := gjson.GetBytes(body, "thinking.type").String()
@@ -470,9 +470,18 @@ func filterSonnet55ToolsetBeta(header string, body []byte, modelID string) strin
 	if !claude.IsSonnet55(modelID) && !claude.IsHaiku55(modelID) {
 		return header
 	}
-	for _, tool := range gjson.GetBytes(body, "tools").Array() {
-		switch tool.Get("type").String() {
-		case "computer_toolset_20260801", "browser_toolset_20260801":
+	tools := gjson.GetBytes(body, "tools")
+	if tools.IsArray() {
+		matched := false
+		tools.ForEach(func(_, tool gjson.Result) bool {
+			switch tool.Get("type").String() {
+			case "computer_toolset_20260801", "browser_toolset_20260801":
+				matched = true
+				return false
+			}
+			return true
+		})
+		if matched {
 			if !containsBetaToken(header, claude.BetaFineGrainedToolStreaming) {
 				return header
 			}

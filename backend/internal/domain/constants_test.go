@@ -107,6 +107,7 @@ func TestDefaultAntigravityModelMapping_Gemini38FlashModels(t *testing.T) {
 
 func TestDefaultAntigravityModelMapping_Gemini4ArgonAndClaude55Models(t *testing.T) {
 	cases := map[string]string{
+		"gemini-4-carbon":          "gemini-4-carbon",
 		"gemini-4-argon":           "gemini-4-argon-high",
 		"gemini-4-argon-high":      "gemini-4-argon-high",
 		"gemini-4-argon-low":       "gemini-4-argon-low",
@@ -131,6 +132,8 @@ func TestDefaultBedrockModelMapping_ContainsNewClaudeModels(t *testing.T) {
 	t.Parallel()
 
 	cases := map[string]string{
+		"claude-fable-5-2":  "anthropic.claude-fable-5-2",
+		"claude-mythos-5-2": "anthropic.claude-mythos-5-2",
 		"claude-fable-5-1":  "anthropic.claude-fable-5-1",
 		"claude-fable-5":    "anthropic.claude-fable-5",
 		"claude-opus-4-8":   "us.anthropic.claude-opus-4-8-v1",

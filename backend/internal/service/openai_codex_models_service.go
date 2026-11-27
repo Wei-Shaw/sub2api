@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -258,6 +259,7 @@ func loadCodexGroupCatalogAccounts(ctx context.Context, repo AccountRepository, 
 			PlatformDeepseek,
 			PlatformMiniMax,
 			PlatformOpenCodeGo,
+			PlatformCommandCode,
 		},
 		false,
 	)
@@ -419,6 +421,7 @@ type configuredCodexModelDescriptor struct {
 
 type codexModelMetadataOverride struct {
 	UpstreamModelMetadata
+	audioInput              bool
 	reasoningConflict       bool
 	inputModalitiesConflict bool
 }
@@ -453,7 +456,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 	}
 
 	if isDeepSeekCodexModel(modelID) {
-		defaultReasoningLevel := "high"
+		defaultReasoningLevel := deepSeekDefaultReasoningEffort
 		descriptor.DisplayName = deepSeekCodexDisplayName(modelID)
 		descriptor.Description = "DeepSeek coding and reasoning model routed through Sub2API."
 		descriptor.DefaultReasoningLevel = &defaultReasoningLevel
@@ -481,7 +484,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 	}
 
 	if isClaudeCodexModel(modelID) {
-		if claude.IsOpus55(modelID) || claude.IsSonnet55(modelID) || claude.IsHaiku55(modelID) {
+		if claude.IsOpus55(modelID) || claude.IsSonnet55(modelID) || claude.IsHaiku55(modelID) || claude.IsFable52(modelID) || claude.IsMythos52(modelID) {
 			descriptor.ContextWindow = 1_000_000
 			descriptor.MaxContextWindow = 1_000_000
 		}
@@ -490,7 +493,7 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		descriptor.SupportsParallelToolCalls = true
 		if levels := configuredCodexClaudeReasoningLevels(modelID); len(levels) > 0 {
 			defaultReasoningLevel := claudeCodexDefaultReasoningLevel(levels)
-			if claude.IsSonnet55(modelID) {
+			if claude.IsSonnet55(modelID) || claude.IsFable52(modelID) || claude.IsMythos52(modelID) {
 				defaultReasoningLevel = "high"
 			}
 			descriptor.DefaultReasoningLevel = &defaultReasoningLevel
@@ -543,6 +546,22 @@ func newConfiguredCodexModelDescriptor(modelID string) configuredCodexModelDescr
 		// The October 12, 2026 Codex/Work default increased to 500k after
 		// the bundled official snapshot. Explicit upstream metadata still wins.
 		descriptor.ContextWindow = 500_000
+		// The two 6.2 descriptors now occupy the first two slots.
+		descriptor.Priority = 3
+	}
+	var metadata json.RawMessage
+	switch openai.GPT62ModelID(modelID) {
+	case "gpt-6.2-sol":
+		metadata = openai.CodexGPT62SolMetadata
+	case "gpt-6.2-astra":
+		metadata = openai.CodexGPT62AstraMetadata
+	}
+	if len(metadata) > 0 {
+		if err := json.Unmarshal(metadata, &descriptor); err != nil {
+			panic(err)
+		}
+		descriptor.Slug = modelID
+		descriptor.officialMetadata = metadata
 	}
 	if openai.IsGPT61TerraModelSpelling(modelID) {
 		// The Codex descriptor differs from the API model page: Codex offers
@@ -771,6 +790,10 @@ func deepSeekCodexDisplayName(modelID string) string {
 		return modelID
 	}
 }
+
+// deepSeekDefaultReasoningEffort is the default level of DeepSeek's
+// low/high/max reasoning scale.
+const deepSeekDefaultReasoningEffort = "high"
 
 func isDeepSeekCodexModel(modelID string) bool {
 	return strings.HasPrefix(strings.ToLower(strings.TrimSpace(modelID)), "deepseek-")
@@ -1004,6 +1027,7 @@ func buildCodexModelsManifest(
 			// a stale official Astra snapshot cannot downgrade the catalog.
 			descriptor.InputModalities = []string{"text", "image"}
 		}
+		descriptor.InputModalities = codexAudioInputModalities(descriptor.InputModalities, modelMetadata[modelID].audioInput)
 		if metadataModelID != modelID {
 			descriptor.DisplayName = modelID
 			descriptor.Description = configuredCodexCustomDescription
@@ -1028,6 +1052,16 @@ func buildCodexModelsManifest(
 	return json.Marshal(struct {
 		Models []json.RawMessage `json:"models"`
 	}{Models: models})
+}
+
+func codexAudioInputModalities(modalities []string, supported bool) []string {
+	if !supported {
+		return slices.DeleteFunc(modalities, func(modality string) bool { return modality == "audio" })
+	}
+	if !slices.Contains(modalities, "audio") {
+		return append(modalities, "audio")
+	}
+	return modalities
 }
 
 func codexCatalogMetadataModels(
@@ -1153,7 +1187,9 @@ func groupCodexModelSupportsImageInput(
 			return false
 		}
 	}
-	if platform != PlatformOpenAI && platform != PlatformGrok && platform != PlatformDeepseek && platform != PlatformOpenCodeGo {
+	switch platform {
+	case PlatformOpenAI, PlatformGrok, PlatformDeepseek, PlatformOpenCodeGo, PlatformCommandCode:
+	default:
 		return false
 	}
 
@@ -1287,12 +1323,38 @@ func codexExplicitModelMappingClaims(account Account, modelID string) bool {
 	return mapped != ""
 }
 
+// ImageInputModelsExtraKey is an optional account extra key, set through the
+// admin account API, that lists upstream model IDs accepting image input.
+// It covers models that neither the upstream model list nor models.dev
+// describes, such as multimodal models served by vLLM or SGLang. Declared
+// models advertise image input ahead of synced metadata and name fallbacks.
+const ImageInputModelsExtraKey = "image_input_models"
+
+// accountDeclaresImageInputModel reports whether the account lists
+// upstreamModel under ImageInputModelsExtraKey, ignoring case.
+func accountDeclaresImageInputModel(account *Account, upstreamModel string) bool {
+	model := strings.TrimSpace(upstreamModel)
+	if account == nil || account.Extra == nil || model == "" {
+		return false
+	}
+	declared, _ := account.Extra[ImageInputModelsExtraKey].([]any)
+	for _, value := range declared {
+		if name, ok := value.(string); ok && strings.EqualFold(strings.TrimSpace(name), model) {
+			return true
+		}
+	}
+	return false
+}
+
 func accountCodexModelSupportsImageInput(account *Account, upstreamModel string) bool {
 	if account == nil {
 		return false
 	}
 	switch account.Platform {
-	case PlatformOpenAI, PlatformDeepseek, PlatformOpenCodeGo:
+	case PlatformOpenAI, PlatformDeepseek, PlatformOpenCodeGo, PlatformCommandCode:
+		if accountDeclaresImageInputModel(account, upstreamModel) {
+			return true
+		}
 		if metadata, ok := account.GetUpstreamModelMetadata(upstreamModel); ok {
 			if modalities := normalizeCodexInputModalities(metadata.InputModalities); len(modalities) > 0 {
 				// Official GPT-6 Astra metadata briefly shipped with a stale
@@ -1304,6 +1366,14 @@ func accountCodexModelSupportsImageInput(account *Account, upstreamModel string)
 				}
 				return stringSliceContains(modalities, "image")
 			}
+		}
+		if account.IsCommandCode() {
+			// Only infer capabilities for the provider's own endpoints when a
+			// synced model has no input modalities.
+			model := strings.TrimPrefix(strings.TrimSpace(upstreamModel), "deepseek/")
+			return model == "deepseek-v4.1-flash" &&
+				strings.TrimRight(account.GetOpenAIBaseURL(), "/") == DefaultCommandCodeBaseURL &&
+				strings.TrimRight(account.GetCNProtocolBaseURL(APIProtocolResponses), "/") == DefaultCommandCodeBaseURL
 		}
 		if strings.EqualFold(strings.TrimSpace(upstreamModel), "deepseek-v4-flash-vision-exp") {
 			return account.Type == AccountTypeAPIKey
@@ -1754,7 +1824,8 @@ func (s *OpenAIGatewayService) FetchCodexModelsManifest(ctx context.Context, acc
 	headers := make(http.Header)
 	if useAPIKeyUpstream {
 		headers.Set("Authorization", "Bearer "+authToken)
-		credAccount.ApplyHeaderOverrides(headers)
+		// 清单按请求头分桶缓存并跨用户共享：不携带用户身份。
+		credAccount.ApplyHeaderOverrides(withoutHeaderOverrideRequestScope(ctx), headers)
 	} else {
 		authHeaders, authErr := s.buildOpenAIAuthenticationHeaders(ctx, credAccount, authToken)
 		if authErr != nil {
@@ -2093,6 +2164,8 @@ func CodexModelsManifestETag(body []byte) string {
 }
 
 var apiKeyCodexModelsWithoutResponsesLite = map[string]struct{}{
+	"gpt-6.2-sol":   {},
+	"gpt-6.2-astra": {},
 	"gpt-6.1-terra": {},
 	"gpt-6.1-sol":   {},
 	"gpt-6-astra":   {},
@@ -2209,9 +2282,21 @@ func convertOpenAIModelListToCodexManifestForAccount(body []byte, account *Accou
 		metadataModels[id] = capabilityModel
 		capabilities := accountCodexToolCapabilities(account, capabilityModel)
 		applyCodexToolCapabilities(capabilities, entry, true)
-		modelMetadata[id] = codexModelMetadataOverride{UpstreamModelMetadata: UpstreamModelMetadata{
-			CodexToolCapabilities: capabilities,
-		}}
+		var modalities []string
+		_ = json.Unmarshal(entry["input_modalities"], &modalities)
+		if len(modalities) == 0 {
+			var declared modelsDevModalities
+			_ = json.Unmarshal(entry["modalities"], &declared)
+			modalities = declared.Input
+		}
+		if len(modalities) == 0 && account != nil {
+			synced, _ := account.GetUpstreamModelMetadata(capabilityModel)
+			modalities = synced.InputModalities
+		}
+		modelMetadata[id] = codexModelMetadataOverride{
+			UpstreamModelMetadata: UpstreamModelMetadata{CodexToolCapabilities: capabilities},
+			audioInput:            accountCodexModelSupportsAudioInput(account, capabilityModel, normalizeCodexInputModalities(modalities)),
+		}
 	}
 	if len(modelIDs) == 0 {
 		return body
@@ -2436,6 +2521,8 @@ func completeAPIKeyCodexModelsManifestMetadata(body []byte, completeAll bool, ac
 		}
 
 		descriptor := newConfiguredCodexModelDescriptor(slug)
+		// A subscription descriptor alone cannot establish audio support for an API key.
+		descriptor.InputModalities = codexAudioInputModalities(descriptor.InputModalities, false)
 		descriptor.SupportsSearchTool = shouldForwardOpenAIResponsesViaRawChatCompletions(account)
 		if accountCodexModelSupportsImageInput(account, slug) {
 			descriptor.InputModalities = []string{"text", "image"}
@@ -2478,6 +2565,15 @@ func completeAPIKeyCodexModelsManifestMetadata(body []byte, completeAll bool, ac
 			imageDetailOriginal := json.RawMessage("true")
 			if !bytes.Equal(bytes.TrimSpace(model["supports_image_detail_original"]), imageDetailOriginal) {
 				model["supports_image_detail_original"] = imageDetailOriginal
+				modelChanged = true
+			}
+		} else if account != nil && resolveUpstreamProtocol(account, APIProtocolResponses, capabilityModel, nil) != APIProtocolResponses {
+			var modalities []string
+			if json.Unmarshal(model["input_modalities"], &modalities) == nil && slices.Contains(modalities, "audio") {
+				model["input_modalities"], err = json.Marshal(codexAudioInputModalities(modalities, false))
+				if err != nil {
+					return nil, fmt.Errorf("encode input modalities for model %q: %w", slug, err)
+				}
 				modelChanged = true
 			}
 		}

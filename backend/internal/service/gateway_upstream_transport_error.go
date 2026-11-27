@@ -12,8 +12,7 @@ import (
 )
 
 // gatewayTransportErrorTempUnschedDuration is how long an account is temporarily
-// unscheduled after a durable transport failure (matches the OpenAI-side
-// openAITransportErrorTempUnschedDuration).
+// unscheduled after a durable transport failure on the Anthropic, Bedrock, or Gemini path.
 const gatewayTransportErrorTempUnschedDuration = 10 * time.Minute
 
 // gatewayTransportFailoverBody is the Anthropic-format error body attached to
@@ -63,7 +62,7 @@ func (s *GatewayService) handleUpstreamTransportError(ctx context.Context, c *gi
 	// Transport attempt left local validation; count Ollama Cloud activity.
 	scheduleOllamaCloudUsageActivity(s.deferredService, account)
 
-	if classifyUpstreamTransportError(err).Persistent {
+	if classifyUpstreamTransportError(err) != upstreamTransportTransient {
 		s.tempUnscheduleTransportError(ctx, account, safeErr)
 	}
 
