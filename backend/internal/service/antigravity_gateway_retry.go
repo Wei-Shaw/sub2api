@@ -251,10 +251,13 @@ func (s *AntigravityGatewayService) handleSmartRetry(p antigravityRetryLoopParam
 				_ = retryResp.Body.Close()
 			}
 
-			// 解析新的重试信息，用于下次重试的等待时间（MODEL_CAPACITY_EXHAUSTED 使用固定循环，跳过）
-			if !isModelCapacityExhausted && attempt < maxAttempts && lastRetryBody != nil {
-				newShouldRetry, _, newWaitDuration, _, _ := shouldTriggerAntigravitySmartRetry(p.account, lastRetryBody)
-				if newShouldRetry && newWaitDuration > 0 {
+			// Honor updated reset information even on the final attempt: it also
+			// determines the cooldown below. A long delay requests model limiting
+			// rather than another in-place retry, but is still authoritative.
+			// Capacity exhaustion retains its separate fixed retry/cooldown policy.
+			if !isModelCapacityExhausted && lastRetryBody != nil {
+				newShouldRetry, newShouldRateLimit, newWaitDuration, newModelName, newIsCapacity := shouldTriggerAntigravitySmartRetry(p.account, lastRetryBody)
+				if !newIsCapacity && (newShouldRetry || newShouldRateLimit) && newModelName == modelName && newWaitDuration > 0 {
 					waitDuration = newWaitDuration
 				}
 			}
@@ -642,8 +645,12 @@ urlFallbackLoop:
 						continue
 					}
 
-					// 重试用尽，标记账户限流
-					p.handleError(p.ctx, p.prefix, p.account, resp.StatusCode, resp.Header, respBody, p.requestedModel, p.groupID, p.sessionHash, p.isStickySession)
+					// 重试用尽，标记账户限流（无原因的 429 每个请求最多冷却一个账号）
+					if isBareAntigravity429(resp.StatusCode, respBody) && !claimBare429Cooldown(p.c, p.account.ID) {
+						logger.LegacyPrintf("service.antigravity_gateway", "%s status=%d bare_429_cooldown_skipped account=%d (this request already cooled another account; the request is the likely cause)", p.prefix, resp.StatusCode, p.account.ID)
+					} else {
+						p.handleError(p.ctx, p.prefix, p.account, resp.StatusCode, resp.Header, respBody, p.requestedModel, p.groupID, p.sessionHash, p.isStickySession)
+					}
 					logger.LegacyPrintf("service.antigravity_gateway", "%s status=%d rate_limited base_url=%s body=%s", p.prefix, resp.StatusCode, baseURL, truncateForLog(respBody, 200))
 					resp = &http.Response{
 						StatusCode: resp.StatusCode,

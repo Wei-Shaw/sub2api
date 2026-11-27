@@ -312,6 +312,20 @@ func (c *Channel) IsBedrockCCCompatEnabled(platform string) bool {
 	return ok && enabled
 }
 
+// featureKeyExposeResponseModel is the Channel.FeaturesConfig key that lets
+// regular users see the final upstream response model in their usage records.
+const featureKeyExposeResponseModel = "expose_response_model"
+
+// IsResponseModelExposed 返回该渠道是否允许普通用户在使用记录中看到实际响应模型。
+// 默认关闭；仅暴露请求模型与最终响应模型，不暴露中间映射链。
+func (c *Channel) IsResponseModelExposed() bool {
+	if c == nil || c.FeaturesConfig == nil {
+		return false
+	}
+	enabled, ok := c.FeaturesConfig[featureKeyExposeResponseModel].(bool)
+	return ok && enabled
+}
+
 // deepCopyFeaturesConfig creates a deep copy of FeaturesConfig to prevent cache pollution.
 func deepCopyFeaturesConfig(src map[string]any) map[string]any {
 	dst := make(map[string]any, len(src))

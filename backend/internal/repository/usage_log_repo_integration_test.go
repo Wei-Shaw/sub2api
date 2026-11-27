@@ -947,6 +947,43 @@ func (s *UsageLogRepoSuite) TestGetAccountTodayStats() {
 	s.Require().InEpsilon(3.0, stats.UserCost, 0.0001)
 }
 
+func (s *UsageLogRepoSuite) TestAccountUpstreamErrorCounts() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-upstream-errors"})
+	other := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-upstream-errors-other"})
+
+	today := timezone.Today().Add(1 * time.Hour)
+	yesterday := today.Add(-24 * time.Hour)
+	insert := func(accountID int64, owner string, businessLimited bool, statusCode int, createdAt time.Time) {
+		_, err := s.tx.ExecContext(s.ctx, `
+			INSERT INTO ops_error_logs (
+				account_id, error_phase, error_type, severity, status_code, error_owner, is_business_limited, created_at
+			) VALUES ($1, 'upstream', 'upstream_error', 'P2', $2, $3, $4, $5)`,
+			accountID, statusCode, owner, businessLimited, createdAt,
+		)
+		s.Require().NoError(err)
+	}
+	insert(account.ID, "provider", false, 502, today)
+	insert(account.ID, "provider", false, 429, today)
+	// 故障转移后恢复的请求：最终状态码 < 400，仍计为上游错误。
+	insert(account.ID, "provider", false, 200, today)
+	insert(account.ID, "provider", false, 500, yesterday)
+	insert(account.ID, "client", false, 400, today)
+	insert(account.ID, "provider", true, 503, today)
+	insert(other.ID, "provider", false, 500, today)
+
+	counts, err := s.repo.GetAccountUpstreamErrorCountsBatch(s.ctx, []int64{account.ID, 999999}, timezone.Today())
+	s.Require().NoError(err)
+	s.Require().Equal(int64(3), counts[account.ID])
+	s.Require().Contains(counts, int64(999999))
+	s.Require().Equal(int64(0), counts[999999])
+	s.Require().NotContains(counts, other.ID)
+
+	daily, err := s.repo.GetAccountDailyUpstreamErrorCounts(s.ctx, account.ID, timezone.Today().Add(-24*time.Hour), timezone.Today().Add(24*time.Hour))
+	s.Require().NoError(err)
+	s.Require().Equal(int64(3), daily[today.Format("2006-01-02")])
+	s.Require().Equal(int64(1), daily[yesterday.Format("2006-01-02")])
+}
+
 func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
 	now := time.Now().UTC().Truncate(time.Second)
 	// 使用固定的时间偏移确保 hour1 和 hour2 在同一天且都在过去

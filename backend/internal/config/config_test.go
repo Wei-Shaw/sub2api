@@ -132,6 +132,14 @@ func TestLoadMinOutputTokensFromEnv(t *testing.T) {
 	require.Equal(t, 16, cfg.Gateway.MinOutputTokens)
 }
 
+func TestLoadAntigravityGeminiOmitIncludeThoughtsFromEnv(t *testing.T) {
+	resetViperWithJWTSecret(t)
+	t.Setenv("GATEWAY_ANTIGRAVITY_GEMINI_OMIT_INCLUDE_THOUGHTS", "true")
+	cfg, err := Load()
+	require.NoError(t, err)
+	require.True(t, cfg.Gateway.AntigravityGeminiOmitIncludeThoughts)
+}
+
 func TestLoadGeminiSameAccountRetries(t *testing.T) {
 	resetViperWithJWTSecret(t)
 	cfg, err := Load()

@@ -126,6 +126,8 @@ const cnFrequencyLimitQuotaGuardPercent = 90
 
 // cnFrequencyLimitMarkers 是「请求频率/速率限制」类 429 的文案特征（小写比较）。
 // 智谱实测文案：「您的账户已达到速率限制，请您控制请求频率」。
+// 智谱平台过载（错误码 1305）的实测文案「该模型当前访问量过大，请您稍后再试」
+// 与账号额度无关，同样按秒级冷却处理。
 var cnFrequencyLimitMarkers = []string{
 	"速率限制",
 	"请求频率",
@@ -136,6 +138,7 @@ var cnFrequencyLimitMarkers = []string{
 	"rate limit exceeded",
 	"rate_limit_exceeded",
 	"ratelimit exceeded",
+	"访问量过大",
 }
 
 // cnQuotaExhaustionMarkers 是额度耗尽类文案；命中任一即认为 429 与额度有关，
