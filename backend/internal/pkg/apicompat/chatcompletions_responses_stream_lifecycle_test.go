@@ -53,7 +53,7 @@ func TestStream_ReasoningOnlySynthesizesVisibleText(t *testing.T) {
 	})
 
 	open := map[int]string{}
-	var sawTextDelta, sawTextDone, sawMessageDone bool
+	var sawTextDelta, sawTextDone, sawMessageDone, sawIncomplete bool
 	for _, e := range events {
 		switch e.Type {
 		case "response.output_item.added":
@@ -72,6 +72,9 @@ func TestStream_ReasoningOnlySynthesizesVisibleText(t *testing.T) {
 				require.Equal(t, "thinking before final", e.Item.Content[0].Text)
 			}
 		case "response.completed":
+			t.Fatalf("length-truncated stream must terminate with response.incomplete, got response.completed")
+		case "response.incomplete":
+			sawIncomplete = true
 			require.NotNil(t, e.Response)
 			require.Equal(t, "incomplete", e.Response.Status)
 			require.NotNil(t, e.Response.IncompleteDetails)
@@ -85,6 +88,7 @@ func TestStream_ReasoningOnlySynthesizesVisibleText(t *testing.T) {
 	require.True(t, sawTextDelta, "reasoning-only stream must produce visible text delta")
 	require.True(t, sawTextDone, "reasoning-only stream must close visible text part")
 	require.True(t, sawMessageDone, "reasoning-only stream must close synthesized message item")
+	require.True(t, sawIncomplete, "length-truncated stream must emit a response.incomplete terminal event")
 }
 
 func TestStream_ReasoningOnlyBlankDoesNotSynthesizeVisibleText(t *testing.T) {
@@ -278,6 +282,8 @@ func TestStream_ValidToolCallAtOutputLimitKeepsIncompleteResponse(t *testing.T) 
 			sawArgsDone = true
 			require.Equal(t, `{}`, event.Arguments)
 		case "response.completed":
+			t.Fatalf("length-truncated stream must terminate with response.incomplete, got response.completed")
+		case "response.incomplete":
 			require.NotNil(t, event.Response)
 			sawIncomplete = event.Response.Status == "incomplete"
 		}

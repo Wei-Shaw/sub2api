@@ -1845,15 +1845,20 @@ func FinalizeChatCompletionsResponsesStream(state *ChatCompletionsToResponsesStr
 	// Mirrors cc-switch's finalize_tools.
 	events = append(events, closeChatToolItems(state)...)
 
+	// 终止事件名必须与 response.status 一致：被 max_tokens 截断的流以
+	// response.incomplete 收尾（与 Anthropic→Responses 转换器及原生上游一致），
+	// 否则只看事件类型的客户端会把截断当作正常完成。
+	eventType := "response.completed"
 	status := "completed"
 	var incompleteDetails *ResponsesIncompleteDetails
 	if state.FinishReason == "length" {
+		eventType = "response.incomplete"
 		status = "incomplete"
 		incompleteDetails = &ResponsesIncompleteDetails{Reason: "max_output_tokens"}
 	}
 
 	state.CompletedSent = true
-	events = append(events, chatToResponsesEvent(state, "response.completed", &ResponsesStreamEvent{
+	events = append(events, chatToResponsesEvent(state, eventType, &ResponsesStreamEvent{
 		Response: &ResponsesResponse{
 			ID:                state.ResponseID,
 			Object:            "response",
