@@ -4,16 +4,55 @@ package service
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func TestForwardAsChatCompletionsSamplesSubscriptionWindows(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprintf("stream=%t", stream), func(t *testing.T) {
+			fiveReset := time.Now().Add(time.Hour).Truncate(time.Second)
+			weekReset := fiveReset.Add(24 * time.Hour).Unix()
+			headers := make(http.Header)
+			headers.Set("anthropic-ratelimit-unified-5h-status", "allowed")
+			headers.Set("anthropic-ratelimit-unified-5h-reset", strconv.FormatInt(fiveReset.Unix(), 10))
+			headers.Set("anthropic-ratelimit-unified-5h-utilization", "0.23")
+			headers.Set("anthropic-ratelimit-unified-7d-reset", strconv.FormatInt(weekReset, 10))
+			headers.Set("anthropic-ratelimit-unified-7d-utilization", "0.41")
+			upstream := &anthropicHTTPUpstreamRecorder{resp: &http.Response{
+				StatusCode: http.StatusOK, Header: headers,
+				Body: io.NopCloser(strings.NewReader(namespaceToolAnthropicStream())),
+			}}
+			repo := &sessionWindowMockRepo{}
+			svc := &GatewayService{cfg: &config.Config{}, httpUpstream: upstream, rateLimitService: newRateLimitServiceForTest(repo)}
+			account := &Account{ID: 42, Platform: PlatformAnthropic, Type: AccountTypeSetupToken, Credentials: map[string]any{"access_token": "test-token"}}
+			body := fmt.Sprintf(`{"model":"claude-sonnet-4-5","messages":[{"role":"user","content":"hello"}],"stream":%t}`, stream)
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(body))
+			_, err := svc.ForwardAsChatCompletions(c.Request.Context(), c, account, []byte(body), nil)
+			require.NoError(t, err)
+			require.Len(t, repo.sessionWindowCalls, 1)
+			require.Equal(t, fiveReset.Unix(), repo.sessionWindowCalls[0].End.Unix())
+			require.NotEmpty(t, repo.updateExtraCalls)
+			sample := repo.updateExtraCalls[len(repo.updateExtraCalls)-1]
+			require.Equal(t, account.ID, sample.ID)
+			require.Equal(t, 0.23, sample.Updates["session_window_utilization"])
+			require.Equal(t, 0.41, sample.Updates["passive_usage_7d_utilization"])
+			require.Equal(t, weekReset, sample.Updates["passive_usage_7d_reset"])
+			require.NotEmpty(t, sample.Updates["passive_usage_sampled_at"])
+		})
+	}
+}
 
 func TestHandleCCBufferedFromAnthropic_ToolArgumentsAreValidJSON(t *testing.T) {
 	t.Parallel()
