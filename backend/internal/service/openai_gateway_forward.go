@@ -20,6 +20,14 @@ import (
 
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+	// HTTP Responses has stricter call_id requirements than native WS.
+	if GetOpenAIClientTransport(c) != OpenAIClientTransportWS {
+		repaired, _, err := sanitizeStrictHTTPResponsesBody(body)
+		if err != nil {
+			return nil, fmt.Errorf("sanitize HTTP Responses input: %w", err)
+		}
+		body = repaired
+	}
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
@@ -1397,6 +1405,12 @@ func shouldForwardOpenAIResponsesViaRawChatCompletions(account *Account) bool {
 }
 
 func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token string, isStream bool, promptCacheKey string, isCodexCLI bool) (*http.Request, error) {
+	// Converted Chat/Anthropic ingress can reach this HTTP builder directly.
+	repaired, _, repairErr := sanitizeStrictHTTPResponsesBody(body)
+	if repairErr != nil {
+		return nil, repairErr
+	}
+	body = repaired
 	// Determine target URL based on account type
 	var targetURL string
 	switch account.Type {

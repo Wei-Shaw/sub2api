@@ -8,10 +8,11 @@ import (
 )
 
 // openAIResponsesInputMayNeedOrphanCleanup only proves that cleanup is a no-op.
-// Possible outputs still use the existing decoder and sanitizer, including its
+// Strict HTTP inspects invalid IDs even with server history. The default
+// policy retains native WS behavior. Possible outputs use the decoder, including its
 // named standalone outputs, call/id fallback and item-reference rules. All byte
 // spans below borrow the immutable request only for this synchronous call.
-func openAIResponsesInputMayNeedOrphanCleanup(body []byte) bool {
+func openAIResponsesInputMayNeedOrphanCleanup(body []byte, strictHTTP ...bool) bool {
 	// Use Get directly: Parse(...).Get(...) differs from GetBytes on malformed
 	// prefixes, where the old gate can still find an input and invoke the decoder.
 	input := gjson.Get(openAIWSPayloadStringView(body), "input")
@@ -53,7 +54,7 @@ func openAIResponsesInputMayNeedOrphanCleanup(body []byte) bool {
 		// Escaped keys and duplicate relevant keys conservatively use the latter.
 		return true
 	}
-	if hasPreviousResponseID {
+	if hasPreviousResponseID && (len(strictHTTP) == 0 || !strictHTTP[0]) {
 		return false
 	}
 

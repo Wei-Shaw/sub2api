@@ -292,3 +292,40 @@ func TestNormalizeOpenAIResponsesWebSocketCompatibilityBodyPreservesOpaqueRefere
 		})
 	}
 }
+
+// All account modes and both forwarding branches must send strict HTTP bodies.
+func TestOpenAIGatewayService_StrictHTTPDelegationMatrix(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, accountType := range []string{AccountTypeAPIKey, AccountTypeOAuth, AccountTypeSetupToken} {
+		for _, passthrough := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/passthrough=%v", accountType, passthrough), func(t *testing.T) {
+				upstream := &httpUpstreamRecorder{resp: &http.Response{
+					StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"text/event-stream"}},
+					Body: io.NopCloser(strings.NewReader("data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_test\",\"model\":\"gpt-5.6-sol\",\"output\":[],\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"total_tokens\":2}}}\n\ndata: [DONE]\n\n")),
+				}}
+				svc := newOpenAIImageGenerationControlTestService(upstream)
+				c, _ := newOpenAIImageGenerationControlTestContext(true, "codex_cli_rs/0.144.1")
+				SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
+				account := newOpenAIImageGenerationControlTestAccount()
+				account.Type = accountType
+				account.Credentials = map[string]any{"api_key": "test-key", "access_token": "test-token", "chatgpt_account_id": "chatgpt-account"}
+				account.Extra = map[string]any{"openai_passthrough": passthrough}
+				body := []byte(`{"model":"gpt-5.6-sol","stream":true,"instructions":"test","input":[{"type":"function_call_output","name":"delegate","namespace":"tasks","call_id":null,"output":" exact delegated task\n"},{"type":"function_call_output","call_id":" ","output":"drop"}]}`)
+				result, err := svc.Forward(context.Background(), c, account, body)
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.NotNil(t, upstream.lastReq)
+				require.Equal(t, "message", gjson.GetBytes(upstream.lastBody, "input.0.type").String())
+				require.Equal(t, "user", gjson.GetBytes(upstream.lastBody, "input.0.role").String())
+				require.Equal(t, " exact delegated task\n", gjson.GetBytes(upstream.lastBody, "input.0.content.1.text").String())
+				for _, item := range gjson.GetBytes(upstream.lastBody, "input").Array() {
+					if isCodexToolCallOutputItemType(item.Get("type").String()) {
+						require.Equal(t, gjson.String, item.Get("call_id").Type)
+						require.NotEmpty(t, strings.TrimSpace(item.Get("call_id").String()))
+					}
+				}
+				require.NotContains(t, string(upstream.lastBody), `"output":"drop"`)
+			})
+		}
+	}
+}
