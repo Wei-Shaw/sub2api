@@ -572,14 +572,29 @@ func TestPricingService_GeminiFlashThinkingTiersUseBasePricing(t *testing.T) {
 		OutputCostPerToken:      7.5e-6,
 		CacheReadInputTokenCost: 0.15e-6,
 	}
-	for _, baseModel := range []string{"gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash"} {
+	for _, baseModel := range []string{
+		"gemini-3.6-flash",
+		"gemini-3.7-flash",
+		"gemini-3.8-flash",
+		"gemini-4-argon",
+		"gemini-4-carbon",
+		"gemini-4-hydrogen",
+		"gemini-4-neon",
+	} {
 		svc := &PricingService{pricingData: map[string]*LiteLLMModelPricing{baseModel: basePricing}}
-		for _, tier := range []string{"", "-high", "-low", "-medium", "-tiered"} {
+		tiers := []string{"", "-high", "-low", "-medium", "-tiered"}
+		if baseModel == "gemini-4-hydrogen" || baseModel == "gemini-4-neon" {
+			tiers = append(tiers, "-xhigh")
+		}
+		for _, tier := range tiers {
 			model := baseModel + tier
 			t.Run(model, func(t *testing.T) {
 				require.Same(t, basePricing, svc.GetModelPricing(model))
 				require.Same(t, basePricing, svc.GetIdentifiedModelPricing("models/"+model))
 			})
+		}
+		if baseModel != "gemini-4-hydrogen" && baseModel != "gemini-4-neon" {
+			require.Nil(t, svc.GetModelPricing(baseModel+"-xhigh"))
 		}
 	}
 }

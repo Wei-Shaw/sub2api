@@ -5,23 +5,24 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/tidwall/gjson"
 )
 
 // Gemini 原生请求（/v1beta/models/{model}:generateContent 等）经 Antigravity 账号转发时，
 // 客户端（如 Antigravity CLI / go-genai）习惯发"裸"模型名（gemini-3.8-flash）并用
 // generationConfig.thinkingConfig 表达思考深度；而 Antigravity 上游的模型目录只有
-// gemini-3.8-flash-low / -medium / -high / -tiered 这类带后缀的变体，裸名直接转发会被上游
-// 以 404 "Requested entity was not found." 拒绝。
+// gemini-3.8-flash-low / -medium / -high / -tiered 或 gemini-4-hydrogen-xhigh 这类带后缀的变体，
+// 裸名直接转发会被上游以 404 "Requested entity was not found." 拒绝。
 //
-// 这里在账号 model_mapping 没有为裸名配置显式条目、但配置了它的后缀变体时，
-// 按 thinkingConfig 自动挑一个变体：
-//   - thinkingLevel: "low" / "medium" / "high" → 同名后缀
+// 这里在账号 model_mapping 没有为裸名配置跨名别名（或仅配置了裸名自映射）、且配置了它的后缀变体时，
+// 按请求中的思考参数自动挑一个变体：
+//   - thinkingLevel / compat output_config.effort: "low" / "medium" / "high" / "xhigh"（compat 中 "max" 归一到 "xhigh"）→ 同名后缀
 //   - thinkingBudget: -1（动态）→ high；0 → low；1..1024 → low；1025..8192 → medium；>8192 → high
-//   - 未携带 thinkingConfig → high（与 Gemini 3 系列默认开启动态思考一致）
-// 选中的后缀在映射表里不存在时按 high → medium → low → tiered 的顺序降级到存在的变体。
-// 显式映射（裸名本身在 model_mapping 里）始终优先，行为与现在完全一致。
+//   - 未携带思考配置 → high（与 Gemini 3+ 系列默认开启动态思考一致）
+// 选中的 preferred 后缀在映射表里不存在时，按 preferred → high → medium → low → tiered 的顺序降级到存在的变体。
+// 显式跨名映射（如 DefaultAntigravityModelMapping 中的 gemini-4-hydrogen → gemini-4-hydrogen-high）始终优先，行为与现在完全一致。
 
-var geminiThinkingVariantSuffixes = []string{"-low", "-medium", "-high", "-tiered"}
+var geminiThinkingVariantSuffixes = []string{"-low", "-medium", "-high", "-xhigh", "-tiered"}
 
 const (
 	geminiThinkingBudgetLowMax    = 1024
@@ -47,7 +48,7 @@ func hasGeminiThinkingVariantSuffix(model string) bool {
 	return false
 }
 
-// geminiThinkingLevelFromBody 从 Gemini 原生请求体推导期望的思考档位（low/medium/high）。
+// geminiThinkingLevelFromBody 从 Gemini 原生请求体推导期望的思考档位（low/medium/high/xhigh）。
 // 解析失败或未携带 thinkingConfig 时返回 "high"。
 func geminiThinkingLevelFromBody(body []byte) string {
 	if len(body) == 0 {
@@ -65,6 +66,8 @@ func geminiThinkingLevelFromBody(body []byte) string {
 		return "medium"
 	case "high":
 		return "high"
+	case "xhigh":
+		return "xhigh"
 	}
 	if tc.ThinkingBudget == nil {
 		return "high"
@@ -89,7 +92,19 @@ func geminiThinkingLevelFromBody(body []byte) string {
 // OpenAI Responses / Chat Completions 在 effort=low/minimal/none 时可能只写 output_config.effort 而不写 thinking，
 // 优先读取显式 effort 可避免裸 Gemini 模型被默认归入 high 变体。
 func geminiThinkingLevelFromClaudeBody(claudeBody []byte, thinking *antigravity.ThinkingConfig) string {
-	switch parseClaudeThinkingIntent(claudeBody).tier {
+	intent := parseClaudeThinkingIntent(claudeBody)
+	// parseClaudeThinkingIntent flattens xhigh/max → "high" so Google AI Studio
+	// thinkingConfig.thinkingLevel never receives an unsupported "xhigh" string.
+	// Antigravity tier routing, however, has published -xhigh model IDs (e.g.
+	// gemini-4-hydrogen-xhigh / gemini-4-neon-xhigh), and resolveGeminiThinkingVariantForLevel
+	// safely downgrades xhigh → high when the account mapping has no -xhigh key.
+	if intent.thinkingType != "disabled" {
+		switch strings.ToLower(strings.TrimSpace(gjson.GetBytes(claudeBody, "output_config.effort").String())) {
+		case "xhigh", "max":
+			return "xhigh"
+		}
+	}
+	switch intent.tier {
 	case "minimal", "low":
 		return "low"
 	case "medium":

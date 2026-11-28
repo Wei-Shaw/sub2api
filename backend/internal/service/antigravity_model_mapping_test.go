@@ -151,8 +151,80 @@ func TestAntigravityGatewayService_GetMappedModel(t *testing.T) {
 			accountMapping: nil,
 			expected:       "gemini-3-flash",
 		},
+		{
+			name:           "默认映射透传 - gemini-4-carbon 保持裸名不改写",
+			requestedModel: "gemini-4-carbon",
+			accountMapping: nil,
+			expected:       "gemini-4-carbon",
+		},
+		{
+			name:           "默认映射 - gemini-4-argon → gemini-4-argon-high",
+			requestedModel: "gemini-4-argon",
+			accountMapping: nil,
+			expected:       "gemini-4-argon-high",
+		},
+		{
+			name:           "默认映射透传 - gemini-4-argon-high",
+			requestedModel: "gemini-4-argon-high",
+			accountMapping: nil,
+			expected:       "gemini-4-argon-high",
+		},
+		{
+			name:           "默认映射 - gemini-4-hydrogen → gemini-4-hydrogen-high",
+			requestedModel: "gemini-4-hydrogen",
+			accountMapping: nil,
+			expected:       "gemini-4-hydrogen-high",
+		},
+		{
+			name:           "默认映射透传 - gemini-4-hydrogen-high",
+			requestedModel: "gemini-4-hydrogen-high",
+			accountMapping: nil,
+			expected:       "gemini-4-hydrogen-high",
+		},
+		{
+			name:           "默认映射透传 - gemini-4-hydrogen-xhigh",
+			requestedModel: "gemini-4-hydrogen-xhigh",
+			accountMapping: nil,
+			expected:       "gemini-4-hydrogen-xhigh",
+		},
+		{
+			name:           "默认映射 - gemini-4-neon → gemini-4-neon-high",
+			requestedModel: "gemini-4-neon",
+			accountMapping: nil,
+			expected:       "gemini-4-neon-high",
+		},
+		{
+			name:           "默认映射透传 - gemini-4-neon-high",
+			requestedModel: "gemini-4-neon-high",
+			accountMapping: nil,
+			expected:       "gemini-4-neon-high",
+		},
+		{
+			name:           "默认映射透传 - gemini-4-neon-xhigh",
+			requestedModel: "gemini-4-neon-xhigh",
+			accountMapping: nil,
+			expected:       "gemini-4-neon-xhigh",
+		},
+		{
+			name:           "默认映射透传 - claude-opus-5-5-medium",
+			requestedModel: "claude-opus-5-5-medium",
+			accountMapping: nil,
+			expected:       "claude-opus-5-5-medium",
+		},
+		{
+			name:           "默认映射透传 - claude-sonnet-5-5-medium",
+			requestedModel: "claude-sonnet-5-5-medium",
+			accountMapping: nil,
+			expected:       "claude-sonnet-5-5-medium",
+		},
 
 		// 4. 未在默认映射中的模型返回空字符串（不支持）
+		{
+			name:           "未知模型 - gemini-4-carbon-high 未在默认映射中",
+			requestedModel: "gemini-4-carbon-high",
+			accountMapping: nil,
+			expected:       "",
+		},
 		{
 			name:           "未知模型 - claude-unknown 返回空",
 			requestedModel: "claude-unknown",

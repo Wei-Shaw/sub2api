@@ -247,6 +247,39 @@ describe('useModelWhitelist', () => {
     ]))
   })
 
+  it('Gemini 4 Hydrogen and Neon expose bare IDs on gemini and tiered IDs on antigravity', () => {
+    const geminiPlatformModels = getModelsByPlatform('gemini')
+    expect(geminiPlatformModels).toContain('gemini-4-hydrogen')
+    expect(geminiPlatformModels).toContain('gemini-4-neon')
+
+    const agModels = getModelsByPlatform('antigravity')
+    expect(agModels).not.toContain('gemini-4-hydrogen')
+    expect(agModels).not.toContain('gemini-4-neon')
+    expect(agModels).toEqual(expect.arrayContaining([
+      'gemini-4-hydrogen-low',
+      'gemini-4-hydrogen-medium',
+      'gemini-4-hydrogen-high',
+      'gemini-4-hydrogen-xhigh',
+      'gemini-4-neon-low',
+      'gemini-4-neon-medium',
+      'gemini-4-neon-high',
+      'gemini-4-neon-xhigh'
+    ]))
+
+    expect(getPresetMappingsByPlatform('antigravity')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ from: 'gemini-4-hydrogen', to: 'gemini-4-hydrogen-high' }),
+      expect.objectContaining({ from: 'gemini-4-hydrogen-xhigh', to: 'gemini-4-hydrogen-xhigh' }),
+      expect.objectContaining({ from: 'gemini-4-hydrogen-high', to: 'gemini-4-hydrogen-high' }),
+      expect.objectContaining({ from: 'gemini-4-hydrogen-medium', to: 'gemini-4-hydrogen-medium' }),
+      expect.objectContaining({ from: 'gemini-4-hydrogen-low', to: 'gemini-4-hydrogen-low' }),
+      expect.objectContaining({ from: 'gemini-4-neon', to: 'gemini-4-neon-high' }),
+      expect.objectContaining({ from: 'gemini-4-neon-xhigh', to: 'gemini-4-neon-xhigh' }),
+      expect.objectContaining({ from: 'gemini-4-neon-high', to: 'gemini-4-neon-high' }),
+      expect.objectContaining({ from: 'gemini-4-neon-medium', to: 'gemini-4-neon-medium' }),
+      expect.objectContaining({ from: 'gemini-4-neon-low', to: 'gemini-4-neon-low' })
+    ]))
+  })
+
   it('whitelist 模式会忽略通配符条目', () => {
     const mapping = buildModelMappingObject('whitelist', ['claude-*', 'gemini-3.1-flash-image'], [])
     expect(mapping).toEqual({

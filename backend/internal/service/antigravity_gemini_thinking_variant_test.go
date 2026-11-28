@@ -37,6 +37,7 @@ func TestGeminiThinkingLevelFromBody(t *testing.T) {
 		{"budget 24576", `{"generationConfig":{"thinkingConfig":{"thinkingBudget":24576}}}`, "high"},
 		{"thinkingLevel wins over budget", `{"generationConfig":{"thinkingConfig":{"thinkingBudget":24576,"thinkingLevel":"low"}}}`, "low"},
 		{"thinkingLevel medium", `{"generationConfig":{"thinkingConfig":{"thinkingLevel":"MEDIUM"}}}`, "medium"},
+		{"thinkingLevel xhigh", `{"generationConfig":{"thinkingConfig":{"thinkingLevel":"XHIGH"}}}`, "xhigh"},
 		{"invalid json", `{"generationConfig":`, "high"},
 	}
 	for _, tt := range tests {
@@ -107,6 +108,10 @@ func TestResolveGeminiThinkingVariant(t *testing.T) {
 		}, "gemini-3.7-flash", budget("4000"), "gemini-3.7-flash-medium", true},
 		// 空 credentials 映射保留默认目录兼容行为。
 		{"empty mapping falls back to default catalog", map[string]string{}, "gemini-3.8-flash", budget("-1"), "gemini-3.8-flash-high", true},
+		// Carbon 仅使用官方裸模型 ID，默认映射下绝不能改写为 -high 等变体。
+		{"default catalog keeps gemini-4-carbon bare without tier rewrite", map[string]string{}, "gemini-4-carbon", []byte(`{"contents":[]}`), "", false},
+		// -xhigh 后缀必须识别为已带思考后缀，不做二次后缀拼接。
+		{"already suffixed -xhigh: untouched", map[string]string{"gemini-4-hydrogen-xhigh": "gemini-4-hydrogen-xhigh"}, "gemini-4-hydrogen-xhigh", budget("-1"), "", false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -214,5 +219,37 @@ func TestGetMappedModelResolvesBareGeminiModelForAllEntrypoints(t *testing.T) {
 
 	t.Run("unsupported model still reports unsupported", func(t *testing.T) {
 		require.Empty(t, svc.getMappedModel(account, "gemini-9.9-flash"))
+	})
+}
+
+func TestGeminiThinkingLevelFromClaudeBody_XHighAndFallback(t *testing.T) {
+	t.Run("compat effort xhigh and max resolve to xhigh unless thinking disabled", func(t *testing.T) {
+		require.Equal(t, "xhigh", geminiThinkingLevelFromClaudeBody([]byte(`{"output_config":{"effort":"xhigh"}}`), nil))
+		require.Equal(t, "xhigh", geminiThinkingLevelFromClaudeBody([]byte(`{"output_config":{"effort":"max"}}`), nil))
+		require.Equal(t, "low", geminiThinkingLevelFromClaudeBody(
+			[]byte(`{"thinking":{"type":"disabled"},"output_config":{"effort":"xhigh"}}`),
+			&antigravity.ThinkingConfig{Type: "disabled"},
+		))
+	})
+
+	t.Run("xhigh selects -xhigh when present in whitelist mapping and downgrades to -high otherwise", func(t *testing.T) {
+		whitelistAccount := newAntigravityAccountWithMapping(map[string]string{
+			"gemini-4-hydrogen-low":    "gemini-4-hydrogen-low",
+			"gemini-4-hydrogen-medium": "gemini-4-hydrogen-medium",
+			"gemini-4-hydrogen-high":   "gemini-4-hydrogen-high",
+			"gemini-4-hydrogen-xhigh":  "gemini-4-hydrogen-xhigh",
+			"gemini-4-argon-low":       "gemini-4-argon-low",
+			"gemini-4-argon-medium":    "gemini-4-argon-medium",
+			"gemini-4-argon-high":      "gemini-4-argon-high",
+		})
+
+		level := geminiThinkingLevelFromClaudeBody([]byte(`{"output_config":{"effort":"xhigh"}}`), nil)
+		gotHydrogen, matchedHydrogen := resolveGeminiThinkingVariantForLevel(whitelistAccount, "gemini-4-hydrogen", level)
+		require.True(t, matchedHydrogen)
+		require.Equal(t, "gemini-4-hydrogen-xhigh", gotHydrogen)
+
+		gotArgon, matchedArgon := resolveGeminiThinkingVariantForLevel(whitelistAccount, "gemini-4-argon", level)
+		require.True(t, matchedArgon)
+		require.Equal(t, "gemini-4-argon-high", gotArgon)
 	})
 }

@@ -765,8 +765,9 @@ const currentFiles = computed((): FileConfig[] => {
         return [generateOpenCodeConfig('gemini', geminiBase, apiKey)]
       case 'antigravity':
         return [
-          generateOpenCodeConfig('antigravity-claude', antigravityBase, apiKey, 'opencode.json (Claude)'),
-          generateOpenCodeConfig('antigravity-gemini', antigravityGeminiBase, apiKey, 'opencode.json (Gemini)')
+          generateAntigravityCombinedOpenCodeConfig(antigravityBase, antigravityGeminiBase, apiKey),
+          generateOpenCodeConfig('antigravity-claude', antigravityBase, apiKey, 'opencode.json (Claude only)'),
+          generateOpenCodeConfig('antigravity-gemini', antigravityGeminiBase, apiKey, 'opencode.json (Gemini only)')
         ]
       case 'grok':
         return [generateOpenCodeConfig('grok', apiBase, apiKey)]
@@ -1401,13 +1402,134 @@ goals = true`
   return buildOpenAICodexFileConfigs(configDir, configContent, apiKey)
 }
 
-function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: string, pathLabel?: string): FileConfig {
-  const provider: Record<string, any> = {
-    [platform]: {
-      options: {
-        baseURL: baseUrl,
-        apiKey
+function createAntigravityOpenCodeGeminiModel(
+  name: string,
+  thinkingType: 'enabled' | 'disable' = 'enabled'
+) {
+  return {
+    name,
+    limit: {
+      context: 1048576,
+      output: 65536
+    },
+    modalities: {
+      input: ['text', 'image', 'pdf'],
+      output: ['text']
+    },
+    options: {
+      thinking: {
+        budgetTokens: 24576,
+        type: thinkingType
       }
+    }
+  }
+}
+
+function createAntigravityOpenCodeGeminiImageModel(name: string) {
+  return {
+    name,
+    limit: {
+      context: 1048576,
+      output: 65536
+    },
+    modalities: {
+      input: ['text', 'image'],
+      output: ['image']
+    },
+    options: {
+      thinking: {
+        budgetTokens: 24576,
+        type: 'enabled'
+      }
+    }
+  }
+}
+
+function createAntigravityOpenCodeClaudeAdaptiveModel(name: string, context = 1000000) {
+  return {
+    name,
+    limit: {
+      context,
+      output: 128000
+    },
+    modalities: {
+      input: ['text', 'image', 'pdf'],
+      output: ['text']
+    },
+    options: {
+      thinking: {
+        type: 'adaptive'
+      }
+    }
+  }
+}
+
+// Canonical Antigravity model IDs present in both DefaultAntigravityModelMapping
+// and useModelWhitelist.ts so snippets work in mapping mode and whitelist mode.
+const ANTIGRAVITY_OPENCODE_GEMINI_MODELS = {
+  'gemini-4-argon-high': createAntigravityOpenCodeGeminiModel('Gemini 4 Argon (High)'),
+  'gemini-4-hydrogen-high': createAntigravityOpenCodeGeminiModel('Gemini 4 Hydrogen (High)'),
+  'gemini-4-neon-high': createAntigravityOpenCodeGeminiModel('Gemini 4 Neon (High)'),
+  'gemini-4-carbon': createAntigravityOpenCodeGeminiModel('Gemini 4 Carbon'),
+  'gemini-3.8-flash-high': createAntigravityOpenCodeGeminiModel('Gemini 3.8 Flash (High)'),
+  'gemini-3.1-pro-high': createAntigravityOpenCodeGeminiModel('Gemini 3.1 Pro High'),
+  'gemini-3.1-pro-low': createAntigravityOpenCodeGeminiModel('Gemini 3.1 Pro Low'),
+  'gemini-3-flash': createAntigravityOpenCodeGeminiModel('Gemini 3 Flash'),
+  'gemini-2.5-flash': createAntigravityOpenCodeGeminiModel('Gemini 2.5 Flash', 'disable'),
+  'gemini-2.5-flash-lite': createAntigravityOpenCodeGeminiModel('Gemini 2.5 Flash Lite'),
+  'gemini-2.5-flash-thinking': createAntigravityOpenCodeGeminiModel('Gemini 2.5 Flash (Thinking)'),
+  'gemini-2.5-flash-image': createAntigravityOpenCodeGeminiImageModel('Gemini 2.5 Flash Image'),
+  'gemini-3.1-flash-image': createAntigravityOpenCodeGeminiImageModel('Gemini 3.1 Flash Image')
+}
+
+const ANTIGRAVITY_OPENCODE_CLAUDE_MODELS = {
+  'claude-opus-5-5-high': createAntigravityOpenCodeClaudeAdaptiveModel('Claude Opus 5.5 (High)'),
+  'claude-opus-5-5-medium': createAntigravityOpenCodeClaudeAdaptiveModel('Claude Opus 5.5 (Medium)'),
+  'claude-sonnet-5-5-high': createAntigravityOpenCodeClaudeAdaptiveModel('Claude Sonnet 5.5 (High)'),
+  'claude-sonnet-5-5-medium': createAntigravityOpenCodeClaudeAdaptiveModel('Claude Sonnet 5.5 (Medium)'),
+  'claude-fable-5-1': createAntigravityOpenCodeClaudeAdaptiveModel('Claude Fable 5.1', 1048576),
+  'claude-fable-5': createAntigravityOpenCodeClaudeAdaptiveModel('Claude Fable 5', 1048576),
+  'claude-opus-4-6-thinking': {
+    name: 'Claude 4.6 Opus (Thinking)',
+    limit: {
+      context: 200000,
+      output: 128000
+    },
+    modalities: {
+      input: ['text', 'image', 'pdf'],
+      output: ['text']
+    },
+    options: {
+      thinking: {
+        budgetTokens: 24576,
+        type: 'enabled'
+      }
+    }
+  },
+  'claude-sonnet-4-6': {
+    name: 'Claude 4.6 Sonnet',
+    limit: {
+      context: 200000,
+      output: 64000
+    },
+    modalities: {
+      input: ['text', 'image', 'pdf'],
+      output: ['text']
+    },
+    options: {
+      thinking: {
+        budgetTokens: 24576,
+        type: 'enabled'
+      }
+    }
+  }
+}
+
+function buildOpenCodeProviderEntry(platform: string, baseUrl: string, apiKey: string): Record<string, any> {
+  const entry: Record<string, any> = {
+    options: {
+      baseURL: baseUrl,
+      apiKey
     }
   }
   const solAstraOptions = {
@@ -1757,212 +1879,6 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     }
   }
 
-  const antigravityGeminiModels = {
-    'gemini-2.5-flash': {
-      name: 'Gemini 2.5 Flash',
-      limit: {
-        context: 1048576,
-        output: 65536
-      },
-      modalities: {
-        input: ['text', 'image', 'pdf'],
-        output: ['text']
-      },
-      options: {
-        thinking: {
-          budgetTokens: 24576,
-          type: 'disable'
-        }
-      }
-    },
-    'gemini-2.5-flash-lite': {
-      name: 'Gemini 2.5 Flash Lite',
-      limit: {
-        context: 1048576,
-        output: 65536
-      },
-      modalities: {
-        input: ['text', 'image', 'pdf'],
-        output: ['text']
-      },
-      options: {
-        thinking: {
-          budgetTokens: 24576,
-          type: 'enabled'
-        }
-      }
-    },
-    'gemini-2.5-flash-thinking': {
-      name: 'Gemini 2.5 Flash (Thinking)',
-      limit: {
-        context: 1048576,
-        output: 65536
-      },
-      modalities: {
-        input: ['text', 'image', 'pdf'],
-        output: ['text']
-      },
-      options: {
-        thinking: {
-          budgetTokens: 24576,
-          type: 'enabled'
-        }
-      }
-    },
-    'gemini-3-flash': {
-      name: 'Gemini 3 Flash',
-      limit: {
-        context: 1048576,
-        output: 65536
-      },
-      modalities: {
-        input: ['text', 'image', 'pdf'],
-        output: ['text']
-      },
-      options: {
-        thinking: {
-          budgetTokens: 24576,
-          type: 'enabled'
-        }
-      }
-    },
-    'gemini-3.1-pro-low': {
-      name: 'Gemini 3.1 Pro Low',
-      limit: {
-        context: 1048576,
-        output: 65536
-      },
-      modalities: {
-        input: ['text', 'image', 'pdf'],
-        output: ['text']
-      },
-      options: {
-        thinking: {
-          budgetTokens: 24576,
-          type: 'enabled'
-        }
-      }
-    },
-    'gemini-3.1-pro-high': {
-      name: 'Gemini 3.1 Pro High',
-      limit: {
-        context: 1048576,
-        output: 65536
-      },
-      modalities: {
-        input: ['text', 'image', 'pdf'],
-        output: ['text']
-      },
-      options: {
-        thinking: {
-          budgetTokens: 24576,
-          type: 'enabled'
-        }
-      }
-    },
-    'gemini-2.5-flash-image': {
-      name: 'Gemini 2.5 Flash Image',
-      limit: {
-        context: 1048576,
-        output: 65536
-      },
-      modalities: {
-        input: ['text', 'image'],
-        output: ['image']
-      },
-      options: {
-        thinking: {
-          budgetTokens: 24576,
-          type: 'enabled'
-        }
-      }
-    },
-    'gemini-3.1-flash-image': {
-      name: 'Gemini 3.1 Flash Image',
-      limit: {
-        context: 1048576,
-        output: 65536
-      },
-      modalities: {
-        input: ['text', 'image'],
-        output: ['image']
-      },
-      options: {
-        thinking: {
-          budgetTokens: 24576,
-          type: 'enabled'
-        }
-      }
-    }
-  }
-  const claudeModels = {
-    'claude-fable-5-1': {
-      name: 'Claude Fable 5.1',
-      limit: {
-        context: 1048576,
-        output: 128000
-      },
-      modalities: {
-        input: ['text', 'image', 'pdf'],
-        output: ['text']
-      },
-      options: {
-        thinking: {
-          type: 'adaptive'
-        }
-      }
-    },
-    'claude-fable-5': {
-      name: 'Claude Fable 5',
-      limit: {
-        context: 1048576,
-        output: 128000
-      },
-      modalities: {
-        input: ['text', 'image', 'pdf'],
-        output: ['text']
-      },
-      options: {
-        thinking: {
-          type: 'adaptive'
-        }
-      }
-    },
-    'claude-opus-4-6-thinking': {
-      name: 'Claude 4.6 Opus (Thinking)',
-      limit: {
-        context: 200000,
-        output: 128000
-      },
-      modalities: {
-        input: ['text', 'image', 'pdf'],
-        output: ['text']
-      },
-      options: {
-        thinking: {
-          budgetTokens: 24576,
-          type: 'enabled'
-        }
-      }
-    },
-    'claude-sonnet-4-6': {
-      name: 'Claude 4.6 Sonnet',
-      limit: {
-        context: 200000,
-        output: 64000
-      },
-      modalities: {
-        input: ['text', 'image', 'pdf'],
-        output: ['text']
-      },
-      options: {
-        thinking: {
-          budgetTokens: 24576,
-          type: 'enabled'
-        }
-      }
-    }
-  }
   // Align context_window with Grok Build official sample (docs.x.ai/build/settings) where known.
   // Image/video: grok-imagine-image / grok-imagine-video on media endpoints — not this list.
   const grokModels = {
@@ -1989,12 +1905,12 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
   }
 
   if (platform === 'gemini') {
-    provider[platform].npm = '@ai-sdk/google'
-    provider[platform].models = geminiModels
+    entry.npm = '@ai-sdk/google'
+    entry.models = geminiModels
   } else if (platform === 'anthropic') {
-    provider[platform].npm = '@ai-sdk/anthropic'
+    entry.npm = '@ai-sdk/anthropic'
     // Mythos requires an eligible Anthropic account; configuration does not grant access.
-    provider[platform].models = {
+    entry.models = {
       'claude-fable-5-2': {
         name: 'Claude Fable 5.2',
         limit: { context: 1000000, output: 128000 },
@@ -2049,20 +1965,28 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
       }
     }
   } else if (platform === 'antigravity-claude') {
-    provider[platform].npm = '@ai-sdk/anthropic'
-    provider[platform].name = 'Antigravity (Claude)'
-    provider[platform].models = claudeModels
+    entry.npm = '@ai-sdk/anthropic'
+    entry.name = 'Antigravity (Claude)'
+    entry.models = ANTIGRAVITY_OPENCODE_CLAUDE_MODELS
   } else if (platform === 'antigravity-gemini') {
-    provider[platform].npm = '@ai-sdk/google'
-    provider[platform].name = 'Antigravity (Gemini)'
-    provider[platform].models = antigravityGeminiModels
+    entry.npm = '@ai-sdk/google'
+    entry.name = 'Antigravity (Gemini)'
+    entry.models = ANTIGRAVITY_OPENCODE_GEMINI_MODELS
   } else if (platform === 'openai') {
-    provider[platform].models = openaiModels
+    entry.models = openaiModels
   } else if (platform === 'grok') {
     // Custom provider pointing at Sub2API OpenAI-compatible Responses/Chat endpoints.
-    provider[platform].npm = '@ai-sdk/openai-compatible'
-    provider[platform].name = 'Grok via Sub2API'
-    provider[platform].models = grokModels
+    entry.npm = '@ai-sdk/openai-compatible'
+    entry.name = 'Grok via Sub2API'
+    entry.models = grokModels
+  }
+
+  return entry
+}
+
+function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: string, pathLabel?: string): FileConfig {
+  const provider: Record<string, any> = {
+    [platform]: buildOpenCodeProviderEntry(platform, baseUrl, apiKey)
   }
 
   const agent =
@@ -2095,6 +2019,30 @@ function generateOpenCodeConfig(platform: string, baseUrl: string, apiKey: strin
     path: pathLabel ?? 'opencode.json',
     content,
     hint: t('keys.useKeyModal.opencode.hint')
+  }
+}
+
+function generateAntigravityCombinedOpenCodeConfig(
+  antigravityBase: string,
+  antigravityGeminiBase: string,
+  apiKey: string
+): FileConfig {
+  const content = JSON.stringify(
+    {
+      provider: {
+        'antigravity-claude': buildOpenCodeProviderEntry('antigravity-claude', antigravityBase, apiKey),
+        'antigravity-gemini': buildOpenCodeProviderEntry('antigravity-gemini', antigravityGeminiBase, apiKey)
+      },
+      $schema: 'https://opencode.ai/config.json'
+    },
+    null,
+    2
+  )
+
+  return {
+    path: 'opencode.json',
+    content,
+    hint: t('keys.useKeyModal.opencode.combinedHint')
   }
 }
 

@@ -1469,14 +1469,19 @@ func isAntigravityThinkingTierAlias(model string) bool {
 
 // normalizeGeminiThinkingTierAlias maps Antigravity's Gemini thinking-tier
 // model IDs to the public base model. The tier controls reasoning behavior, not
-// the published token rate, so this keeps -high/-low/-medium and -tiered
-// requests on the corresponding base model's price card.
+// the published token rate, so this keeps -high/-low/-medium/-tiered requests
+// (plus -xhigh on Gemini 4 Hydrogen and Neon) on the base model's price card.
 func normalizeGeminiThinkingTierAlias(model string) string {
-	for _, baseModel := range []string{"gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-4-argon", "gemini-4-carbon"} {
+	for _, baseModel := range []string{"gemini-3.6-flash", "gemini-3.7-flash", "gemini-3.8-flash", "gemini-4-argon", "gemini-4-carbon", "gemini-4-hydrogen", "gemini-4-neon"} {
 		for _, tier := range []string{"-high", "-low", "-medium", "-tiered"} {
 			if model == baseModel+tier {
 				return baseModel
 			}
+		}
+	}
+	for _, baseModel := range []string{"gemini-4-hydrogen", "gemini-4-neon"} {
+		if model == baseModel+"-xhigh" {
+			return baseModel
 		}
 	}
 	return model

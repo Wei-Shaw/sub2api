@@ -261,6 +261,7 @@ export default {
         title: 'OpenCode Example',
         subtitle: 'opencode.json',
         hint: 'Config path: ~/.config/opencode/opencode.json (or opencode.jsonc), create if not exists. Use default providers (openai/anthropic/google) or custom provider_id. API Key can be configured directly or via /connect command. This is an example, adjust models and options as needed.',
+        combinedHint: 'Config path: ~/.config/opencode/opencode.json (or opencode.jsonc). Includes both antigravity-claude and antigravity-gemini in a single ready-to-use file; the two standalone snippets below are single-provider alternatives.',
       },
     },
     customKeyLabel: 'Custom Key',
