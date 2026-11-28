@@ -164,9 +164,19 @@ func (s *antigravityCompatStreamSession) writePreContentKeepalive(now time.Time)
 	}
 }
 
-func (s *antigravityCompatStreamSession) finish() (*antigravityStreamResult, error) {
+func (s *antigravityCompatStreamSession) finish(c *gin.Context) (*antigravityStreamResult, error) {
 	finalEvents, usage := s.processor.Finish()
 	mergeAntigravityCompatUsage(s.usage, usage)
+	if reason := s.processor.AbnormalReason(); reason != "" {
+		if s.writer.Disconnected() {
+			return s.result(true), nil
+		}
+		if !s.writer.Written() {
+			return nil, antigravityAbnormalStreamFailoverError(reason)
+		}
+		writeAntigravityCompatStreamError(c, s.adapter, s.writer, reason)
+		return s.result(false), fmt.Errorf("antigravity compatibility stream ended abnormally: %s", reason)
+	}
 	s.consumeClaudeEvents(finalEvents)
 	if !s.hasMeaningfulData() && !s.writer.Disconnected() {
 		if s.preContentKeepaliveSent {
@@ -395,7 +405,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithTiming(
 				if !session.hasMeaningfulData() && !writer.Disconnected() {
 					return handleAntigravityCompatEmptyStream(c, session)
 				}
-				return session.finish()
+				return session.finish(c)
 			}
 			if event.err != nil {
 				return s.handleAntigravityCompatReadError(c, session, event.err, maxLineSize, prefix)
@@ -403,6 +413,9 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithTiming(
 			resetAntigravityCompatTimer(timeoutTimer, timeout)
 			s.observeAntigravityGeminiSSELine(c, event.line)
 			session.consume(event.line)
+			if session.processor.AbnormalReason() != "" && !writer.Written() {
+				return session.finish(c)
+			}
 
 		case <-timeoutCh:
 			if writer.Disconnected() {
