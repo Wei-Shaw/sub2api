@@ -1105,6 +1105,7 @@ export interface UpstreamBillingData {
   effective_rate_multiplier: number
   timezone?: string
   observed_at: string
+  model_pricing?: Record<string, { mode: 'token' | 'per_request' }>
 }
 
 export type UpstreamBillingProbeStatus = 'ok' | 'unsupported' | 'failed'

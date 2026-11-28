@@ -163,20 +163,21 @@ func BuildUpstreamBillingRateSnapshotItems(accounts []Account) []UpstreamBilling
 }
 
 type upstreamBillingProbeResponse struct {
-	Object                  string   `json:"object"`
-	SchemaVersion           int      `json:"schema_version"`
-	BillingScope            string   `json:"billing_scope"`
-	GroupRateMultiplier     *float64 `json:"group_rate_multiplier"`
-	UserRateMultiplier      *float64 `json:"user_rate_multiplier"`
-	ResolvedRateMultiplier  *float64 `json:"resolved_rate_multiplier"`
-	PeakRateEnabled         *bool    `json:"peak_rate_enabled"`
-	PeakStart               *string  `json:"peak_start"`
-	PeakEnd                 *string  `json:"peak_end"`
-	PeakRateMultiplier      *float64 `json:"peak_rate_multiplier"`
-	AppliedPeakMultiplier   *float64 `json:"applied_peak_multiplier"`
-	EffectiveRateMultiplier *float64 `json:"effective_rate_multiplier"`
-	Timezone                *string  `json:"timezone"`
-	ObservedAt              string   `json:"observed_at"`
+	Object                  string          `json:"object"`
+	SchemaVersion           int             `json:"schema_version"`
+	BillingScope            string          `json:"billing_scope"`
+	GroupRateMultiplier     *float64        `json:"group_rate_multiplier"`
+	UserRateMultiplier      *float64        `json:"user_rate_multiplier"`
+	ResolvedRateMultiplier  *float64        `json:"resolved_rate_multiplier"`
+	PeakRateEnabled         *bool           `json:"peak_rate_enabled"`
+	PeakStart               *string         `json:"peak_start"`
+	PeakEnd                 *string         `json:"peak_end"`
+	PeakRateMultiplier      *float64        `json:"peak_rate_multiplier"`
+	AppliedPeakMultiplier   *float64        `json:"applied_peak_multiplier"`
+	EffectiveRateMultiplier *float64        `json:"effective_rate_multiplier"`
+	Timezone                *string         `json:"timezone"`
+	ObservedAt              string          `json:"observed_at"`
+	ModelPricing            json.RawMessage `json:"model_pricing"`
 }
 
 // GetUpstreamBillingProbeSettings returns defaults when the setting is absent.
@@ -615,9 +616,14 @@ func (s *UpstreamBillingProbeService) SetAccountEnabled(ctx context.Context, acc
 	updates := map[string]any{UpstreamBillingProbeEnabledExtraKey: enabled}
 	if !enabled {
 		updates[UpstreamBillingRateSyncEnabledExtraKey] = false
+		updates[UpstreamModelPricingSyncExtraKey] = false
 		updates[UpstreamBillingGroupSyncEnabledExtraKey] = false
 	}
 	return s.accountRepo.UpdateExtra(ctx, accountID, updates)
+}
+
+func upstreamBillingEndpoint(baseURL string) string {
+	return buildOpenAIEndpointURL(baseURL, "/v1/sub2api/billing")
 }
 
 type upstreamBillingReply struct {
@@ -628,7 +634,7 @@ type upstreamBillingReply struct {
 
 var errBillingUnsupported = errors.New("unsupported")
 
-func (s *UpstreamBillingProbeService) fetchBilling(ctx context.Context, account *Account, includeGroup bool, now time.Time) (upstreamBillingReply, error) {
+func (s *UpstreamBillingProbeService) fetchBilling(ctx context.Context, account *Account, includeGroup, includeModelPricing bool, now time.Time) (upstreamBillingReply, error) {
 	var result upstreamBillingReply
 	if s.accountTestService == nil || s.accountTestService.httpUpstream == nil {
 		return result, errors.New("transport_unavailable")
@@ -640,7 +646,7 @@ func (s *UpstreamBillingProbeService) fetchBilling(ctx context.Context, account 
 		return result, errors.New("missing_api_key")
 	}
 	baseURL := account.GetCredential("base_url")
-	if account.RoutesProtocolByInbound() && account.IsAdaptiveAPIProtocol() {
+	if account.IsAdaptiveAPIProtocol() && (account.RoutesProtocolByInbound() || includeModelPricing) {
 		baseURL = account.GetCNProtocolBaseURL(APIProtocolChatCompletions)
 	}
 	if account.Platform == PlatformOpenAI {
@@ -669,17 +675,12 @@ func (s *UpstreamBillingProbeService) fetchBilling(ctx context.Context, account 
 		}
 		proxyURL = account.Proxy.URL()
 	}
-	probeURL := buildOpenAIEndpointURL(normalizedBaseURL, "/v1/sub2api/billing")
+	probeURL := upstreamBillingEndpoint(normalizedBaseURL)
 	probeCtx, cancel := context.WithTimeout(ctx, upstreamBillingProbeRequestTimeout)
 	defer cancel()
 	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, probeURL, nil)
 	if err != nil {
 		return result, errors.New("request_build_failed")
-	}
-	if includeGroup {
-		query := req.URL.Query()
-		query.Set("include", "group")
-		req.URL.RawQuery = query.Encode()
 	}
 	// OpenAI 账号保持官方 openai 传输画像；其他平台探测走默认画像。
 	profile := HTTPUpstreamProfileDefault
@@ -688,6 +689,19 @@ func (s *UpstreamBillingProbeService) fetchBilling(ctx context.Context, account 
 	}
 	reqCtx := WithHTTPUpstreamProfile(req.Context(), profile)
 	req = req.WithContext(WithHTTPUpstreamRedirectsDisabled(reqCtx))
+	query := req.URL.Query()
+	if includeGroup {
+		query.Add("include", "group")
+	}
+	maxBodyBytes := int64(upstreamBillingProbeMaxBodyBytes)
+	if includeModelPricing {
+		query.Add("include", "model_pricing")
+		if models := selectedUpstreamPricingModels(account); len(models) > 0 {
+			query.Set("models", strings.Join(models, ","))
+		}
+		maxBodyBytes = maxUpstreamPricingBytes
+	}
+	req.URL.RawQuery = query.Encode()
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	account.ApplyHeaderOverrides(req.Context(), req.Header)
@@ -705,11 +719,11 @@ func (s *UpstreamBillingProbeService) fetchBilling(ctx context.Context, account 
 	defer func() { _ = resp.Body.Close() }()
 	result.status = resp.StatusCode
 	result.retryAfter = retryAfter(resp.Header, now)
-	body, readErr := io.ReadAll(io.LimitReader(resp.Body, upstreamBillingProbeMaxBodyBytes+1))
+	body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxBodyBytes+1))
 	if readErr != nil {
 		return result, errors.New("response_read_failed")
 	}
-	if len(body) > upstreamBillingProbeMaxBodyBytes {
+	if int64(len(body)) > maxBodyBytes {
 		return result, errors.New("response_too_large")
 	}
 	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
@@ -729,7 +743,7 @@ func (s *UpstreamBillingProbeService) PreviewGroup(ctx context.Context, account 
 	if !isUpstreamBillingProbeAccount(account) && !legacyRelay {
 		return nil, ErrUpstreamBillingProbeAccountInvalid
 	}
-	reply, err := s.fetchBilling(ctx, account, true, s.currentTime())
+	reply, err := s.fetchBilling(ctx, account, true, false, s.currentTime())
 	if errors.Is(err, errBillingUnsupported) {
 		return &BillingGroupInfo{}, nil
 	}
@@ -786,14 +800,15 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	now := s.currentTime().UTC()
 	groupSync, _ := account.Extra[UpstreamBillingGroupSyncEnabledExtraKey].(bool)
 	includeGroup := groupSync && upstreamBillingProbeEnabled(account)
-	reply, err := s.fetchBilling(ctx, account, includeGroup, now)
+	includeModelPricing := upstreamModelPricingSyncEnabled(account) && SupportsUpstreamModelPricingSync(account)
+	reply, err := s.fetchBilling(ctx, account, includeGroup, includeModelPricing, now)
 	if errors.Is(err, ErrUpstreamBillingProbeIdentityChanged) {
 		return nil, err
 	}
 	if err != nil {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, reply.status, err.Error(), reply.retryAfter)
 	}
-	data, err := parseUpstreamBillingProbeResponse(reply.body)
+	data, err := parseUpstreamBillingProbeResponseWithPricing(reply.body, includeModelPricing)
 	if err != nil {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, reply.status, "invalid_response", reply.retryAfter)
 	}
@@ -903,6 +918,10 @@ func (s *UpstreamBillingProbeService) updateSnapshot(
 }
 
 func parseUpstreamBillingProbeResponse(body []byte) (map[string]any, error) {
+	return parseUpstreamBillingProbeResponseWithPricing(body, false)
+}
+
+func parseUpstreamBillingProbeResponseWithPricing(body []byte, includeModelPricing bool) (map[string]any, error) {
 	var response upstreamBillingProbeResponse
 	if err := json.Unmarshal(body, &response); err != nil {
 		return nil, err
@@ -978,6 +997,11 @@ func parseUpstreamBillingProbeResponse(body []byte) (map[string]any, error) {
 	}
 	if !equalBillingMultiplier(*response.EffectiveRateMultiplier, *response.ResolvedRateMultiplier*appliedPeak) {
 		return nil, fmt.Errorf("inconsistent effective billing multiplier")
+	}
+	if includeModelPricing {
+		if modelPricing := parseUpstreamModelPricing(response.ModelPricing); len(modelPricing) > 0 {
+			data[UpstreamModelPricingDataKey] = modelPricing
+		}
 	}
 	return data, nil
 }
@@ -1143,6 +1167,8 @@ var upstreamBillingProbeOfficialAPIDomains = []string{
 	"kimi.com",
 	"bigmodel.cn",
 	"deepseek.com",
+	"minimaxi.com",
+	"minimax.io",
 	"opencode.ai",
 	"typesafe.ai",
 	"commandcode.ai",

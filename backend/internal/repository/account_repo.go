@@ -651,6 +651,7 @@ func lockAndMergeAccountProbeExtra(
 			proxy_id IS NOT DISTINCT FROM $5,
 			extra -> 'upstream_billing_probe_enabled',
 			extra -> 'upstream_billing_rate_sync_enabled',
+			COALESCE(extra @> '{"upstream_billing_model_pricing_sync_enabled": true}'::jsonb, false),
 			extra -> 'upstream_billing_probe',
 			extra -> 'ollama_cloud_usage_session',
 			extra -> 'ollama_cloud_usage_auto_refresh',
@@ -702,6 +703,7 @@ func lockAndMergeAccountProbeExtra(
 		opencodeGroupIdentityUnchanged bool
 		currentEnabled                 []byte
 		currentRateSyncEnabled         []byte
+		currentModelPricingSyncEnabled bool
 		currentGroupSyncEnabled        []byte
 		currentSnapshot                []byte
 		currentOllamaSession           []byte
@@ -718,6 +720,7 @@ func lockAndMergeAccountProbeExtra(
 		&ollamaProxyIdentityUnchanged,
 		&currentEnabled,
 		&currentRateSyncEnabled,
+		&currentModelPricingSyncEnabled,
 		&currentSnapshot,
 		&currentOllamaSession,
 		&currentOllamaAutoRefresh,
@@ -788,7 +791,17 @@ func lockAndMergeAccountProbeExtra(
 		}
 	}
 	probeExplicitlyDisabled := probeEnabledPresent && !probeEnabled
-	if identityUnchanged && !probeExplicitlyDisabled {
+	modelPricingSyncEnabled, explicitModelPricingSync := extra[service.UpstreamModelPricingSyncExtraKey].(bool)
+	if !explicitModelPricingSync {
+		modelPricingSyncEnabled = currentModelPricingSyncEnabled
+	}
+	modelPricingSyncEnabled = modelPricingSyncEnabled && probeEnabled && service.SupportsUpstreamModelPricingSync(account)
+	if modelPricingSyncEnabled {
+		extra[service.UpstreamModelPricingSyncExtraKey] = true
+	} else {
+		delete(extra, service.UpstreamModelPricingSyncExtraKey)
+	}
+	if identityUnchanged && !probeExplicitlyDisabled && modelPricingSyncEnabled == currentModelPricingSyncEnabled {
 		if snapshot, ok, err := decodeAccountExtraJSON(currentSnapshot); err != nil {
 			return nil, err
 		} else if ok {
@@ -3049,6 +3062,7 @@ func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
 	if account.ProxyID != nil {
 		proxyID = *account.ProxyID
 	}
+	modelPricingSyncEnabled, _ := account.Extra[service.UpstreamModelPricingSyncExtraKey].(bool)
 	result, err := client.ExecContext(ctx, `
 		UPDATE accounts
 		SET
@@ -3073,8 +3087,9 @@ func (r *accountRepository) updateUpstreamBillingProbeSnapshotInTx(
 			AND COALESCE(extra -> 'upstream_billing_probe', 'null'::jsonb) = $7::jsonb
 			AND COALESCE(extra -> 'upstream_billing_probe_enabled', 'null'::jsonb) = $8::jsonb
 			AND COALESCE(extra -> 'upstream_billing_rate_sync_enabled', 'null'::jsonb) = $9::jsonb
+			AND COALESCE(extra @> '{"upstream_billing_model_pricing_sync_enabled": true}'::jsonb, false) = $13
 			AND deleted_at IS NULL
-	`, string(payload), account.ID, account.Platform, account.Type, string(credentials), proxyID, string(expectedSnapshotJSON), string(expectedEnabledJSON), string(expectedRateSyncEnabledJSON), rateMultiplier, group.Name, group.Description)
+	`, string(payload), account.ID, account.Platform, account.Type, string(credentials), proxyID, string(expectedSnapshotJSON), string(expectedEnabledJSON), string(expectedRateSyncEnabledJSON), rateMultiplier, group.Name, group.Description, modelPricingSyncEnabled)
 	if err != nil {
 		return err
 	}

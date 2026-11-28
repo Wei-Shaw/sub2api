@@ -2010,6 +2010,30 @@
               @update:model-value="handleUpstreamBillingRateSyncChange"
             />
           </div>
+          <div
+            v-if="canSyncUpstreamModelPricing"
+            class="mt-3 flex items-center justify-between gap-3"
+          >
+            <div class="min-w-0">
+              <p class="text-xs font-medium text-gray-700 dark:text-gray-200">
+                {{ t('admin.accounts.upstreamBilling.syncModelPrices') }}
+              </p>
+              <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ t('admin.accounts.upstreamBilling.syncModelPricesHint') }}
+              </p>
+              <p v-if="upstreamModelPricingSyncEnabled" class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                {{ syncedUpstreamModelCount
+                  ? t('admin.accounts.upstreamBilling.syncedModelPrices', { count: syncedUpstreamModelCount })
+                  : t('admin.accounts.upstreamBilling.modelPricesUnavailable') }}
+              </p>
+            </div>
+            <Toggle
+              :model-value="upstreamModelPricingSyncEnabled"
+              data-testid="upstream-model-pricing-sync"
+              :aria-label="t('admin.accounts.upstreamBilling.syncModelPrices')"
+              @update:model-value="handleUpstreamModelPricingSyncChange"
+            />
+          </div>
         </div>
       </div>
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
@@ -3425,7 +3449,8 @@ import type {
   GrokModelDiagnostics,
   OpenCodeGoUsageState,
   OpenCodeGoUsageWindow,
-  TempUnschedulableScope
+  TempUnschedulableScope,
+  UpstreamBillingProbeSnapshot
 } from '@/types'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -3503,6 +3528,7 @@ import {
 } from '@/utils/format'
 import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiError'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
+import { isKnownPlatform } from '@/constants/platformCatalog'
 import { supportsAccountQuota } from '@/utils/accountQuota'
 import { getAccountExpiryTimestamp } from '@/components/account/accountExpiry'
 import { allSelectedGroupsEnableLongContextPricing } from '@/components/account/longContextBilling'
@@ -4122,6 +4148,16 @@ function setUpstreamGroupSync(enabled: boolean) {
 }
 const upstreamBillingAutoProbeEnabled = ref(false)
 const upstreamBillingRateSyncEnabled = ref(false)
+const upstreamModelPricingSyncEnabled = ref(false)
+const canSyncUpstreamModelPricing = computed(() =>
+  props.account?.type === 'apikey' && isKnownPlatform(props.account.platform) &&
+  poolModeEnabled.value && !isSparkShadow.value
+)
+const syncedUpstreamModelCount = computed(() => {
+  const snapshot = props.account?.extra?.upstream_billing_probe as UpstreamBillingProbeSnapshot | undefined
+  if (snapshot?.status !== 'ok' || !snapshot.fresh_until || Date.parse(snapshot.fresh_until) <= Date.now()) return 0
+  return Object.keys(snapshot.data?.model_pricing ?? {}).length
+})
 const mixedScheduling = ref(false) // For antigravity accounts: enable mixed scheduling
 // 上游ID：直接上游声明请求标识的响应头名，留空不记录。
 const upstreamRequestIdHeader = ref('')
@@ -4547,6 +4583,13 @@ const handleUpstreamBillingRateSyncChange = (enabled: boolean) => {
   }
 }
 
+const handleUpstreamModelPricingSyncChange = (enabled: boolean) => {
+  upstreamModelPricingSyncEnabled.value = enabled
+  if (enabled) {
+    upstreamBillingAutoProbeEnabled.value = true
+  }
+}
+
 const billingBaseUrl = computed(() => (
   isCNApiKeyAccount.value && editApiProtocol.value === 'adaptive'
     ? editAdaptiveBaseUrls.value.chat_completions
@@ -4570,6 +4613,7 @@ const handleUpstreamBillingAutoProbeChange = (enabled: boolean) => {
   upstreamBillingAutoProbeEnabled.value = enabled
   if (!enabled) {
     upstreamBillingRateSyncEnabled.value = false
+    upstreamModelPricingSyncEnabled.value = false
     upstreamGroupSyncEnabled.value = false
   }
 }
@@ -4707,6 +4751,8 @@ const syncFormFromAccount = (newAccount: Account | null) => {
     upstreamBillingAutoProbeEnabled.value && extra?.upstream_billing_group_sync_enabled === true
   upstreamBillingRateSyncEnabled.value =
     upstreamBillingAutoProbeEnabled.value && extra?.upstream_billing_rate_sync_enabled === true
+  upstreamModelPricingSyncEnabled.value =
+    upstreamBillingAutoProbeEnabled.value && extra?.upstream_billing_model_pricing_sync_enabled === true
 
   // Load OpenAI passthrough toggle (OpenAI OAuth/SetupToken/API Key)
   openaiPassthroughEnabled.value = false
@@ -6409,6 +6455,10 @@ const handleSubmit = async () => {
         delete newExtra.upstream_billing_probe_enabled
         delete newExtra.upstream_billing_rate_sync_enabled
         delete newExtra.upstream_billing_group_sync_enabled
+        delete newExtra.upstream_billing_model_pricing_sync_enabled
+        if (upstreamModelPricingSyncEnabled.value || props.account.extra?.upstream_billing_model_pricing_sync_enabled === true) {
+          newExtra.upstream_billing_model_pricing_sync_enabled = canSyncUpstreamModelPricing.value && upstreamModelPricingSyncEnabled.value
+        }
       }
       // Total quota
       if (editQuotaLimit.value != null && editQuotaLimit.value > 0) {

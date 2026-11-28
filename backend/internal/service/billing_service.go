@@ -307,17 +307,25 @@ func isDeepSeekModel(model string) bool {
 // 01:00–04:00 与 06:00–10:00 UTC（半开区间），仅工作日；
 // 周末（北京时间周六/周日）全天低谷。北京时间用固定 +8 偏移（无夏令时）。
 func deepseekPeakMultiplierAt(now time.Time) float64 {
-	beijing := now.In(time.FixedZone("Asia/Shanghai", 8*3600))
+	beijing := now.In(deepseekPricingLocation)
 	switch beijing.Weekday() {
 	case time.Saturday, time.Sunday:
-		return 1.0
+		return 1
 	}
-	switch h := now.UTC().Hour(); {
-	case h >= 1 && h < 4, h >= 6 && h < 10:
-		return 2.0
+	for _, period := range deepseekPeakHours {
+		if hour := beijing.Hour(); hour >= period[0] && hour < period[1] {
+			return deepseekPeakRate
+		}
 	}
-	return 1.0
+	return 1
 }
+
+const deepseekPeakRate = 2.0
+
+var (
+	deepseekPricingLocation = time.FixedZone("Asia/Shanghai", 8*3600)
+	deepseekPeakHours       = [][2]int{{9, 12}, {14, 18}} // Beijing time
+)
 
 // isDeepSeekProModel 判断模型名是否归入 deepseek-v4-pro 档（含版本化名称，
 // 如 deepseek-v4-pro-0813）。
@@ -2663,13 +2671,17 @@ func getDefaultGrokImagineVideoPrice(model string, resolution string) (float64, 
 	}
 }
 
-// openAIUltrafastMultiplier uses the request instant, including for delayed
-// settlement. March 1, 2027 00:00 Pacific is 08:00 UTC (before DST).
+// March 1, 2027 00:00 Pacific is 08:00 UTC (before DST).
+func openAIUltrafastDiscountEnd(model string) (time.Time, bool) {
+	return time.Date(2027, time.March, 1, 8, 0, 0, 0, time.UTC), openai.GPT62ModelID(model) != ""
+}
+
+// openAIUltrafastMultiplier uses the request instant, including for delayed settlement.
 func openAIUltrafastMultiplier(model string, at time.Time) float64 {
 	if at.IsZero() {
 		at = timezone.Now()
 	}
-	if openai.GPT62ModelID(model) != "" && at.Before(time.Date(2027, time.March, 1, 8, 0, 0, 0, time.UTC)) {
+	if end, ok := openAIUltrafastDiscountEnd(model); ok && at.Before(end) {
 		return 3
 	}
 	return 6

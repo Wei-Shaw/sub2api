@@ -1486,7 +1486,7 @@ func filterSchedulerCredentials(credentials map[string]any) map[string]any {
 	}
 	// Candidate-list admission evaluates the account override before hydrating
 	// the full account. Dropping it silently falls back to the platform threshold.
-	keys := []string{"model_mapping", "compact_model_mapping", "api_key", "project_id", "oauth_type", "plan_type", "account_scheduling_threshold",
+	keys := []string{"model_mapping", "compact_model_mapping", "pool_mode", "api_key", "project_id", "oauth_type", "plan_type", "account_scheduling_threshold",
 		// OpenAI 端点能力集必须进投影：候选过滤按 SupportsOpenAIEndpointCapability 判
 		// capability_mismatch，而 Seedance 分支直接读该键、不走「未配置即放行」。
 		// 裁掉后 Seedance 账号在选号阶段必然被剔除，表现为 /v1/models 能列出模型、
@@ -1585,7 +1585,10 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		service.OpenAIAutoResetCredit7dThresholdExtraKey,
 		service.OpenAIAutoResetCreditStateExtraKey,
 		"model_rate_limits",
+		service.UpstreamBillingProbeEnabledExtraKey,
 		service.UpstreamBillingProbeExtraKey,
+		service.UpstreamModelPricingSyncExtraKey,
+		"openai_long_context_billing_enabled",
 		service.GrokMediaEligibleExtraKey,
 		"grok_billing_snapshot",
 	}
@@ -1630,6 +1633,7 @@ func filterSchedulerUpstreamBillingProbe(value any) map[string]any {
 	}
 	filteredData := make(map[string]any)
 	for _, key := range []string{
+		service.UpstreamModelPricingDataKey,
 		"billing_scope",
 		"resolved_rate_multiplier",
 		"peak_rate_enabled",

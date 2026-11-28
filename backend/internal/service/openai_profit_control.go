@@ -15,7 +15,7 @@ package service
 //     apiKey 自身分组；composite 请求为父分组）做 ResolveUserGroupRateMultiplier
 //     （用户-分组覆盖 ?? 分组默认）× Group.PeakMultiplierAt(pricingAt)，绝不在
 //     用户有覆盖时退回分组默认；开关与 margin/buffer 则始终取被调度
-//     openai/grok 分组。
+//     由 OpenAI 网关处理的具体平台分组。
 //   - U（上游成本倍率）取 accounts.rate_multiplier。倍率可以由运营者手工维护，
 //     也可以由上游倍率探测同步写回；利润门不再耦合探测协议、新鲜度或账号类型。
 //     0 是合法的免费上游倍率；nil、负数、NaN、Inf 属于非法数据并保守拒绝。
@@ -67,6 +67,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/domain"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
@@ -78,8 +79,9 @@ const (
 
 	// 进入 openAISelectionFilterStats 的排除原因，全排除时出现在
 	// "no available accounts" 的内部统计摘要里（与 quota_auto_pause 等同通道）。
-	openAIProfitFilterReasonThreshold          = "profit_threshold"
-	openAIProfitFilterReasonInvalidAccountRate = "profit_invalid_account_rate"
+	openAIProfitFilterReasonThreshold                = "profit_threshold"
+	openAIProfitFilterReasonInvalidAccountRate       = "profit_invalid_account_rate"
+	openAIProfitFilterReasonUpstreamPriceUnavailable = "profit_upstream_price_unavailable"
 
 	// profitControlActivityLogInterval 是按分组采样输出累计计数的最小间隔。
 	profitControlActivityLogInterval = 5 * time.Minute
@@ -124,7 +126,9 @@ type openAIProfitControlGate struct {
 	// threshold = D(pricingAt) × (1 − margin − buffer)，账号倍率必须 <= 它。
 	threshold float64
 	// pricingAt 是本请求的统一定价时刻（D 侧）。
-	pricingAt time.Time
+	pricingAt    time.Time
+	billingGroup *Group
+	modelPricing *upstreamPricingAdmission
 }
 
 // WithOpenAIRequestPricingContext 在请求开始处装配请求级定价上下文：固定
@@ -237,7 +241,7 @@ func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Contex
 		group = loaded
 	}
 	if group == nil || !group.ProfitControlEnabled ||
-		(group.Platform != PlatformOpenAI && group.Platform != PlatformGrok) {
+		!domain.UsesOpenAIGateway(group.Platform) {
 		return nil
 	}
 
@@ -262,10 +266,11 @@ func (s *OpenAIGatewayService) resolveOpenAIProfitControlGate(ctx context.Contex
 	deduction := group.ProfitMinMargin + group.ProfitSafetyBuffer
 	threshold := clampProfitControlThreshold(downstream * (1 - deduction))
 	return &openAIProfitControlGate{
-		groupID:   *groupID,
-		platform:  group.Platform,
-		threshold: threshold,
-		pricingAt: pricingAt,
+		groupID:      *groupID,
+		platform:     group.Platform,
+		threshold:    threshold,
+		pricingAt:    pricingAt,
+		billingGroup: billingGroup,
 	}
 }
 
@@ -303,6 +308,14 @@ func openAIProfitControlVetoReason(ctx context.Context, account *Account) (bool,
 	gate, _ := ctx.Value(openAIProfitControlGateCtxKey{}).(*openAIProfitControlGate)
 	if gate == nil || account == nil {
 		return false, ""
+	}
+	// Shared storage and count-token requests have no model tariff in the contract.
+	if upstreamModelPricingSyncEnabled(account) && (gate.modelPricing != nil || domain.UsesOpenAIGateway(gate.platform)) {
+		reason := gate.upstreamModelPriceVetoReason(ctx, account)
+		if reason != "" {
+			openAIProfitControlObserverInstance.recordVeto(gate.groupID, gate.platform, gate.threshold, reason)
+		}
+		return reason != "", reason
 	}
 	if account.RateMultiplier == nil ||
 		math.IsNaN(*account.RateMultiplier) ||
@@ -382,11 +395,12 @@ func (s *OpenAIGatewayService) BindStickySessionAfterProfitAdmission(ctx context
 // 构成，不能当作精确的请求数或账号数。
 
 type openAIProfitControlGroupStats struct {
-	installs         atomic.Int64
-	vetoThreshold    atomic.Int64
-	vetoInvalidRate  atomic.Int64
-	refreshFailures  atomic.Int64
-	lastLogUnixMilli atomic.Int64
+	installs             atomic.Int64
+	vetoThreshold        atomic.Int64
+	vetoInvalidRate      atomic.Int64
+	vetoPriceUnavailable atomic.Int64
+	refreshFailures      atomic.Int64
+	lastLogUnixMilli     atomic.Int64
 }
 
 type openAIProfitControlObserver struct {
@@ -427,6 +441,8 @@ func (o *openAIProfitControlObserver) recordVeto(groupID int64, platform string,
 		s.vetoThreshold.Add(1)
 	case openAIProfitFilterReasonInvalidAccountRate:
 		s.vetoInvalidRate.Add(1)
+	case openAIProfitFilterReasonUpstreamPriceUnavailable:
+		s.vetoPriceUnavailable.Add(1)
 	}
 	o.maybeLog(groupID, platform, threshold, s)
 }
@@ -455,6 +471,7 @@ func (o *openAIProfitControlObserver) maybeLog(groupID int64, platform string, t
 		"installs_total", s.installs.Load(),
 		"veto_threshold_total", s.vetoThreshold.Load(),
 		"veto_invalid_account_rate_total", s.vetoInvalidRate.Load(),
+		"veto_upstream_price_unavailable_total", s.vetoPriceUnavailable.Load(),
 		"refresh_failure_total", s.refreshFailures.Load(),
 	)
 }

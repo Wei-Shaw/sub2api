@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -126,7 +127,15 @@ func (r *upstreamBillingProbeAccountRepo) UpdateUpstreamBillingProbeSnapshot(
 	if account.Extra == nil {
 		account.Extra = make(map[string]any)
 	}
-	account.Extra[UpstreamBillingProbeExtraKey] = snapshot
+	raw, err := json.Marshal(snapshot)
+	if err != nil {
+		return err
+	}
+	var stored map[string]any
+	if err := json.Unmarshal(raw, &stored); err != nil {
+		return err
+	}
+	account.Extra[UpstreamBillingProbeExtraKey] = stored
 	if group.Name != "" {
 		account.Name = group.Name
 	}

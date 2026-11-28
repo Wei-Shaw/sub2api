@@ -82,6 +82,7 @@ type postUsageBillingParams struct {
 	RequestPayloadHash    string
 	IsSubscriptionBill    bool
 	AccountRateMultiplier float64
+	AccountCost           *float64 // absolute upstream model cost, when synchronized
 	APIKeyService         APIKeyQuotaUpdater
 	Platform              string // 来自 APIKey 关联 Group 的平台标识
 	// SimpleModeKeyRateLimitOnly opts the request into the simple-mode billing
@@ -138,7 +139,19 @@ func (p *postUsageBillingParams) shouldUpdateRateLimits() bool {
 }
 
 func (p *postUsageBillingParams) shouldUpdateAccountQuota() bool {
-	return p.Cost.TotalCost > 0 && p.Account.SupportsAccountQuota() && p.Account.HasAnyQuotaLimit()
+	// Preserve the legacy eligibility check when there is no upstream quote.
+	positiveCost := p.Cost.TotalCost > 0
+	if p.AccountCost != nil {
+		positiveCost = *p.AccountCost > 0
+	}
+	return positiveCost && p.Account.SupportsAccountQuota() && p.Account.HasAnyQuotaLimit()
+}
+
+func (p *postUsageBillingParams) accountQuotaCost() float64 {
+	if p.AccountCost != nil {
+		return *p.AccountCost
+	}
+	return p.Cost.TotalCost * p.AccountRateMultiplier
 }
 
 // postUsageBilling is the legacy fallback billing path used when the unified
@@ -183,7 +196,7 @@ func postUsageBilling(ctx context.Context, p *postUsageBillingParams, deps *bill
 	}
 
 	if p.shouldUpdateAccountQuota() {
-		accountCost := cost.TotalCost * p.AccountRateMultiplier
+		accountCost := p.accountQuotaCost()
 		if err := deps.accountRepo.IncrementQuotaUsed(billingCtx, p.Account.ID, accountCost); err != nil {
 			slog.Error("increment account quota used failed", "account_id", p.Account.ID, "cost", accountCost, "error", err)
 		}
@@ -345,7 +358,7 @@ func buildUsageBillingCommand(requestID string, usageLog *UsageLog, p *postUsage
 		cmd.APIKeyRateLimitCost = p.Cost.ActualCost
 	}
 	if p.shouldUpdateAccountQuota() {
-		cmd.AccountQuotaCost = p.Cost.TotalCost * p.AccountRateMultiplier
+		cmd.AccountQuotaCost = p.accountQuotaCost()
 		cmd.AccountQuotaHasDailyLimit = p.Account.GetQuotaDailyLimit() > 0
 		cmd.AccountQuotaHasWeeklyLimit = p.Account.GetQuotaWeeklyLimit() > 0
 	}
@@ -547,7 +560,7 @@ func notifyAccountQuota(ctx context.Context, p *postUsageBillingParams, deps *bi
 			slog.Error("panic in notifyAccountQuota", "recover", r)
 		}
 	}()
-	if p.Cost.TotalCost <= 0 || p.Account == nil || !p.Account.SupportsAccountQuota() || !p.Account.HasAnyQuotaLimit() || deps.balanceNotifyService == nil {
+	if p.Account == nil || !p.shouldUpdateAccountQuota() || deps.balanceNotifyService == nil {
 		slog.Debug("notifyAccountQuota: skipped",
 			"total_cost", p.Cost.TotalCost,
 			"account_nil", p.Account == nil,
@@ -557,7 +570,7 @@ func notifyAccountQuota(ctx context.Context, p *postUsageBillingParams, deps *bi
 		)
 		return
 	}
-	accountCost := p.Cost.TotalCost * p.AccountRateMultiplier
+	accountCost := p.accountQuotaCost()
 	var quotaState *AccountQuotaState
 	if result != nil {
 		quotaState = result.QuotaState
@@ -780,7 +793,13 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 	account := input.Account
 	subscription := input.Subscription
 	ApplyForwardImageBillingResolution(result)
-	logServiceTierBillingDowngrade("service.gateway", account, result.RequestID, ApplyForwardServiceTierBillingResolution(result))
+	tierResolution := ApplyForwardServiceTierBillingResolution(result)
+	logServiceTierBillingDowngrade("service.gateway", account, result.RequestID, tierResolution)
+	// Local cache-billing overrides do not change the usage returned by the upstream.
+	var upstreamTokens UsageTokens
+	if upstreamModelPricingSyncEnabled(account) {
+		upstreamTokens = result.Usage.billingUsageTokens()
+	}
 
 	// 强制缓存计费：将 input_tokens 转为 cache_read_input_tokens
 	// 用于粘性会话切换时的特殊计费处理
@@ -859,6 +878,12 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		addCacheStorageToAccountStatsCost(usageLog, cacheStorageCost)
 	}
 
+	var upstreamAccountCost *float64
+	if base, rate, ok := syncedGatewayUsageCost(account, result, upstreamTokens, cost.BillingMode, tierResolution, pricingAt); ok {
+		accountRateMultiplier = rate
+		upstreamAccountCost = recordSyncedUpstreamAccountCost(usageLog, base, rate)
+	}
+
 	simpleModeKeyRateLimitOnly := simpleModeKeyRateLimitBillingEnabled(s.cfg, apiKey)
 	if s.cfg != nil && s.cfg.RunMode == config.RunModeSimple && !simpleModeKeyRateLimitOnly {
 		writeUsageLogBestEffort(ctx, s.usageLogRepo, usageLog, "service.gateway")
@@ -887,6 +912,7 @@ func (s *GatewayService) recordUsageCore(ctx context.Context, input *recordUsage
 		RequestPayloadHash:         resolveUsageBillingPayloadFingerprint(ctx, input.RequestPayloadHash),
 		IsSubscriptionBill:         isSubscriptionBilling && !simpleModeKeyRateLimitOnly,
 		AccountRateMultiplier:      accountRateMultiplier,
+		AccountCost:                upstreamAccountCost,
 		APIKeyService:              input.APIKeyService,
 		Platform:                   quotaPlatform,
 		SimpleModeKeyRateLimitOnly: simpleModeKeyRateLimitOnly,
