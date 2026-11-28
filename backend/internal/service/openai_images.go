@@ -108,6 +108,9 @@ type OpenAIImagesRequest struct {
 	MarkupUpload       *OpenAIImagesUpload
 	Body               []byte
 	bodyHash           string
+	// extraModelPrefixes 记录解析时的 gateway.openai_images_extra_model_prefixes，
+	// 供 RequiredCapabilityForModel 在渠道映射后继续识别厂商生图模型。
+	extraModelPrefixes []string
 }
 
 // Keep SVG author options separate from the image model and its complexity.
@@ -258,7 +261,8 @@ func (s *OpenAIGatewayService) ParseOpenAIImagesRequest(c *gin.Context, body []b
 			req.Model = model
 		}
 	}
-	if err := validateCompatibleImagesModel(req.Model); err != nil {
+	req.extraModelPrefixes = s.imagesExtraModelPrefixes()
+	if err := validateCompatibleImagesModelWithExtras(req.Model, req.extraModelPrefixes); err != nil {
 		return nil, err
 	}
 	req.SizeTier = normalizeOpenAIImageSizeTier(req.Size)
@@ -590,16 +594,63 @@ func isGeminiCompatibleImageModel(model string) bool {
 }
 
 func validateCompatibleImagesModel(model string) error {
-	if isGeminiCompatibleImageModel(model) {
+	return validateCompatibleImagesModelWithExtras(model, nil)
+}
+
+// imagesModelMatchesExtraPrefix 判断 model 是否落在配置的额外生图模型前缀里。
+// 前缀按不区分大小写匹配，条目既可以是厂商前缀（gemini-nano-），也可以是完整模型名。
+func imagesModelMatchesExtraPrefix(model string, extraPrefixes []string) bool {
+	m := strings.ToLower(strings.TrimSpace(model))
+	if m == "" {
+		return false
+	}
+	for _, prefix := range extraPrefixes {
+		p := strings.ToLower(strings.TrimSpace(prefix))
+		if p == "" {
+			continue
+		}
+		if strings.HasPrefix(m, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// validateCompatibleImagesModelWithExtras 在内置三族之外再放行
+// gateway.openai_images_extra_model_prefixes 里配置的模型名前缀。
+// 未配置时与 validateCompatibleImagesModel 完全等价。
+func validateCompatibleImagesModelWithExtras(model string, extraPrefixes []string) error {
+	if isGeminiCompatibleImageModel(model) || imagesModelMatchesExtraPrefix(model, extraPrefixes) {
 		return nil
 	}
 	return validateOpenAIImagesModel(model)
 }
 
+// imagesExtraModelPrefixes 读取配置的额外生图模型前缀；svc/cfg 为空时返回 nil，
+// 便于测试里直接构造 &OpenAIGatewayService{}。
+func (s *OpenAIGatewayService) imagesExtraModelPrefixes() []string {
+	if s == nil || s.cfg == nil {
+		return nil
+	}
+	return s.cfg.Gateway.OpenAIImagesExtraModelPrefixes
+}
+
+// isProviderImageModel 判断该模型名是否属于「按原样转发给上游」的厂商生图模型：
+// 内置的 gemini-*-image* 与配置的额外前缀一样，只允许 api_key 账号承接。
+func (req *OpenAIImagesRequest) isProviderImageModel(model string) bool {
+	if isGeminiCompatibleImageModel(model) {
+		return true
+	}
+	if req == nil {
+		return false
+	}
+	return imagesModelMatchesExtraPrefix(model, req.extraModelPrefixes)
+}
+
 // RequiredCapabilityForModel also applies the API-key-only fence when channel
 // mapping introduces a compatible provider model after request parsing.
 func (req *OpenAIImagesRequest) RequiredCapabilityForModel(model string) OpenAIImagesCapability {
-	if isGeminiCompatibleImageModel(model) {
+	if req.isProviderImageModel(model) {
 		return OpenAIImagesCapabilityAPIKey
 	}
 	return req.RequiredCapability
@@ -621,7 +672,7 @@ func classifyOpenAIImagesCapability(req *OpenAIImagesRequest) OpenAIImagesCapabi
 	if req == nil {
 		return OpenAIImagesCapabilityNative
 	}
-	if isGeminiCompatibleImageModel(req.Model) {
+	if isGeminiCompatibleImageModel(req.Model) || imagesModelMatchesExtraPrefix(req.Model, req.extraModelPrefixes) {
 		return OpenAIImagesCapabilityAPIKey
 	}
 	if req.ExplicitModel || req.ExplicitSize {
@@ -713,11 +764,11 @@ func (s *OpenAIGatewayService) forwardOpenAIImagesAPIKey(
 	if mapped := strings.TrimSpace(channelMappedModel); mapped != "" {
 		requestModel = mapped
 	}
-	if err := validateCompatibleImagesModel(requestModel); err != nil {
+	if err := validateCompatibleImagesModelWithExtras(requestModel, parsed.extraModelPrefixes); err != nil {
 		return nil, err
 	}
 	upstreamModel := account.GetMappedModel(requestModel)
-	if err := validateCompatibleImagesModel(upstreamModel); err != nil {
+	if err := validateCompatibleImagesModelWithExtras(upstreamModel, parsed.extraModelPrefixes); err != nil {
 		return nil, err
 	}
 	SetOpsUpstreamModel(c, upstreamModel)
