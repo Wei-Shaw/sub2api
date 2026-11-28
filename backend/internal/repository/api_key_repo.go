@@ -1041,6 +1041,7 @@ func groupEntityToService(g *dbent.Group) *service.Group {
 		MaxReasoningEffort:              g.MaxReasoningEffort,
 		MaxReasoningEffortOverLimit:     g.MaxReasoningEffortOverLimit,
 		ReasoningEffortMappings:         g.ReasoningEffortMappings,
+		ReasoningEffortStepdown:         g.ReasoningEffortStepdown,
 		PeakRateEnabled:                 g.PeakRateEnabled,
 		PeakStart:                       g.PeakStart,
 		PeakEnd:                         g.PeakEnd,

@@ -634,6 +634,7 @@
           v-model:max-effort="createForm.max_reasoning_effort"
           v-model:over-limit="createForm.max_reasoning_effort_over_limit"
           v-model:mappings="createForm.reasoning_effort_mappings"
+          v-model:stepdown="createForm.reasoning_effort_stepdown"
         />
         <div
           v-if="createForm.subscription_type !== 'subscription'"
@@ -2228,6 +2229,7 @@
           v-model:max-effort="editForm.max_reasoning_effort"
           v-model:over-limit="editForm.max_reasoning_effort_over_limit"
           v-model:mappings="editForm.reasoning_effort_mappings"
+          v-model:stepdown="editForm.reasoning_effort_stepdown"
         />
         <div v-if="editForm.subscription_type !== 'subscription'">
           <div class="mb-1.5 flex items-center gap-1">
@@ -4933,6 +4935,7 @@ const createForm = reactive({
   max_reasoning_effort: "",
   max_reasoning_effort_over_limit: reasoningEffortOverLimitDowngrade,
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
+  reasoning_effort_stepdown: false,
 });
 
 // 简单账号类型（用于模型路由选择）
@@ -5302,6 +5305,7 @@ const editForm = reactive({
   max_reasoning_effort: "",
   max_reasoning_effort_over_limit: reasoningEffortOverLimitDowngrade,
   reasoning_effort_mappings: [] as ReasoningEffortMappingRow[],
+  reasoning_effort_stepdown: false,
 });
 
 type ImagePricingFormState = {
@@ -5760,6 +5764,7 @@ const closeCreateModal = () => {
   createForm.max_reasoning_effort = "";
   createForm.max_reasoning_effort_over_limit = reasoningEffortOverLimitDowngrade;
   createForm.reasoning_effort_mappings = [];
+  createForm.reasoning_effort_stepdown = false;
   createReasoningEffortPolicyRef.value?.resetValidation();
   resetModelAllowlistState(createModelAllowlistState);
   createModelRoutingRules.value = [];
@@ -6088,6 +6093,7 @@ const handleEdit = async (group: AdminGroup) => {
     group.reasoning_effort_mappings,
     group.platform,
   );
+  editForm.reasoning_effort_stepdown = group.reasoning_effort_stepdown ?? false;
   resetModelAllowlistState(editModelAllowlistState, group.model_allowlist);
   // 固定账号 manifest 配置：回显配置并异步解析已存账号名称（失败显示 #<id>）
   const savedCodexManifestConfig =
@@ -6129,6 +6135,7 @@ const closeEditModal = () => {
   editForm.max_reasoning_effort = "";
   editForm.max_reasoning_effort_over_limit = reasoningEffortOverLimitDowngrade;
   editForm.reasoning_effort_mappings = [];
+  editForm.reasoning_effort_stepdown = false;
   editReasoningEffortPolicyRef.value?.resetValidation();
   editModelRoutingRules.value = [];
   editForm.copy_accounts_from_group_ids = [];

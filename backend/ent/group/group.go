@@ -148,6 +148,8 @@ const (
 	FieldMaxReasoningEffortOverLimit = "max_reasoning_effort_over_limit"
 	// FieldReasoningEffortMappings holds the string denoting the reasoning_effort_mappings field in the database.
 	FieldReasoningEffortMappings = "reasoning_effort_mappings"
+	// FieldReasoningEffortStepdown holds the string denoting the reasoning_effort_stepdown field in the database.
+	FieldReasoningEffortStepdown = "reasoning_effort_stepdown"
 	// FieldProfitControlEnabled holds the string denoting the profit_control_enabled field in the database.
 	FieldProfitControlEnabled = "profit_control_enabled"
 	// FieldProfitMinMargin holds the string denoting the profit_min_margin field in the database.
@@ -295,6 +297,7 @@ var Columns = []string{
 	FieldMaxReasoningEffort,
 	FieldMaxReasoningEffortOverLimit,
 	FieldReasoningEffortMappings,
+	FieldReasoningEffortStepdown,
 	FieldProfitControlEnabled,
 	FieldProfitMinMargin,
 	FieldProfitSafetyBuffer,
@@ -443,6 +446,8 @@ var (
 	MaxReasoningEffortOverLimitValidator func(string) error
 	// DefaultReasoningEffortMappings holds the default value on creation for the "reasoning_effort_mappings" field.
 	DefaultReasoningEffortMappings []domain.ReasoningEffortMapping
+	// DefaultReasoningEffortStepdown holds the default value on creation for the "reasoning_effort_stepdown" field.
+	DefaultReasoningEffortStepdown bool
 	// DefaultProfitControlEnabled holds the default value on creation for the "profit_control_enabled" field.
 	DefaultProfitControlEnabled bool
 	// DefaultProfitMinMargin holds the default value on creation for the "profit_min_margin" field.
@@ -742,6 +747,11 @@ func ByMaxReasoningEffort(opts ...sql.OrderTermOption) OrderOption {
 // ByMaxReasoningEffortOverLimit orders the results by the max_reasoning_effort_over_limit field.
 func ByMaxReasoningEffortOverLimit(opts ...sql.OrderTermOption) OrderOption {
 	return sql.OrderByField(FieldMaxReasoningEffortOverLimit, opts...).ToFunc()
+}
+
+// ByReasoningEffortStepdown orders the results by the reasoning_effort_stepdown field.
+func ByReasoningEffortStepdown(opts ...sql.OrderTermOption) OrderOption {
+	return sql.OrderByField(FieldReasoningEffortStepdown, opts...).ToFunc()
 }
 
 // ByProfitControlEnabled orders the results by the profit_control_enabled field.

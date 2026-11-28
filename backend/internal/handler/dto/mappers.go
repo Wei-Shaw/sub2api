@@ -229,6 +229,7 @@ func groupFromServiceBase(g *service.Group) Group {
 		MaxReasoningEffort:              g.MaxReasoningEffort,
 		MaxReasoningEffortOverLimit:     g.MaxReasoningEffortOverLimit,
 		ReasoningEffortMappings:         g.ReasoningEffortMappings,
+		ReasoningEffortStepdown:         g.ReasoningEffortStepdown,
 		CreatedAt:                       g.CreatedAt,
 		UpdatedAt:                       g.UpdatedAt,
 	}

@@ -340,6 +340,11 @@ func MaxReasoningEffortOverLimit(v string) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldMaxReasoningEffortOverLimit, v))
 }
 
+// ReasoningEffortStepdown applies equality check predicate on the "reasoning_effort_stepdown" field. It's identical to ReasoningEffortStepdownEQ.
+func ReasoningEffortStepdown(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldReasoningEffortStepdown, v))
+}
+
 // ProfitControlEnabled applies equality check predicate on the "profit_control_enabled" field. It's identical to ProfitControlEnabledEQ.
 func ProfitControlEnabled(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldProfitControlEnabled, v))
@@ -2588,6 +2593,16 @@ func MaxReasoningEffortOverLimitEqualFold(v string) predicate.Group {
 // MaxReasoningEffortOverLimitContainsFold applies the ContainsFold predicate on the "max_reasoning_effort_over_limit" field.
 func MaxReasoningEffortOverLimitContainsFold(v string) predicate.Group {
 	return predicate.Group(sql.FieldContainsFold(FieldMaxReasoningEffortOverLimit, v))
+}
+
+// ReasoningEffortStepdownEQ applies the EQ predicate on the "reasoning_effort_stepdown" field.
+func ReasoningEffortStepdownEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldReasoningEffortStepdown, v))
+}
+
+// ReasoningEffortStepdownNEQ applies the NEQ predicate on the "reasoning_effort_stepdown" field.
+func ReasoningEffortStepdownNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldReasoningEffortStepdown, v))
 }
 
 // ProfitControlEnabledEQ applies the EQ predicate on the "profit_control_enabled" field.

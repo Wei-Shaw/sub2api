@@ -33,6 +33,23 @@
       <p class="input-hint">{{ t("admin.groups.form.maxReasoningEffortOverLimitHint") }}</p>
     </div>
 
+    <div class="flex items-start gap-3">
+      <Toggle
+        :id="`${idPrefix}-stepdown`"
+        :model-value="stepdown"
+        :aria-label="t('admin.groups.form.reasoningEffortStepdown')"
+        @update:model-value="emit('update:stepdown', $event)"
+      />
+      <div>
+        <label :for="`${idPrefix}-stepdown`" class="input-label mb-0">
+          {{ t("admin.groups.form.reasoningEffortStepdown") }}
+        </label>
+        <p class="input-hint mb-0">
+          {{ t("admin.groups.form.reasoningEffortStepdownHint") }}
+        </p>
+      </div>
+    </div>
+
     <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
       <div class="mb-3 flex items-center justify-between gap-3">
         <div>
@@ -212,6 +229,7 @@ import { useI18n } from "vue-i18n";
 import type { GroupPlatform } from "@/types";
 import Icon from "@/components/icons/Icon.vue";
 import Select from "@/components/common/Select.vue";
+import Toggle from "@/components/common/Toggle.vue";
 import {
   createReasoningEffortMappingPair,
   createReasoningEffortMappingRow,
@@ -233,12 +251,14 @@ const props = defineProps<{
   maxEffort: string;
   overLimit: string;
   mappings: ReasoningEffortMappingRow[];
+  stepdown: boolean;
 }>();
 
 const emit = defineEmits<{
   (event: "update:maxEffort", value: string): void;
   (event: "update:overLimit", value: string): void;
   (event: "update:mappings", value: ReasoningEffortMappingRow[]): void;
+  (event: "update:stepdown", value: boolean): void;
 }>();
 
 const { t } = useI18n();

@@ -1196,6 +1196,20 @@ func (_u *GroupUpdate) AppendReasoningEffortMappings(v []domain.ReasoningEffortM
 	return _u
 }
 
+// SetReasoningEffortStepdown sets the "reasoning_effort_stepdown" field.
+func (_u *GroupUpdate) SetReasoningEffortStepdown(v bool) *GroupUpdate {
+	_u.mutation.SetReasoningEffortStepdown(v)
+	return _u
+}
+
+// SetNillableReasoningEffortStepdown sets the "reasoning_effort_stepdown" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableReasoningEffortStepdown(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetReasoningEffortStepdown(*v)
+	}
+	return _u
+}
+
 // SetProfitControlEnabled sets the "profit_control_enabled" field.
 func (_u *GroupUpdate) SetProfitControlEnabled(v bool) *GroupUpdate {
 	_u.mutation.SetProfitControlEnabled(v)
@@ -1944,6 +1958,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, group.FieldReasoningEffortMappings, value)
 		})
+	}
+	if value, ok := _u.mutation.ReasoningEffortStepdown(); ok {
+		_spec.SetField(group.FieldReasoningEffortStepdown, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ProfitControlEnabled(); ok {
 		_spec.SetField(group.FieldProfitControlEnabled, field.TypeBool, value)
@@ -3433,6 +3450,20 @@ func (_u *GroupUpdateOne) AppendReasoningEffortMappings(v []domain.ReasoningEffo
 	return _u
 }
 
+// SetReasoningEffortStepdown sets the "reasoning_effort_stepdown" field.
+func (_u *GroupUpdateOne) SetReasoningEffortStepdown(v bool) *GroupUpdateOne {
+	_u.mutation.SetReasoningEffortStepdown(v)
+	return _u
+}
+
+// SetNillableReasoningEffortStepdown sets the "reasoning_effort_stepdown" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableReasoningEffortStepdown(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetReasoningEffortStepdown(*v)
+	}
+	return _u
+}
+
 // SetProfitControlEnabled sets the "profit_control_enabled" field.
 func (_u *GroupUpdateOne) SetProfitControlEnabled(v bool) *GroupUpdateOne {
 	_u.mutation.SetProfitControlEnabled(v)
@@ -4211,6 +4242,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 		_spec.AddModifier(func(u *sql.UpdateBuilder) {
 			sqljson.Append(u, group.FieldReasoningEffortMappings, value)
 		})
+	}
+	if value, ok := _u.mutation.ReasoningEffortStepdown(); ok {
+		_spec.SetField(group.FieldReasoningEffortStepdown, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.ProfitControlEnabled(); ok {
 		_spec.SetField(group.FieldProfitControlEnabled, field.TypeBool, value)

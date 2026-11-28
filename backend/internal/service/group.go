@@ -126,6 +126,9 @@ type Group struct {
 	MaxReasoningEffortOverLimit string
 	// ReasoningEffortMappings rewrites explicit request values before applying the ceiling.
 	ReasoningEffortMappings []ReasoningEffortMapping
+	// ReasoningEffortStepdown 自适应降档开关：开启后按目标上游模型的
+	// supported_reasoning_levels 把越界档位降到支持列表内最高档；关闭则原样透传。
+	ReasoningEffortStepdown bool
 
 	// 分组利润控制（五个 token 计费平台可启用）。
 	// 调度准入条件：账号倍率 U 满足 U <= D*(1-margin-buffer)，

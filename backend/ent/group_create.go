@@ -898,6 +898,20 @@ func (_c *GroupCreate) SetReasoningEffortMappings(v []domain.ReasoningEffortMapp
 	return _c
 }
 
+// SetReasoningEffortStepdown sets the "reasoning_effort_stepdown" field.
+func (_c *GroupCreate) SetReasoningEffortStepdown(v bool) *GroupCreate {
+	_c.mutation.SetReasoningEffortStepdown(v)
+	return _c
+}
+
+// SetNillableReasoningEffortStepdown sets the "reasoning_effort_stepdown" field if the given value is not nil.
+func (_c *GroupCreate) SetNillableReasoningEffortStepdown(v *bool) *GroupCreate {
+	if v != nil {
+		_c.SetReasoningEffortStepdown(*v)
+	}
+	return _c
+}
+
 // SetProfitControlEnabled sets the "profit_control_enabled" field.
 func (_c *GroupCreate) SetProfitControlEnabled(v bool) *GroupCreate {
 	_c.mutation.SetProfitControlEnabled(v)
@@ -1245,6 +1259,10 @@ func (_c *GroupCreate) defaults() error {
 		v := group.DefaultReasoningEffortMappings
 		_c.mutation.SetReasoningEffortMappings(v)
 	}
+	if _, ok := _c.mutation.ReasoningEffortStepdown(); !ok {
+		v := group.DefaultReasoningEffortStepdown
+		_c.mutation.SetReasoningEffortStepdown(v)
+	}
 	if _, ok := _c.mutation.ProfitControlEnabled(); !ok {
 		v := group.DefaultProfitControlEnabled
 		_c.mutation.SetProfitControlEnabled(v)
@@ -1463,6 +1481,9 @@ func (_c *GroupCreate) check() error {
 	}
 	if _, ok := _c.mutation.ReasoningEffortMappings(); !ok {
 		return &ValidationError{Name: "reasoning_effort_mappings", err: errors.New(`ent: missing required field "Group.reasoning_effort_mappings"`)}
+	}
+	if _, ok := _c.mutation.ReasoningEffortStepdown(); !ok {
+		return &ValidationError{Name: "reasoning_effort_stepdown", err: errors.New(`ent: missing required field "Group.reasoning_effort_stepdown"`)}
 	}
 	if _, ok := _c.mutation.ProfitControlEnabled(); !ok {
 		return &ValidationError{Name: "profit_control_enabled", err: errors.New(`ent: missing required field "Group.profit_control_enabled"`)}
@@ -1763,6 +1784,10 @@ func (_c *GroupCreate) createSpec() (*Group, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.ReasoningEffortMappings(); ok {
 		_spec.SetField(group.FieldReasoningEffortMappings, field.TypeJSON, value)
 		_node.ReasoningEffortMappings = value
+	}
+	if value, ok := _c.mutation.ReasoningEffortStepdown(); ok {
+		_spec.SetField(group.FieldReasoningEffortStepdown, field.TypeBool, value)
+		_node.ReasoningEffortStepdown = value
 	}
 	if value, ok := _c.mutation.ProfitControlEnabled(); ok {
 		_spec.SetField(group.FieldProfitControlEnabled, field.TypeBool, value)
@@ -2973,6 +2998,18 @@ func (u *GroupUpsert) SetReasoningEffortMappings(v []domain.ReasoningEffortMappi
 // UpdateReasoningEffortMappings sets the "reasoning_effort_mappings" field to the value that was provided on create.
 func (u *GroupUpsert) UpdateReasoningEffortMappings() *GroupUpsert {
 	u.SetExcluded(group.FieldReasoningEffortMappings)
+	return u
+}
+
+// SetReasoningEffortStepdown sets the "reasoning_effort_stepdown" field.
+func (u *GroupUpsert) SetReasoningEffortStepdown(v bool) *GroupUpsert {
+	u.Set(group.FieldReasoningEffortStepdown, v)
+	return u
+}
+
+// UpdateReasoningEffortStepdown sets the "reasoning_effort_stepdown" field to the value that was provided on create.
+func (u *GroupUpsert) UpdateReasoningEffortStepdown() *GroupUpsert {
+	u.SetExcluded(group.FieldReasoningEffortStepdown)
 	return u
 }
 
@@ -4287,6 +4324,20 @@ func (u *GroupUpsertOne) SetReasoningEffortMappings(v []domain.ReasoningEffortMa
 func (u *GroupUpsertOne) UpdateReasoningEffortMappings() *GroupUpsertOne {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateReasoningEffortMappings()
+	})
+}
+
+// SetReasoningEffortStepdown sets the "reasoning_effort_stepdown" field.
+func (u *GroupUpsertOne) SetReasoningEffortStepdown(v bool) *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetReasoningEffortStepdown(v)
+	})
+}
+
+// UpdateReasoningEffortStepdown sets the "reasoning_effort_stepdown" field to the value that was provided on create.
+func (u *GroupUpsertOne) UpdateReasoningEffortStepdown() *GroupUpsertOne {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateReasoningEffortStepdown()
 	})
 }
 
@@ -5775,6 +5826,20 @@ func (u *GroupUpsertBulk) SetReasoningEffortMappings(v []domain.ReasoningEffortM
 func (u *GroupUpsertBulk) UpdateReasoningEffortMappings() *GroupUpsertBulk {
 	return u.Update(func(s *GroupUpsert) {
 		s.UpdateReasoningEffortMappings()
+	})
+}
+
+// SetReasoningEffortStepdown sets the "reasoning_effort_stepdown" field.
+func (u *GroupUpsertBulk) SetReasoningEffortStepdown(v bool) *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.SetReasoningEffortStepdown(v)
+	})
+}
+
+// UpdateReasoningEffortStepdown sets the "reasoning_effort_stepdown" field to the value that was provided on create.
+func (u *GroupUpsertBulk) UpdateReasoningEffortStepdown() *GroupUpsertBulk {
+	return u.Update(func(s *GroupUpsert) {
+		s.UpdateReasoningEffortStepdown()
 	})
 }
 

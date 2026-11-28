@@ -135,6 +135,12 @@ func stampForwardRequestedReasoningEffort(result *service.ForwardResult, request
 
 func applyOpenAIReasoningEffortPolicyForRequest(c *gin.Context, apiKey *service.APIKey, body []byte) ([]byte, bool, error) {
 	bindRequestedReasoningEffort(c, body, strings.TrimSpace(gjson.GetBytes(body, "model").String()))
+	// 自适应降档开关随请求上下文透传给转发路径；实际降档发生在账号与最终
+	// 上游模型确定之后（见 service.applyReasoningEffortStepdownForAccount）。
+	if c != nil && c.Request != nil && apiKey != nil && apiKey.Group != nil {
+		c.Request = c.Request.WithContext(service.WithReasoningEffortStepdown(
+			c.Request.Context(), apiKey.Group.ReasoningEffortStepdown))
+	}
 	maxEffort, mappings, overLimit, ok := openAIReasoningEffortPolicyForRequest(c, apiKey)
 	if !ok {
 		return body, false, nil

@@ -934,6 +934,8 @@ export default {
         maxReasoningEffortOverLimitDowngrade: 'Automatically downgrade when over limit',
         maxReasoningEffortOverLimitDeny: 'Deny access',
         maxReasoningEffortOverLimitHint: 'Applies after a ceiling is set. Downgrade rewrites values above the ceiling to the ceiling. Deny rejects the request.',
+        reasoningEffortStepdown: 'Adaptive step-down to upstream levels',
+        reasoningEffortStepdownHint: 'When on, a requested level the upstream model does not support steps down to the highest supported level at or below it (never steps up; omitted effort stays omitted). Off passes the request through unchanged.',
         reasoningEffortMappings: 'Reasoning effort mappings',
         reasoningEffortMappingsHint: 'Type and model can both be left empty to match every model. One type and model can hold multiple request mappings, for example prefix gpt mapping both high and xhigh to medium. Choose Deny as the forwarded value to reject that request value. Exact matches beat affixes, and longer affixes beat shorter ones.',
         addReasoningEffortMapping: 'Add mapping',
