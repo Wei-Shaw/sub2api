@@ -344,7 +344,7 @@ func (s *GatewayService) buildOAuthMetadataUserID(parsed *ParsedRequest, account
 
 	// session_id 用"会话级稳定种子"派生（账号 + 客户端区分因子 + 首条 user 文本）：
 	// 随对话在尾部追加 messages 时保持不变，贴近真实 CC 进程级稳定的 session_id。
-	// 不复用 GenerateSessionHash —— 后者是粘性路由键、按设计逐轮变化（见其测试）。
+	// 不复用 GenerateSessionHash —— 后者是粘性路由键，取材（请求上下文 + system + 首条消息）与此处不同。
 	var firstUserText string
 	if parsed.Body != nil {
 		firstUserText = extractFirstUserText(parsed.Body.Bytes())
@@ -488,7 +488,7 @@ func (s *GatewayService) buildOAuthMetadataUserIDFromBody(
 // 无法恢复该值，这里用"会话内不变的锚点"近似：账号 ID + 客户端区分因子 + 首条 user 消息文本。
 // 对话在尾部追加 messages 时这三者都不变，因此 generateSessionUUID(seed) 跨轮稳定。
 //
-// 注意：粘性路由键 GenerateSessionHash 按设计逐轮变化（见其测试），本函数与之独立、互不影响。
+// 注意：粘性路由键 GenerateSessionHash 的取材与本函数不同，本函数与之独立、互不影响。
 // accountID 恒存在，故 seed 永不为空 —— 输出始终是确定性 UUID，而非随机值。
 func buildStableSessionSeed(accountID int64, clientDiscriminator, firstUserText string) string {
 	var b strings.Builder
