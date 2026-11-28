@@ -259,11 +259,20 @@ func cnBalanceCheckCooldown(cfg *config.Config) time.Duration {
 	return cooldown
 }
 
+// cnQuotaSnapshotCooldownCap 限制「快照盲区选窗」的冷却上限。5h 重置点刚过期、
+// 周期探测尚未刷新时，最早的未来重置点可能来自 weekly/monthly（可达数天），
+// 一次与额度无关的 429/403 会把账号停调数天（线上出现过 3 天的案例）。
+// 只在选中的窗口不是 5h 时截断：5h 本身是真实滚动窗口（最长 5 小时），按真实
+// 重置点冷却，避免账号提前回到调度、继续撞上游限流。
+const cnQuotaSnapshotCooldownCap = 2 * time.Hour
+
 // cnProviderQuotaSnapshotReset 读取 Coding Plan 账号快照中最早一个仍在未来的窗口
 // 重置时间（5h / weekly）。429 多数由 5h 滚动窗口触发，取较早的重置点可避免
 // 把账号冷却到 weekly 重置（可达数天）的过度停调；如果确是 weekly 窗口耗尽，
 // 周期额度探测刷新快照后阈值评估会再次停调到正确的时间点。
-// 无快照或均已过期返回 nil。
+// 若选中的是 5h 窗口则直接采用真实重置点；只有选中 weekly/monthly（5h 已过期
+// 或缺失的快照盲区）时才用 cnQuotaSnapshotCooldownCap 截断，避免把一次响应式
+// 429/403 放大成数天停调。无快照或均已过期返回 nil。
 func cnProviderQuotaSnapshotReset(account *Account, now time.Time) *time.Time {
 	if account == nil || len(account.Extra) == 0 {
 		return nil
@@ -285,6 +294,7 @@ func cnProviderQuotaSnapshotReset(account *Account, now time.Time) *time.Time {
 		suffixes = append(suffixes, cnExtraSuffixMonthlyReset)
 	}
 	var earliest *time.Time
+	earliestWindow := ""
 	for _, suffix := range suffixes {
 		t := parseSchedulingResetAt(account.Extra[cnExtraKey(provider, suffix)])
 		if t == nil || !t.After(now) {
@@ -292,6 +302,18 @@ func cnProviderQuotaSnapshotReset(account *Account, now time.Time) *time.Time {
 		}
 		if earliest == nil || t.Before(*earliest) {
 			earliest = t
+			earliestWindow = suffix
+		}
+	}
+	if earliest == nil {
+		return nil
+	}
+	// 5h 是真实滚动窗口（最长 5 小时），按真实重置点冷却；截断它会让账号提前
+	// 回到调度、继续撞上游限流。只有 weekly/monthly 选窗（5h 已过期或缺失，
+	// 快照盲区可达数天）才需要 2h 上限。
+	if earliestWindow != cnExtraSuffix5hReset {
+		if capped := now.Add(cnQuotaSnapshotCooldownCap); earliest.After(capped) {
+			return &capped
 		}
 	}
 	return earliest
