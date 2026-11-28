@@ -1,9 +1,9 @@
-import type { UsageLog } from '@/types'
+import type { FirstTokenThresholds, UsageLog } from '@/types'
 
 /**
  * 请求延迟健康度分档（用于用量明细"延迟"列的纵向健康扫视）。
  *
- * 首 Token（TTFT）：10s 内正常，10-30s 偏慢，30-60s 缓慢，60s 及以上严重。
+ * 首 Token（TTFT）：默认 10s / 30s / 60s，可在系统设置中调整。
  * 总耗时：流式请求整体时长天然更长，阈值放宽为 1min / 3min / 5min。
  */
 export type LatencySeverity = 'good' | 'warn' | 'slow' | 'critical'
@@ -33,8 +33,20 @@ const classify = (ms: number, thresholds: Thresholds): LatencySeverity => {
   return 'good'
 }
 
-export const firstTokenSeverity = (ms: number): LatencySeverity =>
-  classify(ms, FIRST_TOKEN_THRESHOLDS_MS)
+export const isValidFirstTokenThresholds = (value: unknown): value is FirstTokenThresholds => {
+  if (!value || typeof value !== 'object') return false
+  const { warn, slow, critical } = value as FirstTokenThresholds
+  return [warn, slow, critical].every((threshold) => Number.isSafeInteger(threshold))
+    && warn > 0 && warn < slow && slow < critical
+}
+
+export const normalizeFirstTokenThresholds = (value: unknown): FirstTokenThresholds =>
+  ({ ...(isValidFirstTokenThresholds(value) ? value : FIRST_TOKEN_THRESHOLDS_MS) })
+
+export const firstTokenSeverity = (
+  ms: number,
+  thresholds: FirstTokenThresholds = FIRST_TOKEN_THRESHOLDS_MS,
+): LatencySeverity => classify(ms, thresholds)
 
 export const durationSeverity = (ms: number): LatencySeverity =>
   classify(ms, DURATION_THRESHOLDS_MS)

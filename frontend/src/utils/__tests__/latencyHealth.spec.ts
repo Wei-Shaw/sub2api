@@ -1,8 +1,32 @@
 import { describe, expect, it } from 'vitest'
 
-import { durationSeverity, firstTokenSeverity, formatUsageOutputRate } from '../latencyHealth'
+import { durationSeverity, firstTokenSeverity, formatUsageOutputRate, isValidFirstTokenThresholds, normalizeFirstTokenThresholds } from '../latencyHealth'
 
 describe('latencyHealth', () => {
+  it('uses custom first-token thresholds inclusively without changing duration colors', () => {
+    const thresholds = { warn: 1500, slow: 5000, critical: 12_000 }
+    expect(firstTokenSeverity(1499, thresholds)).toBe('good')
+    expect(firstTokenSeverity(1500, thresholds)).toBe('warn')
+    expect(firstTokenSeverity(4999, thresholds)).toBe('warn')
+    expect(firstTokenSeverity(5000, thresholds)).toBe('slow')
+    expect(firstTokenSeverity(11_999, thresholds)).toBe('slow')
+    expect(firstTokenSeverity(12_000, thresholds)).toBe('critical')
+    expect(durationSeverity(12_000)).toBe('good')
+  })
+
+  it.each([
+    undefined, null, {}, 'invalid',
+    { warn: 0, slow: 2000, critical: 3000 },
+    { warn: -1, slow: 2000, critical: 3000 },
+    { warn: 2000, slow: 1000, critical: 3000 },
+    { warn: 1000, slow: 2000, critical: 2000 },
+    { warn: 1.5, slow: 2000, critical: 3000 },
+    { warn: 1000, slow: NaN, critical: Infinity },
+  ])('falls back to existing defaults for invalid or missing configuration: %j', (value) => {
+    expect(isValidFirstTokenThresholds(value)).toBe(false)
+    expect(normalizeFirstTokenThresholds(value)).toEqual({ warn: 10_000, slow: 30_000, critical: 60_000 })
+  })
+
   it('classifies first-token latency at 10s/30s/60s boundaries', () => {
     expect(firstTokenSeverity(0)).toBe('good')
     expect(firstTokenSeverity(9_999)).toBe('good')

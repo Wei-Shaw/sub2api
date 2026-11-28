@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
@@ -193,6 +194,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		SettingKeyPurchaseSubscriptionURL,
 		SettingKeyTableDefaultPageSize,
 		SettingKeyTablePageSizeOptions,
+		SettingKeyFirstTokenThresholdsMS,
 		SettingKeyCustomMenuItems,
 		SettingKeyCustomEndpoints,
 		SettingKeyLinuxDoConnectEnabled,
@@ -337,6 +339,7 @@ func (s *SettingService) GetPublicSettings(ctx context.Context) (*PublicSettings
 		PurchaseSubscriptionURL:             strings.TrimSpace(settings[SettingKeyPurchaseSubscriptionURL]),
 		TableDefaultPageSize:                tableDefaultPageSize,
 		TablePageSizeOptions:                tablePageSizeOptions,
+		FirstTokenThresholdsMS:              parseFirstTokenThresholds(settings[SettingKeyFirstTokenThresholdsMS]),
 		CustomMenuItems:                     settings[SettingKeyCustomMenuItems],
 		CustomEndpoints:                     settings[SettingKeyCustomEndpoints],
 		LinuxDoOAuthEnabled:                 linuxDoEnabled,
@@ -432,6 +435,7 @@ type ChannelMonitorRuntime struct {
 	Enabled                bool
 	Mode                   string // ChannelMonitorModeV1 or ChannelMonitorModeV2
 	DefaultIntervalSeconds int
+	DegradedThresholdMS    int // Successful active probes become degraded at this latency.
 	// HideThroughput: when true, user-facing V2 APIs omit RPM/TPM scale signals.
 	HideThroughput bool
 	// ShowQuota: when true, user-facing monitor views keep the quota/balance
@@ -471,6 +475,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 		SettingKeyChannelMonitorHideThroughput,
 		SettingKeyChannelMonitorShowQuota,
 		SettingKeyChannelMonitorHideUserRanking,
+		SettingKeyFirstTokenThresholdsMS,
 	})
 	if err != nil {
 		return ChannelMonitorRuntime{
@@ -480,6 +485,10 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 			HideThroughput:         true,
 		}
 	}
+	degradedThresholdMS := int(monitorDegradedThreshold / time.Millisecond)
+	if raw := vals[SettingKeyFirstTokenThresholdsMS]; strings.TrimSpace(raw) != "" {
+		degradedThresholdMS = parseFirstTokenThresholds(raw).Warn
+	}
 	return ChannelMonitorRuntime{
 		Enabled:                !isFalseSettingValue(vals[SettingKeyChannelMonitorEnabled]),
 		Mode:                   normalizeChannelMonitorMode(vals[SettingKeyChannelMonitorMode]),
@@ -487,6 +496,7 @@ func (s *SettingService) GetChannelMonitorRuntime(ctx context.Context) ChannelMo
 		HideThroughput:         !isFalseSettingValue(vals[SettingKeyChannelMonitorHideThroughput]),
 		ShowQuota:              vals[SettingKeyChannelMonitorShowQuota] == "true",
 		HideUserRanking:        isTrueSettingValue(vals[SettingKeyChannelMonitorHideUserRanking]),
+		DegradedThresholdMS:    degradedThresholdMS,
 	}
 }
 
@@ -597,6 +607,7 @@ type PublicSettingsInjectionPayload struct {
 	PurchaseSubscriptionURL             string                   `json:"purchase_subscription_url"`
 	TableDefaultPageSize                int                      `json:"table_default_page_size"`
 	TablePageSizeOptions                []int                    `json:"table_page_size_options"`
+	FirstTokenThresholdsMS              FirstTokenThresholds     `json:"first_token_thresholds_ms"`
 	CustomMenuItems                     json.RawMessage          `json:"custom_menu_items"`
 	CustomEndpoints                     json.RawMessage          `json:"custom_endpoints"`
 	LinuxDoOAuthEnabled                 bool                     `json:"linuxdo_oauth_enabled"`
@@ -692,6 +703,7 @@ func (s *SettingService) GetPublicSettingsForInjection(ctx context.Context) (any
 		PurchaseSubscriptionURL:             settings.PurchaseSubscriptionURL,
 		TableDefaultPageSize:                settings.TableDefaultPageSize,
 		TablePageSizeOptions:                settings.TablePageSizeOptions,
+		FirstTokenThresholdsMS:              settings.FirstTokenThresholdsMS,
 		CustomMenuItems:                     filterUserVisibleMenuItems(settings.CustomMenuItems),
 		CustomEndpoints:                     safeRawJSONArray(settings.CustomEndpoints),
 		LinuxDoOAuthEnabled:                 settings.LinuxDoOAuthEnabled,

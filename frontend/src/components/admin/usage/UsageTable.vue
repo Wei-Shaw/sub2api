@@ -252,13 +252,13 @@
             <span
               class="w-1 shrink-0 rounded-full"
               :class="row.first_token_ms != null
-                ? ['bg-gradient-to-b from-40% to-60%', LATENCY_BAR_FROM_CLASSES[firstTokenSeverity(row.first_token_ms)], LATENCY_BAR_TO_CLASSES[durationSeverity(row.duration_ms ?? 0)]]
+                ? ['bg-gradient-to-b from-40% to-60%', LATENCY_BAR_FROM_CLASSES[firstTokenHealth(row.first_token_ms)], LATENCY_BAR_TO_CLASSES[durationSeverity(row.duration_ms ?? 0)]]
                 : LATENCY_BAR_CLASSES[durationSeverity(row.duration_ms ?? 0)]"
               aria-hidden="true"
             ></span>
             <div class="grid grid-cols-[max-content_max-content] items-baseline gap-x-2 gap-y-0.5 text-xs">
               <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyFirstToken') }}</span>
-              <span v-if="row.first_token_ms != null" class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[firstTokenSeverity(row.first_token_ms)]">{{ formatDuration(row.first_token_ms) }}</span>
+              <span v-if="row.first_token_ms != null" class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[firstTokenHealth(row.first_token_ms)]">{{ formatDuration(row.first_token_ms) }}</span>
               <span v-else class="text-gray-400 dark:text-gray-500">-</span>
               <span class="text-gray-400 dark:text-gray-500">{{ t('usage.latencyDuration') }}</span>
               <span class="font-medium tabular-nums" :class="LATENCY_TEXT_CLASSES[durationSeverity(row.duration_ms ?? 0)]">{{ formatDuration(row.duration_ms) }}</span>
@@ -576,6 +576,7 @@ import {
   LATENCY_TEXT_CLASSES,
   durationSeverity,
   firstTokenSeverity,
+  normalizeFirstTokenThresholds,
   formatUsageOutputRate,
 } from '@/utils/latencyHealth'
 import {
@@ -645,6 +646,11 @@ const emit = defineEmits<{
 }>()
 const { t } = useI18n()
 const appStore = useAppStore()
+const firstTokenThresholds = computed(() => normalizeFirstTokenThresholds(
+  appStore.cachedPublicSettings?.first_token_thresholds_ms
+    ?? (typeof window !== 'undefined' ? window.__APP_CONFIG__?.first_token_thresholds_ms : undefined),
+))
+const firstTokenHealth = (ms: number) => firstTokenSeverity(ms, firstTokenThresholds.value)
 const copiedRequestId = ref<string | null>(null)
 const showAccountBilling = props.showAccountBilling
 const showUpstreamEndpoint = props.showUpstreamEndpoint

@@ -169,6 +169,8 @@ type UpdateSettingsRequest struct {
 	CustomMenuItems             *[]dto.CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             *[]dto.CustomEndpoint `json:"custom_endpoints"`
 
+	FirstTokenThresholdsMS *service.FirstTokenThresholds `json:"first_token_thresholds_ms"`
+
 	// 默认配置
 	DefaultConcurrency                        int                               `json:"default_concurrency"`
 	DefaultBalance                            float64                           `json:"default_balance"`
@@ -558,6 +560,15 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 	// 避免门控内部二次读取开关时因存储故障 fail-open（前端捕获 STEP_UP_REQUIRED 弹码重试）。
 	if !stepUpEnabled && previousSettings.StepUpEnabled {
 		if !middleware.EnforceStepUpAlways(c, h.totpService, h.userService) {
+			return
+		}
+	}
+
+	firstTokenThresholds := previousSettings.FirstTokenThresholdsMS
+	if req.FirstTokenThresholdsMS != nil {
+		firstTokenThresholds = *req.FirstTokenThresholdsMS
+		if !firstTokenThresholds.Valid() {
+			response.BadRequest(c, "First-token thresholds must be positive milliseconds ordered as yellow < orange < red")
 			return
 		}
 	}
@@ -1653,6 +1664,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PurchaseSubscriptionURL:                purchaseURL,
 		TableDefaultPageSize:                   req.TableDefaultPageSize,
 		TablePageSizeOptions:                   req.TablePageSizeOptions,
+		FirstTokenThresholdsMS:                 firstTokenThresholds,
 		CustomMenuItems:                        customMenuJSON,
 		CustomEndpoints:                        customEndpointsJSON,
 		DefaultConcurrency:                     req.DefaultConcurrency,
@@ -2317,6 +2329,7 @@ func (h *SettingHandler) UpdateSettings(c *gin.Context) {
 		PurchaseSubscriptionURL:                                updatedSettings.PurchaseSubscriptionURL,
 		TableDefaultPageSize:                                   updatedSettings.TableDefaultPageSize,
 		TablePageSizeOptions:                                   updatedSettings.TablePageSizeOptions,
+		FirstTokenThresholdsMS:                                 updatedSettings.FirstTokenThresholdsMS,
 		CustomMenuItems:                                        dto.ParseCustomMenuItems(updatedSettings.CustomMenuItems),
 		CustomEndpoints:                                        dto.ParseCustomEndpoints(updatedSettings.CustomEndpoints),
 		DefaultConcurrency:                                     updatedSettings.DefaultConcurrency,

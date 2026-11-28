@@ -41,6 +41,8 @@ func newSSRFSafeHTTPClient(timeout time.Duration) *http.Client {
 // CheckOptions 承载一次检测的自定义入参。
 // 所有字段都是可选（零值即等价于"用默认行为"）。
 type CheckOptions struct {
+	// DegradedThresholdMS overrides the default latency warning for active probes.
+	DegradedThresholdMS int
 	// APIMode 仅对 OpenAI provider 生效；空串等同 chat_completions。
 	APIMode string
 	// ExtraHeaders 用户自定义 HTTP 头（merge 到 adapter 默认 headers，用户优先）。
@@ -95,7 +97,7 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 			res.Message = truncateMessage("replace-mode: upstream returned 2xx with empty text")
 			return res
 		}
-		return finalizeOperationalOrDegraded(res, latency, latencyMs)
+		return finalizeOperationalOrDegraded(res, latency, latencyMs, opts)
 	}
 
 	if !validateChallenge(respText, challenge.Expected) {
@@ -104,13 +106,17 @@ func runCheckForModel(ctx context.Context, provider, endpoint, apiKey, model str
 		return res
 	}
 
-	return finalizeOperationalOrDegraded(res, latency, latencyMs)
+	return finalizeOperationalOrDegraded(res, latency, latencyMs, opts)
 }
 
 // finalizeOperationalOrDegraded 负责走到最后一步的 operational/degraded 判定。
 // 拆出来是为了让 runCheckForModel 不超过 30 行。
-func finalizeOperationalOrDegraded(res *CheckResult, latency time.Duration, latencyMs int) *CheckResult {
-	if latency >= monitorDegradedThreshold {
+func finalizeOperationalOrDegraded(res *CheckResult, latency time.Duration, latencyMs int, opts *CheckOptions) *CheckResult {
+	threshold := monitorDegradedThreshold
+	if opts != nil && opts.DegradedThresholdMS > 0 {
+		threshold = time.Duration(opts.DegradedThresholdMS) * time.Millisecond
+	}
+	if latency >= threshold {
 		res.Status = MonitorStatusDegraded
 		res.Message = truncateMessage(fmt.Sprintf("slow response: %dms", latencyMs))
 		return res

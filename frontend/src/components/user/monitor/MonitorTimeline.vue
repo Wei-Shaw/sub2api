@@ -38,6 +38,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { MonitorTimelinePoint } from '@/api/channelMonitor'
 import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
+import { LATENCY_BAR_CLASSES } from '@/utils/latencyHealth'
 
 const props = withDefaults(defineProps<{
   buckets?: MonitorTimelinePoint[]
@@ -51,7 +52,7 @@ const props = withDefaults(defineProps<{
 })
 
 const { t } = useI18n()
-const { statusLabel, formatLatency, formatRelativeTime } = useChannelMonitorFormat()
+const { statusLabel, formatLatency, formatRelativeTime, displayStatus, latencySeverity } = useChannelMonitorFormat()
 
 interface Bar {
   colorClass: string
@@ -97,12 +98,15 @@ const displayBars = computed<Bar[]>(() => {
   }
 
   for (const point of real) {
-    const status = point.status as keyof typeof STATUS_HEIGHT
-    const colorClass = STATUS_COLOR[status] ?? STATUS_COLOR.empty
+    const status = displayStatus(point.status, point.latency_ms) as keyof typeof STATUS_HEIGHT
+    const severity = latencySeverity(point.latency_ms)
+    const colorClass = (point.status === 'operational' || point.status === 'degraded') && severity && severity !== 'good'
+      ? LATENCY_BAR_CLASSES[severity]
+      : STATUS_COLOR[status] ?? STATUS_COLOR.empty
     const heightPct = STATUS_HEIGHT[status] ?? STATUS_HEIGHT.empty
     const latency = formatLatency(point.latency_ms)
     const relative = formatRelativeTime(point.checked_at)
-    const label = statusLabel(point.status)
+    const label = statusLabel(point.status, point.latency_ms)
     bars.push({
       colorClass,
       heightPct,

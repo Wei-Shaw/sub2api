@@ -62,6 +62,7 @@ watch(
 function onVisibilityChange() {
   if (document.visibilityState === 'visible' && authStore.isAuthenticated) {
     announcementStore.fetchAnnouncements()
+    void appStore.fetchPublicSettings(true)
   }
 }
 

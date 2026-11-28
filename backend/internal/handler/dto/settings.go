@@ -165,6 +165,8 @@ type SystemSettings struct {
 	CustomMenuItems             []CustomMenuItem `json:"custom_menu_items"`
 	CustomEndpoints             []CustomEndpoint `json:"custom_endpoints"`
 
+	FirstTokenThresholdsMS service.FirstTokenThresholds `json:"first_token_thresholds_ms"`
+
 	DefaultConcurrency           int                          `json:"default_concurrency"`
 	DefaultBalance               float64                      `json:"default_balance"`
 	AffiliateRebateRate          float64                      `json:"affiliate_rebate_rate"`
@@ -417,6 +419,9 @@ type PublicSettings struct {
 	BackendModeEnabled                  bool                     `json:"backend_mode_enabled"`
 	MCPEnabled                          bool                     `json:"mcp_enabled"`
 	PaymentEnabled                      bool                     `json:"payment_enabled"`
+
+	FirstTokenThresholdsMS service.FirstTokenThresholds `json:"first_token_thresholds_ms"`
+
 	// PaymentBalanceDisabled mirrors the payment-config BALANCE_PAYMENT_DISABLED switch so the
 	// user shell can derive the site billing mode (recharge & subscription / recharge only /
 	// subscription only) before any authenticated checkout call.

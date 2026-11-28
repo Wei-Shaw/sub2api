@@ -704,10 +704,11 @@ func (s *ChannelMonitorService) runChecksConcurrent(ctx context.Context, m *Chan
 
 	// 所有模型共用同一份 CheckOptions（来自监控的快照字段）。
 	opts := &CheckOptions{
-		APIMode:          m.APIMode,
-		ExtraHeaders:     m.ExtraHeaders,
-		BodyOverrideMode: m.BodyOverrideMode,
-		BodyOverride:     m.BodyOverride,
+		DegradedThresholdMS: s.probeRuntime(ctx).DegradedThresholdMS,
+		APIMode:             m.APIMode,
+		ExtraHeaders:        m.ExtraHeaders,
+		BodyOverrideMode:    m.BodyOverrideMode,
+		BodyOverride:        m.BodyOverride,
 	}
 
 	var eg errgroup.Group

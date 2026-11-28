@@ -750,6 +750,47 @@ describe("admin SettingsView payment visible method controls", () => {
     wrapper.unmount();
   });
 
+  it("loads first-token thresholds in seconds and saves edited thresholds in milliseconds", async () => {
+    getSettings.mockResolvedValue({
+      ...baseSettingsResponse,
+      first_token_thresholds_ms: { warn: 1500, slow: 5000, critical: 12000 },
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    expect((wrapper.get('[data-testid="first-token-warn"]').element as HTMLInputElement).value).toBe("1.5");
+    await wrapper.get('[data-testid="first-token-warn"]').setValue("2.345");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      first_token_thresholds_ms: { warn: 2345, slow: 5000, critical: 12000 },
+    }));
+    expect(fetchPublicSettings).toHaveBeenCalledWith(true);
+    wrapper.unmount();
+  });
+
+  it("keeps existing default thresholds when an older backend omits the setting", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    expect((wrapper.get('[data-testid="first-token-warn"]').element as HTMLInputElement).value).toBe("10");
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      first_token_thresholds_ms: { warn: 10000, slow: 30000, critical: 60000 },
+    }));
+    wrapper.unmount();
+  });
+
+  it.each(["0", "-1", "30", "60", ""])('rejects invalid first-token threshold %s before saving', async (warn) => {
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.get('[data-testid="first-token-warn"]').setValue(warn);
+    await wrapper.find("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(showError).toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
   it("submits the compact home page toggle", async () => {
     const wrapper = mountView();
     await flushPromises();
