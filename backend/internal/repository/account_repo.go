@@ -1514,12 +1514,27 @@ func (r *accountRepository) BatchUpdateLastUsed(ctx context.Context, updates map
 }
 
 func (r *accountRepository) SetError(ctx context.Context, id int64, errorMsg string) error {
-	_, err := r.client.Account.Update().
-		Where(dbaccount.IDEQ(id)).
-		SetStatus(service.StatusError).
-		SetErrorMessage(errorMsg).
-		SetSchedulable(false).
-		Save(ctx)
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.SetError(ctx, id, errorMsg)
+	}
+	// 错误导致的暂停记上 scheduling_auto_disabled 标记，恢复信号（重新授权 /
+	// 测试成功 / 后台刷新成功）可据此自动恢复调度；管理员手动暂停不带标记，
+	// 永远不会被自动恢复。若 10 分钟内刚自动恢复过又被打回错误，则清掉标记
+	// 不再自动恢复，避免错误-恢复振荡。
+	_, err := r.sql.ExecContext(ctx, `
+		UPDATE accounts
+		SET status = $1,
+			error_message = $2,
+			schedulable = FALSE,
+			extra = CASE
+				WHEN COALESCE((extra->>'scheduling_auto_resumed_at')::timestamptz, '-infinity'::timestamptz)
+					> NOW() - INTERVAL '10 minutes'
+				THEN COALESCE(extra, '{}'::jsonb) - 'scheduling_auto_disabled'
+				ELSE jsonb_set(COALESCE(extra, '{}'::jsonb), '{scheduling_auto_disabled}', 'true'::jsonb)
+			END,
+			updated_at = NOW()
+		WHERE id = $3
+	`, service.StatusError, errorMsg, id)
 	if err != nil {
 		return err
 	}
@@ -1528,6 +1543,39 @@ func (r *accountRepository) SetError(ctx context.Context, id int64, errorMsg str
 	}
 	r.syncSchedulerAccountSnapshot(ctx, id)
 	return nil
+}
+
+// ResumeSchedulableIfAutoDisabled 在观测到恢复信号后，把被系统自动暂停的账号
+// 重新打开调度；手动暂停（无标记）的账号不受影响。返回是否真的执行了恢复。
+func (r *accountRepository) ResumeSchedulableIfAutoDisabled(ctx context.Context, id int64, resumedAt time.Time) (bool, error) {
+	if scoped := r.accountTransactionScope(ctx); scoped != r {
+		return scoped.ResumeSchedulableIfAutoDisabled(ctx, id, resumedAt)
+	}
+	result, err := r.sql.ExecContext(ctx, `
+		UPDATE accounts
+		SET schedulable = TRUE,
+			extra = (COALESCE(extra, '{}'::jsonb) - 'scheduling_auto_disabled')
+				|| jsonb_build_object('scheduling_auto_resumed_at', $2::text),
+			updated_at = NOW()
+		WHERE id = $1
+			AND deleted_at IS NULL
+			AND schedulable = FALSE
+			AND COALESCE((extra->>'scheduling_auto_disabled')::boolean, FALSE)
+	`, id, resumedAt.UTC().Format(time.RFC3339))
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected == 0 {
+		return false, nil
+	}
+	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
+		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue auto resume scheduling failed: account=%d err=%v", id, err)
+	}
+	return true, nil
 }
 
 func (r *accountRepository) SetGrokCredentialErrorIfMatch(
@@ -2827,6 +2875,15 @@ func (r *accountRepository) SetSchedulable(ctx context.Context, id int64, schedu
 		Save(ctx)
 	if err != nil {
 		return err
+	}
+	// 手动调整调度开关代表管理员意图，清掉系统自动暂停/恢复标记，
+	// 避免后续的恢复信号违背手动决定。
+	if _, err := r.sql.ExecContext(ctx, `
+		UPDATE accounts
+		SET extra = COALESCE(extra, '{}'::jsonb) - 'scheduling_auto_disabled' - 'scheduling_auto_resumed_at'
+		WHERE id = $1
+	`, id); err != nil {
+		logger.LegacyPrintf("repository.account", "clear auto scheduling markers failed: account=%d err=%v", id, err)
 	}
 	if err := enqueueSchedulerOutbox(ctx, r.sql, service.SchedulerOutboxEventAccountChanged, &id, nil, nil); err != nil {
 		logger.LegacyPrintf("repository.account", "[SchedulerOutbox] enqueue schedulable change failed: account=%d err=%v", id, err)

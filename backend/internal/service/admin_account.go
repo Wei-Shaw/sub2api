@@ -1380,6 +1380,7 @@ func (s *adminServiceImpl) ClearAccountError(ctx context.Context, id int64) (*Ac
 	if err := s.accountRepo.ClearTempUnschedulable(ctx, id); err != nil {
 		return nil, err
 	}
+	resumeSchedulingAfterRecovery(ctx, s.accountRepo, id, "clear_error")
 	account, err := s.accountRepo.GetByID(ctx, id)
 	if err != nil {
 		return nil, err
