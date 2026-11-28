@@ -1,7 +1,9 @@
 package websearch
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -12,23 +14,40 @@ func TestTavilyProvider_Name(t *testing.T) {
 	require.Equal(t, "tavily", p.Name())
 }
 
-func TestTavilyProvider_Search_RequestConstruction(t *testing.T) {
-	// Verify tavilyRequest struct fields map correctly
-	req := tavilyRequest{
-		APIKey:      "test-key",
-		Query:       "golang",
-		MaxResults:  3,
-		SearchDepth: tavilySearchDepthBasic,
-	}
-	data, err := json.Marshal(req)
-	require.NoError(t, err)
+func TestTavilyProvider_Search_SendsBearerAuth(t *testing.T) {
+	var seen http.Request
+	var seenBody []byte
+	resp := `{"results":[{"url":"https://go.dev","title":"Go","content":"Go programming language","score":0.95}]}`
+	p := NewTavilyProvider("tvly-test-key", exaTestClient(http.StatusOK, resp, &seen, &seenBody))
 
-	var parsed map[string]any
-	require.NoError(t, json.Unmarshal(data, &parsed))
-	require.Equal(t, "test-key", parsed["api_key"])
-	require.Equal(t, "golang", parsed["query"])
-	require.Equal(t, float64(3), parsed["max_results"])
-	require.Equal(t, "basic", parsed["search_depth"])
+	out, err := p.Search(context.Background(), SearchRequest{Query: "golang", MaxResults: 3})
+
+	require.NoError(t, err)
+	require.Equal(t, http.MethodPost, seen.Method)
+	require.Equal(t, tavilySearchEndpoint, seen.URL.String())
+	require.Equal(t, "Bearer tvly-test-key", seen.Header.Get("Authorization"))
+	require.Equal(t, "application/json", seen.Header.Get("Content-Type"))
+	var body map[string]any
+	require.NoError(t, json.Unmarshal(seenBody, &body))
+	require.Equal(t, map[string]any{
+		"query":        "golang",
+		"max_results":  float64(3),
+		"search_depth": "basic",
+	}, body, "the API key must travel in the Authorization header, not the request body")
+
+	require.Equal(t, []SearchResult{
+		{URL: "https://go.dev", Title: "Go", Snippet: "Go programming language"},
+	}, out.Results)
+}
+
+func TestTavilyProvider_Search_ReportsUpstreamStatus(t *testing.T) {
+	var seen http.Request
+	var seenBody []byte
+	p := NewTavilyProvider("bad-key", exaTestClient(http.StatusUnauthorized, `{"detail":{"error":"Unauthorized"}}`, &seen, &seenBody))
+
+	_, err := p.Search(context.Background(), SearchRequest{Query: "golang"})
+
+	require.ErrorContains(t, err, "tavily: status 401")
 }
 
 func TestTavilyProvider_Search_ResponseParsing(t *testing.T) {
