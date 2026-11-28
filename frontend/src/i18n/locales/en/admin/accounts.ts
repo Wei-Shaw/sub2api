@@ -154,6 +154,7 @@ export default {
             example: 'Example: …/organization/org-0610bE2D…/projects/proj_0798F20…/api_keys → org-0610bE2D… goes into "Organization ID", proj_0798F20… into "Project ID"',
           },
         },
+        schedulingThresholdCreateHint: 'Optional: override the platform auto-pause threshold for this account (upstream usage-window percent). Leave unchecked to follow the system setting.',
         balance: 'Balance --',
         window5h: '5h',
         windowWeekly: '7d',
