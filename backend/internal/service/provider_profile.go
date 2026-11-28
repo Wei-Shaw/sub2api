@@ -221,6 +221,22 @@ var providerProfiles = map[string]*ProviderProfile{
 			},
 		},
 	},
+	PlatformMistral: {
+		Platform:         PlatformMistral,
+		DefaultMode:      AccountModePayG,
+		DefaultTestModel: DefaultMistralTestModel,
+		// Mistral La Plateforme：单一厂商 OpenAI 兼容端点，按入站协议分流；原生提供
+		// Responses 端点（SSE 事件与 OpenAI Responses 同名），Anthropic 入站由转换链
+		// 转 Chat Completions。无公开余额端点，不做余额探测，429/402/403 走默认错误语义。
+		Modes: map[string]ProviderEndpoints{
+			AccountModePayG: {
+				BaseURLs: map[string]string{
+					APIProtocolChatCompletions: DefaultMistralBaseURL,
+					APIProtocolResponses:       DefaultMistralBaseURL,
+				},
+			},
+		},
+	},
 }
 
 // LookupProviderProfile 返回 platform 对应的多协议供应商 profile；非此类平台返回 nil。
