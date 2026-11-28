@@ -39,10 +39,13 @@ func TestDefaultConfigIsOff(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, ModeOff, active.EffectiveMode())
 	require.Equal(t, AllScannerIDs, storage.Scanners)
+	require.False(t, storage.ContinueOnGuardFailure)
+	require.Equal(t, PromptAuditModelFilter{Type: ModelFilterAll, Models: []string{}}, storage.ModelFilter)
 	publicJSON, err := json.Marshal(PublicFromStorage(storage, true, nil))
 	require.NoError(t, err)
 	require.Contains(t, string(publicJSON), `"group_ids":[]`)
 	require.Contains(t, string(publicJSON), `"endpoints":[]`)
+	require.Contains(t, string(publicJSON), `"continue_on_guard_failure":false`)
 }
 
 func TestBlockingLatestTurnOnlyConfigRoundTrip(t *testing.T) {
@@ -419,6 +422,49 @@ func TestParseLegacyConfigDefaultsMissingFieldsWithoutEnablingBlocking(t *testin
 	require.Equal(t, DefaultQueueCapacity, storage.QueueCapacity)
 	require.Equal(t, AllScannerIDs, storage.Scanners)
 	require.True(t, storage.AllGroups)
+	require.False(t, storage.ContinueOnGuardFailure)
+	require.Equal(t, PromptAuditModelFilter{Type: ModelFilterAll, Models: []string{}}, storage.ModelFilter)
+}
+
+func TestPromptAuditModelFilterMatchesContentModerationSemantics(t *testing.T) {
+	config := ActiveConfig{ModelFilter: PromptAuditModelFilter{Type: ModelFilterAll}}
+	require.True(t, config.IncludesModel("gpt-5"))
+
+	config.ModelFilter = PromptAuditModelFilter{Type: ModelFilterInclude, Models: []string{" GPT-5 ", "gpt-5", "claude-sonnet"}}
+	require.True(t, config.IncludesModel("gpt-5"))
+	require.True(t, config.IncludesModel("CLAUDE-SONNET"))
+	require.False(t, config.IncludesModel("gpt-4"))
+
+	config.ModelFilter = PromptAuditModelFilter{Type: ModelFilterExclude, Models: []string{"gpt-5"}}
+	require.False(t, config.IncludesModel("GPT-5"))
+	require.True(t, config.IncludesModel("gpt-4"))
+
+	err := validateUpdateConfigRequest(UpdateConfigRequest{Strategy: "priority", WorkerCount: 1, QueueCapacity: 1,
+		Scanners: []string{"pii"}, AllGroups: true, ModelFilter: PromptAuditModelFilter{Type: ModelFilterInclude}})
+	require.Equal(t, "prompt_audit_models_required", infraerrors.Reason(err))
+
+	_, err = ParseStorageConfig(`{"model_filter":{"type":"includee","models":["gpt-5"]}}`)
+	require.Equal(t, "prompt_audit_invalid_model_filter", infraerrors.Reason(err))
+
+	storage := DefaultStorageConfig()
+	storage.ModelFilter = PromptAuditModelFilter{Type: ModelFilterInclude, Models: []string{"GPT-5", "claude-sonnet"}}
+	active, err := ActiveFromStorage(storage, true, prefixEncryptor{})
+	require.NoError(t, err)
+	require.Len(t, active.modelFilterSet, 2)
+	require.True(t, active.IncludesModel("gpt-5"))
+	require.False(t, active.IncludesModel("gpt-4"))
+}
+
+func TestContinueOnGuardFailureIsOnlyPersistedForBlockingMode(t *testing.T) {
+	config := DefaultStorageConfig()
+	config.ContinueOnGuardFailure = true
+	normalizeStorageConfig(&config)
+	require.False(t, config.ContinueOnGuardFailure)
+
+	config.BlockingEnabled = true
+	config.ContinueOnGuardFailure = true
+	normalizeStorageConfig(&config)
+	require.True(t, config.ContinueOnGuardFailure)
 }
 
 func TestUpdateConfigStrictBoundsAndKnownValues(t *testing.T) {
@@ -438,6 +484,9 @@ func TestUpdateConfigStrictBoundsAndKnownValues(t *testing.T) {
 		{name: "unknown scanner", mutate: func(req *UpdateConfigRequest) { req.Scanners = []string{"made_up"} }, reason: "prompt_audit_invalid_scanner"},
 		{name: "group required", mutate: func(req *UpdateConfigRequest) { req.AllGroups = false; req.GroupIDs = nil }, reason: "prompt_audit_groups_required"},
 		{name: "group positive", mutate: func(req *UpdateConfigRequest) { req.AllGroups = false; req.GroupIDs = []int64{0} }, reason: "prompt_audit_invalid_group"},
+		{name: "invalid model filter", mutate: func(req *UpdateConfigRequest) {
+			req.ModelFilter = PromptAuditModelFilter{Type: "includee", Models: []string{"gpt-5"}}
+		}, reason: "prompt_audit_invalid_model_filter"},
 		{name: "timeout low", mutate: func(req *UpdateConfigRequest) { req.Endpoints[0].TimeoutMS = MinTimeoutMS - 1 }, reason: "prompt_audit_invalid_timeout"},
 		{name: "timeout high", mutate: func(req *UpdateConfigRequest) { req.Endpoints[0].TimeoutMS = MaxTimeoutMS + 1 }, reason: "prompt_audit_invalid_timeout"},
 		{name: "input low", mutate: func(req *UpdateConfigRequest) { req.Endpoints[0].InputLimit = MinInputLimit - 1 }, reason: "prompt_audit_invalid_input_limit"},
