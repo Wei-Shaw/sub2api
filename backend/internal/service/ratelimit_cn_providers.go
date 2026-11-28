@@ -179,6 +179,70 @@ func cnProviderResponseIndicatesFrequencyLimit(body []byte) bool {
 	return true
 }
 
+// zhipuModelOverloadCode 是智谱「模型级过载」的错误码 1305。
+// 实测文案为「该模型当前访问量过大，请您稍后再试」，HTTP 状态可能在 429/529
+// 之间摇摆，但语义相同：被限流的是这个模型，不是账号，也与账号额度无关。
+const zhipuModelOverloadCode = "1305"
+
+// zhipuModelOverloadCooldown 是模型级过载的冷却时长。上游恢复通常在分钟级，
+// 所以只把该模型在账号上短暂移出候选，不写账号级 overload_until /
+// rate_limit_reset_at——否则一次模型抖动会把账号上的所有模型一起停掉。
+const zhipuModelOverloadCooldown = 2 * time.Minute
+
+// zhipuModelOverloadReason 是模型级限流写入 extra.model_rate_limits 的 reason。
+const zhipuModelOverloadReason = "zhipu_model_overload"
+
+// cnProviderResponseIndicatesModelOverload 识别智谱模型级过载信号。
+// 只认确定性信号：错误码 1305、error.type=overloaded_error，或实测文案
+// 「该模型当前访问量过大」。配额类 429（rate_limit_error / 用量耗尽文案）不会命中。
+func cnProviderResponseIndicatesModelOverload(body []byte) bool {
+	if len(body) == 0 {
+		return false
+	}
+	if strings.TrimSpace(gjson.GetBytes(body, "error.code").String()) == zhipuModelOverloadCode {
+		return true
+	}
+	if strings.EqualFold(strings.TrimSpace(gjson.GetBytes(body, "error.type").String()), "overloaded_error") {
+		return true
+	}
+	return strings.Contains(string(body), "该模型当前访问量过大")
+}
+
+// handleZhipuModelOverload 把智谱模型级过载落成「该模型在账号上的短冷却」。
+// 返回 true 表示已写入；模型名缺失或写库失败时返回 false，调用方应 fail-open
+// 或落回各自的兜底路径，而不是升级成账号级长冷却。
+func (s *RateLimitService) handleZhipuModelOverload(
+	ctx context.Context,
+	account *Account,
+	model string,
+	upstreamStatus int,
+) bool {
+	if s == nil || s.accountRepo == nil || account == nil {
+		return false
+	}
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return false
+	}
+	until := time.Now().Add(zhipuModelOverloadCooldown)
+	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, model, until, zhipuModelOverloadReason); err != nil {
+		slog.Warn("zhipu_model_overload_set_failed",
+			"account_id", account.ID,
+			"model", model,
+			"upstream_status", upstreamStatus,
+			"error", err,
+		)
+		return false
+	}
+	slog.Info("zhipu_model_overloaded",
+		"account_id", account.ID,
+		"model", model,
+		"upstream_status", upstreamStatus,
+		"until", until.UTC(),
+	)
+	return true
+}
+
 // cnProviderQuotaSnapshotNearExhausted 判断 Coding Plan 账号的滚动窗口用量快照
 // 是否已接近耗尽（任一窗口 >= percent）。快照完全缺失（额度探测还没跑过或
 // 解析失败）时返回 true：此时无法证明 429 与额度无关，保守沿用窗口冷却。
@@ -343,6 +407,7 @@ func (s *RateLimitService) applyCNProviderReactive429(
 	account *Account,
 	headers http.Header,
 	responseBody []byte,
+	requestedModel string,
 ) bool {
 	if account.IsOpenCodeGo() {
 		if s.cooldownCNProviderToQuotaSnapshotReset(ctx, account, "429", "opencode_go_rate_limited") != nil {
@@ -366,6 +431,13 @@ func (s *RateLimitService) applyCNProviderReactive429(
 	}
 	if !account.IsCNProvider() {
 		return false
+	}
+	// 0) 智谱模型级过载（1305）：上游单个模型瞬时容量不足，按模型级短冷却。
+	// 不能落到下面的窗口冷却——那会把「模型忙」误伤成「额度耗尽」，线上出现过
+	// 一次 1305 把账号按 weekly 重置停调 3 天的案例。
+	if account.Platform == PlatformZhipu && cnProviderResponseIndicatesModelOverload(responseBody) {
+		s.handleZhipuModelOverload(ctx, account, requestedModel, http.StatusTooManyRequests)
+		return true
 	}
 	// 1) 余额不足文案：可恢复临时停调（含智谱 payg 这类无余额端点的场景）。
 	if cnProviderResponseIndicatesInsufficientBalance(responseBody) {
