@@ -3162,6 +3162,12 @@ func ollamaCloudUsageSnapshotClearRequested(extra map[string]any) bool {
 	return ok && value == nil
 }
 
+// isUnschedulableStatus 报告该状态是否必须退出调度。
+// 账号一旦被标记为 error/disabled，就不应再被分配请求。
+func isUnschedulableStatus(status string) bool {
+	return status == service.StatusError || status == service.StatusDisabled
+}
+
 func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates service.AccountBulkUpdate) (int64, error) {
 	if len(ids) == 0 {
 		return 0, nil
@@ -3219,6 +3225,13 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 		setClauses = append(setClauses, "status = $"+itoa(idx))
 		args = append(args, *updates.Status)
 		idx++
+		// status 与 schedulable 是两个独立字段：这里只改 status 时，
+		// error/disabled 的账号仍会留在调度快照里被分配请求，
+		// 每次命中都白白消耗一次 failover 重试。除非调用方显式指定
+		// schedulable，否则强制退出调度。
+		if isUnschedulableStatus(*updates.Status) && updates.Schedulable == nil {
+			setClauses = append(setClauses, "schedulable = false")
+		}
 	}
 	if updates.Schedulable != nil {
 		setClauses = append(setClauses, "schedulable = $"+itoa(idx))
@@ -3441,7 +3454,7 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 	}
 	if rows > 0 && contextTx == nil {
 		shouldSync := false
-		if updates.Status != nil && (*updates.Status == service.StatusError || *updates.Status == service.StatusDisabled) {
+		if updates.Status != nil && isUnschedulableStatus(*updates.Status) {
 			shouldSync = true
 		}
 		if updates.Schedulable != nil && !*updates.Schedulable {
