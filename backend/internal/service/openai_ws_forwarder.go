@@ -277,6 +277,7 @@ func (s *OpenAIGatewayService) getOpenAIWSConnPool() *openAIWSConnPool {
 		if s.openaiWSPool == nil {
 			s.openaiWSPool = newOpenAIWSConnPool(s.cfg)
 		}
+		s.openaiWSPool.clientDialer = s.prepaidAwareWSDialer(s.openaiWSPool.clientDialer)
 	})
 	return s.openaiWSPool
 }
@@ -289,6 +290,7 @@ func (s *OpenAIGatewayService) getOpenAIWSPassthroughDialer() openAIWSClientDial
 		if s.openaiWSPassthroughDialer == nil {
 			s.openaiWSPassthroughDialer = newDefaultOpenAIWSClientDialer()
 		}
+		s.openaiWSPassthroughDialer = s.prepaidAwareWSDialer(s.openaiWSPassthroughDialer)
 	})
 	return s.openaiWSPassthroughDialer
 }
