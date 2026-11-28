@@ -577,11 +577,14 @@ const (
 )
 
 // autoRequestBodyMemoryBudget sizes the unconfigured ingress budget to a
-// quarter of the process memory limit. It never goes below the historical
-// 1 GiB default, so small instances keep their previous behavior.
+// quarter of the process memory limit, including small instances. The static
+// 1 GiB fallback is used only when the memory limit cannot be detected.
 func autoRequestBodyMemoryBudget(memoryLimitBytes uint64) int64 {
+	if memoryLimitBytes == 0 {
+		return defaultRequestBodyMemoryBudgetBytes
+	}
 	// uint64 / 4 always fits in int64.
-	return max(int64(memoryLimitBytes/requestBodyMemoryBudgetDivisor), defaultRequestBodyMemoryBudgetBytes)
+	return max(int64(memoryLimitBytes/requestBodyMemoryBudgetDivisor), 1)
 }
 
 func hasExplicitConfigOrEnv(configKey, envKey string) bool {
@@ -1069,8 +1072,9 @@ type GatewayConfig struct {
 	OpenAIHighEffortFirstOutputTimeoutSeconds int `mapstructure:"openai_high_effort_first_output_timeout_seconds"`
 	// 请求体最大字节数，用于网关请求体大小限制
 	MaxBodySize int64 `mapstructure:"max_body_size"`
-	// RequestBodyMemoryBudgetBytes bounds buffered ingress allocations per instance; 0 disables it.
-	// When unset in config and env it defaults to 1/4 of the memory limit (at least 1 GiB).
+	// RequestBodyMemoryBudgetBytes shares ingress allocations and HTTP Responses
+	// JSON processing headroom per instance; 0 disables this admission control.
+	// Unset: 1/4 of detected memory; 1 GiB only when detection fails.
 	RequestBodyMemoryBudgetBytes int64 `mapstructure:"request_body_memory_budget_bytes"`
 	// RequestBodyReadTimeoutSeconds bounds each socket read during upload; 0 disables it.
 	RequestBodyReadTimeoutSeconds int `mapstructure:"request_body_read_timeout_seconds"`

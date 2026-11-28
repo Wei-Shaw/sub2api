@@ -19,7 +19,8 @@ response. Healthy generations can remain open while an upstream is thinking.
   across gateway routes and aliases. When it is set in neither the config file
   nor `GATEWAY_REQUEST_BODY_MEMORY_BUDGET_BYTES`, startup sizes it to a quarter
   of the process memory limit (the smallest of physical memory, the cgroup
-  limit and `GOMEMLIMIT`), never below 1 GiB, and logs the chosen value. Any
+  limit and `GOMEMLIMIT`), falling back to 1 GiB only when none can be
+  detected, and logs the chosen value. Any
   explicit value is used as-is (`0` disables the budget). Chunk allocations, the
   contiguous body copy, decompressed output, JSON normalization, and a Zstd
   decoder reservation are charged before allocation. Each phase releases the
@@ -109,13 +110,67 @@ to reclaim that unreachable memory immediately.
 For example, 200 long-lived streams retaining 4 MiB each account for about
 800 MiB before new uploads and decoding. Another 32 concurrent Zstd decoders
 can reserve 256 MiB of window space alone, exceeding a 1 GiB budget (the
-auto-sized value on instances with 4 GiB or less) before their input/output
+auto-sized value on a 4 GiB instance) before their input/output
 buffers are counted. Increase the budget for such a workload only with
 sufficient instance memory, or reduce concurrency/request sizes. Deployments
 that copied the old example config pin `request_body_memory_budget_bytes:
 1073741824`; remove that line to use auto-sizing. Leave separate memory headroom for SSE frames (which may be larger than
 the queue budget), conversion state, caches, connections and GC. Setting the
 budget to `0` disables ingress memory admission rather than limiting RSS.
+
+Unconfigured budgets are one quarter of the detected RAM/cgroup/GOMEMLIMIT,
+including instances smaller than 4 GiB. For example a 2 GiB instance uses
+512 MiB. The old 1 GiB minimum allowed a small host to admit more memory than
+it could sustain; 1 GiB is now only the fallback when detection fails. An
+explicit environment/config value, including `0`, still takes precedence.
+
+HTTP Responses, OpenAI-compatible Chat Completions and Anthropic Messages
+reserve additional workspace before JSON transformations, audit,
+content-derived session affinity and routing: six body lengths plus 128 bytes
+per unquoted object/array opener, colon or comma. This also accounts for
+object-heavy payloads rather than sizing only by large strings. Measured live
+heap of an OAuth rewrite peaks at about six body lengths including the original
+body, for image-heavy and transcript-heavy bodies alike. Once the rewritten
+body has been handed to the upstream, the reservation settles to one body
+length: while the response streams, the gateway keeps only the original body
+and the outgoing copy alive (about two body lengths), so long streams no longer
+hold the transform peak. Account retries after that point reuse the settled
+reservation. An accepted asynchronous prompt audit has a separate charge for
+its body copy and processing workspace until background enqueue finishes; on
+exhaustion it uses the existing best-effort drop policy with `local_memory_busy`
+and a dropped counter.
+
+This means a 44 MiB request needs approximately 310 MiB of budget during its
+transform, including its original body, and about 88 MiB while it streams. On
+an otherwise idle 2 GiB instance (auto budget 512 MiB) it fits; a competing
+transform can receive 503 with `Retry-After: 1` before reaching the upstream
+and succeeds once the first request settles. A body whose transform could not
+fit even in an idle budget receives 413 without `Retry-After`, because retrying
+cannot succeed; size the budget for the largest bodies you intend to serve.
+Oversize bodies also remain 413. A request denied locally is not retried across
+accounts, does not penalize an upstream account and creates no usage. The
+estimate is admission headroom, not an RSS guarantee; releasing quota does not
+force GC, so reserve the remaining memory for caches and GC.
+
+### Small hosts: cap the container and the Go heap
+
+The budget bounds what requests may keep alive, but with the default `GOGC=100`
+the heap can grow to roughly twice the live set before the next collection.
+On a 2 GiB host shared with PostgreSQL and other services, three concurrent
+40+ MiB image requests were enough for the kernel OOM killer to take the whole
+gateway. Bound both layers explicitly:
+
+- Give the gateway container a memory limit (Compose `mem_limit`) so an
+  overrun restarts only the gateway, not the host's database or SSH.
+- Set `GOMEMLIMIT` somewhat below that limit so the Go collector works harder
+  instead of growing the heap into it.
+- Set `GATEWAY_REQUEST_BODY_MEMORY_BUDGET_BYTES` explicitly when you set
+  `GOMEMLIMIT`. Auto-sizing takes a quarter of the smallest limit, so a
+  `GOMEMLIMIT` alone shrinks the budget and can turn large requests into 413.
+
+For example, on a 2 GiB host: `mem_limit: 1200m`, `GOMEMLIMIT=1000MiB` and
+`GATEWAY_REQUEST_BODY_MEMORY_BUDGET_BYTES=419430400` (400 MiB). This admits one
+47 MiB transform at a time while other requests stream.
 
 Legacy Read tool-call completion still validates the growing JSON argument
 prefix. Incremental storage removes repeated prefix allocations, but validation

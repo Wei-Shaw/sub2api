@@ -34,13 +34,23 @@ func stubMemoryLimit(t *testing.T, limit uint64) {
 
 func TestAutoRequestBodyMemoryBudget(t *testing.T) {
 	require.Equal(t, int64(1<<30), autoRequestBodyMemoryBudget(0))
-	require.Equal(t, int64(1<<30), autoRequestBodyMemoryBudget(2<<30))
+	require.Equal(t, int64(512<<20), autoRequestBodyMemoryBudget(2<<30))
+	require.Equal(t, int64(128<<20), autoRequestBodyMemoryBudget(512<<20))
+	require.Equal(t, int64(16<<20), autoRequestBodyMemoryBudget(64<<20))
+	require.Equal(t, int64(1), autoRequestBodyMemoryBudget(1))
 	require.Equal(t, int64(2<<30), autoRequestBodyMemoryBudget(8<<30))
 	require.Equal(t, int64(32<<30), autoRequestBodyMemoryBudget(128<<30))
 	require.Equal(t, int64(math.MaxUint64/4), autoRequestBodyMemoryBudget(math.MaxUint64))
 }
 
 func TestLoadRequestBodyMemoryBudget(t *testing.T) {
+	t.Run("small instance has no historical 1GiB floor", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+		stubMemoryLimit(t, 2057547776) // Incident host, no container memory cap.
+		cfg, err := Load()
+		require.NoError(t, err)
+		require.EqualValues(t, 514386944, cfg.Gateway.RequestBodyMemoryBudgetBytes)
+	})
 	t.Run("auto-sized from memory limit when unset", func(t *testing.T) {
 		resetViperWithJWTSecret(t)
 		stubMemoryLimit(t, 128<<30)

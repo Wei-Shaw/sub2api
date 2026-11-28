@@ -26,8 +26,15 @@ func RejectRequestBodyReadError(c *gin.Context, component string, err error) boo
 }
 
 // RejectRequestBodyMemoryOverload keeps temporary capacity errors distinct
-// from invalid JSON and the per-request 413 size limit.
+// from invalid JSON and the per-request 413 size limit. A body that could not
+// be processed even on an idle instance is 413 without Retry-After, so clients
+// do not retry it forever.
 func RejectRequestBodyMemoryOverload(c *gin.Context, err error) bool {
+	if errors.Is(err, pkghttputil.ErrRequestBodyMemoryTooLarge) {
+		groupModelAllowlistErrorWriter(c)(c, http.StatusRequestEntityTooLarge, "Request body is too large for this instance to process")
+		c.Abort()
+		return true
+	}
 	if !errors.Is(err, pkghttputil.ErrRequestBodyMemoryBudget) {
 		return false
 	}

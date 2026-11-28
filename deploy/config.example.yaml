@@ -260,12 +260,18 @@ gateway:
   # Max request body size in bytes (default: 256MB)
   # 请求体最大字节数（默认 256MB）
   max_body_size: 268435456
-  # Per-instance ingress allocation budget. Unreferenced intermediates are released after each phase.
+  # Per-instance ingress/processing allocation budget. Unreferenced intermediates are released after each phase.
   # Final bodies (and still-referenced preread buffers) remain charged until the handler returns.
   # Include all concurrent long-lived requests and upload/decode workspace; see EDGE_SECURITY.md.
-  # Unset (default): 1/4 of the memory limit (min of RAM, cgroup limit, GOMEMLIMIT), at least 1 GiB.
-  # 实例级请求体分配预算；超出返回 503 + Retry-After，0 禁用。
-  # 不配置时自动取内存上限（物理内存/cgroup 限额/GOMEMLIMIT 的最小值）的 1/4，最低 1GiB；显式配置后不再自适应。
+  # Responses / Chat Completions / Messages also reserve 6 body lengths plus JSON structure workspace
+  # while rewriting, settling to 1 body length once the upstream has the request.
+  # A body that cannot fit even an idle budget gets 413 (no Retry-After).
+  # Unset (default): 1/4 of the memory limit (min of RAM, cgroup limit, GOMEMLIMIT); 1 GiB only if undetectable.
+  # Set it explicitly when setting GOMEMLIMIT; see "Small hosts" in EDGE_SECURITY.md.
+  # 实例级请求体分配预算；暂时不足返回 503 + Retry-After，空闲时也放不下返回 413，0 禁用。
+  # 不配置时自动取内存上限的 1/4（2GiB 实例约 512MiB）；仅检测失败时回退 1GiB。显式配置后不再自适应。
+  # Responses/Chat Completions/Messages 改写期间额外预留约 6 倍正文及 JSON 结构空间，请求交给上游后降为 1 倍；
+  # 异步审核独立持有预算直到入队处理结束。设置 GOMEMLIMIT 时请同时显式设置本项。
   # request_body_memory_budget_bytes: 1073741824
   # Individual socket read/write idle deadlines, not the entire SSE lifetime; 0 disables.
   # 上传单次读取、下游单次写入/flush 超时（秒），不会限制正常长流的总时长；0 禁用。

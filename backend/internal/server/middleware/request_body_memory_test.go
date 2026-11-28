@@ -63,6 +63,24 @@ func TestRequestBodyMemoryRejectsOverloadAndReleasesAfterHandler(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, request("/v1/responses").Code)
 }
 
+func TestRejectRequestBodyMemoryOverloadDistinguishesNeverFitting(t *testing.T) {
+	for _, tc := range []struct {
+		err        error
+		status     int
+		retryAfter string
+	}{
+		{pkghttputil.ErrRequestBodyMemoryTooLarge, http.StatusRequestEntityTooLarge, ""},
+		{pkghttputil.ErrRequestBodyMemoryBudget, http.StatusServiceUnavailable, "1"},
+	} {
+		rec := httptest.NewRecorder()
+		c, _ := gin.CreateTestContext(rec)
+		c.Request = httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+		require.True(t, RejectRequestBodyMemoryOverload(c, tc.err))
+		require.Equal(t, tc.status, rec.Code)
+		require.Equal(t, tc.retryAfter, rec.Header().Get("Retry-After"))
+	}
+}
+
 func TestRejectRequestBodyReadErrorCancellation(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
