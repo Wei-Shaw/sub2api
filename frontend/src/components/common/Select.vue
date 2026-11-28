@@ -472,6 +472,10 @@ const onDropdownKeyDown = (e: KeyboardEvent) => {
       break
     case 'Tab':
       isOpen.value = false
+      // Refocus the trigger so keyboard order continues from the field itself
+      // (Escape behaves the same); without it the browser moves focus from the
+      // teleported panel body to a distant element.
+      triggerRef.value?.focus()
       break
   }
 }

@@ -25,6 +25,29 @@ vi.mock('file-saver', () => ({
 
 import UseKeyModal from '../UseKeyModal.vue'
 
+// The common Select teleports its dropdown to body; close any open panel first
+// (leave transition lingers for two rAF frames in jsdom), then open by test id.
+async function openCodexModeDropdown(wrapper: ReturnType<typeof mount>) {
+  for (const trigger of wrapper.findAll('button[aria-haspopup="true"]')) {
+    if (trigger.attributes('aria-expanded') === 'true') await trigger.trigger('click')
+  }
+  await nextTick()
+  await new Promise(resolve => setTimeout(resolve, 50))
+  await wrapper.get('[data-testid="codex-model-catalog-mode"] button').trigger('click')
+  await nextTick()
+  const portals = document.body.querySelectorAll<HTMLElement>('.select-dropdown-portal')
+  expect(portals.length, `expected exactly one open dropdown portal, got ${portals.length}`).toBe(1)
+  return portals[0]!
+}
+
+async function pickCodexModeOption(wrapper: ReturnType<typeof mount>, label: string) {
+  const dropdown = await openCodexModeDropdown(wrapper)
+  const option = [...dropdown.querySelectorAll('.select-option')].find((el) => el.textContent?.includes(label))
+  expect(option, `codex catalog option containing "${label}" not found`).toBeDefined()
+  ;(option as HTMLElement).click()
+  await nextTick()
+}
+
 function readBlobAsText(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -913,7 +936,7 @@ describe('UseKeyModal', () => {
     expect(unixConfig).toContain('env_key = "SUB2API_API_KEY"')
     expect(fetchMock).not.toHaveBeenCalled()
 
-    await wrapper.get('[data-testid="codex-model-catalog-mode"]').setValue('file')
+    await pickCodexModeOption(wrapper, 'keys.useKeyModal.codexModelCatalog.local')
 
     await wrapper.get('[data-testid="codex-model-catalog-fetch"]').trigger('click')
     await flushPromises()
@@ -1083,14 +1106,14 @@ describe('UseKeyModal', () => {
         expect(configToml).not.toContain('client_version')
         expect(wrapper.find('[data-testid="codex-model-catalog"]').exists()).toBe(true)
 
-        await wrapper.get('[data-testid="codex-model-catalog-mode"]').setValue('file')
+        await pickCodexModeOption(wrapper, 'keys.useKeyModal.codexModelCatalog.local')
         const fileConfig = wrapper.findAll('pre code')
           .map((code) => code.text())
           .find((content) => content.includes('model_provider = "OpenAI"'))!
         expect(fileConfig).toContain('model_catalog_json = "~/.codex/codex-models.json"')
         expect(fileConfig).not.toContain('model_catalog_url')
         expect(fileConfig.indexOf('model_catalog_json')).toBeLessThan(fileConfig.indexOf('[model_providers.OpenAI]'))
-        await wrapper.get('[data-testid="codex-model-catalog-mode"]').setValue('remote')
+        await pickCodexModeOption(wrapper, 'keys.useKeyModal.codexModelCatalog.remote')
       }
     }
     expect(fetchMock).not.toHaveBeenCalled()
@@ -1126,9 +1149,22 @@ describe('UseKeyModal', () => {
       await flushPromises()
 
       const oversized = responseBytes > 1024 * 1024
-      const mode = wrapper.get('[data-testid="codex-model-catalog-mode"]')
-      expect((mode.element as HTMLSelectElement).value).toBe(oversized ? 'file' : 'remote')
-      expect((mode.get('option[value="remote"]').element as HTMLOptionElement).disabled).toBe(oversized)
+      // The Select trigger shows the active mode label; remote stays disabled while oversized.
+      expect(wrapper.get('[data-testid="codex-model-catalog-mode"]').text())
+        .toContain(oversized ? 'keys.useKeyModal.codexModelCatalog.local' : 'keys.useKeyModal.codexModelCatalog.remote')
+      const remoteOption = (await openCodexModeDropdown(wrapper))
+        .querySelectorAll('.select-option')
+        .item(0) as HTMLElement
+      expect(remoteOption.textContent).toContain('keys.useKeyModal.codexModelCatalog.remote')
+      if (oversized) {
+        expect(remoteOption.className).toContain('select-option-disabled')
+      } else {
+        expect(remoteOption.className).not.toContain('select-option-disabled')
+      }
+      // close the panel opened above
+      document.body.click()
+      await nextTick()
+      await new Promise(resolve => setTimeout(resolve, 50))
       const config = wrapper.findAll('pre code').map((code) => code.text())
         .find((content) => content.includes('model_provider = "OpenAI"'))!
       if (oversized) {
@@ -1142,7 +1178,10 @@ describe('UseKeyModal', () => {
         expect(JSON.parse(await readBlobAsText(downloaded))).toEqual(manifest)
 
         await wrapper.setProps({ apiKey: 'sk-new-group' })
-        expect((mode.get('option[value="remote"]').element as HTMLOptionElement).disabled).toBe(false)
+        const remoteOptionAfter = (await openCodexModeDropdown(wrapper))
+          .querySelectorAll('.select-option')
+          .item(0) as HTMLElement
+        expect(remoteOptionAfter.className).not.toContain('select-option-disabled')
         expect(wrapper.text()).not.toContain('keys.useKeyModal.codexModelCatalog.oversized')
       } else {
         expect(config).toContain('model_catalog_url = "https://example.com/v1/models"')

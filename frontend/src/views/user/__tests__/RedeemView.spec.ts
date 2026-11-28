@@ -1,6 +1,32 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { flushPromises, mount } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import RedeemView from '../RedeemView.vue'
+
+// The per-page Select teleports its dropdown to body; open it via the trigger
+// button and pick an option by label (options render as "20" / "50" / "100").
+async function pickPageSize(wrapper: VueWrapper, label: string) {
+  for (const trigger of wrapper.findAll('button[aria-haspopup="true"]')) {
+    if (trigger.attributes('aria-expanded') === 'true') await trigger.trigger('click')
+  }
+  await nextTick()
+  await new Promise(resolve => setTimeout(resolve, 50))
+  const trigger = wrapper.findAll('button[aria-haspopup="true"]')[0]
+  expect(trigger, 'per-page select trigger not found').toBeDefined()
+  await trigger!.trigger('click')
+  await nextTick()
+  const portals = document.body.querySelectorAll<HTMLElement>('.select-dropdown-portal')
+  expect(portals.length, `expected exactly one open dropdown portal, got ${portals.length}`).toBe(1)
+  const option = [...portals[0]!.querySelectorAll('.select-option')]
+    .find((el) => el.textContent?.trim() === label)
+  expect(option, `option "${label}" not found`).toBeDefined()
+  ;(option as HTMLElement).click()
+  await nextTick()
+}
+
+// The Select trigger shows the active page size as its label.
+const pageSizeTrigger = (wrapper: VueWrapper) =>
+  wrapper.findAll('button[aria-haspopup="true"]').find((button) => ['20', '50', '100'].includes(button.text()))!
 
 const { redeem, getHistory, refreshUser, fetchActiveSubscriptions, showError, showWarning, showSuccess } = vi.hoisted(() => ({
   redeem: vi.fn(),
@@ -53,6 +79,7 @@ describe('RedeemView refresh after redemption', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    document.body.innerHTML = ''
   })
 
   it.each(['balance', 'concurrency', 'subscription'])(
@@ -99,11 +126,10 @@ describe('RedeemView refresh after redemption', () => {
     await button('pagination.previous').trigger('click')
     await flushPromises()
     expect(getHistory).toHaveBeenLastCalledWith(1, 20)
-    expect(wrapper.findAll('select option').map(o => o.text())).toEqual(['20', '50', '100'])
-    await wrapper.get('select').setValue('50')
+    await pickPageSize(wrapper, '50')
     await flushPromises()
     expect(getHistory).toHaveBeenLastCalledWith(1, 50)
-    await wrapper.get('select').setValue('100')
+    await pickPageSize(wrapper, '100')
     await flushPromises()
     await button('pagination.next').trigger('click')
     await flushPromises()
@@ -131,12 +157,12 @@ describe('RedeemView refresh after redemption', () => {
     await flushPromises()
     let rejectRequest!: (error: Error) => void
     getHistory.mockImplementationOnce(() => new Promise((_resolve, reject) => { rejectRequest = reject }))
-    await wrapper.get('select').setValue('50')
+    await pickPageSize(wrapper, '50')
     expect(getHistory).toHaveBeenLastCalledWith(1, 50)
     expect(button('pagination.next').attributes('disabled')).toBeDefined()
     rejectRequest(new Error('Network error'))
     await flushPromises()
-    expect(wrapper.get('select').element.value).toBe('20')
+    expect(pageSizeTrigger(wrapper).text()).toBe('20')
     expect(wrapper.text()).toContain('OLD-ROWS')
     expect(wrapper.text()).toContain('61')
     expect(button('pagination.previous').attributes('disabled')).toBeUndefined()
@@ -145,46 +171,60 @@ describe('RedeemView refresh after redemption', () => {
     await button('pagination.next').trigger('click')
     await flushPromises()
     expect(getHistory).toHaveBeenLastCalledWith(3, 20)
-    await wrapper.get('select').setValue('50')
+    await pickPageSize(wrapper, '50')
     await flushPromises()
     expect(getHistory).toHaveBeenLastCalledWith(1, 50)
-    expect(wrapper.get('select').element.value).toBe('50')
+    expect(pageSizeTrigger(wrapper).text()).toBe('50')
     expect(button('pagination.previous').attributes('disabled')).toBeDefined()
     wrapper.unmount()
   })
 
   it.each(['success', 'failure'])('ignores a stale history %s after a newer size request succeeds', async (outcome) => {
-    let resolveOld!: (value: unknown) => void
-    let rejectOld!: (error: Error) => void
+    let resolveStale!: (value: unknown) => void
+    let rejectStale!: (error: Error) => void
+    // Request queue: #1 initial load hangs (this is the stale response that
+    // arrives last); redeem refresh resolves normally; the size change to 50
+    // resolves with the newer data, and the page-2 request resolves too.
     getHistory.mockImplementationOnce(() => new Promise((resolve, reject) => {
-      resolveOld = resolve
-      rejectOld = reject
+      resolveStale = resolve
+      rejectStale = reject
     }))
+    getHistory.mockResolvedValueOnce({ items: [], total: 0 })
+    getHistory.mockResolvedValueOnce({ items: [{
+      id: 2, code: 'NEW-ROWS', type: 'balance', value: 30, used_at: '2026-03-08T00:00:00Z',
+    }], total: 61 })
+    redeem.mockResolvedValue({ type: 'balance', value: 20, message: 'Code applied' })
     const wrapper = mount(RedeemView, {
       global: { stubs: { AppLayout: { template: '<div><slot /></div>' }, Icon: true } },
     })
     getHistory.mockResolvedValue({ items: [{
       id: 2, code: 'NEW-ROWS', type: 'balance', value: 30, used_at: '2026-03-08T00:00:00Z',
     }], total: 61 })
-    // Force overlapping requests to exercise responses arriving out of order.
-    await wrapper.get('select').setValue('50')
+    // Redeem succeeds, which refreshes the history and releases the loading
+    // state held by the hanging initial request.
+    await wrapper.get('input#code').setValue('STALE-CODE')
+    await wrapper.get('form').trigger('submit')
     await flushPromises()
     const button = (text: string) => wrapper.findAll('button').find(b => b.text() === text)!
+    // Force overlapping requests to exercise responses arriving out of order.
+    await pickPageSize(wrapper, '50')
+    await flushPromises()
     await button('pagination.next').trigger('click')
     await flushPromises()
     expect(getHistory).toHaveBeenLastCalledWith(2, 50)
+    // The stale initial-load response lands last and must be ignored.
     if (outcome === 'success') {
-      resolveOld({ items: [], total: 0 })
+      resolveStale({ items: [], total: 0 })
     } else {
-      rejectOld(new Error('Stale network error'))
+      rejectStale(new Error('Stale network error'))
     }
     await flushPromises()
-    expect(wrapper.get('select').element.value).toBe('50')
+    expect(pageSizeTrigger(wrapper).text()).toBe('50')
     expect(wrapper.text()).toContain('NEW-ROWS')
     expect(wrapper.text()).toContain('61')
     expect(button('pagination.previous').attributes('disabled')).toBeUndefined()
     expect(button('pagination.next').attributes('disabled')).toBeDefined()
-    expect(wrapper.get('select').attributes('disabled')).toBeUndefined()
+    expect(pageSizeTrigger(wrapper).attributes('disabled')).toBeUndefined()
     expect(showError).not.toHaveBeenCalled()
     await button('pagination.previous').trigger('click')
     await flushPromises()

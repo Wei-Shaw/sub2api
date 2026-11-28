@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, type VueWrapper } from '@vue/test-utils'
+import { nextTick } from 'vue'
 import OpenCodeGoProtocolRulesEditor from '../OpenCodeGoProtocolRulesEditor.vue'
 import type { OpenCodeGoProtocolRule } from '../credentialsBuilder'
 
@@ -16,6 +17,31 @@ function mountEditor(rows: OpenCodeGoProtocolRule[], platform = 'command_code', 
     props: { rows, platform, plan },
     global: { stubs: { Icon: true } }
   })
+}
+
+// The common Select teleports its dropdown to body; the data-testid lands on
+// the Select root div, so open the panel of that container and pick an option
+// by its translated label key.
+async function pickProtocolOption(wrapper: VueWrapper, index: number, label: string) {
+  // Close any lingering open panel first (leave transition keeps closed panels
+  // in the DOM for two rAF frames in jsdom).
+  for (const trigger of wrapper.findAll('button[aria-haspopup="true"]')) {
+    if (trigger.attributes('aria-expanded') === 'true') await trigger.trigger('click')
+  }
+  await nextTick()
+  await new Promise(resolve => setTimeout(resolve, 50))
+  const container = wrapper.get(`[data-testid="opencode-go-protocol-select-${index}"]`)
+  await container.find('button[aria-haspopup="true"]').trigger('click')
+  await nextTick()
+  const portals = document.body.querySelectorAll<HTMLElement>('.select-dropdown-portal')
+  const portal = [...portals].find((el) => el.style.display !== 'none' && el.querySelector('.select-option'))
+  expect(portal, `expected an open dropdown portal for select ${index}`).toBeTruthy()
+  const option = [...portal!.querySelectorAll('.select-option')]
+    .find((el) => el.textContent?.trim() === label && !el.className.includes('select-option-group'))
+  expect(option, `option "${label}" not found`).toBeDefined()
+  ;(option as HTMLElement).click()
+  await nextTick()
+  await new Promise(resolve => setTimeout(resolve, 50))
 }
 
 describe('OpenCodeGoProtocolRulesEditor protocol sets', () => {
@@ -44,13 +70,13 @@ describe('OpenCodeGoProtocolRulesEditor protocol sets', () => {
     ]
     const wrapper = mountEditor(rows)
 
-    await wrapper.get('[data-testid="opencode-go-protocol-select-0"]').setValue('chat_completions')
+    await pickProtocolOption(wrapper, 0, 'admin.accounts.cnProviders.apiProtocol.chatCompletions')
     expect(rows[0]).toEqual({ pattern: 'gpt-*', protocol: 'chat_completions', extraProtocols: ['responses'] })
 
-    await wrapper.get('[data-testid="opencode-go-protocol-select-0"]').setValue('anthropic')
+    await pickProtocolOption(wrapper, 0, 'admin.accounts.cnProviders.apiProtocol.anthropic')
     expect(rows[0]).toEqual({ pattern: 'gpt-*', protocol: 'anthropic', extraProtocols: ['responses'] })
 
-    await wrapper.get('[data-testid="opencode-go-protocol-select-1"]').setValue('responses')
+    await pickProtocolOption(wrapper, 1, 'admin.accounts.cnProviders.apiProtocol.responses')
     expect(rows[1]).toEqual({ pattern: 'grok-*', protocol: 'responses' })
   })
 

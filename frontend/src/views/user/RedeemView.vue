@@ -339,14 +339,14 @@
             <span>{{ t('common.total') }}: {{ historyTotal }} {{ t('pagination.results') }}</span>
             <label>
               {{ t('pagination.perPage') }}
-              <select
-                v-model="historyPageSize"
-                class="input w-20"
+              <Select
+                :model-value="historyPageSize"
+                :aria-label="t('pagination.perPage')"
+                class="w-20"
+                :options="historyPageSizeOptions"
                 :disabled="loadingHistory || submitting"
-                @change="fetchHistory(1)"
-              >
-                <option v-for="size in [20, 50, 100]" :key="size" :value="size">{{ size }}</option>
-              </select>
+                @update:model-value="onHistoryPageSizeChange"
+              />
             </label>
             <button
               class="btn btn-secondary"
@@ -373,6 +373,7 @@ import { useAppStore } from '@/stores/app'
 import { useSubscriptionStore } from '@/stores/subscriptions'
 import { redeemAPI, authAPI, type RedeemHistoryItem } from '@/api'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { formatDateTime } from '@/utils/format'
 
@@ -405,6 +406,18 @@ const historyTotal = ref(0)
 let historyRequest = 0
 let loadedHistoryPageSize = 20
 const contactInfo = ref('')
+
+// 每页条数下拉（common/Select）
+const historyPageSizeOptions = [
+  { value: 20, label: '20' },
+  { value: 50, label: '50' },
+  { value: 100, label: '100' }
+]
+
+function onHistoryPageSizeChange(value: string | number | boolean | null): void {
+  historyPageSize.value = typeof value === 'number' ? value : 20
+  fetchHistory(1)
+}
 
 // Helper functions for history display
 const isBalanceType = (type: string) => {

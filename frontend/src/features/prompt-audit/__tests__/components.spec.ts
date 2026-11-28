@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { mount, type VueWrapper } from '@vue/test-utils'
 import EndpointPool from '../components/EndpointPool.vue'
 import PolicyPanel from '../components/PolicyPanel.vue'
 import EventWorkspace from '../components/EventWorkspace.vue'
@@ -16,6 +16,30 @@ vi.mock('vue-i18n', async () => {
 
 const DialogStub = defineComponent({ props: ['show', 'title'], emits: ['close'], template: '<div v-if="show" data-test="dialog"><slot /><slot name="footer" /></div>' })
 const PaginationStub = defineComponent({ props: ['total', 'page', 'pageSize'], emits: ['update:page', 'update:pageSize'], template: '<div data-test="pagination" />' })
+
+// The common Select teleports its dropdown to body; the data-test attribute
+// lands on the Select root div (attrs fallthrough), so find that container's
+// trigger button and click the option with the matching label.
+async function pickDeleteDialogOption(wrapper: VueWrapper, dataTest: string, label: string) {
+  for (const trigger of wrapper.findAll('button[aria-haspopup="true"]')) {
+    if (trigger.attributes('aria-expanded') === 'true') await trigger.trigger('click')
+  }
+  const container = wrapper.findAll(`[data-test="${dataTest}"]`)
+    .find((node) => node.find('button[aria-haspopup="true"]').exists())
+  expect(container, `select container with data-test="${dataTest}" not found`).toBeTruthy()
+  const trigger = container!.find('button[aria-haspopup="true"]')
+  await trigger.trigger('click')
+  const portals = document.body.querySelectorAll<HTMLElement>('.select-dropdown-portal')
+  expect(portals.length, `expected exactly one open dropdown portal for ${dataTest}, got ${portals.length}`).toBe(1)
+  const option = [...portals[0]!.querySelectorAll('.select-option')]
+    .find((el) => el.textContent?.trim() === label)
+  expect(option, `option "${label}" not found in ${dataTest}`).toBeTruthy()
+  ;(option as HTMLElement).click()
+  // Close the panel again so later queries see exactly one open portal; the
+  // leave transition lingers, so wait it out before returning.
+  await container!.find('button[aria-haspopup="true"]').trigger('click')
+  await new Promise((resolve) => setTimeout(resolve, 50))
+}
 
 const endpoint = (): PromptAuditEndpointDraft => ({
   id: 'guard-1', name: 'Guard One', protocol: 'openai_compatible', base_url: 'http://127.0.0.1:8000',
@@ -136,7 +160,7 @@ describe('Prompt Audit components', () => {
 
     await wrapper.get('[data-test="range-preset-30d"]').setValue()
     expect(wrapper.emitted('criteria-change')?.length).toBeGreaterThan(0)
-    await wrapper.get('[data-test="delete-risk"]').setValue('high')
+    await pickDeleteDialogOption(wrapper, 'delete-risk', 'admin.promptAudit.riskLevels.high')
     await wrapper.get('[data-test="run-delete-preview"]').trigger('click')
     const presetPreview = wrapper.emitted('preview')?.at(-1)?.[0] as PromptEventFilters
     expect(presetPreview.risk_level).toBe('high')
@@ -197,7 +221,9 @@ describe('Prompt Audit components', () => {
     })
     expect(wrapper.get<HTMLInputElement>('[data-test="range-preset-custom"]').element.checked).toBe(true)
     expect(wrapper.get<HTMLInputElement>('[data-test="custom-range"] [aria-label="admin.promptAudit.events.startAt"]').element.value).toBe('2026-07-01T00:00')
-    expect(wrapper.get<HTMLSelectElement>('[data-test="delete-decision"]').element.value).toBe('critical')
+    // The decision Select trigger displays the active decision label ("全部"/all
+    // is the '' option; here an explicit decision was inherited).
+    expect(wrapper.get('[data-test="delete-decision"]').text()).toContain('admin.promptAudit.decisions.critical')
     expect(wrapper.get('[data-test="run-delete-preview"]').attributes()).not.toHaveProperty('disabled')
   })
 
