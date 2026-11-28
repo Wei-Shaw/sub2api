@@ -820,6 +820,7 @@ type ChatMessage struct {
 	Refusal          string          `json:"refusal,omitempty"`
 	ReasoningContent string          `json:"reasoning_content,omitempty"`
 	Reasoning        string          `json:"reasoning,omitempty"`
+	ReasoningDetails json.RawMessage `json:"reasoning_details,omitempty"`
 	Name             string          `json:"name,omitempty"`
 	ToolCalls        []ChatToolCall  `json:"tool_calls,omitempty"`
 	ToolCallID       string          `json:"tool_call_id,omitempty"`
@@ -998,12 +999,24 @@ type ChatChunkChoice struct {
 
 // ChatDelta carries incremental content in a streaming chunk.
 type ChatDelta struct {
-	Role             string         `json:"role,omitempty"`
-	Content          *string        `json:"content,omitempty"` // pointer: omit when not present, null vs "" matters
-	Refusal          *string        `json:"refusal,omitempty"`
-	ReasoningContent *string        `json:"reasoning_content,omitempty"`
-	Reasoning        *string        `json:"reasoning,omitempty"`
-	ToolCalls        []ChatToolCall `json:"tool_calls,omitempty"`
+	Role             string          `json:"role,omitempty"`
+	Content          *string         `json:"content,omitempty"` // pointer: omit when not present, null vs "" matters
+	Refusal          *string         `json:"refusal,omitempty"`
+	ReasoningContent *string         `json:"reasoning_content,omitempty"`
+	Reasoning        *string         `json:"reasoning,omitempty"`
+	ReasoningDetails json.RawMessage `json:"reasoning_details,omitempty"`
+	ToolCalls        []ChatToolCall  `json:"tool_calls,omitempty"`
+}
+
+// ChatReasoningDetail is one OpenRouter-style reasoning_details entry. Chat
+// messages and deltas keep the field as raw JSON so a malformed value from a
+// client or upstream is ignored; this type is for entries this package writes
+// and for the lenient per-entry decode on replay.
+type ChatReasoningDetail struct {
+	Type   string `json:"type"`
+	Data   string `json:"data,omitempty"`
+	Format string `json:"format,omitempty"`
+	Index  int    `json:"index"`
 }
 
 func (m ChatMessage) reasoningText() string {
