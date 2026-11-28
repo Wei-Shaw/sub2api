@@ -963,8 +963,8 @@ func resolveRequestedModelInMapping(mapping map[string]string, requestedModel st
 // IsModelSupported 检查模型是否在 model_mapping 中（支持通配符）
 // 如果未配置 mapping，返回 true（允许所有模型）。
 //
-// 例外：OpenAI OAuth 账号（Codex 上游）的空映射会排除明确属于其他厂商
-// 家族的模型（deepseek-*/glm-* 等）——转发阶段 normalizeOpenAIModelForUpstream
+// 例外：OpenAI OAuth 账号（Codex 上游）的空映射与透传模式都会排除明确属于
+// 其他厂商家族的模型（claude-*/deepseek-*/glm-* 等）——转发阶段 normalizeOpenAIModelForUpstream
 // 会把未知模型原样透传，Codex 上游对这类模型必然返回不可重试的 400，导致
 // 请求卡死在该账号上、无法 failover 到真正支持该模型的 API Key 账号（#3662）。
 // 未知/自定义别名仍保持允许（兼容渠道级映射），见 isOpenAIOAuthServableModel。
@@ -977,11 +977,17 @@ func (a *Account) IsModelSupported(requestedModel string) bool {
 }
 
 func (a *Account) isModelMappingSupported(requestedModel string) bool {
-	// 透传模式仅替换认证、模型语义完全交由上游决定，因此放行所有模型。
+	// 透传模式仅替换认证、模型语义交由上游决定，因此除下面 OAuth 的异族厂商模型外放行所有模型。
 	// 该短路必须在 model_mapping 判定之前：账号从"白名单模式"切换到透传后，
 	// credentials 里常残留旧的非空 model_mapping，若不在此放行，透传账号会被
 	// model_mapping 白名单错误排除出候选集，导致 no available accounts / 404（issue #4936）。
 	if a.IsOpenAIPassthroughEnabled() {
+		// OAuth 与 Setup Token 透传的出口恒为 chatgpt.com/backend-api/codex（见
+		// buildUpstreamRequestOpenAIPassthrough），异族厂商模型在那里必然是不可重试的 400，
+		// 因此透传也要在调度阶段跳过它们；API Key 透传的上游由 base_url 决定，不受此限。
+		if a.IsOpenAIOAuthLike() && !isOpenAIOAuthServableModel(requestedModel) {
+			return false
+		}
 		if !a.IsOpenAIPassthroughModelFilterEnabled() {
 			return true
 		}

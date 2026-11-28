@@ -44,6 +44,11 @@
           </div>
         </template>
 
+        <template #cell-username="{ row }">
+          <span v-if="row.user?.username?.trim()" class="text-sm text-gray-900 dark:text-white">{{ row.user.username.trim() }}</span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
         <template #cell-api_key="{ row }">
           <span class="text-sm text-gray-900 dark:text-white">{{ row.api_key?.name || '-' }}</span>
         </template>
@@ -68,6 +73,14 @@
               </div>
               <div class="break-all text-gray-500 dark:text-gray-400">
                 <span class="mr-0.5">↳</span>{{ row.upstream_model }}
+              </div>
+            </div>
+            <div v-else-if="row.response_model && row.response_model !== row.model" class="space-y-0.5">
+              <div class="break-all font-medium text-gray-900 dark:text-white">
+                {{ row.model }}
+              </div>
+              <div class="break-all text-gray-500 dark:text-gray-400" :title="t('usage.responseModel')">
+                <span class="mr-0.5">↳</span>{{ row.response_model }}
               </div>
             </div>
             <span v-else class="font-medium text-gray-900 dark:text-white">{{ row.model }}</span>

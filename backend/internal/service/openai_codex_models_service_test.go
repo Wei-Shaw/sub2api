@@ -816,6 +816,9 @@ func TestBuildCodexModelsManifestForGroupUsesDeepSeekVisionCapabilities(t *testi
 		return account
 	}
 
+	customResponses := newAccount(1, PlatformCommandCode, "deepseek-v4.1-flash", nil)
+	customResponses.Credentials["api_base_urls"] = map[string]any{APIProtocolResponses: "https://example.test/v1"}
+
 	tests := []struct {
 		name       string
 		platform   string
@@ -835,6 +838,36 @@ func TestBuildCodexModelsManifestForGroupUsesDeepSeekVisionCapabilities(t *testi
 		{
 			name: "Composite DeepSeek alias", platform: PlatformComposite,
 			accounts:   []Account{newAccount(1, PlatformDeepseek, visionModel, nil)},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name: "Command Code bare ID", platform: PlatformCommandCode,
+			accounts:   []Account{newAccount(1, PlatformCommandCode, "deepseek-v4.1-flash", nil)},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name: "Composite Command Code mapping", platform: PlatformComposite,
+			accounts:   []Account{newAccount(1, PlatformCommandCode, "deepseek/deepseek-v4.1-flash", nil)},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name: "Command Code with a custom Responses endpoint", platform: PlatformCommandCode,
+			accounts:   []Account{customResponses},
+			modalities: []any{"text"},
+		},
+		{
+			name: "Command Code text-only override", platform: PlatformCommandCode,
+			accounts:   []Account{newAccount(1, PlatformCommandCode, "deepseek/deepseek-v4.1-flash", []string{"text"})},
+			modalities: []any{"text"},
+		},
+		{
+			name: "Command Code unknown model", platform: PlatformCommandCode,
+			accounts:   []Account{newAccount(1, PlatformCommandCode, "unknown-model", nil)},
+			modalities: []any{"text"},
+		},
+		{
+			name: "Command Code explicit vision metadata", platform: PlatformCommandCode,
+			accounts:   []Account{newAccount(1, PlatformCommandCode, "other-model", []string{"text", "image"})},
 			modalities: []any{"text", "image"},
 		},
 		{
@@ -866,6 +899,83 @@ func TestBuildCodexModelsManifestForGroupUsesDeepSeekVisionCapabilities(t *testi
 			}}}
 			body, err := svc.BuildCodexModelsManifestForGroup(context.Background(),
 				&Group{ID: groupID, Platform: tt.platform}, "", []string{"vision-alias"})
+			require.NoError(t, err)
+			models := decodeCodexManifestModels(t, body)
+			require.Len(t, models, 1)
+			require.Equal(t, tt.modalities, models[0]["input_modalities"])
+		})
+	}
+}
+
+func TestBuildCodexModelsManifestForGroupUsesDeclaredImageInputModels(t *testing.T) {
+	t.Parallel()
+
+	const model = "deepseek-v4.1-flash"
+	newAccount := func(id int64, declared []any, syncedModalities []string) Account {
+		account := Account{
+			ID: id, Platform: PlatformOpenAI, Type: AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"base_url":      "http://vllm.internal:8000",
+				"model_mapping": map[string]any{model: model},
+			},
+		}
+		if declared != nil {
+			account.Extra = map[string]any{ImageInputModelsExtraKey: declared}
+		}
+		if syncedModalities != nil {
+			account.SetUpstreamModelMetadataSnapshot(UpstreamModelMetadataSnapshot{Models: map[string]UpstreamModelMetadata{
+				model: {ID: model, InputModalities: syncedModalities},
+			}})
+		}
+		return account
+	}
+
+	tests := []struct {
+		name       string
+		accounts   []Account
+		modalities []any
+	}{
+		{
+			name:       "undeclared self-hosted model",
+			accounts:   []Account{newAccount(1, nil, nil)},
+			modalities: []any{"text"},
+		},
+		{
+			name:       "declared self-hosted model",
+			accounts:   []Account{newAccount(1, []any{model}, nil)},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name:       "declaration ignores case",
+			accounts:   []Account{newAccount(1, []any{"DeepSeek-V4.1-Flash"}, nil)},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name:       "declaration overrides synced text-only metadata",
+			accounts:   []Account{newAccount(1, []any{model}, []string{"text"})},
+			modalities: []any{"text", "image"},
+		},
+		{
+			name:       "another model declared",
+			accounts:   []Account{newAccount(1, []any{"qwen3-vl"}, nil)},
+			modalities: []any{"text"},
+		},
+		{
+			name:       "an undeclared account in the pool keeps text only",
+			accounts:   []Account{newAccount(1, []any{model}, nil), newAccount(2, nil, nil)},
+			modalities: []any{"text"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			const groupID int64 = 791
+			svc := &GatewayService{accountRepo: codexModelsVisibilityAccountRepo{byGroup: map[int64][]Account{
+				groupID: tt.accounts,
+			}}}
+			body, err := svc.BuildCodexModelsManifestForGroup(context.Background(),
+				&Group{ID: groupID, Platform: PlatformOpenAI}, "", []string{model})
 			require.NoError(t, err)
 			models := decodeCodexManifestModels(t, body)
 			require.Len(t, models, 1)
@@ -1129,6 +1239,7 @@ func TestBuildCodexModelsManifestForGroupLoadsAccountsOnce(t *testing.T) {
 	require.Contains(t, repo.platforms, PlatformDeepseek)
 	require.Contains(t, repo.platforms, PlatformMiniMax)
 	require.Contains(t, repo.platforms, PlatformOpenCodeGo)
+	require.Contains(t, repo.platforms, PlatformCommandCode)
 	require.NotContains(t, repo.platforms, PlatformComposite)
 }
 
@@ -3879,5 +3990,29 @@ func TestGPT61SolAPIKeyCatalogContextWindow(t *testing.T) {
 			require.Len(t, models, 1)
 			require.EqualValues(t, tc.want, models[0]["context_window"])
 		})
+	}
+}
+
+func TestBuildCodexModelsManifestKimiK31Reasoning(t *testing.T) {
+	models := []string{"k3.1-pro", "k3.1-pro-highspeed", "kimi/K3.1-PRO", "k3", "k3.1", "k3.1-pro-preview", "custom-alias"}
+	body, err := BuildCodexModelsManifest(models)
+	require.NoError(t, err)
+	var manifest struct {
+		Models []configuredCodexModelDescriptor `json:"models"`
+	}
+	require.NoError(t, json.Unmarshal(body, &manifest))
+	require.Len(t, manifest.Models, len(models))
+	for i, model := range manifest.Models {
+		require.Equal(t, models[i], model.Slug)
+		require.NotNil(t, model.DefaultReasoningLevel)
+		if i < 3 {
+			require.Equal(t, "high", *model.DefaultReasoningLevel)
+			require.Equal(t, []string{"low", "high", "max"}, effortsFromConfiguredCodexLevels(model.SupportedReasoningLevels))
+		} else {
+			require.Equal(t, "none", *model.DefaultReasoningLevel)
+			require.Equal(t, []string{"none"}, effortsFromConfiguredCodexLevels(model.SupportedReasoningLevels))
+		}
+		require.Equal(t, int64(configuredCodexFallbackContext), model.ContextWindow)
+		require.Equal(t, []string{"text"}, model.InputModalities)
 	}
 }

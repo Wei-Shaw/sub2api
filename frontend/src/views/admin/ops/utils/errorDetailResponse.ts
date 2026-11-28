@@ -1,4 +1,4 @@
-import type { OpsErrorDetail } from '@/api/admin/ops'
+import type { OpsErrorDetail, OpsUpstreamErrorEvent } from '@/api/admin/ops'
 
 const GENERIC_UPSTREAM_MESSAGES = new Set([
   'upstream request failed',
@@ -88,4 +88,48 @@ export function resolvePrimaryResponseBody(
   }
 
   return errorBody
+}
+
+export interface ReportedHeaderGroup {
+  /** 稳定 key：账号 + 请求头内容 */
+  key: string
+  accountId: number | null
+  accountName: string
+  headers: Array<{ name: string; value: string }>
+}
+
+/**
+ * 从错误记录的上游事件里提取"身份上报请求头"（账号请求头覆写变量实际发出的值）。
+ * 同一账号、内容相同的多次尝试合并为一组；没有上报时返回空数组。
+ */
+export function extractReportedHeaderGroups(
+  upstreamErrors: string | null | undefined
+): ReportedHeaderGroup[] {
+  const text = String(upstreamErrors || '').trim()
+  if (!text) return []
+  let events: unknown
+  try {
+    events = JSON.parse(text)
+  } catch {
+    return []
+  }
+  if (!Array.isArray(events)) return []
+
+  const groups: ReportedHeaderGroup[] = []
+  const seen = new Set<string>()
+  for (const raw of events as Array<OpsUpstreamErrorEvent | null>) {
+    const reported = raw?.reported_headers
+    if (!raw || !reported || typeof reported !== 'object' || Array.isArray(reported)) continue
+    const headers = Object.entries(reported)
+      .filter(([name, value]) => !!name && typeof value === 'string' && value !== '')
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => a.name.localeCompare(b.name))
+    if (!headers.length) continue
+    const accountId = typeof raw.account_id === 'number' && raw.account_id > 0 ? raw.account_id : null
+    const key = JSON.stringify([accountId, headers])
+    if (seen.has(key)) continue
+    seen.add(key)
+    groups.push({ key, accountId, accountName: String(raw.account_name || '').trim(), headers })
+  }
+  return groups
 }

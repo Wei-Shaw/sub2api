@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
-	"sync"
 	"testing"
 	"time"
 
@@ -108,16 +107,8 @@ func TestGetSchedulableAccount_AppliesGrokFreeSoftGate(t *testing.T) {
 	usageRepo := &grokFreeQuotaUsageRepoStub{stats: map[int64]*usagestats.AccountStats{
 		account.ID: {Tokens: 480_000}, // above 95% of 500k
 	}}
-	// Clear shared gateway free-gate cache so this test is deterministic.
-	gatewayGrokFreeQuotaGateCache.Range(func(key, _ any) bool {
-		gatewayGrokFreeQuotaGateCache.Delete(key)
-		return true
-	})
-	if root, ok := freeQuotaRefreshInFlight.Load(&gatewayGrokFreeQuotaGateCache); ok {
-		if m, ok := root.(*sync.Map); ok {
-			m.Delete(account.ID)
-		}
-	}
+	clearGrokFreeQuotaTestCache(t, &gatewayGrokFreeQuotaGateCache)
+	t.Cleanup(func() { clearGrokFreeQuotaTestCache(t, &gatewayGrokFreeQuotaGateCache) })
 	svc := &GatewayService{
 		cfg:          cfg,
 		accountRepo:  repo,
@@ -155,15 +146,8 @@ func TestOpenAIGetSchedulableAccount_AppliesGrokFreeSoftGate(t *testing.T) {
 	usageRepo := &grokFreeQuotaUsageRepoStub{stats: map[int64]*usagestats.AccountStats{
 		account.ID: {Tokens: 480_000},
 	}}
-	openaiGrokFreeQuotaGateCache.Range(func(key, _ any) bool {
-		openaiGrokFreeQuotaGateCache.Delete(key)
-		return true
-	})
-	if root, ok := freeQuotaRefreshInFlight.Load(&openaiGrokFreeQuotaGateCache); ok {
-		if m, ok := root.(*sync.Map); ok {
-			m.Delete(account.ID)
-		}
-	}
+	clearGrokFreeQuotaTestCache(t, &openaiGrokFreeQuotaGateCache)
+	t.Cleanup(func() { clearGrokFreeQuotaTestCache(t, &openaiGrokFreeQuotaGateCache) })
 	svc := &OpenAIGatewayService{
 		cfg:          cfg,
 		accountRepo:  repo,

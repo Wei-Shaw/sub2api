@@ -39,6 +39,21 @@ func TestOpenAIRequestView_ExtractsFieldsAfterLargeInput(t *testing.T) {
 	require.Equal(t, "high", view.ReasoningEffort)
 }
 
+func TestOpenAIRequestView_FieldsDoNotAliasBody(t *testing.T) {
+	body := []byte(`{"model":"gpt-5","prompt_cache_key":"session-1","previous_response_id":"resp-1","service_tier":"flex","reasoning":{"effort":"high"}}`)
+
+	view := newOpenAIRequestView(body)
+	for i := range body {
+		body[i] = 'x'
+	}
+
+	require.Equal(t, "gpt-5", view.Model)
+	require.Equal(t, "session-1", view.PromptCacheKey)
+	require.Equal(t, "resp-1", view.PreviousResponseID)
+	require.Equal(t, "flex", view.ServiceTier)
+	require.Equal(t, "high", view.ReasoningEffort)
+}
+
 func TestOpenAIRequestView_KeepsFirstDuplicateField(t *testing.T) {
 	view := newOpenAIRequestView([]byte(`{"model":"gpt-5","model":"gpt-5.1","reasoning":{"effort":"low"},"reasoning":{"effort":"high"}}`))
 

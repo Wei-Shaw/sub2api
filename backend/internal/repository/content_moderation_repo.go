@@ -280,7 +280,9 @@ func buildContentModerationLogWhere(filter service.ContentModerationLogFilter) (
 	case "pass", "allow":
 		where = append(where, "l.flagged = FALSE AND l.error = ''")
 	case "error":
-		where = append(where, "l.error <> ''")
+		// image_safety keeps the upstream rejection in error; it is a hit, not an
+		// audit failure. Literal must match service.ContentModerationActionImageSafety.
+		where = append(where, "l.error <> '' AND l.action <> 'image_safety'")
 	}
 	if filter.GroupID != nil {
 		add("l.group_id = $%d", *filter.GroupID)

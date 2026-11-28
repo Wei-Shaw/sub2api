@@ -304,6 +304,9 @@ func (collector moderationTextCollector) collectContentValue(value gjson.Result,
 		addModerationImage(images, value.Get("image_url.url").String())
 		addModerationImage(images, value.Get("image_url").String())
 		addModerationImage(images, value.Get("url").String())
+		// Anthropic URL image sources ({"type":"url","url":...}) are forwarded
+		// upstream as-is, so they must be moderated like any other image URL.
+		addModerationImage(images, value.Get("source.url").String())
 		addModerationImageData(images, value.Get("source.media_type").String(), value.Get("source.data").String())
 		addModerationImageData(images, value.Get("source.mediaType").String(), value.Get("source.data").String())
 		addModerationImageData(images, value.Get("media_type").String(), value.Get("data").String())

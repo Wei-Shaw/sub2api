@@ -212,6 +212,10 @@ func TestDetectModelPlatform(t *testing.T) {
 		{name: "jev", model: "jev-latest", platform: PlatformTypeSafe, ok: true},
 		{name: "typesafe prefix", model: "typesafe/jev-latest", platform: PlatformTypeSafe, ok: true},
 		{name: "abab unrelated namespace", model: "abab-other", ok: false},
+		{name: "kimi k31 pro", model: "k3.1-pro", platform: PlatformKimi, ok: true},
+		{name: "kimi k31 highspeed qualified", model: "kimi-code/K3.1-PRO-HIGHSPEED", platform: PlatformKimi, ok: true},
+		{name: "unknown k31 alias", model: "k3.1", ok: false},
+		{name: "unknown k31 suffix", model: "k3.1-pro-preview", ok: false},
 		{name: "unknown k3 alias", model: "k3-preview", ok: false},
 		{name: "unknown", model: "llama-4-maverick", ok: false},
 	}

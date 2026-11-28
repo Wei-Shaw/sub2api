@@ -184,17 +184,22 @@
           </template>
 
           <template #cell-location="{ row }">
-            <div class="flex items-center gap-2">
-              <img
-                v-if="row.country_code"
-                :src="flagUrl(row.country_code)"
-                :alt="row.country || row.country_code"
-                class="h-4 w-6 rounded-sm"
-              />
-              <span v-if="formatLocation(row)" class="text-sm text-gray-700 dark:text-gray-200">
-                {{ formatLocation(row) }}
+            <div class="flex flex-col">
+              <div class="flex items-center gap-2">
+                <img
+                  v-if="row.country_code"
+                  :src="flagUrl(row.country_code)"
+                  :alt="row.country || row.country_code"
+                  class="h-4 w-6 rounded-sm"
+                />
+                <span v-if="formatLocation(row)" class="text-sm text-gray-700 dark:text-gray-200">
+                  {{ formatLocation(row) }}
+                </span>
+                <span v-else class="text-sm text-gray-400">-</span>
+              </div>
+              <span v-if="row.ip_address" class="font-mono text-xs text-gray-500 dark:text-gray-400">
+                {{ row.ip_address }}
               </span>
-              <span v-else class="text-sm text-gray-400">-</span>
             </div>
           </template>
 
@@ -253,7 +258,12 @@
           </template>
 
           <template #cell-created_at="{ row }">
-            <span class="text-xs text-gray-600 dark:text-gray-300">{{ formatDateTime(row.created_at) }}</span>
+            <div class="flex flex-col text-xs">
+              <span class="text-gray-600 dark:text-gray-300">{{ formatDateTime(row.created_at) }}</span>
+              <span v-if="row.latency_checked_at" class="text-gray-500 dark:text-gray-400">
+                {{ t('admin.proxies.lastCheckedAt', { time: formatDateTime(row.latency_checked_at) }) }}
+              </span>
+            </div>
           </template>
 
           <template #cell-status="{ value }">
@@ -1519,6 +1529,23 @@ const applyLatencyResult = (
     target.city = undefined
   }
   target.latency_message = result.message
+  target.latency_checked_at = new Date().toISOString()
+}
+
+// Mirrors the backend quality snapshot: it overwrites latency/IP/location whether or not
+// base connectivity passed, so the row stays consistent without a reload.
+const applyQualityLatencyResult = (proxyId: number, result: ProxyQualityCheckResult) => {
+  const baseStep = result.items.find((item) => item.target === 'base_connectivity')
+  applyLatencyResult(proxyId, {
+    success: baseStep?.status === 'pass',
+    latency_ms: result.base_latency_ms || undefined,
+    message: result.summary,
+    ip_address: result.exit_ip,
+    country: result.country,
+    country_code: result.country_code,
+    region: result.region,
+    city: result.city
+  })
 }
 
 const summarizeQualityStatus = (result: ProxyQualityCheckResult): Proxy['quality_status'] => {
@@ -1607,17 +1634,7 @@ const handleQualityCheck = async (proxy: Proxy) => {
     qualityReport.value = result
     showQualityReportDialog.value = true
 
-    const baseStep = result.items.find((item) => item.target === 'base_connectivity')
-    if (baseStep && baseStep.status === 'pass') {
-      applyLatencyResult(proxy.id, {
-        success: true,
-        latency_ms: result.base_latency_ms,
-        message: result.summary,
-        ip_address: result.exit_ip,
-        country: result.country,
-        country_code: result.country_code
-      })
-    }
+    applyQualityLatencyResult(proxy.id, result)
     applyQualityResult(proxy.id, result)
 
     appStore.showSuccess(
@@ -1649,20 +1666,7 @@ const runBatchProxyQualityChecks = async (ids: number[]) => {
       startQualityCheckingProxy(current)
       try {
         const result = await adminAPI.proxies.checkProxyQuality(current)
-        const target = proxies.value.find((proxy) => proxy.id === current)
-        if (target) {
-          const baseStep = result.items.find((item) => item.target === 'base_connectivity')
-          if (baseStep && baseStep.status === 'pass') {
-            applyLatencyResult(current, {
-              success: true,
-              latency_ms: result.base_latency_ms,
-              message: result.summary,
-              ip_address: result.exit_ip,
-              country: result.country,
-              country_code: result.country_code
-            })
-          }
-        }
+        applyQualityLatencyResult(current, result)
         applyQualityResult(current, result)
         if (result.challenge_count > 0) {
           challenge++

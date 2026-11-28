@@ -507,6 +507,28 @@ func (s *ChannelService) GetChannelForGroup(ctx context.Context, groupID int64) 
 	return ch.Clone(), nil
 }
 
+// ResponseModelExposedChannels 返回给定渠道 ID 中开启了"向用户显示实际响应模型"的集合。
+// 只读取内存缓存（与网关热路径共用），不会产生额外的数据库查询。
+func (s *ChannelService) ResponseModelExposedChannels(ctx context.Context, ids []int64) map[int64]bool {
+	if s == nil || len(ids) == 0 {
+		return nil
+	}
+	cache, err := s.loadCache(ctx)
+	if err != nil || cache == nil {
+		return nil
+	}
+	var out map[int64]bool
+	for _, id := range ids {
+		if ch, ok := cache.byID[id]; ok && ch.IsResponseModelExposed() {
+			if out == nil {
+				out = make(map[int64]bool, len(ids))
+			}
+			out[id] = true
+		}
+	}
+	return out
+}
+
 // GetGroupPlatform 获取分组的平台标识（从缓存）
 func (s *ChannelService) GetGroupPlatform(ctx context.Context, groupID int64) string {
 	cache, err := s.loadCache(ctx)

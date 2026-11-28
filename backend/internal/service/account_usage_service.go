@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"math/rand/v2"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -85,6 +86,16 @@ type accountWindowStatsBatchReader interface {
 	GetAccountWindowStatsBatch(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]*usagestats.AccountStats, error)
 }
 
+// accountUpstreamErrorStatsReader 读取 ops_error_logs 中按账号归属的上游错误次数。
+type accountUpstreamErrorStatsReader interface {
+	GetAccountUpstreamErrorCountsBatch(ctx context.Context, accountIDs []int64, startTime time.Time) (map[int64]int64, error)
+	GetAccountDailyUpstreamErrorCounts(ctx context.Context, accountID int64, startTime, endTime time.Time) (map[string]int64, error)
+}
+
+type opsMonitoringStatusReader interface {
+	IsMonitoringEnabled(ctx context.Context) bool
+}
+
 // apiUsageCache 缓存从 Anthropic API 获取的使用率数据（utilization, resets_at）
 // 同时支持缓存错误响应（负缓存），防止 429 等错误导致的重试风暴
 type apiUsageCache struct {
@@ -97,6 +108,13 @@ type apiUsageCache struct {
 type windowStatsCache struct {
 	stats     *WindowStats
 	timestamp time.Time
+	startTime time.Time
+}
+
+// Separate quota windows while keeping at most two cached entries per account.
+type windowStatsCacheKey struct {
+	accountID int64
+	duration  time.Duration
 }
 
 // antigravityUsageCache 缓存 Antigravity 额度数据
@@ -119,7 +137,7 @@ const (
 // UsageCache 封装账户使用量相关的缓存
 type UsageCache struct {
 	apiCache          sync.Map           // accountID -> *apiUsageCache
-	windowStatsCache  sync.Map           // accountID -> *windowStatsCache
+	windowStatsCache  sync.Map           // windowStatsCacheKey -> *windowStatsCache
 	antigravityCache  sync.Map           // accountID -> *antigravityUsageCache
 	apiFlight         singleflight.Group // 防止同一账号的并发请求击穿缓存（Anthropic）
 	antigravityFlight singleflight.Group // 防止同一 Antigravity 账号的并发请求击穿缓存
@@ -143,6 +161,8 @@ type WindowStats struct {
 	Cost         float64 `json:"cost"`
 	StandardCost float64 `json:"standard_cost"`
 	UserCost     float64 `json:"user_cost"`
+	// UpstreamErrors 仅今日统计填充；运维监控关闭时为 nil。
+	UpstreamErrors *int64 `json:"upstream_errors,omitempty"`
 }
 
 // UsageProgress 使用量进度
@@ -335,6 +355,7 @@ type AccountUsageService struct {
 	tlsFPProfileService     *TLSFingerprintProfileService
 	agentIdentityTaskMu     sync.Mutex
 	agentIdentityWS         agentIdentityWSConnectionInvalidator
+	opsMonitoring           opsMonitoringStatusReader
 }
 
 // NewAccountUsageService 创建AccountUsageService实例
@@ -1461,49 +1482,60 @@ func enrichUsageWithAccountError(info *UsageInfo, account *Account) {
 // addWindowStats 为 usage 数据添加窗口期统计
 // 使用独立缓存（1 分钟），与 API 缓存分离
 func (s *AccountUsageService) addWindowStats(ctx context.Context, account *Account, usage *UsageInfo) {
-	// 修复：即使 FiveHour 为 nil，也要尝试获取统计数据
-	// 因为 SevenDay/SevenDaySonnet/SevenDayFable 可能需要
-	if usage.FiveHour == nil && usage.SevenDay == nil && usage.SevenDaySonnet == nil && usage.SevenDayFable == nil {
+	if s.usageLogRepo == nil || usage == nil {
 		return
 	}
 
-	// 检查窗口统计缓存（1 分钟）
-	var windowStats *WindowStats
-	if cached, ok := s.cache.windowStatsCache.Load(account.ID); ok {
-		if cache, ok := cached.(*windowStatsCache); ok && time.Since(cache.timestamp) < windowStatsCacheTTL {
-			windowStats = cache.stats
+	now := time.Now()
+	for _, window := range []struct {
+		progress *UsageProgress
+		duration time.Duration
+	}{
+		{usage.FiveHour, 5 * time.Hour},
+		{usage.SevenDay, 7 * 24 * time.Hour},
+	} {
+		if window.progress == nil {
+			continue
 		}
-	}
 
-	// 如果没有缓存，从数据库查询
-	if windowStats == nil {
-		// 使用统一的窗口开始时间计算逻辑（考虑窗口过期情况）
 		startTime := account.GetCurrentWindowStartTime()
+		if supportsAnthropicPassiveUsage(account) {
+			// Only pair local costs with a known, current upstream quota window.
+			// A rolling lookback or expired sample would produce a misleading estimate.
+			if window.progress.ResetsAt == nil || !now.Before(*window.progress.ResetsAt) {
+				continue
+			}
+			startTime = window.progress.ResetsAt.Add(-window.duration)
+			if startTime.After(now) {
+				continue
+			}
+		} else if window.duration != 5*time.Hour {
+			continue
+		}
+
+		key := windowStatsCacheKey{accountID: account.ID, duration: window.duration}
+		if cached, ok := s.cache.windowStatsCache.Load(key); ok {
+			if cache, ok := cached.(*windowStatsCache); ok && cache.startTime.Equal(startTime) && now.Sub(cache.timestamp) < windowStatsCacheTTL {
+				window.progress.WindowStats = cache.stats
+				continue
+			}
+		}
 
 		stats, err := s.usageLogRepo.GetAccountWindowStats(ctx, account.ID, startTime)
 		if err != nil {
 			log.Printf("Failed to get window stats for account %d: %v", account.ID, err)
-			return
+			continue
 		}
-
-		windowStats = &WindowStats{
-			Requests:     stats.Requests,
-			Tokens:       stats.Tokens,
-			Cost:         stats.Cost,
-			StandardCost: stats.StandardCost,
-			UserCost:     stats.UserCost,
+		if stats == nil {
+			continue
 		}
-
-		// 缓存窗口统计（1 分钟）
-		s.cache.windowStatsCache.Store(account.ID, &windowStatsCache{
+		windowStats := windowStatsFromAccountStats(stats)
+		window.progress.WindowStats = windowStats
+		s.cache.windowStatsCache.Store(key, &windowStatsCache{
 			stats:     windowStats,
-			timestamp: time.Now(),
+			timestamp: now,
+			startTime: startTime,
 		})
-	}
-
-	// 为 FiveHour 添加 WindowStats（5h 窗口统计）
-	if usage.FiveHour != nil {
-		usage.FiveHour.WindowStats = windowStats
 	}
 }
 
@@ -1517,13 +1549,49 @@ func (s *AccountUsageService) GetTodayStats(ctx context.Context, accountID int64
 		return nil, fmt.Errorf("get today stats failed: %w", err)
 	}
 
-	return &WindowStats{
+	result := &WindowStats{
 		Requests:     stats.Requests,
 		Tokens:       stats.Tokens,
 		Cost:         stats.Cost,
 		StandardCost: stats.StandardCost,
 		UserCost:     stats.UserCost,
-	}, nil
+	}
+	s.attachTodayUpstreamErrors(ctx, map[int64]*WindowStats{accountID: result}, []int64{accountID})
+	return result, nil
+}
+
+// upstreamErrorStatsReader 返回上游错误统计读取器；运维监控关闭（不再写入错误日志）时返回 nil，
+// 调用方据此不下发错误次数，避免前端把“未记录”误显示为 0。
+func (s *AccountUsageService) upstreamErrorStatsReader(ctx context.Context) accountUpstreamErrorStatsReader {
+	if s.opsMonitoring == nil || !s.opsMonitoring.IsMonitoringEnabled(ctx) {
+		return nil
+	}
+	reader, ok := s.usageLogRepo.(accountUpstreamErrorStatsReader)
+	if !ok {
+		return nil
+	}
+	return reader
+}
+
+// attachTodayUpstreamErrors 为今日统计补充上游错误次数；查询失败仅记录日志，不影响主统计。
+func (s *AccountUsageService) attachTodayUpstreamErrors(ctx context.Context, result map[int64]*WindowStats, accountIDs []int64) {
+	reader := s.upstreamErrorStatsReader(ctx)
+	if reader == nil || len(accountIDs) == 0 {
+		return
+	}
+	counts, err := reader.GetAccountUpstreamErrorCountsBatch(ctx, accountIDs, timezone.Today())
+	if err != nil {
+		slog.Warn("account_today_upstream_errors_query_failed", "accounts", len(accountIDs), "error", err)
+		return
+	}
+	for _, accountID := range accountIDs {
+		stats := result[accountID]
+		if stats == nil {
+			continue
+		}
+		count := counts[accountID]
+		stats.UpstreamErrors = &count
+	}
 }
 
 // GetTodayStatsBatch 批量获取账号今日统计，优先走批量 SQL，失败时回退单账号查询。
@@ -1563,6 +1631,7 @@ func (s *AccountUsageService) GetTodayStatsBatch(ctx context.Context, accountIDs
 			for _, accountID := range uniqueIDs {
 				result[accountID] = windowStatsFromAccountStats(statsByAccount[accountID])
 			}
+			s.attachTodayUpstreamErrors(ctx, result, uniqueIDs)
 			return result, nil
 		}
 	}
@@ -1592,6 +1661,7 @@ func (s *AccountUsageService) GetTodayStatsBatch(ctx context.Context, accountIDs
 			result[accountID] = &WindowStats{}
 		}
 	}
+	s.attachTodayUpstreamErrors(ctx, result, uniqueIDs)
 	return result, nil
 }
 
@@ -1687,7 +1757,50 @@ func (s *AccountUsageService) GetAccountUsageStats(ctx context.Context, accountI
 	if err != nil {
 		return nil, fmt.Errorf("get account usage stats failed: %w", err)
 	}
+	if reader := s.upstreamErrorStatsReader(ctx); reader != nil && stats != nil {
+		counts, err := reader.GetAccountDailyUpstreamErrorCounts(ctx, accountID, startTime, endTime)
+		if err != nil {
+			slog.Warn("account_daily_upstream_errors_query_failed", "account_id", accountID, "error", err)
+		} else {
+			mergeAccountDailyUpstreamErrors(stats, counts, timezone.Now().Format("2006-01-02"))
+		}
+	}
 	return stats, nil
+}
+
+// mergeAccountDailyUpstreamErrors 将按日上游错误次数并入 history：已有日期直接填充，
+// 只有错误没有成功请求的日期补入空用量行，保证趋势图不丢点。
+func mergeAccountDailyUpstreamErrors(stats *usagestats.AccountUsageStatsResponse, counts map[string]int64, todayStr string) {
+	seen := make(map[string]struct{}, len(stats.History))
+	for i := range stats.History {
+		h := &stats.History[i]
+		count := counts[h.Date]
+		h.UpstreamErrors = &count
+		seen[h.Date] = struct{}{}
+	}
+	for date, count := range counts {
+		if _, ok := seen[date]; ok {
+			continue
+		}
+		t, err := time.Parse("2006-01-02", date)
+		if err != nil {
+			continue
+		}
+		stats.History = append(stats.History, usagestats.AccountUsageHistory{
+			Date:           date,
+			Label:          t.Format("01/02"),
+			UpstreamErrors: &count,
+		})
+	}
+	sort.Slice(stats.History, func(i, j int) bool { return stats.History[i].Date < stats.History[j].Date })
+
+	var total int64
+	for _, count := range counts {
+		total += count
+	}
+	today := counts[todayStr]
+	stats.Summary.TotalUpstreamErrors = &total
+	stats.Summary.TodayUpstreamErrors = &today
 }
 
 // fetchOAuthUsageRaw 从 Anthropic API 获取原始响应（不构建 UsageInfo）

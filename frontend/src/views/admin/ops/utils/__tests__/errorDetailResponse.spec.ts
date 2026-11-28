@@ -132,3 +132,34 @@ describe('errorDetailResponse', () => {
     }))).toBe('fallback message')
   })
 })
+
+describe('extractReportedHeaderGroups', () => {
+  it('collects variable-driven headers per account and merges identical attempts', async () => {
+    const { extractReportedHeaderGroups } = await import('../errorDetailResponse')
+    const events = JSON.stringify([
+      { account_id: 5, account_name: 'relay-a', reported_headers: { 'x-user': '7', 'x-key': '31' } },
+      { account_id: 5, account_name: 'relay-a', reported_headers: { 'x-key': '31', 'x-user': '7' } },
+      { account_id: 6, account_name: 'relay-b' },
+      { account_id: 8, account_name: 'relay-c', reported_headers: { 'x-user': '7' } }
+    ])
+    expect(extractReportedHeaderGroups(events).map(({ accountId, accountName, headers }) => ({ accountId, accountName, headers }))).toEqual([
+      {
+        accountId: 5,
+        accountName: 'relay-a',
+        headers: [
+          { name: 'x-key', value: '31' },
+          { name: 'x-user', value: '7' }
+        ]
+      },
+      { accountId: 8, accountName: 'relay-c', headers: [{ name: 'x-user', value: '7' }] }
+    ])
+  })
+
+  it('returns nothing for empty, malformed or legacy payloads', async () => {
+    const { extractReportedHeaderGroups } = await import('../errorDetailResponse')
+    expect(extractReportedHeaderGroups('')).toEqual([])
+    expect(extractReportedHeaderGroups('not json')).toEqual([])
+    expect(extractReportedHeaderGroups('{"a":1}')).toEqual([])
+    expect(extractReportedHeaderGroups('[{"account_id":1,"reported_headers":[]},null]')).toEqual([])
+  })
+})
