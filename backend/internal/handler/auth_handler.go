@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"log/slog"
+	"net/http"
 	"strings"
 	"sync"
 
@@ -19,6 +20,7 @@ import (
 
 // AuthHandler handles authentication-related requests
 type AuthHandler struct {
+	feishuHTTPClient     *http.Client
 	cfg                  *config.Config
 	authService          *service.AuthService
 	userService          *service.UserService
