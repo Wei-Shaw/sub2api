@@ -3,8 +3,8 @@
     <div class="space-y-4">
       <!-- Actions -->
       <div class="flex items-center justify-end gap-2">
-        <button @click="loadPlans" :disabled="plansLoading" class="btn btn-secondary" :title="t('common.refresh')">
-          <Icon name="refresh" size="md" :class="plansLoading ? 'animate-spin' : ''" />
+        <button @click="refreshAll" :disabled="refreshing" class="btn btn-secondary" :title="t('common.refresh')">
+          <Icon name="refresh" size="md" :class="refreshing ? 'animate-spin' : ''" />
         </button>
         <button @click="openPlanEdit(null)" class="btn btn-primary">{{ t('payment.admin.createPlan') }}</button>
       </div>
@@ -199,4 +199,16 @@ onMounted(() => {
   loadPaymentConfig()
   loadPlans()
 })
+
+// 页头刷新：分组（含停用）与套餐一起重载——分组变更后不必再整页 F5。
+// 只刷套餐的话，改名/停用的分组不会反映到列表与编辑弹窗的下拉里。
+const refreshing = ref(false)
+async function refreshAll() {
+  refreshing.value = true
+  try {
+    await Promise.all([loadGroups(), loadPaymentConfig(), loadPlans()])
+  } finally {
+    refreshing.value = false
+  }
+}
 </script>
