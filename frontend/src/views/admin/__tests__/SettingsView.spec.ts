@@ -85,6 +85,10 @@ vi.mock("@/api", () => ({
   adminAPI: {
     settings: {
       getSettings,
+      getOpenAICodexVersionSyncStatus: vi.fn().mockResolvedValue({
+        effective_version: '0.159.0', version_source: 'synced', synced_version: '0.159.0',
+        auto_sync_enabled: true, status: 'never_checked', retry_count: 0, retry_exhausted: false,
+      }),
       updateSettings,
       getWebSearchEmulationConfig,
       updateWebSearchEmulationConfig,

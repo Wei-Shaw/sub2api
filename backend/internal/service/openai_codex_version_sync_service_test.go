@@ -40,6 +40,19 @@ func (r *codexVersionSyncSettingRepoStub) GetValue(_ context.Context, key string
 	return r.values[key], nil
 }
 
+func (r *codexVersionSyncSettingRepoStub) GetMultiple(_ context.Context, keys []string) (map[string]string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.getErr != nil {
+		return nil, r.getErr
+	}
+	values := make(map[string]string, len(keys))
+	for _, key := range keys {
+		values[key] = r.values[key]
+	}
+	return values, nil
+}
+
 func (r *codexVersionSyncSettingRepoStub) Set(_ context.Context, key, value string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -47,7 +60,9 @@ func (r *codexVersionSyncSettingRepoStub) Set(_ context.Context, key, value stri
 		return r.setErr
 	}
 	r.values[key] = value
-	r.writes = append(r.writes, value)
+	if key == SettingKeyOpenAICodexClientVersionSynced {
+		r.writes = append(r.writes, value)
+	}
 	return nil
 }
 
