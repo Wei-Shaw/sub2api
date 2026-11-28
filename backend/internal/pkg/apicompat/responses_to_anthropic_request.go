@@ -224,7 +224,7 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 			}
 			block := AnthropicContentBlock{
 				Type:  "tool_use",
-				ID:    fromResponsesCallIDToAnthropic(item.CallID),
+				ID:    ResponsesCallIDToAnthropic(item.CallID),
 				Name:  item.Name,
 				Input: input,
 			}
@@ -239,7 +239,7 @@ func convertResponsesInputToAnthropic(instructions string, inputRaw json.RawMess
 			contentJSON := responsesFunctionOutputToAnthropicContent(item)
 			block := AnthropicContentBlock{
 				Type:      "tool_result",
-				ToolUseID: fromResponsesCallIDToAnthropic(item.CallID),
+				ToolUseID: ResponsesCallIDToAnthropic(item.CallID),
 				Content:   contentJSON,
 			}
 			blockJSON, _ := json.Marshal([]AnthropicContentBlock{block})
@@ -638,9 +638,9 @@ func convertResponsesAssistantToAnthropicContent(raw json.RawMessage) (json.RawM
 	return json.Marshal(blocks)
 }
 
-// fromResponsesCallIDToAnthropic converts an OpenAI function call ID back to
+// ResponsesCallIDToAnthropic converts an OpenAI function call ID back to
 // Anthropic format. Reverses toResponsesCallID.
-func fromResponsesCallIDToAnthropic(id string) string {
+func ResponsesCallIDToAnthropic(id string) string {
 	// If it has our "fc_" prefix wrapping a known Anthropic prefix, strip it
 	if after, ok := strings.CutPrefix(id, "fc_"); ok {
 		if strings.HasPrefix(after, "toolu_") || strings.HasPrefix(after, "call_") {

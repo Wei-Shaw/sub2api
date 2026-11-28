@@ -59,7 +59,7 @@ func toolImageCompatWire(t *testing.T, raw []byte, model string) []byte {
 	var claude antigravity.ClaudeRequest
 	require.NoError(t, json.Unmarshal(body, &claude))
 	service := &AntigravityGatewayService{}
-	wire, err := service.buildAntigravityCompatGeminiBody(context.Background(), body, &claude, "offline-project", model)
+	wire, err := service.buildAntigravityCompatGeminiBody(context.Background(), body, &claude, "offline-project", model, antigravity.ThoughtSignatureScope{})
 	require.NoError(t, err)
 	return wire
 }

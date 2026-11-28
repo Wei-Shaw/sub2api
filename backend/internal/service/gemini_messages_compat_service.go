@@ -3475,6 +3475,10 @@ func mapGeminiFinishReasonToClaudeStopReason(finishReason string) string {
 }
 
 func convertClaudeMessagesToGeminiGenerateContent(body []byte, model string) ([]byte, error) {
+	return convertClaudeMessagesToGeminiGenerateContentWithSignatures(body, model, nil)
+}
+
+func convertClaudeMessagesToGeminiGenerateContentWithSignatures(body []byte, model string, lookupToolSignature func(string) string) ([]byte, error) {
 	var req map[string]any
 	if err := json.Unmarshal(body, &req); err != nil {
 		return nil, err
@@ -3483,7 +3487,7 @@ func convertClaudeMessagesToGeminiGenerateContent(body []byte, model string) ([]
 	toolUseIDToName := make(map[string]string)
 
 	systemText := extractClaudeSystemText(req["system"])
-	contents, err := convertClaudeMessagesToGeminiContents(req["messages"], toolUseIDToName, gemini.SupportsMultimodalFunctionResponses(model))
+	contents, err := convertClaudeMessagesToGeminiContents(req["messages"], toolUseIDToName, gemini.SupportsMultimodalFunctionResponses(model), lookupToolSignature)
 	if err != nil {
 		return nil, err
 	}
@@ -3563,7 +3567,7 @@ func extractClaudeSystemText(system any) string {
 	}
 }
 
-func convertClaudeMessagesToGeminiContents(messages any, toolUseIDToName map[string]string, multimodalToolResults bool) ([]any, error) {
+func convertClaudeMessagesToGeminiContents(messages any, toolUseIDToName map[string]string, multimodalToolResults bool, lookupToolSignature func(string) string) ([]any, error) {
 	arr, ok := messages.([]any)
 	if !ok {
 		return nil, errors.New("messages must be an array")
@@ -3621,6 +3625,9 @@ func convertClaudeMessagesToGeminiContents(messages any, toolUseIDToName map[str
 					}
 					signature, _ := bm["signature"].(string)
 					signature = strings.TrimSpace(signature)
+					if signature == "" && lookupToolSignature != nil {
+						signature = lookupToolSignature(id)
+					}
 					if signature == "" {
 						signature = geminiDummyThoughtSignature
 					}

@@ -16,7 +16,6 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
-	"github.com/google/uuid"
 	"github.com/tidwall/gjson"
 )
 
@@ -725,7 +724,7 @@ func (s *AntigravityGatewayService) wrapV1InternalRequest(projectID, model strin
 
 	wrapped := map[string]any{
 		"project":     projectID,
-		"requestId":   "agent-" + uuid.New().String(),
+		"requestId":   antigravity.GenerateOfficialRequestID("", 0),
 		"userAgent":   "antigravity", // 固定值，与官方客户端一致
 		"requestType": "agent",
 		"model":       model,

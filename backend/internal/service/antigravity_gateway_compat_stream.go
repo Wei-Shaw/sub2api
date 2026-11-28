@@ -108,6 +108,7 @@ type antigravityCompatScanEvent struct {
 
 type antigravityCompatStreamSession struct {
 	processor                   *antigravity.StreamingProcessor
+	signatureScope              antigravity.ThoughtSignatureScope
 	adapter                     antigravityCompatStreamAdapter
 	writer                      *antigravityClientWriter
 	usage                       *ClaudeUsage
@@ -173,7 +174,7 @@ func (s *antigravityCompatStreamSession) finish() (*antigravityStreamResult, err
 			s.adapter.WriteError(s.writer, "empty_stream")
 			return s.result(false), newAntigravityCompatCommittedNoContentError("empty Antigravity compatibility stream after keepalive")
 		}
-		return nil, antigravityCompatEmptyStreamError()
+		return nil, s.emptyStreamFailoverError()
 	}
 	s.adapter.Finalize(s.writer)
 	return s.result(s.writer.Disconnected()), nil
@@ -219,6 +220,9 @@ func (s *antigravityCompatStreamSession) consumeClaudeData(eventType, payload st
 	}
 	if event.Message != nil {
 		mergeAnthropicUsage(s.usage, event.Message.Usage)
+	}
+	if event.Type == "content_block_start" {
+		cacheAntigravityCompatToolSignature(s.signatureScope, event.ContentBlock)
 	}
 	s.emitOrBuffer(event)
 }
@@ -343,6 +347,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithTiming(
 		c.Status(http.StatusOK)
 	}
 	session := newAntigravityCompatStreamSession(originalModel, startTime, adapter, writer)
+	session.signatureScope = antigravityCompatSignatureScope(c)
 	session.preContentKeepaliveSent = IsResponseCommitted(c) && c.Writer.Written()
 	session.preContentKeepaliveInterval = interval
 	events, stopScanner, maxLineSize, queueBudget := s.startAntigravityCompatScanner(resp.Body)
@@ -379,7 +384,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithTiming(
 			writeAntigravityCompatStreamError(c, adapter, writer, "stream_timeout")
 			return session.collectResult(false), newAntigravityCompatCommittedNoContentError("pre-content stream timeout")
 		}
-		return nil, antigravityCompatEmptyStreamError()
+		return nil, session.emptyStreamFailoverError()
 	}
 
 	for {
@@ -440,7 +445,7 @@ func handleAntigravityCompatEmptyStream(c *gin.Context, session *antigravityComp
 		writeAntigravityCompatStreamError(c, session.adapter, session.writer, "empty_stream")
 		return session.collectResult(false), newAntigravityCompatCommittedNoContentError("empty Antigravity compatibility stream after keepalive")
 	}
-	return nil, antigravityCompatEmptyStreamError()
+	return nil, session.emptyStreamFailoverError()
 }
 
 func (s *AntigravityGatewayService) startAntigravityCompatScanner(
@@ -555,7 +560,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatReadError(
 			writeAntigravityCompatStreamError(c, session.adapter, session.writer, "stream_read_error")
 			return session.collectResult(false), fmt.Errorf("stream read error: %w", err)
 		}
-		return nil, antigravityCompatEmptyStreamError()
+		return nil, session.emptyStreamFailoverError()
 	}
 	if disconnect, handled := handleStreamReadError(err, session.writer.Disconnected(), prefix); handled {
 		return session.collectResult(disconnect), nil
@@ -586,6 +591,58 @@ func antigravityCompatEmptyStreamError() error {
 		ResponseBody:           []byte(`{"error":"empty stream response from upstream"}`),
 		RetryableOnSameAccount: true,
 	}
+}
+
+// emptyStreamFailoverError 把空流转换为 failover 错误。
+//
+// MALFORMED_FUNCTION_CALL 是上游模型/请求侧失败（上游返回了 finishReason，但只带
+// thoughtSignature 而没有 text / functionCall），同一请求换账号通常得到相同结果，
+// 因此标记为 RequestScopedTransient：只做请求级同号重试，不对账号做临时封禁。
+//
+// 上游已经返回过可解析数据、但最终没有正文（例如 thinking 吃满输出预算后只剩签名帧）
+// 也属于请求级失败：账号本身可用，换请求/调大输出预算即可恢复，同样不临时封禁账号。
+func (s *antigravityCompatStreamSession) emptyStreamFailoverError() error {
+	if s == nil || s.processor == nil {
+		return antigravityCompatEmptyStreamError()
+	}
+	if s.processor.MalformedFunctionCall() {
+		logger.LegacyPrintf(
+			"service.antigravity_gateway",
+			"MALFORMED_FUNCTION_CALL for model %s: request-scoped failure, retrying without temp-unscheduling the account",
+			s.processor.Model(),
+		)
+		return &UpstreamFailoverError{
+			StatusCode:             http.StatusBadGateway,
+			ResponseBody:           []byte(`{"error":{"code":502,"status":"MALFORMED_FUNCTION_CALL","message":"upstream model returned MALFORMED_FUNCTION_CALL"}}`),
+			RetryableOnSameAccount: true,
+			RequestScopedTransient: true,
+			Scope:                  GatewayFailureScopeRequest,
+			Reason:                 GatewayFailureReason("antigravity_malformed_function_call"),
+		}
+	}
+	if s.processor.SawUpstreamResponse() && (s.processor.SawThinking() || s.processor.LastFinishReason() != "") {
+		reason := "empty_stream"
+		if s.processor.SawThinking() {
+			reason = "thinking_without_content"
+		}
+		logger.LegacyPrintf(
+			"service.antigravity_gateway",
+			"Empty Antigravity compatibility stream for model %s (reason=%s, thinking=%t, finish_reason=%q): request-scoped failure, retrying without temp-unscheduling the account",
+			s.processor.Model(),
+			reason,
+			s.processor.SawThinking(),
+			s.processor.LastFinishReason(),
+		)
+		return &UpstreamFailoverError{
+			StatusCode:             http.StatusBadGateway,
+			ResponseBody:           []byte(`{"error":"empty stream response from upstream"}`),
+			RetryableOnSameAccount: true,
+			RequestScopedTransient: true,
+			Scope:                  GatewayFailureScopeRequest,
+			Reason:                 GatewayFailureReason("antigravity_empty_stream"),
+		}
+	}
+	return antigravityCompatEmptyStreamError()
 }
 
 func (s *AntigravityGatewayService) handleChatCompletionsStreamingFromAntigravity(

@@ -42,15 +42,38 @@ type antigravityCompatRequest struct {
 	includeUsage    bool
 	startTime       time.Time
 	reasoningEffort *string
+	apiKeyID        int64
 }
 
 type antigravityCompatUpstreamCall struct {
-	request      antigravityCompatRequest
-	billingModel string
-	prefix       string
-	proxyURL     string
-	accessToken  string
-	geminiBody   []byte
+	request        antigravityCompatRequest
+	billingModel   string
+	prefix         string
+	proxyURL       string
+	accessToken    string
+	geminiBody     []byte
+	signatureScope antigravity.ThoughtSignatureScope
+}
+
+const antigravityCompatSignatureScopeKey = "antigravity_compat_signature_scope"
+
+func antigravityCompatAPIKeyID(parsed *ParsedRequest) int64 {
+	if parsed == nil || parsed.SessionContext == nil {
+		return 0
+	}
+	return parsed.SessionContext.APIKeyID
+}
+
+func antigravityCompatSignatureScope(c *gin.Context) antigravity.ThoughtSignatureScope {
+	value, _ := c.Get(antigravityCompatSignatureScopeKey)
+	scope, _ := value.(antigravity.ThoughtSignatureScope)
+	return scope
+}
+
+func cacheAntigravityCompatToolSignature(scope antigravity.ThoughtSignatureScope, block *apicompat.AnthropicContentBlock) {
+	if block != nil && block.Type == "tool_use" && strings.TrimSpace(block.ID) != "" {
+		antigravity.CacheToolThoughtSignature(scope, apicompat.ResponsesCallIDToAnthropic(block.ID), block.Signature)
+	}
 }
 
 // ForwardAsChatCompletions 使用 Antigravity 原生 OAuth 账号转发 Chat Completions 请求。
@@ -59,7 +82,7 @@ func (s *AntigravityGatewayService) ForwardAsChatCompletions(
 	c *gin.Context,
 	account *Account,
 	body []byte,
-	_ *ParsedRequest,
+	parsed *ParsedRequest,
 ) (*ForwardResult, error) {
 	if err := s.validateAntigravityCompatAccount(c, account); err != nil {
 		return nil, err
@@ -97,6 +120,7 @@ func (s *AntigravityGatewayService) ForwardAsChatCompletions(
 		includeUsage:    request.StreamOptions != nil && request.StreamOptions.IncludeUsage,
 		startTime:       time.Now(),
 		reasoningEffort: extractCCReasoningEffortFromBody(body),
+		apiKeyID:        antigravityCompatAPIKeyID(parsed),
 	})
 }
 
@@ -106,7 +130,7 @@ func (s *AntigravityGatewayService) ForwardAsResponses(
 	c *gin.Context,
 	account *Account,
 	body []byte,
-	_ *ParsedRequest,
+	parsed *ParsedRequest,
 ) (*ForwardResult, error) {
 	if err := s.validateAntigravityCompatAccount(c, account); err != nil {
 		return nil, err
@@ -138,6 +162,7 @@ func (s *AntigravityGatewayService) ForwardAsResponses(
 		clientStream:    request.Stream,
 		startTime:       time.Now(),
 		reasoningEffort: ExtractResponsesReasoningEffortFromBody(body),
+		apiKeyID:        antigravityCompatAPIKeyID(parsed),
 	})
 }
 
@@ -289,19 +314,24 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 		_ = s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
 		return nil, err
 	}
-	geminiBody, err := s.buildAntigravityCompatGeminiBody(ctx, request.claudeBody, &claudeRequest, projectID, mappedModel)
+	var scope antigravity.ThoughtSignatureScope
+	if strings.HasPrefix(strings.ToLower(mappedModel), "gemini-") {
+		scope = antigravity.ThoughtSignatureScope{APIKeyID: request.apiKeyID, Model: mappedModel}
+	}
+	geminiBody, err := s.buildAntigravityCompatGeminiBody(ctx, request.claudeBody, &claudeRequest, projectID, mappedModel, scope)
 	if err != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Invalid request")
 	}
 
 	request.reasoningEffort = ApplyThinkingEnabledFallback(request.reasoningEffort, request.originalBody, mappedModel)
 	return &antigravityCompatUpstreamCall{
-		request:      request,
-		billingModel: mappedModel,
-		prefix:       logPrefix(getSessionID(c), account.Name),
-		proxyURL:     antigravityCompatProxyURL(account),
-		accessToken:  accessToken,
-		geminiBody:   geminiBody,
+		request:        request,
+		billingModel:   mappedModel,
+		prefix:         logPrefix(getSessionID(c), account.Name),
+		proxyURL:       antigravityCompatProxyURL(account),
+		accessToken:    accessToken,
+		geminiBody:     geminiBody,
+		signatureScope: scope,
 	}, nil
 }
 
@@ -311,9 +341,12 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 	claudeRequest *antigravity.ClaudeRequest,
 	projectID string,
 	mappedModel string,
+	scope antigravity.ThoughtSignatureScope,
 ) ([]byte, error) {
 	if strings.HasPrefix(strings.ToLower(mappedModel), "gemini-") {
-		body, err := convertClaudeMessagesToGeminiGenerateContent(claudeBody, mappedModel)
+		body, err := convertClaudeMessagesToGeminiGenerateContentWithSignatures(claudeBody, mappedModel, func(toolID string) string {
+			return antigravity.LookupToolThoughtSignature(scope, toolID)
+		})
 		if err != nil {
 			return nil, err
 		}
@@ -334,6 +367,7 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 		if cleaned, cleanErr := cleanGeminiRequest(body); cleanErr == nil {
 			body = cleaned
 		}
+		body = applyAntigravityGeminiThinkingConfig(body, claudeBody, mappedModel, claudeRequest != nil && claudeRequest.Stream)
 		return s.wrapV1InternalRequest(projectID, mappedModel, body)
 	}
 
@@ -476,6 +510,7 @@ func (s *AntigravityGatewayService) consumeAntigravityCompatSuccess(
 	call *antigravityCompatUpstreamCall,
 	resp *http.Response,
 ) (*antigravityStreamResult, error) {
+	c.Set(antigravityCompatSignatureScopeKey, call.signatureScope)
 	if call.request.clientStream {
 		if call.request.protocol == antigravityCompatChatCompletions {
 			return s.handleChatCompletionsStreamingFromAntigravity(
@@ -625,6 +660,9 @@ func (s *AntigravityGatewayService) handleChatCompletionsNonStreamingFromAntigra
 	if json.Unmarshal(claudeResponse, &anthropicResponse) != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
 	}
+	for i := range anthropicResponse.Content {
+		cacheAntigravityCompatToolSignature(antigravityCompatSignatureScope(c), &anthropicResponse.Content[i])
+	}
 	responsesResponse := apicompat.AnthropicToResponsesResponse(&anthropicResponse)
 	c.JSON(http.StatusOK, apicompat.ResponsesToChatCompletions(responsesResponse, originalModel))
 	return result, nil
@@ -643,6 +681,9 @@ func (s *AntigravityGatewayService) handleResponsesNonStreamingFromAntigravity(
 	var anthropicResponse apicompat.AnthropicResponse
 	if json.Unmarshal(claudeResponse, &anthropicResponse) != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
+	}
+	for i := range anthropicResponse.Content {
+		cacheAntigravityCompatToolSignature(antigravityCompatSignatureScope(c), &anthropicResponse.Content[i])
 	}
 	c.JSON(http.StatusOK, apicompat.AnthropicToResponsesResponse(&anthropicResponse))
 	return result, nil
