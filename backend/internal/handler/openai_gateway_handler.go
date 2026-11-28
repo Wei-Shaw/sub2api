@@ -2402,11 +2402,12 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 		writeError(http.StatusServiceUnavailable, "api_error", "", "No available accounts")
 		return nil, openAISlotAcquireFailed
 	}
+	slotAccountID, slotMaxConcurrency := h.gatewayService.OpenAIConcurrencyOwner(ctx, account)
 
 	fastReleaseFunc, fastAcquired, err := h.concurrencyHelper.TryAcquireAccountSlot(
 		ctx,
-		account.ID,
-		selection.WaitPlan.MaxConcurrency,
+		slotAccountID,
+		slotMaxConcurrency,
 	)
 	if err != nil {
 		reqLog.Warn("openai.account_slot_quick_acquire_failed", zap.Int64("account_id", account.ID), zap.Error(err))
@@ -2433,7 +2434,7 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 		return wrapReleaseOnDone(ctx, fastReleaseFunc), openAISlotAcquireOK
 	}
 
-	canWait, waitErr := h.concurrencyHelper.IncrementAccountWaitCount(ctx, account.ID, selection.WaitPlan.MaxWaiting)
+	canWait, waitErr := h.concurrencyHelper.IncrementAccountWaitCount(ctx, slotAccountID, selection.WaitPlan.MaxWaiting)
 	if waitErr != nil {
 		reqLog.Warn("openai.account_wait_counter_increment_failed", zap.Int64("account_id", account.ID), zap.Error(waitErr))
 	} else if !canWait {
@@ -2448,7 +2449,7 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 	accountWaitCounted := waitErr == nil && canWait
 	releaseWait := func() {
 		if accountWaitCounted {
-			h.concurrencyHelper.DecrementAccountWaitCount(ctx, account.ID)
+			h.concurrencyHelper.DecrementAccountWaitCount(ctx, slotAccountID)
 			accountWaitCounted = false
 		}
 	}
@@ -2456,8 +2457,8 @@ func (h *OpenAIGatewayHandler) acquireOpenAIAccountSlot(
 
 	accountReleaseFunc, err := h.concurrencyHelper.AcquireAccountSlotWithWaitTimeout(
 		c,
-		account.ID,
-		selection.WaitPlan.MaxConcurrency,
+		slotAccountID,
+		slotMaxConcurrency,
 		selection.WaitPlan.Timeout,
 		reqStream,
 		streamStarted,
