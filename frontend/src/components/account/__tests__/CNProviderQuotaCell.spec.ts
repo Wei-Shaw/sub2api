@@ -46,6 +46,23 @@ describe('CNProviderQuotaCell', () => {
     queryQuota.mockReset()
   })
 
+  it('shows the reset entry only for a bound GLM row and refreshes the visible quota after use', async () => {
+    const wrapper = mount(CNProviderQuotaCell, {
+      props: { account },
+      global: { stubs: { ZhipuResetCardsSettings: { template: '<button data-test="reset-entry" @click="$emit(\'redeemed\')">reset</button>' } } }
+    })
+    expect(wrapper.find('[data-test="reset-entry"]').exists()).toBe(false)
+    await wrapper.setProps({ account: { ...account, zhipu_reset_cards_bound: true } })
+    const entry = wrapper.get('[data-test="reset-entry"]')
+    expect(entry.element.parentElement?.contains(wrapper.get('[data-test="cn-provider-quota-probe"]').element)).toBe(true)
+    queryQuota.mockResolvedValue({ success: true, tiers: [{ window: '5h', used_percent: 3 }] })
+    await entry.trigger('click')
+    await flushPromises()
+    expect(queryQuota).toHaveBeenCalledTimes(1)
+    expect(wrapper.findAllComponents(UsageProgressBar).map(bar => bar.props('utilization'))).toEqual([3])
+    wrapper.unmount()
+  })
+
   it('renders tier rows through the shared UsageProgressBar inside the account table cell', async () => {
     queryQuota.mockResolvedValue({
       success: true,

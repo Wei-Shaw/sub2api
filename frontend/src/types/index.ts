@@ -1268,6 +1268,35 @@ export interface GrokModelDiagnostics {
   mappings: GrokModelDiagnosticItem[]
 }
 
+export interface OpenDesignUsageWindow {
+  remaining_percent: number
+  resets_at?: string
+}
+
+export interface OpenDesignUsageState {
+  workspace_id: string
+  status: 'ok' | 'unauthorized' | 'failed'
+  snapshot?: {
+    fetched_at: string
+    five_hour?: OpenDesignUsageWindow
+    seven_day?: OpenDesignUsageWindow
+    balance_usd?: string
+  }
+}
+
+export interface OpenDesignDevicePrompt {
+  attempt_id: string
+  activate_url: string
+  user_code: string
+  expires_at: string
+  poll_interval: number
+}
+
+export interface OpenDesignDeviceStatus {
+  status: 'pending' | 'bound' | 'expired' | 'rejected'
+  usage?: OpenDesignUsageState
+}
+
 export interface Account {
   id: number
   name: string
@@ -1281,6 +1310,8 @@ export interface Account {
   credentials?: Record<string, unknown>
   credentials_status?: Record<string, boolean>
   ollama_cloud_usage?: OllamaCloudUsageState
+  opendesign_usage?: OpenDesignUsageState
+  zhipu_reset_cards_bound?: boolean
   opencode_go_usage?: OpenCodeGoUsageState
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
   extra?: (CodexUsageSnapshot & OpenAICompactState & {

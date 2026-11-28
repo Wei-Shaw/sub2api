@@ -221,6 +221,22 @@ var providerProfiles = map[string]*ProviderProfile{
 			},
 		},
 	},
+	PlatformOpenDesign: {
+		Platform:         PlatformOpenDesign,
+		DefaultMode:      AccountModePayG,
+		Routing:          ProviderRoutingByInbound,
+		DefaultTestModel: DefaultOpenDesignTestModel,
+		// 套餐只影响 Key 可用的模型和额度，不改变文本端点。
+		Modes: map[string]ProviderEndpoints{
+			AccountModePayG: {
+				BaseURLs: map[string]string{
+					APIProtocolChatCompletions: DefaultOpenDesignBaseURL + "/v1",
+					APIProtocolResponses:       DefaultOpenDesignBaseURL + "/v1",
+					APIProtocolAnthropic:       DefaultOpenDesignBaseURL,
+				},
+			},
+		},
+	},
 }
 
 // LookupProviderProfile 返回 platform 对应的多协议供应商 profile；非此类平台返回 nil。

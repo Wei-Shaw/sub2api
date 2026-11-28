@@ -1319,6 +1319,7 @@ function generateRoutedCodexFiles(
     deepseek: 'deepseek-v4-pro',
     minimax: 'MiniMax-M3',
     opencode_go: 'glm-5.3',
+    opendesign: 'deepseek-v4.1-flash',
     composite: 'gpt-6.1-sol'
   }
   const preferredModel = preferredModels[platform] || ''
@@ -1337,6 +1338,7 @@ function generateRoutedCodexFiles(
     typesafe: 'TypeSafe / Jev',
     command_code: 'Command Code',
     cline: 'Cline',
+    opendesign: 'OpenDesign Cloud',
     composite: 'Composite'
   }
   const label = labels[platform]

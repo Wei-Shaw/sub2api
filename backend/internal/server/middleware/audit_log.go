@@ -111,15 +111,16 @@ func truncateAuditExtraString(value string, limit int) string {
 
 // auditSensitiveReads 需要审计的敏感 GET 读取（method+FullPath → 动作名）。
 var auditSensitiveReads = map[string]string{
-	"GET /api/v1/admin/accounts/data":             "admin.accounts.export",
-	"GET /api/v1/admin/proxies/data":              "admin.proxies.export",
-	"GET /api/v1/admin/redeem-codes/export":       "admin.redeem_codes.export",
-	"GET /api/v1/admin/backups/:id/download-url":  "admin.backups.download",
-	"GET /api/v1/admin/settings/admin-api-key":    "admin.admin_api_key.read",
-	"GET /api/v1/admin/users/:id/api-keys":        "admin.users.api_keys.read",
-	"GET /api/v1/admin/groups/:id/api-keys":       "admin.groups.api_keys.read",
-	"GET /api/v1/admin/backups/s3-config":         "admin.backups.s3_config.read",
-	"GET /api/v1/admin/data-management/s3/config": "admin.data_management.s3_config.read",
+	"GET /api/v1/admin/accounts/data":                  "admin.accounts.export",
+	"GET /api/v1/admin/proxies/data":                   "admin.proxies.export",
+	"GET /api/v1/admin/redeem-codes/export":            "admin.redeem_codes.export",
+	"GET /api/v1/admin/backups/:id/download-url":       "admin.backups.download",
+	"GET /api/v1/admin/settings/admin-api-key":         "admin.admin_api_key.read",
+	"GET /api/v1/admin/users/:id/api-keys":             "admin.users.api_keys.read",
+	"GET /api/v1/admin/groups/:id/api-keys":            "admin.groups.api_keys.read",
+	"GET /api/v1/admin/accounts/:id/zhipu-reset-cards": "admin.accounts.zhipu_reset_cards.read",
+	"GET /api/v1/admin/backups/s3-config":              "admin.backups.s3_config.read",
+	"GET /api/v1/admin/data-management/s3/config":      "admin.data_management.s3_config.read",
 }
 
 // auditActionOverrides 变更类请求的动作名精确映射（未命中时自动推导）。
@@ -144,21 +145,31 @@ var auditActionOverrides = map[string]string{
 	"POST /api/v1/admin/prompt-audit/events/batch-delete":     "admin.prompt_audit.events.batch_delete",
 	"POST /api/v1/admin/prompt-audit/events/delete-preview":   "admin.prompt_audit.events.delete_preview",
 	"POST /api/v1/admin/prompt-audit/events/delete-by-filter": "admin.prompt_audit.events.filter_delete",
+
+	"PUT /api/v1/admin/accounts/:id/opendesign-usage/session":       "admin.accounts.opendesign_usage.bind",
+	"DELETE /api/v1/admin/accounts/:id/opendesign-usage/session":    "admin.accounts.opendesign_usage.unbind",
+	"POST /api/v1/admin/accounts/:id/zhipu-reset-cards/device/poll": "admin.accounts.zhipu_reset_cards.authorize",
+	"DELETE /api/v1/admin/accounts/:id/zhipu-reset-cards/session":   "admin.accounts.zhipu_reset_cards.unbind",
+	"POST /api/v1/admin/accounts/:id/zhipu-reset-cards/claim":       "admin.accounts.zhipu_reset_cards.claim",
+	"POST /api/v1/admin/accounts/:id/zhipu-reset-cards/use":         "admin.accounts.zhipu_reset_cards.use",
 }
 
 // auditBodyOmittedRoutes 请求体几乎整体由凭证构成的路由（如整块粘贴 auth JSON 的导入接口）。
 // 这类 body 的凭证内嵌在普通字符串值里，键级脱敏无法覆盖，整体不入库。
 var auditBodyOmittedRoutes = map[string]struct{}{
-	"POST /api/v1/auth/passkey/login/finish":                    {},
-	"POST /api/v1/user/passkeys/register/finish":                {},
-	"POST /api/v1/admin/accounts/import/codex-session":          {},
-	"PUT /api/v1/admin/accounts/:id/ollama-cloud-usage/session": {},
-	"PUT /api/v1/admin/prompt-audit/config":                     {},
-	"POST /api/v1/admin/prompt-audit/endpoints/probe":           {},
-	"DELETE /api/v1/admin/prompt-audit/events/:id":              {},
-	"POST /api/v1/admin/prompt-audit/events/batch-delete":       {},
-	"POST /api/v1/admin/prompt-audit/events/delete-preview":     {},
-	"POST /api/v1/admin/prompt-audit/events/delete-by-filter":   {},
+	"POST /api/v1/auth/passkey/login/finish":                        {},
+	"POST /api/v1/user/passkeys/register/finish":                    {},
+	"POST /api/v1/admin/accounts/import/codex-session":              {},
+	"PUT /api/v1/admin/accounts/:id/ollama-cloud-usage/session":     {},
+	"PUT /api/v1/admin/accounts/:id/opendesign-usage/session":       {},
+	"POST /api/v1/admin/accounts/:id/opendesign-usage/device/poll":  {},
+	"POST /api/v1/admin/accounts/:id/zhipu-reset-cards/device/poll": {},
+	"PUT /api/v1/admin/prompt-audit/config":                         {},
+	"POST /api/v1/admin/prompt-audit/endpoints/probe":               {},
+	"DELETE /api/v1/admin/prompt-audit/events/:id":                  {},
+	"POST /api/v1/admin/prompt-audit/events/batch-delete":           {},
+	"POST /api/v1/admin/prompt-audit/events/delete-preview":         {},
+	"POST /api/v1/admin/prompt-audit/events/delete-by-filter":       {},
 }
 
 // NewAuditLogMiddleware 创建审计中间件。

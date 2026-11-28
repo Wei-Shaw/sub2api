@@ -47,6 +47,13 @@
         </svg>
         {{ t('admin.accounts.cnProviders.probe') }}
       </button>
+      <ZhipuResetCardsSettings
+        v-if="account.platform === 'zhipu' && account.zhipu_reset_cards_bound"
+        :key="account.id"
+        :account-id="account.id"
+        compact
+        @redeemed="handleProbe(true)"
+      />
     </div>
 
     <div
@@ -67,6 +74,7 @@ import type { CNProviderQuotaProbeResult } from '@/api/admin/cnProviders'
 import type { Account } from '@/types'
 import { cnQuotaCellVisible } from './credentialsBuilder'
 import UsageProgressBar from './UsageProgressBar.vue'
+import ZhipuResetCardsSettings from './ZhipuResetCardsSettings.vue'
 
 const props = defineProps<{
   account: Account
@@ -178,8 +186,8 @@ const windowLabel = (window: string) => {
   return t('admin.accounts.cnProviders.window5h')
 }
 
-const handleProbe = async () => {
-  if (loading.value) return
+const handleProbe = async (afterReset = false) => {
+  if (loading.value && !afterReset) return
   const generation = ++probeGeneration
   const accountID = props.account.id
   loading.value = true
