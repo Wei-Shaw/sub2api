@@ -185,3 +185,42 @@ func TestNormalize_DropsOrphanToolReply(t *testing.T) {
 		require.NotEqualf(t, "tool", m.Role, "orphan tool reply should have been dropped")
 	}
 }
+
+// Golden sample: Gemini / Codex emits an assistant commentary message after a
+// function_call and before its function_call_output in the same turn. Merging
+// it into the preceding assistant tool_calls message keeps tool replies at the
+// tail instead of pushing an assistant message after them (which AI Studio
+// rejects with "Requests ending with a model turn are not supported.").
+func TestGolden_AssistantCommentaryAfterFunctionCall(t *testing.T) {
+	msgs := convertGolden(t, `[
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"check relay"}]},
+		{"type":"reasoning","summary":[{"type":"summary_text","text":"running ssh"}]},
+		{"type":"function_call","call_id":"call_1","name":"exec_command","arguments":"{}"},
+		{"type":"message","role":"assistant","content":[{"type":"output_text","text":"/relay returned 426"}]},
+		{"type":"function_call_output","call_id":"call_1","output":"ok"}
+	]`)
+	assertChatInvariants(t, msgs)
+	require.Equal(t, "tool", msgs[len(msgs)-1].Role)
+	require.Equal(t, "call_1", msgs[len(msgs)-1].ToolCallID)
+	asst := msgs[len(msgs)-2]
+	require.Equal(t, "assistant", asst.Role)
+	require.Len(t, asst.ToolCalls, 1)
+	require.Equal(t, "/relay returned 426", chatMessageContentText(asst.Content))
+	require.Equal(t, "running ssh", asst.ReasoningContent)
+}
+
+func TestGolden_AssistantCommentaryBeforeAndAfterFunctionCall(t *testing.T) {
+	msgs := convertGolden(t, `[
+		{"type":"message","role":"user","content":[{"type":"input_text","text":"check relay"}]},
+		{"type":"message","role":"assistant","content":[{"type":"output_text","text":"before"}]},
+		{"type":"function_call","call_id":"call_1","name":"exec_command","arguments":"{}"},
+		{"type":"message","role":"assistant","content":[{"type":"output_text","text":"after"}]},
+		{"type":"function_call_output","call_id":"call_1","output":"ok"}
+	]`)
+	assertChatInvariants(t, msgs)
+	require.Equal(t, "tool", msgs[len(msgs)-1].Role)
+	asst := msgs[len(msgs)-2]
+	require.Equal(t, "assistant", asst.Role)
+	require.Len(t, asst.ToolCalls, 1)
+	require.Equal(t, "before\n\nafter", chatMessageContentText(asst.Content))
+}

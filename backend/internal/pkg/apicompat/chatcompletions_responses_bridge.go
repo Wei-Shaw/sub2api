@@ -648,10 +648,47 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 			pendingReasoning = ""
 			lastTurnReasoning = ""
 		}
-		messages = append(messages, msg)
+		if role == "assistant" {
+			messages = appendAssistantMessage(messages, msg)
+		} else {
+			messages = append(messages, msg)
+		}
 	}
 
 	return messages, mediaByCallID, nil
+}
+
+// appendAssistantMessage merges consecutive assistant items into one message.
+// Codex can put a commentary message after a function_call but before that
+// call's output. Keeping it separate makes normalizeChatMessagesWithToolOutputMedia
+// move the tool reply ahead of the text and leave an assistant message last,
+// which Gemini AI Studio rejects with "Requests ending with a model turn are
+// not supported."
+func appendAssistantMessage(messages []ChatMessage, msg ChatMessage) []ChatMessage {
+	if len(messages) == 0 || messages[len(messages)-1].Role != "assistant" {
+		return append(messages, msg)
+	}
+
+	prev := &messages[len(messages)-1]
+	if !isBlankChatContent(msg.Content) {
+		if isBlankChatContent(prev.Content) {
+			prev.Content = msg.Content
+		} else {
+			joined, _ := json.Marshal(chatMessageContentText(prev.Content) + "\n\n" + chatMessageContentText(msg.Content))
+			prev.Content = joined
+		}
+	}
+	if len(msg.ToolCalls) > 0 {
+		prev.ToolCalls = append(prev.ToolCalls, msg.ToolCalls...)
+	}
+	if msg.ReasoningContent != "" {
+		if prev.ReasoningContent == "" {
+			prev.ReasoningContent = msg.ReasoningContent
+		} else if prev.ReasoningContent != msg.ReasoningContent {
+			prev.ReasoningContent += "\n\n" + msg.ReasoningContent
+		}
+	}
+	return messages
 }
 
 // AgentMessageText concatenates agent_message text and plaintext encrypted_content
