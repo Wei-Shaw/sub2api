@@ -51,13 +51,14 @@ func TestOpenAICompatibleTextTargetAllowsCompositeProviders(t *testing.T) {
 	}
 }
 
-// WS ingress 对 CN 账号既过不了 transport 过滤、HTTP 桥也没有 Responses 转换，
-// 放行只会把明确的策略拒绝换成 "no available account"，因此 WS 白名单保持 openai+grok。
-func TestResponsesWebSocketCompositePlatformGuardKeepsOpenAIAndGrokOnly(t *testing.T) {
+// Kimi Responses uses the existing HTTP/SSE bridge, while the other listed CN
+// providers still do not expose a compatible Responses transport.
+func TestResponsesWebSocketCompositePlatformGuardIncludesKimi(t *testing.T) {
 	require.True(t, isResponsesWebSocketCompositePlatform(service.PlatformOpenAI))
 	require.True(t, isResponsesWebSocketCompositePlatform(service.PlatformGrok))
+	require.True(t, isResponsesWebSocketCompositePlatform(service.PlatformKimi))
 	for _, platform := range []string{
-		service.PlatformKimi, service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax,
+		service.PlatformZhipu, service.PlatformDeepseek, service.PlatformMiniMax,
 		service.PlatformAnthropic, service.PlatformGemini,
 	} {
 		require.False(t, isResponsesWebSocketCompositePlatform(platform), "platform=%s", platform)
