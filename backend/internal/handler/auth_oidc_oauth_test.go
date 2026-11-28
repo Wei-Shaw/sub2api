@@ -55,6 +55,23 @@ func TestBuildOIDCAuthorizeURLIncludesNonceAndPKCE(t *testing.T) {
 	require.Contains(t, u, "scope=openid+email+profile")
 }
 
+func TestOIDCParseTokenResponseSupportsCamelCaseJSON(t *testing.T) {
+	token, ok := oidcParseTokenResponse(`{
+		"accessToken": "access-token",
+		"refreshToken": "refresh-token",
+		"tokenType": "Bearer",
+		"expiresIn": 7200,
+		"scope": "profile email"
+	}`)
+
+	require.True(t, ok)
+	require.Equal(t, "access-token", token.AccessToken)
+	require.Equal(t, "refresh-token", token.RefreshToken)
+	require.Equal(t, "Bearer", token.TokenType)
+	require.EqualValues(t, 7200, token.ExpiresIn)
+	require.Equal(t, "profile email", token.Scope)
+}
+
 func TestOIDCParseAndValidateIDToken(t *testing.T) {
 	priv, err := rsa.GenerateKey(rand.Reader, 2048)
 	require.NoError(t, err)
