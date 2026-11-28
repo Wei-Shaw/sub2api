@@ -995,7 +995,7 @@ func (s *TokenRefreshService) refreshWithRetryWithRateGate(
 
 		// 不可重试错误（invalid_grant/invalid_client 等）直接标记 error 状态并返回
 		if isNonRetryableRefreshError(err) {
-			errorMsg := "Token refresh failed (non-retryable): " + logredact.RedactText(err.Error())
+			errorMsg := nonRetryableRefreshErrorPrefix + logredact.RedactText(err.Error())
 			isGrokOAuth := account.IsGrokOAuth()
 			if !isGrokOAuth {
 				s.notifyAccountSchedulingBlocked(account, time.Time{}, "token_refresh_non_retryable")
@@ -1413,6 +1413,9 @@ func isSharedProviderRefreshError(err error) bool {
 	}
 	return false
 }
+
+// nonRetryableRefreshErrorPrefix prefixes the account error message of a terminal refresh failure.
+const nonRetryableRefreshErrorPrefix = "Token refresh failed (non-retryable): "
 
 // isNonRetryableRefreshError 判断是否为不可重试的刷新错误
 // 这些错误通常表示凭证已失效或配置确实缺失，需要用户重新授权

@@ -52,6 +52,7 @@ var (
 	errOAuthRefreshAccountRereadFailed = errors.New("oauth refresh account reread failed")
 	errOAuthRefreshAccountStateChanged = errors.New("oauth refresh account state changed")
 	errOAuthRefreshCredentialPersist   = errors.New("oauth refresh credential persistence failed")
+	errOAuthRefreshLockUnavailable     = errors.New("oauth refresh lock is unavailable")
 )
 
 type oauthRefreshRequestPathKey struct{}
@@ -63,6 +64,19 @@ func withOAuthRefreshRequestPath(ctx context.Context) context.Context {
 func isOAuthRefreshRequestPath(ctx context.Context) bool {
 	requestPath, _ := ctx.Value(oauthRefreshRequestPathKey{}).(bool)
 	return requestPath
+}
+
+type oauthRefreshLockRequiredKey struct{}
+
+// withOAuthRefreshLockRequired makes a request-path refresh fail instead of degrading to
+// an unlocked refresh when the distributed lock backend errors.
+func withOAuthRefreshLockRequired(ctx context.Context) context.Context {
+	return context.WithValue(ctx, oauthRefreshLockRequiredKey{}, true)
+}
+
+func isOAuthRefreshLockRequired(ctx context.Context) bool {
+	required, _ := ctx.Value(oauthRefreshLockRequiredKey{}).(bool)
+	return required
 }
 
 type contextMutex struct {
@@ -189,6 +203,7 @@ func (api *OAuthRefreshAPI) RefreshIfNeeded(
 		return nil, errors.New("oauth refresh executor is nil")
 	}
 	requestPath := isOAuthRefreshRequestPath(ctx)
+	lockRequired := isOAuthRefreshLockRequired(ctx)
 	cacheKey := executor.CacheKey(account)
 
 	// 0. 获取进程内互斥锁（防止同一进程内的并发刷新竞争）
@@ -202,6 +217,9 @@ func (api *OAuthRefreshAPI) RefreshIfNeeded(
 	if api.tokenCache != nil {
 		acquired, lockErr := api.tokenCache.AcquireRefreshLock(ctx, cacheKey, api.lockTTL)
 		if lockErr != nil {
+			if lockRequired {
+				return nil, fmt.Errorf("%w: %v", errOAuthRefreshLockUnavailable, lockErr)
+			}
 			// Redis 错误，降级为无锁刷新（进程内互斥锁仍生效）
 			slog.Warn("oauth_refresh_lock_failed_degraded",
 				"account_id", account.ID,
