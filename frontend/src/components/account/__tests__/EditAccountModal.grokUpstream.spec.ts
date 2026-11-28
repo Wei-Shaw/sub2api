@@ -1246,22 +1246,36 @@ describe('EditAccountModal Grok OAuth upstream config', () => {
     await flushPromises()
     expect(wrapper.find('[data-testid="grok-model-settings"]').exists()).toBe(true)
     const editor = wrapper.get('[data-testid="grok-model-mapping-editor"]')
-    expect(editor.text()).toContain('admin.accounts.grokModelDiagnostics.requestColumn')
-    expect(editor.text()).toContain('admin.accounts.grokModelDiagnostics.targetColumn')
+    expect(editor.text()).not.toContain('admin.accounts.grokModelDiagnostics.requestColumn')
+    expect(editor.text()).not.toContain('admin.accounts.grokModelDiagnostics.targetColumn')
+    expect(editor.text()).toContain('admin.accounts.mapRequestModels')
+    expect(editor.find('.bg-purple-50').exists()).toBe(true)
     const from = editor.get('input[placeholder="admin.accounts.requestModel"]')
     const to = editor.get('input[placeholder="admin.accounts.actualModel"]')
     expect(from.attributes('aria-label')).toBeTruthy()
     expect(to.attributes('aria-label')).toBeTruthy()
     expect(from.attributes('maxlength')).toBeUndefined()
     expect(to.attributes('maxlength')).toBeUndefined()
+    expect(from.classes()).toEqual(expect.arrayContaining(['input', 'flex-1']))
+    expect(to.classes()).toEqual(expect.arrayContaining(['input', 'flex-1']))
     expect(translateMock).toHaveBeenCalledWith('admin.accounts.grokModelDiagnostics.mappingFromAria', { index: 1 })
     expect(translateMock).toHaveBeenCalledWith('admin.accounts.grokModelDiagnostics.mappingTargetAria', { index: 1 })
     expect(translateMock).toHaveBeenCalledWith('admin.accounts.grokModelDiagnostics.removeMappingAria', { index: 1 })
-    const remove = editor.get('[data-testid="grok-model-mapping-row"]').findAll('button').at(-1)
-    expect(remove?.classes()).toEqual(expect.arrayContaining(['text-gray-500', 'dark:text-gray-400']))
-    expect(remove?.classes()).not.toContain('text-gray-400')
-    expect(remove?.classes()).not.toContain('text-red-500')
-    await wrapper.get('[data-testid="grok-model-mapping-add"]').trigger('click')
+    const row = editor.get('[data-testid="grok-model-mapping-row"]')
+    expect(row.classes()).toEqual(expect.arrayContaining(['flex', 'items-center', 'gap-2']))
+    expect(row.classes().join(' ')).not.toContain('grid-cols-')
+    const remove = row.findAll('button').at(-1)
+    expect(remove?.classes()).toEqual(expect.arrayContaining(['text-red-500']))
+    expect(remove?.classes()).not.toContain('text-gray-500')
+    const mode = wrapper.get('[data-testid="grok-model-mode-tabs"]')
+      .findAll('button')
+      .find(button => button.text().includes('admin.accounts.modelMapping'))
+    expect(mode?.attributes('aria-pressed')).toBe('true')
+    expect(mode?.classes()).toContain('flex-1')
+    expect(mode?.classes().join(' ')).not.toContain('rounded-xl')
+    const add = wrapper.get('[data-testid="grok-model-mapping-add"]')
+    expect(add.classes()).toEqual(expect.arrayContaining(['w-full', 'border-dashed']))
+    await add.trigger('click')
     expect(wrapper.findAll('[data-testid="grok-model-mapping-row"]')).toHaveLength(2)
     expect(translateMock).toHaveBeenCalledWith('admin.accounts.grokModelDiagnostics.mappingFromAria', { index: 2 })
   })
@@ -1379,7 +1393,7 @@ describe('EditAccountModal Grok OAuth upstream config', () => {
   })
 
   it.each(['oauth', 'apikey'])(
-    'keeps Grok %s diagnostics between the mode tabs and the active editor',
+    'keeps Grok %s diagnostics after the whitelist and mapping editors',
     async type => {
       const account = { ...buildGrokOAuthAccount({ model_mapping: { friendly: 'grok-4.7' } }), type }
       const wrapper = mountLiveSelectorModal(account)
@@ -1388,10 +1402,10 @@ describe('EditAccountModal Grok OAuth upstream config', () => {
       const tabs = settings.get('[data-testid="grok-model-mode-tabs"]')
       const panel = settings.get('[data-testid="grok-model-diagnostics"]')
       const editor = settings.get('[data-testid="grok-model-mapping-editor"]')
-      expect(tabs.element.compareDocumentPosition(panel.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      expect(tabs.element.compareDocumentPosition(editor.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
         Node.DOCUMENT_POSITION_FOLLOWING
       )
-      expect(panel.element.compareDocumentPosition(editor.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      expect(editor.element.compareDocumentPosition(panel.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
         Node.DOCUMENT_POSITION_FOLLOWING
       )
       const mapping = tabs.findAll('button').find(button => button.text().includes('admin.accounts.modelMapping'))
@@ -1405,7 +1419,7 @@ describe('EditAccountModal Grok OAuth upstream config', () => {
       const dirty = settings.get('[data-testid="grok-diagnostics-dirty"]')
       expect(wrapper.findAll('[data-testid="grok-diagnostics-dirty"]')).toHaveLength(1)
       expect(panel.element.contains(dirty.element)).toBe(true)
-      expect(dirty.element.compareDocumentPosition(editor.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      expect(editor.element.compareDocumentPosition(dirty.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
         Node.DOCUMENT_POSITION_FOLLOWING
       )
 
@@ -1416,9 +1430,10 @@ describe('EditAccountModal Grok OAuth upstream config', () => {
       expect(wrapper.find('[data-testid="sync-upstream-models"]').exists()).toBe(false)
       expect(whitelist?.attributes('aria-pressed')).toBe('true')
       expect(mapping?.attributes('aria-pressed')).toBe('false')
-      const fill = settings.findAll('button').find(button => button.text().includes('admin.accounts.fillRelatedModels'))
+      const fill = settings.findAll('button').find(button => button.text().includes('admin.accounts.fillPresetModels'))
       expect(fill).toBeTruthy()
-      expect(panel.element.compareDocumentPosition(fill!.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      expect(settings.findAll('button').find(button => button.text().includes('admin.accounts.fillRelatedModels'))).toBeUndefined()
+      expect(fill!.element.compareDocumentPosition(panel.element) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
         Node.DOCUMENT_POSITION_FOLLOWING
       )
     }
@@ -1442,7 +1457,7 @@ describe('EditAccountModal Grok OAuth upstream config', () => {
       const selector = wrapper.getComponent({ name: 'ModelWhitelistSelector' })
       expect(selector.props('modelValue')).toEqual(['listed-model'])
 
-      await wrapper.findAll('button').find(button => button.text().includes('admin.accounts.fillRelatedModels'))!.trigger('click')
+      await wrapper.findAll('button').find(button => button.text().includes('admin.accounts.fillPresetModels'))!.trigger('click')
       const filled = selector.props('modelValue') as string[]
       expect(filled).toContain('listed-model')
       expect(filled.length).toBeGreaterThan(1)
