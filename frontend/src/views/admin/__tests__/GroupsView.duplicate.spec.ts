@@ -231,7 +231,7 @@ describe('GroupsView duplicate action', () => {
     wrapper.unmount()
   })
 
-  it('hides advanced group actions in simple mode', async () => {
+  it('keeps Composite routes available and hides billing actions in simple mode', async () => {
     authState.isSimpleMode = true
     const compositeGroup = { ...sourceGroup, platform: 'composite' }
     listGroups.mockResolvedValueOnce({ items: [compositeGroup], total: 1, page: 1, page_size: 20, pages: 1 })
@@ -239,7 +239,7 @@ describe('GroupsView duplicate action', () => {
     await flushPromises()
 
     expect(wrapper.find('[data-testid="group-duplicate"]').exists()).toBe(false)
-    expect(wrapper.find('[data-testid="group-composite-routes"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="group-composite-routes"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="group-rate-multipliers"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="group-rpm-overrides"]').exists()).toBe(false)
     wrapper.unmount()
