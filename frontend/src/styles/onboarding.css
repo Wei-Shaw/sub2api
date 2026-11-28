@@ -104,6 +104,8 @@
   display: flex !important;
   align-items: center !important;
   justify-content: space-between !important; /* Push Left and Right apart */
+  flex-wrap: wrap !important; /* Wrap to next line when content overflows (e.g. English) */
+  gap: 8px 0 !important;
   padding: 16px 24px !important;
   background-color: #f9fafb !important;
   border-top: 1px solid #f3f4f6 !important;
@@ -126,6 +128,7 @@
   display: flex !important;
   align-items: center !important;
   gap: 8px !important;
+  margin-left: auto !important; /* Stay right-aligned when wrapped to next line */
 }
 
 /* Progress */
