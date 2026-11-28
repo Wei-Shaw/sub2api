@@ -12,7 +12,7 @@ import (
 )
 
 func TestGLMReasoningEffortPolicyPreservesNoneAndMinimal(t *testing.T) {
-	for _, model := range []string{"glm-5.2", "glm-5.3"} {
+	for _, model := range []string{"glm-5.2", "glm-5.3", "glm-5.4"} {
 		for _, field := range []string{`"reasoning":{"effort":"%s"}`, `"reasoning_effort":"%s"`} {
 			for _, effort := range []string{"none", "minimal"} {
 				for _, ceiling := range []string{"minimal", "low"} {

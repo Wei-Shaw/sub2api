@@ -87,6 +87,15 @@ describe('useModelWhitelist', () => {
     expect(models).not.toContain('gpt-5.2-codex')
   })
 
+  it('zhipu 模型列表包含 GLM-5.4', () => {
+    const models = getModelsByPlatform('zhipu')
+
+    expect(models).toContain('glm-5.4')
+    expect(models).toContain('glm-5.3')
+    expect(models).toContain('glm-5.3-flash')
+    expect(models).toContain('glm-5.2')
+  })
+
   it('antigravity 模型列表包含图片模型兼容项', () => {
     const models = getModelsByPlatform('antigravity')
 
