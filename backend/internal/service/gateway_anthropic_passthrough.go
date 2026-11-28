@@ -85,6 +85,9 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	// passback-required third-party upstreams such as GLM/Kimi/DeepSeek,
 	// which reject server_tool_use with 400). input.RequestModel 已是映射后的模型 ID。
 	input.Body = FilterWebSearchHistoryBlocks(input.Body, input.RequestModel)
+	// 上游 Anthropic 兼容端点不接受 inline-tools beta 的 tool_definition
+	// 内容块（DeepSeek 等仅支持 tool_reference），剥离以通过反序列化。
+	input.Body = FilterInlineToolDefinitionBlocks(input.Body)
 	if input.Parsed != nil {
 		// 透传分支也会改写实际 wire body，成功 usage hash 依赖这里同步当前 body。
 		if err := input.Parsed.ReplaceBody(input.Body); err != nil {

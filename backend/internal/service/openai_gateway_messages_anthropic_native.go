@@ -77,6 +77,9 @@ func (s *OpenAIGatewayService) forwardAnthropicViaNativeAnthropicEndpoint(
 	// 无法接受的 web-search 历史块（GLM/Kimi/DeepSeek 对 server_tool_use 400）。
 	body = StripEmptyTextBlocks(body)
 	body = FilterWebSearchHistoryBlocks(body, upstreamModel)
+	// 上游 Anthropic 兼容端点不接受 inline-tools beta 的 tool_definition
+	// 内容块（DeepSeek 等仅支持 tool_reference），剥离以通过反序列化。
+	body = FilterInlineToolDefinitionBlocks(body)
 
 	// thinking 模式下 DeepSeek 要求工具续接历史回传 thinking 块；缺失时上游
 	// 自动恢复失败会返回 400。仅对 DeepSeek 官方账号、thinking 启用时生效。
