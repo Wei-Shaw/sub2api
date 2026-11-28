@@ -1441,6 +1441,33 @@ func extractOpenAIRequestMetaFromBody(body []byte) (model string, stream bool, p
 	return view.Model, view.Stream, view.PromptCacheKey
 }
 
+// hasCodexDeveloperPrefix matches the base-instruction shape emitted by Codex.
+// Responses Lite may put tool declarations in front of the first message.
+func hasCodexDeveloperPrefix(body []byte) bool {
+	input := gjson.GetBytes(body, "input")
+	if !input.IsArray() {
+		return false
+	}
+	found := false
+	input.ForEach(func(_, item gjson.Result) bool {
+		if item.Get("role").String() != "developer" {
+			return false
+		}
+		switch item.Get("type").String() {
+		case "additional_tools":
+			return item.Get("tools").IsArray()
+		case "message":
+			content := item.Get("content")
+			if content.IsArray() && content.Get("#").Int() == 1 && content.Get("0.type").String() == "input_text" {
+				text := content.Get("0.text")
+				found = text.Type == gjson.String && strings.TrimSpace(text.String()) != ""
+			}
+		}
+		return false
+	})
+	return found
+}
+
 func normalizeOpenAIOAuthResponsesCompatibilityFields(reqBody map[string]any) bool {
 	if reqBody == nil {
 		return false

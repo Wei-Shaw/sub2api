@@ -411,7 +411,12 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 	instructions := gjson.GetBytes(body, "instructions")
 	instructionsEmpty := !instructions.Exists() || instructions.Type != gjson.String || strings.TrimSpace(instructions.String()) == ""
-	if instructionsEmpty && account.UsesOpenAICodexProtocol() && !compatMessagesBridge && !nativeCNResponses {
+	// Codex sends its base instructions in input, not in the top-level field.
+	// Apply the same decision to both default-injection passes.
+	preserveCodexPrefix := instructionsEmpty && (!instructions.Exists() || instructions.Type == gjson.String) &&
+		isCodexCLI && account.IsOpenAIOAuth() && GetOpenAIClientTransport(c) == OpenAIClientTransportHTTP &&
+		!isCompactRequest && !compatMessagesBridge && !nativeCNResponses && hasCodexDeveloperPrefix(body)
+	if instructionsEmpty && !preserveCodexPrefix && account.UsesOpenAICodexProtocol() && !compatMessagesBridge && !nativeCNResponses {
 		markPatchSet("instructions", defaultCodexSynthInstructions(upstreamModel))
 	}
 	if billingModel != requestedModel {
@@ -547,6 +552,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 			codexResult = applyCodexOAuthTransformWithOptions(decoded, codexOAuthTransformOptions{
 				IsCodexCLI:                          isCodexCLI,
 				IsCompact:                           isCompactRequest,
+				SkipDefaultInstructions:             preserveCodexPrefix,
 				OmitPromotedSystemMessagesFromInput: omitPromotedSystemMessages,
 				ResponsesLite:                       responsesLite,
 			})
