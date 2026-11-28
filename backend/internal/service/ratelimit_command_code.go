@@ -121,7 +121,7 @@ func (s *RateLimitService) handleCommandCodeUsageError(
 		if msg := strings.TrimSpace(upstreamMsg); msg != "" {
 			reason += ": " + msg
 		}
-		s.notifyAccountSchedulingBlocked(account, *until, commandCodeUsageLimitReason)
+		s.notifyAccountSchedulingBlocked(ctx, account, *until, commandCodeUsageLimitReason)
 		if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, *until, reason); err != nil {
 			slog.Warn("command_code_usage_limit_set_failed", "account_id", account.ID, "error", err)
 			return false, false
@@ -165,7 +165,7 @@ func (s *RateLimitService) handleCommandCodeSpendLimit(ctx context.Context, acco
 	if reset != nil && reset.Before(until) {
 		until = *reset
 	}
-	s.notifyAccountSchedulingBlocked(account, until, commandCodeSpendLimitReason)
+	s.notifyAccountSchedulingBlocked(ctx, account, until, commandCodeSpendLimitReason)
 	if err := s.accountRepo.SetTempUnschedulable(ctx, account.ID, until, commandCodeSpendLimitReason); err != nil {
 		slog.Warn("command_code_spend_limit_set_failed", "account_id", account.ID, "error", err)
 	}

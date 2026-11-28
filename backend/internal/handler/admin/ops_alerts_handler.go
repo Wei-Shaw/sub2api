@@ -33,6 +33,8 @@ var validOpsAlertMetricTypes = []string{
 	"overload_account_count",
 	"proxy_expired_count",
 	"proxy_expiring_soon_count",
+	"account_failure_rate_1h",
+	"account_expiring_soon_count",
 }
 
 var validOpsAlertMetricTypeSet = func() map[string]struct{} {
@@ -95,7 +97,8 @@ func isPercentOrRateMetric(metricType string) bool {
 		"memory_usage_percent",
 		"group_available_ratio",
 		"group_rate_limit_ratio",
-		"account_error_ratio":
+		"account_error_ratio",
+		"account_failure_rate_1h":
 		return true
 	default:
 		return false
