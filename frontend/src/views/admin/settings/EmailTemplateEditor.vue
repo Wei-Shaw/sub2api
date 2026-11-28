@@ -232,6 +232,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { isRuLocale, ruInline } from "@/i18n/ruInlineText";
 import { adminAPI } from "@/api";
 import type {
   EmailTemplateEventOption,
@@ -336,6 +337,7 @@ interface EventDisplayMeta {
 }
 
 function localText(zh: string, en: string): string {
+  if (isRuLocale(locale.value)) return ruInline(en);
   return locale.value.toLowerCase().startsWith("zh") ? zh : en;
 }
 
@@ -472,12 +474,25 @@ function normalizeEventOption(option: EmailTemplateEventOption): EmailTemplateOp
   return option;
 }
 
+const eventDisplayMetaRu: Record<string, EventDisplayMeta> = Object.fromEntries(
+  Object.entries(eventDisplayMetaEn).map(([key, meta]) => [
+    key,
+    {
+      label: ruInline(meta.label),
+      timing: ruInline(meta.timing),
+      categoryLabel: ruInline(meta.categoryLabel),
+    },
+  ]),
+);
+
 function eventMetaFor(option?: EmailTemplateOption | null) {
   if (!option) return null;
   const displayMeta = (
-    locale.value.toLowerCase().startsWith("zh")
-      ? eventDisplayMeta
-      : eventDisplayMetaEn
+    isRuLocale(locale.value)
+      ? eventDisplayMetaRu
+      : locale.value.toLowerCase().startsWith("zh")
+        ? eventDisplayMeta
+        : eventDisplayMetaEn
   )[option.value];
   const label = displayMeta?.label || option.label || option.value;
   const timing = displayMeta?.timing || option.description || "";
