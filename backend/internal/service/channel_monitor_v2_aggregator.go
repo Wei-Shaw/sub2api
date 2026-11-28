@@ -18,8 +18,11 @@ const (
 	// First tick after upgrade prioritizes the default 90m view (with small padding).
 	channelMonitorV2BootstrapFirst = 2 * time.Hour
 	// Always refresh a small trailing window so late writes land without
-	// re-aggregating large history every tick.
-	channelMonitorV2RecentOverlap = 10 * time.Minute
+	// re-aggregating large history every tick. A usage_logs row can land up to ~645 s after
+	// created_at (15 s billing timeout, plus the best-effort writer's 600 s retry budget, one
+	// 20 s backoff and one 10 s attempt); adding the longest refresh interval (300 s) and the
+	// minute truncation (60 s) gives ~1005 s, rounded up to 17 min.
+	channelMonitorV2RecentOverlap = 17 * time.Minute
 
 	// Gentle backfill: small adaptive chunks, never default 24h hammering.
 	// Initial historical chunk after the 2h seed.

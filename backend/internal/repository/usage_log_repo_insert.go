@@ -3,9 +3,13 @@ package repository
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"math/rand/v2"
+	"net"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -14,6 +18,8 @@ import (
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/lib/pq"
+	"go.uber.org/zap"
 )
 
 // usageLogInsertArgTypes must stay in the same order as:
@@ -100,7 +106,49 @@ const (
 	usageLogBestEffortBatchWindow   = 20 * time.Millisecond
 	usageLogBestEffortBatchQueueCap = 32768
 	usageLogBestEffortRecentTTL     = 30 * time.Second
+
+	// Deadline of each write attempt; same as the old single batch/statement deadline.
+	usageLogWriteAttemptTimeout = 10 * time.Second
+	// Backoff is "full jitter" (random(0, min(max, base * 2^retry))) with the base and cap of
+	// the AWS SDK standard retry mode for transient errors.
+	usageLogWriteRetryBaseDelay = 50 * time.Millisecond
+	usageLogWriteRetryMaxDelay  = 20 * time.Second
+	// A row is retried for at most this long after it was handed to the writer. It has to
+	// outlast multi-minute write stalls (for example a long-held lock or a storage pause);
+	// rows wait in memory meanwhile. The retry queue holds at most usageLogBestEffortBatchQueueCap
+	// rows; when it is full the writer stops taking new rows from the queue until it drains.
+	usageLogWriteRetryBudget = 10 * time.Minute
 )
+
+// usageLogWriteRetry holds the retry parameters of the best-effort writer for transient errors.
+// Tests shrink them.
+type usageLogWriteRetry struct {
+	attemptTimeout time.Duration
+	baseDelay      time.Duration
+	maxDelay       time.Duration
+	budget         time.Duration
+}
+
+var defaultUsageLogWriteRetry = usageLogWriteRetry{
+	attemptTimeout: usageLogWriteAttemptTimeout,
+	baseDelay:      usageLogWriteRetryBaseDelay,
+	maxDelay:       usageLogWriteRetryMaxDelay,
+	budget:         usageLogWriteRetryBudget,
+}
+
+// delay returns the wait before retry number retry (from 0): uniform in [0, min(maxDelay, baseDelay*2^retry)].
+func (p usageLogWriteRetry) delay(retry int) time.Duration {
+	ceiling := p.maxDelay
+	if retry < 32 { // a larger shift only passes maxDelay and may overflow
+		if d := p.baseDelay << retry; d > 0 && d < ceiling {
+			ceiling = d
+		}
+	}
+	if ceiling <= 0 {
+		return 0
+	}
+	return rand.N(ceiling + 1)
+}
 
 type usageLogCreateRequest struct {
 	log      *service.UsageLog
@@ -117,6 +165,12 @@ type usageLogCreateResult struct {
 type usageLogBestEffortRequest struct {
 	prepared usageLogInsertPrepared
 	apiKeyID int64
+	// A failure after deadline is the last one: the row is abandoned and counted as lost.
+	deadline time.Time
+	// attempt is the number of retries scheduled so far and due is when the next one starts; both
+	// are only used while the row waits in the retry queue.
+	attempt  int
+	due      time.Time
 	resultCh chan error
 }
 
@@ -191,6 +245,7 @@ func (r *usageLogRepository) CreateBestEffort(ctx context.Context, log *service.
 	req := usageLogBestEffortRequest{
 		prepared: prepareUsageLogInsert(log),
 		apiKeyID: log.APIKeyID,
+		deadline: time.Now().Add(r.bestEffortRetry.budget),
 		resultCh: make(chan error, 1),
 	}
 	if key, ok := r.bestEffortRecentKey(req.prepared.requestID, req.apiKeyID); ok {
@@ -201,18 +256,22 @@ func (r *usageLogRepository) CreateBestEffort(ctx context.Context, log *service.
 
 	// 队列满时阻塞等待而非立即丢弃：批处理器持续排空队列，短暂等待即可入队。
 	// 立即丢弃会造成“已扣费但无 usage_log”的永久数据缺口（issue #3656）；
-	// 阻塞上限由调用方 ctx 期限约束，超时后由上层同步兜底。
+	// 阻塞上限由调用方 ctx 期限约束，到期仍入不了队就记为丢失。
 	select {
 	case r.bestEffortBatchCh <- req:
 	case <-ctx.Done():
-		return service.MarkUsageLogCreateDropped(ctx.Err())
+		err := service.MarkUsageLogCreateDropped(ctx.Err())
+		r.recordUsageLogLost(req.prepared.requestID, req.apiKeyID, "queue_full", err)
+		return err
 	}
 
+	// Once queued, the row belongs to the batcher: when the caller's ctx expires it just stops
+	// waiting, and the row stays queued and is retried until it is stored or its retry budget is used up.
 	select {
 	case err := <-req.resultCh:
 		return err
 	case <-ctx.Done():
-		return service.MarkUsageLogCreateDropped(ctx.Err())
+		return nil
 	}
 }
 
@@ -382,6 +441,7 @@ func (r *usageLogRepository) ensureBestEffortBatcher() {
 	r.bestEffortBatchOnce.Do(func() {
 		if r.bestEffortBatchCh == nil {
 			r.bestEffortBatchCh = make(chan usageLogBestEffortRequest, usageLogBestEffortBatchQueueCap)
+			r.bestEffortRetries = newUsageLogRetryQueue()
 			go r.runBestEffortBatcher(r.db)
 		}
 	})
@@ -421,38 +481,71 @@ func (r *usageLogRepository) runCreateBatcher(db *sql.DB) {
 	}
 }
 
+// runBestEffortBatcher writes the rows of the queue in batches. Rows that fail with a transient error
+// are handed to the retry queue, which runBestEffortRetrier works off on a per-row backoff schedule
+// with a connection of its own, so a row that keeps failing never delays the rows that arrive later.
 func (r *usageLogRepository) runBestEffortBatcher(db *sql.DB) {
+	retries := r.bestEffortRetries
+	go r.runBestEffortRetrier(db, retries)
+	defer close(retries.done)
 	for {
+		retries.waitBelow(usageLogBestEffortBatchQueueCap)
 		first, ok := <-r.bestEffortBatchCh
 		if !ok {
 			return
 		}
-
-		batch := make([]usageLogBestEffortRequest, 0, usageLogBestEffortBatchMaxSize)
-		batch = append(batch, first)
-
-		timer := time.NewTimer(usageLogBestEffortBatchWindow)
-	bestEffortLoop:
-		for len(batch) < usageLogBestEffortBatchMaxSize {
-			select {
-			case req, ok := <-r.bestEffortBatchCh:
-				if !ok {
-					break bestEffortLoop
-				}
-				batch = append(batch, req)
-			case <-timer.C:
-				break bestEffortLoop
-			}
-		}
-		if !timer.Stop() {
-			select {
-			case <-timer.C:
-			default:
-			}
-		}
-
-		r.flushBestEffortBatch(db, batch)
+		batch := r.collectBestEffortBatch(append(make([]usageLogBestEffortRequest, 0, usageLogBestEffortBatchMaxSize), first))
+		retries.schedule(r.bestEffortRetry, r.flushBestEffortBatch(db, batch))
 	}
+}
+
+// runBestEffortRetrier retries the rows of the retry queue as they come due.
+func (r *usageLogRepository) runBestEffortRetrier(db *sql.DB, retries *usageLogRetryQueue) {
+	for {
+		batch, next := retries.takeDue(usageLogBestEffortBatchMaxSize)
+		if len(batch) > 0 {
+			retries.schedule(r.bestEffortRetry, r.flushBestEffortBatch(db, batch))
+			continue
+		}
+		var timer *time.Timer
+		var timeout <-chan time.Time
+		if !next.IsZero() {
+			timer = time.NewTimer(time.Until(next))
+			timeout = timer.C
+		}
+		stopped := false
+		select {
+		case <-retries.wake:
+		case <-timeout:
+		case <-retries.done:
+			stopped = true
+		}
+		if timer != nil {
+			timer.Stop()
+		}
+		if stopped {
+			return
+		}
+	}
+}
+
+// collectBestEffortBatch tops the batch up from the queue to the batch size limit, waiting at most
+// usageLogBestEffortBatchWindow for more rows.
+func (r *usageLogRepository) collectBestEffortBatch(batch []usageLogBestEffortRequest) []usageLogBestEffortRequest {
+	timer := time.NewTimer(usageLogBestEffortBatchWindow)
+	defer timer.Stop()
+	for len(batch) < usageLogBestEffortBatchMaxSize {
+		select {
+		case req, ok := <-r.bestEffortBatchCh:
+			if !ok {
+				return batch
+			}
+			batch = append(batch, req)
+		case <-timer.C:
+			return batch
+		}
+	}
+	return batch
 }
 
 func (r *usageLogRepository) flushCreateBatch(db *sql.DB, batch []usageLogCreateRequest) {
@@ -563,20 +656,23 @@ func (r *usageLogRepository) flushCreateBatch(db *sql.DB, batch []usageLogCreate
 	}
 }
 
-func (r *usageLogRepository) flushBestEffortBatch(db *sql.DB, batch []usageLogBestEffortRequest) {
+type usageLogBestEffortGroup struct {
+	prepared usageLogInsertPrepared
+	apiKeyID int64
+	key      string
+	reqs     []usageLogBestEffortRequest
+}
+
+// flushBestEffortBatch writes a batch and returns the rows to retry: those that were not written
+// because of a transient error and are still inside their retry budget. All other rows are finished
+// here: stored rows get nil, abandoned rows are counted as lost once and get a dropped error.
+func (r *usageLogRepository) flushBestEffortBatch(db *sql.DB, batch []usageLogBestEffortRequest) []usageLogBestEffortRequest {
 	if len(batch) == 0 {
-		return
+		return nil
 	}
 
-	type bestEffortGroup struct {
-		prepared usageLogInsertPrepared
-		apiKeyID int64
-		key      string
-		reqs     []usageLogBestEffortRequest
-	}
-
-	groupsByKey := make(map[string]*bestEffortGroup, len(batch))
-	groupOrder := make([]*bestEffortGroup, 0, len(batch))
+	groupsByKey := make(map[string]*usageLogBestEffortGroup, len(batch))
+	groupOrder := make([]*usageLogBestEffortGroup, 0, len(batch))
 	preparedList := make([]usageLogInsertPrepared, 0, len(batch))
 
 	for idx, req := range batch {
@@ -587,7 +683,7 @@ func (r *usageLogRepository) flushBestEffortBatch(db *sql.DB, batch []usageLogBe
 		}
 		group, exists := groupsByKey[key]
 		if !exists {
-			group = &bestEffortGroup{
+			group = &usageLogBestEffortGroup{
 				prepared: prepared,
 				apiKeyID: req.apiKeyID,
 				key:      key,
@@ -599,40 +695,145 @@ func (r *usageLogRepository) flushBestEffortBatch(db *sql.DB, batch []usageLogBe
 		group.reqs = append(group.reqs, req)
 	}
 
-	if len(preparedList) == 0 {
-		for _, req := range batch {
-			sendUsageLogBestEffortResult(req.resultCh, nil)
-		}
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
 	query, args := buildUsageLogBestEffortInsertQuery(preparedList)
-	if _, err := db.ExecContext(ctx, query, args...); err != nil {
-		logger.LegacyPrintf("repository.usage_log", "best-effort batch insert failed: %v", err)
+	err := r.bestEffortAttempt(func(ctx context.Context) error {
+		_, err := db.ExecContext(ctx, query, args...)
+		return err
+	})
+	if err == nil {
 		for _, group := range groupOrder {
-			singleErr := execUsageLogInsertNoResult(ctx, db, group.prepared)
-			if singleErr != nil {
-				logger.LegacyPrintf("repository.usage_log", "best-effort single fallback insert failed: %v", singleErr)
-			} else if group.prepared.requestID != "" && r != nil && r.bestEffortRecent != nil {
-				r.bestEffortRecent.SetDefault(group.key, struct{}{})
-			}
-			for _, req := range group.reqs {
-				sendUsageLogBestEffortResult(req.resultCh, singleErr)
-			}
+			r.completeBestEffortGroup(group, nil)
 		}
-		return
+		return nil
 	}
-	for _, group := range groupOrder {
-		if group.prepared.requestID != "" && r != nil && r.bestEffortRecent != nil {
-			r.bestEffortRecent.SetDefault(group.key, struct{}{})
-		}
-		for _, req := range group.reqs {
-			sendUsageLogBestEffortResult(req.resultCh, nil)
+	if len(groupOrder) == 1 && isTransientUsageLogWriteError(err) {
+		logUsageLogInsertRetry("batch", 1, err)
+		return r.retainBestEffortGroups(groupOrder, err)
+	}
+
+	// A failed batch is written one row at a time, as before: the error may come from individual rows
+	// or from the size of the batch, and the other rows must still land.
+	logger.L().With(
+		zap.String("component", "repository.usage_log"),
+		zap.Int("rows", len(groupOrder)),
+		zap.Error(err),
+	).Warn("usage_log.batch_insert_split")
+	for idx, group := range groupOrder {
+		singleErr := r.bestEffortAttempt(func(ctx context.Context) error {
+			return execUsageLogInsertNoResult(ctx, db, group.prepared)
+		})
+		switch {
+		case singleErr == nil:
+			r.completeBestEffortGroup(group, nil)
+		case isTransientUsageLogWriteError(singleErr):
+			// Stop at the first transient failure: if the DB is down, every further row would wait out
+			// the full attempt timeout. The rows not tried yet go first in the next round and this row
+			// goes last, so a row that keeps failing does not hold up the others.
+			retry := make([]*usageLogBestEffortGroup, 0, len(groupOrder)-idx)
+			retry = append(retry, groupOrder[idx+1:]...)
+			retry = append(retry, group)
+			logUsageLogInsertRetry("single", len(retry), singleErr)
+			return r.retainBestEffortGroups(retry, singleErr)
+		default:
+			r.abandonBestEffortGroup(group, "permanent_error", singleErr)
 		}
 	}
+	return nil
+}
+
+// bestEffortAttempt runs one write attempt; every attempt has its own deadline.
+func (r *usageLogRepository) bestEffortAttempt(write func(ctx context.Context) error) error {
+	ctx, cancel := context.WithTimeout(context.Background(), r.bestEffortRetry.attemptTimeout)
+	defer cancel()
+	return write(ctx)
+}
+
+// retainBestEffortGroups returns the rows still inside their retry budget; for the others this
+// failure is the last one and they are counted as lost.
+func (r *usageLogRepository) retainBestEffortGroups(groups []*usageLogBestEffortGroup, err error) []usageLogBestEffortRequest {
+	now := time.Now()
+	var retained []usageLogBestEffortRequest
+	for _, group := range groups {
+		if !now.Before(group.reqs[0].deadline) {
+			r.abandonBestEffortGroup(group, "retry_budget_exhausted", err)
+			continue
+		}
+		retained = append(retained, group.reqs...)
+	}
+	return retained
+}
+
+func (r *usageLogRepository) completeBestEffortGroup(group *usageLogBestEffortGroup, err error) {
+	if err == nil && group.prepared.requestID != "" && r.bestEffortRecent != nil {
+		r.bestEffortRecent.SetDefault(group.key, struct{}{})
+	}
+	for _, req := range group.reqs {
+		sendUsageLogBestEffortResult(req.resultCh, err)
+	}
+}
+
+func (r *usageLogRepository) abandonBestEffortGroup(group *usageLogBestEffortGroup, reason string, err error) {
+	dropped := service.MarkUsageLogCreateDropped(err)
+	r.recordUsageLogLost(group.prepared.requestID, group.apiKeyID, reason, dropped)
+	r.completeBestEffortGroup(group, dropped)
+}
+
+// logUsageLogInsertRetry logs an attempt that failed with a transient error and will be retried.
+// No row is lost yet, hence WARN.
+func logUsageLogInsertRetry(stage string, rows int, err error) {
+	logger.L().With(
+		zap.String("component", "repository.usage_log"),
+		zap.String("stage", stage),
+		zap.Int("rows", rows),
+		zap.Error(err),
+	).Warn("usage_log.insert_retry_scheduled")
+}
+
+// recordUsageLogLost is the only exit for an abandoned row: it counts the row once and logs the
+// request_id and the running total so the row can be reconciled later.
+func (r *usageLogRepository) recordUsageLogLost(requestID string, apiKeyID int64, reason string, err error) {
+	total := r.bestEffortLost.Add(1)
+	logger.L().With(
+		zap.String("component", "repository.usage_log"),
+		zap.String("reason", reason),
+		zap.String("request_id", requestID),
+		zap.Int64("api_key_id", apiKeyID),
+		zap.Uint64("lost_total", total),
+		zap.Error(err),
+	).Error("usage_log.lost")
+}
+
+// isTransientUsageLogWriteError reports whether the failure is only because the DB temporarily does
+// not accept writes: timeouts, lost connections, cancelled lock waits. Other errors (constraint
+// violations, bad data, schema mismatch) will not succeed on retry and are treated as permanent.
+func isTransientUsageLogWriteError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) ||
+		errors.Is(err, driver.ErrBadConn) || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		switch pqErr.Code.Class() {
+		case "08", // connection_exception
+			"40": // transaction_rollback: serialization_failure, deadlock_detected
+			return true
+		}
+		switch pqErr.Code {
+		case "57014", // query_canceled: sent by the driver when an attempt expires, also reported by a statement waiting on a lock
+			"57P01", // admin_shutdown
+			"57P02", // crash_shutdown
+			"57P03", // cannot_connect_now
+			"55P03", // lock_not_available
+			"53300": // too_many_connections
+			return true
+		}
+		return false
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr)
 }
 
 func sendUsageLogBestEffortResult(ch chan error, err error) {
