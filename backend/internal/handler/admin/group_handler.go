@@ -28,13 +28,25 @@ type GroupHandler struct {
 	cfg                  *config.Config
 }
 
-// GetLiveCapability 返回当前服务端是否具备生成 Live attestation 的运行环境。
+// GetLiveCapability reports local prerequisites for the selected authentication
+// mode. It does not contact the upstream or verify an account's Live entitlement.
 func (h *GroupHandler) GetLiveCapability(c *gin.Context) {
 	if h.rejectUnsupportedSimpleModeOperation(c, "live_capability") {
 		return
 	}
-	err := liveattestation.NewProvider().Check(c.Request.Context())
-	result := gin.H{"supported": err == nil}
+	var liveConfig config.GatewayLiveConfig
+	if h.cfg != nil {
+		liveConfig = h.cfg.Gateway.Live
+	}
+	mode, err := liveConfig.EffectiveUpstreamAuthMode()
+	if err == nil && mode == config.LiveUpstreamAuthModeDeviceCheck {
+		err = liveattestation.NewProvider().Check(c.Request.Context())
+	}
+	result := gin.H{"supported": err == nil, "upstream_auth_mode": mode}
+	if mode == config.LiveUpstreamAuthModeCodexOAuth {
+		result["experimental"] = true
+		result["upstream_verified"] = false
+	}
 	if err != nil {
 		result["reason"] = err.Error()
 	}
