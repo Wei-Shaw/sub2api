@@ -10,6 +10,26 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestOpsForwardedTerminalFailure_PrefersFirstResponseFailed(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	SetOpsForwardedTerminalFailure(c, "error", []byte("first error"))
+	SetOpsForwardedTerminalFailure(c, "error", []byte("later error"))
+	terminal, ok := GetOpsForwardedTerminalFailure(c)
+	require.True(t, ok)
+	require.Equal(t, "error", terminal.EventType)
+	require.Equal(t, "first error", string(terminal.Payload))
+
+	payload := []byte("first response.failed")
+	SetOpsForwardedTerminalFailure(c, "response.failed", payload)
+	payload[0] = 'X'
+	SetOpsForwardedTerminalFailure(c, "response.failed", []byte("later response.failed"))
+	SetOpsForwardedTerminalFailure(c, "error", []byte("final error"))
+	terminal, ok = GetOpsForwardedTerminalFailure(c)
+	require.True(t, ok)
+	require.Equal(t, "response.failed", terminal.EventType)
+	require.Equal(t, "first response.failed", string(terminal.Payload))
+}
+
 func TestSafeUpstreamURL(t *testing.T) {
 	tests := []struct {
 		name  string

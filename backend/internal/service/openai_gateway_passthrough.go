@@ -2280,8 +2280,10 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		}
 		lineStartsClientOutput := false
 		forceFlushFailedEvent := false
+		var eventType string
+		var dataBytes []byte
 		if data, ok := extractOpenAISSEDataLine(line); ok {
-			dataBytes := []byte(data)
+			dataBytes = []byte(data)
 			trimmedData := strings.TrimSpace(data)
 			rawEventType := effectiveOpenAISSEEventType(dataBytes, pendingSSEEventType)
 			observer.ObserveOpenAI(dataBytes, rawEventType)
@@ -2315,7 +2317,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 					line = "data: " + string(restoredData)
 				}
 			}
-			eventType := effectiveOpenAISSEEventType(dataBytes, rawEventType)
+			eventType = effectiveOpenAISSEEventType(dataBytes, rawEventType)
 			createdAtTracker.Observe(dataBytes, eventType)
 			if codexFailureTerminal && sawBareError && !sawResponseFailed && eventType != "response.failed" {
 				suppressCurrentEvent = true
@@ -2480,6 +2482,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 				clientDisconnected = true
 				logger.LegacyPrintf("service.openai_gateway", "[OpenAI passthrough] Client disconnected during streaming, continue draining upstream for usage: account=%d", account.ID)
 			} else {
+				if forceFlushFailedEvent && codexFailureTerminal {
+					SetOpsForwardedTerminalFailure(c, eventType, dataBytes)
+				}
 				clientOutputStarted = true
 				flushPending = true
 				if line == "" {

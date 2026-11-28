@@ -1112,9 +1112,15 @@ func OpsErrorLoggerMiddleware(ops *service.OpsService) gin.HandlerFunc {
 		status := c.Writer.Status()
 		body := w.capturedBytes()
 		parsed := parseOpsErrorResponse(body)
-		if !parsed.StreamFailure {
-			if terminal, ok := w.capturedTerminalError(); ok {
-				parsed = terminal
+		if terminal, ok := w.capturedTerminalError(); ok && (!parsed.StreamFailure || (terminal.Structured && !parsed.Structured)) {
+			parsed = terminal
+		}
+		if parsed.StreamFailure {
+			if terminal, ok := service.GetOpsForwardedTerminalFailure(c); ok {
+				frame := append([]byte("event: "+terminal.EventType+"\ndata: "), terminal.Payload...)
+				if forwarded, ok := parseOpsSSEFailure(frame); ok && forwarded.Structured {
+					parsed = forwarded
+				}
 			}
 		}
 		if status < 400 {
@@ -1798,6 +1804,7 @@ type parsedOpsError struct {
 	Code          string
 	StatusCode    int
 	StreamFailure bool
+	Structured    bool
 }
 
 func parseOpsErrorResponse(body []byte) parsedOpsError {
@@ -1899,10 +1906,9 @@ func parseOpsSSEFailure(body []byte) (parsedOpsError, bool) {
 
 		payload := string(payloadBytes)
 		var event map[string]any
-		if err := json.Unmarshal(payloadBytes, &event); err == nil {
-			if eventType == "" {
-				eventType, _ = event["type"].(string)
-			}
+		payloadParsed := json.Unmarshal(payloadBytes, &event) == nil
+		if payloadParsed && eventType == "" {
+			eventType, _ = event["type"].(string)
 		}
 		if eventType != "response.failed" && eventType != "error" {
 			continue
@@ -1917,6 +1923,7 @@ func parseOpsSSEFailure(body []byte) (parsedOpsError, bool) {
 			errObj = event
 		}
 		if errObj != nil {
+			parsed.Structured = payloadParsed
 			parsed.ErrorType, _ = errObj["type"].(string)
 			if parsed.ErrorType == "error" || parsed.ErrorType == "response.failed" {
 				parsed.ErrorType = ""
