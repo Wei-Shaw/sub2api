@@ -1,0 +1,48 @@
+# feature|literal marker string
+subscription pending-cycle UI/API|pending_cycle_count
+subscription pending-cycle UI/API|pending_quota_usd
+subscription pending-cycle UI/API|pendingCyclesTitle
+subscription pending-cycle UI/API|purchaseTimelineTitle
+subscription pending-cycle UI/API|currentCycleRemaining
+subscription remaining-time UI|remainingLessThanOneHour
+subscription remaining-time UI|remainingDaysHours
+subscription remaining-time UI|getRemainingDaysHours
+subscription primary-window protection|shouldAutoResetSubscriptionWindow
+subscription primary-window protection|subscriptionGroupForWindowPolicy
+expired subscription restart|subscriptionExpiredForFulfillment
+rollover on quota exhaustion or expiry|ActivateQueuedCycleIfDue
+rollover on quota exhaustion or expiry|ActivateQueuedCycleIfLimitReached
+rollover on quota exhaustion or expiry|HasQueuedSubscriptionCycle
+model square|ModelSquare
+model square|getModelSquare
+model square|ModelSquareView
+group status|DashboardGroupStatus
+group status|getDashboardGroupStatus
+group status|GroupStatusView
+channel status and monitor UI|ChannelStatusView
+channel status and monitor UI|ChannelMonitorView
+channel status and monitor UI|AvailableChannelsView
+channel status and monitor UI|useChannelMonitorFormat
+channel status and monitor UI|channelMonitor
+channel status and monitor UI|channel_monitor
+account admin UI|AccountsView
+account admin UI|AccountActionMenu
+account admin UI|AccountTableActions
+account admin UI|AccountTableFilters
+account admin UI|AccountCapacityCell
+account admin UI|AccountUsageCell
+account admin UI|AccountTodayStatsCell
+account admin UI|AccountGroupsCell
+channel/account cost accounting|apply_pricing_to_account_stats
+channel/account cost accounting|account_stats_cost
+OpenAI upload/import initial refresh|uploaded_openai_initial_refresh_started
+OpenAI upload/import initial refresh|uploaded_openai_initial_refresh_succeeded
+OpenAI upload/import initial refresh|uploaded_openai_initial_refresh_failed
+OpenAI upload/import initial refresh|uploaded_openai_initial_refresh_completed
+OpenAI upload/import initial refresh|SkipInitialPrivacy
+OpenAI upload/import initial refresh|SetAccountSchedulable
+OpenAI upload/import initial refresh|importContainsOpenAIOAuth
+OpenAI OAuth test models|buildOpenAIOAuthTestModels
+scheduled account tests|scheduled_test_plans
+scheduled account tests|ScheduledTestRunnerService
+scheduled account tests|auto_recover
