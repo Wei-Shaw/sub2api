@@ -174,7 +174,7 @@ describe('AccountUsageCell', () => {
     await flushPromises()
     expect(getUsage).toHaveBeenCalledTimes(2)
     expect(getUsage).toHaveBeenLastCalledWith(...(platform === 'anthropic' ? [account.id, 'passive', false] : [account.id]))
-    expect(wrapper.text()).toContain('54')
+    expect(wrapper.get('table tbody tr:last-child td').text()).toBe('46%')
     await wrapper.setProps({ account: { ...next, updated_at: 'unrelated', current_concurrency: 3 } })
     await flushPromises()
     expect(getUsage).toHaveBeenCalledTimes(2)
@@ -631,6 +631,7 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
+    expect(wrapper.get('[data-test="quota-model-snapshot"]').text()).toContain('admin.accounts.usageWindow.modelSnapshotUsed')
     expect(wrapper.text()).toContain('admin.accounts.usageWindow.gemini3Image|70|2026-03-01T09:00:00Z')
   })
 
@@ -681,17 +682,43 @@ describe('AccountUsageCell', () => {
 
     await flushPromises()
 
-    const bars = wrapper.findAll('.usage-bar').map((bar) => bar.text())
-    expect(bars).toEqual([
-      'admin.accounts.usageWindow.antigravityGemini5h|60|2026-11-04T20:52:48Z',
-      'admin.accounts.usageWindow.antigravityGeminiWeekly|25|2026-11-11T15:52:48Z',
-      'admin.accounts.usageWindow.antigravityOther5h|0|',
-      'admin.accounts.usageWindow.antigravityOtherWeekly|10|2026-11-11T15:52:48Z',
-      // Pro plans' separate Argon quota is its own row, not a second Claude/GPT week.
-      'admin.accounts.usageWindow.antigravityArgonWeekly|20|2026-11-11T17:11:15Z'
+    const table = wrapper.get('table')
+    expect(table.findAll('thead th').slice(1).map(th => th.text())).toEqual(['Gemini', 'Claude / GPT', 'Gemini 4 Argon'])
+    const rows = table.findAll('tbody tr')
+    expect(rows[0].findAll('td').map(td => td.text())).toEqual([
+      '5h|60|2026-11-04T20:52:48Z', '5h|0|', '—'
+    ])
+    expect(rows[1].findAll('td').map(td => td.text())).toEqual([
+      '7d|25|2026-11-11T15:52:48Z', '7d|10|2026-11-11T15:52:48Z', '7d|20|2026-11-11T17:11:15Z'
     ])
     // The per-model figure (one tighter window per model) is not shown next to the real windows.
     expect(wrapper.text()).not.toContain('gemini3Flash')
+  })
+
+  it('renders remaining quota from the reported windows, keeping exhausted and unknown distinct', async () => {
+    const wrapper = mount(AccountUsageCell, {
+      props: {
+        account: makeAccount({ id: 10103, platform: 'openai', type: 'oauth' }),
+        requestBatchedUsage: vi.fn(),
+        batchedUsage: {
+          five_hour: { utilization: 100 }, seven_day: { utilization: 0, utilization_unknown: true }
+        } as AccountUsageInfo
+      },
+      global: { stubs: { OpenAIQuotaResetCell: true } }
+    })
+    await flushPromises()
+    expect(wrapper.get('thead th:last-child').text()).toBe('GPT / Codex')
+    expect(wrapper.findAll('tbody td').map(td => td.text())).toEqual(['0%', '—'])
+    expect(wrapper.get('tbody td .text-red-600').text()).toBe('0%')
+    expect(wrapper.get('tbody tr:last-child td .text-gray-400').text()).toBe('—')
+    await wrapper.setProps({ batchedUsage: {
+      five_hour: { utilization: 21.5 }, seven_day: { utilization: 0 }
+    } as AccountUsageInfo })
+    expect(wrapper.findAll('tbody td')[0].text()).toBe('78.5%')
+    expect(wrapper.findAll('tbody td')[1].text()).toContain('100%')
+    await wrapper.setProps({ account: { ...wrapper.props('account'), parent_account_id: 42 } })
+    expect(wrapper.get('thead th:last-child').text()).toBe('Spark')
+    wrapper.unmount()
   })
 
   it('Antigravity query button refreshes past the server cache', async () => {
@@ -1021,10 +1048,10 @@ describe('AccountUsageCell', () => {
       }
     })
     await flushPromises()
-    expect(wrapper.text()).toContain('5h|2|8')
-    expect(wrapper.text()).toContain('7d|12|30')
-    expect(wrapper.text()).toContain('7d S|none|none')
-    expect(wrapper.text()).toContain('7d F|none|none')
+    const table = wrapper.get('table')
+    expect(table.findAll('thead th').slice(1).map(th => th.text())).toEqual(['Claude', 'Sonnet', 'Fable'])
+    expect(table.get('tbody tr:first-child td').text()).toBe('5h|2|8')
+    expect(table.findAll('tbody tr:last-child td').map(td => td.text())).toEqual(['7d|12|30', '7d|none|none', '7d|none|none'])
     wrapper.unmount()
   })
 
@@ -2374,8 +2401,8 @@ describe('AccountUsageCell', () => {
 
     expect(wrapper.text()).toContain('5h|41')
     expect(wrapper.text()).toContain('7d|56')
-    expect(wrapper.text()).toContain('7d S|30')
-    expect(wrapper.text()).toContain('7d F|100')
+    expect(wrapper.findAll('thead th').slice(1).map(th => th.text())).toEqual(['Claude', 'Sonnet', 'Fable'])
+    expect(wrapper.findAll('tbody tr').at(-1)!.findAll('td').map(td => td.text())).toEqual(['7d|56', '7d|30', '7d|100'])
   })
 
   it('Anthropic OAuth 无 Fable 数据时不渲染 7d F 进度条', async () => {
@@ -2417,7 +2444,6 @@ describe('AccountUsageCell', () => {
 
     expect(wrapper.text()).toContain('5h|41')
     expect(wrapper.text()).toContain('7d|56')
-    expect(wrapper.text()).not.toContain('7d S')
-    expect(wrapper.text()).not.toContain('7d F')
+    expect(wrapper.findAll('thead th').slice(1).map(th => th.text())).toEqual(['Claude'])
   })
 })

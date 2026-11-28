@@ -1745,6 +1745,8 @@ export default {
         noData: 'No usage data available for this account'
       },
       usageWindow: {
+        modelSnapshotUsed: 'Model quota snapshot · used',
+        remainingQuota: 'Remaining',
         statsTitle: '5-Hour Window Usage Statistics',
         statsTitleDaily: 'Daily Usage Statistics',
         geminiProDaily: 'Pro',

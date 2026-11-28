@@ -90,6 +90,16 @@ describe('UsageProgressBar', () => {
     expect(wrapper.text()).not.toContain('usage.resetNow')
   })
 
+  it('shows a live sub-minute matrix window until it expires', async () => {
+    const wrapper = mount(UsageProgressBar, {
+      props: { matrix: true, label: '1m', color: 'indigo', utilization: 15, resetsAt: '2026-03-17T00:00:59Z' }
+    })
+    expect(wrapper.text()).toContain('<1m')
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(wrapper.text()).toContain('usage.resetPending')
+    wrapper.unmount()
+  })
+
   it('refreshes an active window countdown when a background tab becomes visible', async () => {
     const wrapper = mount(UsageProgressBar, {
       props: {
