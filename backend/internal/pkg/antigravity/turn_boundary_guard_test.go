@@ -13,12 +13,12 @@ func feedGuardChunks(chunks ...string) (string, bool) {
 	var out strings.Builder
 	for _, c := range chunks {
 		safe, triggered := g.Feed(c)
-		out.WriteString(safe)
+		_, _ = out.WriteString(safe)
 		if triggered {
 			return out.String(), true
 		}
 	}
-	out.WriteString(g.FlushAndResetBlock())
+	_, _ = out.WriteString(g.FlushAndResetBlock())
 	return out.String(), false
 }
 

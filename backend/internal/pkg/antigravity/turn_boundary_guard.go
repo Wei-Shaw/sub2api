@@ -268,7 +268,7 @@ func (g *turnBoundaryGuard) feedBytes(data []byte, out *strings.Builder) bool {
 					prefix := string(g.pending[:nl+1])
 					rem := append([]byte(nil), g.pending[nl+1:]...)
 					g.pending = g.pending[:0]
-					out.WriteString(prefix)
+					_, _ = out.WriteString(prefix)
 					g.fence.advance(prefix)
 					if len(rem) > 0 && g.feedBytes(rem, out) {
 						return true
@@ -276,7 +276,7 @@ func (g *turnBoundaryGuard) feedBytes(data []byte, out *strings.Builder) bool {
 				} else {
 					flushed := string(g.pending)
 					g.pending = g.pending[:0]
-					out.WriteString(flushed)
+					_, _ = out.WriteString(flushed)
 					g.fence.advance(flushed)
 				}
 			}
@@ -307,7 +307,7 @@ func (g *turnBoundaryGuard) feedBytes(data []byte, out *strings.Builder) bool {
 			seg = string(data[i : i+nl+1])
 			i += nl + 1
 		}
-		out.WriteString(seg)
+		_, _ = out.WriteString(seg)
 		g.fence.advance(seg)
 	}
 	return false
