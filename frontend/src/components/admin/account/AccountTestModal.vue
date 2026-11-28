@@ -81,6 +81,21 @@
         />
       </div>
 
+      <div v-if="supportsPlainAPIKeyTest" class="space-y-1">
+        <label class="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
+          <input
+            v-model="plainAPIKey"
+            type="checkbox"
+            class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            :disabled="status === 'connecting'"
+          />
+          {{ t('admin.accounts.plainAPIKeyTest') }}
+        </label>
+        <p class="text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.plainAPIKeyTestHint') }}
+        </p>
+      </div>
+
       <div v-if="supportsPromptInput" class="space-y-1.5">
         <TextArea
           v-model="testPrompt"
@@ -414,6 +429,9 @@ const generatedAudios = ref<PreviewMedia[]>([])
 const generatedVideos = ref<PreviewMedia[]>([])
 const previewImageUrl = ref('')
 const testMode = ref<'default' | 'compact'>('default')
+const plainAPIKey = ref(false)
+// Only Anthropic/OpenAI api_key probes mimic an official client; other platforms are already plain.
+const supportsPlainAPIKeyTest = computed(() => props.account?.type === 'apikey')
 const grokTestMode = ref<'text' | 'image' | 'video' | 'search' | 'tts' | 'stt' | 'realtime'>('text')
 const uploadImageDataURL = ref('')
 const uploadImagePreview = ref('')
@@ -739,6 +757,7 @@ watch(
     if (newVal && props.account) {
       testPrompt.value = ''
       testMode.value = 'default'
+      plainAPIKey.value = false
       grokTestMode.value = 'text'
       resetState()
       await loadAvailableModels()
@@ -848,6 +867,7 @@ const startTest = async () => {
       model_id: string
       prompt: string
       mode?: string
+      plain_api_key?: boolean
       image_data_url?: string
       audio_data_url?: string
     } = {
@@ -856,6 +876,9 @@ const startTest = async () => {
     }
     if (isOpenAIAccount.value) {
       requestBody.mode = testMode.value
+    }
+    if (supportsPlainAPIKeyTest.value && plainAPIKey.value) {
+      requestBody.plain_api_key = true
     }
     if (isGrokAccount.value) {
       // Always send explicit Grok mode. search/tts/stt/realtime are standalone
