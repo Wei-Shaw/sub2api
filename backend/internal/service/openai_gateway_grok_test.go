@@ -3332,7 +3332,7 @@ func TestGrokRateLimitResetAtForAccountEscalatesRepeated429s(t *testing.T) {
 				RateLimitResetAt: &previousReset,
 			}
 
-			resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now)
+			resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now, defaultGrokRateLimitPolicy())
 
 			require.True(t, limited)
 			require.WithinDuration(t, now.Add(tt.wantCooldown), resetAt, time.Second)
@@ -3358,7 +3358,7 @@ func TestGrokRateLimitResetAtForAccountPreservesAuthoritativeAndQuietRecovery(t 
 		UpdatedAt:         now.Format(time.RFC3339),
 	}
 
-	resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now)
+	resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now, defaultGrokRateLimitPolicy())
 	require.True(t, limited)
 	require.WithinDuration(t, now.Add(45*time.Second), resetAt, time.Second)
 
@@ -3370,7 +3370,7 @@ func TestGrokRateLimitResetAtForAccountPreservesAuthoritativeAndQuietRecovery(t 
 	account.RateLimitResetAt = &recentReset
 	account.RateLimitedAt = &recentLimited
 
-	resetAt, limited = grokRateLimitResetAtForAccount(account, snapshot, now)
+	resetAt, limited = grokRateLimitResetAtForAccount(account, snapshot, now, defaultGrokRateLimitPolicy())
 	require.True(t, limited)
 	require.WithinDuration(t, authoritativeReset, resetAt, time.Second)
 }
@@ -3393,7 +3393,7 @@ func TestGrokRateLimitResetAtForAccountLeavesAPIKey429PolicyUnchanged(t *testing
 		UpdatedAt:         now.Format(time.RFC3339),
 	}
 
-	resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now)
+	resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now, defaultGrokRateLimitPolicy())
 	require.True(t, limited)
 	require.WithinDuration(t, now.Add(45*time.Second), resetAt, time.Second)
 }
@@ -3414,7 +3414,7 @@ func TestGrokRateLimitResetAtUsesFutureWindowAfterRetryAfterExpires(t *testing.T
 		},
 	}
 
-	resetAt, limited := grokRateLimitResetAt(snapshot, now)
+	resetAt, limited := grokRateLimitResetAt(snapshot, now, defaultGrokRateLimitPolicy())
 
 	require.True(t, limited)
 	require.WithinDuration(t, windowReset, resetAt, time.Second)

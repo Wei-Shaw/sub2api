@@ -1167,6 +1167,7 @@ func (s *AccountTestService) observeGrokTestResponse(ctx context.Context, accoun
 		return
 	}
 	now := time.Now()
+	policy := grokRateLimitPolicyFromConfig(s.cfg)
 	// Error bodies carry Grok's free-usage, billing, and content-policy
 	// classifications when quota headers are absent. Read only non-success
 	// responses here, then restore the body because the caller still needs it
@@ -1180,7 +1181,7 @@ func (s *AccountTestService) observeGrokTestResponse(ctx context.Context, accoun
 	snapshot := parseGrokQuotaSnapshot(resp.Header, resp.StatusCode, now)
 	stampGrokQuotaSnapshotForPlan(account, snapshot, grokRequestedModelFromCtx(ctx))
 	if snapshot != nil && s.accountRepo != nil {
-		resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now)
+		resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now, policy)
 		if limited {
 			normalizeGrokExhaustedWindowResets(snapshot, resetAt, now)
 		}
@@ -1188,7 +1189,7 @@ func (s *AccountTestService) observeGrokTestResponse(ctx context.Context, accoun
 			grokQuotaSnapshotExtraKey: snapshot,
 		})
 		if limited {
-			persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
+			persistGrokRateLimit(ctx, s.accountRepo, account, resetAt, policy)
 		} else if isSuccessfulGrokRateLimitRecovery(account, snapshot) {
 			clearGrokRateLimitAfterRecovery(ctx, s.accountRepo, account)
 		}
@@ -1208,8 +1209,8 @@ func (s *AccountTestService) observeGrokTestResponse(ctx context.Context, accoun
 	}
 	decision := classifyGrokUpstreamFailure(resp.StatusCode, responseBody, "")
 	if decision.Class == GrokFailureFreeUsage {
-		if resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now); limited && resetAt.After(now) {
-			persistGrokRateLimit(ctx, s.accountRepo, account, resetAt)
+		if resetAt, limited := grokRateLimitResetAtForAccount(account, snapshot, now, policy); limited && resetAt.After(now) {
+			persistGrokRateLimit(ctx, s.accountRepo, account, resetAt, policy)
 		} else {
 			stateCtx, cancel := openAIAccountStateContext(ctx)
 			_ = s.accountRepo.SetTempUnschedulable(stateCtx, account.ID, now.Add(grokFreeUsageProbeCooldown), "grok free usage exhausted")
@@ -1218,7 +1219,7 @@ func (s *AccountTestService) observeGrokTestResponse(ctx context.Context, accoun
 		return
 	}
 	if decision.Class == GrokFailureBilling && (isGrokSpendingLimitError(responseBody) || strings.Contains(strings.ToLower(decision.Reason), "credit")) {
-		persistGrokRateLimit(ctx, s.accountRepo, account, grokSpendingLimitResetAt(account, now))
+		persistGrokRateLimit(ctx, s.accountRepo, account, grokSpendingLimitResetAt(account, now), policy)
 		return
 	}
 	cooldown := time.Duration(0)
