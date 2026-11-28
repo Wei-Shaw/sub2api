@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"html"
 	"math"
@@ -787,6 +788,27 @@ func (s *APIKeyService) GetByKey(ctx context.Context, key string) (*APIKey, erro
 		return nil, fmt.Errorf("get api key: %w", err)
 	}
 	apiKey.Key = key
+	s.compileAPIKeyIPRules(apiKey)
+	return apiKey, nil
+}
+
+// GetByKeyUncached reads the current key, user permissions, IP restrictions and
+// group from the database. Key-scoped configuration discovery uses this path so
+// auth snapshots cannot hide revocation or an operator's group changes.
+func (s *APIKeyService) GetByKeyUncached(ctx context.Context, key string) (*APIKey, error) {
+	if len(key) == 0 || len(key) > MaxAPIKeyCredentialBytes || !utf8.ValidString(key) {
+		return nil, ErrAPIKeyNotFound
+	}
+	apiKey, err := s.apiKeyRepo.GetByKey(ctx, key)
+	if err != nil {
+		if errors.Is(err, ErrAPIKeyNotFound) {
+			s.InvalidateAuthCacheByKey(ctx, key)
+		}
+		return nil, fmt.Errorf("get current api key: %w", err)
+	}
+	// The inference request that follows discovery must not reuse an older
+	// snapshot of this key's group or permissions. Other keys remain cached.
+	s.InvalidateAuthCacheByKey(ctx, key)
 	s.compileAPIKeyIPRules(apiKey)
 	return apiKey, nil
 }
