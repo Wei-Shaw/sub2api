@@ -346,16 +346,11 @@ func (s *CNProviderQuotaService) resolveProxyURL(ctx context.Context, account *A
 	if account == nil || account.ProxyID == nil {
 		return ""
 	}
-	if account.Proxy != nil {
-		return account.Proxy.URL()
+	var repo ProxyRepository
+	if s != nil {
+		repo = s.proxyRepo
 	}
-	if s != nil && s.proxyRepo != nil {
-		if proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID); err == nil && proxy != nil {
-			account.Proxy = proxy
-			return proxy.URL()
-		}
-	}
-	return ""
+	return LoadAccountProxyURLFailClosed(ctx, repo, account)
 }
 
 // zhipuQuotaURL 根据 base_url 解析智谱额度端点（与数据面推理域名同主机）。

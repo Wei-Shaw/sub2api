@@ -210,10 +210,7 @@ func getVertexServiceAccountAccessToken(ctx context.Context, cache GeminiTokenCa
 }
 
 func vertexServiceAccountProxyURL(account *Account) string {
-	if account == nil || account.ProxyID == nil || account.Proxy == nil {
-		return ""
-	}
-	return account.Proxy.URL()
+	return AccountProxyURLFailClosed(account)
 }
 
 func newVertexServiceAccountHTTPClient(proxyURL string) (*http.Client, error) {

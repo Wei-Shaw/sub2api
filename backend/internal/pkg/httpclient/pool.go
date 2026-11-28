@@ -90,7 +90,11 @@ func buildClient(opts Options) (*http.Client, error) {
 	}
 
 	var rt http.RoundTripper = transport
-	if opts.ValidateResolvedIP && !opts.AllowPrivateHosts {
+	// When a proxy is configured the target host is resolved by the proxy
+	// (socks5h / HTTP CONNECT). Resolving it locally would both leak a DNS
+	// query from this host and break deployments that blackhole upstream
+	// hostnames locally to guarantee nothing is ever dialed directly.
+	if opts.ValidateResolvedIP && !opts.AllowPrivateHosts && strings.TrimSpace(opts.ProxyURL) == "" {
 		rt = newValidatedTransport(transport)
 	}
 	rt = servertiming.WrapRoundTripper(rt)

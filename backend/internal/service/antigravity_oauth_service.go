@@ -48,10 +48,7 @@ func (s *AntigravityOAuthService) GenerateAuthURL(ctx context.Context, proxyID *
 
 	var proxyURL string
 	if proxyID != nil {
-		proxy, err := s.proxyRepo.GetByID(ctx, *proxyID)
-		if err == nil && proxy != nil {
-			proxyURL = proxy.URL()
-		}
+		proxyURL = ResolveProxyIDURLFailClosed(ctx, s.proxyRepo, 0, proxyID)
 	}
 
 	session := &antigravity.OAuthSession{
@@ -108,10 +105,7 @@ func (s *AntigravityOAuthService) ExchangeCode(ctx context.Context, input *Antig
 	// 确定代理 URL
 	proxyURL := session.ProxyURL
 	if input.ProxyID != nil {
-		proxy, err := s.proxyRepo.GetByID(ctx, *input.ProxyID)
-		if err == nil && proxy != nil {
-			proxyURL = proxy.URL()
-		}
+		proxyURL = ResolveProxyIDURLFailClosed(ctx, s.proxyRepo, 0, input.ProxyID)
 	}
 
 	client, err := antigravity.NewClient(proxyURL)
@@ -215,10 +209,7 @@ func (s *AntigravityOAuthService) RefreshToken(ctx context.Context, refreshToken
 func (s *AntigravityOAuthService) ValidateRefreshToken(ctx context.Context, refreshToken string, proxyID *int64) (*AntigravityTokenInfo, error) {
 	var proxyURL string
 	if proxyID != nil {
-		proxy, err := s.proxyRepo.GetByID(ctx, *proxyID)
-		if err == nil && proxy != nil {
-			proxyURL = proxy.URL()
-		}
+		proxyURL = ResolveProxyIDURLFailClosed(ctx, s.proxyRepo, 0, proxyID)
 	}
 
 	// 刷新 token
@@ -287,10 +278,7 @@ func (s *AntigravityOAuthService) RefreshAccountToken(ctx context.Context, accou
 
 	var proxyURL string
 	if account.ProxyID != nil {
-		proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID)
-		if err == nil && proxy != nil {
-			proxyURL = proxy.URL()
-		}
+		proxyURL = ResolveProxyIDURLFailClosed(ctx, s.proxyRepo, account.ID, account.ProxyID)
 	}
 
 	tokenInfo, err := s.RefreshToken(ctx, refreshToken, proxyURL)
@@ -443,10 +431,7 @@ func resolveDefaultTierID(loadRaw map[string]any) string {
 func (s *AntigravityOAuthService) FillProjectID(ctx context.Context, account *Account, accessToken string) (string, error) {
 	var proxyURL string
 	if account.ProxyID != nil {
-		proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID)
-		if err == nil && proxy != nil {
-			proxyURL = proxy.URL()
-		}
+		proxyURL = ResolveProxyIDURLFailClosed(ctx, s.proxyRepo, account.ID, account.ProxyID)
 	}
 	result, err := s.loadProjectIDWithRetry(ctx, accessToken, proxyURL, 3)
 	if result != nil {

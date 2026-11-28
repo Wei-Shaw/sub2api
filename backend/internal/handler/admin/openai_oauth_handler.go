@@ -221,9 +221,13 @@ func (h *OpenAIOAuthHandler) RefreshToken(c *gin.Context) {
 			response.BadRequest(c, "代理不可用")
 			return
 		}
-		if err == nil && proxy != nil {
-			proxyURL = proxy.URL()
+		if err != nil || proxy == nil {
+			// Fail closed: a requested proxy that cannot be loaded must never
+			// degrade to a direct connection.
+			response.BadRequest(c, "代理不可用")
+			return
 		}
+		proxyURL = proxy.URL()
 	}
 
 	// 未指定 client_id 时，根据请求路径平台自动设置默认值，避免 repository 层盲猜

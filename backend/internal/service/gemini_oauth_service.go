@@ -115,10 +115,7 @@ func (s *GeminiOAuthService) GenerateAuthURL(ctx context.Context, proxyID *int64
 
 	var proxyURL string
 	if proxyID != nil {
-		proxy, err := s.proxyRepo.GetByID(ctx, *proxyID)
-		if err == nil && proxy != nil {
-			proxyURL = proxy.URL()
-		}
+		proxyURL = ResolveProxyIDURLFailClosed(ctx, s.proxyRepo, 0, proxyID)
 	}
 
 	// OAuth client selection:
@@ -410,10 +407,7 @@ func (s *GeminiOAuthService) RefreshAccountGoogleOneTier(
 	}
 
 	// 获取 proxy URL
-	var proxyURL string
-	if account.ProxyID != nil && account.Proxy != nil {
-		proxyURL = account.Proxy.URL()
-	}
+	proxyURL := AccountProxyURLFailClosed(account)
 
 	// 调用 Drive API
 	tierID, storageInfo, err := s.FetchGoogleOneTier(ctx, accessToken, proxyURL)
@@ -458,10 +452,7 @@ func (s *GeminiOAuthService) ExchangeCode(ctx context.Context, input *GeminiExch
 
 	proxyURL := session.ProxyURL
 	if input.ProxyID != nil {
-		proxy, err := s.proxyRepo.GetByID(ctx, *input.ProxyID)
-		if err == nil && proxy != nil {
-			proxyURL = proxy.URL()
-		}
+		proxyURL = ResolveProxyIDURLFailClosed(ctx, s.proxyRepo, 0, input.ProxyID)
 	}
 	logger.LegacyPrintf("service.gemini_oauth", "[GeminiOAuth] ProxyURL: %s", proxyURL)
 
@@ -748,10 +739,7 @@ func (s *GeminiOAuthService) RefreshAccountToken(ctx context.Context, account *A
 
 	var proxyURL string
 	if account.ProxyID != nil {
-		proxy, err := s.proxyRepo.GetByID(ctx, *account.ProxyID)
-		if err == nil && proxy != nil {
-			proxyURL = proxy.URL()
-		}
+		proxyURL = ResolveProxyIDURLFailClosed(ctx, s.proxyRepo, account.ID, account.ProxyID)
 	}
 
 	tokenInfo, err := s.RefreshToken(ctx, oauthType, refreshToken, proxyURL)
