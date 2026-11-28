@@ -65,6 +65,7 @@ func (s *AntigravityGatewayService) ForwardAsChatCompletions(
 		return nil, err
 	}
 
+	body = filterDeepSeekRequest(body, account)
 	var request apicompat.ChatCompletionsRequest
 	if json.Unmarshal(body, &request) != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
@@ -112,6 +113,7 @@ func (s *AntigravityGatewayService) ForwardAsResponses(
 		return nil, err
 	}
 
+	body = filterDeepSeekRequest(body, account)
 	var request apicompat.ResponsesRequest
 	if json.Unmarshal(body, &request) != nil {
 		return nil, s.writeAntigravityCompatError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")

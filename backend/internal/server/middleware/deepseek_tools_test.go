@@ -1,0 +1,191 @@
+//go:build unit
+
+package middleware
+
+import (
+	"bufio"
+	"bytes"
+	"compress/gzip"
+	"io"
+	"mime/multipart"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+	"time"
+
+	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
+	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
+)
+
+func TestDeepseekToolsBodyLimits(t *testing.T) {
+	const textLimit = 1024
+	for _, tc := range []struct {
+		path      string
+		limit     int64
+		anthropic bool
+	}{
+		{"/v1/tools/search", textLimit, false}, {"/v1/tools/fetch", textLimit, false},
+		{"/v1/tools/tts", textLimit, false}, {"/v1/tools/asr", 9 << 20, false},
+		{"/v1/tools/ocr", 101 << 20, false}, {"/v1/files", 101 << 20, false}, {"/v1/files", 101 << 20, true},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			r := gin.New()
+			r.Use(DeepseekToolsBodyLimit(textLimit, 256<<20))
+			r.POST(tc.path, func(c *gin.Context) { c.Status(204) })
+			for _, extra := range []int64{0, 1} {
+				w := httptest.NewRecorder()
+				req := httptest.NewRequest("POST", tc.path, nil)
+				req.ContentLength = tc.limit + extra
+				req.Body = unreadDeepseekBody{t}
+				if tc.anthropic {
+					req.Header.Set("anthropic-beta", "files-api-2025-04-14")
+				}
+				r.ServeHTTP(w, req)
+				if extra == 0 {
+					require.Equal(t, 204, w.Code)
+					continue
+				}
+				require.Equal(t, 413, w.Code)
+				require.Equal(t, tc.anthropic, gjson.GetBytes(w.Body.Bytes(), "type").String() == "error")
+				require.Equal(t, tc.anthropic, gjson.GetBytes(w.Body.Bytes(), "error.type").String() == "request_too_large")
+			}
+		})
+	}
+}
+
+type unreadDeepseekBody struct{ t *testing.T }
+
+func (b unreadDeepseekBody) Read([]byte) (int, error) {
+	b.t.Fatal("declared length must be checked before reading")
+	return 0, io.EOF
+}
+func (unreadDeepseekBody) Close() error { return nil }
+
+func TestDeepseekToolsChunkedAndDecodedLimits(t *testing.T) {
+	for _, tc := range []struct {
+		name, path       string
+		textLimit, limit int
+		gzip, beta       bool
+	}{
+		{"chunked TTS", "/v1/tools/tts", 1024, 1024, false, false},
+		{"compressed TTS", "/v1/tools/tts", 1024, 1024, true, false},
+		{"chunked TTS at fixed cap", "/v1/tools/tts", 128 << 10, 64 << 10, false, false},
+		{"compressed TTS at fixed cap", "/v1/tools/tts", 128 << 10, 64 << 10, true, false},
+		{"chunked Files under tighter gateway limit", "/v1/files", 1024, 256 << 10, false, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := gin.New()
+			r.Use(DeepseekToolsBodyLimit(int64(tc.textLimit), 256<<10))
+			r.POST(tc.path, func(c *gin.Context) {
+				_, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+				if err != nil {
+					AbortWithRequestBodyReadFailure(c, "test", err)
+					return
+				}
+				c.Status(204)
+			})
+			for _, n := range []int{tc.limit, tc.limit + 1} {
+				var data bytes.Buffer
+				if tc.gzip {
+					w := gzip.NewWriter(&data)
+					_, err := io.WriteString(w, strings.Repeat("x", n))
+					require.NoError(t, err)
+					require.NoError(t, w.Close())
+				} else {
+					data.WriteString(strings.Repeat("x", n))
+				}
+				req := httptest.NewRequest("POST", tc.path, &data)
+				req.ContentLength = -1
+				if tc.gzip {
+					req.Header.Set("Content-Encoding", "gzip")
+				}
+				if tc.beta {
+					req.Header.Set("anthropic-beta", "files-api-2025-04-14")
+				}
+				w := httptest.NewRecorder()
+				r.ServeHTTP(w, req)
+				if n == tc.limit {
+					require.Equal(t, 204, w.Code)
+					continue
+				}
+				require.Equal(t, 413, w.Code)
+				require.Equal(t, tc.beta, gjson.GetBytes(w.Body.Bytes(), "type").String() == "error")
+			}
+		})
+	}
+}
+
+// net/http owns the final chunk. Exercise it over an in-memory connection so a
+// recovery middleware that swallows ErrAbortHandler would produce a clean EOF.
+func TestRecoveryAbortsChunkedStream(t *testing.T) {
+	server, client := net.Pipe()
+	defer client.Close()
+	require.NoError(t, client.SetDeadline(time.Now().Add(5*time.Second)))
+	r := gin.New()
+	r.Use(Recovery())
+	r.GET("/", func(c *gin.Context) {
+		c.Writer.WriteHeader(200)
+		_, _ = c.Writer.Write([]byte("audio"))
+		c.Writer.Flush()
+		panic(http.ErrAbortHandler)
+	})
+	srv := &http.Server{Handler: r}
+	defer srv.Close()
+	go func() { _ = srv.Serve(&deepseekPipeListener{conn: server}) }()
+	_, err := io.WriteString(client, "GET / HTTP/1.1\r\nHost: test\r\n\r\n")
+	require.NoError(t, err)
+	resp, err := http.ReadResponse(bufio.NewReader(client), nil)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	require.ErrorIs(t, err, io.ErrUnexpectedEOF)
+	require.Equal(t, "audio", string(body))
+}
+
+type deepseekPipeListener struct{ conn net.Conn }
+
+func (l *deepseekPipeListener) Accept() (net.Conn, error) {
+	if l.conn == nil {
+		return nil, net.ErrClosed
+	}
+	c := l.conn
+	l.conn = nil
+	return c, nil
+}
+func (*deepseekPipeListener) Close() error   { return nil }
+func (*deepseekPipeListener) Addr() net.Addr { return &net.TCPAddr{} }
+
+func TestDeepseekASRMultipartRouteBoundary(t *testing.T) {
+	router := gin.New()
+	router.Use(DeepseekToolsBodyLimit(1024, 256<<20))
+	router.POST("/v1/tools/asr", func(c *gin.Context) {
+		body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
+		require.NoError(t, err)
+		_, err = (&service.OpenAIGatewayService{}).PrepareDeepseekToolsRequest(c.Request.Context(), c, 1, "asr", body, c.GetHeader("Content-Type"))
+		c.Status(infraerrors.Code(err))
+	})
+	for _, extra := range []int{0, 1} {
+		var buf bytes.Buffer
+		m := multipart.NewWriter(&buf)
+		part, err := m.CreateFormFile("file", "speech.wav")
+		require.NoError(t, err)
+		_, err = part.Write(make([]byte, service.DeepseekASRFileLimit+extra))
+		require.NoError(t, err)
+		require.NoError(t, m.Close())
+		req := httptest.NewRequest("POST", "/v1/tools/asr", &buf)
+		req.Header.Set("Content-Type", m.FormDataContentType())
+		rec := httptest.NewRecorder()
+		router.ServeHTTP(rec, req)
+		if extra == 0 {
+			require.Equal(t, 200, rec.Code)
+		} else {
+			require.Equal(t, 413, rec.Code)
+		}
+	}
+}

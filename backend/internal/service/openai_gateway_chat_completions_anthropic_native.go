@@ -47,34 +47,29 @@ func (s *OpenAIGatewayService) forwardChatCompletionsViaNativeAnthropic(
 	// 1. Parse Chat Completions request
 	var ccReq apicompat.ChatCompletionsRequest
 	if err := parseChatRequestForBridge(body, account.Platform, &ccReq); err != nil {
-		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
-		return nil, fmt.Errorf("parse chat completions request: %w", err)
+		return nil, rejectGatewayRequest(c, writeChatCompletionsError, "Failed to parse request body", fmt.Errorf("parse chat completions request: %w", err))
 	}
 	originalModel := ccReq.Model
 	if strings.TrimSpace(originalModel) == "" {
-		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", "model is required")
-		return nil, fmt.Errorf("missing model in request")
+		return nil, rejectGatewayRequest(c, writeChatCompletionsError, "model is required", fmt.Errorf("missing model in request"))
 	}
 	clientStream := ccReq.Stream
 
 	// 2. Convert CC → Responses → Anthropic (chained conversion)
 	responsesReq, err := chatCompletionsToResponses(s.cfg, &ccReq)
 	if err != nil {
-		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", "Failed to convert request")
-		return nil, fmt.Errorf("convert chat completions to responses: %w", err)
+		return nil, rejectGatewayRequest(c, writeChatCompletionsError, "Failed to convert request", fmt.Errorf("convert chat completions to responses: %w", err))
 	}
 	// Resolve the mapped model before choosing its thinking/tool protocol.
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	if err := validateClaude55Request(body, upstreamModel); err != nil {
-		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return nil, err
+		return nil, rejectGatewayRequest(c, writeChatCompletionsError, err.Error(), err)
 	}
 	responsesReq.Model = upstreamModel
 	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(responsesReq)
 	if err != nil {
-		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return nil, fmt.Errorf("convert responses to anthropic: %w", err)
+		return nil, rejectGatewayRequest(c, writeChatCompletionsError, err.Error(), fmt.Errorf("convert responses to anthropic: %w", err))
 	}
 
 	// 4. Force upstream streaming（客户端原始终决定响应格式；
@@ -98,7 +93,7 @@ func (s *OpenAIGatewayService) forwardChatCompletionsViaNativeAnthropic(
 
 	// 与 /v1/messages 直通路径相同的 pre-filter。
 	anthropicBody = StripEmptyTextBlocks(anthropicBody)
-	anthropicBody = FilterWebSearchHistoryBlocks(anthropicBody, upstreamModel)
+	anthropicBody = FilterWebSearchHistoryBlocks(anthropicBody, upstreamModel, account)
 	anthropicBody = enforceCacheControlLimit(anthropicBody)
 
 	apiKey := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())

@@ -84,7 +84,7 @@ func (s *GatewayService) forwardAnthropicAPIKeyPassthroughWithInput(
 	// (emulation-synthesized ones always; genuine ones additionally for
 	// passback-required third-party upstreams such as GLM/Kimi/DeepSeek,
 	// which reject server_tool_use with 400). input.RequestModel 已是映射后的模型 ID。
-	input.Body = FilterWebSearchHistoryBlocks(input.Body, input.RequestModel)
+	input.Body = FilterWebSearchHistoryBlocks(input.Body, input.RequestModel, account)
 	if input.Parsed != nil {
 		// 透传分支也会改写实际 wire body，成功 usage hash 依赖这里同步当前 body。
 		if err := input.Parsed.ReplaceBody(input.Body); err != nil {
@@ -367,6 +367,12 @@ func (s *GatewayService) buildUpstreamRequestAnthropicAPIKeyPassthrough(
 	account.ApplyHeaderOverrides(req.Context(), req.Header)
 	filterSonnet55ToolsetBetaHeader(req.Header, body, gjson.GetBytes(body, "model").String())
 
+	if err := s.verifyAnthropicDeepseekFiles(ctx, c, account, req.URL, body); err != nil {
+		return nil, nil, err
+	}
+	if isDeepseekOfficialHost(req.URL.String()) {
+		req = req.WithContext(WithHTTPUpstreamRedirectsDisabled(req.Context()))
+	}
 	return req, body, nil
 }
 

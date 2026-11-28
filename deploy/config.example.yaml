@@ -230,6 +230,13 @@ security:
 # 网关配置
 # =============================================================================
 gateway:
+  # Set true to allow text_recognition and rich_layout_recognition uploads. DeepSeek charges
+  # the upstream account per page. The gateway neither reserves nor charges user balance for files.
+  allow_unbilled_deepseek_document_parsing: false
+  # Upgrade from the original DeepSeek Files PR: re-upload files with legacy
+  # bindings. Those Redis values retained only user ID, account ID and platform.
+  # They contain no original host or storage namespace. Looking up the same
+  # file ID on today's account URL cannot establish which upstream issued it.
   # Minimum max_output_tokens when converting Chat Completions or Anthropic requests to Responses (minimum 16, default 128)
   # Chat Completions 或 Anthropic 请求转换为 Responses 时的最小 max_output_tokens（最小 16，默认 128）
   min_output_tokens: 128

@@ -76,8 +76,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	// 1. Parse minimal fields needed for routing/billing
 	originalModel := gjson.GetBytes(body, "model").String()
 	if originalModel == "" {
-		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", "model is required")
-		return nil, fmt.Errorf("missing model in request")
+		return nil, rejectGatewayRequest(c, writeChatCompletionsError, "model is required", fmt.Errorf("missing model in request"))
 	}
 	clientStream := gjson.GetBytes(body, "stream").Bool()
 
@@ -85,8 +84,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	if err := validateGPT61CompatRequest(body, upstreamModel); err != nil {
-		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return nil, err
+		return nil, rejectGatewayRequest(c, writeChatCompletionsError, err.Error(), err)
 	}
 	SetOpsUpstreamModel(c, upstreamModel)
 	grokCacheIdentity := ""
@@ -97,13 +95,11 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	}
 	if openai.RequiresResponsesForToolCalls(upstreamModel) && (len(gjson.GetBytes(body, "tools").Array()) > 0 || len(gjson.GetBytes(body, "functions").Array()) > 0) {
 		err := fmt.Errorf("%s requires Responses for tool calls; this account only supports Chat Completions", normalizeKnownOpenAICodexModel(upstreamModel))
-		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return nil, err
+		return nil, rejectGatewayRequest(c, writeChatCompletionsError, err.Error(), err)
 	}
 	if openai.IsGPT6SolOrLunaModelSpelling(upstreamModel) && (len(gjson.GetBytes(body, "tools").Array()) > 0 || len(gjson.GetBytes(body, "functions").Array()) > 0) && gjson.GetBytes(body, "reasoning_effort").String() != "none" {
 		err := fmt.Errorf("%s requires Responses for tool calls with reasoning; this account only supports Chat Completions. Use reasoning_effort=none or a Responses-capable account", upstreamModel)
-		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return nil, err
+		return nil, rejectGatewayRequest(c, writeChatCompletionsError, err.Error(), err)
 	}
 	// 3. Rewrite model in body (no protocol conversion)
 	upstreamBody := body
@@ -201,8 +197,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	}
 	upstreamBody, err = normalizeStrictChatDeveloperRoles(account, targetURL, upstreamBody)
 	if err != nil {
-		writeChatCompletionsError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return nil, err
+		return nil, rejectGatewayRequest(c, writeChatCompletionsError, err.Error(), err)
 	}
 	SetActualOpenAIUpstreamEndpoint(c, grokChatRawEndpoint)
 	customUA := account.GetOpenAIUserAgent()

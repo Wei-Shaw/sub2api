@@ -1,8 +1,10 @@
 package middleware
 
 import (
-	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"net/http"
+
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,5 +19,36 @@ func RequestBodyLimit(maxBytes int64, budgets ...*pkghttputil.BodyMemoryBudget) 
 		}
 		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxBytes)
 		c.Next()
+	}
+}
+
+// Apply these limits before allowlist and composite routing can preread the body.
+func DeepseekToolsBodyLimit(textLimit, gatewayLimit int64) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.Method != http.MethodPost {
+			return
+		}
+		var limit int64
+		switch c.FullPath() {
+		case "/v1/tools/search", "/v1/tools/fetch":
+			limit = textLimit
+		case "/v1/tools/tts":
+			limit = min(textLimit, 64<<10)
+		case "/v1/tools/asr":
+			limit = service.DeepseekASRFileLimit + service.DeepseekMultipartOverhead
+		case "/v1/tools/ocr", "/v1/files":
+			limit = service.DeepseekDocumentFileLimit + service.DeepseekMultipartOverhead
+		default:
+			return
+		}
+		if gatewayLimit > 0 {
+			limit = min(limit, gatewayLimit)
+		}
+		if c.Request.ContentLength > limit {
+			AbortWithRequestBodyReadFailure(c, "middleware.deepseek_tools", &http.MaxBytesError{Limit: limit})
+			return
+		}
+		c.Request = c.Request.WithContext(pkghttputil.WithDecodedBodyLimit(c.Request.Context(), limit))
+		c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, limit)
 	}
 }

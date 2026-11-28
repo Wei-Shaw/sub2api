@@ -21,6 +21,9 @@ type toolOutputMediaByCallID map[string][]ChatContentPart
 // ResponsesToChatCompletionsRequestWithOptions. All fields are optional; a nil
 // *ResponsesToChatOptions behaves exactly like ResponsesToChatCompletionsRequest.
 type ResponsesToChatOptions struct {
+	// PreserveWebToolHistory translates Responses web_search_call history into
+	// assistant.server_tool_calls when the chat endpoint supports that extension.
+	PreserveWebToolHistory bool
 	// ReasoningContentByID looks up the cached reasoning text for a reasoning
 	// item id. Codex histories may carry reasoning items with no plaintext
 	// summary (empty summary + opaque encrypted_content, e.g. after remote
@@ -53,15 +56,16 @@ func ResponsesToChatCompletionsRequestWithOptions(req *ResponsesRequest, opts *R
 	}
 
 	out := &ChatCompletionsRequest{
-		Model:               req.Model,
-		Messages:            messages,
-		MaxCompletionTokens: req.MaxOutputTokens,
-		Temperature:         req.Temperature,
-		TopP:                req.TopP,
-		Stream:              req.Stream,
-		ServiceTier:         req.ServiceTier,
-		ParallelToolCalls:   req.ParallelToolCalls,
-		Stop:                req.Stop,
+		Model:                 req.Model,
+		Messages:              messages,
+		MaxCompletionTokens:   req.MaxOutputTokens,
+		Temperature:           req.Temperature,
+		TopP:                  req.TopP,
+		Stream:                req.Stream,
+		ServiceTier:           req.ServiceTier,
+		ParallelToolCalls:     req.ParallelToolCalls,
+		Stop:                  req.Stop,
+		DeepSeekRequestFields: req.objects(),
 	}
 	if req.Reasoning != nil {
 		out.ReasoningEffort = req.Reasoning.Effort
@@ -416,6 +420,22 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 	// replaying the turn's reasoning on B's message satisfies the contract. Only
 	// a user-side item ends the turn and clears it.
 	var lastTurnReasoning string
+	var steps []chatServerToolStep
+	newStep := false
+	takeSteps := func() json.RawMessage {
+		if len(steps) == 0 {
+			return nil
+		}
+		raw, _ := json.Marshal(steps) // All raw fields came from decoded JSON.
+		steps = nil
+		return raw
+	}
+	flushSteps := func() {
+		if len(steps) != 0 {
+			// A refusal can end with tool calls and no assistant text.
+			messages = append(messages, ChatMessage{Role: "assistant", Content: json.RawMessage(`""`), ServerToolCalls: takeSteps()})
+		}
+	}
 	mediaByCallID := make(toolOutputMediaByCallID)
 	invalidFunctionCallIDs := make(map[string]struct{})
 	invalidEmptyFunctionCallOutputs := 0
@@ -437,6 +457,7 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 		if err := json.Unmarshal(raw, &item); err != nil {
 			var text string
 			if textErr := json.Unmarshal(raw, &text); textErr == nil {
+				flushSteps()
 				content, _ := json.Marshal(text)
 				messages = append(messages, ChatMessage{Role: "user", Content: content})
 				pendingReasoning = ""
@@ -448,8 +469,28 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 
 		role := chatCompletionsBridgeRole(rawString(item["role"]))
 		itemType := rawString(item["type"])
+		assistantMessage := (itemType == "" || itemType == "message") && role == "assistant"
+		if !assistantMessage && itemType != "web_search_call" && itemType != "reasoning" {
+			flushSteps()
+		}
 		switch itemType {
+		case "web_search_call":
+			if opts != nil && opts.PreserveWebToolHistory {
+				if call := deepSeekChatWebCall(item); call != nil {
+					if newStep || len(steps) == 0 {
+						steps = append(steps, chatServerToolStep{Index: len(steps), ReasoningContent: pendingReasoning})
+						newStep = false
+					}
+					step := &steps[len(steps)-1]
+					call.Index = len(step.Calls)
+					step.Calls = append(step.Calls, *call)
+					lastTurnReasoning = ""
+				}
+			}
+			pendingReasoning = ""
+			continue
 		case "reasoning":
+			newStep = true
 			if txt := extractResponsesReasoningText(item); txt != "" {
 				pendingReasoning = txt
 			} else if opts != nil && opts.ReasoningContentByID != nil {
@@ -642,6 +683,7 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 		// appendAssistantToolCall merges into this message and only fills
 		// ReasoningContent when it is still empty.
 		if role == "assistant" {
+			msg.ServerToolCalls = takeSteps()
 			msg.ReasoningContent = reasoningForAssistant()
 			pendingReasoning = ""
 		} else {
@@ -651,6 +693,7 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 		messages = append(messages, msg)
 	}
 
+	flushSteps()
 	return messages, mediaByCallID, nil
 }
 
@@ -1153,6 +1196,8 @@ func responsesToolsToChatTools(tools []ResponsesTool) ([]ChatTool, error) {
 				return nil, err
 			}
 			out = append(out, flattened...)
+		case "deepseek_web_search", "deepseek_read_url":
+			out = append(out, ChatTool{Type: tool.Type, Name: tool.Name, deepSeekDeclaration: tool.deepSeekDeclaration})
 		case "x_search":
 			out = append(out, ChatTool{
 				Type:                     "x_search",

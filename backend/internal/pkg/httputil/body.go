@@ -37,6 +37,13 @@ type PrereadBody struct {
 	reader *bytes.Reader
 }
 
+type decodedBodyLimitKey struct{}
+
+// WithDecodedBodyLimit applies a route's wire limit to decompression as well.
+func WithDecodedBodyLimit(ctx context.Context, maxBytes int64) context.Context {
+	return context.WithValue(ctx, decodedBodyLimitKey{}, maxBytes)
+}
+
 // NewPrereadBody 包装一段已读取的请求体。
 func NewPrereadBody(body []byte) *PrereadBody {
 	return &PrereadBody{body: body, reader: bytes.NewReader(body)}
@@ -264,13 +271,17 @@ func decompressRequestBodyWithBudget(ctx context.Context, encoding string, raw [
 	default:
 		return requestBodyBuffer{}, errors.New("unsupported Content-Encoding")
 	}
-	decoded, err := readRequestBodyChunksWithBudget(ctx, io.LimitReader(reader, maxDecompressedBodySize+1), requestBodyReadInitCap, -1)
+	limit := int64(maxDecompressedBodySize)
+	if routeLimit, ok := ctx.Value(decodedBodyLimitKey{}).(int64); ok && routeLimit > 0 {
+		limit = min(limit, routeLimit)
+	}
+	decoded, err := readRequestBodyChunksWithBudget(ctx, io.LimitReader(reader, limit+1), requestBodyReadInitCap, -1)
 	if err != nil {
 		return requestBodyBuffer{}, err
 	}
-	if len(decoded.data) > maxDecompressedBodySize {
+	if int64(len(decoded.data)) > limit {
 		decoded.release(ctx)
-		return requestBodyBuffer{}, &http.MaxBytesError{Limit: maxDecompressedBodySize}
+		return requestBodyBuffer{}, &http.MaxBytesError{Limit: limit}
 	}
 	return decoded, nil
 }

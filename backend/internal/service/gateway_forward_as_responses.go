@@ -14,6 +14,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/claude"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -35,6 +36,7 @@ func (s *GatewayService) ForwardAsResponses(
 	body []byte,
 	parsed *ParsedRequest,
 ) (*ForwardResult, error) {
+	body = filterDeepSeekRequest(body, account)
 	startTime := time.Now()
 
 	normalizedBody, normalized, err := normalizeOpenAIResponsesLegacyIngressWithConfig(s.cfg, body)
@@ -823,7 +825,32 @@ func appendRawJSON(existing json.RawMessage, fragment string) json.RawMessage {
 }
 
 // writeResponsesError writes an error response in OpenAI Responses API format.
+func gatewayErrorStreamStarted(c *gin.Context) bool {
+	return c.Writer.Written() && strings.HasPrefix(c.Writer.Header().Get("Content-Type"), "text/event-stream")
+}
+
+func writeResponsesStreamError(c *gin.Context, statusCode int, code, message string) bool {
+	if !gatewayErrorStreamStarted(c) {
+		return false
+	}
+	MarkResponseCommitted(c)
+	MarkOpsStreamError(c, code, message, statusCode)
+	model := ""
+	if c.Request != nil {
+		ctx := c.Request.Context()
+		model, _ = ctx.Value(ctxkey.Model).(string)
+		model = compositeClientModel(ctx, model)
+	}
+	source, _ := json.Marshal(gin.H{"error": gin.H{"code": code, "message": message}})
+	_, _ = fmt.Fprint(c.Writer, buildOpenAIResponseFailedSSE("", model, 0, source, message))
+	c.Writer.Flush()
+	return true
+}
+
 func writeResponsesError(c *gin.Context, statusCode int, code, message string) {
+	if writeResponsesStreamError(c, statusCode, code, message) {
+		return
+	}
 	MarkResponseCommitted(c)
 	c.JSON(statusCode, gin.H{
 		"error": gin.H{

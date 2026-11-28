@@ -38,14 +38,15 @@ func ChatCompletionsToResponsesWithMinOutputTokens(req *ChatCompletionsRequest, 
 	}
 
 	out := &ResponsesRequest{
-		Model:              req.Model,
-		Instructions:       req.Instructions,
-		Input:              inputJSON,
-		Stream:             true, // upstream always streams
-		Include:            []string{"reasoning.encrypted_content"},
-		ServiceTier:        req.ServiceTier,
-		PromptCacheOptions: req.PromptCacheOptions,
-		ParallelToolCalls:  req.ParallelToolCalls,
+		Model:                 req.Model,
+		Instructions:          req.Instructions,
+		Input:                 inputJSON,
+		Stream:                true, // upstream always streams
+		Include:               []string{"reasoning.encrypted_content"},
+		ServiceTier:           req.ServiceTier,
+		PromptCacheOptions:    req.PromptCacheOptions,
+		ParallelToolCalls:     req.ParallelToolCalls,
+		DeepSeekRequestFields: req.objects(),
 	}
 
 	// Reasoning models (gpt-5.x) do not accept sampling parameters.
@@ -472,6 +473,12 @@ func convertChatContentPartsToResponses(parts []ChatContentPart) []ResponsesCont
 					FileData:              p.File.FileData,
 					FileID:                p.File.FileID,
 				})
+			} else if p.FileID != "" {
+				responseParts = append(responseParts, ResponsesContentPart{
+					PromptCacheBreakpoint: p.PromptCacheBreakpoint,
+					Type:                  "input_file",
+					FileID:                p.FileID,
+				})
 			}
 		}
 	}
@@ -529,6 +536,12 @@ func convertChatToolsToResponses(tools []ChatTool, functions []ChatFunction) []R
 		}
 		if toolType == "web_search" || toolType == "code_execution" {
 			out = append(out, ResponsesTool{Type: toolType})
+			continue
+		}
+		// DeepSeek server tools keep their declaration shape in the Responses
+		// protocol: {"type":"deepseek_web_search","name":"deepseek_web_search"}.
+		if IsDeepSeekWebTool(t.Type) {
+			out = append(out, ResponsesTool{Type: t.Type, Name: t.Name, deepSeekDeclaration: t.deepSeekDeclaration})
 			continue
 		}
 		if t.Type != "function" || t.Function == nil {

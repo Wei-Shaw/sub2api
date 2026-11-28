@@ -2346,6 +2346,61 @@ const (
 	defaultAudioSTTPricePerHour         = 0.10
 )
 
+func isDeepseekToolPricingPattern(pattern string) bool {
+	pattern = strings.ToLower(strings.TrimSpace(pattern))
+	for _, endpoint := range []string{"search", "fetch", "ocr", "asr", "tts"} {
+		if pattern == "deepseek-tools-"+endpoint {
+			return true
+		}
+	}
+	return false
+}
+
+// Standalone tools use DeepSeek's USD list prices. A configured per-request
+// price on the synthetic model is the price of one call, page, second or character.
+func (s *BillingService) calculateDeepseekToolCost(ctx context.Context, resolver *ModelPricingResolver, apiKey *APIKey, usage DeepseekToolsUsage, multiplier float64) (*CostBreakdown, error) {
+	cost := &CostBreakdown{BillingMode: string(BillingModePerRequest)}
+	if usage.Units <= 0 {
+		// Generic per-request pricing defaults an unspecified request count to one.
+		return cost, nil
+	}
+	var unitPrice float64
+	switch usage.Endpoint {
+	case "search", "fetch":
+		unitPrice = 0.75 / 1000
+	case "ocr":
+		unitPrice = 0.225 / 1000
+	case "asr":
+		unitPrice = 0.116 / 3600
+	case "tts":
+		unitPrice = 0.45 / 10000
+	default:
+		return nil, fmt.Errorf("unknown DeepSeek billing endpoint %q", usage.Endpoint)
+	}
+	if resolver != nil && apiKey != nil && apiKey.Group != nil {
+		model := usage.Model()
+		group := apiKey.Group
+		ctx = WithResolvedTargetPlatform(ctx, PlatformDeepseek)
+		pricing := matchGroupModelPricingMode(group, model, BillingModePerRequest)
+		source := PricingSourceGroup
+		if pricing == nil {
+			pricing = resolver.lookupChannelPricingNormalized(ctx, group.ID, model)
+			source = PricingSourceChannel
+		}
+		if pricing != nil && pricing.BillingMode == BillingModePerRequest {
+			resolved := resolver.resolveConfiguredPricing(pricing, model, source)
+			return s.CalculateCostUnified(CostInput{
+				Ctx: ctx, Model: model, GroupID: &group.ID, Group: group,
+				RequestCount: usage.Units, SizeTier: "deepseek_" + usage.Endpoint,
+				RateMultiplier: multiplier, Resolver: resolver, Resolved: resolved,
+			})
+		}
+	}
+	cost.TotalCost = unitPrice * float64(usage.Units)
+	cost.ActualCost = cost.TotalCost * math.Max(0, multiplier)
+	return cost, nil
+}
+
 // CalculateWebSearchCost 计算 Codex alpha/search 网页搜索按次费用。
 // callCount: 搜索调用次数（每次请求为 1）
 // groupPrice: 分组配置的单次价格（nil 表示使用默认价 0.01；0 表示免费）

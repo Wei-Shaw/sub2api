@@ -47,20 +47,17 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 	// 1. Lower Codex client-side tools to function tools understood by Anthropic.
 	adaptedBody, clientToolMapping, err := adaptResponsesClientToolsForAnthropic(body)
 	if err != nil {
-		writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", "Failed to adapt request tools")
-		return nil, fmt.Errorf("adapt responses client tools: %w", err)
+		return nil, rejectGatewayRequest(c, writeResponsesError, "Failed to adapt request tools", fmt.Errorf("adapt responses client tools: %w", err))
 	}
 
 	// 2. Parse Responses request
 	var responsesReq apicompat.ResponsesRequest
 	if err := json.Unmarshal(adaptedBody, &responsesReq); err != nil {
-		writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
-		return nil, fmt.Errorf("parse responses request: %w", err)
+		return nil, rejectGatewayRequest(c, writeResponsesError, "Failed to parse request body", fmt.Errorf("parse responses request: %w", err))
 	}
 	originalModel := responsesReq.Model
 	if strings.TrimSpace(originalModel) == "" {
-		writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", "model is required")
-		return nil, fmt.Errorf("missing model in request")
+		return nil, rejectGatewayRequest(c, writeResponsesError, "model is required", fmt.Errorf("missing model in request"))
 	}
 	clientStream := responsesReq.Stream
 
@@ -69,14 +66,12 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 	billingModel := resolveOpenAIForwardModel(account, originalModel, defaultMappedModel)
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	if err := validateClaude55Request(body, upstreamModel); err != nil {
-		writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return nil, err
+		return nil, rejectGatewayRequest(c, writeResponsesError, err.Error(), err)
 	}
 	responsesReq.Model = upstreamModel
 	anthropicReq, err := apicompat.ResponsesToAnthropicRequest(&responsesReq)
 	if err != nil {
-		writeResponsesError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return nil, fmt.Errorf("convert responses to anthropic: %w", err)
+		return nil, rejectGatewayRequest(c, writeResponsesError, err.Error(), fmt.Errorf("convert responses to anthropic: %w", err))
 	}
 
 	// 5. Force upstream streaming（客户端原始终决定响应格式；
@@ -99,7 +94,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaNativeAnthropic(
 
 	// 与 /v1/messages 直通路径相同的 pre-filter。
 	anthropicBody = StripEmptyTextBlocks(anthropicBody)
-	anthropicBody = FilterWebSearchHistoryBlocks(anthropicBody, upstreamModel)
+	anthropicBody = FilterWebSearchHistoryBlocks(anthropicBody, upstreamModel, account)
 	anthropicBody = enforceCacheControlLimit(anthropicBody)
 
 	apiKey := strings.TrimSpace(account.GetOpenAIProtocolAPIKey())

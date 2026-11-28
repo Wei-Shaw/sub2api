@@ -20,6 +20,7 @@ import (
 
 // Forward forwards request to OpenAI API
 func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*OpenAIForwardResult, error) {
+	body = filterDeepSeekRequest(body, account)
 	beginUpstreamResponseModelObservation(c)
 	ClearActualOpenAIUpstreamEndpoint(c)
 	if shouldForwardOpenAIResponsesViaRawChatCompletions(account) {
@@ -69,7 +70,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	}
 	legacyIngressBody, legacyIngressChanged, legacyIngressErr := normalizeOpenAIResponsesLegacyIngressWithConfig(s.cfg, body)
 	if legacyIngressErr != nil {
-		return nil, legacyIngressErr
+		return nil, rejectGatewayRequest(c, writeResponsesError, legacyIngressErr.Error(), legacyIngressErr)
 	}
 	if legacyIngressChanged {
 		body = legacyIngressBody
@@ -321,7 +322,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		if reqBody == nil {
 			decoded, decodeErr := requestView.Decode(c)
 			if decodeErr != nil {
-				return decodeErr
+				return rejectGatewayRequest(c, writeResponsesError, "Failed to parse request body", decodeErr)
 			}
 			reqBody = decoded
 		}
@@ -337,7 +338,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 		}
 		decoded, decodeErr := requestView.Decode(c)
 		if decodeErr != nil {
-			return nil, decodeErr
+			return nil, rejectGatewayRequest(c, writeResponsesError, "Failed to parse request body", decodeErr)
 		}
 		reqBody = decoded
 		return reqBody, nil
@@ -1556,7 +1557,7 @@ func (s *OpenAIGatewayService) buildUpstreamRequest(ctx context.Context, c *gin.
 	if err := applyMappedGPT55LiteCompatibility(req, account, body); err != nil {
 		return nil, err
 	}
-	return req, nil
+	return withDeepseekWireFiles(req, account, APIProtocolResponses, body), nil
 }
 
 // codexIdentityOverrideUA 返回账号级显式配置的出站 User-Agent，供强制统一身份时作为覆写来源。

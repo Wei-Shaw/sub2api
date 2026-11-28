@@ -494,6 +494,27 @@ func (s *defaultOpenAIAccountScheduler) Select(
 	return selection, decision, nil
 }
 
+func (s *OpenAIGatewayService) selectPinnedOpenAIAccount(ctx context.Context, req OpenAIAccountScheduleRequest) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+	decision := OpenAIAccountScheduleDecision{Layer: openAIAccountScheduleLayerSessionSticky}
+	if req.StickyAccountID <= 0 || strings.TrimSpace(req.SessionHash) == "" {
+		return nil, decision, ErrNoAvailableAccounts
+	}
+	req.PreserveStickyBinding = true
+	req.DisableStickyEscape = true
+	scheduler := &defaultOpenAIAccountScheduler{service: s}
+	selection, _, err := scheduler.selectBySessionHash(ctx, req)
+	if err != nil {
+		return nil, decision, err
+	}
+	if selection == nil || selection.Account == nil {
+		return nil, decision, ErrNoAvailableAccounts
+	}
+	decision.StickySessionHit = true
+	decision.SelectedAccountID = selection.Account.ID
+	decision.SelectedAccountType = selection.Account.Type
+	return selection, decision, nil
+}
+
 func (s *defaultOpenAIAccountScheduler) selectBySessionHash(
 	ctx context.Context,
 	req OpenAIAccountScheduleRequest,
@@ -2132,7 +2153,38 @@ func (s *OpenAIGatewayService) SelectAccountWithSchedulerForCapability(
 	if len(platformOverride) > 0 {
 		platform = platformOverride[0]
 	}
-	return s.selectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, "", requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+	selectAccount := func(ctx context.Context) (*AccountSelectionResult, OpenAIAccountScheduleDecision, error) {
+		return s.selectAccountWithScheduler(ctx, groupID, previousResponseID, sessionHash, requestedModel, excludedIDs, requiredTransport, requiredCapability, "", requireCompact, platform, previousResponseCanMove, useUpstreamTokenCost)
+	}
+	selection, decision, err := selectAccount(ctx)
+	ref, hasRefs := ctx.Value(deepseekReferencesKey{}).(deepseekReferences)
+	if err != nil || !hasRefs || ref.binding.accountID != 0 || selection == nil || selection.Account == nil {
+		return selection, decision, err
+	}
+	account := selection.Account
+	if !account.IsOpenAIApiKey() || !isDeepseekOfficialHost(account.GetOpenAIBaseURL()) {
+		return selection, decision, nil
+	}
+	// Mixed OpenAI pools must still support ordinary OpenAI file IDs. Only
+	// repin once the actual candidate is a DeepSeek mapping and ownership is
+	// established. The final wire check handles unknown and foreign IDs.
+	owner, lookupErr := lookupDeepseekFileBinding(ctx, s.cache, ref.userID, ref.ids)
+	if lookupErr != nil || owner.accountID == account.ID {
+		return selection, decision, nil
+	}
+	if selection.ReleaseFunc != nil {
+		selection.ReleaseFunc()
+	}
+	ref.binding = owner
+	ctx = context.WithValue(ctx, deepseekReferencesKey{}, ref)
+	pinned, decision, err := selectAccount(withDeepseekFileAccount(ctx, owner.accountID))
+	if err == nil && pinned != nil && pinned.Account != nil && !isDeepseekOfficialHost(pinned.Account.GetOpenAIBaseURL()) {
+		if pinned.ReleaseFunc != nil {
+			pinned.ReleaseFunc()
+		}
+		return nil, decision, ErrNoAvailableAccounts
+	}
+	return pinned, decision, err
 }
 
 func (s *OpenAIGatewayService) SelectAccountWithSchedulerForImages(
@@ -2366,6 +2418,18 @@ func (s *OpenAIGatewayService) selectAccountWithSchedulerOnce(
 	}
 	platform = NormalizeOpenAICompatiblePlatform(platform)
 	decision := OpenAIAccountScheduleDecision{}
+	if owner, _ := ctx.Value(deepseekFileAccountKey{}).(int64); owner > 0 {
+		if (platform != PlatformDeepseek && platform != PlatformOpenAI) || s.checkChannelPricingRestriction(ctx, groupID, requestedModel) {
+			return nil, decision, ErrNoAvailableAccounts
+		}
+		return s.selectPinnedOpenAIAccount(ctx, OpenAIAccountScheduleRequest{
+			GroupID: groupID, Platform: platform, RequestedModel: requestedModel, ExcludedIDs: excludedIDs,
+			SessionHash: "deepseek-file:" + strconv.FormatInt(owner, 10), StickyAccountID: owner,
+			RequiredTransport: requiredTransport, RequiredCapability: requiredCapability, RequiredImageCapability: requiredImageCapability,
+			RequireCompact: requireCompact, RequirePrivacySet: s.openAIGroupRequiresPrivacySet(ctx, groupID),
+			UseUpstreamTokenCost: useUpstreamTokenCost,
+		})
+	}
 	preserveStickyBinding := preserveOpenAIGuardianParentBinding(ctx, sessionHash) || openAIImageSizeSpilloverPass(ctx)
 	guardianParentAccountID := int64(0)
 	if strings.TrimSpace(previousResponseID) == "" {
@@ -2556,7 +2620,7 @@ func (s *OpenAIGatewayService) isOpenAIAccountTransportCompatible(account *Accou
 }
 
 func (s *OpenAIGatewayService) ReportOpenAIAccountScheduleResult(account *Account, model string, success bool, firstTokenMs *int, observedErr ...error) bool {
-	if account == nil {
+	if account == nil || (!success && len(observedErr) > 0 && errors.Is(observedErr[0], errInvalidGatewayRequest)) {
 		return false
 	}
 	accountID := account.ID

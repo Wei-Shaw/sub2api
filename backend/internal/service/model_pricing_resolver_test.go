@@ -215,6 +215,11 @@ func TestGetRequestTierPrice_NilPerRequestPrice(t *testing.T) {
 // channel (active, groupID=100, platform=anthropic) with the specified pricing.
 func newResolverWithChannel(t *testing.T, pricing []ChannelModelPricing) *ModelPricingResolver {
 	t.Helper()
+	return newResolverWithChannelForPlatform(t, PlatformAnthropic, pricing)
+}
+
+func newResolverWithChannelForPlatform(t *testing.T, platform string, pricing []ChannelModelPricing) *ModelPricingResolver {
+	t.Helper()
 	const groupID = 100
 	repo := &mockChannelRepository{
 		listAllFn: func(_ context.Context) ([]Channel, error) {
@@ -227,7 +232,7 @@ func newResolverWithChannel(t *testing.T, pricing []ChannelModelPricing) *ModelP
 			}}, nil
 		},
 		getGroupPlatformsFn: func(_ context.Context, _ []int64) (map[int64]string, error) {
-			return map[int64]string{groupID: "anthropic"}, nil
+			return map[int64]string{groupID: platform}, nil
 		},
 	}
 	cs := NewChannelService(repo, nil, nil, nil, nil)

@@ -254,6 +254,12 @@ func (s *GatewayService) buildUpstreamRequest(ctx context.Context, c *gin.Contex
 		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)
 	}
 
+	if err := s.verifyAnthropicDeepseekFiles(ctx, c, account, req.URL, body); err != nil {
+		return nil, nil, err
+	}
+	if isDeepseekOfficialHost(req.URL.String()) {
+		req = req.WithContext(WithHTTPUpstreamRedirectsDisabled(req.Context()))
+	}
 	return req, body, nil
 }
 

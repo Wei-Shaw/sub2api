@@ -145,6 +145,10 @@ func (r *ModelPricingResolver) resolveConfiguredPricing(config *ChannelModelPric
 }
 
 func matchGroupModelPricing(group *Group, model string) *ChannelModelPricing {
+	return matchGroupModelPricingMode(group, model, "")
+}
+
+func matchGroupModelPricingMode(group *Group, model string, mode BillingMode) *ChannelModelPricing {
 	if group == nil {
 		return nil
 	}
@@ -152,6 +156,9 @@ func matchGroupModelPricing(group *Group, model string) *ChannelModelPricing {
 	var wildcard *ChannelModelPricing
 	for i := range group.ModelPricing {
 		entry := &group.ModelPricing[i]
+		if mode != "" && entry.BillingMode != mode {
+			continue
+		}
 		for _, pattern := range entry.Models {
 			normalized := normalizeChannelPricingModelName(pattern)
 			if normalized == model {

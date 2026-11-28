@@ -525,7 +525,7 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 
 	var chatReq apicompat.ChatCompletionsRequest
 	if err := json.Unmarshal(body, &chatReq); err != nil {
-		return nil, fmt.Errorf("parse grok chat completions request: %w", err)
+		return nil, rejectGatewayRequest(c, writeChatCompletionsError, "Failed to parse request body", fmt.Errorf("parse grok chat completions request: %w", err))
 	}
 	originalModel := chatReq.Model
 	clientStream := chatReq.Stream
@@ -543,7 +543,7 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 
 	responsesReq, err := chatCompletionsToResponses(s.cfg, &chatReq)
 	if err != nil {
-		return nil, fmt.Errorf("convert grok chat completions to responses: %w", err)
+		return nil, rejectGatewayRequest(c, writeChatCompletionsError, err.Error(), err)
 	}
 	responsesReq.Model = upstreamModel
 	responsesReq.Stream = true

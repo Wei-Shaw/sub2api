@@ -304,6 +304,8 @@ type OpenAIForwardResult struct {
 	SearchCount int
 	// AudioUsage carries Voice billing units when present.
 	AudioUsage *AudioUsage
+	// DeepseekTool is set only by the standalone tools handler.
+	DeepseekTool *DeepseekToolsUsage
 
 	wsReplayInput                []json.RawMessage
 	wsReplayInputExists          bool

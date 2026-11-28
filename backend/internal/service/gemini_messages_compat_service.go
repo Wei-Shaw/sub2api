@@ -531,6 +531,7 @@ func (s *GeminiMessagesCompatService) HasAntigravityAccounts(ctx context.Context
 }
 
 func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
+	body = filterDeepSeekRequest(body, account)
 	beginUpstreamResponseModelObservation(c)
 	beginGeminiImageOutputObservation(c)
 	startTime := time.Now()

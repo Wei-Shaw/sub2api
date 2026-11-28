@@ -286,7 +286,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		result.UpstreamResponseModel,
 		result.UpstreamResponseModelConflict,
 		result.ImageCount > 0 || result.VideoCount > 0 || result.WebSearchCalls > 0 ||
-			result.AudioUsage != nil || result.SearchCount > 0,
+			result.AudioUsage != nil || result.SearchCount > 0 || result.DeepseekTool != nil,
 	); responseModel != "" && !strings.EqualFold(responseModel, baselineBillingModel) {
 		if identified, responseChannelPriced := s.hasIdentifiedOpenAIResponsePricing(ctx, responseModel, apiKey); identified {
 			responseModels := s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, usageBillingModelCandidates(responseModel))
@@ -445,6 +445,8 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.RateMultiplier = videoMultiplier
 	} else if result.ImageCount > 0 && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
 		usageLog.RateMultiplier = imageMultiplier
+	} else if result.DeepseekTool != nil {
+		usageLog.RateMultiplier = baseMultiplier
 	} else {
 		usageLog.RateMultiplier = multiplier
 	}
@@ -608,6 +610,9 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		// 倍率与 image/video 按次口径一致：使用不含高峰因子的基础倍率
 		//（用户专属 > 分组 rate_multiplier > 系统默认），与分组表单的价格预览承诺一致。
 		return s.billingService.CalculateWebSearchCost(result.WebSearchCalls, webSearchPricePerCallFromAPIKey(apiKey), webSearchMultiplier), nil
+	}
+	if result != nil && result.DeepseekTool != nil {
+		return s.billingService.calculateDeepseekToolCost(ctx, s.resolver, apiKey, *result.DeepseekTool, webSearchMultiplier)
 	}
 	if isGrokVideoUsageResult(result, billingModels) {
 		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {

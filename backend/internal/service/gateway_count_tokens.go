@@ -30,6 +30,11 @@ func (s *GatewayService) ForwardCountTokens(ctx context.Context, c *gin.Context,
 		return nil
 	}
 
+	if body := filterDeepSeekRequest(parsed.Body.Bytes(), account); !bytes.Equal(body, parsed.Body.Bytes()) {
+		if err := parsed.ReplaceBody(body); err != nil {
+			return err
+		}
+	}
 	validationModel := parsed.Model
 	if account != nil {
 		if account.IsBedrock() {

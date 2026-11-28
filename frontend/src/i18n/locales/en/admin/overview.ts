@@ -1109,6 +1109,18 @@ export default {
         searchPricePer1k: 'Search price per 1k calls (USD)',
         pricePlaceholder: 'optional'
       },
+      deepseekToolPricing: {
+        title: 'DeepSeek tool prices',
+        hint: 'Tool and model prices use the same balance unit, based on USD list prices. For example, deepseek-flash off-peak uncached input costs $0.15 per million tokens. The effective group multiplier applies to both tool and token charges. Leave a price blank to use channel pricing or, if unset, the official USD price. Enter 0 for free use. Sites selling one balance unit for ¥1 can use the CNY references to set their multiplier.',
+        search: 'Web search (USD / 1,000 successful calls)',
+        fetch: 'Web fetch (USD / 1,000 successful calls)',
+        ocr: 'OCR (USD / 1,000 pages)',
+        tts: 'Text to speech (USD / 10,000 billing characters)',
+        asr: 'Speech recognition (USD / hour)',
+        reference: 'Official list prices USD {usd} / CNY {cny}',
+        managedByRule: 'Managed by {rule} in per-model pricing.',
+        conflict: '{rule} overlaps a dedicated tool price. Edit the DeepSeek tool price or narrow the model pattern.'
+      },
       modelPricing: {
         title: 'Per-model group pricing',
         description: 'Overrides channel and built-in prices for matching models. Long-context tiers come from official presets — do not enter custom intervals. Use per-request tiers such as realtime, tts, and stt for audio.',

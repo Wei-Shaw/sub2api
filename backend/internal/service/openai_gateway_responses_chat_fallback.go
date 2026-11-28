@@ -35,13 +35,11 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 ) (*OpenAIForwardResult, error) {
 	var responsesReq apicompat.ResponsesRequest
 	if err := json.Unmarshal(body, &responsesReq); err != nil {
-		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
-		return nil, fmt.Errorf("parse responses request: %w", err)
+		return nil, rejectGatewayRequest(c, writeOpenAIResponsesFallbackError, "Failed to parse request body", fmt.Errorf("parse responses request: %w", err))
 	}
 	originalModel := strings.TrimSpace(responsesReq.Model)
 	if originalModel == "" {
-		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", "model is required")
-		return nil, fmt.Errorf("missing model in request")
+		return nil, rejectGatewayRequest(c, writeOpenAIResponsesFallbackError, "model is required", fmt.Errorf("missing model in request"))
 	}
 
 	clientStream := responsesReq.Stream
@@ -51,14 +49,12 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	// 为带 namespace 字段的 function_call 项。
 	effectiveTools, err := apicompat.EffectiveResponsesTools(&responsesReq)
 	if err != nil {
-		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return nil, fmt.Errorf("resolve responses tools: %w", err)
+		return nil, rejectGatewayRequest(c, writeOpenAIResponsesFallbackError, err.Error(), fmt.Errorf("resolve responses tools: %w", err))
 	}
 	billingModel := resolveOpenAIForwardModel(account, originalModel, "")
 	upstreamModel := normalizeOpenAIModelForUpstream(account, billingModel)
 	if err := validateGPT61CompatRequest(body, upstreamModel); err != nil {
-		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return nil, err
+		return nil, rejectGatewayRequest(c, writeOpenAIResponsesFallbackError, err.Error(), err)
 	}
 	if openai.RequiresResponsesForToolCalls(upstreamModel) && len(effectiveTools) > 0 {
 		err := fmt.Errorf("%s requires Responses for tool calls; this account only supports Chat Completions", normalizeKnownOpenAICodexModel(upstreamModel))
@@ -76,8 +72,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 				ClientMessage:     err.Error(),
 			}
 		}
-		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return nil, err
+		return nil, rejectGatewayRequest(c, writeOpenAIResponsesFallbackError, err.Error(), err)
 	}
 	customTools := apicompat.CustomToolNames(effectiveTools)
 	functionTools := apicompat.FunctionToolNames(effectiveTools)
@@ -89,11 +84,11 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	s.recacheReasoningItemsFromInput(responsesReq.Input)
 
 	chatReq, err := apicompat.ResponsesToChatCompletionsRequestWithOptions(&responsesReq, &apicompat.ResponsesToChatOptions{
-		ReasoningContentByID: s.reasoningContentByID,
+		ReasoningContentByID:   s.reasoningContentByID,
+		PreserveWebToolHistory: preservesDeepSeekWebToolHistory(account),
 	})
 	if err != nil {
-		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return nil, fmt.Errorf("convert responses to chat completions: %w", err)
+		return nil, rejectGatewayRequest(c, writeOpenAIResponsesFallbackError, err.Error(), fmt.Errorf("convert responses to chat completions: %w", err))
 	}
 
 	reasoningEffort := extractOpenAIReasoningEffortFromBody(body, upstreamModel, billingModel, originalModel)

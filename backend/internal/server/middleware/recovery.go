@@ -19,6 +19,11 @@ import (
 func Recovery() gin.HandlerFunc {
 	return gin.CustomRecoveryWithWriter(gin.DefaultErrorWriter, func(c *gin.Context, recovered any) {
 		recoveredErr, _ := recovered.(error)
+		// net/http must see this sentinel to reset an incomplete HTTP/2 stream
+		// or close HTTP/1 without writing a terminating chunk.
+		if errors.Is(recoveredErr, http.ErrAbortHandler) {
+			panic(http.ErrAbortHandler)
+		}
 
 		if isBrokenPipe(recoveredErr) {
 			if recoveredErr != nil {

@@ -13,14 +13,16 @@ import (
 const (
 	blockTypeServerToolUse       = "server_tool_use"
 	blockTypeWebSearchToolResult = "web_search_tool_result"
+	blockTypeWebFetchToolResult  = "web_fetch_tool_result"
 )
 
-// Fast-path byte patterns: both block types only ever appear as quoted JSON
+// Fast-path byte patterns: block types appear as quoted JSON
 // string values, so a raw substring check is a safe pre-filter regardless of
 // key/value spacing.
 var (
 	patternServerToolUse       = []byte(`"server_tool_use"`)
 	patternWebSearchToolResult = []byte(`"web_search_tool_result"`)
+	patternWebFetchToolResult  = []byte(`"web_fetch_tool_result"`)
 )
 
 // FilterWebSearchHistoryBlocks removes web-search content blocks from
@@ -32,23 +34,28 @@ var (
 //     No upstream ever issued them, so clients replaying the conversation
 //     (e.g. Claude Code) poison every follow-up request. They are stripped
 //     for all upstreams.
-//  2. For passback-required upstreams (DeepSeek/Kimi/GLM …, see
-//     ResolveThinkingProtocol) all server_tool_use / web_search_tool_result
-//     blocks are stripped: these upstreams only accept
-//     text/thinking/image/tool_use/tool_result and reject anything else with
-//     400 "invalid value: `server_tool_use`". anthropic-strict and unknown
-//     upstreams keep genuine blocks untouched.
+//  2. Official DeepSeek accepts genuine history even without tool declarations.
+//     Other passback-required upstreams reject server-tool calls and results.
 //
 // The emulated assistant turn always carries a trailing text summary, so the
 // search context survives the strip. A message whose content would become
 // empty gets a placeholder text block (mirroring FilterThinkingBlocksForRetry).
 // Returns the original body unchanged when nothing needs stripping.
-func FilterWebSearchHistoryBlocks(body []byte, mappedModel string) []byte {
-	if !bytes.Contains(body, patternServerToolUse) && !bytes.Contains(body, patternWebSearchToolResult) {
+func FilterWebSearchHistoryBlocks(body []byte, mappedModel string, account *Account) []byte {
+	if !bytes.Contains(body, patternServerToolUse) && !bytes.Contains(body, patternWebSearchToolResult) && !bytes.Contains(body, patternWebFetchToolResult) {
 		return body
 	}
 
 	stripAll := ResolveThinkingProtocol(mappedModel) == ThinkingProtocolPassbackRequired
+	if account != nil {
+		base := account.GetAnthropicProtocolBaseURL()
+		if base == "" && account.Platform == PlatformAnthropic {
+			base = account.GetBaseURL()
+		}
+		if isDeepseekOfficialHost(base) {
+			stripAll = false
+		}
+	}
 
 	jsonStr := *(*string)(unsafe.Pointer(&body))
 	msgsRes := gjson.Get(jsonStr, "messages")
@@ -126,7 +133,7 @@ func shouldStripWebSearchBlock(block map[string]any, stripAll bool) bool {
 		}
 		id, _ := block["id"].(string)
 		return strings.HasPrefix(id, webSearchToolUseIDPrefix)
-	case blockTypeWebSearchToolResult:
+	case blockTypeWebSearchToolResult, blockTypeWebFetchToolResult:
 		if stripAll {
 			return true
 		}
