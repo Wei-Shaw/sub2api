@@ -62,6 +62,10 @@ func ResponsesToChatCompletionsRequestWithOptions(req *ResponsesRequest, opts *R
 		ServiceTier:         req.ServiceTier,
 		ParallelToolCalls:   req.ParallelToolCalls,
 		Stop:                req.Stop,
+		// DeepSeek extension fields pass through verbatim (same shape in both
+		// protocols).
+		SafetyCheck: req.SafetyCheck,
+		Title:       req.Title,
 	}
 	if req.Reasoning != nil {
 		out.ReasoningEffort = req.Reasoning.Effort
@@ -1153,6 +1157,13 @@ func responsesToolsToChatTools(tools []ResponsesTool) ([]ChatTool, error) {
 				return nil, err
 			}
 			out = append(out, flattened...)
+		case "deepseek_web_search", "deepseek_read_url":
+			// DeepSeek 服务端工具在 chat 协议下同形声明，原样透传 type+name。
+			name := strings.TrimSpace(tool.Name)
+			if name == "" {
+				name = tool.Type
+			}
+			out = append(out, ChatTool{Type: tool.Type, Name: name})
 		case "x_search":
 			out = append(out, ChatTool{
 				Type:                     "x_search",

@@ -46,6 +46,10 @@ func ChatCompletionsToResponsesWithMinOutputTokens(req *ChatCompletionsRequest, 
 		ServiceTier:        req.ServiceTier,
 		PromptCacheOptions: req.PromptCacheOptions,
 		ParallelToolCalls:  req.ParallelToolCalls,
+		// DeepSeek extension fields pass through verbatim (same shape in both
+		// protocols); nil stays nil so no zero-value fields are emitted.
+		SafetyCheck: req.SafetyCheck,
+		Title:       req.Title,
 	}
 
 	// Reasoning models (gpt-5.x) do not accept sampling parameters.
@@ -529,6 +533,16 @@ func convertChatToolsToResponses(tools []ChatTool, functions []ChatFunction) []R
 		}
 		if toolType == "web_search" || toolType == "code_execution" {
 			out = append(out, ResponsesTool{Type: toolType})
+			continue
+		}
+		// DeepSeek server tools keep their declaration shape in the Responses
+		// protocol: {"type":"deepseek_web_search","name":"deepseek_web_search"}.
+		if toolType == "deepseek_web_search" || toolType == "deepseek_read_url" {
+			name := strings.TrimSpace(t.Name)
+			if name == "" {
+				name = toolType
+			}
+			out = append(out, ResponsesTool{Type: toolType, Name: name})
 			continue
 		}
 		if t.Type != "function" || t.Function == nil {

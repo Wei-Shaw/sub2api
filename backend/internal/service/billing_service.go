@@ -2344,6 +2344,16 @@ const (
 	defaultAudioRealtimePricePerMin     = 0.05
 	defaultAudioTTSPricePerMillionChars = 15.0
 	defaultAudioSTTPricePerHour         = 0.10
+
+	// DeepSeek 独立工具接口默认单价：官方牌价折算到单计费单位，货币口径与
+	// defaultSearchPricePer1k 一致处理（不做汇率换算）。
+	// OCR ¥1.5/千页 → 0.0015/页；ASR ¥0.78/小时 → 0.78/3600/秒；
+	// TTS ¥3.0/万字符 → 0.0003/计费字符（全宽字符算 2）。
+	// 分组覆盖：现有 group 音频价格结构（realtime/tts/stt 三列）放不下这三个
+	// 语义，本 PR 只做默认价；分组覆盖 UI 不在此 PR 范围。
+	defaultDeepseekToolsOCRPricePerPage   = 1.5 / 1000.0
+	defaultDeepseekToolsASRPricePerSecond = 0.78 / 3600.0
+	defaultDeepseekToolsTTSPricePerChar   = 3.0 / 10000.0
 )
 
 // CalculateWebSearchCost 计算 Codex alpha/search 网页搜索按次费用。
@@ -2428,6 +2438,15 @@ func (s *BillingService) CalculateAudioCost(mode string, durationOrUnits float64
 		if groupConfig != nil && groupConfig.STTPerHour != nil {
 			unitPrice = *groupConfig.STTPerHour
 		}
+	// DeepSeek 独立工具接口（OCR/ASR/TTS）：durationOrUnits 分别为页数/秒数/
+	// 计费字符数（全宽字符算 2，由 service 层提取时折算）。只做默认价，分组
+	// 覆盖结构放不下对应语义（见上方常量注释）。
+	case "deepseek_ocr":
+		unitPrice = defaultDeepseekToolsOCRPricePerPage
+	case "deepseek_asr":
+		unitPrice = defaultDeepseekToolsASRPricePerSecond
+	case "deepseek_tts":
+		unitPrice = defaultDeepseekToolsTTSPricePerChar
 	default:
 		return &CostBreakdown{}
 	}

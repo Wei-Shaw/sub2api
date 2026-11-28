@@ -1233,14 +1233,25 @@ func (h *AccountHandler) Update(c *gin.Context) {
 // 当前请求。探测错误仅记录日志，不向上下文传播：探测失败时标记保持缺失，
 // 网关会按"现状即证据"默认走 Responses。
 func (h *AccountHandler) scheduleOpenAIResponsesProbe(account *service.Account) {
-	if account == nil || account.Type != service.AccountTypeAPIKey ||
-		(account.Platform != service.PlatformOpenAI && !account.RoutesProtocolByInbound()) {
-		return
-	}
-	if h.accountTestService == nil {
+	if account == nil || account.Type != service.AccountTypeAPIKey || h.accountTestService == nil {
 		return
 	}
 	accountID := account.ID
+	// DeepSeek 独立工具接口能力探测（/v1/tools/*、/v1/files*）：官方与第三方
+	// 中转的支持情况不同，探测结果写入 extra 供调度过滤使用。
+	if account.Platform == service.PlatformDeepseek {
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					slog.Error("deepseek_tools_probe_panic", "account_id", accountID, "recover", r)
+				}
+			}()
+			h.accountTestService.ProbeDeepseekToolsSupport(context.Background(), accountID)
+		}()
+	}
+	if account.Platform != service.PlatformOpenAI && !account.RoutesProtocolByInbound() {
+		return
+	}
 	go func() {
 		defer func() {
 			if r := recover(); r != nil {

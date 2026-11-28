@@ -698,6 +698,30 @@ func parseSSEUsagePassthrough(data string, usage *ClaudeUsage) {
 		}
 	}
 	normalizeAnthropicCompatiblePromptUsage(usageNode, usage)
+	applyDeepSeekServerToolUseUsage(usageNode, usage)
+}
+
+// applyDeepSeekServerToolUseUsage 提取 DeepSeek 2026-11-13 新增的 usage 明细：
+// 嵌套 server_tool_use 的三个按次计费计数（tool_search / tool_fetch /
+// tool_image_search，各 ¥5/千次；web_search_requests / web_fetch_requests 仅
+// 展示不计费）合计进 ServerToolUseCalls，审核 token 明细
+// output_tokens_details.safety_tokens 保留进 SafetyTokens（已含在
+// OutputTokens，不重复计费）。字段缺失或全为 0（上游省略整个
+// server_tool_use）时保持零值；SSE message_start → message_delta 重复上报时
+// 取较大值，语义与既有 token 字段一致。
+func applyDeepSeekServerToolUseUsage(usageNode gjson.Result, usage *ClaudeUsage) {
+	if usage == nil || !usageNode.Exists() {
+		return
+	}
+	if stu := usageNode.Get("server_tool_use"); stu.Exists() {
+		calls := stu.Get("tool_search").Int() + stu.Get("tool_fetch").Int() + stu.Get("tool_image_search").Int()
+		if calls > int64(usage.ServerToolUseCalls) {
+			usage.ServerToolUseCalls = int(calls)
+		}
+	}
+	if safety := usageNode.Get("output_tokens_details.safety_tokens").Int(); safety > int64(usage.SafetyTokens) {
+		usage.SafetyTokens = int(safety)
+	}
 }
 
 // normalizeAnthropicCompatiblePromptUsage converts provider-native OpenAI-style
@@ -761,6 +785,7 @@ func parseClaudeUsageFromResponseBody(body []byte) *ClaudeUsage {
 		}
 	}
 	normalizeAnthropicCompatiblePromptUsage(usageNode, usage)
+	applyDeepSeekServerToolUseUsage(usageNode, usage)
 	return usage
 }
 

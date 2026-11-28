@@ -286,7 +286,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		result.UpstreamResponseModel,
 		result.UpstreamResponseModelConflict,
 		result.ImageCount > 0 || result.VideoCount > 0 || result.WebSearchCalls > 0 ||
-			result.AudioUsage != nil || result.SearchCount > 0,
+			result.AudioUsage != nil || result.SearchCount > 0 || result.Usage.ServerToolUseCalls > 0,
 	); responseModel != "" && !strings.EqualFold(responseModel, baselineBillingModel) {
 		if identified, responseChannelPriced := s.hasIdentifiedOpenAIResponsePricing(ctx, responseModel, apiKey); identified {
 			responseModels := s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, usageBillingModelCandidates(responseModel))
@@ -609,6 +609,14 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		//（用户专属 > 分组 rate_multiplier > 系统默认），与分组表单的价格预览承诺一致。
 		return s.billingService.CalculateWebSearchCost(result.WebSearchCalls, webSearchPricePerCallFromAPIKey(apiKey), webSearchMultiplier), nil
 	}
+	// DeepSeek 独立工具接口按次计费（search/fetch）：纯工具请求无 token 用量，
+	// 若按对话模型走 token 定价会因无价可循整单归零、丢掉按次费；这里先于
+	// token 通道单独结算（同 WebSearchCalls 按次先例）。有 token 用量的对话内
+	// search 附加费仍走下方「token + search」合并通道，不受影响。
+	if result != nil && result.SearchCount > 0 && result.AudioUsage == nil && result.ImageCount == 0 &&
+		result.VideoCount == 0 && result.Usage.ServerToolUseCalls == 0 && tokens == (UsageTokens{}) {
+		return s.billingService.CalculateSearchCost(result.SearchCount, groupSearchPricePer1kFromAPIKey(apiKey), webSearchMultiplier), nil
+	}
 	if isGrokVideoUsageResult(result, billingModels) {
 		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
 			return s.calculateOpenAIVideoCost(ctx, billingModel, apiKey, result, videoMultiplier), nil
@@ -671,17 +679,23 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	// Search surcharge is additive. Never let a zero/default search cost mask a
 	// real token-pricing failure for requests that attempted token billing.
 	searchCost := (*CostBreakdown)(nil)
-	if result != nil && result.SearchCount > 0 {
+	// DeepSeek server_tool_use（tool_search/tool_fetch/tool_image_search，各
+	// ¥5/千次）与 Grok 原生 web_search 共用同一按次计费通道，次数直接合计。
+	searchCalls := 0
+	if result != nil {
+		searchCalls = result.SearchCount + result.Usage.ServerToolUseCalls
+	}
+	if searchCalls > 0 {
 		price := groupSearchPricePer1kFromAPIKey(apiKey)
 		if price != nil && *price == 0 {
 			logger.L().Info("openai_usage.search_price_per_1k_explicit_free",
-				zap.Int("search_count", result.SearchCount),
+				zap.Int("search_count", searchCalls),
 				zap.String("model", billingModel),
 				zap.Int64("api_key_id", apiKey.ID),
 				zap.Any("group_id", apiKey.GroupID),
 			)
 		}
-		searchCost = s.billingService.CalculateSearchCost(result.SearchCount, price, webSearchMultiplier)
+		searchCost = s.billingService.CalculateSearchCost(searchCalls, price, webSearchMultiplier)
 	}
 
 	tokenBillingAttempted := len(billingModels) > 0 && billingModel != ""
