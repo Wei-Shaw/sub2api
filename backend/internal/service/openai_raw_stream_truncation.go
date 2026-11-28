@@ -157,7 +157,7 @@ func openAIRawStreamTruncatedErrorBody(cause error) []byte {
 	})
 	if err != nil {
 		return []byte(`{"error":{"type":"upstream_error","code":"` + OpenAIUpstreamStreamTruncatedCode +
-			`","message":"Upstream response stream ended before completion"}}`)
+			`","message":"Upstream response stream ended before completion.` + openAIRetryGuidance + `"}}`)
 	}
 	return body
 }

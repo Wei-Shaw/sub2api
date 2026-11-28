@@ -627,7 +627,7 @@ func TestHandleChatStreamingResponse_ClassifiesHTTP2ReadError(t *testing.T) {
 	code, message, ok := OpenAIUpstreamStreamReadErrorDetails(err)
 	require.True(t, ok)
 	require.Equal(t, OpenAIUpstreamHTTP2StreamErrorCode, code)
-	require.Equal(t, "Upstream HTTP/2 stream failed", message)
+	require.Equal(t, "Upstream HTTP/2 stream failed. You can retry your request.", message)
 	require.NotContains(t, message, "stream ID")
 	require.NotContains(t, message, "INTERNAL_ERROR")
 }
