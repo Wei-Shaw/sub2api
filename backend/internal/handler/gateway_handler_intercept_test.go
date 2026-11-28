@@ -63,3 +63,15 @@ func TestSendMockInterceptResponse_MaxTokensOneHaiku(t *testing.T) {
 	require.True(t, ok)
 	require.Equal(t, float64(1), usage["output_tokens"])
 }
+
+func TestIsNonHaikuClaudeCodeProbe(t *testing.T) {
+	// Probes to non-haiku models are the only shape that #6838 lets through the
+	// gate without any interception behind it; they are answered at the entry.
+	require.True(t, isNonHaikuClaudeCodeProbe(true, "claude-sonnet-4-5", 1))
+	require.True(t, isNonHaikuClaudeCodeProbe(true, "claude-opus-4-1", 1))
+	// haiku keeps the original path (per-account intercept toggle after selection).
+	require.False(t, isNonHaikuClaudeCodeProbe(true, "claude-haiku-4-5", 1))
+	// Still gated on the Claude Code client check, and only max_tokens=1 is a probe.
+	require.False(t, isNonHaikuClaudeCodeProbe(false, "claude-sonnet-4-5", 1))
+	require.False(t, isNonHaikuClaudeCodeProbe(true, "claude-sonnet-4-5", 2))
+}
