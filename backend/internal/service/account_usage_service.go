@@ -1216,6 +1216,9 @@ func (s *AccountUsageService) getAntigravityUsage(ctx context.Context, account *
 			return degraded, nil
 		}
 
+		// Only a fresh fetch may lift limits: a cached result can predate the limit.
+		recoverAntigravityModelRateLimitsFromQuota(fetchCtx, s.accountRepo, account, fetchResult.UsageInfo, time.Now())
+
 		enrichUsageWithAccountError(fetchResult.UsageInfo, account)
 		s.cache.antigravityCache.Store(account.ID, &antigravityUsageCache{
 			usageInfo: fetchResult.UsageInfo,
