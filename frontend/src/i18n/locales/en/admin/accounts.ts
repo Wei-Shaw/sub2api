@@ -1,5 +1,25 @@
 export default {
     accounts: {
+      bulkRename: {
+        title: 'Bulk rename',
+        hint: 'Names are numbered in ascending account ID order. Only display names change; email addresses and credentials are preserved.',
+        selection: 'Rename {count} selected accounts (maximum 1,000).',
+        prefix: 'Prefix',
+        suffix: 'Suffix',
+        start: 'Start number',
+        padding: 'Minimum digits',
+        continue: 'Continue after the highest existing number',
+        continueHint: 'Searches all accounts with the same prefix and suffix. Existing number gaps are not reused.',
+        preview: 'Preview names',
+        apply: 'Apply names',
+        oldName: 'Current name',
+        newName: 'New name',
+        failed: 'Could not rename accounts. Review the error and preview again.',
+        success: 'Renamed {count} accounts.',
+        limit: 'Select between 1 and 1,000 accounts.',
+        previewHint: 'Review every name before applying. Changes to the rule require a new preview.',
+      },
+
       title: 'Account Management',
       description: 'Manage AI platform accounts and credentials',
       createAccount: 'Create Account',
