@@ -65,6 +65,72 @@ func TestPatchGrokResponsesBodyWithClientToolsLowersCodexProtocol(t *testing.T) 
 	require.False(t, gjson.GetBytes(patched, "input.4.namespace").Exists())
 }
 
+func TestPatchGrokResponsesBodyWithClientToolsLowersNativeApplyPatch(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model":"grok-4.6",
+		"tools":[
+			{"type":"apply_patch"},
+			{"type":"function","name":"exec_command","parameters":{"type":"object","properties":{"cmd":{"type":"string"}},"required":["cmd"]}}
+		],
+		"tool_choice":{"type":"apply_patch"},
+		"input":[{"role":"user","content":"hi"}]
+	}`)
+	patched, mapping, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.6")
+	require.NoError(t, err)
+	require.True(t, mapping.CustomTools["apply_patch"])
+	require.False(t, gjson.GetBytes(patched, `tools.#(type=="apply_patch")`).Exists())
+	tools := gjson.GetBytes(patched, "tools").Array()
+	require.Len(t, tools, 2)
+	require.Equal(t, "function", tools[0].Get("type").String())
+	require.Equal(t, "apply_patch", tools[0].Get("name").String())
+	require.Equal(t, "string", tools[0].Get("parameters.properties.input.type").String())
+	require.Equal(t, "exec_command", tools[1].Get("name").String())
+	require.Equal(t, "function", gjson.GetBytes(patched, "tool_choice.type").String())
+	require.Equal(t, "apply_patch", gjson.GetBytes(patched, "tool_choice.name").String())
+}
+
+func TestPatchGrokResponsesBodyWithClientToolsPromotesAdditionalNativeApplyPatch(t *testing.T) {
+	t.Parallel()
+
+	body := []byte(`{
+		"model":"grok-4.6",
+		"input":[
+			{"type":"additional_tools","role":"developer","tools":[{"type":"apply_patch"}]},
+			{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]}
+		]
+	}`)
+	patched, mapping, err := patchGrokResponsesBodyWithClientTools(body, "grok-4.6")
+	require.NoError(t, err)
+	require.True(t, mapping.CustomTools["apply_patch"])
+	require.False(t, gjson.GetBytes(patched, `input.#(type=="additional_tools")`).Exists())
+	require.Equal(t, "function", gjson.GetBytes(patched, "tools.0.type").String())
+	require.Equal(t, "apply_patch", gjson.GetBytes(patched, "tools.0.name").String())
+}
+
+func TestRestoreGrokResponsesClientToolPayloadNormalizesApplyPatchEnvelope(t *testing.T) {
+	t.Parallel()
+
+	mapping := apicompat.ResponsesClientToolMapping{CustomTools: map[string]bool{"apply_patch": true}}
+	arguments, err := json.Marshal(map[string]string{"input": "*** Begin Patch ***\n*** Add File: hello.txt\n+hello\n*** End Patch ***\n*** End of File ***"})
+	require.NoError(t, err)
+	payload, err := json.Marshal(map[string]any{
+		"id": "resp_grok",
+		"output": []any{map[string]any{
+			"type": "function_call", "id": "fc_patch", "call_id": "call_patch",
+			"name": "apply_patch", "arguments": string(arguments),
+		}},
+	})
+	require.NoError(t, err)
+
+	restored, changed, err := apicompat.RestoreResponsesClientToolPayload(payload, mapping)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.Equal(t, "custom_tool_call", gjson.GetBytes(restored, "output.0.type").String())
+	require.Equal(t, "*** Begin Patch\n*** Add File: hello.txt\n+hello\n*** End Patch\n", gjson.GetBytes(restored, "output.0.input").String())
+}
+
 func TestPatchGrokResponsesBodyWithClientToolsLowersDiscoveredToolsOutput(t *testing.T) {
 	t.Parallel()
 
