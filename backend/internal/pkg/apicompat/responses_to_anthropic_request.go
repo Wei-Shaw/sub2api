@@ -147,8 +147,28 @@ func ResponsesToAnthropicRequest(req *ResponsesRequest) (*AnthropicRequest, erro
 			}
 		}
 	}
+	ensureMaxTokensAboveThinkingBudget(out)
 
 	return out, nil
+}
+
+// thinkingBudgetMaxTokensPadding is the room left above budget_tokens when
+// max_tokens has to be raised; same value as antigravity.MaxTokensBudgetPadding.
+const thinkingBudgetMaxTokensPadding = 1000
+
+// ensureMaxTokensAboveThinkingBudget keeps an enabled thinking budget valid.
+// Anthropic requires max_tokens > thinking.budget_tokens, but the effort-derived
+// budget (high 10240, max 32768) is larger than the 8192 default used when the
+// Responses request carries no max_output_tokens, and Codex never sends one,
+// so every effort above medium was rejected with a 400. Raise max_tokens the
+// same way the Antigravity transformer does (ensureMaxTokensGreaterThanBudget).
+func ensureMaxTokensAboveThinkingBudget(out *AnthropicRequest) {
+	if out == nil || out.Thinking == nil || out.Thinking.Type != "enabled" {
+		return
+	}
+	if budget := out.Thinking.BudgetTokens; budget > 0 && out.MaxTokens <= budget {
+		out.MaxTokens = budget + thinkingBudgetMaxTokensPadding
+	}
 }
 
 // defaultThinkingBudget returns a sensible thinking budget based on effort level.
