@@ -129,6 +129,20 @@ func classifyGrokUpstreamFailure(statusCode int, responseBody []byte, requestedM
 		}
 	}
 
+	// A 403 whose body does not identify the account is request-scoped. xAI
+	// returns this for ordinary requests that healthy accounts can still serve;
+	// treating it as an entitlement failure cools every account on the failover
+	// chain. Return the error without rotating or quarantining the pool.
+	if isGrokUnrecognizedForbidden(statusCode, responseBody) {
+		return GrokUpstreamFailureDecision{
+			Class:          GrokFailureCompatibility,
+			Model:          model,
+			ShouldFailover: false,
+			ShouldCooldown: false,
+			Reason:         firstNonEmpty(text, "unrecognized grok forbidden response"),
+		}
+	}
+
 	// Empty HTTP 200 / empty model output (often rewritten to synthetic 502).
 	if isGrokEmptyModelOutputText(low) || isGrokEmptyModelOutputCode(code) {
 		return GrokUpstreamFailureDecision{
@@ -432,6 +446,35 @@ func shouldMarkGrokTeamModelRateLimit(statusCode int, responseBody []byte) bool 
 		return false
 	}
 	return statusCode == http.StatusTooManyRequests || decision.Class == GrokFailureFreeUsage
+}
+
+// isGrokUnrecognizedForbidden is true for a 403 that carries no recognized
+// account-health signal. Empty bodies, non-JSON payloads, and generic codes
+// such as permission-denied belong here. Explicit suspension, entitlement,
+// billing, and spending-limit evidence stays on the account cooldown path.
+func isGrokUnrecognizedForbidden(statusCode int, responseBody []byte) bool {
+	if statusCode != http.StatusForbidden {
+		return false
+	}
+	if grokForbiddenIdentifiesAccount(responseBody) || isGrokSpendingLimitError(responseBody) {
+		return false
+	}
+	return true
+}
+
+func grokForbiddenIdentifiesAccount(responseBody []byte) bool {
+	raw := strings.TrimSpace(string(responseBody))
+	if raw == "" {
+		return false
+	}
+	if grokAccountAccessMessage(raw) {
+		return true
+	}
+	var payload any
+	if json.Unmarshal(responseBody, &payload) == nil && grokStructuredAccountAccessMarker(payload) {
+		return true
+	}
+	return false
 }
 
 func isGrokCompatibilityError(statusCode int, low, code string) bool {
