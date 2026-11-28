@@ -34,7 +34,15 @@
             d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
           />
         </svg>
-        {{ t('admin.accounts.claudeResetCredits.count') }}<span v-if="status" class="ml-0.5 tabular-nums">{{ totalResets }}</span>
+        {{ t('admin.accounts.claudeResetCredits.count') }}<template v-if="status">
+          <span v-if="kindGroups.length === 0" class="ml-0.5 tabular-nums">0</span>
+          <span
+            v-for="(group, index) in kindGroups"
+            :key="group.kind"
+            :data-testid="`claude-reset-kind-${group.kind}`"
+            class="ml-0.5 whitespace-nowrap tabular-nums"
+          >{{ index > 0 ? '· ' : '' }}{{ kindLabel(group.kind) }} {{ group.held }}</span>
+        </template>
       </button>
 
       <button
@@ -73,13 +81,16 @@
       >
         {{ t('admin.accounts.claudeResetCredits.expiresAt', { time: formatTime(primaryCredit.expires_at, 'short') }) }}
       </span>
-      <span
-        v-if="status.eligible && totalResets > 0 && status.available_count === 0"
-        data-testid="claude-reset-not-usable"
-        class="text-[10px] text-gray-500 dark:text-gray-400"
-      >
-        {{ t('admin.accounts.claudeResetCredits.notUsableNow') }}
-      </span>
+      <template v-if="status.eligible">
+        <span
+          v-for="group in unusableGroups"
+          :key="group.kind"
+          data-testid="claude-reset-not-usable"
+          class="text-[10px] text-gray-500 dark:text-gray-400"
+        >
+          {{ unusableText(group) }}
+        </span>
+      </template>
       <span v-if="!status.eligible" class="text-[10px] text-amber-600 dark:text-amber-400">
         {{ t('admin.accounts.claudeResetCredits.ineligible') }}
       </span>
@@ -112,7 +123,35 @@
       danger
       @confirm="confirmRedeem"
       @cancel="showRedeemConfirm = false"
-    />
+    >
+      <div class="space-y-2">
+        <div class="flex flex-wrap gap-2" role="radiogroup" :aria-label="t('admin.accounts.claudeResetCredits.chooseKind')">
+          <button
+            v-for="group in kindGroups"
+            :key="group.kind"
+            type="button"
+            role="radio"
+            :aria-checked="selectedKind === group.kind"
+            :data-testid="`claude-reset-pick-${group.kind}`"
+            :disabled="!group.redeemable"
+            :title="group.redeemable ? '' : unusableText(group)"
+            class="rounded-md border px-3 py-1.5 text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            :class="selectedKind === group.kind
+              ? 'border-orange-500 bg-orange-50 text-orange-700 dark:border-orange-400 dark:bg-orange-900/30 dark:text-orange-300'
+              : 'border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-dark-600 dark:text-gray-200 dark:hover:bg-dark-700'"
+            @click="selectKind(group.kind)"
+          >
+            {{ kindLabel(group.kind) }} · {{ group.held }}
+          </button>
+        </div>
+        <p v-if="selectedKind === 'fable'" data-testid="claude-reset-fable-note" class="text-xs text-gray-500 dark:text-gray-400">
+          {{ t('admin.accounts.claudeResetCredits.fableNote') }}
+        </p>
+        <p v-if="kindRequired" data-testid="claude-reset-kind-required" role="alert" class="text-xs text-red-600 dark:text-red-400">
+          {{ t('admin.accounts.claudeResetCredits.chooseKindRequired') }}
+        </p>
+      </div>
+    </ConfirmDialog>
   </div>
 </template>
 
@@ -123,7 +162,9 @@ import type { Account } from '@/types'
 import {
   getClaudeResetCredits,
   redeemClaudeResetCredit,
+  type ClaudeResetCredit,
   type ClaudeResetCredits,
+  type ClaudeResetKind,
   type ClaudeResetOutcome
 } from '@/api/admin/claudeResetCredits'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
@@ -137,10 +178,14 @@ const loading = ref(false)
 const error = ref(false)
 const redeeming = ref(false)
 const showRedeemConfirm = ref(false)
+const selectedKind = ref<ClaudeResetKind | null>(null)
+const kindRequired = ref(false)
 const redeemFeedback = ref<{ kind: 'success' | 'warning' | 'error'; text: string } | null>(null)
 // One key per operator confirmation. It survives a failed request so retrying the
-// same confirmation replays server-side instead of claiming a second reset.
+// same confirmation replays server-side instead of claiming a second reset. Choosing
+// another kind is a new confirmation.
 let pendingKey: string | null = null
+let pendingKind: ClaudeResetKind | null = null
 let generation = 0
 
 const visible = computed(() => props.account.platform === 'anthropic' && props.account.type === 'oauth')
@@ -152,8 +197,11 @@ watch(() => [props.account.id, props.account.platform, props.account.type], () =
   error.value = false
   redeeming.value = false
   showRedeemConfirm.value = false
+  selectedKind.value = null
+  kindRequired.value = false
   redeemFeedback.value = null
   pendingKey = null
+  pendingKind = null
 })
 
 // 与 OpenAIQuotaResetCell 的到期时间格式保持一致
@@ -165,8 +213,34 @@ const formatTime = (value: string, style: 'short' | 'full'): string => {
   return new Intl.DateTimeFormat(undefined, options).format(date)
 }
 
-// 与 Codex 的「次数」一致：显示持有的剩余次数，而不是此刻可兑换的次数
-const totalResets = computed(() => (status.value?.credits ?? []).reduce((sum, c) => sum + c.resets_left, 0))
+// 与 Codex 的「次数」一致：显示持有的剩余次数，而不是此刻可兑换的次数；按类型分开，
+// 因为 Fable 重置只退还 Fable 用掉的周额度，和周重置不能合成一个数
+const kindOrder: ClaudeResetKind[] = ['session', 'weekly', 'full', 'fable']
+interface KindGroup { kind: ClaudeResetKind; held: number; redeemable: boolean; nothingToReset: boolean; credits: ClaudeResetCredit[] }
+const kindGroups = computed<KindGroup[]>(() => {
+  const credits = status.value?.credits ?? []
+  return kindOrder.flatMap(kind => {
+    const own = credits.filter(c => c.kind === kind)
+    if (own.length === 0) return []
+    return [{
+      kind,
+      held: own.reduce((sum, c) => sum + c.resets_left, 0),
+      redeemable: own.some(c => c.redeemable),
+      nothingToReset: own.every(c => c.nothing_to_reset),
+      credits: own
+    }]
+  })
+})
+const unusableGroups = computed(() => kindGroups.value.filter(g => !g.redeemable))
+
+function kindLabel(kind: ClaudeResetKind): string {
+  return t(`admin.accounts.claudeResetCredits.kinds.${kind}`)
+}
+
+function unusableText(group: KindGroup): string {
+  const key = group.nothingToReset ? 'nothingToReset' : 'kindNotUsableNow'
+  return t(`admin.accounts.claudeResetCredits.${key}`, { kind: kindLabel(group.kind) })
+}
 
 // 优先展示下一张会被使用的券（仅它可能 redeemable），否则取最早到期的一张
 const primaryCredit = computed(() => {
@@ -214,7 +288,7 @@ const countButtonTitle = computed(() => {
   ].join('\n')
 })
 
-const canRedeem = computed(() => (status.value?.available_count ?? 0) > 0)
+const canRedeem = computed(() => kindGroups.value.some(g => g.redeemable))
 
 const redeemButtonTitle = computed(() => {
   if (!status.value) return t('admin.accounts.claudeResetCredits.resetTooltipNeedQuery')
@@ -223,10 +297,13 @@ const redeemButtonTitle = computed(() => {
 })
 
 const confirmMessage = computed(() => {
-  const next = status.value?.credits.find(c => c.redeemable)
+  const group = kindGroups.value.find(g => g.kind === selectedKind.value)
+  const next = group?.credits.find(c => c.redeemable)
+  if (!group || !next) return t('admin.accounts.claudeResetCredits.chooseKind')
   return t('admin.accounts.claudeResetCredits.confirmMessage', {
+    kind: kindLabel(group.kind),
     windows: windowLabels(next?.clears) || '—',
-    count: Math.max(totalResets.value - 1, 0)
+    count: Math.max(group.held - 1, 0)
   })
 })
 
@@ -245,7 +322,17 @@ function newOperationKey(accountID: number): string {
 
 function openRedeemConfirm() {
   if (redeeming.value || loading.value || !canRedeem.value) return
+  const usable = kindGroups.value.filter(g => g.redeemable)
+  // Preselect only when there is no choice to make; otherwise the operator picks.
+  if (!usable.some(g => g.kind === selectedKind.value)) selectedKind.value = usable.length === 1 ? usable[0].kind : null
+  kindRequired.value = false
   showRedeemConfirm.value = true
+}
+
+function selectKind(kind: ClaudeResetKind) {
+  if (!kindGroups.value.some(g => g.kind === kind && g.redeemable)) return
+  selectedKind.value = kind
+  kindRequired.value = false
 }
 
 function outcomeFeedback(result: ClaudeResetOutcome): { kind: 'success' | 'warning' | 'error'; text: string } {
@@ -289,15 +376,22 @@ function errorText(e: unknown): string {
 }
 
 async function confirmRedeem() {
+  const kind = selectedKind.value
+  if (!kind) {
+    kindRequired.value = true
+    return
+  }
   showRedeemConfirm.value = false
   if (redeeming.value || loading.value || !canRedeem.value) return
   const accountID = props.account.id
   const current = generation
+  if (pendingKind !== kind) pendingKey = null
   pendingKey ??= newOperationKey(accountID)
+  pendingKind = kind
   redeeming.value = true
   redeemFeedback.value = null
   try {
-    const result = await redeemClaudeResetCredit(accountID, pendingKey)
+    const result = await redeemClaudeResetCredit(accountID, pendingKey, kind)
     if (current !== generation) return
     // A definite server answer ends this confirmation; the next one gets a new key.
     pendingKey = null

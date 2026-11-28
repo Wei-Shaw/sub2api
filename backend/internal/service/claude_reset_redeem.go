@@ -80,12 +80,16 @@ func (s *ClaudeResetCreditService) ConfigureRedemption(idem *IdempotencyCoordina
 	s.locks = locks
 }
 
-// Redeem consumes the upstream next reset grant of the account, if and only if a
-// fresh query shows it redeemable. key identifies one operator confirmation: the
-// same key replays the stored outcome and never sends a second claim.
-func (s *ClaudeResetCreditService) Redeem(ctx context.Context, id int64, key string) (*ClaudeResetOutcome, error) {
+// Redeem consumes one reset grant of the account, if and only if a fresh query shows
+// it redeemable. kind picks which reset ("session", "weekly", "full", "fable"); an
+// empty kind spends only the upstream next grant. key identifies one operator
+// confirmation: the same key replays the stored outcome and never sends a second claim.
+func (s *ClaudeResetCreditService) Redeem(ctx context.Context, id int64, key, kind string) (*ClaudeResetOutcome, error) {
 	if strings.TrimSpace(key) == "" {
 		return nil, ErrIdempotencyKeyRequired
+	}
+	if kind != "" && !claudeResetKinds[kind] {
+		return nil, infraerrors.BadRequest("CLAUDE_RESET_KIND_INVALID", "unknown reset kind")
 	}
 	normalized, err := NormalizeIdempotencyKey(key)
 	if err != nil {
@@ -99,12 +103,18 @@ func (s *ClaudeResetCreditService) Redeem(ctx context.Context, id int64, key str
 	if _, _, _, err = s.account(ctx, id); err != nil {
 		return nil, err
 	}
+	// The kind goes into the payload, not the operation hash: reusing one
+	// confirmation key for another kind is then a key conflict, never a second claim.
+	payload := map[string]any{"account_id": id}
+	if kind != "" {
+		payload["kind"] = kind
+	}
 	operation := HashIdempotencyKey(fmt.Sprintf("claude-reset:%d:%s", id, normalized))
 	result, err := s.idempotency.Execute(ctx, IdempotencyExecuteOptions{
 		Scope: claudeResetOperationScope, ActorScope: fmt.Sprintf("account:%d", id), Method: http.MethodPost,
 		Route: "/admin/accounts/:id/claude/reset-credits/redeem", IdempotencyKey: operation,
-		Payload: map[string]any{"account_id": id}, TTL: claudeResetRecordTTL, RequireKey: true, ExecutionTimeout: 60 * time.Second,
-	}, func(exec context.Context) (any, error) { return s.redeemOnce(exec, id, operation) })
+		Payload: payload, TTL: claudeResetRecordTTL, RequireKey: true, ExecutionTimeout: 60 * time.Second,
+	}, func(exec context.Context) (any, error) { return s.redeemOnce(exec, id, operation, kind) })
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +145,7 @@ func (s *ClaudeResetCreditService) lease(ctx context.Context, key, owner string)
 	}, nil
 }
 
-func (s *ClaudeResetCreditService) redeemOnce(ctx context.Context, id int64, operation string) (*ClaudeResetOutcome, error) {
+func (s *ClaudeResetCreditService) redeemOnce(ctx context.Context, id int64, operation, kind string) (*ClaudeResetOutcome, error) {
 	owner := uuid.NewString()
 	release, err := s.lease(ctx, fmt.Sprintf("claude:reset-credit:account:%d", id), owner)
 	if err != nil {
@@ -180,20 +190,12 @@ func (s *ClaudeResetCreditService) redeemOnce(ctx context.Context, id int64, ope
 	}
 
 	// Fresh eligibility check right before the irreversible call; the server alone
-	// picks the grant, and only the upstream next grant can qualify.
+	// picks the grant of the requested kind.
 	block, err := s.fetchBlock(ctx, token, proxy)
 	if err != nil {
 		return nil, err
 	}
-	var grant *claudeResetGrant
-	if block != nil {
-		for i := range block.Grants {
-			if block.Grants[i].ID == block.NextGrantID && claudeResetGrantRedeemable(block, block.Grants[i], s.now()) {
-				grant = &block.Grants[i]
-				break
-			}
-		}
-	}
+	grant := claudeResetSelectGrant(block, kind, s.now())
 	if grant == nil {
 		return nil, infraerrors.Conflict("CLAUDE_RESET_NOT_AVAILABLE", "no reset is redeemable right now")
 	}
