@@ -208,6 +208,60 @@ func applyGeminiCompatThinkingConfig(geminiReq, claudeBody []byte, upstreamModel
 	return out
 }
 
+// geminiModelNameThinkingTier 返回模型名末尾的 low/medium/high 档位后缀；没有时返回空串。
+func geminiModelNameThinkingTier(model string) string {
+	name := strings.ToLower(strings.TrimSpace(model))
+	for _, tier := range []string{"low", "medium", "high"} {
+		if strings.HasSuffix(name, "-"+tier) {
+			return tier
+		}
+	}
+	return ""
+}
+
+// applyAntigravityCompatGeminiThinkingConfig 把兼容入口（Anthropic 形态请求体）的思考意图写进
+// Antigravity v1internal 的 Gemini 请求 generationConfig.thinkingConfig。
+//
+// 与 Gemini 平台的 applyGeminiCompatThinkingConfig 不同：Antigravity 上游不会按 -low/-high 等
+// 模型名后缀自动开启思考，未携带 thinkingConfig 时即使是 -high 变体也不思考，因此带档位后缀的
+// 模型同样要显式写入 thinkingLevel。客户端未表达思考意图时保持原样，不写 thinkingConfig。
+func applyAntigravityCompatGeminiThinkingConfig(geminiReq, claudeBody []byte, upstreamModel string) []byte {
+	param := geminiThinkingParamForModel(upstreamModel)
+	if param == geminiThinkingParamNone {
+		return geminiReq
+	}
+	intent := parseClaudeThinkingIntent(claudeBody)
+	thinkingEnabled := intent.thinkingType == "enabled" || intent.thinkingType == "adaptive"
+	if !thinkingEnabled && intent.tier == "" {
+		return geminiReq
+	}
+	out := geminiReq
+	// 客户端要求关闭/最低思考时不回传思考摘要（2.5 Pro 无法关闭思考，只能降到最低预算）。
+	skipThoughts := intent.tier == "minimal"
+	switch param {
+	case geminiThinkingParamLevel:
+		level := geminiThinkingLevelFor(upstreamModel, intent)
+		if level == "" {
+			// 只开启思考、未给档位与预算（如 adaptive）：沿用模型名后缀档位，否则按 Gemini 3 默认档位 high。
+			if level = geminiModelNameThinkingTier(upstreamModel); level == "" {
+				level = "high"
+			}
+		}
+		out = setGeminiThinkingField(out, "thinkingLevel", level)
+	case geminiThinkingParamBudget:
+		budget, ok := geminiThinkingBudgetFor(upstreamModel, intent)
+		if !ok {
+			budget = -1
+		}
+		out = setGeminiThinkingField(out, "thinkingBudget", budget)
+		skipThoughts = skipThoughts || budget == 0
+	}
+	if !skipThoughts {
+		out = setGeminiThinkingField(out, "includeThoughts", true)
+	}
+	return out
+}
+
 func setGeminiThinkingField(body []byte, field string, value any) []byte {
 	updated, err := sjson.SetBytes(body, "generationConfig.thinkingConfig."+field, value)
 	if err != nil {
