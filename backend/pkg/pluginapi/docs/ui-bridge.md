@@ -1,4 +1,6 @@
-# UI Bridge v1
+# Plugin UI Bridge
+
+## UI Bridge v1
 
 ## 加载方式
 
@@ -51,6 +53,23 @@ UI 到宿主：
 `config.test` 在 v1 中测试已保存配置（需二次验证，可产生副作用）。UI 若要测试当前表单，应先调用 `config.save`。
 
 `plugin.status` 是只读运行时状态通道：无副作用、免二次验证、不弹宿主提示，供状态面板轮询。它映射到插件 `Health`，`result.status_json` 是插件自定义的不透明 JSON 快照。带状态展示的插件应使用它，而不是把 `config.test` 当作状态轮询。
+
+## UI Bridge v2
+
+Bridge v2 is reserved for a standalone model catalog plugin. Its manifest must declare exactly one capability: `openai.codex.model_catalog.v1` with platform `openai` and account type `catalog`. The host rejects v2 for other plugin capabilities.
+
+| `type` | UI 参数 | 成功响应 |
+|---|---|---|
+| `catalog.load` | 可选 `group_id` | `catalog`，包含公开分组和已过滤的模型描述 |
+| `catalog.draft.load` | 无 | `draft` 或 `null` |
+| `catalog.draft.save` | `draft` 对象 | 无 |
+| `catalog.draft.clear` | 无 | 无 |
+| `config.load` | `with_revision: true` | `config` 和 `revision` |
+| `config.save` | `config` 对象及可选 `revision` | 规范化后的 `config` |
+
+The model inventory contains no account credentials or upstream URLs. It includes only models that can be routed by existing account mappings and group permissions; publishing a model does not grant a route. Drafts stay in the current administrator browser and are scoped to that user and plugin.
+
+When loading a catalog config for editing, request `config.load` with `with_revision: true`, then return its `revision` with `config.save`. If another administrator changed the config first, the host rejects the stale save and preserves the newer config.
 
 ## 必须执行的校验
 

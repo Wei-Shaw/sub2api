@@ -1211,6 +1211,17 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 
 	// Get available models from account configurations for the selected group platform.
 	availableModels := h.gatewayService.GetAvailableModels(c.Request.Context(), groupID, platform)
+	if platform == service.PlatformOpenAI && apiKey != nil {
+		models, handled, err := h.openAIGatewayService.FilterPluginCatalogModelIDs(c.Request.Context(), apiKey.Group, availableModels)
+		if err != nil {
+			writeOpenAIModelsError(c, http.StatusInternalServerError, "api_error", "Failed to filter model catalogue")
+			return
+		}
+		if handled {
+			writeModelsList(c, platform, models)
+			return
+		}
+	}
 	if platform == service.PlatformAnthropic {
 		var group *service.Group
 		if apiKey != nil {

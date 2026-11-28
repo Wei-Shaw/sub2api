@@ -1,6 +1,6 @@
 # Sub2API 插件开发教程
 
-本文面向希望为 Sub2API 开发、打包和发布插件的团队。插件是独立进程和静态 UI 组成的 `.s2plugin` 包，宿主通过稳定的 gRPC 协议调用它。本文以当前宿主已经定义的 `openai.oauth.outbound_transport.v1` 能力作为协议示例，说明开发者需要准备什么、哪些职责属于插件、哪些职责仍由 Sub2API 负责。
+本文面向希望为 Sub2API 开发、打包和发布插件的团队。插件是独立进程和静态 UI 组成的 `.s2plugin` 包，宿主通过稳定的 gRPC 协议调用它。本文以 `openai.oauth.outbound_transport.v1` 和 `openai.codex.model_catalog.v1` 两种 OpenAI 插件能力说明协议边界，以及哪些职责属于插件、哪些职责仍由 Sub2API 负责。
 
 本文不是一个可直接安装的完整插件，也不代表 Sub2API 已经发布对应的官方插件包。当前文档主要描述公开协议、宿主边界和开发流程。后续是否发布可安装包、支持哪些 Provider，以及如何提供示例仓库，都需要另行公告。
 
@@ -82,7 +82,7 @@ JSON 字段统一使用 `snake_case`。敏感配置不要放入 URL、UI 通知�
 
 ## 5. 实现插件自己的配置 UI
 
-UI 是插件包内的静态页面，不需要修改 Sub2API 前端源码。宿主会在受限 iframe 中加载 `ui/index.html`，并通过 UI Bridge 提供配置读写和测试能力。
+UI 是插件包内的静态页面。宿主会在受限 iframe 中加载 `ui/index.html`，并通过 UI Bridge 提供配置读写和测试能力。模型目录插件可以使用 Bridge v2 读取经过账号映射和分组权限筛选的模型清单，并在管理员浏览器中保存未发布草稿。
 
 页面初始化流程：
 
@@ -106,7 +106,7 @@ UI 是插件包内的静态页面，不需要修改 Sub2API 前端源码。宿�
 
 每条消息都必须带 `request_id`，并校验 `event.source`、消息来源标识和 Bridge Token。不要依赖 CDN、远程脚本、Cookie 或本地存储。页面需要兼容窄屏和明暗主题，并正确处理加载、保存、测试、超时和未保存状态。
 
-详细信封格式见 `backend/pkg/pluginapi/docs/ui-bridge.md`。如果后续示例仓库提供可复用的 Bridge SDK，本文会在示例仓库章节补充对应路径和使用方式。
+详细信封格式见 `backend/pkg/pluginapi/docs/ui-bridge.md`。模型目录插件必须单独声明 `openai.codex.model_catalog.v1` 能力并使用 `ui_bridge: 2`；它不能同时申请 OAuth 出站能力。目录只发布已有账号映射可路由的模型，不创建账号映射或绕过分组白名单。发布配置使用 ETag 修订号，避免覆盖另一位管理员刚保存的目录。
 
 ## 6. 编写包清单
 
@@ -172,6 +172,8 @@ plugins:
 ```
 
 `trusted_publishers` 是在宿主内置官方公钥之外追加的信任来源，不能覆盖内置公钥。`signature.json` 中的 `key_id` 必须与配置键完全一致。密钥轮换时先发布包含新公钥的宿主配置或版本，再发布新签名包，最后再停用旧密钥。
+
+模型目录能力不会自动信任发布者密钥。部署者应按相同方式显式配置该插件的签名公钥；Sub2API 核心只验证已受信任密钥签名的包。
 
 开发阶段如需使用未签名包，只应在隔离的本地环境临时设置 `plugins.allow_unsigned: true`，测试完成后立即恢复为 `false`。
 

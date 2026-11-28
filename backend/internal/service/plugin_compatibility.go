@@ -24,7 +24,7 @@ func EvaluatePluginCompatibility(manifest PluginManifest, host PluginHostInfo) P
 	}
 	if manifest.Requires.PluginProtocol != pluginv1.ProtocolVersion ||
 		manifest.Requires.TransportAPI != pluginv1.TransportAPIVersion ||
-		manifest.Requires.UIBridge != pluginv1.UIBridgeVersion {
+		!manifest.supportsUIBridge() {
 		result.Status = "incompatible"
 		result.Message = "插件协议版本与当前 Sub2API 不兼容"
 		return result

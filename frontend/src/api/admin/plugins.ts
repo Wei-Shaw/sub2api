@@ -91,6 +91,21 @@ export interface PluginUISession {
   expires_at: string
 }
 
+export interface PluginCatalogInventory {
+  group_id: number
+  groups: Array<{ id: number; name: string }>
+  models: Array<{ source: 'builtin' | 'upstream'; descriptor: Record<string, unknown> }>
+  image_models?: Array<{ source: 'upstream'; descriptor: Record<string, unknown> }>
+  upstream_image_models?: Array<{ source: 'upstream'; descriptor: Record<string, unknown> }>
+}
+
+export async function getCatalog(id: number, groupID?: number): Promise<PluginCatalogInventory> {
+  const { data } = await apiClient.get<PluginCatalogInventory>('/admin/plugins/' + id + '/catalog', {
+    params: groupID ? { group_id: groupID } : undefined
+  })
+  return data
+}
+
 export async function list(): Promise<PluginInstallation[]> {
   const { data } = await apiClient.get<PluginInstallation[]>('/admin/plugins')
   return data
@@ -132,11 +147,18 @@ export async function getConfig(id: number): Promise<Record<string, unknown>> {
   return data
 }
 
+export async function getConfigRevision(id: number) {
+  const { data, headers } = await apiClient.get<Record<string, unknown>>(`/admin/plugins/${id}/config`)
+  return { config: data, revision: headers.etag }
+}
+
 export async function saveConfig(
   id: number,
-  config: Record<string, unknown>
+  config: Record<string, unknown>,
+  revision?: string
 ): Promise<Record<string, unknown>> {
-  const { data } = await apiClient.put<Record<string, unknown>>(`/admin/plugins/${id}/config`, config)
+  const { data } = await apiClient.put<Record<string, unknown>>(`/admin/plugins/${id}/config`, config,
+    revision ? { headers: { 'If-Match': revision } } : undefined)
   return data
 }
 
@@ -162,6 +184,8 @@ export default {
   disable,
   remove,
   getConfig,
+  getConfigRevision,
+  getCatalog,
   saveConfig,
   test,
   status,
