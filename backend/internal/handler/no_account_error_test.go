@@ -4,10 +4,12 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
@@ -197,6 +199,73 @@ func TestClassifyNoAccountError_ModelSupportedOnlyByRateLimitedAccount_Returns50
 	require.Equal(t, http.StatusServiceUnavailable, cls.Status)
 	require.Equal(t, "api_error", cls.ErrType)
 	require.False(t, cls.ModelNotFound, "temporary account cooldown must remain retryable")
+}
+
+func TestClassifyNoAccountError_AllSupportingAccountsBalanceBlockedPreserves503(t *testing.T) {
+	c := newTestGinContextWithRequest()
+	const groupID int64 = 7
+	until := time.Now().Add(time.Hour)
+	h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{
+		byGroup: map[int64][]service.Account{groupID: {{
+			ID: 1, Platform: service.PlatformDeepseek, Type: service.AccountTypeAPIKey,
+			Status: service.StatusActive, Schedulable: true,
+			Credentials:             map[string]any{"model_mapping": map[string]any{"deepseek-flash": "deepseek-flash"}},
+			TempUnschedulableUntil:  &until,
+			TempUnschedulableReason: "cn_balance_low: insufficient balance",
+		}}},
+	})
+	apiKey := &service.APIKey{GroupID: ptrInt64(groupID)}
+
+	cls := classifyNoAccountErrorFromGin(c, h.gatewayService, apiKey, "deepseek-flash", "deepseek-flash", service.PlatformDeepseek)
+
+	require.Equal(t, http.StatusServiceUnavailable, cls.Status)
+	require.Equal(t, "api_error", cls.ErrType)
+	require.False(t, cls.ModelNotFound)
+	require.Contains(t, cls.Message, "insufficient upstream balance")
+	require.Contains(t, cls.Message, "service administrator")
+}
+
+func TestClassifySelectionFailureError_InsufficientBalanceIsNotOverriddenByRateLimit(t *testing.T) {
+	fallback := noAccountErrorClassification{
+		Status:              http.StatusServiceUnavailable,
+		ErrType:             "api_error",
+		Message:             "All accounts configured for this model are temporarily unavailable due to insufficient upstream balance. Please contact the service administrator.",
+		InsufficientBalance: true,
+	}
+
+	got := classifySelectionFailureError(
+		fmt.Errorf("no available accounts supporting model: deepseek-flash (total=2 eligible=0 model_rate_limited=2)"),
+		fallback,
+	)
+
+	require.Equal(t, fallback, got)
+}
+
+func TestBalanceBlockedErrorResponsesKeepExistingContract(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	fd := &fakeDiagnoser{resp: service.ModelAvailabilityDiagnosis{
+		HasAccountsInPool: true, HasModelSupport: true,
+		AllModelSupportAccountsInsufficientBalance: true,
+	}}
+	cls := classifyNoAccountError(context.Background(), fd, &service.APIKey{GroupID: ptrInt64(7)}, "deepseek-flash", "deepseek-flash", service.PlatformDeepseek)
+
+	responsesRecorder := httptest.NewRecorder()
+	responsesContext, _ := gin.CreateTestContext(responsesRecorder)
+	(&GatewayHandler{}).responsesErrorResponse(responsesContext, cls.Status, cls.ErrType, cls.Message)
+	var responsesBody map[string]map[string]string
+	require.NoError(t, json.Unmarshal(responsesRecorder.Body.Bytes(), &responsesBody))
+	require.Equal(t, http.StatusServiceUnavailable, responsesRecorder.Code)
+	require.Equal(t, "api_error", responsesBody["error"]["code"])
+	require.Contains(t, responsesBody["error"]["message"], "insufficient upstream balance")
+
+	chatRecorder := httptest.NewRecorder()
+	chatContext, _ := gin.CreateTestContext(chatRecorder)
+	(&GatewayHandler{}).chatCompletionsErrorResponse(chatContext, cls.Status, cls.ErrType, cls.Message)
+	var chatBody map[string]map[string]string
+	require.NoError(t, json.Unmarshal(chatRecorder.Body.Bytes(), &chatBody))
+	require.Equal(t, http.StatusServiceUnavailable, chatRecorder.Code)
+	require.Equal(t, "api_error", chatBody["error"]["type"])
+	require.Contains(t, chatBody["error"]["message"], "insufficient upstream balance")
 }
 
 func TestClassifyNoAccountError_NoAccountsInPool_Stays503(t *testing.T) {
