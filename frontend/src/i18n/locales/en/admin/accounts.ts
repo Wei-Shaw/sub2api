@@ -111,11 +111,21 @@ export default {
         antigravity: 'Antigravity',
         grok: 'Grok',
         kimi: 'Kimi',
+        qwen: 'Qwen / Bailian',
         zhipu: 'Zhipu GLM',
         deepseek: 'DeepSeek',
         minimax: 'MiniMax',
         opencode_go: 'OpenCode',
         typesafe: 'TypeSafe / Jev',
+      },
+      qwenModes: {
+        tokenCn: "Token Plan — China",
+        tokenSg: "Token Plan — Singapore",
+        codingCn: "Coding Plan — China",
+        codingSg: "Coding Plan — Singapore",
+        paygCn: "Pay-as-you-go — China",
+        paygSg: "Pay-as-you-go — Singapore",
+        hint: "Use the API key for the selected plan and region. For a workspace-specific or other regional endpoint, edit the base URLs. Token and Coding Plans are restricted to supported interactive coding tools; check Alibaba Cloud’s terms.",
       },
       cnProviders: {
         accountMode: {

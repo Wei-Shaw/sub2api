@@ -162,6 +162,7 @@
             </button>
           </div>
         </div>
+        <p v-if="account.platform === 'qwen'" class="text-xs text-gray-500 dark:text-gray-400">{{ t('admin.accounts.qwenModes.hint') }}</p>
         <!-- Account Mode Selection (CN providers) -->
         <div v-if="isCNApiKeyAccount && isCNProviderPlatform(account.platform)">
           <label class="input-label">{{ t('admin.accounts.cnProviders.accountMode.title') }}</label>

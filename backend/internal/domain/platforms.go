@@ -47,6 +47,7 @@ var platformList = []PlatformSpec{
 	{ID: PlatformOpenCodeGo, DisplayName: "OpenCode", Gateway: PlatformGatewayOpenAI, LiteLLMProvider: "opencode-go"},
 	{ID: PlatformTypeSafe, DisplayName: "TypeSafe / Jev", Gateway: PlatformGatewayAnthropic, LiteLLMProvider: "typesafe"},
 	{ID: PlatformCommandCode, DisplayName: "Command Code", Gateway: PlatformGatewayOpenAI},
+	{ID: PlatformQwen, DisplayName: "Qwen / Bailian", Gateway: PlatformGatewayOpenAI, LiteLLMProvider: "dashscope"},
 	{ID: PlatformCline, DisplayName: "Cline", Gateway: PlatformGatewayOpenAI},
 }
 
