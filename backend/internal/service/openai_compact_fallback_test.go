@@ -65,7 +65,7 @@ func TestPrepareOpenAICompactFallbackRetryPreservesNativeTriggerAndContext(t *te
 
 func TestResolveOpenAICompactFallbackModelPrefersAccountMapping(t *testing.T) {
 	svc := &OpenAIGatewayService{cfg: &config.Config{Gateway: config.GatewayConfig{OpenAICompactModel: "global-compact"}}}
-	account := &Account{Credentials: map[string]any{
+	account := &Account{Platform: PlatformOpenAI, Credentials: map[string]any{
 		"compact_model_mapping": map[string]any{"gpt-5.5": "account-compact"},
 	}}
 
