@@ -41,13 +41,16 @@ func compositeWSGroup(models ...string) *service.Group {
 }
 
 func TestOpenAIResponsesWebSocket_CompositeAlias(t *testing.T) {
-	for _, platform := range []string{service.PlatformOpenAI, service.PlatformGrok} {
+	for _, platform := range []string{service.PlatformOpenAI, service.PlatformGrok, service.PlatformKimi} {
 		for _, endpoint := range []string{service.CompositeRouteEndpointResponses, service.CompositeRouteEndpointAny} {
 			for _, mode := range []string{service.OpenAIWSIngressModePassthrough, service.OpenAIWSIngressModeDedicated} {
 				t.Run(platform+"/"+endpoint+"/"+mode, func(t *testing.T) {
 					upstream := "gpt-5.4"
-					if platform == service.PlatformGrok {
+					switch platform {
+					case service.PlatformGrok:
 						upstream = "grok-4.3"
+					case service.PlatformKimi:
+						upstream = "k3.1-pro"
 					}
 					got := runOpenAIResponsesWebSocketUsageLogCase(t, openAIResponsesWSUsageLogCase{
 						firstPayload:  `{"type":"response.create","model":"public-alias","input":"hi"}`,

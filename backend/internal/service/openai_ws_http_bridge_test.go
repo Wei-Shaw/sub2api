@@ -45,6 +45,13 @@ func TestPrepareOpenAIWSHTTPBridgeBodyStripsWSFields(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestOpenAIWSHTTPBridgeRequiredForKimi(t *testing.T) {
+	require.True(t, openAIWSHTTPBridgeRequired(&Account{Platform: PlatformKimi}))
+	require.True(t, openAIWSHTTPBridgeRequired(&Account{Platform: PlatformGrok}))
+	require.False(t, openAIWSHTTPBridgeRequired(&Account{Platform: PlatformOpenAI}))
+	require.False(t, openAIWSHTTPBridgeRequired(nil))
+}
+
 func TestPrepareOpenAIWSHTTPBridgeBodyStripsNoneReasoningForCompatibleEndpoint(t *testing.T) {
 	payload := []byte(`{"type":"response.create","model":"company-coding-model","reasoning":{"effort":"none"},"input":"hi"}`)
 	compatible := &Account{Platform: PlatformOpenAI, Type: AccountTypeAPIKey, Credentials: map[string]any{

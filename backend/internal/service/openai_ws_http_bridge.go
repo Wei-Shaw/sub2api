@@ -70,8 +70,13 @@ func openAIWSHTTPBridgeRawField(body []byte, name string) (json.RawMessage, bool
 }
 
 func openAIWSHTTPBridgeToolUpstreamName(account *Account) string {
-	if account != nil && account.Platform == PlatformGrok {
-		return "Grok WS HTTP bridge"
+	if account != nil {
+		switch account.Platform {
+		case PlatformGrok:
+			return "Grok WS HTTP bridge"
+		case PlatformKimi:
+			return "Kimi WS HTTP bridge"
+		}
 	}
 	return "OpenAI WS HTTP bridge"
 }
@@ -104,7 +109,7 @@ func (s *OpenAIGatewayService) openAIWSHTTPBridgeThresholdBytes() int64 {
 }
 
 func (s *OpenAIGatewayService) shouldBridgeOpenAIWSHTTP(account *Account, payloadBytes int, previousResponseID string) bool {
-	if account != nil && account.Platform == PlatformGrok {
+	if openAIWSHTTPBridgeRequired(account) {
 		return true
 	}
 	if !s.openAIWSHTTPBridgeEnabled() {
@@ -118,7 +123,7 @@ func (s *OpenAIGatewayService) shouldBridgeOpenAIWSHTTP(account *Account, payloa
 }
 
 func (s *OpenAIGatewayService) shouldBridgeOpenAIWSPassthroughFirstMessage(account *Account, payload []byte) bool {
-	if account != nil && account.Platform == PlatformGrok {
+	if openAIWSHTTPBridgeRequired(account) {
 		return true
 	}
 	if !s.openAIWSHTTPBridgeEnabled() || int64(len(payload)) < s.openAIWSHTTPBridgeThresholdBytes() {
@@ -189,6 +194,13 @@ func (s *OpenAIGatewayService) shouldBridgeOpenAIWSPassthroughFirstMessage(accou
 		}
 	}
 	return eventType == "response.create" && previousResponseID == ""
+}
+
+func openAIWSHTTPBridgeRequired(account *Account) bool {
+	if account == nil {
+		return false
+	}
+	return account.Platform == PlatformGrok || account.Platform == PlatformKimi
 }
 
 func skipOpenAIWSJSONSpace(payload []byte, i int) int {
