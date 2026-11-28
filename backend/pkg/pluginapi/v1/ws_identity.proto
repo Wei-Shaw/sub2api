@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package sub2api.plugin.v1;
+
+option go_package = "github.com/Wei-Shaw/sub2api/pkg/pluginapi/v1;pluginv1";
+
+// Optional companion to TransportPlugin. The host owns the upstream socket.
+service WSIdentityPlugin {
+  rpc RewriteWSIdentity(RewriteWSIdentityRequest) returns (RewriteWSIdentityResponse);
+}
+
+message WSIdentityMetadata {
+  // Allowlisted string fields present on the final host-prepared metadata.
+  map<string, string> fields = 1;
+  // Allowlisted identity fields inside x-codex-turn-metadata, not the full JSON.
+  map<string, string> turn_metadata = 2;
+}
+
+message RewriteWSIdentityRequest {
+  int64 account_id = 1;
+  // Opaque and unique to this upstream connection attempt.
+  string connection_id = 2;
+  // Final outbound headers and first response.create are offered together before dialing.
+  // Later calls only contain response_create, with that frame's own turn metadata.
+  WSIdentityMetadata handshake = 3;
+  WSIdentityMetadata response_create = 4;
+}
+
+message RewriteWSIdentityResponse {
+  // Sparse replacements for fields present in the corresponding request projection.
+  WSIdentityMetadata handshake = 1;
+  WSIdentityMetadata response_create = 2;
+}

@@ -1118,6 +1118,8 @@ plugins:
   # Keep false in production. Enable only for local development packages you built yourself.
   # 生产环境应保持 false；仅调试自己构建的本地插件时临时开启。
   allow_unsigned: false
+  # Opt in to the signed transport plugin's optional identity hook on native OAuth Responses WS.
+  openai_ws_identity_enabled: false
   # Additional Ed25519 public keys indexed by signature.json key_id.
   # OpenAI Transport's public key is built in; this map only adds third-party publishers.
   # 以 signature.json 中 key_id 为索引的额外 Ed25519 公钥。

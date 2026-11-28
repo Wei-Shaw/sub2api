@@ -26,13 +26,15 @@ import (
 )
 
 type pluginRuntime struct {
-	installation *PluginInstallation
-	client       *hcplugin.Client
-	api          pluginv1.TransportPluginClient
-	inFlight     atomic.Int64
-	draining     atomic.Bool
-	done         chan struct{}
-	doneOnce     sync.Once
+	installation  *PluginInstallation
+	client        *hcplugin.Client
+	api           pluginv1.TransportPluginClient
+	wsIdentity    pluginv1.WSIdentityPluginClient
+	wsConfigEpoch atomic.Uint64
+	inFlight      atomic.Int64
+	draining      atomic.Bool
+	done          chan struct{}
+	doneOnce      sync.Once
 }
 
 func startPluginRuntime(ctx context.Context, installation *PluginInstallation, startTimeout time.Duration, socketDir string, hostServices pluginv1.HostServiceServer) (*pluginRuntime, error) {
@@ -93,6 +95,14 @@ func startPluginRuntime(ctx context.Context, installation *PluginInstallation, s
 		info.ProtocolVersion != pluginv1.ProtocolVersion || info.TransportApiVersion != pluginv1.TransportAPIVersion {
 		runtime.kill()
 		return nil, errors.New("插件运行时信息与已校验清单不一致")
+	}
+	if pluginDeclaresWSIdentity(installation.Manifest) {
+		for _, capability := range info.Capabilities {
+			if capability == PluginCapabilityOpenAIOAuthWSIdentity {
+				runtime.wsIdentity = transportClient.WSIdentity
+				break
+			}
+		}
 	}
 	health, err := api.Health(infoCtx, &pluginv1.HealthRequest{})
 	if err != nil || !health.Healthy {
@@ -184,6 +194,11 @@ func (r *pluginRuntime) validateAndApplyNormalizedConfig(ctx context.Context, co
 	configJSON, err = json.Marshal(normalized)
 	if err != nil {
 		return nil, fmt.Errorf("序列化插件规范化配置: %w", err)
+	}
+	if r.wsIdentity != nil {
+		// Odd while plugin config is being applied; old WS sessions never adopt a new config.
+		r.wsConfigEpoch.Add(1)
+		defer r.wsConfigEpoch.Add(1)
 	}
 	applied, err := r.api.ApplyConfig(ctx, &pluginv1.ApplyConfigRequest{ConfigJson: configJSON})
 	if err != nil {
