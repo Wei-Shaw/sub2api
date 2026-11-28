@@ -547,7 +547,8 @@ func (h *SettingHandler) TestWebSearchEmulation(c *gin.Context) {
 
 	result, err := service.TestWebSearch(c.Request.Context(), req.Query)
 	if err != nil {
-		response.ErrorFrom(c, err)
+		// Like the SMTP test, return the cause so the admin can fix the provider config.
+		response.BadRequest(c, "Web search test failed: "+err.Error())
 		return
 	}
 	response.Success(c, result)
