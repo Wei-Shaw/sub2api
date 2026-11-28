@@ -2,7 +2,9 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -13,6 +15,70 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
+
+func doDingTalkTestRequest(t *testing.T, handler *SettingHandler, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/v1/admin/settings/test-channel-monitor-dingtalk", bytes.NewBufferString(body))
+	c.Request.Header.Set("Content-Type", "application/json")
+	handler.TestChannelMonitorDingTalk(c)
+	return rec
+}
+
+func TestTestChannelMonitorDingTalkUsesStoredCredentialsWithoutPersisting(t *testing.T) {
+	handler, repo := newDingTalkSettingsHandler()
+	storedWebhook := "https://oapi.dingtalk.com/robot/send?access_token=stored-token"
+	storedSecret := "SEC-stored-secret"
+	repo.values[service.SettingKeyChannelMonitorDingTalkWebhook] = storedWebhook
+	repo.values[service.SettingKeyChannelMonitorDingTalkSecret] = storedSecret
+	handler.channelMonitorDingTalkTest = func(_ context.Context, webhook, secret string) error {
+		require.Equal(t, storedWebhook, webhook)
+		require.Equal(t, storedSecret, secret)
+		return nil
+	}
+
+	rec := doDingTalkTestRequest(t, handler, `{}`)
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.NotContains(t, rec.Body.String(), storedWebhook)
+	require.NotContains(t, rec.Body.String(), storedSecret)
+	require.Equal(t, storedWebhook, repo.values[service.SettingKeyChannelMonitorDingTalkWebhook])
+	require.Equal(t, storedSecret, repo.values[service.SettingKeyChannelMonitorDingTalkSecret])
+}
+
+func TestTestChannelMonitorDingTalkUsesRequestCredentialsAndPropagatesFailure(t *testing.T) {
+	handler, repo := newDingTalkSettingsHandler()
+	storedWebhook := "https://oapi.dingtalk.com/robot/send?access_token=stored-token"
+	repo.values[service.SettingKeyChannelMonitorDingTalkWebhook] = storedWebhook
+	called := false
+	handler.channelMonitorDingTalkTest = func(_ context.Context, webhook, secret string) error {
+		called = true
+		require.Equal(t, "https://oapi.dingtalk.com/robot/send?access_token=request-token", webhook)
+		require.Equal(t, "SEC-request-secret", secret)
+		return errors.New("delivery failed")
+	}
+
+	rec := doDingTalkTestRequest(t, handler, `{"channel_monitor_dingtalk_webhook":"https://oapi.dingtalk.com/robot/send?access_token=request-token","channel_monitor_dingtalk_secret":"SEC-request-secret"}`)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.True(t, called)
+	require.NotContains(t, rec.Body.String(), "request-token")
+	require.NotContains(t, rec.Body.String(), "SEC-request-secret")
+	require.Equal(t, storedWebhook, repo.values[service.SettingKeyChannelMonitorDingTalkWebhook])
+}
+
+func TestTestChannelMonitorDingTalkRejectsClearedWebhook(t *testing.T) {
+	handler, _ := newDingTalkSettingsHandler()
+	called := false
+	handler.channelMonitorDingTalkTest = func(context.Context, string, string) error {
+		called = true
+		return nil
+	}
+
+	rec := doDingTalkTestRequest(t, handler, `{"channel_monitor_dingtalk_webhook_clear":true}`)
+	require.Equal(t, http.StatusBadRequest, rec.Code)
+	require.False(t, called)
+	require.Contains(t, rec.Body.String(), "webhook is required")
+}
 
 // dingtalkSettingsRepoStub 复用 settingHandlerRepoStub（已在 setting_handler_auth_source_defaults_test.go 定义）
 
