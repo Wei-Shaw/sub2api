@@ -42,7 +42,7 @@ func TestParseSSEUsage_MessageStart(t *testing.T) {
 	require.Equal(t, 100, usage.InputTokens)
 	require.Equal(t, 50, usage.CacheCreationInputTokens)
 	require.Equal(t, 200, usage.CacheReadInputTokens)
-	require.Equal(t, 0, usage.OutputTokens, "message_start 不应设置 output_tokens")
+	require.Equal(t, 0, usage.OutputTokens, "message_start 未携带 output_tokens 时输出用量保持 0")
 }
 
 func TestParseSSEUsage_MessageDelta(t *testing.T) {
