@@ -177,6 +177,57 @@ func TestNormalizeCodexAdditionalUntrustedContext(t *testing.T) {
 	}
 }
 
+// TestNormalizeCodexBrowserTabs exercises the HTTP preflight that rejected the desktop request.
+func TestNormalizeCodexBrowserTabs(t *testing.T) {
+	output := "\n<in-app-browser-context source=\"ambient-ui-state\">\n# In app browser\n- Example tab: https://example.com/\n</in-app-browser-context>"
+	tabs := pageContextItem("browser_tabs", output)
+	openPage := pageContextItem("codex_apps_open_page", `{"page_id":null}`)
+	body := pageContextRequest(t, tabs, openPage,
+		map[string]any{"role": "user", "content": "continue"})
+	h := &OpenAIGatewayHandler{}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	got, changed := normalizeCodexUntrustedContext(body)
+	require.True(t, changed)
+	require.True(t, h.validateFunctionCallOutputRequest(c, got, zap.NewNop()), w.Body.String())
+	require.Equal(t, "<external_browser_tabs>"+output+"</external_browser_tabs>",
+		gjson.GetBytes(got, "input.0.content.0.text").String())
+	require.Equal(t, "user", gjson.GetBytes(got, "input.0.role").String())
+	require.Equal(t, "continue", gjson.GetBytes(got, "input.2.content").String())
+	again, changed := normalizeCodexUntrustedContext(got)
+	require.False(t, changed)
+	require.Equal(t, got, again)
+
+	pairedCall := map[string]any{"type": "function_call", "name": "example", "call_id": "call_real", "arguments": "{}"}
+	pairedResult := map[string]any{"type": "function_call_output", "call_id": "call_real", "output": "result"}
+	withHistory := pageContextRequest(t, pairedCall, pairedResult, tabs)
+	normalized, changed := normalizeCodexUntrustedContext(withHistory)
+	require.True(t, changed)
+	for _, index := range []string{"input.0", "input.1"} {
+		require.JSONEq(t, gjson.GetBytes(withHistory, index).Raw, gjson.GetBytes(normalized, index).Raw)
+	}
+	require.Equal(t, "user", gjson.GetBytes(normalized, "input.2.role").String())
+
+	for _, fields := range []map[string]any{
+		{"call_id": "call_real"},
+		{"call_id": 42},
+		{"namespace": "another_tool"},
+		{"name": "another_tool"},
+		{"output": "ordinary tool result"},
+		{"output": `<in-app-browser-context source="ambient-ui-state"> </in-app-browser-context>`},
+	} {
+		item := pageContextItem("browser_tabs", output)
+		for key, value := range fields {
+			item[key] = value
+		}
+		request := pageContextRequest(t, item)
+		result, normalized := normalizeCodexUntrustedContext(request)
+		require.False(t, normalized)
+		require.Equal(t, request, result)
+	}
+}
+
 func TestNormalizeCodexAdditionalUntrustedContextPreservesRealAndMalformedOutputs(t *testing.T) {
 	for _, name := range codexTextContextNamesForTest {
 		for _, override := range []map[string]any{
