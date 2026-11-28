@@ -117,6 +117,20 @@ func (_c *ProxyCreate) SetNillablePassword(v *string) *ProxyCreate {
 	return _c
 }
 
+// SetConsoleURL sets the "console_url" field.
+func (_c *ProxyCreate) SetConsoleURL(v string) *ProxyCreate {
+	_c.mutation.SetConsoleURL(v)
+	return _c
+}
+
+// SetNillableConsoleURL sets the "console_url" field if the given value is not nil.
+func (_c *ProxyCreate) SetNillableConsoleURL(v *string) *ProxyCreate {
+	if v != nil {
+		_c.SetConsoleURL(*v)
+	}
+	return _c
+}
+
 // SetStatus sets the "status" field.
 func (_c *ProxyCreate) SetStatus(v string) *ProxyCreate {
 	_c.mutation.SetStatus(v)
@@ -333,6 +347,11 @@ func (_c *ProxyCreate) check() error {
 			return &ValidationError{Name: "password", err: fmt.Errorf(`ent: validator failed for field "Proxy.password": %w`, err)}
 		}
 	}
+	if v, ok := _c.mutation.ConsoleURL(); ok {
+		if err := proxy.ConsoleURLValidator(v); err != nil {
+			return &ValidationError{Name: "console_url", err: fmt.Errorf(`ent: validator failed for field "Proxy.console_url": %w`, err)}
+		}
+	}
 	if _, ok := _c.mutation.Status(); !ok {
 		return &ValidationError{Name: "status", err: errors.New(`ent: missing required field "Proxy.status"`)}
 	}
@@ -414,6 +433,10 @@ func (_c *ProxyCreate) createSpec() (*Proxy, *sqlgraph.CreateSpec) {
 	if value, ok := _c.mutation.Password(); ok {
 		_spec.SetField(proxy.FieldPassword, field.TypeString, value)
 		_node.Password = &value
+	}
+	if value, ok := _c.mutation.ConsoleURL(); ok {
+		_spec.SetField(proxy.FieldConsoleURL, field.TypeString, value)
+		_node.ConsoleURL = &value
 	}
 	if value, ok := _c.mutation.Status(); ok {
 		_spec.SetField(proxy.FieldStatus, field.TypeString, value)
@@ -649,6 +672,24 @@ func (u *ProxyUpsert) UpdatePassword() *ProxyUpsert {
 // ClearPassword clears the value of the "password" field.
 func (u *ProxyUpsert) ClearPassword() *ProxyUpsert {
 	u.SetNull(proxy.FieldPassword)
+	return u
+}
+
+// SetConsoleURL sets the "console_url" field.
+func (u *ProxyUpsert) SetConsoleURL(v string) *ProxyUpsert {
+	u.Set(proxy.FieldConsoleURL, v)
+	return u
+}
+
+// UpdateConsoleURL sets the "console_url" field to the value that was provided on create.
+func (u *ProxyUpsert) UpdateConsoleURL() *ProxyUpsert {
+	u.SetExcluded(proxy.FieldConsoleURL)
+	return u
+}
+
+// ClearConsoleURL clears the value of the "console_url" field.
+func (u *ProxyUpsert) ClearConsoleURL() *ProxyUpsert {
+	u.SetNull(proxy.FieldConsoleURL)
 	return u
 }
 
@@ -912,6 +953,27 @@ func (u *ProxyUpsertOne) UpdatePassword() *ProxyUpsertOne {
 func (u *ProxyUpsertOne) ClearPassword() *ProxyUpsertOne {
 	return u.Update(func(s *ProxyUpsert) {
 		s.ClearPassword()
+	})
+}
+
+// SetConsoleURL sets the "console_url" field.
+func (u *ProxyUpsertOne) SetConsoleURL(v string) *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetConsoleURL(v)
+	})
+}
+
+// UpdateConsoleURL sets the "console_url" field to the value that was provided on create.
+func (u *ProxyUpsertOne) UpdateConsoleURL() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateConsoleURL()
+	})
+}
+
+// ClearConsoleURL clears the value of the "console_url" field.
+func (u *ProxyUpsertOne) ClearConsoleURL() *ProxyUpsertOne {
+	return u.Update(func(s *ProxyUpsert) {
+		s.ClearConsoleURL()
 	})
 }
 
@@ -1354,6 +1416,27 @@ func (u *ProxyUpsertBulk) UpdatePassword() *ProxyUpsertBulk {
 func (u *ProxyUpsertBulk) ClearPassword() *ProxyUpsertBulk {
 	return u.Update(func(s *ProxyUpsert) {
 		s.ClearPassword()
+	})
+}
+
+// SetConsoleURL sets the "console_url" field.
+func (u *ProxyUpsertBulk) SetConsoleURL(v string) *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.SetConsoleURL(v)
+	})
+}
+
+// UpdateConsoleURL sets the "console_url" field to the value that was provided on create.
+func (u *ProxyUpsertBulk) UpdateConsoleURL() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.UpdateConsoleURL()
+	})
+}
+
+// ClearConsoleURL clears the value of the "console_url" field.
+func (u *ProxyUpsertBulk) ClearConsoleURL() *ProxyUpsertBulk {
+	return u.Update(func(s *ProxyUpsert) {
+		s.ClearConsoleURL()
 	})
 }
 
