@@ -3,7 +3,7 @@ import { enableAutoUnmount, mount } from '@vue/test-utils'
 import type { PaymentOrder } from '@/types/payment'
 import AdminRefundDialog from '../AdminRefundDialog.vue'
 
-vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('vue-i18n', () => ({ useI18n: () => ({ locale: { value: 'en-US' }, t: (key: string) => key }) }))
 enableAutoUnmount(afterEach)
 
 async function openRefund(overrides: Partial<PaymentOrder> = {}) {
@@ -50,4 +50,15 @@ describe('refund balance warning', () => {
     await wrapper.get('#deduct-balance').setValue(false)
     expect(wrapper.text()).not.toContain(warning)
   })
+  it('deducts subscription duration without comparing the plan price to USD balance', async () => {
+    const wrapper = await openRefund({ order_type: 'subscription', currency: 'CNY', pay_amount: 672.98,
+      subscription_plan_snapshot: { name: 'Plan', currency: 'NZD' }, subscription_days: 30 })
+    expect(wrapper.text()).toContain('payment.admin.deductSubscription')
+    expect(wrapper.text()).toContain('NZ$100.00')
+    expect(wrapper.text()).not.toContain('payment.admin.userBalance')
+    expect(wrapper.text()).not.toContain(warning)
+    await wrapper.get('#deduct-balance').setValue(false)
+    expect(wrapper.text()).toContain('payment.admin.noSubscriptionDeduction')
+  })
+
 })

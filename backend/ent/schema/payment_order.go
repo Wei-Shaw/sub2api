@@ -91,6 +91,11 @@ func (PaymentOrder) Fields() []ent.Field {
 		field.Int("subscription_days").
 			Optional().
 			Nillable(),
+		// Purchase-time display metadata. A missing legacy snapshot must not be
+		// reconstructed from a plan that may have changed or been deleted.
+		field.JSON("subscription_plan_snapshot", map[string]string{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.String("provider_instance_id").
 			Optional().
 			Nillable().
