@@ -20,6 +20,7 @@ func TestMessagesEffortPolicyBinding(t *testing.T) {
 			ceiling    string
 			overLimit  string
 			want       string
+			requested  string
 			deny       bool
 		}{
 			{name: "omitted unchanged", effort: "medium", want: "medium"},
@@ -33,7 +34,8 @@ func TestMessagesEffortPolicyBinding(t *testing.T) {
 			{name: "omitted none mapping does not cap medium default", effort: "medium", ceiling: "low", mappings: []service.ReasoningEffortMapping{{From: "none", To: "low"}}, want: "medium"},
 			{name: "disabled omitted applies none only once", preference: `,"thinking":{"type":"disabled"}`, effort: "none", mappings: []service.ReasoningEffortMapping{{From: "none", To: "low"}, {From: "low", To: "high"}}, want: "low"},
 			{name: "disabled omitted mapping capped", preference: `,"thinking":{"type":"disabled"}`, effort: "none", mappings: []service.ReasoningEffortMapping{{From: "none", To: "xhigh"}}, ceiling: "low", want: "low"},
-			{name: "disabled omitted mapping denied", preference: `,"thinking":{"type":"disabled"}`, effort: "none", mappings: []service.ReasoningEffortMapping{{From: "none", To: "xhigh"}}, ceiling: "low", overLimit: service.ReasoningEffortOverLimitDeny, deny: true},
+			{name: "disabled omitted mapping denied", preference: `,"thinking":{"type":"disabled"}`, effort: "none", mappings: []service.ReasoningEffortMapping{{From: "none", To: "xhigh"}}, ceiling: "low", overLimit: service.ReasoningEffortOverLimitDeny, requested: "none", deny: true},
+			{name: "disabled explicit mapping denial retains client effort", preference: `,"thinking":{"type":"disabled"},"output_config":{"effort":"max"}`, effort: "none", mappings: []service.ReasoningEffortMapping{{From: "none", To: "xhigh"}}, ceiling: "low", overLimit: service.ReasoningEffortOverLimitDeny, requested: "max", deny: true},
 			{name: "disabled unmapped none not capped", preference: `,"thinking":{"type":"disabled"}`, effort: "none", ceiling: "low", overLimit: service.ReasoningEffortOverLimitDeny, want: "none"},
 			{name: "disabled explicit applies none", preference: `,"output_config":{"effort":"max"},"thinking":{"type":"disabled"}`, effort: "none", mappings: []service.ReasoningEffortMapping{{From: "none", To: "low"}}, want: "low"},
 			{name: "explicit adaptive retains policy", preference: `,"output_config":{"effort":"high"},"thinking":{"type":"adaptive"}`, effort: "high", ceiling: "medium", want: "medium"},
@@ -51,7 +53,7 @@ func TestMessagesEffortPolicyBinding(t *testing.T) {
 				if test.deny {
 					var overLimit *service.ReasoningEffortOverLimitError
 					require.ErrorAs(t, err, &overLimit)
-					require.Equal(t, "xhigh", overLimit.Requested)
+					require.Equal(t, test.requested, overLimit.Requested)
 					require.Equal(t, "low", overLimit.Max)
 					require.False(t, changed)
 					require.Equal(t, converted, got)
