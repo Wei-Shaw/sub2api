@@ -350,20 +350,26 @@ func (m *Manager) rollbackQuota(ctx context.Context, cfg ProviderConfig) {
 // --- Search execution ---
 
 // TestSearch executes a search using the first available provider without reserving quota.
-// Intended for admin test functionality only.
+// Intended for admin test functionality only, so a failure keeps each provider's error:
+// the admin needs to see why the test failed (bad key, quota, network), not a generic message.
 func (m *Manager) TestSearch(ctx context.Context, req SearchRequest) (*SearchResponse, string, error) {
 	if strings.TrimSpace(req.Query) == "" {
 		return nil, "", fmt.Errorf("websearch: empty search query")
 	}
+	var failures []error
 	for _, cfg := range m.configs {
 		if !m.isProviderAvailable(cfg) {
 			continue
 		}
 		resp, err := m.executeSearch(ctx, cfg, req)
 		if err != nil {
+			failures = append(failures, err)
 			continue
 		}
 		return resp, cfg.Type, nil
+	}
+	if len(failures) > 0 {
+		return nil, "", fmt.Errorf("websearch: all providers failed: %w", errors.Join(failures...))
 	}
 	return nil, "", fmt.Errorf("websearch: no available provider")
 }
