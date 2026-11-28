@@ -164,8 +164,83 @@ var openAIResponsesToolCallItemTypes = map[string]bool{
 	"mcp_tool_call":    true,
 }
 
+// shouldKeepOpenAIResponsesExternalMessageNamespaces 判定清理 input 残留 namespace 时
+// 是否保留 Codex ExternalMessage（无 call_id、带 name 与 namespace 的 function_call_output）
+// 上的 namespace。
+//
+// Codex 0.167+ 使用此类 standalone function_call_output 传递外部上下文（如 agent.*、
+// codex_app.automation_update 等）。非 compact 且未开启摊平的 OAuth / API Key 转发
+// 若把该字段剥离，兼容 Codex 协议的上游会将其误判为 "named result without namespace"
+// 并直接 400；而标准 Responses API 本身同样会拒绝无 call_id 的 function_call_output，
+// 因此在非 compact、非摊平路径上保留该字段不会增加回归风险。
+func shouldKeepOpenAIResponsesExternalMessageNamespaces(
+	account *Account,
+	transport OpenAIUpstreamTransport,
+	passthroughEnabled bool,
+	compactPath bool,
+) bool {
+	if account == nil || compactPath {
+		return false
+	}
+	if account.IsOpenAIApiKey() {
+		return true
+	}
+	if !account.IsOpenAIOAuthLike() {
+		return false
+	}
+	return !shouldFlattenOpenAIResponsesNamespaces(account, transport, passthroughEnabled, compactPath)
+}
+
 func isOpenAIResponsesToolCallItemType(itemType string) bool {
 	return openAIResponsesToolCallItemTypes[strings.ToLower(strings.TrimSpace(itemType))]
+}
+
+// isCodexExternalMessageOutputItem 识别 Codex ExternalMessage 形态的 standalone
+// function_call_output（缺失或空白 call_id，且同时带有非空字符串 name 与 namespace）。
+// 单次遍历 item 同时校验重复键：任意关键字段（type/call_id/name/namespace）重复或类型非字符串
+// 一律返回 false，避免 gjson 首键语义与上游尾键语义不一致导致走私。
+func isCodexExternalMessageOutputItem(item gjson.Result) bool {
+	if !item.IsObject() {
+		return false
+	}
+	var (
+		typeCount, callIDCount, nameCount, nsCount int
+		validType, validName, validNS              bool
+		invalidCallID                              bool
+	)
+	item.ForEach(func(key, val gjson.Result) bool {
+		switch key.String() {
+		case "type":
+			typeCount++
+			if typeCount > 1 || val.Type != gjson.String {
+				return false
+			}
+			validType = strings.EqualFold(strings.TrimSpace(val.String()), "function_call_output")
+		case "call_id":
+			callIDCount++
+			if callIDCount > 1 || val.Type != gjson.String || strings.TrimSpace(val.String()) != "" {
+				invalidCallID = true
+				return false
+			}
+		case "name":
+			nameCount++
+			if nameCount > 1 || val.Type != gjson.String {
+				return false
+			}
+			validName = strings.TrimSpace(val.String()) != ""
+		case "namespace":
+			nsCount++
+			if nsCount > 1 || val.Type != gjson.String {
+				return false
+			}
+			validNS = strings.TrimSpace(val.String()) != ""
+		}
+		return true
+	})
+	return typeCount == 1 && validType &&
+		callIDCount <= 1 && !invalidCallID &&
+		nameCount == 1 && validName &&
+		nsCount == 1 && validNS
 }
 
 func flattenOpenAIResponsesNamespaces(c *gin.Context, body []byte) ([]byte, error) {
@@ -191,6 +266,11 @@ func flattenOpenAIResponsesNamespaces(c *gin.Context, body []byte) ([]byte, erro
 	return rebuilt, nil
 }
 
+type openAIResponsesInputNamespaceStripOptions struct {
+	keepToolCallNamespaces        bool
+	keepExternalMessageNamespaces bool
+}
+
 // stripOpenAIResponsesInputNamespaces removes namespace only from direct input
 // array items. Namespace declarations and nested namespace fields are left
 // untouched. Rebuilding the input array once keeps this linear for long
@@ -204,6 +284,12 @@ func flattenOpenAIResponsesNamespaces(c *gin.Context, body []byte) ([]byte, erro
 // namespace，让 Codex 调用能按上游要求原样回传；判定见
 // shouldKeepOpenAIResponsesToolCallNamespaces。
 func stripOpenAIResponsesInputNamespaces(body []byte, keepToolCallNamespaces bool) ([]byte, error) {
+	return stripOpenAIResponsesInputNamespacesWithOptions(body, openAIResponsesInputNamespaceStripOptions{
+		keepToolCallNamespaces: keepToolCallNamespaces,
+	})
+}
+
+func stripOpenAIResponsesInputNamespacesWithOptions(body []byte, opts openAIResponsesInputNamespaceStripOptions) ([]byte, error) {
 	if !bytes.Contains(body, openAIResponsesNamespaceFieldBytes) {
 		return body, nil
 	}
@@ -223,7 +309,8 @@ func stripOpenAIResponsesInputNamespaces(body []byte, keepToolCallNamespaces boo
 	var stripErr error
 	input.ForEach(func(_, item gjson.Result) bool {
 		if !item.IsObject() || !item.Get("namespace").Exists() ||
-			(keepToolCallNamespaces && isOpenAIResponsesToolCallItemType(item.Get("type").String())) {
+			(opts.keepToolCallNamespaces && isOpenAIResponsesToolCallItemType(item.Get("type").String())) ||
+			(opts.keepExternalMessageNamespaces && isCodexExternalMessageOutputItem(item)) {
 			return true
 		}
 		itemBody, err := sjson.Delete(item.Raw, "namespace")

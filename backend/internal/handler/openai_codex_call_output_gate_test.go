@@ -53,7 +53,7 @@ func TestCodexCallOutputGateAdmitsEveryRewrite(t *testing.T) {
 			parts = append(parts, items[rng.Intn(len(items))])
 		}
 		body := []byte(`{"model":"gpt-5","tools":[{"type":"function","name":"automation_update"}],"input":[` + strings.Join(parts, ",") + `]}`)
-		_, rewritten := normalizeCodexCallOutputBootstrap(body, isCodexAutomationCandidate, false)
+		_, rewritten := normalizeCodexCallOutputBootstrap(body, isCodexAutomationCandidate, true)
 		if rewritten {
 			rewrites++
 			require.True(t, mayContainCodexCallOutputCandidate(body, "automation_update"), "%s", body)

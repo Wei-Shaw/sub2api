@@ -64,3 +64,27 @@ func BenchmarkStripOpenAIResponsesInputNamespaces(b *testing.B) {
 func BenchmarkStripOpenAIResponsesInputNamespacesLegacy(b *testing.B) {
 	benchmarkStripOpenAIResponsesInputNamespaces(b, "legacy", legacyStripOpenAIResponsesInputNamespaces)
 }
+
+func BenchmarkStripOpenAIResponsesInputNamespacesKeepExternalMessage(b *testing.B) {
+	body := []byte(`{"tools":[{"type":"function","name":"exec"}],"input":[` +
+		`{"type":"function_call_output","id":"fco_1","namespace":"agent","name":"browser_tabs","output":"` + strings.Repeat("x", 1<<20) + `"},` +
+		`{"type":"message","role":"user","content":"hi"}]}`)
+	opts := openAIResponsesInputNamespaceStripOptions{
+		keepToolCallNamespaces:        false,
+		keepExternalMessageNamespaces: true,
+	}
+	out, err := stripOpenAIResponsesInputNamespacesWithOptions(body, opts)
+	if err != nil || !bytes.Equal(body, out) {
+		b.Fatalf("expected no-op preservation, err=%v", err)
+	}
+	b.ReportAllocs()
+	b.SetBytes(int64(len(body)))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		out, err = stripOpenAIResponsesInputNamespacesWithOptions(body, opts)
+		if err != nil {
+			b.Fatal(err)
+		}
+		runtime.KeepAlive(out)
+	}
+}

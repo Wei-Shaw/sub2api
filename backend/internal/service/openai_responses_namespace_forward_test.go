@@ -208,3 +208,130 @@ func TestOpenAIGatewayService_ForwardClearsStaleNamespaceNames(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, openAIResponsesNamespaceNames(c))
 }
+
+// API Key 转发 Codex 请求时，即使顶层 tools 没有 type:"namespace" 声明，
+// 也必须保留 Codex ExternalMessage（无 call_id、带 name+namespace 的 function_call_output）
+// 上的 namespace，避免兼容上游报 "named result without namespace" 400；
+// 同时仍清理普通带 call_id 输出项和 message 上的残留 namespace。
+func TestOpenAIGatewayService_APIKeyPreservesCodexExternalMessageNamespace(t *testing.T) {
+	body := []byte(`{
+		"model":"gpt-6.1-sol",
+		"stream":false,
+		"tools":[{"type":"function","name":"exec","parameters":{"type":"object"}}],
+		"input":[
+			{"type":"function_call","call_id":"call_1","name":"exec","arguments":"{}"},
+			{"type":"function_call_output","call_id":"call_1","namespace":"leftover","name":"exec","output":"ok"},
+			{"type":"function_call_output","id":"fco_ext_1","namespace":"agent","name":"browser_tabs","output":"<tabs/>"},
+			{"type":"function_call_output","id":"fco_ext_2","namespace":"codex_app","name":"automation_update","output":"<heartbeat/>"},
+			{"type":"message","role":"user","namespace":"leftover","content":[{"type":"input_text","text":"hello"}]}
+		]
+	}`)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newOpenAIRejectedFieldTestResponse(http.StatusOK, namespaceForwardOKResponse),
+	}}
+	c := newOpenAIRejectedFieldTestContext(body)
+
+	result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+		context.Background(), c, newOpenAIRejectedFieldTestAccount(), body,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 1)
+	forwarded := upstream.bodies[0]
+
+	require.False(t, gjson.GetBytes(forwarded, "input.1.namespace").Exists(), "带 call_id 的普通输出项仍应清理残留 namespace")
+	require.Equal(t, "agent", gjson.GetBytes(forwarded, "input.2.namespace").String(), "agent ExternalMessage 必须保留 namespace")
+	require.Equal(t, "codex_app", gjson.GetBytes(forwarded, "input.3.namespace").String(), "codex_app ExternalMessage 必须保留 namespace")
+	require.False(t, gjson.GetBytes(forwarded, "input.4.namespace").Exists(), "普通 message 仍应清理残留 namespace")
+}
+
+// OAuth 非 compact、非摊平转发时，必须保留 Codex ExternalMessage（含 id）的原生形态与 namespace，
+// 不得把 id 提升为 call_id 导致孤儿清理将其静默丢弃。
+func TestOpenAIGatewayService_OAuthPreservesCodexExternalMessageNamespace(t *testing.T) {
+	body := []byte(`{
+		"model":"gpt-5.6-terra",
+		"stream":false,
+		"instructions":"test",
+		"input":[
+			{"type":"function_call_output","id":"fco_ext_1","namespace":"agent","name":"browser_tabs","output":"<tabs/>"},
+			{"type":"message","role":"user","namespace":"leftover","content":[{"type":"input_text","text":"hi"}]}
+		]
+	}`)
+	upstream := &httpUpstreamRecorder{responses: []*http.Response{
+		newOpenAIRejectedFieldTestResponse(http.StatusOK, namespaceForwardOKResponse),
+	}}
+	c := newOpenAIRejectedFieldTestContext(body)
+
+	result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+		context.Background(), c, newOpenAIOAuthNamespaceTestAccount(), body,
+	)
+
+	require.NoError(t, err)
+	require.NotNil(t, result)
+	require.Len(t, upstream.bodies, 1)
+	forwarded := upstream.bodies[0]
+
+	require.Len(t, gjson.GetBytes(forwarded, "input").Array(), 2, "ExternalMessage 不得被孤儿清理静默丢弃")
+	require.Equal(t, "function_call_output", gjson.GetBytes(forwarded, "input.0.type").String())
+	require.Equal(t, "agent", gjson.GetBytes(forwarded, "input.0.namespace").String())
+	require.Equal(t, "browser_tabs", gjson.GetBytes(forwarded, "input.0.name").String())
+	require.False(t, gjson.GetBytes(forwarded, "input.0.call_id").Exists(), "不得把 ExternalMessage 的 id 伪造为 call_id")
+	require.Equal(t, "message", gjson.GetBytes(forwarded, "input.1.type").String())
+	require.False(t, gjson.GetBytes(forwarded, "input.1.namespace").Exists())
+}
+
+// compact 与 flatten 模式下仍全量剥离 ExternalMessage 的 namespace，同时保留该项本身（不伪造 call_id、不静默丢弃）。
+func TestOpenAIGatewayService_CompactAndFlattenStillStripExternalMessageNamespace(t *testing.T) {
+	body := []byte(`{
+		"model":"gpt-5.6-terra",
+		"stream":false,
+		"instructions":"test",
+		"input":[
+			{"type":"function_call_output","id":"fco_ext_1","namespace":"agent","name":"browser_tabs","output":"<tabs/>"}
+		]
+	}`)
+
+	t.Run("oauth_compact", func(t *testing.T) {
+		upstream := &httpUpstreamRecorder{responses: []*http.Response{
+			newOpenAIRejectedFieldTestResponse(http.StatusOK, namespaceForwardOKResponse),
+		}}
+		c := newOpenAIRejectedFieldTestContext(body)
+		c.Request.URL.Path = "/v1/responses/compact"
+
+		result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+			context.Background(), c, newOpenAIOAuthNamespaceTestAccount(), body,
+		)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Len(t, upstream.bodies, 1)
+		forwarded := upstream.bodies[0]
+		require.Len(t, gjson.GetBytes(forwarded, "input").Array(), 1)
+		require.Equal(t, "function_call_output", gjson.GetBytes(forwarded, "input.0.type").String())
+		require.Equal(t, "browser_tabs", gjson.GetBytes(forwarded, "input.0.name").String())
+		require.False(t, gjson.GetBytes(forwarded, "input.0.call_id").Exists())
+		require.False(t, gjson.GetBytes(forwarded, "input.0.namespace").Exists())
+	})
+
+	t.Run("oauth_flatten", func(t *testing.T) {
+		upstream := &httpUpstreamRecorder{responses: []*http.Response{
+			newOpenAIRejectedFieldTestResponse(http.StatusOK, namespaceForwardOKResponse),
+		}}
+		c := newOpenAIRejectedFieldTestContext(body)
+		account := newOpenAIOAuthNamespaceTestAccount()
+		account.Extra = map[string]any{"openai_responses_flatten_namespaces": true}
+
+		result, err := newOpenAIRejectedFieldTestService(upstream).Forward(
+			context.Background(), c, account, body,
+		)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		require.Len(t, upstream.bodies, 1)
+		forwarded := upstream.bodies[0]
+		require.Len(t, gjson.GetBytes(forwarded, "input").Array(), 1)
+		require.Equal(t, "function_call_output", gjson.GetBytes(forwarded, "input.0.type").String())
+		require.Equal(t, "browser_tabs", gjson.GetBytes(forwarded, "input.0.name").String())
+		require.False(t, gjson.GetBytes(forwarded, "input.0.call_id").Exists())
+		require.False(t, gjson.GetBytes(forwarded, "input.0.namespace").Exists())
+	})
+}

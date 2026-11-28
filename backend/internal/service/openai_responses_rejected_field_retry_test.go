@@ -152,6 +152,24 @@ func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyBindsNamespacePathToRejec
 	require.False(t, gjson.GetBytes(retryBody, "input.1.namespace").Exists())
 }
 
+func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyStripsExternalMessageNamespace(t *testing.T) {
+	body := []byte(`{"input":[{"type":"function_call_output","id":"fco_1","namespace":"agent","name":"browser_tabs","output":"<tabs/>"},{"type":"function_call_output","call_id":"call_1","namespace":"leftover","name":"exec","output":"ok"}]}`)
+	responseBody := []byte(`{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[0].namespace'.","param":"input[0].namespace"}}`)
+
+	retryBody, _, changed, err := normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, responseBody)
+	require.NoError(t, err)
+	require.True(t, changed)
+	require.False(t, gjson.GetBytes(retryBody, "input.0.namespace").Exists())
+	require.Equal(t, "browser_tabs", gjson.GetBytes(retryBody, "input.0.name").String())
+
+	// 带有效 call_id 的普通 function_call_output 不会被此反应式分支处理。
+	ordinaryResp := []byte(`{"error":{"code":"unknown_parameter","message":"Unknown parameter: 'input[1].namespace'.","param":"input[1].namespace"}}`)
+	retryBody, _, changed, err = normalizeOpenAIResponsesRejectedFieldRetryBody(http.StatusBadRequest, body, ordinaryResp)
+	require.NoError(t, err)
+	require.False(t, changed)
+	require.Nil(t, retryBody)
+}
+
 func TestNormalizeOpenAIResponsesRejectedFieldRetryBodyDoesNotTreatMaxOutputTokensSuggestionAsRejection(t *testing.T) {
 	body := []byte(`{"max_tokens":4096,"max_output_tokens":2048}`)
 	responseBody := []byte(`{"error":{"code":"unknown_parameter","message":"Unknown parameter: max_tokens. Use max_output_tokens instead."}}`)
