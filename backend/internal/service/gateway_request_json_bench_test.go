@@ -10,8 +10,32 @@ import (
 // claudeCodeLikeBody builds a ~32KB request shaped like a Claude Code turn:
 // 20 tools, a system prompt, and 40 messages with 4 content blocks each.
 func claudeCodeLikeBody(cacheControls int, with1h bool) []byte {
+	return claudeCodeLikeBodyWith(claudeCodeLikeBodyOptions{cacheControls: cacheControls, with1h: with1h})
+}
+
+// claudeCodeLikeBodyWithThinking builds the same shape with extended thinking
+// enabled: the top-level thinking config plus a thinking block in the last
+// assistant turn. Either occurrence makes the byte-level precheck in
+// enforceCacheControlLimit inapplicable, so this is the shape that decides
+// whether the cache_control walks can be skipped for real Claude Code traffic.
+func claudeCodeLikeBodyWithThinking(with1h bool) []byte {
+	return claudeCodeLikeBodyWith(claudeCodeLikeBodyOptions{cacheControls: 4, with1h: with1h, thinking: true})
+}
+
+type claudeCodeLikeBodyOptions struct {
+	cacheControls int
+	with1h        bool
+	thinking      bool
+}
+
+func claudeCodeLikeBodyWith(opts claudeCodeLikeBodyOptions) []byte {
+	cacheControls := opts.cacheControls
 	var b strings.Builder
-	_, _ = b.WriteString(`{"model":"claude-sonnet-5-5","max_tokens":32000,"stream":true,"tools":[`)
+	_, _ = b.WriteString(`{"model":"claude-sonnet-5-5","max_tokens":32000,"stream":true`)
+	if opts.thinking {
+		_, _ = b.WriteString(`,"thinking":{"type":"enabled","budget_tokens":31999}`)
+	}
+	_, _ = b.WriteString(`,"tools":[`)
 	for i := 0; i < 20; i++ {
 		if i > 0 {
 			_ = b.WriteByte(',')
@@ -42,10 +66,14 @@ func claudeCodeLikeBody(cacheControls int, with1h bool) []byte {
 			if c > 0 {
 				_ = b.WriteByte(',')
 			}
+			if opts.thinking && m == 39 && c == 0 {
+				_, _ = b.WriteString(`{"type":"thinking","thinking":"` + strings.Repeat("t", 80) + `","signature":"` + strings.Repeat("s", 64) + `"}`)
+				continue
+			}
 			fmt.Fprintf(&b, `{"type":"text","text":"%s"`, strings.Repeat("x", 120))
 			if m >= 38 && c == 3 && cacheControls > 0 {
 				ttl := ""
-				if with1h && m == 39 {
+				if opts.with1h && m == 39 {
 					ttl = `,"ttl":"1h"`
 				}
 				fmt.Fprintf(&b, `,"cache_control":{"type":"ephemeral"%s}`, ttl)
@@ -66,6 +94,8 @@ func BenchmarkEnforceCacheControlLimit(b *testing.B) {
 	}{
 		{"common_4cc_no1h", claudeCodeLikeBody(4, false)},
 		{"with_1h", claudeCodeLikeBody(4, true)},
+		{"thinking_4cc_no1h", claudeCodeLikeBodyWithThinking(false)},
+		{"thinking_4cc_1h", claudeCodeLikeBodyWithThinking(true)},
 	}
 	for _, tc := range cases {
 		b.Run(tc.name+"/legacy", func(b *testing.B) {

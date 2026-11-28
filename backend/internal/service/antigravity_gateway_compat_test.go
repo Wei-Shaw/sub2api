@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -200,10 +201,62 @@ func TestAntigravityCompatToolSchemaItemsMatchSelectedType(t *testing.T) {
 	}
 }
 
+func TestConvertAntigravityCompatResponsesToAnthropic_VersionlessCodex(t *testing.T) {
+	const identity = "You are Codex, a coding agent."
+	const task = "\n  Keep subsequent instructions and GPT-6 model ids."
+	for _, placement := range []string{"instructions", "system/string", "system/array", "developer/string", "developer/array"} {
+		for _, text := range []string{identity + task, "Example:\n" + identity, identity + "example", "You are Codex, a coding agent helping with tests."} {
+			t.Run(placement+"/"+text, func(t *testing.T) {
+				input := []map[string]any{{"role": "user", "content": identity}}
+				body := map[string]any{
+					"model": "gemini-3.1-pro-high",
+					"tools": []map[string]any{{
+						"type": "function", "name": "example", "description": identity,
+						"parameters": map[string]any{"type": "object", "properties": map[string]any{"query": map[string]string{"type": "string", "description": identity}}},
+					}},
+				}
+				if placement == "instructions" {
+					body["instructions"] = text
+				} else {
+					role, form, _ := strings.Cut(placement, "/")
+					var content any = text
+					if form == "array" {
+						content = []map[string]string{{"type": "input_text", "text": text}}
+					}
+					input = append([]map[string]any{{"role": role, "content": content}}, input...)
+				}
+				body["input"] = input
+				encoded, err := json.Marshal(body)
+				require.NoError(t, err)
+				var request apicompat.ResponsesRequest
+				require.NoError(t, json.Unmarshal(encoded, &request))
+				got, err := convertAntigravityCompatResponsesToAnthropic(&request)
+				require.NoError(t, err)
+				want := text
+				if text == identity+task {
+					want = "You are an AI agent." + task
+				}
+				var system string
+				require.NoError(t, json.Unmarshal(got.System, &system))
+				require.Equal(t, want, system)
+				require.Len(t, got.Messages, 1)
+				require.Equal(t, "user", got.Messages[0].Role)
+				var userText string
+				require.NoError(t, json.Unmarshal(got.Messages[0].Content, &userText))
+				require.Equal(t, identity, userText)
+				require.Len(t, got.Tools, 1)
+				require.Equal(t, "example", got.Tools[0].Name)
+				require.Equal(t, identity, got.Tools[0].Description)
+				require.JSONEq(t, gjson.GetBytes(encoded, "tools.0.parameters").Raw, string(got.Tools[0].InputSchema))
+			})
+		}
+	}
+}
+
 func TestAntigravitySystemIdentityAcrossProtocols(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	const task = "\nKeep GPT-5.6, gpt-6 and Claude model ids unchanged."
-	for _, identity := range []string{"You are Codex, based on GPT-5.6.", "You are Codex, an agent based on GPT-6.", "You are GPT-6 running in the Codex CLI.", "You are Claude Code, Anthropic's official CLI for Claude."} {
+	for _, identity := range []string{"You are Codex, based on GPT-5.6.", "You are Codex, an agent based on GPT-6.", "You are Codex, a coding agent.", "You are GPT-6 running in the Codex CLI.", "You are Claude Code, Anthropic's official CLI for Claude."} {
 		for _, model := range []string{"gemini-3.1-pro-high", "claude-sonnet-4-6"} {
 			for _, protocol := range []string{"responses", "chat", "messages"} {
 				for _, arraySystem := range []bool{false, true} {
@@ -1180,27 +1233,31 @@ func TestAntigravityCompatHandlerPreContentKeepalive(t *testing.T) {
 }
 
 func TestAntigravityCompatHandlerRepeatsPreContentKeepalive(t *testing.T) {
-	svc := newAntigravityCompatService(config.GatewayConfig{
-		MaxLineSize: defaultMaxLineSize, StreamDataIntervalTimeout: 30, StreamKeepaliveInterval: 0,
-	}, nil)
-	c, recorder := newAntigravityCompatContext(http.MethodPost, "/", nil)
-	reader, pipeWriter := io.Pipe()
-	defer func() { _ = reader.Close() }()
-	resp := &http.Response{StatusCode: http.StatusOK, Body: reader}
-	done := make(chan error, 1)
-	go func() {
-		_, err := svc.handleAntigravityCompatStreamWithKeepaliveInterval(
-			c, resp, time.Now().Add(-15*time.Millisecond), "gemini-3.1-pro",
-			newAntigravityResponsesStreamAdapter("gemini-3.1-pro"), "test", 15*time.Millisecond, time.Second,
-		)
-		done <- err
-	}()
-	time.Sleep(55 * time.Millisecond)
-	require.NoError(t, pipeWriter.Close())
-	require.Error(t, <-done)
-	require.GreaterOrEqual(t, strings.Count(recorder.Body.String(), ": ping\n\n"), 3)
-	require.Contains(t, recorder.Body.String(), "event: error")
-	require.True(t, IsResponseCommitted(c))
+	synctest.Test(t, func(t *testing.T) {
+		svc := newAntigravityCompatService(config.GatewayConfig{
+			MaxLineSize: defaultMaxLineSize, StreamDataIntervalTimeout: 30, StreamKeepaliveInterval: 0,
+		}, nil)
+		c, recorder := newAntigravityCompatContext(http.MethodPost, "/", nil)
+		reader, pipeWriter := io.Pipe()
+		defer func() { _ = reader.Close() }()
+		resp := &http.Response{StatusCode: http.StatusOK, Body: reader}
+		done := make(chan error, 1)
+		go func() {
+			_, err := svc.handleAntigravityCompatStreamWithKeepaliveInterval(
+				c, resp, time.Now().Add(-15*time.Millisecond), "gemini-3.1-pro",
+				newAntigravityResponsesStreamAdapter("gemini-3.1-pro"), "test", 15*time.Millisecond, time.Second,
+			)
+			done <- err
+		}()
+		// Start the handler and scanner before advancing the virtual clock.
+		synctest.Wait()
+		time.Sleep(55 * time.Millisecond)
+		require.NoError(t, pipeWriter.Close())
+		require.Error(t, <-done)
+		require.GreaterOrEqual(t, strings.Count(recorder.Body.String(), ": ping\n\n"), 3)
+		require.Contains(t, recorder.Body.String(), "event: error")
+		require.True(t, IsResponseCommitted(c))
+	})
 }
 
 func TestAntigravityCompatHandlerPreContentDeadlineWithCommentOnlyStream(t *testing.T) {
@@ -1414,6 +1471,25 @@ func TestAntigravityCompatGeminiThinkingConfig(t *testing.T) {
 		cfg := gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.thinkingConfig")
 		require.Equal(t, "medium", cfg.Get("thinkingLevel").String(), "thinkingConfig=%s", cfg.Raw)
 		require.True(t, cfg.Get("includeThoughts").Bool(), "thinkingConfig=%s", cfg.Raw)
+	})
+
+	t.Run("streaming chat can omit includeThoughts and keep the requested effort", func(t *testing.T) {
+		reply := antigravityCompatSuccessResponse()
+		reply.Body = io.NopCloser(strings.NewReader(`data: {"response":{"candidates":[{"content":{"parts":[{"thought":true,"text":"summary"},{"text":"answer"}]},"finishReason":"STOP"}]}}` + "\n\n"))
+		upstream := &queuedHTTPUpstreamStub{responses: []*http.Response{reply}}
+		svc := newAntigravityCompatService(config.GatewayConfig{AntigravityGeminiOmitIncludeThoughts: true}, upstream)
+		account := newAntigravityCompatAccount(AccountTypeOAuth)
+		account.Credentials["model_mapping"] = map[string]any{"gemini-3.5-flash": "gemini-3.5-flash"}
+		body := []byte(`{"model":"gemini-3.5-flash","reasoning_effort":"medium","stream":true,"messages":[{"role":"user","content":"hello"}]}`)
+		c, recorder := newAntigravityCompatContext(http.MethodPost, "/v1/chat/completions", body)
+		_, err := svc.ForwardAsChatCompletions(context.Background(), c, account, body, nil)
+		require.NoError(t, err)
+		require.Len(t, upstream.requestBodies, 1)
+		cfg := gjson.GetBytes(upstream.requestBodies[0], "request.generationConfig.thinkingConfig")
+		require.False(t, cfg.Get("includeThoughts").Exists())
+		require.Equal(t, "medium", cfg.Get("thinkingLevel").String())
+		require.Contains(t, recorder.Body.String(), `"reasoning_content":"summary"`)
+		require.Contains(t, recorder.Body.String(), `"content":"answer"`)
 	})
 
 	t.Run("non-streaming responses do not force includeThoughts", func(t *testing.T) {

@@ -5,11 +5,34 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
 	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 )
+
+func TestFromBodyCandidatesRetainsOnlyModelValues(t *testing.T) {
+	runtime.GC()
+	var before runtime.MemStats
+	runtime.ReadMemStats(&before)
+	models := func() []string {
+		body := []byte(`{"model":"public-model","session":{"model":"live-model"},"input":"` + strings.Repeat("x", 16<<20) + `"}`)
+		return FromBodyCandidates("", "application/json", body)
+	}()
+	runtime.GC()
+	var after runtime.MemStats
+	runtime.ReadMemStats(&after)
+	retained := int64(after.HeapAlloc) - int64(before.HeapAlloc)
+	if len(models) != 1 || models[0] != "public-model" {
+		t.Fatalf("model candidates = %q", models)
+	}
+	if retained > 2<<20 {
+		t.Fatalf("model candidates retain %d bytes of the large request", retained)
+	}
+	runtime.KeepAlive(models)
+}
 
 func TestFromBodyJSONModel(t *testing.T) {
 	if got := FromBody("application/json", []byte(`{"model":"gpt-5.4"}`)); got != "gpt-5.4" {
@@ -253,5 +276,42 @@ func TestFromBodyForRouteReturnsFirstCandidate(t *testing.T) {
 	got := FromBodyForRoute("", "application/json", []byte(`{"model":"first","model":"last"}`))
 	if got != "first" {
 		t.Fatalf("dispatch helper keeps gjson-first semantics, got %q", got)
+	}
+}
+
+// 回归：JSON handler 不看 Content-Type、宽容读取会剥掉 BOM，准入候选必须与之
+// 一致，否则把请求体标成 multipart 或加 BOM 就能让白名单拿不到任何模型而放行。
+func TestFromBodyCandidatesFollowsWhatJSONHandlersParse(t *testing.T) {
+	body := []byte(`{"model":"claude-opus-4-8","messages":[]}`)
+	cases := []struct {
+		name        string
+		contentType string
+		body        []byte
+	}{
+		{name: "multipart 标签", contentType: "multipart/form-data; boundary=zzz", body: body},
+		{name: "无 boundary 的 multipart 标签", contentType: "multipart/form-data", body: body},
+		{name: "UTF-8 BOM", contentType: "application/json", body: append([]byte{0xEF, 0xBB, 0xBF}, body...)},
+		{name: "BOM 加 multipart 标签", contentType: "multipart/form-data", body: append([]byte{0xEF, 0xBB, 0xBF}, body...)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := FromBodyCandidates("/v1/messages", tc.contentType, tc.body)
+			if len(got) != 1 || got[0] != "claude-opus-4-8" {
+				t.Fatalf("candidates = %v, want [claude-opus-4-8]", got)
+			}
+			if route := FromBodyForRoute("/v1/messages", tc.contentType, tc.body); route != "claude-opus-4-8" {
+				t.Fatalf("route model = %q", route)
+			}
+		})
+	}
+}
+
+// 回归：multipart handler 跳过首个 boundary 之前的前导内容，前导内容是 JSON 时
+// 白名单必须同时看到表单里的 model，不能只取 JSON 解读。
+func TestFromBodyCandidatesMultipartWithJSONPreamble(t *testing.T) {
+	body := []byte("{}\r\n--B\r\nContent-Disposition: form-data; name=\"model\"\r\n\r\ngpt-image-2\r\n--B--\r\n")
+	got := FromBodyCandidates("/v1/images/edits", "multipart/form-data; boundary=B", body)
+	if len(got) != 1 || got[0] != "gpt-image-2" {
+		t.Fatalf("candidates = %v, want [gpt-image-2]", got)
 	}
 }

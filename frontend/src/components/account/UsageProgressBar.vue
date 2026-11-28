@@ -41,7 +41,7 @@
         <span class="relative" :class="remaining === null ? 'text-gray-400' : textClass">{{ remaining === null ? '—' : remaining + '%' }}</span>
       </span>
       <template v-else>
-        <!-- Label badge (label-width: fixed = 定宽居中, auto = 限宽截断左对齐) -->
+        <!-- Label badge: minimum width for compact labels, or capped/truncated auto mode. -->
         <span :class="[labelSizeClass, labelClass]">
           {{ label }}
         </span>
@@ -87,8 +87,9 @@ const props = withDefaults(
     showNowWhenIdle?: boolean
     matrix?: boolean
     remainingCapacity?: boolean
-    /** fixed: 定宽居中徽章（账号页纵向对齐）；auto: 限宽截断左对齐（监控页组合标签） */
+    /** fixed: 最小宽度居中徽章；auto: 限宽截断左对齐（监控页组合标签） */
     labelWidth?: 'fixed' | 'auto'
+    precisePercent?: boolean
   }>(),
   { labelWidth: 'fixed' }
 )
@@ -134,12 +135,11 @@ const labelClass = computed(() => {
   return colors[props.color]
 })
 
-// Label badge width mode: fixed 定宽保证账号页纵向对齐；auto 限宽截断适配
-// 监控页「Pro/7 天」类组合标签。百分比列在两种模式下保持不变。
+// Keep short labels aligned, but let longer labels reserve space before the bar.
 const labelSizeClass = computed(() =>
   props.labelWidth === 'auto'
     ? 'max-w-[72px] shrink-0 truncate rounded px-1 text-left text-[10px] font-medium'
-    : 'w-[32px] shrink-0 rounded px-1 text-center text-[10px] font-medium'
+    : 'min-w-[32px] shrink-0 whitespace-nowrap rounded px-1 text-center text-[10px] font-medium'
 )
 
 // Matrix cells show what's left. Reset status still uses the reported utilization.
@@ -193,6 +193,9 @@ const barWidth = computed(() => {
 // Display percentage (cap at 999% for readability)
 const displayPercent = computed(() => {
   if (props.utilizationUnknown) return '—'
+  if (props.precisePercent && props.utilization > 0 && props.utilization < 100) {
+    return props.utilization < 0.01 ? '<0.01%' : `${props.utilization.toFixed(2)}%`
+  }
   const percent = Math.round(
     props.remainingCapacity
       ? Math.min(Math.max(props.utilization, 0), 100)

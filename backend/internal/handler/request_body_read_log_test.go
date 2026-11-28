@@ -16,6 +16,7 @@ import (
 	"testing"
 	"testing/iotest"
 
+	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -47,7 +48,7 @@ func TestRequestBodyReadFailureKeepsBodyLimitMessageWithoutLogging(t *testing.T)
 	log, logs := newObservedLogger(t)
 	status, message := requestBodyReadFailure(log, nil, &http.MaxBytesError{Limit: 2 << 20})
 	require.Equal(t, http.StatusRequestEntityTooLarge, status)
-	require.Equal(t, buildBodyTooLargeMessage(2<<20), message)
+	require.Equal(t, pkghttputil.BodyTooLargeMessage(2<<20), message)
 	require.Empty(t, logs.All())
 }
 

@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -217,6 +218,31 @@ func TestApplyOpenCodeSessionHeaderUsesRememberedInboundBodyAfterConversion(t *t
 	convertedResponses := []byte(`{"model":"grok-4.6","input":"hi"}`)
 	applyOpenCodeSessionHeader(c2, account, "https://opencode.ai/zen/go/v1/responses", headers2, convertedResponses)
 	require.Equal(t, "inbound-messages-session", headers2.Get(openCodeSessionHeader))
+}
+
+func TestRememberOpenCodeInboundBodyRetainsOnlySessionHint(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	c := newOpenCodeSessionTestContext(t, "")
+	body := []byte(`{"model":"gpt-5","prompt_cache_key":"conversation-42","input":"` + strings.Repeat("x", 2<<20) + `"}`)
+	rememberOpenCodeInboundBody(c, body)
+
+	remembered := openCodeInboundBodies(c)
+	require.Len(t, remembered, 1)
+	require.Less(t, len(remembered[0]), 256, "conversation correlation only retains the session hint")
+	headers := make(http.Header)
+	applyOpenCodeSessionHeader(c, account, "https://opencode.ai/zen/go/v1/messages", headers, []byte(`{"messages":[]}`))
+	require.Equal(t, "conversation-42", headers.Get(openCodeSessionHeader))
+}
+
+func TestRememberOpenCodeInboundBodyPreservesSessionFallback(t *testing.T) {
+	account := &Account{Platform: PlatformOpenCodeGo, Type: AccountTypeAPIKey}
+	c := newOpenCodeSessionTestContext(t, "")
+	rememberOpenCodeInboundBody(c, []byte(`{"prompt_cache_key":"previous-session"}`))
+	rememberOpenCodeInboundBody(c, []byte(`{"prompt_cache_key":"a\nb","metadata":{"user_id":"metadata-session"}}`))
+
+	headers := make(http.Header)
+	applyOpenCodeSessionHeader(c, account, "https://opencode.ai/zen/go/v1/messages", headers, []byte(`{"metadata":{"user_id":"converted-session"}}`))
+	require.Equal(t, "converted-session", headers.Get(openCodeSessionHeader))
 }
 
 func TestOpenCodeSessionIDFromPayloadIgnoresEmptyBody(t *testing.T) {
@@ -531,4 +557,67 @@ func TestOpenCodeSessionIsNotForwardedToOtherUpstreams(t *testing.T) {
 			require.Empty(t, req.Header.Get(openCodeSessionHeader))
 		})
 	}
+}
+
+func TestNormalizeOpenCodeUserAgentVersion(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{name: "valid semver", input: "1.19.6", want: "1.19.6"},
+		{name: "trims surrounding spaces", input: "  1.19.6  ", want: "1.19.6"},
+		{name: "rejects two segments", input: "1.19", want: ""},
+		{name: "rejects four segments", input: "1.19.6.1", want: ""},
+		{name: "rejects prefixed value", input: "opencode/1.19.6", want: ""},
+		{name: "rejects non-numeric", input: "latest", want: ""},
+		{name: "rejects empty", input: "   ", want: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, NormalizeOpenCodeUserAgentVersion(tt.input))
+		})
+	}
+}
+
+func TestResolveOpenCodeUserAgentVersion(t *testing.T) {
+	tests := []struct {
+		name     string
+		envValue string
+		want     string
+	}{
+		{name: "env override wins", envValue: "1.20.0", want: "1.20.0"},
+		{name: "invalid env falls back to default", envValue: "not-a-version", want: defaultOpenCodeUserAgentVersion},
+		{name: "empty env falls back to default", envValue: "", want: defaultOpenCodeUserAgentVersion},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, resolveOpenCodeUserAgentVersion(tt.envValue))
+		})
+	}
+}
+
+func TestDefaultOpenCodeUpstreamUserAgentMatchesClientFormat(t *testing.T) {
+	// 上游按 opencode/<version> 识别客户端；无论默认值还是环境变量覆盖，
+	// 出站 UA 都必须保持该格式。
+	require.Regexp(t, `^opencode/\d+\.\d+\.\d+$`, openCodeUpstreamUserAgent)
+	require.Regexp(t, `^\d+\.\d+\.\d+$`, defaultOpenCodeUserAgentVersion)
+}
+
+func TestOpenCodeSessionHintBodyKeepsSupplementaryPlaneRunes(t *testing.T) {
+	for _, sessionID := range []string{
+		"sess\U000f0001",
+		"tag\U000e0041z",
+		"flag-\U0001F3F4\U000E0067\U000E0062\U000E0065\U000E006E\U000E0067\U000E007F",
+		`quote"back\slash<&>`,
+	} {
+		t.Run(sessionID, func(t *testing.T) {
+			hint := openCodeSessionHintBody(sessionID)
+			require.True(t, json.Valid(hint), "hint must be valid JSON: %s", hint)
+			require.Equal(t, sessionID, openCodeSessionIDFromPayload(hint))
+		})
+	}
+	require.Nil(t, openCodeSessionHintBody("   "))
 }
