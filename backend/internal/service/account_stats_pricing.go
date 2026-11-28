@@ -15,7 +15,7 @@ import (
 //  3. 模型定价文件（LiteLLM）中上游模型的默认价格
 //  4. nil → 走默认公式（total_cost × account_rate_multiplier）
 //
-// upstreamModel 是最终发往上游的模型 ID。
+// ruleModel 按渠道计费基准选择，用于自定义成本；upstreamModel 用于查上游标准成本。
 // totalCost 是本次请求的客户计费（倍率前），用于优先级 2。
 // serviceTier 是最终参与用户计费的 OpenAI 服务层级，用于优先级 3。
 // pricingAt 与本次客户计费使用同一时刻，避免跨峰谷请求的成本与售价错位。
@@ -29,7 +29,7 @@ func resolveAccountStatsCost(
 	billingService *BillingService,
 	accountID int64,
 	groupID int64,
-	upstreamModel string,
+	ruleModel, upstreamModel string,
 	tokens UsageTokens,
 	requestCount int,
 	totalCost float64,
@@ -43,7 +43,7 @@ func resolveAccountStatsCost(
 	if len(reasoningEfforts) > 0 {
 		reasoningEffort = reasoningEfforts[0]
 	}
-	if channelService == nil || upstreamModel == "" {
+	if channelService == nil || (ruleModel == "" && upstreamModel == "") {
 		return nil
 	}
 	channel, err := channelService.GetChannelForGroup(ctx, groupID)
@@ -54,7 +54,7 @@ func resolveAccountStatsCost(
 	platform := channelService.GetGroupPlatform(ctx, groupID)
 
 	// 优先级 1：自定义规则（始终尝试）
-	if cost := tryCustomRules(channel, accountID, groupID, platform, upstreamModel, tokens, requestCount, reasoningEffort); cost != nil {
+	if cost := tryCustomRules(channel, accountID, groupID, platform, ruleModel, tokens, requestCount, reasoningEffort); cost != nil {
 		return cost
 	}
 
@@ -68,7 +68,7 @@ func resolveAccountStatsCost(
 	}
 
 	// 优先级 3：模型定价文件（LiteLLM）默认价格
-	if billingService != nil {
+	if billingService != nil && upstreamModel != "" {
 		cost := tryModelFilePricing(billingService, upstreamModel, tokens, serviceTier, pricingAt, longContextPricingEnabled, reasoningEffort)
 		if cost != nil && upstreamPriceFactor > 0 {
 			*cost *= upstreamPriceFactor
@@ -270,39 +270,36 @@ func calculateTokenStatsCost(pricing *ChannelModelPricing, tokens UsageTokens) *
 	return &cost
 }
 
-// applyAccountStatsCost resolves the account stats cost for a usage log entry.
-// It resolves the upstream model (falling back to the requested model) and calls
-// the 4-level priority chain via resolveAccountStatsCost.
+// applyAccountStatsCost 按请求使用的渠道计费基准匹配自定义成本。只有网关采纳的响应模型才参与匹配。
 func applyAccountStatsCost(
 	ctx context.Context,
 	usageLog *UsageLog,
 	cs *ChannelService, bs *BillingService,
 	accountID int64, groupID int64,
-	upstreamModel, requestedModel string,
+	fields ChannelUsageFields, acceptedResponseModel string,
 	tokens UsageTokens,
 	totalCost float64,
 	pricingAt time.Time,
 	longContextPricingEnabled bool,
 	upstreamPriceFactor float64,
 ) {
-	model := upstreamModel
-	if model == "" {
-		model = requestedModel
+	upstreamModel := upstreamSentModel(usageLog.Model, optionalStringValue(usageLog.UpstreamModel))
+	ruleModel := upstreamModel
+	switch fields.BillingModelSource {
+	case BillingModelSourceRequested:
+		ruleModel = firstNonEmpty(usageLog.RequestedModel, upstreamModel)
+	case BillingModelSourceChannelMapped:
+		ruleModel = firstNonEmpty(fields.ChannelMappedModel, usageLog.RequestedModel, upstreamModel)
+	case BillingModelSourceResponse:
+		ruleModel = firstNonEmpty(acceptedResponseModel, upstreamModel)
 	}
 	requestCount := 1
-	if usageLog != nil && usageLog.ImageCount > 0 {
+	if usageLog.ImageCount > 0 {
 		requestCount = usageLog.ImageCount
 	}
-	serviceTier := ""
-	reasoningEffort := ""
-	if usageLog != nil && usageLog.ServiceTier != nil {
-		serviceTier = *usageLog.ServiceTier
-	}
-	if usageLog != nil && usageLog.ReasoningEffort != nil {
-		reasoningEffort = *usageLog.ReasoningEffort
-	}
 	usageLog.AccountStatsCost = resolveAccountStatsCost(
-		ctx, cs, bs, accountID, groupID, model, tokens, requestCount, totalCost, serviceTier, pricingAt, longContextPricingEnabled, upstreamPriceFactor, reasoningEffort,
+		ctx, cs, bs, accountID, groupID, ruleModel, upstreamModel, tokens, requestCount, totalCost,
+		optionalStringValue(usageLog.ServiceTier), pricingAt, longContextPricingEnabled, upstreamPriceFactor, optionalStringValue(usageLog.ReasoningEffort),
 	)
 }
 
