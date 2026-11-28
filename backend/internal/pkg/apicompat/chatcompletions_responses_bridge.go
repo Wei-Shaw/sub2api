@@ -1716,6 +1716,26 @@ func (state *ChatCompletionsToResponsesStreamState) ValidateToolCallArguments() 
 	return nil
 }
 
+// chatToolCallSlot picks the state slot for a streamed tool-call delta.
+// Standard upstreams send an index, which is used as is. Google AI Studio's
+// OpenAI-compatible endpoint omits it and streams each parallel call whole,
+// with its own id, in its own chunk; defaulting to 0 merged those calls into
+// one invalid JSON argument string. Without an index, a delta continues the
+// last call when it has no id or repeats that call's id, and otherwise opens
+// the next slot (slots stay contiguous, as closeChatToolItems expects).
+func chatToolCallSlot(state *ChatCompletionsToResponsesStreamState, toolCall ChatToolCall) int {
+	if toolCall.Index != nil {
+		return *toolCall.Index
+	}
+	last := len(state.ToolCalls) - 1
+	if last >= 0 {
+		if prev := state.ToolCalls[last]; prev != nil && (toolCall.ID == "" || toolCall.ID == prev.ID) {
+			return last
+		}
+	}
+	return len(state.ToolCalls)
+}
+
 func (state *ChatCompletionsToResponsesStreamState) allocOutputIndex() int {
 	idx := state.nextOutputIndex
 	state.nextOutputIndex++
@@ -1778,10 +1798,7 @@ func ChatCompletionsChunkToResponsesEvents(
 			}))
 		}
 		for _, toolCall := range choice.Delta.ToolCalls {
-			idx := 0
-			if toolCall.Index != nil {
-				idx = *toolCall.Index
-			}
+			idx := chatToolCallSlot(state, toolCall)
 			stored, ok := state.ToolCalls[idx]
 			if !ok {
 				// A tool call closes any open reasoning item first.
