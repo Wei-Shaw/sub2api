@@ -2259,6 +2259,9 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 	scanner.Split(newBoundedSSESplit(s.cfg, maxLineSize, nil))
 	defer putSSEScannerBuf64K(scanBuf)
 	documentScanner := newOpenAISSEJSONDocumentScanner(scanner)
+	apiKeyPrelude := account != nil && account.Platform == PlatformOpenAI && account.Type == AccountTypeAPIKey
+	var splitJSON []byte
+	reemitBoundary := false
 
 	needModelReplace := strings.TrimSpace(originalModel) != "" && strings.TrimSpace(mappedModel) != "" && strings.TrimSpace(originalModel) != strings.TrimSpace(mappedModel)
 	resultWithUsage := func() *openaiStreamingResultPassthrough {
@@ -2271,8 +2274,32 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		}
 	}
 
-	for documentScanner.Scan() {
-		line := documentScanner.Text()
+	for reemitBoundary || documentScanner.Scan() {
+		line := ""
+		if reemitBoundary {
+			reemitBoundary = false
+		} else {
+			line = documentScanner.Text()
+		}
+		// Do not commit a split JSON event before its type is known.
+		if apiKeyPrelude && !clientOutputStarted {
+			if data, ok := extractOpenAISSEDataLine(line); ok &&
+				(splitJSON != nil || (strings.HasPrefix(strings.TrimSpace(data), "{") && !gjson.Valid(data))) {
+				if len(data) >= min(maxLineSize, maxOpenAIConcatenatedJSONBytes)-len(splitJSON) {
+					return resultWithUsage(), errors.New("multiline Responses SSE event exceeds size limit")
+				}
+				splitJSON = append(splitJSON, data...)
+				splitJSON = append(splitJSON, '\n')
+				continue
+			}
+			if line == "" && splitJSON != nil {
+				var compact bytes.Buffer
+				if err := json.Compact(&compact, splitJSON); err != nil {
+					return resultWithUsage(), errors.New("invalid multiline Responses SSE event")
+				}
+				line, splitJSON, reemitBoundary = "data: "+compact.String(), nil, true
+			}
+		}
 		if eventType, ok := extractOpenAISSEEventLine(line); ok {
 			pendingSSEEventType = eventType
 			eventType = strings.TrimSpace(eventType)
@@ -2499,6 +2526,12 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 		if (sawDone || sawTerminalEvent) && line == "" && (!codexFailureTerminal || !sawBareError) {
 			break
 		}
+	}
+	if splitJSON != nil {
+		if err := documentScanner.Err(); err != nil {
+			return resultWithUsage(), fmt.Errorf("incomplete multiline Responses SSE event: %w", err)
+		}
+		return resultWithUsage(), errors.New("incomplete multiline Responses SSE event")
 	}
 	ensureResponseFailedTerminal()
 	if err := documentScanner.Err(); err != nil {

@@ -657,6 +657,7 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 	maxAccountSwitches := h.maxAccountSwitches
 	switchCount := 0
 	firstOutputTimeoutSwitchCount := 0
+	streamKeyReplayUsed := false
 	profitVetoCount := 0
 	failedAccountIDs := make(map[int64]struct{})
 	sameAccountRetryCount := make(map[int64]int)
@@ -940,12 +941,23 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
+					streamKeyFailure := reqStream && account.Platform == service.PlatformOpenAI &&
+						account.Type == service.AccountTypeAPIKey && failoverErr.StatusCode == http.StatusBadGateway &&
+						failoverErr.StreamFailedFrame != nil && !failoverErr.IsCredentialFailure() && !failoverErr.RequestScopedTransient
+					if streamKeyFailure {
+						if streamKeyReplayUsed || !service.OpenAIStreamKeyReplayAllowed(c.Request.Context(), sessionHashBody) {
+							h.handleFailoverExhausted(c, failoverErr, streamStarted)
+							return
+						}
+						streamKeyReplayUsed = true
+						maxAccountSwitches = min(maxAccountSwitches, switchCount+1)
+					}
 					if openAIFirstOutputFailoverExhausted(failoverErr, &firstOutputTimeoutSwitchCount) {
 						h.handleFailoverExhausted(c, failoverErr, streamStarted)
 						return
 					}
 					// 池模式：同账号重试
-					if failoverErr.RetryableOnSameAccount {
+					if failoverErr.RetryableOnSameAccount && !streamKeyFailure {
 						retryLimit := effectiveSameAccountRetryLimit(failoverErr, account)
 						if sameAccountRetryAllowed(failoverErr, sameAccountRetryCount[account.ID], retryLimit) {
 							sameAccountRetryCount[account.ID]++
