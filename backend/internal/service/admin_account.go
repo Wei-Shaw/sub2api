@@ -331,6 +331,7 @@ func (s *adminServiceImpl) DuplicateAccount(ctx context.Context, id int64, actor
 	if err := NormalizeProtocolRulesCredentials(input.Credentials); err != nil {
 		return nil, err
 	}
+	reconcileAPIKeyPool(nil, input.Credentials)
 	duplicate, err := buildAccountForCreate(input, accountExtra)
 	if err != nil {
 		return nil, err
@@ -464,6 +465,14 @@ func buildAccountForCreate(input *CreateAccountInput, accountExtra map[string]an
 		if err := ValidateQuotaResetConfig(account.Extra); err != nil {
 			return nil, err
 		}
+		if err := ValidateAvailabilityScheduleExtra(account.Extra); err != nil {
+			return nil, err
+		}
+		normalizedExtra, err := NormalizeAvailabilityScheduleExtra(account.Extra)
+		if err != nil {
+			return nil, err
+		}
+		account.Extra = normalizedExtra
 		ComputeQuotaResetAt(account.Extra)
 		NormalizeFixedQuotaWindows(account.Extra)
 	}
@@ -541,6 +550,7 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err := NormalizeProtocolRulesCredentials(input.Credentials); err != nil {
 		return nil, err
 	}
+	reconcileAPIKeyPool(nil, input.Credentials)
 	// Never persist ephemeral SSO/password secrets after OAuth conversion.
 	input.Credentials = SanitizeStoredCredentials(input.Platform, input.Credentials)
 
@@ -755,6 +765,14 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 		if err := ValidateQuotaResetConfig(account.Extra); err != nil {
 			return nil, err
 		}
+		if err := ValidateAvailabilityScheduleExtra(account.Extra); err != nil {
+			return nil, err
+		}
+		normalizedExtra, err := NormalizeAvailabilityScheduleExtra(account.Extra)
+		if err != nil {
+			return nil, err
+		}
+		account.Extra = normalizedExtra
 		ComputeQuotaResetAt(account.Extra)
 		NormalizeFixedQuotaWindows(account.Extra)
 	}

@@ -39,7 +39,13 @@
       </div>
       <div>
         <label class="input-label">{{ t('admin.users.notes') }}</label>
-        <textarea v-model="form.notes" rows="3" class="input"></textarea>
+        <textarea
+          v-model="form.notes"
+          rows="3"
+          class="input"
+          :placeholder="t('admin.users.enterNotes')"
+        ></textarea>
+        <p class="input-hint">{{ t('admin.users.notesHint') }}</p>
       </div>
       <div>
         <label class="input-label">{{ t('admin.users.columns.concurrency') }}</label>

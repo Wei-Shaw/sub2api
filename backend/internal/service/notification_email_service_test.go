@@ -141,11 +141,15 @@ func TestNotificationEmailAdditionalEventsAreListedAndPreviewable(t *testing.T) 
 	}{
 		{NotificationEmailEventNotificationEmailVerifyCode, "verification_code"},
 		{NotificationEmailEventAccountQuotaAlert, "account_name"},
+		{NotificationEmailEventAccountBalanceLow, "current_balance"},
 		{NotificationEmailEventContentModerationViolation, "moderation_category"},
 		{NotificationEmailEventContentModerationDisabled, "violation_count"},
 		{NotificationEmailEventCyberPolicyNotice, "upstream_message"},
 		{NotificationEmailEventOpsAlert, "rule_name"},
 		{NotificationEmailEventOpsScheduledReport, "report_html"},
+		{NotificationEmailEventTicketCreated, "ticket_subject"},
+		{NotificationEmailEventTicketReplied, "replier_role"},
+		{NotificationEmailEventTicketClosed, "closed_by"},
 	}
 
 	for _, check := range checks {

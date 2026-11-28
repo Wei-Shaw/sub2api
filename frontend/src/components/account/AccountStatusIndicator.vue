@@ -32,33 +32,46 @@
       </span>
     </template>
 
-    <!-- Error Info Indicator -->
-    <div v-if="hasError && account.error_message" class="group/error relative">
-      <svg
-        class="h-4 w-4 cursor-help text-red-500 transition-colors hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-        stroke-width="2"
+    <!-- Error Info Indicator：Teleport 到 body，避免账号表 overflow-hidden 裁切完整错误文案 -->
+    <div
+      v-if="hasError && account.error_message"
+      class="relative"
+      @mouseenter="onErrorTooltipEnter"
+      @mouseleave="onErrorTooltipLeave"
+      @focusin="onErrorTooltipEnter"
+      @focusout="onErrorTooltipLeave"
+    >
+      <button
+        ref="errorTriggerEl"
+        type="button"
+        class="inline-flex h-4 w-4 items-center justify-center text-red-500 transition-colors hover:text-red-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400 dark:text-red-400 dark:hover:text-red-300"
+        :aria-label="t('admin.accounts.status.error')"
+        :aria-describedby="errorTooltipVisible ? errorTooltipId : undefined"
+        :aria-expanded="errorTooltipVisible"
       >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"
-        />
-      </svg>
-      <!-- Tooltip - 向下显示 -->
-      <div
-        class="invisible absolute left-0 top-full z-[100] mt-1.5 min-w-[200px] max-w-[300px] rounded-lg bg-gray-800 px-3 py-2 text-xs text-white opacity-0 shadow-xl transition-all duration-200 group-hover/error:visible group-hover/error:opacity-100 dark:bg-gray-900"
-      >
-        <div class="whitespace-pre-wrap break-words leading-relaxed text-gray-300">
-          {{ account.error_message }}
-        </div>
-        <!-- 上方小三角 -->
+        <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <path
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9 5.25h.008v.008H12v-.008z"
+          />
+        </svg>
+      </button>
+      <Teleport to="body">
         <div
-          class="absolute bottom-full left-3 border-[6px] border-transparent border-b-gray-800 dark:border-b-gray-900"
-        ></div>
-      </div>
+          v-show="errorTooltipVisible"
+          :id="errorTooltipId"
+          ref="errorPopoverEl"
+          role="tooltip"
+          data-testid="account-error-tooltip"
+          class="pointer-events-none fixed z-[99999] max-h-[min(50vh,24rem)] w-max min-w-[12rem] max-w-[min(28rem,calc(100vw-1rem))] overflow-y-auto rounded-lg bg-gray-800 px-3 py-2 text-xs text-white shadow-xl dark:bg-gray-900"
+          :style="errorPopoverStyle"
+        >
+          <div class="whitespace-pre-wrap break-words leading-relaxed text-gray-200">
+            {{ account.error_message }}
+          </div>
+        </div>
+      </Teleport>
     </div>
 
     <!-- Rate Limit Indicator (429) -->
@@ -159,7 +172,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import type { Account } from '@/types'
@@ -174,6 +187,60 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'show-temp-unsched', account: Account): void
 }>()
+
+const errorTooltipId = `account-error-tooltip-${props.account.id}`
+const errorTooltipVisible = ref(false)
+const errorTriggerEl = ref<HTMLElement | null>(null)
+const errorPopoverEl = ref<HTMLElement | null>(null)
+const errorPopoverStyle = ref<Record<string, string>>({ top: '0px', left: '0px' })
+
+function updateErrorTooltipPosition() {
+  const trigger = errorTriggerEl.value
+  if (!trigger) return
+  const rect = trigger.getBoundingClientRect()
+  const margin = 8
+  const popover = errorPopoverEl.value
+  const popWidth = popover?.offsetWidth || Math.min(448, window.innerWidth - margin * 2)
+  const popHeight = popover?.offsetHeight || 80
+  const vw = window.innerWidth
+  const vh = window.innerHeight
+
+  let top = rect.bottom + margin
+  if (top + popHeight > vh - margin) {
+    top = Math.max(margin, rect.top - popHeight - margin)
+  }
+
+  let left = rect.left
+  if (left + popWidth > vw - margin) {
+    left = Math.max(margin, vw - margin - popWidth)
+  }
+  if (left < margin) left = margin
+
+  errorPopoverStyle.value = {
+    top: `${Math.round(top)}px`,
+    left: `${Math.round(left)}px`,
+  }
+}
+
+function onErrorTooltipEnter() {
+  errorTooltipVisible.value = true
+  nextTick(() => {
+    updateErrorTooltipPosition()
+    window.addEventListener('scroll', updateErrorTooltipPosition, true)
+    window.addEventListener('resize', updateErrorTooltipPosition)
+  })
+}
+
+function onErrorTooltipLeave() {
+  errorTooltipVisible.value = false
+  window.removeEventListener('scroll', updateErrorTooltipPosition, true)
+  window.removeEventListener('resize', updateErrorTooltipPosition)
+}
+
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', updateErrorTooltipPosition, true)
+  window.removeEventListener('resize', updateErrorTooltipPosition)
+})
 
 // Computed: is rate limited (429)
 const isRateLimited = computed(() => {

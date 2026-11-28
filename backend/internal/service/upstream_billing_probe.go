@@ -246,6 +246,7 @@ type UpstreamBillingProbeService struct {
 	accountRepo        AccountRepository
 	accountTestService *AccountTestService
 	settingService     *SettingService
+	balanceNotify      *BalanceNotifyService
 
 	parentCtx    context.Context
 	parentCancel context.CancelFunc
@@ -296,6 +297,13 @@ func (s *UpstreamBillingProbeService) SetLeaderLock(lockCache LeaderLockCache, d
 	s.db = db
 }
 
+func (s *UpstreamBillingProbeService) SetBalanceNotifyService(notify *BalanceNotifyService) {
+	if s == nil {
+		return
+	}
+	s.balanceNotify = notify
+}
+
 // ProvideUpstreamBillingProbeService starts the process-wide periodic runner.
 func ProvideUpstreamBillingProbeService(
 	accountRepo AccountRepository,
@@ -303,9 +311,11 @@ func ProvideUpstreamBillingProbeService(
 	settingService *SettingService,
 	lockCache LeaderLockCache,
 	db *sql.DB,
+	balanceNotify *BalanceNotifyService,
 ) *UpstreamBillingProbeService {
 	svc := NewUpstreamBillingProbeService(accountRepo, accountTestService, settingService)
 	svc.SetLeaderLock(lockCache, db)
+	svc.SetBalanceNotifyService(balanceNotify)
 	svc.Start()
 	return svc
 }
@@ -343,6 +353,7 @@ func (s *UpstreamBillingProbeService) Stop() {
 func (s *UpstreamBillingProbeService) runLoop() {
 	defer s.wg.Done()
 	_ = s.RunDue(s.parentCtx)
+	_ = s.RunDueBalances(s.parentCtx)
 	ticker := time.NewTicker(upstreamBillingProbeCycleInterval)
 	defer ticker.Stop()
 	for {
@@ -352,6 +363,9 @@ func (s *UpstreamBillingProbeService) runLoop() {
 		case <-ticker.C:
 			if err := s.RunDue(s.parentCtx); err != nil {
 				logger.LegacyPrintf("service.upstream_billing_probe", "run_due_failed: err=%v", err)
+			}
+			if err := s.RunDueBalances(s.parentCtx); err != nil {
+				logger.LegacyPrintf("service.upstream_billing_probe", "run_due_balances_failed: err=%v", err)
 			}
 		}
 	}
@@ -790,6 +804,13 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	if errors.Is(err, ErrUpstreamBillingProbeIdentityChanged) {
 		return nil, err
 	}
+	if errors.Is(err, errBillingUnsupported) {
+		// Official Sub2API billing path missing: fall back to NewAPI /api/pricing when applicable.
+		if snapshot, handled := s.tryNewAPIPricingFallback(ctx, account, intervalMinutes, now, reply); handled {
+			return snapshot, nil
+		}
+		return s.persistProbeFailure(ctx, account, intervalMinutes, now, reply.status, "unsupported", reply.retryAfter)
+	}
 	if err != nil {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, reply.status, err.Error(), reply.retryAfter)
 	}
@@ -797,6 +818,75 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 	if err != nil {
 		return s.persistProbeFailure(ctx, account, intervalMinutes, now, reply.status, "invalid_response", reply.retryAfter)
 	}
+	return s.persistProbeSuccess(ctx, account, intervalMinutes, now, reply.status, data, includeGroup, reply.body)
+}
+
+// tryNewAPIPricingFallback probes NewAPI-compatible pricing after /v1/sub2api/billing is unsupported.
+func (s *UpstreamBillingProbeService) tryNewAPIPricingFallback(
+	ctx context.Context,
+	account *Account,
+	intervalMinutes int,
+	now time.Time,
+	reply upstreamBillingReply,
+) (*UpstreamBillingProbeSnapshot, bool) {
+	if s == nil || s.accountTestService == nil {
+		return nil, false
+	}
+	baseURL := account.GetCredential("base_url")
+	if account.RoutesProtocolByInbound() && account.IsAdaptiveAPIProtocol() {
+		baseURL = account.GetCNProtocolBaseURL(APIProtocolChatCompletions)
+	}
+	if account.Platform == PlatformOpenAI {
+		if baseURL == "" {
+			baseURL = "https://api.openai.com"
+		}
+	} else if upstreamBillingProbeTargetIsOfficialAPI(baseURL) {
+		return nil, false
+	}
+	normalizedBaseURL, err := s.accountTestService.validateUpstreamBaseURL(baseURL)
+	if err != nil {
+		return nil, false
+	}
+	proxyURL := ""
+	if account.ProxyID != nil && account.Proxy != nil && account.Proxy.ID == *account.ProxyID {
+		proxyURL = account.Proxy.URL()
+	}
+	data, statusCode, newAPIErr := s.probeNewAPIPricing(ctx, account, normalizedBaseURL, proxyURL, now)
+	if newAPIErr == nil {
+		snapshot, err := s.persistProbeSuccess(ctx, account, intervalMinutes, now, statusCode, data, false, nil)
+		if err != nil {
+			return nil, false
+		}
+		return snapshot, true
+	}
+	if errors.Is(newAPIErr, errNewAPIUpstreamGroupMissing) {
+		snapshot, err := s.persistProbeFailure(ctx, account, intervalMinutes, now, statusCode, "missing_upstream_group", 0)
+		if err != nil {
+			return nil, false
+		}
+		return snapshot, true
+	}
+	if !errors.Is(newAPIErr, errNewAPIPricingUnsupported) {
+		snapshot, err := s.persistProbeFailure(ctx, account, intervalMinutes, now, statusCode, newAPIErr.Error(), 0)
+		if err != nil {
+			return nil, false
+		}
+		return snapshot, true
+	}
+	_ = reply
+	return nil, false
+}
+
+func (s *UpstreamBillingProbeService) persistProbeSuccess(
+	ctx context.Context,
+	account *Account,
+	intervalMinutes int,
+	now time.Time,
+	statusCode int,
+	data map[string]any,
+	includeGroup bool,
+	body []byte,
+) (*UpstreamBillingProbeSnapshot, error) {
 	snapshot := &UpstreamBillingProbeSnapshot{
 		Status:        UpstreamBillingProbeStatusOK,
 		Data:          data,
@@ -804,7 +894,7 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 		FreshUntil:    probeTimePtr(now.Add(2 * time.Duration(intervalMinutes) * time.Minute)),
 		LastAttemptAt: now,
 		NextProbeAt:   now.Add(nextProbeDelay(intervalMinutes, 0)),
-		HTTPStatus:    reply.status,
+		HTTPStatus:    statusCode,
 	}
 	// 账号级值域与精度只在真要写回时才有影响：只观察上游声明、未开启同步的
 	// 账号不因声明值不适配 accounts.rate_multiplier 而被记成探测失败并进入
@@ -827,8 +917,8 @@ func (s *UpstreamBillingProbeService) probeLoadedAccount(ctx context.Context, ac
 		}
 	}
 	var group BillingGroupInfo
-	if includeGroup {
-		group = upstreamBillingGroupInfo(reply.body)
+	if includeGroup && len(body) > 0 {
+		group = upstreamBillingGroupInfo(body)
 	}
 	if err := s.updateSnapshot(ctx, account, snapshot, syncRate, group); err != nil {
 		return nil, err
@@ -864,6 +954,9 @@ func (s *UpstreamBillingProbeService) persistProbeFailure(
 	delay := nextProbeDelay(intervalMinutes, retryAfterDuration)
 	if reason == "unsupported" {
 		status = UpstreamBillingProbeStatusUnsupported
+		delay = unsupportedProbeDelay(intervalMinutes, retryAfterDuration)
+	} else if reason == "missing_upstream_group" {
+		// NewAPI 已识别，但账号未配置/匹配分组——拉长重探，避免空转刷 /api/pricing。
 		delay = unsupportedProbeDelay(intervalMinutes, retryAfterDuration)
 	}
 	snapshot := &UpstreamBillingProbeSnapshot{

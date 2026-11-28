@@ -122,6 +122,10 @@ func (s *CNProviderBalanceCheckService) runOnce() {
 			if IsOllamaCloudUsageAccount(account) {
 				continue
 			}
+			// sheapi 中转站 NewAPI remaining 常返回负值，周期余额探测会误停调。
+			if IsSheAPIAccount(account) {
+				continue
+			}
 			// coding 账号：探测滚动窗口并落快照（不要求 Schedulable——已被
 			// 阈值停调的账号也需要新鲜快照决定是否续停）。
 			if account.IsCodingPlan() {

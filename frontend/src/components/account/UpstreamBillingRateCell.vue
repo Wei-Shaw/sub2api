@@ -12,6 +12,18 @@
       </template>
       <div class="space-y-1">
         <template v-if="hasEffectiveRate && data">
+          <p v-if="data.billing_source === 'newapi.pricing' || data.billing_source === 'newapi.pricing.authenticated'">
+            {{ t('admin.accounts.upstreamBilling.billingSourceNewAPI') }}
+          </p>
+          <p v-else-if="data.billing_source === 'newapi.user_groups'">
+            {{ t('admin.accounts.upstreamBilling.billingSourceNewAPIUser') }}
+          </p>
+          <p v-else-if="data.billing_source === 'newapi.credential'">
+            {{ t('admin.accounts.upstreamBilling.billingSourceNewAPICredential') }}
+          </p>
+          <p v-if="data.group_name">
+            {{ t('admin.accounts.upstreamBilling.groupName', { value: data.group_name }) }}
+          </p>
           <p>{{ t('admin.accounts.upstreamBilling.groupRate', { value: data.group_rate_multiplier }) }}</p>
           <p v-if="data.user_rate_multiplier != null">
             {{ t('admin.accounts.upstreamBilling.userRate', { value: data.user_rate_multiplier }) }}
@@ -198,14 +210,24 @@ const statusLabel = computed(() => {
   if (!snapshot.value) return t('admin.accounts.upstreamBilling.notProbed')
   if (snapshot.value.status === 'unsupported') return t('admin.accounts.upstreamBilling.unsupported')
   if (stale.value) return t('admin.accounts.upstreamBilling.stale')
-  if (snapshot.value.status === 'failed') return t('admin.accounts.upstreamBilling.failed')
+  if (snapshot.value.status === 'failed') {
+    if (snapshot.value.last_error === 'missing_upstream_group') {
+      return t('admin.accounts.upstreamBilling.missingUpstreamGroup')
+    }
+    return t('admin.accounts.upstreamBilling.failed')
+  }
   return ''
 })
 const statusClass = computed(() => {
   if (!snapshot.value) return 'text-gray-400 dark:text-gray-500'
   if (snapshot.value.status === 'unsupported') return 'text-gray-500 dark:text-gray-400'
   if (stale.value) return 'text-amber-600 dark:text-amber-400'
-  if (snapshot.value.status === 'failed') return 'text-red-600 dark:text-red-400'
+  if (snapshot.value.status === 'failed') {
+    if (snapshot.value.last_error === 'missing_upstream_group') {
+      return 'text-amber-600 dark:text-amber-400'
+    }
+    return 'text-red-600 dark:text-red-400'
+  }
   return ''
 })
 const hasEffectiveRate = computed(() => effectiveRate.value !== '-')
