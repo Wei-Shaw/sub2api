@@ -463,7 +463,26 @@ func (s *OpenAIGatewayService) newOpenAIAccountFailoverErrorWithClassificationHe
 		failoverErr.SameAccountRetryDeadline = s.openAIOAuth429RetryDeadline(account)
 		failoverErr.SameAccountRetryDelay = openAIOAuth429SameAccountRetryDelay(responseHeaders, failoverErr.SameAccountRetryDeadline)
 	}
+	if !shouldDisable && account != nil && account.IsPoolMode() && isOpenAIRelayGenericUpstreamFailure(statusCode, responseBody) {
+		failoverErr.RetryableOnSameAccount = true
+		failoverErr.SameAccountRetryMax = 1
+	}
 	return failoverErr
+}
+
+// A relay's fixed generic failure is distinct from its deterministic
+// "Upstream rejected the request" response. Match only the known envelope;
+// arbitrary upstream_error messages and invalid_request errors stay terminal.
+func isOpenAIRelayGenericUpstreamFailure(statusCode int, body []byte) bool {
+	if statusCode != http.StatusBadRequest || !gjson.ValidBytes(body) ||
+		!strings.EqualFold(strings.TrimSpace(gjson.GetBytes(body, "error.type").String()), "upstream_error") {
+		return false
+	}
+	if code := strings.TrimSpace(gjson.GetBytes(body, "error.code").String()); code != "" && !strings.EqualFold(code, "upstream_error") {
+		return false
+	}
+	message := strings.TrimSpace(gjson.GetBytes(body, "error.message").String())
+	return message == "Upstream request failed" || strings.HasPrefix(message, "Upstream request failed（")
 }
 
 const (
@@ -737,8 +756,9 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 		reqModel = canonicalOpenAIAccountSchedulingModel(account, reqModel)
 	}
 	shouldDisable := s.handleOpenAIAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body, reqModel)
+	relayRetry := account.IsPoolMode() && isOpenAIRelayGenericUpstreamFailure(resp.StatusCode, body)
 	kind := "http_error"
-	if shouldDisable {
+	if shouldDisable || relayRetry {
 		kind = "failover"
 	}
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -759,6 +779,9 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 			ResponseBody:           body,
 			RetryableOnSameAccount: false,
 		}
+	}
+	if relayRetry {
+		return nil, s.newOpenAIAccountFailoverError(account, resp.StatusCode, resp.Header, body, upstreamMsg, false, false)
 	}
 
 	MarkResponseCommitted(c)
@@ -936,8 +959,9 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	shouldDisable := s.handleOpenAIAccountUpstreamError(
 		c.Request.Context(), account, resp.StatusCode, resp.Header, body, modelForCooldown,
 	)
+	relayRetry := account.IsPoolMode() && isOpenAIRelayGenericUpstreamFailure(resp.StatusCode, body)
 	kind := "http_error"
-	if shouldDisable {
+	if shouldDisable || relayRetry {
 		kind = "failover"
 	}
 	appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
@@ -958,6 +982,9 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 			ResponseBody:           body,
 			RetryableOnSameAccount: false,
 		}
+	}
+	if relayRetry {
+		return nil, s.newOpenAIAccountFailoverError(account, resp.StatusCode, resp.Header, body, upstreamMsg, false, false)
 	}
 
 	MarkResponseCommitted(c)
