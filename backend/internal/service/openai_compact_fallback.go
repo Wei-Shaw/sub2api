@@ -71,11 +71,31 @@ func (s *OpenAIGatewayService) resolveOpenAICompactFallbackModel(account *Accoun
 	if fallback == "" {
 		return ""
 	}
+	if !accountServesGlobalOpenAICompactModel(account, fallback) {
+		return ""
+	}
 	resolved := strings.TrimSpace(resolveOpenAIAccountUpstreamModelForRequest(account, fallback, false))
 	if isRetiredOpenAISubscriptionModel(account, resolved) {
 		return ""
 	}
 	return resolved
+}
+
+// accountServesGlobalOpenAICompactModel reports whether the global
+// gateway.openai_compact_model may be sent to this account. That setting names
+// an OpenAI model. Accounts on other platforms routed through the OpenAI
+// gateway (DeepSeek, Kimi, Zhipu, ...) only get it when their own
+// model_mapping declares it: an empty mapping means "allow whatever the client
+// asks for", not "this upstream serves OpenAI models". Without this guard the
+// fallback retry sends an OpenAI model name to a non-OpenAI upstream, which
+// answers model_not_found and the failure cools that model on the account
+// (#7330). OpenAI accounts and the account-level compact_model_mapping are
+// unaffected.
+func accountServesGlobalOpenAICompactModel(account *Account, model string) bool {
+	if account == nil || account.IsOpenAI() {
+		return true
+	}
+	return len(account.GetModelMapping()) > 0 && account.IsModelSupported(model)
 }
 
 func isOpenAICompactModelFailure(statusCode int, upstreamMsg string, upstreamBody []byte) bool {
