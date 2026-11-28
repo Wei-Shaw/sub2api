@@ -96,7 +96,7 @@ func dependencyModule(req *http.Request) string {
 		return "google"
 	case strings.Contains(host, "amazonaws") || strings.Contains(host, "cloudflarestorage") || strings.Contains(host, "s3"):
 		return "s3"
-	case strings.Contains(host, "stripe") || strings.Contains(host, "airwallex") || strings.Contains(host, "alipay") || strings.Contains(host, "wechatpay") || strings.Contains(host, "paypal"):
+	case strings.Contains(host, "stripe") || strings.Contains(host, "airwallex") || strings.Contains(host, "creem") || strings.Contains(host, "alipay") || strings.Contains(host, "wechatpay") || strings.Contains(host, "paypal"):
 		return "payment"
 	default:
 		return "http"

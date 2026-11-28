@@ -51,6 +51,7 @@ import wxpayIcon from '@/assets/icons/wxpay.svg'
 import stripeIcon from '@/assets/icons/stripe.svg'
 import airwallexIcon from '@/assets/icons/airwallex.svg'
 import paymentIcon from '@/assets/icons/payment.svg'
+import creemIcon from '@/assets/icons/creem.png'
 
 export interface PaymentMethodOption {
   type: string
@@ -76,6 +77,7 @@ const METHOD_ICONS: Record<string, string> = {
   stripe: stripeIcon,
   airwallex: airwallexIcon,
   credit_card: paymentIcon,
+  creem: creemIcon,
 }
 
 const sortedMethods = computed(() => {
@@ -91,6 +93,7 @@ function methodIcon(type: string): string {
   if (isBuiltInAlipayMethod(type)) return METHOD_ICONS.alipay
   if (isBuiltInWxpayMethod(type)) return METHOD_ICONS.wxpay
   if (type === 'airwallex') return METHOD_ICONS.airwallex
+  if (type === 'creem') return METHOD_ICONS.creem
   return METHOD_ICONS[type] || paymentIcon
 }
 
@@ -103,6 +106,7 @@ function methodSelectedClass(type: string): string {
   if (isBuiltInWxpayMethod(type)) return 'border-[#09BB07] bg-green-50 text-gray-900 shadow-sm dark:bg-green-950 dark:text-gray-100'
   if (type === 'stripe') return 'border-[#676BE5] bg-indigo-50 text-gray-900 shadow-sm dark:bg-indigo-950 dark:text-gray-100'
   if (type === 'airwallex') return 'border-[#FF6B3D] bg-orange-50 text-gray-900 shadow-sm dark:border-[#FF8E3C] dark:bg-orange-950 dark:text-gray-100'
+  if (type === 'creem') return 'border-gray-900 bg-gray-50 text-gray-900 shadow-sm dark:border-gray-200 dark:bg-gray-800 dark:text-gray-100'
   return 'border-primary-500 bg-primary-50 text-gray-900 shadow-sm dark:bg-primary-950 dark:text-gray-100'
 }
 </script>

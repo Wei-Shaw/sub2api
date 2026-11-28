@@ -25,6 +25,7 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 | **支付宝官方** | 桌面二维码扫码、移动端支付宝跳转或当面付唤起 | 直接对接支付宝开放平台；移动端默认 WAP，也可选择当面付二维码唤起支付宝 |
 | **微信官方** | Native 扫码、H5、公众号/JSAPI 支付 | 直接对接微信支付 APIv3，按终端环境自动分流 |
 | **Stripe** | 银行卡、支付宝、微信支付、Link 等 | 国际支付，支持多币种 |
+| **Creem** | 银行卡、Google Pay、Apple Pay、支付宝等（由 Creem 收银台决定） | Merchant of Record，代收各国税费；跳转 Creem 托管收银台，USD / EUR |
 
 > 支付宝官方 / 微信官方与易支付可以同时作为后台服务商实例存在，但前台始终只展示 `支付宝`、`微信支付` 两个可见按钮。管理员需要分别为这两个按钮选择唯一支付来源：官方或易支付。官方渠道直接对接 API，资金直达商户账户，手续费更低；易支付通过第三方平台聚合，接入门槛更低。
 
@@ -162,6 +163,32 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 | **Publishable Key** | Stripe 可公开密钥（`pk_live_...` 或 `pk_test_...`） | 是 |
 | **Webhook Secret** | Stripe Webhook 签名密钥（`whsec_...`） | 是 |
 
+### Creem
+
+Merchant of Record 收款平台，代收各国销售税 / 增值税。充值金额不固定，所以需要先在 Creem 后台建一个一次性商品，每笔订单用 `custom_price` 按实际金额覆盖单价，用户跳转到 Creem 托管收银台付款。
+
+| 参数 | 说明 | 必填 |
+|------|------|------|
+| **API Key** | Creem API 密钥（`creem_test_...` 为测试模式） | 是 |
+| **Webhook 密钥** | Creem Webhook 签名密钥 | 是 |
+| **Creem 商品 ID** | 一次性（One-time）商品的 ID（`prod_...`） | 是 |
+| **支付币种** | `USD` 或 `EUR`，默认 `USD`，必须与商品币种一致 | 否 |
+| **API 基础地址** | 可不填：测试密钥自动走 `https://test-api.creem.io`，正式密钥走 `https://api.creem.io` | 否 |
+
+商品要求（不满足时下单会直接报错，提示具体原因）：
+
+- 计费类型为 **One-time**（一次性），状态为启用
+- 税费模式为 **Inclusive**（含税价）。价外税会让买家实付高于订单金额，履约时的金额核对不通过，订单不会自动入账
+- 币种与上面的「支付币种」一致
+
+其他限制：
+
+- 单笔金额范围 1.00 – 999,999.99（Creem `custom_price` 的范围）
+- **只支持全额退款**，部分退款会被拒绝。Creem 退款是异步的：系统会在几秒内复查，通常直接完成；若仍在处理中，订单显示「退款确认中」，稍后在订单详情点「查询退款结果」即可完成
+- Creem 没有作废付款链接的接口：订单过期超过 5 分钟宽限期后用户仍用原链接付款时，系统会**自动全额退回**这笔付款，不入账，并在订单审计日志记 `LATE_PAYMENT_REFUNDED`（退款失败记 `LATE_PAYMENT_REFUND_FAILED`，Webhook 返回 5xx 由 Creem 重试）。宽限期内到达的付款照常入账
+- 买家使用了折扣码时实付会低于订单金额，订单不会自动入账，需要管理员核对
+- 站点用 IP 访问时（如 `http://127.0.0.1:8080`），Creem 不接受这种回跳地址，付款后用户停留在 Creem 完成页，订单仍由 Webhook 入账
+
 ---
 
 ## 服务商实例管理
@@ -203,6 +230,7 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 | **支付宝官方** | `https://your-domain.com/api/v1/payment/webhook/alipay` |
 | **微信官方** | `https://your-domain.com/api/v1/payment/webhook/wxpay` |
 | **Stripe** | `https://your-domain.com/api/v1/payment/webhook/stripe` |
+| **Creem** | `https://your-domain.com/api/v1/payment/webhook/creem` |
 
 > 将 `your-domain.com` 替换为你的实际域名。EasyPay / 支付宝 / 微信的回调地址在添加服务商时自动填入，无需手动配置。
 
@@ -213,6 +241,16 @@ Sub2API 内置支付系统，支持用户自助充值，无需部署独立的支
 3. 添加端点，填写回调地址
 4. 订阅事件：`payment_intent.succeeded`、`payment_intent.payment_failed`
 5. 将生成的 Webhook Secret（`whsec_...`）填入服务商配置
+
+### Creem Webhook 设置
+
+1. 登录 [Creem Dashboard](https://www.creem.io/dashboard)
+2. 进入 **Developers → Webhooks**
+3. 添加端点，填写回调地址
+4. 至少订阅事件：`checkout.completed`
+5. 将生成的签名密钥填入服务商配置的「Webhook 密钥」
+
+> 同时支持新版 Standard Webhooks 签名（`webhook-id` / `webhook-timestamp` / `webhook-signature`）和旧版 `creem-signature` 签名。
 
 ### 注意事项
 
