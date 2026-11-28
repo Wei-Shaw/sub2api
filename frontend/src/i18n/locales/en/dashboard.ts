@@ -111,6 +111,9 @@ export default {
     copyToClipboard: 'Copy to clipboard',
     copied: 'Copied!',
     importToCcSwitch: 'Import to CCS',
+    aiSwitchImport: 'Import to AI Switch',
+    aiSwitchNotInstalled:
+      'AI Switch is not installed or its protocol handler is not registered. Please install AI Switch first, or copy the API key manually.',
     enable: 'Enable',
     disable: 'Disable',
     nameLabel: 'Name',
@@ -163,6 +166,7 @@ export default {
       copied: 'Copied',
       note: 'These environment variables will be active in the current terminal session. For permanent configuration, add them to ~/.bashrc, ~/.zshrc, or the appropriate configuration file.',
       claudeSettingsHint: 'User-level persistent configuration. Do not commit this file containing your API key to a project repository.',
+
       noGroupTitle: 'Please assign a group first',
       noGroupDescription: 'This API key has not been assigned to a group. Please click the group column in the key list to assign one before viewing the configuration.',
       openai: {

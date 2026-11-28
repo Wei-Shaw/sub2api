@@ -418,6 +418,15 @@
                 <Icon name="upload" size="sm" />
                 <span class="text-xs">{{ t('keys.importToCcSwitch') }}</span>
               </button>
+              <!-- Import to AI Switch Button -->
+              <button
+                v-if="isAiSwitchImportSupported(row.group?.platform)"
+                @click="importToAiSwitch(row)"
+                class="flex flex-col items-center gap-0.5 rounded-lg p-1.5 text-gray-500 transition-colors hover:bg-indigo-50 hover:text-indigo-600 dark:hover:bg-indigo-900/20 dark:hover:text-indigo-400"
+              >
+                <Icon name="download" size="sm" />
+                <span class="text-xs">{{ t('keys.aiSwitchImport') }}</span>
+              </button>
               <!-- Toggle Status Button -->
               <button
                 @click="toggleKeyStatus(row)"
@@ -1245,6 +1254,10 @@ import {
   buildCcSwitchImportDeeplink,
   type CcSwitchClientType
 } from '@/utils/ccswitchImport'
+import {
+  buildAiSwitchImportDeeplink,
+  isAiSwitchImportSupported
+} from '@/utils/aiSwitchImport'
 
 // Helper to format date for datetime-local input
 const formatDateTimeLocal = (isoDate: string): string => {
@@ -2028,8 +2041,7 @@ const resetRateLimitUsage = async () => {
   }
 }
 
-const importToCcswitch = (row: ApiKey) => {
-  const platform = row.group?.platform || 'anthropic'
+const importToCcswitch = (row: ApiKey) => {  const platform = row.group?.platform || 'anthropic'
 
   // For antigravity platform, show client selection dialog
   if (platform === 'antigravity') {
@@ -2040,6 +2052,31 @@ const importToCcswitch = (row: ApiKey) => {
 
   // For other platforms, execute directly
   executeCcsImport(row, platform === 'gemini' ? 'gemini' : 'claude')
+}
+
+const importToAiSwitch = (row: ApiKey) => {
+  const baseUrl = publicSettings.value?.api_base_url || window.location.origin
+  const platform = row.group?.platform || 'anthropic'
+  const providerName = (publicSettings.value?.site_name || 'sub2api').trim() || 'sub2api'
+  const deeplink = buildAiSwitchImportDeeplink({
+    baseUrl,
+    platform,
+    providerName,
+    apiKey: row.key
+  })
+
+  try {
+    window.open(deeplink, '_self')
+
+    // Check if the protocol handler worked by detecting if we're still focused
+    setTimeout(() => {
+      if (document.hasFocus()) {
+        appStore.showError(t('keys.aiSwitchNotInstalled'))
+      }
+    }, 100)
+  } catch (error) {
+    appStore.showError(t('keys.aiSwitchNotInstalled'))
+  }
 }
 
 const executeCcsImport = (row: ApiKey, clientType: CcSwitchClientType) => {
