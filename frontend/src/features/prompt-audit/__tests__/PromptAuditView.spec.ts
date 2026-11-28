@@ -135,6 +135,33 @@ describe('PromptAuditView', () => {
     expect(wrapper.get('[data-test="blocking-latest-turn-only-toggle"]').attributes()).toHaveProperty('disabled')
   })
 
+  it.each([false, true])('toggles and saves latest-turn-only in async mode from %s', async (initial) => {
+    mocks.getConfig.mockResolvedValue({ ...baseConfig(), blocking_latest_turn_only: initial })
+    mocks.updateConfig.mockImplementation(async (request) => ({ ...baseConfig(), ...request, config_version: 8 }))
+    const wrapper = mountView()
+    await flushPromises()
+    await wrapper.get('[data-test="tab-config"]').trigger('click')
+
+    const toggle = wrapper.get('[data-test="blocking-latest-turn-only-toggle"]')
+    expect(wrapper.get('[data-test="blocking-toggle"]').attributes('aria-checked')).toBe('false')
+    expect(toggle.attributes()).not.toHaveProperty('disabled')
+    expect(toggle.attributes('aria-checked')).toBe(String(initial))
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-checked')).toBe(String(!initial))
+    expect(wrapper.find('[data-test="confirm"]').exists()).toBe(false)
+    await wrapper.get('[data-test="save-config"]').trigger('click')
+    await flushPromises()
+
+    expect(mocks.updateConfig).toHaveBeenCalledOnce()
+    expect(mocks.updateConfig).toHaveBeenCalledWith(expect.objectContaining({
+      enabled: true, blocking_enabled: false, blocking_latest_turn_only: !initial,
+    }))
+    expect(toggle.attributes('aria-checked')).toBe(String(!initial))
+    expect(wrapper.get('[data-test="save-config"]').attributes()).toHaveProperty('disabled')
+    expect(mocks.showSuccess).toHaveBeenCalledWith('admin.promptAudit.messages.saved')
+    wrapper.unmount()
+  })
+
   it('clears plaintext token state after a successful save', async () => {
     const wrapper = mountView()
     await flushPromises()
