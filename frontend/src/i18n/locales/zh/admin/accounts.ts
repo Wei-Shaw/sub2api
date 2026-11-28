@@ -885,6 +885,12 @@ export default {
         testMode: '测试模式',
         testModeDefault: '常规请求',
         testModeCompact: 'Compact 探测',
+        testModePelican: '鹈鹕测智',
+        pelicanModeSummary: '模式：鹈鹕测智',
+        sendingPelicanRequest: '正在生成鹈鹕骑自行车的 HTML 动画...',
+        pelicanHTMLReady: '已生成可预览的完整 HTML',
+        pelicanNoHTML: '未生成可预览的完整 HTML',
+        pelicanPreview: '鹈鹕测智预览',
         modelRestrictionDisabledByPassthrough: '自动透传默认忽略模型限制；开启“透传时按账号模型筛选”后，模型限制仅用于筛选候选账号。',
       },
       grok: {
