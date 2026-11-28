@@ -3246,8 +3246,10 @@ func TestOpenAIBuildUpstreamRequestOAuthMessagesBridgeUsesSessionOnly(t *testing
 	require.NoError(t, err)
 	require.NotEmpty(t, req.Header.Get("Session_Id"))
 	require.Empty(t, req.Header.Get("Conversation_Id"))
+	require.Equal(t, codexCLIUserAgent, req.Header.Get("User-Agent"))
+	require.Equal(t, openai.CodexDefaultOriginator, req.Header.Get("originator"))
+	require.Equal(t, codexCLIVersion, req.Header.Get("version"))
 	require.Empty(t, req.Header.Get("OpenAI-Beta"))
-	require.Empty(t, req.Header.Get("originator"))
 }
 
 func TestOpenAIBuildUpstreamRequestOAuthResponsesPreservesCallerBeta(t *testing.T) {
