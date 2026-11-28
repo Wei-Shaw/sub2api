@@ -206,8 +206,10 @@ func ProvideHandlers(
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 	_ *service.OpenAIQuotaAutoResetService,
+	upstreamQuotaHandler *UpstreamQuotaHandler,
 ) *Handlers {
 	return &Handlers{
+		UpstreamQuota:    upstreamQuotaHandler,
 		Auth:             authHandler,
 		User:             userHandler,
 		MCPOAuth:         mcpOAuthHandler,
@@ -235,6 +237,7 @@ func ProvideHandlers(
 
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
+	NewUpstreamQuotaHandler,
 	// Top-level handlers
 	NewAuthHandler,
 	NewUserHandler,
