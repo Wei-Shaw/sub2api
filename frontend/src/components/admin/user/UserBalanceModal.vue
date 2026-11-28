@@ -39,17 +39,7 @@ const emit = defineEmits(['close', 'success']); const { t } = useI18n(); const a
 const submitting = ref(false); const form = reactive({ amount: 0, notes: '' })
 watch(() => props.show, (v) => { if(v) { form.amount = 0; form.notes = '' } })
 
-// 格式化余额：显示完整精度，去除尾部多余的0
-const formatBalance = (value: number) => {
-  if (value === 0) return '0.00'
-  // 最多保留8位小数，去除尾部的0
-  const formatted = value.toFixed(8).replace(/\.?0+$/, '')
-  // 确保至少有2位小数
-  const parts = formatted.split('.')
-  if (parts.length === 1) return formatted + '.00'
-  if (parts[1].length === 1) return formatted + '0'
-  return formatted
-}
+const formatBalance = (value: number) => value.toFixed(6)
 
 // 填入全部余额
 const fillAllBalance = () => {

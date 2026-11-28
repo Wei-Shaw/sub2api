@@ -387,8 +387,8 @@ function formatResetTime(iso: string | null | undefined): string {
 
 const formatBalance = (b: number) =>
   new Intl.NumberFormat('en-US', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
+    minimumFractionDigits: 6,
+    maximumFractionDigits: 6
   }).format(b)
 
 const formatNumber = (n: number) => n.toLocaleString()

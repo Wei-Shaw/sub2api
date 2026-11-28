@@ -40,7 +40,7 @@ describe('UserBalanceHistoryModal request ordering', () => {
     await flushPromises()
     expect(wrapper.text()).toContain('History 20')
     expect(wrapper.text()).not.toContain('History 10')
-    expect(wrapper.text()).toContain('$20.00')
+    expect(wrapper.text()).toContain('$20.000000')
   })
 
   it('does not end the current filter loading state when an old request finishes', async () => {
