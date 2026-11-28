@@ -31,7 +31,7 @@ import {
   type CnApiProtocol
 } from '../credentialsBuilder'
 
-// ===== 改为读取平台清单之前的实现，作为等价基准（补入之后内置登记的 Command Code） =====
+// ===== 原平台清单等价基准，补入 Command Code 与 GLM Coding Plan Responses 端点 =====
 
 const legacyOpenCode = {
   goBase: 'https://opencode.ai/zen/go/v1',
@@ -61,7 +61,8 @@ function legacyIsMultiProtocol(platform: string): boolean {
   return ['kimi', 'zhipu', 'deepseek', 'minimax', 'opencode_go', 'command_code', 'cline'].includes(platform)
 }
 
-function legacySupportsResponses(platform: string): boolean {
+function legacySupportsResponses(platform: string, mode?: string): boolean {
+  if (platform === 'zhipu' && mode === 'coding') return true
   return ['deepseek', 'kimi', 'minimax', 'opencode_go', 'command_code'].includes(platform)
 }
 
@@ -94,6 +95,7 @@ function legacyDefaultCNBaseUrl(platform: string, mode: string, protocol: CnApiP
     case 'kimi':
       return mode === 'coding' ? 'https://api.kimi.com/coding/v1' : 'https://api.moonshot.cn/v1'
     case 'zhipu':
+      if (protocol === 'responses' && mode === 'coding') return 'https://open.bigmodel.cn/api/v1'
       return mode === 'coding' ? 'https://open.bigmodel.cn/api/coding/paas/v4' : 'https://open.bigmodel.cn/api/paas/v4'
     case 'deepseek':
       return 'https://api.deepseek.com'
@@ -110,7 +112,7 @@ function legacyAdaptiveBaseUrls(platform: string, mode: string) {
   return {
     chat_completions: legacyDefaultCNBaseUrl(platform, mode, 'chat_completions'),
     anthropic: legacyDefaultCNBaseUrl(platform, mode, 'anthropic'),
-    responses: legacySupportsResponses(platform) ? legacyDefaultCNBaseUrl(platform, mode, 'responses') : ''
+    responses: legacySupportsResponses(platform, mode) ? legacyDefaultCNBaseUrl(platform, mode, 'responses') : ''
   }
 }
 
@@ -183,7 +185,7 @@ describe('credentialsBuilder derives multi-protocol data from the platform catal
     expect(providerRoutesByModel('kimi')).toBe(false)
     expect(providerAccountModes('opencode_go')).toEqual(['go', 'zen'])
     expect(providerAccountModes('deepseek')).toEqual(['payg'])
-    expect(providerNativeProtocols('zhipu', 'coding')).toEqual(['chat_completions', 'anthropic'])
+    expect(providerNativeProtocols('zhipu', 'coding')).toEqual(['chat_completions', 'anthropic', 'responses'])
     expect(resolveProviderAccountMode('kimi', 'coding')).toBe('coding')
     expect(resolveProviderAccountMode('deepseek', 'coding')).toBe('payg')
     expect(resolveProviderAccountMode('opencode_go', undefined)).toBe('go')
