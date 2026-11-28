@@ -62,7 +62,16 @@ func requireSameCompactionNormalization(t *testing.T, body []byte) {
 	want, wantChanged, wantErr := referenceNormalizeCompactionTriggerInputOrder(body)
 	require.Equal(t, wantErr != nil, err != nil, "error mismatch for %s", body)
 	require.Equal(t, wantChanged, changed, "changed mismatch for %s", body)
-	require.Equal(t, string(want), string(got), "body mismatch for %s", body)
+	if err != nil || !changed {
+		require.Equal(t, want, got, "body mismatch for %s", body)
+		return
+	}
+	// Reordering preserves raw JSON, including object key order and escaping.
+	// Compare decoded values with UseNumber to keep the exact number semantics.
+	var gotPayload, wantPayload map[string]any
+	require.NoError(t, decodeOpenAIJSONUseNumber(got, &gotPayload))
+	require.NoError(t, decodeOpenAIJSONUseNumber(want, &wantPayload))
+	require.Equal(t, wantPayload, gotPayload, "body mismatch for %s", body)
 }
 
 func TestCompactionTriggerOrderFastPathMatchesDecode(t *testing.T) {

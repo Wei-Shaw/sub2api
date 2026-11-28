@@ -564,6 +564,18 @@ type GatewayCache interface {
 	GetReasoningContent(ctx context.Context, itemID string) (string, error)
 }
 
+// GatewayStickySessionCompareCache is an optional GatewayCache capability. The
+// production Redis cache compares and writes atomically; cache stubs do not
+// need to implement it for ordinary gateway tests.
+type GatewayStickySessionCompareCache interface {
+	// CompareAndBindSessionAccountID writes accountID and returns true when the
+	// key is missing, already holds accountID (only the TTL is refreshed) or
+	// holds one of replaceableAccountIDs, i.e. a value this request may have
+	// written itself. A key holding any other account was rebound by another
+	// request: it is left alone and false is returned.
+	CompareAndBindSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, replaceableAccountIDs []int64, ttl time.Duration) (bool, error)
+}
+
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil
 func derefGroupID(groupID *int64) int64 {
 	if groupID == nil {
@@ -664,6 +676,11 @@ type ClaudeUsage struct {
 	CacheCreation1hTokens    int // 1小时缓存创建token（来自嵌套 cache_creation 对象）
 	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
 
+	// thinkingTokens 是 usage.output_tokens_details.thinking_tokens（output_tokens 的子集，不另计费），
+	// 只用于转 OpenAI 格式时输出 reasoning_tokens；上游给了才算数（0 也算）。
+	thinkingTokens        int
+	thinkingTokensPresent bool
+
 	cacheCreationInputTokensPresent     bool
 	cacheCreationInputTokensFromDetails bool
 	promptTotalTokens                   int
@@ -741,8 +758,9 @@ func (r *ForwardResult) upstreamPriceFactor() float64 {
 type GatewayFailureStage string
 
 const (
-	GatewayFailureStageInference   GatewayFailureStage = "inference"
-	GatewayFailureStageAccountAuth GatewayFailureStage = "account_auth"
+	GatewayFailureStageInference            GatewayFailureStage = "inference"
+	GatewayFailureStageAccountAuth          GatewayFailureStage = "account_auth"
+	GatewayFailureStageRequestCompatibility GatewayFailureStage = "request_compatibility"
 )
 
 // GatewayFailureScope identifies whether selecting another account can help.
@@ -794,6 +812,9 @@ func (e *UpstreamFailoverError) Error() string {
 	if e != nil && e.Stage == GatewayFailureStageAccountAuth {
 		return fmt.Sprintf("credential failure: %s (failover)", e.Reason)
 	}
+	if e != nil && e.Stage == GatewayFailureStageRequestCompatibility {
+		return fmt.Sprintf("request compatibility failure: %s (failover)", e.Reason)
+	}
 	return fmt.Sprintf("upstream error: %d (failover)", e.StatusCode)
 }
 
@@ -806,10 +827,10 @@ func (e *UpstreamFailoverError) IsCredentialFailure() bool {
 }
 
 // ShouldReportAccountScheduleFailure prevents provider- and request-scoped
-// credential failures from being misattributed to the selected account. Legacy
-// and inference failures retain their existing scheduler-health behavior.
+// credential failures and local request incompatibility from being misattributed
+// to account health. Legacy and inference failures retain their existing behavior.
 func (e *UpstreamFailoverError) ShouldReportAccountScheduleFailure() bool {
-	if e == nil {
+	if e == nil || e.Stage == GatewayFailureStageRequestCompatibility {
 		return false
 	}
 	return !e.IsCredentialFailure() || e.Scope == GatewayFailureScopeAccount
@@ -1046,6 +1067,23 @@ func (s *GatewayService) BindStickySession(ctx context.Context, groupID *int64, 
 		return nil
 	}
 	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, accountID, stickySessionTTL)
+}
+
+// BindStickySessionUnlessRebound writes the terminal session -> account binding
+// unless another request rebound the key while this one was forwarding. The
+// write only covers values this request may have written itself: a missing key,
+// accountID (only the TTL is refreshed) and the accounts it failed over from.
+// Any other value belongs to another request and survives. Caches without the
+// compare capability fall back to the unconditional write.
+func (s *GatewayService) BindStickySessionUnlessRebound(ctx context.Context, groupID *int64, sessionHash string, accountID int64, replaceableAccountIDs []int64) error {
+	if sessionHash == "" || accountID <= 0 || s.cache == nil {
+		return nil
+	}
+	if cache, ok := s.cache.(GatewayStickySessionCompareCache); ok {
+		_, err := cache.CompareAndBindSessionAccountID(ctx, derefGroupID(groupID), sessionHash, accountID, replaceableAccountIDs, stickySessionTTL)
+		return err
+	}
+	return s.BindStickySession(ctx, groupID, sessionHash, accountID)
 }
 
 // bindGatewayStickySessionDuringSelection preserves the normal eager sticky

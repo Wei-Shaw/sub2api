@@ -70,6 +70,10 @@ func TestNormalizeOpenAIReasoningEffortForMaxCapableModels(t *testing.T) {
 		{name: "Luna 后缀保留 max", raw: "max", model: "gpt-5.6-luna-2026-07-09", want: "max"},
 		{name: "DeepSeek V4 保留 max", raw: "max", model: "deepseek-v4-pro", want: "max"},
 		{name: "DeepSeek Flash 保留 max", raw: "max", model: "deepseek-flash", want: "max"},
+		{name: "Kimi K31 Pro 保留 max", raw: "max", model: "k3.1-pro", want: "max"},
+		{name: "Kimi K31 Highspeed 保留 max", raw: "max", model: "kimi/k3.1-pro-highspeed", want: "max"},
+		{name: "未知 K31 别名不扩展", raw: "max", model: "k3.1", want: "xhigh"},
+		{name: "未知 K31 后缀不扩展", raw: "max", model: "k3.1-pro-preview", want: "xhigh"},
 		{name: "旧 GPT 模型沿用 xhigh", raw: "max", model: "gpt-5.5", want: "xhigh"},
 	}
 

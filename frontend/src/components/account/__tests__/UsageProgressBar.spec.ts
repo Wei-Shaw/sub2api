@@ -13,6 +13,28 @@ vi.mock('vue-i18n', async () => {
 })
 
 describe('UsageProgressBar', () => {
+  it.each([
+    [0.021136, '0.02%'],
+    [1.983255, '1.98%'],
+    [0.000001, '<0.01%'],
+    [0, '0%'],
+    [100, '100%'],
+  ])('preserves quota utilization %s with precisePercent', (utilization, expected) => {
+    const wrapper = mount(UsageProgressBar, {
+      props: { label: 'Claude', utilization, color: 'amber', precisePercent: true }
+    })
+    expect(wrapper.text()).toContain(expected)
+    wrapper.unmount()
+  })
+
+  it('keeps default percentage rounding for other usage bars', () => {
+    const wrapper = mount(UsageProgressBar, {
+      props: { label: '5h', utilization: 0.021136, color: 'amber' }
+    })
+    expect(wrapper.text()).toContain('0%')
+    wrapper.unmount()
+  })
+
   beforeEach(() => {
     vi.useFakeTimers()
     vi.setSystemTime(new Date('2026-03-17T00:00:00Z'))
@@ -186,13 +208,14 @@ describe('UsageProgressBar', () => {
     expect(mountAt(90).get('.h-1\\.5 + span').classes()).toContain('text-red-600')
   })
 
-  it('labelWidth 默认 fixed：标签保持定宽居中，百分比列不变', () => {
+  it('labelWidth 默认 fixed：标签保持最小宽度且不换行，百分比列不变', () => {
     const wrapper = mount(UsageProgressBar, {
       props: { label: '5h', utilization: 30, color: 'indigo' }
     })
 
     const label = wrapper.get('.gap-1 > span')
-    expect(label.classes()).toContain('w-[32px]')
+    expect(label.classes()).toContain('min-w-[32px]')
+    expect(label.classes()).toContain('whitespace-nowrap')
     expect(label.classes()).toContain('text-center')
     expect(label.classes()).not.toContain('max-w-[72px]')
 

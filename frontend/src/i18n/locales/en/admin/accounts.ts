@@ -1820,6 +1820,8 @@ export default {
         todayRequests: 'Today Requests',
         todayTokens: 'Today Tokens',
         todayCost: 'Today Cost',
+        upstreamErrors: 'Upstream Errors',
+        totalUpstreamErrors: '30-Day Upstream Errors',
         usageTrend: '30-Day Cost & Request Trend',
         noData: 'No usage data available for this account'
       },

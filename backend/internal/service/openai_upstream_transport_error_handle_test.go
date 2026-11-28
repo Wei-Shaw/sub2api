@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"syscall"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
@@ -49,7 +51,7 @@ func TestHandleOpenAIUpstreamTransportError_DNSCooldownConfig(t *testing.T) {
 			Err: "no such host", Name: "chatgpt.com", Server: "127.0.0.11:53", IsNotFound: true,
 		}},
 	}
-	require.True(t, classifyUpstreamTransportError(transportErr).Persistent)
+	require.Equal(t, upstreamTransportReachability, classifyUpstreamTransportError(transportErr))
 	for _, testCase := range []struct {
 		name     string
 		cfg      *config.Config
@@ -104,13 +106,13 @@ func TestHandleOpenAIUpstreamTransportError_DNSCooldownConfig(t *testing.T) {
 					} else {
 						blockUntil, exists := svc.openaiAccountRuntimeBlockUntil.Load(account.ID)
 						require.True(t, exists)
-						require.WithinRange(t, blockUntil.(time.Time), before.Add(10*time.Minute), after.Add(10*time.Minute))
+						require.WithinRange(t, blockUntil.(time.Time), before.Add(30*time.Second), after.Add(30*time.Second))
 					}
 					if withRepo && !testCase.disabled {
 						require.Len(t, repo.tempUnschedCalls, 1)
 						call := repo.tempUnschedCalls[0]
 						require.Equal(t, account.ID, call.accountID)
-						require.WithinRange(t, call.until, before.Add(10*time.Minute), after.Add(10*time.Minute))
+						require.WithinRange(t, call.until, before.Add(30*time.Second), after.Add(30*time.Second))
 						require.Contains(t, call.reason, "no such host")
 					} else {
 						require.Empty(t, repo.tempUnschedCalls)
@@ -121,13 +123,38 @@ func TestHandleOpenAIUpstreamTransportError_DNSCooldownConfig(t *testing.T) {
 	}
 }
 
+func TestHandleOpenAIUpstreamTransportError_RefusedProxyAllowsPromptRecovery(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		repo := &openaiTransportAccountRepoStub{}
+		svc := &OpenAIGatewayService{accountRepo: repo}
+		account := &Account{ID: 9006, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: true}
+		c, _ := newOpenAITransportErrTestContext()
+		transportErr := &url.Error{
+			Op:  "Post",
+			URL: "https://upstream.example.test/v1/responses",
+			Err: &net.OpError{Op: "proxyconnect", Net: "tcp", Err: syscall.ECONNREFUSED},
+		}
+
+		var failover *UpstreamFailoverError
+		require.ErrorAs(t, svc.handleOpenAIUpstreamTransportError(context.Background(), c, account, transportErr, false), &failover)
+		require.Len(t, repo.tempUnschedCalls, 1)
+		account.TempUnschedulableUntil = &repo.tempUnschedCalls[0].until
+		require.False(t, account.IsSchedulable())
+		require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
+
+		time.Sleep(31 * time.Second)
+		require.True(t, account.IsSchedulable(), "a recovered proxy should become eligible after the reachability cooldown")
+		require.False(t, svc.isOpenAIAccountRuntimeBlocked(account))
+	})
+}
+
 func TestTempUnscheduleOpenAITransportError_DisabledPreservesExistingState(t *testing.T) {
 	for _, paused := range []bool{false, true} {
 		t.Run(fmt.Sprintf("paused=%t", paused), func(t *testing.T) {
 			repo := &openaiTransportAccountRepoStub{}
 			svc := &OpenAIGatewayService{accountRepo: repo, cfg: &config.Config{}}
 			account := &Account{ID: 8541, Platform: PlatformOpenAI, Status: StatusActive, Schedulable: !paused}
-			svc.tempUnscheduleOpenAITransportError(context.Background(), account, "previous failure")
+			svc.tempUnscheduleOpenAITransportError(context.Background(), account, "previous failure", openAITransportProxyAuthCooldown)
 			require.Len(t, repo.tempUnschedCalls, 1)
 			previousCall := repo.tempUnschedCalls[0]
 			persistedUntil := previousCall.until
@@ -139,7 +166,7 @@ func TestTempUnscheduleOpenAITransportError_DisabledPreservesExistingState(t *te
 			previousGeneration, _ := svc.openaiAccountRuntimeBlockGeneration.Load(account.ID)
 
 			svc.cfg.Gateway.DisableOpenAITransportErrorCooldown = true
-			svc.tempUnscheduleOpenAITransportError(context.Background(), account, "new failure")
+			svc.tempUnscheduleOpenAITransportError(context.Background(), account, "new failure", openAITransportReachabilityCooldown)
 
 			require.Equal(t, []tempUnschedCall{previousCall}, repo.tempUnschedCalls)
 			require.Equal(t, previousAccount, *account)
@@ -205,8 +232,7 @@ func TestHandleOpenAIUpstreamTransportError_PersistentEvictsAndFailsOver(t *test
 	require.Len(t, repo.tempUnschedCalls, 1)
 	require.Equal(t, int64(4627), repo.tempUnschedCalls[0].accountID)
 	require.Contains(t, repo.tempUnschedCalls[0].reason, "authentication failed")
-	require.True(t, repo.tempUnschedCalls[0].until.After(before.Add(openAITransportErrorTempUnschedDuration-time.Second)))
-	require.True(t, repo.tempUnschedCalls[0].until.Before(after.Add(openAITransportErrorTempUnschedDuration+time.Second)))
+	require.WithinRange(t, repo.tempUnschedCalls[0].until, before.Add(10*time.Minute), after.Add(10*time.Minute))
 
 	// Immediate in-memory effect so subsequent requests skip it before DB/cache catches up.
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account))
@@ -293,7 +319,7 @@ func TestTempUnscheduleOpenAITransportError_NilAccountRepo_InMemoryBlockOnly(t *
 	svc := &OpenAIGatewayService{accountRepo: nil}
 	account := &Account{ID: 55, Name: "no-db", Platform: PlatformOpenAI}
 
-	svc.tempUnscheduleOpenAITransportError(context.Background(), account, "proxy refused")
+	svc.tempUnscheduleOpenAITransportError(context.Background(), account, "proxy refused", openAITransportReachabilityCooldown)
 
 	// In-memory block must still happen.
 	require.True(t, svc.isOpenAIAccountRuntimeBlocked(account),
