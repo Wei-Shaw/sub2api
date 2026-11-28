@@ -101,6 +101,7 @@ import { sanitizeUrl } from '@/utils/url'
 import { useAppStore } from '@/stores/app'
 import type { LoginAgreementDocument } from '@/types'
 import zhAdminCompliance from '../../../../docs/legal/admin-compliance.zh.md?raw'
+import zhHkAdminCompliance from '../../../../docs/legal/admin-compliance.zh-HK.md?raw'
 import enAdminCompliance from '../../../../docs/legal/admin-compliance.en.md?raw'
 
 type LegalDocumentIcon = 'document' | 'shield' | 'globe' | 'cog'
@@ -137,7 +138,7 @@ const currentDocument = computed<LoginAgreementDocument | null>(() => {
     return {
       id: 'admin-compliance',
       title: t('adminCompliance.title'),
-      content_md: getLocale() === 'zh' ? zhAdminCompliance : enAdminCompliance
+      content_md: getLocale() === 'zh-HK' ? zhHkAdminCompliance : getLocale() === 'zh' ? zhAdminCompliance : enAdminCompliance
     }
   }
   const id = documentId.value
