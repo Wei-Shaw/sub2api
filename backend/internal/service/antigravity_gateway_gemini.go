@@ -146,6 +146,14 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 
 	injectedBody = ensureGeminiFunctionCallThoughtSignatures(injectedBody)
 
+	// 模型经过映射改写（例如裸模型 gemini-4-argon → 带档位后缀 gemini-4-argon-low）时，
+	// 按目标模型能力归一化 thinkingConfig，避免透传冲突/不支持的 thinkingLevel（如 MINIMAL）。
+	// 当客户端显式请求精确模型名且未发生改写时，保持原样透传以尊重显式档位与计费。
+	normalizedOriginal := strings.TrimPrefix(strings.TrimSpace(originalModel), "models/")
+	if mappedModel != normalizedOriginal {
+		injectedBody = normalizeAntigravityGeminiThinkingConfigBytes(injectedBody, mappedModel)
+	}
+
 	// 包装请求
 	wrappedBody, err := s.wrapV1InternalRequest(projectID, mappedModel, injectedBody)
 	if err != nil {
@@ -210,7 +218,8 @@ func (s *AntigravityGatewayService) ForwardGemini(ctx context.Context, c *gin.Co
 			if fallbackModel != "" && fallbackModel != mappedModel {
 				logger.LegacyPrintf("service.antigravity_gateway", "[Antigravity] Model not found (%s), retrying with fallback model %s (account: %s)", mappedModel, fallbackModel, account.Name)
 
-				fallbackWrapped, err := s.wrapV1InternalRequest(projectID, fallbackModel, injectedBody)
+				fallbackBody := normalizeAntigravityGeminiThinkingConfigBytes(injectedBody, fallbackModel)
+				fallbackWrapped, err := s.wrapV1InternalRequest(projectID, fallbackModel, fallbackBody)
 				if err == nil {
 					fallbackReq, err := antigravity.NewAPIRequest(ctx, upstreamAction, accessToken, fallbackWrapped)
 					if err == nil {

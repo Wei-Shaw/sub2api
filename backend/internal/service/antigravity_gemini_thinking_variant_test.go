@@ -37,6 +37,10 @@ func TestGeminiThinkingLevelFromBody(t *testing.T) {
 		{"budget 24576", `{"generationConfig":{"thinkingConfig":{"thinkingBudget":24576}}}`, "high"},
 		{"thinkingLevel wins over budget", `{"generationConfig":{"thinkingConfig":{"thinkingBudget":24576,"thinkingLevel":"low"}}}`, "low"},
 		{"thinkingLevel medium", `{"generationConfig":{"thinkingConfig":{"thinkingLevel":"MEDIUM"}}}`, "medium"},
+		{"thinkingLevel minimal maps to low", `{"generationConfig":{"thinkingConfig":{"thinkingLevel":"MINIMAL"}}}`, "low"},
+		{"thinkingLevel none maps to low", `{"generationConfig":{"thinkingConfig":{"thinkingLevel":"none"}}}`, "low"},
+		{"thinkingLevel max maps to high", `{"generationConfig":{"thinkingConfig":{"thinkingLevel":"MAX"}}}`, "high"},
+		{"thinkingLevel snake_case minimal maps to low", `{"generation_config":{"thinking_config":{"thinking_level":"MINIMAL"}}}`, "low"},
 		{"invalid json", `{"generationConfig":`, "high"},
 	}
 	for _, tt := range tests {
@@ -72,6 +76,11 @@ func TestResolveGeminiThinkingVariant(t *testing.T) {
 		{"agy high (-1) -> -high", catalog, "gemini-3.8-flash", budget("-1"), "gemini-3.8-flash-high", true},
 		{"agy medium (4000) -> -medium", catalog, "gemini-3.8-flash", budget("4000"), "gemini-3.8-flash-medium", true},
 		{"agy low (1000) -> -low", catalog, "gemini-3.8-flash", budget("1000"), "gemini-3.8-flash-low", true},
+		{"thinkingLevel MINIMAL prefers -low over -medium/-high", map[string]string{
+			"gemini-4-argon-low":    "gemini-4-argon-low",
+			"gemini-4-argon-medium": "gemini-4-argon-medium",
+			"gemini-4-argon-high":   "gemini-4-argon-high",
+		}, "gemini-4-argon", []byte(`{"contents":[],"generationConfig":{"thinkingConfig":{"thinkingLevel":"MINIMAL"}}}`), "gemini-4-argon-low", true},
 		{"models/ prefix stripped", catalog, "models/gemini-3.8-flash", budget("1000"), "gemini-3.8-flash-low", true},
 		{"no thinkingConfig -> -high", catalog, "gemini-3.8-flash", []byte(`{"contents":[]}`), "gemini-3.8-flash-high", true},
 		{"only -high exists: low request degrades to high", map[string]string{

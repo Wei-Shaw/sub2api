@@ -29,12 +29,49 @@ const (
 )
 
 type geminiThinkingConfigProbe struct {
-	GenerationConfig struct {
-		ThinkingConfig *struct {
-			ThinkingBudget *json.Number `json:"thinkingBudget"`
-			ThinkingLevel  string       `json:"thinkingLevel"`
-		} `json:"thinkingConfig"`
-	} `json:"generationConfig"`
+	GenerationConfig      *geminiGenerationConfigProbe `json:"generationConfig"`
+	GenerationConfigSnake *geminiGenerationConfigProbe `json:"generation_config"`
+}
+
+type geminiGenerationConfigProbe struct {
+	ThinkingConfig      *geminiThinkingConfigFields `json:"thinkingConfig"`
+	ThinkingConfigSnake *geminiThinkingConfigFields `json:"thinking_config"`
+}
+
+type geminiThinkingConfigFields struct {
+	ThinkingBudget      *json.Number `json:"thinkingBudget"`
+	ThinkingBudgetSnake *json.Number `json:"thinking_budget"`
+	ThinkingLevel       string       `json:"thinkingLevel"`
+	ThinkingLevelSnake  string       `json:"thinking_level"`
+}
+
+func (p geminiThinkingConfigProbe) thinkingConfig() *geminiThinkingConfigFields {
+	for _, gc := range []*geminiGenerationConfigProbe{p.GenerationConfig, p.GenerationConfigSnake} {
+		if gc == nil {
+			continue
+		}
+		if gc.ThinkingConfig != nil {
+			return gc.ThinkingConfig
+		}
+		if gc.ThinkingConfigSnake != nil {
+			return gc.ThinkingConfigSnake
+		}
+	}
+	return nil
+}
+
+func (f *geminiThinkingConfigFields) level() string {
+	if s := strings.TrimSpace(f.ThinkingLevel); s != "" {
+		return s
+	}
+	return strings.TrimSpace(f.ThinkingLevelSnake)
+}
+
+func (f *geminiThinkingConfigFields) budget() *json.Number {
+	if f.ThinkingBudget != nil {
+		return f.ThinkingBudget
+	}
+	return f.ThinkingBudgetSnake
 }
 
 // hasGeminiThinkingVariantSuffix 判断模型名是否已经带了思考深度后缀。
@@ -54,22 +91,26 @@ func geminiThinkingLevelFromBody(body []byte) string {
 		return "high"
 	}
 	var probe geminiThinkingConfigProbe
-	if err := json.Unmarshal(body, &probe); err != nil || probe.GenerationConfig.ThinkingConfig == nil {
+	if err := json.Unmarshal(body, &probe); err != nil {
 		return "high"
 	}
-	tc := probe.GenerationConfig.ThinkingConfig
-	switch strings.ToLower(strings.TrimSpace(tc.ThinkingLevel)) {
-	case "low":
+	tc := probe.thinkingConfig()
+	if tc == nil {
+		return "high"
+	}
+	switch strings.ToLower(tc.level()) {
+	case "none", "minimal", "low":
 		return "low"
 	case "medium":
 		return "medium"
-	case "high":
+	case "high", "xhigh", "max":
 		return "high"
 	}
-	if tc.ThinkingBudget == nil {
+	rawBudget := tc.budget()
+	if rawBudget == nil {
 		return "high"
 	}
-	budget, err := tc.ThinkingBudget.Float64()
+	budget, err := rawBudget.Float64()
 	if err != nil {
 		return "high"
 	}

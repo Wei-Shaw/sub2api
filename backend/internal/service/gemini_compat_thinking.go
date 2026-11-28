@@ -216,6 +216,128 @@ func setGeminiThinkingField(body []byte, field string, value any) []byte {
 	return updated
 }
 
+// normalizeGeminiThinkingTierToken 将客户端传入的 thinkingLevel 字符串归一到
+// minimal/low/medium/high；无法识别时返回空串。
+func normalizeGeminiThinkingTierToken(raw string) string {
+	switch strings.ToLower(strings.TrimSpace(raw)) {
+	case "none", "minimal":
+		return "minimal"
+	case "low":
+		return "low"
+	case "medium":
+		return "medium"
+	case "high", "xhigh", "max":
+		return "high"
+	default:
+		return ""
+	}
+}
+
+// normalizeAntigravityGeminiThinkingConfigBytes 对 JSON 字节串执行
+// normalizeAntigravityGeminiThinkingConfig，仅在确实发生修改时重新序列化。
+func normalizeAntigravityGeminiThinkingConfigBytes(body []byte, upstreamModel string) []byte {
+	if len(body) == 0 {
+		return body
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return body
+	}
+	if !normalizeAntigravityGeminiThinkingConfig(payload, upstreamModel) {
+		return body
+	}
+	marshaled, err := json.Marshal(payload)
+	if err != nil {
+		return body
+	}
+	return marshaled
+}
+
+// normalizeAntigravityGeminiThinkingConfig 在发往 Antigravity v1internal 上游前，
+// 按目标模型 upstreamModel 的能力契约归一化请求体中的 generationConfig.thinkingConfig：
+//   - 非 Gemini 模型：不处理。
+//   - 带思考档位后缀的模型（-low/-medium/-high/-tiered 等）：档位已由模型名决定，
+//     剥离 thinkingLevel（保留 includeThoughts、thinkingBudget 等其余字段）。
+//   - Gemini 3+ 裸模型：用 geminiThinkingLevelFor 裁剪不支持的档位（例如非 flash 模型的 minimal → low）。
+//   - Gemini 2.5 模型：不接受 thinkingLevel；若未提供 thinkingBudget 则转换为合法 thinkingBudget，随后移除 thinkingLevel。
+//   - 不支持思考参数的 Gemini 模型（2.0 / image / tts / embedding 等）：移除 thinkingLevel。
+//
+// 当 thinkingConfig 经清理后变为空对象时一并删除，避免向上游发送空的 thinkingConfig: {}。
+func normalizeAntigravityGeminiThinkingConfig(payload map[string]any, upstreamModel string) bool {
+	if len(payload) == 0 {
+		return false
+	}
+	modelName := strings.TrimPrefix(strings.ToLower(strings.TrimSpace(upstreamModel)), "models/")
+	if !strings.HasPrefix(modelName, "gemini-") {
+		return false
+	}
+
+	param := geminiThinkingParamForModel(modelName)
+	carriesTier := geminiModelNameCarriesThinkingTier(modelName)
+	changed := false
+
+	for _, gcKey := range []string{"generationConfig", "generation_config"} {
+		gc, ok := payload[gcKey].(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, tcKey := range []string{"thinkingConfig", "thinking_config"} {
+			tc, ok := gc[tcKey].(map[string]any)
+			if !ok {
+				continue
+			}
+
+			var levelKey, rawLevel string
+			if v, exists := tc["thinkingLevel"]; exists {
+				levelKey = "thinkingLevel"
+				rawLevel, _ = v.(string)
+			} else if v, exists := tc["thinking_level"]; exists {
+				levelKey = "thinking_level"
+				rawLevel, _ = v.(string)
+			}
+			if levelKey == "" {
+				continue
+			}
+
+			if carriesTier || param == geminiThinkingParamNone {
+				delete(tc, "thinkingLevel")
+				delete(tc, "thinking_level")
+				changed = true
+			} else if param == geminiThinkingParamBudget {
+				tier := normalizeGeminiThinkingTierToken(rawLevel)
+				_, hasBudget := tc["thinkingBudget"]
+				_, hasSnakeBudget := tc["thinking_budget"]
+				if tier != "" && !hasBudget && !hasSnakeBudget {
+					if budget, ok := geminiThinkingBudgetFor(modelName, claudeThinkingIntent{tier: tier}); ok {
+						if levelKey == "thinking_level" {
+							tc["thinking_budget"] = budget
+						} else {
+							tc["thinkingBudget"] = budget
+						}
+					}
+				}
+				delete(tc, "thinkingLevel")
+				delete(tc, "thinking_level")
+				changed = true
+			} else if param == geminiThinkingParamLevel {
+				if tier := normalizeGeminiThinkingTierToken(rawLevel); tier != "" {
+					normalized := geminiThinkingLevelFor(modelName, claudeThinkingIntent{tier: tier})
+					if normalized != "" && !strings.EqualFold(strings.TrimSpace(rawLevel), normalized) {
+						tc[levelKey] = normalized
+						changed = true
+					}
+				}
+			}
+
+			if len(tc) == 0 {
+				delete(gc, tcKey)
+				changed = true
+			}
+		}
+	}
+	return changed
+}
+
 // isGeminiThoughtPart 判断响应 part 是否为思考摘要。
 func isGeminiThoughtPart(part map[string]any) bool {
 	thought, _ := part["thought"].(bool)
