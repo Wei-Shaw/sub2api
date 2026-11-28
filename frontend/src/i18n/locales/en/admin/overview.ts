@@ -1109,6 +1109,11 @@ export default {
         searchPricePer1k: 'Search price per 1k calls (USD)',
         pricePlaceholder: 'optional'
       },
+      geminiGroundingPricing: {
+        title: 'Gemini Google Search Grounding',
+        description: 'Adds a fee for distinct Google Search queries returned by native Gemini 3 and newer text requests. Leave blank or enter zero to disable the fee.',
+        price: 'Price per 1,000 search queries (USD)'
+      },
       modelPricing: {
         title: 'Per-model group pricing',
         description: 'Overrides channel and built-in prices for matching models. Long-context tiers come from official presets — do not enter custom intervals. Use per-request tiers such as realtime, tts, and stt for audio.',
