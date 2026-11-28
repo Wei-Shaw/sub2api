@@ -18,6 +18,9 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
 )
 
+// Last-used timestamps are optional enrichment, not a reason to block the list.
+const adminUserLastUsedTimeout = 2 * time.Second
+
 // User management implementations
 func (s *adminServiceImpl) ListUsers(ctx context.Context, page, pageSize int, filters UserListFilters, sortBy, sortOrder string) ([]User, int64, error) {
 	params := pagination.PaginationParams{Page: page, PageSize: pageSize, SortBy: sortBy, SortOrder: sortOrder}
@@ -30,7 +33,9 @@ func (s *adminServiceImpl) ListUsers(ctx context.Context, page, pageSize int, fi
 		for i := range users {
 			userIDs = append(userIDs, users[i].ID)
 		}
-		lastUsedByUserID, latestErr := s.userRepo.GetLatestUsedAtByUserIDs(ctx, userIDs)
+		lastUsedCtx, cancelLastUsed := context.WithTimeout(ctx, adminUserLastUsedTimeout)
+		lastUsedByUserID, latestErr := s.userRepo.GetLatestUsedAtByUserIDs(lastUsedCtx, userIDs)
+		cancelLastUsed()
 		if latestErr != nil {
 			logger.LegacyPrintf("service.admin", "failed to load user last_used_at in batch: err=%v", latestErr)
 		} else {
