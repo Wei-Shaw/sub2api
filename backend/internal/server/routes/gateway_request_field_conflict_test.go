@@ -36,8 +36,8 @@ func TestGatewayRoutesRejectConflictingFieldsMountedOnEveryGatewayRoute(t *testi
 	for _, chain := range []string{
 		`gateway.Use(rejectConflictingFields)` + "\n\t" + `gateway.Use(compositeTarget)`,
 		`gemini.Use(rejectConflictingFields)` + "\n\t" + `gemini.Use(compositeGeminiTarget)`,
-		`groupModelAllowlist, rejectConflictingFields, compositeTarget, requireGroupAnthropic, handler)`,
-		`groupModelAllowlist, rejectConflictingFields, compositeTarget, requireGroupAnthropic)`,
+		`groupModelAllowlist, rejectConflictingFields, compositeTarget, customDomainGuard, requireGroupAnthropic, handler)`,
+		`groupModelAllowlist, rejectConflictingFields, compositeTarget, customDomainGuard, requireGroupAnthropic)`,
 	} {
 		require.Contains(t, source, chain)
 	}
@@ -171,7 +171,7 @@ func TestGatewayRoutesTextBodyLimitAppliesBeforeGroupMiddleware(t *testing.T) {
 			c.Set(string(servermiddleware.ContextKeyAPIKey), &service.APIKey{GroupID: &groupID, Group: allowlistGroup(service.PlatformOpenAI, false)})
 			c.Next()
 		}),
-		nil, nil, nil, nil, nil,
+		nil, nil, nil, nil, nil, nil,
 		&config.Config{Gateway: config.GatewayConfig{MaxBodySize: 1 << 20, TextMaxBodySize: 256}},
 	)
 	body := `{"model":"a","input":"` + strings.Repeat("x", 1024) + `","model":"b"}`
