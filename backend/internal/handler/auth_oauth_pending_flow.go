@@ -1941,6 +1941,10 @@ func (h *AuthHandler) ExchangePendingOAuthCompletion(c *gin.Context) {
 		return
 	}
 	payload = normalizePendingOAuthCompletionResponse(payload)
+	if payload["step"] == dingTalkAutoSignupStep {
+		h.completeDingTalkAutoSignup(c, session)
+		return
+	}
 	if strings.TrimSpace(session.RedirectTo) != "" {
 		if _, exists := payload["redirect"]; !exists {
 			payload["redirect"] = session.RedirectTo
