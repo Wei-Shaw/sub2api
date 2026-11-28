@@ -307,7 +307,8 @@ func normalizeClaudeOAuthRequestBody(body []byte, modelID string, opts claudeOAu
 	//   applyToolNameRewriteToBody 同步映射为假名
 	// - 其他形态（auto/any/none）原样透传
 	// 如果 body 里完全没有 tools（空数组），tool_choice 没意义时才删除
-	if !gjson.GetBytes(out, "tools").IsArray() || len(gjson.GetBytes(out, "tools").Array()) == 0 {
+	toolsResult := gjson.GetBytes(out, "tools")
+	if !toolsResult.IsArray() || !toolsResult.Get("0").Exists() {
 		if !isClaude55SignedThinkingModel(modelID) && gjson.GetBytes(out, "tool_choice").Exists() {
 			if next, ok := deleteJSONPathBytes(out, "tool_choice"); ok {
 				out = next
@@ -1059,10 +1060,46 @@ func collectCacheControlPaths(body []byte) (invalidThinking []cacheControlPath, 
 	return invalidThinking, messagePaths, toolPaths, systemPaths
 }
 
+var (
+	cacheControlKeyBytes   = []byte(`"cache_control"`)
+	thinkingBlockTypeBytes = []byte(`"thinking"`)
+	cacheTTL1hJSONBytes    = []byte(`"1h"`)
+	jsonUnicodeEscapeBytes = []byte(`\u`)
+)
+
 // enforceCacheControlLimit 让出站 cache_control 满足上游约束：
 // 先执行块数量限制，再修正 TTL 顺序。
+//
+// 大多数请求的 cache_control 块不超过 4 个、没有 thinking 块、也没有 1h TTL，
+// 此时两步都是 no-op。用字节级预检查跳过两次 collectCacheControlPaths 遍历。
+// 预检查只会多算（把请求送回原路径），不会漏判；含 \u 转义的 body 可能把
+// 键名或值写成转义形式，字节匹配看不到，因此直接走原路径。
 func enforceCacheControlLimit(body []byte) []byte {
-	return normalizeCacheControlTTLOrder(enforceCacheControlBlockLimit(body))
+	if len(body) == 0 {
+		return body
+	}
+	if bytes.Contains(body, jsonUnicodeEscapeBytes) {
+		return normalizeCacheControlTTLOrder(enforceCacheControlBlockLimit(body))
+	}
+	if !bytes.Contains(body, cacheControlKeyBytes) {
+		return body
+	}
+	if bytes.Count(body, cacheControlKeyBytes) <= maxCacheControlBlocks &&
+		!bytes.Contains(body, thinkingBlockTypeBytes) {
+		if !bytes.Contains(body, cacheTTL1hJSONBytes) {
+			return body
+		}
+		return normalizeCacheControlTTLOrder(body)
+	}
+	out := enforceCacheControlBlockLimit(body)
+	// Escaped bodies returned earlier, so a missing "1h" literal here is exact:
+	// the TTL walk would find no 1h breakpoint and rewrite nothing, yet it still
+	// costs a full collectCacheControlPaths pass over the body. Deletions above
+	// only remove cache_control keys, so they cannot introduce a 1h breakpoint.
+	if !bytes.Contains(body, cacheTTL1hJSONBytes) {
+		return out
+	}
+	return normalizeCacheControlTTLOrder(out)
 }
 
 // enforceCacheControlBlockLimit 强制执行 cache_control 块数量限制（最多 4 个）
@@ -1192,8 +1229,55 @@ func normalizeCacheControlTTLOrder(body []byte) []byte {
 
 // injectAnthropicCacheControlTTL1h 将已有 ephemeral cache_control 块的 ttl 强制写为 1h。
 // 仅修改已经存在的 cache_control，不新增缓存断点。
+//
+// Claude Code compaction requests are written at 5m instead: the conversation is
+// replaced by the summary afterwards, so nothing reads the extra tokens again,
+// and a 5m breakpoint still reads the prefix the main thread wrote at 1h.
 func injectAnthropicCacheControlTTL1h(body []byte) []byte {
+	if isClaudeCodeCompactionRequest(body) {
+		return forceEphemeralCacheControlTTL(body, cacheTTLTarget5m)
+	}
 	return forceEphemeralCacheControlTTL(body, cacheTTLTarget1h)
+}
+
+// claudeCodeCompactPreamble opens the compact prompt of Claude Code 2.1.282 in
+// its full, partial-from and partial-up-to variants, and no other prompt it sends.
+const claudeCodeCompactPreamble = "CRITICAL: Respond with TEXT ONLY. Do NOT call any tools.\n\n"
+
+// isClaudeCodeCompactionRequest reports whether the last user message is a compact
+// prompt. When auto-compaction fires during a tool loop the prompt arrives as a text
+// block merged into the user message that carries the tool_result.
+func isClaudeCodeCompactionRequest(body []byte) bool {
+	return claudeLastUserTextHasPrefix(body, claudeCodeCompactPreamble)
+}
+
+// claudeLastUserTextHasPrefix reports whether a text block (or the string content) of
+// the last user message starts with any of prefixes.
+func claudeLastUserTextHasPrefix(body []byte, prefixes ...string) bool {
+	hasPrefix := func(s string) bool {
+		for _, p := range prefixes {
+			if strings.HasPrefix(s, p) {
+				return true
+			}
+		}
+		return false
+	}
+	var last gjson.Result
+	gjson.GetBytes(body, "messages").ForEach(func(_, msg gjson.Result) bool {
+		if msg.Get("role").String() == "user" {
+			last = msg.Get("content")
+		}
+		return true
+	})
+	if last.Type == gjson.String {
+		return hasPrefix(last.Str)
+	}
+	found := false
+	last.ForEach(func(_, block gjson.Result) bool {
+		found = block.Get("type").String() == "text" && hasPrefix(block.Get("text").String())
+		return !found
+	})
+	return found
 }
 
 func forceEphemeralCacheControlTTL(body []byte, ttl string) []byte {

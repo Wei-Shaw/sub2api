@@ -8,6 +8,15 @@ import { buildModelMappingObject, getModelsByPlatform, getPresetMappingsByPlatfo
 import { BUILTIN_PLATFORM_CATALOG, resetPlatformCatalog, setPlatformCatalog } from '@/constants/platformCatalog'
 
 describe('useModelWhitelist', () => {
+  it('Kimi Coding Plan model options include exact K3.1 IDs', () => {
+    for (const platform of ['kimi', 'moonshot']) {
+      const models = getModelsByPlatform(platform)
+      expect(models).toContain('k3.1-pro')
+      expect(models).toContain('k3.1-pro-highspeed')
+      expect(models).not.toContain('k3.1')
+    }
+  })
+
   it('平台清单中没有内置模型列表的多协议供应商不预填白名单', () => {
     setPlatformCatalog({
       ...BUILTIN_PLATFORM_CATALOG,
@@ -46,6 +55,8 @@ describe('useModelWhitelist', () => {
     expect(models).toContain('gpt-5.6')
     expect(models).toContain('gpt-6')
     expect(models).toContain('gpt-6-astra')
+    expect(models).toContain('gpt-6.2-sol')
+    expect(models).toContain('gpt-6.2-astra')
     expect(models).toContain('gpt-6.1-sol')
     expect(models).toContain('gpt-6.1-terra')
     expect(models).toContain('gpt-6-sol')
@@ -56,6 +67,8 @@ describe('useModelWhitelist', () => {
 
   it('openai 预设映射包含 GPT-6 别名和 Astra', () => {
     expect(getPresetMappingsByPlatform('openai')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ label: 'GPT-6.2 Sol', from: 'gpt-6.2-sol', to: 'gpt-6.2-sol' }),
+      expect.objectContaining({ label: 'GPT-6.2 Astra', from: 'gpt-6.2-astra', to: 'gpt-6.2-astra' }),
       expect.objectContaining({ label: 'GPT-6.1 Sol', from: 'gpt-6.1-sol', to: 'gpt-6.1-sol' }),
       expect.objectContaining({ label: 'GPT-6.1 Terra', from: 'gpt-6.1-terra', to: 'gpt-6.1-terra' }),
       expect.objectContaining({ label: 'GPT-6', from: 'gpt-6', to: 'gpt-6' }),
@@ -204,6 +217,19 @@ describe('useModelWhitelist', () => {
     const models = getModelsByPlatform('antigravity')
 
     expect(models).toContain('gemini-3.1-pro')
+  })
+
+  it('Gemini 4 Carbon exposes the official API model without invented aliases', () => {
+    const models = getModelsByPlatform('gemini')
+    expect(models).toContain('gemini-4-carbon')
+    expect(models).not.toContain('gemini-4-carbon-preview')
+    expect(getModelsByPlatform('antigravity')).toContain('gemini-4-carbon')
+    expect(getPresetMappingsByPlatform('antigravity')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ from: 'gemini-4-carbon', to: 'gemini-4-carbon' })
+    ]))
+    expect(buildModelMappingObject('whitelist', ['gemini-4-carbon'], [])).toEqual({
+      'gemini-4-carbon': 'gemini-4-carbon'
+    })
   })
 
   it('Gemini 4 Argon 在 gemini 与 antigravity 平台使用对应真实模型 ID 与预设映射', () => {

@@ -20,8 +20,14 @@ func TestGeminiClientRejectsSSEComments(t *testing.T) {
 	}{
 		{"go-genai (Antigravity CLI)", "google-genai-sdk/1.71.0 gl-go/go1.28-20260721-RC03 cl/951519500 +3ebc191975 X:fieldtrack,boringcrypto", true},
 		{"python-genai", "google-genai-sdk/1.20.0 gl-python/3.12.4", true},
-		{"js-genai tolerates comments", "google-genai-sdk/1.9.0 gl-node/22.3.0", false},
-		{"gemini-cli", "GeminiCLI/0.60.0 (darwin; arm64)", false},
+		{"js-genai 1.9.0 stalls on comments", "google-genai-sdk/1.9.0 gl-node/22.3.0", true},
+		{"js-genai 1.30.0 (Gemini CLI 0.68)", "google-genai-sdk/1.30.0 gl-node/v24.22.3", true},
+		{"js-genai 1.31.0", "google-genai-sdk/1.31.0 gl-node/v24.22.3", true},
+		{"js-genai 1.32.0 tolerates comments", "google-genai-sdk/1.32.0 gl-node/v24.22.3", false},
+		{"js-genai 1.52.0", "google-genai-sdk/1.52.0 gl-node/v22.3.0", false},
+		{"js-genai 3.6.0", "google-genai-sdk/3.6.0 gl-node/v24.22.3", false},
+		{"js-genai unparsable version", "google-genai-sdk/dev gl-node/v24.22.3", false},
+		{"gemini-cli user agent alone", "GeminiCLI/0.60.0 (darwin; arm64)", false},
 		{"curl", "curl/8.7.1", false},
 		{"empty", "", false},
 		{"case-insensitive", "Google-GenAI-SDK/1.0.0 GL-Go/go1.27", true},
@@ -43,6 +49,11 @@ func TestDownstreamRejectsSSECommentsReadsBothHeaders(t *testing.T) {
 
 	c.Request.Header.Del("X-Goog-Api-Client")
 	c.Request.Header.Set("User-Agent", "google-genai-sdk/1.71.0 gl-go/go1.28")
+	require.True(t, downstreamRejectsSSEComments(c))
+
+	// Gemini CLI: the User-Agent names the CLI, the SDK version is only in X-Goog-Api-Client.
+	c.Request.Header.Set("User-Agent", "GeminiCLI-tui/0.68.0/gemini-4-argon-high (linux; x64; terminal)")
+	c.Request.Header.Set("X-Goog-Api-Client", "google-genai-sdk/1.30.0 gl-node/v24.22.3")
 	require.True(t, downstreamRejectsSSEComments(c))
 
 	require.False(t, downstreamRejectsSSEComments(nil))
@@ -95,5 +106,13 @@ func TestAntigravityGeminiStreamSkipsCommentKeepaliveForGoGenai(t *testing.T) {
 	require.Contains(t, out, `"text":"partial"`)
 	for _, event := range strings.Split(out, "\n\n") {
 		require.False(t, strings.HasPrefix(event, ":"), "go-genai must never receive an SSE comment event, got %q", event)
+	}
+}
+
+func TestAntigravityGeminiStreamSkipsCommentKeepaliveForOldJSGenai(t *testing.T) {
+	out := runAntigravityGeminiStreamWithIdle(t, "google-genai-sdk/1.30.0 gl-node/v24.22.3", 1200*time.Millisecond)
+	require.Contains(t, out, `"text":"partial"`)
+	for _, event := range strings.Split(out, "\n\n") {
+		require.False(t, strings.HasPrefix(event, ":"), "js-genai < 1.32 must never receive an SSE comment event, got %q", event)
 	}
 }

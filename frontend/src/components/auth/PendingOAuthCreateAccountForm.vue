@@ -34,7 +34,12 @@
         @error="onTurnstileError"
       />
     </div>
-    <div v-if="emailVerifyEnabled" class="flex gap-3">
+    <!--
+      第三方首登建号时后端无条件校验本地邮箱验证码（VerifyOAuthEmailCode 有意独立于
+      全局 email_verify_enabled 开关，防止把他人邮箱绑进新账号），发码端点同样不看该开关。
+      因此这里不能按全局开关隐藏发码入口，否则关闭邮箱验证后用户无法完成建号。
+    -->
+    <div class="flex gap-3">
       <input
         v-model="verifyCode"
         :data-testid="`${testIdPrefix}-create-account-verify-code`"
@@ -61,10 +66,10 @@
         }}
       </button>
     </div>
-    <p v-if="emailVerifyEnabled && sendCodeSuccess" class="text-sm text-green-600 dark:text-green-400">
+    <p v-if="sendCodeSuccess" class="text-sm text-green-600 dark:text-green-400">
       {{ t('auth.codeSentSuccess') }}
     </p>
-    <p v-else-if="emailVerifyEnabled" class="text-xs text-gray-500 dark:text-dark-400">
+    <p v-else class="text-xs text-gray-500 dark:text-dark-400">
       {{ t('auth.verificationCodeHint') }}
     </p>
     <input
@@ -137,7 +142,6 @@ const sendCodeError = ref('')
 const sendCodeSuccess = ref(false)
 const countdown = ref(0)
 const invitationCodeEnabled = ref(false)
-const emailVerifyEnabled = ref(true)
 const turnstileEnabled = ref(false)
 const turnstileSiteKey = ref('')
 const tencentCaptchaEnabled = ref(false)
@@ -323,7 +327,7 @@ async function handleSubmit() {
   emit('submit', {
     email: trimmedEmail,
     password: password.value,
-    verifyCode: emailVerifyEnabled.value ? verifyCode.value.trim() : '',
+    verifyCode: verifyCode.value.trim(),
     ...((turnstileEnabled.value || aliyunCaptchaEnabled.value) && turnstileToken.value
       ? { turnstileToken: turnstileToken.value }
       : {}),
@@ -349,7 +353,6 @@ onMounted(async () => {
   try {
     const settings = await getPublicSettings()
     invitationCodeEnabled.value = settings.invitation_code_enabled === true
-    emailVerifyEnabled.value = settings.email_verify_enabled !== false
     turnstileEnabled.value = settings.turnstile_enabled === true
     turnstileSiteKey.value = settings.turnstile_site_key || ''
     tencentCaptchaEnabled.value = settings.tencent_captcha_enabled === true
@@ -361,7 +364,6 @@ onMounted(async () => {
     aliyunCaptchaRegion.value = settings.aliyun_captcha_region || 'cn'
   } catch {
     invitationCodeEnabled.value = false
-    emailVerifyEnabled.value = true
     turnstileEnabled.value = false
     turnstileSiteKey.value = ''
     tencentCaptchaEnabled.value = false

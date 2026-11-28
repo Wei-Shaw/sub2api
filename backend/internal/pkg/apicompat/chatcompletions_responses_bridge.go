@@ -61,6 +61,7 @@ func ResponsesToChatCompletionsRequestWithOptions(req *ResponsesRequest, opts *R
 		Stream:              req.Stream,
 		ServiceTier:         req.ServiceTier,
 		ParallelToolCalls:   req.ParallelToolCalls,
+		Stop:                req.Stop,
 	}
 	if req.Reasoning != nil {
 		out.ReasoningEffort = req.Reasoning.Effort
@@ -647,10 +648,47 @@ func buildChatMessagesFromItems(messages []ChatMessage, rawItems []json.RawMessa
 			pendingReasoning = ""
 			lastTurnReasoning = ""
 		}
-		messages = append(messages, msg)
+		if role == "assistant" {
+			messages = appendAssistantMessage(messages, msg)
+		} else {
+			messages = append(messages, msg)
+		}
 	}
 
 	return messages, mediaByCallID, nil
+}
+
+// appendAssistantMessage merges consecutive assistant items into one message.
+// Codex can put a commentary message after a function_call but before that
+// call's output. Keeping it separate makes normalizeChatMessagesWithToolOutputMedia
+// move the tool reply ahead of the text and leave an assistant message last,
+// which Gemini AI Studio rejects with "Requests ending with a model turn are
+// not supported."
+func appendAssistantMessage(messages []ChatMessage, msg ChatMessage) []ChatMessage {
+	if len(messages) == 0 || messages[len(messages)-1].Role != "assistant" {
+		return append(messages, msg)
+	}
+
+	prev := &messages[len(messages)-1]
+	if !isBlankChatContent(msg.Content) {
+		if isBlankChatContent(prev.Content) {
+			prev.Content = msg.Content
+		} else {
+			joined, _ := json.Marshal(chatMessageContentText(prev.Content) + "\n\n" + chatMessageContentText(msg.Content))
+			prev.Content = joined
+		}
+	}
+	if len(msg.ToolCalls) > 0 {
+		prev.ToolCalls = append(prev.ToolCalls, msg.ToolCalls...)
+	}
+	if msg.ReasoningContent != "" {
+		if prev.ReasoningContent == "" {
+			prev.ReasoningContent = msg.ReasoningContent
+		} else if prev.ReasoningContent != msg.ReasoningContent {
+			prev.ReasoningContent += "\n\n" + msg.ReasoningContent
+		}
+	}
+	return messages
 }
 
 // AgentMessageText concatenates agent_message text and plaintext encrypted_content
@@ -1537,9 +1575,10 @@ func ChatUsageToResponsesUsage(usage *ChatUsage) *ResponsesUsage {
 		return nil
 	}
 	out := &ResponsesUsage{
-		InputTokens:  usage.PromptTokens,
-		OutputTokens: usage.CompletionTokens,
-		TotalTokens:  usage.TotalTokens,
+		InputTokens:              usage.PromptTokens,
+		OutputTokens:             usage.CompletionTokens,
+		TotalTokens:              usage.TotalTokens,
+		CacheCreationInputTokens: usage.PromptTokensDetails.cacheCreationInputTokens(),
 	}
 	if out.TotalTokens == 0 {
 		out.TotalTokens = out.InputTokens + out.OutputTokens
@@ -1551,10 +1590,9 @@ func ChatUsageToResponsesUsage(usage *ChatUsage) *ResponsesUsage {
 			CacheCreationTokens: usage.PromptTokensDetails.CacheCreationTokens,
 			CacheWriteTokens:    usage.PromptTokensDetails.CacheWriteTokens,
 		}
-		if usage.PromptTokensDetails.CacheWriteTokens > 0 {
-			out.CacheCreationInputTokens = usage.PromptTokensDetails.CacheWriteTokens
-		} else {
-			out.CacheCreationInputTokens = usage.PromptTokensDetails.CacheCreationTokens
+		if out.CacheCreationInputTokens == 0 {
+			out.InputTokensDetails.CacheCreationTokens = 0
+			out.InputTokensDetails.CacheWriteTokens = 0
 		}
 	}
 	return out
@@ -1678,6 +1716,26 @@ func (state *ChatCompletionsToResponsesStreamState) ValidateToolCallArguments() 
 	return nil
 }
 
+// chatToolCallSlot picks the state slot for a streamed tool-call delta.
+// Standard upstreams send an index, which is used as is. Google AI Studio's
+// OpenAI-compatible endpoint omits it and streams each parallel call whole,
+// with its own id, in its own chunk; defaulting to 0 merged those calls into
+// one invalid JSON argument string. Without an index, a delta continues the
+// last call when it has no id or repeats that call's id, and otherwise opens
+// the next slot (slots stay contiguous, as closeChatToolItems expects).
+func chatToolCallSlot(state *ChatCompletionsToResponsesStreamState, toolCall ChatToolCall) int {
+	if toolCall.Index != nil {
+		return *toolCall.Index
+	}
+	last := len(state.ToolCalls) - 1
+	if last >= 0 {
+		if prev := state.ToolCalls[last]; prev != nil && (toolCall.ID == "" || toolCall.ID == prev.ID) {
+			return last
+		}
+	}
+	return len(state.ToolCalls)
+}
+
 func (state *ChatCompletionsToResponsesStreamState) allocOutputIndex() int {
 	idx := state.nextOutputIndex
 	state.nextOutputIndex++
@@ -1740,10 +1798,7 @@ func ChatCompletionsChunkToResponsesEvents(
 			}))
 		}
 		for _, toolCall := range choice.Delta.ToolCalls {
-			idx := 0
-			if toolCall.Index != nil {
-				idx = *toolCall.Index
-			}
+			idx := chatToolCallSlot(state, toolCall)
 			stored, ok := state.ToolCalls[idx]
 			if !ok {
 				// A tool call closes any open reasoning item first.
@@ -1844,15 +1899,20 @@ func FinalizeChatCompletionsResponsesStream(state *ChatCompletionsToResponsesStr
 	// Mirrors cc-switch's finalize_tools.
 	events = append(events, closeChatToolItems(state)...)
 
+	// 终止事件名必须与 response.status 一致：被 max_tokens 截断的流以
+	// response.incomplete 收尾（与 Anthropic→Responses 转换器及原生上游一致），
+	// 否则只看事件类型的客户端会把截断当作正常完成。
+	eventType := "response.completed"
 	status := "completed"
 	var incompleteDetails *ResponsesIncompleteDetails
 	if state.FinishReason == "length" {
+		eventType = "response.incomplete"
 		status = "incomplete"
 		incompleteDetails = &ResponsesIncompleteDetails{Reason: "max_output_tokens"}
 	}
 
 	state.CompletedSent = true
-	events = append(events, chatToResponsesEvent(state, "response.completed", &ResponsesStreamEvent{
+	events = append(events, chatToResponsesEvent(state, eventType, &ResponsesStreamEvent{
 		Response: &ResponsesResponse{
 			ID:                state.ResponseID,
 			Object:            "response",

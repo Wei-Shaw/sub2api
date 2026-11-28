@@ -527,28 +527,16 @@
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.copyAccounts.title") }}
             </label>
-            <div class="group relative inline-flex">
-              <Icon
-                name="questionCircle"
-                size="sm"
-                :stroke-width="2"
-                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
-              />
-              <div
-                class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
-              >
-                <div
-                  class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
-                >
-                  <p class="text-xs leading-relaxed text-gray-300">
-                    {{ t("admin.groups.copyAccounts.tooltip") }}
-                  </p>
-                  <div
-                    class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
-                  ></div>
-                </div>
-              </div>
-            </div>
+            <HelpTooltip :content="t('admin.groups.copyAccounts.tooltip')" width-class="w-72">
+              <template #trigger>
+                <Icon
+                  name="questionCircle"
+                  size="sm"
+                  :stroke-width="2"
+                  class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+                />
+              </template>
+            </HelpTooltip>
           </div>
           <!-- 已选分组标签 -->
           <div
@@ -656,43 +644,32 @@
               {{ t("admin.groups.form.exclusive") }}
             </label>
             <!-- Help Tooltip -->
-            <div class="group relative inline-flex">
-              <Icon
-                name="questionCircle"
-                size="sm"
-                :stroke-width="2"
-                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
-              />
-              <!-- Tooltip Popover -->
-              <div
-                class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
-              >
-                <div
-                  class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
-                >
-                  <p class="mb-2 text-xs font-medium">
-                    {{ t("admin.groups.exclusiveTooltip.title") }}
-                  </p>
-                  <p class="mb-2 text-xs leading-relaxed text-gray-300">
-                    {{ t("admin.groups.exclusiveTooltip.description") }}
-                  </p>
-                  <div class="rounded bg-gray-800 p-2 dark:bg-gray-700">
-                    <p class="text-xs leading-relaxed text-gray-300">
-                      <span
-                        class="inline-flex items-center gap-1 text-primary-400"
-                        ><Icon name="lightbulb" size="xs" />
-                        {{ t("admin.groups.exclusiveTooltip.example") }}</span
-                      >
-                      {{ t("admin.groups.exclusiveTooltip.exampleContent") }}
-                    </p>
-                  </div>
-                  <!-- Arrow -->
-                  <div
-                    class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
-                  ></div>
-                </div>
+            <HelpTooltip width-class="w-72">
+              <template #trigger>
+                <Icon
+                  name="questionCircle"
+                  size="sm"
+                  :stroke-width="2"
+                  class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+                />
+              </template>
+              <p class="mb-2 text-xs font-medium">
+                {{ t("admin.groups.exclusiveTooltip.title") }}
+              </p>
+              <p class="mb-2 text-xs leading-relaxed text-gray-300">
+                {{ t("admin.groups.exclusiveTooltip.description") }}
+              </p>
+              <div class="rounded bg-gray-800 p-2 dark:bg-gray-700">
+                <p class="text-xs leading-relaxed text-gray-300">
+                  <span
+                    class="inline-flex items-center gap-1 text-primary-400"
+                    ><Icon name="lightbulb" size="xs" />
+                    {{ t("admin.groups.exclusiveTooltip.example") }}</span
+                  >
+                  {{ t("admin.groups.exclusiveTooltip.exampleContent") }}
+                </p>
               </div>
-            </div>
+            </HelpTooltip>
           </div>
           <div class="flex items-center gap-3">
             <Toggle v-model="createForm.is_exclusive" />
@@ -1290,28 +1267,16 @@
               {{ t("admin.groups.supportedScopes.title") }}
             </label>
             <!-- Help Tooltip -->
-            <div class="group relative inline-flex">
-              <Icon
-                name="questionCircle"
-                size="sm"
-                :stroke-width="2"
-                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
-              />
-              <div
-                class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
-              >
-                <div
-                  class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
-                >
-                  <p class="text-xs leading-relaxed text-gray-300">
-                    {{ t("admin.groups.supportedScopes.tooltip") }}
-                  </p>
-                  <div
-                    class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
-                  ></div>
-                </div>
-              </div>
-            </div>
+            <HelpTooltip :content="t('admin.groups.supportedScopes.tooltip')" width-class="w-72">
+              <template #trigger>
+                <Icon
+                  name="questionCircle"
+                  size="sm"
+                  :stroke-width="2"
+                  class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+                />
+              </template>
+            </HelpTooltip>
           </div>
           <div class="space-y-2">
             <label class="flex items-center gap-2 cursor-pointer">
@@ -1363,28 +1328,16 @@
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.mcpXml.title") }}
             </label>
-            <div class="group relative inline-flex">
-              <Icon
-                name="questionCircle"
-                size="sm"
-                :stroke-width="2"
-                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
-              />
-              <div
-                class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
-              >
-                <div
-                  class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
-                >
-                  <p class="text-xs leading-relaxed text-gray-300">
-                    {{ t("admin.groups.mcpXml.tooltip") }}
-                  </p>
-                  <div
-                    class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
-                  ></div>
-                </div>
-              </div>
-            </div>
+            <HelpTooltip :content="t('admin.groups.mcpXml.tooltip')" width-class="w-72">
+              <template #trigger>
+                <Icon
+                  name="questionCircle"
+                  size="sm"
+                  :stroke-width="2"
+                  class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+                />
+              </template>
+            </HelpTooltip>
           </div>
           <div class="flex items-center gap-3">
             <Toggle v-model="createForm.mcp_xml_inject" />
@@ -1405,28 +1358,16 @@
               {{ t("admin.groups.claudeCode.title") }}
             </label>
             <!-- Help Tooltip -->
-            <div class="group relative inline-flex">
-              <Icon
-                name="questionCircle"
-                size="sm"
-                :stroke-width="2"
-                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
-              />
-              <div
-                class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
-              >
-                <div
-                  class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
-                >
-                  <p class="text-xs leading-relaxed text-gray-300">
-                    {{ t("admin.groups.claudeCode.tooltip") }}
-                  </p>
-                  <div
-                    class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
-                  ></div>
-                </div>
-              </div>
-            </div>
+            <HelpTooltip :content="t('admin.groups.claudeCode.tooltip')" width-class="w-72">
+              <template #trigger>
+                <Icon
+                  name="questionCircle"
+                  size="sm"
+                  :stroke-width="2"
+                  class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+                />
+              </template>
+            </HelpTooltip>
           </div>
           <div class="flex items-center gap-3">
             <Toggle v-model="createForm.claude_code_only" />
@@ -1591,6 +1532,19 @@
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {{ t("admin.groups.openaiFast.hint") }}
+          </p>
+          <div class="flex items-center justify-between gap-4 mt-4">
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.openaiFast.forceUltrafast") }}
+            </label>
+            <Toggle
+              data-testid="create-force-openai-ultrafast"
+              :aria-label="t('admin.groups.openaiFast.forceUltrafast')"
+              v-model="createForm.force_openai_ultrafast"
+            />
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {{ t("admin.groups.openaiFast.ultrafastHint") }}
           </p>
           <div class="flex items-center justify-between gap-4 mt-4">
             <label class="text-sm text-gray-600 dark:text-gray-400">
@@ -1917,28 +1871,16 @@
               {{ t("admin.groups.modelRouting.title") }}
             </label>
             <!-- Help Tooltip -->
-            <div class="group relative inline-flex">
-              <Icon
-                name="questionCircle"
-                size="sm"
-                :stroke-width="2"
-                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
-              />
-              <div
-                class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-80 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
-              >
-                <div
-                  class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
-                >
-                  <p class="text-xs leading-relaxed text-gray-300">
-                    {{ t("admin.groups.modelRouting.tooltip") }}
-                  </p>
-                  <div
-                    class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
-                  ></div>
-                </div>
-              </div>
-            </div>
+            <HelpTooltip :content="t('admin.groups.modelRouting.tooltip')" width-class="w-80">
+              <template #trigger>
+                <Icon
+                  name="questionCircle"
+                  size="sm"
+                  :stroke-width="2"
+                  class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+                />
+              </template>
+            </HelpTooltip>
           </div>
           <!-- 启用开关 -->
           <div class="flex items-center gap-3 mb-3">
@@ -2179,28 +2121,16 @@
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.copyAccounts.title") }}
             </label>
-            <div class="group relative inline-flex">
-              <Icon
-                name="questionCircle"
-                size="sm"
-                :stroke-width="2"
-                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
-              />
-              <div
-                class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
-              >
-                <div
-                  class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
-                >
-                  <p class="text-xs leading-relaxed text-gray-300">
-                    {{ t("admin.groups.copyAccounts.tooltipEdit") }}
-                  </p>
-                  <div
-                    class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
-                  ></div>
-                </div>
-              </div>
-            </div>
+            <HelpTooltip :content="t('admin.groups.copyAccounts.tooltipEdit')" width-class="w-72">
+              <template #trigger>
+                <Icon
+                  name="questionCircle"
+                  size="sm"
+                  :stroke-width="2"
+                  class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+                />
+              </template>
+            </HelpTooltip>
           </div>
           <!-- 已选分组标签 -->
           <div
@@ -2305,43 +2235,32 @@
               {{ t("admin.groups.form.exclusive") }}
             </label>
             <!-- Help Tooltip -->
-            <div class="group relative inline-flex">
-              <Icon
-                name="questionCircle"
-                size="sm"
-                :stroke-width="2"
-                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
-              />
-              <!-- Tooltip Popover -->
-              <div
-                class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
-              >
-                <div
-                  class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
-                >
-                  <p class="mb-2 text-xs font-medium">
-                    {{ t("admin.groups.exclusiveTooltip.title") }}
-                  </p>
-                  <p class="mb-2 text-xs leading-relaxed text-gray-300">
-                    {{ t("admin.groups.exclusiveTooltip.description") }}
-                  </p>
-                  <div class="rounded bg-gray-800 p-2 dark:bg-gray-700">
-                    <p class="text-xs leading-relaxed text-gray-300">
-                      <span
-                        class="inline-flex items-center gap-1 text-primary-400"
-                        ><Icon name="lightbulb" size="xs" />
-                        {{ t("admin.groups.exclusiveTooltip.example") }}</span
-                      >
-                      {{ t("admin.groups.exclusiveTooltip.exampleContent") }}
-                    </p>
-                  </div>
-                  <!-- Arrow -->
-                  <div
-                    class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
-                  ></div>
-                </div>
+            <HelpTooltip width-class="w-72">
+              <template #trigger>
+                <Icon
+                  name="questionCircle"
+                  size="sm"
+                  :stroke-width="2"
+                  class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+                />
+              </template>
+              <p class="mb-2 text-xs font-medium">
+                {{ t("admin.groups.exclusiveTooltip.title") }}
+              </p>
+              <p class="mb-2 text-xs leading-relaxed text-gray-300">
+                {{ t("admin.groups.exclusiveTooltip.description") }}
+              </p>
+              <div class="rounded bg-gray-800 p-2 dark:bg-gray-700">
+                <p class="text-xs leading-relaxed text-gray-300">
+                  <span
+                    class="inline-flex items-center gap-1 text-primary-400"
+                    ><Icon name="lightbulb" size="xs" />
+                    {{ t("admin.groups.exclusiveTooltip.example") }}</span
+                  >
+                  {{ t("admin.groups.exclusiveTooltip.exampleContent") }}
+                </p>
               </div>
-            </div>
+            </HelpTooltip>
           </div>
           <div class="flex items-center gap-3">
             <Toggle v-model="editForm.is_exclusive" />
@@ -2944,28 +2863,16 @@
               {{ t("admin.groups.supportedScopes.title") }}
             </label>
             <!-- Help Tooltip -->
-            <div class="group relative inline-flex">
-              <Icon
-                name="questionCircle"
-                size="sm"
-                :stroke-width="2"
-                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
-              />
-              <div
-                class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
-              >
-                <div
-                  class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
-                >
-                  <p class="text-xs leading-relaxed text-gray-300">
-                    {{ t("admin.groups.supportedScopes.tooltip") }}
-                  </p>
-                  <div
-                    class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
-                  ></div>
-                </div>
-              </div>
-            </div>
+            <HelpTooltip :content="t('admin.groups.supportedScopes.tooltip')" width-class="w-72">
+              <template #trigger>
+                <Icon
+                  name="questionCircle"
+                  size="sm"
+                  :stroke-width="2"
+                  class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+                />
+              </template>
+            </HelpTooltip>
           </div>
           <div class="space-y-2">
             <label class="flex items-center gap-2 cursor-pointer">
@@ -3017,28 +2924,16 @@
             <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
               {{ t("admin.groups.mcpXml.title") }}
             </label>
-            <div class="group relative inline-flex">
-              <Icon
-                name="questionCircle"
-                size="sm"
-                :stroke-width="2"
-                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
-              />
-              <div
-                class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
-              >
-                <div
-                  class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
-                >
-                  <p class="text-xs leading-relaxed text-gray-300">
-                    {{ t("admin.groups.mcpXml.tooltip") }}
-                  </p>
-                  <div
-                    class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
-                  ></div>
-                </div>
-              </div>
-            </div>
+            <HelpTooltip :content="t('admin.groups.mcpXml.tooltip')" width-class="w-72">
+              <template #trigger>
+                <Icon
+                  name="questionCircle"
+                  size="sm"
+                  :stroke-width="2"
+                  class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+                />
+              </template>
+            </HelpTooltip>
           </div>
           <div class="flex items-center gap-3">
             <Toggle v-model="editForm.mcp_xml_inject" />
@@ -3059,28 +2954,16 @@
               {{ t("admin.groups.claudeCode.title") }}
             </label>
             <!-- Help Tooltip -->
-            <div class="group relative inline-flex">
-              <Icon
-                name="questionCircle"
-                size="sm"
-                :stroke-width="2"
-                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
-              />
-              <div
-                class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-72 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
-              >
-                <div
-                  class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
-                >
-                  <p class="text-xs leading-relaxed text-gray-300">
-                    {{ t("admin.groups.claudeCode.tooltip") }}
-                  </p>
-                  <div
-                    class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
-                  ></div>
-                </div>
-              </div>
-            </div>
+            <HelpTooltip :content="t('admin.groups.claudeCode.tooltip')" width-class="w-72">
+              <template #trigger>
+                <Icon
+                  name="questionCircle"
+                  size="sm"
+                  :stroke-width="2"
+                  class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+                />
+              </template>
+            </HelpTooltip>
           </div>
           <div class="flex items-center gap-3">
             <Toggle v-model="editForm.claude_code_only" />
@@ -3255,6 +3138,19 @@
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {{ t("admin.groups.openaiFast.hint") }}
+          </p>
+          <div class="flex items-center justify-between gap-4 mt-4">
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.openaiFast.forceUltrafast") }}
+            </label>
+            <Toggle
+              data-testid="edit-force-openai-ultrafast"
+              :aria-label="t('admin.groups.openaiFast.forceUltrafast')"
+              v-model="editForm.force_openai_ultrafast"
+            />
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {{ t("admin.groups.openaiFast.ultrafastHint") }}
           </p>
           <div class="flex items-center justify-between gap-4 mt-4">
             <label class="text-sm text-gray-600 dark:text-gray-400">
@@ -3580,28 +3476,16 @@
               {{ t("admin.groups.modelRouting.title") }}
             </label>
             <!-- Help Tooltip -->
-            <div class="group relative inline-flex">
-              <Icon
-                name="questionCircle"
-                size="sm"
-                :stroke-width="2"
-                class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
-              />
-              <div
-                class="pointer-events-none absolute bottom-full left-0 z-50 mb-2 w-80 opacity-0 transition-all duration-200 group-hover:pointer-events-auto group-hover:opacity-100"
-              >
-                <div
-                  class="rounded-lg bg-gray-900 p-3 text-white shadow-lg dark:bg-gray-800"
-                >
-                  <p class="text-xs leading-relaxed text-gray-300">
-                    {{ t("admin.groups.modelRouting.tooltip") }}
-                  </p>
-                  <div
-                    class="absolute -bottom-1.5 left-3 h-3 w-3 rotate-45 bg-gray-900 dark:bg-gray-800"
-                  ></div>
-                </div>
-              </div>
-            </div>
+            <HelpTooltip :content="t('admin.groups.modelRouting.tooltip')" width-class="w-80">
+              <template #trigger>
+                <Icon
+                  name="questionCircle"
+                  size="sm"
+                  :stroke-width="2"
+                  class="cursor-help text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500 dark:hover:text-primary-400"
+                />
+              </template>
+            </HelpTooltip>
           </div>
           <!-- 启用开关 -->
           <div class="flex items-center gap-3 mb-3">
@@ -4321,6 +4205,7 @@ import TablePageLayout from "@/components/layout/TablePageLayout.vue";
 import DataTable from "@/components/common/DataTable.vue";
 import Pagination from "@/components/common/Pagination.vue";
 import Toggle from "@/components/common/Toggle.vue";
+import HelpTooltip from "@/components/common/HelpTooltip.vue";
 import BaseDialog from "@/components/common/BaseDialog.vue";
 import ConfirmDialog from "@/components/common/ConfirmDialog.vue";
 import EmptyState from "@/components/common/EmptyState.vue";
@@ -4985,6 +4870,7 @@ const createForm = reactive({
   monthly_limit_usd: null as number | null,
   long_context_pricing_enabled: true,
   force_openai_fast: false,
+  force_openai_ultrafast: false,
   free_openai_fast: false,
   model_pricing: [] as PricingFormEntry[],
   // 图片生成计费配置
@@ -5352,6 +5238,7 @@ const editForm = reactive({
   monthly_limit_usd: null as number | null,
   long_context_pricing_enabled: true,
   force_openai_fast: false,
+  force_openai_ultrafast: false,
   free_openai_fast: false,
   model_pricing: [] as PricingFormEntry[],
   // 图片生成计费配置
@@ -5844,6 +5731,7 @@ const closeCreateModal = () => {
   createForm.video_model_prices = createVideoModelPricesForm();
   createForm.long_context_pricing_enabled = true;
   createForm.force_openai_fast = false;
+  createForm.force_openai_ultrafast = false;
   createForm.free_openai_fast = false;
   createForm.model_pricing = [];
   createForm.web_search_price_per_call = null;
@@ -5969,6 +5857,10 @@ const handleCreateGroup = async () => {
       force_openai_fast: normalizeGroupOpenAIFast(
         createForm.platform,
         createForm.force_openai_fast,
+      ),
+      force_openai_ultrafast: normalizeGroupOpenAIFast(
+        createForm.platform,
+        createForm.force_openai_ultrafast,
       ),
       free_openai_fast: normalizeGroupOpenAIFast(
         createForm.platform,
@@ -6119,6 +6011,7 @@ const handleEdit = async (group: AdminGroup) => {
   editForm.long_context_pricing_enabled =
     group.long_context_pricing_enabled ?? true;
   editForm.force_openai_fast = group.force_openai_fast ?? false;
+  editForm.force_openai_ultrafast = group.force_openai_ultrafast ?? false;
   editForm.free_openai_fast = group.free_openai_fast ?? false;
   editForm.model_pricing = groupPricingFromAPI(group.model_pricing);
   editForm.allow_image_generation = group.allow_image_generation ?? false;
@@ -6254,6 +6147,7 @@ const closeEditModal = () => {
   editForm.video_model_prices = createVideoModelPricesForm();
   editForm.long_context_pricing_enabled = true;
   editForm.force_openai_fast = false;
+  editForm.force_openai_ultrafast = false;
   editForm.free_openai_fast = false;
   editForm.model_pricing = [];
   editForm.web_search_price_per_call = null;
@@ -6313,6 +6207,10 @@ const handleUpdateGroup = async () => {
       force_openai_fast: normalizeGroupOpenAIFast(
         editForm.platform,
         editForm.force_openai_fast,
+      ),
+      force_openai_ultrafast: normalizeGroupOpenAIFast(
+        editForm.platform,
+        editForm.force_openai_ultrafast,
       ),
       free_openai_fast: normalizeGroupOpenAIFast(
         editForm.platform,

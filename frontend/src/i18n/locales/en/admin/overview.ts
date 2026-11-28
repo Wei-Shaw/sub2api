@@ -1273,6 +1273,8 @@ export default {
         title: 'OpenAI Fast mode',
         force: 'Force Fast (priority)',
         hint: 'Forces service_tier=priority on OpenAI requests in this group. The global Fast/Flex policy can still filter or block it. New requests update immediately after saving; existing WebSocket sessions must reconnect.',
+        forceUltrafast: 'Force Ultra Fast (ultrafast)',
+        ultrafastHint: 'Forces Ultra Fast (service_tier=ultrafast) on supported models. Pro 200 includes GPT-6.2 Sol Ultrafast. Pro 500 includes both Sol and Astra Ultrafast. Other subscriptions use the tiers advertised by their account. If unavailable, Force Fast takes precedence over the client tier. GPT-6.2 Sol and Astra cost 3× Standard through February 28, 2027 (Pacific time), then 6×. GPT-6 Astra and GPT-6.1 Sol cost 6×. Free Fast excludes Ultra Fast.',
         free: 'Free Fast',
         freeHint: 'Fast requests in this group still use the priority tier, but customers are charged the equivalent Standard price.'
       },

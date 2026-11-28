@@ -101,6 +101,7 @@ type ChannelModelPricing struct {
 	CacheReadPrice             *float64            `json:"cache_read_price"`
 	FastMultiplier             *float64            `json:"fast_multiplier"`
 	FlexMultiplier             *float64            `json:"flex_multiplier"`
+	UltrafastMultiplier        *float64            `json:"ultrafast_multiplier"`
 	ReasoningEffortMultipliers map[string]float64  `json:"reasoning_effort_multipliers,omitempty"`
 	ImageInputPrice            *float64            `json:"image_input_price"`
 	ImageOutputPrice           *float64            `json:"image_output_price"`
@@ -308,6 +309,20 @@ func (c *Channel) IsBedrockCCCompatEnabled(platform string) bool {
 	}
 	// 直接检查 bedrock_cc_compat 开关，不再检查 platform 子字段
 	enabled, ok := c.FeaturesConfig[featureKeyBedrockCCCompat].(bool)
+	return ok && enabled
+}
+
+// featureKeyExposeResponseModel is the Channel.FeaturesConfig key that lets
+// regular users see the final upstream response model in their usage records.
+const featureKeyExposeResponseModel = "expose_response_model"
+
+// IsResponseModelExposed 返回该渠道是否允许普通用户在使用记录中看到实际响应模型。
+// 默认关闭；仅暴露请求模型与最终响应模型，不暴露中间映射链。
+func (c *Channel) IsResponseModelExposed() bool {
+	if c == nil || c.FeaturesConfig == nil {
+		return false
+	}
+	enabled, ok := c.FeaturesConfig[featureKeyExposeResponseModel].(bool)
 	return ok && enabled
 }
 

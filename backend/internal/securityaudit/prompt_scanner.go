@@ -5,6 +5,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 func SplitRunes(value string, limit int) []string {
@@ -14,16 +15,26 @@ func SplitRunes(value string, limit int) []string {
 	segments := strings.Split(value, promptAuditPrioritySeparator)
 	chunks := make([]string, 0, len(segments))
 	for _, segment := range segments {
-		runes := []rune(segment)
-		for start := 0; start < len(runes); start += limit {
-			end := start + limit
-			if end > len(runes) {
-				end = len(runes)
+		start, count := 0, 0
+		for end := range segment {
+			if count == limit {
+				chunks = append(chunks, promptScanChunk(segment[start:end]))
+				start, count = end, 0
 			}
-			chunks = append(chunks, string(runes[start:end]))
+			count++
+		}
+		if start < len(segment) {
+			chunks = append(chunks, promptScanChunk(segment[start:]))
 		}
 	}
 	return chunks
+}
+
+func promptScanChunk(value string) string {
+	if utf8.ValidString(value) {
+		return value // immutable substring; no full-transcript rune buffer/copy
+	}
+	return string([]rune(value)) // preserve the previous invalid-UTF-8 behavior
 }
 
 func AggregateResults(results []*NormalizedResult, latency time.Duration) (*NormalizedResult, error) {

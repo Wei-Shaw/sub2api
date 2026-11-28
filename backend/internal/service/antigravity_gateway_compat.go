@@ -259,7 +259,7 @@ func (s *AntigravityGatewayService) prepareAntigravityCompatCall(
 	mappedModel := s.getMappedModelForThinkingLevel(
 		account,
 		request.originalModel,
-		geminiThinkingLevelFromClaudeThinking(claudeRequest.Thinking),
+		geminiThinkingLevelFromClaudeBody(request.claudeBody, claudeRequest.Thinking),
 	)
 	if mappedModel == "" {
 		MarkOpsClientBusinessLimited(c, OpsClientBusinessLimitedReasonLocalFeatureGate)
@@ -322,6 +322,11 @@ func (s *AntigravityGatewayService) buildAntigravityCompatGeminiBody(
 			return nil, err
 		}
 		body = ensureGeminiFunctionCallThoughtSignatures(body)
+		includeThoughts := claudeRequest != nil && claudeRequest.Stream
+		if s.settingService != nil && s.settingService.cfg != nil && s.settingService.cfg.Gateway.AntigravityGeminiOmitIncludeThoughts {
+			includeThoughts = false
+		}
+		body = applyGeminiCompatThinkingConfig(body, claudeBody, mappedModel, includeThoughts)
 		body, err = injectIdentityPatchToGeminiRequest(body)
 		if err != nil {
 			return nil, err
@@ -498,8 +503,9 @@ func (s *AntigravityGatewayService) handleAntigravityCompatHTTPError(
 	resp *http.Response,
 ) error {
 	body := s.readUpstreamErrorBody(resp)
-	s.handleUpstreamError(
+	s.handleUpstreamErrorAfterRetryLoop(
 		ctx,
+		c,
 		call.prefix,
 		account,
 		resp.StatusCode,

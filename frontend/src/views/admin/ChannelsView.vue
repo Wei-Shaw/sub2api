@@ -219,6 +219,22 @@
               </p>
             </div>
 
+            <!-- Expose actual response model to users -->
+            <div>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  v-model="form.expose_response_model"
+                  data-testid="channel-expose-response-model"
+                  class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                />
+                <span class="input-label mb-0">{{ t('admin.channels.form.exposeResponseModel', 'Show Actual Model to Users') }}</span>
+              </label>
+              <p class="mt-1 ml-6 text-xs text-gray-400">
+                {{ t('admin.channels.form.exposeResponseModelHint') }}
+              </p>
+            </div>
+
             <!-- Billing Basis -->
             <div>
               <label class="input-label">{{ t('admin.channels.form.billingModelSource', 'Billing Basis') }}</label>
@@ -771,6 +787,7 @@ const form = reactive({
   description: '',
   status: 'active',
   restrict_models: false,
+  expose_response_model: false,
   billing_model_source: 'channel_mapped' as string,
   platforms: [] as PlatformSection[],
   apply_pricing_to_account_stats: false,
@@ -883,6 +900,7 @@ function addPricingEntry(sectionIdx: number) {
     cache_read_price: null,
     fast_multiplier: null,
     flex_multiplier: null,
+    ultrafast_multiplier: null,
     reasoning_effort_multipliers: null,
     image_input_price: null,
     image_output_price: null,
@@ -923,6 +941,7 @@ async function syncLatestModels(sectionIdx: number) {
       cache_read_price: null,
       fast_multiplier: null,
       flex_multiplier: null,
+      ultrafast_multiplier: null,
       reasoning_effort_multipliers: null,
       image_input_price: null,
       image_output_price: null,
@@ -1158,6 +1177,7 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
         cache_read_price: mTokToPerToken(entry.cache_read_price),
         fast_multiplier: entry.fast_multiplier != null && entry.fast_multiplier !== '' ? Number(entry.fast_multiplier) : null,
         flex_multiplier: entry.flex_multiplier != null && entry.flex_multiplier !== '' ? Number(entry.flex_multiplier) : null,
+        ultrafast_multiplier: entry.ultrafast_multiplier != null && entry.ultrafast_multiplier !== '' ? Number(entry.ultrafast_multiplier) : null,
         reasoning_effort_multipliers: formReasoningEffortMultipliersToAPI(entry.reasoning_effort_multipliers),
         image_input_price: mTokToPerToken(entry.image_input_price),
         image_output_price: mTokToPerToken(entry.image_output_price),
@@ -1196,18 +1216,12 @@ function formToAPI(): { group_ids: number[], model_pricing: ChannelModelPricing[
     delete featuresConfig.codex_image_generation_bridge
   }
 
-  const bedrockCCCompat: Record<string, boolean> = {}
-  for (const section of form.platforms) {
-    if (!section.enabled) continue
-    if (section.platform === 'anthropic') {
-      bedrockCCCompat[section.platform] = !!section.bedrock_cc_compat
-    }
-  }
-  if (Object.keys(bedrockCCCompat).length > 0) {
-    featuresConfig.bedrock_cc_compat = bedrockCCCompat
-  } else {
-    delete featuresConfig.bedrock_cc_compat
-  }
+  // The backend reads a channel-level boolean; send false explicitly to clear it on update.
+  featuresConfig.bedrock_cc_compat = form.platforms.some(
+    section => section.enabled && section.platform === 'anthropic' && section.bedrock_cc_compat
+  )
+  // Channel-level boolean: lets users see the actual response model in usage records.
+  featuresConfig.expose_response_model = !!form.expose_response_model
 
   return { group_ids: uniqueGroupIds, model_pricing, model_mapping, features_config: featuresConfig }
 }
@@ -1260,6 +1274,7 @@ function apiToForm(channel: Channel): PlatformSection[] {
         cache_read_price: perTokenToMTok(p.cache_read_price),
         fast_multiplier: p.fast_multiplier,
         flex_multiplier: p.flex_multiplier,
+        ultrafast_multiplier: p.ultrafast_multiplier,
         reasoning_effort_multipliers: p.reasoning_effort_multipliers ? { ...p.reasoning_effort_multipliers } : null,
         image_input_price: perTokenToMTok(p.image_input_price),
         image_output_price: perTokenToMTok(p.image_output_price),
@@ -1377,6 +1392,7 @@ function resetForm() {
   form.description = ''
   form.status = 'active'
   form.restrict_models = false
+  form.expose_response_model = false
   form.billing_model_source = 'channel_mapped'
   form.platforms = []
   form.apply_pricing_to_account_stats = false
@@ -1399,6 +1415,7 @@ async function openEditDialog(channel: Channel) {
   form.description = channel.description || ''
   form.status = channel.status
   form.restrict_models = channel.restrict_models || false
+  form.expose_response_model = channel.features_config?.expose_response_model === true
   form.billing_model_source = channel.billing_model_source || 'channel_mapped'
   form.apply_pricing_to_account_stats = channel.apply_pricing_to_account_stats || false
   // Must load groups first so apiToForm can map groupID → platform
@@ -1587,7 +1604,8 @@ async function handleSubmit() {
   for (const section of form.platforms.filter(s => s.enabled)) {
     for (const entry of section.model_pricing) {
       if (!isValidPositiveMultiplier(entry.fast_multiplier) ||
-          !isValidPositiveMultiplier(entry.flex_multiplier)) {
+          !isValidPositiveMultiplier(entry.flex_multiplier) ||
+          !isValidPositiveMultiplier(entry.ultrafast_multiplier)) {
         const platformLabel = t('admin.groups.platforms.' + section.platform, catalogPlatformLabel(section.platform))
         const modelLabel = entry.models.join(', ') || t('admin.channels.form.unnamed')
         appStore.showError(`${platformLabel} - ${modelLabel}: ${t('admin.channels.form.multiplierPositive')}`)

@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
@@ -303,17 +304,20 @@ func extractSystemPreviewFromBody(body []byte) string {
 
 	switch {
 	case sys.IsArray():
-		for _, item := range sys.Array() {
+		var preview string
+		sys.ForEach(func(_, item gjson.Result) bool {
 			if !item.IsObject() {
-				continue
+				return true
 			}
 			if strings.EqualFold(item.Get("type").String(), "text") {
 				if t := item.Get("text").String(); strings.TrimSpace(t) != "" {
-					return t
+					preview = t
+					return false
 				}
 			}
-		}
-		return ""
+			return true
+		})
+		return preview
 	case sys.Type == gjson.String:
 		return sys.String()
 	default:
@@ -350,7 +354,7 @@ func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account,
 
 	h := make([]string, 0, len(interesting))
 	for _, k := range interesting {
-		if v := req.Header.Get(k); v != "" {
+		if v := getHeaderRaw(req.Header, k); v != "" {
 			h = append(h, fmt.Sprintf("%s=%q", k, safeHeaderValueForLog(k, v)))
 		}
 	}
@@ -385,6 +389,64 @@ func buildClaudeMimicDebugLine(req *http.Request, body []byte, account *Account,
 	)
 }
 
+// claudeMimicDebugLine defers building the diagnostics line until an error
+// path actually needs it. The line is read only on Claude Code credential-scope
+// errors, so building it eagerly cost every OAuth request a header walk, a
+// system-prompt scan and several fmt.Sprintf calls for nothing.
+type claudeMimicDebugLine struct {
+	once            sync.Once
+	req             *http.Request
+	body            []byte
+	account         *Account
+	tokenType       string
+	mimicClaudeCode bool
+	line            string
+}
+
+func newClaudeMimicDebugLine(req *http.Request, body []byte, account *Account, tokenType string, mimicClaudeCode bool) *claudeMimicDebugLine {
+	return &claudeMimicDebugLine{
+		req:             req,
+		body:            body,
+		account:         account,
+		tokenType:       tokenType,
+		mimicClaudeCode: mimicClaudeCode,
+	}
+}
+
+func (l *claudeMimicDebugLine) String() string {
+	if l == nil {
+		return ""
+	}
+	l.once.Do(func() {
+		l.line = buildClaudeMimicDebugLine(l.req, l.body, l.account, l.tokenType, l.mimicClaudeCode)
+		// Drop references so the request/body are not retained after use.
+		l.req, l.body, l.account = nil, nil, nil
+	})
+	return l.line
+}
+
+// claudeMimicDebugLineFromContext returns the stored diagnostics line, building
+// it on first use. It also accepts a plain string for compatibility.
+func claudeMimicDebugLineFromContext(c interface {
+	Get(string) (any, bool)
+}) string {
+	if c == nil {
+		return ""
+	}
+	v, ok := c.Get(claudeMimicDebugInfoKey)
+	if !ok {
+		return ""
+	}
+	switch line := v.(type) {
+	case *claudeMimicDebugLine:
+		return line.String()
+	case string:
+		return line
+	default:
+		return ""
+	}
+}
+
 func logClaudeMimicDebug(req *http.Request, body []byte, account *Account, tokenType string, mimicClaudeCode bool) {
 	line := buildClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode)
 	if line == "" {
@@ -402,10 +464,7 @@ func isClaudeCodeCredentialScopeError(msg string) bool {
 		strings.Contains(m, "cannot be used for other api requests")
 }
 
-// sseDataRe matches SSE data lines with optional whitespace after colon.
-// Some upstream APIs return non-standard "data:" without space (should be "data: ").
 var (
-	sseDataRe            = regexp.MustCompile(`^data:\s*`)
 	claudeCliUserAgentRe = regexp.MustCompile(`(?i)^claude-cli/\d+\.\d+\.\d+`)
 
 	// claudeCodePromptPrefixes 用于检测 Claude Code 系统提示词的前缀列表
@@ -503,6 +562,18 @@ type GatewayCache interface {
 	// ErrReasoningContentNotFound，使 service 层无需依赖具体缓存实现即可
 	// 区分"未缓存"与真实读取失败。
 	GetReasoningContent(ctx context.Context, itemID string) (string, error)
+}
+
+// GatewayStickySessionCompareCache is an optional GatewayCache capability. The
+// production Redis cache compares and writes atomically; cache stubs do not
+// need to implement it for ordinary gateway tests.
+type GatewayStickySessionCompareCache interface {
+	// CompareAndBindSessionAccountID writes accountID and returns true when the
+	// key is missing, already holds accountID (only the TTL is refreshed) or
+	// holds one of replaceableAccountIDs, i.e. a value this request may have
+	// written itself. A key holding any other account was rebound by another
+	// request: it is left alone and false is returned.
+	CompareAndBindSessionAccountID(ctx context.Context, groupID int64, sessionHash string, accountID int64, replaceableAccountIDs []int64, ttl time.Duration) (bool, error)
 }
 
 // derefGroupID safely dereferences *int64 to int64, returning 0 if nil
@@ -604,6 +675,16 @@ type ClaudeUsage struct {
 	CacheCreation5mTokens    int // 5分钟缓存创建token（来自嵌套 cache_creation 对象）
 	CacheCreation1hTokens    int // 1小时缓存创建token（来自嵌套 cache_creation 对象）
 	ImageOutputTokens        int `json:"image_output_tokens,omitempty"`
+
+	// thinkingTokens 是 usage.output_tokens_details.thinking_tokens（output_tokens 的子集，不另计费），
+	// 只用于转 OpenAI 格式时输出 reasoning_tokens；上游给了才算数（0 也算）。
+	thinkingTokens        int
+	thinkingTokensPresent bool
+
+	cacheCreationInputTokensPresent     bool
+	cacheCreationInputTokensFromDetails bool
+	promptTotalTokens                   int
+	promptTotalPresent                  bool
 }
 
 // ForwardResult 转发结果
@@ -658,6 +739,17 @@ type ForwardResult struct {
 	// CacheStorageTokenHours 显式上下文缓存的存储量（缓存 token 数 × 存储小时数），按计费模型的
 	// 存储单价折算为费用后叠加在 token 费用之上。
 	CacheStorageTokenHours float64
+	// UpstreamPriceMultiplier 是上游按实际请求端点计价相对计费模型价格的倍数（见 VertexUpstreamPriceMultiplier），
+	// 只作用于 token 费用；0 按 1 处理。
+	UpstreamPriceMultiplier float64
+}
+
+// upstreamPriceFactor 返回 UpstreamPriceMultiplier，未设置时为 1。
+func (r *ForwardResult) upstreamPriceFactor() float64 {
+	if r == nil || r.UpstreamPriceMultiplier <= 0 {
+		return 1
+	}
+	return r.UpstreamPriceMultiplier
 }
 
 // GatewayFailureStage identifies which request stage failed. The zero value is
@@ -666,8 +758,9 @@ type ForwardResult struct {
 type GatewayFailureStage string
 
 const (
-	GatewayFailureStageInference   GatewayFailureStage = "inference"
-	GatewayFailureStageAccountAuth GatewayFailureStage = "account_auth"
+	GatewayFailureStageInference            GatewayFailureStage = "inference"
+	GatewayFailureStageAccountAuth          GatewayFailureStage = "account_auth"
+	GatewayFailureStageRequestCompatibility GatewayFailureStage = "request_compatibility"
 )
 
 // GatewayFailureScope identifies whether selecting another account can help.
@@ -712,11 +805,15 @@ type UpstreamFailoverError struct {
 	NextAccountAction        NextAccountAction
 	ClientStatusCode         int
 	ClientMessage            string
+	StreamFailedFrame        *OpenAIStreamFailedFrame // 触发本次 failover 的流内 failed/error 帧；耗尽时用于错误透传规则匹配
 }
 
 func (e *UpstreamFailoverError) Error() string {
 	if e != nil && e.Stage == GatewayFailureStageAccountAuth {
 		return fmt.Sprintf("credential failure: %s (failover)", e.Reason)
+	}
+	if e != nil && e.Stage == GatewayFailureStageRequestCompatibility {
+		return fmt.Sprintf("request compatibility failure: %s (failover)", e.Reason)
 	}
 	return fmt.Sprintf("upstream error: %d (failover)", e.StatusCode)
 }
@@ -730,10 +827,10 @@ func (e *UpstreamFailoverError) IsCredentialFailure() bool {
 }
 
 // ShouldReportAccountScheduleFailure prevents provider- and request-scoped
-// credential failures from being misattributed to the selected account. Legacy
-// and inference failures retain their existing scheduler-health behavior.
+// credential failures and local request incompatibility from being misattributed
+// to account health. Legacy and inference failures retain their existing behavior.
 func (e *UpstreamFailoverError) ShouldReportAccountScheduleFailure() bool {
-	if e == nil {
+	if e == nil || e.Stage == GatewayFailureStageRequestCompatibility {
 		return false
 	}
 	return !e.IsCredentialFailure() || e.Scope == GatewayFailureScopeAccount
@@ -970,6 +1067,23 @@ func (s *GatewayService) BindStickySession(ctx context.Context, groupID *int64, 
 		return nil
 	}
 	return s.cache.SetSessionAccountID(ctx, derefGroupID(groupID), sessionHash, accountID, stickySessionTTL)
+}
+
+// BindStickySessionUnlessRebound writes the terminal session -> account binding
+// unless another request rebound the key while this one was forwarding. The
+// write only covers values this request may have written itself: a missing key,
+// accountID (only the TTL is refreshed) and the accounts it failed over from.
+// Any other value belongs to another request and survives. Caches without the
+// compare capability fall back to the unconditional write.
+func (s *GatewayService) BindStickySessionUnlessRebound(ctx context.Context, groupID *int64, sessionHash string, accountID int64, replaceableAccountIDs []int64) error {
+	if sessionHash == "" || accountID <= 0 || s.cache == nil {
+		return nil
+	}
+	if cache, ok := s.cache.(GatewayStickySessionCompareCache); ok {
+		_, err := cache.CompareAndBindSessionAccountID(ctx, derefGroupID(groupID), sessionHash, accountID, replaceableAccountIDs, stickySessionTTL)
+		return err
+	}
+	return s.BindStickySession(ctx, groupID, sessionHash, accountID)
 }
 
 // bindGatewayStickySessionDuringSelection preserves the normal eager sticky
@@ -1357,7 +1471,7 @@ func (s *GatewayService) DoGrokNativeResponsesJSON(ctx context.Context, account 
 	upstreamReq.Header.Set("Accept", "application/json")
 	upstreamReq.Header.Set("User-Agent", defaultGrokUpstreamUserAgent())
 	applyGrokCLIHeaders(upstreamReq.Header)
-	account.ApplyHeaderOverrides(upstreamReq.Header)
+	account.ApplyHeaderOverrides(upstreamReq.Context(), upstreamReq.Header)
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()
@@ -1443,12 +1557,12 @@ func (s *GatewayService) GetAvailableModels(ctx context.Context, groupID *int64,
 	hasAnyMapping := false
 
 	for _, acc := range accounts {
-		// Passthrough routing accepts models independently of model_mapping, so a
+		// Default passthrough accepts models independently of model_mapping, so a
 		// stale mapping on a passthrough account must not narrow the public list.
 		// Treat it like an unmapped account: skip its mapping here and let
 		// supplementUnmappedOpenAIModels contribute the default set. Mappings on
 		// the ordinary accounts in the same group still count.
-		if platform == PlatformOpenAI && acc.IsOpenAIPassthroughEnabled() {
+		if platform == PlatformOpenAI && acc.IsOpenAIPassthroughEnabled() && !acc.IsOpenAIPassthroughModelFilterEnabled() {
 			continue
 		}
 

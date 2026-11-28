@@ -8,6 +8,9 @@ import (
 )
 
 func NormalizeOpenAICompatRequestedModel(model string) string {
+	if base := openai.GPT62ModelID(model); base != "" {
+		return base
+	}
 	if openai.IsGPT61TerraModelSpelling(model) {
 		return "gpt-6.1-terra"
 	}
@@ -27,7 +30,7 @@ func NormalizeOpenAICompatRequestedModel(model string) string {
 }
 
 func applyOpenAICompatModelNormalization(req *apicompat.AnthropicRequest) {
-	if req != nil && (openai.IsGPT61SolModelSpelling(req.Model) || openai.IsGPT61TerraModelSpelling(req.Model)) {
+	if req != nil && (openai.GPT62ModelID(req.Model) != "" || openai.IsGPT61SolModelSpelling(req.Model) || openai.IsGPT61TerraModelSpelling(req.Model)) {
 		canonical := openai.CanonicalizeOpenAIModelAliasSpelling(req.Model)
 		baseModel := NormalizeOpenAICompatRequestedModel(req.Model)
 		if effort, ok := strings.CutPrefix(canonical, baseModel+"-"); ok && effort != "openai-compact" {
@@ -132,7 +135,15 @@ func openAICompatAnthropicReasoningEffort(req *apicompat.AnthropicRequest, upstr
 	if convertedEffort == "none" {
 		return convertedEffort
 	}
-	if req == nil || req.OutputConfig == nil || !strings.EqualFold(strings.TrimSpace(req.OutputConfig.Effort), "max") {
+	if req == nil || req.OutputConfig == nil || strings.TrimSpace(req.OutputConfig.Effort) == "" {
+		// Without a client preference the bridge sends medium. DeepSeek's scale
+		// is low/high/max and has no medium, so send DeepSeek's default instead.
+		if convertedEffort == "medium" && isDeepSeekCodexModel(upstreamModel) {
+			return deepSeekDefaultReasoningEffort
+		}
+		return convertedEffort
+	}
+	if !strings.EqualFold(strings.TrimSpace(req.OutputConfig.Effort), "max") {
 		return convertedEffort
 	}
 	if normalized := normalizeOpenAIReasoningEffortForModel(req.OutputConfig.Effort, upstreamModel); normalized != "" {

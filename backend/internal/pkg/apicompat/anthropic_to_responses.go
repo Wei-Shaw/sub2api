@@ -82,7 +82,7 @@ func AnthropicToResponsesWithOptions(req *AnthropicRequest, options AnthropicToR
 
 	// An explicit thinking disable takes precedence over output_config.effort.
 	effort := anthropicReasoningEffort(req)
-	if (openai.IsGPT61SolModelSpelling(req.Model) || openai.IsGPT61TerraModelSpelling(req.Model)) && req.OutputConfig != nil && req.OutputConfig.Effort == "max" && effort != "none" {
+	if (openai.GPT62ModelID(req.Model) != "" || openai.IsGPT61SolModelSpelling(req.Model) || openai.IsGPT61TerraModelSpelling(req.Model)) && req.OutputConfig != nil && req.OutputConfig.Effort == "max" && effort != "none" {
 		effort = "max"
 	}
 	out.Reasoning = &ResponsesReasoning{
@@ -206,6 +206,16 @@ func anthropicMsgToResponsesItems(m AnthropicMessage) ([]ResponsesInputItem, err
 		return anthropicUserToResponses(m.Content)
 	case "assistant":
 		return anthropicAssistantToResponses(m.Content)
+	case "system":
+		// Mid-conversation system turns (e.g. hook output) keep system-level
+		// authority: Responses uses developer for them, not user.
+		items, err := anthropicUserToResponses(m.Content)
+		for i := range items {
+			if items[i].Role == "user" {
+				items[i].Role = "developer"
+			}
+		}
+		return items, err
 	default:
 		return anthropicUserToResponses(m.Content)
 	}
@@ -378,10 +388,16 @@ func fromResponsesCallID(id string) string {
 	return id
 }
 
-// anthropicImageToDataURI converts an AnthropicImageSource to a data URI string.
-// Returns "" if the source is nil or has no data.
+// anthropicImageToDataURI returns a URL source unchanged or encodes base64 data
+// as a data URI. Returns "" if the source is nil or has no image data.
 func anthropicImageToDataURI(src *AnthropicImageSource) string {
-	if src == nil || src.Data == "" {
+	if src == nil {
+		return ""
+	}
+	if src.Type == "url" {
+		return src.URL
+	}
+	if src.Data == "" {
 		return ""
 	}
 	mediaType := src.MediaType

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"strings"
 
 	"github.com/tidwall/gjson"
@@ -36,21 +37,105 @@ func GroupAllowsImageGeneration(group *Group) bool {
 	return group == nil || group.AllowImageGeneration
 }
 
-// IsImageGenerationIntent classifies requests that can produce generated images.
-func IsImageGenerationIntent(endpoint string, requestedModel string, body []byte) bool {
-	if IsImageGenerationEndpoint(endpoint) {
-		return true
-	}
-	if isOpenAIImageGenerationModel(requestedModel) {
-		return true
-	}
-	if len(body) == 0 || !gjson.ValidBytes(body) {
+var (
+	// imageGenLiteralBytes 覆盖扫描侧的全部非模型分支：tool type image_generation
+	// 自带该前缀，namespace / tool_choice / 函数引用的名字都是 image_gen。
+	imageGenLiteralBytes = []byte("image_gen")
+	// imageModelFoldBytes 覆盖 model 分支：gpt-image-* 与 grok-imagine* 都含 imag，
+	// 模型名按 ToLower 比较，这里做 ASCII 折叠匹配。
+	imageModelFoldBytes = []byte("imag")
+)
+
+// openAIBodyMayDeclareImageGeneration 是生图意图扫描的字节级必要条件。
+//
+// 扫描侧每个能让意图成立的取值都要求 body 里出现 image_gen 字面量，或 model 值本身
+// 是图片模型；因此不满足本判定的 body 一定不会命中扫描，可以整段跳过
+// gjson.ValidBytes 全量校验与根对象遍历（大 body 上这两步各占数百微秒）。
+// 只做字节级预检查，宁多算不漏判：含 \u 转义时交给完整扫描兜底，因为 JSON 字符串
+// 允许把 image_gen 的任意字节写成 unicode 转义。
+//
+// 唯一的理论缺口：模型名比较走 strings.ToLower（Unicode 简易映射），把非 ASCII
+// 字母折叠成 ASCII 的拼写（如 İ→i）不在字节折叠覆盖内；这类拼写不是真实模型 id，
+// 且以 \u 形式出现时仍由上面的转义兜底放行。
+func openAIBodyMayDeclareImageGeneration(body []byte) bool {
+	if len(body) == 0 {
 		return false
 	}
+	if bytes.Contains(body, imageGenLiteralBytes) {
+		return true
+	}
+	if containsASCIIFold(body, imageModelFoldBytes) {
+		return true
+	}
+	return bytes.Contains(body, jsonUnicodeEscapeBytes)
+}
 
+// IsImageGenerationIntent classifies requests that can produce generated images.
+func IsImageGenerationIntent(endpoint string, requestedModel string, body []byte) bool {
+	return openAIImageGenerationIntent(endpoint, requestedModel, body, false, true)
+}
+
+// IsExplicitImageGenerationIntent 仅检测原生 image_generation 工具、图片模型和显式 tool_choice，
+// 不检测被动的 image_gen namespace 声明。用于 capability 路由决策——被动 namespace 不应
+// 强制要求原生 Responses 能力，否则 Chat Completions-only 账号会被误过滤（#4476）。
+func IsExplicitImageGenerationIntent(endpoint string, requestedModel string, body []byte) bool {
+	return openAIImageGenerationIntent(endpoint, requestedModel, body, true, true)
+}
+
+// IsImageGenerationIntentForPlatform applies platform-specific intent rules.
+//
+// Codex advertises the image_gen namespace on ordinary Responses requests so
+// that it is available if the model needs it. Grok strips namespace and
+// Responses Lite additional_tools declarations before forwarding, so those
+// declarations alone must not turn every Codex request into an image request.
+// Native image_generation tools, explicit image selection and image models
+// remain image intent. Other platforms retain the original declaration rule.
+func IsImageGenerationIntentForPlatform(endpoint string, requestedModel string, body []byte, platform string) bool {
+	return openAIImageGenerationIntentForPlatform(endpoint, requestedModel, body, platform, true)
+}
+
+// IsImageGenerationIntentForPlatformValidated 与 IsImageGenerationIntentForPlatform 判定相同，
+// 但要求调用方已经确认 body 是合法 JSON（例如 handler 已对同一份字节做过 gjson.ValidBytes）。
+// 它跳过这次全量校验——大 body 上这一项占判定耗时的六成以上。非法 JSON 的语义与未校验
+// 版本不同，只允许在校验过同一份字节、且后续改写只经由 sjson / json.Marshal 的调用点使用。
+func IsImageGenerationIntentForPlatformValidated(endpoint string, requestedModel string, body []byte, platform string) bool {
+	return openAIImageGenerationIntentForPlatform(endpoint, requestedModel, body, platform, false)
+}
+
+func openAIImageGenerationIntentForPlatform(endpoint string, requestedModel string, body []byte, platform string, validate bool) bool {
+	if !strings.EqualFold(strings.TrimSpace(platform), PlatformGrok) {
+		return openAIImageGenerationIntent(endpoint, requestedModel, body, false, validate)
+	}
+	// Grok removes namespace catalogs before forwarding. Native image_generation
+	// remains an explicit capability request.
+	return openAIImageGenerationIntent(endpoint, requestedModel, body, true, validate)
+}
+
+// openAIImageGenerationIntent 统一入口：先做 O(1) 端点/模型判断，再用字节级预检查
+// 挡住不可能命中扫描的 body，最后才按需校验并遍历根对象。
+func openAIImageGenerationIntent(endpoint string, requestedModel string, body []byte, explicit bool, validate bool) bool {
+	if IsImageGenerationEndpoint(endpoint) || isOpenAIImageGenerationModel(requestedModel) {
+		return true
+	}
+	if !openAIBodyMayDeclareImageGeneration(body) {
+		return false
+	}
+	if validate && !gjson.ValidBytes(body) {
+		return false
+	}
+	root := parseRawJSONView(body)
+	if explicit {
+		return explicitImageGenerationDeclarationsFromRoot(root)
+	}
+	return imageGenerationDeclarationsFromRoot(root)
+}
+
+// imageGenerationDeclarationsFromRoot 走一遍根对象，保留「重复键取第一个」语义，
+// 覆盖 model、tools、input.additional_tools 与 tool_choice。调用方负责 JSON 合法性。
+func imageGenerationDeclarationsFromRoot(root gjson.Result) bool {
 	var modelSeen, toolsSeen, inputSeen, toolChoiceSeen bool
 	imageIntent := false
-	parseRawJSONView(body).ForEach(func(key, value gjson.Result) bool {
+	root.ForEach(func(key, value gjson.Result) bool {
 		// GetBytes returns the first duplicate key; retain that behavior while walking the root once.
 		switch key.Str {
 		case "model":
@@ -79,19 +164,12 @@ func IsImageGenerationIntent(endpoint string, requestedModel string, body []byte
 	return imageIntent
 }
 
-// IsExplicitImageGenerationIntent 仅检测原生 image_generation 工具、图片模型和显式 tool_choice，
-// 不检测被动的 image_gen namespace 声明。用于 capability 路由决策——被动 namespace 不应
-// 强制要求原生 Responses 能力，否则 Chat Completions-only 账号会被误过滤（#4476）。
-func IsExplicitImageGenerationIntent(endpoint string, requestedModel string, body []byte) bool {
-	if IsImageGenerationEndpoint(endpoint) || isOpenAIImageGenerationModel(requestedModel) {
-		return true
-	}
-	if len(body) == 0 || !gjson.ValidBytes(body) {
-		return false
-	}
+// explicitImageGenerationDeclarationsFromRoot 只认原生 image_generation 工具、图片模型
+// 与显式 tool_choice，不认被动的 image_gen namespace 声明。
+func explicitImageGenerationDeclarationsFromRoot(root gjson.Result) bool {
 	var modelSeen, toolsSeen, toolChoiceSeen bool
 	imageIntent := false
-	parseRawJSONView(body).ForEach(func(key, value gjson.Result) bool {
+	root.ForEach(func(key, value gjson.Result) bool {
 		switch key.Str {
 		case "model":
 			if !modelSeen {
@@ -101,56 +179,6 @@ func IsExplicitImageGenerationIntent(endpoint string, requestedModel string, bod
 		case "tools":
 			if !toolsSeen {
 				toolsSeen = true
-				imageIntent = openAIJSONToolsContainNativeImageGeneration(value)
-			}
-		case "tool_choice":
-			if !toolChoiceSeen {
-				toolChoiceSeen = true
-				imageIntent = openAIJSONToolChoiceSelectsExplicitImageGeneration(value)
-			}
-		}
-		return !imageIntent && (!modelSeen || !toolsSeen || !toolChoiceSeen)
-	})
-	return imageIntent
-}
-
-// IsImageGenerationIntentForPlatform applies platform-specific intent rules.
-//
-// Codex advertises the image_gen namespace on ordinary Responses requests so
-// that it is available if the model needs it. Grok strips namespace and
-// Responses Lite additional_tools declarations before forwarding, so those
-// declarations alone must not turn every Codex request into an image request.
-// Native image_generation tools, explicit image selection and image models
-// remain image intent. Other platforms retain the original declaration rule.
-func IsImageGenerationIntentForPlatform(endpoint string, requestedModel string, body []byte, platform string) bool {
-	if !strings.EqualFold(strings.TrimSpace(platform), PlatformGrok) {
-		return IsImageGenerationIntent(endpoint, requestedModel, body)
-	}
-	return isExplicitGrokImageGenerationIntent(endpoint, requestedModel, body)
-}
-
-func isExplicitGrokImageGenerationIntent(endpoint string, requestedModel string, body []byte) bool {
-	if IsImageGenerationEndpoint(endpoint) || isOpenAIImageGenerationModel(requestedModel) {
-		return true
-	}
-	if len(body) == 0 || !gjson.ValidBytes(body) {
-		return false
-	}
-
-	var modelSeen, toolsSeen, toolChoiceSeen bool
-	imageIntent := false
-	parseRawJSONView(body).ForEach(func(key, value gjson.Result) bool {
-		switch key.Str {
-		case "model":
-			if !modelSeen {
-				modelSeen = true
-				imageIntent = isOpenAIImageGenerationModel(strings.TrimSpace(value.String()))
-			}
-		case "tools":
-			if !toolsSeen {
-				toolsSeen = true
-				// Grok removes namespace catalogs before forwarding. Native
-				// image_generation remains an explicit capability request.
 				imageIntent = openAIJSONToolsContainNativeImageGeneration(value)
 			}
 		case "tool_choice":
@@ -272,7 +300,7 @@ func openAIJSONInputContainsImageGenTool(input gjson.Result) bool {
 }
 
 func openAIRequestBodyHasImageGenerationDeclaration(body []byte) bool {
-	if len(body) == 0 || !gjson.ValidBytes(body) {
+	if len(body) == 0 || !openAIBodyMayDeclareImageGeneration(body) || !gjson.ValidBytes(body) {
 		return false
 	}
 	return openAIJSONToolsContainImageGeneration(gjson.GetBytes(body, "tools")) ||
@@ -281,7 +309,7 @@ func openAIRequestBodyHasImageGenerationDeclaration(body []byte) bool {
 }
 
 func openAIRequestBodyImageGenerationToolNeedsNormalization(body []byte) bool {
-	if len(body) == 0 || !gjson.ValidBytes(body) {
+	if len(body) == 0 || !openAIBodyMayDeclareImageGeneration(body) || !gjson.ValidBytes(body) {
 		return false
 	}
 	tools := gjson.GetBytes(body, "tools")

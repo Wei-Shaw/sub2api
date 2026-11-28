@@ -27,11 +27,11 @@ func TestIsModelSupported_OpenAIOAuthEmptyMapping_ServableModels(t *testing.T) {
 		"gpt-5.1-codex-mini",
 		"gpt-5",
 		"codex-mini-latest",
-		"gpt5.3codexspark",  // 别名拼写
-		"gpt-image-1",       // 图像生成模型
-		"claude-sonnet-4-6", // /v1/messages 调度默认映射兜底
-		"claude-3-opus-20240229",
-		"gpt-4o",          // 保守 fail-open：非黑名单模型保持允许
+		"gpt5.3codexspark", // 别名拼写
+		"gpt-image-1",      // 图像生成模型
+		"gpt-4o",           // 保守 fail-open：非黑名单模型保持允许
+		"k3.1",             // 未知 K3.1 别名不纳入精确识别，保持 fail-open
+		"k3.1-pro-preview",
 		"my-custom-alias", // 自定义别名可能由渠道级映射在转发前改写，保持允许
 	}
 	for _, model := range servable {
@@ -45,6 +45,9 @@ func TestIsModelSupported_OpenAIOAuthEmptyMapping_RejectsForeignModels(t *testin
 	// Codex 上游必然以不可重试的 400 拒绝这些厂商家族；调度阶段就应跳过
 	// 该账号，让显式声明支持的 API Key 账号接手（#3662）。
 	foreign := []string{
+		"claude-sonnet-4-6", // /v1/messages 的 opus/sonnet/haiku 在调度前已映射到 gpt-5.x
+		"claude-3-opus-20240229",
+		"claude-fable-5-1",
 		"deepseek-v4",
 		"deepseek-chat",
 		"glm-4.7",
@@ -52,6 +55,10 @@ func TestIsModelSupported_OpenAIOAuthEmptyMapping_RejectsForeignModels(t *testin
 		"k3",          // Kimi Code bare ID（无厂商前缀，需精确拒绝）
 		"k3-256k",     // Kimi Code bare ID
 		"provider/k3", // vendor/model 取 last segment 后仍为 k3
+		"k3.1-pro",
+		"k3.1-pro-highspeed",
+		"provider/K3.1-PRO",
+		"provider/k3.1-pro-highspeed",
 		"moonshot-v1-128k",
 		"gemini-3.0-pro",
 		"grok-4",
@@ -69,22 +76,54 @@ func TestIsModelSupported_OpenAIOAuthExplicitMappingUnchanged(t *testing.T) {
 	account := newOpenAIOAuthAccountForModelTest()
 	account.Credentials = map[string]any{
 		"model_mapping": map[string]any{
-			"deepseek-v4": "gpt-5.4",
-			"k3":          "gpt-5.4", // 显式映射优先：bare k3 仍可被账号声明支持
+			"deepseek-v4":        "gpt-5.4",
+			"k3.1-pro":           "gpt-5.4",
+			"k3.1-pro-highspeed": "gpt-5.4",
+			"k3":                 "gpt-5.4", // 显式映射优先：bare k3 仍可被账号声明支持
 		},
 	}
 
 	// 显式映射沿用原有语义：命中映射即支持，未命中即不支持。
 	require.True(t, account.IsModelSupported("deepseek-v4"))
 	require.True(t, account.IsModelSupported("k3"))
+	require.True(t, account.IsModelSupported("k3.1-pro"))
+	require.True(t, account.IsModelSupported("k3.1-pro-highspeed"))
 	require.False(t, account.IsModelSupported("glm-4.7"))
 }
 
-func TestIsModelSupported_OpenAIOAuthPassthroughAllowsAll(t *testing.T) {
+func TestIsModelSupported_OpenAIOAuthPassthroughRejectsForeignModels(t *testing.T) {
 	account := newOpenAIOAuthAccountForModelTest()
 	account.Extra = map[string]any{"openai_passthrough": true}
 
-	// 透传模式仅替换认证，模型语义由上游决定，保持"允许所有"。
+	// 透传仍放行 Codex 上游可能认识的任意名字，但 OAuth 透传的出口恒为
+	// chatgpt.com/backend-api/codex，异族厂商模型在那里必然 400，调度阶段就应跳过。
+	require.True(t, account.IsModelSupported("gpt-5.6-sol"))
+	require.True(t, account.IsModelSupported("my-custom-alias"))
+	require.False(t, account.IsModelSupported("claude-fable-5-1"))
+	require.False(t, account.IsModelSupported("claude-opus-5-5"))
+	require.False(t, account.IsModelSupported("deepseek-v4"))
+
+	setupToken := &Account{
+		ID:       5,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeSetupToken,
+		Extra:    map[string]any{"openai_passthrough": true},
+	}
+	// Setup Token 与 OAuth 共用 Codex 出口。
+	require.True(t, setupToken.IsModelSupported("gpt-5.6-sol"))
+	require.False(t, setupToken.IsModelSupported("claude-fable-5-1"))
+}
+
+func TestIsModelSupported_OpenAIAPIKeyPassthroughAllowsForeignModels(t *testing.T) {
+	account := &Account{
+		ID:       4,
+		Platform: PlatformOpenAI,
+		Type:     AccountTypeAPIKey,
+		Extra:    map[string]any{"openai_passthrough": true},
+	}
+
+	// API Key 透传的上游由 base_url 决定，可能正是服务 claude-*/deepseek-* 的中转站。
+	require.True(t, account.IsModelSupported("claude-fable-5-1"))
 	require.True(t, account.IsModelSupported("deepseek-v4"))
 }
 
@@ -99,7 +138,7 @@ func TestIsModelSupported_OpenAIOAuthPassthroughIgnoresLeftoverMapping(t *testin
 	}
 
 	require.True(t, account.IsModelSupported("gpt-5.6-sol"), "透传应放行不在残留白名单中的新模型")
-	require.True(t, account.IsModelSupported("deepseek-v4"), "透传应放行任意模型")
+	require.True(t, account.IsModelSupported("my-custom-alias"), "透传应放行不在残留白名单中的自定义别名")
 }
 
 func TestIsModelSupported_OpenAIAPIKeyEmptyMappingAllowsAll(t *testing.T) {
@@ -123,7 +162,8 @@ func TestIsModelSupported_NonOpenAIPlatformsUnchanged(t *testing.T) {
 func TestIsOpenAIOAuthServableModel(t *testing.T) {
 	require.True(t, isOpenAIOAuthServableModel("gpt-5.4-high"))
 	require.True(t, isOpenAIOAuthServableModel("  gpt-5.3-codex  "))
-	require.True(t, isOpenAIOAuthServableModel("claude-3-5-haiku-20241022"))
+	require.False(t, isOpenAIOAuthServableModel("claude-3-5-haiku-20241022"))
+	require.False(t, isOpenAIOAuthServableModel("provider/claude-fable-5-1"))
 	require.True(t, isOpenAIOAuthServableModel("DeepThink-x"))  // 非黑名单前缀，保持允许
 	require.False(t, isOpenAIOAuthServableModel("DeepSeek-V4")) // 大小写不敏感
 	require.False(t, isOpenAIOAuthServableModel("qwen3-235b-thinking"))

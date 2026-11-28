@@ -294,6 +294,7 @@ type CreateGroupInput struct {
 	AllowMessagesDispatch       bool
 	AllowLive                   bool
 	ForceOpenAIFast             bool
+	ForceOpenAIUltrafast        bool
 	FreeOpenAIFast              bool
 	DefaultMappedModel          string
 	RequireOAuthOnly            bool
@@ -377,6 +378,7 @@ type UpdateGroupInput struct {
 	AllowMessagesDispatch       *bool
 	AllowLive                   *bool
 	ForceOpenAIFast             *bool
+	ForceOpenAIUltrafast        *bool
 	FreeOpenAIFast              *bool
 	DefaultMappedModel          *string
 	RequireOAuthOnly            *bool
@@ -418,6 +420,7 @@ type CreateAccountInput struct {
 	ExpiresAt          *int64
 	AutoPauseOnExpired *bool
 	ProbeEnabled       *bool
+	GroupSyncEnabled   *bool
 	// SkipDefaultGroupBind prevents auto-binding to platform default group when GroupIDs is empty.
 	SkipDefaultGroupBind bool
 	// SkipMixedChannelCheck skips the mixed channel risk check when binding groups.
@@ -451,6 +454,7 @@ type UpdateAccountInput struct {
 	ExpiresAt             *int64
 	AutoPauseOnExpired    *bool
 	ProbeEnabled          *bool
+	GroupSyncEnabled      *bool
 	RateSyncEnabled       *bool
 	SkipMixedChannelCheck bool // 跳过混合渠道检查（用户已确认风险）
 }
@@ -601,6 +605,8 @@ type ProxyQualityCheckResult struct {
 	ExitIP         string                  `json:"exit_ip,omitempty"`
 	Country        string                  `json:"country,omitempty"`
 	CountryCode    string                  `json:"country_code,omitempty"`
+	Region         string                  `json:"region,omitempty"`
+	City           string                  `json:"city,omitempty"`
 	BaseLatencyMs  int64                   `json:"base_latency_ms,omitempty"`
 	PassedCount    int                     `json:"passed_count"`
 	WarnCount      int                     `json:"warn_count"`
@@ -719,6 +725,8 @@ type adminServiceImpl struct {
 	affiliateService     adminRechargeAffiliateAccruer
 	compositeRouteRepo   CompositeModelRouteRepository
 	compositeResolver    *CompositeRouteResolver
+
+	userPlatformQuotaRepo UserPlatformQuotaRepository
 	// 分组平台变更后用来失效渠道缓存；可为 nil（缓存会在 TTL 到期后自然重建）
 	channelCacheInvalidator ChannelCacheInvalidator
 }
@@ -762,6 +770,7 @@ func NewAdminService(
 	compositeRouteRepo CompositeModelRouteRepository,
 	compositeResolver *CompositeRouteResolver,
 	channelCacheInvalidator ChannelCacheInvalidator,
+	userPlatformQuotaRepo UserPlatformQuotaRepository,
 ) AdminService {
 	return &adminServiceImpl{
 		cfg:                  cfg,
@@ -792,5 +801,6 @@ func NewAdminService(
 		compositeResolver:    compositeResolver,
 
 		channelCacheInvalidator: channelCacheInvalidator,
+		userPlatformQuotaRepo:   userPlatformQuotaRepo,
 	}
 }

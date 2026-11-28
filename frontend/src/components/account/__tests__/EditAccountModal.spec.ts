@@ -1,14 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import {
   BUILTIN_PLATFORM_CATALOG,
   resetPlatformCatalog,
   setPlatformCatalog
 } from '@/constants/platformCatalog'
 
-const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
+const { updateAccountMock, checkMixedChannelRiskMock, previewUpstreamGroup, authIsSimpleMode } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
+  previewUpstreamGroup: vi.fn(),
   checkMixedChannelRiskMock: vi.fn(),
   authIsSimpleMode: { value: true }
 }))
@@ -33,6 +34,7 @@ vi.mock('@/api/admin', () => ({
   adminAPI: {
     accounts: {
       update: updateAccountMock,
+      previewUpstreamGroup,
       checkMixedChannelRisk: checkMixedChannelRiskMock
     },
     settings: {
@@ -335,6 +337,66 @@ describe('EditAccountModal', () => {
   })
 
   afterEach(() => vi.useRealTimers())
+
+  it('uses the saved connection until the administrator changes the upstream', async () => {
+    const account = buildAccount()
+    account.notes = 'local notes'
+    const wrapper = mountModal(account)
+    const sync = wrapper.getComponent({ name: 'UpstreamGroupSyncButton' }).get('button')
+    previewUpstreamGroup.mockResolvedValue({ name: 'Updated group' })
+    await sync.trigger('click')
+    await flushPromises()
+    expect(previewUpstreamGroup).toHaveBeenLastCalledWith({ account_id: account.id }, expect.anything())
+    expect(wrapper.get<HTMLInputElement>('[data-tour="edit-account-form-name"]').element.value).toBe('Updated group')
+    expect(wrapper.get<HTMLTextAreaElement>('textarea').element.value).toBe('local notes')
+
+    await wrapper.get('input[placeholder="https://api.openai.com"]').setValue('https://new-relay.example')
+    expect(sync.element.disabled).toBe(true)
+    await wrapper.get('input[type="password"]').setValue('replacement-key')
+    await sync.trigger('click')
+    expect(previewUpstreamGroup).toHaveBeenLastCalledWith({
+      platform: 'openai', base_url: 'https://new-relay.example', api_key: 'replacement-key', proxy_id: null
+    }, expect.anything())
+    wrapper.unmount()
+  })
+
+  it.each(['apikey', 'oauth'])('can opt a passthrough %s account into model filtering without changing groups', async (type) => {
+    const account = buildAccount()
+    account.type = type
+    account.extra = { openai_passthrough: true }
+    account.group_ids = [17]
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+
+    expect(wrapper.findComponent(ModelWhitelistSelectorStub).exists()).toBe(false)
+    await wrapper.get('[data-testid="edit-openai-passthrough-model-filter"]').setValue(true)
+    await wrapper.get('[data-testid="rewrite-to-snapshot"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    const payload = updateAccountMock.mock.calls[0]?.[1]
+    expect(payload.extra.openai_passthrough).toBe(true)
+    expect(payload.extra.openai_passthrough_model_filter).toBe(true)
+    expect(payload.credentials.model_mapping).toEqual({ 'gpt-5.2-2025-12-11': 'gpt-5.2-2025-12-11' })
+    expect(payload.group_ids).toEqual([17])
+    wrapper.unmount()
+  })
+
+  it('loads the saved model filter and removes it when passthrough is disabled', async () => {
+    const account = buildAccount()
+    account.extra = { openai_passthrough: true, openai_passthrough_model_filter: true }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+
+    expect(wrapper.get<HTMLInputElement>('[data-testid="edit-openai-passthrough-model-filter"]').element.checked).toBe(true)
+    expect(wrapper.findComponent(ModelWhitelistSelectorStub).exists()).toBe(true)
+    await wrapper.get('[data-testid="edit-openai-passthrough-toggle"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).not.toHaveProperty('openai_passthrough_model_filter')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.credentials.model_mapping).toEqual(account.credentials.model_mapping)
+    wrapper.unmount()
+  })
 
   it('passes existing non-identity mappings to the whitelist selector and preserves them on save', async () => {
     const account = buildAccount()
@@ -1297,6 +1359,26 @@ describe('EditAccountModal', () => {
 
     expect(updateAccountMock).toHaveBeenCalledTimes(1)
     expect(updateAccountMock.mock.calls[0]?.[1]?.upstream_billing_probe_enabled).toBe(true)
+  })
+
+  it('opts into group sync independently and clears it when probing stops', async () => {
+    const account = buildAccount()
+    updateAccountMock.mockResolvedValue(account)
+    const wrapper = mountModal(account)
+    const group = wrapper.get('[data-testid="upstream-billing-group-sync"]')
+    const probe = wrapper.get('[data-testid="upstream-billing-auto-probe"]')
+    const rate = wrapper.get('[data-testid="upstream-billing-rate-sync"]')
+    expect(group.attributes('aria-checked')).toBe('false')
+    await group.trigger('click')
+    expect(probe.attributes('aria-checked')).toBe('true')
+    expect(rate.attributes('aria-checked')).toBe('false')
+    await wrapper.get('form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.lastCall?.[1]).toMatchObject({
+      upstream_billing_group_sync_enabled: true, upstream_billing_rate_sync_enabled: false
+    })
+    await probe.trigger('click')
+    expect(group.attributes('aria-checked')).toBe('false')
+    wrapper.unmount()
   })
 
   it('enabling rate sync also enables probing and stops submitting a manual rate', async () => {

@@ -448,15 +448,15 @@ func (s *GatewayService) buildCountTokensRequestAnthropicAPIKeyPassthrough(
 	// targetURL 的 base 取值），其余保持 extra/default 行为。
 	setAnthropicAPIKeyAuthHeader(req.Header, account, token, baseURL)
 
-	if req.Header.Get("content-type") == "" {
-		req.Header.Set("content-type", "application/json")
+	if getHeaderRaw(req.Header, "content-type") == "" {
+		setHeaderRaw(req.Header, "content-type", "application/json")
 	}
-	if req.Header.Get("anthropic-version") == "" {
-		req.Header.Set("anthropic-version", "2023-06-01")
+	if getHeaderRaw(req.Header, "anthropic-version") == "" {
+		setHeaderRaw(req.Header, "anthropic-version", "2023-06-01")
 	}
 
 	// 账号级请求头覆写（最终生效，覆盖上面所有来源的同名头）
-	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyHeaderOverrides(req.Context(), req.Header)
 	filterSonnet55ToolsetBetaHeader(req.Header, body, gjson.GetBytes(body, "model").String())
 
 	return req, nil
@@ -610,11 +610,11 @@ func (s *GatewayService) buildCountTokensRequest(ctx context.Context, c *gin.Con
 	}
 
 	// 账号级请求头覆写（仅 anthropic/openai api_key 账号启用时生效；OAuth 路径 no-op）
-	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyHeaderOverrides(req.Context(), req.Header)
 	filterSonnet55ToolsetBetaHeader(req.Header, body, modelID)
 
 	if c != nil && tokenType == "oauth" {
-		c.Set(claudeMimicDebugInfoKey, buildClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode))
+		c.Set(claudeMimicDebugInfoKey, newClaudeMimicDebugLine(req, body, account, tokenType, mimicClaudeCode))
 	}
 	if s.debugClaudeMimicEnabled() {
 		logClaudeMimicDebug(req, body, account, tokenType, mimicClaudeCode)

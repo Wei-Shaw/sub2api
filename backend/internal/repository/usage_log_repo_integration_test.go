@@ -947,6 +947,43 @@ func (s *UsageLogRepoSuite) TestGetAccountTodayStats() {
 	s.Require().InEpsilon(3.0, stats.UserCost, 0.0001)
 }
 
+func (s *UsageLogRepoSuite) TestAccountUpstreamErrorCounts() {
+	account := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-upstream-errors"})
+	other := mustCreateAccount(s.T(), s.client, &service.Account{Name: "acc-upstream-errors-other"})
+
+	today := timezone.Today().Add(1 * time.Hour)
+	yesterday := today.Add(-24 * time.Hour)
+	insert := func(accountID int64, owner string, businessLimited bool, statusCode int, createdAt time.Time) {
+		_, err := s.tx.ExecContext(s.ctx, `
+			INSERT INTO ops_error_logs (
+				account_id, error_phase, error_type, severity, status_code, error_owner, is_business_limited, created_at
+			) VALUES ($1, 'upstream', 'upstream_error', 'P2', $2, $3, $4, $5)`,
+			accountID, statusCode, owner, businessLimited, createdAt,
+		)
+		s.Require().NoError(err)
+	}
+	insert(account.ID, "provider", false, 502, today)
+	insert(account.ID, "provider", false, 429, today)
+	// 故障转移后恢复的请求：最终状态码 < 400，仍计为上游错误。
+	insert(account.ID, "provider", false, 200, today)
+	insert(account.ID, "provider", false, 500, yesterday)
+	insert(account.ID, "client", false, 400, today)
+	insert(account.ID, "provider", true, 503, today)
+	insert(other.ID, "provider", false, 500, today)
+
+	counts, err := s.repo.GetAccountUpstreamErrorCountsBatch(s.ctx, []int64{account.ID, 999999}, timezone.Today())
+	s.Require().NoError(err)
+	s.Require().Equal(int64(3), counts[account.ID])
+	s.Require().Contains(counts, int64(999999))
+	s.Require().Equal(int64(0), counts[999999])
+	s.Require().NotContains(counts, other.ID)
+
+	daily, err := s.repo.GetAccountDailyUpstreamErrorCounts(s.ctx, account.ID, timezone.Today().Add(-24*time.Hour), timezone.Today().Add(24*time.Hour))
+	s.Require().NoError(err)
+	s.Require().Equal(int64(3), daily[today.Format("2006-01-02")])
+	s.Require().Equal(int64(1), daily[yesterday.Format("2006-01-02")])
+}
+
 func (s *UsageLogRepoSuite) TestDashboardAggregationConsistency() {
 	now := time.Now().UTC().Truncate(time.Second)
 	// 使用固定的时间偏移确保 hour1 和 hour2 在同一天且都在过去
@@ -1308,6 +1345,34 @@ func (s *UsageLogRepoSuite) TestGetAccountWindowStats() {
 	s.Require().Equal(int64(70), stats.Tokens) // (10+20) + (15+25)
 }
 
+func (s *UsageLogRepoSuite) TestActiveFiveHourResetExcludesPreviousWindowCost() {
+	user := mustCreateUser(s.T(), s.client, &service.User{Email: "window-reset@test.com"})
+	apiKey := mustCreateApiKey(s.T(), s.client, &service.APIKey{UserID: user.ID, Key: "sk-window-reset", Name: "k"})
+	start := time.Now().UTC().Truncate(time.Second).Add(-30 * time.Minute)
+	oldStart := start.Add(-5 * time.Hour)
+	end := start.Add(5 * time.Hour)
+	account := mustCreateAccount(s.T(), s.client, &service.Account{
+		Name: "window-reset", Platform: service.PlatformAnthropic, Type: service.AccountTypeOAuth,
+		SessionWindowStart: &oldStart, SessionWindowEnd: &start, SessionWindowStatus: "allowed",
+		Extra: map[string]any{"window_cost_limit": 10.0, "window_cost_sticky_reserve": 1.0},
+	})
+	s.createUsageLog(user, apiKey, account, 10, 20, 20, start.Add(-time.Minute))
+	s.createUsageLog(user, apiKey, account, 10, 20, 2, start.Add(time.Minute))
+	accounts := newAccountRepositoryWithSQL(s.client, s.tx, nil)
+
+	// Active quota reads persist this reset before another model response can
+	// supply session-window headers. Reload as the next scheduler/UI read does.
+	s.Require().NoError(accounts.UpdateSessionWindowEnd(s.ctx, account.ID, end))
+	reloaded, err := accounts.GetByID(s.ctx, account.ID)
+	s.Require().NoError(err)
+	stats, err := s.repo.GetAccountWindowStats(s.ctx, account.ID, reloaded.GetCurrentWindowStartTime())
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), stats.Requests, "the previous window's request must not count in the new window")
+	s.Require().InDelta(2, stats.StandardCost, 0.000001)
+	s.Require().Equal(service.WindowCostSchedulable, reloaded.CheckWindowCostSchedulability(stats.StandardCost))
+	s.Require().Equal("allowed", reloaded.SessionWindowStatus)
+}
+
 // --- GetUserUsageTrendByUserID ---
 
 func (s *UsageLogRepoSuite) TestGetUserUsageTrendByUserID() {
@@ -1449,16 +1514,18 @@ func (s *UsageLogRepoSuite) TestGetModelStatsWithFilters() {
 
 	base := time.Date(2025, 1, 15, 12, 0, 0, 0, time.UTC)
 
+	accountRate := 0.4
 	log1 := &service.UsageLog{
-		UserID:       user.ID,
-		APIKeyID:     apiKey.ID,
-		AccountID:    account.ID,
-		Model:        "claude-3-opus",
-		InputTokens:  100,
-		OutputTokens: 200,
-		TotalCost:    0.5,
-		ActualCost:   0.5,
-		CreatedAt:    base,
+		UserID:                user.ID,
+		APIKeyID:              apiKey.ID,
+		AccountID:             account.ID,
+		Model:                 "claude-3-opus",
+		InputTokens:           100,
+		OutputTokens:          200,
+		TotalCost:             0.5,
+		ActualCost:            1.0,
+		AccountRateMultiplier: &accountRate,
+		CreatedAt:             base,
 	}
 	_, err := s.repo.Create(s.ctx, log1)
 	s.Require().NoError(err)
@@ -1494,6 +1561,12 @@ func (s *UsageLogRepoSuite) TestGetModelStatsWithFilters() {
 	stats, err = s.repo.GetModelStatsWithFilters(s.ctx, startTime, endTime, 0, 0, account.ID, 0, nil, nil, nil)
 	s.Require().NoError(err, "GetModelStatsWithFilters account filter")
 	s.Require().Len(stats, 2)
+	for _, stat := range stats {
+		if stat.Model == "claude-3-opus" {
+			s.Require().InEpsilon(1.0, stat.ActualCost, 0.0001)
+			s.Require().InEpsilon(0.2, stat.AccountCost, 0.0001)
+		}
+	}
 }
 
 // --- GetAccountUsageStats ---
