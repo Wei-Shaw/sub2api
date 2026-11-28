@@ -298,6 +298,17 @@ export default {
     resetQuotaConfirmMessage: 'Are you sure you want to reset the used quota (${used}) for key "{name}" to 0? This action cannot be undone.',
     quotaResetSuccess: 'Quota reset successfully',
     failedToResetQuota: 'Failed to reset quota',
+    resetAllQuota: 'Reset Quota',
+    resetAllQuotaHint: 'Reset the used quota of every quota-limited key in this account at once',
+    resetAllQuotaTitle: 'Reset All Quotas',
+    resetAllQuotaConfirmMessage:
+      'The used quota of every key with a quota limit in this account will be reset to 0, and any "quota exhausted" key will be reactivated.',
+    resetAllQuotaScopeHint:
+      'Keys with quota 0 (unlimited) are not affected. This action cannot be undone.',
+    resetAllQuotaIncludeRateLimit: 'Also reset 5h / 1d / 7d rate limit usage',
+    resetAllQuotaEmpty: 'No quota-limited keys found, nothing to reset',
+    resetAllQuotaSuccess: 'Reset quota for {count} key(s)',
+    resetAllQuotaPartial: 'Done: {reset} succeeded, {failed} failed',
     rateLimitColumn: 'Rate Limit',
     rateLimitSection: 'Rate Limit',
     resetUsage: 'Reset',

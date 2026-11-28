@@ -303,6 +303,17 @@ export default {
     resetQuotaConfirmMessage: '确定要将密钥 "{name}" 的已用额度（${used}）重置为 0 吗？此操作不可撤销。',
     quotaResetSuccess: '额度重置成功',
     failedToResetQuota: '重置额度失败',
+    resetAllQuota: '重置额度',
+    resetAllQuotaHint: '一键重置当前账号下所有设置了额度限制的密钥',
+    resetAllQuotaTitle: '一键重置全部额度',
+    resetAllQuotaConfirmMessage:
+      '将把当前账号下所有「设置了额度限制」的密钥的已用额度重置为 0，并把「额度耗尽」状态恢复为「活跃」。',
+    resetAllQuotaScopeHint:
+      '额度限制为 0（即无限制）的密钥不受影响。此操作不可撤销，请确认后再执行。',
+    resetAllQuotaIncludeRateLimit: '同时重置 5 小时 / 日 / 7 天限速用量',
+    resetAllQuotaEmpty: '当前没有设置了额度限制的密钥，无需重置',
+    resetAllQuotaSuccess: '已重置 {count} 个密钥的额度',
+    resetAllQuotaPartial: '重置完成：成功 {reset} 个，失败 {failed} 个',
     rateLimitColumn: '速率限制',
     rateLimitSection: '速率限制',
     resetUsage: '重置',

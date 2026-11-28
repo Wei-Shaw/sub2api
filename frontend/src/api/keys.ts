@@ -157,12 +157,43 @@ export async function toggleStatus(id: number, status: 'active' | 'inactive'): P
   return update(id, { status })
 }
 
+/**
+ * 一键重置当前账号下所有"设置了额度限制"（quota > 0）的 API Key 的已用额度。
+ * quota = 0（无限制）的 Key 不会被修改。
+ *
+ * @param includeRateLimitUsage - 是否同时重置 5h/1d/7d 限速用量（默认 false）
+ */
+export async function resetQuotaAll(
+  includeRateLimitUsage: boolean = false
+): Promise<ResetQuotaAllResult> {
+  const { data } = await apiClient.post<ResetQuotaAllResult>('/keys/reset-quota', {
+    include_rate_limit_usage: includeRateLimitUsage
+  })
+  return data
+}
+
+export interface ResetQuotaAllResult {
+  /** 设置了额度限制的 Key 数量 */
+  matched: number
+  /** 实际重置成功的数量 */
+  reset: number
+  /** 未设置额度限制而跳过的数量 */
+  skipped: number
+  /** 重置失败的数量 */
+  failed: number
+  /** 重置成功的 Key ID */
+  reset_key_ids: number[] | null
+  /** 重置失败的 Key ID */
+  failed_key_ids: number[] | null
+}
+
 export const keysAPI = {
   list,
   getById,
   create,
   update,
   bulkUpdate,
+  resetQuotaAll,
   delete: deleteKey,
   toggleStatus
 }
