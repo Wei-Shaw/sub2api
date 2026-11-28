@@ -255,8 +255,18 @@ func jsonObjectOrEmpty(raw string) json.RawMessage {
 }
 
 func resToAnthHandleToolSearchDone(evt *ResponsesStreamEvent, state *ResponsesEventToAnthropicState) []AnthropicStreamEvent {
-	events := closeCurrentBlock(state)
 	block := toolSearchCallToolUse(*evt.Item)
+	if state.ContentBlockOpen && state.CurrentBlockType == "tool_use" {
+		tool := ensurePendingToolBlock(state, evt.OutputIndex)
+		tool.CallID = block.ID
+		tool.Name = block.Name
+		tool.ItemType = "tool_search_call"
+		tool.FinalArgs = string(block.Input)
+		tool.ArgsDone = true
+		state.HasToolCall = true
+		return flushPendingToolBlocks(state, false)
+	}
+	events := closeCurrentBlock(state)
 	input := block.Input
 	block.Input = json.RawMessage(`{}`)
 	idx := state.ContentBlockIndex
