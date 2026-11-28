@@ -581,6 +581,40 @@
         </div>
       </div>
 
+      <!-- 账号级自动停调阈值覆盖（可选）：留空/100 表示跟随系统平台阈值 -->
+      <div
+        v-if="supportsCreateSchedulingThresholdOverride"
+        class="border-t border-gray-200 pt-4 dark:border-dark-600"
+        data-testid="create-account-scheduling-threshold"
+      >
+        <div class="mb-2 flex items-center justify-between">
+          <div>
+            <label class="input-label mb-0">{{ t('admin.accounts.accountSchedulingThresholdOverride') }}</label>
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.cnProviders.schedulingThresholdCreateHint') }}
+            </p>
+          </div>
+          <input
+            v-model="createSchedulingThresholdOverrideEnabled"
+            data-testid="create-account-scheduling-threshold-enabled"
+            type="checkbox"
+            class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <div v-if="createSchedulingThresholdOverrideEnabled">
+          <label class="input-label">{{ t('admin.accounts.accountSchedulingThresholdOverrideValue') }}</label>
+          <input
+            v-model.number="createSchedulingThresholdOverrideValue"
+            data-testid="create-account-scheduling-threshold-value"
+            type="number"
+            min="1"
+            max="100"
+            class="input"
+          />
+          <p class="input-hint">{{ t('admin.accounts.accountSchedulingThresholdOverrideDisabledHint') }}</p>
+        </div>
+      </div>
+
       <!-- Account Mode Selection (providers using the generic form) -->
       <div v-if="isGenericMultiProtocolPlatform && genericAccountModes.length > 1" data-testid="generic-account-mode">
         <label class="input-label">{{ t('admin.accounts.cnProviders.accountMode.title') }}</label>
@@ -4164,6 +4198,7 @@ import {
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
 import { adminAPI } from '@/api/admin'
+import { SCHEDULING_THRESHOLD_PLATFORMS } from '@/api/admin/settings'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
   useAccountOAuth,
@@ -4478,6 +4513,14 @@ const isGenericMultiProtocolPlatform = computed(
 )
 const extraMultiProtocolPlatforms = computed(() =>
   listPlatforms().filter(spec => !!spec.multi_protocol && !isCNProviderPlatform(spec.id) && spec.id !== 'opencode_go')
+)
+// 账号级自动停调阈值覆盖（创建时可选）：写入 credentials.account_scheduling_threshold。
+// 仅对后端白名单平台显示；关闭/留空 = 跟随系统平台阈值。
+const ACCOUNT_SCHEDULING_THRESHOLD_CREDENTIAL_KEY = 'account_scheduling_threshold'
+const createSchedulingThresholdOverrideEnabled = ref(false)
+const createSchedulingThresholdOverrideValue = ref(100)
+const supportsCreateSchedulingThresholdOverride = computed(() =>
+  (SCHEDULING_THRESHOLD_PLATFORMS as readonly string[]).includes(form.platform)
 )
 const genericAccountModes = computed(() => providerAccountModes(form.platform))
 // 按模型分流的供应商（OpenCode 等）：adaptive 账号携带 protocol_rules。
@@ -6239,6 +6282,17 @@ const handleSubmit = async () => {
     if (providerRoutesByModel(form.platform)) {
       applyOpenCodeGoProtocolRules(credentials, openCodeGoProtocolRules.value, 'create')
     }
+  }
+
+  // 账号级自动停调阈值覆盖：仅白名单平台、勾选且值在 1..99 时写入
+  // （100 = 禁用当前账号自动停调，不写则跟随系统平台阈值）。
+  if (
+    supportsCreateSchedulingThresholdOverride.value &&
+    createSchedulingThresholdOverrideEnabled.value
+  ) {
+    const numeric = Math.trunc(Number(createSchedulingThresholdOverrideValue.value) || 100)
+    const clamped = Math.min(100, Math.max(1, numeric))
+    credentials[ACCOUNT_SCHEDULING_THRESHOLD_CREDENTIAL_KEY] = clamped
   }
 
   // Add model mapping if configured（OpenAI 开启自动透传时不应用）

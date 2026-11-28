@@ -367,6 +367,7 @@ export default {
             example: '示例：…/organization/org-0610bE2D…/projects/proj_0798F20…/api_keys → org-0610bE2D… 填「组织 ID」，proj_0798F20… 填「项目 ID」',
           },
         },
+        schedulingThresholdCreateHint: '可选：为该账号覆盖平台级自动停调阈值（按上游原生窗口百分比）。不勾选则跟随系统设置。',
         balance: '余额 --',
         window5h: '5h',
         windowWeekly: '7d',
