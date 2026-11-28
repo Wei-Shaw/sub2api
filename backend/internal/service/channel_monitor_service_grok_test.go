@@ -4,7 +4,7 @@ package service
 
 import "testing"
 
-func TestApplyMonitorUpdate_ProviderOnlySwitchToGrokUsesDefaultModel(t *testing.T) {
+func TestApplyMonitorUpdate_ProviderOnlySwitchToGrokPreservesResponsesAndUsesDefaultModel(t *testing.T) {
 	grok := MonitorProviderGrok
 	existing := &ChannelMonitor{
 		Provider:        MonitorProviderOpenAI,
@@ -21,8 +21,8 @@ func TestApplyMonitorUpdate_ProviderOnlySwitchToGrokUsesDefaultModel(t *testing.
 	if existing.PrimaryModel != MonitorDefaultGrokModel {
 		t.Fatalf("expected Grok default model %q, got %q", MonitorDefaultGrokModel, existing.PrimaryModel)
 	}
-	if existing.APIMode != MonitorAPIModeChatCompletions {
-		t.Fatalf("expected Grok API mode %q, got %q", MonitorAPIModeChatCompletions, existing.APIMode)
+	if existing.APIMode != MonitorAPIModeResponses {
+		t.Fatalf("expected Grok API mode %q, got %q", MonitorAPIModeResponses, existing.APIMode)
 	}
 }
 
@@ -68,12 +68,13 @@ func TestApplyMonitorUpdate_SameGrokProviderDoesNotResetExistingModel(t *testing
 	}
 }
 
-func TestApplyMonitorUpdate_SwitchToGrokRejectsResponsesMode(t *testing.T) {
+func TestApplyMonitorUpdate_SwitchToGrokAllowsResponsesMode(t *testing.T) {
 	grok := MonitorProviderGrok
 	responses := MonitorAPIModeResponses
 	existing := &ChannelMonitor{
 		Provider:        MonitorProviderOpenAI,
 		APIMode:         MonitorAPIModeChatCompletions,
+		Endpoint:        "https://api.openai.com/v1",
 		PrimaryModel:    "gpt-5",
 		IntervalSeconds: 60,
 	}
@@ -82,7 +83,10 @@ func TestApplyMonitorUpdate_SwitchToGrokRejectsResponsesMode(t *testing.T) {
 		Provider: &grok,
 		APIMode:  &responses,
 	})
-	if err == nil {
-		t.Fatal("Grok responses mode should remain unsupported")
+	if err != nil {
+		t.Fatalf("Grok Responses mode should be supported: %v", err)
+	}
+	if existing.APIMode != MonitorAPIModeResponses {
+		t.Fatalf("expected Responses mode, got %q", existing.APIMode)
 	}
 }

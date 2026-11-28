@@ -205,8 +205,8 @@ func TestGrokMonitorConfiguration(t *testing.T) {
 	if err := validateAPIMode(MonitorProviderGrok, MonitorAPIModeChatCompletions); err != nil {
 		t.Fatalf("grok chat_completions mode should be valid: %v", err)
 	}
-	if err := validateAPIMode(MonitorProviderGrok, MonitorAPIModeResponses); err == nil {
-		t.Fatal("grok responses mode should be rejected by channel monitoring")
+	if err := validateAPIMode(MonitorProviderGrok, MonitorAPIModeResponses); err != nil {
+		t.Fatalf("grok responses mode should be valid: %v", err)
 	}
 	if err := validateReplaceRequestBody(MonitorProviderGrok, MonitorAPIModeChatCompletions, map[string]any{}); err == nil {
 		t.Fatal("grok replace-mode body should require messages")
