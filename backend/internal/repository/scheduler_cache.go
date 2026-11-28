@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/redis/go-redis/v9"
 	"github.com/tidwall/gjson"
@@ -1393,7 +1394,7 @@ func (c *schedulerCache) mgetChunked(ctx context.Context, keys []string) ([]any,
 }
 
 func buildSchedulerMetadataAccount(account service.Account) service.Account {
-	return service.Account{
+	metadata := service.Account{
 		ID:                      account.ID,
 		Name:                    account.Name,
 		Platform:                account.Platform,
@@ -1422,6 +1423,21 @@ func buildSchedulerMetadataAccount(account service.Account) service.Account {
 		Credentials:             filterSchedulerCredentials(account.Credentials),
 		Extra:                   filterSchedulerExtra(account.Extra),
 	}
+	// Media admission runs on this projection before full-account hydration.
+	// Preserve the live JWT tier precedence without copying tokens to metadata.
+	if account.IsGrokOAuth() {
+		tier := xai.SubscriptionTierFromJWT(account.GetCredential("access_token"))
+		if tier == "" {
+			tier = account.GetCredential("subscription_tier")
+		}
+		if tier != "" {
+			if metadata.Credentials == nil {
+				metadata.Credentials = make(map[string]any)
+			}
+			metadata.Credentials["subscription_tier"] = tier
+		}
+	}
+	return metadata
 }
 
 func filterSchedulerAccountGroups(accountGroups []service.AccountGroup) []service.AccountGroup {
