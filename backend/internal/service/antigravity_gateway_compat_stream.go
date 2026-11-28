@@ -403,6 +403,9 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStreamWithTiming(
 			resetAntigravityCompatTimer(timeoutTimer, timeout)
 			s.observeAntigravityGeminiSSELine(c, event.line)
 			session.consume(event.line)
+			if session.processor.TruncatedOnTurnBoundary() {
+				return session.finish()
+			}
 
 		case <-timeoutCh:
 			if writer.Disconnected() {
