@@ -1561,6 +1561,25 @@
           </p>
         </div>
 
+        <div
+          v-if="createForm.platform === 'openai' || createForm.platform === 'composite'"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <div class="flex items-center justify-between gap-4">
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.codexPoolQuotaError.label") }}
+            </label>
+            <Toggle
+              data-testid="create-codex-pool-quota-error"
+              :aria-label="t('admin.groups.codexPoolQuotaError.label')"
+              v-model="createForm.openai_codex_pool_quota_error_enabled"
+            />
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {{ t("admin.groups.codexPoolQuotaError.hint") }}
+          </p>
+        </div>
+
         <!-- Codex Live 开关（OpenAI 与 Composite 平台） -->
         <div
           v-if="supportsLivePlatform(createForm.platform)"
@@ -3164,6 +3183,25 @@
           </div>
           <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {{ t("admin.groups.openaiFast.freeHint") }}
+          </p>
+        </div>
+
+        <div
+          v-if="editForm.platform === 'openai' || editForm.platform === 'composite'"
+          class="border-t border-gray-200 dark:border-dark-400 pt-4 mt-4"
+        >
+          <div class="flex items-center justify-between gap-4">
+            <label class="text-sm text-gray-600 dark:text-gray-400">
+              {{ t("admin.groups.codexPoolQuotaError.label") }}
+            </label>
+            <Toggle
+              data-testid="edit-codex-pool-quota-error"
+              :aria-label="t('admin.groups.codexPoolQuotaError.label')"
+              v-model="editForm.openai_codex_pool_quota_error_enabled"
+            />
+          </div>
+          <p class="text-xs text-gray-500 dark:text-gray-400 mt-1">
+            {{ t("admin.groups.codexPoolQuotaError.hint") }}
           </p>
         </div>
 
@@ -4871,6 +4909,7 @@ const createForm = reactive({
   long_context_pricing_enabled: true,
   force_openai_fast: false,
   force_openai_ultrafast: false,
+  openai_codex_pool_quota_error_enabled: false,
   free_openai_fast: false,
   model_pricing: [] as PricingFormEntry[],
   // 图片生成计费配置
@@ -5239,6 +5278,7 @@ const editForm = reactive({
   long_context_pricing_enabled: true,
   force_openai_fast: false,
   force_openai_ultrafast: false,
+  openai_codex_pool_quota_error_enabled: false,
   free_openai_fast: false,
   model_pricing: [] as PricingFormEntry[],
   // 图片生成计费配置
@@ -5732,6 +5772,7 @@ const closeCreateModal = () => {
   createForm.long_context_pricing_enabled = true;
   createForm.force_openai_fast = false;
   createForm.force_openai_ultrafast = false;
+  createForm.openai_codex_pool_quota_error_enabled = false;
   createForm.free_openai_fast = false;
   createForm.model_pricing = [];
   createForm.web_search_price_per_call = null;
@@ -5861,6 +5902,10 @@ const handleCreateGroup = async () => {
       force_openai_ultrafast: normalizeGroupOpenAIFast(
         createForm.platform,
         createForm.force_openai_ultrafast,
+      ),
+      openai_codex_pool_quota_error_enabled: normalizeGroupOpenAIFast(
+        createForm.platform,
+        createForm.openai_codex_pool_quota_error_enabled,
       ),
       free_openai_fast: normalizeGroupOpenAIFast(
         createForm.platform,
@@ -6012,6 +6057,7 @@ const handleEdit = async (group: AdminGroup) => {
     group.long_context_pricing_enabled ?? true;
   editForm.force_openai_fast = group.force_openai_fast ?? false;
   editForm.force_openai_ultrafast = group.force_openai_ultrafast ?? false;
+  editForm.openai_codex_pool_quota_error_enabled = group.openai_codex_pool_quota_error_enabled ?? false;
   editForm.free_openai_fast = group.free_openai_fast ?? false;
   editForm.model_pricing = groupPricingFromAPI(group.model_pricing);
   editForm.allow_image_generation = group.allow_image_generation ?? false;
@@ -6148,6 +6194,7 @@ const closeEditModal = () => {
   editForm.long_context_pricing_enabled = true;
   editForm.force_openai_fast = false;
   editForm.force_openai_ultrafast = false;
+  editForm.openai_codex_pool_quota_error_enabled = false;
   editForm.free_openai_fast = false;
   editForm.model_pricing = [];
   editForm.web_search_price_per_call = null;
@@ -6211,6 +6258,10 @@ const handleUpdateGroup = async () => {
       force_openai_ultrafast: normalizeGroupOpenAIFast(
         editForm.platform,
         editForm.force_openai_ultrafast,
+      ),
+      openai_codex_pool_quota_error_enabled: normalizeGroupOpenAIFast(
+        editForm.platform,
+        editForm.openai_codex_pool_quota_error_enabled,
       ),
       free_openai_fast: normalizeGroupOpenAIFast(
         editForm.platform,

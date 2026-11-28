@@ -215,11 +215,8 @@ func parseOpenAIWSResponseUsageFromCompletedEvent(message []byte, usage *OpenAIU
 }
 
 func parseOpenAIWSErrorEventFields(message []byte) (code string, errType string, errMessage string) {
-	if len(message) == 0 {
-		return "", "", ""
-	}
-	values := gjson.GetManyBytes(message, "error.code", "error.type", "error.message")
-	return strings.TrimSpace(values[0].String()), strings.TrimSpace(values[1].String()), strings.TrimSpace(values[2].String())
+	errObj := openAIErrorObject(message)
+	return strings.TrimSpace(errObj.Get("code").String()), strings.TrimSpace(errObj.Get("type").String()), strings.TrimSpace(errObj.Get("message").String())
 }
 
 func summarizeOpenAIWSErrorEventFieldsFromRaw(codeRaw, errTypeRaw, errMessageRaw string) (code string, errType string, errMessage string) {

@@ -109,6 +109,7 @@ type APIKeyAuthGroupSnapshot struct {
 	AllowLive                   bool                              `json:"allow_live"`
 	ForceOpenAIFast             bool                              `json:"force_openai_fast"`
 	ForceOpenAIUltrafast        bool                              `json:"force_openai_ultrafast"`
+	CodexPoolQuotaErrorEnabled  bool                              `json:"openai_codex_pool_quota_error_enabled"`
 	FreeOpenAIFast              bool                              `json:"free_openai_fast"`
 	DefaultMappedModel          string                            `json:"default_mapped_model,omitempty"`
 	MessagesDispatchModelConfig OpenAIMessagesDispatchModelConfig `json:"messages_dispatch_model_config,omitempty"`

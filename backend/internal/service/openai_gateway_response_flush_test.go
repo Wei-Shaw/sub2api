@@ -688,3 +688,38 @@ func TestOpenAIResponseFlush_TerminalEventEndsStreamWithoutEOF(t *testing.T) {
 	gotBody, _ := recorder.snapshot()
 	require.Equal(t, body, gotBody)
 }
+
+func TestCodexPoolQuotaStreamRestoresKeepaliveAfterOutput(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := newOpenAIResponseFlushRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodPost, "/v1/responses", nil)
+	c.Request = req.WithContext(WithCodexPoolQuotaHTTP(req.Context()))
+	reader, writer := io.Pipe()
+	t.Cleanup(func() { _ = writer.Close() })
+	svc := &OpenAIGatewayService{
+		cfg:           &config.Config{Gateway: config.GatewayConfig{StreamKeepaliveInterval: 1}},
+		toolCorrector: NewCodexToolCorrector(),
+	}
+	done := make(chan error, 1)
+	go func() {
+		resp := &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: reader}
+		_, err := svc.handleStreamingResponse(c.Request.Context(), resp, c, &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth}, time.Now(), "gpt-5", "gpt-5")
+		done <- err
+	}()
+	select {
+	case <-recorder.flushEvents:
+		t.Fatal("a heartbeat committed the response before output")
+	case <-time.After(1200 * time.Millisecond):
+	}
+	const output = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"hi\"}\n\n"
+	_, err := io.WriteString(writer, output)
+	require.NoError(t, err)
+	waitOpenAIResponseFlushCount(t, recorder, 2)
+	body, _ := recorder.snapshot()
+	require.Equal(t, output+":\n\n", body)
+	_, err = io.WriteString(writer, "data: [DONE]\n\n")
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+	require.NoError(t, <-done)
+}

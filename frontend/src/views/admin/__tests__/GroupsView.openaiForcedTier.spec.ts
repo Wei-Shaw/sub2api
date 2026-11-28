@@ -228,7 +228,7 @@ const submit = async (wrapper: ReturnType<typeof mountView>) => {
   return updateGroup.mock.calls[0][1];
 };
 
-describe("GroupsView OpenAI forced service tier", () => {
+describe("GroupsView OpenAI routing settings", () => {
   beforeEach(() => {
     localStorage.clear();
     listGroups.mockReset();
@@ -323,4 +323,51 @@ describe("GroupsView OpenAI forced service tier", () => {
 
     wrapper.unmount();
   });
+  it("defaults the pool quota error off for old groups and saves opt-in", async () => {
+    const wrapper = await openEditDialog(sourceGroup);
+    const quotaToggle = wrapper.get('[data-testid="edit-codex-pool-quota-error"]');
+    expect(quotaToggle.attributes("aria-checked")).toBe("false");
+    await quotaToggle.trigger("click");
+    expect(await submit(wrapper)).toMatchObject({
+      openai_codex_pool_quota_error_enabled: true,
+    });
+    wrapper.unmount();
+  });
+
+  it("loads the enabled pool quota error and saves explicit opt-out", async () => {
+    const wrapper = await openEditDialog({
+      ...sourceGroup,
+      openai_codex_pool_quota_error_enabled: true,
+    });
+    const quotaToggle = wrapper.get('[data-testid="edit-codex-pool-quota-error"]');
+    expect(quotaToggle.attributes("aria-checked")).toBe("true");
+    await quotaToggle.trigger("click");
+    expect(await submit(wrapper)).toMatchObject({
+      openai_codex_pool_quota_error_enabled: false,
+    });
+    wrapper.unmount();
+  });
+
+  it("can opt into pool quota errors when creating an OpenAI group", async () => {
+    listGroups.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 20, pages: 1 });
+    createGroup.mockResolvedValue({ id: 50, platform: "openai" });
+    const wrapper = mountView();
+    await flushPromises();
+    await wrapper.get('[data-tour="groups-create-btn"]').trigger("click");
+    const platform = wrapper.getComponent('[data-tour="group-form-platform"]');
+    platform.vm.$emit("update:modelValue", "openai");
+    await flushPromises();
+    await wrapper.get('input[data-tour="group-form-name"]').setValue("New pool");
+    const quotaToggle = wrapper.get('[data-testid="create-codex-pool-quota-error"]');
+    expect(quotaToggle.attributes("aria-checked")).toBe("false");
+    await quotaToggle.trigger("click");
+    await wrapper.get("#create-group-form").trigger("submit");
+    await flushPromises();
+    expect(createGroup).toHaveBeenCalledWith(expect.objectContaining({
+      platform: "openai",
+      openai_codex_pool_quota_error_enabled: true,
+    }));
+    wrapper.unmount();
+  });
+
 });

@@ -15,6 +15,7 @@ import (
 	coderws "github.com/coder/websocket"
 	"github.com/tidwall/gjson"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
 )
 
@@ -70,6 +71,15 @@ type RelayExit struct {
 	WroteDownstream bool
 }
 
+// TurnOutput tracks how far a response has been exposed to the downstream.
+type TurnOutput uint32
+
+const (
+	TurnOutputNone TurnOutput = iota
+	TurnOutputMetadata
+	TurnOutputSemantic
+)
+
 type RelayOptions struct {
 	WriteTimeout                    time.Duration
 	IdleTimeout                     time.Duration
@@ -81,7 +91,7 @@ type RelayOptions struct {
 	StartClientAfterFirstDownstream bool
 	OnUsageParseFailure             func(eventType string, usageRaw string)
 	OnTurnComplete                  func(turn RelayTurnResult)
-	BeforeWriteClient               func(msgType coderws.MessageType, payload []byte, wroteDownstream bool) error
+	BeforeWriteClient               func(msgType coderws.MessageType, payload []byte, output TurnOutput) error
 	BeforeClientWrite               func(msgType coderws.MessageType, payload []byte)
 	AfterClientWrite                func(msgType coderws.MessageType, payload []byte, writeErr error)
 	BeforeRelayCancel               func(exit RelayExit)
@@ -106,7 +116,7 @@ type RelayTraceEvent struct {
 type relayState struct {
 	usage                   Usage
 	turnUsage               Usage
-	turnWroteDownstream     atomic.Bool
+	turnOutput              atomic.Pointer[atomic.Uint32]
 	requestModelMu          sync.RWMutex
 	requestModel            string
 	pendingTurnStart        atomic.Pointer[time.Time]
@@ -204,14 +214,15 @@ func Relay(
 		lastActivity.Store(nowFn().UnixNano())
 	}
 
+	state.turnOutput.Store(new(atomic.Uint32))
 	writeUpstream := func(msgType coderws.MessageType, payload []byte) error {
 		writeCtx, cancel := context.WithTimeout(relayCtx, writeTimeout)
 		defer cancel()
 		return upstreamConn.WriteFrame(writeCtx, msgType, payload)
 	}
 	writeClientFrameUpstream := func(msgType coderws.MessageType, payload []byte) error {
-		isResponseCreate := isClientResponseCreateFrame(msgType, payload)
-		if isResponseCreate {
+		var output *atomic.Uint32
+		if isClientResponseCreateFrame(msgType, payload) {
 			state.setRequestModel(strings.TrimSpace(gjson.GetBytes(payload, "model").String()))
 			turnStartedAt := time.Time{}
 			if options.TakeNextTurnStartedAt != nil {
@@ -224,13 +235,14 @@ func Relay(
 			// The policy-enforcing client connection has accepted this turn.
 			// Reset before the write so an immediate upstream response cannot race
 			// with the transport returning from WriteFrame.
-			state.turnWroteDownstream.Store(false)
+			output = new(atomic.Uint32)
+			state.turnOutput.Store(output)
 		}
 		err := writeUpstream(msgType, payload)
-		if err != nil && isResponseCreate {
+		if err != nil && output != nil {
 			// The relay exits on this error, but retain the previous turn's state
 			// for accurate diagnostics while the two relay goroutines settle.
-			state.turnWroteDownstream.Store(true)
+			output.Store(uint32(TurnOutputSemantic))
 		}
 		return err
 	}
@@ -534,7 +546,7 @@ func runUpstreamToClient(
 	state *relayState,
 	onUsageParseFailure func(eventType string, usageRaw string),
 	onTurnComplete func(turn RelayTurnResult),
-	beforeWriteClient func(msgType coderws.MessageType, payload []byte, wroteDownstream bool) error,
+	beforeWriteClient func(msgType coderws.MessageType, payload []byte, output TurnOutput) error,
 	beforeClientWrite func(msgType coderws.MessageType, payload []byte),
 	afterClientWrite func(msgType coderws.MessageType, payload []byte, writeErr error),
 	afterWriteClient func(msgType coderws.MessageType, payload []byte),
@@ -575,12 +587,11 @@ func runUpstreamToClient(
 			return
 		}
 		markActivity()
+		// Keep the state for this frame even if the client starts the next
+		// turn before WriteFrame returns to this goroutine.
+		output := state.turnOutput.Load()
 		if beforeWriteClient != nil {
-			wroteDownstreamInTurn := wroteDownstream
-			if state != nil {
-				wroteDownstreamInTurn = state.turnWroteDownstream.Load()
-			}
-			if err := beforeWriteClient(msgType, payload, wroteDownstreamInTurn); err != nil {
+			if err := beforeWriteClient(msgType, payload, TurnOutput(output.Load())); err != nil {
 				emitRelayTrace(onTrace, RelayTraceEvent{
 					Stage:           "upstream_message_rejected",
 					Direction:       "upstream_to_client",
@@ -598,9 +609,9 @@ func runUpstreamToClient(
 			}
 		}
 		observedEvent := observedUpstreamEvent{}
+		eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
 		switch msgType {
 		case coderws.MessageText:
-			eventType := strings.TrimSpace(gjson.GetBytes(payload, "type").String())
 			if shouldFinalizePendingBareError(state, payload, eventType) {
 				emitTurnComplete(onTurnComplete, state, finalizePendingBareError(state, nowFn()))
 			}
@@ -610,7 +621,7 @@ func runUpstreamToClient(
 			// terminal still settles relay lifecycle. Otherwise the pending-turn
 			// disconnect guard would turn an already-delivered terminal into a false
 			// missing-terminal failure when the upstream closes normally.
-			if isTerminalEvent(strings.TrimSpace(gjson.GetBytes(payload, "type").String())) {
+			if isTerminalEvent(eventType) {
 				state.consumePendingTurnStartedAt()
 				openAIWSRelayDiscardActiveTurnTiming(state)
 			}
@@ -658,8 +669,10 @@ func runUpstreamToClient(
 			return
 		}
 		wroteDownstream = true
-		if state != nil {
-			state.turnWroteDownstream.Store(true)
+		if msgType == coderws.MessageText && openai.IsResponsesMetadataEvent(eventType) {
+			output.CompareAndSwap(uint32(TurnOutputNone), uint32(TurnOutputMetadata))
+		} else {
+			output.Store(uint32(TurnOutputSemantic))
 		}
 		if afterWriteClient != nil {
 			afterWriteClient(msgType, payload)

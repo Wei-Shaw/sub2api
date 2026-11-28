@@ -1269,6 +1269,10 @@ export default {
         unsupportedMessage: 'This Sub2API server cannot generate the required Live attestation. Live will not work even if enabled. Continue anyway?',
         enableAnyway: 'Enable anyway'
       },
+      codexPoolQuotaError: {
+        label: 'Show Codex quota reset time',
+        hint: 'When the pool is unavailable, report the earliest known quota reset to Codex. Waiting for an account or the first response may delay HTTP streaming heartbeats.',
+      },
       openaiFast: {
         title: 'OpenAI Fast mode',
         force: 'Force Fast (priority)',

@@ -267,6 +267,10 @@ type OpenAIWSIngressHooks struct {
 	// that must be written into the upstream response.create frame.
 	MapRequestModel func(turn int, originalModel string) (string, error)
 	AfterTurn       func(turn int, result *OpenAIForwardResult, turnErr error)
+	// OnQuotaFailure may write a terminal quota event before semantic output.
+	// IndependentFollowUp indicates that the forwarded follow-up can run without
+	// its prior connection. Enabled reports the live group setting.
+	OnQuotaFailure func(turn int, independentFollowUp bool) (written, enabled bool)
 }
 
 func (s *OpenAIGatewayService) getOpenAIWSConnPool() *openAIWSConnPool {

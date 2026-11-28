@@ -83,7 +83,7 @@ func StartOpenAICompactSSEKeepalive(c *gin.Context, interval time.Duration) func
 // 心跳字节由 OpenAICompactKeepaliveAdjustedWrittenSize 统一排除，因此不会污染
 // "是否已向客户端写出语义响应"的 failover 判定（见 #3887）。
 func startOpenAISSEKeepalive(c *gin.Context, interval time.Duration) func() {
-	if c == nil || c.Writer == nil || interval <= 0 {
+	if c == nil || c.Writer == nil || interval <= 0 || deferCodexPoolQuotaHTTPCommit(c) {
 		return func() {}
 	}
 	originalWriter := c.Writer

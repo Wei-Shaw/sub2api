@@ -947,7 +947,7 @@ func TestRelay_BeforeWriteClientTracksDownstreamPerTurn(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	wroteStates := make(chan bool, 3)
+	wroteStates := make(chan TurnOutput, 3)
 	done := make(chan *RelayExit, 1)
 	stopErr := errors.New("stop after second-turn error")
 	go func() {
@@ -956,8 +956,8 @@ func TestRelay_BeforeWriteClientTracksDownstreamPerTurn(t *testing.T) {
 			clientConn,
 			upstreamConn,
 			[]byte(`{"type":"response.create","model":"gpt-5.3-codex","input":[]}`),
-			RelayOptions{BeforeWriteClient: func(_ coderws.MessageType, payload []byte, wroteDownstream bool) error {
-				wroteStates <- wroteDownstream
+			RelayOptions{BeforeWriteClient: func(_ coderws.MessageType, payload []byte, output TurnOutput) error {
+				wroteStates <- output
 				if strings.Contains(string(payload), `"type":"error"`) {
 					return stopErr
 				}
@@ -972,7 +972,7 @@ func TestRelay_BeforeWriteClientTracksDownstreamPerTurn(t *testing.T) {
 		msgType: coderws.MessageText,
 		payload: []byte(`{"type":"response.completed","response":{"id":"resp_first","usage":{"input_tokens":1,"output_tokens":1}}}`),
 	}
-	require.False(t, <-wroteStates)
+	require.Equal(t, TurnOutputNone, <-wroteStates)
 	require.Eventually(t, func() bool { return len(clientConn.Writes()) == 1 }, time.Second, time.Millisecond)
 
 	clientConn.readCh <- passthroughTestFrame{
@@ -982,9 +982,14 @@ func TestRelay_BeforeWriteClientTracksDownstreamPerTurn(t *testing.T) {
 	require.Eventually(t, func() bool { return len(upstreamConn.Writes()) == 2 }, time.Second, time.Millisecond)
 	upstreamConn.readCh <- passthroughTestFrame{
 		msgType: coderws.MessageText,
+		payload: []byte(`{"type":"response.created","response":{"id":"resp_second"}}`),
+	}
+	require.Equal(t, TurnOutputNone, <-wroteStates, "the next turn must not inherit the first turn's output")
+	upstreamConn.readCh <- passthroughTestFrame{
+		msgType: coderws.MessageText,
 		payload: []byte(`{"type":"error","error":{"type":"usage_limit_reached"}}`),
 	}
-	require.False(t, <-wroteStates, "the next turn must not inherit the first turn's downstream write")
+	require.Equal(t, TurnOutputMetadata, <-wroteStates)
 
 	select {
 	case relayExit := <-done:

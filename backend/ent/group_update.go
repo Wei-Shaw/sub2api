@@ -1037,6 +1037,20 @@ func (_u *GroupUpdate) SetNillableForceOpenaiUltrafast(v *bool) *GroupUpdate {
 	return _u
 }
 
+// SetOpenaiCodexPoolQuotaErrorEnabled sets the "openai_codex_pool_quota_error_enabled" field.
+func (_u *GroupUpdate) SetOpenaiCodexPoolQuotaErrorEnabled(v bool) *GroupUpdate {
+	_u.mutation.SetOpenaiCodexPoolQuotaErrorEnabled(v)
+	return _u
+}
+
+// SetNillableOpenaiCodexPoolQuotaErrorEnabled sets the "openai_codex_pool_quota_error_enabled" field if the given value is not nil.
+func (_u *GroupUpdate) SetNillableOpenaiCodexPoolQuotaErrorEnabled(v *bool) *GroupUpdate {
+	if v != nil {
+		_u.SetOpenaiCodexPoolQuotaErrorEnabled(*v)
+	}
+	return _u
+}
+
 // SetFreeOpenaiFast sets the "free_openai_fast" field.
 func (_u *GroupUpdate) SetFreeOpenaiFast(v bool) *GroupUpdate {
 	_u.mutation.SetFreeOpenaiFast(v)
@@ -1903,6 +1917,9 @@ func (_u *GroupUpdate) sqlSave(ctx context.Context) (_node int, err error) {
 	}
 	if value, ok := _u.mutation.ForceOpenaiUltrafast(); ok {
 		_spec.SetField(group.FieldForceOpenaiUltrafast, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.OpenaiCodexPoolQuotaErrorEnabled(); ok {
+		_spec.SetField(group.FieldOpenaiCodexPoolQuotaErrorEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.FreeOpenaiFast(); ok {
 		_spec.SetField(group.FieldFreeOpenaiFast, field.TypeBool, value)
@@ -3274,6 +3291,20 @@ func (_u *GroupUpdateOne) SetNillableForceOpenaiUltrafast(v *bool) *GroupUpdateO
 	return _u
 }
 
+// SetOpenaiCodexPoolQuotaErrorEnabled sets the "openai_codex_pool_quota_error_enabled" field.
+func (_u *GroupUpdateOne) SetOpenaiCodexPoolQuotaErrorEnabled(v bool) *GroupUpdateOne {
+	_u.mutation.SetOpenaiCodexPoolQuotaErrorEnabled(v)
+	return _u
+}
+
+// SetNillableOpenaiCodexPoolQuotaErrorEnabled sets the "openai_codex_pool_quota_error_enabled" field if the given value is not nil.
+func (_u *GroupUpdateOne) SetNillableOpenaiCodexPoolQuotaErrorEnabled(v *bool) *GroupUpdateOne {
+	if v != nil {
+		_u.SetOpenaiCodexPoolQuotaErrorEnabled(*v)
+	}
+	return _u
+}
+
 // SetFreeOpenaiFast sets the "free_openai_fast" field.
 func (_u *GroupUpdateOne) SetFreeOpenaiFast(v bool) *GroupUpdateOne {
 	_u.mutation.SetFreeOpenaiFast(v)
@@ -4170,6 +4201,9 @@ func (_u *GroupUpdateOne) sqlSave(ctx context.Context) (_node *Group, err error)
 	}
 	if value, ok := _u.mutation.ForceOpenaiUltrafast(); ok {
 		_spec.SetField(group.FieldForceOpenaiUltrafast, field.TypeBool, value)
+	}
+	if value, ok := _u.mutation.OpenaiCodexPoolQuotaErrorEnabled(); ok {
+		_spec.SetField(group.FieldOpenaiCodexPoolQuotaErrorEnabled, field.TypeBool, value)
 	}
 	if value, ok := _u.mutation.FreeOpenaiFast(); ok {
 		_spec.SetField(group.FieldFreeOpenaiFast, field.TypeBool, value)

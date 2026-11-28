@@ -305,6 +305,11 @@ func ForceOpenaiUltrafast(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldForceOpenaiUltrafast, v))
 }
 
+// OpenaiCodexPoolQuotaErrorEnabled applies equality check predicate on the "openai_codex_pool_quota_error_enabled" field. It's identical to OpenaiCodexPoolQuotaErrorEnabledEQ.
+func OpenaiCodexPoolQuotaErrorEnabled(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldOpenaiCodexPoolQuotaErrorEnabled, v))
+}
+
 // FreeOpenaiFast applies equality check predicate on the "free_openai_fast" field. It's identical to FreeOpenaiFastEQ.
 func FreeOpenaiFast(v bool) predicate.Group {
 	return predicate.Group(sql.FieldEQ(FieldFreeOpenaiFast, v))
@@ -2323,6 +2328,16 @@ func ForceOpenaiUltrafastEQ(v bool) predicate.Group {
 // ForceOpenaiUltrafastNEQ applies the NEQ predicate on the "force_openai_ultrafast" field.
 func ForceOpenaiUltrafastNEQ(v bool) predicate.Group {
 	return predicate.Group(sql.FieldNEQ(FieldForceOpenaiUltrafast, v))
+}
+
+// OpenaiCodexPoolQuotaErrorEnabledEQ applies the EQ predicate on the "openai_codex_pool_quota_error_enabled" field.
+func OpenaiCodexPoolQuotaErrorEnabledEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldEQ(FieldOpenaiCodexPoolQuotaErrorEnabled, v))
+}
+
+// OpenaiCodexPoolQuotaErrorEnabledNEQ applies the NEQ predicate on the "openai_codex_pool_quota_error_enabled" field.
+func OpenaiCodexPoolQuotaErrorEnabledNEQ(v bool) predicate.Group {
+	return predicate.Group(sql.FieldNEQ(FieldOpenaiCodexPoolQuotaErrorEnabled, v))
 }
 
 // FreeOpenaiFastEQ applies the EQ predicate on the "free_openai_fast" field.

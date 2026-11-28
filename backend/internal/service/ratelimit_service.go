@@ -1288,7 +1288,7 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 		notifyOpenAIAutoReset(account.ID)
 		if resetAt := s.calculateOpenAI429ResetTime(headers); resetAt != nil {
 			s.notifyAccountSchedulingBlocked(account, *resetAt, "429")
-			if err := s.accountRepo.SetRateLimited(ctx, account.ID, *resetAt); err != nil {
+			if err := s.setOpenAICodexRateLimited(ctx, account, *resetAt, headers, responseBody); err != nil {
 				slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
 				return
 			}
@@ -1330,7 +1330,7 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 			if resetAt := parseOpenAIRateLimitResetTime(responseBody); resetAt != nil {
 				resetTime := time.Unix(*resetAt, 0)
 				s.notifyAccountSchedulingBlocked(account, resetTime, "429")
-				if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetTime); err != nil {
+				if err := s.setOpenAICodexRateLimited(ctx, account, resetTime, headers, responseBody); err != nil {
 					slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
 					return
 				}
@@ -1365,7 +1365,7 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 		}
 
 		// 其他平台：没有重置时间，使用可配置的秒级默认回避，避免误伤长时间不可调度。
-		s.apply429FallbackRateLimit(ctx, account, "no_reset_time")
+		s.apply429FallbackRateLimitWithCodexEvidence(ctx, account, "no_reset_time", headers, responseBody)
 		return
 	}
 
@@ -1397,6 +1397,10 @@ func (s *RateLimitService) handle429(ctx context.Context, account *Account, head
 }
 
 func (s *RateLimitService) apply429FallbackRateLimit(ctx context.Context, account *Account, reason string) {
+	s.apply429FallbackRateLimitWithCodexEvidence(ctx, account, reason, nil, nil)
+}
+
+func (s *RateLimitService) apply429FallbackRateLimitWithCodexEvidence(ctx context.Context, account *Account, reason string, headers http.Header, body []byte) {
 	cooldown, enabled := s.get429FallbackCooldown(ctx, account)
 	if !enabled {
 		slog.Info("rate_limit_429_fallback_ignored", "account_id", account.ID, "platform", account.Platform, "reason", reason)
@@ -1406,7 +1410,7 @@ func (s *RateLimitService) apply429FallbackRateLimit(ctx context.Context, accoun
 	resetAt := time.Now().Add(cooldown)
 	slog.Warn("rate_limit_429_fallback_used", "account_id", account.ID, "platform", account.Platform, "reason", reason, "using_default", cooldown.String())
 	s.notifyAccountSchedulingBlocked(account, resetAt, "429_fallback")
-	if err := s.accountRepo.SetRateLimited(ctx, account.ID, resetAt); err != nil {
+	if err := s.setOpenAICodexRateLimited(ctx, account, resetAt, headers, body); err != nil {
 		slog.Warn("rate_limit_set_failed", "account_id", account.ID, "error", err)
 	}
 }
@@ -1883,7 +1887,19 @@ func (s *RateLimitService) persistOpenAICodexSnapshot(ctx context.Context, accou
 	notifyOpenAIAutoReset(account.ID)
 }
 
-// parseOpenAIRateLimitResetTime 解析 OpenAI 兼容格式的 429 响应，返回重置时间的 Unix 时间戳
+// openAIErrorObject reads both HTTP/WS errors and nested Responses terminal errors.
+func openAIErrorObject(body []byte) gjson.Result {
+	errObj := gjson.GetBytes(body, "error")
+	if errObj.Get("type").String() == "" {
+		nested := gjson.GetBytes(body, "response.error")
+		if nested.IsObject() && (nested.Get("type").String() != "" || errObj.Get("code").String() == "") {
+			return nested
+		}
+	}
+	return errObj
+}
+
+// parseOpenAIRateLimitResetTime 解析 OpenAI 兼容格式的 429 响应或 response.failed 事件，返回重置时间的 Unix 时间戳
 // OpenAI 的 usage_limit_reached 错误格式：
 //
 //	{
@@ -1895,40 +1911,37 @@ func (s *RateLimitService) persistOpenAICodexSnapshot(ctx context.Context, accou
 //	  }
 //	}
 func parseOpenAIRateLimitResetTime(body []byte) *int64 {
-	var parsed map[string]any
-	if err := json.Unmarshal(body, &parsed); err != nil {
+	if !gjson.ValidBytes(body) {
 		return nil
 	}
-
-	errObj, ok := parsed["error"].(map[string]any)
-	if !ok {
-		return nil
-	}
+	errObj := openAIErrorObject(body)
 
 	// 检查是否为已知的账号用量限制类型。
-	errType, _ := errObj["type"].(string)
+	errType := errObj.Get("type").String()
 	if errType != "usage_limit_reached" && errType != "rate_limit_exceeded" && errType != "GoUsageLimitError" {
 		return nil
 	}
 
 	// 优先使用 resets_at（Unix 时间戳）
-	if resetsAt, ok := errObj["resets_at"].(float64); ok {
-		ts := int64(resetsAt)
+	resetsAt := errObj.Get("resets_at")
+	switch resetsAt.Type {
+	case gjson.Number:
+		ts := int64(resetsAt.Num)
 		return &ts
-	}
-	if resetsAt, ok := errObj["resets_at"].(string); ok {
-		if ts, err := strconv.ParseInt(resetsAt, 10, 64); err == nil {
+	case gjson.String:
+		if ts, err := strconv.ParseInt(resetsAt.Str, 10, 64); err == nil {
 			return &ts
 		}
 	}
 
 	// 如果没有 resets_at，尝试使用 resets_in_seconds
-	if resetsInSeconds, ok := errObj["resets_in_seconds"].(float64); ok {
-		ts := time.Now().Unix() + int64(resetsInSeconds)
+	resetsInSeconds := errObj.Get("resets_in_seconds")
+	switch resetsInSeconds.Type {
+	case gjson.Number:
+		ts := time.Now().Unix() + int64(resetsInSeconds.Num)
 		return &ts
-	}
-	if resetsInSeconds, ok := errObj["resets_in_seconds"].(string); ok {
-		if sec, err := strconv.ParseInt(resetsInSeconds, 10, 64); err == nil {
+	case gjson.String:
+		if sec, err := strconv.ParseInt(resetsInSeconds.Str, 10, 64); err == nil {
 			ts := time.Now().Unix() + sec
 			return &ts
 		}
@@ -1937,7 +1950,7 @@ func parseOpenAIRateLimitResetTime(body []byte) *int64 {
 	// OpenCode Go subscriptions expose the reset only in a human-readable message,
 	// for example: "Weekly usage limit reached. Resets in 2 days."
 	if errType == "GoUsageLimitError" {
-		message, _ := errObj["message"].(string)
+		message := errObj.Get("message").Str
 		if resetAfter := parseOpenCodeGoUsageLimitResetDuration(message); resetAfter > 0 {
 			ts := time.Now().Add(resetAfter).Unix()
 			return &ts
@@ -2498,7 +2511,12 @@ func (s *RateLimitService) HandleOpenAICodexSparkRateLimit(ctx context.Context, 
 		reset := now.Add(cooldown)
 		resetAt = &reset
 	}
-	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, *resetAt, openAICodexSparkRateLimitReason); err != nil {
+	reason := openAICodexSparkRateLimitReason
+	if quotaReset, _ := codexQuota429Reset(account, headers, responseBody, now); !quotaReset.IsZero() &&
+		(disposition == openAIOAuth429Quota5h || disposition == openAIOAuth429Quota7d) && quotaReset.Sub(*resetAt) < time.Second {
+		reason = openAICodexSparkQuotaReason
+	}
+	if err := s.accountRepo.SetModelRateLimit(ctx, account.ID, modelKey, *resetAt, reason); err != nil {
 		slog.Warn("openai_codex_spark_model_rate_limit_set_failed", "account_id", account.ID, "model", modelKey, "error", err)
 	}
 	slog.Info("openai_codex_spark_model_rate_limited", "account_id", account.ID, "model", modelKey, "reset_at", *resetAt)
