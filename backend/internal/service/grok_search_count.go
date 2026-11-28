@@ -10,9 +10,6 @@ import (
 
 // countGrokNativeSearchCallsFromJSONBytes counts completed native search tool
 // calls in a Responses-style JSON body (output array or nested response.output).
-// Counts: web_search_call, x_search_call, tool_search_call, and function_call
-// named tool_search / web_search / x_search, and custom_tool_call items the xAI
-// server runs itself (apicompat.IsServerSideSearchCall: call_id xs_ / as_).
 //
 // When usage.server_side_tool_usage_details is present, xAI's reported success
 // counts replace the item count (see grokSearchCountFromUsage).
@@ -269,14 +266,12 @@ func isGrokNativeSearchOutputItem(item gjson.Result) bool {
 	}
 	itemType := strings.ToLower(strings.TrimSpace(item.Get("type").String()))
 	switch itemType {
-	case "web_search_call", "x_search_call", "tool_search_call":
+	case "web_search_call", "x_search_call":
 		return true
-	case "function_call", "custom_tool_call":
-		if apicompat.IsServerSideSearchCall(itemType, item.Get("call_id").String()) {
-			return true
-		}
-		name := strings.ToLower(strings.TrimSpace(item.Get("name").String()))
-		return name == "web_search" || name == "x_search" || name == "tool_search"
+	case "tool_search_call":
+		return !strings.EqualFold(strings.TrimSpace(item.Get("execution").String()), "client")
+	case "custom_tool_call":
+		return apicompat.IsServerSideSearchCall(itemType, item.Get("call_id").String())
 	default:
 		return false
 	}
