@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -147,4 +148,124 @@ func TestEmailCache_ConsumePasswordResetTokenMismatchKeepsToken(t *testing.T) {
 	ok, err = cache.ConsumePasswordResetToken(ctx, email, "abc")
 	require.NoError(t, err)
 	require.False(t, ok)
+}
+
+// Upgrade compatibility: old nodes store Attempts only in the JSON document.
+func TestEmailCacheLegacyAttemptCountAndRemainingTTL(t *testing.T) {
+	for _, notify := range []bool{false, true} {
+		name := "verification"
+		if notify {
+			name = "notification"
+		}
+		t.Run(name, func(t *testing.T) {
+			for _, tc := range []struct {
+				name                   string
+				legacy, separate, want int
+			}{
+				{"fresh", 0, 0, 1}, {"four_legacy_failures", 4, 0, 5}, {"exhausted_legacy", 5, 0, 6},
+				{"separate_counter_ahead", 4, 7, 8}, {"legacy_counter_ahead", 4, 2, 5},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					cache, mr, rdb := newMiniredisEmailCache(t)
+					ctx := context.Background()
+					email := "legacy-count@example.com"
+					key := verifyCodeKey(email)
+					incr := cache.IncrVerificationCodeAttempts
+					if notify {
+						key = notifyVerifyKey(email)
+						incr = cache.IncrNotifyVerifyCodeAttempts
+					}
+					raw, err := json.Marshal(service.VerificationCodeData{Code: "123456", Attempts: tc.legacy, ExpiresAt: time.Now().Add(time.Minute)})
+					require.NoError(t, err)
+					require.NoError(t, rdb.Set(ctx, key, raw, time.Minute).Err())
+					if tc.separate > 0 {
+						require.NoError(t, rdb.Set(ctx, key+attemptsKeySuffix, tc.separate, 2*time.Minute).Err())
+					}
+					mr.FastForward(23 * time.Second)
+					remaining := mr.TTL(key)
+					n, err := incr(ctx, email)
+					require.NoError(t, err)
+					require.Equal(t, tc.want, n)
+					require.Equal(t, remaining, mr.TTL(key))
+					require.Equal(t, remaining, mr.TTL(key+attemptsKeySuffix))
+					stored, err := rdb.Get(ctx, key).Result()
+					require.NoError(t, err)
+					require.Equal(t, string(raw), stored)
+					mr.FastForward(remaining)
+					_, err = incr(ctx, email)
+					require.Error(t, err)
+					require.False(t, mr.Exists(key+attemptsKeySuffix))
+				})
+			}
+		})
+	}
+}
+
+func TestEmailCacheLegacyCodeStillStopsAtFifthWrongAttempt(t *testing.T) {
+	for _, notify := range []bool{false, true} {
+		name := "verification"
+		if notify {
+			name = "notification"
+		}
+		t.Run(name, func(t *testing.T) {
+			cache, mr, rdb := newMiniredisEmailCache(t)
+			ctx := context.Background()
+			email := "legacy-flow@example.com"
+			key := verifyCodeKey(email)
+			if notify {
+				key = notifyVerifyKey(email)
+			}
+			raw, err := json.Marshal(service.VerificationCodeData{Code: "123456", Attempts: 4, ExpiresAt: time.Now().Add(time.Minute)})
+			require.NoError(t, err)
+			require.NoError(t, rdb.Set(ctx, key, raw, time.Minute).Err())
+			check := func(code string) error { return service.NewEmailService(nil, cache).VerifyCode(ctx, email, code) }
+			if notify {
+				check = func(code string) error {
+					return (&service.UserService{}).VerifyAndAddNotifyEmail(ctx, 1, email, code, cache)
+				}
+			}
+			require.ErrorIs(t, check("000000"), service.ErrVerifyCodeMaxAttempts)
+			require.ErrorIs(t, check("123456"), service.ErrVerifyCodeMaxAttempts)
+			require.True(t, mr.Exists(key))
+		})
+	}
+}
+
+func TestEmailCacheLegacyAttemptsConcurrentAndResend(t *testing.T) {
+	cache, mr, rdb := newMiniredisEmailCache(t)
+	ctx := context.Background()
+	email := "concurrent-legacy@example.com"
+	raw, err := json.Marshal(service.VerificationCodeData{Code: "123456", Attempts: 4, ExpiresAt: time.Now().Add(time.Minute)})
+	require.NoError(t, err)
+	require.NoError(t, rdb.Set(ctx, notifyVerifyKey(email), raw, time.Minute).Err())
+	const workers = 30
+	var wg sync.WaitGroup
+	counts := make(chan int, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			n, e := cache.IncrNotifyVerifyCodeAttempts(ctx, email)
+			if e != nil {
+				t.Error(e)
+				return
+			}
+			counts <- n
+		}()
+	}
+	wg.Wait()
+	close(counts)
+	seen := map[int]bool{}
+	for n := range counts {
+		require.GreaterOrEqual(t, n, 5)
+		require.LessOrEqual(t, n, 4+workers)
+		require.False(t, seen[n])
+		seen[n] = true
+	}
+	require.Len(t, seen, workers)
+	require.Equal(t, mr.TTL(notifyVerifyKey(email)), mr.TTL(notifyVerifyKey(email)+attemptsKeySuffix))
+	require.NoError(t, cache.SetNotifyVerifyCode(ctx, email, &service.VerificationCodeData{Code: "654321"}, time.Minute))
+	n, err := cache.IncrNotifyVerifyCodeAttempts(ctx, email)
+	require.NoError(t, err)
+	require.Equal(t, 1, n)
 }
