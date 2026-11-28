@@ -113,6 +113,21 @@ const cnUsageCellStubs = {
 }
 
 describe('AccountUsageCell', () => {
+  it('shows small nonzero Antigravity quota usage', async () => {
+    getUsage.mockResolvedValue({
+      antigravity_quota: {
+        'claude-sonnet-4-5': { utilization: 0.021136, reset_time: '2026-10-21T01:00:00Z' }
+      }
+    })
+    const wrapper = mount(AccountUsageCell, {
+      props: { account: makeAccount({ id: 6401 }) },
+      global: { stubs: { AccountQuotaInfo: true } }
+    })
+    await flushPromises()
+    expect(wrapper.text()).toContain('0.02%')
+    wrapper.unmount()
+  })
+
   it('shows Antigravity local usage and separate account/user costs when the upstream query fails', async () => {
     getUsage.mockRejectedValue(new Error('upstream quota unavailable'))
     const wrapper = mount(AccountUsageCell, {
