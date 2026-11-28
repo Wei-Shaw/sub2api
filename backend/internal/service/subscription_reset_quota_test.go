@@ -70,6 +70,22 @@ func (r *resetQuotaUserSubRepoStub) ResetUsageWindows(_ context.Context, _ int64
 	return nil
 }
 
+func (r *resetQuotaUserSubRepoStub) SetQuotaWindows(_ context.Context, _ int64, daily, weekly, monthly *time.Time) error {
+	if r.sub == nil {
+		return ErrSubscriptionNotFound
+	}
+	if daily != nil {
+		r.sub.DailyWindowStart = daily
+	}
+	if weekly != nil {
+		r.sub.WeeklyWindowStart = weekly
+	}
+	if monthly != nil {
+		r.sub.MonthlyWindowStart = monthly
+	}
+	return nil
+}
+
 func (r *resetQuotaUserSubRepoStub) ResetDailyUsage(_ context.Context, _ int64, _ *time.Time, windowStart time.Time) error {
 	r.resetDailyCalled = true
 	if r.resetDailyErr == nil && r.sub != nil {

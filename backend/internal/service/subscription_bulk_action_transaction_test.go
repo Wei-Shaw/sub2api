@@ -81,6 +81,20 @@ func (r *transactionalBulkSubscriptionRepo) ResetUsageWindows(ctx context.Contex
 	return nil
 }
 
+func (r *transactionalBulkSubscriptionRepo) SetQuotaWindows(ctx context.Context, _ int64, daily, weekly, monthly *time.Time) error {
+	sub := r.pending[dbent.TxFromContext(ctx)]
+	if daily != nil {
+		sub.DailyWindowStart = daily
+	}
+	if weekly != nil {
+		sub.WeeklyWindowStart = weekly
+	}
+	if monthly != nil {
+		sub.MonthlyWindowStart = monthly
+	}
+	return nil
+}
+
 func TestBulkSubscriptionAction_RollsBackPostWriteFailureBeforeRetry(t *testing.T) {
 	for _, tc := range []struct {
 		name            string
