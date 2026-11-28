@@ -310,6 +310,39 @@ func matchesKnownZhipuNonAPIKeyDifference(tc routingMatrixCase, want, got routin
 		reflect.DeepEqual(got, routingObservation{Error: "account 801 missing api_key", Status: http.StatusOK})
 }
 
+// The pinned pre-profile golden predates Go's Claude Messages rule. Keep the
+// golden immutable and allow only these exact transport/error changes for
+// unconfigured Go accounts; Zen, pinned protocols and explicit rules still match it.
+func matchesKnownOpenCodeGoClaudeDifference(tc routingMatrixCase, want, got routingObservation) bool {
+	if tc.platform != PlatformOpenCodeGo || (tc.mode != "" && tc.mode != AccountModeGo && tc.mode != "invalid") || tc.rules || tc.model != "claude-sonnet-4" {
+		return false
+	}
+	switch tc.apiProtocol {
+	case "", APIProtocolAdaptive, "invalid":
+	default:
+		return false
+	}
+	if tc.accountType == AccountTypeUpstream {
+		return reflect.DeepEqual(want, routingObservation{Error: "unsupported account type: upstream", Status: http.StatusOK}) &&
+			reflect.DeepEqual(got, routingObservation{Error: "account 801 missing api_key", Status: http.StatusOK})
+	}
+	if tc.accountType != AccountTypeAPIKey {
+		return false
+	}
+	oldURL := "https://opencode.ai/zen/go/v1/chat/completions"
+	newURL := "https://opencode.ai/zen/go/v1/messages"
+	switch tc.addresses {
+	case "base":
+		oldURL = "http://base.example/v1/chat/completions"
+	case "split", "both":
+		oldURL = "http://cc.example/v1/chat/completions"
+		newURL = "http://anthropic.example/v1/messages"
+	}
+	old := routingObservation{Requests: []routingUpstreamRequest{{URL: oldURL, Authorization: "Bearer sk-test", BodyKind: "messages", Model: tc.model}}, Error: "upstream error: 502 (failover)", Status: http.StatusOK}
+	updated := routingObservation{Requests: []routingUpstreamRequest{{URL: newURL, APIKey: "sk-test", BodyKind: "messages", Model: tc.model}}, Error: "upstream error: 502 (failover)", Status: http.StatusOK}
+	return reflect.DeepEqual(want, old) && reflect.DeepEqual(got, updated)
+}
+
 func TestUpstreamProtocolRoutingMatrixMatchesMainGolden(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	data, err := os.ReadFile(routingMatrixGoldenPath)
@@ -325,6 +358,7 @@ func TestUpstreamProtocolRoutingMatrixMatchesMainGolden(t *testing.T) {
 	var differences []string
 	mismatched := 0
 	knownDifferences := 0
+	goClaudeDifferences := 0
 	for i, tc := range cases {
 		index := golden.Results[i]
 		require.GreaterOrEqual(t, index, 0)
@@ -338,6 +372,10 @@ func TestUpstreamProtocolRoutingMatrixMatchesMainGolden(t *testing.T) {
 			knownDifferences++
 			continue
 		}
+		if matchesKnownOpenCodeGoClaudeDifference(tc, want, got) {
+			goClaudeDifferences++
+			continue
+		}
 		mismatched++
 		if len(differences) < 12 {
 			differences = append(differences, fmt.Sprintf("%s\nmain: %s\ncurrent: %s", tc.key(), want, got))
@@ -347,4 +385,7 @@ func TestUpstreamProtocolRoutingMatrixMatchesMainGolden(t *testing.T) {
 	// 2 account types × 4 modes × 3 probe states × 4 address configurations ×
 	// 2 model spellings. A disappeared or expanded exception requires review.
 	require.Equal(t, 192, knownDifferences, "unexpected change to the declared Zhipu non-API-Key difference")
+	// 3 adaptive/default protocol spellings × 3 Go/default/invalid modes ×
+	// 3 probe states × 4 addresses × 4 affected ingress/account combinations.
+	require.Equal(t, 432, goClaudeDifferences, "unexpected change to the declared Go Claude routing difference")
 }
