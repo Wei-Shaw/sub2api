@@ -44,6 +44,11 @@ var (
 )
 
 func TestMain(m *testing.M) {
+	if _, isPgDumpFixture := os.LookupEnv(testPgDumpExitCodeEnv); isPgDumpFixture {
+		// The fake pg_dump process only writes to stdout. It needs no containers.
+		os.Exit(m.Run())
+	}
+
 	ctx := context.Background()
 
 	if err := timezone.Init("UTC"); err != nil {

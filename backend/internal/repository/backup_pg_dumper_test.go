@@ -4,14 +4,44 @@ import (
 	"context"
 	"errors"
 	"io"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
+	"strconv"
 	"testing"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
 )
+
+const (
+	testPgDumpExitCodeEnv = "SUB2API_TEST_PG_DUMP_EXIT_CODE"
+	testPgDumpOutputEnv   = "SUB2API_TEST_PG_DUMP_OUTPUT"
+)
+
+// Reuse the Go test binary as a pg_dump fixture on hosts without a Unix shell.
+func testPgDumpCommand(t *testing.T, ctx context.Context, output string, exitCode int) *exec.Cmd {
+	t.Helper()
+	binary, err := os.Executable()
+	require.NoError(t, err)
+	cmd := exec.CommandContext(ctx, binary, "-test.run=^TestPgDumperSubprocess$")
+	cmd.Env = append(cmd.Environ(), testPgDumpExitCodeEnv+"="+strconv.Itoa(exitCode), testPgDumpOutputEnv+"="+output)
+	return cmd
+}
+
+func TestPgDumperSubprocess(t *testing.T) {
+	exitCode, ok := os.LookupEnv(testPgDumpExitCodeEnv)
+	if !ok {
+		return
+	}
+	code, err := strconv.Atoi(exitCode)
+	require.NoError(t, err)
+	_, err = io.WriteString(os.Stdout, os.Getenv(testPgDumpOutputEnv))
+	require.NoError(t, err)
+	os.Exit(code)
+}
 
 func newTestPgDumper(t *testing.T, commandContext func(context.Context, string, ...string) *exec.Cmd) (*PgDumper, sqlmock.Sqlmock) {
 	t.Helper()
@@ -52,7 +82,7 @@ func TestPgDumperHoldsMigrationLockThroughReaderClose(t *testing.T) {
 		require.Equal(t, "pg_dump", name)
 		require.Contains(t, args, "--clean")
 		require.NoError(t, mock.ExpectationsWereMet(), "migration lock must be acquired before pg_dump is created")
-		return exec.CommandContext(ctx, "sh", "-c", "printf backup-data")
+		return testPgDumpCommand(t, ctx, "backup-data", 0)
 	})
 	mock = createdMock
 	expectBackupMigrationLock(mock)
@@ -73,7 +103,7 @@ func TestPgDumperHoldsMigrationLockThroughReaderClose(t *testing.T) {
 
 func TestPgDumperReleasesMigrationLockWhenStdoutPipeSetupFails(t *testing.T) {
 	dumper, mock := newTestPgDumper(t, func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
-		cmd := exec.CommandContext(ctx, "sh", "-c", "true")
+		cmd := testPgDumpCommand(t, ctx, "", 0)
 		cmd.Stdout = io.Discard
 		return cmd
 	})
@@ -88,7 +118,7 @@ func TestPgDumperReleasesMigrationLockWhenStdoutPipeSetupFails(t *testing.T) {
 
 func TestPgDumperReleasesMigrationLockWhenProcessStartFails(t *testing.T) {
 	dumper, mock := newTestPgDumper(t, func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
-		return exec.CommandContext(ctx, "/path/that/does/not/exist/pg_dump")
+		return exec.CommandContext(ctx, filepath.Join(t.TempDir(), "pg_dump"))
 	})
 	expectBackupMigrationLock(mock)
 	expectBackupMigrationUnlock(mock)
@@ -101,7 +131,7 @@ func TestPgDumperReleasesMigrationLockWhenProcessStartFails(t *testing.T) {
 
 func TestPgDumperReleasesMigrationLockWhenProcessFails(t *testing.T) {
 	dumper, mock := newTestPgDumper(t, func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
-		return exec.CommandContext(ctx, "sh", "-c", "printf partial-backup; exit 7")
+		return testPgDumpCommand(t, ctx, "partial-backup", 7)
 	})
 	expectBackupMigrationLock(mock)
 
@@ -117,7 +147,7 @@ func TestPgDumperReleasesMigrationLockWhenProcessFails(t *testing.T) {
 
 func TestPgDumperReportsUnlockFailureAndDiscardsConnection(t *testing.T) {
 	dumper, mock := newTestPgDumper(t, func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
-		return exec.CommandContext(ctx, "sh", "-c", "printf backup-data")
+		return testPgDumpCommand(t, ctx, "backup-data", 0)
 	})
 	expectBackupMigrationLock(mock)
 
@@ -136,7 +166,7 @@ func TestPgDumperDoesNotStartProcessWhenMigrationLockFails(t *testing.T) {
 	commandCreated := false
 	dumper, mock := newTestPgDumper(t, func(ctx context.Context, _ string, _ ...string) *exec.Cmd {
 		commandCreated = true
-		return exec.CommandContext(ctx, "sh", "-c", "true")
+		return testPgDumpCommand(t, ctx, "", 0)
 	})
 	mock.ExpectQuery(regexp.QuoteMeta("SELECT pg_try_advisory_lock($1)")).
 		WithArgs(migrationsAdvisoryLockID).
