@@ -181,7 +181,7 @@
               {{ t(`admin.accounts.cnProviders.accountMode.${opt.labelKey}`) }}
             </button>
           </div>
-          <p class="input-hint">{{ t(`admin.accounts.cnProviders.accountMode.${editAccountMode}Desc`) }}</p>
+          <p class="input-hint">{{ t(account.platform === 'byteplus' ? 'admin.accounts.byteplus.accountModeHint' : `admin.accounts.cnProviders.accountMode.${editAccountMode}Desc`) }}</p>
         </div>
         <!-- API Protocol Selection (CN providers / OpenCode) -->
         <div v-if="isCNApiKeyAccount">
@@ -2186,6 +2186,11 @@
         </div>
       </div>
 
+      <BytePlusCapabilities
+        v-if="account?.platform === 'byteplus'"
+        v-model="openAIEndpointCapabilities"
+      />
+
       <!-- OpenAI APIKey Responses API support mode -->
       <div
         v-if="account?.platform === 'openai' && account?.type === 'apikey'"
@@ -3449,6 +3454,7 @@ import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.
 import GrokModelDiagnosticsPanel from '@/components/account/GrokModelDiagnosticsPanel.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
 import GrokBaseUrlPresets from '@/components/account/GrokBaseUrlPresets.vue'
+import BytePlusCapabilities from '@/components/account/BytePlusCapabilities.vue'
 import CnBaseUrlPresets from '@/components/account/CnBaseUrlPresets.vue'
 import {
   applyExplicitCacheUpstreamCredentials,
@@ -3733,7 +3739,7 @@ const syncingForm = ref(false)
 const cnAccountModeOptions = computed<Array<{ value: CnAccountMode; labelKey: 'payg' | 'coding' }>>(
   () => {
     // DeepSeek 无 coding 套餐（与创建弹窗一致），仅保留按量付费。
-    if (props.account?.platform === 'deepseek') {
+    if (!providerAccountModes(props.account?.platform ?? '').includes('coding')) {
       return [{ value: 'payg', labelKey: 'payg' }]
     }
     return [
@@ -4727,6 +4733,9 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   anthropicPassthroughEnabled.value = false
   anthropicAPIKeyAuthScheme.value = 'x_api_key'
   webSearchEmulationMode.value = 'default'
+  if (newAccount.platform === 'byteplus') {
+    openAIEndpointCapabilities.value = readOpenAIEndpointCapabilities(newAccount.credentials as Record<string, unknown> | undefined)
+  }
   if (newAccount.platform === 'openai' && (newAccount.type === 'oauth' || newAccount.type === 'setup-token' || newAccount.type === 'apikey')) {
     openaiPassthroughEnabled.value = extra?.openai_passthrough === true || extra?.openai_oauth_passthrough === true
     openaiPassthroughModelFilterEnabled.value = extra?.openai_passthrough_model_filter === true
@@ -5804,6 +5813,7 @@ const handleSubmit = async () => {
       } else if (currentCredentials.model_mapping) {
         newCredentials.model_mapping = currentCredentials.model_mapping
       }
+      if (props.account.platform === 'byteplus') applyOpenAIEndpointCapabilities(newCredentials)
       if (props.account.platform === 'openai') {
         applyOpenAIEndpointCapabilities(newCredentials)
         const compactModelMapping = buildModelMappingObject('mapping', [], openAICompactModelMappings.value)

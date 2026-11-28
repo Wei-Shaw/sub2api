@@ -154,6 +154,8 @@ func DetectModelPlatform(model string) (string, bool) {
 			return PlatformZhipu, true
 		case "deepseek":
 			return PlatformDeepseek, true
+		case "byteplus":
+			return PlatformBytePlus, true
 		case "minimax":
 			return PlatformMiniMax, true
 		case "typesafe", "jev":
@@ -195,6 +197,8 @@ func DetectModelPlatform(model string) (string, bool) {
 		return PlatformZhipu, true
 	case strings.HasPrefix(normalized, "deepseek-"):
 		return PlatformDeepseek, true
+	case strings.HasPrefix(normalized, "dola-seed-"), strings.HasPrefix(normalized, "dreamina-seedance-"):
+		return PlatformBytePlus, true
 	case strings.HasPrefix(normalized, "minimax-"),
 		strings.HasPrefix(normalized, "abab5"),
 		strings.HasPrefix(normalized, "abab6"),
