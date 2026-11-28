@@ -1281,6 +1281,8 @@ func (usage ClaudeUsage) billingUsageTokens() UsageTokens {
 		CacheCreation5mTokens: usage.CacheCreation5mTokens,
 		CacheCreation1hTokens: usage.CacheCreation1hTokens,
 		ImageOutputTokens:     usage.ImageOutputTokens,
+		AudioInputTokens:      usage.audioInputTokens,
+		AudioCacheReadTokens:  usage.audioCacheReadTokens,
 	}
 	return tokens
 }

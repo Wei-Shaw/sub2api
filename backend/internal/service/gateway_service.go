@@ -685,6 +685,8 @@ type ClaudeUsage struct {
 	cacheCreationInputTokensFromDetails bool
 	promptTotalTokens                   int
 	promptTotalPresent                  bool
+	audioInputTokens                    int
+	audioCacheReadTokens                int
 }
 
 // ForwardResult 转发结果

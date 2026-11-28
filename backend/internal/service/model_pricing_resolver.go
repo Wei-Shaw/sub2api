@@ -335,9 +335,13 @@ func intervalToModelPricing(iv *PricingInterval, base *ModelPricing, chPricing *
 	if iv.InputPrice != nil {
 		pricing.InputPricePerTokenPriority = channelTierOverridePrice(pricing.InputPricePerToken, pricing.InputPricePerTokenPriority, *iv.InputPrice)
 		pricing.InputPricePerToken = *iv.InputPrice
+		pricing.AudioInputPricePerToken = nil
+		pricing.AudioInputPricePerTokenPriority = nil
 	} else if iv.InputMultiplier != nil {
 		pricing.InputPricePerToken = applyMultiplier(pricing.InputPricePerToken, iv.InputMultiplier)
 		pricing.InputPricePerTokenPriority = applyMultiplier(pricing.InputPricePerTokenPriority, iv.InputMultiplier)
+		pricing.AudioInputPricePerToken = scaleAudioTokenPrice(pricing.AudioInputPricePerToken, *iv.InputMultiplier)
+		pricing.AudioInputPricePerTokenPriority = scaleAudioTokenPrice(pricing.AudioInputPricePerTokenPriority, *iv.InputMultiplier)
 	}
 	if iv.OutputPrice != nil {
 		pricing.OutputPricePerTokenPriority = channelTierOverridePrice(pricing.OutputPricePerToken, pricing.OutputPricePerTokenPriority, *iv.OutputPrice)
@@ -376,13 +380,25 @@ func intervalToModelPricing(iv *PricingInterval, base *ModelPricing, chPricing *
 	if iv.CacheReadPrice != nil {
 		pricing.CacheReadPricePerTokenPriority = channelTierOverridePrice(pricing.CacheReadPricePerToken, pricing.CacheReadPricePerTokenPriority, *iv.CacheReadPrice)
 		pricing.CacheReadPricePerToken = *iv.CacheReadPrice
+		pricing.AudioCacheReadPricePerToken = nil
+		pricing.AudioCacheReadPricePerTokenPriority = nil
 	} else if iv.CacheReadMultiplier != nil {
 		pricing.CacheReadPricePerToken = applyMultiplier(pricing.CacheReadPricePerToken, iv.CacheReadMultiplier)
 		pricing.CacheReadPricePerTokenPriority = applyMultiplier(pricing.CacheReadPricePerTokenPriority, iv.CacheReadMultiplier)
+		pricing.AudioCacheReadPricePerToken = scaleAudioTokenPrice(pricing.AudioCacheReadPricePerToken, *iv.CacheReadMultiplier)
+		pricing.AudioCacheReadPricePerTokenPriority = scaleAudioTokenPrice(pricing.AudioCacheReadPricePerTokenPriority, *iv.CacheReadMultiplier)
 	}
 	// 区间不携带图片价，沿用渠道级配置；渠道留空时保留基础价里的目录图片价。
 	applyChannelImagePriceOverrides(chPricing, pricing)
 	return pricing
+}
+
+func scaleAudioTokenPrice(price *float64, multiplier float64) *float64 {
+	if price == nil {
+		return nil
+	}
+	scaled := *price * multiplier
+	return &scaled
 }
 
 // GetRequestTierPrice 根据层级标签获取按次价格
