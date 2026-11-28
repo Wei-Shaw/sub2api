@@ -674,7 +674,7 @@ func TestOpenAIGatewayService_Forward_HTTPThinkingSignatureRecoveryAndLineage(t 
 		SetOpenAIClientTransport(c, OpenAIClientTransportHTTP)
 		return c
 	}
-	input := `{"model":"gpt-5","stream":false,"prompt_cache_key":"issue-7700","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}],"input":[{"type":"reasoning","encrypted_content":"stale","summary":[{"type":"summary_text","text":"keep"}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]},{"type":"function_call_output","call_id":"call_1","output":"result"}]}`
+	input := `{"model":"gpt-5","stream":false,"prompt_cache_key":"issue-7700","tools":[{"type":"function","name":"lookup","parameters":{"type":"object"}}],"input":[{"type":"reasoning","encrypted_content":"stale","summary":[{"type":"summary_text","text":"keep"}]},{"type":"message","role":"user","content":[{"type":"input_text","text":"hello"}]},{"type":"function_call_output","call_id":"call_1","output":"result"},{"type":"function_call","call_id":"call_1","name":"lookup","arguments":"{}"}]}`
 	first, err := svc.Forward(context.Background(), newContext(), account, []byte(input))
 	require.NoError(t, err)
 	require.NotNil(t, first)

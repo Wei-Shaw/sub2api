@@ -1575,6 +1575,11 @@ func addOpenAIUsage(dst *OpenAIUsage, usage OpenAIUsage) {
 }
 
 func buildGrokResponsesRequest(ctx context.Context, c *gin.Context, account *Account, body []byte, token, cacheIdentity string, cfg *config.Config, settings ...*SettingService) (*http.Request, error) {
+	repaired, _, repairErr := sanitizeStrictHTTPResponsesBody(body)
+	if repairErr != nil {
+		return nil, repairErr
+	}
+	body = repaired
 	targetURL, err := buildGrokResponsesURL(account, cfg, settings...)
 	if err != nil {
 		return nil, err

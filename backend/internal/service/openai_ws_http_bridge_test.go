@@ -366,7 +366,7 @@ func TestProxyOpenAIWSHTTPBridgeTurnGrokInheritsToolSearchAndPromotesFollowupDis
 
 	second := []byte(`{
 		"type":"response.create","model":"grok-4.5","stream":true,
-		"input":[{"type":"tool_search_output","call_id":"call_search","status":"completed","tools":[
+		"input":[{"type":"tool_search_call","call_id":"call_search","arguments":"{}"},{"type":"tool_search_output","call_id":"call_search","status":"completed","tools":[
 			{"type":"namespace","name":"multi_agent_v1","tools":[{"type":"function","name":"spawn_agent","parameters":{"type":"object"}}]}
 		]}]
 	}`)
@@ -386,7 +386,7 @@ func TestProxyOpenAIWSHTTPBridgeTurnGrokInheritsToolSearchAndPromotesFollowupDis
 	require.Equal(t, "multi_agent_v1__spawn_agent", gjson.GetBytes(upstream.bodies[1], "tools.1.name").String())
 	require.NotEqual(t, grokFreeCacheDisabledToolChoice, gjson.GetBytes(upstream.bodies[1], "tool_choice").String())
 	require.Equal(t, "grok-ws-cache", gjson.GetBytes(upstream.bodies[1], "prompt_cache_key").String())
-	require.Equal(t, "function_call_output", gjson.GetBytes(upstream.bodies[1], "input.0.type").String())
+	require.Equal(t, "function_call_output", gjson.GetBytes(upstream.bodies[1], "input.1.type").String())
 	require.Len(t, events, 1)
 	require.Equal(t, "spawn_agent", gjson.GetBytes(events[0], "response.output.0.name").String())
 	require.Equal(t, "multi_agent_v1", gjson.GetBytes(events[0], "response.output.0.namespace").String())
