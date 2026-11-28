@@ -13,6 +13,8 @@ func TestDefaultModels_ContainsFallbackCatalogModels(t *testing.T) {
 
 	required := []string{
 		"models/gemini-4-carbon",
+		"models/gemini-4-neon",
+		"models/gemini-4-hydrogen",
 		"models/gemini-3-pro-image",
 		"models/gemini-3.1-pro-preview-customtools",
 		"models/gemini-3.1-flash-image",
@@ -44,9 +46,9 @@ func TestHasFallbackModel_RecognizesCustomtoolsModel(t *testing.T) {
 }
 
 func TestHasFallbackModel_Carbon(t *testing.T) {
-	for _, model := range []string{"gemini-4-carbon", "models/gemini-4-carbon"} {
+	for _, model := range []string{"gemini-4-carbon", "models/gemini-4-carbon", "gemini-4-neon", "models/gemini-4-neon", "gemini-4-hydrogen", "models/gemini-4-hydrogen"} {
 		if !HasFallbackModel(model) {
-			t.Fatalf("expected Carbon fallback: %s", model)
+			t.Fatalf("expected Gemini 4 fallback: %s", model)
 		}
 	}
 	if HasFallbackModel("gemini-4-carbon-preview") {
