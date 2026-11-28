@@ -92,3 +92,24 @@ func TestOpenAIGatewayHandlerChatCompletions_InvalidServiceTierRejected400(t *te
 		require.Contains(t, rec.Body.String(), "invalid service_tier", "body=%s", body)
 	}
 }
+
+func TestOpenAIGatewayHandler_CapturesRequestParametersBeforeValidation(t *testing.T) {
+	for _, tc := range []struct{ path, body, effort string }{
+		{"/v1/responses", `{"model":"gpt-5.5","input":"hi","reasoning":{"effort":"xhigh"},"service_tier":"turbo"}`, "xhigh"},
+		{"/v1/chat/completions", `{"model":"gpt-5.5","messages":[],"reasoning_effort":"none","service_tier":"turbo"}`, "none"},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			rec := runOpenAIHandlerServiceTierTest(t, tc.path, tc.body, func(h *OpenAIGatewayHandler, c *gin.Context) {
+				if tc.path == "/v1/responses" {
+					h.Responses(c)
+				} else {
+					h.ChatCompletions(c)
+				}
+				effort, tier := service.OpsRequestParameters(c)
+				require.Equal(t, tc.effort, effort)
+				require.Equal(t, "turbo", tier)
+			})
+			require.Equal(t, http.StatusBadRequest, rec.Code)
+		})
+	}
+}

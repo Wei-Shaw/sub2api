@@ -203,6 +203,8 @@ type OpsStreamError struct {
 	SkipMonitoring  bool
 	AccountID       int64
 	UpstreamModel   string
+	ReasoningEffort string
+	ServiceTier     string
 	UpstreamStatus  int
 	UpstreamMessage string
 	UpstreamDetail  string
@@ -305,6 +307,7 @@ func snapshotOpsStreamErrorContext(c *gin.Context, streamErr *OpsStreamError) {
 	if c == nil || streamErr == nil {
 		return
 	}
+	streamErr.ReasoningEffort, streamErr.ServiceTier = OpsRequestParameters(c)
 	if c.Request != nil {
 		if accountID, ok := c.Request.Context().Value(ctxkey.AccountID).(int64); ok && accountID > 0 {
 			streamErr.AccountID = accountID

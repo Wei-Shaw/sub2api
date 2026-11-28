@@ -76,6 +76,16 @@ describe('OpsErrorLogTable user/api-key/account columns', () => {
 })
 
 describe('OpsErrorLogTable column order', () => {
+  it('shows raw effort and service tier without mapping unknown or missing values', async () => {
+    const wrapper = mountTable({ reasoning_effort: 'none', service_tier: 'turbo' })
+    await wrapper.setProps({ visibleColumnKeys: ['reasoning_effort', 'service_tier'] })
+    expect(wrapper.findAll('thead th').map((cell) => cell.text())).toEqual(['usage.reasoningEffort', 'service_tier'])
+    expect(wrapper.findAll('tbody td').map((cell) => cell.text())).toEqual(['none', 'turbo'])
+    await wrapper.setProps({ rows: [{ id: 2 } as OpsErrorLog] })
+    expect(wrapper.findAll('tbody td').map((cell) => cell.text())).toEqual(['-', '-'])
+    wrapper.unmount()
+  })
+
   it('puts time and response content first for ops without changing time sorting', async () => {
     const wrapper = mountTable({})
     await wrapper.setProps({ summaryFirst: true })

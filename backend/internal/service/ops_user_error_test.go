@@ -79,8 +79,13 @@ func TestToUserErrorRequest_RedactsSensitiveFields(t *testing.T) {
 		Message:         "rate limit exceeded",
 		APIKeyName:      "my-key",
 		APIKeyDeleted:   true,
+		ReasoningEffort: "unsupported-effort",
+		ServiceTier:     "priority",
 	}
 	out := ToUserErrorRequest(src)
+	if out.ReasoningEffort != src.ReasoningEffort || out.ServiceTier != src.ServiceTier {
+		t.Fatalf("request parameters lost: %+v", out)
+	}
 	if out.ID != 123 {
 		t.Errorf("want ID=123, got %d", out.ID)
 	}

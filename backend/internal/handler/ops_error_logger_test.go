@@ -95,6 +95,24 @@ func TestEstimateOpsErrorLogJobBytesIncludesVariablePayloads(t *testing.T) {
 	}
 }
 
+func TestOpsErrorLoggerMiddleware_RequestParameters(t *testing.T) {
+	setupOpsErrorLogTestQueue(t, 2)
+	ops := service.NewOpsService(nil, nil, nil, nil, nil, nil, nil, nil, nil, nil, nil)
+	router := gin.New()
+	router.Use(OpsErrorLoggerMiddleware(ops))
+	router.POST("/v1/responses", func(c *gin.Context) {
+		service.SetOpsRequestParameters(c, []byte(`{"reasoning":{"effort":"unsupported"},"service_tier":"priority"}`))
+		c.JSON(http.StatusForbidden, gin.H{"error": gin.H{"type": "permission_error", "message": "reasoning_effort_not_allowed"}})
+	})
+	router.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/v1/responses", nil))
+	require.Equal(t, int64(1), OpsErrorLogQueueLength())
+	entry := (<-opsErrorLogQueue).entry
+	require.Equal(t, "unsupported", entry.ReasoningEffort)
+	require.Equal(t, "priority", entry.ServiceTier)
+	base := estimateOpsErrorLogJobBytes(&service.OpsInsertErrorLogInput{})
+	require.Equal(t, base+int64(len("unsupportedpriority")), estimateOpsErrorLogJobBytes(&service.OpsInsertErrorLogInput{ReasoningEffort: "unsupported", ServiceTier: "priority"}))
+}
+
 func resetOpsErrorLoggerStateForTest(t *testing.T) {
 	t.Helper()
 
