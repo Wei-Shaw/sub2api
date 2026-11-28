@@ -18,7 +18,7 @@ import (
 	"github.com/tidwall/gjson"
 )
 
-// --- mock: 只记录临时不可调度写入，其余方法不应被调用 ---
+// --- mock: 提供账号查询并记录临时不可调度写入 ---
 
 type capacityShedAccountRepoStub struct {
 	AccountRepository // 嵌入接口，未实现的方法会 panic（不应被调用）
@@ -29,6 +29,10 @@ type capacityShedAccountRepoStub struct {
 func (r *capacityShedAccountRepoStub) SetTempUnschedulable(_ context.Context, _ int64, _ time.Time, _ string) error {
 	r.tempUnschedCalls++
 	return nil
+}
+
+func (r *capacityShedAccountRepoStub) GetByID(_ context.Context, accountID int64) (*Account, error) {
+	return &Account{ID: accountID, Platform: PlatformOpenAI, Type: AccountTypeOAuth}, nil
 }
 
 // 上游容量降载是请求级信号：故障因素（客户端身份、模型容量）与账号无关，
