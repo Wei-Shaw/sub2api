@@ -2851,3 +2851,32 @@ func TestLoadSimpleModeAutoCreateDefaultGroups(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadCodexDefaultInstructions(t *testing.T) {
+	t.Run("default is empty", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+		cfg, err := Load()
+		require.NoError(t, err)
+		require.Equal(t, "", cfg.Gateway.CodexDefaultInstructions)
+	})
+
+	t.Run("yaml value is trimmed", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+		tempDir := t.TempDir()
+		require.NoError(t, os.WriteFile(filepath.Join(tempDir, "config.yaml"), []byte("gateway:\n  codex_default_instructions: \"  Be brief.  \"\n"), 0o644))
+		t.Setenv("DATA_DIR", tempDir)
+
+		cfg, err := Load()
+		require.NoError(t, err)
+		require.Equal(t, "Be brief.", cfg.Gateway.CodexDefaultInstructions)
+	})
+
+	t.Run("env value loads", func(t *testing.T) {
+		resetViperWithJWTSecret(t)
+		t.Setenv("GATEWAY_CODEX_DEFAULT_INSTRUCTIONS", " Env brief. ")
+
+		cfg, err := Load()
+		require.NoError(t, err)
+		require.Equal(t, "Env brief.", cfg.Gateway.CodexDefaultInstructions)
+	})
+}
