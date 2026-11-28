@@ -596,7 +596,7 @@ const (
 	// Request Rectifier (请求整流器)
 	// =========================
 
-	// SettingKeyRectifierSettings stores JSON config for rectifier settings (thinking signature + budget).
+	// SettingKeyRectifierSettings stores JSON config for rectifier settings (thinking signature + budget + max_tokens).
 	SettingKeyRectifierSettings = "rectifier_settings"
 
 	// =========================
