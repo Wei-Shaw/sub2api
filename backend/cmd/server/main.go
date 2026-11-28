@@ -145,7 +145,7 @@ func runMainServer() {
 
 	buildInfo := handler.BuildInfo{
 		Version:   Version,
-		BuildType: BuildType,
+		BuildType: deploymentBuildType(BuildType, os.Getenv("SUB2API_UPDATE_MODE")),
 	}
 
 	app, err := initializeApplication(buildInfo)
