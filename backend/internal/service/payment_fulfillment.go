@@ -194,7 +194,7 @@ func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, trad
 		return fmt.Errorf("update to PAID: %w", err)
 	}
 	if c == 0 {
-		return s.alreadyProcessed(ctx, o)
+		return s.alreadyProcessed(ctx, o, tradeNo, paid)
 	}
 	if previousStatus == OrderStatusCancelled || previousStatus == OrderStatusExpired {
 		slog.Info("order recovered from webhook payment success",
@@ -214,7 +214,7 @@ func (s *PaymentService) toPaid(ctx context.Context, o *dbent.PaymentOrder, trad
 	return s.executeFulfillment(ctx, o.ID)
 }
 
-func (s *PaymentService) alreadyProcessed(ctx context.Context, o *dbent.PaymentOrder) error {
+func (s *PaymentService) alreadyProcessed(ctx context.Context, o *dbent.PaymentOrder, tradeNo string, paid float64) error {
 	cur, err := s.entClient.PaymentOrder.Get(ctx, o.ID)
 	if err != nil {
 		return nil
@@ -235,10 +235,54 @@ func (s *PaymentService) alreadyProcessed(ctx context.Context, o *dbent.PaymentO
 			"updatedAt": cur.UpdatedAt,
 			"reason":    "payment arrived after expiry grace period",
 		})
-		return nil
+		return s.refundLatePayment(ctx, cur, tradeNo, paid)
 	default:
 		return nil
 	}
+}
+
+// refundLatePayment 退回过期宽限期之后才到达的付款。只对付款链接无法随订单过期作废的服务商
+// （实现 payment.LatePaymentRefunder，如 Creem）生效：否则用户付了钱却拿不到余额。
+// 退款失败时返回错误，让 webhook 返回 5xx 由服务商重试；服务商侧的退款需保证重试幂等。
+func (s *PaymentService) refundLatePayment(ctx context.Context, o *dbent.PaymentOrder, tradeNo string, paid float64) error {
+	prov, err := s.getOrderProvider(ctx, o)
+	if err != nil {
+		slog.Warn("late payment refund skipped: provider unresolved", "orderID", o.ID, "error", err)
+		return nil
+	}
+	refunder, ok := prov.(payment.LatePaymentRefunder)
+	if !ok || !refunder.RefundsLatePayments() {
+		return nil
+	}
+	if strings.TrimSpace(tradeNo) == "" {
+		tradeNo = o.PaymentTradeNo
+	}
+	amount := payment.FormatAmountForCurrency(paid, PaymentOrderCurrency(o))
+	resp, err := prov.Refund(ctx, payment.RefundRequest{
+		TradeNo: tradeNo,
+		OrderID: o.OutTradeNo,
+		Amount:  amount,
+		Reason:  "payment arrived after order expired",
+	})
+	if err == nil {
+		err = validateRefundProviderResponse(resp)
+	}
+	if err != nil {
+		s.writeAuditLog(ctx, o.ID, "LATE_PAYMENT_REFUND_FAILED", "system", map[string]any{
+			"tradeNo": tradeNo,
+			"amount":  amount,
+			"error":   err.Error(),
+		})
+		return fmt.Errorf("refund late payment for expired order %d: %w", o.ID, err)
+	}
+	slog.Info("late payment refunded", "orderID", o.ID, "tradeNo", tradeNo, "amount", amount, "provider", prov.ProviderKey())
+	s.writeAuditLog(ctx, o.ID, "LATE_PAYMENT_REFUNDED", "system", map[string]any{
+		"tradeNo":  tradeNo,
+		"amount":   amount,
+		"refundId": resp.RefundID,
+		"status":   resp.Status,
+	})
+	return nil
 }
 
 func (s *PaymentService) executeFulfillment(ctx context.Context, oid int64) error {

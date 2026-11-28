@@ -14,6 +14,12 @@ func paymentProviderConfigCurrency(providerKey string, cfg map[string]string) st
 		if err == nil {
 			return currency
 		}
+	case payment.TypeCreem:
+		currency, err := payment.NormalizeCreemCurrency(cfg["currency"])
+		if err == nil {
+			return currency
+		}
+		return payment.CreemDefaultCurrency
 	}
 	return payment.DefaultPaymentCurrency
 }

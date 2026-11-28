@@ -187,6 +187,21 @@ func TestBuildPaymentOrderProviderSnapshot_IncludesProviderCurrency(t *testing.T
 	}, CreateOrderRequest{})
 	require.Equal(t, "USD", airwallexSnapshot["currency"])
 	require.Equal(t, "acct-78", airwallexSnapshot["merchant_id"])
+
+	// Creem 只收 USD/EUR，未配置币种时快照必须是 USD，不能沿用全局默认 CNY。
+	creemSnapshot := buildPaymentOrderProviderSnapshot(&payment.InstanceSelection{
+		InstanceID:  "79",
+		ProviderKey: payment.TypeCreem,
+		Config:      map[string]string{},
+	}, CreateOrderRequest{})
+	require.Equal(t, "USD", creemSnapshot["currency"])
+
+	creemEURSnapshot := buildPaymentOrderProviderSnapshot(&payment.InstanceSelection{
+		InstanceID:  "80",
+		ProviderKey: payment.TypeCreem,
+		Config:      map[string]string{"currency": "eur"},
+	}, CreateOrderRequest{})
+	require.Equal(t, "EUR", creemEURSnapshot["currency"])
 }
 
 func valueOrEmpty(v *string) string {
