@@ -190,38 +190,51 @@ func TestOpenAIGatewayService_OAuthResponses_MultiLineInstructionsEchoKeepsSSEFr
 	require.JSONEq(t, `[{"role":"developer","content":"x"}]`, sseResponseInstructions(t, rec.Body.String(), "response.completed").Raw)
 }
 
-func TestOpenAIGatewayService_OAuthResponses_InjectedInstructionsEchoRestored(t *testing.T) {
-	t.Run("stream", func(t *testing.T) {
-		upstream := instructionsEchoUpstream(`"` + instructionsEchoMarker + `"`)
-		result, rec, err := instructionsEchoForward(t, instructionsEchoOAuthAccount(false), upstream,
-			`{"model":"gpt-6.1-sol","stream":true,"input":[{"type":"message","role":"user","content":"Hi"}]}`)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		require.NotEmpty(t, gjson.GetBytes(upstream.lastBody, "instructions").String())
-		require.NotContains(t, rec.Body.String(), instructionsEchoMarker)
-		require.Equal(t, gjson.Null, sseResponseInstructions(t, rec.Body.String(), "response.created").Type)
-		require.Equal(t, gjson.Null, sseResponseInstructions(t, rec.Body.String(), "response.completed").Type)
-	})
+func TestOpenAIGatewayService_OAuthResponses_InstructionsEchoRestored(t *testing.T) {
+	for _, model := range []string{"gpt-5.3-codex", "gpt-6.1-sol"} {
+		t.Run(model, func(t *testing.T) {
+			t.Run("stream", func(t *testing.T) {
+				upstream := instructionsEchoUpstream(`"` + instructionsEchoMarker + `"`)
+				result, rec, err := instructionsEchoForward(t, instructionsEchoOAuthAccount(false), upstream,
+					`{"model":"`+model+`","stream":true,"input":[{"type":"message","role":"user","content":"Hi"}]}`)
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				if model == "gpt-6.1-sol" {
+					require.JSONEq(t, `""`, gjson.GetBytes(upstream.lastBody, "instructions").Raw)
+				} else {
+					require.NotEmpty(t, gjson.GetBytes(upstream.lastBody, "instructions").String())
+				}
+				require.NotContains(t, rec.Body.String(), instructionsEchoMarker)
+				require.Equal(t, gjson.Null, sseResponseInstructions(t, rec.Body.String(), "response.created").Type)
+				require.Equal(t, gjson.Null, sseResponseInstructions(t, rec.Body.String(), "response.completed").Type)
+			})
 
-	t.Run("non-stream", func(t *testing.T) {
-		upstream := instructionsEchoUpstream(`"` + instructionsEchoMarker + `"`)
-		result, rec, err := instructionsEchoForward(t, instructionsEchoOAuthAccount(false), upstream,
-			`{"model":"gpt-6.1-sol","stream":false,"input":[{"type":"message","role":"user","content":"Hi"}]}`)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		require.NotContains(t, rec.Body.String(), instructionsEchoMarker)
-		instructions := gjson.Get(rec.Body.String(), "instructions")
-		require.True(t, instructions.Exists())
-		require.Equal(t, gjson.Null, instructions.Type)
-	})
+			t.Run("non-stream", func(t *testing.T) {
+				upstream := instructionsEchoUpstream(`"` + instructionsEchoMarker + `"`)
+				result, rec, err := instructionsEchoForward(t, instructionsEchoOAuthAccount(false), upstream,
+					`{"model":"`+model+`","stream":false,"input":[{"type":"message","role":"user","content":"Hi"}]}`)
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				if model == "gpt-6.1-sol" {
+					require.JSONEq(t, `""`, gjson.GetBytes(upstream.lastBody, "instructions").Raw)
+				} else {
+					require.NotEmpty(t, gjson.GetBytes(upstream.lastBody, "instructions").String())
+				}
+				require.NotContains(t, rec.Body.String(), instructionsEchoMarker)
+				instructions := gjson.Get(rec.Body.String(), "instructions")
+				require.True(t, instructions.Exists())
+				require.Equal(t, gjson.Null, instructions.Type)
+			})
 
-	t.Run("client instructions kept", func(t *testing.T) {
-		upstream := instructionsEchoUpstream(`"client rule"`)
-		result, rec, err := instructionsEchoForward(t, instructionsEchoOAuthAccount(false), upstream,
-			`{"model":"gpt-6.1-sol","stream":true,"instructions":"client rule","input":[{"type":"message","role":"user","content":"Hi"}]}`)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		require.Equal(t, "client rule", gjson.GetBytes(upstream.lastBody, "instructions").String())
-		require.Equal(t, "client rule", sseResponseInstructions(t, rec.Body.String(), "response.completed").String())
-	})
+			t.Run("client instructions kept", func(t *testing.T) {
+				upstream := instructionsEchoUpstream(`"client rule"`)
+				result, rec, err := instructionsEchoForward(t, instructionsEchoOAuthAccount(false), upstream,
+					`{"model":"`+model+`","stream":true,"instructions":"client rule","input":[{"type":"message","role":"user","content":"Hi"}]}`)
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				require.Equal(t, "client rule", gjson.GetBytes(upstream.lastBody, "instructions").String())
+				require.Equal(t, "client rule", sseResponseInstructions(t, rec.Body.String(), "response.completed").String())
+			})
+		})
+	}
 }

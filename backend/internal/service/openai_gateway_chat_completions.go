@@ -15,6 +15,7 @@ import (
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/apicompat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
@@ -330,6 +331,21 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 		responsesBody, err = json.Marshal(reqBody)
 		if err != nil {
 			return nil, fmt.Errorf("remarshal after codex transform: %w", err)
+		}
+	} else if !isResponsesShape && account.IsOpenAIApiKey() && openai.IsGPT61SolModelSpelling(upstreamModel) {
+		// A Responses supplier may fill an empty instructions field even when
+		// the Chat caller supplied a system message. Promote that caller-owned
+		// text just as on the OAuth bridge, without inventing a default prompt.
+		var reqBody map[string]any
+		if err := json.Unmarshal(responsesBody, &reqBody); err != nil {
+			return nil, fmt.Errorf("unmarshal sol instructions bridge: %w", err)
+		}
+		isJSONObjectFormat := strings.EqualFold(strings.TrimSpace(gjson.GetBytes(responsesBody, "text.format.type").String()), "json_object")
+		extractSystemMessagesFromInput(reqBody, !isJSONObjectFormat)
+		ensureCodexOAuthInstructionsField(reqBody)
+		responsesBody, err = json.Marshal(reqBody)
+		if err != nil {
+			return nil, fmt.Errorf("marshal sol instructions bridge: %w", err)
 		}
 	}
 	// Codex transforms may normalize the model after the initial mapping pass;
