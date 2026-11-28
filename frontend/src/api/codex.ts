@@ -4,8 +4,6 @@ export interface CodexModelsManifestResult {
   responseBytes: number
 }
 
-const DEFAULT_CODEX_CLIENT_VERSION = '0.158.0'
-
 function normalizeCodexBaseUrl(baseUrl: string): string {
   const fallback = typeof window !== 'undefined' ? window.location.origin : ''
   const value = (baseUrl || fallback).trim().replace(/\/+$/, '')
@@ -15,9 +13,13 @@ function normalizeCodexBaseUrl(baseUrl: string): string {
 
 export function buildCodexModelsManifestUrl(
   baseUrl: string,
-  clientVersion = DEFAULT_CODEX_CLIENT_VERSION
+  clientVersion?: string
 ): string {
-  const params = new URLSearchParams({ client_version: clientVersion })
+  // Downloads use the gateway's automatically maintained identity. Only real
+  // clients that need version-specific negotiation should supply a version.
+  const params = new URLSearchParams(clientVersion
+    ? { client_version: clientVersion }
+    : { format: 'codex' })
   return `${buildCodexModelCatalogUrl(baseUrl)}?${params.toString()}`
 }
 
