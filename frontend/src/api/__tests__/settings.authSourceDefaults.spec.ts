@@ -12,7 +12,7 @@ import { listPlatformIds } from "@/constants/platformCatalog";
 
 /** 与后端 AllowedQuotaPlatforms 一致的全部具体平台（平台清单）。 */
 const quotaPlatforms = [
-  "anthropic", "openai", "gemini", "antigravity", "grok",
+  "anthropic", "openai", "gemini", "antigravity", "grok", "muse",
   "kimi", "zhipu", "deepseek", "minimax", "opencode_go", "typesafe", "command_code", "cline",
 ];
 
@@ -22,6 +22,17 @@ const allNullQuotas: DefaultPlatformQuotasMap = Object.fromEntries(
 )
 
 describe("admin settings auth source defaults helpers", () => {
+  it("preserves Muse quotas when loading and saving auth source defaults", () => {
+    const limits = { daily: 10, weekly: 50, monthly: 200 };
+    const state = buildAuthSourceDefaultsState({
+      auth_source_default_email_platform_quotas: { muse: limits },
+    });
+    expect(state.email.platform_quotas.muse).toEqual(limits);
+    const payload: UpdateSettingsRequest = { site_name: "Sub2API" };
+    appendAuthSourceDefaultsToUpdateRequest(payload, state);
+    expect(payload.auth_source_default_email_platform_quotas?.muse).toEqual(limits);
+  });
+
   it("builds auth source defaults state from flat settings fields", () => {
     const state = buildAuthSourceDefaultsState({
       auth_source_default_email_balance: 9.5,
