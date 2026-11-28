@@ -172,19 +172,19 @@ func TestClassifyGrokUpstreamFailure_GenericShapeErrorDoesNotFailover(t *testing
 func TestShouldFailoverGrokUpstreamError_FreeUsageBody(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	body := []byte(`{"error":{"code":"subscription:free-usage-exhausted","message":"free usage exhausted"}}`)
-	require.True(t, svc.shouldFailoverGrokUpstreamError(http.StatusBadRequest, body))
+	require.True(t, svc.shouldFailoverGrokUpstreamError(nil, http.StatusBadRequest, body))
 }
 
 func TestShouldFailoverGrokUpstreamError_CompatibilityBody(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	body := []byte(`{"error":{"message":"Could not decode the compaction blob"}}`)
-	require.True(t, svc.shouldFailoverGrokUpstreamError(http.StatusUnprocessableEntity, body))
+	require.True(t, svc.shouldFailoverGrokUpstreamError(nil, http.StatusUnprocessableEntity, body))
 }
 
 func TestShouldFailoverGrokUpstreamError_ContentPolicyStillNoFailover(t *testing.T) {
 	svc := &OpenAIGatewayService{}
 	body := []byte(`{"error":{"code":"new_sensitive","message":"text is sensitive"}}`)
-	require.False(t, svc.shouldFailoverGrokUpstreamError(http.StatusForbidden, body))
+	require.False(t, svc.shouldFailoverGrokUpstreamError(nil, http.StatusForbidden, body))
 }
 
 func TestHandleGrokAccountUpstreamError_FreeUsageBodyCoolsAccount(t *testing.T) {

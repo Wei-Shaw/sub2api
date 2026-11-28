@@ -226,8 +226,10 @@ func grokUpstreamErrorCode(body []byte) string {
 // status-only failover helper. Grok content refusals must stay on the current
 // account and be returned to the caller instead of consuming the account pool.
 // Free-usage / empty-output / billing bodies also failover even when the HTTP
-// status alone would not (e.g. 400 with free-usage-exhausted).
-func (s *OpenAIGatewayService) shouldFailoverGrokUpstreamError(statusCode int, responseBody []byte) bool {
+// status alone would not (e.g. 400 with free-usage-exhausted). A 403 without
+// account evidence stays on the current account as well; the account decides
+// whether pool mode or a temporary-unschedulable rule overrides that.
+func (s *OpenAIGatewayService) shouldFailoverGrokUpstreamError(account *Account, statusCode int, responseBody []byte) bool {
 	if isGrokContentPolicyRejection(statusCode, responseBody) {
 		return false
 	}
@@ -242,7 +244,72 @@ func (s *OpenAIGatewayService) shouldFailoverGrokUpstreamError(statusCode int, r
 	case GrokFailureFreeUsage, GrokFailureEmptyUpstream, GrokFailureBilling, GrokFailureModelCapacity, GrokFailureCompatibility:
 		return decision.ShouldFailover
 	}
+	if isGrokAccountNeutralForbidden(account, statusCode, responseBody) {
+		// The next account would receive the same answer, so the caller gets the
+		// error. An edge block is the exception: it is tied to the route, and
+		// another account may reach xAI through a different proxy.
+		return isGrokEdgeForbidden(responseBody)
+	}
 	return s.shouldFailoverUpstreamError(statusCode)
+}
+
+// isGrokUnclassifiedForbidden reports whether a 403 says nothing about the
+// account. xAI answers some requests with an empty or generic permission-denied
+// 403 that healthy accounts reproduce, so the response describes the request,
+// not the credential. Content-policy refusals have their own classification;
+// suspension, entitlement, credential, quota, billing and spending-limit
+// evidence keeps the account path.
+func isGrokUnclassifiedForbidden(statusCode int, responseBody []byte) bool {
+	if statusCode != http.StatusForbidden || isGrokContentPolicyRejection(statusCode, responseBody) {
+		return false
+	}
+	if grokForbiddenHasAccountEvidence(responseBody) {
+		return false
+	}
+	return classifyGrokUpstreamFailure(statusCode, responseBody, "").Class == GrokFailureNone
+}
+
+// isGrokAccountNeutralForbidden reports whether an unclassified 403 must leave
+// this account's scheduling state untouched. Pool-mode accounts keep their
+// upstream retry, and an administrator's temporary-unschedulable rule that
+// matches the body explicitly declares the response to be about the account.
+func isGrokAccountNeutralForbidden(account *Account, statusCode int, responseBody []byte) bool {
+	if !isGrokUnclassifiedForbidden(statusCode, responseBody) {
+		return false
+	}
+	if account == nil {
+		return true
+	}
+	if account.IsPoolMode() {
+		return false
+	}
+	return len(matchTempUnschedulableRules(account, statusCode, responseBody)) == 0
+}
+
+func grokForbiddenHasAccountEvidence(responseBody []byte) bool {
+	if isGrokSpendingLimitError(responseBody) {
+		return true
+	}
+	text := string(responseBody)
+	if grokAccountAccessMessage(text) || grokCredentialDenialMessage(text) {
+		return true
+	}
+	var payload any
+	return json.Unmarshal(responseBody, &payload) == nil && grokStructuredAccountAccessMarker(payload)
+}
+
+// grokCredentialDenialMessage matches xAI's credential refusal ("Access to the
+// chat endpoint is denied. Please ensure you're using the correct
+// credentials."). It describes the token, not the request.
+func grokCredentialDenialMessage(value string) bool {
+	lower := strings.ToLower(value)
+	return strings.Contains(lower, "endpoint is denied") || strings.Contains(lower, "correct credentials")
+}
+
+// isGrokEdgeForbidden identifies a 403 produced by a proxy or CDN in front of
+// xAI rather than by the xAI API.
+func isGrokEdgeForbidden(responseBody []byte) bool {
+	return isHTMLResponse(responseBody) || isCloudflareBotBlockResponse(responseBody)
 }
 
 func isGrokDecoderCompatibilityError(statusCode int, responseBody []byte) bool {
