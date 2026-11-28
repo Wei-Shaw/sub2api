@@ -2975,11 +2975,12 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	if strings.TrimSpace(tc.secondPayload) != "" {
 		turnCount++
 	}
+	usesHTTPBridge := tc.accountPlatform == service.PlatformGrok || tc.accountPlatform == service.PlatformKimi
 	upstreamPayloadCh := make(chan []byte, turnCount)
 	upstreamErrCh := make(chan error, 1)
 	var channelSvc *service.ChannelService
 	upstreamServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if tc.accountPlatform == service.PlatformGrok {
+		if usesHTTPBridge {
 			payload, err := io.ReadAll(r.Body)
 			if err != nil {
 				upstreamErrCh <- err
@@ -3059,6 +3060,10 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 	}
 	if tc.accountPlatform != "" {
 		account.Platform = tc.accountPlatform
+	}
+	if tc.accountPlatform == service.PlatformKimi {
+		account.Credentials["api_protocol"] = service.APIProtocolResponses
+		account.Credentials["account_mode"] = service.AccountModePayG
 	}
 	account.RateMultiplier = tc.accountRateMultiplier
 	if strings.TrimSpace(tc.ingressMode) != "" {
@@ -3304,7 +3309,7 @@ func runOpenAIResponsesWebSocketUsageLogCase(t *testing.T, tc openAIResponsesWSU
 		}
 	}
 
-	if tc.accountPlatform == service.PlatformGrok {
+	if usesHTTPBridge {
 		upstreamErrCh <- nil
 	}
 	select {

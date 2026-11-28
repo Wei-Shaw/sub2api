@@ -339,13 +339,28 @@ func openAICompatibleTextTargetAllowed(c *gin.Context, apiKey *service.APIKey, m
 		})...)
 }
 
-// isResponsesWebSocketCompositePlatform 限定 composite 分组在 Responses WebSocket
-// 上可服务的目标平台。CN 供应商（kimi/zhipu/deepseek）刻意排除：其账号无法通过
-// WSv2 ingress 的 transport 过滤，且 WS HTTP 桥没有面向 CN 的 Responses 转换，
-// 放行只会把明确的策略拒绝变成误导性的 "no available account"。
+func responsesWebSocketUsesHTTPBridgePlatform(platform string) bool {
+	switch platform {
+	case service.PlatformGrok, service.PlatformKimi:
+		return true
+	default:
+		return false
+	}
+}
+
+func responsesWebSocketRequiredUpstreamTransport(platform string) service.OpenAIUpstreamTransport {
+	if responsesWebSocketUsesHTTPBridgePlatform(platform) {
+		return service.OpenAIUpstreamTransportHTTPSSE
+	}
+	return service.OpenAIUpstreamTransportResponsesWebsocketV2Ingress
+}
+
+// isResponsesWebSocketCompositePlatform limits the target platforms available
+// to composite groups. Kimi supports native Responses over HTTP/SSE, so the
+// existing WS-to-HTTP bridge can expose it transparently to WebSocket clients.
 func isResponsesWebSocketCompositePlatform(platform string) bool {
 	switch platform {
-	case service.PlatformOpenAI, service.PlatformGrok:
+	case service.PlatformOpenAI, service.PlatformGrok, service.PlatformKimi:
 		return true
 	default:
 		return false
@@ -2762,10 +2777,7 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 
 	subscription, _ := middleware2.GetSubscriptionFromContext(c)
 	requestPlatform := openAICompatibleRequestPlatform(ctx, apiKey)
-	requiredTransport := service.OpenAIUpstreamTransportResponsesWebsocketV2Ingress
-	if requestPlatform == service.PlatformGrok {
-		requiredTransport = service.OpenAIUpstreamTransportHTTPSSE
-	}
+	requiredTransport := responsesWebSocketRequiredUpstreamTransport(requestPlatform)
 	if err := h.billingCacheService.CheckBillingEligibility(ctx, apiKey.User, apiKey, apiKey.Group, subscription, service.QuotaPlatform(c.Request.Context(), apiKey)); err != nil {
 		reqLog.Info("openai.websocket_billing_eligibility_check_failed", zap.Error(err))
 		closeOpenAIClientWS(wsConn, coderws.StatusPolicyViolation, "billing check failed")
@@ -2873,11 +2885,11 @@ func (h *OpenAIGatewayHandler) ResponsesWebSocket(c *gin.Context) {
 		return ensureUserSlotHeld()
 	}
 
-	// 与 HTTP Responses 路径保持一致：生图意图请求要求账号支持 Responses API（#4417）。
-	// WSv2 传输本身已隐含 Responses 支持，此处为防御性对齐。
-	// 使用 IsExplicitImageGenerationIntent 排除被动 namespace 声明（#4476）。
+	// Kimi always uses the native Responses HTTP bridge. OpenAI WSv2 implies
+	// Responses support; image intent needs the same capability defensively.
+	// Use IsExplicitImageGenerationIntent to ignore passive namespace declarations.
 	requiredCapability := service.OpenAIEndpointCapabilityChatCompletions
-	if service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, firstMessage) && requestPlatform == service.PlatformOpenAI {
+	if requestPlatform == service.PlatformKimi || (service.IsExplicitImageGenerationIntent("/v1/responses", reqModel, firstMessage) && requestPlatform == service.PlatformOpenAI) {
 		requiredCapability = service.OpenAIEndpointCapabilityResponses
 	}
 
