@@ -77,3 +77,81 @@ func TestClient_RetrieveUserQuotaSummaryFromURL_Errors(t *testing.T) {
 		server.Close()
 	}
 }
+
+func TestClient_RetrieveUserQuotaSummary_403RetriesPlainUserAgent(t *testing.T) {
+	var gotUserAgents []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotUserAgents = append(gotUserAgents, r.Header.Get("User-Agent"))
+		if len(gotUserAgents) == 1 {
+			// The configured hub UA is rejected by the summary endpoint only.
+			w.WriteHeader(http.StatusForbidden)
+			_, _ = w.Write([]byte(`{"error":{"code":403,"message":"Verify your account to continue."}}`))
+			return
+		}
+		_, _ = w.Write([]byte(quotaSummaryBody))
+	}))
+	defer server.Close()
+
+	previous := quotaSummaryBaseURLs
+	quotaSummaryBaseURLs = []string{server.URL}
+	t.Cleanup(func() { quotaSummaryBaseURLs = previous })
+
+	client := mustNewClient(t, "")
+	summary, err := client.RetrieveUserQuotaSummary(context.Background(), "tok", "proj")
+	if err != nil {
+		t.Fatalf("summary after UA retry: %v", err)
+	}
+	if len(summary.Groups) != 2 {
+		t.Fatalf("groups: %+v", summary.Groups)
+	}
+	if len(gotUserAgents) != 2 {
+		t.Fatalf("expected a single retry, got %d requests", len(gotUserAgents))
+	}
+	if gotUserAgents[1] != quotaSummaryFallbackUserAgent {
+		t.Fatalf("retry used %q, want %q", gotUserAgents[1], quotaSummaryFallbackUserAgent)
+	}
+}
+
+func TestClient_RetrieveUserQuotaSummary_403BothUserAgentsFails(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusForbidden)
+		_, _ = w.Write([]byte(`{"error":{"code":403}}`))
+	}))
+	defer server.Close()
+
+	previous := quotaSummaryBaseURLs
+	quotaSummaryBaseURLs = []string{server.URL}
+	t.Cleanup(func() { quotaSummaryBaseURLs = previous })
+
+	client := mustNewClient(t, "")
+	if _, err := client.RetrieveUserQuotaSummary(context.Background(), "tok", "proj"); err == nil {
+		t.Fatal("both UAs failing must surface an error")
+	}
+	if requests != 2 {
+		t.Fatalf("expected the plain-UA retry, got %d requests", requests)
+	}
+}
+
+func TestClient_RetrieveUserQuotaSummary_Non403NoUserAgentRetry(t *testing.T) {
+	var requests int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	previous := quotaSummaryBaseURLs
+	quotaSummaryBaseURLs = []string{server.URL}
+	t.Cleanup(func() { quotaSummaryBaseURLs = previous })
+
+	client := mustNewClient(t, "")
+	if _, err := client.RetrieveUserQuotaSummary(context.Background(), "tok", "proj"); err == nil {
+		t.Fatal("500 must surface an error")
+	}
+	if requests != 1 {
+		t.Fatalf("500 must not trigger a UA retry, got %d requests", requests)
+	}
+}
