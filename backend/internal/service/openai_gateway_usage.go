@@ -51,14 +51,15 @@ type OpenAIRecordUsageInput struct {
 // 用量按上游真实 token 计费，与 WS cyber 及正常请求口径一致（InputTokens/OutputTokens
 // 取自上游 response.failed 报告的 usage，即 mark.UpstreamInTok/OutTok）。
 type CyberPolicyUsageInput struct {
-	APIKey       *APIKey
-	Account      *Account
-	Subscription *UserSubscription
-	RequestID    string
-	Model        string
-	Stream       bool
-	InputTokens  int
-	OutputTokens int
+	NativeWebSearchCalls int
+	APIKey               *APIKey
+	Account              *Account
+	Subscription         *UserSubscription
+	RequestID            string
+	Model                string
+	Stream               bool
+	InputTokens          int
+	OutputTokens         int
 	// 渠道归因与请求级 meta，使 cyber 计费行与正常 RecordUsage 行口径一致
 	// （否则 cyber 行 channel_id 等为空，渠道维度统计会遗漏 cyber 命中）。
 	InboundEndpoint    string
@@ -75,7 +76,7 @@ type CyberPolicyUsageInput struct {
 // RecordCyberPolicyUsageLog 为被上游 cyber_policy 拒绝、未走正常 RecordUsage 的请求
 // （HTTP forward 返回错误路径）记录用量并按上游真实 token 计费，使其与 WS cyber 路径、
 // 与正常请求的计费口径统一（不再是 tokens=0 免费行）。token 取自上游 response.failed
-// 报告的 usage（非流式直接拒通常为 0，cost 随之为 0）。复用 RecordUsage 完成成本计算、
+// 报告的 usage，已完成原生搜索按次数另计。复用 RecordUsage 完成成本计算、
 // 扣费与用量行写入（request_type=cyber 由 CyberBlocked 置位）。仅 forward 返回错误的
 // 路径由 handler 调用，避免与成功路径的正常 RecordUsage 重复。
 func (s *OpenAIGatewayService) RecordCyberPolicyUsageLog(ctx context.Context, in CyberPolicyUsageInput) {
@@ -83,9 +84,10 @@ func (s *OpenAIGatewayService) RecordCyberPolicyUsageLog(ctx context.Context, in
 		return
 	}
 	result := &OpenAIForwardResult{
-		RequestID: in.RequestID,
-		Model:     in.Model,
-		Stream:    in.Stream,
+		NativeWebSearchCalls: in.NativeWebSearchCalls,
+		RequestID:            in.RequestID,
+		Model:                in.Model,
+		Stream:               in.Stream,
 		Usage: OpenAIUsage{
 			InputTokens:  in.InputTokens,
 			OutputTokens: in.OutputTokens,
@@ -286,7 +288,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		result.UpstreamResponseModel,
 		result.UpstreamResponseModelConflict,
 		result.ImageCount > 0 || result.VideoCount > 0 || result.WebSearchCalls > 0 ||
-			result.AudioUsage != nil || result.SearchCount > 0,
+			result.AudioUsage != nil || result.SearchCount > 0 || result.NativeWebSearchCalls > 0,
 	); responseModel != "" && !strings.EqualFold(responseModel, baselineBillingModel) {
 		if identified, responseChannelPriced := s.hasIdentifiedOpenAIResponsePricing(ctx, responseModel, apiKey); identified {
 			responseModels := s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, usageBillingModelCandidates(responseModel))
@@ -600,7 +602,7 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	longContextBillingGate *bool,
 	modelLongContextExempt bool,
 	pricingAt time.Time,
-) (*CostBreakdown, error) {
+) (cost *CostBreakdown, err error) {
 	billingModel := firstUsageBillingModel(billingModels)
 	if result != nil && result.WebSearchCalls > 0 {
 		// Codex alpha/search 网页搜索按次计费：上游不返回 usage/token 字段，单价只取
@@ -609,6 +611,13 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 		//（用户专属 > 分组 rate_multiplier > 系统默认），与分组表单的价格预览承诺一致。
 		return s.billingService.CalculateWebSearchCost(result.WebSearchCalls, webSearchPricePerCallFromAPIKey(apiKey), webSearchMultiplier), nil
 	}
+	defer func() {
+		if err == nil && cost != nil && result != nil && result.NativeWebSearchCalls > 0 {
+			search := s.billingService.CalculateWebSearchCost(result.NativeWebSearchCalls, webSearchPricePerCallFromAPIKey(apiKey), webSearchMultiplier)
+			cost.TotalCost += search.TotalCost
+			cost.ActualCost += search.ActualCost
+		}
+	}()
 	if isGrokVideoUsageResult(result, billingModels) {
 		if resolved := s.resolveOpenAIChannelPricing(ctx, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
 			return s.calculateOpenAIVideoCost(ctx, billingModel, apiKey, result, videoMultiplier), nil

@@ -995,6 +995,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 		responseID := ""
 		usage := OpenAIUsage{}
 		imageCounter := newOpenAIImageOutputCounter()
+		nativeSearch := newOpenAINativeWebSearchCounter(account)
 		var firstTokenMs *int
 		reqStream := openAIWSPayloadBoolFromRaw(payload, "stream", true)
 		turnPreviousResponseID := openAIWSPayloadStringFromRaw(payload, "previous_response_id")
@@ -1026,7 +1027,20 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			upstreamMessage, readErr := lease.ReadMessageWithContextTimeout(ctx, s.openAIWSReadTimeout())
 			if readErr != nil {
 				lease.MarkBroken()
-				return nil, wrapOpenAIWSIngressTurnError(
+				var result *OpenAIForwardResult
+				if searchCalls := nativeSearch.UnsettledCount(); searchCalls > 0 {
+					result = &OpenAIForwardResult{
+						NativeWebSearchCalls:     searchCalls,
+						Model:                    originalModel,
+						UpstreamModel:            mappedModel,
+						RequestedReasoningEffort: requestedReasoningEffort,
+						Stream:                   reqStream,
+						OpenAIWSMode:             true,
+						ResponseHeaders:          lease.HandshakeHeaders(),
+						Duration:                 time.Since(turnStart),
+					}
+				}
+				return result, wrapOpenAIWSIngressTurnError(
 					"read_upstream",
 					fmt.Errorf("read upstream websocket event: %w", readErr),
 					wroteDownstream,
@@ -1169,6 +1183,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				firstTokenMs = &ms
 			}
 			imageCounter.AddSSEData(upstreamMessage)
+			nativeSearch.Add(upstreamMessage)
 
 			if !clientDisconnected {
 				if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && bytes.Contains(upstreamMessage, mappedModelBytes) {
@@ -1251,6 +1266,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				imageCount := imageCounter.Count()
 				result := &OpenAIForwardResult{
 					RequestID:                     responseID,
+					NativeWebSearchCalls:          nativeSearch.Count(),
 					Usage:                         usage,
 					Model:                         originalModel,
 					UpstreamModel:                 mappedModel,
@@ -1876,7 +1892,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 			if recoverIngressPrevResponseNotFound(relayErr, turn, connID) {
 				continue
 			}
-			if retryIngressTurn(relayErr, turn, connID) {
+			if (result == nil || result.NativeWebSearchCalls <= 0) && retryIngressTurn(relayErr, turn, connID) {
 				continue
 			}
 			finalErr := relayErr
@@ -1884,7 +1900,7 @@ func (s *OpenAIGatewayService) ProxyResponsesWebSocketFromClient(
 				finalErr = unwrapped
 			}
 			if hooks != nil && hooks.AfterTurn != nil {
-				hooks.AfterTurn(turn, nil, finalErr)
+				hooks.AfterTurn(turn, result, finalErr)
 			}
 			sessionLease.MarkBroken()
 			return finalErr

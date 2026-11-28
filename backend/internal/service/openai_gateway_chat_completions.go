@@ -465,11 +465,13 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 	}
 	stampOpenAIResponsesUpstreamEndpoint(c, result)
 
-	// cyber_policy：标记已设、error 已按 Chat Completions 格式发给客户端。丢弃 result、
-	// 返回哨兵，使 handler 落入 tokens=0 免费用量行（对齐 /v1/responses），不计费、不 failover。
+	// cyber_policy 错误沿专用路径结算，已完成搜索的部分结果须保留。
 	if GetOpsCyberPolicy(c) != nil {
 		if handleErr == nil {
 			handleErr = errOpenAICyberPolicyForwarded
+		}
+		if result != nil && result.NativeWebSearchCalls > 0 {
+			return result, handleErr
 		}
 		return nil, handleErr
 	}
@@ -714,10 +716,31 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	billingModel string,
 	upstreamModel string,
 	startTime time.Time,
-) (*OpenAIForwardResult, error) {
+) (forwardResult *OpenAIForwardResult, forwardErr error) {
 	requestID := resp.Header.Get("x-request-id")
 
-	finalResponse, usage, acc, priorModels, err := s.readOpenAICompatBufferedTerminal(resp, c, account, "openai chat_completions buffered", requestID)
+	nativeSearch := newOpenAINativeWebSearchCounter(account)
+	finalResponse, usage, acc, priorModels, err := s.readOpenAICompatBufferedTerminal(resp, c, account, "openai chat_completions buffered", requestID, nativeSearch)
+	defer func() {
+		if forwardErr != nil && forwardResult == nil && nativeSearch.Count() > 0 {
+			forwardResult = &OpenAIForwardResult{
+				NativeWebSearchCalls:          nativeSearch.Count(),
+				RequestID:                     requestID,
+				UpstreamHeaders:               resp.Header,
+				Usage:                         usage,
+				Model:                         originalModel,
+				BillingModel:                  billingModel,
+				UpstreamModel:                 upstreamModel,
+				UpstreamResponseModel:         observedUpstreamResponseModel(c),
+				UpstreamResponseModelConflict: observedUpstreamResponseModelConflict(c),
+				UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
+				Duration:                      time.Since(startTime),
+			}
+			if finalResponse != nil {
+				forwardResult.ResponseID = finalResponse.ID
+			}
+		}
+	}()
 	if err != nil {
 		return nil, s.newOpenAICompatBufferedReadFailoverError(c, account, resp, requestID, err)
 	}
@@ -799,6 +822,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	c.JSON(http.StatusOK, chatResp)
 
 	result := &OpenAIForwardResult{
+		NativeWebSearchCalls:          nativeSearch.Count(),
 		RequestID:                     requestID,
 		UpstreamHeaders:               resp.Header,
 		Usage:                         usage,
@@ -896,6 +920,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	var streamNonFailoverErr error
 	terminalEventType := ""
 	// Grok chat bridge reuses Responses SSE; count native search tools for surcharge.
+	nativeSearch := newOpenAINativeWebSearchCounter(account)
 	searchCount := 0
 	streamSearchSeen := make(map[string]struct{})
 	countSearch := account != nil && account.IsGrok()
@@ -935,6 +960,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
 		}
+		out.NativeWebSearchCalls = nativeSearch.Count()
 		if searchCount > 0 {
 			out.SearchCount = searchCount
 		}
@@ -948,6 +974,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			ms := int(time.Since(startTime).Milliseconds())
 			firstTokenMs = &ms
 		}
+		nativeSearch.Add([]byte(payload))
 		if countSearch {
 			searchCount += countGrokNativeSearchCallsInSSEDataDedup([]byte(payload), streamSearchSeen)
 			searchCount = grokSearchCountWithTerminalUsage(searchCount, []byte(payload))
@@ -1105,7 +1132,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 
 	finalizeStream := func() (*OpenAIForwardResult, error) {
 		if streamFailoverErr != nil {
-			if c == nil || c.Writer == nil || !c.Writer.Written() {
+			if (c == nil || c.Writer == nil || !c.Writer.Written()) && nativeSearch.Count() == 0 {
 				return nil, streamFailoverErr
 			}
 			return resultWithUsage(), streamFailoverErr

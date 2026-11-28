@@ -358,7 +358,9 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	var firstTokenMs *int
 	responseID := ""
 	imageCount := 0
+	nativeSearches := 0
 	var imageOutputSizes []string
+	var forwardErr error
 	for {
 		actualModel := strings.TrimSpace(gjson.GetBytes(body, "model").String())
 		if actualModel == "" {
@@ -446,7 +448,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 
 		if reqStream {
 			result, handleErr := s.handleStreamingResponsePassthrough(ctx, resp, c, account, startTime, reqModel, upstreamPassthroughModel)
-			if handleErr != nil {
+			if handleErr != nil && (result == nil || result.nativeSearches == 0) {
 				if retryBody, fallbackModel, retry := s.applyOpenAIPassthroughCompactFallbackFromSignal(
 					c, account, requestedModel, body, handleErr, compactModelFallbackRetried, resp,
 				); retry {
@@ -466,14 +468,16 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				_ = resp.Body.Close()
 				return nil, handleErr
 			}
+			forwardErr = handleErr
 			usage = result.usage
 			firstTokenMs = result.firstTokenMs
 			responseID = strings.TrimSpace(result.responseID)
 			imageCount = result.imageCount
+			nativeSearches = result.nativeSearches
 			imageOutputSizes = result.imageOutputSizes
 		} else {
 			result, handleErr := s.handleNonStreamingResponsePassthrough(ctx, resp, c, account, reqModel, upstreamPassthroughModel)
-			if handleErr != nil {
+			if handleErr != nil && (result == nil || result.nativeSearches == 0) {
 				if retryBody, fallbackModel, retry := s.applyOpenAIPassthroughCompactFallbackFromSignal(
 					c, account, requestedModel, body, handleErr, compactModelFallbackRetried, resp,
 				); retry {
@@ -493,16 +497,20 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 				_ = resp.Body.Close()
 				return nil, handleErr
 			}
+			forwardErr = handleErr
 			usage = result.usage
 			responseID = strings.TrimSpace(result.responseID)
 			imageCount = result.imageCount
+			nativeSearches = result.nativeSearches
 			imageOutputSizes = result.imageOutputSizes
 		}
 		break
 	}
 	defer func() { _ = resp.Body.Close() }()
 	serviceTier := extractOpenAIServiceTierFromBody(body)
-	s.bindHTTPResponseAccount(ctx, c, account, responseID)
+	if forwardErr == nil {
+		s.bindHTTPResponseAccount(ctx, c, account, responseID)
+	}
 
 	// 排除 spark 影子:其 codex_* 仅由 QueryUsage(/wham/usage bengalfox)更新(外审第7轮 P1)。
 	if !account.IsShadow() {
@@ -518,6 +526,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 	}
 
 	forwardResult := &OpenAIForwardResult{
+		NativeWebSearchCalls:          nativeSearches,
 		RequestID:                     resp.Header.Get("x-request-id"),
 		UpstreamHeaders:               resp.Header,
 		ResponseID:                    responseID,
@@ -541,7 +550,7 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		forwardResult.ImageOutputSizes = imageOutputSizes
 		forwardResult.BillingModel = imageBillingModel
 	}
-	return forwardResult, nil
+	return forwardResult, forwardErr
 }
 
 func (s *OpenAIGatewayService) buildUpstreamRequestOpenAIPassthrough(
@@ -1229,10 +1238,12 @@ type openaiStreamingResultPassthrough struct {
 	firstTokenMs     *int
 	responseID       string
 	imageCount       int
+	nativeSearches   int
 	imageOutputSizes []string
 }
 
 type openaiNonStreamingResultPassthrough struct {
+	nativeSearches int
 	*OpenAIUsage
 	usage            *OpenAIUsage
 	responseID       string
@@ -2142,6 +2153,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 
 	usage := &OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
+	nativeSearch := newOpenAINativeWebSearchCounter(account)
 	var firstTokenMs *int
 	responseID := ""
 	ttftMode := s.openAITTFTMode(ctx)
@@ -2267,6 +2279,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			firstTokenMs:     firstTokenMs,
 			responseID:       responseID,
 			imageCount:       imageCounter.Count(),
+			nativeSearches:   nativeSearch.Count(),
 			imageOutputSizes: imageCounter.Sizes(),
 		}
 	}
@@ -2284,6 +2297,7 @@ func (s *OpenAIGatewayService) handleStreamingResponsePassthrough(
 			dataBytes := []byte(data)
 			trimmedData := strings.TrimSpace(data)
 			rawEventType := effectiveOpenAISSEEventType(dataBytes, pendingSSEEventType)
+			nativeSearch.Add([]byte(openAICompatPayloadWithEventType(string(dataBytes), rawEventType)))
 			observer.ObserveOpenAI(dataBytes, rawEventType)
 			if needModelReplace {
 				line = s.replaceModelInSSELine(line, mappedModel, originalModel)
@@ -2567,8 +2581,22 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 	account *Account,
 	originalModel string,
 	mappedModel string,
-) (*openaiNonStreamingResultPassthrough, error) {
-	body, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
+) (forwardResult *openaiNonStreamingResultPassthrough, forwardErr error) {
+	body, err := s.readOpenAIResponseBody(resp, c, account)
+	upstreamBody := body
+	defer func() {
+		if forwardErr != nil && forwardResult == nil {
+			if searches := countOpenAINativeWebSearchCalls(account, upstreamBody); searches > 0 {
+				usage := s.nativeSearchPartialUsage(upstreamBody)
+				forwardResult = &openaiNonStreamingResultPassthrough{
+					OpenAIUsage:    usage,
+					usage:          usage,
+					responseID:     extractOpenAIResponseIDFromJSONBytes(upstreamBody),
+					nativeSearches: searches,
+				}
+			}
+		}
+	}()
 	if err != nil {
 		return nil, err
 	}
@@ -2605,6 +2633,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		// 兜底：尝试从 SSE 文本中解析 usage
 		usage = s.parseSSEUsageFromBody(string(body))
 	}
+	if err := s.nativeSearchFailedResponseError(resp, c, account, body); err != nil {
+		return nil, err
+	}
 	logOpenAISuccessMissingUsage(ctx, c, account, resp, usage, "json", false)
 
 	writeOpenAIPassthroughResponseHeaders(c.Writer.Header(), resp.Header, s.responseHeaderFilter)
@@ -2634,6 +2665,7 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 		usage:            usage,
 		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:       countOpenAIResponseImageOutputsFromJSONBytes(body),
+		nativeSearches:   countOpenAINativeWebSearchCalls(account, body),
 		imageOutputSizes: collectOpenAIResponseImageOutputSizesFromJSONBytes(body),
 	}, nil
 }
@@ -2645,6 +2677,9 @@ func (s *OpenAIGatewayService) handleNonStreamingResponsePassthrough(
 func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c *gin.Context, account *Account, body []byte, originalModel string, mappedModel string) (*openaiNonStreamingResultPassthrough, error) {
 	bodyText := string(body)
 	terminalType, terminalPayload, terminalOK := extractOpenAISSETerminalEvent(bodyText)
+	if !terminalOK && countOpenAINativeWebSearchCalls(account, body) > 0 {
+		return nil, s.writeOpenAINonStreamingProtocolError(resp, c, "Upstream stream ended without a terminal response event")
+	}
 	if terminalOK && (terminalType == "response.failed" || terminalType == "error") {
 		msg := extractOpenAISSEErrorMessage(terminalPayload)
 		if msg == "" {
@@ -2720,6 +2755,7 @@ func (s *OpenAIGatewayService) handlePassthroughSSEToJSON(resp *http.Response, c
 		usage:            usage,
 		responseID:       extractOpenAIResponseIDFromJSONBytes(body),
 		imageCount:       countOpenAIImageOutputsFromSSEBody(bodyText),
+		nativeSearches:   countOpenAINativeWebSearchCalls(account, []byte(bodyText)),
 		imageOutputSizes: collectOpenAIImageOutputSizesFromSSEBody(bodyText),
 	}, nil
 }

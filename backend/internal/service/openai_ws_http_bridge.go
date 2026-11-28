@@ -430,7 +430,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	grokCacheIdentity string,
 	turn int,
 	writeClientMessage func([]byte) error,
-) (*OpenAIForwardResult, error) {
+) (forwardResult *OpenAIForwardResult, forwardErr error) {
 	if s == nil {
 		return nil, errors.New("service is nil")
 	}
@@ -654,6 +654,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	responseID := ""
 	usage := OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
+	nativeSearch := newOpenAINativeWebSearchCounter(account)
 	var firstTokenMs *int
 	reqStream := openAIWSPayloadBoolFromRaw(body, "stream", true)
 	eventCount := 0
@@ -689,6 +690,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		imageCount := imageCounter.Count()
 		result := &OpenAIForwardResult{
 			RequestID:                     responseID,
+			NativeWebSearchCalls:          nativeSearch.Count(),
 			Usage:                         usage,
 			Model:                         originalModel,
 			UpstreamModel:                 mappedModel,
@@ -718,6 +720,11 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		}
 		return result
 	}
+	defer func() {
+		if forwardErr != nil && forwardResult == nil && nativeSearch.Count() > 0 {
+			forwardResult = resultWithUsage()
+		}
+	}()
 
 	maxLineSize := defaultMaxLineSize
 	if s.cfg != nil && s.cfg.Gateway.MaxLineSize > 0 {
@@ -817,6 +824,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			markOpenAICyberPolicyEvent(c, upstreamMessage, http.StatusOK, &usage)
 		}
 		imageCounter.AddSSEData(upstreamMessage)
+		nativeSearch.Add(upstreamMessage)
 
 		if needModelReplace && len(mappedModelBytes) > 0 && openAIWSEventMayContainModel(eventType) && strings.Contains(trimmedData, mappedModel) {
 			upstreamMessage = replaceOpenAIWSMessageModel(upstreamMessage, mappedModel, originalModel)
@@ -875,7 +883,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 			}
 			// A disconnected client needs this attempt drained for usage, not replayed,
 			// even when only non-semantic heartbeats were delivered.
-			if !clientDisconnected && !wroteDownstream && shouldFailover && (turn == 1 || statusCode == http.StatusTooManyRequests) {
+			if nativeSearch.Count() == 0 && !clientDisconnected && !wroteDownstream && shouldFailover && (turn == 1 || statusCode == http.StatusTooManyRequests) {
 				if account.Platform == PlatformGrok {
 					return nil, newOpenAIUpstreamFailoverError(statusCode, resp.Header, upstreamMessage, errMessage, false)
 				}
@@ -920,6 +928,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 				isOpenAIWSTerminalEvent(eventType)
 			if stageBeforeSemanticOutput && !commitStagedMessages && !isKeepalive {
 				if pendingClientMessageBytes+int64(len(clientMessage)) > openAIFirstOutputStageMaxBytes {
+					if nativeSearch.Count() > 0 {
+						return resultWithUsage(), errors.New("OpenAI WS HTTP bridge first-output staging limit exceeded")
+					}
 					return nil, s.newOpenAIStreamFailoverError(
 						c,
 						account,
@@ -1015,7 +1026,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	}
 	if err := scanner.Err(); err != nil {
 		streamErr := fmt.Errorf("read upstream http bridge stream: %w", err)
-		if turn == 1 && !clientDisconnected && !wroteDownstream {
+		if nativeSearch.Count() == 0 && turn == 1 && !clientDisconnected && !wroteDownstream {
 			return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, streamErr, true)
 		}
 		return resultWithUsage(), streamErr
@@ -1024,7 +1035,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	if sawDone {
 		terminalErr = errors.New("upstream http bridge stream sent [DONE] before terminal event")
 	}
-	if turn == 1 && !clientDisconnected && !wroteDownstream {
+	if nativeSearch.Count() == 0 && turn == 1 && !clientDisconnected && !wroteDownstream {
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, terminalErr, true)
 	}
 	return resultWithUsage(), terminalErr

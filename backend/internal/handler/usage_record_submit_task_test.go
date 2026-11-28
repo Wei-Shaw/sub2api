@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -218,4 +219,36 @@ func TestOpenAIGatewayHandlerSubmitOpenAIUsageRecordTask_SearchCountUsesMandator
 	close(release)
 
 	require.True(t, called.Load(), "search surcharge usage task must be mandatory when async submit is dropped")
+}
+
+func TestOpenAIGatewayHandlerSubmitOpenAIUsageRecordTask_NativeSearchOverflowBoundary(t *testing.T) {
+	for _, count := range []int{0, 1, 3} {
+		t.Run(fmt.Sprintf("calls=%d", count), func(t *testing.T) {
+			pool := service.NewUsageRecordWorkerPoolWithOptions(service.UsageRecordWorkerPoolOptions{
+				WorkerCount: 1, QueueSize: 1, TaskTimeout: time.Second, OverflowPolicy: "drop",
+			})
+			t.Cleanup(pool.Stop)
+			handler := &OpenAIGatewayHandler{usageRecordWorkerPool: pool}
+			started, release := make(chan struct{}), make(chan struct{})
+			defer close(release)
+			require.Equal(t, service.UsageRecordSubmitModeEnqueued, pool.Submit(func(context.Context) {
+				close(started)
+				<-release
+			}))
+			<-started
+			require.Equal(t, service.UsageRecordSubmitModeEnqueued, pool.Submit(func(context.Context) {}))
+			var calls atomic.Int32
+			handler.submitOpenAIUsageRecordTask(context.Background(), &service.OpenAIForwardResult{NativeWebSearchCalls: count}, func(ctx context.Context) {
+				calls.Add(1)
+				_, hasDeadline := ctx.Deadline()
+				require.True(t, hasDeadline)
+			})
+			want := int32(0)
+			if count > 0 {
+				want = 1
+			}
+			require.Equal(t, want, calls.Load(), "only native-search bills must bypass configured overflow drops")
+			require.EqualValues(t, 1, pool.Stats().DroppedQueueFull)
+		})
+	}
 }

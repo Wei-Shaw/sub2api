@@ -133,7 +133,7 @@ func TestReadOpenAICompatBufferedTerminal_EmptyTerminalOutputGainsHostedItems(t 
 	account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1}
 
 	response, _, acc, _, err := (&OpenAIGatewayService{}).readOpenAICompatBufferedTerminal(
-		bufferedHostedItemsSSEResponse(bufferedHostedItemsSSE), c, account, "openai chat buffered", "req-1")
+		bufferedHostedItemsSSEResponse(bufferedHostedItemsSSE), c, account, "openai chat buffered", "req-1", nil)
 	require.NoError(t, err)
 	require.NotNil(t, response)
 
@@ -161,7 +161,7 @@ func TestReadOpenAICompatBufferedTerminal_HostedItemsWithoutOutputIndexKeepArriv
 	)
 
 	response, _, _, _, err := (&OpenAIGatewayService{}).readOpenAICompatBufferedTerminal(
-		bufferedHostedItemsSSEResponse(sse), c, account, "openai chat buffered", "req-1")
+		bufferedHostedItemsSSEResponse(sse), c, account, "openai chat buffered", "req-1", nil)
 	require.NoError(t, err)
 
 	var ids []string
@@ -353,7 +353,7 @@ func readBufferedOutputItems(t *testing.T, sse string) []string {
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
 	account := &Account{ID: 1, Platform: PlatformOpenAI, Type: AccountTypeOAuth, Concurrency: 1}
 	response, _, _, _, err := (&OpenAIGatewayService{}).readOpenAICompatBufferedTerminal(
-		bufferedHostedItemsSSEResponse(sse), c, account, "openai chat buffered", "req-1")
+		bufferedHostedItemsSSEResponse(sse), c, account, "openai chat buffered", "req-1", nil)
 	require.NoError(t, err)
 	require.NotNil(t, response)
 	var items []string

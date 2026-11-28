@@ -84,6 +84,9 @@ type preContentFailoverScenario struct {
 	respond     func(call int) (*http.Response, error)
 	passthrough *service.ErrorPassthroughService
 	requestBody string
+	path        string
+	usageRepo   service.UsageLogRepository
+	afterServe  func(*service.OpenAIGatewayService)
 }
 
 func preContentAccounts(count int) []service.Account {
@@ -118,13 +121,14 @@ func serveMessagesScenario(t *testing.T, sc preContentFailoverScenario) (*httpte
 	repo := &grokCredentialHandlerRepo{accounts: sc.accounts, missingOnGet: map[int64]bool{}}
 	upstream := &preContentFailoverUpstream{respond: sc.respond}
 	cfg := &config.Config{RunMode: config.RunModeSimple}
+	cfg.Default.RateMultiplier = 1
 	cfg.Gateway.MaxAccountSwitches = 3
 	cfg.Gateway.StreamKeepaliveInterval = 1
 	cfg.Security.URLAllowlist.AllowInsecureHTTP = true
 	billingCache := service.NewBillingCacheService(nil, nil, nil, nil, nil, nil, cfg, nil)
 	t.Cleanup(billingCache.Stop)
 	gateway := service.NewOpenAIGatewayService(
-		repo, nil, nil, nil, nil, nil, nil, cfg, nil, nil,
+		repo, sc.usageRepo, nil, nil, nil, nil, nil, cfg, nil, nil,
 		service.NewBillingService(cfg, nil), nil, billingCache, upstream,
 		&service.DeferredService{}, nil, nil, nil, nil, nil, nil, nil,
 	)
@@ -136,7 +140,7 @@ func serveMessagesScenario(t *testing.T, sc preContentFailoverScenario) (*httpte
 	apiKey := &service.APIKey{
 		ID: 9102, GroupID: &groupID,
 		User:  &service.User{ID: 9103, Status: service.StatusActive},
-		Group: &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive, AllowMessagesDispatch: true},
+		Group: &service.Group{ID: groupID, Platform: service.PlatformOpenAI, Status: service.StatusActive, AllowMessagesDispatch: true, RateMultiplier: 1},
 	}
 	router := gin.New()
 	router.Use(func(c *gin.Context) {
@@ -146,15 +150,24 @@ func serveMessagesScenario(t *testing.T, sc preContentFailoverScenario) (*httpte
 		c.Next()
 	})
 	router.POST("/v1/messages", h.Messages)
+	router.POST("/v1/chat/completions", h.ChatCompletions)
+	router.POST("/v1/responses", h.Responses)
 
 	rec := httptest.NewRecorder()
 	requestBody := sc.requestBody
 	if requestBody == "" {
 		requestBody = `{"model":"gpt-5.4","max_tokens":32,"messages":[{"role":"user","content":"hello"}],"stream":true}`
 	}
-	req := httptest.NewRequest(http.MethodPost, "/v1/messages", bytes.NewBufferString(requestBody))
+	path := sc.path
+	if path == "" {
+		path = "/v1/messages"
+	}
+	req := httptest.NewRequest(http.MethodPost, path, bytes.NewBufferString(requestBody))
 	req.Header.Set("Content-Type", "application/json")
 	router.ServeHTTP(rec, req)
+	if sc.afterServe != nil {
+		sc.afterServe(gateway)
+	}
 	return rec, upstream
 }
 

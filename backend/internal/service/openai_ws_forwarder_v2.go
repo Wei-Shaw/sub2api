@@ -34,7 +34,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 	attempt int,
 	lastFailureReason string,
 	agentTaskRecoveryTried *bool,
-) (*OpenAIForwardResult, error) {
+) (forwardResult *OpenAIForwardResult, forwardErr error) {
 	if s == nil || account == nil {
 		return nil, wrapOpenAIWSFallback("invalid_state", errors.New("service or account is nil"))
 	}
@@ -366,6 +366,7 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 
 	usage := &OpenAIUsage{}
 	imageCounter := newOpenAIImageOutputCounter()
+	nativeSearch := newOpenAINativeWebSearchCounter(account)
 	var firstTokenMs *int
 	responseID := ""
 	var finalResponse []byte
@@ -420,6 +421,9 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 		return &OpenAIForwardResult{
 			RequestID:                     responseID,
 			ResponseID:                    responseID,
+			NativeWebSearchCalls:          nativeSearch.Count(),
+			ImageCount:                    imageCounter.Count(),
+			ImageOutputSizes:              imageCounter.Sizes(),
 			Usage:                         *usage,
 			Model:                         originalModel,
 			UpstreamModel:                 mappedModel,
@@ -437,6 +441,11 @@ func (s *OpenAIGatewayService) forwardOpenAIWSV2(
 			ClientDisconnect:              clientDisconnected,
 		}
 	}
+	defer func() {
+		if forwardErr != nil && forwardResult == nil && nativeSearch.Count() > 0 {
+			forwardResult = resultWithUsage()
+		}
+	}()
 
 	var flusher http.Flusher
 	if reqStream {
@@ -665,6 +674,7 @@ readLoop:
 			parseOpenAIWSResponseUsageFromCompletedEvent(message, usage)
 		}
 		imageCounter.AddSSEData(message)
+		nativeSearch.Add(message)
 
 		if eventType == "error" || eventType == "response.failed" {
 			markOpenAICyberPolicyEvent(c, message, http.StatusOK, usage)
