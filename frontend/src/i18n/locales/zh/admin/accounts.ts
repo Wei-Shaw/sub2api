@@ -960,6 +960,12 @@ export default {
       toModel: '目标模型',
       selectAllowedModels: '选择允许的模型。留空则支持所有模型。',
       mapRequestModels: '将请求模型映射到实际模型。左边是请求的模型，右边是发送到 API 的实际模型。',
+      antigravityLiveModelMapping: '跟随上游实时模型列表',
+      antigravityLiveModelMappingHint:
+        '账号可用的模型就是 Antigravity 上游为该账号返回的模型列表，后台每 6 小时同步一次。带档位的模型只显示基础名称，档位按请求的思考强度选择。下面的映射作为覆盖规则，优先于实时列表。',
+      antigravityLiveModelsDerived: '当前可用模型（{count} 个，同步于 {time}）',
+      antigravityLiveModelsPending: '首次同步后显示上游模型列表；同步之前沿用内置的默认映射。',
+      antigravityLiveCatalogSynced: '已同步上游模型列表，共 {count} 个模型',
       selectedModels: '已选择 {count} 个模型',
       supportsAllModels: '（支持所有模型）',
       requestModel: '请求模型',

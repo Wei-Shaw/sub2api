@@ -843,6 +843,13 @@ export default {
       selectAllowedModels: 'Select allowed models. Leave empty to support all models.',
       mapRequestModels:
         'Map request models to actual models. Left is the requested model, right is the actual model sent to API.',
+      antigravityLiveModelMapping: 'Follow the upstream live model list',
+      antigravityLiveModelMappingHint:
+        'The account accepts exactly the models Antigravity reports for it, refreshed in the background every 6 hours. Tiered models appear once under their base name and the tier follows the request effort. The mappings below are overrides and take precedence over the live list.',
+      antigravityLiveModelsDerived: 'Available models ({count}, synced {time})',
+      antigravityLiveModelsPending:
+        'The upstream model list appears after the first sync; until then the built-in default mapping applies.',
+      antigravityLiveCatalogSynced: 'Synced the upstream model list: {count} model(s)',
       selectedModels: 'Selected {count} model(s)',
       supportsAllModels: '(supports all models)',
       requestModel: 'Request model',

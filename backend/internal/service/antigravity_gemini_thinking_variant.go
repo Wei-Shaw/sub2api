@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
+	"github.com/tidwall/gjson"
 )
 
 // Gemini 原生请求（/v1beta/models/{model}:generateContent 等）经 Antigravity 账号转发时，
@@ -182,4 +183,134 @@ func resolveGeminiThinkingVariantForLevel(account *Account, requestedModel strin
 		}
 	}
 	return "", false
+}
+
+// Antigravity serves these models only under one ID per thinking level
+// (gemini-4-carbon-low, -medium, -high, ...). A request for the bare model
+// gets the tiered ID matching its effort; a request for a tiered ID keeps the
+// level the ID names.
+var antigravityLevelFamilies = map[string][]string{
+	"gemini-4-argon":    {"low", "medium", "high"},
+	"gemini-4-carbon":   {"low", "medium", "high"},
+	"gemini-4-neon":     {"low", "medium", "high", "xhigh"},
+	"gemini-4-hydrogen": {"low", "medium", "high", "xhigh"},
+	"claude-opus-5-5":   {"low", "medium", "high"},
+	"claude-sonnet-5-5": {"low", "medium", "high"},
+}
+
+// resolveAntigravityLevelFamily maps a bare level-family model to the tiered
+// ID for level ("" when the request states no effort, which selects high).
+// A level the model lacks falls back to high. The account must list the bare
+// name; a mapping that aliases it to another model is honoured unchanged.
+//
+// A live-mode account with a saved catalog takes its families from that catalog
+// instead of antigravityLevelFamilies, and also resolves an alias whose target is
+// a bare family base (claude-haiku-4-5 -> claude-sonnet-5-5), because the catalog
+// has no bare ID to forward.
+func resolveAntigravityLevelFamily(account *Account, requestedModel string, level string) (string, bool) {
+	model := strings.TrimSpace(strings.TrimPrefix(requestedModel, "models/"))
+	families, live := account.antigravityLiveLevelFamilies()
+	if !live {
+		families = antigravityLevelFamilies
+	}
+	levels, isFamily := families[model]
+	if !isFamily && !live {
+		return "", false
+	}
+	mapped := mapAntigravityModel(account, model)
+	if isFamily && antigravityMappedWithinFamily(model, mapped, levels, live) {
+		return pickAntigravityFamilyLevel(model, levels, level), true
+	}
+	if !live {
+		return "", false
+	}
+	if targetLevels, ok := families[mapped]; ok {
+		return pickAntigravityFamilyLevel(mapped, targetLevels, level), true
+	}
+	return "", false
+}
+
+// antigravityMappedWithinFamily reports whether mapped still names the family
+// model, so the request effort picks the tier. In live mode only the bare name and
+// its level IDs count: a pin to another catalog model that shares the prefix
+// (gemini-3.8-flash -> gemini-3.8-flash-tiered) is an alias and is honoured.
+func antigravityMappedWithinFamily(model, mapped string, levels []string, live bool) bool {
+	if mapped == "" {
+		return false
+	}
+	if mapped == model {
+		return true
+	}
+	if !live {
+		return strings.HasPrefix(mapped, model+"-")
+	}
+	for _, level := range levels {
+		if mapped == model+"-"+level {
+			return true
+		}
+	}
+	return false
+}
+
+// antigravityLevelFromEffort normalizes a client effort to a family level.
+func antigravityLevelFromEffort(effort string) string {
+	switch strings.ToLower(strings.TrimSpace(effort)) {
+	case "none", "minimal", "low":
+		return "low"
+	case "medium":
+		return "medium"
+	case "high":
+		return "high"
+	case "xhigh", "max":
+		return "xhigh"
+	}
+	return ""
+}
+
+func antigravityLevelFromBudget(budget float64) string {
+	switch {
+	case budget < 0:
+		return ""
+	case budget <= geminiThinkingBudgetLowMax:
+		return "low"
+	case budget <= geminiThinkingBudgetMediumMax:
+		return "medium"
+	default:
+		return "high"
+	}
+}
+
+// antigravityFamilyLevelFromClaudeBody reads the level a Claude Messages body
+// asks for: output_config.effort first, then thinking (disabled → low, a token
+// budget → its band). "" means the request states no level.
+func antigravityFamilyLevelFromClaudeBody(claudeBody []byte, thinking *antigravity.ThinkingConfig) string {
+	if level := antigravityLevelFromEffort(gjson.GetBytes(claudeBody, "output_config.effort").String()); level != "" {
+		return level
+	}
+	if thinking == nil {
+		return ""
+	}
+	if strings.EqualFold(strings.TrimSpace(thinking.Type), "disabled") {
+		return "low"
+	}
+	if thinking.BudgetTokens > 0 {
+		return antigravityLevelFromBudget(float64(thinking.BudgetTokens))
+	}
+	return ""
+}
+
+// antigravityFamilyLevelFromGeminiBody reads generationConfig.thinkingConfig of
+// a Gemini native body: thinkingLevel first, then thinkingBudget.
+func antigravityFamilyLevelFromGeminiBody(body []byte) string {
+	config := gjson.GetBytes(body, "generationConfig.thinkingConfig")
+	if level := antigravityLevelFromEffort(config.Get("thinkingLevel").String()); level != "" {
+		return level
+	}
+	if budget := config.Get("thinkingBudget"); budget.Exists() {
+		if budget.Num == 0 {
+			return "low"
+		}
+		return antigravityLevelFromBudget(budget.Num)
+	}
+	return ""
 }

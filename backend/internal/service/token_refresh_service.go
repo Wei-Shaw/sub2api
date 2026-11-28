@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	"github.com/Wei-Shaw/sub2api/internal/pkg/antigravity"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 )
@@ -69,6 +70,7 @@ type TokenRefreshService struct {
 	// OpenAI privacy: 刷新成功后检查并设置 training opt-out
 	privacyClientFactory PrivacyClientFactory
 	proxyRepo            ProxyRepository
+	modelsListReadLimit  int64
 
 	stopCh        chan struct{}
 	stopOnce      sync.Once
@@ -104,15 +106,16 @@ func NewTokenRefreshService(
 	}
 	runCtx, runCancel := context.WithCancel(context.Background())
 	s := &TokenRefreshService{
-		accountRepo:      accountRepo,
-		refreshPolicy:    DefaultBackgroundRefreshPolicy(),
-		cfg:              refreshCfg,
-		cacheInvalidator: cacheInvalidator,
-		schedulerCache:   schedulerCache,
-		tempUnschedCache: tempUnschedCache,
-		stopCh:           make(chan struct{}),
-		runCtx:           runCtx,
-		runCancel:        runCancel,
+		accountRepo:         accountRepo,
+		refreshPolicy:       DefaultBackgroundRefreshPolicy(),
+		cfg:                 refreshCfg,
+		cacheInvalidator:    cacheInvalidator,
+		modelsListReadLimit: resolveModelsListReadLimit(cfg),
+		schedulerCache:      schedulerCache,
+		tempUnschedCache:    tempUnschedCache,
+		stopCh:              make(chan struct{}),
+		runCtx:              runCtx,
+		runCancel:           runCancel,
 	}
 	if pager, ok := accountRepo.(OAuthRefreshCandidatePager); ok {
 		s.candidatePager = pager
@@ -1211,6 +1214,8 @@ func (s *TokenRefreshService) postRefreshActions(ctx context.Context, account *A
 	s.ensureOpenAIPrivacy(ctx, account)
 	// Antigravity OAuth: 刷新成功后，检查是否已设置 privacy_mode，未设置则调用 setUserSettings
 	s.ensureAntigravityPrivacy(ctx, account)
+	// Antigravity OAuth: keep the saved upstream model catalog no older than antigravityModelCatalogMaxAge.
+	s.ensureAntigravityModelCatalog(ctx, account)
 	// Grok: clear soft reauth flag after a successful credential refresh.
 	if account != nil && account.Platform == PlatformGrok && accountGrokNeedsReauth(account) {
 		clearGrokNeedsReauthExtra(ctx, s.accountRepo, account.ID)
@@ -1536,4 +1541,45 @@ func (s *TokenRefreshService) ensureAntigravityPrivacy(ctx context.Context, acco
 			"privacy_mode", mode,
 		)
 	}
+}
+
+// ensureAntigravityModelCatalog fetches and saves the upstream model catalog of a
+// live-mode account when the saved one is missing or older than
+// antigravityModelCatalogMaxAge. A failed fetch keeps the previous catalog.
+func (s *TokenRefreshService) ensureAntigravityModelCatalog(ctx context.Context, account *Account) {
+	if account == nil || account.Type != AccountTypeOAuth || !account.IsAntigravityLiveModelMapping() {
+		return
+	}
+	now := time.Now()
+	if !account.antigravityModelCatalogStale(now) {
+		return
+	}
+	token := strings.TrimSpace(account.GetCredential("access_token"))
+	if token == "" {
+		return
+	}
+
+	proxyURL, err := resolveAntigravityAccountProxyURL(ctx, s.proxyRepo, account)
+	if err != nil {
+		slog.Warn("token_refresh.antigravity_model_catalog_proxy_failed", "account_id", account.ID, "error", err)
+		return
+	}
+	client, err := antigravity.NewClient(proxyURL)
+	if err != nil {
+		slog.Warn("token_refresh.antigravity_model_catalog_client_failed", "account_id", account.ID, "error", err)
+		return
+	}
+	fetchCtx, cancel := context.WithTimeout(ctx, antigravityModelCatalogFetchTimeout)
+	defer cancel()
+	resp, _, err := fetchAntigravityAvailableModels(fetchCtx, client, account, token, s.modelsListReadLimit)
+	if err != nil {
+		slog.Warn("token_refresh.antigravity_model_catalog_fetch_failed", "account_id", account.ID, "error", err)
+		return
+	}
+	catalog, ok := newAntigravityModelCatalog(resp, now)
+	if !ok {
+		slog.Warn("token_refresh.antigravity_model_catalog_empty", "account_id", account.ID)
+		return
+	}
+	persistAntigravityModelCatalog(ctx, s.accountRepo, account, catalog)
 }

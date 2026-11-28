@@ -1372,22 +1372,23 @@ func (s *AccountTestService) fetchAntigravityOAuthUpstreamModels(ctx context.Con
 		return nil, nil, newUpstreamModelSyncConfigError("No Antigravity access token is available", nil)
 	}
 
-	client, err := antigravity.NewClient(upstreamModelsProxyURL(account))
+	proxyURL, err := resolveAntigravityAccountProxyURL(ctx, nil, account)
+	if err != nil {
+		return nil, nil, newUpstreamModelSyncConfigError("Antigravity account proxy is not available", err)
+	}
+	client, err := antigravity.NewClient(proxyURL)
 	if err != nil {
 		return nil, nil, newUpstreamModelSyncConfigError("Failed to configure Antigravity client", err)
 	}
-	modelsResp, raw, err := client.FetchAvailableModelsFromURL(
-		ctx,
-		resolveAntigravityForwardBaseURL(account),
-		accessToken,
-		strings.TrimSpace(account.GetCredential("project_id")),
-		resolveModelsListReadLimit(s.cfg),
-	)
+	modelsResp, raw, err := fetchAntigravityAvailableModels(ctx, client, account, accessToken, resolveModelsListReadLimit(s.cfg))
 	if err != nil {
 		return nil, nil, newUpstreamModelSyncUpstreamError("Failed to fetch Antigravity available models", err)
 	}
 	if modelsResp == nil || len(modelsResp.Models) == 0 {
 		return nil, nil, newUpstreamModelSyncUpstreamError("Upstream returned no supported models", nil)
+	}
+	if catalog, ok := newAntigravityModelCatalog(modelsResp, time.Now()); ok {
+		persistAntigravityModelCatalog(ctx, s.accountRepo, account, catalog)
 	}
 
 	models := make([]string, 0, len(modelsResp.Models))

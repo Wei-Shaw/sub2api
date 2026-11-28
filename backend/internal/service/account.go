@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"maps"
 	"net/url"
 	"reflect"
 	"slices"
@@ -75,6 +76,13 @@ type Account struct {
 	modelMappingCacheRawLen         int
 	modelMappingCacheRawSig         uint64
 	modelMappingCacheRuntimeVersion uint64
+	// The live Antigravity mode also keys the cache on the mode and saved catalog,
+	// and keeps the tier families derived from that catalog beside the mapping.
+	modelMappingCacheLiveMode      bool
+	modelMappingCacheCatalogPtr    uintptr
+	modelMappingCacheCatalogLen    int
+	modelMappingCacheCatalogSig    uint64
+	modelMappingCacheLevelFamilies map[string][]string
 	// modelMappingCacheShared 为 true 时缓存来自只读共享母本（见 PrepareSharedSnapshot），
 	// 指针、长度与运行时版本匹配即直接复用预解析结果，不计算签名。
 	modelMappingCacheShared bool
@@ -631,25 +639,42 @@ func (a *Account) GetModelMapping() map[string]string {
 	rawLen := len(rawMapping)
 	rawSig := uint64(0)
 	rawSigReady := false
+	liveMode := a.IsAntigravityLiveModelMapping()
+	catalogPtr, catalogLen := uintptr(0), 0
+	if liveMode {
+		catalogPtr, catalogLen = a.antigravityModelCatalogCacheKey()
+	}
+	catalogSig := uint64(0)
+	catalogSigReady := false
 
 	if a.modelMappingCacheReady &&
 		a.modelMappingCacheCredentialsPtr == credentialsPtr &&
 		a.modelMappingCacheRawPtr == rawPtr &&
 		a.modelMappingCacheRawLen == rawLen &&
-		a.modelMappingCacheRuntimeVersion == runtimeVersion {
+		a.modelMappingCacheRuntimeVersion == runtimeVersion &&
+		a.modelMappingCacheLiveMode == liveMode &&
+		a.modelMappingCacheCatalogPtr == catalogPtr &&
+		a.modelMappingCacheCatalogLen == catalogLen {
 		if a.modelMappingCacheShared {
 			return a.modelMappingCache
 		}
 		rawSig = modelMappingSignature(rawMapping)
 		rawSigReady = true
-		if a.modelMappingCacheRawSig == rawSig {
+		if liveMode {
+			catalogSig = a.antigravityModelCatalogSignature()
+			catalogSigReady = true
+		}
+		if a.modelMappingCacheRawSig == rawSig && a.modelMappingCacheCatalogSig == catalogSig {
 			return a.modelMappingCache
 		}
 	}
 
-	mapping := a.resolveModelMapping(rawMapping)
+	mapping, levelFamilies := a.resolveModelMappingAndFamilies(rawMapping, liveMode)
 	if !rawSigReady {
 		rawSig = modelMappingSignature(rawMapping)
+	}
+	if liveMode && !catalogSigReady {
+		catalogSig = a.antigravityModelCatalogSignature()
 	}
 
 	a.modelMappingCache = mapping
@@ -659,8 +684,42 @@ func (a *Account) GetModelMapping() map[string]string {
 	a.modelMappingCacheRawLen = rawLen
 	a.modelMappingCacheRawSig = rawSig
 	a.modelMappingCacheRuntimeVersion = runtimeVersion
+	a.modelMappingCacheLiveMode = liveMode
+	a.modelMappingCacheCatalogPtr = catalogPtr
+	a.modelMappingCacheCatalogLen = catalogLen
+	a.modelMappingCacheCatalogSig = catalogSig
+	a.modelMappingCacheLevelFamilies = levelFamilies
 	a.modelMappingCacheShared = false
 	return mapping
+}
+
+// resolveModelMappingAndFamilies resolves the model mapping and, for a live-mode
+// Antigravity account with a saved catalog, the tier families of that catalog.
+func (a *Account) resolveModelMappingAndFamilies(rawMapping map[string]any, liveMode bool) (map[string]string, map[string][]string) {
+	if !liveMode {
+		return a.resolveModelMapping(rawMapping), nil
+	}
+	explicit := stringMappingFromRaw(rawMapping)
+	if catalog := a.antigravityModelCatalogIDs(); len(catalog) > 0 {
+		families := antigravityCatalogLevelFamilies(catalog)
+		return deriveAntigravityLiveModelMappingWithFamilies(catalog, explicit, families), families
+	}
+	// No catalog saved yet: the static defaults keep a fresh account schedulable
+	// until the first sync. Clone them, since the default table is shared.
+	mapping := maps.Clone(domain.DefaultAntigravityModelMapping)
+	maps.Copy(mapping, explicit)
+	return mapping, nil
+}
+
+// antigravityLiveLevelFamilies returns the tier families derived from the saved
+// catalog of a live-mode account; false when the account is not in live mode or
+// has no catalog yet.
+func (a *Account) antigravityLiveLevelFamilies() (map[string][]string, bool) {
+	if !a.IsAntigravityLiveModelMapping() {
+		return nil, false
+	}
+	a.GetModelMapping()
+	return a.modelMappingCacheLevelFamilies, a.modelMappingCacheLevelFamilies != nil
 }
 
 // PrepareSharedSnapshot 预解析模型映射，并把账号标记为只读共享母本。

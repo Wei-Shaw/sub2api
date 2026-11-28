@@ -1495,7 +1495,11 @@ func filterSchedulerCredentials(credentials map[string]any) map[string]any {
 		// Gemini 显式缓存的候选过滤（GeminiExplicitCacheExclusions）读本投影判定账号是否支持显式缓存：
 		// 官方地址、Vertex 认证方式与上游网关的显式缓存声明。缺这几个键时只能按类型粗筛，
 		// 不支持的账号要逐个选中后才被剔除。
-		"base_url", "auth_mode", service.GeminiExplicitCacheUpstreamCredentialKey, service.GeminiExplicitCacheUpstreamMaxTTLCredentialKey}
+		"base_url", "auth_mode", service.GeminiExplicitCacheUpstreamCredentialKey, service.GeminiExplicitCacheUpstreamMaxTTLCredentialKey,
+		// Live-mode Antigravity accounts derive model support from the mode flag and
+		// the saved catalog in extra; without either, candidate filtering and model
+		// listing fall back to the static default mapping.
+		service.AntigravityModelMappingModeCredentialKey}
 	filtered := make(map[string]any)
 	for _, key := range keys {
 		if value, ok := credentials[key]; ok && value != nil {
@@ -1588,6 +1592,7 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		service.UpstreamBillingProbeExtraKey,
 		service.GrokMediaEligibleExtraKey,
 		"grok_billing_snapshot",
+		service.AntigravityModelCatalogExtraKey,
 	}
 	filtered := make(map[string]any)
 	for _, key := range keys {

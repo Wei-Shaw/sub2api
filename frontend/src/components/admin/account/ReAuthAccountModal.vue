@@ -482,7 +482,9 @@ const handleExchangeCode = async () => {
     const credentials = antigravityOAuth.buildCredentials(tokenInfo)
 
     try {
-      await adminAPI.accounts.update(props.account.id, {
+      // Merge into the stored credentials so project_id, model_mapping and
+      // model_mapping_mode survive re-authorization.
+      await adminAPI.accounts.applyOAuthCredentials(props.account.id, {
         type: 'oauth',
         credentials
       })

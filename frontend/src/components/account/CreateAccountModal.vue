@@ -1408,6 +1408,11 @@
             </p>
           </div>
 
+          <AntigravityLiveModelCatalogField
+            v-if="antigravityAccountType === 'oauth'"
+            v-model="antigravityLiveModelMapping"
+          />
+
           <div v-if="antigravityModelMappings.length > 0" class="mb-3 space-y-2">
             <div
               v-for="(mapping, index) in antigravityModelMappings"
@@ -4248,6 +4253,8 @@ import {
   type OpenAIWSMode
 } from '@/utils/openaiWsMode'
 import OAuthAuthorizationFlow from './OAuthAuthorizationFlow.vue'
+import AntigravityLiveModelCatalogField from './AntigravityLiveModelCatalogField.vue'
+import { applyAntigravityModelMappingMode } from './antigravityLiveModelCatalog'
 
 // Type for exposed OAuthAuthorizationFlow component
 // Note: defineExpose automatically unwraps refs, so we use the unwrapped types
@@ -4811,6 +4818,24 @@ const antigravityModelRestrictionMode = ref<'whitelist' | 'mapping'>('whitelist'
 const antigravityWhitelistModels = ref<string[]>([])
 const antigravityModelMappings = ref<ModelMapping[]>([])
 const antigravityPresetMappings = computed(() => getPresetMappingsByPlatform('antigravity'))
+// New Antigravity OAuth accounts follow the upstream live model list by default.
+const antigravityLiveModelMapping = ref(true)
+const antigravityLiveModelMappingActive = computed(
+  () => antigravityAccountType.value === 'oauth' && antigravityLiveModelMapping.value
+)
+// In live mode the mapping rows are overrides on top of the upstream catalog and
+// start empty; otherwise they start from the default mapping table.
+const loadAntigravityModelMappingRows = () => {
+  if (antigravityLiveModelMappingActive.value) {
+    antigravityModelMappings.value = []
+    return
+  }
+  fetchAntigravityDefaultMappings().then((mappings) => {
+    if (!antigravityLiveModelMappingActive.value) {
+      antigravityModelMappings.value = [...mappings]
+    }
+  })
+}
 const bedrockPresets = computed(() => getPresetMappingsByPlatform('bedrock'))
 
 // Bedrock credentials
@@ -5147,9 +5172,7 @@ watch(
       // Antigravity: 默认使用映射模式并填充默认映射
       if (form.platform === 'antigravity') {
         antigravityModelRestrictionMode.value = 'mapping'
-        fetchAntigravityDefaultMappings().then(mappings => {
-          antigravityModelMappings.value = [...mappings]
-        })
+        loadAntigravityModelMappingRows()
         antigravityWhitelistModels.value = []
       } else {
         antigravityWhitelistModels.value = []
@@ -5220,9 +5243,7 @@ watch(
     // Antigravity: 默认使用映射模式并填充默认映射
     if (newPlatform === 'antigravity') {
       antigravityModelRestrictionMode.value = 'mapping'
-      fetchAntigravityDefaultMappings().then(mappings => {
-        antigravityModelMappings.value = [...mappings]
-      })
+      loadAntigravityModelMappingRows()
       antigravityWhitelistModels.value = []
       accountCategory.value = 'oauth-based'
       antigravityAccountType.value = 'oauth'
@@ -5355,6 +5376,10 @@ watch(
     // 如果需要快速填充常用模型，可在组件内点“填充相关模型”。
   }
 )
+
+watch(antigravityLiveModelMappingActive, () => {
+  if (form.platform === 'antigravity') loadAntigravityModelMappingRows()
+})
 
 // Model mapping helpers
 const addModelMapping = () => {
@@ -5708,9 +5733,8 @@ const resetForm = () => {
 
   antigravityModelRestrictionMode.value = 'mapping'
   antigravityWhitelistModels.value = []
-  fetchAntigravityDefaultMappings().then(mappings => {
-    antigravityModelMappings.value = [...mappings]
-  })
+  antigravityLiveModelMapping.value = true
+  loadAntigravityModelMappingRows()
   poolModeEnabled.value = false
   poolModeRetryCount.value = DEFAULT_POOL_MODE_RETRY_COUNT
   poolModeRetryStatusCodesInput.value = ''
@@ -7124,6 +7148,11 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
 
         const credentials = antigravityOAuth.buildCredentials(tokenInfo, refreshTokens[i])
         applyAntigravityProjectID(credentials, antigravityProjectId.value, 'create')
+        if (antigravityLiveModelMapping.value) {
+          const overrides = buildModelMappingObject('mapping', [], antigravityModelMappings.value)
+          if (overrides) credentials.model_mapping = overrides
+        }
+        applyAntigravityModelMappingMode(credentials, antigravityLiveModelMapping.value)
         
         // Generate account name with index for batch
         const accountName = refreshTokens.length > 1 ? `${form.name} #${i + 1}` : form.name
@@ -7251,6 +7280,7 @@ const handleAntigravityExchange = async (authCode: string) => {
 		if (antigravityModelMapping) {
 			credentials.model_mapping = antigravityModelMapping
 		}
+		applyAntigravityModelMappingMode(credentials, antigravityLiveModelMapping.value)
 		const extra = buildAntigravityExtra()
 		await createAccountAndFinish('antigravity', 'oauth', credentials, extra)
   } catch (error: any) {

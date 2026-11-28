@@ -663,6 +663,14 @@ type ModelInfo struct {
 	MaxTokens          *int            `json:"maxTokens,omitempty"`
 	MaxOutputTokens    *int            `json:"maxOutputTokens,omitempty"`
 	SupportedMimeTypes map[string]bool `json:"supportedMimeTypes,omitempty"`
+	// Disabled and IsInternal mark catalog entries that cannot be called.
+	Disabled   *bool `json:"disabled,omitempty"`
+	IsInternal *bool `json:"isInternal,omitempty"`
+}
+
+// Callable reports whether the catalog entry may be used as a generation model.
+func (m ModelInfo) Callable() bool {
+	return (m.Disabled == nil || !*m.Disabled) && (m.IsInternal == nil || !*m.IsInternal)
 }
 
 // DeprecatedModelInfo 废弃模型转发信息

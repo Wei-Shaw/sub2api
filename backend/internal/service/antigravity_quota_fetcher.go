@@ -58,13 +58,10 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 	}
 
 	baseURL := resolveAntigravityForwardBaseURL(account)
-	if baseURL == "" {
-		return nil, errors.New("no antigravity base url configured")
-	}
 
 	// Query the same endpoint that receives forwarded requests for this account (daily for
 	// paid tiers, prod otherwise), because Google accounts quota separately per endpoint.
-	modelsResp, modelsRaw, err := client.FetchAvailableModelsFromURL(ctx, baseURL, accessToken, projectID, resolveModelsListReadLimit(f.cfg))
+	modelsResp, modelsRaw, err := fetchAntigravityAvailableModels(ctx, client, account, accessToken, resolveModelsListReadLimit(f.cfg))
 	if err != nil {
 		// 403 Forbidden: 不报错，返回 is_forbidden 标记
 		var forbiddenErr *antigravity.ForbiddenError
@@ -101,10 +98,14 @@ func (f *AntigravityQuotaFetcher) FetchQuota(ctx context.Context, account *Accou
 		usageInfo.AntigravityQuotaGroups = buildAntigravityQuotaGroups(summary)
 	}
 
-	return &QuotaResult{
+	result := &QuotaResult{
 		UsageInfo: usageInfo,
 		Raw:       modelsRaw,
-	}, nil
+	}
+	if catalog, ok := newAntigravityModelCatalog(modelsResp, time.Now()); ok {
+		result.AntigravityModelCatalog = &catalog
+	}
+	return result, nil
 }
 
 // fetchSubscriptionTier 获取账号订阅等级，失败返回空字符串。
@@ -268,16 +269,9 @@ func buildAntigravityQuotaGroups(summary *antigravity.QuotaSummaryResponse) []*A
 	return groups
 }
 
-// GetProxyURL 获取账户的代理 URL
-func (f *AntigravityQuotaFetcher) GetProxyURL(ctx context.Context, account *Account) string {
-	if account.ProxyID == nil || f.proxyRepo == nil {
-		return ""
-	}
-	proxy, err := f.proxyRepo.GetByID(ctx, *account.ProxyID)
-	if err != nil || proxy == nil {
-		return ""
-	}
-	return proxy.URL()
+// GetProxyURL 获取账户的代理 URL；账户绑定的代理无法加载时返回错误，不回退直连。
+func (f *AntigravityQuotaFetcher) GetProxyURL(ctx context.Context, account *Account) (string, error) {
+	return resolveAntigravityAccountProxyURL(ctx, f.proxyRepo, account)
 }
 
 // classifyForbiddenType 根据 403 响应体判断禁止类型
